@@ -155,6 +155,61 @@ node tools/architecture/scan-architecture.mjs --report
   `orderStableId` and may not query the `loyaltyLedger` Prisma delegate directly. Loyalty Runtime
   access remains consolidated through `loyalty-prisma.ts`, and the existing
   `(orderId, type, sourceKey)` internal idempotency constraint remains unchanged;
+- Phase 5 Slice 4D reserves Orders runtime Benefits reads behind the stable-ID-only
+  `ORDER_BENEFITS_READER`. Quote/coupon/tender/loyalty-only eligibility reads may not
+  regain direct `LoyaltyAccount` persistence or concrete Loyalty tender conversion;
+  User/Coupon DB IDs stay inside the Benefits owner. The contract remains on the top-level
+  Benefits public barrel, while the Nest composition module is imported only from the
+  dedicated `benefits/public-api/order-benefits-read.module` subpath so the barrel cannot
+  eagerly recreate Auth/Loyalty/Promotions module-loading cycles. The scanner intentionally
+  still permits the bounded concrete `LoyaltyService` / `MembershipService` preparation and
+  transaction/mutation seam while rejecting expansion beyond the two existing member
+  resolution and coupon-validation call sites;
+- Phase 5 Slice 4E keeps Uber Direct HTTP/provider implementation inside `deliveries/**`.
+  `FulfillmentProcessor` consumes only the token-backed `UBER_DIRECT_DELIVERY_DISPATCHER`
+  contract from `deliveries/public-api.ts`; `DeliveriesModule` may register the concrete
+  `UberDirectService` internally but must export only the dispatcher token. The scanner
+  rejects a concrete Uber Direct service import or deep `deliveries.module` composition from
+  Orders while preserving the current provider request/response and persistence-failure
+  semantics;
+- Phase 5 Slice 4F makes the receipt/kitchen print payload an Orders-owned output contract and
+  exposes `ORDER_PRINT_PAYLOAD_READER` instead of the concrete `PrintPosPayloadService`. Orders
+  and Fulfillment may not import POS DTOs; POS transport must consume the reader and payload
+  type through `orders/public-api.ts`. The former POS-owned `print-pos-payload.dto.ts` stays
+  deleted, and `OrdersModule` exports only the token-backed reader across the boundary;
+- Phase 5 Slice 5A begins Orders use-case decomposition by moving invoice delivery into the
+  internal `OrderInvoiceUseCase`. Both invoice routes must call that use case directly;
+  `OrdersService` may not regain `ORDER_INVOICE_DELIVERY`, the concrete print-payload service or
+  invoice methods. The use case itself must depend on `ORDER_PRINT_PAYLOAD_READER` and
+  `ORDER_INVOICE_DELIVERY` capabilities and must remain internal to `OrdersModule` composition;
+- Phase 5 Slice 5B moves post-`ready` contact/locale/notification/logging orchestration into the
+  internal `OrderReadyNotificationUseCase`. `OrdersService` keeps status-transition persistence
+  and paid/refunded side effects, and may only fire the ready use case after a successful guarded
+  write. The use case must consume Customer/Notifications public capabilities, obtain checkout
+  metadata through the Orders-local `orders-prisma` facade, preserve non-blocking delivery and
+  PII-redacted structured logging, and remain internal to `OrdersModule` composition;
+- Phase 5 Slice 5C moves paid-order Uber Direct dispatch preparation, provider invocation,
+  local delivery-id persistence and operations-alert policy into the internal
+  `OrderDeliveryDispatchUseCase`. `FulfillmentProcessor` remains the lifecycle consumer and
+  delegates `order.paid.verified` payloads only; provider/auth/notification ports and dropoff
+  extraction must not return to the processor. The use case stays on Orders-local persistence
+  plus public Delivery/Auth/Notifications capabilities and remains internal to `OrdersModule`;
+- Phase 5 Slice 5D moves the read-only one-hour average preparation-time query into the internal
+  `OrderPrepTimeQueryUseCase`. The public `/orders/prep-time` route delegates to this use case;
+  `OrdersService` must not regain the query policy. Historical fallback `15` minutes and minimum
+  average `5` minutes remain unchanged, and the query stays on Orders-local persistence only;
+- Phase 5 Slice 5E moves the public thank-you/order-summary projection into the internal
+  `OrderPublicSummaryQueryUseCase`. The `/orders/:orderStableId/summary` route delegates directly
+  to that query use case; `OrdersService` must not regain summary projection, checkout-intent
+  surcharge metadata interpretation or summary-only discount helpers. The use case stays on
+  Orders-local persistence plus the existing Loyalty order-usage public reader and remains internal
+  to `OrdersModule` composition;
+- Phase 5 Slice 5F moves POS recent/history/board list queries into the internal
+  `OrderManagementQueryUseCase`. `PosOrderOperationsService` keeps the public POS operations
+  contract but delegates these three reads to the use case. Store-scope validation and DTO
+  projection are centralized in `order-query-projection.ts` so write-side `OrdersService` callers
+  and management reads share one projection policy. `getByStableId*`, refund/amendment, payment,
+  pricing and lifecycle writes remain in `OrdersService`;
 - Registration and marketing-opt-in welcome delivery use the Notifications-owned
   `CUSTOMER_LIFECYCLE_NOTIFICATION` capability. Auth keeps the new-user decision; Customer
   keeps persisted marketing-consent ownership. Neither consumer may deep-import

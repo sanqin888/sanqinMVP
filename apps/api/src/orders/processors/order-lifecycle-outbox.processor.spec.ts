@@ -19,39 +19,62 @@ describe('OrderLifecycleOutboxProcessor durable lifecycle replay', () => {
     fulfillment?: jest.Mock;
     activateImmediate?: jest.Mock;
   }) {
+    const createMany = jest.fn().mockResolvedValue({ count: 1 });
     const transaction = jest.fn(
-      (work: (tx: { $queryRaw: RawTag }) => Promise<unknown>) =>
-        work({ $queryRaw: input.queryRaw }),
+      (
+        work: (tx: {
+          $queryRaw: RawTag;
+          opsEvent: { createMany: jest.Mock };
+        }) => Promise<unknown>,
+      ) =>
+        work({
+          $queryRaw: input.queryRaw,
+          opsEvent: { createMany },
+        }),
     );
     const processor = new OrderLifecycleOutboxProcessor(
       { $transaction: transaction } as never,
       {
-        handleAcceptedLifecycle: input.fulfillment ?? jest.fn(),
+        handleAcceptedLifecycle:
+          input.fulfillment ??
+          jest.fn().mockResolvedValue({ jobId: 'print-job-default' }),
       } as never,
       {
         activateAcceptedImmediateOrder: input.activateImmediate ?? jest.fn(),
       } as never,
     );
-    return { processor, transaction };
+    return { processor, transaction, createMany };
   }
 
-  it('materializes prep_started exactly once through the existing AUTO print path', async () => {
+  it('checkpoints prep_started only after the Print handoff succeeds', async () => {
     const queryRaw = jest
       .fn<ReturnType<RawTag>, Parameters<RawTag>>()
       .mockResolvedValueOnce([lifecycleEvent('a')]);
-    const fulfillment = jest.fn().mockResolvedValue(undefined);
-    const { processor } = processorWith({ queryRaw, fulfillment });
+    const fulfillment = jest.fn().mockResolvedValue({ jobId: 'print-job-a' });
+    const { processor, createMany } = processorWith({ queryRaw, fulfillment });
 
     await expect(processor.processOnce(1)).resolves.toBe(1);
 
-    expect(fulfillment).toHaveBeenCalledWith({ orderId: 'order-a' });
+    expect(fulfillment).toHaveBeenCalledWith({
+      orderId: 'order-a',
+    });
     const statement = sqlText(queryRaw.mock.calls[0][0]);
     expect(statement).toContain('FOR UPDATE OF event SKIP LOCKED');
     expect(statement).toContain('NOT EXISTS');
-    expect(statement).toContain('FROM "PosPrintJob" job');
-    expect(statement).toContain("job.kind = 'AUTO'");
+    expect(statement).toContain('FROM "OpsEvent" handoff');
+    expect(statement).not.toContain('PosPrintJob');
     expect(queryRaw.mock.calls[0]).toContain('orders.lifecycle');
     expect(queryRaw.mock.calls[0]).toContain('order.prep_started');
+    expect(queryRaw.mock.calls[0]).toContain('order.initial_print_handoff');
+    expect(createMany).toHaveBeenCalledWith({
+      data: {
+        idempotencyKey: 'order.initial_print_handoff:stable-a',
+        eventName: 'order.initial_print_handoff',
+        source: 'orders.lifecycle',
+        payload: { orderStableId: 'stable-a' },
+      },
+      skipDuplicates: true,
+    });
   });
 
   it('turns an accepted immediate order into prep_started before printing', async () => {
@@ -102,22 +125,36 @@ describe('OrderLifecycleOutboxProcessor durable lifecycle replay', () => {
       .mockResolvedValueOnce([event]);
     const fulfillment = jest
       .fn()
-      .mockRejectedValueOnce(
-        new Error('process crashed before materialization'),
-      )
-      .mockResolvedValueOnce(undefined);
+      .mockRejectedValueOnce(new Error('process crashed before handoff'))
+      .mockResolvedValueOnce({ jobId: 'print-job-replay' });
     const { processor, transaction } = processorWith({
       queryRaw,
       fulfillment,
     });
 
     await expect(processor.processOnce(1)).rejects.toThrow(
-      'process crashed before materialization',
+      'process crashed before handoff',
     );
     await expect(processor.processOnce(1)).resolves.toBe(1);
 
     expect(transaction).toHaveBeenCalledTimes(2);
     expect(fulfillment).toHaveBeenCalledTimes(2);
+  });
+
+  it('requestDrain eagerly wakes the same durable consumer after producer commit', async () => {
+    const queryRaw = jest
+      .fn<ReturnType<RawTag>, Parameters<RawTag>>()
+      .mockResolvedValue([]);
+    const { processor } = processorWith({ queryRaw });
+    const processOnce = jest
+      .spyOn(processor, 'processOnce')
+      .mockResolvedValue(0);
+
+    processor.requestDrain();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(processOnce).toHaveBeenCalledTimes(1);
   });
 
   it('stops when every prep_started event already has its durable AUTO print materialization', async () => {

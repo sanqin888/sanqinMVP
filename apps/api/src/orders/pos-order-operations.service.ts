@@ -1,11 +1,15 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { OrderManagementQueryUseCase } from './order-management-query.use-case';
 import { OrderPreparationService } from './order-preparation.service';
 import { OrderSchedulingQueryService } from './order-scheduling-query.service';
 import { OrdersService } from './orders.service';
+import { OrderLifecycleOutboxProcessor } from './processors/order-lifecycle-outbox.processor';
+import { OrderLabelPlanService } from './order-label-plan.service';
 import type {
   PosOrderAmendmentInput,
   PosOrderBoardQuery,
   PosOrderFullRefundInput,
+  PosOrderManagementQuery,
   PosOrderOperationsPort,
 } from './pos-order-operations.contract';
 
@@ -13,12 +17,19 @@ import type {
 export class PosOrderOperationsService implements PosOrderOperationsPort {
   constructor(
     private readonly orders: OrdersService,
+    private readonly managementQuery: OrderManagementQueryUseCase,
     private readonly scheduling: OrderSchedulingQueryService,
     private readonly preparation: OrderPreparationService,
+    private readonly lifecycleOutbox: OrderLifecycleOutboxProcessor,
+    private readonly labelPlan: OrderLabelPlanService,
   ) {}
 
-  createForStore(...args: Parameters<OrdersService['createForStore']>) {
-    return this.orders.createForStore(...args);
+  async createForStore(...args: Parameters<OrdersService['createForStore']>) {
+    const order = await this.orders.createForStore(...args);
+    if (args[0].channel === 'in_store') {
+      this.lifecycleOutbox.requestDrain();
+    }
+    return order;
   }
 
   quotePricingForStore(
@@ -32,22 +43,56 @@ export class PosOrderOperationsService implements PosOrderOperationsPort {
   }
 
   recent(storeStableId: string, limit?: number) {
-    return this.orders.recent(storeStableId, limit);
+    return this.managementQuery.recent(storeStableId, limit);
+  }
+
+  searchForStore(storeStableId: string, query: PosOrderManagementQuery) {
+    return this.managementQuery.searchForStore(storeStableId, query);
   }
 
   board(storeStableId: string, query: PosOrderBoardQuery) {
-    return this.orders.board(storeStableId, query);
+    return this.managementQuery.board(storeStableId, query);
   }
 
   getByStableIdForStore(orderStableId: string, storeStableId: string) {
     return this.orders.getByStableIdForStore(orderStableId, storeStableId);
   }
 
-  updateStatusForStore(
+  async updateStatusForStore(
     orderStableId: string,
     storeStableId: string,
     status: Parameters<OrdersService['updateStatusForStore']>[2],
   ) {
+    if (status === 'making') {
+      const current = await this.orders.getByStableIdForStore(
+        orderStableId,
+        storeStableId,
+      );
+      if (current.status === 'paid' && current.channel === 'web') {
+        await this.acceptWebOrder(orderStableId, storeStableId);
+        return this.orders.getByStableIdForStore(orderStableId, storeStableId);
+      }
+      if (current.status === 'paid' && current.channel === 'in_store') {
+        await this.activateImmediatePreparation(orderStableId, storeStableId);
+        return this.orders.getByStableIdForStore(orderStableId, storeStableId);
+      }
+      if (current.status === 'paid' && current.channel === 'ubereats') {
+        const timing = await this.scheduling.findByStableIdForStore(
+          orderStableId,
+          storeStableId,
+        );
+        if (!timing) {
+          throw new BadRequestException('order fulfillment timing unavailable');
+        }
+        if (timing.fulfillmentTiming === 'SCHEDULED') {
+          await this.activateScheduledPreparation(orderStableId, storeStableId);
+        } else {
+          await this.activateImmediatePreparation(orderStableId, storeStableId);
+        }
+        return this.orders.getByStableIdForStore(orderStableId, storeStableId);
+      }
+    }
+
     return this.orders.updateStatusForStore(
       orderStableId,
       storeStableId,
@@ -61,6 +106,11 @@ export class PosOrderOperationsService implements PosOrderOperationsPort {
 
   getExternalPaymentCents(orderStableId: string) {
     return this.orders.getExternalPaymentCents(orderStableId);
+  }
+
+  async getLabelPlanForStore(orderStableId: string, storeStableId: string) {
+    await this.orders.getByStableIdForStore(orderStableId, storeStableId);
+    return this.labelPlan.getByStableId(orderStableId);
   }
 
   createAmendment(input: PosOrderAmendmentInput) {
@@ -87,6 +137,34 @@ export class PosOrderOperationsService implements PosOrderOperationsPort {
       orderStableIds,
       storeStableId,
     );
+  }
+
+  async acceptWebOrder(
+    orderStableId: string,
+    storeStableId: string,
+  ): Promise<void> {
+    const fulfillmentTiming = await this.preparation.acceptWebOrderByStableId(
+      orderStableId,
+      storeStableId,
+    );
+    if (fulfillmentTiming === 'IMMEDIATE') {
+      await this.preparation.activateAcceptedImmediateOrderByStableId(
+        orderStableId,
+        storeStableId,
+      );
+      this.lifecycleOutbox.requestDrain();
+    }
+  }
+
+  async activateImmediatePreparation(
+    orderStableId: string,
+    storeStableId: string,
+  ): Promise<void> {
+    await this.preparation.activateAcceptedImmediateOrderByStableId(
+      orderStableId,
+      storeStableId,
+    );
+    this.lifecycleOutbox.requestDrain();
   }
 
   async activateScheduledPreparation(

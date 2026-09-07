@@ -88,12 +88,16 @@ UberEats 的结构性代码冻结已由用户在 2026-09-02 明确解除，允�
 1. 只处理一个可独立部署、可独立回滚/forward-fix 的 slice，并在修改前列明受影响能力；
 2. 未受本批影响且已经通过 verification 的 OAuth、webhook、order lifecycle、menu、worker、
    store-status 等链路不得顺手重构；
-3. 本地修改完成后必须给出受影响文件/contract、行为变化以及对应的主动实测步骤和预期结果；
-4. CI 全绿并部署后，不等待自然流量，按本批影响面执行主动实测，并在需要时用 sanitized logs、
-   DB parity、provider/Admin/POS 操作结果作为证据；
-5. 用户明确确认本批受影响能力全部正常后，才允许开始下一批 UberEats 代码修改；若失败则停止
-   后续 slice，先修复并重新验证当前批；
-6. 上述闸门持续到本轮 UberEats 集成整改/模块化工作全部完成并达到 production-ready。
+3. 本地修改完成后必须给出受影响文件/contract、行为变化，并把需要主动验证的运行时场景记录为
+   当前 Phase 的 closeout verification scope；
+4. 正常 modularization slice 以 focused regression/architecture coverage + GitHub Actions CI 全绿作为
+   进入下一 source slice 的默认闸门，不再要求每个 slice 单独部署并执行主动实测；
+5. 当前 Phase 全部计划 source slices 合并后，必须先做 closeout readiness audit，再基于最终 merged
+   state 生成一份 consolidated deployment + active-verification 方案。部署后不等待自然流量，按最终影响面
+   主动验证，并在需要时用 sanitized logs、DB parity、provider/Admin/POS 操作结果作为证据；失败则先
+   forward-fix/retest，全部通过后才能将 Phase 标记为 `PRODUCTION VERIFIED / CLOSED`；
+6. destructive migration、compatibility/traffic cutover、provider certification、settlement cycle、不可逆操作
+   或已经观察到的生产回归仍保留独立的更早 hard gate，不得以 Phase-level cadence 绕过。
 
 Uber 外部 wire schema、webhook signature、idempotency、provider truth、order state transition
 仍属于 critical contract；若某一批必须改变这些外部行为，仍需先提交影响、切换/回滚方案并获得

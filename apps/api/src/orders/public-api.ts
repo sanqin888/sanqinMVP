@@ -18,6 +18,8 @@ export {
   type PosOrderFullRefundResult,
   type PosOrderFulfillmentTimingDto,
   type PosOrderJsonInput,
+  type PosOrderManagementPage,
+  type PosOrderManagementQuery,
   type PosOrderOperationsPort,
   type PosOrderPricingQuote,
   type PosScheduledOrderSummaryDto,
@@ -33,8 +35,24 @@ export {
 } from './order-ingestion.contract';
 export { ORDER_INGESTION_PROVIDER } from './order-ingestion.provider';
 export {
-  POS_PRINT_JOB_DISPATCH_REQUESTED,
-  type PosPrintJobDispatchRequest,
-  type PosPrintJobDispatchResult,
+  ORDER_PRINT_HANDOFF_REQUESTED,
+  type OrderPrintHandoffRequest,
+  type OrderPrintHandoffResult,
+  type OrderPrintPurpose,
+  type OrderPrintTargets,
 } from './pos-print-dispatch.contract';
+export {
+  ORDER_PRINT_PAYLOAD_READER,
+  type OrderPrintPayloadReaderPort,
+  type PrintPosComponentSnapshot,
+  type PrintPosItemSnapshot,
+  type PrintPosOrderSnapshot,
+  type PrintPosPayloadDto,
+  type PrintPosPaymentMethod,
+  type PrintPosUtensilsSnapshot,
+} from './order-print-payload.contract';
+export type {
+  OrderFoodLabelDto,
+  OrderLabelPlanDto,
+} from './order-label-plan.service';
 export { OrdersModule } from './orders.module';

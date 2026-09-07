@@ -29,9 +29,11 @@ describe('Uber accepted-order lifecycle boundary architecture', () => {
     const uberModule = source('ubereats.module.ts');
 
     expect(lifecycle).toContain('ORDER_PREP_STARTED_LIFECYCLE_EVENT');
+    expect(lifecycle).toContain('ORDER_INITIAL_PRINT_HANDOFF_LIFECYCLE_EVENT');
+    expect(lifecycle).toContain('orderInitialPrintHandoffIdempotencyKey');
     expect(lifecycle).toContain('FulfillmentProcessor');
     expect(lifecycle).toContain('FOR UPDATE OF event SKIP LOCKED');
-    expect(lifecycle).toContain('FROM "PosPrintJob" job');
+    expect(lifecycle).not.toContain('PosPrintJob');
     expect(activation).toContain('FOR UPDATE OF orders SKIP LOCKED');
     expect(activation).toContain('orderPrepStartedIdempotencyKey');
     expect(scheduler).not.toMatch(
@@ -42,6 +44,32 @@ describe('Uber accepted-order lifecycle boundary architecture', () => {
       /createUberEatsWorkerRuntimeModule[\s\S]*imports:\s*\[\s*PrismaModule,\s*BrandStoreConfigModule\s*\]/,
     );
     expect(uberModule).not.toContain('CatalogAvailabilityModule');
+  });
+
+  it('keeps first-print preparation durable-only after Uber acceptance', () => {
+    const ordersService = source('../../orders/orders.service.ts');
+    const eventsBus = source('../../orders/order-events.bus.ts');
+    const fulfillment = source(
+      '../../orders/processors/fulfillment.processor.ts',
+    );
+    const posOrders = source('../../pos/pos-orders.service.ts');
+    const posOperations = source(
+      '../../orders/pos-order-operations.service.ts',
+    );
+
+    expect(ordersService).not.toContain('emitOrderAccepted');
+    expect(eventsBus).not.toContain('order.prep_started');
+    expect(eventsBus).not.toContain('emitOrderAccepted');
+    expect(eventsBus).not.toContain('onOrderAccepted');
+    expect(eventsBus).toContain('order.paid.verified');
+    expect(fulfillment).not.toContain("origin: 'memory'");
+    expect(fulfillment).not.toContain('onOrderAccepted');
+    expect(posOrders).toContain("order.channel === 'ubereats'");
+    expect(posOrders).toContain('getFulfillmentTimingForStore');
+    expect(posOrders).toContain('activateImmediatePreparation');
+    expect(posOrders).toContain('activateScheduledPreparation');
+    expect(posOperations).toContain("current.channel === 'ubereats'");
+    expect(posOperations).toContain('findByStableIdForStore');
   });
 
   it('shares preparation policy through the existing public shared Order package', () => {

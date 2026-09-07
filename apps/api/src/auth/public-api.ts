@@ -48,7 +48,14 @@ export {
   type MemberRechargeVerificationResult,
   type MemberRechargeVerifyCodeInput,
 } from './member-recharge-verification.contract';
+export { OperationsAlertRecipientModule } from './operations-alert-recipient.module';
+export {
+  OPERATIONS_ALERT_RECIPIENTS,
+  type OperationsAlertRecipient,
+  type OperationsAlertRecipientPort,
+} from './operations-alert-recipient.contract';
 export { AdminMfaGuard } from './admin-mfa.guard';
 export { Roles } from './roles.decorator';
 export { RolesGuard } from './roles.guard';
+export { OptionalSessionAuthGuard } from './optional-session-auth.guard';
 export { SessionAuthGuard } from './session-auth.guard';

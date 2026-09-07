@@ -1,10 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
-
-export interface Coordinates {
-  latitude: number;
-  longitude: number;
-}
+import type {
+  Coordinates,
+  LocationGeocoderPort,
+} from './location-geocoding.contract';
 
 interface GoogleGeocodeLocation {
   lat: number;
@@ -25,7 +24,7 @@ interface GoogleGeocodeResponse {
 }
 
 @Injectable()
-export class LocationService {
+export class LocationService implements LocationGeocoderPort {
   private readonly logger = new Logger(LocationService.name);
 
   constructor(private readonly http: HttpService) {}

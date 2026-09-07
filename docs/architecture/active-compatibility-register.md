@@ -21,10 +21,13 @@ production payment facts are unchanged. The Web Clover path remains protected by
 default because it is actively processing production payments; however, if it
 becomes a documented critical modularization blocker, a narrowly scoped change is
 allowed after recording impact, alternatives and rollback/forward-fix handling.
-Every such Web-impacting change requires focused regression coverage and an explicit
-post-deployment active verification checklist, and is not production-verified until
-the user confirms those scenarios passed. Traffic cutover, compatibility deletion
-and settlement-based exit criteria remain separately gated.
+Every such Web-impacting change requires focused regression coverage and must record
+the payment scenarios/evidence that the owning Phase closeout verification will cover.
+A separate deployment/active-test cycle is not required after each modularization slice;
+instead the final merged Phase state receives one consolidated active verification pass
+before the Phase can be marked production-verified/closed. Traffic cutover, compatibility
+deletion and settlement-based exit criteria remain separately gated and can still require
+earlier explicit verification when their own exit criteria are reached.
 
 ## Closed history
 
@@ -48,10 +51,13 @@ or other state that Production initialization still requires.
 
 ## Candidate review queue
 
-These are not yet declared active compatibility. Before deleting or preserving
-them, verify live callers, traffic, queue/dynamic loading, and side effects:
-
-- EventEmitter aliases versus durable outbox events.
+No unresolved candidate remains after Phase 5 Slice 0. The former EventEmitter-alias
+versus durable-outbox candidate was audited on 2026-09-05: repository consumers and
+side effects show no current source path that deliberately fans one successful
+preparation transition through both mechanisms, so no compatibility ID is required.
+The deprecated private `OrderEventsBus` accepted/prep naming remains an ordinary
+future atomic cleanup candidate rather than active compatibility debt. Detailed
+evidence is recorded in `docs/architecture/phase-5-commerce-orders-fulfillment.md`.
 
 The former Next rewrite versus `app/api/[...path]` proxy overlap was resolved in
 PR #2020 by making the App Router BFF the single regular JSON API entry.

@@ -10,6 +10,7 @@ describe('PosOrdersController Uber orders', () => {
   const orders = {
     board: jest.fn(),
     recent: jest.fn(),
+    searchForStore: jest.fn(),
     createForStore: jest.fn(),
     quotePricingForStore: jest.fn(),
     getByStableIdForStore: jest.fn(),
@@ -17,6 +18,7 @@ describe('PosOrdersController Uber orders', () => {
     listUpcomingScheduledForStore: jest.fn(),
     getFulfillmentTimingsForStore: jest.fn(),
     getFulfillmentTimingForStore: jest.fn(),
+    getLabelPlanForStore: jest.fn(),
     activateScheduledPreparation: jest.fn(),
   };
   const posOrders = {
@@ -24,6 +26,10 @@ describe('PosOrdersController Uber orders', () => {
     denyUberOrder: jest.fn(),
     getAutoAcceptOnlineOrders: jest.fn(),
     setAutoAcceptOnlineOrders: jest.fn(),
+    createAmendment: jest.fn(),
+  };
+  const eventEmitter = {
+    emitAsync: jest.fn().mockResolvedValue([]),
   };
   const posCardPaymentFeature = {
     isEnabled: jest.fn(() => false),
@@ -38,7 +44,7 @@ describe('PosOrdersController Uber orders', () => {
   const controller = new PosOrdersController(
     orders as never,
     {} as never,
-    {} as never,
+    eventEmitter as never,
     {} as never,
     posOrders as never,
     posCardPaymentFeature as never,
@@ -167,6 +173,59 @@ describe('PosOrdersController Uber orders', () => {
 
     await expect(controller.recent(posRequest, 10)).resolves.toEqual([]);
     expect(orders.recent).toHaveBeenCalledWith('4750_Yonge_Street', 10);
+  });
+
+  it('POS 订单管理把筛选与分页下推到 authenticated store Orders 查询', async () => {
+    const result = {
+      orders: [],
+      page: 2,
+      pageSize: 50,
+      total: 73,
+      totalPages: 2,
+    };
+    orders.searchForStore.mockResolvedValue(result);
+
+    await expect(
+      controller.search(
+        posRequest,
+        'paid,completed',
+        'web,in_store',
+        'pickup,dine_in',
+        '2026-09-03T04:00:00.000Z',
+        '2026-09-04T04:00:00.000Z',
+        '5000',
+        '2',
+        '50',
+      ),
+    ).resolves.toEqual(result);
+
+    expect(orders.searchForStore).toHaveBeenCalledWith('4750_Yonge_Street', {
+      statusIn: ['paid', 'completed'],
+      channelIn: ['web', 'in_store'],
+      fulfillmentIn: ['pickup', 'dine_in'],
+      createdAtGte: new Date('2026-09-03T04:00:00.000Z'),
+      createdAtLt: new Date('2026-09-04T04:00:00.000Z'),
+      minTotalCents: 5000,
+      page: 2,
+      pageSize: 50,
+    });
+  });
+
+  it('POS 订单管理拒绝非法筛选而不是把错误值传给 Prisma', () => {
+    expect(() =>
+      controller.search(
+        posRequest,
+        'not-a-status',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+      ),
+    ).toThrow(BadRequestException);
+    expect(orders.searchForStore).not.toHaveBeenCalled();
   });
 
   it('POS 普通看板排除尚未激活的预约单', async () => {
@@ -339,6 +398,95 @@ describe('PosOrdersController Uber orders', () => {
       'order_1',
       'ITEM_ISSUE',
       '商品售罄',
+    );
+  });
+
+  it('菜品改单先抓取旧标签计划，并在金额变化后请求厨房差异单与完整收银单', async () => {
+    const beforeLabelPlan = {
+      labelWidthMm: 70,
+      labelHeightMm: 30,
+      labels: [],
+    };
+    orders.getByStableIdForStore.mockResolvedValue({
+      orderStableId: 'order-amend-1',
+      paymentMethod: 'CASH',
+      totalCents: 1200,
+      paymentTotalCents: 1200,
+    });
+    orders.getLabelPlanForStore.mockResolvedValue(beforeLabelPlan);
+    posOrders.createAmendment.mockResolvedValue({
+      orderStableId: 'order-amend-1',
+      paymentMethod: 'CASH',
+      totalCents: 900,
+      paymentTotalCents: 900,
+    });
+
+    await controller.createAmendment(posRequest, 'order-amend-1', {
+      type: 'VOID_ITEM',
+      reason: '顾客取消',
+      operatorName: 'staff',
+      refundGrossCents: 300,
+      additionalChargeCents: 0,
+      items: [
+        {
+          action: 'VOID',
+          productStableId: 'item-1',
+          qty: 1,
+          unitPriceCents: 300,
+        },
+      ],
+      locale: 'zh',
+    } as never);
+
+    expect(orders.getLabelPlanForStore).toHaveBeenCalledWith(
+      'order-amend-1',
+      '4750_Yonge_Street',
+    );
+    expect(eventEmitter.emitAsync).toHaveBeenCalledWith(
+      'order.amendment.print',
+      expect.objectContaining({
+        orderStableId: 'order-amend-1',
+        beforeLabelPlan,
+        printCustomerReceipt: true,
+        items: [expect.objectContaining({ action: 'VOID' })],
+      }),
+    );
+  });
+
+  it('仅支付方式变化也请求重打最新完整收银单', async () => {
+    orders.getByStableIdForStore.mockResolvedValue({
+      orderStableId: 'order-retender-1',
+      paymentMethod: 'CASH',
+      totalCents: 1200,
+      paymentTotalCents: 1200,
+    });
+    posOrders.createAmendment.mockResolvedValue({
+      orderStableId: 'order-retender-1',
+      paymentMethod: 'CARD',
+      totalCents: 1200,
+      paymentTotalCents: 1200,
+    });
+
+    await controller.createAmendment(posRequest, 'order-retender-1', {
+      type: 'RETENDER',
+      reason: '支付方式调整',
+      operatorName: 'staff',
+      paymentMethod: 'CARD',
+      refundGrossCents: 0,
+      additionalChargeCents: 0,
+      items: [],
+      locale: 'zh',
+    } as never);
+
+    expect(orders.getLabelPlanForStore).not.toHaveBeenCalled();
+    expect(eventEmitter.emitAsync).toHaveBeenCalledWith(
+      'order.amendment.print',
+      expect.objectContaining({
+        orderStableId: 'order-retender-1',
+        items: [],
+        beforeLabelPlan: null,
+        printCustomerReceipt: true,
+      }),
     );
   });
 });

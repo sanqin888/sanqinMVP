@@ -8,6 +8,7 @@ import {
   Get,
   HttpCode,
   Inject,
+  Logger,
   NotFoundException,
   Param,
   ParseIntPipe,
@@ -29,23 +30,35 @@ import {
   type AuthenticatedPosIdentity,
 } from './public-api';
 import { PosDeviceGuard } from './pos-device.guard';
-import { CreateOrderSchema } from '@shared/order';
-import type { CreateOrderInput, OrderStatus } from '@shared/order';
 import {
+  ChannelSchema,
+  CreateOrderSchema,
+  FulfillmentTypeSchema,
+  OrderStatuses,
+} from '@shared/order';
+import type {
+  Channel,
+  CreateOrderInput,
+  FulfillmentType,
+  OrderStatus,
+} from '@shared/order';
+import {
+  ORDER_PRINT_PAYLOAD_READER,
   POS_ORDER_OPERATIONS,
+  type OrderPrintPayloadReaderPort,
   type PosOrderDto,
   type PosOrderFulfillmentTimingDto,
   type PosOrderJsonInput,
+  type PosOrderManagementPage,
   type PosOrderOperationsPort,
   type PosOrderPricingQuote,
+  type PrintPosPayloadDto,
 } from '../orders/public-api';
 import {
   OrderAmendmentItemAction,
   OrderAmendmentType,
   PaymentMethod,
 } from '@prisma/client';
-import type { PrintPosPayloadDto } from './dto/print-pos-payload.dto';
-import { PrintPosPayloadService } from '../orders/print-pos-payload.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PosCardPaymentFeatureConfig } from './pos-card-payment-feature.config';
 import { PosGateway } from './pos.gateway';
@@ -70,6 +83,67 @@ type PosDeviceRequest = Request & {
 type PosBoardOrderDto = PosOrderDto & {
   fulfillmentTiming: 'IMMEDIATE' | 'SCHEDULED';
 };
+
+const POS_ORDER_STATUS_VALUES = new Set<string>(OrderStatuses);
+const POS_ORDER_CHANNEL_VALUES = new Set<string>(ChannelSchema.options);
+const POS_ORDER_FULFILLMENT_VALUES = new Set<string>(
+  FulfillmentTypeSchema.options,
+);
+
+function parseCsvQuery<T extends string>(
+  raw: string | undefined,
+  allowed: ReadonlySet<string>,
+  field: string,
+): T[] | undefined {
+  if (!raw?.trim()) return undefined;
+  const values = raw
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const invalid = values.find((value) => !allowed.has(value));
+  if (invalid) {
+    throw new BadRequestException(
+      `${field} contains unsupported value: ${invalid}`,
+    );
+  }
+  return values as T[];
+}
+
+function parseOptionalNonNegativeInt(
+  raw: string | undefined,
+  field: string,
+): number | undefined {
+  if (raw === undefined || raw.trim() === '') return undefined;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 0) {
+    throw new BadRequestException(`${field} must be a non-negative integer`);
+  }
+  return value;
+}
+
+function parseOptionalPositiveInt(
+  raw: string | undefined,
+  field: string,
+): number | undefined {
+  if (raw === undefined || raw.trim() === '') return undefined;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 1) {
+    throw new BadRequestException(`${field} must be a positive integer`);
+  }
+  return value;
+}
+
+function parseOptionalDate(
+  raw: string | undefined,
+  field: string,
+): Date | undefined {
+  if (!raw?.trim()) return undefined;
+  const value = new Date(raw);
+  if (Number.isNaN(value.getTime())) {
+    throw new BadRequestException(`${field} must be a valid ISO date-time`);
+  }
+  return value;
+}
 
 class CancelUberOrderDto {
   @IsString()
@@ -186,10 +260,13 @@ class CreatePosAmendmentDto {
 @UseGuards(SessionAuthGuard, RolesGuard, PosDeviceGuard)
 @Roles('ADMIN', 'STAFF')
 export class PosOrdersController {
+  private readonly logger = new Logger(PosOrdersController.name);
+
   constructor(
     @Inject(POS_ORDER_OPERATIONS)
     private readonly orders: PosOrderOperationsPort,
-    private readonly printPosPayloadService: PrintPosPayloadService,
+    @Inject(ORDER_PRINT_PAYLOAD_READER)
+    private readonly printPosPayloadReader: OrderPrintPayloadReaderPort,
     private readonly eventEmitter: EventEmitter2,
     private readonly posGateway: PosGateway,
     private readonly posOrders: PosOrdersService,
@@ -255,6 +332,51 @@ export class PosOrdersController {
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
   ): Promise<PosOrderDto[]> {
     return this.orders.recent(this.requireStoreStableId(req), limit);
+  }
+
+  @Get('search')
+  search(
+    @Req() req: PosDeviceRequest,
+    @Query('status') statusRaw?: string,
+    @Query('channel') channelRaw?: string,
+    @Query('fulfillment') fulfillmentRaw?: string,
+    @Query('createdAtGte') createdAtGteRaw?: string,
+    @Query('createdAtLt') createdAtLtRaw?: string,
+    @Query('minTotalCents') minTotalCentsRaw?: string,
+    @Query('page') pageRaw?: string,
+    @Query('pageSize') pageSizeRaw?: string,
+  ): Promise<PosOrderManagementPage> {
+    const createdAtGte = parseOptionalDate(createdAtGteRaw, 'createdAtGte');
+    const createdAtLt = parseOptionalDate(createdAtLtRaw, 'createdAtLt');
+    if (createdAtGte && createdAtLt && createdAtGte >= createdAtLt) {
+      throw new BadRequestException('createdAtGte must be before createdAtLt');
+    }
+
+    return this.orders.searchForStore(this.requireStoreStableId(req), {
+      statusIn: parseCsvQuery<OrderStatus>(
+        statusRaw,
+        POS_ORDER_STATUS_VALUES,
+        'status',
+      ),
+      channelIn: parseCsvQuery<Channel>(
+        channelRaw,
+        POS_ORDER_CHANNEL_VALUES,
+        'channel',
+      ),
+      fulfillmentIn: parseCsvQuery<FulfillmentType>(
+        fulfillmentRaw,
+        POS_ORDER_FULFILLMENT_VALUES,
+        'fulfillment',
+      ),
+      createdAtGte,
+      createdAtLt,
+      minTotalCents: parseOptionalNonNegativeInt(
+        minTotalCentsRaw,
+        'minTotalCents',
+      ),
+      page: parseOptionalPositiveInt(pageRaw, 'page'),
+      pageSize: parseOptionalPositiveInt(pageSizeRaw, 'pageSize'),
+    });
   }
 
   @Get('board')
@@ -416,7 +538,7 @@ export class PosOrdersController {
       orderStableId,
       this.requireStoreStableId(req),
     );
-    return this.printPosPayloadService.getByStableId(orderStableId, locale);
+    return this.printPosPayloadReader.getByStableId(orderStableId, locale);
   }
 
   @Get(':orderStableId/print-status')
@@ -540,9 +662,38 @@ export class PosOrdersController {
     @Param('orderStableId', StableIdPipe) orderStableId: string,
     @Body() body: CreatePosAmendmentDto,
   ): Promise<PosOrderDto> {
+    const storeStableId = this.requireStoreStableId(req);
     const items = body.items ?? [];
+    const current = await this.orders.getByStableIdForStore(
+      orderStableId,
+      storeStableId,
+    );
+    const hasItemChanges = items.some(
+      (item) =>
+        item.action === OrderAmendmentItemAction.VOID ||
+        item.action === OrderAmendmentItemAction.ADD,
+    );
+    let beforeLabelPlan: Awaited<
+      ReturnType<PosOrderOperationsPort['getLabelPlanForStore']>
+    > | null = null;
+    if (hasItemChanges) {
+      try {
+        beforeLabelPlan = await this.orders.getLabelPlanForStore(
+          orderStableId,
+          storeStableId,
+        );
+      } catch (error) {
+        this.logger.error({
+          event: 'amendment_label_plan_before_failed',
+          orderStableId,
+          storeId: storeStableId,
+          errorType: error instanceof Error ? error.name : 'UnknownError',
+        });
+      }
+    }
+
     const updated = await this.posOrders.createAmendment(
-      this.requireStoreStableId(req),
+      storeStableId,
       orderStableId,
       {
         type: body.type,
@@ -555,16 +706,24 @@ export class PosOrdersController {
       },
     );
 
-    if (
-      body.type === OrderAmendmentType.VOID_ITEM ||
-      body.type === OrderAmendmentType.SWAP_ITEM
-    ) {
-      this.eventEmitter.emit('order.amendment.print', {
+    const paymentMethodChanged =
+      current.paymentMethod !== updated.paymentMethod;
+    const amountChanged =
+      current.totalCents !== updated.totalCents ||
+      current.paymentTotalCents !== updated.paymentTotalCents ||
+      (body.refundGrossCents ?? 0) > 0 ||
+      (body.additionalChargeCents ?? 0) > 0;
+    if (hasItemChanges || paymentMethodChanged || amountChanged) {
+      await this.eventEmitter.emitAsync('order.amendment.print', {
         orderStableId,
         locale: body.locale ?? 'zh',
         reason: body.reason,
         operatorName: body.operatorName,
         items,
+        beforeOrderItems: current.items ?? [],
+        afterOrderItems: updated.items ?? [],
+        beforeLabelPlan,
+        printCustomerReceipt: paymentMethodChanged || amountChanged,
       });
     }
 

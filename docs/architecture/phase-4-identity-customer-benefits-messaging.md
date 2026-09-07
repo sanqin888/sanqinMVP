@@ -1,7 +1,8 @@
 # Phase 4 — Identity / Customer / Benefits + Messaging Boundary Contraction
 
 Start date: 2026-09-04  
-Planning base: `origin/dev@3a20c8c5`
+Planning base: `origin/dev@3a20c8c5`  
+Final status: **PRODUCTION VERIFIED / CLOSED — 2026-09-05**
 
 ## Goal
 
@@ -245,10 +246,10 @@ BOGO/manual-discount behavior on 2026-09-04; both passed, so Slice 0B is product
 
 ### Slice 1 — Email Verification ownership normalization
 
-Status: **MERGED / CI GREEN / PHASE-END DEPLOYMENT PENDING**. PR #2171 merged to
+Status: **PRODUCTION VERIFIED**. PR #2171 merged to
 `dev` as `afa1bff6` from final head `94955b27`; GitHub Actions CI #5116 passed.
-Per the current Phase 4 rollout plan, this slice will be deployed and actively verified
-with the rest of Phase 4 rather than as an individual production rollout.
+It was deployed and actively verified with the consolidated Phase 4 rollout rather than as an individual
+production rollout.
 
 Readiness findings on the post-Slice-0B `dev` baseline:
 
@@ -330,10 +331,9 @@ infrastructure types. Do not create one generic all-purpose Messaging facade.
 
 #### Slice 2A — Auth Challenge Messaging boundary contraction
 
-Status: **MERGED / CI GREEN / PHASE-END DEPLOYMENT PENDING**. PR #2172 merged to
+Status: **PRODUCTION VERIFIED**. PR #2172 merged to
 `dev` as `c8e91303` from final head `29bf23b7`; GitHub Actions CI #5120 passed.
-Per the current Phase 4 rollout plan, this slice remains undeployed until the consolidated
-Phase-end rollout.
+It was deployed and verified in the consolidated Phase 4 rollout.
 
 Readiness audit of the merged Slice 1 baseline found **22** remaining direct
 Identity -> Messaging imports, grouped as Auth 9, Phone Verification 5, Admin 4,
@@ -372,15 +372,14 @@ remain unchanged. Identity's total outgoing direct debt therefore contracts **60
 CI #5120 passed the architecture gate, API/Web lint/build/strict checks and tests on final
 head `29bf23b7`. No dependency/lockfile, Prisma schema/migration, HTTP route, OTP policy,
 provider wire, session/MFA state machine or payment behavior is changed. Per the Phase 4
-rollout plan, 2A will not be deployed separately; production verification is deferred to
+rollout plan, 2A was not deployed separately; production verification completed in
 the final Phase 4 batch deployment.
 
 #### Slice 2B — Phone Verification Messaging boundary contraction
 
-Status: **MERGED / CI GREEN / PHASE-END DEPLOYMENT PENDING**. PR #2173 merged to
+Status: **PRODUCTION VERIFIED**. PR #2173 merged to
 `dev` as `41428324` from final head `d63bc307`; GitHub Actions CI #5123 passed.
-Per the current Phase 4 rollout plan, this slice remains undeployed until the consolidated
-Phase-end rollout.
+It was deployed and verified in the consolidated Phase 4 rollout.
 
 Readiness audit of merged Slice 2A confirmed the remaining **15** direct Identity ->
 Messaging imports as Auth welcome notifications 2, Phone Verification 5, Admin 4,
@@ -424,10 +423,9 @@ the consolidated Phase 4 batch deployment.
 
 #### Slice 2C — Admin Messaging boundary contraction
 
-Status: **MERGED / CI GREEN / PHASE-END DEPLOYMENT PENDING**. PR #2174 merged to
+Status: **PRODUCTION VERIFIED**. PR #2174 merged to
 `dev` as `e27489cf` from final head `2c18e3c5`; GitHub Actions CI #5126 passed.
-Per the current Phase 4 rollout plan, this slice remains undeployed until the consolidated
-Phase-end rollout.
+It was deployed and verified in the consolidated Phase 4 rollout.
 
 Readiness audit of merged Slice 2B confirmed the remaining **10** direct Identity ->
 Messaging imports as Auth welcome notifications 2, Admin 4, Membership 2 and Loyalty 2.
@@ -476,7 +474,7 @@ rollout.
 
 #### Slice 2D — Customer lifecycle notification boundary contraction
 
-Status: **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT**. PR #2175 passed final
+Status: **PRODUCTION VERIFIED**. PR #2175 passed final
 GitHub Actions CI #5130 on head `a0fa3f85` and squash-merged to `dev` as `0cb3ce11`.
 
 Readiness audit of merged Slice 2C confirmed the remaining **6** direct Identity ->
@@ -523,7 +521,7 @@ without recreating a reverse Messaging -> Identity edge.
 
 #### Slice 2E-A — Retire historical AWS SNS / SQS infrastructure
 
-Status: **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT**. PR #2176 passed final
+Status: **PRODUCTION VERIFIED**. PR #2176 passed final
 GitHub Actions CI #5132 on head `11f73e88` and squash-merged to `dev` as `7746402b`.
 
 The user confirmed on 2026-09-04 that AWS SNS and SQS are retired historical infrastructure.
@@ -568,7 +566,7 @@ transaction behavior, Uber wire protocol or active customer API is changed. Like
 
 #### Slice 2E-B — Orders event ownership + Loyalty paid-settlement inversion
 
-Status: **MERGED / AWAITING PHASE-END DEPLOYMENT** via PR #2177. Final head
+Status: **PRODUCTION VERIFIED** via PR #2177. Final head
 `dc07e820` passed GitHub Actions CI #5137 and squash-merged to `dev` as `718b2133`.
 
 The readiness audit confirmed that moving `OrderEventsBus` to an Orders public API and keeping
@@ -636,7 +634,7 @@ verification remains part of the consolidated Phase 4 rollout.
 
 ### Slice 3 — Customer Profile / Address / Consent boundary
 
-Status: **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT** via PR #2178. Final head
+Status: **PRODUCTION VERIFIED** via PR #2178. Final head
 `73f7d2e1` passed CI #5140 and squash-merged to `dev` as `e813d918`.
 
 The readiness audit rejected a mechanical three-service split because duplicating Nest/Prisma
@@ -692,7 +690,7 @@ behavior behind one Identity-owned DB-backed policy without a Prisma migration.
 
 #### Slice 4A — Staff Administration ownership contraction
 
-Status: **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT** via PR #2179. Final head
+Status: **PRODUCTION VERIFIED** via PR #2179. Final head
 `f235893e` passed GitHub Actions CI #5144 and squash-merged to `dev` as `f91a849e`.
 
 The approved first sub-slice moves Staff administration persistence and business decisions from the
@@ -738,7 +736,7 @@ Per the Phase 4 rollout policy, Slice 4A will not be deployed separately.
 
 #### Slice 4B — Customer + Security admin boundary
 
-Status: **MERGED / CI GREEN; MIGRATION APPLIED / API ACTIVATION PENDING**.
+Status: **PRODUCTION VERIFIED**.
 Stage 1 merged via PR #2180 as `252cd26f` after final head `a2f52ddf` passed GitHub Actions CI #5150.
 Stage 2 merged via PR #2181 as `060e9417` after final head `f2cbf835` passed GitHub Actions CI #5153;
 the authorized TrustedDevice migration was successfully applied to production when the consolidated Phase 4 rollout began.
@@ -794,10 +792,9 @@ production verified.
 
 #### Slice 4C — Orders member read routes
 
-Status: **MERGED / CI GREEN; MIGRATION ATTEMPT FAILED / UUID RECOVERY PENDING** via PR #2182. Final head
-`7cb071ad` passed GitHub Actions CI #5158 and squash-merged to `dev` as `3119ce76`. The authorized
-Order stable-ID migration failed and rolled back during the consolidated Phase 4 rollout; the recovery described
-below must land before retry.
+Status: **PRODUCTION VERIFIED** via PR #2182 plus UUID recovery PR #2190. Final Slice 4C head
+`7cb071ad` passed GitHub Actions CI #5158 and squash-merged to `dev` as `3119ce76`; recovery head
+`8392e42f` passed CI #5182 and squash-merged as `ccf0aee9`, whose dev push CI #5183 also passed.
 
 The approved implementation keeps the existing Admin/POS HTTP contract while moving the two
 Orders-owned read models out of Identity/Admin:
@@ -851,12 +848,18 @@ verification found **45/45** non-null `Order.userId` values are canonical UUID t
 `20260905144000_normalize_order_user_id_uuid`, changes the Prisma field to `String? @db.Uuid`, and converts the
 column with `USING "userId"::uuid` before retrying the untouched Slice 4C migration. This recovery deliberately
 adds **no foreign key, NOT NULL constraint, public identity change, or delete semantics**; referential-integrity
-hardening remains a separate future decision.
+hardening remains a separate future decision. Production recovery then marked the failed 14:55 attempt rolled
+back and successfully applied 14:40 UUID normalization, the retried 14:55 Order stable-ID backfill,
+`20260905193000_add_loyalty_ledger_order_stable_id`, and
+`20260905204500_add_loyalty_ledger_order_stable_id_index`. Post-deploy read-only verification confirmed
+`Order.userId` is PostgreSQL UUID, **45/45** member-linked Orders have the matching `userStableId`, with **0**
+orphan/mismatch rows.
 
 #### Slice 4D-A — Recharge challenge ownership contraction
 
-Status: **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT** via PR #2183. Final head
-`cec141ba` passed GitHub Actions CI #5162 and squash-merged to `dev` as `07dc1206`.
+Status: **PRODUCTION VERIFIED** via PR #2183. Final head `cec141ba` passed GitHub Actions CI #5162 and
+squash-merged to `dev` as `07dc1206`; the consolidated production verification exercised the reachable
+email-first POS recharge flow successfully.
 
 The approved source contraction moves the existing POS member recharge verification lifecycle behind an
 Identity/Auth public capability without changing the HTTP routes, OTP policy, provider delivery behavior
@@ -908,8 +911,9 @@ Clover, Uber, Loyalty amount/bonus/idempotency or transaction-boundary change wa
 
 #### Slice 4D-H — Recharge verification security / UX hardening
 
-Status: **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT** via PR #2184. Final head
-`4d850ba1` passed GitHub Actions CI #5165 and squash-merged to `dev` as `7853e4f9`.
+Status: **PRODUCTION VERIFIED** via PR #2184. Final head `4d850ba1` passed GitHub Actions CI #5165 and
+squash-merged to `dev` as `7853e4f9`; production startup accepted the required recharge secret and active
+recharge verification passed without provider/OTP/500 anomalies.
 
 The authorized hardening keeps the 4D-A public capability/routes and Loyalty top-up flow intact while
 making recharge verification one owner-controlled policy across Email and SMS:
@@ -950,8 +954,9 @@ still require separate deployment authorization.
 
 #### Slice 4D-I — Shared OTP challenge policy hardening
 
-Status: **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT** via PR #2185. Final head
-`d4b85e3a` passed GitHub Actions CI #5168 and squash-merged to `dev` as `b27ad8ce`.
+Status: **PRODUCTION VERIFIED** via PR #2185. Final head `d4b85e3a` passed GitHub Actions CI #5168 and
+squash-merged to `dev` as `b27ad8ce`; consolidated active testing exercised successful and negative OTP paths,
+including wrong-code/cooldown handling and a successful SMS Login 2FA completion.
 
 The approved follow-up keeps existing public routes and purpose contracts while consolidating repeated
 Identity OTP protections behind the internal `OtpChallengePolicyService`:
@@ -994,7 +999,7 @@ to empty Admin persistence.
 
 ### Slice 5 — Benefits implementation ownership consolidation
 
-Status: **SOURCE CLOSED / CONSOLIDATED DEPLOYMENT STARTED + PAUSED FOR ORDER.USERID UUID RECOVERY**. Slice 5A and Slice 5B are merged/CI-green. Their Loyalty migrations remain pending behind the Order migration recovery. The transaction-bound COMMIT work remains explicitly deferred because its atomicity constraints are unchanged and it is not a Phase 4 source-closeout blocker.
+Status: **PRODUCTION VERIFIED / CLOSED**. Slice 5A and Slice 5B are merged/CI-green, both Loyalty migrations are applied in production, and consolidated active verification passed. The transaction-bound COMMIT work remains explicitly deferred because its atomicity constraints are unchanged and it is not a Phase 4 closeout blocker.
 
 Continue the Offers/Benefits ownership normalization started in Phase 3 by moving safe
 eligibility/claim/issue/trigger/entitlement implementation behind Benefits-owned
@@ -1004,8 +1009,9 @@ customer entitlement/reservation behavior remains Benefits-owned.
 
 #### Slice 5A — Loyalty ledger order identity contraction
 
-Status: **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT** via PR #2186. Final head
-`3b904dd1` passed GitHub Actions CI #5171 and squash-merged to `dev` as `c28df1b5`.
+Status: **PRODUCTION VERIFIED** via PR #2186. Final head `3b904dd1` passed GitHub Actions CI #5171 and
+squash-merged to `dev` as `c28df1b5`; the ledger stable-ID migration and active points/balance/refund checks
+completed successfully in the consolidated rollout.
 
 The read-only readiness audit ran against `origin/dev` at `b27ad8ce` and production data before
 implementation. Production contained **91** `LoyaltyLedger` rows: **89** had `orderId`, those rows mapped
@@ -1047,14 +1053,19 @@ Implemented source shape:
    Orders/print behavior while landing the identity migration.
 
 No dependency/lockfile, payment amount/state, coupon COMMIT ownership, Clover/Uber wire contract,
-order-status transition, durable outbox or public HTTP route shape is changed. The migration has not been
-applied to production. GitHub Actions CI #5171 is the authoritative merged-source validation: Prisma Client
-generation, the monotonic Architecture baseline/SCC gate, API/Web lint/build/strict checks and API/Web tests
-all passed on final head `3b904dd1` before squash merge `c28df1b5`.
+order-status transition, durable outbox or public HTTP route shape is changed. GitHub Actions CI #5171 is the
+authoritative merged-source validation: Prisma Client generation, the monotonic Architecture baseline/SCC gate,
+API/Web lint/build/strict checks and API/Web tests all passed on final head `3b904dd1` before squash merge
+`c28df1b5`. Production migration verification later confirmed **91** ledger rows total: **89/89** order-linked rows
+carry a valid matching `orderStableId`; the **2** manual no-order adjustments remain NULL by design, with **0**
+orphans/mismatches.
 
 #### Slice 5B — Loyalty order-usage read ownership contraction
 
-Status: **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT** via PR #2187. Final head `42891cf4` passed GitHub Actions CI #5174 and squash-merged to `dev` as `0f58cf83`; the merge SHA then passed dev push CI #5175.
+Status: **PRODUCTION VERIFIED** via PR #2187. Final head `42891cf4` passed GitHub Actions CI #5174 and
+squash-merged to `dev` as `0f58cf83`; the merge SHA then passed dev push CI #5175. Production verification
+confirmed stable-ID order usage for order detail/receipt plus points/balance refund reconstruction without direct
+Orders/Print `LoyaltyLedger` persistence reads returning.
 
 The Slice 6 readiness audit on `origin/dev@c28df1b5` found exactly two direct production reads of
 `LoyaltyLedger` outside the Benefits/Loyalty owner: `OrdersService.getLoyaltyUsageByOrderStableId()` and
@@ -1106,7 +1117,8 @@ Order creation without:
 
 ### Slice 6 — Phase 4 dependency/SCC closeout
 
-Status: **SOURCE CLOSED / CONSOLIDATED DEPLOYMENT STARTED + PAUSED FOR ORDER.USERID UUID RECOVERY**.
+Status: **PRODUCTION VERIFIED / CLOSED**. Source graph closure, consolidated migrations, deployment and active
+verification all completed on 2026-09-05.
 
 Final audit base: `origin/dev@0f58cf83` after Slice 5B merged through PR #2187. Final PR head `42891cf4` passed
 GitHub Actions CI #5174, and the squash merge `0f58cf83` independently passed dev push CI #5175. Both runs passed
@@ -1139,20 +1151,21 @@ Closeout findings:
    Benefits COMMIT implementations consume that transaction client. Removing the concrete boundary now would
    either split atomic Points/Balance + Coupon + Order creation, expose `Prisma.TransactionClient` as a public
    cross-context contract, or move Benefits persistence into Orders; none is acceptable for closeout;
-7. consolidated rollout has now started. Production successfully applied
-   `20260905134000_add_trusted_device_stable_id`; `20260905145500_add_order_user_stable_id` then failed and rolled
-   back on the historical `TEXT`/`UUID` comparison described in Slice 4C. The recovery source adds the ordered
-   prerequisite `20260905144000_normalize_order_user_id_uuid`; after the failed migration is marked rolled back,
-   rollout must apply 14:40, retry 14:55, then apply the still-pending
-   `20260905193000_add_loyalty_ledger_order_stable_id` and
-   `20260905204500_add_loyalty_ledger_order_stable_id_index` before activating the new API. The recovery changes
-   no dependency direction or public SCC state. `MEMBER_RECHARGE_OTP_SECRET` remains a mandatory rollout
-   prerequisite.
+7. consolidated rollout is complete. Production applied the TrustedDevice migration, recovered the failed
+   Order stable-ID migration through the separate UUID prerequisite, applied both Loyalty stable-ID migrations,
+   and started the new API/Web/Uber worker successfully. Read-only verification found TrustedDevice stable IDs
+   **2/2 populated + unique**, Order member identity **45/45 populated with 0 orphan/mismatch**, and LoyaltyLedger
+   **89/89 order-linked stable IDs populated with 0 orphan/mismatch** while the **2** manual no-order rows remained
+   NULL. Active verification covered the reachable member/Admin/security/OTP, points/balance order, receipt,
+   refund and POS recharge paths with no relevant 5xx/Prisma/OTP runtime anomaly. POS recharge SMS was **N/A** in
+   the current production account mix because recharge contact selection is intentionally email-first and there is
+   no phone-only test member; a separate SMS Login 2FA negative/cooldown/success path was exercised successfully.
 
 No additional safe Phase 4 source contraction is identified. The remaining items above are explicit deferred debt,
-not hidden source work. Slice 6 therefore closes the Phase 4 source graph without changing business code, schema,
-migration history, scanner logic or numeric allowances. The next Phase 4 step is consolidated deployment readiness,
-migration/secret preflight and active verification—not another source refactor slice.
+not hidden source work. Slice 6 and Phase 4 are therefore **PRODUCTION VERIFIED / CLOSED** with the final numeric
+debt baseline and empty public SCC preserved. During verification, POS Order Management was also found to query
+only the newest 30 rows despite advertising full historical filtering; production still contains the older Orders,
+so that defect is tracked as a separate post-Phase-4 POS query hotfix rather than Phase 4 identity/data loss.
 
 ## Phase 4 target outcomes
 

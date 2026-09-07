@@ -1,6 +1,5 @@
 import {
   Channel,
-  DeliveryProvider,
   FulfillmentType,
   OrderAmendmentItemAction,
   PaymentMethod,
@@ -15,21 +14,19 @@ import {
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { OrderEventsBus } from '../order-events.bus';
 import { PrismaService } from '../../prisma/prisma.service';
-import {
-  type UberDirectDropoffDetails,
-  UberDirectService,
-} from '../../deliveries/uber-direct.service';
-import type { PrintPosPayloadDto } from '../../pos/dto/print-pos-payload.dto';
+import { OrderDeliveryDispatchUseCase } from '../order-delivery-dispatch.use-case';
+import type { PrintPosPayloadDto } from '../order-print-payload.contract';
 import type { OrderItemOptionsSnapshot } from '../order-item-options';
+import type { OrderItemDto } from '../dto/order.dto';
 import { PrintPosPayloadService } from '../print-pos-payload.service';
 import {
   OrderLabelPlanService,
   type OrderLabelPlanDto,
 } from '../order-label-plan.service';
 import {
-  POS_PRINT_JOB_DISPATCH_REQUESTED,
-  type PosPrintJobDispatchRequest,
-  type PosPrintJobDispatchResult,
+  ORDER_PRINT_HANDOFF_REQUESTED,
+  type OrderPrintHandoffRequest,
+  type OrderPrintHandoffResult,
 } from '../pos-print-dispatch.contract';
 
 @Injectable()
@@ -39,93 +36,12 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
   private readonly onPaid = async (payload: {
     orderId: string;
     pickupTime?: string;
-  }) => {
-    const order = await this.prisma.order.findUnique({
-      where: { id: payload.orderId },
-      include: { items: true },
-    });
-
-    if (!order) {
-      this.logger.warn(`[Fulfillment] Order not found: ${payload.orderId}`);
-      return;
-    }
-
-    if (
-      order.fulfillmentType !== FulfillmentType.delivery ||
-      order.deliveryProvider !== DeliveryProvider.UBER
-    ) {
-      return;
-    }
-
-    if (order.externalDeliveryId) {
-      this.logger.log(
-        `[Fulfillment] Skip Uber dispatch, already dispatched: ${payload.orderId}`,
-      );
-      return;
-    }
-
-    const checkoutIntent = await this.prisma.checkoutIntent.findFirst({
-      where: { orderId: order.id },
-      orderBy: { createdAt: 'desc' },
-      select: { metadataJson: true },
-    });
-
-    try {
-      const destination = this.extractDropoff(
-        checkoutIntent?.metadataJson ?? null,
-        order,
-      );
-      if (!destination) {
-        throw new Error('DELIVERY_DESTINATION_REQUIRED');
-      }
-      const response = await this.uberDirect.createDelivery({
-        orderRef: order.clientRequestId ?? order.orderStableId,
-        pickupCode: order.pickupCode ?? undefined,
-        reference: order.clientRequestId ?? order.orderStableId,
-        totalCents: order.totalCents ?? 0,
-        items: order.items.map((item) => ({
-          name: item.displayName || item.productStableId,
-          quantity: item.qty,
-          priceCents: item.unitPriceCents ?? undefined,
-        })),
-        destination,
-        pickupReadyAt: this.parsePickupTime(payload.pickupTime),
-      });
-
-      await this.prisma.order.update({
-        where: { id: order.id },
-        data: { externalDeliveryId: response.deliveryId },
-      });
-
-      this.logger.log(`[Fulfillment] Uber dispatched: ${payload.orderId}`);
-    } catch (error) {
-      this.logger.error(
-        `[Fulfillment] Uber dispatch failed for ${payload.orderId}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    }
-  };
-
-  private readonly onAccepted = async (payload: { orderId: string }) => {
-    try {
-      await this.handleAcceptedLifecycle(payload);
-    } catch (error) {
-      // The in-memory bus remains a best-effort fast path for same-process
-      // orders. Durable lifecycle consumers call handleAcceptedLifecycle()
-      // directly and own retry/lease semantics themselves.
-      this.logger.error({
-        event: 'accepted_order_processing_failed',
-        orderId: payload.orderId,
-        errorType: error instanceof Error ? error.name : 'UnknownError',
-      });
-    }
-  };
+  }) => this.orderDeliveryDispatchUseCase.handle(payload);
 
   constructor(
     private readonly events: OrderEventsBus,
     private readonly prisma: PrismaService,
-    private readonly uberDirect: UberDirectService,
+    private readonly orderDeliveryDispatchUseCase: OrderDeliveryDispatchUseCase,
     private readonly eventEmitter: EventEmitter2,
     private readonly printPosPayloadService: PrintPosPayloadService,
     private readonly orderLabelPlanService: OrderLabelPlanService,
@@ -133,19 +49,16 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit(): void {
     this.events.onOrderPaidVerified(this.onPaid);
-    this.events.onOrderAccepted(this.onAccepted);
   }
 
   onModuleDestroy(): void {
     this.events.offOrderPaidVerified(this.onPaid);
-    this.events.offOrderAccepted(this.onAccepted);
   }
 
-  /**
-   * Durable Order-lifecycle entrypoint. Failures are rethrown so the outbox
-   * consumer can retain/retry the event instead of acknowledging lost work.
-   */
-  async handleAcceptedLifecycle(payload: { orderId: string }): Promise<void> {
+  /** Durable prep_started handoff to the Print-owned unique initial job. */
+  async handleAcceptedLifecycle(payload: {
+    orderId: string;
+  }): Promise<OrderPrintHandoffResult | null> {
     this.logger.log({
       event: 'accepted_order_processing_started',
       orderId: payload.orderId,
@@ -156,21 +69,13 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
       select: {
         id: true,
         orderStableId: true,
-        channel: true,
         storeId: true,
       },
     });
 
     if (!order) {
       this.logger.warn(`[Fulfillment] Order not found: ${payload.orderId}`);
-      return;
-    }
-
-    if (order.channel === Channel.in_store) {
-      this.logger.log(
-        `[Fulfillment] Skip accepted auto print for in_store order: ${payload.orderId}`,
-      );
-      return;
+      return null;
     }
 
     const storeId = order.storeId;
@@ -181,7 +86,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
         orderStableId: order.orderStableId,
         reason: 'STORE_ID_MISSING',
       });
-      return;
+      return null;
     }
 
     let printPayload: PrintPosPayloadDto;
@@ -228,12 +133,12 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
       label: labelPlan.labels.length > 0,
     };
     try {
-      const job = await this.dispatchPrintJob({
+      const job = await this.handoffPrint({
         orderId: order.id,
         orderStableId: order.orderStableId,
-        storeId,
-        kind: 'AUTO',
-        data: { ...printPayload, labelPlan, targets },
+        storeStableId: storeId,
+        purpose: 'INITIAL',
+        data: { ...printPayload, labelPlan },
       });
       this.logger.log({
         event: 'accepted_print_job_created',
@@ -242,6 +147,7 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
         jobId: job.jobId,
         targets,
       });
+      return job;
     } catch (error) {
       this.logger.error({
         event: 'accepted_print_job_failed',
@@ -310,15 +216,15 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    await this.dispatchPrintJob({
+    await this.handoffPrint({
       orderId: order.id,
       orderStableId: payload.orderStableId,
-      storeId,
-      kind: `REPRINT:${Date.now()}`,
+      storeStableId: storeId,
+      purpose: 'REPRINT',
+      requestedTargets: targets,
       data: {
         ...printPayload,
         ...(labelPlan ? { labelPlan } : {}),
-        ...(targets ? { targets } : {}),
         ...(typeof payload.cashReceivedCents === 'number'
           ? { cashReceivedCents: payload.cashReceivedCents }
           : {}),
@@ -335,6 +241,10 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
     locale?: 'zh' | 'en';
     reason: string;
     operatorName: string;
+    beforeLabelPlan?: OrderLabelPlanDto | null;
+    beforeOrderItems?: OrderItemDto[];
+    afterOrderItems?: OrderItemDto[];
+    printCustomerReceipt?: boolean;
     items: Array<{
       action: OrderAmendmentItemAction;
       productStableId: string;
@@ -376,79 +286,176 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
 
       const reason = payload.reason.trim();
       const operatorName = payload.operatorName.trim();
-      const headerNote =
-        locale === 'zh'
-          ? `原因: ${reason} / 操作人: ${operatorName}`
-          : `Reason: ${reason} / Operator: ${operatorName}`;
-      const headerItem = {
-        productStableId: '__order_amendment__',
-        nameZh: '****** 改单 ******',
-        nameEn: '****** ORDER CHANGE ******',
-        displayName: '****** 改单 / ORDER CHANGE ******',
-        quantity: 1,
-        lineTotalCents: 0,
-        specialInstructions: headerNote,
-        options: null,
-        components: [],
-      };
-      const changedItems = payload.items.map((item) => {
-        const isVoid = item.action === OrderAmendmentItemAction.VOID;
-        const zhPrefix = isVoid ? '[取消]' : '[新增]';
-        const enPrefix = isVoid ? '[VOID]' : '[ADD]';
-        const baseZh =
-          item.nameZh ??
-          item.displayName ??
-          item.nameEn ??
-          item.productStableId;
-        const baseEn =
-          item.nameEn ??
-          item.displayName ??
-          item.nameZh ??
-          item.productStableId;
-        const quantity = Math.max(1, Math.round(item.qty));
-        const unitPriceCents = Math.max(
-          0,
-          Math.round(item.unitPriceCents ?? 0),
-        );
-        return {
-          productStableId: item.productStableId,
-          nameZh: `${zhPrefix} ${baseZh}`,
-          nameEn: `${enPrefix} ${baseEn}`,
-          displayName: `${zhPrefix}/${enPrefix} ${item.displayName ?? baseEn}`,
-          quantity,
-          lineTotalCents: unitPriceCents * quantity,
-          specialInstructions: null,
-          options: Array.isArray(item.optionsJson)
-            ? (item.optionsJson as OrderItemOptionsSnapshot)
-            : null,
+
+      if (payload.items.length > 0) {
+        const headerNote =
+          locale === 'zh'
+            ? `原因: ${reason} / 操作人: ${operatorName}`
+            : `Reason: ${reason} / Operator: ${operatorName}`;
+        const headerItem = {
+          productStableId: '__order_amendment__',
+          nameZh: '****** 改单 ******',
+          nameEn: '****** ORDER CHANGE ******',
+          displayName: '****** 改单 / ORDER CHANGE ******',
+          quantity: 1,
+          lineTotalCents: 0,
+          specialInstructions: headerNote,
+          options: null,
           components: [],
         };
-      });
-      const amendmentPayload: PrintPosPayloadDto = {
-        ...basePayload,
-        snapshot: {
-          ...basePayload.snapshot,
-          items: [headerItem, ...changedItems],
-        },
-      };
+        const changedItems = payload.items.map((item) => {
+          const isVoid = item.action === OrderAmendmentItemAction.VOID;
+          const zhPrefix = isVoid ? '[取消]' : '[新增]';
+          const enPrefix = isVoid ? '[VOID]' : '[ADD]';
+          const baseZh =
+            item.nameZh ??
+            item.displayName ??
+            item.nameEn ??
+            item.productStableId;
+          const baseEn =
+            item.nameEn ??
+            item.displayName ??
+            item.nameZh ??
+            item.productStableId;
+          const quantity = Math.max(1, Math.round(item.qty));
+          const unitPriceCents = Math.max(
+            0,
+            Math.round(item.unitPriceCents ?? 0),
+          );
+          const sourceItems = isVoid
+            ? (payload.beforeOrderItems ?? [])
+            : (payload.afterOrderItems ?? []);
+          const amendmentOptionsKey = JSON.stringify(item.optionsJson ?? null);
+          const sourceItem =
+            sourceItems.find(
+              (candidate) =>
+                candidate.productStableId === item.productStableId &&
+                JSON.stringify(candidate.optionsJson ?? null) ===
+                  amendmentOptionsKey,
+            ) ??
+            sourceItems.find(
+              (candidate) => candidate.productStableId === item.productStableId,
+            );
+          const sourceQuantity = Math.max(1, sourceItem?.qty ?? quantity);
+          const componentScale = quantity / sourceQuantity;
+          const components = (sourceItem?.components ?? []).map(
+            (component) => ({
+              ...component,
+              quantity: Math.max(
+                1,
+                Math.round(component.quantity * componentScale),
+              ),
+            }),
+          );
+          return {
+            productStableId: item.productStableId,
+            nameZh: `${zhPrefix} ${baseZh}`,
+            nameEn: `${enPrefix} ${baseEn}`,
+            displayName: `${zhPrefix}/${enPrefix} ${item.displayName ?? baseEn}`,
+            quantity,
+            lineTotalCents: unitPriceCents * quantity,
+            specialInstructions: null,
+            options:
+              sourceItem?.displayOptions ??
+              (Array.isArray(item.optionsJson)
+                ? (item.optionsJson as OrderItemOptionsSnapshot)
+                : null),
+            components,
+          };
+        });
 
-      const job = await this.dispatchPrintJob({
-        orderId: order.id,
-        orderStableId: payload.orderStableId,
-        storeId,
-        kind: `AMENDMENT:${Date.now()}`,
-        data: {
-          ...amendmentPayload,
-          targets: { customer: false, kitchen: true },
-        },
-      });
-      this.logger.log({
-        event: 'amendment_print_job_created',
-        orderStableId: payload.orderStableId,
-        storeId,
-        jobId: job.jobId,
-        itemCount: payload.items.length,
-      });
+        let labelPlan: OrderLabelPlanDto = {
+          labelWidthMm: 70,
+          labelHeightMm: 30,
+          labels: [],
+        };
+        if (payload.beforeLabelPlan) {
+          try {
+            const afterLabelPlan =
+              await this.orderLabelPlanService.getByStableId(
+                payload.orderStableId,
+              );
+            labelPlan = this.diffLabelPlans(
+              payload.beforeLabelPlan,
+              afterLabelPlan,
+            );
+          } catch (error) {
+            this.logger.error({
+              event: 'amendment_label_plan_after_failed',
+              orderStableId: payload.orderStableId,
+              storeId,
+              errorType: error instanceof Error ? error.name : 'UnknownError',
+            });
+          }
+        }
+
+        const amendmentPayload: PrintPosPayloadDto & {
+          labelPlan: OrderLabelPlanDto;
+        } = {
+          ...basePayload,
+          snapshot: {
+            ...basePayload.snapshot,
+            items: [headerItem, ...changedItems],
+          },
+          labelPlan,
+        };
+
+        try {
+          const job = await this.handoffPrint({
+            orderId: order.id,
+            orderStableId: payload.orderStableId,
+            storeStableId: storeId,
+            purpose: 'AMENDMENT',
+            data: amendmentPayload,
+          });
+          this.logger.log({
+            event: 'amendment_print_job_created',
+            orderStableId: payload.orderStableId,
+            storeId,
+            jobId: job.jobId,
+            itemCount: payload.items.length,
+            labelCount: labelPlan.labels.reduce(
+              (sum, label) => sum + label.copies,
+              0,
+            ),
+          });
+        } catch (error) {
+          this.logger.error({
+            event: 'amendment_kitchen_print_job_failed',
+            orderStableId: payload.orderStableId,
+            errorType: error instanceof Error ? error.name : 'UnknownError',
+          });
+        }
+      }
+
+      if (payload.printCustomerReceipt) {
+        try {
+          const receiptJob = await this.handoffPrint({
+            orderId: order.id,
+            orderStableId: payload.orderStableId,
+            storeStableId: storeId,
+            purpose: 'REPRINT',
+            requestedTargets: {
+              customer: true,
+              kitchen: false,
+              label: false,
+            },
+            data: basePayload,
+          });
+          this.logger.log({
+            event: 'amendment_customer_receipt_job_created',
+            orderStableId: payload.orderStableId,
+            storeId,
+            jobId: receiptJob.jobId,
+          });
+        } catch (error) {
+          this.logger.error({
+            event: 'amendment_customer_receipt_job_failed',
+            orderStableId: payload.orderStableId,
+            errorType: error instanceof Error ? error.name : 'UnknownError',
+          });
+        }
+      }
     } catch (error) {
       // The amendment is already committed. Do not make staff repeat the
       // financial/item operation merely because its kitchen copy failed.
@@ -460,15 +467,48 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async dispatchPrintJob(
-    request: PosPrintJobDispatchRequest,
-  ): Promise<PosPrintJobDispatchResult> {
+  private diffLabelPlans(
+    before: OrderLabelPlanDto,
+    after: OrderLabelPlanDto,
+  ): OrderLabelPlanDto {
+    const identity = (label: OrderLabelPlanDto['labels'][number]): string =>
+      JSON.stringify({
+        productStableId: label.productStableId,
+        pairCode: label.pairCode,
+        component: label.component,
+        packagingTypeStableId: label.packagingTypeStableId,
+        options: label.options.map((option) => option.stableId),
+        specialInstructions: label.specialInstructions,
+      });
+    const beforeCopies = new Map<string, number>();
+    for (const label of before.labels) {
+      const key = identity(label);
+      beforeCopies.set(key, (beforeCopies.get(key) ?? 0) + label.copies);
+    }
+    const labels = after.labels.flatMap((label) => {
+      const key = identity(label);
+      const deltaCopies = Math.max(
+        0,
+        label.copies - (beforeCopies.get(key) ?? 0),
+      );
+      return deltaCopies > 0 ? [{ ...label, copies: deltaCopies }] : [];
+    });
+    return {
+      labelWidthMm: 70,
+      labelHeightMm: 30,
+      labels,
+    };
+  }
+
+  private async handoffPrint(
+    request: OrderPrintHandoffRequest,
+  ): Promise<OrderPrintHandoffResult> {
     const results = await this.eventEmitter.emitAsync(
-      POS_PRINT_JOB_DISPATCH_REQUESTED,
+      ORDER_PRINT_HANDOFF_REQUESTED,
       request,
     );
     if (results.length !== 1) {
-      throw new Error(`POS_PRINT_JOB_DISPATCH_HANDLER_COUNT:${results.length}`);
+      throw new Error(`ORDER_PRINT_HANDOFF_HANDLER_COUNT:${results.length}`);
     }
     const result = results[0] as unknown;
     if (
@@ -476,90 +516,9 @@ export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
       typeof result !== 'object' ||
       typeof (result as { jobId?: unknown }).jobId !== 'string'
     ) {
-      throw new Error('POS_PRINT_JOB_DISPATCH_INVALID_RESULT');
+      throw new Error('ORDER_PRINT_HANDOFF_INVALID_RESULT');
     }
-    return result as PosPrintJobDispatchResult;
-  }
-
-  private extractDropoff(
-    metadata: Prisma.JsonValue | null,
-    order: {
-      contactPhone: string | null;
-      contactName: string | null;
-    },
-  ): UberDirectDropoffDetails | null {
-    const root = this.asRecord(metadata);
-    const customer = this.asRecord(root?.customer);
-    const deliveryDestination = this.asRecord(root?.deliveryDestination);
-    if (!customer) return null;
-
-    const addressLine1 =
-      this.asString(deliveryDestination?.addressLine1) ??
-      this.asString(customer.addressLine1);
-    const city =
-      this.asString(deliveryDestination?.city) ?? this.asString(customer.city);
-    const province =
-      this.asString(deliveryDestination?.province) ??
-      this.asString(customer.province);
-    const postalCode =
-      this.asString(deliveryDestination?.postalCode) ??
-      this.asString(customer.postalCode);
-    const phone =
-      this.asString(deliveryDestination?.phone) ??
-      this.asString(customer.phone) ??
-      order.contactPhone;
-
-    if (!phone) {
-      throw new Error(
-        'DELIVERY_PHONE_REQUIRED: Uber Direct dropoff requires a phone',
-      );
-    }
-
-    if (!addressLine1 || !city || !province || !postalCode) {
-      return null;
-    }
-
-    const firstName = this.asString(customer.firstName) ?? '';
-    const lastName = this.asString(customer.lastName) ?? '';
-
-    return {
-      name:
-        [firstName, lastName].filter(Boolean).join(' ') ||
-        order.contactName ||
-        'Customer',
-      phone,
-      addressLine1,
-      addressLine2:
-        this.asString(deliveryDestination?.addressLine2) ??
-        this.asString(customer.addressLine2),
-      city,
-      province,
-      postalCode,
-      country:
-        this.asString(deliveryDestination?.country) ??
-        this.asString(customer.country) ??
-        'Canada',
-      instructions: this.asString(customer.notes),
-    };
-  }
-
-  private asRecord(value: unknown): Record<string, unknown> | undefined {
-    return value && typeof value === 'object' && !Array.isArray(value)
-      ? (value as Record<string, unknown>)
-      : undefined;
-  }
-
-  private asString(value: unknown): string | undefined {
-    if (typeof value !== 'string') return undefined;
-    const trimmed = value.trim();
-    return trimmed.length > 0 ? trimmed : undefined;
-  }
-
-  private parsePickupTime(pickupTime?: string): Date | undefined {
-    if (!pickupTime) return undefined;
-    const parsed = new Date(pickupTime);
-    if (Number.isNaN(parsed.getTime())) return undefined;
-    return parsed;
+    return result as OrderPrintHandoffResult;
   }
 
   private parseOrderItemOptions(

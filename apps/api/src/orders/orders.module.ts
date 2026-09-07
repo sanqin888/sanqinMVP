@@ -3,25 +3,35 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from './orders-prisma';
 import { OrdersController } from './orders.controller';
 import { OrderEventsBus } from './order-events.bus';
+import { OrderInvoiceUseCase } from './order-invoice.use-case';
+import { OrderReadyNotificationUseCase } from './order-ready-notification.use-case';
+import { OrderDeliveryDispatchUseCase } from './order-delivery-dispatch.use-case';
+import { OrderPrepTimeQueryUseCase } from './order-prep-time-query.use-case';
+import { OrderPublicSummaryQueryUseCase } from './order-public-summary-query.use-case';
+import { OrderManagementQueryUseCase } from './order-management-query.use-case';
 import { OrdersService } from './orders.service';
 import { LoyaltyModule } from '../loyalty/public-api';
 import { BrandStoreConfigModule } from '../store/public-api';
-import { DeliveriesModule } from '../deliveries/deliveries.module';
+import { DeliveriesModule } from '../deliveries/public-api';
 import { MembershipModule } from '../membership/public-api';
 import { PromotionsModule } from '../promotions/public-api';
-import { LocationModule } from '../location/location.module';
-import { NotificationModule } from '../notifications/notification.module';
-import { EmailModule } from '../email/email.module';
+import { LocationModule } from '../location/public-api';
+import { OperationsAlertRecipientModule } from '../auth/public-api';
+import { NotificationModule } from '../notifications/public-api';
+import { CatalogOrderFactsModule } from '../menu/public-api';
+import { OrderBenefitsReadModule } from '../benefits/public-api/order-benefits-read.module';
 import { NotificationProcessor } from './processors/notification.processor';
 import { FulfillmentProcessor } from './processors/fulfillment.processor';
 import { OrderLifecycleOutboxProcessor } from './processors/order-lifecycle-outbox.processor';
 import { ScheduledOrderProcessor } from './processors/scheduled-order.processor';
 import { PrintPosPayloadService } from './print-pos-payload.service';
+import { ORDER_PRINT_PAYLOAD_READER } from './order-print-payload.contract';
 import { ORDER_INGESTION } from './order-ingestion.contract';
 import { ORDER_INGESTION_PROVIDER } from './order-ingestion.provider';
 import { OrderPreparationService } from './order-preparation.service';
 import { OrderSchedulingQueryService } from './order-scheduling-query.service';
 import { OrderLabelPlanService } from './order-label-plan.service';
+import { OrderItemSnapshotBuilder } from './order-item-snapshot.builder';
 import { POS_ORDER_READ } from './pos-order-read.contract';
 import { PosOrderReadService } from './pos-order-read.service';
 import { POS_ORDER_OPERATIONS } from './pos-order-operations.contract';
@@ -38,12 +48,20 @@ import { AdminMemberOrdersReadService } from './admin-member-orders-read.service
     MembershipModule,
     PromotionsModule,
     LocationModule,
+    OperationsAlertRecipientModule,
     NotificationModule,
-    EmailModule,
+    CatalogOrderFactsModule,
+    OrderBenefitsReadModule,
   ],
   controllers: [OrdersController, AdminMemberOrdersController],
   providers: [
     OrderEventsBus,
+    OrderInvoiceUseCase,
+    OrderReadyNotificationUseCase,
+    OrderDeliveryDispatchUseCase,
+    OrderPrepTimeQueryUseCase,
+    OrderPublicSummaryQueryUseCase,
+    OrderManagementQueryUseCase,
     OrdersService,
     AdminMemberOrdersReadService,
     PosOrderReadService,
@@ -60,7 +78,12 @@ import { AdminMemberOrdersReadService } from './admin-member-orders-read.service
     OrderPreparationService,
     OrderSchedulingQueryService,
     PrintPosPayloadService,
+    {
+      provide: ORDER_PRINT_PAYLOAD_READER,
+      useExisting: PrintPosPayloadService,
+    },
     OrderLabelPlanService,
+    OrderItemSnapshotBuilder,
     NotificationProcessor,
     FulfillmentProcessor,
     OrderLifecycleOutboxProcessor,
@@ -73,7 +96,7 @@ import { AdminMemberOrdersReadService } from './admin-member-orders-read.service
     ORDER_INGESTION,
     OrderPreparationService,
     OrderSchedulingQueryService,
-    PrintPosPayloadService,
+    ORDER_PRINT_PAYLOAD_READER,
   ],
 })
 export class OrdersModule {}

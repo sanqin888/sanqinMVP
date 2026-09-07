@@ -30,13 +30,16 @@ describe('Orders ↔ POS transport boundary', () => {
     expect(module).not.toMatch(/from ['"]\.\.\/pos\//);
     expect(fulfillment).not.toContain('PosGateway');
     expect(fulfillment).not.toContain("from '../../pos/pos.gateway'");
-    expect(fulfillment).toContain('POS_PRINT_JOB_DISPATCH_REQUESTED');
+    expect(fulfillment).toContain('ORDER_PRINT_HANDOFF_REQUESTED');
   });
 
   it('makes the canonical POS order transport use Orders public API', () => {
     const canonical = read(resolve(POS_ROOT, 'pos-orders.controller.ts'));
     const service = read(resolve(POS_ROOT, 'pos-orders.service.ts'));
     const publicApi = read(resolve(ORDERS_ROOT, 'public-api.ts'));
+    const operationsContract = read(
+      resolve(ORDERS_ROOT, 'pos-order-operations.contract.ts'),
+    );
 
     for (const source of [canonical, service]) {
       expect(source).toContain("from '../orders/public-api'");
@@ -51,6 +54,12 @@ describe('Orders ↔ POS transport boundary', () => {
 
     expect(publicApi).toContain('POS_ORDER_OPERATIONS');
     expect(publicApi).toContain('PosOrderOperationsPort');
+    expect(operationsContract).toContain('acceptWebOrder');
+    expect(operationsContract).toContain('activateImmediatePreparation');
+    expect(operationsContract).toContain('activateScheduledPreparation');
+    expect(service).toContain('this.orders.acceptWebOrder');
+    expect(service).toContain('this.orders.activateImmediatePreparation');
+    expect(service).toContain('this.orders.activateScheduledPreparation');
   });
 
   it('keeps the canonical POS order routes on the POS transport', () => {
@@ -60,6 +69,7 @@ describe('Orders ↔ POS transport boundary', () => {
     for (const route of [
       "@Post('pricing/quote')",
       "@Get('recent')",
+      "@Get('search')",
       "@Get('board')",
       "@Patch(':orderStableId/status')",
       "@Post(':orderStableId/amendments')",
@@ -72,13 +82,74 @@ describe('Orders ↔ POS transport boundary', () => {
     }
   });
 
-  it('keeps POS print-job dispatch implementation on the POS side', () => {
-    const listener = read(resolve(POS_ROOT, 'pos-print-dispatch.listener.ts'));
+  it('keeps amendment kitchen/label and customer reprint effects explicit after mutation', () => {
+    const canonical = read(resolve(POS_ROOT, 'pos-orders.controller.ts'));
+    const fulfillment = read(
+      resolve(ORDERS_ROOT, 'processors', 'fulfillment.processor.ts'),
+    );
+    const operationsContract = read(
+      resolve(ORDERS_ROOT, 'pos-order-operations.contract.ts'),
+    );
+
+    expect(operationsContract).toContain('getLabelPlanForStore');
+    expect(canonical).toContain('beforeLabelPlan');
+    expect(canonical).toContain("emitAsync('order.amendment.print'");
+    expect(canonical).toContain('printCustomerReceipt');
+    expect(fulfillment).toContain('diffLabelPlans');
+    expect(fulfillment).toContain("purpose: 'AMENDMENT'");
+    expect(fulfillment).toContain("purpose: 'REPRINT'");
+    expect(fulfillment).toContain('customer: true');
+    expect(fulfillment).toContain('kitchen: false');
+  });
+
+  it('keeps print payload ownership on the Orders public boundary', () => {
+    const canonical = read(resolve(POS_ROOT, 'pos-orders.controller.ts'));
+    const module = read(resolve(ORDERS_ROOT, 'orders.module.ts'));
     const publicApi = read(resolve(ORDERS_ROOT, 'public-api.ts'));
+    const payloadContract = read(
+      resolve(ORDERS_ROOT, 'order-print-payload.contract.ts'),
+    );
+    const payloadService = read(
+      resolve(ORDERS_ROOT, 'print-pos-payload.service.ts'),
+    );
+    const fulfillment = read(
+      resolve(ORDERS_ROOT, 'processors', 'fulfillment.processor.ts'),
+    );
+
+    expect(payloadContract).toContain('ORDER_PRINT_PAYLOAD_READER');
+    expect(payloadContract).toContain('OrderPrintPayloadReaderPort');
+    expect(payloadContract).toContain('PrintPosPayloadDto');
+    expect(payloadContract).not.toContain('@prisma/client');
+    expect(payloadContract).not.toContain('../pos/');
+    expect(payloadService).toContain('implements OrderPrintPayloadReaderPort');
+    expect(payloadService).not.toContain('../pos/dto/print-pos-payload.dto');
+    expect(module).toContain('useExisting: PrintPosPayloadService');
+    expect(module).toContain('ORDER_PRINT_PAYLOAD_READER');
+    expect(publicApi).toContain('ORDER_PRINT_PAYLOAD_READER');
+    expect(publicApi).not.toContain('PrintPosPayloadService');
+    expect(canonical).toContain('ORDER_PRINT_PAYLOAD_READER');
+    expect(canonical).toContain('OrderPrintPayloadReaderPort');
+    expect(canonical).toContain('this.printPosPayloadReader.getByStableId');
+    expect(canonical).not.toContain('PrintPosPayloadService');
+    expect(canonical).not.toContain('print-pos-payload.dto');
+    expect(fulfillment).toContain("from '../order-print-payload.contract'");
+    expect(fulfillment).not.toContain('../../pos/dto/print-pos-payload.dto');
+  });
+
+  it('keeps Print job identity and dispatch implementation on the POS/Print side', () => {
+    const listener = read(resolve(POS_ROOT, 'pos-print-dispatch.listener.ts'));
+    const gateway = read(resolve(POS_ROOT, 'pos.gateway.ts'));
+    const publicApi = read(resolve(ORDERS_ROOT, 'public-api.ts'));
+    const handoffContract = read(
+      resolve(ORDERS_ROOT, 'pos-print-dispatch.contract.ts'),
+    );
 
     expect(listener).toContain("from '../orders/public-api'");
-    expect(listener).toContain('POS_PRINT_JOB_DISPATCH_REQUESTED');
-    expect(listener).toContain('this.posGateway.sendPrintJob(request)');
-    expect(publicApi).toContain('POS_PRINT_JOB_DISPATCH_REQUESTED');
+    expect(listener).toContain('ORDER_PRINT_HANDOFF_REQUESTED');
+    expect(listener).toContain('this.posGateway.enqueuePrintHandoff(request)');
+    expect(publicApi).toContain('ORDER_PRINT_HANDOFF_REQUESTED');
+    expect(handoffContract).toContain("'INITIAL' | 'REPRINT' | 'AMENDMENT'");
+    expect(handoffContract).not.toContain('kind: string');
+    expect(gateway).toContain("if (purpose === 'INITIAL') return 'AUTO'");
   });
 });

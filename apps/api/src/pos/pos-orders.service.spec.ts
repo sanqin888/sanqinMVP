@@ -19,6 +19,14 @@ describe('PosOrdersService', () => {
       getByStableIdForStore: jest.fn().mockResolvedValue(current),
       getExternalPaymentCents: jest.fn().mockResolvedValue(null),
       createFullRefund: jest.fn(),
+      acceptWebOrder: jest.fn().mockResolvedValue(undefined),
+      getFulfillmentTimingForStore: jest.fn().mockResolvedValue({
+        orderStableId: current.orderStableId,
+        status: current.status,
+        fulfillmentTiming: 'IMMEDIATE',
+      }),
+      activateImmediatePreparation: jest.fn().mockResolvedValue(undefined),
+      activateScheduledPreparation: jest.fn().mockResolvedValue(undefined),
       advanceForStore: jest
         .fn()
         .mockResolvedValue({ ...current, status: 'ready' }),
@@ -90,7 +98,110 @@ describe('PosOrdersService', () => {
     );
   });
 
-  it('普通订单仅使用本地状态推进', async () => {
+  it('Web paid 只通过 durable acceptance 推进，不再使用通用 making 快路', async () => {
+    const paid = order({ status: 'paid', channel: 'web' });
+    const making = order({ status: 'making', channel: 'web' });
+    const { service, orders } = setup(paid);
+    orders.getByStableIdForStore
+      .mockResolvedValueOnce(paid)
+      .mockResolvedValueOnce(making);
+
+    await expect(
+      service.advance('4750_Yonge_Street', 'order_1'),
+    ).resolves.toMatchObject(making);
+
+    expect(orders.acceptWebOrder).toHaveBeenCalledWith(
+      'order_1',
+      '4750_Yonge_Street',
+    );
+    expect(orders.advanceForStore).not.toHaveBeenCalled();
+  });
+
+  it('in_store paid 只通过 durable preparation 推进到 making', async () => {
+    const paid = order({ status: 'paid', channel: 'in_store' });
+    const making = order({ status: 'making', channel: 'in_store' });
+    const { service, orders } = setup(paid);
+    orders.getByStableIdForStore
+      .mockResolvedValueOnce(paid)
+      .mockResolvedValueOnce(making);
+
+    await expect(
+      service.advance('4750_Yonge_Street', 'order_1'),
+    ).resolves.toMatchObject(making);
+
+    expect(orders.activateImmediatePreparation).toHaveBeenCalledWith(
+      'order_1',
+      '4750_Yonge_Street',
+    );
+    expect(orders.advanceForStore).not.toHaveBeenCalled();
+  });
+
+  it('Uber paid IMMEDIATE 只通过 durable preparation 推进，不回落通用 making 快路', async () => {
+    const paid = order({
+      status: 'paid',
+      channel: 'ubereats',
+      clientRequestId: 'ubereats:external-123',
+    });
+    const making = order({
+      status: 'making',
+      channel: 'ubereats',
+      clientRequestId: 'ubereats:external-123',
+    });
+    const { service, orders } = setup(paid);
+    orders.getByStableIdForStore
+      .mockResolvedValueOnce(paid)
+      .mockResolvedValueOnce(making);
+
+    await expect(
+      service.advance('4750_Yonge_Street', 'order_1'),
+    ).resolves.toMatchObject(making);
+
+    expect(orders.getFulfillmentTimingForStore).toHaveBeenCalledWith(
+      'order_1',
+      '4750_Yonge_Street',
+    );
+    expect(orders.activateImmediatePreparation).toHaveBeenCalledWith(
+      'order_1',
+      '4750_Yonge_Street',
+    );
+    expect(orders.activateScheduledPreparation).not.toHaveBeenCalled();
+    expect(orders.advanceForStore).not.toHaveBeenCalled();
+  });
+
+  it('Uber paid SCHEDULED 显式推进复用 durable scheduled preparation', async () => {
+    const paid = order({
+      status: 'paid',
+      channel: 'ubereats',
+      clientRequestId: 'ubereats:external-123',
+    });
+    const making = order({
+      status: 'making',
+      channel: 'ubereats',
+      clientRequestId: 'ubereats:external-123',
+    });
+    const { service, orders } = setup(paid);
+    orders.getFulfillmentTimingForStore.mockResolvedValueOnce({
+      orderStableId: 'order_1',
+      status: 'paid',
+      fulfillmentTiming: 'SCHEDULED',
+    });
+    orders.getByStableIdForStore
+      .mockResolvedValueOnce(paid)
+      .mockResolvedValueOnce(making);
+
+    await expect(
+      service.advance('4750_Yonge_Street', 'order_1'),
+    ).resolves.toMatchObject(making);
+
+    expect(orders.activateScheduledPreparation).toHaveBeenCalledWith(
+      'order_1',
+      '4750_Yonge_Street',
+    );
+    expect(orders.activateImmediatePreparation).not.toHaveBeenCalled();
+    expect(orders.advanceForStore).not.toHaveBeenCalled();
+  });
+
+  it('普通 making 订单继续使用本地状态推进', async () => {
     const { service, orders, uberEats } = setup(order());
 
     await service.advance('4750_Yonge_Street', 'order_1');

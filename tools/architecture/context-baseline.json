@@ -473,6 +473,106 @@
     "customerService": "apps/api/src/membership/customer.service.ts",
     "membershipModule": "apps/api/src/membership/membership.module.ts"
   },
+  "ordersMessagingBoundary": {
+    "orderReadyContract": "apps/api/src/notifications/contracts/order-ready-notification.contract.ts",
+    "invoiceContract": "apps/api/src/notifications/contracts/order-invoice-delivery.contract.ts",
+    "notificationService": "apps/api/src/notifications/notification.service.ts",
+    "notificationModule": "apps/api/src/notifications/notification.module.ts",
+    "publicSurface": "apps/api/src/notifications/public-api.ts",
+    "emailService": "apps/api/src/email/email.service.ts",
+    "orderReadyUseCase": "apps/api/src/orders/order-ready-notification.use-case.ts",
+    "ordersService": "apps/api/src/orders/orders.service.ts",
+    "ordersModule": "apps/api/src/orders/orders.module.ts"
+  },
+  "ordersLowRiskBoundaryContraction": {
+    "locationContract": "apps/api/src/location/location-geocoding.contract.ts",
+    "locationModule": "apps/api/src/location/location.module.ts",
+    "locationPublicSurface": "apps/api/src/location/public-api.ts",
+    "authPublicSurface": "apps/api/src/auth/public-api.ts",
+    "ordersController": "apps/api/src/orders/orders.controller.ts",
+    "ordersService": "apps/api/src/orders/orders.service.ts",
+    "ordersModule": "apps/api/src/orders/orders.module.ts"
+  },
+  "ordersCatalogPersistenceBoundary": {
+    "contract": "apps/api/src/menu/catalog-order-facts-reader.contract.ts",
+    "module": "apps/api/src/menu/catalog-order-facts.module.ts",
+    "ownerService": "apps/api/src/menu/catalog-admin.service.ts",
+    "publicSurface": "apps/api/src/menu/public-api.ts",
+    "ordersService": "apps/api/src/orders/orders.service.ts",
+    "snapshotBuilder": "apps/api/src/orders/order-item-snapshot.builder.ts",
+    "labelPlanService": "apps/api/src/orders/order-label-plan.service.ts",
+    "ordersModule": "apps/api/src/orders/orders.module.ts"
+  },
+  "ordersCustomerRuntimeReadBoundary": {
+    "contract": "apps/api/src/membership/customer-order-context.contract.ts",
+    "ownerService": "apps/api/src/membership/customer.service.ts",
+    "membershipModule": "apps/api/src/membership/membership.module.ts",
+    "publicSurface": "apps/api/src/membership/public-api.ts",
+    "ordersService": "apps/api/src/orders/orders.service.ts",
+    "ordersModule": "apps/api/src/orders/orders.module.ts"
+  },
+  "ordersBenefitsRuntimeReadBoundary": {
+    "contract": "apps/api/src/benefits/contracts/order-benefits-read.contract.ts",
+    "ownerService": "apps/api/src/benefits/order-benefits-read.service.ts",
+    "compositionModule": "apps/api/src/benefits/public-api/order-benefits-read.module.ts",
+    "publicSurface": "apps/api/src/benefits/public-api.ts",
+    "ordersService": "apps/api/src/orders/orders.service.ts",
+    "ordersModule": "apps/api/src/orders/orders.module.ts"
+  },
+  "ordersUberDirectDispatchBoundary": {
+    "contract": "apps/api/src/deliveries/uber-direct-dispatch.contract.ts",
+    "ownerService": "apps/api/src/deliveries/uber-direct.service.ts",
+    "ownerModule": "apps/api/src/deliveries/deliveries.module.ts",
+    "publicSurface": "apps/api/src/deliveries/public-api.ts",
+    "fulfillmentProcessor": "apps/api/src/orders/processors/fulfillment.processor.ts",
+    "ordersModule": "apps/api/src/orders/orders.module.ts"
+  },
+  "ordersPrintPayloadBoundary": {
+    "contract": "apps/api/src/orders/order-print-payload.contract.ts",
+    "ownerService": "apps/api/src/orders/print-pos-payload.service.ts",
+    "ordersModule": "apps/api/src/orders/orders.module.ts",
+    "publicSurface": "apps/api/src/orders/public-api.ts",
+    "fulfillmentProcessor": "apps/api/src/orders/processors/fulfillment.processor.ts",
+    "posController": "apps/api/src/pos/pos-orders.controller.ts",
+    "retiredPosDto": "apps/api/src/pos/dto/print-pos-payload.dto.ts"
+  },
+  "ordersInvoiceUseCaseDecomposition": {
+    "useCase": "apps/api/src/orders/order-invoice.use-case.ts",
+    "contactNormalization": "apps/api/src/orders/order-contact-normalization.ts",
+    "ordersService": "apps/api/src/orders/orders.service.ts",
+    "ordersController": "apps/api/src/orders/orders.controller.ts",
+    "ordersModule": "apps/api/src/orders/orders.module.ts"
+  },
+  "ordersReadyNotificationUseCaseDecomposition": {
+    "useCase": "apps/api/src/orders/order-ready-notification.use-case.ts",
+    "contactNormalization": "apps/api/src/orders/order-contact-normalization.ts",
+    "ordersService": "apps/api/src/orders/orders.service.ts",
+    "ordersModule": "apps/api/src/orders/orders.module.ts"
+  },
+  "ordersDeliveryDispatchUseCaseDecomposition": {
+    "useCase": "apps/api/src/orders/order-delivery-dispatch.use-case.ts",
+    "fulfillmentProcessor": "apps/api/src/orders/processors/fulfillment.processor.ts",
+    "ordersModule": "apps/api/src/orders/orders.module.ts"
+  },
+  "ordersPrepTimeQueryUseCaseDecomposition": {
+    "useCase": "apps/api/src/orders/order-prep-time-query.use-case.ts",
+    "ordersController": "apps/api/src/orders/orders.controller.ts",
+    "ordersService": "apps/api/src/orders/orders.service.ts",
+    "ordersModule": "apps/api/src/orders/orders.module.ts"
+  },
+  "ordersPublicSummaryQueryUseCaseDecomposition": {
+    "useCase": "apps/api/src/orders/order-public-summary-query.use-case.ts",
+    "ordersController": "apps/api/src/orders/orders.controller.ts",
+    "ordersService": "apps/api/src/orders/orders.service.ts",
+    "ordersModule": "apps/api/src/orders/orders.module.ts"
+  },
+  "ordersManagementQueryUseCaseDecomposition": {
+    "useCase": "apps/api/src/orders/order-management-query.use-case.ts",
+    "projection": "apps/api/src/orders/order-query-projection.ts",
+    "posOperations": "apps/api/src/orders/pos-order-operations.service.ts",
+    "ordersService": "apps/api/src/orders/orders.service.ts",
+    "ordersModule": "apps/api/src/orders/orders.module.ts"
+  },
   "awsMessageInfrastructureRetirementBoundary": {
     "main": "apps/api/src/main.ts",
     "messagingModule": "apps/api/src/messaging/messaging.module.ts",
@@ -566,11 +666,8 @@
     "catalog-pricing-offers -> identity-customer-benefits": 3,
     "catalog-pricing-offers -> runtime-data-ci-ops": 10,
     "commerce-orders-fulfillment -> architecture-foundation": 8,
-    "commerce-orders-fulfillment -> brand-store": 2,
-    "commerce-orders-fulfillment -> identity-customer-benefits": 4,
-    "commerce-orders-fulfillment -> messaging-notifications": 4,
+    "commerce-orders-fulfillment -> identity-customer-benefits": 2,
     "commerce-orders-fulfillment -> runtime-data-ci-ops": 10,
-    "commerce-orders-fulfillment -> store-operations-pos-print": 2,
     "external-channels -> architecture-foundation": 11,
     "external-channels -> commerce-orders-fulfillment": 1,
     "external-channels -> identity-customer-benefits": 6,
@@ -583,16 +680,14 @@
     "identity-customer-benefits -> store-operations-pos-print": 4,
     "messaging-notifications -> architecture-foundation": 3,
     "messaging-notifications -> runtime-data-ci-ops": 6,
-    "messaging-notifications -> store-operations-pos-print": 1,
     "payments-clover -> architecture-foundation": 15,
-    "payments-clover -> commerce-orders-fulfillment": 10,
+    "payments-clover -> commerce-orders-fulfillment": 8,
     "payments-clover -> identity-customer-benefits": 13,
     "payments-clover -> messaging-notifications": 2,
     "payments-clover -> runtime-data-ci-ops": 8,
     "payments-clover -> store-operations-pos-print": 11,
     "store-operations-pos-print -> architecture-foundation": 7,
     "store-operations-pos-print -> brand-store": 2,
-    "store-operations-pos-print -> commerce-orders-fulfillment": 2,
     "store-operations-pos-print -> external-channels": 1,
     "store-operations-pos-print -> identity-customer-benefits": 14,
     "store-operations-pos-print -> runtime-data-ci-ops": 5

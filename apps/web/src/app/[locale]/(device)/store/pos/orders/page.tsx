@@ -20,7 +20,7 @@ import {
   createManagedCardRefund,
   createOrderAmendment,
   fetchOrderActions,
-  fetchRecentOrders,
+  fetchPosOrderSearch,
   printOrderCloud,
 } from "@/lib/api/pos";
 import type {
@@ -30,7 +30,11 @@ import type {
 } from "@/lib/api/pos";
 import { apiFetch } from "@/lib/api/client";
 import { fetchPosStoreContext } from "@/lib/api/pos-session";
-import { parseBackendDate, ymdInTimeZone } from "@/lib/time/tz";
+import {
+  parseBackendDate,
+  utcRangeForYmdInTimeZone,
+  ymdInTimeZone,
+} from "@/lib/time/tz";
 
 const COPY = {
   zh: {
@@ -43,6 +47,10 @@ const COPY = {
     filterDateLabel: "订单日期",
     tableTitle: "订单列表",
     tableSubtitle: "点击订单可查看可操作功能。",
+    paginationPrev: "上一页",
+    paginationNext: "下一页",
+    paginationSummary: (page: number, totalPages: number, total: number) =>
+      `第 ${page}/${Math.max(totalPages, 1)} 页 · 共 ${total} 张订单`,
     orderNumber: "订单号",
     orderType: "类型",
     orderStatus: "状态",
@@ -201,6 +209,10 @@ const COPY = {
     filterDateLabel: "Order date",
     tableTitle: "Orders",
     tableSubtitle: "Select an order to see actions.",
+    paginationPrev: "Previous",
+    paginationNext: "Next",
+    paginationSummary: (page: number, totalPages: number, total: number) =>
+      `Page ${page}/${Math.max(totalPages, 1)} · ${total} orders`,
     orderNumber: "Order #",
     orderType: "Type",
     orderStatus: "Status",
@@ -513,13 +525,15 @@ type OrderFilters = {
 };
 
 const createInitialFilters = (): OrderFilters => ({
-  time: "all",
+  time: "today",
   dateYmd: null,
   statuses: [],
   channels: [],
   fulfillments: [],
   minTotalCents: null,
 });
+
+const POS_ORDER_MANAGEMENT_PAGE_SIZE = 50;
 
 const ACTIONS: ActionKey[] = [
   "retender",
@@ -1097,7 +1111,10 @@ export default function PosOrdersPage() {
   const deepLinkHandledRef = useRef(false);
 
   const [orders, setOrders] = useState<OrderRecord[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalOrders, setTotalOrders] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [filters, setFilters] = useState<OrderFilters>(createInitialFilters);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -1141,6 +1158,7 @@ export default function PosOrdersPage() {
       return "UTC";
     }
   });
+  const [storeTimezoneReady, setStoreTimezoneReady] = useState(false);
 
   useEffect(() => {
     if (!toast) return;
@@ -1149,7 +1167,7 @@ export default function PosOrdersPage() {
   }, [toast]);
 
   const filtersDirty =
-    filters.time !== "all" ||
+    filters.time !== "today" ||
     filters.dateYmd !== null ||
     filters.statuses.length > 0 ||
     filters.channels.length > 0 ||
@@ -1161,7 +1179,10 @@ export default function PosOrdersPage() {
     return ymdInTimeZone(new Date(), tz);
   }, [storeTimezone]);
 
-  const handleResetOrderFilters = () => setFilters(createInitialFilters());
+  const handleResetOrderFilters = () => {
+    setFilters(createInitialFilters());
+    setPage(1);
+  };
 
   const mapOrder = useCallback(
     (order: BackendOrder, timeZone: string): OrderRecord => {
@@ -1223,21 +1244,61 @@ export default function PosOrdersPage() {
 
   useEffect(() => {
     let cancelled = false;
+    void fetchPosStoreContext()
+      .catch(() => null)
+      .then((storeContext) => {
+        if (cancelled) return;
+        let browserTimezone = "UTC";
+        try {
+          browserTimezone =
+            Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+        } catch {
+          browserTimezone = "UTC";
+        }
+        setStoreTimezone(storeContext?.timezone?.trim() || browserTimezone);
+        setStoreTimezoneReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    setPage(1);
+  }, [filters]);
+
+  useEffect(() => {
+    if (!storeTimezoneReady) return;
+    let cancelled = false;
     const fetchOrders = async () => {
       try {
         setIsLoading(true);
         setErrorMessage(null);
-        const [storeContext, data] = await Promise.all([
-          fetchPosStoreContext().catch(() => null),
-          fetchRecentOrders<BackendOrder[]>(30),
-        ]);
+        const selectedYmd =
+          filters.dateYmd ?? (filters.time === "today" ? todayYmd : null);
+        const dateRange = selectedYmd
+          ? utcRangeForYmdInTimeZone(selectedYmd, storeTimezone)
+          : null;
+        if (selectedYmd && !dateRange) {
+          throw new Error(`Invalid store-local order date: ${selectedYmd}`);
+        }
+        const data = await fetchPosOrderSearch<BackendOrder>({
+          status: filters.statuses,
+          channel: filters.channels,
+          fulfillment: filters.fulfillments,
+          ...(dateRange ?? {}),
+          minTotalCents: filters.minTotalCents ?? undefined,
+          page,
+          pageSize: POS_ORDER_MANAGEMENT_PAGE_SIZE,
+        });
         if (cancelled) return;
-        const tz =
-          storeContext?.timezone?.trim() ||
-          Intl.DateTimeFormat().resolvedOptions().timeZone ||
-          "UTC";
-        setStoreTimezone(tz);
-        setOrders(data.map((order) => mapOrder(order, tz)));
+        if (data.totalPages > 0 && page > data.totalPages) {
+          setPage(data.totalPages);
+          return;
+        }
+        setOrders(data.orders.map((order) => mapOrder(order, storeTimezone)));
+        setTotalOrders(data.total);
+        setTotalPages(data.totalPages);
       } catch (error) {
         if (!cancelled) {
           console.error("Failed to fetch POS orders:", error);
@@ -1255,7 +1316,15 @@ export default function PosOrdersPage() {
     return () => {
       cancelled = true;
     };
-  }, [locale, mapOrder]);
+  }, [
+    filters,
+    locale,
+    mapOrder,
+    page,
+    storeTimezone,
+    storeTimezoneReady,
+    todayYmd,
+  ]);
 
   useEffect(() => {
     if (deepLinkHandledRef.current || orders.length === 0) return;
@@ -1503,8 +1572,9 @@ export default function PosOrdersPage() {
     if (key.type === "time") {
       setFilters((prev) => ({
         ...prev,
-        time: "all",
-        dateYmd: prev.dateYmd === todayYmd ? null : todayYmd,
+        time:
+          prev.time === "today" && prev.dateYmd === null ? "all" : "today",
+        dateYmd: null,
       }));
       return;
     }
@@ -2054,13 +2124,15 @@ export default function PosOrdersPage() {
               <p className="text-xs text-slate-300">{copy.filtersSubtitle}</p>
             </div>
             <span className="rounded-full border border-slate-600 bg-slate-800 px-2.5 py-1 text-[11px] text-slate-200">
-              {filteredOrders.length}/{orders.length}
+              {filteredOrders.length}/{totalOrders}
             </span>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
             {QUICK_FILTERS.map((filter) => {
               const active =
-                (filter.type === "time" && filters.dateYmd === todayYmd) ||
+                (filter.type === "time" &&
+                  filters.time === "today" &&
+                  filters.dateYmd === null) ||
                 (filter.type === "status" &&
                   filters.statuses.includes(filter.value as OrderStatusKey)) ||
                 (filter.type === "fulfillment" &&
@@ -2247,6 +2319,29 @@ export default function PosOrdersPage() {
             {!isLoading && !errorMessage && filteredOrders.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-900/40 p-6 text-center text-xs text-slate-400">
                 {locale === "zh" ? "暂无订单数据。" : "No orders found."}
+              </div>
+            ) : null}
+            {!errorMessage && totalOrders > 0 ? (
+              <div className="flex items-center justify-between gap-3 border-t border-slate-700 pt-3 text-xs text-slate-300">
+                <button
+                  type="button"
+                  onClick={() => setPage((current) => Math.max(1, current - 1))}
+                  disabled={isLoading || page <= 1}
+                  className="rounded-lg border border-slate-600 px-3 py-1.5 disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600"
+                >
+                  {copy.paginationPrev}
+                </button>
+                <span>{copy.paginationSummary(page, totalPages, totalOrders)}</span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setPage((current) => Math.min(totalPages, current + 1))
+                  }
+                  disabled={isLoading || totalPages === 0 || page >= totalPages}
+                  className="rounded-lg border border-slate-600 px-3 py-1.5 disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600"
+                >
+                  {copy.paginationNext}
+                </button>
               </div>
             ) : null}
           </div>

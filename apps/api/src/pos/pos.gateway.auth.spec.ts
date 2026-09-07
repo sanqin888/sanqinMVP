@@ -42,13 +42,18 @@ function makeSocket(input?: {
 
 function setup(deviceResult: typeof activeDevice | null = activeDevice) {
   const verifyCredentials = jest.fn().mockResolvedValue(deviceResult);
+  const queryRaw = jest.fn().mockResolvedValue([{ jobId: 'locked-job' }]);
   const posPrintJob = {
     findUnique: jest.fn(),
     findMany: jest.fn().mockResolvedValue([]),
+    updateMany: jest.fn().mockResolvedValue({ count: 0 }),
     update: jest.fn(),
   };
+  const transaction = jest.fn((work: (tx: unknown) => Promise<unknown>) =>
+    work({ posPrintJob, $queryRaw: queryRaw }),
+  );
   const gateway = new PosGateway(
-    { posPrintJob } as never,
+    { posPrintJob, $transaction: transaction } as never,
     { verifyCredentials } as never,
   );
   let middleware: PosSocketMiddleware | undefined;

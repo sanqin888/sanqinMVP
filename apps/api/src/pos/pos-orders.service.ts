@@ -163,6 +163,47 @@ export class PosOrdersService {
       }
     }
 
+    if (order.channel === 'web' && order.status === 'paid') {
+      await this.orders.acceptWebOrder(orderStableId, storeStableId);
+      return this.advanceResult(
+        await this.orders.getByStableIdForStore(orderStableId, storeStableId),
+      );
+    }
+
+    if (order.channel === 'in_store' && order.status === 'paid') {
+      await this.orders.activateImmediatePreparation(
+        orderStableId,
+        storeStableId,
+      );
+      return this.advanceResult(
+        await this.orders.getByStableIdForStore(orderStableId, storeStableId),
+      );
+    }
+
+    if (order.channel === 'ubereats' && order.status === 'paid') {
+      const timing = await this.orders.getFulfillmentTimingForStore(
+        orderStableId,
+        storeStableId,
+      );
+      if (!timing) {
+        throw new BadRequestException('order fulfillment timing unavailable');
+      }
+      if (timing.fulfillmentTiming === 'SCHEDULED') {
+        await this.orders.activateScheduledPreparation(
+          orderStableId,
+          storeStableId,
+        );
+      } else {
+        await this.orders.activateImmediatePreparation(
+          orderStableId,
+          storeStableId,
+        );
+      }
+      return this.advanceResult(
+        await this.orders.getByStableIdForStore(orderStableId, storeStableId),
+      );
+    }
+
     if (nextStatus === 'ready' && externalOrderId) {
       const result = await this.uberOrderStatusSync.execute(
         externalOrderId,

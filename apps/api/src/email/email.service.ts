@@ -11,7 +11,7 @@ import {
 import { BusinessConfigService } from '../messaging/business-config.service';
 import type { EmailProvider } from './email.provider';
 import { EMAIL_PROVIDER_TOKEN } from './email.tokens';
-import type { PrintPosPayloadDto } from '../pos/dto/print-pos-payload.dto';
+import type { OrderInvoicePayload } from '../notifications/contracts/order-invoice-delivery.contract';
 import { PrismaService } from '../prisma/prisma.service';
 import { normalizeEmail } from '../common/utils/email';
 
@@ -214,7 +214,7 @@ export class EmailService {
   }
 
   private formatDiscountLabel(
-    discount: PrintPosPayloadDto['snapshot']['appliedDiscounts'][number],
+    discount: OrderInvoicePayload['snapshot']['appliedDiscounts'][number],
     locale: 'zh' | 'en',
   ): string {
     const localizedTitle =
@@ -247,7 +247,7 @@ export class EmailService {
   }
 
   private externalPaymentLabel(
-    paymentMethod: PrintPosPayloadDto['paymentMethod'],
+    paymentMethod: OrderInvoicePayload['paymentMethod'],
     locale: 'zh' | 'en',
   ): string {
     if (paymentMethod === 'card') {
@@ -264,7 +264,7 @@ export class EmailService {
   }
 
   private buildInvoiceHtml(params: {
-    payload: PrintPosPayloadDto;
+    payload: OrderInvoicePayload;
     locale: 'zh' | 'en';
     storeName: string;
     storeAddress: string;
@@ -596,7 +596,7 @@ export class EmailService {
   }
 
   private buildInvoiceText(params: {
-    payload: PrintPosPayloadDto;
+    payload: OrderInvoicePayload;
     locale: 'zh' | 'en';
     storeName: string;
     storeAddress: string;
@@ -840,7 +840,7 @@ ${totalLines.join('\n')}`;
 
   async sendOrderInvoice(params: {
     to: string;
-    payload: PrintPosPayloadDto;
+    payload: OrderInvoicePayload;
     locale?: string;
   }) {
     const resolvedLocale = this.resolveLocale(

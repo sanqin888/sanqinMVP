@@ -1,16 +1,16 @@
-// apps/api/src/pos/dto/print-pos-payload.dto.ts
-import type { FulfillmentType } from '@prisma/client';
-import type { OrderItemOptionsSnapshot } from '../../orders/order-item-options';
-import type { OrderDiscountDisplayEntry } from '@shared/order';
+import type { FulfillmentType, OrderDiscountDisplayEntry } from '@shared/order';
+import type { OrderItemOptionsSnapshot } from './order-item-options';
 
-type PrintPosPaymentMethod =
+export const ORDER_PRINT_PAYLOAD_READER = Symbol('ORDER_PRINT_PAYLOAD_READER');
+
+export type PrintPosPaymentMethod =
   | 'cash'
   | 'card'
   | 'wechat_alipay'
   | 'store_balance'
   | 'ubereats';
 
-type PrintPosComponentSnapshot = {
+export type PrintPosComponentSnapshot = {
   productStableId: string;
   nameZh: string | null;
   nameEn: string | null;
@@ -21,7 +21,7 @@ type PrintPosComponentSnapshot = {
   options: OrderItemOptionsSnapshot;
 };
 
-type PrintPosItemSnapshot = {
+export type PrintPosItemSnapshot = {
   productStableId: string;
   nameZh: string | null;
   nameEn: string | null;
@@ -33,14 +33,14 @@ type PrintPosItemSnapshot = {
   components: PrintPosComponentSnapshot[];
 };
 
-type PrintPosUtensilsSnapshot = {
+export type PrintPosUtensilsSnapshot = {
   needed: boolean;
   type: string | null;
   quantity: number | null;
   summary: string | null;
 };
 
-type PrintPosOrderSnapshot = {
+export type PrintPosOrderSnapshot = {
   items: PrintPosItemSnapshot[];
   subtotalCents: number;
   displaySubtotalCents: number;
@@ -67,5 +67,14 @@ export type PrintPosPayloadDto = {
   paymentMethod: PrintPosPaymentMethod;
   orderNotes: string | null;
   utensils: PrintPosUtensilsSnapshot | null;
+  cashReceivedCents?: number;
+  cashChangeCents?: number;
   snapshot: PrintPosOrderSnapshot;
 };
+
+export interface OrderPrintPayloadReaderPort {
+  getByStableId(
+    orderStableId: string,
+    locale?: string,
+  ): Promise<PrintPosPayloadDto>;
+}

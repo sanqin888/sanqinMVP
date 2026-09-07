@@ -19,8 +19,66 @@ import type {
   CatalogMenuItemAvailabilitySnapshot,
   CatalogOptionAvailabilitySnapshot,
 } from './catalog-availability-reader.contract';
+import type {
+  CatalogOrderFactsReaderPort,
+  CatalogOrderItemMaterializationFact,
+  CatalogOrderLabelConfigFact,
+} from './catalog-order-facts-reader.contract';
 
 export type CatalogAvailabilityMode = 'ON' | 'PERMANENT_OFF' | 'TEMP_TODAY_OFF';
+
+const orderItemMaterializationSelect = {
+  stableId: true,
+  nameEn: true,
+  nameZh: true,
+  basePriceCents: true,
+  isAvailable: true,
+  tempUnavailableUntil: true,
+  fixedComponents: {
+    orderBy: { sortOrder: 'asc' as const },
+    select: {
+      componentItemStableId: true,
+      quantity: true,
+      sortOrder: true,
+    },
+  },
+  optionGroups: {
+    where: { isEnabled: true },
+    select: {
+      minSelect: true,
+      maxSelect: true,
+      sortOrder: true,
+      templateGroup: {
+        select: {
+          stableId: true,
+          nameEn: true,
+          nameZh: true,
+          defaultMinSelect: true,
+          defaultMaxSelect: true,
+          sortOrder: true,
+          deletedAt: true,
+          options: {
+            where: { deletedAt: null },
+            select: {
+              stableId: true,
+              nameEn: true,
+              nameZh: true,
+              priceDeltaCents: true,
+              targetItemStableId: true,
+              isAvailable: true,
+              tempUnavailableUntil: true,
+              sortOrder: true,
+            },
+          },
+        },
+      },
+    },
+  },
+} satisfies Prisma.MenuItemSelect;
+
+type OrderItemMaterializationRow = Prisma.MenuItemGetPayload<{
+  select: typeof orderItemMaterializationSelect;
+}>;
 
 export type CatalogAdminMenuItemDto = Omit<
   AdminMenuCategoryDto['items'][number],
@@ -79,7 +137,9 @@ function nextMidnightLocal(): Date {
 }
 
 @Injectable()
-export class CatalogAdminService implements CatalogAvailabilityReaderPort {
+export class CatalogAdminService
+  implements CatalogAvailabilityReaderPort, CatalogOrderFactsReaderPort
+{
   constructor(private readonly prisma: PrismaService) {}
 
   async getMenuItemAvailabilitySnapshot(
@@ -124,6 +184,156 @@ export class CatalogAdminService implements CatalogAvailabilityReaderPort {
     return {
       stableId: option.stableId,
       tempUnavailableUntil: toIso(option.tempUnavailableUntil),
+    };
+  }
+
+  async findHiddenMenuItemStableIds(
+    menuItemStableIds: string[],
+  ): Promise<string[]> {
+    const stableIds = menuItemStableIds
+      .map((value) => value.trim())
+      .filter(Boolean);
+    if (stableIds.length === 0) return [];
+
+    const items = await this.prisma.menuItem.findMany({
+      where: {
+        stableId: { in: stableIds },
+        deletedAt: null,
+        visibility: 'HIDDEN',
+      },
+      select: { stableId: true },
+    });
+    return items.map((item) => item.stableId);
+  }
+
+  async getOrderItemMaterializationFacts(
+    menuItemStableIds: string[],
+  ): Promise<CatalogOrderItemMaterializationFact[]> {
+    const stableIds = menuItemStableIds
+      .map((value) => value.trim())
+      .filter(Boolean);
+    if (stableIds.length === 0) return [];
+
+    const items = await this.prisma.menuItem.findMany({
+      where: { stableId: { in: stableIds } },
+      select: orderItemMaterializationSelect,
+    });
+    return items.map((item) => this.toOrderItemMaterializationFact(item));
+  }
+
+  async getActiveOrderItemMaterializationFact(
+    menuItemStableId: string,
+  ): Promise<CatalogOrderItemMaterializationFact | null> {
+    const stableId = menuItemStableId.trim();
+    if (!stableId) return null;
+
+    const item = await this.prisma.menuItem.findFirst({
+      where: { stableId, deletedAt: null },
+      select: orderItemMaterializationSelect,
+    });
+    return item ? this.toOrderItemMaterializationFact(item) : null;
+  }
+
+  async getOrderLabelConfigs(
+    menuItemStableIds: string[],
+  ): Promise<CatalogOrderLabelConfigFact[]> {
+    const stableIds = menuItemStableIds
+      .map((value) => value.trim())
+      .filter(Boolean);
+    if (stableIds.length === 0) return [];
+
+    const configs = await this.prisma.menuItem.findMany({
+      where: {
+        stableId: { in: stableIds },
+        deletedAt: null,
+      },
+      select: {
+        stableId: true,
+        nameEn: true,
+        nameZh: true,
+        labelStrategy: true,
+        packagings: {
+          orderBy: { sortOrder: 'asc' },
+          select: {
+            sortOrder: true,
+            packagingType: {
+              select: { stableId: true, name: true },
+            },
+          },
+        },
+        optionGroups: {
+          where: { isEnabled: true },
+          select: {
+            affectedPackagingTypeStableIds: true,
+            templateGroup: { select: { stableId: true } },
+          },
+        },
+      },
+    });
+
+    return configs.map((config) => ({
+      stableId: config.stableId,
+      nameEn: config.nameEn,
+      nameZh: config.nameZh,
+      labelStrategy: config.labelStrategy,
+      packagings: config.packagings.map((packaging) => ({
+        sortOrder: packaging.sortOrder,
+        packagingType: {
+          stableId: packaging.packagingType.stableId,
+          name: packaging.packagingType.name,
+        },
+      })),
+      optionGroups: config.optionGroups.map((binding) => ({
+        affectedPackagingTypeStableIds: binding.affectedPackagingTypeStableIds,
+        templateGroupStableId: binding.templateGroup.stableId,
+      })),
+    }));
+  }
+
+  private toOrderItemMaterializationFact(
+    item: OrderItemMaterializationRow,
+  ): CatalogOrderItemMaterializationFact {
+    return {
+      stableId: item.stableId,
+      nameEn: item.nameEn,
+      nameZh: item.nameZh,
+      basePriceCents: item.basePriceCents,
+      isAvailable: item.isAvailable,
+      tempUnavailableUntil: toIso(item.tempUnavailableUntil),
+      fixedComponents: item.fixedComponents.map((component) => ({
+        componentItemStableId: component.componentItemStableId,
+        quantity: component.quantity,
+        sortOrder: component.sortOrder,
+      })),
+      optionGroups: item.optionGroups.flatMap((binding) => {
+        const templateGroup = binding.templateGroup;
+        if (templateGroup.deletedAt) return [];
+        return [
+          {
+            minSelect: binding.minSelect,
+            maxSelect: binding.maxSelect,
+            sortOrder: binding.sortOrder,
+            templateGroup: {
+              stableId: templateGroup.stableId,
+              nameEn: templateGroup.nameEn,
+              nameZh: templateGroup.nameZh,
+              defaultMinSelect: templateGroup.defaultMinSelect,
+              defaultMaxSelect: templateGroup.defaultMaxSelect,
+              sortOrder: templateGroup.sortOrder,
+              options: templateGroup.options.map((choice) => ({
+                stableId: choice.stableId,
+                nameEn: choice.nameEn,
+                nameZh: choice.nameZh,
+                priceDeltaCents: choice.priceDeltaCents,
+                targetItemStableId: choice.targetItemStableId,
+                isAvailable: choice.isAvailable,
+                tempUnavailableUntil: toIso(choice.tempUnavailableUntil),
+                sortOrder: choice.sortOrder,
+              })),
+            },
+          },
+        ];
+      }),
     };
   }
 

@@ -20,7 +20,7 @@ import { PosFullRefundOrchestrationService } from './pos-full-refund-orchestrati
  * Explicit composition layer for the Unified Payment Core's first consumer.
  *
  * Phase D allows this layer to coordinate provider-neutral checkout preparation,
- * Payments, Orders, Benefits reservations and POS realtime/printing.
+ * Payments, Orders, Benefits reservations, durable Orders lifecycle and POS realtime delivery.
  * Phase F also composes provider-neutral reverse-sync results into checkout/order
  * side effects. Raw Clover webhook contracts remain behind Payments infrastructure;
  * Web production checkout is intentionally not routed through this module yet.

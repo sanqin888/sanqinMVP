@@ -1,5 +1,6 @@
 jest.mock('@prisma/client', () => ({
   PrismaClient: class {},
+  Channel: { web: 'web', in_store: 'in_store', ubereats: 'ubereats' },
   OrderFulfillmentTiming: { IMMEDIATE: 'IMMEDIATE', SCHEDULED: 'SCHEDULED' },
   OrderStatus: {
     pending: 'pending',
@@ -187,6 +188,184 @@ describe('OrderPreparationService', () => {
     );
     expect(update).not.toHaveBeenCalled();
     expect(createMany).not.toHaveBeenCalled();
+  });
+
+  it('records immediate Web acceptance durably and leaves prep to the lifecycle consumer', async () => {
+    const query = captureTag([
+      {
+        id: 'web-order-1',
+        orderStableId: 'web-stable-1',
+        clientRequestId: 'SQW2609060001',
+        channel: 'web',
+        status: 'paid',
+        fulfillmentTiming: 'IMMEDIATE',
+        scheduledReadyAt: null,
+        prepStartAt: null,
+        scheduleActivatedAt: null,
+      },
+    ]);
+    const update = jest.fn();
+    const findFirst = jest.fn();
+    const createMany = jest.fn().mockResolvedValue({ count: 1 });
+    const tx = {
+      $queryRaw: query.tag,
+      order: { update },
+      opsEvent: { findFirst, createMany },
+    };
+    const service = new OrderPreparationService({
+      $transaction: (work: (client: unknown) => unknown) => work(tx),
+    } as never);
+
+    await expect(
+      service.acceptWebOrderByStableId('web-stable-1', '4750_Yonge_Street'),
+    ).resolves.toBe('IMMEDIATE');
+
+    expect(createMany).toHaveBeenCalledTimes(1);
+    expect(createMany).toHaveBeenCalledWith({
+      data: {
+        idempotencyKey: 'order.accepted:web-stable-1',
+        eventName: 'order.accepted',
+        source: 'orders.lifecycle',
+        payload: { orderStableId: 'web-stable-1' },
+      },
+      skipDuplicates: true,
+    });
+    expect(update).not.toHaveBeenCalled();
+    expect(findFirst).not.toHaveBeenCalled();
+  });
+
+  it('accepts a scheduled Web order without starting prep before prepStartAt', async () => {
+    const query = captureTag([
+      {
+        id: 'web-order-scheduled',
+        orderStableId: 'web-stable-scheduled',
+        clientRequestId: 'SQW2609060002',
+        channel: 'web',
+        status: 'paid',
+        fulfillmentTiming: 'SCHEDULED',
+        scheduledReadyAt: new Date('2026-09-06T18:30:00.000Z'),
+        prepStartAt: new Date('2026-09-06T18:10:00.000Z'),
+        scheduleActivatedAt: null,
+      },
+    ]);
+    const update = jest.fn();
+    const findFirst = jest.fn();
+    const createMany = jest.fn().mockResolvedValue({ count: 1 });
+    const tx = {
+      $queryRaw: query.tag,
+      order: { update },
+      opsEvent: { findFirst, createMany },
+    };
+    const service = new OrderPreparationService({
+      $transaction: (work: (client: unknown) => unknown) => work(tx),
+    } as never);
+
+    await expect(
+      service.acceptWebOrderByStableId(
+        'web-stable-scheduled',
+        '4750_Yonge_Street',
+      ),
+    ).resolves.toBe('SCHEDULED');
+
+    expect(createMany).toHaveBeenCalledTimes(1);
+    expect(createMany).toHaveBeenCalledWith({
+      data: {
+        idempotencyKey: 'order.accepted:web-stable-scheduled',
+        eventName: 'order.accepted',
+        source: 'orders.lifecycle',
+        payload: { orderStableId: 'web-stable-scheduled' },
+      },
+      skipDuplicates: true,
+    });
+    expect(update).not.toHaveBeenCalled();
+    expect(findFirst).not.toHaveBeenCalled();
+  });
+
+  it('does not let the Web acceptance command synthesize acceptance for another channel', async () => {
+    const query = captureTag([
+      {
+        id: 'pos-order-1',
+        orderStableId: 'pos-stable-1',
+        clientRequestId: 'SQP2609060001',
+        channel: 'in_store',
+        status: 'paid',
+        fulfillmentTiming: 'IMMEDIATE',
+        scheduledReadyAt: null,
+        prepStartAt: null,
+        scheduleActivatedAt: null,
+      },
+    ]);
+    const createMany = jest.fn();
+    const service = new OrderPreparationService({
+      $transaction: (work: (client: unknown) => unknown) =>
+        work({ $queryRaw: query.tag, opsEvent: { createMany } }),
+    } as never);
+
+    await expect(
+      service.acceptWebOrderByStableId('pos-stable-1', '4750_Yonge_Street'),
+    ).resolves.toBeNull();
+    expect(createMany).not.toHaveBeenCalled();
+  });
+
+  it('store-scoped immediate activation uses the accepted durable fact and writes prep_started', async () => {
+    const now = new Date('2026-09-05T22:55:00.000Z');
+    const query = captureTag([
+      {
+        id: 'order-1',
+        orderStableId: 'stable-1',
+        clientRequestId: 'SQP2609050001',
+        channel: 'in_store',
+        status: 'paid',
+        fulfillmentTiming: 'IMMEDIATE',
+        scheduledReadyAt: null,
+        prepStartAt: null,
+        scheduleActivatedAt: null,
+      },
+    ]);
+    const update = jest.fn().mockResolvedValue({});
+    const findFirst = jest.fn().mockResolvedValue({ id: 'accepted-event' });
+    const createMany = jest.fn().mockResolvedValue({ count: 1 });
+    const tx = {
+      $queryRaw: query.tag,
+      order: { update },
+      opsEvent: { findFirst, createMany },
+    };
+    const service = new OrderPreparationService({
+      $transaction: (work: (client: unknown) => unknown) => work(tx),
+    } as never);
+
+    await expect(
+      service.activateAcceptedImmediateOrderByStableId(
+        'stable-1',
+        '4750_Yonge_Street',
+        now,
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({ outcome: 'activated', status: 'making' }),
+    );
+
+    expect(query.getValues()).toEqual(['stable-1', '4750_Yonge_Street']);
+    expect(findFirst).toHaveBeenCalledWith({
+      where: {
+        source: 'orders.lifecycle',
+        eventName: 'order.accepted',
+        payload: { path: ['orderStableId'], equals: 'stable-1' },
+      },
+      select: { id: true },
+    });
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'order-1' },
+      data: { status: 'making', makingAt: now },
+    });
+    expect(createMany).toHaveBeenCalledWith({
+      data: {
+        idempotencyKey: 'order.prep_started:stable-1',
+        eventName: 'order.prep_started',
+        source: 'orders.lifecycle',
+        payload: { orderStableId: 'stable-1' },
+      },
+      skipDuplicates: true,
+    });
   });
 
   it('store-scoped activation matches only the canonical storeId', async () => {

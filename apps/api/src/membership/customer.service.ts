@@ -22,6 +22,7 @@ import type {
   CustomerAdministrationPort,
   CustomerAdminProfileUpdateInput,
 } from './customer-administration.contract';
+import type { CustomerOrderContextReaderPort } from './customer-order-context.contract';
 import {
   normalizeAdminCustomerPhone,
   resolveAdminBirthdayUpdate,
@@ -40,13 +41,10 @@ type CustomerProfileUpdate = {
   language?: CustomerLanguage;
 };
 
-const createStableId = (prefix: string): string => {
-  const base = generateStableId();
-  return `${prefix}${base.slice(1)}`;
-};
-
 @Injectable()
-export class CustomerService implements CustomerAdministrationPort {
+export class CustomerService
+  implements CustomerAdministrationPort, CustomerOrderContextReaderPort
+{
   private readonly logger = new Logger(CustomerService.name);
 
   constructor(
@@ -405,6 +403,71 @@ export class CustomerService implements CustomerAdministrationPort {
     }
   }
 
+  async getOrderCustomerContext(userStableId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { userStableId },
+      select: {
+        userStableId: true,
+        email: true,
+        emailVerifiedAt: true,
+        phone: true,
+        phoneVerifiedAt: true,
+        language: true,
+      },
+    });
+    if (!user) return null;
+
+    return {
+      userStableId: user.userStableId,
+      verifiedEmail: user.emailVerifiedAt ? normalizeEmail(user.email) : null,
+      verifiedPhone: user.phoneVerifiedAt ? user.phone?.trim() || null : null,
+      language:
+        user.language === 'ZH' || user.language === 'EN' ? user.language : null,
+    };
+  }
+
+  async getSavedDeliveryAddress(input: {
+    userStableId: string;
+    addressStableId: string;
+  }) {
+    const user = await this.prisma.user.findUnique({
+      where: { userStableId: input.userStableId },
+      select: { id: true },
+    });
+    if (!user) return null;
+
+    const address = await this.prisma.userAddress.findFirst({
+      where: {
+        userId: user.id,
+        addressStableId: input.addressStableId,
+      },
+      select: {
+        addressStableId: true,
+        addressLine1: true,
+        addressLine2: true,
+        city: true,
+        province: true,
+        postalCode: true,
+        placeId: true,
+        latitude: true,
+        longitude: true,
+      },
+    });
+    if (!address) return null;
+
+    return {
+      addressStableId: address.addressStableId,
+      addressLine1: address.addressLine1,
+      addressLine2: address.addressLine2,
+      city: address.city,
+      province: address.province,
+      postalCode: address.postalCode,
+      placeId: address.placeId,
+      latitude: address.latitude,
+      longitude: address.longitude,
+    };
+  }
+
   async listAddressesAsAdmin(params: { userStableId: string }) {
     try {
       return await this.listAddresses(params);
@@ -461,7 +524,7 @@ export class CustomerService implements CustomerAdministrationPort {
       return tx.userAddress.create({
         data: {
           userId: userDbId,
-          addressStableId: createStableId('a'),
+          addressStableId: generateStableId(),
           ...normalized,
           isDefault: shouldDefault,
           placeId: params.placeId?.trim() || null,

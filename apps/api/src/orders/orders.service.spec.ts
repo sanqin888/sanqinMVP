@@ -12,25 +12,44 @@ import type {
   LoyaltyOrderUsageReaderPort,
   LoyaltyPolicyReaderPort,
 } from '../loyalty/public-api';
-import { UberDirectService } from '../deliveries/uber-direct.service';
 import { MembershipService } from '../membership/membership.service';
+import type {
+  CustomerExistenceReaderPort,
+  CustomerOrderContextReaderPort,
+} from '../membership/public-api';
+import type { OrderBenefitsReaderPort } from '../benefits/public-api';
 import type {
   DailySpecialOffersPort,
   PromotionContextReaderPort,
 } from '../promotions/public-api';
-import { LocationService } from '../location/location.service';
-import { NotificationService } from '../notifications/notification.service';
-import { EmailService } from '../email/email.service';
+import type { LocationGeocoderPort } from '../location/public-api';
+import type {
+  CatalogOrderFactsReaderPort,
+  CatalogOrderItemMaterializationFact,
+} from '../menu/public-api';
+import type { OrderReadyNotificationPort } from '../notifications/public-api';
 import { OrderEventsBus } from './order-events.bus';
+import { OrderReadyNotificationUseCase } from './order-ready-notification.use-case';
 import { DeliveryType } from '@prisma/client';
 import { CreateOrderInput } from '@shared/order';
-import type { PrintPosPayloadService } from './print-pos-payload.service';
+import { OrderItemSnapshotBuilder } from './order-item-snapshot.builder';
 import type {
   BrandStoreConfigReaderPort,
   StoreConfigSnapshot,
 } from '../store/public-api';
 
 const demoProductId = 'c1234567890abcdefghijklmn';
+
+const defaultCatalogOrderItemFact: CatalogOrderItemMaterializationFact = {
+  stableId: demoProductId,
+  nameEn: 'Demo Product',
+  nameZh: null,
+  basePriceCents: 1000,
+  isAvailable: true,
+  tempUnavailableUntil: null,
+  fixedComponents: [],
+  optionGroups: [],
+};
 
 const defaultStoreConfigSnapshot: StoreConfigSnapshot = {
   storeStableId: '4750_Yonge_Street',
@@ -73,17 +92,8 @@ describe('OrdersService', () => {
       updateMany: jest.Mock;
       create: jest.Mock;
       findMany: jest.Mock;
+      count: jest.Mock;
       delete: jest.Mock;
-    };
-    menuItem: {
-      findMany: jest.Mock;
-    };
-    menuOptionTemplateChoice: {
-      findMany: jest.Mock;
-    };
-    user: {
-      findMany: jest.Mock;
-      findUnique: jest.Mock;
     };
     userCoupon: {
       findFirst: jest.Mock;
@@ -91,6 +101,9 @@ describe('OrdersService', () => {
     checkoutIntent: {
       findFirst: jest.Mock;
       updateMany: jest.Mock;
+    };
+    opsEvent: {
+      createMany: jest.Mock;
     };
   };
   let brandStoreConfigReader: {
@@ -102,6 +115,7 @@ describe('OrdersService', () => {
     maxRedeemableCentsFromBalance: jest.Mock;
     reserveRedeemForOrder: jest.Mock;
     resolveUserIdByStableId: jest.Mock;
+    deductBalanceForOrder: jest.Mock;
     rollbackOnRefund: jest.Mock;
   };
   let loyaltyOrderPaidSettlement: { settleOrderPaid: jest.Mock };
@@ -115,35 +129,33 @@ describe('OrdersService', () => {
     releaseCouponForOrder: jest.Mock;
     markCouponUsedForOrder: jest.Mock;
   };
+  let customerExistence: { customerExists: jest.Mock };
+  let orderBenefitsReader: {
+    validateCouponForOrder: jest.Mock;
+    getAvailablePaymentTender: jest.Mock;
+    getLoyaltyOnlyRedeemCapacityCents: jest.Mock;
+  };
+  let customerOrderContext: {
+    getOrderCustomerContext: jest.Mock;
+    getSavedDeliveryAddress: jest.Mock;
+  };
   let promotions: { getOrderPromotionContext: jest.Mock };
   let dailySpecialOffers: { getActiveDailySpecials: jest.Mock };
-  let uberDirect: { createDelivery: jest.Mock };
-  let locationService: { geocode: jest.Mock };
-  let notificationService: {
-    notifyOrderReady: jest.Mock;
-    notifyDeliveryDispatchFailed: jest.Mock;
+  let catalogOrderFacts: {
+    findHiddenMenuItemStableIds: jest.Mock;
+    getOrderItemMaterializationFacts: jest.Mock;
+    getActiveOrderItemMaterializationFact: jest.Mock;
+    getOrderLabelConfigs: jest.Mock;
   };
-  let emailService: { sendOrderInvoice: jest.Mock };
+  let locationGeocoder: { geocode: jest.Mock };
+  let orderReadyNotification: { notifyOrderReady: jest.Mock };
+  let orderReadyNotificationUseCase: OrderReadyNotificationUseCase;
   let orderEventsBus: OrderEventsBus;
-  let printPosPayloadService: { getByStableId: jest.Mock };
-  let emitOrderAccepted: jest.SpiedFunction<
-    OrderEventsBus['emitOrderAccepted']
-  >;
+  let orderItemSnapshotBuilder: OrderItemSnapshotBuilder;
   let emitOrderPaidVerified: jest.SpiedFunction<
     OrderEventsBus['emitOrderPaidVerified']
   >;
   beforeEach(() => {
-    process.env.UBER_DIRECT_ENABLED = '1';
-    type MenuItemFindManyArgs = {
-      where?: {
-        OR?: Array<{
-          id?: { in?: string[] };
-          stableId?: { in?: string[] };
-        }>;
-        id?: { in?: string[] };
-      };
-    };
-
     prisma = {
       $transaction: jest
         .fn()
@@ -157,39 +169,8 @@ describe('OrdersService', () => {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         create: jest.fn(),
         findMany: jest.fn(),
+        count: jest.fn(),
         delete: jest.fn(),
-      },
-      menuItem: {
-        findMany: jest.fn().mockImplementation((args: MenuItemFindManyArgs) => {
-          const idsFromOr =
-            args?.where?.OR?.flatMap((cond) => [
-              ...(cond.id?.in ?? []),
-              ...(cond.stableId?.in ?? []),
-            ]) ?? [];
-          const directIds = args?.where?.id?.in ?? [];
-          const ids = [...idsFromOr, ...directIds];
-          if (ids.length === 0) return Promise.resolve([]);
-          return Promise.resolve([
-            {
-              id: demoProductId,
-              stableId: demoProductId,
-              basePriceCents: 1000,
-              nameEn: 'Demo Product',
-              nameZh: null,
-              isAvailable: true,
-              visibility: 'PUBLIC',
-              tempUnavailableUntil: null,
-              optionGroups: [],
-            },
-          ]);
-        }),
-      },
-      menuOptionTemplateChoice: {
-        findMany: jest.fn().mockResolvedValue([]),
-      },
-      user: {
-        findMany: jest.fn().mockResolvedValue([]),
-        findUnique: jest.fn(),
       },
       userCoupon: {
         findFirst: jest.fn(),
@@ -197,6 +178,9 @@ describe('OrdersService', () => {
       checkoutIntent: {
         findFirst: jest.fn(),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      opsEvent: {
+        createMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
     };
 
@@ -214,6 +198,7 @@ describe('OrdersService', () => {
       maxRedeemableCentsFromBalance: jest.fn().mockResolvedValue(0),
       reserveRedeemForOrder: jest.fn().mockResolvedValue(0),
       resolveUserIdByStableId: jest.fn(),
+      deductBalanceForOrder: jest.fn().mockResolvedValue(undefined),
       rollbackOnRefund: jest.fn(),
     };
     loyaltyOrderPaidSettlement = {
@@ -249,6 +234,21 @@ describe('OrdersService', () => {
       releaseCouponForOrder: jest.fn(),
       markCouponUsedForOrder: jest.fn(),
     };
+    customerExistence = {
+      customerExists: jest.fn().mockResolvedValue(true),
+    };
+    orderBenefitsReader = {
+      validateCouponForOrder: jest.fn().mockResolvedValue(null),
+      getAvailablePaymentTender: jest.fn().mockResolvedValue({
+        balanceCents: 0,
+        maxRedeemableCents: 0,
+      }),
+      getLoyaltyOnlyRedeemCapacityCents: jest.fn().mockResolvedValue(0),
+    };
+    customerOrderContext = {
+      getOrderCustomerContext: jest.fn().mockResolvedValue(null),
+      getSavedDeliveryAddress: jest.fn().mockResolvedValue(null),
+    };
 
     promotions = {
       getOrderPromotionContext: jest.fn().mockResolvedValue({
@@ -259,38 +259,46 @@ describe('OrdersService', () => {
     dailySpecialOffers = {
       getActiveDailySpecials: jest.fn().mockResolvedValue({ specials: [] }),
     };
-
-    uberDirect = {
-      createDelivery: jest.fn(),
+    catalogOrderFacts = {
+      findHiddenMenuItemStableIds: jest.fn().mockResolvedValue([]),
+      getOrderItemMaterializationFacts: jest
+        .fn()
+        .mockImplementation((stableIds: string[]) =>
+          Promise.resolve(
+            stableIds.map((stableId) => ({
+              ...defaultCatalogOrderItemFact,
+              stableId,
+            })),
+          ),
+        ),
+      getActiveOrderItemMaterializationFact: jest.fn().mockResolvedValue(null),
+      getOrderLabelConfigs: jest.fn().mockResolvedValue([]),
     };
 
-    locationService = {
+    locationGeocoder = {
       geocode: jest.fn().mockResolvedValue({
         latitude: 43.6532,
         longitude: -79.3832,
       }),
     };
 
-    notificationService = {
+    orderReadyNotification = {
       notifyOrderReady: jest.fn().mockResolvedValue({
         ok: true,
         finalChannel: 'sms',
         attemptedChannels: ['sms'],
       }),
-      notifyDeliveryDispatchFailed: jest.fn().mockResolvedValue({ ok: true }),
     };
-
-    emailService = {
-      sendOrderInvoice: jest.fn(),
-    };
+    orderReadyNotificationUseCase = new OrderReadyNotificationUseCase(
+      prisma as unknown as PrismaService,
+      customerOrderContext as unknown as CustomerOrderContextReaderPort,
+      orderReadyNotification as unknown as OrderReadyNotificationPort,
+    );
 
     orderEventsBus = new OrderEventsBus();
-    printPosPayloadService = {
-      getByStableId: jest.fn(),
-    };
-    emitOrderAccepted = jest
-      .spyOn(orderEventsBus, 'emitOrderAccepted')
-      .mockImplementation(() => undefined);
+    orderItemSnapshotBuilder = new OrderItemSnapshotBuilder(
+      catalogOrderFacts as unknown as CatalogOrderFactsReaderPort,
+    );
     emitOrderPaidVerified = jest
       .spyOn(orderEventsBus, 'emitOrderPaidVerified')
       .mockImplementation(() => undefined);
@@ -303,14 +311,16 @@ describe('OrdersService', () => {
       loyaltyOrderUsageReader as unknown as LoyaltyOrderUsageReaderPort,
       loyaltyPolicyReader as unknown as LoyaltyPolicyReaderPort,
       membership as unknown as MembershipService,
+      customerExistence as unknown as CustomerExistenceReaderPort,
+      orderBenefitsReader as unknown as OrderBenefitsReaderPort,
+      customerOrderContext as unknown as CustomerOrderContextReaderPort,
       promotions as unknown as PromotionContextReaderPort,
       dailySpecialOffers as unknown as DailySpecialOffersPort,
-      uberDirect as unknown as UberDirectService,
-      locationService as unknown as LocationService,
-      notificationService as unknown as NotificationService,
-      emailService as unknown as EmailService,
+      catalogOrderFacts as unknown as CatalogOrderFactsReaderPort,
+      locationGeocoder as unknown as LocationGeocoderPort,
+      orderReadyNotificationUseCase as unknown as OrderReadyNotificationUseCase,
       orderEventsBus,
-      printPosPayloadService as unknown as PrintPosPayloadService,
+      orderItemSnapshotBuilder as unknown as OrderItemSnapshotBuilder,
     );
   });
 
@@ -396,39 +406,11 @@ describe('OrdersService', () => {
     expect('loyaltyLedger' in prisma).toBe(false);
   });
 
-  it('keeps the same option stable id when selected in different component group paths', () => {
-    const internalService = service as unknown as {
-      collectOptionSelectionRefs: (
-        options?: Record<string, unknown>,
-      ) => Array<{ optionId: string; groupKey?: string; sequence: number }>;
-    };
-
-    expect(
-      internalService.collectOptionSelectionRefs({
-        'root__combo__component-soup-a__group-spice': ['mild'],
-        'root__combo__component-soup-b__group-spice': ['mild'],
-      }),
-    ).toEqual([
-      {
-        optionId: 'mild',
-        groupKey: 'root__combo__component-soup-a__group-spice',
-        sequence: 0,
-      },
-      {
-        optionId: 'mild',
-        groupKey: 'root__combo__component-soup-b__group-spice',
-        sequence: 1,
-      },
-    ]);
-  });
-
   it('uses Promotion Engine as the coupon min-spend eligibility source', async () => {
     const userStableId = 'c2234567890abcdefghijklmn';
     const couponStableId = 'c3234567890abcdefghijklmn';
-    loyalty.resolveUserIdByStableId.mockResolvedValue('user-1');
-    membership.validateCouponForOrder.mockResolvedValue({
+    orderBenefitsReader.validateCouponForOrder.mockResolvedValue({
       coupon: {
-        id: '11111111-1111-1111-1111-111111111111',
         couponStableId,
         code: 'SAVE10',
         title: 'Save 10%',
@@ -450,8 +432,8 @@ describe('OrdersService', () => {
       }),
     ).rejects.toThrow('order subtotal does not meet coupon rules');
 
-    expect(membership.validateCouponForOrder).toHaveBeenCalledWith({
-      userId: 'user-1',
+    expect(orderBenefitsReader.validateCouponForOrder).toHaveBeenCalledWith({
+      userStableId,
       couponStableId,
     });
   });
@@ -459,22 +441,9 @@ describe('OrdersService', () => {
   it('rejects hidden menu items instead of unlocking them through coupons', async () => {
     const productStableId = 'c1234567890abcdefghijklmn';
     const userStableId = 'c2234567890abcdefghijklmn';
-    loyalty.resolveUserIdByStableId.mockResolvedValue('user-1');
-    prisma.menuItem.findMany
-      .mockResolvedValueOnce([
-        {
-          id: productStableId,
-          stableId: productStableId,
-          basePriceCents: 1000,
-          nameEn: 'Hidden Product',
-          nameZh: null,
-          isAvailable: true,
-          visibility: 'HIDDEN',
-          tempUnavailableUntil: null,
-          optionGroups: [],
-        },
-      ])
-      .mockResolvedValueOnce([{ stableId: productStableId }]);
+    catalogOrderFacts.findHiddenMenuItemStableIds.mockResolvedValueOnce([
+      productStableId,
+    ]);
 
     await expect(
       service.quoteOrderPricing({
@@ -490,14 +459,31 @@ describe('OrdersService', () => {
     expect(prisma.userCoupon.findFirst).not.toHaveBeenCalled();
   });
 
+  it('uses the Benefits-owned raw loyalty capacity for loyalty-only order eligibility', async () => {
+    const userStableId = 'c2234567890abcdefghijklmn';
+    orderBenefitsReader.getLoyaltyOnlyRedeemCapacityCents.mockResolvedValue(
+      999,
+    );
+
+    await expect(
+      service.createLoyaltyOnlyOrder({
+        userStableId,
+        fulfillmentType: 'pickup',
+        items: [{ productStableId: demoProductId, qty: 1 }],
+      }),
+    ).rejects.toThrow('insufficient loyalty balance');
+
+    expect(
+      orderBenefitsReader.getLoyaltyOnlyRedeemCapacityCents,
+    ).toHaveBeenCalledWith(userStableId);
+  });
+
   it('uses the Benefits policy rate for loyalty redemption in order quotes', async () => {
     const userStableId = 'c2234567890abcdefghijklmn';
-    loyalty.resolveUserIdByStableId.mockResolvedValue('user-1');
-    loyalty.getAvailablePaymentTender.mockResolvedValue({
-      pointsMicro: 100_000_000n,
+    orderBenefitsReader.getAvailablePaymentTender.mockResolvedValue({
       balanceCents: 0,
+      maxRedeemableCents: 1000,
     });
-    loyalty.maxRedeemableCentsFromBalance.mockResolvedValue(1000);
     loyaltyPolicyReader.getLoyaltyPolicySnapshot.mockResolvedValue({
       earnPtPerDollar: 0.01,
       redeemDollarPerPoint: 0.5,
@@ -533,21 +519,9 @@ describe('OrdersService', () => {
 
   it('keeps hidden menu items available to the in-store POS channel', async () => {
     const productStableId = 'c1234567890abcdefghijklmn';
-    prisma.menuItem.findMany
-      .mockResolvedValueOnce([
-        {
-          id: productStableId,
-          stableId: productStableId,
-          basePriceCents: 1000,
-          nameEn: 'Hidden Product',
-          nameZh: null,
-          isAvailable: true,
-          visibility: 'HIDDEN',
-          tempUnavailableUntil: null,
-          optionGroups: [],
-        },
-      ])
-      .mockResolvedValueOnce([{ stableId: productStableId }]);
+    catalogOrderFacts.findHiddenMenuItemStableIds.mockResolvedValueOnce([
+      productStableId,
+    ]);
 
     const quote = await service.quoteOrderPricing({
       channel: 'in_store',
@@ -732,14 +706,14 @@ describe('OrdersService', () => {
     );
     await new Promise<void>((resolve) => process.nextTick(resolve));
 
-    expect(notificationService.notifyOrderReady).toHaveBeenCalledTimes(1);
-    expect(notificationService.notifyOrderReady).toHaveBeenCalledWith({
+    expect(orderReadyNotification.notifyOrderReady).toHaveBeenCalledTimes(1);
+    expect(orderReadyNotification.notifyOrderReady).toHaveBeenCalledWith({
       email: null,
       phone: '+14165550000',
       orderNumber: 'cordpickupready001',
       name: 'Test',
       locale: 'en',
-      userId: null,
+      userStableId: null,
     });
     expect(logSpy).toHaveBeenCalledWith({
       event: 'order_ready_notification_completed',
@@ -755,7 +729,7 @@ describe('OrdersService', () => {
     const logSpy = jest
       .spyOn(Logger.prototype, 'log')
       .mockImplementation(() => undefined);
-    notificationService.notifyOrderReady.mockResolvedValueOnce({
+    orderReadyNotification.notifyOrderReady.mockResolvedValueOnce({
       ok: true,
       finalChannel: 'sms',
       attemptedChannels: ['email', 'sms'],
@@ -822,6 +796,7 @@ describe('OrdersService', () => {
         contactPhone: '+14165550000',
         contactName: 'Email Test',
         userId: 'user-1',
+        userStableId: 'user-stable-1',
         fulfillmentType: 'pickup',
         items: [],
       });
@@ -834,11 +809,11 @@ describe('OrdersService', () => {
         },
       },
     });
-    prisma.user.findUnique.mockResolvedValue({
-      email: 'member@example.com',
-      emailVerifiedAt: new Date(),
-      phone: null,
-      phoneVerifiedAt: null,
+    customerOrderContext.getOrderCustomerContext.mockResolvedValue({
+      userStableId: 'user-stable-1',
+      verifiedEmail: 'member@example.com',
+      verifiedPhone: null,
+      language: 'EN',
     });
 
     await service.updateStatusInternal(
@@ -847,22 +822,24 @@ describe('OrdersService', () => {
     );
     await new Promise<void>((resolve) => process.nextTick(resolve));
 
-    expect(notificationService.notifyOrderReady).toHaveBeenCalledTimes(1);
-    expect(notificationService.notifyOrderReady).toHaveBeenCalledWith({
+    expect(orderReadyNotification.notifyOrderReady).toHaveBeenCalledTimes(1);
+    expect(orderReadyNotification.notifyOrderReady).toHaveBeenCalledWith({
       email: 'checkout@example.com',
       phone: '+14165550000',
       orderNumber: 'cordpickupready002',
       name: 'Email Test',
       locale: 'en',
-      userId: 'user-1',
+      userStableId: 'user-stable-1',
     });
-    expect(prisma.user.findUnique).toHaveBeenCalledTimes(2);
-    expect(prisma.user.findUnique).not.toHaveBeenCalledWith(
-      expect.objectContaining({ select: { email: true } }),
+    expect(customerOrderContext.getOrderCustomerContext).toHaveBeenCalledTimes(
+      1,
+    );
+    expect(customerOrderContext.getOrderCustomerContext).toHaveBeenCalledWith(
+      'user-stable-1',
     );
   });
 
-  it('falls back to the member email for an old order without contactEmail', async () => {
+  it('falls back to the member email for a historical order with persisted userStableId', async () => {
     prisma.order.findUnique
       .mockResolvedValueOnce({
         status: 'making',
@@ -877,16 +854,16 @@ describe('OrdersService', () => {
         contactEmail: null,
         contactPhone: null,
         contactName: 'Old Member',
-        userId: 'user-old',
+        userStableId: 'user-stable-member',
         fulfillmentType: 'pickup',
         items: [],
       });
     prisma.checkoutIntent.findFirst.mockResolvedValue({ locale: 'en' });
-    prisma.user.findUnique.mockResolvedValue({
-      email: 'member@example.com',
-      emailVerifiedAt: new Date(),
-      phone: null,
-      phoneVerifiedAt: null,
+    customerOrderContext.getOrderCustomerContext.mockResolvedValue({
+      userStableId: 'user-stable-member',
+      verifiedEmail: 'member@example.com',
+      verifiedPhone: null,
+      language: 'EN',
     });
 
     await service.updateStatusInternal(
@@ -895,10 +872,11 @@ describe('OrdersService', () => {
     );
     await new Promise<void>((resolve) => process.nextTick(resolve));
 
-    expect(notificationService.notifyOrderReady).toHaveBeenCalledWith(
+    expect(orderReadyNotification.notifyOrderReady).toHaveBeenCalledWith(
       expect.objectContaining({
         email: 'member@example.com',
         phone: null,
+        userStableId: 'user-stable-member',
       }),
     );
   });
@@ -933,7 +911,7 @@ describe('OrdersService', () => {
     );
     await new Promise<void>((resolve) => process.nextTick(resolve));
 
-    expect(notificationService.notifyOrderReady).not.toHaveBeenCalled();
+    expect(orderReadyNotification.notifyOrderReady).not.toHaveBeenCalled();
     expect(warnSpy).toHaveBeenCalledWith({
       event: 'order_ready_notification_completed',
       orderId: 'order-pickup-ready-no-contact',
@@ -949,7 +927,7 @@ describe('OrdersService', () => {
     const warnSpy = jest
       .spyOn(Logger.prototype, 'warn')
       .mockImplementation(() => undefined);
-    notificationService.notifyOrderReady.mockRejectedValueOnce(
+    orderReadyNotification.notifyOrderReady.mockRejectedValueOnce(
       new Error('template failed for private@example.com +1 416 555 9999'),
     );
     prisma.order.findUnique
@@ -1060,7 +1038,7 @@ describe('OrdersService', () => {
     );
     await new Promise<void>((resolve) => process.nextTick(resolve));
 
-    expect(notificationService.notifyOrderReady).not.toHaveBeenCalled();
+    expect(orderReadyNotification.notifyOrderReady).not.toHaveBeenCalled();
   });
 
   it('propagates NotFoundException when the order is missing during update', async () => {
@@ -1081,6 +1059,48 @@ describe('OrdersService', () => {
       service.updateStatus('order-1', 'pending'),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(prisma.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('keeps the guarded paid -> making status write without emitting a second first-print path', async () => {
+    const paidAt = new Date('2026-09-05T20:00:00.000Z');
+    let updateManyInput: unknown;
+    prisma.order.updateMany.mockImplementation((input: unknown) => {
+      updateManyInput = input;
+      return Promise.resolve({ count: 1 });
+    });
+    prisma.order.findUnique
+      .mockResolvedValueOnce({
+        status: 'paid',
+        paidAt,
+        makingAt: null,
+        fulfillmentType: 'pickup',
+      })
+      .mockResolvedValueOnce({
+        id: '8a3d4c0e-4750-4f6a-9138-000000000111',
+        orderStableId: 'order_stable_fast_path_1',
+        status: 'making',
+        paidAt,
+        makingAt: new Date('2026-09-05T20:01:00.000Z'),
+        fulfillmentType: 'pickup',
+        items: [],
+      });
+
+    await service.updateStatusInternal(
+      '8a3d4c0e-4750-4f6a-9138-000000000111',
+      'making',
+    );
+
+    const updateArgs = updateManyInput as {
+      where: { id: string; status: string };
+      data: { status: string; makingAt: unknown };
+    };
+    expect(updateArgs.where).toEqual({
+      id: '8a3d4c0e-4750-4f6a-9138-000000000111',
+      status: 'paid',
+    });
+    expect(updateArgs.data.status).toBe('making');
+    expect(updateArgs.data.makingAt).toBeInstanceOf(Date);
+    expect(emitOrderPaidVerified).not.toHaveBeenCalled();
   });
 
   it('propagates NotFoundException when advancing a missing order', async () => {
@@ -1125,9 +1145,6 @@ describe('OrdersService', () => {
       expect(prisma.order.create).toHaveBeenCalled();
       expect(order.orderStableId).toBe('cord-no-dest');
 
-      // ✅ 因为没有 deliveryDestination，不会调 Uber Direct
-      expect(uberDirect.createDelivery).not.toHaveBeenCalled();
-      expect(emitOrderAccepted).not.toHaveBeenCalled();
       expect(warnSpy).toHaveBeenCalledWith(
         'Priority delivery order is missing deliveryDestination.',
       );
@@ -1202,6 +1219,7 @@ describe('OrdersService', () => {
           data: expect.objectContaining({ storeId: 'server-store' }) as unknown,
         }),
       );
+      expect(prisma.opsEvent.createMany).not.toHaveBeenCalled();
     } finally {
       if (originalStoreId === undefined) delete process.env.STORE_ID;
       else process.env.STORE_ID = originalStoreId;
@@ -1211,17 +1229,23 @@ describe('OrdersService', () => {
   it('POS 门店建单持久化 authenticated storeStableId 而不是 deployment default', async () => {
     const originalStoreId = process.env.STORE_ID;
     process.env.STORE_ID = 'deployment-default-store';
-    prisma.order.create.mockResolvedValue({
-      id: 'pos-store-order',
-      orderStableId: 'pos-store-order-stable',
-      channel: 'in_store',
-      fulfillmentType: 'pickup',
-      status: 'paid',
-      paidAt: new Date(),
-      createdAt: new Date(),
-      paymentMethod: 'CASH',
-      items: [],
-    });
+    let createdOrderStableId = '';
+    prisma.order.create.mockImplementation(
+      (args: { data: { orderStableId: string } }) => {
+        createdOrderStableId = args.data.orderStableId;
+        return Promise.resolve({
+          id: 'pos-store-order',
+          orderStableId: createdOrderStableId,
+          channel: 'in_store',
+          fulfillmentType: 'pickup',
+          status: 'paid',
+          paidAt: new Date(),
+          createdAt: new Date(),
+          paymentMethod: 'CASH',
+          items: [],
+        });
+      },
+    );
 
     try {
       await service.createForStore(
@@ -1242,10 +1266,127 @@ describe('OrdersService', () => {
           }) as unknown,
         }),
       );
+      expect(createdOrderStableId).toBeTruthy();
+      expect(prisma.opsEvent.createMany).toHaveBeenCalledWith({
+        data: {
+          idempotencyKey: `order.accepted:${createdOrderStableId}`,
+          eventName: 'order.accepted',
+          source: 'orders.lifecycle',
+          payload: { orderStableId: createdOrderStableId },
+        },
+        skipDuplicates: true,
+      });
     } finally {
       if (originalStoreId === undefined) delete process.env.STORE_ID;
       else process.env.STORE_ID = originalStoreId;
     }
+  });
+
+  it('POS 现金建单持久化服务端确认的实收与找零快照', async () => {
+    prisma.order.create.mockResolvedValue({
+      id: 'pos-cash-order',
+      orderStableId: 'pos-cash-order-stable',
+      channel: 'in_store',
+      fulfillmentType: 'pickup',
+      status: 'paid',
+      paidAt: new Date(),
+      createdAt: new Date(),
+      paymentMethod: 'CASH',
+      subtotalCents: 1000,
+      taxCents: 130,
+      totalCents: 1129,
+      items: [],
+    });
+
+    await service.createForStore(
+      {
+        channel: 'in_store',
+        fulfillmentType: 'pickup',
+        paymentMethod: 'CASH',
+        cashReceivedCents: 2000,
+        discountCents: 1,
+        items: [{ productStableId: demoProductId, qty: 1 }],
+      },
+      '4750_Yonge_Street',
+    );
+
+    expect(prisma.order.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          totalCents: 1129,
+          paymentBreakdownJson: {
+            cashReceivedCents: 2000,
+            cashChangeCents: 870,
+          },
+        }) as unknown,
+      }),
+    );
+  });
+
+  it('POS 余额加现金按剩余现金应付计算找零，而不是按整个订单总额', async () => {
+    loyalty.resolveUserIdByStableId.mockResolvedValue(
+      '00000000-0000-4000-8000-000000000099',
+    );
+    prisma.order.create.mockResolvedValue({
+      id: 'pos-mixed-cash-order',
+      orderStableId: 'pos-mixed-cash-order-stable',
+      channel: 'in_store',
+      fulfillmentType: 'pickup',
+      status: 'paid',
+      paidAt: new Date(),
+      createdAt: new Date(),
+      paymentMethod: 'CASH',
+      subtotalCents: 1000,
+      taxCents: 130,
+      totalCents: 1129,
+      items: [],
+    });
+
+    await service.createForStore(
+      {
+        channel: 'in_store',
+        fulfillmentType: 'pickup',
+        paymentMethod: 'CASH',
+        userStableId: demoProductId,
+        balanceUsedCents: 500,
+        cashReceivedCents: 1000,
+        discountCents: 1,
+        items: [{ productStableId: demoProductId, qty: 1 }],
+      },
+      '4750_Yonge_Street',
+    );
+
+    expect(loyalty.deductBalanceForOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ amountCents: 500 }),
+    );
+    expect(prisma.order.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          totalCents: 1129,
+          paymentBreakdownJson: {
+            cashReceivedCents: 1000,
+            cashChangeCents: 370,
+          },
+        }) as unknown,
+      }),
+    );
+  });
+
+  it('POS 现金实收低于服务端确认应付金额时拒绝建单', async () => {
+    await expect(
+      service.createForStore(
+        {
+          channel: 'in_store',
+          fulfillmentType: 'pickup',
+          paymentMethod: 'CASH',
+          cashReceivedCents: 1000,
+          items: [{ productStableId: demoProductId, qty: 1 }],
+        },
+        '4750_Yonge_Street',
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(prisma.order.create).not.toHaveBeenCalled();
   });
 
   it('通用 create 不允许非 Web 调用绕过 authenticated store context', async () => {
@@ -1258,46 +1399,6 @@ describe('OrdersService', () => {
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(prisma.order.create).not.toHaveBeenCalled();
-  });
-
-  it('POS 第二门店 recent 只查询自己的 canonical storeStableId', async () => {
-    const originalStoreId = process.env.STORE_ID;
-    process.env.STORE_ID = 'original-store';
-    prisma.order.findMany.mockResolvedValue([]);
-
-    try {
-      await service.recent('second-store', 10);
-
-      expect(prisma.order.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { storeId: 'second-store' },
-          take: 10,
-        }),
-      );
-    } finally {
-      if (originalStoreId === undefined) delete process.env.STORE_ID;
-      else process.env.STORE_ID = originalStoreId;
-    }
-  });
-
-  it('configured 原门店 recent 只查询自己的 canonical storeStableId', async () => {
-    const originalStoreId = process.env.STORE_ID;
-    process.env.STORE_ID = 'original-store';
-    prisma.order.findMany.mockResolvedValue([]);
-
-    try {
-      await service.recent('original-store', 10);
-
-      expect(prisma.order.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { storeId: 'original-store' },
-          take: 10,
-        }),
-      );
-    } finally {
-      if (originalStoreId === undefined) delete process.env.STORE_ID;
-      else process.env.STORE_ID = originalStoreId;
-    }
   });
 
   it('emits paid-verified event for priority orders', () => {
@@ -1329,14 +1430,6 @@ describe('OrdersService', () => {
       ],
     };
     prisma.order.create.mockResolvedValue(storedOrder);
-    uberDirect.createDelivery.mockResolvedValue({
-      deliveryId: 'uber-123',
-      externalDeliveryId: 'req-1',
-    });
-    prisma.order.update.mockResolvedValue({
-      ...storedOrder,
-      externalDeliveryId: 'uber-123',
-    });
 
     const dto: CreateOrderInput = {
       channel: 'web',
@@ -1371,7 +1464,6 @@ describe('OrdersService', () => {
         redeemValueCents: 0,
         earnMultiplier: 1,
       });
-      expect(uberDirect.createDelivery).not.toHaveBeenCalled();
       expect(warnSpy).toHaveBeenCalledWith(
         expect.stringContaining(
           'Cannot calculate dynamic delivery fee (missing coords)',
@@ -1380,7 +1472,7 @@ describe('OrdersService', () => {
     });
   });
 
-  it('keeps the order and still emits event when dispatch path errors are irrelevant', async () => {
+  it('keeps the order and emits paid-verified when priority delivery uses fee fallback', async () => {
     const warnSpy = jest
       .spyOn(Logger.prototype, 'warn')
       .mockImplementation(() => undefined);
@@ -1400,13 +1492,6 @@ describe('OrdersService', () => {
       items: [],
     };
     prisma.order.create.mockResolvedValue(storedOrder);
-    prisma.user.findMany.mockResolvedValue([
-      {
-        id: 'admin-1',
-        phone: '+14165551234',
-        language: 'ZH',
-      },
-    ]);
 
     const dto: CreateOrderInput = {
       channel: 'web',
@@ -1447,9 +1532,6 @@ describe('OrdersService', () => {
         redeemValueCents: 0,
       }),
     );
-    expect(
-      notificationService.notifyDeliveryDispatchFailed,
-    ).not.toHaveBeenCalled();
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining(
         'Cannot calculate dynamic delivery fee (missing coords)',
@@ -1525,7 +1607,7 @@ describe('OrdersService', () => {
     const resolver = service as unknown as {
       resolveDeliveryPhone(params: {
         submittedPhone?: string | null;
-        userId?: string;
+        userStableId?: string;
         requirePhone: boolean;
       }): Promise<string | undefined>;
     };
@@ -1533,22 +1615,24 @@ describe('OrdersService', () => {
     await expect(
       resolver.resolveDeliveryPhone({
         submittedPhone: '(416) 555-0199',
-        userId: 'member-1',
+        userStableId: 'c2234567890abcdefghijklmn',
         requirePhone: true,
       }),
     ).resolves.toBe('+14165550199');
-    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+    expect(customerOrderContext.getOrderCustomerContext).not.toHaveBeenCalled();
   });
 
   it('外送未填写号码时仅回退到会员已验证号码', async () => {
-    prisma.user.findUnique.mockResolvedValue({
-      phone: '4165550188',
-      phoneVerifiedAt: new Date(),
+    customerOrderContext.getOrderCustomerContext.mockResolvedValue({
+      userStableId: 'c2234567890abcdefghijklmn',
+      verifiedEmail: null,
+      verifiedPhone: '4165550188',
+      language: 'EN',
     });
     const resolver = service as unknown as {
       resolveDeliveryPhone(params: {
         submittedPhone?: string | null;
-        userId?: string;
+        userStableId?: string;
         requirePhone: boolean;
       }): Promise<string | undefined>;
     };
@@ -1556,21 +1640,23 @@ describe('OrdersService', () => {
     await expect(
       resolver.resolveDeliveryPhone({
         submittedPhone: null,
-        userId: 'member-1',
+        userStableId: 'c2234567890abcdefghijklmn',
         requirePhone: true,
       }),
     ).resolves.toBe('+14165550188');
   });
 
   it('外送没有本单号码或会员已验证号码时拒绝', async () => {
-    prisma.user.findUnique.mockResolvedValue({
-      phone: '4165550188',
-      phoneVerifiedAt: null,
+    customerOrderContext.getOrderCustomerContext.mockResolvedValue({
+      userStableId: 'c2234567890abcdefghijklmn',
+      verifiedEmail: null,
+      verifiedPhone: null,
+      language: 'EN',
     });
     const resolver = service as unknown as {
       resolveDeliveryPhone(params: {
         submittedPhone?: string | null;
-        userId?: string;
+        userStableId?: string;
         requirePhone: boolean;
       }): Promise<string | undefined>;
     };
@@ -1578,7 +1664,7 @@ describe('OrdersService', () => {
     await expect(
       resolver.resolveDeliveryPhone({
         submittedPhone: null,
-        userId: 'member-1',
+        userStableId: 'c2234567890abcdefghijklmn',
         requirePhone: true,
       }),
     ).rejects.toMatchObject({

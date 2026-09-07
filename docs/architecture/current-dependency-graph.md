@@ -1,6 +1,8 @@
 # Current 12-context dependency graph
 
 Phase 3 is **PRODUCTION VERIFIED / CLOSED** for its approved scope as of 2026-09-04.
+Phase 4 is **PRODUCTION VERIFIED / CLOSED** as of 2026-09-05 after the consolidated migration recovery,
+deployment and active verification; its final source graph remains cycle-free under the recorded baseline.
 Slice 6 merged via PR #2157 with final PR head `8547b46c`, squash merge `b91afb6a`, and
 CI #5070 green; focused Uber menu item availability OFF -> ON, temporary suspension /
 recovery, and option availability OFF -> ON verification were completed successfully.
@@ -97,25 +99,20 @@ pair fails CI.
 | brand-store | accounting-reporting-analytics 2; architecture-foundation 2; runtime-data-ci-ops 4 |
 | catalog-pricing-offers | architecture-foundation 2; identity-customer-benefits 3; runtime-data-ci-ops 10 |
 | identity-customer-benefits | architecture-foundation 13; brand-store 4; commerce-orders-fulfillment 1; external-channels 1; runtime-data-ci-ops 10; store-operations-pos-print 4 |
-| commerce-orders-fulfillment | architecture-foundation 8; brand-store 2; identity-customer-benefits 4; messaging-notifications 4; runtime-data-ci-ops 10; store-operations-pos-print 2 |
-| payments-clover | architecture-foundation 15; commerce-orders-fulfillment 10; identity-customer-benefits 13; messaging-notifications 2; runtime-data-ci-ops 8; store-operations-pos-print 11 |
-| store-operations-pos-print | architecture-foundation 7; brand-store 2; commerce-orders-fulfillment 2; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 5 |
+| commerce-orders-fulfillment | architecture-foundation 8; identity-customer-benefits 2; runtime-data-ci-ops 10 |
+| payments-clover | architecture-foundation 15; commerce-orders-fulfillment 8; identity-customer-benefits 13; messaging-notifications 2; runtime-data-ci-ops 8; store-operations-pos-print 11 |
+| store-operations-pos-print | architecture-foundation 7; brand-store 2; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 5 |
 | external-channels | architecture-foundation 11; commerce-orders-fulfillment 1; identity-customer-benefits 6; runtime-data-ci-ops 24 |
-| messaging-notifications | architecture-foundation 3; runtime-data-ci-ops 6; store-operations-pos-print 1 |
+| messaging-notifications | architecture-foundation 3; runtime-data-ci-ops 6 |
 | accounting-reporting-analytics | architecture-foundation 3; commerce-orders-fulfillment 1; external-channels 1; identity-customer-benefits 11; runtime-data-ci-ops 9 |
 | web-pwa | none; cross-context shared contracts use registered public aliases |
 | runtime-data-ci-ops | none; registered composition-root wiring is excluded |
 
-## Phase 4 planning baseline
+## Phase 4 final baseline and production verification
 
-The next formal modularization phase is **Phase 4 — Identity / Customer / Benefits +
-Messaging Boundary Contraction**, tracked in
-`docs/architecture/phase-4-identity-customer-benefits-messaging.md`.
-
-The current local monotonic baseline after the Slice 5A Loyalty ledger identity source contraction
-records these direct-debt totals. Slice 5A consolidates Loyalty Runtime composition through one
-context-local Prisma boundary while preserving the established Staff/Customer/Security ownership
-contractions:
+**Phase 4 — Identity / Customer / Benefits + Messaging Boundary Contraction** is complete and tracked in
+`docs/architecture/phase-4-identity-customer-benefits-messaging.md`. The final monotonic baseline after Slice 6
+and the production-verified rollout records these direct-debt totals:
 
 - payments-clover: **59**
 - external-channels: **42**
@@ -168,8 +165,9 @@ than the Prisma UUID. Identity -> Architecture remains **13**, Identity -> Runti
 **35**, Identity -> Messaging **0**, and the public SCC baseline remains empty. The TrustedDevice
 migration was successfully applied to production when the consolidated Phase 4 rollout began on 2026-09-05.
 
-Slice 4C is **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT** via PR #2182. Final head
-`7cb071ad` passed GitHub Actions CI #5158 and squash-merged to `dev` as `3119ce76`. The approved
+Slice 4C is **PRODUCTION VERIFIED** via PR #2182 plus UUID recovery PR #2190. Final Slice 4C head
+`7cb071ad` passed GitHub Actions CI #5158 and squash-merged to `dev` as `3119ce76`; recovery head
+`8392e42f` passed CI #5182, squash-merged as `ccf0aee9`, and the merged dev source passed CI #5183. The approved
 additive migration adds nullable `Order.userStableId`, deterministically backfills it from the existing
 `Order.userId -> User.id` association with count/mismatch/orphan checks, and adds the
 `(userStableId, createdAt)` index. The two existing `/admin/members/:userStableId/orders` and
@@ -185,15 +183,17 @@ then `20260905145500_add_order_user_stable_id` failed with PostgreSQL `42883` an
 verification found all **45/45** non-null `Order.userId` values are valid UUID text and map to `User.id`. The recovery
 therefore adds ordered prerequisite `20260905144000_normalize_order_user_id_uuid`, models `Order.userId` as
 `String? @db.Uuid`, converts it with `USING "userId"::uuid`, and deliberately adds no FK/NOT NULL/delete semantics
-before retrying the untouched stable-ID migration.
+before retrying the untouched stable-ID migration. Production recovery completed successfully: `Order.userId`
+is now PostgreSQL UUID, **45/45** member-linked Orders have matching `userStableId`, and orphan/mismatch counts
+are **0**.
 
-Slice 4D-A is **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT** via PR #2183. Final head
+Slice 4D-A is **PRODUCTION VERIFIED** via PR #2183. Final head
 `cec141ba` passed GitHub Actions CI #5162 and squash-merged to `dev` as `07dc1206`. The Identity-owned
 `MEMBER_RECHARGE_VERIFICATION` public capability owns the existing `pos-recharge` member/contact
 resolution, challenge/token lifecycle and Admin delegation boundary while `AdminMembersService` retains
 the unchanged amount/token input validation and `LoyaltyService.applyTopup()` orchestration.
 
-Slice 4D-H is **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT** via PR #2184. Final head
+Slice 4D-H is **PRODUCTION VERIFIED** via PR #2184. Final head
 `4d850ba1` passed CI #5165 and squash-merged as `7853e4f9`. Recharge Email/SMS share one Identity-owned
 challenge policy and DB-backed per-member send budget (one per 60 seconds, five per rolling 24 hours).
 SMS uses Messaging `PHONE_VERIFICATION_DELIVERY` only for delivery rather than delegating its challenge
@@ -201,7 +201,7 @@ lifecycle to `PhoneVerificationService`. New recharge codes use required `MEMBER
 and non-zero six-digit generation uses `crypto.randomInt`. POS rejects backend `{ ok:false }` sends
 without entering `code-sent`; the approved rollout remains an atomic cutover with no legacy-secret fallback.
 
-Slice 4D-I is **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT** via PR #2185. Final head
+Slice 4D-I is **PRODUCTION VERIFIED** via PR #2185. Final head
 `d4b85e3a` passed GitHub Actions CI #5168 and squash-merged to `dev` as `b27ad8ce`. The new
 Identity-internal `OtpChallengePolicyService` centralizes DB-backed cooldown/quota/supersession behavior
 for Login 2FA, Phone Enrollment, Membership Login, Checkout, Email Verify, POS Recharge and generic Phone
@@ -214,7 +214,7 @@ No Prisma/dependency/context-import change is introduced. Expected numeric graph
 Identity -> Architecture **13**, Identity -> Runtime **12**, Identity total **35**, Identity -> Messaging
 **0**, Commerce -> Identity **4**, with the public SCC baseline empty.
 
-Slice 5A is **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT** via PR #2186. Final head
+Slice 5A is **PRODUCTION VERIFIED** via PR #2186. Final head
 `3b904dd1` passed GitHub Actions CI #5171 and squash-merged to `dev` as `c28df1b5`. The authorized additive
 migration adds nullable `LoyaltyLedger.orderStableId`, deterministically backfills the existing Order mapping
 with count/mismatch/orphan checks, and deliberately leaves the existing `(orderId, type, sourceKey)` internal
@@ -225,7 +225,8 @@ stop performing `Order.id -> orderStableId` enrichment. The normal order-create 
 before Loyalty writes, while payment/refund/amendment/top-up paths reuse their already-known stable identity.
 Consolidating Loyalty Runtime imports through `loyalty-prisma.ts` contracts Identity -> Runtime **12 -> 10** and
 Identity total **35 -> 33**. No new public dependency edge is introduced, so the public SCC baseline remains
-empty. The migration remains unapplied in production.
+empty. Production migration verification later confirmed **89/89** order-linked ledger rows carry matching
+`orderStableId`, the **2** manual no-order adjustments remain NULL, and orphan/mismatch counts are **0**.
 
 ### Phase 4 Slice 6 final dependency/SCC closeout — 2026-09-05
 
@@ -238,7 +239,7 @@ Messaging **10**, Brand/Store **8**. Slice 5B did not require a numeric allowanc
 `LOYALTY_ORDER_USAGE_READER` reused the already-existing Commerce -> Identity/Benefits direction.
 `legacyPublicCycleComponents` remains empty and no reduced allowance is stale.
 
-Slice 5B is **MERGED / CI GREEN / AWAITING PHASE-END DEPLOYMENT**. Orders detail/public-summary, legacy Web
+Slice 5B is **PRODUCTION VERIFIED**. Orders detail/public-summary, legacy Web
 external-payment reconstruction and POS/receipt/email print now delegate order usage to the Benefits-owned
 stable-ID reader. Production-source search finds `this.prisma.loyaltyLedger` only under `apps/api/src/loyalty/**`;
 `orderStableById` and `getSettledBalancePaymentCentsForOrder` have no remaining source matches. The non-unique
@@ -258,19 +259,186 @@ Loyalty's paid-settlement Order lookup and UUID-based refund rollback also remai
 retained internal `LoyaltyLedger.orderId` idempotency/refund implementation from Slice 5A; they are not a
 Commerce-side read-owner leak and are not silently reclassified as closed debt.
 
-Production rollout has now partially advanced: `20260905134000_add_trusted_device_stable_id` is applied;
-`20260905145500_add_order_user_stable_id` has a failed/rolled-back attempt caused by the historical
-`Order.userId TEXT` / `User.id UUID` mismatch. Recovery source adds
-`20260905144000_normalize_order_user_id_uuid` ahead of the untouched 14:55 migration. After the failed migration
-is marked rolled back, deploy order must be 14:40 UUID normalization -> retry 14:55 stable-ID backfill ->
-`20260905193000_add_loyalty_ledger_order_stable_id` ->
-`20260905204500_add_loyalty_ledger_order_stable_id_index`, all before the new API source is activated.
-`MEMBER_RECHARGE_OTP_SECRET` remains a required rollout prerequisite. This recovery does not change dependency
-counts or the empty public SCC baseline.
+Production rollout is complete. The failed 14:55 Order migration was marked rolled back, then 14:40 UUID
+normalization, the retried 14:55 stable-ID backfill, the 19:30 Loyalty stable-ID migration and the 20:45 Loyalty
+index migration all applied successfully before the new API/Web/Uber worker were activated. Post-deploy evidence:
+TrustedDevice **2/2 populated + unique**; Order member identity **45/45 populated with 0 orphan/mismatch**;
+LoyaltyLedger **89/89 order-linked stable IDs populated with 0 orphan/mismatch**, with **2** manual no-order rows
+remaining NULL by design. Active member/Admin/OTP/points/balance/receipt/refund/POS-recharge smoke checks completed
+without relevant 5xx/Prisma/OTP runtime errors. Recharge SMS is N/A under the current email-first account mix;
+separate SMS Login 2FA negative/cooldown/success behavior was verified.
 
-No further safe Phase 4 dependency contraction is identified. The Phase 4 **source graph is closed**; the next
-step is consolidated deployment readiness, migration/secret preflight, deployment, and focused active
-verification.
+No further safe Phase 4 dependency contraction is identified. Phase 4 is **PRODUCTION VERIFIED / CLOSED** and the
+final numeric baseline plus empty public SCC remain authoritative. The POS Order Management "full query" page bug
+found during verification is separate: it loaded only the newest 30 Orders even though older production rows are
+present, so its server-side historical query/pagination repair does not reopen Phase 4.
+
+### Phase 5 Slice 0 Orders/Fulfillment readiness + characterization — 2026-09-05
+
+Audit base is `origin/dev@a464c1c3` after PR #2192. Slice 0 changes tests and architecture documentation only: no
+production implementation, public contract, Prisma schema/migration, dependency, active/closed compatibility path,
+architecture allowance or provider wire behavior is changed. The compatibility review queue only records the
+EventEmitter/outbox candidate as resolved without assigning a `compat_id`. The exact direct-debt totals therefore
+remain Payments/Clover **59**,
+External **42**, Identity/Customer/Benefits **33**, Store Operations/POS/Print **31**, Commerce/Orders/Fulfillment
+**30**, Accounting **25**, Catalog/Offers **15**, Messaging **10**, Brand/Store **8**; the public SCC baseline remains
+empty.
+
+The readiness inventory confirms Orders still reaches cross-owner persistence through Catalog `MenuItem`, Customer
+`User`/`UserAddress`, Benefits `LoyaltyAccount`, checkout/payment `CheckoutIntent`, and provider
+`UberOrderItemModifier`. Slice 2 removes the durable lifecycle's former `PosPrintJob` existence probe and replaces
+it with an Orders-owned `order.initial_print_handoff` checkpoint after the Print handoff. `OrdersService` also still
+imports concrete `LoyaltyService`, `MembershipService`, `UberDirectService`, `LocationService`,
+`NotificationService` and `EmailService`; `FulfillmentProcessor` directly imports `UberDirectService`. These remaining
+items are recorded migration debts, not newly introduced edges.
+
+Behavior coverage was locked before movement. Slice 0 added focused characterization for confirmed-payment
+finalization, `createAmendment()`, Uber Direct request/response mapping, the then-existing guarded `paid -> making`
+same-process prep fast path, and exact sequential AUTO print deduplication behavior. Slice 1E retains the guarded
+status-write characterization but intentionally removes that prep-event side effect.
+
+The Slice 0 in-memory/durable audit found no deliberate fan-out into both initial-print mechanisms. After Slices
+1B-1E, the coexistence itself was removed: channel/provider acceptance records durable `order.accepted`,
+`OrderPreparationService` writes `making + durable order.prep_started` atomically, and already-active orders do not append
+another durable prep fact. Slice 2 then closes the print-handoff hardening debt: Orders no longer reads AUTO `PosPrintJob`
+existence, Print owns AUTO/REPRINT/AMENDMENT identity and routing, per-target delivery is row-lock claimed before socket
+emit, ACK/timeout are terminal-state guarded, stale DELIVERED rows recover after restart, and the Windows agent suppresses
+repeated physical delivery by stable `jobId + target`. No private `OrderEventsBus` prep_started producer/consumer remains.
+The remaining explicit provider durability debt is Uber Direct's private `order.paid.verified` path, which can still lose
+the local `externalDeliveryId` write after provider success and remains a later Uber Direct durable-fulfillment slice.
+
+Detailed evidence and next-slice guidance are in
+`docs/architecture/phase-5-commerce-orders-fulfillment.md`.
+
+### Phase 5 Slice 1A POS cash payment-summary snapshot readiness — 2026-09-05
+
+Slice 1A is a backward-compatible additive contract/snapshot change and does not alter the measured context graph. The direct-debt totals remain Payments/Clover **59**, External **42**, Identity/Customer/Benefits **33**, Store Operations/POS/Print **31**, Commerce/Orders/Fulfillment **30**, Accounting **25**, Catalog/Offers **15**, Messaging **10**, Brand/Store **8**; the public SCC baseline remains empty.
+
+The POS cash browser now supplies optional `cashReceivedCents` on canonical `/pos/orders` creation. Orders validates it only for authenticated in-store cash orders, derives `cashChangeCents` from the server-calculated remaining cash tender using the existing POS upward-to-5-cent cash rounding rule, and persists only those two receipt-display facts in the existing `Order.paymentBreakdownJson`. `Order.totalCents`, tax, discounts, benefit settlement and refund semantics remain unchanged; in particular Slice 1A deliberately does not add in-store `externalCents`, so the existing Web external-payment reconstruction/refund interpretation is not broadened.
+
+`PrintPosPayloadService` can now recover persisted cash receipt facts into the existing print payload, while the current browser `/print` transient fields remain valid for older PWA bundles. No lifecycle transition, `order.accepted` / `order.prep_started` producer, PrintJob kind, printer transport, Clover provider behavior, Prisma schema/migration or architecture allowance changes in 1A. The actual POS first-print convergence from `REPRINT:* + advance` to durable `accepted -> prep_started -> AUTO` remains Slice 1B.
+
+### Phase 5 Slice 1B POS ordinary durable lifecycle cutover — 2026-09-05
+
+Slice 1B changes runtime orchestration but **does not change the measured context graph or architecture allowance baseline**. Direct-debt totals remain Payments/Clover **59**, External **42**, Identity/Customer/Benefits **33**, Store Operations/POS/Print **31**, Commerce/Orders/Fulfillment **30**, Accounting **25**, Catalog/Offers **15**, Messaging **10**, Brand/Store **8**; the public SCC baseline remains empty.
+
+Canonical in-store creation now writes the Orders-owned durable `order.accepted` fact atomically with the paid Order, then asks the existing `OrderLifecycleOutboxProcessor` to drain after commit. The same durable path owns `making + order.prep_started` and AUTO first-print materialization. The POS payment browser no longer performs first-print `REPRINT:*` or the first `advance`, so the old create/print/advance orchestration is contracted rather than retained in parallel. The existing POS -> Orders operations boundary is expanded narrowly with store-scoped `activateImmediatePreparation()` so a manual `/advance` arriving while an in-store Order is still `paid` also joins that same durable path; later `making -> ready` advancement and explicit operator reprint remain separate store-operation capabilities.
+
+This slice adds no new cross-context import: `OrdersService -> order-lifecycle`, `PosOrderOperationsService -> OrderLifecycleOutboxProcessor`, and the durable-origin marker inside Fulfillment are all Commerce/Orders/Fulfillment internal wiring. The existing Orders -> POS print-type/dispatch debt is unchanged and remains scheduled for the later Print ownership slice. No Prisma schema/migration, Clover/Web payment path, Uber provider behavior, dependency manifest, SCC member/edge or scanner baseline is changed.
+
+The cutover is intentionally not represented as an active compatibility path: the user authorized no support for an old cached POS payment bundle after cutover. PR #2195 subsequently merged as `e4a783a5` after final head `c8ed5579` passed PR CI #5200. Under the repository-wide verification cadence adopted on 2026-09-06, Slice 1B does not carry a standalone post-deployment active-test gate; its runtime/printing/PWA coverage is accumulated into the consolidated Phase 5 closeout verification plan.
+
+### Phase 5 Slice 1C Web/local durable lifecycle convergence — 2026-09-05
+
+Slice 1C also leaves the measured context graph and architecture allowance baseline unchanged. Direct-debt totals remain Payments/Clover **59**, External **42**, Identity/Customer/Benefits **33**, Store Operations/POS/Print **31**, Commerce/Orders/Fulfillment **30**, Accounting **25**, Catalog/Offers **15**, Messaging **10**, Brand/Store **8**; the public SCC baseline remains empty.
+
+The Web payment path still creates a `paid` Order without `order.accepted`; acceptance remains a store-operation decision made by the existing auto-accept/manual `/pos/orders/:id/advance` flow. That decision now enters Orders through the narrow `PosOrderOperationsPort.acceptWebOrder()` capability. Orders locks the store-scoped paid Web Order and appends durable `order.accepted`. For IMMEDIATE Web orders, after acceptance commit the POS-facing orchestration synchronously invokes the same idempotent `OrderPreparationService` materializer used by durable replay, which atomically writes `making + order.prep_started`; the accepted-event 500 ms scan remains crash/restart recovery if eager preparation is interrupted. Once prep_started exists the lifecycle outbox is eagerly woken for AUTO materialization. Scheduled Web orders retain only the accepted fact until the existing scheduler reaches `prepStartAt`. The generic POS status route also redirects local `paid -> making` attempts into the corresponding durable Web/in-store command instead of the legacy direct status mutation.
+
+No new cross-context import is introduced: the new port method, `OrderPreparationService` command and outbox wake are all existing Commerce/POS-public-boundary wiring. Fulfillment now suppresses memory-origin AUTO printing for both Web and in-store Orders, so their first print is durable-only; the memory prep channel remains temporarily for provider/legacy work outside Slice 1C. Web Clover charge/session/finalization, Uber runtime, PrintJob identity/protocol, Prisma schema/migrations and scanner/SCC baselines are unchanged. Slice 1C merged via PR #2196 as `61f5917d` after final head `3dc21e5d` passed PR CI #5204; merged-dev CI #5205 also passed. Its runtime verification scope is now accumulated into the Phase 5 closeout verification gate rather than a standalone Slice deployment test.
+
+### Phase 5 Slice 1D POS Clover Terminal durable lifecycle convergence — 2026-09-06
+
+Slice 1D contracts the pre-production Terminal finalization path onto the same Orders durable acceptance/preparation/AUTO-print lifecycle established by Slices 1B/1C. `OrdersService.createFromConfirmedPaymentSnapshot()` still owns the existing atomic Benefits tender COMMIT + Coupon COMMIT + paid Order creation transaction, but now appends the idempotent `orders.lifecycle/order.accepted` fact inside that **same** Prisma transaction. The outer Terminal orchestrator never receives or transports a transaction client.
+
+`PosCardPaymentOrchestrationService` no longer imports `PrintPosPayloadService`, no longer calls `PosGateway.sendPrintJob()`, and no longer creates `PAYMENT_CHECKOUT:<attemptId>` first-print identities. New successful finalization and COMPLETED/recovery paths call the existing public `POS_ORDER_OPERATIONS.activateImmediatePreparation(orderStableId, storeStableId)` capability; that command requires the accepted fact, writes `making + durable order.prep_started` idempotently, and wakes the same durable AUTO materializer. `PosGateway` remains because the orchestration still owns best-effort POS card-payment status publication; realtime delivery is not part of this Slice.
+
+Historical pre-Slice-1D Terminal prototype Orders are deliberately not backfilled with `order.accepted`: the existing-order branch in confirmed-payment finalization remains read-only. Therefore a historical COMPLETED recovery cannot create a new AUTO first print merely because the lifecycle implementation changed. New Slice-1D Orders have accepted atomically with creation, so retries after any crash between Order creation, checkout completion, preparation and printing converge through the same idempotent durable path.
+
+This removes two direct Payments/Clover -> Commerce internal imports (`OrderDto` and `PrintPosPayloadService`) by replacing them with the existing Orders public surface while the still-deferred direct `OrdersService` confirmed-payment finalization call remains. The monotonic allowance therefore contracts `payments-clover -> commerce-orders-fulfillment` **10 -> 8**, and Payments/Clover total outgoing direct debt **59 -> 57**. The public SCC baseline remains empty. No Prisma schema/migration, package dependency, Web Clover Ecommerce behavior, Terminal provider/payment-state truth, UNKNOWN/reconciliation, refund, pricing/promotion or Benefits COMMIT semantics change.
+
+Per the 2026-09-06 Phase-level verification cadence, Terminal payment/lifecycle/recovery/initial-print behavior is recorded as Phase 5 closeout verification scope rather than a standalone Slice deployment checklist. PR #2197 merged as `9a338704` after final head `04a4a5ed` passed PR CI #5207; merged-dev CI #5208 also passed.
+
+### Phase 5 Slice 1E Uber durable lifecycle convergence — 2026-09-06
+
+Slice 1E closes the final known store-facing bypass around the durable accepted/preparation lifecycle. Uber external ACCEPT still completes in the dedicated durable action worker and atomically records local `paid + orders.lifecycle/order.accepted`; no Uber wire/provider contract, webhook, worker composition, provider truth or action idempotency changes. The source change is on the POS/Orders side after that acceptance fact already exists.
+
+A staff `/advance` or direct `/status -> making` request arriving while an accepted Uber order is still `paid` no longer falls through to generic `OrdersService` status mutation. The POS adapter resolves the existing Orders-owned fulfillment timing and routes IMMEDIATE orders to `activateImmediatePreparation()` and SCHEDULED explicit early-starts to `activateScheduledPreparation()`. Both commands require the durable accepted fact and write `making + durable order.prep_started` through `OrderPreparationService`; therefore staff cannot manufacture preparation before successful Uber acceptance.
+
+With Web, ordinary in-store, Terminal and Uber paid entry points all on durable preparation, the old private same-process `order.prep_started` first-print channel has no production caller. Slice 1E removes its emitter/listener API and Fulfillment memory-origin branch. `OrderEventsBus` remains only for `order.paid.verified`, which still drives the explicitly deferred Uber Direct provider dispatch path. Initial `AUTO` printing is now reachable only from durable `order.prep_started`; explicit `REPRINT:*` and `AMENDMENT:*` operations remain independent.
+
+This is same-context lifecycle contraction plus use of the already-public POS -> Orders preparation surface, so it adds no direct/public context edge and requires no baseline update. Direct-debt totals remain Payments/Clover **57**, External Channels **42**, Identity/Customer/Benefits **33**, Store Operations/POS/Print **31**, Commerce/Orders/Fulfillment **30**, Accounting **25**, Catalog/Offers **15**, Messaging **10**, Brand/Store **8**; the public SCC baseline remains empty. The existing 500 ms lifecycle poll remains unchanged because the dedicated Uber worker cannot safely wake an API-process in-memory consumer; it continues to bridge/recover accepted immediate Uber orders until a later durable trigger design changes that boundary.
+
+### Phase 5 Slice 2 Print handoff / dispatch idempotency — 2026-09-06
+
+Slice 2 keeps the measured context graph unchanged while tightening the existing Orders -> POS/Print handoff. Orders/Fulfillment no longer chooses persistence `kind`; it emits only `INITIAL | REPRINT | AMENDMENT` intent through the existing public-surface listener. The POS/Print owner generates `AUTO`, fresh `REPRINT:<uuid>` and `AMENDMENT:<uuid>` identities and target routing. The lifecycle consumer no longer queries Print-owned `PosPrintJob`; successful INITIAL handoff is checkpointed with Orders-owned durable `order.initial_print_handoff`, so replay remains idempotent without a Commerce -> Print persistence read.
+
+`PosGateway` now claims each target under a database row lock before socket emission. Only `PENDING/FAILED` can become `DELIVERED`; concurrent callers see the committed claim and cannot emit the same delivery. ACK and timeout use the same row-lock discipline, `COMPLETED` is terminal, and reconnect recovery turns stale `DELIVERED` targets into retryable `FAILED/ACK_TIMEOUT`. The unchanged printer wire envelope is hardened on the Windows agent by persistent/in-flight `jobId + target` deduplication, with a bounded local completion file written by temp-file replacement.
+
+The POS amendment path is repaired in the same Print-ownership slice because it is an existing AMENDMENT handoff defect rather than a new cross-context capability. VOID/ADD/SWAP creates a kitchen difference ticket; combo components come from the immutable before/after OrderItem snapshots; labels use only the positive delta between before/after label plans; and amount or payment-method changes create a customer-only full-receipt REPRINT. Orders also centralizes normal-create and amendment-ADD option/component materialization in an internal `OrderItemSnapshotBuilder`; pricing/Daily Special/promotion stay in `calculateLineItems`, while amendment keeps its explicit unit price and does not invoke pricing policy.
+
+No new cross-context import or public SCC member is introduced, and no architecture allowance is relaxed. Direct-debt totals therefore remain Payments/Clover **57**, External Channels **42**, Identity/Customer/Benefits **33**, Store Operations/POS/Print **31**, Commerce/Orders/Fulfillment **30**, Accounting **25**, Catalog/Offers **15**, Messaging **10**, Brand/Store **8**; the public SCC baseline remains empty. No Prisma schema/migration, package/lockfile, Web Clover, Uber wire/provider behavior or Benefits transaction semantics change.
+
+### Phase 5 pre-Slice 3 Uber Direct dispatch-failure alert hardening — 2026-09-06
+
+The previously dormant delivery-dispatch-failure notification is now wired to the active `FulfillmentProcessor -> UberDirectService.createDelivery()` failure path. Commerce owns the decision that an Uber Direct delivery creation failed, Identity exposes only active Admin alert recipients through a stable-ID public query, and Messaging owns bilingual template rendering plus channel routing. Alert delivery is email-first per Admin and falls back to SMS only when email is unavailable or fails; provider/recipient internals do not leak back into Commerce.
+
+`OrdersModule` also switches its Notification module composition import to `../notifications/public-api`, so `commerce-orders-fulfillment -> messaging-notifications` direct debt contracts **4 -> 3** and Commerce total outgoing direct debt contracts **30 -> 29**. The new Fulfillment imports use registered Identity/Messaging public surfaces, so no new direct-debt allowance is created and the public SCC baseline remains empty. No Prisma schema/migration, package/lockfile, Uber Direct provider request/response contract, order lifecycle, payment behavior or external route changes. PR #2200 merged as `f9e0014b` after final head `0feb44fa` passed PR CI #5220; Phase-level runtime verification remains deferred to Phase 5 closeout.
+
+### Phase 5 Slice 3 — Orders -> Messaging public boundary contraction — 2026-09-06
+
+The remaining Order-ready and invoice delivery calls are now expressed as Messaging-owned public capabilities. `ORDER_READY_NOTIFICATION` receives only the already-resolved trusted contacts, Order presentation facts and stable customer identity; Orders retains eligibility/contact/locale policy while Messaging retains rendering and email-first/SMS-fallback delivery. `ORDER_INVOICE_DELIVERY` accepts a neutral Messaging-owned receipt snapshot, so Orders still builds the receipt while Email owns invoice rendering/provider delivery without importing the POS `PrintPosPayloadDto`.
+
+The source graph therefore contracts `commerce-orders-fulfillment -> messaging-notifications` **3 -> 0** and Commerce outgoing direct debt **29 -> 26**. Removing the invoice renderer's POS DTO import also contracts `messaging-notifications -> store-operations-pos-print` **1 -> 0** and Messaging outgoing direct debt **10 -> 9**. Both zero edges are removed from the monotonic legacy baseline, and an explicit scanner guard prevents concrete Messaging imports or POS/Prisma/Commerce leakage from returning through the two public contracts. The public SCC baseline remains empty. No schema/migration, dependency, route, payment, pricing, refund, lifecycle, compatibility or provider-wire change is part of Slice 3. PR #2201 final head `90cddfd0` passed CI #5225 and merged to `dev` as `62790355`; Phase-level runtime verification remains deferred to Phase 5 closeout.
+
+### Phase 5 Slice 4A — low-risk direct-edge + dead-code contraction — 2026-09-06
+
+Slice 4A merged via PR #2202 as `6e2da654` after final head `09cdd74d` passed rerun CI #5228. Orders transport gets both session guards from `auth/public-api.ts`, and Orders geocoding uses the Brand/Store-owned `LOCATION_GEOCODER` public capability rather than `LocationService` / `LocationModule` internals. The Location owner keeps the concrete Google Maps HTTP implementation private and exports only the token-backed port; existing geocoding behavior is unchanged.
+
+The same atomic contraction deletes verified uncalled `OrdersService` tails (`ensureLoyaltyAccountWithTx`, `normalizeDropoff`, `buildUberPickupOverride`, `dispatchPriorityDelivery`) and removes the obsolete `OrdersService -> UberDirectService` injection. The active Uber Direct provider path remains `FulfillmentProcessor -> UberDirectService` and is intentionally unchanged. The monotonic direct-import baseline contracts `commerce-orders-fulfillment -> brand-store` **2 -> 0** and `commerce-orders-fulfillment -> identity-customer-benefits` **4 -> 2**, reducing Commerce outgoing direct debt **26 -> 22**. Architecture guards prevent the old deep imports and dead tails from returning; the public SCC baseline remains empty. No Prisma schema/migration, dependency, HTTP route, Web Clover, Uber wire/provider, pricing, refund, lifecycle or Benefits COMMIT semantics change.
+
+### Phase 5 Slice 4B — Catalog persistence contraction — 2026-09-06
+
+Slice 4B merged through PR #2203 after final head `7f8c0c9f` passed PR CI #5232; squash merge `b8f838ff` then passed merged-dev CI #5233. Earlier CI runs exposed lint-only issues and one final `tx.menuItem.findMany` hidden-item read; the final source routes every protected Orders Catalog read through the stable-ID-only `CATALOG_ORDER_FACTS_READER` and the scanner rejects any `.menuItem.` delegate in those consumers. Catalog exposes the same public capability for hidden-item facts, immutable OrderItem materialization facts and current label/packaging configuration. Orders retains the Web-vs-POS hidden-item policy, immutable snapshot assembly and physical label-plan decisions; only persistence ownership moves behind Catalog.
+
+`OrderItemSnapshotBuilder` no longer imports Prisma-generated Catalog models or reads `MenuItem`; its prior DB-UUID fallbacks are not carried into the public contract because all legitimate create/amendment paths already normalize business stable IDs. `OrderLabelPlanService` no longer reads MenuItem/packaging persistence and uses `packagingType.stableId` instead of a packaging-row UUID for its ephemeral internal instance key. The three Orders consumers are scanner-guarded against direct MenuItem persistence access and deep Catalog imports, while the public contract is guarded against Prisma/concrete-service/DB-ID leakage. This extends the already-existing Commerce -> Catalog public direction (`@shared/menu`) without changing the legacy direct-import table: Commerce remains **22**, Catalog remains **15**, and the public SCC baseline remains empty. No schema/migration, dependency, route, pricing/promotion, payment/refund, Benefits transaction or provider-wire semantics change.
+
+### Phase 5 Slice 4C — Customer runtime read contraction — 2026-09-06
+
+Slice 4C merged through PR #2204 after final head `3efd8930` passed PR CI #5236; squash merge `1f58f1a3` is the current `dev` base for the follow-up repair. Customer exposes `CUSTOMER_ORDER_CONTEXT_READER` through `membership/public-api.ts`; the existing `CustomerService` remains the single Prisma-backed owner for verified contact/language and saved-address lookup. Orders supplies only `userStableId` / `addressStableId`, and no User DB UUID, Prisma model or concrete Customer implementation crosses the public boundary.
+
+Orders no longer reads `User` or `UserAddress` persistence directly. Order-ready member contact/locale fallback and delivery verified-phone/saved-address facts use the Customer public capability, while Commerce keeps trusted-contact precedence, delivery requirements and notification policy. `getByStableIdWithOwner()` now returns persisted `Order.userStableId` directly; the production Phase 4 stable-ID backfill already verified 45/45 linked Orders with 0 orphan/mismatch and all current member Order creation paths dual-write the stable identity.
+
+This is hidden persistence-ownership contraction, so the direct-import table does not change: `commerce-orders-fulfillment -> identity-customer-benefits` remains **2** and Commerce total remains **22**. Those two counted direct imports are the still-deferred concrete `LoyaltyService` and `MembershipService` seam, not Customer reads. The public SCC baseline remains empty, and scanner guards prevent Orders from regaining User/UserAddress delegates or leaking Prisma/DB IDs through the Customer contract. No schema/migration, dependency, route, payment/refund, pricing, lifecycle, provider-wire or Benefits COMMIT transaction behavior changes.
+
+Read-only production audit during 4C found a separate existing functional debt: both current `UserAddress.addressStableId` rows use the historical `a...` prefix, while Orders' existing `normalizeStableId()` accepts only canonical `c...` CUID values. Slice 4C-A fixes only the Customer-owned generator and its focused fixtures so new addresses use the canonical StableId format; Orders validation is not widened. The source repair merged through PR #2205 after final head `227643935d6c8ad02e39ef1b91fff176c49bb204` passed CI #5238, with squash merge `c02c3bac`; the two historical production rows remain a separately gated deterministic data repair (`a` -> `c` first-character restoration) requiring explicit production-mutation approval. This follow-up changes no imports, context ownership, direct-debt count, scanner allowance, or SCC baseline: Commerce remains **22** and the public SCC remains empty.
+
+### Phase 5 Slice 4D — Benefits runtime read contraction — 2026-09-06
+
+Slice 4D merged through PR #2206 after final head `4c6795de89e775dffd3228d8c9d34f617bf1c936` passed final PR CI #5242; squash merge `a88d82f7b5dd9917dd4789e965fa252e1b3fda7d`. It adds the Benefits-owned stable-ID-only `ORDER_BENEFITS_READER` for coupon-for-order projection, current payment-tender availability and loyalty-only redeem capacity. Member existence remains Customer ownership and Orders reuses `CUSTOMER_EXISTENCE_READER` to preserve the historical `member not found` behavior. Orders quote pricing, Web stored-balance validation and loyalty-only order eligibility consume those public owner capabilities; `createLoyaltyOnlyOrder()` no longer reads `LoyaltyAccount` persistence directly. Internal User/Coupon DB UUID resolution needed for Benefits facts stays inside the Benefits implementation, while Commerce continues to own pricing, promotion acceptance and insufficient-balance decisions. Normal checkout availability still excludes active payment holds; loyalty-only eligibility deliberately preserves the historical raw-account-points check.
+
+The existing `LoyaltyService` and `MembershipService` direct imports are deliberately retained only for the preparation/transaction/mutation seam that cannot be safely replaced without changing atomicity: prepared-payment internal identity, same-transaction Tender/Coupon COMMIT + Order creation, transactional normal-order coupon/Loyalty reserve/deduct, and refund/amendment/paid-side-effect mutations. Therefore the monotonic direct-import table intentionally remains `commerce-orders-fulfillment -> identity-customer-benefits = 2` and Commerce total remains **22**; public SCC remains empty. The scanner instead prevents regression of direct `loyaltyAccount` reads, concrete tender/max-redeem runtime reads, DB-ID leakage through the new contract, and any expansion beyond the two preserved concrete member/coupon read call sites. No schema/migration, dependency, route, payment/refund, pricing, lifecycle, provider-wire or Benefits COMMIT semantics change.
+
+### Phase 5 Slice 4E — Uber Direct provider implementation contraction — 2026-09-06
+
+Slice 4E merged through PR #2207 after final head `4cc113e6b47bf95ac4a72a6a34c87eabe0143c1a` passed final PR CI #5245; squash merge `24e7976d1851788a3d80cae37f95f92b0d5ffb6f`. It removes the remaining production `FulfillmentProcessor -> UberDirectService` concrete dependency. Deliveries exposes `UBER_DIRECT_DELIVERY_DISPATCHER` plus stable request/result types through `deliveries/public-api.ts`; the existing `UberDirectService` implements the port internally, and `DeliveriesModule` binds the token with `useExisting` while exporting only that token. `OrdersModule` now composes Deliveries through the public surface rather than deep-importing `deliveries.module`.
+
+Fulfillment still owns Uber-delivery eligibility and builds exactly the same `orderRef`, pickup code, manifest, destination and pickup-ready input. The provider adapter still owns HTTP/auth, payload transformation and response normalization, and Fulfillment still persists the returned `deliveryId` into `Order.externalDeliveryId`. The existing provider-create failure -> Admin alert behavior and the provider-success/local-persistence-failure distinction are unchanged; the latter remains log-only to avoid accidentally creating a duplicate provider delivery. The broader in-memory `order.paid.verified` durability/idempotency gap remains deferred.
+
+This is a same-context provider-implementation contraction, so the numeric direct-import table does not change: Commerce remains **22** and public SCC remains empty. Scanner guards prevent `FulfillmentProcessor` from importing `UberDirectService`, prevent `OrdersModule` from deep-importing `deliveries.module`, keep the public dispatch contract free of Nest/Prisma/Http/concrete-service/internal Order DB IDs, and require `DeliveriesModule` to export only the token-backed capability. Existing Uber Direct characterization continues to lock provider wire behavior, while Fulfillment coverage locks the request handed to the dispatcher and the existing failure semantics.
+
+### Phase 5 Slice 4F — Fulfillment / Print payload boundary contraction — 2026-09-06
+
+Slice 4F merged through PR #2208 after final head `f6ca667c46d3a0e4783c6354ac9bdaea9f68569c` passed PR CI #5247; squash merge `3cc775f141ab08180e8d8751a519dc89ea173a93`. It makes the receipt/kitchen payload an Orders-owned public output contract. `PrintPosPayloadService` implements `OrderPrintPayloadReaderPort`, `OrdersModule` exports only `ORDER_PRINT_PAYLOAD_READER`, and the payload contract preserves the existing print shape without Prisma or POS implementation types. `FulfillmentProcessor` consumes the local Orders contract instead of a POS DTO.
+
+The POS print-payload route keeps its existing route, store-scope check and response shape but now injects the reader token from `orders/public-api.ts`; it no longer deep-imports `PrintPosPayloadService`. The former POS-owned `print-pos-payload.dto.ts` is removed, eliminating its reverse deep import of Orders item-option snapshots. Print job identity, target routing, socket dispatch, agent wire payload and ACK/retry semantics remain unchanged.
+
+The legacy direct graph therefore contracts in both directions: Commerce -> Store Operations **2 -> 0** and Store Operations -> Commerce **2 -> 0**. Commerce outgoing direct debt becomes **20**, Store Operations becomes **29**, both zero edges are removed from the monotonic baseline, and the public SCC remains empty. Scanner and focused architecture coverage prevent the DTO/concrete-service deep imports from returning.
+
+### Phase 5 Slice 5A — Order invoice use-case decomposition — 2026-09-06
+
+Slice 5A merged through PR #2209 after final head `7346ec58f66b03c38738a700edcee090f24c36df` passed final PR CI #5255; squash merge `3a37a6251ad5fde63dcd3f8275277cd1a8d9ae43`. `OrderInvoiceUseCase` extracts the invoice leaf from the broad `OrdersService`. Both existing invoice HTTP routes call the dedicated use case directly. It normalizes/validates the requested email, reads the Orders-owned print projection through `ORDER_PRINT_PAYLOAD_READER`, preserves the existing fulfillment mapping and delegates the unchanged invoice payload through Notifications-owned `ORDER_INVOICE_DELIVERY`.
+
+`OrdersService` no longer owns invoice methods or injects either invoice delivery or the concrete `PrintPosPayloadService`; those dependencies were exclusive to this leaf. The use case remains internal to Orders composition and is not exported as a cross-context service. Focused characterization preserves recipient normalization, print-payload lookup, invoice delivery input and `invalid_email` fail-fast behavior. Scanner guards prevent the invoice leaf from being folded back into `OrdersService`.
+
+This same-context decomposition changes no direct-import baseline: Commerce remains **20**, Store Operations remains **29**, and public SCC remains empty. Create/finalize/refund/amendment transaction behavior and the deliberately preserved Benefits transaction seam are untouched.
+
+### Phase 5 Slice 5B — Ready-notification use-case decomposition — 2026-09-06
+
+`OrderReadyNotificationUseCase` extracts the complete post-`ready` notification leaf from `OrdersService`. The status owner still validates `ORDER_STATUS_TRANSITIONS`, performs the compare-and-set status mutation, writes `makingAt` / `readyAt`, and owns paid/refunded side effects; only after a successful `ready` write does it fire `void orderReadyNotificationUseCase.handle(updated)`.
+
+The new use case preserves the existing notification policy exactly: delivery orders are not notified; order number resolves from `clientRequestId ?? orderStableId`; member contact/language facts come through `CUSTOMER_ORDER_CONTEXT_READER`; checkout verified contacts outrank member contacts; only Uber orders may fall back to external order contacts; locale uses member language then checkout locale then `en`; delivery still goes through Notifications-owned `ORDER_READY_NOTIFICATION`; and structured success/failure logging keeps the same PII redaction. Its internal Promise chain preserves the old non-blocking timing semantics.
+
+Persistence access needed only to interpret checkout metadata is composed through the existing Orders-local `orders-prisma` facade, so the extraction does not add a new Commerce -> Runtime source edge. The scanner prevents ready-notification policy, Notifications delivery symbols, contact/locale resolution and redaction from returning to `OrdersService`, prevents deep Notification/Email/Prisma imports in the use case, and keeps the use case internal to `OrdersModule`. Direct-import totals remain Commerce **20**, Store Operations **29**, Commerce -> Runtime **10**, with public SCC empty.
 
 Before the main Identity/Messaging slices, the planned cross-phase readiness/contraction
 work is now complete and production verified:

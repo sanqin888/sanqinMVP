@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import {
-  POS_PRINT_JOB_DISPATCH_REQUESTED,
-  type PosPrintJobDispatchRequest,
+  ORDER_PRINT_HANDOFF_REQUESTED,
+  type OrderPrintHandoffRequest,
 } from '../orders/public-api';
 import { PosGateway } from './pos.gateway';
 
@@ -10,8 +10,8 @@ import { PosGateway } from './pos.gateway';
 export class PosPrintDispatchListener {
   constructor(private readonly posGateway: PosGateway) {}
 
-  @OnEvent(POS_PRINT_JOB_DISPATCH_REQUESTED, { suppressErrors: false })
-  dispatch(request: PosPrintJobDispatchRequest) {
-    return this.posGateway.sendPrintJob(request);
+  @OnEvent(ORDER_PRINT_HANDOFF_REQUESTED, { suppressErrors: false })
+  dispatch(request: OrderPrintHandoffRequest) {
+    return this.posGateway.enqueuePrintHandoff(request);
   }
 }

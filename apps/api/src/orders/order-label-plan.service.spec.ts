@@ -1,4 +1,8 @@
 import { FulfillmentType } from '@prisma/client';
+import type {
+  CatalogOrderFactsReaderPort,
+  CatalogOrderLabelConfigFact,
+} from '../menu/public-api';
 import { OrderLabelPlanService } from './order-label-plan.service';
 
 function optionGroup(
@@ -32,25 +36,10 @@ function optionGroup(
   };
 }
 
-type ItemConfig = {
-  stableId: string;
-  nameEn: string;
-  nameZh: string;
-  labelStrategy: 'AUTO' | 'ALWAYS' | 'NEVER';
-  packagings: Array<{
-    id: string;
-    sortOrder: number;
-    packagingType: { stableId: string; name: string };
-  }>;
-  optionGroups: Array<{
-    affectedPackagingTypeStableIds: string[];
-    templateGroup: { stableId: string };
-  }>;
-};
+type ItemConfig = CatalogOrderLabelConfigFact;
 
 function packaging(packagingTypeStableId: string, sortOrder = 0) {
   return {
-    id: `item-packaging:${packagingTypeStableId}:${sortOrder}`,
     sortOrder,
     packagingType: {
       stableId: packagingTypeStableId,
@@ -118,13 +107,17 @@ function createService(
         items,
       }),
     },
-    menuItem: {
-      findMany: jest.fn().mockResolvedValue(configs),
-    },
+  };
+  const catalogOrderFacts: CatalogOrderFactsReaderPort = {
+    findHiddenMenuItemStableIds: jest.fn().mockResolvedValue([]),
+    getOrderItemMaterializationFacts: jest.fn().mockResolvedValue([]),
+    getActiveOrderItemMaterializationFact: jest.fn().mockResolvedValue(null),
+    getOrderLabelConfigs: jest.fn().mockResolvedValue(configs),
   };
   return {
-    service: new OrderLabelPlanService(prisma as never),
+    service: new OrderLabelPlanService(prisma as never, catalogOrderFacts),
     prisma,
+    catalogOrderFacts,
   };
 }
 
@@ -153,7 +146,7 @@ describe('OrderLabelPlanService', () => {
           optionGroups: [
             {
               affectedPackagingTypeStableIds: ['38oz'],
-              templateGroup: { stableId: 'spice' },
+              templateGroupStableId: 'spice',
             },
           ],
         }),
@@ -183,7 +176,7 @@ describe('OrderLabelPlanService', () => {
           optionGroups: [
             {
               affectedPackagingTypeStableIds: ['16oz'],
-              templateGroup: { stableId: 'coriander' },
+              templateGroupStableId: 'coriander',
             },
           ],
         }),
@@ -355,11 +348,11 @@ describe('OrderLabelPlanService', () => {
           optionGroups: [
             {
               affectedPackagingTypeStableIds: ['38oz'],
-              templateGroup: { stableId: 'spice' },
+              templateGroupStableId: 'spice',
             },
             {
               affectedPackagingTypeStableIds: ['16oz'],
-              templateGroup: { stableId: 'coriander' },
+              templateGroupStableId: 'coriander',
             },
           ],
         }),
@@ -415,12 +408,21 @@ describe('OrderLabelPlanService', () => {
           items: [orderLine('hot-sour')],
         }),
       },
-      menuItem: { findMany: jest.fn() },
     };
-    const service = new OrderLabelPlanService(prisma as never);
+    const getOrderLabelConfigs = jest.fn();
+    const catalogOrderFacts: CatalogOrderFactsReaderPort = {
+      findHiddenMenuItemStableIds: jest.fn(),
+      getOrderItemMaterializationFacts: jest.fn(),
+      getActiveOrderItemMaterializationFact: jest.fn(),
+      getOrderLabelConfigs,
+    };
+    const service = new OrderLabelPlanService(
+      prisma as never,
+      catalogOrderFacts,
+    );
 
     const plan = await service.getByStableId('order-1');
     expect(plan.labels).toEqual([]);
-    expect(prisma.menuItem.findMany).not.toHaveBeenCalled();
+    expect(getOrderLabelConfigs).not.toHaveBeenCalled();
   });
 });

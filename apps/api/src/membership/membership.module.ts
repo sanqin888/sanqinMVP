@@ -18,6 +18,7 @@ import { NotificationModule } from '../notifications/public-api';
 import { CouponsModule } from '../coupons/public-api';
 import { CUSTOMER_ADMINISTRATION } from './customer-administration.contract';
 import { CUSTOMER_EXISTENCE_READER } from './customer-existence.contract';
+import { CUSTOMER_ORDER_CONTEXT_READER } from './customer-order-context.contract';
 
 @Module({
   imports: [
@@ -41,12 +42,17 @@ import { CUSTOMER_EXISTENCE_READER } from './customer-existence.contract';
       provide: CUSTOMER_EXISTENCE_READER,
       useExisting: CustomerExistenceService,
     },
+    {
+      provide: CUSTOMER_ORDER_CONTEXT_READER,
+      useExisting: CustomerService,
+    },
   ],
   controllers: [MembershipController, MembershipPublicController],
   exports: [
     MembershipService,
     CUSTOMER_ADMINISTRATION,
     CUSTOMER_EXISTENCE_READER,
+    CUSTOMER_ORDER_CONTEXT_READER,
   ],
 })
 export class MembershipModule {}

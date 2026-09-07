@@ -3747,8 +3747,16 @@ if (customerLifecycleNotificationBoundary) {
   const servicePath = join(REPOSITORY_ROOT, boundary.service);
   if (existsSync(servicePath)) {
     const source = readFileSync(servicePath, 'utf8');
+    if (
+      !/implements\s+CouponIssuedNotificationPort\s*,\s*CustomerLifecycleNotificationPort\b/.test(
+        source,
+      )
+    ) {
+      failures.push(
+        `Messaging customer lifecycle notification owner is missing implements CouponIssuedNotificationPort, CustomerLifecycleNotificationPort: ${boundary.service}`,
+      );
+    }
     for (const requiredSymbol of [
-      'implements CouponIssuedNotificationPort, CustomerLifecycleNotificationPort',
       'notifyRegistrationWelcome',
       'notifySubscriptionWelcome',
       'context: `register_welcome:${input.userStableId}`',
@@ -3880,6 +3888,1778 @@ if (customerLifecycleNotificationBoundary) {
     ) {
       failures.push(
         `MembershipModule notification wiring must use only the Notifications public surface: ${boundary.membershipModule}`,
+      );
+    }
+  }
+}
+
+const ordersMessagingBoundary = config.ordersMessagingBoundary ?? null;
+if (ordersMessagingBoundary) {
+  const boundary = Object.fromEntries(
+    Object.entries(ordersMessagingBoundary).map(([key, value]) => [
+      key,
+      toPosix(value ?? ''),
+    ]),
+  );
+  const requiredPaths = [
+    boundary.orderReadyContract,
+    boundary.invoiceContract,
+    boundary.notificationService,
+    boundary.notificationModule,
+    boundary.publicSurface,
+    boundary.emailService,
+    boundary.ordersService,
+    boundary.ordersModule,
+  ];
+
+  for (const sourcePath of requiredPaths) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `Orders -> Messaging boundary file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  const orderReadyContractPath = join(
+    REPOSITORY_ROOT,
+    boundary.orderReadyContract,
+  );
+  if (existsSync(orderReadyContractPath)) {
+    const source = readFileSync(orderReadyContractPath, 'utf8');
+    for (const requiredSymbol of [
+      'ORDER_READY_NOTIFICATION',
+      'OrderReadyNotificationPort',
+      'notifyOrderReady',
+      'userStableId',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Order-ready notification public contract is missing ${requiredSymbol}: ${boundary.orderReadyContract}`,
+        );
+      }
+    }
+    if (
+      source.includes('@prisma/client') ||
+      source.includes('PrismaService') ||
+      source.includes('EmailService') ||
+      source.includes('SmsService') ||
+      source.includes('NotificationService') ||
+      /\buserId\b/.test(source) ||
+      source.includes('/orders/') ||
+      source.includes('/pos/')
+    ) {
+      failures.push(
+        `Order-ready notification public contract must remain provider/persistence/DB-ID/Commerce/POS free: ${boundary.orderReadyContract}`,
+      );
+    }
+  }
+
+  const invoiceContractPath = join(REPOSITORY_ROOT, boundary.invoiceContract);
+  if (existsSync(invoiceContractPath)) {
+    const source = readFileSync(invoiceContractPath, 'utf8');
+    for (const requiredSymbol of [
+      'ORDER_INVOICE_DELIVERY',
+      'OrderInvoiceDeliveryPort',
+      'sendOrderInvoice',
+      'OrderInvoicePayload',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Order-invoice delivery public contract is missing ${requiredSymbol}: ${boundary.invoiceContract}`,
+        );
+      }
+    }
+    if (
+      source.includes('@prisma/client') ||
+      source.includes('PrismaService') ||
+      source.includes('EmailService') ||
+      source.includes('NotificationService') ||
+      source.includes('PrintPosPayloadDto') ||
+      source.includes('@shared/order') ||
+      source.includes('/orders/') ||
+      source.includes('/pos/')
+    ) {
+      failures.push(
+        `Order-invoice delivery public contract must remain provider/persistence/Commerce/POS free: ${boundary.invoiceContract}`,
+      );
+    }
+  }
+
+  const notificationServicePath = join(
+    REPOSITORY_ROOT,
+    boundary.notificationService,
+  );
+  if (existsSync(notificationServicePath)) {
+    const source = readFileSync(notificationServicePath, 'utf8');
+    for (const requiredSymbol of [
+      'OrderReadyNotificationPort',
+      'OrderInvoiceDeliveryPort',
+      'async notifyOrderReady',
+      'async sendOrderInvoice',
+      'userStableId: params.userStableId',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Messaging Orders capability owner is missing ${requiredSymbol}: ${boundary.notificationService}`,
+        );
+      }
+    }
+    const orderReadyStart = source.indexOf('async notifyOrderReady');
+    const orderReadyEnd = source.indexOf('async sendOrderInvoice', orderReadyStart);
+    const orderReadySource =
+      orderReadyStart >= 0 && orderReadyEnd > orderReadyStart
+        ? source.slice(orderReadyStart, orderReadyEnd)
+        : '';
+    if (/\buserId\b/.test(orderReadySource)) {
+      failures.push(
+        `Order-ready notification owner must not regain DB userId at the public boundary: ${boundary.notificationService}`,
+      );
+    }
+  }
+
+  const notificationModulePath = join(
+    REPOSITORY_ROOT,
+    boundary.notificationModule,
+  );
+  if (existsSync(notificationModulePath)) {
+    const source = readFileSync(notificationModulePath, 'utf8');
+    for (const requiredSymbol of [
+      'ORDER_READY_NOTIFICATION',
+      'ORDER_INVOICE_DELIVERY',
+      'useExisting: NotificationService',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `NotificationModule must expose Orders Messaging capability ${requiredSymbol}: ${boundary.notificationModule}`,
+        );
+      }
+    }
+  }
+
+  const publicSurfacePath = join(REPOSITORY_ROOT, boundary.publicSurface);
+  if (existsSync(publicSurfacePath)) {
+    const source = readFileSync(publicSurfacePath, 'utf8');
+    for (const requiredSymbol of [
+      'ORDER_READY_NOTIFICATION',
+      'OrderReadyNotificationPort',
+      'ORDER_INVOICE_DELIVERY',
+      'OrderInvoiceDeliveryPort',
+      'OrderInvoicePayload',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Notifications public surface is missing Orders capability ${requiredSymbol}: ${boundary.publicSurface}`,
+        );
+      }
+    }
+  }
+
+  const orderReadyUseCasePath = join(
+    REPOSITORY_ROOT,
+    boundary.orderReadyUseCase,
+  );
+  if (existsSync(orderReadyUseCasePath)) {
+    const source = readFileSync(orderReadyUseCasePath, 'utf8');
+    if (
+      !source.includes("from '../notifications/public-api'") ||
+      !source.includes('ORDER_READY_NOTIFICATION') ||
+      !source.includes('OrderReadyNotificationPort') ||
+      source.includes("from '../notifications/notification.service'") ||
+      source.includes("from '../email/email.service'") ||
+      source.includes('NotificationService') ||
+      source.includes('EmailService')
+    ) {
+      failures.push(
+        `Order-ready use case must consume delivery only through the Notifications public surface: ${boundary.orderReadyUseCase}`,
+      );
+    }
+  }
+
+  const ordersServicePath = join(REPOSITORY_ROOT, boundary.ordersService);
+  if (existsSync(ordersServicePath)) {
+    const source = readFileSync(ordersServicePath, 'utf8');
+    if (
+      source.includes("from '../notifications/public-api'") ||
+      source.includes('ORDER_READY_NOTIFICATION') ||
+      source.includes('OrderReadyNotificationPort') ||
+      source.includes("from '../notifications/notification.service'") ||
+      source.includes("from '../email/email.service'") ||
+      source.includes('NotificationService') ||
+      source.includes('EmailService')
+    ) {
+      failures.push(
+        `OrdersService must not regain direct order-ready Messaging delivery dependencies: ${boundary.ordersService}`,
+      );
+    }
+  }
+
+  const ordersModulePath = join(REPOSITORY_ROOT, boundary.ordersModule);
+  if (existsSync(ordersModulePath)) {
+    const source = readFileSync(ordersModulePath, 'utf8');
+    if (
+      !source.includes("from '../notifications/public-api'") ||
+      !source.includes('NotificationModule') ||
+      source.includes("from '../notifications/notification.module'") ||
+      source.includes("from '../email/email.module'") ||
+      source.includes('EmailModule')
+    ) {
+      failures.push(
+        `OrdersModule Messaging composition must use only the Notifications public surface: ${boundary.ordersModule}`,
+      );
+    }
+  }
+
+  const emailServicePath = join(REPOSITORY_ROOT, boundary.emailService);
+  if (existsSync(emailServicePath)) {
+    const source = readFileSync(emailServicePath, 'utf8');
+    if (
+      !source.includes('OrderInvoicePayload') ||
+      source.includes("../pos/dto/print-pos-payload.dto") ||
+      source.includes('PrintPosPayloadDto')
+    ) {
+      failures.push(
+        `Email invoice rendering must consume the Messaging-owned invoice payload instead of the POS DTO: ${boundary.emailService}`,
+      );
+    }
+  }
+}
+
+const ordersLowRiskBoundaryContraction =
+  config.ordersLowRiskBoundaryContraction ?? null;
+if (ordersLowRiskBoundaryContraction) {
+  const boundary = Object.fromEntries(
+    Object.entries(ordersLowRiskBoundaryContraction).map(([key, value]) => [
+      key,
+      toPosix(value ?? ''),
+    ]),
+  );
+  const requiredPaths = [
+    boundary.locationContract,
+    boundary.locationModule,
+    boundary.locationPublicSurface,
+    boundary.authPublicSurface,
+    boundary.ordersController,
+    boundary.ordersService,
+    boundary.ordersModule,
+  ];
+
+  for (const sourcePath of requiredPaths) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `Orders low-risk boundary file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  const locationContractPath = join(
+    REPOSITORY_ROOT,
+    boundary.locationContract,
+  );
+  if (existsSync(locationContractPath)) {
+    const source = readFileSync(locationContractPath, 'utf8');
+    for (const requiredSymbol of [
+      'LOCATION_GEOCODER',
+      'Coordinates',
+      'LocationGeocoderPort',
+      'geocode',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Location geocoding contract is missing ${requiredSymbol}: ${boundary.locationContract}`,
+        );
+      }
+    }
+    if (
+      source.includes('@prisma/client') ||
+      source.includes('PrismaService') ||
+      source.includes('LocationService') ||
+      source.includes('HttpService')
+    ) {
+      failures.push(
+        `Location geocoding contract must remain implementation/persistence free: ${boundary.locationContract}`,
+      );
+    }
+  }
+
+  const locationModulePath = join(REPOSITORY_ROOT, boundary.locationModule);
+  if (existsSync(locationModulePath)) {
+    const source = readFileSync(locationModulePath, 'utf8');
+    if (
+      !source.includes('LOCATION_GEOCODER') ||
+      !source.includes('useExisting: LocationService') ||
+      !source.includes('exports: [LOCATION_GEOCODER]')
+    ) {
+      failures.push(
+        `LocationModule must export only the geocoding capability token to consumers: ${boundary.locationModule}`,
+      );
+    }
+  }
+
+  const locationPublicSurfacePath = join(
+    REPOSITORY_ROOT,
+    boundary.locationPublicSurface,
+  );
+  if (existsSync(locationPublicSurfacePath)) {
+    const source = readFileSync(locationPublicSurfacePath, 'utf8');
+    for (const requiredSymbol of [
+      'LocationModule',
+      'LOCATION_GEOCODER',
+      'Coordinates',
+      'LocationGeocoderPort',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Location public surface is missing ${requiredSymbol}: ${boundary.locationPublicSurface}`,
+        );
+      }
+    }
+    if (source.includes('LocationService')) {
+      failures.push(
+        `Location public surface must not expose the concrete LocationService: ${boundary.locationPublicSurface}`,
+      );
+    }
+  }
+
+  const authPublicSurfacePath = join(
+    REPOSITORY_ROOT,
+    boundary.authPublicSurface,
+  );
+  if (existsSync(authPublicSurfacePath)) {
+    const source = readFileSync(authPublicSurfacePath, 'utf8');
+    for (const requiredSymbol of [
+      'OptionalSessionAuthGuard',
+      'SessionAuthGuard',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Auth public surface is missing ${requiredSymbol}: ${boundary.authPublicSurface}`,
+        );
+      }
+    }
+  }
+
+  const ordersControllerPath = join(
+    REPOSITORY_ROOT,
+    boundary.ordersController,
+  );
+  if (existsSync(ordersControllerPath)) {
+    const source = readFileSync(ordersControllerPath, 'utf8');
+    if (
+      !source.includes("from '../auth/public-api'") ||
+      source.includes("from '../auth/session-auth.guard'") ||
+      source.includes("from '../auth/optional-session-auth.guard'")
+    ) {
+      failures.push(
+        `OrdersController auth guards must use only the Auth public surface: ${boundary.ordersController}`,
+      );
+    }
+  }
+
+  const ordersServicePath = join(REPOSITORY_ROOT, boundary.ordersService);
+  if (existsSync(ordersServicePath)) {
+    const source = readFileSync(ordersServicePath, 'utf8');
+    if (
+      !source.includes("from '../location/public-api'") ||
+      !source.includes('LOCATION_GEOCODER') ||
+      !source.includes('LocationGeocoderPort') ||
+      source.includes("from '../location/location.service'") ||
+      source.includes('UberDirectService') ||
+      source.includes('ensureLoyaltyAccountWithTx') ||
+      source.includes('normalizeDropoff') ||
+      source.includes('buildUberPickupOverride') ||
+      source.includes('dispatchPriorityDelivery')
+    ) {
+      failures.push(
+        `OrdersService must use the Location public capability and must not regain retired direct-delivery/loyalty tails: ${boundary.ordersService}`,
+      );
+    }
+  }
+
+  const ordersModulePath = join(REPOSITORY_ROOT, boundary.ordersModule);
+  if (existsSync(ordersModulePath)) {
+    const source = readFileSync(ordersModulePath, 'utf8');
+    if (
+      !source.includes("from '../location/public-api'") ||
+      source.includes("from '../location/location.module'")
+    ) {
+      failures.push(
+        `OrdersModule Location composition must use only the Location public surface: ${boundary.ordersModule}`,
+      );
+    }
+  }
+}
+
+const ordersCatalogPersistenceBoundary =
+  config.ordersCatalogPersistenceBoundary ?? null;
+if (ordersCatalogPersistenceBoundary) {
+  const boundary = Object.fromEntries(
+    Object.entries(ordersCatalogPersistenceBoundary).map(([key, value]) => [
+      key,
+      toPosix(value ?? ''),
+    ]),
+  );
+  const requiredPaths = [
+    boundary.contract,
+    boundary.module,
+    boundary.ownerService,
+    boundary.publicSurface,
+    boundary.ordersService,
+    boundary.snapshotBuilder,
+    boundary.labelPlanService,
+    boundary.ordersModule,
+  ];
+
+  for (const sourcePath of requiredPaths) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `Orders Catalog boundary file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  const contractPath = join(REPOSITORY_ROOT, boundary.contract);
+  if (existsSync(contractPath)) {
+    const source = readFileSync(contractPath, 'utf8');
+    for (const requiredSymbol of [
+      'CATALOG_ORDER_FACTS_READER',
+      'CatalogOrderFactsReaderPort',
+      'findHiddenMenuItemStableIds',
+      'getOrderItemMaterializationFacts',
+      'getActiveOrderItemMaterializationFact',
+      'getOrderLabelConfigs',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Catalog Orders public contract is missing ${requiredSymbol}: ${boundary.contract}`,
+        );
+      }
+    }
+    if (
+      source.includes('@prisma/client') ||
+      source.includes('PrismaService') ||
+      source.includes('CatalogAdminService') ||
+      /(^|\s)id\s*:/m.test(source)
+    ) {
+      failures.push(
+        `Catalog Orders public contract must remain Prisma/concrete-service/DB-ID free: ${boundary.contract}`,
+      );
+    }
+  }
+
+  const modulePath = join(REPOSITORY_ROOT, boundary.module);
+  if (existsSync(modulePath)) {
+    const source = readFileSync(modulePath, 'utf8');
+    if (
+      !source.includes('CATALOG_ORDER_FACTS_READER') ||
+      !source.includes('useExisting: CatalogAdminService') ||
+      !source.includes('exports: [CATALOG_ORDER_FACTS_READER]')
+    ) {
+      failures.push(
+        `CatalogOrderFactsModule must expose the owner capability token through the existing Catalog implementation: ${boundary.module}`,
+      );
+    }
+  }
+
+  const ownerServicePath = join(REPOSITORY_ROOT, boundary.ownerService);
+  if (existsSync(ownerServicePath)) {
+    const source = readFileSync(ownerServicePath, 'utf8');
+    for (const requiredSymbol of [
+      'CatalogOrderFactsReaderPort',
+      'findHiddenMenuItemStableIds',
+      'getOrderItemMaterializationFacts',
+      'getActiveOrderItemMaterializationFact',
+      'getOrderLabelConfigs',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Catalog owner is missing Orders fact capability ${requiredSymbol}: ${boundary.ownerService}`,
+        );
+      }
+    }
+  }
+
+  const publicSurfacePath = join(REPOSITORY_ROOT, boundary.publicSurface);
+  if (existsSync(publicSurfacePath)) {
+    const source = readFileSync(publicSurfacePath, 'utf8');
+    for (const requiredSymbol of [
+      'CatalogOrderFactsModule',
+      'CATALOG_ORDER_FACTS_READER',
+      'CatalogOrderFactsReaderPort',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Catalog public surface is missing Orders fact capability ${requiredSymbol}: ${boundary.publicSurface}`,
+        );
+      }
+    }
+  }
+
+  for (const sourcePath of [
+    boundary.ordersService,
+    boundary.snapshotBuilder,
+    boundary.labelPlanService,
+  ]) {
+    if (!existsSync(join(REPOSITORY_ROOT, sourcePath))) continue;
+    const source = readFileSync(join(REPOSITORY_ROOT, sourcePath), 'utf8');
+    if (
+      !source.includes("from '../menu/public-api'") ||
+      source.includes("from '../menu/catalog-admin.service'") ||
+      source.includes('.menuItem.')
+    ) {
+      failures.push(
+        `Orders Catalog consumers must use only the Catalog public capability and must not read MenuItem persistence directly: ${sourcePath}`,
+      );
+    }
+  }
+
+  const snapshotBuilderPath = join(
+    REPOSITORY_ROOT,
+    boundary.snapshotBuilder,
+  );
+  if (existsSync(snapshotBuilderPath)) {
+    const source = readFileSync(snapshotBuilderPath, 'utf8');
+    if (
+      source.includes('@prisma/client') ||
+      source.includes('PrismaService') ||
+      source.includes('MenuItemGetPayload') ||
+      source.includes('choice.id') ||
+      source.includes('product.id')
+    ) {
+      failures.push(
+        `OrderItemSnapshotBuilder must remain Catalog-Prisma/DB-ID free: ${boundary.snapshotBuilder}`,
+      );
+    }
+  }
+
+  const ordersModulePath = join(REPOSITORY_ROOT, boundary.ordersModule);
+  if (existsSync(ordersModulePath)) {
+    const source = readFileSync(ordersModulePath, 'utf8');
+    if (
+      !source.includes("from '../menu/public-api'") ||
+      !source.includes('CatalogOrderFactsModule')
+    ) {
+      failures.push(
+        `OrdersModule must compose Catalog order facts through the Catalog public surface: ${boundary.ordersModule}`,
+      );
+    }
+  }
+}
+
+const ordersCustomerRuntimeReadBoundary =
+  config.ordersCustomerRuntimeReadBoundary ?? null;
+if (ordersCustomerRuntimeReadBoundary) {
+  const boundary = Object.fromEntries(
+    Object.entries(ordersCustomerRuntimeReadBoundary).map(([key, value]) => [
+      key,
+      toPosix(value ?? ''),
+    ]),
+  );
+  const requiredPaths = [
+    boundary.contract,
+    boundary.ownerService,
+    boundary.membershipModule,
+    boundary.publicSurface,
+    boundary.ordersService,
+    boundary.ordersModule,
+  ];
+
+  for (const sourcePath of requiredPaths) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `Orders Customer runtime-read boundary file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  const contractPath = join(REPOSITORY_ROOT, boundary.contract);
+  if (existsSync(contractPath)) {
+    const source = readFileSync(contractPath, 'utf8');
+    for (const requiredSymbol of [
+      'CUSTOMER_ORDER_CONTEXT_READER',
+      'CustomerOrderContextReaderPort',
+      'getOrderCustomerContext',
+      'getSavedDeliveryAddress',
+      'userStableId',
+      'addressStableId',
+      'verifiedEmail',
+      'verifiedPhone',
+      'language',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Customer Orders public contract is missing ${requiredSymbol}: ${boundary.contract}`,
+        );
+      }
+    }
+    if (
+      source.includes('@nestjs/common') ||
+      source.includes('@prisma/client') ||
+      source.includes('PrismaService') ||
+      source.includes('CustomerService') ||
+      /(^|\s)id\s*:/m.test(source)
+    ) {
+      failures.push(
+        `Customer Orders public contract must remain framework/persistence/concrete-service/DB-ID free: ${boundary.contract}`,
+      );
+    }
+  }
+
+  const ownerServicePath = join(REPOSITORY_ROOT, boundary.ownerService);
+  if (existsSync(ownerServicePath)) {
+    const source = readFileSync(ownerServicePath, 'utf8');
+    for (const requiredSymbol of [
+      'CustomerOrderContextReaderPort',
+      'getOrderCustomerContext',
+      'getSavedDeliveryAddress',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Customer owner is missing Orders runtime-read capability ${requiredSymbol}: ${boundary.ownerService}`,
+        );
+      }
+    }
+  }
+
+  const modulePath = join(REPOSITORY_ROOT, boundary.membershipModule);
+  if (existsSync(modulePath)) {
+    const source = readFileSync(modulePath, 'utf8');
+    if (
+      !source.includes('CUSTOMER_ORDER_CONTEXT_READER') ||
+      !source.includes('useExisting: CustomerService') ||
+      !/exports:\s*\[[\s\S]*CUSTOMER_ORDER_CONTEXT_READER/.test(source)
+    ) {
+      failures.push(
+        `MembershipModule must expose the Customer Orders reader through the existing Customer owner implementation: ${boundary.membershipModule}`,
+      );
+    }
+  }
+
+  const publicSurfacePath = join(REPOSITORY_ROOT, boundary.publicSurface);
+  if (existsSync(publicSurfacePath)) {
+    const source = readFileSync(publicSurfacePath, 'utf8');
+    for (const requiredSymbol of [
+      'CUSTOMER_ORDER_CONTEXT_READER',
+      'CustomerOrderContextReaderPort',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Membership public surface is missing Customer Orders capability ${requiredSymbol}: ${boundary.publicSurface}`,
+        );
+      }
+    }
+  }
+
+  const ordersServicePath = join(REPOSITORY_ROOT, boundary.ordersService);
+  if (existsSync(ordersServicePath)) {
+    const source = readFileSync(ordersServicePath, 'utf8');
+    if (
+      !source.includes("from '../membership/public-api'") ||
+      !source.includes('CUSTOMER_ORDER_CONTEXT_READER') ||
+      !source.includes('private readonly customerOrderContext') ||
+      /\.(?:user|userAddress)\./.test(source) ||
+      source.includes("from '../membership/customer.service'") ||
+      !source.includes('const ownerUserStableId = order.userStableId ?? null;')
+    ) {
+      failures.push(
+        `Orders Customer reads must use only the stable-ID Customer public capability and must not read User/UserAddress persistence directly: ${boundary.ordersService}`,
+      );
+    }
+  }
+
+  const ordersModulePath = join(REPOSITORY_ROOT, boundary.ordersModule);
+  if (existsSync(ordersModulePath)) {
+    const source = readFileSync(ordersModulePath, 'utf8');
+    if (
+      !source.includes("from '../membership/public-api'") ||
+      !source.includes('MembershipModule')
+    ) {
+      failures.push(
+        `OrdersModule must compose Customer runtime reads through the Membership public surface: ${boundary.ordersModule}`,
+      );
+    }
+  }
+}
+
+const ordersBenefitsRuntimeReadBoundary =
+  config.ordersBenefitsRuntimeReadBoundary ?? null;
+if (ordersBenefitsRuntimeReadBoundary) {
+  const boundary = Object.fromEntries(
+    Object.entries(ordersBenefitsRuntimeReadBoundary).map(([key, value]) => [
+      key,
+      toPosix(value ?? ''),
+    ]),
+  );
+  const requiredPaths = [
+    boundary.contract,
+    boundary.ownerService,
+    boundary.compositionModule,
+    boundary.publicSurface,
+    boundary.ordersService,
+    boundary.ordersModule,
+  ];
+
+  for (const sourcePath of requiredPaths) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `Orders Benefits runtime-read boundary file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  const contractPath = join(REPOSITORY_ROOT, boundary.contract);
+  if (existsSync(contractPath)) {
+    const source = readFileSync(contractPath, 'utf8');
+    for (const requiredSymbol of [
+      'ORDER_BENEFITS_READER',
+      'OrderBenefitsReaderPort',
+      'validateCouponForOrder',
+      'getAvailablePaymentTender',
+      'getLoyaltyOnlyRedeemCapacityCents',
+      'userStableId',
+      'couponStableId',
+      'balanceCents',
+      'maxRedeemableCents',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Benefits Orders read contract is missing ${requiredSymbol}: ${boundary.contract}`,
+        );
+      }
+    }
+    if (
+      source.includes('@nestjs/common') ||
+      source.includes('@prisma/client') ||
+      source.includes('PrismaService') ||
+      source.includes('LoyaltyService') ||
+      source.includes('MembershipService') ||
+      /\buserId\b/.test(source) ||
+      /\bcouponId\b/.test(source) ||
+      /(^|\s)id\s*:/m.test(source)
+    ) {
+      failures.push(
+        `Benefits Orders read contract must remain framework/persistence/concrete-service/DB-ID free: ${boundary.contract}`,
+      );
+    }
+  }
+
+  const ownerServicePath = join(REPOSITORY_ROOT, boundary.ownerService);
+  if (existsSync(ownerServicePath)) {
+    const source = readFileSync(ownerServicePath, 'utf8');
+    for (const requiredSymbol of [
+      'OrderBenefitsReaderPort',
+      'LoyaltyService',
+      'MembershipService',
+      'validateCouponForOrder',
+      'getAvailablePaymentTender',
+      'getLoyaltyOnlyRedeemCapacityCents',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Benefits owner is missing Orders runtime-read capability ${requiredSymbol}: ${boundary.ownerService}`,
+        );
+      }
+    }
+  }
+
+  const compositionModulePath = join(
+    REPOSITORY_ROOT,
+    boundary.compositionModule,
+  );
+  if (existsSync(compositionModulePath)) {
+    const source = readFileSync(compositionModulePath, 'utf8');
+    if (
+      !source.includes('ORDER_BENEFITS_READER') ||
+      !source.includes('useExisting: OrderBenefitsReadService') ||
+      !/exports:\s*\[[\s\S]*ORDER_BENEFITS_READER/.test(source)
+    ) {
+      failures.push(
+        `Benefits Orders read module must expose the token-backed owner capability: ${boundary.compositionModule}`,
+      );
+    }
+  }
+
+  const publicSurfacePath = join(REPOSITORY_ROOT, boundary.publicSurface);
+  if (existsSync(publicSurfacePath)) {
+    const source = readFileSync(publicSurfacePath, 'utf8');
+    for (const requiredSymbol of [
+      'ORDER_BENEFITS_READER',
+      'OrderBenefitsReaderPort',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Benefits public surface is missing Orders read capability ${requiredSymbol}: ${boundary.publicSurface}`,
+        );
+      }
+    }
+    if (source.includes('order-benefits-read.module')) {
+      failures.push(
+        `Benefits top-level public barrel must not re-export the Orders read composition module because it creates eager module-loading cycles: ${boundary.publicSurface}`,
+      );
+    }
+  }
+
+  const ordersServicePath = join(REPOSITORY_ROOT, boundary.ordersService);
+  if (existsSync(ordersServicePath)) {
+    const source = readFileSync(ordersServicePath, 'utf8');
+    const concreteMemberResolutionCount = (
+      source.match(/this\.loyalty\.resolveUserIdByStableId/g) ?? []
+    ).length;
+    const concreteCouponReadCount = (
+      source.match(/this\.membership\.validateCouponForOrder/g) ?? []
+    ).length;
+    if (
+      !source.includes("from '../benefits/public-api'") ||
+      !source.includes('ORDER_BENEFITS_READER') ||
+      !source.includes('private readonly orderBenefitsReader') ||
+      !source.includes('CUSTOMER_EXISTENCE_READER') ||
+      !source.includes('this.customerExistence.customerExists') ||
+      !source.includes('this.orderBenefitsReader.validateCouponForOrder') ||
+      !source.includes('this.orderBenefitsReader.getAvailablePaymentTender') ||
+      !source.includes(
+        'this.orderBenefitsReader.getLoyaltyOnlyRedeemCapacityCents',
+      ) ||
+      source.includes('this.loyalty.getAvailablePaymentTender') ||
+      source.includes('this.loyalty.maxRedeemableCentsFromBalance') ||
+      source.includes('this.loyalty.peekBalanceMicro') ||
+      source.includes('.loyaltyAccount.') ||
+      concreteMemberResolutionCount > 2 ||
+      concreteCouponReadCount > 2
+    ) {
+      failures.push(
+        `Orders Benefits runtime reads must use only the stable-ID Benefits public capability; concrete Loyalty/Membership access may remain only at the preserved transaction/preparation seam: ${boundary.ordersService}`,
+      );
+    }
+  }
+
+  const ordersModulePath = join(REPOSITORY_ROOT, boundary.ordersModule);
+  if (existsSync(ordersModulePath)) {
+    const source = readFileSync(ordersModulePath, 'utf8');
+    if (
+      !source.includes(
+        "from '../benefits/public-api/order-benefits-read.module'",
+      ) ||
+      !source.includes('OrderBenefitsReadModule')
+    ) {
+      failures.push(
+        `OrdersModule must compose Benefits runtime reads through the dedicated Benefits public composition module: ${boundary.ordersModule}`,
+      );
+    }
+  }
+}
+
+const ordersUberDirectDispatchBoundary =
+  config.ordersUberDirectDispatchBoundary ?? null;
+if (ordersUberDirectDispatchBoundary) {
+  const boundary = Object.fromEntries(
+    Object.entries(ordersUberDirectDispatchBoundary).map(([key, value]) => [
+      key,
+      toPosix(value ?? ''),
+    ]),
+  );
+  const requiredPaths = [
+    boundary.contract,
+    boundary.ownerService,
+    boundary.ownerModule,
+    boundary.publicSurface,
+    boundary.fulfillmentProcessor,
+    boundary.ordersModule,
+  ];
+
+  for (const sourcePath of requiredPaths) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `Orders Uber Direct dispatch boundary file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  const contractPath = join(REPOSITORY_ROOT, boundary.contract);
+  if (existsSync(contractPath)) {
+    const source = readFileSync(contractPath, 'utf8');
+    for (const requiredSymbol of [
+      'UBER_DIRECT_DELIVERY_DISPATCHER',
+      'UberDirectDeliveryDispatcherPort',
+      'UberDirectDeliveryOptions',
+      'UberDirectDeliveryResult',
+      'UberDirectDropoffDetails',
+      'createDelivery',
+      'orderRef',
+      'deliveryId',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Uber Direct dispatch contract is missing ${requiredSymbol}: ${boundary.contract}`,
+        );
+      }
+    }
+    if (
+      source.includes('@nestjs/common') ||
+      source.includes('@prisma/client') ||
+      source.includes('PrismaService') ||
+      source.includes('HttpService') ||
+      source.includes('UberDirectService') ||
+      /\borderId\b/.test(source)
+    ) {
+      failures.push(
+        `Uber Direct dispatch contract must remain framework/persistence/concrete-service/internal-order-ID free: ${boundary.contract}`,
+      );
+    }
+  }
+
+  const ownerServicePath = join(REPOSITORY_ROOT, boundary.ownerService);
+  if (existsSync(ownerServicePath)) {
+    const source = readFileSync(ownerServicePath, 'utf8');
+    if (
+      !source.includes('implements UberDirectDeliveryDispatcherPort') ||
+      !source.includes("from './uber-direct-dispatch.contract'") ||
+      !source.includes('createDelivery(')
+    ) {
+      failures.push(
+        `Uber Direct owner service must implement the public dispatcher port: ${boundary.ownerService}`,
+      );
+    }
+  }
+
+  const ownerModulePath = join(REPOSITORY_ROOT, boundary.ownerModule);
+  if (existsSync(ownerModulePath)) {
+    const source = readFileSync(ownerModulePath, 'utf8');
+    if (
+      !source.includes('UBER_DIRECT_DELIVERY_DISPATCHER') ||
+      !source.includes('useExisting: UberDirectService') ||
+      !/exports:\s*\[[\s\S]*UBER_DIRECT_DELIVERY_DISPATCHER/.test(source) ||
+      /exports:\s*\[[\s\S]*UberDirectService/.test(source)
+    ) {
+      failures.push(
+        `DeliveriesModule must export only the token-backed Uber Direct dispatcher, not the concrete service: ${boundary.ownerModule}`,
+      );
+    }
+  }
+
+  const publicSurfacePath = join(REPOSITORY_ROOT, boundary.publicSurface);
+  if (existsSync(publicSurfacePath)) {
+    const source = readFileSync(publicSurfacePath, 'utf8');
+    for (const requiredSymbol of [
+      'UBER_DIRECT_DELIVERY_DISPATCHER',
+      'UberDirectDeliveryDispatcherPort',
+      'UberDirectDeliveryOptions',
+      'UberDirectDeliveryResult',
+      'UberDirectDropoffDetails',
+      'DeliveriesModule',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Deliveries public surface is missing ${requiredSymbol}: ${boundary.publicSurface}`,
+        );
+      }
+    }
+    if (source.includes('UberDirectService')) {
+      failures.push(
+        `Deliveries public surface must not expose the concrete Uber Direct service: ${boundary.publicSurface}`,
+      );
+    }
+  }
+
+  const fulfillmentProcessorPath = join(
+    REPOSITORY_ROOT,
+    boundary.fulfillmentProcessor,
+  );
+  if (existsSync(fulfillmentProcessorPath)) {
+    const source = readFileSync(fulfillmentProcessorPath, 'utf8');
+    const consumesPublicDispatcherDirectly =
+      source.includes("from '../../deliveries/public-api'") &&
+      source.includes('UBER_DIRECT_DELIVERY_DISPATCHER') &&
+      source.includes('UberDirectDeliveryDispatcherPort') &&
+      source.includes('private readonly uberDirectDispatcher') &&
+      source.includes('this.uberDirectDispatcher.createDelivery');
+    const delegatesToDeliveryDispatchUseCase =
+      source.includes("from '../order-delivery-dispatch.use-case'") &&
+      source.includes(
+        'private readonly orderDeliveryDispatchUseCase: OrderDeliveryDispatchUseCase',
+      ) &&
+      source.includes('this.orderDeliveryDispatchUseCase.handle(payload)');
+
+    if (
+      (!consumesPublicDispatcherDirectly && !delegatesToDeliveryDispatchUseCase) ||
+      source.includes('deliveries/uber-direct.service') ||
+      /\bUberDirectService\b/.test(source)
+    ) {
+      failures.push(
+        `Orders fulfillment delivery dispatch must consume Uber Direct through the Deliveries public dispatcher capability, directly or through the internal delivery-dispatch use case: ${boundary.fulfillmentProcessor}`,
+      );
+    }
+  }
+
+  const ordersModulePath = join(REPOSITORY_ROOT, boundary.ordersModule);
+  if (existsSync(ordersModulePath)) {
+    const source = readFileSync(ordersModulePath, 'utf8');
+    if (
+      !source.includes("from '../deliveries/public-api'") ||
+      !source.includes('DeliveriesModule') ||
+      source.includes("from '../deliveries/deliveries.module'")
+    ) {
+      failures.push(
+        `OrdersModule must compose Deliveries through its public surface: ${boundary.ordersModule}`,
+      );
+    }
+  }
+}
+
+const ordersPrintPayloadBoundary = config.ordersPrintPayloadBoundary ?? null;
+if (ordersPrintPayloadBoundary) {
+  const boundary = Object.fromEntries(
+    Object.entries(ordersPrintPayloadBoundary).map(([key, value]) => [
+      key,
+      toPosix(value ?? ''),
+    ]),
+  );
+  const requiredPaths = [
+    boundary.contract,
+    boundary.ownerService,
+    boundary.ordersModule,
+    boundary.publicSurface,
+    boundary.fulfillmentProcessor,
+    boundary.posController,
+  ];
+
+  for (const sourcePath of requiredPaths) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `Orders Print payload boundary file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  const retiredPosDtoPath = join(REPOSITORY_ROOT, boundary.retiredPosDto);
+  if (boundary.retiredPosDto && existsSync(retiredPosDtoPath)) {
+    failures.push(
+      `retired POS-owned print payload DTO must stay deleted: ${boundary.retiredPosDto}`,
+    );
+  }
+
+  const contractPath = join(REPOSITORY_ROOT, boundary.contract);
+  if (existsSync(contractPath)) {
+    const source = readFileSync(contractPath, 'utf8');
+    for (const requiredSymbol of [
+      'ORDER_PRINT_PAYLOAD_READER',
+      'OrderPrintPayloadReaderPort',
+      'PrintPosPayloadDto',
+      'getByStableId',
+      'orderStableId',
+      'snapshot',
+      'appliedDiscounts',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Orders Print payload contract is missing ${requiredSymbol}: ${boundary.contract}`,
+        );
+      }
+    }
+    if (
+      source.includes('@nestjs/common') ||
+      source.includes('@prisma/client') ||
+      source.includes('PrismaService') ||
+      source.includes('PrintPosPayloadService') ||
+      source.includes('../pos/') ||
+      /\borderId\b/.test(source)
+    ) {
+      failures.push(
+        `Orders Print payload contract must remain framework/Prisma/POS/concrete-service/internal-order-ID free: ${boundary.contract}`,
+      );
+    }
+  }
+
+  const ownerServicePath = join(REPOSITORY_ROOT, boundary.ownerService);
+  if (existsSync(ownerServicePath)) {
+    const source = readFileSync(ownerServicePath, 'utf8');
+    if (
+      !source.includes('implements OrderPrintPayloadReaderPort') ||
+      !source.includes("from './order-print-payload.contract'") ||
+      source.includes('../pos/dto/print-pos-payload.dto')
+    ) {
+      failures.push(
+        `Orders Print payload owner must implement the Orders-owned reader contract without importing POS DTOs: ${boundary.ownerService}`,
+      );
+    }
+  }
+
+  const ordersModulePath = join(REPOSITORY_ROOT, boundary.ordersModule);
+  if (existsSync(ordersModulePath)) {
+    const source = readFileSync(ordersModulePath, 'utf8');
+    if (
+      !source.includes('ORDER_PRINT_PAYLOAD_READER') ||
+      !source.includes('useExisting: PrintPosPayloadService') ||
+      !/exports:\s*\[[\s\S]*ORDER_PRINT_PAYLOAD_READER/.test(source) ||
+      /exports:\s*\[[\s\S]*PrintPosPayloadService/.test(source)
+    ) {
+      failures.push(
+        `OrdersModule must export only the token-backed Print payload reader capability, not the concrete service: ${boundary.ordersModule}`,
+      );
+    }
+  }
+
+  const publicSurfacePath = join(REPOSITORY_ROOT, boundary.publicSurface);
+  if (existsSync(publicSurfacePath)) {
+    const source = readFileSync(publicSurfacePath, 'utf8');
+    for (const requiredSymbol of [
+      'ORDER_PRINT_PAYLOAD_READER',
+      'OrderPrintPayloadReaderPort',
+      'PrintPosPayloadDto',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Orders public surface is missing Print payload capability ${requiredSymbol}: ${boundary.publicSurface}`,
+        );
+      }
+    }
+    if (source.includes('PrintPosPayloadService')) {
+      failures.push(
+        `Orders public surface must not expose the concrete Print payload service: ${boundary.publicSurface}`,
+      );
+    }
+  }
+
+  const fulfillmentPath = join(
+    REPOSITORY_ROOT,
+    boundary.fulfillmentProcessor,
+  );
+  if (existsSync(fulfillmentPath)) {
+    const source = readFileSync(fulfillmentPath, 'utf8');
+    if (
+      !source.includes("from '../order-print-payload.contract'") ||
+      !source.includes('PrintPosPayloadDto') ||
+      source.includes('../../pos/dto/print-pos-payload.dto')
+    ) {
+      failures.push(
+        `Fulfillment must use the Orders-owned Print payload contract and must not import POS DTOs: ${boundary.fulfillmentProcessor}`,
+      );
+    }
+  }
+
+  const posControllerPath = join(REPOSITORY_ROOT, boundary.posController);
+  if (existsSync(posControllerPath)) {
+    const source = readFileSync(posControllerPath, 'utf8');
+    if (
+      !source.includes("from '../orders/public-api'") ||
+      !source.includes('ORDER_PRINT_PAYLOAD_READER') ||
+      !source.includes('OrderPrintPayloadReaderPort') ||
+      !source.includes('private readonly printPosPayloadReader') ||
+      !source.includes('this.printPosPayloadReader.getByStableId') ||
+      source.includes('PrintPosPayloadService') ||
+      source.includes('print-pos-payload.dto') ||
+      source.includes("from '../orders/print-pos-payload.service'")
+    ) {
+      failures.push(
+        `POS Print payload transport must consume the Orders public reader capability without concrete/deep imports: ${boundary.posController}`,
+      );
+    }
+  }
+}
+
+const ordersInvoiceUseCaseDecomposition =
+  config.ordersInvoiceUseCaseDecomposition ?? null;
+if (ordersInvoiceUseCaseDecomposition) {
+  const boundary = Object.fromEntries(
+    Object.entries(ordersInvoiceUseCaseDecomposition).map(([key, value]) => [
+      key,
+      toPosix(value ?? ''),
+    ]),
+  );
+
+  for (const sourcePath of [
+    boundary.useCase,
+    boundary.contactNormalization,
+    boundary.ordersService,
+    boundary.ordersController,
+    boundary.ordersModule,
+  ]) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `Orders invoice use-case decomposition file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  const useCasePath = join(REPOSITORY_ROOT, boundary.useCase);
+  if (existsSync(useCasePath)) {
+    const source = readFileSync(useCasePath, 'utf8');
+    for (const requiredSymbol of [
+      'OrderInvoiceUseCase',
+      'ORDER_PRINT_PAYLOAD_READER',
+      'OrderPrintPayloadReaderPort',
+      'ORDER_INVOICE_DELIVERY',
+      'OrderInvoiceDeliveryPort',
+      'sendInvoiceEmail',
+      'normalizeOrderEmail',
+      'invalid_email',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Orders invoice use case is missing ${requiredSymbol}: ${boundary.useCase}`,
+        );
+      }
+    }
+    if (
+      source.includes('PrismaService') ||
+      source.includes('@prisma/client') ||
+      source.includes('OrdersService') ||
+      source.includes('PrintPosPayloadService') ||
+      source.includes("../common/utils/email")
+    ) {
+      failures.push(
+        `Orders invoice use case must depend on narrow capability ports rather than Prisma/OrdersService/concrete Print implementation: ${boundary.useCase}`,
+      );
+    }
+  }
+
+  const contactNormalizationPath = join(
+    REPOSITORY_ROOT,
+    boundary.contactNormalization,
+  );
+  if (existsSync(contactNormalizationPath)) {
+    const source = readFileSync(contactNormalizationPath, 'utf8');
+    if (
+      !source.includes("from '../common/utils/email'") ||
+      !source.includes('normalizeOrderEmail') ||
+      !source.includes('normalizeEmail(raw)')
+    ) {
+      failures.push(
+        `Orders contact normalization must keep the shared email normalization behind one local adapter: ${boundary.contactNormalization}`,
+      );
+    }
+  }
+
+  const ordersServicePath = join(REPOSITORY_ROOT, boundary.ordersService);
+  if (existsSync(ordersServicePath)) {
+    const source = readFileSync(ordersServicePath, 'utf8');
+    if (
+      source.includes('ORDER_INVOICE_DELIVERY') ||
+      source.includes('OrderInvoiceDeliveryPort') ||
+      source.includes('OrderInvoicePayload') ||
+      source.includes('PrintPosPayloadService') ||
+      source.includes("../common/utils/email") ||
+      /\bsendInvoiceEmail\s*\(/.test(source) ||
+      /\bsendInvoice\s*\(/.test(source)
+    ) {
+      failures.push(
+        `OrdersService must not regain the extracted invoice delivery use case or its exclusive dependencies: ${boundary.ordersService}`,
+      );
+    }
+  }
+
+  const controllerPath = join(REPOSITORY_ROOT, boundary.ordersController);
+  if (existsSync(controllerPath)) {
+    const source = readFileSync(controllerPath, 'utf8');
+    if (
+      !source.includes("from './order-invoice.use-case'") ||
+      !source.includes('private readonly orderInvoiceUseCase: OrderInvoiceUseCase') ||
+      (source.match(/this\.orderInvoiceUseCase\.sendInvoiceEmail\(/g) ?? [])
+        .length !== 2 ||
+      source.includes('this.ordersService.sendInvoiceEmail(')
+    ) {
+      failures.push(
+        `Orders invoice HTTP routes must call the dedicated OrderInvoiceUseCase directly: ${boundary.ordersController}`,
+      );
+    }
+  }
+
+  const ordersModulePath = join(REPOSITORY_ROOT, boundary.ordersModule);
+  if (existsSync(ordersModulePath)) {
+    const source = readFileSync(ordersModulePath, 'utf8');
+    if (
+      !source.includes("from './order-invoice.use-case'") ||
+      !/providers:\s*\[[\s\S]*OrderInvoiceUseCase/.test(source) ||
+      /exports:\s*\[[\s\S]*OrderInvoiceUseCase/.test(source)
+    ) {
+      failures.push(
+        `OrderInvoiceUseCase must stay an internal Orders application provider and must not be exported as a cross-context service: ${boundary.ordersModule}`,
+      );
+    }
+  }
+}
+
+const ordersReadyNotificationUseCaseDecomposition =
+  config.ordersReadyNotificationUseCaseDecomposition ?? null;
+if (ordersReadyNotificationUseCaseDecomposition) {
+  const boundary = Object.fromEntries(
+    Object.entries(ordersReadyNotificationUseCaseDecomposition).map(
+      ([key, value]) => [key, toPosix(value ?? '')],
+    ),
+  );
+
+  for (const sourcePath of [
+    boundary.useCase,
+    boundary.contactNormalization,
+    boundary.ordersService,
+    boundary.ordersModule,
+  ]) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `Orders ready-notification use-case decomposition file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  const useCasePath = join(REPOSITORY_ROOT, boundary.useCase);
+  if (existsSync(useCasePath)) {
+    const source = readFileSync(useCasePath, 'utf8');
+    for (const requiredSymbol of [
+      'OrderReadyNotificationUseCase',
+      "from './orders-prisma'",
+      'PrismaService',
+      'CUSTOMER_ORDER_CONTEXT_READER',
+      'CustomerOrderContextReaderPort',
+      'ORDER_READY_NOTIFICATION',
+      'OrderReadyNotificationPort',
+      'normalizeOrderEmail',
+      'handle(order: OrderReadyNotificationOrder)',
+      'notifyOrderReady',
+      'resolveOrderReadyLocale',
+      'sanitizeNotificationFailure',
+      'order_ready_notification_completed',
+      'delivery_order',
+      'no_trusted_contact',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Orders ready-notification use case is missing ${requiredSymbol}: ${boundary.useCase}`,
+        );
+      }
+    }
+    if (
+      source.includes("../prisma/prisma.service") ||
+      source.includes("../prisma/prisma.module") ||
+      source.includes("../common/app-logger") ||
+      source.includes("from './orders.service'") ||
+      source.includes('private readonly orders: OrdersService') ||
+      source.includes("../notifications/notification.service") ||
+      source.includes("../email/email.service") ||
+      source.includes('NotificationService') ||
+      source.includes('EmailService')
+    ) {
+      failures.push(
+        `Orders ready-notification use case must stay on local Orders persistence composition and public Customer/Notifications capabilities: ${boundary.useCase}`,
+      );
+    }
+  }
+
+  const ordersServicePath = join(REPOSITORY_ROOT, boundary.ordersService);
+  if (existsSync(ordersServicePath)) {
+    const source = readFileSync(ordersServicePath, 'utf8');
+    if (
+      !source.includes("from './order-ready-notification.use-case'") ||
+      !source.includes(
+        'private readonly orderReadyNotificationUseCase: OrderReadyNotificationUseCase',
+      ) ||
+      !source.includes('void this.orderReadyNotificationUseCase.handle(updated)') ||
+      source.includes('ORDER_READY_NOTIFICATION') ||
+      source.includes('OrderReadyNotificationPort') ||
+      source.includes('OrderReadyNotificationResult') ||
+      source.includes('normalizeOrderEmail') ||
+      source.includes('order_ready_notification_completed') ||
+      /\bnotifyOrderReady\s*\(/.test(source) ||
+      /\bresolveOrderReadyLocale\s*\(/.test(source) ||
+      /\bsanitizeNotificationFailure\s*\(/.test(source)
+    ) {
+      failures.push(
+        `OrdersService must delegate ready-notification orchestration to OrderReadyNotificationUseCase without regaining its extracted policy/dependencies: ${boundary.ordersService}`,
+      );
+    }
+  }
+
+  const ordersModulePath = join(REPOSITORY_ROOT, boundary.ordersModule);
+  if (existsSync(ordersModulePath)) {
+    const source = readFileSync(ordersModulePath, 'utf8');
+    if (
+      !source.includes("from './order-ready-notification.use-case'") ||
+      !/providers:\s*\[[\s\S]*OrderReadyNotificationUseCase/.test(source) ||
+      /exports:\s*\[[\s\S]*OrderReadyNotificationUseCase/.test(source)
+    ) {
+      failures.push(
+        `OrderReadyNotificationUseCase must stay an internal Orders application provider and must not be exported as a cross-context service: ${boundary.ordersModule}`,
+      );
+    }
+  }
+}
+
+const ordersDeliveryDispatchUseCaseDecomposition =
+  config.ordersDeliveryDispatchUseCaseDecomposition ?? null;
+if (ordersDeliveryDispatchUseCaseDecomposition) {
+  const boundary = Object.fromEntries(
+    Object.entries(ordersDeliveryDispatchUseCaseDecomposition).map(
+      ([key, value]) => [key, toPosix(value ?? '')],
+    ),
+  );
+
+  for (const sourcePath of [
+    boundary.useCase,
+    boundary.fulfillmentProcessor,
+    boundary.ordersModule,
+  ]) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `Orders delivery-dispatch use-case decomposition file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  const useCasePath = join(REPOSITORY_ROOT, boundary.useCase);
+  if (existsSync(useCasePath)) {
+    const source = readFileSync(useCasePath, 'utf8');
+    for (const requiredSymbol of [
+      'OrderDeliveryDispatchUseCase',
+      "from './orders-prisma'",
+      'UBER_DIRECT_DELIVERY_DISPATCHER',
+      'UberDirectDeliveryDispatcherPort',
+      'OPERATIONS_ALERT_RECIPIENTS',
+      'OperationsAlertRecipientPort',
+      'DELIVERY_DISPATCH_FAILURE_NOTIFICATION',
+      'DeliveryDispatchFailureNotificationPort',
+      'uber_direct_delivery_created_persistence_failed',
+      'DELIVERY_DESTINATION_REQUIRED',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Orders delivery-dispatch use case is missing ${requiredSymbol}: ${boundary.useCase}`,
+        );
+      }
+    }
+    if (
+      source.includes("from './orders.service'") ||
+      source.includes('private readonly orders: OrdersService') ||
+      source.includes('../deliveries/uber-direct.service') ||
+      source.includes('../notifications/notification.service')
+    ) {
+      failures.push(
+        `Orders delivery-dispatch use case must stay on Orders-local persistence plus public Delivery/Auth/Notifications capabilities: ${boundary.useCase}`,
+      );
+    }
+  }
+
+  const processorPath = join(REPOSITORY_ROOT, boundary.fulfillmentProcessor);
+  if (existsSync(processorPath)) {
+    const source = readFileSync(processorPath, 'utf8');
+    if (
+      !source.includes("from '../order-delivery-dispatch.use-case'") ||
+      !source.includes(
+        'private readonly orderDeliveryDispatchUseCase: OrderDeliveryDispatchUseCase',
+      ) ||
+      !source.includes('this.orderDeliveryDispatchUseCase.handle(payload)') ||
+      source.includes('UBER_DIRECT_DELIVERY_DISPATCHER') ||
+      source.includes('DELIVERY_DISPATCH_FAILURE_NOTIFICATION') ||
+      source.includes('OPERATIONS_ALERT_RECIPIENTS') ||
+      source.includes('uber_direct_delivery_created_persistence_failed') ||
+      /\bextractDropoff\s*\(/.test(source)
+    ) {
+      failures.push(
+        `FulfillmentProcessor must delegate paid-order delivery dispatch orchestration without regaining provider/alert policy: ${boundary.fulfillmentProcessor}`,
+      );
+    }
+  }
+
+  const ordersModulePath = join(REPOSITORY_ROOT, boundary.ordersModule);
+  if (existsSync(ordersModulePath)) {
+    const source = readFileSync(ordersModulePath, 'utf8');
+    if (
+      !source.includes("from './order-delivery-dispatch.use-case'") ||
+      !/providers:\s*\[[\s\S]*OrderDeliveryDispatchUseCase/.test(source) ||
+      /exports:\s*\[[\s\S]*OrderDeliveryDispatchUseCase/.test(source)
+    ) {
+      failures.push(
+        `OrderDeliveryDispatchUseCase must stay an internal Orders application provider and must not be exported as a cross-context service: ${boundary.ordersModule}`,
+      );
+    }
+  }
+}
+
+const ordersPrepTimeQueryUseCaseDecomposition =
+  config.ordersPrepTimeQueryUseCaseDecomposition ?? null;
+if (ordersPrepTimeQueryUseCaseDecomposition) {
+  const boundary = Object.fromEntries(
+    Object.entries(ordersPrepTimeQueryUseCaseDecomposition).map(([key, value]) => [
+      key,
+      toPosix(value ?? ''),
+    ]),
+  );
+
+  for (const sourcePath of [
+    boundary.useCase,
+    boundary.ordersController,
+    boundary.ordersService,
+    boundary.ordersModule,
+  ]) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `Orders prep-time query use-case decomposition file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  const useCasePath = join(REPOSITORY_ROOT, boundary.useCase);
+  if (existsSync(useCasePath)) {
+    const source = readFileSync(useCasePath, 'utf8');
+    if (
+      !source.includes('OrderPrepTimeQueryUseCase') ||
+      !source.includes("from './orders-prisma'") ||
+      !source.includes('this.prisma.order.findMany') ||
+      !source.includes("status: { in: ['ready', 'completed'] }") ||
+      !source.includes('return 15') ||
+      !source.includes('Math.max(avg, 5)') ||
+      source.includes("from './orders.service'")
+    ) {
+      failures.push(
+        `OrderPrepTimeQueryUseCase must own the historical read-only prep-time calculation on Orders-local persistence: ${boundary.useCase}`,
+      );
+    }
+  }
+
+  const controllerPath = join(REPOSITORY_ROOT, boundary.ordersController);
+  if (existsSync(controllerPath)) {
+    const source = readFileSync(controllerPath, 'utf8');
+    if (
+      !source.includes("from './order-prep-time-query.use-case'") ||
+      !source.includes(
+        'private readonly orderPrepTimeQueryUseCase: OrderPrepTimeQueryUseCase',
+      ) ||
+      !source.includes(
+        'this.orderPrepTimeQueryUseCase.getAveragePrepTimeMinutes()',
+      )
+    ) {
+      failures.push(
+        `OrdersController prep-time route must delegate to OrderPrepTimeQueryUseCase: ${boundary.ordersController}`,
+      );
+    }
+  }
+
+  const ordersServicePath = join(REPOSITORY_ROOT, boundary.ordersService);
+  if (existsSync(ordersServicePath)) {
+    const source = readFileSync(ordersServicePath, 'utf8');
+    if (/\bgetAveragePrepTimeMinutes\s*\(/.test(source)) {
+      failures.push(
+        `OrdersService must not regain prep-time query policy after Slice 5D: ${boundary.ordersService}`,
+      );
+    }
+  }
+
+  const ordersModulePath = join(REPOSITORY_ROOT, boundary.ordersModule);
+  if (existsSync(ordersModulePath)) {
+    const source = readFileSync(ordersModulePath, 'utf8');
+    if (
+      !source.includes("from './order-prep-time-query.use-case'") ||
+      !/providers:\s*\[[\s\S]*OrderPrepTimeQueryUseCase/.test(source) ||
+      /exports:\s*\[[\s\S]*OrderPrepTimeQueryUseCase/.test(source)
+    ) {
+      failures.push(
+        `OrderPrepTimeQueryUseCase must stay an internal Orders query provider and must not be exported as a cross-context service: ${boundary.ordersModule}`,
+      );
+    }
+  }
+}
+
+const ordersPublicSummaryQueryUseCaseDecomposition =
+  config.ordersPublicSummaryQueryUseCaseDecomposition ?? null;
+if (ordersPublicSummaryQueryUseCaseDecomposition) {
+  const boundary = Object.fromEntries(
+    Object.entries(ordersPublicSummaryQueryUseCaseDecomposition).map(
+      ([key, value]) => [key, toPosix(value ?? '')],
+    ),
+  );
+
+  for (const sourcePath of [
+    boundary.useCase,
+    boundary.ordersController,
+    boundary.ordersService,
+    boundary.ordersModule,
+  ]) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `Orders public-summary query use-case decomposition file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  const useCasePath = join(REPOSITORY_ROOT, boundary.useCase);
+  if (existsSync(useCasePath)) {
+    const source = readFileSync(useCasePath, 'utf8');
+    for (const requiredSymbol of [
+      'OrderPublicSummaryQueryUseCase',
+      "from './orders-prisma'",
+      'LOYALTY_ORDER_USAGE_READER',
+      'this.prisma.order.findUnique',
+      'this.prisma.checkoutIntent.findFirst',
+      'buildOrderPricingDisplay',
+      'buildOrderItemComponentDisplaySnapshots',
+      'creditCardSurchargeCents',
+      'chargeStatusUnverified',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Orders public-summary query use case is missing ${requiredSymbol}: ${boundary.useCase}`,
+        );
+      }
+    }
+    if (
+      source.includes("from './orders.service'") ||
+      source.includes('../loyalty/loyalty.service')
+    ) {
+      failures.push(
+        `OrderPublicSummaryQueryUseCase must own summary projection directly on Orders-local persistence plus the Loyalty public reader: ${boundary.useCase}`,
+      );
+    }
+  }
+
+  const controllerPath = join(REPOSITORY_ROOT, boundary.ordersController);
+  if (existsSync(controllerPath)) {
+    const source = readFileSync(controllerPath, 'utf8');
+    if (
+      !source.includes("from './order-public-summary-query.use-case'") ||
+      !source.includes(
+        'private readonly orderPublicSummaryQueryUseCase: OrderPublicSummaryQueryUseCase',
+      ) ||
+      !source.includes(
+        'this.orderPublicSummaryQueryUseCase.getByStableId(orderStableId)',
+      )
+    ) {
+      failures.push(
+        `OrdersController public summary route must delegate to OrderPublicSummaryQueryUseCase: ${boundary.ordersController}`,
+      );
+    }
+  }
+
+  const ordersServicePath = join(REPOSITORY_ROOT, boundary.ordersService);
+  if (existsSync(ordersServicePath)) {
+    const source = readFileSync(ordersServicePath, 'utf8');
+    if (
+      /\bgetPublicOrderSummary\s*\(/.test(source) ||
+      /\bgetCheckoutIntentPaymentMeta\s*\(/.test(source) ||
+      /\bresolveOrderCreditCardSurcharge\s*\(/.test(source) ||
+      /\bgetTotalDiscountCents\s*\(/.test(source)
+    ) {
+      failures.push(
+        `OrdersService must not regain public-summary projection policy after Slice 5E: ${boundary.ordersService}`,
+      );
+    }
+  }
+
+  const ordersModulePath = join(REPOSITORY_ROOT, boundary.ordersModule);
+  if (existsSync(ordersModulePath)) {
+    const source = readFileSync(ordersModulePath, 'utf8');
+    if (
+      !source.includes("from './order-public-summary-query.use-case'") ||
+      !/providers:\s*\[[\s\S]*OrderPublicSummaryQueryUseCase/.test(source) ||
+      /exports:\s*\[[\s\S]*OrderPublicSummaryQueryUseCase/.test(source)
+    ) {
+      failures.push(
+        `OrderPublicSummaryQueryUseCase must stay an internal Orders query provider and must not be exported as a cross-context service: ${boundary.ordersModule}`,
+      );
+    }
+  }
+}
+
+const ordersManagementQueryUseCaseDecomposition =
+  config.ordersManagementQueryUseCaseDecomposition ?? null;
+if (ordersManagementQueryUseCaseDecomposition) {
+  const boundary = Object.fromEntries(
+    Object.entries(ordersManagementQueryUseCaseDecomposition).map(
+      ([key, value]) => [key, toPosix(value ?? '')],
+    ),
+  );
+
+  for (const sourcePath of [
+    boundary.useCase,
+    boundary.projection,
+    boundary.posOperations,
+    boundary.ordersService,
+    boundary.ordersModule,
+  ]) {
+    if (!sourcePath || !existsSync(join(REPOSITORY_ROOT, sourcePath))) {
+      failures.push(
+        `Orders management query use-case decomposition file is missing: ${sourcePath || '<missing-path>'}`,
+      );
+    }
+  }
+
+  const useCasePath = join(REPOSITORY_ROOT, boundary.useCase);
+  if (existsSync(useCasePath)) {
+    const source = readFileSync(useCasePath, 'utf8');
+    for (const requiredSymbol of [
+      'OrderManagementQueryUseCase',
+      "from './orders-prisma'",
+      'buildTrustedStoreOrderWhere',
+      'toOrderDto',
+      'this.prisma.order.findMany',
+      'this.prisma.order.count',
+      'searchForStore',
+      'board',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Orders management query use case is missing ${requiredSymbol}: ${boundary.useCase}`,
+        );
+      }
+    }
+    if (source.includes("from './orders.service'")) {
+      failures.push(
+        `OrderManagementQueryUseCase must own POS list/search/board reads without delegating back to OrdersService: ${boundary.useCase}`,
+      );
+    }
+  }
+
+  const projectionPath = join(REPOSITORY_ROOT, boundary.projection);
+  if (existsSync(projectionPath)) {
+    const source = readFileSync(projectionPath, 'utf8');
+    if (
+      !source.includes('export function toOrderDto') ||
+      !source.includes('export function buildTrustedStoreOrderWhere') ||
+      !source.includes('export const orderDetailSelect')
+    ) {
+      failures.push(
+        `Orders query projection must centralize DTO and store-scope semantics for both read and write callers: ${boundary.projection}`,
+      );
+    }
+  }
+
+  const posOperationsPath = join(REPOSITORY_ROOT, boundary.posOperations);
+  if (existsSync(posOperationsPath)) {
+    const source = readFileSync(posOperationsPath, 'utf8');
+    if (
+      !source.includes("from './order-management-query.use-case'") ||
+      !source.includes(
+        'private readonly managementQuery: OrderManagementQueryUseCase',
+      ) ||
+      !source.includes('this.managementQuery.recent(') ||
+      !source.includes('this.managementQuery.searchForStore(') ||
+      !source.includes('this.managementQuery.board(')
+    ) {
+      failures.push(
+        `PosOrderOperationsService must delegate recent/search/board reads to OrderManagementQueryUseCase: ${boundary.posOperations}`,
+      );
+    }
+  }
+
+  const ordersServicePath = join(REPOSITORY_ROOT, boundary.ordersService);
+  if (existsSync(ordersServicePath)) {
+    const source = readFileSync(ordersServicePath, 'utf8');
+    if (
+      /\basync\s+recent\s*\(/.test(source) ||
+      /\basync\s+searchForStore\s*\(/.test(source) ||
+      /\basync\s+board\s*\(/.test(source)
+    ) {
+      failures.push(
+        `OrdersService must not regain POS management list/search/board query ownership after Slice 5F: ${boundary.ordersService}`,
+      );
+    }
+  }
+
+  const ordersModulePath = join(REPOSITORY_ROOT, boundary.ordersModule);
+  if (existsSync(ordersModulePath)) {
+    const source = readFileSync(ordersModulePath, 'utf8');
+    if (
+      !source.includes("from './order-management-query.use-case'") ||
+      !/providers:\s*\[[\s\S]*OrderManagementQueryUseCase/.test(source) ||
+      /exports:\s*\[[\s\S]*OrderManagementQueryUseCase/.test(source)
+    ) {
+      failures.push(
+        `OrderManagementQueryUseCase must stay an internal Orders provider and must not be exported as a cross-context service: ${boundary.ordersModule}`,
       );
     }
   }
@@ -4911,7 +6691,7 @@ if (brandStoreCanonicalConfigOwnership) {
       if (
         source.includes('PosGateway') ||
         source.includes("from '../../pos/pos.gateway'") ||
-        !source.includes('POS_PRINT_JOB_DISPATCH_REQUESTED')
+        !source.includes('ORDER_PRINT_HANDOFF_REQUESTED')
       ) {
         failures.push(
           `Orders fulfillment must request POS print dispatch through the Orders-owned event boundary instead of importing PosGateway: ${ordersFulfillmentProcessor}`,
@@ -4937,8 +6717,8 @@ if (brandStoreCanonicalConfigOwnership) {
       const source = readFileSync(posPrintDispatchPath, 'utf8');
       if (
         !source.includes("from '../orders/public-api'") ||
-        !source.includes('POS_PRINT_JOB_DISPATCH_REQUESTED') ||
-        !source.includes('this.posGateway.sendPrintJob(request)')
+        !source.includes('ORDER_PRINT_HANDOFF_REQUESTED') ||
+        !source.includes('this.posGateway.enqueuePrintHandoff(request)')
       ) {
         failures.push(
           `POS must own the print-job transport listener behind the Orders dispatch event boundary: ${posPrintDispatchListener}`,

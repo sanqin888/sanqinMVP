@@ -27,13 +27,15 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { FulfillmentType, DeliveryType } from '@prisma/client';
+import { OrderInvoiceUseCase } from './order-invoice.use-case';
+import { OrderPrepTimeQueryUseCase } from './order-prep-time-query.use-case';
+import { OrderPublicSummaryQueryUseCase } from './order-public-summary-query.use-case';
 import { OrdersService } from './orders.service';
 import { CreateOrderSchema } from '@shared/order';
 import type { CreateOrderInput } from '@shared/order';
 import type { OrderSummaryDto } from './dto/order-summary.dto';
 import { StableIdPipe } from '../common/pipes/stable-id.pipe';
-import { SessionAuthGuard } from '../auth/session-auth.guard';
-import { OptionalSessionAuthGuard } from '../auth/optional-session-auth.guard';
+import { OptionalSessionAuthGuard, SessionAuthGuard } from '../auth/public-api';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import type { OrderDto } from './dto/order.dto';
 
@@ -124,7 +126,12 @@ class CreateLoyaltyOnlyOrderDto {
 
 @Controller('orders')
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(
+    private readonly ordersService: OrdersService,
+    private readonly orderInvoiceUseCase: OrderInvoiceUseCase,
+    private readonly orderPrepTimeQueryUseCase: OrderPrepTimeQueryUseCase,
+    private readonly orderPublicSummaryQueryUseCase: OrderPublicSummaryQueryUseCase,
+  ) {}
 
   /**
    * 创建订单
@@ -174,7 +181,8 @@ export class OrdersController {
    */
   @Get('prep-time')
   async getAveragePrepTime(): Promise<{ minutes: number }> {
-    const minutes = await this.ordersService.getAveragePrepTimeMinutes();
+    const minutes =
+      await this.orderPrepTimeQueryUseCase.getAveragePrepTimeMinutes();
     return { minutes };
   }
 
@@ -254,7 +262,7 @@ export class OrdersController {
   getPublicSummary(
     @Param('orderStableId', StableIdPipe) orderStableId: string,
   ): Promise<OrderSummaryDto> {
-    return this.ordersService.getPublicOrderSummary(orderStableId);
+    return this.orderPublicSummaryQueryUseCase.getByStableId(orderStableId);
   }
 
   /**
@@ -267,7 +275,7 @@ export class OrdersController {
     @Param('orderStableId', StableIdPipe) orderStableId: string,
     @Body() body: { email?: string; locale?: string },
   ): Promise<{ ok: boolean }> {
-    return this.ordersService.sendInvoiceEmail({
+    return this.orderInvoiceUseCase.sendInvoiceEmail({
       orderStableId,
       email: body?.email,
       locale: body?.locale,
@@ -286,7 +294,7 @@ export class OrdersController {
     @Req() req: AuthedRequest,
     @Body() body: { locale?: string },
   ): Promise<{ ok: boolean }> {
-    return this.ordersService.sendInvoiceEmail({
+    return this.orderInvoiceUseCase.sendInvoiceEmail({
       orderStableId,
       email: req.user?.email ?? null,
       locale: body?.locale,

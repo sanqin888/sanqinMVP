@@ -60,6 +60,46 @@ describe('PrintPosPayloadService', () => {
     expect(payload.pickupCode).not.toBe(payload.orderNumber);
   });
 
+  it('POS 现金打印载荷从订单支付快照恢复实收与找零', async () => {
+    const prisma = {
+      order: {
+        findUnique: jest.fn().mockResolvedValue({
+          orderStableId: 'ord_cash',
+          clientRequestId: 'REQ-cash',
+          deliveryFeeCents: 0,
+          deliveryCostCents: 0,
+          deliverySubsidyCents: 0,
+          items: [],
+          subtotalCents: 1000,
+          subtotalAfterDiscountCents: 1000,
+          paymentTotalCents: 1130,
+          totalCents: 1130,
+          paymentMethod: PaymentMethod.CASH,
+          paymentBreakdownJson: {
+            cashReceivedCents: 2000,
+            cashChangeCents: 870,
+          },
+          channel: Channel.in_store,
+          pickupCode: '2468',
+          fulfillmentType: 'pickup',
+          taxCents: 130,
+          creditCardSurchargeCents: 0,
+        }),
+      },
+      checkoutIntent: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+    };
+
+    const payload = await new PrintPosPayloadService(
+      prisma as never,
+      createOrderUsageReader() as never,
+    ).getByStableId('ord_cash');
+
+    expect(payload.cashReceivedCents).toBe(2000);
+    expect(payload.cashChangeCents).toBe(870);
+  });
+
   it('当存在信用卡附加费时，打印载荷会包含附加费并将总额展示为支付总额', async () => {
     const prisma = {
       order: {

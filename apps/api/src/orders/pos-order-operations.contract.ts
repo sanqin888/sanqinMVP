@@ -7,6 +7,7 @@ import type {
 import type { OrderDto } from './dto/order.dto';
 import type { OrderFulfillmentTimingDto } from './dto/order-fulfillment-timing.dto';
 import type { ScheduledOrderSummaryDto } from './dto/scheduled-order-summary.dto';
+import type { OrderLabelPlanDto } from './order-label-plan.service';
 
 export const POS_ORDER_OPERATIONS = Symbol('POS_ORDER_OPERATIONS');
 
@@ -16,6 +17,25 @@ export type PosOrderBoardQuery = {
   limit?: number;
   sinceMinutes?: number;
   requireItems?: boolean;
+};
+
+export type PosOrderManagementQuery = {
+  statusIn?: OrderStatus[];
+  channelIn?: Array<'web' | 'in_store' | 'ubereats'>;
+  fulfillmentIn?: Array<'pickup' | 'dine_in' | 'delivery'>;
+  createdAtGte?: Date;
+  createdAtLt?: Date;
+  minTotalCents?: number;
+  page?: number;
+  pageSize?: number;
+};
+
+export type PosOrderManagementPage = {
+  orders: OrderDto[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
 };
 
 export type PosOrderJsonPrimitive = string | number | boolean | null;
@@ -87,6 +107,10 @@ export interface PosOrderOperationsPort {
     storeStableId: string,
   ): Promise<PosOrderPricingQuote>;
   recent(storeStableId: string, limit?: number): Promise<OrderDto[]>;
+  searchForStore(
+    storeStableId: string,
+    query: PosOrderManagementQuery,
+  ): Promise<PosOrderManagementPage>;
   board(storeStableId: string, query: PosOrderBoardQuery): Promise<OrderDto[]>;
   getByStableIdForStore(
     orderStableId: string,
@@ -102,6 +126,10 @@ export interface PosOrderOperationsPort {
     storeStableId: string,
   ): Promise<OrderDto>;
   getExternalPaymentCents(orderStableId: string): Promise<number | null>;
+  getLabelPlanForStore(
+    orderStableId: string,
+    storeStableId: string,
+  ): Promise<OrderLabelPlanDto>;
   createAmendment(input: PosOrderAmendmentInput): Promise<OrderDto>;
   createFullRefund(
     input: PosOrderFullRefundInput,
@@ -117,6 +145,11 @@ export interface PosOrderOperationsPort {
     orderStableIds: string[],
     storeStableId: string,
   ): Promise<Map<string, 'IMMEDIATE' | 'SCHEDULED'>>;
+  acceptWebOrder(orderStableId: string, storeStableId: string): Promise<void>;
+  activateImmediatePreparation(
+    orderStableId: string,
+    storeStableId: string,
+  ): Promise<void>;
   activateScheduledPreparation(
     orderStableId: string,
     storeStableId: string,

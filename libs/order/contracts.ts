@@ -106,6 +106,7 @@ export const CreateOrderSchema = z.object({
   taxCents: z.number().int().min(0).optional(),
   totalCents: z.number().int().min(0).optional(),
   deliveryFeeCents: z.number().int().min(0).optional(),
+  cashReceivedCents: z.number().int().min(0).optional(),
   couponStableId: z.string().optional(),
   selectedUserCouponId: z.string().optional(),
   deliveryDestination: DeliveryDestinationSchema.optional(),
