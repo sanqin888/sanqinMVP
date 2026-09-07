@@ -328,49 +328,6 @@ describe('OrdersService', () => {
     jest.restoreAllMocks();
   });
 
-  it('searches POS order management history with store-scoped filters and pagination', async () => {
-    prisma.order.count.mockResolvedValue(73);
-    prisma.order.findMany.mockResolvedValue([]);
-    const createdAtGte = new Date('2026-09-03T04:00:00.000Z');
-    const createdAtLt = new Date('2026-09-04T04:00:00.000Z');
-
-    await expect(
-      service.searchForStore('4750_Yonge_Street', {
-        statusIn: ['paid', 'completed'],
-        channelIn: ['web', 'in_store'],
-        fulfillmentIn: ['pickup', 'dine_in'],
-        createdAtGte,
-        createdAtLt,
-        minTotalCents: 5000,
-        page: 2,
-        pageSize: 50,
-      }),
-    ).resolves.toEqual({
-      orders: [],
-      page: 2,
-      pageSize: 50,
-      total: 73,
-      totalPages: 2,
-    });
-
-    const expectedWhere = {
-      storeId: '4750_Yonge_Street',
-      status: { in: ['paid', 'completed'] },
-      channel: { in: ['web', 'in_store'] },
-      fulfillmentType: { in: ['pickup', 'dine_in'] },
-      totalCents: { gte: 5000 },
-      createdAt: { gte: createdAtGte, lt: createdAtLt },
-    };
-    expect(prisma.order.count).toHaveBeenCalledWith({ where: expectedWhere });
-    expect(prisma.order.findMany).toHaveBeenCalledWith({
-      where: expectedWhere,
-      orderBy: [{ createdAt: 'desc' }, { orderStableId: 'desc' }],
-      skip: 50,
-      take: 50,
-      include: { items: true },
-    });
-  });
-
   it('reads delivery and tax pricing through the Brand/Store config boundary', async () => {
     brandStoreConfigReader.getConfiguredStoreSnapshot.mockResolvedValue({
       ...defaultStoreConfigSnapshot,
@@ -1442,46 +1399,6 @@ describe('OrdersService', () => {
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(prisma.order.create).not.toHaveBeenCalled();
-  });
-
-  it('POS 第二门店 recent 只查询自己的 canonical storeStableId', async () => {
-    const originalStoreId = process.env.STORE_ID;
-    process.env.STORE_ID = 'original-store';
-    prisma.order.findMany.mockResolvedValue([]);
-
-    try {
-      await service.recent('second-store', 10);
-
-      expect(prisma.order.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { storeId: 'second-store' },
-          take: 10,
-        }),
-      );
-    } finally {
-      if (originalStoreId === undefined) delete process.env.STORE_ID;
-      else process.env.STORE_ID = originalStoreId;
-    }
-  });
-
-  it('configured 原门店 recent 只查询自己的 canonical storeStableId', async () => {
-    const originalStoreId = process.env.STORE_ID;
-    process.env.STORE_ID = 'original-store';
-    prisma.order.findMany.mockResolvedValue([]);
-
-    try {
-      await service.recent('original-store', 10);
-
-      expect(prisma.order.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { storeId: 'original-store' },
-          take: 10,
-        }),
-      );
-    } finally {
-      if (originalStoreId === undefined) delete process.env.STORE_ID;
-      else process.env.STORE_ID = originalStoreId;
-    }
   });
 
   it('emits paid-verified event for priority orders', () => {

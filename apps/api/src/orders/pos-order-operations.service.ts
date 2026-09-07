@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { OrderManagementQueryUseCase } from './order-management-query.use-case';
 import { OrderPreparationService } from './order-preparation.service';
 import { OrderSchedulingQueryService } from './order-scheduling-query.service';
 import { OrdersService } from './orders.service';
@@ -16,6 +17,7 @@ import type {
 export class PosOrderOperationsService implements PosOrderOperationsPort {
   constructor(
     private readonly orders: OrdersService,
+    private readonly managementQuery: OrderManagementQueryUseCase,
     private readonly scheduling: OrderSchedulingQueryService,
     private readonly preparation: OrderPreparationService,
     private readonly lifecycleOutbox: OrderLifecycleOutboxProcessor,
@@ -41,15 +43,15 @@ export class PosOrderOperationsService implements PosOrderOperationsPort {
   }
 
   recent(storeStableId: string, limit?: number) {
-    return this.orders.recent(storeStableId, limit);
+    return this.managementQuery.recent(storeStableId, limit);
   }
 
   searchForStore(storeStableId: string, query: PosOrderManagementQuery) {
-    return this.orders.searchForStore(storeStableId, query);
+    return this.managementQuery.searchForStore(storeStableId, query);
   }
 
   board(storeStableId: string, query: PosOrderBoardQuery) {
-    return this.orders.board(storeStableId, query);
+    return this.managementQuery.board(storeStableId, query);
   }
 
   getByStableIdForStore(orderStableId: string, storeStableId: string) {

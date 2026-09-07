@@ -566,6 +566,13 @@
     "ordersService": "apps/api/src/orders/orders.service.ts",
     "ordersModule": "apps/api/src/orders/orders.module.ts"
   },
+  "ordersManagementQueryUseCaseDecomposition": {
+    "useCase": "apps/api/src/orders/order-management-query.use-case.ts",
+    "projection": "apps/api/src/orders/order-query-projection.ts",
+    "posOperations": "apps/api/src/orders/pos-order-operations.service.ts",
+    "ordersService": "apps/api/src/orders/orders.service.ts",
+    "ordersModule": "apps/api/src/orders/orders.module.ts"
+  },
   "awsMessageInfrastructureRetirementBoundary": {
     "main": "apps/api/src/main.ts",
     "messagingModule": "apps/api/src/messaging/messaging.module.ts",

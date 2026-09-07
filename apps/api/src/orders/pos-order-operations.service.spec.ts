@@ -11,6 +11,11 @@ describe('PosOrderOperationsService durable POS creation', () => {
       getByStableIdForStore: jest.fn(),
       updateStatusForStore: jest.fn(),
     };
+    const managementQuery = {
+      recent: jest.fn(),
+      searchForStore: jest.fn(),
+      board: jest.fn(),
+    };
     const scheduling = {
       findByStableIdForStore: jest.fn().mockResolvedValue({
         orderStableId: 'cposdurableorder00000000001',
@@ -33,6 +38,7 @@ describe('PosOrderOperationsService durable POS creation', () => {
     };
     const service = new PosOrderOperationsService(
       orders as never,
+      managementQuery as never,
       scheduling as never,
       preparation as never,
       lifecycleOutbox as never,
