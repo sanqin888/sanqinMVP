@@ -31,11 +31,13 @@ const order = {
 const createHarness = () => {
   const cardRefunds = { refundFullOrder: jest.fn() };
   const posOrders = { createFullRefund: jest.fn() };
+  const eventEmitter = { emitAsync: jest.fn().mockResolvedValue([]) };
   const service = new PosFullRefundOrchestrationService(
     cardRefunds as unknown as PosCardRefundOrchestrationService,
     posOrders as unknown as PosOrdersService,
+    eventEmitter as never,
   );
-  return { cardRefunds, posOrders, service };
+  return { cardRefunds, posOrders, eventEmitter, service };
 };
 
 describe('PosFullRefundOrchestrationService', () => {
@@ -69,6 +71,15 @@ describe('PosFullRefundOrchestrationService', () => {
       'order_stable_1',
       input,
     );
+    expect(harness.eventEmitter.emitAsync).toHaveBeenCalledWith(
+      'order.cancellation.print',
+      {
+        orderStableId: 'order_stable_1',
+        locale: 'zh',
+        reason: input.reason,
+        operatorName: input.operatorName,
+      },
+    );
   });
 
   it('never falls back to the legacy Order-first path for an uncertain managed refund', async () => {
@@ -98,6 +109,7 @@ describe('PosFullRefundOrchestrationService', () => {
       order: { status: 'paid' },
     });
     expect(harness.posOrders.createFullRefund).not.toHaveBeenCalled();
+    expect(harness.eventEmitter.emitAsync).not.toHaveBeenCalled();
   });
 
   it('returns the historical response shape after canonical managed success', async () => {
@@ -126,6 +138,15 @@ describe('PosFullRefundOrchestrationService', () => {
       managedPaymentOperation: 'VOID',
     });
     expect(harness.posOrders.createFullRefund).not.toHaveBeenCalled();
+    expect(harness.eventEmitter.emitAsync).toHaveBeenCalledWith(
+      'order.cancellation.print',
+      {
+        orderStableId: 'order_stable_1',
+        locale: 'zh',
+        reason: input.reason,
+        operatorName: input.operatorName,
+      },
+    );
   });
 
   it('does not hide a definitive managed refund failure behind legacy fallback', async () => {
@@ -157,6 +178,7 @@ describe('PosFullRefundOrchestrationService', () => {
       });
     }
     expect(harness.posOrders.createFullRefund).not.toHaveBeenCalled();
+    expect(harness.eventEmitter.emitAsync).not.toHaveBeenCalled();
   });
 });
 

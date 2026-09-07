@@ -32,7 +32,11 @@ type PosSocketData = {
 };
 
 type PosPrintTarget = 'customer' | 'kitchen' | 'label';
-type PosPrintPurpose = 'INITIAL' | 'REPRINT' | 'AMENDMENT';
+type PosPrintPurpose =
+  | 'INITIAL'
+  | 'REPRINT'
+  | 'AMENDMENT'
+  | 'CANCELLATION';
 type PosPrintTargets = {
   customer?: boolean;
   kitchen?: boolean;
@@ -442,6 +446,7 @@ export class PosGateway
 
   private resolvePrintJobKind(purpose: PosPrintPurpose): string {
     if (purpose === 'INITIAL') return 'AUTO';
+    if (purpose === 'CANCELLATION') return 'CANCELLATION';
     return `${purpose}:${randomUUID()}`;
   }
 
@@ -468,6 +473,13 @@ export class PosGateway
         customer: true,
         kitchen: true,
         label: Array.isArray(labelPlan?.labels) && labelPlan.labels.length > 0,
+      };
+    }
+    if (input.purpose === 'CANCELLATION') {
+      return {
+        customer: false,
+        kitchen: true,
+        label: false,
       };
     }
     return {

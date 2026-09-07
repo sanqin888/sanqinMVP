@@ -49,6 +49,7 @@ $heightMm = if ($payload.labelHeightMm) { [double]$payload.labelHeightMm } else 
 $paperWidth = MmToHundredthsInch $widthMm
 $paperHeight = MmToHundredthsInch $heightMm
 $orderNumber = Resolve-Text $payload.orderNumber
+$pickupCode = Resolve-Text $payload.pickupCode
 
 foreach ($label in $labels) {
   $copies = 1
@@ -133,7 +134,7 @@ foreach ($label in $labels) {
       $componentZhFont = New-Object System.Drawing.Font($FontName, 8, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Point)
       $detailEnFont = New-Object System.Drawing.Font($FontName, 6.5, [System.Drawing.FontStyle]::Regular, [System.Drawing.GraphicsUnit]::Point)
       $detailZhFont = New-Object System.Drawing.Font($FontName, 7.5, [System.Drawing.FontStyle]::Regular, [System.Drawing.GraphicsUnit]::Point)
-      $orderFont = New-Object System.Drawing.Font($FontName, 6.5, [System.Drawing.FontStyle]::Regular, [System.Drawing.GraphicsUnit]::Point)
+      $pickupFont = New-Object System.Drawing.Font($FontName, 6.5, [System.Drawing.FontStyle]::Regular, [System.Drawing.GraphicsUnit]::Point)
       $brush = [System.Drawing.Brushes]::Black
 
       $singleLineFormat = New-Object System.Drawing.StringFormat
@@ -144,23 +145,21 @@ foreach ($label in $labels) {
       $wrapFormat.Trimming = [System.Drawing.StringTrimming]::EllipsisCharacter
       $wrapFormat.FormatFlags = [System.Drawing.StringFormatFlags]::LineLimit
 
-      $orderFormat = New-Object System.Drawing.StringFormat
-      $orderFormat.Trimming = [System.Drawing.StringTrimming]::EllipsisCharacter
-      $orderFormat.FormatFlags = [System.Drawing.StringFormatFlags]::NoWrap
-      $orderFormat.Alignment = [System.Drawing.StringAlignment]::Far
+      $pickupFormat = New-Object System.Drawing.StringFormat
+      $pickupFormat.Trimming = [System.Drawing.StringTrimming]::EllipsisCharacter
+      $pickupFormat.FormatFlags = [System.Drawing.StringFormatFlags]::NoWrap
+      $pickupFormat.Alignment = [System.Drawing.StringAlignment]::Center
 
       try {
         if ($pairCode) {
           $pairRect = New-Object System.Drawing.RectangleF($left, $top, 42, $headerHeight)
           $graphics.DrawString($pairCode, $pairFont, $brush, $pairRect, $singleLineFormat)
         }
-        if ($orderNumber) {
-          $orderX = [single]($left + 44)
-          $orderY = [single]($top + 1)
-          $orderWidth = [single][Math]::Max(20, $innerWidth - 44)
-          $orderHeight = [single][Math]::Max(8, $headerHeight - 2)
-          $orderRect = New-Object System.Drawing.RectangleF($orderX, $orderY, $orderWidth, $orderHeight)
-          $graphics.DrawString("#$orderNumber", $orderFont, $brush, $orderRect, $orderFormat)
+        if ($pickupCode) {
+          $pickupY = [single]($top + 1)
+          $pickupHeight = [single][Math]::Max(8, $headerHeight - 2)
+          $pickupRect = New-Object System.Drawing.RectangleF($left, $pickupY, $innerWidth, $pickupHeight)
+          $graphics.DrawString("#$pickupCode", $pickupFont, $brush, $pickupRect, $pickupFormat)
         }
 
         $englishCursor = $contentTop
@@ -197,7 +196,7 @@ foreach ($label in $labels) {
       } finally {
         $singleLineFormat.Dispose()
         $wrapFormat.Dispose()
-        $orderFormat.Dispose()
+        $pickupFormat.Dispose()
         $pairFont.Dispose()
         $nameEnFont.Dispose()
         $nameZhFont.Dispose()
@@ -205,7 +204,7 @@ foreach ($label in $labels) {
         $componentZhFont.Dispose()
         $detailEnFont.Dispose()
         $detailZhFont.Dispose()
-        $orderFont.Dispose()
+        $pickupFont.Dispose()
       }
 
       $eventArgs.HasMorePages = $false
