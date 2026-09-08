@@ -1505,12 +1505,8 @@ export class OrdersService {
     if (dto.userStableId && !normalizedUserStableId) {
       throw new BadRequestException('userStableId must be a cuid');
     }
-    const userId = normalizedUserStableId
-      ? await this.loyalty.resolveUserIdByStableId(normalizedUserStableId)
-      : null;
-
-    const couponInfo = await this.membership.validateCouponForOrder({
-      userId: userId ?? undefined,
+    const couponInfo = await this.orderBenefitsReader.validateCouponForOrder({
+      userStableId: normalizedUserStableId ?? undefined,
       couponStableId: dto.couponStableId,
     });
 
@@ -1524,7 +1520,7 @@ export class OrdersService {
         ? toCouponPromotionLike(couponInfo.coupon)
         : null,
       promotionContext,
-      customer: { isMember: Boolean(userId) },
+      customer: { isMember: Boolean(normalizedUserStableId) },
       posDiscountCents: dto.discountCents,
     });
     assertCouponPromotionAccepted(
@@ -1744,7 +1740,7 @@ export class OrdersService {
             paidAt,
             paymentMethod,
             userId,
-            userStableId: snapshot.order.userStableId,
+            userStableId: snapshot.order.userStableId ?? null,
             orderStableId: input.orderStableId,
             clientRequestId,
             channel: snapshot.order.channel,
