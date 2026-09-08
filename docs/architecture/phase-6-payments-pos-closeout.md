@@ -1,8 +1,8 @@
 # Phase 6 — Payments / POS Boundary Contraction and Closeout
 
 Start date: 2026-09-07  
-Current implementation base: `origin/dev@37f3e939`  
-Current status: **SLICE 3A LOCAL / REVIEW PENDING**
+Current implementation base: `origin/dev@239d8f74`  
+Current status: **SLICE 3B LOCAL / REVIEW PENDING**
 
 ## Goal
 
@@ -52,8 +52,8 @@ The same audit found that the remaining blocker to a safe public finalization ca
 4. **Auth/POS transport and composition contraction — COMPLETED in Slice 2B** — the three POS payment/refund controllers consume `PosDeviceGuard` through the POS public surface and the composition module consumes `PosDeviceModule` publicly; the full `PosModule` remains a legal direct Nest composition edge after CI proved barrel re-export unsafe. PR #2236 final head `db442930` passed CI #5335 and squash-merged as `e2d72e17`.
 5. **POS full-refund management capability contraction — COMPLETED in Slice 2C** — Payment orchestration now consumes the POS-owned `POS_FULL_REFUND_MANAGEMENT` capability instead of concrete `PosOrdersService`/its internal refund DTO; PR #2237 final head `e76c5087` passed PR CI #5338 and squash-merged as `51dd19ec`.
 6. **POS CARD legacy rollout seam decision — COMPLETED in Slice 2D** — `PosCardPaymentFeatureConfig` remains temporary `payments.pos-card-legacy.v1` cutover compatibility only. It is not promoted into a permanent POS public policy and is not moved into Payments. PR #2238 final head `5e35bd7f` passed CI #5340 and squash-merged as `37f3e939`.
-7. **Confirmed-payment Order identity normalization — ACTIVE in Slice 3A** — remove `PaymentCheckoutAttempt.plannedOrderId/orderId`, stop returning/passing `internalOrderId`, let Orders generate `Order.id` inside its existing atomic finalization transaction, and stop POS Terminal refund from populating a Payments Order UUID. Preserve `PaymentTransaction.orderId` for the later Web Unified Payment stable-reference decision.
-8. **Confirmed-payment finalization public boundary — planned Slice 3B** — after 3A removes DB-identity leakage, expose the unchanged Orders-owned atomic finalization through the narrowest stable-ID-only public capability and remove the remaining `PosCardPaymentOrchestrationService -> OrdersService` business import without exporting transaction clients.
+7. **Confirmed-payment Order identity normalization — COMPLETED in Slice 3A** — `PaymentCheckoutAttempt.plannedOrderId/orderId` and `internalOrderId` finalization plumbing are removed; Orders now generates `Order.id` inside its existing atomic finalization transaction, POS Terminal refund no longer populates a Payments Order UUID, and `PaymentTransaction.orderId` remains deferred for the later Web Unified Payment stable-reference decision. PR #2239 final head `782da646` passed CI #5343 and squash-merged as `239d8f74`.
+8. **Confirmed-payment finalization public boundary — ACTIVE in Slice 3B** — expose the unchanged Orders-owned atomic finalization through `PAYMENT_ORDER_FINALIZATION`, return only `orderStableId/orderNumber/pickupCode`, make `PosCardPaymentOrchestrationService` consume that public capability, and reuse `POS_ORDER_OPERATIONS.getByStableIdForStore()` for completed-checkout recovery. The Orders Prisma transaction remains intact and no transaction client/internal DB ID enters the public contract.
 9. **Payments orchestration composition cleanup** — contract meaningless concrete module coupling after Orders/POS/Auth boundaries stabilize.
 10. **Clover provider/internal cleanup** — keep execution/canonical gateways, raw mappers, OAuth/merchant credentials and provider wire contracts inside Payments infrastructure. Retired SNS/SQS must not be reintroduced; AWS SMS/Email remain separate supported capabilities.
 11. **Web Clover cutover readiness audit** — default read-only/high-risk audit of production checkout, immutable snapshot, tender allocation, surcharge, provider confirmation, reconciliation, refunds, recovery/idempotency and wallet/Hosted iFrame compatibility.
@@ -61,7 +61,7 @@ The same audit found that the remaining blocker to a safe public finalization ca
 
 ### Dependency priorities and exit criteria
 
-Merged through Slice 2C, Payments/Clover direct debt is **44** with `commerce-orders-fulfillment = 4`, `identity-customer-benefits = 13`, `store-operations-pos-print = 2`, `architecture-foundation = 15`, `runtime-data-ci-ops = 8`, and `messaging-notifications = 2`. Slice 2C contracted the POS pair **5 -> 2** by replacing the three full-refund `PosOrdersService`/internal DTO imports with the POS-owned `POS_FULL_REFUND_MANAGEMENT` capability; PR CI #5338 confirmed the baseline and empty public SCC. Slice 2D and Slice 3A intentionally make **no graph/baseline change**. Slice 3A is identity/persistence normalization that preserves the still-direct `PosCardPaymentOrchestrationService -> OrdersService` seam until Slice 3B can expose a stable-ID-only finalization capability. The remaining POS pair is the legal direct `PosModule` Nest composition edge plus `PosCardPaymentFeatureConfig`, which is temporary `payments.pos-card-legacy.v1` cutover compatibility. These counts are contraction signals, not mechanical zero targets.
+After Slice 3A merged, Payments/Clover direct debt remains **44** with `commerce-orders-fulfillment = 4`, `identity-customer-benefits = 13`, `store-operations-pos-print = 2`, `architecture-foundation = 15`, `runtime-data-ci-ops = 8`, and `messaging-notifications = 2`. Slice 3B contracts the confirmed-payment business edge by replacing `PosCardPaymentOrchestrationService -> OrdersService` with `PAYMENT_ORDER_FINALIZATION`, while completed-checkout recovery reuses `POS_ORDER_OPERATIONS`; the monotonic baseline therefore moves `commerce-orders-fulfillment` **4 -> 3** and Payments/Clover total **44 -> 43**. The remaining POS pair is still the legal direct `PosModule` Nest composition edge plus temporary `PosCardPaymentFeatureConfig`. The remaining Payments -> Orders direct edges are the protected Web Clover controller and two explicit OrdersModule composition imports reserved for later composition/Web readiness work. These counts are contraction signals, not mechanical zero targets.
 
 Phase 6 closeout requires public SCC to remain empty, no new bounded-context cycle, meaningful owner-leakage contraction, stable-ID-only prepared-payment boundary, an explicit safe decision for the confirmed-payment transaction seam, clear Clover infrastructure ownership, scanner/tests preventing regression, and a documented plan for the protected Web Clover legacy seam. If Web Unified Payment Core migration is executed, controlled cutover, production verification and legacy cleanup must complete before Phase 6 can be marked `PRODUCTION VERIFIED / CLOSED`.
 
@@ -218,7 +218,7 @@ None in this docs-only Slice. `payments-clover -> store-operations-pos-print` re
 
 ## Slice 3A — Confirmed-payment Order identity normalization
 
-Status: **LOCAL / REVIEW PENDING**
+Status: **MERGED / CI GREEN** — PR #2239; final head `782da646`; squash merge `239d8f74`; PR CI #5343 passed.
 
 Migration classification: **Class B persisted pre-production contraction** with explicit user authorization for the destructive schema step. A fresh read-only production audit immediately before implementation found `PaymentCheckoutAttempt = 0` and `PaymentTransaction = 0`, so there is no production Unified Payment history to backfill. The new migration is fail-closed: it refuses to drop the checkout UUID columns if any `PaymentCheckoutAttempt` row exists at deployment time.
 
@@ -239,6 +239,25 @@ There is intentionally **no direct-import baseline change** in Slice 3A: `paymen
 
 Production Web Clover Ecommerce, Clover provider execution/protocol, Payment success/UNKNOWN/reconciliation semantics, external amount/surcharge truth, POS Terminal rollout flag, pricing/promotion snapshots, printing/preparation behavior and package dependencies are unchanged. Deployment must keep the Terminal rollout on the legacy/non-Terminal path while this migration is applied: the fail-closed empty-table guard runs first, the obsolete columns are contracted only if no Unified checkout exists, and the matching API code is then deployed before any Terminal cutover. No production migration has been applied in this workspace.
 
+## Slice 3B — Confirmed-payment finalization public boundary
+
+Status: **LOCAL / REVIEW PENDING**
+
+Migration classification: **Class A atomic internal boundary contraction**. No Prisma schema/migration, persisted checkout/payment/order fact, route, provider protocol, Terminal rollout flag, refund/reconciliation state meaning, package dependency, or production Web Clover behavior is changed.
+
+### Source change
+
+- Orders now owns `payment-order-finalization.contract.ts` with `PAYMENT_ORDER_FINALIZATION`, `PaymentOrderFinalizationPort`, the stable/business finalization input, and a narrow result containing only `orderStableId`, `orderNumber` and `pickupCode`. The contract reuses the already-public V2 `PreparedPaymentOrderSnapshot` and contains no Prisma type, `Prisma.TransactionClient`, internal DB UUID, Payments/Clover dependency, or full `OrderDto`.
+- `OrdersService` implements `PaymentOrderFinalizationPort`. `finalizeConfirmedPayment()` is the public use-case entry for the existing transaction; the transaction body still creates the paid Order, COMMITs Points/Balance and Coupon/UserCoupon reservations, binds the coupon relation, and writes durable `order.accepted` atomically before post-commit paid side effects.
+- `OrdersModule` binds `PAYMENT_ORDER_FINALIZATION` with `useExisting: OrdersService` and exports the token, matching the established `PAYMENT_ORDER_PREPARATION` pattern without creating another service/facade instance.
+- `PosCardPaymentOrchestrationService` injects `PAYMENT_ORDER_FINALIZATION` through `orders/public-api.ts` and no longer imports concrete `OrdersService`. Completed-checkout recovery reuses the already-public `POS_ORDER_OPERATIONS.getByStableIdForStore(orderStableId, storeStableId)` capability; no second Order-read port is introduced.
+- Focused orchestration/characterization tests now mock the public finalization port, lock the narrow finalization result, preserve completed-checkout no-reprice/no-recommit recovery, and retain 3A's internal-ID guards. `payments-architecture.spec.ts` requires the public token/port, `useExisting` binding, stable-only result fields and no Prisma/Payments/Clover/full-Order leakage, while forbidding the concrete OrdersService import from returning.
+- The monotonic baseline contracts `payments-clover -> commerce-orders-fulfillment` **4 -> 3**, reducing Payments/Clover total direct debt **44 -> 43**. The three retained direct edges are the protected production Web Clover controller plus the two explicit OrdersModule composition imports; composition cleanup/Web migration remain later work.
+
+### Explicit non-scope / preserved behavior
+
+The Orders-owned Prisma transaction is not moved or split. Benefits/Coupon COMMIT order, prepared snapshot validation, surcharge/charged-total inputs, payment success/UNKNOWN/reconciliation semantics, checkout `FINALIZING/COMPLETED` recovery, immediate-preparation activation, realtime publication, refund/void behavior, `PaymentTransaction.orderId`, POS Terminal feature compatibility, printing and production Web Clover Ecommerce remain unchanged.
+
 ## Verification state
 
 Slice 1 is merged and CI-green through PR #2231 / CI #5318. The readiness baseline refresh is merged through PR #2232 / `94cff60f`, with final head `f35bcd5f` passing CI #5321. Slice 1B is merged and CI-green through PR #2233 / CI #5326, final head `0a2a01d8`, squash merge `be21c8c5`. Slice 1C is merged and CI-green through PR #2234 / CI #5329, final head `a042ea10`, squash merge `bf95051f`. Slice 2A is merged and CI-green through PR #2235 / CI #5332, final head `6169d4dd`, squash merge `b1051c24`.
@@ -247,10 +266,12 @@ Slice 2B is merged and CI-green through PR #2236 / CI #5335, final head `db44293
 
 Slice 2C is merged and CI-green through PR #2237 / PR CI #5338, final head `e76c5087`, squash merge `51dd19ec`. Slice 2D is merged and CI-green through PR #2238 / CI #5340, final head `5e35bd7f`, squash merge `37f3e939`.
 
-Slice 3A is currently **LOCAL / REVIEW PENDING**. The production read-only zero-row audit was repeated before the migration was authored. Per repository workflow, no local lint/build/test/scanner execution or migration application is claimed; GitHub Actions becomes authoritative only after user review and authorization for remote delivery.
+Slice 3A is merged and CI-green through PR #2239 / CI #5343, final head `782da646`, squash merge `239d8f74`. Its authorized contraction migration is source-complete in `dev` but no production migration application or Terminal cutover is claimed here.
+
+Slice 3B is currently **LOCAL / REVIEW PENDING**. Per repository workflow, no local lint/build/test/scanner execution is claimed; GitHub Actions becomes authoritative only after user review and authorization for remote delivery.
 
 ## Remaining Phase 6 work
 
 The final POS pair ownership question remains resolved without source churn: keep the legal `PosModule` composition edge and quarantine `PosCardPaymentFeatureConfig` as temporary registered compatibility until the Terminal cutover cleanup.
 
-After Slice 3A review/delivery, the next recommended source slice is **Slice 3B — Confirmed-payment finalization public boundary**. With Order DB UUID generation/persistence no longer crossing into Payments orchestration, expose the existing Orders-owned atomic finalization as a narrow stable-ID-only capability, make `PosCardPaymentOrchestrationService` consume it through `orders/public-api.ts`, reuse an existing public Order read capability for completed-checkout recovery, and remove the concrete `OrdersService` business import. The transaction itself must remain inside Orders; neither `Prisma.TransactionClient` nor internal Order/Coupon/Benefits DB IDs may enter the public contract. Production Web Clover compatibility remains protected until its later readiness/cutover work.
+After Slice 3B review/delivery, the next recommended task is a **read-only Payments orchestration composition cleanup readiness audit**. The remaining `payments-clover -> commerce-orders-fulfillment = 3` direct edges are the protected production Web `clover-pay.controller.ts -> OrdersService` compatibility seam plus two explicit `OrdersModule` composition imports in `clover-web-checkout-orchestration.module.ts` and `pos-card-payment-orchestration.module.ts`. Audit the two composition edges first: determine whether consuming the already-public `OrdersModule` surface can remove implementation-path wiring without eager-barrel/runtime-cycle risk or any Web Clover behavior change. Do not manufacture a wrapper module or repeat the failed `PosModule` barrel pattern merely to reduce counts. If either composition edge is not safely contractible, retain it explicitly and proceed to Clover provider/internal cleanup; the protected Web controller remains reserved for the later Web Unified Payment readiness/cutover work.

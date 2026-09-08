@@ -48,6 +48,11 @@ import type {
   PaymentTenderAllocation,
   PreparedPaymentOrderSnapshot,
 } from './payment-order-preparation.contract';
+import type {
+  ConfirmedPaymentFinalizationInput,
+  ConfirmedPaymentOrderResult,
+  PaymentOrderFinalizationPort,
+} from './payment-order-finalization.contract';
 import {
   ORDER_STATUS_ADVANCE_FLOW,
   ORDER_STATUS_TRANSITIONS,
@@ -246,16 +251,14 @@ function resolvePromotionRuleChannel(
   return PROMOTION_RULE_CHANNEL_BY_ORDER_CHANNEL[channel];
 }
 
-export type ConfirmedPaymentOrderResult = {
-  order: OrderDto;
-};
-
 type CreateInternalOptions = {
   appendAcceptedLifecycle?: boolean;
 };
 
 @Injectable()
-export class OrdersService implements PaymentOrderPreparationPort {
+export class OrdersService
+  implements PaymentOrderPreparationPort, PaymentOrderFinalizationPort
+{
   private readonly logger = new AppLogger(OrdersService.name);
   private readonly CLIENT_REQUEST_ID_RE = CLIENT_REQUEST_ID_RE;
 
@@ -648,6 +651,19 @@ export class OrdersService implements PaymentOrderPreparationPort {
 
   private toOrderDto(order: OrderWithItems | OrderDetail): OrderDto {
     return projectOrderDto(order);
+  }
+
+  private toConfirmedPaymentOrderResult(
+    order: OrderWithItems | OrderDetail,
+  ): ConfirmedPaymentOrderResult {
+    const dto = this.toOrderDto(order);
+    return {
+      order: {
+        orderStableId: dto.orderStableId,
+        orderNumber: dto.orderNumber,
+        pickupCode: dto.pickupCode,
+      },
+    };
   }
 
   private getLoyaltyUsageByOrderStableId(orderStableId: string): Promise<{
@@ -1567,14 +1583,9 @@ export class OrdersService implements PaymentOrderPreparationPort {
     };
   }
 
-  async createFromConfirmedPaymentSnapshot(
+  async finalizeConfirmedPayment(
     snapshot: PreparedPaymentOrderSnapshot,
-    input: {
-      attemptId: string;
-      orderStableId: string;
-      cardSurchargeCents: number;
-      chargedTotalCents: number;
-    },
+    input: ConfirmedPaymentFinalizationInput,
   ): Promise<ConfirmedPaymentOrderResult> {
     if (snapshot.version !== 2 || snapshot.order.channel !== Channel.in_store) {
       throw new BadRequestException('Unsupported payment order snapshot');
@@ -1604,9 +1615,7 @@ export class OrdersService implements PaymentOrderPreparationPort {
       include: { items: true },
     });
     if (existing) {
-      return {
-        order: this.toOrderDto(existing as OrderWithItems),
-      };
+      return this.toConfirmedPaymentOrderResult(existing as OrderWithItems);
     }
 
     const userId = snapshot.order.userStableId
@@ -1766,9 +1775,7 @@ export class OrdersService implements PaymentOrderPreparationPort {
         })}Order created from immutable payment snapshot.`,
       );
       void this.handleOrderPaidSideEffects(created);
-      return {
-        order: this.toOrderDto(created),
-      };
+      return this.toConfirmedPaymentOrderResult(created);
     } catch (error) {
       if (this.getUniqueViolationTargets(error)) {
         const raced = await this.prisma.order.findUnique({
@@ -1776,9 +1783,7 @@ export class OrdersService implements PaymentOrderPreparationPort {
           include: { items: true },
         });
         if (raced) {
-          return {
-            order: this.toOrderDto(raced as OrderWithItems),
-          };
+          return this.toConfirmedPaymentOrderResult(raced as OrderWithItems);
         }
       }
       throw error;

@@ -195,6 +195,7 @@ HELD -> RELEASED
 9. Unified Payment / POS orchestration 的 Points/Balance 与 Coupon HOLD/RELEASE 必须通过 Benefits-owned public reservation contracts 使用，不得直接注入 concrete `LoyaltyService` / `MembershipService` 或跨边界传递 Benefits persistence IDs。
 10. COMMIT 必须继续与 Order creation 保持现有单 Prisma transaction 原子性；在有符合仓库规则的 transaction-bound contract 前，不得把 COMMIT 简单拆成独立 Benefits transaction，也不得把 `Prisma.TransactionClient` 当作普通跨 context public contract。
 11. Confirmed-payment finalization 的 Order DB UUID 必须由 Orders 在该 transaction 内生成；Unified Payment checkout/orchestration 只保留 `orderStableId`，不得预生成、持久化或回传 `Order.id`。`PaymentTransaction.orderId` 在当前 POS Terminal Slice 中保持 nullable schema 字段但不再由 POS refund/void 填写；其长期 stable Order reference 在 Web Unified Payment migration 前另行统一决策，不在 POS identity normalization 中提前扩大范围。
+12. Confirmed-payment finalization 必须通过 Orders-owned `PAYMENT_ORDER_FINALIZATION` public capability 调用；public contract 只暴露 V2 prepared snapshot、stable/business finalization facts 和必要的 `orderStableId/orderNumber/pickupCode` 结果，不暴露 `Prisma.TransactionClient`、Order/Coupon/Benefits DB UUID 或完整 `OrderDto`。原子 Prisma transaction 仍由 Orders implementation 独占。
 
 不得用“先真实扣积分/余额，失败再补偿退款”的方式伪装 HOLD；必须能区分 HELD、COMMITTED、RELEASED。
 
