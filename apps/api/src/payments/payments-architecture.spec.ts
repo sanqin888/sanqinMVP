@@ -409,6 +409,59 @@ describe('Payments bounded-context architecture', () => {
     expect(publicApi?.source).not.toContain("from './pos.module'");
   });
 
+  it('keeps POS full-refund management behind the POS public capability', () => {
+    const orchestrationFiles = scanTypeScript(
+      resolve(SOURCE_ROOT, 'orchestration'),
+      { productionOnly: true },
+    );
+    const fullRefundService = orchestrationFiles.find(({ path }) =>
+      path.endsWith('pos-full-refund-orchestration.service.ts'),
+    );
+    const fullRefundController = orchestrationFiles.find(({ path }) =>
+      path.endsWith('pos-full-refund.controller.ts'),
+    );
+    const posFiles = scanTypeScript(resolve(SOURCE_ROOT, 'pos'), {
+      productionOnly: true,
+    });
+    const publicApi = posFiles.find(({ path }) =>
+      path.endsWith('public-api.ts'),
+    );
+    const posModule = posFiles.find(({ path }) => path.endsWith('pos.module.ts'));
+    const posOrdersService = posFiles.find(({ path }) =>
+      path.endsWith('pos-orders.service.ts'),
+    );
+    const fullRefundContract = posFiles.find(({ path }) =>
+      path.endsWith('pos-full-refund-management.contract.ts'),
+    );
+
+    expect(fullRefundService?.source).toContain("from '../pos/public-api'");
+    expect(fullRefundService?.source).toContain('POS_FULL_REFUND_MANAGEMENT');
+    expect(fullRefundService?.source).toContain('PosFullRefundManagementPort');
+    expect(fullRefundService?.source).not.toContain(
+      "from '../pos/pos-orders.service'",
+    );
+    expect(fullRefundController?.source).toContain("from '../pos/public-api'");
+    expect(fullRefundController?.source).toContain(
+      'PosFullRefundManagementInput',
+    );
+    expect(fullRefundController?.source).not.toContain(
+      "from '../pos/pos-orders.service'",
+    );
+    expect(publicApi?.source).toContain('POS_FULL_REFUND_MANAGEMENT');
+    expect(publicApi?.source).toContain('PosFullRefundManagementPort');
+    expect(posModule?.source).toContain('provide: POS_FULL_REFUND_MANAGEMENT');
+    expect(posModule?.source).toContain('useExisting: PosOrdersService');
+    expect(posModule?.source).toContain('exports: [POS_FULL_REFUND_MANAGEMENT]');
+    expect(posModule?.source).not.toContain('exports: [PosOrdersService]');
+    expect(posOrdersService?.source).toContain(
+      'implements PosFullRefundManagementPort',
+    );
+    expect(fullRefundContract?.source).toContain("from '@shared/order'");
+    expect(fullRefundContract?.source).not.toContain("from '@prisma/client'");
+    expect(fullRefundContract?.source).not.toMatch(/from ['"]\.\.\/payments\//);
+    expect(fullRefundContract?.source).not.toMatch(/from ['"]\.\.\/clover\//);
+  });
+
   it('keeps POS refund/reverse-sync Orders access on the public POS order operations boundary', () => {
     const orchestrationFiles = scanTypeScript(
       resolve(SOURCE_ROOT, 'orchestration'),

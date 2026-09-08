@@ -1,12 +1,14 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import { ConflictException, Inject, Injectable } from '@nestjs/common';
 
-import type { PosCreateFullRefundInput } from '../pos/pos-orders.service';
-import { PosOrdersService } from '../pos/pos-orders.service';
+import {
+  POS_FULL_REFUND_MANAGEMENT,
+  type PosFullRefundManagementInput,
+  type PosFullRefundManagementPort,
+  type PosFullRefundManagementResult,
+} from '../pos/public-api';
 import { PosCardRefundOrchestrationService } from './pos-card-refund-orchestration.service';
 
-export type PosFullRefundResult = Awaited<
-  ReturnType<PosOrdersService['createFullRefund']>
-> & {
+export type PosFullRefundResult = PosFullRefundManagementResult & {
   managedPaymentStatus?: string;
   managedPaymentOperation?: 'REFUND' | 'VOID';
 };
@@ -15,13 +17,14 @@ export type PosFullRefundResult = Awaited<
 export class PosFullRefundOrchestrationService {
   constructor(
     private readonly cardRefunds: PosCardRefundOrchestrationService,
-    private readonly posOrders: PosOrdersService,
+    @Inject(POS_FULL_REFUND_MANAGEMENT)
+    private readonly fullRefundManagement: PosFullRefundManagementPort,
   ) {}
 
   async refundFullOrder(
     storeStableId: string,
     orderStableId: string,
-    input: PosCreateFullRefundInput,
+    input: PosFullRefundManagementInput,
   ): Promise<PosFullRefundResult> {
     const managed = await this.cardRefunds.refundFullOrder(
       storeStableId,
@@ -30,7 +33,7 @@ export class PosFullRefundOrchestrationService {
     );
 
     if (managed.mode === 'LEGACY_MANUAL_REQUIRED') {
-      return this.posOrders.createFullRefund(
+      return this.fullRefundManagement.createFullRefund(
         storeStableId,
         orderStableId,
         input,

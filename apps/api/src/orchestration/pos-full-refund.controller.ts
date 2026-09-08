@@ -8,7 +8,6 @@ import {
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
-import type { PaymentMethod } from '@prisma/client';
 import type { Request } from 'express';
 import { z } from 'zod';
 
@@ -20,8 +19,8 @@ import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import {
   PosDeviceGuard,
   type AuthenticatedPosIdentity,
+  type PosFullRefundManagementInput,
 } from '../pos/public-api';
-import type { PosCreateFullRefundInput } from '../pos/pos-orders.service';
 import { PosFullRefundOrchestrationService } from './pos-full-refund-orchestration.service';
 
 const PaymentMethodSchema = z.enum([
@@ -40,14 +39,6 @@ const PosFullRefundSchema = z.object({
   refundMethod: PaymentMethodSchema,
 });
 
-type PosFullRefundDto = Omit<
-  z.infer<typeof PosFullRefundSchema>,
-  'originalPaymentMethod' | 'refundMethod'
-> & {
-  originalPaymentMethod: PaymentMethod;
-  refundMethod: PaymentMethod;
-};
-
 type PosDeviceRequest = Request & {
   posDevice?: AuthenticatedPosIdentity;
 };
@@ -63,12 +54,13 @@ export class PosFullRefundController {
   fullRefund(
     @Req() req: PosDeviceRequest,
     @Param('orderStableId', StableIdPipe) orderStableId: string,
-    @Body(new ZodValidationPipe(PosFullRefundSchema)) body: PosFullRefundDto,
+    @Body(new ZodValidationPipe(PosFullRefundSchema))
+    body: PosFullRefundManagementInput,
   ) {
     return this.refunds.refundFullOrder(
       this.requireStoreStableId(req),
       orderStableId,
-      body as PosCreateFullRefundInput,
+      body,
     );
   }
 
