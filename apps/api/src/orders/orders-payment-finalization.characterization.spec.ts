@@ -5,16 +5,16 @@ import {
 } from './orders.service';
 
 const snapshot = (): PreparedPaymentOrderSnapshot => ({
-  version: 1,
+  version: 2,
   order: {
     channel: Channel.in_store,
     fulfillmentType: FulfillmentType.pickup,
-    paymentMethod: PaymentMethod.CARD,
     userStableId: 'customer_stable_1',
-    items: [],
-  } as PreparedPaymentOrderSnapshot['order'],
-  userId: '8a3d4c0e-4750-4f6a-9138-000000000010',
-  storeId: '4750_Yonge_Street',
+    contactName: null,
+    contactEmail: null,
+    contactPhone: null,
+  },
+  storeStableId: '4750_Yonge_Street',
   pricing: {
     subtotalCents: 2000,
     displaySubtotalCents: 2000,
@@ -36,7 +36,6 @@ const snapshot = (): PreparedPaymentOrderSnapshot => ({
   },
   items: [
     {
-      id: 'order-item-1',
       productStableId: 'product_stable_1',
       qty: 2,
       displayName: 'Roujiamo',
@@ -53,8 +52,8 @@ const snapshot = (): PreparedPaymentOrderSnapshot => ({
   ],
   promotionSnapshot: { version: 1, adjustments: [] },
   coupon: {
-    id: '8a3d4c0e-4750-4f6a-9138-000000000020',
     couponStableId: 'coupon_stable_1',
+    reserveAssignedCoupon: true,
     code: 'SAVE2',
     title: 'Save $2',
     minSpendCents: 1000,
@@ -128,11 +127,17 @@ describe('OrdersService confirmed-payment finalization characterization', () => 
     const transaction = jest.fn(
       (work: (client: typeof tx) => Promise<unknown>) => work(tx),
     );
+    const resolveUserIdByStableId = jest
+      .fn()
+      .mockResolvedValue('8a3d4c0e-4750-4f6a-9138-000000000010');
     const commitTender = jest.fn().mockResolvedValue({
       pointsValueCents: 400,
       balanceCents: 300,
     });
-    const commitCoupons = jest.fn().mockResolvedValue(undefined);
+    const commitCoupons = jest.fn().mockResolvedValue({
+      couponId: '8a3d4c0e-4750-4f6a-9138-000000000020',
+      couponStableId: 'coupon_stable_1',
+    });
     const paidSideEffects = jest.fn().mockResolvedValue(undefined);
     const toOrderDto = jest.fn((order: unknown) => order);
     const allocateClientRequestIdTx = jest
@@ -145,7 +150,10 @@ describe('OrdersService confirmed-payment finalization characterization', () => 
         order: { findUnique: outerFindUnique },
         $transaction: transaction,
       },
-      loyalty: { commitPaymentTenderForOrder: commitTender },
+      loyalty: {
+        resolveUserIdByStableId,
+        commitPaymentTenderForOrder: commitTender,
+      },
       membership: { commitPaymentCouponsForOrder: commitCoupons },
       allocateClientRequestIdTx,
       handleOrderPaidSideEffects: paidSideEffects,
@@ -164,6 +172,7 @@ describe('OrdersService confirmed-payment finalization characterization', () => 
       },
     );
 
+    expect(resolveUserIdByStableId).toHaveBeenCalledWith('customer_stable_1');
     expect(transaction).toHaveBeenCalledTimes(1);
     expect(commitTender).toHaveBeenCalledWith({
       tx,
@@ -183,6 +192,9 @@ describe('OrdersService confirmed-payment finalization characterization', () => 
           id: '8a3d4c0e-4750-4f6a-9138-000000000030',
           orderStableId: 'order_stable_1',
           storeId: '4750_Yonge_Street',
+          userId: '8a3d4c0e-4750-4f6a-9138-000000000010',
+          userStableId: 'customer_stable_1',
+          couponId: '8a3d4c0e-4750-4f6a-9138-000000000020',
           status: 'paid',
           paymentMethod: PaymentMethod.CARD,
           subtotalCents: 2000,
@@ -201,7 +213,6 @@ describe('OrdersService confirmed-payment finalization characterization', () => 
           items: {
             create: [
               expect.objectContaining({
-                id: 'order-item-1',
                 productStableId: 'product_stable_1',
                 qty: 2,
                 unitPriceCents: 1000,
@@ -212,6 +223,10 @@ describe('OrdersService confirmed-payment finalization characterization', () => 
         include: { items: true },
       }),
     );
+    const createInput = orderCreate.mock.calls[0]?.[0] as {
+      data: { items: { create: Array<Record<string, unknown>> } };
+    };
+    expect(createInput.data.items.create[0]).not.toHaveProperty('id');
     expect(createLifecycleEvent).toHaveBeenCalledWith({
       data: {
         idempotencyKey: 'order.accepted:order_stable_1',
