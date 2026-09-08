@@ -1,7 +1,7 @@
 # SanQ 支付域模块化 + Clover POS 实时同步分阶段实施方案
 
-**状态：** Phase Execution Plan v3（2026-09-03 governance revision）  
-**日期：** 2026-08-26；冻结/模块化执行规则修订于 2026-09-03  
+**状态：** Phase Execution Plan v4（2026-09-08 sandbox sequencing revision）  
+**日期：** 2026-08-26；冻结/模块化执行规则修订于 2026-09-03；sandbox/config sequencing 修订于 2026-09-08  
 **关联文档：** `docs/payments/clover-pos-integration-charter.md`
 
 ## 0. 总体原则
@@ -43,6 +43,47 @@ Phase H  Full Verification / Cutover
 Phase I  Production Stability Window
 Phase J  Legacy Cleanup
 ```
+
+### 0.2 2026-09-08 Phase 6 / Sandbox bring-up 执行顺序修订
+
+新的 Clover Test Merchant 和 Test App 已具备 Preview 条件，因此当前阻塞从“无法开始 sandbox integration”收缩为“尚未完成 SanQ OAuth、Platform v3、Cloud Pay Display/device 与真实支付行为验收”。这不改变 Web-before/after cutover 原则，但要求在继续 Phase G 前把 POS Terminal 的 provider/config/credential 边界和 sandbox 验证提前完成。
+
+Phase 6 后半段固定按以下顺序执行：
+
+```text
+Slice 4B  Clover provider internal capability cleanup
+    -> Slice 4C  Unified/Sandbox configuration isolation
+    -> Slice 4D  Unified Clover OAuth credential convergence
+    -> Test Merchant OAuth + Platform v3 read + device availability
+    -> controlled sandbox Sale / reconciliation / refund / recovery
+    -> full POS Terminal acceptance
+    -> Web Clover cutover readiness audit
+    -> Phase G Web Ecommerce migration to Unified Payment Core
+```
+
+#### Slice 4B 边界
+
+4B 只做 provider infrastructure ownership cleanup：把 `CloverPlatformPaymentsGateway` 及其 Platform v3 canonical HTTP/raw mapping 从 `clover-payment-provider.adapter.ts` 移入 `payments/infrastructure/clover/platform/**`，保持 adapter 注入/调用语义不变；同时收掉无外部消费者的 `PAYMENT_PROVIDER` / `CreatePaymentAttemptUseCase` module exports，并用 architecture guards 锁住 Platform gateway 不得被 orchestration/POS/Orders 直接 import。4B 不修改 Web `/v1/charges`、OAuth、Terminal、webhook、Prisma 或部署配置。
+
+#### Slice 4C 配置隔离
+
+4C 必须把三类配置语义分开：
+
+1. **Legacy Web Ecommerce production**：现有 `CLOVER_BASE`、`CLOVER_MERCHANT_ID`、`CLOVER_ACCESS_TOKEN` 和 `NEXT_PUBLIC_CLOVER_*` 在 POS sandbox bring-up 期间保持现值/现消费者不变。
+2. **Unified Clover core**：新增独立 merchant/store、Platform v3 与 OAuth 配置族（`CLOVER_UNIFIED_*`），当前填 Test Merchant/Test App sandbox 值，未来生产切换时只替换配置值，不再改变业务语义。
+3. **Terminal-only**：REST Pay base、device ID、RAID、timeout 使用独立 `CLOVER_TERMINAL_*` 配置。
+
+Unified/Terminal 配置缺失必须 fail closed。禁止 Unified/Terminal 回退到 live Web merchant、token 或 Ecommerce base。现有 production Clover webhook merchant/auth scope 在 4C 不改变，sandbox bring-up 先依赖 Terminal execution + Platform canonical reconciliation。
+
+#### Slice 4D credential convergence
+
+4D 将 Terminal 从静态 `CLOVER_TERMINAL_OAUTH_TOKEN` 改为复用现有 `CloverMerchantAccessTokenService`。Platform v3 与 Terminal REST Pay 使用同一 Unified merchant OAuth authorization、refresh/recovery lifecycle；OAuth store mapping 也基于 Unified merchant/store 配置，不再借用 legacy Web merchant identity。静态 Terminal token 不作为 fallback 保留。
+
+#### Sandbox / production data safety
+
+`POS_CLOVER_TERMINAL_PAYMENT_ENABLED` 在 OAuth/Platform/device bring-up 阶段继续默认关闭。只有在明确的非营业/测试窗口才允许为 full POS E2E 打开 Terminal route。Clover sandbox 只隔离 provider 资金环境，并不会隔离 SanQ 自己的数据库：如果 full POS flow 运行在 production API，它仍可能产生 `PaymentTransaction`、`PaymentCheckoutAttempt`、Order、print/reporting 等生产库事实。若要求 SanQ 测试数据也完全隔离，应另行批准 staging runtime/database，而不是在 production runtime 内增加隐式 sandbox/production 双环境切换。
+
+当前不为 sandbox/production 并存新增 Prisma environment 字段。`CloverMerchantAuthorization.storeStableId @unique` 继续表示一个 runtime/store 只绑定一个 active Unified merchant；未来 production Unified merchant 绑定前必须明确 revoke/unbind sandbox authorization。若以后确实需要同一 runtime 长期同时保留两套 active authorization，再单独做 schema 设计并按 `AGENTS.md` 取得 migration 授权。
 
 ## 1. Architecture Tests 总体策略
 
