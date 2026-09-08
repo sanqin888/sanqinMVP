@@ -22,12 +22,12 @@ export type PosCardPaymentReverseSyncRealtimeMessage = {
 };
 
 export interface PosPaymentRealtimePort {
-  publishCardPaymentStatus(
+  publishCardPaymentStatus: (
     storeStableId: string,
     data: PosCardPaymentStatusRealtimeMessage,
-  ): void;
-  publishCardPaymentReverseSync(
+  ) => void;
+  publishCardPaymentReverseSync: (
     storeStableId: string,
     data: PosCardPaymentReverseSyncRealtimeMessage,
-  ): void;
+  ) => void;
 }

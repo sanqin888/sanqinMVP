@@ -396,17 +396,14 @@ describe('PosGateway device authorization', () => {
     });
 
     expect(to).toHaveBeenCalledWith('store:store-a');
-    expect(emit).toHaveBeenCalledWith(
-      'POS_CARD_PAYMENT_REVERSE_SYNC_UPDATED',
-      {
-        attemptId: 'attempt-1',
-        paymentId: 'payment-1',
-        externalReversal: 'FULL_REFUND',
-        refundedAmountCents: 1_500,
-        orderStableId: 'order-1',
-        orderStatus: 'refunded',
-        requiresManualReview: false,
-      },
-    );
+    expect(emit).toHaveBeenCalledWith('POS_CARD_PAYMENT_REVERSE_SYNC_UPDATED', {
+      attemptId: 'attempt-1',
+      paymentId: 'payment-1',
+      externalReversal: 'FULL_REFUND',
+      refundedAmountCents: 1_500,
+      orderStableId: 'order-1',
+      orderStatus: 'refunded',
+      requiresManualReview: false,
+    });
   });
 });
