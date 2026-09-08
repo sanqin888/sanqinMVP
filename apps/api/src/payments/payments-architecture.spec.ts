@@ -75,6 +75,21 @@ describe('Payments bounded-context architecture', () => {
     ]);
   });
 
+  it('keeps internal provider bindings and attempt construction private to PaymentsModule', () => {
+    const paymentsModule = scanTypeScript(PAYMENTS_ROOT, {
+      productionOnly: true,
+    }).find(({ path }) => path.endsWith('payments.module.ts'));
+    const exportsBlock =
+      paymentsModule?.source.match(/exports:\s*\[([\s\S]*?)\]/)?.[1] ?? '';
+
+    expect(paymentsModule?.source).toContain('provide: PAYMENT_PROVIDER');
+    expect(paymentsModule?.source).toContain(
+      'provide: CreatePaymentAttemptUseCase',
+    );
+    expect(exportsBlock).not.toContain('PAYMENT_PROVIDER');
+    expect(exportsBlock).not.toContain('CreatePaymentAttemptUseCase');
+  });
+
   it('keeps the Payments bounded context isolated from Orders and POS internals', () => {
     const paymentFiles = scanTypeScript(PAYMENTS_ROOT, {
       productionOnly: true,
@@ -119,6 +134,27 @@ describe('Payments bounded-context architecture', () => {
     ).toEqual([]);
   });
 
+  it('keeps the production Web Ecommerce transport exception limited to CloverService', () => {
+    const cloverInfrastructureRoot = resolve(
+      PAYMENTS_ROOT,
+      'infrastructure',
+      'clover',
+    );
+    const sourceFiles = scanTypeScript(SOURCE_ROOT, {
+      productionOnly: true,
+    }).filter(({ path }) => !path.startsWith(cloverInfrastructureRoot));
+
+    expect(
+      importViolations(sourceFiles, SOURCE_ROOT, (specifier) =>
+        /payments\/infrastructure\/clover\/ecommerce\/clover-ecommerce\.transport/.test(
+          specifier,
+        ),
+      ).sort(),
+    ).toEqual([
+      'clover/clover.service.ts -> ../payments/infrastructure/clover/ecommerce/clover-ecommerce.transport',
+    ]);
+  });
+
   it('defines the Platform v3 gateway only inside Payments Clover infrastructure', () => {
     const definitions = scanTypeScript(SOURCE_ROOT, { productionOnly: true })
       .filter(({ source }) =>
@@ -128,9 +164,20 @@ describe('Payments bounded-context architecture', () => {
         path.slice(SOURCE_ROOT.length + 1).replaceAll('\\', '/'),
       );
 
+    const adapter = scanTypeScript(
+      resolve(PAYMENTS_ROOT, 'infrastructure', 'clover'),
+      { productionOnly: true },
+    ).find(({ path }) => path.endsWith('clover-payment-provider.adapter.ts'));
+
     expect(definitions).toEqual([
-      'payments/infrastructure/clover/clover-payment-provider.adapter.ts',
+      'payments/infrastructure/clover/platform/clover-platform-payments.gateway.ts',
     ]);
+    expect(adapter?.source).not.toContain(
+      'class CloverPlatformPaymentsGateway',
+    );
+    expect(adapter?.source).not.toContain('/v3/merchants/');
+    expect(adapter?.source).not.toContain('PLATFORM_TIMEOUT_MS');
+    expect(adapter?.source).not.toContain('fetch(');
   });
 
   it('keeps Clover merchant OAuth and merchant-scoped credential persistence inside Payments Clover infrastructure', () => {

@@ -65,6 +65,8 @@ Slice 4B  Clover provider internal capability cleanup
 
 4B 只做 provider infrastructure ownership cleanup：把 `CloverPlatformPaymentsGateway` 及其 Platform v3 canonical HTTP/raw mapping 从 `clover-payment-provider.adapter.ts` 移入 `payments/infrastructure/clover/platform/**`，保持 adapter 注入/调用语义不变；同时收掉无外部消费者的 `PAYMENT_PROVIDER` / `CreatePaymentAttemptUseCase` module exports，并用 architecture guards 锁住 Platform gateway 不得被 orchestration/POS/Orders 直接 import。4B 不修改 Web `/v1/charges`、OAuth、Terminal、webhook、Prisma 或部署配置。
 
+**Implementation status (2026-09-08): LOCAL / REVIEW PENDING.** Gateway + Platform canonical HTTP/raw mapping 已迁入 `platform/clover-platform-payments.gateway.ts`，adapter/module/spec import 已同步，两个无外部消费者的 module exports 已移除并新增 source guard。该批是 Payments/Clover context 内部收口，architecture baseline/direct-debt 数字保持不变；尚未运行本地 lint/build/test/scanner，远端 CI 只在用户审阅并授权提交后作为验证依据。
+
 #### Slice 4C 配置隔离
 
 4C 必须把三类配置语义分开：

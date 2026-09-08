@@ -145,9 +145,7 @@ import { PrismaPaymentWebhookEventRepository } from './infrastructure/prisma/pri
   exports: [
     CloverProviderInfrastructureModule,
     PAYMENT_TRANSACTION_REPOSITORY,
-    PAYMENT_PROVIDER,
     PAYMENT_WEBHOOK_EVENT_REPOSITORY,
-    CreatePaymentAttemptUseCase,
     TerminalPaymentService,
     RefundPaymentService,
     PaymentReverseSyncService,
