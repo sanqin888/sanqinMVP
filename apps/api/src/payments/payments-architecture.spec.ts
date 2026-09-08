@@ -570,9 +570,7 @@ describe('Payments bounded-context architecture', () => {
     expect(checkoutService?.source).not.toContain('randomUUID');
     expect(cardPayment?.source).not.toContain('checkout.plannedOrderId');
     expect(cardPayment?.source).not.toContain('created.internalOrderId');
-    expect(cardPayment?.source).toContain(
-      'markCompleted(checkout.attemptId)',
-    );
+    expect(cardPayment?.source).toContain('markCompleted(checkout.attemptId)');
     expect(ordersService?.source).not.toContain('id: input.internalOrderId');
     expect(ordersService?.source).not.toContain(
       'orderId: input.internalOrderId',
