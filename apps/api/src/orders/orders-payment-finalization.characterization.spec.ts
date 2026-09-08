@@ -149,10 +149,12 @@ describe('OrdersService confirmed-payment finalization characterization', () => 
       couponStableId: 'coupon_stable_1',
     });
     const paidSideEffects = jest.fn().mockResolvedValue(undefined);
-    const toOrderDto = jest.fn((order: ReturnType<typeof makeCreatedOrder>) => ({
-      ...order,
-      orderNumber: order.clientRequestId ?? order.orderStableId,
-    }));
+    const toOrderDto = jest.fn(
+      (order: ReturnType<typeof makeCreatedOrder>) => ({
+        ...order,
+        orderNumber: order.clientRequestId ?? order.orderStableId,
+      }),
+    );
     const allocateClientRequestIdTx = jest
       .fn()
       .mockResolvedValue('SQT2609050001');
@@ -174,15 +176,12 @@ describe('OrdersService confirmed-payment finalization characterization', () => 
       logger: { log: jest.fn() },
     });
 
-    const result = await service.finalizeConfirmedPayment(
-      snapshot(),
-      {
-        attemptId: 'attempt-1',
-        orderStableId: 'order_stable_1',
-        cardSurchargeCents: 40,
-        chargedTotalCents: 870,
-      },
-    );
+    const result = await service.finalizeConfirmedPayment(snapshot(), {
+      attemptId: 'attempt-1',
+      orderStableId: 'order_stable_1',
+      cardSurchargeCents: 40,
+      chargedTotalCents: 870,
+    });
 
     expect(resolveUserIdByStableId).toHaveBeenCalledWith('customer_stable_1');
     expect(transaction).toHaveBeenCalledTimes(1);
