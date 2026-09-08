@@ -357,13 +357,31 @@ describe('Payments bounded-context architecture', () => {
     }
   });
 
-  it('keeps persisted payment preparation on the V2 stable-identity snapshot', () => {
+  it('exposes payment preparation through the Orders public capability without duplicating OrdersService', () => {
+    const orderFiles = scanTypeScript(resolve(SOURCE_ROOT, 'orders'), {
+      productionOnly: true,
+    });
+    const publicApi = orderFiles.find(({ path }) => path.endsWith('public-api.ts'));
+    const module = orderFiles.find(({ path }) => path.endsWith('orders.module.ts'));
+
+    expect(publicApi?.source).toContain('PAYMENT_ORDER_PREPARATION');
+    expect(publicApi?.source).toContain('PaymentOrderPreparationPort');
+    expect(module?.source).toContain('provide: PAYMENT_ORDER_PREPARATION');
+    expect(module?.source).toContain('useExisting: OrdersService');
+  });
+
+  it('keeps persisted payment preparation on the V2 stable-identity public boundary', () => {
     const checkoutPreparation = scanTypeScript(
       resolve(SOURCE_ROOT, 'orchestration'),
       { productionOnly: true },
     ).find(({ path }) => path.endsWith('payment-checkout-attempt.service.ts'));
 
     expect(checkoutPreparation).toBeDefined();
+    expect(checkoutPreparation?.source).toContain("from '../orders/public-api'");
+    expect(checkoutPreparation?.source).toContain('PAYMENT_ORDER_PREPARATION');
+    expect(checkoutPreparation?.source).not.toContain(
+      "from '../orders/orders.service'",
+    );
     expect(checkoutPreparation?.source).toContain(
       'storeStableId: snapshot.storeStableId',
     );

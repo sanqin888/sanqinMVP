@@ -7,9 +7,9 @@ import type {
   PaymentTenderReservationPort,
 } from '../benefits/public-api';
 import type {
-  OrdersService,
+  PaymentOrderPreparationPort,
   PreparedPaymentOrderSnapshot,
-} from '../orders/orders.service';
+} from '../orders/public-api';
 import type { PrismaService } from '../prisma/prisma.service';
 import { PaymentCheckoutAttemptService } from './payment-checkout-attempt.service';
 
@@ -155,9 +155,9 @@ const createHarness = () => {
   const prisma = {
     paymentCheckoutAttempt,
   } as unknown as PrismaService;
-  const orders = {
+  const paymentOrderPreparation = {
     preparePaymentOrder: jest.fn().mockResolvedValue(snapshot),
-  } as unknown as jest.Mocked<OrdersService>;
+  } as jest.Mocked<PaymentOrderPreparationPort>;
   const paymentTenderReservations = {
     holdPaymentTender: jest.fn().mockResolvedValue(undefined),
     releasePaymentTender: jest.fn().mockResolvedValue(undefined),
@@ -169,7 +169,7 @@ const createHarness = () => {
 
   const service = new PaymentCheckoutAttemptService(
     prisma,
-    orders,
+    paymentOrderPreparation,
     paymentTenderReservations,
     paymentCouponReservations,
   );
@@ -177,7 +177,7 @@ const createHarness = () => {
   return {
     service,
     paymentCheckoutAttempt,
-    orders,
+    paymentOrderPreparation,
     paymentTenderReservations,
     paymentCouponReservations,
     getRow: () => row,
@@ -235,7 +235,7 @@ describe('PaymentCheckoutAttemptService', () => {
       (persistedDraft.items as Record<string, unknown>[])[0],
     ).not.toHaveProperty('id');
     expect(persistedDraft.coupon).not.toHaveProperty('id');
-    expect(harness.orders.preparePaymentOrder).toHaveBeenCalledWith(
+    expect(harness.paymentOrderPreparation.preparePaymentOrder).toHaveBeenCalledWith(
       order,
       storeStableId,
     );
@@ -366,7 +366,9 @@ describe('PaymentCheckoutAttemptService', () => {
     const second = await harness.service.prepare(input);
 
     expect(first.id).toBe(second.id);
-    expect(harness.orders.preparePaymentOrder).toHaveBeenCalledTimes(1);
+    expect(
+      harness.paymentOrderPreparation.preparePaymentOrder,
+    ).toHaveBeenCalledTimes(1);
     expect(
       harness.paymentTenderReservations.holdPaymentTender,
     ).toHaveBeenCalledTimes(1);

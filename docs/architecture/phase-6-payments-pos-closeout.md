@@ -1,8 +1,8 @@
 # Phase 6 — Payments / POS Boundary Contraction and Closeout
 
 Start date: 2026-09-07  
-Current implementation base: `origin/dev@94cff60f`  
-Current status: **SLICE 1B LOCAL / REVIEW PENDING**
+Current implementation base: `origin/dev@be21c8c5`  
+Current status: **SLICE 1C LOCAL / REVIEW PENDING**
 
 ## Goal
 
@@ -32,9 +32,9 @@ The standalone Phase 6 readiness audit is now normalized into this canonical Pha
 
 ### Prepared-payment identity finding
 
-`PreparedPaymentOrderSnapshot` currently includes order, pricing, tender, item, promotion/coupon and preparation facts plus `storeId` and `userId`. Here `storeId` semantically carries `Store.storeStableId`, while `userId` is an internal User database UUID. The snapshot is persisted into Payment checkout `orderDraftJson` and later reused by confirmed-payment finalization.
+The readiness audit found the original `PreparedPaymentOrderSnapshot` carried internal `User.id`, `Coupon.id`, pre-generated `OrderItem.id`, and ambiguous `storeId` semantics across the Orders -> Payments persisted boundary. That shape was explicitly rejected for public export.
 
-Therefore the existing snapshot **must not be exported as-is through `orders/public-api.ts`**. Before a public payment-preparation capability is introduced, the contract must be normalized so the cross-context/persisted shape is stable-ID-only (or otherwise contains no internal DB identity), with explicit versioning/compatibility/recovery treatment. A local unpushed draft that attempted direct public export was rejected during this readiness refresh and is not part of `dev`.
+Slice 1B has now normalized the persisted preparation contract to V2: the only customer identity is `order.userStableId`, the Store identity is explicit `storeStableId`, Coupon/UserCoupon DB identities stay inside Benefits, and OrderItem UUIDs are generated only during finalization. PR #2233 final head `0a2a01d8` passed CI #5326 and squash-merged as `be21c8c5`. This satisfies the identity prerequisite for Slice 1C to expose the same V2 preparation contract through an Orders-owned public capability without changing the persisted payload.
 
 ### Confirmed-payment transaction finding
 
@@ -44,8 +44,8 @@ Therefore the existing snapshot **must not be exported as-is through `orders/pub
 
 ### Execution sequence after Slice 1
 
-1. **Payment Preparation Contract Normalization Readiness** — define the minimal immutable business facts that must cross Orders -> Payment orchestration/persistence, normalize `storeStableId`, eliminate internal `userId` leakage, and define snapshot version/compatibility/recovery. If schema/migration is required, obtain separate migration authorization first.
-2. **Stable-ID-only Prepared-Payment Boundary** — only after normalization, add the narrow Orders public preparation capability and architecture regression guard.
+1. **Payment Preparation Contract Normalization Readiness — COMPLETED in Slice 1B** — V2 now carries only stable/business identities across the persisted preparation boundary and keeps internal DB identities inside Orders/Benefits execution.
+2. **Stable-ID-only Prepared-Payment Boundary — ACTIVE in Slice 1C** — expose the unchanged V2 preparation contract through an Orders-owned public capability and add architecture regression guards without touching confirmed-payment finalization.
 3. **POS realtime/device capability contraction** — move `PosGateway`/socket/device implementation knowledge behind a POS-owned neutral status capability where an existing public boundary is insufficient.
 4. **Auth/POS transport and composition contraction** — separate legitimate Nest composition from business-capability leakage; do not manufacture facades around legal composition.
 5. **Confirmed-payment transaction seam decision** — independently decide whether the atomic COMMIT + Order creation seam can be safely moved; preserve it if no better design proves equivalent invariants.
@@ -56,7 +56,7 @@ Therefore the existing snapshot **must not be exported as-is through `orders/pub
 
 ### Dependency priorities and exit criteria
 
-After Slice 1, Payments/Clover direct debt is **54** with `commerce-orders-fulfillment = 5`, `identity-customer-benefits = 13`, `store-operations-pos-print = 11`, `architecture-foundation = 15`, `runtime-data-ci-ops = 8`, and `messaging-notifications = 2`. These counts are contraction signals, not mechanical zero targets.
+Merged through Slice 1B, Payments/Clover direct debt is **54** with `commerce-orders-fulfillment = 5`, `identity-customer-benefits = 13`, `store-operations-pos-print = 11`, `architecture-foundation = 15`, `runtime-data-ci-ops = 8`, and `messaging-notifications = 2`. The local Slice 1C source/baseline contracts the Commerce pair **5 -> 4** and Payments/Clover total **54 -> 53**; CI is not yet claimed. These counts are contraction signals, not mechanical zero targets.
 
 Phase 6 closeout requires public SCC to remain empty, no new bounded-context cycle, meaningful owner-leakage contraction, stable-ID-only prepared-payment boundary, an explicit safe decision for the confirmed-payment transaction seam, clear Clover infrastructure ownership, scanner/tests preventing regression, and a documented plan for the protected Web Clover legacy seam. If Web Unified Payment Core migration is executed, controlled cutover, production verification and legacy cleanup must complete before Phase 6 can be marked `PRODUCTION VERIFIED / CLOSED`.
 
@@ -82,7 +82,7 @@ The reverse-sync store identity comes from the already-persisted checkout `store
 
 ## Slice 1B — Prepared-payment V2 stable-identity contract normalization
 
-Status: **LOCAL / REVIEW PENDING**
+Status: **MERGED / CI GREEN** — PR #2233; final head `0a2a01d8`; squash merge `be21c8c5`; PR CI #5326 passed.
 
 Migration classification: **Class A persisted JSON contract normalization with an explicit coordinated cutover**. No Prisma schema/migration or data migration is required. The user explicitly chose a V2-only deployment during non-business hours rather than retaining a V1 read adapter. A fresh read-only production audit before implementation found `PaymentCheckoutAttempt = 0` rows, so there is no historical checkout payload to migrate; any V1 row encountered after deployment is rejected explicitly instead of being silently adapted.
 
@@ -96,6 +96,7 @@ Migration classification: **Class A persisted JSON contract normalization with a
 - Checkout idempotency identity no longer hashes internal `selectedUserCouponId` or `checkoutIntentId`. The former is represented only by the same `reserveAssignedCoupon` business intent, while the latter is excluded from unified-payment identity; stable order facts plus the existing client idempotency key continue to define duplicate/recovery identity.
 - Confirmed-payment Order creation resolves `Order.userId` late from the persisted `userStableId`; the DB UUID exists only inside Orders/Benefits execution and no longer crosses the Orders -> Payments persisted snapshot boundary.
 - `PaymentCheckoutAttemptService.mapRecord()` accepts only V2 and rejects any other persisted version with `PAYMENT_CHECKOUT_SNAPSHOT_VERSION_UNSUPPORTED`; it also rejects a mismatch between persisted `storeStableId` and the checkout record's store-stable identity.
+- Preparation-side member/coupon validation uses the existing stable-ID `ORDER_BENEFITS_READER` public capability rather than adding another concrete Loyalty/Membership resolution. The Benefits owner serializes coupon `expiresAt` into the order-facing business snapshot while retaining DB identities internally.
 - Focused characterization now guards V2 persistence against `userId`, `Coupon.id`, `OrderItem.id`, and `selectedUserCouponId` leakage, locks the stable-pair assigned-coupon reservation behavior, and verifies late internal-ID resolution during the unchanged confirmed-payment transaction. `payments-architecture.spec.ts` adds a source guard preventing the removed identity fields from returning to payment-preparation persistence.
 
 ### Explicit non-scope / preserved behavior
@@ -106,14 +107,35 @@ The existing confirmed-payment Prisma transaction remains intact: Points/Balance
 
 Production Web Clover Ecommerce, Clover provider execution, surcharge, UNKNOWN/reconciliation, refunds/reverse-sync, pricing/promotion evaluation, POS realtime/device transport, routes, Prisma schema/migrations and dependency manifests are unchanged. V2 normalization applies to the POS Terminal unified-payment preparation path; it is not a Web Clover cutover.
 
+## Slice 1C — Stable-ID-only Orders public payment-preparation boundary
+
+Status: **LOCAL / REVIEW PENDING**
+
+Migration classification: **Class A atomic internal boundary contraction**. The V2 persisted payload, provider protocol, routes, Prisma schema/migrations, dependency manifests and externally observable payment behavior are unchanged; all in-repo consumers of the new internal public capability are updated atomically.
+
+### Source change
+
+- Orders now owns `payment-order-preparation.contract.ts`, which contains `PAYMENT_ORDER_PREPARATION`, `PaymentOrderPreparationPort`, and the existing V2 prepared-payment snapshot/pricing/tender/item types previously declared inside `orders.service.ts`. The contract shape is moved, not redesigned.
+- `OrdersService` implements `PaymentOrderPreparationPort`. `OrdersModule` provides `PAYMENT_ORDER_PREPARATION` with `useExisting: OrdersService` and exports the token, so the public capability reuses the existing Orders singleton rather than creating another service instance.
+- `orders/public-api.ts` exports only the preparation token, port and V2 snapshot required by Payments orchestration.
+- `PaymentCheckoutAttemptService` injects `PAYMENT_ORDER_PREPARATION` and no longer imports `../orders/orders.service`; its `preparePaymentOrder(order, storeStableId)` call, persisted V2 draft, HOLD ordering, recovery and idempotency behavior are unchanged.
+- The focused checkout spec mocks `PaymentOrderPreparationPort`, and `payments-architecture.spec.ts` now requires the public import/token plus the Orders `useExisting` binding and rejects regression to the concrete Orders service.
+- The monotonic direct-import baseline contracts `payments-clover -> commerce-orders-fulfillment` **5 -> 4**, reducing Payments/Clover total outgoing direct debt **54 -> 53**. The existing public Payments -> Orders direction is reused; public SCC is expected to remain empty.
+
+### Explicit non-scope / preserved behavior
+
+Slice 1C does **not** change `PosCardPaymentOrchestrationService -> OrdersService.createFromConfirmedPaymentSnapshot()`. Benefits Tender/Coupon COMMIT, Order creation and durable `order.accepted` remain inside the existing atomic Prisma transaction, and no `Prisma.TransactionClient` or internal Order UUID is added to a public contract.
+
+The two current OrdersModule composition imports remain for later composition cleanup, and the production Web Clover `clover-pay.controller.ts -> OrdersService` compatibility seam remains protected. POS realtime/device `PosGateway`, provider execution/status, surcharge, UNKNOWN/reconciliation, refunds/reverse-sync, V2 JSON shape, Prisma schema/migrations and package dependencies are unchanged.
+
 ## Verification state
 
-Slice 1 is merged and CI-green through PR #2231 / CI #5318. The readiness baseline refresh is merged through PR #2232 / `94cff60f`, with final head `f35bcd5f` passing CI #5321.
+Slice 1 is merged and CI-green through PR #2231 / CI #5318. The readiness baseline refresh is merged through PR #2232 / `94cff60f`, with final head `f35bcd5f` passing CI #5321. Slice 1B is merged and CI-green through PR #2233 / CI #5326, final head `0a2a01d8`, squash merge `be21c8c5`.
 
-Slice 1B is currently **LOCAL / REVIEW PENDING**. Per repository workflow, no local lint/build/test/scanner run is claimed; GitHub Actions becomes authoritative only after user approval for remote delivery. Because the production `PaymentCheckoutAttempt` table is empty and deployment will be performed during non-business hours, the approved cutover intentionally has no V1 read compatibility.
+Slice 1C is currently **LOCAL / REVIEW PENDING**. Per repository workflow, no local lint/build/test/scanner run is claimed; GitHub Actions becomes authoritative only after user approval for remote delivery.
 
 ## Remaining Phase 6 work
 
-After Slice 1B is reviewed, delivered and CI-green, the next narrow source slice is the **stable-ID-only Orders public preparation boundary**: move `PaymentCheckoutAttemptService -> OrdersService.preparePaymentOrder()` behind an Orders-owned public capability using the now-normalized V2 snapshot. That later slice may reduce `payments-clover -> commerce-orders-fulfillment` **5 -> 4** and Payments/Clover total outgoing debt **54 -> 53** without carrying DB identities into the public contract.
+After Slice 1C review/delivery, the next low-risk candidate is the **POS realtime/device capability contraction**: audit `PosGateway`/socket implementation knowledge in payment orchestration and move only the necessary neutral realtime/status capability behind POS ownership. Composition imports should be handled separately from business-capability imports so legitimate Nest wiring is not hidden behind meaningless facades.
 
-Do not combine that next port contraction with the retained confirmed-payment transaction seam or production Web Clover compatibility path. Benefits Tender/Coupon COMMIT + Order creation remains a transaction-sensitive atomicity boundary, and production Web Clover remains protected under the existing critical-path rules.
+The confirmed-payment transaction seam remains an independent high-sensitivity decision and must not be split merely to reduce the scanner count. Production Web Clover compatibility remains protected until its later readiness/cutover work.

@@ -23,9 +23,10 @@ import {
   type PaymentTenderReservationPort,
 } from '../benefits/public-api';
 import {
-  OrdersService,
+  PAYMENT_ORDER_PREPARATION,
+  type PaymentOrderPreparationPort,
   type PreparedPaymentOrderSnapshot,
-} from '../orders/orders.service';
+} from '../orders/public-api';
 import type { PaymentTransaction } from '../payments/domain/payment-transaction';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -65,7 +66,8 @@ type PaymentCheckoutRecord = PaymentCheckoutAttemptRecord;
 export class PaymentCheckoutAttemptService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly orders: OrdersService,
+    @Inject(PAYMENT_ORDER_PREPARATION)
+    private readonly paymentOrderPreparation: PaymentOrderPreparationPort,
     @Inject(PAYMENT_TENDER_RESERVATION)
     private readonly paymentTenderReservations: PaymentTenderReservationPort,
     @Inject(PAYMENT_COUPON_RESERVATION)
@@ -87,7 +89,7 @@ export class PaymentCheckoutAttemptService {
 
     await this.releaseExpiredPreProviderAttempts(normalized.storeId);
 
-    const snapshot = await this.orders.preparePaymentOrder(
+    const snapshot = await this.paymentOrderPreparation.preparePaymentOrder(
       normalized.order,
       normalized.storeId,
     );

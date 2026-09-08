@@ -1,8 +1,6 @@
 import { Channel, FulfillmentType, PaymentMethod } from '@prisma/client';
-import {
-  OrdersService,
-  type PreparedPaymentOrderSnapshot,
-} from './orders.service';
+import type { PreparedPaymentOrderSnapshot } from './payment-order-preparation.contract';
+import { OrdersService } from './orders.service';
 
 const snapshot = (): PreparedPaymentOrderSnapshot => ({
   version: 2,
