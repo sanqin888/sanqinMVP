@@ -2,7 +2,7 @@
 
 Machine-readable source:
 `docs/architecture/active-compatibility-register.json`. Current modularization base:
-`origin/dev@c47c2ca5` (2026-09-03).
+`origin/dev@51dd19ec` (2026-09-08).
 
 Operational fallback (retry, provider timeout recovery, email-to-SMS fallback, and
 safe default values unrelated to an old version) is not compatibility debt.
@@ -11,23 +11,33 @@ safe default values unrelated to an old version) is not compatibility debt.
 
 | compat_id | State | Old → new | Exit gate | Deadline |
 |---|---|---|---|---|
-| `payments.pos-card-legacy.v1` | active / pre-production | direct paid Order → Unified Payment Core + Terminal + finalize | Real-device acceptance complete; one settlement cycle reconciled; legacy calls zero before cutover cleanup | Before Phase 5B exit |
+| `payments.pos-card-legacy.v1` | active / pre-production | direct paid Order → Unified Payment Core + Terminal + finalize | POS ↔ Clover realtime/recovery complete; real-device acceptance; one settlement cycle reconciled; clean production stability window; legacy calls zero | Phase J cleanup after Terminal synchronization/cutover stability |
 | `payments.web-checkout-v1.v1` | guarded production | CheckoutIntent/Clover v1 Web path → Unified Payment Core + v3 truth | Web cutover accepted; one settlement cycle reconciled; old calls zero before compatibility deletion | Before Phase 5B exit |
 
 The payment entries are no longer governed by a whole-context freeze. The POS
 Clover Terminal path is pre-production and may be structurally modularized before
 Clover real-device access is restored, provided the live Web Ecommerce path and
-production payment facts are unchanged. The Web Clover path remains protected by
-default because it is actively processing production payments; however, if it
-becomes a documented critical modularization blocker, a narrowly scoped change is
-allowed after recording impact, alternatives and rollback/forward-fix handling.
-Every such Web-impacting change requires focused regression coverage and must record
-the payment scenarios/evidence that the owning Phase closeout verification will cover.
-A separate deployment/active-test cycle is not required after each modularization slice;
-instead the final merged Phase state receives one consolidated active verification pass
-before the Phase can be marked production-verified/closed. Traffic cutover, compatibility
-deletion and settlement-based exit criteria remain separately gated and can still require
-earlier explicit verification when their own exit criteria are reached.
+production payment facts are unchanged. `PosCardPaymentFeatureConfig` and
+`POS_CLOVER_TERMINAL_PAYMENT_ENABLED` are part of `payments.pos-card-legacy.v1`
+cutover infrastructure only while legacy direct-paid CARD and the Unified Payment Core
+Terminal path coexist. They must not be promoted into a permanent POS public feature
+policy or moved into Payments merely to make the direct-import graph numerically smaller.
+The target POS CARD architecture has no route-choice policy: after Terminal realtime
+synchronization/recovery, real-device acceptance and the production stability gate pass,
+legacy path + flag/config + route-choice branches + legacy refund compatibility are
+contracted together in Phase J.
+
+The Web Clover path remains protected by default because it is actively processing
+production payments; however, if it becomes a documented critical modularization blocker,
+a narrowly scoped change is allowed after recording impact, alternatives and
+rollback/forward-fix handling. Every such Web-impacting change requires focused regression
+coverage and must record the payment scenarios/evidence that the owning Phase closeout
+verification will cover. A separate deployment/active-test cycle is not required after
+each modularization slice; instead the final merged Phase state receives one consolidated
+active verification pass before the Phase can be marked production-verified/closed.
+Traffic cutover, compatibility deletion and settlement-based exit criteria remain
+separately gated and can still require earlier explicit verification when their own exit
+criteria are reached.
 
 ## Closed history
 
