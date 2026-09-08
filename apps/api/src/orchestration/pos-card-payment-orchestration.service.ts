@@ -19,7 +19,10 @@ import {
 } from '../payments/application/payment-transaction.repository';
 import type { PaymentTransaction } from '../payments/domain/payment-transaction';
 import { PosCardPaymentFeatureConfig } from '../pos/pos-card-payment-feature.config';
-import { PosGateway } from '../pos/pos.gateway';
+import {
+  POS_PAYMENT_REALTIME,
+  type PosPaymentRealtimePort,
+} from '../pos/public-api';
 import {
   PaymentCheckoutAttemptService,
   type PreparePaymentCheckoutInput,
@@ -72,7 +75,8 @@ export class PosCardPaymentOrchestrationService {
     private readonly orders: OrdersService,
     @Inject(POS_ORDER_OPERATIONS)
     private readonly orderOperations: PosOrderOperationsPort,
-    private readonly posGateway: PosGateway,
+    @Inject(POS_PAYMENT_REALTIME)
+    private readonly paymentRealtime: PosPaymentRealtimePort,
   ) {}
 
   getConfig(storeStableId: string) {
@@ -604,7 +608,7 @@ export class PosCardPaymentOrchestrationService {
 
   private publish(storeStableId: string, view: PosCardPaymentView): void {
     try {
-      this.posGateway.publishCardPaymentStatus(storeStableId, view);
+      this.paymentRealtime.publishCardPaymentStatus(storeStableId, view);
     } catch {
       // Realtime delivery is best-effort; persisted checkout/payment/order truth wins.
     }

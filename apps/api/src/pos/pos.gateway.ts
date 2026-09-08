@@ -14,6 +14,11 @@ import type {
   AuthenticatedPosIdentity,
   PosDeviceCredentials,
 } from './pos-device-management.contract';
+import type {
+  PosCardPaymentReverseSyncRealtimeMessage,
+  PosCardPaymentStatusRealtimeMessage,
+  PosPaymentRealtimePort,
+} from './pos-payment-realtime.contract';
 import { PosDeviceService } from './pos-device.service';
 import {
   POS_DEVICE_ID_COOKIE,
@@ -65,7 +70,11 @@ function resolvePosSocketCorsOrigin(): string | string[] {
   cors: { origin: resolvePosSocketCorsOrigin(), credentials: true },
 })
 export class PosGateway
-  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
+  implements
+    OnGatewayInit,
+    OnGatewayConnection,
+    OnGatewayDisconnect,
+    PosPaymentRealtimePort
 {
   @WebSocketServer()
   server: Server;
@@ -749,26 +758,11 @@ export class PosGateway
   }
 
   publishCardPaymentStatus(
-    storeId: string,
-    data: {
-      attemptId: string;
-      paymentId: string | null;
-      status: string;
-      failureCode?: string | null;
-      failureMessage?: string | null;
-      externalAmountCents?: number;
-      surchargeCents?: number | null;
-      chargedTotalCents?: number | null;
-      pointsCents?: number;
-      balanceCents?: number;
-      couponDiscountCents?: number;
-      orderStableId?: string | null;
-      orderNumber?: string | null;
-      pickupCode?: string | null;
-    },
+    storeStableId: string,
+    data: PosCardPaymentStatusRealtimeMessage,
   ) {
     this.server
-      .to(`store:${storeId}`)
+      .to(`store:${storeStableId}`)
       .emit(POS_CARD_PAYMENT_STATUS_UPDATED_EVENT, {
         attemptId: data.attemptId,
         paymentId: data.paymentId,
@@ -782,19 +776,11 @@ export class PosGateway
   }
 
   publishCardPaymentReverseSync(
-    storeId: string,
-    data: {
-      attemptId: string;
-      paymentId: string;
-      externalReversal: 'PARTIAL_REFUND' | 'FULL_REFUND' | 'VOID';
-      refundedAmountCents: number;
-      orderStableId?: string | null;
-      orderStatus?: string | null;
-      requiresManualReview?: boolean;
-    },
+    storeStableId: string,
+    data: PosCardPaymentReverseSyncRealtimeMessage,
   ) {
     this.server
-      .to(`store:${storeId}`)
+      .to(`store:${storeStableId}`)
       .emit(POS_CARD_PAYMENT_REVERSE_SYNC_UPDATED_EVENT, {
         attemptId: data.attemptId,
         paymentId: data.paymentId,

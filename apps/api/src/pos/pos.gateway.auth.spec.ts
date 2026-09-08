@@ -378,4 +378,35 @@ describe('PosGateway device authorization', () => {
       expect.objectContaining({ attemptId: 'attempt-1', status: 'SUCCEEDED' }),
     );
   });
+
+  it('preserves the payment reverse-sync realtime event contract', () => {
+    const { gateway } = setup();
+    const emit = jest.fn();
+    const to = jest.fn().mockReturnValue({ emit });
+    gateway.server = { to } as never;
+
+    gateway.publishCardPaymentReverseSync('store-a', {
+      attemptId: 'attempt-1',
+      paymentId: 'payment-1',
+      externalReversal: 'FULL_REFUND',
+      refundedAmountCents: 1_500,
+      orderStableId: 'order-1',
+      orderStatus: 'refunded',
+      requiresManualReview: false,
+    });
+
+    expect(to).toHaveBeenCalledWith('store:store-a');
+    expect(emit).toHaveBeenCalledWith(
+      'POS_CARD_PAYMENT_REVERSE_SYNC_UPDATED',
+      {
+        attemptId: 'attempt-1',
+        paymentId: 'payment-1',
+        externalReversal: 'FULL_REFUND',
+        refundedAmountCents: 1_500,
+        orderStableId: 'order-1',
+        orderStatus: 'refunded',
+        requiresManualReview: false,
+      },
+    );
+  });
 });

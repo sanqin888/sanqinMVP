@@ -11,6 +11,12 @@ export {
   type PosDeviceManagementSnapshot,
   type PosDeviceManagementStatus,
 } from './pos-device-management.contract';
+export {
+  POS_PAYMENT_REALTIME,
+  type PosCardPaymentReverseSyncRealtimeMessage,
+  type PosCardPaymentStatusRealtimeMessage,
+  type PosPaymentRealtimePort,
+} from './pos-payment-realtime.contract';
 export { PosDeviceModule } from './pos-device.module';
 export { StableIdPipe } from '../common/pipes/stable-id.pipe';
 export { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';

@@ -3,7 +3,7 @@ import { PaymentMethod } from '@prisma/client';
 import type { PosOrderDto, PosOrderOperationsPort } from '../orders/public-api';
 import type { PaymentReverseSyncResult } from '../payments/application/payment-reverse-sync.service';
 import { PaymentTransaction } from '../payments/domain/payment-transaction';
-import type { PosGateway } from '../pos/pos.gateway';
+import type { PosPaymentRealtimePort } from '../pos/public-api';
 import type {
   PaymentCheckoutAttemptService,
   PreparedPaymentCheckout,
@@ -123,19 +123,19 @@ const createHarness = () => {
     getByStableIdForStore: jest.fn(),
     createFullRefund: jest.fn(),
   };
-  const posGateway = {
+  const paymentRealtime = {
     publishCardPaymentStatus: jest.fn(),
     publishCardPaymentReverseSync: jest.fn(),
-  };
+  } as jest.Mocked<PosPaymentRealtimePort>;
 
   const service = new PaymentReverseSyncOrchestrationService(
     checkouts as unknown as PaymentCheckoutAttemptService,
     cardPayments as unknown as PosCardPaymentOrchestrationService,
     orders as unknown as PosOrderOperationsPort,
-    posGateway as unknown as PosGateway,
+    paymentRealtime,
   );
 
-  return { service, checkouts, cardPayments, orders, posGateway };
+  return { service, checkouts, cardPayments, orders, paymentRealtime };
 };
 
 describe('PaymentReverseSyncOrchestrationService', () => {
@@ -165,7 +165,7 @@ describe('PaymentReverseSyncOrchestrationService', () => {
       }),
     );
     expect(
-      harness.posGateway.publishCardPaymentReverseSync,
+      harness.paymentRealtime.publishCardPaymentReverseSync,
     ).toHaveBeenCalledWith(
       '4750_Yonge_Street',
       expect.objectContaining({
@@ -205,7 +205,7 @@ describe('PaymentReverseSyncOrchestrationService', () => {
     });
     expect(harness.orders.createFullRefund).not.toHaveBeenCalled();
     expect(
-      harness.posGateway.publishCardPaymentReverseSync,
+      harness.paymentRealtime.publishCardPaymentReverseSync,
     ).toHaveBeenCalledWith(
       '4750_Yonge_Street',
       expect.objectContaining({
@@ -235,7 +235,9 @@ describe('PaymentReverseSyncOrchestrationService', () => {
       harness.checkouts.markExternallyReversedAndRelease,
     ).toHaveBeenCalledWith('sale-attempt-1');
     expect(harness.orders.createFullRefund).not.toHaveBeenCalled();
-    expect(harness.posGateway.publishCardPaymentStatus).toHaveBeenCalledWith(
+    expect(
+      harness.paymentRealtime.publishCardPaymentStatus,
+    ).toHaveBeenCalledWith(
       '4750_Yonge_Street',
       expect.objectContaining({
         status: 'CANCELLED',
