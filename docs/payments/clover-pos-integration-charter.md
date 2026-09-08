@@ -1,7 +1,7 @@
 # SanQ 支付域模块化 + Clover POS 实时同步任务目标与边界
 
-**状态：** Implementation Charter v3（2026-09-06 verification-cadence revision）  
-**日期：** 2026-08-26；冻结/模块化执行规则修订于 2026-09-03；Phase-level verification cadence 修订于 2026-09-06  
+**状态：** Implementation Charter v4（2026-09-08 sandbox/config isolation revision）  
+**日期：** 2026-08-26；冻结/模块化执行规则修订于 2026-09-03；Phase-level verification cadence 修订于 2026-09-06；sandbox/config isolation 修订于 2026-09-08  
 **适用范围：** SanQ Payments / Clover / POS / Orders 的支付相关边界
 
 ## 1. 文档目的
@@ -23,6 +23,24 @@
 - 当前生产 Web Clover Ecommerce 默认仍受保护，因为它正在真实收款。但它不再绝对冻结：如果现有 Web Clover 代码成为模块化的**关键进度阻塞项**，允许进行最小必要结构修改。实施前必须在当前模块化进度文档记录阻塞原因、影响的生产合同/行为、为什么无法在 Web 路径之外解决、替代方案以及 rollback/forward-fix 策略。
 - 任何可能影响生产 Web Clover 的修改都必须增加/更新聚焦回归覆盖，并在改动记录中明确受影响的 CARD/wallet/支付状态/订单落单/退款或 reconciliation 场景，以及最终 Phase 验证时应核对的脱敏 payment/order/log 证据。模块化 Slice 不再各自要求一次部署后主动实测；在所属 Phase 的全部计划 Slice 合并后、closeout 之前，基于最终 merged state 统一给出并执行一套 consolidated active verification。只有该 Phase 的支付相关实测与其余 closeout 验证全部通过后，Phase 才能标记为 production verified / closed。实际切流、compatibility 删除、settlement 或 provider acceptance 等独立硬门禁仍可要求更早实测。
 - 允许修改生产 Web 代码来解除模块化阻塞，不等于允许提前完成 Phase G 流量切换、删除 legacy Web compatibility、放宽 feature flag 或跳过 settlement/parity 门禁。实际切流与兼容删除仍按本文档原有验收条件执行。
+
+### 1.2 2026-09-08 Clover sandbox / production configuration boundary
+
+新的 Test Merchant/Test App 已具备 Preview 条件，但 production Web Clover Ecommerce 仍在真实收款。因此 POS Terminal sandbox bring-up 必须采用**配置级硬隔离**，不能通过改写现有 production Web `CLOVER_*` 值来测试。
+
+永久语义分为三层：
+
+1. **Web Ecommerce execution compatibility**：现有 production `CLOVER_BASE`、`CLOVER_MERCHANT_ID`、`CLOVER_ACCESS_TOKEN` 和 browser `NEXT_PUBLIC_CLOVER_*` 在 POS sandbox 验证期间保持原行为，直至后续 Phase G controlled migration。
+2. **Unified Clover merchant/OAuth/Platform truth**：使用独立 `CLOVER_UNIFIED_*` merchant/store、OAuth 和 Platform v3 配置。该配置当前指向 Test Merchant/Test App；未来 production cutover 时替换为 production authorization，而不是改回 generic Web config 语义。
+3. **Terminal device interaction**：REST Pay base、device ID、Remote App ID/RAID、timeout 使用独立 `CLOVER_TERMINAL_*` 配置。Terminal transport 不得借用 Web Ecommerce base/device-independent token 作为隐式 fallback。
+
+配置缺失必须 fail closed：Unified Platform/OAuth 或 Terminal 配置不完整时，对应能力报告 unavailable/misconfigured，不得回退到 live Web merchant、token 或 endpoint。Production webhook merchant/auth scope在 sandbox bring-up 阶段保持不变，不为了 Test Merchant 扩大 production webhook acceptance。
+
+Unified OAuth credential 的长期 owner 是现有 database-backed `CloverMerchantAuthorization` + `CloverMerchantAccessTokenService`。Platform v3 和 Terminal REST Pay 应共享同一个 Unified merchant credential refresh/recovery lifecycle；静态 `CLOVER_TERMINAL_OAUTH_TOKEN` 仅为原型残留，完成 credential convergence 后必须删除，不能成为备用路径。
+
+本阶段不为了 sandbox/production 并存修改 Prisma。一个 runtime/store 只允许一个 active Unified merchant store binding；从 sandbox 切 production 前明确 revoke/unbind sandbox authorization。只有未来业务明确要求同一 runtime 长期同时保持两套 active authorization 时，才重新设计 `CloverMerchantAuthorization` 的 environment/purpose identity，并在 schema/migration 前获得单独授权。
+
+Clover sandbox 只隔离 provider 资金，不隔离 SanQ 数据。Full POS E2E 如果运行在 production API 上，仍可能创建 production `PaymentTransaction`、`PaymentCheckoutAttempt`、Order、printing/reporting facts。因此 full E2E 必须在受控测试窗口执行；需要数据层隔离时应建设独立 staging runtime/database，而不是把 production runtime 变成可随意切换 sandbox/production 的双环境。
 
 ## 2. 当前状态基线
 

@@ -1,8 +1,8 @@
 # Phase 6 — Payments / POS Boundary Contraction and Closeout
 
 Start date: 2026-09-07  
-Current implementation base: `origin/dev@893fde49`  
-Current status: **SLICE 4A LOCAL / REVIEW PENDING**
+Current implementation base: `origin/dev@00768897`  
+Current status: **SLICE 4B READINESS COMPLETE / IMPLEMENTATION NEXT**
 
 ## Goal
 
@@ -54,10 +54,13 @@ The same audit found that the remaining blocker to a safe public finalization ca
 6. **POS CARD legacy rollout seam decision — COMPLETED in Slice 2D** — `PosCardPaymentFeatureConfig` remains temporary `payments.pos-card-legacy.v1` cutover compatibility only. It is not promoted into a permanent POS public policy and is not moved into Payments. PR #2238 final head `5e35bd7f` passed CI #5340 and squash-merged as `37f3e939`.
 7. **Confirmed-payment Order identity normalization — COMPLETED in Slice 3A** — `PaymentCheckoutAttempt.plannedOrderId/orderId` and `internalOrderId` finalization plumbing are removed; Orders now generates `Order.id` inside its existing atomic finalization transaction, POS Terminal refund no longer populates a Payments Order UUID, and `PaymentTransaction.orderId` remains deferred for the later Web Unified Payment stable-reference decision. PR #2239 final head `782da646` passed CI #5343 and squash-merged as `239d8f74`.
 8. **Confirmed-payment finalization public boundary — COMPLETED in Slice 3B** — the unchanged Orders-owned atomic finalization is exposed through `PAYMENT_ORDER_FINALIZATION`, returns only `orderStableId/orderNumber/pickupCode`, and `PosCardPaymentOrchestrationService` consumes that public capability while completed-checkout recovery reuses `POS_ORDER_OPERATIONS.getByStableIdForStore()`. PR #2240 final head `6eb4b38c` passed CI #5346 and squash-merged as `893fde49`.
-9. **Payments orchestration composition cleanup — ACTIVE in Slice 4A** — normalize the two remaining `OrdersModule` Nest composition imports to the already-existing `orders/public-api` surface without changing module identity, provider/controller wiring, production Web Clover behavior, or adding a wrapper/facade module.
-10. **Clover provider/internal cleanup** — keep execution/canonical gateways, raw mappers, OAuth/merchant credentials and provider wire contracts inside Payments infrastructure. Retired SNS/SQS must not be reintroduced; AWS SMS/Email remain separate supported capabilities.
-11. **Web Clover cutover readiness audit** — default read-only/high-risk audit of production checkout, immutable snapshot, tender allocation, surcharge, provider confirmation, reconciliation, refunds, recovery/idempotency and wallet/Hosted iFrame compatibility.
-12. **Web Unified Payment Core migration / legacy cleanup** — only after readiness PASS, using additive implementation, controlled activation, rollback, active production verification, observation, then compatibility cleanup.
+9. **Payments orchestration composition cleanup — COMPLETED in Slice 4A** — the two remaining `OrdersModule` Nest composition imports now consume the already-existing `orders/public-api` surface without changing module identity, provider/controller wiring, production Web Clover behavior, or adding a wrapper/facade module. PR #2241 final head `d38dce42` passed PR CI #5348 and merged to `dev` as `00768897`.
+10. **Clover provider internal capability cleanup — IMPLEMENTATION NEXT in Slice 4B** — move `CloverPlatformPaymentsGateway` and its Platform v3 canonical HTTP/raw mapping helpers into `payments/infrastructure/clover/platform/**`, keep `CloverPaymentProviderAdapter` consuming the same gateway, remove unused `PaymentsModule` exports, and add source guards that prevent Platform infrastructure from leaking into orchestration/POS/Orders. This Slice does not change Web Ecommerce, OAuth/credential, Terminal, webhook or Prisma behavior.
+11. **Unified/Sandbox configuration isolation — PLANNED Slice 4C** — preserve the live Web Ecommerce `CLOVER_*`/`NEXT_PUBLIC_CLOVER_*` production configuration unchanged while introducing a separate Unified Clover merchant/OAuth/Platform configuration set and a Terminal-only device/REST Pay configuration set. Unified/Terminal configuration must fail closed and must never fall back to the live Web merchant/token/base URL.
+12. **Unified Clover OAuth credential convergence — PLANNED Slice 4D** — make Platform v3 and Terminal REST Pay use the same database-backed merchant OAuth credential lifecycle through `CloverMerchantAccessTokenService`; remove the Terminal static access-token configuration path, bind OAuth/store mapping to the Unified merchant identity, and keep production Web Ecommerce execution unchanged.
+13. **Test Merchant / device sandbox bring-up and POS Terminal verification** — after 4C/4D are merged and deployed with the Terminal rollout still disabled by default, complete Test Merchant OAuth, Platform v3 read verification, Cloud Pay Display/device availability, controlled sandbox Sale/reconciliation, then the full POS Terminal acceptance matrix. Full POS E2E against the production SanQ runtime must be deliberately scheduled because SanQ-side Payment/Order facts still write to the production database even when Clover is sandbox.
+14. **Web Clover cutover readiness audit** — only after POS Terminal sandbox/real-device behavior is understood and stable, perform the read-only/high-risk audit of production checkout, immutable snapshot, tender allocation, surcharge, provider confirmation, reconciliation, refunds, recovery/idempotency and wallet/Hosted iFrame compatibility.
+15. **Web Unified Payment Core migration / legacy cleanup** — only after readiness PASS, using additive implementation, controlled activation, rollback, active production verification, observation, then compatibility cleanup.
 
 ### Dependency priorities and exit criteria
 
@@ -260,7 +263,7 @@ The Orders-owned Prisma transaction is not moved or split. Benefits/Coupon COMMI
 
 ## Slice 4A — Payments orchestration composition cleanup
 
-Status: **LOCAL / REVIEW PENDING**
+Status: **MERGED / CI GREEN** — PR #2241; final head `d38dce42`; squash merge `00768897`; PR CI #5348 passed.
 
 Migration classification: **Class A atomic internal composition-path contraction**. No provider protocol, payment/order behavior, Nest module identity, controller/provider registration, public contract shape, Prisma schema/migration, dependency manifest, route, feature flag or production Web Clover behavior changes.
 
@@ -279,6 +282,115 @@ The two remaining `OrdersModule` implementation-path imports are composition-onl
 
 Production Web Clover checkout execution, payment validation, surcharge, reconciliation, order finalization, refund behavior, historical payment facts, POS Terminal orchestration, Benefits HOLD/COMMIT/RELEASE semantics, Orders transaction boundaries, `PaymentTransaction.orderId`, `PosModule` composition and `PosCardPaymentFeatureConfig` compatibility remain unchanged. Slice 4A does not authorize or begin the later Web Unified Payment cutover.
 
+## Slice 4B — Clover provider internal capability cleanup
+
+Status: **READINESS COMPLETE / IMPLEMENTATION NEXT**
+
+Migration classification: **Class A atomic internal infrastructure cleanup**. No persisted/public contract, provider protocol, route, feature flag, schema/migration, dependency manifest or externally observable payment behavior is intended to change.
+
+### Approved implementation scope
+
+1. Move `CloverPlatformPaymentsGateway` and its Platform v3 canonical payment/reversal HTTP/raw mapping helpers out of `clover-payment-provider.adapter.ts` into `payments/infrastructure/clover/platform/clover-platform-payments.gateway.ts`.
+2. Keep `CloverPaymentProviderAdapter` injecting and calling the same gateway capability; provider outcome/status semantics, canonicalization ordering and fallback behavior remain unchanged.
+3. Remove `PAYMENT_PROVIDER` and `CreatePaymentAttemptUseCase` from `PaymentsModule.exports` because the readiness audit found no external module consumer for either export. Their internal provider/use-case wiring remains intact.
+4. Add architecture guards that require Platform v3 gateway implementation to remain under `payments/infrastructure/clover/platform/**`, prevent `clover-payment-provider.adapter.ts` from re-absorbing Platform HTTP/raw mapping, and prevent orchestration/POS/Orders from importing the concrete Platform gateway. Keep the exact `CloverService -> CloverEcommerceTransport` production Web compatibility seam until the later Web Unified Payment cutover.
+
+### Explicit non-scope
+
+Slice 4B does **not** modify `CloverPayController`, `CloverService`, `CloverEcommerceTransport`, `/v1/charges`, surcharge handling, Web amount/currency/payment-ID validation, Web finalization/refund behavior, OAuth/merchant credential behavior, Terminal provider semantics, webhook route/auth/reverse-sync behavior, Prisma/schema/migrations, Docker/environment configuration or rollout flags.
+
+## Slice 4C — Unified/Sandbox configuration isolation
+
+Status: **PLANNED / AFTER 4B**
+
+Migration classification: **Controlled critical-cutover preparation, configuration-only semantics**. No payment traffic cutover is authorized by this Slice.
+
+### Target configuration ownership
+
+The live Web Ecommerce path retains its current production variables and consumers unchanged during sandbox bring-up:
+
+```text
+CLOVER_BASE
+CLOVER_MERCHANT_ID
+CLOVER_ACCESS_TOKEN
+NEXT_PUBLIC_CLOVER_PUBLIC_TOKEN
+NEXT_PUBLIC_CLOVER_SDK_URL
+NEXT_PUBLIC_CLOVER_MERCHANT_ID
+```
+
+Add a separate Unified Clover configuration family for the future shared payment core, initially populated with the new Test Merchant/Test App sandbox values:
+
+```text
+CLOVER_UNIFIED_MERCHANT_ID
+CLOVER_UNIFIED_STORE_STABLE_ID
+CLOVER_UNIFIED_PLATFORM_API_BASE
+CLOVER_UNIFIED_OAUTH_CLIENT_ID
+CLOVER_UNIFIED_OAUTH_CLIENT_SECRET
+CLOVER_UNIFIED_OAUTH_AUTHORIZE_BASE
+CLOVER_UNIFIED_OAUTH_API_BASE
+CLOVER_UNIFIED_OAUTH_CALLBACK_URL
+CLOVER_UNIFIED_OAUTH_SCOPES
+```
+
+Keep Terminal-only device/REST Pay configuration separate from both Web Ecommerce and the shared Unified merchant/OAuth identity:
+
+```text
+CLOVER_TERMINAL_API_BASE
+CLOVER_TERMINAL_DEVICE_ID
+CLOVER_TERMINAL_REMOTE_APP_ID
+CLOVER_TERMINAL_TIMEOUT_SECONDS
+```
+
+Credential-vault encryption-key configuration may remain shared infrastructure because it describes how Clover credentials are encrypted, not which merchant/environment they authorize.
+
+### Hard safety rules
+
+- Missing Unified configuration must make Platform/OAuth unavailable; it must never fall back to live Web `CLOVER_MERCHANT_ID`, `CLOVER_BASE` or `CLOVER_ACCESS_TOKEN`.
+- Missing Terminal configuration must make Terminal unavailable; Terminal base/device/RAID must never fall back to Web Ecommerce configuration.
+- `POS_CLOVER_TERMINAL_PAYMENT_ENABLED` remains false by default during configuration/OAuth bring-up.
+- Existing production Clover webhook merchant/auth configuration remains unchanged in 4C; sandbox bring-up initially relies on synchronous Terminal execution plus Platform v3 canonical read/reconciliation rather than widening production webhook scope.
+- No `.env` credential value is committed. `docker-compose.yml` may expose only parameter names/placeholders; deployment values remain operator-injected secrets.
+
+### Persistence decision
+
+No Prisma change is planned for 4C. `CloverMerchantAuthorization.storeStableId @unique` is acceptable while one runtime has only one active Unified Clover merchant environment for a SanQ store. Before a later production Unified binding, the sandbox authorization must be deliberately revoked/unbound so the production merchant can become the sole active store binding. If long-lived simultaneous sandbox + production authorization in one runtime becomes a requirement, that is a separate schema/architecture decision requiring explicit migration authorization rather than a hidden environment switch.
+
+## Slice 4D — Unified Clover OAuth credential convergence
+
+Status: **PLANNED / AFTER 4C**
+
+Migration classification: **Controlled critical-cutover preparation inside Payments infrastructure**. Production Web Ecommerce execution remains on its guarded legacy path.
+
+### Target credential flow
+
+Replace the Terminal-specific static access-token path with the existing database-backed OAuth credential lifecycle:
+
+```text
+Test/Unified Merchant OAuth
+        -> CloverMerchantAuthorization
+        -> CloverMerchantAccessTokenService
+             -> CloverPlatformPaymentsGateway
+             -> CloverTerminalTransport
+```
+
+Platform v3 and Terminal REST Pay must therefore use the same `CLOVER_UNIFIED_MERCHANT_ID` authorization identity and token refresh/recovery lifecycle. OAuth store mapping must compare against the Unified merchant/store configuration rather than the live Web Ecommerce `CLOVER_MERCHANT_ID`/store configuration. The long-term Terminal static `CLOVER_TERMINAL_OAUTH_TOKEN` configuration path is removed rather than retained as a fallback.
+
+### Explicit non-scope
+
+4D does not migrate Web CARD/Apple Pay/Google Pay into Unified Payment Core, does not change `/v1/charges`, does not activate POS Terminal traffic, does not widen webhook scope, and does not change Prisma schema. Web migration remains later, after POS Terminal sandbox/real-device behavior is verified and a dedicated Web cutover readiness audit passes.
+
+## Sandbox verification gate after 4D
+
+Once 4C/4D are merged and deployed, verification proceeds in this order:
+
+1. Keep Terminal rollout disabled and complete Test App Preview -> OAuth -> `ACTIVE` store binding.
+2. Verify Platform v3 merchant/payment read with the stored OAuth credential.
+3. Verify Cloud Pay Display/Test device availability using the sandbox Terminal base, device ID and RAID.
+4. Run a controlled sandbox Sale and confirm the same payment through Platform v3 canonical read/reconciliation before allowing Order finalization.
+5. Exercise timeout/UNKNOWN/recovery, cancel, void/refund and duplicate/idempotency scenarios before the complete POS acceptance matrix.
+6. Only in a deliberate non-business/test window enable the POS Terminal route for full E2E. Using Clover sandbox does **not** isolate SanQ persistence: a full POS flow against the production runtime can create production-database `PaymentTransaction`, `PaymentCheckoutAttempt`, Order, print and reporting facts. If test-data isolation is required, use a separately approved staging runtime/database instead of pretending provider sandbox also isolates SanQ data.
+7. After Terminal behavior is understood and stable, proceed to the Web Clover cutover readiness audit and only then Phase G migration of Web CARD/Apple Pay/Google Pay into the same Unified Payment Core.
+
 ## Verification state
 
 Slice 1 is merged and CI-green through PR #2231 / CI #5318. The readiness baseline refresh is merged through PR #2232 / `94cff60f`, with final head `f35bcd5f` passing CI #5321. Slice 1B is merged and CI-green through PR #2233 / CI #5326, final head `0a2a01d8`, squash merge `be21c8c5`. Slice 1C is merged and CI-green through PR #2234 / CI #5329, final head `a042ea10`, squash merge `bf95051f`. Slice 2A is merged and CI-green through PR #2235 / CI #5332, final head `6169d4dd`, squash merge `b1051c24`.
@@ -289,10 +401,10 @@ Slice 2C is merged and CI-green through PR #2237 / PR CI #5338, final head `e76c
 
 Slice 3A is merged and CI-green through PR #2239 / CI #5343, final head `782da646`, squash merge `239d8f74`. Its authorized contraction migration is source-complete in `dev` but no production migration application or Terminal cutover is claimed here.
 
-Slice 3B is merged and CI-green through PR #2240 / CI #5346, final head `6eb4b38c`, squash merge `893fde49`. Slice 4A is currently **LOCAL / REVIEW PENDING**. Per repository workflow, no local lint/build/test/scanner execution is claimed for 4A; GitHub Actions becomes authoritative only after user review and authorization for remote delivery.
+Slice 3B is merged and CI-green through PR #2240 / CI #5346, final head `6eb4b38c`, squash merge `893fde49`. Slice 4A merged through PR #2241 after final head `d38dce42` passed PR CI #5348; squash merge `00768897` is the current `dev` base for the next Slice. Slice 4B readiness is complete but no 4B implementation or validation is claimed yet.
 
 ## Remaining Phase 6 work
 
 The final POS pair ownership question remains resolved without source churn: keep the legal `PosModule` composition edge and quarantine `PosCardPaymentFeatureConfig` as temporary registered compatibility until the Terminal cutover cleanup.
 
-After Slice 4A review/delivery, the next recommended task is **Clover provider/internal cleanup readiness**. The Orders composition implementation-path debt is reduced to the single protected production Web `clover-pay.controller.ts -> OrdersService` compatibility seam; do not touch that controller merely to reach zero. Audit remaining Clover/provider/internal direct debt for safe owner-boundary contraction while preserving execution/canonical gateways, OAuth/merchant credentials, provider wire contracts, UNKNOWN/reconciliation semantics and production Web Ecommerce behavior. The protected Web controller remains reserved for the later Web Unified Payment readiness/cutover work.
+The next implementation is **Slice 4B Clover provider internal capability cleanup**, exactly within the audited scope above. After 4B is reviewed, delivered and CI-green, perform Slice 4C configuration isolation, then Slice 4D OAuth credential convergence. Do not start Test Merchant/Terminal payment traffic before 4C/4D establish fail-closed sandbox boundaries. After sandbox/device verification, perform the protected Web Clover readiness audit; Web CARD/Apple Pay/Google Pay migration remains a later controlled cutover rather than part of 4B-4D.
