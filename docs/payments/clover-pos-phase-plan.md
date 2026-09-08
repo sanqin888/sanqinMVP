@@ -412,7 +412,11 @@ POS_CLOVER_TERMINAL_PAYMENT_ENABLED=false -> legacy CARD
 POS_CLOVER_TERMINAL_PAYMENT_ENABLED=true  -> Unified Payment Core + Clover Terminal
 ```
 
-默认必须为 `false`。
+默认必须为 `false`。该 flag / `PosCardPaymentFeatureConfig` 只是注册兼容项
+`payments.pos-card-legacy.v1` 的迁移期切流与 cutback 基础设施，不是长期 POS
+业务 policy，也不应被搬进 Payments 或包装成永久 public feature-policy contract。
+最终形态只有一条 CARD 主链路；Phase J 删除 legacy direct-paid CARD 时必须连同
+flag/config 和所有 route-choice branch 一起删除。
 
 ## 新主链路
 
@@ -631,7 +635,7 @@ Web CARD、wallet、3DS/challenge、retry、CheckoutIntent expiry、Payment link
 
 ## 切流前状态
 
-代码全部已部署，feature flag=false，legacy CARD 正常。
+代码全部已部署，feature flag=false，legacy CARD 正常。POS ↔ Clover Terminal 的实时支付状态同步、断线/重连恢复和已有 attempt 恢复能力必须已经完成；在这套实时通信仍不完整时，不得因为后端支付主链路看起来可用就提前切流。
 
 ## 必测矩阵
 
@@ -660,7 +664,7 @@ Web CARD、wallet、3DS/challenge、retry、CheckoutIntent expiry、Payment link
 
 ## 切流门禁
 
-全部实测通过、CI 全绿、无未解释 payment mismatch 后，才允许 `feature flag=true`。
+POS ↔ Clover Terminal 实时同步/恢复能力完成，全部实测通过、CI 全绿、无未解释 payment mismatch 后，才允许 `feature flag=true`。
 
 ## VM 部署
 
@@ -680,9 +684,9 @@ payment success/decline、timeout、unknown recovery、duplicate prevention、re
 
 ## 旧链路状态
 
-legacy CARD 保留，但仅 emergency fallback。
+legacy CARD 保留，但仅作为 Phase J 前的 emergency fallback；它不代表长期支持两套 POS CARD 业务模式。
 
-发生严重生产问题优先 `feature flag=false`，不依赖 Git revert 或数据库回滚。
+发生严重生产问题优先 `feature flag=false`，不依赖 Git revert 或数据库回滚。稳定窗口通过后，这个 fallback 与 flag/config 一起进入删除队列。
 
 ## Architecture Test 要求
 
@@ -703,9 +707,9 @@ legacy CARD 保留，但仅 emergency fallback。
 ## 主要工作
 
 1. 删除 legacy POS CARD direct-paid path。
-2. 删除 legacy fallback branch。
+2. 删除 legacy fallback / route-choice branch，让 POS CARD 无条件进入 Unified Payment Core。
 3. 删除旧人工 Clover CARD refund compatibility。
-4. 删除迁移期 feature flag。
+4. 删除迁移期 `POS_CLOVER_TERMINAL_PAYMENT_ENABLED` 与 `PosCardPaymentFeatureConfig`；不得留下等价的永久 public feature-policy。
 5. 删除过渡门禁如 `CLOVER_SYNC_PENDING`（确认不再需要时）。
 6. 删除确认无调用的 Clover stub endpoints。
 7. 删除重复/废弃 payment code。

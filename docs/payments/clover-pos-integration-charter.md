@@ -372,13 +372,15 @@ flag=false -> legacy CARD
 flag=true  -> new Clover Terminal payment
 ```
 
+该 flag 与 `PosCardPaymentFeatureConfig` 仅属于注册兼容项 `payments.pos-card-legacy.v1` 的迁移期切流/cutback 基础设施。它们不是长期 POS 业务 policy，也不得为了降低依赖数字而搬进 Payments、导出 concrete config 或新增等价的永久 public feature-policy contract。最终 POS CARD 只有 Unified Payment Core + Clover Terminal 一条正式主链路。
+
 ### 9.5 切流与代码部署分离
 
-理想顺序：代码全部部署 -> `flag=false` -> Clover 实机测试 -> 验收 -> `flag=true`。
+理想顺序：代码全部部署 -> `flag=false` -> 完成 POS ↔ Clover Terminal realtime 状态同步、断线/重连与 existing-attempt recovery -> Clover 实机测试 -> 验收 -> `flag=true`。
 
 ### 9.6 必须有快速回退能力
 
-在 legacy cleanup 前，新链路发生重大现场问题时应能通过 `flag=false` 恢复 legacy CARD，而不是依赖 Git revert、紧急改代码或数据库回滚。
+在 Phase J legacy cleanup 前，新链路发生重大现场问题时应能通过 `flag=false` 恢复 legacy CARD，而不是依赖 Git revert、紧急改代码或数据库回滚。这个 fallback 只覆盖受控生产稳定窗口；稳定窗口、settlement proof 和 legacy invocation=0 满足后，legacy direct-paid CARD、flag/config、route-choice branch 与 legacy refund compatibility 必须作为一个独立 contraction 一起删除。
 
 ## 10. 数据库变更原则
 
