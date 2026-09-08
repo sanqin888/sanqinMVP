@@ -235,10 +235,9 @@ describe('PaymentCheckoutAttemptService', () => {
       (persistedDraft.items as Record<string, unknown>[])[0],
     ).not.toHaveProperty('id');
     expect(persistedDraft.coupon).not.toHaveProperty('id');
-    expect(harness.paymentOrderPreparation.preparePaymentOrder).toHaveBeenCalledWith(
-      order,
-      storeStableId,
-    );
+    expect(
+      harness.paymentOrderPreparation.preparePaymentOrder,
+    ).toHaveBeenCalledWith(order, storeStableId);
     expect(harness.paymentCheckoutAttempt.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ storeId: storeStableId }),

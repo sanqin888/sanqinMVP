@@ -361,8 +361,12 @@ describe('Payments bounded-context architecture', () => {
     const orderFiles = scanTypeScript(resolve(SOURCE_ROOT, 'orders'), {
       productionOnly: true,
     });
-    const publicApi = orderFiles.find(({ path }) => path.endsWith('public-api.ts'));
-    const module = orderFiles.find(({ path }) => path.endsWith('orders.module.ts'));
+    const publicApi = orderFiles.find(({ path }) =>
+      path.endsWith('public-api.ts'),
+    );
+    const module = orderFiles.find(({ path }) =>
+      path.endsWith('orders.module.ts'),
+    );
 
     expect(publicApi?.source).toContain('PAYMENT_ORDER_PREPARATION');
     expect(publicApi?.source).toContain('PaymentOrderPreparationPort');
@@ -377,7 +381,9 @@ describe('Payments bounded-context architecture', () => {
     ).find(({ path }) => path.endsWith('payment-checkout-attempt.service.ts'));
 
     expect(checkoutPreparation).toBeDefined();
-    expect(checkoutPreparation?.source).toContain("from '../orders/public-api'");
+    expect(checkoutPreparation?.source).toContain(
+      "from '../orders/public-api'",
+    );
     expect(checkoutPreparation?.source).toContain('PAYMENT_ORDER_PREPARATION');
     expect(checkoutPreparation?.source).not.toContain(
       "from '../orders/orders.service'",
