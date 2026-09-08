@@ -45,7 +45,7 @@ export class CloverEcommerceTransport {
       return typeof value === 'boolean' ? value : undefined;
     };
 
-    const apiToken = this.config.accessToken;
+    const apiToken = this.config.ecommerceAccessToken;
     if (!apiToken) {
       return { ok: false, reason: 'missing-credentials' };
     }
@@ -227,7 +227,7 @@ export class CloverEcommerceTransport {
   async getChargeStatus(
     params: CloverEcommerceGetChargeStatusRequest,
   ): Promise<CloverEcommerceChargeStatusResult> {
-    if (!this.config.accessToken) {
+    if (!this.config.ecommerceAccessToken) {
       return { ok: false, reason: 'missing-credentials' };
     }
 
@@ -327,7 +327,7 @@ export class CloverEcommerceTransport {
       }
     | { ok: false }
   > {
-    if (!this.config.accessToken) {
+    if (!this.config.ecommerceAccessToken) {
       return { ok: false };
     }
 
@@ -353,7 +353,7 @@ export class CloverEcommerceTransport {
   private async fetchV1ChargeStatuses(
     url: string,
   ): Promise<CloverEcommerceChargeStatusResult[] | null> {
-    const apiToken = this.config.accessToken;
+    const apiToken = this.config.ecommerceAccessToken;
     if (!apiToken) return null;
 
     let resp: Response;
@@ -424,7 +424,7 @@ export class CloverEcommerceTransport {
   private async resolvePaymentIdByIdempotencyKey(
     idempotencyKey?: string,
   ): Promise<string | undefined> {
-    const apiToken = this.config.accessToken;
+    const apiToken = this.config.ecommerceAccessToken;
     if (!apiToken || !idempotencyKey) return undefined;
 
     const url = `${this.config.ecommerceApiBase}/v1/charges?limit=1&idempotency_key=${encodeURIComponent(idempotencyKey)}`;
