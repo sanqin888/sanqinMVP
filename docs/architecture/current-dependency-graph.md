@@ -108,7 +108,7 @@ pair fails CI.
 | web-pwa | none; cross-context shared contracts use registered public aliases |
 | runtime-data-ci-ops | none; registered composition-root wiring is excluded |
 
-2026-09-07 Phase 6 Slice 1 local source contracts three Payments/Clover -> Commerce deep imports by moving POS refund and reverse-sync orchestration onto the existing Orders public `POS_ORDER_OPERATIONS` capability. The monotonic pair baseline is therefore `payments-clover -> commerce-orders-fulfillment 8 -> 5`, and current Payments/Clover total outgoing direct debt is **54**. No public edge or SCC is added; CI/runtime verification is not yet claimed.
+2026-09-07 Phase 6 Slice 1 merged through PR #2231 / `1ad42319` after final head `f3550efd` passed PR CI #5318. It contracts three Payments/Clover -> Commerce deep imports by moving POS refund and reverse-sync orchestration onto the existing Orders public `POS_ORDER_OPERATIONS` capability. The monotonic pair baseline is therefore `payments-clover -> commerce-orders-fulfillment 8 -> 5`, and current Payments/Clover total outgoing direct debt is **54**. Public SCC remains empty. The refreshed Phase 6 readiness audit records that the remaining payment-preparation seam is identity-sensitive because `PreparedPaymentOrderSnapshot.userId` is an internal DB identity; therefore that snapshot must not be directly exported through Orders public API before stable-ID-only contract normalization.
 
 ## Phase 4 final baseline and production verification
 

@@ -1,8 +1,8 @@
 # Phase 6 — Payments / POS Boundary Contraction and Closeout
 
 Start date: 2026-09-07  
-Current implementation base: `origin/dev@593ce3fe`  
-Current status: **SLICE 1 LOCAL / REVIEW PENDING**
+Current implementation base: `origin/dev@80ec51b0`  
+Current status: **SLICE 1 MERGED / CI GREEN; READINESS BASELINE REFRESHED**
 
 ## Goal
 
@@ -18,7 +18,7 @@ The Orders public surface already exports `POS_ORDER_OPERATIONS`, `PosOrderDto`,
 
 ## Slice 1 — POS refund + reverse-sync Orders public-boundary contraction
 
-Status: **LOCAL / REVIEW PENDING**
+Status: **MERGED / CI GREEN** — PR #2231; final head `f3550efd`; squash merge `1ad42319`; PR CI #5318 passed.
 
 Migration classification: **Class A atomic internal boundary contraction**. No persisted/public contract, route, provider wire protocol, schema/migration, dependency manifest, or payment-state meaning changes.
 
@@ -38,8 +38,12 @@ The reverse-sync store identity comes from the already-persisted checkout `store
 
 ## Verification state
 
-Per repository workflow, local lint/build/test/scanner execution is deferred until after source review. GitHub Actions is the authoritative validation gate after remote delivery authorization. No CI, deployment, runtime or production verification is claimed yet.
+Slice 1 is merged and CI-green through PR #2231 / CI #5318. No standalone production active-test cycle is required for this ordinary modularization slice under the current Phase-level cadence; affected payment/refund behavior remains part of Phase 6 closeout verification.
+
+The refreshed readiness baseline is tracked in `docs/architecture/phase-6-readiness-audit-execution-baseline-2026-09-07.md`. That audit remains binding for subsequent work, especially the prepared-payment identity boundary and confirmed-payment transaction seam.
 
 ## Remaining Phase 6 work
 
-After Slice 1 is reviewed, delivered and CI-green, re-audit the remaining Payments/Clover direct debt before selecting Slice 2. Do not automatically contract the retained confirmed-payment transaction seam or production Web Clover compatibility path: those require their existing critical-path/atomicity gates and explicit scope review.
+The next implementation candidate is **Payment Preparation Contract Normalization Readiness**. The current `PreparedPaymentOrderSnapshot` must not simply be exported through `orders/public-api.ts` because it carries internal `userId` DB identity across the Orders -> Payment orchestration/persistence boundary. First define a stable-ID-only prepared-payment contract and compatibility/recovery strategy; only then establish a public preparation capability.
+
+Do not automatically contract the retained confirmed-payment transaction seam or production Web Clover compatibility path. Benefits Tender/Coupon COMMIT + Order creation remains a transaction-sensitive atomicity boundary, and production Web Clover remains protected under the existing critical-path rules.
