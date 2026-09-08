@@ -155,7 +155,6 @@ const createHarness = async () => {
   const input: StartOrRecoverRefundInput = {
     attemptId: 'refund-attempt-1',
     idempotencyKey: 'refund-idempotency-1',
-    orderId: '22222222-2222-4222-8222-222222222222',
     originalPaymentId: sale.id,
     operation: 'VOID',
     amountCents: 2000,
@@ -180,6 +179,7 @@ describe('RefundPaymentService', () => {
     expect(reversal.status).toBe('SUCCEEDED');
     expect(reversal.toSnapshot()).toMatchObject({
       operation: 'VOID',
+      orderId: null,
       providerPaymentId: 'CLOVERPAY001',
       providerRefundId: 'CLOVERREF001',
       refundedAmountCents: 2000,

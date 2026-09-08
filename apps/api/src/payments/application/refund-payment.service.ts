@@ -16,7 +16,6 @@ import {
 export type StartOrRecoverRefundInput = {
   attemptId: string;
   idempotencyKey: string;
-  orderId: string;
   originalPaymentId: string;
   operation: Extract<PaymentOperation, 'REFUND' | 'VOID'>;
   amountCents: number;
@@ -58,7 +57,6 @@ export class RefundPaymentService {
       transaction = await this.createAttempt.execute({
         attemptId: input.attemptId,
         idempotencyKey: input.idempotencyKey,
-        orderId: input.orderId,
         provider: 'CLOVER',
         source: 'POS_TERMINAL',
         paymentMethod: 'CARD',
@@ -510,8 +508,7 @@ export class RefundPaymentService {
       snapshot.paymentMethod !== 'CARD' ||
       snapshot.operation !== input.operation ||
       snapshot.amountCents !== input.amountCents ||
-      snapshot.currency !== input.currency ||
-      snapshot.orderId !== input.orderId
+      snapshot.currency !== input.currency
     ) {
       throw new InvalidPaymentReversalError(
         `Payment transaction ${snapshot.id} does not match the requested Clover card reversal`,

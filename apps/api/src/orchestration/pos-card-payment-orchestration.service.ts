@@ -391,7 +391,7 @@ export class PosCardPaymentOrchestrationService {
   ): Promise<PosCardPaymentView> {
     let checkout = initialCheckout;
 
-    if (checkout.orderId || checkout.status === 'COMPLETED') {
+    if (checkout.status === 'COMPLETED') {
       const existingOrder = await this.orders.getByStableId(
         checkout.orderStableId,
       );
@@ -484,17 +484,13 @@ export class PosCardPaymentOrchestrationService {
       checkout.snapshot,
       {
         attemptId: checkout.attemptId,
-        internalOrderId: checkout.plannedOrderId,
         orderStableId: checkout.orderStableId,
         cardSurchargeCents: surchargeCents,
         chargedTotalCents,
       },
     );
 
-    checkout = await this.checkouts.markCompleted({
-      attemptId: checkout.attemptId,
-      orderId: created.internalOrderId,
-    });
+    checkout = await this.checkouts.markCompleted(checkout.attemptId);
     await this.orderOperations.activateImmediatePreparation(
       created.order.orderStableId,
       storeId,
