@@ -56,7 +56,7 @@ Slice 1B has now normalized the persisted preparation contract to V2: the only c
 
 ### Dependency priorities and exit criteria
 
-Merged through Slice 2A, Payments/Clover direct debt is **51** with `commerce-orders-fulfillment = 4`, `identity-customer-benefits = 13`, `store-operations-pos-print = 9`, `architecture-foundation = 15`, `runtime-data-ci-ops = 8`, and `messaging-notifications = 2`. The local Slice 2B source/baseline contracts the POS pair **9 -> 4** and Payments/Clover total **51 -> 46**; CI is not yet claimed. These counts are contraction signals, not mechanical zero targets.
+Merged through Slice 2A, Payments/Clover direct debt is **51** with `commerce-orders-fulfillment = 4`, `identity-customer-benefits = 13`, `store-operations-pos-print = 9`, `architecture-foundation = 15`, `runtime-data-ci-ops = 8`, and `messaging-notifications = 2`. Slice 2B safely contracts the POS pair **9 -> 5** and Payments/Clover total **51 -> 47**. The initial **9 -> 4** attempt proved unsafe in CI because exporting the full `PosModule` from the lightweight POS barrel created runtime circular initialization; that legal Nest composition edge is therefore retained. These counts are contraction signals, not mechanical zero targets.
 
 Phase 6 closeout requires public SCC to remain empty, no new bounded-context cycle, meaningful owner-leakage contraction, stable-ID-only prepared-payment boundary, an explicit safe decision for the confirmed-payment transaction seam, clear Clover infrastructure ownership, scanner/tests preventing regression, and a documented plan for the protected Web Clover legacy seam. If Web Unified Payment Core migration is executed, controlled cutover, production verification and legacy cleanup must complete before Phase 6 can be marked `PRODUCTION VERIFIED / CLOSED`.
 
@@ -151,17 +151,17 @@ The realtime events remain advisory UI delivery only. Payment status/reversal tr
 
 ## Slice 2B — POS transport / composition public-surface contraction
 
-Status: **LOCAL / REVIEW PENDING**
+Status: **REMOTE / CI REMEDIATION** — PR #2236; initial head `bdfa5749` passed architecture/lint/build/strict but failed API tests due to `PosModule` barrel circular initialization.
 
 Migration classification: **Class A atomic internal boundary contraction**. Existing Nest guard/module classes, routes, authorization behavior, provider behavior, persisted facts, schema/migrations, dependencies and Web Clover behavior are unchanged.
 
 ### Source change
 
-- `pos/public-api.ts` now explicitly exports the existing `PosDeviceGuard` and `PosModule`; `PosDeviceModule` was already public and remains the same class.
+- `pos/public-api.ts` now explicitly exports the existing `PosDeviceGuard`; `PosDeviceModule` was already public and remains the same class.
 - `PosCardPaymentController`, `PosCardRefundController` and `PosFullRefundController` now import `PosDeviceGuard` from the POS public surface together with the already-public `AuthenticatedPosIdentity`. Guard ordering, `@UseGuards(...)`, roles and request/store identity behavior are unchanged.
-- `PosCardPaymentOrchestrationModule` now imports the existing `PosDeviceModule` and `PosModule` from `../pos/public-api` rather than deep-importing their implementation paths. No wrapper/facade module is introduced and the Nest `imports` array remains unchanged.
-- `payments-architecture.spec.ts` guards all three controllers and the composition module against regression to `pos-device.guard`, `pos-device.module` or `pos.module` deep imports and verifies those classes remain on the POS public surface.
-- The monotonic direct-import baseline contracts `payments-clover -> store-operations-pos-print` **9 -> 4**, reducing Payments/Clover total outgoing direct debt **51 -> 46**. No POS -> Payments dependency is introduced, so public SCC remains expected empty pending GitHub CI.
+- `PosCardPaymentOrchestrationModule` now imports the existing `PosDeviceModule` from `../pos/public-api`; the existing direct `PosModule` Nest composition import is intentionally retained. An initial attempt to re-export `PosModule` through `pos/public-api.ts` passed architecture/lint/build/strict but caused 52 Jest suites to fail during module evaluation because the barrel eagerly loaded the full POS module and introduced runtime circular initialization (`ZodValidationPipe is not a constructor` / invalid guard decorators). No wrapper/facade module is introduced and the Nest `imports` array remains unchanged.
+- `payments-architecture.spec.ts` guards all three controllers and `PosDeviceModule` against regression to implementation-path imports, and explicitly protects the lightweight POS public barrel from re-exporting `PosModule` again.
+- The monotonic direct-import baseline contracts `payments-clover -> store-operations-pos-print` **9 -> 5**, reducing Payments/Clover total outgoing direct debt **51 -> 47**. The four removed edges are three `PosDeviceGuard` deep imports plus `PosDeviceModule`; the retained `PosModule` edge is legal Nest composition, not business-capability leakage. No POS -> Payments dependency is introduced, so public SCC remains expected empty pending the replacement GitHub CI run.
 
 ### Explicit non-scope / preserved behavior
 
@@ -173,7 +173,7 @@ Confirmed-payment transaction atomicity, refund/reconciliation/provider truth, T
 
 Slice 1 is merged and CI-green through PR #2231 / CI #5318. The readiness baseline refresh is merged through PR #2232 / `94cff60f`, with final head `f35bcd5f` passing CI #5321. Slice 1B is merged and CI-green through PR #2233 / CI #5326, final head `0a2a01d8`, squash merge `be21c8c5`. Slice 1C is merged and CI-green through PR #2234 / CI #5329, final head `a042ea10`, squash merge `bf95051f`. Slice 2A is merged and CI-green through PR #2235 / CI #5332, final head `6169d4dd`, squash merge `b1051c24`.
 
-Slice 2B is currently **LOCAL / REVIEW PENDING**. Per repository workflow, no local lint/build/test/scanner run is claimed; GitHub Actions becomes authoritative only after user approval for remote delivery.
+Slice 2B is currently **REMOTE / CI REMEDIATION** on PR #2236. Initial CI #5334 head `bdfa5749` passed architecture, API/Web lint, build and strict checks, while API Jest failed during module loading because `PosModule` was re-exported through the lightweight POS barrel. The remediation retains the legal direct `PosModule` composition import and narrows the intended contraction to **9 -> 5**; a replacement exact-head CI run is required before merge.
 
 ## Remaining Phase 6 work
 

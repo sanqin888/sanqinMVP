@@ -400,14 +400,13 @@ describe('Payments bounded-context architecture', () => {
     expect(compositionModule).toBeDefined();
     expect(compositionModule?.source).toContain("from '../pos/public-api'");
     expect(compositionModule?.source).toContain('PosDeviceModule');
-    expect(compositionModule?.source).toContain('PosModule');
     expect(compositionModule?.source).not.toContain(
       "from '../pos/pos-device.module'",
     );
-    expect(compositionModule?.source).not.toContain("from '../pos/pos.module'");
+    expect(compositionModule?.source).toContain("from '../pos/pos.module'");
     expect(publicApi?.source).toContain('PosDeviceGuard');
     expect(publicApi?.source).toContain('PosDeviceModule');
-    expect(publicApi?.source).toContain('PosModule');
+    expect(publicApi?.source).not.toContain("from './pos.module'");
   });
 
   it('keeps POS refund/reverse-sync Orders access on the public POS order operations boundary', () => {
