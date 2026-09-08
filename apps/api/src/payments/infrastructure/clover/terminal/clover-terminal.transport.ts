@@ -394,7 +394,7 @@ const missingTerminalConfiguration = (): PaymentProviderOutcome => ({
   status: 'FAILED',
   failureCode: 'CLOVER_TERMINAL_MISCONFIGURED',
   failureMessage:
-    'Clover Terminal requires an OAuth token, device id, and Remote Application ID',
+    'Clover Terminal requires an API base, OAuth token, device id, Remote Application ID, and valid timeout',
 });
 
 const uncertain = (
@@ -416,9 +416,11 @@ export class CloverTerminalTransport {
 
   isConfigured(): boolean {
     return Boolean(
+      this.config.terminalApiBase &&
       this.config.terminalAccessToken &&
       this.config.terminalDeviceId &&
-      this.config.terminalPosId,
+      this.config.terminalRemoteAppId &&
+      this.config.terminalTimeoutSeconds !== undefined,
     );
   }
 
@@ -432,7 +434,7 @@ export class CloverTerminalTransport {
         terminalId: terminalId ?? null,
         failureCode: 'CLOVER_TERMINAL_MISCONFIGURED',
         failureMessage:
-          'Clover Terminal requires an OAuth token, device id, and Remote Application ID',
+          'Clover Terminal requires an API base, OAuth token, device id, Remote Application ID, and valid timeout',
       };
     }
     const result = await this.request('/connect/v1/device/status', {
@@ -686,15 +688,25 @@ export class CloverTerminalTransport {
       body?: Record<string, unknown> | CloverTerminalPaymentRequest;
     },
   ): Promise<CloverTerminalHttpResult | null> {
+    const apiBase = this.config.terminalApiBase;
     const token = this.config.terminalAccessToken;
     const terminalId = this.config.terminalDeviceId;
-    const posId = this.config.terminalPosId;
-    if (!token || !terminalId || !posId) return null;
+    const posId = this.config.terminalRemoteAppId;
+    const timeoutSeconds = this.config.terminalTimeoutSeconds;
+    if (
+      !apiBase ||
+      !token ||
+      !terminalId ||
+      !posId ||
+      timeoutSeconds === undefined
+    ) {
+      return null;
+    }
 
     const controller = new AbortController();
     const timer = setTimeout(
       () => controller.abort(),
-      (this.config.terminalTimeoutSeconds + 5) * 1000,
+      (timeoutSeconds + 5) * 1000,
     );
     const headers: Record<string, string> = {
       Accept: 'application/json',
@@ -702,7 +714,7 @@ export class CloverTerminalTransport {
       'User-Agent': 'SanQ-POS/1.0',
       'X-Clover-Device-Id': terminalId,
       'X-POS-Id': posId,
-      'X-Clover-Timeout': String(this.config.terminalTimeoutSeconds),
+      'X-Clover-Timeout': String(timeoutSeconds),
     };
     if (options.method === 'POST') headers['Content-Type'] = 'application/json';
     if (options.idempotencyKey) {
@@ -711,7 +723,7 @@ export class CloverTerminalTransport {
 
     let response: Response;
     try {
-      response = await fetch(`${this.config.terminalApiBase}${path}`, {
+      response = await fetch(`${apiBase}${path}`, {
         method: options.method,
         headers,
         body:

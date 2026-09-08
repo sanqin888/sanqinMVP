@@ -30,7 +30,7 @@ export class CloverOAuthClient {
   buildAuthorizeUrl(state: string): string {
     const clientId = this.requireClientId();
     const redirectUri = this.requireRedirectUri();
-    const url = new URL('/oauth/v2/authorize', this.config.oauthAuthorizeBase);
+    const url = new URL('/oauth/v2/authorize', this.requireAuthorizeBase());
     url.searchParams.set('client_id', clientId);
     url.searchParams.set('response_type', 'code');
     url.searchParams.set('redirect_uri', redirectUri);
@@ -72,7 +72,7 @@ export class CloverOAuthClient {
     path: '/oauth/v2/token' | '/oauth/v2/refresh' | '/oauth/v2/recovery',
     body: Record<string, string>,
   ): Promise<CloverOAuthTokenPair> {
-    const response = await this.request(`${this.config.oauthApiBase}${path}`, {
+    const response = await this.request(`${this.requireApiBase()}${path}`, {
       method: 'POST',
       headers: {
         Accept: 'application/json',
@@ -159,32 +159,52 @@ export class CloverOAuthClient {
   }
 
   private requireClientId(): string {
-    if (!this.config.oauthClientId) {
+    if (!this.config.unifiedOauthClientId) {
       throw new CloverOAuthProviderError(
         'CLOVER_OAUTH_CLIENT_ID_MISSING',
         false,
       );
     }
-    return this.config.oauthClientId;
+    return this.config.unifiedOauthClientId;
   }
 
   private requireClientSecret(): string {
-    if (!this.config.oauthClientSecret) {
+    if (!this.config.unifiedOauthClientSecret) {
       throw new CloverOAuthProviderError(
         'CLOVER_OAUTH_CLIENT_SECRET_MISSING',
         false,
       );
     }
-    return this.config.oauthClientSecret;
+    return this.config.unifiedOauthClientSecret;
+  }
+
+  private requireAuthorizeBase(): string {
+    if (!this.config.unifiedOauthAuthorizeBase) {
+      throw new CloverOAuthProviderError(
+        'CLOVER_OAUTH_AUTHORIZE_BASE_MISSING',
+        false,
+      );
+    }
+    return this.config.unifiedOauthAuthorizeBase;
+  }
+
+  private requireApiBase(): string {
+    if (!this.config.unifiedOauthApiBase) {
+      throw new CloverOAuthProviderError(
+        'CLOVER_OAUTH_API_BASE_MISSING',
+        false,
+      );
+    }
+    return this.config.unifiedOauthApiBase;
   }
 
   private requireRedirectUri(): string {
-    if (!this.config.oauthCallbackUrl) {
+    if (!this.config.unifiedOauthCallbackUrl) {
       throw new CloverOAuthProviderError(
         'CLOVER_OAUTH_CALLBACK_URL_MISSING',
         false,
       );
     }
-    return this.config.oauthCallbackUrl;
+    return this.config.unifiedOauthCallbackUrl;
   }
 }

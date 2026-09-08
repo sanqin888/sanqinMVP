@@ -231,6 +231,81 @@ describe('Payments bounded-context architecture', () => {
     expect(platformVerification?.source).not.toContain('/oauth/v2/');
   });
 
+  it('keeps Web Ecommerce, Unified Clover, and Terminal configuration families isolated', () => {
+    const cloverFiles = scanTypeScript(
+      resolve(PAYMENTS_ROOT, 'infrastructure', 'clover'),
+      { productionOnly: true },
+    );
+    const providerConfig = cloverFiles.find(({ path }) =>
+      path.endsWith('clover-provider.config.ts'),
+    );
+    const ecommerce = cloverFiles.find(({ path }) =>
+      path.endsWith('ecommerce/clover-ecommerce.transport.ts'),
+    );
+    const platform = cloverFiles.find(({ path }) =>
+      path.endsWith('platform/clover-platform-payments.gateway.ts'),
+    );
+    const terminal = cloverFiles.find(({ path }) =>
+      path.endsWith('terminal/clover-terminal.transport.ts'),
+    );
+    const oauthClient = cloverFiles.find(({ path }) =>
+      path.endsWith('oauth/clover-oauth.client.ts'),
+    );
+    const webhook = cloverFiles.find(({ path }) =>
+      path.endsWith('webhook/clover-payment-webhook-ingress.adapter.ts'),
+    );
+
+    expect(providerConfig?.source).toContain('CLOVER_UNIFIED_MERCHANT_ID');
+    expect(providerConfig?.source).toContain('CLOVER_UNIFIED_PLATFORM_API_BASE');
+    expect(providerConfig?.source).toContain('CLOVER_TERMINAL_API_BASE');
+    expect(providerConfig?.source).not.toContain(
+      'process.env.CLOVER_STORE_STABLE_ID',
+    );
+    expect(providerConfig?.source).not.toContain(
+      'process.env.CLOVER_PLATFORM_API_BASE',
+    );
+    expect(providerConfig?.source).not.toContain(
+      'process.env.CLOVER_OAUTH_CLIENT_ID',
+    );
+    expect(providerConfig?.source).not.toContain(
+      'process.env.CLOVER_OAUTH_CLIENT_SECRET',
+    );
+    expect(providerConfig?.source).not.toContain(
+      'process.env.CLOVER_OAUTH_AUTHORIZE_BASE',
+    );
+    expect(providerConfig?.source).not.toContain(
+      'process.env.CLOVER_OAUTH_API_BASE',
+    );
+    expect(providerConfig?.source).not.toContain(
+      'process.env.CLOVER_OAUTH_CALLBACK_URL',
+    );
+    expect(providerConfig?.source).not.toContain(
+      'process.env.CLOVER_OAUTH_SCOPES',
+    );
+    expect(providerConfig?.source).not.toContain(
+      'process.env.CLOVER_TERMINAL_BASE',
+    );
+    expect(providerConfig?.source).not.toContain(
+      'process.env.CLOVER_DEVICE_ID',
+    );
+    expect(providerConfig?.source).not.toContain(
+      'process.env.CLOVER_REMOTE_APP_ID',
+    );
+
+    expect(ecommerce?.source).toContain('config.ecommerceAccessToken');
+    expect(ecommerce?.source).not.toContain('config.unified');
+    expect(platform?.source).toContain('config.unifiedMerchantId');
+    expect(platform?.source).toContain('config.unifiedPlatformApiBase');
+    expect(platform?.source).not.toContain('config.ecommerce');
+    expect(terminal?.source).toContain('config.terminalApiBase');
+    expect(terminal?.source).not.toContain('config.ecommerceApiBase');
+    expect(terminal?.source).not.toContain('config.ecommerceAccessToken');
+    expect(oauthClient?.source).toContain('config.unifiedOauth');
+    expect(oauthClient?.source).not.toContain('config.ecommerce');
+    expect(webhook?.source).toContain('config.ecommerceMerchantId');
+    expect(webhook?.source).not.toContain('config.unifiedMerchantId');
+  });
+
   it('keeps Clover OAuth secrets and merchant credentials out of Web source', () => {
     const webSource = scanTypeScript(
       resolve(PAYMENTS_ROOT, '../../../web/src'),
@@ -238,12 +313,10 @@ describe('Payments bounded-context architecture', () => {
         productionOnly: true,
       },
     );
+    const cloverServerSecret =
+      /CLOVER_(?:UNIFIED_OAUTH_CLIENT_SECRET|OAUTH_CLIENT_SECRET|CREDENTIAL_ENCRYPTION_KEYS|TERMINAL_OAUTH_TOKEN)/;
     const violations = webSource
-      .filter(({ source }) =>
-        /CLOVER_(?:OAUTH_CLIENT_SECRET|CREDENTIAL_ENCRYPTION_KEYS|TERMINAL_OAUTH_TOKEN)/.test(
-          source,
-        ),
-      )
+      .filter(({ source }) => cloverServerSecret.test(source))
       .map(({ path }) => path.replaceAll('\\', '/'));
 
     expect(violations).toEqual([]);

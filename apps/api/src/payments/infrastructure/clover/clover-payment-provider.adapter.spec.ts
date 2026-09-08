@@ -474,19 +474,20 @@ describe('CloverTerminalTransport', () => {
     delete process.env[key];
   };
   const original = {
+    ecommerceBase: process.env.CLOVER_BASE,
     ecommerceToken: process.env.CLOVER_ACCESS_TOKEN,
-    base: process.env.CLOVER_TERMINAL_BASE,
+    base: process.env.CLOVER_TERMINAL_API_BASE,
     token: process.env.CLOVER_TERMINAL_OAUTH_TOKEN,
-    device: process.env.CLOVER_DEVICE_ID,
-    pos: process.env.CLOVER_REMOTE_APP_ID,
+    device: process.env.CLOVER_TERMINAL_DEVICE_ID,
+    pos: process.env.CLOVER_TERMINAL_REMOTE_APP_ID,
     timeout: process.env.CLOVER_TERMINAL_TIMEOUT_SECONDS,
   };
 
   beforeEach(() => {
-    setEnv('CLOVER_TERMINAL_BASE', 'https://clover.example.test');
+    setEnv('CLOVER_TERMINAL_API_BASE', 'https://clover.example.test');
     setEnv('CLOVER_TERMINAL_OAUTH_TOKEN', terminalToken);
-    setEnv('CLOVER_DEVICE_ID', 'device-1');
-    setEnv('CLOVER_REMOTE_APP_ID', 'raid-1');
+    setEnv('CLOVER_TERMINAL_DEVICE_ID', 'device-1');
+    setEnv('CLOVER_TERMINAL_REMOTE_APP_ID', 'raid-1');
     setEnv('CLOVER_TERMINAL_TIMEOUT_SECONDS', '10');
   });
 
@@ -496,11 +497,12 @@ describe('CloverTerminalTransport', () => {
       if (value === undefined) deleteEnv(key);
       else setEnv(key, value);
     };
+    restore('CLOVER_BASE', original.ecommerceBase);
     restore('CLOVER_ACCESS_TOKEN', original.ecommerceToken);
-    restore('CLOVER_TERMINAL_BASE', original.base);
+    restore('CLOVER_TERMINAL_API_BASE', original.base);
     restore('CLOVER_TERMINAL_OAUTH_TOKEN', original.token);
-    restore('CLOVER_DEVICE_ID', original.device);
-    restore('CLOVER_REMOTE_APP_ID', original.pos);
+    restore('CLOVER_TERMINAL_DEVICE_ID', original.device);
+    restore('CLOVER_TERMINAL_REMOTE_APP_ID', original.pos);
     restore('CLOVER_TERMINAL_TIMEOUT_SECONDS', original.timeout);
   });
 
@@ -740,6 +742,35 @@ describe('CloverTerminalTransport', () => {
     });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
+
+  it('does not fall back to the Web Ecommerce base when Terminal API base is missing', async () => {
+    setEnv('CLOVER_BASE', 'https://web-production.example');
+    deleteEnv('CLOVER_TERMINAL_API_BASE');
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    const transport = new CloverTerminalTransport(new CloverProviderConfig());
+
+    await expect(transport.getAvailability()).resolves.toMatchObject({
+      state: 'MISCONFIGURED',
+      configured: false,
+      available: false,
+      failureCode: 'CLOVER_TERMINAL_MISCONFIGURED',
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('treats an invalid Terminal timeout as misconfigured instead of using a default', async () => {
+    setEnv('CLOVER_TERMINAL_TIMEOUT_SECONDS', '9');
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    const transport = new CloverTerminalTransport(new CloverProviderConfig());
+
+    await expect(transport.getAvailability()).resolves.toMatchObject({
+      state: 'MISCONFIGURED',
+      configured: false,
+      available: false,
+      failureCode: 'CLOVER_TERMINAL_MISCONFIGURED',
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
 });
 
 describe('Clover Terminal response mapping', () => {
@@ -828,9 +859,9 @@ describe('Clover Platform Payments Gateway', () => {
     ...overrides,
   });
   const original = {
-    base: process.env.CLOVER_PLATFORM_API_BASE,
+    base: process.env.CLOVER_UNIFIED_PLATFORM_API_BASE,
     ecommerceToken: process.env.CLOVER_ACCESS_TOKEN,
-    merchantId: process.env.CLOVER_MERCHANT_ID,
+    merchantId: process.env.CLOVER_UNIFIED_MERCHANT_ID,
   };
   const setPlatformEnv = (key: string, value: string): void => {
     process.env[key] = value;
@@ -853,15 +884,15 @@ describe('Clover Platform Payments Gateway', () => {
     new CloverPlatformPaymentsGateway(new CloverProviderConfig(), accessTokens);
 
   beforeEach(() => {
-    setPlatformEnv('CLOVER_PLATFORM_API_BASE', 'https://platform.example.test');
-    setPlatformEnv('CLOVER_MERCHANT_ID', 'merchant-1');
+    setPlatformEnv('CLOVER_UNIFIED_PLATFORM_API_BASE', 'https://platform.example.test');
+    setPlatformEnv('CLOVER_UNIFIED_MERCHANT_ID', 'merchant-1');
   });
 
   afterEach(() => {
     jest.restoreAllMocks();
-    restorePlatformEnv('CLOVER_PLATFORM_API_BASE', original.base);
+    restorePlatformEnv('CLOVER_UNIFIED_PLATFORM_API_BASE', original.base);
     restorePlatformEnv('CLOVER_ACCESS_TOKEN', original.ecommerceToken);
-    restorePlatformEnv('CLOVER_MERCHANT_ID', original.merchantId);
+    restorePlatformEnv('CLOVER_UNIFIED_MERCHANT_ID', original.merchantId);
   });
 
   it('reads canonical payment by provider id with dedicated Platform v3 credentials', async () => {
@@ -1205,6 +1236,28 @@ describe('Clover Platform Payments Gateway', () => {
       failureCode: 'CLOVER_PLATFORM_MISCONFIGURED',
     });
     expect(getAccessToken.mock.calls).toHaveLength(0);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('fails closed before credential lookup when the Unified Platform base is missing', async () => {
+    delete process.env.CLOVER_UNIFIED_PLATFORM_API_BASE;
+    const hasUsableCredential = jest.fn().mockResolvedValue(true);
+    const getAccessToken = jest.fn().mockResolvedValue({ token: 'merchant-token' });
+    const accessTokens = {
+      hasUsableCredential,
+      getAccessToken,
+    } as unknown as CloverMerchantAccessTokenService;
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    const gateway = createPlatformGateway(accessTokens);
+
+    await expect(
+      gateway.getCanonicalPayment(platformRequest),
+    ).resolves.toMatchObject({
+      status: 'UNKNOWN',
+      failureCode: 'CLOVER_PLATFORM_MISCONFIGURED',
+    });
+    expect(hasUsableCredential).not.toHaveBeenCalled();
+    expect(getAccessToken).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

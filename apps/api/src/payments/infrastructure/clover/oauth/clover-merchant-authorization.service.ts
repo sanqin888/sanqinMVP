@@ -91,14 +91,18 @@ export class CloverMerchantAuthorizationService {
       input.merchantId,
       input.mId,
     ]);
-    if (!merchantId || !MERCHANT_ID_PATTERN.test(merchantId)) {
+    if (
+      !merchantId ||
+      !MERCHANT_ID_PATTERN.test(merchantId) ||
+      merchantId !== this.config.unifiedMerchantId
+    ) {
       throw new CloverMerchantAuthorizationError('INVALID_LAUNCH');
     }
     const launchClientId = this.resolveConsistentValue([
       input.client_id,
       input.clientId,
     ]);
-    if (launchClientId && launchClientId !== this.config.oauthClientId) {
+    if (launchClientId && launchClientId !== this.config.unifiedOauthClientId) {
       throw new CloverMerchantAuthorizationError('INVALID_LAUNCH');
     }
 
@@ -115,8 +119,8 @@ export class CloverMerchantAuthorizationService {
       data: {
         stateHash,
         merchantId,
-        clientId: this.config.oauthClientId!,
-        redirectUri: this.config.oauthCallbackUrl!,
+        clientId: this.config.unifiedOauthClientId!,
+        redirectUri: this.config.unifiedOauthCallbackUrl!,
         issuedAt,
         expiresAt,
       },
@@ -150,11 +154,11 @@ export class CloverMerchantAuthorizationService {
     if (state.status === 'COMPLETED' || state.status === 'FAILED') {
       throw new CloverMerchantAuthorizationError('STATE_REPLAYED');
     }
-    if (state.clientId !== this.config.oauthClientId) {
+    if (state.clientId !== this.config.unifiedOauthClientId) {
       await this.failState(stateHash, 'client-mismatch');
       throw new CloverMerchantAuthorizationError('INVALID_STATE');
     }
-    if (state.redirectUri !== this.config.oauthCallbackUrl) {
+    if (state.redirectUri !== this.config.unifiedOauthCallbackUrl) {
       await this.failState(stateHash, 'redirect-mismatch');
       throw new CloverMerchantAuthorizationError('INVALID_STATE');
     }
@@ -319,22 +323,25 @@ export class CloverMerchantAuthorizationService {
       if (store?.isActive) return existing.storeStableId;
     }
 
-    if (this.config.merchantId !== merchantId || !this.config.storeStableId) {
+    if (
+      this.config.unifiedMerchantId !== merchantId ||
+      !this.config.unifiedStoreStableId
+    ) {
       return null;
     }
     const store = await this.prisma.store.findUnique({
-      where: { storeStableId: this.config.storeStableId },
+      where: { storeStableId: this.config.unifiedStoreStableId },
       select: { isActive: true },
     });
     if (!store?.isActive) return null;
     const conflict = await this.prisma.cloverMerchantAuthorization.findUnique({
-      where: { storeStableId: this.config.storeStableId },
+      where: { storeStableId: this.config.unifiedStoreStableId },
       select: { merchantId: true },
     });
     if (conflict && conflict.merchantId !== merchantId) {
       throw new CloverMerchantAuthorizationError('STORE_MAPPING_CONFLICT');
     }
-    return this.config.storeStableId;
+    return this.config.unifiedStoreStableId;
   }
 
   private async persistAuthorization(input: {
@@ -357,7 +364,7 @@ export class CloverMerchantAuthorizationService {
         encryptedRefreshToken,
         accessTokenExpiresAt: input.tokens.accessTokenExpiresAt,
         refreshTokenExpiresAt: input.tokens.refreshTokenExpiresAt,
-        scopes: this.config.oauthScopesMetadata,
+        scopes: this.config.unifiedOauthScopesMetadata,
         status: input.status,
         authorizedAt,
       },
@@ -368,7 +375,7 @@ export class CloverMerchantAuthorizationService {
         encryptedRefreshToken,
         accessTokenExpiresAt: input.tokens.accessTokenExpiresAt,
         refreshTokenExpiresAt: input.tokens.refreshTokenExpiresAt,
-        scopes: this.config.oauthScopesMetadata,
+        scopes: this.config.unifiedOauthScopesMetadata,
         status: input.status,
         tokenVersion: { increment: 1 },
         refreshLeaseId: null,
@@ -483,16 +490,21 @@ export class CloverMerchantAuthorizationService {
 
   private requireOAuthConfiguration(): void {
     if (
-      !this.config.oauthClientId ||
-      !this.config.oauthClientSecret ||
-      !this.config.oauthCallbackUrl ||
+      !this.config.unifiedMerchantId ||
+      !this.config.unifiedStoreStableId ||
+      !this.config.unifiedPlatformApiBase ||
+      !this.config.unifiedOauthClientId ||
+      !this.config.unifiedOauthClientSecret ||
+      !this.config.unifiedOauthAuthorizeBase ||
+      !this.config.unifiedOauthApiBase ||
+      !this.config.unifiedOauthCallbackUrl ||
       !this.vault.isConfigured()
     ) {
       throw new CloverMerchantAuthorizationError('CONFIGURATION_ERROR');
     }
     let callback: URL;
     try {
-      callback = new URL(this.config.oauthCallbackUrl);
+      callback = new URL(this.config.unifiedOauthCallbackUrl);
     } catch {
       throw new CloverMerchantAuthorizationError('CONFIGURATION_ERROR');
     }

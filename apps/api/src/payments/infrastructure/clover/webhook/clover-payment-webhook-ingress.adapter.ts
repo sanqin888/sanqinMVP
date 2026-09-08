@@ -90,7 +90,7 @@ export class CloverPaymentWebhookIngressAdapter implements PaymentProviderWebhoo
       throw new PaymentWebhookAuthenticationError();
     }
 
-    const expectedMerchantId = this.config.merchantId;
+    const expectedMerchantId = this.config.ecommerceMerchantId;
     if (!expectedMerchantId) {
       throw new PaymentWebhookConfigurationError(
         'CLOVER_MERCHANT_ID is required before Clover event delivery can be accepted.',

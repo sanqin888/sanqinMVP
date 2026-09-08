@@ -500,16 +500,18 @@ export class CloverPlatformPaymentsGateway {
   ) {}
 
   async isConfigured(): Promise<boolean> {
-    const merchantId = this.config.merchantId;
+    const merchantId = this.config.unifiedMerchantId;
     return Boolean(
-      merchantId && (await this.accessTokens.hasUsableCredential(merchantId)),
+      merchantId &&
+        this.config.unifiedPlatformApiBase &&
+        (await this.accessTokens.hasUsableCredential(merchantId)),
     );
   }
 
   async getCanonicalPayment(
     request: CloverPlatformCanonicalPaymentRequest,
   ): Promise<PaymentProviderOutcome> {
-    const merchantId = this.config.merchantId;
+    const merchantId = this.config.unifiedMerchantId;
     if (!merchantId || !(await this.isConfigured())) {
       return platformPaymentUnknown(
         request,
@@ -576,7 +578,7 @@ export class CloverPlatformPaymentsGateway {
   async getCanonicalReversal(
     request: CloverPlatformCanonicalReversalRequest,
   ): Promise<PaymentProviderOutcome> {
-    const merchantId = this.config.merchantId;
+    const merchantId = this.config.unifiedMerchantId;
     if (!merchantId || !(await this.isConfigured())) {
       return reversalUnknown(
         request,
@@ -750,7 +752,7 @@ export class CloverPlatformPaymentsGateway {
     providerRefundId: string,
     resultCode = 'CLOVER_REFUND_CONFIRMED',
   ): Promise<PaymentProviderOutcome> {
-    const merchantId = this.config.merchantId;
+    const merchantId = this.config.unifiedMerchantId;
     if (!merchantId) {
       return reversalUnknown(
         request,
@@ -805,7 +807,7 @@ export class CloverPlatformPaymentsGateway {
   private async request(
     path: string,
   ): Promise<CloverPlatformHttpResult | null> {
-    const merchantId = this.config.merchantId;
+    const merchantId = this.config.unifiedMerchantId;
     if (!merchantId) return null;
     try {
       const credential = await this.accessTokens.getAccessToken(merchantId);
@@ -832,11 +834,13 @@ export class CloverPlatformPaymentsGateway {
     path: string,
     token: string,
   ): Promise<CloverPlatformHttpResult | null> {
+    const apiBase = this.config.unifiedPlatformApiBase;
+    if (!apiBase) return null;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), PLATFORM_TIMEOUT_MS);
     let response: Response;
     try {
-      response = await fetch(`${this.config.platformApiBase}${path}`, {
+      response = await fetch(`${apiBase}${path}`, {
         method: 'GET',
         headers: {
           Accept: 'application/json',

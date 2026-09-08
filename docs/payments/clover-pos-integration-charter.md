@@ -38,6 +38,8 @@
 
 Unified OAuth credential 的长期 owner 是现有 database-backed `CloverMerchantAuthorization` + `CloverMerchantAccessTokenService`。Platform v3 和 Terminal REST Pay 应共享同一个 Unified merchant credential refresh/recovery lifecycle；静态 `CLOVER_TERMINAL_OAUTH_TOKEN` 仅为原型残留，完成 credential convergence 后必须删除，不能成为备用路径。
 
+**Slice 4C implementation status (2026-09-08): LOCAL / REVIEW PENDING.** `CloverProviderConfig` 与现有 Clover infrastructure consumers 已按上述三层语义完成 source-level isolation：Web Ecommerce/webhook 保持 legacy production merchant/token/base 语义；Unified Platform/OAuth 只使用 `CLOVER_UNIFIED_*` 且缺配置时在 outbound provider traffic 前 fail closed；Terminal base/device/RAID/timeout 只使用新的 `CLOVER_TERMINAL_*`，缺失或非法 timeout 时报告 `MISCONFIGURED`，不再继承 Web base/token。临时 `CLOVER_TERMINAL_OAUTH_TOKEN` 仍保留到 4D；`POS_CLOVER_TERMINAL_PAYMENT_ENABLED`、Web `/v1/charges`、Prisma 与 payment traffic routing 均未改变。Focused tests/architecture guards 已加入，CI 仍等待用户审阅后的远端验证。
+
 本阶段不为了 sandbox/production 并存修改 Prisma。一个 runtime/store 只允许一个 active Unified merchant store binding；从 sandbox 切 production 前明确 revoke/unbind sandbox authorization。只有未来业务明确要求同一 runtime 长期同时保持两套 active authorization 时，才重新设计 `CloverMerchantAuthorization` 的 environment/purpose identity，并在 schema/migration 前获得单独授权。
 
 Clover sandbox 只隔离 provider 资金，不隔离 SanQ 数据。Full POS E2E 如果运行在 production API 上，仍可能创建 production `PaymentTransaction`、`PaymentCheckoutAttempt`、Order、printing/reporting facts。因此 full E2E 必须在受控测试窗口执行；需要数据层隔离时应建设独立 staging runtime/database，而不是把 production runtime 变成可随意切换 sandbox/production 的双环境。

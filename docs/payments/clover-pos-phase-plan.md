@@ -65,7 +65,7 @@ Slice 4B  Clover provider internal capability cleanup
 
 4B 只做 provider infrastructure ownership cleanup：把 `CloverPlatformPaymentsGateway` 及其 Platform v3 canonical HTTP/raw mapping 从 `clover-payment-provider.adapter.ts` 移入 `payments/infrastructure/clover/platform/**`，保持 adapter 注入/调用语义不变；同时收掉无外部消费者的 `PAYMENT_PROVIDER` / `CreatePaymentAttemptUseCase` module exports，并用 architecture guards 锁住 Platform gateway 不得被 orchestration/POS/Orders 直接 import。4B 不修改 Web `/v1/charges`、OAuth、Terminal、webhook、Prisma 或部署配置。
 
-**Implementation status (2026-09-08): LOCAL / REVIEW PENDING.** Gateway + Platform canonical HTTP/raw mapping 已迁入 `platform/clover-platform-payments.gateway.ts`，adapter/module/spec import 已同步，两个无外部消费者的 module exports 已移除并新增 source guard。该批是 Payments/Clover context 内部收口，architecture baseline/direct-debt 数字保持不变；尚未运行本地 lint/build/test/scanner，远端 CI 只在用户审阅并授权提交后作为验证依据。
+**Implementation status (2026-09-08): MERGED / CI GREEN.** PR #2243 已 squash merge 为 `aa765f9d`，merged-dev CI #5354 的 API/Web 均通过。Gateway + Platform canonical HTTP/raw mapping 已迁入 `platform/clover-platform-payments.gateway.ts`，adapter/module/spec import 已同步，两个无外部消费者的 module exports 已移除并新增 source guard。该批是 Payments/Clover context 内部收口，architecture baseline/direct-debt 数字保持不变。
 
 #### Slice 4C 配置隔离
 
@@ -76,6 +76,8 @@ Slice 4B  Clover provider internal capability cleanup
 3. **Terminal-only**：REST Pay base、device ID、RAID、timeout 使用独立 `CLOVER_TERMINAL_*` 配置。
 
 Unified/Terminal 配置缺失必须 fail closed。禁止 Unified/Terminal 回退到 live Web merchant、token 或 Ecommerce base。现有 production Clover webhook merchant/auth scope 在 4C 不改变，sandbox bring-up 先依赖 Terminal execution + Platform canonical reconciliation。
+
+**Implementation status (2026-09-08): LOCAL / REVIEW PENDING.** `CloverProviderConfig` 已按 Web Ecommerce / Unified / Terminal 三种 purpose 拆开字段语义；Platform/OAuth 只读取 `CLOVER_UNIFIED_*`，Terminal base/device/RAID/timeout 只读取新的 `CLOVER_TERMINAL_*`，且缺少 base、device、RAID 或合法 10-300 秒 timeout 时直接不可用。OAuth 缺 Unified merchant/store/Platform base/client/secret/authorize/API/callback 任一关键配置时在 provider traffic 前返回配置错误，并拒绝为非 configured Unified merchant 启动授权。Terminal 临时 `CLOVER_TERMINAL_OAUTH_TOKEN` 保留到 4D，但不会借用 `CLOVER_ACCESS_TOKEN`；production webhook 继续使用 legacy Web `CLOVER_MERCHANT_ID`。`docker-compose.yml` 只新增空值 placeholder，没有提交 Test Merchant/token/secret。Focused config/OAuth/Platform/Terminal tests 与 architecture guard 已同步；4C 不改变 dependency baseline、Prisma、Web `/v1/charges` 或 `POS_CLOVER_TERMINAL_PAYMENT_ENABLED`。按仓库工作流，本地 lint/build/test/scanner 未运行，等待用户审阅后由 GitHub Actions 验证。
 
 #### Slice 4D credential convergence
 

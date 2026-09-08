@@ -2,16 +2,16 @@ import { CloverProviderConfig } from '../clover-provider.config';
 import { CloverPlatformMerchantVerificationGateway } from './clover-platform-merchant-verification.gateway';
 
 describe('CloverPlatformMerchantVerificationGateway', () => {
-  const originalBase = process.env.CLOVER_PLATFORM_API_BASE;
+  const originalBase = process.env.CLOVER_UNIFIED_PLATFORM_API_BASE;
 
   beforeEach(() => {
-    process.env.CLOVER_PLATFORM_API_BASE = 'https://platform.example.test';
+    process.env.CLOVER_UNIFIED_PLATFORM_API_BASE = 'https://platform.example.test';
   });
 
   afterEach(() => {
     jest.restoreAllMocks();
-    if (originalBase === undefined) delete process.env.CLOVER_PLATFORM_API_BASE;
-    else process.env.CLOVER_PLATFORM_API_BASE = originalBase;
+    if (originalBase === undefined) delete process.env.CLOVER_UNIFIED_PLATFORM_API_BASE;
+    else process.env.CLOVER_UNIFIED_PLATFORM_API_BASE = originalBase;
   });
 
   it('verifies Merchant Read against Platform v3 with the merchant-scoped token', async () => {
