@@ -1,17 +1,16 @@
 import { PaymentMethod } from '@prisma/client';
 
-import type { OrderDto } from '../orders/dto/order.dto';
+import type { PosOrderDto, PosOrderOperationsPort } from '../orders/public-api';
 import { PaymentTransaction } from '../payments/domain/payment-transaction';
 import type { PaymentTransactionRepository } from '../payments/application/payment-transaction.repository';
 import type { RefundPaymentService } from '../payments/application/refund-payment.service';
-import type { OrdersService } from '../orders/orders.service';
 import type {
   PaymentCheckoutAttemptService,
   PreparedPaymentCheckout,
 } from './payment-checkout-attempt.service';
 import { PosCardRefundOrchestrationService } from './pos-card-refund-orchestration.service';
 
-const order = (overrides: Partial<OrderDto> = {}): OrderDto => ({
+const order = (overrides: Partial<PosOrderDto> = {}): PosOrderDto => ({
   orderStableId: 'order_stable_1',
   orderNumber: '1001',
   clientRequestId: '1001',
@@ -159,7 +158,7 @@ const createHarness = () => {
     checkouts as unknown as PaymentCheckoutAttemptService,
     refunds as unknown as RefundPaymentService,
     transactions as unknown as PaymentTransactionRepository,
-    orders as unknown as OrdersService,
+    orders as unknown as PosOrderOperationsPort,
   );
   return { checkouts, refunds, transactions, orders, service };
 };

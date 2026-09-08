@@ -335,6 +335,28 @@ describe('Payments bounded-context architecture', () => {
     expect(orchestration?.source).not.toContain('PAYMENT_CHECKOUT:');
   });
 
+  it('keeps POS refund/reverse-sync Orders access on the public POS order operations boundary', () => {
+    const orchestrationFiles = scanTypeScript(
+      resolve(SOURCE_ROOT, 'orchestration'),
+      { productionOnly: true },
+    ).filter(({ path }) =>
+      [
+        'pos-card-refund-orchestration.service.ts',
+        'payment-reverse-sync-orchestration.service.ts',
+      ].some((name) => path.endsWith(name)),
+    );
+
+    expect(orchestrationFiles).toHaveLength(2);
+    for (const orchestration of orchestrationFiles) {
+      expect(orchestration.source).toContain("from '../orders/public-api'");
+      expect(orchestration.source).toContain('POS_ORDER_OPERATIONS');
+      expect(orchestration.source).not.toContain(
+        "from '../orders/orders.service'",
+      );
+      expect(orchestration.source).not.toMatch(/from ['"]\.\.\/orders\/dto\//);
+    }
+  });
+
   it('keeps Payments + Orders coordination inside the explicit unified-payment orchestration layer', () => {
     const composers = scanTypeScript(SOURCE_ROOT, { productionOnly: true })
       // AppModule is the repository composition root: importing both modules

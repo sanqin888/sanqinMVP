@@ -1,7 +1,10 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import { ConflictException, Inject, Injectable } from '@nestjs/common';
 import { PaymentMethod } from '@prisma/client';
 
-import { OrdersService } from '../orders/orders.service';
+import {
+  POS_ORDER_OPERATIONS,
+  type PosOrderOperationsPort,
+} from '../orders/public-api';
 import type { PaymentReverseSyncResult } from '../payments/application/payment-reverse-sync.service';
 import { PosGateway } from '../pos/pos.gateway';
 import {
@@ -36,7 +39,8 @@ export class PaymentReverseSyncOrchestrationService {
   constructor(
     private readonly checkouts: PaymentCheckoutAttemptService,
     private readonly cardPayments: PosCardPaymentOrchestrationService,
-    private readonly orders: OrdersService,
+    @Inject(POS_ORDER_OPERATIONS)
+    private readonly orders: PosOrderOperationsPort,
     private readonly posGateway: PosGateway,
   ) {}
 
@@ -104,7 +108,10 @@ export class PaymentReverseSyncOrchestrationService {
     }
 
     if (result.externalReversal === 'PARTIAL_REFUND') {
-      const order = await this.orders.getByStableId(checkout.orderStableId);
+      const order = await this.orders.getByStableIdForStore(
+        checkout.orderStableId,
+        checkout.storeId,
+      );
       this.publishReverseSync(
         result,
         checkout.storeId,
@@ -137,7 +144,10 @@ export class PaymentReverseSyncOrchestrationService {
       });
     }
 
-    let order = await this.orders.getByStableId(orderStableId);
+    let order = await this.orders.getByStableIdForStore(
+      orderStableId,
+      checkout.storeId,
+    );
     if (order.status === 'refunded') {
       this.publishReverseSync(
         result,
@@ -162,7 +172,10 @@ export class PaymentReverseSyncOrchestrationService {
       order = refunded.order;
     } catch (error) {
       if (!(error instanceof ConflictException)) throw error;
-      order = await this.orders.getByStableId(orderStableId);
+      order = await this.orders.getByStableIdForStore(
+        orderStableId,
+        checkout.storeId,
+      );
       if (order.status !== 'refunded') throw error;
       this.publishReverseSync(
         result,
