@@ -16,9 +16,7 @@ import {
   toProviderOutcomeFromCreate,
   toProviderOutcomeFromStatus,
 } from './ecommerce/clover-ecommerce.mapper';
-import {
-  CloverPlatformPaymentsGateway,
-} from './platform/clover-platform-payments.gateway';
+import { CloverPlatformPaymentsGateway } from './platform/clover-platform-payments.gateway';
 import { CloverTerminalTransport } from './terminal/clover-terminal.transport';
 
 const unsupportedSource = (source: string): PaymentProviderOutcome => ({

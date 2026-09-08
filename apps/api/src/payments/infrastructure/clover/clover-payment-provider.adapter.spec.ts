@@ -1,7 +1,5 @@
 import { CloverPaymentProviderAdapter } from './clover-payment-provider.adapter';
-import {
-  CloverPlatformPaymentsGateway,
-} from './platform/clover-platform-payments.gateway';
+import { CloverPlatformPaymentsGateway } from './platform/clover-platform-payments.gateway';
 import { CloverProviderConfig } from './clover-provider.config';
 import { CloverEcommerceTransport } from './ecommerce/clover-ecommerce.transport';
 import type { CloverMerchantAccessTokenService } from './oauth/clover-merchant-access-token.service';
