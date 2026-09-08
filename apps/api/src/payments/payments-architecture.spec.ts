@@ -630,6 +630,32 @@ describe('Payments bounded-context architecture', () => {
     expect(refundPayment?.source).not.toMatch(/\borderId\b/);
   });
 
+  it('wires OrdersModule through the Orders public composition surface', () => {
+    const modules = scanTypeScript(resolve(SOURCE_ROOT, 'orchestration'), {
+      productionOnly: true,
+    })
+      .filter(
+        ({ path }) =>
+          path.endsWith('clover-web-checkout-orchestration.module.ts') ||
+          path.endsWith('pos-card-payment-orchestration.module.ts'),
+      )
+      .sort((left, right) => left.path.localeCompare(right.path));
+
+    expect(
+      modules.map(({ path }) =>
+        path.slice(SOURCE_ROOT.length + 1).replaceAll('\\', '/'),
+      ),
+    ).toEqual([
+      'orchestration/clover-web-checkout-orchestration.module.ts',
+      'orchestration/pos-card-payment-orchestration.module.ts',
+    ]);
+    for (const { source } of modules) {
+      const imports = importSpecifiers(source);
+      expect(imports).toContain('../orders/public-api');
+      expect(imports).not.toContain('../orders/orders.module');
+    }
+  });
+
   it('keeps Payments + Orders coordination inside the explicit unified-payment orchestration layer', () => {
     const composers = scanTypeScript(SOURCE_ROOT, { productionOnly: true })
       // AppModule is the repository composition root: importing both modules
