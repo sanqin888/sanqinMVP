@@ -288,7 +288,7 @@ describe('PosCardPaymentOrchestrationService', () => {
       harness.orders.createFromConfirmedPaymentSnapshot,
     ).toHaveBeenCalledWith(
       expect.objectContaining({
-        storeId: storeStableId,
+        storeStableId,
         tender: expect.objectContaining({
           pointsCents: 200,
           balanceCents: 300,
