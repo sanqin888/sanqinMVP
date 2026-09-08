@@ -43,7 +43,8 @@ describe('CloverOAuthClient', () => {
       {
         CLOVER_UNIFIED_OAUTH_CLIENT_ID: 'app-123',
         CLOVER_UNIFIED_OAUTH_CLIENT_SECRET: 'server-secret',
-        CLOVER_UNIFIED_OAUTH_CALLBACK_URL: 'https://sanq.ca/clover/oauth/callback',
+        CLOVER_UNIFIED_OAUTH_CALLBACK_URL:
+          'https://sanq.ca/clover/oauth/callback',
         CLOVER_UNIFIED_OAUTH_AUTHORIZE_BASE: 'https://www.clover.com',
       },
       () => {
@@ -71,7 +72,8 @@ describe('CloverOAuthClient', () => {
         CLOVER_OAUTH_API_BASE: 'https://legacy-api.example',
         CLOVER_UNIFIED_OAUTH_CLIENT_ID: 'app-123',
         CLOVER_UNIFIED_OAUTH_CLIENT_SECRET: [REDACTED],
-        CLOVER_UNIFIED_OAUTH_CALLBACK_URL: 'https://sanq.ca/clover/oauth/callback',
+        CLOVER_UNIFIED_OAUTH_CALLBACK_URL:
+          'https://sanq.ca/clover/oauth/callback',
         CLOVER_UNIFIED_OAUTH_AUTHORIZE_BASE: undefined,
         CLOVER_UNIFIED_OAUTH_API_BASE: undefined,
       },
@@ -96,7 +98,8 @@ describe('CloverOAuthClient', () => {
       {
         CLOVER_UNIFIED_OAUTH_CLIENT_ID: 'app-123',
         CLOVER_UNIFIED_OAUTH_CLIENT_SECRET: 'server-secret',
-        CLOVER_UNIFIED_OAUTH_CALLBACK_URL: 'https://sanq.ca/clover/oauth/callback',
+        CLOVER_UNIFIED_OAUTH_CALLBACK_URL:
+          'https://sanq.ca/clover/oauth/callback',
         CLOVER_UNIFIED_OAUTH_API_BASE: 'https://api.clover.com',
       },
       async () => {
@@ -138,7 +141,8 @@ describe('CloverOAuthClient', () => {
       {
         CLOVER_UNIFIED_OAUTH_CLIENT_ID: 'app-123',
         CLOVER_UNIFIED_OAUTH_CLIENT_SECRET: 'server-secret',
-        CLOVER_UNIFIED_OAUTH_CALLBACK_URL: 'https://sanq.ca/clover/oauth/callback',
+        CLOVER_UNIFIED_OAUTH_CALLBACK_URL:
+          'https://sanq.ca/clover/oauth/callback',
         CLOVER_UNIFIED_OAUTH_API_BASE: 'https://api.clover.com',
       },
       async () => {

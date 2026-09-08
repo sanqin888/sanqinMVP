@@ -5,12 +5,14 @@ describe('CloverPlatformMerchantVerificationGateway', () => {
   const originalBase = process.env.CLOVER_UNIFIED_PLATFORM_API_BASE;
 
   beforeEach(() => {
-    process.env.CLOVER_UNIFIED_PLATFORM_API_BASE = 'https://platform.example.test';
+    process.env.CLOVER_UNIFIED_PLATFORM_API_BASE =
+      'https://platform.example.test';
   });
 
   afterEach(() => {
     jest.restoreAllMocks();
-    if (originalBase === undefined) delete process.env.CLOVER_UNIFIED_PLATFORM_API_BASE;
+    if (originalBase === undefined)
+      delete process.env.CLOVER_UNIFIED_PLATFORM_API_BASE;
     else process.env.CLOVER_UNIFIED_PLATFORM_API_BASE = originalBase;
   });
 

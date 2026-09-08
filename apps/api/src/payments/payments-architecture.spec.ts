@@ -256,7 +256,9 @@ describe('Payments bounded-context architecture', () => {
     );
 
     expect(providerConfig?.source).toContain('CLOVER_UNIFIED_MERCHANT_ID');
-    expect(providerConfig?.source).toContain('CLOVER_UNIFIED_PLATFORM_API_BASE');
+    expect(providerConfig?.source).toContain(
+      'CLOVER_UNIFIED_PLATFORM_API_BASE',
+    );
     expect(providerConfig?.source).toContain('CLOVER_TERMINAL_API_BASE');
     expect(providerConfig?.source).not.toContain(
       'process.env.CLOVER_STORE_STABLE_ID',

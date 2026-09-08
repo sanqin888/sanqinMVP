@@ -125,7 +125,8 @@ describe('CloverProviderConfig', () => {
         CLOVER_UNIFIED_OAUTH_CLIENT_SECRET: 'unified-secret-fixture',
         CLOVER_UNIFIED_OAUTH_AUTHORIZE_BASE: 'https://authorize.example/',
         CLOVER_UNIFIED_OAUTH_API_BASE: 'https://oauth-api.example/',
-        CLOVER_UNIFIED_OAUTH_CALLBACK_URL: 'https://sanq.ca/clover/oauth/callback',
+        CLOVER_UNIFIED_OAUTH_CALLBACK_URL:
+          'https://sanq.ca/clover/oauth/callback',
         CLOVER_UNIFIED_OAUTH_SCOPES: 'MERCHANT_READ,PAYMENTS_READ',
         CLOVER_TERMINAL_API_BASE: 'https://terminal.example/',
         CLOVER_TERMINAL_OAUTH_TOKEN: 'terminal-token-fixture',
@@ -141,7 +142,9 @@ describe('CloverProviderConfig', () => {
         expect(config.unifiedPlatformApiBase).toBe('https://platform.example');
         expect(config.unifiedOauthClientId).toBe('unified-client');
         expect(config.unifiedOauthClientSecret).toBe('unified-secret-fixture');
-        expect(config.unifiedOauthAuthorizeBase).toBe('https://authorize.example');
+        expect(config.unifiedOauthAuthorizeBase).toBe(
+          'https://authorize.example',
+        );
         expect(config.unifiedOauthApiBase).toBe('https://oauth-api.example');
         expect(config.unifiedOauthCallbackUrl).toBe(
           'https://sanq.ca/clover/oauth/callback',
@@ -166,7 +169,9 @@ describe('CloverProviderConfig', () => {
           CLOVER_TERMINAL_TIMEOUT_SECONDS: timeout,
         },
         () => {
-          expect(new CloverProviderConfig().terminalTimeoutSeconds).toBeUndefined();
+          expect(
+            new CloverProviderConfig().terminalTimeoutSeconds,
+          ).toBeUndefined();
         },
       );
     },

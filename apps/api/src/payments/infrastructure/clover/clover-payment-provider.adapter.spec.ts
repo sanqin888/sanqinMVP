@@ -884,7 +884,10 @@ describe('Clover Platform Payments Gateway', () => {
     new CloverPlatformPaymentsGateway(new CloverProviderConfig(), accessTokens);
 
   beforeEach(() => {
-    setPlatformEnv('CLOVER_UNIFIED_PLATFORM_API_BASE', 'https://platform.example.test');
+    setPlatformEnv(
+      'CLOVER_UNIFIED_PLATFORM_API_BASE',
+      'https://platform.example.test',
+    );
     setPlatformEnv('CLOVER_UNIFIED_MERCHANT_ID', 'merchant-1');
   });
 
@@ -1242,7 +1245,9 @@ describe('Clover Platform Payments Gateway', () => {
   it('fails closed before credential lookup when the Unified Platform base is missing', async () => {
     delete process.env.CLOVER_UNIFIED_PLATFORM_API_BASE;
     const hasUsableCredential = jest.fn().mockResolvedValue(true);
-    const getAccessToken = jest.fn().mockResolvedValue({ token: 'merchant-token' });
+    const getAccessToken = jest
+      .fn()
+      .mockResolvedValue({ token: 'merchant-token' });
     const accessTokens = {
       hasUsableCredential,
       getAccessToken,

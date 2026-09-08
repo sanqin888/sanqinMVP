@@ -503,8 +503,8 @@ export class CloverPlatformPaymentsGateway {
     const merchantId = this.config.unifiedMerchantId;
     return Boolean(
       merchantId &&
-        this.config.unifiedPlatformApiBase &&
-        (await this.accessTokens.hasUsableCredential(merchantId)),
+      this.config.unifiedPlatformApiBase &&
+      (await this.accessTokens.hasUsableCredential(merchantId)),
     );
   }
 

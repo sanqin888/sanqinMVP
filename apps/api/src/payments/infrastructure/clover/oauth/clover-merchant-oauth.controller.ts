@@ -79,7 +79,9 @@ export class CloverMerchantOAuthController {
 
   private publicOrigin(): string {
     try {
-      return new URL(this.config.unifiedOauthCallbackUrl ?? 'https://sanq.ca').origin;
+      return new URL(
+        this.config.unifiedOauthCallbackUrl ?? 'https://sanq.ca',
+      ).origin;
     } catch {
       return 'https://sanq.ca';
     }
