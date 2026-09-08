@@ -685,7 +685,7 @@
     "payments-clover -> identity-customer-benefits": 13,
     "payments-clover -> messaging-notifications": 2,
     "payments-clover -> runtime-data-ci-ops": 8,
-    "payments-clover -> store-operations-pos-print": 9,
+    "payments-clover -> store-operations-pos-print": 5,
     "store-operations-pos-print -> architecture-foundation": 7,
     "store-operations-pos-print -> brand-store": 2,
     "store-operations-pos-print -> external-channels": 1,

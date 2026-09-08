@@ -1,8 +1,8 @@
 # Phase 6 — Payments / POS Boundary Contraction and Closeout
 
 Start date: 2026-09-07  
-Current implementation base: `origin/dev@bf95051f`  
-Current status: **SLICE 2A LOCAL / REVIEW PENDING**
+Current implementation base: `origin/dev@b1051c24`  
+Current status: **SLICE 2B LOCAL / REVIEW PENDING**
 
 ## Goal
 
@@ -46,8 +46,8 @@ Slice 1B has now normalized the persisted preparation contract to V2: the only c
 
 1. **Payment Preparation Contract Normalization Readiness — COMPLETED in Slice 1B** — V2 now carries only stable/business identities across the persisted preparation boundary and keeps internal DB identities inside Orders/Benefits execution.
 2. **Stable-ID-only Prepared-Payment Boundary — COMPLETED in Slice 1C** — the unchanged V2 preparation contract is now exposed through `PAYMENT_ORDER_PREPARATION`; PR #2234 final head `a042ea10` passed CI #5329 and squash-merged as `bf95051f`.
-3. **POS realtime/device capability contraction — ACTIVE in Slice 2A** — move the two Payment orchestration `PosGateway` dependencies behind a POS-owned realtime delivery capability without changing Socket.IO events or payment truth.
-4. **Auth/POS transport and composition contraction** — separate legitimate Nest composition from business-capability leakage; do not manufacture facades around legal composition.
+3. **POS realtime/device capability contraction — COMPLETED in Slice 2A** — the two Payment orchestration `PosGateway` dependencies now use the POS-owned `POS_PAYMENT_REALTIME` capability; PR #2235 final head `6169d4dd` passed CI #5332 and squash-merged as `b1051c24`.
+4. **Auth/POS transport and composition contraction — ACTIVE in Slice 2B** — expose the existing POS device guard and Nest composition modules through the POS public surface, without adding facades or changing transport/runtime behavior.
 5. **Confirmed-payment transaction seam decision** — independently decide whether the atomic COMMIT + Order creation seam can be safely moved; preserve it if no better design proves equivalent invariants.
 6. **Payments orchestration composition cleanup** — contract meaningless concrete module coupling after Orders/POS/Auth boundaries stabilize.
 7. **Clover provider/internal cleanup** — keep execution/canonical gateways, raw mappers, OAuth/merchant credentials and provider wire contracts inside Payments infrastructure. Retired SNS/SQS must not be reintroduced; AWS SMS/Email remain separate supported capabilities.
@@ -56,7 +56,7 @@ Slice 1B has now normalized the persisted preparation contract to V2: the only c
 
 ### Dependency priorities and exit criteria
 
-Merged through Slice 1C, Payments/Clover direct debt is **53** with `commerce-orders-fulfillment = 4`, `identity-customer-benefits = 13`, `store-operations-pos-print = 11`, `architecture-foundation = 15`, `runtime-data-ci-ops = 8`, and `messaging-notifications = 2`. The local Slice 2A source/baseline contracts the POS pair **11 -> 9** and Payments/Clover total **53 -> 51**; CI is not yet claimed. These counts are contraction signals, not mechanical zero targets.
+Merged through Slice 2A, Payments/Clover direct debt is **51** with `commerce-orders-fulfillment = 4`, `identity-customer-benefits = 13`, `store-operations-pos-print = 9`, `architecture-foundation = 15`, `runtime-data-ci-ops = 8`, and `messaging-notifications = 2`. Slice 2B safely contracts the POS pair **9 -> 5** and Payments/Clover total **51 -> 47**. The initial **9 -> 4** attempt proved unsafe in CI because exporting the full `PosModule` from the lightweight POS barrel created runtime circular initialization; that legal Nest composition edge is therefore retained. These counts are contraction signals, not mechanical zero targets.
 
 Phase 6 closeout requires public SCC to remain empty, no new bounded-context cycle, meaningful owner-leakage contraction, stable-ID-only prepared-payment boundary, an explicit safe decision for the confirmed-payment transaction seam, clear Clover infrastructure ownership, scanner/tests preventing regression, and a documented plan for the protected Web Clover legacy seam. If Web Unified Payment Core migration is executed, controlled cutover, production verification and legacy cleanup must complete before Phase 6 can be marked `PRODUCTION VERIFIED / CLOSED`.
 
@@ -130,7 +130,7 @@ The two current OrdersModule composition imports remain for later composition cl
 
 ## Slice 2A — POS payment realtime public-boundary contraction
 
-Status: **LOCAL / REVIEW PENDING**
+Status: **MERGED / CI GREEN** — PR #2235; final head `6169d4dd`; squash merge `b1051c24`; PR CI #5332 passed.
 
 Migration classification: **Class A atomic internal boundary contraction**. No Socket.IO event name/payload, persisted payment/order fact, route, provider protocol, schema/migration, dependency manifest, feature flag, or production Web Clover behavior changes.
 
@@ -141,7 +141,7 @@ Migration classification: **Class A atomic internal boundary contraction**. No S
 - `PosDeviceModule` binds `POS_PAYMENT_REALTIME` with `useExisting: PosGateway` and exports the token; `pos/public-api.ts` exports the token/port/message contracts without importing Payments or Clover.
 - `PosCardPaymentOrchestrationService` and `PaymentReverseSyncOrchestrationService` inject `POS_PAYMENT_REALTIME` and no longer deep-import `pos.gateway`. Their existing best-effort `try/catch` publication semantics remain intact, so realtime failure cannot alter persisted Payment/Checkout/Order truth.
 - Focused specs mock `PosPaymentRealtimePort`, and `payments-architecture.spec.ts` requires both orchestration files to use the POS public surface, requires the `useExisting` binding, rejects a return to `../pos/pos.gateway`, and guards the POS realtime contract against Payments/Clover imports.
-- The monotonic direct-import baseline contracts `payments-clover -> store-operations-pos-print` **11 -> 9**, reducing Payments/Clover total outgoing direct debt **53 -> 51**. The public POS -> Payments direction remains absent, so public SCC is expected to stay empty.
+- The monotonic direct-import baseline contracts `payments-clover -> store-operations-pos-print` **11 -> 9**, reducing Payments/Clover total outgoing direct debt **53 -> 51**. CI #5332 confirmed the architecture baseline and public SCC remained empty.
 
 ### Explicit non-scope / preserved behavior
 
@@ -149,14 +149,34 @@ Slice 2A does **not** change `PosCardPaymentFeatureConfig`, `PosDeviceGuard`, fu
 
 The realtime events remain advisory UI delivery only. Payment status/reversal truth continues to be produced by Payments/orchestration and persisted before/beside publication; POS owns only the store-facing delivery capability.
 
+## Slice 2B — POS transport / composition public-surface contraction
+
+Status: **REMOTE / CI REMEDIATION** — PR #2236; initial head `bdfa5749` passed architecture/lint/build/strict but failed API tests due to `PosModule` barrel circular initialization.
+
+Migration classification: **Class A atomic internal boundary contraction**. Existing Nest guard/module classes, routes, authorization behavior, provider behavior, persisted facts, schema/migrations, dependencies and Web Clover behavior are unchanged.
+
+### Source change
+
+- `pos/public-api.ts` now explicitly exports the existing `PosDeviceGuard`; `PosDeviceModule` was already public and remains the same class.
+- `PosCardPaymentController`, `PosCardRefundController` and `PosFullRefundController` now import `PosDeviceGuard` from the POS public surface together with the already-public `AuthenticatedPosIdentity`. Guard ordering, `@UseGuards(...)`, roles and request/store identity behavior are unchanged.
+- `PosCardPaymentOrchestrationModule` now imports the existing `PosDeviceModule` from `../pos/public-api`; the existing direct `PosModule` Nest composition import is intentionally retained. An initial attempt to re-export `PosModule` through `pos/public-api.ts` passed architecture/lint/build/strict but caused 52 Jest suites to fail during module evaluation because the barrel eagerly loaded the full POS module and introduced runtime circular initialization (`ZodValidationPipe is not a constructor` / invalid guard decorators). No wrapper/facade module is introduced and the Nest `imports` array remains unchanged.
+- `payments-architecture.spec.ts` guards all three controllers and `PosDeviceModule` against regression to implementation-path imports, and explicitly protects the lightweight POS public barrel from re-exporting `PosModule` again.
+- The monotonic direct-import baseline contracts `payments-clover -> store-operations-pos-print` **9 -> 5**, reducing Payments/Clover total outgoing direct debt **51 -> 47**. The four removed edges are three `PosDeviceGuard` deep imports plus `PosDeviceModule`; the retained `PosModule` edge is legal Nest composition, not business-capability leakage. No POS -> Payments dependency is introduced, so public SCC remains expected empty pending the replacement GitHub CI run.
+
+### Explicit non-scope / preserved behavior
+
+Slice 2B deliberately does **not** touch `PosCardPaymentFeatureConfig` or the three remaining full-refund `PosOrdersService` / `PosCreateFullRefundInput` deep imports. Those four edges contain actual rollout/policy ownership and are reserved for separate readiness/design slices rather than being hidden behind broad exports.
+
+Confirmed-payment transaction atomicity, refund/reconciliation/provider truth, Terminal feature semantics, POS routes, device credential validation, Socket.IO behavior, printing, Prisma schema/migrations, package dependencies and production Web Clover Ecommerce are unchanged.
+
 ## Verification state
 
-Slice 1 is merged and CI-green through PR #2231 / CI #5318. The readiness baseline refresh is merged through PR #2232 / `94cff60f`, with final head `f35bcd5f` passing CI #5321. Slice 1B is merged and CI-green through PR #2233 / CI #5326, final head `0a2a01d8`, squash merge `be21c8c5`. Slice 1C is merged and CI-green through PR #2234 / CI #5329, final head `a042ea10`, squash merge `bf95051f`.
+Slice 1 is merged and CI-green through PR #2231 / CI #5318. The readiness baseline refresh is merged through PR #2232 / `94cff60f`, with final head `f35bcd5f` passing CI #5321. Slice 1B is merged and CI-green through PR #2233 / CI #5326, final head `0a2a01d8`, squash merge `be21c8c5`. Slice 1C is merged and CI-green through PR #2234 / CI #5329, final head `a042ea10`, squash merge `bf95051f`. Slice 2A is merged and CI-green through PR #2235 / CI #5332, final head `6169d4dd`, squash merge `b1051c24`.
 
-Slice 2A is currently **LOCAL / REVIEW PENDING**. Per repository workflow, no local lint/build/test/scanner run is claimed; GitHub Actions becomes authoritative only after user approval for remote delivery.
+Slice 2B is currently **REMOTE / CI REMEDIATION** on PR #2236. Initial CI #5334 head `bdfa5749` passed architecture, API/Web lint, build and strict checks, while API Jest failed during module loading because `PosModule` was re-exported through the lightweight POS barrel. The remediation retains the legal direct `PosModule` composition import and narrows the intended contraction to **9 -> 5**; a replacement exact-head CI run is required before merge.
 
 ## Remaining Phase 6 work
 
-After Slice 2A review/delivery, the next candidate is a **read-only Auth/POS transport + composition readiness audit** of the remaining Payments -> POS debt. It should separate true business/transport leakage (`PosDeviceGuard`, `PosCardPaymentFeatureConfig`, `PosOrdersService`) from legitimate Nest module composition before choosing any next contraction; module facades must not be created merely to reduce counts.
+After Slice 2B review/delivery, the next recommended readiness audit is the remaining **POS full-refund management capability** seam: determine the narrow public contract needed for `PosOrdersService.createFullRefund()` and its `PosCreateFullRefundInput` without exporting the whole service or weakening POS-owned channel/status/operator policy. `PosCardPaymentFeatureConfig` should stay separate as the final POS feature-policy ownership decision.
 
 The confirmed-payment transaction seam remains an independent high-sensitivity decision and must not be split merely to reduce the scanner count. Production Web Clover compatibility remains protected until its later readiness/cutover work.

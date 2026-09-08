@@ -4,7 +4,7 @@ import { AuthModule } from '../auth/auth.module';
 import { PaymentBenefitsReservationModule } from '../benefits/public-api/payment-benefits-reservation.module';
 import { OrdersModule } from '../orders/orders.module';
 import { PaymentsModule } from '../payments/payments.module';
-import { PosDeviceModule } from '../pos/pos-device.module';
+import { PosDeviceModule } from '../pos/public-api';
 import { PosModule } from '../pos/pos.module';
 import { PaymentCheckoutAttemptService } from './payment-checkout-attempt.service';
 import { PaymentProviderWebhookController } from './payment-provider-webhook.controller';

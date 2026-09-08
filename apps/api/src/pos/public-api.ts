@@ -17,6 +17,7 @@ export {
   type PosCardPaymentStatusRealtimeMessage,
   type PosPaymentRealtimePort,
 } from './pos-payment-realtime.contract';
+export { PosDeviceGuard } from './pos-device.guard';
 export { PosDeviceModule } from './pos-device.module';
 export { StableIdPipe } from '../common/pipes/stable-id.pipe';
 export { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';

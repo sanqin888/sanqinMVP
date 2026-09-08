@@ -16,8 +16,10 @@ import { RolesGuard } from '../auth/roles.guard';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { StableIdPipe } from '../common/pipes/stable-id.pipe';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
-import type { AuthenticatedPosIdentity } from '../pos/public-api';
-import { PosDeviceGuard } from '../pos/pos-device.guard';
+import {
+  PosDeviceGuard,
+  type AuthenticatedPosIdentity,
+} from '../pos/public-api';
 import { PosCardRefundOrchestrationService } from './pos-card-refund-orchestration.service';
 
 const PosManagedCardRefundSchema = z.object({

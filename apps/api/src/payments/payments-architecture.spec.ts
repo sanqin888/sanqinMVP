@@ -372,6 +372,43 @@ describe('Payments bounded-context architecture', () => {
     expect(realtimeContract?.source).not.toMatch(/from ['"]\.\.\/clover\//);
   });
 
+  it('keeps POS transport guard and Nest composition on the POS public surface', () => {
+    const orchestrationFiles = scanTypeScript(
+      resolve(SOURCE_ROOT, 'orchestration'),
+      { productionOnly: true },
+    );
+    const controllerFiles = orchestrationFiles.filter(({ path }) =>
+      [
+        'pos-card-payment.controller.ts',
+        'pos-card-refund.controller.ts',
+        'pos-full-refund.controller.ts',
+      ].some((name) => path.endsWith(name)),
+    );
+    const compositionModule = orchestrationFiles.find(({ path }) =>
+      path.endsWith('pos-card-payment-orchestration.module.ts'),
+    );
+    const publicApi = scanTypeScript(resolve(SOURCE_ROOT, 'pos'), {
+      productionOnly: true,
+    }).find(({ path }) => path.endsWith('public-api.ts'));
+
+    expect(controllerFiles).toHaveLength(3);
+    for (const controller of controllerFiles) {
+      expect(controller.source).toContain("from '../pos/public-api'");
+      expect(controller.source).toContain('PosDeviceGuard');
+      expect(controller.source).not.toContain("from '../pos/pos-device.guard'");
+    }
+    expect(compositionModule).toBeDefined();
+    expect(compositionModule?.source).toContain("from '../pos/public-api'");
+    expect(compositionModule?.source).toContain('PosDeviceModule');
+    expect(compositionModule?.source).not.toContain(
+      "from '../pos/pos-device.module'",
+    );
+    expect(compositionModule?.source).toContain("from '../pos/pos.module'");
+    expect(publicApi?.source).toContain('PosDeviceGuard');
+    expect(publicApi?.source).toContain('PosDeviceModule');
+    expect(publicApi?.source).not.toContain("from './pos.module'");
+  });
+
   it('keeps POS refund/reverse-sync Orders access on the public POS order operations boundary', () => {
     const orchestrationFiles = scanTypeScript(
       resolve(SOURCE_ROOT, 'orchestration'),
