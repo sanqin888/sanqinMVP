@@ -100,13 +100,15 @@ pair fails CI.
 | catalog-pricing-offers | architecture-foundation 2; identity-customer-benefits 3; runtime-data-ci-ops 10 |
 | identity-customer-benefits | architecture-foundation 13; brand-store 4; commerce-orders-fulfillment 1; external-channels 1; runtime-data-ci-ops 10; store-operations-pos-print 4 |
 | commerce-orders-fulfillment | architecture-foundation 8; identity-customer-benefits 2; runtime-data-ci-ops 10 |
-| payments-clover | architecture-foundation 15; commerce-orders-fulfillment 8; identity-customer-benefits 13; messaging-notifications 2; runtime-data-ci-ops 8; store-operations-pos-print 11 |
+| payments-clover | architecture-foundation 15; commerce-orders-fulfillment 5; identity-customer-benefits 13; messaging-notifications 2; runtime-data-ci-ops 8; store-operations-pos-print 11 |
 | store-operations-pos-print | architecture-foundation 7; brand-store 2; external-channels 1; identity-customer-benefits 14; runtime-data-ci-ops 5 |
 | external-channels | architecture-foundation 11; commerce-orders-fulfillment 1; identity-customer-benefits 6; runtime-data-ci-ops 24 |
 | messaging-notifications | architecture-foundation 3; runtime-data-ci-ops 6 |
 | accounting-reporting-analytics | architecture-foundation 3; commerce-orders-fulfillment 1; external-channels 1; identity-customer-benefits 11; runtime-data-ci-ops 9 |
 | web-pwa | none; cross-context shared contracts use registered public aliases |
 | runtime-data-ci-ops | none; registered composition-root wiring is excluded |
+
+2026-09-07 Phase 6 Slice 1 local source contracts three Payments/Clover -> Commerce deep imports by moving POS refund and reverse-sync orchestration onto the existing Orders public `POS_ORDER_OPERATIONS` capability. The monotonic pair baseline is therefore `payments-clover -> commerce-orders-fulfillment 8 -> 5`, and current Payments/Clover total outgoing direct debt is **54**. No public edge or SCC is added; CI/runtime verification is not yet claimed.
 
 ## Phase 4 final baseline and production verification
 

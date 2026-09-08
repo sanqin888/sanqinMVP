@@ -1,7 +1,9 @@
 import { PaymentMethod } from '@prisma/client';
 
-import type { OrderDto } from '../orders/dto/order.dto';
-import type { OrdersService } from '../orders/orders.service';
+import type {
+  PosOrderDto,
+  PosOrderOperationsPort,
+} from '../orders/public-api';
 import type { PaymentReverseSyncResult } from '../payments/application/payment-reverse-sync.service';
 import { PaymentTransaction } from '../payments/domain/payment-transaction';
 import type { PosGateway } from '../pos/pos.gateway';
@@ -15,7 +17,7 @@ import {
 } from './payment-reverse-sync-orchestration.service';
 import type { PosCardPaymentOrchestrationService } from './pos-card-payment-orchestration.service';
 
-const order = (overrides: Partial<OrderDto> = {}): OrderDto => ({
+const order = (overrides: Partial<PosOrderDto> = {}): PosOrderDto => ({
   orderStableId: 'order_stable_1',
   orderNumber: '1001',
   clientRequestId: '1001',
@@ -121,7 +123,7 @@ const createHarness = () => {
     applyReverseSyncedPayment: jest.fn(),
   };
   const orders = {
-    getByStableId: jest.fn(),
+    getByStableIdForStore: jest.fn(),
     createFullRefund: jest.fn(),
   };
   const posGateway = {
@@ -132,7 +134,7 @@ const createHarness = () => {
   const service = new PaymentReverseSyncOrchestrationService(
     checkouts as unknown as PaymentCheckoutAttemptService,
     cardPayments as unknown as PosCardPaymentOrchestrationService,
-    orders as unknown as OrdersService,
+    orders as unknown as PosOrderOperationsPort,
     posGateway as unknown as PosGateway,
   );
 
@@ -145,7 +147,7 @@ describe('PaymentReverseSyncOrchestrationService', () => {
     const completed = checkout();
     harness.checkouts.findByAttemptId.mockResolvedValue(completed);
     harness.checkouts.findByOrderStableId.mockResolvedValue(completed);
-    harness.orders.getByStableId.mockResolvedValue(order());
+    harness.orders.getByStableIdForStore.mockResolvedValue(order());
     harness.orders.createFullRefund.mockResolvedValue({
       order: order({ status: 'refunded' }),
       outcome: 'refunded',
@@ -182,7 +184,7 @@ describe('PaymentReverseSyncOrchestrationService', () => {
     const completed = checkout();
     harness.checkouts.findByAttemptId.mockResolvedValue(completed);
     harness.checkouts.findByOrderStableId.mockResolvedValue(completed);
-    harness.orders.getByStableId.mockResolvedValue(
+    harness.orders.getByStableIdForStore.mockResolvedValue(
       order({ status: 'refunded' }),
     );
 
@@ -196,7 +198,7 @@ describe('PaymentReverseSyncOrchestrationService', () => {
   it('records and broadcasts a partial external refund without falsely refunding the whole order', async () => {
     const harness = createHarness();
     harness.checkouts.findByAttemptId.mockResolvedValue(checkout());
-    harness.orders.getByStableId.mockResolvedValue(order());
+    harness.orders.getByStableIdForStore.mockResolvedValue(order());
 
     await expect(
       harness.service.apply(result('PARTIAL_REFUND')),
