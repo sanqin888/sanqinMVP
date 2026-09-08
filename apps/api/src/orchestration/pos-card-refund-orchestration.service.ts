@@ -80,13 +80,6 @@ export class PosCardRefundOrchestrationService {
         `Unified payment checkout is ${checkout.status}; complete payment recovery before refunding this order.`,
       );
     }
-    if (!checkout.orderId) {
-      throw new ConflictException({
-        code: 'POS_MANAGED_CARD_CHECKOUT_FACTS_MISSING',
-        message:
-          'The unified payment checkout is completed but is missing its order binding.',
-      });
-    }
     if (
       checkout.storeId !== storeStableId ||
       checkout.source !== 'POS_TERMINAL' ||
@@ -221,7 +214,6 @@ export class PosCardRefundOrchestrationService {
       reversal = await this.refunds.startOrRecover({
         attemptId: identity.attemptId,
         idempotencyKey: identity.idempotencyKey,
-        orderId: checkout.orderId,
         originalPaymentId: originalSnapshot.id,
         operation,
         amountCents: originalSnapshot.amountCents,

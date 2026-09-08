@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 
 import {
   BadRequestException,
@@ -53,8 +53,6 @@ export type PreparedPaymentCheckout = {
   status: PaymentCheckoutAttemptStatus;
   externalAmountCents: number;
   paymentTransactionId: string | null;
-  plannedOrderId: string;
-  orderId: string | null;
   orderStableId: string;
   expiresAt: Date;
   snapshot: PreparedPaymentOrderSnapshot;
@@ -95,7 +93,6 @@ export class PaymentCheckoutAttemptService {
     );
     const expiresAt = new Date(Date.now() + PAYMENT_PREPARATION_TTL_MS);
     const orderStableId = this.orderStableIdForAttempt(normalized.attemptId);
-    const plannedOrderId = randomUUID();
 
     try {
       const created = await this.prisma.paymentCheckoutAttempt.create({
@@ -118,7 +115,6 @@ export class PaymentCheckoutAttemptService {
           pricingSnapshotJson: this.toJson(snapshot.pricing),
           tenderAllocationJson: this.toJson(snapshot.tender),
           externalAmountCents: snapshot.tender.externalCents,
-          plannedOrderId,
           orderStableId,
           expiresAt,
         },
@@ -302,15 +298,11 @@ export class PaymentCheckoutAttemptService {
     return this.findByAttemptId(attemptId);
   }
 
-  async markCompleted(params: {
-    attemptId: string;
-    orderId: string;
-  }): Promise<PreparedPaymentCheckout> {
+  async markCompleted(attemptId: string): Promise<PreparedPaymentCheckout> {
     const updated = await this.prisma.paymentCheckoutAttempt.update({
-      where: { attemptId: params.attemptId },
+      where: { attemptId },
       data: {
         status: 'COMPLETED',
-        orderId: params.orderId,
         finalizedAt: new Date(),
       },
     });
@@ -478,8 +470,6 @@ export class PaymentCheckoutAttemptService {
       status: record.status,
       externalAmountCents: record.externalAmountCents,
       paymentTransactionId: record.paymentTransactionId,
-      plannedOrderId: record.plannedOrderId,
-      orderId: record.orderId,
       orderStableId: record.orderStableId,
       expiresAt: record.expiresAt,
       snapshot,

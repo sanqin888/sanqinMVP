@@ -104,7 +104,7 @@ function makeCreatedOrder(input: {
 }
 
 describe('OrdersService confirmed-payment finalization characterization', () => {
-  it('commits Benefits and Coupon reservations in the same transaction that creates the paid Order snapshot', async () => {
+  it('creates the Orders-owned DB identity before committing Benefits and Coupon reservations in the same transaction', async () => {
     const outerFindUnique = jest.fn().mockResolvedValue(null);
     type OrderCreateInput = {
       data: Record<string, unknown> & {
@@ -120,9 +120,18 @@ describe('OrdersService confirmed-payment finalization characterization', () => 
         }),
       ),
     );
+    const orderUpdate = jest.fn(({ data }: { data: { couponId: string } }) =>
+      Promise.resolve(
+        makeCreatedOrder({
+          id: '8a3d4c0e-4750-4f6a-9138-000000000030',
+          orderStableId: 'order_stable_1',
+          data: { couponId: data.couponId },
+        }),
+      ),
+    );
     const createLifecycleEvent = jest.fn().mockResolvedValue({ count: 1 });
     const tx = {
-      order: { create: orderCreate },
+      order: { create: orderCreate, update: orderUpdate },
       opsEvent: { createMany: createLifecycleEvent },
     };
     const transaction = jest.fn(
@@ -166,7 +175,6 @@ describe('OrdersService confirmed-payment finalization characterization', () => 
       snapshot(),
       {
         attemptId: 'attempt-1',
-        internalOrderId: '8a3d4c0e-4750-4f6a-9138-000000000030',
         orderStableId: 'order_stable_1',
         cardSurchargeCents: 40,
         chargedTotalCents: 870,
@@ -190,12 +198,10 @@ describe('OrdersService confirmed-payment finalization characterization', () => 
     expect(orderCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          id: '8a3d4c0e-4750-4f6a-9138-000000000030',
           orderStableId: 'order_stable_1',
           storeId: '4750_Yonge_Street',
           userId: '8a3d4c0e-4750-4f6a-9138-000000000010',
           userStableId: 'customer_stable_1',
-          couponId: '8a3d4c0e-4750-4f6a-9138-000000000020',
           status: 'paid',
           paymentMethod: PaymentMethod.CARD,
           subtotalCents: 2000,
@@ -225,7 +231,20 @@ describe('OrdersService confirmed-payment finalization characterization', () => 
       }),
     );
     const createInput = orderCreate.mock.calls[0]?.[0];
+    expect(createInput?.data).not.toHaveProperty('id');
+    expect(createInput?.data).not.toHaveProperty('couponId');
     expect(createInput?.data.items.create[0]).not.toHaveProperty('id');
+    expect(orderCreate.mock.invocationCallOrder[0]).toBeLessThan(
+      commitTender.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER,
+    );
+    expect(orderCreate.mock.invocationCallOrder[0]).toBeLessThan(
+      commitCoupons.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER,
+    );
+    expect(orderUpdate).toHaveBeenCalledWith({
+      where: { id: '8a3d4c0e-4750-4f6a-9138-000000000030' },
+      data: { couponId: '8a3d4c0e-4750-4f6a-9138-000000000020' },
+      include: { items: true },
+    });
     expect(createLifecycleEvent).toHaveBeenCalledWith({
       data: {
         idempotencyKey: 'order.accepted:order_stable_1',
@@ -235,8 +254,13 @@ describe('OrdersService confirmed-payment finalization characterization', () => 
       },
       skipDuplicates: true,
     });
-    expect(paidSideEffects).toHaveBeenCalledTimes(1);
-    expect(result.internalOrderId).toBe('8a3d4c0e-4750-4f6a-9138-000000000030');
+    expect(paidSideEffects).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: '8a3d4c0e-4750-4f6a-9138-000000000030',
+        couponId: '8a3d4c0e-4750-4f6a-9138-000000000020',
+      }),
+    );
+    expect(result).not.toHaveProperty('internalOrderId');
   });
 
   it('returns an already-created Order by orderStableId without recommitting reservations or replaying paid side effects', async () => {
@@ -267,14 +291,12 @@ describe('OrdersService confirmed-payment finalization characterization', () => 
     await expect(
       service.createFromConfirmedPaymentSnapshot(snapshot(), {
         attemptId: 'attempt-existing',
-        internalOrderId: '8a3d4c0e-4750-4f6a-9138-000000000031',
         orderStableId: 'order_stable_existing',
         cardSurchargeCents: 40,
         chargedTotalCents: 870,
       }),
     ).resolves.toEqual({
       order: { orderStableId: 'order_stable_existing' },
-      internalOrderId: '8a3d4c0e-4750-4f6a-9138-000000000031',
     });
 
     expect(transaction).not.toHaveBeenCalled();

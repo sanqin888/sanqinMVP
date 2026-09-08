@@ -114,8 +114,6 @@ const createHarness = () => {
         externalAmountCents: data.externalAmountCents,
         status: 'PREPARING',
         paymentTransactionId: null,
-        plannedOrderId: data.plannedOrderId,
-        orderId: null,
         orderStableId: data.orderStableId,
         expiresAt: data.expiresAt,
         finalizedAt: null,
@@ -248,6 +246,10 @@ describe('PaymentCheckoutAttemptService', () => {
         data: expect.objectContaining({ storeId: storeDbId }),
       }),
     );
+    const checkoutCreateInput =
+      harness.paymentCheckoutAttempt.create.mock.calls[0]?.[0]?.data;
+    expect(checkoutCreateInput).not.toHaveProperty('plannedOrderId');
+    expect(checkoutCreateInput).not.toHaveProperty('orderId');
     expect(
       harness.paymentTenderReservations.holdPaymentTender,
     ).toHaveBeenCalledWith(

@@ -537,6 +537,49 @@ describe('Payments bounded-context architecture', () => {
     );
   });
 
+  it('keeps confirmed-payment Order DB identity inside Orders and out of POS refund payment facts', () => {
+    const orderFiles = scanTypeScript(resolve(SOURCE_ROOT, 'orders'), {
+      productionOnly: true,
+    });
+    const orchestrationFiles = scanTypeScript(
+      resolve(SOURCE_ROOT, 'orchestration'),
+      { productionOnly: true },
+    );
+    const paymentFiles = scanTypeScript(
+      resolve(SOURCE_ROOT, 'payments/application'),
+      { productionOnly: true },
+    );
+    const ordersService = orderFiles.find(({ path }) =>
+      path.endsWith('orders.service.ts'),
+    );
+    const checkoutService = orchestrationFiles.find(({ path }) =>
+      path.endsWith('payment-checkout-attempt.service.ts'),
+    );
+    const cardPayment = orchestrationFiles.find(({ path }) =>
+      path.endsWith('pos-card-payment-orchestration.service.ts'),
+    );
+    const cardRefund = orchestrationFiles.find(({ path }) =>
+      path.endsWith('pos-card-refund-orchestration.service.ts'),
+    );
+    const refundPayment = paymentFiles.find(({ path }) =>
+      path.endsWith('refund-payment.service.ts'),
+    );
+
+    expect(checkoutService?.source).not.toContain('plannedOrderId');
+    expect(checkoutService?.source).not.toMatch(/\borderId\b/);
+    expect(checkoutService?.source).not.toContain('randomUUID');
+    expect(cardPayment?.source).not.toContain('checkout.plannedOrderId');
+    expect(cardPayment?.source).not.toContain('created.internalOrderId');
+    expect(cardPayment?.source).toContain('markCompleted(checkout.attemptId)');
+    expect(ordersService?.source).not.toContain('id: input.internalOrderId');
+    expect(ordersService?.source).not.toContain(
+      'orderId: input.internalOrderId',
+    );
+    expect(ordersService?.source).toContain('orderId: createdOrder.id');
+    expect(cardRefund?.source).not.toContain('checkout.orderId');
+    expect(refundPayment?.source).not.toMatch(/\borderId\b/);
+  });
+
   it('keeps Payments + Orders coordination inside the explicit unified-payment orchestration layer', () => {
     const composers = scanTypeScript(SOURCE_ROOT, { productionOnly: true })
       // AppModule is the repository composition root: importing both modules

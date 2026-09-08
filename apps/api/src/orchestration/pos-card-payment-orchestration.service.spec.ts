@@ -45,8 +45,6 @@ const checkoutFixture = (
   status: 'PREPARED',
   externalAmountCents: 700,
   paymentTransactionId: null,
-  plannedOrderId: '11111111-1111-4111-8111-111111111111',
-  orderId: null,
   orderStableId: 'cpaymentorder1',
   expiresAt: new Date('2026-08-26T23:00:00.000Z'),
   snapshot: {
@@ -180,8 +178,8 @@ const createHarness = () => {
       checkout = { ...checkout, status: 'FINALIZING' };
       return checkout;
     }),
-    markCompleted: jest.fn().mockImplementation(async ({ orderId }) => {
-      checkout = { ...checkout, status: 'COMPLETED', orderId };
+    markCompleted: jest.fn().mockImplementation(async () => {
+      checkout = { ...checkout, status: 'COMPLETED' };
       return checkout;
     }),
   } as unknown as jest.Mocked<PaymentCheckoutAttemptService>;
@@ -207,7 +205,6 @@ const createHarness = () => {
   const orders = {
     createFromConfirmedPaymentSnapshot: jest.fn().mockResolvedValue({
       order: orderDto,
-      internalOrderId: '11111111-1111-4111-8111-111111111111',
     }),
     getByStableId: jest.fn().mockResolvedValue(orderDto),
   } as unknown as jest.Mocked<OrdersService>;
@@ -302,6 +299,10 @@ describe('PosCardPaymentOrchestrationService', () => {
         chargedTotalCents: 720,
       }),
     );
+    const finalizationInput =
+      harness.orders.createFromConfirmedPaymentSnapshot.mock.calls[0]?.[1];
+    expect(finalizationInput).not.toHaveProperty('internalOrderId');
+    expect(harness.checkouts.markCompleted).toHaveBeenCalledWith('attempt-1');
     expect(
       harness.orderOperations.activateImmediatePreparation,
     ).toHaveBeenCalledWith('cpaymentorder1', storeStableId);
@@ -469,12 +470,7 @@ describe('PosCardPaymentOrchestrationService', () => {
 
   it('reloads an already-completed checkout without repricing or recreating the order', async () => {
     const harness = createHarness();
-    harness.setCheckout(
-      checkoutFixture({
-        status: 'COMPLETED',
-        orderId: '11111111-1111-4111-8111-111111111111',
-      }),
-    );
+    harness.setCheckout(checkoutFixture({ status: 'COMPLETED' }));
 
     const result = await harness.service.recover(storeStableId, {
       attemptId: 'attempt-1',
@@ -570,12 +566,7 @@ describe('PosCardPaymentOrchestrationService', () => {
 
   it('replays only the idempotent durable preparation command across duplicate finalization', async () => {
     const harness = createHarness();
-    harness.setCheckout(
-      checkoutFixture({
-        status: 'COMPLETED',
-        orderId: '11111111-1111-4111-8111-111111111111',
-      }),
-    );
+    harness.setCheckout(checkoutFixture({ status: 'COMPLETED' }));
 
     await harness.service.recover(storeStableId, {
       attemptId: 'attempt-1',

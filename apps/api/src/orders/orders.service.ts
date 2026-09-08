@@ -248,7 +248,6 @@ function resolvePromotionRuleChannel(
 
 export type ConfirmedPaymentOrderResult = {
   order: OrderDto;
-  internalOrderId: string;
 };
 
 type CreateInternalOptions = {
@@ -1572,7 +1571,6 @@ export class OrdersService implements PaymentOrderPreparationPort {
     snapshot: PreparedPaymentOrderSnapshot,
     input: {
       attemptId: string;
-      internalOrderId: string;
       orderStableId: string;
       cardSurchargeCents: number;
       chargedTotalCents: number;
@@ -1608,7 +1606,6 @@ export class OrdersService implements PaymentOrderPreparationPort {
     if (existing) {
       return {
         order: this.toOrderDto(existing as OrderWithItems),
-        internalOrderId: existing.id,
       };
     }
 
@@ -1618,40 +1615,6 @@ export class OrdersService implements PaymentOrderPreparationPort {
     const paidAt = new Date();
     try {
       const created = await this.prisma.$transaction(async (tx) => {
-        const committedTender = await this.loyalty.commitPaymentTenderForOrder({
-          tx,
-          attemptId: input.attemptId,
-          orderId: input.internalOrderId,
-          orderStableId: input.orderStableId,
-        });
-        if (
-          committedTender.pointsValueCents !== snapshot.tender.pointsCents ||
-          committedTender.balanceCents !== snapshot.tender.balanceCents
-        ) {
-          throw new ConflictException({
-            code: 'PAYMENT_TENDER_RESERVATION_MISMATCH',
-            message:
-              'Committed internal tender does not match prepared payment.',
-          });
-        }
-        const committedCoupon =
-          await this.membership.commitPaymentCouponsForOrder({
-            tx,
-            attemptId: input.attemptId,
-            orderId: input.internalOrderId,
-            orderStableId: input.orderStableId,
-          });
-        if (
-          committedCoupon.couponStableId !==
-          (snapshot.coupon?.couponStableId ?? null)
-        ) {
-          throw new ConflictException({
-            code: 'PAYMENT_COUPON_RESERVATION_MISMATCH',
-            message:
-              'Committed coupon reservation does not match prepared payment.',
-          });
-        }
-
         const clientRequestId = await this.allocateClientRequestIdTx(tx);
         const pickupCode =
           this.derivePickupCode(clientRequestId) ||
@@ -1669,9 +1632,8 @@ export class OrdersService implements PaymentOrderPreparationPort {
             ? PaymentMethod.CARD
             : PaymentMethod.STORE_BALANCE;
 
-        const order = (await tx.order.create({
+        const createdOrder = (await tx.order.create({
           data: {
-            id: input.internalOrderId,
             status: 'paid',
             paidAt,
             paymentMethod,
@@ -1701,7 +1663,6 @@ export class OrdersService implements PaymentOrderPreparationPort {
             deliveryCostCents: 0,
             deliverySubsidyCents: 0,
             pickupCode,
-            couponId: committedCoupon.couponId,
             couponDiscountCents: snapshot.pricing.couponDiscountCents,
             couponCodeSnapshot: snapshot.coupon?.code,
             couponTitleSnapshot: snapshot.coupon?.title,
@@ -1742,6 +1703,49 @@ export class OrdersService implements PaymentOrderPreparationPort {
           include: { items: true },
         })) as OrderWithItems;
 
+        const committedTender = await this.loyalty.commitPaymentTenderForOrder({
+          tx,
+          attemptId: input.attemptId,
+          orderId: createdOrder.id,
+          orderStableId: input.orderStableId,
+        });
+        if (
+          committedTender.pointsValueCents !== snapshot.tender.pointsCents ||
+          committedTender.balanceCents !== snapshot.tender.balanceCents
+        ) {
+          throw new ConflictException({
+            code: 'PAYMENT_TENDER_RESERVATION_MISMATCH',
+            message:
+              'Committed internal tender does not match prepared payment.',
+          });
+        }
+
+        const committedCoupon =
+          await this.membership.commitPaymentCouponsForOrder({
+            tx,
+            attemptId: input.attemptId,
+            orderId: createdOrder.id,
+            orderStableId: input.orderStableId,
+          });
+        if (
+          committedCoupon.couponStableId !==
+          (snapshot.coupon?.couponStableId ?? null)
+        ) {
+          throw new ConflictException({
+            code: 'PAYMENT_COUPON_RESERVATION_MISMATCH',
+            message:
+              'Committed coupon reservation does not match prepared payment.',
+          });
+        }
+
+        const order = committedCoupon.couponId
+          ? ((await tx.order.update({
+              where: { id: createdOrder.id },
+              data: { couponId: committedCoupon.couponId },
+              include: { items: true },
+            })) as OrderWithItems)
+          : createdOrder;
+
         await tx.opsEvent.createMany({
           data: {
             idempotencyKey: orderAcceptedIdempotencyKey(order.orderStableId),
@@ -1764,7 +1768,6 @@ export class OrdersService implements PaymentOrderPreparationPort {
       void this.handleOrderPaidSideEffects(created);
       return {
         order: this.toOrderDto(created),
-        internalOrderId: created.id,
       };
     } catch (error) {
       if (this.getUniqueViolationTargets(error)) {
@@ -1775,7 +1778,6 @@ export class OrdersService implements PaymentOrderPreparationPort {
         if (raced) {
           return {
             order: this.toOrderDto(raced as OrderWithItems),
-            internalOrderId: raced.id,
           };
         }
       }
