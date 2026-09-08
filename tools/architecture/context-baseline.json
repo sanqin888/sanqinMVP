@@ -681,7 +681,7 @@
     "messaging-notifications -> architecture-foundation": 3,
     "messaging-notifications -> runtime-data-ci-ops": 6,
     "payments-clover -> architecture-foundation": 15,
-    "payments-clover -> commerce-orders-fulfillment": 3,
+    "payments-clover -> commerce-orders-fulfillment": 1,
     "payments-clover -> identity-customer-benefits": 13,
     "payments-clover -> messaging-notifications": 2,
     "payments-clover -> runtime-data-ci-ops": 8,

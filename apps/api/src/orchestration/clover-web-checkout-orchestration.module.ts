@@ -6,7 +6,7 @@ import { CloverModule } from '../clover/clover.module';
 import { PricingTokenService } from '../clover/pricing-token.service';
 import { IdentityEmailVerificationModule } from '../auth/public-api';
 import { EmailModule } from '../email/email.module';
-import { OrdersModule } from '../orders/orders.module';
+import { OrdersModule } from '../orders/public-api';
 import { PhoneVerificationModule } from '../phone-verification/phone-verification.module';
 
 /**
