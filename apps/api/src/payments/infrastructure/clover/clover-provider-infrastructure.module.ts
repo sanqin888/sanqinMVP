@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
 
 import { PAYMENT_PROVIDER_WEBHOOK_INGRESS } from '../../application/payment-provider-webhook.port';
+import { CloverPaymentProviderAdapter } from './clover-payment-provider.adapter';
 import {
-  CloverPaymentProviderAdapter,
   CloverPlatformPaymentsGateway,
-} from './clover-payment-provider.adapter';
+} from './platform/clover-platform-payments.gateway';
 import { CloverProviderConfig } from './clover-provider.config';
 import { CloverEcommerceTransport } from './ecommerce/clover-ecommerce.transport';
 import { CloverCredentialVaultService } from './oauth/clover-credential-vault.service';
