@@ -335,6 +335,43 @@ describe('Payments bounded-context architecture', () => {
     expect(orchestration?.source).not.toContain('PAYMENT_CHECKOUT:');
   });
 
+  it('keeps POS payment realtime delivery behind the POS public capability', () => {
+    const orchestrationFiles = scanTypeScript(
+      resolve(SOURCE_ROOT, 'orchestration'),
+      { productionOnly: true },
+    ).filter(({ path }) =>
+      [
+        'pos-card-payment-orchestration.service.ts',
+        'payment-reverse-sync-orchestration.service.ts',
+      ].some((name) => path.endsWith(name)),
+    );
+    const posFiles = scanTypeScript(resolve(SOURCE_ROOT, 'pos'), {
+      productionOnly: true,
+    });
+    const publicApi = posFiles.find(({ path }) =>
+      path.endsWith('public-api.ts'),
+    );
+    const deviceModule = posFiles.find(({ path }) =>
+      path.endsWith('pos-device.module.ts'),
+    );
+    const realtimeContract = posFiles.find(({ path }) =>
+      path.endsWith('pos-payment-realtime.contract.ts'),
+    );
+
+    expect(orchestrationFiles).toHaveLength(2);
+    for (const orchestration of orchestrationFiles) {
+      expect(orchestration.source).toContain("from '../pos/public-api'");
+      expect(orchestration.source).toContain('POS_PAYMENT_REALTIME');
+      expect(orchestration.source).not.toContain("from '../pos/pos.gateway'");
+    }
+    expect(publicApi?.source).toContain('POS_PAYMENT_REALTIME');
+    expect(publicApi?.source).toContain('PosPaymentRealtimePort');
+    expect(deviceModule?.source).toContain('provide: POS_PAYMENT_REALTIME');
+    expect(deviceModule?.source).toContain('useExisting: PosGateway');
+    expect(realtimeContract?.source).not.toMatch(/from ['"]\.\.\/payments\//);
+    expect(realtimeContract?.source).not.toMatch(/from ['"]\.\.\/clover\//);
+  });
+
   it('keeps POS refund/reverse-sync Orders access on the public POS order operations boundary', () => {
     const orchestrationFiles = scanTypeScript(
       resolve(SOURCE_ROOT, 'orchestration'),

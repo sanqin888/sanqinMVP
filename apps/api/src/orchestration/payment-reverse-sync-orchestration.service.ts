@@ -6,7 +6,10 @@ import {
   type PosOrderOperationsPort,
 } from '../orders/public-api';
 import type { PaymentReverseSyncResult } from '../payments/application/payment-reverse-sync.service';
-import { PosGateway } from '../pos/pos.gateway';
+import {
+  POS_PAYMENT_REALTIME,
+  type PosPaymentRealtimePort,
+} from '../pos/public-api';
 import {
   PaymentCheckoutAttemptService,
   type PreparedPaymentCheckout,
@@ -41,7 +44,8 @@ export class PaymentReverseSyncOrchestrationService {
     private readonly cardPayments: PosCardPaymentOrchestrationService,
     @Inject(POS_ORDER_OPERATIONS)
     private readonly orders: PosOrderOperationsPort,
-    private readonly posGateway: PosGateway,
+    @Inject(POS_PAYMENT_REALTIME)
+    private readonly paymentRealtime: PosPaymentRealtimePort,
   ) {}
 
   async apply(
@@ -203,7 +207,7 @@ export class PaymentReverseSyncOrchestrationService {
     if (!payment) return;
     const snapshot = payment.toSnapshot();
     try {
-      this.posGateway.publishCardPaymentStatus(checkout.storeId, {
+      this.paymentRealtime.publishCardPaymentStatus(checkout.storeId, {
         attemptId: snapshot.attemptId,
         paymentId: snapshot.id,
         status: 'CANCELLED',
@@ -231,7 +235,7 @@ export class PaymentReverseSyncOrchestrationService {
     if (!payment || result.externalReversal === 'NONE') return;
     const snapshot = payment.toSnapshot();
     try {
-      this.posGateway.publishCardPaymentReverseSync(storeStableId, {
+      this.paymentRealtime.publishCardPaymentReverseSync(storeStableId, {
         attemptId: snapshot.attemptId,
         paymentId: snapshot.id,
         externalReversal: result.externalReversal,

@@ -6,6 +6,7 @@ import { PosDeviceGuard } from './pos-device.guard';
 import { PosDevicesController } from './pos-devices.controller';
 import { PosCardPaymentFeatureConfig } from './pos-card-payment-feature.config';
 import { PosGateway } from './pos.gateway';
+import { POS_PAYMENT_REALTIME } from './pos-payment-realtime.contract';
 import {
   POS_DEVICE_CREDENTIAL_VERIFIER,
   POS_DEVICE_MANAGEMENT,
@@ -27,6 +28,10 @@ import { BrandStoreConfigModule } from '../store/public-api';
     },
     PosDeviceGuard,
     PosGateway,
+    {
+      provide: POS_PAYMENT_REALTIME,
+      useExisting: PosGateway,
+    },
     PosCardPaymentFeatureConfig,
   ],
   exports: [
@@ -35,6 +40,7 @@ import { BrandStoreConfigModule } from '../store/public-api';
     PosDeviceService,
     PosDeviceGuard,
     PosGateway,
+    POS_PAYMENT_REALTIME,
     PosCardPaymentFeatureConfig,
   ], // 导出给 OrdersModule、PosModule 和支付 orchestration 使用
 })

@@ -7,7 +7,7 @@ import type { TerminalPaymentService } from '../payments/application/create-paym
 import type { PaymentTransactionRepository } from '../payments/application/payment-transaction.repository';
 import { PaymentTransaction } from '../payments/domain/payment-transaction';
 import type { PosCardPaymentFeatureConfig } from '../pos/pos-card-payment-feature.config';
-import type { PosGateway } from '../pos/pos.gateway';
+import type { PosPaymentRealtimePort } from '../pos/public-api';
 import type {
   PaymentCheckoutAttemptService,
   PreparedPaymentCheckout,
@@ -216,9 +216,10 @@ const createHarness = () => {
     activateImmediatePreparation: jest.fn().mockResolvedValue(undefined),
   } as unknown as jest.Mocked<PosOrderOperationsPort>;
 
-  const posGateway = {
+  const paymentRealtime = {
     publishCardPaymentStatus: jest.fn(),
-  } as unknown as jest.Mocked<PosGateway>;
+    publishCardPaymentReverseSync: jest.fn(),
+  } as jest.Mocked<PosPaymentRealtimePort>;
 
   const service = new PosCardPaymentOrchestrationService(
     featureConfig,
@@ -227,7 +228,7 @@ const createHarness = () => {
     paymentTransactions,
     orders,
     orderOperations,
-    posGateway,
+    paymentRealtime,
   );
 
   return {
@@ -238,7 +239,7 @@ const createHarness = () => {
     paymentTransactions,
     orders,
     orderOperations,
-    posGateway,
+    paymentRealtime,
     setCheckout(next: PreparedPaymentCheckout) {
       checkout = next;
     },
@@ -307,12 +308,14 @@ describe('PosCardPaymentOrchestrationService', () => {
     expect(
       harness.orderOperations.activateImmediatePreparation,
     ).not.toHaveBeenCalledWith('cpaymentorder1', storeDbId);
-    expect(harness.posGateway.publishCardPaymentStatus).toHaveBeenCalledWith(
+    expect(
+      harness.paymentRealtime.publishCardPaymentStatus,
+    ).toHaveBeenCalledWith(
       storeStableId,
       expect.objectContaining({ status: 'SUCCEEDED' }),
     );
     expect(
-      harness.posGateway.publishCardPaymentStatus,
+      harness.paymentRealtime.publishCardPaymentStatus,
     ).not.toHaveBeenCalledWith(storeDbId, expect.anything());
     expect(result).toMatchObject({
       status: 'SUCCEEDED',

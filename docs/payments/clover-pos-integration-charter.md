@@ -355,6 +355,8 @@ Refund 也必须读取 Clover 实际 refund/additional-charge 事实，不得按
 
 2026-09-06 Phase 5 Slice 1D 将 pre-production Terminal 的成功落单/首次打印进一步收口：confirmed-payment transaction 在 Benefits/Coupon COMMIT + paid Order 创建的同一事务内追加 Orders-owned durable `order.accepted`；Terminal orchestration 不再直接构造 `PrintPosPayload` 或 `PAYMENT_CHECKOUT:*` PrintJob，而是在落单后调用 Orders public durable preparation capability，由 `order.prep_started -> AUTO` 统一首次打印。`PosGateway` 在该 orchestration 中仅保留支付状态 realtime publication。历史已存在且没有 accepted fact 的 prototype Order 不做 accepted backfill，避免 recovery 产生新 AUTO 重复打印。此结构调整不改变 provider payment truth、UNKNOWN/reconciliation、refund 或生产 Web Ecommerce 行为。
 
+2026-09-08 Phase 6 Slice 2A 将上述 realtime publication 进一步收口为 POS-owned `POS_PAYMENT_REALTIME` 公共能力：Payment orchestration 不再直接依赖 `PosGateway`/Socket.IO implementation；`PosGateway` 继续作为该 port 的现有实现，并保持 `POS_CARD_PAYMENT_STATUS_UPDATED` / `POS_CARD_PAYMENT_REVERSE_SYNC_UPDATED` 事件名称和实际 wire payload 不变。realtime 仍为 best-effort/advisory delivery，失败不得覆盖或改变 persisted Payment/Checkout/Order truth，也不改变 POS Terminal feature flag、provider/reconciliation/refund/surcharge 或生产 Web Ecommerce 行为。
+
 ### 9.3 新能力采用 additive rollout
 
 优先新增模块、表、nullable 字段、endpoint、provider、UI 和 feature flag。不得在早期删除旧 endpoint、改旧 CARD 必填契约或删除旧退款入口。
