@@ -149,7 +149,12 @@ describe('OrdersService confirmed-payment finalization characterization', () => 
       couponStableId: 'coupon_stable_1',
     });
     const paidSideEffects = jest.fn().mockResolvedValue(undefined);
-    const toOrderDto = jest.fn((order: unknown) => order);
+    const toOrderDto = jest.fn(
+      (order: ReturnType<typeof makeCreatedOrder>) => ({
+        ...order,
+        orderNumber: order.clientRequestId ?? order.orderStableId,
+      }),
+    );
     const allocateClientRequestIdTx = jest
       .fn()
       .mockResolvedValue('SQT2609050001');
@@ -171,15 +176,12 @@ describe('OrdersService confirmed-payment finalization characterization', () => 
       logger: { log: jest.fn() },
     });
 
-    const result = await service.createFromConfirmedPaymentSnapshot(
-      snapshot(),
-      {
-        attemptId: 'attempt-1',
-        orderStableId: 'order_stable_1',
-        cardSurchargeCents: 40,
-        chargedTotalCents: 870,
-      },
-    );
+    const result = await service.finalizeConfirmedPayment(snapshot(), {
+      attemptId: 'attempt-1',
+      orderStableId: 'order_stable_1',
+      cardSurchargeCents: 40,
+      chargedTotalCents: 870,
+    });
 
     expect(resolveUserIdByStableId).toHaveBeenCalledWith('customer_stable_1');
     expect(transaction).toHaveBeenCalledTimes(1);
@@ -260,6 +262,13 @@ describe('OrdersService confirmed-payment finalization characterization', () => 
         couponId: '8a3d4c0e-4750-4f6a-9138-000000000020',
       }),
     );
+    expect(result).toEqual({
+      order: {
+        orderStableId: 'order_stable_1',
+        orderNumber: 'SQT2609050001',
+        pickupCode: '0001',
+      },
+    });
     expect(result).not.toHaveProperty('internalOrderId');
   });
 
@@ -274,6 +283,8 @@ describe('OrdersService confirmed-payment finalization characterization', () => 
     const paidSideEffects = jest.fn();
     const toOrderDto = jest.fn().mockReturnValue({
       orderStableId: 'order_stable_existing',
+      orderNumber: 'SQT2609050002',
+      pickupCode: '0002',
     });
 
     const service = Object.create(OrdersService.prototype) as OrdersService;
@@ -289,14 +300,18 @@ describe('OrdersService confirmed-payment finalization characterization', () => 
     });
 
     await expect(
-      service.createFromConfirmedPaymentSnapshot(snapshot(), {
+      service.finalizeConfirmedPayment(snapshot(), {
         attemptId: 'attempt-existing',
         orderStableId: 'order_stable_existing',
         cardSurchargeCents: 40,
         chargedTotalCents: 870,
       }),
     ).resolves.toEqual({
-      order: { orderStableId: 'order_stable_existing' },
+      order: {
+        orderStableId: 'order_stable_existing',
+        orderNumber: 'SQT2609050002',
+        pickupCode: '0002',
+      },
     });
 
     expect(transaction).not.toHaveBeenCalled();

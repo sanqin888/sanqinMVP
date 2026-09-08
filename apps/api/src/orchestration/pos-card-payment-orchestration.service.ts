@@ -7,11 +7,12 @@ import {
 import type { CreateOrderInput } from '@shared/order';
 
 import {
+  PAYMENT_ORDER_FINALIZATION,
   POS_ORDER_OPERATIONS,
-  type PosOrderDto,
+  type ConfirmedPaymentOrderView,
+  type PaymentOrderFinalizationPort,
   type PosOrderOperationsPort,
 } from '../orders/public-api';
-import { OrdersService } from '../orders/orders.service';
 import { TerminalPaymentService } from '../payments/application/create-payment-attempt.use-case';
 import {
   PAYMENT_TRANSACTION_REPOSITORY,
@@ -72,7 +73,8 @@ export class PosCardPaymentOrchestrationService {
     private readonly terminalPayments: TerminalPaymentService,
     @Inject(PAYMENT_TRANSACTION_REPOSITORY)
     private readonly paymentTransactions: PaymentTransactionRepository,
-    private readonly orders: OrdersService,
+    @Inject(PAYMENT_ORDER_FINALIZATION)
+    private readonly orderFinalization: PaymentOrderFinalizationPort,
     @Inject(POS_ORDER_OPERATIONS)
     private readonly orderOperations: PosOrderOperationsPort,
     @Inject(POS_PAYMENT_REALTIME)
@@ -392,8 +394,9 @@ export class PosCardPaymentOrchestrationService {
     let checkout = initialCheckout;
 
     if (checkout.status === 'COMPLETED') {
-      const existingOrder = await this.orders.getByStableId(
+      const existingOrder = await this.orderOperations.getByStableIdForStore(
         checkout.orderStableId,
+        storeId,
       );
       const payment =
         knownPayment ??
@@ -480,7 +483,7 @@ export class PosCardPaymentOrchestrationService {
         ? 0
         : (paymentSnapshot?.chargedTotalCents ?? 0);
 
-    const created = await this.orders.createFromConfirmedPaymentSnapshot(
+    const created = await this.orderFinalization.finalizeConfirmedPayment(
       checkout.snapshot,
       {
         attemptId: checkout.attemptId,
@@ -557,7 +560,7 @@ export class PosCardPaymentOrchestrationService {
   private toView(
     checkout: PreparedPaymentCheckout,
     payment?: PaymentTransaction,
-    order?: PosOrderDto,
+    order?: ConfirmedPaymentOrderView,
     override?: Partial<
       Pick<PosCardPaymentView, 'status' | 'failureCode' | 'failureMessage'>
     >,

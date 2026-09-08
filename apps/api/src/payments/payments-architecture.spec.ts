@@ -505,6 +505,56 @@ describe('Payments bounded-context architecture', () => {
     expect(module?.source).toContain('useExisting: OrdersService');
   });
 
+  it('exposes confirmed-payment finalization through a stable-ID-only Orders public capability', () => {
+    const orderFiles = scanTypeScript(resolve(SOURCE_ROOT, 'orders'), {
+      productionOnly: true,
+    });
+    const publicApi = orderFiles.find(({ path }) =>
+      path.endsWith('public-api.ts'),
+    );
+    const module = orderFiles.find(({ path }) =>
+      path.endsWith('orders.module.ts'),
+    );
+    const contract = orderFiles.find(({ path }) =>
+      path.endsWith('payment-order-finalization.contract.ts'),
+    );
+    const ordersService = orderFiles.find(({ path }) =>
+      path.endsWith('orders.service.ts'),
+    );
+    const orchestration = scanTypeScript(
+      resolve(SOURCE_ROOT, 'orchestration'),
+      { productionOnly: true },
+    ).find(({ path }) =>
+      path.endsWith('pos-card-payment-orchestration.service.ts'),
+    );
+
+    expect(publicApi?.source).toContain('PAYMENT_ORDER_FINALIZATION');
+    expect(publicApi?.source).toContain('PaymentOrderFinalizationPort');
+    expect(publicApi?.source).toContain('ConfirmedPaymentOrderView');
+    expect(module?.source).toContain('provide: PAYMENT_ORDER_FINALIZATION');
+    expect(module?.source).toContain('useExisting: OrdersService');
+    expect(module?.source).toContain('PAYMENT_ORDER_FINALIZATION,');
+    expect(ordersService?.source).toContain('PaymentOrderFinalizationPort');
+    expect(ordersService?.source).toContain('finalizeConfirmedPayment(');
+    expect(contract?.source).toContain('orderStableId: string');
+    expect(contract?.source).toContain('orderNumber: string');
+    expect(contract?.source).toContain('pickupCode: string | null');
+    expect(contract?.source).not.toContain('internalOrderId');
+    expect(contract?.source).not.toContain('OrderDto');
+    expect(contract?.source).not.toContain("from '@prisma/client'");
+    expect(contract?.source).not.toMatch(/Prisma\.TransactionClient/);
+    expect(contract?.source).not.toMatch(/from ['"]\.\.\/payments\//);
+    expect(contract?.source).not.toMatch(/from ['"]\.\.\/clover\//);
+    expect(orchestration?.source).toContain("from '../orders/public-api'");
+    expect(orchestration?.source).toContain('PAYMENT_ORDER_FINALIZATION');
+    expect(orchestration?.source).toContain('PaymentOrderFinalizationPort');
+    expect(orchestration?.source).toContain('finalizeConfirmedPayment(');
+    expect(orchestration?.source).toContain('getByStableIdForStore(');
+    expect(orchestration?.source).not.toContain(
+      "from '../orders/orders.service'",
+    );
+  });
+
   it('keeps persisted payment preparation on the V2 stable-identity public boundary', () => {
     const checkoutPreparation = scanTypeScript(
       resolve(SOURCE_ROOT, 'orchestration'),
