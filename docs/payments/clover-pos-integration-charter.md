@@ -357,6 +357,8 @@ Refund 也必须读取 Clover 实际 refund/additional-charge 事实，不得按
 
 2026-09-08 Phase 6 Slice 2A 将上述 realtime publication 进一步收口为 POS-owned `POS_PAYMENT_REALTIME` 公共能力：Payment orchestration 不再直接依赖 `PosGateway`/Socket.IO implementation；`PosGateway` 继续作为该 port 的现有实现，并保持 `POS_CARD_PAYMENT_STATUS_UPDATED` / `POS_CARD_PAYMENT_REVERSE_SYNC_UPDATED` 事件名称和实际 wire payload 不变。realtime 仍为 best-effort/advisory delivery，失败不得覆盖或改变 persisted Payment/Checkout/Order truth，也不改变 POS Terminal feature flag、provider/reconciliation/refund/surcharge 或生产 Web Ecommerce 行为。
 
+2026-09-08 Phase 6 Slice 2C 将 legacy/manual full-refund fallback 的 Store Operations policy 收口为 POS-owned `POS_FULL_REFUND_MANAGEMENT` 公共能力。Unified managed CARD refund 仍由 Payments 先执行并以 Clover canonical/reconciliation truth 决定是否可以把 Order 视为 refunded；只有 checkout 被明确分类为 `LEGACY_MANUAL_REQUIRED` 时才调用该 POS capability。现有 `PosOrdersService` 继续实现 Web external-payment gate、Uber manual-flow exclusion、可退款状态判断、operator/reason 校验与 audit reason decoration，并通过 `useExisting` 提供 capability；Payments orchestration 不再直接注入该 concrete service。此边界变化不得把 provider truth、UNKNOWN/reconciliation、Benefits rollback 或 Orders refund semantics 移入 POS，也不改变生产 Web Ecommerce 退款行为。
+
 ### 9.3 新能力采用 additive rollout
 
 优先新增模块、表、nullable 字段、endpoint、provider、UI 和 feature flag。不得在早期删除旧 endpoint、改旧 CARD 必填契约或删除旧退款入口。

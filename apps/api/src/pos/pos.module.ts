@@ -15,6 +15,7 @@ import { PosStoreStatusController } from './pos-store-status.controller';
 import { PosStoreStatusService } from './pos-store-status.service';
 import { UberEatsModule } from '../integrations/ubereats/ubereats.module';
 import { PosOrdersService } from './pos-orders.service';
+import { POS_FULL_REFUND_MANAGEMENT } from './pos-full-refund-management.contract';
 import { PosConnectivityWatchdogService } from './pos-connectivity-watchdog.service';
 import { StoreStatusModule } from '../store/store-status.module';
 import { PosExchangeRateModule } from './pos-exchange-rate.module';
@@ -47,10 +48,14 @@ import { PosPrintDispatchListener } from './pos-print-dispatch.listener';
     PosSummaryService,
     PosStoreStatusService,
     PosOrdersService,
+    {
+      provide: POS_FULL_REFUND_MANAGEMENT,
+      useExisting: PosOrdersService,
+    },
     PosPrintDispatchListener,
     PosConnectivityWatchdogService,
     RolesGuard,
   ],
-  exports: [PosOrdersService],
+  exports: [POS_FULL_REFUND_MANAGEMENT],
 })
 export class PosModule {}

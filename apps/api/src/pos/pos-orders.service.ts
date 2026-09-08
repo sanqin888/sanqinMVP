@@ -30,6 +30,10 @@ import {
   type BrandStoreConfigReaderPort,
   type BrandStoreConfigWriterPort,
 } from '../store/public-api';
+import type {
+  PosFullRefundManagementInput,
+  PosFullRefundManagementPort,
+} from './pos-full-refund-management.contract';
 
 const UBER_EATS_CLIENT_REQUEST_PREFIX = 'ubereats:';
 const POS_OPERATOR_REASON_MARKER = ' · 操作人:';
@@ -65,14 +69,6 @@ export type PosCreateAmendmentInput = {
   refundGrossCents?: number;
   additionalChargeCents?: number;
   items?: PosAmendmentItemInput[];
-};
-
-export type PosCreateFullRefundInput = {
-  reason: string;
-  operatorName: string;
-  refundAmountCents: number;
-  originalPaymentMethod: PaymentMethod;
-  refundMethod: PaymentMethod;
 };
 
 export type PosOrderManagementAction =
@@ -116,7 +112,7 @@ export type PosOrderAmendmentHistory = {
 };
 
 @Injectable()
-export class PosOrdersService {
+export class PosOrdersService implements PosFullRefundManagementPort {
   constructor(
     @Inject(POS_ORDER_OPERATIONS)
     private readonly orders: PosOrderOperationsPort,
@@ -433,7 +429,7 @@ export class PosOrdersService {
   async createFullRefund(
     storeStableId: string,
     orderStableId: string,
-    input: PosCreateFullRefundInput,
+    input: PosFullRefundManagementInput,
   ) {
     const order = await this.orders.getByStableIdForStore(
       orderStableId,

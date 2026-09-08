@@ -17,6 +17,12 @@ export {
   type PosCardPaymentStatusRealtimeMessage,
   type PosPaymentRealtimePort,
 } from './pos-payment-realtime.contract';
+export {
+  POS_FULL_REFUND_MANAGEMENT,
+  type PosFullRefundManagementInput,
+  type PosFullRefundManagementPort,
+  type PosFullRefundManagementResult,
+} from './pos-full-refund-management.contract';
 export { PosDeviceGuard } from './pos-device.guard';
 export { PosDeviceModule } from './pos-device.module';
 export { StableIdPipe } from '../common/pipes/stable-id.pipe';
