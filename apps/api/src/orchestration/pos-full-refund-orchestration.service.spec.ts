@@ -99,7 +99,9 @@ describe('PosFullRefundOrchestrationService', () => {
       managedPaymentOperation: 'REFUND',
       order: { status: 'paid' },
     });
-    expect(harness.fullRefundManagement.createFullRefund).not.toHaveBeenCalled();
+    expect(
+      harness.fullRefundManagement.createFullRefund,
+    ).not.toHaveBeenCalled();
   });
 
   it('returns the historical response shape after canonical managed success', async () => {
@@ -127,7 +129,9 @@ describe('PosFullRefundOrchestrationService', () => {
       managedPaymentStatus: 'SUCCEEDED',
       managedPaymentOperation: 'VOID',
     });
-    expect(harness.fullRefundManagement.createFullRefund).not.toHaveBeenCalled();
+    expect(
+      harness.fullRefundManagement.createFullRefund,
+    ).not.toHaveBeenCalled();
   });
 
   it('does not hide a definitive managed refund failure behind legacy fallback', async () => {
@@ -158,7 +162,9 @@ describe('PosFullRefundOrchestrationService', () => {
         code: 'CLOVER_REFUND_FAILED',
       });
     }
-    expect(harness.fullRefundManagement.createFullRefund).not.toHaveBeenCalled();
+    expect(
+      harness.fullRefundManagement.createFullRefund,
+    ).not.toHaveBeenCalled();
   });
 });
 

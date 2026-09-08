@@ -2,9 +2,7 @@ import type { PaymentMethod } from '@shared/order';
 
 import type { PosOrderDto } from '../orders/public-api';
 
-export const POS_FULL_REFUND_MANAGEMENT = Symbol(
-  'POS_FULL_REFUND_MANAGEMENT',
-);
+export const POS_FULL_REFUND_MANAGEMENT = Symbol('POS_FULL_REFUND_MANAGEMENT');
 
 export type PosFullRefundManagementInput = {
   reason: string;

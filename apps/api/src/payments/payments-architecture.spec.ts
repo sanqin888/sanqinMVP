@@ -426,7 +426,9 @@ describe('Payments bounded-context architecture', () => {
     const publicApi = posFiles.find(({ path }) =>
       path.endsWith('public-api.ts'),
     );
-    const posModule = posFiles.find(({ path }) => path.endsWith('pos.module.ts'));
+    const posModule = posFiles.find(({ path }) =>
+      path.endsWith('pos.module.ts'),
+    );
     const posOrdersService = posFiles.find(({ path }) =>
       path.endsWith('pos-orders.service.ts'),
     );
@@ -451,7 +453,9 @@ describe('Payments bounded-context architecture', () => {
     expect(publicApi?.source).toContain('PosFullRefundManagementPort');
     expect(posModule?.source).toContain('provide: POS_FULL_REFUND_MANAGEMENT');
     expect(posModule?.source).toContain('useExisting: PosOrdersService');
-    expect(posModule?.source).toContain('exports: [POS_FULL_REFUND_MANAGEMENT]');
+    expect(posModule?.source).toContain(
+      'exports: [POS_FULL_REFUND_MANAGEMENT]',
+    );
     expect(posModule?.source).not.toContain('exports: [PosOrdersService]');
     expect(posOrdersService?.source).toContain(
       'implements PosFullRefundManagementPort',
