@@ -357,6 +357,31 @@ describe('Payments bounded-context architecture', () => {
     }
   });
 
+  it('keeps persisted payment preparation on the V2 stable-identity snapshot', () => {
+    const checkoutPreparation = scanTypeScript(
+      resolve(SOURCE_ROOT, 'orchestration'),
+      { productionOnly: true },
+    ).find(({ path }) => path.endsWith('payment-checkout-attempt.service.ts'));
+
+    expect(checkoutPreparation).toBeDefined();
+    expect(checkoutPreparation?.source).toContain(
+      'storeStableId: snapshot.storeStableId',
+    );
+    expect(checkoutPreparation?.source).toContain('draft.version !== 2');
+    expect(checkoutPreparation?.source).toContain(
+      'delete stableOrder.selectedUserCouponId',
+    );
+    expect(checkoutPreparation?.source).toContain(
+      'delete stableOrder.checkoutIntentId',
+    );
+    expect(checkoutPreparation?.source).not.toContain(
+      'userId: snapshot.userId',
+    );
+    expect(checkoutPreparation?.source).not.toContain(
+      'selectedUserCouponId: snapshot.order.selectedUserCouponId',
+    );
+  });
+
   it('keeps Payments + Orders coordination inside the explicit unified-payment orchestration layer', () => {
     const composers = scanTypeScript(SOURCE_ROOT, { productionOnly: true })
       // AppModule is the repository composition root: importing both modules

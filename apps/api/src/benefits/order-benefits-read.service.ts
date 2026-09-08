@@ -38,6 +38,7 @@ export class OrderBenefitsReadService implements OrderBenefitsReaderPort {
         discountCents: coupon.discountCents,
         discountPercent: coupon.discountPercent,
         minSpendCents: coupon.minSpendCents,
+        expiresAt: coupon.expiresAt?.toISOString() ?? null,
         unlockedItemStableIds: coupon.unlockedItemStableIds,
         stackingPolicy: coupon.stackingPolicy,
       },

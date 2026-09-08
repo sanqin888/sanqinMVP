@@ -50,10 +50,16 @@ const checkoutFixture = (
   orderStableId: 'cpaymentorder1',
   expiresAt: new Date('2026-08-26T23:00:00.000Z'),
   snapshot: {
-    version: 1,
-    order: orderInput,
-    userId: '22222222-2222-4222-8222-222222222222',
-    storeId: storeStableId,
+    version: 2,
+    order: {
+      userStableId: orderInput.userStableId ?? null,
+      channel: orderInput.channel,
+      fulfillmentType: orderInput.fulfillmentType,
+      contactName: orderInput.contactName ?? null,
+      contactEmail: orderInput.contactEmail ?? null,
+      contactPhone: orderInput.contactPhone ?? null,
+    },
+    storeStableId,
     pricing: {
       subtotalCents: 1200,
       displaySubtotalCents: 1200,
@@ -282,7 +288,7 @@ describe('PosCardPaymentOrchestrationService', () => {
       harness.orders.createFromConfirmedPaymentSnapshot,
     ).toHaveBeenCalledWith(
       expect.objectContaining({
-        storeId: storeStableId,
+        storeStableId,
         tender: expect.objectContaining({
           pointsCents: 200,
           balanceCents: 300,

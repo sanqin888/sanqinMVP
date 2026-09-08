@@ -268,7 +268,6 @@ export type PaymentTenderAllocation = {
 };
 
 export type PreparedPaymentOrderItemSnapshot = {
-  id: string;
   productStableId: string;
   qty: number;
   displayName: string | null;
@@ -283,19 +282,26 @@ export type PreparedPaymentOrderItemSnapshot = {
   componentsJson?: unknown;
 };
 
+/** Persisted cross-context payment draft. V2 must contain business/stable identities only. */
 export type PreparedPaymentOrderSnapshot = {
-  version: 1;
-  order: CreateOrderInput;
-  userId: string | null;
+  version: 2;
+  order: {
+    userStableId: string | null;
+    channel: CreateOrderInput['channel'];
+    fulfillmentType: CreateOrderInput['fulfillmentType'];
+    contactName: string | null;
+    contactEmail: string | null;
+    contactPhone: string | null;
+  };
   /** Business store identity: Store.storeStableId, matching Order.storeId. */
-  storeId: string;
+  storeStableId: string;
   pricing: OrderPricingQuote;
   tender: PaymentTenderAllocation;
   items: PreparedPaymentOrderItemSnapshot[];
   promotionSnapshot: unknown;
   coupon: {
-    id: string;
     couponStableId: string;
+    reserveAssignedCoupon: boolean;
     code: string;
     title: string;
     minSpendCents: number | null;
@@ -1499,12 +1505,8 @@ export class OrdersService {
     if (dto.userStableId && !normalizedUserStableId) {
       throw new BadRequestException('userStableId must be a cuid');
     }
-    const userId = normalizedUserStableId
-      ? await this.loyalty.resolveUserIdByStableId(normalizedUserStableId)
-      : null;
-
-    const couponInfo = await this.membership.validateCouponForOrder({
-      userId: userId ?? undefined,
+    const couponInfo = await this.orderBenefitsReader.validateCouponForOrder({
+      userStableId: normalizedUserStableId ?? undefined,
       couponStableId: dto.couponStableId,
     });
 
@@ -1518,7 +1520,7 @@ export class OrdersService {
         ? toCouponPromotionLike(couponInfo.coupon)
         : null,
       promotionContext,
-      customer: { isMember: Boolean(userId) },
+      customer: { isMember: Boolean(normalizedUserStableId) },
       posDiscountCents: dto.discountCents,
     });
     assertCouponPromotionAccepted(
@@ -1589,22 +1591,19 @@ export class OrdersService {
     }
 
     return {
-      version: 1,
+      version: 2,
       order: {
-        ...dto,
-        userStableId: normalizedUserStableId ?? undefined,
-        redeemValueCents:
-          pricing.loyaltyRedeemCents > 0
-            ? pricing.loyaltyRedeemCents
-            : undefined,
-        balanceUsedCents: balanceCents > 0 ? balanceCents : undefined,
+        userStableId: normalizedUserStableId,
+        channel: dto.channel,
+        fulfillmentType: dto.fulfillmentType,
+        contactName: dto.contactName ?? null,
+        contactEmail: dto.contactEmail ?? null,
+        contactPhone: dto.contactPhone ?? null,
       },
-      userId,
-      storeId: storeStableId,
+      storeStableId,
       pricing,
       tender,
       items: calculatedItems.map((item) => ({
-        id: item.id ?? crypto.randomUUID(),
         productStableId: item.productStableId,
         qty: item.qty,
         displayName: item.displayName ?? null,
@@ -1621,12 +1620,12 @@ export class OrdersService {
       promotionSnapshot: promotionEvaluation.snapshot,
       coupon: couponInfo?.coupon
         ? {
-            id: couponInfo.coupon.id,
             couponStableId: couponInfo.coupon.couponStableId,
+            reserveAssignedCoupon: Boolean(dto.selectedUserCouponId),
             code: couponInfo.coupon.code,
             title: couponInfo.coupon.title,
             minSpendCents: couponInfo.coupon.minSpendCents,
-            expiresAt: couponInfo.coupon.expiresAt?.toISOString() ?? null,
+            expiresAt: couponInfo.coupon.expiresAt,
           }
         : null,
       preparedAt: new Date().toISOString(),
@@ -1643,7 +1642,7 @@ export class OrdersService {
       chargedTotalCents: number;
     },
   ): Promise<ConfirmedPaymentOrderResult> {
-    if (snapshot.version !== 1 || snapshot.order.channel !== Channel.in_store) {
+    if (snapshot.version !== 2 || snapshot.order.channel !== Channel.in_store) {
       throw new BadRequestException('Unsupported payment order snapshot');
     }
     if (!input.attemptId.trim()) {
@@ -1677,6 +1676,9 @@ export class OrdersService {
       };
     }
 
+    const userId = snapshot.order.userStableId
+      ? await this.loyalty.resolveUserIdByStableId(snapshot.order.userStableId)
+      : null;
     const paidAt = new Date();
     try {
       const created = await this.prisma.$transaction(async (tx) => {
@@ -1696,12 +1698,23 @@ export class OrdersService {
               'Committed internal tender does not match prepared payment.',
           });
         }
-        await this.membership.commitPaymentCouponsForOrder({
-          tx,
-          attemptId: input.attemptId,
-          orderId: input.internalOrderId,
-          orderStableId: input.orderStableId,
-        });
+        const committedCoupon =
+          await this.membership.commitPaymentCouponsForOrder({
+            tx,
+            attemptId: input.attemptId,
+            orderId: input.internalOrderId,
+            orderStableId: input.orderStableId,
+          });
+        if (
+          committedCoupon.couponStableId !==
+          (snapshot.coupon?.couponStableId ?? null)
+        ) {
+          throw new ConflictException({
+            code: 'PAYMENT_COUPON_RESERVATION_MISMATCH',
+            message:
+              'Committed coupon reservation does not match prepared payment.',
+          });
+        }
 
         const clientRequestId = await this.allocateClientRequestIdTx(tx);
         const pickupCode =
@@ -1726,12 +1739,12 @@ export class OrdersService {
             status: 'paid',
             paidAt,
             paymentMethod,
-            userId: snapshot.userId,
+            userId,
             userStableId: snapshot.order.userStableId ?? null,
             orderStableId: input.orderStableId,
             clientRequestId,
             channel: snapshot.order.channel,
-            storeId: snapshot.storeId,
+            storeId: snapshot.storeStableId,
             fulfillmentType: snapshot.order.fulfillmentType,
             contactName: snapshot.order.contactName ?? null,
             contactEmail: snapshot.order.contactEmail ?? null,
@@ -1752,7 +1765,7 @@ export class OrdersService {
             deliveryCostCents: 0,
             deliverySubsidyCents: 0,
             pickupCode,
-            couponId: snapshot.coupon?.id ?? null,
+            couponId: committedCoupon.couponId,
             couponDiscountCents: snapshot.pricing.couponDiscountCents,
             couponCodeSnapshot: snapshot.coupon?.code,
             couponTitleSnapshot: snapshot.coupon?.title,
@@ -1766,7 +1779,6 @@ export class OrdersService {
             subtotalAfterDiscountCents,
             items: {
               create: snapshot.items.map((item) => ({
-                id: item.id,
                 productStableId: item.productStableId,
                 qty: item.qty,
                 displayName: item.displayName,

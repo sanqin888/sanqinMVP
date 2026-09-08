@@ -7,6 +7,7 @@ export type OrderCouponBenefit = {
   discountCents: number;
   discountPercent: number | null;
   minSpendCents: number | null;
+  expiresAt: string | null;
   unlockedItemStableIds: string[];
   stackingPolicy: 'EXCLUSIVE' | 'STACKABLE';
 };
