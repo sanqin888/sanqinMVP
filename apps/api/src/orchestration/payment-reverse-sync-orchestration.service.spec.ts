@@ -1,9 +1,6 @@
 import { PaymentMethod } from '@prisma/client';
 
-import type {
-  PosOrderDto,
-  PosOrderOperationsPort,
-} from '../orders/public-api';
+import type { PosOrderDto, PosOrderOperationsPort } from '../orders/public-api';
 import type { PaymentReverseSyncResult } from '../payments/application/payment-reverse-sync.service';
 import { PaymentTransaction } from '../payments/domain/payment-transaction';
 import type { PosGateway } from '../pos/pos.gateway';

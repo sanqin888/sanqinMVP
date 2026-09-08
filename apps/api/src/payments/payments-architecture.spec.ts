@@ -350,7 +350,9 @@ describe('Payments bounded-context architecture', () => {
     for (const orchestration of orchestrationFiles) {
       expect(orchestration.source).toContain("from '../orders/public-api'");
       expect(orchestration.source).toContain('POS_ORDER_OPERATIONS');
-      expect(orchestration.source).not.toContain("from '../orders/orders.service'");
+      expect(orchestration.source).not.toContain(
+        "from '../orders/orders.service'",
+      );
       expect(orchestration.source).not.toMatch(/from ['"]\.\.\/orders\/dto\//);
     }
   });

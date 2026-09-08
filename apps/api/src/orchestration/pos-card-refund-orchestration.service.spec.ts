@@ -1,9 +1,6 @@
 import { PaymentMethod } from '@prisma/client';
 
-import type {
-  PosOrderDto,
-  PosOrderOperationsPort,
-} from '../orders/public-api';
+import type { PosOrderDto, PosOrderOperationsPort } from '../orders/public-api';
 import { PaymentTransaction } from '../payments/domain/payment-transaction';
 import type { PaymentTransactionRepository } from '../payments/application/payment-transaction.repository';
 import type { RefundPaymentService } from '../payments/application/refund-payment.service';
