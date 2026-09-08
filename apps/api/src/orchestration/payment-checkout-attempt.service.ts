@@ -414,8 +414,7 @@ export class PaymentCheckoutAttemptService {
         attemptId: checkout.attemptId,
         userStableId: snapshot.order.userStableId ?? undefined,
         couponStableId: snapshot.coupon?.couponStableId,
-        reserveAssignedCoupon:
-          snapshot.coupon?.reserveAssignedCoupon ?? false,
+        reserveAssignedCoupon: snapshot.coupon?.reserveAssignedCoupon ?? false,
         expiresAt: checkout.expiresAt,
       });
       const prepared = await this.prisma.paymentCheckoutAttempt.updateMany({
@@ -445,7 +444,8 @@ export class PaymentCheckoutAttemptService {
     if (draft.version !== 2) {
       throw new ConflictException({
         code: 'PAYMENT_CHECKOUT_SNAPSHOT_VERSION_UNSUPPORTED',
-        message: 'Payment checkout snapshot is not supported by this deployment.',
+        message:
+          'Payment checkout snapshot is not supported by this deployment.',
       });
     }
     if (draft.storeStableId !== record.storeId) {

@@ -1625,7 +1625,7 @@ export class OrdersService {
             code: couponInfo.coupon.code,
             title: couponInfo.coupon.title,
             minSpendCents: couponInfo.coupon.minSpendCents,
-            expiresAt: couponInfo.coupon.expiresAt?.toISOString() ?? null,
+            expiresAt: couponInfo.coupon.expiresAt,
           }
         : null,
       preparedAt: new Date().toISOString(),

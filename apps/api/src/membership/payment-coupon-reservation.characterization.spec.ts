@@ -65,7 +65,9 @@ describe('MembershipService payment coupon reservation characterization', () => 
     const transaction = jest.fn(
       (work: (client: typeof tx) => Promise<unknown>) => work(tx),
     );
-    const service = Object.create(MembershipService.prototype) as MembershipService;
+    const service = Object.create(
+      MembershipService.prototype,
+    ) as MembershipService;
     Object.assign(service as unknown as Record<string, unknown>, {
       prisma: { $transaction: transaction },
     });

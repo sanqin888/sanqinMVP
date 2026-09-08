@@ -108,17 +108,20 @@ function makeCreatedOrder(input: {
 describe('OrdersService confirmed-payment finalization characterization', () => {
   it('commits Benefits and Coupon reservations in the same transaction that creates the paid Order snapshot', async () => {
     const outerFindUnique = jest.fn().mockResolvedValue(null);
-    const orderCreate = jest
-      .fn()
-      .mockImplementation(({ data }: { data: unknown }) =>
-        Promise.resolve(
-          makeCreatedOrder({
-            id: '8a3d4c0e-4750-4f6a-9138-000000000030',
-            orderStableId: 'order_stable_1',
-            data: data as Record<string, unknown>,
-          }),
-        ),
-      );
+    type OrderCreateInput = {
+      data: Record<string, unknown> & {
+        items: { create: Array<Record<string, unknown>> };
+      };
+    };
+    const orderCreate = jest.fn(({ data }: OrderCreateInput) =>
+      Promise.resolve(
+        makeCreatedOrder({
+          id: '8a3d4c0e-4750-4f6a-9138-000000000030',
+          orderStableId: 'order_stable_1',
+          data,
+        }),
+      ),
+    );
     const createLifecycleEvent = jest.fn().mockResolvedValue({ count: 1 });
     const tx = {
       order: { create: orderCreate },
@@ -223,10 +226,8 @@ describe('OrdersService confirmed-payment finalization characterization', () => 
         include: { items: true },
       }),
     );
-    const createInput = orderCreate.mock.calls[0]?.[0] as {
-      data: { items: { create: Array<Record<string, unknown>> } };
-    };
-    expect(createInput.data.items.create[0]).not.toHaveProperty('id');
+    const createInput = orderCreate.mock.calls[0]?.[0];
+    expect(createInput?.data.items.create[0]).not.toHaveProperty('id');
     expect(createLifecycleEvent).toHaveBeenCalledWith({
       data: {
         idempotencyKey: 'order.accepted:order_stable_1',
