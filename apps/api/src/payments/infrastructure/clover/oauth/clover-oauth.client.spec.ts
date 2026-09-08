@@ -71,7 +71,7 @@ describe('CloverOAuthClient', () => {
         CLOVER_OAUTH_AUTHORIZE_BASE: 'https://legacy-authorize.example',
         CLOVER_OAUTH_API_BASE: 'https://legacy-api.example',
         CLOVER_UNIFIED_OAUTH_CLIENT_ID: 'app-123',
-        CLOVER_UNIFIED_OAUTH_CLIENT_SECRET: [REDACTED],
+        CLOVER_UNIFIED_OAUTH_CLIENT_SECRET: 'fixture-oauth-value',
         CLOVER_UNIFIED_OAUTH_CALLBACK_URL:
           'https://sanq.ca/clover/oauth/callback',
         CLOVER_UNIFIED_OAUTH_AUTHORIZE_BASE: undefined,
