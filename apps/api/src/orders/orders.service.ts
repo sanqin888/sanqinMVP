@@ -41,11 +41,13 @@ import {
   ORDER_BENEFITS_READER,
   type OrderBenefitsReaderPort,
 } from '../benefits/public-api';
-import {
-  CreateOrderInput,
-  DeliveryDestinationInput,
-  type OrderDiscountDisplayEntry,
-} from '@shared/order';
+import { CreateOrderInput, DeliveryDestinationInput } from '@shared/order';
+import type {
+  OrderPricingQuote,
+  PaymentOrderPreparationPort,
+  PaymentTenderAllocation,
+  PreparedPaymentOrderSnapshot,
+} from './payment-order-preparation.contract';
 import {
   ORDER_STATUS_ADVANCE_FLOW,
   ORDER_STATUS_TRANSITIONS,
@@ -244,72 +246,6 @@ function resolvePromotionRuleChannel(
   return PROMOTION_RULE_CHANNEL_BY_ORDER_CHANNEL[channel];
 }
 
-export type AppliedPricingDiscount = OrderDiscountDisplayEntry;
-
-export type OrderPricingQuote = {
-  subtotalCents: number;
-  displaySubtotalCents: number;
-  couponDiscountCents: number;
-  automaticPromotionDiscountCents: number;
-  posManualDiscountCents: number;
-  loyaltyRedeemCents: number;
-  taxCents: number;
-  deliveryFeeCents: number;
-  totalCents: number;
-  appliedDiscounts: AppliedPricingDiscount[];
-};
-
-export type PaymentTenderAllocation = {
-  pointsCents: number;
-  balanceCents: number;
-  couponDiscountCents: number;
-  orderTotalCents: number;
-  externalCents: number;
-};
-
-export type PreparedPaymentOrderItemSnapshot = {
-  productStableId: string;
-  qty: number;
-  displayName: string | null;
-  nameEn: string | null;
-  nameZh: string | null;
-  unitPriceCents: number;
-  baseUnitPriceCents: number;
-  optionsUnitPriceCents: number;
-  isDailySpecialApplied: boolean;
-  dailySpecialStableId: string | null;
-  optionsJson: unknown;
-  componentsJson?: unknown;
-};
-
-/** Persisted cross-context payment draft. V2 must contain business/stable identities only. */
-export type PreparedPaymentOrderSnapshot = {
-  version: 2;
-  order: {
-    userStableId: string | null;
-    channel: CreateOrderInput['channel'];
-    fulfillmentType: CreateOrderInput['fulfillmentType'];
-    contactName: string | null;
-    contactEmail: string | null;
-    contactPhone: string | null;
-  };
-  /** Business store identity: Store.storeStableId, matching Order.storeId. */
-  storeStableId: string;
-  pricing: OrderPricingQuote;
-  tender: PaymentTenderAllocation;
-  items: PreparedPaymentOrderItemSnapshot[];
-  promotionSnapshot: unknown;
-  coupon: {
-    couponStableId: string;
-    reserveAssignedCoupon: boolean;
-    code: string;
-    title: string;
-    minSpendCents: number | null;
-    expiresAt: string | null;
-  } | null;
-  preparedAt: string;
-};
-
 export type ConfirmedPaymentOrderResult = {
   order: OrderDto;
   internalOrderId: string;
@@ -320,7 +256,7 @@ type CreateInternalOptions = {
 };
 
 @Injectable()
-export class OrdersService {
+export class OrdersService implements PaymentOrderPreparationPort {
   private readonly logger = new AppLogger(OrdersService.name);
   private readonly CLIENT_REQUEST_ID_RE = CLIENT_REQUEST_ID_RE;
 
