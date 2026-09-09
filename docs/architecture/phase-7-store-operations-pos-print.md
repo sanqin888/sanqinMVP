@@ -2,7 +2,7 @@
 
 Start date: 2026-09-09  
 Current implementation base: `origin/dev@8f78f0b5`  
-Current status: **SLICE 3 LOCAL / SOURCE COMPLETE — REVIEW PENDING**
+Current status: **SLICE 3 PR #2252 / CI PENDING**
 
 ## Goal
 
@@ -126,7 +126,7 @@ Therefore Store Operations / POS / Print total direct debt contracts:
 16 -> 14
 ```
 
-The POS -> Brand/Store public dependency direction already existed before this Slice through Brand/Store configuration capabilities, so Slice 2 does not introduce a new context direction. The GitHub Actions architecture gate must still confirm the final SCC/baseline state after user review and remote delivery.
+The POS -> Brand/Store public dependency direction already existed before this Slice through Brand/Store configuration capabilities, so Slice 2 does not introduce a new context direction.
 
 ### Preserved behavior / explicit non-scope
 
@@ -148,7 +148,7 @@ Existing watchdog characterization coverage remains applicable to non-business-h
 
 ## Slice 3 — API Foundation public-surface contraction
 
-Status: **LOCAL / SOURCE COMPLETE — REVIEW PENDING**
+Status: **PR #2252 / CI PENDING** — current reviewed source head `6935f554`; final merge evidence will be recorded on the CI-green head.
 
 Migration classification: **Class A atomic internal boundary contraction**. Slice 3 does not redefine POS connectivity ownership or create a new Foundation abstraction. It only moves neutral API utilities that already belong to `architecture-foundation` behind one explicit API public surface and removes the accidental POS pass-through ownership of Foundation pipes.
 
@@ -200,7 +200,7 @@ runtime-data-ci-ops         5  # mostly POS-owned persistence/composition
 
 Slice 3 does **not** change logger behavior, validation rules, StableId semantics, POS routes, DTOs, device/auth behavior, connectivity heartbeat/timeout calculation, Uber pause/resume/provider behavior, Orders/Payments/Clover, printing, Prisma/schema/migrations, dependencies/lockfile, or compatibility records.
 
-Per `AGENTS.md`, no local lint/build/test/scanner command is run before review. GitHub Actions remains the authoritative verification gate after user approval for remote delivery.
+Per `AGENTS.md`, no local lint/build/test/scanner command was run before review. GitHub Actions remains the authoritative verification gate after remote delivery.
 
 ## Next candidate after Slice 3
 
