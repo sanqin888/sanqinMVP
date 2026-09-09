@@ -59,6 +59,15 @@ export type UberOrderImportActionIntent = UberOrderActionIntent<
   Extract<UberOrderActionName, 'ACCEPT' | 'DENY'>
 >;
 
+export type UberPosConnectivity = {
+  status: 'ONLINE' | 'OFFLINE' | 'UNKNOWN';
+  lastHeartbeatAt: Date | null;
+};
+
+export interface UberPosConnectivityQueryPort {
+  getStoreConnectivity(storeStableId: string): Promise<UberPosConnectivity>;
+}
+
 export interface UberOrderImportRepositoryPort {
   findMenuMappings(
     uberStoreId: string,
@@ -74,10 +83,6 @@ export interface UberOrderImportRepositoryPort {
   } | null>;
   /** Standalone admission DENY creates no local Order; failure webhook may arrive afterward. */
   hasSucceededDenial?(externalOrderId: string): Promise<boolean>;
-  getPosStoreConnectivity?(storeStableId: string): Promise<{
-    status: 'ONLINE' | 'OFFLINE' | 'UNKNOWN';
-    lastHeartbeatAt: Date | null;
-  }>;
   saveExistingOrderCancellation(input: {
     orderId: string;
     externalOrderId: string;
@@ -245,6 +250,7 @@ export interface UberOrderTransactionPort {
 export const UBER_ORDER_IMPORT_REPOSITORY = Symbol(
   'UBER_ORDER_IMPORT_REPOSITORY',
 );
+export const UBER_POS_CONNECTIVITY_QUERY = Symbol('UBER_POS_CONNECTIVITY_QUERY');
 export const UBER_ORDER_ACTION_REPOSITORY = Symbol(
   'UBER_ORDER_ACTION_REPOSITORY',
 );

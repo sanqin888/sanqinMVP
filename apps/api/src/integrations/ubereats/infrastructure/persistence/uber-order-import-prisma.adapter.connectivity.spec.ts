@@ -1,47 +1,28 @@
 import { UberOrderImportPrismaAdapter } from './uber-order-import-prisma.adapter';
 
-const ORIGINAL_STORE_ID = process.env.STORE_ID;
-
 describe('UberOrderImportPrismaAdapter POS connectivity', () => {
-  beforeEach(() => {
-    process.env.STORE_ID = '4750_Yonge_Street';
-  });
-
   afterEach(() => {
-    if (ORIGINAL_STORE_ID === undefined) delete process.env.STORE_ID;
-    else process.env.STORE_ID = ORIGINAL_STORE_ID;
     jest.restoreAllMocks();
   });
 
-  it('queries active POS devices without passing the external store id to the UUID column', async () => {
+  it('reads authoritative ONLINE connectivity from the POS-owned projection', async () => {
     const now = 1_000_000;
     jest.spyOn(Date, 'now').mockReturnValue(now);
-    const findMany = jest.fn().mockResolvedValue([
-      {
-        lastSeenAt: new Date(now),
-        meta: { connectivityHeartbeatV1: true },
-      },
-    ]);
     const findUnique = jest.fn().mockResolvedValue({
       hasHeartbeatCapableActiveDevice: true,
       lastHeartbeatAt: new Date(now),
       validUntil: new Date(now + 90_000),
     });
     const adapter = new UberOrderImportPrismaAdapter(
-      {
-        posDevice: { findMany },
-        posConnectivityReadModel: { findUnique },
-      } as never,
+      { posConnectivityReadModel: { findUnique } } as never,
       {} as never,
     );
 
     await expect(
-      adapter.getPosStoreConnectivity('4750_Yonge_Street'),
-    ).resolves.toMatchObject({ status: 'ONLINE' });
-
-    expect(findMany).toHaveBeenCalledWith({
-      where: { status: 'ACTIVE' },
-      select: { lastSeenAt: true, meta: true },
+      adapter.getStoreConnectivity('4750_Yonge_Street'),
+    ).resolves.toEqual({
+      status: 'ONLINE',
+      lastHeartbeatAt: new Date(now),
     });
     expect(findUnique).toHaveBeenCalledWith({
       where: { storeStableId: '4750_Yonge_Street' },
@@ -53,80 +34,79 @@ describe('UberOrderImportPrismaAdapter POS connectivity', () => {
     });
   });
 
-  it('keeps legacy PosDevice connectivity authoritative when the shadow read model differs', async () => {
-    const now = 1_000_000;
-    jest.spyOn(Date, 'now').mockReturnValue(now);
-    const findMany = jest.fn().mockResolvedValue([
+  it.each([
+    ['missing projection', null],
+    [
+      'no active order-receiving POS',
       {
-        lastSeenAt: new Date(now),
-        meta: { connectivityHeartbeatV1: true },
+        hasHeartbeatCapableActiveDevice: false,
+        lastHeartbeatAt: null,
+        validUntil: null,
       },
-    ]);
-    const findUnique = jest.fn().mockResolvedValue({
-      hasHeartbeatCapableActiveDevice: true,
-      lastHeartbeatAt: new Date(now - 120_000),
-      validUntil: new Date(now - 30_000),
-    });
+    ],
+  ])('returns UNKNOWN for %s', async (_case, readModel) => {
     const adapter = new UberOrderImportPrismaAdapter(
       {
-        posDevice: { findMany },
-        posConnectivityReadModel: { findUnique },
-      } as never,
-      {} as never,
-    );
-
-    await expect(
-      adapter.getPosStoreConnectivity('4750_Yonge_Street'),
-    ).resolves.toEqual({
-      status: 'ONLINE',
-      lastHeartbeatAt: new Date(now),
-    });
-  });
-
-  it('keeps legacy connectivity authoritative when the shadow read fails', async () => {
-    const now = 1_000_000;
-    jest.spyOn(Date, 'now').mockReturnValue(now);
-    const findMany = jest.fn().mockResolvedValue([
-      {
-        lastSeenAt: new Date(now),
-        meta: { connectivityHeartbeatV1: true },
-      },
-    ]);
-    const adapter = new UberOrderImportPrismaAdapter(
-      {
-        posDevice: { findMany },
         posConnectivityReadModel: {
-          findUnique: jest
-            .fn()
-            .mockRejectedValue(new Error('shadow unavailable')),
+          findUnique: jest.fn().mockResolvedValue(readModel),
         },
       } as never,
       {} as never,
     );
 
     await expect(
-      adapter.getPosStoreConnectivity('4750_Yonge_Street'),
-    ).resolves.toEqual({
-      status: 'ONLINE',
-      lastHeartbeatAt: new Date(now),
-    });
+      adapter.getStoreConnectivity('another_store'),
+    ).resolves.toEqual({ status: 'UNKNOWN', lastHeartbeatAt: null });
   });
 
-  it('does not read POS connectivity persistence for an unrelated external store id', async () => {
-    const findMany = jest.fn();
-    const findUnique = jest.fn();
+  it.each([
+    [
+      'missing heartbeat timestamp',
+      {
+        hasHeartbeatCapableActiveDevice: true,
+        lastHeartbeatAt: null,
+        validUntil: null,
+      },
+      null,
+    ],
+    [
+      'expired lease',
+      {
+        hasHeartbeatCapableActiveDevice: true,
+        lastHeartbeatAt: new Date(800_000),
+        validUntil: new Date(900_000),
+      },
+      new Date(800_000),
+    ],
+  ])('returns OFFLINE for %s', async (_case, readModel, lastHeartbeatAt) => {
+    jest.spyOn(Date, 'now').mockReturnValue(1_000_000);
     const adapter = new UberOrderImportPrismaAdapter(
       {
-        posDevice: { findMany },
-        posConnectivityReadModel: { findUnique },
+        posConnectivityReadModel: {
+          findUnique: jest.fn().mockResolvedValue(readModel),
+        },
       } as never,
       {} as never,
     );
 
     await expect(
-      adapter.getPosStoreConnectivity('another_store'),
-    ).resolves.toEqual({ status: 'UNKNOWN', lastHeartbeatAt: null });
-    expect(findMany).not.toHaveBeenCalled();
-    expect(findUnique).not.toHaveBeenCalled();
+      adapter.getStoreConnectivity('4750_Yonge_Street'),
+    ).resolves.toEqual({ status: 'OFFLINE', lastHeartbeatAt });
+  });
+
+  it('propagates projection read failure so the durable webhook inbox can retry', async () => {
+    const failure = new Error('projection unavailable');
+    const adapter = new UberOrderImportPrismaAdapter(
+      {
+        posConnectivityReadModel: {
+          findUnique: jest.fn().mockRejectedValue(failure),
+        },
+      } as never,
+      {} as never,
+    );
+
+    await expect(
+      adapter.getStoreConnectivity('4750_Yonge_Street'),
+    ).rejects.toBe(failure);
   });
 });
