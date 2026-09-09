@@ -59,18 +59,16 @@ describe('UberOrderAdmissionService', () => {
         expectedPriceCents: 100,
       },
     ]);
-    const getPosStoreConnectivity = jest.fn().mockResolvedValue({
+    const getStoreConnectivity = jest.fn().mockResolvedValue({
       status: 'ONLINE',
       lastHeartbeatAt: new Date(),
     });
     const findMapping = jest.fn().mockResolvedValue(provisionedStore);
     const service = new UberOrderAdmissionService(
-      {
-        findMenuMappings,
-        getPosStoreConnectivity,
-      } as never,
+      { findMenuMappings } as never,
       { findMapping } as never,
       relayAllStoreConfig() as never,
+      { getStoreConnectivity } as never,
     );
 
     await expect(
@@ -82,7 +80,7 @@ describe('UberOrderAdmissionService', () => {
     });
     expect(findMapping).toHaveBeenCalledWith('uber-store-1');
     expect(findMenuMappings).toHaveBeenCalledWith('uber-store-1', ['item-1']);
-    expect(getPosStoreConnectivity).toHaveBeenCalledWith('pos-store-1');
+    expect(getStoreConnectivity).toHaveBeenCalledWith('pos-store-1');
   });
 
   it('denies an otherwise valid order when POS connectivity is UNKNOWN', async () => {
@@ -95,13 +93,15 @@ describe('UberOrderAdmissionService', () => {
             expectedPriceCents: 100,
           },
         ]),
-        getPosStoreConnectivity: jest.fn().mockResolvedValue({
+      } as never,
+      { findMapping: jest.fn().mockResolvedValue(provisionedStore) } as never,
+      relayAllStoreConfig() as never,
+      {
+        getStoreConnectivity: jest.fn().mockResolvedValue({
           status: 'UNKNOWN',
           lastHeartbeatAt: null,
         }),
       } as never,
-      { findMapping: jest.fn().mockResolvedValue(provisionedStore) } as never,
-      relayAllStoreConfig() as never,
     );
 
     await expect(
@@ -118,19 +118,17 @@ describe('UberOrderAdmissionService', () => {
   it('returns a non-persistable DENY when a structured allergen matches StoreConfig', async () => {
     const order = parsedOrder();
     order.allergyRequest = { hasRequest: true, allergens: ['PEANUTS'] };
-    const getPosStoreConnectivity = jest.fn();
+    const getStoreConnectivity = jest.fn();
     const findMenuMappings = jest.fn();
     const getStoreAllergyPolicy = jest.fn().mockResolvedValue({
       mode: 'DENY_LIST',
       unsupportedAllergens: ['PEANUTS'],
     });
     const service = new UberOrderAdmissionService(
-      {
-        findMenuMappings,
-        getPosStoreConnectivity,
-      } as never,
+      { findMenuMappings } as never,
       { findMapping: jest.fn().mockResolvedValue(provisionedStore) } as never,
       { getStoreAllergyPolicy } as never,
+      { getStoreConnectivity } as never,
     );
 
     await expect(service.evaluate(order, 'event-1')).resolves.toMatchObject({
@@ -147,18 +145,16 @@ describe('UberOrderAdmissionService', () => {
     });
     expect(getStoreAllergyPolicy).toHaveBeenCalledWith('pos-store-1');
     expect(findMenuMappings).not.toHaveBeenCalled();
-    expect(getPosStoreConnectivity).not.toHaveBeenCalled();
+    expect(getStoreConnectivity).not.toHaveBeenCalled();
   });
 
   it('returns a non-persistable DENY when the published menu mapping is missing', async () => {
-    const getPosStoreConnectivity = jest.fn();
+    const getStoreConnectivity = jest.fn();
     const service = new UberOrderAdmissionService(
-      {
-        findMenuMappings: jest.fn().mockResolvedValue([]),
-        getPosStoreConnectivity,
-      } as never,
+      { findMenuMappings: jest.fn().mockResolvedValue([]) } as never,
       { findMapping: jest.fn().mockResolvedValue(provisionedStore) } as never,
       relayAllStoreConfig() as never,
+      { getStoreConnectivity } as never,
     );
 
     await expect(
@@ -173,7 +169,7 @@ describe('UberOrderAdmissionService', () => {
         },
       },
     });
-    expect(getPosStoreConnectivity).not.toHaveBeenCalled();
+    expect(getStoreConnectivity).not.toHaveBeenCalled();
   });
 
   it('rejects missing Uber item identity before persistence', async () => {
@@ -182,12 +178,10 @@ describe('UberOrderAdmissionService', () => {
     if (!firstItem) throw new Error('test fixture requires one order item');
     firstItem.externalItemId = null;
     const service = new UberOrderAdmissionService(
-      {
-        findMenuMappings: jest.fn().mockResolvedValue([]),
-        getPosStoreConnectivity: jest.fn(),
-      } as never,
+      { findMenuMappings: jest.fn().mockResolvedValue([]) } as never,
       { findMapping: jest.fn().mockResolvedValue(provisionedStore) } as never,
       relayAllStoreConfig() as never,
+      { getStoreConnectivity: jest.fn() } as never,
     );
 
     await expect(service.evaluate(order, 'event-1')).resolves.toMatchObject({
@@ -216,6 +210,7 @@ describe('UberOrderAdmissionService', () => {
         { findMenuMappings: jest.fn() } as never,
         { findMapping: jest.fn().mockResolvedValue(mapping) } as never,
         relayAllStoreConfig() as never,
+        { getStoreConnectivity: jest.fn() } as never,
       );
 
       await expect(

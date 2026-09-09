@@ -67,6 +67,13 @@ const defaultStoreConfig = () => ({
   getStoreAutoAcceptOnlineOrders: jest.fn().mockResolvedValue(true),
 });
 
+const onlineConnectivity = () => ({
+  getStoreConnectivity: jest.fn().mockResolvedValue({
+    status: 'ONLINE',
+    lastHeartbeatAt: new Date('2026-08-20T13:00:00.000Z'),
+  }),
+});
+
 describe('Uber order use-case boundaries', () => {
   it.each([
     [
@@ -102,6 +109,7 @@ describe('Uber order use-case boundaries', () => {
         actions as unknown as UberOrderActionService,
         { findMapping: jest.fn() } as never,
         defaultStoreConfig() as never,
+        onlineConnectivity() as never,
       );
 
       await expect(
@@ -130,6 +138,7 @@ describe('Uber order use-case boundaries', () => {
       actions as unknown as UberOrderActionService,
       { findMapping: jest.fn() } as never,
       defaultStoreConfig() as never,
+      onlineConnectivity() as never,
     );
 
     await useCase.execute('orders.notification', 'event-1', notification);
@@ -163,6 +172,7 @@ describe('Uber order use-case boundaries', () => {
       actions as unknown as UberOrderActionService,
       { findMapping: jest.fn() } as never,
       defaultStoreConfig() as never,
+      onlineConnectivity() as never,
     );
 
     await useCase.execute('orders.notification', 'event-allergy', notification);
@@ -182,10 +192,6 @@ describe('Uber order use-case boundaries', () => {
     const repository: UberOrderImportRepositoryPort = {
       findByExternalOrderId: jest.fn().mockResolvedValue(null),
       findMenuMappings: jest.fn().mockResolvedValue([importedMenuMapping]),
-      getPosStoreConnectivity: jest.fn().mockResolvedValue({
-        status: 'ONLINE',
-        lastHeartbeatAt: new Date('2026-08-20T13:00:00.000Z'),
-      }),
       saveExistingOrderCancellation: jest.fn(),
       saveImportedOrder: jest.fn((order: ImportedOrderInput) => {
         saved.order = order;
@@ -206,6 +212,7 @@ describe('Uber order use-case boundaries', () => {
       actions,
       { findMapping } as never,
       defaultStoreConfig() as never,
+      onlineConnectivity() as never,
     );
 
     await useCase.execute('orders.notification', 'event-1', notification);
@@ -245,6 +252,7 @@ describe('Uber order use-case boundaries', () => {
       { request: jest.fn() } as unknown as UberOrderActionService,
       { findMapping: jest.fn() } as never,
       defaultStoreConfig() as never,
+      onlineConnectivity() as never,
     );
 
     await useCase.execute('orders.failure', 'failure-1', notification, {
@@ -283,6 +291,7 @@ describe('Uber order use-case boundaries', () => {
       { request: jest.fn() } as unknown as UberOrderActionService,
       { findMapping: jest.fn() } as never,
       defaultStoreConfig() as never,
+      onlineConnectivity() as never,
     );
 
     await expect(
@@ -306,6 +315,7 @@ describe('Uber order use-case boundaries', () => {
       { request: jest.fn() } as unknown as UberOrderActionService,
       { findMapping: jest.fn() } as never,
       defaultStoreConfig() as never,
+      onlineConnectivity() as never,
     );
 
     await expect(
@@ -340,6 +350,7 @@ describe('Uber order use-case boundaries', () => {
       { request: jest.fn() } as unknown as UberOrderActionService,
       { findMapping: jest.fn() } as never,
       defaultStoreConfig() as never,
+      onlineConnectivity() as never,
     );
     await useCase.execute('orders.notification', 'event-1', notification);
     expect(fetchOrderDetail).not.toHaveBeenCalled();

@@ -10,6 +10,7 @@ import type { UberStoreConfigQueryPort } from '../shared/uber-store-config.port'
 import type {
   UberOrderImportRepositoryPort,
   UberOrderMenuMapping,
+  UberPosConnectivityQueryPort,
 } from './uber-order.ports';
 
 const POS_EXTERNAL_STORE_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
@@ -51,6 +52,7 @@ export class UberOrderAdmissionService {
     private readonly repository: UberOrderImportRepositoryPort,
     private readonly storeMappings: UberStoreMappingRepositoryPort,
     private readonly storeConfig: UberStoreConfigQueryPort,
+    private readonly connectivity: UberPosConnectivityQueryPort,
   ) {}
 
   invalidDetail(
@@ -172,9 +174,8 @@ export class UberOrderAdmissionService {
         );
       });
     const connectivity =
-      context.missingItemReference === null &&
-      this.repository.getPosStoreConnectivity
-        ? await this.repository.getPosStoreConnectivity(context.storeStableId)
+      context.missingItemReference === null
+        ? await this.connectivity.getStoreConnectivity(context.storeStableId)
         : { status: 'UNKNOWN' as const, lastHeartbeatAt: null };
     const decision = this.policy.evaluate({
       missingItemReference: context.missingItemReference,

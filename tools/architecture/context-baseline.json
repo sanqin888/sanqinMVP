@@ -668,7 +668,7 @@
     "commerce-orders-fulfillment -> architecture-foundation": 8,
     "commerce-orders-fulfillment -> identity-customer-benefits": 2,
     "commerce-orders-fulfillment -> runtime-data-ci-ops": 10,
-    "external-channels -> architecture-foundation": 11,
+    "external-channels -> architecture-foundation": 10,
     "external-channels -> commerce-orders-fulfillment": 1,
     "external-channels -> identity-customer-benefits": 6,
     "external-channels -> runtime-data-ci-ops": 24,
@@ -686,7 +686,6 @@
     "payments-clover -> messaging-notifications": 2,
     "payments-clover -> runtime-data-ci-ops": 8,
     "payments-clover -> store-operations-pos-print": 2,
-    "store-operations-pos-print -> architecture-foundation": 2,
     "store-operations-pos-print -> external-channels": 1,
     "store-operations-pos-print -> identity-customer-benefits": 1,
     "store-operations-pos-print -> runtime-data-ci-ops": 5

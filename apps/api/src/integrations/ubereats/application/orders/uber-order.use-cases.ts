@@ -12,6 +12,7 @@ import {
   type UberOrderImportActionIntent,
   type UberOrderImportRepositoryPort,
   type UberOrderModifierSnapshotMapping,
+  type UberPosConnectivityQueryPort,
 } from './uber-order.ports';
 import { type UberOrderDetailQueryPort } from './uber-order-query.ports';
 import type { UberOrderAdmissionDecision } from '../../domain/orders/uber-order-admission.policy';
@@ -33,11 +34,13 @@ export class ImportUberOrderUseCase {
     private readonly actions: UberOrderActionService,
     storeMappings: UberStoreMappingRepositoryPort,
     private readonly storeConfig: UberStoreConfigQueryPort,
+    connectivity: UberPosConnectivityQueryPort,
   ) {
     this.admission = new UberOrderAdmissionService(
       repository,
       storeMappings,
       storeConfig,
+      connectivity,
     );
   }
 
