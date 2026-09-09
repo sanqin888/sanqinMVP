@@ -1,8 +1,18 @@
-import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import type { Prisma } from '@prisma/client';
-import { withPosConnectivityHeartbeatEnabled } from '../common/pos-connectivity';
+import {
+  DEFAULT_POS_CONNECTIVITY_OFFLINE_AFTER_MS,
+  isPosConnectivityHeartbeatEnabled,
+  readPositiveDurationMs,
+  withPosConnectivityHeartbeatEnabled,
+} from '../common/pos-connectivity';
 import {
   STORE_DIRECTORY_READER,
   type StoreDirectoryReaderPort,
@@ -42,11 +52,116 @@ function toJsonObject(value: Record<string, unknown>): Prisma.JsonObject {
 export class PosDeviceService
   implements PosDeviceManagementPort, PosDeviceCredentialVerifierPort
 {
+  private readonly logger = new Logger(PosDeviceService.name);
+  private readonly connectivityOfflineAfterMs = readPositiveDurationMs(
+    process.env.POS_CONNECTIVITY_HEARTBEAT_TIMEOUT_MS,
+    DEFAULT_POS_CONNECTIVITY_OFFLINE_AFTER_MS,
+  );
+
   constructor(
     private readonly prisma: PrismaService,
     @Inject(STORE_DIRECTORY_READER)
     private readonly storeDirectoryReader: StoreDirectoryReaderPort,
   ) {}
+
+  private connectivityValidUntil(lastHeartbeatAt: Date): Date {
+    return new Date(
+      lastHeartbeatAt.getTime() + this.connectivityOfflineAfterMs,
+    );
+  }
+
+  private async writeConnectivityReadModelForActivity(
+    storeStableId: string,
+    lastHeartbeatAt: Date,
+  ): Promise<void> {
+    const validUntil = this.connectivityValidUntil(lastHeartbeatAt);
+    await this.prisma.posConnectivityReadModel.upsert({
+      where: { storeStableId },
+      create: {
+        storeStableId,
+        hasHeartbeatCapableActiveDevice: true,
+        lastHeartbeatAt,
+        validUntil,
+      },
+      update: {
+        hasHeartbeatCapableActiveDevice: true,
+        lastHeartbeatAt,
+        validUntil,
+      },
+    });
+  }
+
+  private async refreshConnectivityReadModelForStore(
+    storeStableId: string,
+  ): Promise<void> {
+    const devices = await this.prisma.posDevice.findMany({
+      where: { status: 'ACTIVE', store: { storeStableId } },
+      select: { lastSeenAt: true, meta: true },
+    });
+    const heartbeatDevices = devices.filter((device) =>
+      isPosConnectivityHeartbeatEnabled(device.meta),
+    );
+    const lastHeartbeatAt = heartbeatDevices.reduce<Date | null>(
+      (latest, device) => {
+        if (!device.lastSeenAt) return latest;
+        return !latest || device.lastSeenAt > latest
+          ? device.lastSeenAt
+          : latest;
+      },
+      null,
+    );
+
+    await this.prisma.posConnectivityReadModel.upsert({
+      where: { storeStableId },
+      create: {
+        storeStableId,
+        hasHeartbeatCapableActiveDevice: heartbeatDevices.length > 0,
+        lastHeartbeatAt,
+        validUntil: lastHeartbeatAt
+          ? this.connectivityValidUntil(lastHeartbeatAt)
+          : null,
+      },
+      update: {
+        hasHeartbeatCapableActiveDevice: heartbeatDevices.length > 0,
+        lastHeartbeatAt,
+        validUntil: lastHeartbeatAt
+          ? this.connectivityValidUntil(lastHeartbeatAt)
+          : null,
+      },
+    });
+  }
+
+  private async writeConnectivityReadModelForActivitySafely(
+    storeStableId: string,
+    lastHeartbeatAt: Date,
+  ): Promise<void> {
+    try {
+      await this.writeConnectivityReadModelForActivity(
+        storeStableId,
+        lastHeartbeatAt,
+      );
+    } catch (error) {
+      this.logger.warn({
+        event: 'pos_connectivity_read_model_write_failed',
+        storeStableId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private async refreshConnectivityReadModelForStoreSafely(
+    storeStableId: string,
+  ): Promise<void> {
+    try {
+      await this.refreshConnectivityReadModelForStore(storeStableId);
+    } catch (error) {
+      this.logger.warn({
+        event: 'pos_connectivity_read_model_refresh_failed',
+        storeStableId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
 
   private hashDeviceKey(value: string): string {
     return createHash('sha256').update(value).digest('hex');
@@ -148,9 +263,13 @@ export class PosDeviceService
         meta: true,
         enrolledAt: true,
         lastSeenAt: true,
+        store: { select: { storeStableId: true } },
       },
     });
 
+    await this.refreshConnectivityReadModelForStoreSafely(
+      updated.store.storeStableId,
+    );
     return { device: updated, deviceKey };
   }
 
@@ -165,6 +284,7 @@ export class PosDeviceService
         status: true,
         deviceStableId: true,
         name: true,
+        meta: true,
         store: { select: { storeStableId: true } },
       },
     });
@@ -177,10 +297,17 @@ export class PosDeviceService
       return null;
     }
 
+    const lastSeenAt = new Date();
     await this.prisma.posDevice.update({
       where: { id: device.id },
-      data: { lastSeenAt: new Date() },
+      data: { lastSeenAt },
     });
+    if (isPosConnectivityHeartbeatEnabled(device.meta)) {
+      await this.writeConnectivityReadModelForActivitySafely(
+        device.store.storeStableId,
+        lastSeenAt,
+      );
+    }
 
     return {
       deviceStableId: device.deviceStableId,
@@ -192,7 +319,11 @@ export class PosDeviceService
   async recordConnectivityHeartbeat(deviceStableId: string): Promise<void> {
     const device = await this.prisma.posDevice.findUnique({
       where: { deviceStableId },
-      select: { id: true, meta: true },
+      select: {
+        id: true,
+        meta: true,
+        store: { select: { storeStableId: true } },
+      },
     });
     if (!device) return;
 
@@ -204,6 +335,9 @@ export class PosDeviceService
       where: { id: device.id },
       data: { meta: toJsonObject(nextMeta) },
     });
+    await this.refreshConnectivityReadModelForStoreSafely(
+      device.store.storeStableId,
+    );
   }
 
   async listDevicesByStore(
@@ -288,6 +422,9 @@ export class PosDeviceService
       },
     });
 
+    await this.refreshConnectivityReadModelForStoreSafely(
+      device.store.storeStableId,
+    );
     return {
       ...this.toManagementSnapshot(device),
       enrollmentCode,
@@ -311,11 +448,17 @@ export class PosDeviceService
         store: { select: { storeStableId: true } },
       },
     });
+    await this.refreshConnectivityReadModelForStoreSafely(
+      device.store.storeStableId,
+    );
     return this.toManagementSnapshot(device);
   }
 
   async deleteDevice(deviceStableId: string): Promise<void> {
-    await this.requireManagedDevice(deviceStableId);
+    const device = await this.requireManagedDevice(deviceStableId);
     await this.prisma.posDevice.delete({ where: { deviceStableId } });
+    await this.refreshConnectivityReadModelForStoreSafely(
+      device.store.storeStableId,
+    );
   }
 }

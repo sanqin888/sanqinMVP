@@ -1,8 +1,8 @@
 # Phase 7 — Store Operations / POS / Print Boundary Contraction
 
 Start date: 2026-09-09  
-Current implementation base: `origin/dev@d3b7996b`  
-Current status: **SLICE 4 PR #2253 / CI #5386 GREEN — final source head `bb6b6595`; final docs evidence head pending**
+Current implementation base: `origin/dev@af8b4d63`  
+Current status: **SLICE 5A PR #2254 / CI #5392 GREEN — final source head `d7d61660`; final docs evidence head pending**
 
 ## Goal
 
@@ -204,7 +204,7 @@ Per `AGENTS.md`, no local lint/build/test/scanner command was run before review.
 
 ## Slice 4 — POS connectivity -> Uber Store Status ownership contraction
 
-Status: **PR #2253 / CI #5386 GREEN — final source head `bb6b6595`; final docs evidence head pending**. Initial CI #5385 passed Architecture but failed API Lint only on four Prettier formatting findings before the formatting-only follow-up.
+Status: **MERGED / CI GREEN** — PR #2253; final PR head `f2ad198a`; squash merge `af8b4d63`; final PR CI #5387 and resulting `dev` push CI #5388 both passed. Initial CI #5385 failed only four Prettier formatting findings after Architecture had passed, and source/formatting head `bb6b6595` then passed CI #5386 before the final docs evidence head.
 
 Migration classification: **Class A atomic ownership contraction with the Uber L3 Phase-closeout verification gate**. No persisted/external wire contract, provider command shape, idempotency rule, route or independently deployed consumer changes. The cross-context public capability changes atomically with all in-repository consumers; provider-store mapping stays inside the existing Uber bounded context.
 
@@ -226,6 +226,42 @@ This Slice intentionally makes **no direct-debt or SCC baseline change**. The ex
 
 Per `AGENTS.md`, no local lint/build/test/scanner command is run before review. Because this changes the active Uber store-status runtime path, final Phase 7 consolidated verification must actively exercise POS offline -> Uber PAUSED until current business-day close, stable POS recovery -> Uber ONLINE, employee pause preservation, successful Uber telemetry, and absence of new mapping/retry errors.
 
-## Next candidate after Slice 4
+## Slice 5A — POS connectivity purpose-built read-model expand + shadow parity
 
-The opposite ownership seam remains separate: Uber order admission still reads POS connectivity through POS-owned device persistence/common connectivity semantics. Do not solve that by adding a direct Uber -> POS public dependency while POS -> Uber already exists, because that can recreate a public SCC. Re-audit that direction separately at Phase 7 closeout or Phase 8 with an orchestration/read-fact design. The direct `PosModule -> UberEatsModule` and `PosModule -> AuthModule` imports remain intentional composition seams. Printer-agent workspace/package restructuring also remains later because it affects an independently deployed production printing boundary and may require dependency/lockfile authorization.
+Status: **PR #2254 / CI #5392 GREEN** on `refactor/phase7-slice5a-pos-connectivity-read-model`, based on `origin/dev@af8b4d63`; final source head `d7d61660`, final docs evidence head pending. CI #5392 passed Prisma generation, Architecture baseline, API lint/build/strict/shared strict/full tests, and Web lint/build/strict/tests. Earlier CI #5390/#5391 both passed Architecture and failed only new-file lint findings, which were removed by focused source/test follow-ups. No deployment or active verification has been performed yet.
+
+Migration classification: **Class B expand-contract with Uber L3 verification**, explicitly authorized for an additive Prisma schema + migration only. Slice 5A does not cut admission truth and does not delete any legacy persistence path. Compatibility is registered as `pos-connectivity.read-model-shadow.v1` and must be removed in Slice 5B before Phase 7 source closeout.
+
+### Closeout blocker being resolved
+
+The Phase 7 closeout audit confirmed that `UberOrderImportPrismaAdapter.getPosStoreConnectivity()` still reads POS-owned `PosDevice` persistence and evaluates `common/pos-connectivity` inside External Channels. This is an ownership violation even though the public SCC scanner remains empty, because the dependency bypasses a POS source boundary through shared Prisma persistence. Adding an `Uber -> POS public-api` reader would be worse: POS already depends on Uber public capabilities, so the reverse public dependency would create an A <-> B public SCC.
+
+### Additive persistence/read-fact design
+
+`PosConnectivityReadModel` is added as a purpose-built POS-owned projection keyed only by `storeStableId`. It records whether the store currently has at least one heartbeat-capable ACTIVE POS device, the latest participating `lastHeartbeatAt`, and the derived `validUntil` lease. It deliberately has no Store DB UUID or Uber/provider identity. The migration only creates the new table; there is no destructive change and no migration-time backfill that would guess the runtime timeout setting.
+
+`PosDeviceService` remains the only writer. It updates the projection from the same current behavior that owns `PosDevice.lastSeenAt` and `connectivityHeartbeatV1`: heartbeat-capable authenticated POS activity extends `validUntil`; first heartbeat capability, claim metadata replacement, enrollment reset, status changes and deletion trigger a store-level recomputation so multi-device/UNKNOWN semantics remain derivable from POS-owned facts. Projection write/refresh failures are logged and do not fail POS authentication/heartbeat/management in 5A because the projection is not yet authoritative.
+
+### Uber shadow behavior
+
+Uber order admission still returns the existing `PosDevice` + `resolvePosConnectivityStatus()` result. In parallel, the Uber persistence adapter reads `PosConnectivityReadModel` and emits `uber_pos_connectivity_read_model_shadow_compare` with `matched`, legacy/shadow status and timestamps. Shadow read failures emit `uber_pos_connectivity_read_model_shadow_failed` and do not affect admission. Uber has no write path to the read model and gains no import from `pos/**` or `pos/public-api.ts`.
+
+Focused tests/architecture guards pin:
+
+- heartbeat-capable POS activity refreshes the read model using the configured timeout;
+- an intentional shadow mismatch cannot change the legacy Uber admission result;
+- unrelated store IDs read neither legacy nor shadow POS connectivity persistence;
+- the Prisma model is keyed by `storeStableId` and is not exported through POS public API;
+- POS owns `posConnectivityReadModel.upsert`, while Uber may only `findUnique` it;
+- the temporary direct `PosDevice` read is annotated with `@compat pos-connectivity.read-model-shadow.v1`;
+- no `Uber -> POS` source/public dependency is introduced.
+
+This expand/shadow Slice intentionally makes **no direct-import baseline or public-SCC change**. The configured Phase 7 Store Operations direct-debt baseline therefore remains **9** (`architecture-foundation 2`, `external-channels 1`, `identity-customer-benefits 1`, `runtime-data-ci-ops 5`) until the later contraction removes the remaining connectivity implementation seam. Source inspection adds no reverse public edge; the GitHub Architecture gate must confirm public SCC remains empty after review.
+
+Per `AGENTS.md`, local lint/build/test/scanner commands are deferred until remote GitHub Actions after user review. The additive migration file has been authored for review but has not been locally applied or validated against a disposable database.
+
+## Required Slice 5B after 5A parity
+
+Slice 5B remains mandatory before Phase 7 source scope can be declared complete. After deployment of 5A and deliberate parity evidence shows zero mismatches/read-write failures for ONLINE, OFFLINE, UNKNOWN, timeout-boundary and device lifecycle cases, 5B should atomically switch Uber admission to `PosConnectivityReadModel`, remove `UberOrderImportRepositoryPort.getPosStoreConnectivity()` from the mixed order persistence contract, delete Uber's direct `prisma.posDevice` and `common/pos-connectivity` reads, move the remaining POS connectivity policy out of Foundation into POS ownership, close/remove `pos-connectivity.read-model-shadow.v1`, recompute the dependency baseline and keep public SCC empty.
+
+The direct `PosModule -> UberEatsModule` and `PosModule -> AuthModule` imports remain intentional composition seams. Printer-agent workspace/package restructuring stays later because it affects an independently deployed production printing boundary and may require dependency/lockfile authorization.

@@ -9,6 +9,7 @@ const COMMON_ROOT = resolve(API_ROOT, 'common');
 const ORCHESTRATION_ROOT = resolve(API_ROOT, 'orchestration');
 const STORE_ROOT = resolve(API_ROOT, 'store');
 const UBER_EATS_ROOT = resolve(API_ROOT, 'integrations', 'ubereats');
+const PRISMA_SCHEMA = resolve(API_ROOT, '..', 'prisma', 'schema.prisma');
 
 function read(path: string): string {
   return readFileSync(path, 'utf8');
@@ -147,6 +148,46 @@ describe('POS Foundation boundary', () => {
     expect(commonPublicApi).not.toContain('pos-connectivity');
     expect(posDeviceService).toContain("from '../common/pos-connectivity'");
     expect(watchdog).toContain("from '../common/pos-connectivity'");
+  });
+});
+
+describe('POS connectivity read-model ownership boundary', () => {
+  it('keeps the cross-context read fact POS-owned and shadow-only without a reverse public dependency', () => {
+    const schema = read(PRISMA_SCHEMA);
+    const posDeviceService = read(resolve(POS_ROOT, 'pos-device.service.ts'));
+    const posPublicApi = read(resolve(POS_ROOT, 'public-api.ts'));
+    const uberAdapter = read(
+      resolve(
+        UBER_EATS_ROOT,
+        'infrastructure',
+        'persistence',
+        'uber-order-import-prisma.adapter.ts',
+      ),
+    );
+
+    expect(schema).toContain('model PosConnectivityReadModel');
+    expect(schema).toContain('storeStableId                   String   @id');
+    expect(schema).toContain('hasHeartbeatCapableActiveDevice Boolean');
+    expect(schema).toContain('validUntil                      DateTime?');
+
+    expect(posDeviceService).toContain('posConnectivityReadModel.upsert');
+    expect(posDeviceService).toContain(
+      'refreshConnectivityReadModelForStoreSafely',
+    );
+    expect(posPublicApi).not.toContain('POS_CONNECTIVITY_READER');
+    expect(posPublicApi).not.toContain('PosConnectivityReadModel');
+
+    expect(uberAdapter).toContain(
+      '@compat pos-connectivity.read-model-shadow.v1',
+    );
+    expect(uberAdapter).toContain('this.prisma.posDevice.findMany');
+    expect(uberAdapter).toContain(
+      'this.prisma.posConnectivityReadModel.findUnique',
+    );
+    expect(uberAdapter).not.toMatch(
+      /posConnectivityReadModel\.(?:create|update|upsert|delete|deleteMany|updateMany)/,
+    );
+    expect(uberAdapter).not.toMatch(/from .*\/pos\//);
   });
 });
 

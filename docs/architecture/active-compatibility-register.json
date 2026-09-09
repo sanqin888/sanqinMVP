@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "baselineCommit": "fcc0b7c1",
+  "baselineCommit": "af8b4d63",
   "updatedAt": "2026-09-09",
   "requiredFields": [
     "compat_id",
@@ -51,6 +51,30 @@
       "governance_note": "The 2026-09-09 operator decision explicitly freezes the production Web Clover path while Test App/device acceptance and production-merchant authorization are incomplete. Do not modify /v1/charges execution, CARD/Apple Pay/Google Pay tokenization, 3DS/session/pricing-token/contact-verification, Web paid-Order creation, Web external-payment refund, production webhook merchant scope or persisted Web payment/surcharge facts merely to advance modularization. Non-payment bounded-context work may proceed. Resume Web Unified Payment work only after the stated provider/merchant gate, beginning with a fresh read-only production-merchant readiness/correlation audit before any v3 shadow or traffic authority change.",
       "evidence": [
         "docs/payments/clover-pos-integration-charter.md sections 3.8, 9.1 and 12.5"
+      ]
+    },
+    {
+      "compat_id": "pos-connectivity.read-model-shadow.v1",
+      "status": "active_shadow",
+      "old_owner": "Uber order admission reads POS-owned PosDevice persistence directly inside UberOrderImportPrismaAdapter and evaluates common/pos-connectivity semantics there",
+      "new_owner": "Store Operations/POS writes the purpose-built PosConnectivityReadModel keyed only by storeStableId; External Channels may read that projection but does not gain a reverse Uber -> POS public dependency",
+      "dual_write_or_read": [
+        "POS continues updating PosDevice.lastSeenAt/meta exactly as before and additionally maintains PosConnectivityReadModel from heartbeat-capable ACTIVE device activity",
+        "Uber order admission continues using the legacy PosDevice-derived result as authoritative truth while reading PosConnectivityReadModel only for shadow comparison",
+        "A projection read/write failure is logged and must not change POS authentication, heartbeat handling, or Uber admission during Slice 5A"
+      ],
+      "parity_metric": "For each deliberate Uber order-admission connectivity check after a fresh POS heartbeat, event=uber_pos_connectivity_read_model_shadow_compare must report matched=true for status and lastHeartbeatAt. Projection write/refresh failures and shadow-read failures must be zero; verify ONLINE, OFFLINE, UNKNOWN, timeout-boundary and device disable/delete/re-enable cases before cutover.",
+      "rollback": "Slice 5A rollback is source-only: ignore/remove the additive shadow reader/writer and leave the legacy PosDevice-derived admission truth unchanged. Do not drop or destructively rewrite the additive read-model table as part of rollback; it is non-authoritative until Slice 5B.",
+      "exit_criteria": "Before Phase 7 source closeout, deliberate parity verification shows zero mismatches/failures across the required connectivity cases, the projection semantics match the current PosDevice truth, and Slice 5B atomically switches Uber admission to the read model then removes Uber PosDevice/common connectivity reads and the temporary shadow compatibility annotation/register entry while public SCC remains empty.",
+      "remove_pr": "Phase 7 Slice 5B POS connectivity persistence contraction PR",
+      "deadline": "Must be removed in Phase 7 Slice 5B before Phase 7 source scope is declared complete",
+      "evidence": [
+        "apps/api/prisma/schema.prisma PosConnectivityReadModel",
+        "apps/api/prisma/migrations/20260909173000_expand_pos_connectivity_read_model/migration.sql",
+        "apps/api/src/pos/pos-device.service.ts",
+        "apps/api/src/integrations/ubereats/infrastructure/persistence/uber-order-import-prisma.adapter.ts",
+        "apps/api/src/pos/pos-device-management.architecture.spec.ts",
+        "docs/architecture/phase-7-store-operations-pos-print.md"
       ]
     }
   ],

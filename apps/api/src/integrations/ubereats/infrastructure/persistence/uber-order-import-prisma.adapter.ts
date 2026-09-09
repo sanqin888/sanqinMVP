@@ -47,6 +47,33 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
     private readonly ingestion: OrderIngestionPort,
   ) {}
 
+  private async readPosConnectivityReadModel(
+    storeStableId: string,
+    nowMs: number,
+  ) {
+    const readModel = await this.prisma.posConnectivityReadModel.findUnique({
+      where: { storeStableId },
+      select: {
+        hasHeartbeatCapableActiveDevice: true,
+        lastHeartbeatAt: true,
+        validUntil: true,
+      },
+    });
+    if (!readModel?.hasHeartbeatCapableActiveDevice) {
+      return { status: 'UNKNOWN' as const, lastHeartbeatAt: null };
+    }
+    if (!readModel.lastHeartbeatAt) {
+      return { status: 'OFFLINE' as const, lastHeartbeatAt: null };
+    }
+    return {
+      status:
+        readModel.validUntil && nowMs <= readModel.validUntil.getTime()
+          ? ('ONLINE' as const)
+          : ('OFFLINE' as const),
+      lastHeartbeatAt: readModel.lastHeartbeatAt,
+    };
+  }
+
   async findMenuMappings(
     uberStoreId: string,
     externalItemIds: string[],
@@ -127,6 +154,8 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
     if (storeStableId !== resolveConfiguredStoreStableId()) {
       return { status: 'UNKNOWN' as const, lastHeartbeatAt: null };
     }
+
+    /** @compat pos-connectivity.read-model-shadow.v1 */
     const devices = await this.prisma.posDevice.findMany({
       where: { status: 'ACTIVE' },
       select: { lastSeenAt: true, meta: true },
@@ -135,7 +164,38 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
       process.env.POS_CONNECTIVITY_HEARTBEAT_TIMEOUT_MS,
       DEFAULT_POS_CONNECTIVITY_OFFLINE_AFTER_MS,
     );
-    return resolvePosConnectivityStatus(devices, Date.now(), offlineAfterMs);
+    const nowMs = Date.now();
+    const legacy = resolvePosConnectivityStatus(devices, nowMs, offlineAfterMs);
+
+    try {
+      const shadow = await this.readPosConnectivityReadModel(
+        storeStableId,
+        nowMs,
+      );
+      const legacyHeartbeat = legacy.lastHeartbeatAt?.getTime() ?? null;
+      const shadowHeartbeat = shadow.lastHeartbeatAt?.getTime() ?? null;
+      this.logger.log({
+        event: 'uber_pos_connectivity_read_model_shadow_compare',
+        compatId: 'pos-connectivity.read-model-shadow.v1',
+        storeStableId,
+        matched:
+          legacy.status === shadow.status &&
+          legacyHeartbeat === shadowHeartbeat,
+        legacyStatus: legacy.status,
+        shadowStatus: shadow.status,
+        legacyLastHeartbeatAt: legacy.lastHeartbeatAt?.toISOString() ?? null,
+        shadowLastHeartbeatAt: shadow.lastHeartbeatAt?.toISOString() ?? null,
+      });
+    } catch (error) {
+      this.logger.warn({
+        event: 'uber_pos_connectivity_read_model_shadow_failed',
+        compatId: 'pos-connectivity.read-model-shadow.v1',
+        storeStableId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    return legacy;
   }
 
   async saveExistingOrderCancellation(
