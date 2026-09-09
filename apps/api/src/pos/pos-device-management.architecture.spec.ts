@@ -155,6 +155,9 @@ describe('POS connectivity read-model ownership boundary', () => {
   it('keeps the cross-context read fact POS-owned and shadow-only without a reverse public dependency', () => {
     const schema = read(PRISMA_SCHEMA);
     const posDeviceService = read(resolve(POS_ROOT, 'pos-device.service.ts'));
+    const watchdog = read(
+      resolve(POS_ROOT, 'pos-connectivity-watchdog.service.ts'),
+    );
     const posPublicApi = read(resolve(POS_ROOT, 'public-api.ts'));
     const uberAdapter = read(
       resolve(
@@ -170,12 +173,24 @@ describe('POS connectivity read-model ownership boundary', () => {
     expect(schema).toContain('hasHeartbeatCapableActiveDevice Boolean');
     expect(schema).toContain('validUntil                      DateTime?');
 
+    expect(posDeviceService).toContain('posConnectivityReadModel.updateMany');
+    expect(posDeviceService).toContain('posConnectivityReadModel.createMany');
     expect(posDeviceService).toContain('posConnectivityReadModel.upsert');
     expect(posDeviceService).toContain(
-      'refreshConnectivityReadModelForStoreSafely',
+      'repairConnectivityReadModelForStore',
+    );
+    expect(posDeviceService).toContain(
+      "where: { id: device.id, status: 'ACTIVE' }",
+    );
+    expect(posDeviceService).toContain(
+      'repairConnectivityReadModelIfDeviceBecameInactive',
     );
     expect(posPublicApi).not.toContain('POS_CONNECTIVITY_READER');
     expect(posPublicApi).not.toContain('PosConnectivityReadModel');
+    expect(watchdog).toContain('repairConnectivityReadModelForStore');
+    expect(watchdog).not.toContain(
+      "if (connectivity.status === 'UNKNOWN') return",
+    );
 
     expect(uberAdapter).toContain(
       '@compat pos-connectivity.read-model-shadow.v1',

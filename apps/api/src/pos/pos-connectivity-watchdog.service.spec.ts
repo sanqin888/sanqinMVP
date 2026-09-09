@@ -70,12 +70,18 @@ describe('PosConnectivityWatchdogService', () => {
     const posStoreStatus = {
       reconcileExpiredPause: jest.fn().mockResolvedValue(false),
     };
+    const posDeviceService = {
+      repairConnectivityReadModelForStore: jest
+        .fn()
+        .mockResolvedValue(undefined),
+    };
     const service = new PosConnectivityWatchdogService(
       prisma as never,
       configReader as never,
       uber as never,
       storeStatus as never,
       posStoreStatus as never,
+      posDeviceService as never,
     );
     return {
       service,
@@ -84,6 +90,7 @@ describe('PosConnectivityWatchdogService', () => {
       uber,
       storeStatus,
       posStoreStatus,
+      posDeviceService,
     };
   }
 
@@ -132,6 +139,28 @@ describe('PosConnectivityWatchdogService', () => {
       },
       select: { lastSeenAt: true, meta: true },
     });
+    expect(uber.syncStoreStatusForStore).toHaveBeenCalledWith({
+      storeStableId: STORE_STABLE_ID,
+      targetStatus: 'PAUSED',
+      reason: 'POS connectivity lost',
+      pauseUntil: '2026-08-26T03:30:00.000Z',
+    });
+  });
+
+  it('pauses Uber when no active order-receiving POS device exists', async () => {
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(NOW);
+    const { service, prisma, uber, posDeviceService } = setup(new Date(NOW));
+    prisma.posDevice.findMany.mockResolvedValue([]);
+
+    await service.runOnce();
+    expect(uber.syncStoreStatusForStore).not.toHaveBeenCalled();
+
+    nowSpy.mockReturnValue(NOW + 90_001);
+    await service.runOnce();
+
+    expect(
+      posDeviceService.repairConnectivityReadModelForStore,
+    ).toHaveBeenCalledWith(STORE_STABLE_ID);
     expect(uber.syncStoreStatusForStore).toHaveBeenCalledWith({
       storeStableId: STORE_STABLE_ID,
       targetStatus: 'PAUSED',

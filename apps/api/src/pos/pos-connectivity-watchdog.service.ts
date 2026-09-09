@@ -26,6 +26,7 @@ import {
   UBER_EATS_STORE_STATUS_SYNC,
   type UberEatsStoreStatusSyncPort,
 } from '../integrations/ubereats/public-api';
+import { PosDeviceService } from './pos-device.service';
 import { PosStoreStatusService } from './pos-store-status.service';
 
 type RuntimeState = {
@@ -69,6 +70,7 @@ export class PosConnectivityWatchdogService
     @Inject(STORE_STATUS_READER)
     private readonly storeStatus: StoreStatusReaderPort,
     private readonly posStoreStatus: PosStoreStatusService,
+    private readonly posDeviceService: PosDeviceService,
   ) {}
 
   onModuleInit(): void {
@@ -141,21 +143,24 @@ export class PosConnectivityWatchdogService
       now,
       this.offlineAfterMs,
     );
-    if (connectivity.status === 'UNKNOWN') return;
-    if (connectivity.status === 'OFFLINE') {
+    await this.posDeviceService.repairConnectivityReadModelForStore(storeStableId);
+
+    if (connectivity.status !== 'ONLINE') {
       const pauseUntil = this.resolveScheduleCloseAt(schedule);
       if (!pauseUntil) {
         this.logger.error({
           event: 'pos_connectivity_uber_pause_until_unavailable',
           storeStableId,
+          connectivityStatus: connectivity.status,
           scheduleDate: schedule.today.date,
           closeMinutes: schedule.today.closeMinutes,
           timezone: schedule.timezone,
         });
         return;
       }
-      await this.handleOffline(
+      await this.handleUnavailable(
         storeStableId,
+        connectivity.status,
         connectivity.lastHeartbeatAt,
         now,
         pauseUntil,
@@ -165,8 +170,9 @@ export class PosConnectivityWatchdogService
     }
   }
 
-  private async handleOffline(
+  private async handleUnavailable(
     storeStableId: string,
+    connectivityStatus: 'OFFLINE' | 'UNKNOWN',
     lastHeartbeatAt: Date | null,
     now: number,
     pauseUntil: string,
@@ -181,8 +187,12 @@ export class PosConnectivityWatchdogService
         syncFailures: 0,
       });
       this.logger.warn({
-        event: 'pos_connectivity_offline',
+        event:
+          connectivityStatus === 'UNKNOWN'
+            ? 'pos_connectivity_unknown'
+            : 'pos_connectivity_offline',
         storeStableId,
+        connectivityStatus,
         lastHeartbeatAt: lastHeartbeatAt?.toISOString() ?? null,
       });
     }

@@ -9,9 +9,13 @@ describe('PosDeviceService.verifyCredentials', () => {
   function setup(device: Record<string, unknown> | null) {
     const posDevice = {
       findUnique: jest.fn().mockResolvedValue(device),
+      findMany: jest.fn().mockResolvedValue([]),
       update: jest.fn().mockResolvedValue(device),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     };
     const posConnectivityReadModel = {
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      createMany: jest.fn().mockResolvedValue({ count: 0 }),
       upsert: jest.fn().mockResolvedValue({}),
     };
     const service = new PosDeviceService(
@@ -54,8 +58,8 @@ describe('PosDeviceService.verifyCredentials', () => {
         store: { select: { storeStableId: true } },
       },
     });
-    expect(posDevice.update).toHaveBeenCalledWith({
-      where: { id: 'db-device-1' },
+    expect(posDevice.updateMany).toHaveBeenCalledWith({
+      where: { id: 'db-device-1', status: 'ACTIVE' },
       data: { lastSeenAt: expect.any(Date) as unknown },
     });
   });
@@ -83,20 +87,21 @@ describe('PosDeviceService.verifyCredentials', () => {
         deviceKey,
       });
 
-      expect(posConnectivityReadModel.upsert).toHaveBeenCalledWith({
-        where: { storeStableId: 'store-a' },
-        create: {
+      expect(posConnectivityReadModel.updateMany).toHaveBeenCalledWith({
+        where: {
           storeStableId: 'store-a',
-          hasHeartbeatCapableActiveDevice: true,
-          lastHeartbeatAt: now,
-          validUntil,
+          OR: [
+            { lastHeartbeatAt: null },
+            { lastHeartbeatAt: { lt: now } },
+          ],
         },
-        update: {
+        data: {
           hasHeartbeatCapableActiveDevice: true,
           lastHeartbeatAt: now,
           validUntil,
         },
       });
+      expect(posConnectivityReadModel.createMany).not.toHaveBeenCalled();
     } finally {
       jest.useRealTimers();
       if (originalTimeout === undefined)
@@ -104,6 +109,142 @@ describe('PosDeviceService.verifyCredentials', () => {
       else process.env.POS_CONNECTIVITY_HEARTBEAT_TIMEOUT_MS = originalTimeout;
     }
   });
+
+  it(
+    'never lets an older authenticated activity overwrite a newer projection lease',
+    async () => {
+      const originalTimeout = process.env.POS_CONNECTIVITY_HEARTBEAT_TIMEOUT_MS;
+      process.env.POS_CONNECTIVITY_HEARTBEAT_TIMEOUT_MS = '90000';
+      const now = new Date('2026-09-09T17:30:00.000Z');
+      jest.useFakeTimers().setSystemTime(now);
+      try {
+        const deviceKey = 'device-secret';
+        const { service, posConnectivityReadModel } = setup({
+          id: 'db-device-1',
+          deviceStableId: 'device-1',
+          store: { storeStableId: 'store-a' },
+          name: 'Front POS',
+          status: 'ACTIVE',
+          deviceKeyHash: hashDeviceKey(deviceKey),
+          meta: { connectivityHeartbeatV1: true },
+        });
+        posConnectivityReadModel.updateMany.mockResolvedValue({ count: 0 });
+        posConnectivityReadModel.createMany.mockResolvedValue({ count: 0 });
+
+        await service.verifyCredentials({
+          deviceStableId: 'device-1',
+          deviceKey,
+        });
+
+        const expectedMonotonicAdvance = {
+          where: {
+            storeStableId: 'store-a',
+            OR: [
+              { lastHeartbeatAt: null },
+              { lastHeartbeatAt: { lt: now } },
+            ],
+          },
+          data: {
+            hasHeartbeatCapableActiveDevice: true,
+            lastHeartbeatAt: now,
+            validUntil: new Date(now.getTime() + 90_000),
+          },
+        };
+        expect(posConnectivityReadModel.updateMany).toHaveBeenCalledTimes(2);
+        expect(posConnectivityReadModel.updateMany).toHaveBeenNthCalledWith(
+          1,
+          expectedMonotonicAdvance,
+        );
+        expect(posConnectivityReadModel.updateMany).toHaveBeenNthCalledWith(
+          2,
+          expectedMonotonicAdvance,
+        );
+        expect(posConnectivityReadModel.createMany).toHaveBeenCalledWith({
+          data: [
+            {
+              storeStableId: 'store-a',
+              hasHeartbeatCapableActiveDevice: true,
+              lastHeartbeatAt: now,
+              validUntil: new Date(now.getTime() + 90_000),
+            },
+          ],
+          skipDuplicates: true,
+        });
+        expect(posConnectivityReadModel.upsert).not.toHaveBeenCalled();
+      } finally {
+        jest.useRealTimers();
+        if (originalTimeout === undefined)
+          delete process.env.POS_CONNECTIVITY_HEARTBEAT_TIMEOUT_MS;
+        else process.env.POS_CONNECTIVITY_HEARTBEAT_TIMEOUT_MS = originalTimeout;
+      }
+    },
+  );
+
+  it(
+    'does not refresh connectivity after a device is concurrently disabled',
+    async () => {
+      const deviceKey = 'device-secret';
+      const { service, posDevice, posConnectivityReadModel } = setup({
+        id: 'db-device-1',
+        deviceStableId: 'device-1',
+        store: { storeStableId: 'store-a' },
+        name: 'Front POS',
+        status: 'ACTIVE',
+        deviceKeyHash: hashDeviceKey(deviceKey),
+        meta: { connectivityHeartbeatV1: true },
+      });
+      posDevice.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.verifyCredentials({ deviceStableId: 'device-1', deviceKey }),
+      ).resolves.toBeNull();
+      expect(posConnectivityReadModel.updateMany).not.toHaveBeenCalled();
+      expect(posConnectivityReadModel.createMany).not.toHaveBeenCalled();
+    },
+  );
+
+  it(
+    'repairs the projection if a heartbeat-capable device becomes inactive after activity is recorded',
+    async () => {
+      const deviceKey = 'device-secret';
+      const device = {
+        id: 'db-device-1',
+        deviceStableId: 'device-1',
+        store: { storeStableId: 'store-a' },
+        name: 'Front POS',
+        status: 'ACTIVE',
+        deviceKeyHash: hashDeviceKey(deviceKey),
+        meta: { connectivityHeartbeatV1: true },
+      };
+      const { service, posDevice, posConnectivityReadModel } = setup(device);
+      posDevice.findUnique
+        .mockResolvedValueOnce(device)
+        .mockResolvedValueOnce({ status: 'DISABLED' });
+
+      await expect(
+        service.verifyCredentials({ deviceStableId: 'device-1', deviceKey }),
+      ).resolves.toBeNull();
+
+      expect(posDevice.findMany).toHaveBeenCalledWith({
+        where: { status: 'ACTIVE', store: { storeStableId: 'store-a' } },
+        select: { lastSeenAt: true, meta: true },
+      });
+      expect(posConnectivityReadModel.upsert).toHaveBeenCalledWith({
+        where: { storeStableId: 'store-a' },
+        create: {
+          storeStableId: 'store-a',
+          hasHeartbeatCapableActiveDevice: false,
+          lastHeartbeatAt: null,
+          validUntil: null,
+        },
+        update: {
+          hasHeartbeatCapableActiveDevice: false,
+          lastHeartbeatAt: null,
+          validUntil: null,
+        },
+      });
+    },
+  );
 
   it('rejects an ACTIVE device when the device key is invalid', async () => {
     const { service, posDevice } = setup({
@@ -120,7 +261,7 @@ describe('PosDeviceService.verifyCredentials', () => {
         deviceKey: 'wrong-secret',
       }),
     ).resolves.toBeNull();
-    expect(posDevice.update).not.toHaveBeenCalled();
+    expect(posDevice.updateMany).not.toHaveBeenCalled();
   });
 
   it('rejects a DISABLED device even when the device key matches', async () => {
@@ -136,7 +277,7 @@ describe('PosDeviceService.verifyCredentials', () => {
     await expect(
       service.verifyCredentials({ deviceStableId: 'device-1', deviceKey }),
     ).resolves.toBeNull();
-    expect(posDevice.update).not.toHaveBeenCalled();
+    expect(posDevice.updateMany).not.toHaveBeenCalled();
   });
 
   it('rejects a missing device without recording lastSeenAt', async () => {
@@ -148,11 +289,97 @@ describe('PosDeviceService.verifyCredentials', () => {
         deviceKey: 'device-secret',
       }),
     ).resolves.toBeNull();
-    expect(posDevice.update).not.toHaveBeenCalled();
+    expect(posDevice.updateMany).not.toHaveBeenCalled();
   });
 });
 
 describe('PosDeviceService connectivity projection', () => {
+  it(
+    'repairs the POS-owned read model to UNKNOWN when no heartbeat-capable ACTIVE device remains',
+    async () => {
+      const posDevice = {
+        findMany: jest.fn().mockResolvedValue([]),
+      };
+      const posConnectivityReadModel = {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        createMany: jest.fn().mockResolvedValue({ count: 0 }),
+        upsert: jest.fn().mockResolvedValue({}),
+      };
+      const service = new PosDeviceService(
+        { posDevice, posConnectivityReadModel } as never,
+        { listStores: jest.fn().mockResolvedValue([]) },
+      );
+
+      await service.repairConnectivityReadModelForStore('store-a');
+
+      expect(posConnectivityReadModel.upsert).toHaveBeenCalledWith({
+        where: { storeStableId: 'store-a' },
+        create: {
+          storeStableId: 'store-a',
+          hasHeartbeatCapableActiveDevice: false,
+          lastHeartbeatAt: null,
+          validUntil: null,
+        },
+        update: {
+          hasHeartbeatCapableActiveDevice: false,
+          lastHeartbeatAt: null,
+          validUntil: null,
+        },
+      });
+    },
+  );
+
+  it(
+    'repairs an active heartbeat projection without regressing a newer lease',
+    async () => {
+      const originalTimeout = process.env.POS_CONNECTIVITY_HEARTBEAT_TIMEOUT_MS;
+      process.env.POS_CONNECTIVITY_HEARTBEAT_TIMEOUT_MS = '90000';
+      try {
+        const heartbeatAt = new Date('2026-09-09T17:30:00.000Z');
+        const posDevice = {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              lastSeenAt: heartbeatAt,
+              meta: { connectivityHeartbeatV1: true },
+            },
+          ]),
+        };
+        const posConnectivityReadModel = {
+          updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+          createMany: jest.fn().mockResolvedValue({ count: 0 }),
+          upsert: jest.fn().mockResolvedValue({}),
+        };
+        const service = new PosDeviceService(
+          { posDevice, posConnectivityReadModel } as never,
+          { listStores: jest.fn().mockResolvedValue([]) },
+        );
+
+        await service.repairConnectivityReadModelForStore('store-a');
+
+        expect(posConnectivityReadModel.updateMany).toHaveBeenCalledTimes(2);
+        expect(posConnectivityReadModel.updateMany).toHaveBeenNthCalledWith(1, {
+          where: {
+            storeStableId: 'store-a',
+            OR: [
+              { lastHeartbeatAt: null },
+              { lastHeartbeatAt: { lt: heartbeatAt } },
+            ],
+          },
+          data: {
+            hasHeartbeatCapableActiveDevice: true,
+            lastHeartbeatAt: heartbeatAt,
+            validUntil: new Date(heartbeatAt.getTime() + 90_000),
+          },
+        });
+        expect(posConnectivityReadModel.upsert).not.toHaveBeenCalled();
+      } finally {
+        if (originalTimeout === undefined)
+          delete process.env.POS_CONNECTIVITY_HEARTBEAT_TIMEOUT_MS;
+        else process.env.POS_CONNECTIVITY_HEARTBEAT_TIMEOUT_MS = originalTimeout;
+      }
+    },
+  );
+
   it('seeds the POS-owned read model when heartbeat capability is first enabled', async () => {
     const originalTimeout = process.env.POS_CONNECTIVITY_HEARTBEAT_TIMEOUT_MS;
     process.env.POS_CONNECTIVITY_HEARTBEAT_TIMEOUT_MS = '90000';
@@ -173,6 +400,8 @@ describe('PosDeviceService connectivity projection', () => {
         ]),
       };
       const posConnectivityReadModel = {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        createMany: jest.fn().mockResolvedValue({ count: 0 }),
         upsert: jest.fn().mockResolvedValue({}),
       };
       const service = new PosDeviceService(
@@ -224,6 +453,8 @@ describe('PosDeviceService management boundary', () => {
       delete: jest.fn().mockResolvedValue(managedDevice),
     };
     const posConnectivityReadModel = {
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      createMany: jest.fn().mockResolvedValue({ count: 0 }),
       upsert: jest.fn().mockResolvedValue({}),
     };
     const storeDirectoryReader = {

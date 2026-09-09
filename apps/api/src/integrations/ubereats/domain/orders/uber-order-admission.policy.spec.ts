@@ -141,17 +141,32 @@ describe('UberOrderAdmissionPolicy', () => {
     });
   });
 
-  it.each(['ONLINE', 'UNKNOWN'] as const)(
-    'accepts when business checks pass and connectivity is %s',
-    (status) => {
-      expect(
-        policy.evaluate({
-          missingItemReference: null,
-          hasPriceMismatch: false,
-          hasMaterialAmountVariance: false,
-          connectivity: { status, lastHeartbeatAt: null },
-        }),
-      ).toEqual({ kind: 'ACCEPT' });
-    },
-  );
+  it('denies when no active order-receiving POS device exists', () => {
+    expect(
+      policy.evaluate({
+        missingItemReference: null,
+        hasPriceMismatch: false,
+        hasMaterialAmountVariance: false,
+        connectivity: { status: 'UNKNOWN', lastHeartbeatAt: null },
+      }),
+    ).toEqual({
+      kind: 'DENY',
+      denial: {
+        reasonCode: 'POS_OFFLINE',
+        reasonDetail:
+          'POS connectivity unavailable; no active order-receiving POS device',
+      },
+    });
+  });
+
+  it('accepts when business checks pass and POS connectivity is ONLINE', () => {
+    expect(
+      policy.evaluate({
+        missingItemReference: null,
+        hasPriceMismatch: false,
+        hasMaterialAmountVariance: false,
+        connectivity: { status: 'ONLINE', lastHeartbeatAt: null },
+      }),
+    ).toEqual({ kind: 'ACCEPT' });
+  });
 });
