@@ -136,22 +136,17 @@ describe('POS Foundation boundary', () => {
     expect(posPublicApi).not.toContain('ZodValidationPipe');
   });
 
-  it(
-    'keeps POS connectivity ownership explicit instead of hiding it in the Foundation public surface',
-    () => {
-      const commonPublicApi = read(resolve(COMMON_ROOT, 'public-api.ts'));
-      const posDeviceService = read(
-        resolve(POS_ROOT, 'pos-device.service.ts'),
-      );
-      const watchdog = read(
-        resolve(POS_ROOT, 'pos-connectivity-watchdog.service.ts'),
-      );
+  it('keeps POS connectivity ownership explicit instead of hiding it in the Foundation public surface', () => {
+    const commonPublicApi = read(resolve(COMMON_ROOT, 'public-api.ts'));
+    const posDeviceService = read(resolve(POS_ROOT, 'pos-device.service.ts'));
+    const watchdog = read(
+      resolve(POS_ROOT, 'pos-connectivity-watchdog.service.ts'),
+    );
 
-      expect(commonPublicApi).not.toContain('pos-connectivity');
-      expect(posDeviceService).toContain("from '../common/pos-connectivity'");
-      expect(watchdog).toContain("from '../common/pos-connectivity'");
-    },
-  );
+    expect(commonPublicApi).not.toContain('pos-connectivity');
+    expect(posDeviceService).toContain("from '../common/pos-connectivity'");
+    expect(watchdog).toContain("from '../common/pos-connectivity'");
+  });
 });
 
 describe('POS device authentication boundary', () => {
