@@ -91,7 +91,9 @@ describe('POS Brand/Store status boundary', () => {
     expect(storeStatusContract).not.toContain('temporaryCloseReason');
 
     expect(storeStatusService).not.toContain("from './public-api'");
-    expect(storeStatusService).toContain("from './brand-store-config.contract'");
+    expect(storeStatusService).toContain(
+      "from './brand-store-config.contract'",
+    );
     expect(storeStatusService).toContain("from './store-schedule.contract'");
   });
 });
