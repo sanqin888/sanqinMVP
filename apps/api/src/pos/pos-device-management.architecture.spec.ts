@@ -51,6 +51,31 @@ describe('POS device management boundary', () => {
 });
 
 describe('POS device authentication boundary', () => {
+  it('consumes staff auth guards and role metadata through the Identity public surface', () => {
+    const controllerSources = [
+      'pos-orders.controller.ts',
+      'pos-store-status.controller.ts',
+      'pos-summary.controller.ts',
+      'pos-exchange-rate.controller.ts',
+    ].map((file) => read(resolve(POS_ROOT, file)));
+    const posModule = read(resolve(POS_ROOT, 'pos.module.ts'));
+    const authPublicApi = read(resolve(AUTH_ROOT, 'public-api.ts'));
+
+    for (const source of controllerSources) {
+      expect(source).toContain("from '../auth/public-api'");
+      expect(source).not.toMatch(
+        /from ['"]\.\.\/auth\/(?:session-auth\.guard|roles\.guard|roles\.decorator)['"]/,
+      );
+    }
+
+    expect(posModule).toContain("import { AuthModule } from '../auth/auth.module';");
+    expect(posModule).toContain("import { RolesGuard } from '../auth/public-api';");
+    expect(posModule).not.toContain("from '../auth/roles.guard'");
+    expect(authPublicApi).toContain("export { SessionAuthGuard } from './session-auth.guard';");
+    expect(authPublicApi).toContain("export { RolesGuard } from './roles.guard';");
+    expect(authPublicApi).toContain("export { Roles } from './roles.decorator';");
+  });
+
   it('keeps POS credential persistence and verification behind the POS public port', () => {
     const authService = read(resolve(AUTH_ROOT, 'auth.service.ts'));
     const authModule = read(resolve(AUTH_ROOT, 'auth.module.ts'));
