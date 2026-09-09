@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "baselineCommit": "51dd19ec",
-  "updatedAt": "2026-09-08",
+  "baselineCommit": "af8b4d63",
+  "updatedAt": "2026-09-09",
   "requiredFields": [
     "compat_id",
     "old_owner",
@@ -41,16 +41,40 @@
       "new_owner": "Channel-neutral Unified Payment Core using canonical Clover Platform v3 truth",
       "dual_write_or_read": [
         "Legacy Web Ecommerce remains the production path until an explicitly accepted Web cutover",
-        "Unified core exists but Web traffic must not be switched merely to simplify POS Terminal modularization"
+        "Unified core exists but Web traffic, production v3 shadow reads, refund migration and legacy cleanup remain deferred until Test App/device acceptance completes and Unified authorization is installed on the operating production Clover merchant"
       ],
-      "parity_metric": "Payment ID, amount, surcharge, refund, settlement and old-path invocation metrics across one complete settlement cycle",
+      "parity_metric": "After production-merchant Unified authorization and a fresh correlation audit, compare payment ID, external payment ID, amount, currency, surcharge/additional charges, refund, settlement and old-path invocation metrics across one complete settlement cycle",
       "rollback": "Keep legacy Web routing available until the new Web consumer is accepted; traffic rollback must not rewrite historical facts",
-      "exit_criteria": "Web cutover is explicitly accepted after required validation, one settlement cycle matches, and old calls are zero before compatibility deletion",
+      "exit_criteria": "Test App/device acceptance is complete, the App is installed and OAuth-authorized on the operating production Clover merchant, a fresh production-merchant readiness/correlation audit passes, Web cutover is explicitly accepted, one settlement cycle matches, and old calls are zero before compatibility deletion",
       "remove_pr": "Payments/Clover legacy Web contraction PR after guarded Web cutover acceptance",
-      "deadline": "Before Phase 5B Payments/Clover exit; production-path modularization may proceed earlier only when it is a documented critical blocker and the guarded regression/evidence requirements are met, with consolidated active verification required before the owning Phase closes",
-      "governance_note": "Production Web Clover is protected by default, not absolutely frozen. A minimal Web-impacting modularization change is allowed when the production path is a critical progress blocker, after documenting impact, alternatives and rollback/forward-fix handling. Focused regression coverage is mandatory for each affected Slice, while production active payment verification is consolidated against the final merged Phase state immediately before Phase closeout unless an earlier compatibility/cutover/settlement gate applies.",
+      "deadline": "Deferred until production-merchant Unified authorization and accepted Web cutover; do not tie deletion to an earlier modularization phase number",
+      "governance_note": "The 2026-09-09 operator decision explicitly freezes the production Web Clover path while Test App/device acceptance and production-merchant authorization are incomplete. Do not modify /v1/charges execution, CARD/Apple Pay/Google Pay tokenization, 3DS/session/pricing-token/contact-verification, Web paid-Order creation, Web external-payment refund, production webhook merchant scope or persisted Web payment/surcharge facts merely to advance modularization. Non-payment bounded-context work may proceed. Resume Web Unified Payment work only after the stated provider/merchant gate, beginning with a fresh read-only production-merchant readiness/correlation audit before any v3 shadow or traffic authority change.",
       "evidence": [
         "docs/payments/clover-pos-integration-charter.md sections 3.8, 9.1 and 12.5"
+      ]
+    },
+    {
+      "compat_id": "pos-connectivity.read-model-shadow.v1",
+      "status": "active_shadow",
+      "old_owner": "Uber order admission reads POS-owned PosDevice persistence directly inside UberOrderImportPrismaAdapter and evaluates common/pos-connectivity semantics there",
+      "new_owner": "Store Operations/POS writes the purpose-built PosConnectivityReadModel keyed only by storeStableId; External Channels may read that projection but does not gain a reverse Uber -> POS public dependency",
+      "dual_write_or_read": [
+        "POS continues updating PosDevice.lastSeenAt/meta exactly as before and additionally maintains PosConnectivityReadModel from heartbeat-capable ACTIVE device activity",
+        "Uber order admission continues using the legacy PosDevice-derived result as authoritative truth while reading PosConnectivityReadModel only for shadow comparison",
+        "A projection read/write failure is logged and must not change POS authentication, heartbeat handling, or Uber admission during Slice 5A"
+      ],
+      "parity_metric": "For each deliberate Uber order-admission connectivity check after a fresh POS heartbeat, event=uber_pos_connectivity_read_model_shadow_compare must report matched=true for status and lastHeartbeatAt. Projection write/refresh failures and shadow-read failures must be zero; verify ONLINE, OFFLINE, UNKNOWN, timeout-boundary and device disable/delete/re-enable cases before cutover.",
+      "rollback": "Slice 5A rollback is source-only: ignore/remove the additive shadow reader/writer and leave the legacy PosDevice-derived admission truth unchanged. Do not drop or destructively rewrite the additive read-model table as part of rollback; it is non-authoritative until Slice 5B.",
+      "exit_criteria": "Before Phase 7 source closeout, deliberate parity verification shows zero mismatches/failures across the required connectivity cases, the projection semantics match the current PosDevice truth, and Slice 5B atomically switches Uber admission to the read model then removes Uber PosDevice/common connectivity reads and the temporary shadow compatibility annotation/register entry while public SCC remains empty.",
+      "remove_pr": "Phase 7 Slice 5B POS connectivity persistence contraction PR",
+      "deadline": "Must be removed in Phase 7 Slice 5B before Phase 7 source scope is declared complete",
+      "evidence": [
+        "apps/api/prisma/schema.prisma PosConnectivityReadModel",
+        "apps/api/prisma/migrations/20260909173000_expand_pos_connectivity_read_model/migration.sql",
+        "apps/api/src/pos/pos-device.service.ts",
+        "apps/api/src/integrations/ubereats/infrastructure/persistence/uber-order-import-prisma.adapter.ts",
+        "apps/api/src/pos/pos-device-management.architecture.spec.ts",
+        "docs/architecture/phase-7-store-operations-pos-print.md"
       ]
     }
   ],

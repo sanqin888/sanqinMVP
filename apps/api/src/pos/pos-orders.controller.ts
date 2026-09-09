@@ -21,14 +21,9 @@ import {
   UsePipes,
 } from '@nestjs/common';
 import type { Request } from 'express';
-import { SessionAuthGuard } from '../auth/session-auth.guard';
-import { RolesGuard } from '../auth/roles.guard';
-import { Roles } from '../auth/roles.decorator';
-import {
-  StableIdPipe,
-  ZodValidationPipe,
-  type AuthenticatedPosIdentity,
-} from './public-api';
+import { Roles, RolesGuard, SessionAuthGuard } from '../auth/public-api';
+import { StableIdPipe, ZodValidationPipe } from '../common/public-api';
+import type { AuthenticatedPosIdentity } from './public-api';
 import { PosDeviceGuard } from './pos-device.guard';
 import {
   ChannelSchema,

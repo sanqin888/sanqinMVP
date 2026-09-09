@@ -1,4 +1,4 @@
-/** Stable Brand / Store boundary for cross-context configuration and identity access. */
+/** Stable Brand / Store boundary for cross-context configuration, identity and status access. */
 export {
   DEFAULT_STORE_STABLE_ID,
   resolveConfiguredStoreStableId,
@@ -39,4 +39,10 @@ export {
   buildAutoPauseReason,
   parseAutoPauseReason,
 } from './temporary-closure-reason';
+export {
+  STORE_STATUS_READER,
+  type StoreStatusReadSnapshot,
+  type StoreStatusReaderPort,
+} from './store-status.contract';
 export { BrandStoreConfigModule } from './brand-store-config.module';
+export { StoreStatusModule } from './store-status.module';

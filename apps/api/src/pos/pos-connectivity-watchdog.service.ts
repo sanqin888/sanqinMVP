@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { DateTime } from 'luxon';
 import { PrismaService } from '../prisma/prisma.service';
-import { AppLogger } from '../common/app-logger';
+import { AppLogger } from '../common/public-api';
 import {
   DEFAULT_POS_CONNECTIVITY_OFFLINE_AFTER_MS,
   DEFAULT_POS_CONNECTIVITY_RECOVERY_STABLE_MS,
@@ -16,14 +16,16 @@ import {
 } from '../common/pos-connectivity';
 import {
   BRAND_STORE_CONFIG_READER,
+  STORE_STATUS_READER,
   resolveConfiguredStoreStableId,
   type BrandStoreConfigReaderPort,
+  type StoreStatusReadSnapshot,
+  type StoreStatusReaderPort,
 } from '../store/public-api';
 import {
   UBER_EATS_STORE_STATUS_SYNC,
   type UberEatsStoreStatusSyncPort,
 } from '../integrations/ubereats/public-api';
-import { StoreStatusService } from '../store/store-status.service';
 import { PosStoreStatusService } from './pos-store-status.service';
 
 type RuntimeState = {
@@ -64,7 +66,8 @@ export class PosConnectivityWatchdogService
     private readonly configReader: BrandStoreConfigReaderPort,
     @Inject(UBER_EATS_STORE_STATUS_SYNC)
     private readonly uber: UberEatsStoreStatusSyncPort,
-    private readonly storeStatus: StoreStatusService,
+    @Inject(STORE_STATUS_READER)
+    private readonly storeStatus: StoreStatusReaderPort,
     private readonly posStoreStatus: PosStoreStatusService,
   ) {}
 
@@ -186,7 +189,7 @@ export class PosConnectivityWatchdogService
 
     const state = this.states.get(storeStableId)!;
     if (state.pauseConfirmed || now < state.nextSyncAttemptAt) return;
-    const synced = await this.syncMappedUberStores(
+    const synced = await this.syncUberStoreStatus(
       storeStableId,
       'PAUSED',
       pauseUntil,
@@ -252,7 +255,7 @@ export class PosConnectivityWatchdogService
       return;
     }
 
-    const synced = await this.syncMappedUberStores(storeStableId, 'ONLINE');
+    const synced = await this.syncUberStoreStatus(storeStableId, 'ONLINE');
     if (!synced) {
       previous.syncFailures += 1;
       previous.nextSyncAttemptAt =
@@ -276,33 +279,26 @@ export class PosConnectivityWatchdogService
     });
   }
 
-  private async syncMappedUberStores(
+  private async syncUberStoreStatus(
     storeStableId: string,
     targetStatus: 'ONLINE' | 'PAUSED',
     pauseUntil?: string,
   ): Promise<boolean> {
-    const mappings = await this.prisma.uberStoreMapping.findMany({
-      where: { posExternalStoreId: storeStableId, isProvisioned: true },
-      select: { uberStoreId: true },
+    const result = await this.uber.syncStoreStatusForStore({
+      storeStableId,
+      targetStatus,
+      ...(targetStatus === 'PAUSED'
+        ? {
+            reason: 'POS connectivity lost',
+            ...(pauseUntil ? { pauseUntil } : {}),
+          }
+        : {}),
     });
-    for (const mapping of mappings) {
-      const result = await this.uber.syncStoreStatusToUber({
-        uberStoreId: mapping.uberStoreId,
-        targetStatus,
-        ...(targetStatus === 'PAUSED'
-          ? {
-              reason: 'POS connectivity lost',
-              ...(pauseUntil ? { pauseUntil } : {}),
-            }
-          : {}),
-      });
-      if (result.outcome === 'FAILED') return false;
-    }
-    return true;
+    return result.outcome !== 'FAILED';
   }
 
   private resolveScheduleCloseAt(
-    schedule: Awaited<ReturnType<StoreStatusService['getCurrentStatus']>>,
+    schedule: StoreStatusReadSnapshot,
   ): string | null {
     const closeMinutes = schedule.today.closeMinutes;
     if (closeMinutes === null) return null;

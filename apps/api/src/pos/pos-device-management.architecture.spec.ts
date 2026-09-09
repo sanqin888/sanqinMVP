@@ -5,8 +5,11 @@ const POS_ROOT = resolve(__dirname);
 const API_ROOT = resolve(POS_ROOT, '..');
 const ADMIN_POS_DEVICE_ROOT = resolve(API_ROOT, 'admin', 'pos-devices');
 const AUTH_ROOT = resolve(API_ROOT, 'auth');
+const COMMON_ROOT = resolve(API_ROOT, 'common');
 const ORCHESTRATION_ROOT = resolve(API_ROOT, 'orchestration');
 const STORE_ROOT = resolve(API_ROOT, 'store');
+const UBER_EATS_ROOT = resolve(API_ROOT, 'integrations', 'ubereats');
+const PRISMA_SCHEMA = resolve(API_ROOT, '..', 'prisma', 'schema.prisma');
 
 function read(path: string): string {
   return readFileSync(path, 'utf8');
@@ -50,7 +53,237 @@ describe('POS device management boundary', () => {
   });
 });
 
+describe('POS Brand/Store status boundary', () => {
+  it('consumes store status through the Brand/Store public read capability', () => {
+    const watchdog = read(
+      resolve(POS_ROOT, 'pos-connectivity-watchdog.service.ts'),
+    );
+    const posModule = read(resolve(POS_ROOT, 'pos.module.ts'));
+    const storePublicApi = read(resolve(STORE_ROOT, 'public-api.ts'));
+    const storeStatusContract = read(
+      resolve(STORE_ROOT, 'store-status.contract.ts'),
+    );
+    const storeStatusModule = read(
+      resolve(STORE_ROOT, 'store-status.module.ts'),
+    );
+    const storeStatusService = read(
+      resolve(STORE_ROOT, 'store-status.service.ts'),
+    );
+
+    expect(watchdog).toContain("from '../store/public-api'");
+    expect(watchdog).toContain('STORE_STATUS_READER');
+    expect(watchdog).toContain('StoreStatusReaderPort');
+    expect(watchdog).not.toContain("from '../store/store-status.service'");
+    expect(posModule).toContain('StoreStatusModule');
+    expect(posModule).toContain("from '../store/public-api'");
+    expect(posModule).not.toContain("from '../store/store-status.module'");
+
+    expect(storePublicApi).toContain("from './store-status.contract'");
+    expect(storePublicApi).toContain("from './store-status.module'");
+    expect(storePublicApi).not.toContain('StoreStatusService');
+    expect(storeStatusModule).toContain('provide: STORE_STATUS_READER');
+    expect(storeStatusModule).toContain('useExisting: StoreStatusService');
+    expect(storeStatusModule).toContain('exports: [STORE_STATUS_READER]');
+    expect(storeStatusModule).not.toContain('exports: [StoreStatusService]');
+
+    expect(storeStatusContract).toContain('StoreStatusReaderPort');
+    expect(storeStatusContract).toContain('isOpenBySchedule: boolean');
+    expect(storeStatusContract).toContain('isTemporarilyClosed: boolean');
+    expect(storeStatusContract).toContain('closeMinutes: number | null');
+    expect(storeStatusContract).not.toContain('publicNotice');
+    expect(storeStatusContract).not.toContain('temporaryCloseReason');
+
+    expect(storeStatusService).not.toContain("from './public-api'");
+    expect(storeStatusService).toContain(
+      "from './brand-store-config.contract'",
+    );
+    expect(storeStatusService).toContain("from './store-schedule.contract'");
+  });
+});
+
+describe('POS Foundation boundary', () => {
+  it('consumes neutral API utilities through the Foundation public surface', () => {
+    const commonPublicApi = read(resolve(COMMON_ROOT, 'public-api.ts'));
+    const posPublicApi = read(resolve(POS_ROOT, 'public-api.ts'));
+    const posOrders = read(resolve(POS_ROOT, 'pos-orders.controller.ts'));
+    const loggerConsumers = [
+      'pos-connectivity-watchdog.service.ts',
+      'pos-exchange-rate.service.ts',
+      'pos-store-status.service.ts',
+    ].map((file) => read(resolve(POS_ROOT, file)));
+
+    for (const source of loggerConsumers) {
+      expect(source).toContain("from '../common/public-api'");
+      expect(source).not.toContain("from '../common/app-logger'");
+    }
+
+    expect(posOrders).toContain("from '../common/public-api'");
+    expect(posOrders).toContain('StableIdPipe');
+    expect(posOrders).toContain('ZodValidationPipe');
+    expect(posOrders).not.toContain("from '../common/pipes/stable-id.pipe'");
+    expect(posOrders).not.toContain(
+      "from '../common/pipes/zod-validation.pipe'",
+    );
+
+    expect(commonPublicApi).toContain(
+      "export { AppLogger } from './app-logger';",
+    );
+    expect(commonPublicApi).toContain(
+      "export { StableIdPipe } from './pipes/stable-id.pipe';",
+    );
+    expect(commonPublicApi).toContain(
+      "export { ZodValidationPipe } from './pipes/zod-validation.pipe';",
+    );
+    expect(posPublicApi).not.toContain('StableIdPipe');
+    expect(posPublicApi).not.toContain('ZodValidationPipe');
+  });
+
+  it('keeps POS connectivity ownership explicit instead of hiding it in the Foundation public surface', () => {
+    const commonPublicApi = read(resolve(COMMON_ROOT, 'public-api.ts'));
+    const posDeviceService = read(resolve(POS_ROOT, 'pos-device.service.ts'));
+    const watchdog = read(
+      resolve(POS_ROOT, 'pos-connectivity-watchdog.service.ts'),
+    );
+
+    expect(commonPublicApi).not.toContain('pos-connectivity');
+    expect(posDeviceService).toContain("from '../common/pos-connectivity'");
+    expect(watchdog).toContain("from '../common/pos-connectivity'");
+  });
+});
+
+describe('POS connectivity read-model ownership boundary', () => {
+  it('keeps the cross-context read fact POS-owned and shadow-only without a reverse public dependency', () => {
+    const schema = read(PRISMA_SCHEMA);
+    const posDeviceService = read(resolve(POS_ROOT, 'pos-device.service.ts'));
+    const posPublicApi = read(resolve(POS_ROOT, 'public-api.ts'));
+    const uberAdapter = read(
+      resolve(
+        UBER_EATS_ROOT,
+        'infrastructure',
+        'persistence',
+        'uber-order-import-prisma.adapter.ts',
+      ),
+    );
+
+    expect(schema).toContain('model PosConnectivityReadModel');
+    expect(schema).toContain('storeStableId                   String   @id');
+    expect(schema).toContain('hasHeartbeatCapableActiveDevice Boolean');
+    expect(schema).toContain('validUntil                      DateTime?');
+
+    expect(posDeviceService).toContain('posConnectivityReadModel.upsert');
+    expect(posDeviceService).toContain(
+      'refreshConnectivityReadModelForStoreSafely',
+    );
+    expect(posPublicApi).not.toContain('POS_CONNECTIVITY_READER');
+    expect(posPublicApi).not.toContain('PosConnectivityReadModel');
+
+    expect(uberAdapter).toContain(
+      '@compat pos-connectivity.read-model-shadow.v1',
+    );
+    expect(uberAdapter).toContain('this.prisma.posDevice.findMany');
+    expect(uberAdapter).toContain(
+      'this.prisma.posConnectivityReadModel.findUnique',
+    );
+    expect(uberAdapter).not.toMatch(
+      /posConnectivityReadModel\.(?:create|update|upsert|delete|deleteMany|updateMany)/,
+    );
+    expect(uberAdapter).not.toMatch(/from .*\/pos\//);
+  });
+});
+
+describe('POS Uber store-status ownership boundary', () => {
+  it('keeps provider-store mapping inside Uber while POS sends only storeStableId', () => {
+    const watchdog = read(
+      resolve(POS_ROOT, 'pos-connectivity-watchdog.service.ts'),
+    );
+    const uberPublicApi = read(resolve(UBER_EATS_ROOT, 'public-api.ts'));
+    const mappingPort = read(
+      resolve(
+        UBER_EATS_ROOT,
+        'application',
+        'merchant',
+        'uber-merchant-persistence.ports.ts',
+      ),
+    );
+    const syncUseCase = read(
+      resolve(
+        UBER_EATS_ROOT,
+        'application',
+        'merchant',
+        'uber-merchant-provisioning.service.ts',
+      ),
+    );
+    const mappingAdapter = read(
+      resolve(
+        UBER_EATS_ROOT,
+        'infrastructure',
+        'persistence',
+        'uber-merchant-persistence.adapter.ts',
+      ),
+    );
+    const statusPublicApi = uberPublicApi.slice(
+      uberPublicApi.indexOf('export type UberEatsStoreStatusForStoreInput'),
+      uberPublicApi.indexOf('export type UberEatsFinancialReportType'),
+    );
+
+    expect(watchdog).toContain('syncStoreStatusForStore');
+    expect(watchdog).toContain('storeStableId');
+    expect(watchdog).not.toContain('this.prisma.uberStoreMapping');
+    expect(watchdog).not.toContain('uberStoreId');
+
+    expect(uberPublicApi).toContain('UberEatsStoreStatusForStoreInput');
+    expect(uberPublicApi).not.toContain('UberEatsStoreStatusTarget');
+    expect(statusPublicApi).toContain('storeStableId: string');
+    expect(statusPublicApi).toContain('syncStoreStatusForStore');
+    expect(statusPublicApi).not.toContain('uberStoreId');
+
+    expect(mappingPort).toContain('findProvisionedMappingsByStoreStableId');
+    expect(mappingAdapter).toContain(
+      'findProvisionedMappingsByStoreStableId(storeStableId: string)',
+    );
+    expect(mappingAdapter).toContain('posExternalStoreId: storeStableId');
+    expect(mappingAdapter).toContain('isProvisioned: true');
+    expect(syncUseCase).toContain('syncStoreStatusForStore');
+    expect(syncUseCase).toContain('findProvisionedMappingsByStoreStableId');
+  });
+});
+
 describe('POS device authentication boundary', () => {
+  it('consumes staff auth guards and role metadata through the Identity public surface', () => {
+    const controllerSources = [
+      'pos-orders.controller.ts',
+      'pos-store-status.controller.ts',
+      'pos-summary.controller.ts',
+      'pos-exchange-rate.controller.ts',
+    ].map((file) => read(resolve(POS_ROOT, file)));
+    const posModule = read(resolve(POS_ROOT, 'pos.module.ts'));
+    const authPublicApi = read(resolve(AUTH_ROOT, 'public-api.ts'));
+
+    for (const source of controllerSources) {
+      expect(source).toContain("from '../auth/public-api'");
+      expect(source).not.toMatch(
+        /from ['"]\.\.\/auth\/(?:session-auth\.guard|roles\.guard|roles\.decorator)['"]/,
+      );
+    }
+
+    expect(posModule).toContain(
+      "import { AuthModule } from '../auth/auth.module';",
+    );
+    expect(posModule).toContain(
+      "import { RolesGuard } from '../auth/public-api';",
+    );
+    expect(posModule).not.toContain("from '../auth/roles.guard'");
+    expect(authPublicApi).toContain(
+      "export { SessionAuthGuard } from './session-auth.guard';",
+    );
+    expect(authPublicApi).toContain(
+      "export { RolesGuard } from './roles.guard';",
+    );
+    expect(authPublicApi).toContain(
+      "export { Roles } from './roles.decorator';",
+    );
+  });
+
   it('keeps POS credential persistence and verification behind the POS public port', () => {
     const authService = read(resolve(AUTH_ROOT, 'auth.service.ts'));
     const authModule = read(resolve(AUTH_ROOT, 'auth.module.ts'));

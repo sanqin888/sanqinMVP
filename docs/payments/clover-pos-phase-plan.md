@@ -46,19 +46,20 @@ Phase J  Legacy Cleanup
 
 ### 0.2 2026-09-08 Phase 6 / Sandbox bring-up 执行顺序修订
 
-新的 Clover Test Merchant 和 Test App 已具备 Preview 条件，因此当前阻塞从“无法开始 sandbox integration”收缩为“尚未完成 SanQ OAuth、Platform v3、Cloud Pay Display/device 与真实支付行为验收”。这不改变 Web-before/after cutover 原则，但要求在继续 Phase G 前把 POS Terminal 的 provider/config/credential 边界和 sandbox 验证提前完成。
+新的 Clover Test Merchant 和 Test App 已完成非设备 sandbox bring-up：SanQ OAuth、`ACTIVE` Store binding、Platform v3 canonical read、数据库凭据加解密、自然 access-token refresh/rotation 与 API 重启后的 rotated credential 恢复都已实测通过。当前剩余 provider 阻塞收缩为 Cloud Pay Display/device、真实 Terminal Sale/reconciliation/refund/recovery 与 full POS acceptance；这些项目需要 Clover Dev Kit。2026-09-09 的只读 Web cutover readiness audit 已完成，结论为 **`CONDITIONAL PASS FOR FUTURE SHADOW READ / NO-GO FOR CUTOVER`**。Platform v3 是未来 Web payment/refund canonical truth，但 Web `/v1/charges` execution、UNKNOWN/reconciliation、Orders preparation/finalization 与 CheckoutIntent context 仍需作为一个受控迁移整体处理，不能做 transport-only replacement。用户已明确决定在 Test App/device 验收完成并把 App 安装/授权到实际运营 production Clover merchant 之前，不再修改 Web 支付链路，也不做 production Web v3 shadow query；届时先重新做 production-merchant readiness/correlation audit，再决定 Phase G。
 
-Phase 6 后半段固定按以下顺序执行：
+Phase 6 后半段当前执行状态：
 
 ```text
-Slice 4B  Clover provider internal capability cleanup
-    -> Slice 4C  Unified/Sandbox configuration isolation
-    -> Slice 4D  Unified Clover OAuth credential convergence
-    -> Test Merchant OAuth + Platform v3 read + device availability
-    -> controlled sandbox Sale / reconciliation / refund / recovery
-    -> full POS Terminal acceptance
-    -> Web Clover cutover readiness audit
-    -> Phase G Web Ecommerce migration to Unified Payment Core
+Slice 4B  Clover provider internal capability cleanup                 [DONE]
+    -> Slice 4C  Unified/Sandbox configuration isolation             [DONE]
+    -> Slice 4D  Unified Clover OAuth credential convergence         [DONE]
+    -> Test Merchant OAuth + Platform v3 + credential lifecycle      [VERIFIED]
+    -> Cloud Pay Display/device availability                          [PENDING DEV KIT]
+    -> controlled sandbox Sale / reconciliation / refund / recovery  [PENDING DEV KIT]
+    -> full POS Terminal acceptance                                   [PENDING DEV KIT]
+    -> Web Clover cutover readiness audit                             [DONE: CONDITIONAL SHADOW-READ PASS / CUTOVER NO-GO]
+    -> Phase G Web Ecommerce migration to Unified Payment Core        [DEFERRED UNTIL PRODUCTION MERCHANT INSTALL/AUTH]
 ```
 
 #### Slice 4B 边界
@@ -83,13 +84,29 @@ Unified/Terminal 配置缺失必须 fail closed。禁止 Unified/Terminal 回退
 
 4D 将 Terminal 从静态 `CLOVER_TERMINAL_OAUTH_TOKEN` 改为复用现有 `CloverMerchantAccessTokenService`。Platform v3 与 Terminal REST Pay 使用同一 Unified merchant OAuth authorization、refresh/recovery lifecycle；OAuth store mapping 也基于 Unified merchant/store 配置，不再借用 legacy Web merchant identity。静态 Terminal token 不作为 fallback 保留。
 
-**Implementation status (2026-09-08): LOCAL / REVIEW PENDING.** `CloverProviderConfig.terminalAccessToken` 与 deployment placeholder 已删除；`CloverTerminalTransport` 继续同步检查 Unified merchant + Terminal base/device/RAID/timeout，但真正发 HTTP 前异步通过 `CloverMerchantAccessTokenService.getAccessToken(CLOVER_UNIFIED_MERCHANT_ID)` 取数据库凭据。Terminal 收到 HTTP 401 时只执行一次 `{ forceRefresh: true }` 并使用相同 idempotency key 重试一次。实现显式区分“credential unavailable、请求尚未发送”和“fetch 已发送但网络/timeout 不确定”：前者使 Sale/Refund/Void fail closed 且 `fetch=0`，后者继续保持 `UNKNOWN` 并交给 reconciliation。Focused tests 已覆盖 DB token header、401 refresh/retry、Web token 不回退、credential unavailable 与 socket-loss UNKNOWN；architecture guard 禁止静态 Terminal token 回归。Read-only production audit 当前仅有 1 条 `PENDING_BINDING`、0 条 `ACTIVE` Clover authorization，且 `PaymentTransaction` / `PaymentCheckoutAttempt` 均为 0，因此 4D 本身不会激活 Terminal。无 Prisma、public contract、dependency baseline、Web `/v1/charges`、production webhook 或 rollout flag 改动；按仓库流程本地 lint/build/test/scanner 未运行，等待用户审阅后再走 GitHub Actions。
+**Implementation status (2026-09-08): MERGED / CI GREEN / DEPLOYED / NON-DEVICE SANDBOX VERIFIED.** PR #2245 final head `c665b469` 通过 PR CI #5361，squash merge 为 `1cc4a829`，post-merge CI #5362 的 API/Web 也全部通过。`CloverProviderConfig.terminalAccessToken` 与 deployment placeholder 已删除；`CloverTerminalTransport` 继续同步检查 Unified merchant + Terminal base/device/RAID/timeout，但真正发 HTTP 前异步通过 `CloverMerchantAccessTokenService.getAccessToken(CLOVER_UNIFIED_MERCHANT_ID)` 取数据库凭据。Terminal 收到 HTTP 401 时只执行一次 `{ forceRefresh: true }` 并使用相同 idempotency key 重试一次。实现显式区分“credential unavailable、请求尚未发送”和“fetch 已发送但网络/timeout 不确定”：前者使 Sale/Refund/Void fail closed 且 `fetch=0`，后者继续保持 `UNKNOWN` 并交给 reconciliation。Focused tests 已覆盖 DB token header、401 refresh/retry、Web token 不回退、credential unavailable 与 socket-loss UNKNOWN；architecture guard 禁止静态 Terminal token 回归。4D 没有 Prisma、public contract、dependency baseline、Web `/v1/charges`、production webhook 或 rollout flag 改动，且部署后仍未开启 Terminal route。
+
+#### 2026-09-08/09 non-device sandbox verification
+
+- Production SanQ runtime 使用独立 `CLOVER_UNIFIED_*` Test Merchant/Test App 配置完成 OAuth，`CloverMerchantAuthorization` 最终为 `ACTIVE` 并绑定 `4750_Yonge_Street`。
+- 当前已验证的 sandbox App 权限组合为 Merchant READ + Payments READ + Orders READ，另保持 Ecommerce enabled；没有添加 Clover write permission。Orders READ 是当前 canonical payment query 的实际依赖，因为 `PAYMENT_EXPAND` 包含 `order`，currency mapping 允许 `payment.currency ?? order.currency` fallback。
+- 未添加 Orders READ 时，数据库中的有效 access token 已成功到达 Clover Platform，但带 `expand=...order` 的 canonical payment read 返回 HTTP 403；更新 Test App 权限、在 Test Merchant 中卸载/重装并重新 OAuth 后，同一只读查询返回 HTTP 200，故意使用不存在的 `externalPaymentId` 最终映射为 `CLOVER_PLATFORM_PAYMENT_NOT_FOUND`。
+- 等待 access token 自然过期后再次执行相同查询，`CloverMerchantAccessTokenService` 自动 refresh/rotate credential：`tokenVersion 2 -> 3`、`refreshedAt` 写入、access/refresh expiry 均前移，随后 Platform v3 仍返回 HTTP 200。API recreate 后再次查询时 `tokenVersion` 保持 3，证明新进程能够重新加载 credential key ring、从 PostgreSQL 解密 rotated credential 并继续使用。
+- 没有为了实测故意破坏有效 token 来制造 401；`401 -> forceRefresh -> retry once` 继续以 focused automated test 作为异常恢复证据。Cloud Pay Display/device availability、Sale、cancel、void/refund、timeout/UNKNOWN/recovery、Terminal reconciliation 与 full POS E2E 都仍等待 Clover Dev Kit。
 
 #### Sandbox / production data safety
 
 `POS_CLOVER_TERMINAL_PAYMENT_ENABLED` 在 OAuth/Platform/device bring-up 阶段继续默认关闭。只有在明确的非营业/测试窗口才允许为 full POS E2E 打开 Terminal route。Clover sandbox 只隔离 provider 资金环境，并不会隔离 SanQ 自己的数据库：如果 full POS flow 运行在 production API，它仍可能产生 `PaymentTransaction`、`PaymentCheckoutAttempt`、Order、print/reporting 等生产库事实。若要求 SanQ 测试数据也完全隔离，应另行批准 staging runtime/database，而不是在 production runtime 内增加隐式 sandbox/production 双环境切换。
 
 当前不为 sandbox/production 并存新增 Prisma environment 字段。`CloverMerchantAuthorization.storeStableId @unique` 继续表示一个 runtime/store 只绑定一个 active Unified merchant；未来 production Unified merchant 绑定前必须明确 revoke/unbind sandbox authorization。若以后确实需要同一 runtime 长期同时保留两套 active authorization，再单独做 schema 设计并按 `AGENTS.md` 取得 migration 授权。
+
+### 0.3 2026-09-09 Web Clover cutover readiness audit / freeze decision
+
+只读审计确认当前 Web production 链路仍为 `CheckoutIntent -> Ecommerce POST /v1/charges -> Ecommerce v1 status/reconciliation -> Orders.createImmediatePaid()`；Unified `CloverPaymentProviderAdapter` 虽然已支持 `WEB_ECOMMERCE` execution，但其 Web status 路径仍调用 Ecommerce v1，Platform v3 canonical gateway 目前只在 Terminal status/reconciliation 中成为 authority。因此不能把 Web `getPaymentStatus()` 简单从 v1 换成 v3：若 `/v1/charges` 已成功而 Platform payment 暂未可见，正确语义必须是 `UNKNOWN/RECONCILING`，reservation 继续 HELD、不得再次 charge、不得先创建 paid Order，直到 v3 canonical success 恢复。
+
+当前 Unified 数据模型已具备 Web 所需的大部分 channel-neutral facts，但应用边界仍未 Web-ready：`PaymentCheckoutAttempt` 支持 `WEB_ECOMMERCE`，而 Orders payment preparation/finalization implementation 仍明确只接受 `in_store`；`CheckoutIntent` 仍被下游用于 Web session、verified contact、locale、delivery/3DS 等 context，不能在第一批迁移中删除。生产只读证据在审计时为：`CheckoutIntent` 11 条（5 pending / 3 failed / 3 completed），其中 6 条已有 Clover payment/external identifiers、0 条记录正向 surcharge metadata；Web CARD Order 41 条，`creditCardSurchargeCents > 0` 为 0；存在 1 条历史 refunded Web CARD Order 且无 linked CheckoutIntent。这个证据支持把 Platform v3 `additionalCharges` / `CREDIT_SURCHARGE` 作为未来 canonical truth，但不支持现在直接改写历史或 live persisted facts。
+
+当前 `ACTIVE` Unified authorization 仍绑定 Test Merchant。Production Web `/v1/charges` 使用独立 live Web merchant 配置，因此 production Web payment ID 不能拿 Test Merchant Platform v3 做 shadow parity；`NOT_FOUND` 在这种 merchant mismatch 下没有业务判定价值。故未来 Phase G 的第一步必须等 Test App/device acceptance 完成、sandbox binding 明确撤销/切换、App 安装并 OAuth 到运营 production merchant 后，再做 fresh production-merchant readiness audit。通过后才允许建立 read-only v3 shadow compare；在此之前不修改 Web `/v1/charges` execution、CARD/Apple Pay/Google Pay、3DS/session/pricing token/contact verification、Web order finalization、external-payment refund、production webhook merchant scope 或 Web payment/surcharge persistence。
 
 ## 1. Architecture Tests 总体策略
 

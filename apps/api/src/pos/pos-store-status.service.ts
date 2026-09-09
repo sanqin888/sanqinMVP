@@ -5,7 +5,7 @@ import {
   UBER_EATS_STORE_STATUS_SYNC,
   type UberEatsStoreStatusSyncPort,
 } from '../integrations/ubereats/public-api';
-import { AppLogger } from '../common/app-logger';
+import { AppLogger } from '../common/public-api';
 import {
   BRAND_STORE_CONFIG_READER,
   BRAND_STORE_CONFIG_WRITER,

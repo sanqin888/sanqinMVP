@@ -259,6 +259,15 @@ export class UberStoreMappingPrismaAdapter implements UberStoreMappingRepository
     });
     return rows.map(mapStoreMapping);
   }
+  async findProvisionedMappingsByStoreStableId(storeStableId: string) {
+    return this.prisma.uberStoreMapping.findMany({
+      where: {
+        posExternalStoreId: storeStableId,
+        isProvisioned: true,
+      },
+      select: { uberStoreId: true },
+    });
+  }
   async findMapping(uberStoreId: string) {
     const row = await this.prisma.uberStoreMapping.findUnique({
       where: { uberStoreId },

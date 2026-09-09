@@ -506,6 +506,17 @@ model PosDevice {
   @@index([storeId])
 }
 
+/// POS-owned purpose-built read fact for cross-context connectivity observation.
+/// Writers live in Store Operations/POS; other contexts may read but must not mutate it.
+model PosConnectivityReadModel {
+  storeStableId                   String   @id
+  hasHeartbeatCapableActiveDevice Boolean  @default(false)
+  lastHeartbeatAt                 DateTime?
+  validUntil                      DateTime?
+  createdAt                       DateTime @default(now())
+  updatedAt                       DateTime @updatedAt
+}
+
 model UserInvite {
   id              String    @id @default(uuid()) @db.Uuid
   inviteStableId  String    @unique @default(cuid())

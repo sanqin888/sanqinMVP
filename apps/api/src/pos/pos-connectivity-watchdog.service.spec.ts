@@ -53,11 +53,6 @@ describe('PosConnectivityWatchdogService', () => {
           },
         ]),
       },
-      uberStoreMapping: {
-        findMany: jest
-          .fn()
-          .mockResolvedValue([{ uberStoreId: 'uber-store-1' }]),
-      },
     };
     const configReader = {
       getStoreSnapshot: jest.fn().mockResolvedValue({
@@ -65,7 +60,7 @@ describe('PosConnectivityWatchdogService', () => {
       }),
     };
     const uber = {
-      syncStoreStatusToUber: jest
+      syncStoreStatusForStore: jest
         .fn()
         .mockResolvedValue({ outcome: 'SUCCEEDED', synchronizedStores: 1 }),
     };
@@ -117,7 +112,7 @@ describe('PosConnectivityWatchdogService', () => {
     await service.runOnce();
 
     expect(prisma.posDevice.findMany).not.toHaveBeenCalled();
-    expect(uber.syncStoreStatusToUber).not.toHaveBeenCalled();
+    expect(uber.syncStoreStatusForStore).not.toHaveBeenCalled();
   });
 
   it('pauses Uber until the current business day closes after the opening grace period', async () => {
@@ -125,7 +120,7 @@ describe('PosConnectivityWatchdogService', () => {
     const { service, prisma, uber } = setup(new Date(NOW - 120_000));
 
     await service.runOnce();
-    expect(uber.syncStoreStatusToUber).not.toHaveBeenCalled();
+    expect(uber.syncStoreStatusForStore).not.toHaveBeenCalled();
 
     nowSpy.mockReturnValue(NOW + 90_001);
     await service.runOnce();
@@ -137,12 +132,8 @@ describe('PosConnectivityWatchdogService', () => {
       },
       select: { lastSeenAt: true, meta: true },
     });
-    expect(prisma.uberStoreMapping.findMany).toHaveBeenCalledWith({
-      where: { posExternalStoreId: 'store-1', isProvisioned: true },
-      select: { uberStoreId: true },
-    });
-    expect(uber.syncStoreStatusToUber).toHaveBeenCalledWith({
-      uberStoreId: 'uber-store-1',
+    expect(uber.syncStoreStatusForStore).toHaveBeenCalledWith({
+      storeStableId: STORE_STABLE_ID,
       targetStatus: 'PAUSED',
       reason: 'POS connectivity lost',
       pauseUntil: '2026-08-26T03:30:00.000Z',
@@ -161,7 +152,7 @@ describe('PosConnectivityWatchdogService', () => {
     await service.runOnce();
 
     expect(prisma.posDevice.findMany).not.toHaveBeenCalled();
-    expect(uber.syncStoreStatusToUber).not.toHaveBeenCalled();
+    expect(uber.syncStoreStatusForStore).not.toHaveBeenCalled();
   });
 
   it('re-evaluates a still-offline POS on the next business day', async () => {
@@ -171,7 +162,7 @@ describe('PosConnectivityWatchdogService', () => {
     await service.runOnce();
     nowSpy.mockReturnValue(NOW + 90_001);
     await service.runOnce();
-    expect(uber.syncStoreStatusToUber).toHaveBeenCalledTimes(1);
+    expect(uber.syncStoreStatusForStore).toHaveBeenCalledTimes(1);
 
     storeStatus.getCurrentStatus.mockResolvedValue(
       closedSchedule('2026-08-25'),
@@ -183,17 +174,52 @@ describe('PosConnectivityWatchdogService', () => {
     const nextOpening = Date.parse('2026-08-26T12:00:00.000Z');
     nowSpy.mockReturnValue(nextOpening);
     await service.runOnce();
-    expect(uber.syncStoreStatusToUber).toHaveBeenCalledTimes(1);
+    expect(uber.syncStoreStatusForStore).toHaveBeenCalledTimes(1);
 
     nowSpy.mockReturnValue(nextOpening + 90_001);
     await service.runOnce();
 
-    expect(uber.syncStoreStatusToUber).toHaveBeenCalledTimes(2);
-    expect(uber.syncStoreStatusToUber).toHaveBeenLastCalledWith({
-      uberStoreId: 'uber-store-1',
+    expect(uber.syncStoreStatusForStore).toHaveBeenCalledTimes(2);
+    expect(uber.syncStoreStatusForStore).toHaveBeenLastCalledWith({
+      storeStableId: STORE_STABLE_ID,
       targetStatus: 'PAUSED',
       reason: 'POS connectivity lost',
       pauseUntil: '2026-08-27T03:30:00.000Z',
+    });
+  });
+
+  it('resumes Uber by storeStableId after connectivity is stable again', async () => {
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(NOW);
+    const { service, prisma, uber } = setup(new Date(NOW - 120_000));
+
+    await service.runOnce();
+    nowSpy.mockReturnValue(NOW + 90_001);
+    await service.runOnce();
+    expect(uber.syncStoreStatusForStore).toHaveBeenCalledWith({
+      storeStableId: STORE_STABLE_ID,
+      targetStatus: 'PAUSED',
+      reason: 'POS connectivity lost',
+      pauseUntil: '2026-08-26T03:30:00.000Z',
+    });
+
+    const recoveredAt = NOW + 90_002;
+    prisma.posDevice.findMany.mockResolvedValue([
+      {
+        storeId: 'legacy-device-store-uuid',
+        lastSeenAt: new Date(recoveredAt),
+        meta: heartbeatMeta,
+      },
+    ]);
+    nowSpy.mockReturnValue(recoveredAt);
+    await service.runOnce();
+
+    nowSpy.mockReturnValue(recoveredAt + 30_001);
+    await service.runOnce();
+
+    expect(uber.syncStoreStatusForStore).toHaveBeenCalledTimes(2);
+    expect(uber.syncStoreStatusForStore).toHaveBeenLastCalledWith({
+      storeStableId: STORE_STABLE_ID,
+      targetStatus: 'ONLINE',
     });
   });
 
@@ -206,7 +232,7 @@ describe('PosConnectivityWatchdogService', () => {
     await service.runOnce();
     nowSpy.mockReturnValue(NOW + 90_001);
     await service.runOnce();
-    expect(uber.syncStoreStatusToUber).toHaveBeenCalledTimes(1);
+    expect(uber.syncStoreStatusForStore).toHaveBeenCalledTimes(1);
 
     const recoveredAt = NOW + 90_002;
     prisma.posDevice.findMany.mockResolvedValue([
@@ -226,7 +252,7 @@ describe('PosConnectivityWatchdogService', () => {
     await service.runOnce();
 
     expect(configReader.getStoreSnapshot).toHaveBeenCalledTimes(1);
-    expect(uber.syncStoreStatusToUber).toHaveBeenCalledTimes(1);
+    expect(uber.syncStoreStatusForStore).toHaveBeenCalledTimes(1);
   });
 });
 
