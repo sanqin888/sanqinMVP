@@ -25,5 +25,3 @@ export {
 } from './pos-full-refund-management.contract';
 export { PosDeviceGuard } from './pos-device.guard';
 export { PosDeviceModule } from './pos-device.module';
-export { StableIdPipe } from '../common/pipes/stable-id.pipe';
-export { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';

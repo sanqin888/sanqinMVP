@@ -4,7 +4,7 @@ import {
   Injectable,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { AppLogger } from '../common/app-logger';
+import { AppLogger } from '../common/public-api';
 import {
   BRAND_STORE_CONFIG_READER,
   type BrandStoreConfigReaderPort,
