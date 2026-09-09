@@ -8,6 +8,7 @@ const AUTH_ROOT = resolve(API_ROOT, 'auth');
 const COMMON_ROOT = resolve(API_ROOT, 'common');
 const ORCHESTRATION_ROOT = resolve(API_ROOT, 'orchestration');
 const STORE_ROOT = resolve(API_ROOT, 'store');
+const UBER_EATS_ROOT = resolve(API_ROOT, 'integrations', 'ubereats');
 
 function read(path: string): string {
   return readFileSync(path, 'utf8');
@@ -146,6 +147,63 @@ describe('POS Foundation boundary', () => {
     expect(commonPublicApi).not.toContain('pos-connectivity');
     expect(posDeviceService).toContain("from '../common/pos-connectivity'");
     expect(watchdog).toContain("from '../common/pos-connectivity'");
+  });
+});
+
+describe('POS Uber store-status ownership boundary', () => {
+  it('keeps provider-store mapping inside Uber while POS sends only storeStableId', () => {
+    const watchdog = read(
+      resolve(POS_ROOT, 'pos-connectivity-watchdog.service.ts'),
+    );
+    const uberPublicApi = read(resolve(UBER_EATS_ROOT, 'public-api.ts'));
+    const mappingPort = read(
+      resolve(
+        UBER_EATS_ROOT,
+        'application',
+        'merchant',
+        'uber-merchant-persistence.ports.ts',
+      ),
+    );
+    const syncUseCase = read(
+      resolve(
+        UBER_EATS_ROOT,
+        'application',
+        'merchant',
+        'uber-merchant-provisioning.service.ts',
+      ),
+    );
+    const mappingAdapter = read(
+      resolve(
+        UBER_EATS_ROOT,
+        'infrastructure',
+        'persistence',
+        'uber-merchant-persistence.adapter.ts',
+      ),
+    );
+    const statusPublicApi = uberPublicApi.slice(
+      uberPublicApi.indexOf('export type UberEatsStoreStatusForStoreInput'),
+      uberPublicApi.indexOf('export type UberEatsFinancialReportType'),
+    );
+
+    expect(watchdog).toContain('syncStoreStatusForStore');
+    expect(watchdog).toContain('storeStableId');
+    expect(watchdog).not.toContain('this.prisma.uberStoreMapping');
+    expect(watchdog).not.toContain('uberStoreId');
+
+    expect(uberPublicApi).toContain('UberEatsStoreStatusForStoreInput');
+    expect(uberPublicApi).not.toContain('UberEatsStoreStatusTarget');
+    expect(statusPublicApi).toContain('storeStableId: string');
+    expect(statusPublicApi).toContain('syncStoreStatusForStore');
+    expect(statusPublicApi).not.toContain('uberStoreId');
+
+    expect(mappingPort).toContain('findProvisionedMappingsByStoreStableId');
+    expect(mappingAdapter).toContain(
+      'findProvisionedMappingsByStoreStableId(storeStableId: string)',
+    );
+    expect(mappingAdapter).toContain('posExternalStoreId: storeStableId');
+    expect(mappingAdapter).toContain('isProvisioned: true');
+    expect(syncUseCase).toContain('syncStoreStatusForStore');
+    expect(syncUseCase).toContain('findProvisionedMappingsByStoreStableId');
   });
 });
 

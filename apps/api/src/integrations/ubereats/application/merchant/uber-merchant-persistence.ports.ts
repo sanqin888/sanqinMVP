@@ -87,6 +87,9 @@ export type UberMerchantStoreMapping = {
 export interface UberStoreMappingRepositoryPort {
   findMappings(uberStoreIds: string[]): Promise<UberMerchantStoreMapping[]>;
   listMappings(): Promise<UberMerchantStoreMapping[]>;
+  findProvisionedMappingsByStoreStableId(
+    storeStableId: string,
+  ): Promise<Array<{ uberStoreId: string }>>;
   findMapping(uberStoreId: string): Promise<UberMerchantStoreMapping | null>;
   upsertMapping(
     input: UberMerchantStoreMapping,
