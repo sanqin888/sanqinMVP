@@ -62,7 +62,9 @@ describe('PosDeviceService.verifyCredentials', () => {
 
   it('refreshes the POS-owned connectivity read model for heartbeat-capable activity', async () => {
     const originalTimeout = process.env.POS_CONNECTIVITY_HEARTBEAT_TIMEOUT_MS;
+    const now = new Date('2026-09-09T17:30:00.000Z');
     process.env.POS_CONNECTIVITY_HEARTBEAT_TIMEOUT_MS = '90000';
+    jest.useFakeTimers().setSystemTime(now);
     try {
       const deviceKey = 'device-secret';
       const { service, posConnectivityReadModel } = setup({
@@ -74,38 +76,29 @@ describe('PosDeviceService.verifyCredentials', () => {
         deviceKeyHash: hashDeviceKey(deviceKey),
         meta: { connectivityHeartbeatV1: true },
       });
+      const validUntil = new Date(now.getTime() + 90_000);
 
       await service.verifyCredentials({
         deviceStableId: 'device-1',
         deviceKey,
       });
 
-      expect(posConnectivityReadModel.upsert).toHaveBeenCalledTimes(1);
-      const input = posConnectivityReadModel.upsert.mock.calls[0]?.[0] as {
-        where: { storeStableId: string };
-        create: { lastHeartbeatAt: Date; validUntil: Date };
-        update: { lastHeartbeatAt: Date; validUntil: Date };
-      };
-      expect(input.where).toEqual({ storeStableId: 'store-a' });
-      expect(input.create).toEqual(
-        expect.objectContaining({
+      expect(posConnectivityReadModel.upsert).toHaveBeenCalledWith({
+        where: { storeStableId: 'store-a' },
+        create: {
           storeStableId: 'store-a',
           hasHeartbeatCapableActiveDevice: true,
-          lastHeartbeatAt: expect.any(Date) as unknown,
-          validUntil: expect.any(Date) as unknown,
-        }),
-      );
-      expect(input.update).toEqual(
-        expect.objectContaining({
+          lastHeartbeatAt: now,
+          validUntil,
+        },
+        update: {
           hasHeartbeatCapableActiveDevice: true,
-          lastHeartbeatAt: input.create.lastHeartbeatAt,
-          validUntil: input.create.validUntil,
-        }),
-      );
-      expect(
-        input.create.validUntil.getTime() - input.create.lastHeartbeatAt.getTime(),
-      ).toBe(90_000);
+          lastHeartbeatAt: now,
+          validUntil,
+        },
+      });
     } finally {
+      jest.useRealTimers();
       if (originalTimeout === undefined)
         delete process.env.POS_CONNECTIVITY_HEARTBEAT_TIMEOUT_MS;
       else process.env.POS_CONNECTIVITY_HEARTBEAT_TIMEOUT_MS = originalTimeout;
@@ -161,53 +154,66 @@ describe('PosDeviceService.verifyCredentials', () => {
 
 describe('PosDeviceService connectivity projection', () => {
   it('seeds the POS-owned read model when heartbeat capability is first enabled', async () => {
-    const lastSeenAt = new Date('2026-09-09T17:30:00.000Z');
-    const posDevice = {
-      findUnique: jest.fn().mockResolvedValue({
-        id: 'db-device-1',
-        meta: {},
-        store: { storeStableId: 'store-a' },
-      }),
-      update: jest.fn().mockResolvedValue({}),
-      findMany: jest.fn().mockResolvedValue([
-        {
-          lastSeenAt,
-          meta: { connectivityHeartbeatV1: true },
+    const originalTimeout = process.env.POS_CONNECTIVITY_HEARTBEAT_TIMEOUT_MS;
+    process.env.POS_CONNECTIVITY_HEARTBEAT_TIMEOUT_MS = '90000';
+    try {
+      const lastSeenAt = new Date('2026-09-09T17:30:00.000Z');
+      const validUntil = new Date(lastSeenAt.getTime() + 90_000);
+      const posDevice = {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'db-device-1',
+          meta: {},
+          store: { storeStableId: 'store-a' },
+        }),
+        update: jest.fn().mockResolvedValue({}),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            lastSeenAt,
+            meta: { connectivityHeartbeatV1: true },
+          },
+        ]),
+      };
+      const posConnectivityReadModel = {
+        upsert: jest.fn().mockResolvedValue({}),
+      };
+      const service = new PosDeviceService(
+        { posDevice, posConnectivityReadModel } as never,
+        { listStores: jest.fn().mockResolvedValue([]) },
+      );
+
+      await service.recordConnectivityHeartbeat('device-1');
+
+      expect(posDevice.update).toHaveBeenCalledWith({
+        where: { id: 'db-device-1' },
+        data: {
+          meta: expect.objectContaining({
+            connectivityHeartbeatV1: true,
+          }) as unknown,
         },
-      ]),
-    };
-    const posConnectivityReadModel = {
-      upsert: jest.fn().mockResolvedValue({}),
-    };
-    const service = new PosDeviceService(
-      { posDevice, posConnectivityReadModel } as never,
-      { listStores: jest.fn().mockResolvedValue([]) },
-    );
-
-    await service.recordConnectivityHeartbeat('device-1');
-
-    expect(posDevice.update).toHaveBeenCalledWith({
-      where: { id: 'db-device-1' },
-      data: {
-        meta: expect.objectContaining({
-          connectivityHeartbeatV1: true,
-        }) as unknown,
-      },
-    });
-    expect(posDevice.findMany).toHaveBeenCalledWith({
-      where: { status: 'ACTIVE', store: { storeStableId: 'store-a' } },
-      select: { lastSeenAt: true, meta: true },
-    });
-    expect(posConnectivityReadModel.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
+      });
+      expect(posDevice.findMany).toHaveBeenCalledWith({
+        where: { status: 'ACTIVE', store: { storeStableId: 'store-a' } },
+        select: { lastSeenAt: true, meta: true },
+      });
+      expect(posConnectivityReadModel.upsert).toHaveBeenCalledWith({
         where: { storeStableId: 'store-a' },
-        update: expect.objectContaining({
+        create: {
+          storeStableId: 'store-a',
           hasHeartbeatCapableActiveDevice: true,
           lastHeartbeatAt,
-          validUntil: expect.any(Date) as unknown,
-        }) as unknown,
-      }),
-    );
+          validUntil,
+        },
+        update: {
+          hasHeartbeatCapableActiveDevice: true,
+          lastHeartbeatAt,
+          validUntil,
+        },
+      });
+    } finally {
+      if (originalTimeout === undefined)
+        delete process.env.POS_CONNECTIVITY_HEARTBEAT_TIMEOUT_MS;
+      else process.env.POS_CONNECTIVITY_HEARTBEAT_TIMEOUT_MS = originalTimeout;
+    }
   });
 });
 

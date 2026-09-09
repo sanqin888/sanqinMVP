@@ -104,7 +104,9 @@ export class PosDeviceService
     const lastHeartbeatAt = heartbeatDevices.reduce<Date | null>(
       (latest, device) => {
         if (!device.lastSeenAt) return latest;
-        return !latest || device.lastSeenAt > latest ? device.lastSeenAt : latest;
+        return !latest || device.lastSeenAt > latest
+          ? device.lastSeenAt
+          : latest;
       },
       null,
     );
