@@ -2,7 +2,7 @@
 
 Start date: 2026-09-09  
 Current implementation base: `origin/dev@af8b4d63`  
-Current status: **SLICE 5A LOCAL IMPLEMENTATION / REVIEW PENDING — additive read-model expand + shadow parity only**
+Current status: **SLICE 5A PR #2254 / CI PENDING — source head `01e9448e`; final docs evidence head pending**
 
 ## Goal
 
@@ -228,7 +228,7 @@ Per `AGENTS.md`, no local lint/build/test/scanner command is run before review. 
 
 ## Slice 5A — POS connectivity purpose-built read-model expand + shadow parity
 
-Status: **LOCAL IMPLEMENTATION / REVIEW PENDING** on `refactor/phase7-slice5a-pos-connectivity-read-model`, based on `origin/dev@af8b4d63`. No remote push/PR/CI/deployment/active verification has been performed yet.
+Status: **PR #2254 / CI PENDING** on `refactor/phase7-slice5a-pos-connectivity-read-model`, based on `origin/dev@af8b4d63`; source head `01e9448e`, final docs evidence head pending. No deployment or active verification has been performed yet.
 
 Migration classification: **Class B expand-contract with Uber L3 verification**, explicitly authorized for an additive Prisma schema + migration only. Slice 5A does not cut admission truth and does not delete any legacy persistence path. Compatibility is registered as `pos-connectivity.read-model-shadow.v1` and must be removed in Slice 5B before Phase 7 source closeout.
 
