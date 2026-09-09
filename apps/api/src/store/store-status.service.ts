@@ -6,11 +6,14 @@ import { DateTime } from 'luxon';
 import { parseAutoPauseReason } from './temporary-closure-reason';
 import {
   BRAND_STORE_CONFIG_READER,
-  STORE_SCHEDULE_READER,
   type BrandStoreConfigReaderPort,
+} from './brand-store-config.contract';
+import {
+  STORE_SCHEDULE_READER,
   type StoreScheduleReaderPort,
   type StoreWeekday,
-} from './public-api';
+} from './store-schedule.contract';
+import type { StoreStatusReaderPort } from './store-status.contract';
 
 export type StoreStatus = {
   isOpenBySchedule: boolean;
@@ -53,7 +56,7 @@ type StoreClock = {
 };
 
 @Injectable()
-export class StoreStatusService {
+export class StoreStatusService implements StoreStatusReaderPort {
   private readonly logger = new AppLogger(StoreStatusService.name);
 
   constructor(

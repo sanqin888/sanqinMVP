@@ -17,11 +17,13 @@ import { UberEatsModule } from '../integrations/ubereats/ubereats.module';
 import { PosOrdersService } from './pos-orders.service';
 import { POS_FULL_REFUND_MANAGEMENT } from './pos-full-refund-management.contract';
 import { PosConnectivityWatchdogService } from './pos-connectivity-watchdog.service';
-import { StoreStatusModule } from '../store/store-status.module';
 import { PosExchangeRateModule } from './pos-exchange-rate.module';
 import { PosExchangeRateController } from './pos-exchange-rate.controller';
 import { LoyaltyModule } from '../loyalty/public-api';
-import { BrandStoreConfigModule } from '../store/public-api';
+import {
+  BrandStoreConfigModule,
+  StoreStatusModule,
+} from '../store/public-api';
 import { PosPrintDispatchListener } from './pos-print-dispatch.listener';
 
 @Module({
