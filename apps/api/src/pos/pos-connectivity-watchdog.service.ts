@@ -16,14 +16,16 @@ import {
 } from '../common/pos-connectivity';
 import {
   BRAND_STORE_CONFIG_READER,
+  STORE_STATUS_READER,
   resolveConfiguredStoreStableId,
   type BrandStoreConfigReaderPort,
+  type StoreStatusReadSnapshot,
+  type StoreStatusReaderPort,
 } from '../store/public-api';
 import {
   UBER_EATS_STORE_STATUS_SYNC,
   type UberEatsStoreStatusSyncPort,
 } from '../integrations/ubereats/public-api';
-import { StoreStatusService } from '../store/store-status.service';
 import { PosStoreStatusService } from './pos-store-status.service';
 
 type RuntimeState = {
@@ -64,7 +66,8 @@ export class PosConnectivityWatchdogService
     private readonly configReader: BrandStoreConfigReaderPort,
     @Inject(UBER_EATS_STORE_STATUS_SYNC)
     private readonly uber: UberEatsStoreStatusSyncPort,
-    private readonly storeStatus: StoreStatusService,
+    @Inject(STORE_STATUS_READER)
+    private readonly storeStatus: StoreStatusReaderPort,
     private readonly posStoreStatus: PosStoreStatusService,
   ) {}
 
@@ -302,7 +305,7 @@ export class PosConnectivityWatchdogService
   }
 
   private resolveScheduleCloseAt(
-    schedule: Awaited<ReturnType<StoreStatusService['getCurrentStatus']>>,
+    schedule: StoreStatusReadSnapshot,
   ): string | null {
     const closeMinutes = schedule.today.closeMinutes;
     if (closeMinutes === null) return null;
