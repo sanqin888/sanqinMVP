@@ -107,7 +107,7 @@ describe('CloverProviderConfig', () => {
         expect(config.unifiedOauthCallbackUrl).toBeUndefined();
         expect(config.unifiedOauthScopesMetadata).toBeUndefined();
         expect(config.terminalApiBase).toBeUndefined();
-        expect(config.terminalAccessToken).toBe('terminal-token-fixture');
+        expect('terminalAccessToken' in config).toBe(false);
         expect(config.terminalDeviceId).toBeUndefined();
         expect(config.terminalRemoteAppId).toBeUndefined();
         expect(config.terminalTimeoutSeconds).toBeUndefined();
@@ -153,7 +153,7 @@ describe('CloverProviderConfig', () => {
           'MERCHANT_READ,PAYMENTS_READ',
         );
         expect(config.terminalApiBase).toBe('https://terminal.example');
-        expect(config.terminalAccessToken).toBe('terminal-token-fixture');
+        expect('terminalAccessToken' in config).toBe(false);
         expect(config.terminalDeviceId).toBe('device-1');
         expect(config.terminalRemoteAppId).toBe('raid-1');
         expect(config.terminalTimeoutSeconds).toBe(120);

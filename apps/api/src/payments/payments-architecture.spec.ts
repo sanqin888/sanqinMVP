@@ -293,6 +293,9 @@ describe('Payments bounded-context architecture', () => {
     expect(providerConfig?.source).not.toContain(
       'process.env.CLOVER_REMOTE_APP_ID',
     );
+    expect(providerConfig?.source).not.toContain(
+      'process.env.CLOVER_TERMINAL_OAUTH_TOKEN',
+    );
 
     expect(ecommerce?.source).toContain('config.ecommerceAccessToken');
     expect(ecommerce?.source).not.toContain('config.unified');
@@ -300,6 +303,11 @@ describe('Payments bounded-context architecture', () => {
     expect(platform?.source).toContain('config.unifiedPlatformApiBase');
     expect(platform?.source).not.toContain('config.ecommerce');
     expect(terminal?.source).toContain('config.terminalApiBase');
+    expect(terminal?.source).toContain('config.unifiedMerchantId');
+    expect(terminal?.source).toContain('CloverMerchantAccessTokenService');
+    expect(terminal?.source).toContain('{ forceRefresh: true }');
+    expect(terminal?.source).not.toContain('config.terminalAccessToken');
+    expect(terminal?.source).not.toContain('CLOVER_TERMINAL_OAUTH_TOKEN');
     expect(terminal?.source).not.toContain('config.ecommerceApiBase');
     expect(terminal?.source).not.toContain('config.ecommerceAccessToken');
     expect(oauthClient?.source).toContain('config.unifiedOauth');
