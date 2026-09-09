@@ -51,54 +51,49 @@ describe('POS device management boundary', () => {
 });
 
 describe('POS Brand/Store status boundary', () => {
-  it(
-    'consumes store status through the Brand/Store public read capability',
-    () => {
-      const watchdog = read(
-        resolve(POS_ROOT, 'pos-connectivity-watchdog.service.ts'),
-      );
-      const posModule = read(resolve(POS_ROOT, 'pos.module.ts'));
-      const storePublicApi = read(resolve(STORE_ROOT, 'public-api.ts'));
-      const storeStatusContract = read(
-        resolve(STORE_ROOT, 'store-status.contract.ts'),
-      );
-      const storeStatusModule = read(
-        resolve(STORE_ROOT, 'store-status.module.ts'),
-      );
-      const storeStatusService = read(
-        resolve(STORE_ROOT, 'store-status.service.ts'),
-      );
+  it('consumes store status through the Brand/Store public read capability', () => {
+    const watchdog = read(
+      resolve(POS_ROOT, 'pos-connectivity-watchdog.service.ts'),
+    );
+    const posModule = read(resolve(POS_ROOT, 'pos.module.ts'));
+    const storePublicApi = read(resolve(STORE_ROOT, 'public-api.ts'));
+    const storeStatusContract = read(
+      resolve(STORE_ROOT, 'store-status.contract.ts'),
+    );
+    const storeStatusModule = read(
+      resolve(STORE_ROOT, 'store-status.module.ts'),
+    );
+    const storeStatusService = read(
+      resolve(STORE_ROOT, 'store-status.service.ts'),
+    );
 
-      expect(watchdog).toContain("from '../store/public-api'");
-      expect(watchdog).toContain('STORE_STATUS_READER');
-      expect(watchdog).toContain('StoreStatusReaderPort');
-      expect(watchdog).not.toContain("from '../store/store-status.service'");
-      expect(posModule).toContain('StoreStatusModule');
-      expect(posModule).toContain("from '../store/public-api'");
-      expect(posModule).not.toContain("from '../store/store-status.module'");
+    expect(watchdog).toContain("from '../store/public-api'");
+    expect(watchdog).toContain('STORE_STATUS_READER');
+    expect(watchdog).toContain('StoreStatusReaderPort');
+    expect(watchdog).not.toContain("from '../store/store-status.service'");
+    expect(posModule).toContain('StoreStatusModule');
+    expect(posModule).toContain("from '../store/public-api'");
+    expect(posModule).not.toContain("from '../store/store-status.module'");
 
-      expect(storePublicApi).toContain("from './store-status.contract'");
-      expect(storePublicApi).toContain("from './store-status.module'");
-      expect(storePublicApi).not.toContain('StoreStatusService');
-      expect(storeStatusModule).toContain('provide: STORE_STATUS_READER');
-      expect(storeStatusModule).toContain('useExisting: StoreStatusService');
-      expect(storeStatusModule).toContain('exports: [STORE_STATUS_READER]');
-      expect(storeStatusModule).not.toContain('exports: [StoreStatusService]');
+    expect(storePublicApi).toContain("from './store-status.contract'");
+    expect(storePublicApi).toContain("from './store-status.module'");
+    expect(storePublicApi).not.toContain('StoreStatusService');
+    expect(storeStatusModule).toContain('provide: STORE_STATUS_READER');
+    expect(storeStatusModule).toContain('useExisting: StoreStatusService');
+    expect(storeStatusModule).toContain('exports: [STORE_STATUS_READER]');
+    expect(storeStatusModule).not.toContain('exports: [StoreStatusService]');
 
-      expect(storeStatusContract).toContain('StoreStatusReaderPort');
-      expect(storeStatusContract).toContain('isOpenBySchedule: boolean');
-      expect(storeStatusContract).toContain('isTemporarilyClosed: boolean');
-      expect(storeStatusContract).toContain('closeMinutes: number | null');
-      expect(storeStatusContract).not.toContain('publicNotice');
-      expect(storeStatusContract).not.toContain('temporaryCloseReason');
+    expect(storeStatusContract).toContain('StoreStatusReaderPort');
+    expect(storeStatusContract).toContain('isOpenBySchedule: boolean');
+    expect(storeStatusContract).toContain('isTemporarilyClosed: boolean');
+    expect(storeStatusContract).toContain('closeMinutes: number | null');
+    expect(storeStatusContract).not.toContain('publicNotice');
+    expect(storeStatusContract).not.toContain('temporaryCloseReason');
 
-      expect(storeStatusService).not.toContain("from './public-api'");
-      expect(storeStatusService).toContain(
-        "from './brand-store-config.contract'",
-      );
-      expect(storeStatusService).toContain("from './store-schedule.contract'");
-    },
-  );
+    expect(storeStatusService).not.toContain("from './public-api'");
+    expect(storeStatusService).toContain("from './brand-store-config.contract'");
+    expect(storeStatusService).toContain("from './store-schedule.contract'");
+  });
 });
 
 describe('POS device authentication boundary', () => {
