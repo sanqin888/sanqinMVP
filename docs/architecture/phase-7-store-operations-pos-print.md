@@ -2,7 +2,7 @@
 
 Start date: 2026-09-09  
 Current implementation base: `origin/dev@af8b4d63`  
-Current status: **SLICE 5A PR #2254 / CI FOLLOW-UP — CI #5390/#5391 both passed Architecture; API Lint follow-up reduced four findings to two test-typing findings; final focused fix pending**
+Current status: **SLICE 5A PR #2254 / CI #5392 GREEN — final source head `d7d61660`; final docs evidence head pending**
 
 ## Goal
 
@@ -228,7 +228,7 @@ Per `AGENTS.md`, no local lint/build/test/scanner command is run before review. 
 
 ## Slice 5A — POS connectivity purpose-built read-model expand + shadow parity
 
-Status: **PR #2254 / CI FOLLOW-UP** on `refactor/phase7-slice5a-pos-connectivity-read-model`, based on `origin/dev@af8b4d63`; source head `01e9448e`. CI #5390 passed Prisma generation and Architecture then failed API Lint on four new-file findings; focused follow-up `f986ee8d` reduced CI #5391 to two remaining test-typing lint findings while Architecture again passed. The next focused fix removes only those unsafe Jest argument assertions. No deployment or active verification has been performed yet.
+Status: **PR #2254 / CI #5392 GREEN** on `refactor/phase7-slice5a-pos-connectivity-read-model`, based on `origin/dev@af8b4d63`; final source head `d7d61660`, final docs evidence head pending. CI #5392 passed Prisma generation, Architecture baseline, API lint/build/strict/shared strict/full tests, and Web lint/build/strict/tests. Earlier CI #5390/#5391 both passed Architecture and failed only new-file lint findings, which were removed by focused source/test follow-ups. No deployment or active verification has been performed yet.
 
 Migration classification: **Class B expand-contract with Uber L3 verification**, explicitly authorized for an additive Prisma schema + migration only. Slice 5A does not cut admission truth and does not delete any legacy persistence path. Compatibility is registered as `pos-connectivity.read-model-shadow.v1` and must be removed in Slice 5B before Phase 7 source closeout.
 
