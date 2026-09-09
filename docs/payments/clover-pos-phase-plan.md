@@ -46,19 +46,20 @@ Phase J  Legacy Cleanup
 
 ### 0.2 2026-09-08 Phase 6 / Sandbox bring-up 执行顺序修订
 
-新的 Clover Test Merchant 和 Test App 已具备 Preview 条件，因此当前阻塞从“无法开始 sandbox integration”收缩为“尚未完成 SanQ OAuth、Platform v3、Cloud Pay Display/device 与真实支付行为验收”。这不改变 Web-before/after cutover 原则，但要求在继续 Phase G 前把 POS Terminal 的 provider/config/credential 边界和 sandbox 验证提前完成。
+新的 Clover Test Merchant 和 Test App 已完成非设备 sandbox bring-up：SanQ OAuth、`ACTIVE` Store binding、Platform v3 canonical read、数据库凭据加解密、自然 access-token refresh/rotation 与 API 重启后的 rotated credential 恢复都已实测通过。当前剩余 provider 阻塞收缩为 Cloud Pay Display/device、真实 Terminal Sale/reconciliation/refund/recovery 与 full POS acceptance；这些项目需要 Clover Dev Kit。这不改变 Web cutover 的保护原则，但允许在硬件等待期间先做只读 Web cutover readiness audit，实际 Phase G migration/activation 仍必须等专门 readiness PASS 和剩余 Terminal/device acceptance evidence。
 
-Phase 6 后半段固定按以下顺序执行：
+Phase 6 后半段当前执行状态：
 
 ```text
-Slice 4B  Clover provider internal capability cleanup
-    -> Slice 4C  Unified/Sandbox configuration isolation
-    -> Slice 4D  Unified Clover OAuth credential convergence
-    -> Test Merchant OAuth + Platform v3 read + device availability
-    -> controlled sandbox Sale / reconciliation / refund / recovery
-    -> full POS Terminal acceptance
-    -> Web Clover cutover readiness audit
-    -> Phase G Web Ecommerce migration to Unified Payment Core
+Slice 4B  Clover provider internal capability cleanup                 [DONE]
+    -> Slice 4C  Unified/Sandbox configuration isolation             [DONE]
+    -> Slice 4D  Unified Clover OAuth credential convergence         [DONE]
+    -> Test Merchant OAuth + Platform v3 + credential lifecycle      [VERIFIED]
+    -> Cloud Pay Display/device availability                          [PENDING DEV KIT]
+    -> controlled sandbox Sale / reconciliation / refund / recovery  [PENDING DEV KIT]
+    -> full POS Terminal acceptance                                   [PENDING DEV KIT]
+    -> Web Clover cutover readiness audit                             [READ-ONLY MAY PROCEED]
+    -> Phase G Web Ecommerce migration to Unified Payment Core        [BLOCKED BY GATES]
 ```
 
 #### Slice 4B 边界
@@ -83,7 +84,15 @@ Unified/Terminal 配置缺失必须 fail closed。禁止 Unified/Terminal 回退
 
 4D 将 Terminal 从静态 `CLOVER_TERMINAL_OAUTH_TOKEN` 改为复用现有 `CloverMerchantAccessTokenService`。Platform v3 与 Terminal REST Pay 使用同一 Unified merchant OAuth authorization、refresh/recovery lifecycle；OAuth store mapping 也基于 Unified merchant/store 配置，不再借用 legacy Web merchant identity。静态 Terminal token 不作为 fallback 保留。
 
-**Implementation status (2026-09-08): LOCAL / REVIEW PENDING.** `CloverProviderConfig.terminalAccessToken` 与 deployment placeholder 已删除；`CloverTerminalTransport` 继续同步检查 Unified merchant + Terminal base/device/RAID/timeout，但真正发 HTTP 前异步通过 `CloverMerchantAccessTokenService.getAccessToken(CLOVER_UNIFIED_MERCHANT_ID)` 取数据库凭据。Terminal 收到 HTTP 401 时只执行一次 `{ forceRefresh: true }` 并使用相同 idempotency key 重试一次。实现显式区分“credential unavailable、请求尚未发送”和“fetch 已发送但网络/timeout 不确定”：前者使 Sale/Refund/Void fail closed 且 `fetch=0`，后者继续保持 `UNKNOWN` 并交给 reconciliation。Focused tests 已覆盖 DB token header、401 refresh/retry、Web token 不回退、credential unavailable 与 socket-loss UNKNOWN；architecture guard 禁止静态 Terminal token 回归。Read-only production audit 当前仅有 1 条 `PENDING_BINDING`、0 条 `ACTIVE` Clover authorization，且 `PaymentTransaction` / `PaymentCheckoutAttempt` 均为 0，因此 4D 本身不会激活 Terminal。无 Prisma、public contract、dependency baseline、Web `/v1/charges`、production webhook 或 rollout flag 改动；按仓库流程本地 lint/build/test/scanner 未运行，等待用户审阅后再走 GitHub Actions。
+**Implementation status (2026-09-08): MERGED / CI GREEN / DEPLOYED / NON-DEVICE SANDBOX VERIFIED.** PR #2245 final head `c665b469` 通过 PR CI #5361，squash merge 为 `1cc4a829`，post-merge CI #5362 的 API/Web 也全部通过。`CloverProviderConfig.terminalAccessToken` 与 deployment placeholder 已删除；`CloverTerminalTransport` 继续同步检查 Unified merchant + Terminal base/device/RAID/timeout，但真正发 HTTP 前异步通过 `CloverMerchantAccessTokenService.getAccessToken(CLOVER_UNIFIED_MERCHANT_ID)` 取数据库凭据。Terminal 收到 HTTP 401 时只执行一次 `{ forceRefresh: true }` 并使用相同 idempotency key 重试一次。实现显式区分“credential unavailable、请求尚未发送”和“fetch 已发送但网络/timeout 不确定”：前者使 Sale/Refund/Void fail closed 且 `fetch=0`，后者继续保持 `UNKNOWN` 并交给 reconciliation。Focused tests 已覆盖 DB token header、401 refresh/retry、Web token 不回退、credential unavailable 与 socket-loss UNKNOWN；architecture guard 禁止静态 Terminal token 回归。4D 没有 Prisma、public contract、dependency baseline、Web `/v1/charges`、production webhook 或 rollout flag 改动，且部署后仍未开启 Terminal route。
+
+#### 2026-09-08/09 non-device sandbox verification
+
+- Production SanQ runtime 使用独立 `CLOVER_UNIFIED_*` Test Merchant/Test App 配置完成 OAuth，`CloverMerchantAuthorization` 最终为 `ACTIVE` 并绑定 `4750_Yonge_Street`。
+- 当前已验证的 sandbox App 权限组合为 Merchant READ + Payments READ + Orders READ，另保持 Ecommerce enabled；没有添加 Clover write permission。Orders READ 是当前 canonical payment query 的实际依赖，因为 `PAYMENT_EXPAND` 包含 `order`，currency mapping 允许 `payment.currency ?? order.currency` fallback。
+- 未添加 Orders READ 时，数据库中的有效 access token 已成功到达 Clover Platform，但带 `expand=...order` 的 canonical payment read 返回 HTTP 403；更新 Test App 权限、在 Test Merchant 中卸载/重装并重新 OAuth 后，同一只读查询返回 HTTP 200，故意使用不存在的 `externalPaymentId` 最终映射为 `CLOVER_PLATFORM_PAYMENT_NOT_FOUND`。
+- 等待 access token 自然过期后再次执行相同查询，`CloverMerchantAccessTokenService` 自动 refresh/rotate credential：`tokenVersion 2 -> 3`、`refreshedAt` 写入、access/refresh expiry 均前移，随后 Platform v3 仍返回 HTTP 200。API recreate 后再次查询时 `tokenVersion` 保持 3，证明新进程能够重新加载 credential key ring、从 PostgreSQL 解密 rotated credential 并继续使用。
+- 没有为了实测故意破坏有效 token 来制造 401；`401 -> forceRefresh -> retry once` 继续以 focused automated test 作为异常恢复证据。Cloud Pay Display/device availability、Sale、cancel、void/refund、timeout/UNKNOWN/recovery、Terminal reconciliation 与 full POS E2E 都仍等待 Clover Dev Kit。
 
 #### Sandbox / production data safety
 
