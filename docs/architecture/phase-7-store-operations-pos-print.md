@@ -2,7 +2,7 @@
 
 Start date: 2026-09-09  
 Current implementation base: `origin/dev@8f78f0b5`  
-Current status: **SLICE 3 PR #2252 / CI PENDING**
+Current status: **SLICE 3 PR #2252 / CI #5381 GREEN — FINAL DOCS HEAD PENDING**
 
 ## Goal
 
@@ -148,7 +148,7 @@ Existing watchdog characterization coverage remains applicable to non-business-h
 
 ## Slice 3 — API Foundation public-surface contraction
 
-Status: **PR #2252 / CI PENDING** — current reviewed source head `6935f554`; final merge evidence will be recorded on the CI-green head.
+Status: **PR #2252 / CI #5381 GREEN — FINAL DOCS HEAD PENDING** — source/formatting head `e0112d3f` passed Architecture, API/Web lint/build/strict checks and tests; final merge evidence will be recorded after the docs-only evidence head is CI-green.
 
 Migration classification: **Class A atomic internal boundary contraction**. Slice 3 does not redefine POS connectivity ownership or create a new Foundation abstraction. It only moves neutral API utilities that already belong to `architecture-foundation` behind one explicit API public surface and removes the accidental POS pass-through ownership of Foundation pipes.
 
