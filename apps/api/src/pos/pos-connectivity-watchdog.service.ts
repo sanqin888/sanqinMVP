@@ -143,7 +143,9 @@ export class PosConnectivityWatchdogService
       now,
       this.offlineAfterMs,
     );
-    await this.posDeviceService.repairConnectivityReadModelForStore(storeStableId);
+    await this.posDeviceService.repairConnectivityReadModelForStore(
+      storeStableId,
+    );
 
     if (connectivity.status !== 'ONLINE') {
       const pauseUntil = this.resolveScheduleCloseAt(schedule);

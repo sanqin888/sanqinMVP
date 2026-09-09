@@ -176,9 +176,7 @@ describe('POS connectivity read-model ownership boundary', () => {
     expect(posDeviceService).toContain('posConnectivityReadModel.updateMany');
     expect(posDeviceService).toContain('posConnectivityReadModel.createMany');
     expect(posDeviceService).toContain('posConnectivityReadModel.upsert');
-    expect(posDeviceService).toContain(
-      'repairConnectivityReadModelForStore',
-    );
+    expect(posDeviceService).toContain('repairConnectivityReadModelForStore');
     expect(posDeviceService).toContain(
       "where: { id: device.id, status: 'ACTIVE' }",
     );
