@@ -2,7 +2,7 @@
 
 Start date: 2026-09-09  
 Current implementation base: `origin/dev@d3b7996b`  
-Current status: **SLICE 4 PR #2253 / CI PENDING — current head `d2b085d8`**
+Current status: **SLICE 4 PR #2253 / CI #5386 GREEN — final source head `bb6b6595`; final docs evidence head pending**
 
 ## Goal
 
@@ -204,7 +204,7 @@ Per `AGENTS.md`, no local lint/build/test/scanner command was run before review.
 
 ## Slice 4 — POS connectivity -> Uber Store Status ownership contraction
 
-Status: **LOCAL / REVIEW PENDING** on branch `refactor/phase7-slice4-pos-uber-store-status-ownership` from `origin/dev@d3b7996b`.
+Status: **PR #2253 / CI #5386 GREEN — final source head `bb6b6595`; final docs evidence head pending**. Initial CI #5385 passed Architecture but failed API Lint only on four Prettier formatting findings before the formatting-only follow-up.
 
 Migration classification: **Class A atomic ownership contraction with the Uber L3 Phase-closeout verification gate**. No persisted/external wire contract, provider command shape, idempotency rule, route or independently deployed consumer changes. The cross-context public capability changes atomically with all in-repository consumers; provider-store mapping stays inside the existing Uber bounded context.
 
