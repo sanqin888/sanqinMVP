@@ -136,6 +136,8 @@ Phase 6 Slice 3A merged through PR #2239 / `239d8f74` after final head `782da646
 
 2026-09-09 Phase 6 Web Clover cutover readiness audit is documentation/read-only governance only and makes **no graph/baseline change**. The protected Web `clover-pay.controller.ts -> OrdersService` compatibility seam remains the sole direct `payments-clover -> commerce-orders-fulfillment` implementation edge; the pair baseline therefore stays **1**, Payments/Clover total direct debt stays **41**, and public SCC remains empty. The audit classifies Platform v3 as the future canonical Web payment/refund truth but explicitly defers Web Unified Payment migration, production shadow reads, refund migration and legacy cleanup until Test App/device acceptance is complete and Unified authorization has moved from the Test Merchant to the operating production Clover merchant. No new scanner allowance is created for that deferral.
 
+The 2026-09-09 Phase 6 source/architecture closeout likewise makes **no graph/baseline change**. It records that the bounded-context source objectives are complete at Payments/Clover direct debt **41** with public SCC empty, while the remaining Terminal and Web payment migrations continue under the two registered payment compatibility gates. Non-payment contexts may therefore become the next modularization owners without reclassifying protected payment seams as unfinished ordinary import debt.
+
 ## Phase 4 final baseline and production verification
 
 **Phase 4 — Identity / Customer / Benefits + Messaging Boundary Contraction** is complete and tracked in
