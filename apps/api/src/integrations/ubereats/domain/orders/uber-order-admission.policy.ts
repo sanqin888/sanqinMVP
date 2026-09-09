@@ -122,14 +122,17 @@ export class UberOrderAdmissionPolicy {
         },
       };
     }
-    if (facts.connectivity.status === 'OFFLINE') {
+    if (facts.connectivity.status !== 'ONLINE') {
       return {
         kind: 'DENY',
         denial: {
           reasonCode: 'POS_OFFLINE',
-          reasonDetail: facts.connectivity.lastHeartbeatAt
-            ? `POS connectivity offline; last heartbeat ${facts.connectivity.lastHeartbeatAt.toISOString()}`
-            : 'POS connectivity offline; no recent heartbeat',
+          reasonDetail:
+            facts.connectivity.status === 'UNKNOWN'
+              ? 'POS connectivity unavailable; no active order-receiving POS device'
+              : facts.connectivity.lastHeartbeatAt
+                ? `POS connectivity offline; last heartbeat ${facts.connectivity.lastHeartbeatAt.toISOString()}`
+                : 'POS connectivity offline; no recent heartbeat',
         },
       };
     }

@@ -2,7 +2,7 @@
 
 Machine-readable source:
 `docs/architecture/active-compatibility-register.json`. Current modularization base:
-`origin/dev@af8b4d63` (2026-09-09).
+`origin/dev@8abf3162` (2026-09-09).
 
 Operational fallback (retry, provider timeout recovery, email-to-SMS fallback, and
 safe default values unrelated to an old version) is not compatibility debt.
@@ -13,7 +13,7 @@ safe default values unrelated to an old version) is not compatibility debt.
 |---|---|---|---|---|
 | `payments.pos-card-legacy.v1` | active / pre-production | direct paid Order → Unified Payment Core + Terminal + finalize | POS ↔ Clover realtime/recovery complete; real-device acceptance; one settlement cycle reconciled; clean production stability window; legacy calls zero | Phase J cleanup after Terminal synchronization/cutover stability |
 | `payments.web-checkout-v1.v1` | guarded production | CheckoutIntent/Clover v1 Web path → Unified Payment Core + v3 truth | Test App/device acceptance complete; App installed/OAuth-authorized on operating production merchant; fresh production-merchant correlation audit passes; Web cutover accepted; one settlement cycle reconciled; old calls zero before compatibility deletion | Deferred until production-merchant Unified authorization and accepted cutover |
-| `pos-connectivity.read-model-shadow.v1` | active shadow | Uber direct `PosDevice` connectivity read → POS-owned `PosConnectivityReadModel` purpose-built read fact | Deliberate parity shows zero mismatch/read-write failures across ONLINE/OFFLINE/UNKNOWN, timeout boundary and device lifecycle cases; Slice 5B cuts Uber admission to the read model and removes the legacy direct read while public SCC stays empty | Remove in Phase 7 Slice 5B before Phase 7 source closeout |
+| `pos-connectivity.read-model-shadow.v1` | active shadow | Uber direct `PosDevice` connectivity read → POS-owned `PosConnectivityReadModel` purpose-built read fact | ONLINE order-admission shadow parity is clean; OFFLINE/UNKNOWN are verified through POS projection + watchdog/provider/device-lifecycle evidence because the watchdog makes Uber unavailable before a fresh provider order can reach admission; failures stay zero; Slice 5B then cuts admission to the read model and removes the legacy read while public SCC stays empty | Remove in Phase 7 Slice 5B before Phase 7 source closeout |
 
 The payment entries are no longer governed by a whole-context freeze. The POS
 Clover Terminal path is pre-production and may be structurally modularized before
@@ -41,14 +41,23 @@ exit criteria remain separately gated after that point. Non-payment bounded-cont
 may proceed without reopening this compatibility seam.
 
 `pos-connectivity.read-model-shadow.v1` is the deliberately short-lived Phase 7
-Slice 5A expand side. POS remains the sole writer of connectivity/device facts and
-additionally maintains `PosConnectivityReadModel`, keyed by `storeStableId`. Uber
-order admission still returns the legacy `PosDevice`-derived result as truth while
-reading the projection only to emit parity evidence. No `Uber -> POS public-api`
+Slice 5A expand side, hardened by Slice 5A.1 before authority cutover. POS remains
+the owner and writer of connectivity/device facts and additionally maintains
+`PosConnectivityReadModel`, keyed by `storeStableId`. Authenticated heartbeat-capable
+activity advances the projection monotonically; lifecycle changes recompute it and
+the POS watchdog periodically repairs it from current POS-owned device truth. Uber
+order admission still returns the legacy `PosDevice`-derived connectivity result as
+truth while reading the projection only to emit parity evidence. `OFFLINE` and
+`UNKNOWN` are both unavailable for Uber ordering: UNKNOWN means there is no
+active order-receiving POS, so the watchdog pauses Uber and admission keeps the
+existing `POS_OFFLINE` denial contract as a second guard. No `Uber -> POS public-api`
 dependency is introduced, so the existing POS -> Uber capabilities do not become a
-public SCC. Slice 5B is the mandatory contraction: after deliberate parity succeeds,
-cut admission to the read model and delete the Uber `PosDevice` plus
-`common/pos-connectivity` reads and the temporary compatibility registration.
+public SCC. ONLINE parity is verified through a real Test Store admission compare;
+OFFLINE/UNKNOWN are verified through projection, watchdog/provider and device-lifecycle
+evidence because the store is made unavailable before a fresh provider order can
+reach admission. Slice 5B remains the mandatory contraction: cut admission to the
+read model and delete the Uber `PosDevice` plus `common/pos-connectivity` reads and
+the temporary compatibility registration.
 
 ## Closed history
 

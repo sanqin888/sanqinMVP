@@ -75,25 +75,39 @@ export class PosDeviceService
     lastHeartbeatAt: Date,
   ): Promise<void> {
     const validUntil = this.connectivityValidUntil(lastHeartbeatAt);
-    await this.prisma.posConnectivityReadModel.upsert({
-      where: { storeStableId },
-      create: {
-        storeStableId,
-        hasHeartbeatCapableActiveDevice: true,
-        lastHeartbeatAt,
-        validUntil,
-      },
-      update: {
-        hasHeartbeatCapableActiveDevice: true,
-        lastHeartbeatAt,
-        validUntil,
-      },
+    const data = {
+      hasHeartbeatCapableActiveDevice: true,
+      lastHeartbeatAt,
+      validUntil,
+    };
+    const advanceExisting = () =>
+      this.prisma.posConnectivityReadModel.updateMany({
+        where: {
+          storeStableId,
+          OR: [
+            { lastHeartbeatAt: null },
+            { lastHeartbeatAt: { lt: lastHeartbeatAt } },
+          ],
+        },
+        data,
+      });
+
+    const advanced = await advanceExisting();
+    if (advanced.count > 0) return;
+
+    const created = await this.prisma.posConnectivityReadModel.createMany({
+      data: [{ storeStableId, ...data }],
+      skipDuplicates: true,
     });
+    if (created.count > 0) return;
+
+    // Another request may have created the row after our first update attempt.
+    // Retry the monotonic advance once; an older activity can never overwrite
+    // the timestamp/lease already written by a newer request.
+    await advanceExisting();
   }
 
-  private async refreshConnectivityReadModelForStore(
-    storeStableId: string,
-  ): Promise<void> {
+  private async readConnectivityProjectionSource(storeStableId: string) {
     const devices = await this.prisma.posDevice.findMany({
       where: { status: 'ACTIVE', store: { storeStableId } },
       select: { lastSeenAt: true, meta: true },
@@ -110,22 +124,29 @@ export class PosDeviceService
       },
       null,
     );
+    return {
+      hasHeartbeatCapableActiveDevice: heartbeatDevices.length > 0,
+      lastHeartbeatAt,
+    };
+  }
 
+  private async refreshConnectivityReadModelForStore(
+    storeStableId: string,
+  ): Promise<void> {
+    const source = await this.readConnectivityProjectionSource(storeStableId);
     await this.prisma.posConnectivityReadModel.upsert({
       where: { storeStableId },
       create: {
         storeStableId,
-        hasHeartbeatCapableActiveDevice: heartbeatDevices.length > 0,
-        lastHeartbeatAt,
-        validUntil: lastHeartbeatAt
-          ? this.connectivityValidUntil(lastHeartbeatAt)
+        ...source,
+        validUntil: source.lastHeartbeatAt
+          ? this.connectivityValidUntil(source.lastHeartbeatAt)
           : null,
       },
       update: {
-        hasHeartbeatCapableActiveDevice: heartbeatDevices.length > 0,
-        lastHeartbeatAt,
-        validUntil: lastHeartbeatAt
-          ? this.connectivityValidUntil(lastHeartbeatAt)
+        ...source,
+        validUntil: source.lastHeartbeatAt
+          ? this.connectivityValidUntil(source.lastHeartbeatAt)
           : null,
       },
     });
@@ -160,6 +181,82 @@ export class PosDeviceService
         storeStableId,
         error: error instanceof Error ? error.message : String(error),
       });
+    }
+  }
+
+  async repairConnectivityReadModelForStore(
+    storeStableId: string,
+  ): Promise<void> {
+    try {
+      const source = await this.readConnectivityProjectionSource(storeStableId);
+      if (!source.hasHeartbeatCapableActiveDevice) {
+        await this.prisma.posConnectivityReadModel.upsert({
+          where: { storeStableId },
+          create: {
+            storeStableId,
+            hasHeartbeatCapableActiveDevice: false,
+            lastHeartbeatAt: null,
+            validUntil: null,
+          },
+          update: {
+            hasHeartbeatCapableActiveDevice: false,
+            lastHeartbeatAt: null,
+            validUntil: null,
+          },
+        });
+        return;
+      }
+
+      if (source.lastHeartbeatAt) {
+        await this.writeConnectivityReadModelForActivity(
+          storeStableId,
+          source.lastHeartbeatAt,
+        );
+        return;
+      }
+
+      const data = {
+        hasHeartbeatCapableActiveDevice: true,
+        lastHeartbeatAt: null,
+        validUntil: null,
+      };
+      const updated = await this.prisma.posConnectivityReadModel.updateMany({
+        where: { storeStableId, lastHeartbeatAt: null },
+        data,
+      });
+      if (updated.count > 0) return;
+      await this.prisma.posConnectivityReadModel.createMany({
+        data: [{ storeStableId, ...data }],
+        skipDuplicates: true,
+      });
+    } catch (error) {
+      this.logger.warn({
+        event: 'pos_connectivity_read_model_refresh_failed',
+        storeStableId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private async repairConnectivityReadModelIfDeviceBecameInactive(
+    deviceId: string,
+    storeStableId: string,
+  ): Promise<boolean> {
+    try {
+      const current = await this.prisma.posDevice.findUnique({
+        where: { id: deviceId },
+        select: { status: true },
+      });
+      if (current?.status === 'ACTIVE') return true;
+      await this.refreshConnectivityReadModelForStore(storeStableId);
+      return false;
+    } catch (error) {
+      this.logger.warn({
+        event: 'pos_connectivity_read_model_refresh_failed',
+        storeStableId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return true;
     }
   }
 
@@ -298,15 +395,22 @@ export class PosDeviceService
     }
 
     const lastSeenAt = new Date();
-    await this.prisma.posDevice.update({
-      where: { id: device.id },
+    const activityRecorded = await this.prisma.posDevice.updateMany({
+      where: { id: device.id, status: 'ACTIVE' },
       data: { lastSeenAt },
     });
+    if (activityRecorded.count === 0) return null;
     if (isPosConnectivityHeartbeatEnabled(device.meta)) {
       await this.writeConnectivityReadModelForActivitySafely(
         device.store.storeStableId,
         lastSeenAt,
       );
+      const stillActive =
+        await this.repairConnectivityReadModelIfDeviceBecameInactive(
+          device.id,
+          device.store.storeStableId,
+        );
+      if (!stillActive) return null;
     }
 
     return {

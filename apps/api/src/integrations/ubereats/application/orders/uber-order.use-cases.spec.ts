@@ -182,6 +182,10 @@ describe('Uber order use-case boundaries', () => {
     const repository: UberOrderImportRepositoryPort = {
       findByExternalOrderId: jest.fn().mockResolvedValue(null),
       findMenuMappings: jest.fn().mockResolvedValue([importedMenuMapping]),
+      getPosStoreConnectivity: jest.fn().mockResolvedValue({
+        status: 'ONLINE',
+        lastHeartbeatAt: new Date('2026-08-20T13:00:00.000Z'),
+      }),
       saveExistingOrderCancellation: jest.fn(),
       saveImportedOrder: jest.fn((order: ImportedOrderInput) => {
         saved.order = order;
