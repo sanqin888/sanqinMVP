@@ -1,8 +1,8 @@
 # Phase 7 — Store Operations / POS / Print Boundary Contraction
 
 Start date: 2026-09-09  
-Current implementation base: `origin/dev@8f78f0b5`  
-Current status: **SLICE 3 PR #2252 / CI #5381 GREEN — FINAL DOCS HEAD PENDING**
+Current implementation base: `origin/dev@d3b7996b`  
+Current status: **SLICE 4 LOCAL / REVIEW PENDING**
 
 ## Goal
 
@@ -148,7 +148,7 @@ Existing watchdog characterization coverage remains applicable to non-business-h
 
 ## Slice 3 — API Foundation public-surface contraction
 
-Status: **PR #2252 / CI #5381 GREEN — FINAL DOCS HEAD PENDING** — source/formatting head `e0112d3f` passed Architecture, API/Web lint/build/strict checks and tests; final merge evidence will be recorded after the docs-only evidence head is CI-green.
+Status: **MERGED / CI GREEN** — PR #2252; final head `fedeb9fe`; final PR CI #5382 passed Architecture, API/Web lint/build/strict checks and tests; squash merge `d3b7996b`. CI #5380 had failed only Prettier formatting in the new architecture assertion, and source/formatting head `e0112d3f` then passed CI #5381 before the final docs-only evidence head.
 
 Migration classification: **Class A atomic internal boundary contraction**. Slice 3 does not redefine POS connectivity ownership or create a new Foundation abstraction. It only moves neutral API utilities that already belong to `architecture-foundation` behind one explicit API public surface and removes the accidental POS pass-through ownership of Foundation pipes.
 
@@ -202,6 +202,30 @@ Slice 3 does **not** change logger behavior, validation rules, StableId semantic
 
 Per `AGENTS.md`, no local lint/build/test/scanner command was run before review. GitHub Actions remains the authoritative verification gate after remote delivery.
 
-## Next candidate after Slice 3
+## Slice 4 — POS connectivity -> Uber Store Status ownership contraction
 
-The next readiness audit should focus on the POS connectivity ownership seam rather than mechanically reducing the remaining counts. In particular, `PosConnectivityWatchdogService` still reads Uber-owned `UberStoreMapping` persistence directly while also reading POS-owned device heartbeat persistence. A later Slice should consider moving provider-store mapping resolution back behind the existing Uber public capability, while keeping POS device/print persistence inside the POS owner. Because that would touch the active POS-offline -> Uber pause/resume integration path, it should be isolated from Slice 3 and carry the normal Uber active-verification requirement. The direct `PosModule -> UberEatsModule` and `PosModule -> AuthModule` imports remain legal composition seams for now. Printer-agent workspace/package restructuring also remains later because it affects an independently deployed production printing boundary and may require dependency/lockfile authorization.
+Status: **LOCAL / REVIEW PENDING** on branch `refactor/phase7-slice4-pos-uber-store-status-ownership` from `origin/dev@d3b7996b`.
+
+Migration classification: **Class A atomic ownership contraction with the Uber L3 Phase-closeout verification gate**. No persisted/external wire contract, provider command shape, idempotency rule, route or independently deployed consumer changes. The cross-context public capability changes atomically with all in-repository consumers; provider-store mapping stays inside the existing Uber bounded context.
+
+### Source change
+
+`PosConnectivityWatchdogService` no longer reads `prisma.uberStoreMapping`. It still reads POS-owned `PosDevice` heartbeat persistence directly, but sends only SanQ `storeStableId`, target status, and the existing connectivity pause metadata through `UBER_EATS_STORE_STATUS_SYNC`.
+
+The Uber public store-status capability now exposes `syncStoreStatusForStore()` with `UberEatsStoreStatusForStoreInput { storeStableId, targetStatus, reason?, pauseUntil? }`. The previous public target carrying provider `uberStoreId` is removed from `public-api.ts`; Uber's concrete use case keeps its internal `UberStoreStatusTarget` for its own Ops/retry paths.
+
+`UberStoreMappingRepositoryPort` adds `findProvisionedMappingsByStoreStableId()`, implemented by `UberStoreMappingPrismaAdapter` with the same canonical mapping facts the watchdog previously queried: `posExternalStoreId = storeStableId` and `isProvisioned = true`. `SyncUberStoreStatusUseCase.syncStoreStatusForStore()` resolves those mappings inside Uber and sequentially reuses the existing per-provider-target sync path. It accumulates successful stores, treats no matching/provisioned mappings as a non-failure skip, and returns immediately on the first provider `FAILED` result so the watchdog's retry/backoff behavior remains unchanged.
+
+### Preserved behavior / verification scope
+
+Slice 4 preserves opening grace, heartbeat thresholds, schedule-close `pauseUntil`, reason `POS connectivity lost`, employee temporary-pause precedence, 30-second recovery stabilization, canonical Store re-check before resume, retry/backoff, provider status payload/idempotency/telemetry/alert behavior and the current `SKIPPED`-is-not-watchdog-failure rule. It does not write connectivity state into Brand/Store temporary closure.
+
+Focused characterization now covers pause and recovery using only `storeStableId`, multi-mapping success, and fail-fast after the first mapped provider failure. `pos-device-management.architecture.spec.ts` prevents POS from regaining `UberStoreMapping`/`uberStoreId` knowledge and requires mapping resolution to remain behind the Uber repository/public capability.
+
+This Slice intentionally makes **no direct-debt or SCC baseline change**. The expected remaining Phase 7 direct debt stays **9** (`architecture-foundation 2`, `external-channels 1`, `identity-customer-benefits 1`, `runtime-data-ci-ops 5`) because the watchdog still legitimately uses Prisma for POS-owned device heartbeat persistence and `PosModule -> UberEatsModule` remains the legal Uber composition seam. Public SCC remains expected empty.
+
+Per `AGENTS.md`, no local lint/build/test/scanner command is run before review. Because this changes the active Uber store-status runtime path, final Phase 7 consolidated verification must actively exercise POS offline -> Uber PAUSED until current business-day close, stable POS recovery -> Uber ONLINE, employee pause preservation, successful Uber telemetry, and absence of new mapping/retry errors.
+
+## Next candidate after Slice 4
+
+The opposite ownership seam remains separate: Uber order admission still reads POS connectivity through POS-owned device persistence/common connectivity semantics. Do not solve that by adding a direct Uber -> POS public dependency while POS -> Uber already exists, because that can recreate a public SCC. Re-audit that direction separately at Phase 7 closeout or Phase 8 with an orchestration/read-fact design. The direct `PosModule -> UberEatsModule` and `PosModule -> AuthModule` imports remain intentional composition seams. Printer-agent workspace/package restructuring also remains later because it affects an independently deployed production printing boundary and may require dependency/lockfile authorization.

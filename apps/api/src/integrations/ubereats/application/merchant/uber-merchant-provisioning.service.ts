@@ -15,6 +15,13 @@ export type UberStoreStatusTarget = {
   reason?: string;
   pauseUntil?: string;
 };
+
+export type UberStoreStatusForStoreInput = {
+  storeStableId: string;
+  targetStatus: 'ONLINE' | 'PAUSED';
+  reason?: string;
+  pauseUntil?: string;
+};
 const credentials = (v: unknown): boolean =>
   Array.isArray(v)
     ? v.some(credentials)
@@ -496,6 +503,40 @@ export class SyncUberStoreStatusUseCase {
     private readonly mappings: UberStoreMappingRepositoryPort,
     private readonly alerts: UberOperationsAlertRepositoryPort,
   ) {}
+
+  async syncStoreStatusForStore(input: UberStoreStatusForStoreInput) {
+    const mappings =
+      await this.mappings.findProvisionedMappingsByStoreStableId(
+        input.storeStableId,
+      );
+    if (mappings.length === 0)
+      return { outcome: 'SKIPPED' as const, reason: 'NO_STORES' as const };
+
+    let synchronizedStores = 0;
+    for (const mapping of mappings) {
+      const result = await this.syncStoreStatusToUber({
+        uberStoreId: mapping.uberStoreId,
+        targetStatus: input.targetStatus,
+        ...(input.reason ? { reason: input.reason } : {}),
+        ...(input.pauseUntil ? { pauseUntil: input.pauseUntil } : {}),
+      });
+      if (result.outcome === 'FAILED')
+        return {
+          ...result,
+          synchronizedStores: synchronizedStores + result.synchronizedStores,
+        };
+      if (result.outcome === 'SUCCEEDED')
+        synchronizedStores += result.synchronizedStores;
+    }
+
+    return synchronizedStores > 0
+      ? { outcome: 'SUCCEEDED' as const, synchronizedStores }
+      : {
+          outcome: 'SKIPPED' as const,
+          reason: 'NO_PROVISIONED_STORES' as const,
+        };
+  }
+
   async syncStoreStatusToUber(target?: UberStoreStatusTarget) {
     const results: Record<string, unknown>[] = [];
     for (const mapping of await this.mappings.listMappings()) {

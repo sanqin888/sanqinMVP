@@ -732,6 +732,157 @@ describe('Uber merchant gateway use-case boundaries', () => {
     );
   });
 
+  it('resolves provisioned Uber stores by SanQ storeStableId before syncing status', async () => {
+    const writeStatus = jest.fn().mockImplementation((uberStoreId: string) =>
+      Promise.resolve({
+        uberStoreId,
+        outcome: 'SUCCEEDED' as const,
+        attempts: 1,
+        duplicate: false,
+      }),
+    );
+    const mappings = [
+      {
+        uberStoreId: 'uber-store-1',
+        isProvisioned: true,
+        posExternalStoreId: 'store-stable-1',
+      },
+      {
+        uberStoreId: 'uber-store-2',
+        isProvisioned: true,
+        posExternalStoreId: 'store-stable-1',
+      },
+    ];
+    const findProvisionedMappingsByStoreStableId = jest
+      .fn()
+      .mockResolvedValue(mappings);
+    const listMappings = jest.fn().mockResolvedValue(mappings);
+    const alerts = {
+      getStoreStatusSource: jest.fn(),
+      recordStoreStatusResult: jest.fn().mockResolvedValue(undefined),
+      createStoreStatusAlert: jest.fn().mockResolvedValue(undefined),
+    };
+    const useCase = new SyncUberStoreStatusUseCase(
+      { writeStatus } as never,
+      {
+        findProvisionedMappingsByStoreStableId,
+        listMappings,
+      } as never,
+      alerts as never,
+    );
+
+    await expect(
+      useCase.syncStoreStatusForStore({
+        storeStableId: 'store-stable-1',
+        targetStatus: 'PAUSED',
+        reason: 'POS connectivity lost',
+        pauseUntil: '2026-08-23T03:00:00.000Z',
+      }),
+    ).resolves.toEqual({ outcome: 'SUCCEEDED', synchronizedStores: 2 });
+    expect(findProvisionedMappingsByStoreStableId).toHaveBeenCalledWith(
+      'store-stable-1',
+    );
+    expect(writeStatus).toHaveBeenCalledTimes(2);
+    expect(writeStatus).toHaveBeenNthCalledWith(
+      1,
+      'uber-store-1',
+      {
+        status: 'OFFLINE',
+        reason: 'POS connectivity lost',
+        is_offline_until: '2026-08-23T03:00:00.000Z',
+      },
+      expect.stringMatching(/^sanqin-uber-/),
+    );
+    expect(writeStatus).toHaveBeenNthCalledWith(
+      2,
+      'uber-store-2',
+      {
+        status: 'OFFLINE',
+        reason: 'POS connectivity lost',
+        is_offline_until: '2026-08-23T03:00:00.000Z',
+      },
+      expect.stringMatching(/^sanqin-uber-/),
+    );
+    expect(alerts.getStoreStatusSource).not.toHaveBeenCalled();
+  });
+
+  it('treats a storeStableId with no provisioned Uber mapping as a non-failure skip', async () => {
+    const writeStatus = jest.fn();
+    const useCase = new SyncUberStoreStatusUseCase(
+      { writeStatus } as never,
+      {
+        findProvisionedMappingsByStoreStableId: jest
+          .fn()
+          .mockResolvedValue([]),
+        listMappings: jest.fn(),
+      } as never,
+      {
+        getStoreStatusSource: jest.fn(),
+        recordStoreStatusResult: jest.fn(),
+        createStoreStatusAlert: jest.fn(),
+      } as never,
+    );
+
+    await expect(
+      useCase.syncStoreStatusForStore({
+        storeStableId: 'store-stable-1',
+        targetStatus: 'ONLINE',
+      }),
+    ).resolves.toEqual({ outcome: 'SKIPPED', reason: 'NO_STORES' });
+    expect(writeStatus).not.toHaveBeenCalled();
+  });
+
+  it('stops storeStableId status sync after the first failed mapped Uber store', async () => {
+    const rejected = {
+      uberStoreId: 'uber-store-1',
+      outcome: 'FAILED' as const,
+      reason: 'UPSTREAM_REJECTED' as const,
+      retryable: true,
+      attempts: 1,
+      error: 'temporarily rejected by Uber',
+    };
+    const writeStatus = jest.fn().mockResolvedValue(rejected);
+    const mappings = [
+      {
+        uberStoreId: 'uber-store-1',
+        isProvisioned: true,
+        posExternalStoreId: 'store-stable-1',
+      },
+      {
+        uberStoreId: 'uber-store-2',
+        isProvisioned: true,
+        posExternalStoreId: 'store-stable-1',
+      },
+    ];
+    const useCase = new SyncUberStoreStatusUseCase(
+      { writeStatus } as never,
+      {
+        findProvisionedMappingsByStoreStableId: jest
+          .fn()
+          .mockResolvedValue(mappings),
+        listMappings: jest.fn().mockResolvedValue(mappings),
+      } as never,
+      {
+        getStoreStatusSource: jest.fn(),
+        recordStoreStatusResult: jest.fn().mockResolvedValue(undefined),
+        createStoreStatusAlert: jest.fn().mockResolvedValue(undefined),
+      } as never,
+    );
+
+    await expect(
+      useCase.syncStoreStatusForStore({
+        storeStableId: 'store-stable-1',
+        targetStatus: 'ONLINE',
+      }),
+    ).resolves.toMatchObject({
+      outcome: 'FAILED',
+      synchronizedStores: 0,
+      failedStores: 1,
+      error: { code: 'UPSTREAM_REJECTED', retryable: true },
+    });
+    expect(writeStatus).toHaveBeenCalledTimes(1);
+  });
+
   it('preserves the POS employee-selected auto-resume time in the Uber OFFLINE payload', async () => {
     const succeeded = {
       uberStoreId: 'uber-store-1',
