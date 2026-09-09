@@ -11,10 +11,16 @@ describe('PosDeviceService.verifyCredentials', () => {
       findUnique: jest.fn().mockResolvedValue(device),
       update: jest.fn().mockResolvedValue(device),
     };
-    const service = new PosDeviceService({ posDevice } as never, {
-      listStores: jest.fn().mockResolvedValue([]),
-    });
-    return { service, posDevice };
+    const posConnectivityReadModel = {
+      upsert: jest.fn().mockResolvedValue({}),
+    };
+    const service = new PosDeviceService(
+      { posDevice, posConnectivityReadModel } as never,
+      {
+        listStores: jest.fn().mockResolvedValue([]),
+      },
+    );
+    return { service, posDevice, posConnectivityReadModel };
   }
 
   it('accepts an ACTIVE device with matching credentials', async () => {
@@ -44,6 +50,7 @@ describe('PosDeviceService.verifyCredentials', () => {
         status: true,
         deviceStableId: true,
         name: true,
+        meta: true,
         store: { select: { storeStableId: true } },
       },
     });
@@ -51,6 +58,58 @@ describe('PosDeviceService.verifyCredentials', () => {
       where: { id: 'db-device-1' },
       data: { lastSeenAt: expect.any(Date) as unknown },
     });
+  });
+
+  it('refreshes the POS-owned connectivity read model for heartbeat-capable activity', async () => {
+    const originalTimeout = process.env.POS_CONNECTIVITY_HEARTBEAT_TIMEOUT_MS;
+    process.env.POS_CONNECTIVITY_HEARTBEAT_TIMEOUT_MS = '90000';
+    try {
+      const deviceKey = 'device-secret';
+      const { service, posConnectivityReadModel } = setup({
+        id: 'db-device-1',
+        deviceStableId: 'device-1',
+        store: { storeStableId: 'store-a' },
+        name: 'Front POS',
+        status: 'ACTIVE',
+        deviceKeyHash: hashDeviceKey(deviceKey),
+        meta: { connectivityHeartbeatV1: true },
+      });
+
+      await service.verifyCredentials({
+        deviceStableId: 'device-1',
+        deviceKey,
+      });
+
+      expect(posConnectivityReadModel.upsert).toHaveBeenCalledTimes(1);
+      const input = posConnectivityReadModel.upsert.mock.calls[0]?.[0] as {
+        where: { storeStableId: string };
+        create: { lastHeartbeatAt: Date; validUntil: Date };
+        update: { lastHeartbeatAt: Date; validUntil: Date };
+      };
+      expect(input.where).toEqual({ storeStableId: 'store-a' });
+      expect(input.create).toEqual(
+        expect.objectContaining({
+          storeStableId: 'store-a',
+          hasHeartbeatCapableActiveDevice: true,
+          lastHeartbeatAt: expect.any(Date) as unknown,
+          validUntil: expect.any(Date) as unknown,
+        }),
+      );
+      expect(input.update).toEqual(
+        expect.objectContaining({
+          hasHeartbeatCapableActiveDevice: true,
+          lastHeartbeatAt: input.create.lastHeartbeatAt,
+          validUntil: input.create.validUntil,
+        }),
+      );
+      expect(
+        input.create.validUntil.getTime() - input.create.lastHeartbeatAt.getTime(),
+      ).toBe(90_000);
+    } finally {
+      if (originalTimeout === undefined)
+        delete process.env.POS_CONNECTIVITY_HEARTBEAT_TIMEOUT_MS;
+      else process.env.POS_CONNECTIVITY_HEARTBEAT_TIMEOUT_MS = originalTimeout;
+    }
   });
 
   it('rejects an ACTIVE device when the device key is invalid', async () => {
@@ -100,6 +159,58 @@ describe('PosDeviceService.verifyCredentials', () => {
   });
 });
 
+describe('PosDeviceService connectivity projection', () => {
+  it('seeds the POS-owned read model when heartbeat capability is first enabled', async () => {
+    const lastSeenAt = new Date('2026-09-09T17:30:00.000Z');
+    const posDevice = {
+      findUnique: jest.fn().mockResolvedValue({
+        id: 'db-device-1',
+        meta: {},
+        store: { storeStableId: 'store-a' },
+      }),
+      update: jest.fn().mockResolvedValue({}),
+      findMany: jest.fn().mockResolvedValue([
+        {
+          lastSeenAt,
+          meta: { connectivityHeartbeatV1: true },
+        },
+      ]),
+    };
+    const posConnectivityReadModel = {
+      upsert: jest.fn().mockResolvedValue({}),
+    };
+    const service = new PosDeviceService(
+      { posDevice, posConnectivityReadModel } as never,
+      { listStores: jest.fn().mockResolvedValue([]) },
+    );
+
+    await service.recordConnectivityHeartbeat('device-1');
+
+    expect(posDevice.update).toHaveBeenCalledWith({
+      where: { id: 'db-device-1' },
+      data: {
+        meta: expect.objectContaining({
+          connectivityHeartbeatV1: true,
+        }) as unknown,
+      },
+    });
+    expect(posDevice.findMany).toHaveBeenCalledWith({
+      where: { status: 'ACTIVE', store: { storeStableId: 'store-a' } },
+      select: { lastSeenAt: true, meta: true },
+    });
+    expect(posConnectivityReadModel.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { storeStableId: 'store-a' },
+        update: expect.objectContaining({
+          hasHeartbeatCapableActiveDevice: true,
+          lastHeartbeatAt,
+          validUntil: expect.any(Date) as unknown,
+        }) as unknown,
+      }),
+    );
+  });
+});
+
 describe('PosDeviceService management boundary', () => {
   const storeStableId = '4750_Yonge_Street';
   const deviceStableId = 'cmdevice000000000000000001';
@@ -120,6 +231,9 @@ describe('PosDeviceService management boundary', () => {
       update: jest.fn().mockResolvedValue(managedDevice),
       delete: jest.fn().mockResolvedValue(managedDevice),
     };
+    const posConnectivityReadModel = {
+      upsert: jest.fn().mockResolvedValue({}),
+    };
     const storeDirectoryReader = {
       listStores: jest.fn().mockResolvedValue([
         {
@@ -130,12 +244,13 @@ describe('PosDeviceService management boundary', () => {
       ]),
     };
     const service = new PosDeviceService(
-      { posDevice } as never,
+      { posDevice, posConnectivityReadModel } as never,
       storeDirectoryReader,
     );
     return {
       service,
       posDevice,
+      posConnectivityReadModel,
       storeDirectoryReader,
     };
   }
