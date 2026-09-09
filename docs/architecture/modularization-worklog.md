@@ -1602,10 +1602,17 @@ is claimed per repository workflow.
 
 ### 2026-09-09 — Phase 6 modularization source / architecture closeout
 
-**PR/SHA:** current branch `docs/phase6-source-closeout`  
-**State:** LOCAL / DOCS-ONLY SOURCE CLOSEOUT  
+**PR/SHA:** PR #2249 / final head `3a5619ee` / squash merge `376a7c37`  
+**State:** MERGED / CI GREEN — PR CI #5371 passed API and Web  
 **Result:** Closes the Phase 6 modularization source/architecture scope without misrepresenting the deferred Clover provider gates as production acceptance. Payments/Clover direct source debt has contracted **57 -> 41**, public SCC remains empty, the stable-ID-only prepared-payment and confirmed-payment finalization boundaries are established, Clover Platform/Terminal infrastructure ownership and credential configuration are explicit, and the sole remaining direct Payments -> Orders implementation seam is the intentionally protected production Web compatibility path. Terminal device financial acceptance remains under `payments.pos-card-legacy.v1`; Web Unified Payment migration remains under `payments.web-checkout-v1.v1` and is explicitly frozen until Test App/device acceptance plus operating-production-merchant install/OAuth and a fresh correlation audit. The compatibility register is refreshed to remove the obsolete `Before Phase 5B exit` deadline and make those continuation gates authoritative. Phase 6 is therefore marked `MODULARIZATION SOURCE / ARCHITECTURE CLOSEOUT COMPLETE`, not `PRODUCTION VERIFIED / CLOSED`, and non-payment bounded-context work may proceed without reopening payment seams. No production source, route, payment/provider behavior, Prisma/schema/migration, dependency, persisted fact, scanner allowance or dependency count changes in this docs-only closeout.  
 **Details:** `docs/architecture/phase-6-payments-pos-closeout.md`, `docs/architecture/active-compatibility-register.md`, `docs/architecture/active-compatibility-register.json`, `docs/architecture/current-dependency-graph.md`, `docs/architecture/modularization-worklog.md`.
+
+### 2026-09-09 — Phase 7 Slice 1: POS staff-auth public-boundary contraction
+
+**PR/SHA:** current branch `refactor/phase7-slice1-pos-auth-public-boundary`  
+**State:** LOCAL / SOURCE COMPLETE — REVIEW PENDING  
+**Result:** Contracts the Store Operations / POS staff-auth transport dependency onto the already-existing Identity public surface without changing runtime authorization behavior. `pos-orders.controller.ts`, `pos-store-status.controller.ts`, `pos-summary.controller.ts`, and `pos-exchange-rate.controller.ts` now import `SessionAuthGuard`, `RolesGuard`, and `Roles` from `auth/public-api.ts`; `pos.module.ts` imports `RolesGuard` from the same public surface while intentionally retaining the direct `AuthModule` Nest composition import. The POS device-management architecture spec guards the four controllers against returning to Identity guard/decorator implementation paths, verifies the required Identity public exports, and pins the retained direct seam to `PosModule -> AuthModule`. The monotonic scanner allowance contracts `store-operations-pos-print -> identity-customer-benefits` **14 -> 1**, reducing Store Operations / POS / Print total direct debt **29 -> 16** while public SCC remains empty. No route, guard ordering/role semantics, POS device credential behavior, Orders/Payments/Clover/Uber/printing behavior, Prisma/schema/migration, dependency manifest/lockfile, or compatibility path changes.  
+**Details:** `docs/architecture/phase-7-store-operations-pos-print.md`, `docs/architecture/current-dependency-graph.md`, `tools/architecture/context-baseline.json`, `apps/api/src/pos/pos-device-management.architecture.spec.ts`, `docs/architecture/modularization-worklog.md`.
 
 ## Rule for future entries
 

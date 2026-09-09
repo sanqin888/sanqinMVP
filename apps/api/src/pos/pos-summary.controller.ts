@@ -11,9 +11,7 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { PosSummaryService } from './pos-summary.service';
-import { SessionAuthGuard } from '../auth/session-auth.guard';
-import { RolesGuard } from '../auth/roles.guard';
-import { Roles } from '../auth/roles.decorator';
+import { Roles, RolesGuard, SessionAuthGuard } from '../auth/public-api';
 import type { AuthenticatedPosIdentity } from './pos-device-management.contract';
 import { PosDeviceGuard } from './pos-device.guard';
 import { PosGateway } from './pos.gateway';
