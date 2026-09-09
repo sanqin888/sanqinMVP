@@ -584,11 +584,7 @@ export class CloverTerminalTransport {
       );
     }
     if (attempt.kind === 'credential_unavailable') {
-      return uncertain(
-        attempt.failureCode,
-        attempt.failureMessage,
-        terminalId,
-      );
+      return uncertain(attempt.failureCode, attempt.failureMessage, terminalId);
     }
     return mapTerminalPaymentResponse(
       attempt.result,
@@ -616,11 +612,7 @@ export class CloverTerminalTransport {
       body: {},
     });
     if (attempt.kind === 'credential_unavailable') {
-      return uncertain(
-        attempt.failureCode,
-        attempt.failureMessage,
-        terminalId,
-      );
+      return uncertain(attempt.failureCode, attempt.failureMessage, terminalId);
     }
     if (attempt.kind === 'uncertain') {
       return uncertain(
