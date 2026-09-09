@@ -505,10 +505,9 @@ export class SyncUberStoreStatusUseCase {
   ) {}
 
   async syncStoreStatusForStore(input: UberStoreStatusForStoreInput) {
-    const mappings =
-      await this.mappings.findProvisionedMappingsByStoreStableId(
-        input.storeStableId,
-      );
+    const mappings = await this.mappings.findProvisionedMappingsByStoreStableId(
+      input.storeStableId,
+    );
     if (mappings.length === 0)
       return { outcome: 'SKIPPED' as const, reason: 'NO_STORES' as const };
 

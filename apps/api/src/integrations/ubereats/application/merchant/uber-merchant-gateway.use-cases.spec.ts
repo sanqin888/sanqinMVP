@@ -811,9 +811,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
     const useCase = new SyncUberStoreStatusUseCase(
       { writeStatus } as never,
       {
-        findProvisionedMappingsByStoreStableId: jest
-          .fn()
-          .mockResolvedValue([]),
+        findProvisionedMappingsByStoreStableId: jest.fn().mockResolvedValue([]),
         listMappings: jest.fn(),
       } as never,
       {
