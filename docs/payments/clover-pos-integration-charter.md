@@ -46,6 +46,18 @@ Unified OAuth credential 的长期 owner 是现有 database-backed `CloverMercha
 
 Clover sandbox 只隔离 provider 资金，不隔离 SanQ 数据。Full POS E2E 如果运行在 production API 上，仍可能创建 production `PaymentTransaction`、`PaymentCheckoutAttempt`、Order、printing/reporting facts。因此 full E2E 必须在受控测试窗口执行；需要数据层隔离时应建设独立 staging runtime/database，而不是把 production runtime 变成可随意切换 sandbox/production 的双环境。
 
+### 1.3 2026-09-09 Web Clover readiness / freeze decision
+
+只读 readiness audit 结论固定为 **`CONDITIONAL PASS FOR FUTURE SHADOW READ / NO-GO FOR CUTOVER`**。Web Ecommerce `POST /v1/charges` 继续作为受保护的 transaction execution API；Platform REST v3 是未来 Unified Payment Core 的 canonical payment/refund truth，而不是 `/v1/charges` 的简单版本替代。未来 Web payment 在 v1 execution 已成功但 Platform v3 暂不可见时，必须进入 `UNKNOWN/RECONCILING`，保持 reservation HELD、禁止第二次 charge，并等待 canonical truth 后再 finalization。
+
+当前不能开始这次迁移，原因有三项硬门禁：
+
+1. `WEB_ECOMMERCE` status/reconciliation 当前仍使用 Ecommerce v1；Orders payment preparation/finalization implementation 仍只接受 `in_store`，因此 Web lifecycle 尚未完整接入 Unified Core。
+2. `CheckoutIntent` 仍承载 Web session、verified contact、locale、delivery/3DS 等下游 context，不能与 payment truth responsibilities 一起直接删除。
+3. 当前 `ACTIVE` Unified authorization 指向 Test Merchant，而 production Web `/v1/charges` 使用运营 merchant；跨 merchant 的 payment ID 查询不能作为 parity/correlation 证据。
+
+因此，按 operator 决策，在 Test App/device acceptance 完成并把 App 安装、OAuth 授权到实际运营 production Clover merchant 之前，暂停所有 Web Unified Payment migration、production v3 shadow read、Web refund migration 和 legacy cleanup。到达该条件后，先重新执行 production-merchant readiness/correlation audit；只有该 audit 通过，才允许以 read-only v3 shadow compare 作为 Phase G 第一批。此前 production Web `/v1/charges` execution、CARD/Apple Pay/Google Pay、3DS/session/pricing-token/contact-verification、Web paid-Order creation、external-payment refund、production webhook merchant scope 和持久化 payment/surcharge facts 均保持冻结保护。
+
 ## 2. 当前状态基线
 
 ### 2.1 Web / Ecommerce Clover
