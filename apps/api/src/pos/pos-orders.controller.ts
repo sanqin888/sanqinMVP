@@ -22,11 +22,8 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { Roles, RolesGuard, SessionAuthGuard } from '../auth/public-api';
-import {
-  StableIdPipe,
-  ZodValidationPipe,
-  type AuthenticatedPosIdentity,
-} from './public-api';
+import { StableIdPipe, ZodValidationPipe } from '../common/public-api';
+import type { AuthenticatedPosIdentity } from './public-api';
 import { PosDeviceGuard } from './pos-device.guard';
 import {
   ChannelSchema,

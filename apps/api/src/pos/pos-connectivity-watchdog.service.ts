@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { DateTime } from 'luxon';
 import { PrismaService } from '../prisma/prisma.service';
-import { AppLogger } from '../common/app-logger';
+import { AppLogger } from '../common/public-api';
 import {
   DEFAULT_POS_CONNECTIVITY_OFFLINE_AFTER_MS,
   DEFAULT_POS_CONNECTIVITY_RECOVERY_STABLE_MS,

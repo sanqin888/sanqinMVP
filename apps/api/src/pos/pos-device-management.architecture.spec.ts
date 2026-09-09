@@ -5,6 +5,7 @@ const POS_ROOT = resolve(__dirname);
 const API_ROOT = resolve(POS_ROOT, '..');
 const ADMIN_POS_DEVICE_ROOT = resolve(API_ROOT, 'admin', 'pos-devices');
 const AUTH_ROOT = resolve(API_ROOT, 'auth');
+const COMMON_ROOT = resolve(API_ROOT, 'common');
 const ORCHESTRATION_ROOT = resolve(API_ROOT, 'orchestration');
 const STORE_ROOT = resolve(API_ROOT, 'store');
 
@@ -95,6 +96,56 @@ describe('POS Brand/Store status boundary', () => {
       "from './brand-store-config.contract'",
     );
     expect(storeStatusService).toContain("from './store-schedule.contract'");
+  });
+});
+
+describe('POS Foundation boundary', () => {
+  it('consumes neutral API utilities through the Foundation public surface', () => {
+    const commonPublicApi = read(resolve(COMMON_ROOT, 'public-api.ts'));
+    const posPublicApi = read(resolve(POS_ROOT, 'public-api.ts'));
+    const posOrders = read(resolve(POS_ROOT, 'pos-orders.controller.ts'));
+    const loggerConsumers = [
+      'pos-connectivity-watchdog.service.ts',
+      'pos-exchange-rate.service.ts',
+      'pos-store-status.service.ts',
+    ].map((file) => read(resolve(POS_ROOT, file)));
+
+    for (const source of loggerConsumers) {
+      expect(source).toContain("from '../common/public-api'");
+      expect(source).not.toContain("from '../common/app-logger'");
+    }
+
+    expect(posOrders).toContain("from '../common/public-api'");
+    expect(posOrders).toContain('StableIdPipe');
+    expect(posOrders).toContain('ZodValidationPipe');
+    expect(posOrders).not.toContain("from '../common/pipes/stable-id.pipe'");
+    expect(posOrders).not.toContain(
+      "from '../common/pipes/zod-validation.pipe'",
+    );
+
+    expect(commonPublicApi).toContain(
+      "export { AppLogger } from './app-logger';",
+    );
+    expect(commonPublicApi).toContain(
+      "export { StableIdPipe } from './pipes/stable-id.pipe';",
+    );
+    expect(commonPublicApi).toContain(
+      "export { ZodValidationPipe } from './pipes/zod-validation.pipe';",
+    );
+    expect(posPublicApi).not.toContain('StableIdPipe');
+    expect(posPublicApi).not.toContain('ZodValidationPipe');
+  });
+
+  it('keeps POS connectivity ownership explicit instead of hiding it in the Foundation public surface', () => {
+    const commonPublicApi = read(resolve(COMMON_ROOT, 'public-api.ts'));
+    const posDeviceService = read(resolve(POS_ROOT, 'pos-device.service.ts'));
+    const watchdog = read(
+      resolve(POS_ROOT, 'pos-connectivity-watchdog.service.ts'),
+    );
+
+    expect(commonPublicApi).not.toContain('pos-connectivity');
+    expect(posDeviceService).toContain("from '../common/pos-connectivity'");
+    expect(watchdog).toContain("from '../common/pos-connectivity'");
   });
 });
 
