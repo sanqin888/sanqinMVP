@@ -1,8 +1,8 @@
 # Phase 7 — Store Operations / POS / Print Boundary Contraction
 
 Start date: 2026-09-09  
-Current implementation base: `origin/dev@af8b4d63`  
-Current status: **SLICE 5A PR #2254 / CI #5392 GREEN — final source head `d7d61660`; final docs evidence head pending**
+Current implementation base: `origin/dev@8abf3162`  
+Current status: **SLICE 5A DEPLOYED / ACTIVE VERIFIED (Uber Test Store); SLICE 5A.1 LOCAL SOURCE PENDING REVIEW**
 
 ## Goal
 
@@ -228,7 +228,7 @@ Per `AGENTS.md`, no local lint/build/test/scanner command is run before review. 
 
 ## Slice 5A — POS connectivity purpose-built read-model expand + shadow parity
 
-Status: **PR #2254 / CI #5392 GREEN** on `refactor/phase7-slice5a-pos-connectivity-read-model`, based on `origin/dev@af8b4d63`; final source head `d7d61660`, final docs evidence head pending. CI #5392 passed Prisma generation, Architecture baseline, API lint/build/strict/shared strict/full tests, and Web lint/build/strict/tests. Earlier CI #5390/#5391 both passed Architecture and failed only new-file lint findings, which were removed by focused source/test follow-ups. No deployment or active verification has been performed yet.
+Status: **MERGED / CI GREEN / DEPLOYED / ACTIVE VERIFIED (Uber Test Store)** — PR #2254 final head `7a670b46`, squash merge `8abf3162`; exact final PR-head CI #5393, post-merge dev CI #5394 and resulting pull-request CI #5395 all passed Architecture, Prisma generation, API/Web lint/build/strict checks and tests. The merged state was deployed with migration `20260909173000_expand_pos_connectivity_read_model`, then deliberate Test Store/POS verification completed on 2026-09-09.
 
 Migration classification: **Class B expand-contract with Uber L3 verification**, explicitly authorized for an additive Prisma schema + migration only. Slice 5A does not cut admission truth and does not delete any legacy persistence path. Compatibility is registered as `pos-connectivity.read-model-shadow.v1` and must be removed in Slice 5B before Phase 7 source closeout.
 
@@ -258,10 +258,42 @@ Focused tests/architecture guards pin:
 
 This expand/shadow Slice intentionally makes **no direct-import baseline or public-SCC change**. The configured Phase 7 Store Operations direct-debt baseline therefore remains **9** (`architecture-foundation 2`, `external-channels 1`, `identity-customer-benefits 1`, `runtime-data-ci-ops 5`) until the later contraction removes the remaining connectivity implementation seam. Source inspection adds no reverse public edge; the GitHub Architecture gate must confirm public SCC remains empty after review.
 
-Per `AGENTS.md`, local lint/build/test/scanner commands are deferred until remote GitHub Actions after user review. The additive migration file has been authored for review but has not been locally applied or validated against a disposable database.
+Per `AGENTS.md`, local lint/build/test/scanner commands were deferred to remote GitHub Actions after review. The additive migration was subsequently deployed with the merged Slice 5A state.
 
-## Required Slice 5B after 5A parity
+### Slice 5A active verification evidence
 
-Slice 5B remains mandatory before Phase 7 source scope can be declared complete. After deployment of 5A and deliberate parity evidence shows zero mismatches/read-write failures for ONLINE, OFFLINE, UNKNOWN, timeout-boundary and device lifecycle cases, 5B should atomically switch Uber admission to `PosConnectivityReadModel`, remove `UberOrderImportRepositoryPort.getPosStoreConnectivity()` from the mixed order persistence contract, delete Uber's direct `prisma.posDevice` and `common/pos-connectivity` reads, move the remaining POS connectivity policy out of Foundation into POS ownership, close/remove `pos-connectivity.read-model-shadow.v1`, recompute the dependency baseline and keep public SCC empty.
+Deliberate verification on 2026-09-09 established the required pre-cutover semantics without relying on organic traffic:
+
+- a real Uber Test Store order reached admission while the front POS was ONLINE; `uber_pos_connectivity_read_model_shadow_compare` reported `matched=true`, with identical legacy/shadow `ONLINE` state and heartbeat timestamp, and the provider ACCEPT returned 200;
+- after heartbeat timeout the POS watchdog emitted `pos_connectivity_offline` and successfully synchronized the Uber Store to unavailable with provider status 200 / `SUCCEEDED`; because this availability guard closes the store before a fresh order can be placed, OFFLINE admission shadow parity is not a realistic provider-side test path;
+- after all heartbeat-capable ACTIVE POS devices were disabled while the printer-server device remained ACTIVE but non-heartbeat-capable, `PosConnectivityReadModel` became `hasHeartbeatCapableActiveDevice=false`, `lastHeartbeatAt=null`, `validUntil=null`, proving the intended UNKNOWN projection and proving printer-server activity does not masquerade as order-receiving POS connectivity;
+- restoring the POS device state and front-counter activity moved the projection back to `hasHeartbeatCapableActiveDevice=true` with a fresh heartbeat and `validUntil = lastHeartbeatAt + 90s`;
+- `pos_connectivity_read_model_write_failed`, `pos_connectivity_read_model_refresh_failed`, and `uber_pos_connectivity_read_model_shadow_failed` remained absent during the deliberate verification window.
+
+This evidence also clarifies the compatibility gate: ONLINE can be verified by real order-admission shadow comparison, while OFFLINE/UNKNOWN must be verified by POS-owned projection plus watchdog/provider/device-lifecycle evidence because the store becomes unavailable before those states can receive a fresh provider order.
+
+## Slice 5A.1 — projection authority hardening + UNKNOWN safety finalization
+
+Status: **LOCAL SOURCE PENDING REVIEW** on `refactor/phase7-slice5a1-pos-connectivity-hardening`, based on `origin/dev@8abf3162`.
+
+Migration classification: **Class B/C pre-cutover hardening inside the existing compatibility path**. The user explicitly authorized finalizing `UNKNOWN` from the rollout-era fail-open meaning to an unavailable ordering state. This Slice does not change Prisma schema/migrations, does not make the read model authoritative for Uber admission, and does not remove the legacy direct read.
+
+Source hardening is intentionally narrow:
+
+- heartbeat-capable authenticated activity advances `PosConnectivityReadModel.lastHeartbeatAt/validUntil` only through a conditional monotonic update; `createMany(..., skipDuplicates)` plus one conditional retry handles concurrent first-row creation without allowing an older request to overwrite a newer lease;
+- credential activity records `lastSeenAt` only while the device is still `ACTIVE`, then rechecks device status after projection advancement; if the device became inactive in that window, the request is rejected and the projection is immediately recomputed from current POS truth instead of leaving a stale ONLINE lease;
+- `PosDeviceService.repairConnectivityReadModelForStore()` remains the POS-owned repair path, and the watchdog invokes it during connectivity polling: while a heartbeat-capable ACTIVE POS exists the repair can only advance the heartbeat lease (never regress a newer projection), while the absence of any such POS converges the projection to UNKNOWN; projection write failures still do not make ordinary POS authentication fail before Slice 5B;
+- `UNKNOWN` continues to mean “no active order-receiving POS exists”, but it is no longer ordering-safe: the watchdog sends the same provider-safe PAUSED command used for lost connectivity, emits distinct `pos_connectivity_unknown` diagnostics, and Uber admission denies UNKNOWN using the existing `POS_OFFLINE` reason-code contract as a second guard; no new Uber wire reason code is introduced;
+- `common/pos-connectivity` remains temporary until Slice 5B; legacy `PosDevice` connectivity remains the admission source in 5A.1 and the read model remains shadow-only.
+
+Focused coverage pins monotonic projection advancement, concurrent device-disable protection, repair-to-UNKNOWN behavior, watchdog UNKNOWN -> Uber PAUSED behavior, admission UNKNOWN -> DENY behavior, and the absence of a restored UNKNOWN early-return in the watchdog. The architecture guard continues prohibiting Uber writes to the read model or any `Uber -> POS public-api` dependency.
+
+This Slice intentionally makes **no dependency-count/baseline change**: Phase 7 direct debt remains **9** (`architecture-foundation 2`, `external-channels 1`, `identity-customer-benefits 1`, `runtime-data-ci-ops 5`) and public SCC remains expected empty. No local lint/build/test/scanner command is run before review per `AGENTS.md`; GitHub Actions remains authoritative after remote authorization.
+
+Because this Slice deliberately changes externally observable safety behavior for UNKNOWN, deployment verification is an explicit earlier compatibility gate before 5B: with no active order-receiving POS, confirm the projection is UNKNOWN and Uber Store becomes unavailable; restore the real front POS, confirm stable recovery to ONLINE, and confirm projection/read failures remain zero.
+
+## Required Slice 5B after 5A.1 hardening
+
+Slice 5B remains mandatory before Phase 7 source scope can be declared complete. After Slice 5A.1 is CI-green, deployed and its UNKNOWN-unavailable/recovery gate passes, 5B should atomically switch Uber admission to `PosConnectivityReadModel`, remove `UberOrderImportRepositoryPort.getPosStoreConnectivity()` from the mixed order persistence contract, delete Uber's direct `prisma.posDevice` and `common/pos-connectivity` reads, move the remaining POS connectivity policy out of Foundation into POS ownership, close/remove `pos-connectivity.read-model-shadow.v1`, recompute the dependency baseline and keep public SCC empty.
 
 The direct `PosModule -> UberEatsModule` and `PosModule -> AuthModule` imports remain intentional composition seams. Printer-agent workspace/package restructuring stays later because it affects an independently deployed production printing boundary and may require dependency/lockfile authorization.

@@ -5,7 +5,7 @@ import {
 } from './pos-connectivity';
 
 describe('POS connectivity', () => {
-  it('fails open until a device sends the new heartbeat capability marker', () => {
+  it('reports UNKNOWN until a device sends the heartbeat capability marker', () => {
     expect(
       resolvePosConnectivityStatus(
         [{ lastSeenAt: new Date(0), meta: {} }],

@@ -106,6 +106,10 @@ describe('Uber scheduled-order follow-up notifications', () => {
         },
       }),
       findMenuMappings: jest.fn().mockResolvedValue(menuMappings),
+      getPosStoreConnectivity: jest.fn().mockResolvedValue({
+        status: 'ONLINE',
+        lastHeartbeatAt: new Date('2026-08-21T14:40:12.000Z'),
+      }),
       saveExistingOrderCancellation: jest.fn(),
       saveImportedOrder,
     } as unknown as UberOrderImportRepositoryPort;

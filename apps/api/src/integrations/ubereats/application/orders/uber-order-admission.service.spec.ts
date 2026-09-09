@@ -85,6 +85,36 @@ describe('UberOrderAdmissionService', () => {
     expect(getPosStoreConnectivity).toHaveBeenCalledWith('pos-store-1');
   });
 
+  it('denies an otherwise valid order when POS connectivity is UNKNOWN', async () => {
+    const service = new UberOrderAdmissionService(
+      {
+        findMenuMappings: jest.fn().mockResolvedValue([
+          {
+            externalItemId: 'item-1',
+            menuItemStableId: 'menu-1',
+            expectedPriceCents: 100,
+          },
+        ]),
+        getPosStoreConnectivity: jest.fn().mockResolvedValue({
+          status: 'UNKNOWN',
+          lastHeartbeatAt: null,
+        }),
+      } as never,
+      { findMapping: jest.fn().mockResolvedValue(provisionedStore) } as never,
+      relayAllStoreConfig() as never,
+    );
+
+    await expect(
+      service.evaluate(parsedOrder(), 'event-unknown-connectivity'),
+    ).resolves.toMatchObject({
+      canPersistOrder: true,
+      decision: {
+        kind: 'DENY',
+        denial: { reasonCode: 'POS_OFFLINE' },
+      },
+    });
+  });
+
   it('returns a non-persistable DENY when a structured allergen matches StoreConfig', async () => {
     const order = parsedOrder();
     order.allergyRequest = { hasRequest: true, allergens: ['PEANUTS'] };
