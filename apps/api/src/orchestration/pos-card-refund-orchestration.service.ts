@@ -8,8 +8,11 @@ import {
 } from '@nestjs/common';
 import { PaymentMethod } from '@prisma/client';
 
-import type { OrderDto } from '../orders/dto/order.dto';
-import { OrdersService } from '../orders/orders.service';
+import {
+  POS_ORDER_OPERATIONS,
+  type PosOrderDto,
+  type PosOrderOperationsPort,
+} from '../orders/public-api';
 import type { PaymentTransaction } from '../payments/domain/payment-transaction';
 import {
   PaymentReversalPreflightError,
@@ -40,7 +43,7 @@ export type PosManagedCardRefundView = {
   mode: 'MANAGED' | 'LEGACY_MANUAL_REQUIRED';
   status: PaymentStatus | null;
   operation: Extract<PaymentOperation, 'REFUND' | 'VOID'> | null;
-  order: OrderDto;
+  order: PosOrderDto;
   refundedCardBaseCents: number | null;
   refundedAdditionalChargeCents: number | null;
   refundedCustomerTotalCents: number | null;
@@ -55,7 +58,8 @@ export class PosCardRefundOrchestrationService {
     private readonly refunds: RefundPaymentService,
     @Inject(PAYMENT_TRANSACTION_REPOSITORY)
     private readonly paymentTransactions: PaymentTransactionRepository,
-    private readonly orders: OrdersService,
+    @Inject(POS_ORDER_OPERATIONS)
+    private readonly orders: PosOrderOperationsPort,
   ) {}
 
   async refundFullOrder(
@@ -75,13 +79,6 @@ export class PosCardRefundOrchestrationService {
         'POS_MANAGED_CARD_CHECKOUT_NOT_COMPLETED',
         `Unified payment checkout is ${checkout.status}; complete payment recovery before refunding this order.`,
       );
-    }
-    if (!checkout.orderId) {
-      throw new ConflictException({
-        code: 'POS_MANAGED_CARD_CHECKOUT_FACTS_MISSING',
-        message:
-          'The unified payment checkout is completed but is missing its order binding.',
-      });
     }
     if (
       checkout.storeId !== storeStableId ||
@@ -217,7 +214,6 @@ export class PosCardRefundOrchestrationService {
       reversal = await this.refunds.startOrRecover({
         attemptId: identity.attemptId,
         idempotencyKey: identity.idempotencyKey,
-        orderId: checkout.orderId,
         originalPaymentId: originalSnapshot.id,
         operation,
         amountCents: originalSnapshot.amountCents,
@@ -285,10 +281,10 @@ export class PosCardRefundOrchestrationService {
 
   private async finalizeOrderRefund(
     storeStableId: string,
-    order: OrderDto,
+    order: PosOrderDto,
     reason: string,
     operatorName: string,
-  ): Promise<OrderDto> {
+  ): Promise<PosOrderDto> {
     if (order.status === 'refunded') return order;
     try {
       const result = await this.orders.createFullRefund({
@@ -312,7 +308,7 @@ export class PosCardRefundOrchestrationService {
   }
 
   private managedBlockedView(
-    order: OrderDto,
+    order: PosOrderDto,
     failureCode: string,
     failureMessage: string,
   ): PosManagedCardRefundView {
@@ -329,7 +325,7 @@ export class PosCardRefundOrchestrationService {
     };
   }
 
-  private legacyView(order: OrderDto): PosManagedCardRefundView {
+  private legacyView(order: PosOrderDto): PosManagedCardRefundView {
     return {
       mode: 'LEGACY_MANUAL_REQUIRED',
       status: null,

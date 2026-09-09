@@ -83,12 +83,15 @@ const createHarness = () => {
     CLOVER_CREDENTIAL_KEYS_SOURCE: 'env',
   });
   const config = {
-    merchantId,
-    storeStableId,
-    oauthClientId: 'app-123',
-    oauthClientSecret: 'server-secret',
-    oauthCallbackUrl: callbackUrl,
-    oauthScopesMetadata: 'MERCHANT_READ,PAYMENTS_READ,ECOMMERCE',
+    unifiedMerchantId: merchantId,
+    unifiedStoreStableId: storeStableId,
+    unifiedPlatformApiBase: 'https://platform.example.test',
+    unifiedOauthClientId: 'app-123',
+    unifiedOauthClientSecret: 'server-secret',
+    unifiedOauthAuthorizeBase: 'https://www.clover.com',
+    unifiedOauthApiBase: 'https://api.clover.com',
+    unifiedOauthCallbackUrl: callbackUrl,
+    unifiedOauthScopesMetadata: 'MERCHANT_READ,PAYMENTS_READ,ECOMMERCE',
     oauthStateTtlMs: 600_000,
   } as unknown as CloverProviderConfig;
 
@@ -279,6 +282,13 @@ describe('CloverMerchantAuthorizationService', () => {
     );
     await expectOAuthError(
       harness.service.start({
+        merchant_id: 'OTHER123',
+        client_id: 'app-123',
+      }),
+      'INVALID_LAUNCH',
+    );
+    await expectOAuthError(
+      harness.service.start({
         merchant_id: merchantId,
         client_id: 'wrong-app',
       }),
@@ -376,24 +386,18 @@ describe('CloverMerchantAuthorizationService', () => {
     expect(upsert.update.revokedAt).toBeNull();
   });
 
-  it('keeps a verified merchant unbound instead of guessing when no explicit mapping exists', async () => {
+  it('fails closed before OAuth starts when the Unified store mapping is missing', async () => {
     const harness = createHarness();
-    harness.setExistingAuthorization(null);
     (
       harness.service as unknown as {
-        config: { merchantId?: string; storeStableId?: string };
+        config: { unifiedStoreStableId?: string };
       }
-    ).config.storeStableId = undefined;
-    const state = await harness.start();
+    ).config.unifiedStoreStableId = undefined;
 
-    const result = await harness.service.complete({
-      code: 'authorization-code',
-      state,
-      merchant_id: merchantId,
-    });
-
-    expect(result.status).toBe('PENDING_BINDING');
-    expect(result.storeStableId).toBeNull();
+    await expectOAuthError(
+      harness.service.start({ merchant_id: merchantId, client_id: 'app-123' }),
+      'CONFIGURATION_ERROR',
+    );
   });
 
   it('rejects missing or unknown state before touching the token endpoint', async () => {

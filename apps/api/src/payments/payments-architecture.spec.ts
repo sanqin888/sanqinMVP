@@ -75,6 +75,21 @@ describe('Payments bounded-context architecture', () => {
     ]);
   });
 
+  it('keeps internal provider bindings and attempt construction private to PaymentsModule', () => {
+    const paymentsModule = scanTypeScript(PAYMENTS_ROOT, {
+      productionOnly: true,
+    }).find(({ path }) => path.endsWith('payments.module.ts'));
+    const exportsBlock =
+      paymentsModule?.source.match(/exports:\s*\[([\s\S]*?)\]/)?.[1] ?? '';
+
+    expect(paymentsModule?.source).toContain('provide: PAYMENT_PROVIDER');
+    expect(paymentsModule?.source).toContain(
+      'provide: CreatePaymentAttemptUseCase',
+    );
+    expect(exportsBlock).not.toContain('PAYMENT_PROVIDER');
+    expect(exportsBlock).not.toContain('CreatePaymentAttemptUseCase');
+  });
+
   it('keeps the Payments bounded context isolated from Orders and POS internals', () => {
     const paymentFiles = scanTypeScript(PAYMENTS_ROOT, {
       productionOnly: true,
@@ -119,6 +134,27 @@ describe('Payments bounded-context architecture', () => {
     ).toEqual([]);
   });
 
+  it('keeps the production Web Ecommerce transport exception limited to CloverService', () => {
+    const cloverInfrastructureRoot = resolve(
+      PAYMENTS_ROOT,
+      'infrastructure',
+      'clover',
+    );
+    const sourceFiles = scanTypeScript(SOURCE_ROOT, {
+      productionOnly: true,
+    }).filter(({ path }) => !path.startsWith(cloverInfrastructureRoot));
+
+    expect(
+      importViolations(sourceFiles, SOURCE_ROOT, (specifier) =>
+        /payments\/infrastructure\/clover\/ecommerce\/clover-ecommerce\.transport/.test(
+          specifier,
+        ),
+      ).sort(),
+    ).toEqual([
+      'clover/clover.service.ts -> ../payments/infrastructure/clover/ecommerce/clover-ecommerce.transport',
+    ]);
+  });
+
   it('defines the Platform v3 gateway only inside Payments Clover infrastructure', () => {
     const definitions = scanTypeScript(SOURCE_ROOT, { productionOnly: true })
       .filter(({ source }) =>
@@ -128,9 +164,20 @@ describe('Payments bounded-context architecture', () => {
         path.slice(SOURCE_ROOT.length + 1).replaceAll('\\', '/'),
       );
 
+    const adapter = scanTypeScript(
+      resolve(PAYMENTS_ROOT, 'infrastructure', 'clover'),
+      { productionOnly: true },
+    ).find(({ path }) => path.endsWith('clover-payment-provider.adapter.ts'));
+
     expect(definitions).toEqual([
-      'payments/infrastructure/clover/clover-payment-provider.adapter.ts',
+      'payments/infrastructure/clover/platform/clover-platform-payments.gateway.ts',
     ]);
+    expect(adapter?.source).not.toContain(
+      'class CloverPlatformPaymentsGateway',
+    );
+    expect(adapter?.source).not.toContain('/v3/merchants/');
+    expect(adapter?.source).not.toContain('PLATFORM_TIMEOUT_MS');
+    expect(adapter?.source).not.toContain('fetch(');
   });
 
   it('keeps Clover merchant OAuth and merchant-scoped credential persistence inside Payments Clover infrastructure', () => {
@@ -184,6 +231,91 @@ describe('Payments bounded-context architecture', () => {
     expect(platformVerification?.source).not.toContain('/oauth/v2/');
   });
 
+  it('keeps Web Ecommerce, Unified Clover, and Terminal configuration families isolated', () => {
+    const cloverFiles = scanTypeScript(
+      resolve(PAYMENTS_ROOT, 'infrastructure', 'clover'),
+      { productionOnly: true },
+    );
+    const providerConfig = cloverFiles.find(({ path }) =>
+      path.endsWith('clover-provider.config.ts'),
+    );
+    const ecommerce = cloverFiles.find(({ path }) =>
+      path.endsWith('ecommerce/clover-ecommerce.transport.ts'),
+    );
+    const platform = cloverFiles.find(({ path }) =>
+      path.endsWith('platform/clover-platform-payments.gateway.ts'),
+    );
+    const terminal = cloverFiles.find(({ path }) =>
+      path.endsWith('terminal/clover-terminal.transport.ts'),
+    );
+    const oauthClient = cloverFiles.find(({ path }) =>
+      path.endsWith('oauth/clover-oauth.client.ts'),
+    );
+    const webhook = cloverFiles.find(({ path }) =>
+      path.endsWith('webhook/clover-payment-webhook-ingress.adapter.ts'),
+    );
+
+    expect(providerConfig?.source).toContain('CLOVER_UNIFIED_MERCHANT_ID');
+    expect(providerConfig?.source).toContain(
+      'CLOVER_UNIFIED_PLATFORM_API_BASE',
+    );
+    expect(providerConfig?.source).toContain('CLOVER_TERMINAL_API_BASE');
+    expect(providerConfig?.source).not.toContain(
+      'process.env.CLOVER_STORE_STABLE_ID',
+    );
+    expect(providerConfig?.source).not.toContain(
+      'process.env.CLOVER_PLATFORM_API_BASE',
+    );
+    expect(providerConfig?.source).not.toContain(
+      'process.env.CLOVER_OAUTH_CLIENT_ID',
+    );
+    expect(providerConfig?.source).not.toContain(
+      'process.env.CLOVER_OAUTH_CLIENT_SECRET',
+    );
+    expect(providerConfig?.source).not.toContain(
+      'process.env.CLOVER_OAUTH_AUTHORIZE_BASE',
+    );
+    expect(providerConfig?.source).not.toContain(
+      'process.env.CLOVER_OAUTH_API_BASE',
+    );
+    expect(providerConfig?.source).not.toContain(
+      'process.env.CLOVER_OAUTH_CALLBACK_URL',
+    );
+    expect(providerConfig?.source).not.toContain(
+      'process.env.CLOVER_OAUTH_SCOPES',
+    );
+    expect(providerConfig?.source).not.toContain(
+      'process.env.CLOVER_TERMINAL_BASE',
+    );
+    expect(providerConfig?.source).not.toContain(
+      'process.env.CLOVER_DEVICE_ID',
+    );
+    expect(providerConfig?.source).not.toContain(
+      'process.env.CLOVER_REMOTE_APP_ID',
+    );
+    expect(providerConfig?.source).not.toContain(
+      'process.env.CLOVER_TERMINAL_OAUTH_TOKEN',
+    );
+
+    expect(ecommerce?.source).toContain('config.ecommerceAccessToken');
+    expect(ecommerce?.source).not.toContain('config.unified');
+    expect(platform?.source).toContain('config.unifiedMerchantId');
+    expect(platform?.source).toContain('config.unifiedPlatformApiBase');
+    expect(platform?.source).not.toContain('config.ecommerce');
+    expect(terminal?.source).toContain('config.terminalApiBase');
+    expect(terminal?.source).toContain('config.unifiedMerchantId');
+    expect(terminal?.source).toContain('CloverMerchantAccessTokenService');
+    expect(terminal?.source).toContain('{ forceRefresh: true }');
+    expect(terminal?.source).not.toContain('config.terminalAccessToken');
+    expect(terminal?.source).not.toContain('CLOVER_TERMINAL_OAUTH_TOKEN');
+    expect(terminal?.source).not.toContain('config.ecommerceApiBase');
+    expect(terminal?.source).not.toContain('config.ecommerceAccessToken');
+    expect(oauthClient?.source).toContain('config.unifiedOauth');
+    expect(oauthClient?.source).not.toContain('config.ecommerce');
+    expect(webhook?.source).toContain('config.ecommerceMerchantId');
+    expect(webhook?.source).not.toContain('config.unifiedMerchantId');
+  });
+
   it('keeps Clover OAuth secrets and merchant credentials out of Web source', () => {
     const webSource = scanTypeScript(
       resolve(PAYMENTS_ROOT, '../../../web/src'),
@@ -191,12 +323,10 @@ describe('Payments bounded-context architecture', () => {
         productionOnly: true,
       },
     );
+    const cloverServerSecret =
+      /CLOVER_(?:UNIFIED_OAUTH_CLIENT_SECRET|OAUTH_CLIENT_SECRET|CREDENTIAL_ENCRYPTION_KEYS|TERMINAL_OAUTH_TOKEN)/;
     const violations = webSource
-      .filter(({ source }) =>
-        /CLOVER_(?:OAUTH_CLIENT_SECRET|CREDENTIAL_ENCRYPTION_KEYS|TERMINAL_OAUTH_TOKEN)/.test(
-          source,
-        ),
-      )
+      .filter(({ source }) => cloverServerSecret.test(source))
       .map(({ path }) => path.replaceAll('\\', '/'));
 
     expect(violations).toEqual([]);
@@ -333,6 +463,327 @@ describe('Payments bounded-context architecture', () => {
     expect(orchestration?.source).not.toContain('PrintPosPayloadService');
     expect(orchestration?.source).not.toContain('sendPrintJob');
     expect(orchestration?.source).not.toContain('PAYMENT_CHECKOUT:');
+  });
+
+  it('keeps POS payment realtime delivery behind the POS public capability', () => {
+    const orchestrationFiles = scanTypeScript(
+      resolve(SOURCE_ROOT, 'orchestration'),
+      { productionOnly: true },
+    ).filter(({ path }) =>
+      [
+        'pos-card-payment-orchestration.service.ts',
+        'payment-reverse-sync-orchestration.service.ts',
+      ].some((name) => path.endsWith(name)),
+    );
+    const posFiles = scanTypeScript(resolve(SOURCE_ROOT, 'pos'), {
+      productionOnly: true,
+    });
+    const publicApi = posFiles.find(({ path }) =>
+      path.endsWith('public-api.ts'),
+    );
+    const deviceModule = posFiles.find(({ path }) =>
+      path.endsWith('pos-device.module.ts'),
+    );
+    const realtimeContract = posFiles.find(({ path }) =>
+      path.endsWith('pos-payment-realtime.contract.ts'),
+    );
+
+    expect(orchestrationFiles).toHaveLength(2);
+    for (const orchestration of orchestrationFiles) {
+      expect(orchestration.source).toContain("from '../pos/public-api'");
+      expect(orchestration.source).toContain('POS_PAYMENT_REALTIME');
+      expect(orchestration.source).not.toContain("from '../pos/pos.gateway'");
+    }
+    expect(publicApi?.source).toContain('POS_PAYMENT_REALTIME');
+    expect(publicApi?.source).toContain('PosPaymentRealtimePort');
+    expect(deviceModule?.source).toContain('provide: POS_PAYMENT_REALTIME');
+    expect(deviceModule?.source).toContain('useExisting: PosGateway');
+    expect(realtimeContract?.source).not.toMatch(/from ['"]\.\.\/payments\//);
+    expect(realtimeContract?.source).not.toMatch(/from ['"]\.\.\/clover\//);
+  });
+
+  it('keeps POS transport guard and Nest composition on the POS public surface', () => {
+    const orchestrationFiles = scanTypeScript(
+      resolve(SOURCE_ROOT, 'orchestration'),
+      { productionOnly: true },
+    );
+    const controllerFiles = orchestrationFiles.filter(({ path }) =>
+      [
+        'pos-card-payment.controller.ts',
+        'pos-card-refund.controller.ts',
+        'pos-full-refund.controller.ts',
+      ].some((name) => path.endsWith(name)),
+    );
+    const compositionModule = orchestrationFiles.find(({ path }) =>
+      path.endsWith('pos-card-payment-orchestration.module.ts'),
+    );
+    const publicApi = scanTypeScript(resolve(SOURCE_ROOT, 'pos'), {
+      productionOnly: true,
+    }).find(({ path }) => path.endsWith('public-api.ts'));
+
+    expect(controllerFiles).toHaveLength(3);
+    for (const controller of controllerFiles) {
+      expect(controller.source).toContain("from '../pos/public-api'");
+      expect(controller.source).toContain('PosDeviceGuard');
+      expect(controller.source).not.toContain("from '../pos/pos-device.guard'");
+    }
+    expect(compositionModule).toBeDefined();
+    expect(compositionModule?.source).toContain("from '../pos/public-api'");
+    expect(compositionModule?.source).toContain('PosDeviceModule');
+    expect(compositionModule?.source).not.toContain(
+      "from '../pos/pos-device.module'",
+    );
+    expect(compositionModule?.source).toContain("from '../pos/pos.module'");
+    expect(publicApi?.source).toContain('PosDeviceGuard');
+    expect(publicApi?.source).toContain('PosDeviceModule');
+    expect(publicApi?.source).not.toContain("from './pos.module'");
+  });
+
+  it('keeps POS full-refund management behind the POS public capability', () => {
+    const orchestrationFiles = scanTypeScript(
+      resolve(SOURCE_ROOT, 'orchestration'),
+      { productionOnly: true },
+    );
+    const fullRefundService = orchestrationFiles.find(({ path }) =>
+      path.endsWith('pos-full-refund-orchestration.service.ts'),
+    );
+    const fullRefundController = orchestrationFiles.find(({ path }) =>
+      path.endsWith('pos-full-refund.controller.ts'),
+    );
+    const posFiles = scanTypeScript(resolve(SOURCE_ROOT, 'pos'), {
+      productionOnly: true,
+    });
+    const publicApi = posFiles.find(({ path }) =>
+      path.endsWith('public-api.ts'),
+    );
+    const posModule = posFiles.find(({ path }) =>
+      path.endsWith('pos.module.ts'),
+    );
+    const posOrdersService = posFiles.find(({ path }) =>
+      path.endsWith('pos-orders.service.ts'),
+    );
+    const fullRefundContract = posFiles.find(({ path }) =>
+      path.endsWith('pos-full-refund-management.contract.ts'),
+    );
+
+    expect(fullRefundService?.source).toContain("from '../pos/public-api'");
+    expect(fullRefundService?.source).toContain('POS_FULL_REFUND_MANAGEMENT');
+    expect(fullRefundService?.source).toContain('PosFullRefundManagementPort');
+    expect(fullRefundService?.source).not.toContain(
+      "from '../pos/pos-orders.service'",
+    );
+    expect(fullRefundController?.source).toContain("from '../pos/public-api'");
+    expect(fullRefundController?.source).toContain(
+      'PosFullRefundManagementInput',
+    );
+    expect(fullRefundController?.source).not.toContain(
+      "from '../pos/pos-orders.service'",
+    );
+    expect(publicApi?.source).toContain('POS_FULL_REFUND_MANAGEMENT');
+    expect(publicApi?.source).toContain('PosFullRefundManagementPort');
+    expect(posModule?.source).toContain('provide: POS_FULL_REFUND_MANAGEMENT');
+    expect(posModule?.source).toContain('useExisting: PosOrdersService');
+    expect(posModule?.source).toContain(
+      'exports: [POS_FULL_REFUND_MANAGEMENT]',
+    );
+    expect(posModule?.source).not.toContain('exports: [PosOrdersService]');
+    expect(posOrdersService?.source).toContain(
+      'implements PosFullRefundManagementPort',
+    );
+    expect(fullRefundContract?.source).toContain("from '@shared/order'");
+    expect(fullRefundContract?.source).not.toContain("from '@prisma/client'");
+    expect(fullRefundContract?.source).not.toMatch(/from ['"]\.\.\/payments\//);
+    expect(fullRefundContract?.source).not.toMatch(/from ['"]\.\.\/clover\//);
+  });
+
+  it('keeps POS refund/reverse-sync Orders access on the public POS order operations boundary', () => {
+    const orchestrationFiles = scanTypeScript(
+      resolve(SOURCE_ROOT, 'orchestration'),
+      { productionOnly: true },
+    ).filter(({ path }) =>
+      [
+        'pos-card-refund-orchestration.service.ts',
+        'payment-reverse-sync-orchestration.service.ts',
+      ].some((name) => path.endsWith(name)),
+    );
+
+    expect(orchestrationFiles).toHaveLength(2);
+    for (const orchestration of orchestrationFiles) {
+      expect(orchestration.source).toContain("from '../orders/public-api'");
+      expect(orchestration.source).toContain('POS_ORDER_OPERATIONS');
+      expect(orchestration.source).not.toContain(
+        "from '../orders/orders.service'",
+      );
+      expect(orchestration.source).not.toMatch(/from ['"]\.\.\/orders\/dto\//);
+    }
+  });
+
+  it('exposes payment preparation through the Orders public capability without duplicating OrdersService', () => {
+    const orderFiles = scanTypeScript(resolve(SOURCE_ROOT, 'orders'), {
+      productionOnly: true,
+    });
+    const publicApi = orderFiles.find(({ path }) =>
+      path.endsWith('public-api.ts'),
+    );
+    const module = orderFiles.find(({ path }) =>
+      path.endsWith('orders.module.ts'),
+    );
+
+    expect(publicApi?.source).toContain('PAYMENT_ORDER_PREPARATION');
+    expect(publicApi?.source).toContain('PaymentOrderPreparationPort');
+    expect(module?.source).toContain('provide: PAYMENT_ORDER_PREPARATION');
+    expect(module?.source).toContain('useExisting: OrdersService');
+  });
+
+  it('exposes confirmed-payment finalization through a stable-ID-only Orders public capability', () => {
+    const orderFiles = scanTypeScript(resolve(SOURCE_ROOT, 'orders'), {
+      productionOnly: true,
+    });
+    const publicApi = orderFiles.find(({ path }) =>
+      path.endsWith('public-api.ts'),
+    );
+    const module = orderFiles.find(({ path }) =>
+      path.endsWith('orders.module.ts'),
+    );
+    const contract = orderFiles.find(({ path }) =>
+      path.endsWith('payment-order-finalization.contract.ts'),
+    );
+    const ordersService = orderFiles.find(({ path }) =>
+      path.endsWith('orders.service.ts'),
+    );
+    const orchestration = scanTypeScript(
+      resolve(SOURCE_ROOT, 'orchestration'),
+      { productionOnly: true },
+    ).find(({ path }) =>
+      path.endsWith('pos-card-payment-orchestration.service.ts'),
+    );
+
+    expect(publicApi?.source).toContain('PAYMENT_ORDER_FINALIZATION');
+    expect(publicApi?.source).toContain('PaymentOrderFinalizationPort');
+    expect(publicApi?.source).toContain('ConfirmedPaymentOrderView');
+    expect(module?.source).toContain('provide: PAYMENT_ORDER_FINALIZATION');
+    expect(module?.source).toContain('useExisting: OrdersService');
+    expect(module?.source).toContain('PAYMENT_ORDER_FINALIZATION,');
+    expect(ordersService?.source).toContain('PaymentOrderFinalizationPort');
+    expect(ordersService?.source).toContain('finalizeConfirmedPayment(');
+    expect(contract?.source).toContain('orderStableId: string');
+    expect(contract?.source).toContain('orderNumber: string');
+    expect(contract?.source).toContain('pickupCode: string | null');
+    expect(contract?.source).not.toContain('internalOrderId');
+    expect(contract?.source).not.toContain('OrderDto');
+    expect(contract?.source).not.toContain("from '@prisma/client'");
+    expect(contract?.source).not.toMatch(/Prisma\.TransactionClient/);
+    expect(contract?.source).not.toMatch(/from ['"]\.\.\/payments\//);
+    expect(contract?.source).not.toMatch(/from ['"]\.\.\/clover\//);
+    expect(orchestration?.source).toContain("from '../orders/public-api'");
+    expect(orchestration?.source).toContain('PAYMENT_ORDER_FINALIZATION');
+    expect(orchestration?.source).toContain('PaymentOrderFinalizationPort');
+    expect(orchestration?.source).toContain('finalizeConfirmedPayment(');
+    expect(orchestration?.source).toContain('getByStableIdForStore(');
+    expect(orchestration?.source).not.toContain(
+      "from '../orders/orders.service'",
+    );
+  });
+
+  it('keeps persisted payment preparation on the V2 stable-identity public boundary', () => {
+    const checkoutPreparation = scanTypeScript(
+      resolve(SOURCE_ROOT, 'orchestration'),
+      { productionOnly: true },
+    ).find(({ path }) => path.endsWith('payment-checkout-attempt.service.ts'));
+
+    expect(checkoutPreparation).toBeDefined();
+    expect(checkoutPreparation?.source).toContain(
+      "from '../orders/public-api'",
+    );
+    expect(checkoutPreparation?.source).toContain('PAYMENT_ORDER_PREPARATION');
+    expect(checkoutPreparation?.source).not.toContain(
+      "from '../orders/orders.service'",
+    );
+    expect(checkoutPreparation?.source).toContain(
+      'storeStableId: snapshot.storeStableId',
+    );
+    expect(checkoutPreparation?.source).toContain('draft.version !== 2');
+    expect(checkoutPreparation?.source).toContain(
+      'delete stableOrder.selectedUserCouponId',
+    );
+    expect(checkoutPreparation?.source).toContain(
+      'delete stableOrder.checkoutIntentId',
+    );
+    expect(checkoutPreparation?.source).not.toContain(
+      'userId: snapshot.userId',
+    );
+    expect(checkoutPreparation?.source).not.toContain(
+      'selectedUserCouponId: snapshot.order.selectedUserCouponId',
+    );
+  });
+
+  it('keeps confirmed-payment Order DB identity inside Orders and out of POS refund payment facts', () => {
+    const orderFiles = scanTypeScript(resolve(SOURCE_ROOT, 'orders'), {
+      productionOnly: true,
+    });
+    const orchestrationFiles = scanTypeScript(
+      resolve(SOURCE_ROOT, 'orchestration'),
+      { productionOnly: true },
+    );
+    const paymentFiles = scanTypeScript(
+      resolve(SOURCE_ROOT, 'payments/application'),
+      { productionOnly: true },
+    );
+    const ordersService = orderFiles.find(({ path }) =>
+      path.endsWith('orders.service.ts'),
+    );
+    const checkoutService = orchestrationFiles.find(({ path }) =>
+      path.endsWith('payment-checkout-attempt.service.ts'),
+    );
+    const cardPayment = orchestrationFiles.find(({ path }) =>
+      path.endsWith('pos-card-payment-orchestration.service.ts'),
+    );
+    const cardRefund = orchestrationFiles.find(({ path }) =>
+      path.endsWith('pos-card-refund-orchestration.service.ts'),
+    );
+    const refundPayment = paymentFiles.find(({ path }) =>
+      path.endsWith('refund-payment.service.ts'),
+    );
+
+    expect(checkoutService?.source).not.toContain('plannedOrderId');
+    expect(checkoutService?.source).not.toMatch(/\borderId\b/);
+    expect(checkoutService?.source).not.toContain('randomUUID');
+    expect(cardPayment?.source).not.toContain('checkout.plannedOrderId');
+    expect(cardPayment?.source).not.toContain('created.internalOrderId');
+    expect(cardPayment?.source).toContain('markCompleted(checkout.attemptId)');
+    expect(ordersService?.source).not.toContain('id: input.internalOrderId');
+    expect(ordersService?.source).not.toContain(
+      'orderId: input.internalOrderId',
+    );
+    expect(ordersService?.source).toContain('orderId: createdOrder.id');
+    expect(cardRefund?.source).not.toContain('checkout.orderId');
+    expect(refundPayment?.source).not.toMatch(/\borderId\b/);
+  });
+
+  it('wires OrdersModule through the Orders public composition surface', () => {
+    const modules = scanTypeScript(resolve(SOURCE_ROOT, 'orchestration'), {
+      productionOnly: true,
+    })
+      .filter(
+        ({ path }) =>
+          path.endsWith('clover-web-checkout-orchestration.module.ts') ||
+          path.endsWith('pos-card-payment-orchestration.module.ts'),
+      )
+      .sort((left, right) => left.path.localeCompare(right.path));
+
+    expect(
+      modules.map(({ path }) =>
+        path.slice(SOURCE_ROOT.length + 1).replaceAll('\\', '/'),
+      ),
+    ).toEqual([
+      'orchestration/clover-web-checkout-orchestration.module.ts',
+      'orchestration/pos-card-payment-orchestration.module.ts',
+    ]);
+    for (const { source } of modules) {
+      const imports = importSpecifiers(source);
+      expect(imports).toContain('../orders/public-api');
+      expect(imports).not.toContain('../orders/orders.module');
+    }
   });
 
   it('keeps Payments + Orders coordination inside the explicit unified-payment orchestration layer', () => {

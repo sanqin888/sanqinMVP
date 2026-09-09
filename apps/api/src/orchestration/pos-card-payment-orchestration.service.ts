@@ -7,11 +7,12 @@ import {
 import type { CreateOrderInput } from '@shared/order';
 
 import {
+  PAYMENT_ORDER_FINALIZATION,
   POS_ORDER_OPERATIONS,
-  type PosOrderDto,
+  type ConfirmedPaymentOrderView,
+  type PaymentOrderFinalizationPort,
   type PosOrderOperationsPort,
 } from '../orders/public-api';
-import { OrdersService } from '../orders/orders.service';
 import { TerminalPaymentService } from '../payments/application/create-payment-attempt.use-case';
 import {
   PAYMENT_TRANSACTION_REPOSITORY,
@@ -19,7 +20,10 @@ import {
 } from '../payments/application/payment-transaction.repository';
 import type { PaymentTransaction } from '../payments/domain/payment-transaction';
 import { PosCardPaymentFeatureConfig } from '../pos/pos-card-payment-feature.config';
-import { PosGateway } from '../pos/pos.gateway';
+import {
+  POS_PAYMENT_REALTIME,
+  type PosPaymentRealtimePort,
+} from '../pos/public-api';
 import {
   PaymentCheckoutAttemptService,
   type PreparePaymentCheckoutInput,
@@ -69,10 +73,12 @@ export class PosCardPaymentOrchestrationService {
     private readonly terminalPayments: TerminalPaymentService,
     @Inject(PAYMENT_TRANSACTION_REPOSITORY)
     private readonly paymentTransactions: PaymentTransactionRepository,
-    private readonly orders: OrdersService,
+    @Inject(PAYMENT_ORDER_FINALIZATION)
+    private readonly orderFinalization: PaymentOrderFinalizationPort,
     @Inject(POS_ORDER_OPERATIONS)
     private readonly orderOperations: PosOrderOperationsPort,
-    private readonly posGateway: PosGateway,
+    @Inject(POS_PAYMENT_REALTIME)
+    private readonly paymentRealtime: PosPaymentRealtimePort,
   ) {}
 
   getConfig(storeStableId: string) {
@@ -387,9 +393,10 @@ export class PosCardPaymentOrchestrationService {
   ): Promise<PosCardPaymentView> {
     let checkout = initialCheckout;
 
-    if (checkout.orderId || checkout.status === 'COMPLETED') {
-      const existingOrder = await this.orders.getByStableId(
+    if (checkout.status === 'COMPLETED') {
+      const existingOrder = await this.orderOperations.getByStableIdForStore(
         checkout.orderStableId,
+        storeId,
       );
       const payment =
         knownPayment ??
@@ -476,21 +483,17 @@ export class PosCardPaymentOrchestrationService {
         ? 0
         : (paymentSnapshot?.chargedTotalCents ?? 0);
 
-    const created = await this.orders.createFromConfirmedPaymentSnapshot(
+    const created = await this.orderFinalization.finalizeConfirmedPayment(
       checkout.snapshot,
       {
         attemptId: checkout.attemptId,
-        internalOrderId: checkout.plannedOrderId,
         orderStableId: checkout.orderStableId,
         cardSurchargeCents: surchargeCents,
         chargedTotalCents,
       },
     );
 
-    checkout = await this.checkouts.markCompleted({
-      attemptId: checkout.attemptId,
-      orderId: created.internalOrderId,
-    });
+    checkout = await this.checkouts.markCompleted(checkout.attemptId);
     await this.orderOperations.activateImmediatePreparation(
       created.order.orderStableId,
       storeId,
@@ -557,7 +560,7 @@ export class PosCardPaymentOrchestrationService {
   private toView(
     checkout: PreparedPaymentCheckout,
     payment?: PaymentTransaction,
-    order?: PosOrderDto,
+    order?: ConfirmedPaymentOrderView,
     override?: Partial<
       Pick<PosCardPaymentView, 'status' | 'failureCode' | 'failureMessage'>
     >,
@@ -604,7 +607,7 @@ export class PosCardPaymentOrchestrationService {
 
   private publish(storeStableId: string, view: PosCardPaymentView): void {
     try {
-      this.posGateway.publishCardPaymentStatus(storeStableId, view);
+      this.paymentRealtime.publishCardPaymentStatus(storeStableId, view);
     } catch {
       // Realtime delivery is best-effort; persisted checkout/payment/order truth wins.
     }

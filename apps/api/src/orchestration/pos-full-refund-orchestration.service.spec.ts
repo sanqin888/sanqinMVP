@@ -7,9 +7,11 @@ import request from 'supertest';
 
 import { RolesGuard } from '../auth/roles.guard';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
-import type { AuthenticatedPosIdentity } from '../pos/public-api';
-import { PosDeviceGuard } from '../pos/pos-device.guard';
-import type { PosOrdersService } from '../pos/pos-orders.service';
+import {
+  PosDeviceGuard,
+  type AuthenticatedPosIdentity,
+  type PosFullRefundManagementPort,
+} from '../pos/public-api';
 import { PosCardRefundController } from './pos-card-refund.controller';
 import { PosCardRefundOrchestrationService } from './pos-card-refund-orchestration.service';
 import { PosFullRefundController } from './pos-full-refund.controller';
@@ -30,12 +32,12 @@ const order = {
 
 const createHarness = () => {
   const cardRefunds = { refundFullOrder: jest.fn() };
-  const posOrders = { createFullRefund: jest.fn() };
+  const fullRefundManagement = { createFullRefund: jest.fn() };
   const service = new PosFullRefundOrchestrationService(
     cardRefunds as unknown as PosCardRefundOrchestrationService,
-    posOrders as unknown as PosOrdersService,
+    fullRefundManagement as unknown as PosFullRefundManagementPort,
   );
-  return { cardRefunds, posOrders, service };
+  return { cardRefunds, fullRefundManagement, service };
 };
 
 describe('PosFullRefundOrchestrationService', () => {
@@ -52,7 +54,7 @@ describe('PosFullRefundOrchestrationService', () => {
       failureCode: null,
       failureMessage: null,
     });
-    harness.posOrders.createFullRefund.mockResolvedValue({
+    harness.fullRefundManagement.createFullRefund.mockResolvedValue({
       order: { ...order, status: 'refunded' },
       outcome: 'refunded',
     });
@@ -64,7 +66,7 @@ describe('PosFullRefundOrchestrationService', () => {
         input,
       ),
     ).resolves.toMatchObject({ outcome: 'refunded' });
-    expect(harness.posOrders.createFullRefund).toHaveBeenCalledWith(
+    expect(harness.fullRefundManagement.createFullRefund).toHaveBeenCalledWith(
       '4750_Yonge_Street',
       'order_stable_1',
       input,
@@ -97,7 +99,9 @@ describe('PosFullRefundOrchestrationService', () => {
       managedPaymentOperation: 'REFUND',
       order: { status: 'paid' },
     });
-    expect(harness.posOrders.createFullRefund).not.toHaveBeenCalled();
+    expect(
+      harness.fullRefundManagement.createFullRefund,
+    ).not.toHaveBeenCalled();
   });
 
   it('returns the historical response shape after canonical managed success', async () => {
@@ -125,7 +129,9 @@ describe('PosFullRefundOrchestrationService', () => {
       managedPaymentStatus: 'SUCCEEDED',
       managedPaymentOperation: 'VOID',
     });
-    expect(harness.posOrders.createFullRefund).not.toHaveBeenCalled();
+    expect(
+      harness.fullRefundManagement.createFullRefund,
+    ).not.toHaveBeenCalled();
   });
 
   it('does not hide a definitive managed refund failure behind legacy fallback', async () => {
@@ -156,7 +162,9 @@ describe('PosFullRefundOrchestrationService', () => {
         code: 'CLOVER_REFUND_FAILED',
       });
     }
-    expect(harness.posOrders.createFullRefund).not.toHaveBeenCalled();
+    expect(
+      harness.fullRefundManagement.createFullRefund,
+    ).not.toHaveBeenCalled();
   });
 });
 

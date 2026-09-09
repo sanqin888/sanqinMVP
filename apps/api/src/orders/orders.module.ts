@@ -36,6 +36,8 @@ import { POS_ORDER_READ } from './pos-order-read.contract';
 import { PosOrderReadService } from './pos-order-read.service';
 import { POS_ORDER_OPERATIONS } from './pos-order-operations.contract';
 import { PosOrderOperationsService } from './pos-order-operations.service';
+import { PAYMENT_ORDER_PREPARATION } from './payment-order-preparation.contract';
+import { PAYMENT_ORDER_FINALIZATION } from './payment-order-finalization.contract';
 import { AdminMemberOrdersController } from './admin-member-orders.controller';
 import { AdminMemberOrdersReadService } from './admin-member-orders-read.service';
 
@@ -63,6 +65,14 @@ import { AdminMemberOrdersReadService } from './admin-member-orders-read.service
     OrderPublicSummaryQueryUseCase,
     OrderManagementQueryUseCase,
     OrdersService,
+    {
+      provide: PAYMENT_ORDER_PREPARATION,
+      useExisting: OrdersService,
+    },
+    {
+      provide: PAYMENT_ORDER_FINALIZATION,
+      useExisting: OrdersService,
+    },
     AdminMemberOrdersReadService,
     PosOrderReadService,
     {
@@ -91,6 +101,8 @@ import { AdminMemberOrdersReadService } from './admin-member-orders-read.service
   ],
   exports: [
     OrdersService,
+    PAYMENT_ORDER_PREPARATION,
+    PAYMENT_ORDER_FINALIZATION,
     POS_ORDER_READ,
     POS_ORDER_OPERATIONS,
     ORDER_INGESTION,

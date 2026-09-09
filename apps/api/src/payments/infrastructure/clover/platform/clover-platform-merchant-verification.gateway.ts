@@ -74,13 +74,20 @@ export class CloverPlatformMerchantVerificationGateway {
   }
 
   private async request(path: string, accessToken: string): Promise<Response> {
+    const apiBase = this.config.unifiedPlatformApiBase;
+    if (!apiBase) {
+      throw new CloverPlatformVerificationError(
+        'CLOVER_PLATFORM_VERIFICATION_MISCONFIGURED',
+        false,
+      );
+    }
     const controller = new AbortController();
     const timer = setTimeout(
       () => controller.abort(),
       PLATFORM_VERIFICATION_TIMEOUT_MS,
     );
     try {
-      return await fetch(`${this.config.platformApiBase}${path}`, {
+      return await fetch(`${apiBase}${path}`, {
         method: 'GET',
         headers: {
           Accept: 'application/json',

@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 
 import {
   BadRequestException,
@@ -23,9 +23,10 @@ import {
   type PaymentTenderReservationPort,
 } from '../benefits/public-api';
 import {
-  OrdersService,
+  PAYMENT_ORDER_PREPARATION,
+  type PaymentOrderPreparationPort,
   type PreparedPaymentOrderSnapshot,
-} from '../orders/orders.service';
+} from '../orders/public-api';
 import type { PaymentTransaction } from '../payments/domain/payment-transaction';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -52,8 +53,6 @@ export type PreparedPaymentCheckout = {
   status: PaymentCheckoutAttemptStatus;
   externalAmountCents: number;
   paymentTransactionId: string | null;
-  plannedOrderId: string;
-  orderId: string | null;
   orderStableId: string;
   expiresAt: Date;
   snapshot: PreparedPaymentOrderSnapshot;
@@ -65,7 +64,8 @@ type PaymentCheckoutRecord = PaymentCheckoutAttemptRecord;
 export class PaymentCheckoutAttemptService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly orders: OrdersService,
+    @Inject(PAYMENT_ORDER_PREPARATION)
+    private readonly paymentOrderPreparation: PaymentOrderPreparationPort,
     @Inject(PAYMENT_TENDER_RESERVATION)
     private readonly paymentTenderReservations: PaymentTenderReservationPort,
     @Inject(PAYMENT_COUPON_RESERVATION)
@@ -87,13 +87,12 @@ export class PaymentCheckoutAttemptService {
 
     await this.releaseExpiredPreProviderAttempts(normalized.storeId);
 
-    const snapshot = await this.orders.preparePaymentOrder(
+    const snapshot = await this.paymentOrderPreparation.preparePaymentOrder(
       normalized.order,
       normalized.storeId,
     );
     const expiresAt = new Date(Date.now() + PAYMENT_PREPARATION_TTL_MS);
     const orderStableId = this.orderStableIdForAttempt(normalized.attemptId);
-    const plannedOrderId = randomUUID();
 
     try {
       const created = await this.prisma.paymentCheckoutAttempt.create({
@@ -107,8 +106,7 @@ export class PaymentCheckoutAttemptService {
           orderDraftJson: this.toJson({
             version: snapshot.version,
             order: snapshot.order,
-            userId: snapshot.userId,
-            storeId: snapshot.storeId,
+            storeStableId: snapshot.storeStableId,
             items: snapshot.items,
             promotionSnapshot: snapshot.promotionSnapshot,
             coupon: snapshot.coupon,
@@ -117,7 +115,6 @@ export class PaymentCheckoutAttemptService {
           pricingSnapshotJson: this.toJson(snapshot.pricing),
           tenderAllocationJson: this.toJson(snapshot.tender),
           externalAmountCents: snapshot.tender.externalCents,
-          plannedOrderId,
           orderStableId,
           expiresAt,
         },
@@ -301,15 +298,11 @@ export class PaymentCheckoutAttemptService {
     return this.findByAttemptId(attemptId);
   }
 
-  async markCompleted(params: {
-    attemptId: string;
-    orderId: string;
-  }): Promise<PreparedPaymentCheckout> {
+  async markCompleted(attemptId: string): Promise<PreparedPaymentCheckout> {
     const updated = await this.prisma.paymentCheckoutAttempt.update({
-      where: { attemptId: params.attemptId },
+      where: { attemptId },
       data: {
         status: 'COMPLETED',
-        orderId: params.orderId,
         finalizedAt: new Date(),
       },
     });
@@ -406,16 +399,16 @@ export class PaymentCheckoutAttemptService {
     try {
       await this.paymentTenderReservations.holdPaymentTender({
         attemptId: checkout.attemptId,
-        userStableId: snapshot.order.userStableId,
+        userStableId: snapshot.order.userStableId ?? undefined,
         pointsValueCents: snapshot.tender.pointsCents,
         balanceCents: snapshot.tender.balanceCents,
         expiresAt: checkout.expiresAt,
       });
       await this.paymentCouponReservations.holdPaymentCoupons({
         attemptId: checkout.attemptId,
-        userStableId: snapshot.order.userStableId,
-        couponStableId: snapshot.order.couponStableId,
-        selectedUserCouponId: snapshot.order.selectedUserCouponId,
+        userStableId: snapshot.order.userStableId ?? undefined,
+        couponStableId: snapshot.coupon?.couponStableId,
+        reserveAssignedCoupon: snapshot.coupon?.reserveAssignedCoupon ?? false,
         expiresAt: checkout.expiresAt,
       });
       const prepared = await this.prisma.paymentCheckoutAttempt.updateMany({
@@ -442,11 +435,23 @@ export class PaymentCheckoutAttemptService {
 
   private mapRecord(record: PaymentCheckoutRecord): PreparedPaymentCheckout {
     const draft = record.orderDraftJson as Record<string, unknown>;
+    if (draft.version !== 2) {
+      throw new ConflictException({
+        code: 'PAYMENT_CHECKOUT_SNAPSHOT_VERSION_UNSUPPORTED',
+        message:
+          'Payment checkout snapshot is not supported by this deployment.',
+      });
+    }
+    if (draft.storeStableId !== record.storeId) {
+      throw new ConflictException({
+        code: 'PAYMENT_CHECKOUT_STORE_IDENTITY_MISMATCH',
+        message: 'Payment checkout store identity does not match its snapshot.',
+      });
+    }
     const snapshot = {
-      version: draft.version,
+      version: 2,
       order: draft.order,
-      userId: draft.userId,
-      storeId: draft.storeId,
+      storeStableId: draft.storeStableId,
       items: draft.items,
       promotionSnapshot: draft.promotionSnapshot,
       coupon: draft.coupon,
@@ -465,8 +470,6 @@ export class PaymentCheckoutAttemptService {
       status: record.status,
       externalAmountCents: record.externalAmountCents,
       paymentTransactionId: record.paymentTransactionId,
-      plannedOrderId: record.plannedOrderId,
-      orderId: record.orderId,
       orderStableId: record.orderStableId,
       expiresAt: record.expiresAt,
       snapshot,
@@ -520,7 +523,16 @@ export class PaymentCheckoutAttemptService {
     clientIdempotencyKey: string;
     order: CreateOrderInput;
   }): string {
-    const canonicalOrder = JSON.stringify(this.canonicalize(input.order));
+    const reserveAssignedCoupon = Boolean(input.order.selectedUserCouponId);
+    const stableOrder = { ...input.order };
+    delete stableOrder.selectedUserCouponId;
+    delete stableOrder.checkoutIntentId;
+    const canonicalOrder = JSON.stringify(
+      this.canonicalize({
+        ...stableOrder,
+        reserveAssignedCoupon,
+      }),
+    );
     const digest = createHash('sha256')
       .update(
         `${input.source}\n${input.paymentMethod}\n${input.storeId}\n${input.clientIdempotencyKey}\n${canonicalOrder}`,

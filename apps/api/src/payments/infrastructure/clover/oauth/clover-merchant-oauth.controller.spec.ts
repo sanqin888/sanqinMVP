@@ -12,7 +12,7 @@ import {
 import { CloverMerchantOAuthController } from './clover-merchant-oauth.controller';
 
 const config = {
-  oauthCallbackUrl: 'https://sanq.ca/clover/oauth/callback',
+  unifiedOauthCallbackUrl: 'https://sanq.ca/clover/oauth/callback',
 } as unknown as CloverProviderConfig;
 
 const start = jest.fn<CloverMerchantAuthorizationService['start']>();

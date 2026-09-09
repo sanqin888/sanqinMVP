@@ -1143,8 +1143,6 @@ model PaymentCheckoutAttempt {
   externalAmountCents    Int
   status                 PaymentCheckoutAttemptStatus @default(PREPARING)
   paymentTransactionId   String?                      @unique @db.Uuid
-  plannedOrderId         String                       @unique @db.Uuid
-  orderId                String?                      @db.Uuid
   orderStableId          String                       @unique
   expiresAt              DateTime
   finalizedAt            DateTime?
@@ -1153,7 +1151,6 @@ model PaymentCheckoutAttempt {
 
   @@index([storeId, status])
   @@index([status, expiresAt])
-  @@index([orderId])
 }
 
 enum PaymentCheckoutAttemptStatus {

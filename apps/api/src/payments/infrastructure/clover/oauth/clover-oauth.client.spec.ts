@@ -38,13 +38,14 @@ const withEnvironment = (
 describe('CloverOAuthClient', () => {
   afterEach(() => jest.restoreAllMocks());
 
-  it('builds the current NA Production OAuth v2 authorize URL with a fixed callback', () =>
+  it('builds the configured Unified OAuth v2 authorize URL with a fixed callback', () =>
     withEnvironment(
       {
-        CLOVER_OAUTH_CLIENT_ID: 'app-123',
-        CLOVER_OAUTH_CLIENT_SECRET: 'server-secret',
-        CLOVER_OAUTH_CALLBACK_URL: 'https://sanq.ca/clover/oauth/callback',
-        CLOVER_OAUTH_AUTHORIZE_BASE: 'https://www.clover.com',
+        CLOVER_UNIFIED_OAUTH_CLIENT_ID: 'app-123',
+        CLOVER_UNIFIED_OAUTH_CLIENT_SECRET: 'server-secret',
+        CLOVER_UNIFIED_OAUTH_CALLBACK_URL:
+          'https://sanq.ca/clover/oauth/callback',
+        CLOVER_UNIFIED_OAUTH_AUTHORIZE_BASE: 'https://www.clover.com',
       },
       () => {
         const client = new CloverOAuthClient(new CloverProviderConfig());
@@ -63,13 +64,43 @@ describe('CloverOAuthClient', () => {
       },
     ));
 
+  it('does not fall back to legacy Web or generic OAuth endpoints when Unified endpoints are missing', async () =>
+    withEnvironment(
+      {
+        CLOVER_BASE: 'https://web-production.example',
+        CLOVER_OAUTH_AUTHORIZE_BASE: 'https://legacy-authorize.example',
+        CLOVER_OAUTH_API_BASE: 'https://legacy-api.example',
+        CLOVER_UNIFIED_OAUTH_CLIENT_ID: 'app-123',
+        CLOVER_UNIFIED_OAUTH_CLIENT_SECRET: 'fixture-oauth-value',
+        CLOVER_UNIFIED_OAUTH_CALLBACK_URL:
+          'https://sanq.ca/clover/oauth/callback',
+        CLOVER_UNIFIED_OAUTH_AUTHORIZE_BASE: undefined,
+        CLOVER_UNIFIED_OAUTH_API_BASE: undefined,
+      },
+      async () => {
+        const fetchSpy = jest.spyOn(global, 'fetch');
+        const client = new CloverOAuthClient(new CloverProviderConfig());
+
+        expect(() => client.buildAuthorizeUrl('state-value')).toThrow(
+          'CLOVER_OAUTH_AUTHORIZE_BASE_MISSING',
+        );
+        await expect(
+          client.exchangeAuthorizationCode('auth-code'),
+        ).rejects.toMatchObject({
+          code: 'CLOVER_OAUTH_API_BASE_MISSING',
+        });
+        expect(fetchSpy).not.toHaveBeenCalled();
+      },
+    ));
+
   it('exchanges a code with JSON at the v2 token endpoint without putting secrets in the URL', async () =>
     withEnvironment(
       {
-        CLOVER_OAUTH_CLIENT_ID: 'app-123',
-        CLOVER_OAUTH_CLIENT_SECRET: 'server-secret',
-        CLOVER_OAUTH_CALLBACK_URL: 'https://sanq.ca/clover/oauth/callback',
-        CLOVER_OAUTH_API_BASE: 'https://api.clover.com',
+        CLOVER_UNIFIED_OAUTH_CLIENT_ID: 'app-123',
+        CLOVER_UNIFIED_OAUTH_CLIENT_SECRET: 'server-secret',
+        CLOVER_UNIFIED_OAUTH_CALLBACK_URL:
+          'https://sanq.ca/clover/oauth/callback',
+        CLOVER_UNIFIED_OAUTH_API_BASE: 'https://api.clover.com',
       },
       async () => {
         const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
@@ -108,10 +139,11 @@ describe('CloverOAuthClient', () => {
   it('uses Clover refresh-token recovery after a recoverable 401', async () =>
     withEnvironment(
       {
-        CLOVER_OAUTH_CLIENT_ID: 'app-123',
-        CLOVER_OAUTH_CLIENT_SECRET: 'server-secret',
-        CLOVER_OAUTH_CALLBACK_URL: 'https://sanq.ca/clover/oauth/callback',
-        CLOVER_OAUTH_API_BASE: 'https://api.clover.com',
+        CLOVER_UNIFIED_OAUTH_CLIENT_ID: 'app-123',
+        CLOVER_UNIFIED_OAUTH_CLIENT_SECRET: 'server-secret',
+        CLOVER_UNIFIED_OAUTH_CALLBACK_URL:
+          'https://sanq.ca/clover/oauth/callback',
+        CLOVER_UNIFIED_OAUTH_API_BASE: 'https://api.clover.com',
       },
       async () => {
         const fetchSpy = jest

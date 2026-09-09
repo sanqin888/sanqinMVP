@@ -511,110 +511,102 @@ export class MembershipService implements PaymentCouponReservationPort {
   ): Promise<void> {
     const attemptId = params.attemptId.trim();
     const userStableId = params.userStableId?.trim();
+    const couponStableId = params.couponStableId?.trim();
     if (!attemptId) {
       throw new BadRequestException('payment attemptId is required');
     }
-    if (!params.couponStableId && !params.selectedUserCouponId) {
-      return;
+    if (!couponStableId) return;
+    if (!userStableId) {
+      throw new BadRequestException(
+        'userStableId is required when holding a coupon',
+      );
     }
 
     return this.prisma.$transaction(async (tx) => {
-      if (params.couponStableId) {
-        if (!userStableId) {
-          throw new BadRequestException(
-            'userStableId is required when holding a coupon',
-          );
-        }
-        const user = await tx.user.findUnique({
-          where: { userStableId },
-          select: { id: true },
+      const user = await tx.user.findUnique({
+        where: { userStableId },
+        select: { id: true },
+      });
+      const coupon = await tx.coupon.findUnique({
+        where: { couponStableId },
+      });
+      if (!user || !coupon || coupon.userId !== user.id) {
+        throw new BadRequestException('coupon not found for user');
+      }
+      const status = this.couponStatus({
+        ...coupon,
+        reservationAttemptId:
+          coupon.reservationAttemptId === attemptId
+            ? null
+            : coupon.reservationAttemptId,
+      });
+      if (status !== 'active') {
+        throw new BadRequestException('coupon is not available');
+      }
+      if (coupon.reservationAttemptId !== attemptId) {
+        const held = await tx.coupon.updateMany({
+          where: {
+            id: coupon.id,
+            usedAt: null,
+            OR: [
+              { reservationAttemptId: null },
+              { reservationAttemptId: attemptId },
+            ],
+          },
+          data: {
+            reservedAt: new Date(),
+            reservationAttemptId: attemptId,
+            reservationExpiresAt: params.expiresAt,
+          },
         });
-        const coupon = await tx.coupon.findUnique({
-          where: { couponStableId: params.couponStableId },
-        });
-        if (!user || !coupon || coupon.userId !== user.id) {
-          throw new BadRequestException('coupon not found for user');
-        }
-        const status = this.couponStatus({
-          ...coupon,
-          reservationAttemptId:
-            coupon.reservationAttemptId === attemptId
-              ? null
-              : coupon.reservationAttemptId,
-        });
-        if (status !== 'active') {
+        if (held.count === 0) {
           throw new BadRequestException('coupon is not available');
-        }
-        if (coupon.reservationAttemptId !== attemptId) {
-          const held = await tx.coupon.updateMany({
-            where: {
-              id: coupon.id,
-              usedAt: null,
-              OR: [
-                { reservationAttemptId: null },
-                { reservationAttemptId: attemptId },
-              ],
-            },
-            data: {
-              reservedAt: new Date(),
-              reservationAttemptId: attemptId,
-              reservationExpiresAt: params.expiresAt,
-            },
-          });
-          if (held.count === 0) {
-            throw new BadRequestException('coupon is not available');
-          }
         }
       }
 
-      if (params.selectedUserCouponId) {
-        if (!userStableId) {
-          throw new BadRequestException(
-            'userStableId is required when holding a user coupon',
-          );
-        }
-        const userCoupon = await tx.userCoupon.findFirst({
-          where: {
-            id: params.selectedUserCouponId,
+      if (!params.reserveAssignedCoupon) return;
+
+      const userCoupon = await tx.userCoupon.findUnique({
+        where: {
+          userStableId_couponStableId: {
             userStableId,
+            couponStableId,
           },
-          include: { coupon: true },
+        },
+      });
+      if (!userCoupon) {
+        throw new BadRequestException('coupon is not available');
+      }
+
+      const now = new Date();
+      const userCouponAvailable =
+        (!userCoupon.expiresAt || userCoupon.expiresAt > now) &&
+        (userCoupon.status === 'AVAILABLE' ||
+          (userCoupon.status === 'RESERVED' &&
+            userCoupon.reservationAttemptId === attemptId));
+      if (!userCouponAvailable) {
+        throw new BadRequestException('coupon is not available');
+      }
+      if (
+        userCoupon.status !== 'RESERVED' ||
+        userCoupon.reservationAttemptId !== attemptId
+      ) {
+        const held = await tx.userCoupon.updateMany({
+          where: {
+            id: userCoupon.id,
+            userStableId,
+            couponStableId,
+            status: 'AVAILABLE',
+          },
+          data: {
+            status: 'RESERVED',
+            reservedAt: now,
+            reservationAttemptId: attemptId,
+            reservationExpiresAt: params.expiresAt,
+          },
         });
-        const now = new Date();
-        const underlyingCouponAvailable =
-          !!userCoupon?.coupon.isActive &&
-          (!userCoupon.coupon.startsAt || userCoupon.coupon.startsAt <= now) &&
-          (!userCoupon.coupon.endsAt || userCoupon.coupon.endsAt > now);
-        const userCouponAvailable =
-          !!userCoupon &&
-          (!userCoupon.expiresAt || userCoupon.expiresAt > now) &&
-          underlyingCouponAvailable &&
-          (userCoupon.status === 'AVAILABLE' ||
-            (userCoupon.status === 'RESERVED' &&
-              userCoupon.reservationAttemptId === attemptId));
-        if (!userCouponAvailable || !userCoupon) {
+        if (held.count === 0) {
           throw new BadRequestException('coupon is not available');
-        }
-        if (
-          userCoupon.status !== 'RESERVED' ||
-          userCoupon.reservationAttemptId !== attemptId
-        ) {
-          const held = await tx.userCoupon.updateMany({
-            where: {
-              id: userCoupon.id,
-              userStableId,
-              status: 'AVAILABLE',
-            },
-            data: {
-              status: 'RESERVED',
-              reservedAt: now,
-              reservationAttemptId: attemptId,
-              reservationExpiresAt: params.expiresAt,
-            },
-          });
-          if (held.count === 0) {
-            throw new BadRequestException('coupon is not available');
-          }
         }
       }
     });
@@ -625,7 +617,7 @@ export class MembershipService implements PaymentCouponReservationPort {
     attemptId: string;
     orderId: string;
     orderStableId: string;
-  }): Promise<void> {
+  }): Promise<{ couponId: string | null; couponStableId: string | null }> {
     const attemptId = params.attemptId.trim();
     if (!attemptId) {
       throw new BadRequestException('payment attemptId is required');
@@ -634,7 +626,12 @@ export class MembershipService implements PaymentCouponReservationPort {
 
     const coupon = await params.tx.coupon.findFirst({
       where: { reservationAttemptId: attemptId },
-      select: { id: true, usedAt: true, orderId: true },
+      select: {
+        id: true,
+        couponStableId: true,
+        usedAt: true,
+        orderId: true,
+      },
     });
     if (coupon) {
       if (coupon.usedAt && coupon.orderId !== params.orderId) {
@@ -699,6 +696,11 @@ export class MembershipService implements PaymentCouponReservationPort {
         throw new BadRequestException('payment user coupon hold was released');
       }
     }
+
+    return {
+      couponId: coupon?.id ?? null,
+      couponStableId: coupon?.couponStableId ?? null,
+    };
   }
 
   async releasePaymentCoupons(attemptIdRaw: string): Promise<void> {

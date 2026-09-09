@@ -18,7 +18,7 @@ export type HoldPaymentCouponReservationInput = {
   attemptId: string;
   userStableId?: string;
   couponStableId?: string;
-  selectedUserCouponId?: string;
+  reserveAssignedCoupon?: boolean;
   expiresAt: Date;
 };
 

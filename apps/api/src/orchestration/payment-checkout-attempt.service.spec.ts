@@ -7,9 +7,9 @@ import type {
   PaymentTenderReservationPort,
 } from '../benefits/public-api';
 import type {
-  OrdersService,
+  PaymentOrderPreparationPort,
   PreparedPaymentOrderSnapshot,
-} from '../orders/orders.service';
+} from '../orders/public-api';
 import type { PrismaService } from '../prisma/prisma.service';
 import { PaymentCheckoutAttemptService } from './payment-checkout-attempt.service';
 
@@ -29,10 +29,16 @@ const order: CreateOrderInput = {
 };
 
 const snapshot: PreparedPaymentOrderSnapshot = {
-  version: 1,
-  order,
-  userId: '22222222-2222-4222-8222-222222222222',
-  storeId: storeStableId,
+  version: 2,
+  order: {
+    userStableId: 'cmember1',
+    channel: 'in_store',
+    fulfillmentType: 'pickup',
+    contactName: null,
+    contactEmail: null,
+    contactPhone: null,
+  },
+  storeStableId,
   pricing: {
     subtotalCents: 1200,
     displaySubtotalCents: 1200,
@@ -52,9 +58,31 @@ const snapshot: PreparedPaymentOrderSnapshot = {
     orderTotalCents: 1000,
     externalCents: 700,
   },
-  items: [],
+  items: [
+    {
+      productStableId: 'citem1',
+      qty: 1,
+      displayName: 'Item',
+      nameEn: 'Item',
+      nameZh: '菜品',
+      unitPriceCents: 1200,
+      baseUnitPriceCents: 1200,
+      optionsUnitPriceCents: 0,
+      isDailySpecialApplied: false,
+      dailySpecialStableId: null,
+      optionsJson: null,
+      componentsJson: null,
+    },
+  ],
   promotionSnapshot: {},
-  coupon: null,
+  coupon: {
+    couponStableId: 'ccoupon1',
+    reserveAssignedCoupon: true,
+    code: 'SAVE1',
+    title: 'Save $1',
+    minSpendCents: null,
+    expiresAt: null,
+  },
   preparedAt: '2026-08-26T22:00:00.000Z',
 };
 
@@ -86,8 +114,6 @@ const createHarness = () => {
         externalAmountCents: data.externalAmountCents,
         status: 'PREPARING',
         paymentTransactionId: null,
-        plannedOrderId: data.plannedOrderId,
-        orderId: null,
         orderStableId: data.orderStableId,
         expiresAt: data.expiresAt,
         finalizedAt: null,
@@ -127,9 +153,9 @@ const createHarness = () => {
   const prisma = {
     paymentCheckoutAttempt,
   } as unknown as PrismaService;
-  const orders = {
+  const paymentOrderPreparation = {
     preparePaymentOrder: jest.fn().mockResolvedValue(snapshot),
-  } as unknown as jest.Mocked<OrdersService>;
+  } as jest.Mocked<PaymentOrderPreparationPort>;
   const paymentTenderReservations = {
     holdPaymentTender: jest.fn().mockResolvedValue(undefined),
     releasePaymentTender: jest.fn().mockResolvedValue(undefined),
@@ -141,7 +167,7 @@ const createHarness = () => {
 
   const service = new PaymentCheckoutAttemptService(
     prisma,
-    orders,
+    paymentOrderPreparation,
     paymentTenderReservations,
     paymentCouponReservations,
   );
@@ -149,7 +175,7 @@ const createHarness = () => {
   return {
     service,
     paymentCheckoutAttempt,
-    orders,
+    paymentOrderPreparation,
     paymentTenderReservations,
     paymentCouponReservations,
     getRow: () => row,
@@ -182,11 +208,34 @@ describe('PaymentCheckoutAttemptService', () => {
     expect(prepared.status).toBe('PREPARED');
     expect(prepared.externalAmountCents).toBe(700);
     expect(prepared.storeId).toBe(storeStableId);
-    expect(prepared.snapshot.storeId).toBe(storeStableId);
-    expect(harness.orders.preparePaymentOrder).toHaveBeenCalledWith(
-      order,
+    expect(prepared.snapshot.storeStableId).toBe(storeStableId);
+    const persistedDraft = harness.getRow()?.orderDraftJson as Record<
+      string,
+      unknown
+    >;
+    expect(persistedDraft).toMatchObject({
+      version: 2,
       storeStableId,
-    );
+      order: {
+        userStableId: 'cmember1',
+        channel: 'in_store',
+        fulfillmentType: 'pickup',
+      },
+      coupon: {
+        couponStableId: 'ccoupon1',
+        reserveAssignedCoupon: true,
+      },
+    });
+    expect(persistedDraft).not.toHaveProperty('userId');
+    expect(persistedDraft).not.toHaveProperty('storeId');
+    expect(persistedDraft.order).not.toHaveProperty('selectedUserCouponId');
+    expect(
+      (persistedDraft.items as Record<string, unknown>[])[0],
+    ).not.toHaveProperty('id');
+    expect(persistedDraft.coupon).not.toHaveProperty('id');
+    expect(
+      harness.paymentOrderPreparation.preparePaymentOrder,
+    ).toHaveBeenCalledWith(order, storeStableId);
     expect(harness.paymentCheckoutAttempt.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ storeId: storeStableId }),
@@ -197,6 +246,10 @@ describe('PaymentCheckoutAttemptService', () => {
         data: expect.objectContaining({ storeId: storeDbId }),
       }),
     );
+    const checkoutCreateInput =
+      harness.paymentCheckoutAttempt.create.mock.calls[0]?.[0]?.data;
+    expect(checkoutCreateInput).not.toHaveProperty('plannedOrderId');
+    expect(checkoutCreateInput).not.toHaveProperty('orderId');
     expect(
       harness.paymentTenderReservations.holdPaymentTender,
     ).toHaveBeenCalledWith(
@@ -213,12 +266,37 @@ describe('PaymentCheckoutAttemptService', () => {
         attemptId: 'attempt-1',
         userStableId: 'cmember1',
         couponStableId: 'ccoupon1',
-        selectedUserCouponId: 'user-coupon-1',
+        reserveAssignedCoupon: true,
       }),
     );
-    expect(
-      harness.paymentCouponReservations.holdPaymentCoupons.mock.calls[0]?.[0],
-    ).not.toHaveProperty('userId');
+    const couponHoldInput =
+      harness.paymentCouponReservations.holdPaymentCoupons.mock.calls[0]?.[0];
+    expect(couponHoldInput).not.toHaveProperty('userId');
+    expect(couponHoldInput).not.toHaveProperty('selectedUserCouponId');
+  });
+
+  it('rejects persisted V1 snapshots instead of silently adapting them', async () => {
+    const harness = createHarness();
+    await harness.service.prepare({
+      source: 'POS_TERMINAL',
+      paymentMethod: 'CARD',
+      storeId: storeStableId,
+      attemptId: 'attempt-1',
+      clientIdempotencyKey: 'client-idem-1',
+      order,
+    });
+    const row = harness.getRow();
+    if (!row) throw new Error('checkout row missing');
+    row.orderDraftJson = {
+      ...(row.orderDraftJson as Record<string, unknown>),
+      version: 1,
+    } as PaymentCheckoutAttempt['orderDraftJson'];
+
+    await expect(
+      harness.service.findByAttemptId('attempt-1'),
+    ).rejects.toMatchObject({
+      response: { code: 'PAYMENT_CHECKOUT_SNAPSHOT_VERSION_UNSUPPORTED' },
+    });
   });
 
   it('releases every partial hold and marks FAILED if reservation preparation fails', async () => {
@@ -289,13 +367,72 @@ describe('PaymentCheckoutAttemptService', () => {
     const second = await harness.service.prepare(input);
 
     expect(first.id).toBe(second.id);
-    expect(harness.orders.preparePaymentOrder).toHaveBeenCalledTimes(1);
+    expect(
+      harness.paymentOrderPreparation.preparePaymentOrder,
+    ).toHaveBeenCalledTimes(1);
     expect(
       harness.paymentTenderReservations.holdPaymentTender,
     ).toHaveBeenCalledTimes(1);
     expect(
       harness.paymentCouponReservations.holdPaymentCoupons,
     ).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not make checkout identity depend on internal coupon or checkout-intent DB ids', async () => {
+    const harness = createHarness();
+    await harness.service.prepare({
+      source: 'POS_TERMINAL',
+      paymentMethod: 'CARD',
+      storeId: storeStableId,
+      attemptId: 'attempt-1',
+      clientIdempotencyKey: 'client-idem-1',
+      order: {
+        ...order,
+        checkoutIntentId: '11111111-1111-4111-8111-111111111111',
+      },
+    });
+
+    await expect(
+      harness.service.requireForInput({
+        source: 'POS_TERMINAL',
+        paymentMethod: 'CARD',
+        storeId: storeStableId,
+        attemptId: 'attempt-1',
+        clientIdempotencyKey: 'client-idem-1',
+        order: {
+          ...order,
+          selectedUserCouponId: 'different-user-coupon-db-id',
+          checkoutIntentId: '22222222-2222-4222-8222-222222222222',
+        },
+      }),
+    ).resolves.toMatchObject({ attemptId: 'attempt-1' });
+  });
+
+  it('keeps assigned-coupon selection intent inside checkout identity', async () => {
+    const harness = createHarness();
+    await harness.service.prepare({
+      source: 'POS_TERMINAL',
+      paymentMethod: 'CARD',
+      storeId: storeStableId,
+      attemptId: 'attempt-1',
+      clientIdempotencyKey: 'client-idem-1',
+      order,
+    });
+
+    const withoutAssignedCoupon = { ...order };
+    delete withoutAssignedCoupon.selectedUserCouponId;
+    await expect(
+      harness.service.requireForInput({
+        source: 'POS_TERMINAL',
+        paymentMethod: 'CARD',
+        storeId: storeStableId,
+        attemptId: 'attempt-1',
+        clientIdempotencyKey: 'client-idem-1',
+        order: withoutAssignedCoupon,
+      }),
+    ).rejects.toMatchObject({
+      response: { code: 'PAYMENT_CHECKOUT_IDENTITY_MISMATCH' },
+    });
   });
 
   it('rejects the same attempt when the store or order draft changes', async () => {

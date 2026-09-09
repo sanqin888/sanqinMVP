@@ -33,31 +33,44 @@ $ npm install
 
 ### Clover POS integration
 
-Set the following environment variables before starting the API in order to
-exercise the Clover POS proof-of-concept endpoints:
+Clover configuration is intentionally split into live Web Ecommerce compatibility,
+Unified merchant/OAuth/Platform configuration, and Terminal-only device configuration.
+Unified and Terminal capabilities fail closed when their own required variables are
+missing; they never inherit the live Web merchant, token, or base URL.
 
 | Variable | Description |
 | --- | --- |
-| `CLOVER_API_BASE_URL` | Optional. Defaults to the Clover sandbox (`https://sandbox.dev.clover.com/v3`). |
-| `CLOVER_MERCHANT_ID` | Required. Merchant identifier issued by Clover. |
-| `CLOVER_ACCESS_TOKEN` | Required. OAuth access token with permissions to read the merchant profile and orders. |
-| `CLOVER_STORE_STABLE_ID` | Optional explicit mapping to `Store.storeStableId`; OAuth never guesses a store. |
-| `CLOVER_OAUTH_CLIENT_ID` | Clover Production OAuth v2 client ID. |
-| `CLOVER_OAUTH_CLIENT_SECRET` | Server-only Clover Production OAuth credential. |
-| `CLOVER_OAUTH_CALLBACK_URL` | Fixed public callback URL, normally `https://sanq.ca/clover/oauth/callback`. |
-| `CLOVER_OAUTH_SCOPES` | Optional permission metadata for authorization auditing. |
+| `CLOVER_BASE` | Existing live Web Ecommerce API base. Keep production checkout behavior unchanged during POS sandbox bring-up. |
+| `CLOVER_MERCHANT_ID` | Existing live Web Ecommerce / production webhook merchant identity. Not a Unified fallback. |
+| `CLOVER_ACCESS_TOKEN` | Existing live Web Ecommerce token. Not available to Unified Platform or Terminal as a fallback. |
+| `CLOVER_UNIFIED_MERCHANT_ID` | Required Unified Clover merchant identity for OAuth and Platform v3. |
+| `CLOVER_UNIFIED_STORE_STABLE_ID` | Required explicit mapping to `Store.storeStableId`; Unified OAuth never guesses a store. |
+| `CLOVER_UNIFIED_PLATFORM_API_BASE` | Required Platform v3 API base for the Unified merchant environment. No default production endpoint is assumed. |
+| `CLOVER_UNIFIED_OAUTH_CLIENT_ID` | Required Unified Clover OAuth v2 client ID. |
+| `CLOVER_UNIFIED_OAUTH_CLIENT_SECRET` | Required server-only Unified Clover OAuth credential. |
+| `CLOVER_UNIFIED_OAUTH_AUTHORIZE_BASE` | Required Unified OAuth authorize base. No production default is assumed. |
+| `CLOVER_UNIFIED_OAUTH_API_BASE` | Required Unified OAuth token/refresh API base. No production default is assumed. |
+| `CLOVER_UNIFIED_OAUTH_CALLBACK_URL` | Required fixed public callback URL for the Unified Clover app. |
+| `CLOVER_UNIFIED_OAUTH_SCOPES` | Optional permission metadata for Unified authorization auditing. |
+| `CLOVER_TERMINAL_API_BASE` | Required REST Pay Display API base for Terminal operations. Never falls back to `CLOVER_BASE`. |
+| `CLOVER_TERMINAL_DEVICE_ID` | Required Clover Terminal device ID. |
+| `CLOVER_TERMINAL_REMOTE_APP_ID` | Required Clover Remote Application ID (RAID/POS ID). |
+| `CLOVER_TERMINAL_TIMEOUT_SECONDS` | Required Terminal timeout, 10-300 seconds. Missing/invalid values make Terminal unavailable. |
 | `CLOVER_CREDENTIAL_ACTIVE_KEY_VERSION` | Active Clover credential-encryption key version. |
 | `CLOVER_CREDENTIAL_ENCRYPTION_KEYS` | JSON key ring of base64-encoded 32-byte AES-256-GCM keys. |
 | `CLOVER_CREDENTIAL_KEYS_SOURCE` | Must be `env` when Clover credential encryption is configured. |
-| `CLOVER_WEBHOOK_AUTH_CODE` | Required after Clover callback verification. Event deliveries must present this value in `X-Clover-Auth`. |
+| `CLOVER_WEBHOOK_AUTH_CODE` | Production webhook auth code. Existing webhook merchant/auth scope remains on `CLOVER_MERCHANT_ID` during sandbox bring-up. |
 
-Merchant OAuth v2 launches at `https://sanq.ca/clover/oauth/start` and returns to
-`https://sanq.ca/clover/oauth/callback`. The Web app only performs same-origin browser
-redirects. OAuth exchange, credential encryption, merchant verification, refresh rotation,
-and Platform v3 authorization remain in the API Payments/Clover infrastructure. Platform v3
-reads require an active persisted merchant authorization; there is no static access-token
-environment fallback. Rotate the Production app credential before the first live authorization
-and configure the replacement only in the server environment.
+Unified merchant OAuth launches through `/clover/oauth/start` and returns through the
+configured `CLOVER_UNIFIED_OAUTH_CALLBACK_URL`. The Web app only performs same-origin
+browser redirects. OAuth exchange, credential encryption, merchant verification, refresh
+rotation, and Platform v3 authorization remain in the API Payments/Clover infrastructure.
+Platform v3 requires both explicit Unified configuration and an active persisted merchant
+authorization; it never falls back to `CLOVER_ACCESS_TOKEN` or production Web endpoints.
+Terminal REST Pay uses the same persisted Unified merchant authorization through
+`CloverMerchantAccessTokenService`; there is no static Terminal OAuth-token environment
+fallback. A Terminal 401 triggers one forced credential refresh and one retry, while
+credential failure before outbound HTTP remains fail-closed rather than network-uncertain.
 
 Phase F reverse sync receives Clover callbacks at
 `/api/v1/payments/webhooks/clover`. The initial Clover verification challenge is

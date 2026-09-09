@@ -1,7 +1,7 @@
 # SanQ 支付域模块化 + Clover POS 实时同步分阶段实施方案
 
-**状态：** Phase Execution Plan v3（2026-09-03 governance revision）  
-**日期：** 2026-08-26；冻结/模块化执行规则修订于 2026-09-03  
+**状态：** Phase Execution Plan v4（2026-09-08 sandbox sequencing revision）  
+**日期：** 2026-08-26；冻结/模块化执行规则修订于 2026-09-03；sandbox/config sequencing 修订于 2026-09-08  
 **关联文档：** `docs/payments/clover-pos-integration-charter.md`
 
 ## 0. 总体原则
@@ -43,6 +43,53 @@ Phase H  Full Verification / Cutover
 Phase I  Production Stability Window
 Phase J  Legacy Cleanup
 ```
+
+### 0.2 2026-09-08 Phase 6 / Sandbox bring-up 执行顺序修订
+
+新的 Clover Test Merchant 和 Test App 已具备 Preview 条件，因此当前阻塞从“无法开始 sandbox integration”收缩为“尚未完成 SanQ OAuth、Platform v3、Cloud Pay Display/device 与真实支付行为验收”。这不改变 Web-before/after cutover 原则，但要求在继续 Phase G 前把 POS Terminal 的 provider/config/credential 边界和 sandbox 验证提前完成。
+
+Phase 6 后半段固定按以下顺序执行：
+
+```text
+Slice 4B  Clover provider internal capability cleanup
+    -> Slice 4C  Unified/Sandbox configuration isolation
+    -> Slice 4D  Unified Clover OAuth credential convergence
+    -> Test Merchant OAuth + Platform v3 read + device availability
+    -> controlled sandbox Sale / reconciliation / refund / recovery
+    -> full POS Terminal acceptance
+    -> Web Clover cutover readiness audit
+    -> Phase G Web Ecommerce migration to Unified Payment Core
+```
+
+#### Slice 4B 边界
+
+4B 只做 provider infrastructure ownership cleanup：把 `CloverPlatformPaymentsGateway` 及其 Platform v3 canonical HTTP/raw mapping 从 `clover-payment-provider.adapter.ts` 移入 `payments/infrastructure/clover/platform/**`，保持 adapter 注入/调用语义不变；同时收掉无外部消费者的 `PAYMENT_PROVIDER` / `CreatePaymentAttemptUseCase` module exports，并用 architecture guards 锁住 Platform gateway 不得被 orchestration/POS/Orders 直接 import。4B 不修改 Web `/v1/charges`、OAuth、Terminal、webhook、Prisma 或部署配置。
+
+**Implementation status (2026-09-08): MERGED / CI GREEN.** PR #2243 已 squash merge 为 `aa765f9d`，merged-dev CI #5354 的 API/Web 均通过。Gateway + Platform canonical HTTP/raw mapping 已迁入 `platform/clover-platform-payments.gateway.ts`，adapter/module/spec import 已同步，两个无外部消费者的 module exports 已移除并新增 source guard。该批是 Payments/Clover context 内部收口，architecture baseline/direct-debt 数字保持不变。
+
+#### Slice 4C 配置隔离
+
+4C 必须把三类配置语义分开：
+
+1. **Legacy Web Ecommerce production**：现有 `CLOVER_BASE`、`CLOVER_MERCHANT_ID`、`CLOVER_ACCESS_TOKEN` 和 `NEXT_PUBLIC_CLOVER_*` 在 POS sandbox bring-up 期间保持现值/现消费者不变。
+2. **Unified Clover core**：新增独立 merchant/store、Platform v3 与 OAuth 配置族（`CLOVER_UNIFIED_*`），当前填 Test Merchant/Test App sandbox 值，未来生产切换时只替换配置值，不再改变业务语义。
+3. **Terminal-only**：REST Pay base、device ID、RAID、timeout 使用独立 `CLOVER_TERMINAL_*` 配置。
+
+Unified/Terminal 配置缺失必须 fail closed。禁止 Unified/Terminal 回退到 live Web merchant、token 或 Ecommerce base。现有 production Clover webhook merchant/auth scope 在 4C 不改变，sandbox bring-up 先依赖 Terminal execution + Platform canonical reconciliation。
+
+**Implementation status (2026-09-08): MERGED / CI GREEN.** PR #2244 final head `31efc862` 通过 PR CI #5358，squash merge 为 `bc96c706`，merged-dev CI #5359 的 API/Web 也全部通过。`CloverProviderConfig` 已按 Web Ecommerce / Unified / Terminal 三种 purpose 拆开字段语义；Platform/OAuth 只读取 `CLOVER_UNIFIED_*`，Terminal base/device/RAID/timeout 只读取新的 `CLOVER_TERMINAL_*`，且缺少 base、device、RAID 或合法 10-300 秒 timeout 时直接不可用。OAuth 缺 Unified merchant/store/Platform base/client/secret/authorize/API/callback 任一关键配置时在 provider traffic 前返回配置错误，并拒绝为非 configured Unified merchant 启动授权。4C 历史状态仍暂留 `CLOVER_TERMINAL_OAUTH_TOKEN` 给下一 Slice 删除，但不会借用 `CLOVER_ACCESS_TOKEN`；production webhook 继续使用 legacy Web `CLOVER_MERCHANT_ID`。`docker-compose.yml` 只新增空值 placeholder，没有提交 Test Merchant/token/secret。Focused config/OAuth/Platform/Terminal tests 与 architecture guard 已同步；4C 不改变 dependency baseline、Prisma、Web `/v1/charges` 或 `POS_CLOVER_TERMINAL_PAYMENT_ENABLED`。
+
+#### Slice 4D credential convergence
+
+4D 将 Terminal 从静态 `CLOVER_TERMINAL_OAUTH_TOKEN` 改为复用现有 `CloverMerchantAccessTokenService`。Platform v3 与 Terminal REST Pay 使用同一 Unified merchant OAuth authorization、refresh/recovery lifecycle；OAuth store mapping 也基于 Unified merchant/store 配置，不再借用 legacy Web merchant identity。静态 Terminal token 不作为 fallback 保留。
+
+**Implementation status (2026-09-08): LOCAL / REVIEW PENDING.** `CloverProviderConfig.terminalAccessToken` 与 deployment placeholder 已删除；`CloverTerminalTransport` 继续同步检查 Unified merchant + Terminal base/device/RAID/timeout，但真正发 HTTP 前异步通过 `CloverMerchantAccessTokenService.getAccessToken(CLOVER_UNIFIED_MERCHANT_ID)` 取数据库凭据。Terminal 收到 HTTP 401 时只执行一次 `{ forceRefresh: true }` 并使用相同 idempotency key 重试一次。实现显式区分“credential unavailable、请求尚未发送”和“fetch 已发送但网络/timeout 不确定”：前者使 Sale/Refund/Void fail closed 且 `fetch=0`，后者继续保持 `UNKNOWN` 并交给 reconciliation。Focused tests 已覆盖 DB token header、401 refresh/retry、Web token 不回退、credential unavailable 与 socket-loss UNKNOWN；architecture guard 禁止静态 Terminal token 回归。Read-only production audit 当前仅有 1 条 `PENDING_BINDING`、0 条 `ACTIVE` Clover authorization，且 `PaymentTransaction` / `PaymentCheckoutAttempt` 均为 0，因此 4D 本身不会激活 Terminal。无 Prisma、public contract、dependency baseline、Web `/v1/charges`、production webhook 或 rollout flag 改动；按仓库流程本地 lint/build/test/scanner 未运行，等待用户审阅后再走 GitHub Actions。
+
+#### Sandbox / production data safety
+
+`POS_CLOVER_TERMINAL_PAYMENT_ENABLED` 在 OAuth/Platform/device bring-up 阶段继续默认关闭。只有在明确的非营业/测试窗口才允许为 full POS E2E 打开 Terminal route。Clover sandbox 只隔离 provider 资金环境，并不会隔离 SanQ 自己的数据库：如果 full POS flow 运行在 production API，它仍可能产生 `PaymentTransaction`、`PaymentCheckoutAttempt`、Order、print/reporting 等生产库事实。若要求 SanQ 测试数据也完全隔离，应另行批准 staging runtime/database，而不是在 production runtime 内增加隐式 sandbox/production 双环境切换。
+
+当前不为 sandbox/production 并存新增 Prisma environment 字段。`CloverMerchantAuthorization.storeStableId @unique` 继续表示一个 runtime/store 只绑定一个 active Unified merchant；未来 production Unified merchant 绑定前必须明确 revoke/unbind sandbox authorization。若以后确实需要同一 runtime 长期同时保留两套 active authorization，再单独做 schema 设计并按 `AGENTS.md` 取得 migration 授权。
 
 ## 1. Architecture Tests 总体策略
 
@@ -412,7 +459,11 @@ POS_CLOVER_TERMINAL_PAYMENT_ENABLED=false -> legacy CARD
 POS_CLOVER_TERMINAL_PAYMENT_ENABLED=true  -> Unified Payment Core + Clover Terminal
 ```
 
-默认必须为 `false`。
+默认必须为 `false`。该 flag / `PosCardPaymentFeatureConfig` 只是注册兼容项
+`payments.pos-card-legacy.v1` 的迁移期切流与 cutback 基础设施，不是长期 POS
+业务 policy，也不应被搬进 Payments 或包装成永久 public feature-policy contract。
+最终形态只有一条 CARD 主链路；Phase J 删除 legacy direct-paid CARD 时必须连同
+flag/config 和所有 route-choice branch 一起删除。
 
 ## 新主链路
 
@@ -456,7 +507,9 @@ Web Clover 行为。若 Web 生产路径本身成为模块化关键阻塞，则�
 - 新 Unified Payment core contract 不得依赖 POS UI/types。
 - 明确 orchestration/composition 层是同时依赖 Payments + Orders + Benefits payment-reservation public boundary 的允许位置；payment preparation 不得直接注入 concrete `LoyaltyService` / `MembershipService`。
 - Points/Balance 与 Coupon 的 HOLD/RELEASE 通过 Benefits-owned 窄 contracts/composition wiring 提供；Payments infrastructure 不得直接操作 Loyalty / Membership reservation internals。
-- 现有 COMMIT 继续在 `OrdersService.createFromConfirmedPaymentSnapshot()` 的同一 Prisma transaction 内与 Order creation 原子执行；在找到不泄漏 `Prisma.TransactionClient` 且不拆散原子性的 transaction-bound Benefits contract 前，不得为了边界整洁而拆成独立 Benefits transaction。
+- 现有 COMMIT 继续在 Orders-owned `finalizeConfirmedPayment()` 的同一 Prisma transaction 内与 Order creation 原子执行；在找到不泄漏 `Prisma.TransactionClient` 且不拆散原子性的 transaction-bound Benefits contract 前，不得为了边界整洁而拆成独立 Benefits transaction。
+- Confirmed-payment finalization 必须经由 Orders-owned `PAYMENT_ORDER_FINALIZATION` public capability；`Order.id` 由 Orders 在上述 transaction 内生成，Payment checkout/orchestration 不得再持有 `plannedOrderId` / checkout `orderId` 或 `internalOrderId`，public result 仅返回必要的 `orderStableId/orderNumber/pickupCode`。跨边界恢复只使用 `orderStableId`。
+- `PaymentTransaction.orderId` 本轮保留 nullable，不由 POS Terminal refund/void 填写。等 Web Unified Payment migration readiness 时再统一决定 Payments 对 Order 的长期 stable reference，以及是否替换/删除这个 legacy scalar；不得在 POS Slice 中顺手扩大迁移范围。
 - Phase D orchestration 不得直接 import REST Pay Display / Platform v3 gateway 或 mapper。
 - 新流程禁止在 Payment provider/application 给出 canonical `SUCCEEDED` / internal-only finalize 前创建 paid Order。
 - Web legacy exception 仍精确保留，Phase D 不得扩大。
@@ -631,7 +684,7 @@ Web CARD、wallet、3DS/challenge、retry、CheckoutIntent expiry、Payment link
 
 ## 切流前状态
 
-代码全部已部署，feature flag=false，legacy CARD 正常。
+代码全部已部署，feature flag=false，legacy CARD 正常。POS ↔ Clover Terminal 的实时支付状态同步、断线/重连恢复和已有 attempt 恢复能力必须已经完成；在这套实时通信仍不完整时，不得因为后端支付主链路看起来可用就提前切流。
 
 ## 必测矩阵
 
@@ -660,7 +713,7 @@ Web CARD、wallet、3DS/challenge、retry、CheckoutIntent expiry、Payment link
 
 ## 切流门禁
 
-全部实测通过、CI 全绿、无未解释 payment mismatch 后，才允许 `feature flag=true`。
+POS ↔ Clover Terminal 实时同步/恢复能力完成，全部实测通过、CI 全绿、无未解释 payment mismatch 后，才允许 `feature flag=true`。
 
 ## VM 部署
 
@@ -680,9 +733,9 @@ payment success/decline、timeout、unknown recovery、duplicate prevention、re
 
 ## 旧链路状态
 
-legacy CARD 保留，但仅 emergency fallback。
+legacy CARD 保留，但仅作为 Phase J 前的 emergency fallback；它不代表长期支持两套 POS CARD 业务模式。
 
-发生严重生产问题优先 `feature flag=false`，不依赖 Git revert 或数据库回滚。
+发生严重生产问题优先 `feature flag=false`，不依赖 Git revert 或数据库回滚。稳定窗口通过后，这个 fallback 与 flag/config 一起进入删除队列。
 
 ## Architecture Test 要求
 
@@ -703,9 +756,9 @@ legacy CARD 保留，但仅 emergency fallback。
 ## 主要工作
 
 1. 删除 legacy POS CARD direct-paid path。
-2. 删除 legacy fallback branch。
+2. 删除 legacy fallback / route-choice branch，让 POS CARD 无条件进入 Unified Payment Core。
 3. 删除旧人工 Clover CARD refund compatibility。
-4. 删除迁移期 feature flag。
+4. 删除迁移期 `POS_CLOVER_TERMINAL_PAYMENT_ENABLED` 与 `PosCardPaymentFeatureConfig`；不得留下等价的永久 public feature-policy。
 5. 删除过渡门禁如 `CLOVER_SYNC_PENDING`（确认不再需要时）。
 6. 删除确认无调用的 Clover stub endpoints。
 7. 删除重复/废弃 payment code。

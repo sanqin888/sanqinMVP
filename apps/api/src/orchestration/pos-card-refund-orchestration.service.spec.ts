@@ -1,17 +1,16 @@
 import { PaymentMethod } from '@prisma/client';
 
-import type { OrderDto } from '../orders/dto/order.dto';
+import type { PosOrderDto, PosOrderOperationsPort } from '../orders/public-api';
 import { PaymentTransaction } from '../payments/domain/payment-transaction';
 import type { PaymentTransactionRepository } from '../payments/application/payment-transaction.repository';
 import type { RefundPaymentService } from '../payments/application/refund-payment.service';
-import type { OrdersService } from '../orders/orders.service';
 import type {
   PaymentCheckoutAttemptService,
   PreparedPaymentCheckout,
 } from './payment-checkout-attempt.service';
 import { PosCardRefundOrchestrationService } from './pos-card-refund-orchestration.service';
 
-const order = (overrides: Partial<OrderDto> = {}): OrderDto => ({
+const order = (overrides: Partial<PosOrderDto> = {}): PosOrderDto => ({
   orderStableId: 'order_stable_1',
   orderNumber: '1001',
   clientRequestId: '1001',
@@ -56,8 +55,6 @@ const checkout = (): PreparedPaymentCheckout =>
     status: 'COMPLETED',
     externalAmountCents: 1500,
     paymentTransactionId: '11111111-1111-4111-8111-111111111111',
-    plannedOrderId: '22222222-2222-4222-8222-222222222222',
-    orderId: '44444444-4444-4444-8444-444444444444',
     orderStableId: 'order_stable_1',
     expiresAt: new Date(Date.now() + 60_000),
     snapshot: {},
@@ -90,7 +87,6 @@ const reversal = (status: 'SUCCEEDED' | 'UNKNOWN'): PaymentTransaction => {
     id: '55555555-5555-4555-8555-555555555555',
     attemptId: 'refund-attempt-1',
     idempotencyKey: 'refund-idempotency-1',
-    orderId: '44444444-4444-4444-8444-444444444444',
     provider: 'CLOVER',
     source: 'POS_TERMINAL',
     paymentMethod: 'CARD',
@@ -123,7 +119,6 @@ const failedReversal = (): PaymentTransaction =>
     id: '66666666-6666-4666-8666-666666666666',
     attemptId: 'failed-refund-attempt-1',
     idempotencyKey: 'failed-refund-idempotency-1',
-    orderId: '44444444-4444-4444-8444-444444444444',
     provider: 'CLOVER',
     source: 'POS_TERMINAL',
     paymentMethod: 'CARD',
@@ -159,7 +154,7 @@ const createHarness = () => {
     checkouts as unknown as PaymentCheckoutAttemptService,
     refunds as unknown as RefundPaymentService,
     transactions as unknown as PaymentTransactionRepository,
-    orders as unknown as OrdersService,
+    orders as unknown as PosOrderOperationsPort,
   );
   return { checkouts, refunds, transactions, orders, service };
 };

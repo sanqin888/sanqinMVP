@@ -41,11 +41,18 @@ import {
   ORDER_BENEFITS_READER,
   type OrderBenefitsReaderPort,
 } from '../benefits/public-api';
-import {
-  CreateOrderInput,
-  DeliveryDestinationInput,
-  type OrderDiscountDisplayEntry,
-} from '@shared/order';
+import { CreateOrderInput, DeliveryDestinationInput } from '@shared/order';
+import type {
+  OrderPricingQuote,
+  PaymentOrderPreparationPort,
+  PaymentTenderAllocation,
+  PreparedPaymentOrderSnapshot,
+} from './payment-order-preparation.contract';
+import type {
+  ConfirmedPaymentFinalizationInput,
+  ConfirmedPaymentOrderResult,
+  PaymentOrderFinalizationPort,
+} from './payment-order-finalization.contract';
 import {
   ORDER_STATUS_ADVANCE_FLOW,
   ORDER_STATUS_TRANSITIONS,
@@ -244,77 +251,14 @@ function resolvePromotionRuleChannel(
   return PROMOTION_RULE_CHANNEL_BY_ORDER_CHANNEL[channel];
 }
 
-export type AppliedPricingDiscount = OrderDiscountDisplayEntry;
-
-export type OrderPricingQuote = {
-  subtotalCents: number;
-  displaySubtotalCents: number;
-  couponDiscountCents: number;
-  automaticPromotionDiscountCents: number;
-  posManualDiscountCents: number;
-  loyaltyRedeemCents: number;
-  taxCents: number;
-  deliveryFeeCents: number;
-  totalCents: number;
-  appliedDiscounts: AppliedPricingDiscount[];
-};
-
-export type PaymentTenderAllocation = {
-  pointsCents: number;
-  balanceCents: number;
-  couponDiscountCents: number;
-  orderTotalCents: number;
-  externalCents: number;
-};
-
-export type PreparedPaymentOrderItemSnapshot = {
-  id: string;
-  productStableId: string;
-  qty: number;
-  displayName: string | null;
-  nameEn: string | null;
-  nameZh: string | null;
-  unitPriceCents: number;
-  baseUnitPriceCents: number;
-  optionsUnitPriceCents: number;
-  isDailySpecialApplied: boolean;
-  dailySpecialStableId: string | null;
-  optionsJson: unknown;
-  componentsJson?: unknown;
-};
-
-export type PreparedPaymentOrderSnapshot = {
-  version: 1;
-  order: CreateOrderInput;
-  userId: string | null;
-  /** Business store identity: Store.storeStableId, matching Order.storeId. */
-  storeId: string;
-  pricing: OrderPricingQuote;
-  tender: PaymentTenderAllocation;
-  items: PreparedPaymentOrderItemSnapshot[];
-  promotionSnapshot: unknown;
-  coupon: {
-    id: string;
-    couponStableId: string;
-    code: string;
-    title: string;
-    minSpendCents: number | null;
-    expiresAt: string | null;
-  } | null;
-  preparedAt: string;
-};
-
-export type ConfirmedPaymentOrderResult = {
-  order: OrderDto;
-  internalOrderId: string;
-};
-
 type CreateInternalOptions = {
   appendAcceptedLifecycle?: boolean;
 };
 
 @Injectable()
-export class OrdersService {
+export class OrdersService
+  implements PaymentOrderPreparationPort, PaymentOrderFinalizationPort
+{
   private readonly logger = new AppLogger(OrdersService.name);
   private readonly CLIENT_REQUEST_ID_RE = CLIENT_REQUEST_ID_RE;
 
@@ -707,6 +651,19 @@ export class OrdersService {
 
   private toOrderDto(order: OrderWithItems | OrderDetail): OrderDto {
     return projectOrderDto(order);
+  }
+
+  private toConfirmedPaymentOrderResult(
+    order: OrderWithItems | OrderDetail,
+  ): ConfirmedPaymentOrderResult {
+    const dto = this.toOrderDto(order);
+    return {
+      order: {
+        orderStableId: dto.orderStableId,
+        orderNumber: dto.orderNumber,
+        pickupCode: dto.pickupCode,
+      },
+    };
   }
 
   private getLoyaltyUsageByOrderStableId(orderStableId: string): Promise<{
@@ -1499,12 +1456,8 @@ export class OrdersService {
     if (dto.userStableId && !normalizedUserStableId) {
       throw new BadRequestException('userStableId must be a cuid');
     }
-    const userId = normalizedUserStableId
-      ? await this.loyalty.resolveUserIdByStableId(normalizedUserStableId)
-      : null;
-
-    const couponInfo = await this.membership.validateCouponForOrder({
-      userId: userId ?? undefined,
+    const couponInfo = await this.orderBenefitsReader.validateCouponForOrder({
+      userStableId: normalizedUserStableId ?? undefined,
       couponStableId: dto.couponStableId,
     });
 
@@ -1518,7 +1471,7 @@ export class OrdersService {
         ? toCouponPromotionLike(couponInfo.coupon)
         : null,
       promotionContext,
-      customer: { isMember: Boolean(userId) },
+      customer: { isMember: Boolean(normalizedUserStableId) },
       posDiscountCents: dto.discountCents,
     });
     assertCouponPromotionAccepted(
@@ -1589,22 +1542,19 @@ export class OrdersService {
     }
 
     return {
-      version: 1,
+      version: 2,
       order: {
-        ...dto,
-        userStableId: normalizedUserStableId ?? undefined,
-        redeemValueCents:
-          pricing.loyaltyRedeemCents > 0
-            ? pricing.loyaltyRedeemCents
-            : undefined,
-        balanceUsedCents: balanceCents > 0 ? balanceCents : undefined,
+        userStableId: normalizedUserStableId,
+        channel: dto.channel,
+        fulfillmentType: dto.fulfillmentType,
+        contactName: dto.contactName ?? null,
+        contactEmail: dto.contactEmail ?? null,
+        contactPhone: dto.contactPhone ?? null,
       },
-      userId,
-      storeId: storeStableId,
+      storeStableId,
       pricing,
       tender,
       items: calculatedItems.map((item) => ({
-        id: item.id ?? crypto.randomUUID(),
         productStableId: item.productStableId,
         qty: item.qty,
         displayName: item.displayName ?? null,
@@ -1621,29 +1571,23 @@ export class OrdersService {
       promotionSnapshot: promotionEvaluation.snapshot,
       coupon: couponInfo?.coupon
         ? {
-            id: couponInfo.coupon.id,
             couponStableId: couponInfo.coupon.couponStableId,
+            reserveAssignedCoupon: Boolean(dto.selectedUserCouponId),
             code: couponInfo.coupon.code,
             title: couponInfo.coupon.title,
             minSpendCents: couponInfo.coupon.minSpendCents,
-            expiresAt: couponInfo.coupon.expiresAt?.toISOString() ?? null,
+            expiresAt: couponInfo.coupon.expiresAt,
           }
         : null,
       preparedAt: new Date().toISOString(),
     };
   }
 
-  async createFromConfirmedPaymentSnapshot(
+  async finalizeConfirmedPayment(
     snapshot: PreparedPaymentOrderSnapshot,
-    input: {
-      attemptId: string;
-      internalOrderId: string;
-      orderStableId: string;
-      cardSurchargeCents: number;
-      chargedTotalCents: number;
-    },
+    input: ConfirmedPaymentFinalizationInput,
   ): Promise<ConfirmedPaymentOrderResult> {
-    if (snapshot.version !== 1 || snapshot.order.channel !== Channel.in_store) {
+    if (snapshot.version !== 2 || snapshot.order.channel !== Channel.in_store) {
       throw new BadRequestException('Unsupported payment order snapshot');
     }
     if (!input.attemptId.trim()) {
@@ -1671,38 +1615,15 @@ export class OrdersService {
       include: { items: true },
     });
     if (existing) {
-      return {
-        order: this.toOrderDto(existing as OrderWithItems),
-        internalOrderId: existing.id,
-      };
+      return this.toConfirmedPaymentOrderResult(existing as OrderWithItems);
     }
 
+    const userId = snapshot.order.userStableId
+      ? await this.loyalty.resolveUserIdByStableId(snapshot.order.userStableId)
+      : null;
     const paidAt = new Date();
     try {
       const created = await this.prisma.$transaction(async (tx) => {
-        const committedTender = await this.loyalty.commitPaymentTenderForOrder({
-          tx,
-          attemptId: input.attemptId,
-          orderId: input.internalOrderId,
-          orderStableId: input.orderStableId,
-        });
-        if (
-          committedTender.pointsValueCents !== snapshot.tender.pointsCents ||
-          committedTender.balanceCents !== snapshot.tender.balanceCents
-        ) {
-          throw new ConflictException({
-            code: 'PAYMENT_TENDER_RESERVATION_MISMATCH',
-            message:
-              'Committed internal tender does not match prepared payment.',
-          });
-        }
-        await this.membership.commitPaymentCouponsForOrder({
-          tx,
-          attemptId: input.attemptId,
-          orderId: input.internalOrderId,
-          orderStableId: input.orderStableId,
-        });
-
         const clientRequestId = await this.allocateClientRequestIdTx(tx);
         const pickupCode =
           this.derivePickupCode(clientRequestId) ||
@@ -1720,18 +1641,17 @@ export class OrdersService {
             ? PaymentMethod.CARD
             : PaymentMethod.STORE_BALANCE;
 
-        const order = (await tx.order.create({
+        const createdOrder = (await tx.order.create({
           data: {
-            id: input.internalOrderId,
             status: 'paid',
             paidAt,
             paymentMethod,
-            userId: snapshot.userId,
+            userId,
             userStableId: snapshot.order.userStableId ?? null,
             orderStableId: input.orderStableId,
             clientRequestId,
             channel: snapshot.order.channel,
-            storeId: snapshot.storeId,
+            storeId: snapshot.storeStableId,
             fulfillmentType: snapshot.order.fulfillmentType,
             contactName: snapshot.order.contactName ?? null,
             contactEmail: snapshot.order.contactEmail ?? null,
@@ -1752,7 +1672,6 @@ export class OrdersService {
             deliveryCostCents: 0,
             deliverySubsidyCents: 0,
             pickupCode,
-            couponId: snapshot.coupon?.id ?? null,
             couponDiscountCents: snapshot.pricing.couponDiscountCents,
             couponCodeSnapshot: snapshot.coupon?.code,
             couponTitleSnapshot: snapshot.coupon?.title,
@@ -1766,7 +1685,6 @@ export class OrdersService {
             subtotalAfterDiscountCents,
             items: {
               create: snapshot.items.map((item) => ({
-                id: item.id,
                 productStableId: item.productStableId,
                 qty: item.qty,
                 displayName: item.displayName,
@@ -1794,6 +1712,49 @@ export class OrdersService {
           include: { items: true },
         })) as OrderWithItems;
 
+        const committedTender = await this.loyalty.commitPaymentTenderForOrder({
+          tx,
+          attemptId: input.attemptId,
+          orderId: createdOrder.id,
+          orderStableId: input.orderStableId,
+        });
+        if (
+          committedTender.pointsValueCents !== snapshot.tender.pointsCents ||
+          committedTender.balanceCents !== snapshot.tender.balanceCents
+        ) {
+          throw new ConflictException({
+            code: 'PAYMENT_TENDER_RESERVATION_MISMATCH',
+            message:
+              'Committed internal tender does not match prepared payment.',
+          });
+        }
+
+        const committedCoupon =
+          await this.membership.commitPaymentCouponsForOrder({
+            tx,
+            attemptId: input.attemptId,
+            orderId: createdOrder.id,
+            orderStableId: input.orderStableId,
+          });
+        if (
+          committedCoupon.couponStableId !==
+          (snapshot.coupon?.couponStableId ?? null)
+        ) {
+          throw new ConflictException({
+            code: 'PAYMENT_COUPON_RESERVATION_MISMATCH',
+            message:
+              'Committed coupon reservation does not match prepared payment.',
+          });
+        }
+
+        const order = committedCoupon.couponId
+          ? ((await tx.order.update({
+              where: { id: createdOrder.id },
+              data: { couponId: committedCoupon.couponId },
+              include: { items: true },
+            })) as OrderWithItems)
+          : createdOrder;
+
         await tx.opsEvent.createMany({
           data: {
             idempotencyKey: orderAcceptedIdempotencyKey(order.orderStableId),
@@ -1814,10 +1775,7 @@ export class OrdersService {
         })}Order created from immutable payment snapshot.`,
       );
       void this.handleOrderPaidSideEffects(created);
-      return {
-        order: this.toOrderDto(created),
-        internalOrderId: created.id,
-      };
+      return this.toConfirmedPaymentOrderResult(created);
     } catch (error) {
       if (this.getUniqueViolationTargets(error)) {
         const raced = await this.prisma.order.findUnique({
@@ -1825,10 +1783,7 @@ export class OrdersService {
           include: { items: true },
         });
         if (raced) {
-          return {
-            order: this.toOrderDto(raced as OrderWithItems),
-            internalOrderId: raced.id,
-          };
+          return this.toConfirmedPaymentOrderResult(raced as OrderWithItems);
         }
       }
       throw error;

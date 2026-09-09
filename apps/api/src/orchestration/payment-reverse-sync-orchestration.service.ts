@@ -1,9 +1,15 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import { ConflictException, Inject, Injectable } from '@nestjs/common';
 import { PaymentMethod } from '@prisma/client';
 
-import { OrdersService } from '../orders/orders.service';
+import {
+  POS_ORDER_OPERATIONS,
+  type PosOrderOperationsPort,
+} from '../orders/public-api';
 import type { PaymentReverseSyncResult } from '../payments/application/payment-reverse-sync.service';
-import { PosGateway } from '../pos/pos.gateway';
+import {
+  POS_PAYMENT_REALTIME,
+  type PosPaymentRealtimePort,
+} from '../pos/public-api';
 import {
   PaymentCheckoutAttemptService,
   type PreparedPaymentCheckout,
@@ -36,8 +42,10 @@ export class PaymentReverseSyncOrchestrationService {
   constructor(
     private readonly checkouts: PaymentCheckoutAttemptService,
     private readonly cardPayments: PosCardPaymentOrchestrationService,
-    private readonly orders: OrdersService,
-    private readonly posGateway: PosGateway,
+    @Inject(POS_ORDER_OPERATIONS)
+    private readonly orders: PosOrderOperationsPort,
+    @Inject(POS_PAYMENT_REALTIME)
+    private readonly paymentRealtime: PosPaymentRealtimePort,
   ) {}
 
   async apply(
@@ -104,7 +112,10 @@ export class PaymentReverseSyncOrchestrationService {
     }
 
     if (result.externalReversal === 'PARTIAL_REFUND') {
-      const order = await this.orders.getByStableId(checkout.orderStableId);
+      const order = await this.orders.getByStableIdForStore(
+        checkout.orderStableId,
+        checkout.storeId,
+      );
       this.publishReverseSync(
         result,
         checkout.storeId,
@@ -137,7 +148,10 @@ export class PaymentReverseSyncOrchestrationService {
       });
     }
 
-    let order = await this.orders.getByStableId(orderStableId);
+    let order = await this.orders.getByStableIdForStore(
+      orderStableId,
+      checkout.storeId,
+    );
     if (order.status === 'refunded') {
       this.publishReverseSync(
         result,
@@ -162,7 +176,10 @@ export class PaymentReverseSyncOrchestrationService {
       order = refunded.order;
     } catch (error) {
       if (!(error instanceof ConflictException)) throw error;
-      order = await this.orders.getByStableId(orderStableId);
+      order = await this.orders.getByStableIdForStore(
+        orderStableId,
+        checkout.storeId,
+      );
       if (order.status !== 'refunded') throw error;
       this.publishReverseSync(
         result,
@@ -190,7 +207,7 @@ export class PaymentReverseSyncOrchestrationService {
     if (!payment) return;
     const snapshot = payment.toSnapshot();
     try {
-      this.posGateway.publishCardPaymentStatus(checkout.storeId, {
+      this.paymentRealtime.publishCardPaymentStatus(checkout.storeId, {
         attemptId: snapshot.attemptId,
         paymentId: snapshot.id,
         status: 'CANCELLED',
@@ -218,7 +235,7 @@ export class PaymentReverseSyncOrchestrationService {
     if (!payment || result.externalReversal === 'NONE') return;
     const snapshot = payment.toSnapshot();
     try {
-      this.posGateway.publishCardPaymentReverseSync(storeStableId, {
+      this.paymentRealtime.publishCardPaymentReverseSync(storeStableId, {
         attemptId: snapshot.attemptId,
         paymentId: snapshot.id,
         externalReversal: result.externalReversal,
