@@ -2,7 +2,7 @@
 
 Machine-readable source:
 `docs/architecture/active-compatibility-register.json`. Current modularization base:
-`origin/dev@51dd19ec` (2026-09-08).
+`origin/dev@fcc0b7c1` (2026-09-09).
 
 Operational fallback (retry, provider timeout recovery, email-to-SMS fallback, and
 safe default values unrelated to an old version) is not compatibility debt.
@@ -12,7 +12,7 @@ safe default values unrelated to an old version) is not compatibility debt.
 | compat_id | State | Old → new | Exit gate | Deadline |
 |---|---|---|---|---|
 | `payments.pos-card-legacy.v1` | active / pre-production | direct paid Order → Unified Payment Core + Terminal + finalize | POS ↔ Clover realtime/recovery complete; real-device acceptance; one settlement cycle reconciled; clean production stability window; legacy calls zero | Phase J cleanup after Terminal synchronization/cutover stability |
-| `payments.web-checkout-v1.v1` | guarded production | CheckoutIntent/Clover v1 Web path → Unified Payment Core + v3 truth | Web cutover accepted; one settlement cycle reconciled; old calls zero before compatibility deletion | Before Phase 5B exit |
+| `payments.web-checkout-v1.v1` | guarded production | CheckoutIntent/Clover v1 Web path → Unified Payment Core + v3 truth | Test App/device acceptance complete; App installed/OAuth-authorized on operating production merchant; fresh production-merchant correlation audit passes; Web cutover accepted; one settlement cycle reconciled; old calls zero before compatibility deletion | Deferred until production-merchant Unified authorization and accepted cutover |
 
 The payment entries are no longer governed by a whole-context freeze. The POS
 Clover Terminal path is pre-production and may be structurally modularized before
@@ -27,17 +27,17 @@ synchronization/recovery, real-device acceptance and the production stability ga
 legacy path + flag/config + route-choice branches + legacy refund compatibility are
 contracted together in Phase J.
 
-The Web Clover path remains protected by default because it is actively processing
-production payments; however, if it becomes a documented critical modularization blocker,
-a narrowly scoped change is allowed after recording impact, alternatives and
-rollback/forward-fix handling. Every such Web-impacting change requires focused regression
-coverage and must record the payment scenarios/evidence that the owning Phase closeout
-verification will cover. A separate deployment/active-test cycle is not required after
-each modularization slice; instead the final merged Phase state receives one consolidated
-active verification pass before the Phase can be marked production-verified/closed.
-Traffic cutover, compatibility deletion and settlement-based exit criteria remain
-separately gated and can still require earlier explicit verification when their own exit
-criteria are reached.
+The Web Clover path is now explicitly frozen by the 2026-09-09 operator decision while it
+continues processing production payments. Do not modify Web `/v1/charges` execution,
+CARD/Apple Pay/Google Pay tokenization, 3DS/session/pricing-token/contact-verification,
+Web paid-Order creation, Web external-payment refund, production webhook merchant scope,
+or persisted Web payment/surcharge facts merely to advance modularization. Resume Web
+Unified Payment work only after Test App/device acceptance completes and the App is
+installed/OAuth-authorized on the operating production Clover merchant; then run a fresh
+production-merchant readiness/correlation audit before any v3 shadow comparison or
+traffic authority change. Traffic cutover, compatibility deletion and settlement-based
+exit criteria remain separately gated after that point. Non-payment bounded-context work
+may proceed without reopening this compatibility seam.
 
 ## Closed history
 
