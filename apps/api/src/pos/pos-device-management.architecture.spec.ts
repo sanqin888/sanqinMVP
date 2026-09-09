@@ -68,12 +68,22 @@ describe('POS device authentication boundary', () => {
       );
     }
 
-    expect(posModule).toContain("import { AuthModule } from '../auth/auth.module';");
-    expect(posModule).toContain("import { RolesGuard } from '../auth/public-api';");
+    expect(posModule).toContain(
+      "import { AuthModule } from '../auth/auth.module';",
+    );
+    expect(posModule).toContain(
+      "import { RolesGuard } from '../auth/public-api';",
+    );
     expect(posModule).not.toContain("from '../auth/roles.guard'");
-    expect(authPublicApi).toContain("export { SessionAuthGuard } from './session-auth.guard';");
-    expect(authPublicApi).toContain("export { RolesGuard } from './roles.guard';");
-    expect(authPublicApi).toContain("export { Roles } from './roles.decorator';");
+    expect(authPublicApi).toContain(
+      "export { SessionAuthGuard } from './session-auth.guard';",
+    );
+    expect(authPublicApi).toContain(
+      "export { RolesGuard } from './roles.guard';",
+    );
+    expect(authPublicApi).toContain(
+      "export { Roles } from './roles.decorator';",
+    );
   });
 
   it('keeps POS credential persistence and verification behind the POS public port', () => {
