@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   Channel,
   FulfillmentType,
@@ -36,6 +36,8 @@ import { toUberOrderStatus } from './uber-order-status.mapper';
 export class UberOrderImportPrismaAdapter
   implements UberOrderImportRepositoryPort, UberPosConnectivityQueryPort
 {
+  private readonly logger = new Logger(UberOrderImportPrismaAdapter.name);
+
   constructor(
     private readonly prisma: PrismaService,
     @Inject(ORDER_INGESTION)

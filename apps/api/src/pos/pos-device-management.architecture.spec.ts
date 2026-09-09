@@ -170,12 +170,7 @@ describe('POS connectivity read-model ownership boundary', () => {
       ),
     );
     const uberOrderPorts = read(
-      resolve(
-        UBER_EATS_ROOT,
-        'application',
-        'orders',
-        'uber-order.ports.ts',
-      ),
+      resolve(UBER_EATS_ROOT, 'application', 'orders', 'uber-order.ports.ts'),
     );
     const uberAdmission = read(
       resolve(
@@ -215,11 +210,17 @@ describe('POS connectivity read-model ownership boundary', () => {
     expect(uberOrderPorts).toContain('UBER_POS_CONNECTIVITY_QUERY');
     expect(uberOrderPorts).not.toContain('getPosStoreConnectivity');
     expect(uberAdmission).toContain('this.connectivity.getStoreConnectivity');
-    expect(uberAdmission).not.toContain('this.repository.getPosStoreConnectivity');
+    expect(uberAdmission).not.toContain(
+      'this.repository.getPosStoreConnectivity',
+    );
     expect(uberOrdersWiring).toContain('provide: UBER_POS_CONNECTIVITY_QUERY');
-    expect(uberOrdersWiring).toContain('useExisting: UberOrderImportPrismaAdapter');
+    expect(uberOrdersWiring).toContain(
+      'useExisting: UberOrderImportPrismaAdapter',
+    );
 
-    expect(uberAdapter).toContain('async getStoreConnectivity(storeStableId: string)');
+    expect(uberAdapter).toContain(
+      'async getStoreConnectivity(storeStableId: string)',
+    );
     expect(uberAdapter).toContain(
       'this.prisma.posConnectivityReadModel.findUnique',
     );
