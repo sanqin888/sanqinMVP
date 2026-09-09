@@ -53,7 +53,6 @@ missing; they never inherit the live Web merchant, token, or base URL.
 | `CLOVER_UNIFIED_OAUTH_CALLBACK_URL` | Required fixed public callback URL for the Unified Clover app. |
 | `CLOVER_UNIFIED_OAUTH_SCOPES` | Optional permission metadata for Unified authorization auditing. |
 | `CLOVER_TERMINAL_API_BASE` | Required REST Pay Display API base for Terminal operations. Never falls back to `CLOVER_BASE`. |
-| `CLOVER_TERMINAL_OAUTH_TOKEN` | Temporary pre-4D Terminal prototype token. It is removed when Terminal converges on the database-backed Unified merchant credential. |
 | `CLOVER_TERMINAL_DEVICE_ID` | Required Clover Terminal device ID. |
 | `CLOVER_TERMINAL_REMOTE_APP_ID` | Required Clover Remote Application ID (RAID/POS ID). |
 | `CLOVER_TERMINAL_TIMEOUT_SECONDS` | Required Terminal timeout, 10-300 seconds. Missing/invalid values make Terminal unavailable. |
@@ -68,6 +67,10 @@ browser redirects. OAuth exchange, credential encryption, merchant verification,
 rotation, and Platform v3 authorization remain in the API Payments/Clover infrastructure.
 Platform v3 requires both explicit Unified configuration and an active persisted merchant
 authorization; it never falls back to `CLOVER_ACCESS_TOKEN` or production Web endpoints.
+Terminal REST Pay uses the same persisted Unified merchant authorization through
+`CloverMerchantAccessTokenService`; there is no static Terminal OAuth-token environment
+fallback. A Terminal 401 triggers one forced credential refresh and one retry, while
+credential failure before outbound HTTP remains fail-closed rather than network-uncertain.
 
 Phase F reverse sync receives Clover callbacks at
 `/api/v1/payments/webhooks/clover`. The initial Clover verification challenge is

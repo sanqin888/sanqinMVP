@@ -18,7 +18,6 @@ export class CloverProviderConfig {
   readonly unifiedOauthScopesMetadata: string | undefined;
 
   readonly terminalApiBase: string | undefined;
-  readonly terminalAccessToken: string | undefined;
   readonly terminalDeviceId: string | undefined;
   readonly terminalRemoteAppId: string | undefined;
   readonly terminalTimeoutSeconds: number | undefined;
@@ -57,7 +56,6 @@ export class CloverProviderConfig {
     this.terminalApiBase = this.optionalBaseUrl(
       process.env.CLOVER_TERMINAL_API_BASE,
     );
-    this.terminalAccessToken = process.env.CLOVER_TERMINAL_OAUTH_TOKEN?.trim();
     this.terminalDeviceId = process.env.CLOVER_TERMINAL_DEVICE_ID?.trim();
     this.terminalRemoteAppId =
       process.env.CLOVER_TERMINAL_REMOTE_APP_ID?.trim();

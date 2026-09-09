@@ -11,6 +11,7 @@ import type {
 } from '../../../application/payment-provider.port';
 import type { PaymentProviderOutcome } from '../../../domain/payment.types';
 import { CloverProviderConfig } from '../clover-provider.config';
+import { CloverMerchantAccessTokenService } from '../oauth/clover-merchant-access-token.service';
 
 type CloverTerminalHttpResult = {
   httpStatus: number;
@@ -18,6 +19,15 @@ type CloverTerminalHttpResult = {
   body: Record<string, unknown> | null;
   rawText: string;
 };
+
+type CloverTerminalRequestAttempt =
+  | { kind: 'response'; result: CloverTerminalHttpResult }
+  | {
+      kind: 'credential_unavailable';
+      failureCode: string;
+      failureMessage: string;
+    }
+  | { kind: 'uncertain' };
 
 type CloverTerminalPaymentRequest = {
   amount: number;
@@ -394,7 +404,7 @@ const missingTerminalConfiguration = (): PaymentProviderOutcome => ({
   status: 'FAILED',
   failureCode: 'CLOVER_TERMINAL_MISCONFIGURED',
   failureMessage:
-    'Clover Terminal requires an API base, OAuth token, device id, Remote Application ID, and valid timeout',
+    'Clover Terminal requires a Unified merchant id, API base, device id, Remote Application ID, and valid timeout',
 });
 
 const uncertain = (
@@ -412,12 +422,15 @@ const uncertain = (
 export class CloverTerminalTransport {
   private readonly logger = new AppLogger(CloverTerminalTransport.name);
 
-  constructor(private readonly config: CloverProviderConfig) {}
+  constructor(
+    private readonly config: CloverProviderConfig,
+    private readonly accessTokens: CloverMerchantAccessTokenService,
+  ) {}
 
-  isConfigured(): boolean {
+  private hasStaticConfiguration(): boolean {
     return Boolean(
+      this.config.unifiedMerchantId &&
       this.config.terminalApiBase &&
-      this.config.terminalAccessToken &&
       this.config.terminalDeviceId &&
       this.config.terminalRemoteAppId &&
       this.config.terminalTimeoutSeconds !== undefined,
@@ -426,7 +439,7 @@ export class CloverTerminalTransport {
 
   async getAvailability(): Promise<PaymentTerminalAvailability> {
     const terminalId = this.config.terminalDeviceId;
-    if (!this.isConfigured() || !terminalId) {
+    if (!this.hasStaticConfiguration() || !terminalId) {
       return {
         state: 'MISCONFIGURED',
         configured: false,
@@ -434,13 +447,23 @@ export class CloverTerminalTransport {
         terminalId: terminalId ?? null,
         failureCode: 'CLOVER_TERMINAL_MISCONFIGURED',
         failureMessage:
-          'Clover Terminal requires an API base, OAuth token, device id, Remote Application ID, and valid timeout',
+          'Clover Terminal requires a Unified merchant id, API base, device id, Remote Application ID, and valid timeout',
       };
     }
-    const result = await this.request('/connect/v1/device/status', {
+    const attempt = await this.request('/connect/v1/device/status', {
       method: 'GET',
     });
-    if (!result) {
+    if (attempt.kind === 'credential_unavailable') {
+      return {
+        state: 'MISCONFIGURED',
+        configured: false,
+        available: false,
+        terminalId,
+        failureCode: attempt.failureCode,
+        failureMessage: attempt.failureMessage,
+      };
+    }
+    if (attempt.kind === 'uncertain') {
       return {
         state: 'UNKNOWN',
         configured: true,
@@ -451,13 +474,13 @@ export class CloverTerminalTransport {
           'Clover Terminal status request did not receive a response',
       };
     }
-    return mapTerminalAvailabilityResponse(result, terminalId);
+    return mapTerminalAvailabilityResponse(attempt.result, terminalId);
   }
 
   async startPayment(
     request: StartPaymentRequest,
   ): Promise<PaymentProviderOutcome> {
-    if (!this.isConfigured()) return missingTerminalConfiguration();
+    if (!this.hasStaticConfiguration()) return missingTerminalConfiguration();
     const terminalId = this.config.terminalDeviceId;
     const externalPaymentId = request.externalPaymentId?.trim();
     if (!terminalId || !externalPaymentId) {
@@ -481,12 +504,20 @@ export class CloverTerminalTransport {
       amount: request.amountCents,
       externalPaymentId,
     };
-    const result = await this.request('/connect/v1/payments', {
+    const attempt = await this.request('/connect/v1/payments', {
       method: 'POST',
       idempotencyKey: request.idempotencyKey,
       body,
     });
-    if (!result) {
+    if (attempt.kind === 'credential_unavailable') {
+      return {
+        status: 'FAILED',
+        terminalId,
+        failureCode: attempt.failureCode,
+        failureMessage: attempt.failureMessage,
+      };
+    }
+    if (attempt.kind === 'uncertain') {
       return uncertain(
         'CLOVER_TERMINAL_PAYMENT_REQUEST_UNCERTAIN',
         'Clover Terminal payment request did not receive a response',
@@ -495,7 +526,7 @@ export class CloverTerminalTransport {
     }
     return {
       ...mapTerminalPaymentResponse(
-        result,
+        attempt.result,
         request.amountCents,
         externalPaymentId,
         terminalId,
@@ -508,7 +539,7 @@ export class CloverTerminalTransport {
     request: GetPaymentStatusRequest,
   ): Promise<PaymentProviderOutcome> {
     const terminalId = this.config.terminalDeviceId;
-    if (!this.isConfigured() || !terminalId) {
+    if (!this.hasStaticConfiguration() || !terminalId) {
       return uncertain(
         'CLOVER_TERMINAL_RECONCILIATION_MISCONFIGURED',
         'Clover Terminal is not configured for reconciliation',
@@ -525,29 +556,42 @@ export class CloverTerminalTransport {
       );
     }
 
-    let result: CloverTerminalHttpResult | null = null;
+    let attempt: CloverTerminalRequestAttempt | null = null;
     if (providerPaymentId) {
-      result = await this.request(
+      attempt = await this.request(
         `/connect/v1/payments/${encodeURIComponent(providerPaymentId)}`,
         { method: 'GET' },
       );
-      if (result?.httpStatus === 404 && externalPaymentId) result = null;
+      if (
+        attempt.kind === 'response' &&
+        attempt.result.httpStatus === 404 &&
+        externalPaymentId
+      ) {
+        attempt = null;
+      }
     }
-    if (!result && externalPaymentId) {
-      result = await this.request(
+    if (!attempt && externalPaymentId) {
+      attempt = await this.request(
         `/connect/v1/payments/external/${encodeURIComponent(externalPaymentId)}`,
         { method: 'GET' },
       );
     }
-    if (!result) {
+    if (!attempt || attempt.kind === 'uncertain') {
       return uncertain(
         'CLOVER_TERMINAL_RECONCILIATION_QUERY_UNCERTAIN',
         'Clover Terminal reconciliation query did not receive a response',
         terminalId,
       );
     }
+    if (attempt.kind === 'credential_unavailable') {
+      return uncertain(
+        attempt.failureCode,
+        attempt.failureMessage,
+        terminalId,
+      );
+    }
     return mapTerminalPaymentResponse(
-      result,
+      attempt.result,
       request.amountCents ?? 0,
       externalPaymentId ?? '',
       terminalId,
@@ -559,25 +603,33 @@ export class CloverTerminalTransport {
     request: CancelPaymentRequest,
   ): Promise<PaymentProviderOutcome> {
     const terminalId = this.config.terminalDeviceId;
-    if (!this.isConfigured() || !terminalId) {
+    if (!this.hasStaticConfiguration() || !terminalId) {
       return uncertain(
         'CLOVER_TERMINAL_CANCEL_MISCONFIGURED',
         'Clover Terminal is not configured for cancellation',
         terminalId,
       );
     }
-    const result = await this.request('/connect/v1/device/cancel', {
+    const attempt = await this.request('/connect/v1/device/cancel', {
       method: 'POST',
       idempotencyKey: `${request.idempotencyKey}:cancel`,
       body: {},
     });
-    if (!result) {
+    if (attempt.kind === 'credential_unavailable') {
+      return uncertain(
+        attempt.failureCode,
+        attempt.failureMessage,
+        terminalId,
+      );
+    }
+    if (attempt.kind === 'uncertain') {
       return uncertain(
         'CLOVER_TERMINAL_CANCEL_REQUEST_UNCERTAIN',
         'Clover Terminal cancel request did not receive a response',
         terminalId,
       );
     }
+    const result = attempt.result;
     if (result.httpStatus === 209) {
       return {
         status: 'CANCELLED',
@@ -605,7 +657,7 @@ export class CloverTerminalTransport {
     request: VoidPaymentRequest,
   ): Promise<PaymentProviderOutcome> {
     const terminalId = this.config.terminalDeviceId;
-    if (!this.isConfigured() || !terminalId) {
+    if (!this.hasStaticConfiguration() || !terminalId) {
       return missingTerminalConfiguration();
     }
     const providerPaymentId = request.providerPaymentId?.trim();
@@ -617,7 +669,7 @@ export class CloverTerminalTransport {
       };
     }
 
-    const result = await this.request(
+    const attempt = await this.request(
       `/connect/v1/payments/${encodeURIComponent(providerPaymentId)}/void`,
       {
         method: 'POST',
@@ -625,21 +677,34 @@ export class CloverTerminalTransport {
         body: { voidReason: 'USER_CANCEL' },
       },
     );
-    if (!result) {
+    if (attempt.kind === 'credential_unavailable') {
+      return {
+        status: 'FAILED',
+        terminalId,
+        failureCode: attempt.failureCode,
+        failureMessage: attempt.failureMessage,
+      };
+    }
+    if (attempt.kind === 'uncertain') {
       return uncertain(
         'CLOVER_VOID_REQUEST_UNCERTAIN',
         'Clover Terminal void request did not receive a response',
         terminalId,
       );
     }
-    return mapTerminalReversalResponse(result, request, terminalId, 'VOID');
+    return mapTerminalReversalResponse(
+      attempt.result,
+      request,
+      terminalId,
+      'VOID',
+    );
   }
 
   async refundPayment(
     request: RefundPaymentRequest,
   ): Promise<PaymentProviderOutcome> {
     const terminalId = this.config.terminalDeviceId;
-    if (!this.isConfigured() || !terminalId) {
+    if (!this.hasStaticConfiguration() || !terminalId) {
       return missingTerminalConfiguration();
     }
     const providerPaymentId = request.providerPaymentId?.trim();
@@ -662,7 +727,7 @@ export class CloverTerminalTransport {
       };
     }
 
-    const result = await this.request(
+    const attempt = await this.request(
       `/connect/v1/payments/${encodeURIComponent(providerPaymentId)}/refunds`,
       {
         method: 'POST',
@@ -670,14 +735,27 @@ export class CloverTerminalTransport {
         body: { fullRefund: true },
       },
     );
-    if (!result) {
+    if (attempt.kind === 'credential_unavailable') {
+      return {
+        status: 'FAILED',
+        terminalId,
+        failureCode: attempt.failureCode,
+        failureMessage: attempt.failureMessage,
+      };
+    }
+    if (attempt.kind === 'uncertain') {
       return uncertain(
         'CLOVER_REFUND_REQUEST_UNCERTAIN',
         'Clover Terminal refund request did not receive a response',
         terminalId,
       );
     }
-    return mapTerminalReversalResponse(result, request, terminalId, 'REFUND');
+    return mapTerminalReversalResponse(
+      attempt.result,
+      request,
+      terminalId,
+      'REFUND',
+    );
   }
 
   private async request(
@@ -687,19 +765,71 @@ export class CloverTerminalTransport {
       idempotencyKey?: string;
       body?: Record<string, unknown> | CloverTerminalPaymentRequest;
     },
+  ): Promise<CloverTerminalRequestAttempt> {
+    const merchantId = this.config.unifiedMerchantId;
+    if (!merchantId || !this.hasStaticConfiguration()) {
+      return {
+        kind: 'credential_unavailable',
+        failureCode: 'CLOVER_TERMINAL_MISCONFIGURED',
+        failureMessage:
+          'Clover Terminal static configuration is incomplete for the Unified merchant',
+      };
+    }
+
+    const credential = await this.resolveCredential(merchantId, false, path);
+    if (!credential) return this.credentialUnavailable();
+
+    let result = await this.requestWithToken(path, options, credential.token);
+    if (!result) return { kind: 'uncertain' };
+    if (result.httpStatus !== 401) return { kind: 'response', result };
+
+    const refreshed = await this.resolveCredential(merchantId, true, path);
+    if (!refreshed) return this.credentialUnavailable();
+    result = await this.requestWithToken(path, options, refreshed.token);
+    return result ? { kind: 'response', result } : { kind: 'uncertain' };
+  }
+
+  private async resolveCredential(
+    merchantId: string,
+    forceRefresh: boolean,
+    path: string,
+  ): Promise<{ token: string } | null> {
+    try {
+      return await this.accessTokens.getAccessToken(
+        merchantId,
+        forceRefresh ? { forceRefresh: true } : {},
+      );
+    } catch (error) {
+      this.logger.warn(
+        `[CloverTerminalTransport] credential unavailable path=${path} reason=${this.errorMessage(error)}`,
+      );
+      return null;
+    }
+  }
+
+  private credentialUnavailable(): CloverTerminalRequestAttempt {
+    return {
+      kind: 'credential_unavailable',
+      failureCode: 'CLOVER_TERMINAL_CREDENTIAL_UNAVAILABLE',
+      failureMessage:
+        'Unified Clover merchant authorization is unavailable for Terminal requests',
+    };
+  }
+
+  private async requestWithToken(
+    path: string,
+    options: {
+      method: 'GET' | 'POST';
+      idempotencyKey?: string;
+      body?: Record<string, unknown> | CloverTerminalPaymentRequest;
+    },
+    token: string,
   ): Promise<CloverTerminalHttpResult | null> {
     const apiBase = this.config.terminalApiBase;
-    const token = this.config.terminalAccessToken;
     const terminalId = this.config.terminalDeviceId;
     const posId = this.config.terminalRemoteAppId;
     const timeoutSeconds = this.config.terminalTimeoutSeconds;
-    if (
-      !apiBase ||
-      !token ||
-      !terminalId ||
-      !posId ||
-      timeoutSeconds === undefined
-    ) {
+    if (!apiBase || !terminalId || !posId || timeoutSeconds === undefined) {
       return null;
     }
 
