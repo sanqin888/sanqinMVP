@@ -1,252 +1,316 @@
 # Phase 8 — External Channels Boundary Contraction & L3 Resilience
 
-Status: **PLANNED — Slice 0 READ-ONLY AUDIT AUTHORIZED**  
-Initial planning baseline: `origin/dev@d1c7d7b3e968d99dce1e3df39ca1af04a7696883`  
+Status: **SLICE 0 READ-ONLY AUDIT COMPLETE — SOURCE CHANGES NOT STARTED**  
+Audit baseline: `origin/dev@d1c7d7b3e968d99dce1e3df39ca1af04a7696883`  
 Baseline merge: PR `#2258` — Phase 7 Slice 5B  
-Planning date: 2026-09-09
+Audit date: 2026-09-09
 
 ## 1. Purpose
 
-Phase 8 owns the next-stage contraction and resilience work for **External Channels**, with UberEats as the current critical provider integration.
+Phase 8 owns the next-stage boundary contraction and reliability work for **External Channels**, with UberEats as the current L3 critical provider integration.
 
-This phase does **not** re-modularize or flatten the existing UberEats internal architecture. The current Uber integration already follows the repository's intended critical-integration shape: API/adapters, application use cases, contracts/ports, domain logic, infrastructure/provider adapters, composition wiring, and an explicit public surface. Phase 8 therefore focuses on the remaining seams **around** that implementation:
+This phase does **not** flatten or re-modularize the existing UberEats bounded context. Its internal target architecture is already explicit: `domain/`, `application/`, `api/`, `infrastructure/`, `contracts/`, `test/`, one `ubereats.module.ts` composition root, one worker entry, and one business `public-api.ts`.
 
-- cross-context imports that still bypass owner public surfaces;
-- runtime/persistence dependencies that may have escaped infrastructure/composition boundaries;
-- provider wire types or provider identity leaking into canonical SanQ workflows;
-- critical webhook/command/menu/status/delivery flows whose idempotency, replay, reconciliation, or crash recovery are incomplete;
-- compatibility paths that can only be removed after explicit production cutover evidence.
+Phase 8 therefore focuses on the remaining seams around that architecture:
 
-The phase is governed as an **L3 critical workflow** change. Correctness, retry safety, durable recovery, explicit ownership, and production evidence take priority over raw file count or raw dependency-count reduction.
+- direct-import debt that still bypasses existing owner public surfaces;
+- ownership leaks hidden inside otherwise layer-correct persistence adapters;
+- provider-specific state or persistence behavior that crosses canonical business ownership;
+- L3 recovery/compatibility gaps that are not already covered by the durable inbox/action/reconciliation architecture;
+- conditional production-cutover cleanup after explicit evidence.
+
+Correctness, retry safety, atomicity, durable recovery and owner boundaries take priority over making dependency counters artificially reach zero.
 
 ## 2. Authoritative starting baseline
 
-The latest merged `dev` baseline used for this phase is:
+The Slice 0 audit re-confirmed `dev` at:
 
-- `dev` HEAD: `d1c7d7b3e968d99dce1e3df39ca1af04a7696883`;
-- merged through PR `#2258` on 2026-09-09;
-- public context SCC remains empty at the current architecture baseline;
-- no Phase 8 production implementation has been changed by this planning commit.
+- `d1c7d7b3e968d99dce1e3df39ca1af04a7696883`;
+- PR `#2258`, Phase 7 Slice 5B, already merged;
+- `legacyPublicCycleComponents = []`;
+- no Phase 8 production implementation, Prisma schema/migration, package dependency or provider-wire behavior changed by Slice 0.
 
-Current raw production import allowances involving External Channels are:
+### 2.1 Important documentation-baseline correction
 
-### External Channels outgoing
+The authoritative machine baseline is `tools/architecture/context-baseline.json`, not the stale summary row in `docs/architecture/current-dependency-graph.md`.
 
-| Target context | Raw production import statements |
+PR #2258 correctly contracted:
+
+`external-channels -> architecture-foundation 11 -> 10`
+
+when Uber stopped importing Foundation-owned `common/pos-connectivity` during the POS connectivity read-model cutover. The current machine baseline is therefore:
+
+### External Channels outgoing remaining direct-import debt
+
+| Target context | Current allowance |
 |---|---:|
-| architecture-foundation | 11 |
+| architecture-foundation | 10 |
 | commerce-orders-fulfillment | 1 |
 | identity-customer-benefits | 6 |
 | runtime-data-ci-ops | 24 |
-| **Total** | **42** |
+| **Total** | **41** |
 
-### External Channels incoming
+### Incoming remaining direct-import debt to External Channels
 
-| Source context | Raw production import statements |
+| Source context | Current allowance |
 |---|---:|
 | identity-customer-benefits | 1 |
 | store-operations-pos-print | 1 |
 | accounting-reporting-analytics | 1 |
 | **Total** | **3** |
 
-These are **raw import counts, not an automatic debt count**. Public API/contracts/ports and legal composition/runtime wiring are permitted architecture. Phase 8 must classify each edge before deciding whether it should contract.
+These are **legacy/direct-import debt allowances**, not a count of all legitimate cross-context calls. Imports through approved `public-api`, contracts, ports and registered public aliases do not consume these allowances.
 
-A prior informal planning note quoted `41` outgoing imports and `10` foundation imports. The current checked-in dependency graph is authoritative and corrects that to **42 total / 11 foundation**.
+`current-dependency-graph.md` still renders External -> Foundation as `11` in its summary table even though the machine baseline and merged PR #2258 source are already `10`. That human-readable graph must be corrected in the next synchronized modularization documentation change; Slice 0 does not alter it independently.
 
-## 3. Architecture position and invariants
+## 3. Binding architecture rules
 
-Phase 8 uses the following invariants.
+Phase 8 keeps the repository and Uber-specific rules intact:
 
-1. **No cross-context internal implementation import.** Cross-context business use must flow through the owner context's `public-api`, public contract, capability token, or application-owned port.
-2. **No provider-wire leakage.** Uber request/response DTOs, provider UUIDs, provider status enums, or provider transport concerns must not become Orders/Catalog/POS/Accounting canonical contracts.
-3. **Runtime and persistence remain infrastructure concerns.** Prisma, provider HTTP clients, scheduler/worker bootstrap, config, and persistence adapters may exist in External Channels infrastructure/composition where appropriate, but must not become application/domain facts.
-4. **Raw edge count is not a quality target.** A legal public dependency must not be replaced with a meaningless facade merely to make a scanner number smaller.
-5. **Public SCC remains empty.** No Phase 8 slice may reintroduce a public cross-context cycle.
-6. **L3 side effects are retry-safe and recoverable.** Webhooks, provider mutations, menu publication, store-status synchronization, and external delivery workflows require explicit idempotency/replay/reconciliation behavior.
-7. **Compatibility removal is evidence-gated.** Production/sandbox/cutover compatibility is removed only when its registered exit criteria and production evidence are satisfied.
-8. **Production Web Clover remains outside this phase.** Phase 8 does not use External Channels work as a reason to reopen protected production Web Clover payment behavior.
+1. Other contexts may use Uber business capabilities only through `integrations/ubereats/public-api.ts`.
+2. `ubereats.module.ts` is itself an explicitly allowed external composition entry; importing that root module for Nest composition is not automatically an architecture defect.
+3. `application` owns ports for external capabilities; provider/runtime/persistence details do not become application facts.
+4. Prisma access remains confined to `infrastructure/persistence`; the root composition module may import `PrismaModule` for wiring.
+5. No provider wire DTO/status/UUID may leak into Orders/Catalog/POS/Accounting canonical contracts.
+6. No slice may reintroduce a public SCC.
+7. No fake facade/public export is created merely to reduce scanner counts.
+8. Production Web Clover, Payments/Clover Terminal redesign and Prisma major upgrades remain outside Phase 8.
+9. Compatibility removal and provider/wire behavior changes remain evidence-gated L3 operations.
 
-## 4. Non-goals
+## 4. Slice 0 findings
 
-Phase 8 will not:
+### 4.1 External -> Identity / Customer / Benefits: 6 exact debt imports
 
-- flatten or re-split UberEats merely to reduce file count;
-- create pass-through facades whose only purpose is to hide a legal import from the architecture graph;
-- upgrade Prisma major versions;
-- redesign Payments / Clover Terminal orchestration;
-- change production Web Clover behavior unless a separately governed blocker is proven and explicitly authorized;
-- delete versioned provider events, webhook handlers, queue/replay paths, or compatibility code solely because static search finds no TypeScript caller;
-- require all 42 External Channels outgoing raw imports or all 3 incoming raw imports to become zero.
+The six current debt statements are fully identified:
 
-## 5. Slice plan
+| File | Current direct import | Classification | Readiness result |
+|---|---|---|---|
+| `api/ubereats-access.decorator.ts` | `auth/admin-mfa.guard` | implementation path | `AdminMfaGuard` already exported by `auth/public-api.ts`; safe path contraction candidate |
+| `api/ubereats-access.decorator.ts` | `auth/roles.decorator` | implementation path | `Roles` already public; safe path contraction candidate |
+| `api/ubereats-access.decorator.ts` | `auth/roles.guard` | implementation path | `RolesGuard` already public; safe path contraction candidate |
+| `api/ubereats-access.decorator.ts` | `auth/session-auth.guard` | implementation path | `SessionAuthGuard` already public; safe path contraction candidate |
+| `api/oauth.controller.ts` | `SESSION_COOKIE_NAME` from `auth/session-auth.guard` | Auth-owned HTTP/session contract | not currently exported; needs a minimal Auth public-contract decision |
+| `ubereats.module.ts` | `auth/auth.module` | Nest composition | retain unless a proven safe Auth composition public surface already exists; do not create an eager barrel cycle just for the metric |
 
-### Slice 8.0 — Readiness, dependency classification, and characterization
+Therefore **4/6 are immediately ready for low-risk public-path contraction**. The cookie constant is a small ownership/public-contract decision. The `AuthModule` edge is currently analogous to other intentionally retained Nest composition seams and should not be changed cosmetically.
 
-**Mode:** read-only audit plus tests/docs only if separately authorized. No production implementation change.
+### 4.2 Incoming External debt: 3 exact composition seams
 
-Inventory every current External Channels cross-context import and classify it as one of:
+The three inbound debt statements are:
 
-- legal owner public API / public contract;
-- legal composition wiring;
-- legal infrastructure/runtime dependency;
-- application-owned port with correct dependency direction;
-- internal implementation-path debt;
-- provider-type leakage;
-- unresolved ownership/dependency-direction question.
+- `apps/api/src/pos/pos.module.ts -> integrations/ubereats/ubereats.module`;
+- `apps/api/src/admin/admin.module.ts -> integrations/ubereats/ubereats.module`;
+- `apps/api/src/accounting/accounting.module.ts -> integrations/ubereats/ubereats.module`.
 
-Also inventory:
+All three are **composition dependencies on the explicitly allowed Uber root module**, not business deep imports. Actual POS/Accounting/Admin business calls already use Uber public tokens/contracts where appropriate.
 
-- webhook, order-admission, scheduled-order, menu publication, availability, store-status, reporting, and UberDirect critical workflows;
-- characterization/spec coverage for duplicate, retry, restart, provider-timeout, reconciliation, and partial-failure behavior;
-- active/closed compatibility entries and production-source `@compat` references;
-- remaining default-store/provider-identity fallback behavior;
-- durability/replay gaps already recorded by earlier phases, especially external-delivery provider success followed by local persistence failure.
+**Slice 0 decision:** do not re-export `UberEatsModule` through `public-api.ts` merely to turn these three counts into zero. The Uber architecture explicitly allows callers to use `ubereats.module.ts` for composition, while business capability access remains on `public-api.ts`.
 
-**Exit criteria:** every candidate planned for Slice 8.1/8.2 has an exact source file, target owner, current import path, intended canonical replacement, risk class, and required regression/active verification.
+### 4.3 External -> Architecture/Foundation: 10 exact debt imports
 
-### Slice 8.1 — Identity / Auth boundary contraction
+After Phase 7 Slice 5B the source-aligned count is **10**, not 11.
 
-Review the six External Channels -> Identity/Customer/Benefits imports and relevant composition wiring.
+The ten statements are:
 
-Target state:
+1. `api/oauth.controller.ts -> common/app-logger`;
+2. `application/merchant/uber-merchant-provisioning.service.ts -> common/app-logger`;
+3. `application/merchant/uber-merchant-store-mapping.service.ts -> common/app-logger`;
+4. `infrastructure/uber-api/uber-api.gateway.ts -> common/app-logger`;
+5. `infrastructure/uber-api/uber-http.client.ts -> common/app-logger`;
+6. `infrastructure/uber-api/uber-order-action.gateway.ts -> common/app-logger`;
+7. `infrastructure/uber-api/uber-token.provider.ts -> common/app-logger`;
+8. `infrastructure/persistence/uber-telemetry.service.ts -> common/app-logger`;
+9. `infrastructure/persistence/uber-telemetry.service.ts -> common/log-context`;
+10. `infrastructure/uber-api/uber-financial-reporting.adapters.ts -> common/utils/uploads-path`.
 
-- authentication/security policy remains owned by Identity/Auth;
-- Uber controllers/composition consume only intended public security/auth capabilities;
-- Uber application/domain code does not import Auth implementation details;
-- existing Benefits/customer public contracts remain intact where they are already the correct boundary;
-- no fake Uber-specific auth facade is introduced merely for graph reduction.
+`common/public-api.ts` already exports `AppLogger`, so **8/10 have an existing public path** and can be considered for a narrow path-contraction slice. The remaining two are different:
 
-**Exit criteria:** every remaining External -> Identity edge is intentionally public/composition traffic; internal Auth implementation-path imports from External Channels are zero.
+- `getLogContext()` is used to enrich Uber telemetry correlation with the request ID and is not currently public;
+- `getUploadsAccountingDir()` couples the Uber financial-report artifact adapter to the shared runtime uploads layout and is not currently public.
 
-### Slice 8.2 — Runtime / Prisma / Foundation containment
+Those two require an ownership/public-surface decision rather than an automatic re-export.
 
-Classify the current 24 External -> Runtime/Data/Ops imports and 11 External -> Foundation imports by architectural layer.
+A separate Uber-internal concern also exists: two of the direct logger imports live in `application/`, whose own architecture says external capabilities should be expressed through application-owned ports. Slice 8.1 must decide whether simple Foundation public-path use is sufficient under the repository-wide rules or whether those application services should use an existing Uber telemetry/logging port instead. No decision is implemented in Slice 0.
 
-Target state:
+### 4.4 External -> Runtime/Data/Ops: 24 are not a blanket contraction target
 
-- Prisma and provider persistence remain under infrastructure/composition ownership;
-- application/domain do not depend on `PrismaService`, generated persistence models, transaction clients, or runtime bootstrap/config implementation as business facts;
-- foundation imports are true cross-cutting primitives, not misplaced External business policy;
-- legitimate `PrismaModule`/worker/config/logging wiring is retained rather than wrapped for cosmetic dependency-count reduction.
+The current `24` is explained by the existing architecture:
 
-**Exit criteria:** no persistence/runtime implementation leaks into External application/domain; any retained raw runtime/foundation imports are documented as legal and scanner-protected by the normal architecture rules.
+- **23** production imports of `PrismaService` from adapters/services under `infrastructure/persistence/**`;
+- **1** `PrismaModule` import in `ubereats.module.ts` composition wiring.
 
-### Slice 8.3 — Canonical External Channel workflow boundaries
+That placement is exactly where the Uber architecture permits Prisma/runtime access. Slice 0 found no reason to wrap these 24 imports in an artificial runtime facade merely to reduce the counter.
 
-Audit and contract the provider anti-corruption seams for:
+**Important distinction:** layer-correct Prisma access can still contain a cross-owner semantic violation. Phase 8 must audit what those persistence adapters *write/read*, not only where they import Prisma from.
 
-1. Uber webhook/order admission -> canonical Uber command/event -> Orders public capability;
-2. Catalog/menu/availability canonical facts -> Uber application use case -> provider mapper/API;
-3. Brand/Store status truth -> Uber status synchronization/reconciliation;
-4. External reporting read model -> Accounting public consumer;
-5. UberDirect fulfillment/delivery -> Orders/Fulfillment-owned capability/port.
+### 4.5 External -> Orders/Fulfillment: 1 is a real ownership seam, not a simple import cleanup
 
-Target state:
+The one current direct-import debt is in:
 
-- Orders, Catalog, POS, Store, and Accounting do not consume Uber wire DTOs or provider persistence models;
-- External Channels translates between canonical SanQ facts and provider-specific contracts at its boundary;
-- the existing public APIs are reused when already correct rather than replaced for stylistic consistency.
+`infrastructure/persistence/uber-order-action-prisma.adapter.ts -> orders/order-lifecycle`
 
-### Slice 8.4 — L3 idempotency, replay, reconciliation, and crash recovery
+It imports Orders-owned acceptance lifecycle constants/idempotency helpers. More importantly, the same Uber persistence transaction currently:
 
-Characterize and harden critical side effects for at least:
+1. completes the durable `UberOrderAction`;
+2. directly updates the canonical `Order.status`;
+3. directly appends the Orders-owned `order.accepted` `OpsEvent`.
 
-- duplicate webhook delivery;
-- out-of-order provider notifications;
-- duplicate immediate/scheduled order notifications;
-- accept/reject retry and ambiguous provider timeout;
-- menu publish retries and reconciliation;
-- availability/store-status divergence and reconciliation;
-- worker restart/replay;
-- UberDirect create/cancel/status recovery;
-- provider-success/local-commit-failure split-brain cases.
+Existing architecture characterization intentionally pins this behavior so Uber acceptance does not also start preparation and so action success/order acceptance remain atomically coordinated.
 
-Each provider mutation must have an explicit answer for:
+**Slice 0 decision:** this cannot be closed by simply re-exporting Orders lifecycle constants through `orders/public-api.ts`. That would improve the scanner number while leaving Orders-owned state mutation inside Uber persistence.
 
-- what happens on duplicate execution;
-- how the system recovers if the process stops at each durable boundary;
-- how SanQ determines/reconciles authoritative local and provider state.
+A proper contraction must preserve current atomicity, idempotency and crash/replay semantics while moving the canonical Order transition behind Orders ownership. That is an **architecture-boundary change** and requires a separate design/impact/options report plus explicit user authorization before implementation.
 
-Known Phase 5 follow-up: the UberDirect path where provider success can precede durable local `externalDeliveryId` persistence must be re-audited here and either closed or explicitly retained with a documented recovery mechanism.
+### 4.6 Provider wire leakage / public consumer review
 
-### Slice 8.5 — Production-cutover compatibility cleanup
+The current public Uber surface exports stable capability tokens/ports/DTOs for store status, order status, reporting and menu availability. Existing POS, Accounting, Admin/Catalog callers use that public surface for business calls.
 
-**Mode:** conditional. Do not implement removal without production evidence and the applicable registered cutover gate.
+Slice 0 found no reason to replace those public dependencies. The target remains **zero internal Uber implementation imports by business consumers**, not zero legitimate cross-context capability calls.
 
-Candidates include:
+Order ingestion remains mapped through canonical Uber application/domain types before Orders ingestion. The requirement matrix explicitly forbids Uber wire schema from leaking into Orders domain.
 
-- implicit/default-store fallbacks;
-- sandbox/test-only compatibility retained for provider verification;
-- obsolete versioned event compatibility;
-- transitional provider routes/branches;
-- closed compatibility annotations that remain in production source.
+### 4.7 L3 durability/recovery coverage is already substantial
 
-Scanner hardening candidate:
+The current Uber implementation already has more recovery machinery than the initial Phase 8 planning note assumed:
 
-- `active` compatibility IDs may be referenced by production source;
-- `closed` compatibility IDs should have production-source annotation/reference count `0` unless a specifically documented non-production historical reference is exempted.
+- webhook receiver durably commits inbox before ACK;
+- duplicate webhook delivery is idempotently accepted;
+- worker retry/replay owns post-ACK recoverable failures;
+- webhook processing uses leases and can reclaim expired PROCESSING work;
+- durable order actions use idempotency keys and expiring leases;
+- Uber order action transport propagates the durable idempotency key upstream;
+- Menu V2 has PUT -> GET read-back reconciliation requirements/tests;
+- requirement-matrix active verification explicitly includes duplicate/replay, immediate/scheduled accept, deny/cancel/ready, POS offline, menu reconciliation and store-status flows.
 
-This scanner rule must be validated against the actual compatibility registry and current annotation semantics during Slice 8.0 before implementation.
+Therefore Phase 8 should **not** introduce a generic new outbox/replay framework or rewrite the existing durable inbox/action system. Slice 8.4 is narrowed to gaps demonstrated by evidence after the boundary contractions, not a presumed broad resilience rebuild.
+
+Known external/provider uncertainty that remains intentionally separate includes `orders.customer_order_edit`, which the requirement matrix keeps quarantined pending Uber confirmation and an approved reconciliation design.
+
+### 4.8 Compatibility findings
+
+`brand-store.default-store-identity.v1` is registered closed for the canonical runtime migration, but production Uber source still contains historical compatibility behavior/annotations for old Uber-store-ID-scoped OpsTicket rows, including:
+
+- `application/operations/uber-operations.ports.ts` legacy Uber store IDs in the ticket scope;
+- `application/operations/uber-operations.use-cases.ts` legacy persisted scope resolution;
+- `infrastructure/persistence/uber-merchant-persistence.adapter.ts` legacy `[storeStableId, uberStoreId]` OpsTicket lookup.
+
+This is consistent with earlier planning that Test Store / historical Uber rows are not automatically deleted or rewritten before the separate Production cutover cleanup.
+
+**Slice 0 decision:** do not enforce `closed compat id -> zero source references` globally yet. First complete the production-cutover decision and historical-data evidence. Scanner hardening can follow only when the remaining historical compatibility path is actually eligible to disappear.
+
+### 4.9 UberDirect is removed from Phase 8 scope
+
+The initial planning draft incorrectly treated UberDirect as External Channels work. Current architecture places UberDirect provider implementation under `apps/api/src/deliveries/**`, owned by **Commerce / Orders / Fulfillment**. Orders already consumes the `UBER_DIRECT_DELIVERY_DISPATCHER` public capability.
+
+The known provider-success/local-`externalDeliveryId`-persistence-failure recovery debt is real, but it belongs to Commerce/Fulfillment follow-up and must not be pulled into Phase 8 to bypass ownership boundaries.
+
+## 5. Revised Phase 8 slice plan after Slice 0
+
+### Slice 8.1 — Public boundary hygiene contraction
+
+Recommended first source slice because it is the lowest-risk measurable contraction.
+
+Candidate scope:
+
+- move the four Uber access-decorator Auth imports to existing `auth/public-api.ts` exports;
+- decide and, if approved, expose/use the smallest Auth-owned public contract for `SESSION_COOKIE_NAME`;
+- retain direct `AuthModule` composition unless a safe existing composition surface is proven;
+- move the eight `AppLogger` imports to the existing `common/public-api.ts` public surface **only where that remains consistent with Uber layer rules**;
+- characterize the two application-layer logger consumers before deciding whether they should instead consume an Uber-owned telemetry/logging port;
+- leave `getLogContext` and `getUploadsAccountingDir` for a separately justified ownership decision if they cannot use an already-approved public surface.
+
+Expected debt movement must be calculated from the final approved file scope rather than promised in advance. No new public cycle or eager barrel-loading regression is allowed.
+
+### Slice 8.2 — Runtime/persistence semantic ownership audit and containment
+
+Do **not** target `runtime-data-ci-ops 24 -> 0`.
+
+Instead review the layer-correct persistence adapters for cross-owner database semantics: direct writes/queries of Orders, POS projections, Store facts or other owner data that bypass an owner capability/read model contract. Retain legal Prisma infrastructure access.
+
+Any newly discovered responsibility transfer must be documented and authorized before implementation.
+
+### Slice 8.3 — Orders acceptance atomic seam design/contraction
+
+Dedicated design slice for `uber-order-action-prisma.adapter.ts`.
+
+Before source changes, provide options that preserve:
+
+- durable Uber action idempotency;
+- Order acceptance exactly-once behavior;
+- the current transaction/recovery guarantees;
+- no accidental `prep_started` side effect;
+- safe replay after process/provider failures.
+
+Likely solution classes include an Orders-owned atomic acceptance capability usable from the coordinated transaction boundary, or a durable ownership handoff with equivalent recovery semantics. Do not choose between them without explicit architecture approval.
+
+### Slice 8.4 — Evidence-driven L3 gap hardening
+
+After 8.1-8.3, audit actual uncovered cases only. Existing webhook/action/menu replay and reconciliation behavior is preserved.
+
+Potential candidates must be demonstrated by a concrete missing recovery/characterization case; `orders.customer_order_edit` remains provider-confirmation gated.
+
+### Slice 8.5 — Conditional Production cutover compatibility cleanup
+
+Only after explicit Production evidence/cutover authorization:
+
+- remove historical Uber-store-ID OpsTicket compatibility if no longer required;
+- remove eligible default-store/provider-identity compatibility remnants;
+- then tighten scanner semantics so closed production compatibility references cannot silently remain.
 
 ### Slice 8.6 — Closeout
 
-Re-run architecture scanner, dependency graph, compatibility inventory, critical-workflow tests, and normal CI gates.
+Synchronize:
 
-Phase 8 closes only when:
+- this Phase 8 plan/checklist;
+- `current-dependency-graph.md` including the already-known `External -> Foundation = 10` baseline correction;
+- `modularization-worklog.md`;
+- machine baseline changes made by approved source slices;
+- final-head CI and consolidated deployment/active-verification evidence.
 
-- public SCC remains empty;
-- External cross-context internal implementation imports are zero;
-- provider wire/provider persistence leakage into other business contexts is zero;
-- External application/domain persistence/runtime leaks are zero;
-- retained public/runtime/composition crossings are intentional and documented;
-- webhook/command/menu/status/delivery critical paths have explicit idempotency and recovery evidence;
-- eligible closed compatibility paths are removed only after cutover evidence;
-- Phase 8 plan, current dependency graph, modularization worklog, and final merged-head evidence are synchronized according to repository documentation gates;
-- final-head CI passes the architecture scanner plus API/Web lint/build/strict/test gates required by the repository.
+## 6. Slice 0 checklist result
 
-## 6. Slice 8.0 audit checklist
-
-Slice 8.0 must produce a concrete readiness table, not only a prose review.
-
-- [ ] Confirm exact `dev` base and no newer merged commit appeared before audit start.
-- [ ] Enumerate all production files under `apps/api/src/integrations` relevant to the External context.
-- [ ] Resolve the exact 42 outgoing raw imports to file/path/symbol/layer.
-- [ ] Resolve the exact 3 incoming raw imports and determine whether each uses an approved public surface.
-- [ ] Identify the single External -> Orders import and classify public vs implementation-path.
-- [ ] Classify all six External -> Identity/Customer/Benefits imports.
-- [ ] Classify all 24 Runtime/Data/Ops imports by application/domain/infrastructure/composition location.
-- [ ] Classify all 11 Foundation imports and identify misplaced business policy, if any.
-- [ ] Search for cross-context imports bypassing `public-api`/registered contract boundaries.
-- [ ] Search for provider DTO/model/enum leakage into Orders, Catalog, POS, Store, Accounting, and shared packages.
-- [ ] Inventory Uber public exports and verify actual external consumers.
-- [ ] Inventory critical workflow tests/specs and identify missing duplicate/retry/restart/partial-failure characterization.
-- [ ] Inventory active/closed compatibility IDs and production-source `@compat` references.
-- [ ] Audit default-store/provider-identity fallbacks.
-- [ ] Re-audit UberDirect durable fulfillment recovery debt.
-- [ ] Produce recommended Slice 8.1 and 8.2 exact file scopes, tests, risks, and active verification requirements.
+- [x] Confirm exact `dev` base and no newer merged commit at audit start.
+- [x] Re-read repository and Uber architecture rules before proposing source changes.
+- [x] Resolve authoritative External debt counts from the machine baseline.
+- [x] Detect human-readable dependency-graph drift (`11` vs machine/source `10`).
+- [x] Resolve all six External -> Identity direct-import debt statements.
+- [x] Resolve all three incoming External composition debt statements.
+- [x] Resolve the current ten External -> Foundation debt statements.
+- [x] Classify Runtime/Data/Ops `24` by architectural layer and reject blanket metric contraction.
+- [x] Identify and characterize the single External -> Orders ownership seam.
+- [x] Review Uber public surface and representative external consumers.
+- [x] Review durable webhook/action/menu recovery evidence and requirement matrix.
+- [x] Review active/closed compatibility status and remaining production annotations/behavior.
+- [x] Remove UberDirect from Phase 8 ownership scope.
+- [x] Produce the exact recommended first source-slice scope and identify the later architecture-approval gate.
 
 ## 7. Change-control gates
 
-Slice 8.0 is read-only unless separately authorized. Any later code slice must obey `AGENTS.md` and the repository modularization documentation synchronization gate.
+Slice 0 is complete and has made **documentation changes only**. Production source remains untouched.
 
-For a modularization code slice, the same change must keep at least the relevant phase plan/checklist, `docs/architecture/current-dependency-graph.md`, and `docs/architecture/modularization-worklog.md` synchronized. Pre-merge expected state must not be presented as final merged/CI/production proof; final evidence is recorded only after the corresponding merge/deploy gate actually completes.
+Before any source modification:
 
-Any slice requiring a new architectural exception, responsibility transfer, Prisma schema/migration, or change to a protected production boundary must stop for explicit authorization before implementation.
+- user reviews this Slice 0 result;
+- the next source slice must stay within the approved file/ownership scope;
+- any architecture responsibility transfer, Prisma schema/migration, provider-wire change, compatibility cutover or protected production-boundary change requires explicit authorization;
+- after local/source work, stop for review before remote PR/merge according to repository workflow;
+- modularization code slices synchronize the phase document, current dependency graph and modularization worklog in the same change;
+- final evidence is recorded only after the actual PR-head CI/merge/deployment gates occur.
 
-## 8. Planning audit notes
-
-- Phase 7 Slice 5B is already merged in `dev` through PR `#2258`, while some Phase 7 documentation wording still describes 5B as local/pending. This is documentation drift and must not be used as the source of truth for the Phase 8 code baseline.
-- The latest checked-in dependency graph, not the older informal count, establishes External outgoing raw imports at `42`.
-- Slice 8.0 must distinguish legal public/composition/runtime dependencies from true debt before any contraction target is set.
-
-## 9. Status log
+## 8. Status log
 
 ### 2026-09-09 — Phase 8 planning document
 
-- base: `dev@d1c7d7b3e968d99dce1e3df39ca1af04a7696883`;
-- mode: documentation only;
-- production code: unchanged;
-- schema/migration: unchanged;
-- provider wire behavior: unchanged;
-- architecture allowance/baseline counts: unchanged;
-- next authorized action: **Slice 8.0 read-only readiness audit**.
+- initial docs-only plan created from `dev@d1c7d7b3`;
+- production code/schema/provider behavior unchanged.
+
+### 2026-09-09 — Slice 0 read-only readiness audit
+
+- base remained `dev@d1c7d7b3` throughout the audit;
+- authoritative External outgoing direct debt is **41**, not 42: Foundation is already **10** in the machine baseline after PR #2258;
+- inbound direct debt is **3**, all explicit Uber root-module composition seams;
+- Identity 6, Foundation 10, Runtime 24 and Orders 1 were classified;
+- the Orders 1 edge is an atomic ownership seam requiring a dedicated architecture design/authorization rather than a barrel export;
+- broad Uber resilience rewrite is not justified by current evidence; existing durable inbox/action/reconciliation coverage is substantial;
+- UberDirect is confirmed Commerce/Fulfillment-owned and removed from Phase 8 scope;
+- next recommended source work is **Slice 8.1 Public boundary hygiene contraction**, pending user review/authorization.
