@@ -177,7 +177,7 @@ describe('UberOrderActionPrismaAdapter contract', () => {
 
       expect(result).toEqual({
         externalOrderId: 'order-1',
-        completedAt: expect.any(Date),
+        completedAt: expect.any(Date) as unknown,
         acceptanceConfirmed,
       });
       expect(actionUpdate).toHaveBeenCalledWith(

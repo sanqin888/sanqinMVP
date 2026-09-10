@@ -12,9 +12,7 @@ import {
 import { PrismaService } from './orders-prisma';
 
 @Injectable()
-export class OrderExternalTransitionCoordinatorService
-  implements OrderExternalTransitionCoordinatorPort
-{
+export class OrderExternalTransitionCoordinatorService implements OrderExternalTransitionCoordinatorPort {
   constructor(private readonly prisma: PrismaService) {}
 
   async completeProviderConfirmedTransition(

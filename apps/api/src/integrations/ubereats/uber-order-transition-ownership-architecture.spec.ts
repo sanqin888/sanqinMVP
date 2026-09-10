@@ -52,7 +52,9 @@ describe('Uber provider-confirmed Order transition ownership', () => {
   });
 
   it('keeps the Orders public transition contract persistence- and provider-neutral', () => {
-    const contract = source('../../orders/order-external-transition.contract.ts');
+    const contract = source(
+      '../../orders/order-external-transition.contract.ts',
+    );
     const module = source('../../orders/order-external-transition.module.ts');
 
     expect(contract).toContain('OrderExternalTransitionCoordinatorPort');
