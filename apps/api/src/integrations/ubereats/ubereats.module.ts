@@ -1,4 +1,9 @@
-import { Module, type DynamicModule, type Provider } from '@nestjs/common';
+import {
+  Logger,
+  Module,
+  type DynamicModule,
+  type Provider,
+} from '@nestjs/common';
 import { AuthModule } from '../../auth/auth.module';
 import {
   CATALOG_EXTERNAL_MENU_FACTS_READER,
@@ -6,12 +11,15 @@ import {
   type CatalogExternalMenuFactsReaderPort,
 } from '../../menu/public-api';
 import {
+  ORDER_EXTERNAL_CANCELLATION_FINALIZER,
   ORDER_EXTERNAL_FACTS_READER,
   ORDER_EXTERNAL_TRANSITION_COORDINATOR,
   ORDER_INGESTION_PROVIDER,
+  OrderExternalCancellationModule,
   OrderExternalFactsModule,
   OrderExternalTransitionModule,
   OrdersModule,
+  type OrderExternalCancellationFinalizerPort,
   type OrderExternalFactsReaderPort,
   type OrderExternalTransitionCoordinatorPort,
 } from '../../orders/public-api';
@@ -41,6 +49,10 @@ import {
   UBER_CANONICAL_ORDER_FACTS_QUERY,
   type UberCanonicalOrderFactsQueryPort,
 } from './application/shared/uber-canonical-order-facts.port';
+import {
+  UBER_CANONICAL_ORDER_CANCELLATION,
+  type UberCanonicalOrderCancellationPort,
+} from './application/shared/uber-canonical-order-cancellation.port';
 import {
   UBER_CATALOG_MENU_FACTS_QUERY,
   type UberCatalogMenuFactsQueryPort,
@@ -79,6 +91,10 @@ import {
   UBER_EATS_REPORTING,
   UBER_EATS_STORE_STATUS_SYNC,
 } from './public-api';
+
+const UBER_ORDER_CANCELLATION_LOGGER = new Logger(
+  'UberOrderImportPrismaAdapter',
+);
 
 /** The complete provider graph assembled exclusively by this composition root. */
 const UBER_EATS_COMPOSITION_PROVIDERS: Provider[] = [
@@ -218,6 +234,35 @@ const UBER_EATS_COMPOSITION_PROVIDERS: Provider[] = [
     }),
   },
   {
+    provide: UBER_CANONICAL_ORDER_CANCELLATION,
+    inject: [ORDER_EXTERNAL_CANCELLATION_FINALIZER],
+    useFactory: (
+      finalizer: OrderExternalCancellationFinalizerPort,
+    ): UberCanonicalOrderCancellationPort => ({
+      finalizeConfirmedCancellation: async (input) => {
+        const result = await finalizer.finalizeConfirmedCancellation({
+          channel: 'ubereats',
+          orderStableId: input.orderStableId,
+          externalOrderId: input.externalOrderId,
+          externalEventId: input.externalEventId,
+          reason: input.reason,
+          operatorName: input.operatorName,
+          occurredAt: input.occurredAt.toISOString(),
+        });
+        UBER_ORDER_CANCELLATION_LOGGER.log({
+          event: 'uber_order_cancelled',
+          eventId: input.externalEventId,
+          orderStableId: result.orderStableId,
+          externalOrderId: input.externalOrderId,
+          channel: 'ubereats',
+          reasonCode: input.reason,
+          refundCents: result.refundCents,
+        });
+        return result;
+      },
+    }),
+  },
+  {
     provide: UBER_ORDER_SYNC_REPOSITORY,
     inject: [ORDER_EXTERNAL_FACTS_READER],
     useFactory: (
@@ -347,6 +392,7 @@ export function createUberEatsWorkerRuntimeModule(
       CatalogExternalMenuFactsModule,
       OrderExternalFactsModule,
       OrderExternalTransitionModule,
+      OrderExternalCancellationModule,
     ],
     providers: [
       ORDER_INGESTION_PROVIDER,
@@ -367,6 +413,7 @@ export function createUberEatsWorkerRuntimeModule(
     CatalogExternalMenuFactsModule,
     OrderExternalFactsModule,
     OrderExternalTransitionModule,
+    OrderExternalCancellationModule,
     AuthModule,
     OrdersModule,
   ],

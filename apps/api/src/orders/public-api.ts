@@ -90,4 +90,11 @@ export {
   type OrderExternalTransitionWithinTransaction,
 } from './order-external-transition.contract';
 export { OrderExternalTransitionModule } from './order-external-transition.module';
+export {
+  ORDER_EXTERNAL_CANCELLATION_FINALIZER,
+  type OrderExternalCancellationFinalizerPort,
+  type OrderExternalCancellationInput,
+  type OrderExternalCancellationResult,
+} from './order-external-cancellation.contract';
+export { OrderExternalCancellationModule } from './order-external-cancellation.module';
 export { OrdersModule } from './orders.module';

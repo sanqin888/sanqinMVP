@@ -20,6 +20,7 @@ import { normalizeUberEventType } from '../../domain/webhook/uber-event-type';
 import type { UberStoreMappingRepositoryPort } from '../merchant/uber-merchant-persistence.ports';
 import { UberApplicationError } from '../shared/uber-application.error';
 import type { UberStoreConfigQueryPort } from '../shared/uber-store-config.port';
+import type { UberCanonicalOrderCancellationPort } from '../shared/uber-canonical-order-cancellation.port';
 import { UberOrderAdmissionService } from './uber-order-admission.service';
 
 export { UberOrderStoreMappingError } from './uber-order-admission.service';
@@ -35,6 +36,7 @@ export class ImportUberOrderUseCase {
     storeMappings: UberStoreMappingRepositoryPort,
     private readonly storeConfig: UberStoreConfigQueryPort,
     connectivity: UberPosConnectivityQueryPort,
+    private readonly cancellations: UberCanonicalOrderCancellationPort,
   ) {
     this.admission = new UberOrderAdmissionService(
       repository,
@@ -87,17 +89,13 @@ export class ImportUberOrderUseCase {
           true,
         );
       }
-      await this.repository.saveExistingOrderCancellation({
+      await this.cancellations.finalizeConfirmedCancellation({
         orderStableId: existing.orderStableId,
         externalOrderId,
-        cursor,
-        cancellation: {
-          kind: 'CANCELLED',
-          cancelledBy: null,
-          reasonCode: 'UBER_ORDER_FAILURE',
-          reasonDetail: null,
-          occurredAt: cursor.occurredAt ?? new Date(),
-        },
+        externalEventId: cursor.eventId,
+        reason: 'UBER_ORDER_FAILURE',
+        operatorName: 'Uber Eats',
+        occurredAt: cursor.occurredAt ?? new Date(),
       });
       return;
     }
@@ -147,7 +145,6 @@ export class ImportUberOrderUseCase {
           detail.order,
           admission.storeStableId,
         ),
-        cancellation: null,
         actionIntent: null,
         receivedAt: new Date(),
       });
@@ -188,7 +185,6 @@ export class ImportUberOrderUseCase {
         order,
         admission.storeStableId,
       ),
-      cancellation: null,
       actionIntent: await this.buildAdmissionIntent(
         order.externalOrderId,
         admission.storeStableId,

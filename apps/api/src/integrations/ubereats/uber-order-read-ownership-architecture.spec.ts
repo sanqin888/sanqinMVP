@@ -23,7 +23,7 @@ describe('Uber canonical Order read ownership', () => {
     expect(directReads).toEqual([]);
   });
 
-  it('retains only the cancellation transaction read reserved for 8.3C', () => {
+  it('keeps all canonical Order transaction reads out of Uber persistence after 8.3C', () => {
     const action = source(
       'infrastructure/persistence/uber-order-action-prisma.adapter.ts',
     );
@@ -33,10 +33,10 @@ describe('Uber canonical Order read ownership', () => {
     const importPorts = source('application/orders/uber-order.ports.ts');
 
     expect(action).not.toMatch(/tx\.order\./);
-    expect(importer.match(/tx\.order\.findFirst\s*\(/g)).toHaveLength(1);
+    expect(importer).not.toMatch(/tx\.order\./);
     expect(importPorts).not.toMatch(/\borderId\b/);
-    expect(importer).toContain('orderStableId: input.orderStableId');
-    expect(importer).toContain('orderId: order.id');
+    expect(importer).not.toContain('orderStableId: input.orderStableId');
+    expect(importer).not.toMatch(/\borderId\b/);
   });
 
   it('keeps the Orders contract stable-only and persistence-type free', () => {
