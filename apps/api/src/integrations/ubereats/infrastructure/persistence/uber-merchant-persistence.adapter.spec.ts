@@ -140,25 +140,15 @@ describe('UberOperationsAlertPrismaAdapter store status alerts', () => {
 
     expect(prisma.uberOpsTicket.findFirst).toHaveBeenCalledWith({
       where: {
-        storeId: { in: ['store-stable-1', 'uber-store-1'] },
+        storeId: 'store-stable-1',
         type: UberOpsTicketType.STORE_STATUS_SYNC,
         status: {
           in: [UberOpsTicketStatus.OPEN, UberOpsTicketStatus.IN_PROGRESS],
         },
-        OR: [
-          {
-            context: {
-              path: ['targetStatus'],
-              equals: 'PAUSED',
-            },
-          },
-          {
-            context: {
-              path: ['targetStatus'],
-              equals: 'OFFLINE',
-            },
-          },
-        ],
+        context: {
+          path: ['targetStatus'],
+          equals: 'PAUSED',
+        },
       },
       orderBy: { updatedAt: 'desc' },
       select: { id: true },

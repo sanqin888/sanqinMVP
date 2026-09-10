@@ -267,6 +267,7 @@ describe('Uber operations application workflows', () => {
     expect(storeStatusSync.syncStoreStatusToUber).toHaveBeenCalledWith({
       uberStoreId: 'uber-store-1',
       targetStatus: 'PAUSED',
+      reason: 'UPSTREAM_REJECTED',
     });
   });
 
