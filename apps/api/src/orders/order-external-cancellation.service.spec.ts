@@ -35,12 +35,12 @@ describe('OrderExternalCancellationFinalizerService', () => {
     };
     const service = serviceWithTransaction(tx);
 
-    await expect(
-      service.finalizeConfirmedCancellation(input),
-    ).resolves.toEqual({
-      orderStableId: 'stable-order-1',
-      refundCents: 1_130,
-    });
+    await expect(service.finalizeConfirmedCancellation(input)).resolves.toEqual(
+      {
+        orderStableId: 'stable-order-1',
+        refundCents: 1_130,
+      },
+    );
 
     expect(tx.order.findFirst).toHaveBeenCalledWith({
       where: {
@@ -119,18 +119,18 @@ describe('OrderExternalCancellationFinalizerService', () => {
     };
     const service = serviceWithTransaction(tx);
 
-    await expect(
-      service.finalizeConfirmedCancellation(input),
-    ).resolves.toEqual({
-      orderStableId: 'stable-order-1',
-      refundCents: 1_130,
-    });
-    await expect(
-      service.finalizeConfirmedCancellation(input),
-    ).resolves.toEqual({
-      orderStableId: 'stable-order-1',
-      refundCents: 1_130,
-    });
+    await expect(service.finalizeConfirmedCancellation(input)).resolves.toEqual(
+      {
+        orderStableId: 'stable-order-1',
+        refundCents: 1_130,
+      },
+    );
+    await expect(service.finalizeConfirmedCancellation(input)).resolves.toEqual(
+      {
+        orderStableId: 'stable-order-1',
+        refundCents: 1_130,
+      },
+    );
 
     const amendmentCalls = amendmentUpsert.mock.calls as unknown as Array<
       [{ where: { amendmentStableId: string } }]

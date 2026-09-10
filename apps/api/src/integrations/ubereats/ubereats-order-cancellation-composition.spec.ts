@@ -16,9 +16,7 @@ const cancellationProvider = () => {
     MODULE_METADATA.PROVIDERS,
     UberEatsModule,
   );
-  const providers: unknown[] = Array.isArray(value)
-    ? (value as unknown[])
-    : [];
+  const providers: unknown[] = Array.isArray(value) ? (value as unknown[]) : [];
   return providers.find(
     (candidate) =>
       typeof candidate === 'object' &&
