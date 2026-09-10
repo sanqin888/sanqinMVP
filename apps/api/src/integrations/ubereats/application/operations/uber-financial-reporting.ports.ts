@@ -71,6 +71,7 @@ export interface UberFinancialReportRepositoryPort {
 }
 
 export interface UberFinancialReportArtifactStorePort {
+  /** Same workflow/logical-section/content replay must reuse the same artifact. */
   downloadCsvSections(input: {
     workflowId: string;
     sections: Array<{ downloadUrl: string; sectionId: string | null }>;
