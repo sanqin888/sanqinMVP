@@ -504,7 +504,9 @@ describe('Uber Eats bounded-context architecture', () => {
         file.source,
       ]),
     );
-    const accessDecorator = sourceByPath.get('api/ubereats-access.decorator.ts');
+    const accessDecorator = sourceByPath.get(
+      'api/ubereats-access.decorator.ts',
+    );
 
     expect(accessDecorator).toContain("from '../../../auth/public-api'");
     expect(accessDecorator).not.toMatch(
