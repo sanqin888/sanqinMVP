@@ -147,88 +147,73 @@ describe('UberOrderActionPrismaAdapter contract', () => {
     expect(statement).toContain('UPDATE "UberOrderAction"');
   });
 
-  it('atomically records ACCEPT as paid and appends one accepted fact', async () => {
-    const actionUpdate = jest.fn().mockResolvedValue({ count: 1 });
-    const orderUpdate = jest.fn().mockResolvedValue({ count: 1 });
-    const lifecycleAppend = jest.fn().mockResolvedValue({ count: 1 });
-    const transaction = jest.fn((work: (tx: unknown) => unknown) =>
-      Promise.resolve(
-        work({
-          uberOrderAction: {
-            findFirst: jest.fn().mockResolvedValue({
-              externalOrderId: 'order-1',
-              action: 'ACCEPT',
-            }),
-            updateMany: actionUpdate,
-          },
-          order: {
-            findUnique: jest.fn().mockResolvedValue({
-              id: 'order-db-1',
-              orderStableId: 'stable-1',
-              status: 'pending',
-            }),
-            updateMany: orderUpdate,
-          },
-          opsEvent: { createMany: lifecycleAppend },
-        }),
-      ),
-    );
-    const adapter = new UberOrderActionPrismaAdapter({
-      $transaction: transaction,
-    } as never);
+  it.each([
+    ['ACCEPT', true],
+    ['CANCEL', false],
+  ] as const)(
+    'fences a claimed %s inside the caller-owned transaction',
+    async (action, acceptanceConfirmed) => {
+      const actionUpdate = jest.fn().mockResolvedValue({ count: 1 });
+      const tx = {
+        uberOrderAction: {
+          findFirst: jest.fn().mockResolvedValue({
+            externalOrderId: 'order-1',
+            action,
+          }),
+          updateMany: actionUpdate,
+        },
+      };
+      const adapter = new UberOrderActionPrismaAdapter({} as never);
 
-    await expect(
-      adapter.complete({
+      const result = await adapter.completeWithinTransaction(tx, {
         taskId: 'task-1',
         leaseToken: 'lease-1',
         upstreamStatus: 200,
-        transition: { from: 'pending', to: 'paid' },
-      }),
-    ).resolves.toBe(true);
+        transition:
+          action === 'ACCEPT'
+            ? { from: 'pending', to: 'paid' }
+            : { from: 'making', to: 'refunded' },
+      });
 
-    expect(actionUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ uberHttpStatus: 200 }) as unknown,
-      }),
-    );
-    expect(orderUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'order-db-1', status: 'pending' },
-        data: expect.objectContaining({ status: 'paid' }) as unknown,
-      }),
-    );
-    expect(lifecycleAppend).toHaveBeenCalledWith({
-      data: {
-        idempotencyKey: 'order.accepted:stable-1',
-        eventName: 'order.accepted',
-        source: 'orders.lifecycle',
-        payload: { orderStableId: 'stable-1' },
-      },
-      skipDuplicates: true,
-    });
-    expect(transaction).toHaveBeenCalledTimes(1);
-  });
+      expect(result).toEqual({
+        externalOrderId: 'order-1',
+        completedAt: expect.any(Date) as unknown,
+        acceptanceConfirmed,
+      });
+      expect(actionUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            id: 'task-1',
+            status: 'PROCESSING',
+            leaseToken: 'lease-1',
+          },
+          data: expect.objectContaining({
+            status: 'SUCCEEDED',
+            retryable: false,
+            uberHttpStatus: 200,
+            leaseToken: null,
+            leaseExpiresAt: null,
+          }) as unknown,
+        }),
+      );
+    },
+  );
 
-  it('refuses to let ACCEPT bypass prep_started by transitioning directly to making', async () => {
+  it('refuses to let ACCEPT bypass prep_started before fencing the action', async () => {
     const actionUpdate = jest.fn();
-    const adapter = new UberOrderActionPrismaAdapter({
-      $transaction: jest.fn((work: (tx: unknown) => unknown) =>
-        Promise.resolve(
-          work({
-            uberOrderAction: {
-              findFirst: jest.fn().mockResolvedValue({
-                externalOrderId: 'order-1',
-                action: 'ACCEPT',
-              }),
-              updateMany: actionUpdate,
-            },
-          }),
-        ),
-      ),
-    } as never);
+    const tx = {
+      uberOrderAction: {
+        findFirst: jest.fn().mockResolvedValue({
+          externalOrderId: 'order-1',
+          action: 'ACCEPT',
+        }),
+        updateMany: actionUpdate,
+      },
+    };
+    const adapter = new UberOrderActionPrismaAdapter({} as never);
 
     await expect(
-      adapter.complete({
+      adapter.completeWithinTransaction(tx, {
         taskId: 'task-1',
         leaseToken: 'lease-1',
         transition: { from: 'pending', to: 'making' },
@@ -237,165 +222,59 @@ describe('UberOrderActionPrismaAdapter contract', () => {
     expect(actionUpdate).not.toHaveBeenCalled();
   });
 
-  it('replayed ACCEPT reuses the deterministic accepted idempotency key', async () => {
-    const lifecycleAppend = jest.fn().mockResolvedValue({ count: 0 });
-    const orderUpdate = jest.fn();
-    const adapter = new UberOrderActionPrismaAdapter({
-      $transaction: jest.fn((work: (tx: unknown) => unknown) =>
-        Promise.resolve(
-          work({
-            uberOrderAction: {
-              findFirst: jest.fn().mockResolvedValue({
-                externalOrderId: 'order-1',
-                action: 'ACCEPT',
-              }),
-              updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-            },
-            order: {
-              findUnique: jest.fn().mockResolvedValue({
-                id: 'order-db-1',
-                orderStableId: 'stable-1',
-                status: 'paid',
-              }),
-              updateMany: orderUpdate,
-            },
-            opsEvent: { createMany: lifecycleAppend },
-          }),
-        ),
-      ),
-    } as never);
+  it('returns null when the exact claimed lease is no longer present', async () => {
+    const updateMany = jest.fn();
+    const tx = {
+      uberOrderAction: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        updateMany,
+      },
+    };
+    const adapter = new UberOrderActionPrismaAdapter({} as never);
 
     await expect(
-      adapter.complete({
+      adapter.completeWithinTransaction(tx, {
         taskId: 'task-1',
-        leaseToken: 'lease-replay',
+        leaseToken: 'expired-token',
         transition: { from: 'pending', to: 'paid' },
       }),
-    ).resolves.toBe(true);
-
-    expect(orderUpdate).not.toHaveBeenCalled();
-    expect(lifecycleAppend).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          idempotencyKey: 'order.accepted:stable-1',
-        }) as unknown,
-        skipDuplicates: true,
-      }),
-    );
+    ).resolves.toBeNull();
+    expect(updateMany).not.toHaveBeenCalled();
   });
 
-  it('propagates accepted lifecycle append failure so ACCEPT cannot be acknowledged alone', async () => {
-    const adapter = new UberOrderActionPrismaAdapter({
-      $transaction: jest.fn((work: (tx: unknown) => unknown) =>
-        Promise.resolve(
-          work({
-            uberOrderAction: {
-              findFirst: jest.fn().mockResolvedValue({
-                externalOrderId: 'order-1',
-                action: 'ACCEPT',
-              }),
-              updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-            },
-            order: {
-              findUnique: jest.fn().mockResolvedValue({
-                id: 'order-db-1',
-                orderStableId: 'stable-1',
-                status: 'pending',
-              }),
-              updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-            },
-            opsEvent: {
-              createMany: jest
-                .fn()
-                .mockRejectedValue(new Error('lifecycle store unavailable')),
-            },
-          }),
-        ),
-      ),
-    } as never);
+  it('returns null when the lease fence loses a concurrent replacement race', async () => {
+    const tx = {
+      uberOrderAction: {
+        findFirst: jest.fn().mockResolvedValue({
+          externalOrderId: 'order-1',
+          action: 'CANCEL',
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+    };
+    const adapter = new UberOrderActionPrismaAdapter({} as never);
 
     await expect(
-      adapter.complete({
+      adapter.completeWithinTransaction(tx, {
         taskId: 'task-1',
-        leaseToken: 'lease-1',
-        upstreamStatus: 200,
-        transition: { from: 'pending', to: 'paid' },
-      }),
-    ).rejects.toThrow('lifecycle store unavailable');
-  });
-
-  it('preserves non-ACCEPT transitions supplied by the application service', async () => {
-    const orderUpdate = jest.fn().mockResolvedValue({ count: 1 });
-    const adapter = new UberOrderActionPrismaAdapter({
-      $transaction: jest.fn((work: (tx: unknown) => unknown) =>
-        Promise.resolve(
-          work({
-            uberOrderAction: {
-              findFirst: jest.fn().mockResolvedValue({
-                externalOrderId: 'order-1',
-                action: 'CANCEL',
-              }),
-              updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-            },
-            order: {
-              findUnique: jest.fn().mockResolvedValue({
-                id: 'order-db-1',
-                orderStableId: 'stable-1',
-                status: 'making',
-              }),
-              updateMany: orderUpdate,
-            },
-            opsEvent: { createMany: jest.fn() },
-          }),
-        ),
-      ),
-    } as never);
-
-    await expect(
-      adapter.complete({
-        taskId: 'task-1',
-        leaseToken: 'lease-1',
+        leaseToken: 'replaced-token',
         transition: { from: 'making', to: 'refunded' },
       }),
-    ).resolves.toBe(true);
-    expect(orderUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'order-db-1', status: 'making' },
-        data: expect.objectContaining({ status: 'refunded' }) as unknown,
-      }),
-    );
+    ).resolves.toBeNull();
   });
 
-  it.each(['complete', 'markFailed'] as const)(
-    '%s rejects an expired or replaced lease',
-    async (method) => {
-      const updateMany = jest.fn().mockResolvedValue({ count: 0 });
-      const adapter = new UberOrderActionPrismaAdapter({
-        uberOrderAction: { updateMany },
-        $transaction: jest.fn((work: (tx: unknown) => unknown) =>
-          Promise.resolve(
-            work({
-              uberOrderAction: {
-                findFirst: jest.fn().mockResolvedValue(null),
-              },
-            }),
-          ),
-        ),
-      } as never);
+  it('markFailed rejects an expired or replaced lease', async () => {
+    const updateMany = jest.fn().mockResolvedValue({ count: 0 });
+    const adapter = new UberOrderActionPrismaAdapter({
+      uberOrderAction: { updateMany },
+    } as never);
 
-      const result =
-        method === 'complete'
-          ? await adapter.complete({
-              taskId: 'task',
-              leaseToken: 'expired-token',
-              transition: { from: 'pending', to: 'paid' },
-            })
-          : await adapter.markFailed('task', 'expired-token', {
-              retryable: true,
-              code: 'HTTP_503',
-              message: 'unavailable',
-            });
-      expect(result).toBe(false);
-    },
-  );
+    await expect(
+      adapter.markFailed('task', 'expired-token', {
+        retryable: true,
+        code: 'HTTP_503',
+        message: 'unavailable',
+      }),
+    ).resolves.toBe(false);
+  });
 });

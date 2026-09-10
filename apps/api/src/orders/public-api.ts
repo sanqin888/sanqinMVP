@@ -81,4 +81,13 @@ export {
   type OrderExternalSchedulingFacts,
 } from './order-external-facts-reader.contract';
 export { OrderExternalFactsModule } from './order-external-facts.module';
+export {
+  ORDER_EXTERNAL_TRANSITION_COORDINATOR,
+  type OrderExternalTransition,
+  type OrderExternalTransitionCompletion,
+  type OrderExternalTransitionCoordinatorPort,
+  type OrderExternalTransitionTransaction,
+  type OrderExternalTransitionWithinTransaction,
+} from './order-external-transition.contract';
+export { OrderExternalTransitionModule } from './order-external-transition.module';
 export { OrdersModule } from './orders.module';

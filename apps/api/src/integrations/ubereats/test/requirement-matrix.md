@@ -198,7 +198,11 @@ ACCEPT / DENY / READY 只有 Uber 实际返回文档规定的 HTTP `200` 才可�
 2xx、`404/409` 都不得转换成成功。成功码由 infrastructure adapter 精确验证后返回实际 HTTP status，
 application 再将该真实值写入既有 `UberOrderAction.uberHttpStatus`；失败 status 继续由 `markFailed`
 保存。因此 Sandbox verification 可以直接用 action row 证明 Uber HTTP 结果，而不是仅凭本地 Order
-状态推断成功。
+状态推断成功。Phase 8 Slice 8.3B 之后，success completion 的单一 shared-DB transaction 由 Orders
+`ORDER_EXTERNAL_TRANSITION_COORDINATOR` 持有：Uber persistence 先在 opaque same-transaction extension
+内验证并 fence 精确 lease、写入上述 HTTP status，随后 Orders 在同一 transaction 内推进 canonical
+Order 并在 ACCEPT 时幂等追加 `order.accepted`。任一后续 DB 写失败必须回滚 action success；不得退化为
+`Uber success -> Orders transition` 两段顺序写。
 
 ### Order detail mapper contract
 
