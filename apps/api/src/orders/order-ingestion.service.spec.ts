@@ -274,59 +274,56 @@ describe('OrderIngestionService', () => {
     ).rejects.toThrow('Scheduled orders require scheduledReadyAt');
   });
 
-  it(
-    'keeps canonical modifier snapshots on OrderItem.optionsJson without provider persistence',
-    async () => {
-      const createItem = jest.fn().mockResolvedValue({ id: 'i1' });
-      const tx = {
-        order: {
-          findUnique: jest.fn().mockResolvedValue(null),
-          create: jest.fn().mockResolvedValue({
-            id: 'o1',
-            orderStableId: 's1',
-            status: 'pending',
-          }),
+  it('keeps canonical modifier snapshots on OrderItem.optionsJson without provider persistence', async () => {
+    const createItem = jest.fn().mockResolvedValue({ id: 'i1' });
+    const tx = {
+      order: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({
+          id: 'o1',
+          orderStableId: 's1',
+          status: 'pending',
+        }),
+      },
+      orderItem: {
+        deleteMany: jest.fn(),
+        create: createItem,
+      },
+    };
+    const service = new OrderIngestionService({
+      $transaction: (fn: (client: unknown) => unknown) => fn(tx),
+    } as never);
+    const optionsSnapshot = {
+      groups: [
+        {
+          templateGroupStableId: 'group-1',
+          choices: [{ stableId: 'option-1', priceDeltaCents: 150 }],
         },
-        orderItem: {
-          deleteMany: jest.fn(),
-          create: createItem,
-        },
-      };
-      const service = new OrderIngestionService({
-        $transaction: (fn: (client: unknown) => unknown) => fn(tx),
-      } as never);
-      const optionsSnapshot = {
-        groups: [
+      ],
+    };
+
+    await service.ingest(
+      {
+        ...(input as object),
+        items: [
           {
-            templateGroupStableId: 'group-1',
-            choices: [{ stableId: 'option-1', priceDeltaCents: 150 }],
+            productStableId: 'dish',
+            quantity: 1,
+            displayName: 'Dish',
+            unitPriceCents: 1000,
+            options: optionsSnapshot,
           },
         ],
-      };
+      } as never,
+      policies,
+    );
 
-      await service.ingest(
-        {
-          ...(input as object),
-          items: [
-            {
-              productStableId: 'dish',
-              quantity: 1,
-              displayName: 'Dish',
-              unitPriceCents: 1000,
-              options: optionsSnapshot,
-            },
-          ],
-        } as never,
-        policies,
-      );
-
-      expect(createItem).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          optionsJson: optionsSnapshot,
-        }) as unknown,
-      });
-    },
-  );
+    expect(createItem).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        optionsJson: optionsSnapshot,
+      }) as unknown,
+    });
+  });
 
   it('不会把 Web 支付校验套用到 Uber 订单', async () => {
     const service = new OrderIngestionService({} as never);
