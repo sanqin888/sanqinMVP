@@ -27,9 +27,17 @@
 - Uber order ingestion 通过 Orders 的 `ORDER_INGESTION_PROVIDER` 进入 canonical persistence；
   ingestion service 不依赖 Messaging 或 `OrderEventsBus`。API composition 只导入
   `OrdersModule`，dedicated worker composition 直接装配该 provider 与 Prisma，不得为了构造
-  Orders ingestion 重新引入 Messaging bridge 或 Orders 私有 event bus。Uber imported orders
-  继续不触发 SanQ member paid-lifecycle/Loyalty side effects；外部 wire、webhook idempotency 与
-  provider-supplied amount truth 不因此改变。
+  Orders ingestion 重新引入 Messaging bridge 或 Orders 私有 event bus。
+- canonical Order 的非事务外部渠道读取只通过 Orders 公共
+  `ORDER_EXTERNAL_FACTS_READER`；`ubereats.module.ts` 把这个 provider-neutral reader 映射到
+  Uber application-owned query/repository ports。跨边界身份仅使用 `channel + externalOrderId`
+  或 `orderStableId`，不得暴露 `Order.id` / Prisma shape。dedicated worker 只导入窄
+  `OrderExternalFactsModule`，不得为这些读取导入完整 `OrdersModule`。与 action/cancellation 写入
+  同事务耦合的 canonical Order 读取继续保留在 persistence transaction 内，分别等待 8.3B/8.3C
+  ownership contraction，不能为了表面收口拆掉原子性。
+- Uber imported orders 继续不触发 SanQ member paid-lifecycle/Loyalty side effects；外部 wire、
+  webhook idempotency、provider-supplied amount truth 以及事务内 action/cancellation 写入语义
+  不因此改变。
 
 边界外调用者只能使用 `public-api.ts`、`ubereats.module.ts` 或 `worker.ts`；其中业务能力
 一律经 `public-api.ts` 使用。禁止外部深层导入 `api/`、`application/`、`domain/`、

@@ -72,4 +72,13 @@ export type {
   OrderFoodLabelDto,
   OrderLabelPlanDto,
 } from './order-label-plan.service';
+export {
+  ORDER_EXTERNAL_FACTS_READER,
+  type ExternalOrderIdentity,
+  type OrderExternalFacts,
+  type OrderExternalFactsReaderPort,
+  type OrderExternalQueueFact,
+  type OrderExternalSchedulingFacts,
+} from './order-external-facts-reader.contract';
+export { OrderExternalFactsModule } from './order-external-facts.module';
 export { OrdersModule } from './orders.module';

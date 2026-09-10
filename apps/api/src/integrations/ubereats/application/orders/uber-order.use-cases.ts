@@ -88,7 +88,7 @@ export class ImportUberOrderUseCase {
         );
       }
       await this.repository.saveExistingOrderCancellation({
-        orderId: existing.orderId,
+        orderStableId: existing.orderStableId,
         externalOrderId,
         cursor,
         cancellation: {

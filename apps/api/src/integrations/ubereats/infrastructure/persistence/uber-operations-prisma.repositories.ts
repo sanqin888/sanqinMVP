@@ -1,7 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { createId } from '@paralleldrive/cuid2';
 import {
-  Channel,
   UberFinancialReportStatus as PrismaReportStatus,
   UberOpsTicketStatus as DbTicketStatus,
   type Prisma,
@@ -16,7 +15,6 @@ import type {
   UberOperationsUnitOfWorkPort,
   UberOperationsRepositoryScope,
   UberOpsTicketRepositoryPort,
-  UberOrderOperationsRepositoryPort,
   UberReconciliationRepositoryPort,
 } from '../../application/operations/uber-operations.ports';
 import type {
@@ -37,7 +35,6 @@ import {
   toPrismaTicketStatus,
   toPrismaTicketType,
 } from './uber-operations-enum.mapper';
-import { toUberOrderStatus } from './uber-order-status.mapper';
 
 const reconciliationSelect = {
   reportStableId: true,
@@ -108,35 +105,6 @@ export const mapOpsTicketRow = (row: TicketRow) => ({
   updatedAt: row.updatedAt,
   resolvedAt: row.resolvedAt,
 });
-
-@Injectable()
-export class UberOrderOperationsPrismaRepository implements UberOrderOperationsRepositoryPort {
-  constructor(private readonly prisma: PrismaService) {}
-  async reconciliationOrders(
-    storeStableId: string,
-    rangeStart: Date,
-    rangeEnd: Date,
-  ) {
-    const rows = await this.prisma.order.findMany({
-      where: {
-        channel: Channel.ubereats,
-        storeId: storeStableId,
-        createdAt: { gte: rangeStart, lt: rangeEnd },
-      },
-      select: { status: true, totalCents: true },
-    });
-    return rows.map((row) => ({
-      status: toUberOrderStatus(row.status),
-      totalCents: row.totalCents,
-    }));
-  }
-  async exists(externalOrderId: string) {
-    return !!(await this.prisma.order.findUnique({
-      where: { clientRequestId: `ubereats:${externalOrderId}` },
-      select: { id: true },
-    }));
-  }
-}
 
 @Injectable()
 export class UberMenuItemOperationsPrismaRepository implements UberMenuItemOperationsRepositoryPort {

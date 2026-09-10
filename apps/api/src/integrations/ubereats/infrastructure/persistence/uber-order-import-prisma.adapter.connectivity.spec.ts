@@ -17,6 +17,7 @@ describe('UberOrderImportPrismaAdapter POS connectivity', () => {
       { posConnectivityReadModel: { findUnique } } as never,
       {} as never,
       {} as never,
+      {} as never,
     );
 
     await expect(
@@ -52,6 +53,7 @@ describe('UberOrderImportPrismaAdapter POS connectivity', () => {
           findUnique: jest.fn().mockResolvedValue(readModel),
         },
       } as never,
+      {} as never,
       {} as never,
       {} as never,
     );
@@ -90,6 +92,7 @@ describe('UberOrderImportPrismaAdapter POS connectivity', () => {
       } as never,
       {} as never,
       {} as never,
+      {} as never,
     );
 
     await expect(
@@ -105,6 +108,7 @@ describe('UberOrderImportPrismaAdapter POS connectivity', () => {
           findUnique: jest.fn().mockRejectedValue(failure),
         },
       } as never,
+      {} as never,
       {} as never,
       {} as never,
     );

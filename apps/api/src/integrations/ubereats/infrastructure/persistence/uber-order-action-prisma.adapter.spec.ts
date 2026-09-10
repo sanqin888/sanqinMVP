@@ -147,30 +147,6 @@ describe('UberOrderActionPrismaAdapter contract', () => {
     expect(statement).toContain('UPDATE "UberOrderAction"');
   });
 
-  it('reads fulfillment timing and scheduled target with the local order context', async () => {
-    const scheduledReadyAt = new Date('2026-08-19T22:30:00.000Z');
-    const adapter = new UberOrderActionPrismaAdapter({
-      order: {
-        findUnique: jest.fn().mockResolvedValue({
-          status: 'pending',
-          totalCents: 2_500,
-          paidAt: null,
-          createdAt: new Date('2026-08-19T20:00:00.000Z'),
-          fulfillmentTiming: 'SCHEDULED',
-          scheduledReadyAt,
-        }),
-      },
-    } as never);
-
-    await expect(adapter.getOrderContext('order-1')).resolves.toEqual({
-      status: 'pending',
-      totalCents: 2_500,
-      referenceAt: new Date('2026-08-19T20:00:00.000Z'),
-      fulfillmentTiming: 'SCHEDULED',
-      scheduledReadyAt,
-    });
-  });
-
   it('atomically records ACCEPT as paid and appends one accepted fact', async () => {
     const actionUpdate = jest.fn().mockResolvedValue({ count: 1 });
     const orderUpdate = jest.fn().mockResolvedValue({ count: 1 });

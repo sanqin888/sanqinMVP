@@ -55,6 +55,10 @@ const createActions = (enqueue: EnqueueMock) =>
     { enqueue } as unknown as UberOrderActionRepositoryPort,
     {} as UberOrderActionGatewayPort,
     { signal: () => undefined },
+    {
+      findByExternalOrderId: jest.fn(),
+      findSchedulingByOrderStableId: jest.fn(),
+    },
   );
 
 const defaultStoreConfig = () => ({
@@ -158,7 +162,7 @@ describe('Uber order admission flow', () => {
     const saveImportedOrder = jest.fn((input: ImportedOrderInput) => {
       saved.input = input;
       return Promise.resolve({
-        orderId: 'local-1',
+        orderStableId: 'local-1',
         created: true,
         action: { taskId: 'deny-1', created: true },
       });
@@ -198,7 +202,7 @@ describe('Uber order admission flow', () => {
     const saveImportedOrder = jest.fn((input: ImportedOrderInput) => {
       saved.input = input;
       return Promise.resolve({
-        orderId: 'local-1',
+        orderStableId: 'local-1',
         created: true,
         action: null,
       });
@@ -245,7 +249,7 @@ describe('Uber order admission flow', () => {
     const useCase = new ImportUberOrderUseCase(
       {
         findByExternalOrderId: jest.fn().mockResolvedValue({
-          orderId: 'local-1',
+          orderStableId: 'local-1',
           status: 'making',
           cursor: null,
         }),
@@ -267,7 +271,7 @@ describe('Uber order admission flow', () => {
     expect(saveExistingOrderCancellation).toHaveBeenCalledTimes(1);
     const savedCancellation = saveExistingOrderCancellation.mock.calls[0]?.[0];
     expect(savedCancellation).toMatchObject({
-      orderId: 'local-1',
+      orderStableId: 'local-1',
       externalOrderId: 'fixture-order-immediate',
       cancellation: { kind: 'CANCELLED' },
     });

@@ -88,14 +88,14 @@ describe('Uber scheduled-order follow-up notifications', () => {
     const saveImportedOrder = jest.fn((input: ImportedOrderInput) => {
       saved.input = input;
       return Promise.resolve({
-        orderId: 'local-1',
+        orderStableId: 'local-1',
         created: false,
         action: null,
       });
     });
     const repository = {
       findByExternalOrderId: jest.fn().mockResolvedValue({
-        orderId: 'local-1',
+        orderStableId: 'local-1',
         status: 'paid',
         fulfillmentTiming: 'SCHEDULED',
         cursor: {
