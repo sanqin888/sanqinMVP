@@ -1,6 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../../prisma/prisma.service';
+import {
+  UBER_CATALOG_MENU_FACTS_QUERY,
+  type UberCatalogMenuFactsQueryPort,
+} from '../../application/shared/uber-catalog-menu-facts.port';
 import type {
   UberMenuConfigImportMode,
   UberMenuConfigImportPort,
@@ -81,7 +85,11 @@ const emptyCount = () => ({ create: 0, update: 0, unchanged: 0, conflicts: 0 });
 
 @Injectable()
 export class UberMenuConfigImportPrismaAdapter implements UberMenuConfigImportPort {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(UBER_CATALOG_MENU_FACTS_QUERY)
+    private readonly catalogFacts: UberCatalogMenuFactsQueryPort,
+  ) {}
   async preview(
     sourceStoreId: string,
     targetStoreId: string,
@@ -133,9 +141,9 @@ export class UberMenuConfigImportPrismaAdapter implements UberMenuConfigImportPo
     );
   }
   /**
-   * Phase 8 Slice 8.2B.3 tail: the Catalog source read intentionally remains on
-   * this transaction client until an owner capability can preserve the existing
-   * restore + Uber override + audit atomicity/concurrency semantics.
+   * Catalog source facts come from the Catalog owner capability. The read remains
+   * ordered inside this operation's transaction callback before the Uber override
+   * and audit writes; only the Uber-owned writes participate in this transaction.
    */
   async restoreItemPrice(
     storeId: string,
@@ -144,10 +152,7 @@ export class UberMenuConfigImportPrismaAdapter implements UberMenuConfigImportPo
   ) {
     return this.prisma.$transaction(async (tx) => {
       const canonicalStoreId = await this.canonicalStoreId(tx, storeId);
-      const item = await tx.menuItem.findUnique({
-        where: { stableId: menuItemStableId },
-        select: { basePriceCents: true, isAvailable: true },
-      });
+      const item = await this.catalogFacts.getMenuItemSource(menuItemStableId);
       if (!item)
         throw new UberValidationError({
           code: 'UBER_MENU_ITEM_NOT_FOUND',
@@ -187,7 +192,7 @@ export class UberMenuConfigImportPrismaAdapter implements UberMenuConfigImportPo
       return { sourcePriceCents: item.basePriceCents };
     });
   }
-  /** Same Phase 8 Slice 8.2B.3 transaction-sensitive tail as item restore. */
+  /** Same owner-read + Uber-write ordering as item restore. */
   async restoreOptionPrice(
     storeId: string,
     optionChoiceStableId: string,
@@ -195,10 +200,7 @@ export class UberMenuConfigImportPrismaAdapter implements UberMenuConfigImportPo
   ) {
     return this.prisma.$transaction(async (tx) => {
       const canonicalStoreId = await this.canonicalStoreId(tx, storeId);
-      const option = await tx.menuOptionTemplateChoice.findUnique({
-        where: { stableId: optionChoiceStableId },
-        select: { priceDeltaCents: true, isAvailable: true },
-      });
+      const option = await this.catalogFacts.getOptionSource(optionChoiceStableId);
       if (!option)
         throw new UberValidationError({
           code: 'UBER_MENU_OPTION_NOT_FOUND',

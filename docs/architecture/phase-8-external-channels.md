@@ -1,11 +1,13 @@
 # Phase 8 — External Channels Boundary Contraction & L3 Resilience
 
-Status: **SLICE 8.2A MERGED — SLICE 8.2B PR #2262 REMOTE VALIDATED / FINAL DOC CI PENDING**  
+Status: **SLICE 8.2B MERGED — SLICE 8.2B.3 LOCAL SOURCE COMPLETE / PENDING REVIEW**  
 Slice 0 audit baseline: `origin/dev@d1c7d7b3e968d99dce1e3df39ca1af04a7696883`  
 Slice 8.1 implementation baseline: `origin/dev@96808b0ec1adc984dae99dd73dbd0e8ce4f2c4a9`  
 Slice 8.2A implementation baseline: `origin/dev@fc9bfc01f651c0d3193ee06e1d71ea0029e77835`  
-Baseline merges: PR `#2258` — Phase 7 Slice 5B; PR `#2259` — Phase 8 planning / Slice 0 audit; PR `#2260` — Phase 8 Slice 8.1  
-Audit / implementation date: 2026-09-09
+Slice 8.2B implementation baseline: `origin/dev@87ebad20`  
+Slice 8.2B.3 implementation baseline: `origin/dev@00561c82`  
+Baseline merges: PR `#2258` — Phase 7 Slice 5B; PR `#2259` — Phase 8 planning / Slice 0 audit; PR `#2260` — Phase 8 Slice 8.1; PR `#2261` — Phase 8 Slice 8.2A; PR `#2262` — Phase 8 Slice 8.2B  
+Audit / implementation dates: 2026-09-09–2026-09-10
 
 ## 1. Purpose
 
@@ -351,11 +353,21 @@ The user explicitly authorized the recommended dependency-direction change. Loca
 - Catalog now owns `CATALOG_EXTERNAL_MENU_FACTS_READER`; its dedicated public module reuses the existing Prisma-owning `CatalogAdminService` via `useExisting`, matching the established Catalog availability/order-facts pattern and avoiding any increase in Catalog -> Runtime direct-import debt. The public contract exposes stable business identifiers, integer monetary facts and ISO timestamps; Catalog DB UUIDs and Prisma types do not cross the boundary.
 - `ubereats.module.ts` adapts the Catalog public reader to the Uber-owned `UBER_CATALOG_MENU_FACTS_QUERY` application port for both API and dedicated worker composition. Uber persistence imports only its own port and does not import `menu/public-api.ts` directly.
 - Of the audited **17** production Catalog delegate reads, **15 are contracted**. Draft/publish source graphs, item/option/group defaults, existence checks, imported-order modifier snapshot facts and OpsTicket menu-item validation now resolve through the Catalog owner capability.
-- The remaining **2** direct reads are exactly `restoreItemPrice()` and `restoreOptionPrice()` in `uber-menu-config-import-prisma.adapter.ts`. They remain deliberately on the existing Serializable transaction client because that path couples the source read with the Uber override/audit write. They are explicitly tagged as the **8.2B.3 transaction-sensitive tail** rather than weakening the existing atomicity/concurrency behavior.
+- The remaining **2** direct reads are exactly `restoreItemPrice()` and `restoreOptionPrice()` in `uber-menu-config-import-prisma.adapter.ts`. They were deferred as the **8.2B.3 transaction-sensitive tail** because the source read occurred inside the same transaction callback as the Uber override/audit write. Readiness review corrected an earlier documentation overstatement: these two restore transactions do **not** request `Serializable` isolation or lock the Catalog source row; production PostgreSQL reports `read committed`, so the existing source read is not a cross-owner atomicity guarantee.
 - Architecture coverage pins the residual direct Catalog delegate set to those two reads, forbids Uber persistence from importing Catalog directly, and verifies the Catalog availability business service no longer imports Uber. Owner-side mapping coverage verifies category DB IDs do not leak, dates leave Catalog as ISO strings, and modifier child relations cross only as stable IDs.
 - The public dependency graph is now cycle-safe: the Catalog business-source -> External public edge is removed and the canonical read direction is External -> Catalog. `legacyPublicCycleComponents` remains empty. The deep-import debt baseline remains unchanged (`external-channels -> runtime-data-ci-ops = 24`, Orders `1`, Identity `2`, Foundation `4`), so `tools/architecture/context-baseline.json` is not edited.
 
-No Prisma schema/migration, dependency, provider-wire payload, webhook/idempotency, Orders lifecycle, POS connectivity or production Web Clover behavior is changed by this slice. No local lint/build/test/scanner result is claimed. PR #2262 source head `3320700e` passed GitHub Actions CI #5426, including architecture baseline, API lint/build/strict/shared-strict/test and Web lint/build/strict/test; this final documentation-sync commit still requires its own CI before merge.
+No Prisma schema/migration, dependency, provider-wire payload, webhook/idempotency, Orders lifecycle, POS connectivity or production Web Clover behavior is changed by this slice. No local lint/build/test/scanner result is claimed. PR #2262 final head `05291115` passed GitHub Actions CI #5427, including architecture baseline, API lint/build/strict/shared-strict/test and Web lint/build/strict/test, and squash-merged to `dev` as `00561c82`.
+
+#### Slice 8.2B.3 — Restore-source-price Catalog ownership tail
+
+Readiness review on `origin/dev@00561c82` confirmed that the two deferred restore paths do not need a new transaction-aware Catalog public API. `restoreItemPrice()` and `restoreOptionPrice()` use ordinary Prisma transactions with no explicit isolation level and no Catalog row lock; production PostgreSQL reports `read committed`. Their Catalog reads occur before any Uber override/audit write and do not depend on uncommitted state from the surrounding Uber transaction. This is also an existing Uber menu infrastructure pattern: `UberMenuWriteTransactionPrismaAdapter` already supplies the same owner facts port to draft mutation commands executed inside its transaction callback.
+
+The local implementation therefore reuses the already-authorized `UBER_CATALOG_MENU_FACTS_QUERY` application port inside the existing restore transaction callback. Catalog item/option source facts are resolved through the Catalog-owned reader; only the Uber `uber*Config` upsert plus `ubereats_menu_price_restored` audit write remain in the local transaction. Missing owner facts preserve the existing `UBER_MENU_ITEM_NOT_FOUND` / `UBER_MENU_OPTION_NOT_FOUND` errors and produce no Uber write. This contracts the audited Catalog persistence-delegate set **17 -> 15 -> 0** without introducing a new public contract, DB UUID, Prisma type, dependency direction, schema/migration or provider behavior.
+
+Focused characterization now verifies both restore operations consume owner facts, preserve the existing override/audit shapes, and suppress writes when the Catalog owner cannot resolve the requested stable ID. The architecture guard is tightened from the two-item allowlist to **zero** production Uber persistence access to `MenuCategory`, `MenuItem`, `MenuOptionGroupTemplate`, or `MenuOptionTemplateChoice`. `external-channels -> runtime-data-ci-ops` remains **24**, Orders **1**, Identity **2**, Foundation **4**, and `tools/architecture/context-baseline.json` remains unchanged. No local lint/build/test/scanner result is claimed; GitHub Actions remains the remote validation gate after review.
+
+Phase-closeout active verification should include both Admin restore-source-price actions: set an Uber-specific item/option price override, invoke restore, reload the draft, and confirm the displayed effective/source values return to Catalog truth without changing unrelated availability or menu configuration.
 
 ### Slice 8.3 — Orders acceptance/cancellation atomic seam design/contraction
 
