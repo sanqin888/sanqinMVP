@@ -802,25 +802,8 @@ model OrderItem {
   uberBasePriceCents          Int?
   priceVarianceCents          Int?
   order                       Order                   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  uberModifiers               UberOrderItemModifier[]
 
   @@index([orderId])
-}
-
-model UberOrderItemModifier {
-  id                  String    @id @default(uuid()) @db.Uuid
-  orderItemId         String    @db.Uuid
-  externalModifierId  String?
-  parentExternalId    String?
-  displayName         String
-  quantity            Int       @default(1)
-  priceDeltaCents     Int       @default(0)
-  specialInstructions String?
-  sortOrder           Int       @default(0)
-  snapshot            Json?
-  orderItem           OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
-
-  @@index([orderItemId, sortOrder])
 }
 
 model UberWebhookInbox {
