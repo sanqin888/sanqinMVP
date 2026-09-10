@@ -168,7 +168,6 @@ describe('Uber scheduled finalize persistence', () => {
           expectedPriceCents: 1000,
         },
       ],
-      cancellation: null,
       actionIntent: {
         externalOrderId: 'scheduled-order-1',
         action: 'ACCEPT' as const,

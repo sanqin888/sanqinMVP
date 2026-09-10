@@ -28,14 +28,6 @@ export type UberOrderModifierSnapshotMapping =
     externalItemId: string;
   };
 
-export type UberOrderCancellationDecision = {
-  kind: 'CANCELLED' | 'REJECTED';
-  cancelledBy: string | null;
-  reasonCode: string | null;
-  reasonDetail: string | null;
-  occurredAt: Date;
-};
-
 export type UberOrderEventCursor = {
   eventId: string;
   occurredAt: Date | null;
@@ -83,12 +75,6 @@ export interface UberOrderImportRepositoryPort {
   } | null>;
   /** Standalone admission DENY creates no local Order; failure webhook may arrive afterward. */
   hasSucceededDenial?(externalOrderId: string): Promise<boolean>;
-  saveExistingOrderCancellation(input: {
-    orderStableId: string;
-    externalOrderId: string;
-    cursor: UberOrderEventCursor;
-    cancellation: UberOrderCancellationDecision;
-  }): Promise<void>;
   saveImportedOrder(input: {
     order: ParsedUberOrder;
     storeStableId: string;
@@ -96,7 +82,6 @@ export interface UberOrderImportRepositoryPort {
     cursor: UberOrderEventCursor;
     menuMappings: UberOrderMenuMapping[];
     modifierSnapshotMappings?: UberOrderModifierSnapshotMapping[];
-    cancellation: UberOrderCancellationDecision | null;
     actionIntent: UberOrderImportActionIntent | null;
     receivedAt: Date;
   }): Promise<{

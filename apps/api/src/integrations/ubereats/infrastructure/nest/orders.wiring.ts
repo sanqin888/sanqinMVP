@@ -14,6 +14,10 @@ import {
   type UberCanonicalOrderFactsQueryPort,
   UBER_CANONICAL_ORDER_FACTS_QUERY,
 } from '../../application/shared/uber-canonical-order-facts.port';
+import {
+  type UberCanonicalOrderCancellationPort,
+  UBER_CANONICAL_ORDER_CANCELLATION,
+} from '../../application/shared/uber-canonical-order-cancellation.port';
 import type { Provider } from '@nestjs/common';
 import { ReceiveUberWebhookUseCase } from '../../application/orders/uber-webhook-receiver.use-case';
 import { ProcessUberWebhookInboxUseCase } from '../../application/orders/process-uber-webhook-inbox.use-case';
@@ -158,6 +162,7 @@ export function createOrdersWiring(): Provider[] {
         UBER_STORE_MAPPING_REPOSITORY,
         UBER_STORE_CONFIG_QUERY,
         UBER_POS_CONNECTIVITY_QUERY,
+        UBER_CANONICAL_ORDER_CANCELLATION,
       ],
       useFactory: (
         repository: UberOrderImportRepositoryPort,
@@ -166,6 +171,7 @@ export function createOrdersWiring(): Provider[] {
         storeMappings: UberStoreMappingRepositoryPort,
         storeConfig: UberStoreConfigQueryPort,
         connectivity: UberPosConnectivityQueryPort,
+        cancellations: UberCanonicalOrderCancellationPort,
       ) =>
         new ImportUberOrderUseCase(
           repository,
@@ -174,6 +180,7 @@ export function createOrdersWiring(): Provider[] {
           storeMappings,
           storeConfig,
           connectivity,
+          cancellations,
         ),
     },
     { provide: UBER_ORDER_IMPORT_PORT, useExisting: ImportUberOrderUseCase },
@@ -186,6 +193,7 @@ export function createOrdersWiring(): Provider[] {
         UBER_STORE_MAPPING_REPOSITORY,
         UBER_STORE_CONFIG_QUERY,
         UBER_POS_CONNECTIVITY_QUERY,
+        UBER_CANONICAL_ORDER_CANCELLATION,
       ],
       useFactory: (
         repository: UberOrderImportRepositoryPort,
@@ -194,6 +202,7 @@ export function createOrdersWiring(): Provider[] {
         storeMappings: UberStoreMappingRepositoryPort,
         storeConfig: UberStoreConfigQueryPort,
         connectivity: UberPosConnectivityQueryPort,
+        cancellations: UberCanonicalOrderCancellationPort,
       ) =>
         new CancelUberOrderUseCase(
           repository,
@@ -202,6 +211,7 @@ export function createOrdersWiring(): Provider[] {
           storeMappings,
           storeConfig,
           connectivity,
+          cancellations,
         ),
     },
     {

@@ -4,6 +4,7 @@ import { MessagingModule } from '../../messaging/messaging.module';
 import {
   ORDER_EXTERNAL_TRANSITION_COORDINATOR,
   ORDER_INGESTION_PROVIDER,
+  OrderExternalCancellationModule,
   OrderExternalFactsModule,
   OrderExternalTransitionModule,
   OrdersModule,
@@ -68,9 +69,10 @@ describe('UberEats compositions', () => {
     ]);
   });
 
-  it('keeps the API composition free of the retired Messaging bridge', () => {
+  it('keeps the API composition on owner modules without the retired Messaging bridge', () => {
     const imports = metadata(UberEatsModule, MODULE_METADATA.IMPORTS);
     expect(imports).toContain(OrdersModule);
+    expect(imports).toContain(OrderExternalCancellationModule);
     expect(imports).not.toContain(MessagingModule);
   });
 
@@ -378,6 +380,7 @@ describe('UberEats compositions', () => {
       CatalogExternalMenuFactsModule,
       OrderExternalFactsModule,
       OrderExternalTransitionModule,
+      OrderExternalCancellationModule,
     ]);
     expect(imports).not.toContain(AuthModule);
     expect(imports).not.toContain(OrdersModule);
