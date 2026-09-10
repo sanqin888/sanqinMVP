@@ -170,7 +170,9 @@ Post-8.3A0 readiness on `dev@2589225d` inventories the remaining direct canonica
 
 2026-09-10 Phase 8 Slice 8.3C is merged after explicit architecture and destructive-migration authorization. Orders now owns provider-confirmed cancellation finalization through `ORDER_EXTERNAL_CANCELLATION_FINALIZER`: the owner validates `channel + orderStableId + externalOrderId`, reads canonical total/payment facts, atomically upserts the deterministic external-cancellation `OrderAmendment`, converges status to `refunded`, and appends idempotent `order.cancelled`. Uber persistence no longer opens a canonical cancellation transaction or touches `tx.order.*`, `tx.orderAmendment.*`, cancellation `tx.opsEvent.*`, or an Orders DB UUID; the dead top-level import `cancellation` input/branch is removed while provider detail parsing remains unchanged. Source/DB audit found `UberOrderCancellation` had one writer, zero readers and 21 test-era rows; every row had matching durable `UberWebhookInbox` evidence and `OrderAmendment`, with no orphan/missing parity rows. Prisma relation/model are removed and migration `20260910131300_contract_uber_order_cancellation` drops only that table without `CASCADE`; the migration remains unapplied pending staged production verification. PR #2269 final head `35defb4b` passed CI #5453 and squash-merged as `982b4de1`; merged-head CI #5454/#5455 also passed. Import-graph counts remain External -> Orders **0**, Runtime **23**, External total **29**, public SCC empty.
 
-2026-09-10 Phase 8 Slice 8.4 is local source on `origin/dev@982b4de1` and intentionally makes no dependency-baseline change. The evidence-driven audit found one uncovered L3 crash/replay side-effect gap in `eats.report.success`: CSV artifact filenames used `Date.now()`, so replay after artifact persistence but before report READY/inbox success could create duplicate physical files. The local change keeps the artifact store inside External Channels but derives deterministic artifact identity from `workflowId + logical section + content hash`, publishes via flushed same-directory temp file plus atomic hard-link, reuses byte-identical existing artifacts, and fails closed on content mismatch. No Prisma/migration, package, DI, provider wire, public-edge or scanner allowance changes are introduced; External -> Orders remains **0**, Runtime **23**, External total **29**, public SCC empty.
+2026-09-10 Phase 8 Slice 8.4 is merged through PR #2271 as `466ae633`; merged-head CI #5464 passed API + Web. The evidence-driven audit found one uncovered L3 crash/replay side-effect gap in `eats.report.success`: CSV artifact filenames used `Date.now()`, so replay after artifact persistence but before report READY/inbox success could create duplicate physical files. The implemented change keeps the artifact store inside External Channels but derives deterministic artifact identity from `workflowId + logical section + content hash`, publishes via flushed same-directory temp file plus atomic hard-link, reuses byte-identical existing artifacts, and fails closed on content mismatch. No Prisma/migration, package, DI, provider wire, public-edge or scanner allowance changes were introduced; External -> Orders remains **0**, Runtime **23**, External total **29**, public SCC empty.
+
+2026-09-10 Phase 8 Slice 8.5 is local source on `origin/dev@466ae633` and contracts only Test Store identity compatibility plus scanner governance. OpsTicket persistence/query/retry no longer expands canonical `storeStableId` into provider UUID aliases; store-status alert dedupe no longer accepts provider-scoped ticket rows or legacy `OFFLINE` ticket context; menu availability no longer treats `uberStoreId` as a `storeStableId` alias. No Slice 8.5 data-cleanup migration is included: the inventoried 15 provider-UUID OpsTickets and one historical `storeId='default'` Reconciliation row, together with the rest of the current Uber test dataset, remain untouched until Uber Production Verification passes and a complete cleanup is separately reviewed. The architecture scanner now rejects `@compat` annotations for already-closed registry entries and explicitly guards this identity tail from returning. Provider wire/webhook/idempotency compatibility is intentionally unchanged. This is a compatibility/identity contraction with **no context graph or machine baseline count change**: External -> Orders stays **0**, Runtime **23**, External direct debt **29**, public SCC empty.
 
 ## Phase 4 final baseline and production verification
 
@@ -951,15 +953,17 @@ only `orderStableId`.
 - Phase 2 Brand/Store identity and configuration contraction is **CLOSED** at
   `origin/dev@0917f66c`. `brand-store.business-config.v1`,
   `benefits.business-config-loyalty-policy.v1`, `pos-device.admin-db-id.v1`, and
-  `brand-store.default-store-identity.v1` are all closed. The final Uber persistence
-  migration removed the eight implicit `storeId` database defaults while preserving
-  historical Test Store/sandbox rows exactly as-is. Post-deploy verification proved
-  explicit `4750_Yonge_Street` Reconciliation persistence, successful POS pause/resume
-  Uber status sync, successful published-item availability sync, zero new
-  `storeId='default'` persistence, and clean API/worker error scans. Historical Uber
-  verification records remain scheduled for the separate Uber Production Cutover
-  Cleanup after verification approval and are not modularization debt or a Phase 2
-  closure blocker.
+  `brand-store.default-store-identity.v1` are all closed. The final Phase 2 Uber
+  persistence migration removed the eight implicit `storeId` database defaults and
+  post-deploy verification proved explicit `4750_Yonge_Street` Reconciliation
+  persistence, successful POS pause/resume Uber status sync, successful published-item
+  availability sync, zero new `storeId='default'` persistence, and clean API/worker
+  error scans. The earlier decision to preserve historical Test Store identity compatibility
+  until Production cutover was later superseded by Phase 8 Slice 8.5: that slice
+  contracts the provider-ID compatibility source without reopening the already-closed
+  Phase 2 ownership decision. The test records themselves remain intentionally retained
+  until Uber Production Verification passes, when the complete Uber test dataset will
+  be handled by a separately reviewed cleanup.
 
 ## Reading the graph
 

@@ -369,32 +369,17 @@ export class UberOperationsAlertPrismaAdapter implements UberOperationsAlertRepo
       failureReason: input.reason,
       retryable: input.retryable,
     };
-    /** @compat brand-store.default-store-identity.v1 */
     const existing = await this.prisma.uberOpsTicket.findFirst({
       where: {
-        storeId: { in: [input.storeStableId, input.uberStoreId] },
+        storeId: input.storeStableId,
         type: UberOpsTicketType.STORE_STATUS_SYNC,
         status: {
           in: [UberOpsTicketStatus.OPEN, UberOpsTicketStatus.IN_PROGRESS],
         },
-        OR: [
-          {
-            context: {
-              path: ['targetStatus'],
-              equals: targetStatus,
-            },
-          },
-          ...(targetStatus === input.payload.status
-            ? []
-            : [
-                {
-                  context: {
-                    path: ['targetStatus'],
-                    equals: input.payload.status,
-                  },
-                },
-              ]),
-        ],
+        context: {
+          path: ['targetStatus'],
+          equals: targetStatus,
+        },
       },
       orderBy: { updatedAt: 'desc' },
       select: { id: true },

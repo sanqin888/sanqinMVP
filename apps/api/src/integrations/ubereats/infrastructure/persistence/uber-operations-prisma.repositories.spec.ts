@@ -73,10 +73,10 @@ describe('Uber operations persistence mapping contract', () => {
     });
   });
 
-  it('maps Prisma enums and preserves the raw persisted ticket scope internally', () => {
+  it('maps Prisma enums and exposes the persisted canonical storeStableId', () => {
     const mapped = mapOpsTicketRow({
       ticketStableId: 'ticket-1',
-      storeId: 'legacy-uber-store-1',
+      storeId: 'store-stable-1',
       type: UberOpsTicketType.MENU_PUBLISH,
       status: UberOpsTicketStatus.OPEN,
       priority: UberOpsTicketPriority.HIGH,
@@ -88,17 +88,21 @@ describe('Uber operations persistence mapping contract', () => {
       createdAt: now,
       updatedAt: now,
       description: 'persistence-only for retry model',
-      context: { publish: { storeId: 'uber-store-1', dryRun: false } },
+      context: {
+        publish: { storeStableId: 'store-stable-1', dryRun: false },
+      },
       resolvedAt: null,
     });
 
     expect(mapped).toMatchObject({
-      persistedStoreScopeId: 'legacy-uber-store-1',
+      storeStableId: 'store-stable-1',
       type: 'MENU_PUBLISH',
       status: 'OPEN',
       priority: 'HIGH',
       description: 'persistence-only for retry model',
-      context: { publish: { storeId: 'uber-store-1', dryRun: false } },
+      context: {
+        publish: { storeStableId: 'store-stable-1', dryRun: false },
+      },
     });
   });
 });

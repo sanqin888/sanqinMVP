@@ -52,6 +52,13 @@
 - Uber imported orders 继续不触发 SanQ member paid-lifecycle/Loyalty side effects；外部 wire、
   webhook signature/idempotency、provider-supplied amount truth、action lease semantics 与 inbox
   retry/replay 语义不因此改变。
+- SanQ Store identity 在 Uber application/operations/menu-availability 边界一律使用 canonical
+  `storeStableId`；provider `uberStoreId` 只能作为 Uber provider identity 使用，不得作为
+  OpsTicket persistence scope、Operations 查询 alias 或 menu-availability `storeStableId` fallback。
+  Store-status OpsTicket context 只保存内部 `ONLINE | PAUSED`；向 Uber wire 映射成 `OFFLINE`
+  仍由 provider transport 边界负责。Phase 8 Slice 8.5 已收缩 Test Store identity compatibility；
+  这不授权删除 webhook envelope、Store response normalization、Sandbox CANCEL success 等
+  provider-protocol compatibility，它们继续按外部契约/证据闸门管理。
 - `eats.report.success` 的 CSV artifact 属于 External Channels reporting infrastructure。artifact
   identity 必须可重放：由 provider workflow、逻辑 section 与实际 CSV 内容共同决定，不能使用
   wall-clock filename 让同一 durable inbox replay 生成重复文件。最终文件只能在完整写入并 flush 后

@@ -1,6 +1,6 @@
 # Phase 8 — External Channels Boundary Contraction & L3 Resilience
 
-Status: **SLICE 8.3A0 PRODUCTION VERIFIED — SLICES 8.3A / 8.3B / 8.3C MERGED / CI GREEN — SLICE 8.3C DEPLOYMENT VERIFICATION PENDING — SLICE 8.4 LOCAL SOURCE / USER REVIEW PENDING**  
+Status: **SLICE 8.3A0 PRODUCTION VERIFIED — SLICES 8.3A / 8.3B / 8.3C / 8.4 MERGED / CI GREEN — SLICE 8.3C DEPLOYMENT VERIFICATION PENDING — SLICE 8.5 LOCAL SOURCE / USER REVIEW PENDING**  
 Slice 0 audit baseline: `origin/dev@d1c7d7b3e968d99dce1e3df39ca1af04a7696883`  
 Slice 8.1 implementation baseline: `origin/dev@96808b0ec1adc984dae99dd73dbd0e8ce4f2c4a9`  
 Slice 8.2A implementation baseline: `origin/dev@fc9bfc01f651c0d3193ee06e1d71ea0029e77835`  
@@ -12,7 +12,8 @@ Slice 8.3A implementation baseline: `origin/dev@f6e3f3db42a1de27d6d86cff7e8053e2
 Slice 8.3B implementation baseline: `origin/dev@51bf909152ff5e6c1a98ca87bda2c5378705db42`  
 Slice 8.3C implementation baseline: `origin/dev@29485a62e515b00ea9e62b7c5ef7c8f7c45d34d2`  
 Slice 8.4 implementation baseline: `origin/dev@982b4de19d809dd0ca25d026ff4eb0ccde323791`  
-Baseline merges: PR `#2258` — Phase 7 Slice 5B; PR `#2259` — Phase 8 planning / Slice 0 audit; PR `#2260` — Phase 8 Slice 8.1; PR `#2261` — Phase 8 Slice 8.2A; PR `#2262` — Phase 8 Slice 8.2B; PR `#2263` — Phase 8 Slice 8.2B.3; PR `#2264` — Phase 8 Slice 8.3A0; PR `#2266` — Phase 8 A0 evidence / 8.3 plan sync; PR `#2267` — Phase 8 Slice 8.3A; PR `#2268` — Phase 8 Slice 8.3B; PR `#2269` — Phase 8 Slice 8.3C  
+Slice 8.5 implementation baseline: `origin/dev@466ae6332400a9368c9e9bbb8f88ef6e9b5b35da`  
+Baseline merges: PR `#2258` — Phase 7 Slice 5B; PR `#2259` — Phase 8 planning / Slice 0 audit; PR `#2260` — Phase 8 Slice 8.1; PR `#2261` — Phase 8 Slice 8.2A; PR `#2262` — Phase 8 Slice 8.2B; PR `#2263` — Phase 8 Slice 8.2B.3; PR `#2264` — Phase 8 Slice 8.3A0; PR `#2266` — Phase 8 A0 evidence / 8.3 plan sync; PR `#2267` — Phase 8 Slice 8.3A; PR `#2268` — Phase 8 Slice 8.3B; PR `#2269` — Phase 8 Slice 8.3C; PR `#2271` — Phase 8 Slice 8.4  
 Audit / implementation dates: 2026-09-09–2026-09-10
 
 ## 1. Purpose
@@ -198,15 +199,11 @@ Known external/provider uncertainty that remains intentionally separate includes
 
 ### 4.8 Compatibility findings
 
-`brand-store.default-store-identity.v1` is registered closed for the canonical runtime migration, but production Uber source still contains historical compatibility behavior/annotations for old Uber-store-ID-scoped OpsTicket rows, including:
+Slice 0 found that `brand-store.default-store-identity.v1` was already registered closed for the canonical runtime migration while production Uber source still retained historical compatibility behavior for old Uber-store-ID-scoped OpsTicket rows: legacy multi-ID ticket scope, persisted provider-ID resolution and `[storeStableId, uberStoreId]` alert lookup. A separate menu-availability path also still accepted `uberStoreId` as a SanQ Store alias.
 
-- `application/operations/uber-operations.ports.ts` legacy Uber store IDs in the ticket scope;
-- `application/operations/uber-operations.use-cases.ts` legacy persisted scope resolution;
-- `infrastructure/persistence/uber-merchant-persistence.adapter.ts` legacy `[storeStableId, uberStoreId]` OpsTicket lookup.
+This originally matched the earlier plan to preserve Test Store / historical Uber rows until a separate Production cutover cleanup. On 2026-09-10 the user confirmed that the current Uber integration history is disposable test data, but directed that data deletion be deferred until Uber Production Verification has passed so all accumulated test data can be removed together rather than through a narrow interim migration.
 
-This originally matched the earlier plan to preserve Test Store / historical Uber rows until a separate Production cutover cleanup. That preservation assumption was superseded on 2026-09-10 when the user confirmed all current Uber integration data is test-only and does not require compatibility retention.
-
-**Updated Phase 8 decision:** test-data-only persistence/identity compatibility may be removed before Production after a focused readiness audit and the usual source/schema/migration authorization. Do not generalize this to Uber wire/protocol compatibility; scanner hardening should follow only after the specific compatibility path is actually removed.
+**Updated Phase 8 result:** Slice 8.5 local source removes those test-data-only persistence/identity compatibility paths and hardens the scanner against their return. No Slice 8.5 data-cleanup migration is included. Existing Uber test records remain untouched until the dedicated post-Production-Verification cleanup. This does not generalize to Uber wire/protocol compatibility, which remains separately evidence-gated.
 
 ### 4.9 UberDirect is removed from Phase 8 scope
 
@@ -460,15 +457,26 @@ Potential candidates must be demonstrated by a concrete missing recovery/charact
 
 The merged `dev@982b4de1` audit found one concrete uncovered crash/replay gap in the financial-report artifact side effect. `eats.report.success` is processed from the durable `UberWebhookInbox`; after downloading a CSV section, the pre-8.4 artifact store wrote a filename prefixed with `Date.now()`. If the file write committed but `UberFinancialReport.markReady()` or the later inbox `markSucceeded()` did not commit before process loss, replay downloaded the same section again and wrote a second timestamp-named copy. Order/menu/store branches were inspected before selecting this slice: menu notification uses a conditional `SUBMITTED` update, menu refresh carries a deterministic provider idempotency key, store provisioning is an idempotent update, and store-status handling has no durable business mutation. No equally concrete uncovered business-side-effect gap was demonstrated there.
 
-The local 8.4 source hardens only `UberFinancialReportArtifactStore`. New artifact identity is deterministic over raw `workflowId + logical section identity + CSV content hash`; URL rotation alone therefore does not create a second artifact, while genuinely different CSV bytes remain distinct evidence. Files are written to a same-directory unique temporary file, flushed, then atomically published with a hard link. Replay that finds the deterministic final path already present verifies byte equality and reuses it; a mismatched existing artifact fails closed rather than overwriting evidence. Normal error paths remove their temporary file. Existing public artifact URLs, 25 MB limits, HTTPS/SSRF checks, reporting status/error semantics, provider wire payloads and database schema are unchanged.
+The merged 8.4 source hardens only `UberFinancialReportArtifactStore`. New artifact identity is deterministic over raw `workflowId + logical section identity + CSV content hash`; URL rotation alone therefore does not create a second artifact, while genuinely different CSV bytes remain distinct evidence. Files are written to a same-directory unique temporary file, flushed, then atomically published with a hard link. Replay that finds the deterministic final path already present verifies byte equality and reuses it; a mismatched existing artifact fails closed rather than overwriting evidence. Normal error paths remove their temporary file. Existing public artifact URLs, 25 MB limits, HTTPS/SSRF checks, reporting status/error semantics, provider wire payloads and database schema are unchanged.
 
-Focused characterization covers the exact gap: the same workflow/section/content replay returns one URL and one CSV file with no normal-path temp residue; changed content produces a distinct artifact; an existing deterministic path with different bytes fails closed; and the application use case can retry after artifact download succeeded but READY persistence failed, while already-READY reports still skip redownload. No Prisma/migration, package/dependency, DI, machine import-baseline or `orders.customer_order_edit` change is included. Current state is **LOCAL SOURCE / USER REVIEW PENDING**; GitHub Actions remains the authoritative validation gate after user review.
+Focused characterization covers the exact gap: the same workflow/section/content replay returns one URL and one CSV file with no normal-path temp residue; changed content produces a distinct artifact; an existing deterministic path with different bytes fails closed; and the application use case can retry after artifact download succeeded but READY persistence failed, while already-READY reports still skip redownload. No Prisma/migration, package/dependency, DI, machine import-baseline or `orders.customer_order_edit` change is included. PR `#2271` merged to `dev` as `466ae633`; merged-head GitHub Actions CI `#5464` passed API + Web. Slice 8.4 is therefore **MERGED / CI GREEN**; production/reporting active verification remains part of Phase closeout and provider scope availability.
 
 ### Slice 8.5 — Pre-production test-era compatibility cleanup + provider compatibility gate
 
-The user's explicit no-compatibility decision for current Uber test data supersedes the earlier plan to preserve test-era persistence until Production cutover. Historical Test Store data, old provider-ID-scoped rows and compatibility branches that exist **only** to preserve those disposable records may be audited and removed before Production, with the usual source/schema/migration authorization for each change.
+The user's explicit no-compatibility decision for current Uber test data supersedes the earlier requirement to retain compatibility source for historical Test Store rows. Historical provider-ID-scoped compatibility branches that exist **only** for disposable test records may be contracted before Production, but the records themselves are retained until Uber Production Verification passes. After verification, all accumulated Uber test data is to be removed together in a separately reviewed cleanup rather than through a Slice 8.5 narrow data migration.
 
-This does **not** waive protocol compatibility. Provider wire DTOs, webhook behavior, idempotency semantics, verification requirements and any compatibility required by the Uber production API remain evidence-gated. After eligible test-era compatibility is removed, tighten scanner semantics so closed compatibility references cannot silently return.
+Read-only production inventory on 2026-09-10 found the remaining identity tail is narrow and attributable: `UberOpsTicket` contains **15 OPEN `STORE_STATUS_SYNC` rows** under Test Store provider UUID `47f93365-f7dc-4b49-9e3b-a99e9915e558`, whose current mapping points to canonical `4750_Yonge_Street`; `UberReconciliationReport` contains **one** historical `storeId='default'` row. The other audited Uber store-scoped configuration/publish rows are already canonical. These rows are confirmed test data, but they are intentionally retained now; they will be deleted together with the rest of the Uber test dataset only after Uber Production Verification passes.
+
+Authorized local Slice 8.5 source on `refactor/phase8-slice8.5-test-era-compat-cleanup` therefore:
+
+- removes `UberOpsTicketStoreScope`, `legacyUberStoreIds`, `persistedStoreScopeId`, mapping-based ticket-scope expansion and provider-ID-to-canonical retry resolution; OpsTicket list/count/summary/retry now carry the persisted canonical `storeStableId` directly;
+- removes the historical `OFFLINE -> PAUSED` OpsTicket parser compatibility while keeping current internal `ONLINE | PAUSED` semantics and the normal `storeStableId <-> uberStoreId` mapping validation for Store Status retries;
+- changes store-status alert deduplication to canonical `storeStableId + targetStatus` only, so provider UUID scope and legacy `OFFLINE` context are no longer matched;
+- removes the menu-availability `uberStoreId` alias/fallback and makes the direct availability transport use `storeStableId`; missing canonical mappings are not represented by provider UUIDs;
+- adds a general architecture-scanner rule that any `@compat` annotation for a registry entry already marked `closed` is a failure, plus specific guards preventing this Store-identity compatibility behavior from returning without an annotation;
+- intentionally includes **no data-cleanup migration**. The inventoried Test Store records remain in place until Uber Production Verification passes, at which point the complete accumulated Uber test dataset will be inventoried and removed in one separately authorized cleanup.
+
+This does **not** waive protocol compatibility. Provider wire DTOs, webhook signature/envelope handling, idempotency semantics, verification requirements, the narrowly observed Sandbox CANCEL `200 + empty body` success compatibility, Store response field normalization and any compatibility required by the Uber production API remain evidence-gated and unchanged. No context direct-import allowance or public dependency direction changes in 8.5: External -> Orders remains **0**, Runtime remains **23**, External direct debt total remains **29**, and public SCC must remain empty. Current state is **LOCAL SOURCE / USER REVIEW PENDING**; GitHub Actions remains the validation gate after review.
 
 ### Slice 8.6 — Closeout
 
