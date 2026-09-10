@@ -53,6 +53,7 @@ describe('Uber scheduled finalize persistence', () => {
         uberWebhookInbox: { findFirst },
       } as never,
       {} as never,
+      {} as never,
     );
 
     await adapter.findByExternalOrderId('scheduled-order-1');
@@ -107,6 +108,7 @@ describe('Uber scheduled finalize persistence', () => {
         },
       } as never,
       { ingest } as never,
+      {} as never,
     );
     const input = {
       order: {

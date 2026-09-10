@@ -11,6 +11,10 @@ import {
   type UberPublicBaseUrlPort,
 } from '../../application/menu/uber-menu-publication.ports';
 import {
+  UBER_CATALOG_MENU_FACTS_QUERY,
+  type UberCatalogMenuFactsQueryPort,
+} from '../../application/shared/uber-catalog-menu-facts.port';
+import {
   buildUberUploadMenuPayload,
   validateUberMenuPayload,
 } from '../../domain/menu/uber-menu-payload.builder';
@@ -61,6 +65,8 @@ export class UberMenuDraftReadPrismaAdapter implements UberMenuDraftReadPort {
     private readonly urls: UberPublicBaseUrlPort,
     @Inject(UBER_BUSINESS_SCHEDULE_QUERY_PORT)
     private readonly businessSchedule: UberBusinessScheduleQueryPort,
+    @Inject(UBER_CATALOG_MENU_FACTS_QUERY)
+    private readonly catalogFacts: UberCatalogMenuFactsQueryPort,
   ) {}
 
   async getUberMenuDraft(storeId: string) {
@@ -258,6 +264,7 @@ export class UberMenuDraftReadPrismaAdapter implements UberMenuDraftReadPort {
   private async buildUberMenuGraph(storeId: string, uberStoreId: string) {
     const source = await new UberMenuDraftSourcePrismaRepository(
       this.prisma,
+      this.catalogFacts,
     ).load(storeId, uberStoreId);
     return buildUberMenuGraph(source, emptyUberMenuDraftFilters());
   }

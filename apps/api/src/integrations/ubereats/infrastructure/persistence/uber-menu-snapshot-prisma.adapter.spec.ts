@@ -22,15 +22,6 @@ describe('UberMenuSnapshotPrismaAdapter publish configuration', () => {
       uberStoreMapping: {
         findFirst: jest.fn().mockResolvedValue({ uberStoreId: 'uber-store' }),
       },
-      menuCategory: {
-        findMany: jest.fn().mockResolvedValue(rows.categories ?? []),
-      },
-      menuItem: {
-        findMany: jest.fn().mockResolvedValue(rows.menuItems ?? []),
-      },
-      menuOptionGroupTemplate: {
-        findMany: jest.fn().mockResolvedValue(rows.templates ?? []),
-      },
       uberItemChannelConfig: {
         findMany: jest.fn().mockResolvedValue(rows.itemConfigs ?? []),
       },
@@ -47,12 +38,21 @@ describe('UberMenuSnapshotPrismaAdapter publish configuration', () => {
     const storeConfigQuery = {
       getStoreConfig: jest.fn().mockResolvedValue(storeConfig),
     };
+    const catalogFacts = {
+      readMenuSource: jest.fn().mockResolvedValue({
+        categories: rows.categories ?? [],
+        menuItems: rows.menuItems ?? [],
+        modifierTemplates: rows.templates ?? [],
+      }),
+    };
     return {
       prisma,
       storeConfigQuery,
+      catalogFacts,
       adapter: new UberMenuSnapshotPrismaAdapter(
         prisma as never,
         storeConfigQuery as never,
+        catalogFacts as never,
       ),
     };
   };
@@ -60,24 +60,34 @@ describe('UberMenuSnapshotPrismaAdapter publish configuration', () => {
   const bilingualRows: SnapshotRows = {
     categories: [
       {
-        id: 'category-db-id',
         stableId: 'category-stable',
         nameEn: 'Dry Noodles',
         nameZh: '拌面',
+        sortOrder: 1,
+        isActive: true,
       },
     ],
     menuItems: [
       {
         stableId: 'item-stable',
-        categoryId: 'category-db-id',
+        categoryStableId: 'category-stable',
         nameEn: 'Tomato Fried Egg Noodles',
         nameZh: '番茄鸡蛋面',
         basePriceCents: 1099,
         isAvailable: true,
         tempUnavailableUntil: null,
+        visibility: 'PUBLIC',
+        publishToUberEats: true,
+        sortOrder: 1,
         imageUrl: null,
         ingredientsEn: null,
-        optionGroups: [{ templateGroup: { stableId: 'group-stable' } }],
+        optionGroups: [
+          {
+            templateGroupStableId: 'group-stable',
+            sortOrder: 1,
+            isEnabled: true,
+          },
+        ],
       },
     ],
     templates: [
@@ -87,6 +97,8 @@ describe('UberMenuSnapshotPrismaAdapter publish configuration', () => {
         nameZh: '份量',
         defaultMinSelect: 0,
         defaultMaxSelect: 1,
+        isAvailable: true,
+        sortOrder: 1,
         options: [
           {
             stableId: 'option-stable',
@@ -95,6 +107,9 @@ describe('UberMenuSnapshotPrismaAdapter publish configuration', () => {
             priceDeltaCents: 200,
             isAvailable: true,
             tempUnavailableUntil: null,
+            sortOrder: 1,
+            targetItemStableId: null,
+            childTemplateGroupStableIds: [],
           },
         ],
       },
@@ -334,63 +349,15 @@ describe('UberMenuSnapshotPrismaAdapter publish configuration', () => {
     );
   });
 
-  it('requests stable SanQ sort ordering for the entire publish graph', async () => {
+  it('reads canonical publish facts through the Catalog capability', async () => {
     const x = setup(
       { timezone: 'America/Toronto', salesTaxRate: 0.13 },
       bilingualRows,
     );
-    const stableOrder = [{ sortOrder: 'asc' }, { id: 'asc' }];
 
     await x.adapter.loadPublishSnapshot('pos-store', 'uber-store');
 
-    expect(x.prisma.menuCategory.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ orderBy: stableOrder }),
-    );
-    expect(x.prisma.menuItem.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        orderBy: stableOrder,
-        select: {
-          stableId: true,
-          categoryId: true,
-          nameEn: true,
-          nameZh: true,
-          basePriceCents: true,
-          isAvailable: true,
-          tempUnavailableUntil: true,
-          imageUrl: true,
-          ingredientsEn: true,
-          optionGroups: {
-            where: { isEnabled: true },
-            orderBy: stableOrder,
-            select: { templateGroup: { select: { stableId: true } } },
-          },
-        },
-      }),
-    );
-    expect(x.prisma.menuOptionGroupTemplate.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        orderBy: stableOrder,
-        select: {
-          stableId: true,
-          nameEn: true,
-          nameZh: true,
-          defaultMinSelect: true,
-          defaultMaxSelect: true,
-          options: {
-            where: { deletedAt: null },
-            orderBy: stableOrder,
-            select: {
-              stableId: true,
-              nameEn: true,
-              nameZh: true,
-              priceDeltaCents: true,
-              isAvailable: true,
-              tempUnavailableUntil: true,
-            },
-          },
-        },
-      }),
-    );
+    expect(x.catalogFacts.readMenuSource).toHaveBeenCalledTimes(1);
   });
 
   it('rejects percentage-formatted canonical salesTaxRate', async () => {

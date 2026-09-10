@@ -1,6 +1,6 @@
 # Phase 8 — External Channels Boundary Contraction & L3 Resilience
 
-Status: **SLICE 8.1 MERGED — SLICE 8.2A PR #2261 REMOTE VALIDATED / FINAL DOC CI PENDING**  
+Status: **SLICE 8.2A MERGED — SLICE 8.2B PR #2262 REMOTE VALIDATED / FINAL DOC CI PENDING**  
 Slice 0 audit baseline: `origin/dev@d1c7d7b3e968d99dce1e3df39ca1af04a7696883`  
 Slice 8.1 implementation baseline: `origin/dev@96808b0ec1adc984dae99dd73dbd0e8ce4f2c4a9`  
 Slice 8.2A implementation baseline: `origin/dev@fc9bfc01f651c0d3193ee06e1d71ea0029e77835`  
@@ -283,11 +283,79 @@ Local implementation result on `refactor/phase8-slice8.2a-store-schedule-ownersh
 - production Uber persistence now has zero direct `.businessHour` accesses. Timezone, tax rate and business-hour fields remain unchanged, and Store's reader preserves weekday ordering.
 - focused coverage verifies the composition-root mapping, repository delegation, removal of the obsolete Prisma schedule binding, and an architecture invariant that no production Uber persistence file directly accesses `businessHour`.
 - no direct-import/public-cycle baseline movement is expected. `external-channels -> runtime-data-ci-ops` remains **24**, Orders remains **1**, Identity remains **2**, Foundation remains **4**, and no machine-baseline edit is made.
-- no local lint/build/test/scanner was run; PR #2261 source head `7b5779e5` passed GitHub Actions CI #5417, including architecture baseline, API lint/build/strict/test and Web lint/build/strict/test. This documentation-sync commit still requires its own final CI before merge.
+- no local lint/build/test/scanner was run; PR #2261 final head `ce47baf1` passed GitHub Actions CI #5418, including architecture baseline, API lint/build/strict/test and Web lint/build/strict/test, then squash-merged to `dev` as `87ebad20`.
 
 Phase-closeout active verification scope added by this slice: Admin Uber menu draft/load and menu publish must still derive the configured Store schedule/timezone/tax correctly, and the dedicated worker composition must resolve the same schedule provider without startup/provider-resolution errors. No provider-wire payload shape is intentionally changed.
 
 Any newly discovered responsibility transfer outside this approved 8.2A scope must be documented and authorized before implementation.
+
+#### Slice 8.2B — Catalog read-boundary readiness/design gate
+
+Read-only audit baseline: `origin/dev@87ebad20adbd6c1d86b3bf318dbdd9a41380c170` after PR #2261.
+
+The audit confirms that the remaining Catalog ownership debt inside Uber persistence is broader than a single publication query. There are **17 production Catalog Prisma delegate reads across 7 Uber persistence files**:
+
+| Uber persistence path | Catalog reads | Current purpose |
+|---|---:|---|
+| `uber-menu-draft.repositories.ts` | 5 | draft source graph plus the legacy/unused menu workflow snapshot path |
+| `uber-menu-snapshot-prisma.adapter.ts` | 3 | canonical category/item/modifier facts for publish snapshot construction |
+| `uber-menu-supporting-queries-prisma.adapter.ts` | 2 | item / option existence validation |
+| `uber-menu-draft-mutation-prisma.adapter.ts` | 3 | item, option and modifier-group source defaults for Uber override writes |
+| `uber-menu-config-import-prisma.adapter.ts` | 2 | source item/option price and availability during restore-to-source operations |
+| `uber-order-import-prisma.adapter.ts` | 1 | canonical modifier metadata used to snapshot imported Uber order options |
+| `uber-operations-prisma.repositories.ts` | 1 | menu-item existence validation for OpsTicket creation |
+
+These accesses cover `MenuCategory`, `MenuItem`, `MenuOptionGroupTemplate` and `MenuOptionTemplateChoice`. Several current query shapes also traverse item option-group bindings and option child links. A correct Catalog capability must translate persistence relations to stable business identifiers; Uber must not receive Catalog database IDs or Prisma types.
+
+Existing `CATALOG_AVAILABILITY_READER` and `CATALOG_ORDER_FACTS_READER` are intentionally insufficient for this responsibility. The availability contract exposes only availability/publication facts, while the Orders contract is purpose-built for order materialization/labels. Broadening either contract into a provider-menu aggregate would blur established ownership and consumer purpose. A dedicated Catalog-owned external-menu facts reader is the preferred boundary if the dependency direction can first be made cycle-safe.
+
+##### Public-cycle blocker
+
+Phase 3 Slice 6 deliberately removed a hidden `catalog-pricing-offers -> external-channels -> catalog-pricing-offers` public cycle. The current production Catalog availability orchestration still imports the Uber public availability capability from `catalog-uber-availability-orchestration.service.ts`; this is the remaining intentional **Catalog -> External** business dependency. `legacyPublicCycleComponents` is now empty, so adding an Uber -> `menu/public-api.ts` Catalog reader today would recreate the same two-context SCC and fail the monotonic architecture gate.
+
+Therefore **do not** implement a new Catalog reader import in `ubereats.module.ts` until the reverse business dependency has first been removed without changing runtime availability behavior.
+
+##### Recommended architecture — two-step dependency inversion
+
+**8.2B.1 — Cycle-safe availability dependency inversion**
+
+1. Add a Catalog/application-owned outbound availability-sync port under `apps/api/src/application/menu/**` with only the provider-neutral inputs/results required by the existing Catalog availability orchestration.
+2. Change `CatalogUberAvailabilityOrchestrationService` to depend on that local outbound port rather than importing `integrations/ubereats/public-api.ts` directly.
+3. Bind the Catalog outbound port to `UBER_EATS_MENU_AVAILABILITY` only in `catalog-uber-availability-orchestration.module.ts`. That module is already an explicit `compositionRootsExcluded` entry, so cross-context Nest wiring remains visible in its designated composition seam but no Catalog business source depends directly on External Channels.
+4. Preserve the current synchronous best-effort availability call, Admin `uberSync` presentation, fixed-component guard, failure logging and provider command semantics. This is dependency inversion, not conversion to eventual/event-driven delivery.
+5. Add architecture coverage that the orchestration service no longer imports Uber and that the existing excluded composition module is the sole Catalog/Uber availability bridge.
+
+Once 8.2B.1 is complete, the business dependency graph has no Catalog -> External public edge, so an **External -> Catalog** canonical-read capability can be introduced without restoring an SCC.
+
+**8.2B.2 — Catalog-owned external-menu facts capability**
+
+1. Add a dedicated Catalog public reader/module rather than expanding `CatalogAdminService`, `CATALOG_AVAILABILITY_READER`, or `CATALOG_ORDER_FACTS_READER`. The contract should expose canonical category/item/modifier facts using stable IDs and provider-neutral Catalog semantics; date/time persistence values should be mapped at the Catalog boundary.
+2. In the sole `ubereats.module.ts` composition root, adapt that Catalog public reader to one or more Uber application-owned internal query ports. Uber application/infrastructure code continues to depend only on Uber-owned ports; no Uber persistence file imports Catalog directly.
+3. Use the capability to contract the active publication/draft/reference/default/operations/order-modifier Catalog reads while leaving Uber-owned `uber*` persistence, provider mapping and Store/POS/Orders seams untouched.
+4. Keep API and dedicated worker composition aligned. The worker needs the same Catalog facts capability because imported Uber orders currently snapshot canonical modifier metadata before canonical Order ingestion.
+5. Keep `external-channels -> runtime-data-ci-ops = 24` as a non-goal. Most touched adapters still require Prisma for Uber-owned persistence; the measurable architecture result is removal of cross-owner Catalog delegate access plus a one-way public `External -> Catalog` read dependency.
+6. Treat the two `restore-source-price` reads in `uber-menu-config-import-prisma.adapter.ts` as transaction-sensitive during implementation review. Today they read Catalog source price/availability inside the Uber transaction that writes the override/audit event. Do not silently weaken that concurrency behavior; either characterize equivalent behavior before moving the read or defer those two calls to a separately authorized sub-slice.
+
+##### Alternatives considered
+
+- **Directly import a Catalog reader from Uber now:** rejected because it recreates the exact Phase 3 public SCC and should fail CI.
+- **Preserve Catalog -> External and push a complete Catalog snapshot into new Uber public commands:** cycle-safe, but it would require moving or redesigning current Uber Admin draft/publish/query orchestration and complicate webhook-originated modifier fact reads. This has a materially larger API/controller/runtime surface than the dependency-inversion approach.
+- **Create a durable Catalog-to-Uber projection/event stream:** architecturally viable for a future scale/reliability requirement, but currently disproportionate; it would add persisted projection/versioning/replay concerns and likely schema/migration authorization.
+- **Move the cross-context contract into `common`/shared:** rejected because it would mis-own a business capability and violate the rule against using shared/foundation as a dependency-cycle escape hatch.
+
+##### Authorized local implementation result
+
+The user explicitly authorized the recommended dependency-direction change. Local source implementation on `refactor/phase8-slice8.2b-catalog-read-boundary` now completes 8.2B.1 and the safe portion of 8.2B.2:
+
+- `CatalogUberAvailabilityOrchestrationService` depends on the Catalog-owned `CATALOG_EXTERNAL_AVAILABILITY_SYNC` outbound port. The only `UBER_EATS_MENU_AVAILABILITY` binding is in the existing scanner-excluded `catalog-uber-availability-orchestration.module.ts`, preserving synchronous best-effort behavior and the current Admin `uberSync` presentation/failure semantics.
+- Catalog now owns `CATALOG_EXTERNAL_MENU_FACTS_READER`; its dedicated public module reuses the existing Prisma-owning `CatalogAdminService` via `useExisting`, matching the established Catalog availability/order-facts pattern and avoiding any increase in Catalog -> Runtime direct-import debt. The public contract exposes stable business identifiers, integer monetary facts and ISO timestamps; Catalog DB UUIDs and Prisma types do not cross the boundary.
+- `ubereats.module.ts` adapts the Catalog public reader to the Uber-owned `UBER_CATALOG_MENU_FACTS_QUERY` application port for both API and dedicated worker composition. Uber persistence imports only its own port and does not import `menu/public-api.ts` directly.
+- Of the audited **17** production Catalog delegate reads, **15 are contracted**. Draft/publish source graphs, item/option/group defaults, existence checks, imported-order modifier snapshot facts and OpsTicket menu-item validation now resolve through the Catalog owner capability.
+- The remaining **2** direct reads are exactly `restoreItemPrice()` and `restoreOptionPrice()` in `uber-menu-config-import-prisma.adapter.ts`. They remain deliberately on the existing Serializable transaction client because that path couples the source read with the Uber override/audit write. They are explicitly tagged as the **8.2B.3 transaction-sensitive tail** rather than weakening the existing atomicity/concurrency behavior.
+- Architecture coverage pins the residual direct Catalog delegate set to those two reads, forbids Uber persistence from importing Catalog directly, and verifies the Catalog availability business service no longer imports Uber. Owner-side mapping coverage verifies category DB IDs do not leak, dates leave Catalog as ISO strings, and modifier child relations cross only as stable IDs.
+- The public dependency graph is now cycle-safe: the Catalog business-source -> External public edge is removed and the canonical read direction is External -> Catalog. `legacyPublicCycleComponents` remains empty. The deep-import debt baseline remains unchanged (`external-channels -> runtime-data-ci-ops = 24`, Orders `1`, Identity `2`, Foundation `4`), so `tools/architecture/context-baseline.json` is not edited.
+
+No Prisma schema/migration, dependency, provider-wire payload, webhook/idempotency, Orders lifecycle, POS connectivity or production Web Clover behavior is changed by this slice. No local lint/build/test/scanner result is claimed. PR #2262 source head `3320700e` passed GitHub Actions CI #5426, including architecture baseline, API lint/build/strict/shared-strict/test and Web lint/build/strict/test; this final documentation-sync commit still requires its own CI before merge.
 
 ### Slice 8.3 — Orders acceptance/cancellation atomic seam design/contraction
 
@@ -385,11 +453,20 @@ Before any source modification:
 - `SESSION_COOKIE_NAME`, `AuthModule`, `getLogContext()`, uploads layout, Orders acceptance and Runtime/Prisma seams remain intentionally unchanged;
 - PR #2260 final head `8efeb5e6` passed CI #5414 and squash-merged to `dev` as `fc9bfc01`.
 
-### 2026-09-09 — Slice 8.2 semantic ownership audit / Slice 8.2A local source
+### 2026-09-09 — Slice 8.2A Store schedule ownership merged
 
-- the merged-base audit confirms Runtime/Data/Ops **24** is still structurally expected and must not be used as a blanket contraction target;
-- Store schedule direct reads, Catalog menu facts and Orders read/mutation seams were classified separately; Catalog requires a later public-contract design and Orders acceptance/cancellation requires the Slice 8.3 atomic-seam design gate;
-- authorized Slice 8.2A reuses `UBER_BUSINESS_SCHEDULE_QUERY_PORT` and provides it from the Uber composition root using `UBER_STORE_CONFIG_QUERY + STORE_SCHEDULE_READER`;
-- all three production Uber persistence `BusinessHour` reads are removed; menu draft validation and menu workflow repository scope now consume the Uber application port;
+- the merged-base audit confirmed Runtime/Data/Ops **24** is structurally expected and must not be used as a blanket contraction target;
+- authorized Slice 8.2A reused `UBER_BUSINESS_SCHEDULE_QUERY_PORT` and provided it from the Uber composition root using `UBER_STORE_CONFIG_QUERY + STORE_SCHEDULE_READER`;
+- all three production Uber persistence `BusinessHour` reads were removed; menu draft validation and menu workflow repository scope now consume the Uber application port;
 - Store public API itself is unchanged, provider wire behavior is unchanged, and Runtime **24** / Orders **1** / Identity **2** / Foundation **4** baselines remain unchanged;
-- focused composition, delegation and architecture coverage is updated; local lint/build/test/scanner is intentionally not run before user review.
+- PR #2261 final head `ce47baf1` passed CI #5418 and squash-merged to `dev` as `87ebad20`.
+
+### 2026-09-09 — Slice 8.2B Catalog read-boundary local source
+
+- audit and implementation base is merged `origin/dev@87ebad20`;
+- user authorized the two-step dependency inversion: Catalog availability orchestration now uses a Catalog-owned outbound sync port with the Uber binding confined to the existing excluded composition module, removing the Catalog business-source -> External public edge without changing synchronous runtime behavior;
+- a dedicated Catalog-owned external-menu facts reader/module now owns canonical Catalog Prisma query shapes and exposes only stable IDs/provider-relevant business facts/ISO timestamps through `menu/public-api.ts`;
+- `ubereats.module.ts` adapts that capability to the Uber-owned `UBER_CATALOG_MENU_FACTS_QUERY` port for API and worker composition; Uber persistence does not import Catalog public surfaces directly;
+- **15 of 17** audited Catalog delegate reads are removed from Uber persistence; the remaining two are only `restoreItemPrice()` / `restoreOptionPrice()` and are explicitly deferred as the **8.2B.3 transaction-sensitive tail** to preserve the existing Serializable restore/write/audit semantics;
+- architecture and mapping coverage pin the one-way ownership boundary, stable-ID-only relation mapping and the exact two-read residual set; `legacyPublicCycleComponents=[]` and the deep-import baseline remain unchanged;
+- no Prisma schema/migration, provider-wire payload, webhook/idempotency, Orders lifecycle, POS connectivity or production Web Clover change is introduced; no local lint/build/test/scanner result is claimed before remote CI.
