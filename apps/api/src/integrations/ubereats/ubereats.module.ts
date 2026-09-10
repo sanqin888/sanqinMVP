@@ -1,4 +1,9 @@
-import { Module, type DynamicModule, type Provider } from '@nestjs/common';
+import {
+  Logger,
+  Module,
+  type DynamicModule,
+  type Provider,
+} from '@nestjs/common';
 import { AuthModule } from '../../auth/auth.module';
 import {
   CATALOG_EXTERNAL_MENU_FACTS_READER,
@@ -6,8 +11,17 @@ import {
   type CatalogExternalMenuFactsReaderPort,
 } from '../../menu/public-api';
 import {
+  ORDER_EXTERNAL_CANCELLATION_FINALIZER,
+  ORDER_EXTERNAL_FACTS_READER,
+  ORDER_EXTERNAL_TRANSITION_COORDINATOR,
   ORDER_INGESTION_PROVIDER,
+  OrderExternalCancellationModule,
+  OrderExternalFactsModule,
+  OrderExternalTransitionModule,
   OrdersModule,
+  type OrderExternalCancellationFinalizerPort,
+  type OrderExternalFactsReaderPort,
+  type OrderExternalTransitionCoordinatorPort,
 } from '../../orders/public-api';
 import { PrismaModule } from '../../prisma/prisma.module';
 import {
@@ -32,6 +46,14 @@ import {
   type UberBusinessScheduleQueryPort,
 } from './application/menu/uber-menu-draft.ports';
 import {
+  UBER_CANONICAL_ORDER_FACTS_QUERY,
+  type UberCanonicalOrderFactsQueryPort,
+} from './application/shared/uber-canonical-order-facts.port';
+import {
+  UBER_CANONICAL_ORDER_CANCELLATION,
+  type UberCanonicalOrderCancellationPort,
+} from './application/shared/uber-canonical-order-cancellation.port';
+import {
   UBER_CATALOG_MENU_FACTS_QUERY,
   type UberCatalogMenuFactsQueryPort,
 } from './application/shared/uber-catalog-menu-facts.port';
@@ -39,6 +61,18 @@ import {
   UBER_STORE_CONFIG_QUERY,
   type UberStoreConfigQueryPort,
 } from './application/shared/uber-store-config.port';
+import {
+  type UberOrderSyncRepositoryPort,
+  UBER_ORDER_SYNC_REPOSITORY,
+} from './application/orders/uber-order-sync.ports';
+import {
+  type UberOrderActionRepositoryPort,
+  UBER_ORDER_ACTION_REPOSITORY,
+} from './application/orders/uber-order.ports';
+import {
+  type UberOrderOperationsRepositoryPort,
+  UBER_ORDER_OPERATIONS_REPOSITORY,
+} from './application/operations/uber-operations.ports';
 import {
   UBER_EATS_STARTUP_CONFIG,
   validateUberEatsStartupConfig,
@@ -48,6 +82,7 @@ import { createMenuWiring } from './infrastructure/nest/menu.wiring';
 import { createMerchantWiring } from './infrastructure/nest/merchant.wiring';
 import { createOperationsWiring } from './infrastructure/nest/operations.wiring';
 import { createOrdersWiring } from './infrastructure/nest/orders.wiring';
+import { UberOrderActionPrismaAdapter } from './infrastructure/persistence/uber-order-action-prisma.adapter';
 import { UberWorkerConfigService } from './infrastructure/workers/uber-worker-config.service';
 import {
   UBER_EATS_MENU_AVAILABILITY,
@@ -56,6 +91,10 @@ import {
   UBER_EATS_REPORTING,
   UBER_EATS_STORE_STATUS_SYNC,
 } from './public-api';
+
+const UBER_ORDER_CANCELLATION_LOGGER = new Logger(
+  'UberOrderImportPrismaAdapter',
+);
 
 /** The complete provider graph assembled exclusively by this composition root. */
 const UBER_EATS_COMPOSITION_PROVIDERS: Provider[] = [
@@ -156,6 +195,162 @@ const UBER_EATS_COMPOSITION_PROVIDERS: Provider[] = [
         reader.listOrderModifierSnapshotSources(),
     }),
   },
+  {
+    provide: UBER_CANONICAL_ORDER_FACTS_QUERY,
+    inject: [ORDER_EXTERNAL_FACTS_READER],
+    useFactory: (
+      reader: OrderExternalFactsReaderPort,
+    ): UberCanonicalOrderFactsQueryPort => ({
+      findByExternalOrderId: async (externalOrderId) => {
+        const order = await reader.findByExternalIdentity({
+          channel: 'ubereats',
+          externalOrderId,
+        });
+        if (!order) return null;
+        return {
+          orderStableId: order.orderStableId,
+          status: order.status,
+          totalCents: order.totalCents,
+          referenceAt: new Date(order.paidAt ?? order.createdAt),
+          fulfillmentTiming: order.fulfillmentTiming,
+          externalEstimatedReadyAt: order.externalEstimatedReadyAt
+            ? new Date(order.externalEstimatedReadyAt)
+            : null,
+        };
+      },
+      findSchedulingByOrderStableId: async (orderStableId) => {
+        const timing =
+          await reader.findSchedulingByOrderStableId(orderStableId);
+        if (!timing) return null;
+        return {
+          orderStableId: timing.orderStableId,
+          scheduledReadyAt: timing.scheduledReadyAt
+            ? new Date(timing.scheduledReadyAt)
+            : null,
+          prepStartAt: timing.prepStartAt ? new Date(timing.prepStartAt) : null,
+          prepDurationMinutes: timing.prepDurationMinutes,
+        };
+      },
+    }),
+  },
+  {
+    provide: UBER_CANONICAL_ORDER_CANCELLATION,
+    inject: [ORDER_EXTERNAL_CANCELLATION_FINALIZER],
+    useFactory: (
+      finalizer: OrderExternalCancellationFinalizerPort,
+    ): UberCanonicalOrderCancellationPort => ({
+      finalizeConfirmedCancellation: async (input) => {
+        const result = await finalizer.finalizeConfirmedCancellation({
+          channel: 'ubereats',
+          orderStableId: input.orderStableId,
+          externalOrderId: input.externalOrderId,
+          externalEventId: input.externalEventId,
+          reason: input.reason,
+          operatorName: input.operatorName,
+          occurredAt: input.occurredAt.toISOString(),
+        });
+        UBER_ORDER_CANCELLATION_LOGGER.log({
+          event: 'uber_order_cancelled',
+          eventId: input.externalEventId,
+          orderStableId: result.orderStableId,
+          externalOrderId: input.externalOrderId,
+          channel: 'ubereats',
+          reasonCode: input.reason,
+          refundCents: result.refundCents,
+        });
+        return result;
+      },
+    }),
+  },
+  {
+    provide: UBER_ORDER_SYNC_REPOSITORY,
+    inject: [ORDER_EXTERNAL_FACTS_READER],
+    useFactory: (
+      reader: OrderExternalFactsReaderPort,
+    ): UberOrderSyncRepositoryPort => {
+      const pendingStatuses = ['pending', 'paid', 'making'] as const;
+      return {
+        findSyncTarget: async (externalOrderId) => {
+          const order = await reader.findByExternalIdentity({
+            channel: 'ubereats',
+            externalOrderId,
+          });
+          return (
+            order && {
+              orderStableId: order.orderStableId,
+              status: order.status,
+            }
+          );
+        },
+        listPending: async (limit) =>
+          (
+            await reader.listByChannelAndStatuses({
+              channel: 'ubereats',
+              statuses: pendingStatuses,
+              limit,
+            })
+          ).map((order) => ({
+            ...order,
+            createdAt: new Date(order.createdAt),
+          })),
+        pendingSummary: async () => {
+          const summary = await reader.summarizeByChannelAndStatuses({
+            channel: 'ubereats',
+            statuses: pendingStatuses,
+          });
+          return {
+            count: summary.count,
+            updatedAt: summary.latestCreatedAt
+              ? new Date(summary.latestCreatedAt)
+              : null,
+          };
+        },
+      };
+    },
+  },
+  {
+    provide: UBER_ORDER_OPERATIONS_REPOSITORY,
+    inject: [ORDER_EXTERNAL_FACTS_READER],
+    useFactory: (
+      reader: OrderExternalFactsReaderPort,
+    ): UberOrderOperationsRepositoryPort => ({
+      reconciliationOrders: async (storeStableId, rangeStart, rangeEnd) =>
+        reader.listReconciliationFacts({
+          channel: 'ubereats',
+          storeStableId,
+          createdAtFrom: rangeStart.toISOString(),
+          createdAtBefore: rangeEnd.toISOString(),
+        }),
+      exists: (externalOrderId) =>
+        reader.existsByExternalIdentity({
+          channel: 'ubereats',
+          externalOrderId,
+        }),
+    }),
+  },
+  {
+    provide: UBER_ORDER_ACTION_REPOSITORY,
+    inject: [
+      UberOrderActionPrismaAdapter,
+      ORDER_EXTERNAL_TRANSITION_COORDINATOR,
+    ],
+    useFactory: (
+      persistence: UberOrderActionPrismaAdapter,
+      coordinator: OrderExternalTransitionCoordinatorPort,
+    ): UberOrderActionRepositoryPort => ({
+      enqueue: (input) => persistence.enqueue(input),
+      requeue: (input) => persistence.requeue(input),
+      claim: (input) => persistence.claim(input),
+      complete: (input) =>
+        coordinator.completeProviderConfirmedTransition(
+          { channel: 'ubereats', transition: input.transition },
+          (transaction) =>
+            persistence.completeWithinTransaction(transaction, input),
+        ),
+      markFailed: (taskId, leaseToken, input) =>
+        persistence.markFailed(taskId, leaseToken, input),
+    }),
+  },
   ...createCommonWiring(),
   ...createMerchantWiring(),
   ...createMenuWiring(),
@@ -195,6 +390,9 @@ export function createUberEatsWorkerRuntimeModule(
       PrismaModule,
       BrandStoreConfigModule,
       CatalogExternalMenuFactsModule,
+      OrderExternalFactsModule,
+      OrderExternalTransitionModule,
+      OrderExternalCancellationModule,
     ],
     providers: [
       ORDER_INGESTION_PROVIDER,
@@ -213,6 +411,9 @@ export function createUberEatsWorkerRuntimeModule(
     PrismaModule,
     BrandStoreConfigModule,
     CatalogExternalMenuFactsModule,
+    OrderExternalFactsModule,
+    OrderExternalTransitionModule,
+    OrderExternalCancellationModule,
     AuthModule,
     OrdersModule,
   ],

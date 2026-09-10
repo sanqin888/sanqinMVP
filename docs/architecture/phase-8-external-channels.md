@@ -1,13 +1,17 @@
 # Phase 8 — External Channels Boundary Contraction & L3 Resilience
 
-Status: **SLICE 8.2B.3 MERGED — SLICE 8.3A0 LOCAL SOURCE COMPLETE / DESTRUCTIVE MIGRATION AUTHORIZED / PENDING REVIEW**  
+Status: **SLICE 8.3A0 PRODUCTION VERIFIED — SLICES 8.3A / 8.3B MERGED / CI GREEN — SLICE 8.3C SOURCE REVIEWED / REMOTE CI PENDING**  
 Slice 0 audit baseline: `origin/dev@d1c7d7b3e968d99dce1e3df39ca1af04a7696883`  
 Slice 8.1 implementation baseline: `origin/dev@96808b0ec1adc984dae99dd73dbd0e8ce4f2c4a9`  
 Slice 8.2A implementation baseline: `origin/dev@fc9bfc01f651c0d3193ee06e1d71ea0029e77835`  
 Slice 8.2B implementation baseline: `origin/dev@87ebad20`  
 Slice 8.2B.3 implementation baseline: `origin/dev@00561c82`  
 Slice 8.3A0 implementation baseline: `origin/dev@f7b8710a`  
-Baseline merges: PR `#2258` — Phase 7 Slice 5B; PR `#2259` — Phase 8 planning / Slice 0 audit; PR `#2260` — Phase 8 Slice 8.1; PR `#2261` — Phase 8 Slice 8.2A; PR `#2262` — Phase 8 Slice 8.2B; PR `#2263` — Phase 8 Slice 8.2B.3  
+Slice 8.3A readiness/design baseline: `origin/dev@2589225d`  
+Slice 8.3A implementation baseline: `origin/dev@f6e3f3db42a1de27d6d86cff7e8053e2dcaf795d`  
+Slice 8.3B implementation baseline: `origin/dev@51bf909152ff5e6c1a98ca87bda2c5378705db42`  
+Slice 8.3C implementation baseline: `origin/dev@29485a62e515b00ea9e62b7c5ef7c8f7c45d34d2`  
+Baseline merges: PR `#2258` — Phase 7 Slice 5B; PR `#2259` — Phase 8 planning / Slice 0 audit; PR `#2260` — Phase 8 Slice 8.1; PR `#2261` — Phase 8 Slice 8.2A; PR `#2262` — Phase 8 Slice 8.2B; PR `#2263` — Phase 8 Slice 8.2B.3; PR `#2264` — Phase 8 Slice 8.3A0; PR `#2266` — Phase 8 A0 evidence / 8.3 plan sync; PR `#2267` — Phase 8 Slice 8.3A; PR `#2268` — Phase 8 Slice 8.3B  
 Audit / implementation dates: 2026-09-09–2026-09-10
 
 ## 1. Purpose
@@ -199,9 +203,9 @@ Known external/provider uncertainty that remains intentionally separate includes
 - `application/operations/uber-operations.use-cases.ts` legacy persisted scope resolution;
 - `infrastructure/persistence/uber-merchant-persistence.adapter.ts` legacy `[storeStableId, uberStoreId]` OpsTicket lookup.
 
-This is consistent with earlier planning that Test Store / historical Uber rows are not automatically deleted or rewritten before the separate Production cutover cleanup.
+This originally matched the earlier plan to preserve Test Store / historical Uber rows until a separate Production cutover cleanup. That preservation assumption was superseded on 2026-09-10 when the user confirmed all current Uber integration data is test-only and does not require compatibility retention.
 
-**Slice 0 decision:** do not enforce `closed compat id -> zero source references` globally yet. First complete the production-cutover decision and historical-data evidence. Scanner hardening can follow only when the remaining historical compatibility path is actually eligible to disappear.
+**Updated Phase 8 decision:** test-data-only persistence/identity compatibility may be removed before Production after a focused readiness audit and the usual source/schema/migration authorization. Do not generalize this to Uber wire/protocol compatibility; scanner hardening should follow only after the specific compatibility path is actually removed.
 
 ### 4.9 UberDirect is removed from Phase 8 scope
 
@@ -374,9 +378,9 @@ Phase-closeout active verification should include both Admin restore-source-pric
 
 #### Slice 8.3A0 — Remove test-era `UberOrderItemModifier` reverse persistence
 
-Readiness audit on merged `origin/dev@f7b8710a` found a semantic ownership cycle before the remaining Uber -> Orders contraction: `OrderIngestionService` directly wrote the provider-named `UberOrderItemModifier` table. Production-source search found no reader of that delegate/model; the only runtime access was the ingestion `createMany()` write. A read-only DB inventory at readiness found only test-era Uber rows, and the user explicitly confirmed that the UberEats integration has no real production data and authorized destructive removal of this model/table and its migration.
+Readiness audit on merged `origin/dev@f7b8710a` found a semantic ownership cycle before the remaining Uber -> Orders contraction: `OrderIngestionService` directly wrote the provider-named `UberOrderItemModifier` table. Production-source search found no reader of that delegate/model; the only runtime access was the ingestion `createMany()` write. The active modifier representation already persisted canonically through `ParsedUberModifier[] -> modifierSnapshots() -> NormalizedOrderItem.options -> OrderItem.optionsJson`. A read-only pre-migration DB inventory found **17 modifier rows / 12 OrderItems / 11 Orders / 0 non-Uber channel rows**. The user explicitly confirmed that all current UberEats integration data is test-only, no historical compatibility is required, and authorized destructive removal of this model/table and its migration.
 
-The local 8.3A0 implementation executes the authorized contraction stage of the persisted migration: the canonical `OrderItem.optionsJson` representation already exists and remains active, the obsolete table has zero production readers, no dual-write/backfill is required, and the user explicitly authorized discarding its test data.
+The merged 8.3A0 implementation executes the authorized contraction stage of the persisted migration: the canonical `OrderItem.optionsJson` representation already exists and remains active, the obsolete table has zero production readers, no dual-write/backfill is required, and the user explicitly authorized discarding its test data.
 
 - remove provider-specific `NormalizedOrderItem.external.modifiers` from the Orders ingestion public contract;
 - stop `OrderIngestionService` from writing `uberOrderItemModifier`;
@@ -386,21 +390,66 @@ The local 8.3A0 implementation executes the authorized contraction stage of the 
 - add authorized migration `20260910111500_contract_uber_order_item_modifier/migration.sql` with a non-`CASCADE` `DROP TABLE "UberOrderItemModifier"` so an unexpected database dependency aborts deployment rather than being deleted implicitly;
 - tighten architecture/characterization coverage so Orders ingestion cannot reintroduce the provider delegate/model and canonical `optionsJson` remains populated.
 
-This slice intentionally does **not** change Uber wire parsing, webhook idempotency, order admission/action state transitions, order amounts, canonical `OrderItem.optionsJson`, POS/Print behavior, Payments/Clover, or any machine architecture import allowance. The direct-import counter `external-channels -> commerce-orders-fulfillment = 1` remains until the later 8.3 read/transition contractions; only the reverse semantic persistence write is removed. No local lint/build/test/scanner result is claimed per repository workflow.
+PR #2264 source head `18034f19` passed GitHub Actions CI #5435: Prisma Client generation, architecture baseline, API lint/build/strict/shared-strict/test and the complete Web job were green. The PR was squash-merged to `dev` as `2589225d`. This slice intentionally does **not** change Uber wire parsing, webhook idempotency, order admission/action state transitions, order amounts, canonical `OrderItem.optionsJson`, POS/Print behavior, Payments/Clover, package dependencies or any machine architecture import allowance. The direct-import counter `external-channels -> commerce-orders-fulfillment = 1` remains until the later 8.3 transition contraction; only the reverse semantic Orders -> External persistence write is removed.
 
-Because this is a destructive migration, it must be applied before Uber Production traffic begins. If real Uber production orders exist before deployment, stop and re-audit instead of applying the test-data contraction unchanged. Under the current authorized pre-production state, deployment verification must explicitly confirm the migration applied, the obsolete table is absent, and a new test-store Uber order containing modifiers still imports successfully with its modifier/options snapshot visible through the canonical Order/POS/print path. No current test-era `UberOrderItemModifier` data preservation is required.
+Because this is a destructive migration, it must be applied before Uber Production traffic begins. If real Uber production orders exist before deployment, stop and re-audit instead of applying the test-data contraction unchanged. No current test-era `UberOrderItemModifier` data preservation is required. Deployment and active verification are now complete: the deployed database records migration `20260910111500_contract_uber_order_item_modifier` as applied and not rolled back, the obsolete table is absent, and API/DB/Uber worker/Web are healthy. The active Test Store order `82A94` imported once with its canonical modifier snapshot intact in `OrderItem.optionsJson`; POS receipt/kitchen printing rendered the selected options correctly, ACCEPT completed successfully with Uber HTTP 200, and a subsequent cancellation also completed successfully with the canonical Order reaching `refunded`. The inspected API/worker log window contains no legacy-table reference or related missing-table error. Slice 8.3A0 is therefore `PRODUCTION VERIFIED`.
 
-#### Slice 8.3A — Canonical Order read ownership contraction
+#### Slice 8.3A — Canonical Order read ownership contraction — readiness/design
 
-Move provider-neutral Order context/sync/pending/reconciliation/existence/scheduled-timing reads behind an Orders-owned public reader while keeping Uber cursor/action persistence inside External Channels. Do not publish Orders DB UUIDs; `findByExternalOrderId()` must converge on stable business identity before cancellation ownership is moved.
+Read-only audit on merged `origin/dev@2589225d` identifies four remaining Uber persistence areas that directly read canonical `Order` facts:
 
-#### Slice 8.3B — Provider-confirmed canonical transition ownership
+| Uber persistence path | Direct Order read | Ownership assessment |
+|---|---|---|
+| `uber-order-action-prisma.adapter.ts` | `getOrderContext()` reads status/amount/reference/scheduling facts | pure canonical read; move behind Orders owner capability before changing `complete()` |
+| `uber-order-sync-prisma.repository.ts` | `findSyncTarget()`, `listPending()`, `pendingSummary()` | pure sync/list/read facts; strongest low-risk 8.3A candidate |
+| `uber-operations-prisma.repositories.ts` | `reconciliationOrders()`, `exists()` | pure reconciliation/existence facts; owner-readable without Uber persistence semantics |
+| `uber-order-import-prisma.adapter.ts` | `findByExternalOrderId()` plus post-ingestion scheduled timing read | mixed seam: canonical Order facts are owner data, while processed webhook cursor remains Uber-owned |
 
-Move ACCEPT / READY_FOR_PICKUP / CANCEL / DENY confirmed local status transitions to an Orders-owned transaction capability while preserving the exact Uber action lease fence, `UberOrderAction=SUCCEEDED`, conditional Order transition and ACCEPT `order.accepted` append in one database transaction. ACCEPT must not synthesize `prep_started`; durable Orders lifecycle remains the only preparation handoff.
+The recommended 8.3A architecture is a **dedicated Orders-owned external-order facts reader/module** rather than exposing `OrdersService` or importing the full `OrdersModule` into the dedicated Uber worker. The owner contract should accept provider-neutral identity such as `channel + externalOrderId` / `orderStableId`, return canonical facts using stable business IDs, and expose no Prisma types or Orders DB UUIDs. `ubereats.module.ts` should adapt that owner capability to existing Uber application query/repository ports for both API and worker composition, following the same owner-reader/composition pattern already used for Catalog facts.
 
-#### Slice 8.3C — Webhook cancellation evidence ownership
+`findByExternalOrderId()` requires special treatment: today its Uber application result includes `orderId = Order.id` and then passes that DB UUID back into `saveExistingOrderCancellation()`. 8.3A must not legitimize that leak in a new public contract. Instead, compose the Orders-owned stable facts with the Uber-owned `UberWebhookInbox` cursor inside External Channels and return/use `orderStableId`; the cancellation write itself remains unchanged until 8.3C.
 
-Move `OrderAmendment + Order.status=refunded + order.cancelled` to Orders while retaining `UberOrderCancellation` as External-owned evidence through a same-transaction extension. Preserve event idempotency and the already production-verified durable cancellation-print recovery path.
+8.3A must not move `Order.status`, `OrderAmendment`, lifecycle `OpsEvent`, Uber action lease state, cancellation evidence or webhook state. No schema/migration is expected for this read-only ownership contraction. A new legitimate Orders public capability may be added, but no direct-import/public-cycle debt allowance should be increased. `external-channels -> commerce-orders-fulfillment = 1` is expected to remain until 8.3B removes the existing deep lifecycle import; any Runtime counter movement must be measured from the final implementation rather than promised in advance.
+
+This design changes Orders public responsibility/module composition and therefore requires explicit architecture authorization before source implementation.
+
+The user subsequently granted source authorization. Slice 8.3A added Orders-owned `ORDER_EXTERNAL_FACTS_READER` plus the narrow `OrderExternalFactsModule`, with provider-neutral `channel + externalOrderId` and `orderStableId` inputs, stable-only result identities and ISO timestamps. The Uber composition root maps that public reader to Uber-owned action, sync and operations query ports for both API and dedicated worker; the worker imports the narrow facts module and still does not import `OrdersModule`.
+
+The audited pure Order delegate reads are removed from Uber persistence: action context, sync target/list/summary, reconciliation/existence, import existing-order lookup and imported scheduling lookup. Exactly three transaction-coupled reads remain deliberately local at the 8.3A merge point: two `tx.order.findUnique` reads in action completion and one `tx.order.findFirst` in cancellation persistence. They preserve the existing action lease/fence/status/event atomicity for 8.3B and cancellation evidence/amendment/refund/event atomicity for 8.3C. The import application boundary now carries `orderStableId`; the cancellation transaction resolves its internal `Order.id` locally without exporting it.
+
+Deleting the obsolete Uber sync Prisma repository removed one production External -> Runtime direct import. The machine allowance therefore moved **24 -> 23**; External -> Orders remained **1**, Identity **2**, Foundation **4**, total External direct debt contracted **31 -> 30**, and the public direction remained External -> Orders with no public SCC. PR `#2267` final head `9b996892` passed CI `#5445` (API + Web), squash-merged to `dev` as `51bf9091`, and the merged head passed push CI `#5446`. No schema/migration, dependency manifest, provider wire, webhook inbox lifecycle, action/cancellation transaction, POS/Print or Payments/Clover behavior changed in 8.3A. Per the Phase-level verification cadence, no separate production active-test status is claimed for 8.3A.
+
+#### Slice 8.3B — Provider-confirmed canonical transition ownership — transaction design gate
+
+The current `UberOrderActionPrismaAdapter.complete()` is not a simple status write. One Prisma transaction currently performs the exact action lease lookup/fence, marks `UberOrderAction=SUCCEEDED`, conditionally moves canonical `Order.status`, writes `makingAt` / `readyAt` where applicable, and appends `order.accepted` for successful ACCEPT. Any downstream DB failure rolls the whole completion back. The confirmed transition surface covers **ACCEPT / READY_FOR_PICKUP / CANCEL / DENY**, not ACCEPT alone.
+
+8.3B must preserve that atomicity while moving canonical Order mutation to Orders ownership. The preferred solution class is an **Orders-owned transaction coordinator/capability with a narrow same-transaction External extension**, modeled on the repository's existing `OrderIngestionWithinTransaction` pattern rather than two sequential service calls. The exact contract must preserve the lease-token fence before canonical transition and must not expose DB UUIDs outside the transaction boundary. ACCEPT remains `pending -> paid` plus `order.accepted` only; it must not synthesize `prep_started`, which remains owned by the durable Orders lifecycle.
+
+A sequential `Uber complete -> Orders transition` or `Orders transition -> Uber complete` design is rejected because it creates a crash window where provider action success and canonical state diverge. A new distributed saga/outbox is also not justified unless evidence proves the existing shared-DB atomic model insufficient. This is an L3 state-transition/transaction-ownership change and requires explicit architecture authorization before implementation.
+
+The user explicitly authorized this architecture on 2026-09-10. Slice 8.3B adds Orders-owned `ORDER_EXTERNAL_TRANSITION_COORDINATOR` plus the narrow `OrderExternalTransitionModule`. Orders opens the one shared Prisma transaction, invokes an explicit External extension first through an opaque transaction handle, and only after that extension returns a successful exact-lease fence result does Orders resolve the canonical order, perform the conditional `from -> to` transition, re-read after a lost conditional-update race, maintain `makingAt` / `readyAt` from the provider completion timestamp, and append idempotent `order.accepted` when acceptance is confirmed. The public Orders contract exposes no Prisma type, DB UUID, `clientRequestId` encoding or Uber-specific DTO.
+
+`UberOrderActionPrismaAdapter` is correspondingly reduced to Uber-owned action persistence: `completeWithinTransaction()` validates the claimed `taskId + PROCESSING + leaseToken`, preserves the ACCEPT-only-to-`paid` guard, fences the same lease, stores the exact provider success HTTP status, clears lease state and returns only `externalOrderId + completedAt + acceptanceConfirmed`. It no longer opens the completion transaction, reads/writes canonical `Order`, or appends Orders lifecycle events. `ubereats.module.ts` is the sole cross-context composition point that binds `UBER_ORDER_ACTION_REPOSITORY` from this persistence adapter plus the Orders coordinator; both API and dedicated worker import the narrow transition module, while the worker still does not import `OrdersModule`.
+
+Behavior is intentionally unchanged for ACCEPT / READY_FOR_PICKUP / CANCEL / DENY: a missing/replaced lease still returns false without a canonical mutation; transition `null` still permits a successfully confirmed provider action with no local order transition; ACCEPT remains `pending -> paid` plus deterministic `order.accepted` and never synthesizes `prep_started`; READY preserves the same `readyAt`; provider-confirmed CANCEL/DENY keep the application state-machine-selected `refunded` transition when a local order exists; replay at the target state remains idempotent. The separate cancellation-webhook ownership seam remained untouched in 8.3B.
+
+This slice is treated as a controlled L3 provider cutover with **Test Store / Phase-closeout scoped rollout** rather than a parallel dual implementation: current Uber traffic remains pre-production, there is no persisted/public protocol contract being replaced, and maintaining two competing completion writers would itself violate the single-transaction invariant. The architecture allowance `external-channels -> commerce-orders-fulfillment` was removed entirely, and PR `#2268` final head `24d034e7` passed CI `#5448` before squash merge `29485a62`; merged-head CI `#5449` independently passed API + Web again. The resulting direct-import debt is **1 -> 0**, External total **30 -> 29**, Runtime remains **23**, and public SCC remains empty. No schema/migration or package dependency change was introduced in 8.3B. Phase-level active verification remains pending.
+
+#### Slice 8.3C — Webhook cancellation evidence ownership — transaction/schema contraction
+
+The pre-8.3C cancellation path was the final canonical-order write seam inside Uber persistence: `UberOrderImportPrismaAdapter` opened a transaction that wrote `UberOrderCancellation`, upserted Orders-owned `OrderAmendment`, set `Order.status=refunded`, and appended durable `order.cancelled`. Source audit found the structured `UberOrderCancellation` table had **one production writer and zero readers**, while the signed webhook receiver already durably stores the complete provider payload and event identity in `UberWebhookInbox` before processing.
+
+A read-only production DB inventory before contraction found **21 `UberOrderCancellation` rows / 21 distinct events / 21 distinct orders**. All 21 events had corresponding durable `UberWebhookInbox` evidence and corresponding canonical `OrderAmendment`; the parity checks found zero missing inbox, amendment or Order references. Because current Uber records are Test Store data, the user explicitly authorized both the ownership move and destructive Prisma/table contraction on 2026-09-10.
+
+The local 8.3C implementation therefore chooses deletion rather than preserving an unused mirror table. Orders owns a new provider-neutral `ORDER_EXTERNAL_CANCELLATION_FINALIZER` plus `OrderExternalCancellationModule`. Uber passes only stable `orderStableId`, `channel`, provider external/event identity, normalized reason/operator and ISO `occurredAt`. Orders independently verifies the stable/external identity, reads canonical `totalCents` and payment method, then in one owner transaction upserts a deterministic `EXTERNAL_CANCELLATION` `OrderAmendment`, converges the Order to `refunded`, and appends the existing deterministic `order.cancelled` lifecycle event. Replaying the same provider event remains convergent because amendment and lifecycle identities are deterministic/idempotent. The existing `uber_order_cancelled` structured log remains after successful finalization.
+
+`UberOrderImportPrismaAdapter` no longer performs `tx.order.*`, `tx.orderAmendment.*`, cancellation `tx.opsEvent.*`, or `uberOrderCancellation` writes and no longer carries an Orders DB UUID. The dead top-level `saveImportedOrder().cancellation` compatibility input/branch is removed; the provider detail model's `ParsedUberOrder.cancellation` field is intentionally retained. Both API and dedicated worker import only the narrow cancellation module; the worker still does not import full `OrdersModule`.
+
+Prisma relation `Order.uberCancellations` and model `UberOrderCancellation` are removed. Migration `20260910131300_contract_uber_order_cancellation` drops only `"UberOrderCancellation"` and deliberately does not use `CASCADE`, so an unexpected dependency blocks deployment instead of being silently removed. The migration is generated for review only and has **not** been applied locally or to production. Durable provider evidence remains in `UberWebhookInbox`; canonical history remains in `OrderAmendment`, Order status and lifecycle events. UUID-backed model inventory contracts **65 -> 64**. The latest pre-commit production read-only check still finds **21/21/21** cancellation rows/events/orders, zero missing inbox/amendment/Order parity, and all 21 corresponding inbox rows are already `PROCESSED`.
+
+Because this is a destructive contract step, production rollout must be staged: first deploy/recreate the 8.3C API + Uber worker code while the legacy table still exists, verify the new runtime is healthy and no legacy cancellation-table access occurs, then re-check that no legacy `orders.failure` work is non-terminal. Only after a separate explicit production-migration authorization and normal backup/readiness checks may `prisma migrate deploy` apply the table drop. Do not drop the table while an older Uber worker image can still process cancellation work; if Uber Production traffic has begun or a non-terminal legacy cancellation exists, stop and re-audit rather than applying this contraction.
+
+8.3C is expected to make no machine import-baseline change because 8.3B already reduced External -> Orders direct debt to **0**. Runtime remains **23**, External total **29**, and public SCC should remain empty; GitHub architecture CI is authoritative. Provider wire schema, webhook signature/idempotency/inbox leases and retries, action commands, POS/Print and Payments/Clover behavior are intentionally unchanged. Current state is **SOURCE REVIEWED / REMOTE CI PENDING**.
 
 ### Slice 8.4 — Evidence-driven L3 gap hardening
 
@@ -408,13 +457,11 @@ After 8.1-8.3, audit actual uncovered cases only. Existing webhook/action/menu r
 
 Potential candidates must be demonstrated by a concrete missing recovery/characterization case; `orders.customer_order_edit` remains provider-confirmation gated.
 
-### Slice 8.5 — Conditional Production cutover compatibility cleanup
+### Slice 8.5 — Pre-production test-era compatibility cleanup + provider compatibility gate
 
-Only after explicit Production evidence/cutover authorization:
+The user's explicit no-compatibility decision for current Uber test data supersedes the earlier plan to preserve test-era persistence until Production cutover. Historical Test Store data, old provider-ID-scoped rows and compatibility branches that exist **only** to preserve those disposable records may be audited and removed before Production, with the usual source/schema/migration authorization for each change.
 
-- remove historical Uber-store-ID OpsTicket compatibility if no longer required;
-- remove eligible default-store/provider-identity compatibility remnants;
-- then tighten scanner semantics so closed production compatibility references cannot silently remain.
+This does **not** waive protocol compatibility. Provider wire DTOs, webhook behavior, idempotency semantics, verification requirements and any compatibility required by the Uber production API remain evidence-gated. After eligible test-era compatibility is removed, tighten scanner semantics so closed compatibility references cannot silently return.
 
 ### Slice 8.6 — Closeout
 

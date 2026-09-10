@@ -18,10 +18,6 @@ import { UberOrderPayloadParser } from '../../domain/orders/uber-order-payload.p
 type ImportedOrderInput = Parameters<
   UberOrderImportRepositoryPort['saveImportedOrder']
 >[0];
-type SaveExistingOrderCancellationMock = jest.MockedFunction<
-  UberOrderImportRepositoryPort['saveExistingOrderCancellation']
->;
-
 const fixture = (name: string): unknown =>
   JSON.parse(
     readFileSync(
@@ -45,6 +41,10 @@ const createActions = () =>
     { enqueue: jest.fn() } as unknown as UberOrderActionRepositoryPort,
     {} as UberOrderActionGatewayPort,
     { signal: () => undefined },
+    {
+      findByExternalOrderId: jest.fn(),
+      findSchedulingByOrderStableId: jest.fn(),
+    },
   );
 
 const mapping = {
@@ -73,6 +73,9 @@ const onlineConnectivity = () => ({
     lastHeartbeatAt: new Date('2026-08-20T13:00:00.000Z'),
   }),
 });
+const noOpCancellations = () => ({
+  finalizeConfirmedCancellation: jest.fn(),
+});
 
 describe('Uber order use-case boundaries', () => {
   it.each([
@@ -98,7 +101,6 @@ describe('Uber order use-case boundaries', () => {
       const repository = {
         findByExternalOrderId: jest.fn().mockResolvedValue(null),
         findMenuMappings: jest.fn(),
-        saveExistingOrderCancellation: jest.fn(),
         saveImportedOrder: jest.fn(),
       };
       const actions = { request: jest.fn() };
@@ -110,6 +112,7 @@ describe('Uber order use-case boundaries', () => {
         { findMapping: jest.fn() } as never,
         defaultStoreConfig() as never,
         onlineConnectivity() as never,
+        noOpCancellations() as never,
       );
 
       await expect(
@@ -124,7 +127,6 @@ describe('Uber order use-case boundaries', () => {
     const repository = {
       findByExternalOrderId: jest.fn().mockResolvedValue(null),
       findMenuMappings: jest.fn(),
-      saveExistingOrderCancellation: jest.fn(),
       saveImportedOrder: jest.fn(),
     };
     const actions = { request: jest.fn().mockResolvedValue(undefined) };
@@ -139,6 +141,7 @@ describe('Uber order use-case boundaries', () => {
       { findMapping: jest.fn() } as never,
       defaultStoreConfig() as never,
       onlineConnectivity() as never,
+      noOpCancellations() as never,
     );
 
     await useCase.execute('orders.notification', 'event-1', notification);
@@ -157,7 +160,6 @@ describe('Uber order use-case boundaries', () => {
     const repository = {
       findByExternalOrderId: jest.fn().mockResolvedValue(null),
       findMenuMappings: jest.fn(),
-      saveExistingOrderCancellation: jest.fn(),
       saveImportedOrder: jest.fn(),
     };
     const actions = { request: jest.fn().mockResolvedValue(undefined) };
@@ -173,6 +175,7 @@ describe('Uber order use-case boundaries', () => {
       { findMapping: jest.fn() } as never,
       defaultStoreConfig() as never,
       onlineConnectivity() as never,
+      noOpCancellations() as never,
     );
 
     await useCase.execute('orders.notification', 'event-allergy', notification);
@@ -192,11 +195,10 @@ describe('Uber order use-case boundaries', () => {
     const repository: UberOrderImportRepositoryPort = {
       findByExternalOrderId: jest.fn().mockResolvedValue(null),
       findMenuMappings: jest.fn().mockResolvedValue([importedMenuMapping]),
-      saveExistingOrderCancellation: jest.fn(),
       saveImportedOrder: jest.fn((order: ImportedOrderInput) => {
         saved.order = order;
         return Promise.resolve({
-          orderId: 'local-1',
+          orderStableId: 'local-1',
           created: true,
           action: { taskId: 'action-1', created: true },
         });
@@ -213,6 +215,7 @@ describe('Uber order use-case boundaries', () => {
       { findMapping } as never,
       defaultStoreConfig() as never,
       onlineConnectivity() as never,
+      noOpCancellations() as never,
     );
 
     await useCase.execute('orders.notification', 'event-1', notification);
@@ -233,19 +236,21 @@ describe('Uber order use-case boundaries', () => {
   });
 
   it('persists orders.failure for an existing order without fetching detail', async () => {
-    const saveExistingOrderCancellation: SaveExistingOrderCancellationMock =
-      jest.fn().mockResolvedValue(undefined);
+    const finalizeConfirmedCancellation = jest.fn().mockResolvedValue({
+      orderStableId: 'local-1',
+      refundCents: 1_130,
+    });
     const fetchOrderDetail = jest.fn();
     const repository = {
       findByExternalOrderId: jest.fn().mockResolvedValue({
-        orderId: 'local-1',
+        orderStableId: 'local-1',
         status: 'making',
         cursor: null,
       }),
       findMenuMappings: jest.fn(),
-      saveExistingOrderCancellation,
       saveImportedOrder: jest.fn(),
     };
+    const occurredAt = new Date('2026-08-20T13:40:00.000Z');
     const useCase = new ImportUberOrderUseCase(
       repository as UberOrderImportRepositoryPort,
       { fetchOrderDetail },
@@ -253,38 +258,35 @@ describe('Uber order use-case boundaries', () => {
       { findMapping: jest.fn() } as never,
       defaultStoreConfig() as never,
       onlineConnectivity() as never,
+      { finalizeConfirmedCancellation } as never,
     );
 
     await useCase.execute('orders.failure', 'failure-1', notification, {
-      occurredAt: new Date('2026-08-20T13:40:00.000Z'),
+      occurredAt,
       resourceVersion: null,
       sequence: null,
     });
 
     expect(fetchOrderDetail).not.toHaveBeenCalled();
-    expect(saveExistingOrderCancellation).toHaveBeenCalledTimes(1);
-    const savedCancellation = saveExistingOrderCancellation.mock.calls[0]?.[0];
-    expect(savedCancellation).toMatchObject({
-      orderId: 'local-1',
+    expect(finalizeConfirmedCancellation).toHaveBeenCalledWith({
+      orderStableId: 'local-1',
       externalOrderId: 'fixture-order-immediate',
-      cancellation: {
-        kind: 'CANCELLED',
-        reasonCode: 'UBER_ORDER_FAILURE',
-        occurredAt: new Date('2026-08-20T13:40:00.000Z'),
-      },
+      externalEventId: 'failure-1',
+      reason: 'UBER_ORDER_FAILURE',
+      operatorName: 'Uber Eats',
+      occurredAt,
     });
   });
 
   it('treats orders.failure after a successful standalone DENY as a terminal no-op', async () => {
     const fetchOrderDetail = jest.fn();
-    const saveExistingOrderCancellation = jest.fn();
+    const finalizeConfirmedCancellation = jest.fn();
     const hasSucceededDenial = jest.fn().mockResolvedValue(true);
     const useCase = new ImportUberOrderUseCase(
       {
         findByExternalOrderId: jest.fn().mockResolvedValue(null),
         hasSucceededDenial,
         findMenuMappings: jest.fn(),
-        saveExistingOrderCancellation,
         saveImportedOrder: jest.fn(),
       },
       { fetchOrderDetail },
@@ -292,6 +294,7 @@ describe('Uber order use-case boundaries', () => {
       { findMapping: jest.fn() } as never,
       defaultStoreConfig() as never,
       onlineConnectivity() as never,
+      { finalizeConfirmedCancellation } as never,
     );
 
     await expect(
@@ -299,7 +302,7 @@ describe('Uber order use-case boundaries', () => {
     ).resolves.toBeUndefined();
     expect(hasSucceededDenial).toHaveBeenCalledWith('fixture-order-immediate');
     expect(fetchOrderDetail).not.toHaveBeenCalled();
-    expect(saveExistingOrderCancellation).not.toHaveBeenCalled();
+    expect(finalizeConfirmedCancellation).not.toHaveBeenCalled();
   });
 
   it('retries an early orders.failure instead of depending on detail availability', async () => {
@@ -308,7 +311,6 @@ describe('Uber order use-case boundaries', () => {
       {
         findByExternalOrderId: jest.fn().mockResolvedValue(null),
         findMenuMappings: jest.fn(),
-        saveExistingOrderCancellation: jest.fn(),
         saveImportedOrder: jest.fn(),
       },
       { fetchOrderDetail },
@@ -316,6 +318,7 @@ describe('Uber order use-case boundaries', () => {
       { findMapping: jest.fn() } as never,
       defaultStoreConfig() as never,
       onlineConnectivity() as never,
+      noOpCancellations() as never,
     );
 
     await expect(
@@ -330,7 +333,7 @@ describe('Uber order use-case boundaries', () => {
   it('treats duplicate event ids as a no-op', async () => {
     const repository = {
       findByExternalOrderId: jest.fn().mockResolvedValue({
-        orderId: 'local-1',
+        orderStableId: 'local-1',
         status: 'pending',
         cursor: {
           eventId: 'event-1',
@@ -340,7 +343,6 @@ describe('Uber order use-case boundaries', () => {
         },
       }),
       findMenuMappings: jest.fn(),
-      saveExistingOrderCancellation: jest.fn(),
       saveImportedOrder: jest.fn(),
     };
     const fetchOrderDetail = jest.fn();
@@ -351,6 +353,7 @@ describe('Uber order use-case boundaries', () => {
       { findMapping: jest.fn() } as never,
       defaultStoreConfig() as never,
       onlineConnectivity() as never,
+      noOpCancellations() as never,
     );
     await useCase.execute('orders.notification', 'event-1', notification);
     expect(fetchOrderDetail).not.toHaveBeenCalled();

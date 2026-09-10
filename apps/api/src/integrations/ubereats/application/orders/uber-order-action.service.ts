@@ -10,6 +10,7 @@ import {
   type UberOrderDenial,
 } from './uber-order.ports';
 import type { UberWorkerWakePort } from '../shared/uber-worker-wake.port';
+import type { UberCanonicalOrderFactsQueryPort } from '../shared/uber-canonical-order-facts.port';
 
 const SCHEDULED_FINALIZE_PHASE = 'scheduled-finalize';
 
@@ -18,6 +19,7 @@ export class UberOrderActionService {
     private readonly repository: UberOrderActionRepositoryPort,
     private readonly gateway: UberOrderActionGatewayPort,
     private readonly workerWake: UberWorkerWakePort,
+    private readonly orderFacts: UberCanonicalOrderFactsQueryPort,
   ) {}
 
   async request(
@@ -84,7 +86,7 @@ export class UberOrderActionService {
     // Local reads and writeback deliberately sit outside the upstream failure
     // handler. A database failure must leave the claim to expire, rather than
     // being mislabeled as a failed Uber command.
-    const orderContext = await this.repository.getOrderContext(
+    const orderContext = await this.orderFacts.findByExternalOrderId(
       task.externalOrderId,
     );
     const currentStatus = orderContext?.status ?? null;

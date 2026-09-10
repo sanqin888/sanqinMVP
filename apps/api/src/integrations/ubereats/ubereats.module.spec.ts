@@ -1,9 +1,16 @@
+import { Logger } from '@nestjs/common';
 import { MODULE_METADATA } from '@nestjs/common/constants';
 import { AuthModule } from '../../auth/auth.module';
 import { MessagingModule } from '../../messaging/messaging.module';
 import {
+  ORDER_EXTERNAL_CANCELLATION_FINALIZER,
+  ORDER_EXTERNAL_TRANSITION_COORDINATOR,
   ORDER_INGESTION_PROVIDER,
+  OrderExternalCancellationModule,
+  OrderExternalFactsModule,
+  OrderExternalTransitionModule,
   OrdersModule,
+  type OrderExternalCancellationFinalizerPort,
 } from '../../orders/public-api';
 import {
   CATALOG_EXTERNAL_MENU_FACTS_READER,
@@ -25,6 +32,10 @@ import {
   type UberBusinessScheduleQueryPort,
 } from './application/menu/uber-menu-draft.ports';
 import {
+  UBER_CANONICAL_ORDER_CANCELLATION,
+  type UberCanonicalOrderCancellationPort,
+} from './application/shared/uber-canonical-order-cancellation.port';
+import {
   UBER_CATALOG_MENU_FACTS_QUERY,
   type UberCatalogMenuFactsQueryPort,
 } from './application/shared/uber-catalog-menu-facts.port';
@@ -33,9 +44,14 @@ import {
   type UberStoreConfigQueryPort,
 } from './application/shared/uber-store-config.port';
 import {
+  type UberOrderActionRepositoryPort,
+  UBER_ORDER_ACTION_REPOSITORY,
+} from './application/orders/uber-order.ports';
+import {
   UberOrderActionWorkerAdapter,
   UberWebhookInboxWorkerAdapter,
 } from './infrastructure/workers/uber-worker.adapters';
+import { UberOrderActionPrismaAdapter } from './infrastructure/persistence/uber-order-action-prisma.adapter';
 import { UberWorkerHealthService } from './infrastructure/workers/uber-worker-health.service';
 import { UberWorkerWakeService } from './infrastructure/workers/uber-worker-wake.service';
 import {
@@ -50,6 +66,8 @@ const metadata = <T>(module: object, key: string): T[] => {
 };
 
 describe('UberEats compositions', () => {
+  afterEach(() => jest.restoreAllMocks());
+
   it('keeps HTTP controllers exclusively in the single composition root', () => {
     expect(metadata(UberEatsModule, MODULE_METADATA.CONTROLLERS)).toEqual([
       UberEatsOAuthController,
@@ -60,10 +78,64 @@ describe('UberEats compositions', () => {
     ]);
   });
 
-  it('keeps the API composition free of the retired Messaging bridge', () => {
+  it('keeps the API composition on owner modules without the retired Messaging bridge', () => {
     const imports = metadata(UberEatsModule, MODULE_METADATA.IMPORTS);
     expect(imports).toContain(OrdersModule);
+    expect(imports).toContain(OrderExternalCancellationModule);
     expect(imports).not.toContain(MessagingModule);
+  });
+
+  it('maps Uber cancellation facts to the Orders owner without persistence identity', async () => {
+    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    const providers = metadata<unknown>(
+      UberEatsModule,
+      MODULE_METADATA.PROVIDERS,
+    );
+    const provider = providers.find(
+      (candidate) =>
+        typeof candidate === 'object' &&
+        candidate !== null &&
+        'provide' in candidate &&
+        candidate.provide === UBER_CANONICAL_ORDER_CANCELLATION,
+    ) as
+      | {
+          inject?: unknown[];
+          useFactory?: (
+            finalizer: OrderExternalCancellationFinalizerPort,
+          ) => UberCanonicalOrderCancellationPort;
+        }
+      | undefined;
+    const finalizeConfirmedCancellation = jest.fn().mockResolvedValue({
+      orderStableId: 'stable-order-1',
+      refundCents: 1_130,
+    });
+
+    expect(provider?.inject).toEqual([ORDER_EXTERNAL_CANCELLATION_FINALIZER]);
+    const port = provider!.useFactory!({ finalizeConfirmedCancellation });
+    const occurredAt = new Date('2026-09-10T16:30:00.000Z');
+
+    await expect(
+      port.finalizeConfirmedCancellation({
+        orderStableId: 'stable-order-1',
+        externalOrderId: 'uber-order-1',
+        externalEventId: 'uber-event-1',
+        reason: 'UBER_ORDER_FAILURE',
+        operatorName: 'Uber Eats',
+        occurredAt,
+      }),
+    ).resolves.toEqual({
+      orderStableId: 'stable-order-1',
+      refundCents: 1_130,
+    });
+    expect(finalizeConfirmedCancellation).toHaveBeenCalledWith({
+      channel: 'ubereats',
+      orderStableId: 'stable-order-1',
+      externalOrderId: 'uber-order-1',
+      externalEventId: 'uber-event-1',
+      reason: 'UBER_ORDER_FAILURE',
+      operatorName: 'Uber Eats',
+      occurredAt: '2026-09-10T16:30:00.000Z',
+    });
   });
 
   it('does not start polling workers in the API composition', () => {
@@ -289,6 +361,75 @@ describe('UberEats compositions', () => {
     });
   });
 
+  it('composes action completion through the Orders-owned transition coordinator', async () => {
+    const providers = metadata<unknown>(
+      UberEatsModule,
+      MODULE_METADATA.PROVIDERS,
+    );
+    const provider = providers.find(
+      (candidate) =>
+        typeof candidate === 'object' &&
+        candidate !== null &&
+        'provide' in candidate &&
+        candidate.provide === UBER_ORDER_ACTION_REPOSITORY,
+    ) as
+      | {
+          inject?: unknown[];
+          useFactory?: (
+            persistence: never,
+            coordinator: never,
+          ) => UberOrderActionRepositoryPort;
+        }
+      | undefined;
+
+    expect(provider?.inject).toEqual([
+      UberOrderActionPrismaAdapter,
+      ORDER_EXTERNAL_TRANSITION_COORDINATOR,
+    ]);
+    const transaction = { source: 'orders-owned-transaction' };
+    const completionInput = {
+      taskId: 'task-1',
+      leaseToken: 'lease-1',
+      upstreamStatus: 200,
+      transition: { from: 'pending' as const, to: 'paid' as const },
+    };
+    const persistence = {
+      enqueue: jest.fn(),
+      requeue: jest.fn(),
+      claim: jest.fn(),
+      completeWithinTransaction: jest.fn().mockResolvedValue({
+        externalOrderId: 'order-1',
+        completedAt: new Date('2026-09-10T16:00:00.000Z'),
+        acceptanceConfirmed: true,
+      }),
+      markFailed: jest.fn(),
+    };
+    const coordinator = {
+      completeProviderConfirmedTransition: jest.fn(
+        async (
+          input: unknown,
+          extension: (transaction: unknown) => Promise<unknown>,
+        ) => {
+          expect(input).toEqual({
+            channel: 'ubereats',
+            transition: completionInput.transition,
+          });
+          return (await extension(transaction)) !== null;
+        },
+      ),
+    };
+    const repository = provider!.useFactory!(
+      persistence as never,
+      coordinator as never,
+    );
+
+    await expect(repository.complete(completionInput)).resolves.toBe(true);
+    expect(persistence.completeWithinTransaction).toHaveBeenCalledWith(
+      transaction,
+      completionInput,
+    );
+  });
+
   it('keeps the worker runtime free of API feature modules', () => {
     const workerRuntime = createUberEatsWorkerRuntimeModule(
       UBER_EATS_WORKER_PROVIDERS,
@@ -299,6 +440,9 @@ describe('UberEats compositions', () => {
       PrismaModule,
       BrandStoreConfigModule,
       CatalogExternalMenuFactsModule,
+      OrderExternalFactsModule,
+      OrderExternalTransitionModule,
+      OrderExternalCancellationModule,
     ]);
     expect(imports).not.toContain(AuthModule);
     expect(imports).not.toContain(OrdersModule);

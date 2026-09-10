@@ -620,7 +620,6 @@ model Order {
   printJobs                  PosPrintJob[]
   amendments                 OrderAmendment[]
   items                      OrderItem[]
-  uberCancellations          UberOrderCancellation[]
 
   @@index([createdAt])
   @@index([contactPhone, createdAt])
@@ -882,24 +881,6 @@ enum UberOrderActionStatus {
   SUCCEEDED
   FAILED
   DEAD
-}
-
-/// Uber cancellation/rejection is a channel event, not a local refund.
-model UberOrderCancellation {
-  id              String   @id @default(uuid()) @db.Uuid
-  orderId         String   @db.Uuid
-  externalOrderId String
-  eventId         String   @unique
-  kind            String
-  cancelledBy     String?
-  reasonCode      String?
-  reasonDetail    String?
-  occurredAt      DateTime
-  createdAt       DateTime @default(now())
-  order           Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-
-  @@index([orderId, occurredAt])
-  @@index([externalOrderId, occurredAt])
 }
 
 model OrderAmendment {

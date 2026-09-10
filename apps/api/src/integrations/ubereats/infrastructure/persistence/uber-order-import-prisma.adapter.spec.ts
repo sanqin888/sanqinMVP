@@ -1,4 +1,3 @@
-import { Logger } from '@nestjs/common';
 import { UberOrderImportPrismaAdapter } from './uber-order-import-prisma.adapter';
 
 type RawTag = (
@@ -41,7 +40,6 @@ const baseInput = {
     sequence: 1,
   },
   menuMappings: [],
-  cancellation: null,
   actionIntent: null,
   receivedAt: new Date('2026-08-18T15:00:01.000Z'),
 };
@@ -66,13 +64,6 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
   it('recovers ordering cursor from the original processed webhook envelope', async () => {
     const adapter = new UberOrderImportPrismaAdapter(
       {
-        order: {
-          findUnique: jest.fn().mockResolvedValue({
-            id: 'order-db-1',
-            status: 'making',
-            fulfillmentTiming: 'IMMEDIATE',
-          }),
-        },
         uberWebhookInbox: {
           findFirst: jest.fn().mockResolvedValue({
             eventId: 'evt-raw',
@@ -87,12 +78,23 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
       } as never,
       {} as never,
       {} as never,
+      {
+        findByExternalOrderId: jest.fn().mockResolvedValue({
+          orderStableId: 'stable-1',
+          status: 'making',
+          totalCents: 1_130,
+          referenceAt: new Date('2026-08-18T15:00:00.000Z'),
+          fulfillmentTiming: 'IMMEDIATE',
+          externalEstimatedReadyAt: null,
+        }),
+        findSchedulingByOrderStableId: jest.fn(),
+      } as never,
     );
 
     await expect(
       adapter.findByExternalOrderId('uber-order-1'),
     ).resolves.toEqual({
-      orderId: 'order-db-1',
+      orderStableId: 'stable-1',
       status: 'making',
       fulfillmentTiming: 'IMMEDIATE',
       cursor: {
@@ -108,6 +110,7 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
     const findUnique = jest.fn().mockResolvedValue({ status: 'SUCCEEDED' });
     const adapter = new UberOrderImportPrismaAdapter(
       { uberOrderAction: { findUnique } } as never,
+      {} as never,
       {} as never,
       {} as never,
     );
@@ -145,6 +148,7 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
       {} as never,
       {} as never,
       { listOrderModifierSnapshotSources } as never,
+      {} as never,
     );
 
     await expect(adapter.findModifierSnapshotSources()).resolves.toEqual(
@@ -158,6 +162,7 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
     const adapter = new UberOrderImportPrismaAdapter(
       {} as never,
       { ingest } as never,
+      {} as never,
       {} as never,
     );
 
@@ -224,111 +229,6 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
     expect(normalized.items[0]?.external).not.toHaveProperty('modifiers');
   });
 
-  it('persists orders.failure against the existing order without requiring detail data', async () => {
-    const log = jest
-      .spyOn(Logger.prototype, 'log')
-      .mockImplementation(() => undefined);
-    const findFirst = jest.fn().mockResolvedValue({
-      id: 'order-db-1',
-      orderStableId: 'stable-1',
-      totalCents: 1_130,
-    });
-    const cancellationUpsert = jest.fn().mockResolvedValue({});
-    const amendmentUpsert = jest.fn().mockResolvedValue({});
-    const orderUpdate = jest.fn().mockResolvedValue({});
-    const opsEventCreateMany = jest.fn().mockResolvedValue({ count: 1 });
-    const tx = {
-      order: { findFirst, update: orderUpdate },
-      uberOrderCancellation: { upsert: cancellationUpsert },
-      orderAmendment: { upsert: amendmentUpsert },
-      opsEvent: { createMany: opsEventCreateMany },
-    };
-    const prisma = {
-      $transaction: jest.fn(
-        async (work: (client: typeof tx) => Promise<unknown>) => work(tx),
-      ),
-    };
-    const adapter = new UberOrderImportPrismaAdapter(
-      prisma as never,
-      {} as never,
-      {} as never,
-    );
-    const occurredAt = new Date('2026-08-20T13:30:09.000Z');
-
-    await adapter.saveExistingOrderCancellation({
-      orderId: 'order-db-1',
-      externalOrderId: 'uber-order-1',
-      cursor: {
-        eventId: 'evt-failure-1',
-        occurredAt,
-        resourceVersion: null,
-        sequence: null,
-      },
-      cancellation: {
-        kind: 'CANCELLED',
-        cancelledBy: null,
-        reasonCode: 'UBER_ORDER_FAILURE',
-        reasonDetail: null,
-        occurredAt,
-      },
-    });
-
-    expect(findFirst).toHaveBeenCalledWith({
-      where: {
-        id: 'order-db-1',
-        clientRequestId: 'ubereats:uber-order-1',
-      },
-      select: { id: true, orderStableId: true, totalCents: true },
-    });
-    expect(cancellationUpsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { eventId: 'evt-failure-1' },
-        create: expect.objectContaining({
-          orderId: 'order-db-1',
-          externalOrderId: 'uber-order-1',
-          eventId: 'evt-failure-1',
-          kind: 'CANCELLED',
-          reasonCode: 'UBER_ORDER_FAILURE',
-        }) as unknown,
-      }),
-    );
-    expect(amendmentUpsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        create: expect.objectContaining({
-          orderId: 'order-db-1',
-          refundCents: 1_130,
-          deltaCents: -1_130,
-        }) as unknown,
-      }),
-    );
-    expect(orderUpdate).toHaveBeenCalledWith({
-      where: { id: 'order-db-1' },
-      data: { status: 'refunded' },
-    });
-    expect(opsEventCreateMany).toHaveBeenCalledWith({
-      data: {
-        idempotencyKey: 'order.cancelled:stable-1',
-        eventName: 'order.cancelled',
-        source: 'orders.lifecycle',
-        payload: {
-          orderStableId: 'stable-1',
-          reason: 'UBER_ORDER_FAILURE',
-          operatorName: 'Uber Eats',
-        },
-      },
-      skipDuplicates: true,
-    });
-    expect(log).toHaveBeenCalledWith({
-      event: 'uber_order_cancelled',
-      eventId: 'evt-failure-1',
-      orderStableId: 'stable-1',
-      externalOrderId: 'uber-order-1',
-      channel: 'ubereats',
-      reasonCode: 'UBER_ORDER_FAILURE',
-      refundCents: 1_130,
-    });
-  });
-
   it('never marks the webhook inbox terminal inside the order import transaction', async () => {
     const inboxUpsert = jest.fn();
     const inboxUpdate = jest.fn();
@@ -355,10 +255,11 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
       {} as never,
       { ingest } as never,
       {} as never,
+      {} as never,
     );
 
     await expect(adapter.saveImportedOrder(baseInput)).resolves.toEqual({
-      orderId: 'order-db-1',
+      orderStableId: 'stable-1',
       created: true,
       action: null,
     });
@@ -419,6 +320,7 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
     const adapter = new UberOrderImportPrismaAdapter(
       {} as never,
       { ingest } as never,
+      {} as never,
       {} as never,
     );
     const input = {

@@ -198,7 +198,11 @@ ACCEPT / DENY / READY 只有 Uber 实际返回文档规定的 HTTP `200` 才可�
 2xx、`404/409` 都不得转换成成功。成功码由 infrastructure adapter 精确验证后返回实际 HTTP status，
 application 再将该真实值写入既有 `UberOrderAction.uberHttpStatus`；失败 status 继续由 `markFailed`
 保存。因此 Sandbox verification 可以直接用 action row 证明 Uber HTTP 结果，而不是仅凭本地 Order
-状态推断成功。
+状态推断成功。Phase 8 Slice 8.3B 之后，success completion 的单一 shared-DB transaction 由 Orders
+`ORDER_EXTERNAL_TRANSITION_COORDINATOR` 持有：Uber persistence 先在 opaque same-transaction extension
+内验证并 fence 精确 lease、写入上述 HTTP status，随后 Orders 在同一 transaction 内推进 canonical
+Order 并在 ACCEPT 时幂等追加 `order.accepted`。任一后续 DB 写失败必须回滚 action success；不得退化为
+`Uber success -> Orders transition` 两段顺序写。
 
 ### Order detail mapper contract
 
@@ -301,12 +305,14 @@ Fulfillment timing 由 webhook contract 决定，不通过 detail `status` 猜�
 | ---------- | -------- | -------- | ---------------- |
 | `orders.notification` | Order Fulfillment 1.0.0 | 拉取 v1 detail，映射并 admission/import | `webhooks/orders.notification.json` |
 | `orders.scheduled.notification` | 1.0.0 + scheduled enabled | 与普通单共用 mapper；增加 deliveries expansion 并解析 scheduled timing | `webhooks/orders.scheduled.notification.json` |
-| `orders.failure` | Order Fulfillment 1.0.0 | 已存在本地订单时直接按 external order id 落 cancellation；不要求 detail 再次可读 | `webhooks/orders.failure.json` |
+| `orders.failure` | Order Fulfillment 1.0.0 | 已存在本地订单时不要求 detail 再次可读；由 Orders-owned `ORDER_EXTERNAL_CANCELLATION_FINALIZER` 以 stable/external identity 落 canonical amendment + refunded + `order.cancelled` | `webhooks/orders.failure.json` |
 | `orders.customer_order_edit` | Order Fulfillment 1.0.0 当前文档已列出，但是否向本餐厅/Test Client 下发仍需 Uber 确认 | **不进入普通新单 import**；保持 unsupported quarantine，并记录 `CUSTOMER_ORDER_EDIT_RECONCILIATION_REQUIRED`，待独立 reconciliation 方案获批后再支持/replay | 暂无 live fixture；不得伪造 Sandbox PASS |
 
 若 SanQ 在 admission 阶段已成功执行 standalone DENY（订单因此从未落本地 `Order`），后续同一
 external order 的 `orders.failure` 是该拒单的合法终态，按 no-op 成功处理，不能继续重试到 DEAD。
 其余“本地订单尚未导入且没有成功 DENY”的 early failure 仍保持可重试，等待更早的订单事件完成。
+
+Phase 8 Slice 8.3C 之后，`orders.failure` 的 provider evidence 仍由已验签并保存完整 payload 的 `UberWebhookInbox` 持有；不再额外写入零读取者的 `UberOrderCancellation` mirror table。canonical cancellation 由 Orders owner 自己读取 `totalCents` / payment method，并在同一 transaction 内写 deterministic external-cancellation `OrderAmendment`、将订单收敛到 `refunded`、追加幂等 `order.cancelled`。同一 provider event 在 canonical commit 后、inbox `markSucceeded` 前发生 worker crash 时，重试必须成功收敛而不能产生第二笔退款 amendment 或进入 DEAD。
 
 非 1.0.0 cancellation webhook 不属于 SanQ 当前 Order contract，不提供兼容 parser。
 
@@ -322,7 +328,7 @@ external order 的 `orders.failure` 是该拒单的合法终态，按 no-op 成�
 | Merchant DENY | admission DENY policy、reason mapper、durable action tests | 用 Test Store 制造可拒场景；DENY 实际 HTTP `200`；action row 保存 `200`；admission-stage standalone DENY 不创建正常本地 `Order` |
 | Merchant CANCEL | cancel command/payload、state-machine、durable action tests | 对已接订单执行取消；标准成功为 HTTP `204`，Sandbox 明确兼容 HTTP `200` + 空响应；action row 保存实际 `204/200`；本地终态与 Uber 一致 |
 | READY_FOR_PICKUP | ready command/transition tests | 对制作中订单执行 ready；实际 HTTP `200`；action row 保存 `200`；本地订单只推进一次 |
-| `orders.failure` after Uber cancellation/failure | failure webhook parser/handler、early-failure retry、post-DENY terminal no-op tests | Test Store 触发可观察的 failure/cancel 终态；webhook `200`；已有订单正确落取消终态；standalone DENY 后的 failure 不进入 DEAD |
+| `orders.failure` after Uber cancellation/failure | failure webhook parser/handler、Orders cancellation finalizer、same-event replay、early-failure retry、post-DENY terminal no-op tests | Test Store 触发可观察的 failure/cancel 终态；webhook `200`；已有订单只产生一笔 confirmed external-cancellation amendment、订单为 `refunded` 且 `order.cancelled`/取消打印正常；重复/retry 不产生第二笔 amendment；standalone DENY 后的 failure 不进入 DEAD；DB/log 无 `UberOrderCancellation` legacy-table 访问 |
 | Duplicate webhook / replay | webhook inbox unique-event/idempotency tests | 如 Sandbox 可重放相同 event，则不得重复建单、重复 enqueue action 或重复打印；无法人为重放时以自动化证据 + inbox 唯一键作为门禁 |
 | POS offline / not ready | connectivity admission policy + persisted DENY intent tests | 在可控测试窗口模拟 POS offline；订单应走 DENY 而不是静默接单；恢复连接后不得补出重复订单/打印 |
 | Special instructions + single-use items | Order 1.0 parser、ingestion、POS view/print payload tests | Test Store 下包含 order/item special instructions 与餐具选择的订单，POS 与打印内容逐字可见 |

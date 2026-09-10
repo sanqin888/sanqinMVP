@@ -8,18 +8,13 @@ import {
   UberMenuPublishStatus,
   type Prisma,
 } from '@prisma/client';
-import { createHash } from 'crypto';
 import {
-  ORDER_CANCELLED_LIFECYCLE_EVENT,
   ORDER_INGESTION,
-  ORDER_LIFECYCLE_OUTBOX_SOURCE,
-  orderCancelledIdempotencyKey,
   type NormalizedOrderItem,
   type OrderIngestionPort,
 } from '../../../../orders/public-api';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import type {
-  UberOrderCancellationDecision,
   UberOrderEventCursor,
   UberOrderImportRepositoryPort,
   UberOrderMenuMapping,
@@ -28,12 +23,15 @@ import type {
   UberPosConnectivityQueryPort,
 } from '../../application/orders/uber-order.ports';
 import {
+  UBER_CANONICAL_ORDER_FACTS_QUERY,
+  type UberCanonicalOrderFactsQueryPort,
+} from '../../application/shared/uber-canonical-order-facts.port';
+import {
   UBER_CATALOG_MENU_FACTS_QUERY,
   type UberCatalogMenuFactsQueryPort,
 } from '../../application/shared/uber-catalog-menu-facts.port';
 import { UberOrderStateMachine } from '../../domain/orders/uber-order.state-machine';
 import type { ParsedUberModifier } from '../../domain/orders/uber-order.types';
-import { toUberOrderStatus } from './uber-order-status.mapper';
 
 /** Prisma implementation of order-import persistence and the admission connectivity query. */
 @Injectable()
@@ -48,6 +46,8 @@ export class UberOrderImportPrismaAdapter
     private readonly ingestion: OrderIngestionPort,
     @Inject(UBER_CATALOG_MENU_FACTS_QUERY)
     private readonly catalogFacts: UberCatalogMenuFactsQueryPort,
+    @Inject(UBER_CANONICAL_ORDER_FACTS_QUERY)
+    private readonly orderFacts: UberCanonicalOrderFactsQueryPort,
   ) {}
 
   async getStoreConnectivity(storeStableId: string) {
@@ -112,10 +112,7 @@ export class UberOrderImportPrismaAdapter
   }
 
   async findByExternalOrderId(externalOrderId: string) {
-    const order = await this.prisma.order.findUnique({
-      where: { clientRequestId: `ubereats:${externalOrderId}` },
-      select: { id: true, status: true, fulfillmentTiming: true },
-    });
+    const order = await this.orderFacts.findByExternalOrderId(externalOrderId);
     if (!order) return null;
     const inbox = await this.prisma.uberWebhookInbox.findFirst({
       where: {
@@ -126,12 +123,9 @@ export class UberOrderImportPrismaAdapter
       select: { eventId: true, createdAt: true, payload: true },
     });
     return {
-      orderId: order.id,
-      status: toUberOrderStatus(order.status),
-      fulfillmentTiming:
-        order.fulfillmentTiming === OrderFulfillmentTiming.SCHEDULED
-          ? ('SCHEDULED' as const)
-          : ('IMMEDIATE' as const),
+      orderStableId: order.orderStableId,
+      status: order.status,
+      fulfillmentTiming: order.fulfillmentTiming,
       cursor: inbox
         ? this.readCursor(inbox.eventId, inbox.createdAt, inbox.payload)
         : null,
@@ -149,48 +143,6 @@ export class UberOrderImportPrismaAdapter
       select: { status: true },
     });
     return denial?.status === 'SUCCEEDED';
-  }
-
-  async saveExistingOrderCancellation(
-    input: Parameters<
-      UberOrderImportRepositoryPort['saveExistingOrderCancellation']
-    >[0],
-  ): Promise<void> {
-    const cancellation = await this.prisma.$transaction(async (tx) => {
-      const order = await tx.order.findFirst({
-        where: {
-          id: input.orderId,
-          clientRequestId: `ubereats:${input.externalOrderId}`,
-        },
-        select: { id: true, orderStableId: true, totalCents: true },
-      });
-      if (!order)
-        throw new Error(
-          `Uber order disappeared before cancellation: ${input.externalOrderId}`,
-        );
-      await this.persistCancellation(tx, {
-        orderId: order.id,
-        orderStableId: order.orderStableId,
-        externalOrderId: input.externalOrderId,
-        totalCents: order.totalCents,
-        cursor: input.cursor,
-        cancellation: input.cancellation,
-      });
-      return {
-        orderStableId: order.orderStableId,
-        refundCents: Math.max(0, order.totalCents),
-      };
-    });
-
-    this.logger.log({
-      event: 'uber_order_cancelled',
-      eventId: input.cursor.eventId,
-      orderStableId: cancellation.orderStableId,
-      externalOrderId: input.externalOrderId,
-      channel: Channel.ubereats,
-      reasonCode: input.cancellation.reasonCode,
-      refundCents: cancellation.refundCents,
-    });
   }
 
   async saveImportedOrder(
@@ -276,7 +228,7 @@ export class UberOrderImportPrismaAdapter
         applyCoupons: false,
         persistExternalSnapshot: true,
       },
-      async (tx, order) => {
+      async (tx) => {
         if (input.actionIntent) {
           await tx.$queryRaw`
             SELECT pg_advisory_xact_lock(
@@ -315,16 +267,6 @@ export class UberOrderImportPrismaAdapter
             savedAction = { taskId: action.id, created: inserted.count === 1 };
           }
         }
-        if (input.cancellation) {
-          await this.persistCancellation(tx, {
-            orderId: order.orderId,
-            orderStableId: order.orderStableId,
-            externalOrderId: input.order.externalOrderId,
-            totalCents: input.order.totalCents,
-            cursor: input.cursor,
-            cancellation: input.cancellation,
-          });
-        }
         // UberWebhookInbox lifecycle is intentionally not owned here. The
         // inbox worker that holds PROCESSING + leaseToken is the sole writer of
         // PROCESSED/FAILED/DEAD via markSucceeded/markFailed/markUnsupported.
@@ -332,14 +274,9 @@ export class UberOrderImportPrismaAdapter
     );
 
     if (fulfillmentTiming === OrderFulfillmentTiming.SCHEDULED) {
-      const timing = await this.prisma.order.findUnique({
-        where: { id: saved.orderId },
-        select: {
-          scheduledReadyAt: true,
-          prepStartAt: true,
-          prepDurationMinutes: true,
-        },
-      });
+      const timing = await this.orderFacts.findSchedulingByOrderStableId(
+        saved.orderStableId,
+      );
       this.logger.log({
         event: 'scheduled_order_imported',
         orderStableId: saved.orderStableId,
@@ -352,77 +289,10 @@ export class UberOrderImportPrismaAdapter
     }
 
     return {
-      orderId: saved.orderId,
+      orderStableId: saved.orderStableId,
       created: saved.action === 'created',
       action: savedAction,
     };
-  }
-
-  private async persistCancellation(
-    tx: Prisma.TransactionClient,
-    input: {
-      orderId: string;
-      orderStableId: string;
-      externalOrderId: string;
-      totalCents: number;
-      cursor: UberOrderEventCursor;
-      cancellation: UberOrderCancellationDecision;
-    },
-  ): Promise<void> {
-    await tx.uberOrderCancellation.upsert({
-      where: { eventId: input.cursor.eventId },
-      create: {
-        orderId: input.orderId,
-        externalOrderId: input.externalOrderId,
-        eventId: input.cursor.eventId,
-        ...input.cancellation,
-      },
-      update: {},
-    });
-    const refundCents = Math.max(0, input.totalCents);
-    await tx.orderAmendment.upsert({
-      where: {
-        amendmentStableId: this.amendmentId(input.cursor.eventId),
-      },
-      create: {
-        amendmentStableId: this.amendmentId(input.cursor.eventId),
-        orderId: input.orderId,
-        type: 'RETENDER',
-        paymentMethod: PaymentMethod.UBEREATS,
-        reason:
-          input.cancellation.reasonDetail ??
-          input.cancellation.reasonCode ??
-          'Uber cancellation confirmed',
-        deltaCents: -refundCents,
-        refundCents,
-        summaryJson: {
-          kind: 'UBER_CANCELLATION',
-          status: 'CONFIRMED',
-          eventId: input.cursor.eventId,
-        },
-      },
-      update: {},
-    });
-    await tx.order.update({
-      where: { id: input.orderId },
-      data: { status: OrderStatus.refunded },
-    });
-    await tx.opsEvent.createMany({
-      data: {
-        idempotencyKey: orderCancelledIdempotencyKey(input.orderStableId),
-        eventName: ORDER_CANCELLED_LIFECYCLE_EVENT,
-        source: ORDER_LIFECYCLE_OUTBOX_SOURCE,
-        payload: {
-          orderStableId: input.orderStableId,
-          reason:
-            input.cancellation.reasonDetail ??
-            input.cancellation.reasonCode ??
-            'Uber cancellation confirmed',
-          operatorName: 'Uber Eats',
-        },
-      },
-      skipDuplicates: true,
-    });
   }
 
   private toPrismaStatus(status: string | null): OrderStatus {
@@ -559,9 +429,5 @@ export class UberOrderImportPrismaAdapter
           ? sequence
           : null,
     };
-  }
-
-  private amendmentId(eventId: string): string {
-    return `uber_cancel_${createHash('sha256').update(eventId).digest('hex')}`;
   }
 }

@@ -5,13 +5,18 @@ const ROOT = resolve(__dirname);
 const source = (path: string) => readFileSync(resolve(ROOT, path), 'utf8');
 
 describe('Uber accepted-order lifecycle boundary architecture', () => {
-  it('keeps Uber action completion POS-agnostic while appending acceptance only', () => {
+  it('keeps provider completion POS-agnostic while Orders appends acceptance only', () => {
     const adapter = source(
       'infrastructure/persistence/uber-order-action-prisma.adapter.ts',
     );
+    const coordinator = source(
+      '../../orders/order-external-transition.service.ts',
+    );
 
-    expect(adapter).toContain('tx.opsEvent.createMany');
-    expect(adapter).toContain('ORDER_ACCEPTED_LIFECYCLE_EVENT');
+    expect(coordinator).toContain('tx.opsEvent.createMany');
+    expect(coordinator).toContain('ORDER_ACCEPTED_LIFECYCLE_EVENT');
+    expect(coordinator).not.toContain('ORDER_PREP_STARTED_LIFECYCLE_EVENT');
+    expect(adapter).not.toContain('ORDER_ACCEPTED_LIFECYCLE_EVENT');
     expect(adapter).not.toContain('ORDER_PREP_STARTED_LIFECYCLE_EVENT');
     expect(adapter).not.toMatch(/\bPosGateway\b|\bFulfillmentProcessor\b/);
     expect(adapter).not.toMatch(/pos\.gateway|fulfillment\.processor/);
@@ -41,7 +46,7 @@ describe('Uber accepted-order lifecycle boundary architecture', () => {
     );
     expect(worker).not.toMatch(/FulfillmentProcessor|PosGateway|OrdersModule/);
     expect(uberModule).toMatch(
-      /createUberEatsWorkerRuntimeModule[\s\S]*imports:\s*\[\s*PrismaModule,\s*BrandStoreConfigModule,\s*CatalogExternalMenuFactsModule,?\s*\]/,
+      /createUberEatsWorkerRuntimeModule[\s\S]*imports:\s*\[\s*PrismaModule,\s*BrandStoreConfigModule,\s*CatalogExternalMenuFactsModule,\s*OrderExternalFactsModule,\s*OrderExternalTransitionModule,\s*OrderExternalCancellationModule,?\s*\]/,
     );
     expect(uberModule).not.toContain('CatalogAvailabilityModule');
   });

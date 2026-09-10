@@ -72,4 +72,29 @@ export type {
   OrderFoodLabelDto,
   OrderLabelPlanDto,
 } from './order-label-plan.service';
+export {
+  ORDER_EXTERNAL_FACTS_READER,
+  type ExternalOrderIdentity,
+  type OrderExternalFacts,
+  type OrderExternalFactsReaderPort,
+  type OrderExternalQueueFact,
+  type OrderExternalSchedulingFacts,
+} from './order-external-facts-reader.contract';
+export { OrderExternalFactsModule } from './order-external-facts.module';
+export {
+  ORDER_EXTERNAL_TRANSITION_COORDINATOR,
+  type OrderExternalTransition,
+  type OrderExternalTransitionCompletion,
+  type OrderExternalTransitionCoordinatorPort,
+  type OrderExternalTransitionTransaction,
+  type OrderExternalTransitionWithinTransaction,
+} from './order-external-transition.contract';
+export { OrderExternalTransitionModule } from './order-external-transition.module';
+export {
+  ORDER_EXTERNAL_CANCELLATION_FINALIZER,
+  type OrderExternalCancellationFinalizerPort,
+  type OrderExternalCancellationInput,
+  type OrderExternalCancellationResult,
+} from './order-external-cancellation.contract';
+export { OrderExternalCancellationModule } from './order-external-cancellation.module';
 export { OrdersModule } from './orders.module';

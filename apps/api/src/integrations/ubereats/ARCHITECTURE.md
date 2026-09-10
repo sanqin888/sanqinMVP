@@ -27,9 +27,31 @@
 - Uber order ingestion 通过 Orders 的 `ORDER_INGESTION_PROVIDER` 进入 canonical persistence；
   ingestion service 不依赖 Messaging 或 `OrderEventsBus`。API composition 只导入
   `OrdersModule`，dedicated worker composition 直接装配该 provider 与 Prisma，不得为了构造
-  Orders ingestion 重新引入 Messaging bridge 或 Orders 私有 event bus。Uber imported orders
-  继续不触发 SanQ member paid-lifecycle/Loyalty side effects；外部 wire、webhook idempotency 与
-  provider-supplied amount truth 不因此改变。
+  Orders ingestion 重新引入 Messaging bridge 或 Orders 私有 event bus。
+- canonical Order 的非事务外部渠道读取只通过 Orders 公共
+  `ORDER_EXTERNAL_FACTS_READER`；`ubereats.module.ts` 把这个 provider-neutral reader 映射到
+  Uber application-owned query/repository ports。跨边界身份仅使用 `channel + externalOrderId`
+  或 `orderStableId`，不得暴露 `Order.id` / Prisma shape。dedicated worker 只导入窄
+  `OrderExternalFactsModule`，不得为这些读取导入完整 `OrdersModule`。
+- provider-confirmed action completion 的 canonical transition 只通过 Orders 公共
+  `ORDER_EXTERNAL_TRANSITION_COORDINATOR`。Orders 持有唯一 shared-DB transaction，并先调用
+  一个 opaque same-transaction External extension；Uber persistence 只能在该 extension 中验证
+  claimed action、执行 exact lease fence、记录 provider success HTTP status 并清理 lease。extension
+  成功后，`Order.status`、`makingAt` / `readyAt`、conditional-update race re-read 与幂等
+  `order.accepted` 都由 Orders 在同一 transaction 中完成。`ubereats.module.ts` 是该跨上下文
+  completion 的唯一装配点，dedicated worker 只导入 `OrderExternalTransitionModule`，不得导入
+  `OrdersModule`。
+- provider-confirmed cancellation webhook 的 canonical finalization 只通过 Uber application-owned
+  `UBER_CANONICAL_ORDER_CANCELLATION`，并在唯一 `ubereats.module.ts` composition root 映射到 Orders 公共
+  `ORDER_EXTERNAL_CANCELLATION_FINALIZER`。Uber persistence adapter 不负责该跨 context orchestration。
+  application 只提交 stable `orderStableId`、provider external/event identity、规范化 reason/operator 与
+  occurredAt；canonical `totalCents` / payment method 必须由 Orders 自己读取。Orders 在自己的 transaction
+  中幂等写 `OrderAmendment`、把 Order 收敛到 `refunded`、追加 `order.cancelled`。
+  `UberOrderCancellation` test-era mirror persistence 不再保留；durable provider evidence 继续由已验签并
+  持久化完整 payload 的 `UberWebhookInbox` 拥有。
+- Uber imported orders 继续不触发 SanQ member paid-lifecycle/Loyalty side effects；外部 wire、
+  webhook signature/idempotency、provider-supplied amount truth、action lease semantics 与 inbox
+  retry/replay 语义不因此改变。
 
 边界外调用者只能使用 `public-api.ts`、`ubereats.module.ts` 或 `worker.ts`；其中业务能力
 一律经 `public-api.ts` 使用。禁止外部深层导入 `api/`、`application/`、`domain/`、

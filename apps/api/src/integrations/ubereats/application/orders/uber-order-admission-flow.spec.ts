@@ -16,9 +16,6 @@ type ImportedOrderInput = Parameters<
 type EnqueueMock = jest.MockedFunction<
   UberOrderActionRepositoryPort['enqueue']
 >;
-type SaveExistingOrderCancellationMock = jest.MockedFunction<
-  UberOrderImportRepositoryPort['saveExistingOrderCancellation']
->;
 
 const fixture: unknown = JSON.parse(
   readFileSync(
@@ -55,6 +52,10 @@ const createActions = (enqueue: EnqueueMock) =>
     { enqueue } as unknown as UberOrderActionRepositoryPort,
     {} as UberOrderActionGatewayPort,
     { signal: () => undefined },
+    {
+      findByExternalOrderId: jest.fn(),
+      findSchedulingByOrderStableId: jest.fn(),
+    },
   );
 
 const defaultStoreConfig = () => ({
@@ -63,6 +64,9 @@ const defaultStoreConfig = () => ({
     unsupportedAllergens: [],
   }),
   getStoreAutoAcceptOnlineOrders: jest.fn().mockResolvedValue(true),
+});
+const noOpCancellations = () => ({
+  finalizeConfirmedCancellation: jest.fn(),
 });
 
 describe('Uber order admission flow', () => {
@@ -76,7 +80,6 @@ describe('Uber order admission flow', () => {
       {
         findByExternalOrderId: jest.fn().mockResolvedValue(null),
         findMenuMappings: jest.fn().mockResolvedValue([]),
-        saveExistingOrderCancellation: jest.fn(),
         saveImportedOrder,
       },
       { fetchOrderDetail: jest.fn().mockResolvedValue(parsedDetail) },
@@ -84,6 +87,7 @@ describe('Uber order admission flow', () => {
       { findMapping: jest.fn().mockResolvedValue(storeMapping) } as never,
       defaultStoreConfig() as never,
       { getStoreConnectivity } as never,
+      noOpCancellations() as never,
     );
 
     await useCase.execute('orders.notification', 'event-1', notification);
@@ -117,7 +121,6 @@ describe('Uber order admission flow', () => {
       {
         findByExternalOrderId: jest.fn().mockResolvedValue(null),
         findMenuMappings: jest.fn().mockResolvedValue(menuMappings),
-        saveExistingOrderCancellation: jest.fn(),
         saveImportedOrder,
       },
       { fetchOrderDetail: jest.fn().mockResolvedValue(detailWithAllergy) },
@@ -131,6 +134,7 @@ describe('Uber order admission flow', () => {
         getStoreAutoAcceptOnlineOrders: jest.fn().mockResolvedValue(true),
       } as never,
       { getStoreConnectivity } as never,
+      noOpCancellations() as never,
     );
 
     await useCase.execute(
@@ -158,7 +162,7 @@ describe('Uber order admission flow', () => {
     const saveImportedOrder = jest.fn((input: ImportedOrderInput) => {
       saved.input = input;
       return Promise.resolve({
-        orderId: 'local-1',
+        orderStableId: 'local-1',
         created: true,
         action: { taskId: 'deny-1', created: true },
       });
@@ -167,7 +171,6 @@ describe('Uber order admission flow', () => {
       {
         findByExternalOrderId: jest.fn().mockResolvedValue(null),
         findMenuMappings: jest.fn().mockResolvedValue(menuMappings),
-        saveExistingOrderCancellation: jest.fn(),
         saveImportedOrder,
       },
       { fetchOrderDetail: jest.fn().mockResolvedValue(parsedDetail) },
@@ -180,6 +183,7 @@ describe('Uber order admission flow', () => {
           lastHeartbeatAt: null,
         }),
       } as never,
+      noOpCancellations() as never,
     );
 
     await useCase.execute('orders.notification', 'event-1', notification);
@@ -198,7 +202,7 @@ describe('Uber order admission flow', () => {
     const saveImportedOrder = jest.fn((input: ImportedOrderInput) => {
       saved.input = input;
       return Promise.resolve({
-        orderId: 'local-1',
+        orderStableId: 'local-1',
         created: true,
         action: null,
       });
@@ -208,7 +212,6 @@ describe('Uber order admission flow', () => {
       {
         findByExternalOrderId: jest.fn().mockResolvedValue(null),
         findMenuMappings: jest.fn().mockResolvedValue(menuMappings),
-        saveExistingOrderCancellation: jest.fn(),
         saveImportedOrder,
       },
       { fetchOrderDetail: jest.fn().mockResolvedValue(parsedDetail) },
@@ -224,6 +227,7 @@ describe('Uber order admission flow', () => {
           lastHeartbeatAt: new Date(),
         }),
       } as never,
+      noOpCancellations() as never,
     );
 
     await useCase.execute(
@@ -239,18 +243,20 @@ describe('Uber order admission flow', () => {
 
   it('processes orders.failure directly against the existing order', async () => {
     const enqueue: EnqueueMock = jest.fn();
-    const saveExistingOrderCancellation: SaveExistingOrderCancellationMock =
-      jest.fn().mockResolvedValue(undefined);
+    const finalizeConfirmedCancellation = jest.fn().mockResolvedValue({
+      orderStableId: 'local-1',
+      refundCents: 1_130,
+    });
     const fetchOrderDetail = jest.fn();
+    const occurredAt = new Date('2026-08-20T13:40:00.000Z');
     const useCase = new ImportUberOrderUseCase(
       {
         findByExternalOrderId: jest.fn().mockResolvedValue({
-          orderId: 'local-1',
+          orderStableId: 'local-1',
           status: 'making',
           cursor: null,
         }),
         findMenuMappings: jest.fn(),
-        saveExistingOrderCancellation,
         saveImportedOrder: jest.fn(),
       },
       { fetchOrderDetail },
@@ -258,18 +264,24 @@ describe('Uber order admission flow', () => {
       { findMapping: jest.fn() } as never,
       defaultStoreConfig() as never,
       { getStoreConnectivity: jest.fn() } as never,
+      { finalizeConfirmedCancellation } as never,
     );
 
-    await useCase.execute('orders.failure', 'event-2', notification);
+    await useCase.execute('orders.failure', 'event-2', notification, {
+      occurredAt,
+      resourceVersion: null,
+      sequence: null,
+    });
 
     expect(fetchOrderDetail).not.toHaveBeenCalled();
     expect(enqueue).not.toHaveBeenCalled();
-    expect(saveExistingOrderCancellation).toHaveBeenCalledTimes(1);
-    const savedCancellation = saveExistingOrderCancellation.mock.calls[0]?.[0];
-    expect(savedCancellation).toMatchObject({
-      orderId: 'local-1',
+    expect(finalizeConfirmedCancellation).toHaveBeenCalledWith({
+      orderStableId: 'local-1',
       externalOrderId: 'fixture-order-immediate',
-      cancellation: { kind: 'CANCELLED' },
+      externalEventId: 'event-2',
+      reason: 'UBER_ORDER_FAILURE',
+      operatorName: 'Uber Eats',
+      occurredAt,
     });
   });
 });

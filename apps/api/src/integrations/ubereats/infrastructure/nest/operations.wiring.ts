@@ -38,7 +38,6 @@ import {
   UberMenuItemOperationsPrismaRepository,
   UberOperationsPrismaUnitOfWork,
   UberOpsTicketPrismaRepository,
-  UberOrderOperationsPrismaRepository,
   UberReconciliationPrismaRepository,
 } from '../../infrastructure/persistence/uber-operations-prisma.repositories';
 import { UBER_EATS_REPORTING } from '../../public-api';
@@ -94,11 +93,6 @@ export function createOperationsWiring(): Provider[] {
         reports: UberFinancialReportRepositoryPort,
         artifacts: UberFinancialReportArtifactStorePort,
       ) => new HandleUberFinancialReportSuccessUseCase(reports, artifacts),
-    },
-    UberOrderOperationsPrismaRepository,
-    {
-      provide: UBER_ORDER_OPERATIONS_REPOSITORY,
-      useExisting: UberOrderOperationsPrismaRepository,
     },
     UberMenuItemOperationsPrismaRepository,
     {

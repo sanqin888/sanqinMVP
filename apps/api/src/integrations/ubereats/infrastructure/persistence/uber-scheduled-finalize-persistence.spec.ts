@@ -43,17 +43,21 @@ describe('Uber scheduled finalize persistence', () => {
     const findFirst = jest.fn().mockResolvedValue(null);
     const adapter = new UberOrderImportPrismaAdapter(
       {
-        order: {
-          findUnique: jest.fn().mockResolvedValue({
-            id: 'order-db-1',
-            status: 'paid',
-            fulfillmentTiming: 'SCHEDULED',
-          }),
-        },
         uberWebhookInbox: { findFirst },
       } as never,
       {} as never,
       {} as never,
+      {
+        findByExternalOrderId: jest.fn().mockResolvedValue({
+          orderStableId: 'stable-1',
+          status: 'paid',
+          totalCents: 1_130,
+          referenceAt: new Date('2026-08-21T13:55:15.000Z'),
+          fulfillmentTiming: 'SCHEDULED',
+          externalEstimatedReadyAt: null,
+        }),
+        findSchedulingByOrderStableId: jest.fn(),
+      } as never,
     );
 
     await adapter.findByExternalOrderId('scheduled-order-1');
@@ -98,17 +102,18 @@ describe('Uber scheduled finalize persistence', () => {
       },
     );
     const adapter = new UberOrderImportPrismaAdapter(
-      {
-        order: {
-          findUnique: jest.fn().mockResolvedValue({
-            scheduledReadyAt: new Date('2026-08-21T14:53:28.000Z'),
-            prepStartAt: new Date('2026-08-21T14:43:28.000Z'),
-            prepDurationMinutes: 10,
-          }),
-        },
-      } as never,
+      {} as never,
       { ingest } as never,
       {} as never,
+      {
+        findByExternalOrderId: jest.fn(),
+        findSchedulingByOrderStableId: jest.fn().mockResolvedValue({
+          orderStableId: 'stable-1',
+          scheduledReadyAt: new Date('2026-08-21T14:53:28.000Z'),
+          prepStartAt: new Date('2026-08-21T14:43:28.000Z'),
+          prepDurationMinutes: 10,
+        }),
+      } as never,
     );
     const input = {
       order: {
@@ -163,7 +168,6 @@ describe('Uber scheduled finalize persistence', () => {
           expectedPriceCents: 1000,
         },
       ],
-      cancellation: null,
       actionIntent: {
         externalOrderId: 'scheduled-order-1',
         action: 'ACCEPT' as const,

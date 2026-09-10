@@ -1,17 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { OrderFulfillmentTiming, OrderStatus, Prisma } from '@prisma/client';
-import {
-  ORDER_ACCEPTED_LIFECYCLE_EVENT,
-  ORDER_LIFECYCLE_OUTBOX_SOURCE,
-  orderAcceptedIdempotencyKey,
-} from '../../../../orders/order-lifecycle';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import type {
   UberOrderActionRepositoryPort,
   UberOrderActionTask,
 } from '../../application/orders/uber-order.ports';
-import type { UberOrderStatus } from '../../domain/orders/uber-order.types';
 
 type ClaimedRow = {
   id: string;
@@ -26,7 +20,7 @@ type ClaimedRow = {
 
 /** Durable order-command queue. Prisma records are translated at this boundary. */
 @Injectable()
-export class UberOrderActionPrismaAdapter implements UberOrderActionRepositoryPort {
+export class UberOrderActionPrismaAdapter {
   constructor(private readonly prisma: PrismaService) {}
 
   async enqueue(input: Omit<UberOrderActionTask, 'taskId' | 'leaseToken'>) {
@@ -207,135 +201,57 @@ export class UberOrderActionPrismaAdapter implements UberOrderActionRepositoryPo
     );
   }
 
-  async getOrderContext(externalOrderId: string) {
-    const order = await this.prisma.order.findUnique({
-      where: { clientRequestId: `ubereats:${externalOrderId}` },
-      select: {
-        status: true,
-        totalCents: true,
-        paidAt: true,
-        createdAt: true,
-        fulfillmentTiming: true,
-        scheduledReadyAt: true,
-        externalEstimatedReadyAt: true,
+  async completeWithinTransaction(
+    transaction: unknown,
+    input: Parameters<UberOrderActionRepositoryPort['complete']>[0],
+  ): Promise<{
+    externalOrderId: string;
+    completedAt: Date;
+    acceptanceConfirmed: boolean;
+  } | null> {
+    const tx = transaction as Prisma.TransactionClient;
+    const claimed = await tx.uberOrderAction.findFirst({
+      where: {
+        id: input.taskId,
+        status: 'PROCESSING',
+        leaseToken: input.leaseToken,
+      },
+      select: { externalOrderId: true, action: true },
+    });
+    if (!claimed) return null;
+    if (
+      claimed.action === 'ACCEPT' &&
+      input.transition &&
+      input.transition.to !== 'paid'
+    ) {
+      throw new Error('Uber ACCEPT may only record local acceptance as paid');
+    }
+
+    const completedAt = new Date();
+    const updated = await tx.uberOrderAction.updateMany({
+      where: {
+        id: input.taskId,
+        status: 'PROCESSING',
+        leaseToken: input.leaseToken,
+      },
+      data: {
+        status: 'SUCCEEDED',
+        retryable: false,
+        completedAt,
+        leaseToken: null,
+        leaseExpiresAt: null,
+        lastError: null,
+        uberHttpStatus: input.upstreamStatus ?? null,
+        response: Prisma.DbNull,
       },
     });
-    if (!order) return null;
+    if (updated.count !== 1) return null;
+
     return {
-      status: order.status as UberOrderStatus,
-      totalCents: order.totalCents,
-      referenceAt: order.paidAt ?? order.createdAt,
-      fulfillmentTiming:
-        order.fulfillmentTiming === OrderFulfillmentTiming.SCHEDULED
-          ? ('SCHEDULED' as const)
-          : ('IMMEDIATE' as const),
-      scheduledReadyAt: order.scheduledReadyAt,
-      externalEstimatedReadyAt: order.externalEstimatedReadyAt,
+      externalOrderId: claimed.externalOrderId,
+      completedAt,
+      acceptanceConfirmed: claimed.action === 'ACCEPT',
     };
-  }
-
-  async complete(input: {
-    taskId: string;
-    leaseToken: string;
-    upstreamStatus?: number | null;
-    transition: { from: UberOrderStatus; to: UberOrderStatus } | null;
-  }): Promise<boolean> {
-    return this.prisma.$transaction(async (tx) => {
-      const claimed = await tx.uberOrderAction.findFirst({
-        where: {
-          id: input.taskId,
-          status: 'PROCESSING',
-          leaseToken: input.leaseToken,
-        },
-        select: { externalOrderId: true, action: true },
-      });
-      if (!claimed) return false;
-      if (
-        claimed.action === 'ACCEPT' &&
-        input.transition &&
-        input.transition.to !== OrderStatus.paid
-      ) {
-        throw new Error('Uber ACCEPT may only record local acceptance as paid');
-      }
-
-      const completedAt = new Date();
-      // Fence the complete operation with the exact lease first. Because this
-      // update, the local Order transition and lifecycle append share one
-      // transaction, any downstream DB error rolls all three back together.
-      const updated = await tx.uberOrderAction.updateMany({
-        where: {
-          id: input.taskId,
-          status: 'PROCESSING',
-          leaseToken: input.leaseToken,
-        },
-        data: {
-          status: 'SUCCEEDED',
-          retryable: false,
-          completedAt,
-          leaseToken: null,
-          leaseExpiresAt: null,
-          lastError: null,
-          uberHttpStatus: input.upstreamStatus ?? null,
-          response: Prisma.DbNull,
-        },
-      });
-      if (updated.count !== 1) return false;
-
-      if (input.transition) {
-        const clientRequestId = `ubereats:${claimed.externalOrderId}`;
-        const order = await tx.order.findUnique({
-          where: { clientRequestId },
-          select: { id: true, orderStableId: true, status: true },
-        });
-        let reachedTarget = order?.status === input.transition.to;
-
-        if (order?.status === input.transition.from) {
-          const timestamps = {
-            makingAt:
-              input.transition.to === OrderStatus.making
-                ? completedAt
-                : undefined,
-            readyAt:
-              input.transition.to === OrderStatus.ready
-                ? completedAt
-                : undefined,
-          };
-          const transition = await tx.order.updateMany({
-            where: {
-              id: order.id,
-              status: input.transition.from as OrderStatus,
-            },
-            data: {
-              status: input.transition.to as OrderStatus,
-              ...timestamps,
-            },
-          });
-          reachedTarget = transition.count === 1;
-          if (!reachedTarget) {
-            const current = await tx.order.findUnique({
-              where: { id: order.id },
-              select: { status: true },
-            });
-            reachedTarget = current?.status === input.transition.to;
-          }
-        }
-
-        if (order && reachedTarget && claimed.action === 'ACCEPT') {
-          // ACCEPT records acceptance only. Orders owns the separate decision to
-          // start preparation and will append order.prep_started transactionally.
-          await tx.opsEvent.createMany({
-            data: {
-              idempotencyKey: orderAcceptedIdempotencyKey(order.orderStableId),
-              eventName: ORDER_ACCEPTED_LIFECYCLE_EVENT,
-              source: ORDER_LIFECYCLE_OUTBOX_SOURCE,
-              payload: { orderStableId: order.orderStableId },
-            },
-            skipDuplicates: true,
-          });
-        }
-      }
-      return true;
-    });
   }
 
   async markFailed(

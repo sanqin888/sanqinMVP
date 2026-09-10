@@ -10,6 +10,14 @@ import {
   type UberWorkerWakePort,
   UBER_WORKER_WAKE_PORT,
 } from '../../application/shared/uber-worker-wake.port';
+import {
+  type UberCanonicalOrderFactsQueryPort,
+  UBER_CANONICAL_ORDER_FACTS_QUERY,
+} from '../../application/shared/uber-canonical-order-facts.port';
+import {
+  type UberCanonicalOrderCancellationPort,
+  UBER_CANONICAL_ORDER_CANCELLATION,
+} from '../../application/shared/uber-canonical-order-cancellation.port';
 import type { Provider } from '@nestjs/common';
 import { ReceiveUberWebhookUseCase } from '../../application/orders/uber-webhook-receiver.use-case';
 import { ProcessUberWebhookInboxUseCase } from '../../application/orders/process-uber-webhook-inbox.use-case';
@@ -55,7 +63,6 @@ import { UBER_ORDER_IMPORT_PORT } from '../../application/orders/uber-order.port
 import { UberOrderActionPrismaAdapter } from '../../infrastructure/persistence/uber-order-action-prisma.adapter';
 import { UberOrderImportPrismaAdapter } from '../../infrastructure/persistence/uber-order-import-prisma.adapter';
 import { UberOrderStatusAuditPrismaAdapter } from '../../infrastructure/persistence/uber-order-status-audit-prisma.adapter';
-import { UberOrderSyncPrismaRepository } from '../../infrastructure/persistence/uber-order-sync-prisma.repository';
 import { UberOrderActionGatewayAdapter } from '../../infrastructure/uber-api/uber-order-action.gateway';
 import { UberOrderDetailGatewayAdapter } from '../../infrastructure/uber-api/uber-order-detail.gateway';
 import { UberOrderGateway } from '../../infrastructure/uber-api/uber-resource.gateways';
@@ -88,10 +95,6 @@ export function createOrdersWiring(): Provider[] {
       useExisting: UberOrderActionGatewayAdapter,
     },
     UberOrderActionPrismaAdapter,
-    {
-      provide: UBER_ORDER_ACTION_REPOSITORY,
-      useExisting: UberOrderActionPrismaAdapter,
-    },
     UberOrderImportPrismaAdapter,
     {
       provide: UBER_ORDER_IMPORT_REPOSITORY,
@@ -105,11 +108,6 @@ export function createOrdersWiring(): Provider[] {
     {
       provide: UBER_ORDER_STATUS_AUDIT_PORT,
       useExisting: UberOrderStatusAuditPrismaAdapter,
-    },
-    UberOrderSyncPrismaRepository,
-    {
-      provide: UBER_ORDER_SYNC_REPOSITORY,
-      useExisting: UberOrderSyncPrismaRepository,
     },
     {
       provide: ReceiveUberWebhookUseCase,
@@ -139,12 +137,15 @@ export function createOrdersWiring(): Provider[] {
         UBER_ORDER_ACTION_REPOSITORY,
         UBER_ORDER_ACTION_GATEWAY,
         UBER_WORKER_WAKE_PORT,
+        UBER_CANONICAL_ORDER_FACTS_QUERY,
       ],
       useFactory: (
         repository: UberOrderActionRepositoryPort,
         gateway: UberOrderActionGatewayPort,
         workerWake: UberWorkerWakePort,
-      ) => new UberOrderActionService(repository, gateway, workerWake),
+        orderFacts: UberCanonicalOrderFactsQueryPort,
+      ) =>
+        new UberOrderActionService(repository, gateway, workerWake, orderFacts),
     },
     {
       provide: UberOrderStatusSyncService,
@@ -161,6 +162,7 @@ export function createOrdersWiring(): Provider[] {
         UBER_STORE_MAPPING_REPOSITORY,
         UBER_STORE_CONFIG_QUERY,
         UBER_POS_CONNECTIVITY_QUERY,
+        UBER_CANONICAL_ORDER_CANCELLATION,
       ],
       useFactory: (
         repository: UberOrderImportRepositoryPort,
@@ -169,6 +171,7 @@ export function createOrdersWiring(): Provider[] {
         storeMappings: UberStoreMappingRepositoryPort,
         storeConfig: UberStoreConfigQueryPort,
         connectivity: UberPosConnectivityQueryPort,
+        cancellations: UberCanonicalOrderCancellationPort,
       ) =>
         new ImportUberOrderUseCase(
           repository,
@@ -177,6 +180,7 @@ export function createOrdersWiring(): Provider[] {
           storeMappings,
           storeConfig,
           connectivity,
+          cancellations,
         ),
     },
     { provide: UBER_ORDER_IMPORT_PORT, useExisting: ImportUberOrderUseCase },
@@ -189,6 +193,7 @@ export function createOrdersWiring(): Provider[] {
         UBER_STORE_MAPPING_REPOSITORY,
         UBER_STORE_CONFIG_QUERY,
         UBER_POS_CONNECTIVITY_QUERY,
+        UBER_CANONICAL_ORDER_CANCELLATION,
       ],
       useFactory: (
         repository: UberOrderImportRepositoryPort,
@@ -197,6 +202,7 @@ export function createOrdersWiring(): Provider[] {
         storeMappings: UberStoreMappingRepositoryPort,
         storeConfig: UberStoreConfigQueryPort,
         connectivity: UberPosConnectivityQueryPort,
+        cancellations: UberCanonicalOrderCancellationPort,
       ) =>
         new CancelUberOrderUseCase(
           repository,
@@ -205,6 +211,7 @@ export function createOrdersWiring(): Provider[] {
           storeMappings,
           storeConfig,
           connectivity,
+          cancellations,
         ),
     },
     {

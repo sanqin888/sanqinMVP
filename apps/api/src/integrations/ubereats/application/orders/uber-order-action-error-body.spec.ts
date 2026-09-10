@@ -22,14 +22,6 @@ describe.skip('Uber order action failure diagnostics', () => {
     const repository = {
       enqueue: jest.fn(),
       claim: jest.fn(),
-      getOrderContext: jest.fn().mockResolvedValue({
-        status: 'making',
-        totalCents: 367,
-        referenceAt: new Date('2026-08-20T22:32:20.000Z'),
-        fulfillmentTiming: 'SCHEDULED',
-        scheduledReadyAt: new Date('2026-08-21T00:23:26.000Z'),
-        externalEstimatedReadyAt: new Date('2026-08-21T00:23:26.000Z'),
-      }),
       complete: jest.fn(),
       markFailed,
     } as unknown as UberOrderActionRepositoryPort;
@@ -52,9 +44,22 @@ describe.skip('Uber order action failure diagnostics', () => {
       readyForPickup: jest.fn().mockRejectedValue(error),
     } as unknown as UberOrderActionGatewayPort;
 
-    await new UberOrderActionService(repository, gateway, {
-      signal: () => undefined,
-    }).executeClaimed(task);
+    await new UberOrderActionService(
+      repository,
+      gateway,
+      { signal: () => undefined },
+      {
+        findByExternalOrderId: jest.fn().mockResolvedValue({
+          orderStableId: 'stable-1',
+          status: 'making',
+          totalCents: 367,
+          referenceAt: new Date('2026-08-20T22:32:20.000Z'),
+          fulfillmentTiming: 'SCHEDULED',
+          externalEstimatedReadyAt: new Date('2026-08-21T00:23:26.000Z'),
+        }),
+        findSchedulingByOrderStableId: jest.fn(),
+      },
+    ).executeClaimed(task);
 
     expect(markFailed).toHaveBeenCalledWith('task-1', 'lease-1', {
       retryable: false,

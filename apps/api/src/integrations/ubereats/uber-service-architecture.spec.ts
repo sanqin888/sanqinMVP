@@ -52,6 +52,7 @@ const WHITE_BOX_TEST_FILES = new Set([
   'test/uber-service-test.helpers.ts',
   'uber-credential-schema.spec.ts',
   'uber-rate-limiter-composition.spec.ts',
+  'ubereats-order-facts-composition.spec.ts',
   'ubereats.module.spec.ts',
 ]);
 const LAYERS = [

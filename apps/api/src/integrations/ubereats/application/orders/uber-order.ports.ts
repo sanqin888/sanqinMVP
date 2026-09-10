@@ -28,14 +28,6 @@ export type UberOrderModifierSnapshotMapping =
     externalItemId: string;
   };
 
-export type UberOrderCancellationDecision = {
-  kind: 'CANCELLED' | 'REJECTED';
-  cancelledBy: string | null;
-  reasonCode: string | null;
-  reasonDetail: string | null;
-  occurredAt: Date;
-};
-
 export type UberOrderEventCursor = {
   eventId: string;
   occurredAt: Date | null;
@@ -75,20 +67,14 @@ export interface UberOrderImportRepositoryPort {
   ): Promise<UberOrderMenuMapping[]>;
   findModifierSnapshotSources?(): Promise<UberOrderModifierSnapshotSource[]>;
   findByExternalOrderId(externalOrderId: string): Promise<{
-    orderId: string;
+    orderStableId: string;
     status: UberOrderStatus;
     cursor: UberOrderEventCursor | null;
-    /** Present on the Prisma adapter; optional keeps older test doubles compatible. */
+    /** Present on the persistence adapter; optional keeps older test doubles compatible. */
     fulfillmentTiming?: UberFulfillmentTiming;
   } | null>;
   /** Standalone admission DENY creates no local Order; failure webhook may arrive afterward. */
   hasSucceededDenial?(externalOrderId: string): Promise<boolean>;
-  saveExistingOrderCancellation(input: {
-    orderId: string;
-    externalOrderId: string;
-    cursor: UberOrderEventCursor;
-    cancellation: UberOrderCancellationDecision;
-  }): Promise<void>;
   saveImportedOrder(input: {
     order: ParsedUberOrder;
     storeStableId: string;
@@ -96,11 +82,10 @@ export interface UberOrderImportRepositoryPort {
     cursor: UberOrderEventCursor;
     menuMappings: UberOrderMenuMapping[];
     modifierSnapshotMappings?: UberOrderModifierSnapshotMapping[];
-    cancellation: UberOrderCancellationDecision | null;
     actionIntent: UberOrderImportActionIntent | null;
     receivedAt: Date;
   }): Promise<{
-    orderId: string;
+    orderStableId: string;
     created: boolean;
     action: { taskId: string; created: boolean } | null;
   }>;
@@ -121,17 +106,6 @@ type UberOrderActionEnqueueInput = Omit<
   UberOrderActionTask,
   'taskId' | 'leaseToken'
 >;
-
-export type UberOrderActionContext = {
-  status: UberOrderStatus;
-  totalCents: number;
-  referenceAt: Date;
-  /** Optional only for backward-compatible test/adapter implementations. */
-  fulfillmentTiming?: UberFulfillmentTiming;
-  scheduledReadyAt?: Date | null;
-  /** Uber-provided kitchen-ready estimate; null when SanQ only has a schedule target. */
-  externalEstimatedReadyAt?: Date | null;
-};
 
 export type UberOrderSafeErrorBody =
   | string
@@ -160,9 +134,6 @@ export interface UberOrderActionRepositoryPort {
     now: Date;
     leaseDurationMs: number;
   }): Promise<UberOrderActionTask[]>;
-  getOrderContext(
-    externalOrderId: string,
-  ): Promise<UberOrderActionContext | null>;
   complete(input: {
     taskId: string;
     leaseToken: string;

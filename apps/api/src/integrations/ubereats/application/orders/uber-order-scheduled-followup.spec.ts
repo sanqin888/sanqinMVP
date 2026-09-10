@@ -88,14 +88,14 @@ describe('Uber scheduled-order follow-up notifications', () => {
     const saveImportedOrder = jest.fn((input: ImportedOrderInput) => {
       saved.input = input;
       return Promise.resolve({
-        orderId: 'local-1',
+        orderStableId: 'local-1',
         created: false,
         action: null,
       });
     });
     const repository = {
       findByExternalOrderId: jest.fn().mockResolvedValue({
-        orderId: 'local-1',
+        orderStableId: 'local-1',
         status: 'paid',
         fulfillmentTiming: 'SCHEDULED',
         cursor: {
@@ -106,7 +106,6 @@ describe('Uber scheduled-order follow-up notifications', () => {
         },
       }),
       findMenuMappings: jest.fn().mockResolvedValue(menuMappings),
-      saveExistingOrderCancellation: jest.fn(),
       saveImportedOrder,
     } as unknown as UberOrderImportRepositoryPort;
     const fetchOrderDetail = jest.fn().mockResolvedValue(scheduledDetail);
@@ -127,6 +126,7 @@ describe('Uber scheduled-order follow-up notifications', () => {
           lastHeartbeatAt: new Date('2026-08-21T14:40:12.000Z'),
         }),
       } as never,
+      { finalizeConfirmedCancellation: jest.fn() } as never,
     );
 
     await useCase.execute(
@@ -167,7 +167,6 @@ describe('Uber scheduled-order follow-up notifications', () => {
       {
         findByExternalOrderId,
         findMenuMappings: jest.fn(),
-        saveExistingOrderCancellation: jest.fn(),
         saveImportedOrder: jest.fn(),
       },
       { fetchOrderDetail },
@@ -175,6 +174,7 @@ describe('Uber scheduled-order follow-up notifications', () => {
       { findMapping: jest.fn() } as never,
       storeConfig as never,
       { getStoreConnectivity: jest.fn() } as never,
+      { finalizeConfirmedCancellation: jest.fn() } as never,
     );
 
     await expect(
