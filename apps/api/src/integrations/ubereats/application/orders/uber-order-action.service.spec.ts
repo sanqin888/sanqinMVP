@@ -3,6 +3,7 @@ import type {
   UberOrderActionRepositoryPort,
   UberOrderActionTask,
 } from './uber-order.ports';
+import type { UberCanonicalOrderFactsQueryPort } from '../shared/uber-canonical-order-facts.port';
 import { UberOrderActionService } from './uber-order-action.service';
 
 const referenceAt = new Date('2026-08-18T18:00:00.000Z');
@@ -21,17 +22,20 @@ const setup = (overrides: Partial<UberOrderActionGatewayPort> = {}) => {
   const repository = {
     enqueue: jest.fn().mockResolvedValue({ taskId: 'task-1', created: true }),
     claim: jest.fn().mockResolvedValue([task]),
-    getOrderContext: jest.fn().mockResolvedValue({
+    complete: jest.fn().mockResolvedValue(true),
+    markFailed: jest.fn().mockResolvedValue(true),
+  } as jest.Mocked<UberOrderActionRepositoryPort>;
+  const orderFacts = {
+    findByExternalOrderId: jest.fn().mockResolvedValue({
+      orderStableId: 'stable-1',
       status: 'pending',
       totalCents: 1_000,
       referenceAt,
       fulfillmentTiming: 'IMMEDIATE',
-      scheduledReadyAt: null,
       externalEstimatedReadyAt: null,
     }),
-    complete: jest.fn().mockResolvedValue(true),
-    markFailed: jest.fn().mockResolvedValue(true),
-  } as jest.Mocked<UberOrderActionRepositoryPort>;
+    findSchedulingByOrderStableId: jest.fn(),
+  } as jest.Mocked<UberCanonicalOrderFactsQueryPort>;
   const gateway = {
     accept: jest.fn().mockResolvedValue({ upstreamStatus: 200 }),
     deny: jest.fn().mockResolvedValue({ upstreamStatus: 200 }),
@@ -42,9 +46,15 @@ const setup = (overrides: Partial<UberOrderActionGatewayPort> = {}) => {
   const signal = jest.fn();
   return {
     repository,
+    orderFacts,
     gateway,
     signal,
-    service: new UberOrderActionService(repository, gateway, { signal }),
+    service: new UberOrderActionService(
+      repository,
+      gateway,
+      { signal },
+      orderFacts,
+    ),
   };
 };
 
@@ -108,13 +118,13 @@ describe('UberOrderActionService contract', () => {
   ] as const)(
     '%s invokes only its gateway and records the domain transition',
     async (action, method, currentStatus, nextStatus) => {
-      const { repository, gateway, service } = setup();
-      repository.getOrderContext.mockResolvedValue({
+      const { repository, orderFacts, gateway, service } = setup();
+      orderFacts.findByExternalOrderId.mockResolvedValue({
+        orderStableId: 'stable-1',
         status: currentStatus,
         totalCents: 1_000,
         referenceAt,
         fulfillmentTiming: 'IMMEDIATE',
-        scheduledReadyAt: null,
         externalEstimatedReadyAt: null,
       });
 
@@ -141,15 +151,15 @@ describe('UberOrderActionService contract', () => {
   );
 
   it('persists the actual compatible CANCEL 200 success status', async () => {
-    const { repository, service } = setup({
+    const { repository, orderFacts, service } = setup({
       cancel: jest.fn().mockResolvedValue({ upstreamStatus: 200 }),
     });
-    repository.getOrderContext.mockResolvedValue({
+    orderFacts.findByExternalOrderId.mockResolvedValue({
+      orderStableId: 'stable-1',
       status: 'making',
       totalCents: 1_000,
       referenceAt,
       fulfillmentTiming: 'IMMEDIATE',
-      scheduledReadyAt: null,
       externalEstimatedReadyAt: null,
     });
 
@@ -176,13 +186,13 @@ describe('UberOrderActionService contract', () => {
   ])(
     'calculates immediate ACCEPT ready time for %s cents',
     async (totalCents, expected) => {
-      const { repository, gateway, service } = setup();
-      repository.getOrderContext.mockResolvedValue({
+      const { orderFacts, gateway, service } = setup();
+      orderFacts.findByExternalOrderId.mockResolvedValue({
+        orderStableId: 'stable-1',
         status: 'pending',
         totalCents,
         referenceAt,
         fulfillmentTiming: 'IMMEDIATE',
-        scheduledReadyAt: null,
         externalEstimatedReadyAt: null,
       });
 
@@ -196,13 +206,13 @@ describe('UberOrderActionService contract', () => {
 
   it('uses the Uber preparation estimate for scheduled ACCEPT and only records acceptance', async () => {
     const scheduledReadyAt = new Date('2026-08-19T22:30:00.000Z');
-    const { repository, gateway, service } = setup();
-    repository.getOrderContext.mockResolvedValue({
+    const { repository, orderFacts, gateway, service } = setup();
+    orderFacts.findByExternalOrderId.mockResolvedValue({
+      orderStableId: 'stable-1',
       status: 'pending',
       totalCents: 2_500,
       referenceAt,
       fulfillmentTiming: 'SCHEDULED',
-      scheduledReadyAt,
       externalEstimatedReadyAt: scheduledReadyAt,
     });
 
@@ -222,14 +232,13 @@ describe('UberOrderActionService contract', () => {
   });
 
   it('does not echo a scheduled delivery-target fallback to Uber as ready_for_pickup_time', async () => {
-    const localScheduleTarget = new Date('2026-08-19T23:00:00.000Z');
-    const { repository, gateway, service } = setup();
-    repository.getOrderContext.mockResolvedValue({
+    const { repository, orderFacts, gateway, service } = setup();
+    orderFacts.findByExternalOrderId.mockResolvedValue({
+      orderStableId: 'stable-1',
       status: 'pending',
       totalCents: 2_500,
       referenceAt,
       fulfillmentTiming: 'SCHEDULED',
-      scheduledReadyAt: localScheduleTarget,
       externalEstimatedReadyAt: null,
     });
 
@@ -278,7 +287,7 @@ describe('UberOrderActionService contract', () => {
 
   it('keeps claimed work recoverable when local context or success writeback fails', async () => {
     const contextFailure = setup();
-    contextFailure.repository.getOrderContext.mockRejectedValue(
+    contextFailure.orderFacts.findByExternalOrderId.mockRejectedValue(
       new Error('database unavailable'),
     );
     await expect(contextFailure.service.executeClaimed(task)).rejects.toThrow(

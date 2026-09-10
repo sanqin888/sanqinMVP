@@ -28,12 +28,15 @@ import type {
   UberPosConnectivityQueryPort,
 } from '../../application/orders/uber-order.ports';
 import {
+  UBER_CANONICAL_ORDER_FACTS_QUERY,
+  type UberCanonicalOrderFactsQueryPort,
+} from '../../application/shared/uber-canonical-order-facts.port';
+import {
   UBER_CATALOG_MENU_FACTS_QUERY,
   type UberCatalogMenuFactsQueryPort,
 } from '../../application/shared/uber-catalog-menu-facts.port';
 import { UberOrderStateMachine } from '../../domain/orders/uber-order.state-machine';
 import type { ParsedUberModifier } from '../../domain/orders/uber-order.types';
-import { toUberOrderStatus } from './uber-order-status.mapper';
 
 /** Prisma implementation of order-import persistence and the admission connectivity query. */
 @Injectable()
@@ -48,6 +51,8 @@ export class UberOrderImportPrismaAdapter
     private readonly ingestion: OrderIngestionPort,
     @Inject(UBER_CATALOG_MENU_FACTS_QUERY)
     private readonly catalogFacts: UberCatalogMenuFactsQueryPort,
+    @Inject(UBER_CANONICAL_ORDER_FACTS_QUERY)
+    private readonly orderFacts: UberCanonicalOrderFactsQueryPort,
   ) {}
 
   async getStoreConnectivity(storeStableId: string) {
@@ -112,10 +117,7 @@ export class UberOrderImportPrismaAdapter
   }
 
   async findByExternalOrderId(externalOrderId: string) {
-    const order = await this.prisma.order.findUnique({
-      where: { clientRequestId: `ubereats:${externalOrderId}` },
-      select: { id: true, status: true, fulfillmentTiming: true },
-    });
+    const order = await this.orderFacts.findByExternalOrderId(externalOrderId);
     if (!order) return null;
     const inbox = await this.prisma.uberWebhookInbox.findFirst({
       where: {
@@ -126,12 +128,9 @@ export class UberOrderImportPrismaAdapter
       select: { eventId: true, createdAt: true, payload: true },
     });
     return {
-      orderId: order.id,
-      status: toUberOrderStatus(order.status),
-      fulfillmentTiming:
-        order.fulfillmentTiming === OrderFulfillmentTiming.SCHEDULED
-          ? ('SCHEDULED' as const)
-          : ('IMMEDIATE' as const),
+      orderStableId: order.orderStableId,
+      status: order.status,
+      fulfillmentTiming: order.fulfillmentTiming,
       cursor: inbox
         ? this.readCursor(inbox.eventId, inbox.createdAt, inbox.payload)
         : null,
@@ -159,7 +158,7 @@ export class UberOrderImportPrismaAdapter
     const cancellation = await this.prisma.$transaction(async (tx) => {
       const order = await tx.order.findFirst({
         where: {
-          id: input.orderId,
+          orderStableId: input.orderStableId,
           clientRequestId: `ubereats:${input.externalOrderId}`,
         },
         select: { id: true, orderStableId: true, totalCents: true },
@@ -332,14 +331,9 @@ export class UberOrderImportPrismaAdapter
     );
 
     if (fulfillmentTiming === OrderFulfillmentTiming.SCHEDULED) {
-      const timing = await this.prisma.order.findUnique({
-        where: { id: saved.orderId },
-        select: {
-          scheduledReadyAt: true,
-          prepStartAt: true,
-          prepDurationMinutes: true,
-        },
-      });
+      const timing = await this.orderFacts.findSchedulingByOrderStableId(
+        saved.orderStableId,
+      );
       this.logger.log({
         event: 'scheduled_order_imported',
         orderStableId: saved.orderStableId,
@@ -352,7 +346,7 @@ export class UberOrderImportPrismaAdapter
     }
 
     return {
-      orderId: saved.orderId,
+      orderStableId: saved.orderStableId,
       created: saved.action === 'created',
       action: savedAction,
     };

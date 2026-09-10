@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { OrderFulfillmentTiming, OrderStatus, Prisma } from '@prisma/client';
+import { OrderStatus, Prisma } from '@prisma/client';
 import {
   ORDER_ACCEPTED_LIFECYCLE_EVENT,
   ORDER_LIFECYCLE_OUTBOX_SOURCE,
@@ -205,33 +205,6 @@ export class UberOrderActionPrismaAdapter implements UberOrderActionRepositoryPo
         reasonDetail: row.reasonDetail,
       }),
     );
-  }
-
-  async getOrderContext(externalOrderId: string) {
-    const order = await this.prisma.order.findUnique({
-      where: { clientRequestId: `ubereats:${externalOrderId}` },
-      select: {
-        status: true,
-        totalCents: true,
-        paidAt: true,
-        createdAt: true,
-        fulfillmentTiming: true,
-        scheduledReadyAt: true,
-        externalEstimatedReadyAt: true,
-      },
-    });
-    if (!order) return null;
-    return {
-      status: order.status as UberOrderStatus,
-      totalCents: order.totalCents,
-      referenceAt: order.paidAt ?? order.createdAt,
-      fulfillmentTiming:
-        order.fulfillmentTiming === OrderFulfillmentTiming.SCHEDULED
-          ? ('SCHEDULED' as const)
-          : ('IMMEDIATE' as const),
-      scheduledReadyAt: order.scheduledReadyAt,
-      externalEstimatedReadyAt: order.externalEstimatedReadyAt,
-    };
   }
 
   async complete(input: {

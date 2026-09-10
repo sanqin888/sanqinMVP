@@ -45,6 +45,10 @@ const createActions = () =>
     { enqueue: jest.fn() } as unknown as UberOrderActionRepositoryPort,
     {} as UberOrderActionGatewayPort,
     { signal: () => undefined },
+    {
+      findByExternalOrderId: jest.fn(),
+      findSchedulingByOrderStableId: jest.fn(),
+    },
   );
 
 const mapping = {
@@ -196,7 +200,7 @@ describe('Uber order use-case boundaries', () => {
       saveImportedOrder: jest.fn((order: ImportedOrderInput) => {
         saved.order = order;
         return Promise.resolve({
-          orderId: 'local-1',
+          orderStableId: 'local-1',
           created: true,
           action: { taskId: 'action-1', created: true },
         });
@@ -238,7 +242,7 @@ describe('Uber order use-case boundaries', () => {
     const fetchOrderDetail = jest.fn();
     const repository = {
       findByExternalOrderId: jest.fn().mockResolvedValue({
-        orderId: 'local-1',
+        orderStableId: 'local-1',
         status: 'making',
         cursor: null,
       }),
@@ -265,7 +269,7 @@ describe('Uber order use-case boundaries', () => {
     expect(saveExistingOrderCancellation).toHaveBeenCalledTimes(1);
     const savedCancellation = saveExistingOrderCancellation.mock.calls[0]?.[0];
     expect(savedCancellation).toMatchObject({
-      orderId: 'local-1',
+      orderStableId: 'local-1',
       externalOrderId: 'fixture-order-immediate',
       cancellation: {
         kind: 'CANCELLED',
@@ -330,7 +334,7 @@ describe('Uber order use-case boundaries', () => {
   it('treats duplicate event ids as a no-op', async () => {
     const repository = {
       findByExternalOrderId: jest.fn().mockResolvedValue({
-        orderId: 'local-1',
+        orderStableId: 'local-1',
         status: 'pending',
         cursor: {
           eventId: 'event-1',

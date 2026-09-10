@@ -3,6 +3,7 @@ import { AuthModule } from '../../auth/auth.module';
 import { MessagingModule } from '../../messaging/messaging.module';
 import {
   ORDER_INGESTION_PROVIDER,
+  OrderExternalFactsModule,
   OrdersModule,
 } from '../../orders/public-api';
 import {
@@ -299,6 +300,7 @@ describe('UberEats compositions', () => {
       PrismaModule,
       BrandStoreConfigModule,
       CatalogExternalMenuFactsModule,
+      OrderExternalFactsModule,
     ]);
     expect(imports).not.toContain(AuthModule);
     expect(imports).not.toContain(OrdersModule);
