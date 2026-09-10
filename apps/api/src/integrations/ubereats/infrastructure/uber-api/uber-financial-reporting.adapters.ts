@@ -95,7 +95,10 @@ export class UberFinancialReportArtifactStore implements UberFinancialReportArti
     return urls;
   }
 
-  private async persistArtifact(finalPath: string, bytes: Buffer): Promise<void> {
+  private async persistArtifact(
+    finalPath: string,
+    bytes: Buffer,
+  ): Promise<void> {
     const tempPath = `${finalPath}.${randomUUID()}.tmp`;
     const handle = await fs.promises.open(tempPath, 'wx');
     try {
@@ -124,9 +127,9 @@ export class UberFinancialReportArtifactStore implements UberFinancialReportArti
   private isAlreadyExists(error: unknown): boolean {
     return Boolean(
       error &&
-        typeof error === 'object' &&
-        'code' in error &&
-        (error as { code?: unknown }).code === 'EEXIST',
+      typeof error === 'object' &&
+      'code' in error &&
+      (error as { code?: unknown }).code === 'EEXIST',
     );
   }
 
