@@ -1,6 +1,6 @@
 # Phase 8 — External Channels Boundary Contraction & L3 Resilience
 
-Status: **SLICE 8.3A0 PRODUCTION VERIFIED — SLICES 8.3A / 8.3B MERGED / CI GREEN — SLICE 8.3C SOURCE REVIEWED / REMOTE CI PENDING**  
+Status: **SLICE 8.3A0 PRODUCTION VERIFIED — SLICES 8.3A / 8.3B / 8.3C MERGED / CI GREEN — SLICE 8.3C DEPLOYMENT VERIFICATION PENDING — SLICE 8.4 LOCAL SOURCE / USER REVIEW PENDING**  
 Slice 0 audit baseline: `origin/dev@d1c7d7b3e968d99dce1e3df39ca1af04a7696883`  
 Slice 8.1 implementation baseline: `origin/dev@96808b0ec1adc984dae99dd73dbd0e8ce4f2c4a9`  
 Slice 8.2A implementation baseline: `origin/dev@fc9bfc01f651c0d3193ee06e1d71ea0029e77835`  
@@ -11,7 +11,8 @@ Slice 8.3A readiness/design baseline: `origin/dev@2589225d`
 Slice 8.3A implementation baseline: `origin/dev@f6e3f3db42a1de27d6d86cff7e8053e2dcaf795d`  
 Slice 8.3B implementation baseline: `origin/dev@51bf909152ff5e6c1a98ca87bda2c5378705db42`  
 Slice 8.3C implementation baseline: `origin/dev@29485a62e515b00ea9e62b7c5ef7c8f7c45d34d2`  
-Baseline merges: PR `#2258` — Phase 7 Slice 5B; PR `#2259` — Phase 8 planning / Slice 0 audit; PR `#2260` — Phase 8 Slice 8.1; PR `#2261` — Phase 8 Slice 8.2A; PR `#2262` — Phase 8 Slice 8.2B; PR `#2263` — Phase 8 Slice 8.2B.3; PR `#2264` — Phase 8 Slice 8.3A0; PR `#2266` — Phase 8 A0 evidence / 8.3 plan sync; PR `#2267` — Phase 8 Slice 8.3A; PR `#2268` — Phase 8 Slice 8.3B  
+Slice 8.4 implementation baseline: `origin/dev@982b4de19d809dd0ca25d026ff4eb0ccde323791`  
+Baseline merges: PR `#2258` — Phase 7 Slice 5B; PR `#2259` — Phase 8 planning / Slice 0 audit; PR `#2260` — Phase 8 Slice 8.1; PR `#2261` — Phase 8 Slice 8.2A; PR `#2262` — Phase 8 Slice 8.2B; PR `#2263` — Phase 8 Slice 8.2B.3; PR `#2264` — Phase 8 Slice 8.3A0; PR `#2266` — Phase 8 A0 evidence / 8.3 plan sync; PR `#2267` — Phase 8 Slice 8.3A; PR `#2268` — Phase 8 Slice 8.3B; PR `#2269` — Phase 8 Slice 8.3C  
 Audit / implementation dates: 2026-09-09–2026-09-10
 
 ## 1. Purpose
@@ -449,13 +450,19 @@ Prisma relation `Order.uberCancellations` and model `UberOrderCancellation` are 
 
 Because this is a destructive contract step, production rollout must be staged: first deploy/recreate the 8.3C API + Uber worker code while the legacy table still exists, verify the new runtime is healthy and no legacy cancellation-table access occurs, then re-check that no legacy `orders.failure` work is non-terminal. Only after a separate explicit production-migration authorization and normal backup/readiness checks may `prisma migrate deploy` apply the table drop. Do not drop the table while an older Uber worker image can still process cancellation work; if Uber Production traffic has begun or a non-terminal legacy cancellation exists, stop and re-audit rather than applying this contraction.
 
-8.3C is expected to make no machine import-baseline change because 8.3B already reduced External -> Orders direct debt to **0**. Runtime remains **23**, External total **29**, and public SCC should remain empty; GitHub architecture CI is authoritative. Provider wire schema, webhook signature/idempotency/inbox leases and retries, action commands, POS/Print and Payments/Clover behavior are intentionally unchanged. Current state is **SOURCE REVIEWED / REMOTE CI PENDING**.
+8.3C makes no machine import-baseline change because 8.3B already reduced External -> Orders direct debt to **0**. Runtime remains **23**, External total **29**, and public SCC remains empty. PR `#2269` final head `35defb4b` passed CI `#5453`, squash-merged as `982b4de1`, and merged-head CI `#5454` / `#5455` passed API + Web. Provider wire schema, webhook signature/idempotency/inbox leases and retries, action commands, POS/Print and Payments/Clover behavior are intentionally unchanged. Source is merged; staged production verification and the separately authorized destructive migration application remain pending.
 
 ### Slice 8.4 — Evidence-driven L3 gap hardening
 
 After 8.1-8.3, audit actual uncovered cases only. Existing webhook/action/menu replay and reconciliation behavior is preserved.
 
 Potential candidates must be demonstrated by a concrete missing recovery/characterization case; `orders.customer_order_edit` remains provider-confirmation gated.
+
+The merged `dev@982b4de1` audit found one concrete uncovered crash/replay gap in the financial-report artifact side effect. `eats.report.success` is processed from the durable `UberWebhookInbox`; after downloading a CSV section, the pre-8.4 artifact store wrote a filename prefixed with `Date.now()`. If the file write committed but `UberFinancialReport.markReady()` or the later inbox `markSucceeded()` did not commit before process loss, replay downloaded the same section again and wrote a second timestamp-named copy. Order/menu/store branches were inspected before selecting this slice: menu notification uses a conditional `SUBMITTED` update, menu refresh carries a deterministic provider idempotency key, store provisioning is an idempotent update, and store-status handling has no durable business mutation. No equally concrete uncovered business-side-effect gap was demonstrated there.
+
+The local 8.4 source hardens only `UberFinancialReportArtifactStore`. New artifact identity is deterministic over raw `workflowId + logical section identity + CSV content hash`; URL rotation alone therefore does not create a second artifact, while genuinely different CSV bytes remain distinct evidence. Files are written to a same-directory unique temporary file, flushed, then atomically published with a hard link. Replay that finds the deterministic final path already present verifies byte equality and reuses it; a mismatched existing artifact fails closed rather than overwriting evidence. Normal error paths remove their temporary file. Existing public artifact URLs, 25 MB limits, HTTPS/SSRF checks, reporting status/error semantics, provider wire payloads and database schema are unchanged.
+
+Focused characterization covers the exact gap: the same workflow/section/content replay returns one URL and one CSV file with no normal-path temp residue; changed content produces a distinct artifact; an existing deterministic path with different bytes fails closed; and the application use case can retry after artifact download succeeded but READY persistence failed, while already-READY reports still skip redownload. No Prisma/migration, package/dependency, DI, machine import-baseline or `orders.customer_order_edit` change is included. Current state is **LOCAL SOURCE / USER REVIEW PENDING**; GitHub Actions remains the authoritative validation gate after user review.
 
 ### Slice 8.5 — Pre-production test-era compatibility cleanup + provider compatibility gate
 

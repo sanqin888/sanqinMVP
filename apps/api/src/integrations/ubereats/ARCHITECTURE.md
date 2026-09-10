@@ -52,6 +52,11 @@
 - Uber imported orders 继续不触发 SanQ member paid-lifecycle/Loyalty side effects；外部 wire、
   webhook signature/idempotency、provider-supplied amount truth、action lease semantics 与 inbox
   retry/replay 语义不因此改变。
+- `eats.report.success` 的 CSV artifact 属于 External Channels reporting infrastructure。artifact
+  identity 必须可重放：由 provider workflow、逻辑 section 与实际 CSV 内容共同决定，不能使用
+  wall-clock filename 让同一 durable inbox replay 生成重复文件。最终文件只能在完整写入并 flush 后
+  发布；若 deterministic path 已存在，必须确认内容相同后复用，内容不一致则 fail closed。现有
+  HTTPS/SSRF、redirect、size-limit 与 Reporting status/error contract 不因该恢复规则改变。
 
 边界外调用者只能使用 `public-api.ts`、`ubereats.module.ts` 或 `worker.ts`；其中业务能力
 一律经 `public-api.ts` 使用。禁止外部深层导入 `api/`、`application/`、`domain/`、

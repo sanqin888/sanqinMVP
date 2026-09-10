@@ -351,6 +351,7 @@ Tech Support verification 和 pilot-store production provisioning。
 - Retrieve Integration Config 若 Uber 未返回 `allow_special_instruction_requests`，必须保持 `null` / `未返回`，不得伪装为 `true`。
 - Structured allergy parser/policy 必须覆盖 item、nested modifier、`RELAY_ALL`、`DENY_LIST`、`DENY_ALL`、未知/损坏请求 fail-safe Deny，以及 POS/打印传递。
 - `orders.customer_order_edit` 不得进入普通新单 import；当前保持 unsupported quarantine，并记录 `CUSTOMER_ORDER_EDIT_RECONCILIATION_REQUIRED`。
+- `eats.report.success` 的 CSV artifact 必须对 durable inbox replay 幂等：同一 workflow / logical section / 相同 CSV 内容只能对应一个 artifact URL/文件；signed download URL 变化不得制造副本；内容变化应形成不同 artifact；deterministic path 已存在但内容不一致必须 fail closed；report 已为 `READY/IMPORTED` 且已有 artifact 时不得重新下载。
 - Uber architecture tests、API lint/build/strict declaration、shared strict checks、API test suite 和受影响 Web checks 必须全绿。
 
 ### Sandbox / Test Store PASS
