@@ -30,11 +30,13 @@ describe('Uber canonical Order read ownership', () => {
     const importer = source(
       'infrastructure/persistence/uber-order-import-prisma.adapter.ts',
     );
+    const importPorts = source('application/orders/uber-order.ports.ts');
 
     expect(action.match(/tx\.order\.findUnique\s*\(/g)).toHaveLength(2);
     expect(importer.match(/tx\.order\.findFirst\s*\(/g)).toHaveLength(1);
+    expect(importPorts).not.toMatch(/\borderId\b/);
     expect(importer).toContain('orderStableId: input.orderStableId');
-    expect(importer).not.toContain('id: input.orderId');
+    expect(importer).toContain('orderId: order.id');
   });
 
   it('keeps the Orders contract stable-only and persistence-type free', () => {
