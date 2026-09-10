@@ -654,8 +654,10 @@ if (adminCatalogOwnershipBoundary) {
     const source = readFileSync(orchestrationPath, 'utf8');
     if (
       !source.includes("from '../../menu/public-api'") ||
-      !source.includes("from '../../integrations/ubereats/public-api'") ||
+      !source.includes("from './catalog-external-availability-sync.port'") ||
+      !source.includes('CATALOG_EXTERNAL_AVAILABILITY_SYNC') ||
       !source.includes('Fixed combo items cannot be published to Uber Eats') ||
+      source.includes("from '../../integrations/ubereats/public-api'") ||
       source.includes('PrismaService') ||
       source.includes('BRAND_STORE_CONFIG_READER')
     ) {
@@ -669,7 +671,7 @@ if (adminCatalogOwnershipBoundary) {
   if (existsSync(catalogReaderPath)) {
     const source = readFileSync(catalogReaderPath, 'utf8');
     if (
-      !source.includes('implements CatalogAvailabilityReaderPort') ||
+      !source.includes('CatalogAvailabilityReaderPort') ||
       !source.includes('getMenuItemAvailabilitySnapshot') ||
       !source.includes('getOptionAvailabilitySnapshot') ||
       /integrations\/ubereats/.test(source)

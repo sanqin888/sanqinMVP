@@ -1,6 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../../prisma/prisma.service';
+import {
+  UBER_CATALOG_MENU_FACTS_QUERY,
+  type UberCatalogMenuFactsQueryPort,
+} from '../../application/shared/uber-catalog-menu-facts.port';
 import type {
   UberDraftGroupCommandPort,
   UberDraftItemCommandPort,
@@ -22,7 +26,11 @@ type TransactionalMenuCommandPorts = UberItemChannelConfigCommandPort &
 /** Prisma is confined to infrastructure; every callback is one database commit. */
 @Injectable()
 export class UberMenuWriteTransactionPrismaAdapter implements UberMenuWriteTransactionPort<TransactionalMenuCommandPorts> {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(UBER_CATALOG_MENU_FACTS_QUERY)
+    private readonly catalogFacts: UberCatalogMenuFactsQueryPort,
+  ) {}
 
   async execute<T>(
     work: (commands: TransactionalMenuCommandPorts) => Promise<T>,
@@ -44,7 +52,10 @@ export class UberMenuWriteTransactionPrismaAdapter implements UberMenuWriteTrans
       const client = transaction as Prisma.TransactionClient & PrismaService;
       const telemetry = new UberTelemetryService(client);
       const config = new UberMenuConfigWritePrismaAdapter(client, telemetry);
-      const draft = new UberMenuDraftMutationPrismaAdapter(client);
+      const draft = new UberMenuDraftMutationPrismaAdapter(
+        client,
+        this.catalogFacts,
+      );
       const commands: TransactionalMenuCommandPorts = {
         upsertUberItemChannelConfig: (input) =>
           config.upsertUberItemChannelConfig(input),

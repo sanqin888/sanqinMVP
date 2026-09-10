@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "baselineCommit": "af8b4d63",
+  "baselineCommit": "ee727ef2",
   "updatedAt": "2026-09-09",
   "requiredFields": [
     "compat_id",
@@ -52,36 +52,33 @@
       "evidence": [
         "docs/payments/clover-pos-integration-charter.md sections 3.8, 9.1 and 12.5"
       ]
-    },
+    }
+  ],
+  "closed": [
     {
       "compat_id": "pos-connectivity.read-model-shadow.v1",
-      "status": "active_shadow",
-      "old_owner": "Uber order admission reads POS-owned PosDevice persistence directly inside UberOrderImportPrismaAdapter and evaluates common/pos-connectivity semantics there",
-      "new_owner": "Store Operations/POS writes the purpose-built PosConnectivityReadModel keyed only by storeStableId; External Channels may read that projection but does not gain a reverse Uber -> POS public dependency",
-      "dual_write_or_read": [
-        "POS remains owner of PosDevice activity and additionally maintains PosConnectivityReadModel; authenticated heartbeat-capable activity advances the projection monotonically, lifecycle changes recompute it, and the POS watchdog periodically repairs it from current POS-owned device truth",
-        "Uber order admission continues using the legacy PosDevice-derived result as authoritative connectivity truth while reading PosConnectivityReadModel only for shadow comparison until Slice 5B",
-        "OFFLINE and UNKNOWN are both operationally unavailable for Uber ordering; UNKNOWN specifically means no active order-receiving POS exists, so the watchdog pauses Uber and admission uses the existing POS_OFFLINE denial contract as a second guard",
-        "A projection read/write failure is logged and must not fail POS authentication/heartbeat handling while the legacy connectivity source remains authoritative before Slice 5B"
-      ],
-      "parity_metric": "For deliberate ONLINE Uber order admission after a fresh POS heartbeat, event=uber_pos_connectivity_read_model_shadow_compare must report matched=true for status and lastHeartbeatAt. OFFLINE/UNKNOWN cannot reliably produce a fresh provider order-admission comparison because the POS watchdog first makes the Uber Store unavailable; verify those states through the POS-owned projection, canonical PosDevice/watchdog behavior, provider store-status outcome, timeout boundary and device disable/delete/re-enable characterization instead. Projection write/refresh failures and shadow-read failures must remain zero before cutover.",
-      "rollback": "Before Slice 5B, the legacy PosDevice-derived connectivity source remains available for cutback and the additive read-model table remains non-destructive. A Slice 5B cutback may restore the legacy connectivity read while preserving the finalized OFFLINE/UNKNOWN-unavailable safety policy; do not drop or destructively rewrite the additive table as part of rollback.",
-      "exit_criteria": "Before Phase 7 source closeout, ONLINE admission parity is clean, OFFLINE/UNKNOWN/device-lifecycle evidence demonstrates that the projection matches current PosDevice truth and keeps Uber unavailable when no usable POS exists, projection/shadow failures remain zero, and Slice 5B atomically switches Uber admission to the read model then removes Uber PosDevice/common connectivity reads and the temporary shadow compatibility annotation/register entry while public SCC remains empty.",
-      "remove_pr": "Phase 7 Slice 5B POS connectivity persistence contraction PR",
-      "deadline": "Must be removed in Phase 7 Slice 5B before Phase 7 source scope is declared complete",
+      "status": "closed",
+      "old_owner": "Uber order admission read POS-owned PosDevice persistence directly and evaluated common/pos-connectivity while PosConnectivityReadModel remained shadow-only",
+      "new_owner": "Store Operations/POS remains the sole writer of PosConnectivityReadModel; Uber admission consumes that purpose-built storeStableId-keyed projection through a required External Channels application query port without an Uber -> POS public dependency",
+      "dual_write_or_read": "Removed in local Phase 7 Slice 5B source. Uber no longer reads PosDevice or common/pos-connectivity and no shadow compare/fallback path remains; the existing UberOrderImportPrismaAdapter implements the separate required connectivity query port and reads only PosConnectivityReadModel.",
+      "parity_metric": "Exit evidence was completed before contraction: real Test Store ONLINE admission shadow compare matched, OFFLINE drove provider Store unavailable, UNKNOWN projection/device-lifecycle behavior and recovery were verified, Slice 5A.1 then verified UNKNOWN -> unavailable and recovery to ONLINE with no projection/shadow failure logs. Slice 5B source preserves the same ONLINE/OFFLINE/UNKNOWN semantics while making projection read failures retryable through the existing durable webhook inbox path.",
+      "rollback": "Before Slice 5B merge/deployment, rollback is simply to keep dev on the pre-contraction commit. After contraction is merged, prefer forward-fix; if an emergency source cutback is required before Phase 7 closeout, restore the legacy read from Git history without changing the additive read-model table or the finalized OFFLINE/UNKNOWN-unavailable safety policy.",
+      "exit_criteria": "Source contraction implemented locally: required connectivity wiring is explicit, Uber direct PosDevice/common reads and shadow compatibility are removed, POS connectivity policy is owner-local, scanner allowances are reduced, and public SCC is expected empty. Final closure status still requires reviewed PR CI/merge and Phase 7 consolidated verification before the Phase itself is closed.",
+      "remove_pr": "Phase 7 Slice 5B local branch refactor/phase7-slice5b-pos-connectivity-cleanup; PR pending review authorization",
+      "deadline": "Source compatibility removed in Phase 7 Slice 5B; finalize merged/CI evidence before Phase 7 closeout",
       "evidence": [
-        "apps/api/prisma/schema.prisma PosConnectivityReadModel",
-        "apps/api/prisma/migrations/20260909173000_expand_pos_connectivity_read_model/migration.sql",
+        "PR #2254 / merge 8abf3162 Slice 5A expand + shadow verification",
+        "PR #2256 / merge ee727ef2 Slice 5A.1 authority hardening and UNKNOWN-unavailable verification",
+        "apps/api/src/pos/pos-connectivity.ts",
         "apps/api/src/pos/pos-device.service.ts",
         "apps/api/src/pos/pos-connectivity-watchdog.service.ts",
-        "apps/api/src/integrations/ubereats/domain/orders/uber-order-admission.policy.ts",
+        "apps/api/src/integrations/ubereats/application/orders/uber-order.ports.ts",
+        "apps/api/src/integrations/ubereats/application/orders/uber-order-admission.service.ts",
         "apps/api/src/integrations/ubereats/infrastructure/persistence/uber-order-import-prisma.adapter.ts",
         "apps/api/src/pos/pos-device-management.architecture.spec.ts",
         "docs/architecture/phase-7-store-operations-pos-print.md"
       ]
-    }
-  ],
-  "closed": [
+    },
     {
       "compat_id": "brand-store.default-store-identity.v1",
       "status": "closed",

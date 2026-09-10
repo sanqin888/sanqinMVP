@@ -39,7 +39,6 @@ import {
   MENU_ITEM_EXISTENCE_QUERY_PORT,
   OPTION_CHOICE_EXISTENCE_QUERY_PORT,
   PROVISIONED_UBER_STORE_QUERY_PORT,
-  UBER_BUSINESS_SCHEDULE_QUERY_PORT,
   UBER_MENU_DRAFT_DIFF_PORT,
   UBER_DRAFT_ITEM_COMMAND_PORT,
   UBER_DRAFT_GROUP_COMMAND_PORT,
@@ -175,10 +174,6 @@ export function createMenuWiring(): Provider[] {
     },
     {
       provide: PROVISIONED_UBER_STORE_QUERY_PORT,
-      useExisting: UberMenuSupportingQueriesPrismaAdapter,
-    },
-    {
-      provide: UBER_BUSINESS_SCHEDULE_QUERY_PORT,
       useExisting: UberMenuSupportingQueriesPrismaAdapter,
     },
     UberMenuAvailabilityPrismaAdapter,

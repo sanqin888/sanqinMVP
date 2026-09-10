@@ -1,14 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import {
-  UBER_STORE_CONFIG_QUERY,
-  type UberStoreConfigQueryPort,
-} from '../../application/shared/uber-store-config.port';
+  UBER_CATALOG_MENU_FACTS_QUERY,
+  type UberCatalogMenuFactsQueryPort,
+} from '../../application/shared/uber-catalog-menu-facts.port';
 import type {
   MenuItemExistenceQueryPort,
   OptionChoiceExistenceQueryPort,
   ProvisionedUberStoreQueryPort,
-  UberBusinessScheduleQueryPort,
 } from '../../application/menu/uber-menu-draft.ports';
 
 @Injectable()
@@ -16,29 +15,20 @@ export class UberMenuSupportingQueriesPrismaAdapter
   implements
     MenuItemExistenceQueryPort,
     OptionChoiceExistenceQueryPort,
-    ProvisionedUberStoreQueryPort,
-    UberBusinessScheduleQueryPort
+    ProvisionedUberStoreQueryPort
 {
   constructor(
     private readonly prisma: PrismaService,
-    @Inject(UBER_STORE_CONFIG_QUERY)
-    private readonly storeConfig: UberStoreConfigQueryPort,
+    @Inject(UBER_CATALOG_MENU_FACTS_QUERY)
+    private readonly catalogFacts: UberCatalogMenuFactsQueryPort,
   ) {}
 
   async menuItemExists(stableId: string): Promise<boolean> {
-    const item = await this.prisma.menuItem.findUnique({
-      where: { stableId },
-      select: { stableId: true },
-    });
-    return item !== null;
+    return (await this.catalogFacts.getMenuItemSource(stableId)) !== null;
   }
 
   async optionChoiceExists(stableId: string): Promise<boolean> {
-    const choice = await this.prisma.menuOptionTemplateChoice.findUnique({
-      where: { stableId },
-      select: { stableId: true },
-    });
-    return choice !== null;
+    return (await this.catalogFacts.getOptionSource(stableId)) !== null;
   }
 
   async resolveProvisionedUberStoreId(storeId: string) {
@@ -58,20 +48,5 @@ export class UberMenuSupportingQueriesPrismaAdapter
     return mapping && posExternalStoreId
       ? { uberStoreId: mapping.uberStoreId, posExternalStoreId }
       : null;
-  }
-
-  async readBusinessSchedule(storeStableId: string) {
-    const [config, hours] = await Promise.all([
-      this.storeConfig.getStoreConfig(storeStableId),
-      this.prisma.businessHour.findMany({
-        where: { store: { storeStableId } },
-        orderBy: { weekday: 'asc' },
-      }),
-    ]);
-    return {
-      timezone: config.timezone,
-      salesTaxRate: config.salesTaxRate,
-      hours,
-    };
   }
 }

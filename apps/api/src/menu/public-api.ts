@@ -7,6 +7,19 @@ export {
   type CatalogOptionAvailabilitySnapshot,
 } from './catalog-availability-reader.contract';
 export { PublicMenuModule } from './public-menu.module';
+export { CatalogExternalMenuFactsModule } from './catalog-external-menu-facts.module';
+export {
+  CATALOG_EXTERNAL_MENU_FACTS_READER,
+  type CatalogExternalMenuFactsReaderPort,
+  type CatalogExternalMenuSourceFacts,
+  type CatalogExternalMenuCategoryFact,
+  type CatalogExternalMenuItemFact,
+  type CatalogExternalMenuModifierGroupFact,
+  type CatalogExternalMenuItemSourceFact,
+  type CatalogExternalMenuOptionSourceFact,
+  type CatalogExternalMenuModifierGroupSourceFact,
+  type CatalogExternalOrderModifierSnapshotSourceFact,
+} from './catalog-external-menu-facts-reader.contract';
 export { CatalogOrderFactsModule } from './catalog-order-facts.module';
 export {
   CATALOG_ORDER_FACTS_READER,

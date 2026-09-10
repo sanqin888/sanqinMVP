@@ -85,7 +85,7 @@ export interface ProvisionedUberStoreQueryPort {
 export interface UberBusinessScheduleQueryPort {
   readBusinessSchedule(
     storeStableId: string,
-  ): Promise<UberBusinessScheduleRecord | null>;
+  ): Promise<UberBusinessScheduleRecord>;
 }
 
 export type UberItemChannelConfigDto = {

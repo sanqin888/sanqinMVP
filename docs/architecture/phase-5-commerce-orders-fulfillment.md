@@ -65,7 +65,7 @@ This is a source inventory, not a claim that every listed access should be remov
 | Production file | Direct delegates / raw persistence | Ownership assessment |
 |---|---|---|
 | `orders.service.ts` | `order`, `checkoutIntent`, `orderAmendment`, `orderAmendmentItem`, `orderItem`; `$transaction` | `order/orderItem/orderAmendment*` are Orders-owned. Slice 4B removes direct Catalog `menuItem` reads; Slice 4C removes direct Customer `user/userAddress` reads; Slice 4D removes the direct Benefits `loyaltyAccount` read. `checkoutIntent` is Payments/Web-checkout persistence and is production-sensitive. |
-| `order-ingestion.service.ts` | transaction-scoped `order`, `orderItem`, `uberOrderItemModifier` | Order persistence is owner-local; writing `uberOrderItemModifier` from the Orders ingestion service is provider-persistence coupling and requires a later controlled boundary decision. |
+| `order-ingestion.service.ts` | transaction-scoped `order`, `orderItem` | Order persistence is owner-local. Phase 8 Slice 8.3A0 removes the test-era `uberOrderItemModifier` write and its Prisma model/table after confirming the duplicate provider snapshot has no production reader; canonical modifier facts remain on `OrderItem.optionsJson`. |
 | `order-scheduling-query.service.ts` | `order` | Orders-owned. |
 | `order-label-plan.service.ts` | `order` | `order` is owner-local. Slice 4B moves current packaging/label configuration reads behind the Catalog public capability. |
 | `print-pos-payload.service.ts` | `order`, `checkoutIntent` | Order snapshot is owner-local; checkout metadata read crosses into payment/checkout persistence. |
@@ -75,12 +75,11 @@ This is a source inventory, not a claim that every listed access should be remov
 | `processors/fulfillment.processor.ts` | `order`, `checkoutIntent` | Order read is local; checkout metadata dependency remains cross-owner. |
 | `processors/order-lifecycle-outbox.processor.ts` | `$transaction` + raw SQL across `OpsEvent`, `Order` | Durable Orders lifecycle reads only its own event/order facts and checkpoints successful INITIAL handoff as `order.initial_print_handoff`; Slice 2 removes the Print-owned `PosPrintJob` probe. |
 
-Unique non-Orders persistence surfaces still reached directly from the Orders tree after Slice 4D are therefore:
+Unique non-Orders persistence surfaces still reached directly from the Orders tree after the later Phase 8 Slice 8.3A0 contraction are therefore:
 
-- Payments / Web checkout: `CheckoutIntent`;
-- External/provider persistence: `UberOrderItemModifier`.
+- Payments / Web checkout: `CheckoutIntent`.
 
-Slice 4B removes Catalog `MenuItem`; Slice 4C removes Identity / Customer `User` and `UserAddress`; Slice 4D removes Benefits `LoyaltyAccount`. Slice 2 previously removed the Store Operations / Print `PosPrintJob` existence read from the Orders lifecycle query.
+Slice 4B removes Catalog `MenuItem`; Slice 4C removes Identity / Customer `User` and `UserAddress`; Slice 4D removes Benefits `LoyaltyAccount`; Slice 2 removed the Store Operations / Print `PosPrintJob` existence read; and Phase 8 Slice 8.3A0 removes the test-era `UberOrderItemModifier` dead write/schema after explicit destructive-migration authorization.
 
 ## Concrete service/module imports from the Orders tree
 

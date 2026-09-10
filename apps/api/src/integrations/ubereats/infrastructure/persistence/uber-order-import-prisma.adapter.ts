@@ -10,11 +10,6 @@ import {
 } from '@prisma/client';
 import { createHash } from 'crypto';
 import {
-  DEFAULT_POS_CONNECTIVITY_OFFLINE_AFTER_MS,
-  readPositiveDurationMs,
-  resolvePosConnectivityStatus,
-} from '../../../../common/pos-connectivity';
-import {
   ORDER_CANCELLED_LIFECYCLE_EVENT,
   ORDER_INGESTION,
   ORDER_LIFECYCLE_OUTBOX_SOURCE,
@@ -22,7 +17,6 @@ import {
   type NormalizedOrderItem,
   type OrderIngestionPort,
 } from '../../../../orders/public-api';
-import { resolveConfiguredStoreStableId } from '../../../../store/public-api';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import type {
   UberOrderCancellationDecision,
@@ -31,26 +25,33 @@ import type {
   UberOrderMenuMapping,
   UberOrderModifierSnapshotMapping,
   UberOrderModifierSnapshotSource,
+  UberPosConnectivityQueryPort,
 } from '../../application/orders/uber-order.ports';
+import {
+  UBER_CATALOG_MENU_FACTS_QUERY,
+  type UberCatalogMenuFactsQueryPort,
+} from '../../application/shared/uber-catalog-menu-facts.port';
 import { UberOrderStateMachine } from '../../domain/orders/uber-order.state-machine';
 import type { ParsedUberModifier } from '../../domain/orders/uber-order.types';
 import { toUberOrderStatus } from './uber-order-status.mapper';
 
-/** Prisma implementation of the complete order-import persistence boundary. */
+/** Prisma implementation of order-import persistence and the admission connectivity query. */
 @Injectable()
-export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPort {
+export class UberOrderImportPrismaAdapter
+  implements UberOrderImportRepositoryPort, UberPosConnectivityQueryPort
+{
   private readonly logger = new Logger(UberOrderImportPrismaAdapter.name);
 
   constructor(
     private readonly prisma: PrismaService,
     @Inject(ORDER_INGESTION)
     private readonly ingestion: OrderIngestionPort,
+    @Inject(UBER_CATALOG_MENU_FACTS_QUERY)
+    private readonly catalogFacts: UberCatalogMenuFactsQueryPort,
   ) {}
 
-  private async readPosConnectivityReadModel(
-    storeStableId: string,
-    nowMs: number,
-  ) {
+  async getStoreConnectivity(storeStableId: string) {
+    const nowMs = Date.now();
     const readModel = await this.prisma.posConnectivityReadModel.findUnique({
       where: { storeStableId },
       select: {
@@ -150,54 +151,6 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
     return denial?.status === 'SUCCEEDED';
   }
 
-  async getPosStoreConnectivity(storeStableId: string) {
-    if (storeStableId !== resolveConfiguredStoreStableId()) {
-      return { status: 'UNKNOWN' as const, lastHeartbeatAt: null };
-    }
-
-    /** @compat pos-connectivity.read-model-shadow.v1 */
-    const devices = await this.prisma.posDevice.findMany({
-      where: { status: 'ACTIVE' },
-      select: { lastSeenAt: true, meta: true },
-    });
-    const offlineAfterMs = readPositiveDurationMs(
-      process.env.POS_CONNECTIVITY_HEARTBEAT_TIMEOUT_MS,
-      DEFAULT_POS_CONNECTIVITY_OFFLINE_AFTER_MS,
-    );
-    const nowMs = Date.now();
-    const legacy = resolvePosConnectivityStatus(devices, nowMs, offlineAfterMs);
-
-    try {
-      const shadow = await this.readPosConnectivityReadModel(
-        storeStableId,
-        nowMs,
-      );
-      const legacyHeartbeat = legacy.lastHeartbeatAt?.getTime() ?? null;
-      const shadowHeartbeat = shadow.lastHeartbeatAt?.getTime() ?? null;
-      this.logger.log({
-        event: 'uber_pos_connectivity_read_model_shadow_compare',
-        compatId: 'pos-connectivity.read-model-shadow.v1',
-        storeStableId,
-        matched:
-          legacy.status === shadow.status &&
-          legacyHeartbeat === shadowHeartbeat,
-        legacyStatus: legacy.status,
-        shadowStatus: shadow.status,
-        legacyLastHeartbeatAt: legacy.lastHeartbeatAt?.toISOString() ?? null,
-        shadowLastHeartbeatAt: shadow.lastHeartbeatAt?.toISOString() ?? null,
-      });
-    } catch (error) {
-      this.logger.warn({
-        event: 'uber_pos_connectivity_read_model_shadow_failed',
-        compatId: 'pos-connectivity.read-model-shadow.v1',
-        storeStableId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-
-    return legacy;
-  }
-
   async saveExistingOrderCancellation(
     input: Parameters<
       UberOrderImportRepositoryPort['saveExistingOrderCancellation']
@@ -270,15 +223,6 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
         lineId: item.externalLineId,
         instructions: item.specialInstructions,
         lineTotalCents: item.lineTotalCents,
-        modifiers: this.flattenValues(item.modifiers).map((modifier) => ({
-          externalId: modifier.externalId,
-          parentExternalId: modifier.parentExternalId,
-          displayName: modifier.displayName,
-          quantity: modifier.quantity,
-          priceDeltaCents: modifier.priceDeltaCents,
-          specialInstructions: modifier.specialInstructions,
-          snapshot: modifier as unknown as Prisma.InputJsonValue,
-        })),
       },
     }));
     const targetStatus = UberOrderStateMachine.eventStatus(input.eventType);
@@ -498,35 +442,7 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
   async findModifierSnapshotSources(): Promise<
     UberOrderModifierSnapshotSource[]
   > {
-    const rows = await this.prisma.menuOptionTemplateChoice.findMany({
-      where: {
-        deletedAt: null,
-        templateGroup: { deletedAt: null },
-      },
-      select: {
-        stableId: true,
-        targetItemStableId: true,
-        nameEn: true,
-        nameZh: true,
-        templateGroup: {
-          select: {
-            stableId: true,
-            nameEn: true,
-            nameZh: true,
-          },
-        },
-      },
-    });
-
-    return rows.map((row) => ({
-      stableId: row.stableId,
-      templateGroupStableId: row.templateGroup.stableId,
-      targetItemStableId: row.targetItemStableId?.trim() || null,
-      nameEn: row.nameEn,
-      nameZh: row.nameZh ?? null,
-      templateNameEn: row.templateGroup.nameEn,
-      templateNameZh: row.templateGroup.nameZh ?? null,
-    }));
+    return this.catalogFacts.listOrderModifierSnapshotSources();
   }
 
   private modifierSnapshots(
@@ -588,13 +504,6 @@ export class UberOrderImportPrismaAdapter implements UberOrderImportRepositoryPo
 
     visit(values, null);
     return snapshots as unknown as Prisma.InputJsonValue;
-  }
-
-  private flattenValues(values: ParsedUberModifier[]): ParsedUberModifier[] {
-    return values.flatMap((value) => [
-      value,
-      ...this.flattenValues(value.children),
-    ]);
   }
 
   private readCursor(

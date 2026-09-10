@@ -149,4 +149,69 @@ describe('Uber Eats store identity architecture', () => {
       'storeConfig: UberStoreConfigQueryPort',
     );
   });
+
+  it('keeps Catalog canonical reads behind the Catalog owner capability', () => {
+    const persistenceFiles = scanTypeScript(
+      join(__dirname, 'infrastructure', 'persistence'),
+      { productionOnly: true },
+    );
+    const catalogDelegates = [
+      'menuCategory',
+      'menuItem',
+      'menuOptionGroupTemplate',
+      'menuOptionTemplateChoice',
+    ] as const;
+    const directCatalogReads = persistenceFiles.flatMap((file) =>
+      catalogDelegates.flatMap((delegate) =>
+        [...file.source.matchAll(new RegExp(`\\.${delegate}\\b`, 'g'))].map(
+          () => `${file.path.split('/').pop()}:${delegate}`,
+        ),
+      ),
+    );
+
+    expect(directCatalogReads).toEqual([]);
+    for (const file of persistenceFiles) {
+      expect(file.source).not.toContain('/menu/public-api');
+    }
+  });
+
+  it('keeps Store business-schedule reads behind the Uber application port', () => {
+    const persistenceFiles = scanTypeScript(
+      join(__dirname, 'infrastructure', 'persistence'),
+      { productionOnly: true },
+    );
+    const compositionRoot = scanTypeScript(__dirname, {
+      productionOnly: true,
+    }).find((file) => file.path === join(__dirname, 'ubereats.module.ts'));
+    const directBusinessHourReads = persistenceFiles
+      .filter((file) => /\.businessHour\b/.test(file.source))
+      .map((file) => file.path);
+    const draftRead = persistenceFiles.find((file) =>
+      file.path.endsWith('uber-menu-draft-read-prisma.adapter.ts'),
+    );
+    const draftRepositories = persistenceFiles.find((file) =>
+      file.path.endsWith('uber-menu-draft.repositories.ts'),
+    );
+
+    expect(compositionRoot).toBeDefined();
+    expect(draftRead).toBeDefined();
+    expect(draftRepositories).toBeDefined();
+    expect(directBusinessHourReads).toEqual([]);
+    expect(compositionRoot!.source).toContain('STORE_SCHEDULE_READER');
+    expect(compositionRoot!.source).toContain(
+      'provide: UBER_BUSINESS_SCHEDULE_QUERY_PORT',
+    );
+    expect(compositionRoot!.source).toContain(
+      'inject: [UBER_STORE_CONFIG_QUERY, STORE_SCHEDULE_READER]',
+    );
+    expect(compositionRoot!.source).toContain(
+      'scheduleReader.listBusinessHours(storeStableId)',
+    );
+    expect(draftRead!.source).toContain(
+      'this.businessSchedule.readBusinessSchedule(storeStableId)',
+    );
+    expect(draftRepositories!.source).toContain(
+      'this.schedules.readBusinessSchedule(storeStableId)',
+    );
+  });
 });

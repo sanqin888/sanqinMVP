@@ -2,7 +2,7 @@
 
 Machine-readable source:
 `docs/architecture/active-compatibility-register.json`. Current modularization base:
-`origin/dev@8abf3162` (2026-09-09).
+`origin/dev@ee727ef2` (2026-09-09).
 
 Operational fallback (retry, provider timeout recovery, email-to-SMS fallback, and
 safe default values unrelated to an old version) is not compatibility debt.
@@ -13,7 +13,6 @@ safe default values unrelated to an old version) is not compatibility debt.
 |---|---|---|---|---|
 | `payments.pos-card-legacy.v1` | active / pre-production | direct paid Order → Unified Payment Core + Terminal + finalize | POS ↔ Clover realtime/recovery complete; real-device acceptance; one settlement cycle reconciled; clean production stability window; legacy calls zero | Phase J cleanup after Terminal synchronization/cutover stability |
 | `payments.web-checkout-v1.v1` | guarded production | CheckoutIntent/Clover v1 Web path → Unified Payment Core + v3 truth | Test App/device acceptance complete; App installed/OAuth-authorized on operating production merchant; fresh production-merchant correlation audit passes; Web cutover accepted; one settlement cycle reconciled; old calls zero before compatibility deletion | Deferred until production-merchant Unified authorization and accepted cutover |
-| `pos-connectivity.read-model-shadow.v1` | active shadow | Uber direct `PosDevice` connectivity read → POS-owned `PosConnectivityReadModel` purpose-built read fact | ONLINE order-admission shadow parity is clean; OFFLINE/UNKNOWN are verified through POS projection + watchdog/provider/device-lifecycle evidence because the watchdog makes Uber unavailable before a fresh provider order can reach admission; failures stay zero; Slice 5B then cuts admission to the read model and removes the legacy read while public SCC stays empty | Remove in Phase 7 Slice 5B before Phase 7 source closeout |
 
 The payment entries are no longer governed by a whole-context freeze. The POS
 Clover Terminal path is pre-production and may be structurally modularized before
@@ -40,29 +39,11 @@ traffic authority change. Traffic cutover, compatibility deletion and settlement
 exit criteria remain separately gated after that point. Non-payment bounded-context work
 may proceed without reopening this compatibility seam.
 
-`pos-connectivity.read-model-shadow.v1` is the deliberately short-lived Phase 7
-Slice 5A expand side, hardened by Slice 5A.1 before authority cutover. POS remains
-the owner and writer of connectivity/device facts and additionally maintains
-`PosConnectivityReadModel`, keyed by `storeStableId`. Authenticated heartbeat-capable
-activity advances the projection monotonically; lifecycle changes recompute it and
-the POS watchdog periodically repairs it from current POS-owned device truth. Uber
-order admission still returns the legacy `PosDevice`-derived connectivity result as
-truth while reading the projection only to emit parity evidence. `OFFLINE` and
-`UNKNOWN` are both unavailable for Uber ordering: UNKNOWN means there is no
-active order-receiving POS, so the watchdog pauses Uber and admission keeps the
-existing `POS_OFFLINE` denial contract as a second guard. No `Uber -> POS public-api`
-dependency is introduced, so the existing POS -> Uber capabilities do not become a
-public SCC. ONLINE parity is verified through a real Test Store admission compare;
-OFFLINE/UNKNOWN are verified through projection, watchdog/provider and device-lifecycle
-evidence because the store is made unavailable before a fresh provider order can
-reach admission. Slice 5B remains the mandatory contraction: cut admission to the
-read model and delete the Uber `PosDevice` plus `common/pos-connectivity` reads and
-the temporary compatibility registration.
-
 ## Closed history
 
 | compat_id | Closed by | Result |
 |---|---|---|
+| `pos-connectivity.read-model-shadow.v1` | Phase 7 Slice 5B local source on `refactor/phase7-slice5b-pos-connectivity-cleanup` (PR/CI pending review authorization) | Pre-cutover evidence is complete: PR #2254 / `8abf3162` established ONLINE shadow parity and projection lifecycle, PR #2256 / `ee727ef2` hardened projection authority and finalized UNKNOWN as unavailable, and production logs on 2026-09-09 showed `pos_connectivity_unknown` at 16:43:17 followed by Uber store-status HTTP 200 / `SUCCEEDED`, disabled POS heartbeat attempts rejected with HTTP 401, recovery store-status HTTP 200 / `SUCCEEDED`, and `pos_connectivity_restored` / `ONLINE` at 16:46:18 with zero projection/shadow failure logs. Slice 5B source removes Uber direct `PosDevice` + `common/pos-connectivity` reads and shadow logging, makes `PosConnectivityReadModel` authoritative through a required External Channels query port, and moves the connectivity helper into POS ownership. Final merged/CI evidence remains pending. |
 | `brand-store.default-store-identity.v1` | PR #2119 / `7110dd46`, PR #2122 / `53688897`, PR #2124 / `0917f66c` | Explicit `storeStableId` now owns Brand/Store, Admin, POS/Orders and Uber SanQ-store context; internal Store DB IDs and provider Uber Store IDs remain distinct. The eight Uber Prisma `storeId` defaults were removed by migration `20260903022000_contract_uber_store_id_defaults`. Post-deploy verification confirmed the migration applied, all eight columns remain `NOT NULL` with no DB default, a new Reconciliation Report persisted `4750_Yonge_Street`, POS pause/resume reached Uber successfully, published item availability sync returned provider success, zero post-migration `storeId='default'` rows were created, and API/worker error scans were clean. |
 | `web.api-envelope-direct-payload.v1` | Checkout canonical Web API transport contraction | Checkout OTP request/verify, membership summary, address list/create, and coupon list now use `apiFetch`; all 6 Checkout browser direct fetches, page-local envelope/direct-payload readers, and the Checkout architecture allowance were removed |
 | `pos-device.admin-db-id.v1` | Store Operations/POS Admin DB-ID contraction | Admin create/list/reset/status/delete now require `storeStableId`/`deviceStableId`; no-query aliases, inbound Store/device DB UUID resolvers, `POS_DEVICE_ADMIN_COMPATIBILITY`, and `STORE_LEGACY_DB_ID_RESOLVER` were removed after canonical production traffic and zero compatibility-log usage were verified |

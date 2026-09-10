@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { createId } from '@paralleldrive/cuid2';
 import {
   Channel,
@@ -7,6 +7,10 @@ import {
   type Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../../../prisma/prisma.service';
+import {
+  UBER_CATALOG_MENU_FACTS_QUERY,
+  type UberCatalogMenuFactsQueryPort,
+} from '../../application/shared/uber-catalog-menu-facts.port';
 import type {
   UberMenuItemOperationsRepositoryPort,
   UberOperationsUnitOfWorkPort,
@@ -136,12 +140,12 @@ export class UberOrderOperationsPrismaRepository implements UberOrderOperationsR
 
 @Injectable()
 export class UberMenuItemOperationsPrismaRepository implements UberMenuItemOperationsRepositoryPort {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(UBER_CATALOG_MENU_FACTS_QUERY)
+    private readonly catalogFacts: UberCatalogMenuFactsQueryPort,
+  ) {}
   async exists(stableId: string) {
-    return !!(await this.prisma.menuItem.findUnique({
-      where: { stableId },
-      select: { stableId: true },
-    }));
+    return (await this.catalogFacts.getMenuItemSource(stableId)) !== null;
   }
 }
 

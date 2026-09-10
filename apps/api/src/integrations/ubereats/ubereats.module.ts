@@ -1,15 +1,22 @@
 import { Module, type DynamicModule, type Provider } from '@nestjs/common';
 import { AuthModule } from '../../auth/auth.module';
 import {
+  CATALOG_EXTERNAL_MENU_FACTS_READER,
+  CatalogExternalMenuFactsModule,
+  type CatalogExternalMenuFactsReaderPort,
+} from '../../menu/public-api';
+import {
   ORDER_INGESTION_PROVIDER,
   OrdersModule,
 } from '../../orders/public-api';
 import { PrismaModule } from '../../prisma/prisma.module';
 import {
   BRAND_STORE_CONFIG_READER,
+  STORE_SCHEDULE_READER,
   BrandStoreConfigModule,
   BrandStoreConfigUnavailableError,
   type BrandStoreConfigReaderPort,
+  type StoreScheduleReaderPort,
 } from '../../store/public-api';
 import { UberEatsMenuController } from './api/menu.controller';
 import { UberEatsOAuthController } from './api/oauth.controller';
@@ -20,6 +27,14 @@ import { ClaimAndExecuteUberOrderActionsUseCase } from './application/orders/cla
 import { ClaimAndProcessUberWebhookInboxUseCase } from './application/orders/claim-and-process-uber-webhook-inbox.use-case';
 import { ProcessUberWebhookInboxUseCase } from './application/orders/process-uber-webhook-inbox.use-case';
 import { ExecuteUberOrderActionWorker } from './application/orders/uber-order.use-cases';
+import {
+  UBER_BUSINESS_SCHEDULE_QUERY_PORT,
+  type UberBusinessScheduleQueryPort,
+} from './application/menu/uber-menu-draft.ports';
+import {
+  UBER_CATALOG_MENU_FACTS_QUERY,
+  type UberCatalogMenuFactsQueryPort,
+} from './application/shared/uber-catalog-menu-facts.port';
 import {
   UBER_STORE_CONFIG_QUERY,
   type UberStoreConfigQueryPort,
@@ -86,6 +101,61 @@ const UBER_EATS_COMPOSITION_PROVIDERS: Provider[] = [
       };
     },
   },
+  {
+    provide: UBER_BUSINESS_SCHEDULE_QUERY_PORT,
+    inject: [UBER_STORE_CONFIG_QUERY, STORE_SCHEDULE_READER],
+    useFactory: (
+      storeConfig: UberStoreConfigQueryPort,
+      scheduleReader: StoreScheduleReaderPort,
+    ): UberBusinessScheduleQueryPort => ({
+      readBusinessSchedule: async (storeStableId) => {
+        const [config, hours] = await Promise.all([
+          storeConfig.getStoreConfig(storeStableId),
+          scheduleReader.listBusinessHours(storeStableId),
+        ]);
+        return {
+          timezone: config.timezone,
+          salesTaxRate: config.salesTaxRate,
+          hours,
+        };
+      },
+    }),
+  },
+  {
+    provide: UBER_CATALOG_MENU_FACTS_QUERY,
+    inject: [CATALOG_EXTERNAL_MENU_FACTS_READER],
+    useFactory: (
+      reader: CatalogExternalMenuFactsReaderPort,
+    ): UberCatalogMenuFactsQueryPort => ({
+      readMenuSource: async () => {
+        const source = await reader.readMenuSource();
+        return {
+          categories: source.categories,
+          menuItems: source.items.map((item) => ({
+            ...item,
+            tempUnavailableUntil: item.tempUnavailableUntil
+              ? new Date(item.tempUnavailableUntil)
+              : null,
+          })),
+          modifierTemplates: source.modifierGroups.map((group) => ({
+            ...group,
+            options: group.options.map((option) => ({
+              ...option,
+              tempUnavailableUntil: option.tempUnavailableUntil
+                ? new Date(option.tempUnavailableUntil)
+                : null,
+            })),
+          })),
+        };
+      },
+      getMenuItemSource: (stableId) => reader.getMenuItemSource(stableId),
+      getOptionSource: (stableId) => reader.getOptionSource(stableId),
+      getModifierGroupSource: (stableId) =>
+        reader.getModifierGroupSource(stableId),
+      listOrderModifierSnapshotSources: () =>
+        reader.listOrderModifierSnapshotSources(),
+    }),
+  },
   ...createCommonWiring(),
   ...createMerchantWiring(),
   ...createMenuWiring(),
@@ -121,7 +191,11 @@ export function createUberEatsWorkerRuntimeModule(
 ): DynamicModule {
   return {
     module: UberEatsWorkerRuntimeCompositionModule,
-    imports: [PrismaModule, BrandStoreConfigModule],
+    imports: [
+      PrismaModule,
+      BrandStoreConfigModule,
+      CatalogExternalMenuFactsModule,
+    ],
     providers: [
       ORDER_INGESTION_PROVIDER,
       ...UBER_EATS_COMPOSITION_PROVIDERS,
@@ -135,7 +209,13 @@ export function createUberEatsWorkerRuntimeModule(
  * explicit; worker dependencies remain exported only for the dedicated runtime.
  */
 @Module({
-  imports: [PrismaModule, BrandStoreConfigModule, AuthModule, OrdersModule],
+  imports: [
+    PrismaModule,
+    BrandStoreConfigModule,
+    CatalogExternalMenuFactsModule,
+    AuthModule,
+    OrdersModule,
+  ],
   controllers: [
     UberEatsOAuthController,
     UberEatsWebhookController,

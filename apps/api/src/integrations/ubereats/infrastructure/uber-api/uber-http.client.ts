@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { AppLogger } from '../../../../common/app-logger';
+import { AppLogger } from '../../../../common/public-api';
 import {
   UberApplicationError,
   type UberErrorCategory,

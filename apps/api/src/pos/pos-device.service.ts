@@ -12,7 +12,7 @@ import {
   isPosConnectivityHeartbeatEnabled,
   readPositiveDurationMs,
   withPosConnectivityHeartbeatEnabled,
-} from '../common/pos-connectivity';
+} from './pos-connectivity';
 import {
   STORE_DIRECTORY_READER,
   type StoreDirectoryReaderPort,

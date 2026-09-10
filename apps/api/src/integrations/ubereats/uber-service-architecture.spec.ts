@@ -497,6 +497,36 @@ describe('Uber Eats bounded-context architecture', () => {
     expect(violations).toEqual([]);
   });
 
+  it('keeps established Auth and Foundation public-path contractions explicit', () => {
+    const sourceByPath = new Map(
+      boundedContextFiles.map((file) => [
+        relative(BOUNDED_CONTEXT_ROOT, file.path),
+        file.source,
+      ]),
+    );
+    const accessDecorator = sourceByPath.get(
+      'api/ubereats-access.decorator.ts',
+    );
+
+    expect(accessDecorator).toContain("from '../../../auth/public-api'");
+    expect(accessDecorator).not.toMatch(
+      /from\s+['"]\.\.\/\.\.\/\.\.\/auth\/(?:admin-mfa\.guard|roles\.decorator|roles\.guard|session-auth\.guard)['"]/,
+    );
+
+    for (const path of [
+      'api/oauth.controller.ts',
+      'infrastructure/uber-api/uber-api.gateway.ts',
+      'infrastructure/uber-api/uber-http.client.ts',
+      'infrastructure/uber-api/uber-order-action.gateway.ts',
+      'infrastructure/uber-api/uber-token.provider.ts',
+      'infrastructure/persistence/uber-telemetry.service.ts',
+    ]) {
+      const source = sourceByPath.get(path);
+      expect(source).toMatch(/common\/public-api['"]/);
+      expect(source).not.toMatch(/common\/app-logger['"]/);
+    }
+  });
+
   it('keeps domain code independent from frameworks and infrastructure', () => {
     for (const path of boundedContextFiles.filter(
       ({ path }) => layerOf(path) === 'domain',

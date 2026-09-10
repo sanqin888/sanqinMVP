@@ -13,7 +13,7 @@ import {
   DEFAULT_POS_CONNECTIVITY_WATCH_INTERVAL_MS,
   readPositiveDurationMs,
   resolvePosConnectivityStatus,
-} from '../common/pos-connectivity';
+} from './pos-connectivity';
 import {
   BRAND_STORE_CONFIG_READER,
   STORE_STATUS_READER,

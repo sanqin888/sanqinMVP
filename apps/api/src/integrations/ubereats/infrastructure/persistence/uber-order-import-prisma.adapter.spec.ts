@@ -86,6 +86,7 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
         },
       } as never,
       {} as never,
+      {} as never,
     );
 
     await expect(
@@ -108,6 +109,7 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
     const adapter = new UberOrderImportPrismaAdapter(
       { uberOrderAction: { findUnique } } as never,
       {} as never,
+      {} as never,
     );
 
     await expect(adapter.hasSucceededDenial('uber-order-denied')).resolves.toBe(
@@ -122,6 +124,104 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
       },
       select: { status: true },
     });
+  });
+
+  it('reads imported-order modifier snapshot facts through the Catalog owner capability', async () => {
+    const sources = [
+      {
+        stableId: 'option-1',
+        templateGroupStableId: 'group-1',
+        targetItemStableId: 'item-2',
+        nameEn: 'Large',
+        nameZh: '大份',
+        templateNameEn: 'Size',
+        templateNameZh: '份量',
+      },
+    ];
+    const listOrderModifierSnapshotSources = jest
+      .fn()
+      .mockResolvedValue(sources);
+    const adapter = new UberOrderImportPrismaAdapter(
+      {} as never,
+      {} as never,
+      { listOrderModifierSnapshotSources } as never,
+    );
+
+    await expect(adapter.findModifierSnapshotSources()).resolves.toEqual(
+      sources,
+    );
+    expect(listOrderModifierSnapshotSources).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps Uber modifiers in canonical options without passing provider persistence through Orders ingestion', async () => {
+    const ingest = jest.fn().mockResolvedValue(savedOrder);
+    const adapter = new UberOrderImportPrismaAdapter(
+      {} as never,
+      { ingest } as never,
+      {} as never,
+    );
+
+    await adapter.saveImportedOrder({
+      ...baseInput,
+      order: {
+        ...parsedOrder,
+        items: [
+          {
+            externalLineId: 'line-1',
+            externalItemId: 'uber-item-1',
+            stableIdHint: null,
+            displayName: 'Dish',
+            quantity: 1,
+            baseUnitPriceCents: 1_000,
+            optionsUnitPriceCents: 200,
+            unitPriceCents: 1_200,
+            lineTotalCents: 1_200,
+            specialInstructions: null,
+            modifiers: [
+              {
+                externalId: 'sanq:option-1',
+                parentExternalId: 'modifier-group-1',
+                displayName: 'Extra cheese',
+                quantity: 1,
+                priceDeltaCents: 200,
+                specialInstructions: null,
+                children: [],
+              },
+            ],
+          },
+        ],
+      },
+      menuMappings: [
+        {
+          externalItemId: 'uber-item-1',
+          menuItemStableId: 'dish-1',
+          expectedPriceCents: 1_000,
+        },
+      ],
+    } as never);
+
+    const [normalized] = ingest.mock.calls[0] as unknown as [
+      {
+        items: Array<{
+          options: unknown;
+          external: Record<string, unknown>;
+        }>;
+      },
+    ];
+    const options = normalized.items[0]?.options as Array<{
+      templateGroupStableId: string;
+      choices: Array<{
+        stableId: string;
+        displayName: string;
+        priceDeltaCents: number;
+      }>;
+    }>;
+    expect(options).toHaveLength(1);
+    expect(options[0]?.templateGroupStableId).toBe('modifier-group-1');
+    expect(options[0]?.choices[0]?.stableId).toBe('sanq:option-1');
+    expect(options[0]?.choices[0]?.displayName).toBe('Extra cheese');
+    expect(options[0]?.choices[0]?.priceDeltaCents).toBe(200);
+    expect(normalized.items[0]?.external).not.toHaveProperty('modifiers');
   });
 
   it('persists orders.failure against the existing order without requiring detail data', async () => {
@@ -150,6 +250,7 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
     };
     const adapter = new UberOrderImportPrismaAdapter(
       prisma as never,
+      {} as never,
       {} as never,
     );
     const occurredAt = new Date('2026-08-20T13:30:09.000Z');
@@ -253,6 +354,7 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
     const adapter = new UberOrderImportPrismaAdapter(
       {} as never,
       { ingest } as never,
+      {} as never,
     );
 
     await expect(adapter.saveImportedOrder(baseInput)).resolves.toEqual({
@@ -317,6 +419,7 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
     const adapter = new UberOrderImportPrismaAdapter(
       {} as never,
       { ingest } as never,
+      {} as never,
     );
     const input = {
       ...baseInput,

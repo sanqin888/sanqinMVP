@@ -48,9 +48,10 @@ describe('UberMenuWriteTransactionPrismaAdapter', () => {
       (work: (client: typeof transactionClient) => Promise<unknown>) =>
         work(transactionClient),
     );
-    const adapter = new UberMenuWriteTransactionPrismaAdapter({
-      $transaction,
-    } as unknown as PrismaService);
+    const adapter = new UberMenuWriteTransactionPrismaAdapter(
+      { $transaction } as unknown as PrismaService,
+      {} as never,
+    );
 
     await adapter.execute((commands) =>
       commands.upsertUberItemChannelConfig(itemCommand),
@@ -130,6 +131,7 @@ describe('UberMenuWriteTransactionPrismaAdapter', () => {
     };
     const adapter = new UberMenuWriteTransactionPrismaAdapter(
       prismaClient as unknown as PrismaService,
+      {} as never,
     );
 
     await expect(
@@ -155,9 +157,10 @@ describe('UberMenuWriteTransactionPrismaAdapter', () => {
       .mockImplementationOnce(
         (work: (client: object) => Promise<typeof converged>) => work({}),
       );
-    const adapter = new UberMenuWriteTransactionPrismaAdapter({
-      $transaction,
-    } as unknown as PrismaService);
+    const adapter = new UberMenuWriteTransactionPrismaAdapter(
+      { $transaction } as unknown as PrismaService,
+      {} as never,
+    );
 
     await expect(
       adapter.execute(() => Promise.resolve(converged)),

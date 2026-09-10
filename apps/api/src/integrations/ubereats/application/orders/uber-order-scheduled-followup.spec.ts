@@ -106,10 +106,6 @@ describe('Uber scheduled-order follow-up notifications', () => {
         },
       }),
       findMenuMappings: jest.fn().mockResolvedValue(menuMappings),
-      getPosStoreConnectivity: jest.fn().mockResolvedValue({
-        status: 'ONLINE',
-        lastHeartbeatAt: new Date('2026-08-21T14:40:12.000Z'),
-      }),
       saveExistingOrderCancellation: jest.fn(),
       saveImportedOrder,
     } as unknown as UberOrderImportRepositoryPort;
@@ -125,6 +121,12 @@ describe('Uber scheduled-order follow-up notifications', () => {
       { request, buildIntent, requestScheduledFinalizeAccept } as never,
       { findMapping: jest.fn().mockResolvedValue(storeMapping) } as never,
       storeConfig as never,
+      {
+        getStoreConnectivity: jest.fn().mockResolvedValue({
+          status: 'ONLINE',
+          lastHeartbeatAt: new Date('2026-08-21T14:40:12.000Z'),
+        }),
+      } as never,
     );
 
     await useCase.execute(
@@ -172,6 +174,7 @@ describe('Uber scheduled-order follow-up notifications', () => {
       { request: jest.fn() } as never,
       { findMapping: jest.fn() } as never,
       storeConfig as never,
+      { getStoreConnectivity: jest.fn() } as never,
     );
 
     await expect(

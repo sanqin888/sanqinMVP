@@ -45,9 +45,11 @@ import {
   type UberOrderActionGatewayPort,
   type UberOrderActionRepositoryPort,
   type UberOrderImportRepositoryPort,
+  type UberPosConnectivityQueryPort,
   UBER_ORDER_ACTION_GATEWAY,
   UBER_ORDER_ACTION_REPOSITORY,
   UBER_ORDER_IMPORT_REPOSITORY,
+  UBER_POS_CONNECTIVITY_QUERY,
 } from '../../application/orders/uber-order.ports';
 import { UBER_ORDER_IMPORT_PORT } from '../../application/orders/uber-order.ports';
 import { UberOrderActionPrismaAdapter } from '../../infrastructure/persistence/uber-order-action-prisma.adapter';
@@ -93,6 +95,10 @@ export function createOrdersWiring(): Provider[] {
     UberOrderImportPrismaAdapter,
     {
       provide: UBER_ORDER_IMPORT_REPOSITORY,
+      useExisting: UberOrderImportPrismaAdapter,
+    },
+    {
+      provide: UBER_POS_CONNECTIVITY_QUERY,
       useExisting: UberOrderImportPrismaAdapter,
     },
     UberOrderStatusAuditPrismaAdapter,
@@ -154,6 +160,7 @@ export function createOrdersWiring(): Provider[] {
         UberOrderActionService,
         UBER_STORE_MAPPING_REPOSITORY,
         UBER_STORE_CONFIG_QUERY,
+        UBER_POS_CONNECTIVITY_QUERY,
       ],
       useFactory: (
         repository: UberOrderImportRepositoryPort,
@@ -161,6 +168,7 @@ export function createOrdersWiring(): Provider[] {
         actions: UberOrderActionService,
         storeMappings: UberStoreMappingRepositoryPort,
         storeConfig: UberStoreConfigQueryPort,
+        connectivity: UberPosConnectivityQueryPort,
       ) =>
         new ImportUberOrderUseCase(
           repository,
@@ -168,6 +176,7 @@ export function createOrdersWiring(): Provider[] {
           actions,
           storeMappings,
           storeConfig,
+          connectivity,
         ),
     },
     { provide: UBER_ORDER_IMPORT_PORT, useExisting: ImportUberOrderUseCase },
@@ -179,6 +188,7 @@ export function createOrdersWiring(): Provider[] {
         UberOrderActionService,
         UBER_STORE_MAPPING_REPOSITORY,
         UBER_STORE_CONFIG_QUERY,
+        UBER_POS_CONNECTIVITY_QUERY,
       ],
       useFactory: (
         repository: UberOrderImportRepositoryPort,
@@ -186,6 +196,7 @@ export function createOrdersWiring(): Provider[] {
         actions: UberOrderActionService,
         storeMappings: UberStoreMappingRepositoryPort,
         storeConfig: UberStoreConfigQueryPort,
+        connectivity: UberPosConnectivityQueryPort,
       ) =>
         new CancelUberOrderUseCase(
           repository,
@@ -193,6 +204,7 @@ export function createOrdersWiring(): Provider[] {
           actions,
           storeMappings,
           storeConfig,
+          connectivity,
         ),
     },
     {

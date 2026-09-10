@@ -1,6 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import {
+  UBER_CATALOG_MENU_FACTS_QUERY,
+  type UberCatalogMenuFactsQueryPort,
+} from '../../application/shared/uber-catalog-menu-facts.port';
+import {
   UBER_STORE_CONFIG_QUERY,
   type UberStoreConfigQueryPort,
 } from '../../application/shared/uber-store-config.port';
@@ -22,6 +26,8 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
     private readonly prisma: PrismaService,
     @Inject(UBER_STORE_CONFIG_QUERY)
     private readonly storeConfig: UberStoreConfigQueryPort,
+    @Inject(UBER_CATALOG_MENU_FACTS_QUERY)
+    private readonly catalogFacts: UberCatalogMenuFactsQueryPort,
   ) {}
 
   async loadPublishSnapshot(
@@ -32,9 +38,7 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
     const [
       mapping,
       storeConfig,
-      categories,
-      menuItems,
-      templates,
+      sourceFacts,
       rawItemConfigs,
       rawOptionConfigs,
       rawGroupConfigs,
@@ -49,58 +53,7 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
         select: { uberStoreId: true },
       }),
       this.storeConfig.getStoreConfig(storeStableId),
-      this.prisma.menuCategory.findMany({
-        where: { deletedAt: null, isActive: true },
-        orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
-        select: { id: true, stableId: true, nameEn: true, nameZh: true },
-      }),
-      this.prisma.menuItem.findMany({
-        where: {
-          deletedAt: null,
-          visibility: 'PUBLIC',
-          publishToUberEats: true,
-        },
-        orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
-        select: {
-          stableId: true,
-          categoryId: true,
-          nameEn: true,
-          nameZh: true,
-          basePriceCents: true,
-          isAvailable: true,
-          tempUnavailableUntil: true,
-          imageUrl: true,
-          ingredientsEn: true,
-          optionGroups: {
-            where: { isEnabled: true },
-            orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
-            select: { templateGroup: { select: { stableId: true } } },
-          },
-        },
-      }),
-      this.prisma.menuOptionGroupTemplate.findMany({
-        where: { deletedAt: null, isAvailable: true },
-        orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
-        select: {
-          stableId: true,
-          nameEn: true,
-          nameZh: true,
-          defaultMinSelect: true,
-          defaultMaxSelect: true,
-          options: {
-            where: { deletedAt: null },
-            orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
-            select: {
-              stableId: true,
-              nameEn: true,
-              nameZh: true,
-              priceDeltaCents: true,
-              isAvailable: true,
-              tempUnavailableUntil: true,
-            },
-          },
-        },
-      }),
+      this.catalogFacts.readMenuSource(),
       this.prisma.uberItemChannelConfig.findMany({
         where: { storeId: storeStableId },
         select: {
@@ -145,6 +98,24 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
       }),
     ]);
     if (!mapping) return null;
+
+    const categories = sourceFacts.categories
+      .filter((category) => category.isActive)
+      .map((category) => ({ ...category, id: category.stableId }));
+    const menuItems = sourceFacts.menuItems
+      .filter((item) => item.visibility === 'PUBLIC' && item.publishToUberEats)
+      .map((item) => ({
+        ...item,
+        categoryId: item.categoryStableId,
+        optionGroups: item.optionGroups
+          .filter((binding) => binding.isEnabled)
+          .map((binding) => ({
+            templateGroup: { stableId: binding.templateGroupStableId },
+          })),
+      }));
+    const templates = sourceFacts.modifierTemplates.filter(
+      (template) => template.isAvailable,
+    );
 
     const timezone = storeConfig.timezone.trim();
     if (!timezone) {

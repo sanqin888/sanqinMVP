@@ -5,10 +5,10 @@ import {
   Logger,
 } from '@nestjs/common';
 import {
-  UBER_EATS_MENU_AVAILABILITY,
-  type UberEatsAvailabilitySyncResult,
-  type UberEatsMenuAvailabilityPort,
-} from '../../integrations/ubereats/public-api';
+  CATALOG_EXTERNAL_AVAILABILITY_SYNC,
+  type CatalogExternalAvailabilitySyncPort,
+  type CatalogExternalAvailabilitySyncResult,
+} from './catalog-external-availability-sync.port';
 import {
   CATALOG_AVAILABILITY_READER,
   CatalogAdminService,
@@ -26,8 +26,8 @@ export class CatalogUberAvailabilityOrchestrationService {
     private readonly catalog: CatalogAdminService,
     @Inject(CATALOG_AVAILABILITY_READER)
     private readonly catalogAvailability: CatalogAvailabilityReaderPort,
-    @Inject(UBER_EATS_MENU_AVAILABILITY)
-    private readonly uberEatsService: UberEatsMenuAvailabilityPort,
+    @Inject(CATALOG_EXTERNAL_AVAILABILITY_SYNC)
+    private readonly externalAvailability: CatalogExternalAvailabilitySyncPort,
   ) {}
 
   async updateItem(
@@ -126,7 +126,9 @@ export class CatalogUberAvailabilityOrchestrationService {
     }
   }
 
-  private presentUberAvailabilitySync(sync: UberEatsAvailabilitySyncResult) {
+  private presentUberAvailabilitySync(
+    sync: CatalogExternalAvailabilitySyncResult,
+  ) {
     return {
       ...sync,
       stores: sync.stores.map(({ storeStableId, ...store }) => ({
@@ -140,13 +142,13 @@ export class CatalogUberAvailabilityOrchestrationService {
     menuItemStableId: string,
     isAvailable: boolean,
     suspendUntil: string | null,
-  ): Promise<UberEatsAvailabilitySyncResult> {
+  ): Promise<CatalogExternalAvailabilitySyncResult> {
     try {
       const snapshot =
         await this.catalogAvailability.getMenuItemAvailabilitySnapshot(
           menuItemStableId,
         );
-      return await this.uberEatsService.syncUberMenuItemAvailability({
+      return await this.externalAvailability.syncMenuItemAvailability({
         menuItemStableId,
         isAvailable,
         publishable: Boolean(
@@ -180,7 +182,7 @@ export class CatalogUberAvailabilityOrchestrationService {
     suspendUntil: string | null,
   ) {
     try {
-      await this.uberEatsService.syncUberOptionItemAvailability({
+      await this.externalAvailability.syncOptionAvailability({
         optionChoiceStableId,
         isAvailable,
         suspendUntil,

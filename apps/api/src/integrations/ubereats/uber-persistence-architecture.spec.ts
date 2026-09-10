@@ -204,7 +204,7 @@ describe('Uber Eats menu persistence dependency direction', () => {
     expect([...violations, ...leakedHelpers]).toEqual([]);
   });
 
-  it('binds each menu draft port to its dedicated Prisma adapter', () => {
+  it('binds each persistence-backed menu draft port to its dedicated Prisma adapter', () => {
     const moduleFile = scanTypeScript(__dirname, {
       productionOnly: true,
     }).find(
@@ -216,7 +216,7 @@ describe('Uber Eats menu persistence dependency direction', () => {
     const draftPortBindings = Object.fromEntries(
       [
         ...moduleFile!.source.matchAll(
-          /provide:\s*((?:MENU_ITEM_EXISTENCE|OPTION_CHOICE_EXISTENCE|PROVISIONED_UBER_STORE|UBER_BUSINESS_SCHEDULE)_QUERY_PORT|UBER_(?:MENU_(?:CONFIG_QUERY|DRAFT_(?:READ|DIFF))_PORT|(?:ITEM_CHANNEL_CONFIG|OPTION_ITEM_CONFIG|DRAFT_(?:ITEM|GROUP|OPTION))_COMMAND_PORT)),\s*useExisting:\s*(\w+)/g,
+          /provide:\s*((?:MENU_ITEM_EXISTENCE|OPTION_CHOICE_EXISTENCE|PROVISIONED_UBER_STORE)_QUERY_PORT|UBER_(?:MENU_(?:CONFIG_QUERY|DRAFT_(?:READ|DIFF))_PORT|(?:ITEM_CHANNEL_CONFIG|OPTION_ITEM_CONFIG|DRAFT_(?:ITEM|GROUP|OPTION))_COMMAND_PORT)),\s*useExisting:\s*(\w+)/g,
         ),
       ].map((match) => [match[1], match[2]]),
     );
@@ -234,8 +234,6 @@ describe('Uber Eats menu persistence dependency direction', () => {
       OPTION_CHOICE_EXISTENCE_QUERY_PORT:
         'UberMenuSupportingQueriesPrismaAdapter',
       PROVISIONED_UBER_STORE_QUERY_PORT:
-        'UberMenuSupportingQueriesPrismaAdapter',
-      UBER_BUSINESS_SCHEDULE_QUERY_PORT:
         'UberMenuSupportingQueriesPrismaAdapter',
     });
   });

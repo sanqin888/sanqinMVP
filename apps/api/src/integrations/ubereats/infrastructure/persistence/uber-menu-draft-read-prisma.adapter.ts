@@ -2,14 +2,18 @@ import { Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { UberValidationError } from '../../application/shared/uber-application.error';
 import {
-  UBER_STORE_CONFIG_QUERY,
-  type UberStoreConfigQueryPort,
-} from '../../application/shared/uber-store-config.port';
-import type { UberMenuDraftReadPort } from '../../application/menu/uber-menu-draft.ports';
+  UBER_BUSINESS_SCHEDULE_QUERY_PORT,
+  type UberBusinessScheduleQueryPort,
+  type UberMenuDraftReadPort,
+} from '../../application/menu/uber-menu-draft.ports';
 import {
   UBER_PUBLIC_BASE_URL,
   type UberPublicBaseUrlPort,
 } from '../../application/menu/uber-menu-publication.ports';
+import {
+  UBER_CATALOG_MENU_FACTS_QUERY,
+  type UberCatalogMenuFactsQueryPort,
+} from '../../application/shared/uber-catalog-menu-facts.port';
 import {
   buildUberUploadMenuPayload,
   validateUberMenuPayload,
@@ -59,8 +63,10 @@ export class UberMenuDraftReadPrismaAdapter implements UberMenuDraftReadPort {
     private readonly prisma: PrismaService,
     @Inject(UBER_PUBLIC_BASE_URL)
     private readonly urls: UberPublicBaseUrlPort,
-    @Inject(UBER_STORE_CONFIG_QUERY)
-    private readonly storeConfig: UberStoreConfigQueryPort,
+    @Inject(UBER_BUSINESS_SCHEDULE_QUERY_PORT)
+    private readonly businessSchedule: UberBusinessScheduleQueryPort,
+    @Inject(UBER_CATALOG_MENU_FACTS_QUERY)
+    private readonly catalogFacts: UberCatalogMenuFactsQueryPort,
   ) {}
 
   async getUberMenuDraft(storeId: string) {
@@ -258,23 +264,9 @@ export class UberMenuDraftReadPrismaAdapter implements UberMenuDraftReadPort {
   private async buildUberMenuGraph(storeId: string, uberStoreId: string) {
     const source = await new UberMenuDraftSourcePrismaRepository(
       this.prisma,
+      this.catalogFacts,
     ).load(storeId, uberStoreId);
     return buildUberMenuGraph(source, emptyUberMenuDraftFilters());
-  }
-
-  private async readBusinessSchedule(storeStableId: string) {
-    const [config, hours] = await Promise.all([
-      this.storeConfig.getStoreConfig(storeStableId),
-      this.prisma.businessHour.findMany({
-        where: { store: { storeStableId } },
-        orderBy: { weekday: 'asc' },
-      }),
-    ]);
-    return {
-      timezone: config.timezone,
-      salesTaxRate: config.salesTaxRate,
-      hours,
-    };
   }
 
   private async getUberMenuSchedule(storeStableId: string): Promise<{
@@ -284,7 +276,7 @@ export class UberMenuDraftReadPrismaAdapter implements UberMenuDraftReadPort {
     taxRateSource: string;
   }> {
     const result = validateUberBusinessSchedule(
-      await this.readBusinessSchedule(storeStableId),
+      await this.businessSchedule.readBusinessSchedule(storeStableId),
     );
     if (!result.valid) throw uberMenuValidation(result.message);
     return { ...result, taxRateSource: 'StoreConfig.salesTaxRate' };
