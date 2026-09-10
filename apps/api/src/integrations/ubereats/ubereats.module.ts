@@ -7,10 +7,13 @@ import {
 } from '../../menu/public-api';
 import {
   ORDER_EXTERNAL_FACTS_READER,
+  ORDER_EXTERNAL_TRANSITION_COORDINATOR,
   ORDER_INGESTION_PROVIDER,
   OrderExternalFactsModule,
+  OrderExternalTransitionModule,
   OrdersModule,
   type OrderExternalFactsReaderPort,
+  type OrderExternalTransitionCoordinatorPort,
 } from '../../orders/public-api';
 import { PrismaModule } from '../../prisma/prisma.module';
 import {
@@ -51,6 +54,10 @@ import {
   UBER_ORDER_SYNC_REPOSITORY,
 } from './application/orders/uber-order-sync.ports';
 import {
+  type UberOrderActionRepositoryPort,
+  UBER_ORDER_ACTION_REPOSITORY,
+} from './application/orders/uber-order.ports';
+import {
   type UberOrderOperationsRepositoryPort,
   UBER_ORDER_OPERATIONS_REPOSITORY,
 } from './application/operations/uber-operations.ports';
@@ -63,6 +70,7 @@ import { createMenuWiring } from './infrastructure/nest/menu.wiring';
 import { createMerchantWiring } from './infrastructure/nest/merchant.wiring';
 import { createOperationsWiring } from './infrastructure/nest/operations.wiring';
 import { createOrdersWiring } from './infrastructure/nest/orders.wiring';
+import { UberOrderActionPrismaAdapter } from './infrastructure/persistence/uber-order-action-prisma.adapter';
 import { UberWorkerConfigService } from './infrastructure/workers/uber-worker-config.service';
 import {
   UBER_EATS_MENU_AVAILABILITY,
@@ -275,6 +283,29 @@ const UBER_EATS_COMPOSITION_PROVIDERS: Provider[] = [
         }),
     }),
   },
+  {
+    provide: UBER_ORDER_ACTION_REPOSITORY,
+    inject: [
+      UberOrderActionPrismaAdapter,
+      ORDER_EXTERNAL_TRANSITION_COORDINATOR,
+    ],
+    useFactory: (
+      persistence: UberOrderActionPrismaAdapter,
+      coordinator: OrderExternalTransitionCoordinatorPort,
+    ): UberOrderActionRepositoryPort => ({
+      enqueue: (input) => persistence.enqueue(input),
+      requeue: (input) => persistence.requeue(input),
+      claim: (input) => persistence.claim(input),
+      complete: (input) =>
+        coordinator.completeProviderConfirmedTransition(
+          { channel: 'ubereats', transition: input.transition },
+          (transaction) =>
+            persistence.completeWithinTransaction(transaction, input),
+        ),
+      markFailed: (taskId, leaseToken, input) =>
+        persistence.markFailed(taskId, leaseToken, input),
+    }),
+  },
   ...createCommonWiring(),
   ...createMerchantWiring(),
   ...createMenuWiring(),
@@ -315,6 +346,7 @@ export function createUberEatsWorkerRuntimeModule(
       BrandStoreConfigModule,
       CatalogExternalMenuFactsModule,
       OrderExternalFactsModule,
+      OrderExternalTransitionModule,
     ],
     providers: [
       ORDER_INGESTION_PROVIDER,
@@ -334,6 +366,7 @@ export function createUberEatsWorkerRuntimeModule(
     BrandStoreConfigModule,
     CatalogExternalMenuFactsModule,
     OrderExternalFactsModule,
+    OrderExternalTransitionModule,
     AuthModule,
     OrdersModule,
   ],

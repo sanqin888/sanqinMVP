@@ -91,10 +91,6 @@ export function createOrdersWiring(): Provider[] {
       useExisting: UberOrderActionGatewayAdapter,
     },
     UberOrderActionPrismaAdapter,
-    {
-      provide: UBER_ORDER_ACTION_REPOSITORY,
-      useExisting: UberOrderActionPrismaAdapter,
-    },
     UberOrderImportPrismaAdapter,
     {
       provide: UBER_ORDER_IMPORT_REPOSITORY,

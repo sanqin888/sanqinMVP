@@ -32,12 +32,19 @@
   `ORDER_EXTERNAL_FACTS_READER`；`ubereats.module.ts` 把这个 provider-neutral reader 映射到
   Uber application-owned query/repository ports。跨边界身份仅使用 `channel + externalOrderId`
   或 `orderStableId`，不得暴露 `Order.id` / Prisma shape。dedicated worker 只导入窄
-  `OrderExternalFactsModule`，不得为这些读取导入完整 `OrdersModule`。与 action/cancellation 写入
-  同事务耦合的 canonical Order 读取继续保留在 persistence transaction 内，分别等待 8.3B/8.3C
-  ownership contraction，不能为了表面收口拆掉原子性。
+  `OrderExternalFactsModule`，不得为这些读取导入完整 `OrdersModule`。
+- provider-confirmed action completion 的 canonical transition 只通过 Orders 公共
+  `ORDER_EXTERNAL_TRANSITION_COORDINATOR`。Orders 持有唯一 shared-DB transaction，并先调用
+  一个 opaque same-transaction External extension；Uber persistence 只能在该 extension 中验证
+  claimed action、执行 exact lease fence、记录 provider success HTTP status 并清理 lease。extension
+  成功后，`Order.status`、`makingAt` / `readyAt`、conditional-update race re-read 与幂等
+  `order.accepted` 都由 Orders 在同一 transaction 中完成。`ubereats.module.ts` 是该跨上下文
+  completion 的唯一装配点，dedicated worker 只导入 `OrderExternalTransitionModule`，不得导入
+  `OrdersModule`。8.3C cancellation webhook 的 transaction ownership 仍独立保留，不能与 action
+  completion 混并。
 - Uber imported orders 继续不触发 SanQ member paid-lifecycle/Loyalty side effects；外部 wire、
-  webhook idempotency、provider-supplied amount truth 以及事务内 action/cancellation 写入语义
-  不因此改变。
+  webhook idempotency、provider-supplied amount truth、action lease semantics 与 cancellation
+  transaction 语义不因此改变。
 
 边界外调用者只能使用 `public-api.ts`、`ubereats.module.ts` 或 `worker.ts`；其中业务能力
 一律经 `public-api.ts` 使用。禁止外部深层导入 `api/`、`application/`、`domain/`、

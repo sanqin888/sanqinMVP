@@ -2,8 +2,10 @@ import { MODULE_METADATA } from '@nestjs/common/constants';
 import { AuthModule } from '../../auth/auth.module';
 import { MessagingModule } from '../../messaging/messaging.module';
 import {
+  ORDER_EXTERNAL_TRANSITION_COORDINATOR,
   ORDER_INGESTION_PROVIDER,
   OrderExternalFactsModule,
+  OrderExternalTransitionModule,
   OrdersModule,
 } from '../../orders/public-api';
 import {
@@ -34,9 +36,14 @@ import {
   type UberStoreConfigQueryPort,
 } from './application/shared/uber-store-config.port';
 import {
+  type UberOrderActionRepositoryPort,
+  UBER_ORDER_ACTION_REPOSITORY,
+} from './application/orders/uber-order.ports';
+import {
   UberOrderActionWorkerAdapter,
   UberWebhookInboxWorkerAdapter,
 } from './infrastructure/workers/uber-worker.adapters';
+import { UberOrderActionPrismaAdapter } from './infrastructure/persistence/uber-order-action-prisma.adapter';
 import { UberWorkerHealthService } from './infrastructure/workers/uber-worker-health.service';
 import { UberWorkerWakeService } from './infrastructure/workers/uber-worker-wake.service';
 import {
@@ -290,6 +297,75 @@ describe('UberEats compositions', () => {
     });
   });
 
+  it('composes action completion through the Orders-owned transition coordinator', async () => {
+    const providers = metadata<unknown>(
+      UberEatsModule,
+      MODULE_METADATA.PROVIDERS,
+    );
+    const provider = providers.find(
+      (candidate) =>
+        typeof candidate === 'object' &&
+        candidate !== null &&
+        'provide' in candidate &&
+        candidate.provide === UBER_ORDER_ACTION_REPOSITORY,
+    ) as
+      | {
+          inject?: unknown[];
+          useFactory?: (
+            persistence: never,
+            coordinator: never,
+          ) => UberOrderActionRepositoryPort;
+        }
+      | undefined;
+
+    expect(provider?.inject).toEqual([
+      UberOrderActionPrismaAdapter,
+      ORDER_EXTERNAL_TRANSITION_COORDINATOR,
+    ]);
+    const transaction = { source: 'orders-owned-transaction' };
+    const completionInput = {
+      taskId: 'task-1',
+      leaseToken: 'lease-1',
+      upstreamStatus: 200,
+      transition: { from: 'pending' as const, to: 'paid' as const },
+    };
+    const persistence = {
+      enqueue: jest.fn(),
+      requeue: jest.fn(),
+      claim: jest.fn(),
+      completeWithinTransaction: jest.fn().mockResolvedValue({
+        externalOrderId: 'order-1',
+        completedAt: new Date('2026-09-10T16:00:00.000Z'),
+        acceptanceConfirmed: true,
+      }),
+      markFailed: jest.fn(),
+    };
+    const coordinator = {
+      completeProviderConfirmedTransition: jest.fn(
+        async (
+          input: unknown,
+          extension: (transaction: unknown) => Promise<unknown>,
+        ) => {
+          expect(input).toEqual({
+            channel: 'ubereats',
+            transition: completionInput.transition,
+          });
+          return (await extension(transaction)) !== null;
+        },
+      ),
+    };
+    const repository = provider!.useFactory!(
+      persistence as never,
+      coordinator as never,
+    );
+
+    await expect(repository.complete(completionInput)).resolves.toBe(true);
+    expect(persistence.completeWithinTransaction).toHaveBeenCalledWith(
+      transaction,
+      completionInput,
+    );
+  });
+
   it('keeps the worker runtime free of API feature modules', () => {
     const workerRuntime = createUberEatsWorkerRuntimeModule(
       UBER_EATS_WORKER_PROVIDERS,
@@ -301,6 +377,7 @@ describe('UberEats compositions', () => {
       BrandStoreConfigModule,
       CatalogExternalMenuFactsModule,
       OrderExternalFactsModule,
+      OrderExternalTransitionModule,
     ]);
     expect(imports).not.toContain(AuthModule);
     expect(imports).not.toContain(OrdersModule);
