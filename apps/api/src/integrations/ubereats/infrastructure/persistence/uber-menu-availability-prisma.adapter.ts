@@ -27,7 +27,12 @@ export class UberMenuAvailabilityPrismaAdapter
     return mappings.flatMap((mapping) => {
       const mappedStoreStableId = mapping.posExternalStoreId?.trim();
       return mappedStoreStableId
-        ? [{ storeStableId: mappedStoreStableId, uberStoreId: mapping.uberStoreId }]
+        ? [
+            {
+              storeStableId: mappedStoreStableId,
+              uberStoreId: mapping.uberStoreId,
+            },
+          ]
         : [];
     });
   }

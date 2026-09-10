@@ -101,7 +101,9 @@ describe('Uber Eats store identity architecture', () => {
       'storeStableId: input.storeStableId',
     );
     expect(orderIngestion!.source).toContain('storeId: input.storeStableId');
-    expect(menuController!.source).toContain('storeStableId: dto.storeStableId');
+    expect(menuController!.source).toContain(
+      'storeStableId: dto.storeStableId',
+    );
   });
 
   it('keeps closed Test Store identity compatibility out of Operations and availability', () => {
@@ -112,9 +114,12 @@ describe('Uber Eats store identity architecture', () => {
       join(__dirname, 'infrastructure', 'persistence'),
       { productionOnly: true },
     );
-    const requestFiles = scanTypeScript(join(__dirname, 'contracts', 'requests'), {
-      productionOnly: true,
-    });
+    const requestFiles = scanTypeScript(
+      join(__dirname, 'contracts', 'requests'),
+      {
+        productionOnly: true,
+      },
+    );
     const operationSources = applicationFiles
       .filter((file) => file.path.includes('/operations/'))
       .map((file) => file.source)
@@ -142,7 +147,9 @@ describe('Uber Eats store identity architecture', () => {
     expect(operationSources).not.toContain(
       '@compat brand-store.default-store-identity.v1',
     );
-    expect(operationSources).not.toMatch(/targetStatus\s*===\s*['"]OFFLINE['"]/);
+    expect(operationSources).not.toMatch(
+      /targetStatus\s*===\s*['"]OFFLINE['"]/,
+    );
     expect(operationsPersistence!.source).toContain('storeId: storeStableId');
     expect(operationsPersistence!.source).not.toContain('storeScopeIds');
     expect(merchantPersistence!.source).not.toContain(
