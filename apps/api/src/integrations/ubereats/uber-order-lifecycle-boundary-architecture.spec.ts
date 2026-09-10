@@ -41,7 +41,7 @@ describe('Uber accepted-order lifecycle boundary architecture', () => {
     );
     expect(worker).not.toMatch(/FulfillmentProcessor|PosGateway|OrdersModule/);
     expect(uberModule).toMatch(
-      /createUberEatsWorkerRuntimeModule[\s\S]*imports:\s*\[\s*PrismaModule,\s*BrandStoreConfigModule,\s*CatalogExternalMenuFactsModule\s*\]/,
+      /createUberEatsWorkerRuntimeModule[\s\S]*imports:\s*\[\s*PrismaModule,\s*BrandStoreConfigModule,\s*CatalogExternalMenuFactsModule,?\s*\]/,
     );
     expect(uberModule).not.toContain('CatalogAvailabilityModule');
   });
