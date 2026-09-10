@@ -298,9 +298,7 @@ export class UberModifierConfigPrismaRepository implements ModifierConfigReposit
     }));
   }
 }
-export class UberBusinessScheduleRepositoryAdapter
-  implements BusinessScheduleRepository
-{
+export class UberBusinessScheduleRepositoryAdapter implements BusinessScheduleRepository {
   constructor(private readonly schedules: UberBusinessScheduleQueryPort) {}
 
   get(storeStableId: string) {
