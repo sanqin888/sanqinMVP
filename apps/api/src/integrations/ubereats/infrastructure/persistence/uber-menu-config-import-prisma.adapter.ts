@@ -132,6 +132,11 @@ export class UberMenuConfigImportPrismaAdapter implements UberMenuConfigImportPo
       { isolationLevel: 'Serializable' },
     );
   }
+  /**
+   * Phase 8 Slice 8.2B.3 tail: the Catalog source read intentionally remains on
+   * this transaction client until an owner capability can preserve the existing
+   * restore + Uber override + audit atomicity/concurrency semantics.
+   */
   async restoreItemPrice(
     storeId: string,
     menuItemStableId: string,
@@ -182,6 +187,7 @@ export class UberMenuConfigImportPrismaAdapter implements UberMenuConfigImportPo
       return { sourcePriceCents: item.basePriceCents };
     });
   }
+  /** Same Phase 8 Slice 8.2B.3 transaction-sensitive tail as item restore. */
   async restoreOptionPrice(
     storeId: string,
     optionChoiceStableId: string,

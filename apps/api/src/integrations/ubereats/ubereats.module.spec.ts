@@ -5,6 +5,10 @@ import {
   ORDER_INGESTION_PROVIDER,
   OrdersModule,
 } from '../../orders/public-api';
+import {
+  CATALOG_EXTERNAL_MENU_FACTS_READER,
+  CatalogExternalMenuFactsModule,
+} from '../../menu/public-api';
 import { PrismaModule } from '../../prisma/prisma.module';
 import {
   STORE_SCHEDULE_READER,
@@ -20,6 +24,10 @@ import {
   UBER_BUSINESS_SCHEDULE_QUERY_PORT,
   type UberBusinessScheduleQueryPort,
 } from './application/menu/uber-menu-draft.ports';
+import {
+  UBER_CATALOG_MENU_FACTS_QUERY,
+  type UberCatalogMenuFactsQueryPort,
+} from './application/shared/uber-catalog-menu-facts.port';
 import {
   UBER_STORE_CONFIG_QUERY,
   type UberStoreConfigQueryPort,
@@ -208,13 +216,90 @@ describe('UberEats compositions', () => {
     );
   });
 
+  it('maps Catalog-owned menu facts into the Uber application boundary', async () => {
+    const providers = metadata<unknown>(
+      UberEatsModule,
+      MODULE_METADATA.PROVIDERS,
+    );
+    const provider = providers.find(
+      (candidate) =>
+        typeof candidate === 'object' &&
+        candidate !== null &&
+        'provide' in candidate &&
+        candidate.provide === UBER_CATALOG_MENU_FACTS_QUERY,
+    ) as
+      | {
+          inject?: unknown[];
+          useFactory?: (reader: never) => UberCatalogMenuFactsQueryPort;
+        }
+      | undefined;
+
+    expect(provider?.inject).toEqual([CATALOG_EXTERNAL_MENU_FACTS_READER]);
+    const tempUnavailableUntil = '2090-01-02T03:04:05.000Z';
+    const reader = {
+      readMenuSource: jest.fn().mockResolvedValue({
+        categories: [],
+        items: [
+          {
+            stableId: 'item-1',
+            categoryStableId: 'category-1',
+            tempUnavailableUntil,
+            optionGroups: [],
+          },
+        ],
+        modifierGroups: [
+          {
+            stableId: 'group-1',
+            options: [
+              {
+                stableId: 'option-1',
+                tempUnavailableUntil,
+                childTemplateGroupStableIds: [],
+              },
+            ],
+          },
+        ],
+      }),
+      getMenuItemSource: jest.fn(),
+      getOptionSource: jest.fn(),
+      getModifierGroupSource: jest.fn(),
+      listOrderModifierSnapshotSources: jest.fn(),
+    };
+    const query = provider!.useFactory!(reader as never);
+
+    await expect(query.readMenuSource()).resolves.toMatchObject({
+      menuItems: [
+        {
+          stableId: 'item-1',
+          categoryStableId: 'category-1',
+          tempUnavailableUntil: new Date(tempUnavailableUntil),
+        },
+      ],
+      modifierTemplates: [
+        {
+          stableId: 'group-1',
+          options: [
+            {
+              stableId: 'option-1',
+              tempUnavailableUntil: new Date(tempUnavailableUntil),
+            },
+          ],
+        },
+      ],
+    });
+  });
+
   it('keeps the worker runtime free of API feature modules', () => {
     const workerRuntime = createUberEatsWorkerRuntimeModule(
       UBER_EATS_WORKER_PROVIDERS,
     );
     const imports = workerRuntime.imports ?? [];
 
-    expect(imports).toEqual([PrismaModule, BrandStoreConfigModule]);
+    expect(imports).toEqual([
+      PrismaModule,
+      BrandStoreConfigModule,
+      CatalogExternalMenuFactsModule,
+    ]);
     expect(imports).not.toContain(AuthModule);
     expect(imports).not.toContain(OrdersModule);
     expect(imports).not.toContain(MessagingModule);

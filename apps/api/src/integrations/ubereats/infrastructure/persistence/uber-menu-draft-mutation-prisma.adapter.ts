@@ -1,5 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../../prisma/prisma.service';
+import {
+  UBER_CATALOG_MENU_FACTS_QUERY,
+  type UberCatalogMenuFactsQueryPort,
+} from '../../application/shared/uber-catalog-menu-facts.port';
 import { UberValidationError } from '../../application/shared/uber-application.error';
 import type {
   UberDraftGroupCommandPort,
@@ -28,15 +32,16 @@ export class UberMenuDraftMutationPrismaAdapter
     UberDraftGroupCommandPort,
     UberDraftOptionCommandPort
 {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(UBER_CATALOG_MENU_FACTS_QUERY)
+    private readonly catalogFacts: UberCatalogMenuFactsQueryPort,
+  ) {}
 
   async updateUberDraftItem(itemId: string, input: UpdateDraftItemInput) {
     const normalizedStoreId = await this.canonicalStoreId(input.storeId);
 
-    const menuItem = await this.prisma.menuItem.findUnique({
-      where: { stableId: itemId },
-      select: { basePriceCents: true, isAvailable: true },
-    });
+    const menuItem = await this.catalogFacts.getMenuItemSource(itemId);
     if (!menuItem) {
       throw uberMenuValidation(`菜单项 ${itemId} 不存在`);
     }
@@ -102,15 +107,7 @@ export class UberMenuDraftMutationPrismaAdapter
     const normalizedStoreId = await this.canonicalStoreId(
       command.resourceKey.storeId,
     );
-    const template = await this.prisma.menuOptionGroupTemplate.findUnique({
-      where: { stableId: groupId },
-      select: {
-        stableId: true,
-        nameEn: true,
-        defaultMinSelect: true,
-        defaultMaxSelect: true,
-      },
-    });
+    const template = await this.catalogFacts.getModifierGroupSource(groupId);
     if (!template) {
       throw uberMenuValidation(`选项模板组 ${groupId} 不存在`);
     }
@@ -181,10 +178,7 @@ export class UberMenuDraftMutationPrismaAdapter
     input: UpdateDraftOptionInput,
   ) {
     const normalizedStoreId = await this.canonicalStoreId(input.storeId);
-    const choice = await this.prisma.menuOptionTemplateChoice.findUnique({
-      where: { stableId: optionItemId },
-      select: { priceDeltaCents: true, isAvailable: true },
-    });
+    const choice = await this.catalogFacts.getOptionSource(optionItemId);
     if (!choice) {
       throw uberMenuValidation(`选项 ${optionItemId} 不存在`);
     }

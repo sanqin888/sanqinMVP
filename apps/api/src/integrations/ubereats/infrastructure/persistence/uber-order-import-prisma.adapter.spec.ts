@@ -86,6 +86,7 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
         },
       } as never,
       {} as never,
+      {} as never,
     );
 
     await expect(
@@ -108,6 +109,7 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
     const adapter = new UberOrderImportPrismaAdapter(
       { uberOrderAction: { findUnique } } as never,
       {} as never,
+      {} as never,
     );
 
     await expect(adapter.hasSucceededDenial('uber-order-denied')).resolves.toBe(
@@ -122,6 +124,31 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
       },
       select: { status: true },
     });
+  });
+
+  it('reads imported-order modifier snapshot facts through the Catalog owner capability', async () => {
+    const sources = [
+      {
+        stableId: 'option-1',
+        templateGroupStableId: 'group-1',
+        targetItemStableId: 'item-2',
+        nameEn: 'Large',
+        nameZh: '大份',
+        templateNameEn: 'Size',
+        templateNameZh: '份量',
+      },
+    ];
+    const listOrderModifierSnapshotSources = jest
+      .fn()
+      .mockResolvedValue(sources);
+    const adapter = new UberOrderImportPrismaAdapter(
+      {} as never,
+      {} as never,
+      { listOrderModifierSnapshotSources } as never,
+    );
+
+    await expect(adapter.findModifierSnapshotSources()).resolves.toEqual(sources);
+    expect(listOrderModifierSnapshotSources).toHaveBeenCalledTimes(1);
   });
 
   it('persists orders.failure against the existing order without requiring detail data', async () => {
@@ -150,6 +177,7 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
     };
     const adapter = new UberOrderImportPrismaAdapter(
       prisma as never,
+      {} as never,
       {} as never,
     );
     const occurredAt = new Date('2026-08-20T13:30:09.000Z');
@@ -253,6 +281,7 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
     const adapter = new UberOrderImportPrismaAdapter(
       {} as never,
       { ingest } as never,
+      {} as never,
     );
 
     await expect(adapter.saveImportedOrder(baseInput)).resolves.toEqual({
@@ -317,6 +346,7 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
     const adapter = new UberOrderImportPrismaAdapter(
       {} as never,
       { ingest } as never,
+      {} as never,
     );
     const input = {
       ...baseInput,

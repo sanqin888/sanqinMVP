@@ -10,29 +10,22 @@ import {
 const db = (value: object) => value as PrismaService;
 describe('split Uber menu repositories field mapping', () => {
   it('maps the source menu snapshot', async () => {
-    const repository = new UberMenuSnapshotPrismaRepository(
-      db({
-        menuCategory: {
-          findMany: jest
-            .fn()
-            .mockResolvedValue([
-              { stableId: 'c', nameEn: 'Food', sortOrder: 1, id: 'db-id' },
-            ]),
-        },
-        menuItem: {
-          findMany: jest.fn().mockResolvedValue([
-            {
-              stableId: 'i',
-              nameEn: 'Soup',
-              basePriceCents: 500,
-              isAvailable: true,
-              category: { stableId: 'c' },
-              id: 'db-id',
-            },
-          ]),
-        },
+    const repository = new UberMenuSnapshotPrismaRepository({
+      readMenuSource: jest.fn().mockResolvedValue({
+        categories: [{ stableId: 'c', nameEn: 'Food', sortOrder: 1 }],
+        menuItems: [
+          {
+            stableId: 'i',
+            categoryStableId: 'c',
+            nameEn: 'Soup',
+            basePriceCents: 500,
+            isAvailable: true,
+            publishToUberEats: true,
+          },
+        ],
+        modifierTemplates: [],
       }),
-    );
+    } as never);
     expect(await repository.load()).toEqual({
       categories: [{ stableId: 'c', name: 'Food', sortOrder: 1 }],
       items: [

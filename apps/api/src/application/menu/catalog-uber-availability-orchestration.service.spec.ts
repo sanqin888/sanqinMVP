@@ -1,4 +1,4 @@
-import type { UberEatsMenuAvailabilityPort } from '../../integrations/ubereats/public-api';
+import type { CatalogExternalAvailabilitySyncPort } from './catalog-external-availability-sync.port';
 import { CatalogUberAvailabilityOrchestrationService } from './catalog-uber-availability-orchestration.service';
 
 describe('CatalogUberAvailabilityOrchestrationService', () => {
@@ -47,27 +47,23 @@ describe('CatalogUberAvailabilityOrchestrationService', () => {
       }),
       getOptionAvailabilitySnapshot: jest.fn(),
     };
-    const syncUberMenuItemAvailability = jest
-      .fn()
-      .mockResolvedValue(syncResult);
-    const syncUberOptionItemAvailability = jest
-      .fn()
-      .mockResolvedValue(syncResult);
-    const uberProvider: jest.Mocked<UberEatsMenuAvailabilityPort> = {
-      syncUberMenuItemAvailability,
-      syncUberOptionItemAvailability,
+    const syncMenuItemAvailability = jest.fn().mockResolvedValue(syncResult);
+    const syncOptionAvailability = jest.fn().mockResolvedValue(syncResult);
+    const externalAvailability: jest.Mocked<CatalogExternalAvailabilitySyncPort> = {
+      syncMenuItemAvailability,
+      syncOptionAvailability,
     };
 
     return {
       service: new CatalogUberAvailabilityOrchestrationService(
         catalog as never,
         catalogAvailability as never,
-        uberProvider,
+        externalAvailability,
       ),
       catalog,
       catalogAvailability,
-      syncUberMenuItemAvailability,
-      syncUberOptionItemAvailability,
+      syncMenuItemAvailability,
+      syncOptionAvailability,
     };
   };
 
@@ -78,10 +74,10 @@ describe('CatalogUberAvailabilityOrchestrationService', () => {
   ] as const)(
     '%s returns structured SYNCED status',
     async (mode, available) => {
-      const { service, syncUberMenuItemAvailability } = build();
+      const { service, syncMenuItemAvailability } = build();
       const result = await service.setItemAvailability('dish-1', mode);
       expect(result.uberSync.status).toBe('SYNCED');
-      expect(syncUberMenuItemAvailability).toHaveBeenCalledWith({
+      expect(syncMenuItemAvailability).toHaveBeenCalledWith({
         menuItemStableId: 'dish-1',
         isAvailable: available,
         publishable: true,
@@ -105,8 +101,8 @@ describe('CatalogUberAvailabilityOrchestrationService', () => {
   });
 
   it('returns retryable FAILED status when the public Uber capability throws', async () => {
-    const { service, syncUberMenuItemAvailability } = build();
-    syncUberMenuItemAvailability.mockRejectedValue(new Error('upstream'));
+    const { service, syncMenuItemAvailability } = build();
+    syncMenuItemAvailability.mockRejectedValue(new Error('upstream'));
 
     const result = await service.setItemAvailability('dish-1', 'PERMANENT_OFF');
 
@@ -116,7 +112,7 @@ describe('CatalogUberAvailabilityOrchestrationService', () => {
   });
 
   it('syncs Uber only when updateItem changes availability fields', async () => {
-    const { service, catalog, syncUberMenuItemAvailability } = build();
+    const { service, catalog, syncMenuItemAvailability } = build();
 
     await expect(
       service.updateItem('dish-1', { isAvailable: true }),
@@ -124,25 +120,25 @@ describe('CatalogUberAvailabilityOrchestrationService', () => {
     expect(catalog.updateItem).toHaveBeenCalledWith('dish-1', {
       isAvailable: true,
     });
-    expect(syncUberMenuItemAvailability).toHaveBeenCalledWith({
+    expect(syncMenuItemAvailability).toHaveBeenCalledWith({
       menuItemStableId: 'dish-1',
       isAvailable: true,
       publishable: true,
       suspendUntil: null,
     });
 
-    syncUberMenuItemAvailability.mockClear();
+    syncMenuItemAvailability.mockClear();
     await service.updateItem('dish-1', { nameEn: 'Updated' });
-    expect(syncUberMenuItemAvailability).not.toHaveBeenCalled();
+    expect(syncMenuItemAvailability).not.toHaveBeenCalled();
   });
 
   it('syncs option availability through the Uber public capability', async () => {
-    const { service, syncUberOptionItemAvailability } = build();
+    const { service, syncOptionAvailability } = build();
 
     await expect(
       service.setTemplateOptionAvailability('option-1', 'PERMANENT_OFF'),
     ).resolves.toEqual({ ok: true });
-    expect(syncUberOptionItemAvailability).toHaveBeenCalledWith({
+    expect(syncOptionAvailability).toHaveBeenCalledWith({
       optionChoiceStableId: 'option-1',
       isAvailable: false,
       suspendUntil: null,

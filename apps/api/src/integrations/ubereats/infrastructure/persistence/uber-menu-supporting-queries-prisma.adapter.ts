@@ -1,5 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../../prisma/prisma.service';
+import {
+  UBER_CATALOG_MENU_FACTS_QUERY,
+  type UberCatalogMenuFactsQueryPort,
+} from '../../application/shared/uber-catalog-menu-facts.port';
 import type {
   MenuItemExistenceQueryPort,
   OptionChoiceExistenceQueryPort,
@@ -13,22 +17,18 @@ export class UberMenuSupportingQueriesPrismaAdapter
     OptionChoiceExistenceQueryPort,
     ProvisionedUberStoreQueryPort
 {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(UBER_CATALOG_MENU_FACTS_QUERY)
+    private readonly catalogFacts: UberCatalogMenuFactsQueryPort,
+  ) {}
 
   async menuItemExists(stableId: string): Promise<boolean> {
-    const item = await this.prisma.menuItem.findUnique({
-      where: { stableId },
-      select: { stableId: true },
-    });
-    return item !== null;
+    return (await this.catalogFacts.getMenuItemSource(stableId)) !== null;
   }
 
   async optionChoiceExists(stableId: string): Promise<boolean> {
-    const choice = await this.prisma.menuOptionTemplateChoice.findUnique({
-      where: { stableId },
-      select: { stableId: true },
-    });
-    return choice !== null;
+    return (await this.catalogFacts.getOptionSource(stableId)) !== null;
   }
 
   async resolveProvisionedUberStoreId(storeId: string) {

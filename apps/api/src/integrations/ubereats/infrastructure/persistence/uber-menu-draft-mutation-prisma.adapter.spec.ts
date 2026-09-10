@@ -20,16 +20,17 @@ describe('UberMenuDraftMutationPrismaAdapter contract', () => {
 
   it('upserts an item with source defaults and keeps the public field mapping', async () => {
     const upsert = jest.fn().mockResolvedValue({ menuItemStableId: 'item-1' });
+    const getMenuItemSource = jest.fn().mockResolvedValue({
+      stableId: 'item-1',
+      basePriceCents: 1299,
+      isAvailable: true,
+    });
     const adapter = new UberMenuDraftMutationPrismaAdapter(
       db({
         uberStoreMapping: storeMapping,
-        menuItem: {
-          findUnique: jest
-            .fn()
-            .mockResolvedValue({ basePriceCents: 1299, isAvailable: true }),
-        },
         uberItemChannelConfig: { upsert },
       }),
+      { getMenuItemSource } as never,
     );
 
     const result = await adapter.updateUberDraftItem('item-1', {
@@ -79,19 +80,18 @@ describe('UberMenuDraftMutationPrismaAdapter contract', () => {
       lastPublishError: null,
       externalModifierGroupId: null,
     });
+    const getModifierGroupSource = jest.fn().mockResolvedValue({
+      stableId: 'group-1',
+      nameEn: 'Size',
+      defaultMinSelect: 0,
+      defaultMaxSelect: 2,
+    });
     const adapter = new UberMenuDraftMutationPrismaAdapter(
       db({
         uberStoreMapping: storeMapping,
-        menuOptionGroupTemplate: {
-          findUnique: jest.fn().mockResolvedValue({
-            stableId: 'group-1',
-            nameEn: 'Size',
-            defaultMinSelect: 0,
-            defaultMaxSelect: 2,
-          }),
-        },
         uberModifierGroupConfig: { upsert },
       }),
+      { getModifierGroupSource } as never,
     );
 
     const result = await adapter.updateUberDraftGroup({
@@ -123,9 +123,13 @@ describe('UberMenuDraftMutationPrismaAdapter contract', () => {
   });
 
   it('upserts an option with source defaults and reports not-found consistently', async () => {
-    const findUnique = jest
+    const getOptionSource = jest
       .fn()
-      .mockResolvedValueOnce({ priceDeltaCents: 250, isAvailable: false })
+      .mockResolvedValueOnce({
+        stableId: 'option-1',
+        priceDeltaCents: 250,
+        isAvailable: false,
+      })
       .mockResolvedValueOnce(null);
     const upsert = jest
       .fn()
@@ -133,9 +137,9 @@ describe('UberMenuDraftMutationPrismaAdapter contract', () => {
     const adapter = new UberMenuDraftMutationPrismaAdapter(
       db({
         uberStoreMapping: storeMapping,
-        menuOptionTemplateChoice: { findUnique },
         uberOptionItemConfig: { upsert },
       }),
+      { getOptionSource } as never,
     );
 
     await adapter.updateUberDraftOption('option-1', {

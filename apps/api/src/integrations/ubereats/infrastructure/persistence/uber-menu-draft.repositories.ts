@@ -5,6 +5,10 @@ import {
   UBER_BUSINESS_SCHEDULE_QUERY_PORT,
   type UberBusinessScheduleQueryPort,
 } from '../../application/menu/uber-menu-draft.ports';
+import {
+  UBER_CATALOG_MENU_FACTS_QUERY,
+  type UberCatalogMenuFactsQueryPort,
+} from '../../application/shared/uber-catalog-menu-facts.port';
 import type {
   BusinessScheduleRepository,
   ItemChannelConfigRepository,
@@ -19,96 +23,25 @@ import { readUberPreparationType } from '../../domain/menu/uber-menu.types';
 
 type MenuDb = PrismaService | Prisma.TransactionClient;
 
-/** Owns the Prisma query shape and maps it to the domain graph snapshot. */
+/** Combines Catalog-owned source facts with Uber-owned persisted channel configuration. */
 export class UberMenuDraftSourcePrismaRepository {
-  constructor(private readonly db: MenuDb) {}
+  constructor(
+    private readonly db: MenuDb,
+    private readonly catalogFacts: UberCatalogMenuFactsQueryPort,
+  ) {}
 
   async load(
     storeStableId: string,
     uberStoreId: string,
   ): Promise<UberMenuDraftSource> {
     const [
-      categories,
-      menuItems,
-      modifierTemplates,
+      sourceFacts,
       rawItemConfigs,
       rawOptionConfigs,
       rawModifierConfigs,
       rawCategoryConfigs,
     ] = await Promise.all([
-      this.db.menuCategory.findMany({
-        where: { deletedAt: null },
-        select: {
-          id: true,
-          stableId: true,
-          nameEn: true,
-          nameZh: true,
-          sortOrder: true,
-          isActive: true,
-        },
-      }),
-      this.db.menuItem.findMany({
-        where: {
-          deletedAt: null,
-          visibility: 'PUBLIC',
-          publishToUberEats: true,
-        },
-        select: {
-          id: true,
-          stableId: true,
-          categoryId: true,
-          nameEn: true,
-          nameZh: true,
-          basePriceCents: true,
-          isAvailable: true,
-          tempUnavailableUntil: true,
-          sortOrder: true,
-          imageUrl: true,
-          ingredientsEn: true,
-          optionGroups: {
-            where: { isEnabled: true },
-            select: {
-              templateGroup: { select: { stableId: true } },
-              sortOrder: true,
-            },
-            orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
-          },
-        },
-        orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
-      }),
-      this.db.menuOptionGroupTemplate.findMany({
-        where: { deletedAt: null },
-        select: {
-          stableId: true,
-          nameEn: true,
-          nameZh: true,
-          defaultMinSelect: true,
-          defaultMaxSelect: true,
-          isAvailable: true,
-          sortOrder: true,
-          options: {
-            where: { deletedAt: null },
-            select: {
-              stableId: true,
-              nameEn: true,
-              nameZh: true,
-              priceDeltaCents: true,
-              isAvailable: true,
-              tempUnavailableUntil: true,
-              sortOrder: true,
-              childLinks: {
-                select: {
-                  childOption: {
-                    select: { templateGroup: { select: { stableId: true } } },
-                  },
-                },
-              },
-            },
-            orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
-          },
-        },
-        orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
-      }),
+      this.catalogFacts.readMenuSource(),
       this.db.uberItemChannelConfig.findMany({
         where: { storeId: storeStableId },
         select: {
@@ -155,6 +88,58 @@ export class UberMenuDraftSourcePrismaRepository {
         },
       }),
     ]);
+
+    const categories = sourceFacts.categories.map((category) => ({
+      id: category.stableId,
+      stableId: category.stableId,
+      nameEn: category.nameEn,
+      nameZh: category.nameZh,
+      sortOrder: category.sortOrder,
+      isActive: category.isActive,
+    }));
+    const menuItems = sourceFacts.menuItems
+      .filter(
+        (item) => item.visibility === 'PUBLIC' && item.publishToUberEats,
+      )
+      .map((item) => ({
+        stableId: item.stableId,
+        categoryId: item.categoryStableId,
+        nameEn: item.nameEn,
+        nameZh: item.nameZh,
+        basePriceCents: item.basePriceCents,
+        isAvailable: item.isAvailable,
+        tempUnavailableUntil: item.tempUnavailableUntil,
+        sortOrder: item.sortOrder,
+        imageUrl: item.imageUrl,
+        ingredientsEn: item.ingredientsEn,
+        optionGroups: item.optionGroups
+          .filter((binding) => binding.isEnabled)
+          .map(({ templateGroupStableId, sortOrder }) => ({
+            templateGroup: { stableId: templateGroupStableId },
+            sortOrder,
+          })),
+      }));
+    const modifierTemplates = sourceFacts.modifierTemplates.map((template) => ({
+      stableId: template.stableId,
+      nameEn: template.nameEn,
+      nameZh: template.nameZh,
+      defaultMinSelect: template.defaultMinSelect,
+      defaultMaxSelect: template.defaultMaxSelect,
+      isAvailable: template.isAvailable,
+      sortOrder: template.sortOrder,
+      options: template.options.map((option) => ({
+        stableId: option.stableId,
+        nameEn: option.nameEn,
+        nameZh: option.nameZh,
+        priceDeltaCents: option.priceDeltaCents,
+        isAvailable: option.isAvailable,
+        tempUnavailableUntil: option.tempUnavailableUntil,
+        sortOrder: option.sortOrder,
+        childLinks: option.childTemplateGroupStableIds.map((stableId) => ({
+          childOption: { templateGroup: { stableId } },
+        })),
+      })),
+    }));
 
     const itemConfigs = rawItemConfigs.map((config) => ({
       ...config,
@@ -212,39 +197,26 @@ export const readStoreTimezone = (raw: unknown): string | null => {
 };
 
 export class UberMenuSnapshotPrismaRepository implements MenuSnapshotRepository {
-  constructor(private readonly db: MenuDb) {}
+  constructor(
+    private readonly catalogFacts: UberCatalogMenuFactsQueryPort,
+  ) {}
   async load() {
-    const [categories, items] = await Promise.all([
-      this.db.menuCategory.findMany({
-        where: { deletedAt: null },
-        orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
-        select: { stableId: true, nameEn: true, sortOrder: true },
-      }),
-      this.db.menuItem.findMany({
-        where: { deletedAt: null, publishToUberEats: true },
-        orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
-        select: {
-          stableId: true,
-          nameEn: true,
-          basePriceCents: true,
-          isAvailable: true,
-          category: { select: { stableId: true } },
-        },
-      }),
-    ]);
+    const source = await this.catalogFacts.readMenuSource();
     return {
-      categories: categories.map((row) => ({
+      categories: source.categories.map((row) => ({
         stableId: row.stableId,
         name: row.nameEn,
         sortOrder: row.sortOrder,
       })),
-      items: items.map((row) => ({
-        stableId: row.stableId,
-        categoryStableId: row.category.stableId,
-        name: row.nameEn,
-        priceCents: row.basePriceCents,
-        isAvailable: row.isAvailable,
-      })),
+      items: source.menuItems
+        .filter((row) => row.publishToUberEats)
+        .map((row) => ({
+          stableId: row.stableId,
+          categoryStableId: row.categoryStableId,
+          name: row.nameEn,
+          priceCents: row.basePriceCents,
+          isAvailable: row.isAvailable,
+        })),
     };
   }
 }
@@ -335,8 +307,9 @@ export class UberMenuStoreMappingPrismaRepository implements MenuStoreMappingRep
 export const createUberMenuRepositoryScope = (
   db: MenuDb,
   businessSchedule: UberBusinessScheduleQueryPort,
+  catalogFacts: UberCatalogMenuFactsQueryPort,
 ): UberMenuRepositoryScope => ({
-  snapshots: new UberMenuSnapshotPrismaRepository(db),
+  snapshots: new UberMenuSnapshotPrismaRepository(catalogFacts),
   itemChannels: new UberItemChannelConfigPrismaRepository(db),
   modifiers: new UberModifierConfigPrismaRepository(db),
   schedules: new UberBusinessScheduleRepositoryAdapter(businessSchedule),
@@ -348,12 +321,20 @@ export class PrismaUberMenuUnitOfWork implements UberMenuUnitOfWork {
     private readonly prisma: PrismaService,
     @Inject(UBER_BUSINESS_SCHEDULE_QUERY_PORT)
     private readonly businessSchedule: UberBusinessScheduleQueryPort,
+    @Inject(UBER_CATALOG_MENU_FACTS_QUERY)
+    private readonly catalogFacts: UberCatalogMenuFactsQueryPort,
   ) {}
   execute<T>(
     work: (repositories: UberMenuRepositoryScope) => Promise<T>,
   ): Promise<T> {
     return this.prisma.$transaction((tx) =>
-      work(createUberMenuRepositoryScope(tx, this.businessSchedule)),
+      work(
+        createUberMenuRepositoryScope(
+          tx,
+          this.businessSchedule,
+          this.catalogFacts,
+        ),
+      ),
     );
   }
 }

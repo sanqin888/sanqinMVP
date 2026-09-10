@@ -150,6 +150,34 @@ describe('Uber Eats store identity architecture', () => {
     );
   });
 
+  it('keeps Catalog canonical reads behind the Catalog owner capability', () => {
+    const persistenceFiles = scanTypeScript(
+      join(__dirname, 'infrastructure', 'persistence'),
+      { productionOnly: true },
+    );
+    const catalogDelegates = [
+      'menuCategory',
+      'menuItem',
+      'menuOptionGroupTemplate',
+      'menuOptionTemplateChoice',
+    ] as const;
+    const directCatalogReads = persistenceFiles.flatMap((file) =>
+      catalogDelegates.flatMap((delegate) =>
+        [...file.source.matchAll(new RegExp(`\\.${delegate}\\b`, 'g'))].map(
+          () => `${file.path.split('/').pop()}:${delegate}`,
+        ),
+      ),
+    );
+
+    expect(directCatalogReads).toEqual([
+      'uber-menu-config-import-prisma.adapter.ts:menuItem',
+      'uber-menu-config-import-prisma.adapter.ts:menuOptionTemplateChoice',
+    ]);
+    for (const file of persistenceFiles) {
+      expect(file.source).not.toContain('/menu/public-api');
+    }
+  });
+
   it('keeps Store business-schedule reads behind the Uber application port', () => {
     const persistenceFiles = scanTypeScript(
       join(__dirname, 'infrastructure', 'persistence'),

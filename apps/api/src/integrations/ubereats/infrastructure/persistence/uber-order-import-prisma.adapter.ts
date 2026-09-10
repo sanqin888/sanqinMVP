@@ -27,6 +27,10 @@ import type {
   UberOrderModifierSnapshotSource,
   UberPosConnectivityQueryPort,
 } from '../../application/orders/uber-order.ports';
+import {
+  UBER_CATALOG_MENU_FACTS_QUERY,
+  type UberCatalogMenuFactsQueryPort,
+} from '../../application/shared/uber-catalog-menu-facts.port';
 import { UberOrderStateMachine } from '../../domain/orders/uber-order.state-machine';
 import type { ParsedUberModifier } from '../../domain/orders/uber-order.types';
 import { toUberOrderStatus } from './uber-order-status.mapper';
@@ -42,6 +46,8 @@ export class UberOrderImportPrismaAdapter
     private readonly prisma: PrismaService,
     @Inject(ORDER_INGESTION)
     private readonly ingestion: OrderIngestionPort,
+    @Inject(UBER_CATALOG_MENU_FACTS_QUERY)
+    private readonly catalogFacts: UberCatalogMenuFactsQueryPort,
   ) {}
 
   async getStoreConnectivity(storeStableId: string) {
@@ -445,35 +451,7 @@ export class UberOrderImportPrismaAdapter
   async findModifierSnapshotSources(): Promise<
     UberOrderModifierSnapshotSource[]
   > {
-    const rows = await this.prisma.menuOptionTemplateChoice.findMany({
-      where: {
-        deletedAt: null,
-        templateGroup: { deletedAt: null },
-      },
-      select: {
-        stableId: true,
-        targetItemStableId: true,
-        nameEn: true,
-        nameZh: true,
-        templateGroup: {
-          select: {
-            stableId: true,
-            nameEn: true,
-            nameZh: true,
-          },
-        },
-      },
-    });
-
-    return rows.map((row) => ({
-      stableId: row.stableId,
-      templateGroupStableId: row.templateGroup.stableId,
-      targetItemStableId: row.targetItemStableId?.trim() || null,
-      nameEn: row.nameEn,
-      nameZh: row.nameZh ?? null,
-      templateNameEn: row.templateGroup.nameEn,
-      templateNameZh: row.templateGroup.nameZh ?? null,
-    }));
+    return this.catalogFacts.listOrderModifierSnapshotSources();
   }
 
   private modifierSnapshots(
