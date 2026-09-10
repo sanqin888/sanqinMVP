@@ -1,6 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../../prisma/prisma.service';
+import {
+  UBER_BUSINESS_SCHEDULE_QUERY_PORT,
+  type UberBusinessScheduleQueryPort,
+} from '../../application/menu/uber-menu-draft.ports';
 import type {
   BusinessScheduleRepository,
   ItemChannelConfigRepository,
@@ -11,10 +15,6 @@ import type {
   UberMenuUnitOfWork,
 } from '../../application/menu/uber-menu-repositories.ports';
 import type { UberMenuDraftSource } from '../../domain/menu/uber-menu-draft-source';
-import {
-  UBER_STORE_CONFIG_QUERY,
-  type UberStoreConfigQueryPort,
-} from '../../application/shared/uber-store-config.port';
 import { readUberPreparationType } from '../../domain/menu/uber-menu.types';
 
 type MenuDb = PrismaService | Prisma.TransactionClient;
@@ -298,35 +298,13 @@ export class UberModifierConfigPrismaRepository implements ModifierConfigReposit
     }));
   }
 }
-export class UberBusinessSchedulePrismaRepository implements BusinessScheduleRepository {
-  constructor(
-    private readonly db: MenuDb,
-    private readonly storeConfig: UberStoreConfigQueryPort,
-  ) {}
-  async get(storeStableId: string) {
-    const [config, rows] = await Promise.all([
-      this.storeConfig.getStoreConfig(storeStableId),
-      this.db.businessHour.findMany({
-        where: { store: { storeStableId } },
-        orderBy: { weekday: 'asc' },
-        select: {
-          weekday: true,
-          openMinutes: true,
-          closeMinutes: true,
-          isClosed: true,
-        },
-      }),
-    ]);
-    return {
-      timezone: config.timezone,
-      salesTaxRate: config.salesTaxRate,
-      hours: rows.map((row) => ({
-        weekday: row.weekday,
-        openMinutes: row.openMinutes,
-        closeMinutes: row.closeMinutes,
-        isClosed: row.isClosed,
-      })),
-    };
+export class UberBusinessScheduleRepositoryAdapter
+  implements BusinessScheduleRepository
+{
+  constructor(private readonly schedules: UberBusinessScheduleQueryPort) {}
+
+  get(storeStableId: string) {
+    return this.schedules.readBusinessSchedule(storeStableId);
   }
 }
 export class UberMenuStoreMappingPrismaRepository implements MenuStoreMappingRepository {
@@ -358,26 +336,26 @@ export class UberMenuStoreMappingPrismaRepository implements MenuStoreMappingRep
 
 export const createUberMenuRepositoryScope = (
   db: MenuDb,
-  storeConfig: UberStoreConfigQueryPort,
+  businessSchedule: UberBusinessScheduleQueryPort,
 ): UberMenuRepositoryScope => ({
   snapshots: new UberMenuSnapshotPrismaRepository(db),
   itemChannels: new UberItemChannelConfigPrismaRepository(db),
   modifiers: new UberModifierConfigPrismaRepository(db),
-  schedules: new UberBusinessSchedulePrismaRepository(db, storeConfig),
+  schedules: new UberBusinessScheduleRepositoryAdapter(businessSchedule),
   storeMappings: new UberMenuStoreMappingPrismaRepository(db),
 });
 @Injectable()
 export class PrismaUberMenuUnitOfWork implements UberMenuUnitOfWork {
   constructor(
     private readonly prisma: PrismaService,
-    @Inject(UBER_STORE_CONFIG_QUERY)
-    private readonly storeConfig: UberStoreConfigQueryPort,
+    @Inject(UBER_BUSINESS_SCHEDULE_QUERY_PORT)
+    private readonly businessSchedule: UberBusinessScheduleQueryPort,
   ) {}
   execute<T>(
     work: (repositories: UberMenuRepositoryScope) => Promise<T>,
   ): Promise<T> {
     return this.prisma.$transaction((tx) =>
-      work(createUberMenuRepositoryScope(tx, this.storeConfig)),
+      work(createUberMenuRepositoryScope(tx, this.businessSchedule)),
     );
   }
 }

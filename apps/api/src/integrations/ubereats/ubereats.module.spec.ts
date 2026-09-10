@@ -7,6 +7,7 @@ import {
 } from '../../orders/public-api';
 import { PrismaModule } from '../../prisma/prisma.module';
 import {
+  STORE_SCHEDULE_READER,
   BrandStoreConfigModule,
   BrandStoreConfigUnavailableError,
 } from '../../store/public-api';
@@ -15,6 +16,10 @@ import { UberEatsOAuthController } from './api/oauth.controller';
 import { UberEatsOperationsController } from './api/operations.controller';
 import { UberEatsOrdersController } from './api/orders.controller';
 import { UberEatsWebhookController } from './api/webhook.controller';
+import {
+  UBER_BUSINESS_SCHEDULE_QUERY_PORT,
+  type UberBusinessScheduleQueryPort,
+} from './application/menu/uber-menu-draft.ports';
 import {
   UBER_STORE_CONFIG_QUERY,
   type UberStoreConfigQueryPort,
@@ -131,6 +136,76 @@ describe('UberEats compositions', () => {
     await expect(
       missingQuery.getStoreAutoAcceptOnlineOrders('missing-store'),
     ).resolves.toBe(true);
+  });
+
+  it('maps Uber menu business schedules through the Store public schedule reader', async () => {
+    const providers = metadata<unknown>(
+      UberEatsModule,
+      MODULE_METADATA.PROVIDERS,
+    );
+    const provider = providers.find(
+      (candidate) =>
+        typeof candidate === 'object' &&
+        candidate !== null &&
+        'provide' in candidate &&
+        candidate.provide === UBER_BUSINESS_SCHEDULE_QUERY_PORT,
+    ) as
+      | {
+          inject?: unknown[];
+          useFactory?: (
+            storeConfig: never,
+            scheduleReader: never,
+          ) => UberBusinessScheduleQueryPort;
+        }
+      | undefined;
+
+    expect(provider?.inject).toEqual([
+      UBER_STORE_CONFIG_QUERY,
+      STORE_SCHEDULE_READER,
+    ]);
+    expect(provider?.useFactory).toBeDefined();
+
+    const storeConfig = {
+      getStoreConfig: jest.fn().mockResolvedValue({
+        timezone: 'America/Toronto',
+        salesTaxRate: 0.13,
+      }),
+    };
+    const scheduleReader = {
+      listBusinessHours: jest.fn().mockResolvedValue([
+        {
+          weekday: 1,
+          openMinutes: 660,
+          closeMinutes: 1260,
+          isClosed: false,
+        },
+      ]),
+    };
+    const query = provider!.useFactory!(
+      storeConfig as never,
+      scheduleReader as never,
+    );
+
+    await expect(
+      query.readBusinessSchedule('4750_Yonge_Street'),
+    ).resolves.toEqual({
+      timezone: 'America/Toronto',
+      salesTaxRate: 0.13,
+      hours: [
+        {
+          weekday: 1,
+          openMinutes: 660,
+          closeMinutes: 1260,
+          isClosed: false,
+        },
+      ],
+    });
+    expect(storeConfig.getStoreConfig).toHaveBeenCalledWith(
+      '4750_Yonge_Street',
+    );
+    expect(scheduleReader.listBusinessHours).toHaveBeenCalledWith(
+      '4750_Yonge_Street',
+    );
   });
 
   it('keeps the worker runtime free of API feature modules', () => {

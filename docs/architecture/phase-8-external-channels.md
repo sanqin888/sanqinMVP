@@ -1,9 +1,10 @@
 # Phase 8 — External Channels Boundary Contraction & L3 Resilience
 
-Status: **SLICE 8.1 IMPLEMENTED — PR #2260 REMOTE VALIDATED**  
+Status: **SLICE 8.1 MERGED — SLICE 8.2A LOCAL SOURCE COMPLETE / PENDING REVIEW**  
 Slice 0 audit baseline: `origin/dev@d1c7d7b3e968d99dce1e3df39ca1af04a7696883`  
 Slice 8.1 implementation baseline: `origin/dev@96808b0ec1adc984dae99dd73dbd0e8ce4f2c4a9`  
-Baseline merges: PR `#2258` — Phase 7 Slice 5B; PR `#2259` — Phase 8 planning / Slice 0 audit  
+Slice 8.2A implementation baseline: `origin/dev@fc9bfc01f651c0d3193ee06e1d71ea0029e77835`  
+Baseline merges: PR `#2258` — Phase 7 Slice 5B; PR `#2259` — Phase 8 planning / Slice 0 audit; PR `#2260` — Phase 8 Slice 8.1  
 Audit / implementation date: 2026-09-09
 
 ## 1. Purpose
@@ -243,17 +244,52 @@ Actual local baseline movement from the reviewed source diff is:
 - `external-channels -> runtime-data-ci-ops`: **24**, unchanged;
 - incoming External composition debt: **3**, unchanged.
 
-No local lint/build/test/scanner was run. PR #2260 source head `f4020dbd` passed GitHub Actions CI #5413, including the architecture baseline gate, API lint/build/strict declaration/test, and Web lint/build/strict declaration/test.
+No local lint/build/test/scanner was run. PR #2260 final head `8efeb5e6` passed GitHub Actions CI #5414, including the architecture baseline gate, API lint/build/strict declaration/test, and Web lint/build/strict declaration/test, then squash-merged to `dev` as `fc9bfc01`.
 
 ### Slice 8.2 — Runtime/persistence semantic ownership audit and containment
 
 Do **not** target `runtime-data-ci-ops 24 -> 0`.
 
-Instead review the layer-correct persistence adapters for cross-owner database semantics: direct writes/queries of Orders, POS projections, Store facts or other owner data that bypass an owner capability/read model contract. Retain legal Prisma infrastructure access.
+The post-Slice-8.1 audit against merged `origin/dev@fc9bfc01f651c0d3193ee06e1d71ea0029e77835` confirms that the `24` runtime edges remain structurally expected: `23` production `PrismaService` imports are confined to `infrastructure/persistence/**`, and `ubereats.module.ts` retains the single legal `PrismaModule` composition import. The purpose of Slice 8.2 is therefore semantic ownership containment, not a scanner-count exercise.
 
-Any newly discovered responsibility transfer must be documented and authorized before implementation.
+The audit classified the current cross-owner persistence reads/writes as follows:
 
-### Slice 8.3 — Orders acceptance atomic seam design/contraction
+1. **Retain as already-correct infrastructure ownership.** Uber-owned `uber*` tables remain local to External Channels. `UberOrderImportPrismaAdapter.getStoreConnectivity()` reads the POS-owned `PosConnectivityReadModel`, which is the intentional authoritative read-model boundary established by Phase 7 Slice 5B; this must not be regressed back to direct `PosDevice` access or wrapped merely to lower the Runtime counter.
+2. **Store schedule reads are immediately contractible through an existing owner capability.** Three Uber persistence paths still query `BusinessHour` directly: `uber-menu-supporting-queries-prisma.adapter.ts`, `uber-menu-draft-read-prisma.adapter.ts`, and `uber-menu-draft.repositories.ts`. Brand/Store already exposes `STORE_SCHEDULE_READER` / `StoreScheduleReaderPort.listBusinessHours(storeStableId)`, with the same business fields Uber consumes. Uber already owns `UBER_BUSINESS_SCHEDULE_QUERY_PORT`, so Slice 8.2A will move that port's implementation to the sole `ubereats.module.ts` composition root, adapt Store schedule/config facts there, and make all three persistence paths consume the Uber application port instead of querying `BusinessHour`.
+3. **Catalog reads are real ownership debt but need a dedicated public-contract design.** Uber currently reads Catalog-owned `MenuCategory`, `MenuItem`, `MenuOptionGroupTemplate`, `MenuOptionTemplateChoice` and related menu graph facts for draft/publication/import behavior. Existing `CATALOG_AVAILABILITY_READER` and `CATALOG_ORDER_FACTS_READER` do not expose the complete publish/draft snapshot required by Uber. Do not improvise a partial facade or broaden those contracts opportunistically; follow Slice 8.2A with a dedicated Catalog read-boundary readiness/design slice and obtain authorization before changing Catalog public responsibilities.
+4. **Orders reads/mutations require the later atomic-seam design gate.** Beyond the already-known acceptance seam, the audit confirmed direct canonical `Order` reads in sync/reconciliation/import paths and direct cancellation persistence that upserts `OrderAmendment`, sets `Order.status=refunded`, and appends the Orders-owned durable `order.cancelled` lifecycle `OpsEvent` in the same transaction. That atomic behavior currently protects cancellation/refund/replay/cancellation-print semantics and must not be replaced by an ordinary service call. Slice 8.3 must therefore cover both acceptance and cancellation ownership transfer/recovery semantics, not acceptance alone.
+
+#### Slice 8.2A — Store Schedule Read Ownership Contraction
+
+Authorized implementation scope:
+
+- reuse the existing Uber application-owned `UBER_BUSINESS_SCHEDULE_QUERY_PORT`; do not add a duplicate schedule port;
+- bind that port in `ubereats.module.ts` by composing the existing Uber-owned `UBER_STORE_CONFIG_QUERY` (already backed by Brand/Store `BRAND_STORE_CONFIG_READER`) with the Brand/Store `STORE_SCHEDULE_READER` public capability;
+- remove direct `BusinessHour` reads from the three identified Uber persistence paths and route them through `UberBusinessScheduleQueryPort`;
+- preserve timezone, sales-tax-rate and weekday/open/close/closed semantics exactly;
+- preserve Uber menu payload, validation, provider wire behavior, menu publication/reconciliation, Store schedule ownership and worker/API composition topology;
+- make no Prisma schema/migration, package, Orders/POS connectivity, payment/Clover or compatibility-cutover change;
+- do not claim `runtime-data-ci-ops` baseline reduction: the affected persistence adapters continue to use Prisma for their own Uber/Catalog persistence where applicable, so the architecture benefit is semantic ownership correction with an expected unchanged direct-import baseline.
+
+Focused architecture/regression coverage must pin the composition-root Store schedule adaptation and prohibit direct `BusinessHour` access from Uber persistence after this slice.
+
+Local implementation result on `refactor/phase8-slice8.2a-store-schedule-ownership`:
+
+- `UBER_BUSINESS_SCHEDULE_QUERY_PORT` is now provided only from `ubereats.module.ts`, where it composes `UBER_STORE_CONFIG_QUERY` with Store-owned `STORE_SCHEDULE_READER`; the same provider graph is reused by the API module and dedicated worker runtime.
+- `UberMenuSupportingQueriesPrismaAdapter` no longer implements business-schedule reads and no longer depends on store configuration; it remains responsible only for its existing Catalog existence checks and Uber store-mapping query.
+- `UberMenuDraftReadPrismaAdapter` consumes `UberBusinessScheduleQueryPort` for menu schedule validation instead of directly querying `BusinessHour`.
+- `PrismaUberMenuUnitOfWork` keeps the existing menu repository transaction boundary for its Prisma-backed repositories while its schedule repository delegates to the same Uber business-schedule port. The prior `UberBusinessSchedulePrismaRepository` is replaced by the non-Prisma `UberBusinessScheduleRepositoryAdapter`.
+- `UberBusinessScheduleQueryPort.readBusinessSchedule()` is made non-nullable to match both the previous implementation and the new composition provider: missing Store configuration continues to fail through the existing Store/config error path rather than returning a nullable schedule.
+- production Uber persistence now has zero direct `.businessHour` accesses. Timezone, tax rate and business-hour fields remain unchanged, and Store's reader preserves weekday ordering.
+- focused coverage verifies the composition-root mapping, repository delegation, removal of the obsolete Prisma schedule binding, and an architecture invariant that no production Uber persistence file directly accesses `businessHour`.
+- no direct-import/public-cycle baseline movement is expected. `external-channels -> runtime-data-ci-ops` remains **24**, Orders remains **1**, Identity remains **2**, Foundation remains **4**, and no machine-baseline edit is made.
+- no local lint/build/test/scanner was run; GitHub Actions remains the validation gate after user review and remote-delivery authorization.
+
+Phase-closeout active verification scope added by this slice: Admin Uber menu draft/load and menu publish must still derive the configured Store schedule/timezone/tax correctly, and the dedicated worker composition must resolve the same schedule provider without startup/provider-resolution errors. No provider-wire payload shape is intentionally changed.
+
+Any newly discovered responsibility transfer outside this approved 8.2A scope must be documented and authorized before implementation.
+
+### Slice 8.3 — Orders acceptance/cancellation atomic seam design/contraction
 
 Dedicated design slice for `uber-order-action-prisma.adapter.ts`.
 
@@ -339,12 +375,21 @@ Before any source modification:
 - UberDirect is confirmed Commerce/Fulfillment-owned and removed from Phase 8 scope;
 - next recommended source work is **Slice 8.1 Public boundary hygiene contraction**, pending user review/authorization.
 
-### 2026-09-09 — Slice 8.1 local source
+### 2026-09-09 — Slice 8.1 merged
 
-- implementation base is `origin/dev@96808b0e` after PR #2259 merged the Phase 8 planning/audit document;
+- implementation base was `origin/dev@96808b0e` after PR #2259 merged the Phase 8 planning/audit document;
 - four Auth implementation imports moved to `auth/public-api.ts` with guard ordering and policy unchanged;
 - six layer-legal API/infrastructure logger imports moved to `common/public-api.ts` with logger behavior unchanged;
 - application-layer logger debt is retained because the existing telemetry port is not behavior-equivalent; no fake facade was added;
-- machine baseline is updated to Identity **2** and Foundation **4**, making External outgoing direct debt **31**;
+- machine baseline is Identity **2** and Foundation **4**, making External outgoing direct debt **31**;
 - `SESSION_COOKIE_NAME`, `AuthModule`, `getLogContext()`, uploads layout, Orders acceptance and Runtime/Prisma seams remain intentionally unchanged;
-- source/docs are local only; lint/build/test/scanner and remote CI are not yet run.
+- PR #2260 final head `8efeb5e6` passed CI #5414 and squash-merged to `dev` as `fc9bfc01`.
+
+### 2026-09-09 — Slice 8.2 semantic ownership audit / Slice 8.2A local source
+
+- the merged-base audit confirms Runtime/Data/Ops **24** is still structurally expected and must not be used as a blanket contraction target;
+- Store schedule direct reads, Catalog menu facts and Orders read/mutation seams were classified separately; Catalog requires a later public-contract design and Orders acceptance/cancellation requires the Slice 8.3 atomic-seam design gate;
+- authorized Slice 8.2A reuses `UBER_BUSINESS_SCHEDULE_QUERY_PORT` and provides it from the Uber composition root using `UBER_STORE_CONFIG_QUERY + STORE_SCHEDULE_READER`;
+- all three production Uber persistence `BusinessHour` reads are removed; menu draft validation and menu workflow repository scope now consume the Uber application port;
+- Store public API itself is unchanged, provider wire behavior is unchanged, and Runtime **24** / Orders **1** / Identity **2** / Foundation **4** baselines remain unchanged;
+- focused composition, delegation and architecture coverage is updated; local lint/build/test/scanner is intentionally not run before user review.
