@@ -35,7 +35,7 @@ describe('Uber canonical Order read ownership', () => {
     expect(action).not.toMatch(/tx\.order\./);
     expect(importer).not.toMatch(/tx\.order\./);
     expect(importPorts).not.toMatch(/\borderId\b/);
-    expect(importer).toContain('orderStableId: input.orderStableId');
+    expect(importer).not.toContain('orderStableId: input.orderStableId');
     expect(importer).not.toMatch(/\borderId\b/);
   });
 
