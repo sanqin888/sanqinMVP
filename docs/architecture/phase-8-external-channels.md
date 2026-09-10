@@ -1,6 +1,6 @@
 # Phase 8 — External Channels Boundary Contraction & L3 Resilience
 
-Status: **SLICE 8.2A MERGED — SLICE 8.2B LOCAL SOURCE IMPLEMENTED / REVIEWED — REMOTE VALIDATION PENDING**  
+Status: **SLICE 8.2A MERGED — SLICE 8.2B PR #2262 REMOTE VALIDATED / FINAL DOC CI PENDING**  
 Slice 0 audit baseline: `origin/dev@d1c7d7b3e968d99dce1e3df39ca1af04a7696883`  
 Slice 8.1 implementation baseline: `origin/dev@96808b0ec1adc984dae99dd73dbd0e8ce4f2c4a9`  
 Slice 8.2A implementation baseline: `origin/dev@fc9bfc01f651c0d3193ee06e1d71ea0029e77835`  
@@ -355,7 +355,7 @@ The user explicitly authorized the recommended dependency-direction change. Loca
 - Architecture coverage pins the residual direct Catalog delegate set to those two reads, forbids Uber persistence from importing Catalog directly, and verifies the Catalog availability business service no longer imports Uber. Owner-side mapping coverage verifies category DB IDs do not leak, dates leave Catalog as ISO strings, and modifier child relations cross only as stable IDs.
 - The public dependency graph is now cycle-safe: the Catalog business-source -> External public edge is removed and the canonical read direction is External -> Catalog. `legacyPublicCycleComponents` remains empty. The deep-import debt baseline remains unchanged (`external-channels -> runtime-data-ci-ops = 24`, Orders `1`, Identity `2`, Foundation `4`), so `tools/architecture/context-baseline.json` is not edited.
 
-No Prisma schema/migration, dependency, provider-wire payload, webhook/idempotency, Orders lifecycle, POS connectivity or production Web Clover behavior is changed by this slice. No local lint/build/test/scanner result is claimed; GitHub CI is the validation gate.
+No Prisma schema/migration, dependency, provider-wire payload, webhook/idempotency, Orders lifecycle, POS connectivity or production Web Clover behavior is changed by this slice. No local lint/build/test/scanner result is claimed. PR #2262 source head `3320700e` passed GitHub Actions CI #5426, including architecture baseline, API lint/build/strict/shared-strict/test and Web lint/build/strict/test; this final documentation-sync commit still requires its own CI before merge.
 
 ### Slice 8.3 — Orders acceptance/cancellation atomic seam design/contraction
 
