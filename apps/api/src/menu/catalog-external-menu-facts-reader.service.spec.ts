@@ -1,6 +1,6 @@
-import { CatalogExternalMenuFactsReaderService } from './catalog-external-menu-facts-reader.service';
+import { CatalogAdminService } from './catalog-admin.service';
 
-describe('CatalogExternalMenuFactsReaderService', () => {
+describe('Catalog external-menu facts reader contract', () => {
   it('maps Catalog persistence to stable external-menu facts', async () => {
     const tempUnavailableUntil = new Date('2090-01-02T03:04:05.000Z');
     const prisma = {
@@ -79,7 +79,7 @@ describe('CatalogExternalMenuFactsReaderService', () => {
         findMany: jest.fn(),
       },
     };
-    const service = new CatalogExternalMenuFactsReaderService(prisma as never);
+    const service = new CatalogAdminService(prisma as never);
 
     await expect(service.readMenuSource()).resolves.toEqual({
       categories: [
@@ -197,7 +197,7 @@ describe('CatalogExternalMenuFactsReaderService', () => {
         ]),
       },
     };
-    const service = new CatalogExternalMenuFactsReaderService(prisma as never);
+    const service = new CatalogAdminService(prisma as never);
 
     await expect(service.getMenuItemSource(' item-1 ')).resolves.toMatchObject({
       stableId: 'item-1',
