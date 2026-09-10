@@ -1,6 +1,6 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { AppLogger } from '../../../../common/app-logger';
+import { AppLogger } from '../../../../common/public-api';
 import { UberAuthService } from './uber-token.provider';
 import {
   UberHttpClient,

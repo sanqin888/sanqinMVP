@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
-import { AppLogger } from '../../../../common/app-logger';
+import { AppLogger } from '../../../../common/public-api';
 import { getLogContext } from '../../../../common/log-context';
 import { PrismaService } from '../../../../prisma/prisma.service';
 

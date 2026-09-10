@@ -1,8 +1,10 @@
 import { applyDecorators, SetMetadata, UseGuards } from '@nestjs/common';
-import { AdminMfaGuard } from '../../../auth/admin-mfa.guard';
-import { Roles } from '../../../auth/roles.decorator';
-import { RolesGuard } from '../../../auth/roles.guard';
-import { SessionAuthGuard } from '../../../auth/session-auth.guard';
+import {
+  AdminMfaGuard,
+  Roles,
+  RolesGuard,
+  SessionAuthGuard,
+} from '../../../auth/public-api';
 import { BrowserWriteCsrfGuard } from './ubereats-csrf.guard';
 
 export const UBER_ADMIN_ACCESS = 'uber_admin_access';

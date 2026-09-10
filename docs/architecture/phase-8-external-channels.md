@@ -1,9 +1,10 @@
 # Phase 8 — External Channels Boundary Contraction & L3 Resilience
 
-Status: **SLICE 0 READ-ONLY AUDIT COMPLETE — SOURCE CHANGES NOT STARTED**  
-Audit baseline: `origin/dev@d1c7d7b3e968d99dce1e3df39ca1af04a7696883`  
-Baseline merge: PR `#2258` — Phase 7 Slice 5B  
-Audit date: 2026-09-09
+Status: **SLICE 8.1 IMPLEMENTED — PR #2260 REMOTE VALIDATED**  
+Slice 0 audit baseline: `origin/dev@d1c7d7b3e968d99dce1e3df39ca1af04a7696883`  
+Slice 8.1 implementation baseline: `origin/dev@96808b0ec1adc984dae99dd73dbd0e8ce4f2c4a9`  
+Baseline merges: PR `#2258` — Phase 7 Slice 5B; PR `#2259` — Phase 8 planning / Slice 0 audit  
+Audit / implementation date: 2026-09-09
 
 ## 1. Purpose
 
@@ -221,6 +222,29 @@ Candidate scope:
 
 Expected debt movement must be calculated from the final approved file scope rather than promised in advance. No new public cycle or eager barrel-loading regression is allowed.
 
+#### Slice 8.1 implementation result
+
+PR #2260 on `refactor/phase8-slice8.1-public-boundary-hygiene-v2` implements the narrow path contraction without changing Uber business/provider behavior:
+
+- `api/ubereats-access.decorator.ts` now imports `AdminMfaGuard`, `Roles`, `RolesGuard`, and `SessionAuthGuard` from the existing Auth public surface. Guard order, MFA, CSRF and role metadata are unchanged.
+- Six layer-legal `AppLogger` consumers (`api/oauth.controller.ts`, four `infrastructure/uber-api/*` files, and `infrastructure/persistence/uber-telemetry.service.ts`) now import `AppLogger` from `common/public-api.ts`; logger calls and metadata are unchanged.
+- The two application-layer merchant services intentionally keep direct `common/app-logger` imports. Existing `UberTelemetryPort.workflowLog()` is not behavior-equivalent because its structured diagnostic path filters current merchant/store context, while `captureEvent()` adds persisted `OpsEvent` side effects. No new logging facade/port is introduced solely to reduce debt.
+- `SESSION_COOKIE_NAME` remains on `auth/session-auth.guard`; no canonical public session-cookie contract exists today and Auth public API is not broadened in this slice.
+- Direct `AuthModule` composition remains in `ubereats.module.ts`; it is legal Nest wiring and is not re-exported through the business public API.
+- `getLogContext()`, `getUploadsAccountingDir()`, the Orders acceptance atomic seam, Runtime/Prisma imports and incoming Uber root-module composition remain untouched.
+- `uber-service-architecture.spec.ts` now pins the completed Auth/Foundation public-path contractions so later baseline movement cannot silently reintroduce these implementation imports.
+
+Actual local baseline movement from the reviewed source diff is:
+
+- `external-channels -> identity-customer-benefits`: **6 -> 2**;
+- `external-channels -> architecture-foundation`: **10 -> 4**;
+- External outgoing direct debt total: **41 -> 31**;
+- `external-channels -> commerce-orders-fulfillment`: **1**, unchanged;
+- `external-channels -> runtime-data-ci-ops`: **24**, unchanged;
+- incoming External composition debt: **3**, unchanged.
+
+No local lint/build/test/scanner was run. PR #2260 source head `f4020dbd` passed GitHub Actions CI #5413, including the architecture baseline gate, API lint/build/strict declaration/test, and Web lint/build/strict declaration/test.
+
 ### Slice 8.2 — Runtime/persistence semantic ownership audit and containment
 
 Do **not** target `runtime-data-ci-ops 24 -> 0`.
@@ -314,3 +338,13 @@ Before any source modification:
 - broad Uber resilience rewrite is not justified by current evidence; existing durable inbox/action/reconciliation coverage is substantial;
 - UberDirect is confirmed Commerce/Fulfillment-owned and removed from Phase 8 scope;
 - next recommended source work is **Slice 8.1 Public boundary hygiene contraction**, pending user review/authorization.
+
+### 2026-09-09 — Slice 8.1 local source
+
+- implementation base is `origin/dev@96808b0e` after PR #2259 merged the Phase 8 planning/audit document;
+- four Auth implementation imports moved to `auth/public-api.ts` with guard ordering and policy unchanged;
+- six layer-legal API/infrastructure logger imports moved to `common/public-api.ts` with logger behavior unchanged;
+- application-layer logger debt is retained because the existing telemetry port is not behavior-equivalent; no fake facade was added;
+- machine baseline is updated to Identity **2** and Foundation **4**, making External outgoing direct debt **31**;
+- `SESSION_COOKIE_NAME`, `AuthModule`, `getLogContext()`, uploads layout, Orders acceptance and Runtime/Prisma seams remain intentionally unchanged;
+- source/docs are local only; lint/build/test/scanner and remote CI are not yet run.
