@@ -147,7 +147,9 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
       { listOrderModifierSnapshotSources } as never,
     );
 
-    await expect(adapter.findModifierSnapshotSources()).resolves.toEqual(sources);
+    await expect(adapter.findModifierSnapshotSources()).resolves.toEqual(
+      sources,
+    );
     expect(listOrderModifierSnapshotSources).toHaveBeenCalledTimes(1);
   });
 

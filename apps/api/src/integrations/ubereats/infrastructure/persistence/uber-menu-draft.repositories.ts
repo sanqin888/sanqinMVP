@@ -98,9 +98,7 @@ export class UberMenuDraftSourcePrismaRepository {
       isActive: category.isActive,
     }));
     const menuItems = sourceFacts.menuItems
-      .filter(
-        (item) => item.visibility === 'PUBLIC' && item.publishToUberEats,
-      )
+      .filter((item) => item.visibility === 'PUBLIC' && item.publishToUberEats)
       .map((item) => ({
         stableId: item.stableId,
         categoryId: item.categoryStableId,
@@ -197,9 +195,7 @@ export const readStoreTimezone = (raw: unknown): string | null => {
 };
 
 export class UberMenuSnapshotPrismaRepository implements MenuSnapshotRepository {
-  constructor(
-    private readonly catalogFacts: UberCatalogMenuFactsQueryPort,
-  ) {}
+  constructor(private readonly catalogFacts: UberCatalogMenuFactsQueryPort) {}
   async load() {
     const source = await this.catalogFacts.readMenuSource();
     return {

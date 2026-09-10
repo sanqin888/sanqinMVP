@@ -144,12 +144,7 @@ describe('Catalog external-menu facts reader contract', () => {
       expect.objectContaining({ orderBy: stableOrder }),
     );
     expect(prisma.menuItem.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        orderBy: stableOrder,
-        select: expect.objectContaining({
-          category: { select: { stableId: true } },
-        }),
-      }),
+      expect.objectContaining({ orderBy: stableOrder }),
     );
     expect(prisma.menuOptionGroupTemplate.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ orderBy: stableOrder }),

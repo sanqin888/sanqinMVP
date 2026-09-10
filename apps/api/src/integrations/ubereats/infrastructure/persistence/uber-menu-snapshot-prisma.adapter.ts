@@ -103,9 +103,7 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
       .filter((category) => category.isActive)
       .map((category) => ({ ...category, id: category.stableId }));
     const menuItems = sourceFacts.menuItems
-      .filter(
-        (item) => item.visibility === 'PUBLIC' && item.publishToUberEats,
-      )
+      .filter((item) => item.visibility === 'PUBLIC' && item.publishToUberEats)
       .map((item) => ({
         ...item,
         categoryId: item.categoryStableId,
