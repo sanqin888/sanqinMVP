@@ -7825,6 +7825,49 @@ if (requireClosedCompatibility('brand-store.default-store-identity.v1')) {
         `closed brand-store.default-store-identity.v1 implicit Uber Operations store returned: ${repositoryPath(absolutePath)}`,
       );
     }
+    if (
+      /\blegacyUberStoreIds\b|\bpersistedStoreScopeId\b|\bticketStoreScope\b|\bresolvePersistedTicketStoreStableId\b/.test(
+        source,
+      )
+    ) {
+      failures.push(
+        `closed brand-store.default-store-identity.v1 legacy Uber OpsTicket scope returned: ${repositoryPath(absolutePath)}`,
+      );
+    }
+    if (/\btargetStatus\s*===\s*['"]OFFLINE['"]/.test(source)) {
+      failures.push(
+        `closed brand-store.default-store-identity.v1 legacy OFFLINE OpsTicket parser returned: ${repositoryPath(absolutePath)}`,
+      );
+    }
+  }
+
+  const merchantPersistence = readCompatibilityGuardSource(
+    'apps/api/src/integrations/ubereats/infrastructure/persistence/uber-merchant-persistence.adapter.ts',
+  );
+  if (
+    merchantPersistence &&
+    /storeId\s*:\s*\{\s*in\s*:\s*\[\s*input\.storeStableId\s*,\s*input\.uberStoreId\s*\]/s.test(
+      merchantPersistence,
+    )
+  ) {
+    failures.push(
+      'closed brand-store.default-store-identity.v1 must not restore provider-ID OpsTicket deduplication scope',
+    );
+  }
+
+  const menuAvailabilityPersistence = readCompatibilityGuardSource(
+    'apps/api/src/integrations/ubereats/infrastructure/persistence/uber-menu-availability-prisma.adapter.ts',
+  );
+  if (
+    menuAvailabilityPersistence &&
+    (/\{\s*uberStoreId\s*:\s*storeStableId\s*\}/s.test(menuAvailabilityPersistence) ||
+      /posExternalStoreId\?\.trim\(\)\s*\|\|\s*mapping\.uberStoreId/.test(
+        menuAvailabilityPersistence,
+      ))
+  ) {
+    failures.push(
+      'closed brand-store.default-store-identity.v1 must not restore Uber provider ID as a menu-availability storeStableId alias',
+    );
   }
 
   const prismaSchemaPath = join(REPOSITORY_ROOT, 'apps/api/prisma/schema.prisma');
@@ -7956,8 +7999,11 @@ for (const cycle of newPublicContractCycles) {
 }
 
 const requiredFields = registry.requiredFields ?? [];
-const entries = [...(registry.active ?? []), ...(registry.closed ?? [])];
+const activeEntries = registry.active ?? [];
+const closedEntries = registry.closed ?? [];
+const entries = [...activeEntries, ...closedEntries];
 const registeredIds = new Set();
+const closedIds = new Set(closedEntries.map((entry) => entry.compat_id));
 for (const entry of entries) {
   for (const field of requiredFields) {
     const value = entry[field];
@@ -7984,6 +8030,8 @@ for (const entry of entries) {
 for (const annotation of compatAnnotations) {
   if (!registeredIds.has(annotation)) {
     failures.push('unregistered @compat annotation: ' + annotation);
+  } else if (closedIds.has(annotation)) {
+    failures.push('closed @compat annotation must not remain in production source: ' + annotation);
   }
 }
 

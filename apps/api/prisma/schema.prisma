@@ -1753,7 +1753,7 @@ model UberStoreMapping {
 
 model UberItemChannelConfig {
   id                       String    @id @default(uuid()) @db.Uuid
-  /// SanQ store stable identity. Required explicitly; sandbox/Test Store history is cleaned at Production cutover, not backfilled here.
+  /// Canonical SanQ store stable identity; never substitute a provider Uber Store ID or implicit default.
   storeId                  String
   uberStoreId              String?
   menuItemStableId         String
@@ -1779,7 +1779,7 @@ model UberItemChannelConfig {
 
 model UberCategoryConfig {
   id                   String    @id @default(uuid()) @db.Uuid
-  /// SanQ store stable identity. Required explicitly; sandbox/Test Store history is cleaned at Production cutover, not backfilled here.
+  /// Canonical SanQ store stable identity; never substitute a provider Uber Store ID or implicit default.
   storeId              String
   uberStoreId          String?
   menuCategoryStableId String
@@ -1799,7 +1799,7 @@ model UberCategoryConfig {
 
 model UberModifierGroupConfig {
   id                      String    @id @default(uuid()) @db.Uuid
-  /// SanQ store stable identity. Required explicitly; sandbox/Test Store history is cleaned at Production cutover, not backfilled here.
+  /// Canonical SanQ store stable identity; never substitute a provider Uber Store ID or implicit default.
   storeId                 String
   uberStoreId             String?
   templateGroupStableId   String
@@ -1820,7 +1820,7 @@ model UberModifierGroupConfig {
 
 model UberOptionItemConfig {
   id                           String    @id @default(uuid()) @db.Uuid
-  /// SanQ store stable identity. Required explicitly; sandbox/Test Store history is cleaned at Production cutover, not backfilled here.
+  /// Canonical SanQ store stable identity; never substitute a provider Uber Store ID or implicit default.
   storeId                      String
   uberStoreId                  String?
   optionChoiceStableId         String
@@ -1845,7 +1845,7 @@ model UberOptionItemConfig {
 
 model UberOptionChildGroupBinding {
   id                         String   @id @default(uuid()) @db.Uuid
-  /// SanQ store stable identity. Required explicitly; sandbox/Test Store history is cleaned at Production cutover, not backfilled here.
+  /// Canonical SanQ store stable identity; never substitute a provider Uber Store ID or implicit default.
   storeId                    String
   parentOptionChoiceStableId String
   childTemplateGroupStableId String
@@ -1863,7 +1863,7 @@ model UberMenuPublishVersion {
   versionStableId            String                  @unique @default(cuid())
   idempotencyKey             String?                 @unique
   businessVersion            String                  @default("v1")
-  /// SanQ store stable identity. Required explicitly; sandbox/Test Store history is cleaned at Production cutover, not backfilled here.
+  /// Canonical SanQ store stable identity; never substitute a provider Uber Store ID or implicit default.
   storeId                    String
   uberStoreId                String?
   status                     UberMenuPublishStatus   @default(SUBMITTED)
@@ -1939,7 +1939,7 @@ enum UberOpsTicketPriority {
 model UberReconciliationReport {
   id                String   @id @default(uuid()) @db.Uuid
   reportStableId    String   @unique @default(cuid())
-  /// SanQ store stable identity. Required explicitly; sandbox/Test Store history is cleaned at Production cutover, not backfilled here.
+  /// Canonical SanQ store stable identity; never substitute a provider Uber Store ID or implicit default.
   storeId           String
   rangeStart        DateTime
   rangeEnd          DateTime
@@ -1959,7 +1959,7 @@ model UberReconciliationReport {
 model UberOpsTicket {
   id               String                @id @default(uuid()) @db.Uuid
   ticketStableId   String                @unique @default(cuid())
-  /// SanQ store stable identity. Required explicitly; sandbox/Test Store history is cleaned at Production cutover, not backfilled here.
+  /// Canonical SanQ store stable identity; never substitute a provider Uber Store ID or implicit default.
   storeId          String
   type             UberOpsTicketType
   status           UberOpsTicketStatus   @default(OPEN)

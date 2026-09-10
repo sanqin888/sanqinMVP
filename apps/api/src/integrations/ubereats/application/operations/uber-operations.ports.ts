@@ -41,8 +41,7 @@ export interface UberReconciliationRepositoryPort {
   summary(storeStableId: string): Promise<UberOperationsCountSummary>;
 }
 export type UberOpsTicketRecord = UberOpsTicket & {
-  /** Raw persisted scope during brand-store.default-store-identity.v1 contraction. */
-  persistedStoreScopeId: string;
+  storeStableId: string;
   description: string | null;
   externalOrderId: string | null;
   menuItemStableId: string | null;
@@ -50,14 +49,8 @@ export type UberOpsTicketRecord = UberOpsTicket & {
   resolvedAt: Date | null;
 };
 
-/** @compat brand-store.default-store-identity.v1 */
-export type UberOpsTicketStoreScope = {
-  storeStableId: string;
-  legacyUberStoreIds: string[];
-};
-
 export interface UberOpsTicketRepositoryPort {
-  countOpen(scope: UberOpsTicketStoreScope): Promise<number>;
+  countOpen(storeStableId: string): Promise<number>;
   create(input: {
     storeStableId: string;
     type: UberOpsTicketType;
@@ -74,11 +67,11 @@ export interface UberOpsTicketRepositoryPort {
     >
   >;
   list(
-    scope: UberOpsTicketStoreScope,
+    storeStableId: string,
     status?: UberOpsTicketStatus,
   ): Promise<UberOpsTicketRecord[]>;
   summary(
-    scope: UberOpsTicketStoreScope,
+    storeStableId: string,
     status?: UberOpsTicketStatus,
   ): Promise<UberOperationsCountSummary>;
   find(ticketStableId: string): Promise<UberOpsTicketRecord | null>;

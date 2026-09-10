@@ -249,7 +249,7 @@ export class SyncUberMenuItemAvailabilityDto {
   @MinLength(1)
   @MaxLength(128)
   @Matches(UBER_RESOURCE_ID_PATTERN)
-  storeId?: string;
+  storeStableId?: string;
 }
 
 export class SyncUberOptionItemAvailabilityDto {
@@ -261,5 +261,5 @@ export class SyncUberOptionItemAvailabilityDto {
   @MinLength(1)
   @MaxLength(128)
   @Matches(UBER_RESOURCE_ID_PATTERN)
-  storeId?: string;
+  storeStableId?: string;
 }

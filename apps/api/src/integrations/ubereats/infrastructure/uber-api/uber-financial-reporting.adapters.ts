@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { createHash, randomUUID } from 'crypto';
 import { isIP } from 'net';
 import { lookup } from 'dns/promises';
 import * as fs from 'fs';
@@ -73,19 +74,63 @@ export class UberFinancialReportArtifactStore implements UberFinancialReportArti
       }
       const dir = path.join(getUploadsAccountingDir(), 'uber-reports');
       await fs.promises.mkdir(dir, { recursive: true });
-      const sectionId = (section.sectionId || `${index + 1}`)
-        .replace(/[^a-zA-Z0-9_-]/g, '-')
-        .slice(0, 80);
-      const workflow = input.workflowId
-        .replace(/[^a-zA-Z0-9_-]/g, '-')
-        .slice(0, 80);
-      const fileName = `${Date.now()}-${workflow}-${sectionId}.csv`;
-      await fs.promises.writeFile(path.join(dir, fileName), bytes, {
-        flag: 'wx',
-      });
+      const sectionIdentity = section.sectionId || `${index + 1}`;
+      const contentHash = createHash('sha256').update(bytes).digest('hex');
+      const artifactIdentity = createHash('sha256')
+        .update(
+          `${input.workflowId}\u0000${sectionIdentity}\u0000${contentHash}`,
+        )
+        .digest('hex')
+        .slice(0, 24);
+      const sectionId =
+        sectionIdentity.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 80) ||
+        `${index + 1}`;
+      const workflow =
+        input.workflowId.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 80) ||
+        'workflow';
+      const fileName = `${workflow}-${sectionId}-${artifactIdentity}.csv`;
+      await this.persistArtifact(path.join(dir, fileName), bytes);
       urls.push(`/api/v1/accounting/files/uber-reports/${fileName}`);
     }
     return urls;
+  }
+
+  private async persistArtifact(
+    finalPath: string,
+    bytes: Buffer,
+  ): Promise<void> {
+    const tempPath = `${finalPath}.${randomUUID()}.tmp`;
+    const handle = await fs.promises.open(tempPath, 'wx');
+    try {
+      try {
+        await handle.writeFile(bytes);
+        await handle.sync();
+      } finally {
+        await handle.close();
+      }
+
+      try {
+        // Same-directory hard link publishes the fully flushed artifact without overwrite.
+        await fs.promises.link(tempPath, finalPath);
+      } catch (error) {
+        if (!this.isAlreadyExists(error)) throw error;
+        const existing = await fs.promises.readFile(finalPath);
+        if (!existing.equals(bytes)) {
+          throw new Error('Uber report artifact integrity mismatch');
+        }
+      }
+    } finally {
+      await fs.promises.rm(tempPath, { force: true });
+    }
+  }
+
+  private isAlreadyExists(error: unknown): boolean {
+    return Boolean(
+      error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      (error as { code?: unknown }).code === 'EEXIST',
+    );
   }
 
   private async safeFetch(initialUrl: string): Promise<Response> {

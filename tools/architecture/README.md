@@ -256,7 +256,8 @@ node tools/architecture/scan-architecture.mjs --report
   deep-imported outside the Loyalty owner, and policy fields cannot be added to the
   Brand/Store public config contract;
 - unique, complete compatibility entries;
-- no unregistered `@compat <compat_id>` annotation.
+- no unregistered `@compat <compat_id>` annotation;
+- no production `@compat` annotation for a registry entry already marked `closed`.
 
 Imports through `public-api`, `contracts`, `ports`, and registered public
 shared-package aliases are reported but do not consume legacy debt allowances.

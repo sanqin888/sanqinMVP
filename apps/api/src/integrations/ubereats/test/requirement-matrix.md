@@ -133,7 +133,9 @@ wire mapper 只允许 `pos_data.integrator_store_id` 恢复这一 SanQ external 
 
 Store Management 统一使用 Uber 当前 Store API Suite。SanQ 内部仍使用 `PAUSED` 表示暂停目标，
 但发送给 Uber 时转换为 `status=OFFLINE`；暂停截止时间发送为 `is_offline_until`，恢复发送
-`status=ONLINE`。`default_prep_time` 以秒为单位，SanQ 只接受 `1..10800` 的整数。状态读取、
+`status=ONLINE`。Phase 8 Slice 8.5 只删除 SanQ Test Store 的历史 identity/OpsTicket 兼容；
+它不改变这里的 Uber wire 状态映射，也不放宽 webhook、idempotency 或 provider response compatibility。
+`default_prep_time` 以秒为单位，SanQ 只接受 `1..10800` 的整数。状态读取、
 状态写入和 Prep Time 更新都通过可检查 HTTP response 的 gateway transport 执行，并保留 Uber
 实际 HTTP status 到审计记录，用于部署后的 `200` 验收证据。Store Management 只允许已 mapping
 且已 provision 的门店执行。
@@ -351,6 +353,7 @@ Tech Support verification 和 pilot-store production provisioning。
 - Retrieve Integration Config 若 Uber 未返回 `allow_special_instruction_requests`，必须保持 `null` / `未返回`，不得伪装为 `true`。
 - Structured allergy parser/policy 必须覆盖 item、nested modifier、`RELAY_ALL`、`DENY_LIST`、`DENY_ALL`、未知/损坏请求 fail-safe Deny，以及 POS/打印传递。
 - `orders.customer_order_edit` 不得进入普通新单 import；当前保持 unsupported quarantine，并记录 `CUSTOMER_ORDER_EDIT_RECONCILIATION_REQUIRED`。
+- `eats.report.success` 的 CSV artifact 必须对 durable inbox replay 幂等：同一 workflow / logical section / 相同 CSV 内容只能对应一个 artifact URL/文件；signed download URL 变化不得制造副本；内容变化应形成不同 artifact；deterministic path 已存在但内容不一致必须 fail closed；report 已为 `READY/IMPORTED` 且已有 artifact 时不得重新下载。
 - Uber architecture tests、API lint/build/strict declaration、shared strict checks、API test suite 和受影响 Web checks 必须全绿。
 
 ### Sandbox / Test Store PASS

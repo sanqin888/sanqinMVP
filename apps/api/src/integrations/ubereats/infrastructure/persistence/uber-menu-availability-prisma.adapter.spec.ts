@@ -1,7 +1,7 @@
 import { UberMenuAvailabilityPrismaAdapter } from './uber-menu-availability-prisma.adapter';
 
 describe('UberMenuAvailabilityPrismaAdapter', () => {
-  it('门店筛选保留旧 Uber storeId 兼容，并返回 canonical storeStableId', async () => {
+  it('filters provisioned stores by canonical storeStableId only', async () => {
     const findMany = jest
       .fn()
       .mockResolvedValue([
@@ -11,13 +11,34 @@ describe('UberMenuAvailabilityPrismaAdapter', () => {
       uberStoreMapping: { findMany },
     } as never);
 
-    await expect(adapter.findProvisionedStores('uber-a')).resolves.toEqual([
+    await expect(adapter.findProvisionedStores('pos-a')).resolves.toEqual([
       { storeStableId: 'pos-a', uberStoreId: 'uber-a' },
     ]);
     expect(findMany).toHaveBeenCalledWith({
       where: {
         isProvisioned: true,
-        OR: [{ posExternalStoreId: 'uber-a' }, { uberStoreId: 'uber-a' }],
+        posExternalStoreId: 'pos-a',
+      },
+      select: { posExternalStoreId: true, uberStoreId: true },
+    });
+  });
+
+  it('omits provisioned mappings that lack a canonical storeStableId', async () => {
+    const findMany = jest.fn().mockResolvedValue([
+      { posExternalStoreId: null, uberStoreId: 'uber-unmapped' },
+      { posExternalStoreId: 'pos-a', uberStoreId: 'uber-a' },
+    ]);
+    const adapter = new UberMenuAvailabilityPrismaAdapter({
+      uberStoreMapping: { findMany },
+    } as never);
+
+    await expect(adapter.findProvisionedStores()).resolves.toEqual([
+      { storeStableId: 'pos-a', uberStoreId: 'uber-a' },
+    ]);
+    expect(findMany).toHaveBeenCalledWith({
+      where: {
+        isProvisioned: true,
+        posExternalStoreId: { not: null },
       },
       select: { posExternalStoreId: true, uberStoreId: true },
     });

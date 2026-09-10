@@ -1201,8 +1201,10 @@ number:
   require focused regression plus post-deployment active payment verification.
 - POS Clover Terminal remains pre-production and may be structurally modularized in a
   separate work package when live Web Ecommerce behavior is unchanged.
-- Historical Uber sandbox `@compat brand-store.default-store-identity.v1` cleanup stays
-  deferred to Uber Production Cutover Cleanup; do not combine it with Phase 4 slices.
+- Historical note: Phase 4 intentionally deferred Uber sandbox
+  `@compat brand-store.default-store-identity.v1` cleanup and did not combine it with
+  Identity/Benefits/Messaging work. That deferral was later superseded by the dedicated
+  Phase 8 Slice 8.5 Test Store identity cleanup after those records were declared disposable.
 - Do not remove the in-memory Orders event bus or alter durable outbox ownership as a
   Phase 4 shortcut. That requires a separate Orders/Fulfillment readiness audit.
 - `MembershipService.getMemberSummary()` remains an explicit post-Phase-4 composite read-model debt.
