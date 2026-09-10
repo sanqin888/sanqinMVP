@@ -1,6 +1,6 @@
 # Phase 8 — External Channels Boundary Contraction & L3 Resilience
 
-Status: **SLICE 8.2B MERGED — SLICE 8.2B.3 LOCAL SOURCE COMPLETE / PENDING REVIEW**  
+Status: **SLICE 8.2B MERGED — SLICE 8.2B.3 PR #2263 REMOTE VALIDATED / FINAL DOC CI PENDING**  
 Slice 0 audit baseline: `origin/dev@d1c7d7b3e968d99dce1e3df39ca1af04a7696883`  
 Slice 8.1 implementation baseline: `origin/dev@96808b0ec1adc984dae99dd73dbd0e8ce4f2c4a9`  
 Slice 8.2A implementation baseline: `origin/dev@fc9bfc01f651c0d3193ee06e1d71ea0029e77835`  
@@ -365,7 +365,7 @@ Readiness review on `origin/dev@00561c82` confirmed that the two deferred restor
 
 The local implementation therefore reuses the already-authorized `UBER_CATALOG_MENU_FACTS_QUERY` application port inside the existing restore transaction callback. Catalog item/option source facts are resolved through the Catalog-owned reader; only the Uber `uber*Config` upsert plus `ubereats_menu_price_restored` audit write remain in the local transaction. Missing owner facts preserve the existing `UBER_MENU_ITEM_NOT_FOUND` / `UBER_MENU_OPTION_NOT_FOUND` errors and produce no Uber write. This contracts the audited Catalog persistence-delegate set **17 -> 15 -> 0** without introducing a new public contract, DB UUID, Prisma type, dependency direction, schema/migration or provider behavior.
 
-Focused characterization now verifies both restore operations consume owner facts, preserve the existing override/audit shapes, and suppress writes when the Catalog owner cannot resolve the requested stable ID. The architecture guard is tightened from the two-item allowlist to **zero** production Uber persistence access to `MenuCategory`, `MenuItem`, `MenuOptionGroupTemplate`, or `MenuOptionTemplateChoice`. `external-channels -> runtime-data-ci-ops` remains **24**, Orders **1**, Identity **2**, Foundation **4**, and `tools/architecture/context-baseline.json` remains unchanged. No local lint/build/test/scanner result is claimed; GitHub Actions remains the remote validation gate after review.
+Focused characterization now verifies both restore operations consume owner facts, preserve the existing override/audit shapes, and suppress writes when the Catalog owner cannot resolve the requested stable ID. The architecture guard is tightened from the two-item allowlist to **zero** production Uber persistence access to `MenuCategory`, `MenuItem`, `MenuOptionGroupTemplate`, or `MenuOptionTemplateChoice`. `external-channels -> runtime-data-ci-ops` remains **24**, Orders **1**, Identity **2**, Foundation **4**, and `tools/architecture/context-baseline.json` remains unchanged. PR #2263 source head `5979fcc0` passed GitHub Actions CI #5431, including architecture baseline, API lint/build/strict/shared-strict/test and Web lint/build/strict/test; this final documentation-sync commit still requires its own CI before merge.
 
 Phase-closeout active verification should include both Admin restore-source-price actions: set an Uber-specific item/option price override, invoke restore, reload the draft, and confirm the displayed effective/source values return to Catalog truth without changing unrelated availability or menu configuration.
 
