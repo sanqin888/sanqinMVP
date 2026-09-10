@@ -186,7 +186,7 @@ describe('UberOrderActionService contract', () => {
   ])(
     'calculates immediate ACCEPT ready time for %s cents',
     async (totalCents, expected) => {
-      const { repository, orderFacts, gateway, service } = setup();
+      const { orderFacts, gateway, service } = setup();
       orderFacts.findByExternalOrderId.mockResolvedValue({
         orderStableId: 'stable-1',
         status: 'pending',

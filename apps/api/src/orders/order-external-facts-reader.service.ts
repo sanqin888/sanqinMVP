@@ -20,9 +20,7 @@ const externalOrderIdFromClientRequestId = (
 };
 
 @Injectable()
-export class OrderExternalFactsReaderService
-  implements OrderExternalFactsReaderPort
-{
+export class OrderExternalFactsReaderService implements OrderExternalFactsReaderPort {
   constructor(private readonly prisma: PrismaService) {}
 
   async findByExternalIdentity(identity: ExternalOrderIdentity) {

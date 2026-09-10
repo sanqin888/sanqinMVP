@@ -203,9 +203,7 @@ const UBER_EATS_COMPOSITION_PROVIDERS: Provider[] = [
           scheduledReadyAt: timing.scheduledReadyAt
             ? new Date(timing.scheduledReadyAt)
             : null,
-          prepStartAt: timing.prepStartAt
-            ? new Date(timing.prepStartAt)
-            : null,
+          prepStartAt: timing.prepStartAt ? new Date(timing.prepStartAt) : null,
           prepDurationMinutes: timing.prepDurationMinutes,
         };
       },

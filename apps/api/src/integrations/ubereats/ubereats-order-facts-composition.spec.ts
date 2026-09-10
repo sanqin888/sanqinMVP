@@ -94,7 +94,7 @@ describe('Uber canonical Order facts composition', () => {
       fulfillmentTiming: 'SCHEDULED',
       externalEstimatedReadyAt: new Date('2026-09-10T12:30:00.000Z'),
     });
-    expect(reader.findByExternalIdentity).toHaveBeenCalledWith({
+    expect(reader.findByExternalIdentity.mock.calls[0]?.[0]).toEqual({
       channel: 'ubereats',
       externalOrderId: 'uber-order-1',
     });
@@ -107,7 +107,7 @@ describe('Uber canonical Order facts composition', () => {
       prepStartAt: new Date('2026-09-10T12:15:00.000Z'),
       prepDurationMinutes: 15,
     });
-    expect(reader.findSchedulingByOrderStableId).toHaveBeenCalledWith(
+    expect(reader.findSchedulingByOrderStableId.mock.calls[0]?.[0]).toBe(
       'stable-order-1',
     );
   });
@@ -124,7 +124,7 @@ describe('Uber canonical Order facts composition', () => {
       orderStableId: 'stable-order-1',
       status: 'pending',
     });
-    expect(reader.findByExternalIdentity).toHaveBeenCalledWith({
+    expect(reader.findByExternalIdentity.mock.calls[0]?.[0]).toEqual({
       channel: 'ubereats',
       externalOrderId: 'uber-order-1',
     });
@@ -143,7 +143,7 @@ describe('Uber canonical Order facts composition', () => {
       count: 1,
       updatedAt: new Date('2026-09-10T12:00:00.000Z'),
     });
-    expect(reader.listByChannelAndStatuses).toHaveBeenCalledWith({
+    expect(reader.listByChannelAndStatuses.mock.calls[0]?.[0]).toEqual({
       channel: 'ubereats',
       statuses: ['pending', 'paid', 'making'],
       limit: 100,
@@ -161,20 +161,16 @@ describe('Uber canonical Order facts composition', () => {
     const rangeEnd = new Date('2026-09-11T00:00:00.000Z');
 
     await expect(
-      query.reconciliationOrders(
-        '4750_Yonge_Street',
-        rangeStart,
-        rangeEnd,
-      ),
+      query.reconciliationOrders('4750_Yonge_Street', rangeStart, rangeEnd),
     ).resolves.toEqual([{ status: 'paid', totalCents: 1_130 }]);
     await expect(query.exists('uber-order-1')).resolves.toBe(true);
-    expect(reader.listReconciliationFacts).toHaveBeenCalledWith({
+    expect(reader.listReconciliationFacts.mock.calls[0]?.[0]).toEqual({
       channel: 'ubereats',
       storeStableId: '4750_Yonge_Street',
       createdAtFrom: rangeStart.toISOString(),
       createdAtBefore: rangeEnd.toISOString(),
     });
-    expect(reader.existsByExternalIdentity).toHaveBeenCalledWith({
+    expect(reader.existsByExternalIdentity.mock.calls[0]?.[0]).toEqual({
       channel: 'ubereats',
       externalOrderId: 'uber-order-1',
     });

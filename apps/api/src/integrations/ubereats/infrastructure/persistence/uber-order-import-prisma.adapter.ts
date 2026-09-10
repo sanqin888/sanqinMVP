@@ -331,10 +331,9 @@ export class UberOrderImportPrismaAdapter
     );
 
     if (fulfillmentTiming === OrderFulfillmentTiming.SCHEDULED) {
-      const timing =
-        await this.orderFacts.findSchedulingByOrderStableId(
-          saved.orderStableId,
-        );
+      const timing = await this.orderFacts.findSchedulingByOrderStableId(
+        saved.orderStableId,
+      );
       this.logger.log({
         event: 'scheduled_order_imported',
         orderStableId: saved.orderStableId,

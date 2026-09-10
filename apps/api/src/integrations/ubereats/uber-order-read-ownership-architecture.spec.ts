@@ -17,9 +17,7 @@ describe('Uber canonical Order read ownership', () => {
         ...contents.matchAll(
           /this\.prisma\.order\.(?:findUnique|findUniqueOrThrow|findFirst|findFirstOrThrow|findMany|count|aggregate|groupBy)\s*\(/g,
         ),
-      ].map(
-        () => path,
-      ),
+      ].map(() => path),
     );
 
     expect(directReads).toEqual([]);
@@ -47,7 +45,9 @@ describe('Uber canonical Order read ownership', () => {
 
     expect(contract).toContain('OrderExternalFactsReaderPort');
     expect(contract).toContain('orderStableId: string');
-    expect(contract).not.toMatch(/@prisma\/client|\bPrisma\.|\borderId\b|clientRequestId/);
+    expect(contract).not.toMatch(
+      /@prisma\/client|\bPrisma\.|\borderId\b|clientRequestId/,
+    );
     expect(module).toContain("from './orders-prisma'");
     expect(module).not.toMatch(/OrdersModule|integrations\/ubereats/);
   });

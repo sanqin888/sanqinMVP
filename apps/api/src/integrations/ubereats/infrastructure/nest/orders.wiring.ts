@@ -145,12 +145,7 @@ export function createOrdersWiring(): Provider[] {
         workerWake: UberWorkerWakePort,
         orderFacts: UberCanonicalOrderFactsQueryPort,
       ) =>
-        new UberOrderActionService(
-          repository,
-          gateway,
-          workerWake,
-          orderFacts,
-        ),
+        new UberOrderActionService(repository, gateway, workerWake, orderFacts),
     },
     {
       provide: UberOrderStatusSyncService,

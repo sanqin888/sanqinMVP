@@ -146,9 +146,7 @@ describe('OrderExternalFactsReaderService', () => {
         createdAt: '2026-09-10T12:00:00.000Z',
       },
     ]);
-    await expect(
-      reader.summarizeByChannelAndStatuses(input),
-    ).resolves.toEqual({
+    await expect(reader.summarizeByChannelAndStatuses(input)).resolves.toEqual({
       count: 1,
       latestCreatedAt: '2026-09-10T12:00:00.000Z',
     });
