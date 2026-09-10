@@ -4,10 +4,12 @@ Phase 1 closeout snapshot: `origin/dev@a050d8b2` (2026-08-30). Current source of
 `apps/api/prisma/schema.prisma`. Phase 8 Slice 8.3A0 later removes the test-era
 `UberOrderItemModifier` model under explicit destructive-migration authorization.
 
-The schema currently contains **75 models**: 65 UUID-backed primary keys, six integer
-primary keys, and four natural/stable-token primary keys. This refresh also absorbs
-pre-existing inventory drift from `LoyaltyProgramPolicy` / `PosConnectivityReadModel`.
-Schema/migration authority still follows `AGENTS.md`.
+The schema currently contains **74 models**: 64 UUID-backed primary keys, six integer
+primary keys, and four natural/stable-token primary keys. Phase 8 Slice 8.3C removed the
+test-era `UberOrderCancellation` model after production verification and the authorized
+destructive migration. This refresh also absorbs pre-existing inventory drift from
+`LoyaltyProgramPolicy` / `PosConnectivityReadModel`. Schema/migration authority still
+follows `AGENTS.md`.
 
 ## Primary-key families
 
