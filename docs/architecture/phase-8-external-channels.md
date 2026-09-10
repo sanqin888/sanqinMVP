@@ -1,6 +1,6 @@
 # Phase 8 — External Channels Boundary Contraction & L3 Resilience
 
-Status: **SLICE 8.1 LOCAL SOURCE COMPLETE — PENDING REVIEW**  
+Status: **SLICE 8.1 IMPLEMENTED — PR #2260 REMOTE VALIDATED**  
 Slice 0 audit baseline: `origin/dev@d1c7d7b3e968d99dce1e3df39ca1af04a7696883`  
 Slice 8.1 implementation baseline: `origin/dev@96808b0ec1adc984dae99dd73dbd0e8ce4f2c4a9`  
 Baseline merges: PR `#2258` — Phase 7 Slice 5B; PR `#2259` — Phase 8 planning / Slice 0 audit  
@@ -222,9 +222,9 @@ Candidate scope:
 
 Expected debt movement must be calculated from the final approved file scope rather than promised in advance. No new public cycle or eager barrel-loading regression is allowed.
 
-#### Slice 8.1 local implementation result
+#### Slice 8.1 implementation result
 
-Local source on `refactor/phase8-slice8.1-public-boundary-hygiene-v2` implements the narrow path contraction without changing Uber business/provider behavior:
+PR #2260 on `refactor/phase8-slice8.1-public-boundary-hygiene-v2` implements the narrow path contraction without changing Uber business/provider behavior:
 
 - `api/ubereats-access.decorator.ts` now imports `AdminMfaGuard`, `Roles`, `RolesGuard`, and `SessionAuthGuard` from the existing Auth public surface. Guard order, MFA, CSRF and role metadata are unchanged.
 - Six layer-legal `AppLogger` consumers (`api/oauth.controller.ts`, four `infrastructure/uber-api/*` files, and `infrastructure/persistence/uber-telemetry.service.ts`) now import `AppLogger` from `common/public-api.ts`; logger calls and metadata are unchanged.
@@ -243,7 +243,7 @@ Actual local baseline movement from the reviewed source diff is:
 - `external-channels -> runtime-data-ci-ops`: **24**, unchanged;
 - incoming External composition debt: **3**, unchanged.
 
-No local lint/build/test/scanner was run; GitHub Actions remains the validation gate after user review and remote-delivery authorization.
+No local lint/build/test/scanner was run. PR #2260 source head `f4020dbd` passed GitHub Actions CI #5413, including the architecture baseline gate, API lint/build/strict declaration/test, and Web lint/build/strict declaration/test.
 
 ### Slice 8.2 — Runtime/persistence semantic ownership audit and containment
 
