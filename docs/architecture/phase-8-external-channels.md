@@ -1,6 +1,6 @@
 # Phase 8 — External Channels Boundary Contraction & L3 Resilience
 
-Status: **SLICE 8.1 MERGED — SLICE 8.2A LOCAL SOURCE COMPLETE / PENDING REVIEW**  
+Status: **SLICE 8.1 MERGED — SLICE 8.2A PR #2261 REMOTE VALIDATED / FINAL DOC CI PENDING**  
 Slice 0 audit baseline: `origin/dev@d1c7d7b3e968d99dce1e3df39ca1af04a7696883`  
 Slice 8.1 implementation baseline: `origin/dev@96808b0ec1adc984dae99dd73dbd0e8ce4f2c4a9`  
 Slice 8.2A implementation baseline: `origin/dev@fc9bfc01f651c0d3193ee06e1d71ea0029e77835`  
@@ -283,7 +283,7 @@ Local implementation result on `refactor/phase8-slice8.2a-store-schedule-ownersh
 - production Uber persistence now has zero direct `.businessHour` accesses. Timezone, tax rate and business-hour fields remain unchanged, and Store's reader preserves weekday ordering.
 - focused coverage verifies the composition-root mapping, repository delegation, removal of the obsolete Prisma schedule binding, and an architecture invariant that no production Uber persistence file directly accesses `businessHour`.
 - no direct-import/public-cycle baseline movement is expected. `external-channels -> runtime-data-ci-ops` remains **24**, Orders remains **1**, Identity remains **2**, Foundation remains **4**, and no machine-baseline edit is made.
-- no local lint/build/test/scanner was run; GitHub Actions remains the validation gate after user review and remote-delivery authorization.
+- no local lint/build/test/scanner was run; PR #2261 source head `7b5779e5` passed GitHub Actions CI #5417, including architecture baseline, API lint/build/strict/test and Web lint/build/strict/test. This documentation-sync commit still requires its own final CI before merge.
 
 Phase-closeout active verification scope added by this slice: Admin Uber menu draft/load and menu publish must still derive the configured Store schedule/timezone/tax correctly, and the dedicated worker composition must resolve the same schedule provider without startup/provider-resolution errors. No provider-wire payload shape is intentionally changed.
 
