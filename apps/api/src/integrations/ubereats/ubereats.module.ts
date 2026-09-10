@@ -1,4 +1,9 @@
-import { Logger, Module, type DynamicModule, type Provider } from '@nestjs/common';
+import {
+  Logger,
+  Module,
+  type DynamicModule,
+  type Provider,
+} from '@nestjs/common';
 import { AuthModule } from '../../auth/auth.module';
 import {
   CATALOG_EXTERNAL_MENU_FACTS_READER,
@@ -87,7 +92,9 @@ import {
   UBER_EATS_STORE_STATUS_SYNC,
 } from './public-api';
 
-const UBER_ORDER_CANCELLATION_LOGGER = new Logger('UberOrderImportPrismaAdapter');
+const UBER_ORDER_CANCELLATION_LOGGER = new Logger(
+  'UberOrderImportPrismaAdapter',
+);
 
 /** The complete provider graph assembled exclusively by this composition root. */
 const UBER_EATS_COMPOSITION_PROVIDERS: Provider[] = [

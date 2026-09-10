@@ -32,7 +32,9 @@ describe('Uber cancellation ownership', () => {
 
     expect(port).toContain('UberCanonicalOrderCancellationPort');
     expect(port).not.toMatch(/@prisma\/client|\bPrisma\.|orders\/public-api/);
-    expect(useCase).toContain('this.cancellations.finalizeConfirmedCancellation');
+    expect(useCase).toContain(
+      'this.cancellations.finalizeConfirmedCancellation',
+    );
     expect(useCase).not.toContain('saveExistingOrderCancellation');
     expect(wiring).toContain('UBER_CANONICAL_ORDER_CANCELLATION');
     expect(uberModule).toContain('UBER_CANONICAL_ORDER_CANCELLATION');

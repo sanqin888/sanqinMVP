@@ -35,7 +35,9 @@ describe('OrderExternalCancellationFinalizerService', () => {
     };
     const service = serviceWithTransaction(tx);
 
-    await expect(service.finalizeConfirmedCancellation(input)).resolves.toEqual({
+    await expect(
+      service.finalizeConfirmedCancellation(input),
+    ).resolves.toEqual({
       orderStableId: 'stable-order-1',
       refundCents: 1_130,
     });
@@ -55,10 +57,14 @@ describe('OrderExternalCancellationFinalizerService', () => {
     });
     expect(amendmentUpsert).toHaveBeenCalledWith({
       where: {
-        amendmentStableId: expect.stringMatching(/^external_cancel_[0-9a-f]{64}$/) as unknown,
+        amendmentStableId: expect.stringMatching(
+          /^external_cancel_[0-9a-f]{64}$/,
+        ) as unknown,
       },
       create: {
-        amendmentStableId: expect.stringMatching(/^external_cancel_[0-9a-f]{64}$/) as unknown,
+        amendmentStableId: expect.stringMatching(
+          /^external_cancel_[0-9a-f]{64}$/,
+        ) as unknown,
         orderId: '8a3d4c0e-4750-4f6a-9138-000000000401',
         type: 'RETENDER',
         paymentMethod: 'UBEREATS',
@@ -113,26 +119,29 @@ describe('OrderExternalCancellationFinalizerService', () => {
     };
     const service = serviceWithTransaction(tx);
 
-    await expect(service.finalizeConfirmedCancellation(input)).resolves.toEqual({
+    await expect(
+      service.finalizeConfirmedCancellation(input),
+    ).resolves.toEqual({
       orderStableId: 'stable-order-1',
       refundCents: 1_130,
     });
-    await expect(service.finalizeConfirmedCancellation(input)).resolves.toEqual({
+    await expect(
+      service.finalizeConfirmedCancellation(input),
+    ).resolves.toEqual({
       orderStableId: 'stable-order-1',
       refundCents: 1_130,
     });
 
-    const firstAmendment = amendmentUpsert.mock.calls[0]?.[0] as {
-      where: { amendmentStableId: string };
-    };
-    const replayedAmendment = amendmentUpsert.mock.calls[1]?.[0] as {
-      where: { amendmentStableId: string };
-    };
-    expect(firstAmendment.where.amendmentStableId).toMatch(
+    const amendmentCalls = amendmentUpsert.mock.calls as unknown as Array<
+      [{ where: { amendmentStableId: string } }]
+    >;
+    const firstAmendment = amendmentCalls[0]?.[0];
+    const replayedAmendment = amendmentCalls[1]?.[0];
+    expect(firstAmendment?.where.amendmentStableId).toMatch(
       /^external_cancel_[0-9a-f]{64}$/,
     );
-    expect(replayedAmendment.where.amendmentStableId).toBe(
-      firstAmendment.where.amendmentStableId,
+    expect(replayedAmendment?.where.amendmentStableId).toBe(
+      firstAmendment?.where.amendmentStableId,
     );
     expect(lifecycleCreateMany).toHaveBeenCalledTimes(2);
   });
@@ -142,7 +151,10 @@ describe('OrderExternalCancellationFinalizerService', () => {
     const orderUpdate = jest.fn();
     const lifecycleCreateMany = jest.fn();
     const tx = {
-      order: { findFirst: jest.fn().mockResolvedValue(null), update: orderUpdate },
+      order: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        update: orderUpdate,
+      },
       orderAmendment: { upsert: amendmentUpsert },
       opsEvent: { createMany: lifecycleCreateMany },
     };
