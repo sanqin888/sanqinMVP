@@ -18,9 +18,11 @@ describe('HandleUberFinancialReportSuccessUseCase replay safety', () => {
       markError: jest.fn().mockResolvedValue(undefined),
     };
     const artifacts = {
-      downloadCsvSections: jest.fn().mockResolvedValue([
-        '/api/v1/accounting/files/uber-reports/stable.csv',
-      ]),
+      downloadCsvSections: jest
+        .fn()
+        .mockResolvedValue([
+          '/api/v1/accounting/files/uber-reports/stable.csv',
+        ]),
     };
     const useCase = new HandleUberFinancialReportSuccessUseCase(
       reports as never,
