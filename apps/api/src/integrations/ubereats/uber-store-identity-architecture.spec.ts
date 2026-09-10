@@ -169,10 +169,7 @@ describe('Uber Eats store identity architecture', () => {
       ),
     );
 
-    expect(directCatalogReads).toEqual([
-      'uber-menu-config-import-prisma.adapter.ts:menuItem',
-      'uber-menu-config-import-prisma.adapter.ts:menuOptionTemplateChoice',
-    ]);
+    expect(directCatalogReads).toEqual([]);
     for (const file of persistenceFiles) {
       expect(file.source).not.toContain('/menu/public-api');
     }

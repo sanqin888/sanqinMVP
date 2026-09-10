@@ -45,16 +45,18 @@ describe('UberMenuConfigImportPrismaAdapter release safety', () => {
       uberModifierGroupConfig: emptyDelegate,
       uberCategoryConfig: emptyDelegate,
       opsEvent: { create: jest.fn().mockResolvedValue({}) },
-      menuItem: {
-        findUnique: jest
-          .fn()
-          .mockResolvedValue({ basePriceCents: 749, isAvailable: true }),
-      },
-      menuOptionTemplateChoice: {
-        findUnique: jest
-          .fn()
-          .mockResolvedValue({ priceDeltaCents: 200, isAvailable: true }),
-      },
+    };
+    const catalogFacts = {
+      getMenuItemSource: jest.fn().mockResolvedValue({
+        stableId: 'pork',
+        basePriceCents: 749,
+        isAvailable: true,
+      }),
+      getOptionSource: jest.fn().mockResolvedValue({
+        stableId: 'extra',
+        priceDeltaCents: 200,
+        isAvailable: true,
+      }),
     };
     const prisma = {
       ...tx,
@@ -67,7 +69,11 @@ describe('UberMenuConfigImportPrismaAdapter release safety', () => {
       itemDelegate,
       optionDelegate,
       prisma,
-      adapter: new UberMenuConfigImportPrismaAdapter(prisma as never),
+      catalogFacts,
+      adapter: new UberMenuConfigImportPrismaAdapter(
+        prisma as never,
+        catalogFacts as never,
+      ),
     };
   };
 
@@ -140,6 +146,7 @@ describe('UberMenuConfigImportPrismaAdapter release safety', () => {
   it('restores only the selected item price and records administrator intent', async () => {
     const x = setup();
     await x.adapter.restoreItemPrice('production', 'pork', 'admin-1');
+    expect(x.catalogFacts.getMenuItemSource).toHaveBeenCalledWith('pork');
     expect(x.itemDelegate.upsert).toHaveBeenCalledTimes(1);
     expect(x.itemDelegate.upsert).toHaveBeenCalledWith({
       where: {
@@ -169,9 +176,21 @@ describe('UberMenuConfigImportPrismaAdapter release safety', () => {
     });
   });
 
+  it('does not write an item override when the Catalog owner cannot resolve the item', async () => {
+    const x = setup();
+    x.catalogFacts.getMenuItemSource.mockResolvedValueOnce(null);
+
+    await expect(
+      x.adapter.restoreItemPrice('production', 'missing-item', 'admin-1'),
+    ).rejects.toMatchObject({ code: 'UBER_MENU_ITEM_NOT_FOUND' });
+    expect(x.itemDelegate.upsert).not.toHaveBeenCalled();
+    expect(x.prisma.opsEvent.create).not.toHaveBeenCalled();
+  });
+
   it('restores only the selected option price', async () => {
     const x = setup();
     await x.adapter.restoreOptionPrice('production', 'extra', 'admin-1');
+    expect(x.catalogFacts.getOptionSource).toHaveBeenCalledWith('extra');
     expect(x.optionDelegate.upsert).toHaveBeenCalledTimes(1);
     expect(x.optionDelegate.upsert).toHaveBeenCalledWith({
       where: {
@@ -198,5 +217,16 @@ describe('UberMenuConfigImportPrismaAdapter release safety', () => {
       sourcePriceDeltaCents: 200,
       administratorStableId: 'admin-1',
     });
+  });
+
+  it('does not write an option override when the Catalog owner cannot resolve the option', async () => {
+    const x = setup();
+    x.catalogFacts.getOptionSource.mockResolvedValueOnce(null);
+
+    await expect(
+      x.adapter.restoreOptionPrice('production', 'missing-option', 'admin-1'),
+    ).rejects.toMatchObject({ code: 'UBER_MENU_OPTION_NOT_FOUND' });
+    expect(x.optionDelegate.upsert).not.toHaveBeenCalled();
+    expect(x.prisma.opsEvent.create).not.toHaveBeenCalled();
   });
 });
