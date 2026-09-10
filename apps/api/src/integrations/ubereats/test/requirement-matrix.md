@@ -133,7 +133,9 @@ wire mapper 只允许 `pos_data.integrator_store_id` 恢复这一 SanQ external 
 
 Store Management 统一使用 Uber 当前 Store API Suite。SanQ 内部仍使用 `PAUSED` 表示暂停目标，
 但发送给 Uber 时转换为 `status=OFFLINE`；暂停截止时间发送为 `is_offline_until`，恢复发送
-`status=ONLINE`。`default_prep_time` 以秒为单位，SanQ 只接受 `1..10800` 的整数。状态读取、
+`status=ONLINE`。Phase 8 Slice 8.5 只删除 SanQ Test Store 的历史 identity/OpsTicket 兼容；
+它不改变这里的 Uber wire 状态映射，也不放宽 webhook、idempotency 或 provider response compatibility。
+`default_prep_time` 以秒为单位，SanQ 只接受 `1..10800` 的整数。状态读取、
 状态写入和 Prep Time 更新都通过可检查 HTTP response 的 gateway transport 执行，并保留 Uber
 实际 HTTP status 到审计记录，用于部署后的 `200` 验收证据。Store Management 只允许已 mapping
 且已 provision 的门店执行。

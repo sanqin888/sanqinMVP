@@ -120,21 +120,18 @@ export function createOperationsWiring(): Provider[] {
         UBER_ORDER_OPERATIONS_REPOSITORY,
         UBER_RECONCILIATION_REPOSITORY,
         UBER_OPS_TICKET_REPOSITORY,
-        UBER_STORE_MAPPING_REPOSITORY,
         UBER_TELEMETRY_PORT,
       ],
       useFactory: (
         orders: UberOrderOperationsRepositoryPort,
         reports: UberReconciliationRepositoryPort,
         tickets: UberOpsTicketRepositoryPort,
-        mappings: UberStoreMappingRepositoryPort,
         telemetry: UberTelemetryPort,
       ) =>
         new GenerateUberReconciliationReportUseCase(
           orders,
           reports,
           tickets,
-          mappings,
           telemetry,
         ),
     },
@@ -194,16 +191,11 @@ export function createOperationsWiring(): Provider[] {
     },
     {
       provide: QueryUberOperationsSummary,
-      inject: [
-        UBER_RECONCILIATION_REPOSITORY,
-        UBER_OPS_TICKET_REPOSITORY,
-        UBER_STORE_MAPPING_REPOSITORY,
-      ],
+      inject: [UBER_RECONCILIATION_REPOSITORY, UBER_OPS_TICKET_REPOSITORY],
       useFactory: (
         reports: UberReconciliationRepositoryPort,
         tickets: UberOpsTicketRepositoryPort,
-        mappings: UberStoreMappingRepositoryPort,
-      ) => new QueryUberOperationsSummary(reports, tickets, mappings),
+      ) => new QueryUberOperationsSummary(reports, tickets),
     },
   ];
 }

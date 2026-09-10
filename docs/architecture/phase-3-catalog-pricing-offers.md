@@ -457,12 +457,12 @@ yet been recorded, so no production-verification claim is added here.
 
 ## Deferred items that are not Slice 1 scope
 
-- Historical Uber sandbox compatibility still carries
-  `@compat brand-store.default-store-identity.v1` annotations even though the
-  registry entry is closed. Keep them until Uber Production Cutover Cleanup.
-  After that cleanup, delete the compatibility code/annotations together and
-  tighten the central scanner so a closed compat ID cannot remain in production
-  source.
+- Historical note: Uber sandbox compatibility still carried
+  `@compat brand-store.default-store-identity.v1` annotations after the registry
+  entry closed, and Phase 3 intentionally deferred that cleanup. This deferral was
+  superseded by Phase 8 Slice 8.5 after the Test Store data was declared disposable:
+  the compatibility source/annotations are contracted there and the central scanner
+  is hardened so a closed compat ID cannot remain in production source.
 - Payments/Clover is no longer a whole-context frozen zone. POS Clover Terminal
   may be modularized as pre-production work when isolated from live Web Ecommerce.
   Production Web Clover remains guarded and is not a routine Phase 3 cleanup

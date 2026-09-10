@@ -20,23 +20,16 @@ export class UberMenuAvailabilityPrismaAdapter
     const mappings = await this.prisma.uberStoreMapping.findMany({
       where: {
         isProvisioned: true,
-        ...(storeStableId
-          ? {
-              // Legacy transport compatibility: the existing HTTP storeId may
-              // still carry an Uber store id.
-              OR: [
-                { posExternalStoreId: storeStableId },
-                { uberStoreId: storeStableId },
-              ],
-            }
-          : {}),
+        posExternalStoreId: storeStableId ? storeStableId : { not: null },
       },
       select: { posExternalStoreId: true, uberStoreId: true },
     });
-    return mappings.map((mapping) => ({
-      storeStableId: mapping.posExternalStoreId?.trim() || mapping.uberStoreId,
-      uberStoreId: mapping.uberStoreId,
-    }));
+    return mappings.flatMap((mapping) => {
+      const mappedStoreStableId = mapping.posExternalStoreId?.trim();
+      return mappedStoreStableId
+        ? [{ storeStableId: mappedStoreStableId, uberStoreId: mapping.uberStoreId }]
+        : [];
+    });
   }
 
   async createItemPublishFailure(

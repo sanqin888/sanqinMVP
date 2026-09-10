@@ -101,7 +101,63 @@ describe('Uber Eats store identity architecture', () => {
       'storeStableId: input.storeStableId',
     );
     expect(orderIngestion!.source).toContain('storeId: input.storeStableId');
-    expect(menuController!.source).toContain('storeStableId: dto.storeId');
+    expect(menuController!.source).toContain('storeStableId: dto.storeStableId');
+  });
+
+  it('keeps closed Test Store identity compatibility out of Operations and availability', () => {
+    const applicationFiles = scanTypeScript(join(__dirname, 'application'), {
+      productionOnly: true,
+    });
+    const persistenceFiles = scanTypeScript(
+      join(__dirname, 'infrastructure', 'persistence'),
+      { productionOnly: true },
+    );
+    const requestFiles = scanTypeScript(join(__dirname, 'contracts', 'requests'), {
+      productionOnly: true,
+    });
+    const operationSources = applicationFiles
+      .filter((file) => file.path.includes('/operations/'))
+      .map((file) => file.source)
+      .join('\n');
+    const operationsPersistence = persistenceFiles.find((file) =>
+      file.path.endsWith('uber-operations-prisma.repositories.ts'),
+    );
+    const merchantPersistence = persistenceFiles.find((file) =>
+      file.path.endsWith('uber-merchant-persistence.adapter.ts'),
+    );
+    const availabilityPersistence = persistenceFiles.find((file) =>
+      file.path.endsWith('uber-menu-availability-prisma.adapter.ts'),
+    );
+    const menuRequests = requestFiles.find((file) =>
+      file.path.endsWith('menu.requests.ts'),
+    );
+
+    expect(operationsPersistence).toBeDefined();
+    expect(merchantPersistence).toBeDefined();
+    expect(availabilityPersistence).toBeDefined();
+    expect(menuRequests).toBeDefined();
+    expect(operationSources).not.toMatch(
+      /legacyUberStoreIds|persistedStoreScopeId|ticketStoreScope|resolvePersistedTicketStoreStableId/,
+    );
+    expect(operationSources).not.toContain(
+      '@compat brand-store.default-store-identity.v1',
+    );
+    expect(operationSources).not.toMatch(/targetStatus\s*===\s*['"]OFFLINE['"]/);
+    expect(operationsPersistence!.source).toContain('storeId: storeStableId');
+    expect(operationsPersistence!.source).not.toContain('storeScopeIds');
+    expect(merchantPersistence!.source).not.toContain(
+      'storeId: { in: [input.storeStableId, input.uberStoreId] }',
+    );
+    expect(availabilityPersistence!.source).toContain(
+      'posExternalStoreId: storeStableId ? storeStableId : { not: null }',
+    );
+    expect(availabilityPersistence!.source).not.toContain(
+      '{ uberStoreId: storeStableId }',
+    );
+    expect(availabilityPersistence!.source).not.toContain(
+      'mapping.posExternalStoreId?.trim() || mapping.uberStoreId',
+    );
+    expect(menuRequests!.source).toContain('storeStableId?: string;');
   });
 
   it('keeps Uber order store policy reads behind UBER_STORE_CONFIG_QUERY', () => {

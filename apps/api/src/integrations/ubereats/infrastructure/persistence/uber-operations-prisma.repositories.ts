@@ -90,7 +90,7 @@ type TicketRow = Prisma.UberOpsTicketGetPayload<{
 
 export const mapOpsTicketRow = (row: TicketRow) => ({
   ticketStableId: row.ticketStableId,
-  persistedStoreScopeId: row.storeId,
+  storeStableId: row.storeId,
   type: toDomainTicketType(row.type),
   status: toDomainTicketStatus(row.status),
   priority: toDomainTicketPriority(row.priority),
@@ -173,16 +173,12 @@ export class UberReconciliationPrismaRepository implements UberReconciliationRep
 class TicketRepository implements UberOpsTicketRepositoryPort {
   constructor(private readonly db: Prisma.TransactionClient | PrismaService) {}
 
-  private storeScopeIds(
-    scope: Parameters<UberOpsTicketRepositoryPort['countOpen']>[0],
+  countOpen(
+    storeStableId: Parameters<UberOpsTicketRepositoryPort['countOpen']>[0],
   ) {
-    return [scope.storeStableId, ...scope.legacyUberStoreIds];
-  }
-
-  countOpen(scope: Parameters<UberOpsTicketRepositoryPort['countOpen']>[0]) {
     return this.db.uberOpsTicket.count({
       where: {
-        storeId: { in: this.storeScopeIds(scope) },
+        storeId: storeStableId,
         status: { in: [DbTicketStatus.OPEN, DbTicketStatus.IN_PROGRESS] },
       },
     });
@@ -213,12 +209,12 @@ class TicketRepository implements UberOpsTicketRepositoryPort {
     };
   }
   async list(
-    scope: Parameters<UberOpsTicketRepositoryPort['list']>[0],
+    storeStableId: Parameters<UberOpsTicketRepositoryPort['list']>[0],
     status?: UberOpsTicketStatus,
   ) {
     const rows = await this.db.uberOpsTicket.findMany({
       where: {
-        storeId: { in: this.storeScopeIds(scope) },
+        storeId: storeStableId,
         ...(status ? { status: toPrismaTicketStatus(status) } : {}),
       },
       orderBy: [{ status: 'asc' }, { priority: 'desc' }, { createdAt: 'desc' }],
@@ -228,11 +224,11 @@ class TicketRepository implements UberOpsTicketRepositoryPort {
     return rows.map(mapOpsTicketRow);
   }
   async summary(
-    scope: Parameters<UberOpsTicketRepositoryPort['summary']>[0],
+    storeStableId: Parameters<UberOpsTicketRepositoryPort['summary']>[0],
     status?: UberOpsTicketStatus,
   ) {
     const where: Prisma.UberOpsTicketWhereInput = {
-      storeId: { in: this.storeScopeIds(scope) },
+      storeId: storeStableId,
       ...(status ? { status: toPrismaTicketStatus(status) } : {}),
     };
     const [count, latest] = await Promise.all([

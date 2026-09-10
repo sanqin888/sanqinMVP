@@ -27,7 +27,6 @@ import type {
   UberOpsTicketRepositoryPort,
   UberOrderOperationsRepositoryPort,
   UberReconciliationRepositoryPort,
-  UberOpsTicketStoreScope,
 } from './uber-operations.ports';
 import type { PublishUberMenuUseCase } from '../menu/publish-uber-menu.use-case';
 import type { UberMenuAvailabilityUseCase } from '../menu/uber-menu-availability.use-case';
@@ -65,41 +64,6 @@ const requireStoreStableId = (value: string | undefined): string => {
   if (!storeStableId)
     throw invalidOperationsInput('Uber Operations 必须提供 storeStableId');
   return storeStableId;
-};
-
-/** @compat brand-store.default-store-identity.v1 */
-const ticketStoreScope = async (
-  storeStableId: string,
-  mappings: Pick<UberStoreMappingRepositoryPort, 'listMappings'>,
-): Promise<UberOpsTicketStoreScope> => {
-  const legacyUberStoreIds = (await mappings.listMappings())
-    .filter((mapping) => mapping.posExternalStoreId?.trim() === storeStableId)
-    .map((mapping) => mapping.uberStoreId.trim())
-    .filter(Boolean);
-  return { storeStableId, legacyUberStoreIds };
-};
-
-/** @compat brand-store.default-store-identity.v1 */
-const resolvePersistedTicketStoreStableId = async (
-  persistedStoreScopeId: string,
-  mappings: Pick<UberStoreMappingRepositoryPort, 'listMappings'>,
-): Promise<string> => {
-  const rows = await mappings.listMappings();
-  const canonical = rows
-    .find(
-      (mapping) => mapping.posExternalStoreId?.trim() === persistedStoreScopeId,
-    )
-    ?.posExternalStoreId?.trim();
-  if (canonical) return canonical;
-
-  const legacy = rows
-    .find((mapping) => mapping.uberStoreId.trim() === persistedStoreScopeId)
-    ?.posExternalStoreId?.trim();
-  if (legacy) return legacy;
-
-  throw invalidOperationsInput(
-    `工单门店 identity 无法解析为 SanQ storeStableId: ${persistedStoreScopeId}`,
-  );
 };
 
 const assertUberStoreMapping = async (
@@ -165,10 +129,6 @@ export class GenerateUberReconciliationReportUseCase {
     private readonly orders: UberOrderOperationsRepositoryPort,
     private readonly reports: UberReconciliationRepositoryPort,
     private readonly tickets: UberOpsTicketRepositoryPort,
-    private readonly mappings: Pick<
-      UberStoreMappingRepositoryPort,
-      'listMappings'
-    >,
     private readonly telemetry: UberTelemetryPort,
   ) {}
   async execute(
@@ -176,7 +136,6 @@ export class GenerateUberReconciliationReportUseCase {
   ): Promise<UberReconciliationReportResult> {
     const storeStableId = requireStoreStableId(input.storeStableId);
     const range = reportRange(input.rangeStart, input.rangeEnd);
-    const scope = await ticketStoreScope(storeStableId, this.mappings);
     const [orders, failedSyncEvents, discrepancyOrders] = await Promise.all([
       this.orders.reconciliationOrders(
         storeStableId,
@@ -184,7 +143,7 @@ export class GenerateUberReconciliationReportUseCase {
         range.rangeEnd,
       ),
       this.reports.countFailedSyncEvents(range.rangeStart, range.rangeEnd),
-      this.tickets.countOpen(scope),
+      this.tickets.countOpen(storeStableId),
     ]);
     const summary = {
       totalOrders: orders.length,
@@ -299,10 +258,7 @@ export class RetryUberOpsTicketUseCase {
     });
     let retryError: unknown;
     try {
-      const storeStableId = await resolvePersistedTicketStoreStableId(
-        ticket.persistedStoreScopeId,
-        this.mappings,
-      );
+      const storeStableId = requireStoreStableId(ticket.storeStableId);
       if (ticket.type === UberOpsTicketType.ORDER_STATUS_SYNC) {
         if (!ticket.externalOrderId)
           throw invalidOperationsInput('订单状态同步工单缺少 externalOrderId');
@@ -375,10 +331,6 @@ export class QueryUberOperationsSummary {
   constructor(
     private readonly reports: UberReconciliationRepositoryPort,
     private readonly ticketRepository: UberOpsTicketRepositoryPort,
-    private readonly mappings: Pick<
-      UberStoreMappingRepositoryPort,
-      'listMappings'
-    >,
   ) {}
   async listReports(
     storeStableId: string,
@@ -403,8 +355,10 @@ export class QueryUberOperationsSummary {
     status?: UberOpsTicketStatus,
   ): Promise<UberPage<UberOpsTicket>> {
     const canonicalStoreStableId = requireStoreStableId(storeStableId);
-    const scope = await ticketStoreScope(canonicalStoreStableId, this.mappings);
-    const records = await this.ticketRepository.list(scope, status);
+    const records = await this.ticketRepository.list(
+      canonicalStoreStableId,
+      status,
+    );
     const items: UberOpsTicket[] = records.map((ticket) => ({
       ticketStableId: ticket.ticketStableId,
       type: ticket.type,
@@ -429,8 +383,7 @@ export class QueryUberOperationsSummary {
     status?: UberOpsTicketStatus,
   ): Promise<UberOperationsCountSummary> {
     const canonicalStoreStableId = requireStoreStableId(storeStableId);
-    const scope = await ticketStoreScope(canonicalStoreStableId, this.mappings);
-    return this.ticketRepository.summary(scope, status);
+    return this.ticketRepository.summary(canonicalStoreStableId, status);
   }
   tickets(
     storeStableId: string,
@@ -476,14 +429,6 @@ const parseStoreContext = (value: unknown): StoreStatusSyncContext => {
   const c = requireContext(value);
   if (typeof c.uberStoreId !== 'string' || !c.uberStoreId.trim())
     throw invalidOperationsInput('门店状态工单缺少 uberStoreId');
-
-  /** @compat brand-store.default-store-identity.v1 */
-  if (c.targetStatus === 'OFFLINE') {
-    return {
-      uberStoreId: c.uberStoreId,
-      targetStatus: 'PAUSED',
-    };
-  }
 
   if (c.targetStatus !== 'ONLINE' && c.targetStatus !== 'PAUSED')
     throw invalidOperationsInput('门店状态工单的 targetStatus 非法');
