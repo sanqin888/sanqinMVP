@@ -48,7 +48,7 @@ import {
   UpdateUberStorePrepTimeUseCase,
 } from '../application/merchant/uber-merchant-provisioning.service';
 import { presentOAuthCallback, presentOAuthStart } from './oauth.presenter';
-import { AppLogger } from '../../../common/app-logger';
+import { AppLogger } from '../../../common/public-api';
 import {
   presentMerchantConnection,
   presentMerchantMutation,

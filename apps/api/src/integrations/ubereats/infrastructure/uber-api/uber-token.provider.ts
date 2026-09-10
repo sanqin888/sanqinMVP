@@ -1,6 +1,6 @@
 //apps/api/src/integrations/ubereats/uber-auth.service.ts
 import { Inject, Injectable, Optional } from '@nestjs/common';
-import { AppLogger } from '../../../../common/app-logger';
+import { AppLogger } from '../../../../common/public-api';
 import { UberHttpClient } from './uber-http.client';
 import { UberApiConfigService } from './uber-api-config.service';
 import {
