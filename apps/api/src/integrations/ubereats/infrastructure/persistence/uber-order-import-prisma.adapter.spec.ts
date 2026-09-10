@@ -153,6 +153,80 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
     expect(listOrderModifierSnapshotSources).toHaveBeenCalledTimes(1);
   });
 
+  it(
+    'keeps Uber modifiers in canonical options without passing provider persistence through Orders ingestion',
+    async () => {
+      const ingest = jest.fn().mockResolvedValue(savedOrder);
+      const adapter = new UberOrderImportPrismaAdapter(
+        {} as never,
+        { ingest } as never,
+        {} as never,
+      );
+
+      await adapter.saveImportedOrder({
+        ...baseInput,
+        order: {
+          ...parsedOrder,
+          items: [
+            {
+              externalLineId: 'line-1',
+              externalItemId: 'uber-item-1',
+              stableIdHint: null,
+              displayName: 'Dish',
+              quantity: 1,
+              baseUnitPriceCents: 1_000,
+              optionsUnitPriceCents: 200,
+              unitPriceCents: 1_200,
+              lineTotalCents: 1_200,
+              specialInstructions: null,
+              modifiers: [
+                {
+                  externalId: 'sanq:option-1',
+                  parentExternalId: 'modifier-group-1',
+                  displayName: 'Extra cheese',
+                  quantity: 1,
+                  priceDeltaCents: 200,
+                  specialInstructions: null,
+                  children: [],
+                },
+              ],
+            },
+          ],
+        },
+        menuMappings: [
+          {
+            externalItemId: 'uber-item-1',
+            menuItemStableId: 'dish-1',
+            expectedPriceCents: 1_000,
+          },
+        ],
+      } as never);
+
+      const [normalized] = ingest.mock.calls[0] as unknown as [
+        {
+          items: Array<{
+            options: unknown;
+            external: Record<string, unknown>;
+          }>;
+        },
+      ];
+      const options = normalized.items[0]?.options as Array<{
+        templateGroupStableId: string;
+        choices: Array<{
+          stableId: string;
+          displayName: string;
+          priceDeltaCents: number;
+        }>;
+      }>;
+      expect(options).toHaveLength(1);
+      expect(options[0]?.templateGroupStableId).toBe('modifier-group-1');
+      expect(options[0]?.choices[0]?.stableId).toBe('sanq:option-1');
+      expect(options[0]?.choices[0]?.displayName).toBe('Extra cheese');
+      expect(options[0]?.choices[0]?.priceDeltaCents).toBe(200);
+      expect(normalized.items[0]?.external).not.toHaveProperty('modifiers');
+    },
+  );
+
   it('persists orders.failure against the existing order without requiring detail data', async () => {
     const log = jest
       .spyOn(Logger.prototype, 'log')

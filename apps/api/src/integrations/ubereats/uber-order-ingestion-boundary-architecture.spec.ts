@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { scanTypeScript } from '../../test/architecture-test.utils';
 
@@ -48,6 +49,11 @@ describe('Uber Eats Orders ingestion public boundary', () => {
       file.path.endsWith('orders.module.ts'),
     );
 
+    const prismaSchema = readFileSync(
+      join(__dirname, '../../../prisma/schema.prisma'),
+      'utf8',
+    );
+
     expect(publicApi).toBeDefined();
     expect(contract).toBeDefined();
     expect(provider).toBeDefined();
@@ -57,9 +63,13 @@ describe('Uber Eats Orders ingestion public boundary', () => {
     expect(publicApi!.source).toContain('OrderIngestionPort');
     expect(publicApi!.source).toContain('ORDER_INGESTION_PROVIDER');
     expect(contract!.source).toContain('storeStableId?: string | null;');
+    expect(contract!.source).not.toContain('modifiers?: Array');
     expect(provider!.source).toContain('useClass: OrderIngestionService');
     expect(service!.source).toContain('implements OrderIngestionPort');
     expect(service!.source).toContain('storeId: input.storeStableId');
+    expect(service!.source).not.toContain('uberOrderItemModifier');
+    expect(prismaSchema).not.toContain('model UberOrderItemModifier');
+    expect(prismaSchema).not.toContain('uberModifiers');
     expect(ordersModule!.source).toContain('ORDER_INGESTION_PROVIDER');
     expect(ordersModule!.source).toContain('ORDER_INGESTION,');
   });

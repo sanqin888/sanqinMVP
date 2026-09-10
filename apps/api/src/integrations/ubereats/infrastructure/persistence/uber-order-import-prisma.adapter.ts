@@ -223,15 +223,6 @@ export class UberOrderImportPrismaAdapter
         lineId: item.externalLineId,
         instructions: item.specialInstructions,
         lineTotalCents: item.lineTotalCents,
-        modifiers: this.flattenValues(item.modifiers).map((modifier) => ({
-          externalId: modifier.externalId,
-          parentExternalId: modifier.parentExternalId,
-          displayName: modifier.displayName,
-          quantity: modifier.quantity,
-          priceDeltaCents: modifier.priceDeltaCents,
-          specialInstructions: modifier.specialInstructions,
-          snapshot: modifier as unknown as Prisma.InputJsonValue,
-        })),
       },
     }));
     const targetStatus = UberOrderStateMachine.eventStatus(input.eventType);
@@ -513,13 +504,6 @@ export class UberOrderImportPrismaAdapter
 
     visit(values, null);
     return snapshots as unknown as Prisma.InputJsonValue;
-  }
-
-  private flattenValues(values: ParsedUberModifier[]): ParsedUberModifier[] {
-    return values.flatMap((value) => [
-      value,
-      ...this.flattenValues(value.children),
-    ]);
   }
 
   private readCursor(

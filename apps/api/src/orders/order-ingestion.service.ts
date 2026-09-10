@@ -124,7 +124,7 @@ export class OrderIngestionService implements OrderIngestionPort {
       // key makes webhook retries converge on exactly one order snapshot.
       await tx.orderItem.deleteMany({ where: { orderId: saved.id } });
       for (const item of input.items) {
-        const created = await tx.orderItem.create({
+        await tx.orderItem.create({
           data: {
             orderId: saved.id,
             productStableId: item.productStableId,
@@ -145,21 +145,6 @@ export class OrderIngestionService implements OrderIngestionPort {
             priceVarianceCents: item.external?.priceVarianceCents,
           },
         });
-        if (item.external?.modifiers?.length) {
-          await tx.uberOrderItemModifier.createMany({
-            data: item.external.modifiers.map((modifier, sortOrder) => ({
-              externalModifierId: modifier.externalId,
-              parentExternalId: modifier.parentExternalId,
-              displayName: modifier.displayName,
-              quantity: modifier.quantity,
-              priceDeltaCents: modifier.priceDeltaCents,
-              specialInstructions: modifier.specialInstructions,
-              snapshot: modifier.snapshot,
-              orderItemId: created.id,
-              sortOrder,
-            })),
-          });
-        }
       }
       const output: IngestionResult = {
         orderId: saved.id,

@@ -1,20 +1,21 @@
 # Current ID inventory
 
-Phase 1 closeout snapshot: `origin/dev@a050d8b2` (2026-08-30). Source of truth:
-`apps/api/prisma/schema.prisma`. Phase 1 made no Prisma schema changes, so the
-model-family counts below remain unchanged from the initial baseline.
+Phase 1 closeout snapshot: `origin/dev@a050d8b2` (2026-08-30). Current source of truth:
+`apps/api/prisma/schema.prisma`. Phase 8 Slice 8.3A0 later removes the test-era
+`UberOrderItemModifier` model under explicit destructive-migration authorization.
 
-The schema contains **75 models**: 66 UUID-backed primary keys, six integer
-primary keys, and three natural/token primary keys. This inventory describes
-semantics; it does not authorize a schema or migration change.
+The schema currently contains **75 models**: 65 UUID-backed primary keys, six integer
+primary keys, and four natural/stable-token primary keys. This refresh also absorbs
+pre-existing inventory drift from `LoyaltyProgramPolicy` / `PosConnectivityReadModel`.
+Schema/migration authority still follows `AGENTS.md`.
 
 ## Primary-key families
 
 | Family | Models |
 |---|---|
-| UUID-backed (66) | UberRateLimitLease; User; UserSession; TrustedDevice; AuthChallenge; Store; StoreConfig; PosDevice; UserInvite; UserAddress; Order; PosPrintJob; Coupon; CouponTemplate; CouponProgram; PromotionRule; UserCoupon; OrderItem; UberOrderItemModifier; UberWebhookInbox; UberOrderAction; UberOrderCancellation; OrderAmendment; OrderAmendmentItem; LoyaltyAccount; LoyaltyTenderReservation; LoyaltyLedger; CheckoutIntent; CloverMerchantAuthorization; PaymentTransaction; PaymentCheckoutAttempt; MessagingSuppression; MessagingSend; MessagingDeliveryEvent; MessagingWebhookEvent; RecipientFailureCounter; MenuCategory; MenuItem; MenuPackagingType; MenuItemPackaging; MenuItemComponent; MenuOptionGroupTemplate; MenuOptionTemplateChoice; MenuOptionChoiceLink; MenuItemOptionGroup; AccountingCategory; AccountingAccount; AccountingTransaction; AccountingExpenseDocument; PlatformSettlementRecord; UberFinancialReport; AccountingAuditLog; AccountingPeriodClose; AnalyticsEvent; OpsEvent; UberMerchantConnection; UberStoreMapping; UberItemChannelConfig; UberCategoryConfig; UberModifierGroupConfig; UberOptionItemConfig; UberOptionChildGroupBinding; UberMenuPublishVersion; UberPublishedMenuItem; UberReconciliationReport; UberOpsTicket |
-| Integer (6) | BrandConfig singleton; BusinessConfig singleton; BusinessHour; Holiday; MenuDailySpecial; AccountingAutomationConfig singleton |
-| Natural/token (3) | UberRateLimitState.`partitionKey`; CloverOAuthStateRequest.`stateHash`; UberOAuthStateRequest.`nonce` |
+| UUID-backed (65) | UberRateLimitLease; User; UserSession; TrustedDevice; AuthChallenge; Store; StoreConfig; PosDevice; UserInvite; UserAddress; Order; PosPrintJob; Coupon; CouponTemplate; CouponProgram; PromotionRule; UserCoupon; OrderItem; UberWebhookInbox; UberOrderAction; UberOrderCancellation; OrderAmendment; OrderAmendmentItem; LoyaltyAccount; LoyaltyTenderReservation; LoyaltyLedger; CheckoutIntent; CloverMerchantAuthorization; PaymentTransaction; PaymentCheckoutAttempt; MessagingSuppression; MessagingSend; MessagingDeliveryEvent; MessagingWebhookEvent; RecipientFailureCounter; MenuCategory; MenuItem; MenuPackagingType; MenuItemPackaging; MenuItemComponent; MenuOptionGroupTemplate; MenuOptionTemplateChoice; MenuOptionChoiceLink; MenuItemOptionGroup; AccountingCategory; AccountingAccount; AccountingTransaction; AccountingExpenseDocument; PlatformSettlementRecord; UberFinancialReport; AccountingAuditLog; AccountingPeriodClose; AnalyticsEvent; OpsEvent; UberMerchantConnection; UberStoreMapping; UberItemChannelConfig; UberCategoryConfig; UberModifierGroupConfig; UberOptionItemConfig; UberOptionChildGroupBinding; UberMenuPublishVersion; UberPublishedMenuItem; UberReconciliationReport; UberOpsTicket |
+| Integer (6) | BrandConfig singleton; LoyaltyProgramPolicy singleton; BusinessHour; Holiday; MenuDailySpecial; AccountingAutomationConfig singleton |
+| Natural/stable-token (4) | UberRateLimitState.`partitionKey`; PosConnectivityReadModel.`storeStableId`; CloverOAuthStateRequest.`stateHash`; UberOAuthStateRequest.`nonce` |
 
 ## Stable business identities
 

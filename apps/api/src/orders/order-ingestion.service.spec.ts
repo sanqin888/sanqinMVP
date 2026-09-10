@@ -84,7 +84,6 @@ describe('OrderIngestionService', () => {
         deleteMany: jest.fn(),
         create: jest.fn().mockResolvedValue({ id: 'i1' }),
       },
-      uberOrderItemModifier: { createMany: jest.fn() },
     };
     const prisma = {
       $transaction: (fn: (client: unknown) => unknown) => fn(tx),
@@ -113,7 +112,6 @@ describe('OrderIngestionService', () => {
         deleteMany: jest.fn(),
         create: jest.fn().mockResolvedValue({ id: 'i1' }),
       },
-      uberOrderItemModifier: { createMany: jest.fn() },
     };
     const service = new OrderIngestionService({
       $transaction: (fn: (client: unknown) => unknown) => fn(tx),
@@ -167,7 +165,6 @@ describe('OrderIngestionService', () => {
         deleteMany: jest.fn(),
         create: jest.fn().mockResolvedValue({ id: 'i1' }),
       },
-      uberOrderItemModifier: { createMany: jest.fn() },
     };
     const service = new OrderIngestionService({
       $transaction: (fn: (client: unknown) => unknown) => fn(tx),
@@ -215,7 +212,6 @@ describe('OrderIngestionService', () => {
         deleteMany: jest.fn(),
         create: jest.fn().mockResolvedValue({ id: 'i1' }),
       },
-      uberOrderItemModifier: { createMany: jest.fn() },
     };
     const service = new OrderIngestionService({
       $transaction: (fn: (client: unknown) => unknown) => fn(tx),
@@ -252,7 +248,6 @@ describe('OrderIngestionService', () => {
         deleteMany: jest.fn(),
         create: jest.fn().mockResolvedValue({ id: 'i1' }),
       },
-      uberOrderItemModifier: { createMany: jest.fn() },
     };
     const service = new OrderIngestionService({
       $transaction: (fn: (client: unknown) => unknown) => fn(tx),
@@ -279,75 +274,59 @@ describe('OrderIngestionService', () => {
     ).rejects.toThrow('Scheduled orders require scheduledReadyAt');
   });
 
-  it('显式映射 modifier 的持久化字段', async () => {
-    type ModifierCreateManyArgs = {
-      data: Array<{
-        externalModifierId: string | null;
-        parentExternalId: string | null;
-        snapshot: unknown;
-        sortOrder: number;
-        externalId?: string;
-      }>;
-    };
-    let createManyArgs: ModifierCreateManyArgs | undefined;
-    const createMany = jest.fn((args: ModifierCreateManyArgs) => {
-      createManyArgs = args;
-    });
-    const tx = {
-      order: {
-        findUnique: jest.fn().mockResolvedValue(null),
-        create: jest.fn().mockResolvedValue({
-          id: 'o1',
-          orderStableId: 's1',
-          status: 'pending',
-        }),
-      },
-      orderItem: {
-        deleteMany: jest.fn(),
-        create: jest.fn().mockResolvedValue({ id: 'i1' }),
-      },
-      uberOrderItemModifier: { createMany },
-    };
-    const prisma = {
-      $transaction: (fn: (client: unknown) => unknown) => fn(tx),
-    };
-    const service = new OrderIngestionService(prisma as never);
-    const snapshot = { source: 'uber', nested: { value: 1 } };
-    const modifierInput = {
-      ...input,
-      items: [
-        {
-          productStableId: 'dish',
-          quantity: 1,
-          displayName: 'Dish',
-          unitPriceCents: 1000,
-          external: {
-            modifiers: [
-              {
-                externalId: 'modifier-1',
-                parentExternalId: 'parent-1',
-                displayName: 'Extra cheese',
-                quantity: 2,
-                priceDeltaCents: 150,
-                specialInstructions: 'On the side',
-                snapshot,
-              },
-            ],
-          },
+  it(
+    'keeps canonical modifier snapshots on OrderItem.optionsJson without provider persistence',
+    async () => {
+      const createItem = jest.fn().mockResolvedValue({ id: 'i1' });
+      const tx = {
+        order: {
+          findUnique: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({
+            id: 'o1',
+            orderStableId: 's1',
+            status: 'pending',
+          }),
         },
-      ],
-    } as never;
+        orderItem: {
+          deleteMany: jest.fn(),
+          create: createItem,
+        },
+      };
+      const service = new OrderIngestionService({
+        $transaction: (fn: (client: unknown) => unknown) => fn(tx),
+      } as never);
+      const optionsSnapshot = {
+        groups: [
+          {
+            templateGroupStableId: 'group-1',
+            choices: [{ stableId: 'option-1', priceDeltaCents: 150 }],
+          },
+        ],
+      };
 
-    await service.ingest(modifierInput, policies);
+      await service.ingest(
+        {
+          ...(input as object),
+          items: [
+            {
+              productStableId: 'dish',
+              quantity: 1,
+              displayName: 'Dish',
+              unitPriceCents: 1000,
+              options: optionsSnapshot,
+            },
+          ],
+        } as never,
+        policies,
+      );
 
-    expect(createManyArgs).toBeDefined();
-    const data = createManyArgs!.data;
-    expect(data[0].externalModifierId).toBe('modifier-1');
-    expect(data[0]).not.toHaveProperty('externalId');
-    expect(data[0].parentExternalId).toBe('parent-1');
-    expect(data[0].snapshot).toBe(snapshot);
-    expect(data[0].sortOrder).toBe(0);
-  });
+      expect(createItem).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          optionsJson: optionsSnapshot,
+        }) as unknown,
+      });
+    },
+  );
 
   it('不会把 Web 支付校验套用到 Uber 订单', async () => {
     const service = new OrderIngestionService({} as never);

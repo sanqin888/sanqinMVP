@@ -27,15 +27,6 @@ export type NormalizedOrderItem = {
     publishedPriceCents?: number | null;
     channelBasePriceCents?: number | null;
     priceVarianceCents?: number | null;
-    modifiers?: Array<{
-      externalId: string | null;
-      parentExternalId: string | null;
-      displayName: string;
-      quantity: number;
-      priceDeltaCents: number;
-      specialInstructions: string | null;
-      snapshot: Prisma.InputJsonValue;
-    }>;
   };
 };
 
