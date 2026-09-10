@@ -47,20 +47,16 @@ describe('UberMenuConfigImportPrismaAdapter release safety', () => {
       opsEvent: { create: jest.fn().mockResolvedValue({}) },
     };
     const catalogFacts = {
-      getMenuItemSource: jest
-        .fn()
-        .mockResolvedValue({
-          stableId: 'pork',
-          basePriceCents: 749,
-          isAvailable: true,
-        }),
-      getOptionSource: jest
-        .fn()
-        .mockResolvedValue({
-          stableId: 'extra',
-          priceDeltaCents: 200,
-          isAvailable: true,
-        }),
+      getMenuItemSource: jest.fn().mockResolvedValue({
+        stableId: 'pork',
+        basePriceCents: 749,
+        isAvailable: true,
+      }),
+      getOptionSource: jest.fn().mockResolvedValue({
+        stableId: 'extra',
+        priceDeltaCents: 200,
+        isAvailable: true,
+      }),
     };
     const prisma = {
       ...tx,

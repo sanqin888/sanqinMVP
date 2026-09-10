@@ -200,7 +200,9 @@ export class UberMenuConfigImportPrismaAdapter implements UberMenuConfigImportPo
   ) {
     return this.prisma.$transaction(async (tx) => {
       const canonicalStoreId = await this.canonicalStoreId(tx, storeId);
-      const option = await this.catalogFacts.getOptionSource(optionChoiceStableId);
+      const option = await this.catalogFacts.getOptionSource(
+        optionChoiceStableId,
+      );
       if (!option)
         throw new UberValidationError({
           code: 'UBER_MENU_OPTION_NOT_FOUND',
