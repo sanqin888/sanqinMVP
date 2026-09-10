@@ -49,12 +49,11 @@ describe('CatalogUberAvailabilityOrchestrationService', () => {
     };
     const syncMenuItemAvailability = jest.fn().mockResolvedValue(syncResult);
     const syncOptionAvailability = jest.fn().mockResolvedValue(syncResult);
-    const externalAvailability: jest.Mocked<
-      CatalogExternalAvailabilitySyncPort
-    > = {
-      syncMenuItemAvailability,
-      syncOptionAvailability,
-    };
+    const externalAvailability: jest.Mocked<CatalogExternalAvailabilitySyncPort> =
+      {
+        syncMenuItemAvailability,
+        syncOptionAvailability,
+      };
 
     return {
       service: new CatalogUberAvailabilityOrchestrationService(
