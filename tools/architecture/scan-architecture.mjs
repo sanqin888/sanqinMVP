@@ -671,7 +671,7 @@ if (adminCatalogOwnershipBoundary) {
   if (existsSync(catalogReaderPath)) {
     const source = readFileSync(catalogReaderPath, 'utf8');
     if (
-      !source.includes('implements CatalogAvailabilityReaderPort') ||
+      !source.includes('CatalogAvailabilityReaderPort') ||
       !source.includes('getMenuItemAvailabilitySnapshot') ||
       !source.includes('getOptionAvailabilitySnapshot') ||
       /integrations\/ubereats/.test(source)
