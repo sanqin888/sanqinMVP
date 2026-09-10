@@ -28,11 +28,13 @@ describe('UberFinancialReportArtifactStore replay safety', () => {
   it('reuses one deterministic artifact when the same section is replayed', async () => {
     const csv = 'order_id,total\n1,367\n';
     const bytes = new TextEncoder().encode(csv);
-    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
-      new Response(bytes, {
-        status: 200,
-        headers: { 'content-length': String(bytes.byteLength) },
-      }),
+    const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(() =>
+      Promise.resolve(
+        new Response(bytes, {
+          status: 200,
+          headers: { 'content-length': String(bytes.byteLength) },
+        }),
+      ),
     );
     const store = new UberFinancialReportArtifactStore();
     const input = {
@@ -102,9 +104,9 @@ describe('UberFinancialReportArtifactStore replay safety', () => {
   it('fails closed when an existing deterministic artifact has different bytes', async () => {
     const csv = 'order_id,total\n1,367\n';
     const bytes = new TextEncoder().encode(csv);
-    jest
-      .spyOn(global, 'fetch')
-      .mockResolvedValue(new Response(bytes, { status: 200 }));
+    jest.spyOn(global, 'fetch').mockImplementation(() =>
+      Promise.resolve(new Response(bytes, { status: 200 })),
+    );
     const store = new UberFinancialReportArtifactStore();
     const input = {
       workflowId: 'workflow-123',
