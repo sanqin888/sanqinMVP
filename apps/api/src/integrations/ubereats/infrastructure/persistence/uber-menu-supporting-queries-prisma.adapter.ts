@@ -1,14 +1,9 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../../prisma/prisma.service';
-import {
-  UBER_STORE_CONFIG_QUERY,
-  type UberStoreConfigQueryPort,
-} from '../../application/shared/uber-store-config.port';
 import type {
   MenuItemExistenceQueryPort,
   OptionChoiceExistenceQueryPort,
   ProvisionedUberStoreQueryPort,
-  UberBusinessScheduleQueryPort,
 } from '../../application/menu/uber-menu-draft.ports';
 
 @Injectable()
@@ -16,14 +11,9 @@ export class UberMenuSupportingQueriesPrismaAdapter
   implements
     MenuItemExistenceQueryPort,
     OptionChoiceExistenceQueryPort,
-    ProvisionedUberStoreQueryPort,
-    UberBusinessScheduleQueryPort
+    ProvisionedUberStoreQueryPort
 {
-  constructor(
-    private readonly prisma: PrismaService,
-    @Inject(UBER_STORE_CONFIG_QUERY)
-    private readonly storeConfig: UberStoreConfigQueryPort,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async menuItemExists(stableId: string): Promise<boolean> {
     const item = await this.prisma.menuItem.findUnique({
@@ -58,20 +48,5 @@ export class UberMenuSupportingQueriesPrismaAdapter
     return mapping && posExternalStoreId
       ? { uberStoreId: mapping.uberStoreId, posExternalStoreId }
       : null;
-  }
-
-  async readBusinessSchedule(storeStableId: string) {
-    const [config, hours] = await Promise.all([
-      this.storeConfig.getStoreConfig(storeStableId),
-      this.prisma.businessHour.findMany({
-        where: { store: { storeStableId } },
-        orderBy: { weekday: 'asc' },
-      }),
-    ]);
-    return {
-      timezone: config.timezone,
-      salesTaxRate: config.salesTaxRate,
-      hours,
-    };
   }
 }

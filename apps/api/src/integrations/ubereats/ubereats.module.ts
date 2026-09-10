@@ -7,9 +7,11 @@ import {
 import { PrismaModule } from '../../prisma/prisma.module';
 import {
   BRAND_STORE_CONFIG_READER,
+  STORE_SCHEDULE_READER,
   BrandStoreConfigModule,
   BrandStoreConfigUnavailableError,
   type BrandStoreConfigReaderPort,
+  type StoreScheduleReaderPort,
 } from '../../store/public-api';
 import { UberEatsMenuController } from './api/menu.controller';
 import { UberEatsOAuthController } from './api/oauth.controller';
@@ -20,6 +22,10 @@ import { ClaimAndExecuteUberOrderActionsUseCase } from './application/orders/cla
 import { ClaimAndProcessUberWebhookInboxUseCase } from './application/orders/claim-and-process-uber-webhook-inbox.use-case';
 import { ProcessUberWebhookInboxUseCase } from './application/orders/process-uber-webhook-inbox.use-case';
 import { ExecuteUberOrderActionWorker } from './application/orders/uber-order.use-cases';
+import {
+  UBER_BUSINESS_SCHEDULE_QUERY_PORT,
+  type UberBusinessScheduleQueryPort,
+} from './application/menu/uber-menu-draft.ports';
 import {
   UBER_STORE_CONFIG_QUERY,
   type UberStoreConfigQueryPort,
@@ -85,6 +91,26 @@ const UBER_EATS_COMPOSITION_PROVIDERS: Provider[] = [
           true,
       };
     },
+  },
+  {
+    provide: UBER_BUSINESS_SCHEDULE_QUERY_PORT,
+    inject: [UBER_STORE_CONFIG_QUERY, STORE_SCHEDULE_READER],
+    useFactory: (
+      storeConfig: UberStoreConfigQueryPort,
+      scheduleReader: StoreScheduleReaderPort,
+    ): UberBusinessScheduleQueryPort => ({
+      readBusinessSchedule: async (storeStableId) => {
+        const [config, hours] = await Promise.all([
+          storeConfig.getStoreConfig(storeStableId),
+          scheduleReader.listBusinessHours(storeStableId),
+        ]);
+        return {
+          timezone: config.timezone,
+          salesTaxRate: config.salesTaxRate,
+          hours,
+        };
+      },
+    }),
   },
   ...createCommonWiring(),
   ...createMerchantWiring(),
