@@ -1,6 +1,6 @@
 # Phase 9 — Accounting / Reporting / Analytics Boundary Contraction & L3 Financial Integrity
 
-Status: **SLICE 0 READINESS AUDIT COMPLETE — SLICE 1 MERGED / CI GREEN — SLICE 2 SOURCE COMPLETE / LOCAL REVIEW PENDING**  
+Status: **SLICE 0 READINESS AUDIT COMPLETE — SLICE 1/2 MERGED / CI GREEN — SLICE 3 SOURCE COMPLETE / LOCAL REVIEW PENDING**  
 Slice 0 audit baseline: `origin/dev@1a69bd7dbd49eba08661b169463e32dc820f0396`  
 Slice 1 merge: PR #2281 / final head `974066e7c11f58316368fcb4fcfeec28c5da5509` / squash merge `f529f4701b63040a8e2dfee2cf3ca82213f25ec6` / CI #5494 green  
 Audit date: 2026-09-11
@@ -164,8 +164,8 @@ No separate production deployment/active verification is required for Slice 1 be
 
 ## 12. Slice 2 — Accounting / Reporting Characterization
 
-State: **SOURCE COMPLETE / LOCAL REVIEW PENDING**  
-Local branch: `refactor/phase9-slice2-accounting-characterization`  
+State: **MERGED / CI GREEN**  
+PR/SHA: PR #2283; final head `d6518ba13f8b1bb43df941d2fde10a44409e2a3b`; squash merge `b35890d8ed7399bc389915b192f7c20ff966c9b8`; CI #5500 green  
 Implementation base: `origin/dev@9a25e8221bb16cb9d18d16bcbbdcb974d1b05bc3`
 
 Slice 2 is intentionally test-only for production behavior. It adds characterization coverage before any L3 financial-integrity or cross-owner ownership change and does not modify Accounting, Reports, Uber, Orders, Payments, Web, Prisma schema/migrations, package dependencies, provider contracts or architecture allowances.
@@ -183,4 +183,25 @@ Architecture effect: **none**. The machine direct-import baseline remains `accou
 
 This slice deliberately does not fix the L3 atomicity/audit gap, normalize Reports onto StoreConfig timezone, change `accountingStartDate` UTC-midnight storage, replace direct Orders reads, change Revenue Posting semantics, or remove Accounting knowledge of Uber provider store UUIDs. Those remain later explicitly scoped Phase 9 work.
 
-Per repository workflow, no local lint/build/test/architecture command is claimed. After user review, the exact GitHub Actions API/Web pipeline is the validation gate.
+Remote validation: initial PR heads stopped only on type-aware lint/Prettier issues in the newly added tests. Final head `d6518ba1` passed GitHub Actions CI #5500 completely: API architecture baseline, lint, build, strict declaration/shared checks and Jest were green; Web lint, build, strict declaration check and tests were green. PR #2283 was squash-merged to `dev` as `b35890d8`.
+
+## 13. Slice 3 — Accounting L3 Atomicity Hardening
+
+State: **SOURCE COMPLETE / LOCAL REVIEW PENDING**  
+Local branch: `refactor/phase9-slice3-accounting-l3-atomicity`  
+Implementation base: `origin/dev@b35890d8ed7399bc389915b192f7c20ff966c9b8`
+
+Slice 3 establishes an owner-internal atomic-write invariant without changing the Accounting HTTP contract, Prisma schema, open-period edit/soft-delete semantics, Revenue Posting rules or cross-context ownership. A shared Accounting-only helper now executes financial write units at Prisma `Serializable` isolation and retries Prisma `P2034` serialization conflicts up to three attempts, following the repository's existing coupon-claim transaction pattern.
+
+The following operations now keep the period-state read, financial mutation and required audit evidence inside the same Serializable transaction:
+
+- ledger `createTx`, `updateTx` and soft `deleteTx`, including idempotency/OCC checks and `CREATE` / `UPDATE` / `DELETE` audit rows;
+- `closeMonth`, `reopenMonth` and `closeYear`, including year/month state checks and `PERIOD_CLOSE` / `PERIOD_REOPEN` / `YEAR_LOCK` audit rows;
+- manual Expense creation and inbox confirmation split writes. Their accounting-start/closed-period checks now run inside the same transaction as document/split persistence, and every created split ledger row receives `CREATE` audit evidence atomically;
+- inbox confirmation re-reads the document state inside the transaction before replacement, preventing concurrent double-confirmation. Any replaced active split rows are captured before deletion and receive matching `DELETE` audit evidence in the same transaction.
+
+The shared atomic-write helper intentionally depends only on Prisma client transaction contracts rather than importing `PrismaService`, so it does not add a new Accounting -> Runtime/Data direct edge. Architecture movement for Slice 3 is therefore **none**: Foundation **3**, Orders **1**, External **1**, Identity **2**, Runtime **9**, total **16**, with `legacyPublicCycleComponents=[]`.
+
+Slice 3 deliberately does **not** convert the ledger to append-only/reversal semantics, normalize Reports timezone behavior, change `accountingStartDate` storage, alter provisional `Order.totalCents` revenue accrual, contract Reporting -> Orders ownership, modify Uber financial-report identity, or touch production Web Clover. Those remain later Phase 9 slices.
+
+Tests are updated to retain Slice 2 behavior characterization while asserting same-transaction period checks/audit evidence, inbox replacement evidence and the Serializable/P2034 retry helper. Per repository workflow, no local lint/build/test/architecture command is claimed; GitHub Actions remains the validation gate after user review and remote-delivery authorization.
