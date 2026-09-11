@@ -37,12 +37,15 @@ describe('AccountingOperationsService expense-write characterization', () => {
   });
 
   it('creates the expense document and all split ledger rows inside one Prisma transaction', async () => {
+    let generatedDocumentStableId = '';
     const createDocument = jest.fn(
-      (args: { data: { documentStableId: string } }) =>
-        Promise.resolve({
+      (args: { data: { documentStableId: string } }) => {
+        generatedDocumentStableId = args.data.documentStableId;
+        return Promise.resolve({
           id: 'expense-document-db-id',
           documentStableId: args.data.documentStableId,
-        }),
+        });
+      },
     );
     const createMany = jest.fn().mockResolvedValue({ count: 2 });
     const tx = {
@@ -104,8 +107,6 @@ describe('AccountingOperationsService expense-write characterization', () => {
     );
 
     expect(transaction).toHaveBeenCalledTimes(1);
-    const generatedDocumentStableId = createDocument.mock.calls[0][0].data
-      .documentStableId;
     expect(generatedDocumentStableId).toMatch(/^expense_/);
     expect(createDocument).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -117,7 +118,7 @@ describe('AccountingOperationsService expense-write characterization', () => {
         totalCents: 1130,
         currency: 'CAD',
         confirmedByUserId: 'user_stable_1',
-      }),
+      }) as unknown as Record<string, unknown>,
     });
     expect(createMany).toHaveBeenCalledWith({
       data: [
@@ -132,13 +133,13 @@ describe('AccountingOperationsService expense-write characterization', () => {
           externalRef: generatedDocumentStableId,
           createdByUserId: 'user_stable_1',
           updatedByUserId: 'user_stable_1',
-        }),
+        }) as unknown as Record<string, unknown>,
         expect.objectContaining({
           amountCents: 400,
           taxCents: 52,
           categoryId: 'category-packaging-db-id',
           idempotencyKey: `expense:${generatedDocumentStableId}:1`,
-        }),
+        }) as unknown as Record<string, unknown>,
       ],
     });
     expect(result.documentStableId).toBe(generatedDocumentStableId);
@@ -163,15 +164,14 @@ describe('AccountingOperationsService expense-write characterization', () => {
         status: AccountingDocumentStatus.PENDING_REVIEW,
         attachmentUrls: ['/api/v1/accounting/files/bills/original.pdf'],
       })
-      .mockImplementation(
-        (args: { where: { documentStableId: string } }) =>
-          Promise.resolve({
-            ...documentRow(args.where.documentStableId),
-            attachmentUrls: [
-              '/api/v1/accounting/files/bills/original.pdf',
-              '/api/v1/accounting/files/receipts/new.jpg',
-            ],
-          }),
+      .mockImplementation((args: { where: { documentStableId: string } }) =>
+        Promise.resolve({
+          ...documentRow(args.where.documentStableId),
+          attachmentUrls: [
+            '/api/v1/accounting/files/bills/original.pdf',
+            '/api/v1/accounting/files/receipts/new.jpg',
+          ],
+        }),
       );
     const prisma = {
       accountingExpenseDocument: { findUnique },
@@ -228,7 +228,7 @@ describe('AccountingOperationsService expense-write characterization', () => {
           '/api/v1/accounting/files/bills/original.pdf',
           '/api/v1/accounting/files/receipts/new.jpg',
         ],
-      }),
+      }) as unknown as Record<string, unknown>,
     });
     expect(createMany).toHaveBeenCalledWith({
       data: [
@@ -238,7 +238,7 @@ describe('AccountingOperationsService expense-write characterization', () => {
           externalRef: 'inbox_doc_1',
           createdByUserId: 'user_stable_2',
           updatedByUserId: 'user_stable_2',
-        }),
+        }) as unknown as Record<string, unknown>,
       ],
     });
     expect(result.documentStableId).toBe('inbox_doc_1');

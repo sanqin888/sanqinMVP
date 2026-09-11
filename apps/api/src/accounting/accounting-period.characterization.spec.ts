@@ -59,9 +59,9 @@ describe('AccountingService period-close characterization', () => {
     };
     prisma.accountingPeriodClose.upsert.mockResolvedValue(close);
 
-    await expect(
-      service.closeMonth('2026-09', 'user_stable_1'),
-    ).resolves.toBe(close);
+    await expect(service.closeMonth('2026-09', 'user_stable_1')).resolves.toBe(
+      close,
+    );
 
     expect(prisma.accountingPeriodClose.upsert).toHaveBeenCalledWith({
       where: {
@@ -81,7 +81,7 @@ describe('AccountingService period-close characterization', () => {
         startAt: new Date('2026-09-01T04:00:00.000Z'),
         endAt: new Date('2026-10-01T03:59:59.999Z'),
         closedByUserId: 'user_stable_1',
-        closedAt: expect.any(Date),
+        closedAt: expect.any(Date) as unknown as Date,
       },
       select: {
         periodType: true,
@@ -98,11 +98,11 @@ describe('AccountingService period-close characterization', () => {
         entityType: 'ACCOUNTING_PERIOD',
         entityId: '2026-09',
         operatorUserId: 'user_stable_1',
-      }),
+      }) as unknown as Record<string, unknown>,
     });
   });
 
-  it('reopens an existing month when its fiscal year is not hard-locked and records PERIOD_REOPEN evidence', async () => {
+  it('reopens an existing month only while its fiscal year is not hard-locked and records PERIOD_REOPEN evidence', async () => {
     const { service, prisma } = makeService();
     const existingClose = {
       periodType: 'MONTH',
@@ -135,7 +135,7 @@ describe('AccountingService period-close characterization', () => {
         entityId: '2026-09',
         operatorUserId: 'user_stable_2',
         beforeJson: existingClose,
-      }),
+      }) as unknown as Record<string, unknown>,
     });
   });
 
@@ -160,7 +160,9 @@ describe('AccountingService period-close characterization', () => {
     };
     prisma.accountingPeriodClose.upsert.mockResolvedValue(close);
 
-    await expect(service.closeYear('2026', 'user_stable_2')).resolves.toBe(close);
+    await expect(service.closeYear('2026', 'user_stable_2')).resolves.toBe(
+      close,
+    );
 
     expect(prisma.accountingPeriodClose.findMany).toHaveBeenCalledWith({
       where: {
@@ -179,15 +181,15 @@ describe('AccountingService period-close characterization', () => {
           startAt: new Date('2026-01-01T05:00:00.000Z'),
           endAt: new Date('2027-01-01T04:59:59.999Z'),
           closedByUserId: 'user_stable_2',
-        }),
-      }),
+        }) as unknown as Record<string, unknown>,
+      }) as unknown,
     );
     expect(prisma.accountingAuditLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         action: 'YEAR_LOCK',
         entityId: '2026',
         operatorUserId: 'user_stable_2',
-      }),
+      }) as unknown as Record<string, unknown>,
     });
   });
 });

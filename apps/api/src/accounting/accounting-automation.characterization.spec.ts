@@ -32,16 +32,18 @@ describe('AccountingAutomationScheduler financial-report characterization', () =
         }),
       },
       uberStoreMapping: {
-        findMany: jest.fn().mockResolvedValue([
-          { uberStoreId: 'uber-store-a' },
-          { uberStoreId: 'uber-store-b' },
-        ]),
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            { uberStoreId: 'uber-store-a' },
+            { uberStoreId: 'uber-store-b' },
+          ]),
       },
     };
     const uberReporting = {
-      requestFinancialReports: jest.fn().mockResolvedValue([
-        { workflowId: 'workflow-1' },
-      ]),
+      requestFinancialReports: jest
+        .fn()
+        .mockResolvedValue([{ workflowId: 'workflow-1' }]),
     };
     const scheduler = new AccountingAutomationScheduler(
       gmail as never,
@@ -56,7 +58,7 @@ describe('AccountingAutomationScheduler financial-report characterization', () =
     const { scheduler, prisma, uberReporting } = makeScheduler();
 
     await expect(scheduler.runNow()).resolves.toEqual(
-      expect.objectContaining({ uber: [] }),
+      expect.objectContaining({ uber: [] }) as unknown,
     );
 
     expect(prisma.uberStoreMapping.findMany).not.toHaveBeenCalled();
@@ -71,7 +73,9 @@ describe('AccountingAutomationScheduler financial-report characterization', () =
     );
 
     await expect(scheduler.runNow()).resolves.toEqual({
-      gmail: expect.objectContaining({ importedDocuments: 0 }),
+      gmail: expect.objectContaining({
+        importedDocuments: 0,
+      }) as unknown as Record<string, unknown>,
       uber: [{ workflowId: 'workflow-1' }],
     });
 
@@ -104,7 +108,7 @@ describe('AccountingAutomationScheduler financial-report characterization', () =
     );
 
     await expect(scheduler.runNow()).resolves.toEqual(
-      expect.objectContaining({ uber: [] }),
+      expect.objectContaining({ uber: [] }) as unknown,
     );
 
     expect(uberReporting.requestFinancialReports).not.toHaveBeenCalled();

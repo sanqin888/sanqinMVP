@@ -90,9 +90,9 @@ describe('AccountingService order-revenue accrual characterization', () => {
               OrderStatus.completed,
             ],
           },
-        }),
+        }) as unknown as Record<string, unknown>,
         orderBy: { paidAt: 'asc' },
-      }),
+      }) as unknown,
     );
     expect(createTx).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -103,7 +103,7 @@ describe('AccountingService order-revenue accrual characterization', () => {
         orderId: 'order_1',
         idempotencyKey: 'AUTO_ORDER_DAILY:2026-09-10',
         memo: '自动入账 2026-09-10（2 单）',
-      }),
+      }) as unknown,
       'user_stable_1',
     );
   });
@@ -192,7 +192,7 @@ describe('AccountingService order-revenue accrual characterization', () => {
         amountCents: 1800,
         orderId: 'uber_order',
         idempotencyKey: 'AUTO_ORDER:uber_order',
-      }),
+      }) as unknown,
       'user_stable_2',
     );
     expect(createTx).toHaveBeenNthCalledWith(
@@ -202,7 +202,7 @@ describe('AccountingService order-revenue accrual characterization', () => {
         amountCents: 950,
         orderId: 'store_order',
         idempotencyKey: 'AUTO_ORDER:store_order',
-      }),
+      }) as unknown,
       'user_stable_2',
     );
   });
