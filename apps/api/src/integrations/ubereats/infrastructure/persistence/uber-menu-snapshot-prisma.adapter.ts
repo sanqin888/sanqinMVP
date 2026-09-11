@@ -5,15 +5,16 @@ import {
   type UberCatalogMenuFactsQueryPort,
 } from '../../application/shared/uber-catalog-menu-facts.port';
 import {
-  UBER_STORE_CONFIG_QUERY,
-  type UberStoreConfigQueryPort,
-} from '../../application/shared/uber-store-config.port';
+  UBER_BUSINESS_SCHEDULE_QUERY_PORT,
+  type UberBusinessScheduleQueryPort,
+} from '../../application/menu/uber-menu-draft.ports';
 import type {
   UberMenuPublishSnapshot,
   UberMenuSnapshotRepositoryPort,
 } from '../../application/menu/uber-menu-publication.ports';
 import { UberValidationError } from '../../application/shared/uber-application.error';
 import { composeUberDisplayName } from '../../domain/menu/uber-menu-payload.builder';
+import { toUberServiceAvailability } from '../../domain/menu/uber-payload.utils';
 import {
   readUberPreparationType,
   resolveUberMenuAvailability,
@@ -24,8 +25,8 @@ import {
 export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepositoryPort {
   constructor(
     private readonly prisma: PrismaService,
-    @Inject(UBER_STORE_CONFIG_QUERY)
-    private readonly storeConfig: UberStoreConfigQueryPort,
+    @Inject(UBER_BUSINESS_SCHEDULE_QUERY_PORT)
+    private readonly businessSchedule: UberBusinessScheduleQueryPort,
     @Inject(UBER_CATALOG_MENU_FACTS_QUERY)
     private readonly catalogFacts: UberCatalogMenuFactsQueryPort,
   ) {}
@@ -37,7 +38,7 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
     const storeId = storeStableId;
     const [
       mapping,
-      storeConfig,
+      businessSchedule,
       sourceFacts,
       rawItemConfigs,
       rawOptionConfigs,
@@ -52,7 +53,7 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
         },
         select: { uberStoreId: true },
       }),
-      this.storeConfig.getStoreConfig(storeStableId),
+      this.businessSchedule.readBusinessSchedule(storeStableId),
       this.catalogFacts.readMenuSource(),
       this.prisma.uberItemChannelConfig.findMany({
         where: { storeId: storeStableId },
@@ -117,7 +118,7 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
       (template) => template.isAvailable,
     );
 
-    const timezone = storeConfig.timezone.trim();
+    const timezone = businessSchedule.timezone?.trim() ?? '';
     if (!timezone) {
       throw new UberValidationError({
         code: 'UBER_MENU_SCHEDULE_INVALID',
@@ -125,7 +126,7 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
         operation: 'uber.menu.publish',
       });
     }
-    const salesTaxRate = storeConfig.salesTaxRate;
+    const salesTaxRate = businessSchedule.salesTaxRate;
     if (
       typeof salesTaxRate !== 'number' ||
       !Number.isFinite(salesTaxRate) ||
@@ -136,6 +137,28 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
         code: 'UBER_TAX_RATE_INVALID',
         message:
           'salesTaxRate 必须使用 0～1 的比例格式，例如 13% 应保存为 0.13',
+        operation: 'uber.menu.publish',
+      });
+    }
+    let serviceAvailability: ReturnType<typeof toUberServiceAvailability>;
+    try {
+      serviceAvailability = toUberServiceAvailability(
+        businessSchedule.hours,
+        timezone,
+      );
+    } catch (error) {
+      throw new UberValidationError({
+        code: 'UBER_MENU_SCHEDULE_INVALID',
+        message:
+          error instanceof Error ? error.message : '门店营业时间配置无效。',
+        operation: 'uber.menu.publish',
+      });
+    }
+    if (serviceAvailability.length === 0) {
+      throw new UberValidationError({
+        code: 'UBER_MENU_SCHEDULE_INVALID',
+        message:
+          '发布 Uber 菜单前必须至少配置一个合法可售营业时段；全天营业请明确配置 00:00–24:00。',
         operation: 'uber.menu.publish',
       });
     }
@@ -204,6 +227,7 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
       uberStoreId: mapping.uberStoreId,
       timezone,
       taxRate,
+      serviceAvailability,
       categories: categories
         .map((category) => {
           const config = categoryConfig.get(category.stableId);
