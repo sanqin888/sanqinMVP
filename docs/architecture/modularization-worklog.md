@@ -1766,6 +1766,15 @@ is claimed per repository workflow.
 **Provider/cutover gates:** `eats.report.success` replay remains **CODE READY / LIVE TEST BLOCKED BY UBER CAPABILITY** with no live `UberFinancialReport` evidence. Structured Allergy payload capability, `orders.customer_order_edit`, Production Client scopes/whitelisting/webhooks, Production Store provisioning, production pilot and the later separately authorized full Test Store data cleanup remain outside this source/architecture closeout.  
 **Details:** `docs/architecture/phase-8-external-channels.md`, `docs/architecture/current-dependency-graph.md`, this worklog.
 
+### 2026-09-11 — Phase 9 Slice 1: Accounting/Auth Public Boundary Contraction
+
+**PR/SHA:** local branch `refactor/phase9-slice1-accounting-auth-boundary`; no PR / remote SHA yet  
+**State:** SOURCE COMPLETE / LOCAL REVIEW PENDING  
+**Scope/result:** Slice 0 readiness audit was recorded in the new Phase 9 owner document. `AccountingController`, `ReportsController` and `AnalyticsController` now consume `SessionAuthGuard`, `RolesGuard` and `Roles` through the existing Identity `auth/public-api.ts` surface. The two direct `AuthModule` imports in Accounting/Analytics modules remain intentional Nest composition seams. A focused architecture spec rejects the old guard/decorator implementation paths and pins the retained composition seams.  
+**Architecture effect:** `accounting-reporting-analytics -> identity-customer-benefits` contracts **11 -> 2**; total Accounting / Reporting / Analytics direct-import debt contracts **25 -> 16**. No new public dependency pair or compatibility path is introduced; `legacyPublicCycleComponents` remains expected empty. No route/role/guard behavior, Prisma/schema/migration, persisted identity, ledger/revenue, Uber financial-reporting, Web Clover, package dependency or provider behavior changes.  
+**Validation:** repository review-first policy applies; no local lint/build/test/architecture command is claimed. GitHub Actions validation is deferred until user authorizes remote delivery.  
+**Details:** `docs/architecture/phase-9-accounting-reporting-analytics.md`, `docs/architecture/current-dependency-graph.md`, `apps/api/src/accounting/accounting-auth-boundary.architecture.spec.ts`, `tools/architecture/context-baseline.json`.
+
 ## Rule for future entries
 
 For each modularization code batch, append exactly one chronological entry before
