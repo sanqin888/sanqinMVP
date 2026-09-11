@@ -1,7 +1,8 @@
 # Phase 9 — Accounting / Reporting / Analytics Boundary Contraction & L3 Financial Integrity
 
-Status: **SLICE 0 READINESS AUDIT COMPLETE — SLICE 1 SOURCE COMPLETE / LOCAL REVIEW PENDING**  
+Status: **SLICE 0 READINESS AUDIT COMPLETE — SLICE 1 MERGED / CI GREEN**  
 Slice 0 audit baseline: `origin/dev@1a69bd7dbd49eba08661b169463e32dc820f0396`  
+Slice 1 merge: PR #2281 / final head `974066e7c11f58316368fcb4fcfeec28c5da5509` / squash merge `f529f4701b63040a8e2dfee2cf3ca82213f25ec6` / CI #5494 green  
 Audit date: 2026-09-11
 
 ## 1. Purpose
@@ -139,8 +140,8 @@ Phase 9 closes only after the planned source slices are merged, a final closeout
 
 ## 11. Slice 1 — Auth Public Boundary Contraction + Architecture Guard
 
-State: **SOURCE COMPLETE / LOCAL REVIEW PENDING**  
-Local branch: `refactor/phase9-slice1-accounting-auth-boundary`  
+State: **MERGED / CI GREEN**  
+PR/SHA: PR #2281; final head `974066e7c11f58316368fcb4fcfeec28c5da5509`; squash merge `f529f4701b63040a8e2dfee2cf3ca82213f25ec6`  
 Implementation base: `origin/dev@1a69bd7dbd49eba08661b169463e32dc820f0396`
 
 Slice 1 changes only the Identity implementation path used by staff-protected Accounting/Reports/Analytics controllers. `AccountingController`, `ReportsController` and `AnalyticsController` now import `SessionAuthGuard`, `RolesGuard` and `Roles` from the already-existing `auth/public-api.ts` surface. Guard order, role declarations, route paths and request behavior remain unchanged.
@@ -157,4 +158,6 @@ Architecture movement for this slice:
 
 Intentionally unchanged: Accounting/Reports/Analytics business behavior, Prisma schema/migrations, persisted identity fields, ledger/revenue semantics, Orders/Payments facts, Uber financial reporting, production Web Clover behavior, package dependencies and compatibility registrations.
 
-Per repository review-first policy, no local lint/build/test/architecture command is claimed for this source state. The next validation gate after user review is the exact GitHub Actions API pipeline, including architecture baseline check, API lint/build/strict declaration check and Jest.
+Remote validation: initial CI #5493 passed the architecture baseline but stopped on one Prettier-only line-wrap error in the new architecture spec. Formatting-only head `974066e7` then passed GitHub Actions CI #5494 completely: API architecture baseline, lint, build, strict declaration checks, shared strict checks and Jest were green; Web lint, build, strict declaration check and tests were green. PR #2281 was squash-merged to `dev` as `f529f470`.
+
+No separate production deployment/active verification is required for Slice 1 because runtime authorization behavior did not change and the repository's modularization verification cadence is Phase-level. The next source work package is Slice 2 characterization; it must preserve behavior and add evidence before any deeper L3 atomicity or cross-owner boundary change.
