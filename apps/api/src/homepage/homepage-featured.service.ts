@@ -1,7 +1,10 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { DateTime } from 'luxon';
 import { PrismaService } from '../prisma/prisma.service';
-import { ReportsService } from '../reports/reports.service';
+import {
+  REPORTING_TOP_ITEMS_QUERY,
+  type ReportingTopItemsQueryPort,
+} from '../reports/public-api';
 import { HomepageContentService } from './homepage-content.service';
 import type {
   HomepageFeaturedConfig,
@@ -27,7 +30,8 @@ type FeaturedMenuItem = {
 export class HomepageFeaturedService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly reportsService: ReportsService,
+    @Inject(REPORTING_TOP_ITEMS_QUERY)
+    private readonly reportsService: ReportingTopItemsQueryPort,
     private readonly contentService: HomepageContentService,
   ) {}
 

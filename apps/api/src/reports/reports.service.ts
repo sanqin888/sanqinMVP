@@ -1,36 +1,30 @@
-// apps/api/src/reports/reports.service.ts
-import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-import { OrderStatus, Prisma } from '@prisma/client';
+import { Inject, Injectable } from '@nestjs/common';
 import { DateTime } from 'luxon';
-import { readOrderItemComponentsSnapshot } from '../orders/order-item-components';
+
+import {
+  REPORTING_ORDER_FACTS_QUERY,
+  type ReportingOrderFactsQueryPort,
+  type ReportingOrderItemFactV1,
+} from './reporting-order-facts-query.contract';
+import type {
+  ReportingTopItemAggregate,
+  ReportingTopItemsQueryPort,
+} from './reporting-top-items-query.contract';
 
 interface ReportQueryDto {
   from?: string;
   to?: string;
 }
 
-type ReportOrderItem = {
-  qty: number;
-  productStableId: string;
-  displayName: string | null;
-  nameEn: string | null;
-  nameZh: string | null;
-  componentsJson: Prisma.JsonValue | null;
-};
-
-export type TopItemAggregate = {
-  stableId: string;
-  name: string;
-  quantity: number;
-};
-
 @Injectable()
-export class ReportsService {
-  constructor(private readonly prisma: PrismaService) {}
+export class ReportsService implements ReportingTopItemsQueryPort {
+  constructor(
+    @Inject(REPORTING_ORDER_FACTS_QUERY)
+    private readonly orderFacts: ReportingOrderFactsQueryPort,
+  ) {}
 
-  private buildTopItems(orderItems: ReportOrderItem[]) {
-    const aggregate = new Map<string, TopItemAggregate>();
+  private buildTopItems(orderItems: ReportingOrderItemFactV1[]) {
+    const aggregate = new Map<string, ReportingTopItemAggregate>();
     const addItem = (key: string, name: string, quantity: number) => {
       const current = aggregate.get(key);
       aggregate.set(key, {
@@ -41,11 +35,8 @@ export class ReportsService {
     };
 
     for (const orderItem of orderItems) {
-      const components = readOrderItemComponentsSnapshot(
-        orderItem.componentsJson,
-      );
-      if (components.length > 0) {
-        for (const component of components) {
+      if (orderItem.components.length > 0) {
+        for (const component of orderItem.components) {
           addItem(
             component.productStableId,
             component.nameZh || component.nameEn || component.productStableId,
@@ -69,7 +60,7 @@ export class ReportsService {
 
   private resolveItemName(
     item: Pick<
-      ReportOrderItem,
+      ReportingOrderItemFactV1,
       'productStableId' | 'displayName' | 'nameEn' | 'nameZh'
     >,
   ) {
@@ -85,36 +76,16 @@ export class ReportsService {
   async getTopItemsForRange(
     startDate: Date,
     endDate: Date,
-  ): Promise<TopItemAggregate[]> {
-    const validStatuses: OrderStatus[] = [
-      'paid',
-      'making',
-      'ready',
-      'completed',
-    ];
-    const orderItems = await this.prisma.orderItem.findMany({
-      where: {
-        order: {
-          createdAt: { gte: startDate, lte: endDate },
-          status: { in: validStatuses },
-        },
-      },
-      select: {
-        qty: true,
-        productStableId: true,
-        displayName: true,
-        nameEn: true,
-        nameZh: true,
-        componentsJson: true,
-      },
-    });
-
+  ): Promise<ReportingTopItemAggregate[]> {
+    const orderItems = await this.orderFacts.readItemsForRange(
+      startDate,
+      endDate,
+    );
     return this.buildTopItems(orderItems);
   }
 
   async getReport(query: ReportQueryDto) {
-    // 1. 确定时间范围 (默认为多伦多时间的一整天)
-    // 注意：这里的入参建议是 ISO 格式 (YYYY-MM-DD)
+    // Preserve the existing report timezone contract for this slice.
     const zone = process.env.TZ || 'America/Toronto';
     const now = DateTime.now().setZone(zone);
 
@@ -129,71 +100,16 @@ export class ReportsService {
     const startDate = startDt.toJSDate();
     const endDate = endDt.toJSDate();
 
-    // 2. 定义有效订单的状态
-    // 我们只统计已支付、制作中、待取餐、已完成的订单。排除 pending(未支付) 和 refunded(已退款)
-    const validStatuses: OrderStatus[] = [
-      'paid',
-      'making',
-      'ready',
-      'completed',
-    ];
+    const metrics = await this.orderFacts.readMetricsForRange(
+      startDate,
+      endDate,
+    );
 
-    const whereCondition = {
-      createdAt: { gte: startDate, lte: endDate },
-      status: { in: validStatuses },
-    };
-
-    // 3. 核心指标聚合 (KPI)
-    const aggregations = await this.prisma.order.aggregate({
-      where: whereCondition,
-      _sum: {
-        totalCents: true,
-        subtotalCents: true,
-        taxCents: true,
-        deliveryFeeCents: true,
-        // 注意：Schema 中没有 tipCents，故不统计小费
-      },
-      _count: {
-        id: true,
-      },
-    });
-
-    // 4. 按支付方式分组
-    const byPaymentMethod = await this.prisma.order.groupBy({
-      by: ['paymentMethod'],
-      where: whereCondition,
-      _sum: { totalCents: true },
-      _count: { id: true },
-    });
-
-    // 5. 按用餐方式分组 (Fulfillment)
-    const byFulfillment = await this.prisma.order.groupBy({
-      by: ['fulfillmentType'],
-      where: whereCondition,
-      _sum: { totalCents: true },
-      _count: { id: true },
-    });
-
-    // 6. 获取趋势数据 (用于画折线图)
-    // 为了性能，只取必要的字段并在内存中处理时间分组
-    const rawOrders = await this.prisma.order.findMany({
-      where: whereCondition,
-      select: {
-        createdAt: true,
-        totalCents: true,
-      },
-      orderBy: { createdAt: 'asc' },
-    });
-
-    // 7. 处理图表数据
-    // 如果是同一天，按小时分组；如果是多天，按天分组
     const diffDays = endDt.diff(startDt, 'days').days;
-    const isSingleDay = diffDays <= 1.1; // 稍微放宽一点浮点误差
-
+    const isSingleDay = diffDays <= 1.1;
     const chartDataMap = new Map<string, number>();
 
-    rawOrders.forEach((order) => {
-      // 将 UTC 时间转回店铺时区
+    metrics.timeline.forEach((order) => {
       const dt = DateTime.fromJSDate(order.createdAt).setZone(zone);
       const key = isSingleDay
         ? dt.toFormat('HH:00')
@@ -202,46 +118,41 @@ export class ReportsService {
       chartDataMap.set(key, current + order.totalCents);
     });
 
-    // 补全缺失的时间点 (可选优化，这里先简单返回有的数据)
     const chartData = Array.from(chartDataMap.entries())
       .map(([date, cents]) => ({
         date,
-        total: cents / 100, // 转为元
+        total: cents / 100,
       }))
-      // 确保按时间排序
       .sort((a, b) => a.date.localeCompare(b.date));
 
-    // 8. 统计畅销单品 Top 10
-    // 复用同一套 stableId 聚合逻辑：首页近 7 天推荐也使用该口径。
     const topItems = (await this.getTopItemsForRange(startDate, endDate)).slice(
       0,
       10,
     );
 
-    // 9. 计算最终结果
-    const totalCents = aggregations._sum.totalCents ?? 0;
-    const count = aggregations._count.id ?? 0;
     const averageOrderValueCents =
-      count > 0 ? Math.round(totalCents / count) : 0;
+      metrics.orderCount > 0
+        ? Math.round(metrics.totalCents / metrics.orderCount)
+        : 0;
 
     return {
       summary: {
-        totalSales: totalCents / 100,
-        subtotal: (aggregations._sum.subtotalCents ?? 0) / 100,
-        tax: (aggregations._sum.taxCents ?? 0) / 100,
-        deliveryFees: (aggregations._sum.deliveryFeeCents ?? 0) / 100,
-        orderCount: count,
+        totalSales: metrics.totalCents / 100,
+        subtotal: metrics.subtotalCents / 100,
+        tax: metrics.taxCents / 100,
+        deliveryFees: metrics.deliveryFeeCents / 100,
+        orderCount: metrics.orderCount,
         averageOrderValue: averageOrderValueCents / 100,
       },
       chartData,
       breakdown: {
-        payment: byPaymentMethod.map((p) => ({
-          name: p.paymentMethod,
-          value: (p._sum.totalCents ?? 0) / 100,
+        payment: metrics.payment.map((entry) => ({
+          name: entry.name,
+          value: entry.totalCents / 100,
         })),
-        fulfillment: byFulfillment.map((f) => ({
-          name: f.fulfillmentType,
-          value: (f._sum.totalCents ?? 0) / 100,
+        fulfillment: metrics.fulfillment.map((entry) => ({
+          name: entry.name,
+          value: entry.totalCents / 100,
         })),
       },
       topItems: topItems.map(({ name, quantity }) => ({ name, quantity })),

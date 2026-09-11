@@ -11,7 +11,7 @@ import { AppService } from './app.service';
 
 import { PrismaModule } from './prisma/prisma.module';
 import { OrdersModule } from './orders/public-api';
-import { ReportsModule } from './reports/reports.module';
+import { ReportsModule } from './reports/public-api';
 import { LoyaltyModule } from './loyalty/loyalty.module';
 import { CloverModule } from './clover/clover.module';
 import { MembershipModule } from './membership/membership.module';

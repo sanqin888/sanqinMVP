@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
-import { ReportsModule } from '../reports/reports.module';
+import { ReportsModule } from '../reports/public-api';
 import { HomepageContentController } from './homepage-content.controller';
 import { HomepageContentService } from './homepage-content.service';
 import { HomepageFeaturedService } from './homepage-featured.service';
