@@ -73,9 +73,8 @@ describe('AccountingOperationsService expense-write characterization', () => {
       },
       accountingAccount: { findUnique: jest.fn() },
       accountingExpenseDocument: {
-        findUnique: jest.fn(
-          (args: { where: { documentStableId: string } }) =>
-            Promise.resolve(documentRow(args.where.documentStableId)),
+        findUnique: jest.fn((args: { where: { documentStableId: string } }) =>
+          Promise.resolve(documentRow(args.where.documentStableId)),
         ),
       },
       $transaction: transaction,
