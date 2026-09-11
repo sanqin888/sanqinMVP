@@ -203,9 +203,9 @@ describe('PublishUberMenuUseCase', () => {
 
     await x.useCase.execute({ storeId: 'store-1', taxRateConfirmed: true });
 
-    expect(lastUploadedPayload(x.gateway).menus[0]?.service_availability).toEqual(
-      snapshot.serviceAvailability,
-    );
+    expect(
+      lastUploadedPayload(x.gateway).menus[0]?.service_availability,
+    ).toEqual(snapshot.serviceAvailability);
   });
 
   it('full publish preserves a temporary sold-out suspend_until instead of making it indefinite', async () => {
