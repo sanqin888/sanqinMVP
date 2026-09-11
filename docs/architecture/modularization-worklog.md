@@ -1768,11 +1768,11 @@ is claimed per repository workflow.
 
 ### 2026-09-11 — Phase 9 Slice 1: Accounting/Auth Public Boundary Contraction
 
-**PR/SHA:** local branch `refactor/phase9-slice1-accounting-auth-boundary`; no PR / remote SHA yet  
-**State:** SOURCE COMPLETE / LOCAL REVIEW PENDING  
+**PR/SHA:** PR #2281 / final head `974066e7` / squash merge `f529f470`  
+**State:** MERGED / CI GREEN — final PR CI #5494 passed API + Web after initial CI #5493 stopped on one Prettier-only architecture-spec line wrap  
 **Scope/result:** Slice 0 readiness audit was recorded in the new Phase 9 owner document. `AccountingController`, `ReportsController` and `AnalyticsController` now consume `SessionAuthGuard`, `RolesGuard` and `Roles` through the existing Identity `auth/public-api.ts` surface. The two direct `AuthModule` imports in Accounting/Analytics modules remain intentional Nest composition seams. A focused architecture spec rejects the old guard/decorator implementation paths and pins the retained composition seams.  
-**Architecture effect:** `accounting-reporting-analytics -> identity-customer-benefits` contracts **11 -> 2**; total Accounting / Reporting / Analytics direct-import debt contracts **25 -> 16**. No new public dependency pair or compatibility path is introduced; `legacyPublicCycleComponents` remains expected empty. No route/role/guard behavior, Prisma/schema/migration, persisted identity, ledger/revenue, Uber financial-reporting, Web Clover, package dependency or provider behavior changes.  
-**Validation:** repository review-first policy applies; no local lint/build/test/architecture command is claimed. GitHub Actions validation is deferred until user authorizes remote delivery.  
+**Architecture effect:** `accounting-reporting-analytics -> identity-customer-benefits` contracts **11 -> 2**; total Accounting / Reporting / Analytics direct-import debt contracts **25 -> 16**. No new public dependency pair or compatibility path is introduced; `legacyPublicCycleComponents` remains empty. No route/role/guard behavior, Prisma/schema/migration, persisted identity, ledger/revenue, Uber financial-reporting, Web Clover, package dependency or provider behavior changes.  
+**Validation:** final head `974066e7` passed CI #5494: API architecture gate, lint, build, strict declarations/shared strict checks and Jest were green; Web lint, build, strict declarations and tests were green. No per-Slice production active verification is required because runtime authorization behavior is unchanged; Phase-level verification cadence remains authoritative.  
 **Details:** `docs/architecture/phase-9-accounting-reporting-analytics.md`, `docs/architecture/current-dependency-graph.md`, `apps/api/src/accounting/accounting-auth-boundary.architecture.spec.ts`, `tools/architecture/context-baseline.json`.
 
 ## Rule for future entries
