@@ -4,7 +4,7 @@ import { AccountingService } from './accounting.service';
 
 describe('AccountingService ledger characterization', () => {
   const makeService = () => {
-    const prisma = {
+    const tx = {
       accountingAutomationConfig: {
         findUnique: jest.fn().mockResolvedValue(null),
       },
@@ -31,6 +31,10 @@ describe('AccountingService ledger characterization', () => {
         create: jest.fn().mockResolvedValue({}),
       },
     };
+    const transaction = jest.fn(
+      (work: (transactionClient: typeof tx) => Promise<unknown>) => work(tx),
+    );
+    const prisma = { ...tx, $transaction: transaction };
     const brandStoreConfigReader = {
       getConfiguredStoreSnapshot: jest.fn().mockResolvedValue({
         timezone: 'America/Toronto',
@@ -69,6 +73,7 @@ describe('AccountingService ledger characterization', () => {
       created,
     );
 
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     expect(prisma.accountingTransaction.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({

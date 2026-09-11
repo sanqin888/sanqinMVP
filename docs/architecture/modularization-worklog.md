@@ -1777,12 +1777,21 @@ is claimed per repository workflow.
 
 ### 2026-09-11 — Phase 9 Slice 2: Accounting / Reporting Characterization
 
-**PR/SHA:** local branch `refactor/phase9-slice2-accounting-characterization`; no PR / remote SHA yet  
-**State:** SOURCE COMPLETE / LOCAL REVIEW PENDING  
+**PR/SHA:** PR #2283 / final head `d6518ba1` / squash merge `b35890d8`  
+**State:** MERGED / CI GREEN — final PR CI #5500 passed API + Web after test-only lint/Prettier follow-ups on earlier heads  
 **Scope/result:** Adds test-only characterization before L3 financial-integrity and cross-owner contractions. Coverage now locks Accounting ledger CRUD/idempotency/optimistic locking/current audit evidence, month close/reopen plus ADJUSTMENT/year-lock behavior and Toronto period bounds, existing atomic manual/inbox Expense split writes, current provisional DAILY/PER_ORDER `Order.totalCents` revenue accrual and Uber source classification, `eats.report` gating plus rolling Uber financial-report request windows, and Reports KPI/payment/fulfillment/chart/date-boundary behavior. Existing `componentsJson` top-item characterization remains unchanged and authoritative for historical combo composition. No production implementation is changed.  
 **Architecture effect:** none. Accounting / Reporting / Analytics remains Foundation **3**, Orders **1**, External **1**, Identity **2**, Runtime **9**, total **16**, with `legacyPublicCycleComponents=[]`. No public API/port, ownership, schema/migration, dependency, compatibility, provider wire, Revenue Posting rule or Web Clover change.  
-**Validation:** repository review-first policy applies; no local lint/build/test/architecture command is claimed. GitHub Actions validation is deferred until user authorizes remote delivery.  
+**Validation:** final head `d6518ba1` passed CI #5500: API architecture gate, lint, build, strict declarations/shared strict checks and Jest were green; Web lint, build, strict declarations and tests were green.  
 **Details:** `apps/api/src/accounting/accounting-{ledger,period,revenue,expense,automation}.characterization.spec.ts`, `apps/api/src/reports/reports-characterization.spec.ts`, `docs/architecture/phase-9-accounting-reporting-analytics.md`, `docs/architecture/current-dependency-graph.md`, this worklog.
+
+### 2026-09-11 — Phase 9 Slice 3: Accounting L3 Atomicity Hardening
+
+**PR/SHA:** local branch `refactor/phase9-slice3-accounting-l3-atomicity`; no PR / remote SHA yet  
+**State:** SOURCE COMPLETE / LOCAL REVIEW PENDING  
+**Scope/result:** Establishes one Accounting-owned Serializable atomic-write policy, following the repository's existing three-attempt Prisma `P2034` retry pattern. Ledger create/update/soft-delete now keep accounting-start and period-state checks, idempotency/OCC, mutation and audit evidence in one transaction. Month close/reopen/year lock keep state checks, period mutation and audit in that same policy. Manual Expense and inbox-confirmation split writes move period checks inside the transaction and create matching ledger audit evidence atomically; inbox confirmation also re-reads document status to prevent double-confirmation and records DELETE evidence for any active splits it replaces. Existing route/DTO behavior, open-period edits, soft delete, ADJUSTMENT policy and revenue semantics are preserved.  
+**Architecture effect:** none. The shared helper depends on Prisma client transaction contracts rather than a new `PrismaService` import, so Accounting / Reporting / Analytics remains Foundation **3**, Orders **1**, External **1**, Identity **2**, Runtime **9**, total **16**, with `legacyPublicCycleComponents=[]`. No schema/migration, dependency, public API/port, compatibility, provider-wire, Revenue Posting or Web Clover change.  
+**Validation:** repository review-first policy applies; no local lint/build/test/architecture command is claimed. Existing Slice 2 characterization is retained/updated and a focused Serializable/P2034 retry spec is added. GitHub Actions validation is deferred until user authorizes remote delivery.  
+**Details:** `apps/api/src/accounting/accounting-atomic-write.ts`, `apps/api/src/accounting/accounting-atomic-write.spec.ts`, `apps/api/src/accounting/accounting.service.ts`, `apps/api/src/accounting/accounting-operations.service.ts`, `apps/api/src/accounting/accounting-{ledger,period,expense}.characterization.spec.ts`, `docs/architecture/phase-9-accounting-reporting-analytics.md`, `docs/architecture/current-dependency-graph.md`, this worklog.
 
 ## Rule for future entries
 

@@ -4,7 +4,7 @@ import { AccountingService } from './accounting.service';
 
 describe('AccountingService period-close characterization', () => {
   const makeService = () => {
-    const prisma = {
+    const tx = {
       accountingAutomationConfig: {
         findUnique: jest.fn().mockResolvedValue(null),
       },
@@ -18,6 +18,10 @@ describe('AccountingService period-close characterization', () => {
         create: jest.fn().mockResolvedValue({}),
       },
     };
+    const transaction = jest.fn(
+      (work: (transactionClient: typeof tx) => Promise<unknown>) => work(tx),
+    );
+    const prisma = { ...tx, $transaction: transaction };
     const brandStoreConfigReader = {
       getConfiguredStoreSnapshot: jest.fn().mockResolvedValue({
         timezone: 'America/Toronto',
@@ -63,6 +67,7 @@ describe('AccountingService period-close characterization', () => {
       close,
     );
 
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     expect(prisma.accountingPeriodClose.upsert).toHaveBeenCalledWith({
       where: {
         periodType_periodKey: {

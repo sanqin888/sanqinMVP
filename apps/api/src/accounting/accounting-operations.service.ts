@@ -17,6 +17,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { getUploadsAccountingDir } from '../common/utils/uploads-path';
 import { PrismaService } from '../prisma/prisma.service';
+import { runSerializableAccountingWrite } from './accounting-atomic-write';
 import { processAccountingReceiptImage } from './accounting-receipt-image';
 import { AccountingService } from './accounting.service';
 
@@ -518,11 +519,6 @@ export class AccountingOperationsService {
     operatorUserStableId: string,
   ) {
     const occurredAt = this.parseDate(input.occurredAt);
-    await this.accounting.assertOnOrAfterAccountingStartDate(occurredAt);
-    await this.accounting.assertEditableForPeriod(
-      occurredAt,
-      AccountingTxType.EXPENSE,
-    );
     this.assertMoney(input.totalCents, 'totalCents');
     if (!input.splits.length) {
       throw new BadRequestException('at least one expense split is required');
@@ -581,27 +577,38 @@ export class AccountingOperationsService {
 
     const attachmentUrls = this.normalizeUrls(input.attachmentUrls);
     const documentStableId = `expense_${createId()}`;
-    const document = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.accountingExpenseDocument.create({
-        data: {
-          documentStableId,
-          source: AccountingDocumentSource.MANUAL,
-          status: AccountingDocumentStatus.CONFIRMED,
+    const document = await runSerializableAccountingWrite(
+      this.prisma,
+      async (tx) => {
+        await this.accounting.assertOnOrAfterAccountingStartDate(
           occurredAt,
-          subtotalCents,
-          taxCents,
-          totalCents: input.totalCents,
-          currency: account?.currency ?? 'CAD',
-          accountId: account?.id ?? null,
-          attachmentUrls,
-          memo: input.memo?.trim() || null,
-          confirmedAt: new Date(),
-          confirmedByUserId: operatorUserStableId,
-        },
-      });
+          tx,
+        );
+        await this.accounting.assertEditableForPeriod(
+          occurredAt,
+          AccountingTxType.EXPENSE,
+          tx,
+        );
 
-      await tx.accountingTransaction.createMany({
-        data: normalizedSplits.map((split, index) => ({
+        const created = await tx.accountingExpenseDocument.create({
+          data: {
+            documentStableId,
+            source: AccountingDocumentSource.MANUAL,
+            status: AccountingDocumentStatus.CONFIRMED,
+            occurredAt,
+            subtotalCents,
+            taxCents,
+            totalCents: input.totalCents,
+            currency: account?.currency ?? 'CAD',
+            accountId: account?.id ?? null,
+            attachmentUrls,
+            memo: input.memo?.trim() || null,
+            confirmedAt: new Date(),
+            confirmedByUserId: operatorUserStableId,
+          },
+        });
+
+        const splitRows = normalizedSplits.map((split, index) => ({
           txStableId: `accttx_${createId()}`,
           type: AccountingTxType.EXPENSE,
           source: AccountingSourceType.MANUAL,
@@ -618,10 +625,33 @@ export class AccountingOperationsService {
           attachmentUrls,
           createdByUserId: operatorUserStableId,
           updatedByUserId: operatorUserStableId,
-        })),
-      });
-      return created;
-    });
+        }));
+        await tx.accountingTransaction.createMany({ data: splitRows });
+        await tx.accountingAuditLog.createMany({
+          data: splitRows.map((row, index) => ({
+            action: 'CREATE',
+            entityType: 'ACCOUNTING_TRANSACTION',
+            entityId: row.txStableId,
+            operatorUserId: operatorUserStableId,
+            afterJson: {
+              txStableId: row.txStableId,
+              type: row.type,
+              source: row.source,
+              amountCents: row.amountCents,
+              taxCents: row.taxCents,
+              currency: row.currency,
+              occurredAt: occurredAt.toISOString(),
+              categoryStableId: normalizedSplits[index].categoryStableId,
+              documentStableId,
+              idempotencyKey: row.idempotencyKey,
+              externalRef: row.externalRef,
+              attachmentUrls,
+            } as Prisma.InputJsonValue,
+          })),
+        });
+        return created;
+      },
+    );
 
     return this.getExpenseDocument(document.documentStableId);
   }
@@ -670,11 +700,6 @@ export class AccountingOperationsService {
     }
 
     const occurredAt = this.parseDate(input.occurredAt);
-    await this.accounting.assertOnOrAfterAccountingStartDate(occurredAt);
-    await this.accounting.assertEditableForPeriod(
-      occurredAt,
-      AccountingTxType.EXPENSE,
-    );
     this.assertMoney(input.totalCents, 'totalCents');
     if (!input.splits.length) {
       throw new BadRequestException('at least one expense split is required');
@@ -729,14 +754,46 @@ export class AccountingOperationsService {
     if (input.accountStableId && (!account || !account.isActive)) {
       throw new BadRequestException('accountStableId is invalid');
     }
-    const attachmentUrls = Array.from(
-      new Set([
-        ...existing.attachmentUrls,
-        ...this.normalizeUrls(input.attachmentUrls),
-      ]),
-    );
+    const newAttachmentUrls = this.normalizeUrls(input.attachmentUrls);
 
-    await this.prisma.$transaction(async (tx) => {
+    await runSerializableAccountingWrite(this.prisma, async (tx) => {
+      await this.accounting.assertOnOrAfterAccountingStartDate(
+        occurredAt,
+        tx,
+      );
+      await this.accounting.assertEditableForPeriod(
+        occurredAt,
+        AccountingTxType.EXPENSE,
+        tx,
+      );
+
+      const current = await tx.accountingExpenseDocument.findUnique({
+        where: { id: existing.id },
+        select: { status: true, attachmentUrls: true },
+      });
+      if (!current) throw new NotFoundException('expense document not found');
+      if (current.status === AccountingDocumentStatus.CONFIRMED) {
+        throw new ConflictException('expense document is already confirmed');
+      }
+
+      const attachmentUrls = Array.from(
+        new Set([...current.attachmentUrls, ...newAttachmentUrls]),
+      );
+      const replacedRows = await tx.accountingTransaction.findMany({
+        where: { documentId: existing.id, deletedAt: null },
+        select: {
+          txStableId: true,
+          type: true,
+          source: true,
+          amountCents: true,
+          taxCents: true,
+          currency: true,
+          occurredAt: true,
+          idempotencyKey: true,
+          externalRef: true,
+          attachmentUrls: true,
+        },
+      });
       await tx.accountingTransaction.deleteMany({
         where: { documentId: existing.id, deletedAt: null },
       });
@@ -756,25 +813,67 @@ export class AccountingOperationsService {
           confirmedByUserId: operatorUserStableId,
         },
       });
-      await tx.accountingTransaction.createMany({
-        data: normalizedSplits.map((split, index) => ({
-          txStableId: `accttx_${createId()}`,
-          type: AccountingTxType.EXPENSE,
-          source: AccountingSourceType.MANUAL,
-          amountCents: split.amountCents,
-          taxCents: split.taxCents,
-          currency: account?.currency ?? 'CAD',
-          occurredAt,
-          categoryId: categoryMap.get(split.categoryStableId)!,
-          accountId: account?.id ?? null,
-          documentId: existing.id,
-          idempotencyKey: `expense:${documentStableId}:${index}`,
-          externalRef: documentStableId,
-          memo: input.memo?.trim() || null,
-          attachmentUrls,
-          createdByUserId: operatorUserStableId,
-          updatedByUserId: operatorUserStableId,
-        })),
+      const splitRows = normalizedSplits.map((split, index) => ({
+        txStableId: `accttx_${createId()}`,
+        type: AccountingTxType.EXPENSE,
+        source: AccountingSourceType.MANUAL,
+        amountCents: split.amountCents,
+        taxCents: split.taxCents,
+        currency: account?.currency ?? 'CAD',
+        occurredAt,
+        categoryId: categoryMap.get(split.categoryStableId)!,
+        accountId: account?.id ?? null,
+        documentId: existing.id,
+        idempotencyKey: `expense:${documentStableId}:${index}`,
+        externalRef: documentStableId,
+        memo: input.memo?.trim() || null,
+        attachmentUrls,
+        createdByUserId: operatorUserStableId,
+        updatedByUserId: operatorUserStableId,
+      }));
+      await tx.accountingTransaction.createMany({ data: splitRows });
+      await tx.accountingAuditLog.createMany({
+        data: [
+          ...replacedRows.map((row) => ({
+            action: 'DELETE',
+            entityType: 'ACCOUNTING_TRANSACTION',
+            entityId: row.txStableId,
+            operatorUserId: operatorUserStableId,
+            beforeJson: {
+              txStableId: row.txStableId,
+              type: row.type,
+              source: row.source,
+              amountCents: row.amountCents,
+              taxCents: row.taxCents,
+              currency: row.currency,
+              occurredAt: row.occurredAt.toISOString(),
+              documentStableId,
+              idempotencyKey: row.idempotencyKey,
+              externalRef: row.externalRef,
+              attachmentUrls: row.attachmentUrls,
+            } as Prisma.InputJsonValue,
+          })),
+          ...splitRows.map((row, index) => ({
+            action: 'CREATE',
+            entityType: 'ACCOUNTING_TRANSACTION',
+            entityId: row.txStableId,
+            operatorUserId: operatorUserStableId,
+            afterJson: {
+              txStableId: row.txStableId,
+              type: row.type,
+              source: row.source,
+              amountCents: row.amountCents,
+              taxCents: row.taxCents,
+              currency: row.currency,
+              occurredAt: occurredAt.toISOString(),
+              categoryStableId: normalizedSplits[index].categoryStableId,
+              documentStableId,
+              idempotencyKey: row.idempotencyKey,
+              externalRef: row.externalRef,
+              attachmentUrls,
+            } as Prisma.InputJsonValue,
+          })),
+        ],
       });
     });
 
