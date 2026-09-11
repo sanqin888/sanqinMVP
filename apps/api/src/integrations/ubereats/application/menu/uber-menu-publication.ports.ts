@@ -1,4 +1,5 @@
 import type { UberMenuUploadPayload } from '../../domain/menu/uber-menu.types';
+import type { UberServiceAvailability } from '../../domain/menu/uber-payload.utils';
 import type { PublishMenuInput } from '../../domain/menu/uber-menu.types';
 
 export interface UberMenuPublishCommandPort {
@@ -44,6 +45,7 @@ export type UberMenuPublishSnapshot = {
   uberStoreId: string;
   timezone: string;
   taxRate: number;
+  serviceAvailability: UberServiceAvailability[];
   categories: Array<{
     stableId: string;
     name: string;

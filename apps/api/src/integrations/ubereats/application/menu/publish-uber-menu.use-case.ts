@@ -76,7 +76,7 @@ export class PublishUberMenuUseCase {
           )}${unclassifiedItems.length > 5 ? ` 等 ${unclassifiedItems.length} 项` : ''}`,
       );
     }
-    const serviceAvailability = this.availability(snapshot.timezone);
+    const serviceAvailability = snapshot.serviceAvailability;
     const payload = buildUberUploadMenuPayload(
       graph,
       serviceAvailability,
@@ -364,22 +364,6 @@ export class PublishUberMenuUseCase {
           .map(itemNodeId),
       })),
     };
-  }
-
-  private availability(timezone: string) {
-    void timezone;
-    return [
-      'monday',
-      'tuesday',
-      'wednesday',
-      'thursday',
-      'friday',
-      'saturday',
-      'sunday',
-    ].map((day_of_week) => ({
-      day_of_week,
-      time_periods: [{ start_time: '00:00', end_time: '23:59' }],
-    }));
   }
 
   private validationError(code: string, message: string) {

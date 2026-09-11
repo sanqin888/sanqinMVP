@@ -17,6 +17,12 @@ describe('PublishUberMenuUseCase', () => {
     uberStoreId: 'store-1',
     timezone: 'UTC',
     taxRate: 8,
+    serviceAvailability: [
+      {
+        day_of_week: 'monday',
+        time_periods: [{ start_time: '08:00', end_time: '22:30' }],
+      },
+    ],
     categories: [
       { stableId: 'cat-1', name: 'Lunch', itemStableIds: ['food-1'] },
     ],
@@ -95,6 +101,12 @@ describe('PublishUberMenuUseCase', () => {
   };
 
   type UploadedPayload = {
+    menus: Array<{
+      service_availability: Array<{
+        day_of_week: string;
+        time_periods: Array<{ start_time: string; end_time: string }>;
+      }>;
+    }>;
     items: Array<{
       title: { translations: { en_us: string } };
       price_info: { price: number };
@@ -176,10 +188,24 @@ describe('PublishUberMenuUseCase', () => {
       storeId: 'store-1',
       dryRun: true,
     });
-    expect(result).toMatchObject({ ok: true, dryRun: true });
+    expect(result).toMatchObject({
+      ok: true,
+      dryRun: true,
+      serviceAvailability: snapshot.serviceAvailability,
+    });
     expect(result).not.toHaveProperty('payload');
     expect(x.publications.createAttempt).not.toHaveBeenCalled();
     expect(x.gateway.uploadMenu).not.toHaveBeenCalled();
+  });
+
+  it('full publish uses the canonical Store schedule from the snapshot', async () => {
+    const x = setup();
+
+    await x.useCase.execute({ storeId: 'store-1', taxRateConfirmed: true });
+
+    expect(
+      lastUploadedPayload(x.gateway).menus[0]?.service_availability,
+    ).toEqual(snapshot.serviceAvailability);
   });
 
   it('full publish preserves a temporary sold-out suspend_until instead of making it indefinite', async () => {
