@@ -757,10 +757,7 @@ export class AccountingOperationsService {
     const newAttachmentUrls = this.normalizeUrls(input.attachmentUrls);
 
     await runSerializableAccountingWrite(this.prisma, async (tx) => {
-      await this.accounting.assertOnOrAfterAccountingStartDate(
-        occurredAt,
-        tx,
-      );
+      await this.accounting.assertOnOrAfterAccountingStartDate(occurredAt, tx);
       await this.accounting.assertEditableForPeriod(
         occurredAt,
         AccountingTxType.EXPENSE,

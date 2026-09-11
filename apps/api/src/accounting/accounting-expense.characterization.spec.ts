@@ -383,9 +383,11 @@ describe('AccountingOperationsService expense-write characterization', () => {
         }),
       },
       accountingCategory: {
-        findMany: jest.fn().mockResolvedValue([
-          { id: 'category-food-db-id', categoryStableId: 'expense_food' },
-        ]),
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            { id: 'category-food-db-id', categoryStableId: 'expense_food' },
+          ]),
       },
       accountingAccount: { findUnique: jest.fn() },
       $transaction: transaction,
