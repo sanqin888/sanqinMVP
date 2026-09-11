@@ -1,6 +1,6 @@
 # Phase 9 — Accounting / Reporting / Analytics Boundary Contraction & L3 Financial Integrity
 
-Status: **SLICE 0 READINESS AUDIT COMPLETE — SLICE 1/2/3 MERGED / CI GREEN — SLICE 4 SOURCE COMPLETE / REMOTE CI FOLLOW-UP**  
+Status: **SLICE 0 READINESS AUDIT COMPLETE — SLICE 1/2/3/4 MERGED / CI GREEN**  
 Slice 0 audit baseline: `origin/dev@1a69bd7dbd49eba08661b169463e32dc820f0396`  
 Slice 1 merge: PR #2281 / final head `974066e7c11f58316368fcb4fcfeec28c5da5509` / squash merge `f529f4701b63040a8e2dfee2cf3ca82213f25ec6` / CI #5494 green  
 Slice 3 merge: PR #2284 / final head `4399c841884e3267e18f7ab7f5b99781e0ed1fb6` / squash merge `0f37901a134062fcdb860e9ca256b4be2147586a` / CI #5503 green  
@@ -209,8 +209,8 @@ Remote validation: initial CI #5502 passed the architecture baseline and stopped
 
 ## 14. Slice 4 — Projection-ready Reporting / Orders Boundary Contraction
 
-State: **SOURCE COMPLETE / REMOTE CI FOLLOW-UP**  
-PR: #2285; initial head `21aaad403fcb70a1827da26bf9049d3021c93a69`; initial CI #5505 failed at the architecture gate before lint/build/test  
+State: **MERGED / CI GREEN**  
+PR/SHA: PR #2285; final head `f38d8feb98819378d2667498a90acfd2d06b0e54`; squash merge `e3a3785dd7b428658cfec6720ca77da8be6eb350`; CI #5507 green  
 Implementation base: `origin/dev@0f37901a134062fcdb860e9ca256b4be2147586a`
 
 Slice 4 adopts the approved projection-ready live-reader design. Reporting now owns an outbound `REPORTING_ORDER_FACTS_QUERY` port containing versioned V1 metric/item fact shapes. Orders owns a matching public `ORDER_REPORTING_FACTS_READER` capability and the Prisma queries that materialize current report facts. Immutable `OrderItem.componentsJson` decoding also moves behind the Orders owner boundary before facts cross into Reporting, so Reporting no longer imports Orders' internal snapshot parser or Orders persistence types.
@@ -221,4 +221,4 @@ The report behavior intentionally remains unchanged: `process.env.TZ || 'America
 
 Architecture movement targeted by the source change: `accounting-reporting-analytics -> commerce-orders-fulfillment` direct debt **1 -> 0**; `accounting-reporting-analytics -> runtime-data-ci-ops` **9 -> 7**; `brand-store -> accounting-reporting-analytics` direct debt **2 -> 0**; registering `HomepageContentModule` as composition wiring also contracts `brand-store -> runtime-data-ci-ops` **4 -> 3**. The resulting Accounting / Reporting / Analytics direct debt is Foundation **3**, External **1**, Identity **2**, Runtime **7**, total **13**. Both cross-owner bindings are confined to registered composition roots, so neither a lasting `Reporting -> Orders` public edge nor a lasting `Brand -> Reporting` public edge is introduced; `legacyPublicCycleComponents` is expected to remain empty.
 
-Focused tests retain Slice 2 report characterization at the Reporting contract boundary and add Orders-reader coverage for the exact reportable status set, current metric query semantics and immutable component-snapshot decoding. A boundary architecture spec prevents `ReportsService` from regaining Prisma/Orders-parser imports, requires Homepage business logic to stay on its Brand-owned ranking port, and pins both explicit composition-root registrations. Per repository workflow, no local lint/build/test/architecture command is claimed; GitHub Actions remains the validation gate after user review and remote-delivery authorization.
+Focused tests retain Slice 2 report characterization at the Reporting contract boundary and add Orders-reader coverage for the exact reportable status set, current metric query semantics and immutable component-snapshot decoding. A boundary architecture spec prevents `ReportsService` from regaining Prisma/Orders-parser imports, requires Homepage business logic to stay on its Brand-owned ranking port, and pins both explicit composition-root registrations. Remote validation proceeded in three heads: CI #5505 correctly rejected the initial Brand -> Reporting public SCC; head `a6bfefaf` removed that edge and passed the architecture gate in CI #5506, which then stopped on Prettier-only API lint; formatting-only final head `f38d8feb` passed CI #5507 completely across API and Web before PR #2285 was squash-merged as `e3a3785d`.
