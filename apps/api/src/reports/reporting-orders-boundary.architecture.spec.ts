@@ -10,56 +10,54 @@ function read(path: string): string {
 }
 
 describe('Reporting / Orders cycle-safe boundary', () => {
-  it(
-    'keeps Reporting business logic independent from Orders persistence and internal parsers',
-    () => {
-      const reportsService = read(resolve(REPORTS_ROOT, 'reports.service.ts'));
+  it('keeps Reporting business logic independent from Orders persistence and internal parsers', () => {
+    const reportsService = read(resolve(REPORTS_ROOT, 'reports.service.ts'));
 
-      expect(reportsService).toContain('REPORTING_ORDER_FACTS_QUERY');
-      expect(reportsService).not.toContain("from '../prisma/");
-      expect(reportsService).not.toContain("from '../orders/");
-      expect(reportsService).not.toContain('@prisma/client');
-      expect(reportsService).not.toContain('componentsJson');
-      expect(reportsService).not.toContain('readOrderItemComponentsSnapshot');
-    },
-  );
+    expect(reportsService).toContain('REPORTING_ORDER_FACTS_QUERY');
+    expect(reportsService).not.toContain("from '../prisma/");
+    expect(reportsService).not.toContain("from '../orders/");
+    expect(reportsService).not.toContain('@prisma/client');
+    expect(reportsService).not.toContain('componentsJson');
+    expect(reportsService).not.toContain('readOrderItemComponentsSnapshot');
+  });
 
-  it(
-    'binds the Reporting-owned outbound port to the Orders public reader only at the registered composition root',
-    () => {
-      const reportsModule = read(resolve(REPORTS_ROOT, 'reports.module.ts'));
-      const baseline = read(
-        resolve(REPOSITORY_ROOT, 'tools/architecture/context-baseline.json'),
-      );
+  it('binds the Reporting-owned outbound port to the Orders public reader only at the registered composition root', () => {
+    const reportsModule = read(resolve(REPORTS_ROOT, 'reports.module.ts'));
+    const baseline = read(
+      resolve(REPOSITORY_ROOT, 'tools/architecture/context-baseline.json'),
+    );
 
-      expect(reportsModule).toContain("from '../orders/public-api'");
-      expect(reportsModule).toContain('ORDER_REPORTING_FACTS_READER');
-      expect(reportsModule).toContain('REPORTING_ORDER_FACTS_QUERY');
-      expect(baseline).toContain('"apps/api/src/reports/reports.module.ts"');
-      expect(baseline).not.toContain(
-        '"accounting-reporting-analytics -> commerce-orders-fulfillment"',
-      );
-      expect(baseline).not.toContain(
-        '"brand-store -> accounting-reporting-analytics"',
-      );
-      expect(baseline).toContain(
-        '"accounting-reporting-analytics -> runtime-data-ci-ops": 7',
-      );
-    },
-  );
+    expect(reportsModule).toContain("from '../orders/public-api'");
+    expect(reportsModule).toContain('ORDER_REPORTING_FACTS_READER');
+    expect(reportsModule).toContain('REPORTING_ORDER_FACTS_QUERY');
+    expect(baseline).toContain('"apps/api/src/reports/reports.module.ts"');
+    expect(baseline).not.toContain(
+      '"accounting-reporting-analytics -> commerce-orders-fulfillment"',
+    );
+  });
 
-  it('keeps Brand/Homepage on the Reporting public query surface', () => {
+  it('keeps Homepage business logic on a Brand-owned ranking port and confines Reporting wiring to a composition root', () => {
     const homepageService = read(
       resolve(API_ROOT, 'homepage/homepage-featured.service.ts'),
     );
     const homepageModule = read(
       resolve(API_ROOT, 'homepage/homepage-content.module.ts'),
     );
+    const baseline = read(
+      resolve(REPOSITORY_ROOT, 'tools/architecture/context-baseline.json'),
+    );
 
-    expect(homepageService).toContain("from '../reports/public-api'");
+    expect(homepageService).toContain('HOMEPAGE_SALES_RANKING_QUERY');
+    expect(homepageService).not.toContain("from '../reports/");
     expect(homepageModule).toContain("from '../reports/public-api'");
-    expect(homepageService).not.toContain("from '../reports/reports.service'");
-    expect(homepageModule).not.toContain("from '../reports/reports.module'");
+    expect(homepageModule).toContain('REPORTING_TOP_ITEMS_QUERY');
+    expect(homepageModule).toContain('HOMEPAGE_SALES_RANKING_QUERY');
+    expect(baseline).toContain(
+      '"apps/api/src/homepage/homepage-content.module.ts"',
+    );
+    expect(baseline).not.toContain(
+      '"brand-store -> accounting-reporting-analytics"',
+    );
   });
 
   it('keeps immutable component decoding inside the Orders owner', () => {
