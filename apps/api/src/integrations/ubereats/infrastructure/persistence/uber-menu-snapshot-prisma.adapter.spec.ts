@@ -15,6 +15,12 @@ describe('UberMenuSnapshotPrismaAdapter publish configuration', () => {
     storeConfig: {
       timezone: string;
       salesTaxRate: number;
+      hours?: Array<{
+        weekday: number;
+        openMinutes: number | null;
+        closeMinutes: number | null;
+        isClosed: boolean;
+      }>;
     },
     rows: SnapshotRows = {},
   ) => {
@@ -35,8 +41,19 @@ describe('UberMenuSnapshotPrismaAdapter publish configuration', () => {
         findMany: jest.fn().mockResolvedValue(rows.categoryConfigs ?? []),
       },
     };
-    const storeConfigQuery = {
-      getStoreConfig: jest.fn().mockResolvedValue(storeConfig),
+    const businessSchedule = {
+      readBusinessSchedule: jest.fn().mockResolvedValue({
+        timezone: storeConfig.timezone,
+        salesTaxRate: storeConfig.salesTaxRate,
+        hours: storeConfig.hours ?? [
+          {
+            weekday: 1,
+            openMinutes: 480,
+            closeMinutes: 1350,
+            isClosed: false,
+          },
+        ],
+      }),
     };
     const catalogFacts = {
       readMenuSource: jest.fn().mockResolvedValue({
@@ -47,11 +64,11 @@ describe('UberMenuSnapshotPrismaAdapter publish configuration', () => {
     };
     return {
       prisma,
-      storeConfigQuery,
+      businessSchedule,
       catalogFacts,
       adapter: new UberMenuSnapshotPrismaAdapter(
         prisma as never,
-        storeConfigQuery as never,
+        businessSchedule as never,
         catalogFacts as never,
       ),
     };
@@ -124,10 +141,18 @@ describe('UberMenuSnapshotPrismaAdapter publish configuration', () => {
       'uber-store',
     );
 
-    expect(x.storeConfigQuery.getStoreConfig).toHaveBeenCalledWith('pos-store');
+    expect(x.businessSchedule.readBusinessSchedule).toHaveBeenCalledWith(
+      'pos-store',
+    );
     expect(snapshot).toMatchObject({
       timezone: 'America/Toronto',
       taxRate: 13,
+      serviceAvailability: [
+        {
+          day_of_week: 'monday',
+          time_periods: [{ start_time: '08:00', end_time: '22:30' }],
+        },
+      ],
     });
   });
 

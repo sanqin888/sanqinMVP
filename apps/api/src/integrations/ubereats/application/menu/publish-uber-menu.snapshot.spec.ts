@@ -47,6 +47,12 @@ describe('PublishUberMenuUseCase published item snapshots', () => {
           uberStoreId: 'uber-1',
           timezone: 'UTC',
           taxRate: 13,
+          serviceAvailability: [
+            {
+              day_of_week: 'monday',
+              time_periods: [{ start_time: '08:00', end_time: '22:30' }],
+            },
+          ],
           categories: [
             {
               stableId: 'category-1',
@@ -134,6 +140,12 @@ describe('PublishUberMenuUseCase published item snapshots', () => {
           uberStoreId: 'uber-1',
           timezone: 'UTC',
           taxRate: 13,
+          serviceAvailability: [
+            {
+              day_of_week: 'monday',
+              time_periods: [{ start_time: '08:00', end_time: '22:30' }],
+            },
+          ],
           categories: [
             {
               stableId: 'category-1',

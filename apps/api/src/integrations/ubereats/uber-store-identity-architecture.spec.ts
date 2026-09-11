@@ -243,6 +243,10 @@ describe('Uber Eats store identity architecture', () => {
       join(__dirname, 'infrastructure', 'persistence'),
       { productionOnly: true },
     );
+    const applicationFiles = scanTypeScript(
+      join(__dirname, 'application', 'menu'),
+      { productionOnly: true },
+    );
     const compositionRoot = scanTypeScript(__dirname, {
       productionOnly: true,
     }).find((file) => file.path === join(__dirname, 'ubereats.module.ts'));
@@ -255,10 +259,18 @@ describe('Uber Eats store identity architecture', () => {
     const draftRepositories = persistenceFiles.find((file) =>
       file.path.endsWith('uber-menu-draft.repositories.ts'),
     );
+    const publishSnapshot = persistenceFiles.find((file) =>
+      file.path.endsWith('uber-menu-snapshot-prisma.adapter.ts'),
+    );
+    const publishUseCase = applicationFiles.find((file) =>
+      file.path.endsWith('publish-uber-menu.use-case.ts'),
+    );
 
     expect(compositionRoot).toBeDefined();
     expect(draftRead).toBeDefined();
     expect(draftRepositories).toBeDefined();
+    expect(publishSnapshot).toBeDefined();
+    expect(publishUseCase).toBeDefined();
     expect(directBusinessHourReads).toEqual([]);
     expect(compositionRoot!.source).toContain('STORE_SCHEDULE_READER');
     expect(compositionRoot!.source).toContain(
@@ -276,5 +288,10 @@ describe('Uber Eats store identity architecture', () => {
     expect(draftRepositories!.source).toContain(
       'this.schedules.readBusinessSchedule(storeStableId)',
     );
+    expect(publishSnapshot!.source).toContain(
+      'this.businessSchedule.readBusinessSchedule(storeStableId)',
+    );
+    expect(publishUseCase!.source).toContain('snapshot.serviceAvailability');
+    expect(publishUseCase!.source).not.toContain("end_time: '23:59'");
   });
 });
