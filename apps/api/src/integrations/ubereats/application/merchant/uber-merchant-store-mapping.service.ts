@@ -1,5 +1,5 @@
 import { UberValidationError } from '../shared/uber-application.error';
-import { AppLogger } from '../../../../common/app-logger';
+import type { UberDiagnosticLogPort } from '../shared/uber-diagnostic-log.port';
 import { type UberMerchantApiPort } from '../merchant/uber-merchant-api.ports';
 import {
   type UberMerchantConnectionRepositoryPort,
@@ -58,11 +58,11 @@ export class DiscoverUberStoresUseCase {
 }
 
 export class MapUberStoreUseCase {
-  private readonly logger = new AppLogger(MapUberStoreUseCase.name);
   constructor(
     private readonly mappings: UberStoreMappingRepositoryPort,
     private readonly api: UberMerchantApiPort,
     private readonly connections: UberMerchantConnectionRepositoryPort,
+    private readonly diagnosticLog: UberDiagnosticLogPort,
   ) {}
   async selectStore(input: {
     storeId: string;
@@ -115,7 +115,8 @@ export class MapUberStoreUseCase {
           operation: 'merchant',
           message: '门店连接已发生变化，请刷新后重试',
         });
-      this.logger.log(
+      this.diagnosticLog.diagnosticLog(
+        MapUberStoreUseCase.name,
         `[merchant.store-mapping] storeId=${storeId} outcome=reconnected`,
       );
       return { ok: true, mapping: reconnected };
@@ -130,7 +131,8 @@ export class MapUberStoreUseCase {
       provisionedAt: existing?.provisionedAt ?? null,
       posExternalStoreId: existing?.posExternalStoreId ?? recoveredStoreId,
     });
-    this.logger.log(
+    this.diagnosticLog.diagnosticLog(
+      MapUberStoreUseCase.name,
       `[merchant.store-mapping] storeId=${storeId} outcome=selected`,
     );
     return { ok: true, mapping };

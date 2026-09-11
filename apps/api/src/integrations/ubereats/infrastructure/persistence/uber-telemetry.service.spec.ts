@@ -1,3 +1,4 @@
+import { AppLogger } from '../../../../common/public-api';
 import { UberTelemetryService } from './uber-telemetry.service';
 
 describe('UberTelemetryService', () => {
@@ -36,6 +37,22 @@ describe('UberTelemetryService', () => {
     await service.captureEvent('heartbeat');
 
     expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it('writes application diagnostics without persisting an OpsEvent', () => {
+    const create = jest.fn();
+    const upsert = jest.fn();
+    const log = jest.spyOn(AppLogger.prototype, 'log').mockImplementation();
+    const service = new UberTelemetryService({
+      opsEvent: { create, upsert },
+    } as never);
+
+    service.diagnosticLog('ProvisionUberStoreUseCase', 'provisioned');
+
+    expect(log).toHaveBeenCalledWith('provisioned');
+    expect(create).not.toHaveBeenCalled();
+    expect(upsert).not.toHaveBeenCalled();
+    log.mockRestore();
   });
 
   it('只接受低基数标签并聚合 metric', () => {

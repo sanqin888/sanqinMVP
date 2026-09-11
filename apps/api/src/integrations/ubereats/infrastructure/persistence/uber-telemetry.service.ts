@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { AppLogger } from '../../../../common/public-api';
 import { getLogContext } from '../../../../common/log-context';
 import { PrismaService } from '../../../../prisma/prisma.service';
+import type { UberDiagnosticLogPort } from '../../application/shared/uber-diagnostic-log.port';
 
 export interface UberTelemetryContext {
   correlationId?: string | null;
@@ -99,7 +100,7 @@ const ORDER_DETAIL_INVALID_MESSAGE =
 
 /** Uber Eats observability boundary: correlated events, safe logs and low-cardinality metrics. */
 @Injectable()
-export class UberTelemetryService {
+export class UberTelemetryService implements UberDiagnosticLogPort {
   private readonly logger = new AppLogger(UberTelemetryService.name);
   private readonly metrics = new Map<string, number>();
 
@@ -160,6 +161,10 @@ export class UberTelemetryService {
         ...details,
       },
     );
+  }
+
+  diagnosticLog(context: string, message: string): void {
+    new AppLogger(context).log(message);
   }
 
   increment(name: UberMetricName, labels: MetricLabels = {}, value = 1): void {

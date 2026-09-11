@@ -18,7 +18,9 @@
 
 - `domain` 只能依赖 `domain`。
 - `application` 只能依赖 `application`、`domain` 与 `contracts`，并以 application-owned
-  port 表达所有外部能力。
+  port 表达所有外部能力。普通 workflow diagnostic logging 也必须经
+  `UBER_DIAGNOSTIC_LOG_PORT`；application 不得直接构造 Foundation `AppLogger`。该端口只写日志，
+  不持久化 `OpsEvent`，避免为了日志跨层而引入业务副作用。
 - `api` 只能依赖 `api`、`application` 与 `contracts`。
 - `infrastructure` 可以依赖 `infrastructure`、`application`、`domain` 与 `contracts`，
   但任何内层不得反向依赖它。

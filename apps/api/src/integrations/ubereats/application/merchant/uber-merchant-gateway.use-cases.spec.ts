@@ -14,8 +14,10 @@ import {
 } from './uber-merchant-provisioning.service';
 
 const connection = { connectionId: 'merchant-1' };
+const diagnosticLog = { diagnosticLog: jest.fn() };
 
 describe('Uber merchant gateway use-case boundaries', () => {
+  beforeEach(() => diagnosticLog.diagnosticLog.mockClear());
   it('presents discovery candidates without binding before admin confirmation', async () => {
     const store = {
       storeId: 'uber-store-1',
@@ -92,6 +94,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
         }),
       } as never,
       { findConnection: jest.fn().mockResolvedValue(connection) } as never,
+      diagnosticLog,
     );
 
     await expect(
@@ -103,6 +106,10 @@ describe('Uber merchant gateway use-case boundaries', () => {
     });
     expect(mappings.upsertMapping).toHaveBeenCalledWith(
       expect.objectContaining({ posExternalStoreId: '4750_Yonge_Street' }),
+    );
+    expect(diagnosticLog.diagnosticLog).toHaveBeenCalledWith(
+      'MapUberStoreUseCase',
+      '[merchant.store-mapping] storeId=uber-store-1 outcome=selected',
     );
   });
 
@@ -135,6 +142,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
           .fn()
           .mockResolvedValue({ connectionId: 'new-connection' }),
       } as never,
+      diagnosticLog,
     );
 
     await expect(
@@ -173,6 +181,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
           .fn()
           .mockResolvedValue({ connectionId: 'attacker' }),
       } as never,
+      diagnosticLog,
     );
     await expect(
       useCase.selectStore({
@@ -210,6 +219,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
       api,
       { findConnection: jest.fn().mockResolvedValue(connection) } as never,
       mappings as never,
+      diagnosticLog,
     );
 
     await expect(
@@ -272,6 +282,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
       api as never,
       { findConnection: jest.fn().mockResolvedValue(connection) } as never,
       mappings as never,
+      diagnosticLog,
     );
 
     await expect(
@@ -303,6 +314,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
         api as never,
         { findConnection: jest.fn().mockResolvedValue(connection) } as never,
         mappings as never,
+        diagnosticLog,
       );
 
       await expect(
@@ -330,6 +342,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
       { provisionStore: jest.fn().mockRejectedValue(failure) },
       { findConnection: jest.fn().mockResolvedValue(connection) } as never,
       mappings as never,
+      diagnosticLog,
     );
 
     await expect(useCase.provisionStore('uber-store-1', {})).rejects.toBe(
@@ -377,6 +390,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
       api as never,
       { findConnection: jest.fn().mockResolvedValue(connection) } as never,
       mappings as never,
+      diagnosticLog,
     );
 
     await expect(
@@ -439,6 +453,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
       api as never,
       { findConnection: jest.fn().mockResolvedValue(connection) } as never,
       mappings as never,
+      diagnosticLog,
     );
 
     await expect(useCase.activate('uber-store-1')).resolves.toMatchObject({
@@ -475,6 +490,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
       api as never,
       { findConnection: jest.fn().mockResolvedValue(connection) } as never,
       mappings as never,
+      diagnosticLog,
     );
 
     await expect(useCase.update('uber-store-1', {})).rejects.toMatchObject({
@@ -514,6 +530,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
       api as never,
       { findConnection: jest.fn().mockResolvedValue(connection) } as never,
       mappings as never,
+      diagnosticLog,
     );
 
     await expect(useCase.update('uber-store-1', payload)).rejects.toMatchObject(
@@ -545,6 +562,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
       api as never,
       { findConnection: jest.fn().mockResolvedValue(connection) } as never,
       mappings as never,
+      diagnosticLog,
     );
 
     await expect(
@@ -581,6 +599,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
       { removeIntegration: jest.fn().mockRejectedValue(failure) } as never,
       { findConnection: jest.fn().mockResolvedValue(connection) } as never,
       mappings as never,
+      diagnosticLog,
     );
 
     await expect(useCase.revokeOrDeprovisionStore('uber-store-1')).rejects.toBe(
@@ -652,6 +671,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
       api as never,
       { findConnection: jest.fn().mockResolvedValue(connection) } as never,
       mappings as never,
+      diagnosticLog,
     );
 
     await expect(useCase.update('uber-store-1', 900)).resolves.toBe(prepTime);
@@ -674,6 +694,7 @@ describe('Uber merchant gateway use-case boundaries', () => {
           isProvisioned: true,
         }),
       } as never,
+      diagnosticLog,
     );
 
     await expect(useCase.update('uber-store-1', seconds)).rejects.toMatchObject(
