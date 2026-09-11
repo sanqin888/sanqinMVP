@@ -1775,6 +1775,15 @@ is claimed per repository workflow.
 **Validation:** final head `974066e7` passed CI #5494: API architecture gate, lint, build, strict declarations/shared strict checks and Jest were green; Web lint, build, strict declarations and tests were green. No per-Slice production active verification is required because runtime authorization behavior is unchanged; Phase-level verification cadence remains authoritative.  
 **Details:** `docs/architecture/phase-9-accounting-reporting-analytics.md`, `docs/architecture/current-dependency-graph.md`, `apps/api/src/accounting/accounting-auth-boundary.architecture.spec.ts`, `tools/architecture/context-baseline.json`.
 
+### 2026-09-11 — Phase 9 Slice 2: Accounting / Reporting Characterization
+
+**PR/SHA:** local branch `refactor/phase9-slice2-accounting-characterization`; no PR / remote SHA yet  
+**State:** SOURCE COMPLETE / LOCAL REVIEW PENDING  
+**Scope/result:** Adds test-only characterization before L3 financial-integrity and cross-owner contractions. Coverage now locks Accounting ledger CRUD/idempotency/optimistic locking/current audit evidence, month close/reopen plus ADJUSTMENT/year-lock behavior and Toronto period bounds, existing atomic manual/inbox Expense split writes, current provisional DAILY/PER_ORDER `Order.totalCents` revenue accrual and Uber source classification, `eats.report` gating plus rolling Uber financial-report request windows, and Reports KPI/payment/fulfillment/chart/date-boundary behavior. Existing `componentsJson` top-item characterization remains unchanged and authoritative for historical combo composition. No production implementation is changed.  
+**Architecture effect:** none. Accounting / Reporting / Analytics remains Foundation **3**, Orders **1**, External **1**, Identity **2**, Runtime **9**, total **16**, with `legacyPublicCycleComponents=[]`. No public API/port, ownership, schema/migration, dependency, compatibility, provider wire, Revenue Posting rule or Web Clover change.  
+**Validation:** repository review-first policy applies; no local lint/build/test/architecture command is claimed. GitHub Actions validation is deferred until user authorizes remote delivery.  
+**Details:** `apps/api/src/accounting/accounting-{ledger,period,revenue,expense,automation}.characterization.spec.ts`, `apps/api/src/reports/reports-characterization.spec.ts`, `docs/architecture/phase-9-accounting-reporting-analytics.md`, `docs/architecture/current-dependency-graph.md`, this worklog.
+
 ## Rule for future entries
 
 For each modularization code batch, append exactly one chronological entry before

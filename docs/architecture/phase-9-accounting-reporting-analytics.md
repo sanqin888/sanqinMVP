@@ -1,6 +1,6 @@
 # Phase 9 — Accounting / Reporting / Analytics Boundary Contraction & L3 Financial Integrity
 
-Status: **SLICE 0 READINESS AUDIT COMPLETE — SLICE 1 MERGED / CI GREEN**  
+Status: **SLICE 0 READINESS AUDIT COMPLETE — SLICE 1 MERGED / CI GREEN — SLICE 2 SOURCE COMPLETE / LOCAL REVIEW PENDING**  
 Slice 0 audit baseline: `origin/dev@1a69bd7dbd49eba08661b169463e32dc820f0396`  
 Slice 1 merge: PR #2281 / final head `974066e7c11f58316368fcb4fcfeec28c5da5509` / squash merge `f529f4701b63040a8e2dfee2cf3ca82213f25ec6` / CI #5494 green  
 Audit date: 2026-09-11
@@ -161,3 +161,26 @@ Intentionally unchanged: Accounting/Reports/Analytics business behavior, Prisma 
 Remote validation: initial CI #5493 passed the architecture baseline but stopped on one Prettier-only line-wrap error in the new architecture spec. Formatting-only head `974066e7` then passed GitHub Actions CI #5494 completely: API architecture baseline, lint, build, strict declaration checks, shared strict checks and Jest were green; Web lint, build, strict declaration check and tests were green. PR #2281 was squash-merged to `dev` as `f529f470`.
 
 No separate production deployment/active verification is required for Slice 1 because runtime authorization behavior did not change and the repository's modularization verification cadence is Phase-level. The next source work package is Slice 2 characterization; it must preserve behavior and add evidence before any deeper L3 atomicity or cross-owner boundary change.
+
+## 12. Slice 2 — Accounting / Reporting Characterization
+
+State: **SOURCE COMPLETE / LOCAL REVIEW PENDING**  
+Local branch: `refactor/phase9-slice2-accounting-characterization`  
+Implementation base: `origin/dev@9a25e8221bb16cb9d18d16bcbbdcb974d1b05bc3`
+
+Slice 2 is intentionally test-only for production behavior. It adds characterization coverage before any L3 financial-integrity or cross-owner ownership change and does not modify Accounting, Reports, Uber, Orders, Payments, Web, Prisma schema/migrations, package dependencies, provider contracts or architecture allowances.
+
+The new coverage locks the following existing semantics:
+
+- ledger transaction create/update/soft-delete behavior, operator stable-identity persistence, idempotent create replay, optimistic `lastKnownUpdatedAt` conflict handling, version increment and current `AccountingAuditLog` evidence;
+- closed-month policy where ordinary entries are rejected but `ADJUSTMENT` remains writable until the fiscal year is hard-locked, explicit month reopen behavior/audit evidence, plus StoreConfig/Toronto month and year UTC boundaries and accounting-start-month handling for year close;
+- manual Expense and inbox-confirmation writes keeping the expense document and all split ledger rows inside one existing Prisma transaction, including current split idempotency keys and attachment preservation;
+- current provisional order-revenue accrual behavior: DAILY mode sums `Order.totalCents` into one day-level ledger entry, PER_ORDER mode keeps stable-order idempotency and Uber-vs-order source classification, and replays skip existing entries. These assertions describe current behavior only and do **not** reclassify `Order.totalCents` as canonical accounting revenue;
+- Accounting automation's `eats.report` capability gate, provisioned-store lookup, previous-four-day rolling report window clipped by `accountingStartDate`, latest-completed-business-day end date, and the existing three Uber financial report types;
+- Reports KPI/date behavior using `process.env.TZ || America/Toronto`, `Order.createdAt`, the paid/making/ready/completed status set, `totalCents`-based sales/payment/fulfillment/chart aggregation, and existing top-item snapshot behavior. The previously existing `componentsJson` characterization remains the authority for historical combo composition.
+
+Architecture effect: **none**. The machine direct-import baseline remains `accounting-reporting-analytics -> architecture-foundation 3`, `commerce-orders-fulfillment 1`, `external-channels 1`, `identity-customer-benefits 2`, `runtime-data-ci-ops 9` for a total of **16**, with `legacyPublicCycleComponents=[]`. No new public API, port, module dependency, compatibility path or owner transfer is introduced.
+
+This slice deliberately does not fix the L3 atomicity/audit gap, normalize Reports onto StoreConfig timezone, change `accountingStartDate` UTC-midnight storage, replace direct Orders reads, change Revenue Posting semantics, or remove Accounting knowledge of Uber provider store UUIDs. Those remain later explicitly scoped Phase 9 work.
+
+Per repository workflow, no local lint/build/test/architecture command is claimed. After user review, the exact GitHub Actions API/Web pipeline is the validation gate.
