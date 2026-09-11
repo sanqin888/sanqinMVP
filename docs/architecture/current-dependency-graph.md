@@ -4,6 +4,7 @@ Phase 3 is **PRODUCTION VERIFIED / CLOSED** for its approved scope as of 2026-09
 Phase 4 is **PRODUCTION VERIFIED / CLOSED** as of 2026-09-05 after the consolidated migration recovery,
 deployment and active verification; its final source graph remains cycle-free under the recorded baseline.
 Phase 8 External Channels is **SOURCE / ARCHITECTURE CLOSED** as of 2026-09-11 after consolidated Test Store verification passed for every currently exercisable capability. Financial-report live replay remains `CODE READY / LIVE TEST BLOCKED BY UBER CAPABILITY`, while Uber Production Verification, Production Store cutover and the production pilot remain separate provider gates.
+Phase 9 Accounting / Reporting / Analytics Slice 0 readiness audit is complete at `origin/dev@1a69bd7d`; Slice 1 is source-complete locally on `refactor/phase9-slice1-accounting-auth-boundary` and contracts only staff-auth implementation imports onto the existing Identity public surface.
 Slice 6 merged via PR #2157 with final PR head `8547b46c`, squash merge `b91afb6a`, and
 CI #5070 green; focused Uber menu item availability OFF -> ON, temporary suspension /
 recovery, and option availability OFF -> ON verification were completed successfully.
@@ -105,9 +106,11 @@ pair fails CI.
 | store-operations-pos-print | external-channels 1; identity-customer-benefits 1; runtime-data-ci-ops 5 |
 | external-channels | architecture-foundation 2; identity-customer-benefits 2; runtime-data-ci-ops 23 |
 | messaging-notifications | architecture-foundation 3; runtime-data-ci-ops 6 |
-| accounting-reporting-analytics | architecture-foundation 3; commerce-orders-fulfillment 1; external-channels 1; identity-customer-benefits 11; runtime-data-ci-ops 9 |
+| accounting-reporting-analytics | architecture-foundation 3; commerce-orders-fulfillment 1; external-channels 1; identity-customer-benefits 2; runtime-data-ci-ops 9 |
 | web-pwa | none; cross-context shared contracts use registered public aliases |
 | runtime-data-ci-ops | none; registered composition-root wiring is excluded |
+
+2026-09-11 Phase 9 Slice 1 is **SOURCE COMPLETE / LOCAL REVIEW PENDING** on `refactor/phase9-slice1-accounting-auth-boundary`. The three Accounting/Reports/Analytics controllers now consume `SessionAuthGuard`, `RolesGuard` and `Roles` through `auth/public-api.ts`, while the two existing `AuthModule` Nest composition seams remain direct. The monotonic baseline contracts `accounting-reporting-analytics -> identity-customer-benefits` **11 -> 2**, reducing total Accounting/Reporting/Analytics direct debt **25 -> 16**. Focused architecture coverage prevents the implementation-path imports from returning. No route, role, Prisma/schema/migration, accounting/revenue, Uber reporting, Web Clover, dependency or compatibility behavior changes; no local validation run is claimed.
 
 2026-09-07 Phase 6 Slice 1 merged through PR #2231 / `1ad42319` after final head `f3550efd` passed PR CI #5318. It contracts three Payments/Clover -> Commerce deep imports by moving POS refund and reverse-sync orchestration onto the existing Orders public `POS_ORDER_OPERATIONS` capability. The monotonic pair baseline is therefore `payments-clover -> commerce-orders-fulfillment 8 -> 5`, and current Payments/Clover total outgoing direct debt is **54**. Public SCC remains empty. The Phase 6 readiness baseline refresh merged through PR #2232 / `94cff60f` after final head `f35bcd5f` passed CI #5321.
 

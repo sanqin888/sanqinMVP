@@ -1,9 +1,7 @@
 // apps/api/src/reports/reports.controller.ts
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ReportsService } from './reports.service';
-import { RolesGuard } from '../auth/roles.guard';
-import { Roles } from '../auth/roles.decorator';
-import { SessionAuthGuard } from '../auth/session-auth.guard';
+import { Roles, RolesGuard, SessionAuthGuard } from '../auth/public-api';
 
 @Controller('reports')
 @UseGuards(SessionAuthGuard, RolesGuard)
