@@ -42,7 +42,9 @@ describe('Accounting / Reporting / Analytics staff-auth boundary', () => {
     const accountingModule = read(
       resolve(ACCOUNTING_ROOT, 'accounting.module.ts'),
     );
-    const analyticsModule = read(resolve(ANALYTICS_ROOT, 'analytics.module.ts'));
+    const analyticsModule = read(
+      resolve(ANALYTICS_ROOT, 'analytics.module.ts'),
+    );
     const reportsModule = read(resolve(REPORTS_ROOT, 'reports.module.ts'));
 
     expect(accountingModule).toContain(
