@@ -138,8 +138,7 @@ export function createMerchantWiring(): Provider[] {
         api: UberMerchantApiPort,
         connections: UberMerchantConnectionRepositoryPort,
         diagnosticLog: UberDiagnosticLogPort,
-      ) =>
-        new MapUberStoreUseCase(mappings, api, connections, diagnosticLog),
+      ) => new MapUberStoreUseCase(mappings, api, connections, diagnosticLog),
       inject: [
         UBER_STORE_MAPPING_REPOSITORY,
         UBER_MERCHANT_API,

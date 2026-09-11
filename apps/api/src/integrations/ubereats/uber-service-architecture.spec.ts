@@ -546,9 +546,9 @@ describe('Uber Eats bounded-context architecture', () => {
       expect(source).not.toMatch(/\bAppLogger\b/);
     }
 
-    expect(
-      sourceByPath.get('infrastructure/nest/common.wiring.ts'),
-    ).toContain('UBER_DIAGNOSTIC_LOG_PORT');
+    expect(sourceByPath.get('infrastructure/nest/common.wiring.ts')).toContain(
+      'UBER_DIAGNOSTIC_LOG_PORT',
+    );
     expect(
       sourceByPath.get('infrastructure/nest/merchant.wiring.ts'),
     ).toContain('UBER_DIAGNOSTIC_LOG_PORT');
