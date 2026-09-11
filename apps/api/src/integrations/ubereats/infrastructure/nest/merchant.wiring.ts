@@ -2,6 +2,10 @@ import {
   type UberTelemetryPort,
   UBER_TELEMETRY_PORT,
 } from '../../application/shared/uber-telemetry.port';
+import {
+  type UberDiagnosticLogPort,
+  UBER_DIAGNOSTIC_LOG_PORT,
+} from '../../application/shared/uber-diagnostic-log.port';
 import type { Provider } from '@nestjs/common';
 import { UBER_EATS_STORE_STATUS_SYNC } from '../../public-api';
 import {
@@ -133,11 +137,14 @@ export function createMerchantWiring(): Provider[] {
         mappings: UberStoreMappingRepositoryPort,
         api: UberMerchantApiPort,
         connections: UberMerchantConnectionRepositoryPort,
-      ) => new MapUberStoreUseCase(mappings, api, connections),
+        diagnosticLog: UberDiagnosticLogPort,
+      ) =>
+        new MapUberStoreUseCase(mappings, api, connections, diagnosticLog),
       inject: [
         UBER_STORE_MAPPING_REPOSITORY,
         UBER_MERCHANT_API,
         UBER_MERCHANT_CONNECTION_REPOSITORY,
+        UBER_DIAGNOSTIC_LOG_PORT,
       ],
     },
     {
@@ -146,12 +153,20 @@ export function createMerchantWiring(): Provider[] {
         UBER_STORE_API,
         UBER_MERCHANT_CONNECTION_REPOSITORY,
         UBER_STORE_MAPPING_REPOSITORY,
+        UBER_DIAGNOSTIC_LOG_PORT,
       ],
       useFactory: (
         api: UberStoreApiPort,
         connections: UberMerchantConnectionRepositoryPort,
         mappings: UberStoreMappingRepositoryPort,
-      ) => new ProvisionUberStoreUseCase(api, connections, mappings),
+        diagnosticLog: UberDiagnosticLogPort,
+      ) =>
+        new ProvisionUberStoreUseCase(
+          api,
+          connections,
+          mappings,
+          diagnosticLog,
+        ),
     },
     {
       provide: RetrieveUberStoreIntegrationConfigUseCase,
@@ -177,13 +192,20 @@ export function createMerchantWiring(): Provider[] {
         UBER_STORE_API,
         UBER_MERCHANT_CONNECTION_REPOSITORY,
         UBER_STORE_MAPPING_REPOSITORY,
+        UBER_DIAGNOSTIC_LOG_PORT,
       ],
       useFactory: (
         api: UberStoreApiPort,
         connections: UberMerchantConnectionRepositoryPort,
         mappings: UberStoreMappingRepositoryPort,
+        diagnosticLog: UberDiagnosticLogPort,
       ) =>
-        new UpdateUberStoreIntegrationConfigUseCase(api, connections, mappings),
+        new UpdateUberStoreIntegrationConfigUseCase(
+          api,
+          connections,
+          mappings,
+          diagnosticLog,
+        ),
     },
     {
       provide: DeprovisionUberStoreUseCase,
@@ -191,12 +213,20 @@ export function createMerchantWiring(): Provider[] {
         UBER_STORE_API,
         UBER_MERCHANT_CONNECTION_REPOSITORY,
         UBER_STORE_MAPPING_REPOSITORY,
+        UBER_DIAGNOSTIC_LOG_PORT,
       ],
       useFactory: (
         api: UberStoreApiPort,
         connections: UberMerchantConnectionRepositoryPort,
         mappings: UberStoreMappingRepositoryPort,
-      ) => new DeprovisionUberStoreUseCase(api, connections, mappings),
+        diagnosticLog: UberDiagnosticLogPort,
+      ) =>
+        new DeprovisionUberStoreUseCase(
+          api,
+          connections,
+          mappings,
+          diagnosticLog,
+        ),
     },
     {
       provide: RetrieveUberStoreStatusUseCase,
@@ -217,12 +247,20 @@ export function createMerchantWiring(): Provider[] {
         UBER_STORE_API,
         UBER_MERCHANT_CONNECTION_REPOSITORY,
         UBER_STORE_MAPPING_REPOSITORY,
+        UBER_DIAGNOSTIC_LOG_PORT,
       ],
       useFactory: (
         api: UberStoreApiPort,
         connections: UberMerchantConnectionRepositoryPort,
         mappings: UberStoreMappingRepositoryPort,
-      ) => new UpdateUberStorePrepTimeUseCase(api, connections, mappings),
+        diagnosticLog: UberDiagnosticLogPort,
+      ) =>
+        new UpdateUberStorePrepTimeUseCase(
+          api,
+          connections,
+          mappings,
+          diagnosticLog,
+        ),
     },
     {
       provide: SyncUberStoreStatusUseCase,

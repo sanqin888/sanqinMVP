@@ -1,6 +1,6 @@
 # Phase 8 — External Channels Boundary Contraction & L3 Resilience
 
-Status: **SLICES 8.3A0 / 8.3C PRODUCTION VERIFIED — SLICES 8.3A / 8.3B / 8.4 MERGED / CI GREEN — SLICE 8.5 LOCAL SOURCE / USER REVIEW PENDING**  
+Status: **SLICES 8.3A0 / 8.3C / 8.5 PRODUCTION VERIFIED — SLICES 8.3A / 8.3B / 8.4 MERGED / CI GREEN — SLICE 8.6A LOCAL SOURCE / USER REVIEW PENDING**  
 Slice 0 audit baseline: `origin/dev@d1c7d7b3e968d99dce1e3df39ca1af04a7696883`  
 Slice 8.1 implementation baseline: `origin/dev@96808b0ec1adc984dae99dd73dbd0e8ce4f2c4a9`  
 Slice 8.2A implementation baseline: `origin/dev@fc9bfc01f651c0d3193ee06e1d71ea0029e77835`  
@@ -13,7 +13,8 @@ Slice 8.3B implementation baseline: `origin/dev@51bf909152ff5e6c1a98ca87bda2c537
 Slice 8.3C implementation baseline: `origin/dev@29485a62e515b00ea9e62b7c5ef7c8f7c45d34d2`  
 Slice 8.4 implementation baseline: `origin/dev@982b4de19d809dd0ca25d026ff4eb0ccde323791`  
 Slice 8.5 implementation baseline: `origin/dev@466ae6332400a9368c9e9bbb8f88ef6e9b5b35da`  
-Baseline merges: PR `#2258` — Phase 7 Slice 5B; PR `#2259` — Phase 8 planning / Slice 0 audit; PR `#2260` — Phase 8 Slice 8.1; PR `#2261` — Phase 8 Slice 8.2A; PR `#2262` — Phase 8 Slice 8.2B; PR `#2263` — Phase 8 Slice 8.2B.3; PR `#2264` — Phase 8 Slice 8.3A0; PR `#2266` — Phase 8 A0 evidence / 8.3 plan sync; PR `#2267` — Phase 8 Slice 8.3A; PR `#2268` — Phase 8 Slice 8.3B; PR `#2269` — Phase 8 Slice 8.3C; PR `#2271` — Phase 8 Slice 8.4  
+Slice 8.6A implementation baseline: `origin/dev@54fa04dadaedb9a9e9cf0c2ae396f8fc18cef8ec`  
+Baseline merges: PR `#2258` — Phase 7 Slice 5B; PR `#2259` — Phase 8 planning / Slice 0 audit; PR `#2260` — Phase 8 Slice 8.1; PR `#2261` — Phase 8 Slice 8.2A; PR `#2262` — Phase 8 Slice 8.2B; PR `#2263` — Phase 8 Slice 8.2B.3; PR `#2264` — Phase 8 Slice 8.3A0; PR `#2266` — Phase 8 A0 evidence / 8.3 plan sync; PR `#2267` — Phase 8 Slice 8.3A; PR `#2268` — Phase 8 Slice 8.3B; PR `#2269` — Phase 8 Slice 8.3C; PR `#2271` — Phase 8 Slice 8.4; PR `#2272` — Phase 8 Slice 8.5  
 Audit / implementation dates: 2026-09-09–2026-09-10
 
 ## 1. Purpose
@@ -203,7 +204,7 @@ Slice 0 found that `brand-store.default-store-identity.v1` was already registere
 
 This originally matched the earlier plan to preserve Test Store / historical Uber rows until a separate Production cutover cleanup. On 2026-09-10 the user confirmed that the current Uber integration history is disposable test data, but directed that data deletion be deferred until Uber Production Verification has passed so all accumulated test data can be removed together rather than through a narrow interim migration.
 
-**Updated Phase 8 result:** Slice 8.5 local source removes those test-data-only persistence/identity compatibility paths and hardens the scanner against their return. No Slice 8.5 data-cleanup migration is included. Existing Uber test records remain untouched until the dedicated post-Production-Verification cleanup. This does not generalize to Uber wire/protocol compatibility, which remains separately evidence-gated.
+**Updated Phase 8 result:** Slice 8.5 removed those test-data-only persistence/identity compatibility paths and hardened the scanner against their return; PR #2272 / `fb6f3bb8` is merged and post-deploy verification passed. No Slice 8.5 data-cleanup migration is included. Existing Uber test records remain untouched until the dedicated post-Production-Verification cleanup. This does not generalize to Uber wire/protocol compatibility, which remains separately evidence-gated.
 
 ### 4.9 UberDirect is removed from Phase 8 scope
 
@@ -467,7 +468,7 @@ The user's explicit no-compatibility decision for current Uber test data superse
 
 Read-only production inventory on 2026-09-10 found the remaining identity tail is narrow and attributable: `UberOpsTicket` contains **15 OPEN `STORE_STATUS_SYNC` rows** under Test Store provider UUID `47f93365-f7dc-4b49-9e3b-a99e9915e558`, whose current mapping points to canonical `4750_Yonge_Street`; `UberReconciliationReport` contains **one** historical `storeId='default'` row. The other audited Uber store-scoped configuration/publish rows are already canonical. These rows are confirmed test data, but they are intentionally retained now; they will be deleted together with the rest of the Uber test dataset only after Uber Production Verification passes.
 
-Authorized local Slice 8.5 source on `refactor/phase8-slice8.5-test-era-compat-cleanup` therefore:
+Merged Slice 8.5 source from PR `#2272` / squash merge `fb6f3bb8` therefore:
 
 - removes `UberOpsTicketStoreScope`, `legacyUberStoreIds`, `persistedStoreScopeId`, mapping-based ticket-scope expansion and provider-ID-to-canonical retry resolution; OpsTicket list/count/summary/retry now carry the persisted canonical `storeStableId` directly;
 - removes the historical `OFFLINE -> PAUSED` OpsTicket parser compatibility while keeping current internal `ONLINE | PAUSED` semantics and the normal `storeStableId <-> uberStoreId` mapping validation for Store Status retries;
@@ -476,14 +477,24 @@ Authorized local Slice 8.5 source on `refactor/phase8-slice8.5-test-era-compat-c
 - adds a general architecture-scanner rule that any `@compat` annotation for a registry entry already marked `closed` is a failure, plus specific guards preventing this Store-identity compatibility behavior from returning without an annotation;
 - intentionally includes **no data-cleanup migration**. The inventoried Test Store records remain in place until Uber Production Verification passes, at which point the complete accumulated Uber test dataset will be inventoried and removed in one separately authorized cleanup.
 
-This does **not** waive protocol compatibility. Provider wire DTOs, webhook signature/envelope handling, idempotency semantics, verification requirements, the narrowly observed Sandbox CANCEL `200 + empty body` success compatibility, Store response field normalization and any compatibility required by the Uber production API remain evidence-gated and unchanged. No context direct-import allowance or public dependency direction changes in 8.5: External -> Orders remains **0**, Runtime remains **23**, External direct debt total remains **29**, and public SCC must remain empty. Current state is **LOCAL SOURCE / USER REVIEW PENDING**; GitHub Actions remains the validation gate after review.
+This does **not** waive protocol compatibility. Provider wire DTOs, webhook signature/envelope handling, idempotency semantics, verification requirements, the narrowly observed Sandbox CANCEL `200 + empty body` success compatibility, Store response field normalization and any compatibility required by the Uber production API remain evidence-gated and unchanged. No context direct-import allowance or public dependency direction changes in 8.5: External -> Orders remains **0**, Runtime remains **23**, External direct debt total remains **29**, and public SCC remains empty. PR-head CI `#5467` and merged-head CI `#5468` passed API + Web. Post-deploy active verification confirmed canonical `4750_Yonge_Street` Operations/Reconciliation queries, POS pause/resume -> Uber Store Status `200/SUCCEEDED`, item availability off/on -> Uber `204/SYNCED`, and clean API/worker identity logs; no new provider-UUID-scoped OpsTicket was created. Slice 8.5 is therefore **PRODUCTION VERIFIED**. Test-data deletion remains deferred until Uber Production Verification passes.
 
 ### Slice 8.6 — Closeout
+
+#### Slice 8.6A — Application Diagnostic Logging Boundary
+
+Closeout audit on `origin/dev@54fa04da` found one remaining source-level mismatch with the Uber bounded-context rule that `application` depends only on `application/domain/contracts`: `uber-merchant-provisioning.service.ts` and `uber-merchant-store-mapping.service.ts` still constructed Foundation `AppLogger` directly. Slice 8.1 had deliberately retained those imports because `UberTelemetryPort.workflowLog()` filters ordinary merchant diagnostic messages while `captureEvent()` persists `OpsEvent`; neither behavior is equivalent to the existing plain log side effect.
+
+Authorized local 8.6A source introduces the narrow application-owned `UBER_DIAGNOSTIC_LOG_PORT`. The merchant application use cases emit the same message text and class context through that port; `UberTelemetryService` implements the log-only adapter with `AppLogger` and the existing common wiring aliases the new token to that service. `diagnosticLog()` performs no `OpsEvent` create/upsert, so the ownership contraction does not convert diagnostics into durable business events. Architecture coverage forbids the two merchant application files from importing/constructing Foundation logging directly and pins the application-port wiring.
+
+This removes exactly the two intentional application-layer Foundation direct imports identified in Slice 8.1. The expected machine-baseline movement is `external-channels -> architecture-foundation` **4 -> 2** and External outgoing direct debt **29 -> 27**; the remaining Foundation debt is the infrastructure-only `getLogContext()` and accounting uploads-layout seam. External -> Orders remains **0**, Runtime remains **23**, Identity remains **2**, and public SCC remains empty. No Prisma/schema/migration, provider wire, OAuth, Store/Menu/Order behavior, webhook/idempotency, Payments/Clover or dependency change is included. GitHub Actions remains the authoritative validation gate after user review.
+
+#### Slice 8.6B — Documentation + consolidated closeout evidence
 
 Synchronize:
 
 - this Phase 8 plan/checklist;
-- `current-dependency-graph.md` including the already-known `External -> Foundation = 10` baseline correction;
+- `current-dependency-graph.md`, including final External direct-debt counts after 8.6A (`Foundation=2`, `Orders=0`, `Identity=2`, `Runtime=23`);
 - `modularization-worklog.md`;
 - machine baseline changes made by approved source slices;
 - final-head CI and consolidated deployment/active-verification evidence.

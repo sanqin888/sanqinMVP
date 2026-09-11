@@ -1,4 +1,5 @@
 import { UBER_TELEMETRY_PORT } from '../../application/shared/uber-telemetry.port';
+import { UBER_DIAGNOSTIC_LOG_PORT } from '../../application/shared/uber-diagnostic-log.port';
 import { UBER_GATEWAY_AUDIT_PORT } from '../../application/shared/uber-gateway-audit.port';
 import type { Provider } from '@nestjs/common';
 import { BrowserWriteCsrfGuard } from '../../api/ubereats-csrf.guard';
@@ -60,6 +61,7 @@ export function createCommonWiring(): Provider[] {
     },
     UberTelemetryService,
     { provide: UBER_TELEMETRY_PORT, useExisting: UberTelemetryService },
+    { provide: UBER_DIAGNOSTIC_LOG_PORT, useExisting: UberTelemetryService },
     UberGatewayAuditPrismaAdapter,
     {
       provide: UBER_GATEWAY_AUDIT_PORT,

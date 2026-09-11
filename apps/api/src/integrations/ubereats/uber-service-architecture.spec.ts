@@ -528,6 +528,32 @@ describe('Uber Eats bounded-context architecture', () => {
     }
   });
 
+  it('keeps merchant application diagnostics behind an application-owned port', () => {
+    const sourceByPath = new Map(
+      boundedContextFiles.map((file) => [
+        relative(BOUNDED_CONTEXT_ROOT, file.path),
+        file.source,
+      ]),
+    );
+
+    for (const path of [
+      'application/merchant/uber-merchant-provisioning.service.ts',
+      'application/merchant/uber-merchant-store-mapping.service.ts',
+    ]) {
+      const source = sourceByPath.get(path);
+      expect(source).toMatch(/shared\/uber-diagnostic-log\.port['"]/);
+      expect(source).not.toMatch(/common\/(?:app-logger|public-api)['"]/);
+      expect(source).not.toMatch(/\bAppLogger\b/);
+    }
+
+    expect(
+      sourceByPath.get('infrastructure/nest/common.wiring.ts'),
+    ).toContain('UBER_DIAGNOSTIC_LOG_PORT');
+    expect(
+      sourceByPath.get('infrastructure/nest/merchant.wiring.ts'),
+    ).toContain('UBER_DIAGNOSTIC_LOG_PORT');
+  });
+
   it('keeps domain code independent from frameworks and infrastructure', () => {
     for (const path of boundedContextFiles.filter(
       ({ path }) => layerOf(path) === 'domain',
