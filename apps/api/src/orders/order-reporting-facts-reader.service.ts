@@ -17,9 +17,7 @@ const REPORTABLE_ORDER_STATUSES: OrderStatus[] = [
 ];
 
 @Injectable()
-export class OrderReportingFactsReaderService
-  implements OrderReportingFactsReaderPort
-{
+export class OrderReportingFactsReaderService implements OrderReportingFactsReaderPort {
   constructor(private readonly prisma: PrismaService) {}
 
   async readMetricsForRange(
