@@ -7,7 +7,7 @@ import {
   type UberStoreMappingRepositoryPort,
 } from './uber-merchant-persistence.ports';
 import type { UberOperationsAlertRepositoryPort } from '../operations/uber-operations-alert.ports';
-import { AppLogger } from '../../../../common/app-logger';
+import type { UberDiagnosticLogPort } from '../shared/uber-diagnostic-log.port';
 
 export type UberStoreStatusTarget = {
   uberStoreId: string;
@@ -267,11 +267,11 @@ const requireProvisionedMappedStore = async (
 };
 
 export class ProvisionUberStoreUseCase {
-  private readonly logger = new AppLogger(ProvisionUberStoreUseCase.name);
   constructor(
     private readonly api: UberStoreApiPort,
     private readonly connections: UberMerchantConnectionRepositoryPort,
     private readonly mappings: UberStoreMappingRepositoryPort,
+    private readonly diagnosticLog: UberDiagnosticLogPort,
   ) {}
   async provisionStore(storeId: string, payload: Record<string, unknown> = {}) {
     const id = storeId.trim();
@@ -320,7 +320,10 @@ export class ProvisionUberStoreUseCase {
       posExternalStoreId:
         response.posExternalStoreId ?? selected.posExternalStoreId,
     });
-    this.logger.log(`[merchant.provisioning] storeId=${id} outcome=success`);
+    this.diagnosticLog.diagnosticLog(
+      ProvisionUberStoreUseCase.name,
+      `[merchant.provisioning] storeId=${id} outcome=success`,
+    );
     return {
       ok: true,
       storeId: id,
@@ -348,13 +351,11 @@ export class RetrieveUberStoreIntegrationConfigUseCase {
 }
 
 export class UpdateUberStoreIntegrationConfigUseCase {
-  private readonly logger = new AppLogger(
-    UpdateUberStoreIntegrationConfigUseCase.name,
-  );
   constructor(
     private readonly api: UberStoreApiPort,
     private readonly connections: UberMerchantConnectionRepositoryPort,
     private readonly mappings: UberStoreMappingRepositoryPort,
+    private readonly diagnosticLog: UberDiagnosticLogPort,
   ) {}
 
   async activate(storeId: string) {
@@ -391,7 +392,8 @@ export class UpdateUberStoreIntegrationConfigUseCase {
         businessVersion,
       }),
     );
-    this.logger.log(
+    this.diagnosticLog.diagnosticLog(
+      UpdateUberStoreIntegrationConfigUseCase.name,
       `[merchant.integration-config] storeId=${id} operation=update outcome=success`,
     );
     return { ok: true, storeId: id };
@@ -399,11 +401,11 @@ export class UpdateUberStoreIntegrationConfigUseCase {
 }
 
 export class DeprovisionUberStoreUseCase {
-  private readonly logger = new AppLogger(DeprovisionUberStoreUseCase.name);
   constructor(
     private readonly api: UberStoreApiPort,
     private readonly connections: UberMerchantConnectionRepositoryPort,
     private readonly mappings: UberStoreMappingRepositoryPort,
+    private readonly diagnosticLog: UberDiagnosticLogPort,
   ) {}
 
   async revokeOrDeprovisionStore(storeId: string) {
@@ -430,7 +432,8 @@ export class DeprovisionUberStoreUseCase {
       isProvisioned: false,
       provisionedAt: null,
     });
-    this.logger.log(
+    this.diagnosticLog.diagnosticLog(
+      DeprovisionUberStoreUseCase.name,
       `[merchant.integration-config] storeId=${id} operation=remove outcome=success`,
     );
     return { ok: true, storeId: id, isProvisioned: false };
@@ -455,12 +458,11 @@ export class RetrieveUberStoreStatusUseCase {
 }
 
 export class UpdateUberStorePrepTimeUseCase {
-  private readonly logger = new AppLogger(UpdateUberStorePrepTimeUseCase.name);
-
   constructor(
     private readonly api: UberStoreApiPort,
     private readonly connections: UberMerchantConnectionRepositoryPort,
     private readonly mappings: UberStoreMappingRepositoryPort,
+    private readonly diagnosticLog: UberDiagnosticLogPort,
   ) {}
 
   async update(storeId: string, defaultPrepTimeSeconds: number) {
@@ -490,7 +492,8 @@ export class UpdateUberStorePrepTimeUseCase {
         businessVersion: String(defaultPrepTimeSeconds),
       }),
     );
-    this.logger.log(
+    this.diagnosticLog.diagnosticLog(
+      UpdateUberStorePrepTimeUseCase.name,
       `[merchant.store-prep-time] storeId=${id} seconds=${defaultPrepTimeSeconds} outcome=success`,
     );
     return result;

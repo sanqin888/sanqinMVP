@@ -2,7 +2,7 @@
 
 Machine-readable source:
 `docs/architecture/active-compatibility-register.json`. Current modularization base:
-`origin/dev@466ae633` (2026-09-10).
+`origin/dev@54fa04da` (2026-09-10).
 
 Operational fallback (retry, provider timeout recovery, email-to-SMS fallback, and
 safe default values unrelated to an old version) is not compatibility debt.
@@ -44,7 +44,7 @@ may proceed without reopening this compatibility seam.
 | compat_id | Closed by | Result |
 |---|---|---|
 | `pos-connectivity.read-model-shadow.v1` | Phase 7 Slice 5B local source on `refactor/phase7-slice5b-pos-connectivity-cleanup` (PR/CI pending review authorization) | Pre-cutover evidence is complete: PR #2254 / `8abf3162` established ONLINE shadow parity and projection lifecycle, PR #2256 / `ee727ef2` hardened projection authority and finalized UNKNOWN as unavailable, and production logs on 2026-09-09 showed `pos_connectivity_unknown` at 16:43:17 followed by Uber store-status HTTP 200 / `SUCCEEDED`, disabled POS heartbeat attempts rejected with HTTP 401, recovery store-status HTTP 200 / `SUCCEEDED`, and `pos_connectivity_restored` / `ONLINE` at 16:46:18 with zero projection/shadow failure logs. Slice 5B source removes Uber direct `PosDevice` + `common/pos-connectivity` reads and shadow logging, makes `PosConnectivityReadModel` authoritative through a required External Channels query port, and moves the connectivity helper into POS ownership. Final merged/CI evidence remains pending. |
-| `brand-store.default-store-identity.v1` | PR #2119 / `7110dd46`, PR #2122 / `53688897`, PR #2124 / `0917f66c`; Phase 8 Slice 8.5 local cleanup pending review | Explicit `storeStableId` owns Brand/Store, Admin, POS/Orders and Uber SanQ-store context; internal Store DB IDs and provider Uber Store IDs remain distinct. Phase 2 removed the eight Uber Prisma `storeId` defaults and production verification proved new canonical writes. Phase 8 Slice 8.5 now removes the remaining Test Store provider-ID OpsTicket read/retry/dedup aliases and the menu-availability provider-ID alias. It includes no data-cleanup migration: all current Uber records remain test data and are retained until Uber Production Verification passes, then the complete test dataset will be removed through a separately reviewed cleanup. Provider wire compatibility remains separately protected. |
+| `brand-store.default-store-identity.v1` | PR #2119 / `7110dd46`, PR #2122 / `53688897`, PR #2124 / `0917f66c`; PR #2272 / `fb6f3bb8` | Explicit `storeStableId` owns Brand/Store, Admin, POS/Orders and Uber SanQ-store context; internal Store DB IDs and provider Uber Store IDs remain distinct. Phase 2 removed the eight Uber Prisma `storeId` defaults and production verification proved new canonical writes. Phase 8 Slice 8.5 removed the remaining Test Store provider-ID OpsTicket read/retry/dedup aliases and the menu-availability provider-ID alias; PR/merged-head CI passed and post-deploy Operations, pause/resume and item availability verification remained canonical with no new provider-UUID-scoped ticket. It includes no data-cleanup migration: all current Uber records remain test data and are retained until Uber Production Verification passes, then the complete test dataset will be removed through a separately reviewed cleanup. Provider wire compatibility remains separately protected. |
 | `web.api-envelope-direct-payload.v1` | Checkout canonical Web API transport contraction | Checkout OTP request/verify, membership summary, address list/create, and coupon list now use `apiFetch`; all 6 Checkout browser direct fetches, page-local envelope/direct-payload readers, and the Checkout architecture allowance were removed |
 | `pos-device.admin-db-id.v1` | Store Operations/POS Admin DB-ID contraction | Admin create/list/reset/status/delete now require `storeStableId`/`deviceStableId`; no-query aliases, inbound Store/device DB UUID resolvers, `POS_DEVICE_ADMIN_COMPATIBILITY`, and `STORE_LEGACY_DB_ID_RESOLVER` were removed after canonical production traffic and zero compatibility-log usage were verified |
 | `brand-store.business-config.v1` | PR #2099 + PR #2101 / `277a5276` | BusinessConfig application mirror, Prisma model, physical table, sync trigger/function were removed; post-deploy Admin persisted exchange rate 5.2, POS pause/resume and Uber store-status sync succeeded, canonical rows remained healthy, and error scans were clean |
@@ -54,9 +54,11 @@ The earlier requirement to retain Uber Test Store/sandbox identity compatibility
 superseded by Phase 8 Slice 8.5. A 2026-09-10 read-only inventory found exactly 15
 open `STORE_STATUS_SYNC` OpsTickets scoped by the known Test Store provider UUID and
 one historical `UberReconciliationReport.storeId='default'`; current canonical Uber
-configuration/report/ticket writes use `4750_Yonge_Street`. The authorized 8.5 source
-removes the read/retry/dedup aliases that kept those identities alive, but intentionally
-includes no data-cleanup migration. All current Uber integration records are treated as
+configuration/report/ticket writes use `4750_Yonge_Street`. PR #2272 / `fb6f3bb8`
+removed the read/retry/dedup aliases that kept those identities alive; CI #5467/#5468
+passed, and post-deploy Operations/Reconciliation, pause/resume and item-availability
+verification remained canonical with no new provider-UUID-scoped OpsTicket. Slice 8.5
+intentionally includes no data-cleanup migration. All current Uber integration records are treated as
 test data and remain untouched until Uber Production Verification passes; then the
 complete accumulated test dataset will be re-inventoried and removed through a separate
 reviewed cleanup. Provider state needed for Production initialization must be identified

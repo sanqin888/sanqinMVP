@@ -668,7 +668,7 @@
     "commerce-orders-fulfillment -> architecture-foundation": 8,
     "commerce-orders-fulfillment -> identity-customer-benefits": 2,
     "commerce-orders-fulfillment -> runtime-data-ci-ops": 10,
-    "external-channels -> architecture-foundation": 4,
+    "external-channels -> architecture-foundation": 2,
     "external-channels -> identity-customer-benefits": 2,
     "external-channels -> runtime-data-ci-ops": 23,
     "identity-customer-benefits -> architecture-foundation": 13,
