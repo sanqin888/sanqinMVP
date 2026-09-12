@@ -333,6 +333,15 @@ export class UberFinancialReportPrismaRepository implements UberFinancialReportR
     return row ? this.present(row) : null;
   }
 
+  async findByReportStableId(
+    reportStableId: string,
+  ): Promise<UberFinancialReportRecord | null> {
+    const row = await this.prisma.uberFinancialReport.findUnique({
+      where: { reportStableId },
+    });
+    return row ? this.present(row) : null;
+  }
+
   async saveRequested(input: {
     workflowId: string;
     reportType: UberEatsFinancialReportType;
@@ -387,6 +396,19 @@ export class UberFinancialReportPrismaRepository implements UberFinancialReportR
         errorMessage: input.errorMessage.slice(0, 1000),
       },
     });
+  }
+
+  async markImported(
+    reportStableId: string,
+  ): Promise<UberFinancialReportRecord> {
+    const row = await this.prisma.uberFinancialReport.update({
+      where: { reportStableId },
+      data: {
+        status: PrismaReportStatus.IMPORTED,
+        importedAt: new Date(),
+      },
+    });
+    return this.present(row);
   }
 
   async list(input?: {

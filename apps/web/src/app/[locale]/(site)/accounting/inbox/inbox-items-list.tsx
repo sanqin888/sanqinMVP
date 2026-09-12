@@ -12,8 +12,10 @@ type Props = {
   isZh: boolean;
   busySender: boolean;
   discardingId: string | null;
+  confirmingProviderId: string | null;
   onTrustSender: (email: string) => Promise<void>;
   onReviewExpense: (item: AccountingInboxItem) => void;
+  onConfirmProviderFinancial: (item: AccountingInboxItem) => Promise<void>;
   onDiscard: (item: AccountingInboxItem) => Promise<void>;
 };
 
@@ -23,8 +25,10 @@ export function AccountingInboxItemsList({
   isZh,
   busySender,
   discardingId,
+  confirmingProviderId,
   onTrustSender,
   onReviewExpense,
+  onConfirmProviderFinancial,
   onDiscard,
 }: Props) {
   return (
@@ -45,6 +49,7 @@ export function AccountingInboxItemsList({
       <div className="mt-3 divide-y">
         {items.map((item) => {
           const parse = latestParse(item);
+          const financial = item.artifact.financialDocument;
           const title =
             item.artifact.emailSubject ||
             item.artifact.originalFilename ||
@@ -78,7 +83,13 @@ export function AccountingInboxItemsList({
                     : ''}
                   {new Date(item.createdAt).toLocaleString()}
                 </p>
-                {parse.providerParserPending ? (
+                {parse.excludedBeforeFinancialHistory ? (
+                  <p className="mt-1 text-xs text-amber-700">
+                    {isZh
+                      ? `已识别为平台财务资料，但期间早于财务起始边界 ${parse.financialHistoryRequiredFrom ?? '2026-06-01'}，不会进入财务历史。`
+                      : `Recognized as provider financial evidence, but the period is before the financial-history boundary ${parse.financialHistoryRequiredFrom ?? '2026-06-01'} and will not enter financial history.`}
+                  </p>
+                ) : parse.providerParserPending ? (
                   <p className="mt-1 text-xs text-blue-700">
                     {isZh
                       ? 'CSV 已保留，等待平台财务解析。'
@@ -92,7 +103,26 @@ export function AccountingInboxItemsList({
                 ) : null}
               </div>
               <div className="text-sm text-slate-600">
-                {parse.totalCents != null ? (
+                {financial ? (
+                  <div className="mb-2 space-y-1">
+                    <p className="font-medium text-slate-800">
+                      {financial.provider} · {financial.documentType} · v{financial.revision}
+                    </p>
+                    {financial.periodStart || financial.periodEnd ? (
+                      <p className="text-xs">
+                        {isZh ? '期间' : 'Period'}: {financial.periodStart ?? '—'} →{' '}
+                        {financial.periodEnd ?? '—'}
+                      </p>
+                    ) : null}
+                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+                      {financial.lines.slice(0, 6).map((line) => (
+                        <span key={line.lineStableId}>
+                          {line.rawName ?? line.component}: {money(line.amountCents)}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : parse.totalCents != null ? (
                   <p>
                     {isZh ? '识别总额' : 'Detected total'}:{' '}
                     <strong>{money(parse.totalCents)}</strong>
@@ -132,7 +162,25 @@ export function AccountingInboxItemsList({
                 ) : null}
                 {!quarantined &&
                 item.status === 'PENDING_REVIEW' &&
-                item.materializedEntityType !== 'PROVIDER_FINANCIAL_DOCUMENT' ? (
+                item.materializedEntityType === 'PROVIDER_FINANCIAL_DOCUMENT' ? (
+                  <button
+                    disabled={confirmingProviderId === item.inboxItemStableId}
+                    onClick={() => void onConfirmProviderFinancial(item)}
+                    className="rounded border px-3 py-1.5 text-sm text-emerald-700 disabled:opacity-50"
+                  >
+                    {confirmingProviderId === item.inboxItemStableId
+                      ? isZh
+                        ? '确认中…'
+                        : 'Confirming…'
+                      : isZh
+                        ? '确认财务资料'
+                        : 'Confirm financial evidence'}
+                  </button>
+                ) : null}
+                {!quarantined &&
+                item.status === 'PENDING_REVIEW' &&
+                item.materializedEntityType !== 'PROVIDER_FINANCIAL_DOCUMENT' &&
+                !parse.providerFinancial ? (
                   <button
                     onClick={() => onReviewExpense(item)}
                     className="rounded border px-3 py-1.5 text-sm text-blue-700"
@@ -140,19 +188,21 @@ export function AccountingInboxItemsList({
                     {isZh ? '按费用审核' : 'Review as expense'}
                   </button>
                 ) : null}
-                <button
-                  disabled={discardingId === item.inboxItemStableId}
-                  onClick={() => void onDiscard(item)}
-                  className="rounded border px-3 py-1.5 text-sm text-red-600 disabled:opacity-50"
-                >
-                  {discardingId === item.inboxItemStableId
-                    ? isZh
-                      ? '处理中…'
-                      : 'Working…'
-                    : isZh
-                      ? '丢弃'
-                      : 'Discard'}
-                </button>
+                {item.materializedEntityType !== 'PROVIDER_FINANCIAL_DOCUMENT' ? (
+                  <button
+                    disabled={discardingId === item.inboxItemStableId}
+                    onClick={() => void onDiscard(item)}
+                    className="rounded border px-3 py-1.5 text-sm text-red-600 disabled:opacity-50"
+                  >
+                    {discardingId === item.inboxItemStableId
+                      ? isZh
+                        ? '处理中…'
+                        : 'Working…'
+                      : isZh
+                        ? '丢弃'
+                        : 'Discard'}
+                  </button>
+                ) : null}
               </div>
             </div>
           );

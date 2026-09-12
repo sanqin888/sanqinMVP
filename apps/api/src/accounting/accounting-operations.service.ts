@@ -20,6 +20,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { runSerializableAccountingWrite } from './accounting-atomic-write';
 import { DEFAULT_ACCOUNTING_ACCOUNTS } from './accounting-chart-of-accounts';
 import {
+  confirmAccountingProviderFinancialInboxItem,
   discardAccountingInboxItem,
   ensureAccountingProviderFinancialCoverage,
   materializeAccountingInboxExpense,
@@ -577,13 +578,18 @@ export class AccountingOperationsService {
         'provider API evidence cannot be confirmed as an expense',
       );
     }
+    const extraction = accountingJsonRecord(
+      inbox.artifact.parseRuns[0]?.resultJson,
+    );
+    if (extraction.providerFinancial === true) {
+      throw new ConflictException(
+        'provider financial evidence cannot be confirmed as an expense',
+      );
+    }
 
     let documentStableId = inbox.materializedEntityStableId;
     if (!documentStableId) {
       const metadata = accountingJsonRecord(inbox.artifact.metadataJson);
-      const extraction = accountingJsonRecord(
-        inbox.artifact.parseRuns[0]?.resultJson,
-      );
       const subtotalCents = input.splits.reduce(
         (sum, split) => sum + split.amountCents,
         0,
@@ -665,6 +671,19 @@ export class AccountingOperationsService {
   ) {
     return this.runInboxCore(() =>
       recordAccountingProviderFinancialDocument(this.prisma, input),
+    );
+  }
+
+  async confirmProviderFinancialInboxItem(
+    inboxItemStableId: string,
+    operatorUserStableId: string,
+  ) {
+    return this.runInboxCore(() =>
+      confirmAccountingProviderFinancialInboxItem(
+        this.prisma,
+        inboxItemStableId,
+        operatorUserStableId,
+      ),
     );
   }
 

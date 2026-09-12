@@ -192,6 +192,17 @@ export class AccountingController {
     );
   }
 
+  @Post('inbox/:inboxItemStableId/provider-financial/confirm')
+  confirmProviderFinancialInboxItem(
+    @Param('inboxItemStableId') inboxItemStableId: string,
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.operations.confirmProviderFinancialInboxItem(
+      inboxItemStableId,
+      this.requireOperatorUserId(req),
+    );
+  }
+
   @Delete('inbox/:inboxItemStableId')
   discardInboxItem(
     @Param('inboxItemStableId') inboxItemStableId: string,

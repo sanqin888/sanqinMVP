@@ -168,6 +168,44 @@ describe('Accounting Inbox core policy', () => {
     ).toThrow('periodStart must be on or before periodEnd');
   });
 
+  it('prevents control evidence from becoming postable financial facts', () => {
+    expect(() =>
+      normalizeProviderFinancialDocument({
+        artifactStableId: 'artifact_1',
+        provider: AccountingFinancialProvider.CLOVER,
+        documentType: AccountingFinancialDocumentType.BATCH_CONTROL,
+        businessIdentityKey: 'clover:batch:1',
+        parserName: 'clover-closeout',
+        parserVersion: 'v1',
+        lines: [
+          {
+            component: AccountingFinancialComponent.SALES,
+            postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+            amountCents: 100,
+          },
+        ],
+      }),
+    ).toThrow('BATCH_CONTROL lines cannot be POSTABLE');
+
+    expect(() =>
+      normalizeProviderFinancialDocument({
+        artifactStableId: 'artifact_1',
+        provider: AccountingFinancialProvider.UBER_EATS,
+        documentType: AccountingFinancialDocumentType.STATEMENT,
+        businessIdentityKey: 'uber:statement:1',
+        parserName: 'uber-statement',
+        parserVersion: 'v1',
+        lines: [
+          {
+            component: AccountingFinancialComponent.CONTROL_TOTAL,
+            postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+            amountCents: 100,
+          },
+        ],
+      }),
+    ).toThrow('CONTROL_TOTAL lines cannot be POSTABLE');
+  });
+
   it('hashes equivalent JSON objects deterministically regardless of key order', () => {
     expect(hashAccountingJson({ b: 2, a: { z: 3, y: 4 } })).toBe(
       hashAccountingJson({ a: { y: 4, z: 3 }, b: 2 }),

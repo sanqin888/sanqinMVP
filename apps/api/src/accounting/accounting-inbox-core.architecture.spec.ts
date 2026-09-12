@@ -12,6 +12,10 @@ const INBOX_EXPENSE_WRITER = resolve(
   ACCOUNTING_ROOT,
   'accounting-inbox-expense.writer.ts',
 );
+const PROVIDER_FINANCIAL_REVIEW_WRITER = resolve(
+  ACCOUNTING_ROOT,
+  'accounting-provider-financial-review.writer.ts',
+);
 const INBOX_POLICY = resolve(
   ACCOUNTING_ROOT,
   'accounting-inbox-core.policy.ts',
@@ -25,6 +29,14 @@ const INBOX_ACQUISITION = resolve(
   'accounting-inbox-acquisition.service.ts',
 );
 const INBOX_QUERY = resolve(ACCOUNTING_ROOT, 'accounting-inbox-query.ts');
+const PROVIDER_FINANCIAL_SERVICE = resolve(
+  ACCOUNTING_ROOT,
+  'accounting-provider-financial.service.ts',
+);
+const PROVIDER_FINANCIAL_HISTORY = resolve(
+  ACCOUNTING_ROOT,
+  'accounting-provider-financial-history.service.ts',
+);
 const GMAIL_INGEST = resolve(
   ACCOUNTING_ROOT,
   'accounting-gmail-ingest.service.ts',
@@ -69,14 +81,20 @@ describe('Accounting unified Inbox core ownership boundary', () => {
     const mutationPattern = new RegExp(
       `\\.${delegate}\\.(?:create|createMany|update|updateMany|delete|deleteMany|upsert)\\s*\\(`,
     );
+    const allowedWriters = new Set([
+      INBOX_WRITER,
+      INBOX_EXPENSE_WRITER,
+      PROVIDER_FINANCIAL_REVIEW_WRITER,
+    ]);
     const offenders = productionTypescriptFiles(API_SRC_ROOT)
-      .filter((path) => path !== INBOX_WRITER && path !== INBOX_EXPENSE_WRITER)
+      .filter((path) => !allowedWriters.has(path))
       .filter((path) => mutationPattern.test(read(path)))
       .map((path) => relative(API_SRC_ROOT, path));
 
     expect(offenders).toEqual([]);
     expect(read(INBOX_WRITER)).toMatch(mutationPattern);
     expect(read(INBOX_EXPENSE_WRITER)).toMatch(mutationPattern);
+    expect(read(PROVIDER_FINANCIAL_REVIEW_WRITER)).toMatch(mutationPattern);
   });
 
   it('does not add another Accounting PrismaService import boundary', () => {
@@ -86,11 +104,23 @@ describe('Accounting unified Inbox core ownership boundary', () => {
     expect(read(INBOX_EXPENSE_WRITER)).not.toContain(
       '../prisma/prisma.service',
     );
+    expect(read(PROVIDER_FINANCIAL_REVIEW_WRITER)).not.toContain(
+      '../prisma/prisma.service',
+    );
     expect(read(INBOX_ACQUISITION)).not.toContain('../prisma/prisma.service');
     expect(read(INBOX_QUERY)).not.toContain('../prisma/prisma.service');
+    expect(read(PROVIDER_FINANCIAL_SERVICE)).not.toContain(
+      '../prisma/prisma.service',
+    );
+    expect(read(PROVIDER_FINANCIAL_HISTORY)).not.toContain(
+      '../prisma/prisma.service',
+    );
     expect(read(GMAIL_INGEST)).not.toContain('../prisma/prisma.service');
     expect(read(INBOX_WRITER)).toContain('Prisma.TransactionClient');
     expect(read(INBOX_EXPENSE_WRITER)).toContain('Prisma.TransactionClient');
+    expect(read(PROVIDER_FINANCIAL_REVIEW_WRITER)).toContain(
+      'Prisma.TransactionClient',
+    );
   });
 
   it('keeps Gmail and manual file acquisition on the Unified Inbox path', () => {
@@ -106,8 +136,26 @@ describe('Accounting unified Inbox core ownership boundary', () => {
     expect(controller).not.toContain("@Post('files/receipts')");
   });
 
+  it('keeps Uber financial-history access on the External Channels public boundary', () => {
+    const history = read(PROVIDER_FINANCIAL_HISTORY);
+    expect(history).toContain('../integrations/ubereats/public-api');
+    expect(history).not.toContain('../integrations/ubereats/application/');
+    expect(history).not.toContain('../integrations/ubereats/infrastructure/');
+
+    const deepUberImport =
+      /from\s+['"]\.\.\/integrations\/ubereats\/(?:application|infrastructure)\//;
+    const offenders = productionTypescriptFiles(ACCOUNTING_ROOT)
+      .filter((path) => deepUberImport.test(read(path)))
+      .map((path) => relative(ACCOUNTING_ROOT, path));
+    expect(offenders).toEqual([]);
+  });
+
   it('keeps 5C evidence persistence separate from Journal posting', () => {
-    for (const writer of [INBOX_WRITER, INBOX_EXPENSE_WRITER]) {
+    for (const writer of [
+      INBOX_WRITER,
+      INBOX_EXPENSE_WRITER,
+      PROVIDER_FINANCIAL_REVIEW_WRITER,
+    ]) {
       expect(read(writer)).not.toContain('accountingJournalEntry');
       expect(read(writer)).not.toContain('accountingJournalLine');
     }

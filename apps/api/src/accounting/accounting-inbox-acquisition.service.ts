@@ -6,6 +6,7 @@ import { createId } from '@paralleldrive/cuid2';
 import {
   AccountingArtifactAcquisitionMode,
   AccountingArtifactKind,
+  AccountingFinancialProvider,
   AccountingInboxStatus,
   AccountingInboxTrustDecision,
   AccountingParseStatus,
@@ -26,6 +27,10 @@ import {
   processAccountingReceiptImage,
 } from './accounting-receipt-image';
 import { AccountingOperationsService } from './accounting-operations.service';
+import {
+  AccountingProviderFinancialProcessingError,
+  AccountingProviderFinancialService,
+} from './accounting-provider-financial.service';
 
 export const ACCOUNTING_INBOX_FILE_MAX_BYTES = 25 * 1024 * 1024;
 const GENERIC_PARSER_NAME = 'accounting-generic-document-review';
@@ -52,6 +57,13 @@ type FileAcquisitionInput = {
   senderEmail?: string | null;
   emailSubject?: string | null;
   metadataJson?: Record<string, unknown>;
+  providerFinancialHint?: {
+    providerHint?: AccountingFinancialProvider | null;
+    reportTypeHint?: string | null;
+    periodStartHint?: string | null;
+    periodEndHint?: string | null;
+    providerDocumentRefHint?: string | null;
+  };
 };
 
 type TextReviewExtraction = ReturnType<typeof extractAccountingText> &
@@ -68,7 +80,10 @@ type ImageReviewExtraction = TextReviewExtraction & {
 export class AccountingInboxAcquisitionService {
   private readonly logger = new Logger(AccountingInboxAcquisitionService.name);
 
-  constructor(private readonly operations: AccountingOperationsService) {}
+  constructor(
+    private readonly operations: AccountingOperationsService,
+    private readonly providerFinancial: AccountingProviderFinancialService,
+  ) {}
 
   async acquireManualFile(file: AccountingInboxFile) {
     return this.acquireFile({
@@ -77,6 +92,45 @@ export class AccountingInboxAcquisitionService {
       file,
       trustDecision: AccountingInboxTrustDecision.NOT_APPLICABLE,
       metadataJson: { acquisition: 'MANUAL_UPLOAD' },
+    });
+  }
+
+  async acquireProviderApiCsv(input: {
+    transportIdentity: string;
+    fileName: string;
+    content: string;
+    provider: AccountingFinancialProvider;
+    reportType: string;
+    periodStart: string;
+    periodEnd: string;
+    providerDocumentRef: string;
+    metadataJson?: Record<string, unknown>;
+  }) {
+    return this.acquireFile({
+      acquisitionMode: AccountingArtifactAcquisitionMode.PROVIDER_API,
+      transportIdentity: input.transportIdentity,
+      file: {
+        originalname: input.fileName,
+        mimetype: 'text/csv',
+        buffer: Buffer.from(input.content, 'utf8'),
+      },
+      trustDecision: AccountingInboxTrustDecision.NOT_APPLICABLE,
+      metadataJson: {
+        acquisition: 'PROVIDER_API',
+        provider: input.provider,
+        reportType: input.reportType,
+        periodStart: input.periodStart,
+        periodEnd: input.periodEnd,
+        providerDocumentRef: input.providerDocumentRef,
+        ...(input.metadataJson ?? {}),
+      },
+      providerFinancialHint: {
+        providerHint: input.provider,
+        reportTypeHint: input.reportType,
+        periodStartHint: input.periodStart,
+        periodEndHint: input.periodEnd,
+        providerDocumentRefHint: input.providerDocumentRef,
+      },
     });
   }
 
@@ -106,9 +160,13 @@ export class AccountingInboxAcquisitionService {
       trustDecision,
     });
     try {
-      await this.parseTextIfEligible(artifact, normalizedText, 'EMAIL_BODY');
+      await this.parseTextIfEligible(artifact, normalizedText, 'EMAIL_BODY', {
+        emailSubject: context.subject,
+      });
     } catch (error) {
-      await this.recordParseFailureIfEligible(artifact, error);
+      if (!(error instanceof AccountingProviderFinancialProcessingError)) {
+        await this.recordParseFailureIfEligible(artifact, error);
+      }
     }
     return artifact;
   }
@@ -183,18 +241,27 @@ export class AccountingInboxAcquisitionService {
     if (artifact.replayed) {
       await this.removeStoredFile(storedUrl);
     }
+    let providerFinancialMatched = false;
     try {
-      await this.parseFileIfEligible(
+      providerFinancialMatched = await this.parseFileIfEligible(
         artifact,
         detected.kind,
         input.file.buffer,
+        {
+          originalFilename: input.file.originalname,
+          emailSubject: input.emailSubject,
+          ...(input.providerFinancialHint ?? {}),
+        },
       );
     } catch (error) {
-      await this.recordParseFailureIfEligible(artifact, error);
+      if (!(error instanceof AccountingProviderFinancialProcessingError)) {
+        await this.recordParseFailureIfEligible(artifact, error);
+      }
     }
     return {
       ...artifact,
       storedUrl: artifact.replayed ? artifact.storedUrl : storedUrl,
+      providerFinancialMatched,
     };
   }
 
@@ -204,11 +271,38 @@ export class AccountingInboxAcquisitionService {
     >,
     kind: AccountingArtifactKind,
     buffer: Buffer,
-  ) {
+    providerContext: {
+      originalFilename?: string | null;
+      emailSubject?: string | null;
+      providerHint?: AccountingFinancialProvider | null;
+      reportTypeHint?: string | null;
+      periodStartHint?: string | null;
+      periodEndHint?: string | null;
+      providerDocumentRefHint?: string | null;
+    },
+  ): Promise<boolean> {
     if (artifact.inboxItem?.status !== AccountingInboxStatus.PENDING_REVIEW) {
-      return;
+      return false;
     }
     if (kind === AccountingArtifactKind.CSV) {
+      const text = buffer.toString('utf8');
+      const provider = await this.providerFinancial.parseAndMaterialize({
+        artifactStableId: artifact.artifactStableId,
+        text,
+        ...providerContext,
+      });
+      if (provider.matched) return true;
+      if (
+        providerContext.providerHint ===
+          AccountingFinancialProvider.UBER_EATS &&
+        providerContext.reportTypeHint
+      ) {
+        await this.providerFinancial.recordUnsupportedUberApiParse({
+          artifactStableId: artifact.artifactStableId,
+          reportType: providerContext.reportTypeHint,
+        });
+        return false;
+      }
       await this.operations.recordInboxParseRun({
         artifactStableId: artifact.artifactStableId,
         parserName: GENERIC_PARSER_NAME,
@@ -219,10 +313,16 @@ export class AccountingInboxAcquisitionService {
           providerParserPending: true,
         },
       });
-      return;
+      return false;
     }
     if (kind === AccountingArtifactKind.PDF) {
       const { text, extraction } = extractAccountingPdf(buffer);
+      const provider = await this.providerFinancial.parseAndMaterialize({
+        artifactStableId: artifact.artifactStableId,
+        text,
+        ...providerContext,
+      });
+      if (provider.matched) return true;
       const result: TextReviewExtraction = {
         ...extraction,
         inputKind: 'PDF',
@@ -230,7 +330,7 @@ export class AccountingInboxAcquisitionService {
         extractedText: text.slice(0, 100_000),
       };
       await this.recordSuccessfulParse(artifact.artifactStableId, result);
-      return;
+      return false;
     }
     if (kind === AccountingArtifactKind.IMAGE) {
       let text = '';
@@ -268,7 +368,9 @@ export class AccountingInboxAcquisitionService {
         ocrStatus,
       };
       await this.recordSuccessfulParse(artifact.artifactStableId, result);
+      return false;
     }
+    return false;
   }
 
   private async parseTextIfEligible(
@@ -277,10 +379,19 @@ export class AccountingInboxAcquisitionService {
     >,
     text: string,
     inputKind: 'EMAIL_BODY',
+    providerContext: {
+      emailSubject?: string | null;
+    },
   ) {
     if (artifact.inboxItem?.status !== AccountingInboxStatus.PENDING_REVIEW) {
       return;
     }
+    const provider = await this.providerFinancial.parseAndMaterialize({
+      artifactStableId: artifact.artifactStableId,
+      text,
+      ...providerContext,
+    });
+    if (provider.matched) return;
     const extraction = extractAccountingText(text);
     const result: TextReviewExtraction = {
       ...extraction,
