@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  AccountingAccountClass,
   AccountingDocumentSource,
   AccountingDocumentStatus,
   AccountingSourceType,
@@ -19,6 +20,7 @@ import { getUploadsAccountingDir } from '../common/utils/uploads-path';
 import { PrismaService } from '../prisma/prisma.service';
 import { runSerializableAccountingWrite } from './accounting-atomic-write';
 import { processAccountingReceiptImage } from './accounting-receipt-image';
+import { DEFAULT_ACCOUNTING_ACCOUNTS } from './accounting-chart-of-accounts';
 import { AccountingService } from './accounting.service';
 
 export type AccountingExpenseSplitInput = {
@@ -211,28 +213,11 @@ export class AccountingOperationsService {
       }
     }
 
-    const accountDefaults = [
-      {
-        accountStableId: 'account_store_cash',
-        name: '门店现金',
-        type: 'CASH' as const,
-      },
-      {
-        accountStableId: 'account_clover_pending',
-        name: 'Clover 待结算',
-        type: 'PLATFORM_WALLET' as const,
-      },
-      {
-        accountStableId: 'account_uber_pending',
-        name: 'Uber Eats 待结算',
-        type: 'PLATFORM_WALLET' as const,
-      },
-    ];
-    for (const account of accountDefaults) {
+    for (const account of DEFAULT_ACCOUNTING_ACCOUNTS) {
       await this.prisma.accountingAccount.upsert({
         where: { accountStableId: account.accountStableId },
         create: account,
-        update: {},
+        update: { accountClass: account.accountClass },
       });
     }
 
@@ -468,11 +453,16 @@ export class AccountingOperationsService {
 
   async listAccounts() {
     return this.prisma.accountingAccount.findMany({
-      where: { isActive: true },
+      where: {
+        isActive: true,
+        accountClass: AccountingAccountClass.ASSET,
+        type: { not: null },
+      },
       select: {
         accountStableId: true,
         name: true,
         type: true,
+        accountClass: true,
         currency: true,
       },
       orderBy: [{ type: 'asc' }, { name: 'asc' }],
@@ -491,12 +481,14 @@ export class AccountingOperationsService {
         accountStableId: `account_${createId()}`,
         name,
         type: input.type,
+        accountClass: AccountingAccountClass.ASSET,
         currency: input.currency?.trim().toUpperCase() || 'CAD',
       },
       select: {
         accountStableId: true,
         name: true,
         type: true,
+        accountClass: true,
         currency: true,
       },
     });
