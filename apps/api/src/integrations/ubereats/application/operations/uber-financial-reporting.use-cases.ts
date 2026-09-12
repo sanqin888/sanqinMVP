@@ -114,21 +114,30 @@ export class UberFinancialReportingUseCase implements UberEatsReportingPort {
     const report = await this.reports.findByReportStableId(
       input.reportStableId.trim(),
     );
-    if (!report || (report.status !== 'READY' && report.status !== 'IMPORTED')) {
+    if (
+      !report ||
+      (report.status !== 'READY' && report.status !== 'IMPORTED')
+    ) {
       throw new Error('Uber financial report is not ready for artifact access');
     }
     if (!report.artifactUrls.includes(input.artifactUrl)) {
-      throw new Error('Uber financial report artifact does not belong to report');
+      throw new Error(
+        'Uber financial report artifact does not belong to report',
+      );
     }
     return this.artifacts.readCsvArtifact(input.artifactUrl);
   }
 
   async markFinancialReportImported(reportStableId: string): Promise<void> {
-    const report = await this.reports.findByReportStableId(reportStableId.trim());
+    const report = await this.reports.findByReportStableId(
+      reportStableId.trim(),
+    );
     if (!report) throw new Error('Uber financial report not found');
     if (report.status === 'IMPORTED') return;
     if (report.status !== 'READY') {
-      throw new Error('Only READY Uber financial reports can be marked imported');
+      throw new Error(
+        'Only READY Uber financial reports can be marked imported',
+      );
     }
     await this.reports.markImported(report.reportStableId);
   }

@@ -102,7 +102,11 @@ export class UberFinancialReportArtifactStore implements UberFinancialReportArti
     }
     const relative = artifactUrl.slice(prefix.length);
     const fileName = path.basename(relative);
-    if (!fileName || fileName !== relative || path.extname(fileName) !== '.csv') {
+    if (
+      !fileName ||
+      fileName !== relative ||
+      path.extname(fileName) !== '.csv'
+    ) {
       throw new Error('Invalid Uber report artifact path');
     }
     const bytes = await fs.promises.readFile(

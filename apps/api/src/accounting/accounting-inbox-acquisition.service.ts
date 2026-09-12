@@ -293,7 +293,8 @@ export class AccountingInboxAcquisitionService {
       });
       if (provider.matched) return true;
       if (
-        providerContext.providerHint === AccountingFinancialProvider.UBER_EATS &&
+        providerContext.providerHint ===
+          AccountingFinancialProvider.UBER_EATS &&
         providerContext.reportTypeHint
       ) {
         await this.providerFinancial.recordUnsupportedUberApiParse({

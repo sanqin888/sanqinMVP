@@ -57,8 +57,7 @@ export class AccountingProviderFinancialService {
           periodStart: parsed.periodStart,
           periodEnd: parsed.periodEnd,
           excludedBeforeFinancialHistory: true,
-          financialHistoryRequiredFrom:
-            PROVIDER_FINANCIAL_HISTORY_START_DATE,
+          financialHistoryRequiredFrom: PROVIDER_FINANCIAL_HISTORY_START_DATE,
         },
       });
       return {

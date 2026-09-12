@@ -69,7 +69,9 @@ All amounts shown are in CAD funds
       recordInboxParseRun: jest.fn().mockResolvedValue({}),
       recordProviderFinancialDocument: jest
         .fn()
-        .mockRejectedValue(new Error('simulated financial document write failure')),
+        .mockRejectedValue(
+          new Error('simulated financial document write failure'),
+        ),
       ensureProviderFinancialCoverage: jest.fn(),
     };
     const storeConfig = {

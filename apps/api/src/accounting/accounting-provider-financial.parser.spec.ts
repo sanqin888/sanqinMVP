@@ -204,9 +204,13 @@ Net Payout $216.02
         postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
       }),
     );
-    expect(parsed?.lines.some((line) => line.amountCents === 34278)).toBe(false);
+    expect(parsed?.lines.some((line) => line.amountCents === 34278)).toBe(
+      false,
+    );
     expect(parsed?.rawMetadata).toEqual(
-      expect.objectContaining({ payoutSectionsExcludedFromNormalizedLines: true }),
+      expect.objectContaining({
+        payoutSectionsExcludedFromNormalizedLines: true,
+      }),
     );
   });
 
@@ -247,7 +251,9 @@ Total transfer amount $3813.11
         postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
       }),
     );
-    expect(lineByName(parsed!, 'Fantuan Subsidy for Promotion events')?.amountCents).toBe(111341);
+    expect(
+      lineByName(parsed!, 'Fantuan Subsidy for Promotion events')?.amountCents,
+    ).toBe(111341);
     expect(lineByName(parsed!, 'Commission')?.amountCents).toBe(-179800);
     expect(lineByName(parsed!, 'Net Taxes')?.postingTreatment).toBe(
       AccountingFinancialPostingTreatment.CONTROL_TOTAL,

@@ -138,11 +138,12 @@ describe('Accounting unified Inbox core ownership boundary', () => {
 
   it('keeps Uber financial-history access on the External Channels public boundary', () => {
     const history = read(PROVIDER_FINANCIAL_HISTORY);
-    expect(history).toContain("../integrations/ubereats/public-api");
+    expect(history).toContain('../integrations/ubereats/public-api');
     expect(history).not.toContain('../integrations/ubereats/application/');
     expect(history).not.toContain('../integrations/ubereats/infrastructure/');
 
-    const deepUberImport = /from\s+['"]\.\.\/integrations\/ubereats\/(?:application|infrastructure)\//;
+    const deepUberImport =
+      /from\s+['"]\.\.\/integrations\/ubereats\/(?:application|infrastructure)\//;
     const offenders = productionTypescriptFiles(ACCOUNTING_ROOT)
       .filter((path) => deepUberImport.test(read(path)))
       .map((path) => relative(ACCOUNTING_ROOT, path));

@@ -154,7 +154,9 @@ describe('UberFinancialReportArtifactStore replay safety', () => {
       }) as unknown,
     );
     await expect(
-      store.readCsvArtifact('/api/v1/accounting/files/uber-reports/../secret.csv'),
+      store.readCsvArtifact(
+        '/api/v1/accounting/files/uber-reports/../secret.csv',
+      ),
     ).rejects.toThrow('Invalid Uber report artifact path');
   });
 });

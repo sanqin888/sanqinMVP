@@ -120,7 +120,9 @@ describe('AccountingInboxAcquisitionService', () => {
   it('does not fall back to generic parsing after recognized provider processing fails', async () => {
     const { service, operations, providerFinancial } = makeService();
     providerFinancial.parseAndMaterialize.mockRejectedValueOnce(
-      new AccountingProviderFinancialProcessingError('simulated provider persistence failure'),
+      new AccountingProviderFinancialProcessingError(
+        'simulated provider persistence failure',
+      ),
     );
 
     await expect(
