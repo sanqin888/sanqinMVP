@@ -9,6 +9,7 @@ import {
   AccountingAccountClass,
   AccountingDocumentSource,
   AccountingDocumentStatus,
+  AccountingFinancialProvider,
   AccountingSourceType,
   AccountingTxType,
   Prisma,
@@ -21,6 +22,24 @@ import { PrismaService } from '../prisma/prisma.service';
 import { runSerializableAccountingWrite } from './accounting-atomic-write';
 import { processAccountingReceiptImage } from './accounting-receipt-image';
 import { DEFAULT_ACCOUNTING_ACCOUNTS } from './accounting-chart-of-accounts';
+import {
+  ensureAccountingProviderFinancialCoverage,
+  recordAccountingInboxParseRun,
+  recordAccountingProviderFinancialDocument,
+  registerAccountingInboxArtifact,
+  upsertAccountingTrustedSender,
+} from './accounting-inbox-core.orchestrator';
+import {
+  AccountingInboxPolicyError,
+  type AccountingInboxArtifactInput,
+  type AccountingParseRunInput,
+  type AccountingProviderFinancialDocumentInput,
+  type AccountingTrustedSenderInput,
+} from './accounting-inbox-core.policy';
+import {
+  AccountingInboxWriterConflictError,
+  AccountingInboxWriterNotFoundError,
+} from './accounting-inbox-core.writer';
 import { AccountingService } from './accounting.service';
 
 export type AccountingExpenseSplitInput = {
@@ -493,6 +512,50 @@ export class AccountingOperationsService {
       },
     });
     return created;
+  }
+
+  async registerInboxArtifact(input: AccountingInboxArtifactInput) {
+    return this.runInboxCore(() =>
+      registerAccountingInboxArtifact(this.prisma, input),
+    );
+  }
+
+  async recordInboxParseRun(input: AccountingParseRunInput) {
+    return this.runInboxCore(() =>
+      recordAccountingInboxParseRun(this.prisma, input),
+    );
+  }
+
+  async upsertTrustedSender(
+    input: AccountingTrustedSenderInput,
+    operatorUserStableId: string,
+  ) {
+    return this.runInboxCore(() =>
+      upsertAccountingTrustedSender(this.prisma, input, operatorUserStableId),
+    );
+  }
+
+  async recordProviderFinancialDocument(
+    input: AccountingProviderFinancialDocumentInput,
+  ) {
+    return this.runInboxCore(() =>
+      recordAccountingProviderFinancialDocument(this.prisma, input),
+    );
+  }
+
+  async ensureProviderFinancialCoverage(
+    provider: AccountingFinancialProvider,
+    storeStableId: string,
+    operatorUserStableId?: string,
+  ) {
+    return this.runInboxCore(() =>
+      ensureAccountingProviderFinancialCoverage(
+        this.prisma,
+        provider,
+        storeStableId,
+        operatorUserStableId,
+      ),
+    );
   }
 
   async saveReceiptImage(file: { originalname: string; buffer: Buffer }) {
@@ -1034,6 +1097,23 @@ export class AccountingOperationsService {
         taxCents: tx.taxCents,
       })),
     };
+  }
+
+  private async runInboxCore<T>(work: () => Promise<T>): Promise<T> {
+    try {
+      return await work();
+    } catch (error) {
+      if (error instanceof AccountingInboxPolicyError) {
+        throw new BadRequestException(error.message);
+      }
+      if (error instanceof AccountingInboxWriterNotFoundError) {
+        throw new NotFoundException(error.message);
+      }
+      if (error instanceof AccountingInboxWriterConflictError) {
+        throw new ConflictException(error.message);
+      }
+      throw error;
+    }
   }
 
   private parseDate(raw: string, endOfDay = false) {

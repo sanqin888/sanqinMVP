@@ -315,8 +315,8 @@ No Prisma/schema/migration/source implementation should begin during 5A unless t
 
 ## 16. Slice 5A readiness result and Slice 5B implementation boundary
 
-State: **5A READINESS / SCHEMA DESIGN COMPLETE — 5B MERGED / CI GREEN — 5C READINESS AUDIT COMPLETE / IMPLEMENTATION NOT STARTED**  
-Audit/implementation base: `origin/dev@cbe8ad6f`  
+State: **5A READINESS / SCHEMA DESIGN COMPLETE — 5B DEPLOYED / RUNTIME SMOKE VERIFIED — 5C READINESS MERGED — 5C-A LOCAL SOURCE COMPLETE / USER REVIEW**  
+Audit/implementation base: 5B `origin/dev@cbe8ad6f`; 5C readiness/5C-A `origin/dev@7419c982`  
 Decision/authorization date: 2026-09-12
 
 ### 16.1 Accounting migration compatibility decision
@@ -353,13 +353,14 @@ The 5C canonical statement model must therefore cover **CLOVER / UBER_EATS / FAN
 
 ### 16.4 Slice 5B merge/validation state
 
-Slice 5B is **MERGED / CI GREEN** through PR #2288. Final PR head `c2d01b89` passed CI #5516 across Prisma generation, architecture baseline, API/Web lint/build/strict declarations and tests, then squash-merged to `dev` as `cbe8ad6f`. The migration SQL remains only statically reviewed in this workflow and has **not yet been applied on the running VM/production database**, so deployment/runtime evidence is not claimed.
+Slice 5B is **MERGED / CI GREEN / DEPLOYED / RUNTIME SMOKE VERIFIED** through PR #2288. Final PR head `c2d01b89` passed CI #5516 across Prisma generation, architecture baseline, API/Web lint/build/strict declarations and tests, then squash-merged to `dev` as `cbe8ad6f`. On 2026-09-12 the 5B migration was applied on the running VM and the user reported the deployment/runtime smoke as normal. This verifies the journal/CoA schema can be applied cleanly; it does not claim that later Revenue/settlement workflows already use the new Journal.
 
 ## 17. Slice 5C readiness audit — Unified Accounting Inbox + Provider Financial Evidence
 
-State: **READ-ONLY AUDIT COMPLETE — IMPLEMENTATION NOT STARTED**  
-Audit base: `origin/dev@cbe8ad6f`  
-Audit date: 2026-09-12
+State: **READINESS MERGED — 5C-A LOCAL SOURCE COMPLETE / USER REVIEW**  
+Readiness: PR #2290; squash merge `7419c982`  
+5C-A implementation base: `origin/dev@7419c982`  
+Audit/implementation date: 2026-09-12
 
 ### 17.1 Current-state findings
 
@@ -397,9 +398,9 @@ A byte-identical statement sent through a second email is a content duplicate. A
 The common provider-document model must cover at least:
 
 - `CLOVER / BATCH_CONTROL` for Daily Closeout email-body evidence;
-- `CLOVER / MONTHLY_STATEMENT` for merchant processor settlement/accounting statements;
-- `UBER_EATS / MONTHLY_STATEMENT` and eligible financial API-report artifacts;
-- `FANTUAN / MONTHLY_STATEMENT` for imported financial statements.
+- `CLOVER / STATEMENT` for monthly merchant processor settlement/accounting statements;
+- `UBER_EATS / STATEMENT` plus `API_REPORT` for eligible provider financial-report artifacts;
+- `FANTUAN / STATEMENT` for imported monthly financial statements.
 
 Normalized line components may include Sales, Sales Tax, Commission/Marketplace Fee, Processing Fee, Promotion/Offer, Subsidy, Advertising, Advertising Credit, Chargeback, Adjustment, Payout/Funding and Control Total. Each normalized line must also carry a posting treatment such as `POSTABLE`, `CONTROL_TOTAL`, `RECONCILIATION_ONLY` or `UNCLASSIFIED` so provider totals are not double-posted together with their component lines.
 
@@ -433,6 +434,18 @@ Recommended implementation sequence:
 
 ### 17.8 Deployment prerequisite before 5C-A
 
-Repository policy does not require production deployment after every source slice, but 5B is the first Phase 9 persisted-schema foundation and its migration has never been applied on the running VM. Because 5C-A will add a second migration that depends on the 5B schema, the preferred rollout gate is to **deploy/apply 5B before implementing the 5C-A schema**. This isolates migration/runtime failures to the correct slice and confirms that the journal/CoA foundation can be applied cleanly before another persisted layer is stacked on top.
+The prerequisite is **SATISFIED**. Slice 5B was deployed on the running VM on 2026-09-12, its migration applied successfully, and the user reported normal runtime smoke behavior. This confirms that the Journal/CoA persisted foundation can be applied cleanly before the 5C-A migration is stacked on top. It still does not imply that Revenue/settlement workflows already use the new Journal, and the Phase remains subject to the later consolidated active-verification/closeout gate.
 
-The 5B deployment gate only needs migration/runtime smoke evidence at this stage; it does not require pretending that Revenue/settlement workflows already use the new Journal. The Phase remains subject to the later consolidated active-verification/closeout gate.
+### 17.9 Slice 5C-A local implementation result
+
+Slice 5C-A is now **LOCAL SOURCE COMPLETE / USER REVIEW** on `refactor/phase9-slice5c-a-inbox-core`, based on `origin/dev@7419c982`. It is deliberately additive and does not cut over Gmail, Accounting Web manual upload, Uber reporting/runtime ingestion, current Expense persistence, current `PlatformSettlementRecord`, Journal posting, Revenue Posting or settlement reconciliation.
+
+The persisted core adds `AccountingSourceArtifact`, `AccountingParseRun`, `AccountingInboxItem`, `AccountingTrustedSender`, `AccountingProviderFinancialDocument`, `AccountingProviderFinancialLine` and `AccountingProviderFinancialCoverage` plus the supporting enums and matching migration. Transport identity, SHA-256 content identity and provider business identity are separate. Re-acquiring identical content creates explicit duplicate evidence; corrected content under the same provider/document/business identity creates a monotonic revision/supersession chain. One SourceArtifact can materialize to at most one canonical ProviderFinancialDocument, and Inbox materialization records only the target stable identity (`materializedEntityType` + `materializedEntityStableId`) rather than leaking a downstream DB UUID.
+
+`EMAIL_BODY`, file artifacts and provider/API artifacts share the same evidence model. Email intake requires an explicit sender trust decision; untrusted email evidence enters `QUARANTINED`, while trusted-sender configuration is audited with stable operator identity. Parser runs are versioned/idempotent per artifact + parser name + parser version; a successful result is immutable for that parser version. Provider financial lines preserve signed minor-unit values, normalized financial component, tax role and posting treatment without creating `AccountingJournalEntry` / `AccountingJournalLine` rows.
+
+Persistence writes stay inside an Accounting-owned writer that accepts `Prisma.TransactionClient`; a separate Accounting-owned orchestrator applies the existing Serializable transaction policy and P2002 race recovery without importing `PrismaService`. `AccountingOperationsService` keeps only thin entry/error-mapping wrappers. No new production file imports `PrismaService`, so this slice does not intentionally increase the Accounting -> Runtime direct-debt baseline. Provider-document revision creation includes one P2002 race-recovery retry so concurrent corrected statements can advance to the next revision rather than requiring an immediate manual retry.
+
+The provider coverage core fixes `financialHistoryRequiredFrom` at **2026-06-01** for CLOVER / UBER_EATS / FANTUAN while keeping `financialCompleteThrough`, `liveOrderFactCutoverAt` and `orderDetailCoverageFrom` independent. This is financial-evidence coverage only and does not synthesize historical Orders or opening receivables.
+
+The matching migration `20260912131500_phase9_slice5c_a_unified_inbox_core` is created and statically reviewed but has **not** been applied on the VM. Policy, writer-characterization and architecture tests cover artifact trust/duplicate handling, parser immutability, trusted-sender audit, provider revision/materialization, coverage identity, one corrected-statement P2002 race recovery, additive migration invariants and the no-Journal/no-new-PrismaService ownership boundary. Per repository review cadence, local lint/build/test/Prisma generation are not claimed before user review; those remain for GitHub Actions after explicit remote-delivery authorization.
