@@ -147,7 +147,8 @@ function parseCloverStatement(
   );
   const merchant = capture(text, /MerchantNumber\s+(\d+)/i);
   if (!period || !merchant) return null;
-  const summary = between(text, 'LOCATION\nSUMMARY', 'All amounts shown') ?? text;
+  const summary =
+    between(text, 'LOCATION\nSUMMARY', 'All amounts shown') ?? text;
   const lines: ParsedLine[] = [];
   pushNamedSummary(
     lines,
@@ -227,10 +228,7 @@ function parseUberMonthlyStatement(
     periodMatch[4],
   );
   if (!period) return null;
-  const statementNumber = capture(
-    text,
-    /Statement Number\s*#?([A-Z0-9_-]+)/i,
-  );
+  const statementNumber = capture(text, /Statement Number\s*#?([A-Z0-9_-]+)/i);
   const summary = text.split(/Payout Period:/i)[0] ?? text;
   const lines: ParsedLine[] = [];
   const add = (

@@ -53,11 +53,12 @@ export class AccountingProviderFinancialHistoryService {
       for (let index = 0; index < report.artifactUrls.length; index += 1) {
         const artifactUrl = report.artifactUrls[index];
         try {
-          const artifact =
-            await this.uberReporting.readFinancialReportArtifact({
+          const artifact = await this.uberReporting.readFinancialReportArtifact(
+            {
               reportStableId: report.reportStableId,
               artifactUrl,
-            });
+            },
+          );
           const acquired = await this.acquisition.acquireProviderApiCsv({
             transportIdentity: `uber-report:${report.reportStableId}:${artifactUrl}`,
             fileName: artifact.fileName,
