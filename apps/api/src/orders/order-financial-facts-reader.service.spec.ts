@@ -124,10 +124,13 @@ describe('OrderFinancialFactsReaderService', () => {
         where: {
           orderStableId: 'order-stable-1',
           status: {
-            in: expect.arrayContaining([
+            in: [
               OrderStatus.paid,
+              OrderStatus.making,
+              OrderStatus.ready,
+              OrderStatus.completed,
               OrderStatus.refunded,
-            ]),
+            ],
           },
         },
       }),
@@ -285,14 +288,16 @@ describe('OrderFinancialFactsReaderService', () => {
       financialRow() as never,
       'IMMUTABLE_SALE_SNAPSHOT',
     );
-    const findMany = jest.fn().mockResolvedValue([
-      financialRow({ orderStableId: 'legacy-order' }),
-    ]);
+    const findMany = jest
+      .fn()
+      .mockResolvedValue([financialRow({ orderStableId: 'legacy-order' })]);
     const service = new OrderFinancialFactsReaderService({
       opsEvent: {
-        findMany: jest.fn().mockResolvedValue([
-          { payload: serializeOrderFinancialFactV1(original) },
-        ]),
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            { payload: serializeOrderFinancialFactV1(original) },
+          ]),
       },
       order: { findMany },
     } as never);
@@ -311,14 +316,20 @@ describe('OrderFinancialFactsReaderService', () => {
     ]);
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({
+        where: {
           paidAt: { gte: fromInclusive, lt: toExclusive },
           status: {
-            in: expect.arrayContaining([OrderStatus.refunded]),
+            in: [
+              OrderStatus.paid,
+              OrderStatus.making,
+              OrderStatus.ready,
+              OrderStatus.completed,
+              OrderStatus.refunded,
+            ],
           },
           storeId: '4750_Yonge_Street',
           orderStableId: { notIn: ['order-stable-1'] },
-        }),
+        },
       }),
     );
   });

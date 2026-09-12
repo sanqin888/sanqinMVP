@@ -51,7 +51,9 @@ export type PaymentFinancialFactsRangeV1 = {
 };
 
 export interface PaymentFinancialFactsReaderPort {
-  readFactByAttemptId(attemptId: string): Promise<PaymentFinancialFactV1 | null>;
+  readFactByAttemptId(
+    attemptId: string,
+  ): Promise<PaymentFinancialFactV1 | null>;
   readFactsForRange(
     range: PaymentFinancialFactsRangeV1,
   ): Promise<PaymentFinancialFactV1[]>;

@@ -157,7 +157,10 @@ describe('OrderIngestionService', () => {
       $transaction: (fn: (client: unknown) => unknown) => fn(tx),
     } as never);
 
-    await service.ingest({ ...(input as object), status: 'paid' } as never, policies);
+    await service.ingest(
+      { ...(input as object), status: 'paid' } as never,
+      policies,
+    );
 
     expect(createMany).toHaveBeenCalledWith(
       expect.objectContaining({

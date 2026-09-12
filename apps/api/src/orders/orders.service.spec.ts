@@ -1159,7 +1159,9 @@ describe('OrdersService', () => {
       clientRequestId: null,
       items: [],
     };
-    prisma.order.create.mockResolvedValue(withFinancialSnapshotDefaults(storedOrder));
+    prisma.order.create.mockResolvedValue(
+      withFinancialSnapshotDefaults(storedOrder),
+    );
 
     return service.create(dto).then((order) => {
       // ✅ 仍然建单
@@ -1188,7 +1190,9 @@ describe('OrdersService', () => {
       clientRequestId: null,
       items: [],
     };
-    prisma.order.create.mockResolvedValue(withFinancialSnapshotDefaults(storedOrder));
+    prisma.order.create.mockResolvedValue(
+      withFinancialSnapshotDefaults(storedOrder),
+    );
 
     await service.create({
       channel: 'web',
@@ -1252,7 +1256,9 @@ describe('OrdersService', () => {
       );
       expect(prisma.opsEvent.createMany).not.toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ eventName: 'order.accepted' }) as unknown,
+          data: expect.objectContaining({
+            eventName: 'order.accepted',
+          }) as unknown,
         }),
       );
     } finally {
@@ -1470,7 +1476,9 @@ describe('OrdersService', () => {
         },
       ],
     };
-    prisma.order.create.mockResolvedValue(withFinancialSnapshotDefaults(storedOrder));
+    prisma.order.create.mockResolvedValue(
+      withFinancialSnapshotDefaults(storedOrder),
+    );
 
     const dto: CreateOrderInput = {
       channel: 'web',
@@ -1532,7 +1540,9 @@ describe('OrdersService', () => {
       clientRequestId: 'SQD2401010001',
       items: [],
     };
-    prisma.order.create.mockResolvedValue(withFinancialSnapshotDefaults(storedOrder));
+    prisma.order.create.mockResolvedValue(
+      withFinancialSnapshotDefaults(storedOrder),
+    );
 
     const dto: CreateOrderInput = {
       channel: 'web',

@@ -33,7 +33,9 @@ type LoyaltyFinancialRow = Prisma.LoyaltyLedgerGetPayload<{
 const toCentAlignedAmount = (deltaMicro: bigint): number => {
   const absoluteMicro = deltaMicro < 0n ? -deltaMicro : deltaMicro;
   if (absoluteMicro % MICRO_PER_CENT !== 0n) {
-    throw new Error('Store Balance financial fact is not aligned to whole cents');
+    throw new Error(
+      'Store Balance financial fact is not aligned to whole cents',
+    );
   }
   const amountCents = Number(absoluteMicro / MICRO_PER_CENT);
   if (!Number.isSafeInteger(amountCents)) {
@@ -50,28 +52,34 @@ const toKind = (row: LoyaltyFinancialRow): LoyaltyFinancialFactKindV1 => {
   switch (row.type) {
     case LoyaltyEntryType.TOPUP_PURCHASED:
       if (row.deltaMicro <= 0n) {
-        throw new Error('Store Balance top-up must increase liability principal');
+        throw new Error(
+          'Store Balance top-up must increase liability principal',
+        );
       }
       return 'STORE_BALANCE_TOPUP';
     case LoyaltyEntryType.REDEEM_ON_ORDER:
       if (row.deltaMicro >= 0n) {
-        throw new Error('Store Balance redemption must decrease liability principal');
+        throw new Error(
+          'Store Balance redemption must decrease liability principal',
+        );
       }
       return 'STORE_BALANCE_REDEEMED';
     case LoyaltyEntryType.REFUND_RETURN_REDEEM:
       if (row.deltaMicro <= 0n) {
-        throw new Error('Store Balance return must increase liability principal');
+        throw new Error(
+          'Store Balance return must increase liability principal',
+        );
       }
       return 'STORE_BALANCE_RETURNED';
     default:
-      throw new Error(`Unsupported Store Balance financial fact type: ${row.type}`);
+      throw new Error(
+        `Unsupported Store Balance financial fact type: ${row.type}`,
+      );
   }
 };
 
 @Injectable()
-export class LoyaltyFinancialFactsReaderService
-  implements LoyaltyFinancialFactsReaderPort
-{
+export class LoyaltyFinancialFactsReaderService implements LoyaltyFinancialFactsReaderPort {
   constructor(private readonly prisma: PrismaService) {}
 
   async readFactsByOrderStableId(

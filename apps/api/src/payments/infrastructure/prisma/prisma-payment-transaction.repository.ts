@@ -202,9 +202,7 @@ export class PrismaPaymentTransactionRepository
           gte: range.fromInclusive,
           lt: range.toExclusive,
         },
-        ...(restrictedPaymentIds
-          ? { id: { in: restrictedPaymentIds } }
-          : {}),
+        ...(restrictedPaymentIds ? { id: { in: restrictedPaymentIds } } : {}),
       },
       orderBy: [{ completedAt: 'asc' }, { attemptId: 'asc' }],
     });

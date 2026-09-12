@@ -67,33 +67,33 @@ describe('Order immutable financial sale fact', () => {
       'IMMUTABLE_SALE_SNAPSHOT',
     );
 
-    expect(parseOrderFinancialFactV1(serializeOrderFinancialFactV1(fact))).toEqual(
-      fact,
-    );
+    expect(
+      parseOrderFinancialFactV1(serializeOrderFinancialFactV1(fact)),
+    ).toEqual(fact);
     expect(fact.nominalSubtotalCents).toBe(949);
     expect(fact.discounts.dailySpecialCents).toBe(150);
   });
 
   it('appends the immutable fact with paidAt occurrence time and stable idempotency in the caller transaction', async () => {
     const createMany = jest.fn().mockResolvedValue({ count: 1 });
+    const orderSnapshot = snapshot();
+    const expectedFact = buildOrderFinancialFactV1(
+      orderSnapshot,
+      'IMMUTABLE_SALE_SNAPSHOT',
+    );
     await appendOrderFinancialSaleFact(
       { opsEvent: { createMany } } as never,
-      snapshot(),
+      orderSnapshot,
     );
 
     expect(createMany).toHaveBeenCalledWith({
-      data: expect.objectContaining({
+      data: {
         idempotencyKey: 'order-financial-sale:order-stable-1:v1',
         eventName: ORDER_FINANCIAL_SALE_FACT_EVENT,
         source: ORDER_FINANCIAL_SALE_FACT_SOURCE,
         occurredAt: new Date('2026-09-12T15:00:00.000Z'),
-        payload: expect.objectContaining({
-          version: 1,
-          sourceEvidence: 'IMMUTABLE_SALE_SNAPSHOT',
-          nominalSubtotalCents: 949,
-          discounts: expect.objectContaining({ dailySpecialCents: 150 }),
-        }) as unknown,
-      }),
+        payload: serializeOrderFinancialFactV1(expectedFact),
+      },
       skipDuplicates: true,
     });
   });

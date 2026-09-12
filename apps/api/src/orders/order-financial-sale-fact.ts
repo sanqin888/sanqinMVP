@@ -86,8 +86,10 @@ const asNonNegativeInteger = (value: unknown): number | null =>
     ? value
     : null;
 
-const asNullableNonNegativeInteger = (value: unknown): number | null | undefined =>
-  value === null ? null : asNonNegativeInteger(value) ?? undefined;
+const asNullableNonNegativeInteger = (
+  value: unknown,
+): number | null | undefined =>
+  value === null ? null : (asNonNegativeInteger(value) ?? undefined);
 
 const asPositiveInteger = (value: unknown): number | null => {
   const parsed = asNonNegativeInteger(value);
@@ -323,7 +325,9 @@ const toChannel = (channel: Channel): OrderFinancialChannelV1 => {
     case Channel.ubereats:
       return 'ubereats';
     default:
-      throw new Error(`Unsupported order financial channel: ${String(channel)}`);
+      throw new Error(
+        `Unsupported order financial channel: ${String(channel)}`,
+      );
   }
 };
 
@@ -499,7 +503,9 @@ export const parseOrderFinancialFactV1 = (
   const unattributedLegacyCents = asNonNegativeInteger(
     discountsRaw.unattributedLegacyCents,
   );
-  const totalDiscountCents = asNullableNonNegativeInteger(discountsRaw.totalCents);
+  const totalDiscountCents = asNullableNonNegativeInteger(
+    discountsRaw.totalCents,
+  );
   if (
     dailySpecialCents === undefined ||
     couponCents === null ||

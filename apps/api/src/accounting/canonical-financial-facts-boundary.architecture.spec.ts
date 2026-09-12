@@ -56,24 +56,35 @@ describe('Phase 9 canonical financial facts boundary', () => {
     const saleFact =
       file(ORDERS_ROOT, 'order-financial-sale-fact.ts')?.source ?? '';
     const ordersService = file(ORDERS_ROOT, 'orders.service.ts')?.source ?? '';
-    const ingestion = file(ORDERS_ROOT, 'order-ingestion.service.ts')?.source ?? '';
+    const ingestion =
+      file(ORDERS_ROOT, 'order-ingestion.service.ts')?.source ?? '';
     const lifecycle = file(ORDERS_ROOT, 'order-lifecycle.ts')?.source ?? '';
 
-    expect(saleFact).toContain("ORDER_FINANCIAL_SALE_FACT_SOURCE = 'orders.financial'");
-    expect(saleFact).toContain("ORDER_FINANCIAL_SALE_FACT_EVENT = 'order.financial_sale.v1'");
+    expect(saleFact).toContain(
+      "ORDER_FINANCIAL_SALE_FACT_SOURCE = 'orders.financial'",
+    );
+    expect(saleFact).toContain(
+      "ORDER_FINANCIAL_SALE_FACT_EVENT = 'order.financial_sale.v1'",
+    );
     expect(saleFact).toContain('order-financial-sale:${orderStableId}:v1');
     expect(ordersService).toContain('appendOrderFinancialSaleFact(tx, order)');
-    expect(ordersService).toContain('appendOrderFinancialSaleFact(tx, created)');
+    expect(ordersService).toContain(
+      'appendOrderFinancialSaleFact(tx, created)',
+    );
     expect(ingestion).toContain('ensureOrderFinancialSaleFact(tx, saved.id)');
-    expect(lifecycle).toContain("ORDER_ACCEPTED_LIFECYCLE_EVENT = 'order.accepted'");
+    expect(lifecycle).toContain(
+      "ORDER_ACCEPTED_LIFECYCLE_EVENT = 'order.accepted'",
+    );
     expect(lifecycle).not.toContain('order.financial_sale.v1');
   });
 
   it('keeps owner fact readers inside their own persistence boundaries', () => {
     const orderReader =
-      file(ORDERS_ROOT, 'order-financial-facts-reader.service.ts')?.source ?? '';
+      file(ORDERS_ROOT, 'order-financial-facts-reader.service.ts')?.source ??
+      '';
     const loyaltyReader =
-      file(LOYALTY_ROOT, 'loyalty-financial-facts-reader.service.ts')?.source ?? '';
+      file(LOYALTY_ROOT, 'loyalty-financial-facts-reader.service.ts')?.source ??
+      '';
     const paymentReader =
       file(
         resolve(PAYMENTS_ROOT, 'infrastructure', 'prisma'),
@@ -98,7 +109,9 @@ describe('Phase 9 canonical financial facts boundary', () => {
 
     expect(
       importViolations(accountingFiles, API_SRC_ROOT, (specifier) => {
-        const ownerMatch = specifier.match(/\.\.\/(orders|loyalty|payments)\/(.+)$/);
+        const ownerMatch = specifier.match(
+          /\.\.\/(orders|loyalty|payments)\/(.+)$/,
+        );
         if (!ownerMatch) return false;
         return ownerMatch[2] !== 'public-api';
       }),

@@ -25,9 +25,7 @@ const FINANCIAL_ORDER_STATUSES: OrderStatus[] = [
 ];
 
 @Injectable()
-export class OrderFinancialFactsReaderService
-  implements OrderFinancialFactsReaderPort
-{
+export class OrderFinancialFactsReaderService implements OrderFinancialFactsReaderPort {
   constructor(private readonly prisma: PrismaService) {}
 
   async readFactByOrderStableId(
@@ -45,7 +43,9 @@ export class OrderFinancialFactsReaderService
     if (durable) {
       const fact = parseOrderFinancialFactV1(durable.payload);
       if (!fact || fact.orderStableId !== stableId) {
-        throw new Error(`Malformed immutable Order financial fact: ${stableId}`);
+        throw new Error(
+          `Malformed immutable Order financial fact: ${stableId}`,
+        );
       }
       return fact;
     }
@@ -119,7 +119,8 @@ export class OrderFinancialFactsReaderService
         buildOrderFinancialFactV1(row, 'LEGACY_CURRENT_ORDER'),
       ),
     ].sort((left, right) => {
-      const byOccurredAt = left.occurredAt.getTime() - right.occurredAt.getTime();
+      const byOccurredAt =
+        left.occurredAt.getTime() - right.occurredAt.getTime();
       return byOccurredAt !== 0
         ? byOccurredAt
         : left.orderStableId.localeCompare(right.orderStableId);

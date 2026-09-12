@@ -82,9 +82,7 @@ describe('PrismaPaymentTransactionRepository financial facts', () => {
   it('uses completedAt for inclusive/exclusive replay and can restrict the reader to a stable Store identity without joining Orders', async () => {
     const checkoutFindMany = jest
       .fn()
-      .mockResolvedValueOnce([
-        { paymentTransactionId: paymentRow().id },
-      ])
+      .mockResolvedValueOnce([{ paymentTransactionId: paymentRow().id }])
       .mockResolvedValueOnce([
         {
           paymentTransactionId: paymentRow().id,
