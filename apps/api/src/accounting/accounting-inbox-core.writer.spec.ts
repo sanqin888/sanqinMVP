@@ -178,7 +178,9 @@ describe('Accounting Inbox core persistence writer', () => {
 
   it('keeps successful parse output immutable for the same parser version', async () => {
     const tx = makeTx();
-    tx.accountingSourceArtifact.findUnique.mockResolvedValue({ id: 'artifact-db-id' });
+    tx.accountingSourceArtifact.findUnique.mockResolvedValue({
+      id: 'artifact-db-id',
+    });
     tx.accountingParseRun.findUnique.mockResolvedValue({
       artifactId: 'artifact-db-id',
       status: AccountingParseStatus.SUCCESS,
@@ -302,7 +304,9 @@ describe('Accounting Inbox core persistence writer', () => {
           AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
         materializedEntityType:
           AccountingInboxMaterializedEntityType.PROVIDER_FINANCIAL_DOCUMENT,
-        materializedEntityStableId: expect.stringMatching(/^acctfindoc_/) as unknown,
+        materializedEntityStableId: expect.stringMatching(
+          /^acctfindoc_/,
+        ) as unknown,
         version: { increment: 1 },
       },
     });

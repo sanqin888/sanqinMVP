@@ -20,7 +20,9 @@ export class AccountingInboxWriterNotFoundError extends Error {}
 
 type NormalizedArtifact = ReturnType<typeof normalizeAccountingInboxArtifact>;
 type NormalizedParseRun = ReturnType<typeof normalizeAccountingParseRun>;
-type NormalizedTrustedSender = ReturnType<typeof normalizeAccountingTrustedSender>;
+type NormalizedTrustedSender = ReturnType<
+  typeof normalizeAccountingTrustedSender
+>;
 type NormalizedFinancialDocument = ReturnType<
   typeof normalizeProviderFinancialDocument
 >;

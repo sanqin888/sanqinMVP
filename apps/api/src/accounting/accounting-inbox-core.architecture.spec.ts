@@ -105,15 +105,11 @@ describe('Accounting unified Inbox core ownership boundary', () => {
     expect(migration).toContain(
       'CREATE UNIQUE INDEX "AccountingProviderFinancialDocument_artifactId_key"',
     );
-    expect(migration).toContain(
-      'CREATE INDEX "AcctInbox_materialized_idx"',
-    );
+    expect(migration).toContain('CREATE INDEX "AcctInbox_materialized_idx"');
     expect(migration).toContain(
       'CREATE UNIQUE INDEX "AcctProviderFinDoc_identity_rev_key"',
     );
-    expect(migration).toContain(
-      'CREATE INDEX "AcctProviderFinDoc_period_idx"',
-    );
+    expect(migration).toContain('CREATE INDEX "AcctProviderFinDoc_period_idx"');
     expect(migration).toContain(
       'CREATE INDEX "AcctProviderFinDoc_store_period_idx"',
     );

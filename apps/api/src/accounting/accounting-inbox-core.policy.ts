@@ -87,10 +87,7 @@ export function normalizeAccountingInboxArtifact(
   );
   const contentHash = normalizeSha256(input.contentHash, 'contentHash');
   const byteSize = input.byteSize ?? null;
-  if (
-    byteSize !== null &&
-    (!Number.isSafeInteger(byteSize) || byteSize < 0)
-  ) {
+  if (byteSize !== null && (!Number.isSafeInteger(byteSize) || byteSize < 0)) {
     throw new AccountingInboxPolicyError(
       'byteSize must be a non-negative integer when provided',
     );
@@ -155,7 +152,9 @@ export function normalizeAccountingParseRun(input: AccountingParseRunInput) {
     : null;
   const errorMessage = optionalText(input.errorMessage);
   if (input.status === AccountingParseStatus.SUCCESS && !resultHash) {
-    throw new AccountingInboxPolicyError('successful parse requires resultHash');
+    throw new AccountingInboxPolicyError(
+      'successful parse requires resultHash',
+    );
   }
   if (input.status === AccountingParseStatus.ERROR && !errorMessage) {
     throw new AccountingInboxPolicyError('failed parse requires errorMessage');
@@ -213,7 +212,9 @@ export function normalizeProviderFinancialDocument(
 
   const lines = input.lines.map((line, index) => {
     if (!Number.isSafeInteger(line.amountCents)) {
-      throw new AccountingInboxPolicyError('line amountCents must be an integer');
+      throw new AccountingInboxPolicyError(
+        'line amountCents must be an integer',
+      );
     }
     return {
       ...line,
@@ -251,7 +252,9 @@ export function hashAccountingJson(value: unknown): string {
 function normalizeSha256(value: string, field: string): string {
   const normalized = value.trim().toLowerCase();
   if (!/^[a-f0-9]{64}$/.test(normalized)) {
-    throw new AccountingInboxPolicyError(`${field} must be a SHA-256 hex digest`);
+    throw new AccountingInboxPolicyError(
+      `${field} must be a SHA-256 hex digest`,
+    );
   }
   return normalized;
 }

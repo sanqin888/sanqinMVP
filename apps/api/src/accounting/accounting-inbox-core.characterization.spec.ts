@@ -102,7 +102,9 @@ describe('AccountingOperationsService unified Inbox characterization', () => {
         replayed: false,
       }),
     );
-    expect(tx.accountingProviderFinancialDocument.create).toHaveBeenCalledTimes(2);
+    expect(
+      tx.accountingProviderFinancialDocument.create,
+    ).toHaveBeenCalledTimes(2);
     expect(prisma.$transaction).toHaveBeenCalledTimes(3);
   });
 

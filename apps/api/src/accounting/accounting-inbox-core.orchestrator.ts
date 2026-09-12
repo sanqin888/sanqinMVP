@@ -132,8 +132,8 @@ function requireStableValue(raw: string, field: string): string {
 function isUniqueConstraintError(error: unknown): boolean {
   return Boolean(
     error &&
-      typeof error === 'object' &&
-      'code' in error &&
-      (error as { code?: unknown }).code === 'P2002',
+    typeof error === 'object' &&
+    'code' in error &&
+    (error as { code?: unknown }).code === 'P2002',
   );
 }
