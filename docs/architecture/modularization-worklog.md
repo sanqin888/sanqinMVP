@@ -1758,7 +1758,7 @@ is claimed per repository workflow.
 
 ### 2026-09-11 — Phase 8 Slice 8.6B: Consolidated Documentation Closeout
 
-**PR/SHA:** PR #2279; squash merge `30c924f7`; final Phase 8 source baseline includes `574c5beb`  
+**PR/SHA:** PR #2279 on `docs/phase8-8.6b-closeout`; final Phase 8 source baseline includes `574c5beb`  
 **State:** CLOSED FOR APPROVED SOURCE / ARCHITECTURE SCOPE — consolidated active verification passed for all currently exercisable Test Store capabilities; 8.4 financial-report live replay remains provider-blocked and is not claimed as a live pass  
 **Scope/result:** Documentation-only synchronization of final Phase 8 source, CI and runtime evidence. Final source tail is PR #2275 / `f8896493` plus schedule forward-fix PR #2277 / `574c5beb`; no source/schema/migration/dependency/provider-wire or machine-baseline change is made by 8.6B.  
 **Verification:** Final deployed verification confirmed canonical Dry Run/formal Publish schedule + `13%` tax + `America/Toronto`, item and option restore-source-price audit events, scheduled ACCEPT replay reusing one durable action without duplicate canonical acceptance/prep/initial print, immediate ACCEPT + READY, manual DENY terminal convergence, 8.6A prep-time `1080` HTTP 200 diagnostic logging without diagnostic-only `OpsEvent`, and zero active `UberOrderAction` / `UberWebhookInbox` leases after testing. One best-effort worker wake exceeded 500 ms, but its durable inbox row processed normally immediately afterward with no lost-work condition.  
