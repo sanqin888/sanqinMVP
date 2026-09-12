@@ -1,10 +1,12 @@
 # Phase 9 — Accounting / Reporting / Analytics Boundary Contraction & L3 Financial Integrity
 
-Status: **SLICE 0 READINESS AUDIT COMPLETE — SLICE 1/2/3/4 MERGED / CI GREEN**  
+Status: **SLICE 0 READINESS AUDIT COMPLETE — SLICE 1/2/3/4 MERGED / CI GREEN — SLICE 5 PLAN REVISED FOR DOUBLE-ENTRY ACCOUNTING**  
 Slice 0 audit baseline: `origin/dev@1a69bd7dbd49eba08661b169463e32dc820f0396`  
 Slice 1 merge: PR #2281 / final head `974066e7c11f58316368fcb4fcfeec28c5da5509` / squash merge `f529f4701b63040a8e2dfee2cf3ca82213f25ec6` / CI #5494 green  
+Slice 2 merge: PR #2283 / final head `d6518ba13f8b1bb43df941d2fde10a44409e2a3b` / squash merge `b35890d8ed7399bc389915b192f7c20ff966c9b8` / CI #5500 green  
 Slice 3 merge: PR #2284 / final head `4399c841884e3267e18f7ab7f5b99781e0ed1fb6` / squash merge `0f37901a134062fcdb860e9ca256b4be2147586a` / CI #5503 green  
-Audit date: 2026-09-11
+Slice 4 merge: PR #2285 / final head `f38d8feb98819378d2667498a90acfd2d06b0e54` / squash merge `e3a3785dd7b428658cfec6720ca77da8be6eb350` / CI #5507 green  
+Planning decision updated: 2026-09-12
 
 ## 1. Purpose
 
@@ -128,10 +130,13 @@ Slice 0 does not change these semantics. Later boundary work must add/retain cha
 2. **Slice 2 — Accounting / Reporting characterization.** Lock current transaction CRUD, close/reopen/year-lock, current revenue-accrual, report KPI/top-items/time-boundary and Uber scheduler-window behavior before moving deeper ownership.
 3. **Slice 3 — Accounting L3 atomicity hardening.** Make financial mutation/period-state/audit invariants atomic while initially preserving existing HTTP semantics.
 4. **Slice 4 — cycle-safe Reporting / Orders ownership contraction.** Replace direct Orders/internal-parser consumption without introducing a Brand -> Reporting -> Orders -> Brand public SCC.
-5. **Slice 5 — canonical Revenue Posting.** Define versioned Orders/Payments financial facts and Accounting-owned idempotent/replayable posting rather than treating `Order.totalCents` as revenue.
-6. **Slice 6 — Uber financial-reporting boundary.** Remove Accounting knowledge of `UberStoreMapping`/provider UUIDs while preserving Phase 8 provider behavior and gates.
-7. **Slice 7 — stable-ID / Prisma contract contraction.** Use an explicitly authorized Class B expand-contract migration for ambiguous persisted identity names and related Prisma contract leakage.
-8. **Slice 8 — internal capability split + Accounting Web vertical-contract cleanup.** Split Ledger/Expenses/Revenue/Settlements/Reports internals and then consolidate Web DTO contracts after backend boundaries are stable.
+5. **Slice 5A — Double-entry + Statement Ingestion readiness/schema design audit.** Before changing persisted contracts, complete a read-only design audit for the minimal double-entry core, Chart of Accounts, provider statement import/inbox pipeline, historical coverage/cutover rules, idempotency/revision handling and the expand-contract migration plan. This work package must not edit Prisma schema/migrations or change runtime behavior.
+6. **Slice 5B — Double-entry Accounting Core.** After separate Prisma/migration authorization, introduce the minimal balanced journal model and account classification needed by SanQ Accounting while preserving the existing category taxonomy as a reporting/operating dimension where practical. Do not expand this slice into a full ERP/general-ledger product.
+7. **Slice 5C — External Platform Historical Financial Import + Accounting Inbox.** Add the unified Email / Manual Upload / Provider API document-ingestion boundary, UI-managed trusted senders, document classification and statement parsing. Historical Uber Eats and Fantuan backfill begins **2026-06-01** and is statement/monthly financial coverage only; it intentionally does not create asymmetric Uber-only historical order/item detail.
+8. **Slice 5D — Canonical Financial Facts + Revenue Posting.** Define versioned Orders/Payments/External-Channel financial facts and Accounting-owned idempotent/replayable posting into the double-entry journal rather than treating `Order.totalCents` as revenue. Provider/API-era order facts are the sales source; settlement statements must not duplicate recognized sales.
+9. **Slice 6 — Platform Settlement / Reconciliation + Uber financial-reporting boundary.** Remove Accounting knowledge of `UberStoreMapping`/provider UUIDs while preserving provider gates, and use provider statements/reports for fees, promotions/subsidies, advertising, chargebacks/complaint deductions, adjustments, payout and receivable reconciliation rather than rewriting original order revenue.
+10. **Slice 7 — stable-ID / Prisma contract contraction.** Use an explicitly authorized Class B expand-contract migration for ambiguous persisted identity names and related Prisma contract leakage.
+11. **Slice 8 — internal capability split + Accounting Web vertical-contract cleanup.** Split Ledger/Expenses/Revenue/Settlements/Reports internals and then consolidate Web DTO contracts after backend boundaries are stable.
 
 Phase 9 closes only after the planned source slices are merged, a final closeout/readiness audit is performed against the merged state, and one consolidated deployment + active verification plan passes.
 
@@ -222,3 +227,86 @@ The report behavior intentionally remains unchanged: `process.env.TZ || 'America
 Architecture movement targeted by the source change: `accounting-reporting-analytics -> commerce-orders-fulfillment` direct debt **1 -> 0**; `accounting-reporting-analytics -> runtime-data-ci-ops` **9 -> 7**; `brand-store -> accounting-reporting-analytics` direct debt **2 -> 0**; registering `HomepageContentModule` as composition wiring also contracts `brand-store -> runtime-data-ci-ops` **4 -> 3**. The resulting Accounting / Reporting / Analytics direct debt is Foundation **3**, External **1**, Identity **2**, Runtime **7**, total **13**. Both cross-owner bindings are confined to registered composition roots, so neither a lasting `Reporting -> Orders` public edge nor a lasting `Brand -> Reporting` public edge is introduced; `legacyPublicCycleComponents` is expected to remain empty.
 
 Focused tests retain Slice 2 report characterization at the Reporting contract boundary and add Orders-reader coverage for the exact reportable status set, current metric query semantics and immutable component-snapshot decoding. A boundary architecture spec prevents `ReportsService` from regaining Prisma/Orders-parser imports, requires Homepage business logic to stay on its Brand-owned ranking port, and pins both explicit composition-root registrations. Remote validation proceeded in three heads: CI #5505 correctly rejected the initial Brand -> Reporting public SCC; head `a6bfefaf` removed that edge and passed the architecture gate in CI #5506, which then stopped on Prettier-only API lint; formatting-only final head `f38d8feb` passed CI #5507 completely across API and Web before PR #2285 was squash-merged as `e3a3785d`.
+
+## 15. Slice 5 planning decision — Double-entry Accounting, provider statements and historical coverage
+
+State: **DESIGN DECISION RECORDED — IMPLEMENTATION NOT STARTED**  
+Planning base: `origin/dev@703a4269`  
+Decision date: 2026-09-12
+
+### 15.1 Double-entry is now the target Accounting ledger model
+
+The current `AccountingTransaction` model is an operational single-record income/expense/adjustment/transfer ledger and is no longer the intended terminal architecture for Phase 9. Before canonical Revenue Posting is implemented, Accounting must move to a minimal double-entry core so Revenue Posting, refunds, provider receivables, fees, taxes and settlements are defined once against balanced accounting entries rather than being rebuilt later.
+
+The target design direction is a SanQ-sized Chart of Accounts plus balanced journal entries/lines, conceptually:
+
+- account classifications capable of representing at least **ASSET / LIABILITY / EQUITY / REVENUE / EXPENSE**;
+- one journal-entry header carrying stable business identity, source/fact identity, posting version, idempotency and audit/reversal references as required by the final design;
+- two or more journal lines whose total debits equal total credits;
+- existing operational categories such as food sales, delivery, ingredients, rent and utilities retained as reporting/operating dimensions where useful instead of being mechanically collapsed into the account hierarchy.
+
+This decision does **not** authorize a full ERP redesign, a specific persisted schema, a particular Chart-of-Accounts numbering system, or a change from current open-period update/soft-delete semantics to append-only/reversal semantics. Those details require the Slice 5A audit and, for persisted changes, separate Prisma/migration authorization.
+
+The low-risk migration window remains favorable: the Slice 0 production inventory found no `AccountingTransaction`, `AccountingAuditLog`, `AccountingPeriodClose`, `PlatformSettlementRecord` or `UberFinancialReport` rows. A later 2026-09-11 read-only inventory found the operating Orders dataset had continued to grow and also confirmed that historic Unified Payment Core tables do not provide a complete historical payment-fact source, so historical replay must not assume `PaymentTransaction` coverage.
+
+### 15.2 Revenue recognition and platform settlement are separate facts
+
+Canonical Revenue Posting answers what SanQ sold, what tax/delivery/surcharge components belong to the sale and what confirmed sale/refund/amendment facts changed that revenue. Platform settlement answers how a provider later settled its receivable after commission, marketing, subsidies, chargebacks, advertising, adjustments and payout timing. Settlement data must not overwrite the original order sale merely because the provider later deducted money.
+
+For Uber Eats, the production-target order integration is treated as essentially terminal for the order-lifecycle side: a provider-confirmed cancellation before delivery is an order/cancellation fact that can reverse or prevent revenue posting. Post-delivery customer complaint deductions, chargebacks and other Uber-side financial actions belong to settlement/adjustment facts and must not mutate the original completed sale into a synthetic cancellation.
+
+`PENDING_MANUAL`, `UBER_MANUAL_REFUND` and similar manual-refund states are transitional compatibility only. After Clover POS synchronization and authoritative provider-side refund/cancellation flows are live, new canonical financial posting must be driven by confirmed Payments/External-Channel facts rather than a permanent manual-refund branch. Historical confirmed manual records still require replay compatibility; pending/unconfirmed requests are not revenue reversals.
+
+### 15.3 Historical Uber Eats / Fantuan coverage starts 2026-06-01 at statement level
+
+Historical external-platform financial coverage will be backfilled from **2026-06-01**. The backfill rule is deliberately symmetric across Uber Eats and Fantuan:
+
+- import monthly/settlement-level financial statements for both platforms;
+- do **not** import Uber-only historical order/item detail merely because Uber currently exposes richer downloads while Fantuan may not expose an equivalent downloadable item-level history;
+- do not synthesize operational `Order` rows from historical settlement files;
+- retain explicit coverage metadata so UI/reporting can distinguish financial-history completeness from future order/item-detail completeness.
+
+After a provider's live API integration cutover, provider order facts become the sales/analytics source for that period. Monthly statements/reports continue to be imported, but their role changes to settlement, fee/adjustment evidence and reconciliation. This separation prevents the same provider sales from being counted once from the live order feed and again from the monthly statement.
+
+Fantuan API availability and exact third-party capabilities remain to be confirmed with the provider. The architecture must not assume a Fantuan order/item API until that capability is verified.
+
+### 15.4 Accounting Inbox: nightly Gmail ingest, trusted senders and document classification
+
+The existing Accounting automation already has Store-local scheduling and defaults to `02:15` in `America/Toronto`; Gmail ingestion currently reads `bills@sanq.ca` using the `SanQ-Bills` label and writes supported attachments into `AccountingExpenseDocument`. Slice 5 must evolve this expense-only path into a unified Accounting Inbox rather than building a second unrelated mailbox pipeline.
+
+Target behavior:
+
+- Accounting UI exposes a freely editable **trusted sender** list. Sender trust controls whether a message/attachment is eligible for normal automatic processing; it does **not** map an email address to a vendor/platform or decide whether an attachment is an expense or settlement.
+- A trusted personal sender may create a new email and attach a downloaded Uber/Fantuan statement directly to `bills@sanq.ca`; the real `From` may therefore be the user's own Gmail address. Platform/document classification must rely primarily on attachment content, then filename/subject and other deterministic evidence, not on an assumed official-provider sender.
+- Unknown/untrusted sources are preserved for review/quarantine rather than silently trusted or silently classified as a provider.
+- The common intake classification is at least `EXPENSE_DOCUMENT`, `PLATFORM_SETTLEMENT` and `UNKNOWN`.
+- Expense documents continue to flow to expense review. Provider statements flow to a dedicated statement/settlement review surface because one statement may contain both revenue-side and expense/adjustment components.
+- The existing Accounting Web manual file-upload experience must be included in this same Inbox design. Today the Expenses UI uploads receipt images through `/accounting/files/receipts` and then attaches the returned URL to manual Expense creation; the target Accounting-side upload window must also accept supported provider statements/documents and route them through the same de-duplication, extraction, classification and review pipeline as Gmail intake rather than creating a second import path. Existing receipt-image compression/type/size protections should be preserved where they remain applicable.
+- Automatic acquisition, de-duplication, extraction and classification may run unattended; formal journal posting remains review/confirmation gated until parser/posting behavior has sufficient evidence for a later explicit auto-approval decision.
+
+A unified import batch should support source modes conceptually equivalent to `EMAIL`, `MANUAL_UPLOAD` and `PROVIDER_API` so the downstream parser/accounting path is stable even when acquisition changes. `MANUAL_UPLOAD` specifically includes the Accounting Web file-upload window, not only an API-only fallback. File hash, Gmail message/attachment identity, provider statement identity/period and parser-version evidence must support duplicate/revision detection. A later corrected statement must not silently overwrite previously posted accounting evidence; the design audit must define revision/reconciliation behavior.
+
+Uber monthly statements are currently treated as manually downloadable evidence unless/until an authoritative provider API/reporting capability supplies them automatically. The user may download a statement and send it as a fresh attachment email to `bills@sanq.ca`; no forwarded-message metadata is required for classification.
+
+### 15.5 Real provider statements require a richer settlement model
+
+The August 2026 provider samples reviewed during planning show why the existing `PlatformSettlementRecord(grossCents, commissionCents, netCents, payoutAt, rawPayload)` shape is insufficient as a terminal model:
+
+- Uber statements separate Sales, sales tax, Marketplace Fees and their tax, item offers, other offer charges, ad spend/credits, chargebacks and tax adjustments, plus payout/net totals;
+- Fantuan statements separate Sales, promotion discounts, Fantuan promotion subsidy, commission, commission GST/HST, adjustments, net taxes and transfer totals.
+
+The preferred design direction is therefore a provider-statement header plus extensible financial lines/components and preserved raw evidence, with normalized canonical component types only where they are stable and useful to posting/reconciliation. Exact persisted fields/table names remain a Slice 5A design output and are **not** authorized by this planning record.
+
+### 15.6 Next work package
+
+The next task is **Phase 9 Slice 5A — Double-entry + Statement Ingestion readiness/schema design audit**. It is read-only and must:
+
+1. inventory the current Accounting schema, ledger/category/account semantics, expense inbox/Gmail parser, automation configuration, settlement importer, Web Accounting UI contracts, audit/period rules and migration history;
+2. map the real Uber/Fantuan statement concepts onto a canonical statement/header-line model without forcing provider-specific fields into one flat record;
+3. propose the minimal double-entry Chart of Accounts + journal model and define how existing categories/accounts/documents map or transition;
+4. define historical coverage from 2026-06-01, API-era cutover rules, trusted-sender UI/settings, duplicate/revision handling and review/confirmation semantics;
+5. define Revenue Posting versus Settlement Posting responsibilities and the stable source/fact/idempotency identities needed for replay;
+6. produce an expand-contract Prisma/migration/backfill/cutover plan, explicitly separating changes that can be implemented without persisted-schema work from changes requiring separate migration authorization;
+7. give the recommended Slice 5B implementation boundary, affected tests/architecture guards and eventual Phase-level active verification scope.
+
+No Prisma/schema/migration/source implementation should begin during 5A unless the user separately authorizes that implementation after reviewing the audit.
