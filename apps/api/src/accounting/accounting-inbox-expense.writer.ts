@@ -83,8 +83,7 @@ export async function materializeInboxExpenseInTx(
       ...(normalized.extractionJson === undefined
         ? {}
         : {
-            extractionJson:
-              normalized.extractionJson as Prisma.InputJsonValue,
+            extractionJson: normalized.extractionJson as Prisma.InputJsonValue,
           }),
       memo: normalized.memo,
     },
@@ -148,7 +147,9 @@ export async function markInboxExpenseConfirmedInTx(
     },
   });
   if (!item) {
-    throw new AccountingInboxWriterNotFoundError('accounting inbox item not found');
+    throw new AccountingInboxWriterNotFoundError(
+      'accounting inbox item not found',
+    );
   }
   if (
     item.materializedEntityType !==
@@ -191,7 +192,9 @@ export async function discardInboxItemInTx(
     },
   });
   if (!item) {
-    throw new AccountingInboxWriterNotFoundError('accounting inbox item not found');
+    throw new AccountingInboxWriterNotFoundError(
+      'accounting inbox item not found',
+    );
   }
   if (item.status === AccountingInboxStatus.DISCARDED) {
     return { inboxItemStableId, discarded: true, replayed: true };
@@ -206,7 +209,7 @@ export async function discardInboxItemInTx(
   }
   if (
     item.materializedEntityType ===
-      AccountingInboxMaterializedEntityType.PROVIDER_FINANCIAL_DOCUMENT
+    AccountingInboxMaterializedEntityType.PROVIDER_FINANCIAL_DOCUMENT
   ) {
     throw new AccountingInboxWriterConflictError(
       'materialized provider financial documents cannot be discarded here',

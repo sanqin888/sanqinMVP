@@ -62,8 +62,8 @@ export class AccountingGmailIngestService {
   isConfigured(): boolean {
     return Boolean(
       process.env.ACCOUNTING_GMAIL_CLIENT_ID?.trim() &&
-        process.env.ACCOUNTING_GMAIL_CLIENT_SECRET?.trim() &&
-        process.env.ACCOUNTING_GMAIL_REFRESH_TOKEN?.trim(),
+      process.env.ACCOUNTING_GMAIL_CLIENT_SECRET?.trim() &&
+      process.env.ACCOUNTING_GMAIL_REFRESH_TOKEN?.trim(),
     );
   }
 
@@ -227,8 +227,14 @@ export class AccountingGmailIngestService {
 
   private countAcquisition(
     acquisition:
-      | Awaited<ReturnType<AccountingInboxAcquisitionService['acquireEmailBody']>>
-      | Awaited<ReturnType<AccountingInboxAcquisitionService['acquireEmailAttachment']>>,
+      | Awaited<
+          ReturnType<AccountingInboxAcquisitionService['acquireEmailBody']>
+        >
+      | Awaited<
+          ReturnType<
+            AccountingInboxAcquisitionService['acquireEmailAttachment']
+          >
+        >,
     result: MessageIngestResult,
   ) {
     if (!acquisition) return;

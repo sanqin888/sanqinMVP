@@ -47,10 +47,7 @@ export async function listAccountingUnifiedInboxItems(
   const take = Math.min(Math.max(params.limit ?? 100, 1), 200);
   const statuses = params.status
     ? [params.status]
-    : [
-        AccountingInboxStatus.PENDING_REVIEW,
-        AccountingInboxStatus.QUARANTINED,
-      ];
+    : [AccountingInboxStatus.PENDING_REVIEW, AccountingInboxStatus.QUARANTINED];
   const rows = await client.accountingInboxItem.findMany({
     where: { status: { in: statuses } },
     select: {

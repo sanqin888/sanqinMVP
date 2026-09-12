@@ -35,7 +35,9 @@ describe('AccountingInboxAcquisitionService', () => {
   let uploadRoot: string;
 
   beforeEach(() => {
-    uploadRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sanq-accounting-inbox-'));
+    uploadRoot = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'sanq-accounting-inbox-'),
+    );
     process.env.UPLOAD_ROOT = uploadRoot;
   });
 
@@ -47,10 +49,12 @@ describe('AccountingInboxAcquisitionService', () => {
 
   function makeService() {
     const operations = {
-      registerInboxArtifact: jest.fn().mockImplementation((input: {
-        kind: AccountingArtifactKind;
-        contentHash: string;
-      }) => Promise.resolve(registeredArtifact(input.kind, input.contentHash))),
+      registerInboxArtifact: jest
+        .fn()
+        .mockImplementation(
+          (input: { kind: AccountingArtifactKind; contentHash: string }) =>
+            Promise.resolve(registeredArtifact(input.kind, input.contentHash)),
+        ),
       recordInboxParseRun: jest.fn().mockResolvedValue({}),
     };
     return {
@@ -107,7 +111,10 @@ describe('AccountingInboxAcquisitionService', () => {
   it('quarantines untrusted email evidence without parsing it', async () => {
     const operations = {
       registerInboxArtifact: jest.fn().mockResolvedValue({
-        ...registeredArtifact(AccountingArtifactKind.EMAIL_BODY, 'a'.repeat(64)),
+        ...registeredArtifact(
+          AccountingArtifactKind.EMAIL_BODY,
+          'a'.repeat(64),
+        ),
         inboxItem: {
           ...registeredArtifact(
             AccountingArtifactKind.EMAIL_BODY,
@@ -195,7 +202,9 @@ describe('AccountingInboxAcquisitionService', () => {
     const calls = operations.registerInboxArtifact.mock.calls as Array<
       [{ contentHash: string; transportIdentity: string }]
     >;
-    expect(calls[0][0].transportIdentity).not.toBe(calls[1][0].transportIdentity);
+    expect(calls[0][0].transportIdentity).not.toBe(
+      calls[1][0].transportIdentity,
+    );
     expect(calls[0][0].contentHash).toBe(calls[1][0].contentHash);
   });
 });

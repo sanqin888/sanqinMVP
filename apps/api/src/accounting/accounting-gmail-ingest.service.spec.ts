@@ -12,7 +12,10 @@ const toBase64Url = (value: Buffer | string) =>
     .replace(/\+/g, '-')
     .replace(/\//g, '_');
 
-const artifactResult = (artifactStableId: string, kind: AccountingArtifactKind) => ({
+const artifactResult = (
+  artifactStableId: string,
+  kind: AccountingArtifactKind,
+) => ({
   artifactStableId,
   contentHash: 'a'.repeat(64),
   kind,
@@ -34,22 +37,28 @@ describe('AccountingGmailIngestService unified Inbox cutover', () => {
 
   beforeEach(() => {
     process.env.ACCOUNTING_GMAIL_CLIENT_ID = 'client-id';
-    process.env.ACCOUNTING_GMAIL_CLIENT_SECRET = 'client-secret';
-    process.env.ACCOUNTING_GMAIL_REFRESH_TOKEN = 'refresh-token';
+    process.env.ACCOUNTING_GMAIL_CLIENT_SECRET = 'test-client-secret';
+    process.env.ACCOUNTING_GMAIL_REFRESH_TOKEN = 'test-refresh-token';
     process.env.ACCOUNTING_GMAIL_ADDRESS = 'bills@sanq.ca';
   });
 
   afterEach(() => {
     jest.restoreAllMocks();
-    if (originalEnv.clientId === undefined) delete process.env.ACCOUNTING_GMAIL_CLIENT_ID;
+    if (originalEnv.clientId === undefined)
+      delete process.env.ACCOUNTING_GMAIL_CLIENT_ID;
     else process.env.ACCOUNTING_GMAIL_CLIENT_ID = originalEnv.clientId;
     if (originalEnv.clientSecret === undefined) {
       delete process.env.ACCOUNTING_GMAIL_CLIENT_SECRET;
-    } else process.env.ACCOUNTING_GMAIL_CLIENT_SECRET = originalEnv.clientSecret;
+    } else {
+      process.env.ACCOUNTING_GMAIL_CLIENT_SECRET = originalEnv.clientSecret;
+    }
     if (originalEnv.refreshToken === undefined) {
       delete process.env.ACCOUNTING_GMAIL_REFRESH_TOKEN;
-    } else process.env.ACCOUNTING_GMAIL_REFRESH_TOKEN = originalEnv.refreshToken;
-    if (originalEnv.address === undefined) delete process.env.ACCOUNTING_GMAIL_ADDRESS;
+    } else {
+      process.env.ACCOUNTING_GMAIL_REFRESH_TOKEN = originalEnv.refreshToken;
+    }
+    if (originalEnv.address === undefined)
+      delete process.env.ACCOUNTING_GMAIL_ADDRESS;
     else process.env.ACCOUNTING_GMAIL_ADDRESS = originalEnv.address;
   });
 
@@ -97,10 +106,15 @@ describe('AccountingGmailIngestService unified Inbox cutover', () => {
     };
 
     jest.spyOn(global, 'fetch').mockImplementation((input) => {
-      const url = String(input);
+      const url =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
       if (url === 'https://oauth2.googleapis.com/token') {
         return Promise.resolve(
-          new Response(JSON.stringify({ access_token: 'access-token' }), {
+          new Response(JSON.stringify({ access_token: 'test-access-token' }), {
             status: 200,
           }),
         );
@@ -120,7 +134,9 @@ describe('AccountingGmailIngestService unified Inbox cutover', () => {
       if (url.includes('/messages/message-1/attachments/attachment-1')) {
         return Promise.resolve(
           new Response(
-            JSON.stringify({ data: toBase64Url(Buffer.from('%PDF-1.4\n%%EOF')) }),
+            JSON.stringify({
+              data: toBase64Url(Buffer.from('%PDF-1.4\n%%EOF')),
+            }),
             { status: 200 },
           ),
         );

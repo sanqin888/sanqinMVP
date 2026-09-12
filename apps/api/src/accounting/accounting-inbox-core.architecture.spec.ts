@@ -70,9 +70,7 @@ describe('Accounting unified Inbox core ownership boundary', () => {
       `\\.${delegate}\\.(?:create|createMany|update|updateMany|delete|deleteMany|upsert)\\s*\\(`,
     );
     const offenders = productionTypescriptFiles(API_SRC_ROOT)
-      .filter(
-        (path) => path !== INBOX_WRITER && path !== INBOX_EXPENSE_WRITER,
-      )
+      .filter((path) => path !== INBOX_WRITER && path !== INBOX_EXPENSE_WRITER)
       .filter((path) => mutationPattern.test(read(path)))
       .map((path) => relative(API_SRC_ROOT, path));
 
@@ -85,7 +83,9 @@ describe('Accounting unified Inbox core ownership boundary', () => {
     expect(read(INBOX_WRITER)).not.toContain('../prisma/prisma.service');
     expect(read(INBOX_POLICY)).not.toContain('../prisma/prisma.service');
     expect(read(INBOX_ORCHESTRATOR)).not.toContain('../prisma/prisma.service');
-    expect(read(INBOX_EXPENSE_WRITER)).not.toContain('../prisma/prisma.service');
+    expect(read(INBOX_EXPENSE_WRITER)).not.toContain(
+      '../prisma/prisma.service',
+    );
     expect(read(INBOX_ACQUISITION)).not.toContain('../prisma/prisma.service');
     expect(read(INBOX_QUERY)).not.toContain('../prisma/prisma.service');
     expect(read(GMAIL_INGEST)).not.toContain('../prisma/prisma.service');

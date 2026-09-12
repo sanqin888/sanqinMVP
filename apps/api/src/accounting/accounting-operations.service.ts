@@ -1108,7 +1108,9 @@ export class AccountingOperationsService {
       }
     }
 
-    const pendingInboxItems = await countAccountingInboxReviewItems(this.prisma);
+    const pendingInboxItems = await countAccountingInboxReviewItems(
+      this.prisma,
+    );
     const latestClosedMonth = await this.prisma.accountingPeriodClose.findFirst(
       {
         where: { periodType: 'MONTH' },

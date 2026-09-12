@@ -235,9 +235,7 @@ export function normalizeAccountingInboxExpenseMaterialization(
   }
   const attachmentUrls = Array.from(
     new Set(
-      (input.attachmentUrls ?? [])
-        .map((value) => value.trim())
-        .filter(Boolean),
+      (input.attachmentUrls ?? []).map((value) => value.trim()).filter(Boolean),
     ),
   );
   return {

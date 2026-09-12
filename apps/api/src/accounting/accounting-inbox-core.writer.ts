@@ -70,7 +70,11 @@ export async function registerInboxArtifactInTx(
         'artifact transport identity was reused with different content',
       );
     }
-    const promoted = await promoteArtifactTrustIfNeeded(tx, existing, normalized);
+    const promoted = await promoteArtifactTrustIfNeeded(
+      tx,
+      existing,
+      normalized,
+    );
     return presentRegisteredArtifact(promoted, true);
   }
 
@@ -535,8 +539,7 @@ export function presentRegisteredArtifact(
           classification: row.inboxItem.classification,
           trustDecision: row.inboxItem.trustDecision,
           materializedEntityType: row.inboxItem.materializedEntityType,
-          materializedEntityStableId:
-            row.inboxItem.materializedEntityStableId,
+          materializedEntityStableId: row.inboxItem.materializedEntityStableId,
           duplicateOfArtifact: row.inboxItem.duplicateOfArtifact,
         }
       : null,

@@ -98,10 +98,7 @@ export async function discardAccountingInboxItem(
   inboxItemStableId: string,
   operatorUserStableId: string,
 ) {
-  const inboxItem = requireStableValue(
-    inboxItemStableId,
-    'inboxItemStableId',
-  );
+  const inboxItem = requireStableValue(inboxItemStableId, 'inboxItemStableId');
   const operator = requireStableValue(
     operatorUserStableId,
     'operatorUserStableId',

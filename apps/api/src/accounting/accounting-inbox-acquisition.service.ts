@@ -184,7 +184,11 @@ export class AccountingInboxAcquisitionService {
       await this.removeStoredFile(storedUrl);
     }
     try {
-      await this.parseFileIfEligible(artifact, detected.kind, input.file.buffer);
+      await this.parseFileIfEligible(
+        artifact,
+        detected.kind,
+        input.file.buffer,
+      );
     } catch (error) {
       await this.recordParseFailureIfEligible(artifact, error);
     }
@@ -195,7 +199,9 @@ export class AccountingInboxAcquisitionService {
   }
 
   private async parseFileIfEligible(
-    artifact: Awaited<ReturnType<AccountingOperationsService['registerInboxArtifact']>>,
+    artifact: Awaited<
+      ReturnType<AccountingOperationsService['registerInboxArtifact']>
+    >,
     kind: AccountingArtifactKind,
     buffer: Buffer,
   ) {
@@ -266,7 +272,9 @@ export class AccountingInboxAcquisitionService {
   }
 
   private async parseTextIfEligible(
-    artifact: Awaited<ReturnType<AccountingOperationsService['registerInboxArtifact']>>,
+    artifact: Awaited<
+      ReturnType<AccountingOperationsService['registerInboxArtifact']>
+    >,
     text: string,
     inputKind: 'EMAIL_BODY',
   ) {
@@ -371,13 +379,18 @@ export class AccountingInboxAcquisitionService {
   ) {
     const dir = path.join(getUploadsAccountingDir(), 'inbox');
     await fs.promises.mkdir(dir, { recursive: true });
-    const originalBase = path.basename(originalName || 'evidence', path.extname(originalName || ''));
+    const originalBase = path.basename(
+      originalName || 'evidence',
+      path.extname(originalName || ''),
+    );
     const safeBase = originalBase
       .replace(/[^a-zA-Z0-9_-]+/g, '-')
       .replace(/^-+|-+$/g, '')
       .slice(0, 48);
     const fileName = `${Date.now()}-${createId()}-${safeBase || 'evidence'}${extension}`;
-    await fs.promises.writeFile(path.join(dir, fileName), buffer, { flag: 'wx' });
+    await fs.promises.writeFile(path.join(dir, fileName), buffer, {
+      flag: 'wx',
+    });
     return `/api/v1/accounting/files/inbox/${fileName}`;
   }
 
@@ -386,9 +399,12 @@ export class AccountingInboxAcquisitionService {
     if (!storedUrl.startsWith(prefix)) return;
     const fileName = path.basename(storedUrl.slice(prefix.length));
     try {
-      await fs.promises.rm(path.join(getUploadsAccountingDir(), 'inbox', fileName), {
-        force: true,
-      });
+      await fs.promises.rm(
+        path.join(getUploadsAccountingDir(), 'inbox', fileName),
+        {
+          force: true,
+        },
+      );
     } catch (error) {
       this.logger.warn(
         `Failed to remove orphaned Accounting Inbox file ${fileName}: ${
@@ -399,7 +415,9 @@ export class AccountingInboxAcquisitionService {
   }
 }
 
-export function extractMailboxAddress(raw: string | null | undefined): string | null {
+export function extractMailboxAddress(
+  raw: string | null | undefined,
+): string | null {
   const value = raw?.trim();
   if (!value) return null;
   const bracketed = /<([^<>\s@]+@[^<>\s@]+)>/.exec(value)?.[1];
