@@ -36,9 +36,7 @@ describe('Accounting journal policy', () => {
 
     expect(normalized.currency).toBe('CAD');
     expect(normalized.memo).toBe('Kitchen supplies');
-    expect(normalized.occurredAt).toEqual(
-      new Date('2026-09-12T14:00:00.000Z'),
-    );
+    expect(normalized.occurredAt).toEqual(new Date('2026-09-12T14:00:00.000Z'));
     expect(hashJournalCreatePayload(normalized)).toMatch(/^[a-f0-9]{64}$/);
     expect(hashJournalCreatePayload(normalized)).toBe(
       hashJournalCreatePayload(normalizeJournalCreate(baseInput)),
@@ -67,10 +65,7 @@ describe('Accounting journal policy', () => {
     expect(() =>
       normalizeJournalCreate({
         ...baseInput,
-        lines: [
-          { ...baseInput.lines[0], creditCents: 1 },
-          baseInput.lines[1],
-        ],
+        lines: [{ ...baseInput.lines[0], creditCents: 1 }, baseInput.lines[1]],
       }),
     ).toThrow(AccountingJournalPolicyError);
   });
@@ -79,10 +74,7 @@ describe('Accounting journal policy', () => {
     expect(() =>
       normalizeJournalCreate({
         ...baseInput,
-        lines: [
-          { ...baseInput.lines[0], debitCents: 0 },
-          baseInput.lines[1],
-        ],
+        lines: [{ ...baseInput.lines[0], debitCents: 0 }, baseInput.lines[1]],
       }),
     ).toThrow(AccountingJournalPolicyError);
   });

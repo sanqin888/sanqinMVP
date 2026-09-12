@@ -592,7 +592,10 @@ export class AccountingService {
           return this.assertJournalIdempotentReplay(existing, idempotencyHash);
         }
 
-        await this.assertOnOrAfterAccountingStartDate(normalized.occurredAt, tx);
+        await this.assertOnOrAfterAccountingStartDate(
+          normalized.occurredAt,
+          tx,
+        );
         await this.assertJournalEditableForPeriod(
           normalized.occurredAt,
           normalized.kind,
@@ -688,7 +691,10 @@ export class AccountingService {
       const existingDbId = existing.id;
       const existingPublic = this.toJournalPublic(existing);
 
-      await this.assertOnOrAfterAccountingStartDate(existingPublic.occurredAt, tx);
+      await this.assertOnOrAfterAccountingStartDate(
+        existingPublic.occurredAt,
+        tx,
+      );
       await this.assertOnOrAfterAccountingStartDate(normalized.occurredAt, tx);
       await this.assertJournalEditableForPeriod(
         existingPublic.occurredAt,
@@ -843,28 +849,26 @@ export class AccountingService {
           .filter((value): value is string => value !== null),
       ),
     ];
-    const [accounts, categories] = await Promise.all([
-      db.accountingAccount.findMany({
-        where: {
-          accountStableId: { in: accountStableIds },
-          isActive: true,
-        },
-        select: {
-          id: true,
-          accountStableId: true,
-          currency: true,
-        },
-      }),
-      categoryStableIds.length
-        ? db.accountingCategory.findMany({
-            where: {
-              categoryStableId: { in: categoryStableIds },
-              isActive: true,
-            },
-            select: { id: true, categoryStableId: true },
-          })
-        : Promise.resolve([]),
-    ]);
+    const accounts = await db.accountingAccount.findMany({
+      where: {
+        accountStableId: { in: accountStableIds },
+        isActive: true,
+      },
+      select: {
+        id: true,
+        accountStableId: true,
+        currency: true,
+      },
+    });
+    const categories = categoryStableIds.length
+      ? await db.accountingCategory.findMany({
+          where: {
+            categoryStableId: { in: categoryStableIds },
+            isActive: true,
+          },
+          select: { id: true, categoryStableId: true },
+        })
+      : [];
 
     const accountByStableId = new Map(
       accounts.map((account) => [account.accountStableId, account]),

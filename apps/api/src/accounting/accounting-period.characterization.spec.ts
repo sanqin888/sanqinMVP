@@ -1,8 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
-import {
-  AccountingJournalEntryKind,
-  AccountingTxType,
-} from '@prisma/client';
+import { AccountingJournalEntryKind, AccountingTxType } from '@prisma/client';
 import { AccountingService } from './accounting.service';
 
 describe('AccountingService period-close characterization', () => {

@@ -343,9 +343,11 @@ describe('AccountingService double-entry journal characterization', () => {
         afterJson: updated,
       }) as unknown,
     });
-    expect(
-      prisma.accountingAuditLog.create.mock.calls[0]?.[0]?.data?.beforeJson,
-    ).not.toHaveProperty('id');
+    expect(prisma.accountingAuditLog.create).not.toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        beforeJson: expect.objectContaining({ id: expect.anything() }) as unknown,
+      }) as unknown,
+    });
   });
 
   it('rejects a stale optimistic update before replacing lines or auditing', async () => {
@@ -411,7 +413,9 @@ describe('AccountingService double-entry journal characterization', () => {
     const { service, prisma } = makeService();
     prisma.accountingJournalEntry.findUnique.mockResolvedValue(null);
     prisma.accountingJournalEntry.create.mockResolvedValue(journalRow());
-    prisma.accountingAuditLog.create.mockRejectedValue(new Error('audit failed'));
+    prisma.accountingAuditLog.create.mockRejectedValue(
+      new Error('audit failed'),
+    );
 
     await expect(
       service.createJournalEntry(basePayload, 'user_stable_1'),
