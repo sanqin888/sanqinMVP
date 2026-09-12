@@ -138,6 +138,8 @@ URL 中的 `v1` / `v3` 不得被当作“旧接口/新接口”的简单版本�
 
 Clover wire response 必须先映射为 SanQ Payment domain model，不得泄漏到 Orders / POS domain。Unified Payment Core 的最终 Clover 资金事实必须再经过 Platform REST v3 canonicalization；transaction execution 的即时 response 可以提供 provisional observation，但不得长期作为唯一 payment truth。
 
+**Phase 9 Slice 5D-A financial-fact boundary (2026-09-12):** Payments additionally exposes a narrow read-only `PAYMENT_FINANCIAL_FACTS_READER` capability for later Accounting consumption. It may publish only final `SUCCEEDED` PaymentTransaction observations with authoritative `completedAt`, stable `attemptId`, SALE/REFUND/VOID money fields and Payments-owned stable checkout order/store identity. It must not expose `PaymentTransaction.id`, raw Clover wire payloads, concrete Clover gateways or provisional/non-final transaction state. This boundary does not change Web Ecommerce or POS Terminal execution/canonicalization behavior and is not itself a Revenue Posting path.
+
 ### 3.3 POS CARD 改为“先支付、后创建订单”
 
 最终 CARD 主链路必须变为：
