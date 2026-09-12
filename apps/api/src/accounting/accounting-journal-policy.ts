@@ -72,7 +72,6 @@ export function normalizeJournalCreate(
 ): NormalizedJournalCreate {
   return {
     idempotencyKey: requireValue(input.idempotencyKey, 'idempotencyKey'),
-    kind: input.kind,
     source: input.source,
     ...normalizeShared(input),
   };
