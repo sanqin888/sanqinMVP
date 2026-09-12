@@ -9,9 +9,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { AnalyticsService } from './analytics.service';
-import { SessionAuthGuard } from '../auth/session-auth.guard';
-import { RolesGuard } from '../auth/roles.guard';
-import { Roles } from '../auth/roles.decorator';
+import { Roles, RolesGuard, SessionAuthGuard } from '../auth/public-api';
 
 const ANALYTICS_CONSENT_COOKIE = 'sanqin_analytics_consent_v1';
 
