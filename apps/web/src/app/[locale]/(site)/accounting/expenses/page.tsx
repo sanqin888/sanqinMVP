@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api/client';
 
@@ -71,13 +72,11 @@ export default function AccountingExpensesPage() {
   const [receiptTotal, setReceiptTotal] = useState('');
   const [accountStableId, setAccountStableId] = useState('');
   const [memo, setMemo] = useState('');
-  const [attachmentUrls, setAttachmentUrls] = useState<string[]>([]);
   const [splits, setSplits] = useState<SplitDraft[]>([]);
   const [quickRows, setQuickRows] = useState<QuickDraft[]>([]);
   const [showQuick, setShowQuick] = useState(false);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -214,24 +213,6 @@ export default function AccountingExpensesPage() {
     setShowQuick(false);
   }
 
-  async function uploadReceipt(file: File) {
-    setUploading(true);
-    setError(null);
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const result = await apiFetch<{ url: string }>('/accounting/files/receipts', {
-        method: 'POST',
-        body: formData,
-      });
-      setAttachmentUrls((current) => [...current, result.url]);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setUploading(false);
-    }
-  }
-
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     setError(null);
@@ -256,7 +237,7 @@ export default function AccountingExpensesPage() {
           occurredAt,
           totalCents: calculated.receiptTotalCents,
           accountStableId: accountStableId || null,
-          attachmentUrls,
+          attachmentUrls: [],
           memo: memo.trim() || null,
           splits: calculated.rows
             .filter((row) => row.amountCents > 0)
@@ -269,7 +250,6 @@ export default function AccountingExpensesPage() {
       });
       setReceiptTotal('');
       setMemo('');
-      setAttachmentUrls([]);
       setQuickRows([]);
       setSplits((current) => [
         {
@@ -382,12 +362,15 @@ export default function AccountingExpensesPage() {
 
         <div className="grid gap-4 rounded-xl border border-slate-200 p-4 md:grid-cols-2">
           <div>
-            <p className="text-sm font-medium">{isZh ? '凭证' : 'Receipt image'}</p>
-            <label className="mt-2 inline-flex cursor-pointer rounded border px-3 py-2 text-sm">
-              <input type="file" accept="image/*" className="hidden" disabled={uploading} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadReceipt(file); event.currentTarget.value = ''; }} />
-              {uploading ? (isZh ? '上传中…' : 'Uploading…') : (isZh ? '上传纸质小票照片' : 'Upload receipt photo')}
-            </label>
-            {attachmentUrls.map((url) => <p key={url} className="mt-1 truncate text-xs text-blue-600">{url}</p>)}
+            <p className="text-sm font-medium">{isZh ? '凭证文件' : 'Evidence files'}</p>
+            <p className="mt-1 text-sm text-slate-500">
+              {isZh
+                ? '文件上传已统一到财务收件箱；在那里上传 PDF、CSV 或图片，再审核是否作为费用入账。'
+                : 'File intake now goes through Accounting Inbox. Upload PDF, CSV, or images there, then review whether the evidence should become an expense.'}
+            </p>
+            <Link className="mt-2 inline-flex rounded border px-3 py-2 text-sm text-blue-600" href={`/${params.locale}/accounting/inbox`}>
+              {isZh ? '打开财务收件箱' : 'Open Accounting Inbox'}
+            </Link>
           </div>
           <label className="text-sm"><span className="mb-1 block text-slate-500">{isZh ? '备注' : 'Memo'}</span><textarea className="min-h-24 w-full rounded border px-3 py-2" value={memo} onChange={(event) => setMemo(event.target.value)} /></label>
         </div>
@@ -403,7 +386,7 @@ export default function AccountingExpensesPage() {
         </div>
 
         {error ? <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
-        <button type="submit" disabled={submitting || uploading || calculated.differenceCents !== 0 || calculated.receiptTotalCents <= 0} className="rounded bg-slate-900 px-5 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50">{submitting ? (isZh ? '保存中…' : 'Saving…') : (isZh ? '保存支出' : 'Save expense')}</button>
+        <button type="submit" disabled={submitting || calculated.differenceCents !== 0 || calculated.receiptTotalCents <= 0} className="rounded bg-slate-900 px-5 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50">{submitting ? (isZh ? '保存中…' : 'Saving…') : (isZh ? '保存支出' : 'Save expense')}</button>
       </form>
 
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">

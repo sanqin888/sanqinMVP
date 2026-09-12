@@ -4,10 +4,12 @@ import {
   AccountingInboxPolicyError,
   PROVIDER_FINANCIAL_HISTORY_START_DATE,
   normalizeAccountingInboxArtifact,
+  normalizeAccountingInboxExpenseMaterialization,
   normalizeAccountingParseRun,
   normalizeAccountingTrustedSender,
   normalizeProviderFinancialDocument,
   type AccountingInboxArtifactInput,
+  type AccountingInboxExpenseMaterializationInput,
   type AccountingParseRunInput,
   type AccountingProviderFinancialDocumentInput,
   type AccountingTrustedSenderInput,
@@ -22,6 +24,11 @@ import {
   registerInboxArtifactInTx,
   upsertTrustedSenderInTx,
 } from './accounting-inbox-core.writer';
+import {
+  discardInboxItemInTx,
+  materializeInboxExpenseInTx,
+  readInboxExpenseMaterializationReplay,
+} from './accounting-inbox-expense.writer';
 
 type AccountingTransactionRunner = Parameters<
   typeof runSerializableAccountingWrite
@@ -40,6 +47,23 @@ export async function registerAccountingInboxArtifact(
     if (!isUniqueConstraintError(error)) throw error;
     return runSerializableAccountingWrite(prisma, (tx) =>
       readInboxArtifactReplay(tx, normalized),
+    );
+  }
+}
+
+export async function materializeAccountingInboxExpense(
+  prisma: AccountingTransactionRunner,
+  input: AccountingInboxExpenseMaterializationInput,
+) {
+  const normalized = normalizeAccountingInboxExpenseMaterialization(input);
+  try {
+    return await runSerializableAccountingWrite(prisma, (tx) =>
+      materializeInboxExpenseInTx(tx, normalized),
+    );
+  } catch (error) {
+    if (!isUniqueConstraintError(error)) throw error;
+    return runSerializableAccountingWrite(prisma, (tx) =>
+      readInboxExpenseMaterializationReplay(tx, normalized),
     );
   }
 }
@@ -66,6 +90,21 @@ export async function upsertAccountingTrustedSender(
   );
   return runSerializableAccountingWrite(prisma, (tx) =>
     upsertTrustedSenderInTx(tx, normalized, operator),
+  );
+}
+
+export async function discardAccountingInboxItem(
+  prisma: AccountingTransactionRunner,
+  inboxItemStableId: string,
+  operatorUserStableId: string,
+) {
+  const inboxItem = requireStableValue(inboxItemStableId, 'inboxItemStableId');
+  const operator = requireStableValue(
+    operatorUserStableId,
+    'operatorUserStableId',
+  );
+  return runSerializableAccountingWrite(prisma, (tx) =>
+    discardInboxItemInTx(tx, inboxItem, operator),
   );
 }
 

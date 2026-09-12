@@ -8,6 +8,10 @@ const INBOX_WRITER = resolve(
   ACCOUNTING_ROOT,
   'accounting-inbox-core.writer.ts',
 );
+const INBOX_EXPENSE_WRITER = resolve(
+  ACCOUNTING_ROOT,
+  'accounting-inbox-expense.writer.ts',
+);
 const INBOX_POLICY = resolve(
   ACCOUNTING_ROOT,
   'accounting-inbox-core.policy.ts',
@@ -15,6 +19,19 @@ const INBOX_POLICY = resolve(
 const INBOX_ORCHESTRATOR = resolve(
   ACCOUNTING_ROOT,
   'accounting-inbox-core.orchestrator.ts',
+);
+const INBOX_ACQUISITION = resolve(
+  ACCOUNTING_ROOT,
+  'accounting-inbox-acquisition.service.ts',
+);
+const INBOX_QUERY = resolve(ACCOUNTING_ROOT, 'accounting-inbox-query.ts');
+const GMAIL_INGEST = resolve(
+  ACCOUNTING_ROOT,
+  'accounting-gmail-ingest.service.ts',
+);
+const ACCOUNTING_CONTROLLER = resolve(
+  ACCOUNTING_ROOT,
+  'accounting.controller.ts',
 );
 const INBOX_MIGRATION = resolve(
   API_ROOT,
@@ -46,32 +63,54 @@ function productionTypescriptFiles(root: string): string[] {
 }
 
 describe('Accounting unified Inbox core ownership boundary', () => {
-  it('keeps direct 5C-A Prisma mutations inside the Accounting Inbox writer', () => {
+  it('keeps Unified Inbox Prisma mutations inside the designated Accounting writers', () => {
     const delegate =
       'accounting(?:SourceArtifact|ParseRun|InboxItem|TrustedSender|ProviderFinancialDocument|ProviderFinancialLine|ProviderFinancialCoverage)';
     const mutationPattern = new RegExp(
       `\\.${delegate}\\.(?:create|createMany|update|updateMany|delete|deleteMany|upsert)\\s*\\(`,
     );
     const offenders = productionTypescriptFiles(API_SRC_ROOT)
-      .filter((path) => path !== INBOX_WRITER)
+      .filter((path) => path !== INBOX_WRITER && path !== INBOX_EXPENSE_WRITER)
       .filter((path) => mutationPattern.test(read(path)))
       .map((path) => relative(API_SRC_ROOT, path));
 
     expect(offenders).toEqual([]);
     expect(read(INBOX_WRITER)).toMatch(mutationPattern);
+    expect(read(INBOX_EXPENSE_WRITER)).toMatch(mutationPattern);
   });
 
   it('does not add another Accounting PrismaService import boundary', () => {
     expect(read(INBOX_WRITER)).not.toContain('../prisma/prisma.service');
     expect(read(INBOX_POLICY)).not.toContain('../prisma/prisma.service');
     expect(read(INBOX_ORCHESTRATOR)).not.toContain('../prisma/prisma.service');
+    expect(read(INBOX_EXPENSE_WRITER)).not.toContain(
+      '../prisma/prisma.service',
+    );
+    expect(read(INBOX_ACQUISITION)).not.toContain('../prisma/prisma.service');
+    expect(read(INBOX_QUERY)).not.toContain('../prisma/prisma.service');
+    expect(read(GMAIL_INGEST)).not.toContain('../prisma/prisma.service');
     expect(read(INBOX_WRITER)).toContain('Prisma.TransactionClient');
+    expect(read(INBOX_EXPENSE_WRITER)).toContain('Prisma.TransactionClient');
   });
 
-  it('keeps 5C-A evidence persistence separate from Journal posting', () => {
-    const writer = read(INBOX_WRITER);
-    expect(writer).not.toContain('accountingJournalEntry');
-    expect(writer).not.toContain('accountingJournalLine');
+  it('keeps Gmail and manual file acquisition on the Unified Inbox path', () => {
+    const gmail = read(GMAIL_INGEST);
+    const acquisition = read(INBOX_ACQUISITION);
+    const controller = read(ACCOUNTING_CONTROLLER);
+
+    expect(gmail).not.toContain('accountingExpenseDocument');
+    expect(gmail).toContain('acquireEmailBody');
+    expect(gmail).toContain('acquireEmailAttachment');
+    expect(acquisition).toContain('registerInboxArtifact');
+    expect(controller).toContain("@Post('inbox/artifacts')");
+    expect(controller).not.toContain("@Post('files/receipts')");
+  });
+
+  it('keeps 5C evidence persistence separate from Journal posting', () => {
+    for (const writer of [INBOX_WRITER, INBOX_EXPENSE_WRITER]) {
+      expect(read(writer)).not.toContain('accountingJournalEntry');
+      expect(read(writer)).not.toContain('accountingJournalLine');
+    }
   });
 
   it('pins the additive database invariants in the Slice 5C-A migration', () => {

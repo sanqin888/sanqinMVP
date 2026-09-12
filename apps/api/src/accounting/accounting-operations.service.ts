@@ -2,7 +2,6 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
-  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -10,20 +9,20 @@ import {
   AccountingDocumentSource,
   AccountingDocumentStatus,
   AccountingFinancialProvider,
+  AccountingInboxMaterializedEntityType,
+  AccountingInboxStatus,
   AccountingSourceType,
   AccountingTxType,
   Prisma,
 } from '@prisma/client';
 import { createId } from '@paralleldrive/cuid2';
-import * as fs from 'fs';
-import * as path from 'path';
-import { getUploadsAccountingDir } from '../common/utils/uploads-path';
 import { PrismaService } from '../prisma/prisma.service';
 import { runSerializableAccountingWrite } from './accounting-atomic-write';
-import { processAccountingReceiptImage } from './accounting-receipt-image';
 import { DEFAULT_ACCOUNTING_ACCOUNTS } from './accounting-chart-of-accounts';
 import {
+  discardAccountingInboxItem,
   ensureAccountingProviderFinancialCoverage,
+  materializeAccountingInboxExpense,
   recordAccountingInboxParseRun,
   recordAccountingProviderFinancialDocument,
   registerAccountingInboxArtifact,
@@ -32,6 +31,7 @@ import {
 import {
   AccountingInboxPolicyError,
   type AccountingInboxArtifactInput,
+  type AccountingInboxExpenseMaterializationInput,
   type AccountingParseRunInput,
   type AccountingProviderFinancialDocumentInput,
   type AccountingTrustedSenderInput,
@@ -40,6 +40,16 @@ import {
   AccountingInboxWriterConflictError,
   AccountingInboxWriterNotFoundError,
 } from './accounting-inbox-core.writer';
+import { markInboxExpenseConfirmedInTx } from './accounting-inbox-expense.writer';
+import {
+  accountingJsonRecord,
+  accountingOptionalString,
+  countAccountingInboxReviewItems,
+  getAccountingSenderTrustDecision,
+  listAccountingTrustedSenders,
+  listAccountingUnifiedInboxItems,
+  readAccountingInboxExpenseContext,
+} from './accounting-inbox-query';
 import { AccountingService } from './accounting.service';
 
 export type AccountingExpenseSplitInput = {
@@ -186,8 +196,6 @@ type AccountingDocumentRow = Prisma.AccountingExpenseDocumentGetPayload<{
 
 @Injectable()
 export class AccountingOperationsService {
-  private readonly logger = new Logger(AccountingOperationsService.name);
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly accounting: AccountingService,
@@ -520,6 +528,123 @@ export class AccountingOperationsService {
     );
   }
 
+  async materializeInboxExpense(
+    input: AccountingInboxExpenseMaterializationInput,
+  ) {
+    return this.runInboxCore(() =>
+      materializeAccountingInboxExpense(this.prisma, input),
+    );
+  }
+
+  senderTrustDecision(email: string) {
+    return getAccountingSenderTrustDecision(this.prisma, email);
+  }
+
+  listTrustedSenders() {
+    return listAccountingTrustedSenders(this.prisma);
+  }
+
+  listUnifiedInboxItems(params: {
+    status?: AccountingInboxStatus;
+    limit?: number;
+  }) {
+    return listAccountingUnifiedInboxItems(this.prisma, params);
+  }
+
+  async confirmUnifiedInboxExpense(
+    inboxItemStableId: string,
+    input: AccountingExpenseInput,
+    operatorUserStableId: string,
+  ) {
+    const inbox = await readAccountingInboxExpenseContext(
+      this.prisma,
+      inboxItemStableId,
+    );
+    if (!inbox) throw new NotFoundException('accounting inbox item not found');
+    if (inbox.status !== AccountingInboxStatus.PENDING_REVIEW) {
+      throw new ConflictException('only pending inbox items can be confirmed');
+    }
+    if (
+      inbox.materializedEntityType ===
+      AccountingInboxMaterializedEntityType.PROVIDER_FINANCIAL_DOCUMENT
+    ) {
+      throw new ConflictException(
+        'provider financial evidence cannot be confirmed as an expense',
+      );
+    }
+    if (inbox.artifact.acquisitionMode === 'PROVIDER_API') {
+      throw new ConflictException(
+        'provider API evidence cannot be confirmed as an expense',
+      );
+    }
+
+    let documentStableId = inbox.materializedEntityStableId;
+    if (!documentStableId) {
+      const metadata = accountingJsonRecord(inbox.artifact.metadataJson);
+      const extraction = accountingJsonRecord(
+        inbox.artifact.parseRuns[0]?.resultJson,
+      );
+      const subtotalCents = input.splits.reduce(
+        (sum, split) => sum + split.amountCents,
+        0,
+      );
+      const taxCents = input.splits.reduce(
+        (sum, split) => sum + (split.taxCents ?? 0),
+        0,
+      );
+      const materialized = await this.materializeInboxExpense({
+        artifactStableId: inbox.artifact.artifactStableId,
+        source:
+          inbox.artifact.acquisitionMode === 'EMAIL'
+            ? AccountingDocumentSource.GMAIL
+            : AccountingDocumentSource.MANUAL,
+        occurredAt: input.occurredAt,
+        subtotalCents,
+        taxCents,
+        totalCents: input.totalCents,
+        currency: 'CAD',
+        gmailMessageId: accountingOptionalString(metadata.gmailMessageId),
+        gmailAttachmentId: accountingOptionalString(metadata.gmailAttachmentId),
+        emailSubject: inbox.artifact.emailSubject,
+        attachmentUrls: inbox.artifact.storedUrl
+          ? [inbox.artifact.storedUrl]
+          : [],
+        extractedText:
+          accountingOptionalString(extraction.extractedText) ??
+          inbox.artifact.bodyText,
+        extractionJson: extraction,
+        memo: input.memo,
+      });
+      documentStableId = materialized.documentStableId;
+    } else if (
+      inbox.materializedEntityType !==
+      AccountingInboxMaterializedEntityType.EXPENSE_DOCUMENT
+    ) {
+      throw new ConflictException(
+        'inbox item materialization type does not match expense confirmation',
+      );
+    }
+
+    return this.confirmInboxDocument(
+      documentStableId,
+      input,
+      operatorUserStableId,
+    );
+  }
+
+  async discardUnifiedInboxItem(
+    inboxItemStableId: string,
+    operatorUserStableId: string,
+  ) {
+    return this.runInboxCore(() =>
+      discardAccountingInboxItem(
+        this.prisma,
+        inboxItemStableId,
+        operatorUserStableId,
+      ),
+    );
+  }
+
   async recordInboxParseRun(input: AccountingParseRunInput) {
     return this.runInboxCore(() =>
       recordAccountingInboxParseRun(this.prisma, input),
@@ -556,17 +681,6 @@ export class AccountingOperationsService {
         operatorUserStableId,
       ),
     );
-  }
-
-  async saveReceiptImage(file: { originalname: string; buffer: Buffer }) {
-    const processed = await processAccountingReceiptImage(file);
-    const dir = path.join(getUploadsAccountingDir(), 'receipts');
-    await fs.promises.mkdir(dir, { recursive: true });
-    const fileName = `${Date.now()}-${createId()}${processed.extension}`;
-    await fs.promises.writeFile(path.join(dir, fileName), processed.buffer, {
-      flag: 'wx',
-    });
-    return `/api/v1/accounting/files/receipts/${fileName}`;
   }
 
   async createExpense(
@@ -927,58 +1041,25 @@ export class AccountingOperationsService {
           })),
         ],
       });
+      const linkedInbox = await tx.accountingInboxItem.findFirst({
+        where: {
+          materializedEntityType:
+            AccountingInboxMaterializedEntityType.EXPENSE_DOCUMENT,
+          materializedEntityStableId: documentStableId,
+        },
+        select: { inboxItemStableId: true },
+      });
+      if (linkedInbox) {
+        await markInboxExpenseConfirmedInTx(
+          tx,
+          linkedInbox.inboxItemStableId,
+          documentStableId,
+          operatorUserStableId,
+        );
+      }
     });
 
     return this.getExpenseDocument(documentStableId);
-  }
-
-  async discardInboxDocument(
-    documentStableId: string,
-    operatorUserStableId: string,
-  ) {
-    const existing = await this.prisma.accountingExpenseDocument.findUnique({
-      where: { documentStableId },
-      select: {
-        id: true,
-        status: true,
-        attachmentUrls: true,
-        extractionJson: true,
-      },
-    });
-    if (!existing) throw new NotFoundException('expense document not found');
-    if (existing.status !== AccountingDocumentStatus.PENDING_REVIEW) {
-      throw new ConflictException(
-        'only pending inbox documents can be discarded',
-      );
-    }
-
-    const discardedAt = new Date();
-    const previousExtraction =
-      existing.extractionJson &&
-      typeof existing.extractionJson === 'object' &&
-      !Array.isArray(existing.extractionJson)
-        ? existing.extractionJson
-        : {};
-    await this.prisma.accountingExpenseDocument.update({
-      where: { id: existing.id },
-      data: {
-        status: AccountingDocumentStatus.DISCARDED,
-        occurredAt: null,
-        subtotalCents: null,
-        taxCents: null,
-        totalCents: null,
-        attachmentUrls: [],
-        extractedText: null,
-        extractionJson: {
-          ...previousExtraction,
-          discarded: true,
-          discardedAt: discardedAt.toISOString(),
-          discardedByUserStableId: operatorUserStableId,
-        } as Prisma.InputJsonValue,
-      },
-    });
-    await this.deleteStoredAccountingFiles(existing.attachmentUrls);
-    return { documentStableId, discarded: true };
   }
 
   async dashboard(from: string, to: string) {
@@ -1027,21 +1108,9 @@ export class AccountingOperationsService {
       }
     }
 
-    const accountingStartAt =
-      await this.accounting.clampAccountingFromDate(undefined);
-    const pendingDocuments = await this.prisma.accountingExpenseDocument.count({
-      where: {
-        status: AccountingDocumentStatus.PENDING_REVIEW,
-        ...(accountingStartAt
-          ? {
-              OR: [
-                { occurredAt: null },
-                { occurredAt: { gte: accountingStartAt } },
-              ],
-            }
-          : {}),
-      },
-    });
+    const pendingInboxItems = await countAccountingInboxReviewItems(
+      this.prisma,
+    );
     const latestClosedMonth = await this.prisma.accountingPeriodClose.findFirst(
       {
         where: { periodType: 'MONTH' },
@@ -1061,7 +1130,7 @@ export class AccountingOperationsService {
         taxCents,
       },
       pending: {
-        expenseDocuments: pendingDocuments,
+        inboxItems: pendingInboxItems,
       },
       topExpenseCategories: Array.from(expenseCategories.entries())
         .map(([categoryStableId, value]) => ({ categoryStableId, ...value }))
@@ -1131,27 +1200,6 @@ export class AccountingOperationsService {
   private assertMoney(value: number, name: string) {
     if (!Number.isInteger(value) || value < 0) {
       throw new BadRequestException(`${name} must be a non-negative integer`);
-    }
-  }
-
-  private async deleteStoredAccountingFiles(urls: string[]) {
-    for (const url of urls) {
-      const match =
-        /^\/api\/v1\/accounting\/files\/(bills|receipts)\/([^/]+)$/.exec(url);
-      if (!match) continue;
-      const [, kind, rawFileName] = match;
-      const fileName = path.basename(rawFileName);
-      if (fileName !== rawFileName) continue;
-      const filePath = path.join(getUploadsAccountingDir(), kind, fileName);
-      try {
-        await fs.promises.rm(filePath, { force: true });
-      } catch (error) {
-        this.logger.warn(
-          `Failed to remove discarded accounting attachment ${filePath}: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      }
     }
   }
 
