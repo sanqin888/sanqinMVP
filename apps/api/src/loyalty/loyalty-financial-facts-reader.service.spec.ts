@@ -60,11 +60,7 @@ describe('LoyaltyFinancialFactsReaderService', () => {
           orderStableId: 'order-stable-1',
           target: 'BALANCE',
           type: {
-            in: [
-              'TOPUP_PURCHASED',
-              'REDEEM_ON_ORDER',
-              'REFUND_RETURN_REDEEM',
-            ],
+            in: ['TOPUP_PURCHASED', 'REDEEM_ON_ORDER', 'REFUND_RETURN_REDEEM'],
           },
         },
       }),
@@ -87,11 +83,7 @@ describe('LoyaltyFinancialFactsReaderService', () => {
           createdAt: { gte: fromInclusive, lt: toExclusive },
           target: 'BALANCE',
           type: {
-            in: [
-              'TOPUP_PURCHASED',
-              'REDEEM_ON_ORDER',
-              'REFUND_RETURN_REDEEM',
-            ],
+            in: ['TOPUP_PURCHASED', 'REDEEM_ON_ORDER', 'REFUND_RETURN_REDEEM'],
           },
         },
       }),

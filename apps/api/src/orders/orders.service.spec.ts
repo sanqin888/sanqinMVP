@@ -86,7 +86,8 @@ const withFinancialSnapshotDefaults = <T extends Record<string, unknown>>(
 ) => {
   const subtotalCents =
     typeof order.subtotalCents === 'number' ? order.subtotalCents : 0;
-  const totalCents = typeof order.totalCents === 'number' ? order.totalCents : 0;
+  const totalCents =
+    typeof order.totalCents === 'number' ? order.totalCents : 0;
   return {
     storeId: '4750_Yonge_Street',
     updatedAt: new Date('2026-09-12T12:00:00.000Z'),
