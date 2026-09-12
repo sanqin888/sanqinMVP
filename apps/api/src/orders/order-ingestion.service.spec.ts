@@ -97,6 +97,79 @@ describe('OrderIngestionService', () => {
     expect(tx.orderItem.deleteMany).toHaveBeenCalledTimes(2);
   });
 
+  it('freezes a durable financial sale fact when an external order first reaches a paid financial state', async () => {
+    const financialSnapshot = {
+      orderStableId: 's-paid',
+      storeId: '4750_Yonge_Street',
+      paidAt: new Date('2026-01-01T00:00:00Z'),
+      updatedAt: new Date('2026-01-01T00:00:01Z'),
+      channel: 'ubereats',
+      paymentMethod: 'UBEREATS',
+      subtotalCents: 1000,
+      subtotalAfterDiscountCents: 1000,
+      couponDiscountCents: 0,
+      loyaltyRedeemCents: 0,
+      taxCents: 130,
+      deliveryFeeCents: 0,
+      creditCardSurchargeCents: 0,
+      totalCents: 1130,
+      paymentTotalCents: 1130,
+      couponTitleSnapshot: null,
+      promotionSnapshot: null,
+      items: [
+        {
+          id: 'i1',
+          productStableId: 'dish',
+          displayName: 'Dish',
+          nameZh: null,
+          nameEn: null,
+          qty: 1,
+          unitPriceCents: 1000,
+          baseUnitPriceCents: 1000,
+          optionsUnitPriceCents: 0,
+          isDailySpecialApplied: false,
+          dailySpecialStableId: null,
+        },
+      ],
+    };
+    const findUnique = jest
+      .fn()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(financialSnapshot);
+    const createMany = jest.fn().mockResolvedValue({ count: 1 });
+    const tx = {
+      order: {
+        findUnique,
+        create: jest.fn().mockResolvedValue({
+          id: 'o-paid',
+          orderStableId: 's-paid',
+          status: 'paid',
+          pickupCode: null,
+        }),
+      },
+      orderItem: {
+        deleteMany: jest.fn(),
+        create: jest.fn().mockResolvedValue({ id: 'i1' }),
+      },
+      opsEvent: { createMany },
+    };
+    const service = new OrderIngestionService({
+      $transaction: (fn: (client: unknown) => unknown) => fn(tx),
+    } as never);
+
+    await service.ingest({ ...(input as object), status: 'paid' } as never, policies);
+
+    expect(createMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          eventName: 'order.financial_sale.v1',
+          source: 'orders.financial',
+          idempotencyKey: 'order-financial-sale:s-paid:v1',
+        }) as unknown,
+      }),
+    );
+  });
+
   it('persists scheduled timing separately from external estimated ready time', async () => {
     const scheduledReadyAt = new Date('2026-08-19T22:30:00.000Z');
     const externalEstimatedReadyAt = new Date('2026-08-19T22:26:00.000Z');

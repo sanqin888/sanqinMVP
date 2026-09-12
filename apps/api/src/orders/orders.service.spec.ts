@@ -81,6 +81,27 @@ const defaultStoreConfigSnapshot: StoreConfigSnapshot = {
   unsupportedAllergens: [],
 };
 
+const withFinancialSnapshotDefaults = <T extends Record<string, unknown>>(
+  order: T,
+) => ({
+  storeId: '4750_Yonge_Street',
+  updatedAt: new Date('2026-09-12T12:00:00.000Z'),
+  paymentMethod: 'CASH',
+  subtotalCents: 0,
+  subtotalAfterDiscountCents: 0,
+  couponDiscountCents: 0,
+  loyaltyRedeemCents: 0,
+  taxCents: 0,
+  deliveryFeeCents: 0,
+  creditCardSurchargeCents: 0,
+  totalCents: 0,
+  paymentTotalCents: 0,
+  couponTitleSnapshot: null,
+  promotionSnapshot: null,
+  items: [],
+  ...order,
+});
+
 describe('OrdersService', () => {
   let service: OrdersService;
   let prisma: {
@@ -1138,7 +1159,7 @@ describe('OrdersService', () => {
       clientRequestId: null,
       items: [],
     };
-    prisma.order.create.mockResolvedValue(storedOrder);
+    prisma.order.create.mockResolvedValue(withFinancialSnapshotDefaults(storedOrder));
 
     return service.create(dto).then((order) => {
       // ✅ 仍然建单
@@ -1167,7 +1188,7 @@ describe('OrdersService', () => {
       clientRequestId: null,
       items: [],
     };
-    prisma.order.create.mockResolvedValue(storedOrder);
+    prisma.order.create.mockResolvedValue(withFinancialSnapshotDefaults(storedOrder));
 
     await service.create({
       channel: 'web',
@@ -1192,17 +1213,19 @@ describe('OrdersService', () => {
   it('网站订单仅使用服务端门店配置而忽略客户端任意 storeId', async () => {
     const originalStoreId = process.env.STORE_ID;
     process.env.STORE_ID = 'server-store';
-    prisma.order.create.mockResolvedValue({
-      id: 'order-store-routing',
-      orderStableId: 'stable-store-routing',
-      channel: 'web',
-      fulfillmentType: 'pickup',
-      status: 'paid',
-      paidAt: new Date(),
-      createdAt: new Date(),
-      paymentMethod: 'CASH',
-      items: [],
-    });
+    prisma.order.create.mockResolvedValue(
+      withFinancialSnapshotDefaults({
+        id: 'order-store-routing',
+        orderStableId: 'stable-store-routing',
+        channel: 'web',
+        fulfillmentType: 'pickup',
+        status: 'paid',
+        paidAt: new Date(),
+        createdAt: new Date(),
+        paymentMethod: 'CASH',
+        items: [],
+      }),
+    );
 
     try {
       await service.create({
@@ -1219,7 +1242,19 @@ describe('OrdersService', () => {
           data: expect.objectContaining({ storeId: 'server-store' }) as unknown,
         }),
       );
-      expect(prisma.opsEvent.createMany).not.toHaveBeenCalled();
+      expect(prisma.opsEvent.createMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            eventName: 'order.financial_sale.v1',
+            source: 'orders.financial',
+          }) as unknown,
+        }),
+      );
+      expect(prisma.opsEvent.createMany).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ eventName: 'order.accepted' }) as unknown,
+        }),
+      );
     } finally {
       if (originalStoreId === undefined) delete process.env.STORE_ID;
       else process.env.STORE_ID = originalStoreId;
@@ -1233,17 +1268,19 @@ describe('OrdersService', () => {
     prisma.order.create.mockImplementation(
       (args: { data: { orderStableId: string } }) => {
         createdOrderStableId = args.data.orderStableId;
-        return Promise.resolve({
-          id: 'pos-store-order',
-          orderStableId: createdOrderStableId,
-          channel: 'in_store',
-          fulfillmentType: 'pickup',
-          status: 'paid',
-          paidAt: new Date(),
-          createdAt: new Date(),
-          paymentMethod: 'CASH',
-          items: [],
-        });
+        return Promise.resolve(
+          withFinancialSnapshotDefaults({
+            id: 'pos-store-order',
+            orderStableId: createdOrderStableId,
+            channel: 'in_store',
+            fulfillmentType: 'pickup',
+            status: 'paid',
+            paidAt: new Date(),
+            createdAt: new Date(),
+            paymentMethod: 'CASH',
+            items: [],
+          }),
+        );
       },
     );
 
@@ -1283,20 +1320,22 @@ describe('OrdersService', () => {
   });
 
   it('POS 现金建单持久化服务端确认的实收与找零快照', async () => {
-    prisma.order.create.mockResolvedValue({
-      id: 'pos-cash-order',
-      orderStableId: 'pos-cash-order-stable',
-      channel: 'in_store',
-      fulfillmentType: 'pickup',
-      status: 'paid',
-      paidAt: new Date(),
-      createdAt: new Date(),
-      paymentMethod: 'CASH',
-      subtotalCents: 1000,
-      taxCents: 130,
-      totalCents: 1129,
-      items: [],
-    });
+    prisma.order.create.mockResolvedValue(
+      withFinancialSnapshotDefaults({
+        id: 'pos-cash-order',
+        orderStableId: 'pos-cash-order-stable',
+        channel: 'in_store',
+        fulfillmentType: 'pickup',
+        status: 'paid',
+        paidAt: new Date(),
+        createdAt: new Date(),
+        paymentMethod: 'CASH',
+        subtotalCents: 1000,
+        taxCents: 130,
+        totalCents: 1129,
+        items: [],
+      }),
+    );
 
     await service.createForStore(
       {
@@ -1327,20 +1366,22 @@ describe('OrdersService', () => {
     loyalty.resolveUserIdByStableId.mockResolvedValue(
       '00000000-0000-4000-8000-000000000099',
     );
-    prisma.order.create.mockResolvedValue({
-      id: 'pos-mixed-cash-order',
-      orderStableId: 'pos-mixed-cash-order-stable',
-      channel: 'in_store',
-      fulfillmentType: 'pickup',
-      status: 'paid',
-      paidAt: new Date(),
-      createdAt: new Date(),
-      paymentMethod: 'CASH',
-      subtotalCents: 1000,
-      taxCents: 130,
-      totalCents: 1129,
-      items: [],
-    });
+    prisma.order.create.mockResolvedValue(
+      withFinancialSnapshotDefaults({
+        id: 'pos-mixed-cash-order',
+        orderStableId: 'pos-mixed-cash-order-stable',
+        channel: 'in_store',
+        fulfillmentType: 'pickup',
+        status: 'paid',
+        paidAt: new Date(),
+        createdAt: new Date(),
+        paymentMethod: 'CASH',
+        subtotalCents: 1000,
+        taxCents: 130,
+        totalCents: 1129,
+        items: [],
+      }),
+    );
 
     await service.createForStore(
       {
@@ -1429,7 +1470,7 @@ describe('OrdersService', () => {
         },
       ],
     };
-    prisma.order.create.mockResolvedValue(storedOrder);
+    prisma.order.create.mockResolvedValue(withFinancialSnapshotDefaults(storedOrder));
 
     const dto: CreateOrderInput = {
       channel: 'web',
@@ -1491,7 +1532,7 @@ describe('OrdersService', () => {
       clientRequestId: 'SQD2401010001',
       items: [],
     };
-    prisma.order.create.mockResolvedValue(storedOrder);
+    prisma.order.create.mockResolvedValue(withFinancialSnapshotDefaults(storedOrder));
 
     const dto: CreateOrderInput = {
       channel: 'web',
@@ -1550,21 +1591,23 @@ describe('OrdersService', () => {
       createdAt: new Date(),
     });
 
-    prisma.order.create.mockResolvedValue({
-      id: 'order-processing-intent',
-      orderStableId: 'cord-processing-intent',
-      status: 'paid',
-      channel: 'web',
-      fulfillmentType: 'pickup',
-      createdAt: new Date('2024-01-01T00:00:00.000Z'),
-      paidAt: new Date('2024-01-01T00:00:00.000Z'),
-      subtotalCents: 1000,
-      taxCents: 130,
-      totalCents: 1130,
-      pickupCode: '4321',
-      clientRequestId: 'ref-1',
-      items: [],
-    });
+    prisma.order.create.mockResolvedValue(
+      withFinancialSnapshotDefaults({
+        id: 'order-processing-intent',
+        orderStableId: 'cord-processing-intent',
+        status: 'paid',
+        channel: 'web',
+        fulfillmentType: 'pickup',
+        createdAt: new Date('2024-01-01T00:00:00.000Z'),
+        paidAt: new Date('2024-01-01T00:00:00.000Z'),
+        subtotalCents: 1000,
+        taxCents: 130,
+        totalCents: 1130,
+        pickupCode: '4321',
+        clientRequestId: 'ref-1',
+        items: [],
+      }),
+    );
 
     const dto: CreateOrderInput = {
       channel: 'web',

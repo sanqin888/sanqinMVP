@@ -16,6 +16,14 @@ export {
   type LoyaltyOrderUsageReadResult,
 } from './loyalty-order-usage-read.contract';
 export {
+  LOYALTY_FINANCIAL_FACTS_READER,
+  type LoyaltyFinancialFactKindV1,
+  type LoyaltyFinancialFactV1,
+  type LoyaltyFinancialFactsRangeV1,
+  type LoyaltyFinancialFactsReaderPort,
+} from './loyalty-financial-facts-reader.contract';
+export { LoyaltyFinancialFactsModule } from './loyalty-financial-facts.module';
+export {
   LOYALTY_POLICY_READER,
   LOYALTY_POLICY_SETTINGS_READER,
   LOYALTY_POLICY_WRITER,

@@ -92,6 +92,18 @@ export {
 } from './order-reporting-facts-reader.contract';
 export { OrderReportingFactsModule } from './order-reporting-facts.module';
 export {
+  ORDER_FINANCIAL_FACTS_READER,
+  type OrderFinancialChannelV1,
+  type OrderFinancialDiscountsV1,
+  type OrderFinancialFactSourceEvidenceV1,
+  type OrderFinancialFactV1,
+  type OrderFinancialFactsRangeV1,
+  type OrderFinancialFactsReaderPort,
+  type OrderFinancialPaymentMethodV1,
+  type OrderFinancialPricingEvidenceV1,
+} from './order-financial-facts-reader.contract';
+export { OrderFinancialFactsModule } from './order-financial-facts.module';
+export {
   ORDER_EXTERNAL_TRANSITION_COORDINATOR,
   type OrderExternalTransition,
   type OrderExternalTransitionCompletion,
