@@ -291,6 +291,22 @@ export function normalizeProviderFinancialDocument(
         'line amountCents must be an integer',
       );
     }
+    if (
+      input.documentType === AccountingFinancialDocumentType.BATCH_CONTROL &&
+      line.postingTreatment === AccountingFinancialPostingTreatment.POSTABLE
+    ) {
+      throw new AccountingInboxPolicyError(
+        'BATCH_CONTROL lines cannot be POSTABLE',
+      );
+    }
+    if (
+      line.component === AccountingFinancialComponent.CONTROL_TOTAL &&
+      line.postingTreatment === AccountingFinancialPostingTreatment.POSTABLE
+    ) {
+      throw new AccountingInboxPolicyError(
+        'CONTROL_TOTAL lines cannot be POSTABLE',
+      );
+    }
     return {
       ...line,
       lineNo: index + 1,

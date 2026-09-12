@@ -95,6 +95,30 @@ export class UberFinancialReportArtifactStore implements UberFinancialReportArti
     return urls;
   }
 
+  async readCsvArtifact(artifactUrl: string) {
+    const prefix = '/api/v1/accounting/files/uber-reports/';
+    if (!artifactUrl.startsWith(prefix)) {
+      throw new Error('Invalid Uber report artifact URL');
+    }
+    const relative = artifactUrl.slice(prefix.length);
+    const fileName = path.basename(relative);
+    if (!fileName || fileName !== relative || path.extname(fileName) !== '.csv') {
+      throw new Error('Invalid Uber report artifact path');
+    }
+    const bytes = await fs.promises.readFile(
+      path.join(getUploadsAccountingDir(), 'uber-reports', fileName),
+    );
+    if (bytes.length > 25 * 1024 * 1024) {
+      throw new Error('Uber report section exceeds 25 MB');
+    }
+    return {
+      content: bytes.toString('utf8'),
+      contentHash: createHash('sha256').update(bytes).digest('hex'),
+      byteSize: bytes.length,
+      fileName,
+    };
+  }
+
   private async persistArtifact(
     finalPath: string,
     bytes: Buffer,

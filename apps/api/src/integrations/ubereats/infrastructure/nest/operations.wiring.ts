@@ -73,11 +73,16 @@ export function createOperationsWiring(): Provider[] {
     },
     {
       provide: UberFinancialReportingUseCase,
-      inject: [UBER_FINANCIAL_REPORT_API, UBER_FINANCIAL_REPORT_REPOSITORY],
+      inject: [
+        UBER_FINANCIAL_REPORT_API,
+        UBER_FINANCIAL_REPORT_REPOSITORY,
+        UBER_FINANCIAL_REPORT_ARTIFACT_STORE,
+      ],
       useFactory: (
         api: UberFinancialReportApiPort,
         reports: UberFinancialReportRepositoryPort,
-      ) => new UberFinancialReportingUseCase(api, reports),
+        artifacts: UberFinancialReportArtifactStorePort,
+      ) => new UberFinancialReportingUseCase(api, reports, artifacts),
     },
     {
       provide: UBER_EATS_REPORTING,

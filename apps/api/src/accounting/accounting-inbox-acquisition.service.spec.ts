@@ -9,6 +9,7 @@ import {
   AccountingParseStatus,
 } from '@prisma/client';
 import { AccountingInboxAcquisitionService } from './accounting-inbox-acquisition.service';
+import { AccountingProviderFinancialProcessingError } from './accounting-provider-financial.service';
 
 function registeredArtifact(kind: AccountingArtifactKind, contentHash: string) {
   return {
@@ -57,9 +58,17 @@ describe('AccountingInboxAcquisitionService', () => {
         ),
       recordInboxParseRun: jest.fn().mockResolvedValue({}),
     };
+    const providerFinancial = {
+      parseAndMaterialize: jest.fn().mockResolvedValue({ matched: false }),
+      recordUnsupportedUberApiParse: jest.fn().mockResolvedValue(undefined),
+    };
     return {
-      service: new AccountingInboxAcquisitionService(operations as never),
+      service: new AccountingInboxAcquisitionService(
+        operations as never,
+        providerFinancial as never,
+      ),
       operations,
+      providerFinancial,
     };
   }
 
@@ -108,6 +117,25 @@ describe('AccountingInboxAcquisitionService', () => {
     );
   });
 
+  it('does not fall back to generic parsing after recognized provider processing fails', async () => {
+    const { service, operations, providerFinancial } = makeService();
+    providerFinancial.parseAndMaterialize.mockRejectedValueOnce(
+      new AccountingProviderFinancialProcessingError('simulated provider persistence failure'),
+    );
+
+    await expect(
+      service.acquireManualFile({
+        originalname: 'provider-statement.pdf',
+        mimetype: 'application/pdf',
+        buffer: Buffer.from('%PDF-1.4\n%%EOF', 'ascii'),
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({ providerFinancialMatched: false }) as unknown,
+    );
+
+    expect(operations.recordInboxParseRun).not.toHaveBeenCalled();
+  });
+
   it('quarantines untrusted email evidence without parsing it', async () => {
     const operations = {
       registerInboxArtifact: jest.fn().mockResolvedValue({
@@ -126,7 +154,14 @@ describe('AccountingInboxAcquisitionService', () => {
       }),
       recordInboxParseRun: jest.fn(),
     };
-    const service = new AccountingInboxAcquisitionService(operations as never);
+    const providerFinancial = {
+      parseAndMaterialize: jest.fn().mockResolvedValue({ matched: false }),
+      recordUnsupportedUberApiParse: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new AccountingInboxAcquisitionService(
+      operations as never,
+      providerFinancial as never,
+    );
 
     await service.acquireEmailBody(
       {
@@ -152,7 +187,14 @@ describe('AccountingInboxAcquisitionService', () => {
       }),
       recordInboxParseRun: jest.fn(),
     };
-    const service = new AccountingInboxAcquisitionService(operations as never);
+    const providerFinancial = {
+      parseAndMaterialize: jest.fn().mockResolvedValue({ matched: false }),
+      recordUnsupportedUberApiParse: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new AccountingInboxAcquisitionService(
+      operations as never,
+      providerFinancial as never,
+    );
 
     const result = await service.acquireEmailAttachment(
       {

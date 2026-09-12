@@ -25,7 +25,45 @@ export type AccountingInboxParseResult = {
   ocrEngine?: 'TESSERACT';
   ocrStatus?: 'SUCCESS' | 'ERROR';
   providerParserPending?: boolean;
+  providerFinancial?: boolean;
+  excludedBeforeFinancialHistory?: boolean;
+  financialHistoryRequiredFrom?: string;
+  provider?: 'CLOVER' | 'UBER_EATS' | 'FANTUAN';
+  documentType?: 'BATCH_CONTROL' | 'STATEMENT' | 'API_REPORT' | 'OTHER';
+  periodStart?: string | null;
+  periodEnd?: string | null;
+  lineCount?: number;
   extractedText?: string;
+};
+
+export type AccountingProviderFinancialLine = {
+  lineStableId: string;
+  lineNo: number;
+  rawName: string | null;
+  component: string;
+  postingTreatment:
+    | 'POSTABLE'
+    | 'CONTROL_TOTAL'
+    | 'RECONCILIATION_ONLY'
+    | 'UNCLASSIFIED';
+  taxRole: 'NONE' | 'SALES_TAX' | 'INPUT_TAX' | 'OTHER_TAX';
+  amountCents: number;
+  occurredAt: string | null;
+};
+
+export type AccountingProviderFinancialDocument = {
+  documentStableId: string;
+  provider: 'CLOVER' | 'UBER_EATS' | 'FANTUAN';
+  documentType: 'BATCH_CONTROL' | 'STATEMENT' | 'API_REPORT' | 'OTHER';
+  revision: number;
+  providerMerchantRef: string | null;
+  providerDocumentRef: string | null;
+  periodStart: string | null;
+  periodEnd: string | null;
+  settledAt: string | null;
+  payoutAt: string | null;
+  currency: string;
+  lines: AccountingProviderFinancialLine[];
 };
 
 export type AccountingInboxItem = {
@@ -57,6 +95,7 @@ export type AccountingInboxItem = {
     bodyText: string | null;
     senderEmail: string | null;
     emailSubject: string | null;
+    financialDocument: AccountingProviderFinancialDocument | null;
     parseRuns: Array<{
       parseRunStableId: string;
       status: 'PENDING' | 'SUCCESS' | 'ERROR' | 'SKIPPED';

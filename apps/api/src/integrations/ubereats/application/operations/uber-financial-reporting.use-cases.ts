@@ -20,6 +20,7 @@ export class UberFinancialReportingUseCase implements UberEatsReportingPort {
   constructor(
     private readonly api: UberFinancialReportApiPort,
     private readonly reports: UberFinancialReportRepositoryPort,
+    private readonly artifacts: UberFinancialReportArtifactStorePort,
   ) {}
 
   async requestFinancialReports(input: {
@@ -104,6 +105,32 @@ export class UberFinancialReportingUseCase implements UberEatsReportingPort {
       completedAt: row.completedAt?.toISOString() ?? null,
       errorMessage: row.errorMessage,
     }));
+  }
+
+  async readFinancialReportArtifact(input: {
+    reportStableId: string;
+    artifactUrl: string;
+  }) {
+    const report = await this.reports.findByReportStableId(
+      input.reportStableId.trim(),
+    );
+    if (!report || (report.status !== 'READY' && report.status !== 'IMPORTED')) {
+      throw new Error('Uber financial report is not ready for artifact access');
+    }
+    if (!report.artifactUrls.includes(input.artifactUrl)) {
+      throw new Error('Uber financial report artifact does not belong to report');
+    }
+    return this.artifacts.readCsvArtifact(input.artifactUrl);
+  }
+
+  async markFinancialReportImported(reportStableId: string): Promise<void> {
+    const report = await this.reports.findByReportStableId(reportStableId.trim());
+    if (!report) throw new Error('Uber financial report not found');
+    if (report.status === 'IMPORTED') return;
+    if (report.status !== 'READY') {
+      throw new Error('Only READY Uber financial reports can be marked imported');
+    }
+    await this.reports.markImported(report.reportStableId);
   }
 
   private idempotencyKey(input: {

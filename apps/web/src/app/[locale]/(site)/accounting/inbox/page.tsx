@@ -28,6 +28,9 @@ export default function AccountingInboxPage() {
   const [running, setRunning] = useState(false);
   const [busySender, setBusySender] = useState(false);
   const [discardingId, setDiscardingId] = useState<string | null>(null);
+  const [confirmingProviderId, setConfirmingProviderId] = useState<string | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -109,6 +112,28 @@ export default function AccountingInboxPage() {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setBusySender(false);
+    }
+  }
+
+  async function confirmProviderFinancial(item: AccountingInboxItem) {
+    setConfirmingProviderId(item.inboxItemStableId);
+    setError(null);
+    setMessage(null);
+    try {
+      await apiFetch(
+        `/accounting/inbox/${item.inboxItemStableId}/provider-financial/confirm`,
+        { method: 'POST' },
+      );
+      setMessage(
+        isZh
+          ? '平台财务资料已确认；当前不会因此自动生成会计分录。'
+          : 'Provider financial evidence confirmed; this does not post a journal entry.',
+      );
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setConfirmingProviderId(null);
     }
   }
 
@@ -313,8 +338,10 @@ export default function AccountingInboxPage() {
         isZh={isZh}
         busySender={busySender}
         discardingId={discardingId}
+        confirmingProviderId={confirmingProviderId}
         onTrustSender={(email) => saveTrustedSender(email)}
         onReviewExpense={setReviewing}
+        onConfirmProviderFinancial={confirmProviderFinancial}
         onDiscard={discard}
       />
     </div>

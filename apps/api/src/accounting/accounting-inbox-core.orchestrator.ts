@@ -29,6 +29,7 @@ import {
   materializeInboxExpenseInTx,
   readInboxExpenseMaterializationReplay,
 } from './accounting-inbox-expense.writer';
+import { confirmProviderFinancialInboxItemInTx } from './accounting-provider-financial-review.writer';
 
 type AccountingTransactionRunner = Parameters<
   typeof runSerializableAccountingWrite
@@ -137,6 +138,21 @@ export async function recordAccountingProviderFinancialDocument(
   }
   throw new AccountingInboxWriterConflictError(
     'financial document revision conflict',
+  );
+}
+
+export async function confirmAccountingProviderFinancialInboxItem(
+  prisma: AccountingTransactionRunner,
+  inboxItemStableId: string,
+  operatorUserStableId: string,
+) {
+  const inboxItem = requireStableValue(inboxItemStableId, 'inboxItemStableId');
+  const operator = requireStableValue(
+    operatorUserStableId,
+    'operatorUserStableId',
+  );
+  return runSerializableAccountingWrite(prisma, (tx) =>
+    confirmProviderFinancialInboxItemInTx(tx, inboxItem, operator),
   );
 }
 

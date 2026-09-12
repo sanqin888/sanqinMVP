@@ -71,6 +71,34 @@ export async function listAccountingUnifiedInboxItems(
           senderEmail: true,
           emailSubject: true,
           metadataJson: true,
+          financialDocument: {
+            select: {
+              documentStableId: true,
+              provider: true,
+              documentType: true,
+              revision: true,
+              providerMerchantRef: true,
+              providerDocumentRef: true,
+              periodStart: true,
+              periodEnd: true,
+              settledAt: true,
+              payoutAt: true,
+              currency: true,
+              lines: {
+                orderBy: { lineNo: 'asc' },
+                select: {
+                  lineStableId: true,
+                  lineNo: true,
+                  rawName: true,
+                  component: true,
+                  postingTreatment: true,
+                  taxRole: true,
+                  amountCents: true,
+                  occurredAt: true,
+                },
+              },
+            },
+          },
           parseRuns: {
             orderBy: { createdAt: 'desc' },
             take: 1,
@@ -97,6 +125,27 @@ export async function listAccountingUnifiedInboxItems(
     artifact: {
       ...row.artifact,
       bodyText: row.artifact.bodyText?.slice(0, 20_000) ?? null,
+      financialDocument: row.artifact.financialDocument
+        ? {
+            ...row.artifact.financialDocument,
+            periodStart:
+              row.artifact.financialDocument.periodStart
+                ?.toISOString()
+                .slice(0, 10) ?? null,
+            periodEnd:
+              row.artifact.financialDocument.periodEnd
+                ?.toISOString()
+                .slice(0, 10) ?? null,
+            settledAt:
+              row.artifact.financialDocument.settledAt?.toISOString() ?? null,
+            payoutAt:
+              row.artifact.financialDocument.payoutAt?.toISOString() ?? null,
+            lines: row.artifact.financialDocument.lines.map((line) => ({
+              ...line,
+              occurredAt: line.occurredAt?.toISOString().slice(0, 10) ?? null,
+            })),
+          }
+        : null,
     },
   }));
 }
