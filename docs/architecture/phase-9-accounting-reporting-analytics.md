@@ -257,14 +257,15 @@ For Uber Eats, the production-target order integration is treated as essentially
 
 `PENDING_MANUAL`, `UBER_MANUAL_REFUND` and similar manual-refund states are transitional compatibility only. After Clover POS synchronization and authoritative provider-side refund/cancellation flows are live, new canonical financial posting must be driven by confirmed Payments/External-Channel facts rather than a permanent manual-refund branch. Historical confirmed manual records still require replay compatibility; pending/unconfirmed requests are not revenue reversals.
 
-### 15.3 Historical Uber Eats / Fantuan coverage starts 2026-06-01 at statement level
+### 15.3 Historical Clover / Uber Eats / Fantuan financial coverage starts 2026-06-01
 
-Historical external-platform financial coverage will be backfilled from **2026-06-01**. The backfill rule is deliberately symmetric across Uber Eats and Fantuan:
+Historical provider financial coverage will be backfilled from **2026-06-01** for **Clover, Uber Eats and Fantuan**. The same coverage start applies to all three providers so Accounting has one explicit financial-history boundary rather than provider-specific start dates.
 
-- import monthly/settlement-level financial statements for both platforms;
+- import the available monthly/settlement-level financial evidence for Clover, Uber Eats and Fantuan from that date forward;
+- Clover processor statements remain settlement/accounting evidence rather than canonical sales revenue, while daily Clover Closeout content remains batch-control/reconciliation evidence;
 - do **not** import Uber-only historical order/item detail merely because Uber currently exposes richer downloads while Fantuan may not expose an equivalent downloadable item-level history;
-- do not synthesize operational `Order` rows from historical settlement files;
-- retain explicit coverage metadata so UI/reporting can distinguish financial-history completeness from future order/item-detail completeness.
+- do not synthesize operational `Order` rows from historical provider financial files;
+- retain explicit provider coverage metadata so UI/reporting can distinguish financial-history completeness from future order/item-detail completeness.
 
 After a provider's live API integration cutover, provider order facts become the sales/analytics source for that period. Monthly statements/reports continue to be imported, but their role changes to settlement, fee/adjustment evidence and reconciliation. This separation prevents the same provider sales from being counted once from the live order feed and again from the monthly statement.
 
@@ -277,7 +278,7 @@ The existing Accounting automation already has Store-local scheduling and defaul
 Target behavior:
 
 - Accounting UI exposes a freely editable **trusted sender** list. Sender trust controls whether a message/attachment is eligible for normal automatic processing; it does **not** map an email address to a vendor/platform or decide whether an attachment is an expense or settlement.
-- A trusted personal sender may create a new email and attach a downloaded Uber/Fantuan statement directly to `bills@sanq.ca`; the real `From` may therefore be the user's own Gmail address. Platform/document classification must rely primarily on attachment content, then filename/subject and other deterministic evidence, not on an assumed official-provider sender.
+- A trusted personal sender may create a new email and attach a downloaded Clover/Uber/Fantuan financial document directly to `bills@sanq.ca`; the real `From` may therefore be the user's own Gmail address. Provider/document classification must rely primarily on content, then filename/subject and other deterministic evidence, not on an assumed official-provider sender.
 - Unknown/untrusted sources are preserved for review/quarantine rather than silently trusted or silently classified as a provider.
 - The common intake classification is at least `EXPENSE_DOCUMENT`, `PLATFORM_SETTLEMENT` and `UNKNOWN`.
 - Expense documents continue to flow to expense review. Provider statements flow to a dedicated statement/settlement review surface because one statement may contain both revenue-side and expense/adjustment components.
@@ -290,8 +291,9 @@ Uber monthly statements are currently treated as manually downloadable evidence 
 
 ### 15.5 Real provider statements require a richer settlement model
 
-The August 2026 provider samples reviewed during planning show why the existing `PlatformSettlementRecord(grossCents, commissionCents, netCents, payoutAt, rawPayload)` shape is insufficient as a terminal model:
+The real provider samples reviewed during planning/readiness show why the existing `PlatformSettlementRecord(grossCents, commissionCents, netCents, payoutAt, rawPayload)` shape is insufficient as a terminal model:
 
+- Clover monthly processing statements separate submitted/funded totals, per-batch gross/funded rows, service charges, processor fees, chargebacks/reversals and fee tax details; daily Closeout email-body content is a separate batch-control artifact;
 - Uber statements separate Sales, sales tax, Marketplace Fees and their tax, item offers, other offer charges, ad spend/credits, chargebacks and tax adjustments, plus payout/net totals;
 - Fantuan statements separate Sales, promotion discounts, Fantuan promotion subsidy, commission, commission GST/HST, adjustments, net taxes and transfer totals.
 
@@ -313,8 +315,8 @@ No Prisma/schema/migration/source implementation should begin during 5A unless t
 
 ## 16. Slice 5A readiness result and Slice 5B implementation boundary
 
-State: **5A READINESS / SCHEMA DESIGN COMPLETE — 5B LOCAL SOURCE COMPLETE / USER REVIEW**  
-Audit/implementation base: `origin/dev@3ac08a39`  
+State: **5A READINESS / SCHEMA DESIGN COMPLETE — 5B MERGED / CI GREEN — 5C READINESS AUDIT COMPLETE / IMPLEMENTATION NOT STARTED**  
+Audit/implementation base: `origin/dev@cbe8ad6f`  
 Decision/authorization date: 2026-09-12
 
 ### 16.1 Accounting migration compatibility decision
@@ -349,6 +351,88 @@ The generic Journal keeps the accounting occurrence timestamp (`occurredAt`) and
 
 The 5C canonical statement model must therefore cover **CLOVER / UBER_EATS / FANTUAN** and retain acquisition form independently from document/provider classification.
 
-### 16.4 Slice 5B source-completion gate
+### 16.4 Slice 5B merge/validation state
 
-The local source-completion gate is satisfied: schema + one matching migration, journal writer/service, balanced-entry and period/idempotency/OCC/audit characterization, a journal-write ownership architecture guard, Chart-of-Accounts initialization, and synchronized Phase/current-graph/worklog documentation are present. Per repository policy, local lint/build/test are not run before user review; GitHub Actions is the validation gate after the user authorizes remote delivery. The migration SQL has been statically reviewed but has not been applied to a local or production database.
+Slice 5B is **MERGED / CI GREEN** through PR #2288. Final PR head `c2d01b89` passed CI #5516 across Prisma generation, architecture baseline, API/Web lint/build/strict declarations and tests, then squash-merged to `dev` as `cbe8ad6f`. The migration SQL remains only statically reviewed in this workflow and has **not yet been applied on the running VM/production database**, so deployment/runtime evidence is not claimed.
+
+## 17. Slice 5C readiness audit — Unified Accounting Inbox + Provider Financial Evidence
+
+State: **READ-ONLY AUDIT COMPLETE — IMPLEMENTATION NOT STARTED**  
+Audit base: `origin/dev@cbe8ad6f`  
+Audit date: 2026-09-12
+
+### 17.1 Current-state findings
+
+The current Gmail path is still an Expense-specific importer rather than a terminal Accounting Inbox. `AccountingGmailIngestService` writes directly into `AccountingExpenseDocument`, so acquisition, de-duplication, extraction, review classification and Expense-domain persistence are coupled. It can ingest email-body text, but **only when no supported attachment is present**; a message that contains both a structured body and a PDF/image therefore loses the body as independent accounting evidence. This is incompatible with the real Clover Daily Closeout, whose production form is structured email-body content.
+
+Current duplicate handling is also insufficient for a unified financial inbox. Attachments use a content SHA, but body-only email hashing includes the Gmail message ID, so the same body resent in a new message is not recognized as a content duplicate. `AccountingExpenseDocument` further mixes transport identity (`gmailMessageId` / attachment ID), file identity (`fileHash`) and business-document identity into one Expense record.
+
+The existing Accounting Web manual-upload path is separate: `/accounting/files/receipts` compresses/saves a receipt image and returns a URL, after which the Expenses page creates a manual Expense directly. It does not pass through Gmail-style extraction, classification, duplicate detection or Inbox review. The existing flat `PlatformSettlementRecord` importer is likewise not a suitable terminal representation for the richer Clover/Uber/Fantuan statements. Uber reporting already has an External-Channels-owned public port and durable downloaded CSV artifacts, but Accounting does not yet register those artifacts into a common evidence pipeline.
+
+### 17.2 Target intake ownership and persisted concepts
+
+Slice 5C should introduce an Accounting-owned intake/evidence layer before any automatic journal posting. Recommended persisted concepts are:
+
+- **SourceArtifact** — immutable acquisition evidence with stable artifact identity, acquisition mode (`EMAIL`, `MANUAL_UPLOAD`, `PROVIDER_API`), raw/content hash, MIME/input kind, transport metadata and stored evidence location/text;
+- **ParseRun** — parser identity/version, parse status, normalized extraction result and error/retry evidence for replayable parsing;
+- **InboxItem** — review/classification state, trust/quarantine decision and the relationship between one artifact and the downstream Accounting domain object;
+- **TrustedSender** — UI-managed sender allow-list controlling automatic intake eligibility only; it does not assign provider identity, document type or accounting treatment;
+- **ProviderFinancialDocument** — canonical provider financial header for Clover/Uber/Fantuan evidence, with provider, document scope/type, merchant/store identity, statement period, payout/settlement lifecycle timestamps, parser version, revision/supersession identity and preserved raw evidence;
+- **ProviderFinancialLine** — extensible raw + normalized financial components with integer minor-unit amounts, tax role and posting treatment.
+
+`ProviderFinancialDocument` is intentionally broader than a model named only `PlatformStatement`: Clover Daily Closeout is a financial control document but is not a processor statement. Provider-specific lifecycle dates such as `statementPeriod`, `settledAt` and `payoutAt` belong on these source facts rather than on generic `AccountingJournalEntry`.
+
+### 17.3 Duplicate, revision and review semantics
+
+5C should separate three identities instead of treating every replay as the same duplicate class:
+
+1. **transport identity** — for example Gmail message + attachment/part identity or Uber report workflow/section identity;
+2. **content identity** — SHA-256 of raw file bytes or deterministic normalized email-body content, independent of Gmail message ID;
+3. **business identity** — provider + merchant/business scope + document type/scope + statement period/reference.
+
+A byte-identical statement sent through a second email is a content duplicate. A corrected statement with the same business identity but different content is a **revision**, not a duplicate; it must supersede/link to the earlier evidence without silently overwriting already reviewed or later-posted facts. Unknown/untrusted material is preserved for quarantine/review rather than discarded. Formal Journal posting remains outside 5C and review-gated in later posting slices.
+
+### 17.4 Provider classification and posting-treatment boundary
+
+The common provider-document model must cover at least:
+
+- `CLOVER / BATCH_CONTROL` for Daily Closeout email-body evidence;
+- `CLOVER / MONTHLY_STATEMENT` for merchant processor settlement/accounting statements;
+- `UBER_EATS / MONTHLY_STATEMENT` and eligible financial API-report artifacts;
+- `FANTUAN / MONTHLY_STATEMENT` for imported financial statements.
+
+Normalized line components may include Sales, Sales Tax, Commission/Marketplace Fee, Processing Fee, Promotion/Offer, Subsidy, Advertising, Advertising Credit, Chargeback, Adjustment, Payout/Funding and Control Total. Each normalized line must also carry a posting treatment such as `POSTABLE`, `CONTROL_TOTAL`, `RECONCILIATION_ONLY` or `UNCLASSIFIED` so provider totals are not double-posted together with their component lines.
+
+Clover Daily Closeout remains **reconciliation evidence only**: Batch ID, Sales, Refunds, Net, Tax, Tips and card totals compare against Payments/API facts and do not independently create Revenue or Settlement journal entries. Clover monthly statements provide processor fee/tax/adjustment/chargeback/funding evidence for later settlement posting. Uber/Fantuan monthly statements likewise remain provider financial/settlement evidence rather than a second copy of live-order Revenue.
+
+### 17.5 Historical coverage decision
+
+The formal provider financial-history boundary is now **2026-06-01 for all three providers: CLOVER, UBER_EATS and FANTUAN**. This is financial evidence coverage, not a declaration that equivalent order-detail history exists for each provider. Historical provider files must not synthesize operational `Order` rows.
+
+Coverage metadata should therefore distinguish `financialHistoryRequiredFrom`, financial-document completeness and any later `liveOrderFactCutoverAt` / order-detail coverage separately. A statement or payout crossing the 2026-06-01 boundary is review evidence; 5C must not invent an opening receivable automatically. Opening-balance treatment belongs to the later settlement/posting policy.
+
+### 17.6 Gmail, manual upload and Uber API acquisition
+
+`EMAIL` acquisition must process **email body and every supported attachment independently** from the same message. The existing `SanQ-Bills` label remains the mailbox-routing boundary for 5C; Trusted Sender is an additional trust layer, not a replacement for provider/content classification.
+
+`MANUAL_UPLOAD` must become a first-class Inbox acquisition path accepting supported provider documents as well as expense evidence and feeding the same hash/parser/classifier/review pipeline. The current receipt URL-only path may remain temporarily for existing manual Expense behavior until the later Expense-to-Journal cutover, because current manual Expense creation still has unresolved double-entry account-selection semantics.
+
+For Uber, 5C should reuse the existing `UBER_EATS_REPORTING` public capability rather than introduce an External-Channels -> Accounting callback. Accounting may register READY downloaded financial-report artifacts into `PROVIDER_API` acquisition using stable report/section identities. Historical finance ingestion must not use `ORDERS_AND_ITEMS_REPORT` to synthesize Uber-only historical order/item coverage.
+
+### 17.7 Architecture effect and recommended implementation slices
+
+The readiness design introduces no new cross-context dependency direction. Accounting continues to depend on the existing External Channels reporting public boundary; provider wire/download behavior remains owned by External Channels. The current direct-debt target therefore remains Foundation **3**, External **1**, Identity **2**, Runtime **7**, total **13**, with no new public SCC or scanner allowance expected.
+
+Recommended implementation sequence:
+
+1. **5C-A — Unified Inbox Core:** add SourceArtifact / ParseRun / InboxItem / TrustedSender / ProviderFinancialDocument / ProviderFinancialLine / provider-coverage persistence and Accounting-owned writer/policy boundaries; do not cut Gmail/Web/provider runtime inputs yet;
+2. **5C-B — Acquisition Cutover:** route Gmail body + attachments, trusted-sender quarantine and Accounting Web manual uploads through the common intake pipeline while preserving current Expense downstream behavior during expansion;
+3. **5C-C — Provider Financial Parsing + History:** add Clover Closeout/monthly, Uber financial report/monthly and Fantuan monthly parsers plus 2026-06-01 historical financial ingestion/coverage controls, still without Journal posting or `Order` synthesis.
+
+5C remains evidence ingestion/review. Canonical Revenue Posting stays in 5D; provider settlement posting/reconciliation stays in Slice 6.
+
+### 17.8 Deployment prerequisite before 5C-A
+
+Repository policy does not require production deployment after every source slice, but 5B is the first Phase 9 persisted-schema foundation and its migration has never been applied on the running VM. Because 5C-A will add a second migration that depends on the 5B schema, the preferred rollout gate is to **deploy/apply 5B before implementing the 5C-A schema**. This isolates migration/runtime failures to the correct slice and confirms that the journal/CoA foundation can be applied cleanly before another persisted layer is stacked on top.
+
+The 5B deployment gate only needs migration/runtime smoke evidence at this stage; it does not require pretending that Revenue/settlement workflows already use the new Journal. The Phase remains subject to the later consolidated active-verification/closeout gate.
