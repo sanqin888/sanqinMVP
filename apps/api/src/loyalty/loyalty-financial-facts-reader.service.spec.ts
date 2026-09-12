@@ -1,12 +1,10 @@
-import { LoyaltyEntryType, LoyaltyTarget } from '@prisma/client';
-
 import { LoyaltyFinancialFactsReaderService } from './loyalty-financial-facts-reader.service';
 
 const row = (overrides: Record<string, unknown> = {}) => ({
   ledgerStableId: 'ledger-stable-1',
-  type: LoyaltyEntryType.TOPUP_PURCHASED,
-  target: LoyaltyTarget.BALANCE,
-  deltaMicro: 200_000n,
+  type: 'TOPUP_PURCHASED',
+  target: 'BALANCE',
+  deltaMicro: 20_000_000n,
   createdAt: new Date('2026-09-12T14:00:00.000Z'),
   orderStableId: 'order-stable-1',
   sourceKey: 'TOPUP',
@@ -19,14 +17,14 @@ describe('LoyaltyFinancialFactsReaderService', () => {
       row(),
       row({
         ledgerStableId: 'ledger-stable-2',
-        type: LoyaltyEntryType.REDEEM_ON_ORDER,
-        deltaMicro: -470_300n,
+        type: 'REDEEM_ON_ORDER',
+        deltaMicro: -47_030_000n,
         sourceKey: 'PAYMENT_BALANCE',
       }),
       row({
         ledgerStableId: 'ledger-stable-3',
-        type: LoyaltyEntryType.REFUND_RETURN_REDEEM,
-        deltaMicro: 470_300n,
+        type: 'REFUND_RETURN_REDEEM',
+        deltaMicro: 47_030_000n,
         sourceKey: 'FULL_REFUND_BALANCE',
       }),
     ]);
@@ -41,7 +39,7 @@ describe('LoyaltyFinancialFactsReaderService', () => {
         version: 1,
         factStableId: 'ledger-stable-1',
         kind: 'STORE_BALANCE_TOPUP',
-        amountCents: 20,
+        amountCents: 2000,
         currency: 'CAD',
       }),
       expect.objectContaining({
@@ -60,12 +58,12 @@ describe('LoyaltyFinancialFactsReaderService', () => {
       expect.objectContaining({
         where: {
           orderStableId: 'order-stable-1',
-          target: LoyaltyTarget.BALANCE,
+          target: 'BALANCE',
           type: {
             in: [
-              LoyaltyEntryType.TOPUP_PURCHASED,
-              LoyaltyEntryType.REDEEM_ON_ORDER,
-              LoyaltyEntryType.REFUND_RETURN_REDEEM,
+              'TOPUP_PURCHASED',
+              'REDEEM_ON_ORDER',
+              'REFUND_RETURN_REDEEM',
             ],
           },
         },
@@ -87,12 +85,12 @@ describe('LoyaltyFinancialFactsReaderService', () => {
       expect.objectContaining({
         where: {
           createdAt: { gte: fromInclusive, lt: toExclusive },
-          target: LoyaltyTarget.BALANCE,
+          target: 'BALANCE',
           type: {
             in: [
-              LoyaltyEntryType.TOPUP_PURCHASED,
-              LoyaltyEntryType.REDEEM_ON_ORDER,
-              LoyaltyEntryType.REFUND_RETURN_REDEEM,
+              'TOPUP_PURCHASED',
+              'REDEEM_ON_ORDER',
+              'REFUND_RETURN_REDEEM',
             ],
           },
         },
@@ -105,7 +103,7 @@ describe('LoyaltyFinancialFactsReaderService', () => {
       loyaltyLedger: {
         findMany: jest.fn().mockResolvedValue([
           row({
-            type: LoyaltyEntryType.REDEEM_ON_ORDER,
+            type: 'REDEEM_ON_ORDER',
             deltaMicro: -10_001n,
           }),
         ]),

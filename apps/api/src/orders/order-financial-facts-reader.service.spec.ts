@@ -311,8 +311,8 @@ describe('OrderFinancialFactsReaderService', () => {
     });
 
     expect(facts.map((fact) => fact.sourceEvidence)).toEqual([
-      'IMMUTABLE_SALE_SNAPSHOT',
       'LEGACY_CURRENT_ORDER',
+      'IMMUTABLE_SALE_SNAPSHOT',
     ]);
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({

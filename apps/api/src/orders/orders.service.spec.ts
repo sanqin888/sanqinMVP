@@ -83,24 +83,29 @@ const defaultStoreConfigSnapshot: StoreConfigSnapshot = {
 
 const withFinancialSnapshotDefaults = <T extends Record<string, unknown>>(
   order: T,
-) => ({
-  storeId: '4750_Yonge_Street',
-  updatedAt: new Date('2026-09-12T12:00:00.000Z'),
-  paymentMethod: 'CASH',
-  subtotalCents: 0,
-  subtotalAfterDiscountCents: 0,
-  couponDiscountCents: 0,
-  loyaltyRedeemCents: 0,
-  taxCents: 0,
-  deliveryFeeCents: 0,
-  creditCardSurchargeCents: 0,
-  totalCents: 0,
-  paymentTotalCents: 0,
-  couponTitleSnapshot: null,
-  promotionSnapshot: null,
-  items: [],
-  ...order,
-});
+) => {
+  const subtotalCents =
+    typeof order.subtotalCents === 'number' ? order.subtotalCents : 0;
+  const totalCents = typeof order.totalCents === 'number' ? order.totalCents : 0;
+  return {
+    storeId: '4750_Yonge_Street',
+    updatedAt: new Date('2026-09-12T12:00:00.000Z'),
+    paymentMethod: 'CASH',
+    subtotalCents,
+    subtotalAfterDiscountCents: subtotalCents,
+    couponDiscountCents: 0,
+    loyaltyRedeemCents: 0,
+    taxCents: 0,
+    deliveryFeeCents: 0,
+    creditCardSurchargeCents: 0,
+    totalCents,
+    paymentTotalCents: totalCents,
+    couponTitleSnapshot: null,
+    promotionSnapshot: null,
+    items: [],
+    ...order,
+  };
+};
 
 describe('OrdersService', () => {
   let service: OrdersService;

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { LoyaltyEntryType, LoyaltyTarget, type Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 
 import type {
   LoyaltyFinancialFactKindV1,
@@ -10,11 +10,9 @@ import type {
 import { PrismaService } from './loyalty-prisma';
 
 const MICRO_PER_CENT = 10_000n;
-const STORE_BALANCE_FINANCIAL_TYPES: LoyaltyEntryType[] = [
-  LoyaltyEntryType.TOPUP_PURCHASED,
-  LoyaltyEntryType.REDEEM_ON_ORDER,
-  LoyaltyEntryType.REFUND_RETURN_REDEEM,
-];
+const STORE_BALANCE_FINANCIAL_TYPES: Array<
+  'TOPUP_PURCHASED' | 'REDEEM_ON_ORDER' | 'REFUND_RETURN_REDEEM'
+> = ['TOPUP_PURCHASED', 'REDEEM_ON_ORDER', 'REFUND_RETURN_REDEEM'];
 
 const LOYALTY_FINANCIAL_SELECT = {
   ledgerStableId: true,
@@ -45,26 +43,26 @@ const toCentAlignedAmount = (deltaMicro: bigint): number => {
 };
 
 const toKind = (row: LoyaltyFinancialRow): LoyaltyFinancialFactKindV1 => {
-  if (row.target !== LoyaltyTarget.BALANCE) {
+  if (row.target !== 'BALANCE') {
     throw new Error('Loyalty financial fact must target Store Balance');
   }
 
   switch (row.type) {
-    case LoyaltyEntryType.TOPUP_PURCHASED:
+    case 'TOPUP_PURCHASED':
       if (row.deltaMicro <= 0n) {
         throw new Error(
           'Store Balance top-up must increase liability principal',
         );
       }
       return 'STORE_BALANCE_TOPUP';
-    case LoyaltyEntryType.REDEEM_ON_ORDER:
+    case 'REDEEM_ON_ORDER':
       if (row.deltaMicro >= 0n) {
         throw new Error(
           'Store Balance redemption must decrease liability principal',
         );
       }
       return 'STORE_BALANCE_REDEEMED';
-    case LoyaltyEntryType.REFUND_RETURN_REDEEM:
+    case 'REFUND_RETURN_REDEEM':
       if (row.deltaMicro <= 0n) {
         throw new Error(
           'Store Balance return must increase liability principal',
@@ -91,7 +89,7 @@ export class LoyaltyFinancialFactsReaderService implements LoyaltyFinancialFacts
     const rows = await this.prisma.loyaltyLedger.findMany({
       where: {
         orderStableId: stableId,
-        target: LoyaltyTarget.BALANCE,
+        target: 'BALANCE',
         type: { in: STORE_BALANCE_FINANCIAL_TYPES },
       },
       select: LOYALTY_FINANCIAL_SELECT,
@@ -114,7 +112,7 @@ export class LoyaltyFinancialFactsReaderService implements LoyaltyFinancialFacts
           gte: range.fromInclusive,
           lt: range.toExclusive,
         },
-        target: LoyaltyTarget.BALANCE,
+        target: 'BALANCE',
         type: { in: STORE_BALANCE_FINANCIAL_TYPES },
       },
       select: LOYALTY_FINANCIAL_SELECT,
