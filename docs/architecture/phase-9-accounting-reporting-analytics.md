@@ -1,11 +1,13 @@
 # Phase 9 — Accounting / Reporting / Analytics Boundary Contraction & L3 Financial Integrity
 
-Status: **SLICE 0 READINESS AUDIT COMPLETE — SLICE 1/2/3/4 MERGED / CI GREEN — SLICE 5 PLAN REVISED FOR DOUBLE-ENTRY ACCOUNTING**  
+Status: **SLICE 0 READINESS AUDIT COMPLETE — SLICE 1/2/3/4/5B/5C MERGED / CI GREEN — SLICE 5D READINESS AUDIT COMPLETE / 5D-A READY**  
 Slice 0 audit baseline: `origin/dev@1a69bd7dbd49eba08661b169463e32dc820f0396`  
 Slice 1 merge: PR #2281 / final head `974066e7c11f58316368fcb4fcfeec28c5da5509` / squash merge `f529f4701b63040a8e2dfee2cf3ca82213f25ec6` / CI #5494 green  
 Slice 2 merge: PR #2283 / final head `d6518ba13f8b1bb43df941d2fde10a44409e2a3b` / squash merge `b35890d8ed7399bc389915b192f7c20ff966c9b8` / CI #5500 green  
 Slice 3 merge: PR #2284 / final head `4399c841884e3267e18f7ab7f5b99781e0ed1fb6` / squash merge `0f37901a134062fcdb860e9ca256b4be2147586a` / CI #5503 green  
 Slice 4 merge: PR #2285 / final head `f38d8feb98819378d2667498a90acfd2d06b0e54` / squash merge `e3a3785dd7b428658cfec6720ca77da8be6eb350` / CI #5507 green  
+Slice 5C-C merge: PR #2293 / final head `592bfdc0` / squash merge `ce399a37` / CI #5535 green  
+Slice 5D readiness audit baseline: `origin/dev@8cacdf60`  
 Planning decision updated: 2026-09-12
 
 ## 1. Purpose
@@ -133,7 +135,7 @@ Slice 0 does not change these semantics. Later boundary work must add/retain cha
 5. **Slice 5A — Double-entry + Statement Ingestion readiness/schema design audit.** Before changing persisted contracts, complete a read-only design audit for the minimal double-entry core, Chart of Accounts, provider statement import/inbox pipeline, historical coverage/cutover rules, idempotency/revision handling and the expand-contract migration plan. This work package must not edit Prisma schema/migrations or change runtime behavior.
 6. **Slice 5B — Double-entry Accounting Core.** After separate Prisma/migration authorization, introduce the minimal balanced journal model and account classification needed by SanQ Accounting while preserving the existing category taxonomy as a reporting/operating dimension where practical. Do not expand this slice into a full ERP/general-ledger product.
 7. **Slice 5C — External Platform Historical Financial Import + Accounting Inbox.** Add the unified Email / Manual Upload / Provider API document-ingestion boundary, UI-managed trusted senders, document classification and statement parsing. Historical Uber Eats and Fantuan backfill begins **2026-06-01** and is statement/monthly financial coverage only; it intentionally does not create asymmetric Uber-only historical order/item detail.
-8. **Slice 5D — Canonical Financial Facts + Revenue Posting.** Define versioned Orders/Payments/External-Channel financial facts and Accounting-owned idempotent/replayable posting into the double-entry journal rather than treating `Order.totalCents` as revenue. Provider/API-era order facts are the sales source; settlement statements must not duplicate recognized sales.
+8. **Slice 5D — Canonical Financial Facts + Revenue Posting.** Define versioned Orders/Payments/Benefits-Loyalty/External-Channel financial facts and Accounting-owned idempotent/replayable posting into the double-entry journal rather than treating `Order.totalCents` as revenue. Orders own sale/pricing/tax/discount/delivery truth, Payments own provider-money/refund/surcharge truth when available, Benefits/Loyalty own Store Balance top-up/use/return truth, and provider settlement statements must not duplicate recognized sales.
 9. **Slice 6 — Platform Settlement / Reconciliation + Uber financial-reporting boundary.** Remove Accounting knowledge of `UberStoreMapping`/provider UUIDs while preserving provider gates, and use provider statements/reports for fees, promotions/subsidies, advertising, chargebacks/complaint deductions, adjustments, payout and receivable reconciliation rather than rewriting original order revenue.
 10. **Slice 7 — stable-ID / Prisma contract contraction.** Use an explicitly authorized Class B expand-contract migration for ambiguous persisted identity names and related Prisma contract leakage.
 11. **Slice 8 — internal capability split + Accounting Web vertical-contract cleanup.** Split Ledger/Expenses/Revenue/Settlements/Reports internals and then consolidate Web DTO contracts after backend boundaries are stable.
@@ -182,7 +184,7 @@ The new coverage locks the following existing semantics:
 - closed-month policy where ordinary entries are rejected but `ADJUSTMENT` remains writable until the fiscal year is hard-locked, explicit month reopen behavior/audit evidence, plus StoreConfig/Toronto month and year UTC boundaries and accounting-start-month handling for year close;
 - manual Expense and inbox-confirmation writes keeping the expense document and all split ledger rows inside one existing Prisma transaction, including current split idempotency keys and attachment preservation;
 - current provisional order-revenue accrual behavior: DAILY mode sums `Order.totalCents` into one day-level ledger entry, PER_ORDER mode keeps stable-order idempotency and Uber-vs-order source classification, and replays skip existing entries. These assertions describe current behavior only and do **not** reclassify `Order.totalCents` as canonical accounting revenue;
-- Accounting automation's `eats.report` capability gate, provisioned-store lookup, previous-four-day rolling report window clipped by `accountingStartDate`, latest-completed-business-day end date, and the existing three Uber financial report types;
+- Accounting automation's `eats.report` capability gate, provisioned-store lookup, previous-four-day rolling report window clipped by `accountingStartDate`, latest-completed-business-day end date, and the then-existing three Uber financial report types; Slice 5C-C later contracted the active Accounting automation requests to `PAYMENT_DETAILS_REPORT` + `FINANCE_SUMMARY_REPORT` only and excludes `ORDERS_AND_ITEMS_REPORT`;
 - Reports KPI/date behavior using `process.env.TZ || America/Toronto`, `Order.createdAt`, the paid/making/ready/completed status set, `totalCents`-based sales/payment/fulfillment/chart aggregation, and existing top-item snapshot behavior. The previously existing `componentsJson` characterization remains the authority for historical combo composition.
 
 Architecture effect: **none**. The machine direct-import baseline remains `accounting-reporting-analytics -> architecture-foundation 3`, `commerce-orders-fulfillment 1`, `external-channels 1`, `identity-customer-benefits 2`, `runtime-data-ci-ops 9` for a total of **16**, with `legacyPublicCycleComponents=[]`. No new public API, port, module dependency, compatibility path or owner transfer is introduced.
@@ -230,9 +232,10 @@ Focused tests retain Slice 2 report characterization at the Reporting contract b
 
 ## 15. Slice 5 planning decision — Double-entry Accounting, provider statements and historical coverage
 
-State: **DESIGN DECISION RECORDED — IMPLEMENTATION NOT STARTED**  
+State: **PLANNING DECISION IMPLEMENTED THROUGH 5C — 5D READINESS COMPLETE / 5D-A NEXT**  
 Planning base: `origin/dev@703a4269`  
-Decision date: 2026-09-12
+Decision date: 2026-09-12  
+Current execution state: Slice 5B is merged/deployed/runtime-smoke-verified; Slice 5C-A/B/C are merged/CI-green; Slice 5D readiness is complete at `origin/dev@8cacdf60`.
 
 ### 15.1 Double-entry is now the target Accounting ledger model
 
@@ -299,9 +302,9 @@ The real provider samples reviewed during planning/readiness show why the existi
 
 The preferred design direction is therefore a provider-statement header plus extensible financial lines/components and preserved raw evidence, with normalized canonical component types only where they are stable and useful to posting/reconciliation. Exact persisted fields/table names remain a Slice 5A design output and are **not** authorized by this planning record.
 
-### 15.6 Next work package
+### 15.6 Planning-time next work package (completed)
 
-The next task is **Phase 9 Slice 5A — Double-entry + Statement Ingestion readiness/schema design audit**. It is read-only and must:
+At the time of the Slice 5 planning decision, the next task was **Phase 9 Slice 5A — Double-entry + Statement Ingestion readiness/schema design audit**. That readiness work is now complete and its implementation sequence has advanced through 5B and 5C; the current next work package is 5D-A as recorded in §18. The original 5A scope was:
 
 1. inventory the current Accounting schema, ledger/category/account semantics, expense inbox/Gmail parser, automation configuration, settlement importer, Web Accounting UI contracts, audit/period rules and migration history;
 2. map the real Uber/Fantuan statement concepts onto a canonical statement/header-line model without forcing provider-specific fields into one flat record;
@@ -315,8 +318,8 @@ No Prisma/schema/migration/source implementation should begin during 5A unless t
 
 ## 16. Slice 5A readiness result and Slice 5B implementation boundary
 
-State: **5A READINESS / SCHEMA DESIGN COMPLETE — 5B DEPLOYED / RUNTIME SMOKE VERIFIED — 5C READINESS MERGED — 5C-A MERGED / CI GREEN — 5C-B MERGED / CI GREEN — 5C-C LOCAL SOURCE IMPLEMENTATION / REVIEW PENDING**  
-Audit/implementation base: 5B `origin/dev@cbe8ad6f`; 5C readiness `origin/dev@7419c982`; 5C-A merge `913e88aa`; 5C-B merge `6f1093a8`; 5C-C `origin/dev@6f1093a8`  
+State: **5A READINESS / SCHEMA DESIGN COMPLETE — 5B DEPLOYED / RUNTIME SMOKE VERIFIED — 5C READINESS + 5C-A/B/C MERGED / CI GREEN — 5D READINESS COMPLETE**  
+Audit/implementation base: 5B `origin/dev@cbe8ad6f`; 5C readiness `origin/dev@7419c982`; 5C-A merge `913e88aa`; 5C-B merge `6f1093a8`; 5C-C merge `ce399a37`; 5D readiness `origin/dev@8cacdf60`  
 Decision/authorization date: 2026-09-12
 
 ### 16.1 Accounting migration compatibility decision
@@ -357,11 +360,11 @@ Slice 5B is **MERGED / CI GREEN / DEPLOYED / RUNTIME SMOKE VERIFIED** through PR
 
 ## 17. Slice 5C readiness audit — Unified Accounting Inbox + Provider Financial Evidence
 
-State: **READINESS MERGED — 5C-A MERGED / CI GREEN — 5C-B MERGED / CI GREEN — 5C-C LOCAL SOURCE IMPLEMENTATION / REVIEW PENDING**  
+State: **READINESS + 5C-A/B/C MERGED / CI GREEN**  
 Readiness: PR #2290; squash merge `7419c982`  
 5C-A: PR #2291; final head `2e4167bf`; CI #5526 green; squash merge `913e88aa`  
 5C-B: PR #2292; final head `5c2fee55`; CI #5530 green; squash merge `6f1093a8`  
-5C-C implementation base: `origin/dev@6f1093a8`  
+5C-C: PR #2293; final head `592bfdc0`; CI #5535 green; squash merge `ce399a37`  
 Audit/implementation date: 2026-09-12
 
 ### 17.1 Current-state findings
@@ -466,9 +469,9 @@ The legacy public receipt-upload path is **contracted directly in 5C-B**. The us
 
 The decomposition review also resolves both new-file size boundaries: the original 869-line Inbox page draft is split into a 322-line page plus cohesive `expense-review-panel.tsx`, `inbox-items-list.tsx` and `inbox-model.ts` modules, while Expense materialization/confirm/discard persistence is extracted from the 5C-A core writer into the dedicated Accounting-owned `accounting-inbox-expense.writer.ts`. Both writers accept `Prisma.TransactionClient` only. Focused Gmail/acquisition/writer/architecture coverage locks body+attachment coexistence, quarantine behavior, content identity, CSV deferral and expense materialization/discard. CI #5530 confirmed the monotonic dependency contraction: Accounting -> Runtime **7 -> 6**, Accounting -> Foundation **3 -> 2**, and Accounting direct debt **13 -> 11**, while External **1** and Identity **2** remain unchanged and no public SCC/scanner allowance was added.
 
-### 17.11 Slice 5C-C local implementation result
+### 17.11 Slice 5C-C pre-merge implementation record
 
-Slice 5C-C is **LOCAL SOURCE IMPLEMENTATION / REVIEW PENDING** on `refactor/phase9-slice5c-c-provider-financial-history`, based on merged `origin/dev@6f1093a8`. It uses the existing 5C-A persistence model and adds no Prisma/schema/migration change. 5C-C remains evidence parsing/review only: it does not synthesize historical `Order` rows, does not write `AccountingTransaction`, and does not post `AccountingJournalEntry` / `AccountingJournalLine`.
+Before PR #2293 merged, Slice 5C-C reached **LOCAL SOURCE IMPLEMENTATION / REVIEW PENDING** on `refactor/phase9-slice5c-c-provider-financial-history`, based on merged `origin/dev@6f1093a8`. This historical implementation record is superseded by the merged result in §17.12, but its scope remains accurate: it uses the existing 5C-A persistence model and adds no Prisma/schema/migration change. 5C-C remains evidence parsing/review only: it does not synthesize historical `Order` rows, does not write `AccountingTransaction`, and does not post `AccountingJournalEntry` / `AccountingJournalLine`.
 
 Deterministic provider parsers are added for the observed evidence formats: Clover Daily Closeout (`BATCH_CONTROL`), Clover monthly processor statement (`STATEMENT`), Uber monthly statement (`STATEMENT`) and Fantuan settlement summary (`STATEMENT`). Clover Closeout normalizes only Batch Totals and marks every component reconciliation/control-only; `BATCH_CONTROL` and `CONTROL_TOTAL` policy guards reject `POSTABLE` treatment. Uber monthly normalization uses only the Consolidated Monthly Summary and deliberately excludes the payout sections from normalized lines to avoid double counting. Clover fee HST is separated from fee base when the statement exposes it, and Fantuan promotion/subsidy/commission/tax components stay distinct.
 
@@ -477,3 +480,72 @@ Provider financial evidence wholly before **2026-06-01** is recognized but not m
 Uber READY report artifacts now cross into Accounting only through an additive `UberEatsReportingPort` capability that validates report ownership/status before reading the stored CSV; Accounting never deep-imports Uber persistence or artifact paths. Accounting automation now requests only `PAYMENT_DETAILS_REPORT` and `FINANCE_SUMMARY_REPORT`; it no longer requests `ORDERS_AND_ITEMS_REPORT`, while any legacy READY order-detail report is explicitly skipped. Because no real Uber financial API CSV schema fixture is available yet, PAYMENT/FINANCE CSV artifacts are registered in Unified Inbox with provider-parser-pending state and the Uber report stays READY/retryable rather than guessing column semantics or marking it IMPORTED. Once an actual READY CSV is observed, its schema must be fixture-pinned before deterministic API-report materialization is enabled.
 
 The Accounting Inbox read model/UI now presents normalized provider/type/period/lines by stable identity and offers an explicit provider-financial confirmation action. Confirmation only marks review state/audit metadata and still does not post a Journal entry. Focused parser/history/public-port/review tests and the existing Inbox architecture guard cover these boundaries. Local lint/build/test/scanner execution is not claimed; remote CI remains authoritative after user review/authorization.
+
+### 17.12 Slice 5C-C merged result
+
+Slice 5C-C is **MERGED / CI GREEN** through PR #2293. Final PR head `592bfdc0` passed CI #5535 across the architecture baseline, Prisma generation, API/Web lint/build/strict declarations and tests before squash merge `ce399a37`. The final merged behavior is the 5C-C state described above: deterministic observed-format provider parsing, provider-financial review without Journal posting, Uber READY artifact access only through the External Channels public reporting capability, no synthetic historical Orders, and active Accounting automation requests restricted to `PAYMENT_DETAILS_REPORT` + `FINANCE_SUMMARY_REPORT`. `ORDERS_AND_ITEMS_REPORT` is not an Accounting financial-history request.
+
+No new Prisma/schema/migration was introduced by 5C-C. The 5C-A Unified Inbox migration still has not been claimed as deployed in this document state; Gmail remains disabled operationally until the Accounting intake stack is deliberately rolled out and verified.
+
+## 18. Slice 5D — Canonical Financial Facts + Revenue Posting readiness audit
+
+### 18.1 Readiness decision
+
+The read-only audit at `origin/dev@8cacdf60` concludes **READY FOR 5D-A / NOT READY FOR FULL REVENUE CUTOVER**. The 5B Journal core is sufficient for idempotent, balanced Accounting-owned posting: it already supplies stable source-fact identity/version, deterministic idempotency hashing, Serializable writes/retry, account/category validation, period locking and audit creation. 5D must reuse that single Journal writer rather than create a parallel posting persistence path.
+
+The blocker is fact ownership/semantics, not Journal storage. The provisional `autoAccrueOrderRevenue()` still reads Orders persistence and treats `Order.totalCents` as income. 5D must replace that behavior with versioned owner facts before canonical posting. Accounting must not parse Orders/Loyalty persistence or provider statement rows directly to invent sales truth.
+
+### 18.2 2026-09-12 production read-only snapshot
+
+The following counts are readiness evidence from the running production database on 2026-09-12, not permanent constants:
+
+- From the intended financial-history floor **2026-06-01**, Orders contains **1259** rows. The persisted order amount invariant `totalCents = subtotalAfterDiscountCents + taxCents + deliveryFeeCents` had no observed mismatch in the audited set, so Orders snapshots are viable historical pricing facts when exposed through an owner contract.
+- `PaymentTransaction` contains **0** rows. Therefore historical POS/Web revenue backfill from 2026-06-01 cannot require PaymentTransaction presence; Payments can enrich future canonical money/refund/provider facts but is not the historical sales source for the current dataset.
+- `AccountingTransaction` and `AccountingJournalEntry` both contain **0** rows in the audited production state, so no previously posted canonical revenue requires duplicate-cleanup before the first Journal backfill.
+- Two in-store CASH Orders, **$20 total**, are Store Balance top-up principal records with no OrderItem rows and matching `LoyaltyLedger.TOPUP_PURCHASED` facts. They must not become Sales Revenue merely because they are Orders.
+- Only **32 / 1259** audited Orders persist `paymentBreakdownJson`. Historical tender reconstruction therefore cannot depend on that JSON alone. Loyalty-owned ledger facts are the more complete authority for Store Balance use/top-up history; Accounting must consume them through a Benefits/Loyalty public fact capability rather than read Loyalty persistence.
+- Loyalty history includes **7** Store Balance order-redemption entries totaling **$47.03** of balance use and **2** Store Balance top-ups totaling **$20**. Store Balance is therefore a real liability/tender requirement for 5D, not a hypothetical future case.
+- `OrderAmendment` contains **53** rows: 16 `FULL_REFUND / CONFIRMED`, 2 `FULL_REFUND / PENDING_MANUAL`, 21 confirmed Uber cancellations, 4 confirmed external cancellations, 4 confirmed Uber manual refunds, and 6 ordinary amendment/swap records. Only **4** rows currently carry an explicit `summaryJson.occurredAt`; **49** do not. Because two rows are still pending manual, at least **47 already-effective historical adjustments** lack an authoritative accounting occurrence timestamp. 5D must not substitute `Order.paidAt` or the eventual backfill time.
+- Of those ordinary amendments, **4 are `SWAP_ITEM`**. The current amendment implementation mutates the live Order/OrderItem state and recalculates `subtotalCents`, `subtotalAfterDiscountCents`, `taxCents`, `totalCents` and `paymentTotalCents`. Those legacy rows therefore cannot be assumed reconstructible into the exact original sale snapshot from the current Order row alone; they require explicit 5D-C exception/reconstruction treatment rather than guessed history.
+- The audited set includes **73** `WECHAT_ALIPAY` in-store Orders. Existing POS summary groups this operationally with cash, but that UI/reporting bucket is not sufficient evidence to choose the Accounting debit account; 5D-B requires an explicit funds-flow policy before posting these tenders.
+
+### 18.3 Canonical owner boundaries for 5D
+
+5D should define versioned financial facts at their existing owners and let Accounting consume/replay them:
+
+| Owner | Canonical 5D facts | Accounting use |
+| --- | --- | --- |
+| Commerce / Orders | sale classification, stable order/store identity, occurred/paid time, channel, immutable pricing/discount/tax/delivery snapshot and amendment facts | Revenue/tax/delivery/discount source facts |
+| Payments / Clover | final successful external-money sale/refund/void observations, surcharge and provider transaction truth when available | Tender/provider-money enrichment and future reversal truth |
+| Identity / Customer / Benefits | Store Balance top-up/use/return facts and any loyalty value facts required by the selected accounting policy | Liability/tender and loyalty accounting facts |
+| External Channels | provider operational order facts only where that owner is uniquely authoritative | Provider-era operational fact enrichment; no statement-driven duplicate revenue |
+| Accounting / 5C evidence | statements, Closeout, fees, payouts, adjustments, reconciliation evidence | Slice 6 settlement/reconciliation; never duplicate sale revenue already posted from canonical operational facts |
+
+Orders must expose a versioned `OrderFinancialFact` (name/version may be finalized in 5D-A) instead of making Accounting decode `promotionSnapshot`, `paymentBreakdownJson`, Prisma rows or current Catalog/Promotion state. The current price-reduction inputs that matter to Accounting are Daily Special, Coupon, Automatic Promotion, POS Manual Discount and Loyalty redemption. Daily Special is already embedded in the effective transaction price and must not be double-counted as a second contra-revenue discount. Coupon / Automatic Promotion / POS Manual Discount must be normalized by the Orders owner if they are represented as separate contra-revenue components; Loyalty redemption remains subject to the explicit policy decision below.
+
+Benefits/Loyalty already exposes `LOYALTY_ORDER_USAGE_READER` from its public API, which is architectural evidence that Orders can consume loyalty-owned usage through a narrow owner boundary without reaching into Loyalty Prisma. 5D-A should follow that established direction for canonical Store Balance/top-up/use facts rather than making Accounting parse `LoyaltyLedger` directly. Historical backfill remains Orders + Loyalty-fact led; future `PaymentTransaction` coverage may enrich provider-money/refund/surcharge truth but must not become a prerequisite for recognizing the existing historical sales dataset.
+
+### 18.4 Start-date and historical cutover policy
+
+The existing UI-managed `AccountingAutomationConfig.accountingStartDate` is the single operational lower bound for POS/Web financial facts and later 5D backfill; the user intends to set it to **2026-06-01**. 5D must read this setting rather than introduce another hard-coded sales start date.
+
+The current generic `AccountingService.getAccountingStartAt()` converts the stored date to `T00:00:00.000Z`, and `assertOnOrAfterAccountingStartDate()` compares against that UTC-midnight value. For Toronto business-day semantics, `2026-06-01 00:00 America/Toronto` is `2026-06-01 04:00 UTC`, so the current generic guard begins the accounting window four hours too early during EDT. 5D backfill/query boundaries must therefore resolve the configured date in the explicit Store timezone. A broader correction of the existing generic accounting-start guard should be handled as a focused hardening change rather than silently changing unrelated Accounting behavior inside 5D-A.
+
+### 18.5 Required accounting-policy decisions before 5D-B
+
+5D-A can proceed without these final posting decisions, but 5D-B automated Journal posting must not start until they are explicit:
+
+1. **Loyalty points redemption:** recommended initial policy is Sales Discount / contra-revenue, matching the current pricing/tax order, rather than expanding 5D into a full loyalty deferred-liability accounting system.
+2. **Daily Special:** recommended policy is revenue at the actual effective sale price with no second Sales Discount line for the displayed daily-special saving.
+3. **Store Balance:** top-up principal is a LIABILITY, not Revenue; Store Balance spending debits that liability when the sale is recognized. The current minimum CoA lacks a Store Balance Liability account, so 5D-B will need an additive CoA account such as `account_store_balance_liability`. If repository governance keeps default CoA additions migration-seeded, that data-only migration requires separate explicit authorization; existing Prisma account classes already support LIABILITY, so no schema expansion is implied by this policy.
+4. **WECHAT_ALIPAY:** funds flow must be classified explicitly as Cash/cash-equivalent or a separate third-party clearing/receivable account. The current POS report bucket is not an Accounting policy.
+5. **Refund/reversal timing and history:** do not invent occurrence dates. A refunded/cancelled order is not removed from its original sale date. Canonical accounting must post the original SALE fact at its sale occurrence time and a later REFUND/REVERSAL fact at the authoritative refund/cancellation occurrence time, each with its own `sourceFactType + sourceFactStableId + sourceFactVersion`. Legacy rows without authoritative occurrence time stay an explicit 5D-C reconstruction/exception problem rather than blocking the clean forward fact model.
+6. **System actor for automatic posting:** `createJournalEntry()` currently requires `operatorUserStableId`, which is correct for human posting but must not cause automated Revenue Posting to impersonate an ADMIN user. 5D-B should define one stable system actor identity (for example `system:accounting-revenue-posting`) and preserve that identity in Journal/audit evidence. This is an application/audit contract decision and does not by itself require a Prisma schema change.
+
+### 18.6 Recommended 5D decomposition
+
+1. **5D-A — Canonical Financial Facts Boundary:** define/version Orders financial facts plus the required Benefits/Loyalty and Payments public financial-fact capabilities; add characterization/architecture coverage; preserve runtime sale/payment behavior; **do not write Journal entries** and do not change Prisma unless a concrete persisted fact gap is proven.
+2. **5D-B — Canonical Sale Revenue Posting:** map canonical sale/tender facts into balanced Accounting Journal entries with idempotent replay/backfill, explicit `accountingStartDate` + Store timezone lower bound, Tax / Delivery / Discounts / Surcharge / Cash / Clover or external receivable / Uber receivable / Store Balance handling, and retire the provisional `Order.totalCents` revenue path after parity. Any new CoA seed/migration requires the normal explicit migration authorization.
+3. **5D-C — Refund / Amendment / Historical Exceptions:** define confirmed refund/reversal/amendment facts and occurrence-time policy, integrate future Payments refund/void truth, and handle the legacy amendment rows that cannot be reconstructed safely from existing timestamps. If durable amendment occurrence/version fields are required, use a separately authorized additive migration; do not rewrite historical order truth.
+
+5D-A is therefore the next recommended implementation target. It should improve ownership contracts only, remain independently deployable, keep `legacyPublicCycleComponents=[]`, avoid a new Accounting -> Orders/Benefits/Payments implementation import, and leave production Web Clover execution semantics untouched.
