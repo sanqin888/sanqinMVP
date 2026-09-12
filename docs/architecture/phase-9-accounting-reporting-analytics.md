@@ -315,8 +315,8 @@ No Prisma/schema/migration/source implementation should begin during 5A unless t
 
 ## 16. Slice 5A readiness result and Slice 5B implementation boundary
 
-State: **5A READINESS / SCHEMA DESIGN COMPLETE — 5B DEPLOYED / RUNTIME SMOKE VERIFIED — 5C READINESS MERGED — 5C-A LOCAL SOURCE COMPLETE / USER REVIEW**  
-Audit/implementation base: 5B `origin/dev@cbe8ad6f`; 5C readiness/5C-A `origin/dev@7419c982`  
+State: **5A READINESS / SCHEMA DESIGN COMPLETE — 5B DEPLOYED / RUNTIME SMOKE VERIFIED — 5C READINESS MERGED — 5C-A MERGED / CI GREEN — 5C-B LOCAL SOURCE COMPLETE / REMOTE DELIVERY AUTHORIZED**  
+Audit/implementation base: 5B `origin/dev@cbe8ad6f`; 5C readiness `origin/dev@7419c982`; 5C-A merge `913e88aa`; 5C-B `origin/dev@913e88aa`  
 Decision/authorization date: 2026-09-12
 
 ### 16.1 Accounting migration compatibility decision
@@ -357,9 +357,10 @@ Slice 5B is **MERGED / CI GREEN / DEPLOYED / RUNTIME SMOKE VERIFIED** through PR
 
 ## 17. Slice 5C readiness audit — Unified Accounting Inbox + Provider Financial Evidence
 
-State: **READINESS MERGED — 5C-A LOCAL SOURCE COMPLETE / USER REVIEW**  
+State: **READINESS MERGED — 5C-A MERGED / CI GREEN — 5C-B LOCAL SOURCE COMPLETE / REMOTE DELIVERY AUTHORIZED**  
 Readiness: PR #2290; squash merge `7419c982`  
-5C-A implementation base: `origin/dev@7419c982`  
+5C-A: PR #2291; final head `2e4167bf`; CI #5526 green; squash merge `913e88aa`  
+5C-B implementation base: `origin/dev@913e88aa`  
 Audit/implementation date: 2026-09-12
 
 ### 17.1 Current-state findings
@@ -416,7 +417,7 @@ Coverage metadata should therefore distinguish `financialHistoryRequiredFrom`, f
 
 `EMAIL` acquisition must process **email body and every supported attachment independently** from the same message. The existing `SanQ-Bills` label remains the mailbox-routing boundary for 5C; Trusted Sender is an additional trust layer, not a replacement for provider/content classification.
 
-`MANUAL_UPLOAD` must become a first-class Inbox acquisition path accepting supported provider documents as well as expense evidence and feeding the same hash/parser/classifier/review pipeline. The current receipt URL-only path may remain temporarily for existing manual Expense behavior until the later Expense-to-Journal cutover, because current manual Expense creation still has unresolved double-entry account-selection semantics.
+`MANUAL_UPLOAD` must become a first-class Inbox acquisition path accepting supported provider documents as well as expense evidence and feeding the same hash/parser/classifier/review pipeline. The readiness audit originally allowed the receipt URL-only path to remain temporarily, but that option is superseded by the explicit 5C-B user authorization recorded in §17.10: Accounting is not yet in formal use, so the old upload route is contracted directly once the canonical Inbox path is connected.
 
 For Uber, 5C should reuse the existing `UBER_EATS_REPORTING` public capability rather than introduce an External-Channels -> Accounting callback. Accounting may register READY downloaded financial-report artifacts into `PROVIDER_API` acquisition using stable report/section identities. Historical finance ingestion must not use `ORDERS_AND_ITEMS_REPORT` to synthesize Uber-only historical order/item coverage.
 
@@ -436,16 +437,30 @@ Recommended implementation sequence:
 
 The prerequisite is **SATISFIED**. Slice 5B was deployed on the running VM on 2026-09-12, its migration applied successfully, and the user reported normal runtime smoke behavior. This confirms that the Journal/CoA persisted foundation can be applied cleanly before the 5C-A migration is stacked on top. It still does not imply that Revenue/settlement workflows already use the new Journal, and the Phase remains subject to the later consolidated active-verification/closeout gate.
 
-### 17.9 Slice 5C-A local implementation result
+### 17.9 Slice 5C-A implementation result
 
-Slice 5C-A is now **LOCAL SOURCE COMPLETE / USER REVIEW** on `refactor/phase9-slice5c-a-inbox-core`, based on `origin/dev@7419c982`. It is deliberately additive and does not cut over Gmail, Accounting Web manual upload, Uber reporting/runtime ingestion, current Expense persistence, current `PlatformSettlementRecord`, Journal posting, Revenue Posting or settlement reconciliation.
+Slice 5C-A is **MERGED / CI GREEN** through PR #2291. Final PR head `2e4167bf` passed CI #5526 across Prisma generation, architecture baseline, API/Web lint/build/strict declarations and tests before squash merge `913e88aa`. The slice is deliberately additive and does not cut over Gmail, Accounting Web manual upload, Uber reporting/runtime ingestion, current Expense persistence, current `PlatformSettlementRecord`, Journal posting, Revenue Posting or settlement reconciliation.
 
 The persisted core adds `AccountingSourceArtifact`, `AccountingParseRun`, `AccountingInboxItem`, `AccountingTrustedSender`, `AccountingProviderFinancialDocument`, `AccountingProviderFinancialLine` and `AccountingProviderFinancialCoverage` plus the supporting enums and matching migration. Transport identity, SHA-256 content identity and provider business identity are separate. Re-acquiring identical content creates explicit duplicate evidence; corrected content under the same provider/document/business identity creates a monotonic revision/supersession chain. One SourceArtifact can materialize to at most one canonical ProviderFinancialDocument, and Inbox materialization records only the target stable identity (`materializedEntityType` + `materializedEntityStableId`) rather than leaking a downstream DB UUID.
 
 `EMAIL_BODY`, file artifacts and provider/API artifacts share the same evidence model. Email intake requires an explicit sender trust decision; untrusted email evidence enters `QUARANTINED`, while trusted-sender configuration is audited with stable operator identity. Parser runs are versioned/idempotent per artifact + parser name + parser version; a successful result is immutable for that parser version. Provider financial lines preserve signed minor-unit values, normalized financial component, tax role and posting treatment without creating `AccountingJournalEntry` / `AccountingJournalLine` rows.
 
-Persistence writes stay inside an Accounting-owned writer that accepts `Prisma.TransactionClient`; a separate Accounting-owned orchestrator applies the existing Serializable transaction policy and P2002 race recovery without importing `PrismaService`. `AccountingOperationsService` keeps only thin entry/error-mapping wrappers. No new production file imports `PrismaService`, so this slice does not intentionally increase the Accounting -> Runtime direct-debt baseline. Provider-document revision creation includes one P2002 race-recovery retry so concurrent corrected statements can advance to the next revision rather than requiring an immediate manual retry.
+Persistence writes stay inside an Accounting-owned writer that accepts `Prisma.TransactionClient`; a separate Accounting-owned orchestrator applies the existing Serializable transaction policy and P2002 race recovery without importing `PrismaService`. `AccountingOperationsService` keeps only thin entry/error-mapping wrappers. No new production file imports `PrismaService`, so 5C-A did not increase the Accounting -> Runtime direct-debt baseline. Provider-document revision creation includes one P2002 race-recovery retry so concurrent corrected statements can advance to the next revision rather than requiring an immediate manual retry.
 
 The provider coverage core fixes `financialHistoryRequiredFrom` at **2026-06-01** for CLOVER / UBER_EATS / FANTUAN while keeping `financialCompleteThrough`, `liveOrderFactCutoverAt` and `orderDetailCoverageFrom` independent. This is financial-evidence coverage only and does not synthesize historical Orders or opening receivables.
 
-The matching migration `20260912131500_phase9_slice5c_a_unified_inbox_core` is created and statically reviewed but has **not** been applied on the VM. Policy, writer-characterization and architecture tests cover artifact trust/duplicate handling, parser immutability, trusted-sender audit, provider revision/materialization, coverage identity, one corrected-statement P2002 race recovery, additive migration invariants and the no-Journal/no-new-PrismaService ownership boundary. Per repository review cadence, local lint/build/test/Prisma generation are not claimed before user review; those remain for GitHub Actions after explicit remote-delivery authorization.
+The matching additive migration `20260912131500_phase9_slice5c_a_unified_inbox_core` has **not** been applied on the running VM in this worklog state. CI #5526 validated the migration and ownership/characterization guards; production deployment remains part of the later Accounting rollout/Phase verification unless an earlier gate is explicitly chosen.
+
+### 17.10 Slice 5C-B local implementation result
+
+Slice 5C-B is **LOCAL SOURCE COMPLETE / REMOTE DELIVERY AUTHORIZED** on `refactor/phase9-slice5c-b-acquisition-cutover`, based on `origin/dev@913e88aa`. It cuts Gmail and current Accounting Web manual evidence acquisition onto the 5C-A Unified Inbox without adding a new Prisma migration or Journal posting path.
+
+`AccountingGmailIngestService` no longer writes directly to `AccountingExpenseDocument` or imports `PrismaService`. Each eligible Gmail message body and each supported attachment are acquired independently, so a structured Clover Closeout body is preserved even when the same email also carries a file. Body content SHA-256 is derived from normalized body content rather than Gmail message ID; transport identity remains separate. Trusted Sender lookup determines only `TRUSTED` versus `UNTRUSTED`: untrusted mail enters `QUARANTINED` and is not parsed, while a later replay after sender approval can promote the same transport artifact to `PENDING_REVIEW` without creating a second source fact.
+
+`AccountingInboxAcquisitionService` is the common `EMAIL` / `MANUAL_UPLOAD` acquisition path for PDF, CSV, JPEG, PNG and WebP. Raw bytes are hashed before any OCR/image derivative work and stored under Accounting Inbox evidence storage. Generic PDF/image/email-body parsing remains review assistance only; CSV is explicitly preserved with provider-parser-pending state for 5C-C rather than interpreted as an Expense. Manual uploads now use `POST /accounting/inbox/artifacts`, and the Accounting Inbox Web UI exposes source/trust/status, raw evidence, trusted-sender management, explicit “review as expense”, discard, and the existing enabled-intake runner. The old Expenses page no longer owns receipt upload and links users into Accounting Inbox instead.
+
+Expense behavior is preserved downstream during expansion: an Inbox artifact becomes `AccountingExpenseDocument` only after explicit user review, then the existing confirmed Expense split/period/audit transaction path runs and marks the linked Inbox item `CONFIRMED`. Discard keeps immutable SourceArtifact evidence, marks any pending materialized Expense discarded, and clears the materialized link before `DISCARDED` so the 5C-A database invariant remains valid. Dashboard pending count now reflects Unified Inbox `PENDING_REVIEW + QUARANTINED` rather than only legacy pending ExpenseDocuments.
+
+The legacy public receipt-upload path is **contracted directly in 5C-B**. The user explicitly authorized dropping compatibility because Accounting is not yet in formal operational use, Gmail intake is disabled during the work, and no manual file upload will occur before the new path is complete. `POST /accounting/files/receipts` and the receipt-only save/compression path are removed; `POST /accounting/inbox/artifacts` is the only file-acquisition route in current source. The accepted impact is that a stale cached Accounting client that still calls the old route will fail and must refresh to the new Accounting bundle; no compatibility register entry or dual path is retained.
+
+The decomposition review also resolves both new-file size boundaries: the original 869-line Inbox page draft is split into a 322-line page plus cohesive `expense-review-panel.tsx`, `inbox-items-list.tsx` and `inbox-model.ts` modules, while Expense materialization/confirm/discard persistence is extracted from the 5C-A core writer into the dedicated Accounting-owned `accounting-inbox-expense.writer.ts`. Both writers accept `Prisma.TransactionClient` only. Focused Gmail/acquisition/writer/architecture coverage locks body+attachment coexistence, quarantine behavior, content identity, CSV deferral and expense materialization/discard. Static dependency review removes one production `PrismaService` import from Gmail ingestion, so the monotonic baseline contracts Accounting -> Runtime **7 -> 6** and Accounting direct debt **13 -> 12**; CI scanner confirmation is pending remote delivery. No local lint/build/test/scanner execution is claimed before remote CI.

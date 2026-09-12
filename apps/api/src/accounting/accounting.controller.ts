@@ -19,6 +19,7 @@ import {
 } from '@nestjs/common';
 import {
   AccountingDocumentStatus,
+  AccountingInboxStatus,
   AccountingSourceType,
   AccountingTxType,
   SettlementPlatform,
@@ -29,7 +30,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Roles, RolesGuard, SessionAuthGuard } from '../auth/public-api';
 import { getUploadsAccountingDir } from '../common/utils/uploads-path';
-import { ACCOUNTING_RECEIPT_IMAGE_POLICY } from './accounting-receipt-image';
+import {
+  ACCOUNTING_INBOX_FILE_MAX_BYTES,
+  AccountingInboxAcquisitionService,
+} from './accounting-inbox-acquisition.service';
 import { AccountingService } from './accounting.service';
 import { AccountingAutomationScheduler } from './accounting-automation.scheduler';
 import {
@@ -70,6 +74,7 @@ export class AccountingController {
   constructor(
     private readonly accountingService: AccountingService,
     private readonly operations: AccountingOperationsService,
+    private readonly acquisition: AccountingInboxAcquisitionService,
     private readonly automation: AccountingAutomationScheduler,
     @Inject(UBER_EATS_REPORTING)
     private readonly uberReporting: UberEatsReportingPort,
@@ -132,48 +137,70 @@ export class AccountingController {
   }
 
   @Get('inbox')
-  inbox(@Query('limit') limit?: string) {
-    return this.operations.listExpenseDocuments({
-      status: AccountingDocumentStatus.PENDING_REVIEW,
+  inbox(
+    @Query('status') status?: AccountingInboxStatus,
+    @Query('limit') limit?: string,
+  ) {
+    return this.operations.listUnifiedInboxItems({
+      status,
       limit: this.parseNonNegativeNumber(limit, 'limit'),
     });
   }
 
-  @Post('inbox/:documentStableId/confirm')
-  confirmInboxDocument(
-    @Param('documentStableId') documentStableId: string,
-    @Body() body: AccountingExpenseInput,
+  @Post('inbox/artifacts')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: ACCOUNTING_INBOX_FILE_MAX_BYTES },
+    }),
+  )
+  async uploadInboxArtifact(
+    @UploadedFile()
+    file:
+      | { originalname: string; mimetype?: string; buffer: Buffer }
+      | undefined,
+  ) {
+    if (!file) throw new BadRequestException('file is required');
+    return this.acquisition.acquireManualFile(file);
+  }
+
+  @Get('inbox/trusted-senders')
+  listTrustedSenders() {
+    return this.operations.listTrustedSenders();
+  }
+
+  @Put('inbox/trusted-senders')
+  upsertTrustedSender(
+    @Body() body: { email: string; label?: string | null; isActive?: boolean },
     @Req() req: AuthedAccountingRequest,
   ) {
-    return this.operations.confirmInboxDocument(
-      documentStableId,
+    return this.operations.upsertTrustedSender(
       body,
       this.requireOperatorUserId(req),
     );
   }
 
-  @Delete('inbox/:documentStableId')
-  discardInboxDocument(
-    @Param('documentStableId') documentStableId: string,
+  @Post('inbox/:inboxItemStableId/expense/confirm')
+  confirmInboxExpense(
+    @Param('inboxItemStableId') inboxItemStableId: string,
+    @Body() body: AccountingExpenseInput,
     @Req() req: AuthedAccountingRequest,
   ) {
-    return this.operations.discardInboxDocument(
-      documentStableId,
+    return this.operations.confirmUnifiedInboxExpense(
+      inboxItemStableId,
+      body,
       this.requireOperatorUserId(req),
     );
   }
 
-  @Post('files/receipts')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      limits: { fileSize: ACCOUNTING_RECEIPT_IMAGE_POLICY.maxUploadBytes },
-    }),
-  )
-  async uploadReceipt(
-    @UploadedFile() file: { originalname: string; buffer: Buffer } | undefined,
+  @Delete('inbox/:inboxItemStableId')
+  discardInboxItem(
+    @Param('inboxItemStableId') inboxItemStableId: string,
+    @Req() req: AuthedAccountingRequest,
   ) {
-    if (!file) throw new BadRequestException('file is required');
-    return { url: await this.operations.saveReceiptImage(file) };
+    return this.operations.discardUnifiedInboxItem(
+      inboxItemStableId,
+      this.requireOperatorUserId(req),
+    );
   }
 
   @Get('files/:kind/:fileName')
@@ -184,20 +211,23 @@ export class AccountingController {
   ) {
     const safeName = path.basename(fileName);
     const extension = path.extname(safeName).toLowerCase();
+    const imageContentType =
+      extension === '.jpg' || extension === '.jpeg'
+        ? 'image/jpeg'
+        : extension === '.png'
+          ? 'image/png'
+          : extension === '.webp'
+            ? 'image/webp'
+            : null;
     const contentType =
-      kind === 'bills' && extension === '.pdf'
+      (kind === 'bills' || kind === 'inbox') && extension === '.pdf'
         ? 'application/pdf'
-        : kind === 'bills' && extension === '.webp'
-          ? 'image/webp'
-          : kind === 'uber-reports' && extension === '.csv'
-            ? 'text/csv; charset=utf-8'
-            : kind === 'receipts' && extension === '.jpg'
-              ? 'image/jpeg'
-              : kind === 'receipts' && extension === '.png'
-                ? 'image/png'
-                : kind === 'receipts' && extension === '.webp'
-                  ? 'image/webp'
-                  : null;
+        : (kind === 'uber-reports' || kind === 'inbox') && extension === '.csv'
+          ? 'text/csv; charset=utf-8'
+          : (kind === 'bills' || kind === 'receipts' || kind === 'inbox') &&
+              imageContentType
+            ? imageContentType
+            : null;
     if (!contentType || safeName !== fileName) {
       throw new NotFoundException('accounting file not found');
     }

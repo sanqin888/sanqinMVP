@@ -5,6 +5,7 @@ import {
   AccountingFinancialComponent,
   AccountingFinancialDocumentType,
   AccountingFinancialPostingTreatment,
+  AccountingDocumentSource,
   AccountingFinancialProvider,
   AccountingFinancialTaxRole,
   AccountingInboxTrustDecision,
@@ -43,6 +44,23 @@ export type AccountingTrustedSenderInput = {
   email: string;
   label?: string | null;
   isActive?: boolean;
+};
+
+export type AccountingInboxExpenseMaterializationInput = {
+  artifactStableId: string;
+  source: AccountingDocumentSource;
+  occurredAt?: Date | string | null;
+  subtotalCents?: number | null;
+  taxCents?: number | null;
+  totalCents?: number | null;
+  currency?: string;
+  gmailMessageId?: string | null;
+  gmailAttachmentId?: string | null;
+  emailSubject?: string | null;
+  attachmentUrls?: string[];
+  extractedText?: string | null;
+  extractionJson?: unknown;
+  memo?: string | null;
 };
 
 export type AccountingProviderFinancialLineInput = {
@@ -180,6 +198,65 @@ export function normalizeAccountingTrustedSender(
   };
 }
 
+export function normalizeAccountingInboxExpenseMaterialization(
+  input: AccountingInboxExpenseMaterializationInput,
+) {
+  const artifactStableId = requireText(
+    input.artifactStableId,
+    'artifactStableId',
+  );
+  const currency = input.currency?.trim().toUpperCase() || 'CAD';
+  if (!/^[A-Z]{3}$/.test(currency)) {
+    throw new AccountingInboxPolicyError('currency must be a 3-letter code');
+  }
+  const occurredAt = optionalDate(input.occurredAt, 'occurredAt');
+  const subtotalCents = optionalNonNegativeInteger(
+    input.subtotalCents,
+    'subtotalCents',
+  );
+  const taxCents = optionalNonNegativeInteger(input.taxCents, 'taxCents');
+  const totalCents = optionalNonNegativeInteger(input.totalCents, 'totalCents');
+  if (
+    subtotalCents !== null &&
+    taxCents !== null &&
+    totalCents !== null &&
+    subtotalCents + taxCents !== totalCents
+  ) {
+    throw new AccountingInboxPolicyError(
+      'expense extraction subtotal + tax must equal total when all are present',
+    );
+  }
+  const gmailMessageId = optionalText(input.gmailMessageId);
+  const gmailAttachmentId = optionalText(input.gmailAttachmentId);
+  if (input.source === AccountingDocumentSource.GMAIL && !gmailMessageId) {
+    throw new AccountingInboxPolicyError(
+      'GMAIL expense materialization requires gmailMessageId',
+    );
+  }
+  const attachmentUrls = Array.from(
+    new Set(
+      (input.attachmentUrls ?? [])
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  );
+  return {
+    ...input,
+    artifactStableId,
+    occurredAt,
+    subtotalCents,
+    taxCents,
+    totalCents,
+    currency,
+    gmailMessageId,
+    gmailAttachmentId,
+    emailSubject: optionalText(input.emailSubject),
+    attachmentUrls,
+    extractedText: optionalText(input.extractedText),
+    memo: optionalText(input.memo),
+  };
+}
+
 export function normalizeProviderFinancialDocument(
   input: AccountingProviderFinancialDocumentInput,
 ) {
@@ -270,6 +347,19 @@ function requireText(value: string, field: string): string {
 function optionalText(value?: string | null): string | null {
   const normalized = value?.trim();
   return normalized ? normalized : null;
+}
+
+function optionalNonNegativeInteger(
+  value: number | null | undefined,
+  field: string,
+): number | null {
+  if (value == null) return null;
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new AccountingInboxPolicyError(
+      `${field} must be a non-negative integer when provided`,
+    );
+  }
+  return value;
 }
 
 function normalizeEmail(value: string): string {

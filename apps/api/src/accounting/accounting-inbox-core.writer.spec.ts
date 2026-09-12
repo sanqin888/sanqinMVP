@@ -1,6 +1,8 @@
 import {
   AccountingArtifactAcquisitionMode,
   AccountingArtifactKind,
+  AccountingDocumentSource,
+  AccountingDocumentStatus,
   AccountingFinancialComponent,
   AccountingFinancialDocumentType,
   AccountingFinancialPostingTreatment,
@@ -13,6 +15,7 @@ import {
 } from '@prisma/client';
 import {
   normalizeAccountingInboxArtifact,
+  normalizeAccountingInboxExpenseMaterialization,
   normalizeAccountingParseRun,
   normalizeAccountingTrustedSender,
   normalizeProviderFinancialDocument,
@@ -25,6 +28,10 @@ import {
   registerInboxArtifactInTx,
   upsertTrustedSenderInTx,
 } from './accounting-inbox-core.writer';
+import {
+  discardInboxItemInTx,
+  materializeInboxExpenseInTx,
+} from './accounting-inbox-expense.writer';
 
 const SHA_A = 'a'.repeat(64);
 const SHA_B = 'b'.repeat(64);
@@ -37,6 +44,12 @@ describe('Accounting Inbox core persistence writer', () => {
       create: jest.fn(),
     },
     accountingInboxItem: {
+      findUnique: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+    },
+    accountingExpenseDocument: {
+      findUnique: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
     },
@@ -92,6 +105,7 @@ describe('Accounting Inbox core persistence writer', () => {
       artifactStableId: 'acctart_stable_1',
       contentHash: SHA_A,
       kind: AccountingArtifactKind.EMAIL_BODY,
+      storedUrl: null,
       inboxItem: {
         inboxItemStableId: 'acctinbox_stable_1',
         status: AccountingInboxStatus.PENDING_REVIEW,
@@ -99,6 +113,7 @@ describe('Accounting Inbox core persistence writer', () => {
         duplicateOfArtifact: null,
       },
       duplicateOfArtifactStableId: null,
+      replayed: false,
     });
     expect(tx.accountingInboxItem.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -150,6 +165,148 @@ describe('Accounting Inbox core persistence writer', () => {
         }) as unknown,
       }) as unknown,
     );
+  });
+
+  it('promotes a quarantined transport replay after the sender becomes trusted', async () => {
+    const tx = makeTx();
+    tx.accountingSourceArtifact.findUnique.mockResolvedValue({
+      artifactStableId: 'acctart_existing',
+      contentHash: SHA_A,
+      kind: AccountingArtifactKind.EMAIL_BODY,
+      inboxItem: {
+        id: 'inbox-db-id',
+        inboxItemStableId: 'acctinbox_existing',
+        status: AccountingInboxStatus.QUARANTINED,
+        classification: AccountingInboxClassification.UNKNOWN,
+        trustDecision: AccountingInboxTrustDecision.UNTRUSTED,
+        materializedEntityType: null,
+        materializedEntityStableId: null,
+        duplicateOfArtifact: null,
+      },
+    });
+    tx.accountingInboxItem.update.mockResolvedValue({
+      inboxItemStableId: 'acctinbox_existing',
+      status: AccountingInboxStatus.PENDING_REVIEW,
+      classification: AccountingInboxClassification.UNKNOWN,
+      trustDecision: AccountingInboxTrustDecision.TRUSTED,
+      materializedEntityType: null,
+      materializedEntityStableId: null,
+      duplicateOfArtifact: null,
+    });
+
+    const result = await registerInboxArtifactInTx(
+      tx as never,
+      normalizeAccountingInboxArtifact({
+        acquisitionMode: AccountingArtifactAcquisitionMode.EMAIL,
+        kind: AccountingArtifactKind.EMAIL_BODY,
+        transportIdentity: 'gmail:message-1:body',
+        contentHash: SHA_A,
+        bodyText: 'invoice total $12.34',
+        senderEmail: 'trusted@example.com',
+        trustDecision: AccountingInboxTrustDecision.TRUSTED,
+      }),
+    );
+
+    expect(result.replayed).toBe(true);
+    expect(result.inboxItem?.status).toBe(AccountingInboxStatus.PENDING_REVIEW);
+    expect(tx.accountingInboxItem.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'inbox-db-id' },
+        data: expect.objectContaining({
+          status: AccountingInboxStatus.PENDING_REVIEW,
+          trustDecision: AccountingInboxTrustDecision.TRUSTED,
+        }) as unknown,
+      }) as unknown,
+    );
+  });
+
+  it('materializes a pending Inbox artifact to a legacy ExpenseDocument only on explicit review', async () => {
+    const tx = makeTx();
+    tx.accountingSourceArtifact.findUnique.mockResolvedValue({
+      contentHash: SHA_A,
+      inboxItem: {
+        id: 'inbox-db-id',
+        status: AccountingInboxStatus.PENDING_REVIEW,
+        classification: AccountingInboxClassification.UNKNOWN,
+        materializedEntityType: null,
+        materializedEntityStableId: null,
+      },
+    });
+    tx.accountingExpenseDocument.create.mockResolvedValue({});
+    tx.accountingInboxItem.update.mockResolvedValue({});
+
+    const result = await materializeInboxExpenseInTx(
+      tx as never,
+      normalizeAccountingInboxExpenseMaterialization({
+        artifactStableId: 'acctart_expense',
+        source: AccountingDocumentSource.GMAIL,
+        occurredAt: '2026-09-12',
+        subtotalCents: 1000,
+        taxCents: 130,
+        totalCents: 1130,
+        gmailMessageId: 'gmail-message-1',
+        gmailAttachmentId: 'attachment-1',
+        attachmentUrls: ['/api/v1/accounting/files/inbox/invoice.pdf'],
+      }),
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({ replayed: false }) as unknown,
+    );
+    expect(tx.accountingExpenseDocument.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          source: AccountingDocumentSource.GMAIL,
+          status: AccountingDocumentStatus.PENDING_REVIEW,
+          fileHash: SHA_A,
+          gmailMessageId: 'gmail-message-1',
+        }) as unknown,
+      }) as unknown,
+    );
+    expect(tx.accountingInboxItem.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          classification: AccountingInboxClassification.EXPENSE_DOCUMENT,
+          materializedEntityType:
+            AccountingInboxMaterializedEntityType.EXPENSE_DOCUMENT,
+        }) as unknown,
+      }) as unknown,
+    );
+    expect('accountingJournalEntry' in tx).toBe(false);
+  });
+
+  it('clears a pending expense materialization before marking its Inbox item discarded', async () => {
+    const tx = makeTx();
+    tx.accountingInboxItem.findUnique.mockResolvedValue({
+      id: 'inbox-db-id',
+      status: AccountingInboxStatus.PENDING_REVIEW,
+      materializedEntityType:
+        AccountingInboxMaterializedEntityType.EXPENSE_DOCUMENT,
+      materializedEntityStableId: 'expense_1',
+    });
+    tx.accountingExpenseDocument.findUnique.mockResolvedValue({
+      id: 'expense-db-id',
+      status: AccountingDocumentStatus.PENDING_REVIEW,
+    });
+    tx.accountingExpenseDocument.update.mockResolvedValue({});
+    tx.accountingInboxItem.update.mockResolvedValue({});
+    tx.accountingAuditLog.create.mockResolvedValue({});
+
+    await discardInboxItemInTx(tx as never, 'acctinbox_1', 'user_stable_1');
+
+    expect(tx.accountingExpenseDocument.update).toHaveBeenCalledWith({
+      where: { id: 'expense-db-id' },
+      data: { status: AccountingDocumentStatus.DISCARDED },
+    });
+    expect(tx.accountingInboxItem.update).toHaveBeenCalledWith({
+      where: { id: 'inbox-db-id' },
+      data: expect.objectContaining({
+        status: AccountingInboxStatus.DISCARDED,
+        classification: AccountingInboxClassification.UNKNOWN,
+        materializedEntityType: null,
+        materializedEntityStableId: null,
+      }) as unknown,
+    });
   });
 
   it('rejects transport identity reuse with changed content', async () => {

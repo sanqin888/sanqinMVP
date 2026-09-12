@@ -33,11 +33,16 @@ const ARTIFACT_PUBLIC_SELECT = {
   artifactStableId: true,
   contentHash: true,
   kind: true,
+  storedUrl: true,
   inboxItem: {
     select: {
+      id: true,
       inboxItemStableId: true,
       status: true,
       classification: true,
+      trustDecision: true,
+      materializedEntityType: true,
+      materializedEntityStableId: true,
       duplicateOfArtifact: { select: { artifactStableId: true } },
     },
   },
@@ -65,7 +70,8 @@ export async function registerInboxArtifactInTx(
         'artifact transport identity was reused with different content',
       );
     }
-    return presentRegisteredArtifact(existing);
+    const promoted = await promoteArtifactTrustIfNeeded(tx, existing, normalized);
+    return presentRegisteredArtifact(promoted, true);
   }
 
   const duplicate = await tx.accountingSourceArtifact.findFirst({
@@ -111,6 +117,9 @@ export async function registerInboxArtifactInTx(
       inboxItemStableId: true,
       status: true,
       classification: true,
+      trustDecision: true,
+      materializedEntityType: true,
+      materializedEntityStableId: true,
       duplicateOfArtifact: { select: { artifactStableId: true } },
     },
   });
@@ -118,8 +127,10 @@ export async function registerInboxArtifactInTx(
     artifactStableId: artifact.artifactStableId,
     contentHash: normalized.contentHash,
     kind: normalized.kind,
+    storedUrl: normalized.storedUrl,
     inboxItem,
     duplicateOfArtifactStableId: duplicate?.artifactStableId ?? null,
+    replayed: false,
   };
 }
 
@@ -145,7 +156,8 @@ export async function readInboxArtifactReplay(
       'artifact registration conflict',
     );
   }
-  return presentRegisteredArtifact(existing);
+  const promoted = await promoteArtifactTrustIfNeeded(tx, existing, normalized);
+  return presentRegisteredArtifact(promoted, true);
 }
 
 export async function recordParseRunInTx(
@@ -479,17 +491,57 @@ export async function ensureProviderFinancialCoverageInTx(
   };
 }
 
+type ArtifactPublicRow = Prisma.AccountingSourceArtifactGetPayload<{
+  select: typeof ARTIFACT_PUBLIC_SELECT;
+}>;
+
+async function promoteArtifactTrustIfNeeded(
+  tx: AccountingTx,
+  row: ArtifactPublicRow,
+  normalized: NormalizedArtifact,
+): Promise<ArtifactPublicRow> {
+  if (
+    normalized.trustDecision !== AccountingInboxTrustDecision.TRUSTED ||
+    row.inboxItem?.status !== AccountingInboxStatus.QUARANTINED ||
+    row.inboxItem.trustDecision !== AccountingInboxTrustDecision.UNTRUSTED
+  ) {
+    return row;
+  }
+  const inboxItem = await tx.accountingInboxItem.update({
+    where: { id: row.inboxItem.id },
+    data: {
+      status: AccountingInboxStatus.PENDING_REVIEW,
+      trustDecision: AccountingInboxTrustDecision.TRUSTED,
+      version: { increment: 1 },
+    },
+    select: ARTIFACT_PUBLIC_SELECT.inboxItem.select,
+  });
+  return { ...row, inboxItem };
+}
+
 export function presentRegisteredArtifact(
-  row: Prisma.AccountingSourceArtifactGetPayload<{
-    select: typeof ARTIFACT_PUBLIC_SELECT;
-  }>,
+  row: ArtifactPublicRow,
+  replayed = false,
 ) {
   return {
     artifactStableId: row.artifactStableId,
     contentHash: row.contentHash,
     kind: row.kind,
-    inboxItem: row.inboxItem,
+    storedUrl: row.storedUrl,
+    inboxItem: row.inboxItem
+      ? {
+          inboxItemStableId: row.inboxItem.inboxItemStableId,
+          status: row.inboxItem.status,
+          classification: row.inboxItem.classification,
+          trustDecision: row.inboxItem.trustDecision,
+          materializedEntityType: row.inboxItem.materializedEntityType,
+          materializedEntityStableId:
+            row.inboxItem.materializedEntityStableId,
+          duplicateOfArtifact: row.inboxItem.duplicateOfArtifact,
+        }
+      : null,
     duplicateOfArtifactStableId:
       row.inboxItem?.duplicateOfArtifact?.artifactStableId ?? null,
+    replayed,
   };
 }

@@ -659,7 +659,7 @@
     "accounting-reporting-analytics -> architecture-foundation": 3,
     "accounting-reporting-analytics -> external-channels": 1,
     "accounting-reporting-analytics -> identity-customer-benefits": 2,
-    "accounting-reporting-analytics -> runtime-data-ci-ops": 7,
+    "accounting-reporting-analytics -> runtime-data-ci-ops": 6,
     "brand-store -> architecture-foundation": 2,
     "brand-store -> runtime-data-ci-ops": 3,
     "catalog-pricing-offers -> architecture-foundation": 2,

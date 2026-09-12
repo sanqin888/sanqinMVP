@@ -6,6 +6,7 @@ import { AuthModule } from '../auth/auth.module';
 import { UberEatsModule } from '../integrations/ubereats/ubereats.module';
 import { AccountingAutomationScheduler } from './accounting-automation.scheduler';
 import { AccountingGmailIngestService } from './accounting-gmail-ingest.service';
+import { AccountingInboxAcquisitionService } from './accounting-inbox-acquisition.service';
 import { AccountingOperationsService } from './accounting-operations.service';
 import { BrandStoreConfigModule } from '../store/public-api';
 
@@ -15,6 +16,7 @@ import { BrandStoreConfigModule } from '../store/public-api';
   providers: [
     AccountingService,
     AccountingOperationsService,
+    AccountingInboxAcquisitionService,
     AccountingGmailIngestService,
     AccountingAutomationScheduler,
   ],
