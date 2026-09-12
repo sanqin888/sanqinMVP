@@ -39,6 +39,14 @@ type AutomationResult = {
     skippedBeforeStartDate: number;
   };
   uber?: Array<unknown>;
+  uberFinancialHistory?: {
+    scannedReports: number;
+    importedReports: number;
+    importedArtifacts: number;
+    deferredArtifacts: number;
+    skippedBeforeStartDate: number;
+    skippedOrderDetailReports: number;
+  };
 };
 type PeriodClose = {
   periodType: 'MONTH' | 'YEAR';
@@ -317,6 +325,7 @@ export default function AccountingSettingsPage() {
         </div> : null}
         {automation?.nextRunAt ? <p className="mt-3 text-xs text-slate-500">{isZh ? '下次执行' : 'Next run'}: {new Date(automation.nextRunAt).toLocaleString()}</p> : null}
         {automationResult?.gmail ? <p className="mt-3 rounded-lg bg-slate-50 p-3 text-sm">{isZh ? '扫描邮件' : 'Scanned'}: {automationResult.gmail.scannedMessages} · {isZh ? '新账单' : 'Imported'}: {automationResult.gmail.importedDocuments} · {isZh ? '起始日前忽略' : 'Before start date'}: {automationResult.gmail.skippedBeforeStartDate} · {isZh ? '重复' : 'Duplicates'}: {automationResult.gmail.duplicateDocuments} · {isZh ? '失败' : 'Failed'}: {automationResult.gmail.failedDocuments}</p> : null}
+        {automationResult?.uberFinancialHistory ? <p className="mt-2 rounded-lg bg-slate-50 p-3 text-sm">{isZh ? 'Uber 财务资料' : 'Uber financial evidence'}: {isZh ? '扫描报表' : 'Reports scanned'} {automationResult.uberFinancialHistory.scannedReports} · {isZh ? '已规范化' : 'Normalized'} {automationResult.uberFinancialHistory.importedArtifacts} · {isZh ? '等待真实格式解析' : 'Deferred'} {automationResult.uberFinancialHistory.deferredArtifacts} · {isZh ? '订单明细跳过' : 'Order-detail skipped'} {automationResult.uberFinancialHistory.skippedOrderDetailReports}</p> : null}
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">

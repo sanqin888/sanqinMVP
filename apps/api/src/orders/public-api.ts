@@ -82,6 +82,16 @@ export {
 } from './order-external-facts-reader.contract';
 export { OrderExternalFactsModule } from './order-external-facts.module';
 export {
+  ORDER_REPORTING_FACTS_READER,
+  type OrderReportingBreakdownFactV1,
+  type OrderReportingFactsReaderPort,
+  type OrderReportingItemComponentFactV1,
+  type OrderReportingItemFactV1,
+  type OrderReportingMetricFactV1,
+  type OrderReportingMetricsV1,
+} from './order-reporting-facts-reader.contract';
+export { OrderReportingFactsModule } from './order-reporting-facts.module';
+export {
   ORDER_EXTERNAL_TRANSITION_COORDINATOR,
   type OrderExternalTransition,
   type OrderExternalTransitionCompletion,

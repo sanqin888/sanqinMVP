@@ -2,22 +2,55 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
-  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
+  AccountingAccountClass,
   AccountingDocumentSource,
   AccountingDocumentStatus,
+  AccountingFinancialProvider,
+  AccountingInboxMaterializedEntityType,
+  AccountingInboxStatus,
   AccountingSourceType,
   AccountingTxType,
   Prisma,
 } from '@prisma/client';
 import { createId } from '@paralleldrive/cuid2';
-import * as fs from 'fs';
-import * as path from 'path';
-import { getUploadsAccountingDir } from '../common/utils/uploads-path';
 import { PrismaService } from '../prisma/prisma.service';
-import { processAccountingReceiptImage } from './accounting-receipt-image';
+import { runSerializableAccountingWrite } from './accounting-atomic-write';
+import { DEFAULT_ACCOUNTING_ACCOUNTS } from './accounting-chart-of-accounts';
+import {
+  confirmAccountingProviderFinancialInboxItem,
+  discardAccountingInboxItem,
+  ensureAccountingProviderFinancialCoverage,
+  materializeAccountingInboxExpense,
+  recordAccountingInboxParseRun,
+  recordAccountingProviderFinancialDocument,
+  registerAccountingInboxArtifact,
+  upsertAccountingTrustedSender,
+} from './accounting-inbox-core.orchestrator';
+import {
+  AccountingInboxPolicyError,
+  type AccountingInboxArtifactInput,
+  type AccountingInboxExpenseMaterializationInput,
+  type AccountingParseRunInput,
+  type AccountingProviderFinancialDocumentInput,
+  type AccountingTrustedSenderInput,
+} from './accounting-inbox-core.policy';
+import {
+  AccountingInboxWriterConflictError,
+  AccountingInboxWriterNotFoundError,
+} from './accounting-inbox-core.writer';
+import { markInboxExpenseConfirmedInTx } from './accounting-inbox-expense.writer';
+import {
+  accountingJsonRecord,
+  accountingOptionalString,
+  countAccountingInboxReviewItems,
+  getAccountingSenderTrustDecision,
+  listAccountingTrustedSenders,
+  listAccountingUnifiedInboxItems,
+  readAccountingInboxExpenseContext,
+} from './accounting-inbox-query';
 import { AccountingService } from './accounting.service';
 
 export type AccountingExpenseSplitInput = {
@@ -164,8 +197,6 @@ type AccountingDocumentRow = Prisma.AccountingExpenseDocumentGetPayload<{
 
 @Injectable()
 export class AccountingOperationsService {
-  private readonly logger = new Logger(AccountingOperationsService.name);
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly accounting: AccountingService,
@@ -210,28 +241,11 @@ export class AccountingOperationsService {
       }
     }
 
-    const accountDefaults = [
-      {
-        accountStableId: 'account_store_cash',
-        name: '门店现金',
-        type: 'CASH' as const,
-      },
-      {
-        accountStableId: 'account_clover_pending',
-        name: 'Clover 待结算',
-        type: 'PLATFORM_WALLET' as const,
-      },
-      {
-        accountStableId: 'account_uber_pending',
-        name: 'Uber Eats 待结算',
-        type: 'PLATFORM_WALLET' as const,
-      },
-    ];
-    for (const account of accountDefaults) {
+    for (const account of DEFAULT_ACCOUNTING_ACCOUNTS) {
       await this.prisma.accountingAccount.upsert({
         where: { accountStableId: account.accountStableId },
         create: account,
-        update: {},
+        update: { accountClass: account.accountClass },
       });
     }
 
@@ -467,11 +481,16 @@ export class AccountingOperationsService {
 
   async listAccounts() {
     return this.prisma.accountingAccount.findMany({
-      where: { isActive: true },
+      where: {
+        isActive: true,
+        accountClass: AccountingAccountClass.ASSET,
+        type: { not: null },
+      },
       select: {
         accountStableId: true,
         name: true,
         type: true,
+        accountClass: true,
         currency: true,
       },
       orderBy: [{ type: 'asc' }, { name: 'asc' }],
@@ -490,27 +509,197 @@ export class AccountingOperationsService {
         accountStableId: `account_${createId()}`,
         name,
         type: input.type,
+        accountClass: AccountingAccountClass.ASSET,
         currency: input.currency?.trim().toUpperCase() || 'CAD',
       },
       select: {
         accountStableId: true,
         name: true,
         type: true,
+        accountClass: true,
         currency: true,
       },
     });
     return created;
   }
 
-  async saveReceiptImage(file: { originalname: string; buffer: Buffer }) {
-    const processed = await processAccountingReceiptImage(file);
-    const dir = path.join(getUploadsAccountingDir(), 'receipts');
-    await fs.promises.mkdir(dir, { recursive: true });
-    const fileName = `${Date.now()}-${createId()}${processed.extension}`;
-    await fs.promises.writeFile(path.join(dir, fileName), processed.buffer, {
-      flag: 'wx',
-    });
-    return `/api/v1/accounting/files/receipts/${fileName}`;
+  async registerInboxArtifact(input: AccountingInboxArtifactInput) {
+    return this.runInboxCore(() =>
+      registerAccountingInboxArtifact(this.prisma, input),
+    );
+  }
+
+  async materializeInboxExpense(
+    input: AccountingInboxExpenseMaterializationInput,
+  ) {
+    return this.runInboxCore(() =>
+      materializeAccountingInboxExpense(this.prisma, input),
+    );
+  }
+
+  senderTrustDecision(email: string) {
+    return getAccountingSenderTrustDecision(this.prisma, email);
+  }
+
+  listTrustedSenders() {
+    return listAccountingTrustedSenders(this.prisma);
+  }
+
+  listUnifiedInboxItems(params: {
+    status?: AccountingInboxStatus;
+    limit?: number;
+  }) {
+    return listAccountingUnifiedInboxItems(this.prisma, params);
+  }
+
+  async confirmUnifiedInboxExpense(
+    inboxItemStableId: string,
+    input: AccountingExpenseInput,
+    operatorUserStableId: string,
+  ) {
+    const inbox = await readAccountingInboxExpenseContext(
+      this.prisma,
+      inboxItemStableId,
+    );
+    if (!inbox) throw new NotFoundException('accounting inbox item not found');
+    if (inbox.status !== AccountingInboxStatus.PENDING_REVIEW) {
+      throw new ConflictException('only pending inbox items can be confirmed');
+    }
+    if (
+      inbox.materializedEntityType ===
+      AccountingInboxMaterializedEntityType.PROVIDER_FINANCIAL_DOCUMENT
+    ) {
+      throw new ConflictException(
+        'provider financial evidence cannot be confirmed as an expense',
+      );
+    }
+    if (inbox.artifact.acquisitionMode === 'PROVIDER_API') {
+      throw new ConflictException(
+        'provider API evidence cannot be confirmed as an expense',
+      );
+    }
+    const extraction = accountingJsonRecord(
+      inbox.artifact.parseRuns[0]?.resultJson,
+    );
+    if (extraction.providerFinancial === true) {
+      throw new ConflictException(
+        'provider financial evidence cannot be confirmed as an expense',
+      );
+    }
+
+    let documentStableId = inbox.materializedEntityStableId;
+    if (!documentStableId) {
+      const metadata = accountingJsonRecord(inbox.artifact.metadataJson);
+      const subtotalCents = input.splits.reduce(
+        (sum, split) => sum + split.amountCents,
+        0,
+      );
+      const taxCents = input.splits.reduce(
+        (sum, split) => sum + (split.taxCents ?? 0),
+        0,
+      );
+      const materialized = await this.materializeInboxExpense({
+        artifactStableId: inbox.artifact.artifactStableId,
+        source:
+          inbox.artifact.acquisitionMode === 'EMAIL'
+            ? AccountingDocumentSource.GMAIL
+            : AccountingDocumentSource.MANUAL,
+        occurredAt: input.occurredAt,
+        subtotalCents,
+        taxCents,
+        totalCents: input.totalCents,
+        currency: 'CAD',
+        gmailMessageId: accountingOptionalString(metadata.gmailMessageId),
+        gmailAttachmentId: accountingOptionalString(metadata.gmailAttachmentId),
+        emailSubject: inbox.artifact.emailSubject,
+        attachmentUrls: inbox.artifact.storedUrl
+          ? [inbox.artifact.storedUrl]
+          : [],
+        extractedText:
+          accountingOptionalString(extraction.extractedText) ??
+          inbox.artifact.bodyText,
+        extractionJson: extraction,
+        memo: input.memo,
+      });
+      documentStableId = materialized.documentStableId;
+    } else if (
+      inbox.materializedEntityType !==
+      AccountingInboxMaterializedEntityType.EXPENSE_DOCUMENT
+    ) {
+      throw new ConflictException(
+        'inbox item materialization type does not match expense confirmation',
+      );
+    }
+
+    return this.confirmInboxDocument(
+      documentStableId,
+      input,
+      operatorUserStableId,
+    );
+  }
+
+  async discardUnifiedInboxItem(
+    inboxItemStableId: string,
+    operatorUserStableId: string,
+  ) {
+    return this.runInboxCore(() =>
+      discardAccountingInboxItem(
+        this.prisma,
+        inboxItemStableId,
+        operatorUserStableId,
+      ),
+    );
+  }
+
+  async recordInboxParseRun(input: AccountingParseRunInput) {
+    return this.runInboxCore(() =>
+      recordAccountingInboxParseRun(this.prisma, input),
+    );
+  }
+
+  async upsertTrustedSender(
+    input: AccountingTrustedSenderInput,
+    operatorUserStableId: string,
+  ) {
+    return this.runInboxCore(() =>
+      upsertAccountingTrustedSender(this.prisma, input, operatorUserStableId),
+    );
+  }
+
+  async recordProviderFinancialDocument(
+    input: AccountingProviderFinancialDocumentInput,
+  ) {
+    return this.runInboxCore(() =>
+      recordAccountingProviderFinancialDocument(this.prisma, input),
+    );
+  }
+
+  async confirmProviderFinancialInboxItem(
+    inboxItemStableId: string,
+    operatorUserStableId: string,
+  ) {
+    return this.runInboxCore(() =>
+      confirmAccountingProviderFinancialInboxItem(
+        this.prisma,
+        inboxItemStableId,
+        operatorUserStableId,
+      ),
+    );
+  }
+
+  async ensureProviderFinancialCoverage(
+    provider: AccountingFinancialProvider,
+    storeStableId: string,
+    operatorUserStableId?: string,
+  ) {
+    return this.runInboxCore(() =>
+      ensureAccountingProviderFinancialCoverage(
+        this.prisma,
+        provider,
+        storeStableId,
+        operatorUserStableId,
+      ),
+    );
   }
 
   async createExpense(
@@ -518,11 +707,6 @@ export class AccountingOperationsService {
     operatorUserStableId: string,
   ) {
     const occurredAt = this.parseDate(input.occurredAt);
-    await this.accounting.assertOnOrAfterAccountingStartDate(occurredAt);
-    await this.accounting.assertEditableForPeriod(
-      occurredAt,
-      AccountingTxType.EXPENSE,
-    );
     this.assertMoney(input.totalCents, 'totalCents');
     if (!input.splits.length) {
       throw new BadRequestException('at least one expense split is required');
@@ -581,27 +765,38 @@ export class AccountingOperationsService {
 
     const attachmentUrls = this.normalizeUrls(input.attachmentUrls);
     const documentStableId = `expense_${createId()}`;
-    const document = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.accountingExpenseDocument.create({
-        data: {
-          documentStableId,
-          source: AccountingDocumentSource.MANUAL,
-          status: AccountingDocumentStatus.CONFIRMED,
+    const document = await runSerializableAccountingWrite(
+      this.prisma,
+      async (tx) => {
+        await this.accounting.assertOnOrAfterAccountingStartDate(
           occurredAt,
-          subtotalCents,
-          taxCents,
-          totalCents: input.totalCents,
-          currency: account?.currency ?? 'CAD',
-          accountId: account?.id ?? null,
-          attachmentUrls,
-          memo: input.memo?.trim() || null,
-          confirmedAt: new Date(),
-          confirmedByUserId: operatorUserStableId,
-        },
-      });
+          tx,
+        );
+        await this.accounting.assertEditableForPeriod(
+          occurredAt,
+          AccountingTxType.EXPENSE,
+          tx,
+        );
 
-      await tx.accountingTransaction.createMany({
-        data: normalizedSplits.map((split, index) => ({
+        const created = await tx.accountingExpenseDocument.create({
+          data: {
+            documentStableId,
+            source: AccountingDocumentSource.MANUAL,
+            status: AccountingDocumentStatus.CONFIRMED,
+            occurredAt,
+            subtotalCents,
+            taxCents,
+            totalCents: input.totalCents,
+            currency: account?.currency ?? 'CAD',
+            accountId: account?.id ?? null,
+            attachmentUrls,
+            memo: input.memo?.trim() || null,
+            confirmedAt: new Date(),
+            confirmedByUserId: operatorUserStableId,
+          },
+        });
+
+        const splitRows = normalizedSplits.map((split, index) => ({
           txStableId: `accttx_${createId()}`,
           type: AccountingTxType.EXPENSE,
           source: AccountingSourceType.MANUAL,
@@ -618,10 +813,33 @@ export class AccountingOperationsService {
           attachmentUrls,
           createdByUserId: operatorUserStableId,
           updatedByUserId: operatorUserStableId,
-        })),
-      });
-      return created;
-    });
+        }));
+        await tx.accountingTransaction.createMany({ data: splitRows });
+        await tx.accountingAuditLog.createMany({
+          data: splitRows.map((row, index) => ({
+            action: 'CREATE',
+            entityType: 'ACCOUNTING_TRANSACTION',
+            entityId: row.txStableId,
+            operatorUserId: operatorUserStableId,
+            afterJson: {
+              txStableId: row.txStableId,
+              type: row.type,
+              source: row.source,
+              amountCents: row.amountCents,
+              taxCents: row.taxCents,
+              currency: row.currency,
+              occurredAt: occurredAt.toISOString(),
+              categoryStableId: normalizedSplits[index].categoryStableId,
+              documentStableId,
+              idempotencyKey: row.idempotencyKey,
+              externalRef: row.externalRef,
+              attachmentUrls,
+            } as Prisma.InputJsonValue,
+          })),
+        });
+        return created;
+      },
+    );
 
     return this.getExpenseDocument(document.documentStableId);
   }
@@ -670,11 +888,6 @@ export class AccountingOperationsService {
     }
 
     const occurredAt = this.parseDate(input.occurredAt);
-    await this.accounting.assertOnOrAfterAccountingStartDate(occurredAt);
-    await this.accounting.assertEditableForPeriod(
-      occurredAt,
-      AccountingTxType.EXPENSE,
-    );
     this.assertMoney(input.totalCents, 'totalCents');
     if (!input.splits.length) {
       throw new BadRequestException('at least one expense split is required');
@@ -729,14 +942,43 @@ export class AccountingOperationsService {
     if (input.accountStableId && (!account || !account.isActive)) {
       throw new BadRequestException('accountStableId is invalid');
     }
-    const attachmentUrls = Array.from(
-      new Set([
-        ...existing.attachmentUrls,
-        ...this.normalizeUrls(input.attachmentUrls),
-      ]),
-    );
+    const newAttachmentUrls = this.normalizeUrls(input.attachmentUrls);
 
-    await this.prisma.$transaction(async (tx) => {
+    await runSerializableAccountingWrite(this.prisma, async (tx) => {
+      await this.accounting.assertOnOrAfterAccountingStartDate(occurredAt, tx);
+      await this.accounting.assertEditableForPeriod(
+        occurredAt,
+        AccountingTxType.EXPENSE,
+        tx,
+      );
+
+      const current = await tx.accountingExpenseDocument.findUnique({
+        where: { id: existing.id },
+        select: { status: true, attachmentUrls: true },
+      });
+      if (!current) throw new NotFoundException('expense document not found');
+      if (current.status === AccountingDocumentStatus.CONFIRMED) {
+        throw new ConflictException('expense document is already confirmed');
+      }
+
+      const attachmentUrls = Array.from(
+        new Set([...current.attachmentUrls, ...newAttachmentUrls]),
+      );
+      const replacedRows = await tx.accountingTransaction.findMany({
+        where: { documentId: existing.id, deletedAt: null },
+        select: {
+          txStableId: true,
+          type: true,
+          source: true,
+          amountCents: true,
+          taxCents: true,
+          currency: true,
+          occurredAt: true,
+          idempotencyKey: true,
+          externalRef: true,
+          attachmentUrls: true,
+        },
+      });
       await tx.accountingTransaction.deleteMany({
         where: { documentId: existing.id, deletedAt: null },
       });
@@ -756,78 +998,87 @@ export class AccountingOperationsService {
           confirmedByUserId: operatorUserStableId,
         },
       });
-      await tx.accountingTransaction.createMany({
-        data: normalizedSplits.map((split, index) => ({
-          txStableId: `accttx_${createId()}`,
-          type: AccountingTxType.EXPENSE,
-          source: AccountingSourceType.MANUAL,
-          amountCents: split.amountCents,
-          taxCents: split.taxCents,
-          currency: account?.currency ?? 'CAD',
-          occurredAt,
-          categoryId: categoryMap.get(split.categoryStableId)!,
-          accountId: account?.id ?? null,
-          documentId: existing.id,
-          idempotencyKey: `expense:${documentStableId}:${index}`,
-          externalRef: documentStableId,
-          memo: input.memo?.trim() || null,
-          attachmentUrls,
-          createdByUserId: operatorUserStableId,
-          updatedByUserId: operatorUserStableId,
-        })),
+      const splitRows = normalizedSplits.map((split, index) => ({
+        txStableId: `accttx_${createId()}`,
+        type: AccountingTxType.EXPENSE,
+        source: AccountingSourceType.MANUAL,
+        amountCents: split.amountCents,
+        taxCents: split.taxCents,
+        currency: account?.currency ?? 'CAD',
+        occurredAt,
+        categoryId: categoryMap.get(split.categoryStableId)!,
+        accountId: account?.id ?? null,
+        documentId: existing.id,
+        idempotencyKey: `expense:${documentStableId}:${index}`,
+        externalRef: documentStableId,
+        memo: input.memo?.trim() || null,
+        attachmentUrls,
+        createdByUserId: operatorUserStableId,
+        updatedByUserId: operatorUserStableId,
+      }));
+      await tx.accountingTransaction.createMany({ data: splitRows });
+      await tx.accountingAuditLog.createMany({
+        data: [
+          ...replacedRows.map((row) => ({
+            action: 'DELETE',
+            entityType: 'ACCOUNTING_TRANSACTION',
+            entityId: row.txStableId,
+            operatorUserId: operatorUserStableId,
+            beforeJson: {
+              txStableId: row.txStableId,
+              type: row.type,
+              source: row.source,
+              amountCents: row.amountCents,
+              taxCents: row.taxCents,
+              currency: row.currency,
+              occurredAt: row.occurredAt.toISOString(),
+              documentStableId,
+              idempotencyKey: row.idempotencyKey,
+              externalRef: row.externalRef,
+              attachmentUrls: row.attachmentUrls,
+            } as Prisma.InputJsonValue,
+          })),
+          ...splitRows.map((row, index) => ({
+            action: 'CREATE',
+            entityType: 'ACCOUNTING_TRANSACTION',
+            entityId: row.txStableId,
+            operatorUserId: operatorUserStableId,
+            afterJson: {
+              txStableId: row.txStableId,
+              type: row.type,
+              source: row.source,
+              amountCents: row.amountCents,
+              taxCents: row.taxCents,
+              currency: row.currency,
+              occurredAt: occurredAt.toISOString(),
+              categoryStableId: normalizedSplits[index].categoryStableId,
+              documentStableId,
+              idempotencyKey: row.idempotencyKey,
+              externalRef: row.externalRef,
+              attachmentUrls,
+            } as Prisma.InputJsonValue,
+          })),
+        ],
       });
+      const linkedInbox = await tx.accountingInboxItem.findFirst({
+        where: {
+          materializedEntityType:
+            AccountingInboxMaterializedEntityType.EXPENSE_DOCUMENT,
+          materializedEntityStableId: documentStableId,
+        },
+        select: { inboxItemStableId: true },
+      });
+      if (linkedInbox) {
+        await markInboxExpenseConfirmedInTx(
+          tx,
+          linkedInbox.inboxItemStableId,
+          documentStableId,
+          operatorUserStableId,
+        );
+      }
     });
 
     return this.getExpenseDocument(documentStableId);
-  }
-
-  async discardInboxDocument(
-    documentStableId: string,
-    operatorUserStableId: string,
-  ) {
-    const existing = await this.prisma.accountingExpenseDocument.findUnique({
-      where: { documentStableId },
-      select: {
-        id: true,
-        status: true,
-        attachmentUrls: true,
-        extractionJson: true,
-      },
-    });
-    if (!existing) throw new NotFoundException('expense document not found');
-    if (existing.status !== AccountingDocumentStatus.PENDING_REVIEW) {
-      throw new ConflictException(
-        'only pending inbox documents can be discarded',
-      );
-    }
-
-    const discardedAt = new Date();
-    const previousExtraction =
-      existing.extractionJson &&
-      typeof existing.extractionJson === 'object' &&
-      !Array.isArray(existing.extractionJson)
-        ? existing.extractionJson
-        : {};
-    await this.prisma.accountingExpenseDocument.update({
-      where: { id: existing.id },
-      data: {
-        status: AccountingDocumentStatus.DISCARDED,
-        occurredAt: null,
-        subtotalCents: null,
-        taxCents: null,
-        totalCents: null,
-        attachmentUrls: [],
-        extractedText: null,
-        extractionJson: {
-          ...previousExtraction,
-          discarded: true,
-          discardedAt: discardedAt.toISOString(),
-          discardedByUserStableId: operatorUserStableId,
-        } as Prisma.InputJsonValue,
-      },
-    });
-    await this.deleteStoredAccountingFiles(existing.attachmentUrls);
-    return { documentStableId, discarded: true };
   }
 
   async dashboard(from: string, to: string) {
@@ -876,21 +1127,9 @@ export class AccountingOperationsService {
       }
     }
 
-    const accountingStartAt =
-      await this.accounting.clampAccountingFromDate(undefined);
-    const pendingDocuments = await this.prisma.accountingExpenseDocument.count({
-      where: {
-        status: AccountingDocumentStatus.PENDING_REVIEW,
-        ...(accountingStartAt
-          ? {
-              OR: [
-                { occurredAt: null },
-                { occurredAt: { gte: accountingStartAt } },
-              ],
-            }
-          : {}),
-      },
-    });
+    const pendingInboxItems = await countAccountingInboxReviewItems(
+      this.prisma,
+    );
     const latestClosedMonth = await this.prisma.accountingPeriodClose.findFirst(
       {
         where: { periodType: 'MONTH' },
@@ -910,7 +1149,7 @@ export class AccountingOperationsService {
         taxCents,
       },
       pending: {
-        expenseDocuments: pendingDocuments,
+        inboxItems: pendingInboxItems,
       },
       topExpenseCategories: Array.from(expenseCategories.entries())
         .map(([categoryStableId, value]) => ({ categoryStableId, ...value }))
@@ -948,6 +1187,23 @@ export class AccountingOperationsService {
     };
   }
 
+  private async runInboxCore<T>(work: () => Promise<T>): Promise<T> {
+    try {
+      return await work();
+    } catch (error) {
+      if (error instanceof AccountingInboxPolicyError) {
+        throw new BadRequestException(error.message);
+      }
+      if (error instanceof AccountingInboxWriterNotFoundError) {
+        throw new NotFoundException(error.message);
+      }
+      if (error instanceof AccountingInboxWriterConflictError) {
+        throw new ConflictException(error.message);
+      }
+      throw error;
+    }
+  }
+
   private parseDate(raw: string, endOfDay = false) {
     const parsed = new Date(raw);
     if (Number.isNaN(parsed.getTime())) {
@@ -963,27 +1219,6 @@ export class AccountingOperationsService {
   private assertMoney(value: number, name: string) {
     if (!Number.isInteger(value) || value < 0) {
       throw new BadRequestException(`${name} must be a non-negative integer`);
-    }
-  }
-
-  private async deleteStoredAccountingFiles(urls: string[]) {
-    for (const url of urls) {
-      const match =
-        /^\/api\/v1\/accounting\/files\/(bills|receipts)\/([^/]+)$/.exec(url);
-      if (!match) continue;
-      const [, kind, rawFileName] = match;
-      const fileName = path.basename(rawFileName);
-      if (fileName !== rawFileName) continue;
-      const filePath = path.join(getUploadsAccountingDir(), kind, fileName);
-      try {
-        await fs.promises.rm(filePath, { force: true });
-      } catch (error) {
-        this.logger.warn(
-          `Failed to remove discarded accounting attachment ${filePath}: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      }
     }
   }
 

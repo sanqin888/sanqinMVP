@@ -15,7 +15,7 @@ type Dashboard = {
     netProfitCents: number;
     taxCents: number;
   };
-  pending: { expenseDocuments: number };
+  pending: { inboxItems: number };
   topExpenseCategories: Array<{
     categoryStableId: string;
     name: string;
@@ -92,8 +92,8 @@ export default function AccountingDashboardPage() {
             <Link className="text-sm text-blue-600 hover:underline" href={`/${locale}/accounting/inbox`}>{isZh ? '打开收件箱' : 'Open inbox'}</Link>
           </div>
           <div className="mt-4 rounded-lg bg-amber-50 p-4">
-            <p className="text-sm text-slate-600">{isZh ? '账单 / PDF 待确认' : 'Bills / PDFs awaiting review'}</p>
-            <p className="mt-1 text-3xl font-semibold text-amber-700">{dashboard?.pending.expenseDocuments ?? 0}</p>
+            <p className="text-sm text-slate-600">{isZh ? '财务收件箱待处理' : 'Accounting Inbox awaiting review'}</p>
+            <p className="mt-1 text-3xl font-semibold text-amber-700">{dashboard?.pending.inboxItems ?? 0}</p>
           </div>
           <p className="mt-3 text-xs text-slate-500">
             {isZh

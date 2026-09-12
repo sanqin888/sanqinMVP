@@ -8,6 +8,8 @@
       "apps/api/src/app.module.ts",
       "apps/api/src/app.bootstrap.ts",
       "apps/api/src/application/menu/catalog-uber-availability-orchestration.module.ts",
+      "apps/api/src/homepage/homepage-content.module.ts",
+      "apps/api/src/reports/reports.module.ts",
       "apps/api/src/main.ts",
       "apps/api/src/ubereats-worker.main.ts"
     ]
@@ -654,14 +656,12 @@
   },
   "legacyPublicCycleComponents": [],
   "legacyDirectImportLimits": {
-    "accounting-reporting-analytics -> architecture-foundation": 3,
-    "accounting-reporting-analytics -> commerce-orders-fulfillment": 1,
+    "accounting-reporting-analytics -> architecture-foundation": 2,
     "accounting-reporting-analytics -> external-channels": 1,
-    "accounting-reporting-analytics -> identity-customer-benefits": 11,
-    "accounting-reporting-analytics -> runtime-data-ci-ops": 9,
-    "brand-store -> accounting-reporting-analytics": 2,
+    "accounting-reporting-analytics -> identity-customer-benefits": 2,
+    "accounting-reporting-analytics -> runtime-data-ci-ops": 6,
     "brand-store -> architecture-foundation": 2,
-    "brand-store -> runtime-data-ci-ops": 4,
+    "brand-store -> runtime-data-ci-ops": 3,
     "catalog-pricing-offers -> architecture-foundation": 2,
     "catalog-pricing-offers -> identity-customer-benefits": 3,
     "catalog-pricing-offers -> runtime-data-ci-ops": 10,

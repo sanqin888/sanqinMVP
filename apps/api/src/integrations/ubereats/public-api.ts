@@ -120,4 +120,14 @@ export interface UberEatsReportingPort {
       errorMessage: string | null;
     }>
   >;
+  readFinancialReportArtifact(input: {
+    reportStableId: string;
+    artifactUrl: string;
+  }): Promise<{
+    content: string;
+    contentHash: string;
+    byteSize: number;
+    fileName: string;
+  }>;
+  markFinancialReportImported(reportStableId: string): Promise<void>;
 }

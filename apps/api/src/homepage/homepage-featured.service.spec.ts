@@ -1,6 +1,6 @@
 import { PrismaService } from '../prisma/prisma.service';
-import { ReportsService } from '../reports/reports.service';
 import { HomepageContentService } from './homepage-content.service';
+import type { HomepageSalesRankingQueryPort } from './homepage-sales-ranking-query.contract';
 import { HomepageFeaturedService } from './homepage-featured.service';
 
 function menuItem(
@@ -56,7 +56,7 @@ describe('HomepageFeaturedService', () => {
         { stableId: 'second-food', name: 'Second', quantity: 16 },
         { stableId: 'third-food', name: 'Third', quantity: 15 },
       ]),
-    } as unknown as ReportsService;
+    } as unknown as HomepageSalesRankingQueryPort;
     const contentService = {
       getFeaturedConfig: jest.fn().mockResolvedValue({
         slots: [
@@ -104,7 +104,7 @@ describe('HomepageFeaturedService', () => {
         { stableId: 'food-2', name: 'Food 2', quantity: 10 },
         { stableId: 'food-3', name: 'Food 3', quantity: 5 },
       ]),
-    } as unknown as ReportsService;
+    } as unknown as HomepageSalesRankingQueryPort;
     const contentService = {
       getFeaturedConfig: jest.fn().mockResolvedValue({
         slots: [
