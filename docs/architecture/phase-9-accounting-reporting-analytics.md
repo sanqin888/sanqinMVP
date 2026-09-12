@@ -310,3 +310,45 @@ The next task is **Phase 9 Slice 5A — Double-entry + Statement Ingestion readi
 7. give the recommended Slice 5B implementation boundary, affected tests/architecture guards and eventual Phase-level active verification scope.
 
 No Prisma/schema/migration/source implementation should begin during 5A unless the user separately authorizes that implementation after reviewing the audit.
+
+## 16. Slice 5A readiness result and Slice 5B implementation boundary
+
+State: **5A READINESS / SCHEMA DESIGN COMPLETE — 5B LOCAL SOURCE COMPLETE / USER REVIEW**  
+Audit/implementation base: `origin/dev@3ac08a39`  
+Decision/authorization date: 2026-09-12
+
+### 16.1 Accounting migration compatibility decision
+
+The user confirmed that Accounting has not started formal production use and that the current Accounting-owned persisted records may be discarded. Phase 9 therefore does **not** need historical compatibility for current `AccountingTransaction`, `AccountingExpenseDocument`, `PlatformSettlementRecord`, Accounting account/category seed rows, or other current Accounting-only test/setup data. This removes the need for data-parity dual-write/backfill work whose only purpose would be preserving those records.
+
+This does not authorize unrelated destructive database work. Slice 5B remains narrowly scoped to introducing the terminal double-entry core while leaving existing runtime Accounting flows in place until their later cutover slices. The user separately authorized the Prisma schema change and creation of the matching migration for Slice 5B.
+
+### 16.2 Minimal double-entry core selected for Slice 5B
+
+Slice 5B introduces a SanQ-sized journal rather than converting `AccountingTransaction` in place:
+
+- `AccountingAccount` gains the terminal **ASSET / LIABILITY / EQUITY / REVENUE / EXPENSE** classification. The existing operational account kind (`CASH / BANK / PLATFORM_WALLET`) remains only where useful to current UI/workflows and is not allowed to define debit/credit semantics.
+- `AccountingJournalEntry` owns stable entry identity, deterministic idempotency identity/hash, entry kind/source, optional source-fact identity/version, Store stable identity, occurrence time/currency, optimistic versioning, operator stable IDs and soft deletion.
+- `AccountingJournalLine` owns ordered debit/credit lines, account ownership and an optional existing `AccountingCategory` operating/reporting dimension.
+- Journal entries require at least two lines, exactly one positive debit-or-credit side per line, non-negative integer minor units and equal total debits/credits. Application validation is backed by PostgreSQL constraints, including a deferred balance constraint checked at transaction commit.
+- Create/update/delete remains inside the existing Accounting-owned Serializable write boundary with `P2034` retry and `AccountingAuditLog` evidence. Slice 5B intentionally preserves the current period policy: ordinary entries are blocked in a closed month, `ADJUSTMENT` remains writable until the fiscal year is hard-locked, and open-period rows remain optimistic-update/soft-delete rather than switching early to append-only reversal semantics.
+- The initial Chart of Accounts covers Store cash/bank/processor receivables, HST recoverable/payable, opening equity, sales/delivery/surcharge/discount revenue and the minimum operating/platform/payment/chargeback expense accounts. Existing Accounting categories remain dimensions rather than becoming the account hierarchy.
+
+Slice 5B does **not** cut current Expense, Revenue, settlement, report or Web UI reads/writes to the new journal. It also does not add statement parsing, trusted-sender management, historical provider imports, provider financial-fact ports, automatic posting or settlement reconciliation. Those remain 5C/5D/Slice 6 work.
+
+### 16.3 Clover evidence added to the statement-ingestion design
+
+Two real Clover artifacts were reviewed before 5B implementation:
+
+- the monthly merchant card processing statement is settlement/accounting evidence. It contains statement period, submitted/funded totals, per-batch submitted/funded rows, service charges, fees, chargebacks/reversals and detailed fee/tax lines. It must not be used as canonical monthly Revenue because statement batches can cross calendar-month sales boundaries;
+- the daily Clover Closeout is **not a PDF attachment in production**. Clover sends the report as structured email-body content at approximately 01:30. The PDF used during the audit was manually generated from that email body only as a design sample. The production Inbox must therefore treat `EMAIL` acquisition as capable of producing both body artifacts and attachment artifacts rather than assuming every accounting document is a file attachment.
+
+The daily Closeout is classified as `CLOVER / BATCH_CONTROL` reconciliation evidence. Its Batch ID, Sales, Refunds, Net, Tax, Tips and card totals are used to compare Payment/API facts; it does not independently create Revenue or Settlement journal postings. The monthly Clover processing statement is classified as processor settlement evidence and supplies fee/adjustment/chargeback/funding information for later settlement posting and bank reconciliation.
+
+The generic Journal keeps the accounting occurrence timestamp (`occurredAt`) and source-fact identity; provider-specific `statementPeriod`, `settledAt`, `payoutAt` and similar lifecycle timestamps belong on the future canonical statement/settlement facts referenced by the journal rather than being duplicated as Clover/Uber/Fantuan-specific columns on every JournalEntry.
+
+The 5C canonical statement model must therefore cover **CLOVER / UBER_EATS / FANTUAN** and retain acquisition form independently from document/provider classification.
+
+### 16.4 Slice 5B source-completion gate
+
+The local source-completion gate is satisfied: schema + one matching migration, journal writer/service, balanced-entry and period/idempotency/OCC/audit characterization, a journal-write ownership architecture guard, Chart-of-Accounts initialization, and synchronized Phase/current-graph/worklog documentation are present. Per repository policy, local lint/build/test are not run before user review; GitHub Actions is the validation gate after the user authorizes remote delivery. The migration SQL has been statically reviewed but has not been applied to a local or production database.

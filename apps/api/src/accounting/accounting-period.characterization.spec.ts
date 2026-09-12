@@ -1,5 +1,8 @@
 import { ForbiddenException } from '@nestjs/common';
-import { AccountingTxType } from '@prisma/client';
+import {
+  AccountingJournalEntryKind,
+  AccountingTxType,
+} from '@prisma/client';
 import { AccountingService } from './accounting.service';
 
 describe('AccountingService period-close characterization', () => {
@@ -49,6 +52,43 @@ describe('AccountingService period-close characterization', () => {
     await expect(
       service.assertEditableForPeriod(occurredAt, AccountingTxType.ADJUSTMENT),
     ).resolves.toBeUndefined();
+  });
+
+  it('applies the same closed-month policy to double-entry journals', async () => {
+    const { service, prisma } = makeService();
+    prisma.accountingPeriodClose.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'month-close' })
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'month-close' });
+    const occurredAt = new Date('2026-09-11T14:00:00.000Z');
+
+    await expect(
+      service.assertJournalEditableForPeriod(
+        occurredAt,
+        AccountingJournalEntryKind.STANDARD,
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      service.assertJournalEditableForPeriod(
+        occurredAt,
+        AccountingJournalEntryKind.ADJUSTMENT,
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  it('blocks double-entry ADJUSTMENT journals after the fiscal year hard lock', async () => {
+    const { service, prisma } = makeService();
+    prisma.accountingPeriodClose.findUnique.mockResolvedValueOnce({
+      id: 'year-close',
+    });
+
+    await expect(
+      service.assertJournalEditableForPeriod(
+        new Date('2026-09-11T14:00:00.000Z'),
+        AccountingJournalEntryKind.ADJUSTMENT,
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('closes a Toronto business month with Store-local UTC bounds and PERIOD_CLOSE audit evidence', async () => {

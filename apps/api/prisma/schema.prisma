@@ -175,6 +175,30 @@ enum AccountingAccountType {
   PLATFORM_WALLET
 }
 
+enum AccountingAccountClass {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+enum AccountingJournalEntryKind {
+  STANDARD
+  ADJUSTMENT
+  TRANSFER
+  OPENING_BALANCE
+}
+
+enum AccountingJournalSource {
+  MANUAL
+  EXPENSE_DOCUMENT
+  ORDER
+  PAYMENT
+  PLATFORM_STATEMENT
+  SYSTEM
+}
+
 enum AccountingSourceType {
   ORDER
   MANUAL
@@ -1509,6 +1533,7 @@ model AccountingCategory {
   parent           AccountingCategory?     @relation("AccountingCategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
   children         AccountingCategory[]    @relation("AccountingCategoryTree")
   transactions     AccountingTransaction[]
+  journalLines     AccountingJournalLine[]
 
   @@unique([name, type])
   @@index([parentId])
@@ -1516,20 +1541,69 @@ model AccountingCategory {
 }
 
 model AccountingAccount {
-  id              String                  @id @default(uuid()) @db.Uuid
-  accountStableId String                  @unique @default(cuid())
-  name            String
-  type            AccountingAccountType
-  currency        String                  @default("CAD")
-  isActive         Boolean                @default(true)
-  createdAt        DateTime                @default(now())
-  updatedAt        DateTime                @updatedAt
-  outgoingTx       AccountingTransaction[]   @relation("AccountingTxAccount")
-  incomingTx       AccountingTransaction[]   @relation("AccountingTxToAccount")
+  id               String                      @id @default(uuid()) @db.Uuid
+  accountStableId  String                      @unique @default(cuid())
+  name             String
+  type             AccountingAccountType?
+  accountClass     AccountingAccountClass
+  currency         String                      @default("CAD")
+  isActive         Boolean                     @default(true)
+  createdAt        DateTime                    @default(now())
+  updatedAt        DateTime                    @updatedAt
+  outgoingTx       AccountingTransaction[]     @relation("AccountingTxAccount")
+  incomingTx       AccountingTransaction[]     @relation("AccountingTxToAccount")
   expenseDocuments AccountingExpenseDocument[]
+  journalLines     AccountingJournalLine[]
 
   @@unique([name, type])
   @@index([type, isActive])
+  @@index([accountClass, isActive])
+}
+
+model AccountingJournalEntry {
+  id                 String                     @id @default(uuid()) @db.Uuid
+  entryStableId      String                     @unique @default(cuid())
+  idempotencyKey     String                     @unique
+  idempotencyHash    String
+  kind               AccountingJournalEntryKind
+  source             AccountingJournalSource
+  sourceFactType     String?
+  sourceFactStableId String?
+  sourceFactVersion  Int?
+  storeStableId      String?
+  occurredAt         DateTime
+  currency           String                     @default("CAD")
+  memo               String?
+  createdByUserStableId String
+  updatedByUserStableId String
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
+  version            Int                        @default(1)
+  deletedAt          DateTime?
+  lines              AccountingJournalLine[]
+
+  @@index([occurredAt])
+  @@index([storeStableId, occurredAt])
+  @@index([source, sourceFactType, sourceFactStableId])
+  @@index([deletedAt])
+}
+
+model AccountingJournalLine {
+  id          String                 @id @default(uuid()) @db.Uuid
+  entryId     String                 @db.Uuid
+  lineNo      Int
+  accountId   String                 @db.Uuid
+  categoryId  String?                @db.Uuid
+  debitCents  Int
+  creditCents Int
+  memo        String?
+  entry       AccountingJournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  account     AccountingAccount      @relation(fields: [accountId], references: [id])
+  category    AccountingCategory?    @relation(fields: [categoryId], references: [id])
+
+  @@unique([entryId, lineNo])
+  @@index([accountId, entryId])
+  @@index([categoryId, entryId])
 }
 
 model AccountingTransaction {
