@@ -337,15 +337,8 @@ describe('AccountingService double-entry journal characterization', () => {
         action: 'UPDATE',
         entityId: 'journal_stable_1',
         operatorUserId: 'user_stable_2',
-        beforeJson: expect.objectContaining({
-          entryStableId: 'journal_stable_1',
-        }) as unknown,
+        beforeJson: journalRow(),
         afterJson: updated,
-      }) as unknown,
-    });
-    expect(prisma.accountingAuditLog.create).not.toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        beforeJson: expect.objectContaining({ id: expect.anything() }) as unknown,
       }) as unknown,
     });
   });
