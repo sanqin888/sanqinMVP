@@ -235,7 +235,7 @@ function parseUberMonthlyStatement(
     label: string,
     component: AccountingFinancialComponent,
     treatment: AccountingFinancialPostingTreatment,
-    taxRole = AccountingFinancialTaxRole.NONE,
+    taxRole: AccountingFinancialTaxRole = AccountingFinancialTaxRole.NONE,
   ) => pushNamedSummary(lines, summary, label, component, treatment, taxRole);
 
   add(
@@ -421,7 +421,7 @@ function parseFantuanStatement(
     label: string,
     component: AccountingFinancialComponent,
     treatment: AccountingFinancialPostingTreatment,
-    taxRole = AccountingFinancialTaxRole.NONE,
+    taxRole: AccountingFinancialTaxRole = AccountingFinancialTaxRole.NONE,
   ) => pushNamedSummary(lines, text, label, component, treatment, taxRole);
   add(
     'Sales',
@@ -538,7 +538,7 @@ function pushNamedSummary(
   label: string,
   component: AccountingFinancialComponent,
   treatment: AccountingFinancialPostingTreatment,
-  taxRole = AccountingFinancialTaxRole.NONE,
+  taxRole: AccountingFinancialTaxRole = AccountingFinancialTaxRole.NONE,
 ) {
   const amount = findNamedAmount(text, label);
   if (amount == null) return;
@@ -557,7 +557,7 @@ function pushLabelAmount(
   label: string,
   component: AccountingFinancialComponent,
   treatment: AccountingFinancialPostingTreatment,
-  taxRole = AccountingFinancialTaxRole.NONE,
+  taxRole: AccountingFinancialTaxRole = AccountingFinancialTaxRole.NONE,
 ) {
   const regex = new RegExp(
     `(?:^|\\n)${escapeRegex(label)}\\s+\\d+\\s+([^\\s]+)`,
