@@ -6,7 +6,7 @@ import {
   PaymentTransactionStatus,
 } from '@prisma/client';
 
-import { PrismaPaymentFinancialFactsReader } from './prisma-payment-financial-facts.reader';
+import { PrismaPaymentTransactionRepository } from './prisma-payment-transaction.repository';
 
 const paymentRow = (overrides: Record<string, unknown> = {}) => ({
   id: '11111111-1111-4111-8111-111111111111',
@@ -28,14 +28,14 @@ const paymentRow = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-describe('PrismaPaymentFinancialFactsReader', () => {
+describe('PrismaPaymentTransactionRepository financial facts', () => {
   it('exposes only stable/business payment identity and final succeeded money truth', async () => {
     const transactionFindFirst = jest.fn().mockResolvedValue(paymentRow());
     const checkoutFindUnique = jest.fn().mockResolvedValue({
       orderStableId: 'order-stable-1',
       storeId: '4750_Yonge_Street',
     });
-    const service = new PrismaPaymentFinancialFactsReader({
+    const service = new PrismaPaymentTransactionRepository({
       paymentTransaction: { findFirst: transactionFindFirst },
       paymentCheckoutAttempt: { findUnique: checkoutFindUnique },
     } as never);
@@ -93,7 +93,7 @@ describe('PrismaPaymentFinancialFactsReader', () => {
         },
       ]);
     const transactionFindMany = jest.fn().mockResolvedValue([paymentRow()]);
-    const service = new PrismaPaymentFinancialFactsReader({
+    const service = new PrismaPaymentTransactionRepository({
       paymentTransaction: { findMany: transactionFindMany },
       paymentCheckoutAttempt: { findMany: checkoutFindMany },
     } as never);
@@ -124,7 +124,7 @@ describe('PrismaPaymentFinancialFactsReader', () => {
   });
 
   it('does not publish a non-final transaction as a canonical money fact', async () => {
-    const service = new PrismaPaymentFinancialFactsReader({
+    const service = new PrismaPaymentTransactionRepository({
       paymentTransaction: { findFirst: jest.fn().mockResolvedValue(null) },
     } as never);
 

@@ -6,6 +6,11 @@ import {
   type PaymentProviderTransactionLookup,
 } from '../../application/payment-provider-transaction-lookup.port';
 import type { PaymentReverseSyncPersistence } from '../../application/payment-reverse-sync-persistence.port';
+import type {
+  PaymentFinancialFactV1,
+  PaymentFinancialFactsRangeV1,
+  PaymentFinancialFactsReaderPort,
+} from '../../application/payment-financial-facts-reader.contract';
 import {
   PaymentTransactionUniquenessError,
   type PaymentTransactionRepository,
@@ -55,6 +60,11 @@ const toDomain = (row: PrismaPaymentTransactionRecord): PaymentTransaction =>
     updatedAt: row.updatedAt,
   });
 
+type PaymentCheckoutIdentity = {
+  orderStableId: string;
+  storeId: string;
+};
+
 const uniqueField = (
   error: unknown,
 ): 'attemptId' | 'idempotencyKey' | 'externalPaymentId' | null => {
@@ -90,7 +100,8 @@ export class PrismaPaymentTransactionRepository
   implements
     PaymentTransactionRepository,
     PaymentProviderTransactionLookup,
-    PaymentReverseSyncPersistence
+    PaymentReverseSyncPersistence,
+    PaymentFinancialFactsReaderPort
 {
   constructor(private readonly prisma: PrismaService) {}
 
@@ -139,6 +150,79 @@ export class PrismaPaymentTransactionRepository
       );
     }
     return rows[0] ? toDomain(rows[0]) : null;
+  }
+
+  async readFactByAttemptId(
+    attemptId: string,
+  ): Promise<PaymentFinancialFactV1 | null> {
+    const stableAttemptId = attemptId.trim();
+    if (!stableAttemptId) return null;
+
+    const row = await this.prisma.paymentTransaction.findFirst({
+      where: {
+        attemptId: stableAttemptId,
+        status: 'SUCCEEDED',
+        completedAt: { not: null },
+      },
+    });
+    if (!row?.completedAt) return null;
+
+    const identity = await this.readFinancialCheckoutIdentity(row.id);
+    return this.toFinancialFact(row, identity, row.completedAt);
+  }
+
+  async readFactsForRange(
+    range: PaymentFinancialFactsRangeV1,
+  ): Promise<PaymentFinancialFactV1[]> {
+    if (range.toExclusive <= range.fromInclusive) {
+      throw new Error('toExclusive must be after fromInclusive');
+    }
+
+    const storeStableId = range.storeStableId?.trim();
+    let restrictedPaymentIds: string[] | undefined;
+    if (storeStableId) {
+      const checkoutRows = await this.prisma.paymentCheckoutAttempt.findMany({
+        where: {
+          storeId: storeStableId,
+          paymentTransactionId: { not: null },
+        },
+        select: { paymentTransactionId: true },
+      });
+      restrictedPaymentIds = checkoutRows.flatMap((row) =>
+        row.paymentTransactionId ? [row.paymentTransactionId] : [],
+      );
+      if (restrictedPaymentIds.length === 0) return [];
+    }
+
+    const rows = await this.prisma.paymentTransaction.findMany({
+      where: {
+        status: 'SUCCEEDED',
+        completedAt: {
+          not: null,
+          gte: range.fromInclusive,
+          lt: range.toExclusive,
+        },
+        ...(restrictedPaymentIds
+          ? { id: { in: restrictedPaymentIds } }
+          : {}),
+      },
+      orderBy: [{ completedAt: 'asc' }, { attemptId: 'asc' }],
+    });
+    const identities = await this.readFinancialCheckoutIdentities(
+      rows.map((row) => row.id),
+    );
+
+    return rows.flatMap((row) =>
+      row.completedAt
+        ? [
+            this.toFinancialFact(
+              row,
+              identities.get(row.id) ?? null,
+              row.completedAt,
+            ),
+          ]
+        : [],
+    );
   }
 
   async create(transaction: PaymentTransaction): Promise<PaymentTransaction> {
@@ -254,6 +338,72 @@ export class PrismaPaymentTransactionRepository
       if (field) throw new PaymentTransactionUniquenessError(field);
       throw error;
     }
+  }
+
+  private async readFinancialCheckoutIdentity(
+    paymentTransactionId: string,
+  ): Promise<PaymentCheckoutIdentity | null> {
+    return this.prisma.paymentCheckoutAttempt.findUnique({
+      where: { paymentTransactionId },
+      select: { orderStableId: true, storeId: true },
+    });
+  }
+
+  private async readFinancialCheckoutIdentities(
+    paymentTransactionIds: string[],
+  ): Promise<Map<string, PaymentCheckoutIdentity>> {
+    if (paymentTransactionIds.length === 0) return new Map();
+    const rows = await this.prisma.paymentCheckoutAttempt.findMany({
+      where: { paymentTransactionId: { in: paymentTransactionIds } },
+      select: {
+        paymentTransactionId: true,
+        orderStableId: true,
+        storeId: true,
+      },
+    });
+    return new Map(
+      rows.flatMap((row) =>
+        row.paymentTransactionId
+          ? [
+              [
+                row.paymentTransactionId,
+                {
+                  orderStableId: row.orderStableId,
+                  storeId: row.storeId,
+                },
+              ] as const,
+            ]
+          : [],
+      ),
+    );
+  }
+
+  private toFinancialFact(
+    row: PrismaPaymentTransactionRecord,
+    identity: PaymentCheckoutIdentity | null,
+    occurredAt: Date,
+  ): PaymentFinancialFactV1 {
+    return {
+      version: 1,
+      factStableId: row.attemptId,
+      attemptId: row.attemptId,
+      orderStableId: identity?.orderStableId ?? null,
+      storeStableId: identity?.storeId ?? null,
+      occurredAt,
+      sourceUpdatedAt: row.updatedAt,
+      provider: parsePaymentProviderName(row.provider),
+      source: parsePaymentSource(row.source),
+      paymentMethod: parsePaymentMethod(row.paymentMethod),
+      operation: parsePaymentOperation(row.operation),
+      amountCents: row.amountCents,
+      surchargeCents: row.surchargeCents,
+      chargedTotalCents: row.chargedTotalCents,
+      refundedAmountCents: row.refundedAmountCents,
+      currency: row.currency,
+      externalPaymentId: row.externalPaymentId,
+      providerPaymentId: row.providerPaymentId,
+      providerRefundId: row.providerRefundId,
+    };
   }
 
   private mutableData(transaction: PaymentTransaction) {

@@ -77,7 +77,7 @@ describe('Phase 9 canonical financial facts boundary', () => {
     const paymentReader =
       file(
         resolve(PAYMENTS_ROOT, 'infrastructure', 'prisma'),
-        'prisma-payment-financial-facts.reader.ts',
+        'prisma-payment-transaction.repository.ts',
       )?.source ?? '';
 
     expect(orderReader).toContain("from './orders-prisma'");
