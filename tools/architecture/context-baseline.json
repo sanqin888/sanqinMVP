@@ -656,7 +656,7 @@
   },
   "legacyPublicCycleComponents": [],
   "legacyDirectImportLimits": {
-    "accounting-reporting-analytics -> architecture-foundation": 3,
+    "accounting-reporting-analytics -> architecture-foundation": 2,
     "accounting-reporting-analytics -> external-channels": 1,
     "accounting-reporting-analytics -> identity-customer-benefits": 2,
     "accounting-reporting-analytics -> runtime-data-ci-ops": 6,
