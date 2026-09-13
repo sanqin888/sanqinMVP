@@ -136,30 +136,28 @@ describe('Order immutable financial change facts', () => {
         refundGrossCents: 1_017,
       }),
       eventName: ORDER_FINANCIAL_REVERSAL_FACT_EVENT,
-      idempotencyKey:
-        'order-financial-reversal:full_refund_order-stable-1:v1',
+      idempotencyKey: 'order-financial-reversal:full_refund_order-stable-1:v1',
     },
-  ])('appends the $kind fact in the caller transaction with stable idempotency', async ({
-    fact,
-    eventName,
-    idempotencyKey,
-  }) => {
-    const createMany = jest.fn().mockResolvedValue({ count: 1 });
+  ])(
+    'appends the $kind fact in the caller transaction with stable idempotency',
+    async ({ fact, eventName, idempotencyKey }) => {
+      const createMany = jest.fn().mockResolvedValue({ count: 1 });
 
-    await appendOrderFinancialChangeFact(
-      { opsEvent: { createMany } } as never,
-      fact,
-    );
+      await appendOrderFinancialChangeFact(
+        { opsEvent: { createMany } } as never,
+        fact,
+      );
 
-    expect(createMany).toHaveBeenCalledWith({
-      data: {
-        idempotencyKey,
-        eventName,
-        source: ORDER_FINANCIAL_CHANGE_FACT_SOURCE,
-        payload: serializeOrderFinancialChangeFactV1(fact),
-        occurredAt: fact.occurredAt,
-      },
-      skipDuplicates: true,
-    });
-  });
+      expect(createMany).toHaveBeenCalledWith({
+        data: {
+          idempotencyKey,
+          eventName,
+          source: ORDER_FINANCIAL_CHANGE_FACT_SOURCE,
+          payload: serializeOrderFinancialChangeFactV1(fact),
+          occurredAt: fact.occurredAt,
+        },
+        skipDuplicates: true,
+      });
+    },
+  );
 });

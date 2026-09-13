@@ -119,9 +119,7 @@ export {
   type OrderFinancialChangeSettlementV1,
   type OrderFinancialChangeStateV1,
 } from './order-financial-change-facts-reader.contract';
-export {
-  OrderFinancialChangeFactsModule,
-} from './order-financial-change-facts.module';
+export { OrderFinancialChangeFactsModule } from './order-financial-change-facts.module';
 export {
   ORDER_EXTERNAL_TRANSITION_COORDINATOR,
   type OrderExternalTransition,

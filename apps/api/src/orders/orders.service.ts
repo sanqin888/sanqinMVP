@@ -3463,10 +3463,7 @@ export class OrdersService
         });
       }
 
-      if (
-        type === OrderAmendmentType.RETENDER &&
-        paymentMethod !== null
-      ) {
+      if (type === OrderAmendmentType.RETENDER && paymentMethod !== null) {
         await tx.order.update({
           where: { id: internalOrderId },
           data: { paymentMethod },

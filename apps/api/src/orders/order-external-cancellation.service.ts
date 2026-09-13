@@ -18,9 +18,7 @@ import {
 import { PrismaService } from './orders-prisma';
 
 @Injectable()
-export class OrderExternalCancellationFinalizerService
-  implements OrderExternalCancellationFinalizerPort
-{
+export class OrderExternalCancellationFinalizerService implements OrderExternalCancellationFinalizerPort {
   constructor(private readonly prisma: PrismaService) {}
 
   async finalizeConfirmedCancellation(

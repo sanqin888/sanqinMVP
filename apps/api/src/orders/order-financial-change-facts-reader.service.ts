@@ -14,9 +14,7 @@ import {
 import { PrismaService } from './orders-prisma';
 
 @Injectable()
-export class OrderFinancialChangeFactsReaderService
-  implements OrderFinancialChangeFactsReaderPort
-{
+export class OrderFinancialChangeFactsReaderService implements OrderFinancialChangeFactsReaderPort {
   constructor(private readonly prisma: PrismaService) {}
 
   async readFactByStableId(
@@ -101,7 +99,8 @@ export class OrderFinancialChangeFactsReaderService
 
   private parseOrThrow(payload: unknown): OrderFinancialChangeFactV1 {
     const fact = parseOrderFinancialChangeFactV1(payload);
-    if (!fact) throw new Error('Malformed immutable Order financial change fact');
+    if (!fact)
+      throw new Error('Malformed immutable Order financial change fact');
     return fact;
   }
 }

@@ -60,10 +60,7 @@ describe('OrderFinancialChangeFactsReaderService', () => {
       where: {
         source: 'orders.financial',
         eventName: {
-          in: [
-            'order.financial_adjustment.v1',
-            'order.financial_reversal.v1',
-          ],
+          in: ['order.financial_adjustment.v1', 'order.financial_reversal.v1'],
         },
         payload: { path: ['factStableId'], equals: 'amendment-stable-1' },
       },
@@ -90,10 +87,7 @@ describe('OrderFinancialChangeFactsReaderService', () => {
       where: {
         source: 'orders.financial',
         eventName: {
-          in: [
-            'order.financial_adjustment.v1',
-            'order.financial_reversal.v1',
-          ],
+          in: ['order.financial_adjustment.v1', 'order.financial_reversal.v1'],
         },
         occurredAt: { gte: fromInclusive, lt: toExclusive },
         payload: { path: ['storeStableId'], equals: '4750_Yonge_Street' },
@@ -105,7 +99,9 @@ describe('OrderFinancialChangeFactsReaderService', () => {
 
   it('fails closed when persisted change evidence is malformed', async () => {
     const service = new OrderFinancialChangeFactsReaderService({
-      opsEvent: { findMany: jest.fn().mockResolvedValue([{ payload: { version: 1 } }]) },
+      opsEvent: {
+        findMany: jest.fn().mockResolvedValue([{ payload: { version: 1 } }]),
+      },
     } as never);
 
     await expect(

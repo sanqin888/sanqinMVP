@@ -44,7 +44,7 @@ describe('OrdersService amendment characterization', () => {
       taxCents: 117,
       totalCents: 1017,
       paymentTotalCents: 1017,
-      items: [{ ...currentOrder.items[0]!, qty: 1 }],
+      items: [{ ...currentOrder.items[0], qty: 1 }],
     };
 
     const orderFindUnique = jest
@@ -204,8 +204,7 @@ describe('OrdersService amendment characterization', () => {
     });
     expect(opsEventCreateMany).toHaveBeenCalledWith({
       data: expect.objectContaining({
-        idempotencyKey:
-          'order-financial-adjustment:amendment_stable_1:v1',
+        idempotencyKey: 'order-financial-adjustment:amendment_stable_1:v1',
         eventName: 'order.financial_adjustment.v1',
         source: 'orders.financial',
         payload: expect.objectContaining({

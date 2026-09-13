@@ -93,10 +93,7 @@ const isOccurrenceEvidence = (
 ): value is OrderFinancialChangeOccurrenceEvidenceV1 =>
   value === 'ORDER_CONFIRMATION' || value === 'PROVIDER_EVENT';
 
-const isActionValidForKind = (
-  kind: unknown,
-  action: unknown,
-): boolean =>
+const isActionValidForKind = (kind: unknown, action: unknown): boolean =>
   kind === 'ADJUSTMENT'
     ? action === 'RETENDER' ||
       action === 'VOID_ITEM' ||
@@ -138,9 +135,7 @@ export const toOrderFinancialChangeChannel = (
     case Channel.ubereats:
       return 'ubereats';
     default:
-      throw new Error(
-        `Unsupported financial change channel: ${String(value)}`,
-      );
+      throw new Error(`Unsupported financial change channel: ${String(value)}`);
   }
 };
 
@@ -387,9 +382,7 @@ const parseState = (value: unknown): OrderFinancialChangeStateV1 | null => {
     state.subtotalAfterDiscountCents,
   );
   const taxCents = asNonNegativeInteger(state.taxCents);
-  const deliveryRevenueCents = asNonNegativeInteger(
-    state.deliveryRevenueCents,
-  );
+  const deliveryRevenueCents = asNonNegativeInteger(state.deliveryRevenueCents);
   const cardSurchargeCents = asNonNegativeInteger(state.cardSurchargeCents);
   const orderTotalCents = asNonNegativeInteger(state.orderTotalCents);
   const paymentTotalCents = asNonNegativeInteger(state.paymentTotalCents);
@@ -529,7 +522,9 @@ export const appendOrderFinancialChangeFact = async (
       idempotencyKey,
       eventName,
       source: ORDER_FINANCIAL_CHANGE_FACT_SOURCE,
-      payload: serializeOrderFinancialChangeFactV1(fact) as Prisma.InputJsonValue,
+      payload: serializeOrderFinancialChangeFactV1(
+        fact,
+      ) as Prisma.InputJsonValue,
       occurredAt: fact.occurredAt,
     },
     skipDuplicates: true,
