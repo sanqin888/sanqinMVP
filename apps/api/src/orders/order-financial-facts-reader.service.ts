@@ -13,8 +13,10 @@ import type {
   OrderFinancialReplayCandidateV1,
   OrderFinancialReplayPricingResolutionV1,
 } from './order-financial-facts-reader.contract';
+import { isApprovedHistoricalDailySpecialOverrideOrder } from './approved-historical-daily-special-overrides';
 import {
   hasCompatibleLegacyCatalogIdentity,
+  resolveApprovedHistoricalDailySpecialPricing,
   resolveLegacyDailySpecialCatalogPricing,
 } from './order-financial-replay';
 import {
@@ -306,16 +308,27 @@ export class OrderFinancialFactsReaderService implements OrderFinancialFactsRead
         return this.readyCandidate(record.fact, 'SOURCE_COMPLETE');
       }
 
-      const resolution = resolveLegacyDailySpecialCatalogPricing({
-        sourceFact: record.fact,
-        row: record.row,
-        catalogFacts,
-        catalogPriceUnstableProductStableIds,
-      });
-      if (resolution.pricingResolution === 'CATALOG_STABLE_MATCH') {
+      const resolution = isApprovedHistoricalDailySpecialOverrideOrder(
+        record.fact.orderStableId,
+      )
+        ? resolveApprovedHistoricalDailySpecialPricing({
+            sourceFact: record.fact,
+            row: record.row,
+            catalogFacts,
+          })
+        : resolveLegacyDailySpecialCatalogPricing({
+            sourceFact: record.fact,
+            row: record.row,
+            catalogFacts,
+            catalogPriceUnstableProductStableIds,
+          });
+      if (
+        resolution.pricingResolution === 'CATALOG_STABLE_MATCH' ||
+        resolution.pricingResolution === 'APPROVED_HISTORICAL_OVERRIDE'
+      ) {
         if (!resolution.resolvedFact) {
           throw new Error(
-            `Catalog-stable replay resolution is missing a resolved fact: ${record.fact.orderStableId}`,
+            `Replay pricing resolution is missing a resolved fact: ${record.fact.orderStableId}`,
           );
         }
         return this.readyCandidate(
@@ -335,7 +348,9 @@ export class OrderFinancialFactsReaderService implements OrderFinancialFactsRead
     resolvedFact: OrderFinancialFactV1,
     pricingResolution: Extract<
       OrderFinancialReplayPricingResolutionV1,
-      'SOURCE_COMPLETE' | 'CATALOG_STABLE_MATCH'
+      | 'SOURCE_COMPLETE'
+      | 'CATALOG_STABLE_MATCH'
+      | 'APPROVED_HISTORICAL_OVERRIDE'
     >,
     sourceFact: OrderFinancialFactV1 = resolvedFact,
   ): OrderFinancialReplayCandidateV1 {
