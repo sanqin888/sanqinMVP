@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "baselineCommit": "1207731d",
-  "updatedAt": "2026-09-12",
+  "baselineCommit": "d769672e",
+  "updatedAt": "2026-09-13",
   "requiredFields": [
     "compat_id",
     "old_owner",
