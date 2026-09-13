@@ -2,7 +2,7 @@
 
 Machine-readable source:
 `docs/architecture/active-compatibility-register.json`. Current modularization base:
-`origin/dev@d769672e` (2026-09-13).
+`origin/dev@a68a9e53` (2026-09-13).
 
 Operational fallback (retry, provider timeout recovery, email-to-SMS fallback, and
 safe default values unrelated to an old version) is not compatibility debt.
@@ -13,7 +13,7 @@ safe default values unrelated to an old version) is not compatibility debt.
 |---|---|---|---|---|
 | `payments.pos-card-legacy.v1` | active / pre-production | direct paid Order → Unified Payment Core + Terminal + finalize | POS ↔ Clover realtime/recovery complete; real-device acceptance; one settlement cycle reconciled; clean production stability window; legacy calls zero | Phase J cleanup after Terminal synchronization/cutover stability |
 | `payments.web-checkout-v1.v1` | guarded production | CheckoutIntent/Clover v1 Web path → Unified Payment Core + v3 truth | Test App/device acceptance complete; App installed/OAuth-authorized on operating production merchant; fresh production-merchant correlation audit passes; Web cutover accepted; one settlement cycle reconciled; old calls zero before compatibility deletion | Deferred until production-merchant Unified authorization and accepted cutover |
-| `accounting.order-revenue-journal-cutover.v1` | active / shadow-only | provisional `Order.totalCents → AccountingTransaction` → canonical owner facts → double-entry Journal | original B2A preview verified zero-delta/balanced with 105 pricing + 5 mutation exceptions; after B2A.1 deploy rerun preview and require those exact 105 approved IDs READY as `APPROVED_HISTORICAL_OVERRIDE`, five mutations still blocked, stable fresh planHash; then B2B retires/demotes old write before canonical replay | Before the first canonical SALE Journal replay/backfill write |
+| `accounting.order-revenue-journal-cutover.v1` | active / cutover-source | retired provisional `Order.totalCents → AccountingTransaction` → canonical owner facts → double-entry Journal | B2B source removes the old route/writer before canonical replay; the user has reviewed the post-B2A.1 preview body and confirmed the expected 1210 replay-ready records parsed correctly; first replay still requires the exact reviewed fresh planHash plus runtime zero-delta/balanced/block checks, then same-plan idempotent rerun + old endpoint unavailable before closure | Before the first canonical SALE Journal replay/backfill write is executed in production |
 
 The payment entries are no longer governed by a whole-context freeze. The POS
 Clover Terminal path is pre-production and may be structurally modularized before
@@ -40,13 +40,17 @@ traffic authority change. Traffic cutover, compatibility deletion and settlement
 exit criteria remain separately gated after that point. Non-payment bounded-context work
 may proceed without reopening this compatibility seam.
 
-`accounting.order-revenue-journal-cutover.v1` is intentionally shadow-only in Phase 9
-Slice 5D-B2A. The canonical range endpoint computes replay eligibility, double-entry
-Journal drafts, balance checks, amount parity, a deterministic plan hash, and an explicit
-exception inventory without writing Journal rows. The provisional `order-accrual` route
-therefore remains the only active Revenue write path during B2A. The follow-up B2B cutover
-must first retire or demote that provisional write before canonical replay/backfill can be
-enabled; simultaneous old/new Revenue posting is not an accepted compatibility mode.
+`accounting.order-revenue-journal-cutover.v1` moved from shadow-only into B2B
+cutover-source state. B2A/B2A.1 established the canonical range plan and approved
+historical pricing scope without writing Journal rows. B2B removes the provisional
+`order-accrual` route/writer before exposing canonical replay, so simultaneous old/new
+Revenue posting is not an available source state. Replay requires the exact freshly
+recomputed plan hash, zero amount delta, balanced Journal drafts, mutation-only blocked
+rows with exact stable-ID acknowledgement, and zero retired `AUTO_ORDER*`
+AccountingTransaction rows. The post-B2A.1 preview body has been user-reviewed with the
+expected 1210 replay-ready records; the compatibility remains active until the first
+production replay plus same-plan idempotent rerun are verified. After any Journal write,
+recovery is forward/idempotent only and the legacy writer must not be restored.
 
 ## Closed history
 

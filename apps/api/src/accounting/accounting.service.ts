@@ -14,9 +14,6 @@ import {
   AccountingTxType,
   Prisma,
   SettlementPlatform,
-  OrderStatus,
-  Channel,
-  PaymentMethod,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { runSerializableAccountingWrite } from './accounting-atomic-write';
@@ -69,13 +66,6 @@ type UpsertTxDto = {
   memo?: string | null;
   attachmentUrls?: string[];
   lastKnownUpdatedAt?: string;
-};
-
-type AutoAccrualDto = {
-  date: string;
-  categoryStableId: string;
-  accountStableId?: string;
-  mode?: 'DAILY' | 'PER_ORDER';
 };
 
 const ACCOUNTING_TX_PUBLIC_SELECT = {
@@ -235,6 +225,22 @@ export class AccountingService {
       );
     }
     return startAt;
+  }
+
+  async assertNoLegacyOrderRevenueAccrual(): Promise<void> {
+    const legacyCount = await this.prisma.accountingTransaction.count({
+      where: {
+        OR: [
+          { idempotencyKey: { startsWith: 'AUTO_ORDER:' } },
+          { idempotencyKey: { startsWith: 'AUTO_ORDER_DAILY:' } },
+        ],
+      },
+    });
+    if (legacyCount > 0) {
+      throw new ConflictException(
+        `Canonical sale replay is blocked by ${legacyCount} legacy order revenue accrual transaction(s)`,
+      );
+    }
   }
 
   async assertOnOrAfterAccountingStartDate(
@@ -1905,152 +1911,6 @@ export class AccountingService {
     });
 
     return Buffer.from(pdf, 'utf8');
-  }
-
-  // @compat accounting.order-revenue-journal-cutover.v1
-  async autoAccrueOrderRevenue(
-    payload: AutoAccrualDto,
-    operatorUserId: string,
-  ) {
-    const runDate = this.parseDate(payload.date);
-    if (!runDate) throw new BadRequestException('date is required');
-    const startAt = new Date(runDate);
-    startAt.setHours(0, 0, 0, 0);
-    await this.assertOnOrAfterAccountingStartDate(startAt);
-    const endAt = new Date(runDate);
-    endAt.setHours(23, 59, 59, 999);
-
-    const category = await this.prisma.accountingCategory.findUnique({
-      where: { categoryStableId: payload.categoryStableId },
-      select: { id: true, type: true, isActive: true },
-    });
-    if (
-      !category ||
-      !category.isActive ||
-      category.type !== AccountingTxType.INCOME
-    ) {
-      throw new BadRequestException(
-        'categoryStableId must be an active INCOME category',
-      );
-    }
-
-    const mode = payload.mode ?? 'DAILY';
-    const orders = await this.prisma.order.findMany({
-      where: {
-        paidAt: { gte: startAt, lte: endAt },
-        status: {
-          in: [
-            OrderStatus.paid,
-            OrderStatus.making,
-            OrderStatus.ready,
-            OrderStatus.completed,
-          ],
-        },
-      },
-      select: {
-        orderStableId: true,
-        totalCents: true,
-        paidAt: true,
-        channel: true,
-        paymentMethod: true,
-      },
-      orderBy: { paidAt: 'asc' },
-    });
-
-    if (!orders.length) {
-      return {
-        mode,
-        date: payload.date,
-        created: 0,
-        skipped: 0,
-        amountCents: 0,
-      };
-    }
-
-    if (mode === 'DAILY') {
-      const idempotencyKey = `AUTO_ORDER_DAILY:${payload.date}`;
-      const existing = await this.prisma.accountingTransaction.findUnique({
-        where: { idempotencyKey },
-      });
-      if (existing) {
-        return {
-          mode,
-          date: payload.date,
-          created: 0,
-          skipped: orders.length,
-          amountCents: 0,
-        };
-      }
-      const amountCents = orders.reduce(
-        (sum, item) => sum + item.totalCents,
-        0,
-      );
-      await this.createTx(
-        {
-          type: AccountingTxType.INCOME,
-          source: AccountingSourceType.ORDER,
-          amountCents,
-          occurredAt: startAt.toISOString(),
-          categoryStableId: payload.categoryStableId,
-          accountStableId: payload.accountStableId,
-          orderId: orders[0].orderStableId,
-          idempotencyKey,
-          memo: `自动入账 ${payload.date}（${orders.length} 单）`,
-        },
-        operatorUserId,
-      );
-      return {
-        mode,
-        date: payload.date,
-        created: 1,
-        skipped: 0,
-        amountCents,
-        orderCount: orders.length,
-      };
-    }
-
-    let created = 0;
-    let skipped = 0;
-    let amountCents = 0;
-    for (const order of orders) {
-      const idempotencyKey = `AUTO_ORDER:${order.orderStableId}`;
-      const source =
-        order.paymentMethod === PaymentMethod.UBEREATS ||
-        order.channel === Channel.ubereats
-          ? AccountingSourceType.UBER
-          : AccountingSourceType.ORDER;
-      const existing = await this.prisma.accountingTransaction.findUnique({
-        where: { idempotencyKey },
-      });
-      if (existing) {
-        skipped += 1;
-        continue;
-      }
-      await this.createTx(
-        {
-          type: AccountingTxType.INCOME,
-          source,
-          amountCents: order.totalCents,
-          occurredAt: order.paidAt.toISOString(),
-          categoryStableId: payload.categoryStableId,
-          accountStableId: payload.accountStableId,
-          orderId: order.orderStableId,
-          idempotencyKey,
-          memo: `订单自动入账 ${order.orderStableId}`,
-        },
-        operatorUserId,
-      );
-      created += 1;
-      amountCents += order.totalCents;
-    }
-    return {
-      mode,
-      date: payload.date,
-      created,
-      skipped,
-      amountCents,
-      orderCount: orders.length,
-    };
   }
 
   async importPlatformSettlementCsv(payload: {

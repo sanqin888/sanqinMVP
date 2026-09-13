@@ -87,6 +87,18 @@ function manualOverrideCandidate(
   };
 }
 
+function postSaleMutationCandidate(
+  orderStableId: string,
+): OrderFinancialReplayCandidateV1 {
+  const fact = makeFact(orderStableId);
+  return {
+    sourceFact: fact,
+    replayEligibility: 'POST_SALE_MUTATION',
+    pricingResolution: 'SOURCE_COMPLETE',
+    resolvedFact: null,
+  };
+}
+
 function balanceFact(
   orderStableId: string,
   amountCents: number,
@@ -105,11 +117,18 @@ function balanceFact(
 
 function makeService() {
   const accounting: jest.Mocked<
-    Pick<AccountingService, 'requireCanonicalFinancialPostingStartAt'>
+    Pick<
+      AccountingService,
+      | 'requireCanonicalFinancialPostingStartAt'
+      | 'assertNoLegacyOrderRevenueAccrual'
+      | 'createJournalEntry'
+    >
   > = {
     requireCanonicalFinancialPostingStartAt: jest
       .fn()
       .mockResolvedValue(new Date('2026-06-01T04:00:00.000Z')),
+    assertNoLegacyOrderRevenueAccrual: jest.fn().mockResolvedValue(undefined),
+    createJournalEntry: jest.fn().mockResolvedValue({} as never),
   };
   const orders: jest.Mocked<OrderFinancialFactsReaderPort> = {
     readFactByOrderStableId: jest.fn(),
@@ -142,7 +161,7 @@ function makeService() {
   return { service, accounting, orders, loyalty, storeConfig };
 }
 
-describe('Accounting canonical SALE replay preview', () => {
+describe('Accounting canonical SALE replay', () => {
   it('resolves Toronto business-day bounds and reports ready/blocked parity without posting', async () => {
     const { service, orders, loyalty } = makeService();
     orders.readReplayCandidatesForRange.mockResolvedValue([
@@ -198,8 +217,8 @@ describe('Accounting canonical SALE replay preview', () => {
       }),
     ]);
     expect(report.writeAuthority).toMatchObject({
-      canonicalJournalReplayEnabled: false,
-      legacyAccountingTransactionAccrualStillActive: true,
+      canonicalJournalReplayEnabled: true,
+      legacyAccountingTransactionAccrualStillActive: false,
     });
   });
 
@@ -267,5 +286,104 @@ describe('Accounting canonical SALE replay preview', () => {
       'storeStableId must match the configured Accounting store',
     );
     expect(orders.readReplayCandidatesForRange.mock.calls).toHaveLength(0);
+  });
+
+  it('executes only the exact reviewed plan and explicitly acknowledged mutation exceptions', async () => {
+    const { service, accounting, orders } = makeService();
+    orders.readReplayCandidatesForRange.mockResolvedValue([
+      eligibleCandidate('order_ready'),
+      postSaleMutationCandidate('order_mutated'),
+    ]);
+
+    const preview = await service.previewRange({
+      fromDate: '2026-06-01',
+      toDateExclusive: '2026-06-03',
+      storeStableId: '4750_Yonge_Street',
+    });
+    const executed = await service.executeRange({
+      fromDate: '2026-06-01',
+      toDateExclusive: '2026-06-03',
+      storeStableId: '4750_Yonge_Street',
+      expectedPlanHash: preview.planHash,
+      acknowledgedBlockedOrderStableIds: ['order_mutated'],
+    });
+
+    expect(accounting.assertNoLegacyOrderRevenueAccrual).toHaveBeenCalledTimes(1);
+    expect(accounting.createJournalEntry).toHaveBeenCalledTimes(1);
+    expect(accounting.createJournalEntry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        idempotencyKey: 'canonical-sale:order_ready:v1',
+        sourceFactStableId: 'order_ready',
+      }),
+      'system:accounting-revenue-posting',
+    );
+    expect(executed.execution).toEqual({
+      postedOrReplayed: 1,
+      blockedAcknowledged: 1,
+    });
+  });
+
+  it('rejects a stale execution plan before any Journal write', async () => {
+    const { service, accounting, orders } = makeService();
+    orders.readReplayCandidatesForRange.mockResolvedValue([
+      eligibleCandidate('order_ready'),
+    ]);
+
+    await expect(
+      service.executeRange({
+        toDateExclusive: '2026-06-03',
+        storeStableId: '4750_Yonge_Street',
+        expectedPlanHash: '0'.repeat(64),
+        acknowledgedBlockedOrderStableIds: [],
+      }),
+    ).rejects.toThrow('Canonical sale replay plan changed after preview');
+    expect(accounting.assertNoLegacyOrderRevenueAccrual).not.toHaveBeenCalled();
+    expect(accounting.createJournalEntry).not.toHaveBeenCalled();
+  });
+
+  it('requires the blocked mutation acknowledgement inventory to match exactly', async () => {
+    const { service, accounting, orders } = makeService();
+    orders.readReplayCandidatesForRange.mockResolvedValue([
+      eligibleCandidate('order_ready'),
+      postSaleMutationCandidate('order_mutated'),
+    ]);
+    const preview = await service.previewRange({
+      toDateExclusive: '2026-06-03',
+      storeStableId: '4750_Yonge_Street',
+    });
+
+    await expect(
+      service.executeRange({
+        toDateExclusive: '2026-06-03',
+        storeStableId: '4750_Yonge_Street',
+        expectedPlanHash: preview.planHash,
+        acknowledgedBlockedOrderStableIds: [],
+      }),
+    ).rejects.toThrow(
+      'acknowledgedBlockedOrderStableIds must exactly match the current POST_SALE_MUTATION exception inventory',
+    );
+    expect(accounting.createJournalEntry).not.toHaveBeenCalled();
+  });
+
+  it('keeps any unresolved pricing exception as a hard write blocker', async () => {
+    const { service, accounting, orders } = makeService();
+    orders.readReplayCandidatesForRange.mockResolvedValue([
+      eligibleCandidate('order_ready'),
+      manualOverrideCandidate('order_manual'),
+    ]);
+    const preview = await service.previewRange({
+      toDateExclusive: '2026-06-03',
+      storeStableId: '4750_Yonge_Street',
+    });
+
+    await expect(
+      service.executeRange({
+        toDateExclusive: '2026-06-03',
+        storeStableId: '4750_Yonge_Street',
+        expectedPlanHash: preview.planHash,
+        acknowledgedBlockedOrderStableIds: ['order_manual'],
+      }),
+    ).rejects.toThrow('Canonical sale replay has unresolved block');
+    expect(accounting.createJournalEntry).not.toHaveBeenCalled();
   });
 });
