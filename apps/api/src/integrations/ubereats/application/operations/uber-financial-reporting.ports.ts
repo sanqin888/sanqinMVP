@@ -50,6 +50,9 @@ export interface UberFinancialReportRepositoryPort {
   findByWorkflowId(
     workflowId: string,
   ): Promise<UberFinancialReportRecord | null>;
+  findByReportStableId(
+    reportStableId: string,
+  ): Promise<UberFinancialReportRecord | null>;
   saveRequested(input: {
     workflowId: string;
     reportType: UberEatsFinancialReportType;
@@ -64,6 +67,7 @@ export interface UberFinancialReportRepositoryPort {
     rawMetadata: unknown;
   }): Promise<UberFinancialReportRecord>;
   markError(input: { workflowId: string; errorMessage: string }): Promise<void>;
+  markImported(reportStableId: string): Promise<UberFinancialReportRecord>;
   list(input?: {
     limit?: number;
     status?: UberFinancialReportStatus;
@@ -76,4 +80,10 @@ export interface UberFinancialReportArtifactStorePort {
     workflowId: string;
     sections: Array<{ downloadUrl: string; sectionId: string | null }>;
   }): Promise<string[]>;
+  readCsvArtifact(artifactUrl: string): Promise<{
+    content: string;
+    contentHash: string;
+    byteSize: number;
+    fileName: string;
+  }>;
 }

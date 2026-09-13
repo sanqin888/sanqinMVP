@@ -45,12 +45,29 @@ describe('AccountingAutomationScheduler financial-report characterization', () =
         .fn()
         .mockResolvedValue([{ workflowId: 'workflow-1' }]),
     };
+    const providerFinancialHistory = {
+      syncReadyUberReports: jest.fn().mockResolvedValue({
+        scannedReports: 0,
+        importedReports: 0,
+        importedArtifacts: 0,
+        deferredArtifacts: 0,
+        skippedBeforeStartDate: 0,
+        skippedOrderDetailReports: 0,
+      }),
+    };
     const scheduler = new AccountingAutomationScheduler(
       gmail as never,
+      providerFinancialHistory as never,
       prisma as never,
       uberReporting as never,
     );
-    return { scheduler, gmail, prisma, uberReporting };
+    return {
+      scheduler,
+      gmail,
+      prisma,
+      uberReporting,
+      providerFinancialHistory,
+    };
   };
 
   it('does not inspect store mappings or request reports unless eats.report is configured', async () => {
@@ -68,15 +85,22 @@ describe('AccountingAutomationScheduler financial-report characterization', () =
   it('requests the previous four-day rolling window, clipped by accountingStartDate, in the configured business timezone', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-09-11T15:00:00.000Z'));
     process.env.UBER_EATS_APP_SCOPES = 'eats.store,eats.report';
-    const { scheduler, gmail, prisma, uberReporting } = makeScheduler(
-      new Date('2026-09-09T00:00:00.000Z'),
-    );
+    const {
+      scheduler,
+      gmail,
+      prisma,
+      uberReporting,
+      providerFinancialHistory,
+    } = makeScheduler(new Date('2026-09-09T00:00:00.000Z'));
 
     await expect(scheduler.runNow()).resolves.toEqual({
       gmail: expect.objectContaining({
         importedDocuments: 0,
       }) as unknown as Record<string, unknown>,
       uber: [{ workflowId: 'workflow-1' }],
+      uberFinancialHistory: expect.objectContaining({
+        importedReports: 0,
+      }) as unknown as Record<string, unknown>,
     });
 
     expect(gmail.ingestBillsMailbox).toHaveBeenCalledWith({
@@ -92,12 +116,11 @@ describe('AccountingAutomationScheduler financial-report characterization', () =
       storeUuids: ['uber-store-a', 'uber-store-b'],
       startDate: '2026-09-09',
       endDate: '2026-09-10',
-      reportTypes: [
-        'PAYMENT_DETAILS_REPORT',
-        'FINANCE_SUMMARY_REPORT',
-        'ORDERS_AND_ITEMS_REPORT',
-      ],
+      reportTypes: ['PAYMENT_DETAILS_REPORT', 'FINANCE_SUMMARY_REPORT'],
     });
+    expect(providerFinancialHistory.syncReadyUberReports).toHaveBeenCalledWith(
+      '2026-09-09',
+    );
   });
 
   it('does not request a report when accountingStartDate is later than the latest completed business day', async () => {

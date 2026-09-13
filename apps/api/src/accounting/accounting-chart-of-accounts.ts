@@ -52,6 +52,12 @@ export const DEFAULT_ACCOUNTING_ACCOUNTS: readonly AccountingDefaultAccount[] =
       accountClass: AccountingAccountClass.LIABILITY,
     },
     {
+      accountStableId: 'account_store_balance_liability',
+      name: '储值余额负债',
+      type: null,
+      accountClass: AccountingAccountClass.LIABILITY,
+    },
+    {
       accountStableId: 'account_opening_balance_equity',
       name: '期初余额权益',
       type: null,

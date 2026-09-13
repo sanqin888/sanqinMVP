@@ -97,6 +97,7 @@ import {
   type BrandStoreConfigReaderPort,
 } from '../store/public-api';
 import { buildOrderPricingDisplay } from './order-pricing-display';
+import { appendOrderFinancialSaleFact } from './order-financial-sale-fact';
 import {
   resolveRequestedLoyaltyPoints,
   resolveRequestedLoyaltyRedeemCents,
@@ -1755,6 +1756,7 @@ export class OrdersService
             })) as OrderWithItems)
           : createdOrder;
 
+        await appendOrderFinancialSaleFact(tx, order);
         await tx.opsEvent.createMany({
           data: {
             idempotencyKey: orderAcceptedIdempotencyKey(order.orderStableId),
@@ -2490,6 +2492,7 @@ export class OrdersService
               });
             }
 
+            await appendOrderFinancialSaleFact(tx, created);
             if (options.appendAcceptedLifecycle) {
               await tx.opsEvent.createMany({
                 data: {

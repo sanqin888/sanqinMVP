@@ -17,6 +17,15 @@ import {
   resolveOrderPreparationMinutes,
   resolveOrderPrepStartAt,
 } from './order-preparation-time.policy';
+import { ensureOrderFinancialSaleFact } from './order-financial-sale-fact';
+
+const FINANCIAL_ORDER_STATUSES = new Set<OrderStatus>([
+  OrderStatus.paid,
+  OrderStatus.making,
+  OrderStatus.ready,
+  OrderStatus.completed,
+  OrderStatus.refunded,
+]);
 
 @Injectable()
 export class OrderIngestionService implements OrderIngestionPort {
@@ -145,6 +154,9 @@ export class OrderIngestionService implements OrderIngestionPort {
             priceVarianceCents: item.external?.priceVarianceCents,
           },
         });
+      }
+      if (FINANCIAL_ORDER_STATUSES.has(saved.status)) {
+        await ensureOrderFinancialSaleFact(tx, saved.id);
       }
       const output: IngestionResult = {
         orderId: saved.id,

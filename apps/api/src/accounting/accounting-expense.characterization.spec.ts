@@ -207,6 +207,7 @@ describe('AccountingOperationsService expense-write characterization', () => {
         findUnique: currentDocument,
         update: updateDocument,
       },
+      accountingInboxItem: { findFirst: jest.fn().mockResolvedValue(null) },
       accountingAuditLog: { createMany: createAuditMany },
     };
     const transaction = jest.fn(

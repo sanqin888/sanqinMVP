@@ -1,30 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { createHash } from 'crypto';
-import * as fs from 'fs';
-import * as path from 'path';
-import { createId } from '@paralleldrive/cuid2';
 import { DateTime } from 'luxon';
+import { AccountingInboxTrustDecision } from '@prisma/client';
 import {
-  AccountingDocumentSource,
-  AccountingDocumentStatus,
-  Prisma,
-} from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
-import { getUploadsAccountingDir } from '../common/utils/uploads-path';
-import {
-  extractAccountingPdf,
-  extractAccountingText,
-} from './accounting-pdf-extractor';
-import {
-  classifyAccountingDocumentText,
-  type AccountingReviewMetadata,
-} from './accounting-document-review';
-import { extractAccountingImageText } from './accounting-image-ocr';
-import {
-  ACCOUNTING_RECEIPT_IMAGE_POLICY,
-  detectAccountingReceiptImageType,
-  processAccountingReceiptImage,
-} from './accounting-receipt-image';
+  AccountingInboxAcquisitionService,
+  extractMailboxAddress,
+} from './accounting-inbox-acquisition.service';
+import { AccountingOperationsService } from './accounting-operations.service';
 
 const GMAIL_BILLS_LABEL = 'SanQ-Bills';
 
@@ -67,21 +48,16 @@ type MessageIngestResult = {
   skippedBeforeStartDate: number;
 };
 
-type GmailAccountingAttachmentKind = 'PDF' | 'IMAGE';
-
-type AccountingImageReviewExtraction = ReturnType<
-  typeof extractAccountingText
-> &
-  AccountingReviewMetadata & {
-    ocrEngine: 'TESSERACT';
-    ocrStatus: 'SUCCESS' | 'ERROR';
-  };
+type GmailAccountingAttachmentKind = 'PDF' | 'IMAGE' | 'CSV';
 
 @Injectable()
 export class AccountingGmailIngestService {
   private readonly logger = new Logger(AccountingGmailIngestService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly acquisition: AccountingInboxAcquisitionService,
+    private readonly operations: AccountingOperationsService,
+  ) {}
 
   isConfigured(): boolean {
     return Boolean(
@@ -166,9 +142,18 @@ export class AccountingGmailIngestService {
     }
 
     const subject = this.header(message.payload?.headers, 'subject');
-    const attachmentParts = this.flattenParts(message.payload).filter(
-      (part) => part.body?.attachmentId && this.attachmentKind(part) != null,
+    const senderEmail = extractMailboxAddress(
+      this.header(message.payload?.headers, 'from'),
     );
+    const trustDecision = senderEmail
+      ? await this.operations.senderTrustDecision(senderEmail)
+      : AccountingInboxTrustDecision.UNTRUSTED;
+    const context = {
+      messageId,
+      senderEmail,
+      subject,
+      receivedAt: this.receivedAtIso(message),
+    };
     const result: MessageIngestResult = {
       imported: 0,
       duplicates: 0,
@@ -176,23 +161,35 @@ export class AccountingGmailIngestService {
       skippedBeforeStartDate: 0,
     };
 
+    const bodyText = await this.readMessageBody(
+      accessToken,
+      messageId,
+      message.payload,
+    );
+    if (bodyText) {
+      try {
+        const body = await this.acquisition.acquireEmailBody(
+          context,
+          bodyText,
+          trustDecision,
+        );
+        this.countAcquisition(body, result);
+      } catch (error) {
+        result.failed += 1;
+        this.logger.error(
+          `Failed to ingest Gmail body ${messageId}`,
+          error instanceof Error ? error.stack : String(error),
+        );
+      }
+    }
+
+    const attachmentParts = this.flattenParts(message.payload).filter(
+      (part) => part.body?.attachmentId && this.attachmentKind(part) != null,
+    );
     for (const part of attachmentParts) {
       const attachmentId = part.body?.attachmentId;
       const kind = this.attachmentKind(part);
       if (!attachmentId || !kind) continue;
-      const existingAttachment =
-        await this.prisma.accountingExpenseDocument.findFirst({
-          where: {
-            gmailMessageId: messageId,
-            gmailAttachmentId: attachmentId,
-          },
-          select: { documentStableId: true },
-        });
-      if (existingAttachment) {
-        result.duplicates += 1;
-        continue;
-      }
-
       try {
         const attachment = await this.gmailJson<GmailAttachment>(
           accessToken,
@@ -203,132 +200,19 @@ export class AccountingGmailIngestService {
           continue;
         }
         const buffer = this.decodeBase64Url(attachment.data);
-        const fileHash = createHash('sha256').update(buffer).digest('hex');
-        const duplicateHash =
-          await this.prisma.accountingExpenseDocument.findUnique({
-            where: { fileHash },
-            select: { documentStableId: true },
-          });
-        if (duplicateHash) {
-          result.duplicates += 1;
-          continue;
-        }
-
-        if (kind === 'PDF') {
-          if (
-            buffer.length < 5 ||
-            buffer.subarray(0, 5).toString('ascii') !== '%PDF-'
-          ) {
-            result.failed += 1;
-            continue;
-          }
-          const { text, extraction } = extractAccountingPdf(buffer);
-          if (
-            this.isBeforeStartDate(extraction.date, options.accountingStartDate)
-          ) {
-            result.skippedBeforeStartDate += 1;
-            continue;
-          }
-          const attachmentUrl = await this.savePdf(buffer, part.filename);
-          await this.prisma.accountingExpenseDocument.create({
-            data: {
-              documentStableId: `expense_${createId()}`,
-              source: AccountingDocumentSource.GMAIL,
-              status: AccountingDocumentStatus.PENDING_REVIEW,
-              occurredAt: extraction.date
-                ? new Date(`${extraction.date}T12:00:00Z`)
-                : null,
-              subtotalCents: extraction.subtotalCents,
-              taxCents: extraction.taxCents,
-              totalCents: extraction.totalCents,
-              currency: 'CAD',
-              gmailMessageId: messageId,
-              gmailAttachmentId: attachmentId,
-              fileHash,
-              emailSubject: subject,
-              attachmentUrls: [attachmentUrl],
-              extractedText: text.slice(0, 100_000),
-              extractionJson: extraction as unknown as Prisma.InputJsonValue,
-            },
-          });
-          result.imported += 1;
-          continue;
-        }
-
-        if (buffer.length > ACCOUNTING_RECEIPT_IMAGE_POLICY.maxUploadBytes) {
-          result.failed += 1;
-          continue;
-        }
-        const detectedType = detectAccountingReceiptImageType(buffer);
-        if (!detectedType) {
-          result.failed += 1;
-          continue;
-        }
-        const processed = await processAccountingReceiptImage({
-          originalname: `gmail-attachment${
-            detectedType === 'jpeg' ? '.jpg' : `.${detectedType}`
-          }`,
-          buffer,
-        });
-        let text = '';
-        let ocrStatus: AccountingImageReviewExtraction['ocrStatus'] = 'SUCCESS';
-        try {
-          text = (await extractAccountingImageText(processed.buffer)).text;
-        } catch (error) {
-          ocrStatus = 'ERROR';
-          this.logger.warn(
-            `Accounting image OCR failed for ${messageId}/${attachmentId}; preserving attachment for review: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          );
-        }
-        const extraction = extractAccountingText(text);
-        if (
-          this.isBeforeStartDate(extraction.date, options.accountingStartDate)
-        ) {
-          result.skippedBeforeStartDate += 1;
-          continue;
-        }
-        const review =
-          ocrStatus === 'SUCCESS'
-            ? classifyAccountingDocumentText(text, extraction)
-            : {
-                reviewDisposition: 'UNRECOGNIZED' as const,
-                reviewReason: 'NO_READABLE_TEXT' as const,
-              };
-        const extractionJson: AccountingImageReviewExtraction = {
-          ...extraction,
-          inputKind: 'IMAGE',
-          ...review,
-          ocrEngine: 'TESSERACT',
-          ocrStatus,
-        };
-        const attachmentUrl = await this.saveBillImage(
-          processed.buffer,
-          part.filename,
-        );
-        await this.prisma.accountingExpenseDocument.create({
-          data: {
-            documentStableId: `expense_${createId()}`,
-            source: AccountingDocumentSource.GMAIL,
-            status: AccountingDocumentStatus.PENDING_REVIEW,
-            occurredAt: extraction.date
-              ? new Date(`${extraction.date}T12:00:00Z`)
-              : null,
-            subtotalCents: extraction.subtotalCents,
-            taxCents: extraction.taxCents,
-            totalCents: extraction.totalCents,
-            currency: 'CAD',
-            gmailMessageId: messageId,
-            gmailAttachmentId: attachmentId,
-            fileHash,
-            emailSubject: subject,
-            attachmentUrls: [attachmentUrl],
-            extractedText: text.slice(0, 100_000),
-            extractionJson: extractionJson as unknown as Prisma.InputJsonValue,
+        const acquired = await this.acquisition.acquireEmailAttachment(
+          context,
+          attachmentId,
+          {
+            originalname:
+              part.filename?.trim() ||
+              `gmail-${attachmentId}.${kind === 'PDF' ? 'pdf' : kind === 'CSV' ? 'csv' : 'jpg'}`,
+            mimetype: part.mimeType,
+            buffer,
           },
-        });
-        result.imported += 1;
+          trustDecision,
+        );
+        this.countAcquisition(acquired, result);
       } catch (error) {
         result.failed += 1;
         this.logger.error(
@@ -338,83 +222,27 @@ export class AccountingGmailIngestService {
       }
     }
 
-    if (attachmentParts.length === 0) {
-      await this.ingestBodyOnlyMessage(
-        accessToken,
-        messageId,
-        message.payload,
-        subject,
-        options,
-        result,
-      );
-    }
-
     return result;
   }
 
-  private async ingestBodyOnlyMessage(
-    accessToken: string,
-    messageId: string,
-    payload: GmailPart | undefined,
-    subject: string | null,
-    options: GmailIngestOptions,
+  private countAcquisition(
+    acquisition:
+      | Awaited<
+          ReturnType<AccountingInboxAcquisitionService['acquireEmailBody']>
+        >
+      | Awaited<
+          ReturnType<
+            AccountingInboxAcquisitionService['acquireEmailAttachment']
+          >
+        >,
     result: MessageIngestResult,
   ) {
-    const existing = await this.prisma.accountingExpenseDocument.findFirst({
-      where: { gmailMessageId: messageId, gmailAttachmentId: null },
-      select: { documentStableId: true },
-    });
-    if (existing) {
+    if (!acquisition) return;
+    if (acquisition.replayed || acquisition.duplicateOfArtifactStableId) {
       result.duplicates += 1;
-      return;
+    } else {
+      result.imported += 1;
     }
-
-    const text = await this.readMessageBody(accessToken, messageId, payload);
-    if (!text) return;
-    const fileHash = createHash('sha256')
-      .update('gmail-body\0')
-      .update(messageId)
-      .update('\0')
-      .update(text)
-      .digest('hex');
-    const duplicateHash =
-      await this.prisma.accountingExpenseDocument.findUnique({
-        where: { fileHash },
-        select: { documentStableId: true },
-      });
-    if (duplicateHash) {
-      result.duplicates += 1;
-      return;
-    }
-
-    const extraction = extractAccountingText(text);
-    if (this.isBeforeStartDate(extraction.date, options.accountingStartDate)) {
-      result.skippedBeforeStartDate += 1;
-      return;
-    }
-
-    await this.prisma.accountingExpenseDocument.create({
-      data: {
-        documentStableId: `expense_${createId()}`,
-        source: AccountingDocumentSource.GMAIL,
-        status: AccountingDocumentStatus.PENDING_REVIEW,
-        occurredAt: extraction.date
-          ? new Date(`${extraction.date}T12:00:00Z`)
-          : null,
-        subtotalCents: extraction.subtotalCents,
-        taxCents: extraction.taxCents,
-        totalCents: extraction.totalCents,
-        currency: 'CAD',
-        gmailMessageId: messageId,
-        gmailAttachmentId: null,
-        fileHash,
-        emailSubject: subject,
-        attachmentUrls: [],
-        extractedText: text.slice(0, 100_000),
-        extractionJson: extraction as unknown as Prisma.InputJsonValue,
-      },
-    });
-    result.imported += 1;
   }
 
   private gmailDateClause(accountingStartDate: string | null): string {
@@ -442,13 +270,11 @@ export class AccountingGmailIngestService {
       : true;
   }
 
-  private isBeforeStartDate(
-    documentDate: string | null,
-    accountingStartDate: string | null,
-  ): boolean {
-    return Boolean(
-      accountingStartDate && documentDate && documentDate < accountingStartDate,
-    );
+  private receivedAtIso(message: GmailMessage): string | null {
+    const millis = Number(message.internalDate);
+    if (!Number.isFinite(millis)) return null;
+    const received = DateTime.fromMillis(millis, { zone: 'utc' });
+    return received.isValid ? received.toISO() : null;
   }
 
   private async readMessageBody(
@@ -588,6 +414,13 @@ export class AccountingGmailIngestService {
     if (mimeType === 'application/pdf' || filename.endsWith('.pdf')) {
       return 'PDF';
     }
+    if (
+      mimeType === 'text/csv' ||
+      mimeType === 'application/csv' ||
+      filename.endsWith('.csv')
+    ) {
+      return 'CSV';
+    }
     const isSupportedImage =
       mimeType === 'image/jpeg' ||
       mimeType === 'image/png' ||
@@ -599,7 +432,9 @@ export class AccountingGmailIngestService {
       this.header(part.headers, 'content-disposition')?.toLowerCase() ?? '';
     const reportedSize = part.body?.size ?? 0;
     const filenameLooksLikeBill =
-      /(?:bill|invoice|receipt|statement|purchase|order)/i.test(filename);
+      /(?:bill|invoice|receipt|statement|purchase|order|closeout|settlement)/i.test(
+        filename,
+      );
     const filenameLooksDecorative =
       /(?:logo|signature|spacer|icon|facebook|instagram|linkedin)/i.test(
         filename,
@@ -613,36 +448,6 @@ export class AccountingGmailIngestService {
       return null;
     }
     return 'IMAGE';
-  }
-
-  private async saveBillImage(buffer: Buffer, originalName?: string) {
-    const dir = path.join(getUploadsAccountingDir(), 'bills');
-    await fs.promises.mkdir(dir, { recursive: true });
-    const originalBase = path.basename(originalName?.trim() || 'bill-image');
-    const extension = path.extname(originalBase);
-    const safeBase = originalBase
-      .slice(0, Math.max(0, originalBase.length - extension.length))
-      .replace(/[^a-zA-Z0-9_-]+/g, '-')
-      .slice(0, 48);
-    const fileName = `${Date.now()}-${createId()}-${safeBase || 'bill-image'}.webp`;
-    await fs.promises.writeFile(path.join(dir, fileName), buffer, {
-      flag: 'wx',
-    });
-    return `/api/v1/accounting/files/bills/${fileName}`;
-  }
-
-  private async savePdf(buffer: Buffer, originalName?: string) {
-    const dir = path.join(getUploadsAccountingDir(), 'bills');
-    await fs.promises.mkdir(dir, { recursive: true });
-    const safeBase = path
-      .basename(originalName?.trim() || 'bill.pdf', '.pdf')
-      .replace(/[^a-zA-Z0-9_-]+/g, '-')
-      .slice(0, 48);
-    const fileName = `${Date.now()}-${createId()}-${safeBase || 'bill'}.pdf`;
-    await fs.promises.writeFile(path.join(dir, fileName), buffer, {
-      flag: 'wx',
-    });
-    return `/api/v1/accounting/files/bills/${fileName}`;
   }
 
   private flattenParts(part?: GmailPart): GmailPart[] {

@@ -1,4 +1,7 @@
-import { HandleUberFinancialReportSuccessUseCase } from './uber-financial-reporting.use-cases';
+import {
+  HandleUberFinancialReportSuccessUseCase,
+  UberFinancialReportingUseCase,
+} from './uber-financial-reporting.use-cases';
 
 describe('HandleUberFinancialReportSuccessUseCase replay safety', () => {
   it('replays after artifact download succeeded but report READY persistence failed', async () => {
@@ -90,5 +93,76 @@ describe('HandleUberFinancialReportSuccessUseCase replay safety', () => {
     ).resolves.toBeUndefined();
 
     expect(artifacts.downloadCsvSections).not.toHaveBeenCalled();
+  });
+});
+
+describe('UberFinancialReportingUseCase accounting artifact boundary', () => {
+  const artifactUrl = '/api/v1/accounting/files/uber-reports/finance.csv';
+
+  function makeUseCase(status: 'READY' | 'IMPORTED' | 'REQUESTED' = 'READY') {
+    const api = { createReport: jest.fn() };
+    const reports = {
+      findByReportStableId: jest.fn().mockResolvedValue({
+        reportStableId: 'uberreport_1',
+        status,
+        artifactUrls: [artifactUrl],
+      }),
+      markImported: jest.fn().mockResolvedValue({}),
+    };
+    const artifacts = {
+      readCsvArtifact: jest.fn().mockResolvedValue({
+        content: 'Metric,Amount\nMarketplace Fees,-12.34',
+        contentHash: 'a'.repeat(64),
+        byteSize: 36,
+        fileName: 'finance.csv',
+      }),
+    };
+    return {
+      useCase: new UberFinancialReportingUseCase(
+        api as never,
+        reports as never,
+        artifacts as never,
+      ),
+      reports,
+      artifacts,
+    };
+  }
+
+  it('reads only an artifact owned by a READY report', async () => {
+    const { useCase, artifacts } = makeUseCase();
+    await expect(
+      useCase.readFinancialReportArtifact({
+        reportStableId: 'uberreport_1',
+        artifactUrl,
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({ fileName: 'finance.csv' }) as unknown,
+    );
+    expect(artifacts.readCsvArtifact).toHaveBeenCalledWith(artifactUrl);
+  });
+
+  it('fails closed when the requested artifact does not belong to the report', async () => {
+    const { useCase, artifacts } = makeUseCase();
+    await expect(
+      useCase.readFinancialReportArtifact({
+        reportStableId: 'uberreport_1',
+        artifactUrl: '/api/v1/accounting/files/uber-reports/other.csv',
+      }),
+    ).rejects.toThrow('artifact does not belong to report');
+    expect(artifacts.readCsvArtifact).not.toHaveBeenCalled();
+  });
+
+  it('marks READY reports imported and treats IMPORTED as idempotent replay', async () => {
+    const ready = makeUseCase('READY');
+    await expect(
+      ready.useCase.markFinancialReportImported('uberreport_1'),
+    ).resolves.toBeUndefined();
+    expect(ready.reports.markImported).toHaveBeenCalledWith('uberreport_1');
+
+    const imported = makeUseCase('IMPORTED');
+    await expect(
+      imported.useCase.markFinancialReportImported('uberreport_1'),
+    ).resolves.toBeUndefined();
+    expect(imported.reports.markImported).not.toHaveBeenCalled();
   });
 });

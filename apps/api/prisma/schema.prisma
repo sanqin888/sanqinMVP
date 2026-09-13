@@ -220,6 +220,101 @@ enum AccountingDocumentStatus {
   DISCARDED
 }
 
+enum AccountingArtifactAcquisitionMode {
+  EMAIL
+  MANUAL_UPLOAD
+  PROVIDER_API
+}
+
+enum AccountingArtifactKind {
+  EMAIL_BODY
+  PDF
+  IMAGE
+  CSV
+  TEXT
+  OTHER
+}
+
+enum AccountingInboxClassification {
+  EXPENSE_DOCUMENT
+  PROVIDER_FINANCIAL_DOCUMENT
+  UNKNOWN
+}
+
+enum AccountingInboxMaterializedEntityType {
+  EXPENSE_DOCUMENT
+  PROVIDER_FINANCIAL_DOCUMENT
+}
+
+enum AccountingInboxStatus {
+  PENDING_REVIEW
+  QUARANTINED
+  DUPLICATE
+  CONFIRMED
+  ERROR
+  DISCARDED
+}
+
+enum AccountingInboxTrustDecision {
+  TRUSTED
+  UNTRUSTED
+  NOT_APPLICABLE
+}
+
+enum AccountingParseStatus {
+  PENDING
+  SUCCESS
+  ERROR
+  SKIPPED
+}
+
+enum AccountingFinancialProvider {
+  CLOVER
+  UBER_EATS
+  FANTUAN
+}
+
+enum AccountingFinancialDocumentType {
+  BATCH_CONTROL
+  STATEMENT
+  API_REPORT
+  OTHER
+}
+
+enum AccountingFinancialComponent {
+  SALES
+  SALES_TAX
+  REFUND
+  TIP
+  COMMISSION
+  COMMISSION_TAX
+  PROCESSING_FEE
+  PROCESSING_FEE_TAX
+  PROMOTION
+  SUBSIDY
+  ADVERTISING
+  ADVERTISING_CREDIT
+  CHARGEBACK
+  ADJUSTMENT
+  PAYOUT
+  CONTROL_TOTAL
+  OTHER
+}
+
+enum AccountingFinancialPostingTreatment {
+  POSTABLE
+  CONTROL_TOTAL
+  RECONCILIATION_ONLY
+  UNCLASSIFIED
+}
+
+enum AccountingFinancialTaxRole {
+  NONE
+  SALES_TAX
+  INPUT_TAX
+  OTHER_TAX
+}
+
 enum SettlementPlatform {
   UBER_EATS
   FANTUAN
@@ -1676,6 +1771,162 @@ model AccountingExpenseDocument {
   @@index([source, createdAt])
   @@index([occurredAt])
   @@index([accountId])
+}
+
+model AccountingSourceArtifact {
+  id                     String                            @id @default(uuid()) @db.Uuid
+  artifactStableId       String                            @unique @default(cuid())
+  acquisitionMode        AccountingArtifactAcquisitionMode
+  kind                   AccountingArtifactKind
+  transportIdentity      String
+  contentHash            String
+  mimeType               String?
+  originalFilename       String?
+  byteSize               Int?
+  storedUrl              String?
+  bodyText               String?
+  senderEmail            String?
+  emailSubject           String?
+  metadataJson           Json?
+  createdAt              DateTime                          @default(now())
+  inboxItem              AccountingInboxItem?             @relation("AccountingInboxArtifact")
+  duplicateInboxItems    AccountingInboxItem[]             @relation("AccountingInboxDuplicateArtifact")
+  parseRuns              AccountingParseRun[]
+  financialDocument      AccountingProviderFinancialDocument?
+
+  @@unique([acquisitionMode, transportIdentity])
+  @@index([contentHash, createdAt])
+  @@index([acquisitionMode, createdAt])
+}
+
+model AccountingParseRun {
+  id               String                @id @default(uuid()) @db.Uuid
+  parseRunStableId String                @unique @default(cuid())
+  artifactId       String                @db.Uuid
+  idempotencyKey   String                @unique
+  parserName       String
+  parserVersion    String
+  status           AccountingParseStatus @default(PENDING)
+  resultHash       String?
+  resultJson       Json?
+  errorMessage     String?
+  completedAt      DateTime?
+  createdAt        DateTime              @default(now())
+  artifact         AccountingSourceArtifact @relation(fields: [artifactId], references: [id], onDelete: Restrict)
+
+  @@unique([artifactId, parserName, parserVersion])
+  @@index([artifactId, createdAt])
+  @@index([status, createdAt])
+}
+
+model AccountingInboxItem {
+  id                       String                        @id @default(uuid()) @db.Uuid
+  inboxItemStableId        String                        @unique @default(cuid())
+  artifactId               String                        @unique @db.Uuid
+  status                   AccountingInboxStatus         @default(PENDING_REVIEW)
+  classification           AccountingInboxClassification @default(UNKNOWN)
+  trustDecision            AccountingInboxTrustDecision
+  duplicateOfArtifactId    String?                       @db.Uuid
+  materializedEntityType   AccountingInboxMaterializedEntityType?
+  materializedEntityStableId String?
+  reviewedAt               DateTime?
+  reviewedByUserStableId   String?
+  createdAt                DateTime                      @default(now())
+  updatedAt                DateTime                      @updatedAt
+  version                  Int                           @default(1)
+  artifact                 AccountingSourceArtifact      @relation("AccountingInboxArtifact", fields: [artifactId], references: [id], onDelete: Restrict)
+  duplicateOfArtifact      AccountingSourceArtifact?     @relation("AccountingInboxDuplicateArtifact", fields: [duplicateOfArtifactId], references: [id], onDelete: Restrict)
+
+  @@index([status, createdAt])
+  @@index([classification, status, createdAt])
+  @@index([duplicateOfArtifactId])
+  @@index([materializedEntityType, materializedEntityStableId], map: "AcctInbox_materialized_idx")
+}
+
+model AccountingTrustedSender {
+  id                      String   @id @default(uuid()) @db.Uuid
+  trustedSenderStableId   String   @unique @default(cuid())
+  email                   String   @unique
+  label                   String?
+  isActive                Boolean  @default(true)
+  createdByUserStableId   String
+  updatedByUserStableId   String
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@index([isActive, email])
+}
+
+model AccountingProviderFinancialDocument {
+  id                      String                          @id @default(uuid()) @db.Uuid
+  documentStableId        String                          @unique @default(cuid())
+  artifactId              String                          @unique @db.Uuid
+  provider                AccountingFinancialProvider
+  documentType            AccountingFinancialDocumentType
+  businessIdentityKey     String
+  revision                Int                             @default(1)
+  supersedesDocumentId    String?                         @db.Uuid
+  storeStableId           String?
+  providerMerchantRef     String?
+  providerDocumentRef     String?
+  periodStart             DateTime?                       @db.Date
+  periodEnd               DateTime?                       @db.Date
+  settledAt               DateTime?
+  payoutAt                DateTime?
+  currency                String                          @default("CAD")
+  parserName              String
+  parserVersion           String
+  rawMetadata             Json?
+  createdAt               DateTime                        @default(now())
+  updatedAt               DateTime                        @updatedAt
+  artifact                AccountingSourceArtifact        @relation(fields: [artifactId], references: [id], onDelete: Restrict)
+  supersedes              AccountingProviderFinancialDocument? @relation("AccountingProviderFinancialRevision", fields: [supersedesDocumentId], references: [id], onDelete: Restrict)
+  revisions               AccountingProviderFinancialDocument[] @relation("AccountingProviderFinancialRevision")
+  lines                   AccountingProviderFinancialLine[]
+
+  @@unique([provider, documentType, businessIdentityKey, revision], map: "AcctProviderFinDoc_identity_rev_key")
+  @@index([provider, documentType, periodStart, periodEnd], map: "AcctProviderFinDoc_period_idx")
+  @@index([storeStableId, provider, periodEnd], map: "AcctProviderFinDoc_store_period_idx")
+  @@index([supersedesDocumentId])
+}
+
+model AccountingProviderFinancialLine {
+  id                 String                              @id @default(uuid()) @db.Uuid
+  lineStableId       String                              @unique @default(cuid())
+  documentId         String                              @db.Uuid
+  lineNo             Int
+  externalRef        String?
+  rawCode            String?
+  rawName            String?
+  component          AccountingFinancialComponent
+  postingTreatment   AccountingFinancialPostingTreatment
+  taxRole            AccountingFinancialTaxRole          @default(NONE)
+  amountCents        Int
+  occurredAt         DateTime?
+  rawPayload         Json?
+  createdAt          DateTime                            @default(now())
+  document           AccountingProviderFinancialDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, lineNo])
+  @@index([component, postingTreatment])
+  @@index([occurredAt])
+}
+
+model AccountingProviderFinancialCoverage {
+  id                         String                      @id @default(uuid()) @db.Uuid
+  coverageStableId           String                      @unique @default(cuid())
+  provider                   AccountingFinancialProvider
+  storeStableId              String
+  financialHistoryRequiredFrom DateTime                  @db.Date
+  financialCompleteThrough   DateTime?                   @db.Date
+  liveOrderFactCutoverAt     DateTime?
+  orderDetailCoverageFrom    DateTime?                   @db.Date
+  updatedByUserStableId      String?
+  createdAt                  DateTime                    @default(now())
+  updatedAt                  DateTime                    @updatedAt
+
+  @@unique([provider, storeStableId])
+  @@index([storeStableId, provider])
 }
 
 model PlatformSettlementRecord {

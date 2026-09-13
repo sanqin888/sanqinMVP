@@ -9,6 +9,7 @@ import {
 import { DateTime } from 'luxon';
 import { PrismaService } from '../prisma/prisma.service';
 import { AccountingGmailIngestService } from './accounting-gmail-ingest.service';
+import { AccountingProviderFinancialHistoryService } from './accounting-provider-financial-history.service';
 import {
   UBER_EATS_REPORTING,
   type UberEatsReportingPort,
@@ -33,6 +34,7 @@ export class AccountingAutomationScheduler
 
   constructor(
     private readonly gmail: AccountingGmailIngestService,
+    private readonly providerFinancialHistory: AccountingProviderFinancialHistoryService,
     private readonly prisma: PrismaService,
     @Inject(UBER_EATS_REPORTING)
     private readonly uberReporting: UberEatsReportingPort,
@@ -227,10 +229,22 @@ export class AccountingAutomationScheduler
           settings.accountingStartDate,
         )
       : [];
+    const uberFinancialHistory = settings.uberReportsEnabled
+      ? await this.providerFinancialHistory.syncReadyUberReports(
+          settings.accountingStartDate,
+        )
+      : {
+          scannedReports: 0,
+          importedReports: 0,
+          importedArtifacts: 0,
+          deferredArtifacts: 0,
+          skippedBeforeStartDate: 0,
+          skippedOrderDetailReports: 0,
+        };
     this.logger.log(
-      `Accounting automation completed: gmailImported=${gmail.importedDocuments} gmailDuplicates=${gmail.duplicateDocuments} uberRequested=${uber.length}`,
+      `Accounting automation completed: gmailImported=${gmail.importedDocuments} gmailDuplicates=${gmail.duplicateDocuments} uberRequested=${uber.length} uberImported=${uberFinancialHistory.importedReports}`,
     );
-    return { gmail, uber };
+    return { gmail, uber, uberFinancialHistory };
   }
 
   private async requestUberReports(
@@ -268,11 +282,7 @@ export class AccountingAutomationScheduler
       storeUuids,
       startDate,
       endDate,
-      reportTypes: [
-        'PAYMENT_DETAILS_REPORT',
-        'FINANCE_SUMMARY_REPORT',
-        'ORDERS_AND_ITEMS_REPORT',
-      ],
+      reportTypes: ['PAYMENT_DETAILS_REPORT', 'FINANCE_SUMMARY_REPORT'],
     });
   }
 }

@@ -133,4 +133,30 @@ describe('UberFinancialReportArtifactStore replay safety', () => {
       'Uber report artifact integrity mismatch',
     );
   });
+
+  it('reads only a validated CSV artifact from the Uber report directory', async () => {
+    const csv = 'Metric,Amount\nMarketplace Fees,-12.34\n';
+    const dir = path.join(tempRoot, 'accounting', 'uber-reports');
+    await fs.promises.mkdir(dir, { recursive: true });
+    await fs.promises.writeFile(path.join(dir, 'finance.csv'), csv, 'utf8');
+    const store = new UberFinancialReportArtifactStore();
+
+    await expect(
+      store.readCsvArtifact(
+        '/api/v1/accounting/files/uber-reports/finance.csv',
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        content: csv,
+        fileName: 'finance.csv',
+        byteSize: Buffer.byteLength(csv),
+        contentHash: expect.stringMatching(/^[a-f0-9]{64}$/) as unknown,
+      }) as unknown,
+    );
+    await expect(
+      store.readCsvArtifact(
+        '/api/v1/accounting/files/uber-reports/../secret.csv',
+      ),
+    ).rejects.toThrow('Invalid Uber report artifact path');
+  });
 });

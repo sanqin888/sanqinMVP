@@ -97,6 +97,7 @@ function makeCreatedOrder(input: {
     subtotalAfterDiscountCents: 1000,
     promotionSnapshot: { version: 1, adjustments: [] },
     createdAt: new Date('2026-09-05T20:01:00.000Z'),
+    updatedAt: new Date('2026-09-05T20:01:00.000Z'),
     paidAt: new Date('2026-09-05T20:01:00.000Z'),
     items: [],
     ...input.data,
@@ -247,6 +248,15 @@ describe('OrdersService confirmed-payment finalization characterization', () => 
       data: { couponId: '8a3d4c0e-4750-4f6a-9138-000000000020' },
       include: { items: true },
     });
+    expect(createLifecycleEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          idempotencyKey: 'order-financial-sale:order_stable_1:v1',
+          eventName: 'order.financial_sale.v1',
+          source: 'orders.financial',
+        }) as unknown,
+      }),
+    );
     expect(createLifecycleEvent).toHaveBeenCalledWith({
       data: {
         idempotencyKey: 'order.accepted:order_stable_1',
