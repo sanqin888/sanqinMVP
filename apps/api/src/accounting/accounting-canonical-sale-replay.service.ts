@@ -46,10 +46,11 @@ export type CanonicalSaleReplayPreviewInput = {
   storeStableId: string;
 };
 
-export type CanonicalSaleReplayExecuteInput = CanonicalSaleReplayPreviewInput & {
-  expectedPlanHash: string;
-  acknowledgedBlockedOrderStableIds: string[];
-};
+export type CanonicalSaleReplayExecuteInput =
+  CanonicalSaleReplayPreviewInput & {
+    expectedPlanHash: string;
+    acknowledgedBlockedOrderStableIds: string[];
+  };
 
 export type CanonicalSaleReplayException = {
   orderStableId: string;
@@ -576,7 +577,8 @@ export class AccountingCanonicalSaleReplayService {
     if (
       acknowledgedBlockedOrderStableIds.length !==
         input.acknowledgedBlockedOrderStableIds.length ||
-      acknowledgedBlockedOrderStableIds.length !== blockedOrderStableIds.length ||
+      acknowledgedBlockedOrderStableIds.length !==
+        blockedOrderStableIds.length ||
       acknowledgedBlockedOrderStableIds.some(
         (value, index) => value !== blockedOrderStableIds[index],
       )

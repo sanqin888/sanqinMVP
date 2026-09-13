@@ -37,8 +37,8 @@ describe('Accounting canonical revenue cutover guard', () => {
   it('blocks canonical replay if any retired order-revenue accrual row exists', async () => {
     const { service } = makeService(1);
 
-    await expect(service.assertNoLegacyOrderRevenueAccrual()).rejects.toBeInstanceOf(
-      ConflictException,
-    );
+    await expect(
+      service.assertNoLegacyOrderRevenueAccrual(),
+    ).rejects.toBeInstanceOf(ConflictException);
   });
 });
