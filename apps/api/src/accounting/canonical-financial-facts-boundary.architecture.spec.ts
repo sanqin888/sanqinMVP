@@ -105,6 +105,29 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(paymentReader).not.toContain('/loyalty/');
   });
 
+  it('wires canonical SALE posting and replay preview through owner public facts and the existing Accounting Journal boundary', () => {
+    const postingService =
+      file(ACCOUNTING_ROOT, 'accounting-canonical-sale-posting.service.ts')
+        ?.source ?? '';
+    const replayService =
+      file(ACCOUNTING_ROOT, 'accounting-canonical-sale-replay.service.ts')
+        ?.source ?? '';
+    const accountingModule =
+      file(ACCOUNTING_ROOT, 'accounting.module.ts')?.source ?? '';
+
+    expect(postingService).toContain("from '../orders/public-api'");
+    expect(postingService).toContain("from '../loyalty/public-api'");
+    expect(postingService).toContain("from './accounting.service'");
+    expect(postingService).not.toContain('../prisma/');
+    expect(replayService).toContain("from '../orders/public-api'");
+    expect(replayService).toContain("from '../loyalty/public-api'");
+    expect(replayService).toContain("from '../store/public-api'");
+    expect(replayService).not.toContain('../prisma/');
+    expect(accountingModule).toContain('OrderFinancialFactsModule');
+    expect(accountingModule).toContain('LoyaltyFinancialFactsModule');
+    expect(accountingModule).toContain('AccountingCanonicalSaleReplayService');
+  });
+
   it('prevents Accounting from consuming owner internals before or after the later posting cutover', () => {
     const accountingFiles = scanTypeScript(ACCOUNTING_ROOT, {
       productionOnly: true,

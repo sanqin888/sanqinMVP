@@ -36,6 +36,7 @@ import {
 } from './accounting-inbox-acquisition.service';
 import { AccountingService } from './accounting.service';
 import { AccountingAutomationScheduler } from './accounting-automation.scheduler';
+import { AccountingCanonicalSaleReplayService } from './accounting-canonical-sale-replay.service';
 import {
   AccountingOperationsService,
   type AccountingExpenseInput,
@@ -76,6 +77,7 @@ export class AccountingController {
     private readonly operations: AccountingOperationsService,
     private readonly acquisition: AccountingInboxAcquisitionService,
     private readonly automation: AccountingAutomationScheduler,
+    private readonly canonicalSaleReplay: AccountingCanonicalSaleReplayService,
     @Inject(UBER_EATS_REPORTING)
     private readonly uberReporting: UberEatsReportingPort,
   ) {}
@@ -401,6 +403,19 @@ export class AccountingController {
     @Query('groupBy') groupBy?: 'month' | 'quarter' | 'year',
   ) {
     return this.accountingService.pnlReport({ from, to, groupBy });
+  }
+
+  @Get('journal/canonical-sales/replay-preview')
+  canonicalSaleReplayPreview(
+    @Query('fromDate') fromDate?: string,
+    @Query('toDateExclusive') toDateExclusive?: string,
+    @Query('storeStableId') storeStableId?: string,
+  ) {
+    return this.canonicalSaleReplay.previewRange({
+      ...(fromDate ? { fromDate } : {}),
+      toDateExclusive: toDateExclusive ?? '',
+      storeStableId: storeStableId ?? '',
+    });
   }
 
   @Post('automation/order-accrual')

@@ -33,6 +33,10 @@ export interface LoyaltyFinancialFactsReaderPort {
   readFactsByOrderStableId(
     orderStableId: string,
   ): Promise<LoyaltyFinancialFactV1[]>;
+  /** Batch form used by Accounting replay so range preview does not N+1 Loyalty persistence. */
+  readFactsByOrderStableIds(
+    orderStableIds: string[],
+  ): Promise<LoyaltyFinancialFactV1[]>;
   readFactsForRange(
     range: LoyaltyFinancialFactsRangeV1,
   ): Promise<LoyaltyFinancialFactV1[]>;
