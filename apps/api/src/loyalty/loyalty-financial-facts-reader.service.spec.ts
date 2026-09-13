@@ -67,6 +67,32 @@ describe('LoyaltyFinancialFactsReaderService', () => {
     );
   });
 
+  it('batch-reads Store Balance facts by normalized stable Order identities without N+1 lookups', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const service = new LoyaltyFinancialFactsReaderService({
+      loyaltyLedger: { findMany },
+    } as never);
+
+    await service.readFactsByOrderStableIds([
+      ' order-stable-1 ',
+      'order-stable-2',
+      'order-stable-1',
+      '   ',
+    ]);
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          orderStableId: { in: ['order-stable-1', 'order-stable-2'] },
+          target: 'BALANCE',
+          type: {
+            in: ['TOPUP_PURCHASED', 'REDEEM_ON_ORDER', 'REFUND_RETURN_REDEEM'],
+          },
+        },
+      }),
+    );
+  });
+
   it('uses immutable ledger createdAt for inclusive/exclusive financial replay', async () => {
     const findMany = jest.fn().mockResolvedValue([]);
     const service = new LoyaltyFinancialFactsReaderService({
