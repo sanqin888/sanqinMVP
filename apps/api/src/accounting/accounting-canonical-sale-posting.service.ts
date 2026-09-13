@@ -89,7 +89,9 @@ function safeFactSum(
     }
     total += fact.amountCents;
     if (!Number.isSafeInteger(total)) {
-      throw new ConflictException('Store Balance fact total exceeds safe range');
+      throw new ConflictException(
+        'Store Balance fact total exceeds safe range',
+      );
     }
   }
   return total;
@@ -109,7 +111,9 @@ export class AccountingCanonicalSalePostingService {
     orderStableId: string,
   ): Promise<CanonicalSalePostingPreview> {
     const stableId = orderStableId.trim();
-    if (!stableId) throw new NotFoundException('Order financial fact not found');
+    if (!stableId) {
+      throw new NotFoundException('Order financial fact not found');
+    }
 
     const accountingStartAt =
       await this.accounting.requireCanonicalFinancialPostingStartAt();
@@ -177,7 +181,8 @@ export class AccountingCanonicalSalePostingService {
         journal: null,
         block: {
           code: 'STORE_BALANCE_TOPUP_ON_SALE',
-          message: 'SALE order unexpectedly carries Store Balance top-up principal',
+          message:
+            'SALE order unexpectedly carries Store Balance top-up principal',
         },
       };
     }
@@ -253,7 +258,8 @@ export class AccountingCanonicalSalePostingService {
     if (candidate.replayEligibility === 'POST_SALE_MUTATION') {
       return {
         code: 'POST_SALE_MUTATION',
-        message: 'Original SALE cannot be replayed from a post-sale mutated Order',
+        message:
+          'Original SALE cannot be replayed from a post-sale mutated Order',
       };
     }
     if (candidate.replayEligibility !== 'PRICING_UNRESOLVED') return null;

@@ -121,10 +121,10 @@ describe('Accounting canonical SALE posting service', () => {
       new ConflictException('accountingStartDate required'),
     );
 
-    await expect(service.previewCanonicalSale('order_stable_1')).rejects.toThrow(
-      ConflictException,
-    );
-    expect(orders.readReplayCandidateByOrderStableId).not.toHaveBeenCalled();
+    await expect(
+      service.previewCanonicalSale('order_stable_1'),
+    ).rejects.toThrow(ConflictException);
+    expect(orders.readReplayCandidateByOrderStableId.mock.calls).toHaveLength(0);
   });
 
   it('returns not found when the Orders owner has no financial fact', async () => {
@@ -149,7 +149,7 @@ describe('Accounting canonical SALE posting service', () => {
 
     expect(preview.status).toBe('BLOCKED');
     expect(preview.block?.code).toBe('POST_SALE_MUTATION');
-    expect(loyalty.readFactsByOrderStableId).not.toHaveBeenCalled();
+    expect(loyalty.readFactsByOrderStableId.mock.calls).toHaveLength(0);
   });
 
   it('preserves MANUAL_OVERRIDE as an explicit non-postable pricing exception', async () => {
@@ -230,7 +230,9 @@ describe('Accounting canonical SALE posting service', () => {
 
   it('blocks a sale that unexpectedly carries Store Balance top-up principal', async () => {
     const { service, orders, loyalty } = makeService();
-    orders.readReplayCandidateByOrderStableId.mockResolvedValue(makeCandidate());
+    orders.readReplayCandidateByOrderStableId.mockResolvedValue(
+      makeCandidate(),
+    );
     loyalty.readFactsByOrderStableId.mockResolvedValue([
       loyaltyFact('STORE_BALANCE_TOPUP', 1000),
     ]);
@@ -243,7 +245,9 @@ describe('Accounting canonical SALE posting service', () => {
 
   it('posts through the existing Journal writer with the stable system actor', async () => {
     const { service, accounting, orders } = makeService();
-    orders.readReplayCandidateByOrderStableId.mockResolvedValue(makeCandidate());
+    orders.readReplayCandidateByOrderStableId.mockResolvedValue(
+      makeCandidate(),
+    );
     const createdAt = new Date('2026-09-12T16:02:00.000Z');
     accounting.createJournalEntry.mockResolvedValue({
       entryStableId: 'journal_1',

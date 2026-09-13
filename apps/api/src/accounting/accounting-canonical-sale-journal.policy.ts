@@ -195,7 +195,8 @@ export function buildCanonicalSaleJournal(params: {
   }
 
   if (
-    nominalSubtotalCents - dailySpecialCents !== fact.effectiveSubtotalCents
+    nominalSubtotalCents - dailySpecialCents !==
+    fact.effectiveSubtotalCents
   ) {
     throw new CanonicalSaleJournalPolicyError(
       'PRICING_INVARIANT',
@@ -223,7 +224,10 @@ export function buildCanonicalSaleJournal(params: {
     );
   }
 
-  if (nominalSubtotalCents - totalDiscountCents !== fact.subtotalAfterDiscountCents) {
+  if (
+    nominalSubtotalCents - totalDiscountCents !==
+    fact.subtotalAfterDiscountCents
+  ) {
     throw new CanonicalSaleJournalPolicyError(
       'PRICING_INVARIANT',
       'nominal subtotal minus discounts must equal subtotalAfterDiscountCents',

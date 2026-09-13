@@ -71,7 +71,9 @@ describe('Accounting canonical SALE journal policy', () => {
     });
     const lines = lineMap(makeFact());
 
-    expect(draft.journal.idempotencyKey).toBe('canonical-sale:order_stable_1:v1');
+    expect(draft.journal.idempotencyKey).toBe(
+      'canonical-sale:order_stable_1:v1',
+    );
     expect(draft.journal.sourceFactType).toBe('order.financial_sale.v1');
     expect(draft.journal.sourceFactStableId).toBe('order_stable_1');
     expect(lines.get('account_store_cash')).toEqual({
