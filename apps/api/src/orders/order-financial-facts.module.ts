@@ -1,11 +1,12 @@
 import { Module } from '@nestjs/common';
 
+import { CatalogOrderFactsModule } from '../menu/public-api';
 import { ORDER_FINANCIAL_FACTS_READER } from './order-financial-facts-reader.contract';
 import { OrderFinancialFactsReaderService } from './order-financial-facts-reader.service';
 import { PrismaModule } from './orders-prisma';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, CatalogOrderFactsModule],
   providers: [
     OrderFinancialFactsReaderService,
     {
