@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "baselineCommit": "d769672e",
+  "baselineCommit": "72395609",
   "updatedAt": "2026-09-13",
   "requiredFields": [
     "compat_id",
@@ -55,24 +55,25 @@
     },
     {
       "compat_id": "accounting.order-revenue-journal-cutover.v1",
-      "status": "active_shadow",
-      "old_owner": "Accounting provisional /accounting/automation/order-accrual path reading Order.totalCents into AccountingTransaction",
+      "status": "active_cutover_source",
+      "old_owner": "Retired Accounting provisional /accounting/automation/order-accrual path that read Order.totalCents into AccountingTransaction",
       "new_owner": "Accounting canonical SALE Journal posting from replay-qualified Orders financial facts plus Loyalty Store Balance facts",
       "dual_write_or_read": [
-        "Phase 9 Slice 5D-B2A exposes only a read-only canonical replay preview/shadow calculation; it does not write AccountingJournalEntry",
-        "Slice 5D-B2A.1 keeps replay read-only and adds an exact-ID approved historical pricing reconstruction for the 105 reviewed legacy MANUAL_OVERRIDE rows; no new or unlisted Order may inherit that override",
-        "The legacy order-accrual route remains the sole active Revenue write path during B2A/B2A.1 and canonical Journal replay remains disabled",
-        "The follow-up B2B cutover must retire or demote the provisional Order.totalCents write path before canonical replay/backfill is exposed; the same sale/range must never be dual-posted into both models"
+        "Phase 9 Slice 5D-B2A established read-only canonical replay preview/shadow calculation without Journal writes",
+        "Slice 5D-B2A.1 added the exact-ID approved historical pricing reconstruction while keeping replay read-only",
+        "Slice 5D-B2B removes the legacy order-accrual controller route and writer before exposing canonical Journal replay, so simultaneous old/new Revenue posting is not an available source state",
+        "Canonical replay is gated by a freshly recomputed exact planHash, zero amount parity delta, balanced Journal drafts, mutation-only blocked inventory with exact stable-ID acknowledgement, and zero retired AUTO_ORDER/AUTO_ORDER_DAILY transaction rows"
       ],
-      "parity_metric": "From the configured America/Toronto accountingStartDate, every replay-eligible SALE must produce balanced Journal debit=credit and canonical gross-sales minus discounts plus tax plus delivery must equal the comparable Order total with zero-cent delta; every non-eligible row must remain explicitly counted/listed by replay/pricing/block reason. The verified B2A baseline is 1105 READY plus 105 reviewed PRICING_MANUAL_OVERRIDE and five POST_SALE_MUTATION exceptions. After the exact-ID B2A.1 override source is merged/deployed, the same read-only production range must be rerun and is expected to move those 105 approved pricing rows to APPROVED_HISTORICAL_OVERRIDE/READY while leaving the five mutation rows blocked; actual zero-delta/balanced output and a fresh planHash are required before write cutover.",
-      "rollback": "Before write cutover, rollback is source-only: remove or disable the preview endpoint and keep the existing AccountingTransaction accrual path; no financial history needs reversal because B2A writes no Journal. After canonical Journal posting is later enabled, use idempotent replay/forward-fix and never restore simultaneous old/new Revenue writes.",
-      "exit_criteria": "The original production B2A preview from the configured 2026-06-01 Toronto floor is verified zero-delta/balanced with all 110 exceptions accounted for. After the user-approved exact-ID B2A.1 historical override source is merged/deployed, rerun that read-only production range and verify the 105 approved pricing rows are READY as APPROVED_HISTORICAL_OVERRIDE, the five POST_SALE_MUTATION rows remain blocked, parity stays zero-delta/balanced, and the new planHash is stable. Then a dedicated B2B source change must retire/demote the legacy order-accrual write before enabling canonical Journal replay/backfill. Compatibility closes only after the first canonical replay is verified and old Revenue-write invocation is impossible.",
+      "parity_metric": "From the configured America/Toronto accountingStartDate, every replay-eligible SALE must produce balanced Journal debit=credit and canonical gross-sales minus discounts plus tax plus delivery must equal the comparable Order total with zero-cent delta; every non-eligible row must remain explicitly counted/listed by replay/pricing/block reason. The verified B2A baseline is 1105 READY plus 105 reviewed PRICING_MANUAL_OVERRIDE and five POST_SALE_MUTATION exceptions. After B2A.1 deployment, the user reviewed the actual preview body and confirmed the expected 1210 replay-ready records parsed correctly. B2B execution still requires the exact reviewed fresh planHash and recomputes the same plan, refusing drift, non-zero parity, unbalanced journals or any non-mutation block.",
+      "rollback": "Before the first canonical Journal write, B2B can be cut back at the source/deployment level, but the retired order-accrual writer must not coexist with canonical replay. After any canonical Journal entry exists, use the existing per-sale idempotent replay/forward-fix path; never restore the Order.totalCents AccountingTransaction writer or rewrite posted historical facts to simulate rollback.",
+      "exit_criteria": "B2B source has removed the legacy order-accrual route/writer and made canonical replay the only Revenue automation writer. Before first execution, retain the post-B2A.1 production preview proving the 105 approved pricing rows are READY as APPROVED_HISTORICAL_OVERRIDE, only the five POST_SALE_MUTATION rows remain blocked, parity is zero, drafts are balanced and the planHash is stable. Compatibility closes only after the first canonical replay is read-only verified, a same-plan rerun demonstrates idempotent convergence, zero retired AUTO_ORDER/AUTO_ORDER_DAILY rows are confirmed, and the old Revenue endpoint is unavailable.",
       "remove_pr": "Phase 9 Slice 5D-B2B canonical Revenue replay cutover / provisional AccountingTransaction accrual contraction",
-      "deadline": "Before the first canonical SALE Journal replay/backfill write is enabled",
+      "deadline": "Before the first canonical SALE Journal replay/backfill write is executed in production",
       "evidence": [
         "docs/architecture/phase-9-accounting-reporting-analytics.md",
         "apps/api/src/accounting/accounting-canonical-sale-replay.service.ts",
         "apps/api/src/accounting/accounting-canonical-sale-posting.service.ts",
+        "apps/api/src/accounting/accounting.controller.ts",
         "apps/api/src/orders/approved-historical-daily-special-overrides.ts",
         "apps/api/src/accounting/accounting.service.ts"
       ]

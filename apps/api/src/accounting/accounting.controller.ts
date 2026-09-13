@@ -418,21 +418,25 @@ export class AccountingController {
     });
   }
 
-  @Post('automation/order-accrual')
-  async autoAccrueOrderRevenue(
+  @Post('journal/canonical-sales/replay')
+  executeCanonicalSaleReplay(
     @Body()
     body: {
-      date: string;
-      categoryStableId: string;
-      accountStableId?: string;
-      mode?: 'DAILY' | 'PER_ORDER';
+      fromDate?: string;
+      toDateExclusive?: string;
+      storeStableId?: string;
+      expectedPlanHash?: string;
+      acknowledgedBlockedOrderStableIds?: string[];
     },
-    @Req() req: AuthedAccountingRequest,
   ) {
-    return this.accountingService.autoAccrueOrderRevenue(
-      body,
-      this.requireOperatorUserId(req),
-    );
+    return this.canonicalSaleReplay.executeRange({
+      ...(body.fromDate ? { fromDate: body.fromDate } : {}),
+      toDateExclusive: body.toDateExclusive ?? '',
+      storeStableId: body.storeStableId ?? '',
+      expectedPlanHash: body.expectedPlanHash ?? '',
+      acknowledgedBlockedOrderStableIds:
+        body.acknowledgedBlockedOrderStableIds ?? [],
+    });
   }
 
   @Post('reconciliation/platform/import-csv')

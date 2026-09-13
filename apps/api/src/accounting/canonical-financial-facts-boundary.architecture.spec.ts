@@ -105,13 +105,17 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(paymentReader).not.toContain('/loyalty/');
   });
 
-  it('wires canonical SALE posting and replay preview through owner public facts and the existing Accounting Journal boundary', () => {
+  it('wires canonical SALE posting and replay cutover through owner public facts and the existing Accounting Journal boundary', () => {
     const postingService =
       file(ACCOUNTING_ROOT, 'accounting-canonical-sale-posting.service.ts')
         ?.source ?? '';
     const replayService =
       file(ACCOUNTING_ROOT, 'accounting-canonical-sale-replay.service.ts')
         ?.source ?? '';
+    const accountingService =
+      file(ACCOUNTING_ROOT, 'accounting.service.ts')?.source ?? '';
+    const accountingController =
+      file(ACCOUNTING_ROOT, 'accounting.controller.ts')?.source ?? '';
     const accountingModule =
       file(ACCOUNTING_ROOT, 'accounting.module.ts')?.source ?? '';
 
@@ -123,6 +127,14 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(replayService).toContain("from '../loyalty/public-api'");
     expect(replayService).toContain("from '../store/public-api'");
     expect(replayService).not.toContain('../prisma/');
+    expect(replayService).toContain('executeRange(');
+    expect(replayService).toContain('expectedPlanHash');
+    expect(replayService).toContain('assertNoLegacyOrderRevenueAccrual');
+    expect(accountingController).toContain(
+      "@Post('journal/canonical-sales/replay')",
+    );
+    expect(accountingController).not.toContain('automation/order-accrual');
+    expect(accountingService).not.toContain('autoAccrueOrderRevenue');
     expect(accountingModule).toContain('OrderFinancialFactsModule');
     expect(accountingModule).toContain('LoyaltyFinancialFactsModule');
     expect(accountingModule).toContain('AccountingCanonicalSaleReplayService');

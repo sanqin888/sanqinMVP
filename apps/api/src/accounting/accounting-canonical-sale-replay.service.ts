@@ -1,4 +1,9 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+} from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { DateTime } from 'luxon';
 import {
@@ -19,13 +24,17 @@ import {
 import {
   hashJournalCreatePayload,
   normalizeJournalCreate,
+  type AccountingJournalCreateInput,
 } from './accounting-journal-policy';
 import {
   buildCanonicalSalePostingPreview,
   type CanonicalSalePostingBlockCode,
   type CanonicalSalePostingPreview,
 } from './accounting-canonical-sale-posting.service';
-import type { CanonicalSaleJournalPolicyErrorCode } from './accounting-canonical-sale-journal.policy';
+import {
+  CANONICAL_SALE_SYSTEM_ACTOR,
+  type CanonicalSaleJournalPolicyErrorCode,
+} from './accounting-canonical-sale-journal.policy';
 import { AccountingService } from './accounting.service';
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -36,6 +45,12 @@ export type CanonicalSaleReplayPreviewInput = {
   toDateExclusive: string;
   storeStableId: string;
 };
+
+export type CanonicalSaleReplayExecuteInput =
+  CanonicalSaleReplayPreviewInput & {
+    expectedPlanHash: string;
+    acknowledgedBlockedOrderStableIds: string[];
+  };
 
 export type CanonicalSaleReplayException = {
   orderStableId: string;
@@ -64,8 +79,8 @@ export type CanonicalSaleReplayPreviewReport = {
     storeStableId: string;
   };
   writeAuthority: {
-    canonicalJournalReplayEnabled: false;
-    legacyAccountingTransactionAccrualStillActive: true;
+    canonicalJournalReplayEnabled: true;
+    legacyAccountingTransactionAccrualStillActive: false;
     note: string;
   };
   counts: {
@@ -96,6 +111,23 @@ export type CanonicalSaleReplayPreviewReport = {
     parityDeltaCents: number;
   };
   exceptions: CanonicalSaleReplayException[];
+};
+
+export type CanonicalSaleReplayExecutionReport =
+  CanonicalSaleReplayPreviewReport & {
+    execution: {
+      postedOrReplayed: number;
+      blockedAcknowledged: number;
+    };
+  };
+
+type ReadyJournal = {
+  journal: AccountingJournalCreateInput;
+};
+
+type CanonicalSaleReplayPlan = {
+  report: CanonicalSaleReplayPreviewReport;
+  readyJournals: ReadyJournal[];
 };
 
 type ReplayPlanEntry = {
@@ -193,9 +225,9 @@ export class AccountingCanonicalSaleReplayService {
     private readonly storeConfig: BrandStoreConfigReaderPort,
   ) {}
 
-  async previewRange(
+  private async buildRangePlan(
     input: CanonicalSaleReplayPreviewInput,
-  ): Promise<CanonicalSaleReplayPreviewReport> {
+  ): Promise<CanonicalSaleReplayPlan> {
     const accountingStartAt =
       await this.accounting.requireCanonicalFinancialPostingStartAt();
     const storeStableId = input.storeStableId.trim();
@@ -269,6 +301,7 @@ export class AccountingCanonicalSaleReplayService {
     const byPaymentMethod: Record<string, number> = {};
     const exceptions: CanonicalSaleReplayException[] = [];
     const planEntries: ReplayPlanEntry[] = [];
+    const readyJournals: ReadyJournal[] = [];
 
     let ready = 0;
     let observedSourceOrderTotalCents = 0;
@@ -361,6 +394,7 @@ export class AccountingCanonicalSaleReplayService {
         journalHash = hashJournalCreatePayload(
           normalizeJournalCreate(preview.journal),
         );
+        readyJournals.push({ journal: preview.journal });
       } else {
         blockedObservedOrderTotalCents = addSafe(
           blockedObservedOrderTotalCents,
@@ -420,7 +454,7 @@ export class AccountingCanonicalSaleReplayService {
     const parityDeltaCents =
       canonicalComparableOrderTotalCents - readyOrderTotalCents;
 
-    return {
+    const report: CanonicalSaleReplayPreviewReport = {
       version: 1,
       planHash: replayPlanHash({
         accountingStartAt,
@@ -440,9 +474,9 @@ export class AccountingCanonicalSaleReplayService {
         storeStableId,
       },
       writeAuthority: {
-        canonicalJournalReplayEnabled: false,
-        legacyAccountingTransactionAccrualStillActive: true,
-        note: 'B2A is preview/parity only; canonical Journal backfill stays disabled until the follow-up cutover slice retires the provisional Order.totalCents accrual path.',
+        canonicalJournalReplayEnabled: true,
+        legacyAccountingTransactionAccrualStillActive: false,
+        note: 'B2B source cutover enables canonical Journal replay only through an exact preview plan hash; the provisional Order.totalCents accrual route is retired.',
       },
       counts: {
         total: candidates.length,
@@ -472,6 +506,102 @@ export class AccountingCanonicalSaleReplayService {
         parityDeltaCents,
       },
       exceptions,
+    };
+    return { report, readyJournals };
+  }
+
+  async previewRange(
+    input: CanonicalSaleReplayPreviewInput,
+  ): Promise<CanonicalSaleReplayPreviewReport> {
+    return (await this.buildRangePlan(input)).report;
+  }
+
+  async executeRange(
+    input: CanonicalSaleReplayExecuteInput,
+  ): Promise<CanonicalSaleReplayExecutionReport> {
+    const expectedPlanHash =
+      typeof input.expectedPlanHash === 'string'
+        ? input.expectedPlanHash.trim()
+        : '';
+    if (!/^[a-f0-9]{64}$/.test(expectedPlanHash)) {
+      throw new BadRequestException(
+        'expectedPlanHash must be a lowercase SHA-256 hex digest',
+      );
+    }
+    if (
+      !Array.isArray(input.acknowledgedBlockedOrderStableIds) ||
+      input.acknowledgedBlockedOrderStableIds.some(
+        (value) => typeof value !== 'string',
+      )
+    ) {
+      throw new BadRequestException(
+        'acknowledgedBlockedOrderStableIds must be an array of Order stable IDs',
+      );
+    }
+
+    const { report, readyJournals } = await this.buildRangePlan(input);
+    if (report.planHash !== expectedPlanHash) {
+      throw new ConflictException(
+        'Canonical sale replay plan changed after preview; rerun preview and review the new planHash',
+      );
+    }
+    if (
+      report.amounts.parityDeltaCents !== 0 ||
+      report.amounts.readyJournalDebitCents !==
+        report.amounts.readyJournalCreditCents
+    ) {
+      throw new ConflictException(
+        'Canonical sale replay requires zero amount parity delta and balanced Journal drafts',
+      );
+    }
+
+    const unexpectedBlock = report.exceptions.find(
+      ({ blockCode }) => blockCode !== 'POST_SALE_MUTATION',
+    );
+    if (unexpectedBlock) {
+      throw new ConflictException(
+        `Canonical sale replay has unresolved block ${unexpectedBlock.blockCode} for ${unexpectedBlock.orderStableId}`,
+      );
+    }
+
+    const acknowledgedBlockedOrderStableIds = [
+      ...new Set(
+        input.acknowledgedBlockedOrderStableIds
+          .map((value) => value.trim())
+          .filter(Boolean),
+      ),
+    ].sort();
+    const blockedOrderStableIds = report.exceptions
+      .map(({ orderStableId }) => orderStableId)
+      .sort();
+    if (
+      acknowledgedBlockedOrderStableIds.length !==
+        input.acknowledgedBlockedOrderStableIds.length ||
+      acknowledgedBlockedOrderStableIds.length !==
+        blockedOrderStableIds.length ||
+      acknowledgedBlockedOrderStableIds.some(
+        (value, index) => value !== blockedOrderStableIds[index],
+      )
+    ) {
+      throw new ConflictException(
+        'acknowledgedBlockedOrderStableIds must exactly match the current POST_SALE_MUTATION exception inventory',
+      );
+    }
+
+    await this.accounting.assertNoLegacyOrderRevenueAccrual();
+    for (const { journal } of readyJournals) {
+      await this.accounting.createJournalEntry(
+        journal,
+        CANONICAL_SALE_SYSTEM_ACTOR,
+      );
+    }
+
+    return {
+      ...report,
+      execution: {
+        postedOrReplayed: readyJournals.length,
+        blockedAcknowledged: blockedOrderStableIds.length,
+      },
     };
   }
 }
