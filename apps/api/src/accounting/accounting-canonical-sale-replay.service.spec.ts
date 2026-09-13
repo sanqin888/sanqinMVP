@@ -308,9 +308,9 @@ describe('Accounting canonical SALE replay', () => {
       acknowledgedBlockedOrderStableIds: ['order_mutated'],
     });
 
-    expect(
-      accounting.assertNoLegacyOrderRevenueAccrual,
-    ).toHaveBeenCalledTimes(1);
+    expect(accounting.assertNoLegacyOrderRevenueAccrual).toHaveBeenCalledTimes(
+      1,
+    );
     expect(accounting.createJournalEntry).toHaveBeenCalledTimes(1);
     expect(accounting.createJournalEntry).toHaveBeenCalledWith(
       expect.objectContaining({
