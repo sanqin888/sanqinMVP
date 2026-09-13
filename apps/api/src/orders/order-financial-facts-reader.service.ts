@@ -312,16 +312,22 @@ export class OrderFinancialFactsReaderService implements OrderFinancialFactsRead
         catalogFacts,
         catalogPriceUnstableProductStableIds,
       });
-      return resolution.resolvedFact
-        ? this.readyCandidate(
-            resolution.resolvedFact,
-            resolution.pricingResolution,
-            record.fact,
-          )
-        : this.blockedPricingCandidate(
-            record.fact,
-            resolution.pricingResolution,
+      if (resolution.pricingResolution === 'CATALOG_STABLE_MATCH') {
+        if (!resolution.resolvedFact) {
+          throw new Error(
+            `Catalog-stable replay resolution is missing a resolved fact: ${record.fact.orderStableId}`,
           );
+        }
+        return this.readyCandidate(
+          resolution.resolvedFact,
+          resolution.pricingResolution,
+          record.fact,
+        );
+      }
+      return this.blockedPricingCandidate(
+        record.fact,
+        resolution.pricingResolution,
+      );
     });
   }
 
