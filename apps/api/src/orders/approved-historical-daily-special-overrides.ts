@@ -117,4 +117,6 @@ export const APPROVED_HISTORICAL_DAILY_SPECIAL_OVERRIDE_ORDER_STABLE_IDS =
 export const isApprovedHistoricalDailySpecialOverrideOrder = (
   orderStableId: string,
 ): boolean =>
-  APPROVED_HISTORICAL_DAILY_SPECIAL_OVERRIDE_ORDER_STABLE_IDS.has(orderStableId);
+  APPROVED_HISTORICAL_DAILY_SPECIAL_OVERRIDE_ORDER_STABLE_IDS.has(
+    orderStableId,
+  );

@@ -745,13 +745,12 @@ describe('OrderFinancialFactsReaderService', () => {
       catalog as never,
     );
 
-    const candidate =
-      await service.readReplayCandidateByOrderStableId(approvedOrderStableId);
+    const candidate = await service.readReplayCandidateByOrderStableId(
+      approvedOrderStableId,
+    );
 
     expect(candidate?.replayEligibility).toBe('ELIGIBLE');
-    expect(candidate?.pricingResolution).toBe(
-      'APPROVED_HISTORICAL_OVERRIDE',
-    );
+    expect(candidate?.pricingResolution).toBe('APPROVED_HISTORICAL_OVERRIDE');
     expect(candidate?.sourceFact.nominalSubtotalCents).toBeNull();
     expect(candidate?.resolvedFact?.nominalSubtotalCents).toBe(999);
     expect(candidate?.resolvedFact?.discounts.dailySpecialCents).toBe(0);
