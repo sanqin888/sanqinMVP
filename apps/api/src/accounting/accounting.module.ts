@@ -11,6 +11,7 @@ import { AccountingProviderFinancialService } from './accounting-provider-financ
 import { AccountingProviderFinancialHistoryService } from './accounting-provider-financial-history.service';
 import { AccountingOperationsService } from './accounting-operations.service';
 import { AccountingCanonicalSalePostingService } from './accounting-canonical-sale-posting.service';
+import { AccountingCanonicalSaleReplayService } from './accounting-canonical-sale-replay.service';
 import { BrandStoreConfigModule } from '../store/public-api';
 import { LoyaltyFinancialFactsModule } from '../loyalty/public-api';
 import { OrderFinancialFactsModule } from '../orders/public-api';
@@ -28,6 +29,7 @@ import { OrderFinancialFactsModule } from '../orders/public-api';
   providers: [
     AccountingService,
     AccountingCanonicalSalePostingService,
+    AccountingCanonicalSaleReplayService,
     AccountingOperationsService,
     AccountingProviderFinancialService,
     AccountingInboxAcquisitionService,

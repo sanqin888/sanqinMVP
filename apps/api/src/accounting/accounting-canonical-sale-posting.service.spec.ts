@@ -100,6 +100,7 @@ function makeService() {
   };
   const loyalty: jest.Mocked<LoyaltyFinancialFactsReaderPort> = {
     readFactsByOrderStableId: jest.fn(),
+    readFactsByOrderStableIds: jest.fn(),
     readFactsForRange: jest.fn(),
   };
   const service = new AccountingCanonicalSalePostingService(

@@ -99,6 +99,27 @@ export class LoyaltyFinancialFactsReaderService implements LoyaltyFinancialFacts
     return rows.map((row) => this.toFact(row));
   }
 
+  async readFactsByOrderStableIds(
+    orderStableIds: string[],
+  ): Promise<LoyaltyFinancialFactV1[]> {
+    const stableIds = Array.from(
+      new Set(orderStableIds.map((value) => value.trim()).filter(Boolean)),
+    );
+    if (stableIds.length === 0) return [];
+
+    const rows = await this.prisma.loyaltyLedger.findMany({
+      where: {
+        orderStableId: { in: stableIds },
+        target: 'BALANCE',
+        type: { in: STORE_BALANCE_FINANCIAL_TYPES },
+      },
+      select: LOYALTY_FINANCIAL_SELECT,
+      orderBy: [{ createdAt: 'asc' }, { ledgerStableId: 'asc' }],
+    });
+
+    return rows.map((row) => this.toFact(row));
+  }
+
   async readFactsForRange(
     range: LoyaltyFinancialFactsRangeV1,
   ): Promise<LoyaltyFinancialFactV1[]> {

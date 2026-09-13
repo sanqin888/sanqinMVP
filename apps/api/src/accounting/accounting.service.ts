@@ -1907,6 +1907,7 @@ export class AccountingService {
     return Buffer.from(pdf, 'utf8');
   }
 
+  // @compat accounting.order-revenue-journal-cutover.v1
   async autoAccrueOrderRevenue(
     payload: AutoAccrualDto,
     operatorUserId: string,

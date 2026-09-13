@@ -2,7 +2,7 @@
 
 Machine-readable source:
 `docs/architecture/active-compatibility-register.json`. Current modularization base:
-`origin/dev@54fa04da` (2026-09-10).
+`origin/dev@1207731d` (2026-09-12).
 
 Operational fallback (retry, provider timeout recovery, email-to-SMS fallback, and
 safe default values unrelated to an old version) is not compatibility debt.
@@ -13,6 +13,7 @@ safe default values unrelated to an old version) is not compatibility debt.
 |---|---|---|---|---|
 | `payments.pos-card-legacy.v1` | active / pre-production | direct paid Order → Unified Payment Core + Terminal + finalize | POS ↔ Clover realtime/recovery complete; real-device acceptance; one settlement cycle reconciled; clean production stability window; legacy calls zero | Phase J cleanup after Terminal synchronization/cutover stability |
 | `payments.web-checkout-v1.v1` | guarded production | CheckoutIntent/Clover v1 Web path → Unified Payment Core + v3 truth | Test App/device acceptance complete; App installed/OAuth-authorized on operating production merchant; fresh production-merchant correlation audit passes; Web cutover accepted; one settlement cycle reconciled; old calls zero before compatibility deletion | Deferred until production-merchant Unified authorization and accepted cutover |
+| `accounting.order-revenue-journal-cutover.v1` | active / shadow-only | provisional `Order.totalCents → AccountingTransaction` → canonical owner facts → double-entry Journal | production B2A preview is zero-delta and balanced; every blocked exception is reviewed; B2B retires/demotes the old write before enabling canonical replay | Before the first canonical SALE Journal replay/backfill write |
 
 The payment entries are no longer governed by a whole-context freeze. The POS
 Clover Terminal path is pre-production and may be structurally modularized before
@@ -38,6 +39,14 @@ production-merchant readiness/correlation audit before any v3 shadow comparison 
 traffic authority change. Traffic cutover, compatibility deletion and settlement-based
 exit criteria remain separately gated after that point. Non-payment bounded-context work
 may proceed without reopening this compatibility seam.
+
+`accounting.order-revenue-journal-cutover.v1` is intentionally shadow-only in Phase 9
+Slice 5D-B2A. The canonical range endpoint computes replay eligibility, double-entry
+Journal drafts, balance checks, amount parity, a deterministic plan hash, and an explicit
+exception inventory without writing Journal rows. The provisional `order-accrual` route
+therefore remains the only active Revenue write path during B2A. The follow-up B2B cutover
+must first retire or demote that provisional write before canonical replay/backfill can be
+enabled; simultaneous old/new Revenue posting is not an accepted compatibility mode.
 
 ## Closed history
 

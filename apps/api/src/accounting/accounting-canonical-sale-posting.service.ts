@@ -97,6 +97,137 @@ function safeFactSum(
   return total;
 }
 
+function sourceBlock(
+  candidate: OrderFinancialReplayCandidateV1,
+): CanonicalSalePostingBlock | null {
+  if (candidate.replayEligibility === 'POST_SALE_MUTATION') {
+    return {
+      code: 'POST_SALE_MUTATION',
+      message:
+        'Original SALE cannot be replayed from a post-sale mutated Order',
+    };
+  }
+  if (candidate.replayEligibility !== 'PRICING_UNRESOLVED') return null;
+  if (candidate.pricingResolution === 'MANUAL_OVERRIDE') {
+    return {
+      code: 'PRICING_MANUAL_OVERRIDE',
+      message: 'Historical SALE requires an explicit pricing override',
+    };
+  }
+  return {
+    code: 'PRICING_UNRESOLVED',
+    message: 'Historical SALE pricing cannot be resolved without guessing',
+  };
+}
+
+export function buildCanonicalSalePostingPreview(params: {
+  candidate: OrderFinancialReplayCandidateV1;
+  accountingStartAt: Date;
+  loyaltyFacts: LoyaltyFinancialFactV1[];
+}): CanonicalSalePostingPreview {
+  const { candidate, accountingStartAt, loyaltyFacts } = params;
+  const source = sourceSummary(candidate.sourceFact);
+  const base = {
+    orderStableId: candidate.sourceFact.orderStableId,
+    accountingStartAt: accountingStartAt.toISOString(),
+    replayEligibility: candidate.replayEligibility,
+    pricingResolution: candidate.pricingResolution,
+    source,
+  };
+
+  const replayBlock = sourceBlock(candidate);
+  if (replayBlock) {
+    return {
+      ...base,
+      status: 'BLOCKED',
+      loyalty: null,
+      journal: null,
+      block: replayBlock,
+    };
+  }
+
+  const fact = candidate.resolvedFact;
+  if (!fact) {
+    return {
+      ...base,
+      status: 'BLOCKED',
+      loyalty: null,
+      journal: null,
+      block: {
+        code: 'PRICING_UNRESOLVED',
+        message: 'Owner replay candidate has no resolved SALE fact',
+      },
+    };
+  }
+
+  if (fact.occurredAt < accountingStartAt) {
+    return {
+      ...base,
+      status: 'BLOCKED',
+      loyalty: null,
+      journal: null,
+      block: {
+        code: 'BEFORE_ACCOUNTING_START_DATE',
+        message: `SALE occurred before accounting start ${accountingStartAt.toISOString()}`,
+      },
+    };
+  }
+
+  if (loyaltyFacts.some(({ kind }) => kind === 'STORE_BALANCE_TOPUP')) {
+    return {
+      ...base,
+      status: 'BLOCKED',
+      loyalty: null,
+      journal: null,
+      block: {
+        code: 'STORE_BALANCE_TOPUP_ON_SALE',
+        message:
+          'SALE order unexpectedly carries Store Balance top-up principal',
+      },
+    };
+  }
+
+  const storeBalanceRedeemedCents = safeFactSum(
+    loyaltyFacts,
+    'STORE_BALANCE_REDEEMED',
+  );
+  const storeBalanceReturnedCents = safeFactSum(
+    loyaltyFacts,
+    'STORE_BALANCE_RETURNED',
+  );
+  const loyalty = {
+    storeBalanceRedeemedCents,
+    storeBalanceReturnedCents,
+  };
+
+  try {
+    const draft = buildCanonicalSaleJournal({
+      fact,
+      storeBalanceRedeemedCents,
+    });
+    return {
+      ...base,
+      status: 'READY',
+      loyalty,
+      journal: draft.journal,
+      block: null,
+    };
+  } catch (error) {
+    if (!(error instanceof CanonicalSaleJournalPolicyError)) throw error;
+    return {
+      ...base,
+      status: 'BLOCKED',
+      loyalty,
+      journal: null,
+      block: {
+        code: 'JOURNAL_POLICY',
+        policyCode: error.code,
+        message: error.message,
+      },
+    };
+  }
+}
+
 @Injectable()
 export class AccountingCanonicalSalePostingService {
   constructor(
@@ -123,109 +254,20 @@ export class AccountingCanonicalSalePostingService {
       throw new NotFoundException('Order financial fact not found');
     }
 
-    const source = sourceSummary(candidate.sourceFact);
-    const base = {
-      orderStableId: candidate.sourceFact.orderStableId,
-      accountingStartAt: accountingStartAt.toISOString(),
-      replayEligibility: candidate.replayEligibility,
-      pricingResolution: candidate.pricingResolution,
-      source,
-    };
+    const loyaltyFacts =
+      candidate.replayEligibility === 'ELIGIBLE' &&
+      candidate.resolvedFact &&
+      candidate.resolvedFact.occurredAt >= accountingStartAt
+        ? await this.loyalty.readFactsByOrderStableId(
+            candidate.resolvedFact.orderStableId,
+          )
+        : [];
 
-    const sourceBlock = this.sourceBlock(candidate);
-    if (sourceBlock) {
-      return {
-        ...base,
-        status: 'BLOCKED',
-        loyalty: null,
-        journal: null,
-        block: sourceBlock,
-      };
-    }
-
-    const fact = candidate.resolvedFact;
-    if (!fact) {
-      return {
-        ...base,
-        status: 'BLOCKED',
-        loyalty: null,
-        journal: null,
-        block: {
-          code: 'PRICING_UNRESOLVED',
-          message: 'Owner replay candidate has no resolved SALE fact',
-        },
-      };
-    }
-
-    if (fact.occurredAt < accountingStartAt) {
-      return {
-        ...base,
-        status: 'BLOCKED',
-        loyalty: null,
-        journal: null,
-        block: {
-          code: 'BEFORE_ACCOUNTING_START_DATE',
-          message: `SALE occurred before accounting start ${accountingStartAt.toISOString()}`,
-        },
-      };
-    }
-
-    const loyaltyFacts = await this.loyalty.readFactsByOrderStableId(
-      fact.orderStableId,
-    );
-    if (loyaltyFacts.some(({ kind }) => kind === 'STORE_BALANCE_TOPUP')) {
-      return {
-        ...base,
-        status: 'BLOCKED',
-        loyalty: null,
-        journal: null,
-        block: {
-          code: 'STORE_BALANCE_TOPUP_ON_SALE',
-          message:
-            'SALE order unexpectedly carries Store Balance top-up principal',
-        },
-      };
-    }
-
-    const storeBalanceRedeemedCents = safeFactSum(
+    return buildCanonicalSalePostingPreview({
+      candidate,
+      accountingStartAt,
       loyaltyFacts,
-      'STORE_BALANCE_REDEEMED',
-    );
-    const storeBalanceReturnedCents = safeFactSum(
-      loyaltyFacts,
-      'STORE_BALANCE_RETURNED',
-    );
-    const loyalty = {
-      storeBalanceRedeemedCents,
-      storeBalanceReturnedCents,
-    };
-
-    try {
-      const draft = buildCanonicalSaleJournal({
-        fact,
-        storeBalanceRedeemedCents,
-      });
-      return {
-        ...base,
-        status: 'READY',
-        loyalty,
-        journal: draft.journal,
-        block: null,
-      };
-    } catch (error) {
-      if (!(error instanceof CanonicalSaleJournalPolicyError)) throw error;
-      return {
-        ...base,
-        status: 'BLOCKED',
-        loyalty,
-        journal: null,
-        block: {
-          code: 'JOURNAL_POLICY',
-          policyCode: error.code,
-          message: error.message,
-        },
-      };
-    }
+    });
   }
 
   async postCanonicalSale(orderStableId: string) {
@@ -249,29 +291,6 @@ export class AccountingCanonicalSalePostingService {
         createdAt: entry.createdAt,
         updatedAt: entry.updatedAt,
       },
-    };
-  }
-
-  private sourceBlock(
-    candidate: OrderFinancialReplayCandidateV1,
-  ): CanonicalSalePostingBlock | null {
-    if (candidate.replayEligibility === 'POST_SALE_MUTATION') {
-      return {
-        code: 'POST_SALE_MUTATION',
-        message:
-          'Original SALE cannot be replayed from a post-sale mutated Order',
-      };
-    }
-    if (candidate.replayEligibility !== 'PRICING_UNRESOLVED') return null;
-    if (candidate.pricingResolution === 'MANUAL_OVERRIDE') {
-      return {
-        code: 'PRICING_MANUAL_OVERRIDE',
-        message: 'Historical SALE requires an explicit pricing override',
-      };
-    }
-    return {
-      code: 'PRICING_UNRESOLVED',
-      message: 'Historical SALE pricing cannot be resolved without guessing',
     };
   }
 }
