@@ -212,7 +212,6 @@ function replayPlanHash(params: {
     .digest('hex');
 }
 
-// @compat accounting.order-revenue-journal-cutover.v1
 @Injectable()
 export class AccountingCanonicalSaleReplayService {
   constructor(

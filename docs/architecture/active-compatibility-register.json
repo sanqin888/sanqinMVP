@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "baselineCommit": "72395609",
+  "baselineCommit": "c95cc7d4",
   "updatedAt": "2026-09-13",
   "requiredFields": [
     "compat_id",
@@ -52,34 +52,29 @@
       "evidence": [
         "docs/payments/clover-pos-integration-charter.md sections 3.8, 9.1 and 12.5"
       ]
-    },
-    {
-      "compat_id": "accounting.order-revenue-journal-cutover.v1",
-      "status": "active_cutover_source",
-      "old_owner": "Retired Accounting provisional /accounting/automation/order-accrual path that read Order.totalCents into AccountingTransaction",
-      "new_owner": "Accounting canonical SALE Journal posting from replay-qualified Orders financial facts plus Loyalty Store Balance facts",
-      "dual_write_or_read": [
-        "Phase 9 Slice 5D-B2A established read-only canonical replay preview/shadow calculation without Journal writes",
-        "Slice 5D-B2A.1 added the exact-ID approved historical pricing reconstruction while keeping replay read-only",
-        "Slice 5D-B2B removes the legacy order-accrual controller route and writer before exposing canonical Journal replay, so simultaneous old/new Revenue posting is not an available source state",
-        "Canonical replay is gated by a freshly recomputed exact planHash, zero amount parity delta, balanced Journal drafts, mutation-only blocked inventory with exact stable-ID acknowledgement, and zero retired AUTO_ORDER/AUTO_ORDER_DAILY transaction rows"
-      ],
-      "parity_metric": "From the configured America/Toronto accountingStartDate, every replay-eligible SALE must produce balanced Journal debit=credit and canonical gross-sales minus discounts plus tax plus delivery must equal the comparable Order total with zero-cent delta; every non-eligible row must remain explicitly counted/listed by replay/pricing/block reason. The verified B2A baseline is 1105 READY plus 105 reviewed PRICING_MANUAL_OVERRIDE and five POST_SALE_MUTATION exceptions. After B2A.1 deployment, the user reviewed the actual preview body and confirmed the expected 1210 replay-ready records parsed correctly. B2B execution still requires the exact reviewed fresh planHash and recomputes the same plan, refusing drift, non-zero parity, unbalanced journals or any non-mutation block.",
-      "rollback": "Before the first canonical Journal write, B2B can be cut back at the source/deployment level, but the retired order-accrual writer must not coexist with canonical replay. After any canonical Journal entry exists, use the existing per-sale idempotent replay/forward-fix path; never restore the Order.totalCents AccountingTransaction writer or rewrite posted historical facts to simulate rollback.",
-      "exit_criteria": "B2B source has removed the legacy order-accrual route/writer and made canonical replay the only Revenue automation writer. Before first execution, retain the post-B2A.1 production preview proving the 105 approved pricing rows are READY as APPROVED_HISTORICAL_OVERRIDE, only the five POST_SALE_MUTATION rows remain blocked, parity is zero, drafts are balanced and the planHash is stable. Compatibility closes only after the first canonical replay is read-only verified, a same-plan rerun demonstrates idempotent convergence, zero retired AUTO_ORDER/AUTO_ORDER_DAILY rows are confirmed, and the old Revenue endpoint is unavailable.",
-      "remove_pr": "Phase 9 Slice 5D-B2B canonical Revenue replay cutover / provisional AccountingTransaction accrual contraction",
-      "deadline": "Before the first canonical SALE Journal replay/backfill write is executed in production",
-      "evidence": [
-        "docs/architecture/phase-9-accounting-reporting-analytics.md",
-        "apps/api/src/accounting/accounting-canonical-sale-replay.service.ts",
-        "apps/api/src/accounting/accounting-canonical-sale-posting.service.ts",
-        "apps/api/src/accounting/accounting.controller.ts",
-        "apps/api/src/orders/approved-historical-daily-special-overrides.ts",
-        "apps/api/src/accounting/accounting.service.ts"
-      ]
     }
   ],
   "closed": [
+    {
+      "compat_id": "accounting.order-revenue-journal-cutover.v1",
+      "status": "closed",
+      "old_owner": "Retired Accounting provisional /accounting/automation/order-accrual path that read Order.totalCents into AccountingTransaction",
+      "new_owner": "Accounting canonical SALE Journal posting from replay-qualified Orders financial facts plus Loyalty Store Balance facts",
+      "dual_write_or_read": "Removed. Slice 5D-B2B deleted the legacy order-accrual route/writer before enabling canonical replay, so simultaneous old/new Revenue posting was never available in the deployed cutover state. Production replay now uses only canonical Journal posting.",
+      "parity_metric": "Production verification on 2026-09-13 used a fresh preview for 2026-06-01 through 2026-09-13 exclusive at Store 4750_Yonge_Street with planHash 83f242b85a4f85b48db9803454ba9a14b023c2f574678806e03e71983c86c258. The plan contained 1215 candidates, 1210 READY and exactly five POST_SALE_MUTATION blocks, zero parity delta, and aggregate draft debit=credit=2,163,201 cents. First replay persisted exactly 1210 Journal entries / 3864 lines / 1210 audit rows with 1210 distinct source facts and idempotency keys, zero mutation SALE rows and zero retired AUTO_ORDER/AUTO_ORDER_DAILY rows. A second identical replay left all counts and amounts unchanged.",
+      "rollback": "Forward-fix/idempotent replay only. Canonical SALE Journal history now exists in production; do not restore the retired Order.totalCents AccountingTransaction writer or rewrite posted historical facts to simulate rollback.",
+      "exit_criteria": "Completed on 2026-09-13: legacy order-accrual endpoint unavailable, canonical replay route deployed, fresh reviewed plan passed zero-delta/balance/mutation-only gates, first canonical replay was read-only verified, same-plan rerun demonstrated idempotent convergence, retired AUTO_ORDER/AUTO_ORDER_DAILY rows remained zero, and the five post-sale mutations remained intentionally unposted for 5D-C.",
+      "remove_pr": "PR #2313 / squash merge 72395609; production verification completed 2026-09-13",
+      "deadline": "Closed 2026-09-13 after first canonical SALE Journal replay/backfill and same-plan idempotency verification",
+      "evidence": [
+        "docs/architecture/phase-9-accounting-reporting-analytics.md",
+        "docs/architecture/modularization-worklog.md",
+        "apps/api/src/accounting/accounting-canonical-sale-replay.service.ts",
+        "apps/api/src/accounting/accounting-canonical-sale-posting.service.ts",
+        "apps/api/src/accounting/accounting.controller.ts",
+        "apps/api/src/accounting/accounting.service.ts"
+      ]
+    },
     {
       "compat_id": "pos-connectivity.read-model-shadow.v1",
       "status": "closed",
