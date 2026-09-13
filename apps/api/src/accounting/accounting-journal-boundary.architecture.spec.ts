@@ -10,6 +10,14 @@ const JOURNAL_MIGRATION = resolve(
   API_ROOT,
   'prisma/migrations/20260912070000_phase9_slice5b_double_entry_core/migration.sql',
 );
+const STORE_BALANCE_LIABILITY_MIGRATION = resolve(
+  API_ROOT,
+  'prisma/migrations/20260913010000_phase9_slice5d_b1a_store_balance_liability_coa/migration.sql',
+);
+const ACCOUNTING_COA_SEED_MIGRATIONS = [
+  JOURNAL_MIGRATION,
+  STORE_BALANCE_LIABILITY_MIGRATION,
+];
 
 function read(path: string): string {
   return readFileSync(path, 'utf8');
@@ -81,11 +89,31 @@ describe('Accounting double-entry journal ownership boundary', () => {
     );
   });
 
-  it('keeps the TypeScript Chart of Accounts stable IDs synchronized with the migration seed', () => {
-    const migration = read(JOURNAL_MIGRATION);
+  it('keeps the TypeScript Chart of Accounts stable IDs synchronized with cumulative migration seeds', () => {
+    const migrationSeeds = ACCOUNTING_COA_SEED_MIGRATIONS.map(read).join('\n');
 
     for (const account of DEFAULT_ACCOUNTING_ACCOUNTS) {
-      expect(migration).toContain(`'${account.accountStableId}'`);
+      expect(migrationSeeds).toContain(`'${account.accountStableId}'`);
     }
+  });
+
+  it('pins Store Balance principal to an active CAD liability account without seeding an opening journal', () => {
+    const account = DEFAULT_ACCOUNTING_ACCOUNTS.find(
+      ({ accountStableId }) =>
+        accountStableId === 'account_store_balance_liability',
+    );
+    const migration = read(STORE_BALANCE_LIABILITY_MIGRATION);
+
+    expect(account).toEqual({
+      accountStableId: 'account_store_balance_liability',
+      name: '储值余额负债',
+      type: null,
+      accountClass: 'LIABILITY',
+    });
+    expect(migration).toContain("'account_store_balance_liability'");
+    expect(migration).toContain("'LIABILITY'");
+    expect(migration).toContain("'CAD'");
+    expect(migration).toContain('true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP');
+    expect(migration).not.toContain('INSERT INTO "AccountingJournalEntry"');
   });
 });

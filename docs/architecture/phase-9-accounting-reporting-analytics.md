@@ -1,6 +1,6 @@
 # Phase 9 — Accounting / Reporting / Analytics Boundary Contraction & L3 Financial Integrity
 
-Status: **SLICE 0 READINESS AUDIT COMPLETE — SLICE 1/2/3/4/5B/5C/5D-A/5D-B0 MERGED / CI GREEN — SLICE 5D-B1 NEXT / MIGRATION AUTHORIZATION REQUIRED**  
+Status: **SLICE 0 READINESS AUDIT COMPLETE — SLICE 1/2/3/4/5B/5C/5D-A/5D-B0 MERGED / CI GREEN — SLICE 5D-B1A LOCAL SOURCE IMPLEMENTATION / REVIEW PENDING**  
 Slice 0 audit baseline: `origin/dev@1a69bd7dbd49eba08661b169463e32dc820f0396`  
 Slice 1 merge: PR #2281 / final head `974066e7c11f58316368fcb4fcfeec28c5da5509` / squash merge `f529f4701b63040a8e2dfee2cf3ca82213f25ec6` / CI #5494 green  
 Slice 2 merge: PR #2283 / final head `d6518ba13f8b1bb43df941d2fde10a44409e2a3b` / squash merge `b35890d8ed7399bc389915b192f7c20ff966c9b8` / CI #5500 green  
@@ -11,6 +11,7 @@ Slice 5D readiness audit baseline: `origin/dev@8cacdf60`
 Slice 5D-A merge: PR #2296 / final head `ffa49ad6` / squash merge `7f35878f` / CI #5545 green  
 Slice 5D-B0 implementation base: `origin/dev@7f35878f`  
 Slice 5D-B0 merge: PR #2297 / final head `064e098e` / squash merge `124cd76c` / CI #5549 green  
+Slice 5D-B1A implementation base: `origin/dev@fd32edcf`  
 Planning decision updated: 2026-09-12
 
 ## 1. Purpose
@@ -579,4 +580,14 @@ Daily Special historical reconstruction is also owner-qualified instead of being
 
 The generic Accounting start-date guard is hardened in the same focused slice. `AccountingService` now resolves the persisted date at Store-local midnight through Luxon and the canonical Brand/Store timezone rather than interpreting the date as UTC midnight. A new internal `requireCanonicalFinancialPostingStartAt()` fails closed when `accountingStartDate` is null; later 5D-B posting must call that requirement instead of inventing an earlier lower bound. Focused characterization covers the Toronto EDT boundary (`2026-06-01T04:00:00Z`) and the null-config fail-closed behavior.
 
-This slice introduces no new context direction: Commerce/Orders already consumes Catalog through its public order-facts boundary, and 5D-B0 reuses that existing public direction. No Accounting consumer is wired yet and no direct-import allowance is added. CI #5549 confirmed the Accounting/Reporting/Analytics direct baseline remains Foundation **2**, External **1**, Identity **2**, Runtime **6**, total **11**, with `legacyPublicCycleComponents=[]`. The next persisted step remains **5D-B1 — Store Balance Liability CoA**: add `account_store_balance_liability` as a data-only additive CoA migration. Because the cleaned historical opening balance is zero, B1 does not need an opening Store Balance journal for the current backfill, but the liability account is still required before future real Store Balance top-up/use can be posted. That migration remains separately authorization-gated.
+This slice introduces no new context direction: Commerce/Orders already consumes Catalog through its public order-facts boundary, and 5D-B0 reuses that existing public direction. No Accounting consumer is wired yet and no direct-import allowance is added. CI #5549 confirmed the Accounting/Reporting/Analytics direct baseline remains Foundation **2**, External **1**, Identity **2**, Runtime **6**, total **11**, with `legacyPublicCycleComponents=[]`. The next persisted step remains **5D-B1 — Store Balance Liability CoA**: add `account_store_balance_liability` as a data-only additive CoA migration. Because the cleaned historical opening balance is zero, B1 does not need an opening Store Balance journal for the current backfill, but the liability account is still required before future real Store Balance top-up/use can be posted.
+
+### 18.9 Slice 5D-B1A local implementation — Store Balance Liability CoA
+
+Slice 5D-B1A is **LOCAL SOURCE IMPLEMENTATION / REVIEW PENDING** on `refactor/phase9-slice5d-b1a-store-balance-liability-coa`, based on `origin/dev@fd32edcf`. The user explicitly authorized Prisma/migration work for this slice. Readiness inspection confirms `AccountingAccount.accountClass` already supports `LIABILITY`, nullable operational `type`, CAD currency and active/default account semantics, so no structural `schema.prisma` change is required. The change is intentionally limited to the Chart-of-Accounts definition plus one additive data-only Prisma migration.
+
+The default CoA now includes stable system account `account_store_balance_liability` / `储值余额负债`, with `type = null`, `accountClass = LIABILITY`, currency `CAD` and default active state. Migration `20260913010000_phase9_slice5d_b1a_store_balance_liability_coa` inserts that account idempotently by stable ID and, on an existing reserved stable-ID collision, only repairs the account class to `LIABILITY`; it does not rewrite user-created accounts or any Order/Loyalty/Journal history. The production read-only pre-migration snapshot contains **20** Accounting accounts, no `account_store_balance_liability`, **0** Journal entries and **0** Journal lines.
+
+The cleaned historical Store Balance opening principal and all post-cutover Store Balance principal activity remain zero, so this migration deliberately creates **no opening Journal and no historical balance backfill**. The existing CoA architecture characterization is updated from a single historical seed-file assumption to cumulative CoA seed migrations, and it pins the new stable ID, liability classification, CAD/default-active seed and absence of an `AccountingJournalEntry` insert. No new runtime dependency direction, public API, provider behavior, Payments/Clover path or accounting posting behavior is introduced. The expected dependency baseline remains Foundation **2**, External **1**, Identity **2**, Runtime **6**, total **11**, with `legacyPublicCycleComponents=[]`; remote CI is not claimed before user review.
+
+After B1A is reviewed, merged and the migration is deployed, the next code slice is **5D-B1B — Canonical SALE Journal Posting Engine**: wire Accounting only through owner public financial-fact boundaries, deterministically map one eligible Order SALE into a balanced Journal, and provide preview/post semantics without running the historical backfill yet.
