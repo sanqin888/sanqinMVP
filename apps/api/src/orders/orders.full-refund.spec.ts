@@ -8,8 +8,15 @@ describe('OrdersService.createFullRefund', () => {
     orderStableId: 'order_1',
     channel: Channel.ubereats,
     paymentMethod: PaymentMethod.UBEREATS,
+    storeId: '4750_Yonge_Street',
     status: 'completed',
+    subtotalCents: 2300,
+    subtotalAfterDiscountCents: 2300,
+    taxCents: 299,
+    deliveryFeeCents: 0,
+    creditCardSurchargeCents: 0,
     totalCents: 2599,
+    paymentTotalCents: 2599,
     items: [],
   };
   const orderFindUnique = jest.fn();
@@ -131,6 +138,21 @@ describe('OrdersService.createFullRefund', () => {
       expect(orderUpdateMany).toHaveBeenCalledWith({
         where: { id: baseOrder.id, status: { not: 'refunded' } },
         data: { status: 'refunded' },
+      });
+      expect(opsEventCreateMany).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          idempotencyKey: `order-financial-reversal:full_refund_${baseOrder.orderStableId}:v1`,
+          eventName: 'order.financial_reversal.v1',
+          source: 'orders.financial',
+          payload: expect.objectContaining({
+            factStableId: `full_refund_${baseOrder.orderStableId}`,
+            orderStableId: baseOrder.orderStableId,
+            kind: 'REVERSAL',
+            action: 'FULL_REFUND',
+            occurrenceEvidence: 'ORDER_CONFIRMATION',
+          }) as unknown,
+        }) as unknown,
+        skipDuplicates: true,
       });
       expect(result).toEqual(
         expect.objectContaining({
