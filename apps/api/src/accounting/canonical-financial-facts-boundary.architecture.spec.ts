@@ -23,6 +23,7 @@ describe('Phase 9 canonical financial facts boundary', () => {
 
     expect(ordersPublic).toContain('ORDER_FINANCIAL_FACTS_READER');
     expect(ordersPublic).toContain('OrderFinancialFactsModule');
+    expect(ordersPublic).toContain('OrderFinancialReplayCandidateV1');
     expect(loyaltyPublic).toContain('LOYALTY_FINANCIAL_FACTS_READER');
     expect(loyaltyPublic).toContain('LoyaltyFinancialFactsModule');
     expect(paymentsPublic).toContain('PAYMENT_FINANCIAL_FACTS_READER');
@@ -92,6 +93,8 @@ describe('Phase 9 canonical financial facts boundary', () => {
       )?.source ?? '';
 
     expect(orderReader).toContain("from './orders-prisma'");
+    expect(orderReader).toContain("from '../menu/public-api'");
+    expect(orderReader).not.toContain("from '../menu/catalog-admin");
     expect(orderReader).not.toContain("from '../loyalty");
     expect(orderReader).not.toContain("from '../payments");
     expect(loyaltyReader).toContain("from './loyalty-prisma'");

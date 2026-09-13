@@ -215,7 +215,26 @@ export class AccountingService {
   ): Promise<Date | undefined> {
     const startDate = await this.readAccountingStartDate(db);
     if (!startDate) return undefined;
-    return new Date(`${startDate}T00:00:00.000Z`);
+    const timezone = await this.getBusinessTimezone();
+    const localStart = DateTime.fromISO(startDate, { zone: timezone }).startOf(
+      'day',
+    );
+    if (!localStart.isValid) {
+      throw new BadRequestException(
+        `Invalid accounting start date/timezone: ${startDate} / ${timezone}`,
+      );
+    }
+    return localStart.toUTC().toJSDate();
+  }
+
+  async requireCanonicalFinancialPostingStartAt(): Promise<Date> {
+    const startAt = await this.getAccountingStartAt();
+    if (!startAt) {
+      throw new ConflictException(
+        'accountingStartDate must be configured before canonical financial posting',
+      );
+    }
+    return startAt;
   }
 
   async assertOnOrAfterAccountingStartDate(

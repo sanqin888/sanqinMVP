@@ -19,6 +19,17 @@ export type OrderFinancialPricingEvidenceV1 =
   | 'COMPLETE'
   | 'DAILY_SPECIAL_NOMINAL_UNKNOWN';
 
+export type OrderFinancialReplayEligibilityV1 =
+  | 'ELIGIBLE'
+  | 'POST_SALE_MUTATION'
+  | 'PRICING_UNRESOLVED';
+
+export type OrderFinancialReplayPricingResolutionV1 =
+  | 'SOURCE_COMPLETE'
+  | 'CATALOG_STABLE_MATCH'
+  | 'MANUAL_OVERRIDE'
+  | 'UNRESOLVED';
+
 export type OrderFinancialDiscountsV1 = {
   /** Null when a legacy Daily Special order lacks immutable original-price evidence. */
   dailySpecialCents: number | null;
@@ -73,6 +84,20 @@ export type OrderFinancialFactV1 = {
   paymentTotalCents: number;
 };
 
+export type OrderFinancialReplayCandidateV1 = {
+  /** Original owner fact before any controlled historical reconstruction. */
+  sourceFact: OrderFinancialFactV1;
+  /** Whether Accounting may safely post the original SALE from this candidate. */
+  replayEligibility: OrderFinancialReplayEligibilityV1;
+  /** Evidence used to resolve the original/nominal Daily Special price. */
+  pricingResolution: OrderFinancialReplayPricingResolutionV1;
+  /**
+   * Ready-to-post fact. Null means the historical SALE must remain an explicit
+   * exception instead of being guessed from mutable or incomplete evidence.
+   */
+  resolvedFact: OrderFinancialFactV1 | null;
+};
+
 export type OrderFinancialFactsRangeV1 = {
   fromInclusive: Date;
   toExclusive: Date;
@@ -80,10 +105,19 @@ export type OrderFinancialFactsRangeV1 = {
 };
 
 export interface OrderFinancialFactsReaderPort {
+  /** Raw owner fact read; callers must not treat LEGACY_CURRENT_ORDER as replay-safe. */
   readFactByOrderStableId(
     orderStableId: string,
   ): Promise<OrderFinancialFactV1 | null>;
+  /** Raw owner fact range read for diagnostics/source inspection. */
   readFactsForRange(
     range: OrderFinancialFactsRangeV1,
   ): Promise<OrderFinancialFactV1[]>;
+  /** Historical posting/backfill must use the replay-qualified candidate surface. */
+  readReplayCandidateByOrderStableId(
+    orderStableId: string,
+  ): Promise<OrderFinancialReplayCandidateV1 | null>;
+  readReplayCandidatesForRange(
+    range: OrderFinancialFactsRangeV1,
+  ): Promise<OrderFinancialReplayCandidateV1[]>;
 }

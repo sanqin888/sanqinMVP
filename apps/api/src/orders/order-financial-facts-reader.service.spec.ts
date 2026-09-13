@@ -71,14 +71,21 @@ const financialRow = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+const makeCatalogReader = () => ({
+  getActiveOrderItemMaterializationFact: jest.fn().mockResolvedValue(null),
+});
+
 const legacyService = (order: Record<string, unknown>) =>
-  new OrderFinancialFactsReaderService({
-    opsEvent: {
-      findUnique: jest.fn().mockResolvedValue(null),
-      findMany: jest.fn().mockResolvedValue([]),
-    },
-    order,
-  } as never);
+  new OrderFinancialFactsReaderService(
+    {
+      opsEvent: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      order,
+    } as never,
+    makeCatalogReader() as never,
+  );
 
 describe('OrderFinancialFactsReaderService', () => {
   it('normalizes legacy persisted pricing while marking the mutable Order-row source explicitly', async () => {
@@ -149,14 +156,17 @@ describe('OrderFinancialFactsReaderService', () => {
         totalCents: 1_695,
       }),
     );
-    const service = new OrderFinancialFactsReaderService({
-      opsEvent: {
-        findUnique: jest.fn().mockResolvedValue({
-          payload: serializeOrderFinancialFactV1(original),
-        }),
-      },
-      order: { findFirst },
-    } as never);
+    const service = new OrderFinancialFactsReaderService(
+      {
+        opsEvent: {
+          findUnique: jest.fn().mockResolvedValue({
+            payload: serializeOrderFinancialFactV1(original),
+          }),
+        },
+        order: { findFirst },
+      } as never,
+      makeCatalogReader() as never,
+    );
 
     const fact = await service.readFactByOrderStableId('order-stable-1');
 
@@ -291,16 +301,19 @@ describe('OrderFinancialFactsReaderService', () => {
     const findMany = jest
       .fn()
       .mockResolvedValue([financialRow({ orderStableId: 'legacy-order' })]);
-    const service = new OrderFinancialFactsReaderService({
-      opsEvent: {
-        findMany: jest
-          .fn()
-          .mockResolvedValue([
-            { payload: serializeOrderFinancialFactV1(original) },
-          ]),
-      },
-      order: { findMany },
-    } as never);
+    const service = new OrderFinancialFactsReaderService(
+      {
+        opsEvent: {
+          findMany: jest
+            .fn()
+            .mockResolvedValue([
+              { payload: serializeOrderFinancialFactV1(original) },
+            ]),
+        },
+        order: { findMany },
+      } as never,
+      makeCatalogReader() as never,
+    );
     const fromInclusive = new Date('2026-09-12T04:00:00.000Z');
     const toExclusive = new Date('2026-09-13T04:00:00.000Z');
 
@@ -332,5 +345,346 @@ describe('OrderFinancialFactsReaderService', () => {
         },
       }),
     );
+  });
+
+  it('blocks legacy SALE replay after a post-sale mutation without exposing amendment persistence to Accounting', async () => {
+    const catalog = makeCatalogReader();
+    const service = new OrderFinancialFactsReaderService(
+      {
+        opsEvent: { findUnique: jest.fn().mockResolvedValue(null) },
+        order: {
+          findFirst: jest
+            .fn()
+            .mockResolvedValue(financialRow({ id: 'order-db-1' })),
+        },
+        orderAmendment: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              orderId: 'order-db-1',
+              type: 'SWAP_ITEM',
+              summaryJson: null,
+            },
+          ]),
+        },
+      } as never,
+      catalog as never,
+    );
+
+    await expect(
+      service.readReplayCandidateByOrderStableId('order-stable-1'),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        replayEligibility: 'POST_SALE_MUTATION',
+        pricingResolution: 'SOURCE_COMPLETE',
+        resolvedFact: null,
+      }),
+    );
+    expect(catalog.getActiveOrderItemMaterializationFact).not.toHaveBeenCalled();
+  });
+
+  it('blocks an ordinary RETENDER because the current paymentMethod no longer proves the original SALE tender', async () => {
+    const service = new OrderFinancialFactsReaderService(
+      {
+        opsEvent: { findUnique: jest.fn().mockResolvedValue(null) },
+        order: {
+          findFirst: jest
+            .fn()
+            .mockResolvedValue(financialRow({ id: 'order-db-1' })),
+        },
+        orderAmendment: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              orderId: 'order-db-1',
+              type: 'RETENDER',
+              summaryJson: { deltaCentsSigned: 0 },
+            },
+          ]),
+        },
+      } as never,
+      makeCatalogReader() as never,
+    );
+
+    const candidate = await service.readReplayCandidateByOrderStableId(
+      'order-stable-1',
+    );
+
+    expect(candidate?.replayEligibility).toBe('POST_SALE_MUTATION');
+    expect(candidate?.resolvedFact).toBeNull();
+  });
+
+  it('keeps a later refund/reversal separate from original SALE replay eligibility', async () => {
+    const service = new OrderFinancialFactsReaderService(
+      {
+        opsEvent: { findUnique: jest.fn().mockResolvedValue(null) },
+        order: {
+          findFirst: jest
+            .fn()
+            .mockResolvedValue(financialRow({ id: 'order-db-1' })),
+        },
+        orderAmendment: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              orderId: 'order-db-1',
+              type: 'RETENDER',
+              summaryJson: { kind: 'FULL_REFUND' },
+            },
+          ]),
+        },
+      } as never,
+      makeCatalogReader() as never,
+    );
+
+    const candidate = await service.readReplayCandidateByOrderStableId(
+      'order-stable-1',
+    );
+
+    expect(candidate?.replayEligibility).toBe('ELIGIBLE');
+    expect(candidate?.pricingResolution).toBe('SOURCE_COMPLETE');
+    expect(candidate?.resolvedFact?.orderStableId).toBe('order-stable-1');
+  });
+
+  it('never reprices an immutable SALE snapshot from current Catalog state', async () => {
+    const sourceFact = buildOrderFinancialFactV1(
+      financialRow({
+        subtotalCents: 799,
+        subtotalAfterDiscountCents: 799,
+        couponDiscountCents: 0,
+        loyaltyRedeemCents: 0,
+        promotionSnapshot: null,
+        items: [
+          {
+            id: 'line-immutable',
+            productStableId: 'item-1',
+            displayName: 'Roujiamo',
+            nameZh: '肉夹馍',
+            nameEn: 'Roujiamo',
+            qty: 1,
+            unitPriceCents: 799,
+            baseUnitPriceCents: 799,
+            optionsUnitPriceCents: 0,
+            isDailySpecialApplied: true,
+            dailySpecialStableId: 'daily-1',
+          },
+        ],
+      }) as never,
+      'IMMUTABLE_SALE_SNAPSHOT',
+    );
+    const catalog = makeCatalogReader();
+    catalog.getActiveOrderItemMaterializationFact.mockResolvedValue({
+      stableId: 'item-1',
+      nameEn: 'Roujiamo',
+      nameZh: '肉夹馍',
+      basePriceCents: 949,
+    } as never);
+    const service = new OrderFinancialFactsReaderService(
+      {
+        opsEvent: {
+          findUnique: jest.fn().mockResolvedValue({
+            payload: serializeOrderFinancialFactV1(sourceFact),
+          }),
+        },
+      } as never,
+      catalog as never,
+    );
+
+    const candidate = await service.readReplayCandidateByOrderStableId(
+      'order-stable-1',
+    );
+
+    expect(candidate?.replayEligibility).toBe('PRICING_UNRESOLVED');
+    expect(candidate?.pricingResolution).toBe('UNRESOLVED');
+    expect(candidate?.resolvedFact).toBeNull();
+    expect(catalog.getActiveOrderItemMaterializationFact).not.toHaveBeenCalled();
+  });
+
+  it('reconstructs legacy Daily Special nominal price only from an active Catalog item with compatible stable identity', async () => {
+    const catalog = makeCatalogReader();
+    catalog.getActiveOrderItemMaterializationFact.mockResolvedValue({
+      stableId: 'item-1',
+      nameEn: 'New English merchandising label',
+      nameZh: '肉夹馍',
+      basePriceCents: 949,
+    } as never);
+    const service = new OrderFinancialFactsReaderService(
+      {
+        opsEvent: { findUnique: jest.fn().mockResolvedValue(null) },
+        order: {
+          findFirst: jest.fn().mockResolvedValue(
+            financialRow({
+              id: 'order-db-1',
+              subtotalCents: 799,
+              subtotalAfterDiscountCents: 799,
+              couponDiscountCents: 0,
+              loyaltyRedeemCents: 0,
+              promotionSnapshot: null,
+              items: [
+                {
+                  id: 'line-legacy',
+                  productStableId: 'item-1',
+                  displayName: 'Historical Roujiamo label',
+                  nameZh: '肉夹馍',
+                  nameEn: 'Historical Roujiamo label',
+                  qty: 1,
+                  unitPriceCents: 799,
+                  baseUnitPriceCents: 799,
+                  optionsUnitPriceCents: 0,
+                  isDailySpecialApplied: true,
+                  dailySpecialStableId: 'daily-legacy',
+                },
+              ],
+            }),
+          ),
+        },
+        orderAmendment: { findMany: jest.fn().mockResolvedValue([]) },
+        orderItem: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              productStableId: 'item-1',
+              displayName: 'Historical Roujiamo label',
+              nameEn: 'Historical Roujiamo label',
+              nameZh: '肉夹馍',
+              unitPriceCents: 799,
+              baseUnitPriceCents: 799,
+              optionsUnitPriceCents: 0,
+              order: { status: 'completed', promotionSnapshot: null },
+            },
+          ]),
+        },
+      } as never,
+      catalog as never,
+    );
+
+    const candidate = await service.readReplayCandidateByOrderStableId(
+      'order-stable-1',
+    );
+
+    expect(candidate?.replayEligibility).toBe('ELIGIBLE');
+    expect(candidate?.pricingResolution).toBe('CATALOG_STABLE_MATCH');
+    expect(candidate?.sourceFact.nominalSubtotalCents).toBeNull();
+    expect(candidate?.resolvedFact?.nominalSubtotalCents).toBe(949);
+    expect(candidate?.resolvedFact?.discounts.dailySpecialCents).toBe(150);
+    expect(candidate?.resolvedFact?.discounts.totalCents).toBe(150);
+    expect(catalog.getActiveOrderItemMaterializationFact).toHaveBeenCalledWith(
+      'item-1',
+    );
+  });
+
+  it('requires MANUAL_OVERRIDE when historical same-identity evidence disproves current Catalog base-price stability', async () => {
+    const catalog = makeCatalogReader();
+    catalog.getActiveOrderItemMaterializationFact.mockResolvedValue({
+      stableId: 'liangpi-stable',
+      nameEn: 'SanQ Cool Noodle · Liangpi',
+      nameZh: '三秦凉皮',
+      basePriceCents: 749,
+    } as never);
+    const service = new OrderFinancialFactsReaderService(
+      {
+        opsEvent: { findUnique: jest.fn().mockResolvedValue(null) },
+        order: {
+          findFirst: jest.fn().mockResolvedValue(
+            financialRow({
+              id: 'order-db-1',
+              subtotalCents: 599,
+              subtotalAfterDiscountCents: 599,
+              couponDiscountCents: 0,
+              loyaltyRedeemCents: 0,
+              promotionSnapshot: null,
+              items: [
+                {
+                  id: 'line-current-candidate',
+                  productStableId: 'liangpi-stable',
+                  displayName: 'SanQ Liangpi（Cool Noodle）',
+                  nameZh: '三秦凉皮',
+                  nameEn: 'SanQ Liangpi（Cool Noodle）',
+                  qty: 1,
+                  unitPriceCents: 599,
+                  baseUnitPriceCents: 599,
+                  optionsUnitPriceCents: 0,
+                  isDailySpecialApplied: true,
+                  dailySpecialStableId: 'daily-legacy',
+                },
+              ],
+            }),
+          ),
+        },
+        orderAmendment: { findMany: jest.fn().mockResolvedValue([]) },
+        orderItem: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              productStableId: 'liangpi-stable',
+              displayName: 'SanQ Liangpi（Cool Noodle）',
+              nameEn: 'SanQ Liangpi（Cool Noodle）',
+              nameZh: '三秦凉皮',
+              unitPriceCents: 899,
+              baseUnitPriceCents: 899,
+              optionsUnitPriceCents: 0,
+              order: { status: 'completed', promotionSnapshot: null },
+            },
+          ]),
+        },
+      } as never,
+      catalog as never,
+    );
+
+    const candidate = await service.readReplayCandidateByOrderStableId(
+      'order-stable-1',
+    );
+
+    expect(candidate?.replayEligibility).toBe('PRICING_UNRESOLVED');
+    expect(candidate?.pricingResolution).toBe('MANUAL_OVERRIDE');
+    expect(candidate?.resolvedFact).toBeNull();
+  });
+
+  it('requires MANUAL_OVERRIDE when a stable Catalog id now represents a different historical product identity', async () => {
+    const catalog = makeCatalogReader();
+    catalog.getActiveOrderItemMaterializationFact.mockResolvedValue({
+      stableId: 'roujiamo-stable',
+      nameEn: 'SanQ Pork Burger · Pork Roujiamo',
+      nameZh: '三秦猪肉夹馍',
+      basePriceCents: 749,
+    } as never);
+    const service = new OrderFinancialFactsReaderService(
+      {
+        opsEvent: { findUnique: jest.fn().mockResolvedValue(null) },
+        order: {
+          findFirst: jest.fn().mockResolvedValue(
+            financialRow({
+              id: 'order-db-1',
+              subtotalCents: 599,
+              subtotalAfterDiscountCents: 599,
+              couponDiscountCents: 0,
+              loyaltyRedeemCents: 0,
+              promotionSnapshot: null,
+              items: [
+                {
+                  id: 'line-legacy',
+                  productStableId: 'roujiamo-stable',
+                  displayName: 'SanQ Roujiamo (Chinese Burger)',
+                  nameZh: '三秦肉夹馍',
+                  nameEn: 'SanQ Roujiamo (Chinese Burger)',
+                  qty: 1,
+                  unitPriceCents: 599,
+                  baseUnitPriceCents: 599,
+                  optionsUnitPriceCents: 0,
+                  isDailySpecialApplied: true,
+                  dailySpecialStableId: 'daily-legacy',
+                },
+              ],
+            }),
+          ),
+        },
+        orderAmendment: { findMany: jest.fn().mockResolvedValue([]) },
+        orderItem: { findMany: jest.fn().mockResolvedValue([]) },
+      } as never,
+      catalog as never,
+    );
+
+    const candidate = await service.readReplayCandidateByOrderStableId(
+      'order-stable-1',
+    );
+
+    expect(candidate?.replayEligibility).toBe('PRICING_UNRESOLVED');
+    expect(candidate?.pricingResolution).toBe('MANUAL_OVERRIDE');
+    expect(candidate?.resolvedFact).toBeNull();
   });
 });

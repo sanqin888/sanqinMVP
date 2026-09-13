@@ -101,6 +101,9 @@ export {
   type OrderFinancialFactsReaderPort,
   type OrderFinancialPaymentMethodV1,
   type OrderFinancialPricingEvidenceV1,
+  type OrderFinancialReplayCandidateV1,
+  type OrderFinancialReplayEligibilityV1,
+  type OrderFinancialReplayPricingResolutionV1,
 } from './order-financial-facts-reader.contract';
 export { OrderFinancialFactsModule } from './order-financial-facts.module';
 export {

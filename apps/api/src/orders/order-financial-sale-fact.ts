@@ -115,8 +115,11 @@ const sumDiscountSource = (
     .filter((entry) => entry.source === source)
     .reduce((sum, entry) => sum + entry.discountCents, 0);
 
-const effectiveBaseUnitCents = (
-  item: OrderFinancialSnapshot['items'][number],
+export const resolveOrderFinancialEffectiveBaseUnitCents = (
+  item: Pick<
+    OrderFinancialSnapshot['items'][number],
+    'baseUnitPriceCents' | 'unitPriceCents' | 'optionsUnitPriceCents'
+  >,
 ): number | null => {
   if (
     typeof item.baseUnitPriceCents === 'number' &&
@@ -258,7 +261,8 @@ const resolveDailySpecialPricing = (
 
     let persistedEffectiveBaseSubtotal = 0;
     for (const candidate of matchingItems) {
-      const baseUnitCents = effectiveBaseUnitCents(candidate);
+      const baseUnitCents =
+        resolveOrderFinancialEffectiveBaseUnitCents(candidate);
       if (baseUnitCents === null) {
         return {
           evidence: 'DAILY_SPECIAL_NOMINAL_UNKNOWN',
