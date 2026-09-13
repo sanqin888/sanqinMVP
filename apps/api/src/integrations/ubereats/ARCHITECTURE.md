@@ -48,7 +48,8 @@
   `ORDER_EXTERNAL_CANCELLATION_FINALIZER`。Uber persistence adapter 不负责该跨 context orchestration。
   application 只提交 stable `orderStableId`、provider external/event identity、规范化 reason/operator 与
   occurredAt；canonical `totalCents` / payment method 必须由 Orders 自己读取。Orders 在自己的 transaction
-  中幂等写 `OrderAmendment`、把 Order 收敛到 `refunded`、追加 `order.cancelled`。
+  中幂等写 `OrderAmendment`、把 Order 收敛到 `refunded`、按 provider `occurredAt` 追加
+  `order.financial_reversal.v1`，并继续追加 `order.cancelled` lifecycle evidence。
   `UberOrderCancellation` test-era mirror persistence 不再保留；durable provider evidence 继续由已验签并
   持久化完整 payload 的 `UberWebhookInbox` 拥有。
 - Uber imported orders 继续不触发 SanQ member paid-lifecycle/Loyalty side effects；外部 wire、

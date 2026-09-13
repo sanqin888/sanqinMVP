@@ -24,6 +24,8 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(ordersPublic).toContain('ORDER_FINANCIAL_FACTS_READER');
     expect(ordersPublic).toContain('OrderFinancialFactsModule');
     expect(ordersPublic).toContain('OrderFinancialReplayCandidateV1');
+    expect(ordersPublic).toContain('ORDER_FINANCIAL_CHANGE_FACTS_READER');
+    expect(ordersPublic).toContain('OrderFinancialChangeFactsModule');
     expect(loyaltyPublic).toContain('LOYALTY_FINANCIAL_FACTS_READER');
     expect(loyaltyPublic).toContain('LoyaltyFinancialFactsModule');
     expect(paymentsPublic).toContain('PAYMENT_FINANCIAL_FACTS_READER');
@@ -36,6 +38,7 @@ describe('Phase 9 canonical financial facts boundary', () => {
   it('keeps canonical financial fact contracts framework-, Prisma-, and provider-implementation-neutral', () => {
     const contracts = [
       file(ORDERS_ROOT, 'order-financial-facts-reader.contract.ts'),
+      file(ORDERS_ROOT, 'order-financial-change-facts-reader.contract.ts'),
       file(LOYALTY_ROOT, 'loyalty-financial-facts-reader.contract.ts'),
       file(
         resolve(PAYMENTS_ROOT, 'application'),
@@ -43,7 +46,7 @@ describe('Phase 9 canonical financial facts boundary', () => {
       ),
     ];
 
-    expect(contracts).toHaveLength(3);
+    expect(contracts).toHaveLength(4);
     for (const contract of contracts) {
       expect(contract).toBeDefined();
       if (!contract) continue;
@@ -79,10 +82,32 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(lifecycle).not.toContain('order.financial_sale.v1');
   });
 
+  it('freezes post-sale Orders changes as immutable owner facts before Accounting consumes them', () => {
+    const changeFact =
+      file(ORDERS_ROOT, 'order-financial-change-fact.ts')?.source ?? '';
+    const ordersService = file(ORDERS_ROOT, 'orders.service.ts')?.source ?? '';
+    const externalCancellation =
+      file(ORDERS_ROOT, 'order-external-cancellation.service.ts')?.source ?? '';
+
+    expect(changeFact).toContain("'order.financial_adjustment.v1'");
+    expect(changeFact).toContain("'order.financial_reversal.v1'");
+    expect(changeFact).toContain('appendOrderFinancialChangeFact');
+    expect(ordersService).toContain('buildOrderFinancialAdjustmentFact');
+    expect(ordersService).toContain("action: 'FULL_REFUND'");
+    expect(ordersService).toContain('appendOrderFinancialChangeFact');
+    expect(externalCancellation).toContain("action: 'EXTERNAL_CANCELLATION'");
+    expect(externalCancellation).toContain(
+      "occurrenceEvidence: 'PROVIDER_EVENT'",
+    );
+  });
+
   it('keeps owner fact readers inside their own persistence boundaries', () => {
     const orderReader =
       file(ORDERS_ROOT, 'order-financial-facts-reader.service.ts')?.source ??
       '';
+    const orderChangeReader =
+      file(ORDERS_ROOT, 'order-financial-change-facts-reader.service.ts')
+        ?.source ?? '';
     const loyaltyReader =
       file(LOYALTY_ROOT, 'loyalty-financial-facts-reader.service.ts')?.source ??
       '';
@@ -97,6 +122,9 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(orderReader).not.toContain("from '../menu/catalog-admin");
     expect(orderReader).not.toContain("from '../loyalty");
     expect(orderReader).not.toContain("from '../payments");
+    expect(orderChangeReader).toContain("from './orders-prisma'");
+    expect(orderChangeReader).not.toContain("from '../loyalty");
+    expect(orderChangeReader).not.toContain("from '../payments");
     expect(loyaltyReader).toContain("from './loyalty-prisma'");
     expect(loyaltyReader).not.toContain("from '../orders");
     expect(loyaltyReader).not.toContain("from '../payments");

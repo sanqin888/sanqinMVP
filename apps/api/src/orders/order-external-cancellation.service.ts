@@ -11,10 +11,16 @@ import {
   ORDER_LIFECYCLE_OUTBOX_SOURCE,
   orderCancelledIdempotencyKey,
 } from './order-lifecycle';
+import {
+  appendOrderFinancialChangeFact,
+  buildOrderFinancialReversalFact,
+} from './order-financial-change-fact';
 import { PrismaService } from './orders-prisma';
 
 @Injectable()
-export class OrderExternalCancellationFinalizerService implements OrderExternalCancellationFinalizerPort {
+export class OrderExternalCancellationFinalizerService
+  implements OrderExternalCancellationFinalizerPort
+{
   constructor(private readonly prisma: PrismaService) {}
 
   async finalizeConfirmedCancellation(
@@ -30,8 +36,22 @@ export class OrderExternalCancellationFinalizerService implements OrderExternalC
         select: {
           id: true,
           orderStableId: true,
-          totalCents: true,
+          storeId: true,
+          channel: true,
           paymentMethod: true,
+          subtotalCents: true,
+          subtotalAfterDiscountCents: true,
+          taxCents: true,
+          deliveryFeeCents: true,
+          creditCardSurchargeCents: true,
+          totalCents: true,
+          paymentTotalCents: true,
+          items: {
+            select: {
+              qty: true,
+              isDailySpecialApplied: true,
+            },
+          },
         },
       });
       if (!order) {
@@ -41,6 +61,12 @@ export class OrderExternalCancellationFinalizerService implements OrderExternalC
       }
 
       const reason = input.reason.trim() || 'External cancellation confirmed';
+      const occurredAt = input.occurredAt ? new Date(input.occurredAt) : null;
+      if (!occurredAt || Number.isNaN(occurredAt.getTime())) {
+        throw new Error(
+          `External cancellation is missing authoritative occurredAt: ${input.externalEventId}`,
+        );
+      }
       const refundCents = Math.max(0, order.totalCents);
       const amendmentStableId = this.amendmentStableId(
         input.channel,
@@ -72,6 +98,18 @@ export class OrderExternalCancellationFinalizerService implements OrderExternalC
         where: { id: order.id },
         data: { status: 'refunded' },
       });
+      await appendOrderFinancialChangeFact(
+        tx,
+        buildOrderFinancialReversalFact({
+          factStableId: amendmentStableId,
+          occurredAt,
+          action: 'EXTERNAL_CANCELLATION',
+          occurrenceEvidence: 'PROVIDER_EVENT',
+          before: order,
+          declaredPaymentMethod: order.paymentMethod,
+          refundGrossCents: refundCents,
+        }),
+      );
       await tx.opsEvent.createMany({
         data: {
           idempotencyKey: orderCancelledIdempotencyKey(order.orderStableId),

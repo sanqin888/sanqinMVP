@@ -107,6 +107,22 @@ export {
 } from './order-financial-facts-reader.contract';
 export { OrderFinancialFactsModule } from './order-financial-facts.module';
 export {
+  ORDER_FINANCIAL_CHANGE_FACTS_READER,
+  type OrderFinancialChangeActionV1,
+  type OrderFinancialChangeChannelV1,
+  type OrderFinancialChangeFactV1,
+  type OrderFinancialChangeFactsRangeV1,
+  type OrderFinancialChangeFactsReaderPort,
+  type OrderFinancialChangeKindV1,
+  type OrderFinancialChangeOccurrenceEvidenceV1,
+  type OrderFinancialChangePaymentMethodV1,
+  type OrderFinancialChangeSettlementV1,
+  type OrderFinancialChangeStateV1,
+} from './order-financial-change-facts-reader.contract';
+export {
+  OrderFinancialChangeFactsModule,
+} from './order-financial-change-facts.module';
+export {
   ORDER_EXTERNAL_TRANSITION_COORDINATOR,
   type OrderExternalTransition,
   type OrderExternalTransitionCompletion,

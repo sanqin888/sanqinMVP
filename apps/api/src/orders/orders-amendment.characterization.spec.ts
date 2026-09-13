@@ -16,6 +16,7 @@ describe('OrdersService amendment characterization', () => {
       channel: Channel.in_store,
       fulfillmentType: FulfillmentType.pickup,
       paymentMethod: PaymentMethod.CASH,
+      storeId: '4750_Yonge_Street',
       userId: null,
       subtotalCents: 2000,
       subtotalAfterDiscountCents: 1800,
@@ -23,17 +24,28 @@ describe('OrdersService amendment characterization', () => {
       loyaltyRedeemCents: 0,
       taxCents: 234,
       deliveryFeeCents: 0,
+      creditCardSurchargeCents: 0,
       totalCents: 2034,
+      paymentTotalCents: 2034,
       items: [
         {
           id: '8a3d4c0e-4750-4f6a-9138-000000000102',
           productStableId: 'product_stable_1',
           qty: 2,
           unitPriceCents: 1000,
+          isDailySpecialApplied: false,
         },
       ],
     };
-    const finalOrder = { ...currentOrder, subtotalCents: 1000, items: [] };
+    const finalOrder = {
+      ...currentOrder,
+      subtotalCents: 1000,
+      subtotalAfterDiscountCents: 900,
+      taxCents: 117,
+      totalCents: 1017,
+      paymentTotalCents: 1017,
+      items: [{ ...currentOrder.items[0]!, qty: 1 }],
+    };
 
     const orderFindUnique = jest
       .fn()
@@ -61,6 +73,7 @@ describe('OrdersService amendment characterization', () => {
     const orderItemUpdate = jest.fn().mockResolvedValue({});
     const orderItemDelete = jest.fn().mockResolvedValue({});
     const orderItemCreate = jest.fn().mockResolvedValue({});
+    const opsEventCreateMany = jest.fn().mockResolvedValue({ count: 1 });
 
     const tx = {
       order: { findUnique: orderFindUnique, update: orderUpdate },
@@ -75,6 +88,7 @@ describe('OrdersService amendment characterization', () => {
         delete: orderItemDelete,
         create: orderItemCreate,
       },
+      opsEvent: { createMany: opsEventCreateMany },
     };
     const transaction = jest.fn(
       (work: (client: typeof tx) => Promise<unknown>) => work(tx),
@@ -166,6 +180,10 @@ describe('OrdersService amendment characterization', () => {
         paymentTotalCents: 1017,
       },
     });
+    expect(orderUpdate).not.toHaveBeenCalledWith({
+      where: { id: currentOrder.id },
+      data: { paymentMethod: PaymentMethod.CASH },
+    });
     const amendmentUpdateArgs = amendmentUpdateInput as {
       where: { id: string };
       data: {
@@ -184,6 +202,30 @@ describe('OrdersService amendment characterization', () => {
       additionalChargeCents: 0,
       redeemReturnCents: 0,
     });
+    expect(opsEventCreateMany).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        idempotencyKey:
+          'order-financial-adjustment:amendment_stable_1:v1',
+        eventName: 'order.financial_adjustment.v1',
+        source: 'orders.financial',
+        payload: expect.objectContaining({
+          factStableId: 'amendment_stable_1',
+          orderStableId: currentOrder.orderStableId,
+          kind: 'ADJUSTMENT',
+          action: 'VOID_ITEM',
+          occurrenceEvidence: 'ORDER_CONFIRMATION',
+          settlement: {
+            previousOrderPaymentMethod: 'CASH',
+            resultingOrderPaymentMethod: 'CASH',
+            declaredSettlementPaymentMethod: 'CASH',
+            refundGrossCents: 1000,
+            redeemReturnCents: 0,
+            additionalChargeCents: 0,
+          },
+        }) as unknown,
+      }) as unknown,
+      skipDuplicates: true,
+    });
     expect(applyAmendmentAdjustments).not.toHaveBeenCalled();
   });
 
@@ -196,6 +238,7 @@ describe('OrdersService amendment characterization', () => {
       channel: Channel.in_store,
       fulfillmentType: FulfillmentType.pickup,
       paymentMethod: PaymentMethod.CASH,
+      storeId: '4750_Yonge_Street',
       userId: null,
       subtotalCents: 1000,
       subtotalAfterDiscountCents: 1000,
@@ -203,7 +246,9 @@ describe('OrdersService amendment characterization', () => {
       loyaltyRedeemCents: 0,
       taxCents: 130,
       deliveryFeeCents: 0,
+      creditCardSurchargeCents: 0,
       totalCents: 1130,
+      paymentTotalCents: 1130,
       items: [],
     };
     const finalOrder = {
@@ -241,6 +286,7 @@ describe('OrdersService amendment characterization', () => {
         delete: jest.fn(),
         create: orderItemCreate,
       },
+      opsEvent: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
     };
     const transaction = jest.fn(
       (work: (client: typeof tx) => Promise<unknown>) => work(tx),
@@ -292,6 +338,7 @@ describe('OrdersService amendment characterization', () => {
       orderStableId: currentOrder.orderStableId,
       type: OrderAmendmentType.ADDITIONAL_CHARGE,
       reason: 'add combo',
+      paymentMethod: PaymentMethod.CASH,
       additionalChargeCents: 500,
       items: [
         {
@@ -333,6 +380,77 @@ describe('OrdersService amendment characterization', () => {
     });
   });
 
+  it('rejects a non-zero amendment settlement without a declared payment method', async () => {
+    const currentOrder = {
+      id: '8a3d4c0e-4750-4f6a-9138-000000000250',
+      orderStableId: 'order_stable_settlement_method_required_1',
+      status: 'paid',
+      channel: Channel.in_store,
+      fulfillmentType: FulfillmentType.pickup,
+      paymentMethod: PaymentMethod.CARD,
+      storeId: '4750_Yonge_Street',
+      userId: null,
+      subtotalCents: 1000,
+      subtotalAfterDiscountCents: 1000,
+      couponDiscountCents: 0,
+      loyaltyRedeemCents: 0,
+      taxCents: 130,
+      deliveryFeeCents: 0,
+      creditCardSurchargeCents: 0,
+      totalCents: 1130,
+      paymentTotalCents: 1130,
+      items: [],
+    };
+    const amendmentUpdate = jest.fn();
+    const opsEventCreateMany = jest.fn();
+    const tx = {
+      order: {
+        findUnique: jest.fn().mockResolvedValue(currentOrder),
+        update: jest.fn(),
+      },
+      orderAmendment: {
+        create: jest.fn().mockResolvedValue({
+          id: '8a3d4c0e-4750-4f6a-9138-000000000251',
+          amendmentStableId: 'amendment_settlement_method_required_1',
+          orderId: currentOrder.id,
+        }),
+        aggregate: jest.fn().mockResolvedValue({
+          _sum: { refundCents: 0, redeemReturnCents: 0 },
+        }),
+        update: amendmentUpdate,
+      },
+      orderAmendmentItem: { createMany: jest.fn() },
+      orderItem: { update: jest.fn(), delete: jest.fn(), create: jest.fn() },
+      opsEvent: { createMany: opsEventCreateMany },
+    };
+    const service = Object.create(OrdersService.prototype) as OrdersService;
+    Object.assign(service as unknown as Record<string, unknown>, {
+      prisma: {
+        $transaction: (work: (client: typeof tx) => Promise<unknown>) =>
+          work(tx),
+      },
+      loyalty: { applyAmendmentAdjustments: jest.fn() },
+      resolveInternalOrderIdByStableIdOrThrow: jest.fn().mockResolvedValue({
+        id: currentOrder.id,
+        orderStableId: currentOrder.orderStableId,
+        clientRequestId: null,
+      }),
+    });
+
+    await expect(
+      service.createAmendment({
+        orderStableId: currentOrder.orderStableId,
+        type: OrderAmendmentType.ADDITIONAL_CHARGE,
+        reason: 'extra charge',
+        additionalChargeCents: 500,
+      }),
+    ).rejects.toThrow(
+      'paymentMethod is required for a non-zero amendment settlement',
+    );
+    expect(amendmentUpdate).not.toHaveBeenCalled();
+    expect(opsEventCreateMany).not.toHaveBeenCalled();
+  });
+
   it('allows a payment-method-only RETENDER and updates the Order payment method', async () => {
     const currentOrder = {
       id: '8a3d4c0e-4750-4f6a-9138-000000000301',
@@ -341,6 +459,7 @@ describe('OrdersService amendment characterization', () => {
       channel: Channel.in_store,
       fulfillmentType: FulfillmentType.pickup,
       paymentMethod: PaymentMethod.CASH,
+      storeId: '4750_Yonge_Street',
       userId: null,
       subtotalCents: 1000,
       subtotalAfterDiscountCents: 1000,
@@ -348,7 +467,9 @@ describe('OrdersService amendment characterization', () => {
       loyaltyRedeemCents: 0,
       taxCents: 130,
       deliveryFeeCents: 0,
+      creditCardSurchargeCents: 0,
       totalCents: 1130,
+      paymentTotalCents: 1130,
       items: [],
     };
     const finalOrder = { ...currentOrder, paymentMethod: PaymentMethod.CARD };
@@ -374,6 +495,7 @@ describe('OrdersService amendment characterization', () => {
       },
       orderAmendmentItem: { createMany: jest.fn() },
       orderItem: { update: jest.fn(), delete: jest.fn(), create: jest.fn() },
+      opsEvent: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
     };
     const service = Object.create(OrdersService.prototype) as OrdersService;
     Object.assign(service as unknown as Record<string, unknown>, {
