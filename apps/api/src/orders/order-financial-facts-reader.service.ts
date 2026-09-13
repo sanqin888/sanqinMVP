@@ -160,7 +160,9 @@ export class OrderFinancialFactsReaderService implements OrderFinancialFactsRead
     if (durable) {
       const fact = parseOrderFinancialFactV1(durable.payload);
       if (!fact || fact.orderStableId !== stableId) {
-        throw new Error(`Malformed immutable Order financial fact: ${stableId}`);
+        throw new Error(
+          `Malformed immutable Order financial fact: ${stableId}`,
+        );
       }
       return { source: 'IMMUTABLE', fact };
     }
@@ -235,11 +237,13 @@ export class OrderFinancialFactsReaderService implements OrderFinancialFactsRead
       select: ORDER_FINANCIAL_REPLAY_SELECT,
       orderBy: [{ paidAt: 'asc' }, { orderStableId: 'asc' }],
     });
-    const legacyRecords: OrderFinancialSourceRecord[] = legacyRows.map((row) => ({
-      source: 'LEGACY',
-      row,
-      fact: buildOrderFinancialFactV1(row, 'LEGACY_CURRENT_ORDER'),
-    }));
+    const legacyRecords: OrderFinancialSourceRecord[] = legacyRows.map(
+      (row) => ({
+        source: 'LEGACY',
+        row,
+        fact: buildOrderFinancialFactV1(row, 'LEGACY_CURRENT_ORDER'),
+      }),
+    );
 
     return [...durableRecords, ...legacyRecords].sort((left, right) => {
       const byOccurredAt =
@@ -391,7 +395,8 @@ export class OrderFinancialFactsReaderService implements OrderFinancialFactsRead
       if (!FINANCIAL_ORDER_STATUSES.includes(row.order.status)) continue;
       if (row.order.promotionSnapshot !== null) continue;
       const catalog = catalogByStableId.get(row.productStableId);
-      if (!catalog || !hasCompatibleLegacyCatalogIdentity(row, catalog)) continue;
+      if (!catalog || !hasCompatibleLegacyCatalogIdentity(row, catalog))
+        continue;
       const effectiveBaseUnitCents =
         resolveOrderFinancialEffectiveBaseUnitCents(row);
       if (

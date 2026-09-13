@@ -379,7 +379,9 @@ describe('OrderFinancialFactsReaderService', () => {
         resolvedFact: null,
       }),
     );
-    expect(catalog.getActiveOrderItemMaterializationFact).not.toHaveBeenCalled();
+    expect(
+      catalog.getActiveOrderItemMaterializationFact,
+    ).not.toHaveBeenCalled();
   });
 
   it('blocks an ordinary RETENDER because the current paymentMethod no longer proves the original SALE tender', async () => {
@@ -404,9 +406,8 @@ describe('OrderFinancialFactsReaderService', () => {
       makeCatalogReader() as never,
     );
 
-    const candidate = await service.readReplayCandidateByOrderStableId(
-      'order-stable-1',
-    );
+    const candidate =
+      await service.readReplayCandidateByOrderStableId('order-stable-1');
 
     expect(candidate?.replayEligibility).toBe('POST_SALE_MUTATION');
     expect(candidate?.resolvedFact).toBeNull();
@@ -434,9 +435,8 @@ describe('OrderFinancialFactsReaderService', () => {
       makeCatalogReader() as never,
     );
 
-    const candidate = await service.readReplayCandidateByOrderStableId(
-      'order-stable-1',
-    );
+    const candidate =
+      await service.readReplayCandidateByOrderStableId('order-stable-1');
 
     expect(candidate?.replayEligibility).toBe('ELIGIBLE');
     expect(candidate?.pricingResolution).toBe('SOURCE_COMPLETE');
@@ -487,14 +487,15 @@ describe('OrderFinancialFactsReaderService', () => {
       catalog as never,
     );
 
-    const candidate = await service.readReplayCandidateByOrderStableId(
-      'order-stable-1',
-    );
+    const candidate =
+      await service.readReplayCandidateByOrderStableId('order-stable-1');
 
     expect(candidate?.replayEligibility).toBe('PRICING_UNRESOLVED');
     expect(candidate?.pricingResolution).toBe('UNRESOLVED');
     expect(candidate?.resolvedFact).toBeNull();
-    expect(catalog.getActiveOrderItemMaterializationFact).not.toHaveBeenCalled();
+    expect(
+      catalog.getActiveOrderItemMaterializationFact,
+    ).not.toHaveBeenCalled();
   });
 
   it('reconstructs legacy Daily Special nominal price only from an active Catalog item with compatible stable identity', async () => {
@@ -554,9 +555,8 @@ describe('OrderFinancialFactsReaderService', () => {
       catalog as never,
     );
 
-    const candidate = await service.readReplayCandidateByOrderStableId(
-      'order-stable-1',
-    );
+    const candidate =
+      await service.readReplayCandidateByOrderStableId('order-stable-1');
 
     expect(candidate?.replayEligibility).toBe('ELIGIBLE');
     expect(candidate?.pricingResolution).toBe('CATALOG_STABLE_MATCH');
@@ -626,9 +626,8 @@ describe('OrderFinancialFactsReaderService', () => {
       catalog as never,
     );
 
-    const candidate = await service.readReplayCandidateByOrderStableId(
-      'order-stable-1',
-    );
+    const candidate =
+      await service.readReplayCandidateByOrderStableId('order-stable-1');
 
     expect(candidate?.replayEligibility).toBe('PRICING_UNRESOLVED');
     expect(candidate?.pricingResolution).toBe('MANUAL_OVERRIDE');
@@ -679,9 +678,8 @@ describe('OrderFinancialFactsReaderService', () => {
       catalog as never,
     );
 
-    const candidate = await service.readReplayCandidateByOrderStableId(
-      'order-stable-1',
-    );
+    const candidate =
+      await service.readReplayCandidateByOrderStableId('order-stable-1');
 
     expect(candidate?.replayEligibility).toBe('PRICING_UNRESOLVED');
     expect(candidate?.pricingResolution).toBe('MANUAL_OVERRIDE');
