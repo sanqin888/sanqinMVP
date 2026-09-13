@@ -103,7 +103,8 @@ function sourceBlock(
   if (candidate.replayEligibility === 'POST_SALE_MUTATION') {
     return {
       code: 'POST_SALE_MUTATION',
-      message: 'Original SALE cannot be replayed from a post-sale mutated Order',
+      message:
+        'Original SALE cannot be replayed from a post-sale mutated Order',
     };
   }
   if (candidate.replayEligibility !== 'PRICING_UNRESOLVED') return null;
@@ -180,7 +181,8 @@ export function buildCanonicalSalePostingPreview(params: {
       journal: null,
       block: {
         code: 'STORE_BALANCE_TOPUP_ON_SALE',
-        message: 'SALE order unexpectedly carries Store Balance top-up principal',
+        message:
+          'SALE order unexpectedly carries Store Balance top-up principal',
       },
     };
   }

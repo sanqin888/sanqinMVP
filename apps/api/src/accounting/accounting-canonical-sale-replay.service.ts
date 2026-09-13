@@ -25,9 +25,7 @@ import {
   type CanonicalSalePostingBlockCode,
   type CanonicalSalePostingPreview,
 } from './accounting-canonical-sale-posting.service';
-import type {
-  CanonicalSaleJournalPolicyErrorCode,
-} from './accounting-canonical-sale-journal.policy';
+import type { CanonicalSaleJournalPolicyErrorCode } from './accounting-canonical-sale-journal.policy';
 import { AccountingService } from './accounting.service';
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -144,7 +142,11 @@ function groupLoyaltyFacts(
   return grouped;
 }
 
-function parseLocalDate(raw: string, timezone: string, field: string): DateTime {
+function parseLocalDate(
+  raw: string,
+  timezone: string,
+  field: string,
+): DateTime {
   if (!ISO_DATE.test(raw)) {
     throw new BadRequestException(`${field} must use YYYY-MM-DD`);
   }
@@ -200,16 +202,16 @@ export class AccountingCanonicalSaleReplayService {
     if (!storeStableId) {
       throw new BadRequestException('storeStableId is required');
     }
-    const configuredStore =
-      await this.storeConfig.getConfiguredStoreSnapshot();
+    const configuredStore = await this.storeConfig.getConfiguredStoreSnapshot();
     if (configuredStore.storeStableId !== storeStableId) {
       throw new BadRequestException(
         'storeStableId must match the configured Accounting store',
       );
     }
     const timezone = configuredStore.timezone.trim() || 'America/Toronto';
-    const startDate =
-      DateTime.fromJSDate(accountingStartAt, { zone: timezone }).toISODate();
+    const startDate = DateTime.fromJSDate(accountingStartAt, {
+      zone: timezone,
+    }).toISODate();
     if (!startDate) {
       throw new BadRequestException('Unable to resolve accounting start date');
     }
@@ -237,9 +239,7 @@ export class AccountingCanonicalSaleReplayService {
     if (toExclusive <= fromInclusive) {
       throw new BadRequestException('toDateExclusive must be after fromDate');
     }
-    if (
-      toLocal.diff(fromLocal, 'days').days > MAX_PREVIEW_RANGE_DAYS
-    ) {
+    if (toLocal.diff(fromLocal, 'days').days > MAX_PREVIEW_RANGE_DAYS) {
       throw new BadRequestException(
         `Replay preview range cannot exceed ${MAX_PREVIEW_RANGE_DAYS} days`,
       );
@@ -325,11 +325,7 @@ export class AccountingCanonicalSaleReplayService {
           fact.discounts.totalCents ?? 0,
           'readySalesDiscountCents',
         );
-        readyTaxCents = addSafe(
-          readyTaxCents,
-          fact.taxCents,
-          'readyTaxCents',
-        );
+        readyTaxCents = addSafe(readyTaxCents, fact.taxCents, 'readyTaxCents');
         readyDeliveryRevenueCents = addSafe(
           readyDeliveryRevenueCents,
           fact.deliveryRevenueCents,
@@ -446,8 +442,7 @@ export class AccountingCanonicalSaleReplayService {
       writeAuthority: {
         canonicalJournalReplayEnabled: false,
         legacyAccountingTransactionAccrualStillActive: true,
-        note:
-          'B2A is preview/parity only; canonical Journal backfill stays disabled until the follow-up cutover slice retires the provisional Order.totalCents accrual path.',
+        note: 'B2A is preview/parity only; canonical Journal backfill stays disabled until the follow-up cutover slice retires the provisional Order.totalCents accrual path.',
       },
       counts: {
         total: candidates.length,

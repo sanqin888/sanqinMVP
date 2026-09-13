@@ -263,7 +263,9 @@ describe('Accounting canonical SALE replay preview', () => {
         toDateExclusive: '2026-06-03',
         storeStableId: 'another_store',
       }),
-    ).rejects.toThrow('storeStableId must match the configured Accounting store');
+    ).rejects.toThrow(
+      'storeStableId must match the configured Accounting store',
+    );
     expect(orders.readReplayCandidatesForRange.mock.calls).toHaveLength(0);
   });
 });
