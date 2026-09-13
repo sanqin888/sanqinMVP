@@ -124,9 +124,9 @@ describe('Accounting canonical SALE posting service', () => {
     await expect(
       service.previewCanonicalSale('order_stable_1'),
     ).rejects.toThrow(ConflictException);
-    expect(
-      orders.readReplayCandidateByOrderStableId.mock.calls,
-    ).toHaveLength(0);
+    expect(orders.readReplayCandidateByOrderStableId.mock.calls).toHaveLength(
+      0,
+    );
   });
 
   it('returns not found when the Orders owner has no financial fact', async () => {
