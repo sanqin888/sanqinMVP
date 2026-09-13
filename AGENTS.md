@@ -65,31 +65,58 @@ lockfile are inconsistent:
 
 ## 3. Prisma
 
-Persisted schema changes must include a matching migration in the same change by
-default. Do not leave `schema.prisma` ahead of migration history unless the user
-explicitly requested a schema proposal only.
+The assistant/MCP may modify `apps/api/prisma/schema.prisma` as part of an
+authorized repository task without requesting a separate migration-generation
+authorization. Migration generation is intentionally a separate user-local step.
 
-Before creating, modifying, deleting, or generating anything under
-`apps/api/prisma/migrations/**`, obtain explicit user authorization. Authorization
-to edit `schema.prisma` does not by itself authorize migration generation. Once
-migration work is authorized, follow the rules below.
-
-Migration files live under:
+The assistant/MCP must not create, generate, hand-write, edit, rename, move, or
+delete anything under:
 
 ```text
 apps/api/prisma/migrations/**
 ```
 
-Rules:
+When a `schema.prisma` change requires a persisted database migration, the
+schema/source change may be reviewed, pushed, and merged into `dev` before the
+matching migration exists. This is an intentional exception to the normal
+schema-history alignment rule so the user's local development checkout of `dev`
+can be the authoritative migration-generation environment.
 
-* Create one new, descriptively named migration for the task. Never rewrite,
-  reorder, squash, or delete an existing migration that may have been applied.
-* Generate the migration with the repository's Prisma version against a verified
-  disposable/local development database when available. `--create-only` is
-  preferred so the SQL can be reviewed before application.
-* If a suitable local database is unavailable, a migration SQL file may be
-  created and reviewed without applying it; report that generation/application
-  was not locally verified.
+At the MCP/local review gate for every such change, the change report must
+prominently state `MIGRATION REQUIRED` and include:
+
+* why a migration is required;
+* a descriptive suggested migration name;
+* the exact user-local generation command;
+* any expected rename, backfill, constraint, index, enum, destructive, or data-
+  preservation risk that must be checked in the generated SQL; and
+* that promotion to `main` / production is blocked until the matching migration
+  has been generated locally, reviewed, committed, and merged back into `dev`.
+
+The required workflow is:
+
+1. MCP/assistant modifies `schema.prisma` and related source/tests/docs, but does
+   not touch `apps/api/prisma/migrations/**`.
+2. After user review, the schema/source PR may proceed to `dev` through the normal
+   PR + GitHub Actions gate.
+3. The user pulls the updated `dev` on the local development machine.
+4. The user generates the migration with the repository's Prisma version against
+   the verified disposable/local development database, preferably with
+   `--create-only` so the SQL can be reviewed before application.
+5. The user returns the generated migration to the repository in a follow-up
+   change/PR targeting `dev`.
+6. MCP/assistant reviews the generated SQL but does not modify the migration file.
+   If the SQL is unsafe or semantically wrong, report the exact issue and require
+   the migration to be regenerated or corrected in the user's local development
+   environment.
+7. Do not promote the schema-changing state from `dev` to `main`, deploy it to
+   production, or run the production migration until the matching migration has
+   been reviewed and merged into `dev`.
+
+Migration review rules:
+
+* Never rewrite, reorder, squash, rename, or delete an existing migration that may
+  have been applied.
 * Inspect generated SQL. Prisma output is not automatically safe or semantically
   complete, especially for renames, backfills, constraints, indexes, enum
   changes, and relation changes.
@@ -101,8 +128,17 @@ Rules:
 * Adding `NOT NULL`, tightening a constraint, changing a type, dropping a column
   or table, or otherwise risking loss requires staged migration and explicit
   user approval of the destructive/contraction step.
-* Generate Prisma Client and validate the final schema after migration creation.
-* Include the new migration in relevant tests and the final change report.
+* After the user-generated migration is available, verify that it represents the
+  intended `schema.prisma` change and include its review status in the change
+  report.
+* The final required invariant before production promotion is:
+
+  ```text
+  schema.prisma
+  = fresh database replaying all committed migrations
+  = local development database
+  = production database after prisma migrate deploy
+  ```
 
 Allowed non-destructive commands include:
 
@@ -111,12 +147,15 @@ pnpm --filter api prisma:generate
 pnpm --filter api exec prisma validate
 ```
 
-Allowed migration-generation command, after verifying the target is a disposable
-or local development database:
+User-local migration-generation command, after verifying the target is a
+disposable/local development database:
 
 ```bash
 pnpm --filter api exec prisma migrate dev --create-only --name <descriptive_name>
 ```
+
+The assistant/MCP must report this command when required but must not execute
+`prisma migrate dev` or otherwise generate the migration on the user's behalf.
 
 Never run `prisma migrate reset`, `prisma db push`, destructive SQL, or an
 equivalent history-bypassing/destructive command against a database containing
@@ -125,8 +164,8 @@ valuable data.
 Do not run `prisma migrate deploy` against production or otherwise mutate the
 production database unless the user explicitly asks for that action and the
 exact target, backup/readiness checks, and rollout plan have been verified. The
-normal handoff is to generate and validate the migration locally, then report
-the production deployment command as a manual action.
+normal handoff is to review the user-generated migration locally, then report the
+production deployment command as a manual action.
 
 ---
 
@@ -266,8 +305,11 @@ Verify that:
 * no secrets or credentials were added;
 * dependency changes are required by the task, minimal, and synchronized with
   the lockfile;
-* each Prisma schema change has the intended new migration, existing migration
-  history was not rewritten, and generated SQL was reviewed;
+* every Prisma schema change is either accompanied by its reviewed user-generated
+  migration or is explicitly marked `MIGRATION REQUIRED` and blocked from
+  `main`/production promotion;
+* existing migration history was not rewritten, and any user-generated migration
+  present in the change was reviewed rather than fabricated or edited by MCP;
 * unrelated user changes were not deleted or overwritten.
 
 Do not automatically discard, reset, or delete unrelated user changes.
@@ -304,6 +346,10 @@ Changed:
 
 Local validation:
 - Not run by repository workflow; lint/build/test are deferred to GitHub Actions after user review.
+
+Migration status:
+- Not required, or
+- MIGRATION REQUIRED — pull the merged `dev` locally and generate `<suggested_name>` with the reported Prisma command before any promotion to `main`/production.
 
 Remote status:
 - Not pushed / no PR created.
@@ -357,7 +403,13 @@ Default delivery workflow:
    and track CI" includes authorization to merge that reviewed change into `dev`
    once CI is fully green, unless the user explicitly asks for another review
    before merge.
-6. After a reviewed PR is merged into `dev` with all required GitHub Actions checks
+6. If the merged change modifies `schema.prisma` and requires a migration, stop
+   and hand off the `MIGRATION REQUIRED` instructions. The user pulls the latest
+   `dev`, generates the migration in the local development database, and returns
+   that generated migration in a follow-up PR to `dev`. Until that companion
+   migration is reviewed and merged, the affected `dev` state is intentionally
+   not eligible for promotion to `main` or production deployment.
+7. After a reviewed PR is merged into `dev` with all required GitHub Actions checks
    green, if the broader user-requested task, migration phase, or work package is
    not yet complete, conclude the handoff with a concise description of the
    recommended next step, including its goal, scope, important prerequisites or
@@ -365,7 +417,7 @@ Default delivery workflow:
    proceeding. If the broader task is complete, state that explicitly rather than
    inventing additional work. Do not start the next step automatically unless it
    has already been authorized by the user.
-7. Promotion from `dev` to `main`, if ever required, is outside the MCP/assistant
+8. Promotion from `dev` to `main`, if ever required, is outside the MCP/assistant
    repository-change PR workflow. This workflow must never create a PR targeting
    `main`; report the required release step for the user to control separately.
 
@@ -902,8 +954,12 @@ update the applicable progress documents again so they distinguish source-comple
 CI-green, deployed, and production-verified states.
 
 Each modularization PR should establish or improve one enforceable boundary and
-remain deployable on its own. Recompute or rerun applicable dependency/architecture
-checks at the end of every slice. A phase is not complete if it introduces a new
+remain deployable on its own, except for the deliberate schema-first `dev` handoff
+defined in section 3. A schema-first PR may be temporarily non-promotable while the
+user generates its companion migration locally; it becomes production-promotable
+only after that migration is reviewed and merged back into `dev`. Recompute or
+rerun applicable dependency/architecture checks at the end of every slice. A phase
+is not complete if it introduces a new
 cycle, new internal cross-context import, ambiguous identity, duplicate active
 implementation, or unregistered compatibility path.
 
