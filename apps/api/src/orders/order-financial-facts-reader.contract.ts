@@ -27,6 +27,7 @@ export type OrderFinancialReplayEligibilityV1 =
 export type OrderFinancialReplayPricingResolutionV1 =
   | 'SOURCE_COMPLETE'
   | 'CATALOG_STABLE_MATCH'
+  | 'APPROVED_HISTORICAL_OVERRIDE'
   | 'MANUAL_OVERRIDE'
   | 'UNRESOLVED';
 

@@ -685,4 +685,74 @@ describe('OrderFinancialFactsReaderService', () => {
     expect(candidate?.pricingResolution).toBe('MANUAL_OVERRIDE');
     expect(candidate?.resolvedFact).toBeNull();
   });
+
+  it('applies the approved historical override only to an explicitly approved legacy Order', async () => {
+    const approvedOrderStableId = 'cmq122g5t00cjo301r03lx5xf';
+    const catalog = makeCatalogReader();
+    catalog.getActiveOrderItemMaterializationFact.mockResolvedValue({
+      stableId: 'liangpi-stable',
+      nameEn: 'SanQ Cool Noodle · Liangpi',
+      nameZh: '三秦凉皮',
+      basePriceCents: 749,
+    } as never);
+    const service = new OrderFinancialFactsReaderService(
+      {
+        opsEvent: { findUnique: jest.fn().mockResolvedValue(null) },
+        order: {
+          findFirst: jest.fn().mockResolvedValue(
+            financialRow({
+              id: 'approved-order-db-1',
+              orderStableId: approvedOrderStableId,
+              subtotalCents: 999,
+              subtotalAfterDiscountCents: 999,
+              couponDiscountCents: 0,
+              loyaltyRedeemCents: 0,
+              promotionSnapshot: null,
+              items: [
+                {
+                  id: 'line-approved',
+                  productStableId: 'liangpi-stable',
+                  displayName: 'SanQ Liangpi（Cool Noodle）',
+                  nameZh: '三秦凉皮',
+                  nameEn: 'SanQ Liangpi（Cool Noodle）',
+                  qty: 1,
+                  unitPriceCents: 999,
+                  baseUnitPriceCents: 899,
+                  optionsUnitPriceCents: 100,
+                  isDailySpecialApplied: true,
+                  dailySpecialStableId: 'daily-legacy',
+                },
+              ],
+            }),
+          ),
+        },
+        orderAmendment: { findMany: jest.fn().mockResolvedValue([]) },
+        orderItem: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              productStableId: 'liangpi-stable',
+              displayName: 'SanQ Liangpi（Cool Noodle）',
+              nameEn: 'SanQ Liangpi（Cool Noodle）',
+              nameZh: '三秦凉皮',
+              unitPriceCents: 899,
+              baseUnitPriceCents: 899,
+              optionsUnitPriceCents: 0,
+              order: { status: 'completed', promotionSnapshot: null },
+            },
+          ]),
+        },
+      } as never,
+      catalog as never,
+    );
+
+    const candidate = await service.readReplayCandidateByOrderStableId(
+      approvedOrderStableId,
+    );
+
+    expect(candidate?.replayEligibility).toBe('ELIGIBLE');
+    expect(candidate?.pricingResolution).toBe('APPROVED_HISTORICAL_OVERRIDE');
+    expect(candidate?.sourceFact.nominalSubtotalCents).toBeNull();
+    expect(candidate?.resolvedFact?.nominalSubtotalCents).toBe(999);
+    expect(candidate?.resolvedFact?.discounts.dailySpecialCents).toBe(0);
+  });
 });
