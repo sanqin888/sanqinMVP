@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "baselineCommit": "d769672e",
+  "baselineCommit": "72395609",
   "updatedAt": "2026-09-13",
   "requiredFields": [
     "compat_id",
