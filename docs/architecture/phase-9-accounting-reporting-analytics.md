@@ -1,6 +1,6 @@
 # Phase 9 — Accounting / Reporting / Analytics Boundary Contraction & L3 Financial Integrity
 
-Status: **SLICE 0 READINESS AUDIT COMPLETE — SLICE 1/2/3/4/5B/5C/5D-A MERGED / CI GREEN — SLICE 5D-B0 LOCAL SOURCE IMPLEMENTATION / REVIEW PENDING**  
+Status: **SLICE 0 READINESS AUDIT COMPLETE — SLICE 1/2/3/4/5B/5C/5D-A/5D-B0 MERGED / CI GREEN — SLICE 5D-B1 NEXT / MIGRATION AUTHORIZATION REQUIRED**  
 Slice 0 audit baseline: `origin/dev@1a69bd7dbd49eba08661b169463e32dc820f0396`  
 Slice 1 merge: PR #2281 / final head `974066e7c11f58316368fcb4fcfeec28c5da5509` / squash merge `f529f4701b63040a8e2dfee2cf3ca82213f25ec6` / CI #5494 green  
 Slice 2 merge: PR #2283 / final head `d6518ba13f8b1bb43df941d2fde10a44409e2a3b` / squash merge `b35890d8ed7399bc389915b192f7c20ff966c9b8` / CI #5500 green  
@@ -10,6 +10,7 @@ Slice 5C-C merge: PR #2293 / final head `592bfdc0` / squash merge `ce399a37` / C
 Slice 5D readiness audit baseline: `origin/dev@8cacdf60`  
 Slice 5D-A merge: PR #2296 / final head `ffa49ad6` / squash merge `7f35878f` / CI #5545 green  
 Slice 5D-B0 implementation base: `origin/dev@7f35878f`  
+Slice 5D-B0 merge: PR #2297 / final head `064e098e` / squash merge `124cd76c` / CI #5549 green  
 Planning decision updated: 2026-09-12
 
 ## 1. Purpose
@@ -566,9 +567,9 @@ Payments now exposes `PAYMENT_FINANCIAL_FACTS_READER` from a new narrow `payment
 
 Focused characterization and architecture coverage pins all three V1 public contracts, Daily Special complete/incomplete evidence behavior, Store Balance liability/tender fact mapping, Payment finality/range semantics, public-surface-only exposure and the rule that Accounting must not consume Orders/Loyalty/Payments implementation paths. No Accounting consumer is wired in 5D-A, so this source change introduces no new cross-context runtime dependency direction or public SCC. CI #5545 is the authoritative validation for the merged 5D-A source state.
 
-### 18.8 Slice 5D-B0 local implementation — Revenue Posting Boundary Hardening
+### 18.8 Slice 5D-B0 merged result — Revenue Posting Boundary Hardening
 
-Slice 5D-B0 is **LOCAL SOURCE IMPLEMENTATION / REVIEW PENDING** on `refactor/phase9-slice5d-b0-revenue-posting-hardening`, based on merged `origin/dev@7f35878f`. It is deliberately a pre-posting hardening slice: it writes no `AccountingJournalEntry` / `AccountingTransaction`, adds no Prisma/schema/migration, does not change Loyalty/Payments persistence or provider execution, and leaves the production Web Clover path untouched.
+Slice 5D-B0 is **MERGED / CI GREEN** through PR #2297. Final head `064e098e` passed CI #5549 across Architecture, API lint/build/strict/tests, shared strict and Web lint/build/strict/tests before squash merge `124cd76c` into `dev`. It remains deliberately a pre-posting hardening slice: it writes no `AccountingJournalEntry` / `AccountingTransaction`, adds no Prisma/schema/migration, does not change Loyalty/Payments persistence or provider execution, and leaves the production Web Clover path untouched.
 
 Before this slice, the user removed test Orders/accounts that would distort financial statistics. A fresh production read-only snapshot at the explicit **2026-06-01 00:00 America/Toronto = 2026-06-01 04:00 UTC** boundary now shows **1215** paid/financial-status Orders and all 1215 have at least one OrderItem; the previous two zero-item Store Balance test top-ups are gone. Store Balance opening principal before the cutover is **$0**, post-cutover `TOPUP_PURCHASED / REDEEM_ON_ORDER / REFUND_RETURN_REDEEM` BALANCE activity is also **0 / 0 / 0**, and the current aggregate `LoyaltyAccount.balanceMicro` is zero. Therefore 5D-B no longer needs an opening-liability reader or opening Store Balance Journal for the current historical backfill. `PaymentTransaction` and `AccountingJournalEntry` remain at zero in this snapshot. `AccountingAutomationConfig.timezone` is `America/Toronto` and `accountingStartDate` is still null, so canonical posting must remain disabled until the user explicitly configures the intended start date.
 
@@ -578,4 +579,4 @@ Daily Special historical reconstruction is also owner-qualified instead of being
 
 The generic Accounting start-date guard is hardened in the same focused slice. `AccountingService` now resolves the persisted date at Store-local midnight through Luxon and the canonical Brand/Store timezone rather than interpreting the date as UTC midnight. A new internal `requireCanonicalFinancialPostingStartAt()` fails closed when `accountingStartDate` is null; later 5D-B posting must call that requirement instead of inventing an earlier lower bound. Focused characterization covers the Toronto EDT boundary (`2026-06-01T04:00:00Z`) and the null-config fail-closed behavior.
 
-This slice introduces no new context direction: Commerce/Orders already consumes Catalog through its public order-facts boundary, and 5D-B0 reuses that existing public direction. No Accounting consumer is wired yet, no direct-import allowance is added, and `legacyPublicCycleComponents=[]` is expected to remain unchanged pending remote CI. The next persisted step remains **5D-B1 — Store Balance Liability CoA**: add `account_store_balance_liability` as a data-only additive CoA migration. Because the cleaned historical opening balance is zero, B1 does not need an opening Store Balance journal for the current backfill, but the liability account is still required before future real Store Balance top-up/use can be posted. That migration remains separately authorization-gated.
+This slice introduces no new context direction: Commerce/Orders already consumes Catalog through its public order-facts boundary, and 5D-B0 reuses that existing public direction. No Accounting consumer is wired yet and no direct-import allowance is added. CI #5549 confirmed the Accounting/Reporting/Analytics direct baseline remains Foundation **2**, External **1**, Identity **2**, Runtime **6**, total **11**, with `legacyPublicCycleComponents=[]`. The next persisted step remains **5D-B1 — Store Balance Liability CoA**: add `account_store_balance_liability` as a data-only additive CoA migration. Because the cleaned historical opening balance is zero, B1 does not need an opening Store Balance journal for the current backfill, but the liability account is still required before future real Store Balance top-up/use can be posted. That migration remains separately authorization-gated.
