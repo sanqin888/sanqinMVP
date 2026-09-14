@@ -67,6 +67,36 @@ export class OrderFinancialChangeFactsReaderService implements OrderFinancialCha
     return rows.map(({ payload }) => this.parseOrThrow(payload));
   }
 
+  async readFactsByOrderStableIds(
+    orderStableIds: string[],
+  ): Promise<OrderFinancialChangeFactV1[]> {
+    const stableIds = [
+      ...new Set(orderStableIds.map((value) => value.trim()).filter(Boolean)),
+    ].sort();
+    if (stableIds.length === 0) return [];
+
+    const rows = await this.prisma.opsEvent.findMany({
+      where: {
+        source: ORDER_FINANCIAL_CHANGE_FACT_SOURCE,
+        eventName: {
+          in: [
+            ORDER_FINANCIAL_ADJUSTMENT_FACT_EVENT,
+            ORDER_FINANCIAL_REVERSAL_FACT_EVENT,
+          ],
+        },
+        OR: stableIds.map((orderStableId) => ({
+          payload: { path: ['orderStableId'], equals: orderStableId },
+        })),
+      },
+      select: { payload: true },
+      orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }],
+    });
+    const requested = new Set(stableIds);
+    return rows
+      .map(({ payload }) => this.parseOrThrow(payload))
+      .filter((fact) => requested.has(fact.orderStableId));
+  }
+
   async readFactsForRange(
     range: OrderFinancialChangeFactsRangeV1,
   ): Promise<OrderFinancialChangeFactV1[]> {

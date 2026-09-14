@@ -196,6 +196,59 @@ describe('PrismaPaymentTransactionRepository financial facts', () => {
     ]);
   });
 
+  it('reads final money facts by stable Order identity without a temporal matching window', async () => {
+    const checkoutFindMany = jest
+      .fn()
+      .mockResolvedValueOnce([
+        {
+          paymentTransactionId: paymentRow().id,
+          orderStableId: 'order-stable-1',
+          storeId: '4750_Yonge_Street',
+        },
+      ])
+      .mockResolvedValueOnce([checkoutIdentity]);
+    const transactionFindMany = jest
+      .fn()
+      .mockResolvedValueOnce([paymentRow()])
+      .mockResolvedValueOnce([]);
+    const service = new PrismaPaymentTransactionRepository({
+      paymentTransaction: { findMany: transactionFindMany },
+      paymentCheckoutAttempt: { findMany: checkoutFindMany },
+    } as never);
+
+    await expect(
+      service.readFactsByOrderStableIds([
+        ' order-stable-1 ',
+        'order-stable-1',
+      ]),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        factStableId: 'payment-attempt-1',
+        orderStableId: 'order-stable-1',
+        storeStableId: '4750_Yonge_Street',
+        operation: 'SALE',
+      }),
+    ]);
+
+    expect(checkoutFindMany).toHaveBeenNthCalledWith(1, {
+      where: {
+        orderStableId: { in: ['order-stable-1'] },
+        paymentTransactionId: { not: null },
+      },
+      select: { paymentTransactionId: true },
+    });
+    expect(transactionFindMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: { in: [paymentRow().id] },
+          operation: PaymentOperation.SALE,
+          status: PaymentTransactionStatus.SUCCEEDED,
+        }),
+      }),
+    );
+  });
+
   it('does not publish a non-final transaction as a canonical money fact', async () => {
     const service = new PrismaPaymentTransactionRepository({
       paymentTransaction: { findFirst: jest.fn().mockResolvedValue(null) },

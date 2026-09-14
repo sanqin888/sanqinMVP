@@ -20,6 +20,8 @@ describe('Phase 9 canonical financial facts boundary', () => {
     const ordersPublic = file(ORDERS_ROOT, 'public-api.ts')?.source ?? '';
     const loyaltyPublic = file(LOYALTY_ROOT, 'public-api.ts')?.source ?? '';
     const paymentsPublic = file(PAYMENTS_ROOT, 'public-api.ts')?.source ?? '';
+    const paymentsFactsModule =
+      file(PAYMENTS_ROOT, 'payment-financial-facts.module.ts')?.source ?? '';
 
     expect(ordersPublic).toContain('ORDER_FINANCIAL_FACTS_READER');
     expect(ordersPublic).toContain('OrderFinancialFactsModule');
@@ -34,6 +36,9 @@ describe('Phase 9 canonical financial facts boundary', () => {
 
     expect(paymentsPublic).not.toContain('PrismaPaymentFinancialFactsReader');
     expect(paymentsPublic).not.toContain('PaymentsModule');
+    expect(paymentsFactsModule).toContain('PrismaPaymentTransactionRepository');
+    expect(paymentsFactsModule).not.toContain('PaymentsModule');
+    expect(paymentsFactsModule).not.toContain('CloverProviderInfrastructureModule');
   });
 
   it('keeps canonical financial fact contracts framework-, Prisma-, and provider-implementation-neutral', () => {
@@ -145,6 +150,9 @@ describe('Phase 9 canonical financial facts boundary', () => {
     const replayService =
       file(ACCOUNTING_ROOT, 'accounting-canonical-sale-replay.service.ts')
         ?.source ?? '';
+    const changePreviewService =
+      file(ACCOUNTING_ROOT, 'accounting-canonical-change-preview.service.ts')
+        ?.source ?? '';
     const accountingService =
       file(ACCOUNTING_ROOT, 'accounting.service.ts')?.source ?? '';
     const accountingController =
@@ -163,14 +171,32 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(replayService).toContain('executeRange(');
     expect(replayService).toContain('expectedPlanHash');
     expect(replayService).toContain('assertNoLegacyOrderRevenueAccrual');
+    expect(changePreviewService).toContain("from '../orders/public-api'");
+    expect(changePreviewService).toContain("from '../payments/public-api'");
+    expect(changePreviewService).toContain("from '../loyalty/public-api'");
+    expect(changePreviewService).toContain("from '../store/public-api'");
+    expect(changePreviewService).not.toContain('../prisma/');
+    expect(changePreviewService).not.toContain('createJournalEntry');
+    expect(changePreviewService).toContain('readFactsByOrderStableIds');
+    expect(changePreviewService).toContain('readReversalFactsByOrderStableIds');
+    expect(changePreviewService).toContain('buildCanonicalChangeJournalPreview');
     expect(accountingController).toContain(
       "@Post('journal/canonical-sales/replay')",
+    );
+    expect(accountingController).toContain(
+      "@Get('journal/canonical-changes/shadow-preview')",
+    );
+    expect(accountingController).not.toContain(
+      "@Post('journal/canonical-changes",
     );
     expect(accountingController).not.toContain('automation/order-accrual');
     expect(accountingService).not.toContain('autoAccrueOrderRevenue');
     expect(accountingModule).toContain('OrderFinancialFactsModule');
+    expect(accountingModule).toContain('OrderFinancialChangeFactsModule');
+    expect(accountingModule).toContain('PaymentFinancialFactsModule');
     expect(accountingModule).toContain('LoyaltyFinancialFactsModule');
     expect(accountingModule).toContain('AccountingCanonicalSaleReplayService');
+    expect(accountingModule).toContain('AccountingCanonicalChangePreviewService');
   });
 
   it('prevents Accounting from consuming owner internals before or after the later posting cutover', () => {

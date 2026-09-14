@@ -10,6 +10,7 @@ import { createId } from '@paralleldrive/cuid2';
 import { DateTime } from 'luxon';
 import {
   AccountingJournalEntryKind,
+  AccountingJournalSource,
   AccountingSourceType,
   AccountingTxType,
   Prisma,
@@ -225,6 +226,58 @@ export class AccountingService {
       );
     }
     return startAt;
+  }
+
+  async readCanonicalSaleJournalAnchors(sourceFactStableIds: string[]): Promise<
+    Array<{
+      entryStableId: string;
+      sourceFactStableId: string;
+      idempotencyKey: string;
+    }>
+  > {
+    const stableIds = [
+      ...new Set(
+        sourceFactStableIds.map((value) => value.trim()).filter(Boolean),
+      ),
+    ].sort();
+    if (stableIds.length === 0) return [];
+
+    const rows = await this.prisma.accountingJournalEntry.findMany({
+      where: {
+        deletedAt: null,
+        source: AccountingJournalSource.ORDER,
+        sourceFactType: 'order.financial_sale.v1',
+        sourceFactStableId: { in: stableIds },
+      },
+      select: {
+        entryStableId: true,
+        idempotencyKey: true,
+        sourceFactStableId: true,
+      },
+      orderBy: { entryStableId: 'asc' },
+    });
+
+    const anchors = rows.flatMap((row) => {
+      const sourceFactStableId = row.sourceFactStableId?.trim();
+      if (!sourceFactStableId) return [];
+      return [
+        {
+          entryStableId: row.entryStableId,
+          sourceFactStableId,
+          idempotencyKey: row.idempotencyKey,
+        },
+      ];
+    });
+    const seen = new Set<string>();
+    for (const anchor of anchors) {
+      if (seen.has(anchor.sourceFactStableId)) {
+        throw new ConflictException(
+          `Duplicate canonical sale Journal anchor for ${anchor.sourceFactStableId}`,
+        );
+      }
+      seen.add(anchor.sourceFactStableId);
+    }
+    return anchors;
   }
 
   async assertNoLegacyOrderRevenueAccrual(): Promise<void> {

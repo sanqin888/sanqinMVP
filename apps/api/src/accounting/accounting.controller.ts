@@ -37,6 +37,7 @@ import {
 import { AccountingService } from './accounting.service';
 import { AccountingAutomationScheduler } from './accounting-automation.scheduler';
 import { AccountingCanonicalSaleReplayService } from './accounting-canonical-sale-replay.service';
+import { AccountingCanonicalChangePreviewService } from './accounting-canonical-change-preview.service';
 import {
   AccountingOperationsService,
   type AccountingExpenseInput,
@@ -78,6 +79,7 @@ export class AccountingController {
     private readonly acquisition: AccountingInboxAcquisitionService,
     private readonly automation: AccountingAutomationScheduler,
     private readonly canonicalSaleReplay: AccountingCanonicalSaleReplayService,
+    private readonly canonicalChangePreview: AccountingCanonicalChangePreviewService,
     @Inject(UBER_EATS_REPORTING)
     private readonly uberReporting: UberEatsReportingPort,
   ) {}
@@ -412,6 +414,19 @@ export class AccountingController {
     @Query('storeStableId') storeStableId?: string,
   ) {
     return this.canonicalSaleReplay.previewRange({
+      ...(fromDate ? { fromDate } : {}),
+      toDateExclusive: toDateExclusive ?? '',
+      storeStableId: storeStableId ?? '',
+    });
+  }
+
+  @Get('journal/canonical-changes/shadow-preview')
+  canonicalChangeShadowPreview(
+    @Query('fromDate') fromDate?: string,
+    @Query('toDateExclusive') toDateExclusive?: string,
+    @Query('storeStableId') storeStableId?: string,
+  ) {
+    return this.canonicalChangePreview.previewRange({
       ...(fromDate ? { fromDate } : {}),
       toDateExclusive: toDateExclusive ?? '',
       storeStableId: storeStableId ?? '',

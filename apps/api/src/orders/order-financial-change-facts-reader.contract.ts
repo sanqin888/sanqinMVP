@@ -95,6 +95,9 @@ export interface OrderFinancialChangeFactsReaderPort {
   readFactsByOrderStableId(
     orderStableId: string,
   ): Promise<OrderFinancialChangeFactV1[]>;
+  readFactsByOrderStableIds(
+    orderStableIds: string[],
+  ): Promise<OrderFinancialChangeFactV1[]>;
   readFactsForRange(
     range: OrderFinancialChangeFactsRangeV1,
   ): Promise<OrderFinancialChangeFactV1[]>;
