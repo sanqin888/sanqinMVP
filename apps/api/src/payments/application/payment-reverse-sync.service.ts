@@ -3,16 +3,15 @@ import type { PaymentProvider } from './payment-provider.port';
 import type { PaymentReverseSyncPersistence } from './payment-reverse-sync-persistence.port';
 import type { PaymentTransactionRepository } from './payment-transaction.repository';
 import type { PaymentProviderWebhookNotification } from './payment-provider-webhook.port';
-import type { PaymentWebhookProcessingResult } from './payment-webhook-event.repository';
+import type {
+  PaymentWebhookExternalReversal,
+  PaymentWebhookProcessingResult,
+} from './payment-webhook-event.repository';
 import { TerminalPaymentService } from './create-payment-attempt.use-case';
 import type { PaymentTransaction } from '../domain/payment-transaction';
 import type { PaymentProviderOutcome } from '../domain/payment.types';
 
-export type PaymentReverseSyncExternalReversal =
-  | 'NONE'
-  | 'PARTIAL_REFUND'
-  | 'FULL_REFUND'
-  | 'VOID';
+export type PaymentReverseSyncExternalReversal = PaymentWebhookExternalReversal;
 
 export type PaymentReverseSyncResult = {
   processingResult: PaymentWebhookProcessingResult;

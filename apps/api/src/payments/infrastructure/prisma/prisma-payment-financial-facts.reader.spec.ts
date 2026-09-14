@@ -20,6 +20,7 @@ const paymentRow = (overrides: Record<string, unknown> = {}) => ({
   chargedTotalCents: 1536,
   refundedAmountCents: 0,
   currency: 'CAD',
+  status: PaymentTransactionStatus.SUCCEEDED,
   externalPaymentId: 'external-payment-1',
   providerPaymentId: 'provider-payment-1',
   providerRefundId: null,
@@ -28,16 +29,19 @@ const paymentRow = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+const checkoutIdentity = {
+  paymentTransactionId: paymentRow().id,
+  orderStableId: 'order-stable-1',
+  storeId: '4750_Yonge_Street',
+};
+
 describe('PrismaPaymentTransactionRepository financial facts', () => {
   it('exposes only stable/business payment identity and final succeeded money truth', async () => {
     const transactionFindFirst = jest.fn().mockResolvedValue(paymentRow());
-    const checkoutFindUnique = jest.fn().mockResolvedValue({
-      orderStableId: 'order-stable-1',
-      storeId: '4750_Yonge_Street',
-    });
+    const checkoutFindMany = jest.fn().mockResolvedValue([checkoutIdentity]);
     const service = new PrismaPaymentTransactionRepository({
       paymentTransaction: { findFirst: transactionFindFirst },
-      paymentCheckoutAttempt: { findUnique: checkoutFindUnique },
+      paymentCheckoutAttempt: { findMany: checkoutFindMany },
     } as never);
 
     await expect(
@@ -73,23 +77,18 @@ describe('PrismaPaymentTransactionRepository financial facts', () => {
         },
       }),
     );
-    expect(checkoutFindUnique).toHaveBeenCalledWith({
-      where: { paymentTransactionId: paymentRow().id },
-      select: { orderStableId: true, storeId: true },
+    expect(checkoutFindMany).toHaveBeenCalledWith({
+      where: { paymentTransactionId: { in: [paymentRow().id] } },
+      select: {
+        paymentTransactionId: true,
+        orderStableId: true,
+        storeId: true,
+      },
     });
   });
 
-  it('uses completedAt for inclusive/exclusive replay and can restrict the reader to a stable Store identity without joining Orders', async () => {
-    const checkoutFindMany = jest
-      .fn()
-      .mockResolvedValueOnce([{ paymentTransactionId: paymentRow().id }])
-      .mockResolvedValueOnce([
-        {
-          paymentTransactionId: paymentRow().id,
-          orderStableId: 'order-stable-1',
-          storeId: '4750_Yonge_Street',
-        },
-      ]);
+  it('uses completedAt for inclusive/exclusive replay and filters by resolved stable Store identity without joining Orders', async () => {
+    const checkoutFindMany = jest.fn().mockResolvedValue([checkoutIdentity]);
     const transactionFindMany = jest.fn().mockResolvedValue([paymentRow()]);
     const service = new PrismaPaymentTransactionRepository({
       paymentTransaction: { findMany: transactionFindMany },
@@ -106,19 +105,95 @@ describe('PrismaPaymentTransactionRepository financial facts', () => {
       }),
     ).resolves.toHaveLength(1);
 
-    expect(transactionFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          status: PaymentTransactionStatus.SUCCEEDED,
-          completedAt: {
-            not: null,
-            gte: fromInclusive,
-            lt: toExclusive,
-          },
-          id: { in: [paymentRow().id] },
+    expect(transactionFindMany).toHaveBeenCalledWith({
+      where: {
+        status: PaymentTransactionStatus.SUCCEEDED,
+        completedAt: {
+          not: null,
+          gte: fromInclusive,
+          lt: toExclusive,
         },
+      },
+      orderBy: [{ completedAt: 'asc' }, { attemptId: 'asc' }],
+    });
+  });
+
+  it('correlates a managed REFUND fact back through the original provider payment to stable Order/Store identity', async () => {
+    const sale = paymentRow();
+    const refund = paymentRow({
+      id: '22222222-2222-4222-8222-222222222222',
+      attemptId: 'refund-attempt-1',
+      operation: PaymentOperation.REFUND,
+      amountCents: 1500,
+      refundedAmountCents: 1500,
+      chargedTotalCents: 1536,
+      surchargeCents: 36,
+      providerRefundId: 'provider-refund-1',
+      completedAt: new Date('2026-09-12T15:00:00.000Z'),
+      updatedAt: new Date('2026-09-12T15:00:01.000Z'),
+    });
+    const transactionFindFirst = jest.fn().mockResolvedValue(refund);
+    const transactionFindMany = jest.fn().mockResolvedValue([sale]);
+    const checkoutFindMany = jest.fn().mockResolvedValue([checkoutIdentity]);
+    const service = new PrismaPaymentTransactionRepository({
+      paymentTransaction: {
+        findFirst: transactionFindFirst,
+        findMany: transactionFindMany,
+      },
+      paymentCheckoutAttempt: { findMany: checkoutFindMany },
+    } as never);
+
+    await expect(
+      service.readFactByAttemptId('refund-attempt-1'),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        attemptId: 'refund-attempt-1',
+        operation: 'REFUND',
+        orderStableId: 'order-stable-1',
+        storeStableId: '4750_Yonge_Street',
+        providerPaymentId: 'provider-payment-1',
+        providerRefundId: 'provider-refund-1',
       }),
     );
+  });
+
+  it('keeps a correlated REFUND inside store-scoped range reads even though checkout is bound to the original SALE', async () => {
+    const sale = paymentRow();
+    const refund = paymentRow({
+      id: '22222222-2222-4222-8222-222222222222',
+      attemptId: 'refund-attempt-range',
+      operation: PaymentOperation.REFUND,
+      amountCents: 1500,
+      refundedAmountCents: 1500,
+      chargedTotalCents: 1536,
+      providerRefundId: 'provider-refund-range',
+      completedAt: new Date('2026-09-12T15:00:00.000Z'),
+    });
+    const transactionFindMany = jest
+      .fn()
+      .mockResolvedValueOnce([refund])
+      .mockResolvedValueOnce([sale]);
+    const service = new PrismaPaymentTransactionRepository({
+      paymentTransaction: { findMany: transactionFindMany },
+      paymentCheckoutAttempt: {
+        findMany: jest.fn().mockResolvedValue([checkoutIdentity]),
+      },
+    } as never);
+
+    await expect(
+      service.readFactsForRange({
+        fromInclusive: new Date('2026-09-12T04:00:00.000Z'),
+        toExclusive: new Date('2026-09-13T04:00:00.000Z'),
+        storeStableId: '4750_Yonge_Street',
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        attemptId: 'refund-attempt-range',
+        operation: 'REFUND',
+        orderStableId: 'order-stable-1',
+        storeStableId: '4750_Yonge_Street',
+      }),
+    ]);
   });
 
   it('does not publish a non-final transaction as a canonical money fact', async () => {

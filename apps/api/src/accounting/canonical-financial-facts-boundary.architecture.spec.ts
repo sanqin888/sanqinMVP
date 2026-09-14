@@ -29,6 +29,7 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(loyaltyPublic).toContain('LOYALTY_FINANCIAL_FACTS_READER');
     expect(loyaltyPublic).toContain('LoyaltyFinancialFactsModule');
     expect(paymentsPublic).toContain('PAYMENT_FINANCIAL_FACTS_READER');
+    expect(paymentsPublic).toContain('PAYMENT_REVERSAL_FINANCIAL_FACTS_READER');
     expect(paymentsPublic).toContain('PaymentFinancialFactsModule');
 
     expect(paymentsPublic).not.toContain('PrismaPaymentFinancialFactsReader');
@@ -44,9 +45,13 @@ describe('Phase 9 canonical financial facts boundary', () => {
         resolve(PAYMENTS_ROOT, 'application'),
         'payment-financial-facts-reader.contract.ts',
       ),
+      file(
+        resolve(PAYMENTS_ROOT, 'application'),
+        'payment-reversal-financial-facts-reader.contract.ts',
+      ),
     ];
 
-    expect(contracts).toHaveLength(4);
+    expect(contracts).toHaveLength(5);
     for (const contract of contracts) {
       expect(contract).toBeDefined();
       if (!contract) continue;
