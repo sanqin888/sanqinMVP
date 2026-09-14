@@ -16,6 +16,7 @@ const snapshot = () => ({
   updatedAt: new Date('2026-09-12T15:00:00.000Z'),
   channel: Channel.in_store,
   paymentMethod: PaymentMethod.CASH,
+  paymentBreakdownJson: null,
   subtotalCents: 799,
   subtotalAfterDiscountCents: 799,
   couponDiscountCents: 0,
@@ -72,6 +73,48 @@ describe('Order immutable financial sale fact', () => {
     ).toEqual(fact);
     expect(fact.nominalSubtotalCents).toBe(949);
     expect(fact.discounts.dailySpecialCents).toBe(150);
+  });
+
+  it('freezes explicit POS CARD execution provenance from the existing persisted payment breakdown', () => {
+    const legacy = buildOrderFinancialFactV1(
+      {
+        ...snapshot(),
+        paymentMethod: PaymentMethod.CARD,
+        paymentBreakdownJson: null,
+      },
+      'IMMUTABLE_SALE_SNAPSHOT',
+    );
+    const unified = buildOrderFinancialFactV1(
+      {
+        ...snapshot(),
+        paymentMethod: PaymentMethod.CARD,
+        paymentBreakdownJson: {
+          cardCents: 903,
+          externalChargedCents: 903,
+        },
+      },
+      'IMMUTABLE_SALE_SNAPSHOT',
+    );
+
+    expect(legacy.posCardExecutionEvidence).toBe('LEGACY_DIRECT_PAID');
+    expect(unified.posCardExecutionEvidence).toBe('UNIFIED_PAYMENT_CORE');
+  });
+
+  it('keeps older persisted v1 facts readable when POS CARD execution provenance is absent', () => {
+    const fact = buildOrderFinancialFactV1(
+      {
+        ...snapshot(),
+        paymentMethod: PaymentMethod.CARD,
+      },
+      'IMMUTABLE_SALE_SNAPSHOT',
+    );
+    const persisted = serializeOrderFinancialFactV1(fact) as Record<string, unknown>;
+    delete persisted.posCardExecutionEvidence;
+
+    expect(parseOrderFinancialFactV1(persisted)).toEqual({
+      ...fact,
+      posCardExecutionEvidence: null,
+    });
   });
 
   it('appends the immutable fact with paidAt occurrence time and stable idempotency in the caller transaction', async () => {

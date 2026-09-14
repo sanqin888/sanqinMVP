@@ -3,7 +3,10 @@ import type {
   OrderFinancialChangeStateV1,
   OrderFinancialFactV1,
 } from '../orders/public-api';
-import type { PaymentReversalFinancialFactV1 } from '../payments/public-api';
+import type {
+  PaymentFinancialFactV1,
+  PaymentReversalFinancialFactV1,
+} from '../payments/public-api';
 import { AccountingCanonicalChangePreviewService } from './accounting-canonical-change-preview.service';
 
 const state = (
@@ -116,9 +119,32 @@ const cardReversal = (): PaymentReversalFinancialFactV1 => ({
   providerRefundId: 'provider_refund_1',
 });
 
+const cardSalePaymentFact = (): PaymentFinancialFactV1 => ({
+  version: 1,
+  factStableId: 'sale_attempt_1',
+  attemptId: 'sale_attempt_1',
+  orderStableId: 'order_stable_1',
+  storeStableId: '4750_Yonge_Street',
+  occurredAt: new Date('2026-09-14T13:00:01.000Z'),
+  sourceUpdatedAt: new Date('2026-09-14T13:00:02.000Z'),
+  provider: 'CLOVER',
+  source: 'POS_TERMINAL',
+  paymentMethod: 'CARD',
+  operation: 'SALE',
+  amountCents: 1130,
+  surchargeCents: 0,
+  chargedTotalCents: 1130,
+  refundedAmountCents: 0,
+  currency: 'CAD',
+  externalPaymentId: null,
+  providerPaymentId: 'provider_payment_1',
+  providerRefundId: null,
+});
+
 const makeService = (params: {
   changes: OrderFinancialChangeFactV1[];
   originalSale: OrderFinancialFactV1;
+  paymentFacts?: PaymentFinancialFactV1[];
   reversals?: PaymentReversalFinancialFactV1[];
   rangeReversals?: PaymentReversalFinancialFactV1[];
   changesByOrder?: Record<string, OrderFinancialChangeFactV1[]>;
@@ -151,7 +177,9 @@ const makeService = (params: {
     readFactByOrderStableId: jest.fn().mockResolvedValue(params.originalSale),
   };
   const payments = {
-    readFactsByOrderStableIds: jest.fn().mockResolvedValue([]),
+    readFactsByOrderStableIds: jest
+      .fn()
+      .mockResolvedValue(params.paymentFacts ?? []),
   };
   const paymentReversals = {
     readReversalFactsForRange: jest
@@ -212,6 +240,93 @@ describe('AccountingCanonicalChangePreviewService', () => {
     expect(first.entries[0]?.draftHash).toMatch(/^[a-f0-9]{64}$/);
   });
 
+  it('treats an older in-store CARD SALE with no Payments SALE fact as legacy order-declared settlement', async () => {
+    const { service } = makeService({
+      changes: [change('change_card_legacy', 'CARD')],
+      originalSale: sale('CARD'),
+    });
+
+    const report = await service.previewRange(input);
+
+    expect(report.entries[0]).toEqual(
+      expect.objectContaining({
+        status: 'READY',
+        classification: 'READY',
+        cardSettlementEvidenceMode: 'LEGACY_ORDER_DECLARED',
+        paymentReversalFacts: [],
+      }),
+    );
+    expect(report.entries[0]?.draftHash).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it('keeps explicit legacy CARD execution provenance on order-declared evidence', async () => {
+    const { service } = makeService({
+      changes: [change('change_card_legacy_explicit', 'CARD')],
+      originalSale: {
+        ...sale('CARD'),
+        posCardExecutionEvidence: 'LEGACY_DIRECT_PAID',
+      },
+    });
+
+    const report = await service.previewRange(input);
+
+    expect(report.entries[0]).toEqual(
+      expect.objectContaining({
+        status: 'READY',
+        cardSettlementEvidenceMode: 'LEGACY_ORDER_DECLARED',
+        originalSale: expect.objectContaining({
+          posCardExecutionEvidence: 'LEGACY_DIRECT_PAID',
+        }),
+      }),
+    );
+  });
+
+  it('treats a Payments-owned CARD SALE fact as strict route provenance', async () => {
+    const { service } = makeService({
+      changes: [change('change_card_unified', 'CARD')],
+      originalSale: sale('CARD'),
+      paymentFacts: [cardSalePaymentFact()],
+    });
+
+    const report = await service.previewRange(input);
+
+    expect(report.entries[0]).toEqual(
+      expect.objectContaining({
+        status: 'BLOCKED',
+        classification: 'WAITING_FOR_PAYMENT_EVIDENCE',
+        cardSettlementEvidenceMode: 'STRICT_PAYMENT_EVIDENCE',
+      }),
+    );
+    expect(report.entries[0]?.paymentFacts).toEqual([
+      expect.objectContaining({
+        factStableId: 'sale_attempt_1',
+        source: 'POS_TERMINAL',
+        paymentMethod: 'CARD',
+        operation: 'SALE',
+      }),
+    ]);
+  });
+
+  it('treats explicit Unified execution provenance as strict even if the Payment SALE read is temporarily absent', async () => {
+    const { service } = makeService({
+      changes: [change('change_card_unified_explicit', 'CARD')],
+      originalSale: {
+        ...sale('CARD'),
+        posCardExecutionEvidence: 'UNIFIED_PAYMENT_CORE',
+      },
+    });
+
+    const report = await service.previewRange(input);
+
+    expect(report.entries[0]).toEqual(
+      expect.objectContaining({
+        status: 'BLOCKED',
+        classification: 'WAITING_FOR_PAYMENT_EVIDENCE',
+        cardSettlementEvidenceMode: 'STRICT_PAYMENT_EVIDENCE',
+      }),
+    );
+  });
+
   it('looks up the original SALE Journal by owner fact identity rather than Order identity', async () => {
     const originalSale = {
       ...sale(),
@@ -244,6 +359,7 @@ describe('AccountingCanonicalChangePreviewService', () => {
     const { service } = makeService({
       changes: [first, second],
       originalSale: sale('CARD'),
+      paymentFacts: [cardSalePaymentFact()],
       reversals: [cardReversal()],
     });
 
@@ -272,6 +388,7 @@ describe('AccountingCanonicalChangePreviewService', () => {
     const { service } = makeService({
       changes: [inRange],
       originalSale: sale('CARD'),
+      paymentFacts: [cardSalePaymentFact()],
       reversals: [providerReversal],
       rangeReversals: [providerReversal],
       changesByOrder: { order_stable_1: [inRange, outsideRange] },

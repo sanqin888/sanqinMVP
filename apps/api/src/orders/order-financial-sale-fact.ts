@@ -7,6 +7,7 @@ import type {
   OrderFinancialFactSourceEvidenceV1,
   OrderFinancialFactV1,
   OrderFinancialPaymentMethodV1,
+  OrderFinancialPosCardExecutionEvidenceV1,
   OrderFinancialPricingEvidenceV1,
 } from './order-financial-facts-reader.contract';
 
@@ -24,6 +25,7 @@ export const ORDER_FINANCIAL_FACT_SELECT = {
   updatedAt: true,
   channel: true,
   paymentMethod: true,
+  paymentBreakdownJson: true,
   subtotalCents: true,
   subtotalAfterDiscountCents: true,
   couponDiscountCents: true,
@@ -100,6 +102,16 @@ const asDate = (value: unknown): Date | null => {
   if (typeof value !== 'string') return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const asPosCardExecutionEvidence = (
+  value: unknown,
+): OrderFinancialPosCardExecutionEvidenceV1 | null | undefined => {
+  if (value === undefined || value === null) return null;
+  if (value === 'LEGACY_DIRECT_PAID' || value === 'UNIFIED_PAYMENT_CORE') {
+    return value;
+  }
+  return undefined;
 };
 
 const sumDiscountSource = (
@@ -356,6 +368,25 @@ const toPaymentMethod = (
   }
 };
 
+const resolvePosCardExecutionEvidence = (
+  row: OrderFinancialSnapshot,
+): OrderFinancialPosCardExecutionEvidenceV1 | null => {
+  if (
+    row.channel !== Channel.in_store ||
+    row.paymentMethod !== PaymentMethod.CARD
+  ) {
+    return null;
+  }
+  const breakdown = asRecord(row.paymentBreakdownJson);
+  const cardCents = asNonNegativeInteger(breakdown?.cardCents);
+  const externalChargedCents = asNonNegativeInteger(
+    breakdown?.externalChargedCents,
+  );
+  return cardCents !== null && externalChargedCents !== null
+    ? 'UNIFIED_PAYMENT_CORE'
+    : 'LEGACY_DIRECT_PAID';
+};
+
 export const buildOrderFinancialFactV1 = (
   row: OrderFinancialSnapshot,
   sourceEvidence: OrderFinancialFactSourceEvidenceV1,
@@ -409,6 +440,7 @@ export const buildOrderFinancialFactV1 = (
     sourceEvidence,
     channel: toChannel(row.channel),
     paymentMethod: toPaymentMethod(row.paymentMethod),
+    posCardExecutionEvidence: resolvePosCardExecutionEvidence(row),
     itemQuantity: row.items.reduce((sum, item) => sum + item.qty, 0),
     currency: 'CAD',
     pricingEvidence: dailySpecialPricing.evidence,
@@ -446,6 +478,9 @@ export const parseOrderFinancialFactV1 = (
   const sourceEvidence = value.sourceEvidence;
   const channel = value.channel;
   const paymentMethod = value.paymentMethod;
+  const posCardExecutionEvidence = asPosCardExecutionEvidence(
+    value.posCardExecutionEvidence,
+  );
   const itemQuantity = asNonNegativeInteger(value.itemQuantity);
   const pricingEvidence = value.pricingEvidence;
   const nominalSubtotalCents = asNullableNonNegativeInteger(
@@ -476,6 +511,7 @@ export const parseOrderFinancialFactV1 = (
       paymentMethod !== 'WECHAT_ALIPAY' &&
       paymentMethod !== 'STORE_BALANCE' &&
       paymentMethod !== 'UBEREATS') ||
+    posCardExecutionEvidence === undefined ||
     itemQuantity === null ||
     value.currency !== 'CAD' ||
     (pricingEvidence !== 'COMPLETE' &&
@@ -532,6 +568,7 @@ export const parseOrderFinancialFactV1 = (
     sourceEvidence: 'IMMUTABLE_SALE_SNAPSHOT',
     channel,
     paymentMethod,
+    posCardExecutionEvidence,
     itemQuantity,
     currency: 'CAD',
     pricingEvidence,
