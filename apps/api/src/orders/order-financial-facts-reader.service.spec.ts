@@ -104,6 +104,7 @@ describe('OrderFinancialFactsReaderService', () => {
       sourceEvidence: 'LEGACY_CURRENT_ORDER',
       channel: 'in_store',
       paymentMethod: 'CARD',
+      posCardExecutionEvidence: 'LEGACY_DIRECT_PAID',
       itemQuantity: 2,
       currency: 'CAD',
       pricingEvidence: 'COMPLETE',

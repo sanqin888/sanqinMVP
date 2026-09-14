@@ -11,7 +11,7 @@ safe default values unrelated to an old version) is not compatibility debt.
 
 | compat_id | State | Old → new | Exit gate | Deadline |
 |---|---|---|---|---|
-| `payments.pos-card-legacy.v1` | active / pre-production | direct paid Order → Unified Payment Core + Terminal + finalize | POS ↔ Clover realtime/recovery complete; real-device acceptance; one settlement cycle reconciled; clean production stability window; legacy calls zero | Phase J cleanup after Terminal synchronization/cutover stability |
+| `payments.pos-card-legacy.v1` | active / pre-production | direct paid Order → Unified Payment Core + Terminal + finalize | POS ↔ Clover realtime/recovery complete; real-device acceptance; one settlement cycle reconciled; pre-cutover Accounting facts resolved; clean production stability window; legacy calls zero | Phase J cleanup after Terminal synchronization/cutover stability |
 | `payments.web-checkout-v1.v1` | guarded production | CheckoutIntent/Clover v1 Web path → Unified Payment Core + v3 truth | Test App/device acceptance complete; App installed/OAuth-authorized on operating production merchant; fresh production-merchant correlation audit passes; Web cutover accepted; one settlement cycle reconciled; old calls zero before compatibility deletion | Deferred until production-merchant Unified authorization and accepted cutover |
 
 The payment entries are no longer governed by a whole-context freeze. The POS
@@ -26,6 +26,10 @@ The target POS CARD architecture has no route-choice policy: after Terminal real
 synchronization/recovery, real-device acceptance and the production stability gate pass,
 legacy path + flag/config + route-choice branches + legacy refund compatibility are
 contracted together in Phase J.
+
+Accounting reuses this same compatibility meaning during the transition. For legacy in-store CARD changes, immutable Orders adjustment/reversal facts may act as explicitly labeled legacy/order-declared settlement authority when no Payments reversal fact exists; Terminal/Unified CARD changes remain strict and require Payments-owned reversal evidence. This is not a second route-choice boolean and does not turn `PosCardPaymentFeatureConfig` into a durable public policy.
+
+New in-store CARD SALE facts freeze additive Orders-owned `posCardExecutionEvidence=LEGACY_DIRECT_PAID|UNIFIED_PAYMENT_CORE` from the existing persisted payment-breakdown shape. Accounting uses that immutable provenance first. Older SALE facts that predate the field are resolved from existing owner facts: a canonical Payments CARD SALE fact proves Unified/strict handling; no Payments CARD SALE fact means the legacy direct-paid route under this registered compatibility. No cutover timestamp or Accounting -> POS rollout-policy dependency is required. Legacy/order-declared compatibility relaxes refund/negative settlement evidence only; CARD collection/additional charge stays strict. Phase J exit requires pre-cutover Accounting facts to be resolved before the legacy compatibility and legacy routes are removed together.
 
 The Web Clover path is now explicitly frozen by the 2026-09-09 operator decision while it
 continues processing production payments. Do not modify Web `/v1/charges` execution,

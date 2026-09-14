@@ -143,15 +143,28 @@ const preview = (params: {
   originalSale?: OrderFinancialFactV1;
   reversals?: PaymentReversalFinancialFactV1[];
   loyalty?: LoyaltyFinancialFactV1[];
-}) =>
-  buildCanonicalChangeJournalPreview({
-    change: params.change ?? change(),
+  cardSettlementEvidenceMode?:
+    | 'LEGACY_ORDER_DECLARED'
+    | 'STRICT_PAYMENT_EVIDENCE'
+    | 'UNRESOLVED';
+}) => {
+  const targetChange = params.change ?? change();
+  const usesCard =
+    targetChange.settlement.previousOrderPaymentMethod === 'CARD' ||
+    targetChange.settlement.resultingOrderPaymentMethod === 'CARD' ||
+    targetChange.settlement.declaredSettlementPaymentMethod === 'CARD';
+  return buildCanonicalChangeJournalPreview({
+    change: targetChange,
     originalSale: params.originalSale ?? sale(),
     originalSaleJournalEntryStableId: 'journal_sale_1',
     paymentFacts: [],
     paymentReversalFacts: params.reversals ?? [],
     loyaltyFacts: params.loyalty ?? [],
+    cardSettlementEvidenceMode: usesCard
+      ? (params.cardSettlementEvidenceMode ?? 'STRICT_PAYMENT_EVIDENCE')
+      : null,
   });
+};
 
 describe('canonical adjustment/reversal Journal shadow policy', () => {
   it('builds a balanced delta-only CASH void draft', () => {
@@ -204,6 +217,80 @@ describe('canonical adjustment/reversal Journal shadow policy', () => {
       'WAITING_FOR_PAYMENT_EVIDENCE',
     );
     expect(result.journal).toBeNull();
+  });
+
+  it('allows a legacy in-store CARD refund to use explicitly declared Order settlement', () => {
+    const result = preview({
+      cardSettlementEvidenceMode: 'LEGACY_ORDER_DECLARED',
+      originalSale: sale({ paymentMethod: 'CARD' }),
+      change: change({
+        before: state({ paymentMethod: 'CARD' }),
+        after: state({
+          paymentMethod: 'CARD',
+          nominalSubtotalCents: 500,
+          effectiveSubtotalCents: 500,
+          subtotalAfterDiscountCents: 500,
+          taxCents: 65,
+          orderTotalCents: 565,
+          paymentTotalCents: 565,
+        }),
+        settlement: {
+          previousOrderPaymentMethod: 'CARD',
+          resultingOrderPaymentMethod: 'CARD',
+          declaredSettlementPaymentMethod: 'CARD',
+          refundGrossCents: 565,
+          redeemReturnCents: 0,
+          additionalChargeCents: 0,
+        },
+      }),
+    });
+
+    expect(result.status).toBe('READY');
+    expect(result.classification).toBe('READY');
+    expect(result.cardSettlementEvidenceMode).toBe('LEGACY_ORDER_DECLARED');
+    expect(result.matchedPaymentReversalFactStableIds).toEqual([]);
+    expect(result.journal?.idempotencyKey).toBe(
+      'canonical-adjustment:change_stable_1:v1',
+    );
+  });
+
+  it('allows a legacy in-store CARD full refund to reverse from Orders-declared settlement', () => {
+    const result = preview({
+      cardSettlementEvidenceMode: 'LEGACY_ORDER_DECLARED',
+      originalSale: sale({ paymentMethod: 'CARD' }),
+      change: change({
+        kind: 'REVERSAL',
+        action: 'FULL_REFUND',
+        before: state({ paymentMethod: 'CARD' }),
+        after: state({
+          paymentMethod: 'CARD',
+          itemQuantity: 0,
+          nominalSubtotalCents: 0,
+          effectiveSubtotalCents: 0,
+          salesDiscountCents: 0,
+          subtotalAfterDiscountCents: 0,
+          taxCents: 0,
+          orderTotalCents: 0,
+          paymentTotalCents: 0,
+        }),
+        settlement: {
+          previousOrderPaymentMethod: 'CARD',
+          resultingOrderPaymentMethod: 'CARD',
+          declaredSettlementPaymentMethod: 'CARD',
+          refundGrossCents: 1130,
+          redeemReturnCents: 0,
+          additionalChargeCents: 0,
+        },
+      }),
+    });
+
+    expect(result.status).toBe('READY');
+    expect(result.classification).toBe('READY');
+    expect(result.cardSettlementEvidenceMode).toBe('LEGACY_ORDER_DECLARED');
+    expect(result.matchedPaymentReversalFactStableIds).toEqual([]);
+    expect(result.journal?.idempotencyKey).toBe(
+      'canonical-reversal:change_stable_1:v1',
+    );
   });
 
   it('treats webhook null surcharge semantics as unknown, not zero', () => {
@@ -418,6 +505,7 @@ describe('canonical adjustment/reversal Journal shadow policy', () => {
 
   it('blocks CARD additional charge until Payments exposes change-scoped collection truth', () => {
     const result = preview({
+      cardSettlementEvidenceMode: 'LEGACY_ORDER_DECLARED',
       change: change({
         before: state({ paymentMethod: 'CARD' }),
         after: state({

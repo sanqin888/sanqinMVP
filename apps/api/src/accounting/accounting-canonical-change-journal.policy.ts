@@ -40,6 +40,10 @@ export type CanonicalChangeClassification =
   | 'READY'
   | 'READY_NOOP'
   | CanonicalChangeBlockCode;
+export type CanonicalCardSettlementEvidenceMode =
+  | 'LEGACY_ORDER_DECLARED'
+  | 'STRICT_PAYMENT_EVIDENCE'
+  | 'UNRESOLVED';
 export type CanonicalChangeBlockReason = {
   code: CanonicalChangeBlockCode;
   message: string;
@@ -49,6 +53,7 @@ export type CanonicalChangeJournalPolicyResult = {
   classification: CanonicalChangeClassification;
   blockReasons: CanonicalChangeBlockReason[];
   journal: AccountingJournalCreateInput | null;
+  cardSettlementEvidenceMode: CanonicalCardSettlementEvidenceMode | null;
   matchedPaymentFactStableIds: string[];
   matchedPaymentReversalFactStableIds: string[];
   matchedLoyaltyFactStableIds: string[];
@@ -61,6 +66,7 @@ export type CanonicalChangeJournalPolicyInput = {
   paymentFacts: PaymentFinancialFactV1[];
   paymentReversalFacts: PaymentReversalFinancialFactV1[];
   loyaltyFacts: LoyaltyFinancialFactV1[];
+  cardSettlementEvidenceMode: CanonicalCardSettlementEvidenceMode | null;
 };
 
 type EconomicState = {
@@ -156,6 +162,11 @@ const retenderEconomicsUnchanged = (
   a.cardSurchargeCents === b.cardSurchargeCents &&
   a.orderTotalCents === b.orderTotalCents &&
   a.paymentTotalCents === b.paymentTotalCents;
+
+const usesCardSettlement = (change: OrderFinancialChangeFactV1): boolean =>
+  change.settlement.previousOrderPaymentMethod === 'CARD' ||
+  change.settlement.resultingOrderPaymentMethod === 'CARD' ||
+  change.settlement.declaredSettlementPaymentMethod === 'CARD';
 
 const accountForTender = (
   method: OrderFinancialChangePaymentMethodV1,
@@ -279,6 +290,7 @@ export const buildCanonicalChangeJournalPreview = (
     paymentFacts,
     paymentReversalFacts,
     loyaltyFacts,
+    cardSettlementEvidenceMode,
   } = input;
   const reasons: CanonicalChangeBlockReason[] = [];
   const block = (code: CanonicalChangeBlockCode, message: string) => {
@@ -298,6 +310,17 @@ export const buildCanonicalChangeJournalPreview = (
   const loyaltyForOrder = loyaltyFacts.filter(
     (fact) => fact.orderStableId === change.orderStableId,
   );
+
+  if (usesCardSettlement(change)) {
+    if (cardSettlementEvidenceMode === null) {
+      block('UNRESOLVED', 'CARD settlement evidence mode is unavailable');
+    } else if (cardSettlementEvidenceMode === 'UNRESOLVED') {
+      block(
+        'UNRESOLVED',
+        'POS CARD payment-route provenance is ambiguous for deterministic settlement evidence',
+      );
+    }
+  }
 
   if (!originalSale) {
     block('UNRESOLVED', 'Original canonical Order SALE fact is unavailable');
@@ -346,6 +369,7 @@ export const buildCanonicalChangeJournalPreview = (
       );
     }
     if (
+      cardSettlementEvidenceMode !== 'LEGACY_ORDER_DECLARED' &&
       (change.settlement.previousOrderPaymentMethod === 'CARD' ||
         change.settlement.resultingOrderPaymentMethod === 'CARD') &&
       (change.before.cardSurchargeCents > 0 ||
@@ -428,7 +452,10 @@ export const buildCanonicalChangeJournalPreview = (
           'CARD collection lacks a change-scoped Payments money fact',
         );
       }
-      if (refunded > 0 || surchargeRefund > 0) {
+      if (
+        cardSettlementEvidenceMode === 'STRICT_PAYMENT_EVIDENCE' &&
+        (refunded > 0 || surchargeRefund > 0)
+      ) {
         if (refunded <= 0) {
           block(
             'WAITING_FOR_PAYMENT_EVIDENCE',
@@ -578,6 +605,7 @@ export const buildCanonicalChangeJournalPreview = (
   }
 
   const base = {
+    cardSettlementEvidenceMode,
     matchedPaymentFactStableIds: [...new Set(matchedPayment)].sort(),
     matchedPaymentReversalFactStableIds: [...new Set(matchedReversals)].sort(),
     matchedLoyaltyFactStableIds: [...new Set(matchedLoyalty)].sort(),

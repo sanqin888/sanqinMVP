@@ -34,6 +34,7 @@ import {
 } from './accounting-journal-policy';
 import {
   buildCanonicalChangeJournalPreview,
+  type CanonicalCardSettlementEvidenceMode,
   type CanonicalChangeBlockReason,
   type CanonicalChangeClassification,
 } from './accounting-canonical-change-journal.policy';
@@ -51,6 +52,8 @@ export type CanonicalChangeShadowPreviewInput = {
 type PaymentFactRef = {
   factStableId: string;
   attemptId: string;
+  source: PaymentFinancialFactV1['source'];
+  paymentMethod: PaymentFinancialFactV1['paymentMethod'];
   operation: PaymentFinancialFactV1['operation'];
   occurredAt: string;
   sourceUpdatedAt: string;
@@ -86,6 +89,7 @@ export type CanonicalChangeShadowEntry = {
   occurrenceEvidence: OrderFinancialChangeFactV1['occurrenceEvidence'];
   status: 'READY' | 'BLOCKED';
   classification: CanonicalChangeClassification;
+  cardSettlementEvidenceMode: CanonicalCardSettlementEvidenceMode | null;
   blockReasons: CanonicalChangeBlockReason[];
   ordersFactReference: {
     factType: 'order.financial_adjustment.v1' | 'order.financial_reversal.v1';
@@ -96,6 +100,9 @@ export type CanonicalChangeShadowEntry = {
     factStableId: string | null;
     sourceUpdatedAt: string | null;
     journalEntryStableId: string | null;
+    posCardExecutionEvidence:
+      | OrderFinancialFactV1['posCardExecutionEvidence']
+      | null;
   };
   paymentFacts: PaymentFactRef[];
   paymentReversalFacts: PaymentReversalRef[];
@@ -195,6 +202,63 @@ const addSafeCents = (left: number, right: number, field: string): number => {
     throw new BadRequestException(`${field} exceeds safe integer range`);
   }
   return next;
+};
+
+const changeUsesCardSettlement = (
+  change: OrderFinancialChangeFactV1,
+): boolean =>
+  change.settlement.previousOrderPaymentMethod === 'CARD' ||
+  change.settlement.resultingOrderPaymentMethod === 'CARD' ||
+  change.settlement.declaredSettlementPaymentMethod === 'CARD';
+
+const resolveCardSettlementEvidenceMode = (params: {
+  change: OrderFinancialChangeFactV1;
+  originalSale: OrderFinancialFactV1 | null;
+  paymentFacts: PaymentFinancialFactV1[];
+}): CanonicalCardSettlementEvidenceMode | null => {
+  const { change, originalSale, paymentFacts } = params;
+  if (!changeUsesCardSettlement(change)) return null;
+
+  if (change.channel !== 'in_store' || originalSale?.channel !== 'in_store') {
+    return 'STRICT_PAYMENT_EVIDENCE';
+  }
+
+  const cardSaleFacts = paymentFacts.filter(
+    (fact) =>
+      fact.orderStableId === change.orderStableId &&
+      fact.paymentMethod === 'CARD' &&
+      fact.operation === 'SALE',
+  );
+  if (cardSaleFacts.length > 1) return 'UNRESOLVED';
+  if (originalSale?.posCardExecutionEvidence === 'UNIFIED_PAYMENT_CORE') {
+    return 'STRICT_PAYMENT_EVIDENCE';
+  }
+  if (originalSale?.posCardExecutionEvidence === 'LEGACY_DIRECT_PAID') {
+    return cardSaleFacts.length === 0 ? 'LEGACY_ORDER_DECLARED' : 'UNRESOLVED';
+  }
+  if (cardSaleFacts.length === 1) return 'STRICT_PAYMENT_EVIDENCE';
+
+  return originalSale?.paymentMethod === 'CARD'
+    ? 'LEGACY_ORDER_DECLARED'
+    : 'STRICT_PAYMENT_EVIDENCE';
+};
+
+const hashCanonicalChangeDraft = (
+  journal: AccountingJournalCreateInput,
+  cardSettlementEvidenceMode: CanonicalCardSettlementEvidenceMode | null,
+): string => {
+  const normalizedJournal = normalizeJournalCreate(journal);
+  if (cardSettlementEvidenceMode === null) {
+    return hashJournalCreatePayload(normalizedJournal);
+  }
+  return createHash('sha256')
+    .update(
+      JSON.stringify({
+        journal: normalizedJournal,
+        cardSettlementEvidenceMode,
+      }),
+    )
+    .digest('hex');
 };
 
 @Injectable()
@@ -343,6 +407,11 @@ export class AccountingCanonicalChangePreviewService {
       const anchor = originalSale
         ? (anchorBySaleFact.get(originalSale.factStableId) ?? null)
         : null;
+      const cardSettlementEvidenceMode = resolveCardSettlementEvidenceMode({
+        change,
+        originalSale,
+        paymentFacts: orderPayments,
+      });
       const policy = buildCanonicalChangeJournalPreview({
         change,
         originalSale,
@@ -350,9 +419,13 @@ export class AccountingCanonicalChangePreviewService {
         paymentFacts: orderPayments,
         paymentReversalFacts: orderReversals,
         loyaltyFacts: orderLoyalty,
+        cardSettlementEvidenceMode,
       });
       const draftHash = policy.journal
-        ? hashJournalCreatePayload(normalizeJournalCreate(policy.journal))
+        ? hashCanonicalChangeDraft(
+            policy.journal,
+            policy.cardSettlementEvidenceMode,
+          )
         : null;
       const totals = journalTotals(policy.journal);
       const entry: CanonicalChangeShadowEntry = {
@@ -365,6 +438,7 @@ export class AccountingCanonicalChangePreviewService {
         occurrenceEvidence: change.occurrenceEvidence,
         status: policy.status,
         classification: policy.classification,
+        cardSettlementEvidenceMode: policy.cardSettlementEvidenceMode,
         blockReasons: policy.blockReasons,
         ordersFactReference: {
           factType:
@@ -378,10 +452,14 @@ export class AccountingCanonicalChangePreviewService {
           factStableId: originalSale?.factStableId ?? null,
           sourceUpdatedAt: originalSale?.sourceUpdatedAt.toISOString() ?? null,
           journalEntryStableId: anchor?.entryStableId ?? null,
+          posCardExecutionEvidence:
+            originalSale?.posCardExecutionEvidence ?? null,
         },
         paymentFacts: orderPayments.map((fact) => ({
           factStableId: fact.factStableId,
           attemptId: fact.attemptId,
+          source: fact.source,
+          paymentMethod: fact.paymentMethod,
           operation: fact.operation,
           occurredAt: fact.occurredAt.toISOString(),
           sourceUpdatedAt: fact.sourceUpdatedAt.toISOString(),
@@ -505,6 +583,7 @@ export class AccountingCanonicalChangePreviewService {
             occurredAt: entry.occurredAt,
             status: entry.status,
             classification: entry.classification,
+            cardSettlementEvidenceMode: entry.cardSettlementEvidenceMode,
             blockReasons: entry.blockReasons.map((reason) => reason.code),
             originalSale: entry.originalSale,
             paymentFacts: entry.paymentFacts,
