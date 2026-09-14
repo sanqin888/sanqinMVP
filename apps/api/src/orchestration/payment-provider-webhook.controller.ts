@@ -114,7 +114,12 @@ export class PaymentProviderWebhookController {
         const recorded = await this.events.markCompleted({
           notification,
           processingResult: result.processingResult,
+          externalReversal: result.externalReversal,
+          previousRefundedAmountCents: result.previousRefundedAmountCents,
           attemptId: snapshot?.attemptId ?? null,
+          paymentSource: snapshot?.source ?? null,
+          paymentMethod: snapshot?.paymentMethod ?? null,
+          currency: snapshot?.currency ?? null,
           externalPaymentId: snapshot?.externalPaymentId ?? null,
           refundedAmountCents: snapshot?.refundedAmountCents ?? null,
           failureCode: result.failureCode,

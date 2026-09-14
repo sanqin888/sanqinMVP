@@ -1,14 +1,13 @@
 import { Injectable } from '@nestjs/common';
 
-import type {
-  CompletePaymentWebhookEventInput,
-  PaymentWebhookEventRepository,
+import {
+  PAYMENT_PROVIDER_WEBHOOK_EVENT_SOURCE,
+  PAYMENT_REVERSE_SYNC_COMPLETED_EVENT,
+  paymentWebhookEventIdempotencyKey,
+  type CompletePaymentWebhookEventInput,
+  type PaymentWebhookEventRepository,
 } from '../../application/payment-webhook-event.repository';
 import { PrismaService } from '../../../prisma/prisma.service';
-
-const EVENT_SOURCE = 'payments.provider-webhook';
-const EVENT_NAME = 'payment.reverse-sync.completed';
-const idempotencyKey = (eventId: string) => `payment-webhook:${eventId}`;
 
 const isUniqueConflict = (error: unknown): boolean =>
   Boolean(
@@ -18,13 +17,36 @@ const isUniqueConflict = (error: unknown): boolean =>
     error.code === 'P2002',
   );
 
+const reversalDeltaCents = (
+  input: CompletePaymentWebhookEventInput,
+): number | null => {
+  if (input.externalReversal === 'NONE') return null;
+  const previous = input.previousRefundedAmountCents;
+  const current = input.refundedAmountCents;
+  if (
+    previous === null ||
+    previous === undefined ||
+    !Number.isSafeInteger(previous) ||
+    previous < 0 ||
+    current === null ||
+    current === undefined ||
+    !Number.isSafeInteger(current) ||
+    current < previous
+  ) {
+    throw new Error(
+      'Payment reversal webhook completion requires monotonic refunded amount evidence',
+    );
+  }
+  return current - previous;
+};
+
 @Injectable()
 export class PrismaPaymentWebhookEventRepository implements PaymentWebhookEventRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async isCompleted(eventId: string): Promise<boolean> {
     const existing = await this.prisma.opsEvent.findUnique({
-      where: { idempotencyKey: idempotencyKey(eventId) },
+      where: { idempotencyKey: paymentWebhookEventIdempotencyKey(eventId) },
       select: { id: true },
     });
     return Boolean(existing);
@@ -33,22 +55,33 @@ export class PrismaPaymentWebhookEventRepository implements PaymentWebhookEventR
   async markCompleted(
     input: CompletePaymentWebhookEventInput,
   ): Promise<boolean> {
+    const refundedDeltaCents = reversalDeltaCents(input);
     try {
       await this.prisma.opsEvent.create({
         data: {
-          idempotencyKey: idempotencyKey(input.notification.eventId),
-          eventName: EVENT_NAME,
-          source: EVENT_SOURCE,
+          idempotencyKey: paymentWebhookEventIdempotencyKey(
+            input.notification.eventId,
+          ),
+          eventName: PAYMENT_REVERSE_SYNC_COMPLETED_EVENT,
+          source: PAYMENT_PROVIDER_WEBHOOK_EVENT_SOURCE,
           occurredAt: input.notification.occurredAt,
           payload: {
+            providerEventId: input.notification.eventId,
             provider: input.notification.provider,
             merchantId: input.notification.merchantId,
             providerPaymentId: input.notification.providerPaymentId,
             operation: input.notification.operation,
             processingResult: input.processingResult,
-            attemptId: input.attemptId ?? null,
-            externalPaymentId: input.externalPaymentId ?? null,
+            externalReversal: input.externalReversal,
+            previousRefundedAmountCents:
+              input.previousRefundedAmountCents ?? null,
             refundedAmountCents: input.refundedAmountCents ?? null,
+            refundedDeltaCents,
+            attemptId: input.attemptId ?? null,
+            paymentSource: input.paymentSource ?? null,
+            paymentMethod: input.paymentMethod ?? null,
+            currency: input.currency ?? null,
+            externalPaymentId: input.externalPaymentId ?? null,
             failureCode: input.failureCode ?? null,
             failureMessage: input.failureMessage ?? null,
           },
