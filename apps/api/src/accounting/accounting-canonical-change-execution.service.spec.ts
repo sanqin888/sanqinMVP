@@ -111,10 +111,7 @@ const makeReport = (
       byPaymentMethod: {},
     },
     amounts: {
-      readyDebitCents: ready.reduce(
-        (sum, entry) => sum + entry.debitCents,
-        0,
-      ),
+      readyDebitCents: ready.reduce((sum, entry) => sum + entry.debitCents, 0),
       readyCreditCents: ready.reduce(
         (sum, entry) => sum + entry.creditCents,
         0,
@@ -218,8 +215,12 @@ describe('AccountingCanonicalChangeExecutionService', () => {
 
     const result = await service.executeRange(input);
 
-    expect(accounting.assertNoLegacyOrderRevenueAccrual).toHaveBeenCalledTimes(1);
-    expect(accounting.createCanonicalChangeJournalEntry).toHaveBeenCalledTimes(1);
+    expect(accounting.assertNoLegacyOrderRevenueAccrual).toHaveBeenCalledTimes(
+      1,
+    );
+    expect(accounting.createCanonicalChangeJournalEntry).toHaveBeenCalledTimes(
+      1,
+    );
     expect(accounting.createCanonicalChangeJournalEntry).toHaveBeenCalledWith(
       journal,
       CANONICAL_CHANGE_SYSTEM_ACTOR,

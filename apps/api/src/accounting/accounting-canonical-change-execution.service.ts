@@ -17,9 +17,10 @@ import { AccountingService } from './accounting.service';
 export const CANONICAL_CHANGE_SYSTEM_ACTOR =
   'system:accounting-canonical-change-posting';
 
-export type CanonicalChangeExecutionInput = CanonicalChangeShadowPreviewInput & {
-  expectedPlanHash: string;
-};
+export type CanonicalChangeExecutionInput =
+  CanonicalChangeShadowPreviewInput & {
+    expectedPlanHash: string;
+  };
 
 export type CanonicalChangeExecutionReport =
   CanonicalChangeShadowPreviewReport & {

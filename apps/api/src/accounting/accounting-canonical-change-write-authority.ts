@@ -36,7 +36,9 @@ const normalizeStableIds = (values: string[], field: string): string[] => {
   }
   const normalized = values.map((value, index) => {
     if (typeof value !== 'string') {
-      throw new AccountingJournalPolicyError(`${field}[${index}] must be a string`);
+      throw new AccountingJournalPolicyError(
+        `${field}[${index}] must be a string`,
+      );
     }
     return requireValue(value, `${field}[${index}]`);
   });
