@@ -1,21 +1,20 @@
 import { Module } from '@nestjs/common';
 
-import { PrismaModule } from '../prisma/prisma.module';
 import { PAYMENT_FINANCIAL_FACTS_READER } from './application/payment-financial-facts-reader.contract';
 import { PAYMENT_REVERSAL_FINANCIAL_FACTS_READER } from './application/payment-reversal-financial-facts-reader.contract';
-import { PrismaPaymentTransactionRepository } from './infrastructure/prisma/prisma-payment-transaction.repository';
+import { PAYMENT_TRANSACTION_REPOSITORY } from './application/payment-transaction.repository';
+import { PaymentsModule } from './payments.module';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PaymentsModule],
   providers: [
-    PrismaPaymentTransactionRepository,
     {
       provide: PAYMENT_FINANCIAL_FACTS_READER,
-      useExisting: PrismaPaymentTransactionRepository,
+      useExisting: PAYMENT_TRANSACTION_REPOSITORY,
     },
     {
       provide: PAYMENT_REVERSAL_FINANCIAL_FACTS_READER,
-      useExisting: PrismaPaymentTransactionRepository,
+      useExisting: PAYMENT_TRANSACTION_REPOSITORY,
     },
   ],
   exports: [

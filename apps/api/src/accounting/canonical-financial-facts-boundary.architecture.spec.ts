@@ -36,9 +36,10 @@ describe('Phase 9 canonical financial facts boundary', () => {
 
     expect(paymentsPublic).not.toContain('PrismaPaymentFinancialFactsReader');
     expect(paymentsPublic).not.toContain('PaymentsModule');
-    expect(paymentsFactsModule).toContain('PrismaPaymentTransactionRepository');
-    expect(paymentsFactsModule).not.toContain('PaymentsModule');
-    expect(paymentsFactsModule).not.toContain('CloverProviderInfrastructureModule');
+    expect(paymentsFactsModule).toContain('PAYMENT_TRANSACTION_REPOSITORY');
+    expect(paymentsFactsModule).toContain('PaymentsModule');
+    expect(paymentsFactsModule).not.toContain('../prisma/prisma.module');
+    expect(paymentsFactsModule).not.toContain('PrismaPaymentTransactionRepository');
   });
 
   it('keeps canonical financial fact contracts framework-, Prisma-, and provider-implementation-neutral', () => {
