@@ -108,7 +108,10 @@ describe('Order immutable financial sale fact', () => {
       },
       'IMMUTABLE_SALE_SNAPSHOT',
     );
-    const persisted = serializeOrderFinancialFactV1(fact) as Record<string, unknown>;
+    const persisted = serializeOrderFinancialFactV1(fact) as Record<
+      string,
+      unknown
+    >;
     delete persisted.posCardExecutionEvidence;
 
     expect(parseOrderFinancialFactV1(persisted)).toEqual({

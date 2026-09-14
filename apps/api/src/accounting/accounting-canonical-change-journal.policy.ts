@@ -313,10 +313,7 @@ export const buildCanonicalChangeJournalPreview = (
 
   if (usesCardSettlement(change)) {
     if (cardSettlementEvidenceMode === null) {
-      block(
-        'UNRESOLVED',
-        'CARD settlement evidence mode is unavailable',
-      );
+      block('UNRESOLVED', 'CARD settlement evidence mode is unavailable');
     } else if (cardSettlementEvidenceMode === 'UNRESOLVED') {
       block(
         'UNRESOLVED',

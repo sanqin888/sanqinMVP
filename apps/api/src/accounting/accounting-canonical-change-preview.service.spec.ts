@@ -274,10 +274,10 @@ describe('AccountingCanonicalChangePreviewService', () => {
       expect.objectContaining({
         status: 'READY',
         cardSettlementEvidenceMode: 'LEGACY_ORDER_DECLARED',
-        originalSale: expect.objectContaining({
-          posCardExecutionEvidence: 'LEGACY_DIRECT_PAID',
-        }),
       }),
+    );
+    expect(report.entries[0]?.originalSale.posCardExecutionEvidence).toBe(
+      'LEGACY_DIRECT_PAID',
     );
   });
 
