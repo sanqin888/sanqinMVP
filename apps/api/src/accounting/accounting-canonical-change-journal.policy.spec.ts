@@ -308,7 +308,7 @@ describe('canonical adjustment/reversal Journal shadow policy', () => {
   it('uses Loyalty principal truth for a pure Store Balance full reversal', () => {
     const balanceSale = sale({
       paymentMethod: 'STORE_BALANCE',
-      paymentTotalCents: 0,
+      paymentTotalCents: 1130,
     });
     const result = preview({
       originalSale: balanceSale,
@@ -317,7 +317,7 @@ describe('canonical adjustment/reversal Journal shadow policy', () => {
         action: 'FULL_REFUND',
         before: state({
           paymentMethod: 'STORE_BALANCE',
-          paymentTotalCents: 0,
+          paymentTotalCents: 1130,
         }),
         after: state({
           paymentMethod: 'STORE_BALANCE',

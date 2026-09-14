@@ -145,7 +145,7 @@ describe('Accounting canonical SALE journal policy', () => {
       subtotalAfterDiscountCents: 234,
       taxCents: 30,
       orderTotalCents: 264,
-      paymentTotalCents: 64,
+      paymentTotalCents: 264,
     });
     const lines = lineMap(fact, 200);
 
@@ -174,7 +174,7 @@ describe('Accounting canonical SALE journal policy', () => {
   it('supports a pure Store Balance sale without an external tender line', () => {
     const fact = makeFact({
       paymentMethod: 'STORE_BALANCE',
-      paymentTotalCents: 0,
+      paymentTotalCents: 1130,
     });
     const lines = lineMap(fact, 1130);
 
@@ -184,6 +184,58 @@ describe('Accounting canonical SALE journal policy', () => {
     });
     expect(lines.has('account_store_cash')).toBe(false);
     expect(lines.has('account_clover_pending')).toBe(false);
+  });
+
+  it('derives external tender from payable total minus Store Balance principal', () => {
+    const fact = makeFact({
+      paymentMethod: 'STORE_BALANCE',
+      nominalSubtotalCents: 849,
+      effectiveSubtotalCents: 849,
+      discounts: {
+        dailySpecialCents: 0,
+        couponCents: 0,
+        automaticPromotionCents: 0,
+        posManualCents: 100,
+        pointsRedemptionCents: 0,
+        unattributedLegacyCents: 0,
+        totalCents: 100,
+      },
+      subtotalAfterDiscountCents: 749,
+      taxCents: 97,
+      orderTotalCents: 846,
+      paymentTotalCents: 846,
+    });
+    const draft = buildCanonicalSaleJournal({
+      fact,
+      storeBalanceRedeemedCents: 846,
+    });
+    const lines = new Map(
+      draft.journal.lines.map((line) => [
+        line.accountStableId,
+        {
+          debitCents: line.debitCents ?? 0,
+          creditCents: line.creditCents ?? 0,
+        },
+      ]),
+    );
+
+    expect(draft.externalTenderCents).toBe(0);
+    expect(lines.get('account_store_balance_liability')).toEqual({
+      debitCents: 846,
+      creditCents: 0,
+    });
+    expect(lines.get('account_sales_discounts')).toEqual({
+      debitCents: 100,
+      creditCents: 0,
+    });
+    expect(lines.get('account_sales_revenue')).toEqual({
+      debitCents: 0,
+      creditCents: 849,
+    });
+    expect(lines.get('account_hst_payable')).toEqual({
+      debitCents: 0,
+      creditCents: 97,
+    });
   });
 
   it('supports a points-only zero-customer-tender sale', () => {
@@ -267,13 +319,22 @@ describe('Accounting canonical SALE journal policy', () => {
     ).toThrow('nominal subtotal minus Daily Special discount');
   });
 
-  it('fails closed when external tender plus Store Balance does not settle the sale', () => {
+  it('fails closed when paymentTotalCents does not equal order total plus surcharge', () => {
     expect(() =>
       buildCanonicalSaleJournal({
         fact: makeFact({ paymentMethod: 'CARD', paymentTotalCents: 1000 }),
         storeBalanceRedeemedCents: 0,
       }),
-    ).toThrow('external tender + Store Balance redemption');
+    ).toThrow('paymentTotalCents must equal order total + card surcharge');
+  });
+
+  it('fails closed when Store Balance principal exceeds the payable total', () => {
+    expect(() =>
+      buildCanonicalSaleJournal({
+        fact: makeFact({ paymentMethod: 'STORE_BALANCE' }),
+        storeBalanceRedeemedCents: 1131,
+      }),
+    ).toThrow('Store Balance redemption cannot exceed paymentTotalCents');
   });
 
   it('rejects a card surcharge on a non-card tender', () => {
