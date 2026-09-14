@@ -465,6 +465,7 @@ describe('AccountingCanonicalChangePreviewService', () => {
         ...sale('CARD'),
         factStableId: 'order_outside_range',
         orderStableId: 'order_outside_range',
+        posCardExecutionEvidence: 'UNIFIED_PAYMENT_CORE',
       },
       reversals: [reversalOutsideRange],
       rangeReversals: [reversalOutsideRange],
