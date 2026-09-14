@@ -432,7 +432,9 @@ export class AccountingCanonicalChangePreviewService {
       matchingChangeFacts.map((fact) => fact.orderStableId),
     );
     const unmatchedPaymentReversals = rangePaymentReversals
-      .filter((fact) => !matchedPaymentReversalFactStableIds.has(fact.factStableId))
+      .filter(
+        (fact) => !matchedPaymentReversalFactStableIds.has(fact.factStableId),
+      )
       .map((fact) => ({
         factStableId: fact.factStableId,
         orderStableId: fact.orderStableId,
