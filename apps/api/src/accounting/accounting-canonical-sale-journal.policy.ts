@@ -253,16 +253,26 @@ export function buildCanonicalSaleJournal(params: {
     );
   }
 
-  const externalTenderCents = fact.paymentTotalCents;
-  if (
-    externalTenderCents + storeBalanceRedeemedCents !==
-    fact.orderTotalCents + fact.cardSurchargeCents
-  ) {
+  // Orders defines paymentTotalCents as the payable total after card surcharge;
+  // Loyalty owns the Store Balance principal used to satisfy that payable total.
+  const expectedPaymentTotalCents = safeSum(
+    [fact.orderTotalCents, fact.cardSurchargeCents],
+    'order total + card surcharge',
+  );
+  if (fact.paymentTotalCents !== expectedPaymentTotalCents) {
     throw new CanonicalSaleJournalPolicyError(
       'TENDER_INVARIANT',
-      'external tender + Store Balance redemption must equal order total + card surcharge',
+      'paymentTotalCents must equal order total + card surcharge',
     );
   }
+  if (storeBalanceRedeemedCents > fact.paymentTotalCents) {
+    throw new CanonicalSaleJournalPolicyError(
+      'TENDER_INVARIANT',
+      'Store Balance redemption cannot exceed paymentTotalCents',
+    );
+  }
+  const externalTenderCents =
+    fact.paymentTotalCents - storeBalanceRedeemedCents;
 
   const lines: AccountingJournalLineInput[] = [];
   const tenderAccount = externalTenderAccount(fact, externalTenderCents);

@@ -203,7 +203,7 @@ describe('Accounting canonical SALE posting service', () => {
       subtotalAfterDiscountCents: 234,
       taxCents: 30,
       orderTotalCents: 264,
-      paymentTotalCents: 64,
+      paymentTotalCents: 264,
     });
     orders.readReplayCandidateByOrderStableId.mockResolvedValue(
       makeCandidate({ sourceFact: fact, resolvedFact: fact }),
@@ -222,6 +222,10 @@ describe('Accounting canonical SALE posting service', () => {
     });
     expect(preview.journal?.lines).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({
+          accountStableId: 'account_clover_pending',
+          debitCents: 64,
+        }),
         expect.objectContaining({
           accountStableId: 'account_store_balance_liability',
           debitCents: 200,
