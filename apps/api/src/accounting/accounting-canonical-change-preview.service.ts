@@ -107,6 +107,8 @@ export type CanonicalChangeShadowEntry = {
   paymentFacts: PaymentFactRef[];
   paymentReversalFacts: PaymentReversalRef[];
   loyaltyFacts: LoyaltyFactRef[];
+  matchedPaymentReversalFactStableIds: string[];
+  matchedLoyaltyFactStableIds: string[];
   draftJournal: AccountingJournalCreateInput | null;
   draftHash: string | null;
   debitCents: number;
@@ -482,6 +484,9 @@ export class AccountingCanonicalChangePreviewService {
           occurredAt: fact.occurredAt.toISOString(),
           amountCents: fact.amountCents,
         })),
+        matchedPaymentReversalFactStableIds:
+          policy.matchedPaymentReversalFactStableIds,
+        matchedLoyaltyFactStableIds: policy.matchedLoyaltyFactStableIds,
         draftJournal: policy.journal,
         draftHash,
         ...totals,
@@ -589,6 +594,9 @@ export class AccountingCanonicalChangePreviewService {
             paymentFacts: entry.paymentFacts,
             paymentReversalFacts: entry.paymentReversalFacts,
             loyaltyFacts: entry.loyaltyFacts,
+            matchedPaymentReversalFactStableIds:
+              entry.matchedPaymentReversalFactStableIds,
+            matchedLoyaltyFactStableIds: entry.matchedLoyaltyFactStableIds,
             draftHash: entry.draftHash,
           })),
           unmatchedPaymentReversals,

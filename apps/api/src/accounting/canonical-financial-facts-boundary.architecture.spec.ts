@@ -146,7 +146,7 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(paymentReader).not.toContain('/loyalty/');
   });
 
-  it('wires canonical SALE posting and replay cutover through owner public facts and the existing Accounting Journal boundary', () => {
+  it('wires canonical SALE and change cutovers through owner facts while keeping change preview read-only', () => {
     const postingService =
       file(ACCOUNTING_ROOT, 'accounting-canonical-sale-posting.service.ts')
         ?.source ?? '';
@@ -155,6 +155,9 @@ describe('Phase 9 canonical financial facts boundary', () => {
         ?.source ?? '';
     const changePreviewService =
       file(ACCOUNTING_ROOT, 'accounting-canonical-change-preview.service.ts')
+        ?.source ?? '';
+    const changeExecutionService =
+      file(ACCOUNTING_ROOT, 'accounting-canonical-change-execution.service.ts')
         ?.source ?? '';
     const accountingService =
       file(ACCOUNTING_ROOT, 'accounting.service.ts')?.source ?? '';
@@ -186,14 +189,29 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(changePreviewService).toContain(
       'buildCanonicalChangeJournalPreview',
     );
+    expect(changeExecutionService).toContain(
+      "from './accounting-canonical-change-preview.service'",
+    );
+    expect(changeExecutionService).toContain('expectedPlanHash');
+    expect(changeExecutionService).toContain(
+      'assertNoLegacyOrderRevenueAccrual',
+    );
+    expect(changeExecutionService).toContain(
+      'createCanonicalChangeJournalEntry',
+    );
+    expect(changeExecutionService).not.toContain('createJournalEntry(');
+    expect(changeExecutionService).not.toContain('../prisma/');
+    expect(changeExecutionService).not.toContain("from '../orders/");
+    expect(changeExecutionService).not.toContain("from '../payments/");
+    expect(changeExecutionService).not.toContain("from '../loyalty/");
     expect(accountingController).toContain(
       "@Post('journal/canonical-sales/replay')",
     );
     expect(accountingController).toContain(
       "@Get('journal/canonical-changes/shadow-preview')",
     );
-    expect(accountingController).not.toContain(
-      "@Post('journal/canonical-changes",
+    expect(accountingController).toContain(
+      "@Post('journal/canonical-changes/replay')",
     );
     expect(accountingController).not.toContain('automation/order-accrual');
     expect(accountingService).not.toContain('autoAccrueOrderRevenue');
@@ -205,6 +223,25 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(accountingModule).toContain(
       'AccountingCanonicalChangePreviewService',
     );
+    expect(accountingModule).toContain(
+      'AccountingCanonicalChangeExecutionService',
+    );
+
+    const canonicalChangeWriterCallers = scanTypeScript(ACCOUNTING_ROOT, {
+      productionOnly: true,
+    })
+      .filter(
+        ({ path, source }) =>
+          !path.endsWith('accounting.service.ts') &&
+          source.includes('createCanonicalChangeJournalEntry('),
+      )
+      .map(({ path }) =>
+        path.slice(API_SRC_ROOT.length + 1).replaceAll('\\', '/'),
+      )
+      .sort();
+    expect(canonicalChangeWriterCallers).toEqual([
+      'accounting/accounting-canonical-change-execution.service.ts',
+    ]);
   });
 
   it('prevents Accounting from consuming owner internals before or after the later posting cutover', () => {
