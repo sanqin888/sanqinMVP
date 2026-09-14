@@ -137,9 +137,7 @@ export type CanonicalChangeShadowPreviewReport = {
     orderStableId: string | null;
     storeStableId: string | null;
     occurredAt: string;
-    classification:
-      | 'WAITING_FOR_ORDER_EVIDENCE'
-      | 'UNMATCHED_PAYMENT_REVERSAL';
+    classification: 'WAITING_FOR_ORDER_EVIDENCE' | 'UNMATCHED_PAYMENT_REVERSAL';
     baseRefundCents: number;
     additionalChargeRefundCents: number | null;
     customerRefundTotalCents: number | null;
@@ -291,8 +289,9 @@ export class AccountingCanonicalChangePreviewService {
         ),
       ]),
     ].sort();
-    const orderChangeFacts =
-      await this.changes.readFactsByOrderStableIds(matchingOrderStableIds);
+    const orderChangeFacts = await this.changes.readFactsByOrderStableIds(
+      matchingOrderStableIds,
+    );
     const matchingChangeByStableId = new Map<
       string,
       OrderFinancialChangeFactV1
@@ -310,16 +309,15 @@ export class AccountingCanonicalChangePreviewService {
     ].sort();
 
     const salePairs = await Promise.all(
-      orderStableIds.map(async (orderStableId) =>
-        [
-          orderStableId,
-          await this.orders.readFactByOrderStableId(orderStableId),
-        ] as const,
+      orderStableIds.map(
+        async (orderStableId) =>
+          [
+            orderStableId,
+            await this.orders.readFactByOrderStableId(orderStableId),
+          ] as const,
       ),
     );
-    const saleByOrder = new Map<string, OrderFinancialFactV1 | null>(
-      salePairs,
-    );
+    const saleByOrder = new Map<string, OrderFinancialFactV1 | null>(salePairs);
     const saleFactStableIds = salePairs.flatMap(([, fact]) =>
       fact ? [fact.factStableId] : [],
     );
@@ -434,10 +432,7 @@ export class AccountingCanonicalChangePreviewService {
       matchingChangeFacts.map((fact) => fact.orderStableId),
     );
     const unmatchedPaymentReversals = rangePaymentReversals
-      .filter(
-        (fact) =>
-          !matchedPaymentReversalFactStableIds.has(fact.factStableId),
-      )
+      .filter((fact) => !matchedPaymentReversalFactStableIds.has(fact.factStableId))
       .map((fact) => ({
         factStableId: fact.factStableId,
         orderStableId: fact.orderStableId,
@@ -605,4 +600,3 @@ export class AccountingCanonicalChangePreviewService {
     entry.creditCents = 0;
   }
 }
-

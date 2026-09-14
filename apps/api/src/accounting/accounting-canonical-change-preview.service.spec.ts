@@ -207,9 +207,9 @@ describe('AccountingCanonicalChangePreviewService', () => {
       expect.objectContaining({
         status: 'READY',
         classification: 'READY',
-        draftHash: expect.stringMatching(/^[a-f0-9]{64}$/),
       }),
     );
+    expect(first.entries[0]?.draftHash).toMatch(/^[a-f0-9]{64}$/);
   });
 
   it('looks up the original SALE Journal by owner fact identity rather than Order identity', async () => {

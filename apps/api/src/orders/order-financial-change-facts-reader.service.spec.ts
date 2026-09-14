@@ -104,10 +104,7 @@ describe('OrderFinancialChangeFactsReaderService', () => {
     } as never);
 
     await expect(
-      service.readFactsByOrderStableIds([
-        ' order-stable-1 ',
-        'order-stable-1',
-      ]),
+      service.readFactsByOrderStableIds([' order-stable-1 ', 'order-stable-1']),
     ).resolves.toEqual([fact]);
     expect(findMany).toHaveBeenCalledWith({
       where: {

@@ -39,7 +39,9 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(paymentsFactsModule).toContain('PAYMENT_TRANSACTION_REPOSITORY');
     expect(paymentsFactsModule).toContain('PaymentsModule');
     expect(paymentsFactsModule).not.toContain('../prisma/prisma.module');
-    expect(paymentsFactsModule).not.toContain('PrismaPaymentTransactionRepository');
+    expect(paymentsFactsModule).not.toContain(
+      'PrismaPaymentTransactionRepository',
+    );
   });
 
   it('keeps canonical financial fact contracts framework-, Prisma-, and provider-implementation-neutral', () => {
@@ -180,7 +182,9 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(changePreviewService).not.toContain('createJournalEntry');
     expect(changePreviewService).toContain('readFactsByOrderStableIds');
     expect(changePreviewService).toContain('readReversalFactsByOrderStableIds');
-    expect(changePreviewService).toContain('buildCanonicalChangeJournalPreview');
+    expect(changePreviewService).toContain(
+      'buildCanonicalChangeJournalPreview',
+    );
     expect(accountingController).toContain(
       "@Post('journal/canonical-sales/replay')",
     );
@@ -197,7 +201,9 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(accountingModule).toContain('PaymentFinancialFactsModule');
     expect(accountingModule).toContain('LoyaltyFinancialFactsModule');
     expect(accountingModule).toContain('AccountingCanonicalSaleReplayService');
-    expect(accountingModule).toContain('AccountingCanonicalChangePreviewService');
+    expect(accountingModule).toContain(
+      'AccountingCanonicalChangePreviewService',
+    );
   });
 
   it('prevents Accounting from consuming owner internals before or after the later posting cutover', () => {

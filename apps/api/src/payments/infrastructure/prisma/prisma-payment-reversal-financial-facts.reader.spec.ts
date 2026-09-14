@@ -204,32 +204,30 @@ describe('PrismaPaymentTransactionRepository reversal financial facts', () => {
           providerRefundId: 'provider-refund-1',
         },
       ]);
-    jest
-      .spyOn(service, 'readReversalFactByStableId')
-      .mockResolvedValue({
-        version: 1,
-        factStableId: 'payment-reversal:managed:refund-attempt-1:v1',
-        originalSaleAttemptId: 'sale-attempt-1',
-        reversalAttemptId: 'refund-attempt-1',
-        providerEventId: null,
-        orderStableId: 'order-stable-1',
-        storeStableId: '4750_Yonge_Street',
-        occurredAt: new Date('2026-09-20T15:00:00.000Z'),
-        evidence: 'MANAGED_TRANSACTION',
-        provider: 'CLOVER',
-        originalPaymentSource: 'POS_TERMINAL',
-        paymentMethod: 'CARD',
-        kind: 'FULL_REFUND',
-        originalSaleBaseAmountCents: 1000,
-        originalSaleCustomerTotalCents: 1024,
-        baseRefundCents: 1000,
-        additionalChargeRefundCents: 24,
-        customerRefundTotalCents: 1024,
-        currency: 'CAD',
-        externalPaymentId: 'external-payment-1',
-        providerPaymentId: 'provider-payment-1',
-        providerRefundId: 'provider-refund-1',
-      });
+    jest.spyOn(service, 'readReversalFactByStableId').mockResolvedValue({
+      version: 1,
+      factStableId: 'payment-reversal:managed:refund-attempt-1:v1',
+      originalSaleAttemptId: 'sale-attempt-1',
+      reversalAttemptId: 'refund-attempt-1',
+      providerEventId: null,
+      orderStableId: 'order-stable-1',
+      storeStableId: '4750_Yonge_Street',
+      occurredAt: new Date('2026-09-20T15:00:00.000Z'),
+      evidence: 'MANAGED_TRANSACTION',
+      provider: 'CLOVER',
+      originalPaymentSource: 'POS_TERMINAL',
+      paymentMethod: 'CARD',
+      kind: 'FULL_REFUND',
+      originalSaleBaseAmountCents: 1000,
+      originalSaleCustomerTotalCents: 1024,
+      baseRefundCents: 1000,
+      additionalChargeRefundCents: 24,
+      customerRefundTotalCents: 1024,
+      currency: 'CAD',
+      externalPaymentId: 'external-payment-1',
+      providerPaymentId: 'provider-payment-1',
+      providerRefundId: 'provider-refund-1',
+    });
 
     await expect(
       service.readReversalFactsByOrderStableIds([

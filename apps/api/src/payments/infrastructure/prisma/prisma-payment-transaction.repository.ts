@@ -387,7 +387,10 @@ export class PrismaPaymentTransactionRepository
           identity: null,
         };
         this.assertFinalTransactionIdentity(row, context);
-        if (!context.identity || !requested.has(context.identity.orderStableId)) {
+        if (
+          !context.identity ||
+          !requested.has(context.identity.orderStableId)
+        ) {
           return [];
         }
         return [this.toFinancialFact(row, context.identity, row.completedAt)];
@@ -510,10 +513,7 @@ export class PrismaPaymentTransactionRepository
       const reversal = await this.readReversalFactByStableId(
         managedReversalFactStableId(fact.attemptId),
       );
-      if (
-        reversal?.orderStableId &&
-        requested.has(reversal.orderStableId)
-      ) {
+      if (reversal?.orderStableId && requested.has(reversal.orderStableId)) {
         managedFacts.push(reversal);
       }
     }

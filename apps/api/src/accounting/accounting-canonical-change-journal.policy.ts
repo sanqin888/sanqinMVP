@@ -112,7 +112,10 @@ const resolveEconomic = (
   sale: OrderFinancialFactV1 | null,
   allowSaleFallback: boolean,
 ): EconomicState | null => {
-  if (state.nominalSubtotalCents !== null && state.salesDiscountCents !== null) {
+  if (
+    state.nominalSubtotalCents !== null &&
+    state.salesDiscountCents !== null
+  ) {
     return {
       nominalSubtotalCents: state.nominalSubtotalCents,
       salesDiscountCents: state.salesDiscountCents,
@@ -154,7 +157,9 @@ const retenderEconomicsUnchanged = (
   a.orderTotalCents === b.orderTotalCents &&
   a.paymentTotalCents === b.paymentTotalCents;
 
-const accountForTender = (method: OrderFinancialChangePaymentMethodV1): string => {
+const accountForTender = (
+  method: OrderFinancialChangePaymentMethodV1,
+): string => {
   switch (method) {
     case 'CASH':
     case 'WECHAT_ALIPAY':
@@ -400,10 +405,7 @@ export const buildCanonicalChangeJournalPreview = (
       'redeemed-value return exceeds gross refund',
     );
   }
-  const redeemedBalance = sumLoyalty(
-    loyaltyForOrder,
-    'STORE_BALANCE_REDEEMED',
-  );
+  const redeemedBalance = sumLoyalty(loyaltyForOrder, 'STORE_BALANCE_REDEEMED');
   const returnedBalanceFacts = loyaltyForOrder.filter(
     (fact) => fact.kind === 'STORE_BALANCE_RETURNED',
   );
@@ -495,7 +497,9 @@ export const buildCanonicalChangeJournalPreview = (
           'Returned Store Balance does not equal original redeemed principal',
         );
       } else {
-        matchedLoyalty.push(...returnedBalanceFacts.map((fact) => fact.factStableId));
+        matchedLoyalty.push(
+          ...returnedBalanceFacts.map((fact) => fact.factStableId),
+        );
       }
     } else if (returnedBalance > 0) {
       block(

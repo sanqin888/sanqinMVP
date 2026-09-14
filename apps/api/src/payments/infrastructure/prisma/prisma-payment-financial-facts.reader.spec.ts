@@ -217,10 +217,7 @@ describe('PrismaPaymentTransactionRepository financial facts', () => {
     } as never);
 
     await expect(
-      service.readFactsByOrderStableIds([
-        ' order-stable-1 ',
-        'order-stable-1',
-      ]),
+      service.readFactsByOrderStableIds([' order-stable-1 ', 'order-stable-1']),
     ).resolves.toEqual([
       expect.objectContaining({
         factStableId: 'payment-attempt-1',
@@ -244,7 +241,7 @@ describe('PrismaPaymentTransactionRepository financial facts', () => {
           id: { in: [paymentRow().id] },
           operation: PaymentOperation.SALE,
           status: PaymentTransactionStatus.SUCCEEDED,
-        }),
+        }) as unknown,
       }),
     );
   });
