@@ -821,7 +821,10 @@ describe('Payments bounded-context architecture', () => {
         /(?:^|\/)(?:orders|payments)(?:\/|$)/.test(specifier),
       );
       expect(ownerImports).toEqual(
-        expect.arrayContaining(['../orders/public-api', '../payments/public-api']),
+        expect.arrayContaining([
+          '../orders/public-api',
+          '../payments/public-api',
+        ]),
       );
       expect(
         ownerImports.every(
@@ -837,7 +840,9 @@ describe('Payments bounded-context architecture', () => {
     }
 
     const executionComposers = composers
-      .filter(({ path }) => !path.startsWith(resolve(SOURCE_ROOT, 'accounting')))
+      .filter(
+        ({ path }) => !path.startsWith(resolve(SOURCE_ROOT, 'accounting')),
+      )
       .map(({ path }) =>
         path.slice(SOURCE_ROOT.length + 1).replaceAll('\\', '/'),
       )
