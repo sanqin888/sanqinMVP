@@ -786,7 +786,7 @@ describe('Payments bounded-context architecture', () => {
     }
   });
 
-  it('keeps Payments + Orders coordination inside the explicit unified-payment orchestration layer', () => {
+  it('keeps Payments + Orders execution coordination in unified-payment orchestration while allowing read-only Accounting fact reconciliation', () => {
     const composers = scanTypeScript(SOURCE_ROOT, { productionOnly: true })
       // AppModule is the repository composition root: importing both modules
       // wires contexts there but does not coordinate Payments + Orders behavior.
@@ -800,13 +800,55 @@ describe('Payments bounded-context architecture', () => {
           /(?:^|\/)orders(?:\/|$)/.test(specifier),
         );
         return importsPayments && importsOrders;
-      })
+      });
+
+    const accountingFactConsumers = composers
+      .filter(({ path }) => path.startsWith(resolve(SOURCE_ROOT, 'accounting')))
+      .sort((left, right) => left.path.localeCompare(right.path));
+
+    expect(
+      accountingFactConsumers.map(({ path }) =>
+        path.slice(SOURCE_ROOT.length + 1).replaceAll('\\', '/'),
+      ),
+    ).toEqual([
+      'accounting/accounting-canonical-change-journal.policy.ts',
+      'accounting/accounting-canonical-change-preview.service.ts',
+      'accounting/accounting.module.ts',
+    ]);
+
+    for (const { source } of accountingFactConsumers) {
+      const ownerImports = importSpecifiers(source).filter((specifier) =>
+        /(?:^|\/)(?:orders|payments)(?:\/|$)/.test(specifier),
+      );
+      expect(ownerImports).toEqual(
+        expect.arrayContaining([
+          '../orders/public-api',
+          '../payments/public-api',
+        ]),
+      );
+      expect(
+        ownerImports.every(
+          (specifier) =>
+            specifier === '../orders/public-api' ||
+            specifier === '../payments/public-api',
+        ),
+      ).toBe(true);
+      expect(source).not.toMatch(
+        /\b(?:PAYMENT_PROVIDER|PAYMENT_TERMINAL_PROVIDER|TerminalPaymentService|RefundPaymentService|PaymentReverseSyncService|PaymentsModule|OrdersService)\b/,
+      );
+      expect(source).not.toContain('createJournalEntry(');
+    }
+
+    const executionComposers = composers
+      .filter(
+        ({ path }) => !path.startsWith(resolve(SOURCE_ROOT, 'accounting')),
+      )
       .map(({ path }) =>
         path.slice(SOURCE_ROOT.length + 1).replaceAll('\\', '/'),
       )
       .sort();
 
-    expect(composers).toEqual([
+    expect(executionComposers).toEqual([
       'orchestration/payment-checkout-attempt.service.ts',
       'orchestration/payment-reverse-sync-orchestration.service.ts',
       'orchestration/pos-card-payment-orchestration.module.ts',

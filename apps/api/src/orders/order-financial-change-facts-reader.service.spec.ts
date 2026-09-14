@@ -97,6 +97,32 @@ describe('OrderFinancialChangeFactsReaderService', () => {
     });
   });
 
+  it('batch reads immutable change facts by stable Order identity without a temporal window', async () => {
+    const findMany = jest.fn().mockResolvedValue([{ payload: persisted }]);
+    const service = new OrderFinancialChangeFactsReaderService({
+      opsEvent: { findMany },
+    } as never);
+
+    await expect(
+      service.readFactsByOrderStableIds([' order-stable-1 ', 'order-stable-1']),
+    ).resolves.toEqual([fact]);
+    expect(findMany).toHaveBeenCalledWith({
+      where: {
+        source: 'orders.financial',
+        eventName: {
+          in: ['order.financial_adjustment.v1', 'order.financial_reversal.v1'],
+        },
+        OR: [
+          {
+            payload: { path: ['orderStableId'], equals: 'order-stable-1' },
+          },
+        ],
+      },
+      select: { payload: true },
+      orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }],
+    });
+  });
+
   it('fails closed when persisted change evidence is malformed', async () => {
     const service = new OrderFinancialChangeFactsReaderService({
       opsEvent: {

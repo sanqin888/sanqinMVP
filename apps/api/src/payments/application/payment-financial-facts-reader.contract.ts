@@ -54,6 +54,10 @@ export interface PaymentFinancialFactsReaderPort {
   readFactByAttemptId(
     attemptId: string,
   ): Promise<PaymentFinancialFactV1 | null>;
+  /** Stable Order-scoped batch read for cross-owner financial reconciliation. */
+  readFactsByOrderStableIds(
+    orderStableIds: string[],
+  ): Promise<PaymentFinancialFactV1[]>;
   readFactsForRange(
     range: PaymentFinancialFactsRangeV1,
   ): Promise<PaymentFinancialFactV1[]>;

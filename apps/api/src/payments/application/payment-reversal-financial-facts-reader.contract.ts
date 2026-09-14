@@ -67,6 +67,10 @@ export interface PaymentReversalFinancialFactsReaderPort {
   readReversalFactByStableId(
     factStableId: string,
   ): Promise<PaymentReversalFinancialFactV1 | null>;
+  /** Stable Order-scoped batch read; matching must not depend on time proximity. */
+  readReversalFactsByOrderStableIds(
+    orderStableIds: string[],
+  ): Promise<PaymentReversalFinancialFactV1[]>;
   readReversalFactsForRange(
     range: PaymentReversalFinancialFactsRangeV1,
   ): Promise<PaymentReversalFinancialFactV1[]>;

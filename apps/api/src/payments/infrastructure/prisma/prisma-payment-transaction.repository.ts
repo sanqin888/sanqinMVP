@@ -329,6 +329,79 @@ export class PrismaPaymentTransactionRepository
     return this.toFinancialFact(row, context.identity, row.completedAt);
   }
 
+  async readFactsByOrderStableIds(
+    orderStableIds: string[],
+  ): Promise<PaymentFinancialFactV1[]> {
+    const stableIds = [
+      ...new Set(orderStableIds.map((value) => value.trim()).filter(Boolean)),
+    ].sort();
+    if (stableIds.length === 0) return [];
+
+    const checkoutRows = await this.prisma.paymentCheckoutAttempt.findMany({
+      where: {
+        orderStableId: { in: stableIds },
+        paymentTransactionId: { not: null },
+      },
+      select: {
+        paymentTransactionId: true,
+      },
+    });
+    const saleIds = checkoutRows.flatMap(({ paymentTransactionId }) =>
+      paymentTransactionId ? [paymentTransactionId] : [],
+    );
+    if (saleIds.length === 0) return [];
+
+    const saleRows = await this.prisma.paymentTransaction.findMany({
+      where: {
+        id: { in: saleIds },
+        operation: 'SALE',
+        status: 'SUCCEEDED',
+        completedAt: { not: null },
+      },
+    });
+    const providerPairs = saleRows.flatMap((row) =>
+      row.providerPaymentId
+        ? [{ provider: row.provider, providerPaymentId: row.providerPaymentId }]
+        : [],
+    );
+    const reversalRows =
+      providerPairs.length === 0
+        ? []
+        : await this.prisma.paymentTransaction.findMany({
+            where: {
+              operation: { in: ['REFUND', 'VOID'] },
+              status: 'SUCCEEDED',
+              completedAt: { not: null },
+              OR: providerPairs,
+            },
+          });
+    const rows = [...saleRows, ...reversalRows];
+    const contexts = await this.readFinancialContexts(rows);
+    const requested = new Set(stableIds);
+
+    return rows
+      .flatMap((row) => {
+        if (!row.completedAt) return [];
+        const context = contexts.get(row.id) ?? {
+          originalSale: null,
+          identity: null,
+        };
+        this.assertFinalTransactionIdentity(row, context);
+        if (
+          !context.identity ||
+          !requested.has(context.identity.orderStableId)
+        ) {
+          return [];
+        }
+        return [this.toFinancialFact(row, context.identity, row.completedAt)];
+      })
+      .sort(
+        (left, right) =>
+          left.occurredAt.getTime() - right.occurredAt.getTime() ||
+          left.factStableId.localeCompare(right.factStableId),
+      );
+  }
+
   async readFactsForRange(
     range: PaymentFinancialFactsRangeV1,
   ): Promise<PaymentFinancialFactV1[]> {
@@ -415,6 +488,71 @@ export class PrismaPaymentTransactionRepository
       event.occurredAt,
     );
     return fact?.factStableId === stableId ? fact : null;
+  }
+
+  async readReversalFactsByOrderStableIds(
+    orderStableIds: string[],
+  ): Promise<PaymentReversalFinancialFactV1[]> {
+    const stableIds = [
+      ...new Set(orderStableIds.map((value) => value.trim()).filter(Boolean)),
+    ].sort();
+    if (stableIds.length === 0) return [];
+
+    const paymentFacts = await this.readFactsByOrderStableIds(stableIds);
+    const requested = new Set(stableIds);
+    const originalSaleAttemptIds = [
+      ...new Set(
+        paymentFacts
+          .filter((fact) => fact.operation === 'SALE')
+          .map((fact) => fact.attemptId),
+      ),
+    ].sort();
+    const managedFacts: PaymentReversalFinancialFactV1[] = [];
+    for (const fact of paymentFacts) {
+      if (fact.operation !== 'REFUND' && fact.operation !== 'VOID') continue;
+      const reversal = await this.readReversalFactByStableId(
+        managedReversalFactStableId(fact.attemptId),
+      );
+      if (reversal?.orderStableId && requested.has(reversal.orderStableId)) {
+        managedFacts.push(reversal);
+      }
+    }
+
+    const webhookRows =
+      originalSaleAttemptIds.length === 0
+        ? []
+        : await this.prisma.opsEvent.findMany({
+            where: {
+              source: PAYMENT_PROVIDER_WEBHOOK_EVENT_SOURCE,
+              eventName: PAYMENT_REVERSE_SYNC_COMPLETED_EVENT,
+              OR: originalSaleAttemptIds.map((attemptId) => ({
+                payload: { path: ['attemptId'], equals: attemptId },
+              })),
+            },
+            select: { payload: true, occurredAt: true },
+            orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }],
+          });
+    const webhookFacts: PaymentReversalFinancialFactV1[] = [];
+    for (const event of webhookRows) {
+      const fact = await this.toWebhookReversalFact(
+        event.payload,
+        event.occurredAt,
+      );
+      if (!fact?.orderStableId || !requested.has(fact.orderStableId)) continue;
+      webhookFacts.push(fact);
+    }
+
+    const unique = new Map<string, PaymentReversalFinancialFactV1>();
+    for (const fact of [...managedFacts, ...webhookFacts]) {
+      unique.set(fact.factStableId, fact);
+    }
+    const facts = [...unique.values()].sort(
+      (left, right) =>
+        left.occurredAt.getTime() - right.occurredAt.getTime() ||
+        left.factStableId.localeCompare(right.factStableId),
+    );
+    this.assertReversalFactTotals(facts);
+    return facts;
   }
 
   async readReversalFactsForRange(
