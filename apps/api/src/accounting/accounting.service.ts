@@ -25,8 +25,14 @@ import {
   normalizeJournalUpdate,
   type AccountingJournalCreateInput,
   type AccountingJournalUpdateInput,
+  type NormalizedJournalCreate,
   type NormalizedJournalLine,
 } from './accounting-journal-policy';
+import {
+  hashCanonicalChangeJournalWrite,
+  normalizeCanonicalChangeJournalWriteAuthority,
+  type CanonicalChangeJournalWriteAuthorityV1,
+} from './accounting-canonical-change-write-authority';
 import {
   BRAND_STORE_CONFIG_READER,
   type BrandStoreConfigReaderPort,
@@ -650,10 +656,38 @@ export class AccountingService {
     input: AccountingJournalCreateInput,
     operatorUserStableId: string,
   ): Promise<AccountingJournalRow> {
+    return this.createJournalEntryInternal(input, operatorUserStableId, null);
+  }
+
+  async createCanonicalChangeJournalEntry(
+    input: AccountingJournalCreateInput,
+    operatorUserStableId: string,
+    authority: CanonicalChangeJournalWriteAuthorityV1,
+  ): Promise<AccountingJournalRow> {
+    const normalizedAuthority = this.applyJournalPolicy(() =>
+      normalizeCanonicalChangeJournalWriteAuthority(authority),
+    );
+    return this.createJournalEntryInternal(
+      input,
+      operatorUserStableId,
+      normalizedAuthority,
+    );
+  }
+
+  private async createJournalEntryInternal(
+    input: AccountingJournalCreateInput,
+    operatorUserStableId: string,
+    writeAuthority: CanonicalChangeJournalWriteAuthorityV1 | null,
+  ): Promise<AccountingJournalRow> {
     const normalized = this.applyJournalPolicy(() =>
       normalizeJournalCreate(input),
     );
-    const idempotencyHash = hashJournalCreatePayload(normalized);
+    if (writeAuthority) {
+      this.assertCanonicalChangeJournalAuthority(normalized, writeAuthority);
+    }
+    const idempotencyHash = writeAuthority
+      ? hashCanonicalChangeJournalWrite(normalized, writeAuthority)
+      : hashJournalCreatePayload(normalized);
     const operator = this.requireJournalValue(
       operatorUserStableId,
       'operatorUserStableId',
@@ -716,13 +750,19 @@ export class AccountingService {
           select: ACCOUNTING_JOURNAL_PUBLIC_SELECT,
         });
 
+        const afterJson = writeAuthority
+          ? ({
+              journal: created,
+              writeAuthority,
+            } as unknown as Prisma.InputJsonValue)
+          : (created as unknown as Prisma.InputJsonValue);
         await this.createAuditLog(
           {
             action: 'CREATE',
             entityType: 'ACCOUNTING_JOURNAL_ENTRY',
             entityId: created.entryStableId,
             operatorUserId: operator,
-            afterJson: created as unknown as Prisma.InputJsonValue,
+            afterJson,
           },
           tx,
         );
@@ -998,10 +1038,33 @@ export class AccountingService {
   ): AccountingJournalRow {
     if (existing.idempotencyHash !== requestedHash) {
       throw new ConflictException(
-        'idempotencyKey is already bound to different journal content',
+        'idempotencyKey is already bound to different journal content or write authority',
       );
     }
     return this.toJournalPublic(existing);
+  }
+
+  private assertCanonicalChangeJournalAuthority(
+    journal: NormalizedJournalCreate,
+    authority: CanonicalChangeJournalWriteAuthorityV1,
+  ): void {
+    const expectedIdempotencyKey = `${
+      authority.changeFactType === 'order.financial_reversal.v1'
+        ? 'canonical-reversal'
+        : 'canonical-adjustment'
+    }:${authority.changeFactStableId}:v1`;
+    if (
+      journal.kind !== AccountingJournalEntryKind.ADJUSTMENT ||
+      journal.source !== AccountingJournalSource.ORDER ||
+      journal.sourceFactType !== authority.changeFactType ||
+      journal.sourceFactStableId !== authority.changeFactStableId ||
+      journal.sourceFactVersion !== 1 ||
+      journal.idempotencyKey !== expectedIdempotencyKey
+    ) {
+      throw new BadRequestException(
+        'canonical change write authority does not match the Journal source identity',
+      );
+    }
   }
 
   private applyJournalPolicy<T>(work: () => T): T {
