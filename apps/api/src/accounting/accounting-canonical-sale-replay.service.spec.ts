@@ -225,7 +225,7 @@ describe('Accounting canonical SALE replay', () => {
   it('batch-applies exact Loyalty Store Balance principal to the replay preview', async () => {
     const { service, orders, loyalty } = makeService();
     orders.readReplayCandidatesForRange.mockResolvedValue([
-      eligibleCandidate('order_balance', { paymentTotalCents: 930 }),
+      eligibleCandidate('order_balance'),
     ]);
     loyalty.readFactsByOrderStableIds.mockResolvedValue([
       balanceFact('order_balance', 200),
