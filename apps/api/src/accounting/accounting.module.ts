@@ -12,9 +12,14 @@ import { AccountingProviderFinancialHistoryService } from './accounting-provider
 import { AccountingOperationsService } from './accounting-operations.service';
 import { AccountingCanonicalSalePostingService } from './accounting-canonical-sale-posting.service';
 import { AccountingCanonicalSaleReplayService } from './accounting-canonical-sale-replay.service';
+import { AccountingCanonicalChangePreviewService } from './accounting-canonical-change-preview.service';
 import { BrandStoreConfigModule } from '../store/public-api';
 import { LoyaltyFinancialFactsModule } from '../loyalty/public-api';
-import { OrderFinancialFactsModule } from '../orders/public-api';
+import {
+  OrderFinancialChangeFactsModule,
+  OrderFinancialFactsModule,
+} from '../orders/public-api';
+import { PaymentFinancialFactsModule } from '../payments/public-api';
 
 @Module({
   imports: [
@@ -24,12 +29,15 @@ import { OrderFinancialFactsModule } from '../orders/public-api';
     BrandStoreConfigModule,
     LoyaltyFinancialFactsModule,
     OrderFinancialFactsModule,
+    OrderFinancialChangeFactsModule,
+    PaymentFinancialFactsModule,
   ],
   controllers: [AccountingController],
   providers: [
     AccountingService,
     AccountingCanonicalSalePostingService,
     AccountingCanonicalSaleReplayService,
+    AccountingCanonicalChangePreviewService,
     AccountingOperationsService,
     AccountingProviderFinancialService,
     AccountingInboxAcquisitionService,

@@ -38,6 +38,7 @@ describe('AccountingService double-entry journal characterization', () => {
       },
       accountingJournalEntry: {
         findUnique: jest.fn(),
+        findMany: jest.fn(),
         create: jest.fn(),
         updateMany: jest.fn(),
         update: jest.fn(),
@@ -114,6 +115,61 @@ describe('AccountingService double-entry journal characterization', () => {
     id: 'journal-db-id',
     idempotencyHash: 'hash',
     ...journalRow(overrides),
+  });
+
+  it('reads canonical SALE Journal anchors by owner fact stable identity', async () => {
+    const { service, prisma } = makeService();
+    prisma.accountingJournalEntry.findMany.mockResolvedValue([
+      {
+        entryStableId: 'journal_sale_1',
+        sourceFactStableId: 'sale_fact_1',
+        idempotencyKey: 'canonical-sale:order_1:v1',
+      },
+    ]);
+
+    await expect(
+      service.readCanonicalSaleJournalAnchors([' sale_fact_1 ', 'sale_fact_1']),
+    ).resolves.toEqual([
+      {
+        entryStableId: 'journal_sale_1',
+        sourceFactStableId: 'sale_fact_1',
+        idempotencyKey: 'canonical-sale:order_1:v1',
+      },
+    ]);
+    expect(prisma.accountingJournalEntry.findMany).toHaveBeenCalledWith({
+      where: {
+        deletedAt: null,
+        source: AccountingJournalSource.ORDER,
+        sourceFactType: 'order.financial_sale.v1',
+        sourceFactStableId: { in: ['sale_fact_1'] },
+      },
+      select: {
+        entryStableId: true,
+        idempotencyKey: true,
+        sourceFactStableId: true,
+      },
+      orderBy: { entryStableId: 'asc' },
+    });
+  });
+
+  it('fails closed when one canonical SALE fact has duplicate Journal anchors', async () => {
+    const { service, prisma } = makeService();
+    prisma.accountingJournalEntry.findMany.mockResolvedValue([
+      {
+        entryStableId: 'journal_sale_1',
+        sourceFactStableId: 'sale_fact_1',
+        idempotencyKey: 'canonical-sale:order_1:v1',
+      },
+      {
+        entryStableId: 'journal_sale_duplicate',
+        sourceFactStableId: 'sale_fact_1',
+        idempotencyKey: 'manual-duplicate-anchor',
+      },
+    ]);
+
+    await expect(
+      service.readCanonicalSaleJournalAnchors(['sale_fact_1']),
+    ).rejects.toBeInstanceOf(ConflictException);
   });
 
   it('creates a balanced journal with stable operator identity and CREATE audit evidence', async () => {

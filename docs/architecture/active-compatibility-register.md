@@ -2,7 +2,7 @@
 
 Machine-readable source:
 `docs/architecture/active-compatibility-register.json`. Current modularization base:
-`origin/dev@72395609` (2026-09-13).
+`origin/dev@c95cc7d4` (2026-09-13).
 
 Operational fallback (retry, provider timeout recovery, email-to-SMS fallback, and
 safe default values unrelated to an old version) is not compatibility debt.
@@ -13,7 +13,6 @@ safe default values unrelated to an old version) is not compatibility debt.
 |---|---|---|---|---|
 | `payments.pos-card-legacy.v1` | active / pre-production | direct paid Order → Unified Payment Core + Terminal + finalize | POS ↔ Clover realtime/recovery complete; real-device acceptance; one settlement cycle reconciled; clean production stability window; legacy calls zero | Phase J cleanup after Terminal synchronization/cutover stability |
 | `payments.web-checkout-v1.v1` | guarded production | CheckoutIntent/Clover v1 Web path → Unified Payment Core + v3 truth | Test App/device acceptance complete; App installed/OAuth-authorized on operating production merchant; fresh production-merchant correlation audit passes; Web cutover accepted; one settlement cycle reconciled; old calls zero before compatibility deletion | Deferred until production-merchant Unified authorization and accepted cutover |
-| `accounting.order-revenue-journal-cutover.v1` | active / cutover-source | retired provisional `Order.totalCents → AccountingTransaction` → canonical owner facts → double-entry Journal | B2B source removes the old route/writer before canonical replay; the user has reviewed the post-B2A.1 preview body and confirmed the expected 1210 replay-ready records parsed correctly; first replay still requires the exact reviewed fresh planHash plus runtime zero-delta/balanced/block checks, then same-plan idempotent rerun + old endpoint unavailable before closure | Before the first canonical SALE Journal replay/backfill write is executed in production |
 
 The payment entries are no longer governed by a whole-context freeze. The POS
 Clover Terminal path is pre-production and may be structurally modularized before
@@ -40,22 +39,23 @@ traffic authority change. Traffic cutover, compatibility deletion and settlement
 exit criteria remain separately gated after that point. Non-payment bounded-context work
 may proceed without reopening this compatibility seam.
 
-`accounting.order-revenue-journal-cutover.v1` moved from shadow-only into B2B
-cutover-source state. B2A/B2A.1 established the canonical range plan and approved
-historical pricing scope without writing Journal rows. B2B removes the provisional
+`accounting.order-revenue-journal-cutover.v1` is closed. B2B removed the provisional
 `order-accrual` route/writer before exposing canonical replay, so simultaneous old/new
-Revenue posting is not an available source state. Replay requires the exact freshly
-recomputed plan hash, zero amount delta, balanced Journal drafts, mutation-only blocked
-rows with exact stable-ID acknowledgement, and zero retired `AUTO_ORDER*`
-AccountingTransaction rows. The post-B2A.1 preview body has been user-reviewed with the
-expected 1210 replay-ready records; the compatibility remains active until the first
-production replay plus same-plan idempotent rerun are verified. After any Journal write,
-recovery is forward/idempotent only and the legacy writer must not be restored.
+Revenue posting was never available in the deployed cutover state. Production verification
+on 2026-09-13 used a fresh plan for `2026-06-01` through `2026-09-13` exclusive at
+`4750_Yonge_Street`: 1215 candidates, 1210 READY, five `POST_SALE_MUTATION` blocks,
+zero parity delta, and balanced debit/credit of 2,163,201 cents. The first replay created
+exactly 1210 Journal entries / 3864 lines / 1210 audit rows, with zero mutation SALE rows
+and zero retired `AUTO_ORDER*` rows. A second identical replay left every count and amount
+unchanged, proving idempotent convergence. Canonical Journal is now the sole Revenue
+automation writer; recovery is forward/idempotent only, and the five blocked mutation
+Orders remain 5D-C scope.
 
 ## Closed history
 
 | compat_id | Closed by | Result |
 |---|---|---|
+| `accounting.order-revenue-journal-cutover.v1` | PR #2313 / `72395609`; production verification 2026-09-13 | Legacy `order-accrual` is unavailable and canonical Journal is the sole Revenue automation writer. Fresh production plan `83f242b85a4f85b48db9803454ba9a14b023c2f574678806e03e71983c86c258` yielded 1215 candidates / 1210 READY / five mutation-only blocks with zero parity delta and balanced 2,163,201-cent debit/credit. First replay persisted 1210 Journal entries / 3864 lines / 1210 audit rows with 1210 distinct source facts/idempotency keys, zero mutation SALE rows and zero retired `AUTO_ORDER*` rows; an identical second replay left all counts and amounts unchanged. The five mutations remain 5D-C scope. |
 | `pos-connectivity.read-model-shadow.v1` | Phase 7 Slice 5B local source on `refactor/phase7-slice5b-pos-connectivity-cleanup` (PR/CI pending review authorization) | Pre-cutover evidence is complete: PR #2254 / `8abf3162` established ONLINE shadow parity and projection lifecycle, PR #2256 / `ee727ef2` hardened projection authority and finalized UNKNOWN as unavailable, and production logs on 2026-09-09 showed `pos_connectivity_unknown` at 16:43:17 followed by Uber store-status HTTP 200 / `SUCCEEDED`, disabled POS heartbeat attempts rejected with HTTP 401, recovery store-status HTTP 200 / `SUCCEEDED`, and `pos_connectivity_restored` / `ONLINE` at 16:46:18 with zero projection/shadow failure logs. Slice 5B source removes Uber direct `PosDevice` + `common/pos-connectivity` reads and shadow logging, makes `PosConnectivityReadModel` authoritative through a required External Channels query port, and moves the connectivity helper into POS ownership. Final merged/CI evidence remains pending. |
 | `brand-store.default-store-identity.v1` | PR #2119 / `7110dd46`, PR #2122 / `53688897`, PR #2124 / `0917f66c`; PR #2272 / `fb6f3bb8` | Explicit `storeStableId` owns Brand/Store, Admin, POS/Orders and Uber SanQ-store context; internal Store DB IDs and provider Uber Store IDs remain distinct. Phase 2 removed the eight Uber Prisma `storeId` defaults and production verification proved new canonical writes. Phase 8 Slice 8.5 removed the remaining Test Store provider-ID OpsTicket read/retry/dedup aliases and the menu-availability provider-ID alias; PR/merged-head CI passed and post-deploy Operations, pause/resume and item availability verification remained canonical with no new provider-UUID-scoped ticket. It includes no data-cleanup migration: all current Uber records remain test data and are retained until Uber Production Verification passes, then the complete test dataset will be removed through a separately reviewed cleanup. Provider wire compatibility remains separately protected. |
 | `web.api-envelope-direct-payload.v1` | Checkout canonical Web API transport contraction | Checkout OTP request/verify, membership summary, address list/create, and coupon list now use `apiFetch`; all 6 Checkout browser direct fetches, page-local envelope/direct-payload readers, and the Checkout architecture allowance were removed |

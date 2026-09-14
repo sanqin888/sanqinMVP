@@ -20,30 +20,46 @@ describe('Phase 9 canonical financial facts boundary', () => {
     const ordersPublic = file(ORDERS_ROOT, 'public-api.ts')?.source ?? '';
     const loyaltyPublic = file(LOYALTY_ROOT, 'public-api.ts')?.source ?? '';
     const paymentsPublic = file(PAYMENTS_ROOT, 'public-api.ts')?.source ?? '';
+    const paymentsFactsModule =
+      file(PAYMENTS_ROOT, 'payment-financial-facts.module.ts')?.source ?? '';
 
     expect(ordersPublic).toContain('ORDER_FINANCIAL_FACTS_READER');
     expect(ordersPublic).toContain('OrderFinancialFactsModule');
     expect(ordersPublic).toContain('OrderFinancialReplayCandidateV1');
+    expect(ordersPublic).toContain('ORDER_FINANCIAL_CHANGE_FACTS_READER');
+    expect(ordersPublic).toContain('OrderFinancialChangeFactsModule');
     expect(loyaltyPublic).toContain('LOYALTY_FINANCIAL_FACTS_READER');
     expect(loyaltyPublic).toContain('LoyaltyFinancialFactsModule');
     expect(paymentsPublic).toContain('PAYMENT_FINANCIAL_FACTS_READER');
+    expect(paymentsPublic).toContain('PAYMENT_REVERSAL_FINANCIAL_FACTS_READER');
     expect(paymentsPublic).toContain('PaymentFinancialFactsModule');
 
     expect(paymentsPublic).not.toContain('PrismaPaymentFinancialFactsReader');
     expect(paymentsPublic).not.toContain('PaymentsModule');
+    expect(paymentsFactsModule).toContain('PAYMENT_TRANSACTION_REPOSITORY');
+    expect(paymentsFactsModule).toContain('PaymentsModule');
+    expect(paymentsFactsModule).not.toContain('../prisma/prisma.module');
+    expect(paymentsFactsModule).not.toContain(
+      'PrismaPaymentTransactionRepository',
+    );
   });
 
   it('keeps canonical financial fact contracts framework-, Prisma-, and provider-implementation-neutral', () => {
     const contracts = [
       file(ORDERS_ROOT, 'order-financial-facts-reader.contract.ts'),
+      file(ORDERS_ROOT, 'order-financial-change-facts-reader.contract.ts'),
       file(LOYALTY_ROOT, 'loyalty-financial-facts-reader.contract.ts'),
       file(
         resolve(PAYMENTS_ROOT, 'application'),
         'payment-financial-facts-reader.contract.ts',
       ),
+      file(
+        resolve(PAYMENTS_ROOT, 'application'),
+        'payment-reversal-financial-facts-reader.contract.ts',
+      ),
     ];
 
-    expect(contracts).toHaveLength(3);
+    expect(contracts).toHaveLength(5);
     for (const contract of contracts) {
       expect(contract).toBeDefined();
       if (!contract) continue;
@@ -79,10 +95,32 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(lifecycle).not.toContain('order.financial_sale.v1');
   });
 
+  it('freezes post-sale Orders changes as immutable owner facts before Accounting consumes them', () => {
+    const changeFact =
+      file(ORDERS_ROOT, 'order-financial-change-fact.ts')?.source ?? '';
+    const ordersService = file(ORDERS_ROOT, 'orders.service.ts')?.source ?? '';
+    const externalCancellation =
+      file(ORDERS_ROOT, 'order-external-cancellation.service.ts')?.source ?? '';
+
+    expect(changeFact).toContain("'order.financial_adjustment.v1'");
+    expect(changeFact).toContain("'order.financial_reversal.v1'");
+    expect(changeFact).toContain('appendOrderFinancialChangeFact');
+    expect(ordersService).toContain('buildOrderFinancialAdjustmentFact');
+    expect(ordersService).toContain("action: 'FULL_REFUND'");
+    expect(ordersService).toContain('appendOrderFinancialChangeFact');
+    expect(externalCancellation).toContain("action: 'EXTERNAL_CANCELLATION'");
+    expect(externalCancellation).toContain(
+      "occurrenceEvidence: 'PROVIDER_EVENT'",
+    );
+  });
+
   it('keeps owner fact readers inside their own persistence boundaries', () => {
     const orderReader =
       file(ORDERS_ROOT, 'order-financial-facts-reader.service.ts')?.source ??
       '';
+    const orderChangeReader =
+      file(ORDERS_ROOT, 'order-financial-change-facts-reader.service.ts')
+        ?.source ?? '';
     const loyaltyReader =
       file(LOYALTY_ROOT, 'loyalty-financial-facts-reader.service.ts')?.source ??
       '';
@@ -97,6 +135,9 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(orderReader).not.toContain("from '../menu/catalog-admin");
     expect(orderReader).not.toContain("from '../loyalty");
     expect(orderReader).not.toContain("from '../payments");
+    expect(orderChangeReader).toContain("from './orders-prisma'");
+    expect(orderChangeReader).not.toContain("from '../loyalty");
+    expect(orderChangeReader).not.toContain("from '../payments");
     expect(loyaltyReader).toContain("from './loyalty-prisma'");
     expect(loyaltyReader).not.toContain("from '../orders");
     expect(loyaltyReader).not.toContain("from '../payments");
@@ -111,6 +152,9 @@ describe('Phase 9 canonical financial facts boundary', () => {
         ?.source ?? '';
     const replayService =
       file(ACCOUNTING_ROOT, 'accounting-canonical-sale-replay.service.ts')
+        ?.source ?? '';
+    const changePreviewService =
+      file(ACCOUNTING_ROOT, 'accounting-canonical-change-preview.service.ts')
         ?.source ?? '';
     const accountingService =
       file(ACCOUNTING_ROOT, 'accounting.service.ts')?.source ?? '';
@@ -130,14 +174,36 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(replayService).toContain('executeRange(');
     expect(replayService).toContain('expectedPlanHash');
     expect(replayService).toContain('assertNoLegacyOrderRevenueAccrual');
+    expect(changePreviewService).toContain("from '../orders/public-api'");
+    expect(changePreviewService).toContain("from '../payments/public-api'");
+    expect(changePreviewService).toContain("from '../loyalty/public-api'");
+    expect(changePreviewService).toContain("from '../store/public-api'");
+    expect(changePreviewService).not.toContain('../prisma/');
+    expect(changePreviewService).not.toContain('createJournalEntry');
+    expect(changePreviewService).toContain('readFactsByOrderStableIds');
+    expect(changePreviewService).toContain('readReversalFactsByOrderStableIds');
+    expect(changePreviewService).toContain(
+      'buildCanonicalChangeJournalPreview',
+    );
     expect(accountingController).toContain(
       "@Post('journal/canonical-sales/replay')",
+    );
+    expect(accountingController).toContain(
+      "@Get('journal/canonical-changes/shadow-preview')",
+    );
+    expect(accountingController).not.toContain(
+      "@Post('journal/canonical-changes",
     );
     expect(accountingController).not.toContain('automation/order-accrual');
     expect(accountingService).not.toContain('autoAccrueOrderRevenue');
     expect(accountingModule).toContain('OrderFinancialFactsModule');
+    expect(accountingModule).toContain('OrderFinancialChangeFactsModule');
+    expect(accountingModule).toContain('PaymentFinancialFactsModule');
     expect(accountingModule).toContain('LoyaltyFinancialFactsModule');
     expect(accountingModule).toContain('AccountingCanonicalSaleReplayService');
+    expect(accountingModule).toContain(
+      'AccountingCanonicalChangePreviewService',
+    );
   });
 
   it('prevents Accounting from consuming owner internals before or after the later posting cutover', () => {

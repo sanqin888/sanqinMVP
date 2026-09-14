@@ -101,6 +101,8 @@ describe('PaymentProviderWebhookController', () => {
       expect.objectContaining({
         notification,
         processingResult: 'UNKNOWN_PAYMENT',
+        externalReversal: 'NONE',
+        previousRefundedAmountCents: null,
       }),
     );
   });

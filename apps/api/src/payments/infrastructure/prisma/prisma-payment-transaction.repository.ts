@@ -11,6 +11,16 @@ import type {
   PaymentFinancialFactsRangeV1,
   PaymentFinancialFactsReaderPort,
 } from '../../application/payment-financial-facts-reader.contract';
+import type {
+  PaymentReversalFinancialFactV1,
+  PaymentReversalFinancialFactsRangeV1,
+  PaymentReversalFinancialFactsReaderPort,
+} from '../../application/payment-reversal-financial-facts-reader.contract';
+import {
+  PAYMENT_PROVIDER_WEBHOOK_EVENT_SOURCE,
+  PAYMENT_REVERSE_SYNC_COMPLETED_EVENT,
+  paymentWebhookEventIdempotencyKey,
+} from '../../application/payment-webhook-event.repository';
 import {
   PaymentTransactionUniquenessError,
   type PaymentTransactionRepository,
@@ -65,6 +75,148 @@ type PaymentCheckoutIdentity = {
   storeId: string;
 };
 
+type PaymentFinancialContext = {
+  originalSale: PrismaPaymentTransactionRecord | null;
+  identity: PaymentCheckoutIdentity | null;
+};
+
+type PaymentWebhookReversalPayload = {
+  providerEventId: string;
+  provider: PaymentReversalFinancialFactV1['provider'];
+  providerPaymentId: string;
+  externalReversal: PaymentReversalFinancialFactV1['kind'] | 'NONE';
+  attemptId: string;
+  paymentSource: PaymentReversalFinancialFactV1['originalPaymentSource'];
+  paymentMethod: PaymentReversalFinancialFactV1['paymentMethod'];
+  currency: string;
+  externalPaymentId: string | null;
+  previousRefundedAmountCents: number;
+  refundedAmountCents: number;
+  refundedDeltaCents: number;
+};
+
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+
+const nonEmptyString = (value: unknown): string | null => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+};
+
+const nonNegativeInteger = (value: unknown): number | null =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : null;
+
+const isReversalProvider = (
+  value: unknown,
+): value is PaymentReversalFinancialFactV1['provider'] =>
+  value === 'CLOVER' || value === 'MANUAL';
+
+const isReversalSource = (
+  value: unknown,
+): value is PaymentReversalFinancialFactV1['originalPaymentSource'] =>
+  value === 'POS_TERMINAL' ||
+  value === 'WEB_ECOMMERCE' ||
+  value === 'ADMIN' ||
+  value === 'PROVIDER_WEBHOOK' ||
+  value === 'RECONCILIATION';
+
+const isReversalMethod = (
+  value: unknown,
+): value is PaymentReversalFinancialFactV1['paymentMethod'] =>
+  value === 'CASH' ||
+  value === 'CARD' ||
+  value === 'WECHAT_ALIPAY' ||
+  value === 'STORE_BALANCE' ||
+  value === 'UBEREATS';
+
+const isReversalKind = (
+  value: unknown,
+): value is PaymentReversalFinancialFactV1['kind'] =>
+  value === 'PARTIAL_REFUND' || value === 'FULL_REFUND' || value === 'VOID';
+
+const managedReversalFactStableId = (attemptId: string): string =>
+  `payment-reversal:managed:${attemptId}:v1`;
+const webhookReversalFactStableId = (eventId: string): string =>
+  `payment-reversal:webhook:${eventId}:v1`;
+
+const managedAttemptIdFromFactStableId = (
+  factStableId: string,
+): string | null => {
+  const prefix = 'payment-reversal:managed:';
+  const suffix = ':v1';
+  if (!factStableId.startsWith(prefix) || !factStableId.endsWith(suffix)) {
+    return null;
+  }
+  return nonEmptyString(factStableId.slice(prefix.length, -suffix.length));
+};
+
+const webhookEventIdFromFactStableId = (
+  factStableId: string,
+): string | null => {
+  const prefix = 'payment-reversal:webhook:';
+  const suffix = ':v1';
+  if (!factStableId.startsWith(prefix) || !factStableId.endsWith(suffix)) {
+    return null;
+  }
+  return nonEmptyString(factStableId.slice(prefix.length, -suffix.length));
+};
+
+const parseWebhookReversalPayload = (
+  payload: unknown,
+): PaymentWebhookReversalPayload | null => {
+  const value = asRecord(payload);
+  if (!value) return null;
+  const providerEventId = nonEmptyString(value.providerEventId);
+  const providerPaymentId = nonEmptyString(value.providerPaymentId);
+  const attemptId = nonEmptyString(value.attemptId);
+  const currency = nonEmptyString(value.currency);
+  const previousRefundedAmountCents = nonNegativeInteger(
+    value.previousRefundedAmountCents,
+  );
+  const refundedAmountCents = nonNegativeInteger(value.refundedAmountCents);
+  const refundedDeltaCents = nonNegativeInteger(value.refundedDeltaCents);
+  if (
+    !providerEventId ||
+    !isReversalProvider(value.provider) ||
+    !providerPaymentId ||
+    (!isReversalKind(value.externalReversal) &&
+      value.externalReversal !== 'NONE') ||
+    !attemptId ||
+    !isReversalSource(value.paymentSource) ||
+    !isReversalMethod(value.paymentMethod) ||
+    !currency ||
+    previousRefundedAmountCents === null ||
+    refundedAmountCents === null ||
+    refundedDeltaCents === null ||
+    refundedAmountCents < previousRefundedAmountCents ||
+    refundedAmountCents - previousRefundedAmountCents !== refundedDeltaCents
+  ) {
+    return null;
+  }
+  return {
+    providerEventId,
+    provider: value.provider,
+    providerPaymentId,
+    externalReversal: value.externalReversal,
+    attemptId,
+    paymentSource: value.paymentSource,
+    paymentMethod: value.paymentMethod,
+    currency: currency.toUpperCase(),
+    externalPaymentId:
+      value.externalPaymentId === null
+        ? null
+        : nonEmptyString(value.externalPaymentId),
+    previousRefundedAmountCents,
+    refundedAmountCents,
+    refundedDeltaCents,
+  };
+};
+
 const uniqueField = (
   error: unknown,
 ): 'attemptId' | 'idempotencyKey' | 'externalPaymentId' | null => {
@@ -101,7 +253,8 @@ export class PrismaPaymentTransactionRepository
     PaymentTransactionRepository,
     PaymentProviderTransactionLookup,
     PaymentReverseSyncPersistence,
-    PaymentFinancialFactsReaderPort
+    PaymentFinancialFactsReaderPort,
+    PaymentReversalFinancialFactsReaderPort
 {
   constructor(private readonly prisma: PrismaService) {}
 
@@ -167,8 +320,86 @@ export class PrismaPaymentTransactionRepository
     });
     if (!row?.completedAt) return null;
 
-    const identity = await this.readFinancialCheckoutIdentity(row.id);
-    return this.toFinancialFact(row, identity, row.completedAt);
+    const contexts = await this.readFinancialContexts([row]);
+    const context = contexts.get(row.id) ?? {
+      originalSale: null,
+      identity: null,
+    };
+    this.assertFinalTransactionIdentity(row, context);
+    return this.toFinancialFact(row, context.identity, row.completedAt);
+  }
+
+  async readFactsByOrderStableIds(
+    orderStableIds: string[],
+  ): Promise<PaymentFinancialFactV1[]> {
+    const stableIds = [
+      ...new Set(orderStableIds.map((value) => value.trim()).filter(Boolean)),
+    ].sort();
+    if (stableIds.length === 0) return [];
+
+    const checkoutRows = await this.prisma.paymentCheckoutAttempt.findMany({
+      where: {
+        orderStableId: { in: stableIds },
+        paymentTransactionId: { not: null },
+      },
+      select: {
+        paymentTransactionId: true,
+      },
+    });
+    const saleIds = checkoutRows.flatMap(({ paymentTransactionId }) =>
+      paymentTransactionId ? [paymentTransactionId] : [],
+    );
+    if (saleIds.length === 0) return [];
+
+    const saleRows = await this.prisma.paymentTransaction.findMany({
+      where: {
+        id: { in: saleIds },
+        operation: 'SALE',
+        status: 'SUCCEEDED',
+        completedAt: { not: null },
+      },
+    });
+    const providerPairs = saleRows.flatMap((row) =>
+      row.providerPaymentId
+        ? [{ provider: row.provider, providerPaymentId: row.providerPaymentId }]
+        : [],
+    );
+    const reversalRows =
+      providerPairs.length === 0
+        ? []
+        : await this.prisma.paymentTransaction.findMany({
+            where: {
+              operation: { in: ['REFUND', 'VOID'] },
+              status: 'SUCCEEDED',
+              completedAt: { not: null },
+              OR: providerPairs,
+            },
+          });
+    const rows = [...saleRows, ...reversalRows];
+    const contexts = await this.readFinancialContexts(rows);
+    const requested = new Set(stableIds);
+
+    return rows
+      .flatMap((row) => {
+        if (!row.completedAt) return [];
+        const context = contexts.get(row.id) ?? {
+          originalSale: null,
+          identity: null,
+        };
+        this.assertFinalTransactionIdentity(row, context);
+        if (
+          !context.identity ||
+          !requested.has(context.identity.orderStableId)
+        ) {
+          return [];
+        }
+        return [this.toFinancialFact(row, context.identity, row.completedAt)];
+      })
+      .sort(
+        (left, right) =>
+          left.occurredAt.getTime() - right.occurredAt.getTime() ||
+          left.factStableId.localeCompare(right.factStableId),
+      );
   }
 
   async readFactsForRange(
@@ -179,21 +410,6 @@ export class PrismaPaymentTransactionRepository
     }
 
     const storeStableId = range.storeStableId?.trim();
-    let restrictedPaymentIds: string[] | undefined;
-    if (storeStableId) {
-      const checkoutRows = await this.prisma.paymentCheckoutAttempt.findMany({
-        where: {
-          storeId: storeStableId,
-          paymentTransactionId: { not: null },
-        },
-        select: { paymentTransactionId: true },
-      });
-      restrictedPaymentIds = checkoutRows.flatMap((row) =>
-        row.paymentTransactionId ? [row.paymentTransactionId] : [],
-      );
-      if (restrictedPaymentIds.length === 0) return [];
-    }
-
     const rows = await this.prisma.paymentTransaction.findMany({
       where: {
         status: 'SUCCEEDED',
@@ -202,25 +418,200 @@ export class PrismaPaymentTransactionRepository
           gte: range.fromInclusive,
           lt: range.toExclusive,
         },
-        ...(restrictedPaymentIds ? { id: { in: restrictedPaymentIds } } : {}),
       },
       orderBy: [{ completedAt: 'asc' }, { attemptId: 'asc' }],
     });
-    const identities = await this.readFinancialCheckoutIdentities(
-      rows.map((row) => row.id),
-    );
+    const contexts = await this.readFinancialContexts(rows);
 
-    return rows.flatMap((row) =>
-      row.completedAt
-        ? [
-            this.toFinancialFact(
-              row,
-              identities.get(row.id) ?? null,
-              row.completedAt,
-            ),
-          ]
-        : [],
+    return rows.flatMap((row) => {
+      if (!row.completedAt) return [];
+      const context = contexts.get(row.id) ?? {
+        originalSale: null,
+        identity: null,
+      };
+      this.assertFinalTransactionIdentity(row, context);
+      if (storeStableId && context.identity?.storeId !== storeStableId) {
+        return [];
+      }
+      return [this.toFinancialFact(row, context.identity, row.completedAt)];
+    });
+  }
+
+  async readReversalFactByStableId(
+    factStableId: string,
+  ): Promise<PaymentReversalFinancialFactV1 | null> {
+    const stableId = factStableId.trim();
+    if (!stableId) return null;
+
+    const managedAttemptId = managedAttemptIdFromFactStableId(stableId);
+    if (managedAttemptId) {
+      const row = await this.prisma.paymentTransaction.findFirst({
+        where: {
+          attemptId: managedAttemptId,
+          operation: { in: ['REFUND', 'VOID'] },
+          status: 'SUCCEEDED',
+          completedAt: { not: null },
+        },
+      });
+      if (!row) return null;
+      const contexts = await this.readFinancialContexts([row]);
+      return this.toManagedReversalFact(
+        row,
+        contexts.get(row.id) ?? { originalSale: null, identity: null },
+      );
+    }
+
+    const providerEventId = webhookEventIdFromFactStableId(stableId);
+    if (!providerEventId) return null;
+    const event = await this.prisma.opsEvent.findUnique({
+      where: {
+        idempotencyKey: paymentWebhookEventIdempotencyKey(providerEventId),
+      },
+      select: {
+        source: true,
+        eventName: true,
+        payload: true,
+        occurredAt: true,
+      },
+    });
+    if (!event) return null;
+    if (
+      event.source !== PAYMENT_PROVIDER_WEBHOOK_EVENT_SOURCE ||
+      event.eventName !== PAYMENT_REVERSE_SYNC_COMPLETED_EVENT
+    ) {
+      throw new Error(
+        `Payment webhook reversal fact identity points to the wrong event: ${providerEventId}`,
+      );
+    }
+    const fact = await this.toWebhookReversalFact(
+      event.payload,
+      event.occurredAt,
     );
+    return fact?.factStableId === stableId ? fact : null;
+  }
+
+  async readReversalFactsByOrderStableIds(
+    orderStableIds: string[],
+  ): Promise<PaymentReversalFinancialFactV1[]> {
+    const stableIds = [
+      ...new Set(orderStableIds.map((value) => value.trim()).filter(Boolean)),
+    ].sort();
+    if (stableIds.length === 0) return [];
+
+    const paymentFacts = await this.readFactsByOrderStableIds(stableIds);
+    const requested = new Set(stableIds);
+    const originalSaleAttemptIds = [
+      ...new Set(
+        paymentFacts
+          .filter((fact) => fact.operation === 'SALE')
+          .map((fact) => fact.attemptId),
+      ),
+    ].sort();
+    const managedFacts: PaymentReversalFinancialFactV1[] = [];
+    for (const fact of paymentFacts) {
+      if (fact.operation !== 'REFUND' && fact.operation !== 'VOID') continue;
+      const reversal = await this.readReversalFactByStableId(
+        managedReversalFactStableId(fact.attemptId),
+      );
+      if (reversal?.orderStableId && requested.has(reversal.orderStableId)) {
+        managedFacts.push(reversal);
+      }
+    }
+
+    const webhookRows =
+      originalSaleAttemptIds.length === 0
+        ? []
+        : await this.prisma.opsEvent.findMany({
+            where: {
+              source: PAYMENT_PROVIDER_WEBHOOK_EVENT_SOURCE,
+              eventName: PAYMENT_REVERSE_SYNC_COMPLETED_EVENT,
+              OR: originalSaleAttemptIds.map((attemptId) => ({
+                payload: { path: ['attemptId'], equals: attemptId },
+              })),
+            },
+            select: { payload: true, occurredAt: true },
+            orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }],
+          });
+    const webhookFacts: PaymentReversalFinancialFactV1[] = [];
+    for (const event of webhookRows) {
+      const fact = await this.toWebhookReversalFact(
+        event.payload,
+        event.occurredAt,
+      );
+      if (!fact?.orderStableId || !requested.has(fact.orderStableId)) continue;
+      webhookFacts.push(fact);
+    }
+
+    const unique = new Map<string, PaymentReversalFinancialFactV1>();
+    for (const fact of [...managedFacts, ...webhookFacts]) {
+      unique.set(fact.factStableId, fact);
+    }
+    const facts = [...unique.values()].sort(
+      (left, right) =>
+        left.occurredAt.getTime() - right.occurredAt.getTime() ||
+        left.factStableId.localeCompare(right.factStableId),
+    );
+    this.assertReversalFactTotals(facts);
+    return facts;
+  }
+
+  async readReversalFactsForRange(
+    range: PaymentReversalFinancialFactsRangeV1,
+  ): Promise<PaymentReversalFinancialFactV1[]> {
+    if (range.toExclusive <= range.fromInclusive) {
+      throw new Error('toExclusive must be after fromInclusive');
+    }
+    const storeStableId = range.storeStableId?.trim();
+
+    const managedRows = await this.prisma.paymentTransaction.findMany({
+      where: {
+        operation: { in: ['REFUND', 'VOID'] },
+        status: 'SUCCEEDED',
+        completedAt: {
+          not: null,
+          gte: range.fromInclusive,
+          lt: range.toExclusive,
+        },
+      },
+      orderBy: [{ completedAt: 'asc' }, { attemptId: 'asc' }],
+    });
+    const managedContexts = await this.readFinancialContexts(managedRows);
+    const managedFacts = managedRows.flatMap((row) => {
+      const fact = this.toManagedReversalFact(
+        row,
+        managedContexts.get(row.id) ?? { originalSale: null, identity: null },
+      );
+      if (storeStableId && fact.storeStableId !== storeStableId) return [];
+      return [fact];
+    });
+
+    const webhookRows = await this.prisma.opsEvent.findMany({
+      where: {
+        source: PAYMENT_PROVIDER_WEBHOOK_EVENT_SOURCE,
+        eventName: PAYMENT_REVERSE_SYNC_COMPLETED_EVENT,
+        occurredAt: { gte: range.fromInclusive, lt: range.toExclusive },
+      },
+      select: { payload: true, occurredAt: true },
+      orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }],
+    });
+    const webhookFacts: PaymentReversalFinancialFactV1[] = [];
+    for (const event of webhookRows) {
+      const fact = await this.toWebhookReversalFact(
+        event.payload,
+        event.occurredAt,
+      );
+      if (!fact) continue;
+      if (storeStableId && fact.storeStableId !== storeStableId) continue;
+      webhookFacts.push(fact);
+    }
+
+    const facts = [...managedFacts, ...webhookFacts].sort(
+      (left, right) =>
+        left.occurredAt.getTime() - right.occurredAt.getTime() ||
+        left.factStableId.localeCompare(right.factStableId),
+    );
+    this.assertReversalFactTotals(facts);
+    return facts;
   }
 
   async create(transaction: PaymentTransaction): Promise<PaymentTransaction> {
@@ -338,42 +729,328 @@ export class PrismaPaymentTransactionRepository
     }
   }
 
-  private async readFinancialCheckoutIdentity(
-    paymentTransactionId: string,
-  ): Promise<PaymentCheckoutIdentity | null> {
-    return this.prisma.paymentCheckoutAttempt.findUnique({
-      where: { paymentTransactionId },
-      select: { orderStableId: true, storeId: true },
-    });
+  private async readFinancialContexts(
+    rows: PrismaPaymentTransactionRecord[],
+  ): Promise<Map<string, PaymentFinancialContext>> {
+    if (rows.length === 0) return new Map();
+
+    const reversalKeys = new Map<
+      string,
+      {
+        provider: PrismaPaymentTransactionRecord['provider'];
+        providerPaymentId: string;
+      }
+    >();
+    for (const row of rows) {
+      if (row.operation === 'SALE' || !row.providerPaymentId) continue;
+      reversalKeys.set(
+        this.providerPaymentKey(row.provider, row.providerPaymentId),
+        { provider: row.provider, providerPaymentId: row.providerPaymentId },
+      );
+    }
+
+    const correlatedSales =
+      reversalKeys.size === 0
+        ? []
+        : await this.prisma.paymentTransaction.findMany({
+            where: {
+              operation: 'SALE',
+              OR: [...reversalKeys.values()].map((key) => ({
+                provider: key.provider,
+                providerPaymentId: key.providerPaymentId,
+              })),
+            },
+          });
+    const saleByProviderPayment = new Map<
+      string,
+      PrismaPaymentTransactionRecord
+    >();
+    for (const sale of correlatedSales) {
+      if (!sale.providerPaymentId) continue;
+      const key = this.providerPaymentKey(
+        sale.provider,
+        sale.providerPaymentId,
+      );
+      if (saleByProviderPayment.has(key)) {
+        throw new PaymentProviderTransactionIdentityConflictError(
+          parsePaymentProviderName(sale.provider),
+          sale.providerPaymentId,
+        );
+      }
+      saleByProviderPayment.set(key, sale);
+    }
+
+    const originalSaleByTransactionId = new Map<
+      string,
+      PrismaPaymentTransactionRecord | null
+    >();
+    const originalSaleIds = new Set<string>();
+    for (const row of rows) {
+      const originalSale =
+        row.operation === 'SALE'
+          ? row
+          : row.providerPaymentId
+            ? (saleByProviderPayment.get(
+                this.providerPaymentKey(row.provider, row.providerPaymentId),
+              ) ?? null)
+            : null;
+      originalSaleByTransactionId.set(row.id, originalSale);
+      if (originalSale) originalSaleIds.add(originalSale.id);
+    }
+
+    const checkoutRows =
+      originalSaleIds.size === 0
+        ? []
+        : await this.prisma.paymentCheckoutAttempt.findMany({
+            where: { paymentTransactionId: { in: [...originalSaleIds] } },
+            select: {
+              paymentTransactionId: true,
+              orderStableId: true,
+              storeId: true,
+            },
+          });
+    const identityBySaleId = new Map<string, PaymentCheckoutIdentity>();
+    for (const checkout of checkoutRows) {
+      if (!checkout.paymentTransactionId) continue;
+      identityBySaleId.set(checkout.paymentTransactionId, {
+        orderStableId: checkout.orderStableId,
+        storeId: checkout.storeId,
+      });
+    }
+
+    return new Map(
+      rows.map((row) => {
+        const originalSale = originalSaleByTransactionId.get(row.id) ?? null;
+        return [
+          row.id,
+          {
+            originalSale,
+            identity: originalSale
+              ? (identityBySaleId.get(originalSale.id) ?? null)
+              : null,
+          },
+        ] as const;
+      }),
+    );
   }
 
-  private async readFinancialCheckoutIdentities(
-    paymentTransactionIds: string[],
-  ): Promise<Map<string, PaymentCheckoutIdentity>> {
-    if (paymentTransactionIds.length === 0) return new Map();
-    const rows = await this.prisma.paymentCheckoutAttempt.findMany({
-      where: { paymentTransactionId: { in: paymentTransactionIds } },
-      select: {
-        paymentTransactionId: true,
-        orderStableId: true,
-        storeId: true,
-      },
+  private providerPaymentKey(
+    provider: PrismaPaymentTransactionRecord['provider'],
+    providerPaymentId: string,
+  ): string {
+    return `${provider}:${providerPaymentId}`;
+  }
+
+  private assertFinalTransactionIdentity(
+    row: PrismaPaymentTransactionRecord,
+    context: PaymentFinancialContext,
+  ): void {
+    if (
+      row.operation !== 'SALE' &&
+      (!context.originalSale || !context.identity)
+    ) {
+      throw new Error(
+        `Final Payment reversal cannot resolve stable checkout identity: ${row.attemptId}`,
+      );
+    }
+  }
+
+  private toManagedReversalFact(
+    row: PrismaPaymentTransactionRecord,
+    context: PaymentFinancialContext,
+  ): PaymentReversalFinancialFactV1 {
+    const originalSale = context.originalSale;
+    const identity = context.identity;
+    if (
+      (row.operation !== 'REFUND' && row.operation !== 'VOID') ||
+      row.status !== 'SUCCEEDED' ||
+      !row.completedAt ||
+      !row.providerPaymentId ||
+      !originalSale ||
+      originalSale.operation !== 'SALE' ||
+      originalSale.status !== 'SUCCEEDED' ||
+      originalSale.provider !== row.provider ||
+      originalSale.providerPaymentId !== row.providerPaymentId ||
+      originalSale.currency !== row.currency ||
+      originalSale.paymentMethod !== row.paymentMethod ||
+      row.refundedAmountCents <= 0 ||
+      row.refundedAmountCents !== row.amountCents ||
+      row.amountCents > originalSale.amountCents ||
+      (row.operation === 'VOID' &&
+        row.amountCents !== originalSale.amountCents) ||
+      row.chargedTotalCents === null ||
+      row.chargedTotalCents < row.refundedAmountCents ||
+      (originalSale.chargedTotalCents !== null &&
+        row.chargedTotalCents > originalSale.chargedTotalCents) ||
+      !identity
+    ) {
+      throw new Error(
+        `Malformed managed Payment reversal fact: ${row.attemptId}`,
+      );
+    }
+    const kind: PaymentReversalFinancialFactV1['kind'] =
+      row.operation === 'VOID'
+        ? 'VOID'
+        : row.refundedAmountCents >= originalSale.amountCents
+          ? 'FULL_REFUND'
+          : 'PARTIAL_REFUND';
+    return {
+      version: 1,
+      factStableId: managedReversalFactStableId(row.attemptId),
+      originalSaleAttemptId: originalSale.attemptId,
+      reversalAttemptId: row.attemptId,
+      providerEventId: null,
+      orderStableId: identity.orderStableId,
+      storeStableId: identity.storeId,
+      occurredAt: row.completedAt,
+      evidence: 'MANAGED_TRANSACTION',
+      provider: parsePaymentProviderName(row.provider),
+      originalPaymentSource: parsePaymentSource(originalSale.source),
+      paymentMethod: parsePaymentMethod(row.paymentMethod),
+      kind,
+      originalSaleBaseAmountCents: originalSale.amountCents,
+      originalSaleCustomerTotalCents: originalSale.chargedTotalCents,
+      baseRefundCents: row.refundedAmountCents,
+      additionalChargeRefundCents:
+        row.chargedTotalCents - row.refundedAmountCents,
+      customerRefundTotalCents: row.chargedTotalCents,
+      currency: row.currency,
+      externalPaymentId: originalSale.externalPaymentId,
+      providerPaymentId: row.providerPaymentId,
+      providerRefundId: row.providerRefundId,
+    };
+  }
+
+  private async toWebhookReversalFact(
+    rawPayload: unknown,
+    occurredAt: Date,
+  ): Promise<PaymentReversalFinancialFactV1 | null> {
+    const payload = parseWebhookReversalPayload(rawPayload);
+    if (!payload) {
+      const raw = asRecord(rawPayload);
+      if (
+        raw?.externalReversal === undefined ||
+        raw.externalReversal === 'NONE'
+      ) {
+        return null;
+      }
+      throw new Error('Malformed provider webhook Payment reversal evidence');
+    }
+    if (
+      payload.externalReversal === 'NONE' ||
+      payload.refundedDeltaCents === 0
+    ) {
+      return null;
+    }
+
+    const originalSale = await this.prisma.paymentTransaction.findUnique({
+      where: { attemptId: payload.attemptId },
     });
-    return new Map(
-      rows.flatMap((row) =>
-        row.paymentTransactionId
-          ? [
-              [
-                row.paymentTransactionId,
-                {
-                  orderStableId: row.orderStableId,
-                  storeId: row.storeId,
-                },
-              ] as const,
-            ]
-          : [],
-      ),
-    );
+    if (
+      !originalSale ||
+      originalSale.operation !== 'SALE' ||
+      originalSale.status !== 'SUCCEEDED' ||
+      parsePaymentProviderName(originalSale.provider) !== payload.provider ||
+      originalSale.providerPaymentId !== payload.providerPaymentId ||
+      parsePaymentSource(originalSale.source) !== payload.paymentSource ||
+      parsePaymentMethod(originalSale.paymentMethod) !==
+        payload.paymentMethod ||
+      originalSale.currency.toUpperCase() !== payload.currency ||
+      payload.refundedAmountCents > originalSale.amountCents ||
+      (payload.externalReversal === 'VOID' &&
+        payload.refundedAmountCents !== originalSale.amountCents) ||
+      (payload.externalPaymentId !== null &&
+        originalSale.externalPaymentId !== payload.externalPaymentId)
+    ) {
+      throw new Error(
+        `Provider webhook reversal cannot be correlated to original sale attempt ${payload.attemptId}`,
+      );
+    }
+
+    if (await this.hasSucceededManagedReversal(originalSale)) {
+      return null;
+    }
+
+    const contexts = await this.readFinancialContexts([originalSale]);
+    const identity = contexts.get(originalSale.id)?.identity ?? null;
+    const kind: PaymentReversalFinancialFactV1['kind'] =
+      payload.externalReversal === 'VOID'
+        ? 'VOID'
+        : payload.previousRefundedAmountCents === 0 &&
+            payload.refundedDeltaCents >= originalSale.amountCents
+          ? 'FULL_REFUND'
+          : 'PARTIAL_REFUND';
+    return {
+      version: 1,
+      factStableId: webhookReversalFactStableId(payload.providerEventId),
+      originalSaleAttemptId: originalSale.attemptId,
+      reversalAttemptId: null,
+      providerEventId: payload.providerEventId,
+      orderStableId: identity?.orderStableId ?? null,
+      storeStableId: identity?.storeId ?? null,
+      occurredAt,
+      evidence: 'PROVIDER_WEBHOOK',
+      provider: payload.provider,
+      originalPaymentSource: payload.paymentSource,
+      paymentMethod: payload.paymentMethod,
+      kind,
+      originalSaleBaseAmountCents: originalSale.amountCents,
+      originalSaleCustomerTotalCents: originalSale.chargedTotalCents,
+      baseRefundCents: payload.refundedDeltaCents,
+      additionalChargeRefundCents: null,
+      customerRefundTotalCents: null,
+      currency: payload.currency,
+      externalPaymentId: originalSale.externalPaymentId,
+      providerPaymentId: payload.providerPaymentId,
+      providerRefundId: null,
+    };
+  }
+
+  private async hasSucceededManagedReversal(
+    originalSale: PrismaPaymentTransactionRecord,
+  ): Promise<boolean> {
+    if (!originalSale.providerPaymentId) return false;
+    const existing = await this.prisma.paymentTransaction.findFirst({
+      where: {
+        provider: originalSale.provider,
+        providerPaymentId: originalSale.providerPaymentId,
+        operation: { in: ['REFUND', 'VOID'] },
+        status: 'SUCCEEDED',
+        completedAt: { not: null },
+      },
+      select: { id: true },
+    });
+    return Boolean(existing);
+  }
+
+  private assertReversalFactTotals(
+    facts: PaymentReversalFinancialFactV1[],
+  ): void {
+    const totals = new Map<
+      string,
+      { originalBaseCents: number; reversedBaseCents: number }
+    >();
+    for (const fact of facts) {
+      const current = totals.get(fact.originalSaleAttemptId);
+      if (
+        current &&
+        current.originalBaseCents !== fact.originalSaleBaseAmountCents
+      ) {
+        throw new Error(
+          `Payment reversal facts disagree on original sale amount: ${fact.originalSaleAttemptId}`,
+        );
+      }
+      const next = (current?.reversedBaseCents ?? 0) + fact.baseRefundCents;
+      if (next > fact.originalSaleBaseAmountCents) {
+        throw new Error(
+          `Payment reversal facts exceed original sale amount: ${fact.originalSaleAttemptId}`,
+        );
+      }
+      totals.set(fact.originalSaleAttemptId, {
+        originalBaseCents: fact.originalSaleBaseAmountCents,
+        reversedBaseCents: next,
+      });
+    }
   }
 
   private toFinancialFact(

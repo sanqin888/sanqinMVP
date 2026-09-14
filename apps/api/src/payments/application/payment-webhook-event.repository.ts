@@ -7,10 +7,28 @@ export type PaymentWebhookProcessingResult =
   | 'DEFERRED'
   | 'CONFLICT';
 
+export type PaymentWebhookExternalReversal =
+  | 'NONE'
+  | 'PARTIAL_REFUND'
+  | 'FULL_REFUND'
+  | 'VOID';
+
+export const PAYMENT_PROVIDER_WEBHOOK_EVENT_SOURCE =
+  'payments.provider-webhook';
+export const PAYMENT_REVERSE_SYNC_COMPLETED_EVENT =
+  'payment.reverse-sync.completed';
+export const paymentWebhookEventIdempotencyKey = (eventId: string): string =>
+  `payment-webhook:${eventId}`;
+
 export type CompletePaymentWebhookEventInput = {
   notification: PaymentProviderWebhookNotification;
   processingResult: PaymentWebhookProcessingResult;
+  externalReversal: PaymentWebhookExternalReversal;
+  previousRefundedAmountCents?: number | null;
   attemptId?: string | null;
+  paymentSource?: string | null;
+  paymentMethod?: string | null;
+  currency?: string | null;
   externalPaymentId?: string | null;
   refundedAmountCents?: number | null;
   failureCode?: string | null;

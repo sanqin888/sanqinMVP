@@ -99,6 +99,11 @@ import {
 import { buildOrderPricingDisplay } from './order-pricing-display';
 import { appendOrderFinancialSaleFact } from './order-financial-sale-fact';
 import {
+  appendOrderFinancialChangeFact,
+  buildOrderFinancialAdjustmentFact,
+  buildOrderFinancialReversalFact,
+} from './order-financial-change-fact';
+import {
   resolveRequestedLoyaltyPoints,
   resolveRequestedLoyaltyRedeemCents,
 } from './orders-loyalty-redemption';
@@ -2857,6 +2862,7 @@ export class OrdersService
           'full refund amount must equal order total',
         );
       }
+      const financialOccurredAt = new Date();
 
       const existing = await tx.orderAmendment.findFirst({
         where: {
@@ -2937,6 +2943,18 @@ export class OrdersService
           update: {},
         });
       }
+      await appendOrderFinancialChangeFact(
+        tx,
+        buildOrderFinancialReversalFact({
+          factStableId: `full_refund_${order.orderStableId}`,
+          occurredAt: financialOccurredAt,
+          action: 'FULL_REFUND',
+          occurrenceEvidence: 'ORDER_CONFIRMATION',
+          before: order,
+          declaredPaymentMethod: params.refundMethod,
+          refundGrossCents: params.refundAmountCents,
+        }),
+      );
       await tx.opsEvent.createMany({
         data: {
           idempotencyKey: orderCancelledIdempotencyKey(order.orderStableId),
@@ -3146,6 +3164,7 @@ export class OrdersService
       ) {
         throw new BadRequestException('RETENDER paymentMethod must change');
       }
+      const financialOccurredAt = new Date();
 
       const amendment = await tx.orderAmendment.create({
         data: {
@@ -3258,6 +3277,14 @@ export class OrdersService
         0,
         boundedRefundGrossCents - redeemReturnCents,
       );
+      if (
+        (refundCashCents > 0 || additionalChargeCentsRaw > 0) &&
+        paymentMethod === null
+      ) {
+        throw new BadRequestException(
+          'paymentMethod is required for a non-zero amendment settlement',
+        );
+      }
 
       const baseNetSubtotalCents = Math.max(
         0,
@@ -3436,18 +3463,33 @@ export class OrdersService
         });
       }
 
-      if (paymentMethod !== null) {
+      if (type === OrderAmendmentType.RETENDER && paymentMethod !== null) {
         await tx.order.update({
           where: { id: internalOrderId },
           data: { paymentMethod },
         });
       }
 
-      // 5) 返回最新 order
-      return (await tx.order.findUnique({
+      // 5) 返回最新 order，并在同一事务冻结 post-sale financial fact。
+      const finalOrder = (await tx.order.findUnique({
         where: { id: internalOrderId },
         include: { items: true },
       })) as OrderWithItems;
+      await appendOrderFinancialChangeFact(
+        tx,
+        buildOrderFinancialAdjustmentFact({
+          factStableId: amendment.amendmentStableId,
+          occurredAt: financialOccurredAt,
+          action: type,
+          before: order,
+          after: finalOrder,
+          declaredPaymentMethod: paymentMethod,
+          refundGrossCents: boundedRefundGrossCents,
+          redeemReturnCents,
+          additionalChargeCents: additionalChargeCentsRaw,
+        }),
+      );
+      return finalOrder;
     });
 
     return this.toOrderDto(updatedOrder);

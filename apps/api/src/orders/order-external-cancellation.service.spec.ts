@@ -25,8 +25,17 @@ describe('OrderExternalCancellationFinalizerService', () => {
         findFirst: jest.fn().mockResolvedValue({
           id: '8a3d4c0e-4750-4f6a-9138-000000000401',
           orderStableId: 'stable-order-1',
-          totalCents: 1_130,
+          storeId: '4750_Yonge_Street',
+          channel: 'ubereats',
           paymentMethod: 'UBEREATS',
+          subtotalCents: 1_000,
+          subtotalAfterDiscountCents: 1_000,
+          taxCents: 130,
+          deliveryFeeCents: 0,
+          creditCardSurchargeCents: 0,
+          totalCents: 1_130,
+          paymentTotalCents: 1_130,
+          items: [],
         }),
         update: orderUpdate,
       },
@@ -51,8 +60,22 @@ describe('OrderExternalCancellationFinalizerService', () => {
       select: {
         id: true,
         orderStableId: true,
-        totalCents: true,
+        storeId: true,
+        channel: true,
         paymentMethod: true,
+        subtotalCents: true,
+        subtotalAfterDiscountCents: true,
+        taxCents: true,
+        deliveryFeeCents: true,
+        creditCardSurchargeCents: true,
+        totalCents: true,
+        paymentTotalCents: true,
+        items: {
+          select: {
+            qty: true,
+            isDailySpecialApplied: true,
+          },
+        },
       },
     });
     expect(amendmentUpsert).toHaveBeenCalledWith({
@@ -87,6 +110,26 @@ describe('OrderExternalCancellationFinalizerService', () => {
       data: { status: 'refunded' },
     });
     expect(lifecycleCreateMany).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        idempotencyKey: expect.stringMatching(
+          /^order-financial-reversal:external_cancel_[0-9a-f]{64}:v1$/,
+        ) as unknown,
+        eventName: 'order.financial_reversal.v1',
+        source: 'orders.financial',
+        occurredAt: new Date(input.occurredAt),
+        payload: expect.objectContaining({
+          factStableId: expect.stringMatching(
+            /^external_cancel_[0-9a-f]{64}$/,
+          ) as unknown,
+          orderStableId: 'stable-order-1',
+          kind: 'REVERSAL',
+          action: 'EXTERNAL_CANCELLATION',
+          occurrenceEvidence: 'PROVIDER_EVENT',
+        }) as unknown,
+      }) as unknown,
+      skipDuplicates: true,
+    });
+    expect(lifecycleCreateMany).toHaveBeenCalledWith({
       data: {
         idempotencyKey: 'order.cancelled:stable-order-1',
         eventName: 'order.cancelled',
@@ -109,8 +152,17 @@ describe('OrderExternalCancellationFinalizerService', () => {
         findFirst: jest.fn().mockResolvedValue({
           id: '8a3d4c0e-4750-4f6a-9138-000000000402',
           orderStableId: 'stable-order-1',
-          totalCents: 1_130,
+          storeId: '4750_Yonge_Street',
+          channel: 'ubereats',
           paymentMethod: 'UBEREATS',
+          subtotalCents: 1_000,
+          subtotalAfterDiscountCents: 1_000,
+          taxCents: 130,
+          deliveryFeeCents: 0,
+          creditCardSurchargeCents: 0,
+          totalCents: 1_130,
+          paymentTotalCents: 1_130,
+          items: [],
         }),
         update: jest.fn().mockResolvedValue({}),
       },
@@ -143,7 +195,45 @@ describe('OrderExternalCancellationFinalizerService', () => {
     expect(replayedAmendment?.where.amendmentStableId).toBe(
       firstAmendment?.where.amendmentStableId,
     );
-    expect(lifecycleCreateMany).toHaveBeenCalledTimes(2);
+    expect(lifecycleCreateMany).toHaveBeenCalledTimes(4);
+  });
+
+  it('rejects a confirmed external cancellation without authoritative occurrence time', async () => {
+    const amendmentUpsert = jest.fn();
+    const orderUpdate = jest.fn();
+    const opsEventCreateMany = jest.fn();
+    const tx = {
+      order: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: '8a3d4c0e-4750-4f6a-9138-000000000404',
+          orderStableId: 'stable-order-1',
+          storeId: '4750_Yonge_Street',
+          channel: 'ubereats',
+          paymentMethod: 'UBEREATS',
+          subtotalCents: 1_000,
+          subtotalAfterDiscountCents: 1_000,
+          taxCents: 130,
+          deliveryFeeCents: 0,
+          creditCardSurchargeCents: 0,
+          totalCents: 1_130,
+          paymentTotalCents: 1_130,
+          items: [],
+        }),
+        update: orderUpdate,
+      },
+      orderAmendment: { upsert: amendmentUpsert },
+      opsEvent: { createMany: opsEventCreateMany },
+    };
+    const service = serviceWithTransaction(tx);
+
+    await expect(
+      service.finalizeConfirmedCancellation({ ...input, occurredAt: null }),
+    ).rejects.toThrow(
+      'External cancellation is missing authoritative occurredAt: uber-event-1',
+    );
+    expect(amendmentUpsert).not.toHaveBeenCalled();
+    expect(orderUpdate).not.toHaveBeenCalled();
+    expect(opsEventCreateMany).not.toHaveBeenCalled();
   });
 
   it('rejects a mismatched stable/external identity before canonical writes', async () => {
@@ -174,8 +264,17 @@ describe('OrderExternalCancellationFinalizerService', () => {
         findFirst: jest.fn().mockResolvedValue({
           id: '8a3d4c0e-4750-4f6a-9138-000000000403',
           orderStableId: 'stable-order-1',
-          totalCents: 1_130,
+          storeId: '4750_Yonge_Street',
+          channel: 'ubereats',
           paymentMethod: 'UBEREATS',
+          subtotalCents: 1_000,
+          subtotalAfterDiscountCents: 1_000,
+          taxCents: 130,
+          deliveryFeeCents: 0,
+          creditCardSurchargeCents: 0,
+          totalCents: 1_130,
+          paymentTotalCents: 1_130,
+          items: [],
         }),
         update: jest.fn().mockResolvedValue({}),
       },
@@ -183,7 +282,8 @@ describe('OrderExternalCancellationFinalizerService', () => {
       opsEvent: {
         createMany: jest
           .fn()
-          .mockRejectedValue(new Error('lifecycle store unavailable')),
+          .mockResolvedValueOnce({ count: 1 })
+          .mockRejectedValueOnce(new Error('lifecycle store unavailable')),
       },
     };
     const service = serviceWithTransaction(tx);

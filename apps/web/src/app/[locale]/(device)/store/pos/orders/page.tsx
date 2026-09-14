@@ -1673,7 +1673,8 @@ export default function PosOrdersPage() {
     (selectedAction === "full_refund" &&
       !canWebRefundWithoutExternalPayment) ||
     ((selectedAction === "void_item" || selectedAction === "swap_item") &&
-      (summary?.refundCents ?? 0) > 0);
+      ((summary?.refundCents ?? 0) > 0 ||
+        (summary?.additionalChargeCents ?? 0) > 0));
 
   useEffect(() => {
     if (!shouldShowPaymentMethodPicker || !selectedOrder) return;
