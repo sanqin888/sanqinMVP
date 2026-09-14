@@ -38,6 +38,7 @@ import { AccountingService } from './accounting.service';
 import { AccountingAutomationScheduler } from './accounting-automation.scheduler';
 import { AccountingCanonicalSaleReplayService } from './accounting-canonical-sale-replay.service';
 import { AccountingCanonicalChangePreviewService } from './accounting-canonical-change-preview.service';
+import { AccountingCanonicalChangeExecutionService } from './accounting-canonical-change-execution.service';
 import {
   AccountingOperationsService,
   type AccountingExpenseInput,
@@ -80,6 +81,7 @@ export class AccountingController {
     private readonly automation: AccountingAutomationScheduler,
     private readonly canonicalSaleReplay: AccountingCanonicalSaleReplayService,
     private readonly canonicalChangePreview: AccountingCanonicalChangePreviewService,
+    private readonly canonicalChangeExecution: AccountingCanonicalChangeExecutionService,
     @Inject(UBER_EATS_REPORTING)
     private readonly uberReporting: UberEatsReportingPort,
   ) {}
@@ -430,6 +432,24 @@ export class AccountingController {
       ...(fromDate ? { fromDate } : {}),
       toDateExclusive: toDateExclusive ?? '',
       storeStableId: storeStableId ?? '',
+    });
+  }
+
+  @Post('journal/canonical-changes/replay')
+  executeCanonicalChangeReplay(
+    @Body()
+    body: {
+      fromDate?: string;
+      toDateExclusive?: string;
+      storeStableId?: string;
+      expectedPlanHash?: string;
+    },
+  ) {
+    return this.canonicalChangeExecution.executeRange({
+      ...(body.fromDate ? { fromDate: body.fromDate } : {}),
+      toDateExclusive: body.toDateExclusive ?? '',
+      storeStableId: body.storeStableId ?? '',
+      expectedPlanHash: body.expectedPlanHash ?? '',
     });
   }
 

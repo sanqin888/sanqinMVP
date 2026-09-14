@@ -346,6 +346,187 @@ describe('AccountingService double-entry journal characterization', () => {
     ).rejects.toBeInstanceOf(ConflictException);
   });
 
+  it('binds canonical-change write authority into idempotency and CREATE audit evidence', async () => {
+    const { service, prisma } = makeService();
+    const canonicalPayload = {
+      ...basePayload,
+      idempotencyKey: 'canonical-reversal:change_fact_1:v1',
+      kind: AccountingJournalEntryKind.ADJUSTMENT,
+      source: AccountingJournalSource.ORDER,
+      sourceFactType: 'order.financial_reversal.v1',
+      sourceFactStableId: 'change_fact_1',
+      sourceFactVersion: 1,
+      storeStableId: '4750_Yonge_Street',
+      memo: 'Canonical reversal change_fact_1',
+    };
+    const authority = {
+      version: 1 as const,
+      changeFactType: 'order.financial_reversal.v1' as const,
+      changeFactStableId: 'change_fact_1',
+      originalSaleFactStableId: 'sale_fact_1',
+      originalSaleJournalEntryStableId: 'journal_sale_1',
+      cardSettlementEvidenceMode: 'LEGACY_ORDER_DECLARED' as const,
+      matchedPaymentReversalFactStableIds: [],
+      matchedLoyaltyFactStableIds: [],
+    };
+    prisma.accountingJournalEntry.findUnique.mockResolvedValue(null);
+    prisma.accountingJournalEntry.create.mockResolvedValue(
+      journalRow({
+        idempotencyKey: canonicalPayload.idempotencyKey,
+        kind: AccountingJournalEntryKind.ADJUSTMENT,
+        source: AccountingJournalSource.ORDER,
+        sourceFactType: canonicalPayload.sourceFactType,
+        sourceFactStableId: canonicalPayload.sourceFactStableId,
+        sourceFactVersion: 1,
+        storeStableId: '4750_Yonge_Street',
+      }),
+    );
+
+    await service.createCanonicalChangeJournalEntry(
+      canonicalPayload,
+      'system:accounting-canonical-change-posting',
+      authority,
+    );
+
+    expect(prisma.accountingJournalEntry.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          idempotencyKey: canonicalPayload.idempotencyKey,
+          idempotencyHash: expect.stringMatching(/^[a-f0-9]{64}$/) as unknown,
+          sourceFactStableId: 'change_fact_1',
+        }) as unknown,
+      }) as unknown,
+    );
+    expect(prisma.accountingAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'CREATE',
+        entityType: 'ACCOUNTING_JOURNAL_ENTRY',
+        afterJson: expect.objectContaining({
+          writeAuthority: authority,
+          journal: expect.objectContaining({
+            sourceFactStableId: 'change_fact_1',
+          }) as unknown,
+        }) as unknown,
+      }) as unknown,
+    });
+  });
+
+  it('rejects canonical-change authority whose source identity does not match the Journal', async () => {
+    const { service, prisma } = makeService();
+    const canonicalPayload = {
+      ...basePayload,
+      idempotencyKey: 'canonical-reversal:change_fact_1:v1',
+      kind: AccountingJournalEntryKind.ADJUSTMENT,
+      source: AccountingJournalSource.ORDER,
+      sourceFactType: 'order.financial_reversal.v1',
+      sourceFactStableId: 'change_fact_1',
+      sourceFactVersion: 1,
+      storeStableId: '4750_Yonge_Street',
+    };
+
+    await expect(
+      service.createCanonicalChangeJournalEntry(
+        canonicalPayload,
+        'system:accounting-canonical-change-posting',
+        {
+          version: 1,
+          changeFactType: 'order.financial_reversal.v1',
+          changeFactStableId: 'other_change_fact',
+          originalSaleFactStableId: 'sale_fact_1',
+          originalSaleJournalEntryStableId: 'journal_sale_1',
+          cardSettlementEvidenceMode: 'LEGACY_ORDER_DECLARED',
+          matchedPaymentReversalFactStableIds: [],
+          matchedLoyaltyFactStableIds: [],
+        },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.accountingJournalEntry.create).not.toHaveBeenCalled();
+    expect(prisma.accountingAuditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('replays the same canonical-change authority idempotently and rejects authority drift', async () => {
+    const { service, prisma } = makeService();
+    const canonicalPayload = {
+      ...basePayload,
+      idempotencyKey: 'canonical-reversal:change_fact_1:v1',
+      kind: AccountingJournalEntryKind.ADJUSTMENT,
+      source: AccountingJournalSource.ORDER,
+      sourceFactType: 'order.financial_reversal.v1',
+      sourceFactStableId: 'change_fact_1',
+      sourceFactVersion: 1,
+      storeStableId: '4750_Yonge_Street',
+      memo: 'Canonical reversal change_fact_1',
+    };
+    const authority = {
+      version: 1 as const,
+      changeFactType: 'order.financial_reversal.v1' as const,
+      changeFactStableId: 'change_fact_1',
+      originalSaleFactStableId: 'sale_fact_1',
+      originalSaleJournalEntryStableId: 'journal_sale_1',
+      cardSettlementEvidenceMode: 'LEGACY_ORDER_DECLARED' as const,
+      matchedPaymentReversalFactStableIds: [],
+      matchedLoyaltyFactStableIds: [],
+    };
+    let stored: ReturnType<typeof internalJournalRow> | null = null;
+    prisma.accountingJournalEntry.findUnique.mockImplementation(() =>
+      Promise.resolve(stored),
+    );
+    prisma.accountingJournalEntry.create.mockImplementation(
+      ({ data }: { data: { idempotencyHash: string } }) => {
+        stored = internalJournalRow({
+          idempotencyHash: data.idempotencyHash,
+          idempotencyKey: canonicalPayload.idempotencyKey,
+          kind: AccountingJournalEntryKind.ADJUSTMENT,
+          source: AccountingJournalSource.ORDER,
+          sourceFactType: canonicalPayload.sourceFactType,
+          sourceFactStableId: canonicalPayload.sourceFactStableId,
+          sourceFactVersion: 1,
+          storeStableId: '4750_Yonge_Street',
+        });
+        return Promise.resolve(
+          journalRow({
+            idempotencyKey: canonicalPayload.idempotencyKey,
+            kind: AccountingJournalEntryKind.ADJUSTMENT,
+            source: AccountingJournalSource.ORDER,
+            sourceFactType: canonicalPayload.sourceFactType,
+            sourceFactStableId: canonicalPayload.sourceFactStableId,
+            sourceFactVersion: 1,
+            storeStableId: '4750_Yonge_Street',
+          }),
+        );
+      },
+    );
+
+    await service.createCanonicalChangeJournalEntry(
+      canonicalPayload,
+      'system:accounting-canonical-change-posting',
+      authority,
+    );
+    await expect(
+      service.createCanonicalChangeJournalEntry(
+        canonicalPayload,
+        'system:accounting-canonical-change-posting',
+        authority,
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({ sourceFactStableId: 'change_fact_1' }),
+    );
+    await expect(
+      service.createCanonicalChangeJournalEntry(
+        canonicalPayload,
+        'system:accounting-canonical-change-posting',
+        {
+          ...authority,
+          cardSettlementEvidenceMode: 'STRICT_PAYMENT_EVIDENCE',
+          matchedPaymentReversalFactStableIds: ['payment_reversal_fact_1'],
+        },
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    expect(prisma.accountingJournalEntry.create).toHaveBeenCalledTimes(1);
+    expect(prisma.accountingAuditLog.create).toHaveBeenCalledTimes(1);
+  });
+
   it('optimistically updates an open-period journal by replacing its balanced lines', async () => {
     const { service, prisma } = makeService();
     const existing = internalJournalRow();
