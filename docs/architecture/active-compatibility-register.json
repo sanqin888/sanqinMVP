@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "baselineCommit": "c95cc7d4",
-  "updatedAt": "2026-09-13",
+  "updatedAt": "2026-09-14",
   "requiredFields": [
     "compat_id",
     "old_owner",
@@ -22,11 +22,13 @@
       "dual_write_or_read": [
         "Feature flag false routes new POS CARD operations to the legacy direct-paid Order path",
         "Feature flag true routes new POS CARD operations to Unified Payment Core plus Clover Terminal; one operation must never call both",
+        "Accounting reuses the same compatibility semantics: pre-cutover in-store CARD changes may use explicitly labeled immutable Orders change facts as legacy/order-declared settlement authority, while post-cutover CARD changes require Payments-owned reversal evidence",
+        "Historical replay must classify pre/post-cutover semantics by immutable change occurredAt against a frozen compatibility effective-from timestamp, not by the current live flag value",
         "The flag/config is migration-time cutover compatibility only and must not be promoted into a permanent POS public policy or Payments-owned business capability"
       ],
       "parity_metric": "POS to Clover Terminal realtime synchronization/recovery, terminal payment/provider truth, amount, surcharge, final order binding and refund outcome parity across one complete settlement cycle, followed by a clean production stability window and zero legacy invocation",
       "rollback": "Before legacy cleanup, set the rollout flag false to route new POS CARD operations back to the legacy path without rewriting payment history; after compatibility deletion, use forward-fix/reconciliation rather than restoring the retired direct-paid path",
-      "exit_criteria": "POS <-> Clover Terminal realtime synchronization/recovery is complete, real-device acceptance passes, one settlement cycle reconciles, the production stability window is clean, and legacy invocation is zero before deleting the legacy direct-paid CARD path, rollout flag/config, route-choice branches and legacy refund compatibility together",
+      "exit_criteria": "POS <-> Clover Terminal realtime synchronization/recovery is complete, real-device acceptance passes, one settlement cycle reconciles, the production stability window is clean, pre-cutover Accounting facts are resolved, and legacy invocation is zero before deleting the legacy direct-paid CARD path, rollout flag/config, route-choice branches and legacy refund compatibility together",
       "remove_pr": "Dedicated Phase J Payments/Clover legacy POS contraction PR after terminal cutover acceptance and production stability",
       "deadline": "After POS <-> Clover Terminal realtime synchronization/recovery, real-device acceptance and the production stability window; remove in the dedicated Phase J legacy cleanup rather than tying this compatibility to an earlier modularization phase number",
       "governance_note": "POS Clover Terminal is a pre-production prototype. PosCardPaymentFeatureConfig exists only to control the registered legacy/new cutover while both paths coexist. Do not export it as a durable public policy or move its migration meaning into Payments merely to reduce dependency counts. Structural modularization may proceed when production Web Ecommerce behavior and historical payment facts remain unchanged.",

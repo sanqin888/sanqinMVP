@@ -482,6 +482,20 @@ POS_CLOVER_TERMINAL_PAYMENT_ENABLED=true  -> Unified Payment Core + Clover Termi
 最终形态只有一条 CARD 主链路；Phase J 删除 legacy direct-paid CARD 时必须连同
 flag/config 和所有 route-choice branch 一起删除。
 
+Accounting 在该兼容期必须服从同一条 rollout 语义，而不是新增第二个 CARD
+boolean：legacy regime 下，in-store CARD 的 immutable Orders adjustment/reversal fact
+可作为临时的 order-declared settlement authority，使财务在 POS 与 Clover Terminal
+尚未 transaction-level 同步时仍可记真实营业退款；该证据必须在 preview/Journal/Audit
+中明确标记为 legacy/order-declared，绝不能伪装成 Payments/Clover provider evidence。
+Terminal production cutover 后，新发生的 CARD adjustment/reversal 必须重新要求
+Payments-owned canonical reversal evidence，缺失时 fail closed。
+
+为保证历史 replay 稳定，在正式把 rollout flag 打开前必须冻结一个与现有 compatibility
+绑定的 effective-from timestamp，并按 immutable change `occurredAt` 判定 pre/post-cutover
+证据规则。该 timestamp 只是现有 compatibility 的迁移元数据，不是第二个 route-choice
+boolean。Phase J 删除 compatibility 前，还必须确认所有 pre-cutover legacy CARD accounting
+facts 已 journal/reconcile 或被明确列入受控 closeout 清理清单。
+
 ## 新主链路
 
 ```text
