@@ -39,8 +39,13 @@ describe('PrismaPaymentWebhookEventRepository', () => {
         eventName: 'payment.reverse-sync.completed',
         source: 'payments.provider-webhook',
         occurredAt: notification.occurredAt,
-        payload: expect.objectContaining({
+        payload: {
           providerEventId: 'clover-event-1',
+          provider: 'CLOVER',
+          merchantId: 'merchant-1',
+          providerPaymentId: 'provider-payment-1',
+          operation: 'UPDATE',
+          processingResult: 'APPLIED',
           externalReversal: 'PARTIAL_REFUND',
           previousRefundedAmountCents: 200,
           refundedAmountCents: 700,
@@ -49,7 +54,10 @@ describe('PrismaPaymentWebhookEventRepository', () => {
           paymentSource: 'POS_TERMINAL',
           paymentMethod: 'CARD',
           currency: 'CAD',
-        }),
+          externalPaymentId: 'external-payment-1',
+          failureCode: null,
+          failureMessage: null,
+        },
       },
     });
   });

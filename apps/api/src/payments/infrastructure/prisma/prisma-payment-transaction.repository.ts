@@ -144,7 +144,9 @@ const managedReversalFactStableId = (attemptId: string): string =>
 const webhookReversalFactStableId = (eventId: string): string =>
   `payment-reversal:webhook:${eventId}:v1`;
 
-const managedAttemptIdFromFactStableId = (factStableId: string): string | null => {
+const managedAttemptIdFromFactStableId = (
+  factStableId: string,
+): string | null => {
   const prefix = 'payment-reversal:managed:';
   const suffix = ':v1';
   if (!factStableId.startsWith(prefix) || !factStableId.endsWith(suffix)) {
@@ -153,7 +155,9 @@ const managedAttemptIdFromFactStableId = (factStableId: string): string | null =
   return nonEmptyString(factStableId.slice(prefix.length, -suffix.length));
 };
 
-const webhookEventIdFromFactStableId = (factStableId: string): string | null => {
+const webhookEventIdFromFactStableId = (
+  factStableId: string,
+): string | null => {
   const prefix = 'payment-reversal:webhook:';
   const suffix = ':v1';
   if (!factStableId.startsWith(prefix) || !factStableId.endsWith(suffix)) {
@@ -180,7 +184,8 @@ const parseWebhookReversalPayload = (
     !providerEventId ||
     !isReversalProvider(value.provider) ||
     !providerPaymentId ||
-    (!isReversalKind(value.externalReversal) && value.externalReversal !== 'NONE') ||
+    (!isReversalKind(value.externalReversal) &&
+      value.externalReversal !== 'NONE') ||
     !attemptId ||
     !isReversalSource(value.paymentSource) ||
     !isReversalMethod(value.paymentMethod) ||
@@ -352,7 +357,9 @@ export class PrismaPaymentTransactionRepository
         identity: null,
       };
       this.assertFinalTransactionIdentity(row, context);
-      if (storeStableId && context.identity?.storeId !== storeStableId) return [];
+      if (storeStableId && context.identity?.storeId !== storeStableId) {
+        return [];
+      }
       return [this.toFinancialFact(row, context.identity, row.completedAt)];
     });
   }
@@ -384,8 +391,15 @@ export class PrismaPaymentTransactionRepository
     const providerEventId = webhookEventIdFromFactStableId(stableId);
     if (!providerEventId) return null;
     const event = await this.prisma.opsEvent.findUnique({
-      where: { idempotencyKey: paymentWebhookEventIdempotencyKey(providerEventId) },
-      select: { source: true, eventName: true, payload: true, occurredAt: true },
+      where: {
+        idempotencyKey: paymentWebhookEventIdempotencyKey(providerEventId),
+      },
+      select: {
+        source: true,
+        eventName: true,
+        payload: true,
+        occurredAt: true,
+      },
     });
     if (!event) return null;
     if (
@@ -396,7 +410,10 @@ export class PrismaPaymentTransactionRepository
         `Payment webhook reversal fact identity points to the wrong event: ${providerEventId}`,
       );
     }
-    const fact = await this.toWebhookReversalFact(event.payload, event.occurredAt);
+    const fact = await this.toWebhookReversalFact(
+      event.payload,
+      event.occurredAt,
+    );
     return fact?.factStableId === stableId ? fact : null;
   }
 
@@ -581,7 +598,10 @@ export class PrismaPaymentTransactionRepository
 
     const reversalKeys = new Map<
       string,
-      { provider: PrismaPaymentTransactionRecord['provider']; providerPaymentId: string }
+      {
+        provider: PrismaPaymentTransactionRecord['provider'];
+        providerPaymentId: string;
+      }
     >();
     for (const row of rows) {
       if (row.operation === 'SALE' || !row.providerPaymentId) continue;
@@ -609,7 +629,10 @@ export class PrismaPaymentTransactionRepository
     >();
     for (const sale of correlatedSales) {
       if (!sale.providerPaymentId) continue;
-      const key = this.providerPaymentKey(sale.provider, sale.providerPaymentId);
+      const key = this.providerPaymentKey(
+        sale.provider,
+        sale.providerPaymentId,
+      );
       if (saleByProviderPayment.has(key)) {
         throw new PaymentProviderTransactionIdentityConflictError(
           parsePaymentProviderName(sale.provider),
@@ -715,7 +738,8 @@ export class PrismaPaymentTransactionRepository
       row.refundedAmountCents <= 0 ||
       row.refundedAmountCents !== row.amountCents ||
       row.amountCents > originalSale.amountCents ||
-      (row.operation === 'VOID' && row.amountCents !== originalSale.amountCents) ||
+      (row.operation === 'VOID' &&
+        row.amountCents !== originalSale.amountCents) ||
       row.chargedTotalCents === null ||
       row.chargedTotalCents < row.refundedAmountCents ||
       (originalSale.chargedTotalCents !== null &&
@@ -766,12 +790,18 @@ export class PrismaPaymentTransactionRepository
     const payload = parseWebhookReversalPayload(rawPayload);
     if (!payload) {
       const raw = asRecord(rawPayload);
-      if (raw?.externalReversal === undefined || raw.externalReversal === 'NONE') {
+      if (
+        raw?.externalReversal === undefined ||
+        raw.externalReversal === 'NONE'
+      ) {
         return null;
       }
       throw new Error('Malformed provider webhook Payment reversal evidence');
     }
-    if (payload.externalReversal === 'NONE' || payload.refundedDeltaCents === 0) {
+    if (
+      payload.externalReversal === 'NONE' ||
+      payload.refundedDeltaCents === 0
+    ) {
       return null;
     }
 
@@ -785,7 +815,8 @@ export class PrismaPaymentTransactionRepository
       parsePaymentProviderName(originalSale.provider) !== payload.provider ||
       originalSale.providerPaymentId !== payload.providerPaymentId ||
       parsePaymentSource(originalSale.source) !== payload.paymentSource ||
-      parsePaymentMethod(originalSale.paymentMethod) !== payload.paymentMethod ||
+      parsePaymentMethod(originalSale.paymentMethod) !==
+        payload.paymentMethod ||
       originalSale.currency.toUpperCase() !== payload.currency ||
       payload.refundedAmountCents > originalSale.amountCents ||
       (payload.externalReversal === 'VOID' &&
@@ -871,8 +902,7 @@ export class PrismaPaymentTransactionRepository
           `Payment reversal facts disagree on original sale amount: ${fact.originalSaleAttemptId}`,
         );
       }
-      const next =
-        (current?.reversedBaseCents ?? 0) + fact.baseRefundCents;
+      const next = (current?.reversedBaseCents ?? 0) + fact.baseRefundCents;
       if (next > fact.originalSaleBaseAmountCents) {
         throw new Error(
           `Payment reversal facts exceed original sale amount: ${fact.originalSaleAttemptId}`,

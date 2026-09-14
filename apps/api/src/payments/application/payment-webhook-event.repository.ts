@@ -13,7 +13,8 @@ export type PaymentWebhookExternalReversal =
   | 'FULL_REFUND'
   | 'VOID';
 
-export const PAYMENT_PROVIDER_WEBHOOK_EVENT_SOURCE = 'payments.provider-webhook';
+export const PAYMENT_PROVIDER_WEBHOOK_EVENT_SOURCE =
+  'payments.provider-webhook';
 export const PAYMENT_REVERSE_SYNC_COMPLETED_EVENT =
   'payment.reverse-sync.completed';
 export const paymentWebhookEventIdempotencyKey = (eventId: string): string =>
