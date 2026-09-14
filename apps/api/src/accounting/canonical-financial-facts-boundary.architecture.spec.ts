@@ -178,6 +178,7 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(changePreviewService).toContain("from '../payments/public-api'");
     expect(changePreviewService).toContain("from '../loyalty/public-api'");
     expect(changePreviewService).toContain("from '../store/public-api'");
+    expect(changePreviewService).not.toContain("from '../pos/");
     expect(changePreviewService).not.toContain('../prisma/');
     expect(changePreviewService).not.toContain('createJournalEntry');
     expect(changePreviewService).toContain('readFactsByOrderStableIds');

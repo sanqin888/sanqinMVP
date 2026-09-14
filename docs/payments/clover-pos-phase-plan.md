@@ -490,11 +490,17 @@ boolean：legacy regime 下，in-store CARD 的 immutable Orders adjustment/reve
 Terminal production cutover 后，新发生的 CARD adjustment/reversal 必须重新要求
 Payments-owned canonical reversal evidence，缺失时 fail closed。
 
-为保证历史 replay 稳定，在正式把 rollout flag 打开前必须冻结一个与现有 compatibility
-绑定的 effective-from timestamp，并按 immutable change `occurredAt` 判定 pre/post-cutover
-证据规则。该 timestamp 只是现有 compatibility 的迁移元数据，不是第二个 route-choice
-boolean。Phase J 删除 compatibility 前，还必须确认所有 pre-cutover legacy CARD accounting
-facts 已 journal/reconcile 或被明确列入受控 closeout 清理清单。
+为保证历史 replay 稳定，不再引入额外 cutover timestamp。新 in-store CARD SALE fact 直接冻结
+Orders-owned `posCardExecutionEvidence=LEGACY_DIRECT_PAID|UNIFIED_PAYMENT_CORE`，来源是现有持久化
+payment breakdown：legacy direct-paid 没有 Unified payment breakdown；Unified finalization 会写入
+`cardCents` / `externalChargedCents`。Accounting 优先读取这个 immutable provenance；对字段上线前的旧
+SALE fact，则通过 owner facts 判定：存在 canonical Payments CARD SALE fact -> Unified/strict；不存在 ->
+legacy direct-paid。这样历史语义不依赖当前 rollout flag，也不需要 Accounting -> POS policy 依赖。
+
+legacy/order-declared 模式只放宽 CARD refund/negative settlement evidence；CARD additional charge/
+collection 仍然必须有 change-scoped Payments money fact。Phase J 删除 compatibility 前，还必须确认所有
+legacy CARD accounting facts 已 journal/reconcile 或被明确列入受控 closeout 清理清单。Production Web
+Clover 的 `/v1/charges`、refund、merchant scope 与 guarded compatibility 不在该修改范围。
 
 ## 新主链路
 
@@ -789,7 +795,7 @@ legacy CARD 保留，但仅作为 Phase J 前的 emergency fallback；它不代�
 1. 删除 legacy POS CARD direct-paid path。
 2. 删除 legacy fallback / route-choice branch，让 POS CARD 无条件进入 Unified Payment Core。
 3. 删除旧人工 Clover CARD refund compatibility。
-4. 删除迁移期 `POS_CLOVER_TERMINAL_PAYMENT_ENABLED` 与 `PosCardPaymentFeatureConfig`；不得留下等价的永久 public feature-policy。
+4. 删除迁移期 `POS_CLOVER_TERMINAL_PAYMENT_ENABLED`、`PosCardPaymentFeatureConfig` 与 legacy Accounting refund fallback；不得留下等价的永久 public feature-policy。
 5. 删除过渡门禁如 `CLOVER_SYNC_PENDING`（确认不再需要时）。
 6. 删除确认无调用的 Clover stub endpoints。
 7. 删除重复/废弃 payment code。

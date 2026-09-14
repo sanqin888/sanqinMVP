@@ -15,6 +15,10 @@ export type OrderFinancialFactSourceEvidenceV1 =
   | 'IMMUTABLE_SALE_SNAPSHOT'
   | 'LEGACY_CURRENT_ORDER';
 
+export type OrderFinancialPosCardExecutionEvidenceV1 =
+  | 'LEGACY_DIRECT_PAID'
+  | 'UNIFIED_PAYMENT_CORE';
+
 export type OrderFinancialPricingEvidenceV1 =
   | 'COMPLETE'
   | 'DAILY_SPECIAL_NOMINAL_UNKNOWN';
@@ -67,6 +71,11 @@ export type OrderFinancialFactV1 = {
   sourceEvidence: OrderFinancialFactSourceEvidenceV1;
   channel: OrderFinancialChannelV1;
   paymentMethod: OrderFinancialPaymentMethodV1;
+  /**
+   * Immutable execution provenance for in-store CARD sales. Omitted/null on
+   * non-POS-CARD facts and on older persisted v1 facts that predate this field.
+   */
+  posCardExecutionEvidence?: OrderFinancialPosCardExecutionEvidenceV1 | null;
   itemQuantity: number;
   currency: 'CAD';
   pricingEvidence: OrderFinancialPricingEvidenceV1;

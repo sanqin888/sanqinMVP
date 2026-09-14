@@ -100,6 +100,7 @@ export {
   type OrderFinancialFactsRangeV1,
   type OrderFinancialFactsReaderPort,
   type OrderFinancialPaymentMethodV1,
+  type OrderFinancialPosCardExecutionEvidenceV1,
   type OrderFinancialPricingEvidenceV1,
   type OrderFinancialReplayCandidateV1,
   type OrderFinancialReplayEligibilityV1,
