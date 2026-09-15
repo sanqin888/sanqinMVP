@@ -233,9 +233,9 @@ describe('AccountingImageRetentionService', () => {
     expect(operations.beginImageOriginalPurge).toHaveBeenCalledTimes(1);
     expect(operations.finalizeImageOriginalPurge).toHaveBeenCalledTimes(1);
     expect(
-      operations.beginImageOriginalPurge.mock.invocationCallOrder[0]!,
+      operations.beginImageOriginalPurge.mock.invocationCallOrder[0],
     ).toBeLessThan(
-      operations.finalizeImageOriginalPurge.mock.invocationCallOrder[0]!,
+      operations.finalizeImageOriginalPurge.mock.invocationCallOrder[0],
     );
 
     const content = await service.resolveArtifactContent('acctart_image_1');

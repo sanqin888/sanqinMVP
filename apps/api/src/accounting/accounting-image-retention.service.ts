@@ -81,7 +81,9 @@ export class AccountingImageRetentionService {
       limitInputPixels: 80_000_000,
     }).metadata();
     if (!originalMetadata.width || !originalMetadata.height) {
-      throw new BadRequestException('original image dimensions are unavailable');
+      throw new BadRequestException(
+        'original image dimensions are unavailable',
+      );
     }
     const originalDimensions = orientedImageDimensions(
       originalMetadata.width,
@@ -154,7 +156,10 @@ export class AccountingImageRetentionService {
         profile: processed.profile,
         maxDimension: processed.maxDimension,
         quality: processed.quality,
-        savingsPercent: savingsPercent(original.length, processed.buffer.length),
+        savingsPercent: savingsPercent(
+          original.length,
+          processed.buffer.length,
+        ),
       },
     };
   }
@@ -180,9 +185,14 @@ export class AccountingImageRetentionService {
     const context = await this.requireConfirmedImageContext(inboxItemStableId);
     const retention = context.artifact.binaryRetention;
     if (!retention) {
-      throw new ConflictException('image compression candidate is not available');
+      throw new ConflictException(
+        'image compression candidate is not available',
+      );
     }
-    if (retention.state === AccountingArtifactBinaryRetentionState.COMPRESSED_ONLY) {
+    if (
+      retention.state ===
+      AccountingArtifactBinaryRetentionState.COMPRESSED_ONLY
+    ) {
       return this.presentRetained(context);
     }
 
@@ -208,7 +218,10 @@ export class AccountingImageRetentionService {
       'compressed accounting image',
     );
 
-    if (retention.state === AccountingArtifactBinaryRetentionState.CANDIDATE_READY) {
+    if (
+      retention.state ===
+      AccountingArtifactBinaryRetentionState.CANDIDATE_READY
+    ) {
       const originalPath = this.resolveStoredUrl(
         context.artifact.storedUrl,
         INBOX_FILE_PREFIX,
@@ -226,14 +239,18 @@ export class AccountingImageRetentionService {
       operatorUserStableId,
       ACCOUNTING_IMAGE_RETENTION_POLICY_VERSION,
     );
-    if (began.state === AccountingArtifactBinaryRetentionState.COMPRESSED_ONLY) {
+    if (
+      began.state === AccountingArtifactBinaryRetentionState.COMPRESSED_ONLY
+    ) {
       return this.presentRetained(
         await this.requireConfirmedImageContext(inboxItemStableId),
       );
     }
 
     if (!began.originalStoredUrl) {
-      throw new InternalServerErrorException('original image path is unavailable');
+      throw new InternalServerErrorException(
+        'original image path is unavailable',
+      );
     }
     const originalPath = this.resolveStoredUrl(
       began.originalStoredUrl,
@@ -265,9 +282,8 @@ export class AccountingImageRetentionService {
   }
 
   async resolveArtifactContent(artifactStableId: string) {
-    const context = await this.operations.readImageArtifactContentContext(
-      artifactStableId,
-    );
+    const context =
+      await this.operations.readImageArtifactContentContext(artifactStableId);
     if (!context || context.kind !== AccountingArtifactKind.IMAGE) {
       throw new NotFoundException('accounting image evidence not found');
     }
@@ -276,7 +292,8 @@ export class AccountingImageRetentionService {
     let mimeType = context.mimeType;
     if (
       retention &&
-      (retention.state === AccountingArtifactBinaryRetentionState.PURGE_PENDING ||
+      (retention.state ===
+        AccountingArtifactBinaryRetentionState.PURGE_PENDING ||
         retention.state ===
           AccountingArtifactBinaryRetentionState.COMPRESSED_ONLY) &&
       retention.retainedStoredUrl &&
@@ -303,13 +320,15 @@ export class AccountingImageRetentionService {
   }
 
   private async requireConfirmedImageContext(inboxItemStableId: string) {
-    const context = await this.operations.readImageRetentionContext(
-      inboxItemStableId,
-    );
-    if (!context) throw new NotFoundException('accounting inbox item not found');
+    const context =
+      await this.operations.readImageRetentionContext(inboxItemStableId);
+    if (!context) {
+      throw new NotFoundException('accounting inbox item not found');
+    }
     if (
       context.status !== AccountingInboxStatus.CONFIRMED ||
-      context.classification !== AccountingInboxClassification.EXPENSE_DOCUMENT ||
+      context.classification !==
+        AccountingInboxClassification.EXPENSE_DOCUMENT ||
       context.selectedProvider ||
       context.materializedEntityType !==
         AccountingInboxMaterializedEntityType.EXPENSE_DOCUMENT ||
@@ -332,11 +351,12 @@ export class AccountingImageRetentionService {
     return context;
   }
 
-  private async presentRetained(context: AccountingImageRetentionContext) {
+  private presentRetained(context: AccountingImageRetentionContext) {
     const retention = context.artifact.binaryRetention;
     if (
       !retention ||
-      retention.state !== AccountingArtifactBinaryRetentionState.COMPRESSED_ONLY ||
+      retention.state !==
+        AccountingArtifactBinaryRetentionState.COMPRESSED_ONLY ||
       !retention.retainedStoredUrl ||
       !retention.retainedContentHash ||
       !retention.retainedByteSize ||
@@ -371,7 +391,9 @@ export class AccountingImageRetentionService {
     const dir = path.join(getAccountingUploadsDir(), 'image-retention');
     await fs.promises.mkdir(dir, { recursive: true });
     const fileName = `${artifactStableId}-${createId()}.webp`;
-    await fs.promises.writeFile(path.join(dir, fileName), buffer, { flag: 'wx' });
+    await fs.promises.writeFile(path.join(dir, fileName), buffer, {
+      flag: 'wx',
+    });
     return `${RETENTION_FILE_PREFIX}${fileName}`;
   }
 
@@ -419,7 +441,9 @@ export class AccountingImageRetentionService {
       throw new ConflictException(`${label} is unavailable`);
     }
     if (sha256(buffer) !== expectedHash) {
-      throw new ConflictException(`${label} hash does not match source evidence`);
+      throw new ConflictException(
+        `${label} hash does not match source evidence`,
+      );
     }
     return buffer;
   }
@@ -437,7 +461,9 @@ export class AccountingImageRetentionService {
       throw new ConflictException(`${label} is unavailable`);
     }
     if (sha256(buffer) !== expectedHash) {
-      throw new ConflictException(`${label} hash does not match source evidence`);
+      throw new ConflictException(
+        `${label} hash does not match source evidence`,
+      );
     }
     return true;
   }

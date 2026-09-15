@@ -189,7 +189,9 @@ describe('AccountingInboxAcquisitionService', () => {
         mimetype: 'image/png',
         buffer: original,
       }),
-    ).resolves.toEqual(expect.objectContaining({ kind: AccountingArtifactKind.IMAGE }));
+    ).resolves.toEqual(
+      expect.objectContaining({ kind: AccountingArtifactKind.IMAGE }),
+    );
 
     expect(operations.recordInboxParseRun).toHaveBeenCalledWith(
       expect.objectContaining({

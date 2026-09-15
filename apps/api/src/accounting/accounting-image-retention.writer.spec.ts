@@ -91,9 +91,9 @@ describe('accounting image retention writer', () => {
       }) as unknown,
     );
     const serialized = JSON.stringify(
-      tx.accountingArtifactBinaryRetention.upsert.mock.calls[0][0],
+      tx.accountingArtifactBinaryRetention.upsert.mock.calls,
     );
-    expect(serialized).not.toContain(`contentHash\":\"${ORIGINAL_HASH}\"`);
+    expect(serialized).not.toContain(ORIGINAL_HASH);
   });
 
   it('moves an accepted candidate to PURGE_PENDING before filesystem deletion', async () => {

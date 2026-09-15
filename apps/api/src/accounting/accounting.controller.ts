@@ -329,9 +329,8 @@ export class AccountingController {
     @Param('artifactStableId') artifactStableId: string,
     @Res() res: Response,
   ) {
-    const resolved = await this.imageRetention.resolveArtifactContent(
-      artifactStableId,
-    );
+    const resolved =
+      await this.imageRetention.resolveArtifactContent(artifactStableId);
     res.setHeader('Content-Type', resolved.mimeType);
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Cache-Control', 'private, no-store');

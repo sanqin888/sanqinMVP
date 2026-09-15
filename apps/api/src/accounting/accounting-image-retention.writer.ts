@@ -34,7 +34,10 @@ export async function stageAccountingImageRetentionCandidateInTx(
   tx: AccountingTx,
   input: AccountingImageRetentionCandidateInput,
 ) {
-  const context = await requireConfirmedImageExpense(tx, input.inboxItemStableId);
+  const context = await requireConfirmedImageExpense(
+    tx,
+    input.inboxItemStableId,
+  );
   const previousCandidateStoredUrl =
     context.artifact.binaryRetention?.candidateStoredUrl ?? null;
   const currentState =
@@ -108,10 +111,14 @@ export async function discardAccountingImageRetentionCandidateInTx(
   if (!retention) {
     return { candidateStoredUrl: null, replayed: true };
   }
-  if (retention.state === AccountingArtifactBinaryRetentionState.ORIGINAL_PRESENT) {
+  if (
+    retention.state === AccountingArtifactBinaryRetentionState.ORIGINAL_PRESENT
+  ) {
     return { candidateStoredUrl: null, replayed: true };
   }
-  if (retention.state !== AccountingArtifactBinaryRetentionState.CANDIDATE_READY) {
+  if (
+    retention.state !== AccountingArtifactBinaryRetentionState.CANDIDATE_READY
+  ) {
     throw new AccountingInboxWriterConflictError(
       'image compression candidate cannot be discarded after purge acceptance',
     );
@@ -165,16 +172,9 @@ export async function beginAccountingImageOriginalPurgeInTx(
       'image compression candidate is not available',
     );
   }
-  if (retention.state === AccountingArtifactBinaryRetentionState.COMPRESSED_ONLY) {
-    return {
-      artifactStableId: context.artifact.artifactStableId,
-      originalStoredUrl: context.artifact.storedUrl,
-      retainedStoredUrl: retention.retainedStoredUrl,
-      state: retention.state,
-      replayed: true,
-    };
-  }
-  if (retention.state === AccountingArtifactBinaryRetentionState.PURGE_PENDING) {
+  if (
+    retention.state === AccountingArtifactBinaryRetentionState.COMPRESSED_ONLY
+  ) {
     return {
       artifactStableId: context.artifact.artifactStableId,
       originalStoredUrl: context.artifact.storedUrl,
@@ -184,7 +184,19 @@ export async function beginAccountingImageOriginalPurgeInTx(
     };
   }
   if (
-    retention.state !== AccountingArtifactBinaryRetentionState.CANDIDATE_READY ||
+    retention.state === AccountingArtifactBinaryRetentionState.PURGE_PENDING
+  ) {
+    return {
+      artifactStableId: context.artifact.artifactStableId,
+      originalStoredUrl: context.artifact.storedUrl,
+      retainedStoredUrl: retention.retainedStoredUrl,
+      state: retention.state,
+      replayed: true,
+    };
+  }
+  if (
+    retention.state !==
+      AccountingArtifactBinaryRetentionState.CANDIDATE_READY ||
     !retention.candidateStoredUrl ||
     !retention.candidateContentHash ||
     !retention.candidateByteSize ||
@@ -275,14 +287,18 @@ export async function finalizeAccountingImageOriginalPurgeInTx(
       'image retention state is missing',
     );
   }
-  if (retention.state === AccountingArtifactBinaryRetentionState.COMPRESSED_ONLY) {
+  if (
+    retention.state === AccountingArtifactBinaryRetentionState.COMPRESSED_ONLY
+  ) {
     return {
       artifactStableId: context.artifact.artifactStableId,
       state: retention.state,
       replayed: true,
     };
   }
-  if (retention.state !== AccountingArtifactBinaryRetentionState.PURGE_PENDING) {
+  if (
+    retention.state !== AccountingArtifactBinaryRetentionState.PURGE_PENDING
+  ) {
     throw new AccountingInboxWriterConflictError(
       'image original purge has not been accepted',
     );
@@ -301,8 +317,7 @@ export async function finalizeAccountingImageOriginalPurgeInTx(
       action: 'IMAGE_ORIGINAL_BINARY_PURGED',
       entityType: 'ACCOUNTING_SOURCE_ARTIFACT',
       entityId: context.artifact.artifactStableId,
-      operatorUserId:
-        retention.acceptedByUserStableId ?? operatorUserStableId,
+      operatorUserId: retention.acceptedByUserStableId ?? operatorUserStableId,
       beforeJson: {
         state: AccountingArtifactBinaryRetentionState.PURGE_PENDING,
         originalContentHash: context.artifact.contentHash,
@@ -351,7 +366,9 @@ async function requireConfirmedImageExpense(
     },
   });
   if (!item) {
-    throw new AccountingInboxWriterNotFoundError('accounting inbox item not found');
+    throw new AccountingInboxWriterNotFoundError(
+      'accounting inbox item not found',
+    );
   }
   if (
     item.status !== AccountingInboxStatus.CONFIRMED ||
