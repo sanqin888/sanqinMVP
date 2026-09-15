@@ -4,16 +4,31 @@ import sharp from 'sharp';
 
 export const ACCOUNTING_RECEIPT_IMAGE_POLICY = {
   maxUploadBytes: 20 * 1024 * 1024,
-  maxDimension: 2400,
-  webpQuality: 85,
   maxInputPixels: 80_000_000,
 } as const;
+
+export const ACCOUNTING_IMAGE_RETENTION_POLICY_VERSION = 1;
+
+export const ACCOUNTING_IMAGE_RETENTION_PROFILES = {
+  SPACE_SAVER: { maxDimension: 1800, quality: 78 },
+  BALANCED: { maxDimension: 2400, quality: 85 },
+  HIGH_QUALITY: { maxDimension: 3000, quality: 90 },
+  NEAR_ORIGINAL: { maxDimension: 4096, quality: 95 },
+} as const;
+
+export type AccountingImageRetentionProfile =
+  keyof typeof ACCOUNTING_IMAGE_RETENTION_PROFILES;
 
 type ReceiptImageType = 'jpeg' | 'png' | 'webp';
 
 export type ProcessedAccountingReceiptImage = {
   buffer: Buffer;
   extension: '.webp';
+  width: number;
+  height: number;
+  profile: AccountingImageRetentionProfile;
+  maxDimension: number;
+  quality: number;
 };
 
 export function detectAccountingReceiptImageType(
@@ -40,16 +55,20 @@ export function detectAccountingReceiptImageType(
   return null;
 }
 
-export async function processAccountingReceiptImage(file: {
-  originalname: string;
-  buffer: Buffer;
-}): Promise<ProcessedAccountingReceiptImage> {
+export async function processAccountingReceiptImage(
+  file: {
+    originalname: string;
+    buffer: Buffer;
+  },
+  profile: AccountingImageRetentionProfile = 'BALANCED',
+): Promise<ProcessedAccountingReceiptImage> {
   const detectedType = detectAccountingReceiptImageType(file.buffer);
   if (!detectedType) {
     throw new BadRequestException('Unsupported or invalid receipt image');
   }
 
   assertMatchingExtension(file.originalname, detectedType);
+  const retentionProfile = ACCOUNTING_IMAGE_RETENTION_PROFILES[profile];
 
   try {
     const input = sharp(file.buffer, {
@@ -67,18 +86,30 @@ export async function processAccountingReceiptImage(file: {
     const buffer = await input
       .rotate()
       .resize({
-        width: ACCOUNTING_RECEIPT_IMAGE_POLICY.maxDimension,
-        height: ACCOUNTING_RECEIPT_IMAGE_POLICY.maxDimension,
+        width: retentionProfile.maxDimension,
+        height: retentionProfile.maxDimension,
         fit: 'inside',
         withoutEnlargement: true,
       })
       .webp({
-        quality: ACCOUNTING_RECEIPT_IMAGE_POLICY.webpQuality,
+        quality: retentionProfile.quality,
         smartSubsample: true,
       })
       .toBuffer();
+    const outputMetadata = await sharp(buffer).metadata();
+    if (!outputMetadata.width || !outputMetadata.height) {
+      throw new BadRequestException('Receipt image dimensions are unavailable');
+    }
 
-    return { buffer, extension: '.webp' };
+    return {
+      buffer,
+      extension: '.webp',
+      width: outputMetadata.width,
+      height: outputMetadata.height,
+      profile,
+      maxDimension: retentionProfile.maxDimension,
+      quality: retentionProfile.quality,
+    };
   } catch (error) {
     if (error instanceof BadRequestException) {
       throw error;

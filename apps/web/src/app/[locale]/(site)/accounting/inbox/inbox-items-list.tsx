@@ -79,6 +79,10 @@ export function AccountingInboxItemsList({
             item.artifact.senderEmail ||
             item.artifact.kind;
           const quarantined = item.status === 'QUARANTINED';
+          const evidenceUrl =
+            item.artifact.kind === 'IMAGE'
+              ? `/api/v1/accounting/inbox/artifacts/${encodeURIComponent(item.artifact.artifactStableId)}/content`
+              : item.artifact.storedUrl;
           const classificationLocked =
             quarantined ||
             item.status !== 'PENDING_REVIEW' ||
@@ -313,10 +317,10 @@ export function AccountingInboxItemsList({
                     <strong>{money(parse.totalCents)}</strong>
                   </p>
                 ) : null}
-                {item.artifact.storedUrl ? (
+                {evidenceUrl ? (
                   <a
                     className="text-blue-600 hover:underline"
-                    href={item.artifact.storedUrl}
+                    href={evidenceUrl}
                     target="_blank"
                     rel="noreferrer"
                   >

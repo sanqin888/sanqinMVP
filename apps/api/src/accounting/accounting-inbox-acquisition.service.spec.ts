@@ -13,9 +13,19 @@ jest.mock('./accounting-pdf-extractor', () => {
   };
 });
 
+jest.mock('./accounting-image-ocr', () => ({
+  extractAccountingImageText: jest.fn(() =>
+    Promise.resolve({
+      text: 'Invoice subtotal $75.00\nHST $9.75\nTotal $84.75',
+      engine: 'TESSERACT' as const,
+    }),
+  ),
+}));
+
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import sharp from 'sharp';
 import {
   AccountingArtifactKind,
   AccountingFinancialProvider,
@@ -25,6 +35,7 @@ import {
   AccountingParseStatus,
 } from '@prisma/client';
 import { AccountingInboxAcquisitionService } from './accounting-inbox-acquisition.service';
+import { extractAccountingImageText } from './accounting-image-ocr';
 import { AccountingProviderFinancialProcessingError } from './accounting-provider-financial.service';
 
 function registeredArtifact(kind: AccountingArtifactKind, contentHash: string) {
@@ -50,9 +61,15 @@ function registeredArtifact(kind: AccountingArtifactKind, contentHash: string) {
 
 describe('AccountingInboxAcquisitionService', () => {
   const originalUploadRoot = process.env.UPLOAD_ROOT;
+  const imageOcr = jest.mocked(extractAccountingImageText);
   let uploadRoot: string;
 
   beforeEach(() => {
+    imageOcr.mockReset();
+    imageOcr.mockResolvedValue({
+      text: 'Invoice subtotal $75.00\nHST $9.75\nTotal $84.75',
+      engine: 'TESSERACT',
+    });
     uploadRoot = fs.mkdtempSync(
       path.join(os.tmpdir(), 'sanq-accounting-inbox-'),
     );
@@ -116,6 +133,72 @@ describe('AccountingInboxAcquisitionService', () => {
     );
     expect(providerFinancial.parseForInboxSuggestion).toHaveBeenCalled();
     expect(providerFinancial.parseAndMaterialize).not.toHaveBeenCalled();
+  });
+
+  it('runs image OCR from the original uploaded bytes without a lossy retention transform', async () => {
+    const { service, operations } = makeService();
+    const original = await sharp({
+      create: {
+        width: 1800,
+        height: 1200,
+        channels: 3,
+        background: { r: 250, g: 250, b: 250 },
+      },
+    })
+      .jpeg({ quality: 96 })
+      .toBuffer();
+
+    await service.acquireManualFile({
+      originalname: 'receipt.jpg',
+      mimetype: 'image/jpeg',
+      buffer: original,
+    });
+
+    expect(imageOcr).toHaveBeenCalledTimes(1);
+    expect(imageOcr).toHaveBeenCalledWith(original);
+    expect(operations.recordInboxParseRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        artifactStableId: 'acctart_image',
+        status: AccountingParseStatus.SUCCESS,
+        resultJson: expect.objectContaining({
+          inputKind: 'IMAGE',
+          ocrEngine: 'TESSERACT',
+          ocrStatus: 'SUCCESS',
+        }) as unknown,
+      }) as unknown,
+    );
+  });
+
+  it('records a real parse error when image OCR execution fails', async () => {
+    const { service, operations } = makeService();
+    imageOcr.mockRejectedValueOnce(new Error('simulated OCR failure'));
+    const original = await sharp({
+      create: {
+        width: 1200,
+        height: 800,
+        channels: 3,
+        background: { r: 250, g: 250, b: 250 },
+      },
+    })
+      .png()
+      .toBuffer();
+
+    await expect(
+      service.acquireManualFile({
+        originalname: 'receipt.png',
+        mimetype: 'image/png',
+        buffer: original,
+      }),
+    ).resolves.toEqual(expect.objectContaining({ kind: AccountingArtifactKind.IMAGE }));
+
+    expect(operations.recordInboxParseRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        artifactStableId: 'acctart_image',
+        status: AccountingParseStatus.ERROR,
+        errorMessage: 'simulated OCR failure',
+      }) as unknown,
+    );
+    expect(operations.suggestUnifiedInboxClassification).not.toHaveBeenCalled();
   });
 
   it('keeps same-priority provider recognition ambiguity unclassified for manual review', async () => {

@@ -16,6 +16,14 @@ const INBOX_EXPENSE_WRITER = resolve(
   ACCOUNTING_ROOT,
   'accounting-inbox-expense.writer.ts',
 );
+const IMAGE_RETENTION_WRITER = resolve(
+  ACCOUNTING_ROOT,
+  'accounting-image-retention.writer.ts',
+);
+const IMAGE_RETENTION_SERVICE = resolve(
+  ACCOUNTING_ROOT,
+  'accounting-image-retention.service.ts',
+);
 const PROVIDER_FINANCIAL_REVIEW_WRITER = resolve(
   ACCOUNTING_ROOT,
   'accounting-provider-financial-review.writer.ts',
@@ -101,7 +109,7 @@ function productionTypescriptFiles(root: string): string[] {
 describe('Accounting unified Inbox core ownership boundary', () => {
   it('keeps Unified Inbox Prisma mutations inside the designated Accounting writers', () => {
     const delegate =
-      'accounting(?:SourceArtifact|ParseRun|InboxItem|TrustedSender|ProviderRecognitionRule|ProviderFinancialDocument|ProviderFinancialLine|ProviderFinancialCoverage)';
+      'accounting(?:SourceArtifact|ArtifactBinaryRetention|ParseRun|InboxItem|TrustedSender|ProviderRecognitionRule|ProviderFinancialDocument|ProviderFinancialLine|ProviderFinancialCoverage)';
     const mutationPattern = new RegExp(
       `\\.${delegate}\\.(?:create|createMany|update|updateMany|delete|deleteMany|upsert)\\s*\\(`,
     );
@@ -109,6 +117,7 @@ describe('Accounting unified Inbox core ownership boundary', () => {
       INBOX_WRITER,
       INBOX_CLASSIFICATION_WRITER,
       INBOX_EXPENSE_WRITER,
+      IMAGE_RETENTION_WRITER,
       PROVIDER_FINANCIAL_REVIEW_WRITER,
       PROVIDER_RECOGNITION_WRITER,
     ]);
@@ -121,6 +130,7 @@ describe('Accounting unified Inbox core ownership boundary', () => {
     expect(read(INBOX_WRITER)).toMatch(mutationPattern);
     expect(read(INBOX_CLASSIFICATION_WRITER)).toMatch(mutationPattern);
     expect(read(INBOX_EXPENSE_WRITER)).toMatch(mutationPattern);
+    expect(read(IMAGE_RETENTION_WRITER)).toMatch(mutationPattern);
     expect(read(PROVIDER_FINANCIAL_REVIEW_WRITER)).toMatch(mutationPattern);
     expect(read(PROVIDER_RECOGNITION_WRITER)).toMatch(mutationPattern);
   });
@@ -133,6 +143,12 @@ describe('Accounting unified Inbox core ownership boundary', () => {
     expect(read(INBOX_POLICY)).not.toContain('../prisma/prisma.service');
     expect(read(INBOX_ORCHESTRATOR)).not.toContain('../prisma/prisma.service');
     expect(read(INBOX_EXPENSE_WRITER)).not.toContain(
+      '../prisma/prisma.service',
+    );
+    expect(read(IMAGE_RETENTION_WRITER)).not.toContain(
+      '../prisma/prisma.service',
+    );
+    expect(read(IMAGE_RETENTION_SERVICE)).not.toContain(
       '../prisma/prisma.service',
     );
     expect(read(PROVIDER_FINANCIAL_REVIEW_WRITER)).not.toContain(
@@ -161,6 +177,7 @@ describe('Accounting unified Inbox core ownership boundary', () => {
       'Prisma.TransactionClient',
     );
     expect(read(INBOX_EXPENSE_WRITER)).toContain('Prisma.TransactionClient');
+    expect(read(IMAGE_RETENTION_WRITER)).toContain('Prisma.TransactionClient');
     expect(read(PROVIDER_FINANCIAL_REVIEW_WRITER)).toContain(
       'Prisma.TransactionClient',
     );
@@ -189,6 +206,17 @@ describe('Accounting unified Inbox core ownership boundary', () => {
     expect(controller).toContain(
       "@Post('inbox/:inboxItemStableId/other/confirm')",
     );
+    expect(controller).toContain("@Get('inbox/image-retention/pending')");
+    expect(controller).toContain(
+      "@Post('inbox/:inboxItemStableId/image-retention/candidate')",
+    );
+    expect(controller).toContain(
+      "@Post('inbox/:inboxItemStableId/image-retention/accept')",
+    );
+    expect(controller).toContain(
+      "@Get('inbox/artifacts/:artifactStableId/content')",
+    );
+    expect(acquisition).not.toContain('processAccountingReceiptImage');
     expect(controller).not.toContain("@Post('files/receipts')");
   });
 
@@ -218,6 +246,7 @@ describe('Accounting unified Inbox core ownership boundary', () => {
       INBOX_WRITER,
       INBOX_CLASSIFICATION_WRITER,
       INBOX_EXPENSE_WRITER,
+      IMAGE_RETENTION_WRITER,
       PROVIDER_FINANCIAL_REVIEW_WRITER,
       PROVIDER_RECOGNITION_WRITER,
     ]) {
