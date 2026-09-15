@@ -16,6 +16,7 @@ import {
 } from '../store/public-api';
 import { AccountingOperationsService } from './accounting-operations.service';
 import { AccountingService } from './accounting.service';
+import { DEFAULT_ACCOUNTING_ACCOUNTS } from './accounting-chart-of-accounts';
 import { hashAccountingJson } from './accounting-inbox-core.policy';
 import {
   buildProviderSettlementDocumentPlan,
@@ -114,6 +115,19 @@ type ProviderSettlementAccountRequirement = {
 const ACCOUNT_REQUIREMENTS: Readonly<
   Record<string, ProviderSettlementAccountRequirement>
 > = PROVIDER_SETTLEMENT_ACCOUNT_REQUIREMENTS;
+
+const SYSTEM_ACCOUNT_REQUIREMENTS: Readonly<
+  Record<string, ProviderSettlementAccountRequirement>
+> = Object.fromEntries(
+  DEFAULT_ACCOUNTING_ACCOUNTS.map((account) => [
+    account.accountStableId,
+    {
+      accountClass: account.accountClass,
+      currency: 'CAD',
+      isActive: true,
+    },
+  ]),
+);
 
 const journalTotals = (
   lines: Array<{ debitCents?: number; creditCents?: number }>,
@@ -523,25 +537,76 @@ export class AccountingProviderSettlementPreviewService {
         .map((coverage) => coverage.documentStableId)
         .sort();
       const uniquelyCovered = coveringStatements.length === 1;
+      const accountPrerequisites = Array.from(
+        new Set(draft.lines.map((line) => line.accountStableId)),
+      )
+        .sort()
+        .map((accountStableId) => {
+          const expected = SYSTEM_ACCOUNT_REQUIREMENTS[accountStableId] ?? null;
+          const actual = accountFactsByStableId.get(accountStableId) ?? null;
+          const blockReasons = [
+            ...(!expected
+              ? [`ACCOUNT_POLICY_NOT_DEFINED:${accountStableId}`]
+              : []),
+            ...(!actual ? [`ACCOUNT_NOT_PROVISIONED:${accountStableId}`] : []),
+            ...(expected && actual && actual.accountClass !== expected.accountClass
+              ? [`ACCOUNT_CLASS_MISMATCH:${accountStableId}`]
+              : []),
+            ...(expected && actual && actual.currency !== expected.currency
+              ? [`ACCOUNT_CURRENCY_MISMATCH:${accountStableId}`]
+              : []),
+            ...(expected && actual && actual.isActive !== expected.isActive
+              ? [`ACCOUNT_ACTIVE_STATE_MISMATCH:${accountStableId}`]
+              : []),
+          ];
+          return {
+            accountStableId,
+            expected,
+            actual: actual
+              ? {
+                  accountClass: actual.accountClass,
+                  currency: actual.currency,
+                  isActive: actual.isActive,
+                }
+              : null,
+            status: blockReasons.length > 0 ? 'BLOCKED' : 'READY',
+            blockReasons,
+          };
+        });
+      const accountBlockReasons = accountPrerequisites.flatMap(
+        (account) => account.blockReasons,
+      );
       const status = alreadyReversed
         ? 'ALREADY_REVERSED'
-        : uberCoverage && uniquelyCovered
+        : uberCoverage && uniquelyCovered && accountBlockReasons.length === 0
           ? 'READY'
           : 'BLOCKED';
+      const coverageBlockReasons = !uberCoverage
+        ? ['PROVIDER_FINANCIAL_COVERAGE_NOT_PROVISIONED']
+        : coveringStatements.length > 1
+          ? ['AMBIGUOUS_AUTHORITATIVE_STATEMENT_COVERAGE']
+          : coveringStatements.length === 0
+            ? ['NO_READY_AUTHORITATIVE_STATEMENT_COVERAGE']
+            : [];
       const blockReasons =
-        status !== 'BLOCKED'
-          ? []
-          : !uberCoverage
-            ? ['PROVIDER_FINANCIAL_COVERAGE_NOT_PROVISIONED']
-            : coveringStatements.length > 1
-              ? ['AMBIGUOUS_AUTHORITATIVE_STATEMENT_COVERAGE']
-              : ['NO_READY_AUTHORITATIVE_STATEMENT_COVERAGE'];
+        status === 'BLOCKED'
+          ? Array.from(
+              new Set([...coverageBlockReasons, ...accountBlockReasons]),
+            ).sort()
+          : [];
       return {
         originalJournalEntryStableId: journal.entryStableId,
+        originalJournalAnchor: {
+          idempotencyKey: journal.idempotencyKey,
+          idempotencyHash: journal.idempotencyHash,
+          version: journal.version,
+          sourceFactStableId: journal.sourceFactStableId,
+        },
         orderStableId: journal.sourceFactStableId,
         occurredAt: journal.occurredAt.toISOString(),
         status,
         blockReasons,
+        accountPrerequisites,
         coveringDocumentStableIds,
         coveredByDocumentStableId: uniquelyCovered
           ? (coveringStatements[0]?.documentStableId ?? null)
@@ -565,7 +630,7 @@ export class AccountingProviderSettlementPreviewService {
       (plan) => plan.status === 'BLOCKED',
     );
     const reportWithoutHash = {
-      version: 2 as const,
+      version: 3 as const,
       range: {
         timezone,
         accountingStartDate,

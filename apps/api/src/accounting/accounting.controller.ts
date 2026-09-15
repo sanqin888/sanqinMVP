@@ -41,6 +41,7 @@ import { AccountingCanonicalSaleReplayService } from './accounting-canonical-sal
 import { AccountingCanonicalChangePreviewService } from './accounting-canonical-change-preview.service';
 import { AccountingCanonicalChangeExecutionService } from './accounting-canonical-change-execution.service';
 import { AccountingProviderSettlementPreviewService } from './accounting-provider-settlement-preview.service';
+import { AccountingProviderSettlementExecutionService } from './accounting-provider-settlement-execution.service';
 import {
   AccountingOperationsService,
   type AccountingExpenseInput,
@@ -85,6 +86,7 @@ export class AccountingController {
     private readonly canonicalChangePreview: AccountingCanonicalChangePreviewService,
     private readonly canonicalChangeExecution: AccountingCanonicalChangeExecutionService,
     private readonly providerSettlementPreview: AccountingProviderSettlementPreviewService,
+    private readonly providerSettlementExecution: AccountingProviderSettlementExecutionService,
     @Inject(UBER_EATS_REPORTING)
     private readonly uberReporting: UberEatsReportingPort,
   ) {}
@@ -469,6 +471,28 @@ export class AccountingController {
       toDateExclusive: toDateExclusive ?? '',
       storeStableId: storeStableId ?? '',
       ...(provider ? { provider: this.parseFinancialProvider(provider) } : {}),
+    });
+  }
+
+  @Post('journal/provider-settlement/replay')
+  executeProviderSettlementReplay(
+    @Body()
+    body: {
+      fromDate?: string;
+      toDateExclusive?: string;
+      storeStableId?: string;
+      provider?: string;
+      expectedPlanHash?: string;
+    },
+  ) {
+    return this.providerSettlementExecution.executeRange({
+      ...(body.fromDate ? { fromDate: body.fromDate } : {}),
+      toDateExclusive: body.toDateExclusive ?? '',
+      storeStableId: body.storeStableId ?? '',
+      ...(body.provider
+        ? { provider: this.parseFinancialProvider(body.provider) }
+        : {}),
+      expectedPlanHash: body.expectedPlanHash ?? '',
     });
   }
 

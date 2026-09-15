@@ -377,6 +377,8 @@ export class AccountingOperationsService {
       select: {
         entryStableId: true,
         idempotencyKey: true,
+        idempotencyHash: true,
+        version: true,
         sourceFactStableId: true,
         storeStableId: true,
         occurredAt: true,

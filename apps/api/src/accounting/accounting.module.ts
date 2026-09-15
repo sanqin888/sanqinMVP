@@ -15,6 +15,7 @@ import { AccountingCanonicalSaleReplayService } from './accounting-canonical-sal
 import { AccountingCanonicalChangePreviewService } from './accounting-canonical-change-preview.service';
 import { AccountingCanonicalChangeExecutionService } from './accounting-canonical-change-execution.service';
 import { AccountingProviderSettlementPreviewService } from './accounting-provider-settlement-preview.service';
+import { AccountingProviderSettlementExecutionService } from './accounting-provider-settlement-execution.service';
 import { BrandStoreConfigModule } from '../store/public-api';
 import { LoyaltyFinancialFactsModule } from '../loyalty/public-api';
 import {
@@ -42,6 +43,7 @@ import { PaymentFinancialFactsModule } from '../payments/public-api';
     AccountingCanonicalChangePreviewService,
     AccountingCanonicalChangeExecutionService,
     AccountingProviderSettlementPreviewService,
+    AccountingProviderSettlementExecutionService,
     AccountingOperationsService,
     AccountingProviderFinancialService,
     AccountingInboxAcquisitionService,

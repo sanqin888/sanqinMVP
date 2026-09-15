@@ -159,6 +159,12 @@ describe('Phase 9 canonical financial facts boundary', () => {
     const changeExecutionService =
       file(ACCOUNTING_ROOT, 'accounting-canonical-change-execution.service.ts')
         ?.source ?? '';
+    const providerSettlementPreviewService =
+      file(ACCOUNTING_ROOT, 'accounting-provider-settlement-preview.service.ts')
+        ?.source ?? '';
+    const providerSettlementExecutionService =
+      file(ACCOUNTING_ROOT, 'accounting-provider-settlement-execution.service.ts')
+        ?.source ?? '';
     const accountingService =
       file(ACCOUNTING_ROOT, 'accounting.service.ts')?.source ?? '';
     const accountingController =
@@ -204,6 +210,27 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(changeExecutionService).not.toContain("from '../orders/");
     expect(changeExecutionService).not.toContain("from '../payments/");
     expect(changeExecutionService).not.toContain("from '../loyalty/");
+    expect(providerSettlementPreviewService).toContain(
+      "from '../orders/public-api'",
+    );
+    expect(providerSettlementPreviewService).not.toContain('../prisma/');
+    expect(providerSettlementPreviewService).not.toContain(
+      'createProviderSettlementReplacementGroup',
+    );
+    expect(providerSettlementExecutionService).toContain(
+      "from './accounting-provider-settlement-preview.service'",
+    );
+    expect(providerSettlementExecutionService).toContain('expectedPlanHash');
+    expect(providerSettlementExecutionService).toContain(
+      'createProviderSettlementReplacementGroup',
+    );
+    expect(providerSettlementExecutionService).not.toContain('../prisma/');
+    expect(providerSettlementExecutionService).not.toContain(
+      "from '../orders/",
+    );
+    expect(providerSettlementExecutionService).not.toContain(
+      'accountingJournalEntry.',
+    );
     expect(accountingController).toContain(
       "@Post('journal/canonical-sales/replay')",
     );
@@ -212,6 +239,12 @@ describe('Phase 9 canonical financial facts boundary', () => {
     );
     expect(accountingController).toContain(
       "@Post('journal/canonical-changes/replay')",
+    );
+    expect(accountingController).toContain(
+      "@Get('journal/provider-settlement/shadow-preview')",
+    );
+    expect(accountingController).toContain(
+      "@Post('journal/provider-settlement/replay')",
     );
     expect(accountingController).not.toContain('automation/order-accrual');
     expect(accountingService).not.toContain('autoAccrueOrderRevenue');
@@ -225,6 +258,12 @@ describe('Phase 9 canonical financial facts boundary', () => {
     );
     expect(accountingModule).toContain(
       'AccountingCanonicalChangeExecutionService',
+    );
+    expect(accountingModule).toContain(
+      'AccountingProviderSettlementPreviewService',
+    );
+    expect(accountingModule).toContain(
+      'AccountingProviderSettlementExecutionService',
     );
 
     const canonicalChangeWriterCallers = scanTypeScript(ACCOUNTING_ROOT, {
@@ -241,6 +280,22 @@ describe('Phase 9 canonical financial facts boundary', () => {
       .sort();
     expect(canonicalChangeWriterCallers).toEqual([
       'accounting/accounting-canonical-change-execution.service.ts',
+    ]);
+
+    const providerSettlementWriterCallers = scanTypeScript(ACCOUNTING_ROOT, {
+      productionOnly: true,
+    })
+      .filter(
+        ({ path, source }) =>
+          !path.endsWith('accounting.service.ts') &&
+          source.includes('createProviderSettlementReplacementGroup('),
+      )
+      .map(({ path }) =>
+        path.slice(API_SRC_ROOT.length + 1).replaceAll('\\', '/'),
+      )
+      .sort();
+    expect(providerSettlementWriterCallers).toEqual([
+      'accounting/accounting-provider-settlement-execution.service.ts',
     ]);
   });
 

@@ -141,7 +141,11 @@ describe('AccountingProviderSettlementPreviewService', () => {
       readProviderFinancialCoverage: jest
         .fn()
         .mockResolvedValue([uberCoverage()]),
-      readAccountingAccountFacts: jest.fn().mockResolvedValue([]),
+      readAccountingAccountFacts: jest.fn().mockResolvedValue([
+        accountFact('account_uber_pending', AccountingAccountClass.ASSET),
+        accountFact('account_sales_revenue', AccountingAccountClass.REVENUE),
+        accountFact('account_hst_payable', AccountingAccountClass.LIABILITY),
+      ]),
       readSettlementShadowExistingJournals: jest
         .fn()
         .mockResolvedValueOnce([])
@@ -150,6 +154,8 @@ describe('AccountingProviderSettlementPreviewService', () => {
         {
           entryStableId: 'journal_uber_manual_1',
           idempotencyKey: 'canonical-sale:order-uber-1:v1',
+          idempotencyHash: 'a'.repeat(64),
+          version: 1,
           sourceFactStableId: 'order-uber-1',
           storeStableId: '4750_Yonge_Street',
           occurredAt: new Date('2026-06-10T16:00:00.000Z'),
@@ -243,6 +249,12 @@ describe('AccountingProviderSettlementPreviewService', () => {
     expect(result.uberPreCutoverOrderReversals[0]).toEqual(
       expect.objectContaining({
         originalJournalEntryStableId: 'journal_uber_manual_1',
+        originalJournalAnchor: {
+          idempotencyKey: 'canonical-sale:order-uber-1:v1',
+          idempotencyHash: 'a'.repeat(64),
+          version: 1,
+          sourceFactStableId: 'order-uber-1',
+        },
         orderStableId: 'order-uber-1',
         status: 'BLOCKED',
         blockReasons: ['NO_READY_AUTHORITATIVE_STATEMENT_COVERAGE'],
@@ -376,7 +388,7 @@ describe('AccountingProviderSettlementPreviewService', () => {
       provider: AccountingFinancialProvider.UBER_EATS,
     });
 
-    expect(result.version).toBe(2);
+    expect(result.version).toBe(3);
     expect(result.providerDocuments).toHaveLength(1);
     expect(result.providerDocuments[0]).toEqual(
       expect.objectContaining({
@@ -545,12 +557,15 @@ describe('AccountingProviderSettlementPreviewService', () => {
         .mockResolvedValue([
           accountFact('account_uber_pending', AccountingAccountClass.ASSET),
           accountFact('account_sales_revenue', AccountingAccountClass.REVENUE),
+          accountFact('account_hst_payable', AccountingAccountClass.LIABILITY),
         ]),
       readSettlementShadowExistingJournals: jest.fn().mockResolvedValue([]),
       readOrderSaleJournalsByFactStableIds: jest.fn().mockResolvedValue([
         {
           entryStableId: 'journal_uber_manual_ambiguous',
           idempotencyKey: 'canonical-sale:order-uber-ambiguous:v1',
+          idempotencyHash: 'b'.repeat(64),
+          version: 1,
           sourceFactStableId: 'order-uber-ambiguous',
           storeStableId: '4750_Yonge_Street',
           occurredAt: new Date('2026-06-10T16:00:00.000Z'),
