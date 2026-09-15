@@ -227,7 +227,8 @@ describe('Accounting Inbox core persistence writer', () => {
       inboxItem: {
         id: 'inbox-db-id',
         status: AccountingInboxStatus.PENDING_REVIEW,
-        classification: AccountingInboxClassification.UNKNOWN,
+        classification: AccountingInboxClassification.EXPENSE_DOCUMENT,
+        selectedProvider: null,
         materializedEntityType: null,
         materializedEntityStableId: null,
       },
@@ -459,6 +460,7 @@ describe('Accounting Inbox core persistence writer', () => {
       data: {
         classification:
           AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
+        selectedProvider: AccountingFinancialProvider.CLOVER,
         materializedEntityType:
           AccountingInboxMaterializedEntityType.PROVIDER_FINANCIAL_DOCUMENT,
         materializedEntityStableId: expect.stringMatching(

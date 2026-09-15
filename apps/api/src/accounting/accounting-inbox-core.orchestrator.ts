@@ -4,11 +4,13 @@ import {
   AccountingInboxPolicyError,
   PROVIDER_FINANCIAL_HISTORY_START_DATE,
   normalizeAccountingInboxArtifact,
+  normalizeAccountingInboxClassificationSelection,
   normalizeAccountingInboxExpenseMaterialization,
   normalizeAccountingParseRun,
   normalizeAccountingTrustedSender,
   normalizeProviderFinancialDocument,
   type AccountingInboxArtifactInput,
+  type AccountingInboxClassificationSelectionInput,
   type AccountingInboxExpenseMaterializationInput,
   type AccountingParseRunInput,
   type AccountingProviderFinancialDocumentInput,
@@ -24,6 +26,11 @@ import {
   registerInboxArtifactInTx,
   upsertTrustedSenderInTx,
 } from './accounting-inbox-core.writer';
+import {
+  confirmOtherInboxItemInTx,
+  setInboxClassificationInTx,
+  suggestInboxClassificationInTx,
+} from './accounting-inbox-classification.writer';
 import {
   discardInboxItemInTx,
   materializeInboxExpenseInTx,
@@ -91,6 +98,50 @@ export async function upsertAccountingTrustedSender(
   );
   return runSerializableAccountingWrite(prisma, (tx) =>
     upsertTrustedSenderInTx(tx, normalized, operator),
+  );
+}
+
+export async function suggestAccountingInboxClassification(
+  prisma: AccountingTransactionRunner,
+  artifactStableId: string,
+  input: AccountingInboxClassificationSelectionInput,
+) {
+  const artifact = requireStableValue(artifactStableId, 'artifactStableId');
+  const selection = normalizeAccountingInboxClassificationSelection(input);
+  return runSerializableAccountingWrite(prisma, (tx) =>
+    suggestInboxClassificationInTx(tx, artifact, selection),
+  );
+}
+
+export async function setAccountingInboxClassification(
+  prisma: AccountingTransactionRunner,
+  inboxItemStableId: string,
+  input: AccountingInboxClassificationSelectionInput,
+  operatorUserStableId: string,
+) {
+  const inboxItem = requireStableValue(inboxItemStableId, 'inboxItemStableId');
+  const operator = requireStableValue(
+    operatorUserStableId,
+    'operatorUserStableId',
+  );
+  const selection = normalizeAccountingInboxClassificationSelection(input);
+  return runSerializableAccountingWrite(prisma, (tx) =>
+    setInboxClassificationInTx(tx, inboxItem, selection, operator),
+  );
+}
+
+export async function confirmAccountingOtherInboxItem(
+  prisma: AccountingTransactionRunner,
+  inboxItemStableId: string,
+  operatorUserStableId: string,
+) {
+  const inboxItem = requireStableValue(inboxItemStableId, 'inboxItemStableId');
+  const operator = requireStableValue(
+    operatorUserStableId,
+    'operatorUserStableId',
+  );
+  return runSerializableAccountingWrite(prisma, (tx) =>
+    confirmOtherInboxItemInTx(tx, inboxItem, operator),
   );
 }
 

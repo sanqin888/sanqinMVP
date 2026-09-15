@@ -238,6 +238,7 @@ enum AccountingArtifactKind {
 enum AccountingInboxClassification {
   EXPENSE_DOCUMENT
   PROVIDER_FINANCIAL_DOCUMENT
+  OTHER_DOCUMENT
   UNKNOWN
 }
 
@@ -1825,6 +1826,7 @@ model AccountingInboxItem {
   artifactId               String                        @unique @db.Uuid
   status                   AccountingInboxStatus         @default(PENDING_REVIEW)
   classification           AccountingInboxClassification @default(UNKNOWN)
+  selectedProvider         AccountingFinancialProvider?
   trustDecision            AccountingInboxTrustDecision
   duplicateOfArtifactId    String?                       @db.Uuid
   materializedEntityType   AccountingInboxMaterializedEntityType?

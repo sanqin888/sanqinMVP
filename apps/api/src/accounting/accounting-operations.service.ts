@@ -10,6 +10,7 @@ import {
   AccountingDocumentStatus,
   AccountingFinancialProvider,
   AccountingJournalSource,
+  AccountingInboxClassification,
   AccountingInboxMaterializedEntityType,
   AccountingInboxStatus,
   AccountingSourceType,
@@ -21,6 +22,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { runSerializableAccountingWrite } from './accounting-atomic-write';
 import { DEFAULT_ACCOUNTING_ACCOUNTS } from './accounting-chart-of-accounts';
 import {
+  confirmAccountingOtherInboxItem,
   confirmAccountingProviderFinancialInboxItem,
   discardAccountingInboxItem,
   ensureAccountingProviderFinancialCoverage,
@@ -28,11 +30,14 @@ import {
   recordAccountingInboxParseRun,
   recordAccountingProviderFinancialDocument,
   registerAccountingInboxArtifact,
+  setAccountingInboxClassification,
+  suggestAccountingInboxClassification,
   upsertAccountingTrustedSender,
 } from './accounting-inbox-core.orchestrator';
 import {
   AccountingInboxPolicyError,
   type AccountingInboxArtifactInput,
+  type AccountingInboxClassificationSelectionInput,
   type AccountingInboxExpenseMaterializationInput,
   type AccountingParseRunInput,
   type AccountingProviderFinancialDocumentInput,
@@ -51,6 +56,7 @@ import {
   listAccountingTrustedSenders,
   listAccountingUnifiedInboxItems,
   readAccountingInboxExpenseContext,
+  readAccountingInboxProviderReviewContext,
 } from './accounting-inbox-query';
 import { AccountingService } from './accounting.service';
 
@@ -715,6 +721,50 @@ export class AccountingOperationsService {
     return listAccountingUnifiedInboxItems(this.prisma, params);
   }
 
+  readUnifiedInboxProviderReviewContext(inboxItemStableId: string) {
+    return readAccountingInboxProviderReviewContext(
+      this.prisma,
+      inboxItemStableId,
+    );
+  }
+
+  async suggestUnifiedInboxClassification(
+    artifactStableId: string,
+    input: AccountingInboxClassificationSelectionInput,
+  ) {
+    return this.runInboxCore(() =>
+      suggestAccountingInboxClassification(this.prisma, artifactStableId, input),
+    );
+  }
+
+  async setUnifiedInboxClassification(
+    inboxItemStableId: string,
+    input: AccountingInboxClassificationSelectionInput,
+    operatorUserStableId: string,
+  ) {
+    return this.runInboxCore(() =>
+      setAccountingInboxClassification(
+        this.prisma,
+        inboxItemStableId,
+        input,
+        operatorUserStableId,
+      ),
+    );
+  }
+
+  async confirmUnifiedInboxOther(
+    inboxItemStableId: string,
+    operatorUserStableId: string,
+  ) {
+    return this.runInboxCore(() =>
+      confirmAccountingOtherInboxItem(
+        this.prisma,
+        inboxItemStableId,
+        operatorUserStableId,
+      ),
+    );
+  }
+
   async confirmUnifiedInboxExpense(
     inboxItemStableId: string,
     input: AccountingExpenseInput,
@@ -727,6 +777,14 @@ export class AccountingOperationsService {
     if (!inbox) throw new NotFoundException('accounting inbox item not found');
     if (inbox.status !== AccountingInboxStatus.PENDING_REVIEW) {
       throw new ConflictException('only pending inbox items can be confirmed');
+    }
+    if (
+      inbox.classification !== AccountingInboxClassification.EXPENSE_DOCUMENT ||
+      inbox.selectedProvider
+    ) {
+      throw new ConflictException(
+        'inbox item must be classified as an expense before confirmation',
+      );
     }
     if (
       inbox.materializedEntityType ===
@@ -744,11 +802,6 @@ export class AccountingOperationsService {
     const extraction = accountingJsonRecord(
       inbox.artifact.parseRuns[0]?.resultJson,
     );
-    if (extraction.providerFinancial === true) {
-      throw new ConflictException(
-        'provider financial evidence cannot be confirmed as an expense',
-      );
-    }
 
     let documentStableId = inbox.materializedEntityStableId;
     if (!documentStableId) {

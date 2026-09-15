@@ -274,6 +274,30 @@ Total transfer amount $3813.11
     );
   });
 
+  it('uses an operator-selected provider as a parser hint when recognition keywords are incomplete', () => {
+    const text = `
+From: 2026-08-01 to 2026-08-31
+Sales $5220.77
+Commission -$1798.00
+Total transfer amount $3813.11
+`;
+
+    expect(parseProviderFinancialEvidence({ text })).toBeNull();
+    expect(
+      parseProviderFinancialEvidence({
+        text,
+        providerHint: AccountingFinancialProvider.FANTUAN,
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        provider: AccountingFinancialProvider.FANTUAN,
+        documentType: AccountingFinancialDocumentType.STATEMENT,
+        periodStart: '2026-08-01',
+        periodEnd: '2026-08-31',
+      }) as unknown,
+    );
+  });
+
   it('fails closed for Uber API CSV until an observed provider schema is fixture-pinned', () => {
     expect(
       parseProviderFinancialEvidence({

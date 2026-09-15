@@ -20,6 +20,7 @@ import {
 import {
   AccountingDocumentStatus,
   AccountingFinancialProvider,
+  AccountingInboxClassification,
   AccountingInboxStatus,
   AccountingSourceType,
   AccountingTxType,
@@ -35,6 +36,7 @@ import {
   ACCOUNTING_INBOX_FILE_MAX_BYTES,
   AccountingInboxAcquisitionService,
 } from './accounting-inbox-acquisition.service';
+import { AccountingProviderFinancialService } from './accounting-provider-financial.service';
 import { AccountingService } from './accounting.service';
 import { AccountingAutomationScheduler } from './accounting-automation.scheduler';
 import { AccountingCanonicalSaleReplayService } from './accounting-canonical-sale-replay.service';
@@ -81,6 +83,7 @@ export class AccountingController {
     private readonly accountingService: AccountingService,
     private readonly operations: AccountingOperationsService,
     private readonly acquisition: AccountingInboxAcquisitionService,
+    private readonly providerFinancial: AccountingProviderFinancialService,
     private readonly automation: AccountingAutomationScheduler,
     private readonly canonicalSaleReplay: AccountingCanonicalSaleReplayService,
     private readonly canonicalChangePreview: AccountingCanonicalChangePreviewService,
@@ -209,6 +212,34 @@ export class AccountingController {
     );
   }
 
+  @Put('inbox/:inboxItemStableId/classification')
+  setInboxClassification(
+    @Param('inboxItemStableId') inboxItemStableId: string,
+    @Body()
+    body: {
+      classification: AccountingInboxClassification;
+      selectedProvider?: AccountingFinancialProvider | null;
+    },
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.operations.setUnifiedInboxClassification(
+      inboxItemStableId,
+      body,
+      this.requireOperatorUserId(req),
+    );
+  }
+
+  @Post('inbox/:inboxItemStableId/other/confirm')
+  confirmInboxOther(
+    @Param('inboxItemStableId') inboxItemStableId: string,
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.operations.confirmUnifiedInboxOther(
+      inboxItemStableId,
+      this.requireOperatorUserId(req),
+    );
+  }
+
   @Post('inbox/:inboxItemStableId/expense/confirm')
   confirmInboxExpense(
     @Param('inboxItemStableId') inboxItemStableId: string,
@@ -227,7 +258,7 @@ export class AccountingController {
     @Param('inboxItemStableId') inboxItemStableId: string,
     @Req() req: AuthedAccountingRequest,
   ) {
-    return this.operations.confirmProviderFinancialInboxItem(
+    return this.providerFinancial.confirmSelectedInboxFinancialEvidence(
       inboxItemStableId,
       this.requireOperatorUserId(req),
     );

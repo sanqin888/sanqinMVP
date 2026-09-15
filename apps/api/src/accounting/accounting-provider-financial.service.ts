@@ -1,6 +1,14 @@
-import { Inject, Injectable } from '@nestjs/common';
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   AccountingFinancialProvider,
+  AccountingInboxClassification,
+  AccountingInboxMaterializedEntityType,
+  AccountingInboxStatus,
   AccountingParseStatus,
 } from '@prisma/client';
 import {
@@ -16,6 +24,7 @@ import {
   ACCOUNTING_PROVIDER_FINANCIAL_PARSER_NAME,
   ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION,
   parseProviderFinancialEvidence,
+  type ParsedProviderFinancialDocument,
   type ProviderFinancialParseInput,
 } from './accounting-provider-financial.parser';
 
@@ -37,10 +46,55 @@ export class AccountingProviderFinancialService {
     private readonly storeConfig: BrandStoreConfigReaderPort,
   ) {}
 
+  async parseForInboxSuggestion(input: AccountingProviderFinancialParseContext) {
+    const parsed = parseProviderFinancialEvidence(input);
+    if (!parsed) return { matched: false as const };
+
+    const parseResult = this.buildParseResult(parsed, input.text);
+    const excludedBeforeFinancialHistory = Boolean(
+      parsed.periodEnd &&
+        parsed.periodEnd < PROVIDER_FINANCIAL_HISTORY_START_DATE,
+    );
+    await this.operations.recordInboxParseRun({
+      artifactStableId: input.artifactStableId,
+      parserName: ACCOUNTING_PROVIDER_FINANCIAL_PARSER_NAME,
+      parserVersion: ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION,
+      status: excludedBeforeFinancialHistory
+        ? AccountingParseStatus.SKIPPED
+        : AccountingParseStatus.SUCCESS,
+      ...(excludedBeforeFinancialHistory
+        ? {}
+        : { resultHash: hashAccountingJson(parseResult) }),
+      resultJson: excludedBeforeFinancialHistory
+        ? {
+            ...parseResult,
+            excludedBeforeFinancialHistory: true,
+            financialHistoryRequiredFrom: PROVIDER_FINANCIAL_HISTORY_START_DATE,
+          }
+        : parseResult,
+    });
+    await this.operations.suggestUnifiedInboxClassification(
+      input.artifactStableId,
+      {
+        classification:
+          AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
+        selectedProvider: parsed.provider,
+      },
+    );
+    return {
+      matched: true as const,
+      materialized: false as const,
+      excludedBeforeFinancialHistory,
+      provider: parsed.provider,
+      documentType: parsed.documentType,
+    };
+  }
+
   async parseAndMaterialize(input: AccountingProviderFinancialParseContext) {
     const parsed = parseProviderFinancialEvidence(input);
     if (!parsed) return { matched: false as const };
 
+    const parseResult = this.buildParseResult(parsed, input.text);
     if (
       parsed.periodEnd &&
       parsed.periodEnd < PROVIDER_FINANCIAL_HISTORY_START_DATE
@@ -51,11 +105,7 @@ export class AccountingProviderFinancialService {
         parserVersion: ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION,
         status: AccountingParseStatus.SKIPPED,
         resultJson: {
-          providerFinancial: true,
-          provider: parsed.provider,
-          documentType: parsed.documentType,
-          periodStart: parsed.periodStart,
-          periodEnd: parsed.periodEnd,
+          ...parseResult,
           excludedBeforeFinancialHistory: true,
           financialHistoryRequiredFrom: PROVIDER_FINANCIAL_HISTORY_START_DATE,
         },
@@ -69,42 +119,8 @@ export class AccountingProviderFinancialService {
       };
     }
 
-    const parseResult = {
-      providerFinancial: true,
-      provider: parsed.provider,
-      documentType: parsed.documentType,
-      providerDocumentRef: parsed.providerDocumentRef,
-      periodStart: parsed.periodStart,
-      periodEnd: parsed.periodEnd,
-      currency: parsed.currency,
-      lineCount: parsed.lines.length,
-      lines: parsed.lines,
-      rawMetadata: parsed.rawMetadata,
-    };
-
     try {
-      const store = await this.storeConfig.getConfiguredStoreSnapshot();
-      const document = await this.operations.recordProviderFinancialDocument({
-        artifactStableId: input.artifactStableId,
-        provider: parsed.provider,
-        documentType: parsed.documentType,
-        businessIdentityKey: parsed.businessIdentityKey,
-        storeStableId: store.storeStableId,
-        providerMerchantRef: parsed.providerMerchantRef,
-        providerDocumentRef: parsed.providerDocumentRef,
-        periodStart: parsed.periodStart,
-        periodEnd: parsed.periodEnd,
-        currency: parsed.currency,
-        parserName: ACCOUNTING_PROVIDER_FINANCIAL_PARSER_NAME,
-        parserVersion: ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION,
-        rawMetadata: parsed.rawMetadata,
-        lines: parsed.lines,
-      });
-
-      await this.operations.ensureProviderFinancialCoverage(
-        parsed.provider,
-        store.storeStableId,
-      );
+      const document = await this.materializeParsed(input.artifactStableId, parsed);
       await this.operations.recordInboxParseRun({
         artifactStableId: input.artifactStableId,
         parserName: ACCOUNTING_PROVIDER_FINANCIAL_PARSER_NAME,
@@ -147,6 +163,133 @@ export class AccountingProviderFinancialService {
     }
   }
 
+  async confirmSelectedInboxFinancialEvidence(
+    inboxItemStableId: string,
+    operatorUserStableId: string,
+  ) {
+    const inbox = await this.operations.readUnifiedInboxProviderReviewContext(
+      inboxItemStableId,
+    );
+    if (!inbox) throw new NotFoundException('accounting inbox item not found');
+    if (inbox.status !== AccountingInboxStatus.PENDING_REVIEW) {
+      throw new ConflictException(
+        'only pending provider financial evidence can be confirmed',
+      );
+    }
+    if (
+      inbox.classification !==
+        AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT ||
+      !inbox.selectedProvider
+    ) {
+      throw new ConflictException(
+        'select a provider financial classification and provider before confirmation',
+      );
+    }
+
+    if (inbox.materializedEntityType || inbox.materializedEntityStableId) {
+      if (
+        inbox.materializedEntityType !==
+          AccountingInboxMaterializedEntityType.PROVIDER_FINANCIAL_DOCUMENT ||
+        !inbox.materializedEntityStableId ||
+        inbox.artifact.financialDocument?.documentStableId !==
+          inbox.materializedEntityStableId ||
+        inbox.artifact.financialDocument?.provider !== inbox.selectedProvider
+      ) {
+        throw new ConflictException(
+          'materialized provider evidence does not match the selected provider',
+        );
+      }
+      return this.operations.confirmProviderFinancialInboxItem(
+        inboxItemStableId,
+        operatorUserStableId,
+      );
+    }
+
+    const extractedText = inbox.artifact.parseRuns
+      .map((run) => jsonRecord(run.resultJson).extractedText)
+      .find((value): value is string => typeof value === 'string' && Boolean(value.trim()));
+    const text = extractedText?.trim() || inbox.artifact.bodyText?.trim() || '';
+    if (!text) {
+      throw new ConflictException(
+        'provider financial evidence has no readable extracted text',
+      );
+    }
+
+    const parsed = parseProviderFinancialEvidence({
+      text,
+      emailSubject: inbox.artifact.emailSubject,
+      providerHint: inbox.selectedProvider,
+    });
+    if (!parsed || parsed.provider !== inbox.selectedProvider) {
+      throw new ConflictException(
+        'the selected provider parser could not validate this evidence',
+      );
+    }
+    if (
+      parsed.periodEnd &&
+      parsed.periodEnd < PROVIDER_FINANCIAL_HISTORY_START_DATE
+    ) {
+      throw new ConflictException(
+        `provider financial evidence is before the ${PROVIDER_FINANCIAL_HISTORY_START_DATE} financial-history boundary`,
+      );
+    }
+
+    await this.materializeParsed(inbox.artifact.artifactStableId, parsed);
+    return this.operations.confirmProviderFinancialInboxItem(
+      inboxItemStableId,
+      operatorUserStableId,
+    );
+  }
+
+  private buildParseResult(
+    parsed: ParsedProviderFinancialDocument,
+    text: string,
+  ) {
+    return {
+      providerFinancial: true,
+      provider: parsed.provider,
+      documentType: parsed.documentType,
+      businessIdentityKey: parsed.businessIdentityKey,
+      providerMerchantRef: parsed.providerMerchantRef,
+      providerDocumentRef: parsed.providerDocumentRef,
+      periodStart: parsed.periodStart,
+      periodEnd: parsed.periodEnd,
+      currency: parsed.currency,
+      lineCount: parsed.lines.length,
+      lines: parsed.lines,
+      rawMetadata: parsed.rawMetadata,
+      extractedText: text.slice(0, 100_000),
+    };
+  }
+
+  private async materializeParsed(
+    artifactStableId: string,
+    parsed: ParsedProviderFinancialDocument,
+  ) {
+    const store = await this.storeConfig.getConfiguredStoreSnapshot();
+    const document = await this.operations.recordProviderFinancialDocument({
+      artifactStableId,
+      provider: parsed.provider,
+      documentType: parsed.documentType,
+      businessIdentityKey: parsed.businessIdentityKey,
+      storeStableId: store.storeStableId,
+      providerMerchantRef: parsed.providerMerchantRef,
+      providerDocumentRef: parsed.providerDocumentRef,
+      periodStart: parsed.periodStart,
+      periodEnd: parsed.periodEnd,
+      currency: parsed.currency,
+      parserName: ACCOUNTING_PROVIDER_FINANCIAL_PARSER_NAME,
+      parserVersion: ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION,
+      rawMetadata: parsed.rawMetadata,
+      lines: parsed.lines,
+    });
+    await this.operations.ensureProviderFinancialCoverage(
+      parsed.provider,
+      store.storeStableId,
+    );
+    return document;
+  }
+
   async recordUnsupportedUberApiParse(input: {
     artifactStableId: string;
     reportType: string;
@@ -165,4 +308,10 @@ export class AccountingProviderFinancialService {
       },
     });
   }
+}
+
+function jsonRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }

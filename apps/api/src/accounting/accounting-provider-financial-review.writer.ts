@@ -1,4 +1,5 @@
 import {
+  AccountingInboxClassification,
   AccountingInboxMaterializedEntityType,
   AccountingInboxStatus,
   Prisma,
@@ -20,6 +21,8 @@ export async function confirmProviderFinancialInboxItemInTx(
     select: {
       id: true,
       status: true,
+      classification: true,
+      selectedProvider: true,
       materializedEntityType: true,
       materializedEntityStableId: true,
     },
@@ -27,6 +30,15 @@ export async function confirmProviderFinancialInboxItemInTx(
   if (!item) {
     throw new AccountingInboxWriterNotFoundError(
       'accounting inbox item not found',
+    );
+  }
+  if (
+    item.classification !==
+      AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT ||
+    !item.selectedProvider
+  ) {
+    throw new AccountingInboxWriterConflictError(
+      'inbox item is not classified as provider financial evidence',
     );
   }
   if (
@@ -64,6 +76,11 @@ export async function confirmProviderFinancialInboxItemInTx(
   if (!document) {
     throw new AccountingInboxWriterNotFoundError(
       'provider financial document not found',
+    );
+  }
+  if (document.provider !== item.selectedProvider) {
+    throw new AccountingInboxWriterConflictError(
+      'selected provider does not match the provider financial document',
     );
   }
 

@@ -1,6 +1,8 @@
 import {
   AccountingFinancialDocumentType,
   AccountingFinancialProvider,
+  AccountingInboxClassification,
+  AccountingInboxStatus,
   AccountingParseStatus,
 } from '@prisma/client';
 import { AccountingProviderFinancialService } from './accounting-provider-financial.service';
@@ -22,6 +24,52 @@ Chargebacks/Reversals 0.00
 Total Amount Funded 2,790.27
 All amounts shown are in CAD funds
 `;
+
+  it('treats manual/email provider recognition as a review suggestion without materializing it', async () => {
+    const operations = {
+      recordInboxParseRun: jest.fn().mockResolvedValue({}),
+      suggestUnifiedInboxClassification: jest.fn().mockResolvedValue({}),
+      recordProviderFinancialDocument: jest.fn(),
+      ensureProviderFinancialCoverage: jest.fn(),
+    };
+    const storeConfig = {
+      getConfiguredStoreSnapshot: jest.fn(),
+    };
+    const service = new AccountingProviderFinancialService(
+      operations as never,
+      storeConfig as never,
+    );
+
+    const result = await service.parseForInboxSuggestion({
+      artifactStableId: 'acctart_uber_aug',
+      text: `
+Monthly Statement
+Statement Number #3F0FE63E
+Date Aug 01-31, 2026
+Consolidated Monthly Summary
+Sales (106 Orders) $3,300.67
+Marketplace Fees -$767.88
+Net Total $2,021.83
+`,
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        matched: true,
+        materialized: false,
+        provider: AccountingFinancialProvider.UBER_EATS,
+      }) as unknown,
+    );
+    expect(operations.suggestUnifiedInboxClassification).toHaveBeenCalledWith(
+      'acctart_uber_aug',
+      {
+        classification: 'PROVIDER_FINANCIAL_DOCUMENT',
+        selectedProvider: AccountingFinancialProvider.UBER_EATS,
+      },
+    );
+    expect(operations.recordProviderFinancialDocument).not.toHaveBeenCalled();
+    expect(storeConfig.getConfiguredStoreSnapshot).not.toHaveBeenCalled();
+  });
 
   it('recognizes but does not materialize provider evidence wholly before 2026-06-01', async () => {
     const operations = {
@@ -119,6 +167,81 @@ Total transfer amount $3813.11
       }),
     );
     expect(operations.ensureProviderFinancialCoverage).not.toHaveBeenCalled();
+  });
+
+  it('materializes a manually selected statement provider only when the operator confirms it', async () => {
+    const fantuanText = `
+From: 2026-08-01 to 2026-08-31
+Sales $5220.77
+Commission -$1798.00
+Total transfer amount $3813.11
+`;
+    const operations = {
+      readUnifiedInboxProviderReviewContext: jest.fn().mockResolvedValue({
+        status: AccountingInboxStatus.PENDING_REVIEW,
+        classification: AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
+        selectedProvider: AccountingFinancialProvider.FANTUAN,
+        materializedEntityType: null,
+        materializedEntityStableId: null,
+        artifact: {
+          artifactStableId: 'acctart_manual_fantuan',
+          acquisitionMode: 'MANUAL_UPLOAD',
+          bodyText: null,
+          emailSubject: null,
+          financialDocument: null,
+          parseRuns: [
+            {
+              parserName: 'accounting-generic-document-review',
+              parserVersion: '1',
+              status: AccountingParseStatus.SUCCESS,
+              resultJson: { extractedText: fantuanText },
+            },
+          ],
+        },
+      }),
+      recordProviderFinancialDocument: jest.fn().mockResolvedValue({
+        documentStableId: 'acctfindoc_manual_1',
+        revision: 1,
+        replayed: false,
+      }),
+      ensureProviderFinancialCoverage: jest.fn().mockResolvedValue({}),
+      confirmProviderFinancialInboxItem: jest.fn().mockResolvedValue({
+        confirmed: true,
+        documentStableId: 'acctfindoc_manual_1',
+      }),
+    };
+    const storeConfig = {
+      getConfiguredStoreSnapshot: jest.fn().mockResolvedValue({
+        storeStableId: '4750_Yonge_Street',
+      }),
+    };
+    const service = new AccountingProviderFinancialService(
+      operations as never,
+      storeConfig as never,
+    );
+
+    await expect(
+      service.confirmSelectedInboxFinancialEvidence(
+        'acctinbox_manual_fantuan',
+        'user_operator_1',
+      ),
+    ).resolves.toEqual({
+      confirmed: true,
+      documentStableId: 'acctfindoc_manual_1',
+    });
+    expect(operations.recordProviderFinancialDocument).toHaveBeenCalledWith(
+      expect.objectContaining({
+        artifactStableId: 'acctart_manual_fantuan',
+        provider: AccountingFinancialProvider.FANTUAN,
+        documentType: AccountingFinancialDocumentType.STATEMENT,
+        periodStart: '2026-08-01',
+        periodEnd: '2026-08-31',
+      }),
+    );
+    expect(operations.confirmProviderFinancialInboxItem).toHaveBeenCalledWith(
+      'acctinbox_manual_fantuan',
+      'user_operator_1',
+    );
   });
 
   it('materializes recognized provider evidence on or after the financial-history boundary', async () => {

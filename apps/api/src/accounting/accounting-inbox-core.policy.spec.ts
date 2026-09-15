@@ -5,6 +5,7 @@ import {
   AccountingFinancialDocumentType,
   AccountingFinancialPostingTreatment,
   AccountingFinancialProvider,
+  AccountingInboxClassification,
   AccountingInboxTrustDecision,
   AccountingParseStatus,
 } from '@prisma/client';
@@ -13,6 +14,7 @@ import {
   PROVIDER_FINANCIAL_HISTORY_START_DATE,
   hashAccountingJson,
   normalizeAccountingInboxArtifact,
+  normalizeAccountingInboxClassificationSelection,
   normalizeAccountingParseRun,
   normalizeAccountingTrustedSender,
   normalizeProviderFinancialDocument,
@@ -92,6 +94,32 @@ describe('Accounting Inbox core policy', () => {
       label: 'Owner upload',
       isActive: true,
     });
+  });
+
+  it('normalizes operator-selected inbox classification and limits provider ownership to statements', () => {
+    expect(
+      normalizeAccountingInboxClassificationSelection({
+        classification: AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
+        selectedProvider: AccountingFinancialProvider.UBER_EATS,
+      }),
+    ).toEqual({
+      classification: AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
+      selectedProvider: AccountingFinancialProvider.UBER_EATS,
+    });
+    expect(
+      normalizeAccountingInboxClassificationSelection({
+        classification: AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
+      }),
+    ).toEqual({
+      classification: AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
+      selectedProvider: null,
+    });
+    expect(() =>
+      normalizeAccountingInboxClassificationSelection({
+        classification: AccountingInboxClassification.EXPENSE_DOCUMENT,
+        selectedProvider: AccountingFinancialProvider.CLOVER,
+      }),
+    ).toThrow('selectedProvider is only valid for provider financial classification');
   });
 
   it('requires parser success/error evidence and makes parser-version replay deterministic', () => {
