@@ -1,12 +1,19 @@
-import { AccountingInboxStatus } from '@prisma/client';
+import {
+  AccountingFinancialProvider,
+  AccountingInboxClassification,
+  AccountingInboxStatus,
+} from '@prisma/client';
 import { AccountingOperationsService } from './accounting-operations.service';
 
 describe('AccountingOperationsService provider-financial expense guard', () => {
-  it('rejects provider financial evidence even when it is intentionally not materialized', async () => {
+  it('requires an explicit expense classification before provider-suggested evidence can be confirmed as an expense', async () => {
     const prisma = {
       accountingInboxItem: {
         findUnique: jest.fn().mockResolvedValue({
           status: AccountingInboxStatus.PENDING_REVIEW,
+          classification:
+            AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
+          selectedProvider: AccountingFinancialProvider.CLOVER,
           materializedEntityType: null,
           materializedEntityStableId: null,
           artifact: {
@@ -51,7 +58,7 @@ describe('AccountingOperationsService provider-financial expense guard', () => {
         'user_operator',
       ),
     ).rejects.toThrow(
-      'provider financial evidence cannot be confirmed as an expense',
+      'inbox item must be classified as an expense before confirmation',
     );
   });
 });

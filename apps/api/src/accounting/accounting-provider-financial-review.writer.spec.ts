@@ -1,6 +1,7 @@
 import {
   AccountingFinancialDocumentType,
   AccountingFinancialProvider,
+  AccountingInboxClassification,
   AccountingInboxMaterializedEntityType,
   AccountingInboxStatus,
 } from '@prisma/client';
@@ -13,6 +14,9 @@ describe('provider financial review writer', () => {
         findUnique: jest.fn().mockResolvedValue({
           id: 'inbox-db-id',
           status: AccountingInboxStatus.PENDING_REVIEW,
+          classification:
+            AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
+          selectedProvider: AccountingFinancialProvider.CLOVER,
           materializedEntityType:
             AccountingInboxMaterializedEntityType.PROVIDER_FINANCIAL_DOCUMENT,
           materializedEntityStableId: 'acctfindoc_1',
