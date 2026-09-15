@@ -100,9 +100,9 @@ const documentOverlapsRange = (
 ): boolean =>
   Boolean(
     row.periodStart &&
-      row.periodEnd &&
-      row.periodStart < toExclusive &&
-      row.periodEnd >= fromInclusive,
+    row.periodEnd &&
+    row.periodStart < toExclusive &&
+    row.periodEnd >= fromInclusive,
   );
 
 type ProviderSettlementAccountRequirement = {
@@ -303,9 +303,9 @@ export class AccountingProviderSettlementPreviewService {
         : null;
       const reviewLinkMatches = Boolean(
         review &&
-          review.materializedEntityType ===
-            AccountingInboxMaterializedEntityType.PROVIDER_FINANCIAL_DOCUMENT &&
-          review.materializedEntityStableId === document.documentStableId,
+        review.materializedEntityType ===
+          AccountingInboxMaterializedEntityType.PROVIDER_FINANCIAL_DOCUMENT &&
+        review.materializedEntityStableId === document.documentStableId,
       );
       const reviewBlocks = !review
         ? ['PROVIDER_DOCUMENT_REVIEW_EVIDENCE_MISSING']
@@ -326,9 +326,13 @@ export class AccountingProviderSettlementPreviewService {
             ? [`ACCOUNT_POLICY_NOT_DEFINED:${accountStableId}`]
             : []),
           ...(!actual ? [`ACCOUNT_NOT_PROVISIONED:${accountStableId}`] : []),
-          ...(expected && actual && actual.accountClass !== expected.accountClass
-            ? [`ACCOUNT_CLASS_MISMATCH:${accountStableId}`]
-            : []),
+          ...(
+            expected &&
+            actual &&
+            actual.accountClass !== expected.accountClass
+              ? [`ACCOUNT_CLASS_MISMATCH:${accountStableId}`]
+              : []
+          ),
           ...(expected && actual && actual.currency !== expected.currency
             ? [`ACCOUNT_CURRENCY_MISMATCH:${accountStableId}`]
             : []),
@@ -405,7 +409,9 @@ export class AccountingProviderSettlementPreviewService {
               ),
               liveOrderFactCutoverAt:
                 coverage.liveOrderFactCutoverAt?.toISOString() ?? null,
-              orderDetailCoverageFrom: isoDate(coverage.orderDetailCoverageFrom),
+              orderDetailCoverageFrom: isoDate(
+                coverage.orderDetailCoverageFrom,
+              ),
               updatedAt: coverage.updatedAt.toISOString(),
             }
           : null,

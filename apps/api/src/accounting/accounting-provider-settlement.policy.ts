@@ -266,7 +266,7 @@ export function classifyProviderSettlementLine(params: {
   }
   if (
     line.postingTreatment ===
-      AccountingFinancialPostingTreatment.RECONCILIATION_ONLY
+    AccountingFinancialPostingTreatment.RECONCILIATION_ONLY
   ) {
     return {
       ...line,

@@ -10,7 +10,10 @@ import {
 } from '@prisma/client';
 import { AccountingProviderSettlementPreviewService } from './accounting-provider-settlement-preview.service';
 
-const confirmedReview = (documentStableId: string, inboxItemStableId: string) => ({
+const confirmedReview = (
+  documentStableId: string,
+  inboxItemStableId: string,
+) => ({
   artifact: {
     inboxItem: {
       inboxItemStableId,
@@ -25,7 +28,10 @@ const confirmedReview = (documentStableId: string, inboxItemStableId: string) =>
   },
 });
 
-const pendingReview = (documentStableId: string, inboxItemStableId: string) => ({
+const pendingReview = (
+  documentStableId: string,
+  inboxItemStableId: string,
+) => ({
   artifact: {
     inboxItem: {
       inboxItemStableId,
@@ -87,8 +93,14 @@ const uberStatement = (params: {
   currency: 'CAD',
   rawMetadata: null,
   ...(params.reviewStatus === 'CONFIRMED'
-    ? confirmedReview(params.documentStableId, `inbox_${params.documentStableId}`)
-    : pendingReview(params.documentStableId, `inbox_${params.documentStableId}`)),
+    ? confirmedReview(
+        params.documentStableId,
+        `inbox_${params.documentStableId}`,
+      )
+    : pendingReview(
+        params.documentStableId,
+        `inbox_${params.documentStableId}`,
+      )),
   lines: [
     {
       lineStableId: `line_${params.documentStableId}`,
@@ -129,7 +141,9 @@ describe('AccountingProviderSettlementPreviewService', () => {
       readProviderFinancialCoverage: jest
         .fn()
         .mockResolvedValue([uberCoverage()]),
-      readAccountingAccountFacts: jest.fn().mockResolvedValue([]),
+      readAccountingAccountFacts: jest
+        .fn()
+        .mockResolvedValue([]),
       readSettlementShadowExistingJournals: jest
         .fn()
         .mockResolvedValueOnce([])
@@ -276,9 +290,11 @@ describe('AccountingProviderSettlementPreviewService', () => {
       readProviderFinancialCoverage: jest
         .fn()
         .mockResolvedValue([uberCoverage()]),
-      readAccountingAccountFacts: jest.fn().mockResolvedValue([
-        accountFact('account_uber_pending', AccountingAccountClass.ASSET),
-      ]),
+      readAccountingAccountFacts: jest
+        .fn()
+        .mockResolvedValue([
+          accountFact('account_uber_pending', AccountingAccountClass.ASSET),
+        ]),
       readSettlementShadowExistingJournals: jest
         .fn()
         .mockResolvedValueOnce([])
@@ -336,10 +352,12 @@ describe('AccountingProviderSettlementPreviewService', () => {
       readProviderFinancialCoverage: jest
         .fn()
         .mockResolvedValue([uberCoverage()]),
-      readAccountingAccountFacts: jest.fn().mockResolvedValue([
-        accountFact('account_uber_pending', AccountingAccountClass.ASSET),
-        accountFact('account_sales_revenue', AccountingAccountClass.REVENUE),
-      ]),
+      readAccountingAccountFacts: jest
+        .fn()
+        .mockResolvedValue([
+          accountFact('account_uber_pending', AccountingAccountClass.ASSET),
+          accountFact('account_sales_revenue', AccountingAccountClass.REVENUE),
+        ]),
       readSettlementShadowExistingJournals: jest.fn().mockResolvedValue([]),
       readOrderSaleJournalsByFactStableIds: jest.fn().mockResolvedValue([]),
     };
@@ -367,12 +385,12 @@ describe('AccountingProviderSettlementPreviewService', () => {
         documentStableId: 'provider_doc_aug_r2',
         revision: 2,
         status: 'BLOCKED',
-        reviewEvidence: expect.objectContaining({
-          status: AccountingInboxStatus.PENDING_REVIEW,
-          version: 1,
-        }),
       }),
     );
+    expect(result.providerDocuments[0].reviewEvidence?.status).toBe(
+      AccountingInboxStatus.PENDING_REVIEW,
+    );
+    expect(result.providerDocuments[0].reviewEvidence?.version).toBe(1);
     expect(result.providerDocuments[0].blockReasons).toContain(
       'PROVIDER_DOCUMENT_NOT_CONFIRMED',
     );
@@ -401,10 +419,12 @@ describe('AccountingProviderSettlementPreviewService', () => {
       readProviderFinancialCoverage: jest
         .fn()
         .mockResolvedValue([uberCoverage()]),
-      readAccountingAccountFacts: jest.fn().mockResolvedValue([
-        accountFact('account_uber_pending', AccountingAccountClass.ASSET),
-        accountFact('account_sales_revenue', AccountingAccountClass.REVENUE),
-      ]),
+      readAccountingAccountFacts: jest
+        .fn()
+        .mockResolvedValue([
+          accountFact('account_uber_pending', AccountingAccountClass.ASSET),
+          accountFact('account_sales_revenue', AccountingAccountClass.REVENUE),
+        ]),
       readSettlementShadowExistingJournals: jest.fn().mockResolvedValue([]),
       readOrderSaleJournalsByFactStableIds: jest.fn().mockResolvedValue([]),
     };
@@ -454,13 +474,15 @@ describe('AccountingProviderSettlementPreviewService', () => {
         }),
       ]),
       readProviderFinancialCoverage: jest.fn().mockResolvedValue([]),
-      readAccountingAccountFacts: jest.fn().mockResolvedValue([
-        accountFact('account_uber_pending', AccountingAccountClass.ASSET),
-        accountFact('account_tip_revenue', AccountingAccountClass.LIABILITY, {
-          currency: 'USD',
-          isActive: false,
-        }),
-      ]),
+      readAccountingAccountFacts: jest
+        .fn()
+        .mockResolvedValue([
+          accountFact('account_uber_pending', AccountingAccountClass.ASSET),
+          accountFact('account_tip_revenue', AccountingAccountClass.LIABILITY, {
+            currency: 'USD',
+            isActive: false,
+          }),
+        ]),
       readSettlementShadowExistingJournals: jest.fn().mockResolvedValue([]),
       readOrderSaleJournalsByFactStableIds: jest.fn().mockResolvedValue([]),
     };
@@ -522,10 +544,12 @@ describe('AccountingProviderSettlementPreviewService', () => {
       readProviderFinancialCoverage: jest
         .fn()
         .mockResolvedValue([uberCoverage()]),
-      readAccountingAccountFacts: jest.fn().mockResolvedValue([
-        accountFact('account_uber_pending', AccountingAccountClass.ASSET),
-        accountFact('account_sales_revenue', AccountingAccountClass.REVENUE),
-      ]),
+      readAccountingAccountFacts: jest
+        .fn()
+        .mockResolvedValue([
+          accountFact('account_uber_pending', AccountingAccountClass.ASSET),
+          accountFact('account_sales_revenue', AccountingAccountClass.REVENUE),
+        ]),
       readSettlementShadowExistingJournals: jest.fn().mockResolvedValue([]),
       readOrderSaleJournalsByFactStableIds: jest.fn().mockResolvedValue([
         {
