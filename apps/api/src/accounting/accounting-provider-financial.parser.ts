@@ -620,10 +620,14 @@ function sectionHst(text: string, heading: string): number | null {
 function findNamedAmount(text: string, label: string): number | null {
   const regex = new RegExp(
     `${escapeRegex(label)}(?:\\s*\\([^\\n)]*\\))?\\s+([^\\s]+)`,
-    'i',
+    'gi',
   );
-  const raw = regex.exec(text)?.[1];
-  return raw ? parseMoneyCents(raw) : null;
+  for (const match of text.matchAll(regex)) {
+    const raw = match[1];
+    const amount = raw ? parseMoneyCents(raw) : null;
+    if (amount != null) return amount;
+  }
+  return null;
 }
 
 function parseMoneyCents(raw: string): number | null {

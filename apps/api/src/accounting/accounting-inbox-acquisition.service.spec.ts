@@ -1,3 +1,16 @@
+jest.mock('./accounting-pdf-extractor', () => {
+  const actual = jest.requireActual<
+    typeof import('./accounting-pdf-extractor')
+  >('./accounting-pdf-extractor');
+  return {
+    ...actual,
+    extractAccountingPdf: jest.fn(async () => ({
+      text: '',
+      extraction: actual.extractAccountingText(''),
+    })),
+  };
+});
+
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';

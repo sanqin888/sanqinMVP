@@ -153,6 +153,7 @@ Statement Number
 #3F0FE63E
 Date
 Aug 01-31, 2026
+This section consolidates all financial transactions affecting the Net Total for the calendar month.
 Consolidated Monthly Summary
 Earnings
 Sales (106 Orders) $3,300.67
