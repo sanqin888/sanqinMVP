@@ -33,6 +33,19 @@ import {
   normalizeCanonicalChangeJournalWriteAuthority,
   type CanonicalChangeJournalWriteAuthorityV1,
 } from './accounting-canonical-change-write-authority';
+import { CANONICAL_SALE_SOURCE_FACT_TYPE } from './accounting-canonical-sale-journal.policy';
+import {
+  buildProviderSettlementJournalWriteAuthority,
+  hashProviderSettlementJournalWrite,
+  normalizeProviderSettlementReplacementGroupAuthority,
+  type ProviderSettlementJournalWriteAuthorityV1,
+  type ProviderSettlementReplacementGroupAuthorityV1,
+  type ProviderSettlementReplacementGroupWriteInput,
+} from './accounting-provider-settlement-write-authority';
+import {
+  PROVIDER_FINANCIAL_SOURCE_FACT_TYPE,
+  UBER_PRE_CUTOVER_REVERSAL_SOURCE_FACT_TYPE,
+} from './accounting-provider-settlement.policy';
 import {
   BRAND_STORE_CONFIG_READER,
   type BrandStoreConfigReaderPort,
@@ -176,6 +189,12 @@ type ResolvedJournalLine = NormalizedJournalLine & {
 };
 
 type AccountingDbClient = PrismaService | Prisma.TransactionClient;
+
+type PreparedJournalWrite = {
+  normalized: NormalizedJournalCreate;
+  idempotencyHash: string;
+  auditAuthority: Prisma.InputJsonValue | null;
+};
 
 @Injectable()
 export class AccountingService {
@@ -674,6 +693,82 @@ export class AccountingService {
     );
   }
 
+  async createProviderSettlementReplacementGroup(
+    input: ProviderSettlementReplacementGroupWriteInput,
+    operatorUserStableId: string,
+    authority: ProviderSettlementReplacementGroupAuthorityV1,
+  ): Promise<AccountingJournalRow[]> {
+    const normalizedAuthority = this.applyJournalPolicy(() =>
+      normalizeProviderSettlementReplacementGroupAuthority(authority),
+    );
+    const documentAuthority = this.applyJournalPolicy(() =>
+      buildProviderSettlementJournalWriteAuthority({
+        group: normalizedAuthority,
+        role: 'PROVIDER_DOCUMENT',
+      }),
+    );
+    const documentJournal = this.prepareProviderSettlementJournalWrite(
+      input.documentJournal,
+      documentAuthority,
+    );
+    const reversals = [...input.uberPreCutoverReversals]
+      .sort((left, right) =>
+        left.originalJournalEntryStableId.localeCompare(
+          right.originalJournalEntryStableId,
+        ),
+      )
+      .map((reversal) => {
+        const writeAuthority = this.applyJournalPolicy(() =>
+          buildProviderSettlementJournalWriteAuthority({
+            group: normalizedAuthority,
+            role: 'UBER_PRE_CUTOVER_REVERSAL',
+            originalJournalEntryStableId: reversal.originalJournalEntryStableId,
+          }),
+        );
+        return this.prepareProviderSettlementJournalWrite(
+          reversal.journal,
+          writeAuthority,
+        );
+      });
+    const prepared = [documentJournal, ...reversals];
+    const idempotencyKeys = prepared.map(
+      (item) => item.normalized.idempotencyKey,
+    );
+    if (new Set(idempotencyKeys).size !== idempotencyKeys.length) {
+      throw new BadRequestException(
+        'provider settlement replacement group contains duplicate idempotency keys',
+      );
+    }
+    if (
+      reversals.length !== normalizedAuthority.historicalReversalAnchors.length
+    ) {
+      throw new BadRequestException(
+        'provider settlement replacement group reversal count does not match its authority anchors',
+      );
+    }
+
+    const operator = this.requireJournalValue(
+      operatorUserStableId,
+      'operatorUserStableId',
+    );
+    const timezone = await this.getBusinessTimezone();
+    const writeGroup = (tx: Prisma.TransactionClient) =>
+      this.createProviderSettlementReplacementGroupInTx(
+        prepared,
+        normalizedAuthority,
+        operator,
+        tx,
+        timezone,
+      );
+
+    try {
+      return await runSerializableAccountingWrite(this.prisma, writeGroup);
+    } catch (error) {
+      if (!this.isJournalUniqueConstraintError(error)) throw error;
+      return runSerializableAccountingWrite(this.prisma, writeGroup);
+    }
+  }
+
   private async createJournalEntryInternal(
     input: AccountingJournalCreateInput,
     operatorUserStableId: string,
@@ -693,81 +788,18 @@ export class AccountingService {
       'operatorUserStableId',
     );
     const timezone = await this.getBusinessTimezone();
+    const prepared: PreparedJournalWrite = {
+      normalized,
+      idempotencyHash,
+      auditAuthority: writeAuthority
+        ? (writeAuthority as unknown as Prisma.InputJsonValue)
+        : null,
+    };
 
     try {
-      return await runSerializableAccountingWrite(this.prisma, async (tx) => {
-        const existing = await tx.accountingJournalEntry.findUnique({
-          where: { idempotencyKey: normalized.idempotencyKey },
-          select: ACCOUNTING_JOURNAL_INTERNAL_SELECT,
-        });
-        if (existing) {
-          return this.assertJournalIdempotentReplay(existing, idempotencyHash);
-        }
-
-        await this.assertOnOrAfterAccountingStartDate(
-          normalized.occurredAt,
-          tx,
-        );
-        await this.assertJournalEditableForPeriod(
-          normalized.occurredAt,
-          normalized.kind,
-          tx,
-          timezone,
-        );
-        const lines = await this.resolveJournalLines(
-          tx,
-          normalized.currency,
-          normalized.lines,
-        );
-
-        const created = await tx.accountingJournalEntry.create({
-          data: {
-            entryStableId: `journal_${createId()}`,
-            idempotencyKey: normalized.idempotencyKey,
-            idempotencyHash,
-            kind: normalized.kind,
-            source: normalized.source,
-            sourceFactType: normalized.sourceFactType,
-            sourceFactStableId: normalized.sourceFactStableId,
-            sourceFactVersion: normalized.sourceFactVersion,
-            storeStableId: normalized.storeStableId,
-            occurredAt: normalized.occurredAt,
-            currency: normalized.currency,
-            memo: normalized.memo,
-            createdByUserStableId: operator,
-            updatedByUserStableId: operator,
-            lines: {
-              create: lines.map((line, index) => ({
-                lineNo: index + 1,
-                accountId: line.accountId,
-                categoryId: line.categoryId,
-                debitCents: line.debitCents,
-                creditCents: line.creditCents,
-                memo: line.memo,
-              })),
-            },
-          },
-          select: ACCOUNTING_JOURNAL_PUBLIC_SELECT,
-        });
-
-        const afterJson = writeAuthority
-          ? ({
-              journal: created,
-              writeAuthority,
-            } as unknown as Prisma.InputJsonValue)
-          : (created as unknown as Prisma.InputJsonValue);
-        await this.createAuditLog(
-          {
-            action: 'CREATE',
-            entityType: 'ACCOUNTING_JOURNAL_ENTRY',
-            entityId: created.entryStableId,
-            operatorUserId: operator,
-            afterJson,
-          },
-          tx,
-        );
-        return created;
-      });
+      return await runSerializableAccountingWrite(this.prisma, (tx) =>
+        this.createPreparedJournalEntryInTx(prepared, operator, tx, timezone),
+      );
     } catch (error) {
       if (!this.isJournalUniqueConstraintError(error)) throw error;
       const existing = await this.prisma.accountingJournalEntry.findUnique({
@@ -777,6 +809,83 @@ export class AccountingService {
       if (!existing) throw error;
       return this.assertJournalIdempotentReplay(existing, idempotencyHash);
     }
+  }
+
+  private async createPreparedJournalEntryInTx(
+    prepared: PreparedJournalWrite,
+    operator: string,
+    tx: Prisma.TransactionClient,
+    timezone: string,
+  ): Promise<AccountingJournalRow> {
+    const { normalized, idempotencyHash, auditAuthority } = prepared;
+    const existing = await tx.accountingJournalEntry.findUnique({
+      where: { idempotencyKey: normalized.idempotencyKey },
+      select: ACCOUNTING_JOURNAL_INTERNAL_SELECT,
+    });
+    if (existing) {
+      return this.assertJournalIdempotentReplay(existing, idempotencyHash);
+    }
+
+    await this.assertOnOrAfterAccountingStartDate(normalized.occurredAt, tx);
+    await this.assertJournalEditableForPeriod(
+      normalized.occurredAt,
+      normalized.kind,
+      tx,
+      timezone,
+    );
+    const lines = await this.resolveJournalLines(
+      tx,
+      normalized.currency,
+      normalized.lines,
+    );
+
+    const created = await tx.accountingJournalEntry.create({
+      data: {
+        entryStableId: `journal_${createId()}`,
+        idempotencyKey: normalized.idempotencyKey,
+        idempotencyHash,
+        kind: normalized.kind,
+        source: normalized.source,
+        sourceFactType: normalized.sourceFactType,
+        sourceFactStableId: normalized.sourceFactStableId,
+        sourceFactVersion: normalized.sourceFactVersion,
+        storeStableId: normalized.storeStableId,
+        occurredAt: normalized.occurredAt,
+        currency: normalized.currency,
+        memo: normalized.memo,
+        createdByUserStableId: operator,
+        updatedByUserStableId: operator,
+        lines: {
+          create: lines.map((line, index) => ({
+            lineNo: index + 1,
+            accountId: line.accountId,
+            categoryId: line.categoryId,
+            debitCents: line.debitCents,
+            creditCents: line.creditCents,
+            memo: line.memo,
+          })),
+        },
+      },
+      select: ACCOUNTING_JOURNAL_PUBLIC_SELECT,
+    });
+
+    const afterJson = auditAuthority
+      ? ({
+          journal: created,
+          writeAuthority: auditAuthority,
+        } as unknown as Prisma.InputJsonValue)
+      : (created as unknown as Prisma.InputJsonValue);
+    await this.createAuditLog(
+      {
+        action: 'CREATE',
+        entityType: 'ACCOUNTING_JOURNAL_ENTRY',
+        entityId: created.entryStableId,
+        operatorUserId: operator,
+        afterJson,
+      },
+      tx,
+    );
+    return created;
   }
 
   async updateJournalEntry(
@@ -1042,6 +1151,306 @@ export class AccountingService {
       );
     }
     return this.toJournalPublic(existing);
+  }
+
+  private prepareProviderSettlementJournalWrite(
+    input: AccountingJournalCreateInput,
+    authority: ProviderSettlementJournalWriteAuthorityV1,
+  ): PreparedJournalWrite {
+    const normalized = this.applyJournalPolicy(() =>
+      normalizeJournalCreate(input),
+    );
+    this.assertProviderSettlementJournalAuthority(normalized, authority);
+    return {
+      normalized,
+      idempotencyHash: hashProviderSettlementJournalWrite(
+        normalized,
+        authority,
+      ),
+      auditAuthority: authority as unknown as Prisma.InputJsonValue,
+    };
+  }
+
+  private async createProviderSettlementReplacementGroupInTx(
+    prepared: PreparedJournalWrite[],
+    authority: ProviderSettlementReplacementGroupAuthorityV1,
+    operator: string,
+    tx: Prisma.TransactionClient,
+    timezone: string,
+  ): Promise<AccountingJournalRow[]> {
+    await this.assertProviderSettlementAuthorityInTx(authority, tx);
+    await this.assertProviderSettlementHistoricalAnchorsInTx(authority, tx);
+
+    const existing = await tx.accountingJournalEntry.findMany({
+      where: {
+        idempotencyKey: {
+          in: prepared.map((item) => item.normalized.idempotencyKey),
+        },
+      },
+      select: ACCOUNTING_JOURNAL_INTERNAL_SELECT,
+    });
+    if (existing.length > 0 && existing.length !== prepared.length) {
+      throw new ConflictException(
+        'provider settlement replacement group is only partially persisted; review the existing Journals before retrying',
+      );
+    }
+    if (existing.length === prepared.length) {
+      const existingByKey = new Map(
+        existing.map((journal) => [journal.idempotencyKey, journal] as const),
+      );
+      return prepared.map((item) => {
+        const replay = existingByKey.get(item.normalized.idempotencyKey);
+        if (!replay) {
+          throw new ConflictException(
+            'provider settlement replacement group replay is missing an expected Journal',
+          );
+        }
+        return this.assertJournalIdempotentReplay(replay, item.idempotencyHash);
+      });
+    }
+
+    const rows: AccountingJournalRow[] = [];
+    for (const item of prepared) {
+      rows.push(
+        await this.createPreparedJournalEntryInTx(item, operator, tx, timezone),
+      );
+    }
+    return rows;
+  }
+
+  private async assertProviderSettlementAuthorityInTx(
+    authority: ProviderSettlementReplacementGroupAuthorityV1,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    const document = await tx.accountingProviderFinancialDocument.findUnique({
+      where: { documentStableId: authority.documentStableId },
+      select: {
+        documentStableId: true,
+        provider: true,
+        documentType: true,
+        businessIdentityKey: true,
+        revision: true,
+        storeStableId: true,
+        providerDocumentRef: true,
+        periodStart: true,
+        periodEnd: true,
+        currency: true,
+        artifact: {
+          select: {
+            inboxItem: {
+              select: {
+                inboxItemStableId: true,
+                status: true,
+                materializedEntityType: true,
+                materializedEntityStableId: true,
+                reviewedAt: true,
+                reviewedByUserStableId: true,
+                version: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    const latestRevision =
+      await tx.accountingProviderFinancialDocument.findFirst({
+        where: {
+          provider: authority.provider,
+          documentType: authority.documentType,
+          businessIdentityKey: authority.businessIdentityKey,
+        },
+        orderBy: { revision: 'desc' },
+        select: { documentStableId: true, revision: true },
+      });
+    const review = document?.artifact.inboxItem ?? null;
+    const dateOnly = (value: Date | null): string | null =>
+      value?.toISOString().slice(0, 10) ?? null;
+    if (
+      !document ||
+      document.provider !== authority.provider ||
+      document.documentType !== authority.documentType ||
+      document.businessIdentityKey !== authority.businessIdentityKey ||
+      document.revision !== authority.revision ||
+      document.storeStableId !== authority.storeStableId ||
+      document.providerDocumentRef !== authority.providerDocumentRef ||
+      dateOnly(document.periodStart) !== authority.periodStart ||
+      dateOnly(document.periodEnd) !== authority.periodEnd ||
+      document.currency !== 'CAD' ||
+      latestRevision?.documentStableId !== authority.documentStableId ||
+      latestRevision?.revision !== authority.revision ||
+      !review ||
+      review.inboxItemStableId !== authority.reviewEvidence.inboxItemStableId ||
+      review.status !== authority.reviewEvidence.status ||
+      review.materializedEntityType !==
+        authority.reviewEvidence.materializedEntityType ||
+      review.materializedEntityStableId !==
+        authority.reviewEvidence.materializedEntityStableId ||
+      review.reviewedAt?.toISOString() !==
+        authority.reviewEvidence.reviewedAt ||
+      review.reviewedByUserStableId !==
+        authority.reviewEvidence.reviewedByUserStableId ||
+      review.version !== authority.reviewEvidence.version
+    ) {
+      throw new ConflictException(
+        'provider settlement document/review authority changed after preview',
+      );
+    }
+
+    const coverage = await tx.accountingProviderFinancialCoverage.findFirst({
+      where: {
+        provider: authority.provider,
+        storeStableId: authority.storeStableId,
+      },
+      select: {
+        coverageStableId: true,
+        financialHistoryRequiredFrom: true,
+        financialCompleteThrough: true,
+        liveOrderFactCutoverAt: true,
+        orderDetailCoverageFrom: true,
+        updatedAt: true,
+      },
+    });
+    if (
+      !coverage ||
+      coverage.coverageStableId !==
+        authority.coverageEvidence.coverageStableId ||
+      dateOnly(coverage.financialHistoryRequiredFrom) !==
+        authority.coverageEvidence.financialHistoryRequiredFrom ||
+      dateOnly(coverage.financialCompleteThrough) !==
+        authority.coverageEvidence.financialCompleteThrough ||
+      (coverage.liveOrderFactCutoverAt?.toISOString() ?? null) !==
+        authority.coverageEvidence.liveOrderFactCutoverAt ||
+      dateOnly(coverage.orderDetailCoverageFrom) !==
+        authority.coverageEvidence.orderDetailCoverageFrom ||
+      coverage.updatedAt.toISOString() !== authority.coverageEvidence.updatedAt
+    ) {
+      throw new ConflictException(
+        'provider settlement coverage authority changed after preview',
+      );
+    }
+
+    const currentAccounts = await tx.accountingAccount.findMany({
+      where: {
+        accountStableId: {
+          in: authority.accountPrerequisites.map(
+            (account) => account.accountStableId,
+          ),
+        },
+      },
+      select: {
+        accountStableId: true,
+        accountClass: true,
+        currency: true,
+        isActive: true,
+      },
+    });
+    const currentByStableId = new Map(
+      currentAccounts.map(
+        (account) => [account.accountStableId, account] as const,
+      ),
+    );
+    for (const prerequisite of authority.accountPrerequisites) {
+      const current = currentByStableId.get(prerequisite.accountStableId);
+      if (
+        !current ||
+        current.accountClass !== prerequisite.actual.accountClass ||
+        current.currency !== prerequisite.actual.currency ||
+        current.isActive !== prerequisite.actual.isActive
+      ) {
+        throw new ConflictException(
+          `provider settlement account authority changed after preview: ${prerequisite.accountStableId}`,
+        );
+      }
+    }
+  }
+
+  private async assertProviderSettlementHistoricalAnchorsInTx(
+    authority: ProviderSettlementReplacementGroupAuthorityV1,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    if (authority.historicalReversalAnchors.length === 0) return;
+    const rows = await tx.accountingJournalEntry.findMany({
+      where: {
+        entryStableId: {
+          in: authority.historicalReversalAnchors.map(
+            (anchor) => anchor.originalJournalEntryStableId,
+          ),
+        },
+      },
+      select: {
+        entryStableId: true,
+        idempotencyKey: true,
+        idempotencyHash: true,
+        version: true,
+        source: true,
+        sourceFactType: true,
+        sourceFactStableId: true,
+        deletedAt: true,
+      },
+    });
+    const byStableId = new Map(
+      rows.map((row) => [row.entryStableId, row] as const),
+    );
+    for (const anchor of authority.historicalReversalAnchors) {
+      const current = byStableId.get(anchor.originalJournalEntryStableId);
+      if (
+        !current ||
+        current.deletedAt !== null ||
+        current.source !== AccountingJournalSource.ORDER ||
+        current.sourceFactType !== CANONICAL_SALE_SOURCE_FACT_TYPE ||
+        current.sourceFactStableId !== anchor.sourceFactStableId ||
+        current.idempotencyKey !== anchor.idempotencyKey ||
+        current.idempotencyHash !== anchor.idempotencyHash ||
+        current.version !== anchor.version
+      ) {
+        throw new ConflictException(
+          `historical Uber SALE Journal authority changed after preview: ${anchor.originalJournalEntryStableId}`,
+        );
+      }
+    }
+  }
+
+  private assertProviderSettlementJournalAuthority(
+    journal: NormalizedJournalCreate,
+    authority: ProviderSettlementJournalWriteAuthorityV1,
+  ): void {
+    const group = authority.group;
+    if (authority.role === 'PROVIDER_DOCUMENT') {
+      const expectedKey = `provider-settlement:${group.documentStableId}:r${group.revision}:v1`;
+      if (
+        journal.kind !== AccountingJournalEntryKind.ADJUSTMENT ||
+        journal.source !== AccountingJournalSource.PLATFORM_STATEMENT ||
+        journal.sourceFactType !== PROVIDER_FINANCIAL_SOURCE_FACT_TYPE ||
+        journal.sourceFactStableId !== group.documentStableId ||
+        journal.sourceFactVersion !== group.revision ||
+        journal.storeStableId !== group.storeStableId ||
+        journal.currency !== 'CAD' ||
+        journal.idempotencyKey !== expectedKey
+      ) {
+        throw new BadRequestException(
+          'provider settlement document authority does not match the Journal source identity',
+        );
+      }
+      return;
+    }
+
+    const originalJournalEntryStableId = authority.originalJournalEntryStableId;
+    const expectedKey = `uber-pre-cutover-order-reversal:${originalJournalEntryStableId}:v1`;
+    if (
+      !originalJournalEntryStableId ||
+      journal.kind !== AccountingJournalEntryKind.ADJUSTMENT ||
+      journal.source !== AccountingJournalSource.SYSTEM ||
+      journal.sourceFactType !== UBER_PRE_CUTOVER_REVERSAL_SOURCE_FACT_TYPE ||
+      journal.sourceFactStableId !== originalJournalEntryStableId ||
+      journal.sourceFactVersion !== 1 ||
+      journal.storeStableId !== group.storeStableId ||
+      journal.currency !== 'CAD' ||
+      journal.idempotencyKey !== expectedKey
+    ) {
+      throw new BadRequestException(
+        'provider settlement reversal authority does not match the Journal source identity',
+      );
+    }
   }
 
   private assertCanonicalChangeJournalAuthority(
