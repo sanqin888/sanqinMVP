@@ -57,7 +57,9 @@ const isoDate = (value: Date | null): string | null =>
 
 const providerKey = (provider: AccountingFinancialProvider) => provider;
 
-const latestDocuments = (rows: ProviderDocumentRow[]): ProviderDocumentRow[] => {
+const latestDocuments = (
+  rows: ProviderDocumentRow[],
+): ProviderDocumentRow[] => {
   const latest = new Map<string, ProviderDocumentRow>();
   for (const row of rows) {
     const key = `${row.provider}|${row.documentType}|${row.businessIdentityKey}`;
@@ -65,9 +67,15 @@ const latestDocuments = (rows: ProviderDocumentRow[]): ProviderDocumentRow[] => 
     if (!current || row.revision > current.revision) latest.set(key, row);
   }
   return Array.from(latest.values()).sort((left, right) =>
-    [left.provider, left.businessIdentityKey, String(left.revision)].join('|').localeCompare(
-      [right.provider, right.businessIdentityKey, String(right.revision)].join('|'),
-    ),
+    [left.provider, left.businessIdentityKey, String(left.revision)]
+      .join('|')
+      .localeCompare(
+        [
+          right.provider,
+          right.businessIdentityKey,
+          String(right.revision),
+        ].join('|'),
+      ),
   );
 };
 
@@ -101,7 +109,8 @@ export class AccountingProviderSettlementPreviewService {
     const store = await this.storeConfig.getStoreSnapshot(storeStableId);
     const timezone = store.timezone.trim() || 'America/Toronto';
     const accountingStartDate =
-      (await this.accounting.getAccountingStartDate()) ?? DEFAULT_HISTORY_START_DATE;
+      (await this.accounting.getAccountingStartDate()) ??
+      DEFAULT_HISTORY_START_DATE;
     const requestedFrom = input.fromDate ?? accountingStartDate;
     const effectiveFrom =
       requestedFrom < accountingStartDate ? accountingStartDate : requestedFrom;
@@ -133,13 +142,14 @@ export class AccountingProviderSettlementPreviewService {
       ...(input.provider ? { provider: input.provider } : {}),
     });
     const documents = latestDocuments(allDocuments);
+    const includeUber =
+      !input.provider ||
+      input.provider === AccountingFinancialProvider.UBER_EATS;
     const providers = Array.from(
       new Set([
         ...documents.map((document) => document.provider),
         ...(input.provider ? [input.provider] : []),
-        ...(!input.provider || input.provider === AccountingFinancialProvider.UBER_EATS
-          ? [AccountingFinancialProvider.UBER_EATS]
-          : []),
+        ...(includeUber ? [AccountingFinancialProvider.UBER_EATS] : []),
       ]),
     ).sort();
     const coverageRows = await this.operations.readProviderFinancialCoverage({
@@ -160,15 +170,22 @@ export class AccountingProviderSettlementPreviewService {
         ),
         uberOrderEntryStableIds: [],
       });
-    const existingByDocumentStableId = new Map(
-      existingSettlementJournals.flatMap((journal) =>
+    const existingByDocumentStableId = new Map<
+      string,
+      (typeof existingSettlementJournals)[number]
+    >();
+    for (const journal of existingSettlementJournals) {
+      if (
         journal.sourceFactType === 'accounting.provider_financial_document.v1' &&
         journal.sourceFactStableId
-          ? [[journal.sourceFactStableId, journal] as const]
-          : [],
-      ),
-    );
-    const revisionsByBusinessIdentity = new Map<string, ProviderDocumentRow[]>();
+      ) {
+        existingByDocumentStableId.set(journal.sourceFactStableId, journal);
+      }
+    }
+    const revisionsByBusinessIdentity = new Map<
+      string,
+      ProviderDocumentRow[]
+    >();
     for (const document of allDocuments) {
       const key = `${document.provider}|${document.documentType}|${document.businessIdentityKey}`;
       revisionsByBusinessIdentity.set(key, [
@@ -178,7 +195,8 @@ export class AccountingProviderSettlementPreviewService {
     }
 
     const documentPlans = documents.map((document) => {
-      const coverage = coverageByProvider.get(providerKey(document.provider)) ?? null;
+      const coverage =
+        coverageByProvider.get(providerKey(document.provider)) ?? null;
       const periodStart = isoDate(document.periodStart);
       const periodEnd = isoDate(document.periodEnd);
       const salesAuthority = resolveProviderSalesAuthority({
@@ -222,11 +240,15 @@ export class AccountingProviderSettlementPreviewService {
       const revisions = revisionsByBusinessIdentity.get(identityKey) ?? [];
       const priorPostedRevision = revisions
         .filter((revision) => revision.revision < document.revision)
-        .find((revision) => existingByDocumentStableId.has(revision.documentStableId));
-      const currentPosting = existingByDocumentStableId.get(document.documentStableId);
-      const missingRequiredAccounts = (basePlan?.requiredAccountStableIds ?? []).filter(
-        (accountStableId) => !activeAccountIds.has(accountStableId),
+        .find((revision) =>
+          existingByDocumentStableId.has(revision.documentStableId),
+        );
+      const currentPosting = existingByDocumentStableId.get(
+        document.documentStableId,
       );
+      const missingRequiredAccounts = (
+        basePlan?.requiredAccountStableIds ?? []
+      ).filter((accountStableId) => !activeAccountIds.has(accountStableId));
       const extraBlocks = [
         ...(!occurrenceDate ? ['MISSING_PERIOD_END'] : []),
         ...(priorPostedRevision ? ['SUPERSEDED_REVISION_ALREADY_POSTED'] : []),
@@ -238,7 +260,7 @@ export class AccountingProviderSettlementPreviewService {
         ? 'ALREADY_POSTED'
         : extraBlocks.length > 0 || basePlan?.status === 'BLOCKED'
           ? 'BLOCKED'
-          : basePlan?.status ?? 'BLOCKED';
+          : (basePlan?.status ?? 'BLOCKED');
       return {
         documentStableId: document.documentStableId,
         provider: document.provider,
@@ -258,9 +280,10 @@ export class AccountingProviderSettlementPreviewService {
         existingJournalEntryStableId: currentPosting?.entryStableId ?? null,
         priorPostedRevision: priorPostedRevision?.revision ?? null,
         decisions: basePlan?.decisions ?? [],
-        draftJournal: status === 'READY' ? basePlan?.draftJournal ?? null : null,
-        debitCents: status === 'READY' ? basePlan?.debitCents ?? 0 : 0,
-        creditCents: status === 'READY' ? basePlan?.creditCents ?? 0 : 0,
+        draftJournal:
+          status === 'READY' ? (basePlan?.draftJournal ?? null) : null,
+        debitCents: status === 'READY' ? (basePlan?.debitCents ?? 0) : 0,
+        creditCents: status === 'READY' ? (basePlan?.creditCents ?? 0) : 0,
       };
     });
 
@@ -288,8 +311,6 @@ export class AccountingProviderSettlementPreviewService {
       ];
     });
 
-    const includeUber =
-      !input.provider || input.provider === AccountingFinancialProvider.UBER_EATS;
     const uberCoverage = coverageByProvider.get(
       providerKey(AccountingFinancialProvider.UBER_EATS),
     );
@@ -364,17 +385,22 @@ export class AccountingProviderSettlementPreviewService {
         occurredAt: journal.occurredAt.toISOString(),
         status,
         blockReasons:
-          status === 'BLOCKED' ? ['NO_READY_AUTHORITATIVE_STATEMENT_COVERAGE'] : [],
-        coveredByDocumentStableId:
-          coveringStatement?.documentStableId ?? null,
+          status === 'BLOCKED'
+            ? ['NO_READY_AUTHORITATIVE_STATEMENT_COVERAGE']
+            : [],
+        coveredByDocumentStableId: coveringStatement?.documentStableId ?? null,
         draftJournal: status === 'READY' ? draft : null,
         debitCents: status === 'READY' ? totals.debitCents : 0,
         creditCents: status === 'READY' ? totals.creditCents : 0,
       };
     });
 
-    const readyDocuments = documentPlans.filter((plan) => plan.status === 'READY');
-    const blockedDocuments = documentPlans.filter((plan) => plan.status === 'BLOCKED');
+    const readyDocuments = documentPlans.filter(
+      (plan) => plan.status === 'READY',
+    );
+    const blockedDocuments = documentPlans.filter(
+      (plan) => plan.status === 'BLOCKED',
+    );
     const readyReversals = uberOrderReversalPlans.filter(
       (plan) => plan.status === 'READY',
     );

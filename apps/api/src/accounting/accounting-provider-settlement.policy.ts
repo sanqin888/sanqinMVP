@@ -272,10 +272,16 @@ export function classifyProviderSettlementLine(params: {
   };
 }
 
-const addNet = (target: Map<string, number>, account: string, value: number) => {
+const addNet = (
+  target: Map<string, number>,
+  account: string,
+  value: number,
+) => {
   const next = (target.get(account) ?? 0) + value;
   if (!Number.isSafeInteger(next)) {
-    throw new Error(`Settlement account total exceeds safe integer range: ${account}`);
+    throw new Error(
+      `Settlement account total exceeds safe integer range: ${account}`,
+    );
   }
   target.set(account, next);
 };
@@ -325,7 +331,10 @@ export function buildProviderSettlementDocumentPlan(params: {
     new Set(
       postable.flatMap((line) =>
         line.targetAccountStableId
-          ? [providerPendingAccount(document.provider), line.targetAccountStableId]
+          ? [
+              providerPendingAccount(document.provider),
+              line.targetAccountStableId,
+            ]
           : [],
       ),
     ),
@@ -335,7 +344,9 @@ export function buildProviderSettlementDocumentPlan(params: {
     return {
       salesAuthority: params.salesAuthority,
       status: 'BLOCKED',
-      blockReasons: Array.from(new Set(blocked.map((line) => line.reason))).sort(),
+      blockReasons: Array.from(
+        new Set(blocked.map((line) => line.reason)),
+      ).sort(),
       decisions,
       draftJournal: null,
       debitCents: 0,
@@ -377,7 +388,9 @@ export function buildProviderSettlementDocumentPlan(params: {
     0,
   );
   if (debitCents !== creditCents) {
-    throw new Error(`Settlement draft is unbalanced: ${debitCents} != ${creditCents}`);
+    throw new Error(
+      `Settlement draft is unbalanced: ${debitCents} != ${creditCents}`,
+    );
   }
 
   return {
