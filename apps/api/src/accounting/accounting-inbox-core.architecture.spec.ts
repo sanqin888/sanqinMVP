@@ -37,6 +37,14 @@ const PROVIDER_FINANCIAL_HISTORY = resolve(
   ACCOUNTING_ROOT,
   'accounting-provider-financial-history.service.ts',
 );
+const ACCOUNTING_AUTOMATION = resolve(
+  ACCOUNTING_ROOT,
+  'accounting-automation.scheduler.ts',
+);
+const UBER_PUBLIC_API = resolve(
+  API_SRC_ROOT,
+  'integrations/ubereats/public-api.ts',
+);
 const GMAIL_INGEST = resolve(
   ACCOUNTING_ROOT,
   'accounting-gmail-ingest.service.ts',
@@ -138,9 +146,16 @@ describe('Accounting unified Inbox core ownership boundary', () => {
 
   it('keeps Uber financial-history access on the External Channels public boundary', () => {
     const history = read(PROVIDER_FINANCIAL_HISTORY);
+    const automation = read(ACCOUNTING_AUTOMATION);
+    const uberPublicApi = read(UBER_PUBLIC_API);
     expect(history).toContain('../integrations/ubereats/public-api');
     expect(history).not.toContain('../integrations/ubereats/application/');
     expect(history).not.toContain('../integrations/ubereats/infrastructure/');
+    expect(automation).not.toContain('UBER_EATS_APP_SCOPES');
+    expect(automation).not.toContain('uberStoreMapping');
+    expect(automation).not.toContain('uberStoreId');
+    expect(automation).not.toContain('storeUuids');
+    expect(uberPublicApi).not.toContain('storeUuids');
 
     const deepUberImport =
       /from\s+['"]\.\.\/integrations\/ubereats\/(?:application|infrastructure)\//;

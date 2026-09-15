@@ -251,22 +251,6 @@ export class AccountingAutomationScheduler
     timezone: string,
     accountingStartDate: string | null,
   ) {
-    const scopes = new Set(
-      (process.env.UBER_EATS_APP_SCOPES ?? '')
-        .split(/[\s,]+/)
-        .map((value) => value.trim())
-        .filter(Boolean),
-    );
-    if (!scopes.has('eats.report')) return [];
-
-    const stores = await this.prisma.uberStoreMapping.findMany({
-      where: { isProvisioned: true },
-      select: { uberStoreId: true },
-      orderBy: { uberStoreId: 'asc' },
-    });
-    const storeUuids = stores.map((store) => store.uberStoreId);
-    if (!storeUuids.length) return [];
-
     const today = DateTime.now().setZone(timezone).startOf('day');
     const rollingStartDate = today.minus({ days: 4 }).toISODate();
     const endDate = today.minus({ days: 1 }).toISODate();
@@ -279,7 +263,6 @@ export class AccountingAutomationScheduler
     if (!startDate || !endDate || startDate > endDate) return [];
 
     return this.uberReporting.requestFinancialReports({
-      storeUuids,
       startDate,
       endDate,
       reportTypes: ['PAYMENT_DETAILS_REPORT', 'FINANCE_SUMMARY_REPORT'],

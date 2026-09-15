@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import {
   isUberClientCredentialsScope,
   isUberMerchantAuthorizationScope,
+  type UberClientCredentialsScope,
   UBER_MERCHANT_AUTHORIZATION_SCOPES,
   UBER_REQUIRED_CLIENT_CREDENTIAL_SCOPES,
 } from './uber-scopes';
@@ -145,6 +146,10 @@ export class UberApiConfigService {
 
   operationWeight(operation: string): number {
     return this.weights[operation] ?? 1;
+  }
+
+  hasExpectedAppScope(scope: UberClientCredentialsScope): boolean {
+    return this.expectedAppScopes.split(/\s+/).includes(scope);
   }
 
   private clientCredentialsScopes(raw: string): string {

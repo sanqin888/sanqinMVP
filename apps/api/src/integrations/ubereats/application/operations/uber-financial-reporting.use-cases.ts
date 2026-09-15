@@ -9,6 +9,7 @@ import type {
   UberFinancialReportRepositoryPort,
   UberFinancialReportStatus,
 } from './uber-financial-reporting.ports';
+import type { UberStoreMappingRepositoryPort } from '../merchant/uber-merchant-persistence.ports';
 
 const DEFAULT_REPORT_TYPES: UberEatsFinancialReportType[] = [
   'PAYMENT_DETAILS_REPORT',
@@ -21,16 +22,24 @@ export class UberFinancialReportingUseCase implements UberEatsReportingPort {
     private readonly api: UberFinancialReportApiPort,
     private readonly reports: UberFinancialReportRepositoryPort,
     private readonly artifacts: UberFinancialReportArtifactStorePort,
+    private readonly storeMappings: UberStoreMappingRepositoryPort,
+    private readonly reportingEnabled: boolean,
   ) {}
 
   async requestFinancialReports(input: {
-    storeUuids: string[];
     startDate: string;
     endDate: string;
     reportTypes?: UberEatsFinancialReportType[];
   }) {
+    if (!this.reportingEnabled) return [];
+    const mappings = await this.storeMappings.listMappings();
     const storeUuids = Array.from(
-      new Set(input.storeUuids.map((value) => value.trim()).filter(Boolean)),
+      new Set(
+        mappings
+          .filter((mapping) => mapping.isProvisioned)
+          .map((mapping) => mapping.uberStoreId.trim())
+          .filter(Boolean),
+      ),
     ).sort();
     if (!storeUuids.length) return [];
     const reportTypes = input.reportTypes?.length
