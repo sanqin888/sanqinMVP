@@ -281,16 +281,12 @@ export class AccountingOperationsService {
 
   async readProviderSettlementDocuments(params: {
     storeStableId: string;
-    fromInclusive: Date;
-    toExclusive: Date;
     provider?: AccountingFinancialProvider;
   }) {
     return this.prisma.accountingProviderFinancialDocument.findMany({
       where: {
         storeStableId: params.storeStableId,
         ...(params.provider ? { provider: params.provider } : {}),
-        periodStart: { lt: params.toExclusive },
-        periodEnd: { gte: params.fromInclusive },
       },
       select: {
         documentStableId: true,
@@ -307,6 +303,21 @@ export class AccountingOperationsService {
         payoutAt: true,
         currency: true,
         rawMetadata: true,
+        artifact: {
+          select: {
+            inboxItem: {
+              select: {
+                inboxItemStableId: true,
+                status: true,
+                materializedEntityType: true,
+                materializedEntityStableId: true,
+                reviewedAt: true,
+                reviewedByUserStableId: true,
+                version: true,
+              },
+            },
+          },
+        },
         lines: {
           select: {
             lineStableId: true,
@@ -341,12 +352,14 @@ export class AccountingOperationsService {
         provider: { in: params.providers },
       },
       select: {
+        coverageStableId: true,
         provider: true,
         storeStableId: true,
         financialHistoryRequiredFrom: true,
         financialCompleteThrough: true,
         liveOrderFactCutoverAt: true,
         orderDetailCoverageFrom: true,
+        updatedAt: true,
       },
       orderBy: { provider: 'asc' },
     });
@@ -633,13 +646,16 @@ export class AccountingOperationsService {
     });
   }
 
-  async readActiveAccountingAccountStableIds() {
-    const rows = await this.prisma.accountingAccount.findMany({
-      where: { isActive: true },
-      select: { accountStableId: true },
+  async readAccountingAccountFacts() {
+    return this.prisma.accountingAccount.findMany({
+      select: {
+        accountStableId: true,
+        accountClass: true,
+        currency: true,
+        isActive: true,
+      },
       orderBy: { accountStableId: 'asc' },
     });
-    return rows.map((row) => row.accountStableId);
   }
 
   async createAccount(input: {

@@ -129,6 +129,44 @@ describe('Accounting provider settlement shadow policy', () => {
     );
   });
 
+  it('honors parser reconciliation-only treatment for Clover tips', () => {
+    const plan = buildProviderSettlementDocumentPlan({
+      document: {
+        documentStableId: 'clover_closeout_1',
+        revision: 1,
+        provider: AccountingFinancialProvider.CLOVER,
+        documentType: AccountingFinancialDocumentType.BATCH_CONTROL,
+        storeStableId: '4750_Yonge_Street',
+        periodStart: '2026-09-14',
+        periodEnd: '2026-09-14',
+        currency: 'CAD',
+        lines: [
+          {
+            lineStableId: 'line-clover-tip',
+            lineNo: 1,
+            rawName: 'Tips',
+            component: AccountingFinancialComponent.TIP,
+            postingTreatment:
+              AccountingFinancialPostingTreatment.RECONCILIATION_ONLY,
+            amountCents: 500,
+          },
+        ],
+      },
+      salesAuthority: 'RECONCILIATION_ONLY',
+      occurredAt: new Date('2026-09-15T03:59:59.999Z'),
+    });
+
+    expect(plan.status).toBe('NOOP');
+    expect(plan.requiredAccountStableIds).toEqual([]);
+    expect(plan.decisions[0]).toEqual(
+      expect.objectContaining({
+        disposition: 'RECONCILIATION_ONLY',
+        reason: 'PROVIDER_RECONCILIATION_ONLY',
+        targetAccountStableId: null,
+      }),
+    );
+  });
+
   it('keeps Uber sales and sales tax reconciliation-only after live Order cutover while fees remain postable', () => {
     const authority = resolveProviderSalesAuthority({
       provider: AccountingFinancialProvider.UBER_EATS,

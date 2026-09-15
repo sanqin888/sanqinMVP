@@ -1,4 +1,5 @@
 import {
+  AccountingAccountClass,
   AccountingFinancialComponent,
   AccountingFinancialDocumentType,
   AccountingFinancialPostingTreatment,
@@ -33,6 +34,74 @@ export const PROVIDER_SETTLEMENT_ACCOUNT_IDS = {
   advertisingExpense: 'account_advertising_expense',
   paymentProcessingFeeExpense: 'account_payment_processing_fee_expense',
   chargebackAdjustmentExpense: 'account_chargeback_adjustment_expense',
+} as const;
+
+export const PROVIDER_SETTLEMENT_ACCOUNT_REQUIREMENTS = {
+  [PROVIDER_SETTLEMENT_ACCOUNT_IDS.primaryBank]: {
+    accountClass: AccountingAccountClass.ASSET,
+    currency: 'CAD',
+    isActive: true,
+  },
+  [PROVIDER_SETTLEMENT_ACCOUNT_IDS.cloverPending]: {
+    accountClass: AccountingAccountClass.ASSET,
+    currency: 'CAD',
+    isActive: true,
+  },
+  [PROVIDER_SETTLEMENT_ACCOUNT_IDS.uberPending]: {
+    accountClass: AccountingAccountClass.ASSET,
+    currency: 'CAD',
+    isActive: true,
+  },
+  [PROVIDER_SETTLEMENT_ACCOUNT_IDS.fantuanPending]: {
+    accountClass: AccountingAccountClass.ASSET,
+    currency: 'CAD',
+    isActive: true,
+  },
+  [PROVIDER_SETTLEMENT_ACCOUNT_IDS.hstPayable]: {
+    accountClass: AccountingAccountClass.LIABILITY,
+    currency: 'CAD',
+    isActive: true,
+  },
+  [PROVIDER_SETTLEMENT_ACCOUNT_IDS.hstRecoverable]: {
+    accountClass: AccountingAccountClass.ASSET,
+    currency: 'CAD',
+    isActive: true,
+  },
+  [PROVIDER_SETTLEMENT_ACCOUNT_IDS.salesRevenue]: {
+    accountClass: AccountingAccountClass.REVENUE,
+    currency: 'CAD',
+    isActive: true,
+  },
+  [PROVIDER_SETTLEMENT_ACCOUNT_IDS.tipRevenue]: {
+    accountClass: AccountingAccountClass.REVENUE,
+    currency: 'CAD',
+    isActive: true,
+  },
+  [PROVIDER_SETTLEMENT_ACCOUNT_IDS.platformCommissionExpense]: {
+    accountClass: AccountingAccountClass.EXPENSE,
+    currency: 'CAD',
+    isActive: true,
+  },
+  [PROVIDER_SETTLEMENT_ACCOUNT_IDS.platformPromotionExpense]: {
+    accountClass: AccountingAccountClass.EXPENSE,
+    currency: 'CAD',
+    isActive: true,
+  },
+  [PROVIDER_SETTLEMENT_ACCOUNT_IDS.advertisingExpense]: {
+    accountClass: AccountingAccountClass.EXPENSE,
+    currency: 'CAD',
+    isActive: true,
+  },
+  [PROVIDER_SETTLEMENT_ACCOUNT_IDS.paymentProcessingFeeExpense]: {
+    accountClass: AccountingAccountClass.EXPENSE,
+    currency: 'CAD',
+    isActive: true,
+  },
+  [PROVIDER_SETTLEMENT_ACCOUNT_IDS.chargebackAdjustmentExpense]: {
+    accountClass: AccountingAccountClass.EXPENSE,
+    currency: 'CAD',
+    isActive: true,
+  },
 } as const;
 
 export type ProviderSalesAuthority =
@@ -197,8 +266,7 @@ export function classifyProviderSettlementLine(params: {
   }
   if (
     line.postingTreatment ===
-      AccountingFinancialPostingTreatment.RECONCILIATION_ONLY &&
-    line.component !== AccountingFinancialComponent.TIP
+    AccountingFinancialPostingTreatment.RECONCILIATION_ONLY
   ) {
     return {
       ...line,

@@ -2,6 +2,8 @@ import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import {
   AccountingFinancialComponent,
   AccountingFinancialProvider,
+  AccountingInboxMaterializedEntityType,
+  AccountingInboxStatus,
 } from '@prisma/client';
 import { DateTime } from 'luxon';
 import {
@@ -18,6 +20,7 @@ import { hashAccountingJson } from './accounting-inbox-core.policy';
 import {
   buildProviderSettlementDocumentPlan,
   buildUberPreCutoverOrderReversalDraft,
+  PROVIDER_SETTLEMENT_ACCOUNT_REQUIREMENTS,
   resolveProviderSalesAuthority,
   UBER_PRE_CUTOVER_REVERSAL_SOURCE_FACT_TYPE,
 } from './accounting-provider-settlement.policy';
@@ -35,6 +38,9 @@ export type ProviderSettlementShadowPreviewInput = {
 
 type ProviderDocumentRow = Awaited<
   ReturnType<AccountingOperationsService['readProviderSettlementDocuments']>
+>[number];
+type AccountingAccountFact = Awaited<
+  ReturnType<AccountingOperationsService['readAccountingAccountFacts']>
 >[number];
 
 const parseLocalDate = (
@@ -56,28 +62,58 @@ const isoDate = (value: Date | null): string | null =>
   value?.toISOString().slice(0, 10) ?? null;
 
 const providerKey = (provider: AccountingFinancialProvider) => provider;
+const providerDocumentIdentityKey = (row: ProviderDocumentRow): string =>
+  `${row.provider}|${row.documentType}|${row.businessIdentityKey}`;
 
 const latestDocuments = (
   rows: ProviderDocumentRow[],
 ): ProviderDocumentRow[] => {
   const latest = new Map<string, ProviderDocumentRow>();
   for (const row of rows) {
-    const key = `${row.provider}|${row.documentType}|${row.businessIdentityKey}`;
+    const key = providerDocumentIdentityKey(row);
     const current = latest.get(key);
     if (!current || row.revision > current.revision) latest.set(key, row);
   }
   return Array.from(latest.values()).sort((left, right) =>
-    [left.provider, left.businessIdentityKey, String(left.revision)]
+    [
+      left.provider,
+      left.documentType,
+      left.businessIdentityKey,
+      String(left.revision),
+    ]
       .join('|')
       .localeCompare(
         [
           right.provider,
+          right.documentType,
           right.businessIdentityKey,
           String(right.revision),
         ].join('|'),
       ),
   );
 };
+
+const documentOverlapsRange = (
+  row: ProviderDocumentRow,
+  fromInclusive: Date,
+  toExclusive: Date,
+): boolean =>
+  Boolean(
+    row.periodStart &&
+    row.periodEnd &&
+    row.periodStart < toExclusive &&
+    row.periodEnd >= fromInclusive,
+  );
+
+type ProviderSettlementAccountRequirement = {
+  accountClass: AccountingAccountFact['accountClass'];
+  currency: string;
+  isActive: boolean;
+};
+
+const ACCOUNT_REQUIREMENTS: Readonly<
+  Record<string, ProviderSettlementAccountRequirement>
+> = PROVIDER_SETTLEMENT_ACCOUNT_REQUIREMENTS;
 
 const journalTotals = (
   lines: Array<{ debitCents?: number; creditCents?: number }>,
@@ -137,11 +173,18 @@ export class AccountingProviderSettlementPreviewService {
       .toJSDate();
     const allDocuments = await this.operations.readProviderSettlementDocuments({
       storeStableId,
-      fromInclusive: documentFrom,
-      toExclusive: documentTo,
       ...(input.provider ? { provider: input.provider } : {}),
     });
-    const documents = latestDocuments(allDocuments);
+    const candidateIdentityKeys = new Set(
+      allDocuments
+        .filter((document) =>
+          documentOverlapsRange(document, documentFrom, documentTo),
+        )
+        .map(providerDocumentIdentityKey),
+    );
+    const documents = latestDocuments(allDocuments).filter((document) =>
+      candidateIdentityKeys.has(providerDocumentIdentityKey(document)),
+    );
     const includeUber =
       !input.provider ||
       input.provider === AccountingFinancialProvider.UBER_EATS;
@@ -159,8 +202,11 @@ export class AccountingProviderSettlementPreviewService {
     const coverageByProvider = new Map(
       coverageRows.map((row) => [providerKey(row.provider), row] as const),
     );
-    const activeAccountIds = new Set(
-      await this.operations.readActiveAccountingAccountStableIds(),
+    const accountFactsByStableId = new Map<string, AccountingAccountFact>(
+      (await this.operations.readAccountingAccountFacts()).map((account) => [
+        account.accountStableId,
+        account,
+      ]),
     );
 
     const existingSettlementJournals =
@@ -188,7 +234,7 @@ export class AccountingProviderSettlementPreviewService {
       ProviderDocumentRow[]
     >();
     for (const document of allDocuments) {
-      const key = `${document.provider}|${document.documentType}|${document.businessIdentityKey}`;
+      const key = providerDocumentIdentityKey(document);
       revisionsByBusinessIdentity.set(key, [
         ...(revisionsByBusinessIdentity.get(key) ?? []),
         document,
@@ -233,11 +279,7 @@ export class AccountingProviderSettlementPreviewService {
             occurredAt: occurrenceDate,
           })
         : null;
-      const identityKey = [
-        document.provider,
-        document.documentType,
-        document.businessIdentityKey,
-      ].join('|');
+      const identityKey = providerDocumentIdentityKey(document);
       const revisions = revisionsByBusinessIdentity.get(identityKey) ?? [];
       const priorPostedRevision = revisions
         .filter((revision) => revision.revision < document.revision)
@@ -247,15 +289,96 @@ export class AccountingProviderSettlementPreviewService {
       const currentPosting = existingByDocumentStableId.get(
         document.documentStableId,
       );
-      const missingRequiredAccounts = (
+      const review = document.artifact.inboxItem;
+      const reviewEvidence = review
+        ? {
+            inboxItemStableId: review.inboxItemStableId,
+            status: review.status,
+            materializedEntityType: review.materializedEntityType,
+            materializedEntityStableId: review.materializedEntityStableId,
+            reviewedAt: review.reviewedAt?.toISOString() ?? null,
+            reviewedByUserStableId: review.reviewedByUserStableId,
+            version: review.version,
+          }
+        : null;
+      const reviewLinkMatches = Boolean(
+        review &&
+        review.materializedEntityType ===
+          AccountingInboxMaterializedEntityType.PROVIDER_FINANCIAL_DOCUMENT &&
+        review.materializedEntityStableId === document.documentStableId,
+      );
+      const reviewBlocks = !review
+        ? ['PROVIDER_DOCUMENT_REVIEW_EVIDENCE_MISSING']
+        : !reviewLinkMatches
+          ? ['PROVIDER_DOCUMENT_REVIEW_LINK_MISMATCH']
+          : review.status !== AccountingInboxStatus.CONFIRMED
+            ? ['PROVIDER_DOCUMENT_NOT_CONFIRMED']
+            : !review.reviewedAt || !review.reviewedByUserStableId
+              ? ['PROVIDER_DOCUMENT_REVIEW_EVIDENCE_INCOMPLETE']
+              : [];
+      const accountPrerequisites = (
         basePlan?.requiredAccountStableIds ?? []
-      ).filter((accountStableId) => !activeAccountIds.has(accountStableId));
+      ).map((accountStableId) => {
+        const expected = ACCOUNT_REQUIREMENTS[accountStableId] ?? null;
+        const actual = accountFactsByStableId.get(accountStableId) ?? null;
+        const classMismatch =
+          expected !== null &&
+          actual !== null &&
+          actual.accountClass !== expected.accountClass;
+        const blockReasons = [
+          ...(!expected
+            ? [`ACCOUNT_POLICY_NOT_DEFINED:${accountStableId}`]
+            : []),
+          ...(!actual ? [`ACCOUNT_NOT_PROVISIONED:${accountStableId}`] : []),
+          ...(classMismatch
+            ? [`ACCOUNT_CLASS_MISMATCH:${accountStableId}`]
+            : []),
+          ...(expected && actual && actual.currency !== expected.currency
+            ? [`ACCOUNT_CURRENCY_MISMATCH:${accountStableId}`]
+            : []),
+          ...(expected && actual && actual.isActive !== expected.isActive
+            ? [`ACCOUNT_ACTIVE_STATE_MISMATCH:${accountStableId}`]
+            : []),
+        ];
+        return {
+          accountStableId,
+          expected,
+          actual: actual
+            ? {
+                accountClass: actual.accountClass,
+                currency: actual.currency,
+                isActive: actual.isActive,
+              }
+            : null,
+          status: blockReasons.length > 0 ? 'BLOCKED' : 'READY',
+          blockReasons,
+        };
+      });
+      const missingRequiredAccounts = accountPrerequisites
+        .filter((account) => account.actual === null)
+        .map((account) => account.accountStableId);
+      const invalidRequiredAccounts = accountPrerequisites
+        .filter(
+          (account) => account.actual !== null && account.status === 'BLOCKED',
+        )
+        .map((account) => account.accountStableId);
+      const latestRevisionInRequestedRange = documentOverlapsRange(
+        document,
+        documentFrom,
+        documentTo,
+      );
+      const requiresMutationAuthority = basePlan?.status === 'READY';
       const extraBlocks = [
         ...(!occurrenceDate ? ['MISSING_PERIOD_END'] : []),
+        ...(!latestRevisionInRequestedRange
+          ? ['LATEST_REVISION_OUTSIDE_REQUESTED_RANGE']
+          : []),
+        ...(requiresMutationAuthority && !coverage
+          ? ['PROVIDER_FINANCIAL_COVERAGE_NOT_PROVISIONED']
+          : []),
+        ...(requiresMutationAuthority ? reviewBlocks : []),
         ...(priorPostedRevision ? ['SUPERSEDED_REVISION_ALREADY_POSTED'] : []),
-        ...missingRequiredAccounts.map(
-          (accountStableId) => `ACCOUNT_NOT_PROVISIONED:${accountStableId}`,
-        ),
+        ...accountPrerequisites.flatMap((account) => account.blockReasons),
       ];
       const status = currentPosting
         ? 'ALREADY_POSTED'
@@ -273,11 +396,32 @@ export class AccountingProviderSettlementPreviewService {
         periodEnd,
         currency: document.currency,
         salesAuthority,
+        latestRevisionInRequestedRange,
+        reviewEvidence,
+        coverageEvidence: coverage
+          ? {
+              coverageStableId: coverage.coverageStableId,
+              financialHistoryRequiredFrom: isoDate(
+                coverage.financialHistoryRequiredFrom,
+              ),
+              financialCompleteThrough: isoDate(
+                coverage.financialCompleteThrough,
+              ),
+              liveOrderFactCutoverAt:
+                coverage.liveOrderFactCutoverAt?.toISOString() ?? null,
+              orderDetailCoverageFrom: isoDate(
+                coverage.orderDetailCoverageFrom,
+              ),
+              updatedAt: coverage.updatedAt.toISOString(),
+            }
+          : null,
         status,
         blockReasons: Array.from(
           new Set([...(basePlan?.blockReasons ?? []), ...extraBlocks]),
         ).sort(),
+        accountPrerequisites,
         missingRequiredAccounts,
+        invalidRequiredAccounts,
         existingJournalEntryStableId: currentPosting?.entryStableId ?? null,
         priorPostedRevision: priorPostedRevision?.revision ?? null,
         decisions: basePlan?.decisions ?? [],
@@ -368,28 +512,40 @@ export class AccountingProviderSettlementPreviewService {
       const localOrderDate = DateTime.fromJSDate(journal.occurredAt, {
         zone: timezone,
       }).toISODate();
-      const coveringStatement = localOrderDate
-        ? readyUberStatementCoverage.find(
+      const coveringStatements = localOrderDate
+        ? readyUberStatementCoverage.filter(
             (coverage) =>
               coverage.periodStart <= localOrderDate &&
               coverage.periodEnd >= localOrderDate,
           )
-        : undefined;
+        : [];
+      const coveringDocumentStableIds = coveringStatements
+        .map((coverage) => coverage.documentStableId)
+        .sort();
+      const uniquelyCovered = coveringStatements.length === 1;
       const status = alreadyReversed
         ? 'ALREADY_REVERSED'
-        : coveringStatement
+        : uberCoverage && uniquelyCovered
           ? 'READY'
           : 'BLOCKED';
+      const blockReasons =
+        status !== 'BLOCKED'
+          ? []
+          : !uberCoverage
+            ? ['PROVIDER_FINANCIAL_COVERAGE_NOT_PROVISIONED']
+            : coveringStatements.length > 1
+              ? ['AMBIGUOUS_AUTHORITATIVE_STATEMENT_COVERAGE']
+              : ['NO_READY_AUTHORITATIVE_STATEMENT_COVERAGE'];
       return {
         originalJournalEntryStableId: journal.entryStableId,
         orderStableId: journal.sourceFactStableId,
         occurredAt: journal.occurredAt.toISOString(),
         status,
-        blockReasons:
-          status === 'BLOCKED'
-            ? ['NO_READY_AUTHORITATIVE_STATEMENT_COVERAGE']
-            : [],
-        coveredByDocumentStableId: coveringStatement?.documentStableId ?? null,
+        blockReasons,
+        coveringDocumentStableIds,
+        coveredByDocumentStableId: uniquelyCovered
+          ? (coveringStatements[0]?.documentStableId ?? null)
+          : null,
         draftJournal: status === 'READY' ? draft : null,
         debitCents: status === 'READY' ? totals.debitCents : 0,
         creditCents: status === 'READY' ? totals.creditCents : 0,
@@ -409,7 +565,7 @@ export class AccountingProviderSettlementPreviewService {
       (plan) => plan.status === 'BLOCKED',
     );
     const reportWithoutHash = {
-      version: 1 as const,
+      version: 2 as const,
       range: {
         timezone,
         accountingStartDate,
@@ -431,6 +587,7 @@ export class AccountingProviderSettlementPreviewService {
         payoutTreatment: 'CONTROL_ONLY_IN_6B',
       },
       coverage: coverageRows.map((coverage) => ({
+        coverageStableId: coverage.coverageStableId,
         provider: coverage.provider,
         financialHistoryRequiredFrom: isoDate(
           coverage.financialHistoryRequiredFrom,
@@ -439,6 +596,7 @@ export class AccountingProviderSettlementPreviewService {
         liveOrderFactCutoverAt:
           coverage.liveOrderFactCutoverAt?.toISOString() ?? null,
         orderDetailCoverageFrom: isoDate(coverage.orderDetailCoverageFrom),
+        updatedAt: coverage.updatedAt.toISOString(),
       })),
       counts: {
         providerDocuments: documentPlans.length,
