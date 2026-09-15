@@ -425,10 +425,13 @@ export class AccountingInboxAcquisitionService {
   ) {
     if (result.reviewDisposition !== 'LIKELY_BILL') return;
     try {
-      await this.operations.suggestUnifiedInboxClassification(artifactStableId, {
-        classification: AccountingInboxClassification.EXPENSE_DOCUMENT,
-        selectedProvider: null,
-      });
+      await this.operations.suggestUnifiedInboxClassification(
+        artifactStableId,
+        {
+          classification: AccountingInboxClassification.EXPENSE_DOCUMENT,
+          selectedProvider: null,
+        },
+      );
     } catch (error) {
       this.logger.warn(
         `Accounting Inbox expense suggestion failed for ${artifactStableId}: ${

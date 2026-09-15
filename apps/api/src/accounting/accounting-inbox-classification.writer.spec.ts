@@ -54,8 +54,7 @@ describe('Accounting Inbox classification writer', () => {
       ),
     ).resolves.toEqual({
       inboxItemStableId: 'acctinbox_1',
-      classification:
-        AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
+      classification: AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
       selectedProvider: AccountingFinancialProvider.UBER_EATS,
       applied: true,
     });
@@ -113,8 +112,7 @@ describe('Accounting Inbox classification writer', () => {
     tx.accountingInboxItem.findUnique.mockResolvedValue({
       id: 'inbox-db-id',
       status: AccountingInboxStatus.PENDING_REVIEW,
-      classification:
-        AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
+      classification: AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
       selectedProvider: AccountingFinancialProvider.UBER_EATS,
       materializedEntityType: null,
       materializedEntityStableId: null,
@@ -160,8 +158,7 @@ describe('Accounting Inbox classification writer', () => {
     tx.accountingInboxItem.findUnique.mockResolvedValue({
       id: 'inbox-db-id',
       status: AccountingInboxStatus.PENDING_REVIEW,
-      classification:
-        AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
+      classification: AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
       selectedProvider: AccountingFinancialProvider.CLOVER,
       materializedEntityType:
         AccountingInboxMaterializedEntityType.PROVIDER_FINANCIAL_DOCUMENT,

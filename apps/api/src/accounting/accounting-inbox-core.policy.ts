@@ -208,9 +208,7 @@ export function normalizeAccountingInboxClassificationSelection(
   input: AccountingInboxClassificationSelectionInput,
 ) {
   if (
-    !Object.values(AccountingInboxClassification).includes(
-      input.classification,
-    )
+    !Object.values(AccountingInboxClassification).includes(input.classification)
   ) {
     throw new AccountingInboxPolicyError('invalid inbox classification');
   }

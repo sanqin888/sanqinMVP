@@ -120,7 +120,9 @@ describe('AccountingInboxAcquisitionService', () => {
 
   it('keeps Provider API CSV evidence on the existing automatic materialization path', async () => {
     const { service, providerFinancial } = makeService();
-    providerFinancial.parseAndMaterialize.mockResolvedValueOnce({ matched: true });
+    providerFinancial.parseAndMaterialize.mockResolvedValueOnce({
+      matched: true,
+    });
 
     await service.acquireProviderApiCsv({
       transportIdentity: 'uber-report:report_1:artifact_1',
