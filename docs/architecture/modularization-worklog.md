@@ -2045,8 +2045,8 @@ is claimed per repository workflow.
 
 ### 2026-09-15 — Phase 9 Slice 6C-A1 Tip Revenue CoA provisioning
 
-**PR/SHA:** source branch `phase9-slice6c-a1-source` at local review gate; prerequisite data-only migration merged separately through PR #2332 / merge commit `35de1d47892fdcbb9a97d17adf79f4508084ddb4`  
-**State:** SOURCE IMPLEMENTED / LOCAL REVIEW GATE / NO LOCAL TEST EXECUTION PER `AGENTS.md`  
+**PR/SHA:** PR #2333 / head `25a16527dc994add80f7f3a46b3f2644f72ad842`; prerequisite data-only migration merged separately through PR #2332 / merge commit `35de1d47892fdcbb9a97d17adf79f4508084ddb4`  
+**State:** REMOTE CI GATE / NO LOCAL TEST EXECUTION PER `AGENTS.md`  
 **Result:** adds `account_tip_revenue` to the canonical TypeScript Chart of Accounts as `type = null`, `accountClass = REVENUE`. The already-merged migration `20260915110000_phase9_slice6c_a1_tip_revenue_coa` durably creates or normalizes the same stable account as active CAD revenue before runtime defaults can provision it. No opening Journal, historical Tip backfill or HST entry is seeded.  
 **Architecture guard:** the cumulative Accounting CoA seed list now includes the 6C-A1 migration, and a focused architecture invariant pins the Tip account to the expected stable ID/name/class, CAD/active migration semantics and absence of `AccountingJournalEntry` seeding. The existing guard still requires every `DEFAULT_ACCOUNTING_ACCOUNTS` stable ID to exist in cumulative migration seeds.  
 **Architecture/schema/compatibility effect:** no Prisma schema change, new dependency, context edge, scanner allowance, provider wire change, settlement POST/replay endpoint, Journal/Audit mutation or payout behavior. This is a prerequisite-only CoA slice; 6C-A2 remains the next authority-hardening slice before an atomic settlement/historical replacement writer is exposed.  
