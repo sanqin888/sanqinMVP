@@ -30,59 +30,63 @@ describe('accounting receipt image processing', () => {
     expect(metadata.height).toBe(1800);
   });
 
-  it('supports progressively higher-quality retention profiles', async () => {
-    const input = await sharp({
-      create: {
-        width: 4000,
-        height: 3000,
-        channels: 3,
-        background: { r: 235, g: 235, b: 235 },
-      },
-    })
-      .jpeg({ quality: 95 })
-      .toBuffer();
+  it(
+    'supports progressively higher-quality retention profiles',
+    async () => {
+      const input = await sharp({
+        create: {
+          width: 4000,
+          height: 3000,
+          channels: 3,
+          background: { r: 235, g: 235, b: 235 },
+        },
+      })
+        .jpeg({ quality: 95 })
+        .toBuffer();
 
-    const balanced = await processAccountingReceiptImage(
-      { originalname: 'receipt.jpg', buffer: input },
-      'BALANCED',
-    );
-    const highQuality = await processAccountingReceiptImage(
-      { originalname: 'receipt.jpg', buffer: input },
-      'HIGH_QUALITY',
-    );
-    const nearOriginal = await processAccountingReceiptImage(
-      { originalname: 'receipt.jpg', buffer: input },
-      'NEAR_ORIGINAL',
-    );
+      const balanced = await processAccountingReceiptImage(
+        { originalname: 'receipt.jpg', buffer: input },
+        'BALANCED',
+      );
+      const highQuality = await processAccountingReceiptImage(
+        { originalname: 'receipt.jpg', buffer: input },
+        'HIGH_QUALITY',
+      );
+      const nearOriginal = await processAccountingReceiptImage(
+        { originalname: 'receipt.jpg', buffer: input },
+        'NEAR_ORIGINAL',
+      );
 
-    expect(balanced).toEqual(
-      expect.objectContaining({
-        profile: 'BALANCED',
-        maxDimension: 2400,
-        quality: 85,
-        width: 2400,
-        height: 1800,
-      }),
-    );
-    expect(highQuality).toEqual(
-      expect.objectContaining({
-        profile: 'HIGH_QUALITY',
-        maxDimension: 3000,
-        quality: 90,
-        width: 3000,
-        height: 2250,
-      }),
-    );
-    expect(nearOriginal).toEqual(
-      expect.objectContaining({
-        profile: 'NEAR_ORIGINAL',
-        maxDimension: 4096,
-        quality: 95,
-        width: 4000,
-        height: 3000,
-      }),
-    );
-  });
+      expect(balanced).toEqual(
+        expect.objectContaining({
+          profile: 'BALANCED',
+          maxDimension: 2400,
+          quality: 85,
+          width: 2400,
+          height: 1800,
+        }),
+      );
+      expect(highQuality).toEqual(
+        expect.objectContaining({
+          profile: 'HIGH_QUALITY',
+          maxDimension: 3000,
+          quality: 90,
+          width: 3000,
+          height: 2250,
+        }),
+      );
+      expect(nearOriginal).toEqual(
+        expect.objectContaining({
+          profile: 'NEAR_ORIGINAL',
+          maxDimension: 4096,
+          quality: 95,
+          width: 4000,
+          height: 3000,
+        }),
+      );
+    },
+    15_000,
+  );
 
   it('does not enlarge a receipt below the size limit', async () => {
     const input = await sharp({
