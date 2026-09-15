@@ -32,7 +32,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import * as fs from 'fs';
 import * as path from 'path';
 import { Roles, RolesGuard, SessionAuthGuard } from '../auth/public-api';
-import { getUploadsAccountingDir } from '../common/utils/uploads-path';
+import { getAccountingUploadsDir } from './accounting-storage-path';
 import {
   ACCOUNTING_INBOX_FILE_MAX_BYTES,
   AccountingInboxAcquisitionService,
@@ -391,7 +391,7 @@ export class AccountingController {
     if (!contentType || safeName !== fileName) {
       throw new NotFoundException('accounting file not found');
     }
-    const filePath = path.join(getUploadsAccountingDir(), kind, safeName);
+    const filePath = path.join(getAccountingUploadsDir(), kind, safeName);
     if (!fs.existsSync(filePath)) {
       throw new NotFoundException('accounting file not found');
     }

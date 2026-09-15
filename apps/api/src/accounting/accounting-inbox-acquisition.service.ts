@@ -12,7 +12,7 @@ import {
   AccountingInboxTrustDecision,
   AccountingParseStatus,
 } from '@prisma/client';
-import { getUploadsAccountingDir } from '../common/utils/uploads-path';
+import { getAccountingUploadsDir } from './accounting-storage-path';
 import {
   extractAccountingPdf,
   extractAccountingText,
@@ -643,7 +643,7 @@ export class AccountingInboxAcquisitionService {
     originalName: string,
     extension: string,
   ) {
-    const dir = path.join(getUploadsAccountingDir(), 'inbox');
+    const dir = path.join(getAccountingUploadsDir(), 'inbox');
     await fs.promises.mkdir(dir, { recursive: true });
     const originalBase = path.basename(
       originalName || 'evidence',
@@ -666,7 +666,7 @@ export class AccountingInboxAcquisitionService {
     const fileName = path.basename(storedUrl.slice(prefix.length));
     try {
       await fs.promises.rm(
-        path.join(getUploadsAccountingDir(), 'inbox', fileName),
+        path.join(getAccountingUploadsDir(), 'inbox', fileName),
         {
           force: true,
         },

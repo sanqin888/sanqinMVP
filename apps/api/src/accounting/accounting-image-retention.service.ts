@@ -18,7 +18,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { createId } from '@paralleldrive/cuid2';
 import sharp from 'sharp';
-import { getUploadsAccountingDir } from '../common/utils/uploads-path';
+import { getAccountingUploadsDir } from './accounting-storage-path';
 import { AccountingOperationsService } from './accounting-operations.service';
 import {
   ACCOUNTING_IMAGE_RETENTION_POLICY_VERSION,
@@ -368,7 +368,7 @@ export class AccountingImageRetentionService {
   }
 
   private async storeCandidate(artifactStableId: string, buffer: Buffer) {
-    const dir = path.join(getUploadsAccountingDir(), 'image-retention');
+    const dir = path.join(getAccountingUploadsDir(), 'image-retention');
     await fs.promises.mkdir(dir, { recursive: true });
     const fileName = `${artifactStableId}-${createId()}.webp`;
     await fs.promises.writeFile(path.join(dir, fileName), buffer, { flag: 'wx' });
@@ -404,7 +404,7 @@ export class AccountingImageRetentionService {
     if (!fileName || storedUrl !== `${expectedPrefix}${fileName}`) {
       throw new ConflictException('accounting evidence path is invalid');
     }
-    return path.join(getUploadsAccountingDir(), directory, fileName);
+    return path.join(getAccountingUploadsDir(), directory, fileName);
   }
 
   private async readVerifiedFile(
