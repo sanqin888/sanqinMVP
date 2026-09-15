@@ -33,6 +33,11 @@ import {
   AccountingProviderFinancialService,
   type AccountingProviderFinancialParseContext,
 } from './accounting-provider-financial.service';
+import {
+  ACCOUNTING_STRUCTURED_EXPENSE_CSV_PARSER_NAME,
+  ACCOUNTING_STRUCTURED_EXPENSE_CSV_PARSER_VERSION,
+  parseAccountingStructuredExpenseCsv,
+} from './accounting-structured-expense-csv';
 
 export const ACCOUNTING_INBOX_FILE_MAX_BYTES = 25 * 1024 * 1024;
 const GENERIC_PARSER_NAME = 'accounting-generic-document-review';
@@ -308,6 +313,106 @@ export class AccountingInboxAcquisitionService {
         });
         return false;
       }
+
+      const ambiguousRuleStableIds =
+        'ambiguousRuleStableIds' in provider
+          ? provider.ambiguousRuleStableIds
+          : [];
+      if (ambiguousRuleStableIds.length) {
+        await this.operations.recordInboxParseRun({
+          artifactStableId: artifact.artifactStableId,
+          parserName: GENERIC_PARSER_NAME,
+          parserVersion: GENERIC_PARSER_VERSION,
+          status: AccountingParseStatus.SUCCESS,
+          resultJson: {
+            inputKind: 'CSV',
+            providerRecognitionAmbiguousRuleStableIds: ambiguousRuleStableIds,
+            extractedText: text.slice(0, 100_000),
+          },
+        });
+        return false;
+      }
+
+      if (acquisitionMode === AccountingArtifactAcquisitionMode.PROVIDER_API) {
+        await this.operations.recordInboxParseRun({
+          artifactStableId: artifact.artifactStableId,
+          parserName: GENERIC_PARSER_NAME,
+          parserVersion: GENERIC_PARSER_VERSION,
+          status: AccountingParseStatus.SKIPPED,
+          resultJson: {
+            inputKind: 'CSV',
+            providerParserPending: true,
+            extractedText: text.slice(0, 100_000),
+          },
+        });
+        return false;
+      }
+
+      const structuredExpense = parseAccountingStructuredExpenseCsv(text);
+      if (structuredExpense.matched) {
+        const requiresBatchExpenseImport =
+          structuredExpense.rows.length !== 1 ||
+          structuredExpense.invalidRows.length > 0;
+        const previewRows = structuredExpense.rows.slice(0, 100);
+        const contextExtraction = extractAccountingText(
+          [
+            providerContext.originalFilename?.replace(/[^a-z0-9]+/gi, ' '),
+            ...previewRows.flatMap((row) => [row.counterparty, row.description]),
+          ]
+            .filter((value): value is string => Boolean(value?.trim()))
+            .join(' '),
+        );
+        const singleRow = !requiresBatchExpenseImport
+          ? structuredExpense.rows[0]
+          : null;
+        const result = {
+          inputKind: 'CSV' as const,
+          structuredExpenseCsv: true,
+          structuredExpenseRowCount: structuredExpense.rows.length,
+          structuredExpenseInvalidRowCount: structuredExpense.invalidRows.length,
+          structuredExpenseRows: previewRows,
+          structuredExpenseRowsTruncated:
+            structuredExpense.rows.length > previewRows.length,
+          requiresBatchExpenseImport,
+          extractedText: text.slice(0, 100_000),
+          ...(singleRow
+            ? {
+                date: singleRow.occurredAt,
+                subtotalCents: singleRow.totalCents,
+                taxCents: null,
+                totalCents: singleRow.totalCents,
+                suggestedCategoryStableId:
+                  contextExtraction.suggestedCategoryStableId,
+                suggestedCategoryName: contextExtraction.suggestedCategoryName,
+                confidence: 'HIGH' as const,
+                requiresSplit: false,
+                reviewDisposition: 'LIKELY_BILL' as const,
+                reviewReason: 'STRUCTURED_EXPENSE_ROW',
+              }
+            : {
+                reviewDisposition: 'LIKELY_BILL' as const,
+                reviewReason: 'STRUCTURED_EXPENSE_BATCH',
+              }),
+        };
+        await this.operations.recordInboxParseRun({
+          artifactStableId: artifact.artifactStableId,
+          parserName: ACCOUNTING_STRUCTURED_EXPENSE_CSV_PARSER_NAME,
+          parserVersion: ACCOUNTING_STRUCTURED_EXPENSE_CSV_PARSER_VERSION,
+          status: AccountingParseStatus.SUCCESS,
+          resultJson: result,
+        });
+        if (singleRow) {
+          await this.operations.suggestUnifiedInboxClassification(
+            artifact.artifactStableId,
+            {
+              classification: AccountingInboxClassification.EXPENSE_DOCUMENT,
+              selectedProvider: null,
+            },
+          );
+        }
+        return false;
+      }
+
       await this.operations.recordInboxParseRun({
         artifactStableId: artifact.artifactStableId,
         parserName: GENERIC_PARSER_NAME,
@@ -315,7 +420,7 @@ export class AccountingInboxAcquisitionService {
         status: AccountingParseStatus.SKIPPED,
         resultJson: {
           inputKind: 'CSV',
-          providerParserPending: true,
+          csvStructureUnrecognized: true,
           extractedText: text.slice(0, 100_000),
         },
       });

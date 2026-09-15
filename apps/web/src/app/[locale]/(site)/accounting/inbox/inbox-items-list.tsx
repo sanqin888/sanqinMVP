@@ -136,7 +136,10 @@ export function AccountingInboxItemsList({
                         <option value="UNKNOWN">
                           {isZh ? '未确定' : 'Unspecified'}
                         </option>
-                        <option value="EXPENSE_DOCUMENT">
+                        <option
+                          value="EXPENSE_DOCUMENT"
+                          disabled={parse.requiresBatchExpenseImport === true}
+                        >
                           {isZh ? '费用单' : 'Expense / invoice'}
                         </option>
                         <option value="PROVIDER_FINANCIAL_DOCUMENT">
@@ -195,6 +198,28 @@ export function AccountingInboxItemsList({
                     {isZh
                       ? '多个平台识别规则以相同优先级同时命中，系统未自动选择类型/平台，请人工确认。'
                       : 'Multiple provider recognition rules matched at the same priority. No automatic provider/type was selected; review it manually.'}
+                  </p>
+                ) : parse.structuredExpenseCsv ? (
+                  <p
+                    className={`mt-2 text-xs ${
+                      parse.requiresBatchExpenseImport
+                        ? 'text-amber-700'
+                        : 'text-blue-700'
+                    }`}
+                  >
+                    {parse.requiresBatchExpenseImport
+                      ? isZh
+                        ? `识别到结构化费用 CSV：${parse.structuredExpenseRowCount ?? 0} 条有效记录${parse.structuredExpenseInvalidRowCount ? `，${parse.structuredExpenseInvalidRowCount} 条异常记录` : ''}。当前不会把整份文件误确认为单笔费用，需后续批量费用导入流程处理。`
+                        : `Structured expense CSV detected: ${parse.structuredExpenseRowCount ?? 0} valid rows${parse.structuredExpenseInvalidRowCount ? ` and ${parse.structuredExpenseInvalidRowCount} invalid rows` : ''}. It is blocked from single-expense confirmation and needs the batch-expense import flow.`
+                      : isZh
+                        ? '识别到单行结构化费用 CSV，可按普通费用审核。'
+                        : 'Single-row structured expense CSV detected; it can be reviewed as an ordinary expense.'}
+                  </p>
+                ) : parse.csvStructureUnrecognized ? (
+                  <p className="mt-2 text-xs text-slate-500">
+                    {isZh
+                      ? 'CSV 结构无法可靠识别，已保留原始文件，请人工选择资料类型。'
+                      : 'CSV structure was not recognized reliably. The raw evidence is preserved for manual classification.'}
                   </p>
                 ) : parse.providerParserPending ? (
                   <p className="mt-2 text-xs text-blue-700">
@@ -258,6 +283,30 @@ export function AccountingInboxItemsList({
                       ))}
                     </div>
                   </div>
+                ) : parse.structuredExpenseRows?.length ? (
+                  <div className="mb-2 space-y-1">
+                    <p className="text-xs font-medium text-slate-700">
+                      {isZh ? '结构化费用预览' : 'Structured expense preview'}
+                    </p>
+                    <div className="space-y-1 text-xs">
+                      {parse.structuredExpenseRows.slice(0, 6).map((row) => (
+                        <p key={row.rowNumber}>
+                          #{row.rowNumber} · {row.occurredAt} ·{' '}
+                          <strong>{money(row.totalCents)}</strong>
+                          {row.counterparty ? ` · ${row.counterparty}` : ''}
+                          {row.description ? ` · ${row.description}` : ''}
+                        </p>
+                      ))}
+                      {parse.structuredExpenseRowCount &&
+                      parse.structuredExpenseRowCount > 6 ? (
+                        <p className="text-slate-500">
+                          {isZh
+                            ? `另有 ${parse.structuredExpenseRowCount - 6} 条记录未展开。`
+                            : `${parse.structuredExpenseRowCount - 6} more rows not shown.`}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
                 ) : parse.totalCents != null ? (
                   <p>
                     {isZh ? '识别总额' : 'Detected total'}:{' '}
@@ -317,7 +366,8 @@ export function AccountingInboxItemsList({
                 ) : null}
                 {!quarantined &&
                 item.status === 'PENDING_REVIEW' &&
-                item.classification === 'EXPENSE_DOCUMENT' ? (
+                item.classification === 'EXPENSE_DOCUMENT' &&
+                parse.requiresBatchExpenseImport !== true ? (
                   <button
                     onClick={() => onReviewExpense(item)}
                     className="rounded border px-3 py-1.5 text-sm text-blue-700"
