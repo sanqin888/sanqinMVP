@@ -46,48 +46,58 @@ export class AccountingProviderFinancialService {
     private readonly storeConfig: BrandStoreConfigReaderPort,
   ) {}
 
-  async parseForInboxSuggestion(input: AccountingProviderFinancialParseContext) {
+  async parseForInboxSuggestion(
+    input: AccountingProviderFinancialParseContext,
+  ) {
     const parsed = parseProviderFinancialEvidence(input);
     if (!parsed) return { matched: false as const };
 
     const parseResult = this.buildParseResult(parsed, input.text);
     const excludedBeforeFinancialHistory = Boolean(
       parsed.periodEnd &&
-        parsed.periodEnd < PROVIDER_FINANCIAL_HISTORY_START_DATE,
+      parsed.periodEnd < PROVIDER_FINANCIAL_HISTORY_START_DATE,
     );
-    await this.operations.recordInboxParseRun({
-      artifactStableId: input.artifactStableId,
-      parserName: ACCOUNTING_PROVIDER_FINANCIAL_PARSER_NAME,
-      parserVersion: ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION,
-      status: excludedBeforeFinancialHistory
-        ? AccountingParseStatus.SKIPPED
-        : AccountingParseStatus.SUCCESS,
-      ...(excludedBeforeFinancialHistory
-        ? {}
-        : { resultHash: hashAccountingJson(parseResult) }),
-      resultJson: excludedBeforeFinancialHistory
-        ? {
-            ...parseResult,
-            excludedBeforeFinancialHistory: true,
-            financialHistoryRequiredFrom: PROVIDER_FINANCIAL_HISTORY_START_DATE,
-          }
-        : parseResult,
-    });
-    await this.operations.suggestUnifiedInboxClassification(
-      input.artifactStableId,
-      {
-        classification:
-          AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
-        selectedProvider: parsed.provider,
-      },
-    );
-    return {
-      matched: true as const,
-      materialized: false as const,
-      excludedBeforeFinancialHistory,
-      provider: parsed.provider,
-      documentType: parsed.documentType,
-    };
+    try {
+      await this.operations.recordInboxParseRun({
+        artifactStableId: input.artifactStableId,
+        parserName: ACCOUNTING_PROVIDER_FINANCIAL_PARSER_NAME,
+        parserVersion: ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION,
+        status: excludedBeforeFinancialHistory
+          ? AccountingParseStatus.SKIPPED
+          : AccountingParseStatus.SUCCESS,
+        ...(excludedBeforeFinancialHistory
+          ? {}
+          : { resultHash: hashAccountingJson(parseResult) }),
+        resultJson: excludedBeforeFinancialHistory
+          ? {
+              ...parseResult,
+              excludedBeforeFinancialHistory: true,
+              financialHistoryRequiredFrom: PROVIDER_FINANCIAL_HISTORY_START_DATE,
+            }
+          : parseResult,
+      });
+      await this.operations.suggestUnifiedInboxClassification(
+        input.artifactStableId,
+        {
+          classification:
+            AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
+          selectedProvider: parsed.provider,
+        },
+      );
+      return {
+        matched: true as const,
+        materialized: false as const,
+        excludedBeforeFinancialHistory,
+        provider: parsed.provider,
+        documentType: parsed.documentType,
+      };
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Unknown provider financial suggestion error';
+      throw new AccountingProviderFinancialProcessingError(message);
+    }
   }
 
   async parseAndMaterialize(input: AccountingProviderFinancialParseContext) {
@@ -120,7 +130,10 @@ export class AccountingProviderFinancialService {
     }
 
     try {
-      const document = await this.materializeParsed(input.artifactStableId, parsed);
+      const document = await this.materializeParsed(
+        input.artifactStableId,
+        parsed,
+      );
       await this.operations.recordInboxParseRun({
         artifactStableId: input.artifactStableId,
         parserName: ACCOUNTING_PROVIDER_FINANCIAL_PARSER_NAME,
@@ -167,9 +180,10 @@ export class AccountingProviderFinancialService {
     inboxItemStableId: string,
     operatorUserStableId: string,
   ) {
-    const inbox = await this.operations.readUnifiedInboxProviderReviewContext(
-      inboxItemStableId,
-    );
+    const inbox =
+      await this.operations.readUnifiedInboxProviderReviewContext(
+        inboxItemStableId,
+      );
     if (!inbox) throw new NotFoundException('accounting inbox item not found');
     if (inbox.status !== AccountingInboxStatus.PENDING_REVIEW) {
       throw new ConflictException(
@@ -199,6 +213,11 @@ export class AccountingProviderFinancialService {
           'materialized provider evidence does not match the selected provider',
         );
       }
+      const store = await this.storeConfig.getConfiguredStoreSnapshot();
+      await this.operations.ensureProviderFinancialCoverage(
+        inbox.selectedProvider,
+        store.storeStableId,
+      );
       return this.operations.confirmProviderFinancialInboxItem(
         inboxItemStableId,
         operatorUserStableId,
@@ -207,7 +226,10 @@ export class AccountingProviderFinancialService {
 
     const extractedText = inbox.artifact.parseRuns
       .map((run) => jsonRecord(run.resultJson).extractedText)
-      .find((value): value is string => typeof value === 'string' && Boolean(value.trim()));
+      .find(
+        (value): value is string =>
+          typeof value === 'string' && Boolean(value.trim()),
+      );
     const text = extractedText?.trim() || inbox.artifact.bodyText?.trim() || '';
     if (!text) {
       throw new ConflictException(

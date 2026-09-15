@@ -58,6 +58,22 @@ export async function suggestInboxClassificationInTx(
       applied: false,
     };
   }
+  const operatorDecision = await tx.accountingAuditLog.findFirst({
+    where: {
+      action: 'CLASSIFY',
+      entityType: 'ACCOUNTING_INBOX_ITEM',
+      entityId: item.inboxItemStableId,
+    },
+    select: { id: true },
+  });
+  if (operatorDecision) {
+    return {
+      inboxItemStableId: item.inboxItemStableId,
+      classification: item.classification,
+      selectedProvider: item.selectedProvider,
+      applied: false,
+    };
+  }
 
   await tx.accountingInboxItem.update({
     where: { id: item.id },
@@ -199,7 +215,17 @@ export async function confirmOtherInboxItemInTx(
     );
   }
   if (item.status === AccountingInboxStatus.CONFIRMED) {
-    return { inboxItemStableId, confirmed: true, replayed: true };
+    if (
+      item.classification === AccountingInboxClassification.OTHER_DOCUMENT &&
+      !item.selectedProvider &&
+      !item.materializedEntityType &&
+      !item.materializedEntityStableId
+    ) {
+      return { inboxItemStableId, confirmed: true, replayed: true };
+    }
+    throw new AccountingInboxWriterConflictError(
+      'confirmed inbox item is not other-document evidence',
+    );
   }
   if (item.status !== AccountingInboxStatus.PENDING_REVIEW) {
     throw new AccountingInboxWriterConflictError(

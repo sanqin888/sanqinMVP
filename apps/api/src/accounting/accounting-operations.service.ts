@@ -733,7 +733,11 @@ export class AccountingOperationsService {
     input: AccountingInboxClassificationSelectionInput,
   ) {
     return this.runInboxCore(() =>
-      suggestAccountingInboxClassification(this.prisma, artifactStableId, input),
+      suggestAccountingInboxClassification(
+        this.prisma,
+        artifactStableId,
+        input,
+      ),
     );
   }
 

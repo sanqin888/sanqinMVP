@@ -99,7 +99,8 @@ describe('Accounting Inbox core policy', () => {
   it('normalizes operator-selected inbox classification and limits provider ownership to statements', () => {
     expect(
       normalizeAccountingInboxClassificationSelection({
-        classification: AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
+        classification:
+          AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
         selectedProvider: AccountingFinancialProvider.UBER_EATS,
       }),
     ).toEqual({
@@ -108,7 +109,8 @@ describe('Accounting Inbox core policy', () => {
     });
     expect(
       normalizeAccountingInboxClassificationSelection({
-        classification: AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
+        classification:
+          AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
       }),
     ).toEqual({
       classification: AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
@@ -119,7 +121,9 @@ describe('Accounting Inbox core policy', () => {
         classification: AccountingInboxClassification.EXPENSE_DOCUMENT,
         selectedProvider: AccountingFinancialProvider.CLOVER,
       }),
-    ).toThrow('selectedProvider is only valid for provider financial classification');
+    ).toThrow(
+      'selectedProvider is only valid for provider financial classification',
+    );
   });
 
   it('requires parser success/error evidence and makes parser-version replay deterministic', () => {

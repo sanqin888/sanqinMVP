@@ -2,6 +2,7 @@ import {
   AccountingFinancialDocumentType,
   AccountingFinancialProvider,
   AccountingInboxClassification,
+  AccountingInboxMaterializedEntityType,
   AccountingInboxStatus,
   AccountingParseStatus,
 } from '@prisma/client';
@@ -169,6 +170,61 @@ Total transfer amount $3813.11
     expect(operations.ensureProviderFinancialCoverage).not.toHaveBeenCalled();
   });
 
+  it('rechecks provider coverage before confirming an already-materialized statement', async () => {
+    const operations = {
+      readUnifiedInboxProviderReviewContext: jest.fn().mockResolvedValue({
+        status: AccountingInboxStatus.PENDING_REVIEW,
+        classification:
+          AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
+        selectedProvider: AccountingFinancialProvider.UBER_EATS,
+        materializedEntityType:
+          AccountingInboxMaterializedEntityType.PROVIDER_FINANCIAL_DOCUMENT,
+        materializedEntityStableId: 'acctfindoc_existing',
+        artifact: {
+          artifactStableId: 'acctart_existing',
+          acquisitionMode: 'MANUAL_UPLOAD',
+          bodyText: null,
+          emailSubject: null,
+          financialDocument: {
+            documentStableId: 'acctfindoc_existing',
+            provider: AccountingFinancialProvider.UBER_EATS,
+            documentType: AccountingFinancialDocumentType.STATEMENT,
+            revision: 1,
+          },
+          parseRuns: [],
+        },
+      }),
+      ensureProviderFinancialCoverage: jest.fn().mockResolvedValue({}),
+      confirmProviderFinancialInboxItem: jest.fn().mockResolvedValue({
+        confirmed: true,
+        documentStableId: 'acctfindoc_existing',
+      }),
+    };
+    const storeConfig = {
+      getConfiguredStoreSnapshot: jest.fn().mockResolvedValue({
+        storeStableId: '4750_Yonge_Street',
+      }),
+    };
+    const service = new AccountingProviderFinancialService(
+      operations as never,
+      storeConfig as never,
+    );
+
+    await service.confirmSelectedInboxFinancialEvidence(
+      'acctinbox_existing',
+      'user_operator_1',
+    );
+
+    expect(operations.ensureProviderFinancialCoverage).toHaveBeenCalledWith(
+      AccountingFinancialProvider.UBER_EATS,
+      '4750_Yonge_Street',
+    );
+    expect(operations.confirmProviderFinancialInboxItem).toHaveBeenCalledWith(
+      'acctinbox_existing',
+      'user_operator_1',
+    );
+  });
+
   it('materializes a manually selected statement provider only when the operator confirms it', async () => {
     const fantuanText = `
 From: 2026-08-01 to 2026-08-31
@@ -179,7 +235,8 @@ Total transfer amount $3813.11
     const operations = {
       readUnifiedInboxProviderReviewContext: jest.fn().mockResolvedValue({
         status: AccountingInboxStatus.PENDING_REVIEW,
-        classification: AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
+        classification:
+          AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
         selectedProvider: AccountingFinancialProvider.FANTUAN,
         materializedEntityType: null,
         materializedEntityStableId: null,

@@ -290,14 +290,11 @@ export class AccountingInboxAcquisitionService {
     }
     if (kind === AccountingArtifactKind.CSV) {
       const text = buffer.toString('utf8');
-      const provider = await this.parseProviderEvidence(
-        acquisitionMode,
-        {
-          artifactStableId: artifact.artifactStableId,
-          text,
-          ...providerContext,
-        },
-      );
+      const provider = await this.parseProviderEvidence(acquisitionMode, {
+        artifactStableId: artifact.artifactStableId,
+        text,
+        ...providerContext,
+      });
       if (provider.matched) return true;
       if (
         providerContext.providerHint ===
@@ -318,20 +315,18 @@ export class AccountingInboxAcquisitionService {
         resultJson: {
           inputKind: 'CSV',
           providerParserPending: true,
+          extractedText: text.slice(0, 100_000),
         },
       });
       return false;
     }
     if (kind === AccountingArtifactKind.PDF) {
       const { text, extraction } = await extractAccountingPdf(buffer);
-      const provider = await this.parseProviderEvidence(
-        acquisitionMode,
-        {
-          artifactStableId: artifact.artifactStableId,
-          text,
-          ...providerContext,
-        },
-      );
+      const provider = await this.parseProviderEvidence(acquisitionMode, {
+        artifactStableId: artifact.artifactStableId,
+        text,
+        ...providerContext,
+      });
       if (provider.matched) return true;
       const result: TextReviewExtraction = {
         ...extraction,
@@ -429,10 +424,18 @@ export class AccountingInboxAcquisitionService {
     result: TextReviewExtraction | ImageReviewExtraction,
   ) {
     if (result.reviewDisposition !== 'LIKELY_BILL') return;
-    await this.operations.suggestUnifiedInboxClassification(artifactStableId, {
-      classification: AccountingInboxClassification.EXPENSE_DOCUMENT,
-      selectedProvider: null,
-    });
+    try {
+      await this.operations.suggestUnifiedInboxClassification(artifactStableId, {
+        classification: AccountingInboxClassification.EXPENSE_DOCUMENT,
+        selectedProvider: null,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Accounting Inbox expense suggestion failed for ${artifactStableId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
 
   private async recordSuccessfulParse(

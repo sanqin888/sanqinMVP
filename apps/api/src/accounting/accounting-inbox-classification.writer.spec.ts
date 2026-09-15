@@ -23,6 +23,7 @@ describe('Accounting Inbox classification writer', () => {
       update: jest.fn().mockResolvedValue({}),
     },
     accountingAuditLog: {
+      findFirst: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue({}),
     },
   });
@@ -53,14 +54,16 @@ describe('Accounting Inbox classification writer', () => {
       ),
     ).resolves.toEqual({
       inboxItemStableId: 'acctinbox_1',
-      classification: AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
+      classification:
+        AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
       selectedProvider: AccountingFinancialProvider.UBER_EATS,
       applied: true,
     });
     expect(tx.accountingInboxItem.update).toHaveBeenCalledWith({
       where: { id: 'inbox-db-id' },
       data: {
-        classification: AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
+        classification:
+          AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
         selectedProvider: AccountingFinancialProvider.UBER_EATS,
         version: { increment: 1 },
       },
@@ -69,8 +72,40 @@ describe('Accounting Inbox classification writer', () => {
       data: expect.objectContaining({
         action: 'SUGGEST_CLASSIFICATION',
         operatorUserId: ACCOUNTING_INBOX_CLASSIFIER_ACTOR,
-      }),
+      }) as unknown,
     });
+  });
+
+  it('does not reapply a machine suggestion after an operator explicitly reset the item to unknown', async () => {
+    const tx = makeTx();
+    tx.accountingSourceArtifact.findUnique.mockResolvedValue({
+      inboxItem: {
+        id: 'inbox-db-id',
+        inboxItemStableId: 'acctinbox_1',
+        status: AccountingInboxStatus.PENDING_REVIEW,
+        classification: AccountingInboxClassification.UNKNOWN,
+        selectedProvider: null,
+        materializedEntityType: null,
+        materializedEntityStableId: null,
+      },
+    });
+    tx.accountingAuditLog.findFirst.mockResolvedValue({ id: 'audit-db-id' });
+
+    await expect(
+      suggestInboxClassificationInTx(
+        tx as never,
+        'acctart_1',
+        normalizeAccountingInboxClassificationSelection({
+          classification: AccountingInboxClassification.EXPENSE_DOCUMENT,
+        }),
+      ),
+    ).resolves.toEqual({
+      inboxItemStableId: 'acctinbox_1',
+      classification: AccountingInboxClassification.UNKNOWN,
+      selectedProvider: null,
+      applied: false,
+    });
+    expect(tx.accountingInboxItem.update).not.toHaveBeenCalled();
   });
 
   it('lets an operator override a machine provider suggestion before materialization', async () => {
@@ -78,11 +113,14 @@ describe('Accounting Inbox classification writer', () => {
     tx.accountingInboxItem.findUnique.mockResolvedValue({
       id: 'inbox-db-id',
       status: AccountingInboxStatus.PENDING_REVIEW,
-      classification: AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
+      classification:
+        AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
       selectedProvider: AccountingFinancialProvider.UBER_EATS,
       materializedEntityType: null,
       materializedEntityStableId: null,
-      artifact: { acquisitionMode: AccountingArtifactAcquisitionMode.MANUAL_UPLOAD },
+      artifact: {
+        acquisitionMode: AccountingArtifactAcquisitionMode.MANUAL_UPLOAD,
+      },
     });
 
     await expect(
@@ -104,7 +142,8 @@ describe('Accounting Inbox classification writer', () => {
       data: expect.objectContaining({
         action: 'CLASSIFY',
         beforeJson: {
-          classification: AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
+          classification:
+            AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
           selectedProvider: AccountingFinancialProvider.UBER_EATS,
         },
         afterJson: {
@@ -112,7 +151,7 @@ describe('Accounting Inbox classification writer', () => {
           selectedProvider: null,
         },
         operatorUserId: 'user_operator_1',
-      }),
+      }) as unknown,
     });
   });
 
@@ -121,12 +160,15 @@ describe('Accounting Inbox classification writer', () => {
     tx.accountingInboxItem.findUnique.mockResolvedValue({
       id: 'inbox-db-id',
       status: AccountingInboxStatus.PENDING_REVIEW,
-      classification: AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
+      classification:
+        AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
       selectedProvider: AccountingFinancialProvider.CLOVER,
       materializedEntityType:
         AccountingInboxMaterializedEntityType.PROVIDER_FINANCIAL_DOCUMENT,
       materializedEntityStableId: 'acctfindoc_1',
-      artifact: { acquisitionMode: AccountingArtifactAcquisitionMode.MANUAL_UPLOAD },
+      artifact: {
+        acquisitionMode: AccountingArtifactAcquisitionMode.MANUAL_UPLOAD,
+      },
     });
 
     await expect(
@@ -151,7 +193,9 @@ describe('Accounting Inbox classification writer', () => {
       selectedProvider: null,
       materializedEntityType: null,
       materializedEntityStableId: null,
-      artifact: { acquisitionMode: AccountingArtifactAcquisitionMode.MANUAL_UPLOAD },
+      artifact: {
+        acquisitionMode: AccountingArtifactAcquisitionMode.MANUAL_UPLOAD,
+      },
     });
 
     await expect(
@@ -165,7 +209,7 @@ describe('Accounting Inbox classification writer', () => {
       where: { id: 'inbox-db-id' },
       data: {
         status: AccountingInboxStatus.CONFIRMED,
-        reviewedAt: expect.any(Date),
+        reviewedAt: expect.any(Date) as unknown,
         reviewedByUserStableId: 'user_operator_1',
         version: { increment: 1 },
       },
