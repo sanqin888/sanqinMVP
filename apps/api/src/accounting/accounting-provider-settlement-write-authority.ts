@@ -52,8 +52,8 @@ export type ProviderSettlementReplacementGroupAuthorityV1 = {
   salesAuthority: ProviderSalesAuthority;
   reviewEvidence: {
     inboxItemStableId: string;
-    status: AccountingInboxStatus.CONFIRMED;
-    materializedEntityType: AccountingInboxMaterializedEntityType.PROVIDER_FINANCIAL_DOCUMENT;
+    status: 'CONFIRMED';
+    materializedEntityType: 'PROVIDER_FINANCIAL_DOCUMENT';
     materializedEntityStableId: string;
     reviewedAt: string;
     reviewedByUserStableId: string;
