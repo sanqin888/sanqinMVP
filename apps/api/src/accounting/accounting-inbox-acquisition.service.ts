@@ -316,7 +316,7 @@ export class AccountingInboxAcquisitionService {
       return false;
     }
     if (kind === AccountingArtifactKind.PDF) {
-      const { text, extraction } = extractAccountingPdf(buffer);
+      const { text, extraction } = await extractAccountingPdf(buffer);
       const provider = await this.providerFinancial.parseAndMaterialize({
         artifactStableId: artifact.artifactStableId,
         text,
