@@ -31,12 +31,14 @@ describe('accounting text extraction', () => {
 
   it('delegates valid PDF bytes to the Unicode-capable text engine', async () => {
     const pdf = Buffer.from('%PDF-1.4\nsynthetic');
-    const runner = jest.fn(async () =>
-      [
-        'Monthly Statement\r',
-        'SanQ Roujiamo 三秦肉夹馍',
-        '\fNet Total $1,222.85',
-      ].join('\n'),
+    const runner = jest.fn(() =>
+      Promise.resolve(
+        [
+          'Monthly Statement\r',
+          'SanQ Roujiamo 三秦肉夹馍',
+          '\fNet Total $1,222.85',
+        ].join('\n'),
+      ),
     );
 
     await expect(extractPdfText(pdf, runner)).resolves.toBe(
@@ -47,11 +49,11 @@ describe('accounting text extraction', () => {
   });
 
   it('does not invoke the PDF text engine for non-PDF bytes', async () => {
-    const runner = jest.fn(async () => 'should not be used');
+    const runner = jest.fn(() => Promise.resolve('should not be used'));
 
-    await expect(extractPdfText(Buffer.from('not a pdf'), runner)).resolves.toBe(
-      '',
-    );
+    await expect(
+      extractPdfText(Buffer.from('not a pdf'), runner),
+    ).resolves.toBe('');
     expect(runner).not.toHaveBeenCalled();
   });
 });

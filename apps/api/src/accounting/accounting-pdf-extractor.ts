@@ -21,10 +21,18 @@ const PDF_TEXT_MAX_STDERR_BYTES = 16 * 1024;
 export type AccountingPdfTextRunner = (buffer: Buffer) => Promise<string>;
 
 function normalizeExtractedPdfText(value: string): string {
-  return value
-    .replace(/\r\n?/g, '\n')
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, ' ')
-    .trim();
+  let normalized = '';
+  for (const char of value) {
+    const code = char.charCodeAt(0);
+    normalized +=
+      code <= 0x08 ||
+      code === 0x0b ||
+      code === 0x0c ||
+      (code >= 0x0e && code <= 0x1f)
+        ? ' '
+        : char;
+  }
+  return normalized.replace(/\r\n?/g, '\n').trim();
 }
 
 export async function extractPdfText(
@@ -43,11 +51,9 @@ export async function extractPdfText(
 
 function runPdftotext(buffer: Buffer): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn(
-      'pdftotext',
-      ['-enc', 'UTF-8', '-nopgbrk', '-', '-'],
-      { stdio: ['pipe', 'pipe', 'pipe'] },
-    );
+    const child = spawn('pdftotext', ['-enc', 'UTF-8', '-nopgbrk', '-', '-'], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
     let stdoutBytes = 0;
@@ -75,7 +81,9 @@ function runPdftotext(buffer: Buffer): Promise<string> {
 
     child.on('error', (error) => {
       finishReject(
-        new Error(`Accounting PDF text extractor unavailable: ${error.message}`),
+        new Error(
+          `Accounting PDF text extractor unavailable: ${error.message}`,
+        ),
       );
     });
     child.stdout.on('data', (chunk: Buffer) => {
@@ -112,7 +120,9 @@ function runPdftotext(buffer: Buffer): Promise<string> {
 
     child.stdin.on('error', (error) => {
       finishReject(
-        new Error(`Accounting PDF text extraction input failed: ${error.message}`),
+        new Error(
+          `Accounting PDF text extraction input failed: ${error.message}`,
+        ),
       );
     });
     child.stdin.end(buffer);

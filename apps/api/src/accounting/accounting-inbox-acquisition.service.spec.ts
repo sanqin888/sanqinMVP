@@ -4,10 +4,12 @@ jest.mock('./accounting-pdf-extractor', () => {
   >('./accounting-pdf-extractor');
   return {
     ...actual,
-    extractAccountingPdf: jest.fn(async () => ({
-      text: '',
-      extraction: actual.extractAccountingText(''),
-    })),
+    extractAccountingPdf: jest.fn(() =>
+      Promise.resolve({
+        text: '',
+        extraction: actual.extractAccountingText(''),
+      }),
+    ),
   };
 });
 
