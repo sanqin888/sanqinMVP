@@ -176,7 +176,8 @@ export class AccountingProviderSettlementPreviewService {
     >();
     for (const journal of existingSettlementJournals) {
       if (
-        journal.sourceFactType === 'accounting.provider_financial_document.v1' &&
+        journal.sourceFactType ===
+          'accounting.provider_financial_document.v1' &&
         journal.sourceFactStableId
       ) {
         existingByDocumentStableId.set(journal.sourceFactStableId, journal);
