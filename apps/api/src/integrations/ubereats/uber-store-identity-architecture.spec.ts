@@ -22,6 +22,20 @@ describe('Uber Eats store identity architecture', () => {
     expect(requests!.source).not.toMatch(/\bstoreId\b/);
   });
 
+  it('keeps reporting provider store UUIDs inside External Channels', () => {
+    const files = scanTypeScript(__dirname, { productionOnly: true });
+    const publicApi = files.find((file) => file.path.endsWith('public-api.ts'));
+    const reporting = files.find((file) =>
+      file.path.endsWith('uber-financial-reporting.use-cases.ts'),
+    );
+
+    expect(publicApi).toBeDefined();
+    expect(reporting).toBeDefined();
+    expect(publicApi!.source).not.toContain('storeUuids');
+    expect(reporting!.source).toContain('mapping.isProvisioned');
+    expect(reporting!.source).toContain('mapping.uberStoreId.trim()');
+  });
+
   it('persists new store-status tickets under SanQ storeStableId', () => {
     const persistence = scanTypeScript(
       join(__dirname, 'infrastructure', 'persistence'),

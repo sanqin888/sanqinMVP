@@ -16,6 +16,8 @@ import {
   type UberStoreMappingRepositoryPort,
   UBER_STORE_MAPPING_REPOSITORY,
 } from '../../application/merchant/uber-merchant-persistence.ports';
+import { UberApiConfigService } from '../uber-api/uber-api-config.service';
+import { UBER_CLIENT_CREDENTIAL_SCOPES } from '../uber-api/uber-scopes';
 import { SyncUberOrderStatusUseCase } from '../../application/orders/sync-uber-order-status.use-case';
 import {
   HandleUberFinancialReportSuccessUseCase,
@@ -77,12 +79,23 @@ export function createOperationsWiring(): Provider[] {
         UBER_FINANCIAL_REPORT_API,
         UBER_FINANCIAL_REPORT_REPOSITORY,
         UBER_FINANCIAL_REPORT_ARTIFACT_STORE,
+        UBER_STORE_MAPPING_REPOSITORY,
+        UberApiConfigService,
       ],
       useFactory: (
         api: UberFinancialReportApiPort,
         reports: UberFinancialReportRepositoryPort,
         artifacts: UberFinancialReportArtifactStorePort,
-      ) => new UberFinancialReportingUseCase(api, reports, artifacts),
+        storeMappings: UberStoreMappingRepositoryPort,
+        config: UberApiConfigService,
+      ) =>
+        new UberFinancialReportingUseCase(
+          api,
+          reports,
+          artifacts,
+          storeMappings,
+          config.hasExpectedAppScope(UBER_CLIENT_CREDENTIAL_SCOPES.REPORT),
+        ),
     },
     {
       provide: UBER_EATS_REPORTING,

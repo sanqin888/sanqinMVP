@@ -96,6 +96,119 @@ describe('HandleUberFinancialReportSuccessUseCase replay safety', () => {
   });
 });
 
+describe('UberFinancialReportingUseCase request ownership', () => {
+  function makeRequestUseCase(input?: {
+    reportingEnabled?: boolean;
+    mappings?: Array<{ uberStoreId: string; isProvisioned: boolean }>;
+  }) {
+    const api = {
+      createReport: jest.fn().mockResolvedValue({ workflowId: 'workflow-1' }),
+    };
+    const reports = {
+      findExisting: jest.fn().mockResolvedValue(null),
+      saveRequested: jest.fn().mockResolvedValue({
+        reportStableId: 'uberreport_1',
+        workflowId: 'workflow-1',
+        status: 'REQUESTED',
+      }),
+    };
+    const artifacts = {};
+    const storeMappings = {
+      listMappings: jest.fn().mockResolvedValue(input?.mappings ?? []),
+    };
+    return {
+      useCase: new UberFinancialReportingUseCase(
+        api as never,
+        reports as never,
+        artifacts as never,
+        storeMappings as never,
+        input?.reportingEnabled ?? true,
+      ),
+      api,
+      reports,
+      storeMappings,
+    };
+  }
+
+  it('keeps the eats.report capability gate inside External Channels', async () => {
+    const { useCase, api, reports, storeMappings } = makeRequestUseCase({
+      reportingEnabled: false,
+      mappings: [{ uberStoreId: 'provider-store-a', isProvisioned: true }],
+    });
+
+    await expect(
+      useCase.requestFinancialReports({
+        startDate: '2026-09-09',
+        endDate: '2026-09-10',
+      }),
+    ).resolves.toEqual([]);
+
+    expect(storeMappings.listMappings).not.toHaveBeenCalled();
+    expect(reports.findExisting).not.toHaveBeenCalled();
+    expect(api.createReport).not.toHaveBeenCalled();
+  });
+
+  it('resolves provisioned provider store identities internally before requesting a report', async () => {
+    const { useCase, api, reports, storeMappings } = makeRequestUseCase({
+      mappings: [
+        { uberStoreId: 'provider-store-b', isProvisioned: true },
+        { uberStoreId: 'provider-store-disabled', isProvisioned: false },
+        { uberStoreId: ' provider-store-a ', isProvisioned: true },
+        { uberStoreId: 'provider-store-b', isProvisioned: true },
+      ],
+    });
+
+    await expect(
+      useCase.requestFinancialReports({
+        startDate: '2026-09-09',
+        endDate: '2026-09-10',
+        reportTypes: ['FINANCE_SUMMARY_REPORT'],
+      }),
+    ).resolves.toEqual([
+      {
+        reportStableId: 'uberreport_1',
+        workflowId: 'workflow-1',
+        reportType: 'FINANCE_SUMMARY_REPORT',
+        status: 'REQUESTED',
+      },
+    ]);
+
+    expect(storeMappings.listMappings).toHaveBeenCalledTimes(1);
+    expect(reports.findExisting).toHaveBeenCalledWith({
+      reportType: 'FINANCE_SUMMARY_REPORT',
+      storeUuids: ['provider-store-a', 'provider-store-b'],
+      startDate: '2026-09-09',
+      endDate: '2026-09-10',
+    });
+    expect(api.createReport).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reportType: 'FINANCE_SUMMARY_REPORT',
+        storeUuids: ['provider-store-a', 'provider-store-b'],
+        startDate: '2026-09-09',
+        endDate: '2026-09-10',
+      }),
+    );
+  });
+
+  it('does not request provider reports when there are no provisioned mappings', async () => {
+    const { useCase, api, reports } = makeRequestUseCase({
+      mappings: [
+        { uberStoreId: 'provider-store-disabled', isProvisioned: false },
+      ],
+    });
+
+    await expect(
+      useCase.requestFinancialReports({
+        startDate: '2026-09-09',
+        endDate: '2026-09-10',
+      }),
+    ).resolves.toEqual([]);
+
+    expect(reports.findExisting).not.toHaveBeenCalled();
+    expect(api.createReport).not.toHaveBeenCalled();
+  });
+});
+
 describe('UberFinancialReportingUseCase accounting artifact boundary', () => {
   const artifactUrl = '/api/v1/accounting/files/uber-reports/finance.csv';
 
@@ -117,11 +230,14 @@ describe('UberFinancialReportingUseCase accounting artifact boundary', () => {
         fileName: 'finance.csv',
       }),
     };
+    const storeMappings = { listMappings: jest.fn().mockResolvedValue([]) };
     return {
       useCase: new UberFinancialReportingUseCase(
         api as never,
         reports as never,
         artifacts as never,
+        storeMappings as never,
+        true,
       ),
       reports,
       artifacts,

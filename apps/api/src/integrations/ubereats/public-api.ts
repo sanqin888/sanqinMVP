@@ -91,7 +91,6 @@ export type UberEatsFinancialReportType =
 
 export interface UberEatsReportingPort {
   requestFinancialReports(input: {
-    storeUuids: string[];
     startDate: string;
     endDate: string;
     reportTypes?: UberEatsFinancialReportType[];
