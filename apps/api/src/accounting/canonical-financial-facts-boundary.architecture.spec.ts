@@ -163,8 +163,10 @@ describe('Phase 9 canonical financial facts boundary', () => {
       file(ACCOUNTING_ROOT, 'accounting-provider-settlement-preview.service.ts')
         ?.source ?? '';
     const providerSettlementExecutionService =
-      file(ACCOUNTING_ROOT, 'accounting-provider-settlement-execution.service.ts')
-        ?.source ?? '';
+      file(
+        ACCOUNTING_ROOT,
+        'accounting-provider-settlement-execution.service.ts',
+      )?.source ?? '';
     const accountingService =
       file(ACCOUNTING_ROOT, 'accounting.service.ts')?.source ?? '';
     const accountingController =

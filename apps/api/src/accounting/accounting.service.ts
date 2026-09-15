@@ -722,8 +722,7 @@ export class AccountingService {
           buildProviderSettlementJournalWriteAuthority({
             group: normalizedAuthority,
             role: 'UBER_PRE_CUTOVER_REVERSAL',
-            originalJournalEntryStableId:
-              reversal.originalJournalEntryStableId,
+            originalJournalEntryStableId: reversal.originalJournalEntryStableId,
           }),
         );
         return this.prepareProviderSettlementJournalWrite(
@@ -1206,22 +1205,14 @@ export class AccountingService {
             'provider settlement replacement group replay is missing an expected Journal',
           );
         }
-        return this.assertJournalIdempotentReplay(
-          replay,
-          item.idempotencyHash,
-        );
+        return this.assertJournalIdempotentReplay(replay, item.idempotencyHash);
       });
     }
 
     const rows: AccountingJournalRow[] = [];
     for (const item of prepared) {
       rows.push(
-        await this.createPreparedJournalEntryInTx(
-          item,
-          operator,
-          tx,
-          timezone,
-        ),
+        await this.createPreparedJournalEntryInTx(item, operator, tx, timezone),
       );
     }
     return rows;
@@ -1294,7 +1285,8 @@ export class AccountingService {
         authority.reviewEvidence.materializedEntityType ||
       review.materializedEntityStableId !==
         authority.reviewEvidence.materializedEntityStableId ||
-      review.reviewedAt?.toISOString() !== authority.reviewEvidence.reviewedAt ||
+      review.reviewedAt?.toISOString() !==
+        authority.reviewEvidence.reviewedAt ||
       review.reviewedByUserStableId !==
         authority.reviewEvidence.reviewedByUserStableId ||
       review.version !== authority.reviewEvidence.version
@@ -1329,7 +1321,8 @@ export class AccountingService {
         authority.coverageEvidence.liveOrderFactCutoverAt ||
       dateOnly(coverage.orderDetailCoverageFrom) !==
         authority.coverageEvidence.orderDetailCoverageFrom ||
-      coverage.updatedAt.toISOString() !== authority.coverageEvidence.updatedAt
+      coverage.updatedAt.toISOString() !==
+        authority.coverageEvidence.updatedAt
     ) {
       throw new ConflictException(
         'provider settlement coverage authority changed after preview',
@@ -1352,7 +1345,9 @@ export class AccountingService {
       },
     });
     const currentByStableId = new Map(
-      currentAccounts.map((account) => [account.accountStableId, account] as const),
+      currentAccounts.map(
+        (account) => [account.accountStableId, account] as const,
+      ),
     );
     for (const prerequisite of authority.accountPrerequisites) {
       const current = currentByStableId.get(prerequisite.accountStableId);

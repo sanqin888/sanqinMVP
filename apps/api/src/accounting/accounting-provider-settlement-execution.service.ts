@@ -125,7 +125,9 @@ export class AccountingProviderSettlementExecutionService {
       }
       const relatedReversals = report.uberPreCutoverOrderReversals.filter(
         (reversal) =>
-          reversal.coveringDocumentStableIds.includes(document.documentStableId),
+          reversal.coveringDocumentStableIds.includes(
+            document.documentStableId,
+          ),
       );
       const nonReadyRelatedReversals = relatedReversals.filter(
         (reversal) => reversal.status !== 'READY',
@@ -172,14 +174,15 @@ export class AccountingProviderSettlementExecutionService {
           originalJournalEntryStableId: reversal.originalJournalEntryStableId,
         };
       });
-      const rows = await this.accounting.createProviderSettlementReplacementGroup(
-        {
-          documentJournal,
-          uberPreCutoverReversals: reversalWrites,
-        },
-        PROVIDER_SETTLEMENT_SYSTEM_ACTOR,
-        authority,
-      );
+      const rows =
+        await this.accounting.createProviderSettlementReplacementGroup(
+          {
+            documentJournal,
+            uberPreCutoverReversals: reversalWrites,
+          },
+          PROVIDER_SETTLEMENT_SYSTEM_ACTOR,
+          authority,
+        );
       if (rows.length !== 1 + reversalWrites.length) {
         throw new ConflictException(
           `Provider settlement replacement group returned an unexpected Journal count: ${document.documentStableId}`,
@@ -203,9 +206,10 @@ export class AccountingProviderSettlementExecutionService {
         blockedProviderDocumentsNotWritten: report.providerDocuments.filter(
           (plan) => plan.status === 'BLOCKED',
         ).length,
-        alreadyPostedProviderDocumentsNotWritten: report.providerDocuments.filter(
-          (plan) => plan.status === 'ALREADY_POSTED',
-        ).length,
+        alreadyPostedProviderDocumentsNotWritten:
+          report.providerDocuments.filter(
+            (plan) => plan.status === 'ALREADY_POSTED',
+          ).length,
         blockedUberReversalsNotWritten:
           report.uberPreCutoverOrderReversals.filter(
             (plan) => plan.status === 'BLOCKED',
@@ -258,11 +262,7 @@ export class AccountingProviderSettlementExecutionService {
       ...reversals.flatMap((reversal) => reversal.accountPrerequisites),
     ];
     for (const account of accountPlans) {
-      if (
-        account.status !== 'READY' ||
-        !account.expected ||
-        !account.actual
-      ) {
+      if (account.status !== 'READY' || !account.expected || !account.actual) {
         throw new ConflictException(
           `READY provider settlement group has an unresolved account prerequisite: ${account.accountStableId}`,
         );
@@ -272,9 +272,7 @@ export class AccountingProviderSettlementExecutionService {
         expected: account.expected,
         actual: account.actual,
       };
-      const existing = accountAuthorityByStableId.get(
-        account.accountStableId,
-      );
+      const existing = accountAuthorityByStableId.get(account.accountStableId);
       if (existing && JSON.stringify(existing) !== JSON.stringify(next)) {
         throw new ConflictException(
           `Provider settlement account authority is inconsistent across the replacement group: ${account.accountStableId}`,

@@ -106,7 +106,9 @@ const requireSha256 = (raw: string, field: string): string => {
 
 const requirePositiveInteger = (value: number, field: string): number => {
   if (!Number.isInteger(value) || value < 1) {
-    throw new AccountingJournalPolicyError(`${field} must be a positive integer`);
+    throw new AccountingJournalPolicyError(
+      `${field} must be a positive integer`,
+    );
   }
   return value;
 };
@@ -146,7 +148,9 @@ const normalizeAccountPrerequisites = (
       isActive: account.actual.isActive,
     },
   }));
-  const stableIds = new Set(normalized.map((account) => account.accountStableId));
+  const stableIds = new Set(
+    normalized.map((account) => account.accountStableId),
+  );
   if (stableIds.size !== normalized.length) {
     throw new AccountingJournalPolicyError(
       'provider settlement accountPrerequisites contain duplicate stable IDs',
@@ -324,7 +328,9 @@ export const buildProviderSettlementJournalWriteAuthority = (params: {
   role: ProviderSettlementJournalWriteAuthorityV1['role'];
   originalJournalEntryStableId?: string | null;
 }): ProviderSettlementJournalWriteAuthorityV1 => {
-  const group = normalizeProviderSettlementReplacementGroupAuthority(params.group);
+  const group = normalizeProviderSettlementReplacementGroupAuthority(
+    params.group,
+  );
   const originalJournalEntryStableId = params.originalJournalEntryStableId
     ? requireValue(
         params.originalJournalEntryStableId,

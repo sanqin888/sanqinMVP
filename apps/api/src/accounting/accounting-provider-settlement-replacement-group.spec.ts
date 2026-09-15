@@ -279,7 +279,9 @@ const makeService = () => {
       findUnique: jest.fn().mockResolvedValue(null),
       create: jest
         .fn()
-        .mockResolvedValueOnce(journalRow('journal_statement', 'provider_doc_june'))
+        .mockResolvedValueOnce(
+          journalRow('journal_statement', 'provider_doc_june'),
+        )
         .mockResolvedValueOnce(
           journalRow('journal_reversal', originalEntryStableId),
         ),
@@ -335,7 +337,9 @@ describe('AccountingService provider settlement replacement group', () => {
     const { service, tx, transaction } = makeService();
     tx.accountingJournalEntry.create
       .mockReset()
-      .mockResolvedValueOnce(journalRow('journal_statement', 'provider_doc_june'))
+      .mockResolvedValueOnce(
+        journalRow('journal_statement', 'provider_doc_june'),
+      )
       .mockRejectedValueOnce(new Error('simulated reversal write failure'));
 
     await expect(

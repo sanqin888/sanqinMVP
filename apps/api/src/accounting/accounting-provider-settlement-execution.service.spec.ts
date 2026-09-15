@@ -318,11 +318,15 @@ describe('AccountingProviderSettlementExecutionService', () => {
 
     const result = await service.executeRange(input);
 
-    expect(accounting.assertNoLegacyOrderRevenueAccrual).toHaveBeenCalledTimes(1);
-    expect(accounting.createProviderSettlementReplacementGroup).toHaveBeenCalledTimes(
-      1,
-    );
-    expect(accounting.createProviderSettlementReplacementGroup).toHaveBeenCalledWith(
+    expect(
+      accounting.assertNoLegacyOrderRevenueAccrual,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      accounting.createProviderSettlementReplacementGroup,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      accounting.createProviderSettlementReplacementGroup,
+    ).toHaveBeenCalledWith(
       {
         documentJournal: statementJournal,
         uberPreCutoverReversals: [

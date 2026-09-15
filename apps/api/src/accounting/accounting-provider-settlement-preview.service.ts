@@ -549,9 +549,13 @@ export class AccountingProviderSettlementPreviewService {
               ? [`ACCOUNT_POLICY_NOT_DEFINED:${accountStableId}`]
               : []),
             ...(!actual ? [`ACCOUNT_NOT_PROVISIONED:${accountStableId}`] : []),
-            ...(expected && actual && actual.accountClass !== expected.accountClass
-              ? [`ACCOUNT_CLASS_MISMATCH:${accountStableId}`]
-              : []),
+            ...(
+              expected &&
+              actual &&
+              actual.accountClass !== expected.accountClass
+                ? [`ACCOUNT_CLASS_MISMATCH:${accountStableId}`]
+                : []
+            ),
             ...(expected && actual && actual.currency !== expected.currency
               ? [`ACCOUNT_CURRENCY_MISMATCH:${accountStableId}`]
               : []),
