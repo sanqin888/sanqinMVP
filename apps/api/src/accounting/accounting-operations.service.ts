@@ -831,6 +831,11 @@ export class AccountingOperationsService {
     const extraction = accountingJsonRecord(
       inbox.artifact.parseRuns[0]?.resultJson,
     );
+    if (extraction.requiresBatchExpenseImport === true) {
+      throw new ConflictException(
+        'structured expense CSV batch cannot be confirmed as a single expense',
+      );
+    }
 
     let documentStableId = inbox.materializedEntityStableId;
     if (!documentStableId) {

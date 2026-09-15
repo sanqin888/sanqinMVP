@@ -61,4 +61,59 @@ describe('AccountingOperationsService provider-financial expense guard', () => {
       'inbox item must be classified as an expense before confirmation',
     );
   });
+
+  it('rejects multi-row structured expense CSV evidence from the single-expense confirmation path', async () => {
+    const prisma = {
+      accountingInboxItem: {
+        findUnique: jest.fn().mockResolvedValue({
+          status: AccountingInboxStatus.PENDING_REVIEW,
+          classification: AccountingInboxClassification.EXPENSE_DOCUMENT,
+          selectedProvider: null,
+          materializedEntityType: null,
+          materializedEntityStableId: null,
+          artifact: {
+            artifactStableId: 'acctart_expense_batch',
+            acquisitionMode: 'MANUAL_UPLOAD',
+            storedUrl: '/api/v1/accounting/files/inbox/history.csv',
+            bodyText: null,
+            emailSubject: null,
+            metadataJson: {},
+            parseRuns: [
+              {
+                resultJson: {
+                  structuredExpenseCsv: true,
+                  structuredExpenseRowCount: 2,
+                  requiresBatchExpenseImport: true,
+                },
+              },
+            ],
+          },
+        }),
+      },
+    };
+    const service = new AccountingOperationsService(
+      prisma as never,
+      {} as never,
+    );
+
+    await expect(
+      service.confirmUnifiedInboxExpense(
+        'acctinbox_expense_batch',
+        {
+          occurredAt: '2026-07-28',
+          totalCents: 8469,
+          splits: [
+            {
+              categoryStableId: 'expense_telecom',
+              amountCents: 8469,
+              taxCents: 0,
+            },
+          ],
+        },
+        'user_operator',
+      ),
+    ).rejects.toThrow(
+      'structured expense CSV batch cannot be confirmed as a single expense',
+    );
+  });
 });

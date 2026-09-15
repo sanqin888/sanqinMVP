@@ -168,12 +168,107 @@ describe('AccountingInboxAcquisitionService', () => {
     expect(providerFinancial.parseForInboxSuggestion).not.toHaveBeenCalled();
   });
 
-  it('preserves CSV evidence but leaves it for provider-specific parsing', async () => {
+  it('does not route unsupported Provider API CSV through structured expense parsing', async () => {
+    const { service, operations, providerFinancial } = makeService();
+
+    await service.acquireProviderApiCsv({
+      transportIdentity: 'uber-report:report_2:artifact_1',
+      fileName: 'finance.csv',
+      content: 'Bill Date,Amount Due,Vendor\n2026-08-01,12.34,Example\n',
+      provider: AccountingFinancialProvider.UBER_EATS,
+      reportType: 'FINANCE_SUMMARY_REPORT',
+      periodStart: '2026-08-01',
+      periodEnd: '2026-08-31',
+      providerDocumentRef: 'report_2:1',
+    });
+
+    expect(providerFinancial.parseAndMaterialize).toHaveBeenCalled();
+    expect(
+      providerFinancial.recordUnsupportedUberApiParse,
+    ).toHaveBeenCalledWith({
+      artifactStableId: 'acctart_csv',
+      reportType: 'FINANCE_SUMMARY_REPORT',
+    });
+    expect(providerFinancial.parseForInboxSuggestion).not.toHaveBeenCalled();
+    expect(operations.suggestUnifiedInboxClassification).not.toHaveBeenCalled();
+  });
+
+  it('recognizes a single-row structured expense CSV after provider recognition misses', async () => {
+    const { service, operations, providerFinancial } = makeService();
+    await service.acquireManualFile({
+      originalname: 'telecom_invoice.csv',
+      mimetype: 'text/csv',
+      buffer: Buffer.from(
+        'invoice_date,invoice_total,vendor\n2026-06-01,12.34,Example Telecom\n',
+        'utf8',
+      ),
+    });
+
+    expect(providerFinancial.parseForInboxSuggestion).toHaveBeenCalled();
+    expect(operations.recordInboxParseRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        artifactStableId: 'acctart_csv',
+        parserName: 'accounting-structured-expense-csv',
+        status: AccountingParseStatus.SUCCESS,
+        resultJson: expect.objectContaining({
+          inputKind: 'CSV',
+          structuredExpenseCsv: true,
+          structuredExpenseRowCount: 1,
+          structuredExpenseInvalidRowCount: 0,
+          requiresBatchExpenseImport: false,
+          date: '2026-06-01',
+          totalCents: 1234,
+          suggestedCategoryStableId: 'expense_telecom',
+        }) as unknown,
+      }) as unknown,
+    );
+    expect(operations.suggestUnifiedInboxClassification).toHaveBeenCalledWith(
+      'acctart_csv',
+      {
+        classification: AccountingInboxClassification.EXPENSE_DOCUMENT,
+        selectedProvider: null,
+      },
+    );
+  });
+
+  it('keeps a multi-row structured expense CSV as a batch candidate without suggesting one expense', async () => {
     const { service, operations } = makeService();
     await service.acquireManualFile({
-      originalname: 'statement.csv',
+      originalname: 'historical-bills.csv',
       mimetype: 'text/csv',
-      buffer: Buffer.from('date,total\n2026-06-01,12.34\n', 'utf8'),
+      buffer: Buffer.from(
+        [
+          'Bill Date,Amount Due,Service',
+          '2026-07-28,84.69,Business services',
+          '2026-06-28,84.69,Business services',
+        ].join('\n'),
+        'utf8',
+      ),
+    });
+
+    expect(operations.recordInboxParseRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        artifactStableId: 'acctart_csv',
+        parserName: 'accounting-structured-expense-csv',
+        status: AccountingParseStatus.SUCCESS,
+        resultJson: expect.objectContaining({
+          structuredExpenseCsv: true,
+          structuredExpenseRowCount: 2,
+          structuredExpenseInvalidRowCount: 0,
+          requiresBatchExpenseImport: true,
+          reviewReason: 'STRUCTURED_EXPENSE_BATCH',
+        }) as unknown,
+      }) as unknown,
+    );
+    expect(operations.suggestUnifiedInboxClassification).not.toHaveBeenCalled();
+  });
+
+  it('leaves an unrecognized manual CSV for explicit review without labeling it provider-pending', async () => {
+    const { service, operations } = makeService();
+    await service.acquireManualFile({
+      originalname: 'unknown.csv',
+      mimetype: 'text/csv',
+      buffer: Buffer.from('Metric,Value\nExample,12.34\n', 'utf8'),
     });
 
     expect(operations.recordInboxParseRun).toHaveBeenCalledWith(
@@ -182,8 +277,8 @@ describe('AccountingInboxAcquisitionService', () => {
         status: AccountingParseStatus.SKIPPED,
         resultJson: {
           inputKind: 'CSV',
-          providerParserPending: true,
-          extractedText: 'date,total\n2026-06-01,12.34\n',
+          csvStructureUnrecognized: true,
+          extractedText: 'Metric,Value\nExample,12.34\n',
         },
       }),
     );

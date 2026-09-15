@@ -45,6 +45,19 @@ export type AccountingInboxParseResult = {
   ocrEngine?: 'TESSERACT';
   ocrStatus?: 'SUCCESS' | 'ERROR';
   providerParserPending?: boolean;
+  csvStructureUnrecognized?: boolean;
+  structuredExpenseCsv?: boolean;
+  structuredExpenseRowCount?: number;
+  structuredExpenseInvalidRowCount?: number;
+  structuredExpenseRowsTruncated?: boolean;
+  requiresBatchExpenseImport?: boolean;
+  structuredExpenseRows?: Array<{
+    rowNumber: number;
+    occurredAt: string;
+    totalCents: number;
+    description: string | null;
+    counterparty: string | null;
+  }>;
   providerRecognition?: boolean;
   providerFinancial?: boolean;
   recognitionRuleStableId?: string;
