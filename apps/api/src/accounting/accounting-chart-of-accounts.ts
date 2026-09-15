@@ -82,6 +82,12 @@ export const DEFAULT_ACCOUNTING_ACCOUNTS: readonly AccountingDefaultAccount[] =
       accountClass: AccountingAccountClass.REVENUE,
     },
     {
+      accountStableId: 'account_tip_revenue',
+      name: '小费收入',
+      type: null,
+      accountClass: AccountingAccountClass.REVENUE,
+    },
+    {
       accountStableId: 'account_sales_discounts',
       name: '销售折扣',
       type: null,
