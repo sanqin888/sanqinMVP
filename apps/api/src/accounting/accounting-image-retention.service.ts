@@ -190,8 +190,7 @@ export class AccountingImageRetentionService {
       );
     }
     if (
-      retention.state ===
-      AccountingArtifactBinaryRetentionState.COMPRESSED_ONLY
+      retention.state === AccountingArtifactBinaryRetentionState.COMPRESSED_ONLY
     ) {
       return this.presentRetained(context);
     }
@@ -219,8 +218,7 @@ export class AccountingImageRetentionService {
     );
 
     if (
-      retention.state ===
-      AccountingArtifactBinaryRetentionState.CANDIDATE_READY
+      retention.state === AccountingArtifactBinaryRetentionState.CANDIDATE_READY
     ) {
       const originalPath = this.resolveStoredUrl(
         context.artifact.storedUrl,
