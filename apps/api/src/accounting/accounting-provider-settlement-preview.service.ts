@@ -321,18 +321,16 @@ export class AccountingProviderSettlementPreviewService {
       ).map((accountStableId) => {
         const expected = ACCOUNT_REQUIREMENTS[accountStableId] ?? null;
         const actual = accountFactsByStableId.get(accountStableId) ?? null;
+        const classMismatch =
+          expected !== null &&
+          actual !== null &&
+          actual.accountClass !== expected.accountClass;
         const blockReasons = [
           ...(!expected
             ? [`ACCOUNT_POLICY_NOT_DEFINED:${accountStableId}`]
             : []),
           ...(!actual ? [`ACCOUNT_NOT_PROVISIONED:${accountStableId}`] : []),
-          ...(
-            expected &&
-            actual &&
-            actual.accountClass !== expected.accountClass
-              ? [`ACCOUNT_CLASS_MISMATCH:${accountStableId}`]
-              : []
-          ),
+          ...(classMismatch ? [`ACCOUNT_CLASS_MISMATCH:${accountStableId}`] : []),
           ...(expected && actual && actual.currency !== expected.currency
             ? [`ACCOUNT_CURRENCY_MISMATCH:${accountStableId}`]
             : []),

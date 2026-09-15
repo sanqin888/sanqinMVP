@@ -141,9 +141,7 @@ describe('AccountingProviderSettlementPreviewService', () => {
       readProviderFinancialCoverage: jest
         .fn()
         .mockResolvedValue([uberCoverage()]),
-      readAccountingAccountFacts: jest
-        .fn()
-        .mockResolvedValue([]),
+      readAccountingAccountFacts: jest.fn().mockResolvedValue([]),
       readSettlementShadowExistingJournals: jest
         .fn()
         .mockResolvedValueOnce([])
@@ -474,15 +472,13 @@ describe('AccountingProviderSettlementPreviewService', () => {
         }),
       ]),
       readProviderFinancialCoverage: jest.fn().mockResolvedValue([]),
-      readAccountingAccountFacts: jest
-        .fn()
-        .mockResolvedValue([
-          accountFact('account_uber_pending', AccountingAccountClass.ASSET),
-          accountFact('account_tip_revenue', AccountingAccountClass.LIABILITY, {
-            currency: 'USD',
-            isActive: false,
-          }),
-        ]),
+      readAccountingAccountFacts: jest.fn().mockResolvedValue([
+        accountFact('account_uber_pending', AccountingAccountClass.ASSET),
+        accountFact('account_tip_revenue', AccountingAccountClass.LIABILITY, {
+          currency: 'USD',
+          isActive: false,
+        }),
+      ]),
       readSettlementShadowExistingJournals: jest.fn().mockResolvedValue([]),
       readOrderSaleJournalsByFactStableIds: jest.fn().mockResolvedValue([]),
     };
