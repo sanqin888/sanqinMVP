@@ -1,5 +1,6 @@
 import { createId } from '@paralleldrive/cuid2';
 import {
+  AccountingArtifactKind,
   AccountingFinancialProvider,
   AccountingInboxClassification,
   AccountingInboxMaterializedEntityType,
@@ -101,6 +102,9 @@ export async function registerInboxArtifactInTx(
       ...(normalized.metadataJson === undefined
         ? {}
         : { metadataJson: normalized.metadataJson as Prisma.InputJsonValue }),
+      ...(normalized.kind === AccountingArtifactKind.IMAGE
+        ? { binaryRetention: { create: {} } }
+        : {}),
     },
     select: { id: true, artifactStableId: true },
   });

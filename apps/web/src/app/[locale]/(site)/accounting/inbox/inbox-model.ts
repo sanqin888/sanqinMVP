@@ -12,6 +12,76 @@ export type AccountingAccount = {
 
 export type AccountingFinancialProvider = 'CLOVER' | 'UBER_EATS' | 'FANTUAN';
 
+export type AccountingImageRetentionProfile =
+  | 'SPACE_SAVER'
+  | 'BALANCED'
+  | 'HIGH_QUALITY'
+  | 'NEAR_ORIGINAL';
+
+export type AccountingImageRetentionDerivativePreview = {
+  url: string;
+  contentHash?: string;
+  byteSize: number;
+  mimeType: string;
+  width: number;
+  height: number;
+  profile: AccountingImageRetentionProfile;
+  maxDimension: number;
+  quality: number;
+  savingsPercent: number;
+};
+
+export type AccountingImageRetentionCandidatePreview = {
+  state: 'CANDIDATE_READY';
+  artifactStableId: string;
+  original: {
+    url: string;
+    byteSize: number;
+    mimeType: string | null;
+    width: number;
+    height: number;
+  };
+  candidate: AccountingImageRetentionDerivativePreview & {
+    contentHash: string;
+    mimeType: 'image/webp';
+  };
+};
+
+export type AccountingImageRetentionQueueItem = {
+  inboxItemStableId: string;
+  artifactStableId: string;
+  originalFilename: string | null;
+  retentionState: 'ORIGINAL_PRESENT' | 'CANDIDATE_READY' | 'PURGE_PENDING';
+  createdAt: string;
+  updatedAt: string;
+  original: {
+    url: string;
+    byteSize: number | null;
+    mimeType: string | null;
+    width: number | null;
+    height: number | null;
+  };
+  derivative: AccountingImageRetentionDerivativePreview | null;
+};
+
+export type AccountingImageRetentionAccepted = {
+  state: 'COMPRESSED_ONLY';
+  artifactStableId: string;
+  originalPurgedAt: string | null;
+  retained: {
+    url: string;
+    contentHash: string;
+    byteSize: number;
+    mimeType: string;
+    width: number | null;
+    height: number | null;
+    profile: AccountingImageRetentionProfile | null;
+    maxDimension: number | null;
+    quality: number | null;
+    savingsPercent: number;
+  };
+};
+
 export type AccountingInboxClassification =
   | 'EXPENSE_DOCUMENT'
   | 'PROVIDER_FINANCIAL_DOCUMENT'

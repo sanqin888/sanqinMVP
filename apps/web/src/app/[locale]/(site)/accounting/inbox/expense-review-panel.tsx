@@ -20,7 +20,7 @@ type Props = {
   accounts: AccountingAccount[];
   isZh: boolean;
   onClose: () => void;
-  onConfirmed: () => Promise<void>;
+  onConfirmed: (item: AccountingInboxItem) => Promise<void>;
 };
 
 export function AccountingInboxExpenseReviewPanel({
@@ -139,7 +139,7 @@ export function AccountingInboxExpenseReviewPanel({
           }),
         },
       );
-      await onConfirmed();
+      await onConfirmed(item);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -148,6 +148,10 @@ export function AccountingInboxExpenseReviewPanel({
   }
 
   const extraction = latestParse(item);
+  const evidenceUrl =
+    item.artifact.kind === 'IMAGE'
+      ? `/api/v1/accounting/inbox/artifacts/${encodeURIComponent(item.artifact.artifactStableId)}/content`
+      : item.artifact.storedUrl;
 
   return (
     <section className="rounded-xl border border-amber-200 bg-amber-50 p-5">
@@ -381,10 +385,10 @@ export function AccountingInboxExpenseReviewPanel({
               ? '确认作为费用入账'
               : 'Confirm as expense'}
         </button>
-        {item.artifact.storedUrl ? (
+        {evidenceUrl ? (
           <a
             className="rounded border bg-white px-4 py-2 text-sm text-blue-600"
-            href={item.artifact.storedUrl}
+            href={evidenceUrl}
             target="_blank"
             rel="noreferrer"
           >

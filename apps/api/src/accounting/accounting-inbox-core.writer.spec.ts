@@ -167,6 +167,47 @@ describe('Accounting Inbox core persistence writer', () => {
     );
   });
 
+  it('creates ORIGINAL_PRESENT retention state with a new image source artifact', async () => {
+    const tx = makeTx();
+    tx.accountingSourceArtifact.findUnique.mockResolvedValue(null);
+    tx.accountingSourceArtifact.findFirst.mockResolvedValue(null);
+    tx.accountingSourceArtifact.create.mockResolvedValue({
+      id: 'artifact-image-db-id',
+      artifactStableId: 'acctart_image_1',
+    });
+    tx.accountingInboxItem.create.mockResolvedValue({
+      inboxItemStableId: 'acctinbox_image_1',
+      status: AccountingInboxStatus.PENDING_REVIEW,
+      classification: AccountingInboxClassification.UNKNOWN,
+      duplicateOfArtifact: null,
+    });
+
+    await registerInboxArtifactInTx(
+      tx as never,
+      normalizeAccountingInboxArtifact({
+        acquisitionMode: AccountingArtifactAcquisitionMode.MANUAL_UPLOAD,
+        kind: AccountingArtifactKind.IMAGE,
+        transportIdentity: 'manual:image-1',
+        contentHash: SHA_A,
+        mimeType: 'image/jpeg',
+        originalFilename: 'receipt.jpg',
+        byteSize: 123_456,
+        storedUrl: '/api/v1/accounting/files/inbox/receipt.jpg',
+        trustDecision: AccountingInboxTrustDecision.NOT_APPLICABLE,
+      }),
+    );
+
+    expect(tx.accountingSourceArtifact.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          kind: AccountingArtifactKind.IMAGE,
+          contentHash: SHA_A,
+          binaryRetention: { create: {} },
+        }) as unknown,
+      }) as unknown,
+    );
+  });
+
   it('promotes a quarantined transport replay after the sender becomes trusted', async () => {
     const tx = makeTx();
     tx.accountingSourceArtifact.findUnique.mockResolvedValue({

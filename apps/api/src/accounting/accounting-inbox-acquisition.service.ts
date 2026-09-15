@@ -12,7 +12,7 @@ import {
   AccountingInboxTrustDecision,
   AccountingParseStatus,
 } from '@prisma/client';
-import { getUploadsAccountingDir } from '../common/utils/uploads-path';
+import { getAccountingUploadsDir } from './accounting-storage-path';
 import {
   extractAccountingPdf,
   extractAccountingText,
@@ -25,7 +25,6 @@ import { extractAccountingImageText } from './accounting-image-ocr';
 import {
   ACCOUNTING_RECEIPT_IMAGE_POLICY,
   detectAccountingReceiptImageType,
-  processAccountingReceiptImage,
 } from './accounting-receipt-image';
 import { AccountingOperationsService } from './accounting-operations.service';
 import {
@@ -463,39 +462,23 @@ export class AccountingInboxAcquisitionService {
       return false;
     }
     if (kind === AccountingArtifactKind.IMAGE) {
-      let text = '';
-      let ocrStatus: ImageReviewExtraction['ocrStatus'] = 'SUCCESS';
-      try {
-        const detected = detectAccountingReceiptImageType(buffer);
-        if (!detected) throw new Error('unsupported image');
-        const processed = await processAccountingReceiptImage({
-          originalname: `evidence.${detected === 'jpeg' ? 'jpg' : detected}`,
-          buffer,
-        });
-        text = (await extractAccountingImageText(processed.buffer)).text;
-      } catch (error) {
-        ocrStatus = 'ERROR';
-        this.logger.warn(
-          `Accounting Inbox image OCR failed for ${artifact.artifactStableId}: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      }
+      const detected = detectAccountingReceiptImageType(buffer);
+      if (!detected) throw new Error('unsupported image');
+      const text = (await extractAccountingImageText(buffer)).text;
       const extraction = extractAccountingText(text);
-      const review =
-        ocrStatus === 'SUCCESS'
-          ? classifyAccountingDocumentText(text, extraction)
-          : {
-              reviewDisposition: 'UNRECOGNIZED' as const,
-              reviewReason: 'NO_READABLE_TEXT' as const,
-            };
+      const review = text.trim()
+        ? classifyAccountingDocumentText(text, extraction)
+        : {
+            reviewDisposition: 'UNRECOGNIZED' as const,
+            reviewReason: 'NO_READABLE_TEXT' as const,
+          };
       const result: ImageReviewExtraction = {
         ...extraction,
         inputKind: 'IMAGE',
         ...review,
         extractedText: text.slice(0, 100_000),
         ocrEngine: 'TESSERACT',
-        ocrStatus,
+        ocrStatus: 'SUCCESS',
       };
       await this.recordSuccessfulParse(artifact.artifactStableId, result);
       await this.suggestExpenseIfLikelyBill(artifact.artifactStableId, result);
@@ -660,7 +643,7 @@ export class AccountingInboxAcquisitionService {
     originalName: string,
     extension: string,
   ) {
-    const dir = path.join(getUploadsAccountingDir(), 'inbox');
+    const dir = path.join(getAccountingUploadsDir(), 'inbox');
     await fs.promises.mkdir(dir, { recursive: true });
     const originalBase = path.basename(
       originalName || 'evidence',
@@ -683,7 +666,7 @@ export class AccountingInboxAcquisitionService {
     const fileName = path.basename(storedUrl.slice(prefix.length));
     try {
       await fs.promises.rm(
-        path.join(getUploadsAccountingDir(), 'inbox', fileName),
+        path.join(getAccountingUploadsDir(), 'inbox', fileName),
         {
           force: true,
         },

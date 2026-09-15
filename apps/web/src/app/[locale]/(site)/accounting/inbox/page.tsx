@@ -4,11 +4,15 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api/client';
 import { AccountingInboxExpenseReviewPanel } from './expense-review-panel';
+import { AccountingImageRetentionPanel } from './image-retention-panel';
+import { AccountingImageRetentionQueue } from './image-retention-queue';
 import { AccountingInboxItemsList } from './inbox-items-list';
 import {
   type AccountingAccount,
   type AccountingCategory,
   type AccountingFinancialProvider,
+  type AccountingImageRetentionAccepted,
+  type AccountingImageRetentionQueueItem,
   type AccountingInboxClassification,
   type AccountingInboxItem,
   type AccountingTrustedSender,
@@ -22,7 +26,12 @@ export default function AccountingInboxPage() {
   const [categories, setCategories] = useState<AccountingCategory[]>([]);
   const [accounts, setAccounts] = useState<AccountingAccount[]>([]);
   const [trustedSenders, setTrustedSenders] = useState<AccountingTrustedSender[]>([]);
+  const [imageRetentionQueue, setImageRetentionQueue] = useState<
+    AccountingImageRetentionQueueItem[]
+  >([]);
   const [reviewing, setReviewing] = useState<AccountingInboxItem | null>(null);
+  const [optimizingImage, setOptimizingImage] =
+    useState<AccountingImageRetentionQueueItem | null>(null);
   const [senderEmail, setSenderEmail] = useState('');
   const [senderLabel, setSenderLabel] = useState('');
   const [loading, setLoading] = useState(true);
@@ -42,16 +51,21 @@ export default function AccountingInboxPage() {
     setLoading(true);
     setError(null);
     try {
-      const [inbox, cats, accts, senders] = await Promise.all([
+      const [inbox, cats, accts, senders, retentionQueue] = await Promise.all([
         apiFetch<AccountingInboxItem[]>('/accounting/inbox?limit=100'),
         apiFetch<AccountingCategory[]>('/accounting/categories'),
         apiFetch<AccountingAccount[]>('/accounting/accounts'),
         apiFetch<AccountingTrustedSender[]>('/accounting/inbox/trusted-senders'),
+        apiFetch<AccountingImageRetentionQueueItem[]>(
+          '/accounting/inbox/image-retention/pending?limit=100',
+        ),
       ]);
       setItems(inbox);
       setCategories(cats);
       setAccounts(accts);
       setTrustedSenders(senders);
+      setImageRetentionQueue(retentionQueue);
+      return { retentionQueue };
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -228,9 +242,43 @@ export default function AccountingInboxPage() {
     }
   }
 
-  async function handleExpenseConfirmed() {
+  async function handleExpenseConfirmed(item: AccountingInboxItem) {
     setReviewing(null);
-    setMessage(isZh ? '费用已确认入账。' : 'Expense confirmed.');
+    const loaded = await load();
+    if (item.artifact.kind === 'IMAGE') {
+      const retentionItem = loaded?.retentionQueue.find(
+        (row) => row.artifactStableId === item.artifact.artifactStableId,
+      );
+      if (retentionItem) setOptimizingImage(retentionItem);
+      setMessage(
+        isZh
+          ? '费用已确认入账，并已进入固定的图片优化队列；在你确认压缩版前原图不会删除。'
+          : 'Expense confirmed and added to the persistent image-optimization queue; the original will not be deleted until you approve a compressed version.',
+      );
+    } else {
+      setMessage(isZh ? '费用已确认入账。' : 'Expense confirmed.');
+    }
+  }
+
+  async function handleImageOptimizationClosed() {
+    setOptimizingImage(null);
+    setMessage(
+      isZh
+        ? '图片优化尚未完成，可随时从固定的“图片优化”入口继续。'
+        : 'Image optimization is not finished; you can resume it anytime from the persistent Image optimization queue.',
+    );
+    await load();
+  }
+
+  async function handleImageOptimizationAccepted(
+    result: AccountingImageRetentionAccepted,
+  ) {
+    setOptimizingImage(null);
+    setMessage(
+      isZh
+        ? `压缩版已确认并删除原图，节省 ${result.retained.savingsPercent.toFixed(2)}% 存储空间。`
+        : `Compressed evidence accepted and the original was deleted, saving ${result.retained.savingsPercent.toFixed(2)}% storage.`,
+    );
     await load();
   }
 
@@ -243,8 +291,8 @@ export default function AccountingInboxPage() {
           </h1>
           <p className="mt-1 max-w-3xl text-sm text-slate-500">
             {isZh
-              ? 'Gmail 正文、附件和手动上传文件都会先成为不可变的来源凭证。系统只给出资料类型/平台建议，你可以在收件箱中改为费用单、结算单或其他；只有人工确认后才进入对应财务流程。'
-              : 'Gmail bodies, attachments, and manual uploads first become immutable source evidence. System recognition is only a document-type/provider suggestion; you can change it to an expense, statement, or other evidence before confirming the corresponding workflow.'}
+              ? 'Gmail 正文、附件和手动上传文件都会先记录不可变的来源身份与审计证据。系统只给出资料类型/平台建议，你可以在收件箱中改为费用单、结算单或其他；只有人工确认后才进入对应财务流程。已确认的图片费用可在单独预览后选择压缩长期保存。'
+              : 'Gmail bodies, attachments, and manual uploads first record immutable source identity and audit evidence. System recognition is only a document-type/provider suggestion; you can change it to an expense, statement, or other evidence before confirming the corresponding workflow. Confirmed expense images can then be reviewed separately for compressed long-term retention.'}
           </p>
         </div>
         <button
@@ -375,6 +423,12 @@ export default function AccountingInboxPage() {
         </div>
       </section>
 
+      <AccountingImageRetentionQueue
+        items={imageRetentionQueue}
+        isZh={isZh}
+        onOpen={setOptimizingImage}
+      />
+
       {reviewing ? (
         <AccountingInboxExpenseReviewPanel
           item={reviewing}
@@ -383,6 +437,15 @@ export default function AccountingInboxPage() {
           isZh={isZh}
           onClose={() => setReviewing(null)}
           onConfirmed={handleExpenseConfirmed}
+        />
+      ) : null}
+
+      {optimizingImage ? (
+        <AccountingImageRetentionPanel
+          item={optimizingImage}
+          isZh={isZh}
+          onClosed={handleImageOptimizationClosed}
+          onAccepted={handleImageOptimizationAccepted}
         />
       ) : null}
 
