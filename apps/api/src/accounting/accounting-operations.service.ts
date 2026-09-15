@@ -9,6 +9,7 @@ import {
   AccountingDocumentSource,
   AccountingDocumentStatus,
   AccountingFinancialProvider,
+  AccountingJournalSource,
   AccountingInboxMaterializedEntityType,
   AccountingInboxStatus,
   AccountingSourceType,
@@ -278,6 +279,156 @@ export class AccountingOperationsService {
     }));
   }
 
+  async readProviderSettlementDocuments(params: {
+    storeStableId: string;
+    provider?: AccountingFinancialProvider;
+  }) {
+    return this.prisma.accountingProviderFinancialDocument.findMany({
+      where: {
+        storeStableId: params.storeStableId,
+        ...(params.provider ? { provider: params.provider } : {}),
+      },
+      select: {
+        documentStableId: true,
+        provider: true,
+        documentType: true,
+        businessIdentityKey: true,
+        revision: true,
+        supersedesDocumentId: true,
+        storeStableId: true,
+        providerDocumentRef: true,
+        periodStart: true,
+        periodEnd: true,
+        settledAt: true,
+        payoutAt: true,
+        currency: true,
+        rawMetadata: true,
+        artifact: {
+          select: {
+            inboxItem: {
+              select: {
+                inboxItemStableId: true,
+                status: true,
+                materializedEntityType: true,
+                materializedEntityStableId: true,
+                reviewedAt: true,
+                reviewedByUserStableId: true,
+                version: true,
+              },
+            },
+          },
+        },
+        lines: {
+          select: {
+            lineStableId: true,
+            lineNo: true,
+            rawCode: true,
+            rawName: true,
+            component: true,
+            postingTreatment: true,
+            taxRole: true,
+            amountCents: true,
+            occurredAt: true,
+          },
+          orderBy: { lineNo: 'asc' },
+        },
+      },
+      orderBy: [
+        { provider: 'asc' },
+        { businessIdentityKey: 'asc' },
+        { revision: 'desc' },
+      ],
+    });
+  }
+
+  async readProviderFinancialCoverage(params: {
+    storeStableId: string;
+    providers: AccountingFinancialProvider[];
+  }) {
+    if (params.providers.length === 0) return [];
+    return this.prisma.accountingProviderFinancialCoverage.findMany({
+      where: {
+        storeStableId: params.storeStableId,
+        provider: { in: params.providers },
+      },
+      select: {
+        coverageStableId: true,
+        provider: true,
+        storeStableId: true,
+        financialHistoryRequiredFrom: true,
+        financialCompleteThrough: true,
+        liveOrderFactCutoverAt: true,
+        orderDetailCoverageFrom: true,
+        updatedAt: true,
+      },
+      orderBy: { provider: 'asc' },
+    });
+  }
+
+  async readOrderSaleJournalsByFactStableIds(factStableIds: string[]) {
+    if (factStableIds.length === 0) return [];
+    return this.prisma.accountingJournalEntry.findMany({
+      where: {
+        deletedAt: null,
+        source: AccountingJournalSource.ORDER,
+        sourceFactType: 'order.financial_sale.v1',
+        sourceFactStableId: { in: factStableIds },
+      },
+      select: {
+        entryStableId: true,
+        idempotencyKey: true,
+        idempotencyHash: true,
+        version: true,
+        sourceFactStableId: true,
+        storeStableId: true,
+        occurredAt: true,
+        currency: true,
+        lines: {
+          select: {
+            debitCents: true,
+            creditCents: true,
+            memo: true,
+            account: { select: { accountStableId: true } },
+            category: { select: { categoryStableId: true } },
+          },
+          orderBy: { lineNo: 'asc' },
+        },
+      },
+      orderBy: [{ occurredAt: 'asc' }, { entryStableId: 'asc' }],
+    });
+  }
+
+  async readSettlementShadowExistingJournals(params: {
+    providerDocumentStableIds: string[];
+    uberOrderEntryStableIds: string[];
+  }) {
+    const filters: Prisma.AccountingJournalEntryWhereInput[] = [];
+    if (params.providerDocumentStableIds.length > 0) {
+      filters.push({
+        sourceFactType: 'accounting.provider_financial_document.v1',
+        sourceFactStableId: { in: params.providerDocumentStableIds },
+      });
+    }
+    if (params.uberOrderEntryStableIds.length > 0) {
+      filters.push({
+        sourceFactType: 'accounting.uber_pre_cutover_order_reversal.v1',
+        sourceFactStableId: { in: params.uberOrderEntryStableIds },
+      });
+    }
+    if (filters.length === 0) return [];
+    return this.prisma.accountingJournalEntry.findMany({
+      where: { deletedAt: null, OR: filters },
+      select: {
+        entryStableId: true,
+        idempotencyKey: true,
+        sourceFactType: true,
+        sourceFactStableId: true,
+        sourceFactVersion: true,
+      },
+      orderBy: { entryStableId: 'asc' },
+    });
+  }
+
   async createCategory(input: {
     name: string;
     type: AccountingTxType;
@@ -494,6 +645,18 @@ export class AccountingOperationsService {
         currency: true,
       },
       orderBy: [{ type: 'asc' }, { name: 'asc' }],
+    });
+  }
+
+  async readAccountingAccountFacts() {
+    return this.prisma.accountingAccount.findMany({
+      select: {
+        accountStableId: true,
+        accountClass: true,
+        currency: true,
+        isActive: true,
+      },
+      orderBy: { accountStableId: 'asc' },
     });
   }
 

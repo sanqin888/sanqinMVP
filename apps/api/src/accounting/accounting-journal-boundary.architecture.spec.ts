@@ -14,9 +14,14 @@ const STORE_BALANCE_LIABILITY_MIGRATION = resolve(
   API_ROOT,
   'prisma/migrations/20260913010000_phase9_slice5d_b1a_store_balance_liability_coa/migration.sql',
 );
+const TIP_REVENUE_MIGRATION = resolve(
+  API_ROOT,
+  'prisma/migrations/20260915110000_phase9_slice6c_a1_tip_revenue_coa/migration.sql',
+);
 const ACCOUNTING_COA_SEED_MIGRATIONS = [
   JOURNAL_MIGRATION,
   STORE_BALANCE_LIABILITY_MIGRATION,
+  TIP_REVENUE_MIGRATION,
 ];
 
 function read(path: string): string {
@@ -113,6 +118,26 @@ describe('Accounting double-entry journal ownership boundary', () => {
     expect(migration).toContain("'account_store_balance_liability'");
     expect(migration).toContain("'LIABILITY'");
     expect(migration).toContain("'CAD'");
+    expect(migration).toContain('true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP');
+    expect(migration).not.toContain('INSERT INTO "AccountingJournalEntry"');
+  });
+
+  it('pins Store Tip to an active CAD revenue account without seeding an opening journal', () => {
+    const account = DEFAULT_ACCOUNTING_ACCOUNTS.find(
+      ({ accountStableId }) => accountStableId === 'account_tip_revenue',
+    );
+    const migration = read(TIP_REVENUE_MIGRATION);
+
+    expect(account).toEqual({
+      accountStableId: 'account_tip_revenue',
+      name: '小费收入',
+      type: null,
+      accountClass: 'REVENUE',
+    });
+    expect(migration).toContain("'account_tip_revenue'");
+    expect(migration).toContain("'REVENUE'");
+    expect(migration).toContain("'CAD'");
+    expect(migration).toContain('"isActive"');
     expect(migration).toContain('true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP');
     expect(migration).not.toContain('INSERT INTO "AccountingJournalEntry"');
   });

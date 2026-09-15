@@ -19,6 +19,7 @@ import {
 } from '@nestjs/common';
 import {
   AccountingDocumentStatus,
+  AccountingFinancialProvider,
   AccountingInboxStatus,
   AccountingSourceType,
   AccountingTxType,
@@ -39,6 +40,8 @@ import { AccountingAutomationScheduler } from './accounting-automation.scheduler
 import { AccountingCanonicalSaleReplayService } from './accounting-canonical-sale-replay.service';
 import { AccountingCanonicalChangePreviewService } from './accounting-canonical-change-preview.service';
 import { AccountingCanonicalChangeExecutionService } from './accounting-canonical-change-execution.service';
+import { AccountingProviderSettlementPreviewService } from './accounting-provider-settlement-preview.service';
+import { AccountingProviderSettlementExecutionService } from './accounting-provider-settlement-execution.service';
 import {
   AccountingOperationsService,
   type AccountingExpenseInput,
@@ -82,6 +85,8 @@ export class AccountingController {
     private readonly canonicalSaleReplay: AccountingCanonicalSaleReplayService,
     private readonly canonicalChangePreview: AccountingCanonicalChangePreviewService,
     private readonly canonicalChangeExecution: AccountingCanonicalChangeExecutionService,
+    private readonly providerSettlementPreview: AccountingProviderSettlementPreviewService,
+    private readonly providerSettlementExecution: AccountingProviderSettlementExecutionService,
     @Inject(UBER_EATS_REPORTING)
     private readonly uberReporting: UberEatsReportingPort,
   ) {}
@@ -98,6 +103,25 @@ export class AccountingController {
       );
     }
     return value;
+  }
+
+  private parseFinancialProvider(
+    raw: string | undefined,
+  ): AccountingFinancialProvider | undefined {
+    if (!raw?.trim()) return undefined;
+    const normalized = raw.trim().toUpperCase();
+    switch (normalized) {
+      case AccountingFinancialProvider.CLOVER:
+        return AccountingFinancialProvider.CLOVER;
+      case AccountingFinancialProvider.UBER_EATS:
+        return AccountingFinancialProvider.UBER_EATS;
+      case AccountingFinancialProvider.FANTUAN:
+        return AccountingFinancialProvider.FANTUAN;
+      default:
+        throw new BadRequestException(
+          'provider must be CLOVER, UBER_EATS, or FANTUAN',
+        );
+    }
   }
 
   private requireOperatorUserId(req: AuthedAccountingRequest) {
@@ -432,6 +456,43 @@ export class AccountingController {
       ...(fromDate ? { fromDate } : {}),
       toDateExclusive: toDateExclusive ?? '',
       storeStableId: storeStableId ?? '',
+    });
+  }
+
+  @Get('journal/provider-settlement/shadow-preview')
+  providerSettlementShadowPreview(
+    @Query('fromDate') fromDate?: string,
+    @Query('toDateExclusive') toDateExclusive?: string,
+    @Query('storeStableId') storeStableId?: string,
+    @Query('provider') provider?: string,
+  ) {
+    return this.providerSettlementPreview.previewRange({
+      ...(fromDate ? { fromDate } : {}),
+      toDateExclusive: toDateExclusive ?? '',
+      storeStableId: storeStableId ?? '',
+      ...(provider ? { provider: this.parseFinancialProvider(provider) } : {}),
+    });
+  }
+
+  @Post('journal/provider-settlement/replay')
+  executeProviderSettlementReplay(
+    @Body()
+    body: {
+      fromDate?: string;
+      toDateExclusive?: string;
+      storeStableId?: string;
+      provider?: string;
+      expectedPlanHash?: string;
+    },
+  ) {
+    return this.providerSettlementExecution.executeRange({
+      ...(body.fromDate ? { fromDate: body.fromDate } : {}),
+      toDateExclusive: body.toDateExclusive ?? '',
+      storeStableId: body.storeStableId ?? '',
+      ...(body.provider
+        ? { provider: this.parseFinancialProvider(body.provider) }
+        : {}),
+      expectedPlanHash: body.expectedPlanHash ?? '',
     });
   }
 

@@ -67,6 +67,11 @@
   wall-clock filename 让同一 durable inbox replay 生成重复文件。最终文件只能在完整写入并 flush 后
   发布；若 deterministic path 已存在，必须确认内容相同后复用，内容不一致则 fail closed。现有
   HTTPS/SSRF、redirect、size-limit 与 Reporting status/error contract 不因该恢复规则改变。
+- financial-report request 的 provider capability 与 Store mapping 也属于 External Channels ownership。
+  外部调用者只提交业务日期范围和允许的 report type；`eats.report` deployment entitlement、
+  provisioned `UberStoreMapping` 查询、`uberStoreId` 去重/排序与 provider `store_uuids` wire 字段都必须
+  在 Uber bounded context 内解析。Accounting 不得读取 `UBER_EATS_APP_SCOPES`、`UberStoreMapping`
+  或把 provider UUID 作为 reporting public contract 参数。
 
 边界外调用者只能使用 `public-api.ts`、`ubereats.module.ts` 或 `worker.ts`；其中业务能力
 一律经 `public-api.ts` 使用。禁止外部深层导入 `api/`、`application/`、`domain/`、

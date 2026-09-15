@@ -28,6 +28,9 @@ describe('Uber OAuth scope registry', () => {
     expect(config.expectedAppScopes).toBe(
       'eats.store eats.order eats.store.status.write',
     );
+    expect(
+      config.hasExpectedAppScope(UBER_CLIENT_CREDENTIAL_SCOPES.REPORT),
+    ).toBe(false);
     expect(config.merchantAuthorizationScopes).toBe('eats.pos_provisioning');
   });
 
@@ -42,6 +45,9 @@ describe('Uber OAuth scope registry', () => {
     expect(config.expectedAppScopes).toBe(
       'eats.store eats.order eats.store.status.write eats.report',
     );
+    expect(
+      config.hasExpectedAppScope(UBER_CLIENT_CREDENTIAL_SCOPES.REPORT),
+    ).toBe(true);
     expect(config.merchantAuthorizationScopes).toBe(
       'eats.pos_provisioning offline_access',
     );
