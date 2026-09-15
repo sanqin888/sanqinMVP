@@ -311,11 +311,7 @@ function normalizeKeywords(value: string[], fieldName: string): string[] {
 }
 
 function normalizeRecognitionText(value: string): string {
-  return value
-    .normalize('NFKC')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase();
+  return value.normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
 function compareRecognitionRules(

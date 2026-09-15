@@ -7,9 +7,7 @@ import {
   AccountingParseStatus,
 } from '@prisma/client';
 import { AccountingProviderFinancialService } from './accounting-provider-financial.service';
-import {
-  DEFAULT_ACCOUNTING_PROVIDER_RECOGNITION_RULES,
-} from './accounting-provider-recognition.policy';
+import { DEFAULT_ACCOUNTING_PROVIDER_RECOGNITION_RULES } from './accounting-provider-recognition.policy';
 
 describe('AccountingProviderFinancialService', () => {
   const mayCloverStatement = `
@@ -113,7 +111,8 @@ Net Total
     expect(operations.suggestUnifiedInboxClassification).toHaveBeenCalledWith(
       'acctart_uber_partial',
       {
-        classification: AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
+        classification:
+          AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
         selectedProvider: AccountingFinancialProvider.UBER_EATS,
       },
     );

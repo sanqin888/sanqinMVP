@@ -339,15 +339,15 @@ export class AccountingInboxAcquisitionService {
         ...classifyAccountingDocumentText(text, extraction),
         extractedText: text.slice(0, 100_000),
         ...(ambiguousRuleStableIds.length
-          ? {
-              providerRecognitionAmbiguousRuleStableIds:
-                ambiguousRuleStableIds,
-            }
+          ? { providerRecognitionAmbiguousRuleStableIds: ambiguousRuleStableIds }
           : {}),
       };
       await this.recordSuccessfulParse(artifact.artifactStableId, result);
       if (!ambiguousRuleStableIds.length) {
-        await this.suggestExpenseIfLikelyBill(artifact.artifactStableId, result);
+        await this.suggestExpenseIfLikelyBill(
+          artifact.artifactStableId,
+          result,
+        );
       }
       return false;
     }

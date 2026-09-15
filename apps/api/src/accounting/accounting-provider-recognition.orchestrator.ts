@@ -4,9 +4,7 @@ import {
   normalizeAccountingProviderRecognitionRuleUpdate,
   type AccountingProviderRecognitionRuleUpdate,
 } from './accounting-provider-recognition.policy';
-import {
-  upsertAccountingProviderRecognitionRuleInTx,
-} from './accounting-provider-recognition.writer';
+import { upsertAccountingProviderRecognitionRuleInTx } from './accounting-provider-recognition.writer';
 
 type AccountingTransactionRunner = Parameters<
   typeof runSerializableAccountingWrite
@@ -28,12 +26,7 @@ export async function updateAccountingProviderRecognitionRule(
     input,
   );
   return runSerializableAccountingWrite(prisma, (tx) =>
-    upsertAccountingProviderRecognitionRuleInTx(
-      tx,
-      rule,
-      normalized,
-      operator,
-    ),
+    upsertAccountingProviderRecognitionRuleInTx(tx, rule, normalized, operator),
   );
 }
 

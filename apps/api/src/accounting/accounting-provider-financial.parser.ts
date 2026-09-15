@@ -59,7 +59,9 @@ export function parseProviderFinancialEvidence(
       ) {
         return parseCloverCloseout(text, input);
       }
-      if (input.documentTypeHint === AccountingFinancialDocumentType.STATEMENT) {
+      if (
+        input.documentTypeHint === AccountingFinancialDocumentType.STATEMENT
+      ) {
         return parseCloverStatement(text);
       }
       if (input.documentTypeHint) return null;

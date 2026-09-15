@@ -1,7 +1,5 @@
 import { Prisma } from '@prisma/client';
-import {
-  mergeAccountingProviderRecognitionRules,
-} from './accounting-provider-recognition.policy';
+import { mergeAccountingProviderRecognitionRules } from './accounting-provider-recognition.policy';
 
 type AccountingProviderRecognitionReadClient = Pick<
   Prisma.TransactionClient,
