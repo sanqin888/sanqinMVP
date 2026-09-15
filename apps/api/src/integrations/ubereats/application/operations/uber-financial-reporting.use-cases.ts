@@ -9,9 +9,7 @@ import type {
   UberFinancialReportRepositoryPort,
   UberFinancialReportStatus,
 } from './uber-financial-reporting.ports';
-import type {
-  UberStoreMappingRepositoryPort,
-} from '../merchant/uber-merchant-persistence.ports';
+import type { UberStoreMappingRepositoryPort } from '../merchant/uber-merchant-persistence.ports';
 
 const DEFAULT_REPORT_TYPES: UberEatsFinancialReportType[] = [
   'PAYMENT_DETAILS_REPORT',
