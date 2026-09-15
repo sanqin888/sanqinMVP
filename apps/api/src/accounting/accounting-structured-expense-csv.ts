@@ -226,13 +226,14 @@ function parseExpenseCsvDate(value: string | undefined): string | null {
   let month: string;
   let day: string;
 
-  const isoLike = /^(20\d{2})[-/](0?[1-9]|1[0-2])[-/]([0-2]?\d|3[01])$/.exec(raw);
+  const isoLike = /^(20\d{2})[-/](0?[1-9]|1[0-2])[-/]([0-2]?\d|3[01])$/.exec(
+    raw,
+  );
   if (isoLike) {
     [, year, month, day] = isoLike;
   } else {
-    const monthFirst = /^(0?[1-9]|1[0-2])[-/]([0-2]?\d|3[01])[-/](20\d{2})$/.exec(
-      raw,
-    );
+    const monthFirst =
+      /^(0?[1-9]|1[0-2])[-/]([0-2]?\d|3[01])[-/](20\d{2})$/.exec(raw);
     if (!monthFirst) return null;
     [, month, day, year] = monthFirst;
   }

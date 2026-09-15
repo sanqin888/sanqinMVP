@@ -183,7 +183,9 @@ describe('AccountingInboxAcquisitionService', () => {
     });
 
     expect(providerFinancial.parseAndMaterialize).toHaveBeenCalled();
-    expect(providerFinancial.recordUnsupportedUberApiParse).toHaveBeenCalledWith({
+    expect(
+      providerFinancial.recordUnsupportedUberApiParse,
+    ).toHaveBeenCalledWith({
       artifactStableId: 'acctart_csv',
       reportType: 'FINANCE_SUMMARY_REPORT',
     });

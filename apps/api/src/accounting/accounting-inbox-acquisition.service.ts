@@ -357,7 +357,10 @@ export class AccountingInboxAcquisitionService {
         const contextExtraction = extractAccountingText(
           [
             providerContext.originalFilename?.replace(/[^a-z0-9]+/gi, ' '),
-            ...previewRows.flatMap((row) => [row.counterparty, row.description]),
+            ...previewRows.flatMap((row) => [
+              row.counterparty,
+              row.description,
+            ]),
           ]
             .filter((value): value is string => Boolean(value?.trim()))
             .join(' '),
@@ -369,7 +372,8 @@ export class AccountingInboxAcquisitionService {
           inputKind: 'CSV' as const,
           structuredExpenseCsv: true,
           structuredExpenseRowCount: structuredExpense.rows.length,
-          structuredExpenseInvalidRowCount: structuredExpense.invalidRows.length,
+          structuredExpenseInvalidRowCount:
+            structuredExpense.invalidRows.length,
           structuredExpenseRows: previewRows,
           structuredExpenseRowsTruncated:
             structuredExpense.rows.length > previewRows.length,
