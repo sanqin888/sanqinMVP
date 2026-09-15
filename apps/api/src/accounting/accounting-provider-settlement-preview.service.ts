@@ -81,8 +81,8 @@ const latestDocuments = (
 
 const journalTotals = (
   lines: Array<{ debitCents?: number; creditCents?: number }>,
-) =>
-  lines.reduce(
+): { debitCents: number; creditCents: number } =>
+  lines.reduce<{ debitCents: number; creditCents: number }>(
     (totals, line) => ({
       debitCents: totals.debitCents + (line.debitCents ?? 0),
       creditCents: totals.creditCents + (line.creditCents ?? 0),
@@ -451,11 +451,11 @@ export class AccountingProviderSettlementPreviewService {
       },
       amounts: {
         readyProviderDebitCents: readyDocuments.reduce(
-          (sum, plan) => sum + plan.debitCents,
+          (sum, plan) => sum + (plan.debitCents ?? 0),
           0,
         ),
         readyProviderCreditCents: readyDocuments.reduce(
-          (sum, plan) => sum + plan.creditCents,
+          (sum, plan) => sum + (plan.creditCents ?? 0),
           0,
         ),
         readyUberReversalDebitCents: readyReversals.reduce(
