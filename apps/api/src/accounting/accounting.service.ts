@@ -1312,7 +1312,8 @@ export class AccountingService {
     });
     if (
       !coverage ||
-      coverage.coverageStableId !== authority.coverageEvidence.coverageStableId ||
+      coverage.coverageStableId !==
+        authority.coverageEvidence.coverageStableId ||
       dateOnly(coverage.financialHistoryRequiredFrom) !==
         authority.coverageEvidence.financialHistoryRequiredFrom ||
       dateOnly(coverage.financialCompleteThrough) !==
@@ -1321,8 +1322,7 @@ export class AccountingService {
         authority.coverageEvidence.liveOrderFactCutoverAt ||
       dateOnly(coverage.orderDetailCoverageFrom) !==
         authority.coverageEvidence.orderDetailCoverageFrom ||
-      coverage.updatedAt.toISOString() !==
-        authority.coverageEvidence.updatedAt
+      coverage.updatedAt.toISOString() !== authority.coverageEvidence.updatedAt
     ) {
       throw new ConflictException(
         'provider settlement coverage authority changed after preview',
