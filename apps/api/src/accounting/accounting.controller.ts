@@ -22,6 +22,7 @@ import {
   AccountingFinancialProvider,
   AccountingInboxClassification,
   AccountingInboxStatus,
+  AccountingProviderRecognitionMatchMode,
   AccountingSourceType,
   AccountingTxType,
   SettlementPlatform,
@@ -194,6 +195,31 @@ export class AccountingController {
   ) {
     if (!file) throw new BadRequestException('file is required');
     return this.acquisition.acquireManualFile(file);
+  }
+
+  @Get('inbox/provider-recognition-rules')
+  listProviderRecognitionRules() {
+    return this.operations.listProviderRecognitionRules();
+  }
+
+  @Put('inbox/provider-recognition-rules/:ruleStableId')
+  updateProviderRecognitionRule(
+    @Param('ruleStableId') ruleStableId: string,
+    @Body()
+    body: {
+      requiredKeywords: string[];
+      optionalKeywords: string[];
+      optionalMatchMode: AccountingProviderRecognitionMatchMode;
+      priority: number;
+      isActive: boolean;
+    },
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.operations.updateProviderRecognitionRule(
+      ruleStableId,
+      body,
+      this.requireOperatorUserId(req),
+    );
   }
 
   @Get('inbox/trusted-senders')

@@ -45,7 +45,13 @@ export type AccountingInboxParseResult = {
   ocrEngine?: 'TESSERACT';
   ocrStatus?: 'SUCCESS' | 'ERROR';
   providerParserPending?: boolean;
+  providerRecognition?: boolean;
   providerFinancial?: boolean;
+  recognitionRuleStableId?: string;
+  recognitionRuleVersion?: number;
+  matchedRequiredKeywords?: string[];
+  matchedOptionalKeywords?: string[];
+  providerRecognitionAmbiguousRuleStableIds?: string[];
   excludedBeforeFinancialHistory?: boolean;
   financialHistoryRequiredFrom?: string;
   provider?: AccountingFinancialProvider;

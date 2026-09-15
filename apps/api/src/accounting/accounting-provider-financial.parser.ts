@@ -15,6 +15,7 @@ export type ProviderFinancialParseInput = {
   originalFilename?: string | null;
   emailSubject?: string | null;
   providerHint?: AccountingFinancialProvider | null;
+  documentTypeHint?: AccountingFinancialDocumentType | null;
   reportTypeHint?: string | null;
   periodStartHint?: string | null;
   periodEndHint?: string | null;
@@ -49,24 +50,39 @@ export function parseProviderFinancialEvidence(
   const text = normalizeText(input.text);
   if (!text) return null;
 
-  if (input.providerHint) {
-    switch (input.providerHint) {
-      case AccountingFinancialProvider.CLOVER:
-        return parseCloverCloseout(text, input) ?? parseCloverStatement(text);
-      case AccountingFinancialProvider.UBER_EATS:
-        return parseUberMonthlyStatement(text);
-      case AccountingFinancialProvider.FANTUAN:
-        return parseFantuanStatement(text);
-    }
-  }
+  if (!input.providerHint) return null;
 
-  if (looksLikeCloverCloseout(text)) return parseCloverCloseout(text, input);
-  if (looksLikeCloverStatement(text)) return parseCloverStatement(text);
-  if (looksLikeUberMonthlyStatement(text)) {
-    return parseUberMonthlyStatement(text);
+  switch (input.providerHint) {
+    case AccountingFinancialProvider.CLOVER:
+      if (
+        input.documentTypeHint === AccountingFinancialDocumentType.BATCH_CONTROL
+      ) {
+        return parseCloverCloseout(text, input);
+      }
+      if (
+        input.documentTypeHint === AccountingFinancialDocumentType.STATEMENT
+      ) {
+        return parseCloverStatement(text);
+      }
+      if (input.documentTypeHint) return null;
+      return parseCloverCloseout(text, input) ?? parseCloverStatement(text);
+    case AccountingFinancialProvider.UBER_EATS:
+      if (
+        input.documentTypeHint &&
+        input.documentTypeHint !== AccountingFinancialDocumentType.STATEMENT
+      ) {
+        return null;
+      }
+      return parseUberMonthlyStatement(text);
+    case AccountingFinancialProvider.FANTUAN:
+      if (
+        input.documentTypeHint &&
+        input.documentTypeHint !== AccountingFinancialDocumentType.STATEMENT
+      ) {
+        return null;
+      }
+      return parseFantuanStatement(text);
   }
-  if (looksLikeFantuanStatement(text)) return parseFantuanStatement(text);
-
   return null;
 }
 
@@ -508,39 +524,6 @@ function parseFantuanStatement(
     },
     lines,
   };
-}
-
-function looksLikeCloverCloseout(text: string) {
-  return (
-    /Closeout Batch Report/i.test(text) &&
-    /Batch Totals/i.test(text) &&
-    /Batch ID:/i.test(text)
-  );
-}
-
-function looksLikeCloverStatement(text: string) {
-  return (
-    /MERCHANT CARD PROCESSING STATEMENT LOCATION RECAP/i.test(text) &&
-    /StatementPeriod/i.test(text) &&
-    /Total Amount Funded/i.test(text)
-  );
-}
-
-function looksLikeUberMonthlyStatement(text: string) {
-  return (
-    /Monthly\s+Statement/i.test(text) &&
-    /Consolidated Monthly Summary/i.test(text) &&
-    /Marketplace Fees/i.test(text) &&
-    /Net Total/i.test(text)
-  );
-}
-
-function looksLikeFantuanStatement(text: string) {
-  return (
-    /Fantuan Subsidy for Promotion events/i.test(text) &&
-    /Total Transfer Amount/i.test(text) &&
-    /Commission GST\/HST/i.test(text)
-  );
 }
 
 function pushNamedSummary(

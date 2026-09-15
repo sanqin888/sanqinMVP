@@ -71,6 +71,7 @@ type FileAcquisitionInput = {
 type TextReviewExtraction = ReturnType<typeof extractAccountingText> &
   AccountingReviewMetadata & {
     extractedText: string;
+    providerRecognitionAmbiguousRuleStableIds?: string[];
   };
 
 type ImageReviewExtraction = TextReviewExtraction & {
@@ -328,14 +329,28 @@ export class AccountingInboxAcquisitionService {
         ...providerContext,
       });
       if (provider.matched) return true;
+      const ambiguousRuleStableIds =
+        'ambiguousRuleStableIds' in provider
+          ? provider.ambiguousRuleStableIds
+          : [];
       const result: TextReviewExtraction = {
         ...extraction,
         inputKind: 'PDF',
         ...classifyAccountingDocumentText(text, extraction),
         extractedText: text.slice(0, 100_000),
+        ...(ambiguousRuleStableIds.length
+          ? {
+              providerRecognitionAmbiguousRuleStableIds: ambiguousRuleStableIds,
+            }
+          : {}),
       };
       await this.recordSuccessfulParse(artifact.artifactStableId, result);
-      await this.suggestExpenseIfLikelyBill(artifact.artifactStableId, result);
+      if (!ambiguousRuleStableIds.length) {
+        await this.suggestExpenseIfLikelyBill(
+          artifact.artifactStableId,
+          result,
+        );
+      }
       return false;
     }
     if (kind === AccountingArtifactKind.IMAGE) {
@@ -399,15 +414,24 @@ export class AccountingInboxAcquisitionService {
       ...providerContext,
     });
     if (provider.matched) return;
+    const ambiguousRuleStableIds =
+      'ambiguousRuleStableIds' in provider
+        ? provider.ambiguousRuleStableIds
+        : [];
     const extraction = extractAccountingText(text);
     const result: TextReviewExtraction = {
       ...extraction,
       inputKind,
       ...classifyAccountingDocumentText(text, extraction),
       extractedText: text.slice(0, 100_000),
+      ...(ambiguousRuleStableIds.length
+        ? { providerRecognitionAmbiguousRuleStableIds: ambiguousRuleStableIds }
+        : {}),
     };
     await this.recordSuccessfulParse(artifact.artifactStableId, result);
-    await this.suggestExpenseIfLikelyBill(artifact.artifactStableId, result);
+    if (!ambiguousRuleStableIds.length) {
+      await this.suggestExpenseIfLikelyBill(artifact.artifactStableId, result);
+    }
   }
 
   private async parseProviderEvidence(

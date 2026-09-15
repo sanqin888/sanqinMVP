@@ -27,6 +27,11 @@ import {
   type ParsedProviderFinancialDocument,
   type ProviderFinancialParseInput,
 } from './accounting-provider-financial.parser';
+import {
+  ACCOUNTING_PROVIDER_RECOGNITION_PARSER_NAME,
+  matchAccountingProviderRecognitionRule,
+  providerRecognitionParserVersion,
+} from './accounting-provider-recognition.policy';
 
 export type AccountingProviderFinancialParseContext = Omit<
   ProviderFinancialParseInput,
@@ -49,15 +54,65 @@ export class AccountingProviderFinancialService {
   async parseForInboxSuggestion(
     input: AccountingProviderFinancialParseContext,
   ) {
-    const parsed = parseProviderFinancialEvidence(input);
-    if (!parsed) return { matched: false as const };
-
-    const parseResult = this.buildParseResult(parsed, input.text);
-    const excludedBeforeFinancialHistory = Boolean(
-      parsed.periodEnd &&
-      parsed.periodEnd < PROVIDER_FINANCIAL_HISTORY_START_DATE,
-    );
     try {
+      const recognition = matchAccountingProviderRecognitionRule(
+        input.text,
+        await this.operations.listProviderRecognitionRules(),
+      );
+      if (!recognition.rule) {
+        return {
+          matched: false as const,
+          ambiguousRuleStableIds: recognition.ambiguousRuleStableIds,
+        };
+      }
+
+      const recognitionResult = {
+        providerRecognition: true,
+        provider: recognition.rule.provider,
+        documentType: recognition.rule.documentType,
+        recognitionRuleStableId: recognition.rule.ruleStableId,
+        recognitionRuleVersion: recognition.rule.version,
+        matchedRequiredKeywords: recognition.matchedRequiredKeywords,
+        matchedOptionalKeywords: recognition.matchedOptionalKeywords,
+        extractedText: input.text.slice(0, 100_000),
+      };
+      await this.operations.recordInboxParseRun({
+        artifactStableId: input.artifactStableId,
+        parserName: ACCOUNTING_PROVIDER_RECOGNITION_PARSER_NAME,
+        parserVersion: providerRecognitionParserVersion(recognition.rule),
+        status: AccountingParseStatus.SUCCESS,
+        resultHash: hashAccountingJson(recognitionResult),
+        resultJson: recognitionResult,
+      });
+      await this.operations.suggestUnifiedInboxClassification(
+        input.artifactStableId,
+        {
+          classification:
+            AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
+          selectedProvider: recognition.rule.provider,
+        },
+      );
+
+      const parsed = parseProviderFinancialEvidence({
+        ...input,
+        providerHint: recognition.rule.provider,
+        documentTypeHint: recognition.rule.documentType,
+      });
+      if (!parsed) {
+        return {
+          matched: true as const,
+          materialized: false as const,
+          parserValidated: false as const,
+          provider: recognition.rule.provider,
+          documentType: recognition.rule.documentType,
+        };
+      }
+
+      const parseResult = this.buildParseResult(parsed, input.text);
+      const excludedBeforeFinancialHistory = Boolean(
+        parsed.periodEnd &&
+        parsed.periodEnd < PROVIDER_FINANCIAL_HISTORY_START_DATE,
+      );
       await this.operations.recordInboxParseRun({
         artifactStableId: input.artifactStableId,
         parserName: ACCOUNTING_PROVIDER_FINANCIAL_PARSER_NAME,
@@ -77,17 +132,10 @@ export class AccountingProviderFinancialService {
             }
           : parseResult,
       });
-      await this.operations.suggestUnifiedInboxClassification(
-        input.artifactStableId,
-        {
-          classification:
-            AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
-          selectedProvider: parsed.provider,
-        },
-      );
       return {
         matched: true as const,
         materialized: false as const,
+        parserValidated: true as const,
         excludedBeforeFinancialHistory,
         provider: parsed.provider,
         documentType: parsed.documentType,

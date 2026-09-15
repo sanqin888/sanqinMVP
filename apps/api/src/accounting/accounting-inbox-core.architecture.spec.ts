@@ -20,6 +20,18 @@ const PROVIDER_FINANCIAL_REVIEW_WRITER = resolve(
   ACCOUNTING_ROOT,
   'accounting-provider-financial-review.writer.ts',
 );
+const PROVIDER_RECOGNITION_WRITER = resolve(
+  ACCOUNTING_ROOT,
+  'accounting-provider-recognition.writer.ts',
+);
+const PROVIDER_RECOGNITION_QUERY = resolve(
+  ACCOUNTING_ROOT,
+  'accounting-provider-recognition.query.ts',
+);
+const PROVIDER_RECOGNITION_ORCHESTRATOR = resolve(
+  ACCOUNTING_ROOT,
+  'accounting-provider-recognition.orchestrator.ts',
+);
 const INBOX_POLICY = resolve(
   ACCOUNTING_ROOT,
   'accounting-inbox-core.policy.ts',
@@ -89,7 +101,7 @@ function productionTypescriptFiles(root: string): string[] {
 describe('Accounting unified Inbox core ownership boundary', () => {
   it('keeps Unified Inbox Prisma mutations inside the designated Accounting writers', () => {
     const delegate =
-      'accounting(?:SourceArtifact|ParseRun|InboxItem|TrustedSender|ProviderFinancialDocument|ProviderFinancialLine|ProviderFinancialCoverage)';
+      'accounting(?:SourceArtifact|ParseRun|InboxItem|TrustedSender|ProviderRecognitionRule|ProviderFinancialDocument|ProviderFinancialLine|ProviderFinancialCoverage)';
     const mutationPattern = new RegExp(
       `\\.${delegate}\\.(?:create|createMany|update|updateMany|delete|deleteMany|upsert)\\s*\\(`,
     );
@@ -98,6 +110,7 @@ describe('Accounting unified Inbox core ownership boundary', () => {
       INBOX_CLASSIFICATION_WRITER,
       INBOX_EXPENSE_WRITER,
       PROVIDER_FINANCIAL_REVIEW_WRITER,
+      PROVIDER_RECOGNITION_WRITER,
     ]);
     const offenders = productionTypescriptFiles(API_SRC_ROOT)
       .filter((path) => !allowedWriters.has(path))
@@ -109,6 +122,7 @@ describe('Accounting unified Inbox core ownership boundary', () => {
     expect(read(INBOX_CLASSIFICATION_WRITER)).toMatch(mutationPattern);
     expect(read(INBOX_EXPENSE_WRITER)).toMatch(mutationPattern);
     expect(read(PROVIDER_FINANCIAL_REVIEW_WRITER)).toMatch(mutationPattern);
+    expect(read(PROVIDER_RECOGNITION_WRITER)).toMatch(mutationPattern);
   });
 
   it('does not add another Accounting PrismaService import boundary', () => {
@@ -122,6 +136,15 @@ describe('Accounting unified Inbox core ownership boundary', () => {
       '../prisma/prisma.service',
     );
     expect(read(PROVIDER_FINANCIAL_REVIEW_WRITER)).not.toContain(
+      '../prisma/prisma.service',
+    );
+    expect(read(PROVIDER_RECOGNITION_WRITER)).not.toContain(
+      '../prisma/prisma.service',
+    );
+    expect(read(PROVIDER_RECOGNITION_QUERY)).not.toContain(
+      '../prisma/prisma.service',
+    );
+    expect(read(PROVIDER_RECOGNITION_ORCHESTRATOR)).not.toContain(
       '../prisma/prisma.service',
     );
     expect(read(INBOX_ACQUISITION)).not.toContain('../prisma/prisma.service');
@@ -141,6 +164,9 @@ describe('Accounting unified Inbox core ownership boundary', () => {
     expect(read(PROVIDER_FINANCIAL_REVIEW_WRITER)).toContain(
       'Prisma.TransactionClient',
     );
+    expect(read(PROVIDER_RECOGNITION_WRITER)).toContain(
+      'Prisma.TransactionClient',
+    );
   });
 
   it('keeps Gmail and manual file acquisition on the Unified Inbox path', () => {
@@ -155,6 +181,10 @@ describe('Accounting unified Inbox core ownership boundary', () => {
     expect(controller).toContain("@Post('inbox/artifacts')");
     expect(controller).toContain(
       "@Put('inbox/:inboxItemStableId/classification')",
+    );
+    expect(controller).toContain("@Get('inbox/provider-recognition-rules')");
+    expect(controller).toContain(
+      "@Put('inbox/provider-recognition-rules/:ruleStableId')",
     );
     expect(controller).toContain(
       "@Post('inbox/:inboxItemStableId/other/confirm')",
@@ -189,6 +219,7 @@ describe('Accounting unified Inbox core ownership boundary', () => {
       INBOX_CLASSIFICATION_WRITER,
       INBOX_EXPENSE_WRITER,
       PROVIDER_FINANCIAL_REVIEW_WRITER,
+      PROVIDER_RECOGNITION_WRITER,
     ]) {
       expect(read(writer)).not.toContain('accountingJournalEntry');
       expect(read(writer)).not.toContain('accountingJournalLine');
