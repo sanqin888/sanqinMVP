@@ -17,6 +17,8 @@ function lineByName(
 describe('accounting provider financial parser', () => {
   it('parses Clover Closeout Batch Totals only as reconciliation evidence', () => {
     const parsed = parseProviderFinancialEvidence({
+      providerHint: AccountingFinancialProvider.CLOVER,
+      documentTypeHint: AccountingFinancialDocumentType.BATCH_CONTROL,
       emailSubject: 'MID 29351880018 Closeout Report for Sep 6, 2026',
       text: `
 Closeout Batch Report
@@ -80,6 +82,8 @@ Tips 4 $3.84
 
   it('parses Clover monthly statement controls and separates fee HST', () => {
     const parsed = parseProviderFinancialEvidence({
+      providerHint: AccountingFinancialProvider.CLOVER,
+      documentTypeHint: AccountingFinancialDocumentType.STATEMENT,
       text: `
 MERCHANT CARD PROCESSING STATEMENT LOCATION RECAP
 StatementPeriod 05/01/26 - 05/31/26
@@ -145,6 +149,8 @@ Total HST:-3.90 -35.15
 
   it('uses only the Uber consolidated monthly summary and excludes payout sections', () => {
     const parsed = parseProviderFinancialEvidence({
+      providerHint: AccountingFinancialProvider.UBER_EATS,
+      documentTypeHint: AccountingFinancialDocumentType.STATEMENT,
       text: `
 Monthly Statement
 August 2026
@@ -217,6 +223,8 @@ Net Payout $216.02
 
   it('parses Fantuan posting components while keeping section and tax totals as controls', () => {
     const parsed = parseProviderFinancialEvidence({
+      providerHint: AccountingFinancialProvider.FANTUAN,
+      documentTypeHint: AccountingFinancialDocumentType.STATEMENT,
       text: `
 Name: SANQIN RESTAURANT/ 15112320 CANADA INC.
 Restaurant: Qin's Traditional Roujiamo | VIP 25% OFF(YG)
@@ -271,6 +279,32 @@ Total transfer amount $3813.11
         component: AccountingFinancialComponent.PAYOUT,
         postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
       }),
+    );
+  });
+
+  it('requires an explicit provider hint instead of owning coarse statement recognition', () => {
+    const text = `
+Monthly Statement
+Statement Number #TEST-1
+Date Aug 01-31, 2026
+Consolidated Monthly Summary
+Sales (1 Orders) $10.00
+Marketplace Fees -$2.00
+Net Total $8.00
+`;
+
+    expect(parseProviderFinancialEvidence({ text })).toBeNull();
+    expect(
+      parseProviderFinancialEvidence({
+        text,
+        providerHint: AccountingFinancialProvider.UBER_EATS,
+        documentTypeHint: AccountingFinancialDocumentType.STATEMENT,
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        provider: AccountingFinancialProvider.UBER_EATS,
+        documentType: AccountingFinancialDocumentType.STATEMENT,
+      }) as unknown,
     );
   });
 

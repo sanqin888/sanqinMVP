@@ -275,6 +275,11 @@ enum AccountingFinancialProvider {
   FANTUAN
 }
 
+enum AccountingProviderRecognitionMatchMode {
+  ANY
+  ALL
+}
+
 enum AccountingFinancialDocumentType {
   BATCH_CONTROL
   STATEMENT
@@ -1857,6 +1862,25 @@ model AccountingTrustedSender {
   updatedAt               DateTime @updatedAt
 
   @@index([isActive, email])
+}
+
+model AccountingProviderRecognitionRule {
+  id                    String                                 @id @default(uuid()) @db.Uuid
+  ruleStableId          String                                 @unique
+  provider              AccountingFinancialProvider
+  documentType          AccountingFinancialDocumentType
+  requiredKeywords      String[]                               @default([])
+  optionalKeywords      String[]                               @default([])
+  optionalMatchMode     AccountingProviderRecognitionMatchMode @default(ANY)
+  priority              Int                                    @default(100)
+  isActive              Boolean                                @default(true)
+  version               Int                                    @default(1)
+  updatedByUserStableId String?
+  createdAt             DateTime                               @default(now())
+  updatedAt             DateTime                               @updatedAt
+
+  @@unique([provider, documentType])
+  @@index([isActive, priority])
 }
 
 model AccountingProviderFinancialDocument {

@@ -118,6 +118,35 @@ describe('AccountingInboxAcquisitionService', () => {
     expect(providerFinancial.parseAndMaterialize).not.toHaveBeenCalled();
   });
 
+  it('keeps same-priority provider recognition ambiguity unclassified for manual review', async () => {
+    const { service, operations, providerFinancial } = makeService();
+    providerFinancial.parseForInboxSuggestion.mockResolvedValueOnce({
+      matched: false,
+      ambiguousRuleStableIds: [
+        'acct_recognition_uber_monthly_statement',
+        'acct_recognition_fantuan_statement',
+      ],
+    });
+
+    await service.acquireManualFile({
+      originalname: 'ambiguous.pdf',
+      mimetype: 'application/pdf',
+      buffer: Buffer.from('%PDF-1.4\n%%EOF', 'ascii'),
+    });
+
+    expect(operations.recordInboxParseRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resultJson: expect.objectContaining({
+          providerRecognitionAmbiguousRuleStableIds: [
+            'acct_recognition_uber_monthly_statement',
+            'acct_recognition_fantuan_statement',
+          ],
+        }) as unknown,
+      }) as unknown,
+    );
+    expect(operations.suggestUnifiedInboxClassification).not.toHaveBeenCalled();
+  });
+
   it('keeps Provider API CSV evidence on the existing automatic materialization path', async () => {
     const { service, providerFinancial } = makeService();
     providerFinancial.parseAndMaterialize.mockResolvedValueOnce({

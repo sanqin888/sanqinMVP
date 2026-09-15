@@ -190,18 +190,29 @@ export function AccountingInboxItemsList({
                       ? `系统识别为平台财务资料，但期间早于财务起始边界 ${parse.financialHistoryRequiredFrom ?? '2026-06-01'}。你仍可人工修改资料类型。`
                       : `System recognition found provider financial evidence before the ${parse.financialHistoryRequiredFrom ?? '2026-06-01'} history boundary. You can still change the document type manually.`}
                   </p>
+                ) : parse.providerRecognitionAmbiguousRuleStableIds?.length ? (
+                  <p className="mt-2 text-xs text-amber-700">
+                    {isZh
+                      ? '多个平台识别规则以相同优先级同时命中，系统未自动选择类型/平台，请人工确认。'
+                      : 'Multiple provider recognition rules matched at the same priority. No automatic provider/type was selected; review it manually.'}
+                  </p>
                 ) : parse.providerParserPending ? (
                   <p className="mt-2 text-xs text-blue-700">
                     {isZh
                       ? 'CSV 已保留，等待平台财务解析。'
                       : 'CSV preserved for provider financial parsing.'}
                   </p>
-                ) : parse.providerFinancial ? (
+                ) : parse.providerFinancial || parse.providerRecognition ? (
                   <p className="mt-2 text-xs text-blue-700">
                     {isZh ? '系统建议' : 'System suggestion'}:{' '}
                     {parse.provider ?? '—'} · {parse.documentType ?? '—'}
                     {parse.periodStart || parse.periodEnd
                       ? ` · ${parse.periodStart ?? '—'} → ${parse.periodEnd ?? '—'}`
+                      : ''}
+                    {parse.providerRecognition && !parse.providerFinancial
+                      ? isZh
+                        ? ' · 已命中识别规则，财务字段尚未验证'
+                        : ' · recognition matched; financial fields not yet validated'
                       : ''}
                   </p>
                 ) : parse.reviewDisposition ? (

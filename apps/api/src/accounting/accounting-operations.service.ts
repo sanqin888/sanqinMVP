@@ -59,6 +59,12 @@ import {
   readAccountingInboxProviderReviewContext,
 } from './accounting-inbox-query';
 import { AccountingService } from './accounting.service';
+import { updateAccountingProviderRecognitionRule } from './accounting-provider-recognition.orchestrator';
+import {
+  AccountingProviderRecognitionPolicyError,
+  type AccountingProviderRecognitionRuleUpdate,
+} from './accounting-provider-recognition.policy';
+import { listAccountingProviderRecognitionRules } from './accounting-provider-recognition.query';
 
 export type AccountingExpenseSplitInput = {
   categoryStableId: string;
@@ -712,6 +718,25 @@ export class AccountingOperationsService {
 
   listTrustedSenders() {
     return listAccountingTrustedSenders(this.prisma);
+  }
+
+  listProviderRecognitionRules() {
+    return listAccountingProviderRecognitionRules(this.prisma);
+  }
+
+  async updateProviderRecognitionRule(
+    ruleStableId: string,
+    input: AccountingProviderRecognitionRuleUpdate,
+    operatorUserStableId: string,
+  ) {
+    return this.runInboxCore(() =>
+      updateAccountingProviderRecognitionRule(
+        this.prisma,
+        ruleStableId,
+        input,
+        operatorUserStableId,
+      ),
+    );
   }
 
   listUnifiedInboxItems(params: {
@@ -1411,7 +1436,10 @@ export class AccountingOperationsService {
     try {
       return await work();
     } catch (error) {
-      if (error instanceof AccountingInboxPolicyError) {
+      if (
+        error instanceof AccountingInboxPolicyError ||
+        error instanceof AccountingProviderRecognitionPolicyError
+      ) {
         throw new BadRequestException(error.message);
       }
       if (error instanceof AccountingInboxWriterNotFoundError) {

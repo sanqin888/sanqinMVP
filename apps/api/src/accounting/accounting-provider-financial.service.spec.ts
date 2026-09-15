@@ -7,6 +7,9 @@ import {
   AccountingParseStatus,
 } from '@prisma/client';
 import { AccountingProviderFinancialService } from './accounting-provider-financial.service';
+import {
+  DEFAULT_ACCOUNTING_PROVIDER_RECOGNITION_RULES,
+} from './accounting-provider-recognition.policy';
 
 describe('AccountingProviderFinancialService', () => {
   const mayCloverStatement = `
@@ -28,6 +31,9 @@ All amounts shown are in CAD funds
 
   it('treats manual/email provider recognition as a review suggestion without materializing it', async () => {
     const operations = {
+      listProviderRecognitionRules: jest
+        .fn()
+        .mockResolvedValue(DEFAULT_ACCOUNTING_PROVIDER_RECOGNITION_RULES),
       recordInboxParseRun: jest.fn().mockResolvedValue({}),
       suggestUnifiedInboxClassification: jest.fn().mockResolvedValue({}),
       recordProviderFinancialDocument: jest.fn(),
@@ -72,6 +78,57 @@ Net Total $2,021.83
     expect(storeConfig.getConfiguredStoreSnapshot).not.toHaveBeenCalled();
   });
 
+  it('keeps a recognition suggestion even when provider field parsing is incomplete', async () => {
+    const operations = {
+      listProviderRecognitionRules: jest
+        .fn()
+        .mockResolvedValue(DEFAULT_ACCOUNTING_PROVIDER_RECOGNITION_RULES),
+      recordInboxParseRun: jest.fn().mockResolvedValue({}),
+      suggestUnifiedInboxClassification: jest.fn().mockResolvedValue({}),
+    };
+    const storeConfig = { getConfiguredStoreSnapshot: jest.fn() };
+    const service = new AccountingProviderFinancialService(
+      operations as never,
+      storeConfig as never,
+    );
+
+    await expect(
+      service.parseForInboxSuggestion({
+        artifactStableId: 'acctart_uber_partial',
+        text: `
+Monthly Statement
+Consolidated Monthly Summary
+Marketplace Fees
+Net Total
+`,
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        matched: true,
+        parserValidated: false,
+        provider: AccountingFinancialProvider.UBER_EATS,
+        documentType: AccountingFinancialDocumentType.STATEMENT,
+      }) as unknown,
+    );
+    expect(operations.suggestUnifiedInboxClassification).toHaveBeenCalledWith(
+      'acctart_uber_partial',
+      {
+        classification: AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
+        selectedProvider: AccountingFinancialProvider.UBER_EATS,
+      },
+    );
+    expect(operations.recordInboxParseRun).toHaveBeenCalledTimes(1);
+    expect(operations.recordInboxParseRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        parserName: 'accounting-provider-recognition',
+        resultJson: expect.objectContaining({
+          providerRecognition: true,
+          provider: AccountingFinancialProvider.UBER_EATS,
+        }) as unknown,
+      }) as unknown,
+    );
+  });
+
   it('recognizes but does not materialize provider evidence wholly before 2026-06-01', async () => {
     const operations = {
       recordInboxParseRun: jest.fn().mockResolvedValue({}),
@@ -90,6 +147,8 @@ Net Total $2,021.83
       service.parseAndMaterialize({
         artifactStableId: 'acctart_may',
         text: mayCloverStatement,
+        providerHint: AccountingFinancialProvider.CLOVER,
+        documentTypeHint: AccountingFinancialDocumentType.STATEMENT,
       }),
     ).resolves.toEqual(
       expect.objectContaining({
@@ -136,6 +195,8 @@ Net Total $2,021.83
     await expect(
       service.parseAndMaterialize({
         artifactStableId: 'acctart_failed',
+        providerHint: AccountingFinancialProvider.FANTUAN,
+        documentTypeHint: AccountingFinancialDocumentType.STATEMENT,
         text: `
 Name: SANQIN RESTAURANT/ 15112320 CANADA INC.
 Restaurant: Qin's Traditional Roujiamo | VIP 25% OFF(YG)
@@ -323,6 +384,8 @@ Total transfer amount $3813.11
 
     const result = await service.parseAndMaterialize({
       artifactStableId: 'acctart_aug',
+      providerHint: AccountingFinancialProvider.FANTUAN,
+      documentTypeHint: AccountingFinancialDocumentType.STATEMENT,
       text: `
 Name: SANQIN RESTAURANT/ 15112320 CANADA INC.
 Restaurant: Qin's Traditional Roujiamo | VIP 25% OFF(YG)
