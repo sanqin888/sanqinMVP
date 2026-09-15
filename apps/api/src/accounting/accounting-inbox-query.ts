@@ -54,6 +54,7 @@ export async function listAccountingUnifiedInboxItems(
       inboxItemStableId: true,
       status: true,
       classification: true,
+      selectedProvider: true,
       trustDecision: true,
       materializedEntityType: true,
       materializedEntityStableId: true,
@@ -173,6 +174,8 @@ export async function readAccountingInboxExpenseContext(
     where: { inboxItemStableId },
     select: {
       status: true,
+      classification: true,
+      selectedProvider: true,
       materializedEntityType: true,
       materializedEntityStableId: true,
       artifact: {
@@ -187,6 +190,47 @@ export async function readAccountingInboxExpenseContext(
             orderBy: { createdAt: 'desc' },
             take: 1,
             select: { resultJson: true },
+          },
+        },
+      },
+    },
+  });
+}
+
+export async function readAccountingInboxProviderReviewContext(
+  client: AccountingInboxReadClient,
+  inboxItemStableId: string,
+) {
+  return client.accountingInboxItem.findUnique({
+    where: { inboxItemStableId },
+    select: {
+      status: true,
+      classification: true,
+      selectedProvider: true,
+      materializedEntityType: true,
+      materializedEntityStableId: true,
+      artifact: {
+        select: {
+          artifactStableId: true,
+          acquisitionMode: true,
+          bodyText: true,
+          emailSubject: true,
+          financialDocument: {
+            select: {
+              documentStableId: true,
+              provider: true,
+              documentType: true,
+              revision: true,
+            },
+          },
+          parseRuns: {
+            orderBy: { createdAt: 'desc' },
+            select: {
+              parserName: true,
+              parserVersion: true,
+              status: true,
+              resultJson: true,
+            },
           },
         },
       },

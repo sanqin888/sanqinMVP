@@ -8,6 +8,10 @@ const INBOX_WRITER = resolve(
   ACCOUNTING_ROOT,
   'accounting-inbox-core.writer.ts',
 );
+const INBOX_CLASSIFICATION_WRITER = resolve(
+  ACCOUNTING_ROOT,
+  'accounting-inbox-classification.writer.ts',
+);
 const INBOX_EXPENSE_WRITER = resolve(
   ACCOUNTING_ROOT,
   'accounting-inbox-expense.writer.ts',
@@ -91,6 +95,7 @@ describe('Accounting unified Inbox core ownership boundary', () => {
     );
     const allowedWriters = new Set([
       INBOX_WRITER,
+      INBOX_CLASSIFICATION_WRITER,
       INBOX_EXPENSE_WRITER,
       PROVIDER_FINANCIAL_REVIEW_WRITER,
     ]);
@@ -101,12 +106,16 @@ describe('Accounting unified Inbox core ownership boundary', () => {
 
     expect(offenders).toEqual([]);
     expect(read(INBOX_WRITER)).toMatch(mutationPattern);
+    expect(read(INBOX_CLASSIFICATION_WRITER)).toMatch(mutationPattern);
     expect(read(INBOX_EXPENSE_WRITER)).toMatch(mutationPattern);
     expect(read(PROVIDER_FINANCIAL_REVIEW_WRITER)).toMatch(mutationPattern);
   });
 
   it('does not add another Accounting PrismaService import boundary', () => {
     expect(read(INBOX_WRITER)).not.toContain('../prisma/prisma.service');
+    expect(read(INBOX_CLASSIFICATION_WRITER)).not.toContain(
+      '../prisma/prisma.service',
+    );
     expect(read(INBOX_POLICY)).not.toContain('../prisma/prisma.service');
     expect(read(INBOX_ORCHESTRATOR)).not.toContain('../prisma/prisma.service');
     expect(read(INBOX_EXPENSE_WRITER)).not.toContain(
@@ -125,6 +134,9 @@ describe('Accounting unified Inbox core ownership boundary', () => {
     );
     expect(read(GMAIL_INGEST)).not.toContain('../prisma/prisma.service');
     expect(read(INBOX_WRITER)).toContain('Prisma.TransactionClient');
+    expect(read(INBOX_CLASSIFICATION_WRITER)).toContain(
+      'Prisma.TransactionClient',
+    );
     expect(read(INBOX_EXPENSE_WRITER)).toContain('Prisma.TransactionClient');
     expect(read(PROVIDER_FINANCIAL_REVIEW_WRITER)).toContain(
       'Prisma.TransactionClient',
@@ -141,6 +153,12 @@ describe('Accounting unified Inbox core ownership boundary', () => {
     expect(gmail).toContain('acquireEmailAttachment');
     expect(acquisition).toContain('registerInboxArtifact');
     expect(controller).toContain("@Post('inbox/artifacts')");
+    expect(controller).toContain(
+      "@Put('inbox/:inboxItemStableId/classification')",
+    );
+    expect(controller).toContain(
+      "@Post('inbox/:inboxItemStableId/other/confirm')",
+    );
     expect(controller).not.toContain("@Post('files/receipts')");
   });
 
@@ -168,6 +186,7 @@ describe('Accounting unified Inbox core ownership boundary', () => {
   it('keeps 5C evidence persistence separate from Journal posting', () => {
     for (const writer of [
       INBOX_WRITER,
+      INBOX_CLASSIFICATION_WRITER,
       INBOX_EXPENSE_WRITER,
       PROVIDER_FINANCIAL_REVIEW_WRITER,
     ]) {

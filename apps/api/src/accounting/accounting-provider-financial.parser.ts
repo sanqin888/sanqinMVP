@@ -8,7 +8,7 @@ import {
 
 export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_NAME =
   'accounting-provider-financial';
-export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION = '1';
+export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION = '2';
 
 export type ProviderFinancialParseInput = {
   text: string;
@@ -48,6 +48,17 @@ export function parseProviderFinancialEvidence(
 ): ParsedProviderFinancialDocument | null {
   const text = normalizeText(input.text);
   if (!text) return null;
+
+  if (input.providerHint) {
+    switch (input.providerHint) {
+      case AccountingFinancialProvider.CLOVER:
+        return parseCloverCloseout(text, input) ?? parseCloverStatement(text);
+      case AccountingFinancialProvider.UBER_EATS:
+        return parseUberMonthlyStatement(text);
+      case AccountingFinancialProvider.FANTUAN:
+        return parseFantuanStatement(text);
+    }
+  }
 
   if (looksLikeCloverCloseout(text)) return parseCloverCloseout(text, input);
   if (looksLikeCloverStatement(text)) return parseCloverStatement(text);

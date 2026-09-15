@@ -8,6 +8,7 @@ import {
   AccountingDocumentSource,
   AccountingFinancialProvider,
   AccountingFinancialTaxRole,
+  AccountingInboxClassification,
   AccountingInboxTrustDecision,
   AccountingParseStatus,
 } from '@prisma/client';
@@ -44,6 +45,11 @@ export type AccountingTrustedSenderInput = {
   email: string;
   label?: string | null;
   isActive?: boolean;
+};
+
+export type AccountingInboxClassificationSelectionInput = {
+  classification: AccountingInboxClassification;
+  selectedProvider?: AccountingFinancialProvider | null;
 };
 
 export type AccountingInboxExpenseMaterializationInput = {
@@ -195,6 +201,38 @@ export function normalizeAccountingTrustedSender(
     email: normalizeEmail(input.email),
     label: optionalText(input.label),
     isActive: input.isActive ?? true,
+  };
+}
+
+export function normalizeAccountingInboxClassificationSelection(
+  input: AccountingInboxClassificationSelectionInput,
+) {
+  if (
+    !Object.values(AccountingInboxClassification).includes(
+      input.classification,
+    )
+  ) {
+    throw new AccountingInboxPolicyError('invalid inbox classification');
+  }
+  const selectedProvider = input.selectedProvider ?? null;
+  if (
+    selectedProvider &&
+    !Object.values(AccountingFinancialProvider).includes(selectedProvider)
+  ) {
+    throw new AccountingInboxPolicyError('invalid financial provider');
+  }
+  if (
+    input.classification !==
+      AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT &&
+    selectedProvider
+  ) {
+    throw new AccountingInboxPolicyError(
+      'selectedProvider is only valid for provider financial classification',
+    );
+  }
+  return {
+    classification: input.classification,
+    selectedProvider,
   };
 }
 

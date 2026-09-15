@@ -7,6 +7,7 @@ import {
   AccountingArtifactAcquisitionMode,
   AccountingArtifactKind,
   AccountingFinancialProvider,
+  AccountingInboxClassification,
   AccountingInboxStatus,
   AccountingInboxTrustDecision,
   AccountingParseStatus,
@@ -30,6 +31,7 @@ import { AccountingOperationsService } from './accounting-operations.service';
 import {
   AccountingProviderFinancialProcessingError,
   AccountingProviderFinancialService,
+  type AccountingProviderFinancialParseContext,
 } from './accounting-provider-financial.service';
 
 export const ACCOUNTING_INBOX_FILE_MAX_BYTES = 25 * 1024 * 1024;
@@ -245,6 +247,7 @@ export class AccountingInboxAcquisitionService {
     try {
       providerFinancialMatched = await this.parseFileIfEligible(
         artifact,
+        input.acquisitionMode,
         detected.kind,
         input.file.buffer,
         {
@@ -269,6 +272,7 @@ export class AccountingInboxAcquisitionService {
     artifact: Awaited<
       ReturnType<AccountingOperationsService['registerInboxArtifact']>
     >,
+    acquisitionMode: AccountingArtifactAcquisitionMode,
     kind: AccountingArtifactKind,
     buffer: Buffer,
     providerContext: {
@@ -286,7 +290,7 @@ export class AccountingInboxAcquisitionService {
     }
     if (kind === AccountingArtifactKind.CSV) {
       const text = buffer.toString('utf8');
-      const provider = await this.providerFinancial.parseAndMaterialize({
+      const provider = await this.parseProviderEvidence(acquisitionMode, {
         artifactStableId: artifact.artifactStableId,
         text,
         ...providerContext,
@@ -311,13 +315,14 @@ export class AccountingInboxAcquisitionService {
         resultJson: {
           inputKind: 'CSV',
           providerParserPending: true,
+          extractedText: text.slice(0, 100_000),
         },
       });
       return false;
     }
     if (kind === AccountingArtifactKind.PDF) {
       const { text, extraction } = await extractAccountingPdf(buffer);
-      const provider = await this.providerFinancial.parseAndMaterialize({
+      const provider = await this.parseProviderEvidence(acquisitionMode, {
         artifactStableId: artifact.artifactStableId,
         text,
         ...providerContext,
@@ -330,6 +335,7 @@ export class AccountingInboxAcquisitionService {
         extractedText: text.slice(0, 100_000),
       };
       await this.recordSuccessfulParse(artifact.artifactStableId, result);
+      await this.suggestExpenseIfLikelyBill(artifact.artifactStableId, result);
       return false;
     }
     if (kind === AccountingArtifactKind.IMAGE) {
@@ -368,6 +374,7 @@ export class AccountingInboxAcquisitionService {
         ocrStatus,
       };
       await this.recordSuccessfulParse(artifact.artifactStableId, result);
+      await this.suggestExpenseIfLikelyBill(artifact.artifactStableId, result);
       return false;
     }
     return false;
@@ -386,7 +393,7 @@ export class AccountingInboxAcquisitionService {
     if (artifact.inboxItem?.status !== AccountingInboxStatus.PENDING_REVIEW) {
       return;
     }
-    const provider = await this.providerFinancial.parseAndMaterialize({
+    const provider = await this.providerFinancial.parseForInboxSuggestion({
       artifactStableId: artifact.artifactStableId,
       text,
       ...providerContext,
@@ -400,6 +407,35 @@ export class AccountingInboxAcquisitionService {
       extractedText: text.slice(0, 100_000),
     };
     await this.recordSuccessfulParse(artifact.artifactStableId, result);
+    await this.suggestExpenseIfLikelyBill(artifact.artifactStableId, result);
+  }
+
+  private async parseProviderEvidence(
+    acquisitionMode: AccountingArtifactAcquisitionMode,
+    input: AccountingProviderFinancialParseContext,
+  ) {
+    return acquisitionMode === AccountingArtifactAcquisitionMode.PROVIDER_API
+      ? this.providerFinancial.parseAndMaterialize(input)
+      : this.providerFinancial.parseForInboxSuggestion(input);
+  }
+
+  private async suggestExpenseIfLikelyBill(
+    artifactStableId: string,
+    result: TextReviewExtraction | ImageReviewExtraction,
+  ) {
+    if (result.reviewDisposition !== 'LIKELY_BILL') return;
+    try {
+      await this.operations.suggestUnifiedInboxClassification(artifactStableId, {
+        classification: AccountingInboxClassification.EXPENSE_DOCUMENT,
+        selectedProvider: null,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Accounting Inbox expense suggestion failed for ${artifactStableId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
 
   private async recordSuccessfulParse(

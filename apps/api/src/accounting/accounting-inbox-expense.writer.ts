@@ -30,6 +30,7 @@ export async function materializeInboxExpenseInTx(
           id: true,
           status: true,
           classification: true,
+          selectedProvider: true,
           materializedEntityType: true,
           materializedEntityStableId: true,
         },
@@ -60,6 +61,14 @@ export async function materializeInboxExpenseInTx(
   if (item.status !== AccountingInboxStatus.PENDING_REVIEW) {
     throw new AccountingInboxWriterConflictError(
       'inbox artifact is not eligible for expense materialization',
+    );
+  }
+  if (
+    item.classification !== AccountingInboxClassification.EXPENSE_DOCUMENT ||
+    item.selectedProvider
+  ) {
+    throw new AccountingInboxWriterConflictError(
+      'inbox artifact must be classified as an expense before materialization',
     );
   }
 

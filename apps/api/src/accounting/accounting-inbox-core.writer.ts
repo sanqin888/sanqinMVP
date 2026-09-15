@@ -40,6 +40,7 @@ const ARTIFACT_PUBLIC_SELECT = {
       inboxItemStableId: true,
       status: true,
       classification: true,
+      selectedProvider: true,
       trustDecision: true,
       materializedEntityType: true,
       materializedEntityStableId: true,
@@ -121,6 +122,7 @@ export async function registerInboxArtifactInTx(
       inboxItemStableId: true,
       status: true,
       classification: true,
+      selectedProvider: true,
       trustDecision: true,
       materializedEntityType: true,
       materializedEntityStableId: true,
@@ -393,6 +395,7 @@ export async function recordProviderFinancialDocumentInTx(
     where: { id: artifact.inboxItem.id },
     data: {
       classification: AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
+      selectedProvider: normalized.provider,
       materializedEntityType:
         AccountingInboxMaterializedEntityType.PROVIDER_FINANCIAL_DOCUMENT,
       materializedEntityStableId: documentStableId,
@@ -537,6 +540,7 @@ export function presentRegisteredArtifact(
           inboxItemStableId: row.inboxItem.inboxItemStableId,
           status: row.inboxItem.status,
           classification: row.inboxItem.classification,
+          selectedProvider: row.inboxItem.selectedProvider,
           trustDecision: row.inboxItem.trustDecision,
           materializedEntityType: row.inboxItem.materializedEntityType,
           materializedEntityStableId: row.inboxItem.materializedEntityStableId,

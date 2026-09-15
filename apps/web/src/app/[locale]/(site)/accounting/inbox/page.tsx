@@ -8,6 +8,8 @@ import { AccountingInboxItemsList } from './inbox-items-list';
 import {
   type AccountingAccount,
   type AccountingCategory,
+  type AccountingFinancialProvider,
+  type AccountingInboxClassification,
   type AccountingInboxItem,
   type AccountingTrustedSender,
 } from './inbox-model';
@@ -27,10 +29,12 @@ export default function AccountingInboxPage() {
   const [uploading, setUploading] = useState(false);
   const [running, setRunning] = useState(false);
   const [busySender, setBusySender] = useState(false);
+  const [classifyingId, setClassifyingId] = useState<string | null>(null);
   const [discardingId, setDiscardingId] = useState<string | null>(null);
   const [confirmingProviderId, setConfirmingProviderId] = useState<string | null>(
     null,
   );
+  const [confirmingOtherId, setConfirmingOtherId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -115,6 +119,37 @@ export default function AccountingInboxPage() {
     }
   }
 
+  async function updateClassification(
+    item: AccountingInboxItem,
+    classification: AccountingInboxClassification,
+    selectedProvider: AccountingFinancialProvider | null,
+  ) {
+    setClassifyingId(item.inboxItemStableId);
+    setError(null);
+    setMessage(null);
+    try {
+      await apiFetch(`/accounting/inbox/${item.inboxItemStableId}/classification`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ classification, selectedProvider }),
+      });
+      if (
+        reviewing?.inboxItemStableId === item.inboxItemStableId &&
+        classification !== 'EXPENSE_DOCUMENT'
+      ) {
+        setReviewing(null);
+      }
+      setMessage(
+        isZh ? '资料类型已更新。' : 'Document classification updated.',
+      );
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setClassifyingId(null);
+    }
+  }
+
   async function confirmProviderFinancial(item: AccountingInboxItem) {
     setConfirmingProviderId(item.inboxItemStableId);
     setError(null);
@@ -134,6 +169,25 @@ export default function AccountingInboxPage() {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setConfirmingProviderId(null);
+    }
+  }
+
+  async function confirmOther(item: AccountingInboxItem) {
+    setConfirmingOtherId(item.inboxItemStableId);
+    setError(null);
+    setMessage(null);
+    try {
+      await apiFetch(`/accounting/inbox/${item.inboxItemStableId}/other/confirm`, {
+        method: 'POST',
+      });
+      setMessage(
+        isZh ? '其他资料已标记为已审核。' : 'Other evidence marked as reviewed.',
+      );
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setConfirmingOtherId(null);
     }
   }
 
@@ -189,8 +243,8 @@ export default function AccountingInboxPage() {
           </h1>
           <p className="mt-1 max-w-3xl text-sm text-slate-500">
             {isZh
-              ? 'Gmail 正文、附件和手动上传文件都会先成为不可变的来源凭证；只有明确选择“按费用处理”后才会进入费用入账流程。平台财务资料可保留在这里等待专用解析。'
-              : 'Gmail bodies, attachments, and manual uploads first become immutable source evidence. Nothing becomes an expense until you explicitly review it as one; provider financial evidence can remain here for provider-specific parsing.'}
+              ? 'Gmail 正文、附件和手动上传文件都会先成为不可变的来源凭证。系统只给出资料类型/平台建议，你可以在收件箱中改为费用单、结算单或其他；只有人工确认后才进入对应财务流程。'
+              : 'Gmail bodies, attachments, and manual uploads first become immutable source evidence. System recognition is only a document-type/provider suggestion; you can change it to an expense, statement, or other evidence before confirming the corresponding workflow.'}
           </p>
         </div>
         <button
@@ -337,11 +391,15 @@ export default function AccountingInboxPage() {
         loading={loading}
         isZh={isZh}
         busySender={busySender}
+        classifyingId={classifyingId}
         discardingId={discardingId}
         confirmingProviderId={confirmingProviderId}
+        confirmingOtherId={confirmingOtherId}
         onTrustSender={(email) => saveTrustedSender(email)}
+        onClassificationChange={updateClassification}
         onReviewExpense={setReviewing}
         onConfirmProviderFinancial={confirmProviderFinancial}
+        onConfirmOther={confirmOther}
         onDiscard={discard}
       />
     </div>

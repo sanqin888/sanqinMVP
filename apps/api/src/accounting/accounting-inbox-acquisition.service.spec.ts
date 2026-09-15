@@ -18,6 +18,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import {
   AccountingArtifactKind,
+  AccountingFinancialProvider,
   AccountingInboxClassification,
   AccountingInboxStatus,
   AccountingInboxTrustDecision,
@@ -36,6 +37,7 @@ function registeredArtifact(kind: AccountingArtifactKind, contentHash: string) {
       inboxItemStableId: 'acctinbox_1',
       status: AccountingInboxStatus.PENDING_REVIEW,
       classification: AccountingInboxClassification.UNKNOWN,
+      selectedProvider: null,
       trustDecision: AccountingInboxTrustDecision.NOT_APPLICABLE,
       materializedEntityType: null,
       materializedEntityStableId: null,
@@ -72,9 +74,11 @@ describe('AccountingInboxAcquisitionService', () => {
             Promise.resolve(registeredArtifact(input.kind, input.contentHash)),
         ),
       recordInboxParseRun: jest.fn().mockResolvedValue({}),
+      suggestUnifiedInboxClassification: jest.fn().mockResolvedValue({}),
     };
     const providerFinancial = {
       parseAndMaterialize: jest.fn().mockResolvedValue({ matched: false }),
+      parseForInboxSuggestion: jest.fn().mockResolvedValue({ matched: false }),
       recordUnsupportedUberApiParse: jest.fn().mockResolvedValue(undefined),
     };
     return {
@@ -87,8 +91,8 @@ describe('AccountingInboxAcquisitionService', () => {
     };
   }
 
-  it('sends manual PDF evidence through SourceArtifact and the generic parser', async () => {
-    const { service, operations } = makeService();
+  it('sends manual PDF evidence through SourceArtifact and suggestion-only parsing', async () => {
+    const { service, operations, providerFinancial } = makeService();
     const result = await service.acquireManualFile({
       originalname: 'invoice.pdf',
       mimetype: 'application/pdf',
@@ -110,6 +114,27 @@ describe('AccountingInboxAcquisitionService', () => {
         artifactStableId: 'acctart_pdf',
       }),
     );
+    expect(providerFinancial.parseForInboxSuggestion).toHaveBeenCalled();
+    expect(providerFinancial.parseAndMaterialize).not.toHaveBeenCalled();
+  });
+
+  it('keeps Provider API CSV evidence on the existing automatic materialization path', async () => {
+    const { service, providerFinancial } = makeService();
+    providerFinancial.parseAndMaterialize.mockResolvedValueOnce({ matched: true });
+
+    await service.acquireProviderApiCsv({
+      transportIdentity: 'uber-report:report_1:artifact_1',
+      fileName: 'finance.csv',
+      content: 'Metric,Amount\nSales,12.34\n',
+      provider: AccountingFinancialProvider.UBER_EATS,
+      reportType: 'FINANCE_SUMMARY_REPORT',
+      periodStart: '2026-08-01',
+      periodEnd: '2026-08-31',
+      providerDocumentRef: 'report_1:1',
+    });
+
+    expect(providerFinancial.parseAndMaterialize).toHaveBeenCalled();
+    expect(providerFinancial.parseForInboxSuggestion).not.toHaveBeenCalled();
   });
 
   it('preserves CSV evidence but leaves it for provider-specific parsing', async () => {
@@ -127,6 +152,7 @@ describe('AccountingInboxAcquisitionService', () => {
         resultJson: {
           inputKind: 'CSV',
           providerParserPending: true,
+          extractedText: 'date,total\n2026-06-01,12.34\n',
         },
       }),
     );
@@ -134,7 +160,7 @@ describe('AccountingInboxAcquisitionService', () => {
 
   it('does not fall back to generic parsing after recognized provider processing fails', async () => {
     const { service, operations, providerFinancial } = makeService();
-    providerFinancial.parseAndMaterialize.mockRejectedValueOnce(
+    providerFinancial.parseForInboxSuggestion.mockRejectedValueOnce(
       new AccountingProviderFinancialProcessingError(
         'simulated provider persistence failure',
       ),
@@ -170,9 +196,11 @@ describe('AccountingInboxAcquisitionService', () => {
         },
       }),
       recordInboxParseRun: jest.fn(),
+      suggestUnifiedInboxClassification: jest.fn(),
     };
     const providerFinancial = {
       parseAndMaterialize: jest.fn().mockResolvedValue({ matched: false }),
+      parseForInboxSuggestion: jest.fn().mockResolvedValue({ matched: false }),
       recordUnsupportedUberApiParse: jest.fn().mockResolvedValue(undefined),
     };
     const service = new AccountingInboxAcquisitionService(
@@ -203,9 +231,11 @@ describe('AccountingInboxAcquisitionService', () => {
         replayed: true,
       }),
       recordInboxParseRun: jest.fn(),
+      suggestUnifiedInboxClassification: jest.fn(),
     };
     const providerFinancial = {
       parseAndMaterialize: jest.fn().mockResolvedValue({ matched: false }),
+      parseForInboxSuggestion: jest.fn().mockResolvedValue({ matched: false }),
       recordUnsupportedUberApiParse: jest.fn().mockResolvedValue(undefined),
     };
     const service = new AccountingInboxAcquisitionService(
@@ -233,6 +263,28 @@ describe('AccountingInboxAcquisitionService', () => {
     const inboxDir = path.join(uploadRoot, 'accounting', 'inbox');
     expect(fs.existsSync(inboxDir) ? fs.readdirSync(inboxDir) : []).toEqual([]);
     expect(operations.recordInboxParseRun).toHaveBeenCalled();
+  });
+
+  it('stores likely-bill recognition as an editable expense classification suggestion', async () => {
+    const { service, operations } = makeService();
+    await service.acquireEmailBody(
+      {
+        messageId: 'gmail-message-expense',
+        senderEmail: 'trusted@example.com',
+        subject: 'Bell invoice',
+        receivedAt: '2026-09-12T12:00:00.000Z',
+      },
+      'Invoice subtotal $75.00 HST $9.75 Total $84.75',
+      AccountingInboxTrustDecision.TRUSTED,
+    );
+
+    expect(operations.suggestUnifiedInboxClassification).toHaveBeenCalledWith(
+      'acctart_email_body',
+      {
+        classification: AccountingInboxClassification.EXPENSE_DOCUMENT,
+        selectedProvider: null,
+      },
+    );
   });
 
   it('uses normalized body content, not Gmail message id, as content identity', async () => {
