@@ -16,6 +16,7 @@ import {
   latestParse,
   makeReviewKey,
   money,
+  reconciledTextractLineItemHints,
   toCents,
   toDollars,
 } from './inbox-model';
@@ -36,6 +37,8 @@ type QuickRow = {
   amount: string;
   categoryStableId: string;
   taxMode: QuickTaxMode;
+  description: string | null;
+  recognitionHint: boolean;
 };
 
 export function AccountingInboxExpenseReviewPanel({
@@ -102,6 +105,7 @@ export function AccountingInboxExpenseReviewPanel({
     const canPrefillCadBookAmount =
       extraction.sourceCurrencyEvidence === 'EXPLICIT_TEXT' &&
       detectedSourceCurrency === 'CAD';
+    const recognizedLineItemHints = reconciledTextractLineItemHints(extraction);
 
     setDate(extraction.date ?? '');
     setSourceCurrency(detectedSourceCurrency);
@@ -120,8 +124,17 @@ export function AccountingInboxExpenseReviewPanel({
         tax: canPrefillCadBookAmount ? toDollars(taxCents) : '',
       },
     ]);
-    setQuickRows([]);
-    setShowQuick(false);
+    setQuickRows(
+      recognizedLineItemHints.map((hint) => ({
+        key: makeReviewKey(),
+        amount: toDollars(hint.priceCents),
+        categoryStableId: defaultCategory,
+        taxMode: 'EXEMPT' as const,
+        description: hint.description,
+        recognitionHint: true,
+      })),
+    );
+    setShowQuick(recognizedLineItemHints.length > 0);
     setError(null);
   }, [cadAccounts, expenseCategories, item]);
 
@@ -149,6 +162,9 @@ export function AccountingInboxExpenseReviewPanel({
       differenceCents: totalCents - subtotalCents - taxCents,
     };
   }, [rows, total]);
+  const hasRecognizedQuickRows = quickRows.some((row) => row.recognitionHint);
+  const canAggregateRecognizedQuickRows =
+    !hasRecognizedQuickRows || sourceCurrency.trim().toUpperCase() === 'CAD';
 
   function addQuickRow(options?: {
     focusAmount?: boolean;
@@ -164,6 +180,8 @@ export function AccountingInboxExpenseReviewPanel({
         expenseCategories[0]?.categoryStableId ||
         '',
       taxMode: inheritFrom?.taxMode ?? 'EXEMPT',
+      description: null,
+      recognitionHint: false,
     };
     if (options?.focusAmount) {
       pendingQuickAmountFocus.current = nextRow.key;
@@ -192,6 +210,14 @@ export function AccountingInboxExpenseReviewPanel({
   }
 
   function aggregateQuickRows() {
+    if (!canAggregateRecognizedQuickRows) {
+      setError(
+        isZh
+          ? '识别条目金额来自原始凭证。请先确认原始币种为 CAD，再汇总到 CAD 费用分类。'
+          : 'Recognized item amounts come from the source document. Confirm the source currency is CAD before aggregating them into CAD expense categories.',
+      );
+      return;
+    }
     const grouped = new Map<string, { amountCents: number; taxCents: number }>();
     for (const row of quickRows) {
       const amountCents = toCents(row.amount);
@@ -327,7 +353,10 @@ export function AccountingInboxExpenseReviewPanel({
               className="w-20 rounded border px-2 py-1 uppercase"
               maxLength={3}
               value={sourceCurrency}
-              onChange={(event) => setSourceCurrency(event.target.value.toUpperCase())}
+              onChange={(event) => {
+                setSourceCurrency(event.target.value.toUpperCase());
+                setError(null);
+              }}
             />
           </label>
         </div>
@@ -435,8 +464,8 @@ export function AccountingInboxExpenseReviewPanel({
             </strong>
             <p className="mt-1 text-xs text-slate-600">
               {isZh
-                ? '按收据商品逐行录入 CAD 金额、类别和税率；金额后按 Enter 可继续下一项，并继承上一项类别/税率。汇总后只保留类别总额，商品行不会保存。'
-                : 'Enter receipt items one by one in CAD. Press Enter after an amount to continue with the previous category/tax. Only category totals are persisted.'}
+                ? 'Textract 条目与税前金额可靠闭合时会自动预填原始凭证金额；确认原始币种为 CAD 后可直接归类。手工新增时，金额后按 Enter 可继续下一项并继承上一项类别/税率。最终只保存类别汇总。'
+                : 'When Textract item amounts reliably reconcile to the subtotal, source-document amounts are prefilled automatically. Confirm the source currency is CAD before aggregating them. Manual rows keep the Enter-to-next category/tax workflow; only category totals are persisted.'}
             </p>
           </div>
           <button
@@ -458,34 +487,60 @@ export function AccountingInboxExpenseReviewPanel({
         </div>
         {showQuick ? (
           <div className="mt-3 space-y-2">
+            {hasRecognizedQuickRows ? (
+              <p className="rounded bg-white/80 px-3 py-2 text-xs text-slate-600">
+                {canAggregateRecognizedQuickRows
+                  ? isZh
+                    ? '已按 Textract 识别结果预填条目金额，并确认原始币种为 CAD；可直接调整类别/税率后汇总。'
+                    : 'Textract item amounts are prefilled and the source currency is confirmed as CAD. Review category/tax choices, then aggregate.'
+                  : isZh
+                    ? '已预填 Textract 识别的原始凭证条目金额。请先在上方确认原始币种为 CAD；在此之前不会把这些原币金额汇总成 CAD 费用。'
+                    : 'Textract source-document item amounts are prefilled. Confirm the source currency is CAD above before these source amounts can be aggregated into CAD expenses.'}
+              </p>
+            ) : null}
             {quickRows.map((row, index) => (
               <div
                 key={row.key}
-                className="grid gap-2 md:grid-cols-[140px_1fr_130px_70px]"
+                className="grid gap-2 md:grid-cols-[180px_1fr_130px_70px]"
               >
-                <input
-                  ref={(node) => {
-                    if (node) quickAmountInputs.current.set(row.key, node);
-                    else quickAmountInputs.current.delete(row.key);
-                  }}
-                  className="rounded border bg-white px-3 py-2 text-sm"
-                  inputMode="decimal"
-                  enterKeyHint="next"
-                  placeholder="CAD 0.00"
-                  value={row.amount}
-                  onChange={(event) =>
-                    setQuickRows((current) =>
-                      current.map((entry) =>
-                        entry.key === row.key
-                          ? { ...entry, amount: event.target.value }
-                          : entry,
-                      ),
-                    )
-                  }
-                  onKeyDown={(event) =>
-                    handleQuickAmountKeyDown(event, row, index)
-                  }
-                />
+                <div className="min-w-0">
+                  {row.recognitionHint ? (
+                    <p
+                      className="mb-1 truncate text-xs text-slate-500"
+                      title={row.description ?? undefined}
+                    >
+                      {row.description ||
+                        (isZh ? `识别条目 ${index + 1}` : `Detected item ${index + 1}`)}
+                    </p>
+                  ) : null}
+                  <input
+                    ref={(node) => {
+                      if (node) quickAmountInputs.current.set(row.key, node);
+                      else quickAmountInputs.current.delete(row.key);
+                    }}
+                    className="w-full rounded border bg-white px-3 py-2 text-sm"
+                    inputMode="decimal"
+                    enterKeyHint="next"
+                    placeholder={
+                      row.recognitionHint
+                        ? `${sourceCurrency || '?'} 0.00`
+                        : 'CAD 0.00'
+                    }
+                    value={row.amount}
+                    onChange={(event) =>
+                      setQuickRows((current) =>
+                        current.map((entry) =>
+                          entry.key === row.key
+                            ? { ...entry, amount: event.target.value }
+                            : entry,
+                        ),
+                      )
+                    }
+                    onKeyDown={(event) =>
+                      handleQuickAmountKeyDown(event, row, index)
+                    }
+                  />
+                </div>
                 <select
                   className="rounded border bg-white px-3 py-2 text-sm"
                   value={row.categoryStableId}
@@ -552,7 +607,8 @@ export function AccountingInboxExpenseReviewPanel({
               <button
                 type="button"
                 onClick={aggregateQuickRows}
-                className="rounded bg-slate-900 px-3 py-1.5 text-sm text-white"
+                disabled={!canAggregateRecognizedQuickRows}
+                className="rounded bg-slate-900 px-3 py-1.5 text-sm text-white disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {isZh ? '汇总到费用分类' : 'Aggregate categories'}
               </button>

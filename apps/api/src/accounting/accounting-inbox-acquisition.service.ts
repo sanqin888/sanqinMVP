@@ -48,6 +48,7 @@ import { normalizeAccountingManualUploadFilename } from './accounting-upload-fil
 export const ACCOUNTING_INBOX_FILE_MAX_BYTES = 25 * 1024 * 1024;
 const GENERIC_PARSER_NAME = 'accounting-generic-document-review';
 const GENERIC_PARSER_VERSION = '2';
+const TEXTRACT_LINE_ITEM_HINTS_PARSER_VERSION = '3';
 
 type AccountingInboxFile = {
   originalname: string;
@@ -702,10 +703,14 @@ export class AccountingInboxAcquisitionService {
     artifactStableId: string,
     result: TextReviewExtraction | PdfReviewExtraction | ImageReviewExtraction,
   ) {
+    const parserVersion =
+      'textractEvidence' in result && result.textractEvidence
+        ? TEXTRACT_LINE_ITEM_HINTS_PARSER_VERSION
+        : GENERIC_PARSER_VERSION;
     await this.operations.recordInboxParseRun({
       artifactStableId,
       parserName: GENERIC_PARSER_NAME,
-      parserVersion: GENERIC_PARSER_VERSION,
+      parserVersion,
       status: AccountingParseStatus.SUCCESS,
       resultHash: sha256(Buffer.from(JSON.stringify(result), 'utf8')),
       resultJson: result,

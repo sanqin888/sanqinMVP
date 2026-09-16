@@ -230,6 +230,8 @@ describe('AccountingInboxAcquisitionService', () => {
         lineItemPriceCount: 0,
         lineItemPriceSumCents: null,
         lineItemsReconcileToSubtotal: null,
+        lineItemHints: [],
+        lineItemHintsTruncated: false,
         submittedDocument: {
           kind: 'PDF',
           cropApplied: false,
@@ -470,6 +472,16 @@ describe('AccountingInboxAcquisitionService', () => {
         lineItemPriceCount: 3,
         lineItemPriceSumCents: 4238,
         lineItemsReconcileToSubtotal: true,
+        lineItemHints: [
+          { description: 'Meat the', priceCents: 1132, confidence: 99.1 },
+          { description: 'Meat', priceCents: 2307, confidence: 99.2 },
+          {
+            description: 'New Zealand Golden Kiwi',
+            priceCents: 799,
+            confidence: 98.8,
+          },
+        ],
+        lineItemHintsTruncated: false,
         submittedDocument: {
           kind: 'IMAGE',
           cropApplied: true,
@@ -506,6 +518,7 @@ describe('AccountingInboxAcquisitionService', () => {
     );
     expect(operations.recordInboxParseRun).toHaveBeenCalledWith(
       expect.objectContaining({
+        parserVersion: '3',
         status: AccountingParseStatus.SUCCESS,
         resultJson: expect.objectContaining({
           inputKind: 'IMAGE',
@@ -520,6 +533,15 @@ describe('AccountingInboxAcquisitionService', () => {
               confidence: 88,
               ambiguous: false,
             },
+            lineItemHints: [
+              { description: 'Meat the', priceCents: 1132, confidence: 99.1 },
+              { description: 'Meat', priceCents: 2307, confidence: 99.2 },
+              {
+                description: 'New Zealand Golden Kiwi',
+                priceCents: 799,
+                confidence: 98.8,
+              },
+            ],
           }) as unknown,
         }) as unknown,
       }) as unknown,
@@ -551,6 +573,7 @@ describe('AccountingInboxAcquisitionService', () => {
     expect(imageOcr).toHaveBeenCalledWith(original);
     expect(operations.recordInboxParseRun).toHaveBeenCalledWith(
       expect.objectContaining({
+        parserVersion: '2',
         status: AccountingParseStatus.SUCCESS,
         resultJson: expect.objectContaining({
           ocrEngine: 'TESSERACT',
