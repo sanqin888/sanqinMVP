@@ -37,6 +37,7 @@ import {
   ACCOUNTING_STRUCTURED_EXPENSE_CSV_PARSER_VERSION,
   parseAccountingStructuredExpenseCsv,
 } from './accounting-structured-expense-csv';
+import { normalizeAccountingManualUploadFilename } from './accounting-upload-filename';
 
 export const ACCOUNTING_INBOX_FILE_MAX_BYTES = 25 * 1024 * 1024;
 const GENERIC_PARSER_NAME = 'accounting-generic-document-review';
@@ -96,7 +97,10 @@ export class AccountingInboxAcquisitionService {
     return this.acquireFile({
       acquisitionMode: AccountingArtifactAcquisitionMode.MANUAL_UPLOAD,
       transportIdentity: `manual:${createId()}`,
-      file,
+      file: {
+        ...file,
+        originalname: normalizeAccountingManualUploadFilename(file.originalname),
+      },
       trustDecision: AccountingInboxTrustDecision.NOT_APPLICABLE,
       metadataJson: { acquisition: 'MANUAL_UPLOAD' },
     });
