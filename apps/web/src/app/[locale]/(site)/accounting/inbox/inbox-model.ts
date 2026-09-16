@@ -10,6 +10,96 @@ export type AccountingAccount = {
   name: string;
 };
 
+export type AccountingFinancialProvider = 'CLOVER' | 'UBER_EATS' | 'FANTUAN';
+
+export type AccountingImageRetentionProfile =
+  | 'SPACE_SAVER'
+  | 'BALANCED'
+  | 'HIGH_QUALITY'
+  | 'NEAR_ORIGINAL';
+
+export type AccountingImageRetentionDerivativePreview = {
+  url: string;
+  contentHash?: string;
+  byteSize: number;
+  mimeType: string;
+  width: number;
+  height: number;
+  profile: AccountingImageRetentionProfile;
+  maxDimension: number;
+  quality: number;
+  savingsPercent: number;
+};
+
+export type AccountingImageRetentionCandidatePreview = {
+  state: 'CANDIDATE_READY';
+  artifactStableId: string;
+  original: {
+    url: string;
+    byteSize: number;
+    mimeType: string | null;
+    width: number;
+    height: number;
+  };
+  candidate: AccountingImageRetentionDerivativePreview & {
+    contentHash: string;
+    mimeType: 'image/webp';
+  };
+};
+
+export type AccountingImageRetentionQueueItem = {
+  inboxItemStableId: string;
+  artifactStableId: string;
+  originalFilename: string | null;
+  retentionState: 'ORIGINAL_PRESENT' | 'CANDIDATE_READY' | 'PURGE_PENDING';
+  createdAt: string;
+  updatedAt: string;
+  original: {
+    url: string;
+    byteSize: number | null;
+    mimeType: string | null;
+    width: number | null;
+    height: number | null;
+  };
+  derivative: AccountingImageRetentionDerivativePreview | null;
+};
+
+export type AccountingImageRetentionAccepted = {
+  state: 'COMPRESSED_ONLY';
+  artifactStableId: string;
+  originalPurgedAt: string | null;
+  retained: {
+    url: string;
+    contentHash: string;
+    byteSize: number;
+    mimeType: string;
+    width: number | null;
+    height: number | null;
+    profile: AccountingImageRetentionProfile | null;
+    maxDimension: number | null;
+    quality: number | null;
+    savingsPercent: number;
+  };
+};
+
+export type AccountingInboxClassification =
+  | 'EXPENSE_DOCUMENT'
+  | 'PROVIDER_FINANCIAL_DOCUMENT'
+  | 'OTHER_DOCUMENT'
+  | 'UNKNOWN';
+
+export type AccountingInboxParsedFinancialLine = {
+  rawName?: string | null;
+  component: string;
+  postingTreatment:
+    | 'POSTABLE'
+    | 'CONTROL_TOTAL'
+    | 'RECONCILIATION_ONLY'
+    | 'UNCLASSIFIED';
+  taxRole: 'NONE' | 'SALES_TAX' | 'INPUT_TAX' | 'OTHER_TAX';
+  amountCents: number;
+};
+
 export type AccountingInboxParseResult = {
   date?: string | null;
   subtotalCents?: number | null;
@@ -25,14 +115,37 @@ export type AccountingInboxParseResult = {
   ocrEngine?: 'TESSERACT';
   ocrStatus?: 'SUCCESS' | 'ERROR';
   providerParserPending?: boolean;
+  csvStructureUnrecognized?: boolean;
+  structuredExpenseCsv?: boolean;
+  structuredExpenseRowCount?: number;
+  structuredExpenseInvalidRowCount?: number;
+  structuredExpenseRowsTruncated?: boolean;
+  requiresBatchExpenseImport?: boolean;
+  structuredExpenseRows?: Array<{
+    rowNumber: number;
+    occurredAt: string;
+    totalCents: number;
+    description: string | null;
+    counterparty: string | null;
+  }>;
+  providerRecognition?: boolean;
   providerFinancial?: boolean;
+  recognitionRuleStableId?: string;
+  recognitionRuleVersion?: number;
+  matchedRequiredKeywords?: string[];
+  matchedOptionalKeywords?: string[];
+  providerRecognitionAmbiguousRuleStableIds?: string[];
   excludedBeforeFinancialHistory?: boolean;
   financialHistoryRequiredFrom?: string;
-  provider?: 'CLOVER' | 'UBER_EATS' | 'FANTUAN';
+  provider?: AccountingFinancialProvider;
   documentType?: 'BATCH_CONTROL' | 'STATEMENT' | 'API_REPORT' | 'OTHER';
+  businessIdentityKey?: string;
+  providerMerchantRef?: string | null;
+  providerDocumentRef?: string | null;
   periodStart?: string | null;
   periodEnd?: string | null;
   lineCount?: number;
+  lines?: AccountingInboxParsedFinancialLine[];
   extractedText?: string;
 };
 
@@ -53,7 +166,7 @@ export type AccountingProviderFinancialLine = {
 
 export type AccountingProviderFinancialDocument = {
   documentStableId: string;
-  provider: 'CLOVER' | 'UBER_EATS' | 'FANTUAN';
+  provider: AccountingFinancialProvider;
   documentType: 'BATCH_CONTROL' | 'STATEMENT' | 'API_REPORT' | 'OTHER';
   revision: number;
   providerMerchantRef: string | null;
@@ -75,10 +188,8 @@ export type AccountingInboxItem = {
     | 'CONFIRMED'
     | 'ERROR'
     | 'DISCARDED';
-  classification:
-    | 'EXPENSE_DOCUMENT'
-    | 'PROVIDER_FINANCIAL_DOCUMENT'
-    | 'UNKNOWN';
+  classification: AccountingInboxClassification;
+  selectedProvider: AccountingFinancialProvider | null;
   trustDecision: 'TRUSTED' | 'UNTRUSTED' | 'NOT_APPLICABLE';
   materializedEntityType:
     | 'EXPENSE_DOCUMENT'

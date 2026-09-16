@@ -8,13 +8,37 @@ const INBOX_WRITER = resolve(
   ACCOUNTING_ROOT,
   'accounting-inbox-core.writer.ts',
 );
+const INBOX_CLASSIFICATION_WRITER = resolve(
+  ACCOUNTING_ROOT,
+  'accounting-inbox-classification.writer.ts',
+);
 const INBOX_EXPENSE_WRITER = resolve(
   ACCOUNTING_ROOT,
   'accounting-inbox-expense.writer.ts',
 );
+const IMAGE_RETENTION_WRITER = resolve(
+  ACCOUNTING_ROOT,
+  'accounting-image-retention.writer.ts',
+);
+const IMAGE_RETENTION_SERVICE = resolve(
+  ACCOUNTING_ROOT,
+  'accounting-image-retention.service.ts',
+);
 const PROVIDER_FINANCIAL_REVIEW_WRITER = resolve(
   ACCOUNTING_ROOT,
   'accounting-provider-financial-review.writer.ts',
+);
+const PROVIDER_RECOGNITION_WRITER = resolve(
+  ACCOUNTING_ROOT,
+  'accounting-provider-recognition.writer.ts',
+);
+const PROVIDER_RECOGNITION_QUERY = resolve(
+  ACCOUNTING_ROOT,
+  'accounting-provider-recognition.query.ts',
+);
+const PROVIDER_RECOGNITION_ORCHESTRATOR = resolve(
+  ACCOUNTING_ROOT,
+  'accounting-provider-recognition.orchestrator.ts',
 );
 const INBOX_POLICY = resolve(
   ACCOUNTING_ROOT,
@@ -85,14 +109,17 @@ function productionTypescriptFiles(root: string): string[] {
 describe('Accounting unified Inbox core ownership boundary', () => {
   it('keeps Unified Inbox Prisma mutations inside the designated Accounting writers', () => {
     const delegate =
-      'accounting(?:SourceArtifact|ParseRun|InboxItem|TrustedSender|ProviderFinancialDocument|ProviderFinancialLine|ProviderFinancialCoverage)';
+      'accounting(?:SourceArtifact|ArtifactBinaryRetention|ParseRun|InboxItem|TrustedSender|ProviderRecognitionRule|ProviderFinancialDocument|ProviderFinancialLine|ProviderFinancialCoverage)';
     const mutationPattern = new RegExp(
       `\\.${delegate}\\.(?:create|createMany|update|updateMany|delete|deleteMany|upsert)\\s*\\(`,
     );
     const allowedWriters = new Set([
       INBOX_WRITER,
+      INBOX_CLASSIFICATION_WRITER,
       INBOX_EXPENSE_WRITER,
+      IMAGE_RETENTION_WRITER,
       PROVIDER_FINANCIAL_REVIEW_WRITER,
+      PROVIDER_RECOGNITION_WRITER,
     ]);
     const offenders = productionTypescriptFiles(API_SRC_ROOT)
       .filter((path) => !allowedWriters.has(path))
@@ -101,18 +128,39 @@ describe('Accounting unified Inbox core ownership boundary', () => {
 
     expect(offenders).toEqual([]);
     expect(read(INBOX_WRITER)).toMatch(mutationPattern);
+    expect(read(INBOX_CLASSIFICATION_WRITER)).toMatch(mutationPattern);
     expect(read(INBOX_EXPENSE_WRITER)).toMatch(mutationPattern);
+    expect(read(IMAGE_RETENTION_WRITER)).toMatch(mutationPattern);
     expect(read(PROVIDER_FINANCIAL_REVIEW_WRITER)).toMatch(mutationPattern);
+    expect(read(PROVIDER_RECOGNITION_WRITER)).toMatch(mutationPattern);
   });
 
   it('does not add another Accounting PrismaService import boundary', () => {
     expect(read(INBOX_WRITER)).not.toContain('../prisma/prisma.service');
+    expect(read(INBOX_CLASSIFICATION_WRITER)).not.toContain(
+      '../prisma/prisma.service',
+    );
     expect(read(INBOX_POLICY)).not.toContain('../prisma/prisma.service');
     expect(read(INBOX_ORCHESTRATOR)).not.toContain('../prisma/prisma.service');
     expect(read(INBOX_EXPENSE_WRITER)).not.toContain(
       '../prisma/prisma.service',
     );
+    expect(read(IMAGE_RETENTION_WRITER)).not.toContain(
+      '../prisma/prisma.service',
+    );
+    expect(read(IMAGE_RETENTION_SERVICE)).not.toContain(
+      '../prisma/prisma.service',
+    );
     expect(read(PROVIDER_FINANCIAL_REVIEW_WRITER)).not.toContain(
+      '../prisma/prisma.service',
+    );
+    expect(read(PROVIDER_RECOGNITION_WRITER)).not.toContain(
+      '../prisma/prisma.service',
+    );
+    expect(read(PROVIDER_RECOGNITION_QUERY)).not.toContain(
+      '../prisma/prisma.service',
+    );
+    expect(read(PROVIDER_RECOGNITION_ORCHESTRATOR)).not.toContain(
       '../prisma/prisma.service',
     );
     expect(read(INBOX_ACQUISITION)).not.toContain('../prisma/prisma.service');
@@ -125,8 +173,15 @@ describe('Accounting unified Inbox core ownership boundary', () => {
     );
     expect(read(GMAIL_INGEST)).not.toContain('../prisma/prisma.service');
     expect(read(INBOX_WRITER)).toContain('Prisma.TransactionClient');
+    expect(read(INBOX_CLASSIFICATION_WRITER)).toContain(
+      'Prisma.TransactionClient',
+    );
     expect(read(INBOX_EXPENSE_WRITER)).toContain('Prisma.TransactionClient');
+    expect(read(IMAGE_RETENTION_WRITER)).toContain('Prisma.TransactionClient');
     expect(read(PROVIDER_FINANCIAL_REVIEW_WRITER)).toContain(
+      'Prisma.TransactionClient',
+    );
+    expect(read(PROVIDER_RECOGNITION_WRITER)).toContain(
       'Prisma.TransactionClient',
     );
   });
@@ -141,6 +196,27 @@ describe('Accounting unified Inbox core ownership boundary', () => {
     expect(gmail).toContain('acquireEmailAttachment');
     expect(acquisition).toContain('registerInboxArtifact');
     expect(controller).toContain("@Post('inbox/artifacts')");
+    expect(controller).toContain(
+      "@Put('inbox/:inboxItemStableId/classification')",
+    );
+    expect(controller).toContain("@Get('inbox/provider-recognition-rules')");
+    expect(controller).toContain(
+      "@Put('inbox/provider-recognition-rules/:ruleStableId')",
+    );
+    expect(controller).toContain(
+      "@Post('inbox/:inboxItemStableId/other/confirm')",
+    );
+    expect(controller).toContain("@Get('inbox/image-retention/pending')");
+    expect(controller).toContain(
+      "@Post('inbox/:inboxItemStableId/image-retention/candidate')",
+    );
+    expect(controller).toContain(
+      "@Post('inbox/:inboxItemStableId/image-retention/accept')",
+    );
+    expect(controller).toContain(
+      "@Get('inbox/artifacts/:artifactStableId/content')",
+    );
+    expect(acquisition).not.toContain('processAccountingReceiptImage');
     expect(controller).not.toContain("@Post('files/receipts')");
   });
 
@@ -168,8 +244,11 @@ describe('Accounting unified Inbox core ownership boundary', () => {
   it('keeps 5C evidence persistence separate from Journal posting', () => {
     for (const writer of [
       INBOX_WRITER,
+      INBOX_CLASSIFICATION_WRITER,
       INBOX_EXPENSE_WRITER,
+      IMAGE_RETENTION_WRITER,
       PROVIDER_FINANCIAL_REVIEW_WRITER,
+      PROVIDER_RECOGNITION_WRITER,
     ]) {
       expect(read(writer)).not.toContain('accountingJournalEntry');
       expect(read(writer)).not.toContain('accountingJournalLine');

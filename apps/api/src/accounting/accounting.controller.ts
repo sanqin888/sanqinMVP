@@ -20,7 +20,9 @@ import {
 import {
   AccountingDocumentStatus,
   AccountingFinancialProvider,
+  AccountingInboxClassification,
   AccountingInboxStatus,
+  AccountingProviderRecognitionMatchMode,
   AccountingSourceType,
   AccountingTxType,
   SettlementPlatform,
@@ -30,11 +32,14 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import * as fs from 'fs';
 import * as path from 'path';
 import { Roles, RolesGuard, SessionAuthGuard } from '../auth/public-api';
-import { getUploadsAccountingDir } from '../common/utils/uploads-path';
+import { getAccountingUploadsDir } from './accounting-storage-path';
 import {
   ACCOUNTING_INBOX_FILE_MAX_BYTES,
   AccountingInboxAcquisitionService,
 } from './accounting-inbox-acquisition.service';
+import { AccountingImageRetentionService } from './accounting-image-retention.service';
+import type { AccountingImageRetentionProfile } from './accounting-receipt-image';
+import { AccountingProviderFinancialService } from './accounting-provider-financial.service';
 import { AccountingService } from './accounting.service';
 import { AccountingAutomationScheduler } from './accounting-automation.scheduler';
 import { AccountingCanonicalSaleReplayService } from './accounting-canonical-sale-replay.service';
@@ -81,6 +86,8 @@ export class AccountingController {
     private readonly accountingService: AccountingService,
     private readonly operations: AccountingOperationsService,
     private readonly acquisition: AccountingInboxAcquisitionService,
+    private readonly imageRetention: AccountingImageRetentionService,
+    private readonly providerFinancial: AccountingProviderFinancialService,
     private readonly automation: AccountingAutomationScheduler,
     private readonly canonicalSaleReplay: AccountingCanonicalSaleReplayService,
     private readonly canonicalChangePreview: AccountingCanonicalChangePreviewService,
@@ -177,6 +184,13 @@ export class AccountingController {
     });
   }
 
+  @Get('inbox/image-retention/pending')
+  imageRetentionQueue(@Query('limit') limit?: string) {
+    return this.operations.listImageRetentionQueue(
+      this.parseNonNegativeNumber(limit, 'limit'),
+    );
+  }
+
   @Post('inbox/artifacts')
   @UseInterceptors(
     FileInterceptor('file', {
@@ -191,6 +205,31 @@ export class AccountingController {
   ) {
     if (!file) throw new BadRequestException('file is required');
     return this.acquisition.acquireManualFile(file);
+  }
+
+  @Get('inbox/provider-recognition-rules')
+  listProviderRecognitionRules() {
+    return this.operations.listProviderRecognitionRules();
+  }
+
+  @Put('inbox/provider-recognition-rules/:ruleStableId')
+  updateProviderRecognitionRule(
+    @Param('ruleStableId') ruleStableId: string,
+    @Body()
+    body: {
+      requiredKeywords: string[];
+      optionalKeywords: string[];
+      optionalMatchMode: AccountingProviderRecognitionMatchMode;
+      priority: number;
+      isActive: boolean;
+    },
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.operations.updateProviderRecognitionRule(
+      ruleStableId,
+      body,
+      this.requireOperatorUserId(req),
+    );
   }
 
   @Get('inbox/trusted-senders')
@@ -209,6 +248,34 @@ export class AccountingController {
     );
   }
 
+  @Put('inbox/:inboxItemStableId/classification')
+  setInboxClassification(
+    @Param('inboxItemStableId') inboxItemStableId: string,
+    @Body()
+    body: {
+      classification: AccountingInboxClassification;
+      selectedProvider?: AccountingFinancialProvider | null;
+    },
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.operations.setUnifiedInboxClassification(
+      inboxItemStableId,
+      body,
+      this.requireOperatorUserId(req),
+    );
+  }
+
+  @Post('inbox/:inboxItemStableId/other/confirm')
+  confirmInboxOther(
+    @Param('inboxItemStableId') inboxItemStableId: string,
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.operations.confirmUnifiedInboxOther(
+      inboxItemStableId,
+      this.requireOperatorUserId(req),
+    );
+  }
+
   @Post('inbox/:inboxItemStableId/expense/confirm')
   confirmInboxExpense(
     @Param('inboxItemStableId') inboxItemStableId: string,
@@ -222,12 +289,60 @@ export class AccountingController {
     );
   }
 
+  @Post('inbox/:inboxItemStableId/image-retention/candidate')
+  createImageRetentionCandidate(
+    @Param('inboxItemStableId') inboxItemStableId: string,
+    @Body() body: { profile?: AccountingImageRetentionProfile },
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.imageRetention.createCandidate(
+      inboxItemStableId,
+      body.profile ?? 'BALANCED',
+      this.requireOperatorUserId(req),
+    );
+  }
+
+  @Delete('inbox/:inboxItemStableId/image-retention/candidate')
+  discardImageRetentionCandidate(
+    @Param('inboxItemStableId') inboxItemStableId: string,
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.imageRetention.discardCandidate(
+      inboxItemStableId,
+      this.requireOperatorUserId(req),
+    );
+  }
+
+  @Post('inbox/:inboxItemStableId/image-retention/accept')
+  acceptImageRetentionCandidate(
+    @Param('inboxItemStableId') inboxItemStableId: string,
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.imageRetention.acceptCandidate(
+      inboxItemStableId,
+      this.requireOperatorUserId(req),
+    );
+  }
+
+  @Get('inbox/artifacts/:artifactStableId/content')
+  async accountingInboxArtifactContent(
+    @Param('artifactStableId') artifactStableId: string,
+    @Res() res: Response,
+  ) {
+    const resolved =
+      await this.imageRetention.resolveArtifactContent(artifactStableId);
+    res.setHeader('Content-Type', resolved.mimeType);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'private, no-store');
+    return res.sendFile(resolved.filePath);
+  }
+
   @Post('inbox/:inboxItemStableId/provider-financial/confirm')
   confirmProviderFinancialInboxItem(
     @Param('inboxItemStableId') inboxItemStableId: string,
     @Req() req: AuthedAccountingRequest,
   ) {
-    return this.operations.confirmProviderFinancialInboxItem(
+    return this.providerFinancial.confirmSelectedInboxFinancialEvidence(
       inboxItemStableId,
       this.requireOperatorUserId(req),
     );
@@ -265,14 +380,17 @@ export class AccountingController {
         ? 'application/pdf'
         : (kind === 'uber-reports' || kind === 'inbox') && extension === '.csv'
           ? 'text/csv; charset=utf-8'
-          : (kind === 'bills' || kind === 'receipts' || kind === 'inbox') &&
+          : (kind === 'bills' ||
+                kind === 'receipts' ||
+                kind === 'inbox' ||
+                kind === 'image-retention') &&
               imageContentType
             ? imageContentType
             : null;
     if (!contentType || safeName !== fileName) {
       throw new NotFoundException('accounting file not found');
     }
-    const filePath = path.join(getUploadsAccountingDir(), kind, safeName);
+    const filePath = path.join(getAccountingUploadsDir(), kind, safeName);
     if (!fs.existsSync(filePath)) {
       throw new NotFoundException('accounting file not found');
     }

@@ -1,6 +1,8 @@
 'use client';
 
 import {
+  type AccountingFinancialProvider,
+  type AccountingInboxClassification,
   type AccountingInboxItem,
   latestParse,
   money,
@@ -11,24 +13,45 @@ type Props = {
   loading: boolean;
   isZh: boolean;
   busySender: boolean;
+  classifyingId: string | null;
   discardingId: string | null;
   confirmingProviderId: string | null;
+  confirmingOtherId: string | null;
   onTrustSender: (email: string) => Promise<void>;
+  onClassificationChange: (
+    item: AccountingInboxItem,
+    classification: AccountingInboxClassification,
+    selectedProvider: AccountingFinancialProvider | null,
+  ) => Promise<void>;
   onReviewExpense: (item: AccountingInboxItem) => void;
   onConfirmProviderFinancial: (item: AccountingInboxItem) => Promise<void>;
+  onConfirmOther: (item: AccountingInboxItem) => Promise<void>;
   onDiscard: (item: AccountingInboxItem) => Promise<void>;
 };
+
+const providerOptions: Array<{
+  value: AccountingFinancialProvider;
+  label: string;
+}> = [
+  { value: 'CLOVER', label: 'Clover' },
+  { value: 'UBER_EATS', label: 'Uber Eats' },
+  { value: 'FANTUAN', label: 'Fantuan' },
+];
 
 export function AccountingInboxItemsList({
   items,
   loading,
   isZh,
   busySender,
+  classifyingId,
   discardingId,
   confirmingProviderId,
+  confirmingOtherId,
   onTrustSender,
+  onClassificationChange,
   onReviewExpense,
   onConfirmProviderFinancial,
+  onConfirmOther,
   onDiscard,
 }: Props) {
   return (
@@ -56,10 +79,20 @@ export function AccountingInboxItemsList({
             item.artifact.senderEmail ||
             item.artifact.kind;
           const quarantined = item.status === 'QUARANTINED';
+          const evidenceUrl =
+            item.artifact.kind === 'IMAGE'
+              ? `/api/v1/accounting/inbox/artifacts/${encodeURIComponent(item.artifact.artifactStableId)}/content`
+              : item.artifact.storedUrl;
+          const classificationLocked =
+            quarantined ||
+            item.status !== 'PENDING_REVIEW' ||
+            item.materializedEntityType !== null ||
+            item.artifact.acquisitionMode === 'PROVIDER_API';
+          const classifying = classifyingId === item.inboxItemStableId;
           return (
             <div
               key={item.inboxItemStableId}
-              className="grid gap-3 py-4 lg:grid-cols-[1.5fr_1fr_auto] lg:items-center"
+              className="grid gap-3 py-4 lg:grid-cols-[1.35fr_1fr_auto] lg:items-center"
             >
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
@@ -83,30 +116,149 @@ export function AccountingInboxItemsList({
                     : ''}
                   {new Date(item.createdAt).toLocaleString()}
                 </p>
+
+                {!quarantined && item.status === 'PENDING_REVIEW' ? (
+                  <div className="mt-3 flex flex-wrap items-end gap-2">
+                    <label className="grid gap-1 text-xs text-slate-500">
+                      <span>{isZh ? '资料类型' : 'Document type'}</span>
+                      <select
+                        className="rounded border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-800 disabled:bg-slate-100"
+                        value={item.classification}
+                        disabled={classificationLocked || classifying}
+                        onChange={(event) => {
+                          const classification = event.target
+                            .value as AccountingInboxClassification;
+                          void onClassificationChange(
+                            item,
+                            classification,
+                            classification === 'PROVIDER_FINANCIAL_DOCUMENT'
+                              ? item.selectedProvider
+                              : null,
+                          );
+                        }}
+                      >
+                        <option value="UNKNOWN">
+                          {isZh ? '未确定' : 'Unspecified'}
+                        </option>
+                        <option
+                          value="EXPENSE_DOCUMENT"
+                          disabled={parse.requiresBatchExpenseImport === true}
+                        >
+                          {isZh ? '费用单' : 'Expense / invoice'}
+                        </option>
+                        <option value="PROVIDER_FINANCIAL_DOCUMENT">
+                          {isZh ? '结算单' : 'Statement / settlement'}
+                        </option>
+                        <option value="OTHER_DOCUMENT">
+                          {isZh ? '其他' : 'Other'}
+                        </option>
+                      </select>
+                    </label>
+                    {item.classification === 'PROVIDER_FINANCIAL_DOCUMENT' ? (
+                      <label className="grid gap-1 text-xs text-slate-500">
+                        <span>{isZh ? '平台' : 'Provider'}</span>
+                        <select
+                          className="rounded border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-800 disabled:bg-slate-100"
+                          value={item.selectedProvider ?? ''}
+                          disabled={classificationLocked || classifying}
+                          onChange={(event) => {
+                            const selectedProvider =
+                              (event.target.value as AccountingFinancialProvider) ||
+                              null;
+                            void onClassificationChange(
+                              item,
+                              'PROVIDER_FINANCIAL_DOCUMENT',
+                              selectedProvider,
+                            );
+                          }}
+                        >
+                          <option value="">
+                            {isZh ? '选择平台' : 'Select provider'}
+                          </option>
+                          {providerOptions.map((provider) => (
+                            <option key={provider.value} value={provider.value}>
+                              {provider.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : null}
+                    {classifying ? (
+                      <span className="pb-1.5 text-xs text-slate-500">
+                        {isZh ? '保存中…' : 'Saving…'}
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
+
                 {parse.excludedBeforeFinancialHistory ? (
-                  <p className="mt-1 text-xs text-amber-700">
+                  <p className="mt-2 text-xs text-amber-700">
                     {isZh
-                      ? `已识别为平台财务资料，但期间早于财务起始边界 ${parse.financialHistoryRequiredFrom ?? '2026-06-01'}，不会进入财务历史。`
-                      : `Recognized as provider financial evidence, but the period is before the financial-history boundary ${parse.financialHistoryRequiredFrom ?? '2026-06-01'} and will not enter financial history.`}
+                      ? `系统识别为平台财务资料，但期间早于财务起始边界 ${parse.financialHistoryRequiredFrom ?? '2026-06-01'}。你仍可人工修改资料类型。`
+                      : `System recognition found provider financial evidence before the ${parse.financialHistoryRequiredFrom ?? '2026-06-01'} history boundary. You can still change the document type manually.`}
+                  </p>
+                ) : parse.providerRecognitionAmbiguousRuleStableIds?.length ? (
+                  <p className="mt-2 text-xs text-amber-700">
+                    {isZh
+                      ? '多个平台识别规则以相同优先级同时命中，系统未自动选择类型/平台，请人工确认。'
+                      : 'Multiple provider recognition rules matched at the same priority. No automatic provider/type was selected; review it manually.'}
+                  </p>
+                ) : parse.structuredExpenseCsv ? (
+                  <p
+                    className={`mt-2 text-xs ${
+                      parse.requiresBatchExpenseImport
+                        ? 'text-amber-700'
+                        : 'text-blue-700'
+                    }`}
+                  >
+                    {parse.requiresBatchExpenseImport
+                      ? isZh
+                        ? `识别到结构化费用 CSV：${parse.structuredExpenseRowCount ?? 0} 条有效记录${parse.structuredExpenseInvalidRowCount ? `，${parse.structuredExpenseInvalidRowCount} 条异常记录` : ''}。当前不会把整份文件误确认为单笔费用，需后续批量费用导入流程处理。`
+                        : `Structured expense CSV detected: ${parse.structuredExpenseRowCount ?? 0} valid rows${parse.structuredExpenseInvalidRowCount ? ` and ${parse.structuredExpenseInvalidRowCount} invalid rows` : ''}. It is blocked from single-expense confirmation and needs the batch-expense import flow.`
+                      : isZh
+                        ? '识别到单行结构化费用 CSV，可按普通费用审核。'
+                        : 'Single-row structured expense CSV detected; it can be reviewed as an ordinary expense.'}
+                  </p>
+                ) : parse.csvStructureUnrecognized ? (
+                  <p className="mt-2 text-xs text-slate-500">
+                    {isZh
+                      ? 'CSV 结构无法可靠识别，已保留原始文件，请人工选择资料类型。'
+                      : 'CSV structure was not recognized reliably. The raw evidence is preserved for manual classification.'}
                   </p>
                 ) : parse.providerParserPending ? (
-                  <p className="mt-1 text-xs text-blue-700">
+                  <p className="mt-2 text-xs text-blue-700">
                     {isZh
                       ? 'CSV 已保留，等待平台财务解析。'
                       : 'CSV preserved for provider financial parsing.'}
                   </p>
+                ) : parse.providerFinancial || parse.providerRecognition ? (
+                  <p className="mt-2 text-xs text-blue-700">
+                    {isZh ? '系统建议' : 'System suggestion'}:{' '}
+                    {parse.provider ?? '—'} · {parse.documentType ?? '—'}
+                    {parse.periodStart || parse.periodEnd
+                      ? ` · ${parse.periodStart ?? '—'} → ${parse.periodEnd ?? '—'}`
+                      : ''}
+                    {parse.providerRecognition && !parse.providerFinancial
+                      ? isZh
+                        ? ' · 已命中识别规则，财务字段尚未验证'
+                        : ' · recognition matched; financial fields not yet validated'
+                      : ''}
+                  </p>
                 ) : parse.reviewDisposition ? (
-                  <p className="mt-1 text-xs text-slate-500">
-                    {isZh ? '通用识别' : 'Generic review'}: {parse.reviewDisposition}
+                  <p className="mt-2 text-xs text-slate-500">
+                    {isZh ? '系统建议' : 'System suggestion'}:{' '}
+                    {parse.reviewDisposition}
                     {parse.confidence ? ` · ${parse.confidence}` : ''}
                   </p>
                 ) : null}
               </div>
+
               <div className="text-sm text-slate-600">
                 {financial ? (
                   <div className="mb-2 space-y-1">
                     <p className="font-medium text-slate-800">
-                      {financial.provider} · {financial.documentType} · v{financial.revision}
+                      {financial.provider} · {financial.documentType} · v
+                      {financial.revision}
                     </p>
                     {financial.periodStart || financial.periodEnd ? (
                       <p className="text-xs">
@@ -122,16 +274,53 @@ export function AccountingInboxItemsList({
                       ))}
                     </div>
                   </div>
+                ) : parse.providerFinancial && parse.lines?.length ? (
+                  <div className="mb-2 space-y-1">
+                    <p className="text-xs font-medium text-slate-700">
+                      {isZh ? '系统提取预览' : 'System extraction preview'}
+                    </p>
+                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+                      {parse.lines.slice(0, 6).map((line, index) => (
+                        <span key={`${line.rawName ?? line.component}-${index}`}>
+                          {line.rawName ?? line.component}: {money(line.amountCents)}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : parse.structuredExpenseRows?.length ? (
+                  <div className="mb-2 space-y-1">
+                    <p className="text-xs font-medium text-slate-700">
+                      {isZh ? '结构化费用预览' : 'Structured expense preview'}
+                    </p>
+                    <div className="space-y-1 text-xs">
+                      {parse.structuredExpenseRows.slice(0, 6).map((row) => (
+                        <p key={row.rowNumber}>
+                          #{row.rowNumber} · {row.occurredAt} ·{' '}
+                          <strong>{money(row.totalCents)}</strong>
+                          {row.counterparty ? ` · ${row.counterparty}` : ''}
+                          {row.description ? ` · ${row.description}` : ''}
+                        </p>
+                      ))}
+                      {parse.structuredExpenseRowCount &&
+                      parse.structuredExpenseRowCount > 6 ? (
+                        <p className="text-slate-500">
+                          {isZh
+                            ? `另有 ${parse.structuredExpenseRowCount - 6} 条记录未展开。`
+                            : `${parse.structuredExpenseRowCount - 6} more rows not shown.`}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
                 ) : parse.totalCents != null ? (
                   <p>
                     {isZh ? '识别总额' : 'Detected total'}:{' '}
                     <strong>{money(parse.totalCents)}</strong>
                   </p>
                 ) : null}
-                {item.artifact.storedUrl ? (
+                {evidenceUrl ? (
                   <a
                     className="text-blue-600 hover:underline"
-                    href={item.artifact.storedUrl}
+                    href={evidenceUrl}
                     target="_blank"
                     rel="noreferrer"
                   >
@@ -148,6 +337,7 @@ export function AccountingInboxItemsList({
                   </details>
                 ) : null}
               </div>
+
               <div className="flex flex-wrap gap-2 lg:justify-end">
                 {quarantined && item.artifact.senderEmail ? (
                   <button
@@ -162,7 +352,8 @@ export function AccountingInboxItemsList({
                 ) : null}
                 {!quarantined &&
                 item.status === 'PENDING_REVIEW' &&
-                item.materializedEntityType === 'PROVIDER_FINANCIAL_DOCUMENT' ? (
+                item.classification === 'PROVIDER_FINANCIAL_DOCUMENT' &&
+                item.selectedProvider ? (
                   <button
                     disabled={confirmingProviderId === item.inboxItemStableId}
                     onClick={() => void onConfirmProviderFinancial(item)}
@@ -173,19 +364,36 @@ export function AccountingInboxItemsList({
                         ? '确认中…'
                         : 'Confirming…'
                       : isZh
-                        ? '确认财务资料'
-                        : 'Confirm financial evidence'}
+                        ? '确认结算单'
+                        : 'Confirm statement'}
                   </button>
                 ) : null}
                 {!quarantined &&
                 item.status === 'PENDING_REVIEW' &&
-                item.materializedEntityType !== 'PROVIDER_FINANCIAL_DOCUMENT' &&
-                !parse.providerFinancial ? (
+                item.classification === 'EXPENSE_DOCUMENT' &&
+                parse.requiresBatchExpenseImport !== true ? (
                   <button
                     onClick={() => onReviewExpense(item)}
                     className="rounded border px-3 py-1.5 text-sm text-blue-700"
                   >
-                    {isZh ? '按费用审核' : 'Review as expense'}
+                    {isZh ? '审核费用' : 'Review expense'}
+                  </button>
+                ) : null}
+                {!quarantined &&
+                item.status === 'PENDING_REVIEW' &&
+                item.classification === 'OTHER_DOCUMENT' ? (
+                  <button
+                    disabled={confirmingOtherId === item.inboxItemStableId}
+                    onClick={() => void onConfirmOther(item)}
+                    className="rounded border px-3 py-1.5 text-sm text-slate-700 disabled:opacity-50"
+                  >
+                    {confirmingOtherId === item.inboxItemStableId
+                      ? isZh
+                        ? '确认中…'
+                        : 'Confirming…'
+                      : isZh
+                        ? '标记已审核'
+                        : 'Mark reviewed'}
                   </button>
                 ) : null}
                 {item.materializedEntityType !== 'PROVIDER_FINANCIAL_DOCUMENT' ? (

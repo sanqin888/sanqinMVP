@@ -31,7 +31,17 @@ export async function extractAccountingImageText(
     .toBuffer();
 
   const text = await runTesseract(prepared);
-  return { text: text.replace(/\s+/g, ' ').trim(), engine: 'TESSERACT' };
+  return { text: normalizeAccountingImageOcrText(text), engine: 'TESSERACT' };
+}
+
+export function normalizeAccountingImageOcrText(text: string): string {
+  return text
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .map((line) => line.replace(/[ \t]+/g, ' ').trim())
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 function runTesseract(buffer: Buffer): Promise<string> {

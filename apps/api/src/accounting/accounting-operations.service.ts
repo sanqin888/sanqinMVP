@@ -6,10 +6,12 @@ import {
 } from '@nestjs/common';
 import {
   AccountingAccountClass,
+  AccountingArtifactKind,
   AccountingDocumentSource,
   AccountingDocumentStatus,
   AccountingFinancialProvider,
   AccountingJournalSource,
+  AccountingInboxClassification,
   AccountingInboxMaterializedEntityType,
   AccountingInboxStatus,
   AccountingSourceType,
@@ -21,6 +23,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { runSerializableAccountingWrite } from './accounting-atomic-write';
 import { DEFAULT_ACCOUNTING_ACCOUNTS } from './accounting-chart-of-accounts';
 import {
+  confirmAccountingOtherInboxItem,
   confirmAccountingProviderFinancialInboxItem,
   discardAccountingInboxItem,
   ensureAccountingProviderFinancialCoverage,
@@ -28,11 +31,14 @@ import {
   recordAccountingInboxParseRun,
   recordAccountingProviderFinancialDocument,
   registerAccountingInboxArtifact,
+  setAccountingInboxClassification,
+  suggestAccountingInboxClassification,
   upsertAccountingTrustedSender,
 } from './accounting-inbox-core.orchestrator';
 import {
   AccountingInboxPolicyError,
   type AccountingInboxArtifactInput,
+  type AccountingInboxClassificationSelectionInput,
   type AccountingInboxExpenseMaterializationInput,
   type AccountingParseRunInput,
   type AccountingProviderFinancialDocumentInput,
@@ -44,15 +50,32 @@ import {
 } from './accounting-inbox-core.writer';
 import { markInboxExpenseConfirmedInTx } from './accounting-inbox-expense.writer';
 import {
+  beginAccountingImageOriginalPurgeInTx,
+  discardAccountingImageRetentionCandidateInTx,
+  finalizeAccountingImageOriginalPurgeInTx,
+  stageAccountingImageRetentionCandidateInTx,
+  type AccountingImageRetentionCandidateInput,
+} from './accounting-image-retention.writer';
+import {
   accountingJsonRecord,
   accountingOptionalString,
   countAccountingInboxReviewItems,
   getAccountingSenderTrustDecision,
+  listAccountingImageRetentionQueue,
   listAccountingTrustedSenders,
   listAccountingUnifiedInboxItems,
+  readAccountingImageArtifactContentContext,
+  readAccountingImageRetentionContext,
   readAccountingInboxExpenseContext,
+  readAccountingInboxProviderReviewContext,
 } from './accounting-inbox-query';
 import { AccountingService } from './accounting.service';
+import { updateAccountingProviderRecognitionRule } from './accounting-provider-recognition.orchestrator';
+import {
+  AccountingProviderRecognitionPolicyError,
+  type AccountingProviderRecognitionRuleUpdate,
+} from './accounting-provider-recognition.policy';
+import { listAccountingProviderRecognitionRules } from './accounting-provider-recognition.query';
 
 export type AccountingExpenseSplitInput = {
   categoryStableId: string;
@@ -708,11 +731,150 @@ export class AccountingOperationsService {
     return listAccountingTrustedSenders(this.prisma);
   }
 
+  listProviderRecognitionRules() {
+    return listAccountingProviderRecognitionRules(this.prisma);
+  }
+
+  async updateProviderRecognitionRule(
+    ruleStableId: string,
+    input: AccountingProviderRecognitionRuleUpdate,
+    operatorUserStableId: string,
+  ) {
+    return this.runInboxCore(() =>
+      updateAccountingProviderRecognitionRule(
+        this.prisma,
+        ruleStableId,
+        input,
+        operatorUserStableId,
+      ),
+    );
+  }
+
   listUnifiedInboxItems(params: {
     status?: AccountingInboxStatus;
     limit?: number;
   }) {
     return listAccountingUnifiedInboxItems(this.prisma, params);
+  }
+
+  listImageRetentionQueue(limit?: number) {
+    return listAccountingImageRetentionQueue(this.prisma, limit);
+  }
+
+  readUnifiedInboxProviderReviewContext(inboxItemStableId: string) {
+    return readAccountingInboxProviderReviewContext(
+      this.prisma,
+      inboxItemStableId,
+    );
+  }
+
+  readImageRetentionContext(inboxItemStableId: string) {
+    return readAccountingImageRetentionContext(this.prisma, inboxItemStableId);
+  }
+
+  readImageArtifactContentContext(artifactStableId: string) {
+    return readAccountingImageArtifactContentContext(
+      this.prisma,
+      artifactStableId,
+    );
+  }
+
+  async stageImageRetentionCandidate(
+    input: AccountingImageRetentionCandidateInput,
+  ) {
+    return this.runInboxCore(() =>
+      runSerializableAccountingWrite(this.prisma, (tx) =>
+        stageAccountingImageRetentionCandidateInTx(tx, input),
+      ),
+    );
+  }
+
+  async discardImageRetentionCandidate(
+    inboxItemStableId: string,
+    operatorUserStableId: string,
+  ) {
+    return this.runInboxCore(() =>
+      runSerializableAccountingWrite(this.prisma, (tx) =>
+        discardAccountingImageRetentionCandidateInTx(
+          tx,
+          inboxItemStableId,
+          operatorUserStableId,
+        ),
+      ),
+    );
+  }
+
+  async beginImageOriginalPurge(
+    inboxItemStableId: string,
+    operatorUserStableId: string,
+    compressionPolicyVersion: number,
+  ) {
+    return this.runInboxCore(() =>
+      runSerializableAccountingWrite(this.prisma, (tx) =>
+        beginAccountingImageOriginalPurgeInTx(
+          tx,
+          inboxItemStableId,
+          operatorUserStableId,
+          compressionPolicyVersion,
+        ),
+      ),
+    );
+  }
+
+  async finalizeImageOriginalPurge(
+    inboxItemStableId: string,
+    operatorUserStableId: string,
+  ) {
+    return this.runInboxCore(() =>
+      runSerializableAccountingWrite(this.prisma, (tx) =>
+        finalizeAccountingImageOriginalPurgeInTx(
+          tx,
+          inboxItemStableId,
+          operatorUserStableId,
+        ),
+      ),
+    );
+  }
+
+  async suggestUnifiedInboxClassification(
+    artifactStableId: string,
+    input: AccountingInboxClassificationSelectionInput,
+  ) {
+    return this.runInboxCore(() =>
+      suggestAccountingInboxClassification(
+        this.prisma,
+        artifactStableId,
+        input,
+      ),
+    );
+  }
+
+  async setUnifiedInboxClassification(
+    inboxItemStableId: string,
+    input: AccountingInboxClassificationSelectionInput,
+    operatorUserStableId: string,
+  ) {
+    return this.runInboxCore(() =>
+      setAccountingInboxClassification(
+        this.prisma,
+        inboxItemStableId,
+        input,
+        operatorUserStableId,
+      ),
+    );
+  }
+
+  async confirmUnifiedInboxOther(
+    inboxItemStableId: string,
+    operatorUserStableId: string,
+  ) {
+    return this.runInboxCore(() =>
+      confirmAccountingOtherInboxItem(
+        this.prisma,
+        inboxItemStableId,
+        operatorUserStableId,
+      ),
+    );
   }
 
   async confirmUnifiedInboxExpense(
@@ -727,6 +889,14 @@ export class AccountingOperationsService {
     if (!inbox) throw new NotFoundException('accounting inbox item not found');
     if (inbox.status !== AccountingInboxStatus.PENDING_REVIEW) {
       throw new ConflictException('only pending inbox items can be confirmed');
+    }
+    if (
+      inbox.classification !== AccountingInboxClassification.EXPENSE_DOCUMENT ||
+      inbox.selectedProvider
+    ) {
+      throw new ConflictException(
+        'inbox item must be classified as an expense before confirmation',
+      );
     }
     if (
       inbox.materializedEntityType ===
@@ -744,9 +914,9 @@ export class AccountingOperationsService {
     const extraction = accountingJsonRecord(
       inbox.artifact.parseRuns[0]?.resultJson,
     );
-    if (extraction.providerFinancial === true) {
+    if (extraction.requiresBatchExpenseImport === true) {
       throw new ConflictException(
-        'provider financial evidence cannot be confirmed as an expense',
+        'structured expense CSV batch cannot be confirmed as a single expense',
       );
     }
 
@@ -776,7 +946,11 @@ export class AccountingOperationsService {
         gmailAttachmentId: accountingOptionalString(metadata.gmailAttachmentId),
         emailSubject: inbox.artifact.emailSubject,
         attachmentUrls: inbox.artifact.storedUrl
-          ? [inbox.artifact.storedUrl]
+          ? [
+              inbox.artifact.kind === AccountingArtifactKind.IMAGE
+                ? `/api/v1/accounting/inbox/artifacts/${encodeURIComponent(inbox.artifact.artifactStableId)}/content`
+                : inbox.artifact.storedUrl,
+            ]
           : [],
         extractedText:
           accountingOptionalString(extraction.extractedText) ??
@@ -1354,7 +1528,10 @@ export class AccountingOperationsService {
     try {
       return await work();
     } catch (error) {
-      if (error instanceof AccountingInboxPolicyError) {
+      if (
+        error instanceof AccountingInboxPolicyError ||
+        error instanceof AccountingProviderRecognitionPolicyError
+      ) {
         throw new BadRequestException(error.message);
       }
       if (error instanceof AccountingInboxWriterNotFoundError) {

@@ -8,13 +8,14 @@ import {
 
 export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_NAME =
   'accounting-provider-financial';
-export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION = '1';
+export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION = '2';
 
 export type ProviderFinancialParseInput = {
   text: string;
   originalFilename?: string | null;
   emailSubject?: string | null;
   providerHint?: AccountingFinancialProvider | null;
+  documentTypeHint?: AccountingFinancialDocumentType | null;
   reportTypeHint?: string | null;
   periodStartHint?: string | null;
   periodEndHint?: string | null;
@@ -49,13 +50,39 @@ export function parseProviderFinancialEvidence(
   const text = normalizeText(input.text);
   if (!text) return null;
 
-  if (looksLikeCloverCloseout(text)) return parseCloverCloseout(text, input);
-  if (looksLikeCloverStatement(text)) return parseCloverStatement(text);
-  if (looksLikeUberMonthlyStatement(text)) {
-    return parseUberMonthlyStatement(text);
-  }
-  if (looksLikeFantuanStatement(text)) return parseFantuanStatement(text);
+  if (!input.providerHint) return null;
 
+  switch (input.providerHint) {
+    case AccountingFinancialProvider.CLOVER:
+      if (
+        input.documentTypeHint === AccountingFinancialDocumentType.BATCH_CONTROL
+      ) {
+        return parseCloverCloseout(text, input);
+      }
+      if (
+        input.documentTypeHint === AccountingFinancialDocumentType.STATEMENT
+      ) {
+        return parseCloverStatement(text);
+      }
+      if (input.documentTypeHint) return null;
+      return parseCloverCloseout(text, input) ?? parseCloverStatement(text);
+    case AccountingFinancialProvider.UBER_EATS:
+      if (
+        input.documentTypeHint &&
+        input.documentTypeHint !== AccountingFinancialDocumentType.STATEMENT
+      ) {
+        return null;
+      }
+      return parseUberMonthlyStatement(text);
+    case AccountingFinancialProvider.FANTUAN:
+      if (
+        input.documentTypeHint &&
+        input.documentTypeHint !== AccountingFinancialDocumentType.STATEMENT
+      ) {
+        return null;
+      }
+      return parseFantuanStatement(text);
+  }
   return null;
 }
 
@@ -499,39 +526,6 @@ function parseFantuanStatement(
   };
 }
 
-function looksLikeCloverCloseout(text: string) {
-  return (
-    /Closeout Batch Report/i.test(text) &&
-    /Batch Totals/i.test(text) &&
-    /Batch ID:/i.test(text)
-  );
-}
-
-function looksLikeCloverStatement(text: string) {
-  return (
-    /MERCHANT CARD PROCESSING STATEMENT LOCATION RECAP/i.test(text) &&
-    /StatementPeriod/i.test(text) &&
-    /Total Amount Funded/i.test(text)
-  );
-}
-
-function looksLikeUberMonthlyStatement(text: string) {
-  return (
-    /Monthly\s+Statement/i.test(text) &&
-    /Consolidated Monthly Summary/i.test(text) &&
-    /Marketplace Fees/i.test(text) &&
-    /Net Total/i.test(text)
-  );
-}
-
-function looksLikeFantuanStatement(text: string) {
-  return (
-    /Fantuan Subsidy for Promotion events/i.test(text) &&
-    /Total Transfer Amount/i.test(text) &&
-    /Commission GST\/HST/i.test(text)
-  );
-}
-
 function pushNamedSummary(
   lines: ParsedLine[],
   text: string,
@@ -620,10 +614,14 @@ function sectionHst(text: string, heading: string): number | null {
 function findNamedAmount(text: string, label: string): number | null {
   const regex = new RegExp(
     `${escapeRegex(label)}(?:\\s*\\([^\\n)]*\\))?\\s+([^\\s]+)`,
-    'i',
+    'gi',
   );
-  const raw = regex.exec(text)?.[1];
-  return raw ? parseMoneyCents(raw) : null;
+  for (const match of text.matchAll(regex)) {
+    const raw = match[1];
+    const amount = raw ? parseMoneyCents(raw) : null;
+    if (amount != null) return amount;
+  }
+  return null;
 }
 
 function parseMoneyCents(raw: string): number | null {

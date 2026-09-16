@@ -238,6 +238,7 @@ enum AccountingArtifactKind {
 enum AccountingInboxClassification {
   EXPENSE_DOCUMENT
   PROVIDER_FINANCIAL_DOCUMENT
+  OTHER_DOCUMENT
   UNKNOWN
 }
 
@@ -268,10 +269,22 @@ enum AccountingParseStatus {
   SKIPPED
 }
 
+enum AccountingArtifactBinaryRetentionState {
+  ORIGINAL_PRESENT
+  CANDIDATE_READY
+  PURGE_PENDING
+  COMPRESSED_ONLY
+}
+
 enum AccountingFinancialProvider {
   CLOVER
   UBER_EATS
   FANTUAN
+}
+
+enum AccountingProviderRecognitionMatchMode {
+  ANY
+  ALL
 }
 
 enum AccountingFinancialDocumentType {
@@ -1793,10 +1806,46 @@ model AccountingSourceArtifact {
   duplicateInboxItems    AccountingInboxItem[]             @relation("AccountingInboxDuplicateArtifact")
   parseRuns              AccountingParseRun[]
   financialDocument      AccountingProviderFinancialDocument?
+  binaryRetention        AccountingArtifactBinaryRetention?
 
   @@unique([acquisitionMode, transportIdentity])
   @@index([contentHash, createdAt])
   @@index([acquisitionMode, createdAt])
+}
+
+model AccountingArtifactBinaryRetention {
+  id                       String                                   @id @default(uuid()) @db.Uuid
+  artifactId               String                                   @unique @db.Uuid
+  state                    AccountingArtifactBinaryRetentionState   @default(ORIGINAL_PRESENT)
+  originalWidth            Int?
+  originalHeight           Int?
+  candidateStoredUrl       String?
+  candidateContentHash     String?
+  candidateByteSize        Int?
+  candidateMimeType        String?
+  candidateWidth           Int?
+  candidateHeight          Int?
+  candidateProfile         String?
+  candidateMaxDimension    Int?
+  candidateQuality         Int?
+  retainedStoredUrl        String?
+  retainedContentHash      String?
+  retainedByteSize         Int?
+  retainedMimeType         String?
+  retainedWidth            Int?
+  retainedHeight           Int?
+  retainedProfile          String?
+  retainedMaxDimension     Int?
+  retainedQuality          Int?
+  compressionPolicyVersion Int?
+  acceptedAt               DateTime?
+  acceptedByUserStableId   String?
+  originalPurgedAt         DateTime?
+  createdAt                DateTime                                 @default(now())
+  updatedAt                DateTime                                 @updatedAt
+  artifact                 AccountingSourceArtifact                 @relation(fields: [artifactId], references: [id], onDelete: Restrict)
+
+  @@index([state, updatedAt])
 }
 
 model AccountingParseRun {
@@ -1825,6 +1874,7 @@ model AccountingInboxItem {
   artifactId               String                        @unique @db.Uuid
   status                   AccountingInboxStatus         @default(PENDING_REVIEW)
   classification           AccountingInboxClassification @default(UNKNOWN)
+  selectedProvider         AccountingFinancialProvider?
   trustDecision            AccountingInboxTrustDecision
   duplicateOfArtifactId    String?                       @db.Uuid
   materializedEntityType   AccountingInboxMaterializedEntityType?
@@ -1855,6 +1905,25 @@ model AccountingTrustedSender {
   updatedAt               DateTime @updatedAt
 
   @@index([isActive, email])
+}
+
+model AccountingProviderRecognitionRule {
+  id                    String                                 @id @default(uuid()) @db.Uuid
+  ruleStableId          String                                 @unique
+  provider              AccountingFinancialProvider
+  documentType          AccountingFinancialDocumentType
+  requiredKeywords      String[]                               @default([])
+  optionalKeywords      String[]                               @default([])
+  optionalMatchMode     AccountingProviderRecognitionMatchMode @default(ANY)
+  priority              Int                                    @default(100)
+  isActive              Boolean                                @default(true)
+  version               Int                                    @default(1)
+  updatedByUserStableId String?
+  createdAt             DateTime                               @default(now())
+  updatedAt             DateTime                               @updatedAt
+
+  @@unique([provider, documentType])
+  @@index([isActive, priority])
 }
 
 model AccountingProviderFinancialDocument {

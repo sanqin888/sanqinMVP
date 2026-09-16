@@ -7,11 +7,12 @@ import {
   AccountingArtifactAcquisitionMode,
   AccountingArtifactKind,
   AccountingFinancialProvider,
+  AccountingInboxClassification,
   AccountingInboxStatus,
   AccountingInboxTrustDecision,
   AccountingParseStatus,
 } from '@prisma/client';
-import { getUploadsAccountingDir } from '../common/utils/uploads-path';
+import { getAccountingUploadsDir } from './accounting-storage-path';
 import {
   extractAccountingPdf,
   extractAccountingText,
@@ -24,13 +25,18 @@ import { extractAccountingImageText } from './accounting-image-ocr';
 import {
   ACCOUNTING_RECEIPT_IMAGE_POLICY,
   detectAccountingReceiptImageType,
-  processAccountingReceiptImage,
 } from './accounting-receipt-image';
 import { AccountingOperationsService } from './accounting-operations.service';
 import {
   AccountingProviderFinancialProcessingError,
   AccountingProviderFinancialService,
+  type AccountingProviderFinancialParseContext,
 } from './accounting-provider-financial.service';
+import {
+  ACCOUNTING_STRUCTURED_EXPENSE_CSV_PARSER_NAME,
+  ACCOUNTING_STRUCTURED_EXPENSE_CSV_PARSER_VERSION,
+  parseAccountingStructuredExpenseCsv,
+} from './accounting-structured-expense-csv';
 
 export const ACCOUNTING_INBOX_FILE_MAX_BYTES = 25 * 1024 * 1024;
 const GENERIC_PARSER_NAME = 'accounting-generic-document-review';
@@ -69,6 +75,7 @@ type FileAcquisitionInput = {
 type TextReviewExtraction = ReturnType<typeof extractAccountingText> &
   AccountingReviewMetadata & {
     extractedText: string;
+    providerRecognitionAmbiguousRuleStableIds?: string[];
   };
 
 type ImageReviewExtraction = TextReviewExtraction & {
@@ -245,6 +252,7 @@ export class AccountingInboxAcquisitionService {
     try {
       providerFinancialMatched = await this.parseFileIfEligible(
         artifact,
+        input.acquisitionMode,
         detected.kind,
         input.file.buffer,
         {
@@ -269,6 +277,7 @@ export class AccountingInboxAcquisitionService {
     artifact: Awaited<
       ReturnType<AccountingOperationsService['registerInboxArtifact']>
     >,
+    acquisitionMode: AccountingArtifactAcquisitionMode,
     kind: AccountingArtifactKind,
     buffer: Buffer,
     providerContext: {
@@ -286,7 +295,7 @@ export class AccountingInboxAcquisitionService {
     }
     if (kind === AccountingArtifactKind.CSV) {
       const text = buffer.toString('utf8');
-      const provider = await this.providerFinancial.parseAndMaterialize({
+      const provider = await this.parseProviderEvidence(acquisitionMode, {
         artifactStableId: artifact.artifactStableId,
         text,
         ...providerContext,
@@ -303,6 +312,110 @@ export class AccountingInboxAcquisitionService {
         });
         return false;
       }
+
+      const ambiguousRuleStableIds =
+        'ambiguousRuleStableIds' in provider
+          ? provider.ambiguousRuleStableIds
+          : [];
+      if (ambiguousRuleStableIds.length) {
+        await this.operations.recordInboxParseRun({
+          artifactStableId: artifact.artifactStableId,
+          parserName: GENERIC_PARSER_NAME,
+          parserVersion: GENERIC_PARSER_VERSION,
+          status: AccountingParseStatus.SUCCESS,
+          resultJson: {
+            inputKind: 'CSV',
+            providerRecognitionAmbiguousRuleStableIds: ambiguousRuleStableIds,
+            extractedText: text.slice(0, 100_000),
+          },
+        });
+        return false;
+      }
+
+      if (acquisitionMode === AccountingArtifactAcquisitionMode.PROVIDER_API) {
+        await this.operations.recordInboxParseRun({
+          artifactStableId: artifact.artifactStableId,
+          parserName: GENERIC_PARSER_NAME,
+          parserVersion: GENERIC_PARSER_VERSION,
+          status: AccountingParseStatus.SKIPPED,
+          resultJson: {
+            inputKind: 'CSV',
+            providerParserPending: true,
+            extractedText: text.slice(0, 100_000),
+          },
+        });
+        return false;
+      }
+
+      const structuredExpense = parseAccountingStructuredExpenseCsv(text);
+      if (structuredExpense.matched) {
+        const requiresBatchExpenseImport =
+          structuredExpense.rows.length !== 1 ||
+          structuredExpense.invalidRows.length > 0;
+        const previewRows = structuredExpense.rows.slice(0, 100);
+        const contextExtraction = extractAccountingText(
+          [
+            providerContext.originalFilename?.replace(/[^a-z0-9]+/gi, ' '),
+            ...previewRows.flatMap((row) => [
+              row.counterparty,
+              row.description,
+            ]),
+          ]
+            .filter((value): value is string => Boolean(value?.trim()))
+            .join(' '),
+        );
+        const singleRow = !requiresBatchExpenseImport
+          ? structuredExpense.rows[0]
+          : null;
+        const result = {
+          inputKind: 'CSV' as const,
+          structuredExpenseCsv: true,
+          structuredExpenseRowCount: structuredExpense.rows.length,
+          structuredExpenseInvalidRowCount:
+            structuredExpense.invalidRows.length,
+          structuredExpenseRows: previewRows,
+          structuredExpenseRowsTruncated:
+            structuredExpense.rows.length > previewRows.length,
+          requiresBatchExpenseImport,
+          extractedText: text.slice(0, 100_000),
+          ...(singleRow
+            ? {
+                date: singleRow.occurredAt,
+                subtotalCents: singleRow.totalCents,
+                taxCents: null,
+                totalCents: singleRow.totalCents,
+                suggestedCategoryStableId:
+                  contextExtraction.suggestedCategoryStableId,
+                suggestedCategoryName: contextExtraction.suggestedCategoryName,
+                confidence: 'HIGH' as const,
+                requiresSplit: false,
+                reviewDisposition: 'LIKELY_BILL' as const,
+                reviewReason: 'STRUCTURED_EXPENSE_ROW',
+              }
+            : {
+                reviewDisposition: 'LIKELY_BILL' as const,
+                reviewReason: 'STRUCTURED_EXPENSE_BATCH',
+              }),
+        };
+        await this.operations.recordInboxParseRun({
+          artifactStableId: artifact.artifactStableId,
+          parserName: ACCOUNTING_STRUCTURED_EXPENSE_CSV_PARSER_NAME,
+          parserVersion: ACCOUNTING_STRUCTURED_EXPENSE_CSV_PARSER_VERSION,
+          status: AccountingParseStatus.SUCCESS,
+          resultJson: result,
+        });
+        if (singleRow) {
+          await this.operations.suggestUnifiedInboxClassification(
+            artifact.artifactStableId,
+            {
+              classification: AccountingInboxClassification.EXPENSE_DOCUMENT,
+              selectedProvider: null,
+            },
+          );
+        }
+        return false;
+      }
+
       await this.operations.recordInboxParseRun({
         artifactStableId: artifact.artifactStableId,
         parserName: GENERIC_PARSER_NAME,
@@ -310,64 +423,65 @@ export class AccountingInboxAcquisitionService {
         status: AccountingParseStatus.SKIPPED,
         resultJson: {
           inputKind: 'CSV',
-          providerParserPending: true,
+          csvStructureUnrecognized: true,
+          extractedText: text.slice(0, 100_000),
         },
       });
       return false;
     }
     if (kind === AccountingArtifactKind.PDF) {
-      const { text, extraction } = extractAccountingPdf(buffer);
-      const provider = await this.providerFinancial.parseAndMaterialize({
+      const { text, extraction } = await extractAccountingPdf(buffer);
+      const provider = await this.parseProviderEvidence(acquisitionMode, {
         artifactStableId: artifact.artifactStableId,
         text,
         ...providerContext,
       });
       if (provider.matched) return true;
+      const ambiguousRuleStableIds =
+        'ambiguousRuleStableIds' in provider
+          ? provider.ambiguousRuleStableIds
+          : [];
       const result: TextReviewExtraction = {
         ...extraction,
         inputKind: 'PDF',
         ...classifyAccountingDocumentText(text, extraction),
         extractedText: text.slice(0, 100_000),
+        ...(ambiguousRuleStableIds.length
+          ? {
+              providerRecognitionAmbiguousRuleStableIds: ambiguousRuleStableIds,
+            }
+          : {}),
       };
       await this.recordSuccessfulParse(artifact.artifactStableId, result);
+      if (!ambiguousRuleStableIds.length) {
+        await this.suggestExpenseIfLikelyBill(
+          artifact.artifactStableId,
+          result,
+        );
+      }
       return false;
     }
     if (kind === AccountingArtifactKind.IMAGE) {
-      let text = '';
-      let ocrStatus: ImageReviewExtraction['ocrStatus'] = 'SUCCESS';
-      try {
-        const detected = detectAccountingReceiptImageType(buffer);
-        if (!detected) throw new Error('unsupported image');
-        const processed = await processAccountingReceiptImage({
-          originalname: `evidence.${detected === 'jpeg' ? 'jpg' : detected}`,
-          buffer,
-        });
-        text = (await extractAccountingImageText(processed.buffer)).text;
-      } catch (error) {
-        ocrStatus = 'ERROR';
-        this.logger.warn(
-          `Accounting Inbox image OCR failed for ${artifact.artifactStableId}: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      }
+      const detected = detectAccountingReceiptImageType(buffer);
+      if (!detected) throw new Error('unsupported image');
+      const text = (await extractAccountingImageText(buffer)).text;
       const extraction = extractAccountingText(text);
-      const review =
-        ocrStatus === 'SUCCESS'
-          ? classifyAccountingDocumentText(text, extraction)
-          : {
-              reviewDisposition: 'UNRECOGNIZED' as const,
-              reviewReason: 'NO_READABLE_TEXT' as const,
-            };
+      const review = text.trim()
+        ? classifyAccountingDocumentText(text, extraction)
+        : {
+            reviewDisposition: 'UNRECOGNIZED' as const,
+            reviewReason: 'NO_READABLE_TEXT' as const,
+          };
       const result: ImageReviewExtraction = {
         ...extraction,
         inputKind: 'IMAGE',
         ...review,
         extractedText: text.slice(0, 100_000),
         ocrEngine: 'TESSERACT',
-        ocrStatus,
+        ocrStatus: 'SUCCESS',
       };
       await this.recordSuccessfulParse(artifact.artifactStableId, result);
+      await this.suggestExpenseIfLikelyBill(artifact.artifactStableId, result);
       return false;
     }
     return false;
@@ -386,20 +500,61 @@ export class AccountingInboxAcquisitionService {
     if (artifact.inboxItem?.status !== AccountingInboxStatus.PENDING_REVIEW) {
       return;
     }
-    const provider = await this.providerFinancial.parseAndMaterialize({
+    const provider = await this.providerFinancial.parseForInboxSuggestion({
       artifactStableId: artifact.artifactStableId,
       text,
       ...providerContext,
     });
     if (provider.matched) return;
+    const ambiguousRuleStableIds =
+      'ambiguousRuleStableIds' in provider
+        ? provider.ambiguousRuleStableIds
+        : [];
     const extraction = extractAccountingText(text);
     const result: TextReviewExtraction = {
       ...extraction,
       inputKind,
       ...classifyAccountingDocumentText(text, extraction),
       extractedText: text.slice(0, 100_000),
+      ...(ambiguousRuleStableIds.length
+        ? { providerRecognitionAmbiguousRuleStableIds: ambiguousRuleStableIds }
+        : {}),
     };
     await this.recordSuccessfulParse(artifact.artifactStableId, result);
+    if (!ambiguousRuleStableIds.length) {
+      await this.suggestExpenseIfLikelyBill(artifact.artifactStableId, result);
+    }
+  }
+
+  private async parseProviderEvidence(
+    acquisitionMode: AccountingArtifactAcquisitionMode,
+    input: AccountingProviderFinancialParseContext,
+  ) {
+    return acquisitionMode === AccountingArtifactAcquisitionMode.PROVIDER_API
+      ? this.providerFinancial.parseAndMaterialize(input)
+      : this.providerFinancial.parseForInboxSuggestion(input);
+  }
+
+  private async suggestExpenseIfLikelyBill(
+    artifactStableId: string,
+    result: TextReviewExtraction | ImageReviewExtraction,
+  ) {
+    if (result.reviewDisposition !== 'LIKELY_BILL') return;
+    try {
+      await this.operations.suggestUnifiedInboxClassification(
+        artifactStableId,
+        {
+          classification: AccountingInboxClassification.EXPENSE_DOCUMENT,
+          selectedProvider: null,
+        },
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Accounting Inbox expense suggestion failed for ${artifactStableId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
 
   private async recordSuccessfulParse(
@@ -488,7 +643,7 @@ export class AccountingInboxAcquisitionService {
     originalName: string,
     extension: string,
   ) {
-    const dir = path.join(getUploadsAccountingDir(), 'inbox');
+    const dir = path.join(getAccountingUploadsDir(), 'inbox');
     await fs.promises.mkdir(dir, { recursive: true });
     const originalBase = path.basename(
       originalName || 'evidence',
@@ -511,7 +666,7 @@ export class AccountingInboxAcquisitionService {
     const fileName = path.basename(storedUrl.slice(prefix.length));
     try {
       await fs.promises.rm(
-        path.join(getUploadsAccountingDir(), 'inbox', fileName),
+        path.join(getAccountingUploadsDir(), 'inbox', fileName),
         {
           force: true,
         },

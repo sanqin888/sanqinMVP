@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api/client';
+import { AccountingProviderRecognitionRulesSettings } from './provider-recognition-rules';
 
 type CategoryType = 'INCOME' | 'EXPENSE' | 'ADJUSTMENT' | 'TRANSFER';
 type Category = {
@@ -327,6 +328,8 @@ export default function AccountingSettingsPage() {
         {automationResult?.gmail ? <p className="mt-3 rounded-lg bg-slate-50 p-3 text-sm">{isZh ? '扫描邮件' : 'Scanned'}: {automationResult.gmail.scannedMessages} · {isZh ? '新账单' : 'Imported'}: {automationResult.gmail.importedDocuments} · {isZh ? '起始日前忽略' : 'Before start date'}: {automationResult.gmail.skippedBeforeStartDate} · {isZh ? '重复' : 'Duplicates'}: {automationResult.gmail.duplicateDocuments} · {isZh ? '失败' : 'Failed'}: {automationResult.gmail.failedDocuments}</p> : null}
         {automationResult?.uberFinancialHistory ? <p className="mt-2 rounded-lg bg-slate-50 p-3 text-sm">{isZh ? 'Uber 财务资料' : 'Uber financial evidence'}: {isZh ? '扫描报表' : 'Reports scanned'} {automationResult.uberFinancialHistory.scannedReports} · {isZh ? '已规范化' : 'Normalized'} {automationResult.uberFinancialHistory.importedArtifacts} · {isZh ? '等待真实格式解析' : 'Deferred'} {automationResult.uberFinancialHistory.deferredArtifacts} · {isZh ? '订单明细跳过' : 'Order-detail skipped'} {automationResult.uberFinancialHistory.skippedOrderDetailReports}</p> : null}
       </section>
+
+      <AccountingProviderRecognitionRulesSettings isZh={isZh} />
 
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-lg font-semibold">{isZh ? '期间结账' : 'Period close'}</h2>

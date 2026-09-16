@@ -1,4 +1,4 @@
-import { inflateSync } from 'zlib';
+import { spawn } from 'node:child_process';
 
 export type AccountingPdfExtraction = {
   date: string | null;
@@ -14,59 +14,13 @@ export type AccountingPdfExtraction = {
 
 const moneyPattern = /(?:CAD\s*)?\$?\s*(-?\d{1,6}(?:,\d{3})*(?:\.\d{2}))/i;
 
-function decodePdfLiteral(raw: string): string {
-  return raw
-    .replace(/\\([nrtbf])/g, (_, code: string) => {
-      const values: Record<string, string> = {
-        n: '\n',
-        r: '\r',
-        t: '\t',
-        b: '\b',
-        f: '\f',
-      };
-      return values[code] ?? code;
-    })
-    .replace(/\\([()\\])/g, '$1')
-    .replace(/\\([0-7]{1,3})/g, (_, octal: string) =>
-      String.fromCharCode(Number.parseInt(octal, 8)),
-    );
-}
+const PDF_TEXT_TIMEOUT_MS = 20_000;
+const PDF_TEXT_MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
+const PDF_TEXT_MAX_STDERR_BYTES = 16 * 1024;
 
-function decodeHexString(raw: string): string {
-  const normalized = raw.replace(/\s+/g, '');
-  if (!normalized || normalized.length % 2 !== 0) return '';
-  const bytes = Buffer.from(normalized, 'hex');
-  if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
-    let result = '';
-    for (let index = 2; index + 1 < bytes.length; index += 2) {
-      result += String.fromCharCode(bytes.readUInt16BE(index));
-    }
-    return result;
-  }
-  return bytes.toString('latin1');
-}
+export type AccountingPdfTextRunner = (buffer: Buffer) => Promise<string>;
 
-function extractTextOperators(content: string): string[] {
-  const parts: string[] = [];
-  for (const match of content.matchAll(/\(((?:\\.|[^\\)])*)\)\s*Tj/g)) {
-    parts.push(decodePdfLiteral(match[1]));
-  }
-  for (const match of content.matchAll(/<([0-9A-Fa-f\s]+)>\s*Tj/g)) {
-    parts.push(decodeHexString(match[1]));
-  }
-  for (const match of content.matchAll(/\[((?:.|\n|\r)*?)\]\s*TJ/g)) {
-    const arrayBody = match[1];
-    for (const literal of arrayBody.matchAll(/\(((?:\\.|[^\\)])*)\)/g)) {
-      parts.push(decodePdfLiteral(literal[1]));
-    }
-    for (const hex of arrayBody.matchAll(/<([0-9A-Fa-f\s]+)>/g)) {
-      parts.push(decodeHexString(hex[1]));
-    }
-  }
-  return parts;
-}
-
-function replacePdfControlChars(value: string): string {
+function normalizeExtractedPdfText(value: string): string {
   let normalized = '';
   for (const char of value) {
     const code = char.charCodeAt(0);
@@ -78,40 +32,101 @@ function replacePdfControlChars(value: string): string {
         ? ' '
         : char;
   }
-  return normalized;
+  return normalized.replace(/\r\n?/g, '\n').trim();
 }
 
-export function extractPdfText(buffer: Buffer): string {
+export async function extractPdfText(
+  buffer: Buffer,
+  runner: AccountingPdfTextRunner = runPdftotext,
+): Promise<string> {
   if (
     buffer.length < 5 ||
     buffer.subarray(0, 5).toString('ascii') !== '%PDF-'
   ) {
     return '';
   }
-  const bounded = buffer.subarray(0, Math.min(buffer.length, 10 * 1024 * 1024));
-  const source = bounded.toString('latin1');
-  const parts = extractTextOperators(source);
 
-  const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
-  for (const match of source.matchAll(streamRegex)) {
-    const streamStart = match.index ?? 0;
-    const dictionary = source.slice(
-      Math.max(0, streamStart - 500),
-      streamStart,
-    );
-    if (!/\/FlateDecode\b/.test(dictionary)) continue;
-    const compressed = Buffer.from(match[1], 'latin1');
-    try {
-      const inflated = inflateSync(compressed, {
-        maxOutputLength: 4 * 1024 * 1024,
-      });
-      parts.push(...extractTextOperators(inflated.toString('latin1')));
-    } catch {
-      // Some streams use additional filters/predictors. Leave them for manual review.
-    }
-  }
+  return normalizeExtractedPdfText(await runner(buffer));
+}
 
-  return replacePdfControlChars(parts.join(' ')).replace(/\s+/g, ' ').trim();
+function runPdftotext(buffer: Buffer): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = spawn('pdftotext', ['-enc', 'UTF-8', '-nopgbrk', '-', '-'], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+    let stdoutBytes = 0;
+    let stderrBytes = 0;
+    let settled = false;
+
+    const clearTimer = () => clearTimeout(timer);
+    const finishReject = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimer();
+      reject(error);
+    };
+    const finishResolve = (value: string) => {
+      if (settled) return;
+      settled = true;
+      clearTimer();
+      resolve(value);
+    };
+
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+      finishReject(new Error('Accounting PDF text extraction timed out'));
+    }, PDF_TEXT_TIMEOUT_MS);
+
+    child.on('error', (error) => {
+      finishReject(
+        new Error(
+          `Accounting PDF text extractor unavailable: ${error.message}`,
+        ),
+      );
+    });
+    child.stdout.on('data', (chunk: Buffer) => {
+      stdoutBytes += chunk.length;
+      if (stdoutBytes > PDF_TEXT_MAX_OUTPUT_BYTES) {
+        child.kill('SIGKILL');
+        finishReject(
+          new Error('Accounting PDF text extraction output exceeded limit'),
+        );
+        return;
+      }
+      stdoutChunks.push(chunk);
+    });
+    child.stderr.on('data', (chunk: Buffer) => {
+      if (stderrBytes >= PDF_TEXT_MAX_STDERR_BYTES) return;
+      const remaining = PDF_TEXT_MAX_STDERR_BYTES - stderrBytes;
+      const bounded = chunk.subarray(0, remaining);
+      stderrBytes += bounded.length;
+      stderrChunks.push(bounded);
+    });
+    child.on('close', (code) => {
+      if (settled) return;
+      if (code !== 0) {
+        const detail = Buffer.concat(stderrChunks).toString('utf8').trim();
+        finishReject(
+          new Error(
+            `Accounting PDF text extraction failed with exit code ${code ?? 'unknown'}${detail ? `: ${detail}` : ''}`,
+          ),
+        );
+        return;
+      }
+      finishResolve(Buffer.concat(stdoutChunks).toString('utf8'));
+    });
+
+    child.stdin.on('error', (error) => {
+      finishReject(
+        new Error(
+          `Accounting PDF text extraction input failed: ${error.message}`,
+        ),
+      );
+    });
+    child.stdin.end(buffer);
+  });
 }
 
 function moneyAfterLabel(text: string, labels: RegExp[]): number | null {
@@ -253,10 +268,10 @@ export function extractAccountingText(text: string): AccountingPdfExtraction {
   };
 }
 
-export function extractAccountingPdf(buffer: Buffer): {
+export async function extractAccountingPdf(buffer: Buffer): Promise<{
   text: string;
   extraction: AccountingPdfExtraction;
-} {
-  const text = extractPdfText(buffer);
+}> {
+  const text = await extractPdfText(buffer);
   return { text, extraction: extractAccountingText(text) };
 }
