@@ -1,6 +1,7 @@
 import sharp from 'sharp';
 import {
   ACCOUNTING_IMAGE_OCR_POLICY,
+  applyAccountingAdaptiveMeanThreshold,
   extractAccountingImageText,
   mergeAccountingImageOcrSegmentTexts,
   normalizeAccountingImageOcrText,
@@ -54,6 +55,23 @@ describe('accounting image OCR', () => {
     expect(readable.moneyCount).toBeGreaterThanOrEqual(5);
     expect(readable.dateCount).toBe(1);
     expect(readable.receiptSignalCount).toBeGreaterThanOrEqual(5);
+  });
+
+  it('normalizes common OCR decimal separators without changing thousands separators', () => {
+    expect(
+      normalizeAccountingImageOcrText(
+        'Sub Total 42, 38\nTotal after Tax 42. 38\nOther 42,38\nLarge 1,234.56',
+      ),
+    ).toBe(
+      'Sub Total 42.38\nTotal after Tax 42.38\nOther 42.38\nLarge 1,234.56',
+    );
+  });
+
+  it('counts named receipt dates that the downstream parser already accepts', () => {
+    expect(
+      scoreAccountingReceiptOcrText('Receipt\nSep 08 2026\nTotal 42.38')
+        .dateCount,
+    ).toBe(1);
   });
 
   it('selects the deterministic receipt-quality winner instead of the longest text', () => {
@@ -136,13 +154,8 @@ describe('accounting image OCR', () => {
       ])
       .png()
       .toBuffer();
-    const input = await sharp({
-      create: {
-        width: 500,
-        height: 1000,
-        channels: 3,
-        background: { r: 20, g: 20, b: 20 },
-      },
+    const input = await sharp(makeTexturedDarkRgb(500, 1000), {
+      raw: { width: 500, height: 1000, channels: 3 },
     })
       .composite([{ input: receipt, left: 150, top: 150 }])
       .jpeg({ quality: 94 })
@@ -153,6 +166,9 @@ describe('accounting image OCR', () => {
     expect(cropped.strategy).toBe('RECEIPT_CONTRAST_ENG_PSM4');
     expect(cropped.segments.length).toBeGreaterThan(0);
     for (const segment of cropped.segments) {
+      expect(segment.sourceLeft).toBeGreaterThan(0);
+      expect(segment.sourceWidth).toBeLessThan(500);
+      expect(segment.sourceWidth).toBeGreaterThanOrEqual(250);
       expect(segment.height).toBeLessThanOrEqual(
         ACCOUNTING_IMAGE_OCR_POLICY.maxSegmentHeight,
       );
@@ -160,6 +176,33 @@ describe('accounting image OCR', () => {
         ACCOUNTING_IMAGE_OCR_POLICY.maxSegmentPixels,
       );
     }
+  });
+
+  it('uses local adaptive thresholding across uneven receipt illumination', () => {
+    const width = 15;
+    const height = 7;
+    const pixels = Buffer.alloc(width * height);
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const background = x < 7 ? 100 : 220;
+        const textPixel = x === 3 ? 50 : x === 11 ? 150 : background;
+        pixels[y * width + x] = textPixel;
+      }
+    }
+
+    const thresholded = applyAccountingAdaptiveMeanThreshold(
+      pixels,
+      width,
+      height,
+      5,
+      10,
+    );
+    const middleRow = 3 * width;
+
+    expect(thresholded[middleRow + 3]).toBe(0);
+    expect(thresholded[middleRow + 1]).toBe(255);
+    expect(thresholded[middleRow + 11]).toBe(0);
+    expect(thresholded[middleRow + 13]).toBe(255);
   });
 
   it('segments very long receipts instead of shrinking the whole image to one fixed height', async () => {
@@ -254,6 +297,8 @@ describe('accounting image OCR', () => {
     const metadata = await sharp(segment.buffer).metadata();
 
     expect(metadata.format).toBe('png');
+    expect(segment.sourceLeft).toBe(0);
+    expect(segment.sourceWidth).toBe(600);
     expect(segment.width).toBeGreaterThanOrEqual(1000);
     expect(segment.height).toBeGreaterThanOrEqual(1600);
     expect(segment.width * segment.height).toBeLessThanOrEqual(
@@ -309,7 +354,9 @@ describe('accounting image OCR', () => {
 
     await expect(
       extractAccountingImageText(input, () => Promise.resolve(noisyOcrText)),
-    ).rejects.toThrow('Accounting image OCR produced low-quality text');
+    ).rejects.toThrow(
+      /Accounting image OCR produced low-quality text \(winner=RECEIPT_CONTRAST_ENG_PSM4; .*normal=.*noise=.*money=.*date=.*signals=/,
+    );
   });
 
   it('records candidate execution failure instead of masking it as empty OCR', async () => {
@@ -361,4 +408,18 @@ async function makeSmallReceiptImage(): Promise<Buffer> {
     ])
     .png()
     .toBuffer();
+}
+
+function makeTexturedDarkRgb(width: number, height: number): Buffer {
+  const pixels = Buffer.allocUnsafe(width * height * 3);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const luminance = 16 + ((x * 17 + y * 29 + ((x * y) % 23)) % 34);
+      const offset = (y * width + x) * 3;
+      pixels[offset] = luminance;
+      pixels[offset + 1] = luminance;
+      pixels[offset + 2] = luminance;
+    }
+  }
+  return pixels;
 }
