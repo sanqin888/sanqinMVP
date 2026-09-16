@@ -433,12 +433,13 @@ function chooseTextractDate(
       .map((candidate) => extractAccountingText(candidate.text).date)
       .filter((date): date is string => Boolean(date)),
   );
-  if (genericDate && normalizedCandidates.has(genericDate)) return genericDate;
+  if (normalizedCandidates.size > 1) return null;
   if (normalizedCandidates.size === 1) {
-    return Array.from(normalizedCandidates)[0];
+    const providerDate = Array.from(normalizedCandidates)[0];
+    if (genericDate && genericDate !== providerDate) return null;
+    return providerDate;
   }
-  if (normalizedCandidates.size === 0) return genericDate;
-  return null;
+  return genericDate;
 }
 
 function evaluateFinancialConsistency(

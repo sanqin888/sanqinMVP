@@ -1,6 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import {
+  type KeyboardEvent as ReactKeyboardEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { apiFetch } from '@/lib/api/client';
 import {
   type AccountingAccount,
@@ -48,6 +54,8 @@ export function AccountingInboxExpenseReviewPanel({
   const [rows, setRows] = useState<AccountingExpenseReviewRow[]>([]);
   const [quickRows, setQuickRows] = useState<QuickRow[]>([]);
   const [showQuick, setShowQuick] = useState(false);
+  const quickAmountInputs = useRef(new Map<string, HTMLInputElement>());
+  const pendingQuickAmountFocus = useRef<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -117,6 +125,16 @@ export function AccountingInboxExpenseReviewPanel({
     setError(null);
   }, [cadAccounts, expenseCategories, item]);
 
+  useEffect(() => {
+    const key = pendingQuickAmountFocus.current;
+    if (!key) return;
+    const input = quickAmountInputs.current.get(key);
+    if (!input) return;
+    pendingQuickAmountFocus.current = null;
+    input.focus();
+    input.select();
+  }, [quickRows]);
+
   const calculated = useMemo(() => {
     const subtotalCents = rows.reduce(
       (sum, row) => sum + toCents(row.amount),
@@ -132,21 +150,45 @@ export function AccountingInboxExpenseReviewPanel({
     };
   }, [rows, total]);
 
-  function addQuickRow() {
-    const defaultCategory =
-      quickRows.at(-1)?.categoryStableId ||
-      rows.at(-1)?.categoryStableId ||
-      expenseCategories[0]?.categoryStableId ||
-      '';
-    setQuickRows((current) => [
-      ...current,
-      {
-        key: makeReviewKey(),
-        amount: '',
-        categoryStableId: defaultCategory,
-        taxMode: current.at(-1)?.taxMode ?? 'EXEMPT',
-      },
-    ]);
+  function addQuickRow(options?: {
+    focusAmount?: boolean;
+    inheritFrom?: QuickRow;
+  }) {
+    const inheritFrom = options?.inheritFrom ?? quickRows.at(-1);
+    const nextRow: QuickRow = {
+      key: makeReviewKey(),
+      amount: '',
+      categoryStableId:
+        inheritFrom?.categoryStableId ||
+        rows.at(-1)?.categoryStableId ||
+        expenseCategories[0]?.categoryStableId ||
+        '',
+      taxMode: inheritFrom?.taxMode ?? 'EXEMPT',
+    };
+    if (options?.focusAmount) {
+      pendingQuickAmountFocus.current = nextRow.key;
+    }
+    setQuickRows((current) => [...current, nextRow]);
+  }
+
+  function handleQuickAmountKeyDown(
+    event: ReactKeyboardEvent<HTMLInputElement>,
+    row: QuickRow,
+    index: number,
+  ) {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+
+    const nextRow = quickRows[index + 1];
+    if (nextRow) {
+      const nextInput = quickAmountInputs.current.get(nextRow.key);
+      nextInput?.focus();
+      nextInput?.select();
+      return;
+    }
+
+    if (!toCents(row.amount)) return;
+    addQuickRow({ focusAmount: true, inheritFrom: row });
   }
 
   function aggregateQuickRows() {
@@ -393,8 +435,8 @@ export function AccountingInboxExpenseReviewPanel({
             </strong>
             <p className="mt-1 text-xs text-slate-600">
               {isZh
-                ? '按收据商品逐行录入 CAD 金额、类别和税率，汇总后只保留类别总额；商品行不会保存。'
-                : 'Enter receipt items one by one in CAD, choose category and tax, then aggregate. Item rows are never persisted.'}
+                ? '按收据商品逐行录入 CAD 金额、类别和税率；金额后按 Enter 可继续下一项，并继承上一项类别/税率。汇总后只保留类别总额，商品行不会保存。'
+                : 'Enter receipt items one by one in CAD. Press Enter after an amount to continue with the previous category/tax. Only category totals are persisted.'}
             </p>
           </div>
           <button
@@ -416,14 +458,19 @@ export function AccountingInboxExpenseReviewPanel({
         </div>
         {showQuick ? (
           <div className="mt-3 space-y-2">
-            {quickRows.map((row) => (
+            {quickRows.map((row, index) => (
               <div
                 key={row.key}
                 className="grid gap-2 md:grid-cols-[140px_1fr_130px_70px]"
               >
                 <input
+                  ref={(node) => {
+                    if (node) quickAmountInputs.current.set(row.key, node);
+                    else quickAmountInputs.current.delete(row.key);
+                  }}
                   className="rounded border bg-white px-3 py-2 text-sm"
                   inputMode="decimal"
+                  enterKeyHint="next"
                   placeholder="CAD 0.00"
                   value={row.amount}
                   onChange={(event) =>
@@ -434,6 +481,9 @@ export function AccountingInboxExpenseReviewPanel({
                           : entry,
                       ),
                     )
+                  }
+                  onKeyDown={(event) =>
+                    handleQuickAmountKeyDown(event, row, index)
                   }
                 />
                 <select
@@ -494,7 +544,7 @@ export function AccountingInboxExpenseReviewPanel({
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={addQuickRow}
+                onClick={() => addQuickRow()}
                 className="rounded border bg-white px-3 py-1.5 text-sm"
               >
                 + {isZh ? '下一项' : 'Next item'}

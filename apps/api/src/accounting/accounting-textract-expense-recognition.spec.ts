@@ -263,6 +263,46 @@ describe('Accounting Textract expense recognition', () => {
     expect(result.evidence.dateCandidates).toHaveLength(2);
   });
 
+  it('fails closed when full-text parsing matches one candidate but other normalized receipt dates conflict', async () => {
+    const input = await receiptImage();
+    const result = await recognizeAccountingExpenseImageWithTextract(
+      input,
+      () =>
+        Promise.resolve({
+          $metadata: {},
+          ExpenseDocuments: [
+            {
+              SummaryFields: [
+                summaryField('INVOICE_RECEIPT_DATE', '26/09/08', 99.59, null),
+                summaryField('INVOICE_RECEIPT_DATE', '2026/09/01', 99.98, null),
+                summaryField(
+                  'INVOICE_RECEIPT_DATE',
+                  'Sep 08 2026',
+                  79.78,
+                  null,
+                ),
+                summaryField('SUBTOTAL', '42.38', 99.97, 'USD'),
+                summaryField('TAX', '0.00', 99.96, 'USD'),
+                summaryField('TOTAL', '42.38', 99.99, 'USD'),
+              ],
+              Blocks: [
+                line('FOODY MART SUPERMARKET', 0.05),
+                line('2026/09/01 10:39 Receipt# P1260908163966', 0.1),
+                line('Sep 08 2026 04:39 pm', 0.7),
+                line('Sub Total 42.38', 0.75),
+                line('HST 0.00', 0.8),
+                line('Total after Tax 42.38', 0.85),
+              ],
+            },
+          ],
+        } as AnalyzeExpenseCommandOutput),
+    );
+
+    expect(result.extraction.date).toBeNull();
+    expect(result.extraction.totalCents).toBe(4238);
+    expect(result.evidence.dateCandidates).toHaveLength(3);
+  });
+
   it('submits scanned PDF bytes unchanged through the synchronous expense mapper', async () => {
     const pdf = Buffer.from('%PDF-1.4\nscanned-page\n%%EOF', 'ascii');
     let submitted: Buffer | null = null;
