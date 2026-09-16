@@ -8,8 +8,8 @@ import { AccountingOperationsService } from './accounting-operations.service';
 function withTransaction<T extends object>(tx: T) {
   return {
     ...tx,
-    $transaction: jest.fn(
-      (callback: (client: T) => Promise<unknown>) => callback(tx),
+    $transaction: jest.fn((callback: (client: T) => Promise<unknown>) =>
+      callback(tx),
     ),
   };
 }

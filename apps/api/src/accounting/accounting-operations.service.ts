@@ -923,13 +923,20 @@ export class AccountingOperationsService {
 
     const documentStableId = `expense_${createId()}`;
     await runSerializableAccountingWrite(this.prisma, async (tx) => {
-      const inbox = await readAccountingInboxExpenseContext(tx, inboxItemStableId);
-      if (!inbox) throw new NotFoundException('accounting inbox item not found');
+      const inbox = await readAccountingInboxExpenseContext(
+        tx,
+        inboxItemStableId,
+      );
+      if (!inbox)
+        throw new NotFoundException('accounting inbox item not found');
       if (inbox.status !== AccountingInboxStatus.PENDING_REVIEW) {
-        throw new ConflictException('only pending inbox items can be confirmed');
+        throw new ConflictException(
+          'only pending inbox items can be confirmed',
+        );
       }
       if (
-        inbox.classification !== AccountingInboxClassification.EXPENSE_DOCUMENT ||
+        inbox.classification !==
+          AccountingInboxClassification.EXPENSE_DOCUMENT ||
         inbox.selectedProvider
       ) {
         throw new ConflictException(
@@ -976,7 +983,9 @@ export class AccountingOperationsService {
         categories.map((row) => [row.categoryStableId, row.id]),
       );
       if (
-        normalizedSplits.some((split) => !categoryMap.has(split.categoryStableId))
+        normalizedSplits.some(
+          (split) => !categoryMap.has(split.categoryStableId),
+        )
       ) {
         throw new BadRequestException(
           'one or more expense categories are invalid',
@@ -1046,7 +1055,9 @@ export class AccountingOperationsService {
           currency: 'CAD',
           accountId: account?.id ?? null,
           gmailMessageId: accountingOptionalString(metadata.gmailMessageId),
-          gmailAttachmentId: accountingOptionalString(metadata.gmailAttachmentId),
+          gmailAttachmentId: accountingOptionalString(
+            metadata.gmailAttachmentId,
+          ),
           fileHash: inbox.artifact.contentHash,
           emailSubject: inbox.artifact.emailSubject,
           attachmentUrls,

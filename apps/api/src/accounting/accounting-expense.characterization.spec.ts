@@ -224,7 +224,9 @@ describe('AccountingOperationsService expense-write characterization', () => {
         },
         'user_stable_3',
       ),
-    ).rejects.toThrow('expense booking account must use CAD functional currency');
+    ).rejects.toThrow(
+      'expense booking account must use CAD functional currency',
+    );
     expect(transaction).not.toHaveBeenCalled();
   });
 
