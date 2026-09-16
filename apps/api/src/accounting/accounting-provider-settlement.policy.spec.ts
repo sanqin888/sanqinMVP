@@ -360,22 +360,29 @@ describe('Accounting provider settlement shadow policy', () => {
     expect(plan.debitCents).toBe(294164);
     expect(plan.creditCents).toBe(294164);
     const journalLines = new Map(
-      plan.draftJournal?.lines.map((line) => [line.accountStableId, line]) ?? [],
-    );
-    expect(journalLines.get(PROVIDER_SETTLEMENT_ACCOUNT_IDS.uberPending)).toEqual(
-      expect.objectContaining({ debitCents: 122285, creditCents: 0 }),
+      plan.draftJournal?.lines.map((line) => [line.accountStableId, line]) ??
+        [],
     );
     expect(
-      journalLines.get(PROVIDER_SETTLEMENT_ACCOUNT_IDS.platformCommissionExpense),
+      journalLines.get(PROVIDER_SETTLEMENT_ACCOUNT_IDS.uberPending),
+    ).toEqual(expect.objectContaining({ debitCents: 122285, creditCents: 0 }));
+    expect(
+      journalLines.get(
+        PROVIDER_SETTLEMENT_ACCOUNT_IDS.platformCommissionExpense,
+      ),
     ).toEqual(expect.objectContaining({ debitCents: 61912, creditCents: 0 }));
     expect(
-      journalLines.get(PROVIDER_SETTLEMENT_ACCOUNT_IDS.platformPromotionExpense),
+      journalLines.get(
+        PROVIDER_SETTLEMENT_ACCOUNT_IDS.platformPromotionExpense,
+      ),
     ).toEqual(expect.objectContaining({ debitCents: 58703, creditCents: 0 }));
     expect(
       journalLines.get(PROVIDER_SETTLEMENT_ACCOUNT_IDS.advertisingExpense),
     ).toEqual(expect.objectContaining({ debitCents: 37529, creditCents: 0 }));
     expect(
-      journalLines.get(PROVIDER_SETTLEMENT_ACCOUNT_IDS.chargebackAdjustmentExpense),
+      journalLines.get(
+        PROVIDER_SETTLEMENT_ACCOUNT_IDS.chargebackAdjustmentExpense,
+      ),
     ).toEqual(expect.objectContaining({ debitCents: 806, creditCents: 0 }));
     expect(
       journalLines.get(PROVIDER_SETTLEMENT_ACCOUNT_IDS.generalOperatingExpense),
