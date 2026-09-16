@@ -136,6 +136,27 @@ describe('AccountingInboxAcquisitionService', () => {
     expect(providerFinancial.parseAndMaterialize).not.toHaveBeenCalled();
   });
 
+  it('normalizes mojibake multipart filenames before persistence and parsing', async () => {
+    const { service, operations, providerFinancial } = makeService();
+    await service.acquireManualFile({
+      originalname:
+        '6 2026_SanQ Roujiamo \u00e4\u00b8\u0089\u00e7\u00a7\u00a6\u00e8\u0082\u0089\u00e5\u00a4\u00b9\u00e9\u00a6\u008d.pdf',
+      mimetype: 'application/pdf',
+      buffer: Buffer.from('%PDF-1.4\n%%EOF', 'ascii'),
+    });
+
+    expect(operations.registerInboxArtifact).toHaveBeenCalledWith(
+      expect.objectContaining({
+        originalFilename: '6 2026_SanQ Roujiamo 三秦肉夹馍.pdf',
+      }),
+    );
+    expect(providerFinancial.parseForInboxSuggestion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        originalFilename: '6 2026_SanQ Roujiamo 三秦肉夹馍.pdf',
+      }),
+    );
+  });
+
   it('removes the second physical file when a manual upload is detected as duplicate', async () => {
     const { service, operations } = makeService();
     let duplicateStoredUrl = '';
