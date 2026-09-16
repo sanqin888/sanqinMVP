@@ -251,24 +251,170 @@ describe('Accounting provider settlement shadow policy', () => {
     expect(plan.blockReasons).toContain('DOCUMENT_CROSSES_LIVE_ORDER_CUTOVER');
   });
 
-  it('fails closed on unknown provider components instead of defaulting them into general income or expense', () => {
+  it('maps the observed June Uber settlement components without swallowing unknown provider semantics', () => {
     const plan = buildProviderSettlementDocumentPlan({
       document: uberDocument([
         {
-          lineStableId: 'line-other',
+          lineStableId: 'line-sales',
           lineNo: 1,
-          rawName: 'Other Earnings',
-          component: AccountingFinancialComponent.OTHER,
+          rawName: 'Sales',
+          component: AccountingFinancialComponent.SALES,
           postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
-          amountCents: 123,
+          amountCents: 267167,
+        },
+        {
+          lineStableId: 'line-sales-tax',
+          lineNo: 2,
+          rawName: 'Tax on Sales',
+          component: AccountingFinancialComponent.SALES_TAX,
+          postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+          amountCents: 34735,
+        },
+        {
+          lineStableId: 'line-commission',
+          lineNo: 3,
+          rawName: 'Marketplace Fees',
+          component: AccountingFinancialComponent.COMMISSION,
+          postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+          amountCents: -61912,
+        },
+        {
+          lineStableId: 'line-commission-tax',
+          lineNo: 4,
+          rawName: 'Tax on Marketplace Fees',
+          component: AccountingFinancialComponent.COMMISSION_TAX,
+          postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+          amountCents: -8047,
+        },
+        {
+          lineStableId: 'line-other-fee',
+          lineNo: 5,
+          rawName: 'Other Charges',
+          component: AccountingFinancialComponent.PLATFORM_OTHER_FEE,
+          postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+          amountCents: -2,
+        },
+        {
+          lineStableId: 'line-promotion',
+          lineNo: 6,
+          rawName: 'Offers On Items',
+          component: AccountingFinancialComponent.PROMOTION,
+          postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+          amountCents: -58703,
+        },
+        {
+          lineStableId: 'line-offer-tax',
+          lineNo: 7,
+          rawName: 'Tax on offer spends',
+          component: AccountingFinancialComponent.SALES_TAX,
+          postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+          amountCents: -7633,
+        },
+        {
+          lineStableId: 'line-ad-spend',
+          lineNo: 8,
+          rawName: 'Ad Spends',
+          component: AccountingFinancialComponent.ADVERTISING,
+          postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+          amountCents: -42527,
+        },
+        {
+          lineStableId: 'line-ad-credit',
+          lineNo: 9,
+          rawName: 'Ad Credits',
+          component: AccountingFinancialComponent.ADVERTISING_CREDIT,
+          postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+          amountCents: 4998,
+        },
+        {
+          lineStableId: 'line-ad-tax',
+          lineNo: 10,
+          rawName: 'Tax on Net Ad Spends',
+          component: AccountingFinancialComponent.ADVERTISING_TAX,
+          postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+          amountCents: -4880,
+        },
+        {
+          lineStableId: 'line-chargeback',
+          lineNo: 11,
+          rawName: 'Net Chargeback Amount',
+          component: AccountingFinancialComponent.CHARGEBACK,
+          postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+          amountCents: -806,
+        },
+        {
+          lineStableId: 'line-chargeback-tax',
+          lineNo: 12,
+          rawName: 'Net Tax On Chargeback',
+          component: AccountingFinancialComponent.CHARGEBACK_TAX,
+          postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+          amountCents: -105,
         },
       ]),
       salesAuthority: 'STATEMENT_AUTHORITATIVE',
-      occurredAt: new Date('2026-09-01T03:59:59.999Z'),
+      occurredAt: new Date('2026-07-01T03:59:59.999Z'),
     });
-    expect(plan.status).toBe('BLOCKED');
-    expect(plan.blockReasons).toEqual(['UNMAPPED_PROVIDER_COMPONENT']);
+
+    expect(plan.status).toBe('READY');
+    expect(plan.blockReasons).toEqual([]);
+    expect(plan.debitCents).toBe(294164);
+    expect(plan.creditCents).toBe(294164);
+    const journalLines = new Map(
+      plan.draftJournal?.lines.map((line) => [line.accountStableId, line]) ?? [],
+    );
+    expect(journalLines.get(PROVIDER_SETTLEMENT_ACCOUNT_IDS.uberPending)).toEqual(
+      expect.objectContaining({ debitCents: 122285, creditCents: 0 }),
+    );
+    expect(
+      journalLines.get(PROVIDER_SETTLEMENT_ACCOUNT_IDS.platformCommissionExpense),
+    ).toEqual(expect.objectContaining({ debitCents: 61912, creditCents: 0 }));
+    expect(
+      journalLines.get(PROVIDER_SETTLEMENT_ACCOUNT_IDS.platformPromotionExpense),
+    ).toEqual(expect.objectContaining({ debitCents: 58703, creditCents: 0 }));
+    expect(
+      journalLines.get(PROVIDER_SETTLEMENT_ACCOUNT_IDS.advertisingExpense),
+    ).toEqual(expect.objectContaining({ debitCents: 37529, creditCents: 0 }));
+    expect(
+      journalLines.get(PROVIDER_SETTLEMENT_ACCOUNT_IDS.chargebackAdjustmentExpense),
+    ).toEqual(expect.objectContaining({ debitCents: 806, creditCents: 0 }));
+    expect(
+      journalLines.get(PROVIDER_SETTLEMENT_ACCOUNT_IDS.generalOperatingExpense),
+    ).toEqual(expect.objectContaining({ debitCents: 2, creditCents: 0 }));
+    expect(
+      journalLines.get(PROVIDER_SETTLEMENT_ACCOUNT_IDS.hstRecoverable),
+    ).toEqual(expect.objectContaining({ debitCents: 12927, creditCents: 0 }));
+    expect(
+      journalLines.get(PROVIDER_SETTLEMENT_ACCOUNT_IDS.salesRevenue),
+    ).toEqual(expect.objectContaining({ debitCents: 0, creditCents: 267167 }));
+    expect(
+      journalLines.get(PROVIDER_SETTLEMENT_ACCOUNT_IDS.hstPayable),
+    ).toEqual(expect.objectContaining({ debitCents: 0, creditCents: 26997 }));
   });
+
+  it.each<[string, AccountingFinancialComponent]>([
+    ['OTHER', AccountingFinancialComponent.OTHER],
+    ['ADJUSTMENT', AccountingFinancialComponent.ADJUSTMENT],
+  ])(
+    'fails closed on unknown %s provider components instead of defaulting them into general income or expense',
+    (_label, component) => {
+      const plan = buildProviderSettlementDocumentPlan({
+        document: uberDocument([
+          {
+            lineStableId: 'line-unknown',
+            lineNo: 1,
+            rawName: 'Unknown provider component',
+            component,
+            postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+            amountCents: 123,
+          },
+        ]),
+        salesAuthority: 'STATEMENT_AUTHORITATIVE',
+        occurredAt: new Date('2026-09-01T03:59:59.999Z'),
+      });
+      expect(plan.status).toBe('BLOCKED');
+      expect(plan.blockReasons).toEqual(['UNMAPPED_PROVIDER_COMPONENT']);
+    },
+  );
 
   it('inverts every line of a pre-cutover Uber Order journal without changing historical occurrence time', () => {
     const draft = buildUberPreCutoverOrderReversalDraft({

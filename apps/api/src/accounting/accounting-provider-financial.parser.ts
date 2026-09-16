@@ -8,7 +8,7 @@ import {
 
 export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_NAME =
   'accounting-provider-financial';
-export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION = '2';
+export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION = '3';
 
 export type ProviderFinancialParseInput = {
   text: string;
@@ -321,12 +321,12 @@ function parseUberMonthlyStatement(
   );
   add(
     'Other Charges',
-    AccountingFinancialComponent.OTHER,
+    AccountingFinancialComponent.PLATFORM_OTHER_FEE,
     AccountingFinancialPostingTreatment.POSTABLE,
   );
   add(
     'Tax On Other Charges',
-    AccountingFinancialComponent.OTHER,
+    AccountingFinancialComponent.PLATFORM_OTHER_FEE_TAX,
     AccountingFinancialPostingTreatment.POSTABLE,
     AccountingFinancialTaxRole.INPUT_TAX,
   );
@@ -352,9 +352,9 @@ function parseUberMonthlyStatement(
   );
   add(
     'Tax on offer spends',
-    AccountingFinancialComponent.OTHER,
+    AccountingFinancialComponent.SALES_TAX,
     AccountingFinancialPostingTreatment.POSTABLE,
-    AccountingFinancialTaxRole.INPUT_TAX,
+    AccountingFinancialTaxRole.SALES_TAX,
   );
   add(
     'Ad Spends',
@@ -368,7 +368,7 @@ function parseUberMonthlyStatement(
   );
   add(
     'Tax on Net Ad Spends',
-    AccountingFinancialComponent.OTHER,
+    AccountingFinancialComponent.ADVERTISING_TAX,
     AccountingFinancialPostingTreatment.POSTABLE,
     AccountingFinancialTaxRole.INPUT_TAX,
   );
@@ -384,9 +384,9 @@ function parseUberMonthlyStatement(
   );
   add(
     'Net Tax On Chargeback',
-    AccountingFinancialComponent.ADJUSTMENT,
+    AccountingFinancialComponent.CHARGEBACK_TAX,
     AccountingFinancialPostingTreatment.POSTABLE,
-    AccountingFinancialTaxRole.OTHER_TAX,
+    AccountingFinancialTaxRole.SALES_TAX,
   );
   add(
     'Marketplace Facilitator Tax',

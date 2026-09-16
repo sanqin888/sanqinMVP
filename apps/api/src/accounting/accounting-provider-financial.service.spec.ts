@@ -418,6 +418,8 @@ Total transfer amount $3813.11
         storeStableId: '4750_Yonge_Street',
         periodStart: '2026-08-01',
         periodEnd: '2026-08-31',
+        parserName: 'accounting-provider-financial',
+        parserVersion: '3',
       }),
     );
     expect(operations.ensureProviderFinancialCoverage).toHaveBeenCalledWith(
