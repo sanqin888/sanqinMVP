@@ -247,11 +247,9 @@ export async function listAccountingManualUploadLibrary(
       Boolean(row.artifact.financialDocument);
     const canDiscard =
       !protectedFinancialEvidence &&
-      [
-        AccountingInboxStatus.PENDING_REVIEW,
-        AccountingInboxStatus.QUARANTINED,
-        AccountingInboxStatus.ERROR,
-      ].includes(row.status);
+      (row.status === AccountingInboxStatus.PENDING_REVIEW ||
+        row.status === AccountingInboxStatus.QUARANTINED ||
+        row.status === AccountingInboxStatus.ERROR);
 
     return {
       inboxItemStableId: row.inboxItemStableId,
