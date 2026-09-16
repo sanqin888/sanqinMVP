@@ -544,7 +544,7 @@ export function AccountingInboxExpenseReviewPanel({
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={addQuickRow}
+                onClick={() => addQuickRow()}
                 className="rounded border bg-white px-3 py-1.5 text-sm"
               >
                 + {isZh ? '下一项' : 'Next item'}
