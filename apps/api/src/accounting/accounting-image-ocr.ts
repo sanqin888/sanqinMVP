@@ -336,8 +336,7 @@ export function applyAccountingAdaptiveMeanThreshold(
           horizontalEnd = addX;
         }
       }
-      const localCount =
-        verticalCount * (horizontalEnd - horizontalStart + 1);
+      const localCount = verticalCount * (horizontalEnd - horizontalStart + 1);
       const localMean = localSum / Math.max(localCount, 1);
       output[rowOffset + x] =
         pixels[rowOffset + x] > localMean - bias ? 255 : 0;
@@ -370,7 +369,8 @@ async function prepareAccountingImageSegments(
     buffer,
     orientedWidth,
   );
-  const sourceLeft = trimBackground && geometry.cropApplied ? geometry.cropLeft : 0;
+  const sourceLeft =
+    trimBackground && geometry.cropApplied ? geometry.cropLeft : 0;
   const sourceWidth =
     trimBackground && geometry.cropApplied ? geometry.cropWidth : orientedWidth;
   const estimatedPreparedHeight = Math.max(
@@ -544,10 +544,7 @@ async function analyzeAccountingReceiptImageGeometry(
     ACCOUNTING_IMAGE_OCR_POLICY.receiptCropSupportFloor,
     maxSupport * ACCOUNTING_IMAGE_OCR_POLICY.receiptCropSupportRelative,
   );
-  const run = findLargestAccountingColumnRun(
-    smoothedSupport,
-    supportThreshold,
-  );
+  const run = findLargestAccountingColumnRun(smoothedSupport, supportThreshold);
   if (!run) {
     return {
       cropApplied: false,
@@ -607,10 +604,7 @@ async function analyzeAccountingReceiptImageGeometry(
     cropWidth: cropApplied ? cropWidth : orientedWidth,
     segmentationWidth: cropApplied
       ? cropWidth
-      : Math.min(
-          orientedWidth,
-          Math.max(minimumSegmentationWidth, cropWidth),
-        ),
+      : Math.min(orientedWidth, Math.max(minimumSegmentationWidth, cropWidth)),
   };
 }
 
