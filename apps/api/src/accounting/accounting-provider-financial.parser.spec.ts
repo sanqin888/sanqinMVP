@@ -170,6 +170,7 @@ Uber Fees
 Marketplace Fees -$767.88
 Tax on Marketplace Fees -$99.81
 Other Charges -$0.02
+Tax On Other Charges $0.00
 Total Uber Fees -$867.71
 Marketing Spends
 Offers On Items -$688.02
@@ -205,6 +206,40 @@ Net Payout $216.02
     );
     expect(lineByName(parsed!, 'Sales')?.amountCents).toBe(330067);
     expect(lineByName(parsed!, 'Marketplace Fees')?.amountCents).toBe(-76788);
+    expect(lineByName(parsed!, 'Other Charges')).toEqual(
+      expect.objectContaining({
+        amountCents: -2,
+        component: AccountingFinancialComponent.PLATFORM_OTHER_FEE,
+      }),
+    );
+    expect(lineByName(parsed!, 'Tax On Other Charges')).toEqual(
+      expect.objectContaining({
+        amountCents: 0,
+        component: AccountingFinancialComponent.PLATFORM_OTHER_FEE_TAX,
+        taxRole: AccountingFinancialTaxRole.INPUT_TAX,
+      }),
+    );
+    expect(lineByName(parsed!, 'Tax on offer spends')).toEqual(
+      expect.objectContaining({
+        amountCents: -9140,
+        component: AccountingFinancialComponent.SALES_TAX,
+        taxRole: AccountingFinancialTaxRole.SALES_TAX,
+      }),
+    );
+    expect(lineByName(parsed!, 'Tax on Net Ad Spends')).toEqual(
+      expect.objectContaining({
+        amountCents: -316,
+        component: AccountingFinancialComponent.ADVERTISING_TAX,
+        taxRole: AccountingFinancialTaxRole.INPUT_TAX,
+      }),
+    );
+    expect(lineByName(parsed!, 'Net Tax On Chargeback')).toEqual(
+      expect.objectContaining({
+        amountCents: -215,
+        component: AccountingFinancialComponent.CHARGEBACK_TAX,
+        taxRole: AccountingFinancialTaxRole.SALES_TAX,
+      }),
+    );
     expect(lineByName(parsed!, 'Net Total')).toEqual(
       expect.objectContaining({
         amountCents: 202183,

@@ -32,6 +32,7 @@ export const PROVIDER_SETTLEMENT_ACCOUNT_IDS = {
   platformCommissionExpense: 'account_platform_commission_expense',
   platformPromotionExpense: 'account_platform_promotion_expense',
   advertisingExpense: 'account_advertising_expense',
+  generalOperatingExpense: 'account_general_operating_expense',
   paymentProcessingFeeExpense: 'account_payment_processing_fee_expense',
   chargebackAdjustmentExpense: 'account_chargeback_adjustment_expense',
 } as const;
@@ -88,6 +89,11 @@ export const PROVIDER_SETTLEMENT_ACCOUNT_REQUIREMENTS = {
     isActive: true,
   },
   [PROVIDER_SETTLEMENT_ACCOUNT_IDS.advertisingExpense]: {
+    accountClass: AccountingAccountClass.EXPENSE,
+    currency: 'CAD',
+    isActive: true,
+  },
+  [PROVIDER_SETTLEMENT_ACCOUNT_IDS.generalOperatingExpense]: {
     accountClass: AccountingAccountClass.EXPENSE,
     currency: 'CAD',
     isActive: true,
@@ -231,8 +237,16 @@ const targetAccountFor = (
     case AccountingFinancialComponent.ADVERTISING:
     case AccountingFinancialComponent.ADVERTISING_CREDIT:
       return PROVIDER_SETTLEMENT_ACCOUNT_IDS.advertisingExpense;
+    case AccountingFinancialComponent.ADVERTISING_TAX:
+      return PROVIDER_SETTLEMENT_ACCOUNT_IDS.hstRecoverable;
     case AccountingFinancialComponent.CHARGEBACK:
       return PROVIDER_SETTLEMENT_ACCOUNT_IDS.chargebackAdjustmentExpense;
+    case AccountingFinancialComponent.CHARGEBACK_TAX:
+      return PROVIDER_SETTLEMENT_ACCOUNT_IDS.hstPayable;
+    case AccountingFinancialComponent.PLATFORM_OTHER_FEE:
+      return PROVIDER_SETTLEMENT_ACCOUNT_IDS.generalOperatingExpense;
+    case AccountingFinancialComponent.PLATFORM_OTHER_FEE_TAX:
+      return PROVIDER_SETTLEMENT_ACCOUNT_IDS.hstRecoverable;
     default:
       return null;
   }
