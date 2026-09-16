@@ -9,6 +9,7 @@ import {
   money,
 } from '../inbox/inbox-model';
 import type { ProviderSettlementShadowPreview } from './settlement-model';
+import { SettlementReplayGate } from './settlement-replay-gate';
 
 function nextIsoDate(date: string): string {
   const value = new Date(`${date}T00:00:00.000Z`);
@@ -104,11 +105,13 @@ function ShadowPreviewPanel({
   documentStableId,
   isZh,
   locale,
+  onPreviewUpdated,
 }: {
   preview: ProviderSettlementShadowPreview;
   documentStableId: string;
   isZh: boolean;
   locale: string;
+  onPreviewUpdated: (preview: ProviderSettlementShadowPreview) => void;
 }) {
   const documentPlan = preview.providerDocuments.find(
     (plan) => plan.documentStableId === documentStableId,
@@ -142,8 +145,8 @@ function ShadowPreviewPanel({
           </div>
           <p className="mt-1 text-xs text-slate-500">
             {isZh
-              ? '此页面只调用 GET preview，不会创建 Journal，也不会执行 replay。'
-              : 'This page only calls the GET preview. It does not create Journals or execute replay.'}
+              ? 'Shadow Preview 本身只读；只有下方单独的强确认 Replay 闸门才允许调用真实 writer。'
+              : 'Shadow Preview itself is read-only. Only the separate strongly confirmed replay gate below can call the real writer.'}
           </p>
         </div>
         <div className="text-right text-xs text-slate-500">
@@ -169,6 +172,13 @@ function ShadowPreviewPanel({
           </ul>
         </div>
       ) : null}
+
+      <SettlementReplayGate
+        preview={preview}
+        documentStableId={documentStableId}
+        isZh={isZh}
+        onPreviewUpdated={onPreviewUpdated}
+      />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-xl bg-slate-50 p-3">
@@ -388,10 +398,6 @@ function ShadowPreviewPanel({
         </div>
       </details>
 
-      <div className="rounded-xl bg-slate-950 p-3 text-xs text-slate-200">
-        <p className="font-medium text-white">planHash</p>
-        <p className="mt-1 break-all font-mono">{preview.planHash}</p>
-      </div>
     </div>
   );
 }
@@ -489,8 +495,8 @@ export default function AccountingSettlementsPage() {
           </h1>
           <p className="mt-1 max-w-3xl text-sm text-slate-500">
             {isZh
-              ? '查看已经人工确认并 materialize 的平台财务凭证、canonical 明细、coverage 与只读 shadow plan。此页面不提供 replay/写 Journal 操作。'
-              : 'Review operator-confirmed materialized provider evidence, canonical lines, coverage, and the read-only shadow plan. Replay and Journal writes are intentionally not exposed here.'}
+              ? '查看已经人工确认并 materialize 的平台财务凭证、canonical 明细、coverage 与 shadow plan。真实 replay 仅在严格 READY 且完成 planHash 强确认后开放。'
+              : 'Review operator-confirmed materialized provider evidence, canonical lines, coverage, and the shadow plan. Real replay is exposed only for a strictly READY plan after strong planHash confirmation.'}
           </p>
         </div>
         <button
@@ -511,8 +517,8 @@ export default function AccountingSettlementsPage() {
 
       <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
         {isZh
-          ? '安全边界：这里的 Shadow Preview 只读取最新 revision、确认记录、coverage、CoA 与历史 Journal anchors；即使状态 READY，也不会自动执行真实 replay。'
-          : 'Safety boundary: Shadow Preview only reads the latest revision, review evidence, coverage, CoA, and historical Journal anchors. READY never triggers a real replay automatically.'}
+          ? '安全边界：Shadow Preview 仍只读，READY 也不会自动写账。真实 replay 必须通过独立授权闸门，并在 POST 后立即用 fresh Preview reconciliation 核对结果。'
+          : 'Safety boundary: Shadow Preview remains read-only and READY never writes automatically. Real replay requires the separate authorization gate and immediate fresh-Preview reconciliation after POST.'}
       </div>
 
       {error ? (
@@ -673,6 +679,12 @@ export default function AccountingSettlementsPage() {
                   documentStableId={document.documentStableId}
                   isZh={isZh}
                   locale={locale}
+                  onPreviewUpdated={(data) =>
+                    setPreview({
+                      documentStableId: document.documentStableId,
+                      data,
+                    })
+                  }
                 />
               ) : null}
             </section>
