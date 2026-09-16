@@ -44,13 +44,6 @@ type SplitDraft = {
   manualTax: string;
 };
 
-type QuickDraft = {
-  key: string;
-  amount: string;
-  categoryStableId: string;
-  taxMode: 'EXEMPT' | 'HST13';
-};
-
 const money = (cents: number | null | undefined) =>
   `$${((cents ?? 0) / 100).toFixed(2)}`;
 
@@ -59,7 +52,6 @@ const dollarsToCents = (value: string) => {
   return Number.isFinite(parsed) ? Math.round(parsed * 100) : 0;
 };
 
-const centsToDollars = (value: number) => (value / 100).toFixed(2);
 const makeKey = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 export default function AccountingExpensesPage() {
@@ -73,8 +65,6 @@ export default function AccountingExpensesPage() {
   const [accountStableId, setAccountStableId] = useState('');
   const [memo, setMemo] = useState('');
   const [splits, setSplits] = useState<SplitDraft[]>([]);
-  const [quickRows, setQuickRows] = useState<QuickDraft[]>([]);
-  const [showQuick, setShowQuick] = useState(false);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -108,13 +98,12 @@ export default function AccountingExpensesPage() {
           },
         ]);
       }
-      if (!accountStableId && accts[0]) setAccountStableId(accts[0].accountStableId);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setLoading(false);
     }
-  }, [accountStableId, splits.length]);
+  }, [splits.length]);
 
   useEffect(() => {
     void load();
@@ -177,42 +166,6 @@ export default function AccountingExpensesPage() {
     ]);
   }
 
-  function addQuickRow() {
-    const defaultCategory = expenseCategories[0]?.categoryStableId ?? '';
-    setQuickRows((current) => [
-      ...current,
-      {
-        key: makeKey(),
-        amount: '',
-        categoryStableId: current.at(-1)?.categoryStableId || defaultCategory,
-        taxMode: current.at(-1)?.taxMode ?? 'EXEMPT',
-      },
-    ]);
-  }
-
-  function aggregateQuickRows() {
-    const grouped = new Map<string, { amountCents: number; taxCents: number }>();
-    for (const row of quickRows) {
-      const amountCents = dollarsToCents(row.amount);
-      if (!amountCents || !row.categoryStableId) continue;
-      const taxCents = row.taxMode === 'HST13' ? Math.round(amountCents * 0.13) : 0;
-      const existing = grouped.get(row.categoryStableId) ?? { amountCents: 0, taxCents: 0 };
-      existing.amountCents += amountCents;
-      existing.taxCents += taxCents;
-      grouped.set(row.categoryStableId, existing);
-    }
-    setSplits(
-      Array.from(grouped.entries()).map(([categoryStableId, value]) => ({
-        key: makeKey(),
-        categoryStableId,
-        amount: centsToDollars(value.amountCents),
-        taxMode: value.taxCents > 0 ? 'MANUAL' : 'EXEMPT',
-        manualTax: value.taxCents > 0 ? centsToDollars(value.taxCents) : '',
-      })),
-    );
-    setShowQuick(false);
-  }
-
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     setError(null);
@@ -250,7 +203,6 @@ export default function AccountingExpensesPage() {
       });
       setReceiptTotal('');
       setMemo('');
-      setQuickRows([]);
       setSplits((current) => [
         {
           key: makeKey(),
@@ -287,26 +239,36 @@ export default function AccountingExpensesPage() {
         <h1 className="text-2xl font-bold">{isZh ? '支出' : 'Expenses'}</h1>
         <p className="mt-1 text-sm text-slate-500">
           {isZh
-            ? '一张小票可以拆成多个费用类别；正式账目只保存类别汇总，不保存商品名。'
-            : 'Split one receipt across categories. Product-level rows are only a calculator and are not posted to the ledger.'}
+            ? '这里查看已经确认的费用；有凭证的账单请在财务收件箱完成识别、归类和确认。'
+            : 'Review confirmed expenses here. Use Accounting Inbox to recognize, classify, and confirm expenses that have supporting evidence.'}
         </p>
       </div>
 
       <form onSubmit={onSubmit} className="space-y-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div>
+          <h2 className="text-lg font-semibold">
+            {isZh ? '无凭证手工新增支出' : 'Add expense without evidence'}
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">
+            {isZh
+              ? '仅用于没有收据、发票或邮件凭证的手工补录；所有记账金额均为 CAD。'
+              : 'Use only for manual entries without a receipt, invoice, or email artifact. All booked amounts are CAD.'}
+          </p>
+        </div>
         <div className="grid gap-3 md:grid-cols-3">
           <label className="text-sm">
             <span className="mb-1 block text-slate-500">{isZh ? '日期' : 'Date'}</span>
             <input className="w-full rounded border px-3 py-2" type="date" value={occurredAt} onChange={(event) => setOccurredAt(event.target.value)} />
           </label>
           <label className="text-sm">
-            <span className="mb-1 block text-slate-500">{isZh ? '小票 / 账单总额' : 'Receipt total'}</span>
-            <div className="flex rounded border bg-white px-3 py-2"><span className="mr-1">$</span><input className="min-w-0 flex-1 outline-none" inputMode="decimal" value={receiptTotal} onChange={(event) => setReceiptTotal(event.target.value)} placeholder="0.00" /></div>
+            <span className="mb-1 block text-slate-500">{isZh ? 'CAD 记账总额' : 'CAD booking total'}</span>
+            <div className="flex rounded border bg-white px-3 py-2"><span className="mr-1">CAD $</span><input className="min-w-0 flex-1 outline-none" inputMode="decimal" value={receiptTotal} onChange={(event) => setReceiptTotal(event.target.value)} placeholder="0.00" /></div>
           </label>
           <label className="text-sm">
-            <span className="mb-1 block text-slate-500">{isZh ? '付款账户' : 'Paid from'}</span>
+            <span className="mb-1 block text-slate-500">{isZh ? '付款账户（CAD）' : 'Paid from (CAD)'}</span>
             <select className="w-full rounded border px-3 py-2" value={accountStableId} onChange={(event) => setAccountStableId(event.target.value)}>
               <option value="">{isZh ? '暂不指定' : 'Not specified'}</option>
-              {accounts.map((account) => <option key={account.accountStableId} value={account.accountStableId}>{account.name}</option>)}
+              {accounts.filter((account) => account.currency === 'CAD').map((account) => <option key={account.accountStableId} value={account.accountStableId}>{account.name}</option>)}
             </select>
           </label>
         </div>
@@ -314,38 +276,10 @@ export default function AccountingExpensesPage() {
         <section>
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-semibold">{isZh ? '费用分类' : 'Expense splits'}</h2>
-            <div className="flex gap-2">
-              <button type="button" onClick={() => { setShowQuick((value) => !value); if (!quickRows.length) addQuickRow(); }} className="rounded border px-3 py-1.5 text-sm">
-                {isZh ? '快速归类计算器' : 'Quick classify calculator'}
-              </button>
-              <button type="button" onClick={addSplit} className="rounded border px-3 py-1.5 text-sm">+ {isZh ? '增加类别' : 'Add category'}</button>
-            </div>
+            <button type="button" onClick={addSplit} className="rounded border px-3 py-1.5 text-sm">
+              + {isZh ? '增加类别' : 'Add category'}
+            </button>
           </div>
-
-          {showQuick ? (
-            <div className="mb-4 space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-4">
-              <p className="text-sm text-slate-600">
-                {isZh ? '按小票逐行输入金额即可；类别和税默认沿用上一行。点击汇总后，商品级行不会保存。' : 'Enter receipt line amounts. Category and tax carry forward. Item rows are discarded after aggregation.'}
-              </p>
-              {quickRows.map((row) => (
-                <div key={row.key} className="grid gap-2 md:grid-cols-[140px_1fr_130px_80px]">
-                  <input className="rounded border bg-white px-3 py-2 text-sm" inputMode="decimal" placeholder="0.00" value={row.amount} onChange={(event) => setQuickRows((current) => current.map((item) => item.key === row.key ? { ...item, amount: event.target.value } : item))} />
-                  <select className="rounded border bg-white px-3 py-2 text-sm" value={row.categoryStableId} onChange={(event) => setQuickRows((current) => current.map((item) => item.key === row.key ? { ...item, categoryStableId: event.target.value } : item))}>
-                    {expenseCategories.map((category) => <option key={category.categoryStableId} value={category.categoryStableId}>{categoryParents.get(category.parentStableId ?? '') ? `${categoryParents.get(category.parentStableId ?? '')} › ` : ''}{category.name}</option>)}
-                  </select>
-                  <select className="rounded border bg-white px-3 py-2 text-sm" value={row.taxMode} onChange={(event) => setQuickRows((current) => current.map((item) => item.key === row.key ? { ...item, taxMode: event.target.value as QuickDraft['taxMode'] } : item))}>
-                    <option value="EXEMPT">{isZh ? '免税' : 'Tax exempt'}</option>
-                    <option value="HST13">HST 13%</option>
-                  </select>
-                  <button type="button" className="text-sm text-red-600" onClick={() => setQuickRows((current) => current.filter((item) => item.key !== row.key))}>{isZh ? '删除' : 'Remove'}</button>
-                </div>
-              ))}
-              <div className="flex gap-2">
-                <button type="button" onClick={addQuickRow} className="rounded border bg-white px-3 py-1.5 text-sm">+ {isZh ? '下一行' : 'Next row'}</button>
-                <button type="button" onClick={aggregateQuickRows} className="rounded bg-slate-900 px-3 py-1.5 text-sm text-white">{isZh ? '汇总到费用分类' : 'Aggregate categories'}</button>
-              </div>
-            </div>
-          ) : null}
 
           <div className="space-y-2">
             {splits.map((split) => (
