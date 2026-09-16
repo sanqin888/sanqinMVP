@@ -64,7 +64,7 @@ export type PreparedAccountingImageOcrCandidate = {
   height: number;
 };
 
-type AccountingReceiptImageGeometry = {
+export type AccountingReceiptImageGeometry = {
   cropApplied: boolean;
   cropLeft: number;
   cropWidth: number;
@@ -487,7 +487,7 @@ async function prepareAccountingImageSegments(
   return segments;
 }
 
-async function analyzeAccountingReceiptImageGeometry(
+export async function analyzeAccountingReceiptImageGeometry(
   buffer: Buffer,
   orientedWidth: number,
 ): Promise<AccountingReceiptImageGeometry> {

@@ -22,6 +22,12 @@ jest.mock('./accounting-image-ocr', () => ({
   ),
 }));
 
+jest.mock('./accounting-textract-expense-recognition', () => ({
+  isAccountingTextractExpenseRecognitionEnabled: jest.fn(() => false),
+  recognizeAccountingExpenseImageWithTextract: jest.fn(),
+  recognizeAccountingExpensePdfWithTextract: jest.fn(),
+}));
+
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -36,6 +42,15 @@ import {
 } from '@prisma/client';
 import { AccountingInboxAcquisitionService } from './accounting-inbox-acquisition.service';
 import { extractAccountingImageText } from './accounting-image-ocr';
+import {
+  extractAccountingPdf,
+  extractAccountingText,
+} from './accounting-pdf-extractor';
+import {
+  isAccountingTextractExpenseRecognitionEnabled,
+  recognizeAccountingExpenseImageWithTextract,
+  recognizeAccountingExpensePdfWithTextract,
+} from './accounting-textract-expense-recognition';
 import { AccountingProviderFinancialProcessingError } from './accounting-provider-financial.service';
 
 function registeredArtifact(kind: AccountingArtifactKind, contentHash: string) {
@@ -62,10 +77,29 @@ function registeredArtifact(kind: AccountingArtifactKind, contentHash: string) {
 describe('AccountingInboxAcquisitionService', () => {
   const originalUploadRoot = process.env.UPLOAD_ROOT;
   const imageOcr = jest.mocked(extractAccountingImageText);
+  const pdfExtraction = jest.mocked(extractAccountingPdf);
+  const textractEnabled = jest.mocked(
+    isAccountingTextractExpenseRecognitionEnabled,
+  );
+  const textractRecognition = jest.mocked(
+    recognizeAccountingExpenseImageWithTextract,
+  );
+  const textractPdfRecognition = jest.mocked(
+    recognizeAccountingExpensePdfWithTextract,
+  );
   let uploadRoot: string;
 
   beforeEach(() => {
     imageOcr.mockReset();
+    pdfExtraction.mockReset();
+    pdfExtraction.mockResolvedValue({
+      text: '',
+      extraction: extractAccountingText(''),
+    });
+    textractEnabled.mockReset();
+    textractEnabled.mockReturnValue(false);
+    textractRecognition.mockReset();
+    textractPdfRecognition.mockReset();
     imageOcr.mockResolvedValue({
       text: 'Invoice subtotal $75.00\nHST $9.75\nTotal $84.75',
       engine: 'TESSERACT',
@@ -134,6 +168,110 @@ describe('AccountingInboxAcquisitionService', () => {
     );
     expect(providerFinancial.parseForInboxSuggestion).toHaveBeenCalled();
     expect(providerFinancial.parseAndMaterialize).not.toHaveBeenCalled();
+  });
+
+  it('keeps native-text PDF on local extraction even when Textract is enabled', async () => {
+    const { service, operations } = makeService();
+    textractEnabled.mockReturnValue(true);
+    const nativeText =
+      'Invoice 2026/09/16\nAmount due CAD 84.75\nSubtotal CAD 75.00\nHST CAD 9.75';
+    pdfExtraction.mockResolvedValue({
+      text: nativeText,
+      extraction: extractAccountingText(nativeText),
+    });
+
+    await service.acquireManualFile({
+      originalname: 'native-invoice.pdf',
+      mimetype: 'application/pdf',
+      buffer: Buffer.from('%PDF-1.4\n%%EOF', 'ascii'),
+    });
+
+    expect(textractPdfRecognition).not.toHaveBeenCalled();
+    expect(operations.recordInboxParseRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resultJson: expect.objectContaining({
+          inputKind: 'PDF',
+          textRecognitionEngine: 'POPPLER',
+          totalCents: 8475,
+          sourceCurrency: 'CAD',
+        }) as unknown,
+      }) as unknown,
+    );
+  });
+
+  it('uses Textract only as a synchronous fallback for scanned PDFs with no local text', async () => {
+    const { service, operations, providerFinancial } = makeService();
+    textractEnabled.mockReturnValue(true);
+    const scannedPdf = Buffer.from('%PDF-1.4\nscanned\n%%EOF', 'ascii');
+    const textractText =
+      'Cloud service invoice\nSep 16 2026\nSubtotal USD 20.00\nTax USD 0.00\nTotal USD 20.00';
+    textractPdfRecognition.mockResolvedValue({
+      text: textractText,
+      extraction: extractAccountingText(textractText),
+      evidence: {
+        provider: 'AWS_TEXTRACT_ANALYZE_EXPENSE',
+        modelVersion: '1.0',
+        requestId: 'request-pdf-1',
+        vendorName: 'Cloud service',
+        dateCandidates: [{ text: 'Sep 16 2026', confidence: 99 }],
+        summaryFields: {
+          subtotal: null,
+          tax: null,
+          total: null,
+          amountPaid: null,
+        },
+        currencySuggestion: {
+          code: 'USD',
+          confidence: 98,
+          ambiguous: false,
+        },
+        financialConsistency: 'INSUFFICIENT',
+        lineItemCount: 0,
+        lineItemPriceCount: 0,
+        lineItemPriceSumCents: null,
+        lineItemsReconcileToSubtotal: null,
+        submittedDocument: {
+          kind: 'PDF',
+          cropApplied: false,
+          width: null,
+          height: null,
+          byteSize: scannedPdf.length,
+        },
+      },
+    });
+
+    await service.acquireManualFile({
+      originalname: 'scanned-invoice.pdf',
+      mimetype: 'application/pdf',
+      buffer: scannedPdf,
+    });
+
+    expect(textractPdfRecognition).toHaveBeenCalledWith(scannedPdf);
+    expect(providerFinancial.parseForInboxSuggestion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: textractText,
+      }),
+    );
+    expect(operations.recordInboxParseRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resultJson: expect.objectContaining({
+          inputKind: 'PDF',
+          textRecognitionEngine: 'AWS_TEXTRACT',
+          totalCents: 2000,
+          sourceCurrency: 'USD',
+          textractEvidence: expect.objectContaining({
+            provider: 'AWS_TEXTRACT_ANALYZE_EXPENSE',
+            submittedDocument: {
+              kind: 'PDF',
+              cropApplied: false,
+              width: null,
+              height: null,
+              byteSize: scannedPdf.length,
+            },
+          }) as unknown,
+        }) as unknown,
+      }) as unknown,
+    );
   });
 
   it('normalizes mojibake multipart filenames before persistence and parsing', async () => {
@@ -257,6 +395,166 @@ describe('AccountingInboxAcquisitionService', () => {
           inputKind: 'IMAGE',
           ocrEngine: 'TESSERACT',
           ocrStatus: 'SUCCESS',
+        }) as unknown,
+      }) as unknown,
+    );
+  });
+
+  it('prefers Textract expense recognition for images when the feature is enabled', async () => {
+    const { service, operations, providerFinancial } = makeService();
+    textractEnabled.mockReturnValue(true);
+    textractRecognition.mockResolvedValue({
+      text: [
+        'FOODY MART',
+        '2026/09/08',
+        'Sub Total 42.38',
+        'HST 0.00',
+        'Total after Tax 42.38',
+      ].join('\n'),
+      extraction: {
+        date: '2026-09-08',
+        subtotalCents: 4238,
+        taxCents: 0,
+        totalCents: 4238,
+        sourceCurrency: null,
+        sourceCurrencyEvidence: 'UNKNOWN',
+        suggestedCategoryStableId: null,
+        suggestedCategoryName: null,
+        confidence: 'HIGH',
+        requiresSplit: false,
+        textLength: 73,
+      },
+      evidence: {
+        provider: 'AWS_TEXTRACT_ANALYZE_EXPENSE',
+        modelVersion: '1.0',
+        requestId: 'request-1',
+        vendorName: 'FOODY MART',
+        dateCandidates: [{ text: '2026/09/08', confidence: 99.9 }],
+        summaryFields: {
+          subtotal: {
+            type: 'SUBTOTAL',
+            text: '42.38',
+            confidence: 99.9,
+            currencyCode: 'USD',
+            currencyConfidence: 88,
+          },
+          tax: {
+            type: 'TAX',
+            text: '0.00',
+            confidence: 99.9,
+            currencyCode: 'USD',
+            currencyConfidence: 88,
+          },
+          total: {
+            type: 'TOTAL',
+            text: '42.38',
+            confidence: 99.9,
+            currencyCode: 'USD',
+            currencyConfidence: 88,
+          },
+          amountPaid: {
+            type: 'AMOUNT_PAID',
+            text: '12.38',
+            confidence: 99.7,
+            currencyCode: 'USD',
+            currencyConfidence: 88,
+          },
+        },
+        currencySuggestion: {
+          code: 'USD',
+          confidence: 88,
+          ambiguous: false,
+        },
+        financialConsistency: 'MATCHED',
+        lineItemCount: 3,
+        lineItemPriceCount: 3,
+        lineItemPriceSumCents: 4238,
+        lineItemsReconcileToSubtotal: true,
+        submittedDocument: {
+          kind: 'IMAGE',
+          cropApplied: true,
+          width: 1200,
+          height: 2400,
+          byteSize: 300000,
+        },
+      },
+    });
+    const original = await sharp({
+      create: {
+        width: 1200,
+        height: 1800,
+        channels: 3,
+        background: { r: 250, g: 250, b: 250 },
+      },
+    })
+      .jpeg({ quality: 96 })
+      .toBuffer();
+
+    await service.acquireManualFile({
+      originalname: 'receipt.jpg',
+      mimetype: 'image/jpeg',
+      buffer: original,
+    });
+
+    expect(textractRecognition).toHaveBeenCalledWith(original);
+    expect(imageOcr).not.toHaveBeenCalled();
+    expect(providerFinancial.parseForInboxSuggestion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        artifactStableId: 'acctart_image',
+        text: expect.stringContaining('Total after Tax 42.38') as unknown,
+      }),
+    );
+    expect(operations.recordInboxParseRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: AccountingParseStatus.SUCCESS,
+        resultJson: expect.objectContaining({
+          inputKind: 'IMAGE',
+          ocrEngine: 'AWS_TEXTRACT',
+          ocrStatus: 'SUCCESS',
+          totalCents: 4238,
+          sourceCurrency: null,
+          textractEvidence: expect.objectContaining({
+            provider: 'AWS_TEXTRACT_ANALYZE_EXPENSE',
+            currencySuggestion: {
+              code: 'USD',
+              confidence: 88,
+              ambiguous: false,
+            },
+          }) as unknown,
+        }) as unknown,
+      }) as unknown,
+    );
+  });
+
+  it('falls back to Tesseract when enabled Textract recognition fails', async () => {
+    const { service, operations } = makeService();
+    textractEnabled.mockReturnValue(true);
+    textractRecognition.mockRejectedValue(new Error('textract unavailable'));
+    const original = await sharp({
+      create: {
+        width: 1200,
+        height: 800,
+        channels: 3,
+        background: { r: 250, g: 250, b: 250 },
+      },
+    })
+      .png()
+      .toBuffer();
+
+    await service.acquireManualFile({
+      originalname: 'receipt.png',
+      mimetype: 'image/png',
+      buffer: original,
+    });
+
+    expect(textractRecognition).toHaveBeenCalledWith(original);
+    expect(imageOcr).toHaveBeenCalledWith(original);
+    expect(operations.recordInboxParseRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: AccountingParseStatus.SUCCESS,
+        resultJson: expect.objectContaining({
+          ocrEngine: 'TESSERACT',
+          ocrFallbackFrom: 'AWS_TEXTRACT',
         }) as unknown,
       }) as unknown,
     );

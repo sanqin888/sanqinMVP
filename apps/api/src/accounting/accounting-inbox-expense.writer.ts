@@ -111,6 +111,39 @@ export async function materializeInboxExpenseInTx(
   return { documentStableId, replayed: false };
 }
 
+export async function linkAndConfirmInboxExpenseInTx(
+  tx: AccountingTx,
+  inboxItemStableId: string,
+  documentStableId: string,
+  operatorUserStableId: string,
+) {
+  const updated = await tx.accountingInboxItem.updateMany({
+    where: {
+      inboxItemStableId,
+      status: AccountingInboxStatus.PENDING_REVIEW,
+      classification: AccountingInboxClassification.EXPENSE_DOCUMENT,
+      selectedProvider: null,
+      materializedEntityType: null,
+      materializedEntityStableId: null,
+    },
+    data: {
+      status: AccountingInboxStatus.CONFIRMED,
+      classification: AccountingInboxClassification.EXPENSE_DOCUMENT,
+      materializedEntityType:
+        AccountingInboxMaterializedEntityType.EXPENSE_DOCUMENT,
+      materializedEntityStableId: documentStableId,
+      reviewedAt: new Date(),
+      reviewedByUserStableId: operatorUserStableId,
+      version: { increment: 1 },
+    },
+  });
+  if (updated.count !== 1) {
+    throw new AccountingInboxWriterConflictError(
+      'pending inbox expense could not be linked and confirmed',
+    );
+  }
+}
+
 export async function readInboxExpenseMaterializationReplay(
   tx: AccountingTx,
   normalized: NormalizedExpenseMaterialization,

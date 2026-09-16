@@ -8,6 +8,7 @@ export type AccountingCategory = {
 export type AccountingAccount = {
   accountStableId: string;
   name: string;
+  currency: string;
 };
 
 export type AccountingFinancialProvider = 'CLOVER' | 'UBER_EATS' | 'FANTUAN';
@@ -113,6 +114,8 @@ export type AccountingInboxParseResult = {
   subtotalCents?: number | null;
   taxCents?: number | null;
   totalCents?: number | null;
+  sourceCurrency?: string | null;
+  sourceCurrencyEvidence?: 'EXPLICIT_TEXT' | 'AMBIGUOUS' | 'UNKNOWN';
   suggestedCategoryStableId?: string | null;
   suggestedCategoryName?: string | null;
   confidence?: 'HIGH' | 'MEDIUM' | 'LOW';
@@ -120,8 +123,22 @@ export type AccountingInboxParseResult = {
   inputKind?: 'PDF' | 'IMAGE' | 'EMAIL_BODY' | 'CSV';
   reviewDisposition?: 'LIKELY_BILL' | 'UNRECOGNIZED' | 'LIKELY_NOT_BILL';
   reviewReason?: string;
-  ocrEngine?: 'TESSERACT';
+  ocrEngine?: 'AWS_TEXTRACT' | 'TESSERACT';
   ocrStatus?: 'SUCCESS' | 'ERROR';
+  ocrFallbackFrom?: 'AWS_TEXTRACT';
+  textRecognitionEngine?: 'POPPLER' | 'AWS_TEXTRACT';
+  textractEvidence?: {
+    provider: 'AWS_TEXTRACT_ANALYZE_EXPENSE';
+    currencySuggestion?: {
+      code?: string | null;
+      confidence?: number | null;
+      ambiguous?: boolean;
+    };
+    financialConsistency?: 'MATCHED' | 'MISMATCH' | 'INSUFFICIENT';
+    lineItemCount?: number;
+    lineItemPriceCount?: number;
+    lineItemsReconcileToSubtotal?: boolean | null;
+  };
   providerParserPending?: boolean;
   csvStructureUnrecognized?: boolean;
   structuredExpenseCsv?: boolean;

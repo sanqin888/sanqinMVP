@@ -5,9 +5,18 @@ import {
 } from '@prisma/client';
 import { AccountingOperationsService } from './accounting-operations.service';
 
+function withTransaction<T extends object>(tx: T) {
+  return {
+    ...tx,
+    $transaction: jest.fn((callback: (client: T) => Promise<unknown>) =>
+      callback(tx),
+    ),
+  };
+}
+
 describe('AccountingOperationsService provider-financial expense guard', () => {
   it('requires an explicit expense classification before provider-suggested evidence can be confirmed as an expense', async () => {
-    const prisma = {
+    const prisma = withTransaction({
       accountingInboxItem: {
         findUnique: jest.fn().mockResolvedValue({
           status: AccountingInboxStatus.PENDING_REVIEW,
@@ -35,7 +44,7 @@ describe('AccountingOperationsService provider-financial expense guard', () => {
           },
         }),
       },
-    };
+    });
     const service = new AccountingOperationsService(
       prisma as never,
       {} as never,
@@ -63,7 +72,7 @@ describe('AccountingOperationsService provider-financial expense guard', () => {
   });
 
   it('rejects multi-row structured expense CSV evidence from the single-expense confirmation path', async () => {
-    const prisma = {
+    const prisma = withTransaction({
       accountingInboxItem: {
         findUnique: jest.fn().mockResolvedValue({
           status: AccountingInboxStatus.PENDING_REVIEW,
@@ -90,7 +99,7 @@ describe('AccountingOperationsService provider-financial expense guard', () => {
           },
         }),
       },
-    };
+    });
     const service = new AccountingOperationsService(
       prisma as never,
       {} as never,

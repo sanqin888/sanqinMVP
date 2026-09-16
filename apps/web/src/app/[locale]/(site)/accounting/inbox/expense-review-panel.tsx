@@ -23,6 +23,15 @@ type Props = {
   onConfirmed: (item: AccountingInboxItem) => Promise<void>;
 };
 
+type QuickTaxMode = 'EXEMPT' | 'HST13';
+
+type QuickRow = {
+  key: string;
+  amount: string;
+  categoryStableId: string;
+  taxMode: QuickTaxMode;
+};
+
 export function AccountingInboxExpenseReviewPanel({
   item,
   categories,
@@ -33,9 +42,12 @@ export function AccountingInboxExpenseReviewPanel({
 }: Props) {
   const [date, setDate] = useState('');
   const [total, setTotal] = useState('');
+  const [sourceCurrency, setSourceCurrency] = useState('');
   const [accountStableId, setAccountStableId] = useState('');
   const [memo, setMemo] = useState('');
   const [rows, setRows] = useState<AccountingExpenseReviewRow[]>([]);
+  const [quickRows, setQuickRows] = useState<QuickRow[]>([]);
+  const [showQuick, setShowQuick] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,6 +70,10 @@ export function AccountingInboxExpenseReviewPanel({
       ),
     [categories],
   );
+  const cadAccounts = useMemo(
+    () => accounts.filter((account) => account.currency === 'CAD'),
+    [accounts],
+  );
 
   useEffect(() => {
     const extraction = latestParse(item);
@@ -74,20 +90,32 @@ export function AccountingInboxExpenseReviewPanel({
     const subtotalCents =
       extraction.subtotalCents ?? extraction.totalCents ?? 0;
     const taxCents = extraction.taxCents ?? 0;
-    setDate(extraction.date ?? new Date().toISOString().slice(0, 10));
-    setTotal(toDollars(extraction.totalCents ?? subtotalCents + taxCents));
-    setAccountStableId(accounts[0]?.accountStableId ?? '');
+    const detectedSourceCurrency = extraction.sourceCurrency?.toUpperCase() ?? '';
+    const canPrefillCadBookAmount =
+      extraction.sourceCurrencyEvidence === 'EXPLICIT_TEXT' &&
+      detectedSourceCurrency === 'CAD';
+
+    setDate(extraction.date ?? '');
+    setSourceCurrency(detectedSourceCurrency);
+    setTotal(
+      canPrefillCadBookAmount
+        ? toDollars(extraction.totalCents ?? subtotalCents + taxCents)
+        : '',
+    );
+    setAccountStableId('');
     setMemo('');
     setRows([
       {
         key: makeReviewKey(),
         categoryStableId: defaultCategory,
-        amount: toDollars(subtotalCents),
-        tax: toDollars(taxCents),
+        amount: canPrefillCadBookAmount ? toDollars(subtotalCents) : '',
+        tax: canPrefillCadBookAmount ? toDollars(taxCents) : '',
       },
     ]);
+    setQuickRows([]);
+    setShowQuick(false);
     setError(null);
-  }, [accounts, expenseCategories, item]);
+  }, [cadAccounts, expenseCategories, item]);
 
   const calculated = useMemo(() => {
     const subtotalCents = rows.reduce(
@@ -104,12 +132,59 @@ export function AccountingInboxExpenseReviewPanel({
     };
   }, [rows, total]);
 
+  function addQuickRow() {
+    const defaultCategory =
+      quickRows.at(-1)?.categoryStableId ||
+      rows.at(-1)?.categoryStableId ||
+      expenseCategories[0]?.categoryStableId ||
+      '';
+    setQuickRows((current) => [
+      ...current,
+      {
+        key: makeReviewKey(),
+        amount: '',
+        categoryStableId: defaultCategory,
+        taxMode: current.at(-1)?.taxMode ?? 'EXEMPT',
+      },
+    ]);
+  }
+
+  function aggregateQuickRows() {
+    const grouped = new Map<string, { amountCents: number; taxCents: number }>();
+    for (const row of quickRows) {
+      const amountCents = toCents(row.amount);
+      if (!amountCents || !row.categoryStableId) continue;
+      const taxCents = row.taxMode === 'HST13' ? Math.round(amountCents * 0.13) : 0;
+      const existing = grouped.get(row.categoryStableId) ?? {
+        amountCents: 0,
+        taxCents: 0,
+      };
+      existing.amountCents += amountCents;
+      existing.taxCents += taxCents;
+      grouped.set(row.categoryStableId, existing);
+    }
+    if (!grouped.size) return;
+    setRows(
+      Array.from(grouped.entries()).map(([categoryStableId, value]) => ({
+        key: makeReviewKey(),
+        categoryStableId,
+        amount: toDollars(value.amountCents),
+        tax: toDollars(value.taxCents),
+      })),
+    );
+    setShowQuick(false);
+  }
+
   async function confirmExpense() {
+    if (!date) {
+      setError(isZh ? '请确认费用日期。' : 'Confirm the expense date.');
+      return;
+    }
     if (calculated.totalCents <= 0 || calculated.differenceCents !== 0) {
       setError(
         isZh
-          ? `账单未对平，当前差额 ${money(calculated.differenceCents)}。`
-          : `The expense is not balanced. Difference: ${money(calculated.differenceCents)}.`,
+          ? `CAD 记账金额未对平，当前差额 ${money(calculated.differenceCents)}。`
+          : `The CAD booking amount is not balanced. Difference: ${money(calculated.differenceCents)}.`,
       );
       return;
     }
@@ -124,6 +199,7 @@ export function AccountingInboxExpenseReviewPanel({
           body: JSON.stringify({
             occurredAt: date,
             totalCents: calculated.totalCents,
+            sourceCurrency: sourceCurrency.trim().toUpperCase() || null,
             accountStableId: accountStableId || null,
             attachmentUrls: [],
             memo: memo.trim() || null,
@@ -148,6 +224,21 @@ export function AccountingInboxExpenseReviewPanel({
   }
 
   const extraction = latestParse(item);
+  const sourceCurrencyEvidence = extraction.sourceCurrencyEvidence ?? 'UNKNOWN';
+  const sourceSubtotalCents = extraction.subtotalCents ?? null;
+  const sourceTaxCents = extraction.taxCents ?? null;
+  const sourceTotalCents = extraction.totalCents ?? null;
+  const textractCurrencySuggestion =
+    extraction.textractEvidence?.currencySuggestion?.code ?? null;
+  const textractCurrencyConfidence =
+    extraction.textractEvidence?.currencySuggestion?.confidence ?? null;
+  const textractCurrencyLabel = textractCurrencySuggestion
+    ? `${textractCurrencySuggestion}${
+        textractCurrencyConfidence == null
+          ? ''
+          : ` (${textractCurrencyConfidence.toFixed(1)}%)`
+      }`
+    : null;
   const evidenceUrl =
     item.artifact.kind === 'IMAGE'
       ? `/api/v1/accounting/inbox/artifacts/${encodeURIComponent(item.artifact.artifactStableId)}/content`
@@ -185,9 +276,76 @@ export function AccountingInboxExpenseReviewPanel({
           </pre>
         </details>
       ) : null}
+      <div className="mt-4 rounded-lg border bg-white p-3 text-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <strong>{isZh ? '原始凭证金额' : 'Source document amounts'}</strong>
+          <label className="flex items-center gap-2 text-xs text-slate-600">
+            <span>{isZh ? '原始币种' : 'Source currency'}</span>
+            <input
+              className="w-20 rounded border px-2 py-1 uppercase"
+              maxLength={3}
+              value={sourceCurrency}
+              onChange={(event) => setSourceCurrency(event.target.value.toUpperCase())}
+            />
+          </label>
+        </div>
+        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          <div>
+            <span className="text-slate-500">{isZh ? '税前' : 'Subtotal'}</span>
+            <strong className="ml-2">
+              {sourceSubtotalCents == null
+                ? '-'
+                : `${sourceCurrency || '?'} ${money(sourceSubtotalCents)}`}
+            </strong>
+          </div>
+          <div>
+            <span className="text-slate-500">{isZh ? '税' : 'Tax'}</span>
+            <strong className="ml-2">
+              {sourceTaxCents == null
+                ? '-'
+                : `${sourceCurrency || '?'} ${money(sourceTaxCents)}`}
+            </strong>
+          </div>
+          <div>
+            <span className="text-slate-500">{isZh ? '总额' : 'Total'}</span>
+            <strong className="ml-2">
+              {sourceTotalCents == null
+                ? '-'
+                : `${sourceCurrency || '?'} ${money(sourceTotalCents)}`}
+            </strong>
+          </div>
+        </div>
+        <p className="mt-2 text-xs text-slate-500">
+          {sourceCurrencyEvidence === 'EXPLICIT_TEXT'
+            ? isZh
+              ? '币种来自凭证中的明确文字；仍可在确认前人工修正。'
+              : 'Currency came from explicit document text and can still be corrected before confirmation.'
+            : sourceCurrencyEvidence === 'AMBIGUOUS'
+              ? isZh
+                ? '凭证中出现多个币种，请人工确认原始币种。'
+                : 'Multiple currencies were detected; confirm the source currency manually.'
+              : isZh
+                ? '凭证未明确币种，请先人工确认原始币种；CAD 记账金额不会自动从原始金额带入。'
+                : 'The document did not state a currency. Confirm the source currency manually; CAD booking amounts are not copied from the source amounts.'}
+        </p>
+        {textractCurrencySuggestion ? (
+          <p className="mt-1 text-xs text-slate-500">
+            {isZh
+              ? `AWS Textract 币种建议：${textractCurrencySuggestion}${textractCurrencyConfidence == null ? '' : `（${textractCurrencyConfidence.toFixed(1)}%）`}。仅作识别参考，不会自动成为原始币种或 CAD 记账币种。`
+              : `AWS Textract currency suggestion: ${textractCurrencySuggestion}${textractCurrencyConfidence == null ? '' : ` (${textractCurrencyConfidence.toFixed(1)}%)`}. This is recognition evidence only and does not become source or CAD booking currency automatically.`}
+          </p>
+        ) : null}
+      </div>
+      {sourceCurrency && sourceCurrency !== 'CAD' ? (
+        <p className="mt-3 rounded bg-orange-50 px-3 py-2 text-xs text-orange-800">
+          {isZh
+            ? '这是外币凭证。下面所有类别金额和总额必须填写实际记入 SanQ 的 CAD 金额（例如银行卡实际扣款），不要直接照抄外币金额。'
+            : 'This is a foreign-currency document. Enter the actual CAD booked amounts below (for example, the card charge), not the source-currency amounts.'}
+        </p>
+      ) : null}
       <div className="mt-4 grid gap-3 md:grid-cols-3">
         <label className="text-sm">
-          <span className="mb-1 block text-slate-500">{isZh ? '日期' : 'Date'}</span>
+          <span className="mb-1 block text-slate-500">{isZh ? '费用日期' : 'Expense date'}</span>
           <input
             className="w-full rounded border bg-white px-3 py-2"
             type="date"
@@ -197,10 +355,10 @@ export function AccountingInboxExpenseReviewPanel({
         </label>
         <label className="text-sm">
           <span className="mb-1 block text-slate-500">
-            {isZh ? '账单总额' : 'Bill total'}
+            {isZh ? 'CAD 实际记账总额' : 'Actual CAD booking total'}
           </span>
           <div className="flex rounded border bg-white px-3 py-2">
-            <span>$</span>
+            <span>CAD $</span>
             <input
               className="ml-1 min-w-0 flex-1 outline-none"
               value={total}
@@ -211,7 +369,7 @@ export function AccountingInboxExpenseReviewPanel({
         </label>
         <label className="text-sm">
           <span className="mb-1 block text-slate-500">
-            {isZh ? '付款账户' : 'Paid from'}
+            {isZh ? '付款账户（CAD）' : 'Paid from (CAD)'}
           </span>
           <select
             className="w-full rounded border bg-white px-3 py-2"
@@ -219,7 +377,7 @@ export function AccountingInboxExpenseReviewPanel({
             onChange={(event) => setAccountStableId(event.target.value)}
           >
             <option value="">{isZh ? '暂不指定' : 'Not specified'}</option>
-            {accounts.map((account) => (
+            {cadAccounts.map((account) => (
               <option key={account.accountStableId} value={account.accountStableId}>
                 {account.name}
               </option>
@@ -227,6 +385,131 @@ export function AccountingInboxExpenseReviewPanel({
           </select>
         </label>
       </div>
+      <section className="mt-4 rounded-lg border border-amber-200 bg-amber-100/60 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <strong className="text-sm">
+              {isZh ? '快速归类计算器' : 'Quick classify calculator'}
+            </strong>
+            <p className="mt-1 text-xs text-slate-600">
+              {isZh
+                ? '按收据商品逐行录入 CAD 金额、类别和税率，汇总后只保留类别总额；商品行不会保存。'
+                : 'Enter receipt items one by one in CAD, choose category and tax, then aggregate. Item rows are never persisted.'}
+            </p>
+          </div>
+          <button
+            type="button"
+            className="rounded border bg-white px-3 py-1.5 text-sm"
+            onClick={() => {
+              setShowQuick((value) => !value);
+              if (!quickRows.length) addQuickRow();
+            }}
+          >
+            {showQuick
+              ? isZh
+                ? '收起'
+                : 'Hide'
+              : isZh
+                ? '逐项录入'
+                : 'Enter items'}
+          </button>
+        </div>
+        {showQuick ? (
+          <div className="mt-3 space-y-2">
+            {quickRows.map((row) => (
+              <div
+                key={row.key}
+                className="grid gap-2 md:grid-cols-[140px_1fr_130px_70px]"
+              >
+                <input
+                  className="rounded border bg-white px-3 py-2 text-sm"
+                  inputMode="decimal"
+                  placeholder="CAD 0.00"
+                  value={row.amount}
+                  onChange={(event) =>
+                    setQuickRows((current) =>
+                      current.map((entry) =>
+                        entry.key === row.key
+                          ? { ...entry, amount: event.target.value }
+                          : entry,
+                      ),
+                    )
+                  }
+                />
+                <select
+                  className="rounded border bg-white px-3 py-2 text-sm"
+                  value={row.categoryStableId}
+                  onChange={(event) =>
+                    setQuickRows((current) =>
+                      current.map((entry) =>
+                        entry.key === row.key
+                          ? { ...entry, categoryStableId: event.target.value }
+                          : entry,
+                      ),
+                    )
+                  }
+                >
+                  {expenseCategories.map((category) => (
+                    <option
+                      key={category.categoryStableId}
+                      value={category.categoryStableId}
+                    >
+                      {categoryNames.get(category.parentStableId ?? '')
+                        ? `${categoryNames.get(category.parentStableId ?? '')} › `
+                        : ''}
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="rounded border bg-white px-3 py-2 text-sm"
+                  value={row.taxMode}
+                  onChange={(event) =>
+                    setQuickRows((current) =>
+                      current.map((entry) =>
+                        entry.key === row.key
+                          ? { ...entry, taxMode: event.target.value as QuickTaxMode }
+                          : entry,
+                      ),
+                    )
+                  }
+                >
+                  <option value="EXEMPT">{isZh ? '免税' : 'Tax exempt'}</option>
+                  <option value="HST13">HST 13%</option>
+                </select>
+                <button
+                  type="button"
+                  className="text-sm text-red-600"
+                  disabled={quickRows.length <= 1}
+                  onClick={() =>
+                    setQuickRows((current) =>
+                      current.filter((entry) => entry.key !== row.key),
+                    )
+                  }
+                >
+                  {isZh ? '删除' : 'Remove'}
+                </button>
+              </div>
+            ))}
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={addQuickRow}
+                className="rounded border bg-white px-3 py-1.5 text-sm"
+              >
+                + {isZh ? '下一项' : 'Next item'}
+              </button>
+              <button
+                type="button"
+                onClick={aggregateQuickRows}
+                className="rounded bg-slate-900 px-3 py-1.5 text-sm text-white"
+              >
+                {isZh ? '汇总到费用分类' : 'Aggregate categories'}
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </section>
       <div className="mt-4 space-y-2">
         {rows.map((row) => (
           <div
@@ -344,15 +627,15 @@ export function AccountingInboxExpenseReviewPanel({
       </label>
       <div className="mt-4 grid gap-3 rounded-lg bg-white p-3 text-sm sm:grid-cols-4">
         <div>
-          <span className="text-slate-500">{isZh ? '税前' : 'Subtotal'}</span>
+          <span className="text-slate-500">{isZh ? 'CAD 税前' : 'CAD subtotal'}</span>
           <strong className="ml-2">{money(calculated.subtotalCents)}</strong>
         </div>
         <div>
-          <span className="text-slate-500">HST</span>
+          <span className="text-slate-500">CAD HST</span>
           <strong className="ml-2">{money(calculated.taxCents)}</strong>
         </div>
         <div>
-          <span className="text-slate-500">{isZh ? '总额' : 'Total'}</span>
+          <span className="text-slate-500">{isZh ? 'CAD 总额' : 'CAD total'}</span>
           <strong className="ml-2">{money(calculated.totalCents)}</strong>
         </div>
         <div>
@@ -373,7 +656,10 @@ export function AccountingInboxExpenseReviewPanel({
         <button
           onClick={() => void confirmExpense()}
           disabled={
-            saving || calculated.differenceCents !== 0 || calculated.totalCents <= 0
+            saving ||
+            !date ||
+            calculated.differenceCents !== 0 ||
+            calculated.totalCents <= 0
           }
           className="rounded bg-slate-900 px-4 py-2 text-sm text-white disabled:opacity-50"
         >
@@ -382,8 +668,8 @@ export function AccountingInboxExpenseReviewPanel({
               ? '入账中…'
               : 'Posting…'
             : isZh
-              ? '确认作为费用入账'
-              : 'Confirm as expense'}
+              ? '确认并入账'
+              : 'Confirm and post'}
         </button>
         {evidenceUrl ? (
           <a
