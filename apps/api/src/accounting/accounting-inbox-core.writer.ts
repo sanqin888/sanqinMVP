@@ -88,7 +88,8 @@ export async function registerInboxArtifactInTx(
   });
   const releaseDuplicateManualBinary = Boolean(
     duplicate &&
-      normalized.acquisitionMode === AccountingArtifactAcquisitionMode.MANUAL_UPLOAD,
+      normalized.acquisitionMode ===
+        AccountingArtifactAcquisitionMode.MANUAL_UPLOAD,
   );
   const artifact = await tx.accountingSourceArtifact.create({
     data: {

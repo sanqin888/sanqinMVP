@@ -211,10 +211,13 @@ describe('Accounting Inbox core persistence writer', () => {
         }) as unknown,
       }) as unknown,
     );
-    const createCall = tx.accountingSourceArtifact.create.mock.calls[0]?.[0] as {
-      data: Record<string, unknown>;
-    };
-    expect(createCall.data).not.toHaveProperty('binaryRetention');
+    expect(tx.accountingSourceArtifact.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.not.objectContaining({
+          binaryRetention: expect.anything(),
+        }) as unknown,
+      }) as unknown,
+    );
   });
 
   it('creates ORIGINAL_PRESENT retention state with a new image source artifact', async () => {

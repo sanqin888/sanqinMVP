@@ -72,7 +72,9 @@ describe('Accounting upload library writer', () => {
     tx.accountingAuditLog.deleteMany.mockResolvedValue({ count: 2 });
     tx.accountingExpenseDocument.delete.mockResolvedValue({});
     tx.accountingParseRun.deleteMany.mockResolvedValue({ count: 1 });
-    tx.accountingArtifactBinaryRetention.deleteMany.mockResolvedValue({ count: 0 });
+    tx.accountingArtifactBinaryRetention.deleteMany.mockResolvedValue({
+      count: 0,
+    });
     tx.accountingInboxItem.deleteMany.mockResolvedValue({ count: 1 });
     tx.accountingInboxItem.delete.mockResolvedValue({});
     tx.accountingSourceArtifact.deleteMany.mockResolvedValue({ count: 2 });

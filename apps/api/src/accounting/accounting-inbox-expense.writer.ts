@@ -212,7 +212,8 @@ export async function discardInboxItemInTx(
   }
   const isManualUploadError =
     item.status === AccountingInboxStatus.ERROR &&
-    item.artifact.acquisitionMode === AccountingArtifactAcquisitionMode.MANUAL_UPLOAD;
+    item.artifact.acquisitionMode ===
+      AccountingArtifactAcquisitionMode.MANUAL_UPLOAD;
   if (
     item.status !== AccountingInboxStatus.PENDING_REVIEW &&
     item.status !== AccountingInboxStatus.QUARANTINED &&

@@ -65,7 +65,10 @@ describe('Accounting manual upload library query', () => {
     ]);
     const client = { accountingInboxItem: { findMany } };
 
-    const result = await listAccountingManualUploadLibrary(client as never, 200);
+    const result = await listAccountingManualUploadLibrary(
+      client as never,
+      200,
+    );
 
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({

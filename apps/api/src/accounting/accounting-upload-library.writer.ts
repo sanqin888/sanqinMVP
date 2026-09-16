@@ -227,5 +227,7 @@ export async function permanentlyDeleteManualUploadInTx(
 }
 
 function uniqueStoredUrls(values: Array<string | null | undefined>): string[] {
-  return Array.from(new Set(values.filter((value): value is string => Boolean(value))));
+  return Array.from(
+    new Set(values.filter((value): value is string => Boolean(value))),
+  );
 }

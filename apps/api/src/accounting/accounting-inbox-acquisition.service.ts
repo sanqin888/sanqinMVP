@@ -274,7 +274,8 @@ export class AccountingInboxAcquisitionService {
     if (artifact.replayed) {
       await this.removeStoredFile(storedUrl);
     } else if (
-      input.acquisitionMode === AccountingArtifactAcquisitionMode.MANUAL_UPLOAD &&
+      input.acquisitionMode ===
+        AccountingArtifactAcquisitionMode.MANUAL_UPLOAD &&
       artifact.inboxItem?.status === AccountingInboxStatus.DUPLICATE
     ) {
       duplicateStorageCleanupComplete = await this.removeStoredFile(storedUrl);
@@ -704,14 +705,20 @@ export class AccountingInboxAcquisitionService {
         directory: 'image-retention',
       },
     ] as const;
-    const location = locations.find(({ prefix }) => storedUrl.startsWith(prefix));
+    const location = locations.find(({ prefix }) =>
+      storedUrl.startsWith(prefix),
+    );
     if (!location) {
-      this.logger.warn(`Accounting storage cleanup refused unknown URL ${storedUrl}`);
+      this.logger.warn(
+        `Accounting storage cleanup refused unknown URL ${storedUrl}`,
+      );
       return false;
     }
     const fileName = path.basename(storedUrl.slice(location.prefix.length));
     if (!fileName || storedUrl !== `${location.prefix}${fileName}`) {
-      this.logger.warn(`Accounting storage cleanup refused invalid URL ${storedUrl}`);
+      this.logger.warn(
+        `Accounting storage cleanup refused invalid URL ${storedUrl}`,
+      );
       return false;
     }
     try {

@@ -140,7 +140,11 @@ describe('AccountingInboxAcquisitionService', () => {
     const { service, operations } = makeService();
     let duplicateStoredUrl = '';
     operations.registerInboxArtifact.mockImplementationOnce(
-      (input: { kind: AccountingArtifactKind; contentHash: string; storedUrl: string }) => {
+      (input: {
+        kind: AccountingArtifactKind;
+        contentHash: string;
+        storedUrl: string;
+      }) => {
         duplicateStoredUrl = input.storedUrl;
         return Promise.resolve({
           ...registeredArtifact(input.kind, input.contentHash),
