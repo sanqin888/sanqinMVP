@@ -5,6 +5,8 @@ export type AccountingPdfExtraction = {
   subtotalCents: number | null;
   taxCents: number | null;
   totalCents: number | null;
+  sourceCurrency: string | null;
+  sourceCurrencyEvidence: 'EXPLICIT_TEXT' | 'AMBIGUOUS' | 'UNKNOWN';
   suggestedCategoryStableId: string | null;
   suggestedCategoryName: string | null;
   confidence: 'HIGH' | 'MEDIUM' | 'LOW';
@@ -186,6 +188,28 @@ function detectDate(text: string): string | null {
   return month ? `${named[3]}-${month}-${named[2].padStart(2, '0')}` : null;
 }
 
+function detectSourceCurrency(text: string): {
+  sourceCurrency: string | null;
+  sourceCurrencyEvidence: 'EXPLICIT_TEXT' | 'AMBIGUOUS' | 'UNKNOWN';
+} {
+  const detected = new Set<string>();
+  if (/\bCAD\b|CAD\$|CA\$/i.test(text)) detected.add('CAD');
+  if (/\bUSD\b|USD\$|US\$/i.test(text)) detected.add('USD');
+  if (/\bEUR\b|€/i.test(text)) detected.add('EUR');
+  if (/\bGBP\b|£/i.test(text)) detected.add('GBP');
+
+  if (detected.size === 1) {
+    return {
+      sourceCurrency: Array.from(detected)[0],
+      sourceCurrencyEvidence: 'EXPLICIT_TEXT',
+    };
+  }
+  if (detected.size > 1) {
+    return { sourceCurrency: null, sourceCurrencyEvidence: 'AMBIGUOUS' };
+  }
+  return { sourceCurrency: null, sourceCurrencyEvidence: 'UNKNOWN' };
+}
+
 function suggestCategory(text: string) {
   const rules: Array<[RegExp, string, string]> = [
     [
@@ -242,6 +266,7 @@ export function extractAccountingText(text: string): AccountingPdfExtraction {
     /\btotal amount\b/i,
     /\btotal\b/i,
   ]);
+  const sourceCurrency = detectSourceCurrency(normalizedText);
   const suggestion = suggestCategory(normalizedText);
   const priceTokenCount = Array.from(
     normalizedText.matchAll(/\$?\d{1,5}\.\d{2}\b/g),
@@ -260,6 +285,8 @@ export function extractAccountingText(text: string): AccountingPdfExtraction {
     subtotalCents,
     taxCents,
     totalCents,
+    sourceCurrency: sourceCurrency.sourceCurrency,
+    sourceCurrencyEvidence: sourceCurrency.sourceCurrencyEvidence,
     suggestedCategoryStableId: suggestion.stableId,
     suggestedCategoryName: suggestion.name,
     confidence,

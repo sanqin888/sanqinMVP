@@ -458,6 +458,7 @@ export async function readAccountingInboxExpenseContext(
           artifactStableId: true,
           acquisitionMode: true,
           kind: true,
+          contentHash: true,
           storedUrl: true,
           bodyText: true,
           emailSubject: true,

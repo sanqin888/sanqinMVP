@@ -27,6 +27,29 @@ describe('accounting text extraction', () => {
 
     expect(extraction.date).toBeNull();
     expect(extraction.totalCents).toBe(4200);
+    expect(extraction.sourceCurrency).toBeNull();
+    expect(extraction.sourceCurrencyEvidence).toBe('UNKNOWN');
+  });
+
+  it('captures an explicitly stated foreign source currency without converting the amount', () => {
+    const extraction = extractAccountingText(`
+      Cloudflare subscription
+      Invoice total USD 20.00
+      Amount due USD 20.00
+    `);
+
+    expect(extraction.totalCents).toBe(2000);
+    expect(extraction.sourceCurrency).toBe('USD');
+    expect(extraction.sourceCurrencyEvidence).toBe('EXPLICIT_TEXT');
+  });
+
+  it('fails currency evidence closed when multiple explicit currencies are present', () => {
+    const extraction = extractAccountingText(
+      'Invoice USD 20.00; card statement reference CAD 27.46',
+    );
+
+    expect(extraction.sourceCurrency).toBeNull();
+    expect(extraction.sourceCurrencyEvidence).toBe('AMBIGUOUS');
   });
 
   it('delegates valid PDF bytes to the Unicode-capable text engine', async () => {

@@ -1,7 +1,11 @@
 import { ConflictException } from '@nestjs/common';
 import {
+  AccountingArtifactKind,
   AccountingDocumentSource,
   AccountingDocumentStatus,
+  AccountingInboxClassification,
+  AccountingInboxMaterializedEntityType,
+  AccountingInboxStatus,
   AccountingSourceType,
   AccountingTxType,
 } from '@prisma/client';
@@ -176,6 +180,215 @@ describe('AccountingOperationsService expense-write characterization', () => {
       tx,
     );
     expect(result.documentStableId).toBe(generatedDocumentStableId);
+  });
+
+  it('rejects a non-CAD payment account for a booked expense', async () => {
+    const transaction = jest.fn();
+    const prisma = {
+      accountingCategory: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'category-software-db-id',
+            categoryStableId: 'expense_software',
+            type: AccountingTxType.EXPENSE,
+          },
+        ]),
+      },
+      accountingAccount: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'usd-bank-db-id',
+          currency: 'USD',
+          isActive: true,
+        }),
+      },
+      $transaction: transaction,
+    };
+    const service = new AccountingOperationsService(
+      prisma as never,
+      accounting as never,
+    );
+
+    await expect(
+      service.createExpense(
+        {
+          occurredAt: '2026-09-16',
+          totalCents: 2746,
+          accountStableId: 'account_usd_bank',
+          splits: [
+            {
+              categoryStableId: 'expense_software',
+              amountCents: 2746,
+              taxCents: 0,
+            },
+          ],
+        },
+        'user_stable_3',
+      ),
+    ).rejects.toThrow('expense booking account must use CAD functional currency');
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it('atomically confirms an Inbox expense in CAD while preserving foreign source-currency evidence', async () => {
+    let createdDocumentStableId = '';
+    const createDocument = jest.fn(
+      (args: {
+        data: {
+          documentStableId: string;
+          extractionJson: Record<string, unknown>;
+        };
+      }) => {
+        createdDocumentStableId = args.data.documentStableId;
+        return Promise.resolve({ id: 'expense-document-db-id' });
+      },
+    );
+    const createMany = jest.fn().mockResolvedValue({ count: 1 });
+    const createAuditMany = jest.fn().mockResolvedValue({ count: 1 });
+    const updateInbox = jest.fn().mockResolvedValue({});
+    const tx = {
+      accountingInboxItem: {
+        findUnique: jest.fn().mockResolvedValue({
+          status: AccountingInboxStatus.PENDING_REVIEW,
+          classification: AccountingInboxClassification.EXPENSE_DOCUMENT,
+          selectedProvider: null,
+          materializedEntityType: null,
+          materializedEntityStableId: null,
+          artifact: {
+            artifactStableId: 'acctart_cloudflare',
+            acquisitionMode: 'EMAIL',
+            kind: AccountingArtifactKind.PDF,
+            contentHash: 'source-hash',
+            storedUrl: '/api/v1/accounting/files/inbox/cloudflare.pdf',
+            bodyText: null,
+            emailSubject: 'Cloudflare invoice',
+            metadataJson: {
+              gmailMessageId: 'gmail-message-1',
+              gmailAttachmentId: 'gmail-attachment-1',
+            },
+            parseRuns: [
+              {
+                resultJson: {
+                  sourceCurrency: 'USD',
+                  sourceCurrencyEvidence: 'EXPLICIT_TEXT',
+                  totalCents: 2000,
+                  extractedText: 'Amount due USD 20.00',
+                },
+              },
+            ],
+          },
+        }),
+        update: updateInbox,
+      },
+      accountingCategory: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'category-software-db-id',
+            categoryStableId: 'expense_software',
+          },
+        ]),
+      },
+      accountingAccount: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'bank-db-id',
+          currency: 'CAD',
+          isActive: true,
+        }),
+      },
+      accountingExpenseDocument: { create: createDocument },
+      accountingTransaction: { createMany },
+      accountingAuditLog: { createMany: createAuditMany },
+    };
+    const transaction = jest.fn(
+      (callback: (transactionClient: typeof tx) => Promise<unknown>) =>
+        callback(tx),
+    );
+    const prisma = {
+      accountingExpenseDocument: {
+        findUnique: jest.fn((args: { where: { documentStableId: string } }) =>
+          Promise.resolve({
+            ...documentRow(args.where.documentStableId),
+            source: AccountingDocumentSource.GMAIL,
+            totalCents: 2746,
+            subtotalCents: 2746,
+            taxCents: 0,
+            currency: 'CAD',
+          }),
+        ),
+      },
+      $transaction: transaction,
+    };
+    const service = new AccountingOperationsService(
+      prisma as never,
+      accounting as never,
+    );
+
+    const result = await service.confirmUnifiedInboxExpense(
+      'acctinbox_cloudflare',
+      {
+        occurredAt: '2026-09-16',
+        totalCents: 2746,
+        sourceCurrency: 'USD',
+        accountStableId: 'account_primary_bank',
+        splits: [
+          {
+            categoryStableId: 'expense_software',
+            amountCents: 2746,
+            taxCents: 0,
+          },
+        ],
+      },
+      'user_stable_3',
+    );
+
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(createdDocumentStableId).toMatch(/^expense_/);
+    expect(createDocument).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        documentStableId: createdDocumentStableId,
+        status: AccountingDocumentStatus.CONFIRMED,
+        currency: 'CAD',
+        subtotalCents: 2746,
+        taxCents: 0,
+        totalCents: 2746,
+        fileHash: 'source-hash',
+        extractionJson: expect.objectContaining({
+          sourceCurrency: 'USD',
+          reviewedSourceCurrency: 'USD',
+          bookedCurrency: 'CAD',
+          bookedTotalCents: 2746,
+        }) as unknown,
+      }) as unknown as Record<string, unknown>,
+      select: { id: true },
+    });
+    expect(createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          currency: 'CAD',
+          amountCents: 2746,
+          taxCents: 0,
+          documentId: 'expense-document-db-id',
+        }) as unknown as Record<string, unknown>,
+      ],
+    });
+    expect(updateInbox).toHaveBeenCalledWith({
+      where: { inboxItemStableId: 'acctinbox_cloudflare' },
+      data: expect.objectContaining({
+        status: AccountingInboxStatus.CONFIRMED,
+        materializedEntityType:
+          AccountingInboxMaterializedEntityType.EXPENSE_DOCUMENT,
+        materializedEntityStableId: createdDocumentStableId,
+        reviewedByUserStableId: 'user_stable_3',
+      }) as unknown as Record<string, unknown>,
+    });
+    expect(accounting.assertOnOrAfterAccountingStartDate).toHaveBeenCalledWith(
+      expect.any(Date),
+      tx,
+    );
+    expect(accounting.assertEditableForPeriod).toHaveBeenCalledWith(
+      expect.any(Date),
+      AccountingTxType.EXPENSE,
+      tx,
+    );
+    expect(result.documentStableId).toBe(createdDocumentStableId);
   });
 
   it('confirms an inbox document by replacing active splits inside the same transaction and preserving existing attachments', async () => {

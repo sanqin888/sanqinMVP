@@ -27,7 +27,6 @@ import {
   confirmAccountingProviderFinancialInboxItem,
   discardAccountingInboxItem,
   ensureAccountingProviderFinancialCoverage,
-  materializeAccountingInboxExpense,
   recordAccountingInboxParseRun,
   recordAccountingProviderFinancialDocument,
   registerAccountingInboxArtifact,
@@ -39,7 +38,6 @@ import {
   AccountingInboxPolicyError,
   type AccountingInboxArtifactInput,
   type AccountingInboxClassificationSelectionInput,
-  type AccountingInboxExpenseMaterializationInput,
   type AccountingParseRunInput,
   type AccountingProviderFinancialDocumentInput,
   type AccountingTrustedSenderInput,
@@ -88,6 +86,7 @@ export type AccountingExpenseSplitInput = {
 export type AccountingExpenseInput = {
   occurredAt: string;
   totalCents: number;
+  sourceCurrency?: string | null;
   accountStableId?: string | null;
   attachmentUrls?: string[];
   memo?: string | null;
@@ -717,14 +716,6 @@ export class AccountingOperationsService {
     );
   }
 
-  async materializeInboxExpense(
-    input: AccountingInboxExpenseMaterializationInput,
-  ) {
-    return this.runInboxCore(() =>
-      materializeAccountingInboxExpense(this.prisma, input),
-    );
-  }
-
   senderTrustDecision(email: string) {
     return getAccountingSenderTrustDecision(this.prisma, email);
   }
@@ -897,97 +888,236 @@ export class AccountingOperationsService {
     input: AccountingExpenseInput,
     operatorUserStableId: string,
   ) {
-    const inbox = await readAccountingInboxExpenseContext(
-      this.prisma,
-      inboxItemStableId,
+    const occurredAt = this.parseDate(input.occurredAt);
+    this.assertMoney(input.totalCents, 'totalCents');
+    if (!input.splits.length) {
+      throw new BadRequestException('at least one expense split is required');
+    }
+    const normalizedSplits = input.splits.map((split) => {
+      this.assertMoney(split.amountCents, 'split.amountCents');
+      const taxCents = split.taxCents ?? 0;
+      this.assertMoney(taxCents, 'split.taxCents');
+      return { ...split, taxCents };
+    });
+    const subtotalCents = normalizedSplits.reduce(
+      (sum, split) => sum + split.amountCents,
+      0,
     );
-    if (!inbox) throw new NotFoundException('accounting inbox item not found');
-    if (inbox.status !== AccountingInboxStatus.PENDING_REVIEW) {
-      throw new ConflictException('only pending inbox items can be confirmed');
-    }
-    if (
-      inbox.classification !== AccountingInboxClassification.EXPENSE_DOCUMENT ||
-      inbox.selectedProvider
-    ) {
-      throw new ConflictException(
-        'inbox item must be classified as an expense before confirmation',
-      );
-    }
-    if (
-      inbox.materializedEntityType ===
-      AccountingInboxMaterializedEntityType.PROVIDER_FINANCIAL_DOCUMENT
-    ) {
-      throw new ConflictException(
-        'provider financial evidence cannot be confirmed as an expense',
-      );
-    }
-    if (inbox.artifact.acquisitionMode === 'PROVIDER_API') {
-      throw new ConflictException(
-        'provider API evidence cannot be confirmed as an expense',
-      );
-    }
-    const extraction = accountingJsonRecord(
-      inbox.artifact.parseRuns[0]?.resultJson,
+    const taxCents = normalizedSplits.reduce(
+      (sum, split) => sum + split.taxCents,
+      0,
     );
-    if (extraction.requiresBatchExpenseImport === true) {
-      throw new ConflictException(
-        'structured expense CSV batch cannot be confirmed as a single expense',
+    if (subtotalCents + taxCents !== input.totalCents) {
+      throw new BadRequestException(
+        'expense splits do not match CAD booking total',
       );
+    }
+    const requestedSourceCurrency =
+      input.sourceCurrency?.trim().toUpperCase() || null;
+    if (
+      requestedSourceCurrency &&
+      !/^[A-Z]{3}$/.test(requestedSourceCurrency)
+    ) {
+      throw new BadRequestException('sourceCurrency must be a 3-letter code');
     }
 
-    let documentStableId = inbox.materializedEntityStableId;
-    if (!documentStableId) {
-      const metadata = accountingJsonRecord(inbox.artifact.metadataJson);
-      const subtotalCents = input.splits.reduce(
-        (sum, split) => sum + split.amountCents,
-        0,
+    const documentStableId = `expense_${createId()}`;
+    await runSerializableAccountingWrite(this.prisma, async (tx) => {
+      const inbox = await readAccountingInboxExpenseContext(tx, inboxItemStableId);
+      if (!inbox) throw new NotFoundException('accounting inbox item not found');
+      if (inbox.status !== AccountingInboxStatus.PENDING_REVIEW) {
+        throw new ConflictException('only pending inbox items can be confirmed');
+      }
+      if (
+        inbox.classification !== AccountingInboxClassification.EXPENSE_DOCUMENT ||
+        inbox.selectedProvider
+      ) {
+        throw new ConflictException(
+          'inbox item must be classified as an expense before confirmation',
+        );
+      }
+      if (inbox.materializedEntityType || inbox.materializedEntityStableId) {
+        throw new ConflictException(
+          'pending inbox expenses must not already be materialized',
+        );
+      }
+      if (inbox.artifact.acquisitionMode === 'PROVIDER_API') {
+        throw new ConflictException(
+          'provider API evidence cannot be confirmed as an expense',
+        );
+      }
+      const extraction = accountingJsonRecord(
+        inbox.artifact.parseRuns[0]?.resultJson,
       );
-      const taxCents = input.splits.reduce(
-        (sum, split) => sum + (split.taxCents ?? 0),
-        0,
+      if (extraction.requiresBatchExpenseImport === true) {
+        throw new ConflictException(
+          'structured expense CSV batch cannot be confirmed as a single expense',
+        );
+      }
+
+      await this.accounting.assertOnOrAfterAccountingStartDate(occurredAt, tx);
+      await this.accounting.assertEditableForPeriod(
+        occurredAt,
+        AccountingTxType.EXPENSE,
+        tx,
       );
-      const materialized = await this.materializeInboxExpense({
-        artifactStableId: inbox.artifact.artifactStableId,
-        source:
-          inbox.artifact.acquisitionMode === 'EMAIL'
-            ? AccountingDocumentSource.GMAIL
-            : AccountingDocumentSource.MANUAL,
-        occurredAt: input.occurredAt,
-        subtotalCents,
-        taxCents,
-        totalCents: input.totalCents,
-        currency: 'CAD',
-        gmailMessageId: accountingOptionalString(metadata.gmailMessageId),
-        gmailAttachmentId: accountingOptionalString(metadata.gmailAttachmentId),
-        emailSubject: inbox.artifact.emailSubject,
-        attachmentUrls: inbox.artifact.storedUrl
-          ? [
-              inbox.artifact.kind === AccountingArtifactKind.IMAGE
-                ? `/api/v1/accounting/inbox/artifacts/${encodeURIComponent(inbox.artifact.artifactStableId)}/content`
-                : inbox.artifact.storedUrl,
-            ]
-          : [],
-        extractedText:
-          accountingOptionalString(extraction.extractedText) ??
-          inbox.artifact.bodyText,
-        extractionJson: extraction,
-        memo: input.memo,
+
+      const categories = await tx.accountingCategory.findMany({
+        where: {
+          categoryStableId: {
+            in: normalizedSplits.map((split) => split.categoryStableId),
+          },
+          type: AccountingTxType.EXPENSE,
+          isActive: true,
+        },
+        select: { id: true, categoryStableId: true },
       });
-      documentStableId = materialized.documentStableId;
-    } else if (
-      inbox.materializedEntityType !==
-      AccountingInboxMaterializedEntityType.EXPENSE_DOCUMENT
-    ) {
-      throw new ConflictException(
-        'inbox item materialization type does not match expense confirmation',
+      const categoryMap = new Map(
+        categories.map((row) => [row.categoryStableId, row.id]),
       );
-    }
+      if (
+        normalizedSplits.some((split) => !categoryMap.has(split.categoryStableId))
+      ) {
+        throw new BadRequestException(
+          'one or more expense categories are invalid',
+        );
+      }
 
-    return this.confirmInboxDocument(
-      documentStableId,
-      input,
-      operatorUserStableId,
-    );
+      const account = input.accountStableId
+        ? await tx.accountingAccount.findUnique({
+            where: { accountStableId: input.accountStableId },
+            select: { id: true, currency: true, isActive: true },
+          })
+        : null;
+      if (input.accountStableId && (!account || !account.isActive)) {
+        throw new BadRequestException('accountStableId is invalid');
+      }
+      if (account && account.currency !== 'CAD') {
+        throw new BadRequestException(
+          'expense booking account must use CAD functional currency',
+        );
+      }
+
+      const metadata = accountingJsonRecord(inbox.artifact.metadataJson);
+      const extractedSourceCurrency = accountingOptionalString(
+        extraction.sourceCurrency,
+      )?.toUpperCase();
+      const reviewedSourceCurrency =
+        requestedSourceCurrency ?? extractedSourceCurrency ?? null;
+      if (
+        reviewedSourceCurrency &&
+        !/^[A-Z]{3}$/.test(reviewedSourceCurrency)
+      ) {
+        throw new BadRequestException('sourceCurrency must be a 3-letter code');
+      }
+      const artifactUrl = inbox.artifact.storedUrl
+        ? inbox.artifact.kind === AccountingArtifactKind.IMAGE
+          ? `/api/v1/accounting/inbox/artifacts/${encodeURIComponent(inbox.artifact.artifactStableId)}/content`
+          : inbox.artifact.storedUrl
+        : null;
+      const attachmentUrls = Array.from(
+        new Set(
+          [artifactUrl, ...this.normalizeUrls(input.attachmentUrls)].filter(
+            (value): value is string => Boolean(value),
+          ),
+        ),
+      );
+      const extractionJson = {
+        ...extraction,
+        reviewedSourceCurrency,
+        bookedCurrency: 'CAD',
+        bookedSubtotalCents: subtotalCents,
+        bookedTaxCents: taxCents,
+        bookedTotalCents: input.totalCents,
+      } satisfies Record<string, unknown>;
+
+      const created = await tx.accountingExpenseDocument.create({
+        data: {
+          documentStableId,
+          source:
+            inbox.artifact.acquisitionMode === 'EMAIL'
+              ? AccountingDocumentSource.GMAIL
+              : AccountingDocumentSource.MANUAL,
+          status: AccountingDocumentStatus.CONFIRMED,
+          occurredAt,
+          subtotalCents,
+          taxCents,
+          totalCents: input.totalCents,
+          currency: 'CAD',
+          accountId: account?.id ?? null,
+          gmailMessageId: accountingOptionalString(metadata.gmailMessageId),
+          gmailAttachmentId: accountingOptionalString(metadata.gmailAttachmentId),
+          fileHash: inbox.artifact.contentHash,
+          emailSubject: inbox.artifact.emailSubject,
+          attachmentUrls,
+          extractedText:
+            accountingOptionalString(extraction.extractedText) ??
+            inbox.artifact.bodyText,
+          extractionJson: extractionJson as Prisma.InputJsonValue,
+          memo: input.memo?.trim() || null,
+          confirmedAt: new Date(),
+          confirmedByUserId: operatorUserStableId,
+        },
+        select: { id: true },
+      });
+
+      const splitRows = normalizedSplits.map((split, index) => ({
+        txStableId: `accttx_${createId()}`,
+        type: AccountingTxType.EXPENSE,
+        source: AccountingSourceType.MANUAL,
+        amountCents: split.amountCents,
+        taxCents: split.taxCents,
+        currency: 'CAD',
+        occurredAt,
+        categoryId: categoryMap.get(split.categoryStableId)!,
+        accountId: account?.id ?? null,
+        documentId: created.id,
+        idempotencyKey: `expense:${documentStableId}:${index}`,
+        externalRef: documentStableId,
+        memo: input.memo?.trim() || null,
+        attachmentUrls,
+        createdByUserId: operatorUserStableId,
+        updatedByUserId: operatorUserStableId,
+      }));
+      await tx.accountingTransaction.createMany({ data: splitRows });
+      await tx.accountingAuditLog.createMany({
+        data: splitRows.map((row, index) => ({
+          action: 'CREATE',
+          entityType: 'ACCOUNTING_TRANSACTION',
+          entityId: row.txStableId,
+          operatorUserId: operatorUserStableId,
+          afterJson: {
+            txStableId: row.txStableId,
+            type: row.type,
+            source: row.source,
+            amountCents: row.amountCents,
+            taxCents: row.taxCents,
+            currency: row.currency,
+            occurredAt: occurredAt.toISOString(),
+            categoryStableId: normalizedSplits[index].categoryStableId,
+            documentStableId,
+            idempotencyKey: row.idempotencyKey,
+            externalRef: row.externalRef,
+            attachmentUrls,
+          } as Prisma.InputJsonValue,
+        })),
+      });
+      await tx.accountingInboxItem.update({
+        where: { inboxItemStableId },
+        data: {
+          status: AccountingInboxStatus.CONFIRMED,
+          classification: AccountingInboxClassification.EXPENSE_DOCUMENT,
+          materializedEntityType:
+            AccountingInboxMaterializedEntityType.EXPENSE_DOCUMENT,
+          materializedEntityStableId: documentStableId,
+          reviewedAt: new Date(),
+          reviewedByUserStableId: operatorUserStableId,
+          version: { increment: 1 },
+        },
+      });
+    });
+
+    return this.getExpenseDocument(documentStableId);
   }
 
   async discardUnifiedInboxItem(
@@ -1114,6 +1244,11 @@ export class AccountingOperationsService {
     if (input.accountStableId && (!account || !account.isActive)) {
       throw new BadRequestException('accountStableId is invalid');
     }
+    if (account && account.currency !== 'CAD') {
+      throw new BadRequestException(
+        'expense booking account must use CAD functional currency',
+      );
+    }
 
     const attachmentUrls = this.normalizeUrls(input.attachmentUrls);
     const documentStableId = `expense_${createId()}`;
@@ -1139,7 +1274,7 @@ export class AccountingOperationsService {
             subtotalCents,
             taxCents,
             totalCents: input.totalCents,
-            currency: account?.currency ?? 'CAD',
+            currency: 'CAD',
             accountId: account?.id ?? null,
             attachmentUrls,
             memo: input.memo?.trim() || null,
@@ -1154,7 +1289,7 @@ export class AccountingOperationsService {
           source: AccountingSourceType.MANUAL,
           amountCents: split.amountCents,
           taxCents: split.taxCents,
-          currency: account?.currency ?? 'CAD',
+          currency: 'CAD',
           occurredAt,
           categoryId: categoryMap.get(split.categoryStableId)!.id,
           accountId: account?.id ?? null,
@@ -1294,6 +1429,11 @@ export class AccountingOperationsService {
     if (input.accountStableId && (!account || !account.isActive)) {
       throw new BadRequestException('accountStableId is invalid');
     }
+    if (account && account.currency !== 'CAD') {
+      throw new BadRequestException(
+        'expense booking account must use CAD functional currency',
+      );
+    }
     const newAttachmentUrls = this.normalizeUrls(input.attachmentUrls);
 
     await runSerializableAccountingWrite(this.prisma, async (tx) => {
@@ -1343,7 +1483,7 @@ export class AccountingOperationsService {
           taxCents,
           totalCents: input.totalCents,
           accountId: account?.id ?? null,
-          currency: account?.currency ?? 'CAD',
+          currency: 'CAD',
           attachmentUrls,
           memo: input.memo?.trim() || null,
           confirmedAt: new Date(),
@@ -1356,7 +1496,7 @@ export class AccountingOperationsService {
         source: AccountingSourceType.MANUAL,
         amountCents: split.amountCents,
         taxCents: split.taxCents,
-        currency: account?.currency ?? 'CAD',
+        currency: 'CAD',
         occurredAt,
         categoryId: categoryMap.get(split.categoryStableId)!,
         accountId: account?.id ?? null,

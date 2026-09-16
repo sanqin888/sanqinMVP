@@ -8,6 +8,7 @@ export type AccountingCategory = {
 export type AccountingAccount = {
   accountStableId: string;
   name: string;
+  currency: string;
 };
 
 export type AccountingFinancialProvider = 'CLOVER' | 'UBER_EATS' | 'FANTUAN';
@@ -113,6 +114,8 @@ export type AccountingInboxParseResult = {
   subtotalCents?: number | null;
   taxCents?: number | null;
   totalCents?: number | null;
+  sourceCurrency?: string | null;
+  sourceCurrencyEvidence?: 'EXPLICIT_TEXT' | 'AMBIGUOUS' | 'UNKNOWN';
   suggestedCategoryStableId?: string | null;
   suggestedCategoryName?: string | null;
   confidence?: 'HIGH' | 'MEDIUM' | 'LOW';
