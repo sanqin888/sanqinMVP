@@ -28,7 +28,7 @@ const noisyOcrText = [
   '. 165 ultutul Gingl _',
   'TSR T i W M ARV AN',
   'SRt P | 1T 1 1 1 绍 0 e',
-  "霍 i 霉 熹 篝 噻 ] Kot T s",
+  '霍 i 霉 熹 篝 噻 ] Kot T s',
   'e -',
   'sE i',
   'SRR e 1 il bR | 林',
@@ -285,10 +285,13 @@ describe('accounting image OCR', () => {
   it('uses English receipt passes first and skips mixed-language fallback for strong OCR', async () => {
     const input = await makeSmallReceiptImage();
     const attempted: AccountingImageOcrStrategy[] = [];
-    const result = await extractAccountingImageText(input, async (candidate) => {
-      attempted.push(candidate.strategy);
-      return readableReceiptText;
-    });
+    const result = await extractAccountingImageText(
+      input,
+      (candidate) => {
+        attempted.push(candidate.strategy);
+        return Promise.resolve(readableReceiptText);
+      },
+    );
 
     expect(result.text).toBe(readableReceiptText);
     expect(attempted).toEqual(['RECEIPT_CONTRAST_ENG_PSM4']);
@@ -297,12 +300,17 @@ describe('accounting image OCR', () => {
   it('uses mixed-language fallback only when the receipt-quality score stays weak', async () => {
     const input = await makeSmallReceiptImage();
     const attempted: AccountingImageOcrStrategy[] = [];
-    const result = await extractAccountingImageText(input, async (candidate) => {
-      attempted.push(candidate.strategy);
-      return candidate.strategy === 'FULL_CONTRAST_MIXED_PSM6'
-        ? readableReceiptText
-        : noisyOcrText;
-    });
+    const result = await extractAccountingImageText(
+      input,
+      (candidate) => {
+        attempted.push(candidate.strategy);
+        return Promise.resolve(
+          candidate.strategy === 'FULL_CONTRAST_MIXED_PSM6'
+            ? readableReceiptText
+            : noisyOcrText,
+        );
+      },
+    );
 
     expect(result.text).toBe(readableReceiptText);
     expect(attempted).toEqual([
@@ -316,7 +324,7 @@ describe('accounting image OCR', () => {
     const input = await makeSmallReceiptImage();
 
     await expect(
-      extractAccountingImageText(input, async () => noisyOcrText),
+      extractAccountingImageText(input, () => Promise.resolve(noisyOcrText)),
     ).rejects.toThrow('Accounting image OCR produced low-quality text');
   });
 
@@ -324,11 +332,11 @@ describe('accounting image OCR', () => {
     const input = await makeSmallReceiptImage();
 
     await expect(
-      extractAccountingImageText(input, async (candidate) => {
+      extractAccountingImageText(input, (candidate) => {
         if (candidate.strategy === 'RECEIPT_CONTRAST_ENG_PSM4') {
-          throw new Error('simulated OCR failure');
+          return Promise.reject(new Error('simulated OCR failure'));
         }
-        return '';
+        return Promise.resolve('');
       }),
     ).rejects.toThrow('simulated OCR failure');
   });
@@ -337,7 +345,7 @@ describe('accounting image OCR', () => {
     const input = await makeSmallReceiptImage();
 
     await expect(
-      extractAccountingImageText(input, async () => ''),
+      extractAccountingImageText(input, () => Promise.resolve('')),
     ).resolves.toEqual({ text: '', engine: 'TESSERACT' });
   });
 });

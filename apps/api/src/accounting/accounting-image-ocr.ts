@@ -91,8 +91,7 @@ const receiptSignalPatterns = [
   /\bchange\b/i,
 ] as const;
 
-const moneyPattern =
-  /(?:CAD\s*)?\$?\s*-?\d{1,6}(?:,\d{3})*(?:\.\d{2})\b/gi;
+const moneyPattern = /(?:CAD\s*)?\$?\s*-?\d{1,6}(?:,\d{3})*(?:\.\d{2})\b/gi;
 const datePattern =
   /\b(?:20\d{2}[-/.](?:0?[1-9]|1[0-2])[-/.](?:[0-2]?\d|3[01])|(?:0?[1-9]|1[0-2])[-/.](?:[0-2]?\d|3[01])[-/.]20\d{2})\b/gi;
 
@@ -115,9 +114,7 @@ export async function extractAccountingImageText(
   await runAndScoreCandidate(primary, runner, scored, failures);
 
   let winner = selectBestAccountingImageOcrText(scored);
-  if (
-    shouldTryAdditionalOcrPass(winner, OCR_SECOND_RECEIPT_PASS_BELOW_SCORE)
-  ) {
+  if (shouldTryAdditionalOcrPass(winner, OCR_SECOND_RECEIPT_PASS_BELOW_SCORE)) {
     const binarySegments = await prepareAccountingBinarySegments(
       receiptContrastSegments,
     );
@@ -131,13 +128,11 @@ export async function extractAccountingImageText(
     winner = selectBestAccountingImageOcrText(scored);
   }
 
-  if (
-    shouldTryAdditionalOcrPass(
-      winner,
-      OCR_MIXED_LANGUAGE_FALLBACK_BELOW_SCORE,
-    )
-  ) {
-    const fallbackSegments = await prepareAccountingImageSegments(buffer, false);
+  if (shouldTryAdditionalOcrPass(winner, OCR_MIXED_LANGUAGE_FALLBACK_BELOW_SCORE)) {
+    const fallbackSegments = await prepareAccountingImageSegments(
+      buffer,
+      false,
+    );
     const fallback = buildAccountingImageOcrCandidate(
       'FULL_CONTRAST_MIXED_PSM6',
       fallbackSegments,
@@ -230,9 +225,7 @@ function buildAccountingImageOcrCandidate(
   strategy: AccountingImageOcrStrategy,
   segments: PreparedAccountingImageOcrSegment[],
   language: PreparedAccountingImageOcrCandidate['language'],
-  pageSegmentationMode: PreparedAccountingImageOcrCandidate[
-    'pageSegmentationMode'
-  ],
+  pageSegmentationMode: PreparedAccountingImageOcrCandidate['pageSegmentationMode'],
 ): PreparedAccountingImageOcrCandidate {
   assertPreparedCandidateLimits(segments);
   return {
@@ -317,7 +310,8 @@ async function prepareAccountingImageSegments(
       ? Math.max(
           1,
           Math.ceil(
-            ((ACCOUNTING_IMAGE_OCR_POLICY.segmentOverlap / 2) * segmentationWidth) /
+            ((ACCOUNTING_IMAGE_OCR_POLICY.segmentOverlap / 2) *
+              segmentationWidth) /
               ACCOUNTING_IMAGE_OCR_POLICY.targetWidth,
           ),
         )
@@ -327,7 +321,9 @@ async function prepareAccountingImageSegments(
   let totalPreparedBytes = 0;
   for (let index = 0; index < segmentCount; index += 1) {
     const coreTop = Math.floor((index * orientedHeight) / segmentCount);
-    const coreBottom = Math.floor(((index + 1) * orientedHeight) / segmentCount);
+    const coreBottom = Math.floor(
+      ((index + 1) * orientedHeight) / segmentCount,
+    );
     const top = Math.max(0, coreTop - (index > 0 ? sourceOverlapHalf : 0));
     const bottom = Math.min(
       orientedHeight,
@@ -365,7 +361,9 @@ async function prepareAccountingImageSegments(
       .toBuffer();
     const preparedMetadata = await sharp(prepared).metadata();
     if (!preparedMetadata.width || !preparedMetadata.height) {
-      throw new Error('Accounting image OCR segment dimensions are unavailable');
+      throw new Error(
+        'Accounting image OCR segment dimensions are unavailable',
+      );
     }
     assertPreparedSegmentLimits(
       prepared,
@@ -422,10 +420,7 @@ async function estimateAccountingReceiptSegmentationWidth(
       orientedWidth * ACCOUNTING_IMAGE_OCR_POLICY.minSegmentationWidthRatio,
     ),
   );
-  return Math.min(
-    orientedWidth,
-    Math.max(minimumWidth, estimatedTrimmedWidth),
-  );
+  return Math.min(orientedWidth, Math.max(minimumWidth, estimatedTrimmedWidth));
 }
 
 function assertPreparedSegmentLimits(
@@ -528,8 +523,7 @@ export function scoreAccountingReceiptOcrText(
   const noiseLineCount = lines.filter((line) => {
     const compact = line.replace(/\s+/g, '');
     if (compact.length < 4) return false;
-    const asciiAlphaNumericCount =
-      compact.match(/[A-Za-z0-9]/g)?.length ?? 0;
+    const asciiAlphaNumericCount = compact.match(/[A-Za-z0-9]/g)?.length ?? 0;
     const hasReceiptEvidence =
       (line.match(moneyPattern)?.length ?? 0) > 0 ||
       (line.match(datePattern)?.length ?? 0) > 0 ||
@@ -651,9 +645,7 @@ async function runTesseract(
 function runTesseractSegment(
   buffer: Buffer,
   language: PreparedAccountingImageOcrCandidate['language'],
-  pageSegmentationMode: PreparedAccountingImageOcrCandidate[
-    'pageSegmentationMode'
-  ],
+  pageSegmentationMode: PreparedAccountingImageOcrCandidate['pageSegmentationMode'],
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn(
@@ -761,11 +753,11 @@ function findAccountingOcrLineOverlap(
 ): number {
   const maxOverlap = Math.min(6, previousLines.length, nextLines.length);
   for (let size = maxOverlap; size > 0; size -= 1) {
-    const previous = previousLines.slice(-size).map(normalizeAccountingOcrLineKey);
+    const previous = previousLines
+      .slice(-size)
+      .map(normalizeAccountingOcrLineKey);
     const next = nextLines.slice(0, size).map(normalizeAccountingOcrLineKey);
-    if (
-      previous.every((line, index) => line && line === next[index])
-    ) {
+    if (previous.every((line, index) => line && line === next[index])) {
       return size;
     }
   }
