@@ -275,7 +275,12 @@ describe('Accounting Textract expense recognition', () => {
               SummaryFields: [
                 summaryField('INVOICE_RECEIPT_DATE', '26/09/08', 99.59, null),
                 summaryField('INVOICE_RECEIPT_DATE', '2026/09/01', 99.98, null),
-                summaryField('INVOICE_RECEIPT_DATE', 'Sep 08 2026', 79.78, null),
+                summaryField(
+                  'INVOICE_RECEIPT_DATE',
+                  'Sep 08 2026',
+                  79.78,
+                  null,
+                ),
                 summaryField('SUBTOTAL', '42.38', 99.97, 'USD'),
                 summaryField('TAX', '0.00', 99.96, 'USD'),
                 summaryField('TOTAL', '42.38', 99.99, 'USD'),
