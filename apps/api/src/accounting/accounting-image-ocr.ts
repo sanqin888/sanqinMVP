@@ -19,8 +19,17 @@ export const ACCOUNTING_IMAGE_OCR_POLICY = {
   segmentOverlap: 180,
   analysisPreviewMaxDimension: 1000,
   minSegmentationWidthRatio: 0.25,
+  receiptCropMinWidthRatio: 0.15,
+  receiptCropMaxWidthRatio: 0.9,
+  receiptCropSupportFloor: 0.18,
+  receiptCropSupportRelative: 0.35,
+  receiptCropMinSupport: 0.35,
+  receiptCropMinContrastDelta: 0.12,
+  receiptCropMarginRatio: 0.06,
+  receiptCropSmoothingRadiusRatio: 0.015,
   trimThreshold: 24,
-  binaryThreshold: 180,
+  adaptiveThresholdWindowSize: 61,
+  adaptiveThresholdBias: 15,
   dpi: 300,
   maxPasses: 3,
 } as const;
@@ -40,6 +49,10 @@ export type PreparedAccountingImageOcrSegment = {
   buffer: Buffer;
   width: number;
   height: number;
+  sourceLeft: number;
+  sourceTop: number;
+  sourceWidth: number;
+  sourceHeight: number;
 };
 
 export type PreparedAccountingImageOcrCandidate = {
@@ -49,6 +62,13 @@ export type PreparedAccountingImageOcrCandidate = {
   pageSegmentationMode: 4 | 6;
   width: number;
   height: number;
+};
+
+type AccountingReceiptImageGeometry = {
+  cropApplied: boolean;
+  cropLeft: number;
+  cropWidth: number;
+  segmentationWidth: number;
 };
 
 export type AccountingReceiptOcrQuality = {
@@ -93,7 +113,7 @@ const receiptSignalPatterns = [
 
 const moneyPattern = /(?:CAD\s*)?\$?\s*-?\d{1,6}(?:,\d{3})*(?:\.\d{2})\b/gi;
 const datePattern =
-  /\b(?:20\d{2}[-/.](?:0?[1-9]|1[0-2])[-/.](?:[0-2]?\d|3[01])|(?:0?[1-9]|1[0-2])[-/.](?:[0-2]?\d|3[01])[-/.]20\d{2})\b/gi;
+  /\b(?:20\d{2}[-/.](?:0?[1-9]|1[0-2])[-/.](?:[0-2]?\d|3[01])|(?:0?[1-9]|1[0-2])[-/.](?:[0-2]?\d|3[01])[-/.]20\d{2}|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2},?\s+20\d{2})\b/gi;
 
 export async function extractAccountingImageText(
   buffer: Buffer,
@@ -148,9 +168,7 @@ export async function extractAccountingImageText(
   }
 
   if (!isAcceptableAccountingReceiptOcrQuality(winner.quality)) {
-    throw new Error(
-      `Accounting image OCR produced low-quality text (score ${winner.quality.score})`,
-    );
+    throw new Error(formatAccountingImageOcrLowQualityError(winner, scored));
   }
 
   return { text: winner.text, engine: 'TESSERACT' };
@@ -213,8 +231,29 @@ async function prepareAccountingBinarySegments(
   const binarySegments: PreparedAccountingImageOcrSegment[] = [];
   let totalPreparedBytes = 0;
   for (const segment of sourceSegments) {
-    const buffer = await sharp(segment.buffer)
-      .threshold(ACCOUNTING_IMAGE_OCR_POLICY.binaryThreshold)
+    const grayscale = await sharp(segment.buffer)
+      .grayscale()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    if (
+      grayscale.info.width !== segment.width ||
+      grayscale.info.height !== segment.height ||
+      grayscale.info.channels !== 1
+    ) {
+      throw new Error('Accounting image OCR grayscale dimensions are invalid');
+    }
+    const thresholded = applyAccountingAdaptiveMeanThreshold(
+      grayscale.data,
+      grayscale.info.width,
+      grayscale.info.height,
+    );
+    const buffer = await sharp(thresholded, {
+      raw: {
+        width: grayscale.info.width,
+        height: grayscale.info.height,
+        channels: 1,
+      },
+    })
       .png()
       .toBuffer();
     assertPreparedSegmentLimits(buffer, segment.width, segment.height);
@@ -223,6 +262,88 @@ async function prepareAccountingBinarySegments(
     binarySegments.push({ ...segment, buffer });
   }
   return binarySegments;
+}
+
+export function applyAccountingAdaptiveMeanThreshold(
+  pixels: Uint8Array,
+  width: number,
+  height: number,
+  windowSize = ACCOUNTING_IMAGE_OCR_POLICY.adaptiveThresholdWindowSize,
+  bias = ACCOUNTING_IMAGE_OCR_POLICY.adaptiveThresholdBias,
+): Buffer {
+  if (
+    width <= 0 ||
+    height <= 0 ||
+    pixels.length !== width * height ||
+    windowSize < 3 ||
+    windowSize % 2 === 0 ||
+    bias < 0
+  ) {
+    throw new Error('Accounting image OCR adaptive threshold input is invalid');
+  }
+
+  const radius = Math.floor(windowSize / 2);
+  const columnSums = new Uint32Array(width);
+  const output = Buffer.allocUnsafe(pixels.length);
+  const initialBottom = Math.min(height - 1, radius);
+
+  for (let sourceY = 0; sourceY <= initialBottom; sourceY += 1) {
+    const rowOffset = sourceY * width;
+    for (let x = 0; x < width; x += 1) {
+      columnSums[x] += pixels[rowOffset + x];
+    }
+  }
+
+  for (let y = 0; y < height; y += 1) {
+    if (y > 0) {
+      const removeY = y - radius - 1;
+      if (removeY >= 0) {
+        const rowOffset = removeY * width;
+        for (let x = 0; x < width; x += 1) {
+          columnSums[x] -= pixels[rowOffset + x];
+        }
+      }
+      const addY = y + radius;
+      if (addY < height) {
+        const rowOffset = addY * width;
+        for (let x = 0; x < width; x += 1) {
+          columnSums[x] += pixels[rowOffset + x];
+        }
+      }
+    }
+
+    const verticalStart = Math.max(0, y - radius);
+    const verticalEnd = Math.min(height - 1, y + radius);
+    const verticalCount = verticalEnd - verticalStart + 1;
+    let horizontalStart = 0;
+    let horizontalEnd = Math.min(width - 1, radius);
+    let localSum = 0;
+    for (let x = horizontalStart; x <= horizontalEnd; x += 1) {
+      localSum += columnSums[x];
+    }
+
+    const rowOffset = y * width;
+    for (let x = 0; x < width; x += 1) {
+      if (x > 0) {
+        const removeX = x - radius - 1;
+        if (removeX >= 0) {
+          localSum -= columnSums[removeX];
+          horizontalStart = removeX + 1;
+        }
+        const addX = x + radius;
+        if (addX < width) {
+          localSum += columnSums[addX];
+          horizontalEnd = addX;
+        }
+      }
+      const localCount = verticalCount * (horizontalEnd - horizontalStart + 1);
+      const localMean = localSum / Math.max(localCount, 1);
+      output[rowOffset + x] =
+        pixels[rowOffset + x] > localMean - bias ? 255 : 0;
+    }
+  }
+
+  return output;
 }
 
 async function prepareAccountingImageSegments(
@@ -244,16 +365,19 @@ async function prepareAccountingImageSegments(
   const swapsAxes = [5, 6, 7, 8].includes(metadata.orientation ?? 1);
   const orientedWidth = swapsAxes ? metadata.height : metadata.width;
   const orientedHeight = swapsAxes ? metadata.width : metadata.height;
-  const segmentationWidth = await estimateAccountingReceiptSegmentationWidth(
+  const geometry = await analyzeAccountingReceiptImageGeometry(
     buffer,
     orientedWidth,
-    orientedHeight,
   );
+  const sourceLeft =
+    trimBackground && geometry.cropApplied ? geometry.cropLeft : 0;
+  const sourceWidth =
+    trimBackground && geometry.cropApplied ? geometry.cropWidth : orientedWidth;
   const estimatedPreparedHeight = Math.max(
     1,
     Math.round(
       (orientedHeight * ACCOUNTING_IMAGE_OCR_POLICY.targetWidth) /
-        Math.max(segmentationWidth, 1),
+        Math.max(geometry.segmentationWidth, 1),
     ),
   );
   const segmentStride =
@@ -280,7 +404,7 @@ async function prepareAccountingImageSegments(
           1,
           Math.ceil(
             ((ACCOUNTING_IMAGE_OCR_POLICY.segmentOverlap / 2) *
-              segmentationWidth) /
+              geometry.segmentationWidth) /
               ACCOUNTING_IMAGE_OCR_POLICY.targetWidth,
           ),
         )
@@ -301,9 +425,9 @@ async function prepareAccountingImageSegments(
     const sourceHeight = Math.max(1, bottom - top);
 
     const region = {
-      left: 0,
+      left: sourceLeft,
       top,
-      width: orientedWidth,
+      width: sourceWidth,
       height: sourceHeight,
     };
     const extracted = await sharp(buffer, {
@@ -353,24 +477,20 @@ async function prepareAccountingImageSegments(
       buffer: prepared,
       width: preparedMetadata.width,
       height: preparedMetadata.height,
+      sourceLeft: region.left,
+      sourceTop: region.top,
+      sourceWidth: region.width,
+      sourceHeight: region.height,
     });
   }
 
   return segments;
 }
 
-async function estimateAccountingReceiptSegmentationWidth(
+async function analyzeAccountingReceiptImageGeometry(
   buffer: Buffer,
   orientedWidth: number,
-  orientedHeight: number,
-): Promise<number> {
-  const previewScale = Math.min(
-    1,
-    ACCOUNTING_IMAGE_OCR_POLICY.analysisPreviewMaxDimension /
-      Math.max(orientedWidth, 1),
-    ACCOUNTING_IMAGE_OCR_POLICY.analysisPreviewMaxDimension /
-      Math.max(orientedHeight, 1),
-  );
+): Promise<AccountingReceiptImageGeometry> {
   const preview = await sharp(buffer, {
     failOn: 'error',
     limitInputPixels: ACCOUNTING_IMAGE_OCR_POLICY.maxInputPixels,
@@ -382,21 +502,186 @@ async function estimateAccountingReceiptSegmentationWidth(
       fit: 'inside',
       withoutEnlargement: true,
     })
-    .trim({ threshold: ACCOUNTING_IMAGE_OCR_POLICY.trimThreshold })
     .grayscale()
-    .png()
+    .raw()
     .toBuffer({ resolveWithObject: true });
-  const estimatedTrimmedWidth = Math.max(
-    1,
-    Math.round(preview.info.width / Math.max(previewScale, Number.EPSILON)),
+  if (preview.info.channels !== 1) {
+    throw new Error('Accounting image OCR analysis preview is not grayscale');
+  }
+
+  const previewWidth = preview.info.width;
+  const previewHeight = preview.info.height;
+  const threshold = calculateAccountingOtsuThreshold(preview.data);
+  const columnSupport = new Float64Array(previewWidth);
+  for (let y = 0; y < previewHeight; y += 1) {
+    const rowOffset = y * previewWidth;
+    for (let x = 0; x < previewWidth; x += 1) {
+      if (preview.data[rowOffset + x] > threshold) {
+        columnSupport[x] += 1;
+      }
+    }
+  }
+  for (let x = 0; x < previewWidth; x += 1) {
+    columnSupport[x] /= Math.max(previewHeight, 1);
+  }
+
+  const smoothingRadius = Math.max(
+    2,
+    Math.round(
+      previewWidth *
+        ACCOUNTING_IMAGE_OCR_POLICY.receiptCropSmoothingRadiusRatio,
+    ),
   );
-  const minimumWidth = Math.max(
+  const smoothedSupport = smoothAccountingColumnSupport(
+    columnSupport,
+    smoothingRadius,
+  );
+  let maxSupport = 0;
+  for (const support of smoothedSupport) {
+    maxSupport = Math.max(maxSupport, support);
+  }
+  const supportThreshold = Math.max(
+    ACCOUNTING_IMAGE_OCR_POLICY.receiptCropSupportFloor,
+    maxSupport * ACCOUNTING_IMAGE_OCR_POLICY.receiptCropSupportRelative,
+  );
+  const run = findLargestAccountingColumnRun(smoothedSupport, supportThreshold);
+  if (!run) {
+    return {
+      cropApplied: false,
+      cropLeft: 0,
+      cropWidth: orientedWidth,
+      segmentationWidth: orientedWidth,
+    };
+  }
+
+  const runWidth = run.end - run.start + 1;
+  const runWidthRatio = runWidth / Math.max(previewWidth, 1);
+  let insideSupport = 0;
+  for (let x = run.start; x <= run.end; x += 1) {
+    insideSupport += smoothedSupport[x];
+  }
+  insideSupport /= Math.max(runWidth, 1);
+
+  let outsideSupport = 0;
+  let outsideCount = 0;
+  for (let x = 0; x < previewWidth; x += 1) {
+    if (x >= run.start && x <= run.end) continue;
+    outsideSupport += smoothedSupport[x];
+    outsideCount += 1;
+  }
+  outsideSupport /= Math.max(outsideCount, 1);
+
+  const margin = Math.max(
+    4,
+    Math.round(runWidth * ACCOUNTING_IMAGE_OCR_POLICY.receiptCropMarginRatio),
+  );
+  const expandedStart = Math.max(0, run.start - margin);
+  const expandedEnd = Math.min(previewWidth - 1, run.end + margin);
+  const sourceScaleX = orientedWidth / Math.max(previewWidth, 1);
+  const cropLeft = Math.max(0, Math.floor(expandedStart * sourceScaleX));
+  const cropRight = Math.min(
+    orientedWidth,
+    Math.ceil((expandedEnd + 1) * sourceScaleX),
+  );
+  const cropWidth = Math.max(1, cropRight - cropLeft);
+  const minimumSegmentationWidth = Math.max(
     1,
     Math.round(
       orientedWidth * ACCOUNTING_IMAGE_OCR_POLICY.minSegmentationWidthRatio,
     ),
   );
-  return Math.min(orientedWidth, Math.max(minimumWidth, estimatedTrimmedWidth));
+  const cropApplied =
+    runWidthRatio >= ACCOUNTING_IMAGE_OCR_POLICY.receiptCropMinWidthRatio &&
+    runWidthRatio <= ACCOUNTING_IMAGE_OCR_POLICY.receiptCropMaxWidthRatio &&
+    maxSupport >= ACCOUNTING_IMAGE_OCR_POLICY.receiptCropMinSupport &&
+    insideSupport - outsideSupport >=
+      ACCOUNTING_IMAGE_OCR_POLICY.receiptCropMinContrastDelta &&
+    cropWidth < orientedWidth;
+
+  return {
+    cropApplied,
+    cropLeft: cropApplied ? cropLeft : 0,
+    cropWidth: cropApplied ? cropWidth : orientedWidth,
+    segmentationWidth: cropApplied
+      ? cropWidth
+      : Math.min(orientedWidth, Math.max(minimumSegmentationWidth, cropWidth)),
+  };
+}
+
+function calculateAccountingOtsuThreshold(pixels: Uint8Array): number {
+  const histogram = new Uint32Array(256);
+  for (const pixel of pixels) {
+    histogram[pixel] += 1;
+  }
+
+  let weightedTotal = 0;
+  for (let value = 0; value < histogram.length; value += 1) {
+    weightedTotal += value * histogram[value];
+  }
+
+  let backgroundWeight = 0;
+  let backgroundWeightedTotal = 0;
+  let bestThreshold = 127;
+  let bestVariance = -1;
+  for (let threshold = 0; threshold < histogram.length; threshold += 1) {
+    backgroundWeight += histogram[threshold];
+    if (backgroundWeight === 0) continue;
+    const foregroundWeight = pixels.length - backgroundWeight;
+    if (foregroundWeight === 0) break;
+    backgroundWeightedTotal += threshold * histogram[threshold];
+    const backgroundMean = backgroundWeightedTotal / backgroundWeight;
+    const foregroundMean =
+      (weightedTotal - backgroundWeightedTotal) / foregroundWeight;
+    const meanDelta = backgroundMean - foregroundMean;
+    const variance =
+      backgroundWeight * foregroundWeight * meanDelta * meanDelta;
+    if (variance > bestVariance) {
+      bestVariance = variance;
+      bestThreshold = threshold;
+    }
+  }
+  return bestThreshold;
+}
+
+function smoothAccountingColumnSupport(
+  values: Float64Array,
+  radius: number,
+): Float64Array {
+  const prefix = new Float64Array(values.length + 1);
+  for (let index = 0; index < values.length; index += 1) {
+    prefix[index + 1] = prefix[index] + values[index];
+  }
+
+  const smoothed = new Float64Array(values.length);
+  for (let index = 0; index < values.length; index += 1) {
+    const start = Math.max(0, index - radius);
+    const end = Math.min(values.length - 1, index + radius);
+    smoothed[index] =
+      (prefix[end + 1] - prefix[start]) / Math.max(end - start + 1, 1);
+  }
+  return smoothed;
+}
+
+function findLargestAccountingColumnRun(
+  support: Float64Array,
+  threshold: number,
+): { start: number; end: number } | null {
+  let best: { start: number; end: number } | null = null;
+  let currentStart: number | null = null;
+  for (let index = 0; index <= support.length; index += 1) {
+    const active = index < support.length && support[index] >= threshold;
+    if (active && currentStart == null) {
+      currentStart = index;
+      continue;
+    }
+    if (active || currentStart == null) continue;
+    const currentEnd = index - 1;
+    if (!best || currentEnd - currentStart > best.end - best.start) {
+      best = { start: currentStart, end: currentEnd };
+    }
+    currentStart = null;
+  }
+  return best;
 }
 
 function assertPreparedSegmentLimits(
@@ -442,6 +727,8 @@ export function normalizeAccountingImageOcrText(text: string): string {
     .split('\n')
     .map((line) => line.replace(/[ \t]+/g, ' ').trim())
     .join('\n')
+    .replace(/\b(-?\d{1,6})[.,]\s+(\d{2})\b/g, '$1.$2')
+    .replace(/\b(-?\d{1,6}),(\d{2})\b/g, '$1.$2')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
@@ -596,6 +883,26 @@ function isAcceptableAccountingReceiptOcrQuality(
     quality.noiseLineRatio <= 0.55 &&
     hasReceiptEvidence
   );
+}
+
+function formatAccountingImageOcrLowQualityError(
+  winner: ScoredAccountingImageOcrText,
+  candidates: ScoredAccountingImageOcrText[],
+): string {
+  const diagnostics = candidates
+    .map(({ strategy, quality }) =>
+      [
+        strategy,
+        `score=${quality.score}`,
+        `normal=${quality.normalTokenRatio.toFixed(2)}`,
+        `noise=${quality.noiseLineRatio.toFixed(2)}`,
+        `money=${quality.moneyCount}`,
+        `date=${quality.dateCount}`,
+        `signals=${quality.receiptSignalCount}`,
+      ].join(','),
+    )
+    .join(';');
+  return `Accounting image OCR produced low-quality text (winner=${winner.strategy}; ${diagnostics})`;
 }
 
 async function runTesseract(
