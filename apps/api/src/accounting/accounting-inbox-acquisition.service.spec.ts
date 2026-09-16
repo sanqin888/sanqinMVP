@@ -92,6 +92,7 @@ describe('AccountingInboxAcquisitionService', () => {
         ),
       recordInboxParseRun: jest.fn().mockResolvedValue({}),
       suggestUnifiedInboxClassification: jest.fn().mockResolvedValue({}),
+      permanentlyDeleteManualUpload: jest.fn(),
     };
     const providerFinancial = {
       parseAndMaterialize: jest.fn().mockResolvedValue({ matched: false }),
@@ -133,6 +134,77 @@ describe('AccountingInboxAcquisitionService', () => {
     );
     expect(providerFinancial.parseForInboxSuggestion).toHaveBeenCalled();
     expect(providerFinancial.parseAndMaterialize).not.toHaveBeenCalled();
+  });
+
+  it('removes the second physical file when a manual upload is detected as duplicate', async () => {
+    const { service, operations } = makeService();
+    let duplicateStoredUrl = '';
+    operations.registerInboxArtifact.mockImplementationOnce(
+      (input: {
+        kind: AccountingArtifactKind;
+        contentHash: string;
+        storedUrl: string;
+      }) => {
+        duplicateStoredUrl = input.storedUrl;
+        return Promise.resolve({
+          ...registeredArtifact(input.kind, input.contentHash),
+          storedUrl: null,
+          inboxItem: {
+            ...registeredArtifact(input.kind, input.contentHash).inboxItem,
+            status: AccountingInboxStatus.DUPLICATE,
+            duplicateOfArtifact: { artifactStableId: 'acctart_original' },
+          },
+          duplicateOfArtifactStableId: 'acctart_original',
+        });
+      },
+    );
+    const result = await service.acquireManualFile({
+      originalname: 'duplicate.pdf',
+      mimetype: 'application/pdf',
+      buffer: Buffer.from('%PDF-1.4\n%%EOF', 'ascii'),
+    });
+
+    expect(result.inboxItem?.status).toBe(AccountingInboxStatus.DUPLICATE);
+    expect(result.storedUrl).toBeNull();
+    expect(result.duplicateStorageCleanupComplete).toBe(true);
+    const duplicateFile = path.join(
+      uploadRoot,
+      'accounting',
+      'inbox',
+      path.basename(duplicateStoredUrl),
+    );
+    expect(fs.existsSync(duplicateFile)).toBe(false);
+    expect(operations.recordInboxParseRun).not.toHaveBeenCalled();
+  });
+
+  it('removes retained manual-upload binaries after permanent database deletion', async () => {
+    const { service, operations } = makeService();
+    const inboxDir = path.join(uploadRoot, 'accounting', 'inbox');
+    fs.mkdirSync(inboxDir, { recursive: true });
+    const fileName = 'permanent-delete.pdf';
+    const filePath = path.join(inboxDir, fileName);
+    fs.writeFileSync(filePath, 'delete-me');
+    operations.permanentlyDeleteManualUpload.mockResolvedValueOnce({
+      inboxItemStableId: 'acctinbox_delete',
+      deleted: true,
+      deletedArtifactStableIds: ['acctart_delete'],
+      removedDuplicateCount: 0,
+      storedUrls: [`/api/v1/accounting/files/inbox/${fileName}`],
+    });
+
+    const result = await service.permanentlyDeleteManualUpload(
+      'acctinbox_delete',
+      'user_stable_1',
+    );
+
+    expect(fs.existsSync(filePath)).toBe(false);
+    expect(result).toEqual({
+      inboxItemStableId: 'acctinbox_delete',
+      deleted: true,
+      deletedArtifactStableIds: ['acctart_delete'],
+      removedDuplicateCount: 0,
+      storageCleanupComplete: true,
+    });
   });
 
   it('runs image OCR from the original uploaded bytes without a lossy retention transform', async () => {

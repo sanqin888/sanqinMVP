@@ -102,6 +102,30 @@ export class AccountingInboxAcquisitionService {
     });
   }
 
+  async permanentlyDeleteManualUpload(
+    inboxItemStableId: string,
+    operatorUserStableId: string,
+  ) {
+    const deleted =
+      await this.operations.permanentlyDeleteManualUpload(inboxItemStableId);
+    const storageCleanupFailures: string[] = [];
+    for (const storedUrl of deleted.storedUrls) {
+      if (!(await this.removeStoredFile(storedUrl))) {
+        storageCleanupFailures.push(storedUrl);
+      }
+    }
+    this.logger.log(
+      `Accounting manual upload permanently deleted | inboxItem=${inboxItemStableId} | operator=${operatorUserStableId} | artifacts=${deleted.deletedArtifactStableIds.length} | duplicateRecords=${deleted.removedDuplicateCount} | storageCleanupFailures=${storageCleanupFailures.length}`,
+    );
+    return {
+      inboxItemStableId,
+      deleted: true,
+      deletedArtifactStableIds: deleted.deletedArtifactStableIds,
+      removedDuplicateCount: deleted.removedDuplicateCount,
+      storageCleanupComplete: storageCleanupFailures.length === 0,
+    };
+  }
+
   async acquireProviderApiCsv(input: {
     transportIdentity: string;
     fileName: string;
@@ -245,8 +269,17 @@ export class AccountingInboxAcquisitionService {
       throw error;
     }
 
+    let effectiveStoredUrl = artifact.replayed ? artifact.storedUrl : storedUrl;
+    let duplicateStorageCleanupComplete: boolean | null = null;
     if (artifact.replayed) {
       await this.removeStoredFile(storedUrl);
+    } else if (
+      input.acquisitionMode ===
+        AccountingArtifactAcquisitionMode.MANUAL_UPLOAD &&
+      artifact.inboxItem?.status === AccountingInboxStatus.DUPLICATE
+    ) {
+      duplicateStorageCleanupComplete = await this.removeStoredFile(storedUrl);
+      effectiveStoredUrl = null;
     }
     let providerFinancialMatched = false;
     try {
@@ -268,8 +301,9 @@ export class AccountingInboxAcquisitionService {
     }
     return {
       ...artifact,
-      storedUrl: artifact.replayed ? artifact.storedUrl : storedUrl,
+      storedUrl: effectiveStoredUrl,
       providerFinancialMatched,
+      duplicateStorageCleanupComplete,
     };
   }
 
@@ -660,23 +694,46 @@ export class AccountingInboxAcquisitionService {
     return `/api/v1/accounting/files/inbox/${fileName}`;
   }
 
-  private async removeStoredFile(storedUrl: string) {
-    const prefix = '/api/v1/accounting/files/inbox/';
-    if (!storedUrl.startsWith(prefix)) return;
-    const fileName = path.basename(storedUrl.slice(prefix.length));
+  private async removeStoredFile(storedUrl: string): Promise<boolean> {
+    const locations = [
+      {
+        prefix: '/api/v1/accounting/files/inbox/',
+        directory: 'inbox',
+      },
+      {
+        prefix: '/api/v1/accounting/files/image-retention/',
+        directory: 'image-retention',
+      },
+    ] as const;
+    const location = locations.find(({ prefix }) =>
+      storedUrl.startsWith(prefix),
+    );
+    if (!location) {
+      this.logger.warn(
+        `Accounting storage cleanup refused unknown URL ${storedUrl}`,
+      );
+      return false;
+    }
+    const fileName = path.basename(storedUrl.slice(location.prefix.length));
+    if (!fileName || storedUrl !== `${location.prefix}${fileName}`) {
+      this.logger.warn(
+        `Accounting storage cleanup refused invalid URL ${storedUrl}`,
+      );
+      return false;
+    }
     try {
       await fs.promises.rm(
-        path.join(getAccountingUploadsDir(), 'inbox', fileName),
-        {
-          force: true,
-        },
+        path.join(getAccountingUploadsDir(), location.directory, fileName),
+        { force: true },
       );
+      return true;
     } catch (error) {
       this.logger.warn(
-        `Failed to remove orphaned Accounting Inbox file ${fileName}: ${
+        `Failed to remove Accounting stored file ${fileName}: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
+      return false;
     }
   }
 }

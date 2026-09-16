@@ -1,4 +1,5 @@
 import {
+  AccountingArtifactAcquisitionMode,
   AccountingArtifactBinaryRetentionState,
   AccountingArtifactKind,
   AccountingInboxClassification,
@@ -157,6 +158,127 @@ export async function listAccountingUnifiedInboxItems(
         : null,
     },
   }));
+}
+
+export async function listAccountingManualUploadLibrary(
+  client: AccountingInboxReadClient,
+  limit = 200,
+) {
+  const take = Math.min(Math.max(limit, 1), 500);
+  const rows = await client.accountingInboxItem.findMany({
+    where: {
+      artifact: {
+        is: {
+          acquisitionMode: AccountingArtifactAcquisitionMode.MANUAL_UPLOAD,
+        },
+      },
+    },
+    select: {
+      inboxItemStableId: true,
+      status: true,
+      classification: true,
+      selectedProvider: true,
+      materializedEntityType: true,
+      materializedEntityStableId: true,
+      reviewedAt: true,
+      createdAt: true,
+      updatedAt: true,
+      duplicateOfArtifact: {
+        select: {
+          artifactStableId: true,
+          originalFilename: true,
+          inboxItem: { select: { status: true } },
+        },
+      },
+      artifact: {
+        select: {
+          artifactStableId: true,
+          kind: true,
+          originalFilename: true,
+          byteSize: true,
+          storedUrl: true,
+          financialDocument: { select: { documentStableId: true } },
+          duplicateInboxItems: {
+            select: {
+              status: true,
+              materializedEntityType: true,
+              materializedEntityStableId: true,
+              artifact: { select: { acquisitionMode: true } },
+            },
+          },
+          binaryRetention: {
+            select: {
+              state: true,
+              retainedStoredUrl: true,
+            },
+          },
+        },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+    take,
+  });
+
+  return rows.map((row) => {
+    const hasImageContent =
+      row.artifact.kind === AccountingArtifactKind.IMAGE &&
+      Boolean(
+        row.artifact.storedUrl ||
+        row.artifact.binaryRetention?.retainedStoredUrl,
+      );
+    const contentUrl =
+      row.artifact.kind === AccountingArtifactKind.IMAGE
+        ? hasImageContent
+          ? `/api/v1/accounting/inbox/artifacts/${encodeURIComponent(row.artifact.artifactStableId)}/content`
+          : null
+        : row.artifact.storedUrl;
+    const protectedDuplicateReference = row.artifact.duplicateInboxItems.some(
+      (duplicate) =>
+        duplicate.artifact.acquisitionMode !==
+          AccountingArtifactAcquisitionMode.MANUAL_UPLOAD ||
+        duplicate.status === AccountingInboxStatus.CONFIRMED ||
+        Boolean(duplicate.materializedEntityType) ||
+        Boolean(duplicate.materializedEntityStableId),
+    );
+    const protectedFinancialEvidence =
+      row.status === AccountingInboxStatus.CONFIRMED ||
+      row.materializedEntityType ===
+        AccountingInboxMaterializedEntityType.PROVIDER_FINANCIAL_DOCUMENT ||
+      Boolean(row.artifact.financialDocument);
+    const canDiscard =
+      !protectedFinancialEvidence &&
+      (row.status === AccountingInboxStatus.PENDING_REVIEW ||
+        row.status === AccountingInboxStatus.QUARANTINED ||
+        row.status === AccountingInboxStatus.ERROR);
+
+    return {
+      inboxItemStableId: row.inboxItemStableId,
+      artifactStableId: row.artifact.artifactStableId,
+      status: row.status,
+      classification: row.classification,
+      selectedProvider: row.selectedProvider,
+      materializedEntityType: row.materializedEntityType,
+      materializedEntityStableId: row.materializedEntityStableId,
+      originalFilename: row.artifact.originalFilename,
+      kind: row.artifact.kind,
+      byteSize: row.artifact.byteSize,
+      contentUrl,
+      retentionState: row.artifact.binaryRetention?.state ?? null,
+      duplicateOf: row.duplicateOfArtifact
+        ? {
+            artifactStableId: row.duplicateOfArtifact.artifactStableId,
+            originalFilename: row.duplicateOfArtifact.originalFilename,
+            status: row.duplicateOfArtifact.inboxItem?.status ?? null,
+          }
+        : null,
+      canDiscard,
+      canPermanentDelete:
+        !protectedFinancialEvidence && !protectedDuplicateReference,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+      reviewedAt: row.reviewedAt?.toISOString() ?? null,
+    };
+  });
 }
 
 export async function listAccountingImageRetentionQueue(

@@ -88,6 +88,14 @@ export type AccountingInboxClassification =
   | 'OTHER_DOCUMENT'
   | 'UNKNOWN';
 
+export type AccountingInboxStatus =
+  | 'PENDING_REVIEW'
+  | 'QUARANTINED'
+  | 'DUPLICATE'
+  | 'CONFIRMED'
+  | 'ERROR'
+  | 'DISCARDED';
+
 export type AccountingInboxParsedFinancialLine = {
   rawName?: string | null;
   component: string;
@@ -181,13 +189,7 @@ export type AccountingProviderFinancialDocument = {
 
 export type AccountingInboxItem = {
   inboxItemStableId: string;
-  status:
-    | 'PENDING_REVIEW'
-    | 'QUARANTINED'
-    | 'DUPLICATE'
-    | 'CONFIRMED'
-    | 'ERROR'
-    | 'DISCARDED';
+  status: AccountingInboxStatus;
   classification: AccountingInboxClassification;
   selectedProvider: AccountingFinancialProvider | null;
   trustDecision: 'TRUSTED' | 'UNTRUSTED' | 'NOT_APPLICABLE';
@@ -214,6 +216,51 @@ export type AccountingInboxItem = {
       errorMessage: string | null;
     }>;
   };
+};
+
+export type AccountingManualUploadResult = {
+  artifactStableId: string;
+  storedUrl: string | null;
+  duplicateOfArtifactStableId: string | null;
+  replayed: boolean;
+  duplicateStorageCleanupComplete: boolean | null;
+  inboxItem: {
+    inboxItemStableId: string;
+    status: AccountingInboxStatus;
+  } | null;
+};
+
+export type AccountingManualUploadLibraryItem = {
+  inboxItemStableId: string;
+  artifactStableId: string;
+  status: AccountingInboxStatus;
+  classification: AccountingInboxClassification;
+  selectedProvider: AccountingFinancialProvider | null;
+  materializedEntityType:
+    | 'EXPENSE_DOCUMENT'
+    | 'PROVIDER_FINANCIAL_DOCUMENT'
+    | null;
+  materializedEntityStableId: string | null;
+  originalFilename: string | null;
+  kind: 'PDF' | 'IMAGE' | 'CSV' | 'TEXT' | 'OTHER' | 'EMAIL_BODY';
+  byteSize: number | null;
+  contentUrl: string | null;
+  retentionState:
+    | 'ORIGINAL_PRESENT'
+    | 'CANDIDATE_READY'
+    | 'PURGE_PENDING'
+    | 'COMPRESSED_ONLY'
+    | null;
+  duplicateOf: {
+    artifactStableId: string;
+    originalFilename: string | null;
+    status: AccountingInboxStatus | null;
+  } | null;
+  canDiscard: boolean;
+  canPermanentDelete: boolean;
+  createdAt: string;
+  updatedAt: string;
+  reviewedAt: string | null;
 };
 
 export type AccountingTrustedSender = {

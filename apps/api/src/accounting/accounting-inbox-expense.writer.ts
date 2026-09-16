@@ -1,5 +1,6 @@
 import { createId } from '@paralleldrive/cuid2';
 import {
+  AccountingArtifactAcquisitionMode,
   AccountingDocumentStatus,
   AccountingInboxClassification,
   AccountingInboxMaterializedEntityType,
@@ -198,6 +199,7 @@ export async function discardInboxItemInTx(
       status: true,
       materializedEntityType: true,
       materializedEntityStableId: true,
+      artifact: { select: { acquisitionMode: true } },
     },
   });
   if (!item) {
@@ -208,12 +210,17 @@ export async function discardInboxItemInTx(
   if (item.status === AccountingInboxStatus.DISCARDED) {
     return { inboxItemStableId, discarded: true, replayed: true };
   }
+  const isManualUploadError =
+    item.status === AccountingInboxStatus.ERROR &&
+    item.artifact.acquisitionMode ===
+      AccountingArtifactAcquisitionMode.MANUAL_UPLOAD;
   if (
     item.status !== AccountingInboxStatus.PENDING_REVIEW &&
-    item.status !== AccountingInboxStatus.QUARANTINED
+    item.status !== AccountingInboxStatus.QUARANTINED &&
+    !isManualUploadError
   ) {
     throw new AccountingInboxWriterConflictError(
-      'only pending or quarantined inbox items can be discarded',
+      'only pending, quarantined, or manual-upload error inbox items can be discarded',
     );
   }
   if (

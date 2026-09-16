@@ -20,6 +20,10 @@ const IMAGE_RETENTION_WRITER = resolve(
   ACCOUNTING_ROOT,
   'accounting-image-retention.writer.ts',
 );
+const UPLOAD_LIBRARY_WRITER = resolve(
+  ACCOUNTING_ROOT,
+  'accounting-upload-library.writer.ts',
+);
 const IMAGE_RETENTION_SERVICE = resolve(
   ACCOUNTING_ROOT,
   'accounting-image-retention.service.ts',
@@ -118,6 +122,7 @@ describe('Accounting unified Inbox core ownership boundary', () => {
       INBOX_CLASSIFICATION_WRITER,
       INBOX_EXPENSE_WRITER,
       IMAGE_RETENTION_WRITER,
+      UPLOAD_LIBRARY_WRITER,
       PROVIDER_FINANCIAL_REVIEW_WRITER,
       PROVIDER_RECOGNITION_WRITER,
     ]);
@@ -131,6 +136,7 @@ describe('Accounting unified Inbox core ownership boundary', () => {
     expect(read(INBOX_CLASSIFICATION_WRITER)).toMatch(mutationPattern);
     expect(read(INBOX_EXPENSE_WRITER)).toMatch(mutationPattern);
     expect(read(IMAGE_RETENTION_WRITER)).toMatch(mutationPattern);
+    expect(read(UPLOAD_LIBRARY_WRITER)).toMatch(mutationPattern);
     expect(read(PROVIDER_FINANCIAL_REVIEW_WRITER)).toMatch(mutationPattern);
     expect(read(PROVIDER_RECOGNITION_WRITER)).toMatch(mutationPattern);
   });
@@ -146,6 +152,9 @@ describe('Accounting unified Inbox core ownership boundary', () => {
       '../prisma/prisma.service',
     );
     expect(read(IMAGE_RETENTION_WRITER)).not.toContain(
+      '../prisma/prisma.service',
+    );
+    expect(read(UPLOAD_LIBRARY_WRITER)).not.toContain(
       '../prisma/prisma.service',
     );
     expect(read(IMAGE_RETENTION_SERVICE)).not.toContain(
@@ -178,6 +187,7 @@ describe('Accounting unified Inbox core ownership boundary', () => {
     );
     expect(read(INBOX_EXPENSE_WRITER)).toContain('Prisma.TransactionClient');
     expect(read(IMAGE_RETENTION_WRITER)).toContain('Prisma.TransactionClient');
+    expect(read(UPLOAD_LIBRARY_WRITER)).toContain('Prisma.TransactionClient');
     expect(read(PROVIDER_FINANCIAL_REVIEW_WRITER)).toContain(
       'Prisma.TransactionClient',
     );
@@ -205,6 +215,10 @@ describe('Accounting unified Inbox core ownership boundary', () => {
     );
     expect(controller).toContain(
       "@Post('inbox/:inboxItemStableId/other/confirm')",
+    );
+    expect(controller).toContain("@Get('inbox/manual-uploads')");
+    expect(controller).toContain(
+      "@Delete('inbox/manual-uploads/:inboxItemStableId/permanent')",
     );
     expect(controller).toContain("@Get('inbox/image-retention/pending')");
     expect(controller).toContain(
@@ -247,6 +261,7 @@ describe('Accounting unified Inbox core ownership boundary', () => {
       INBOX_CLASSIFICATION_WRITER,
       INBOX_EXPENSE_WRITER,
       IMAGE_RETENTION_WRITER,
+      UPLOAD_LIBRARY_WRITER,
       PROVIDER_FINANCIAL_REVIEW_WRITER,
       PROVIDER_RECOGNITION_WRITER,
     ]) {

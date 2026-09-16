@@ -62,6 +62,7 @@ import {
   countAccountingInboxReviewItems,
   getAccountingSenderTrustDecision,
   listAccountingImageRetentionQueue,
+  listAccountingManualUploadLibrary,
   listAccountingTrustedSenders,
   listAccountingUnifiedInboxItems,
   readAccountingImageArtifactContentContext,
@@ -70,6 +71,7 @@ import {
   readAccountingInboxProviderReviewContext,
 } from './accounting-inbox-query';
 import { AccountingService } from './accounting.service';
+import { permanentlyDeleteManualUploadInTx } from './accounting-upload-library.writer';
 import { updateAccountingProviderRecognitionRule } from './accounting-provider-recognition.orchestrator';
 import {
   AccountingProviderRecognitionPolicyError,
@@ -755,6 +757,18 @@ export class AccountingOperationsService {
     limit?: number;
   }) {
     return listAccountingUnifiedInboxItems(this.prisma, params);
+  }
+
+  listManualUploadLibrary(limit?: number) {
+    return listAccountingManualUploadLibrary(this.prisma, limit);
+  }
+
+  async permanentlyDeleteManualUpload(inboxItemStableId: string) {
+    return this.runInboxCore(() =>
+      runSerializableAccountingWrite(this.prisma, (tx) =>
+        permanentlyDeleteManualUploadInTx(tx, inboxItemStableId),
+      ),
+    );
   }
 
   listImageRetentionQueue(limit?: number) {
