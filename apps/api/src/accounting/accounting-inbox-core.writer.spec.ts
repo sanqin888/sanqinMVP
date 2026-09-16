@@ -157,6 +157,12 @@ describe('Accounting Inbox core persistence writer', () => {
     );
 
     expect(result.duplicateOfArtifactStableId).toBe('acctart_original');
+    expect(result.storedUrl).toBeNull();
+    expect(tx.accountingSourceArtifact.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ storedUrl: null }) as unknown,
+      }) as unknown,
+    );
     expect(tx.accountingInboxItem.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -165,6 +171,50 @@ describe('Accounting Inbox core persistence writer', () => {
         }) as unknown,
       }) as unknown,
     );
+  });
+
+  it('does not create image retention storage state for a duplicate manual image', async () => {
+    const tx = makeTx();
+    tx.accountingSourceArtifact.findUnique.mockResolvedValue(null);
+    tx.accountingSourceArtifact.findFirst.mockResolvedValue({
+      id: 'original-image-db-id',
+      artifactStableId: 'acctart_original_image',
+    });
+    tx.accountingSourceArtifact.create.mockResolvedValue({
+      id: 'duplicate-image-db-id',
+      artifactStableId: 'acctart_duplicate_image',
+    });
+    tx.accountingInboxItem.create.mockResolvedValue({
+      inboxItemStableId: 'acctinbox_duplicate_image',
+      status: AccountingInboxStatus.DUPLICATE,
+      classification: AccountingInboxClassification.UNKNOWN,
+      duplicateOfArtifact: { artifactStableId: 'acctart_original_image' },
+    });
+
+    const result = await registerInboxArtifactInTx(
+      tx as never,
+      normalizeAccountingInboxArtifact({
+        acquisitionMode: AccountingArtifactAcquisitionMode.MANUAL_UPLOAD,
+        kind: AccountingArtifactKind.IMAGE,
+        transportIdentity: 'manual:duplicate-image',
+        contentHash: SHA_A,
+        storedUrl: '/api/v1/accounting/files/inbox/duplicate.jpg',
+        trustDecision: AccountingInboxTrustDecision.NOT_APPLICABLE,
+      }),
+    );
+
+    expect(result.storedUrl).toBeNull();
+    expect(tx.accountingSourceArtifact.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          storedUrl: null,
+        }) as unknown,
+      }) as unknown,
+    );
+    const createCall = tx.accountingSourceArtifact.create.mock.calls[0]?.[0] as {
+      data: Record<string, unknown>;
+    };
+    expect(createCall.data).not.toHaveProperty('binaryRetention');
   });
 
   it('creates ORIGINAL_PRESENT retention state with a new image source artifact', async () => {
@@ -349,6 +399,50 @@ describe('Accounting Inbox core persistence writer', () => {
         materializedEntityStableId: null,
       }) as unknown,
     });
+  });
+
+  it('allows abandoning a manual-upload error but keeps non-manual error behavior unchanged', async () => {
+    const manualTx = makeTx();
+    manualTx.accountingInboxItem.findUnique.mockResolvedValue({
+      id: 'inbox-manual-error',
+      status: AccountingInboxStatus.ERROR,
+      materializedEntityType: null,
+      materializedEntityStableId: null,
+      artifact: {
+        acquisitionMode: AccountingArtifactAcquisitionMode.MANUAL_UPLOAD,
+      },
+    });
+    manualTx.accountingInboxItem.update.mockResolvedValue({});
+    manualTx.accountingAuditLog.create.mockResolvedValue({});
+
+    await expect(
+      discardInboxItemInTx(
+        manualTx as never,
+        'acctinbox_manual_error',
+        'user_stable_1',
+      ),
+    ).resolves.toEqual({
+      inboxItemStableId: 'acctinbox_manual_error',
+      discarded: true,
+      replayed: false,
+    });
+
+    const emailTx = makeTx();
+    emailTx.accountingInboxItem.findUnique.mockResolvedValue({
+      id: 'inbox-email-error',
+      status: AccountingInboxStatus.ERROR,
+      materializedEntityType: null,
+      materializedEntityStableId: null,
+      artifact: { acquisitionMode: AccountingArtifactAcquisitionMode.EMAIL },
+    });
+
+    await expect(
+      discardInboxItemInTx(
+        emailTx as never,
+        'acctinbox_email_error',
+        'user_stable_1',
+      ),
+    ).rejects.toBeInstanceOf(AccountingInboxWriterConflictError);
   });
 
   it('rejects transport identity reuse with changed content', async () => {

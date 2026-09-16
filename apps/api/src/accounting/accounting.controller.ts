@@ -191,6 +191,13 @@ export class AccountingController {
     );
   }
 
+  @Get('inbox/manual-uploads')
+  manualUploadLibrary(@Query('limit') limit?: string) {
+    return this.operations.listManualUploadLibrary(
+      this.parseNonNegativeNumber(limit, 'limit'),
+    );
+  }
+
   @Post('inbox/artifacts')
   @UseInterceptors(
     FileInterceptor('file', {
@@ -343,6 +350,17 @@ export class AccountingController {
     @Req() req: AuthedAccountingRequest,
   ) {
     return this.providerFinancial.confirmSelectedInboxFinancialEvidence(
+      inboxItemStableId,
+      this.requireOperatorUserId(req),
+    );
+  }
+
+  @Delete('inbox/manual-uploads/:inboxItemStableId/permanent')
+  permanentlyDeleteManualUpload(
+    @Param('inboxItemStableId') inboxItemStableId: string,
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.acquisition.permanentlyDeleteManualUpload(
       inboxItemStableId,
       this.requireOperatorUserId(req),
     );

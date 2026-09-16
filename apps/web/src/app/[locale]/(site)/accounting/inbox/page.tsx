@@ -7,6 +7,7 @@ import { AccountingInboxExpenseReviewPanel } from './expense-review-panel';
 import { AccountingImageRetentionPanel } from './image-retention-panel';
 import { AccountingImageRetentionQueue } from './image-retention-queue';
 import { AccountingInboxItemsList } from './inbox-items-list';
+import { AccountingManualUploadLibrary } from './manual-upload-library';
 import {
   type AccountingAccount,
   type AccountingCategory,
@@ -15,6 +16,8 @@ import {
   type AccountingImageRetentionQueueItem,
   type AccountingInboxClassification,
   type AccountingInboxItem,
+  type AccountingManualUploadLibraryItem,
+  type AccountingManualUploadResult,
   type AccountingTrustedSender,
 } from './inbox-model';
 
@@ -23,6 +26,9 @@ export default function AccountingInboxPage() {
   const locale = params?.locale ?? 'en';
   const isZh = locale === 'zh';
   const [items, setItems] = useState<AccountingInboxItem[]>([]);
+  const [manualUploads, setManualUploads] = useState<
+    AccountingManualUploadLibraryItem[]
+  >([]);
   const [categories, setCategories] = useState<AccountingCategory[]>([]);
   const [accounts, setAccounts] = useState<AccountingAccount[]>([]);
   const [trustedSenders, setTrustedSenders] = useState<AccountingTrustedSender[]>([]);
@@ -40,6 +46,7 @@ export default function AccountingInboxPage() {
   const [busySender, setBusySender] = useState(false);
   const [classifyingId, setClassifyingId] = useState<string | null>(null);
   const [discardingId, setDiscardingId] = useState<string | null>(null);
+  const [deletingUploadId, setDeletingUploadId] = useState<string | null>(null);
   const [confirmingProviderId, setConfirmingProviderId] = useState<string | null>(
     null,
   );
@@ -51,16 +58,21 @@ export default function AccountingInboxPage() {
     setLoading(true);
     setError(null);
     try {
-      const [inbox, cats, accts, senders, retentionQueue] = await Promise.all([
-        apiFetch<AccountingInboxItem[]>('/accounting/inbox?limit=100'),
-        apiFetch<AccountingCategory[]>('/accounting/categories'),
-        apiFetch<AccountingAccount[]>('/accounting/accounts'),
-        apiFetch<AccountingTrustedSender[]>('/accounting/inbox/trusted-senders'),
-        apiFetch<AccountingImageRetentionQueueItem[]>(
-          '/accounting/inbox/image-retention/pending?limit=100',
-        ),
-      ]);
+      const [inbox, uploads, cats, accts, senders, retentionQueue] =
+        await Promise.all([
+          apiFetch<AccountingInboxItem[]>('/accounting/inbox?limit=100'),
+          apiFetch<AccountingManualUploadLibraryItem[]>(
+            '/accounting/inbox/manual-uploads?limit=200',
+          ),
+          apiFetch<AccountingCategory[]>('/accounting/categories'),
+          apiFetch<AccountingAccount[]>('/accounting/accounts'),
+          apiFetch<AccountingTrustedSender[]>('/accounting/inbox/trusted-senders'),
+          apiFetch<AccountingImageRetentionQueueItem[]>(
+            '/accounting/inbox/image-retention/pending?limit=100',
+          ),
+        ]);
       setItems(inbox);
+      setManualUploads(uploads);
       setCategories(cats);
       setAccounts(accts);
       setTrustedSenders(senders);
@@ -84,13 +96,28 @@ export default function AccountingInboxPage() {
     try {
       const formData = new FormData();
       formData.append('file', file);
-      await apiFetch('/accounting/inbox/artifacts', {
-        method: 'POST',
-        body: formData,
-      });
-      setMessage(
-        isZh ? '文件已进入财务收件箱。' : 'Evidence added to Accounting Inbox.',
+      const result = await apiFetch<AccountingManualUploadResult>(
+        '/accounting/inbox/artifacts',
+        {
+          method: 'POST',
+          body: formData,
+        },
       );
+      if (result.inboxItem?.status === 'DUPLICATE') {
+        setMessage(
+          result.duplicateStorageCleanupComplete === false
+            ? isZh
+              ? '检测到重复文件，未加入待处理队列；但本次冗余物理文件清理失败，服务器日志已记录待清理路径。重复记录仍可在“上传文件库”中永久删除。'
+              : 'Duplicate file detected and excluded from the review queue, but redundant binary cleanup failed. The server log records the cleanup path; the duplicate record can still be permanently deleted from Upload library.'
+            : isZh
+              ? '检测到重复文件，未加入待处理队列；本次重复上传不会保留第二份物理文件，可在“上传文件库”中查看或永久删除重复记录。'
+              : 'Duplicate file detected. It was not added to the review queue, and no second binary copy is retained. You can review or permanently delete the duplicate record in Upload library.',
+        );
+      } else {
+        setMessage(
+          isZh ? '文件已进入财务收件箱。' : 'Evidence added to Accounting Inbox.',
+        );
+      }
       await load();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -205,9 +232,10 @@ export default function AccountingInboxPage() {
     }
   }
 
-  async function discard(item: AccountingInboxItem) {
+  async function discard(item: { inboxItemStableId: string }) {
     setDiscardingId(item.inboxItemStableId);
     setError(null);
+    setMessage(null);
     try {
       await apiFetch(`/accounting/inbox/${item.inboxItemStableId}`, {
         method: 'DELETE',
@@ -215,11 +243,45 @@ export default function AccountingInboxPage() {
       if (reviewing?.inboxItemStableId === item.inboxItemStableId) {
         setReviewing(null);
       }
+      setMessage(
+        isZh
+          ? '已放弃处理；文件仍保留在“上传文件库”，如确认无用可再永久删除。'
+          : 'Processing abandoned. The file remains in Upload library and can be permanently deleted later if it is not needed.',
+      );
       await load();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setDiscardingId(null);
+    }
+  }
+
+  async function permanentlyDeleteUpload(item: AccountingManualUploadLibraryItem) {
+    setDeletingUploadId(item.inboxItemStableId);
+    setError(null);
+    setMessage(null);
+    try {
+      const result = await apiFetch<{ storageCleanupComplete: boolean }>(
+        `/accounting/inbox/manual-uploads/${item.inboxItemStableId}/permanent`,
+        { method: 'DELETE' },
+      );
+      if (reviewing?.inboxItemStableId === item.inboxItemStableId) {
+        setReviewing(null);
+      }
+      setMessage(
+        result.storageCleanupComplete
+          ? isZh
+            ? '未确认文件及相关数据库记录已永久删除。'
+            : 'The unconfirmed file and its related database records were permanently deleted.'
+          : isZh
+            ? '数据库记录已永久删除，但有物理文件清理失败；服务器日志已记录待清理路径。'
+            : 'Database records were permanently deleted, but some physical file cleanup failed. The server log records the cleanup path.',
+      );
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setDeletingUploadId(null);
     }
   }
 
@@ -291,8 +353,8 @@ export default function AccountingInboxPage() {
           </h1>
           <p className="mt-1 max-w-3xl text-sm text-slate-500">
             {isZh
-              ? 'Gmail 正文、附件和手动上传文件都会先记录不可变的来源身份与审计证据。系统只给出资料类型/平台建议，你可以在收件箱中改为费用单、结算单或其他；只有人工确认后才进入对应财务流程。已确认的图片费用可在单独预览后选择压缩长期保存。'
-              : 'Gmail bodies, attachments, and manual uploads first record immutable source identity and audit evidence. System recognition is only a document-type/provider suggestion; you can change it to an expense, statement, or other evidence before confirming the corresponding workflow. Confirmed expense images can then be reviewed separately for compressed long-term retention.'}
+              ? 'Gmail 正文和附件进入审计证据链；手动上传在确认前属于可管理的临时资料，可放弃处理或永久删除。系统只给出资料类型/平台建议，只有人工确认后才成为受保护的财务证据。已确认的图片费用可在单独预览后选择压缩长期保存。'
+              : 'Gmail bodies and attachments enter the audit evidence chain. Manual uploads remain operator-managed temporary evidence until confirmation, so they can be abandoned or permanently deleted. System recognition is only a document-type/provider suggestion; confirmed evidence becomes protected, and confirmed expense images can then be reviewed separately for compressed long-term retention.'}
           </p>
         </div>
         <button
@@ -422,6 +484,16 @@ export default function AccountingInboxPage() {
           ) : null}
         </div>
       </section>
+
+      <AccountingManualUploadLibrary
+        items={manualUploads}
+        loading={loading}
+        isZh={isZh}
+        discardingId={discardingId}
+        deletingId={deletingUploadId}
+        onDiscard={discard}
+        onPermanentDelete={permanentlyDeleteUpload}
+      />
 
       <AccountingImageRetentionQueue
         items={imageRetentionQueue}

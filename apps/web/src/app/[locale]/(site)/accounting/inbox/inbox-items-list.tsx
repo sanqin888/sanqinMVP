@@ -407,8 +407,8 @@ export function AccountingInboxItemsList({
                         ? '处理中…'
                         : 'Working…'
                       : isZh
-                        ? '丢弃'
-                        : 'Discard'}
+                        ? '放弃处理'
+                        : 'Abandon'}
                   </button>
                 ) : null}
               </div>

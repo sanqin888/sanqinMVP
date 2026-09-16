@@ -1,5 +1,6 @@
 import { createId } from '@paralleldrive/cuid2';
 import {
+  AccountingArtifactAcquisitionMode,
   AccountingArtifactKind,
   AccountingFinancialProvider,
   AccountingInboxClassification,
@@ -85,6 +86,10 @@ export async function registerInboxArtifactInTx(
     orderBy: { createdAt: 'asc' },
     select: { id: true, artifactStableId: true },
   });
+  const releaseDuplicateManualBinary = Boolean(
+    duplicate &&
+      normalized.acquisitionMode === AccountingArtifactAcquisitionMode.MANUAL_UPLOAD,
+  );
   const artifact = await tx.accountingSourceArtifact.create({
     data: {
       artifactStableId: `acctart_${createId()}`,
@@ -95,14 +100,15 @@ export async function registerInboxArtifactInTx(
       mimeType: normalized.mimeType,
       originalFilename: normalized.originalFilename,
       byteSize: normalized.byteSize,
-      storedUrl: normalized.storedUrl,
+      storedUrl: releaseDuplicateManualBinary ? null : normalized.storedUrl,
       bodyText: normalized.bodyText,
       senderEmail: normalized.senderEmail,
       emailSubject: normalized.emailSubject,
       ...(normalized.metadataJson === undefined
         ? {}
         : { metadataJson: normalized.metadataJson as Prisma.InputJsonValue }),
-      ...(normalized.kind === AccountingArtifactKind.IMAGE
+      ...(normalized.kind === AccountingArtifactKind.IMAGE &&
+      !releaseDuplicateManualBinary
         ? { binaryRetention: { create: {} } }
         : {}),
     },
@@ -137,7 +143,7 @@ export async function registerInboxArtifactInTx(
     artifactStableId: artifact.artifactStableId,
     contentHash: normalized.contentHash,
     kind: normalized.kind,
-    storedUrl: normalized.storedUrl,
+    storedUrl: releaseDuplicateManualBinary ? null : normalized.storedUrl,
     inboxItem,
     duplicateOfArtifactStableId: duplicate?.artifactStableId ?? null,
     replayed: false,
