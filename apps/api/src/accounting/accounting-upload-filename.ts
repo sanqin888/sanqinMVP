@@ -1,4 +1,6 @@
-export function normalizeAccountingManualUploadFilename(filename: string): string;
+export function normalizeAccountingManualUploadFilename(
+  filename: string,
+): string;
 export function normalizeAccountingManualUploadFilename(filename: null): null;
 export function normalizeAccountingManualUploadFilename(
   filename: string | null,

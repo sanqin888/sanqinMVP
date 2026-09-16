@@ -22,6 +22,8 @@ describe('normalizeAccountingManualUploadFilename', () => {
   });
 
   it('does not reinterpret invalid UTF-8 latin1 bytes', () => {
-    expect(normalizeAccountingManualUploadFilename('café.pdf')).toBe('café.pdf');
+    expect(
+      normalizeAccountingManualUploadFilename('café.pdf'),
+    ).toBe('café.pdf');
   });
 });

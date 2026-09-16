@@ -99,7 +99,9 @@ export class AccountingInboxAcquisitionService {
       transportIdentity: `manual:${createId()}`,
       file: {
         ...file,
-        originalname: normalizeAccountingManualUploadFilename(file.originalname),
+        originalname: normalizeAccountingManualUploadFilename(
+          file.originalname,
+        ),
       },
       trustDecision: AccountingInboxTrustDecision.NOT_APPLICABLE,
       metadataJson: { acquisition: 'MANUAL_UPLOAD' },
