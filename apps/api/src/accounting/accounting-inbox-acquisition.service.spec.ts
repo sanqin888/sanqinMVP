@@ -261,7 +261,13 @@ describe('AccountingInboxAcquisitionService', () => {
           sourceCurrency: 'USD',
           textractEvidence: expect.objectContaining({
             provider: 'AWS_TEXTRACT_ANALYZE_EXPENSE',
-            submittedDocument: expect.objectContaining({ kind: 'PDF' }),
+            submittedDocument: {
+              kind: 'PDF',
+              cropApplied: false,
+              width: null,
+              height: null,
+              byteSize: scannedPdf.length,
+            },
           }) as unknown,
         }) as unknown,
       }) as unknown,
@@ -509,7 +515,11 @@ describe('AccountingInboxAcquisitionService', () => {
           sourceCurrency: null,
           textractEvidence: expect.objectContaining({
             provider: 'AWS_TEXTRACT_ANALYZE_EXPENSE',
-            currencySuggestion: expect.objectContaining({ code: 'USD' }),
+            currencySuggestion: {
+              code: 'USD',
+              confidence: 88,
+              ambiguous: false,
+            },
           }) as unknown,
         }) as unknown,
       }) as unknown,

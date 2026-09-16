@@ -70,9 +70,9 @@ async function receiptImage() {
 describe('Accounting Textract expense recognition', () => {
   it('keeps inferred Textract currency as suggestion and ignores wrong amount-paid as canonical total', async () => {
     const input = await receiptImage();
-    let submitted: Buffer | null = null;
+    const submitted: Buffer[] = [];
     const runner = jest.fn((image: Buffer) => {
-      submitted = image;
+      submitted.push(image);
       return Promise.resolve({
         $metadata: { requestId: 'textract-request-1' },
         AnalyzeExpenseModelVersion: '1.0',
@@ -122,10 +122,12 @@ describe('Accounting Textract expense recognition', () => {
     );
 
     expect(runner).toHaveBeenCalledTimes(1);
-    expect(submitted).not.toBeNull();
-    if (!submitted) throw new Error('expected Textract image submission');
-    expect(submitted.subarray(0, 3)).toEqual(Buffer.from([0xff, 0xd8, 0xff]));
-    expect(submitted.length).toBeLessThanOrEqual(
+    const submittedImage = submitted[0];
+    if (!submittedImage) throw new Error('expected Textract image submission');
+    expect(submittedImage.subarray(0, 3)).toEqual(
+      Buffer.from([0xff, 0xd8, 0xff]),
+    );
+    expect(submittedImage.length).toBeLessThanOrEqual(
       ACCOUNTING_TEXTRACT_EXPENSE_POLICY.maxImageBytes,
     );
     expect(result.extraction).toEqual(
@@ -308,7 +310,9 @@ describe('Accounting Textract expense recognition', () => {
   });
 
   it('requires explicit enablement before acquisition uses Textract', () => {
-    expect(isAccountingTextractExpenseRecognitionEnabled(undefined)).toBe(false);
+    expect(isAccountingTextractExpenseRecognitionEnabled(undefined)).toBe(
+      false,
+    );
     expect(isAccountingTextractExpenseRecognitionEnabled('false')).toBe(false);
     expect(isAccountingTextractExpenseRecognitionEnabled('1')).toBe(true);
     expect(isAccountingTextractExpenseRecognitionEnabled('true')).toBe(true);

@@ -151,7 +151,9 @@ function mapTextractExpenseResponse(
   const dateCandidates = summaryFields
     .filter((field) => normalizedFieldType(field) === 'INVOICE_RECEIPT_DATE')
     .map(normalizeTextractField)
-    .filter((field): field is AccountingTextractNormalizedField => Boolean(field))
+    .filter((field): field is AccountingTextractNormalizedField =>
+      Boolean(field),
+    )
     .slice(0, 5)
     .map((field) => ({
       text: field.text,
@@ -175,7 +177,9 @@ function mapTextractExpenseResponse(
         (field) => normalizedFieldType(field) === 'PRICE',
       ),
     )
-    .map((field) => parseTextractMoneyCents(field?.ValueDetection?.Text ?? null))
+    .map((field) =>
+      parseTextractMoneyCents(field?.ValueDetection?.Text ?? null),
+    )
     .filter((value): value is number => value != null);
   const lineItemPriceSumCents = lineItemPrices.length
     ? lineItemPrices.reduce((sum, value) => sum + value, 0)
@@ -200,7 +204,7 @@ function mapTextractExpenseResponse(
     extraction,
     evidence: {
       provider: 'AWS_TEXTRACT_ANALYZE_EXPENSE',
-      modelVersion: response.AnalyzeExpenseModelVersion ?? null,
+      modelVersion: null,
       requestId: response.$metadata.requestId ?? null,
       vendorName: vendor?.text ?? null,
       dateCandidates,
@@ -317,7 +321,9 @@ async function prepareAccountingTextractReceiptImage(buffer: Buffer): Promise<{
     preparedMetadata.width > TEXTRACT_MAX_IMAGE_DIMENSION ||
     preparedMetadata.height > TEXTRACT_MAX_IMAGE_DIMENSION
   ) {
-    throw new Error('Accounting Textract prepared image exceeded dimension limit');
+    throw new Error(
+      'Accounting Textract prepared image exceeded dimension limit',
+    );
   }
 
   return {
@@ -328,11 +334,12 @@ async function prepareAccountingTextractReceiptImage(buffer: Buffer): Promise<{
   };
 }
 
-function extractTextractDocumentText(document: TextractExpenseDocument): string {
+function extractTextractDocumentText(
+  document: TextractExpenseDocument,
+): string {
   const lines = (document.Blocks ?? [])
     .flatMap((block) => {
-      const text =
-        block.BlockType === 'LINE' ? block.Text?.trim() ?? '' : '';
+      const text = block.BlockType === 'LINE' ? (block.Text?.trim() ?? '') : '';
       return text
         ? [
             {
@@ -371,9 +378,7 @@ function extractTextractDocumentText(document: TextractExpenseDocument): string 
   return fallback.join('\n');
 }
 
-function normalizedFieldType(field: {
-  Type?: { Text?: string };
-}): string {
+function normalizedFieldType(field: { Type?: { Text?: string } }): string {
   return field.Type?.Text?.trim().toUpperCase() ?? '';
 }
 
@@ -381,11 +386,17 @@ function selectSummaryField(
   fields: TextractExpenseField[],
   type: string,
 ): AccountingTextractNormalizedField | null {
-  return fields
-    .filter((field) => normalizedFieldType(field) === type)
-    .map(normalizeTextractField)
-    .filter((field): field is AccountingTextractNormalizedField => Boolean(field))
-    .sort((left, right) => (right.confidence ?? -1) - (left.confidence ?? -1))[0] ?? null;
+  return (
+    fields
+      .filter((field) => normalizedFieldType(field) === type)
+      .map(normalizeTextractField)
+      .filter((field): field is AccountingTextractNormalizedField =>
+        Boolean(field),
+      )
+      .sort(
+        (left, right) => (right.confidence ?? -1) - (left.confidence ?? -1),
+      )[0] ?? null
+  );
 }
 
 function normalizeTextractField(
@@ -445,7 +456,8 @@ function deriveCurrencySuggestion(
   fields: Array<AccountingTextractNormalizedField | null>,
 ): AccountingTextractCurrencySuggestion {
   const candidates = fields.filter(
-    (field): field is AccountingTextractNormalizedField => Boolean(field?.currencyCode),
+    (field): field is AccountingTextractNormalizedField =>
+      Boolean(field?.currencyCode),
   );
   const codes = new Set(
     candidates
