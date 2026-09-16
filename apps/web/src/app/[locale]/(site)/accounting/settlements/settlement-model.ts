@@ -117,3 +117,17 @@ export type ProviderSettlementReversalPlan = {
   debitCents: number;
   creditCents: number;
 };
+
+export type ProviderSettlementExecutionReport = ProviderSettlementShadowPreview & {
+  execution: {
+    replacementGroupsExecuted: number;
+    journalEntriesPostedOrReplayed: number;
+    providerDocumentsPostedOrReplayed: number;
+    uberReversalsPostedOrReplayed: number;
+    noopProviderDocumentsNotWritten: number;
+    blockedProviderDocumentsNotWritten: number;
+    alreadyPostedProviderDocumentsNotWritten: number;
+    blockedUberReversalsNotWritten: number;
+    alreadyReversedUberReversalsNotWritten: number;
+  };
+};
