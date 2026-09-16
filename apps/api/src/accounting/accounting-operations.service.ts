@@ -754,6 +754,7 @@ export class AccountingOperationsService {
 
   listUnifiedInboxItems(params: {
     status?: AccountingInboxStatus;
+    classification?: AccountingInboxClassification;
     limit?: number;
   }) {
     return listAccountingUnifiedInboxItems(this.prisma, params);

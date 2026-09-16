@@ -176,10 +176,12 @@ export class AccountingController {
   @Get('inbox')
   inbox(
     @Query('status') status?: AccountingInboxStatus,
+    @Query('classification') classification?: AccountingInboxClassification,
     @Query('limit') limit?: string,
   ) {
     return this.operations.listUnifiedInboxItems({
       status,
+      classification,
       limit: this.parseNonNegativeNumber(limit, 'limit'),
     });
   }

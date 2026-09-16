@@ -177,6 +177,7 @@ export type AccountingProviderFinancialDocument = {
   provider: AccountingFinancialProvider;
   documentType: 'BATCH_CONTROL' | 'STATEMENT' | 'API_REPORT' | 'OTHER';
   revision: number;
+  storeStableId: string | null;
   providerMerchantRef: string | null;
   providerDocumentRef: string | null;
   periodStart: string | null;
@@ -184,6 +185,8 @@ export type AccountingProviderFinancialDocument = {
   settledAt: string | null;
   payoutAt: string | null;
   currency: string;
+  parserName: string;
+  parserVersion: string;
   lines: AccountingProviderFinancialLine[];
 };
 
