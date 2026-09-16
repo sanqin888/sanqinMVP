@@ -333,17 +333,24 @@ async function prepareAccountingImageSegments(
     );
     const sourceHeight = Math.max(1, bottom - top);
 
-    let pipeline = sharp(buffer, {
+    const region = {
+      left: 0,
+      top,
+      width: orientedWidth,
+      height: sourceHeight,
+    };
+    const extracted = await sharp(buffer, {
       failOn: 'error',
       limitInputPixels: ACCOUNTING_IMAGE_OCR_POLICY.maxInputPixels,
+      autoOrient: true,
     })
-      .rotate()
-      .extract({
-        left: 0,
-        top,
-        width: orientedWidth,
-        height: sourceHeight,
-      });
+      .extract(region)
+      .png()
+      .toBuffer();
+    let pipeline = sharp(extracted, {
+      failOn: 'error',
+      limitInputPixels: ACCOUNTING_IMAGE_OCR_POLICY.maxInputPixels,
+    });
     if (trimBackground) {
       pipeline = pipeline.trim({
         threshold: ACCOUNTING_IMAGE_OCR_POLICY.trimThreshold,
