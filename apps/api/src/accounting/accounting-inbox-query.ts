@@ -60,7 +60,9 @@ export async function listAccountingUnifiedInboxItems(
   const rows = await client.accountingInboxItem.findMany({
     where: {
       status: { in: statuses },
-      ...(params.classification ? { classification: params.classification } : {}),
+      ...(params.classification
+        ? { classification: params.classification }
+        : {}),
     },
     select: {
       inboxItemStableId: true,
