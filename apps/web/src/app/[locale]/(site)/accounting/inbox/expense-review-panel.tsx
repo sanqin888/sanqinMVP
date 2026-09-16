@@ -228,6 +228,17 @@ export function AccountingInboxExpenseReviewPanel({
   const sourceSubtotalCents = extraction.subtotalCents ?? null;
   const sourceTaxCents = extraction.taxCents ?? null;
   const sourceTotalCents = extraction.totalCents ?? null;
+  const textractCurrencySuggestion =
+    extraction.textractEvidence?.currencySuggestion?.code ?? null;
+  const textractCurrencyConfidence =
+    extraction.textractEvidence?.currencySuggestion?.confidence ?? null;
+  const textractCurrencyLabel = textractCurrencySuggestion
+    ? `${textractCurrencySuggestion}${
+        textractCurrencyConfidence == null
+          ? ''
+          : ` (${textractCurrencyConfidence.toFixed(1)}%)`
+      }`
+    : null;
   const evidenceUrl =
     item.artifact.kind === 'IMAGE'
       ? `/api/v1/accounting/inbox/artifacts/${encodeURIComponent(item.artifact.artifactStableId)}/content`
@@ -317,6 +328,13 @@ export function AccountingInboxExpenseReviewPanel({
                 ? '凭证未明确币种，请先人工确认原始币种；CAD 记账金额不会自动从原始金额带入。'
                 : 'The document did not state a currency. Confirm the source currency manually; CAD booking amounts are not copied from the source amounts.'}
         </p>
+        {textractCurrencySuggestion ? (
+          <p className="mt-1 text-xs text-slate-500">
+            {isZh
+              ? `AWS Textract 币种建议：${textractCurrencySuggestion}${textractCurrencyConfidence == null ? '' : `（${textractCurrencyConfidence.toFixed(1)}%）`}。仅作识别参考，不会自动成为原始币种或 CAD 记账币种。`
+              : `AWS Textract currency suggestion: ${textractCurrencySuggestion}${textractCurrencyConfidence == null ? '' : ` (${textractCurrencyConfidence.toFixed(1)}%)`}. This is recognition evidence only and does not become source or CAD booking currency automatically.`}
+          </p>
+        ) : null}
       </div>
       {sourceCurrency && sourceCurrency !== 'CAD' ? (
         <p className="mt-3 rounded bg-orange-50 px-3 py-2 text-xs text-orange-800">
