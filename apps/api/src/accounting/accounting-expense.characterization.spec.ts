@@ -245,7 +245,7 @@ describe('AccountingOperationsService expense-write characterization', () => {
     );
     const createMany = jest.fn().mockResolvedValue({ count: 1 });
     const createAuditMany = jest.fn().mockResolvedValue({ count: 1 });
-    const updateInbox = jest.fn().mockResolvedValue({});
+    const updateInbox = jest.fn().mockResolvedValue({ count: 1 });
     const tx = {
       accountingInboxItem: {
         findUnique: jest.fn().mockResolvedValue({
@@ -278,7 +278,7 @@ describe('AccountingOperationsService expense-write characterization', () => {
             ],
           },
         }),
-        update: updateInbox,
+        updateMany: updateInbox,
       },
       accountingCategory: {
         findMany: jest.fn().mockResolvedValue([
@@ -372,7 +372,14 @@ describe('AccountingOperationsService expense-write characterization', () => {
       ],
     });
     expect(updateInbox).toHaveBeenCalledWith({
-      where: { inboxItemStableId: 'acctinbox_cloudflare' },
+      where: expect.objectContaining({
+        inboxItemStableId: 'acctinbox_cloudflare',
+        status: AccountingInboxStatus.PENDING_REVIEW,
+        classification: AccountingInboxClassification.EXPENSE_DOCUMENT,
+        selectedProvider: null,
+        materializedEntityType: null,
+        materializedEntityStableId: null,
+      }) as unknown as Record<string, unknown>,
       data: expect.objectContaining({
         status: AccountingInboxStatus.CONFIRMED,
         materializedEntityType:

@@ -46,7 +46,10 @@ import {
   AccountingInboxWriterConflictError,
   AccountingInboxWriterNotFoundError,
 } from './accounting-inbox-core.writer';
-import { markInboxExpenseConfirmedInTx } from './accounting-inbox-expense.writer';
+import {
+  linkAndConfirmInboxExpenseInTx,
+  markInboxExpenseConfirmedInTx,
+} from './accounting-inbox-expense.writer';
 import {
   beginAccountingImageOriginalPurgeInTx,
   discardAccountingImageRetentionCandidateInTx,
@@ -1113,19 +1116,12 @@ export class AccountingOperationsService {
           } as Prisma.InputJsonValue,
         })),
       });
-      await tx.accountingInboxItem.update({
-        where: { inboxItemStableId },
-        data: {
-          status: AccountingInboxStatus.CONFIRMED,
-          classification: AccountingInboxClassification.EXPENSE_DOCUMENT,
-          materializedEntityType:
-            AccountingInboxMaterializedEntityType.EXPENSE_DOCUMENT,
-          materializedEntityStableId: documentStableId,
-          reviewedAt: new Date(),
-          reviewedByUserStableId: operatorUserStableId,
-          version: { increment: 1 },
-        },
-      });
+      await linkAndConfirmInboxExpenseInTx(
+        tx,
+        inboxItemStableId,
+        documentStableId,
+        operatorUserStableId,
+      );
     });
 
     return this.getExpenseDocument(documentStableId);
