@@ -128,7 +128,9 @@ export async function extractAccountingImageText(
     winner = selectBestAccountingImageOcrText(scored);
   }
 
-  if (shouldTryAdditionalOcrPass(winner, OCR_MIXED_LANGUAGE_FALLBACK_BELOW_SCORE)) {
+  if (
+    shouldTryAdditionalOcrPass(winner, OCR_MIXED_LANGUAGE_FALLBACK_BELOW_SCORE)
+  ) {
     const fallbackSegments = await prepareAccountingImageSegments(
       buffer,
       false,
