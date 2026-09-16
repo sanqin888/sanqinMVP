@@ -1,6 +1,41 @@
-import { normalizeAccountingImageOcrText } from './accounting-image-ocr';
+import sharp from 'sharp';
+import {
+  ACCOUNTING_IMAGE_OCR_POLICY,
+  extractAccountingImageText,
+  mergeAccountingImageOcrSegmentTexts,
+  normalizeAccountingImageOcrText,
+  prepareAccountingImageOcrCandidates,
+  scoreAccountingReceiptOcrText,
+  selectBestAccountingImageOcrText,
+  type AccountingImageOcrStrategy,
+} from './accounting-image-ocr';
 
-describe('accounting image OCR text normalization', () => {
+const readableReceiptText = [
+  'NORTHSIDE GROCERY',
+  '123 Example Street',
+  '2026/09/08',
+  'Produce 11.32',
+  'Household 23.07',
+  'Golden Kiwi 7.99',
+  'Sub Total 42.38',
+  'HST 0.00',
+  'Total after Tax 42.38',
+  'Debit Card 42.38',
+  'PURCHASE APPROVED',
+].join('\n');
+
+const noisyOcrText = [
+  '. 165 ultutul Gingl _',
+  'TSR T i W M ARV AN',
+  'SRt P | 1T 1 1 1 绍 0 e',
+  "霍 i 霉 熹 篝 噻 ] Kot T s",
+  'e -',
+  'sE i',
+  'SRR e 1 il bR | 林',
+  '9037710J90100Q60004 5 S',
+].join('\n');
+
+describe('accounting image OCR', () => {
   it('preserves line structure while normalizing horizontal whitespace', () => {
     expect(
       normalizeAccountingImageOcrText(
@@ -8,4 +43,330 @@ describe('accounting image OCR text normalization', () => {
       ),
     ).toBe('SANQ RESTAURANT\nInvoice #123\n\nTotal $84.69');
   });
+
+  it('scores receipt evidence above longer OCR garbage', () => {
+    const readable = scoreAccountingReceiptOcrText(readableReceiptText);
+    const noisy = scoreAccountingReceiptOcrText(
+      `${noisyOcrText}\n${noisyOcrText}`,
+    );
+
+    expect(readable.score).toBeGreaterThan(noisy.score);
+    expect(readable.moneyCount).toBeGreaterThanOrEqual(5);
+    expect(readable.dateCount).toBe(1);
+    expect(readable.receiptSignalCount).toBeGreaterThanOrEqual(5);
+  });
+
+  it('selects the deterministic receipt-quality winner instead of the longest text', () => {
+    const candidates = [
+      {
+        strategy: 'RECEIPT_CONTRAST_ENG_PSM4' as const,
+        text: `${noisyOcrText}\n${noisyOcrText}`,
+        quality: scoreAccountingReceiptOcrText(
+          `${noisyOcrText}\n${noisyOcrText}`,
+        ),
+      },
+      {
+        strategy: 'RECEIPT_BINARY_ENG_PSM4' as const,
+        text: readableReceiptText,
+        quality: scoreAccountingReceiptOcrText(readableReceiptText),
+      },
+    ];
+
+    expect(selectBestAccountingImageOcrText(candidates)?.strategy).toBe(
+      'RECEIPT_BINARY_ENG_PSM4',
+    );
+  });
+
+  it('uses candidate order as the deterministic final tie-break', () => {
+    const quality = scoreAccountingReceiptOcrText(readableReceiptText);
+    const first = {
+      strategy: 'RECEIPT_CONTRAST_ENG_PSM4' as const,
+      text: readableReceiptText,
+      quality,
+    };
+    const second = {
+      strategy: 'RECEIPT_BINARY_ENG_PSM4' as const,
+      text: readableReceiptText,
+      quality,
+    };
+
+    expect(selectBestAccountingImageOcrText([first, second])?.strategy).toBe(
+      first.strategy,
+    );
+  });
+
+  it('creates a cropped long-receipt candidate from a light receipt on dark background', async () => {
+    const receipt = await sharp({
+      create: {
+        width: 700,
+        height: 2200,
+        channels: 3,
+        background: { r: 245, g: 245, b: 245 },
+      },
+    })
+      .composite([
+        {
+          input: await sharp({
+            create: {
+              width: 520,
+              height: 8,
+              channels: 3,
+              background: { r: 25, g: 25, b: 25 },
+            },
+          })
+            .png()
+            .toBuffer(),
+          left: 90,
+          top: 300,
+        },
+        {
+          input: await sharp({
+            create: {
+              width: 420,
+              height: 8,
+              channels: 3,
+              background: { r: 25, g: 25, b: 25 },
+            },
+          })
+            .png()
+            .toBuffer(),
+          left: 140,
+          top: 1700,
+        },
+      ])
+      .png()
+      .toBuffer();
+    const input = await sharp({
+      create: {
+        width: 1200,
+        height: 2600,
+        channels: 3,
+        background: { r: 20, g: 20, b: 20 },
+      },
+    })
+      .composite([{ input: receipt, left: 250, top: 200 }])
+      .jpeg({ quality: 94 })
+      .toBuffer();
+
+    const [cropped, binary, full] =
+      await prepareAccountingImageOcrCandidates(input);
+
+    expect(cropped.strategy).toBe('RECEIPT_CONTRAST_ENG_PSM4');
+    expect(binary.strategy).toBe('RECEIPT_BINARY_ENG_PSM4');
+    expect(cropped.segments.length).toBeGreaterThan(0);
+    expect(binary.segments).toHaveLength(cropped.segments.length);
+    expect(full.segments.length).toBeGreaterThan(0);
+    for (const segment of cropped.segments) {
+      expect(segment.height).toBeLessThanOrEqual(
+        ACCOUNTING_IMAGE_OCR_POLICY.maxSegmentHeight,
+      );
+      expect(segment.width * segment.height).toBeLessThanOrEqual(
+        ACCOUNTING_IMAGE_OCR_POLICY.maxSegmentPixels,
+      );
+    }
+  });
+
+  it('segments very long receipts instead of shrinking the whole image to one fixed height', async () => {
+    const marker = await sharp({
+      create: {
+        width: 520,
+        height: 10,
+        channels: 3,
+        background: { r: 20, g: 20, b: 20 },
+      },
+    })
+      .png()
+      .toBuffer();
+    const input = await sharp({
+      create: {
+        width: 700,
+        height: 12000,
+        channels: 3,
+        background: { r: 245, g: 245, b: 245 },
+      },
+    })
+      .composite([
+        { input: marker, left: 90, top: 800 },
+        { input: marker, left: 90, top: 3200 },
+        { input: marker, left: 90, top: 5600 },
+        { input: marker, left: 90, top: 8000 },
+        { input: marker, left: 90, top: 10400 },
+      ])
+      .png()
+      .toBuffer();
+
+    const candidates = await prepareAccountingImageOcrCandidates(input);
+    expect(candidates).toHaveLength(ACCOUNTING_IMAGE_OCR_POLICY.maxPasses);
+    for (const candidate of candidates) {
+      expect(candidate.segments.length).toBeGreaterThan(1);
+      expect(candidate.segments.length).toBeLessThanOrEqual(
+        ACCOUNTING_IMAGE_OCR_POLICY.maxSegments,
+      );
+      for (const segment of candidate.segments) {
+        expect(segment.height).toBeLessThanOrEqual(
+          ACCOUNTING_IMAGE_OCR_POLICY.maxSegmentHeight,
+        );
+        expect(segment.width * segment.height).toBeLessThanOrEqual(
+          ACCOUNTING_IMAGE_OCR_POLICY.maxSegmentPixels,
+        );
+      }
+    }
+  }, 15_000);
+
+  it('fails closed instead of globally shrinking a receipt beyond the segment budget', async () => {
+    const input = await sharp({
+      create: {
+        width: 400,
+        height: 20000,
+        channels: 3,
+        background: { r: 245, g: 245, b: 245 },
+      },
+    })
+      .png()
+      .toBuffer();
+
+    await expect(prepareAccountingImageOcrCandidates(input)).rejects.toThrow(
+      'Accounting image OCR receipt exceeds segment limit',
+    );
+  }, 15_000);
+
+  it('keeps a clear ordinary receipt on a readable non-lossy OCR candidate path', async () => {
+    const line = await sharp({
+      create: {
+        width: 700,
+        height: 8,
+        channels: 3,
+        background: { r: 20, g: 20, b: 20 },
+      },
+    })
+      .png()
+      .toBuffer();
+    const input = await sharp({
+      create: {
+        width: 1000,
+        height: 1600,
+        channels: 3,
+        background: { r: 250, g: 250, b: 250 },
+      },
+    })
+      .composite([
+        { input: line, left: 150, top: 300 },
+        { input: line, left: 150, top: 800 },
+        { input: line, left: 150, top: 1300 },
+      ])
+      .jpeg({ quality: 96 })
+      .toBuffer();
+
+    const [contrast] = await prepareAccountingImageOcrCandidates(input);
+    expect(contrast.segments).toHaveLength(1);
+    const [segment] = contrast.segments;
+    const metadata = await sharp(segment.buffer).metadata();
+
+    expect(metadata.format).toBe('png');
+    expect(metadata.channels).toBe(1);
+    expect(segment.width).toBeGreaterThanOrEqual(1000);
+    expect(segment.height).toBeGreaterThanOrEqual(1600);
+    expect(segment.width * segment.height).toBeLessThanOrEqual(
+      ACCOUNTING_IMAGE_OCR_POLICY.maxSegmentPixels,
+    );
+  });
+
+  it('merges overlapping segment text in order without duplicating shared boundary lines', () => {
+    expect(
+      mergeAccountingImageOcrSegmentTexts([
+        'Item A 10.00\nItem B 20.00\nSub Total 30.00',
+        'Sub Total 30.00\nHST 3.90\nTotal 33.90',
+      ]),
+    ).toBe(
+      'Item A 10.00\nItem B 20.00\nSub Total 30.00\nHST 3.90\nTotal 33.90',
+    );
+  });
+
+  it('uses English receipt passes first and skips mixed-language fallback for strong OCR', async () => {
+    const input = await makeSmallReceiptImage();
+    const attempted: AccountingImageOcrStrategy[] = [];
+    const result = await extractAccountingImageText(input, async (candidate) => {
+      attempted.push(candidate.strategy);
+      return readableReceiptText;
+    });
+
+    expect(result.text).toBe(readableReceiptText);
+    expect(attempted).toEqual(['RECEIPT_CONTRAST_ENG_PSM4']);
+  });
+
+  it('uses mixed-language fallback only when the receipt-quality score stays weak', async () => {
+    const input = await makeSmallReceiptImage();
+    const attempted: AccountingImageOcrStrategy[] = [];
+    const result = await extractAccountingImageText(input, async (candidate) => {
+      attempted.push(candidate.strategy);
+      return candidate.strategy === 'FULL_CONTRAST_MIXED_PSM6'
+        ? readableReceiptText
+        : noisyOcrText;
+    });
+
+    expect(result.text).toBe(readableReceiptText);
+    expect(attempted).toEqual([
+      'RECEIPT_CONTRAST_ENG_PSM4',
+      'RECEIPT_BINARY_ENG_PSM4',
+      'FULL_CONTRAST_MIXED_PSM6',
+    ]);
+  });
+
+  it('fails closed when Tesseract returns non-empty low-quality garbage', async () => {
+    const input = await makeSmallReceiptImage();
+
+    await expect(
+      extractAccountingImageText(input, async () => noisyOcrText),
+    ).rejects.toThrow('Accounting image OCR produced low-quality text');
+  });
+
+  it('records candidate execution failure instead of masking it as empty OCR', async () => {
+    const input = await makeSmallReceiptImage();
+
+    await expect(
+      extractAccountingImageText(input, async (candidate) => {
+        if (candidate.strategy === 'RECEIPT_CONTRAST_ENG_PSM4') {
+          throw new Error('simulated OCR failure');
+        }
+        return '';
+      }),
+    ).rejects.toThrow('simulated OCR failure');
+  });
+
+  it('preserves the existing successful no-readable-text outcome when all OCR passes complete empty', async () => {
+    const input = await makeSmallReceiptImage();
+
+    await expect(
+      extractAccountingImageText(input, async () => ''),
+    ).resolves.toEqual({ text: '', engine: 'TESSERACT' });
+  });
 });
+
+async function makeSmallReceiptImage(): Promise<Buffer> {
+  return sharp({
+    create: {
+      width: 800,
+      height: 1200,
+      channels: 3,
+      background: { r: 248, g: 248, b: 248 },
+    },
+  })
+    .composite([
+      {
+        input: await sharp({
+          create: {
+            width: 600,
+            height: 8,
+            channels: 3,
+            background: { r: 20, g: 20, b: 20 },
+          },
+        })
+          .png()
+          .toBuffer(),
+        left: 100,
+        top: 600,
+      },
+    ])
+    .png()
+    .toBuffer();
+}
