@@ -23,6 +23,12 @@ import {
 } from './accounting-document-review';
 import { extractAccountingImageText } from './accounting-image-ocr';
 import {
+  isAccountingTextractExpenseRecognitionEnabled,
+  recognizeAccountingExpenseImageWithTextract,
+  recognizeAccountingExpensePdfWithTextract,
+  type AccountingTextractExpenseEvidence,
+} from './accounting-textract-expense-recognition';
+import {
   ACCOUNTING_RECEIPT_IMAGE_POLICY,
   detectAccountingReceiptImageType,
 } from './accounting-receipt-image';
@@ -41,7 +47,7 @@ import { normalizeAccountingManualUploadFilename } from './accounting-upload-fil
 
 export const ACCOUNTING_INBOX_FILE_MAX_BYTES = 25 * 1024 * 1024;
 const GENERIC_PARSER_NAME = 'accounting-generic-document-review';
-const GENERIC_PARSER_VERSION = '1';
+const GENERIC_PARSER_VERSION = '2';
 
 type AccountingInboxFile = {
   originalname: string;
@@ -80,8 +86,15 @@ type TextReviewExtraction = ReturnType<typeof extractAccountingText> &
   };
 
 type ImageReviewExtraction = TextReviewExtraction & {
-  ocrEngine: 'TESSERACT';
+  ocrEngine: 'AWS_TEXTRACT' | 'TESSERACT';
   ocrStatus: 'SUCCESS' | 'ERROR';
+  ocrFallbackFrom?: 'AWS_TEXTRACT';
+  textractEvidence?: AccountingTextractExpenseEvidence;
+};
+
+type PdfReviewExtraction = TextReviewExtraction & {
+  textRecognitionEngine: 'POPPLER' | 'AWS_TEXTRACT';
+  textractEvidence?: AccountingTextractExpenseEvidence;
 };
 
 @Injectable()
@@ -470,22 +483,58 @@ export class AccountingInboxAcquisitionService {
       return false;
     }
     if (kind === AccountingArtifactKind.PDF) {
-      const { text, extraction } = await extractAccountingPdf(buffer);
-      const provider = await this.parseProviderEvidence(acquisitionMode, {
+      const local = await extractAccountingPdf(buffer);
+      let text = local.text;
+      let extraction = local.extraction;
+      let textRecognitionEngine: PdfReviewExtraction['textRecognitionEngine'] =
+        'POPPLER';
+      let textractEvidence: AccountingTextractExpenseEvidence | undefined;
+
+      let provider = await this.parseProviderEvidence(acquisitionMode, {
         artifactStableId: artifact.artifactStableId,
         text,
         ...providerContext,
       });
       if (provider.matched) return true;
+
+      if (
+        !text.trim() &&
+        isAccountingTextractExpenseRecognitionEnabled() &&
+        acquisitionMode !== AccountingArtifactAcquisitionMode.PROVIDER_API
+      ) {
+        try {
+          const textract =
+            await recognizeAccountingExpensePdfWithTextract(buffer);
+          text = textract.text;
+          extraction = textract.extraction;
+          textRecognitionEngine = 'AWS_TEXTRACT';
+          textractEvidence = textract.evidence;
+          provider = await this.parseProviderEvidence(acquisitionMode, {
+            artifactStableId: artifact.artifactStableId,
+            text,
+            ...providerContext,
+          });
+          if (provider.matched) return true;
+        } catch (error) {
+          this.logger.warn(
+            `Accounting Textract PDF recognition failed for ${artifact.artifactStableId}; retaining local PDF result: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+      }
+
       const ambiguousRuleStableIds =
         'ambiguousRuleStableIds' in provider
           ? provider.ambiguousRuleStableIds
           : [];
-      const result: TextReviewExtraction = {
+      const result: PdfReviewExtraction = {
         ...extraction,
         inputKind: 'PDF',
         ...classifyAccountingDocumentText(text, extraction),
         extractedText: text.slice(0, 100_000),
+        textRecognitionEngine,
+        ...(textractEvidence ? { textractEvidence } : {}),
         ...(ambiguousRuleStableIds.length
           ? {
               providerRecognitionAmbiguousRuleStableIds: ambiguousRuleStableIds,
@@ -504,8 +553,46 @@ export class AccountingInboxAcquisitionService {
     if (kind === AccountingArtifactKind.IMAGE) {
       const detected = detectAccountingReceiptImageType(buffer);
       if (!detected) throw new Error('unsupported image');
-      const text = (await extractAccountingImageText(buffer)).text;
-      const extraction = extractAccountingText(text);
+
+      let text = '';
+      let extraction = extractAccountingText('');
+      let ocrEngine: ImageReviewExtraction['ocrEngine'] = 'TESSERACT';
+      let textractEvidence: AccountingTextractExpenseEvidence | undefined;
+      let textractAttempted = false;
+
+      if (isAccountingTextractExpenseRecognitionEnabled()) {
+        textractAttempted = true;
+        try {
+          const textract =
+            await recognizeAccountingExpenseImageWithTextract(buffer);
+          text = textract.text;
+          extraction = textract.extraction;
+          ocrEngine = 'AWS_TEXTRACT';
+          textractEvidence = textract.evidence;
+        } catch (error) {
+          this.logger.warn(
+            `Accounting Textract recognition failed for ${artifact.artifactStableId}; falling back to Tesseract: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+      }
+
+      if (ocrEngine === 'TESSERACT') {
+        text = (await extractAccountingImageText(buffer)).text;
+        extraction = extractAccountingText(text);
+      }
+
+      const provider = await this.parseProviderEvidence(acquisitionMode, {
+        artifactStableId: artifact.artifactStableId,
+        text,
+        ...providerContext,
+      });
+      if (provider.matched) return true;
+      const ambiguousRuleStableIds =
+        'ambiguousRuleStableIds' in provider
+          ? provider.ambiguousRuleStableIds
+          : [];
       const review = text.trim()
         ? classifyAccountingDocumentText(text, extraction)
         : {
@@ -517,11 +604,25 @@ export class AccountingInboxAcquisitionService {
         inputKind: 'IMAGE',
         ...review,
         extractedText: text.slice(0, 100_000),
-        ocrEngine: 'TESSERACT',
+        ocrEngine,
         ocrStatus: 'SUCCESS',
+        ...(textractAttempted && ocrEngine === 'TESSERACT'
+          ? { ocrFallbackFrom: 'AWS_TEXTRACT' as const }
+          : {}),
+        ...(textractEvidence ? { textractEvidence } : {}),
+        ...(ambiguousRuleStableIds.length
+          ? {
+              providerRecognitionAmbiguousRuleStableIds: ambiguousRuleStableIds,
+            }
+          : {}),
       };
       await this.recordSuccessfulParse(artifact.artifactStableId, result);
-      await this.suggestExpenseIfLikelyBill(artifact.artifactStableId, result);
+      if (!ambiguousRuleStableIds.length) {
+        await this.suggestExpenseIfLikelyBill(
+          artifact.artifactStableId,
+          result,
+        );
+      }
       return false;
     }
     return false;
@@ -577,7 +678,7 @@ export class AccountingInboxAcquisitionService {
 
   private async suggestExpenseIfLikelyBill(
     artifactStableId: string,
-    result: TextReviewExtraction | ImageReviewExtraction,
+    result: TextReviewExtraction | PdfReviewExtraction | ImageReviewExtraction,
   ) {
     if (result.reviewDisposition !== 'LIKELY_BILL') return;
     try {
@@ -599,7 +700,7 @@ export class AccountingInboxAcquisitionService {
 
   private async recordSuccessfulParse(
     artifactStableId: string,
-    result: TextReviewExtraction | ImageReviewExtraction,
+    result: TextReviewExtraction | PdfReviewExtraction | ImageReviewExtraction,
   ) {
     await this.operations.recordInboxParseRun({
       artifactStableId,

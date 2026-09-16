@@ -123,8 +123,22 @@ export type AccountingInboxParseResult = {
   inputKind?: 'PDF' | 'IMAGE' | 'EMAIL_BODY' | 'CSV';
   reviewDisposition?: 'LIKELY_BILL' | 'UNRECOGNIZED' | 'LIKELY_NOT_BILL';
   reviewReason?: string;
-  ocrEngine?: 'TESSERACT';
+  ocrEngine?: 'AWS_TEXTRACT' | 'TESSERACT';
   ocrStatus?: 'SUCCESS' | 'ERROR';
+  ocrFallbackFrom?: 'AWS_TEXTRACT';
+  textRecognitionEngine?: 'POPPLER' | 'AWS_TEXTRACT';
+  textractEvidence?: {
+    provider: 'AWS_TEXTRACT_ANALYZE_EXPENSE';
+    currencySuggestion?: {
+      code?: string | null;
+      confidence?: number | null;
+      ambiguous?: boolean;
+    };
+    financialConsistency?: 'MATCHED' | 'MISMATCH' | 'INSUFFICIENT';
+    lineItemCount?: number;
+    lineItemPriceCount?: number;
+    lineItemsReconcileToSubtotal?: boolean | null;
+  };
   providerParserPending?: boolean;
   csvStructureUnrecognized?: boolean;
   structuredExpenseCsv?: boolean;
