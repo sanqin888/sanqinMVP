@@ -224,7 +224,7 @@ export async function listAccountingManualUploadLibrary(
       row.artifact.kind === AccountingArtifactKind.IMAGE &&
       Boolean(
         row.artifact.storedUrl ||
-          row.artifact.binaryRetention?.retainedStoredUrl,
+        row.artifact.binaryRetention?.retainedStoredUrl,
       );
     const contentUrl =
       row.artifact.kind === AccountingArtifactKind.IMAGE

@@ -180,10 +180,16 @@ describe('Accounting Inbox core persistence writer', () => {
       id: 'original-image-db-id',
       artifactStableId: 'acctart_original_image',
     });
-    tx.accountingSourceArtifact.create.mockResolvedValue({
-      id: 'duplicate-image-db-id',
-      artifactStableId: 'acctart_duplicate_image',
-    });
+    let artifactCreateDataKeys: string[] = [];
+    tx.accountingSourceArtifact.create.mockImplementationOnce(
+      (input: { data: Record<string, unknown> }) => {
+        artifactCreateDataKeys = Object.keys(input.data);
+        return Promise.resolve({
+          id: 'duplicate-image-db-id',
+          artifactStableId: 'acctart_duplicate_image',
+        });
+      },
+    );
     tx.accountingInboxItem.create.mockResolvedValue({
       inboxItemStableId: 'acctinbox_duplicate_image',
       status: AccountingInboxStatus.DUPLICATE,
@@ -211,13 +217,7 @@ describe('Accounting Inbox core persistence writer', () => {
         }) as unknown,
       }) as unknown,
     );
-    expect(tx.accountingSourceArtifact.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.not.objectContaining({
-          binaryRetention: expect.anything(),
-        }) as unknown,
-      }) as unknown,
-    );
+    expect(artifactCreateDataKeys).not.toContain('binaryRetention');
   });
 
   it('creates ORIGINAL_PRESENT retention state with a new image source artifact', async () => {
