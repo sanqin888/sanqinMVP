@@ -368,7 +368,7 @@ export class AccountingInboxAcquisitionService {
 
       const ambiguousRuleStableIds =
         'ambiguousRuleStableIds' in provider
-          ? provider.ambiguousRuleStableIds
+          ? (provider.ambiguousRuleStableIds ?? [])
           : [];
       if (ambiguousRuleStableIds.length) {
         await this.operations.recordInboxParseRun({
@@ -526,7 +526,7 @@ export class AccountingInboxAcquisitionService {
 
       const ambiguousRuleStableIds =
         'ambiguousRuleStableIds' in provider
-          ? provider.ambiguousRuleStableIds
+          ? (provider.ambiguousRuleStableIds ?? [])
           : [];
       const result: PdfReviewExtraction = {
         ...extraction,
@@ -591,7 +591,7 @@ export class AccountingInboxAcquisitionService {
       if (provider.matched) return true;
       const ambiguousRuleStableIds =
         'ambiguousRuleStableIds' in provider
-          ? provider.ambiguousRuleStableIds
+          ? (provider.ambiguousRuleStableIds ?? [])
           : [];
       const review = text.trim()
         ? classifyAccountingDocumentText(text, extraction)
@@ -649,7 +649,7 @@ export class AccountingInboxAcquisitionService {
     if (provider.matched) return;
     const ambiguousRuleStableIds =
       'ambiguousRuleStableIds' in provider
-        ? provider.ambiguousRuleStableIds
+        ? (provider.ambiguousRuleStableIds ?? [])
         : [];
     const extraction = extractAccountingText(text);
     const result: TextReviewExtraction = {
