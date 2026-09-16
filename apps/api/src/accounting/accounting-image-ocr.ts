@@ -101,16 +101,8 @@ export async function extractAccountingImageText(
 ): Promise<AccountingImageOcrResult> {
   const scored: ScoredAccountingImageOcrText[] = [];
   const failures: Error[] = [];
-  const receiptContrastSegments = await prepareAccountingImageSegments(
-    buffer,
-    true,
-  );
-  const primary = buildAccountingImageOcrCandidate(
-    'RECEIPT_CONTRAST_ENG_PSM4',
-    receiptContrastSegments,
-    'eng',
-    4,
-  );
+  const primary = await prepareAccountingImagePrimaryOcrCandidate(buffer);
+  const receiptContrastSegments = primary.segments;
   await runAndScoreCandidate(primary, runner, scored, failures);
 
   let winner = selectBestAccountingImageOcrText(scored);
@@ -186,41 +178,16 @@ async function runAndScoreCandidate(
   }
 }
 
-export async function prepareAccountingImageOcrCandidates(
+export async function prepareAccountingImagePrimaryOcrCandidate(
   buffer: Buffer,
-): Promise<PreparedAccountingImageOcrCandidate[]> {
-  const receiptContrastSegments = await prepareAccountingImageSegments(
-    buffer,
-    true,
+): Promise<PreparedAccountingImageOcrCandidate> {
+  const segments = await prepareAccountingImageSegments(buffer, true);
+  return buildAccountingImageOcrCandidate(
+    'RECEIPT_CONTRAST_ENG_PSM4',
+    segments,
+    'eng',
+    4,
   );
-  const receiptBinarySegments = await prepareAccountingBinarySegments(
-    receiptContrastSegments,
-  );
-  const fullContrastSegments = await prepareAccountingImageSegments(
-    buffer,
-    false,
-  );
-
-  return [
-    buildAccountingImageOcrCandidate(
-      'RECEIPT_CONTRAST_ENG_PSM4',
-      receiptContrastSegments,
-      'eng',
-      4,
-    ),
-    buildAccountingImageOcrCandidate(
-      'RECEIPT_BINARY_ENG_PSM4',
-      receiptBinarySegments,
-      'eng',
-      4,
-    ),
-    buildAccountingImageOcrCandidate(
-      'FULL_CONTRAST_MIXED_PSM6',
-      fullContrastSegments,
-      'eng+chi_sim',
-      6,
-    ),
-  ];
 }
 
 function buildAccountingImageOcrCandidate(

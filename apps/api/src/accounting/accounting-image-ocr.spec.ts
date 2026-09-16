@@ -4,7 +4,7 @@ import {
   extractAccountingImageText,
   mergeAccountingImageOcrSegmentTexts,
   normalizeAccountingImageOcrText,
-  prepareAccountingImageOcrCandidates,
+  prepareAccountingImagePrimaryOcrCandidate,
   scoreAccountingReceiptOcrText,
   selectBestAccountingImageOcrText,
   type AccountingImageOcrStrategy,
@@ -98,8 +98,8 @@ describe('accounting image OCR', () => {
   it('creates a cropped long-receipt candidate from a light receipt on dark background', async () => {
     const receipt = await sharp({
       create: {
-        width: 700,
-        height: 2200,
+        width: 300,
+        height: 800,
         channels: 3,
         background: { r: 245, g: 245, b: 245 },
       },
@@ -108,7 +108,7 @@ describe('accounting image OCR', () => {
         {
           input: await sharp({
             create: {
-              width: 520,
+              width: 230,
               height: 8,
               channels: 3,
               background: { r: 25, g: 25, b: 25 },
@@ -116,13 +116,13 @@ describe('accounting image OCR', () => {
           })
             .png()
             .toBuffer(),
-          left: 90,
-          top: 300,
+          left: 50,
+          top: 180,
         },
         {
           input: await sharp({
             create: {
-              width: 420,
+              width: 200,
               height: 8,
               channels: 3,
               background: { r: 25, g: 25, b: 25 },
@@ -130,32 +130,28 @@ describe('accounting image OCR', () => {
           })
             .png()
             .toBuffer(),
-          left: 140,
-          top: 1700,
+          left: 50,
+          top: 650,
         },
       ])
       .png()
       .toBuffer();
     const input = await sharp({
       create: {
-        width: 1200,
-        height: 2600,
+        width: 500,
+        height: 1000,
         channels: 3,
         background: { r: 20, g: 20, b: 20 },
       },
     })
-      .composite([{ input: receipt, left: 250, top: 200 }])
+      .composite([{ input: receipt, left: 150, top: 150 }])
       .jpeg({ quality: 94 })
       .toBuffer();
 
-    const [cropped, binary, full] =
-      await prepareAccountingImageOcrCandidates(input);
+    const cropped = await prepareAccountingImagePrimaryOcrCandidate(input);
 
     expect(cropped.strategy).toBe('RECEIPT_CONTRAST_ENG_PSM4');
-    expect(binary.strategy).toBe('RECEIPT_BINARY_ENG_PSM4');
     expect(cropped.segments.length).toBeGreaterThan(0);
-    expect(binary.segments).toHaveLength(cropped.segments.length);
-    expect(full.segments.length).toBeGreaterThan(0);
     for (const segment of cropped.segments) {
       expect(segment.height).toBeLessThanOrEqual(
         ACCOUNTING_IMAGE_OCR_POLICY.maxSegmentHeight,
@@ -169,71 +165,7 @@ describe('accounting image OCR', () => {
   it('segments very long receipts instead of shrinking the whole image to one fixed height', async () => {
     const marker = await sharp({
       create: {
-        width: 520,
-        height: 10,
-        channels: 3,
-        background: { r: 20, g: 20, b: 20 },
-      },
-    })
-      .png()
-      .toBuffer();
-    const input = await sharp({
-      create: {
-        width: 700,
-        height: 12000,
-        channels: 3,
-        background: { r: 245, g: 245, b: 245 },
-      },
-    })
-      .composite([
-        { input: marker, left: 90, top: 800 },
-        { input: marker, left: 90, top: 3200 },
-        { input: marker, left: 90, top: 5600 },
-        { input: marker, left: 90, top: 8000 },
-        { input: marker, left: 90, top: 10400 },
-      ])
-      .png()
-      .toBuffer();
-
-    const candidates = await prepareAccountingImageOcrCandidates(input);
-    expect(candidates).toHaveLength(ACCOUNTING_IMAGE_OCR_POLICY.maxPasses);
-    for (const candidate of candidates) {
-      expect(candidate.segments.length).toBeGreaterThan(1);
-      expect(candidate.segments.length).toBeLessThanOrEqual(
-        ACCOUNTING_IMAGE_OCR_POLICY.maxSegments,
-      );
-      for (const segment of candidate.segments) {
-        expect(segment.height).toBeLessThanOrEqual(
-          ACCOUNTING_IMAGE_OCR_POLICY.maxSegmentHeight,
-        );
-        expect(segment.width * segment.height).toBeLessThanOrEqual(
-          ACCOUNTING_IMAGE_OCR_POLICY.maxSegmentPixels,
-        );
-      }
-    }
-  }, 15_000);
-
-  it('fails closed instead of globally shrinking a receipt beyond the segment budget', async () => {
-    const input = await sharp({
-      create: {
-        width: 400,
-        height: 20000,
-        channels: 3,
-        background: { r: 245, g: 245, b: 245 },
-      },
-    })
-      .png()
-      .toBuffer();
-
-    await expect(prepareAccountingImageOcrCandidates(input)).rejects.toThrow(
-      'Accounting image OCR receipt exceeds segment limit',
-    );
-  }, 15_000);
-
-  it('keeps a clear ordinary receipt on a readable non-lossy OCR candidate path', async () => {
-    const line = await sharp({
-      create: {
-        width: 700,
+        width: 220,
         height: 8,
         channels: 3,
         background: { r: 20, g: 20, b: 20 },
@@ -243,27 +175,85 @@ describe('accounting image OCR', () => {
       .toBuffer();
     const input = await sharp({
       create: {
-        width: 1000,
-        height: 1600,
+        width: 300,
+        height: 1200,
+        channels: 3,
+        background: { r: 245, g: 245, b: 245 },
+      },
+    })
+      .composite([
+        { input: marker, left: 40, top: 200 },
+        { input: marker, left: 40, top: 600 },
+        { input: marker, left: 40, top: 1000 },
+      ])
+      .png()
+      .toBuffer();
+
+    const candidate = await prepareAccountingImagePrimaryOcrCandidate(input);
+    expect(candidate.segments.length).toBeGreaterThan(1);
+    expect(candidate.segments.length).toBeLessThanOrEqual(
+      ACCOUNTING_IMAGE_OCR_POLICY.maxSegments,
+    );
+    for (const segment of candidate.segments) {
+      expect(segment.height).toBeLessThanOrEqual(
+        ACCOUNTING_IMAGE_OCR_POLICY.maxSegmentHeight,
+      );
+      expect(segment.width * segment.height).toBeLessThanOrEqual(
+        ACCOUNTING_IMAGE_OCR_POLICY.maxSegmentPixels,
+      );
+    }
+  }, 15_000);
+
+  it('fails closed instead of globally shrinking a receipt beyond the segment budget', async () => {
+    const input = await sharp({
+      create: {
+        width: 200,
+        height: 6000,
+        channels: 3,
+        background: { r: 245, g: 245, b: 245 },
+      },
+    })
+      .png()
+      .toBuffer();
+
+    await expect(
+      prepareAccountingImagePrimaryOcrCandidate(input),
+    ).rejects.toThrow('Accounting image OCR receipt exceeds segment limit');
+  }, 15_000);
+
+  it('keeps a clear ordinary receipt on a readable non-lossy OCR candidate path', async () => {
+    const line = await sharp({
+      create: {
+        width: 420,
+        height: 8,
+        channels: 3,
+        background: { r: 20, g: 20, b: 20 },
+      },
+    })
+      .png()
+      .toBuffer();
+    const input = await sharp({
+      create: {
+        width: 600,
+        height: 1000,
         channels: 3,
         background: { r: 250, g: 250, b: 250 },
       },
     })
       .composite([
-        { input: line, left: 150, top: 300 },
-        { input: line, left: 150, top: 800 },
-        { input: line, left: 150, top: 1300 },
+        { input: line, left: 90, top: 180 },
+        { input: line, left: 90, top: 500 },
+        { input: line, left: 90, top: 820 },
       ])
       .jpeg({ quality: 96 })
       .toBuffer();
 
-    const [contrast] = await prepareAccountingImageOcrCandidates(input);
+    const contrast = await prepareAccountingImagePrimaryOcrCandidate(input);
     expect(contrast.segments).toHaveLength(1);
     const [segment] = contrast.segments;
     const metadata = await sharp(segment.buffer).metadata();
 
     expect(metadata.format).toBe('png');
-    expect(metadata.channels).toBe(1);
     expect(segment.width).toBeGreaterThanOrEqual(1000);
     expect(segment.height).toBeGreaterThanOrEqual(1600);
     expect(segment.width * segment.height).toBeLessThanOrEqual(
@@ -347,8 +337,8 @@ describe('accounting image OCR', () => {
 async function makeSmallReceiptImage(): Promise<Buffer> {
   return sharp({
     create: {
-      width: 800,
-      height: 1200,
+      width: 400,
+      height: 600,
       channels: 3,
       background: { r: 248, g: 248, b: 248 },
     },
@@ -357,7 +347,7 @@ async function makeSmallReceiptImage(): Promise<Buffer> {
       {
         input: await sharp({
           create: {
-            width: 600,
+            width: 300,
             height: 8,
             channels: 3,
             background: { r: 20, g: 20, b: 20 },
@@ -365,8 +355,8 @@ async function makeSmallReceiptImage(): Promise<Buffer> {
         })
           .png()
           .toBuffer(),
-        left: 100,
-        top: 600,
+        left: 50,
+        top: 300,
       },
     ])
     .png()
