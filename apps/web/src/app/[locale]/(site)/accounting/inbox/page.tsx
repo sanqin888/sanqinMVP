@@ -202,8 +202,8 @@ export default function AccountingInboxPage() {
       );
       setMessage(
         isZh
-          ? '平台财务资料已确认；当前不会因此自动生成会计分录。'
-          : 'Provider financial evidence confirmed; this does not post a journal entry.',
+          ? '平台财务资料已确认并移至“平台结算”；当前不会因此自动生成会计分录。'
+          : 'Provider financial evidence confirmed and moved to Provider settlements; this does not post a journal entry.',
       );
       await load();
     } catch (cause) {
@@ -485,42 +485,6 @@ export default function AccountingInboxPage() {
         </div>
       </section>
 
-      <AccountingManualUploadLibrary
-        items={manualUploads}
-        loading={loading}
-        isZh={isZh}
-        discardingId={discardingId}
-        deletingId={deletingUploadId}
-        onDiscard={discard}
-        onPermanentDelete={permanentlyDeleteUpload}
-      />
-
-      <AccountingImageRetentionQueue
-        items={imageRetentionQueue}
-        isZh={isZh}
-        onOpen={setOptimizingImage}
-      />
-
-      {reviewing ? (
-        <AccountingInboxExpenseReviewPanel
-          item={reviewing}
-          categories={categories}
-          accounts={accounts}
-          isZh={isZh}
-          onClose={() => setReviewing(null)}
-          onConfirmed={handleExpenseConfirmed}
-        />
-      ) : null}
-
-      {optimizingImage ? (
-        <AccountingImageRetentionPanel
-          item={optimizingImage}
-          isZh={isZh}
-          onClosed={handleImageOptimizationClosed}
-          onAccepted={handleImageOptimizationAccepted}
-        />
-      ) : null}
-
       <AccountingInboxItemsList
         items={items}
         loading={loading}
@@ -536,6 +500,42 @@ export default function AccountingInboxPage() {
         onConfirmProviderFinancial={confirmProviderFinancial}
         onConfirmOther={confirmOther}
         onDiscard={discard}
+      />
+
+      {reviewing ? (
+        <AccountingInboxExpenseReviewPanel
+          item={reviewing}
+          categories={categories}
+          accounts={accounts}
+          isZh={isZh}
+          onClose={() => setReviewing(null)}
+          onConfirmed={handleExpenseConfirmed}
+        />
+      ) : null}
+
+      <AccountingImageRetentionQueue
+        items={imageRetentionQueue}
+        isZh={isZh}
+        onOpen={setOptimizingImage}
+      />
+
+      {optimizingImage ? (
+        <AccountingImageRetentionPanel
+          item={optimizingImage}
+          isZh={isZh}
+          onClosed={handleImageOptimizationClosed}
+          onAccepted={handleImageOptimizationAccepted}
+        />
+      ) : null}
+
+      <AccountingManualUploadLibrary
+        items={manualUploads}
+        loading={loading}
+        isZh={isZh}
+        discardingId={discardingId}
+        deletingId={deletingUploadId}
+        onDiscard={discard}
+        onPermanentDelete={permanentlyDeleteUpload}
       />
     </div>
   );

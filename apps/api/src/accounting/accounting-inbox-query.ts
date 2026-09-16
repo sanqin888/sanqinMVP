@@ -47,14 +47,23 @@ export async function listAccountingTrustedSenders(
 
 export async function listAccountingUnifiedInboxItems(
   client: AccountingInboxReadClient,
-  params: { status?: AccountingInboxStatus; limit?: number },
+  params: {
+    status?: AccountingInboxStatus;
+    classification?: AccountingInboxClassification;
+    limit?: number;
+  },
 ) {
   const take = Math.min(Math.max(params.limit ?? 100, 1), 200);
   const statuses = params.status
     ? [params.status]
     : [AccountingInboxStatus.PENDING_REVIEW, AccountingInboxStatus.QUARANTINED];
   const rows = await client.accountingInboxItem.findMany({
-    where: { status: { in: statuses } },
+    where: {
+      status: { in: statuses },
+      ...(params.classification
+        ? { classification: params.classification }
+        : {}),
+    },
     select: {
       inboxItemStableId: true,
       status: true,
@@ -83,6 +92,7 @@ export async function listAccountingUnifiedInboxItems(
               provider: true,
               documentType: true,
               revision: true,
+              storeStableId: true,
               providerMerchantRef: true,
               providerDocumentRef: true,
               periodStart: true,
@@ -90,6 +100,8 @@ export async function listAccountingUnifiedInboxItems(
               settledAt: true,
               payoutAt: true,
               currency: true,
+              parserName: true,
+              parserVersion: true,
               lines: {
                 orderBy: { lineNo: 'asc' },
                 select: {

@@ -9,6 +9,7 @@ import {
   ChevronRight,
   FileClock,
   Inbox,
+  Landmark,
   LayoutDashboard,
   MoreHorizontal,
   ReceiptText,
@@ -56,6 +57,14 @@ function buildNavigation(locale: 'zh' | 'en'): AccountingNavigationItem[] {
       shortZh: '收件箱',
       shortEn: 'Inbox',
       icon: Inbox,
+    },
+    {
+      href: `${root}/settlements`,
+      labelZh: '平台结算',
+      labelEn: 'Provider settlements',
+      shortZh: '结算',
+      shortEn: 'Settle',
+      icon: Landmark,
     },
     {
       href: `${root}/expenses`,
@@ -281,7 +290,9 @@ export function AccountingShell({ children, locale }: AccountingShellProps) {
                   {isZh ? '更多财务功能' : 'More accounting tools'}
                 </h2>
                 <p className="mt-1 text-xs text-slate-500">
-                  {isZh ? '报表、销售和财务设置' : 'Sales, reports and accounting settings'}
+                  {isZh
+                    ? '平台结算、销售、报表和财务设置'
+                    : 'Provider settlements, sales, reports and accounting settings'}
                 </p>
               </div>
               <button
