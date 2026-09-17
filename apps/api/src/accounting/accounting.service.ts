@@ -50,6 +50,10 @@ import {
   BRAND_STORE_CONFIG_READER,
   type BrandStoreConfigReaderPort,
 } from '../store/public-api';
+import {
+  ORDER_REPORTING_FACTS_READER,
+  type OrderReportingFactsReaderPort,
+} from '../orders/public-api';
 
 type TxFilters = {
   from?: string;
@@ -202,6 +206,8 @@ export class AccountingService {
     private readonly prisma: PrismaService,
     @Inject(BRAND_STORE_CONFIG_READER)
     private readonly brandStoreConfigReader: BrandStoreConfigReaderPort,
+    @Inject(ORDER_REPORTING_FACTS_READER)
+    private readonly orderReportingFacts: OrderReportingFactsReaderPort,
   ) {}
 
   private async getBusinessTimezone(): Promise<string> {
@@ -2610,41 +2616,14 @@ export class AccountingService {
       parseStoreBoundary(query.from, 'start'),
     );
     const toDate = parseStoreBoundary(query.to, 'end');
-    const orders = await this.prisma.order.findMany({
-      where: {
-        paidAt: {
-          ...(fromDate ? { gte: fromDate } : {}),
-          ...(toDate ? { lte: toDate } : {}),
-        },
-      },
-      select: {
-        totalCents: true,
-        channel: true,
-        paymentMethod: true,
-      },
-    });
-    const byChannel = new Map<string, number>();
-    const byPayment = new Map<string, number>();
-    for (const item of orders) {
-      byChannel.set(
-        item.channel,
-        (byChannel.get(item.channel) ?? 0) + item.totalCents,
-      );
-      byPayment.set(
-        item.paymentMethod,
-        (byPayment.get(item.paymentMethod) ?? 0) + item.totalCents,
-      );
-    }
+    const dimensions = await this.orderReportingFacts.readPaidTotalDimensionsForRange(
+      fromDate,
+      toDate,
+    );
     return {
       from: query.from ?? null,
       to: query.to ?? null,
-      byChannel: Array.from(byChannel.entries()).map(([key, amountCents]) => ({
-        key,
-        amountCents,
-      })),
-      byPaymentMethod: Array.from(byPayment.entries()).map(
-        ([key, amountCents]) => ({ key, amountCents }),
-      ),
+      ...dimensions,
     };
   }
 

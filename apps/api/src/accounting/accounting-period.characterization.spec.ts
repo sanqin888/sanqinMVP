@@ -30,6 +30,7 @@ describe('AccountingService period-close characterization', () => {
     const service = new AccountingService(
       prisma as never,
       brandStoreConfigReader as never,
+      {} as never,
     );
     return { service, prisma };
   };

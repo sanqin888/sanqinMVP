@@ -17,6 +17,7 @@ describe('AccountingService accountingStartDate business boundary', () => {
     return new AccountingService(
       prisma as never,
       brandStoreConfigReader as never,
+      {} as never,
     );
   };
 
