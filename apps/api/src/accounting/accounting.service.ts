@@ -2616,10 +2616,11 @@ export class AccountingService {
       parseStoreBoundary(query.from, 'start'),
     );
     const toDate = parseStoreBoundary(query.to, 'end');
-    const dimensions = await this.orderReportingFacts.readPaidTotalDimensionsForRange(
-      fromDate,
-      toDate,
-    );
+    const dimensions =
+      await this.orderReportingFacts.readPaidTotalDimensionsForRange(
+        fromDate,
+        toDate,
+      );
     return {
       from: query.from ?? null,
       to: query.to ?? null,

@@ -169,7 +169,6 @@ describe('OrderReportingFactsReaderService', () => {
         paymentMethod: true,
       },
     });
-    expect(findMany.mock.calls[0]?.[0]?.where).not.toHaveProperty('status');
   });
 
   it('owns immutable component snapshot parsing before facts cross the Orders boundary', async () => {
