@@ -17,7 +17,8 @@ import {
   type OrderFinancialReplayEligibilityV1,
   type OrderFinancialReplayPricingResolutionV1,
 } from '../orders/public-api';
-import { AccountingService } from './accounting.service';
+import { AccountingJournalService } from './accounting-journal.service';
+import { AccountingPeriodService } from './accounting-period.service';
 import {
   buildCanonicalSaleJournal,
   CANONICAL_SALE_SYSTEM_ACTOR,
@@ -231,7 +232,8 @@ export function buildCanonicalSalePostingPreview(params: {
 @Injectable()
 export class AccountingCanonicalSalePostingService {
   constructor(
-    private readonly accounting: AccountingService,
+    private readonly period: AccountingPeriodService,
+    private readonly journal: AccountingJournalService,
     @Inject(ORDER_FINANCIAL_FACTS_READER)
     private readonly orders: OrderFinancialFactsReaderPort,
     @Inject(LOYALTY_FINANCIAL_FACTS_READER)
@@ -247,7 +249,7 @@ export class AccountingCanonicalSalePostingService {
     }
 
     const accountingStartAt =
-      await this.accounting.requireCanonicalFinancialPostingStartAt();
+      await this.period.requireCanonicalFinancialPostingStartAt();
     const candidate =
       await this.orders.readReplayCandidateByOrderStableId(stableId);
     if (!candidate) {
@@ -278,7 +280,7 @@ export class AccountingCanonicalSalePostingService {
       );
     }
 
-    const entry = await this.accounting.createJournalEntry(
+    const entry = await this.journal.createJournalEntry(
       preview.journal,
       CANONICAL_SALE_SYSTEM_ACTOR,
     );

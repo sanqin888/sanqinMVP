@@ -1,8 +1,8 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
 
-import { AccountingService } from './accounting.service';
+import { AccountingPeriodService } from './accounting-period.service';
 
-describe('AccountingService accountingStartDate business boundary', () => {
+describe('AccountingPeriodService accountingStartDate business boundary', () => {
   const makeService = (accountingStartDate: Date | null) => {
     const prisma = {
       accountingAutomationConfig: {
@@ -14,10 +14,9 @@ describe('AccountingService accountingStartDate business boundary', () => {
         timezone: 'America/Toronto',
       }),
     };
-    return new AccountingService(
+    return new AccountingPeriodService(
       prisma as never,
       brandStoreConfigReader as never,
-      {} as never,
     );
   };
 

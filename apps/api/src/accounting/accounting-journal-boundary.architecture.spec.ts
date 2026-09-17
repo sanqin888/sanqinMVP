@@ -5,7 +5,10 @@ import { DEFAULT_ACCOUNTING_ACCOUNTS } from './accounting-chart-of-accounts';
 const ACCOUNTING_ROOT = resolve(__dirname);
 const API_SRC_ROOT = resolve(ACCOUNTING_ROOT, '..');
 const API_ROOT = resolve(API_SRC_ROOT, '..');
-const JOURNAL_WRITER = resolve(ACCOUNTING_ROOT, 'accounting.service.ts');
+const JOURNAL_WRITER = resolve(
+  ACCOUNTING_ROOT,
+  'accounting-journal.service.ts',
+);
 const JOURNAL_MIGRATION = resolve(
   API_ROOT,
   'prisma/migrations/20260912070000_phase9_slice5b_double_entry_core/migration.sql',

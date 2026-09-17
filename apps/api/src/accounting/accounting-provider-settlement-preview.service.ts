@@ -15,7 +15,7 @@ import {
   type BrandStoreConfigReaderPort,
 } from '../store/public-api';
 import { AccountingOperationsService } from './accounting-operations.service';
-import { AccountingService } from './accounting.service';
+import { AccountingPeriodService } from './accounting-period.service';
 import { DEFAULT_ACCOUNTING_ACCOUNTS } from './accounting-chart-of-accounts';
 import { hashAccountingJson } from './accounting-inbox-core.policy';
 import {
@@ -144,7 +144,7 @@ const journalTotals = (
 export class AccountingProviderSettlementPreviewService {
   constructor(
     private readonly operations: AccountingOperationsService,
-    private readonly accounting: AccountingService,
+    private readonly period: AccountingPeriodService,
     @Inject(BRAND_STORE_CONFIG_READER)
     private readonly storeConfig: BrandStoreConfigReaderPort,
     @Inject(ORDER_FINANCIAL_FACTS_READER)
@@ -159,7 +159,7 @@ export class AccountingProviderSettlementPreviewService {
     const store = await this.storeConfig.getStoreSnapshot(storeStableId);
     const timezone = store.timezone.trim() || 'America/Toronto';
     const accountingStartDate =
-      (await this.accounting.getAccountingStartDate()) ??
+      (await this.period.getAccountingStartDate()) ??
       DEFAULT_HISTORY_START_DATE;
     const requestedFrom = input.fromDate ?? accountingStartDate;
     const effectiveFrom =

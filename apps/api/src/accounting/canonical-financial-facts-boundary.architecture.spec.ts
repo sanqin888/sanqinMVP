@@ -178,7 +178,9 @@ describe('Phase 9 canonical financial facts boundary', () => {
 
     expect(postingService).toContain("from '../orders/public-api'");
     expect(postingService).toContain("from '../loyalty/public-api'");
-    expect(postingService).toContain("from './accounting.service'");
+    expect(postingService).toContain("from './accounting-period.service'");
+    expect(postingService).toContain("from './accounting-journal.service'");
+    expect(postingService).not.toContain("from './accounting.service'");
     expect(postingService).not.toContain('../prisma/');
     expect(replayService).toContain("from '../orders/public-api'");
     expect(replayService).toContain("from '../loyalty/public-api'");
@@ -276,6 +278,7 @@ describe('Phase 9 canonical financial facts boundary', () => {
       .filter(
         ({ path, source }) =>
           !path.endsWith('accounting.service.ts') &&
+          !path.endsWith('accounting-journal.service.ts') &&
           source.includes('createCanonicalChangeJournalEntry('),
       )
       .map(({ path }) =>
@@ -292,6 +295,7 @@ describe('Phase 9 canonical financial facts boundary', () => {
       .filter(
         ({ path, source }) =>
           !path.endsWith('accounting.service.ts') &&
+          !path.endsWith('accounting-journal.service.ts') &&
           source.includes('createProviderSettlementReplacementGroup('),
       )
       .map(({ path }) =>
@@ -311,6 +315,8 @@ describe('Phase 9 canonical financial facts boundary', () => {
       schema.match(/enum AccountingSourceType\s*{([\s\S]*?)\n}/)?.[1] ?? '';
     const accountingService =
       file(ACCOUNTING_ROOT, 'accounting.service.ts')?.source ?? '';
+    const accountingJournalService =
+      file(ACCOUNTING_ROOT, 'accounting-journal.service.ts')?.source ?? '';
     const accountingController =
       file(ACCOUNTING_ROOT, 'accounting.controller.ts')?.source ?? '';
 
@@ -323,7 +329,10 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(accountingService).not.toContain('AccountingSourceType.ORDER');
     expect(accountingService).not.toContain('orderId: normalized.orderId');
     expect(accountingController).not.toContain('orderId?: string | null;');
-    expect(accountingService).toContain('assertNoLegacyOrderRevenueAccrual');
+    expect(accountingService).not.toContain('assertNoLegacyOrderRevenueAccrual');
+    expect(accountingJournalService).toContain(
+      'assertNoLegacyOrderRevenueAccrual',
+    );
   });
 
   it('prevents Accounting from consuming owner internals before or after the later posting cutover', () => {

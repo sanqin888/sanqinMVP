@@ -200,6 +200,7 @@ const makeService = (params: {
   };
   const service = new AccountingCanonicalChangePreviewService(
     accounting as never,
+    accounting as never,
     changes as never,
     orders as never,
     payments as never,

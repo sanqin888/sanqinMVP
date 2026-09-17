@@ -1,4 +1,5 @@
 import { AccountingTxType } from '@prisma/client';
+import { AccountingPeriodService } from './accounting-period.service';
 import { AccountingService } from './accounting.service';
 
 describe('AccountingService canonical store timezone characterization', () => {
@@ -20,9 +21,13 @@ describe('AccountingService canonical store timezone characterization', () => {
         timezone: 'America/Toronto',
       }),
     };
-    const service = new AccountingService(
+    const period = new AccountingPeriodService(
       prisma as never,
       brandStoreConfigReader as never,
+    );
+    const service = new AccountingService(
+      prisma as never,
+      period,
       { readPaidTotalDimensionsForRange } as never,
     );
 
@@ -54,10 +59,9 @@ describe('AccountingService canonical store timezone characterization', () => {
         timezone: 'America/Toronto',
       }),
     };
-    const service = new AccountingService(
+    const service = new AccountingPeriodService(
       prisma as never,
       brandStoreConfigReader as never,
-      {} as never,
     );
 
     await service.assertEditableForPeriod(

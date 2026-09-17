@@ -41,6 +41,7 @@ import { AccountingImageRetentionService } from './accounting-image-retention.se
 import type { AccountingImageRetentionProfile } from './accounting-receipt-image';
 import { AccountingProviderFinancialService } from './accounting-provider-financial.service';
 import { AccountingService } from './accounting.service';
+import { AccountingPeriodService } from './accounting-period.service';
 import { AccountingAutomationScheduler } from './accounting-automation.scheduler';
 import { AccountingCanonicalSaleReplayService } from './accounting-canonical-sale-replay.service';
 import { AccountingCanonicalChangePreviewService } from './accounting-canonical-change-preview.service';
@@ -83,6 +84,7 @@ type TxBody = {
 export class AccountingController {
   constructor(
     private readonly accountingService: AccountingService,
+    private readonly period: AccountingPeriodService,
     private readonly operations: AccountingOperationsService,
     private readonly acquisition: AccountingInboxAcquisitionService,
     private readonly imageRetention: AccountingImageRetentionService,
@@ -515,7 +517,7 @@ export class AccountingController {
     @Param('periodKey') periodKey: string,
     @Req() req: AuthedAccountingRequest,
   ) {
-    return this.accountingService.closeMonth(
+    return this.period.closeMonth(
       periodKey,
       this.requireOperatorUserId(req),
     );
@@ -526,7 +528,7 @@ export class AccountingController {
     @Param('periodKey') periodKey: string,
     @Req() req: AuthedAccountingRequest,
   ) {
-    return this.accountingService.reopenMonth(
+    return this.period.reopenMonth(
       periodKey,
       this.requireOperatorUserId(req),
     );
@@ -538,7 +540,7 @@ export class AccountingController {
       ?.split(',')
       .map((item) => item.trim())
       .filter(Boolean);
-    return this.accountingService.listPeriodCloseStatus(keys);
+    return this.period.listPeriodCloseStatus(keys);
   }
 
   @Post('period-close/year/:periodKey')
@@ -546,7 +548,7 @@ export class AccountingController {
     @Param('periodKey') periodKey: string,
     @Req() req: AuthedAccountingRequest,
   ) {
-    return this.accountingService.closeYear(
+    return this.period.closeYear(
       periodKey,
       this.requireOperatorUserId(req),
     );
@@ -558,7 +560,7 @@ export class AccountingController {
       ?.split(',')
       .map((item) => item.trim())
       .filter(Boolean);
-    return this.accountingService.listYearCloseStatus(keys);
+    return this.period.listYearCloseStatus(keys);
   }
 
   @Get('report/pnl')

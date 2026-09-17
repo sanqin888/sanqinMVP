@@ -71,7 +71,7 @@ import {
   readAccountingInboxExpenseContext,
   readAccountingInboxProviderReviewContext,
 } from './accounting-inbox-query';
-import { AccountingService } from './accounting.service';
+import { AccountingPeriodService } from './accounting-period.service';
 import { permanentlyDeleteManualUploadInTx } from './accounting-upload-library.writer';
 import { updateAccountingProviderRecognitionRule } from './accounting-provider-recognition.orchestrator';
 import {
@@ -249,7 +249,7 @@ type AccountingDocumentRow = Prisma.AccountingExpenseDocumentGetPayload<{
 export class AccountingOperationsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly accounting: AccountingService,
+    private readonly period: AccountingPeriodService,
   ) {}
 
   async initializeDefaults() {
@@ -993,8 +993,8 @@ export class AccountingOperationsService {
         );
       }
 
-      await this.accounting.assertOnOrAfterAccountingStartDate(occurredAt, tx);
-      await this.accounting.assertEditableForPeriod(
+      await this.period.assertOnOrAfterAccountingStartDate(occurredAt, tx);
+      await this.period.assertEditableForPeriod(
         occurredAt,
         AccountingTxType.EXPENSE,
         tx,
@@ -1275,11 +1275,11 @@ export class AccountingOperationsService {
     const document = await runSerializableAccountingWrite(
       this.prisma,
       async (tx) => {
-        await this.accounting.assertOnOrAfterAccountingStartDate(
+        await this.period.assertOnOrAfterAccountingStartDate(
           occurredAt,
           tx,
         );
-        await this.accounting.assertEditableForPeriod(
+        await this.period.assertEditableForPeriod(
           occurredAt,
           AccountingTxType.EXPENSE,
           tx,
@@ -1364,7 +1364,7 @@ export class AccountingOperationsService {
     limit?: number;
   }) {
     const take = Math.min(Math.max(params.limit ?? 100, 1), 200);
-    const startAt = await this.accounting.clampAccountingFromDate(undefined);
+    const startAt = await this.period.clampAccountingFromDate(undefined);
     const rows = await this.prisma.accountingExpenseDocument.findMany({
       where: {
         ...(params.status ? { status: params.status } : {}),
@@ -1457,8 +1457,8 @@ export class AccountingOperationsService {
     const newAttachmentUrls = this.normalizeUrls(input.attachmentUrls);
 
     await runSerializableAccountingWrite(this.prisma, async (tx) => {
-      await this.accounting.assertOnOrAfterAccountingStartDate(occurredAt, tx);
-      await this.accounting.assertEditableForPeriod(
+      await this.period.assertOnOrAfterAccountingStartDate(occurredAt, tx);
+      await this.period.assertEditableForPeriod(
         occurredAt,
         AccountingTxType.EXPENSE,
         tx,
@@ -1605,7 +1605,7 @@ export class AccountingOperationsService {
   }
 
   async dashboard(from: string, to: string) {
-    const fromDate = await this.accounting.clampAccountingFromDate(
+    const fromDate = await this.period.clampAccountingFromDate(
       this.parseDate(from),
     );
     const toDate = this.parseDate(to, true);

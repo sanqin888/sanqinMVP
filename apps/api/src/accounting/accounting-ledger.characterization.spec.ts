@@ -1,5 +1,6 @@
 import { ConflictException } from '@nestjs/common';
 import { AccountingSourceType, AccountingTxType } from '@prisma/client';
+import { AccountingPeriodService } from './accounting-period.service';
 import { AccountingService } from './accounting.service';
 
 describe('AccountingService ledger characterization', () => {
@@ -40,9 +41,13 @@ describe('AccountingService ledger characterization', () => {
         timezone: 'America/Toronto',
       }),
     };
-    const service = new AccountingService(
+    const period = new AccountingPeriodService(
       prisma as never,
       brandStoreConfigReader as never,
+    );
+    const service = new AccountingService(
+      prisma as never,
+      period,
       {} as never,
     );
     return { service, prisma };
