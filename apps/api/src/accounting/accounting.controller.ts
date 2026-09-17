@@ -25,7 +25,6 @@ import {
   AccountingProviderRecognitionMatchMode,
   AccountingSourceType,
   AccountingTxType,
-  SettlementPlatform,
 } from '@prisma/client';
 import type { Request, Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -671,27 +670,6 @@ export class AccountingController {
       acknowledgedBlockedOrderStableIds:
         body.acknowledgedBlockedOrderStableIds ?? [],
     });
-  }
-
-  @Post('reconciliation/platform/import-csv')
-  async importSettlementCsv(
-    @Body()
-    body: {
-      platform: SettlementPlatform;
-      csv: string;
-      importBatchId?: string;
-    },
-  ) {
-    return this.accountingService.importPlatformSettlementCsv(body);
-  }
-
-  @Get('reconciliation/platform/:platform')
-  async reconcilePlatform(
-    @Param('platform') platform: SettlementPlatform,
-    @Query('from') from?: string,
-    @Query('to') to?: string,
-  ) {
-    return this.accountingService.reconcilePlatform(platform, from, to);
   }
 
   @Post('accounts')

@@ -332,11 +332,6 @@ enum AccountingFinancialTaxRole {
   OTHER_TAX
 }
 
-enum SettlementPlatform {
-  UBER_EATS
-  FANTUAN
-}
-
 enum UberFinancialReportStatus {
   REQUESTED
   READY
@@ -2000,26 +1995,6 @@ model AccountingProviderFinancialCoverage {
 
   @@unique([provider, storeStableId])
   @@index([storeStableId, provider])
-}
-
-model PlatformSettlementRecord {
-  id                 String             @id @default(uuid()) @db.Uuid
-  settlementStableId String             @unique @default(cuid())
-  platform           SettlementPlatform
-  importBatchId      String
-  externalRowId      String?
-  orderId            String?
-  grossCents         Int
-  commissionCents    Int
-  netCents           Int
-  payoutAt           DateTime
-  rawPayload         Json?
-  createdAt          DateTime           @default(now())
-
-  @@unique([platform, importBatchId, externalRowId])
-  @@index([platform, payoutAt])
-  @@index([orderId])
-  @@index([importBatchId])
 }
 
 model UberFinancialReport {
