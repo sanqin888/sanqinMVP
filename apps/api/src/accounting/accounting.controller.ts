@@ -68,7 +68,6 @@ type TxBody = {
   categoryStableId: string;
   accountStableId?: string | null;
   toAccountStableId?: string | null;
-  orderId?: string | null;
   idempotencyKey?: string | null;
   externalRef?: string | null;
   counterparty?: string | null;

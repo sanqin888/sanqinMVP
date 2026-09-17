@@ -78,7 +78,6 @@ type UpsertTxDto = {
   categoryStableId: string;
   accountStableId?: string | null;
   toAccountStableId?: string | null;
-  orderId?: string | null;
   idempotencyKey?: string | null;
   externalRef?: string | null;
   counterparty?: string | null;
@@ -95,7 +94,6 @@ const ACCOUNTING_TX_PUBLIC_SELECT = {
   taxCents: true,
   currency: true,
   occurredAt: true,
-  orderId: true,
   idempotencyKey: true,
   externalRef: true,
   counterparty: true,
@@ -501,7 +499,6 @@ export class AccountingService {
               { memo: { contains: keyword, mode: 'insensitive' } },
               { counterparty: { contains: keyword, mode: 'insensitive' } },
               { txStableId: { contains: keyword, mode: 'insensitive' } },
-              { orderId: { contains: keyword, mode: 'insensitive' } },
             ],
           }
         : {}),
@@ -614,20 +611,6 @@ export class AccountingService {
       );
     }
 
-    const normalizedOrderId = payload.orderId?.trim() || null;
-    if (payload.source === AccountingSourceType.ORDER) {
-      if (!normalizedOrderId) {
-        throw new BadRequestException('orderId is required when source=ORDER');
-      }
-      const order = await db.order.findUnique({
-        where: { orderStableId: normalizedOrderId },
-        select: { orderStableId: true },
-      });
-      if (!order) {
-        throw new BadRequestException('orderId is invalid');
-      }
-    }
-
     const currency =
       payload.currency?.trim().toUpperCase() ||
       fromAccount?.currency ||
@@ -635,7 +618,6 @@ export class AccountingService {
       'CAD';
     return {
       occurredAt,
-      orderId: normalizedOrderId,
       categoryId: category.id,
       accountId: fromAccount?.id ?? null,
       toAccountId: targetAccount?.id ?? null,
@@ -1534,7 +1516,6 @@ export class AccountingService {
           categoryId: normalized.categoryId,
           accountId: normalized.accountId,
           toAccountId: normalized.toAccountId,
-          orderId: normalized.orderId,
           idempotencyKey: normalized.idempotencyKey,
           externalRef: normalized.externalRef,
           counterparty: payload.counterparty?.trim() || null,
@@ -1634,7 +1615,6 @@ export class AccountingService {
           categoryId: normalized.categoryId,
           accountId: normalized.accountId,
           toAccountId: normalized.toAccountId,
-          orderId: normalized.orderId,
           idempotencyKey: normalized.idempotencyKey,
           externalRef: normalized.externalRef,
           counterparty: payload.counterparty?.trim() || null,
@@ -2218,7 +2198,6 @@ export class AccountingService {
       'category',
       'account',
       'toAccount',
-      'orderId',
       'counterparty',
       'memo',
       'createdAt',
@@ -2236,7 +2215,6 @@ export class AccountingService {
         row.category?.name ?? '',
         row.account?.name ?? '',
         row.toAccount?.name ?? '',
-        row.orderId,
         row.counterparty,
         row.memo,
         row.createdAt.toISOString(),

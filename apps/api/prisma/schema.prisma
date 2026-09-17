@@ -200,10 +200,7 @@ enum AccountingJournalSource {
 }
 
 enum AccountingSourceType {
-  ORDER
   MANUAL
-  UBER
-  FANTUAN
   OTHER
 }
 
@@ -1726,7 +1723,6 @@ model AccountingTransaction {
   accountId       String?                    @db.Uuid
   toAccountId     String?                    @db.Uuid
   documentId      String?                    @db.Uuid
-  orderId         String?
   idempotencyKey  String?                    @unique
   externalRef     String?
   counterparty    String?
