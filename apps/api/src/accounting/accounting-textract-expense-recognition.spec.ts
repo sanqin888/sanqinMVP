@@ -105,7 +105,12 @@ describe('Accounting Textract expense recognition', () => {
                   },
                   {
                     LineItemExpenseFields: [
-                      summaryField('ITEM', 'New Zealand Golden Kiwi', 96.5, null),
+                      summaryField(
+                        'ITEM',
+                        'New Zealand Golden Kiwi',
+                        96.5,
+                        null,
+                      ),
                       summaryField('PRICE', '7.99', 98.8),
                     ],
                   },
