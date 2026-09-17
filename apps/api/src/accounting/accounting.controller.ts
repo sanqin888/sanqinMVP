@@ -517,10 +517,7 @@ export class AccountingController {
     @Param('periodKey') periodKey: string,
     @Req() req: AuthedAccountingRequest,
   ) {
-    return this.period.closeMonth(
-      periodKey,
-      this.requireOperatorUserId(req),
-    );
+    return this.period.closeMonth(periodKey, this.requireOperatorUserId(req));
   }
 
   @Delete('period-close/month/:periodKey')
@@ -528,10 +525,7 @@ export class AccountingController {
     @Param('periodKey') periodKey: string,
     @Req() req: AuthedAccountingRequest,
   ) {
-    return this.period.reopenMonth(
-      periodKey,
-      this.requireOperatorUserId(req),
-    );
+    return this.period.reopenMonth(periodKey, this.requireOperatorUserId(req));
   }
 
   @Get('period-close/month')
@@ -548,10 +542,7 @@ export class AccountingController {
     @Param('periodKey') periodKey: string,
     @Req() req: AuthedAccountingRequest,
   ) {
-    return this.period.closeYear(
-      periodKey,
-      this.requireOperatorUserId(req),
-    );
+    return this.period.closeYear(periodKey, this.requireOperatorUserId(req));
   }
 
   @Get('period-close/year')

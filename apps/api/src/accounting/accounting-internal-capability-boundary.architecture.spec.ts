@@ -40,7 +40,9 @@ describe('Accounting internal capability boundary', () => {
     expect(source).not.toMatch(/\b(?:closeMonth|reopenMonth|closeYear)\s*\(/);
     expect(source).not.toMatch(/\bcreateJournalEntry\s*\(/);
     expect(source).not.toMatch(/\bcreateCanonicalChangeJournalEntry\s*\(/);
-    expect(source).not.toMatch(/\bcreateProviderSettlementReplacementGroup\s*\(/);
+    expect(source).not.toMatch(
+      /\bcreateProviderSettlementReplacementGroup\s*\(/,
+    );
     expect(source).not.toMatch(/\.accountingJournal(?:Entry|Line)\./);
   });
 
@@ -50,10 +52,12 @@ describe('Accounting internal capability boundary', () => {
     const journal = read('accounting-journal.service.ts');
     const broad = read('accounting.service.ts');
 
-    expect(module).toContain('{ provide: ACCOUNTING_DB, useExisting: PrismaService }');
+    expect(module).toContain(
+      '{ provide: ACCOUNTING_DB, useExisting: PrismaService }',
+    );
     for (const source of [period, journal, broad]) {
       expect(source).toContain('ACCOUNTING_DB');
-      expect(source).not.toContain("../prisma/prisma.service");
+      expect(source).not.toContain('../prisma/prisma.service');
     }
   });
 });

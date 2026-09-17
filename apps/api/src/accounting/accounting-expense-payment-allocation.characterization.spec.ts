@@ -58,11 +58,7 @@ describe('Accounting Expense payment allocation characterization', () => {
       prisma as never,
       brandStoreConfigReader as never,
     );
-    const service = new AccountingService(
-      prisma as never,
-      period,
-      {} as never,
-    );
+    const service = new AccountingService(prisma as never, period, {} as never);
 
     const result = await service.accountBalanceReport();
 

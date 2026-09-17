@@ -25,11 +25,9 @@ describe('AccountingService canonical store timezone characterization', () => {
       prisma as never,
       brandStoreConfigReader as never,
     );
-    const service = new AccountingService(
-      prisma as never,
-      period,
-      { readPaidTotalDimensionsForRange } as never,
-    );
+    const service = new AccountingService(prisma as never, period, {
+      readPaidTotalDimensionsForRange,
+    } as never);
 
     await expect(
       service.dimensionSlice({ from: '2026-09-02', to: '2026-09-02' }),

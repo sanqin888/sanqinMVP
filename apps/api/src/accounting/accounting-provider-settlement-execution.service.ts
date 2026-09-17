@@ -174,15 +174,14 @@ export class AccountingProviderSettlementExecutionService {
           originalJournalEntryStableId: reversal.originalJournalEntryStableId,
         };
       });
-      const rows =
-        await this.journal.createProviderSettlementReplacementGroup(
-          {
-            documentJournal,
-            uberPreCutoverReversals: reversalWrites,
-          },
-          PROVIDER_SETTLEMENT_SYSTEM_ACTOR,
-          authority,
-        );
+      const rows = await this.journal.createProviderSettlementReplacementGroup(
+        {
+          documentJournal,
+          uberPreCutoverReversals: reversalWrites,
+        },
+        PROVIDER_SETTLEMENT_SYSTEM_ACTOR,
+        authority,
+      );
       if (rows.length !== 1 + reversalWrites.length) {
         throw new ConflictException(
           `Provider settlement replacement group returned an unexpected Journal count: ${document.documentStableId}`,

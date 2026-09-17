@@ -329,7 +329,9 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(accountingService).not.toContain('AccountingSourceType.ORDER');
     expect(accountingService).not.toContain('orderId: normalized.orderId');
     expect(accountingController).not.toContain('orderId?: string | null;');
-    expect(accountingService).not.toContain('assertNoLegacyOrderRevenueAccrual');
+    expect(accountingService).not.toContain(
+      'assertNoLegacyOrderRevenueAccrual',
+    );
     expect(accountingJournalService).toContain(
       'assertNoLegacyOrderRevenueAccrual',
     );

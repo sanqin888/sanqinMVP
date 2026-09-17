@@ -45,11 +45,7 @@ describe('AccountingService ledger characterization', () => {
       prisma as never,
       brandStoreConfigReader as never,
     );
-    const service = new AccountingService(
-      prisma as never,
-      period,
-      {} as never,
-    );
+    const service = new AccountingService(prisma as never, period, {} as never);
     return { service, prisma };
   };
 

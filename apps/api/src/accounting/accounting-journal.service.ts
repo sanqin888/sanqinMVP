@@ -805,7 +805,8 @@ export class AccountingJournalService {
         authority.reviewEvidence.materializedEntityType ||
       review.materializedEntityStableId !==
         authority.reviewEvidence.materializedEntityStableId ||
-      review.reviewedAt?.toISOString() !== authority.reviewEvidence.reviewedAt ||
+      review.reviewedAt?.toISOString() !==
+        authority.reviewEvidence.reviewedAt ||
       review.reviewedByUserStableId !==
         authority.reviewEvidence.reviewedByUserStableId ||
       review.version !== authority.reviewEvidence.version
@@ -831,7 +832,8 @@ export class AccountingJournalService {
     });
     if (
       !coverage ||
-      coverage.coverageStableId !== authority.coverageEvidence.coverageStableId ||
+      coverage.coverageStableId !==
+        authority.coverageEvidence.coverageStableId ||
       dateOnly(coverage.financialHistoryRequiredFrom) !==
         authority.coverageEvidence.financialHistoryRequiredFrom ||
       dateOnly(coverage.financialCompleteThrough) !==

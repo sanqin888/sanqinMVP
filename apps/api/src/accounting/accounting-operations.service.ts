@@ -1275,10 +1275,7 @@ export class AccountingOperationsService {
     const document = await runSerializableAccountingWrite(
       this.prisma,
       async (tx) => {
-        await this.period.assertOnOrAfterAccountingStartDate(
-          occurredAt,
-          tx,
-        );
+        await this.period.assertOnOrAfterAccountingStartDate(occurredAt, tx);
         await this.period.assertEditableForPeriod(
           occurredAt,
           AccountingTxType.EXPENSE,
