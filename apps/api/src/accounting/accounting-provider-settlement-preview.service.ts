@@ -16,9 +16,7 @@ import {
 } from '../store/public-api';
 import { AccountingChartService } from './accounting-chart.service';
 import { AccountingPeriodService } from './accounting-period.service';
-import {
-  AccountingProviderSettlementQueryService,
-} from './accounting-provider-settlement-query.service';
+import { AccountingProviderSettlementQueryService } from './accounting-provider-settlement-query.service';
 import { DEFAULT_ACCOUNTING_ACCOUNTS } from './accounting-chart-of-accounts';
 import { hashAccountingJson } from './accounting-inbox-core.policy';
 import {
@@ -191,10 +189,11 @@ export class AccountingProviderSettlementPreviewService {
     const documentTo = DateTime.fromISO(input.toDateExclusive, { zone: 'UTC' })
       .startOf('day')
       .toJSDate();
-    const allDocuments = await this.settlementQuery.readProviderSettlementDocuments({
-      storeStableId,
-      ...(input.provider ? { provider: input.provider } : {}),
-    });
+    const allDocuments =
+      await this.settlementQuery.readProviderSettlementDocuments({
+        storeStableId,
+        ...(input.provider ? { provider: input.provider } : {}),
+      });
     const candidateIdentityKeys = new Set(
       allDocuments
         .filter((document) =>
@@ -215,10 +214,11 @@ export class AccountingProviderSettlementPreviewService {
         ...(includeUber ? [AccountingFinancialProvider.UBER_EATS] : []),
       ]),
     ).sort();
-    const coverageRows = await this.settlementQuery.readProviderFinancialCoverage({
-      storeStableId,
-      providers,
-    });
+    const coverageRows =
+      await this.settlementQuery.readProviderFinancialCoverage({
+        storeStableId,
+        providers,
+      });
     const coverageByProvider = new Map(
       coverageRows.map((row) => [providerKey(row.provider), row] as const),
     );

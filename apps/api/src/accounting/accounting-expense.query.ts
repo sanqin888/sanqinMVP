@@ -62,7 +62,9 @@ export async function listAccountingExpenseDocuments(
     where: {
       ...(params.status ? { status: params.status } : {}),
       ...(params.startAt
-        ? { OR: [{ occurredAt: null }, { occurredAt: { gte: params.startAt } }] }
+        ? {
+            OR: [{ occurredAt: null }, { occurredAt: { gte: params.startAt } }],
+          }
         : {}),
     },
     select: ACCOUNTING_DOCUMENT_SELECT,

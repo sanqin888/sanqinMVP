@@ -61,7 +61,9 @@ describe('Accounting internal capability boundary', () => {
     expect(expense).not.toContain('AccountingOperationsService');
     expect(expense).not.toContain("from './accounting.service'");
 
-    const settlement = read('accounting-provider-settlement-preview.service.ts');
+    const settlement = read(
+      'accounting-provider-settlement-preview.service.ts',
+    );
     expect(settlement).toContain('AccountingProviderSettlementQueryService');
     expect(settlement).toContain('AccountingChartService');
     expect(settlement).not.toContain('AccountingOperationsService');

@@ -42,9 +42,7 @@ import {
   normalizeAccountingExpenseAttachmentUrls,
   parseAccountingExpenseDate,
 } from './accounting-expense-input';
-import {
-  createAccountingExpensePaymentAllocationsInTx,
-} from './accounting-expense-payment-allocation.writer';
+import { createAccountingExpensePaymentAllocationsInTx } from './accounting-expense-payment-allocation.writer';
 
 type NormalizedExpensePaymentAllocation =
   AccountingExpensePaymentAllocationInput & {
@@ -112,14 +110,16 @@ export class AccountingExpenseService {
         tx,
         inboxItemStableId,
       );
-      if (!inbox) throw new NotFoundException('accounting inbox item not found');
+      if (!inbox)
+        throw new NotFoundException('accounting inbox item not found');
       if (inbox.status !== AccountingInboxStatus.PENDING_REVIEW) {
         throw new ConflictException(
           'only pending inbox items can be confirmed',
         );
       }
       if (
-        inbox.classification !== AccountingInboxClassification.EXPENSE_DOCUMENT ||
+        inbox.classification !==
+          AccountingInboxClassification.EXPENSE_DOCUMENT ||
         inbox.selectedProvider
       ) {
         throw new ConflictException(
@@ -200,9 +200,10 @@ export class AccountingExpenseService {
         : null;
       const attachmentUrls = Array.from(
         new Set(
-          [artifactUrl, ...normalizeAccountingExpenseAttachmentUrls(input.attachmentUrls)].filter(
-            (value): value is string => Boolean(value),
-          ),
+          [
+            artifactUrl,
+            ...normalizeAccountingExpenseAttachmentUrls(input.attachmentUrls),
+          ].filter((value): value is string => Boolean(value)),
         ),
       );
       const extractionJson = {
@@ -358,7 +359,9 @@ export class AccountingExpenseService {
       }
     }
 
-    const attachmentUrls = normalizeAccountingExpenseAttachmentUrls(input.attachmentUrls);
+    const attachmentUrls = normalizeAccountingExpenseAttachmentUrls(
+      input.attachmentUrls,
+    );
     const documentStableId = `expense_${createId()}`;
     const document = await runSerializableAccountingWrite(
       this.prisma,
@@ -530,7 +533,9 @@ export class AccountingExpenseService {
       );
     }
 
-    const newAttachmentUrls = normalizeAccountingExpenseAttachmentUrls(input.attachmentUrls);
+    const newAttachmentUrls = normalizeAccountingExpenseAttachmentUrls(
+      input.attachmentUrls,
+    );
 
     await runSerializableAccountingWrite(this.prisma, async (tx) => {
       await this.period.assertOnOrAfterAccountingStartDate(occurredAt, tx);
@@ -787,5 +792,4 @@ export class AccountingExpenseService {
       };
     });
   }
-
 }

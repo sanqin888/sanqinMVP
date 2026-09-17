@@ -230,9 +230,7 @@ export class AccountingProviderFinancialService {
     operatorUserStableId: string,
   ) {
     const inbox =
-      await this.inbox.readUnifiedInboxProviderReviewContext(
-        inboxItemStableId,
-      );
+      await this.inbox.readUnifiedInboxProviderReviewContext(inboxItemStableId);
     if (!inbox) throw new NotFoundException('accounting inbox item not found');
     if (inbox.status !== AccountingInboxStatus.PENDING_REVIEW) {
       throw new ConflictException(

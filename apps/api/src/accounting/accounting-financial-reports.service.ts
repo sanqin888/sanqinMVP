@@ -58,12 +58,15 @@ export class AccountingFinancialReportsService {
       }
     }
 
-    const pendingInboxItems = await countAccountingInboxReviewItems(this.prisma);
-    const latestClosedMonth = await this.prisma.accountingPeriodClose.findFirst({
-      where: { periodType: 'MONTH' },
-      orderBy: { closedAt: 'desc' },
-      select: { periodKey: true },
-    });
+    const pendingInboxItems = await countAccountingInboxReviewItems(
+      this.prisma,
+    );
+    const latestClosedMonth =
+      await this.prisma.accountingPeriodClose.findFirst({
+        where: { periodType: 'MONTH' },
+        orderBy: { closedAt: 'desc' },
+        select: { periodKey: true },
+      });
 
     return {
       from,
