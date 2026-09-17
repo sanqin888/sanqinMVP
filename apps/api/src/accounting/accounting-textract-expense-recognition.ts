@@ -16,6 +16,8 @@ const TEXTRACT_MAX_SYNC_BYTES = 9_500_000;
 const TEXTRACT_MAX_IMAGE_DIMENSION = 9_000;
 const TEXTRACT_IMAGE_QUALITY = 92;
 const TEXTRACT_FALLBACK_IMAGE_QUALITY = 82;
+const TEXTRACT_MAX_LINE_ITEM_HINTS = 50;
+const TEXTRACT_MAX_LINE_ITEM_DESCRIPTION_CHARS = 240;
 
 export const ACCOUNTING_TEXTRACT_EXPENSE_POLICY = {
   timeoutMs: TEXTRACT_TIMEOUT_MS,
@@ -44,6 +46,12 @@ export type AccountingTextractCurrencySuggestion = {
   ambiguous: boolean;
 };
 
+export type AccountingTextractLineItemHint = {
+  description: string | null;
+  priceCents: number;
+  confidence: number | null;
+};
+
 export type AccountingTextractExpenseEvidence = {
   provider: 'AWS_TEXTRACT_ANALYZE_EXPENSE';
   modelVersion: string | null;
@@ -65,6 +73,8 @@ export type AccountingTextractExpenseEvidence = {
   lineItemPriceCount: number;
   lineItemPriceSumCents: number | null;
   lineItemsReconcileToSubtotal: boolean | null;
+  lineItemHints: AccountingTextractLineItemHint[];
+  lineItemHintsTruncated: boolean;
   submittedDocument: {
     kind: 'IMAGE' | 'PDF';
     cropApplied: boolean;
@@ -171,19 +181,21 @@ function mapTextractExpenseResponse(
   );
   const lineItems =
     document.LineItemGroups?.flatMap((group) => group.LineItems ?? []) ?? [];
-  const lineItemPrices = lineItems
+  const parsedLineItemHints = lineItems
     .map((lineItem) =>
-      lineItem.LineItemExpenseFields?.find(
-        (field) => normalizedFieldType(field) === 'PRICE',
-      ),
+      extractTextractLineItemHint(lineItem.LineItemExpenseFields ?? []),
     )
-    .map((field) =>
-      parseTextractMoneyCents(field?.ValueDetection?.Text ?? null),
-    )
-    .filter((value): value is number => value != null);
+    .filter((hint): hint is AccountingTextractLineItemHint => Boolean(hint));
+  const lineItemPrices = parsedLineItemHints.map((hint) => hint.priceCents);
   const lineItemPriceSumCents = lineItemPrices.length
     ? lineItemPrices.reduce((sum, value) => sum + value, 0)
     : null;
+  const lineItemHints = parsedLineItemHints.slice(
+    0,
+    TEXTRACT_MAX_LINE_ITEM_HINTS,
+  );
+  const lineItemHintsTruncated =
+    parsedLineItemHints.length > TEXTRACT_MAX_LINE_ITEM_HINTS;
 
   const extraction: AccountingPdfExtraction = {
     ...generic,
@@ -223,6 +235,8 @@ function mapTextractExpenseResponse(
         subtotalCents != null && lineItemPriceSumCents != null
           ? subtotalCents === lineItemPriceSumCents
           : null,
+      lineItemHints,
+      lineItemHintsTruncated,
       submittedDocument,
     },
   };
@@ -380,6 +394,35 @@ function extractTextractDocumentText(
 
 function normalizedFieldType(field: { Type?: { Text?: string } }): string {
   return field.Type?.Text?.trim().toUpperCase() ?? '';
+}
+
+function extractTextractLineItemHint(
+  fields: Array<{
+    Type?: { Text?: string };
+    ValueDetection?: { Text?: string; Confidence?: number };
+  }>,
+): AccountingTextractLineItemHint | null {
+  const priceField = fields.find(
+    (field) => normalizedFieldType(field) === 'PRICE',
+  );
+  const priceCents = parseTextractMoneyCents(
+    priceField?.ValueDetection?.Text ?? null,
+  );
+  if (priceCents == null) return null;
+
+  const descriptionField =
+    fields.find((field) => normalizedFieldType(field) === 'ITEM') ??
+    fields.find((field) => normalizedFieldType(field) === 'DESCRIPTION');
+  const rawDescription = descriptionField?.ValueDetection?.Text?.trim() ?? '';
+  const description = rawDescription
+    ? rawDescription.slice(0, TEXTRACT_MAX_LINE_ITEM_DESCRIPTION_CHARS)
+    : null;
+
+  return {
+    description,
+    priceCents,
+    confidence: priceField?.ValueDetection?.Confidence ?? null,
+  };
 }
 
 function selectSummaryField(

@@ -92,13 +92,27 @@ describe('Accounting Textract expense recognition', () => {
                 LineItemGroupIndex: 1,
                 LineItems: [
                   {
-                    LineItemExpenseFields: [summaryField('PRICE', '11.32')],
+                    LineItemExpenseFields: [
+                      summaryField('ITEM', 'Meat the', 98.5, null),
+                      summaryField('PRICE', '11.32', 99.1),
+                    ],
                   },
                   {
-                    LineItemExpenseFields: [summaryField('PRICE', '23.07')],
+                    LineItemExpenseFields: [
+                      summaryField('ITEM', 'Meat', 97.5, null),
+                      summaryField('PRICE', '23.07', 99.2),
+                    ],
                   },
                   {
-                    LineItemExpenseFields: [summaryField('PRICE', '7.99')],
+                    LineItemExpenseFields: [
+                      summaryField(
+                        'ITEM',
+                        'New Zealand Golden Kiwi',
+                        96.5,
+                        null,
+                      ),
+                      summaryField('PRICE', '7.99', 98.8),
+                    ],
                   },
                 ],
               },
@@ -155,6 +169,16 @@ describe('Accounting Textract expense recognition', () => {
         lineItemPriceCount: 3,
         lineItemPriceSumCents: 4238,
         lineItemsReconcileToSubtotal: true,
+        lineItemHintsTruncated: false,
+        lineItemHints: [
+          { description: 'Meat the', priceCents: 1132, confidence: 99.1 },
+          { description: 'Meat', priceCents: 2307, confidence: 99.2 },
+          {
+            description: 'New Zealand Golden Kiwi',
+            priceCents: 799,
+            confidence: 98.8,
+          },
+        ],
       }),
     );
     expect(result.evidence.summaryFields.amountPaid?.text).toBe('12.38');
@@ -231,6 +255,52 @@ describe('Accounting Textract expense recognition', () => {
     expect(result.extraction.totalCents).toBe(10535);
     expect(result.evidence.lineItemPriceSumCents).toBe(10836);
     expect(result.evidence.lineItemsReconcileToSubtotal).toBe(false);
+    expect(result.evidence.lineItemHints).toEqual([
+      { description: null, priceCents: 5000, confidence: 99 },
+      { description: null, priceCents: 5836, confidence: 99 },
+    ]);
+  });
+
+  it('bounds persisted line-item hints without changing reconciliation', async () => {
+    const input = await receiptImage();
+    const result = await recognizeAccountingExpenseImageWithTextract(
+      input,
+      () =>
+        Promise.resolve({
+          $metadata: {},
+          ExpenseDocuments: [
+            {
+              SummaryFields: [
+                summaryField('SUBTOTAL', '51.00', 99.9, 'CAD'),
+                summaryField('TAX', '0.00', 99.9, 'CAD'),
+                summaryField('TOTAL', '51.00', 99.9, 'CAD'),
+              ],
+              LineItemGroups: [
+                {
+                  LineItems: Array.from({ length: 51 }, (_, index) => ({
+                    LineItemExpenseFields: [
+                      summaryField('ITEM', `Item ${index + 1}`, 99, null),
+                      summaryField('PRICE', '1.00', 99, 'CAD'),
+                    ],
+                  })),
+                },
+              ],
+              Blocks: [
+                line('Sep 15 2026', 0.1),
+                line('Sub Total 51.00', 0.5),
+                line('HST 0.00', 0.55),
+                line('Total 51.00', 0.6),
+              ],
+            },
+          ],
+        } as AnalyzeExpenseCommandOutput),
+    );
+
+    expect(result.evidence.lineItemPriceCount).toBe(51);
+    expect(result.evidence.lineItemPriceSumCents).toBe(5100);
+    expect(result.evidence.lineItemsReconcileToSubtotal).toBe(true);
+    expect(result.evidence.lineItemHints).toHaveLength(50);
+    expect(result.evidence.lineItemHintsTruncated).toBe(true);
   });
 
   it('does not choose a conflicting Textract date solely by provider confidence', async () => {
