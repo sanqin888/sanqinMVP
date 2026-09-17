@@ -138,6 +138,12 @@ export type AccountingInboxParseResult = {
     lineItemCount?: number;
     lineItemPriceCount?: number;
     lineItemsReconcileToSubtotal?: boolean | null;
+    lineItemHints?: Array<{
+      description?: string | null;
+      priceCents: number;
+      confidence?: number | null;
+    }>;
+    lineItemHintsTruncated?: boolean;
   };
   providerParserPending?: boolean;
   csvStructureUnrecognized?: boolean;
@@ -296,6 +302,48 @@ export type AccountingExpenseReviewRow = {
   amount: string;
   tax: string;
 };
+
+export type AccountingReviewLineItemHint = {
+  description: string | null;
+  priceCents: number;
+  confidence: number | null;
+};
+
+export function reconciledTextractLineItemHints(
+  result: AccountingInboxParseResult,
+): AccountingReviewLineItemHint[] {
+  const evidence = result.textractEvidence;
+  if (
+    !evidence ||
+    evidence.lineItemsReconcileToSubtotal !== true ||
+    evidence.lineItemHintsTruncated === true
+  ) {
+    return [];
+  }
+
+  const hints = (evidence.lineItemHints ?? [])
+    .filter((hint) => Number.isInteger(hint.priceCents) && hint.priceCents > 0)
+    .map((hint) => ({
+      description: hint.description?.trim() || null,
+      priceCents: hint.priceCents,
+      confidence: hint.confidence ?? null,
+    }));
+  if (!hints.length) return [];
+  if (
+    evidence.lineItemPriceCount != null &&
+    evidence.lineItemPriceCount !== hints.length
+  ) {
+    return [];
+  }
+
+  const subtotalCents = result.subtotalCents;
+  if (subtotalCents == null) return [];
+  const hintTotalCents = hints.reduce(
+    (sum, hint) => sum + hint.priceCents,
+    0,
+  );
+  return hintTotalCents === subtotalCents ? hints : [];
+}
 
 export const money = (cents: number | null | undefined) =>
   `$${((cents ?? 0) / 100).toFixed(2)}`;
