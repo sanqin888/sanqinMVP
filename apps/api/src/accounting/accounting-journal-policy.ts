@@ -1,7 +1,7 @@
 import {
   AccountingJournalEntryKind,
   AccountingJournalSource,
-} from '@prisma/client';
+} from './accounting-contracts';
 import { createHash } from 'node:crypto';
 
 export type AccountingJournalLineInput = {

@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import {
   AccountingAccountClass,
   AccountingArtifactKind,
@@ -16,8 +17,7 @@ import {
   AccountingInboxStatus,
   AccountingSourceType,
   AccountingTxType,
-  Prisma,
-} from '@prisma/client';
+} from './accounting-contracts';
 import { createId } from '@paralleldrive/cuid2';
 import { PrismaService } from '../prisma/prisma.service';
 import { runSerializableAccountingWrite } from './accounting-atomic-write';

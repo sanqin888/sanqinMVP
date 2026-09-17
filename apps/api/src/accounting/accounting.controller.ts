@@ -18,6 +18,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import {
+  AccountingAccountType,
   AccountingDocumentStatus,
   AccountingFinancialProvider,
   AccountingInboxClassification,
@@ -25,7 +26,7 @@ import {
   AccountingProviderRecognitionMatchMode,
   AccountingSourceType,
   AccountingTxType,
-} from '@prisma/client';
+} from './accounting-contracts';
 import type { Request, Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import * as fs from 'fs';
@@ -676,7 +677,7 @@ export class AccountingController {
     @Body()
     body: {
       name: string;
-      type: 'CASH' | 'BANK' | 'PLATFORM_WALLET';
+      type: AccountingAccountType;
       currency?: string;
     },
   ) {

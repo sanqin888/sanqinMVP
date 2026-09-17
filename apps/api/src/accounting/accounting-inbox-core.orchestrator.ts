@@ -1,4 +1,4 @@
-import { AccountingFinancialProvider } from '@prisma/client';
+import { AccountingFinancialProvider } from './accounting-contracts';
 import { runSerializableAccountingWrite } from './accounting-atomic-write';
 import {
   AccountingInboxPolicyError,

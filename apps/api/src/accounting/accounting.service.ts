@@ -8,14 +8,14 @@ import {
 } from '@nestjs/common';
 import { createId } from '@paralleldrive/cuid2';
 import { DateTime } from 'luxon';
+import { Prisma } from '@prisma/client';
 import {
   AccountingDocumentStatus,
   AccountingJournalEntryKind,
   AccountingJournalSource,
   AccountingSourceType,
   AccountingTxType,
-  Prisma,
-} from '@prisma/client';
+} from './accounting-contracts';
 import { PrismaService } from '../prisma/prisma.service';
 import { runSerializableAccountingWrite } from './accounting-atomic-write';
 import {

@@ -4,7 +4,7 @@ import {
   AccountingFinancialPostingTreatment,
   AccountingFinancialProvider,
   AccountingFinancialTaxRole,
-} from '@prisma/client';
+} from './accounting-contracts';
 
 export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_NAME =
   'accounting-provider-financial';

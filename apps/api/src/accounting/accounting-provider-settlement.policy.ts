@@ -6,7 +6,7 @@ import {
   AccountingFinancialProvider,
   AccountingJournalEntryKind,
   AccountingJournalSource,
-} from '@prisma/client';
+} from './accounting-contracts';
 import { DateTime } from 'luxon';
 import type {
   AccountingJournalCreateInput,

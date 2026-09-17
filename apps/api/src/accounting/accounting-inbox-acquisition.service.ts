@@ -11,7 +11,7 @@ import {
   AccountingInboxStatus,
   AccountingInboxTrustDecision,
   AccountingParseStatus,
-} from '@prisma/client';
+} from './accounting-contracts';
 import { getAccountingUploadsDir } from './accounting-storage-path';
 import {
   extractAccountingPdf,

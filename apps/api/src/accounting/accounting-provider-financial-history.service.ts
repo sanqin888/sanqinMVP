@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { AccountingFinancialProvider } from '@prisma/client';
+import { AccountingFinancialProvider } from './accounting-contracts';
 import {
   UBER_EATS_REPORTING,
   type UberEatsReportingPort,

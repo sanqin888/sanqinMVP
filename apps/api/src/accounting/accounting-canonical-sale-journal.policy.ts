@@ -1,7 +1,7 @@
 import {
   AccountingJournalEntryKind,
   AccountingJournalSource,
-} from '@prisma/client';
+} from './accounting-contracts';
 import type { OrderFinancialFactV1 } from '../orders/public-api';
 import type {
   AccountingJournalCreateInput,

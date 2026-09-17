@@ -1,7 +1,7 @@
 import {
   AccountingJournalEntryKind,
   AccountingJournalSource,
-} from '@prisma/client';
+} from './accounting-contracts';
 
 import type { LoyaltyFinancialFactV1 } from '../loyalty/public-api';
 import type {
