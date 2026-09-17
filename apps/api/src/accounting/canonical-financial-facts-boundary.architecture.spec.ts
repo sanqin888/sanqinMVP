@@ -362,9 +362,7 @@ describe('Phase 9 canonical financial facts boundary', () => {
     );
     expect(accountingControllerSources).not.toContain("@Post('tx')");
     expect(accountingControllerSources).not.toContain("@Get('tx')");
-    expect(accountingControllerSources).not.toContain(
-      "@Put('tx/:txStableId')",
-    );
+    expect(accountingControllerSources).not.toContain("@Put('tx/:txStableId')");
     expect(accountingControllerSources).not.toContain(
       "@Delete('tx/:txStableId')",
     );

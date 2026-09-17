@@ -1,9 +1,4 @@
-import {
-  existsSync,
-  readdirSync,
-  readFileSync,
-  statSync,
-} from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 
 const ACCOUNTING_ROOT = resolve(__dirname);
@@ -107,9 +102,7 @@ function controllerFiles(root = ACCOUNTING_ROOT): string[] {
       continue;
     }
     if (name.endsWith('.controller.ts')) {
-      controllers.push(
-        relative(ACCOUNTING_ROOT, path).replaceAll('\\', '/'),
-      );
+      controllers.push(relative(ACCOUNTING_ROOT, path).replaceAll('\\', '/'));
     }
   }
   return controllers.sort();
@@ -148,9 +141,7 @@ describe('Phase 9 Slice 8A-5 Accounting controller vertical boundary', () => {
     )) {
       const source = read(name);
       expect(source).toContain("@Controller('accounting')");
-      expect(source).toContain(
-        '@UseGuards(SessionAuthGuard, RolesGuard)',
-      );
+      expect(source).toContain('@UseGuards(SessionAuthGuard, RolesGuard)');
       expect(source).toContain("@Roles('ADMIN', 'ACCOUNTANT')");
       expect(source).toContain("from '../auth/public-api'");
       expect(source).not.toContain('@prisma/client');
@@ -177,8 +168,7 @@ describe('Phase 9 Slice 8A-5 Accounting controller vertical boundary', () => {
     for (const name of Object.keys(EXPECTED_CONTROLLER_CAPABILITIES)) {
       const source = read(name);
       const className =
-        source.match(/export class (Accounting[A-Za-z]+Controller)/)?.[1] ??
-        '';
+        source.match(/export class (Accounting[A-Za-z]+Controller)/)?.[1] ?? '';
       expect(className).not.toBe('');
       expect(module).toContain(className);
     }

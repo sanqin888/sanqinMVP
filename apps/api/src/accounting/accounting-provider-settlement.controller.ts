@@ -1,11 +1,4 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Post,
-  Query,
-  UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { Roles, RolesGuard, SessionAuthGuard } from '../auth/public-api';
 import { parseAccountingFinancialProvider } from './accounting-controller-support';
 import { AccountingProviderSettlementExecutionService } from './accounting-provider-settlement-execution.service';
