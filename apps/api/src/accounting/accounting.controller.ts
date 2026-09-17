@@ -24,7 +24,6 @@ import {
   AccountingInboxClassification,
   AccountingInboxStatus,
   AccountingProviderRecognitionMatchMode,
-  AccountingSourceType,
   AccountingTxType,
 } from './accounting-contracts';
 import type { Request, Response } from 'express';
@@ -492,7 +491,7 @@ export class AccountingController {
     @Query('to') to?: string,
     @Query('groupBy') groupBy?: 'month' | 'quarter' | 'year',
   ) {
-    return this.accountingService.pnlReport({ from, to, groupBy });
+    return this.reports.pnlReport({ from, to, groupBy });
   }
 
   @Get('journal/canonical-sales/replay-preview')
@@ -619,12 +618,12 @@ export class AccountingController {
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
-    return this.accountingService.accountBalanceReport(from, to);
+    return this.reports.accountBalanceReport(from, to);
   }
 
   @Get('report/annual/:year')
   async annualReport(@Param('year') year: string) {
-    return this.accountingService.annualReport(Number(year));
+    return this.reports.annualReport(Number(year));
   }
 
   @Get('report/cashflow')
@@ -632,7 +631,7 @@ export class AccountingController {
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
-    return this.accountingService.cashflowOverview({ from, to });
+    return this.reports.cashflowOverview({ from, to });
   }
 
   @Get('report/slice')
@@ -661,12 +660,12 @@ export class AccountingController {
     @Query('from') from: string | undefined,
     @Query('to') to: string | undefined,
     @Query('categoryStableId') categoryStableId: string | undefined,
-    @Query('source') source: AccountingSourceType | undefined,
+    @Query('source') source: string | undefined,
     @Query('keyword') keyword: string | undefined,
     @Req() req: AuthedAccountingRequest,
     @Res() res: Response,
   ) {
-    const csv = await this.accountingService.exportTxCsv(
+    const csv = await this.reports.exportTxCsv(
       { from, to, categoryStableId, source, keyword },
       this.requireOperatorUserId(req),
     );
@@ -689,7 +688,7 @@ export class AccountingController {
     @Req() req: AuthedAccountingRequest,
     @Res() res: Response,
   ) {
-    const csv = await this.accountingService.exportPnlTemplate(
+    const csv = await this.reports.exportPnlTemplate(
       template,
       { from, to, groupBy },
       this.requireOperatorUserId(req),
@@ -713,7 +712,7 @@ export class AccountingController {
     @Req() req: AuthedAccountingRequest,
     @Res() res: Response,
   ) {
-    const pdfBuffer = await this.accountingService.exportPnlPdf(
+    const pdfBuffer = await this.reports.exportPnlPdf(
       template,
       { from, to, groupBy },
       this.requireOperatorUserId(req),

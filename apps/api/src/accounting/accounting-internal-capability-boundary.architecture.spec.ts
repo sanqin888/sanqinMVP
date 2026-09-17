@@ -83,6 +83,34 @@ describe('Accounting internal capability boundary', () => {
     expect(source).not.toMatch(/\.accountingJournal(?:Entry|Line)\./);
   });
 
+  it('keeps 8A-4 canonical financial reports on the reports capability while dimension projection stays separate', () => {
+    const broad = read('accounting.service.ts');
+    const reports = read('accounting-financial-reports.service.ts');
+    const controller = read('accounting.controller.ts');
+
+    for (const method of [
+      'pnlReport',
+      'exportTxCsv',
+      'exportPnlTemplate',
+      'exportPnlPdf',
+      'accountBalanceReport',
+      'annualReport',
+      'cashflowOverview',
+    ]) {
+      expect(reports).toContain(`async ${method}(`);
+      expect(broad).not.toContain(`async ${method}(`);
+    }
+    expect(reports).toContain('accountingJournalEntry.findMany');
+    expect(reports).toContain('AccountingDocumentStatus.CONFIRMED');
+    expect(reports).not.toContain('ORDER_REPORTING_FACTS_READER');
+    expect(broad).toContain('ORDER_REPORTING_FACTS_READER');
+    expect(broad).toContain('readPaidTotalDimensionsForRange');
+    expect(controller).toContain('this.reports.pnlReport');
+    expect(controller).toContain('this.reports.accountBalanceReport');
+    expect(controller).toContain('this.reports.cashflowOverview');
+    expect(controller).toContain('this.accountingService.dimensionSlice');
+  });
+
   it('shares the existing Prisma composition seam instead of widening Runtime/Data import debt', () => {
     const module = read('accounting.module.ts');
     const period = read('accounting-period.service.ts');

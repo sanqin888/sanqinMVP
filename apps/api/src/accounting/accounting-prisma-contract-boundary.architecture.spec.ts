@@ -30,6 +30,8 @@ const PRISMA_FREE_BOUNDARIES = [
   'accounting-provider-settlement-execution.service.ts',
   'accounting-chart.service.ts',
   'accounting-inbox.service.ts',
+  'accounting-financial-report-policy.ts',
+  'accounting-financial-report-export.ts',
 ] as const;
 
 const prismaNamedImport = (source: string): string =>
@@ -53,7 +55,6 @@ describe('Phase 9 Slice 7-C Accounting Prisma contract boundary', () => {
 
   it('keeps Accounting persistence services on owner enums while persistence mechanics retain only the Prisma namespace', () => {
     for (const file of [
-      'accounting.service.ts',
       'accounting-expense.service.ts',
       'accounting-financial-reports.service.ts',
       'accounting-provider-settlement-query.service.ts',
@@ -65,5 +66,11 @@ describe('Phase 9 Slice 7-C Accounting Prisma contract boundary', () => {
       expect(prismaImport).not.toContain('Accounting');
       expect(source).toContain("from './accounting-contracts'");
     }
+
+    const remainingBroad = read('accounting.service.ts');
+    const broadPrismaImport = prismaNamedImport(remainingBroad);
+    expect(broadPrismaImport).toContain('Prisma');
+    expect(broadPrismaImport).not.toContain('Accounting');
+    expect(remainingBroad).not.toContain("from './accounting-contracts'");
   });
 });

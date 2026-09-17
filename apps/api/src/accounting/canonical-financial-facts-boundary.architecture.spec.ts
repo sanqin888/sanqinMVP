@@ -324,6 +324,9 @@ describe('Phase 9 canonical financial facts boundary', () => {
       file(ACCOUNTING_ROOT, 'accounting.controller.ts')?.source ?? '';
     const accountingExpenseService =
       file(ACCOUNTING_ROOT, 'accounting-expense.service.ts')?.source ?? '';
+    const accountingFinancialReportsService =
+      file(ACCOUNTING_ROOT, 'accounting-financial-reports.service.ts')
+        ?.source ?? '';
 
     expect(accountingTransaction).not.toMatch(/\borderId\b/);
     expect(accountingTransaction).toContain('documentId');
@@ -347,8 +350,28 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(accountingService).not.toContain('async deleteTx(');
     expect(accountingService).not.toContain('type UpsertTxDto');
     expect(accountingService).not.toContain('ACCOUNTING_TX_PUBLIC_SELECT');
-    expect(accountingService).toContain('async pnlReport(');
-    expect(accountingService).toContain('async exportTxCsv(');
+    for (const method of [
+      'pnlReport',
+      'exportTxCsv',
+      'exportPnlTemplate',
+      'exportPnlPdf',
+      'accountBalanceReport',
+      'annualReport',
+      'cashflowOverview',
+    ]) {
+      expect(accountingService).not.toContain(`async ${method}(`);
+      expect(accountingFinancialReportsService).toContain(`async ${method}(`);
+    }
+    expect(accountingFinancialReportsService).toContain(
+      'accountingJournalEntry.findMany',
+    );
+    expect(accountingFinancialReportsService).toContain(
+      'accountingTransaction.findMany',
+    );
+    expect(accountingFinancialReportsService).toContain(
+      'AccountingDocumentStatus.CONFIRMED',
+    );
+    expect(accountingService).toContain('async dimensionSlice(');
     expect(accountingJournalService).not.toContain(
       'assertNoLegacyOrderRevenueAccrual',
     );
