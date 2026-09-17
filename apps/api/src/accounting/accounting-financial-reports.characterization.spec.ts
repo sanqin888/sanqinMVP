@@ -166,8 +166,8 @@ describe('AccountingFinancialReportsService canonical fact characterization', ()
       },
     };
     const period = {
-      clampAccountingFromDate: jest.fn(
-        async (value: Date | undefined) => value,
+      clampAccountingFromDate: jest.fn((value: Date | undefined) =>
+        Promise.resolve(value),
       ),
       getBusinessTimezone: jest.fn().mockResolvedValue('America/Toronto'),
       toPeriodKey: jest.fn().mockReturnValue('2026-06'),
@@ -178,11 +178,7 @@ describe('AccountingFinancialReportsService canonical fact characterization', ()
       period as never,
     );
 
-    const report = await service.pnlReport({
-      from: '2026-06-01',
-      to: '2026-06-30',
-      groupBy: 'month',
-    });
+    const report = await service.pnlReport({ groupBy: 'month' });
 
     expect(report.summary).toEqual({
       incomeCents: 1200,
@@ -206,19 +202,19 @@ describe('AccountingFinancialReportsService canonical fact characterization', ()
     );
     expect(prisma.accountingJournalEntry.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({
+        where: {
           deletedAt: null,
           source: { not: AccountingJournalSource.EXPENSE_DOCUMENT },
-        }),
+        },
       }),
     );
     expect(prisma.accountingTransaction.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({
+        where: {
           deletedAt: null,
           type: AccountingTxType.EXPENSE,
           document: { status: AccountingDocumentStatus.CONFIRMED },
-        }),
+        },
       }),
     );
   });
@@ -352,9 +348,7 @@ describe('AccountingFinancialReportsService canonical fact characterization', ()
             },
             expenseDocument: {
               memo: 'operating supplies',
-              transactions: [
-                { memo: null, category: { name: '厨房用品' } },
-              ],
+              transactions: [{ memo: null, category: { name: '厨房用品' } }],
             },
           },
           {
@@ -365,17 +359,15 @@ describe('AccountingFinancialReportsService canonical fact characterization', ()
             },
             expenseDocument: {
               memo: 'platform deduction',
-              transactions: [
-                { memo: null, category: { name: '平台佣金' } },
-              ],
+              transactions: [{ memo: null, category: { name: '平台佣金' } }],
             },
           },
         ]),
       },
     };
     const period = {
-      clampAccountingFromDate: jest.fn(
-        async (value: Date | undefined) => value,
+      clampAccountingFromDate: jest.fn((value: Date | undefined) =>
+        Promise.resolve(value),
       ),
     };
     const service = new AccountingFinancialReportsService(
@@ -383,14 +375,11 @@ describe('AccountingFinancialReportsService canonical fact characterization', ()
       period as never,
     );
 
-    const report = await service.cashflowOverview({
-      from: '2026-06-01',
-      to: '2026-06-30',
-    });
+    const report = await service.cashflowOverview({});
 
     expect(report).toEqual({
-      from: '2026-06-01',
-      to: '2026-06-30',
+      from: null,
+      to: null,
       operatingCents: 1830,
       investingCents: -500,
       financingCents: 1000,
@@ -398,7 +387,7 @@ describe('AccountingFinancialReportsService canonical fact characterization', ()
     });
     expect(prisma.accountingJournalEntry.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({
+        where: {
           deletedAt: null,
           source: { not: AccountingJournalSource.EXPENSE_DOCUMENT },
           kind: {
@@ -407,18 +396,18 @@ describe('AccountingFinancialReportsService canonical fact characterization', ()
               AccountingJournalEntryKind.OPENING_BALANCE,
             ],
           },
-        }),
+        },
       }),
     );
     expect(
       prisma.accountingExpensePaymentAllocation.findMany,
     ).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({
-          expenseDocument: expect.objectContaining({
+        where: {
+          expenseDocument: {
             status: AccountingDocumentStatus.CONFIRMED,
-          }),
-        }),
+          },
+        },
       }),
     );
   });

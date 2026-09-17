@@ -325,8 +325,8 @@ describe('Phase 9 canonical financial facts boundary', () => {
     const accountingExpenseService =
       file(ACCOUNTING_ROOT, 'accounting-expense.service.ts')?.source ?? '';
     const accountingFinancialReportsService =
-      file(ACCOUNTING_ROOT, 'accounting-financial-reports.service.ts')?.source ??
-      '';
+      file(ACCOUNTING_ROOT, 'accounting-financial-reports.service.ts')
+        ?.source ?? '';
 
     expect(accountingTransaction).not.toMatch(/\borderId\b/);
     expect(accountingTransaction).toContain('documentId');

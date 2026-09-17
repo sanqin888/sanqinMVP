@@ -118,7 +118,9 @@ export function renderAccountingPnlCsv(
   } else {
     lines.push(['metric', 'amount'].join(','));
     lines.push(
-      ['收入', formatMoney(report.summary.incomeCents)].map(escapeCsv).join(','),
+      ['收入', formatMoney(report.summary.incomeCents)]
+        .map(escapeCsv)
+        .join(','),
     );
     lines.push(
       ['费用', formatMoney(report.summary.expenseCents)]

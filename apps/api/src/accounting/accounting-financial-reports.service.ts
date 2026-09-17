@@ -51,7 +51,8 @@ export class AccountingFinancialReportsService {
     >();
 
     for (const fact of projection.facts) {
-      if (fact.type === AccountingTxType.INCOME) incomeCents += fact.amountCents;
+      if (fact.type === AccountingTxType.INCOME)
+        incomeCents += fact.amountCents;
       if (fact.type === AccountingTxType.EXPENSE) {
         expenseCents += fact.amountCents;
         const previous = expenseCategories.get(fact.categoryStableId) ?? {
@@ -153,8 +154,10 @@ export class AccountingFinancialReportsService {
         adjustment: 0,
         transfer: 0,
       };
-      if (fact.type === AccountingTxType.INCOME) period.income += fact.amountCents;
-      if (fact.type === AccountingTxType.EXPENSE) period.expense += fact.amountCents;
+      if (fact.type === AccountingTxType.INCOME)
+        period.income += fact.amountCents;
+      if (fact.type === AccountingTxType.EXPENSE)
+        period.expense += fact.amountCents;
       if (fact.type === AccountingTxType.ADJUSTMENT) {
         period.adjustment += fact.amountCents;
       }
