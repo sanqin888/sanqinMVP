@@ -317,7 +317,8 @@ export async function finalizeAccountingImageOriginalPurgeInTx(
       action: 'IMAGE_ORIGINAL_BINARY_PURGED',
       entityType: 'ACCOUNTING_SOURCE_ARTIFACT',
       entityId: context.artifact.artifactStableId,
-      operatorActorRef: retention.acceptedByUserStableId ?? operatorUserStableId,
+      operatorActorRef:
+        retention.acceptedByUserStableId ?? operatorUserStableId,
       beforeJson: {
         state: AccountingArtifactBinaryRetentionState.PURGE_PENDING,
         originalContentHash: context.artifact.contentHash,
