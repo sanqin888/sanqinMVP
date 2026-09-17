@@ -85,6 +85,7 @@ describe('AccountingService double-entry journal characterization', () => {
     const service = new AccountingService(
       prisma as never,
       brandStoreConfigReader as never,
+      {} as never,
     );
     return { service, prisma };
   };

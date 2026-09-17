@@ -300,7 +300,11 @@ const makeService = () => {
     }),
   };
   return {
-    service: new AccountingService(prisma as never, storeConfig as never),
+    service: new AccountingService(
+      prisma as never,
+      storeConfig as never,
+      {} as never,
+    ),
     tx,
     transaction,
   };
