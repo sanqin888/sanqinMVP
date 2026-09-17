@@ -13,7 +13,11 @@ import { AccountingInboxAcquisitionService } from './accounting-inbox-acquisitio
 import { AccountingImageRetentionService } from './accounting-image-retention.service';
 import { AccountingProviderFinancialService } from './accounting-provider-financial.service';
 import { AccountingProviderFinancialHistoryService } from './accounting-provider-financial-history.service';
-import { AccountingOperationsService } from './accounting-operations.service';
+import { AccountingChartService } from './accounting-chart.service';
+import { AccountingExpenseService } from './accounting-expense.service';
+import { AccountingFinancialReportsService } from './accounting-financial-reports.service';
+import { AccountingInboxService } from './accounting-inbox.service';
+import { AccountingProviderSettlementQueryService } from './accounting-provider-settlement-query.service';
 import { AccountingCanonicalSalePostingService } from './accounting-canonical-sale-posting.service';
 import { AccountingCanonicalSaleReplayService } from './accounting-canonical-sale-replay.service';
 import { AccountingCanonicalChangePreviewService } from './accounting-canonical-change-preview.service';
@@ -53,7 +57,11 @@ import { PaymentFinancialFactsModule } from '../payments/public-api';
     AccountingCanonicalChangeExecutionService,
     AccountingProviderSettlementPreviewService,
     AccountingProviderSettlementExecutionService,
-    AccountingOperationsService,
+    AccountingChartService,
+    AccountingExpenseService,
+    AccountingFinancialReportsService,
+    AccountingInboxService,
+    AccountingProviderSettlementQueryService,
     AccountingProviderFinancialService,
     AccountingInboxAcquisitionService,
     AccountingImageRetentionService,

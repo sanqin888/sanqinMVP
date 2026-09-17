@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const ACCOUNTING_ROOT = resolve(__dirname);
@@ -25,12 +25,47 @@ describe('Accounting internal capability boundary', () => {
     }
   });
 
-  it('keeps AccountingOperationsService on the narrow Period capability', () => {
-    const source = read('accounting-operations.service.ts');
+  it('removes the AccountingOperationsService facade and keeps 8A-2 capabilities explicit', () => {
+    expect(
+      existsSync(resolve(ACCOUNTING_ROOT, 'accounting-operations.service.ts')),
+    ).toBe(false);
 
-    expect(source).toContain('AccountingPeriodService');
-    expect(source).not.toContain("from './accounting.service'");
-    expect(source).not.toContain('AccountingService');
+    const module = read('accounting.module.ts');
+    for (const capability of [
+      'AccountingChartService',
+      'AccountingExpenseService',
+      'AccountingInboxService',
+      'AccountingProviderSettlementQueryService',
+      'AccountingFinancialReportsService',
+    ]) {
+      expect(module).toContain(capability);
+    }
+    expect(module).not.toContain('AccountingOperationsService');
+  });
+
+  it('routes 8A-2 operational consumers through the explicit narrow capabilities', () => {
+    for (const name of [
+      'accounting-inbox-acquisition.service.ts',
+      'accounting-image-retention.service.ts',
+      'accounting-gmail-ingest.service.ts',
+      'accounting-provider-financial.service.ts',
+    ]) {
+      const source = read(name);
+      expect(source).toContain('AccountingInboxService');
+      expect(source).not.toContain('AccountingOperationsService');
+      expect(source).not.toContain("from './accounting.service'");
+    }
+
+    const expense = read('accounting-expense.service.ts');
+    expect(expense).toContain('AccountingPeriodService');
+    expect(expense).not.toContain('AccountingOperationsService');
+    expect(expense).not.toContain("from './accounting.service'");
+
+    const settlement = read('accounting-provider-settlement-preview.service.ts');
+    expect(settlement).toContain('AccountingProviderSettlementQueryService');
+    expect(settlement).toContain('AccountingChartService');
+    expect(settlement).not.toContain('AccountingOperationsService');
+    expect(settlement).not.toContain("from './accounting.service'");
   });
 
   it('keeps Period and Journal ownership out of the remaining broad AccountingService', () => {
@@ -51,11 +86,27 @@ describe('Accounting internal capability boundary', () => {
     const period = read('accounting-period.service.ts');
     const journal = read('accounting-journal.service.ts');
     const broad = read('accounting.service.ts');
+    const chart = read('accounting-chart.service.ts');
+    const expense = read('accounting-expense.service.ts');
+    const reports = read('accounting-financial-reports.service.ts');
+    const inbox = read('accounting-inbox.service.ts');
+    const settlementQuery = read(
+      'accounting-provider-settlement-query.service.ts',
+    );
 
     expect(module).toContain(
       '{ provide: ACCOUNTING_DB, useExisting: PrismaService }',
     );
-    for (const source of [period, journal, broad]) {
+    for (const source of [
+      period,
+      journal,
+      broad,
+      chart,
+      expense,
+      reports,
+      inbox,
+      settlementQuery,
+    ]) {
       expect(source).toContain('ACCOUNTING_DB');
       expect(source).not.toContain('../prisma/prisma.service');
     }

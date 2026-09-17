@@ -8,7 +8,7 @@ import {
   AccountingInboxStatus,
   AccountingInboxTrustDecision,
 } from '@prisma/client';
-import { AccountingOperationsService } from './accounting-operations.service';
+import { AccountingInboxService } from './accounting-inbox.service';
 
 const input = {
   artifactStableId: 'acctart_corrected',
@@ -29,7 +29,7 @@ const input = {
   ],
 };
 
-describe('AccountingOperationsService unified Inbox characterization', () => {
+describe('AccountingInboxService unified Inbox characterization', () => {
   it('retries one corrected-statement revision race after a P2002 conflict', async () => {
     const artifact = {
       id: 'artifact-db-corrected',
@@ -87,10 +87,7 @@ describe('AccountingOperationsService unified Inbox characterization', () => {
         (work: (transactionClient: typeof tx) => Promise<unknown>) => work(tx),
       ),
     };
-    const service = new AccountingOperationsService(
-      prisma as never,
-      {} as never,
-    );
+    const service = new AccountingInboxService(prisma as never);
 
     const result = await service.recordProviderFinancialDocument(input);
 
@@ -132,10 +129,7 @@ describe('AccountingOperationsService unified Inbox characterization', () => {
         (work: (transactionClient: typeof tx) => Promise<unknown>) => work(tx),
       ),
     };
-    const service = new AccountingOperationsService(
-      prisma as never,
-      {} as never,
-    );
+    const service = new AccountingInboxService(prisma as never);
 
     await service.registerInboxArtifact({
       acquisitionMode: AccountingArtifactAcquisitionMode.EMAIL,

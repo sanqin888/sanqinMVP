@@ -5,7 +5,7 @@ import {
   AccountingInboxAcquisitionService,
   extractMailboxAddress,
 } from './accounting-inbox-acquisition.service';
-import { AccountingOperationsService } from './accounting-operations.service';
+import { AccountingInboxService } from './accounting-inbox.service';
 
 const GMAIL_BILLS_LABEL = 'SanQ-Bills';
 
@@ -56,7 +56,7 @@ export class AccountingGmailIngestService {
 
   constructor(
     private readonly acquisition: AccountingInboxAcquisitionService,
-    private readonly operations: AccountingOperationsService,
+    private readonly inbox: AccountingInboxService,
   ) {}
 
   isConfigured(): boolean {
@@ -146,7 +146,7 @@ export class AccountingGmailIngestService {
       this.header(message.payload?.headers, 'from'),
     );
     const trustDecision = senderEmail
-      ? await this.operations.senderTrustDecision(senderEmail)
+      ? await this.inbox.senderTrustDecision(senderEmail)
       : AccountingInboxTrustDecision.UNTRUSTED;
     const context = {
       messageId,

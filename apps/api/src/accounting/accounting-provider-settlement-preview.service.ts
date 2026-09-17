@@ -14,8 +14,11 @@ import {
   BRAND_STORE_CONFIG_READER,
   type BrandStoreConfigReaderPort,
 } from '../store/public-api';
-import { AccountingOperationsService } from './accounting-operations.service';
+import { AccountingChartService } from './accounting-chart.service';
 import { AccountingPeriodService } from './accounting-period.service';
+import {
+  AccountingProviderSettlementQueryService,
+} from './accounting-provider-settlement-query.service';
 import { DEFAULT_ACCOUNTING_ACCOUNTS } from './accounting-chart-of-accounts';
 import { hashAccountingJson } from './accounting-inbox-core.policy';
 import {
@@ -38,10 +41,12 @@ export type ProviderSettlementShadowPreviewInput = {
 };
 
 type ProviderDocumentRow = Awaited<
-  ReturnType<AccountingOperationsService['readProviderSettlementDocuments']>
+  ReturnType<
+    AccountingProviderSettlementQueryService['readProviderSettlementDocuments']
+  >
 >[number];
 type AccountingAccountFact = Awaited<
-  ReturnType<AccountingOperationsService['readAccountingAccountFacts']>
+  ReturnType<AccountingChartService['readAccountingAccountFacts']>
 >[number];
 
 const parseLocalDate = (
@@ -143,7 +148,8 @@ const journalTotals = (
 @Injectable()
 export class AccountingProviderSettlementPreviewService {
   constructor(
-    private readonly operations: AccountingOperationsService,
+    private readonly settlementQuery: AccountingProviderSettlementQueryService,
+    private readonly chart: AccountingChartService,
     private readonly period: AccountingPeriodService,
     @Inject(BRAND_STORE_CONFIG_READER)
     private readonly storeConfig: BrandStoreConfigReaderPort,
@@ -185,7 +191,7 @@ export class AccountingProviderSettlementPreviewService {
     const documentTo = DateTime.fromISO(input.toDateExclusive, { zone: 'UTC' })
       .startOf('day')
       .toJSDate();
-    const allDocuments = await this.operations.readProviderSettlementDocuments({
+    const allDocuments = await this.settlementQuery.readProviderSettlementDocuments({
       storeStableId,
       ...(input.provider ? { provider: input.provider } : {}),
     });
@@ -209,7 +215,7 @@ export class AccountingProviderSettlementPreviewService {
         ...(includeUber ? [AccountingFinancialProvider.UBER_EATS] : []),
       ]),
     ).sort();
-    const coverageRows = await this.operations.readProviderFinancialCoverage({
+    const coverageRows = await this.settlementQuery.readProviderFinancialCoverage({
       storeStableId,
       providers,
     });
@@ -217,14 +223,14 @@ export class AccountingProviderSettlementPreviewService {
       coverageRows.map((row) => [providerKey(row.provider), row] as const),
     );
     const accountFactsByStableId = new Map<string, AccountingAccountFact>(
-      (await this.operations.readAccountingAccountFacts()).map((account) => [
+      (await this.chart.readAccountingAccountFacts()).map((account) => [
         account.accountStableId,
         account,
       ]),
     );
 
     const existingSettlementJournals =
-      await this.operations.readSettlementShadowExistingJournals({
+      await this.settlementQuery.readSettlementShadowExistingJournals({
         providerDocumentStableIds: allDocuments.map(
           (document) => document.documentStableId,
         ),
@@ -488,12 +494,12 @@ export class AccountingProviderSettlementPreviewService {
           fact.occurredAt < uberCoverage.liveOrderFactCutoverAt),
     );
     const orderSaleJournals = includeUber
-      ? await this.operations.readOrderSaleJournalsByFactStableIds(
+      ? await this.settlementQuery.readOrderSaleJournalsByFactStableIds(
           preCutoverUberFacts.map((fact) => fact.factStableId),
         )
       : [];
     const existingUberReversals =
-      await this.operations.readSettlementShadowExistingJournals({
+      await this.settlementQuery.readSettlementShadowExistingJournals({
         providerDocumentStableIds: [],
         uberOrderEntryStableIds: orderSaleJournals.map(
           (journal) => journal.entryStableId,

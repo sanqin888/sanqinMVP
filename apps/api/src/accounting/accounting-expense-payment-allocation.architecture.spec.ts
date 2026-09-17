@@ -9,9 +9,13 @@ const PRISMA_SCHEMA = resolve(
   'prisma',
   'schema.prisma',
 );
-const OPERATIONS_SERVICE = resolve(
+const EXPENSE_CONTRACT = resolve(
   ACCOUNTING_ROOT,
-  'accounting-operations.service.ts',
+  'accounting-expense.contracts.ts',
+);
+const EXPENSE_SERVICE = resolve(
+  ACCOUNTING_ROOT,
+  'accounting-expense.service.ts',
 );
 const ACCOUNTING_SERVICE = resolve(ACCOUNTING_ROOT, 'accounting.service.ts');
 
@@ -52,8 +56,9 @@ describe('Accounting Expense payment allocation boundary', () => {
   });
 
   it('exposes paymentAllocations instead of the old single-account Expense input', () => {
-    const operations = readFileSync(OPERATIONS_SERVICE, 'utf8');
-    const input = operations.match(
+    const expenseContract = readFileSync(EXPENSE_CONTRACT, 'utf8');
+    const expenseService = readFileSync(EXPENSE_SERVICE, 'utf8');
+    const input = expenseContract.match(
       /export type AccountingExpenseInput = \{([\s\S]*?)\n\};/,
     )?.[1];
 
@@ -62,7 +67,7 @@ describe('Accounting Expense payment allocation boundary', () => {
       'paymentAllocations?: AccountingExpensePaymentAllocationInput[]',
     );
     expect(input).not.toMatch(/\baccountStableId\?\s*:/);
-    expect(operations).toContain(
+    expect(expenseService).toContain(
       'accountStableId is no longer supported for expenses; use paymentAllocations',
     );
   });

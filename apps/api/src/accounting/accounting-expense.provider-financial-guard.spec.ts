@@ -3,7 +3,7 @@ import {
   AccountingInboxClassification,
   AccountingInboxStatus,
 } from '@prisma/client';
-import { AccountingOperationsService } from './accounting-operations.service';
+import { AccountingExpenseService } from './accounting-expense.service';
 
 function withTransaction<T extends object>(tx: T) {
   return {
@@ -14,7 +14,7 @@ function withTransaction<T extends object>(tx: T) {
   };
 }
 
-describe('AccountingOperationsService provider-financial expense guard', () => {
+describe('AccountingExpenseService provider-financial expense guard', () => {
   it('requires an explicit expense classification before provider-suggested evidence can be confirmed as an expense', async () => {
     const prisma = withTransaction({
       accountingInboxItem: {
@@ -45,7 +45,7 @@ describe('AccountingOperationsService provider-financial expense guard', () => {
         }),
       },
     });
-    const service = new AccountingOperationsService(
+    const service = new AccountingExpenseService(
       prisma as never,
       {} as never,
     );
@@ -100,7 +100,7 @@ describe('AccountingOperationsService provider-financial expense guard', () => {
         }),
       },
     });
-    const service = new AccountingOperationsService(
+    const service = new AccountingExpenseService(
       prisma as never,
       {} as never,
     );

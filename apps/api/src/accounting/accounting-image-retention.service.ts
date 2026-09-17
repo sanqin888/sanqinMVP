@@ -19,7 +19,7 @@ import * as path from 'node:path';
 import { createId } from '@paralleldrive/cuid2';
 import sharp from 'sharp';
 import { getAccountingUploadsDir } from './accounting-storage-path';
-import { AccountingOperationsService } from './accounting-operations.service';
+import { AccountingInboxService } from './accounting-inbox.service';
 import {
   ACCOUNTING_IMAGE_RETENTION_POLICY_VERSION,
   ACCOUNTING_IMAGE_RETENTION_PROFILES,
@@ -31,14 +31,14 @@ const INBOX_FILE_PREFIX = '/api/v1/accounting/files/inbox/';
 const RETENTION_FILE_PREFIX = '/api/v1/accounting/files/image-retention/';
 
 type AccountingImageRetentionContext = NonNullable<
-  Awaited<ReturnType<AccountingOperationsService['readImageRetentionContext']>>
+  Awaited<ReturnType<AccountingInboxService['readImageRetentionContext']>>
 >;
 
 @Injectable()
 export class AccountingImageRetentionService {
   private readonly logger = new Logger(AccountingImageRetentionService.name);
 
-  constructor(private readonly operations: AccountingOperationsService) {}
+  constructor(private readonly inbox: AccountingInboxService) {}
 
   async createCandidate(
     inboxItemStableId: string,
@@ -110,7 +110,7 @@ export class AccountingImageRetentionService {
     );
     const candidateContentHash = sha256(processed.buffer);
     try {
-      const staged = await this.operations.stageImageRetentionCandidate({
+      const staged = await this.inbox.stageImageRetentionCandidate({
         inboxItemStableId,
         operatorUserStableId,
         originalWidth: originalDimensions.width,
@@ -168,7 +168,7 @@ export class AccountingImageRetentionService {
     inboxItemStableId: string,
     operatorUserStableId: string,
   ) {
-    const result = await this.operations.discardImageRetentionCandidate(
+    const result = await this.inbox.discardImageRetentionCandidate(
       inboxItemStableId,
       operatorUserStableId,
     );
@@ -232,7 +232,7 @@ export class AccountingImageRetentionService {
       );
     }
 
-    const began = await this.operations.beginImageOriginalPurge(
+    const began = await this.inbox.beginImageOriginalPurge(
       inboxItemStableId,
       operatorUserStableId,
       ACCOUNTING_IMAGE_RETENTION_POLICY_VERSION,
@@ -270,7 +270,7 @@ export class AccountingImageRetentionService {
       }
     }
 
-    await this.operations.finalizeImageOriginalPurge(
+    await this.inbox.finalizeImageOriginalPurge(
       inboxItemStableId,
       operatorUserStableId,
     );
@@ -281,7 +281,7 @@ export class AccountingImageRetentionService {
 
   async resolveArtifactContent(artifactStableId: string) {
     const context =
-      await this.operations.readImageArtifactContentContext(artifactStableId);
+      await this.inbox.readImageArtifactContentContext(artifactStableId);
     if (!context || context.kind !== AccountingArtifactKind.IMAGE) {
       throw new NotFoundException('accounting image evidence not found');
     }
@@ -319,7 +319,7 @@ export class AccountingImageRetentionService {
 
   private async requireConfirmedImageContext(inboxItemStableId: string) {
     const context =
-      await this.operations.readImageRetentionContext(inboxItemStableId);
+      await this.inbox.readImageRetentionContext(inboxItemStableId);
     if (!context) {
       throw new NotFoundException('accounting inbox item not found');
     }

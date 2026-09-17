@@ -226,6 +226,7 @@ describe('AccountingProviderSettlementPreviewService', () => {
 
     const service = new AccountingProviderSettlementPreviewService(
       operations as never,
+      operations as never,
       accounting as never,
       storeConfig as never,
       orderFinancialFacts as never,
@@ -318,6 +319,7 @@ describe('AccountingProviderSettlementPreviewService', () => {
     };
     const service = new AccountingProviderSettlementPreviewService(
       operations as never,
+      operations as never,
       accounting as never,
       storeConfig as never,
       orderFinancialFacts as never,
@@ -377,6 +379,7 @@ describe('AccountingProviderSettlementPreviewService', () => {
       readFactsForRange: jest.fn().mockResolvedValue([]),
     };
     const service = new AccountingProviderSettlementPreviewService(
+      operations as never,
       operations as never,
       accounting as never,
       storeConfig as never,
@@ -445,6 +448,7 @@ describe('AccountingProviderSettlementPreviewService', () => {
     };
     const service = new AccountingProviderSettlementPreviewService(
       operations as never,
+      operations as never,
       accounting as never,
       storeConfig as never,
       orderFinancialFacts as never,
@@ -500,6 +504,7 @@ describe('AccountingProviderSettlementPreviewService', () => {
       readFactsForRange: jest.fn().mockResolvedValue([]),
     };
     const service = new AccountingProviderSettlementPreviewService(
+      operations as never,
       operations as never,
       accounting as never,
       storeConfig as never,
@@ -634,6 +639,7 @@ describe('AccountingProviderSettlementPreviewService', () => {
       ]),
     };
     const service = new AccountingProviderSettlementPreviewService(
+      operations as never,
       operations as never,
       accounting as never,
       storeConfig as never,
