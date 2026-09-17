@@ -2282,7 +2282,7 @@ is claimed per repository workflow.
 
 ### 2026-09-17 — Phase 9 Slice 7 Closeout Hardening
 
-**Branch/State:** `refactor/phase9-slice7-closeout-hardening` from latest `origin/dev` / **LOCAL SOURCE / REVIEW GATE / NO MIGRATION**.  
+**Branch/State:** `refactor/phase9-slice7-closeout-hardening` from latest `origin/dev` / **PR #2379 / HEAD `313944e7` / PR CI #5828 GREEN / NO MIGRATION**. This PR is the final Slice 7 source-closeout gate; its merge marks Slice 7 **SOURCE CLOSED**.  
 **Production evidence:** the deployed repository is at Slice 7-D squash `d616cef5`. Read-only production verification confirms 6D-A, 7-A, Expense allocation and corrected 7-B migrations are all applied; the 7-B live columns are exactly the target ActorRef/UserStableId names. `AccountingTransaction = 0` and `AccountingExpenseDocument = 0` at closeout audit time.  
 **Source/result:** strengthens the 7-D regression from an `AccountingService`-only `this.prisma.order` assertion to a scan of all Accounting production TypeScript that rejects contracted foreign-owner Prisma delegates for Orders, Payments, Loyalty and Uber Store Mapping persistence. This closes the scanner blind spot where a future foreign Prisma delegate could otherwise hide behind the already-allowed Accounting -> Runtime/Prisma dependency.  
 **Architecture effect:** regression protection only; no runtime behavior, route, financial semantics, Prisma schema/migration, dependency direction, public edge, scanner allowance or machine baseline change. Authoritative Accounting direct-import baseline remains Foundation **1** / External **1** / Identity **2** / Runtime **6**, total **10**, public SCC empty.  
