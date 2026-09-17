@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const ACCOUNTING_ROOT = __dirname;
@@ -8,7 +8,10 @@ const read = (name: string) =>
 
 const PRISMA_FREE_BOUNDARIES = [
   'accounting-contracts.ts',
-  'accounting.controller.ts',
+  'accounting-controller-support.ts',
+  ...readdirSync(ACCOUNTING_ROOT).filter((name) =>
+    name.endsWith('.controller.ts'),
+  ),
   'accounting-chart-of-accounts.ts',
   'accounting-journal-policy.ts',
   'accounting-canonical-sale-journal.policy.ts',

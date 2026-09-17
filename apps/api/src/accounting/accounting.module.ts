@@ -1,5 +1,16 @@
 import { Module } from '@nestjs/common';
-import { AccountingController } from './accounting.controller';
+import { AccountingAuditController } from './accounting-audit.controller';
+import { AccountingAutomationController } from './accounting-automation.controller';
+import { AccountingCanonicalChangeController } from './accounting-canonical-change.controller';
+import { AccountingCanonicalSaleController } from './accounting-canonical-sale.controller';
+import { AccountingChartController } from './accounting-chart.controller';
+import { AccountingExpenseController } from './accounting-expense.controller';
+import { AccountingInboxArtifactsController } from './accounting-inbox-artifacts.controller';
+import { AccountingInboxController } from './accounting-inbox.controller';
+import { AccountingPeriodController } from './accounting-period.controller';
+import { AccountingProviderFinancialController } from './accounting-provider-financial.controller';
+import { AccountingProviderSettlementController } from './accounting-provider-settlement.controller';
+import { AccountingReportsController } from './accounting-reports.controller';
 import { AccountingService } from './accounting.service';
 import { AccountingPeriodService } from './accounting-period.service';
 import { AccountingJournalService } from './accounting-journal.service';
@@ -45,7 +56,20 @@ import { PaymentFinancialFactsModule } from '../payments/public-api';
     OrderReportingFactsModule,
     PaymentFinancialFactsModule,
   ],
-  controllers: [AccountingController],
+  controllers: [
+    AccountingChartController,
+    AccountingExpenseController,
+    AccountingInboxController,
+    AccountingInboxArtifactsController,
+    AccountingProviderFinancialController,
+    AccountingAutomationController,
+    AccountingPeriodController,
+    AccountingCanonicalSaleController,
+    AccountingCanonicalChangeController,
+    AccountingProviderSettlementController,
+    AccountingReportsController,
+    AccountingAuditController,
+  ],
   providers: [
     { provide: ACCOUNTING_DB, useExisting: PrismaService },
     AccountingPeriodService,

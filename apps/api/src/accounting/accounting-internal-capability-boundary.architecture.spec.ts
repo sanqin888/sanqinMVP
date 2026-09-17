@@ -86,7 +86,7 @@ describe('Accounting internal capability boundary', () => {
   it('keeps 8A-4 canonical financial reports on the reports capability while dimension projection stays separate', () => {
     const broad = read('accounting.service.ts');
     const reports = read('accounting-financial-reports.service.ts');
-    const controller = read('accounting.controller.ts');
+    const controller = read('accounting-reports.controller.ts');
 
     for (const method of [
       'pnlReport',
