@@ -82,7 +82,6 @@ describe('AccountingService ledger characterization', () => {
           amountCents: 1250,
           occurredAt: new Date('2026-09-11T14:00:00.000Z'),
           categoryId: 'category-db-id',
-          orderId: null,
           idempotencyKey: 'manual:expense:1',
           counterparty: 'Supplier',
           memo: 'prep ingredients',

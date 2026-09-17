@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import {
@@ -11,6 +12,7 @@ const ACCOUNTING_ROOT = resolve(API_SRC_ROOT, 'accounting');
 const ORDERS_ROOT = resolve(API_SRC_ROOT, 'orders');
 const LOYALTY_ROOT = resolve(API_SRC_ROOT, 'loyalty');
 const PAYMENTS_ROOT = resolve(API_SRC_ROOT, 'payments');
+const PRISMA_SCHEMA = resolve(API_SRC_ROOT, '..', 'prisma', 'schema.prisma');
 
 const file = (root: string, suffix: string) =>
   scanTypeScript(root).find(({ path }) => path.endsWith(suffix));
@@ -299,6 +301,29 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(providerSettlementWriterCallers).toEqual([
       'accounting/accounting-provider-settlement-execution.service.ts',
     ]);
+  });
+
+  it('keeps the retired single-entry Order/provider transaction contract physically absent', () => {
+    const schema = readFileSync(PRISMA_SCHEMA, 'utf8');
+    const accountingTransaction =
+      schema.match(/model AccountingTransaction\s*{([\s\S]*?)\n}/)?.[1] ?? '';
+    const accountingSourceType =
+      schema.match(/enum AccountingSourceType\s*{([\s\S]*?)\n}/)?.[1] ?? '';
+    const accountingService =
+      file(ACCOUNTING_ROOT, 'accounting.service.ts')?.source ?? '';
+    const accountingController =
+      file(ACCOUNTING_ROOT, 'accounting.controller.ts')?.source ?? '';
+
+    expect(accountingTransaction).not.toMatch(/\borderId\b/);
+    expect(accountingSourceType).toContain('MANUAL');
+    expect(accountingSourceType).toContain('OTHER');
+    expect(accountingSourceType).not.toContain('ORDER');
+    expect(accountingSourceType).not.toContain('UBER');
+    expect(accountingSourceType).not.toContain('FANTUAN');
+    expect(accountingService).not.toContain('AccountingSourceType.ORDER');
+    expect(accountingService).not.toContain('orderId: normalized.orderId');
+    expect(accountingController).not.toContain('orderId?: string | null;');
+    expect(accountingService).toContain('assertNoLegacyOrderRevenueAccrual');
   });
 
   it('prevents Accounting from consuming owner internals before or after the later posting cutover', () => {
