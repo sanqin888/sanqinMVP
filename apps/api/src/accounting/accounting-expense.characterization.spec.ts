@@ -28,7 +28,7 @@ describe('AccountingOperationsService expense-write characterization', () => {
     memo: 'ingredients',
     createdAt: new Date('2026-09-11T14:01:00.000Z'),
     confirmedAt: new Date('2026-09-11T14:01:00.000Z'),
-    account: null,
+    paymentAllocations: [],
     transactions: [],
   });
 
@@ -53,9 +53,27 @@ describe('AccountingOperationsService expense-write characterization', () => {
       },
     );
     const createMany = jest.fn().mockResolvedValue({ count: 2 });
+    const createAllocationMany = jest.fn().mockResolvedValue({ count: 2 });
     const createAuditMany = jest.fn().mockResolvedValue({ count: 2 });
     const tx = {
+      accountingAccount: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'account-rbc-db-id',
+            accountStableId: 'account_rbc',
+            currency: 'CAD',
+            isActive: true,
+          },
+          {
+            id: 'account-cash-db-id',
+            accountStableId: 'account_cash',
+            currency: 'CAD',
+            isActive: true,
+          },
+        ]),
+      },
       accountingExpenseDocument: { create: createDocument },
+      accountingExpensePaymentAllocation: { createMany: createAllocationMany },
       accountingTransaction: { createMany },
       accountingAuditLog: { createMany: createAuditMany },
     };
@@ -96,6 +114,10 @@ describe('AccountingOperationsService expense-write characterization', () => {
         occurredAt: '2026-09-11T14:00:00.000Z',
         totalCents: 1130,
         memo: 'ingredients',
+        paymentAllocations: [
+          { accountStableId: 'account_rbc', amountCents: 600 },
+          { accountStableId: 'account_cash', amountCents: 530 },
+        ],
         splits: [
           {
             categoryStableId: 'expense_food',
@@ -126,6 +148,24 @@ describe('AccountingOperationsService expense-write characterization', () => {
         confirmedByUserId: 'user_stable_1',
       }) as unknown as Record<string, unknown>,
     });
+    expect(createAllocationMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          paymentAllocationStableId: expect.stringMatching(/^expensepay_/),
+          expenseDocumentId: 'expense-document-db-id',
+          accountId: 'account-rbc-db-id',
+          amountCents: 600,
+          sortOrder: 0,
+        }) as unknown as Record<string, unknown>,
+        expect.objectContaining({
+          paymentAllocationStableId: expect.stringMatching(/^expensepay_/),
+          expenseDocumentId: 'expense-document-db-id',
+          accountId: 'account-cash-db-id',
+          amountCents: 530,
+          sortOrder: 1,
+        }) as unknown as Record<string, unknown>,
+      ],
+    });
     expect(createMany).toHaveBeenCalledWith({
       data: [
         expect.objectContaining({
@@ -148,6 +188,8 @@ describe('AccountingOperationsService expense-write characterization', () => {
         }) as unknown as Record<string, unknown>,
       ],
     });
+    expect(createMany.mock.calls[0]?.[0].data[0]).not.toHaveProperty('accountId');
+    expect(createMany.mock.calls[0]?.[0].data[1]).not.toHaveProperty('accountId');
     expect(createAuditMany).toHaveBeenCalledWith({
       data: [
         expect.objectContaining({
@@ -182,8 +224,155 @@ describe('AccountingOperationsService expense-write characterization', () => {
     expect(result.documentStableId).toBe(generatedDocumentStableId);
   });
 
-  it('rejects a non-CAD payment account for a booked expense', async () => {
-    const transaction = jest.fn();
+  it('rejects duplicate payment accounts before touching persistence', async () => {
+    const service = new AccountingOperationsService({} as never, accounting as never);
+
+    await expect(
+      service.createExpense(
+        {
+          occurredAt: '2026-09-16',
+          totalCents: 1000,
+          paymentAllocations: [
+            { accountStableId: 'account_rbc', amountCents: 500 },
+            { accountStableId: 'account_rbc', amountCents: 500 },
+          ],
+          splits: [
+            {
+              categoryStableId: 'expense_food',
+              amountCents: 1000,
+              taxCents: 0,
+            },
+          ],
+        },
+        'user_stable_3',
+      ),
+    ).rejects.toThrow('paymentAllocations must not repeat an account');
+  });
+
+  it('rejects the retired single-account Expense payload instead of silently ignoring it', async () => {
+    const service = new AccountingOperationsService({} as never, accounting as never);
+
+    await expect(
+      service.createExpense(
+        {
+          occurredAt: '2026-09-16',
+          totalCents: 1000,
+          accountStableId: 'account_rbc',
+          splits: [
+            {
+              categoryStableId: 'expense_food',
+              amountCents: 1000,
+              taxCents: 0,
+            },
+          ],
+        } as never,
+        'user_stable_3',
+      ),
+    ).rejects.toThrow(
+      'accountStableId is no longer supported for expenses; use paymentAllocations',
+    );
+  });
+
+  it('rejects payment allocations that do not close to the CAD booking total', async () => {
+    const service = new AccountingOperationsService({} as never, accounting as never);
+
+    await expect(
+      service.createExpense(
+        {
+          occurredAt: '2026-09-16',
+          totalCents: 1000,
+          paymentAllocations: [
+            { accountStableId: 'account_rbc', amountCents: 900 },
+          ],
+          splits: [
+            {
+              categoryStableId: 'expense_food',
+              amountCents: 1000,
+              taxCents: 0,
+            },
+          ],
+        },
+        'user_stable_3',
+      ),
+    ).rejects.toThrow('payment allocations do not match CAD booking total');
+  });
+
+  it('rejects inactive or missing payment accounts before creating the expense', async () => {
+    const createDocument = jest.fn();
+    const tx = {
+      accountingAccount: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'inactive-db-id',
+            accountStableId: 'account_inactive',
+            currency: 'CAD',
+            isActive: false,
+          },
+        ]),
+      },
+      accountingExpenseDocument: { create: createDocument },
+    };
+    const prisma = {
+      accountingCategory: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'category-food-db-id',
+            categoryStableId: 'expense_food',
+            type: AccountingTxType.EXPENSE,
+          },
+        ]),
+      },
+      $transaction: jest.fn(
+        (callback: (transactionClient: typeof tx) => Promise<unknown>) =>
+          callback(tx),
+      ),
+    };
+    const service = new AccountingOperationsService(
+      prisma as never,
+      accounting as never,
+    );
+
+    await expect(
+      service.createExpense(
+        {
+          occurredAt: '2026-09-16',
+          totalCents: 1000,
+          paymentAllocations: [
+            { accountStableId: 'account_inactive', amountCents: 1000 },
+          ],
+          splits: [
+            {
+              categoryStableId: 'expense_food',
+              amountCents: 1000,
+              taxCents: 0,
+            },
+          ],
+        },
+        'user_stable_3',
+      ),
+    ).rejects.toThrow('payment account is invalid: account_inactive');
+    expect(createDocument).not.toHaveBeenCalled();
+  });
+
+  it('rejects a non-CAD payment allocation before creating the expense', async () => {
+    const createDocument = jest.fn();
+    const tx = {
+      accountingAccount: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'usd-bank-db-id',
+            accountStableId: 'account_usd_bank',
+            currency: 'USD',
+            isActive: true,
+          },
+        ]),
+      },
+      accountingExpenseDocument: { create: createDocument },
+    };
+    const transaction = jest.fn(
+      (callback: (transactionClient: typeof tx) => Promise<unknown>) =>
+        callback(tx),
+    );
     const prisma = {
       accountingCategory: {
         findMany: jest.fn().mockResolvedValue([
@@ -193,13 +382,6 @@ describe('AccountingOperationsService expense-write characterization', () => {
             type: AccountingTxType.EXPENSE,
           },
         ]),
-      },
-      accountingAccount: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: 'usd-bank-db-id',
-          currency: 'USD',
-          isActive: true,
-        }),
       },
       $transaction: transaction,
     };
@@ -213,7 +395,9 @@ describe('AccountingOperationsService expense-write characterization', () => {
         {
           occurredAt: '2026-09-16',
           totalCents: 2746,
-          accountStableId: 'account_usd_bank',
+          paymentAllocations: [
+            { accountStableId: 'account_usd_bank', amountCents: 2746 },
+          ],
           splits: [
             {
               categoryStableId: 'expense_software',
@@ -225,9 +409,10 @@ describe('AccountingOperationsService expense-write characterization', () => {
         'user_stable_3',
       ),
     ).rejects.toThrow(
-      'expense booking account must use CAD functional currency',
+      'expense payment accounts must use CAD functional currency',
     );
-    expect(transaction).not.toHaveBeenCalled();
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(createDocument).not.toHaveBeenCalled();
   });
 
   it('atomically confirms an Inbox expense in CAD while preserving foreign source-currency evidence', async () => {
@@ -244,6 +429,7 @@ describe('AccountingOperationsService expense-write characterization', () => {
       },
     );
     const createMany = jest.fn().mockResolvedValue({ count: 1 });
+    const createAllocationMany = jest.fn().mockResolvedValue({ count: 1 });
     const createAuditMany = jest.fn().mockResolvedValue({ count: 1 });
     const updateInbox = jest.fn().mockResolvedValue({ count: 1 });
     const tx = {
@@ -289,13 +475,17 @@ describe('AccountingOperationsService expense-write characterization', () => {
         ]),
       },
       accountingAccount: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: 'bank-db-id',
-          currency: 'CAD',
-          isActive: true,
-        }),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'bank-db-id',
+            accountStableId: 'account_primary_bank',
+            currency: 'CAD',
+            isActive: true,
+          },
+        ]),
       },
       accountingExpenseDocument: { create: createDocument },
+      accountingExpensePaymentAllocation: { createMany: createAllocationMany },
       accountingTransaction: { createMany },
       accountingAuditLog: { createMany: createAuditMany },
     };
@@ -329,7 +519,9 @@ describe('AccountingOperationsService expense-write characterization', () => {
         occurredAt: '2026-09-16',
         totalCents: 2746,
         sourceCurrency: 'USD',
-        accountStableId: 'account_primary_bank',
+        paymentAllocations: [
+          { accountStableId: 'account_primary_bank', amountCents: 2746 },
+        ],
         splits: [
           {
             categoryStableId: 'expense_software',
@@ -360,6 +552,16 @@ describe('AccountingOperationsService expense-write characterization', () => {
         }) as unknown,
       }) as unknown as Record<string, unknown>,
       select: { id: true },
+    });
+    expect(createAllocationMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          expenseDocumentId: 'expense-document-db-id',
+          accountId: 'bank-db-id',
+          amountCents: 2746,
+          sortOrder: 0,
+        }) as unknown as Record<string, unknown>,
+      ],
     });
     expect(createMany).toHaveBeenCalledWith({
       data: [
@@ -416,6 +618,7 @@ describe('AccountingOperationsService expense-write characterization', () => {
       },
     ]);
     const deleteMany = jest.fn().mockResolvedValue({ count: 1 });
+    const deletePaymentAllocations = jest.fn().mockResolvedValue({ count: 0 });
     const updateDocument = jest.fn().mockResolvedValue({});
     const createMany = jest.fn().mockResolvedValue({ count: 1 });
     const createAuditMany = jest.fn().mockResolvedValue({ count: 2 });
@@ -428,6 +631,9 @@ describe('AccountingOperationsService expense-write characterization', () => {
       accountingExpenseDocument: {
         findUnique: currentDocument,
         update: updateDocument,
+      },
+      accountingExpensePaymentAllocation: {
+        deleteMany: deletePaymentAllocations,
       },
       accountingInboxItem: { findFirst: jest.fn().mockResolvedValue(null) },
       accountingAuditLog: { createMany: createAuditMany },
@@ -494,6 +700,9 @@ describe('AccountingOperationsService expense-write characterization', () => {
     expect(transaction).toHaveBeenCalledTimes(1);
     expect(deleteMany).toHaveBeenCalledWith({
       where: { documentId: 'inbox-document-db-id', deletedAt: null },
+    });
+    expect(deletePaymentAllocations).toHaveBeenCalledWith({
+      where: { expenseDocumentId: 'inbox-document-db-id' },
     });
     expect(updateDocument).toHaveBeenCalledWith({
       where: { id: 'inbox-document-db-id' },

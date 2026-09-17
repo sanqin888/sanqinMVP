@@ -9,6 +9,7 @@ import {
 import { createId } from '@paralleldrive/cuid2';
 import { DateTime } from 'luxon';
 import {
+  AccountingDocumentStatus,
   AccountingJournalEntryKind,
   AccountingJournalSource,
   AccountingSourceType,
@@ -2439,6 +2440,28 @@ export class AccountingService {
         },
       },
     });
+    const expensePaymentAllocations =
+      await this.prisma.accountingExpensePaymentAllocation.findMany({
+        where: {
+          expenseDocument: {
+            status: AccountingDocumentStatus.CONFIRMED,
+            ...(fromDate || toDate
+              ? {
+                  occurredAt: {
+                    ...(fromDate ? { gte: fromDate } : {}),
+                    ...(toDate ? { lte: toDate } : {}),
+                  },
+                }
+              : {}),
+          },
+        },
+        select: {
+          amountCents: true,
+          account: {
+            select: { accountStableId: true, name: true },
+          },
+        },
+      });
 
     const summary = new Map<
       string,
@@ -2479,6 +2502,7 @@ export class AccountingService {
         }
         continue;
       }
+      if (row.type === AccountingTxType.EXPENSE && row.documentId) continue;
       if (!row.account) continue;
       const item = upsert(row.account.accountStableId, row.account.name);
       if (row.type === AccountingTxType.EXPENSE) {
@@ -2489,6 +2513,14 @@ export class AccountingService {
         item.inflowCents += row.amountCents;
         item.balanceChangeCents += row.amountCents;
       }
+    }
+    for (const allocation of expensePaymentAllocations) {
+      const item = upsert(
+        allocation.account.accountStableId,
+        allocation.account.name,
+      );
+      item.outflowCents += allocation.amountCents;
+      item.balanceChangeCents -= allocation.amountCents;
     }
 
     return Array.from(summary.values()).sort(

@@ -86,14 +86,27 @@ export type AccountingExpenseSplitInput = {
   taxCents?: number;
 };
 
+export type AccountingExpensePaymentAllocationInput = {
+  accountStableId: string;
+  amountCents: number;
+};
+
 export type AccountingExpenseInput = {
   occurredAt: string;
   totalCents: number;
   sourceCurrency?: string | null;
-  accountStableId?: string | null;
+  paymentAllocations?: AccountingExpensePaymentAllocationInput[];
   attachmentUrls?: string[];
   memo?: string | null;
   splits: AccountingExpenseSplitInput[];
+};
+
+type NormalizedExpensePaymentAllocation = AccountingExpensePaymentAllocationInput & {
+  sortOrder: number;
+};
+
+type ResolvedExpensePaymentAllocation = NormalizedExpensePaymentAllocation & {
+  accountDbId: string;
 };
 
 const DEFAULT_CATEGORY_TREE = [
@@ -200,11 +213,19 @@ const ACCOUNTING_DOCUMENT_SELECT = {
   memo: true,
   createdAt: true,
   confirmedAt: true,
-  account: {
+  paymentAllocations: {
     select: {
-      accountStableId: true,
-      name: true,
+      paymentAllocationStableId: true,
+      amountCents: true,
+      sortOrder: true,
+      account: {
+        select: {
+          accountStableId: true,
+          name: true,
+        },
+      },
     },
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
   },
   transactions: {
     where: { deletedAt: null },
@@ -891,8 +912,13 @@ export class AccountingOperationsService {
     input: AccountingExpenseInput,
     operatorUserStableId: string,
   ) {
+    this.assertNoLegacyExpensePaymentAccount(input);
     const occurredAt = this.parseDate(input.occurredAt);
     this.assertMoney(input.totalCents, 'totalCents');
+    const normalizedPaymentAllocations = this.normalizeExpensePaymentAllocations(
+      input.paymentAllocations,
+      input.totalCents,
+    );
     if (!input.splits.length) {
       throw new BadRequestException('at least one expense split is required');
     }
@@ -995,20 +1021,11 @@ export class AccountingOperationsService {
         );
       }
 
-      const account = input.accountStableId
-        ? await tx.accountingAccount.findUnique({
-            where: { accountStableId: input.accountStableId },
-            select: { id: true, currency: true, isActive: true },
-          })
-        : null;
-      if (input.accountStableId && (!account || !account.isActive)) {
-        throw new BadRequestException('accountStableId is invalid');
-      }
-      if (account && account.currency !== 'CAD') {
-        throw new BadRequestException(
-          'expense booking account must use CAD functional currency',
+      const resolvedPaymentAllocations =
+        await this.resolveExpensePaymentAllocations(
+          tx,
+          normalizedPaymentAllocations,
         );
-      }
 
       const metadata = accountingJsonRecord(inbox.artifact.metadataJson);
       const extractedSourceCurrency = accountingOptionalString(
@@ -1056,7 +1073,6 @@ export class AccountingOperationsService {
           taxCents,
           totalCents: input.totalCents,
           currency: 'CAD',
-          accountId: account?.id ?? null,
           gmailMessageId: accountingOptionalString(metadata.gmailMessageId),
           gmailAttachmentId: accountingOptionalString(
             metadata.gmailAttachmentId,
@@ -1074,6 +1090,11 @@ export class AccountingOperationsService {
         },
         select: { id: true },
       });
+      await this.createExpensePaymentAllocationsInTx(
+        tx,
+        created.id,
+        resolvedPaymentAllocations,
+      );
 
       const splitRows = normalizedSplits.map((split, index) => ({
         txStableId: `accttx_${createId()}`,
@@ -1084,7 +1105,6 @@ export class AccountingOperationsService {
         currency: 'CAD',
         occurredAt,
         categoryId: categoryMap.get(split.categoryStableId)!,
-        accountId: account?.id ?? null,
         documentId: created.id,
         idempotencyKey: `expense:${documentStableId}:${index}`,
         externalRef: documentStableId,
@@ -1195,8 +1215,13 @@ export class AccountingOperationsService {
     input: AccountingExpenseInput,
     operatorUserStableId: string,
   ) {
+    this.assertNoLegacyExpensePaymentAccount(input);
     const occurredAt = this.parseDate(input.occurredAt);
     this.assertMoney(input.totalCents, 'totalCents');
+    const normalizedPaymentAllocations = this.normalizeExpensePaymentAllocations(
+      input.paymentAllocations,
+      input.totalCents,
+    );
     if (!input.splits.length) {
       throw new BadRequestException('at least one expense split is required');
     }
@@ -1242,21 +1267,6 @@ export class AccountingOperationsService {
       }
     }
 
-    const account = input.accountStableId
-      ? await this.prisma.accountingAccount.findUnique({
-          where: { accountStableId: input.accountStableId },
-          select: { id: true, currency: true, isActive: true },
-        })
-      : null;
-    if (input.accountStableId && (!account || !account.isActive)) {
-      throw new BadRequestException('accountStableId is invalid');
-    }
-    if (account && account.currency !== 'CAD') {
-      throw new BadRequestException(
-        'expense booking account must use CAD functional currency',
-      );
-    }
-
     const attachmentUrls = this.normalizeUrls(input.attachmentUrls);
     const documentStableId = `expense_${createId()}`;
     const document = await runSerializableAccountingWrite(
@@ -1271,6 +1281,11 @@ export class AccountingOperationsService {
           AccountingTxType.EXPENSE,
           tx,
         );
+        const resolvedPaymentAllocations =
+          await this.resolveExpensePaymentAllocations(
+            tx,
+            normalizedPaymentAllocations,
+          );
 
         const created = await tx.accountingExpenseDocument.create({
           data: {
@@ -1282,13 +1297,17 @@ export class AccountingOperationsService {
             taxCents,
             totalCents: input.totalCents,
             currency: 'CAD',
-            accountId: account?.id ?? null,
             attachmentUrls,
             memo: input.memo?.trim() || null,
             confirmedAt: new Date(),
             confirmedByUserId: operatorUserStableId,
           },
         });
+        await this.createExpensePaymentAllocationsInTx(
+          tx,
+          created.id,
+          resolvedPaymentAllocations,
+        );
 
         const splitRows = normalizedSplits.map((split, index) => ({
           txStableId: `accttx_${createId()}`,
@@ -1299,7 +1318,6 @@ export class AccountingOperationsService {
           currency: 'CAD',
           occurredAt,
           categoryId: categoryMap.get(split.categoryStableId)!.id,
-          accountId: account?.id ?? null,
           documentId: created.id,
           idempotencyKey: `expense:${documentStableId}:${index}`,
           externalRef: documentStableId,
@@ -1372,6 +1390,7 @@ export class AccountingOperationsService {
     input: AccountingExpenseInput,
     operatorUserStableId: string,
   ) {
+    this.assertNoLegacyExpensePaymentAccount(input);
     const existing = await this.prisma.accountingExpenseDocument.findUnique({
       where: { documentStableId },
       select: { id: true, status: true, attachmentUrls: true },
@@ -1383,6 +1402,10 @@ export class AccountingOperationsService {
 
     const occurredAt = this.parseDate(input.occurredAt);
     this.assertMoney(input.totalCents, 'totalCents');
+    const normalizedPaymentAllocations = this.normalizeExpensePaymentAllocations(
+      input.paymentAllocations,
+      input.totalCents,
+    );
     if (!input.splits.length) {
       throw new BadRequestException('at least one expense split is required');
     }
@@ -1427,20 +1450,6 @@ export class AccountingOperationsService {
       );
     }
 
-    const account = input.accountStableId
-      ? await this.prisma.accountingAccount.findUnique({
-          where: { accountStableId: input.accountStableId },
-          select: { id: true, currency: true, isActive: true },
-        })
-      : null;
-    if (input.accountStableId && (!account || !account.isActive)) {
-      throw new BadRequestException('accountStableId is invalid');
-    }
-    if (account && account.currency !== 'CAD') {
-      throw new BadRequestException(
-        'expense booking account must use CAD functional currency',
-      );
-    }
     const newAttachmentUrls = this.normalizeUrls(input.attachmentUrls);
 
     await runSerializableAccountingWrite(this.prisma, async (tx) => {
@@ -1450,6 +1459,11 @@ export class AccountingOperationsService {
         AccountingTxType.EXPENSE,
         tx,
       );
+      const resolvedPaymentAllocations =
+        await this.resolveExpensePaymentAllocations(
+          tx,
+          normalizedPaymentAllocations,
+        );
 
       const current = await tx.accountingExpenseDocument.findUnique({
         where: { id: existing.id },
@@ -1481,6 +1495,9 @@ export class AccountingOperationsService {
       await tx.accountingTransaction.deleteMany({
         where: { documentId: existing.id, deletedAt: null },
       });
+      await tx.accountingExpensePaymentAllocation.deleteMany({
+        where: { expenseDocumentId: existing.id },
+      });
       await tx.accountingExpenseDocument.update({
         where: { id: existing.id },
         data: {
@@ -1489,7 +1506,6 @@ export class AccountingOperationsService {
           subtotalCents,
           taxCents,
           totalCents: input.totalCents,
-          accountId: account?.id ?? null,
           currency: 'CAD',
           attachmentUrls,
           memo: input.memo?.trim() || null,
@@ -1497,6 +1513,11 @@ export class AccountingOperationsService {
           confirmedByUserId: operatorUserStableId,
         },
       });
+      await this.createExpensePaymentAllocationsInTx(
+        tx,
+        existing.id,
+        resolvedPaymentAllocations,
+      );
       const splitRows = normalizedSplits.map((split, index) => ({
         txStableId: `accttx_${createId()}`,
         type: AccountingTxType.EXPENSE,
@@ -1506,7 +1527,6 @@ export class AccountingOperationsService {
         currency: 'CAD',
         occurredAt,
         categoryId: categoryMap.get(split.categoryStableId)!,
-        accountId: account?.id ?? null,
         documentId: existing.id,
         idempotencyKey: `expense:${documentStableId}:${index}`,
         externalRef: documentStableId,
@@ -1675,7 +1695,13 @@ export class AccountingOperationsService {
       memo: row.memo,
       createdAt: row.createdAt.toISOString(),
       confirmedAt: row.confirmedAt?.toISOString() ?? null,
-      account: row.account,
+      paymentAllocations: row.paymentAllocations.map((allocation) => ({
+        paymentAllocationStableId: allocation.paymentAllocationStableId,
+        accountStableId: allocation.account.accountStableId,
+        accountName: allocation.account.name,
+        amountCents: allocation.amountCents,
+        sortOrder: allocation.sortOrder,
+      })),
       splits: row.transactions.map((tx) => ({
         txStableId: tx.txStableId,
         categoryStableId: tx.category.categoryStableId,
@@ -1704,6 +1730,126 @@ export class AccountingOperationsService {
       }
       throw error;
     }
+  }
+
+  private assertNoLegacyExpensePaymentAccount(input: AccountingExpenseInput) {
+    if (
+      Object.prototype.hasOwnProperty.call(
+        input as unknown as Record<string, unknown>,
+        'accountStableId',
+      )
+    ) {
+      throw new BadRequestException(
+        'accountStableId is no longer supported for expenses; use paymentAllocations',
+      );
+    }
+  }
+
+  private normalizeExpensePaymentAllocations(
+    input: AccountingExpensePaymentAllocationInput[] | undefined,
+    totalCents: number,
+  ): NormalizedExpensePaymentAllocation[] {
+    if (input === undefined) return [];
+    if (!Array.isArray(input)) {
+      throw new BadRequestException('paymentAllocations must be an array');
+    }
+
+    const seenAccounts = new Set<string>();
+    const normalized = input.map((allocation, sortOrder) => {
+      if (!allocation || typeof allocation !== 'object') {
+        throw new BadRequestException('payment allocation is invalid');
+      }
+      const accountStableId = allocation.accountStableId?.trim();
+      if (!accountStableId) {
+        throw new BadRequestException(
+          'payment allocation accountStableId is required',
+        );
+      }
+      if (seenAccounts.has(accountStableId)) {
+        throw new BadRequestException(
+          'paymentAllocations must not repeat an account',
+        );
+      }
+      seenAccounts.add(accountStableId);
+      if (!Number.isInteger(allocation.amountCents) || allocation.amountCents <= 0) {
+        throw new BadRequestException(
+          'payment allocation amountCents must be a positive integer',
+        );
+      }
+      return {
+        accountStableId,
+        amountCents: allocation.amountCents,
+        sortOrder,
+      };
+    });
+
+    if (
+      normalized.length > 0 &&
+      normalized.reduce((sum, allocation) => sum + allocation.amountCents, 0) !==
+        totalCents
+    ) {
+      throw new BadRequestException(
+        'payment allocations do not match CAD booking total',
+      );
+    }
+    return normalized;
+  }
+
+  private async resolveExpensePaymentAllocations(
+    tx: Prisma.TransactionClient,
+    allocations: NormalizedExpensePaymentAllocation[],
+  ): Promise<ResolvedExpensePaymentAllocation[]> {
+    if (!allocations.length) return [];
+    const accounts = await tx.accountingAccount.findMany({
+      where: {
+        accountStableId: {
+          in: allocations.map((allocation) => allocation.accountStableId),
+        },
+      },
+      select: {
+        id: true,
+        accountStableId: true,
+        currency: true,
+        isActive: true,
+      },
+    });
+    const accountByStableId = new Map(
+      accounts.map((account) => [account.accountStableId, account]),
+    );
+    return allocations.map((allocation) => {
+      const account = accountByStableId.get(allocation.accountStableId);
+      if (!account || !account.isActive) {
+        throw new BadRequestException(
+          `payment account is invalid: ${allocation.accountStableId}`,
+        );
+      }
+      if (account.currency !== 'CAD') {
+        throw new BadRequestException(
+          'expense payment accounts must use CAD functional currency',
+        );
+      }
+      return {
+        ...allocation,
+        accountDbId: account.id,
+      };
+    });
+  }
+
+  private async createExpensePaymentAllocationsInTx(
+    tx: Prisma.TransactionClient,
+    expenseDocumentDbId: string,
+    allocations: ResolvedExpensePaymentAllocation[],
+  ) {
+    if (!allocations.length) return;
+    await tx.accountingExpensePaymentAllocation.createMany({
+      data: allocations.map((allocation) => ({
+        paymentAllocationStableId: `expensepay_${createId()}`,
+        expenseDocumentId: expenseDocumentDbId,
+        accountId: allocation.accountDbId,
+        amountCents: allocation.amountCents,
+        sortOrder: allocation.sortOrder,
+      })),
+    });
   }
 
   private parseDate(raw: string, endOfDay = false) {

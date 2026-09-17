@@ -9,6 +9,10 @@ import { AccountingImageRetentionQueue } from './image-retention-queue';
 import { AccountingInboxItemsList } from './inbox-items-list';
 import { AccountingManualUploadLibrary } from './manual-upload-library';
 import {
+  findAccountingInboxItemByStableId,
+  retainReviewingInboxItemStableId,
+} from './reviewing-inbox-item';
+import {
   type AccountingAccount,
   type AccountingCategory,
   type AccountingFinancialProvider,
@@ -35,7 +39,13 @@ export default function AccountingInboxPage() {
   const [imageRetentionQueue, setImageRetentionQueue] = useState<
     AccountingImageRetentionQueueItem[]
   >([]);
-  const [reviewing, setReviewing] = useState<AccountingInboxItem | null>(null);
+  const [reviewingInboxItemStableId, setReviewingInboxItemStableId] = useState<
+    string | null
+  >(null);
+  const reviewing = findAccountingInboxItemByStableId(
+    items,
+    reviewingInboxItemStableId,
+  );
   const [optimizingImage, setOptimizingImage] =
     useState<AccountingImageRetentionQueueItem | null>(null);
   const [senderEmail, setSenderEmail] = useState('');
@@ -72,6 +82,9 @@ export default function AccountingInboxPage() {
           ),
         ]);
       setItems(inbox);
+      setReviewingInboxItemStableId((currentStableId) =>
+        retainReviewingInboxItemStableId(inbox, currentStableId),
+      );
       setManualUploads(uploads);
       setCategories(cats);
       setAccounts(accts);
@@ -175,10 +188,10 @@ export default function AccountingInboxPage() {
         body: JSON.stringify({ classification, selectedProvider }),
       });
       if (
-        reviewing?.inboxItemStableId === item.inboxItemStableId &&
+        reviewingInboxItemStableId === item.inboxItemStableId &&
         classification !== 'EXPENSE_DOCUMENT'
       ) {
-        setReviewing(null);
+        setReviewingInboxItemStableId(null);
       }
       setMessage(
         isZh ? '资料类型已更新。' : 'Document classification updated.',
@@ -240,8 +253,8 @@ export default function AccountingInboxPage() {
       await apiFetch(`/accounting/inbox/${item.inboxItemStableId}`, {
         method: 'DELETE',
       });
-      if (reviewing?.inboxItemStableId === item.inboxItemStableId) {
-        setReviewing(null);
+      if (reviewingInboxItemStableId === item.inboxItemStableId) {
+        setReviewingInboxItemStableId(null);
       }
       setMessage(
         isZh
@@ -265,8 +278,8 @@ export default function AccountingInboxPage() {
         `/accounting/inbox/manual-uploads/${item.inboxItemStableId}/permanent`,
         { method: 'DELETE' },
       );
-      if (reviewing?.inboxItemStableId === item.inboxItemStableId) {
-        setReviewing(null);
+      if (reviewingInboxItemStableId === item.inboxItemStableId) {
+        setReviewingInboxItemStableId(null);
       }
       setMessage(
         result.storageCleanupComplete
@@ -305,7 +318,7 @@ export default function AccountingInboxPage() {
   }
 
   async function handleExpenseConfirmed(item: AccountingInboxItem) {
-    setReviewing(null);
+    setReviewingInboxItemStableId(null);
     const loaded = await load();
     if (item.artifact.kind === 'IMAGE') {
       const retentionItem = loaded?.retentionQueue.find(
@@ -496,7 +509,9 @@ export default function AccountingInboxPage() {
         confirmingOtherId={confirmingOtherId}
         onTrustSender={(email) => saveTrustedSender(email)}
         onClassificationChange={updateClassification}
-        onReviewExpense={setReviewing}
+        onReviewExpense={(item) =>
+          setReviewingInboxItemStableId(item.inboxItemStableId)
+        }
         onConfirmProviderFinancial={confirmProviderFinancial}
         onConfirmOther={confirmOther}
         onDiscard={discard}
@@ -508,7 +523,7 @@ export default function AccountingInboxPage() {
           categories={categories}
           accounts={accounts}
           isZh={isZh}
-          onClose={() => setReviewing(null)}
+          onClose={() => setReviewingInboxItemStableId(null)}
           onConfirmed={handleExpenseConfirmed}
         />
       ) : null}

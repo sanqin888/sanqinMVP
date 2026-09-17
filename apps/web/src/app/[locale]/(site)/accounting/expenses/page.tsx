@@ -4,6 +4,13 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api/client';
+import {
+  ExpensePaymentAllocationsEditor,
+  expensePaymentAllocationErrorMessage,
+  makeExpensePaymentAllocationDraft,
+  prepareExpensePaymentAllocations,
+  type ExpensePaymentAllocationDraft,
+} from '../expense-payment-allocations';
 
 type Category = {
   categoryStableId: string;
@@ -27,6 +34,13 @@ type ExpenseDocument = {
   taxCents: number | null;
   memo: string | null;
   attachmentUrls: string[];
+  paymentAllocations: Array<{
+    paymentAllocationStableId: string;
+    accountStableId: string;
+    accountName: string;
+    amountCents: number;
+    sortOrder: number;
+  }>;
   splits: Array<{
     txStableId: string;
     categoryName: string;
@@ -62,7 +76,9 @@ export default function AccountingExpensesPage() {
   const [documents, setDocuments] = useState<ExpenseDocument[]>([]);
   const [occurredAt, setOccurredAt] = useState(new Date().toISOString().slice(0, 10));
   const [receiptTotal, setReceiptTotal] = useState('');
-  const [accountStableId, setAccountStableId] = useState('');
+  const [paymentAllocations, setPaymentAllocations] = useState<
+    ExpensePaymentAllocationDraft[]
+  >(() => [makeExpensePaymentAllocationDraft()]);
   const [memo, setMemo] = useState('');
   const [splits, setSplits] = useState<SplitDraft[]>([]);
   const [loading, setLoading] = useState(true);
@@ -181,6 +197,19 @@ export default function AccountingExpensesPage() {
       );
       return;
     }
+    const preparedPaymentAllocations = prepareExpensePaymentAllocations(
+      paymentAllocations,
+      calculated.receiptTotalCents,
+    );
+    if (preparedPaymentAllocations.error) {
+      setError(
+        expensePaymentAllocationErrorMessage(
+          preparedPaymentAllocations.error,
+          isZh,
+        ),
+      );
+      return;
+    }
     setSubmitting(true);
     try {
       await apiFetch('/accounting/expenses', {
@@ -189,7 +218,7 @@ export default function AccountingExpensesPage() {
         body: JSON.stringify({
           occurredAt,
           totalCents: calculated.receiptTotalCents,
-          accountStableId: accountStableId || null,
+          paymentAllocations: preparedPaymentAllocations.paymentAllocations,
           attachmentUrls: [],
           memo: memo.trim() || null,
           splits: calculated.rows
@@ -202,6 +231,7 @@ export default function AccountingExpensesPage() {
         }),
       });
       setReceiptTotal('');
+      setPaymentAllocations([makeExpensePaymentAllocationDraft()]);
       setMemo('');
       setSplits((current) => [
         {
@@ -255,7 +285,7 @@ export default function AccountingExpensesPage() {
               : 'Use only for manual entries without a receipt, invoice, or email artifact. All booked amounts are CAD.'}
           </p>
         </div>
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-2">
           <label className="text-sm">
             <span className="mb-1 block text-slate-500">{isZh ? '日期' : 'Date'}</span>
             <input className="w-full rounded border px-3 py-2" type="date" value={occurredAt} onChange={(event) => setOccurredAt(event.target.value)} />
@@ -264,14 +294,15 @@ export default function AccountingExpensesPage() {
             <span className="mb-1 block text-slate-500">{isZh ? 'CAD 记账总额' : 'CAD booking total'}</span>
             <div className="flex rounded border bg-white px-3 py-2"><span className="mr-1">CAD $</span><input className="min-w-0 flex-1 outline-none" inputMode="decimal" value={receiptTotal} onChange={(event) => setReceiptTotal(event.target.value)} placeholder="0.00" /></div>
           </label>
-          <label className="text-sm">
-            <span className="mb-1 block text-slate-500">{isZh ? '付款账户（CAD）' : 'Paid from (CAD)'}</span>
-            <select className="w-full rounded border px-3 py-2" value={accountStableId} onChange={(event) => setAccountStableId(event.target.value)}>
-              <option value="">{isZh ? '暂不指定' : 'Not specified'}</option>
-              {accounts.filter((account) => account.currency === 'CAD').map((account) => <option key={account.accountStableId} value={account.accountStableId}>{account.name}</option>)}
-            </select>
-          </label>
         </div>
+
+        <ExpensePaymentAllocationsEditor
+          accounts={accounts}
+          totalCents={calculated.receiptTotalCents}
+          allocations={paymentAllocations}
+          onChange={setPaymentAllocations}
+          isZh={isZh}
+        />
 
         <section>
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -330,7 +361,19 @@ export default function AccountingExpensesPage() {
             <div key={document.documentStableId} className="grid gap-2 py-3 md:grid-cols-[130px_110px_1fr_140px]">
               <span>{document.occurredAt ? new Date(document.occurredAt).toLocaleDateString() : '-'}</span>
               <strong>{money(document.totalCents)}</strong>
-              <div className="text-slate-600">{document.splits.map((split) => `${split.categoryName} ${money(split.amountCents + split.taxCents)}`).join(' / ') || document.memo || '-'}</div>
+              <div className="text-slate-600">
+                <div>{document.splits.map((split) => `${split.categoryName} ${money(split.amountCents + split.taxCents)}`).join(' / ') || document.memo || '-'}</div>
+                <div className="mt-1 text-xs text-slate-500">
+                  {isZh ? '付款：' : 'Paid from: '}
+                  {document.paymentAllocations.length
+                    ? document.paymentAllocations
+                        .map((allocation) => `${allocation.accountName} ${money(allocation.amountCents)}`)
+                        .join(' / ')
+                    : isZh
+                      ? '暂未指定'
+                      : 'Not specified'}
+                </div>
+              </div>
               <div className="text-right">{document.attachmentUrls[0] ? <a className="text-blue-600 hover:underline" href={document.attachmentUrls[0]} target="_blank" rel="noreferrer">{isZh ? '查看凭证' : 'Receipt'}</a> : '-'}</div>
             </div>
           )) : <p className="py-4 text-slate-500">{isZh ? '暂无支出。' : 'No expenses yet.'}</p>}

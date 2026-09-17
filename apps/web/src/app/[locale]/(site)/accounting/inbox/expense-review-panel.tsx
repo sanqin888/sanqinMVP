@@ -9,6 +9,13 @@ import {
 } from 'react';
 import { apiFetch } from '@/lib/api/client';
 import {
+  ExpensePaymentAllocationsEditor,
+  expensePaymentAllocationErrorMessage,
+  makeExpensePaymentAllocationDraft,
+  prepareExpensePaymentAllocations,
+  type ExpensePaymentAllocationDraft,
+} from '../expense-payment-allocations';
+import {
   type AccountingAccount,
   type AccountingCategory,
   type AccountingExpenseReviewRow,
@@ -52,7 +59,9 @@ export function AccountingInboxExpenseReviewPanel({
   const [date, setDate] = useState('');
   const [total, setTotal] = useState('');
   const [sourceCurrency, setSourceCurrency] = useState('');
-  const [accountStableId, setAccountStableId] = useState('');
+  const [paymentAllocations, setPaymentAllocations] = useState<
+    ExpensePaymentAllocationDraft[]
+  >(() => [makeExpensePaymentAllocationDraft()]);
   const [memo, setMemo] = useState('');
   const [rows, setRows] = useState<AccountingExpenseReviewRow[]>([]);
   const [quickRows, setQuickRows] = useState<QuickRow[]>([]);
@@ -81,11 +90,6 @@ export function AccountingInboxExpenseReviewPanel({
       ),
     [categories],
   );
-  const cadAccounts = useMemo(
-    () => accounts.filter((account) => account.currency === 'CAD'),
-    [accounts],
-  );
-
   useEffect(() => {
     const extraction = latestParse(item);
     const suggested = extraction.suggestedCategoryStableId;
@@ -114,7 +118,7 @@ export function AccountingInboxExpenseReviewPanel({
         ? toDollars(extraction.totalCents ?? subtotalCents + taxCents)
         : '',
     );
-    setAccountStableId('');
+    setPaymentAllocations([makeExpensePaymentAllocationDraft()]);
     setMemo('');
     setRows([
       {
@@ -136,7 +140,7 @@ export function AccountingInboxExpenseReviewPanel({
     );
     setShowQuick(recognizedLineItemHints.length > 0);
     setError(null);
-  }, [cadAccounts, expenseCategories, item]);
+  }, [expenseCategories, item]);
 
   useEffect(() => {
     const key = pendingQuickAmountFocus.current;
@@ -256,6 +260,19 @@ export function AccountingInboxExpenseReviewPanel({
       );
       return;
     }
+    const preparedPaymentAllocations = prepareExpensePaymentAllocations(
+      paymentAllocations,
+      calculated.totalCents,
+    );
+    if (preparedPaymentAllocations.error) {
+      setError(
+        expensePaymentAllocationErrorMessage(
+          preparedPaymentAllocations.error,
+          isZh,
+        ),
+      );
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -268,7 +285,7 @@ export function AccountingInboxExpenseReviewPanel({
             occurredAt: date,
             totalCents: calculated.totalCents,
             sourceCurrency: sourceCurrency.trim().toUpperCase() || null,
-            accountStableId: accountStableId || null,
+            paymentAllocations: preparedPaymentAllocations.paymentAllocations,
             attachmentUrls: [],
             memo: memo.trim() || null,
             splits: rows
@@ -414,7 +431,7 @@ export function AccountingInboxExpenseReviewPanel({
             : 'This is a foreign-currency document. Enter the actual CAD booked amounts below (for example, the card charge), not the source-currency amounts.'}
         </p>
       ) : null}
-      <div className="mt-4 grid gap-3 md:grid-cols-3">
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
         <label className="text-sm">
           <span className="mb-1 block text-slate-500">{isZh ? '费用日期' : 'Expense date'}</span>
           <input
@@ -438,23 +455,15 @@ export function AccountingInboxExpenseReviewPanel({
             />
           </div>
         </label>
-        <label className="text-sm">
-          <span className="mb-1 block text-slate-500">
-            {isZh ? '付款账户（CAD）' : 'Paid from (CAD)'}
-          </span>
-          <select
-            className="w-full rounded border bg-white px-3 py-2"
-            value={accountStableId}
-            onChange={(event) => setAccountStableId(event.target.value)}
-          >
-            <option value="">{isZh ? '暂不指定' : 'Not specified'}</option>
-            {cadAccounts.map((account) => (
-              <option key={account.accountStableId} value={account.accountStableId}>
-                {account.name}
-              </option>
-            ))}
-          </select>
-        </label>
+      </div>
+      <div className="mt-4">
+        <ExpensePaymentAllocationsEditor
+          accounts={accounts}
+          totalCents={calculated.totalCents}
+          allocations={paymentAllocations}
+          onChange={setPaymentAllocations}
+          isZh={isZh}
+        />
       </div>
       <section className="mt-4 rounded-lg border border-amber-200 bg-amber-100/60 p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -607,8 +616,7 @@ export function AccountingInboxExpenseReviewPanel({
               <button
                 type="button"
                 onClick={aggregateQuickRows}
-                disabled={!canAggregateRecognizedQuickRows}
-                className="rounded bg-slate-900 px-3 py-1.5 text-sm text-white disabled:cursor-not-allowed disabled:opacity-40"
+                className="rounded bg-slate-900 px-3 py-1.5 text-sm text-white"
               >
                 {isZh ? '汇总到费用分类' : 'Aggregate categories'}
               </button>
