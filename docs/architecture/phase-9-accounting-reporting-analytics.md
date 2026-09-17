@@ -1161,7 +1161,7 @@ Focused policy and service characterization cover signed revenue/discounts, cano
 
 ### 18.55 Slice 8A-5 — Controller vertical split + closeout guard
 
-**Local/source state:** `refactor/phase9-slice8a5-accounting-controller-vertical-split` starts from merged `origin/dev@66a1873b` and is **SOURCE READY FOR USER REVIEW / NO MIGRATION**. This slice changes only Accounting transport composition and architecture regression coverage; backend capability ownership, HTTP paths, response shapes, financial semantics and persistence remain unchanged.
+**Remote validation state:** PR #2384 on `refactor/phase9-slice8a5-accounting-controller-vertical-split`, initial implementation head `f406aa74`, from merged `origin/dev@66a1873b`; **REMOTE VALIDATION / NO MIGRATION**. This slice changes only Accounting transport composition and architecture regression coverage; backend capability ownership, HTTP paths, response shapes, financial semantics and persistence remain unchanged.
 
 The former 16-dependency `AccountingController` god adapter is deleted. Its existing authenticated `/accounting/**` route set is redistributed across twelve explicit transport verticals under the same `@Controller('accounting')`, `SessionAuthGuard + RolesGuard`, and `ADMIN / ACCOUNTANT` role policy: Chart, Expense, Inbox Core, Inbox Artifact/Retention, Provider Financial, Automation, Period, Canonical Sale, Canonical Change, Provider Settlement, Reports and Audit. Each controller injects only the capability or pair of capabilities required by that vertical; the existing `AccountingService` survives only as the narrow Orders paid-dimension + Audit query owner and is injected only by Reports/Audit transport adapters.
 
