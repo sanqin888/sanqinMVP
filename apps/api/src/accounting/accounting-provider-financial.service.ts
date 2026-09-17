@@ -10,7 +10,7 @@ import {
   AccountingInboxMaterializedEntityType,
   AccountingInboxStatus,
   AccountingParseStatus,
-} from '@prisma/client';
+} from './accounting-contracts';
 import {
   BRAND_STORE_CONFIG_READER,
   type BrandStoreConfigReaderPort,

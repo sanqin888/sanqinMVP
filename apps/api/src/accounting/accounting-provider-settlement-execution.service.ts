@@ -6,7 +6,7 @@ import {
 import {
   AccountingInboxMaterializedEntityType,
   AccountingInboxStatus,
-} from '@prisma/client';
+} from './accounting-contracts';
 
 import type {
   ProviderSettlementAccountAuthorityV1,

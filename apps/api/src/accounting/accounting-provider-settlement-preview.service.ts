@@ -4,7 +4,7 @@ import {
   AccountingFinancialProvider,
   AccountingInboxMaterializedEntityType,
   AccountingInboxStatus,
-} from '@prisma/client';
+} from './accounting-contracts';
 import { DateTime } from 'luxon';
 import {
   ORDER_FINANCIAL_FACTS_READER,
