@@ -168,18 +168,18 @@ describe('AccountingOperationsService expense-write characterization', () => {
     const allocationCreateArgs = createAllocationMany.mock.calls[0]?.[0];
     expect(allocationCreateArgs).toBeDefined();
     expect(allocationCreateArgs?.data).toHaveLength(2);
-    expect(
-      allocationCreateArgs?.data[0]?.paymentAllocationStableId,
-    ).toMatch(/^expensepay_/);
+    expect(allocationCreateArgs?.data[0]?.paymentAllocationStableId).toMatch(
+      /^expensepay_/,
+    );
     expect(allocationCreateArgs?.data[0]).toMatchObject({
       expenseDocumentId: 'expense-document-db-id',
       accountId: 'account-rbc-db-id',
       amountCents: 600,
       sortOrder: 0,
     });
-    expect(
-      allocationCreateArgs?.data[1]?.paymentAllocationStableId,
-    ).toMatch(/^expensepay_/);
+    expect(allocationCreateArgs?.data[1]?.paymentAllocationStableId).toMatch(
+      /^expensepay_/,
+    );
     expect(allocationCreateArgs?.data[1]).toMatchObject({
       expenseDocumentId: 'expense-document-db-id',
       accountId: 'account-cash-db-id',
@@ -209,12 +209,8 @@ describe('AccountingOperationsService expense-write characterization', () => {
       ],
     });
     const transactionCreateArgs = createMany.mock.calls[0]?.[0];
-    expect(transactionCreateArgs?.data[0]).not.toHaveProperty(
-      'accountId',
-    );
-    expect(transactionCreateArgs?.data[1]).not.toHaveProperty(
-      'accountId',
-    );
+    expect(transactionCreateArgs?.data[0]).not.toHaveProperty('accountId');
+    expect(transactionCreateArgs?.data[1]).not.toHaveProperty('accountId');
     expect(createAuditMany).toHaveBeenCalledWith({
       data: [
         expect.objectContaining({
