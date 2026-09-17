@@ -101,8 +101,8 @@ describe('AccountingService double-entry journal characterization', () => {
     occurredAt: new Date(basePayload.occurredAt),
     currency: 'CAD',
     memo: basePayload.memo,
-    createdByUserStableId: 'user_stable_1',
-    updatedByUserStableId: 'user_stable_1',
+    createdByActorRef: 'user_stable_1',
+    updatedByActorRef: 'user_stable_1',
     createdAt: new Date('2026-09-12T14:01:00.000Z'),
     updatedAt: new Date('2026-09-12T14:01:00.000Z'),
     version: 1,
@@ -191,8 +191,8 @@ describe('AccountingService double-entry journal characterization', () => {
           idempotencyHash: expect.stringMatching(/^[a-f0-9]{64}$/) as unknown,
           kind: AccountingJournalEntryKind.STANDARD,
           source: AccountingJournalSource.MANUAL,
-          createdByUserStableId: 'user_stable_1',
-          updatedByUserStableId: 'user_stable_1',
+          createdByActorRef: 'user_stable_1',
+          updatedByActorRef: 'user_stable_1',
           lines: {
             create: [
               expect.objectContaining({
@@ -219,7 +219,7 @@ describe('AccountingService double-entry journal characterization', () => {
         action: 'CREATE',
         entityType: 'ACCOUNTING_JOURNAL_ENTRY',
         entityId: 'journal_stable_1',
-        operatorUserId: 'user_stable_1',
+        operatorActorRef: 'user_stable_1',
       }) as unknown,
     });
   });
@@ -533,7 +533,7 @@ describe('AccountingService double-entry journal characterization', () => {
     const updated = journalRow({
       memo: 'Updated memo',
       updatedAt: new Date('2026-09-12T14:10:00.000Z'),
-      updatedByUserStableId: 'user_stable_2',
+      updatedByActorRef: 'user_stable_2',
       version: 2,
     });
     prisma.accountingJournalEntry.findUnique
@@ -560,7 +560,7 @@ describe('AccountingService double-entry journal characterization', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           idempotencyHash: expect.stringMatching(/^[a-f0-9]{64}$/) as unknown,
-          updatedByUserStableId: 'user_stable_2',
+          updatedByActorRef: 'user_stable_2',
           version: { increment: 1 },
         }) as unknown,
       }) as unknown,
@@ -573,7 +573,7 @@ describe('AccountingService double-entry journal characterization', () => {
       data: expect.objectContaining({
         action: 'UPDATE',
         entityId: 'journal_stable_1',
-        operatorUserId: 'user_stable_2',
+        operatorActorRef: 'user_stable_2',
         beforeJson: journalRow(),
         afterJson: updated,
       }) as unknown,
@@ -609,7 +609,7 @@ describe('AccountingService double-entry journal characterization', () => {
     const deleted = journalRow({
       deletedAt: new Date('2026-09-12T15:00:00.000Z'),
       version: 2,
-      updatedByUserStableId: 'user_stable_3',
+      updatedByActorRef: 'user_stable_3',
     });
     prisma.accountingJournalEntry.findUnique.mockResolvedValue(existing);
     prisma.accountingJournalEntry.update.mockResolvedValue(deleted);
@@ -623,7 +623,7 @@ describe('AccountingService double-entry journal characterization', () => {
         where: { entryStableId: 'journal_stable_1' },
         data: {
           deletedAt: expect.any(Date) as unknown,
-          updatedByUserStableId: 'user_stable_3',
+          updatedByActorRef: 'user_stable_3',
           version: { increment: 1 },
         },
       }) as unknown,
@@ -632,7 +632,7 @@ describe('AccountingService double-entry journal characterization', () => {
       data: expect.objectContaining({
         action: 'DELETE',
         entityId: 'journal_stable_1',
-        operatorUserId: 'user_stable_3',
+        operatorActorRef: 'user_stable_3',
         beforeJson: existing,
         afterJson: deleted,
       }) as unknown,

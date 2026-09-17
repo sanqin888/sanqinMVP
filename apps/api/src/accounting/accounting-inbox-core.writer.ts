@@ -295,7 +295,7 @@ export async function upsertTrustedSenderInTx(
       action: existing ? 'UPDATE' : 'CREATE',
       entityType: 'ACCOUNTING_TRUSTED_SENDER',
       entityId: row.trustedSenderStableId,
-      operatorUserId: operatorUserStableId,
+      operatorActorRef: operatorUserStableId,
       ...(existing
         ? { beforeJson: existing as unknown as Prisma.InputJsonValue }
         : {}),

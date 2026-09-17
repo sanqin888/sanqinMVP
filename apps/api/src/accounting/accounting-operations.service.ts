@@ -1088,7 +1088,7 @@ export class AccountingOperationsService {
           extractionJson: extractionJson as Prisma.InputJsonValue,
           memo: input.memo?.trim() || null,
           confirmedAt: new Date(),
-          confirmedByUserId: operatorUserStableId,
+          confirmedByUserStableId: operatorUserStableId,
         },
         select: { id: true },
       });
@@ -1112,8 +1112,8 @@ export class AccountingOperationsService {
         externalRef: documentStableId,
         memo: input.memo?.trim() || null,
         attachmentUrls,
-        createdByUserId: operatorUserStableId,
-        updatedByUserId: operatorUserStableId,
+        createdByUserStableId: operatorUserStableId,
+        updatedByUserStableId: operatorUserStableId,
       }));
       await tx.accountingTransaction.createMany({ data: splitRows });
       await tx.accountingAuditLog.createMany({
@@ -1121,7 +1121,7 @@ export class AccountingOperationsService {
           action: 'CREATE',
           entityType: 'ACCOUNTING_TRANSACTION',
           entityId: row.txStableId,
-          operatorUserId: operatorUserStableId,
+          operatorActorRef: operatorUserStableId,
           afterJson: {
             txStableId: row.txStableId,
             type: row.type,
@@ -1303,7 +1303,7 @@ export class AccountingOperationsService {
             attachmentUrls,
             memo: input.memo?.trim() || null,
             confirmedAt: new Date(),
-            confirmedByUserId: operatorUserStableId,
+            confirmedByUserStableId: operatorUserStableId,
           },
         });
         await this.createExpensePaymentAllocationsInTx(
@@ -1326,8 +1326,8 @@ export class AccountingOperationsService {
           externalRef: documentStableId,
           memo: input.memo?.trim() || null,
           attachmentUrls,
-          createdByUserId: operatorUserStableId,
-          updatedByUserId: operatorUserStableId,
+          createdByUserStableId: operatorUserStableId,
+          updatedByUserStableId: operatorUserStableId,
         }));
         await tx.accountingTransaction.createMany({ data: splitRows });
         await tx.accountingAuditLog.createMany({
@@ -1335,7 +1335,7 @@ export class AccountingOperationsService {
             action: 'CREATE',
             entityType: 'ACCOUNTING_TRANSACTION',
             entityId: row.txStableId,
-            operatorUserId: operatorUserStableId,
+            operatorActorRef: operatorUserStableId,
             afterJson: {
               txStableId: row.txStableId,
               type: row.type,
@@ -1514,7 +1514,7 @@ export class AccountingOperationsService {
           attachmentUrls,
           memo: input.memo?.trim() || null,
           confirmedAt: new Date(),
-          confirmedByUserId: operatorUserStableId,
+          confirmedByUserStableId: operatorUserStableId,
         },
       });
       await this.createExpensePaymentAllocationsInTx(
@@ -1536,8 +1536,8 @@ export class AccountingOperationsService {
         externalRef: documentStableId,
         memo: input.memo?.trim() || null,
         attachmentUrls,
-        createdByUserId: operatorUserStableId,
-        updatedByUserId: operatorUserStableId,
+        createdByUserStableId: operatorUserStableId,
+        updatedByUserStableId: operatorUserStableId,
       }));
       await tx.accountingTransaction.createMany({ data: splitRows });
       await tx.accountingAuditLog.createMany({
@@ -1546,7 +1546,7 @@ export class AccountingOperationsService {
             action: 'DELETE',
             entityType: 'ACCOUNTING_TRANSACTION',
             entityId: row.txStableId,
-            operatorUserId: operatorUserStableId,
+            operatorActorRef: operatorUserStableId,
             beforeJson: {
               txStableId: row.txStableId,
               type: row.type,
@@ -1565,7 +1565,7 @@ export class AccountingOperationsService {
             action: 'CREATE',
             entityType: 'ACCOUNTING_TRANSACTION',
             entityId: row.txStableId,
-            operatorUserId: operatorUserStableId,
+            operatorActorRef: operatorUserStableId,
             afterJson: {
               txStableId: row.txStableId,
               type: row.type,
