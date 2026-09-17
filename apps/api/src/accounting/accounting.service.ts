@@ -8,14 +8,14 @@ import {
 } from '@nestjs/common';
 import { createId } from '@paralleldrive/cuid2';
 import { DateTime } from 'luxon';
+import { Prisma } from '@prisma/client';
 import {
   AccountingDocumentStatus,
   AccountingJournalEntryKind,
   AccountingJournalSource,
   AccountingSourceType,
   AccountingTxType,
-  Prisma,
-} from '@prisma/client';
+} from './accounting-contracts';
 import { PrismaService } from '../prisma/prisma.service';
 import { runSerializableAccountingWrite } from './accounting-atomic-write';
 import {
@@ -50,6 +50,10 @@ import {
   BRAND_STORE_CONFIG_READER,
   type BrandStoreConfigReaderPort,
 } from '../store/public-api';
+import {
+  ORDER_REPORTING_FACTS_READER,
+  type OrderReportingFactsReaderPort,
+} from '../orders/public-api';
 
 type TxFilters = {
   from?: string;
@@ -65,7 +69,7 @@ type TxFilters = {
 type AuditLogFilters = {
   entityType?: string;
   entityId?: string;
-  operatorUserId?: string;
+  operatorActorRef?: string;
   from?: string;
   to?: string;
 };
@@ -100,8 +104,8 @@ const ACCOUNTING_TX_PUBLIC_SELECT = {
   counterparty: true,
   memo: true,
   attachmentUrls: true,
-  createdByUserId: true,
-  updatedByUserId: true,
+  createdByUserStableId: true,
+  updatedByUserStableId: true,
   createdAt: true,
   updatedAt: true,
   version: true,
@@ -134,8 +138,8 @@ const ACCOUNTING_JOURNAL_PUBLIC_SELECT = {
   occurredAt: true,
   currency: true,
   memo: true,
-  createdByUserStableId: true,
-  updatedByUserStableId: true,
+  createdByActorRef: true,
+  updatedByActorRef: true,
   createdAt: true,
   updatedAt: true,
   version: true,
@@ -202,6 +206,8 @@ export class AccountingService {
     private readonly prisma: PrismaService,
     @Inject(BRAND_STORE_CONFIG_READER)
     private readonly brandStoreConfigReader: BrandStoreConfigReaderPort,
+    @Inject(ORDER_REPORTING_FACTS_READER)
+    private readonly orderReportingFacts: OrderReportingFactsReaderPort,
   ) {}
 
   private async getBusinessTimezone(): Promise<string> {
@@ -515,8 +521,8 @@ export class AccountingService {
     return {
       ...(filters.entityType ? { entityType: filters.entityType } : {}),
       ...(filters.entityId ? { entityId: filters.entityId } : {}),
-      ...(filters.operatorUserId
-        ? { operatorUserId: filters.operatorUserId }
+      ...(filters.operatorActorRef
+        ? { operatorActorRef: filters.operatorActorRef }
         : {}),
       ...(fromDate || toDate
         ? {
@@ -633,7 +639,7 @@ export class AccountingService {
       action: string;
       entityType: string;
       entityId: string;
-      operatorUserId: string;
+      operatorActorRef: string;
       beforeJson?: Prisma.InputJsonValue | null;
       afterJson?: Prisma.InputJsonValue | null;
     },
@@ -644,7 +650,7 @@ export class AccountingService {
         action: params.action,
         entityType: params.entityType,
         entityId: params.entityId,
-        operatorUserId: params.operatorUserId,
+        operatorActorRef: params.operatorActorRef,
         beforeJson:
           params.beforeJson === null ? Prisma.JsonNull : params.beforeJson,
         afterJson:
@@ -662,7 +668,7 @@ export class AccountingService {
 
   async createCanonicalChangeJournalEntry(
     input: AccountingJournalCreateInput,
-    operatorUserStableId: string,
+    operatorActorRef: string,
     authority: CanonicalChangeJournalWriteAuthorityV1,
   ): Promise<AccountingJournalRow> {
     const normalizedAuthority = this.applyJournalPolicy(() =>
@@ -670,14 +676,14 @@ export class AccountingService {
     );
     return this.createJournalEntryInternal(
       input,
-      operatorUserStableId,
+      operatorActorRef,
       normalizedAuthority,
     );
   }
 
   async createProviderSettlementReplacementGroup(
     input: ProviderSettlementReplacementGroupWriteInput,
-    operatorUserStableId: string,
+    operatorActorRef: string,
     authority: ProviderSettlementReplacementGroupAuthorityV1,
   ): Promise<AccountingJournalRow[]> {
     const normalizedAuthority = this.applyJournalPolicy(() =>
@@ -730,8 +736,8 @@ export class AccountingService {
     }
 
     const operator = this.requireJournalValue(
-      operatorUserStableId,
-      'operatorUserStableId',
+      operatorActorRef,
+      'operatorActorRef',
     );
     const timezone = await this.getBusinessTimezone();
     const writeGroup = (tx: Prisma.TransactionClient) =>
@@ -753,7 +759,7 @@ export class AccountingService {
 
   private async createJournalEntryInternal(
     input: AccountingJournalCreateInput,
-    operatorUserStableId: string,
+    operatorActorRef: string,
     writeAuthority: CanonicalChangeJournalWriteAuthorityV1 | null,
   ): Promise<AccountingJournalRow> {
     const normalized = this.applyJournalPolicy(() =>
@@ -766,8 +772,8 @@ export class AccountingService {
       ? hashCanonicalChangeJournalWrite(normalized, writeAuthority)
       : hashJournalCreatePayload(normalized);
     const operator = this.requireJournalValue(
-      operatorUserStableId,
-      'operatorUserStableId',
+      operatorActorRef,
+      'operatorActorRef',
     );
     const timezone = await this.getBusinessTimezone();
     const prepared: PreparedJournalWrite = {
@@ -835,8 +841,8 @@ export class AccountingService {
         occurredAt: normalized.occurredAt,
         currency: normalized.currency,
         memo: normalized.memo,
-        createdByUserStableId: operator,
-        updatedByUserStableId: operator,
+        createdByActorRef: operator,
+        updatedByActorRef: operator,
         lines: {
           create: lines.map((line, index) => ({
             lineNo: index + 1,
@@ -862,7 +868,7 @@ export class AccountingService {
         action: 'CREATE',
         entityType: 'ACCOUNTING_JOURNAL_ENTRY',
         entityId: created.entryStableId,
-        operatorUserId: operator,
+        operatorActorRef: operator,
         afterJson,
       },
       tx,
@@ -944,7 +950,7 @@ export class AccountingService {
           currency: normalized.currency,
           memo: normalized.memo,
           idempotencyHash: updatedIdempotencyHash,
-          updatedByUserStableId: operator,
+          updatedByActorRef: operator,
           version: { increment: 1 },
         },
       });
@@ -980,7 +986,7 @@ export class AccountingService {
           action: 'UPDATE',
           entityType: 'ACCOUNTING_JOURNAL_ENTRY',
           entityId: stableId,
-          operatorUserId: operator,
+          operatorActorRef: operator,
           beforeJson: existingPublic as unknown as Prisma.InputJsonValue,
           afterJson: updated as unknown as Prisma.InputJsonValue,
         },
@@ -1022,7 +1028,7 @@ export class AccountingService {
         where: { entryStableId: stableId },
         data: {
           deletedAt: new Date(),
-          updatedByUserStableId: operator,
+          updatedByActorRef: operator,
           version: { increment: 1 },
         },
         select: ACCOUNTING_JOURNAL_PUBLIC_SELECT,
@@ -1033,7 +1039,7 @@ export class AccountingService {
           action: 'DELETE',
           entityType: 'ACCOUNTING_JOURNAL_ENTRY',
           entityId: stableId,
-          operatorUserId: operator,
+          operatorActorRef: operator,
           beforeJson: existing as unknown as Prisma.InputJsonValue,
           afterJson: deleted as unknown as Prisma.InputJsonValue,
         },
@@ -1522,8 +1528,8 @@ export class AccountingService {
           counterparty: payload.counterparty?.trim() || null,
           memo: payload.memo?.trim() || null,
           attachmentUrls: payload.attachmentUrls ?? [],
-          createdByUserId: operatorUserId,
-          updatedByUserId: operatorUserId,
+          createdByUserStableId: operatorUserId,
+          updatedByUserStableId: operatorUserId,
         },
         select: ACCOUNTING_TX_PUBLIC_SELECT,
       });
@@ -1533,7 +1539,7 @@ export class AccountingService {
           action: 'CREATE',
           entityType: 'ACCOUNTING_TRANSACTION',
           entityId: created.txStableId,
-          operatorUserId,
+          operatorActorRef: operatorUserId,
           afterJson: created as unknown as Prisma.InputJsonValue,
         },
         tx,
@@ -1621,7 +1627,7 @@ export class AccountingService {
           counterparty: payload.counterparty?.trim() || null,
           memo: payload.memo?.trim() || null,
           attachmentUrls: payload.attachmentUrls ?? [],
-          updatedByUserId: operatorUserId,
+          updatedByUserStableId: operatorUserId,
           version: { increment: 1 },
         },
       });
@@ -1646,7 +1652,7 @@ export class AccountingService {
           action: 'UPDATE',
           entityType: 'ACCOUNTING_TRANSACTION',
           entityId: txStableId,
-          operatorUserId,
+          operatorActorRef: operatorUserId,
           beforeJson: existing as unknown as Prisma.InputJsonValue,
           afterJson: updated as unknown as Prisma.InputJsonValue,
         },
@@ -1680,7 +1686,7 @@ export class AccountingService {
         where: { txStableId },
         data: {
           deletedAt: new Date(),
-          updatedByUserId: operatorUserId,
+          updatedByUserStableId: operatorUserId,
           version: { increment: 1 },
         },
       });
@@ -1690,7 +1696,7 @@ export class AccountingService {
           action: 'DELETE',
           entityType: 'ACCOUNTING_TRANSACTION',
           entityId: txStableId,
-          operatorUserId,
+          operatorActorRef: operatorUserId,
           beforeJson: existing as unknown as Prisma.InputJsonValue,
           afterJson: deleted as unknown as Prisma.InputJsonValue,
         },
@@ -1736,12 +1742,12 @@ export class AccountingService {
           periodKey,
           startAt,
           endAt,
-          closedByUserId: operatorUserId,
+          closedByUserStableId: operatorUserId,
         },
         update: {
           startAt,
           endAt,
-          closedByUserId: operatorUserId,
+          closedByUserStableId: operatorUserId,
           closedAt: new Date(),
         },
         select: {
@@ -1749,7 +1755,7 @@ export class AccountingService {
           periodKey: true,
           startAt: true,
           endAt: true,
-          closedByUserId: true,
+          closedByUserStableId: true,
           closedAt: true,
         },
       });
@@ -1759,7 +1765,7 @@ export class AccountingService {
           action: 'PERIOD_CLOSE',
           entityType: 'ACCOUNTING_PERIOD',
           entityId: periodKey,
-          operatorUserId,
+          operatorActorRef: operatorUserId,
           afterJson: close as unknown as Prisma.InputJsonValue,
         },
         tx,
@@ -1795,7 +1801,7 @@ export class AccountingService {
           periodKey: true,
           startAt: true,
           endAt: true,
-          closedByUserId: true,
+          closedByUserStableId: true,
           closedAt: true,
         },
       });
@@ -1811,7 +1817,7 @@ export class AccountingService {
           action: 'PERIOD_REOPEN',
           entityType: 'ACCOUNTING_PERIOD',
           entityId: periodKey,
-          operatorUserId,
+          operatorActorRef: operatorUserId,
           beforeJson: existing as unknown as Prisma.InputJsonValue,
         },
         tx,
@@ -1864,12 +1870,12 @@ export class AccountingService {
           periodKey,
           startAt,
           endAt,
-          closedByUserId: operatorUserId,
+          closedByUserStableId: operatorUserId,
         },
         update: {
           startAt,
           endAt,
-          closedByUserId: operatorUserId,
+          closedByUserStableId: operatorUserId,
           closedAt: new Date(),
         },
         select: {
@@ -1877,7 +1883,7 @@ export class AccountingService {
           periodKey: true,
           startAt: true,
           endAt: true,
-          closedByUserId: true,
+          closedByUserStableId: true,
           closedAt: true,
         },
       });
@@ -1886,7 +1892,7 @@ export class AccountingService {
           action: 'YEAR_LOCK',
           entityType: 'ACCOUNTING_PERIOD',
           entityId: periodKey,
-          operatorUserId,
+          operatorActorRef: operatorUserId,
           afterJson: close as unknown as Prisma.InputJsonValue,
         },
         tx,
@@ -1906,7 +1912,7 @@ export class AccountingService {
         periodKey: true,
         startAt: true,
         endAt: true,
-        closedByUserId: true,
+        closedByUserStableId: true,
         closedAt: true,
       },
       orderBy: { periodKey: 'asc' },
@@ -1924,7 +1930,7 @@ export class AccountingService {
         periodKey: true,
         startAt: true,
         endAt: true,
-        closedByUserId: true,
+        closedByUserStableId: true,
         closedAt: true,
       },
       orderBy: { periodKey: 'asc' },
@@ -2173,7 +2179,7 @@ export class AccountingService {
       action: 'EXPORT',
       entityType: 'ACCOUNTING_TRANSACTION',
       entityId: 'BATCH',
-      operatorUserId,
+      operatorActorRef: operatorUserId,
       afterJson: {
         count: rows.length,
         filters,
@@ -2328,7 +2334,7 @@ export class AccountingService {
       action: 'EXPORT_TEMPLATE',
       entityType: 'ACCOUNTING_REPORT',
       entityId: template,
-      operatorUserId,
+      operatorActorRef: operatorUserId,
       afterJson: { template, query } as Prisma.JsonObject,
     });
 
@@ -2409,7 +2415,7 @@ export class AccountingService {
       action: 'EXPORT_PDF',
       entityType: 'ACCOUNTING_REPORT',
       entityId: template,
-      operatorUserId,
+      operatorActorRef: operatorUserId,
       afterJson: { template, query } as Prisma.JsonObject,
     });
 
@@ -2610,46 +2616,20 @@ export class AccountingService {
       parseStoreBoundary(query.from, 'start'),
     );
     const toDate = parseStoreBoundary(query.to, 'end');
-    const orders = await this.prisma.order.findMany({
-      where: {
-        paidAt: {
-          ...(fromDate ? { gte: fromDate } : {}),
-          ...(toDate ? { lte: toDate } : {}),
-        },
-      },
-      select: {
-        totalCents: true,
-        channel: true,
-        paymentMethod: true,
-      },
-    });
-    const byChannel = new Map<string, number>();
-    const byPayment = new Map<string, number>();
-    for (const item of orders) {
-      byChannel.set(
-        item.channel,
-        (byChannel.get(item.channel) ?? 0) + item.totalCents,
+    const dimensions =
+      await this.orderReportingFacts.readPaidTotalDimensionsForRange(
+        fromDate,
+        toDate,
       );
-      byPayment.set(
-        item.paymentMethod,
-        (byPayment.get(item.paymentMethod) ?? 0) + item.totalCents,
-      );
-    }
     return {
       from: query.from ?? null,
       to: query.to ?? null,
-      byChannel: Array.from(byChannel.entries()).map(([key, amountCents]) => ({
-        key,
-        amountCents,
-      })),
-      byPaymentMethod: Array.from(byPayment.entries()).map(
-        ([key, amountCents]) => ({ key, amountCents }),
-      ),
+      ...dimensions,
     };
   }
 
   async listAuditLogs(filters: AuditLogFilters) {
-    return this.prisma.accountingAuditLog.findMany({
+    const rows = await this.prisma.accountingAuditLog.findMany({
       where: this.buildAuditWhere(filters),
       select: {
         action: true,
@@ -2657,12 +2637,17 @@ export class AccountingService {
         entityId: true,
         beforeJson: true,
         afterJson: true,
-        operatorUserId: true,
+        operatorActorRef: true,
         createdAt: true,
       },
       orderBy: { createdAt: 'desc' },
       take: 200,
     });
+    return rows.map(({ operatorActorRef, ...row }) => ({
+      ...row,
+      // Preserve the current Web/PWA read contract until the planned 8B cleanup.
+      operatorUserId: operatorActorRef,
+    }));
   }
 
   async listCategories() {

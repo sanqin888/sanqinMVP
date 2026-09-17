@@ -3,23 +3,17 @@ import { AccountingService } from './accounting.service';
 
 describe('AccountingService canonical store timezone characterization', () => {
   it('uses StoreConfig timezone boundaries for sales dimension dates', async () => {
-    const orderFindMany = jest.fn().mockResolvedValue([
-      {
-        totalCents: 2146,
-        channel: 'in_store',
-        paymentMethod: 'CASH',
-      },
-      {
-        totalCents: 507,
-        channel: 'in_store',
-        paymentMethod: 'CARD',
-      },
-    ]);
+    const readPaidTotalDimensionsForRange = jest.fn().mockResolvedValue({
+      byChannel: [{ key: 'in_store', amountCents: 2653 }],
+      byPaymentMethod: [
+        { key: 'CASH', amountCents: 2146 },
+        { key: 'CARD', amountCents: 507 },
+      ],
+    });
     const prisma = {
       accountingAutomationConfig: {
         findUnique: jest.fn().mockResolvedValue(null),
       },
-      order: { findMany: orderFindMany },
     };
     const brandStoreConfigReader = {
       getConfiguredStoreSnapshot: jest.fn().mockResolvedValue({
@@ -29,6 +23,7 @@ describe('AccountingService canonical store timezone characterization', () => {
     const service = new AccountingService(
       prisma as never,
       brandStoreConfigReader as never,
+      { readPaidTotalDimensionsForRange } as never,
     );
 
     await expect(
@@ -43,19 +38,10 @@ describe('AccountingService canonical store timezone characterization', () => {
       ],
     });
 
-    expect(orderFindMany).toHaveBeenCalledWith({
-      where: {
-        paidAt: {
-          gte: new Date('2026-09-02T04:00:00.000Z'),
-          lte: new Date('2026-09-03T03:59:59.999Z'),
-        },
-      },
-      select: {
-        totalCents: true,
-        channel: true,
-        paymentMethod: true,
-      },
-    });
+    expect(readPaidTotalDimensionsForRange).toHaveBeenCalledWith(
+      new Date('2026-09-02T04:00:00.000Z'),
+      new Date('2026-09-03T03:59:59.999Z'),
+    );
   });
 
   it('derives year and month locks from the StoreConfig timezone', async () => {
@@ -71,6 +57,7 @@ describe('AccountingService canonical store timezone characterization', () => {
     const service = new AccountingService(
       prisma as never,
       brandStoreConfigReader as never,
+      {} as never,
     );
 
     await service.assertEditableForPeriod(

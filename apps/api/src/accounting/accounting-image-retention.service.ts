@@ -12,7 +12,7 @@ import {
   AccountingInboxClassification,
   AccountingInboxMaterializedEntityType,
   AccountingInboxStatus,
-} from '@prisma/client';
+} from './accounting-contracts';
 import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';

@@ -166,7 +166,7 @@ describe('accounting image retention writer', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           action: 'IMAGE_ORIGINAL_BINARY_PURGED',
-          operatorUserId: 'user_authorized',
+          operatorActorRef: 'user_authorized',
           afterJson: expect.objectContaining({
             finalizedByUserStableId: 'user_retry',
           }) as unknown,

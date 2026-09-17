@@ -194,8 +194,8 @@ const journalRow = (entryStableId: string, sourceFactStableId: string) => ({
   occurredAt: new Date('2026-06-10T16:00:00.000Z'),
   currency: 'CAD',
   memo: null,
-  createdByUserStableId: 'system:accounting-provider-settlement',
-  updatedByUserStableId: 'system:accounting-provider-settlement',
+  createdByActorRef: 'system:accounting-provider-settlement',
+  updatedByActorRef: 'system:accounting-provider-settlement',
   createdAt: new Date('2026-09-15T12:00:00.000Z'),
   updatedAt: new Date('2026-09-15T12:00:00.000Z'),
   version: 1,
@@ -300,7 +300,11 @@ const makeService = () => {
     }),
   };
   return {
-    service: new AccountingService(prisma as never, storeConfig as never),
+    service: new AccountingService(
+      prisma as never,
+      storeConfig as never,
+      {} as never,
+    ),
     tx,
     transaction,
   };

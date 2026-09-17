@@ -39,6 +39,20 @@ export type OrderReportingItemFactV1 = {
   components: OrderReportingItemComponentFactV1[];
 };
 
+export type OrderPaidTotalDimensionFactV1 = {
+  key: string;
+  amountCents: number;
+};
+
+/**
+ * Legacy/reporting projection of persisted Order.totalCents for paidAt-bounded
+ * dimension views. This is intentionally not a canonical revenue fact.
+ */
+export type OrderPaidTotalDimensionsV1 = {
+  byChannel: OrderPaidTotalDimensionFactV1[];
+  byPaymentMethod: OrderPaidTotalDimensionFactV1[];
+};
+
 export interface OrderReportingFactsReaderPort {
   readMetricsForRange(
     startDate: Date,
@@ -48,4 +62,8 @@ export interface OrderReportingFactsReaderPort {
     startDate: Date,
     endDate: Date,
   ): Promise<OrderReportingItemFactV1[]>;
+  readPaidTotalDimensionsForRange(
+    startDate?: Date,
+    endDate?: Date,
+  ): Promise<OrderPaidTotalDimensionsV1>;
 }

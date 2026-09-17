@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DateTime } from 'luxon';
-import { AccountingInboxTrustDecision } from '@prisma/client';
+import { AccountingInboxTrustDecision } from './accounting-contracts';
 import {
   AccountingInboxAcquisitionService,
   extractMailboxAddress,

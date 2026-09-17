@@ -11,7 +11,7 @@ import {
   AccountingInboxClassification,
   AccountingInboxTrustDecision,
   AccountingParseStatus,
-} from '@prisma/client';
+} from './accounting-contracts';
 
 export const PROVIDER_FINANCIAL_HISTORY_START_DATE = '2026-06-01';
 

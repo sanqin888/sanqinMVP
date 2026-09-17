@@ -1,4 +1,7 @@
-import { AccountingAccountClass, AccountingAccountType } from '@prisma/client';
+import {
+  AccountingAccountClass,
+  AccountingAccountType,
+} from './accounting-contracts';
 
 export type AccountingDefaultAccount = {
   accountStableId: string;

@@ -30,6 +30,7 @@ describe('AccountingService period-close characterization', () => {
     const service = new AccountingService(
       prisma as never,
       brandStoreConfigReader as never,
+      {} as never,
     );
     return { service, prisma };
   };
@@ -95,7 +96,7 @@ describe('AccountingService period-close characterization', () => {
       periodKey: '2026-09',
       startAt: new Date('2026-09-01T04:00:00.000Z'),
       endAt: new Date('2026-10-01T03:59:59.999Z'),
-      closedByUserId: 'user_stable_1',
+      closedByUserStableId: 'user_stable_1',
       closedAt: new Date('2026-09-30T20:00:00.000Z'),
     };
     prisma.accountingPeriodClose.upsert.mockResolvedValue(close);
@@ -117,12 +118,12 @@ describe('AccountingService period-close characterization', () => {
         periodKey: '2026-09',
         startAt: new Date('2026-09-01T04:00:00.000Z'),
         endAt: new Date('2026-10-01T03:59:59.999Z'),
-        closedByUserId: 'user_stable_1',
+        closedByUserStableId: 'user_stable_1',
       },
       update: {
         startAt: new Date('2026-09-01T04:00:00.000Z'),
         endAt: new Date('2026-10-01T03:59:59.999Z'),
-        closedByUserId: 'user_stable_1',
+        closedByUserStableId: 'user_stable_1',
         closedAt: expect.any(Date) as unknown as Date,
       },
       select: {
@@ -130,7 +131,7 @@ describe('AccountingService period-close characterization', () => {
         periodKey: true,
         startAt: true,
         endAt: true,
-        closedByUserId: true,
+        closedByUserStableId: true,
         closedAt: true,
       },
     });
@@ -139,7 +140,7 @@ describe('AccountingService period-close characterization', () => {
         action: 'PERIOD_CLOSE',
         entityType: 'ACCOUNTING_PERIOD',
         entityId: '2026-09',
-        operatorUserId: 'user_stable_1',
+        operatorActorRef: 'user_stable_1',
       }) as unknown as Record<string, unknown>,
     });
   });
@@ -151,7 +152,7 @@ describe('AccountingService period-close characterization', () => {
       periodKey: '2026-09',
       startAt: new Date('2026-09-01T04:00:00.000Z'),
       endAt: new Date('2026-10-01T03:59:59.999Z'),
-      closedByUserId: 'user_stable_1',
+      closedByUserStableId: 'user_stable_1',
       closedAt: new Date('2026-10-01T12:00:00.000Z'),
     };
     prisma.accountingPeriodClose.findUnique
@@ -175,7 +176,7 @@ describe('AccountingService period-close characterization', () => {
         action: 'PERIOD_REOPEN',
         entityType: 'ACCOUNTING_PERIOD',
         entityId: '2026-09',
-        operatorUserId: 'user_stable_2',
+        operatorActorRef: 'user_stable_2',
         beforeJson: existingClose,
       }) as unknown as Record<string, unknown>,
     });
@@ -197,7 +198,7 @@ describe('AccountingService period-close characterization', () => {
       periodKey: '2026',
       startAt: new Date('2026-01-01T05:00:00.000Z'),
       endAt: new Date('2027-01-01T04:59:59.999Z'),
-      closedByUserId: 'user_stable_2',
+      closedByUserStableId: 'user_stable_2',
       closedAt: new Date('2027-01-05T15:00:00.000Z'),
     };
     prisma.accountingPeriodClose.upsert.mockResolvedValue(close);
@@ -222,7 +223,7 @@ describe('AccountingService period-close characterization', () => {
           periodKey: '2026',
           startAt: new Date('2026-01-01T05:00:00.000Z'),
           endAt: new Date('2027-01-01T04:59:59.999Z'),
-          closedByUserId: 'user_stable_2',
+          closedByUserStableId: 'user_stable_2',
         }) as unknown as Record<string, unknown>,
       }) as unknown,
     );
@@ -230,7 +231,7 @@ describe('AccountingService period-close characterization', () => {
       data: expect.objectContaining({
         action: 'YEAR_LOCK',
         entityId: '2026',
-        operatorUserId: 'user_stable_2',
+        operatorActorRef: 'user_stable_2',
       }) as unknown as Record<string, unknown>,
     });
   });

@@ -2,7 +2,7 @@ import {
   AccountingFinancialDocumentType,
   AccountingFinancialProvider,
   AccountingProviderRecognitionMatchMode,
-} from '@prisma/client';
+} from './accounting-contracts';
 
 export const ACCOUNTING_PROVIDER_RECOGNITION_PARSER_NAME =
   'accounting-provider-recognition';

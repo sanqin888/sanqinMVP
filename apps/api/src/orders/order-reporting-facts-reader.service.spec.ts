@@ -116,6 +116,61 @@ describe('OrderReportingFactsReaderService', () => {
     });
   });
 
+  it('preserves the paidAt-bounded totalCents dimension projection without adding a status filter', async () => {
+    const findMany = jest.fn().mockResolvedValue([
+      {
+        totalCents: 2146,
+        channel: 'in_store',
+        paymentMethod: 'CASH',
+      },
+      {
+        totalCents: 507,
+        channel: 'in_store',
+        paymentMethod: 'CARD',
+      },
+      {
+        totalCents: 1100,
+        channel: 'web',
+        paymentMethod: 'CARD',
+      },
+    ]);
+    const prisma = {
+      order: {
+        aggregate: jest.fn(),
+        groupBy: jest.fn(),
+        findMany,
+      },
+      orderItem: { findMany: jest.fn() },
+    };
+    const service = new OrderReportingFactsReaderService(prisma as never);
+    const startDate = new Date('2026-09-02T04:00:00.000Z');
+    const endDate = new Date('2026-09-03T03:59:59.999Z');
+
+    await expect(
+      service.readPaidTotalDimensionsForRange(startDate, endDate),
+    ).resolves.toEqual({
+      byChannel: [
+        { key: 'in_store', amountCents: 2653 },
+        { key: 'web', amountCents: 1100 },
+      ],
+      byPaymentMethod: [
+        { key: 'CASH', amountCents: 2146 },
+        { key: 'CARD', amountCents: 1607 },
+      ],
+    });
+
+    expect(findMany).toHaveBeenCalledWith({
+      where: {
+        paidAt: { gte: startDate, lte: endDate },
+      },
+      select: {
+        totalCents: true,
+        channel: true,
+        paymentMethod: true,
+      },
+    });
+  });
+
   it('owns immutable component snapshot parsing before facts cross the Orders boundary', async () => {
     const orderItemFindMany = jest.fn().mockResolvedValue([
       {

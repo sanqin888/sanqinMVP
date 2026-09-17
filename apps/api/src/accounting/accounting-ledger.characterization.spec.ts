@@ -43,6 +43,7 @@ describe('AccountingService ledger characterization', () => {
     const service = new AccountingService(
       prisma as never,
       brandStoreConfigReader as never,
+      {} as never,
     );
     return { service, prisma };
   };
@@ -85,8 +86,8 @@ describe('AccountingService ledger characterization', () => {
           idempotencyKey: 'manual:expense:1',
           counterparty: 'Supplier',
           memo: 'prep ingredients',
-          createdByUserId: 'user_stable_1',
-          updatedByUserId: 'user_stable_1',
+          createdByUserStableId: 'user_stable_1',
+          updatedByUserStableId: 'user_stable_1',
         }) as unknown as Record<string, unknown>,
       }) as unknown,
     );
@@ -95,7 +96,7 @@ describe('AccountingService ledger characterization', () => {
         action: 'CREATE',
         entityType: 'ACCOUNTING_TRANSACTION',
         entityId: 'accttx_created',
-        operatorUserId: 'user_stable_1',
+        operatorActorRef: 'user_stable_1',
       }) as unknown as Record<string, unknown>,
     });
   });
@@ -153,7 +154,7 @@ describe('AccountingService ledger characterization', () => {
         },
         data: expect.objectContaining({
           amountCents: 1500,
-          updatedByUserId: 'user_stable_2',
+          updatedByUserStableId: 'user_stable_2',
           version: { increment: 1 },
         }) as unknown as Record<string, unknown>,
       }) as unknown,
@@ -162,7 +163,7 @@ describe('AccountingService ledger characterization', () => {
       data: expect.objectContaining({
         action: 'UPDATE',
         entityId: 'accttx_1',
-        operatorUserId: 'user_stable_2',
+        operatorActorRef: 'user_stable_2',
         beforeJson: existing,
         afterJson: updated,
       }) as unknown as Record<string, unknown>,
@@ -217,7 +218,7 @@ describe('AccountingService ledger characterization', () => {
       where: { txStableId: 'accttx_1' },
       data: {
         deletedAt: expect.any(Date) as unknown as Date,
-        updatedByUserId: 'user_stable_3',
+        updatedByUserStableId: 'user_stable_3',
         version: { increment: 1 },
       },
     });
@@ -225,7 +226,7 @@ describe('AccountingService ledger characterization', () => {
       data: expect.objectContaining({
         action: 'DELETE',
         entityId: 'accttx_1',
-        operatorUserId: 'user_stable_3',
+        operatorActorRef: 'user_stable_3',
         beforeJson: existing,
         afterJson: deleted,
       }) as unknown as Record<string, unknown>,
