@@ -1654,10 +1654,10 @@ model AccountingAccount {
   isActive         Boolean                     @default(true)
   createdAt        DateTime                    @default(now())
   updatedAt        DateTime                    @updatedAt
-  outgoingTx       AccountingTransaction[]     @relation("AccountingTxAccount")
-  incomingTx       AccountingTransaction[]     @relation("AccountingTxToAccount")
-  expenseDocuments AccountingExpenseDocument[]
-  journalLines     AccountingJournalLine[]
+  outgoingTx                AccountingTransaction[]              @relation("AccountingTxAccount")
+  incomingTx                AccountingTransaction[]              @relation("AccountingTxToAccount")
+  expensePaymentAllocations AccountingExpensePaymentAllocation[]
+  journalLines              AccountingJournalLine[]
 
   @@unique([name, type])
   @@index([type, isActive])
@@ -1749,35 +1749,50 @@ model AccountingTransaction {
 }
 
 model AccountingExpenseDocument {
-  id                   String                   @id @default(uuid()) @db.Uuid
-  documentStableId     String                   @unique @default(cuid())
-  source               AccountingDocumentSource @default(MANUAL)
-  status               AccountingDocumentStatus @default(PENDING_REVIEW)
+  id                   String                               @id @default(uuid()) @db.Uuid
+  documentStableId     String                               @unique @default(cuid())
+  source               AccountingDocumentSource             @default(MANUAL)
+  status               AccountingDocumentStatus             @default(PENDING_REVIEW)
   occurredAt           DateTime?
   subtotalCents        Int?
   taxCents             Int?
   totalCents           Int?
-  currency             String                   @default("CAD")
-  accountId            String?                  @db.Uuid
+  currency             String                               @default("CAD")
   gmailMessageId       String?
   gmailAttachmentId    String?
-  fileHash             String?                  @unique
+  fileHash             String?                              @unique
   emailSubject         String?
-  attachmentUrls       String[]                 @default([])
+  attachmentUrls       String[]                             @default([])
   extractedText        String?
   extractionJson       Json?
   memo                 String?
   confirmedAt          DateTime?
   confirmedByUserId    String?
-  createdAt            DateTime                 @default(now())
-  updatedAt            DateTime                 @updatedAt
-  account              AccountingAccount?       @relation(fields: [accountId], references: [id])
+  createdAt            DateTime                             @default(now())
+  updatedAt            DateTime                             @updatedAt
   transactions         AccountingTransaction[]
+  paymentAllocations   AccountingExpensePaymentAllocation[]
 
   @@unique([gmailMessageId, gmailAttachmentId])
   @@index([status, createdAt])
   @@index([source, createdAt])
   @@index([occurredAt])
+}
+
+model AccountingExpensePaymentAllocation {
+  id                        String                    @id @default(uuid()) @db.Uuid
+  paymentAllocationStableId String                    @unique @default(cuid())
+  expenseDocumentId         String                    @db.Uuid
+  accountId                 String                    @db.Uuid
+  amountCents               Int
+  sortOrder                 Int                       @default(0)
+  createdAt                 DateTime                  @default(now())
+  updatedAt                 DateTime                  @updatedAt
+  expenseDocument           AccountingExpenseDocument @relation(fields: [expenseDocumentId], references: [id], onDelete: Cascade)
+  account                   AccountingAccount         @relation(fields: [accountId], references: [id])
+
+  @@unique([expenseDocumentId, accountId])
+  @@index([expenseDocumentId])
   @@index([accountId])
 }
 
