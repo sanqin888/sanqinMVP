@@ -14,7 +14,6 @@ import {
   AccountingSourceType,
   AccountingTxType,
   Prisma,
-  SettlementPlatform,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { runSerializableAccountingWrite } from './accounting-atomic-write';
@@ -79,7 +78,6 @@ type UpsertTxDto = {
   categoryStableId: string;
   accountStableId?: string | null;
   toAccountStableId?: string | null;
-  orderId?: string | null;
   idempotencyKey?: string | null;
   externalRef?: string | null;
   counterparty?: string | null;
@@ -96,7 +94,6 @@ const ACCOUNTING_TX_PUBLIC_SELECT = {
   taxCents: true,
   currency: true,
   occurredAt: true,
-  orderId: true,
   idempotencyKey: true,
   externalRef: true,
   counterparty: true,
@@ -502,7 +499,6 @@ export class AccountingService {
               { memo: { contains: keyword, mode: 'insensitive' } },
               { counterparty: { contains: keyword, mode: 'insensitive' } },
               { txStableId: { contains: keyword, mode: 'insensitive' } },
-              { orderId: { contains: keyword, mode: 'insensitive' } },
             ],
           }
         : {}),
@@ -615,20 +611,6 @@ export class AccountingService {
       );
     }
 
-    const normalizedOrderId = payload.orderId?.trim() || null;
-    if (payload.source === AccountingSourceType.ORDER) {
-      if (!normalizedOrderId) {
-        throw new BadRequestException('orderId is required when source=ORDER');
-      }
-      const order = await db.order.findUnique({
-        where: { orderStableId: normalizedOrderId },
-        select: { orderStableId: true },
-      });
-      if (!order) {
-        throw new BadRequestException('orderId is invalid');
-      }
-    }
-
     const currency =
       payload.currency?.trim().toUpperCase() ||
       fromAccount?.currency ||
@@ -636,7 +618,6 @@ export class AccountingService {
       'CAD';
     return {
       occurredAt,
-      orderId: normalizedOrderId,
       categoryId: category.id,
       accountId: fromAccount?.id ?? null,
       toAccountId: targetAccount?.id ?? null,
@@ -1535,7 +1516,6 @@ export class AccountingService {
           categoryId: normalized.categoryId,
           accountId: normalized.accountId,
           toAccountId: normalized.toAccountId,
-          orderId: normalized.orderId,
           idempotencyKey: normalized.idempotencyKey,
           externalRef: normalized.externalRef,
           counterparty: payload.counterparty?.trim() || null,
@@ -1635,7 +1615,6 @@ export class AccountingService {
           categoryId: normalized.categoryId,
           accountId: normalized.accountId,
           toAccountId: normalized.toAccountId,
-          orderId: normalized.orderId,
           idempotencyKey: normalized.idempotencyKey,
           externalRef: normalized.externalRef,
           counterparty: payload.counterparty?.trim() || null,
@@ -2219,7 +2198,6 @@ export class AccountingService {
       'category',
       'account',
       'toAccount',
-      'orderId',
       'counterparty',
       'memo',
       'createdAt',
@@ -2237,7 +2215,6 @@ export class AccountingService {
         row.category?.name ?? '',
         row.account?.name ?? '',
         row.toAccount?.name ?? '',
-        row.orderId,
         row.counterparty,
         row.memo,
         row.createdAt.toISOString(),
@@ -2436,150 +2413,6 @@ export class AccountingService {
     });
 
     return Buffer.from(pdf, 'utf8');
-  }
-
-  async importPlatformSettlementCsv(payload: {
-    platform: SettlementPlatform;
-    csv: string;
-    importBatchId?: string;
-  }) {
-    const importBatchId =
-      payload.importBatchId?.trim() || `BATCH-${Date.now()}`;
-    const lines = payload.csv
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean);
-    if (lines.length <= 1) {
-      throw new BadRequestException('csv must include header and data rows');
-    }
-
-    const [headerLine, ...dataLines] = lines;
-    const headers = headerLine.split(',').map((h) => h.trim().toLowerCase());
-    const col = (name: string) => headers.indexOf(name);
-    const orderIdCol = col('orderid');
-    const grossCol = col('grosscents');
-    const commissionCol = col('commissioncents');
-    const netCol = col('netcents');
-    const payoutAtCol = col('payoutat');
-    if (
-      [orderIdCol, grossCol, commissionCol, netCol, payoutAtCol].some(
-        (v) => v < 0,
-      )
-    ) {
-      throw new BadRequestException(
-        'csv header must contain orderId,grossCents,commissionCents,netCents,payoutAt',
-      );
-    }
-
-    const data = dataLines.map((line, index) => {
-      const cols = line.split(',').map((x) => x.trim());
-      const payoutAt = new Date(cols[payoutAtCol]);
-      if (Number.isNaN(payoutAt.getTime())) {
-        throw new BadRequestException(`invalid payoutAt at line ${index + 2}`);
-      }
-      return {
-        platform: payload.platform,
-        importBatchId,
-        externalRowId: `${index + 1}`,
-        orderId: cols[orderIdCol] || null,
-        grossCents: Number(cols[grossCol]),
-        commissionCents: Number(cols[commissionCol]),
-        netCents: Number(cols[netCol]),
-        payoutAt,
-        rawPayload: { line },
-      };
-    });
-
-    const startAt = await this.clampAccountingFromDate(undefined);
-    const acceptedData = startAt
-      ? data.filter((row) => row.payoutAt >= startAt)
-      : data;
-    await this.prisma.platformSettlementRecord.createMany({
-      data: acceptedData,
-      skipDuplicates: true,
-    });
-    return {
-      importBatchId,
-      count: acceptedData.length,
-      skippedBeforeStartDate: data.length - acceptedData.length,
-    };
-  }
-
-  async reconcilePlatform(
-    platform: SettlementPlatform,
-    from?: string,
-    to?: string,
-  ) {
-    const fromDate = await this.clampAccountingFromDate(this.parseDate(from));
-    const toDate = this.parseDate(to, true);
-    const settlements = await this.prisma.platformSettlementRecord.findMany({
-      where: {
-        platform,
-        ...(fromDate || toDate
-          ? {
-              payoutAt: {
-                ...(fromDate ? { gte: fromDate } : {}),
-                ...(toDate ? { lte: toDate } : {}),
-              },
-            }
-          : {}),
-      },
-      orderBy: { payoutAt: 'asc' },
-    });
-
-    const orderIds = settlements
-      .map((s) => s.orderId)
-      .filter((x): x is string => Boolean(x));
-    const txRows = orderIds.length
-      ? await this.prisma.accountingTransaction.findMany({
-          where: {
-            orderId: { in: orderIds },
-            deletedAt: null,
-            ...(fromDate ? { occurredAt: { gte: fromDate } } : {}),
-          },
-          select: { orderId: true, amountCents: true, source: true },
-        })
-      : [];
-    const txMap = new Map(txRows.map((row) => [row.orderId as string, row]));
-
-    const diffs = settlements.flatMap((item) => {
-      const issues: Array<{
-        type: string;
-        orderId: string | null;
-        message: string;
-      }> = [];
-      const tx = item.orderId ? txMap.get(item.orderId) : undefined;
-      if (!item.orderId || !tx) {
-        issues.push({
-          type: '缺单',
-          orderId: item.orderId,
-          message: '平台结算存在，但未找到订单收入分录',
-        });
-      } else if (tx.amountCents !== item.grossCents) {
-        issues.push({
-          type: '金额差',
-          orderId: item.orderId,
-          message: `订单收入=${tx.amountCents}, 平台毛收入=${item.grossCents}`,
-        });
-      }
-      if (item.netCents < 0) {
-        issues.push({
-          type: '退款未同步',
-          orderId: item.orderId,
-          message: '平台净额为负，需确认退款分录',
-        });
-      }
-      return issues;
-    });
-
-    return {
-      platform,
-      from: from ?? null,
-      to: to ?? null,
-      settlementCount: settlements.length,
-      diffCount: diffs.length,
-      diffs,
-    };
   }
 
   async accountBalanceReport(from?: string, to?: string) {
