@@ -77,9 +77,13 @@ const GMAIL_INGEST = resolve(
   ACCOUNTING_ROOT,
   'accounting-gmail-ingest.service.ts',
 );
-const ACCOUNTING_CONTROLLER = resolve(
+const ACCOUNTING_INBOX_CONTROLLER = resolve(
   ACCOUNTING_ROOT,
-  'accounting.controller.ts',
+  'accounting-inbox.controller.ts',
+);
+const ACCOUNTING_INBOX_ARTIFACTS_CONTROLLER = resolve(
+  ACCOUNTING_ROOT,
+  'accounting-inbox-artifacts.controller.ts',
 );
 const INBOX_MIGRATION = resolve(
   API_ROOT,
@@ -199,39 +203,43 @@ describe('Accounting unified Inbox core ownership boundary', () => {
   it('keeps Gmail and manual file acquisition on the Unified Inbox path', () => {
     const gmail = read(GMAIL_INGEST);
     const acquisition = read(INBOX_ACQUISITION);
-    const controller = read(ACCOUNTING_CONTROLLER);
+    const inboxController = read(ACCOUNTING_INBOX_CONTROLLER);
+    const artifactsController = read(ACCOUNTING_INBOX_ARTIFACTS_CONTROLLER);
 
     expect(gmail).not.toContain('accountingExpenseDocument');
     expect(gmail).toContain('acquireEmailBody');
     expect(gmail).toContain('acquireEmailAttachment');
     expect(acquisition).toContain('registerInboxArtifact');
-    expect(controller).toContain("@Post('inbox/artifacts')");
-    expect(controller).toContain(
+    expect(artifactsController).toContain("@Post('inbox/artifacts')");
+    expect(inboxController).toContain(
       "@Put('inbox/:inboxItemStableId/classification')",
     );
-    expect(controller).toContain("@Get('inbox/provider-recognition-rules')");
-    expect(controller).toContain(
+    expect(inboxController).toContain(
+      "@Get('inbox/provider-recognition-rules')",
+    );
+    expect(inboxController).toContain(
       "@Put('inbox/provider-recognition-rules/:ruleStableId')",
     );
-    expect(controller).toContain(
+    expect(inboxController).toContain(
       "@Post('inbox/:inboxItemStableId/other/confirm')",
     );
-    expect(controller).toContain("@Get('inbox/manual-uploads')");
-    expect(controller).toContain(
+    expect(inboxController).toContain("@Get('inbox/manual-uploads')");
+    expect(artifactsController).toContain(
       "@Delete('inbox/manual-uploads/:inboxItemStableId/permanent')",
     );
-    expect(controller).toContain("@Get('inbox/image-retention/pending')");
-    expect(controller).toContain(
+    expect(inboxController).toContain("@Get('inbox/image-retention/pending')");
+    expect(artifactsController).toContain(
       "@Post('inbox/:inboxItemStableId/image-retention/candidate')",
     );
-    expect(controller).toContain(
+    expect(artifactsController).toContain(
       "@Post('inbox/:inboxItemStableId/image-retention/accept')",
     );
-    expect(controller).toContain(
+    expect(artifactsController).toContain(
       "@Get('inbox/artifacts/:artifactStableId/content')",
     );
     expect(acquisition).not.toContain('processAccountingReceiptImage');
-    expect(controller).not.toContain("@Post('files/receipts')");
+    expect(inboxController).not.toContain("@Post('files/receipts')");
+    expect(artifactsController).not.toContain("@Post('files/receipts')");
   });
 
   it('keeps Uber financial-history access on the External Channels public boundary', () => {

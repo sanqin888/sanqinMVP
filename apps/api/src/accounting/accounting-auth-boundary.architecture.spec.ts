@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const ACCOUNTING_ROOT = resolve(__dirname);
@@ -13,11 +13,14 @@ function read(path: string): string {
 
 describe('Accounting / Reporting / Analytics staff-auth boundary', () => {
   it('consumes staff auth guards and role metadata through the Identity public surface', () => {
+    const accountingControllers = readdirSync(ACCOUNTING_ROOT)
+      .filter((name) => name.endsWith('.controller.ts'))
+      .map((name) => read(resolve(ACCOUNTING_ROOT, name)));
     const controllerSources = [
-      resolve(ACCOUNTING_ROOT, 'accounting.controller.ts'),
-      resolve(REPORTS_ROOT, 'reports.controller.ts'),
-      resolve(ANALYTICS_ROOT, 'analytics.controller.ts'),
-    ].map(read);
+      ...accountingControllers,
+      read(resolve(REPORTS_ROOT, 'reports.controller.ts')),
+      read(resolve(ANALYTICS_ROOT, 'analytics.controller.ts')),
+    ];
     const authPublicApi = read(resolve(AUTH_ROOT, 'public-api.ts'));
 
     for (const source of controllerSources) {

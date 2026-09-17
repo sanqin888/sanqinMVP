@@ -171,8 +171,20 @@ describe('Phase 9 canonical financial facts boundary', () => {
       )?.source ?? '';
     const accountingService =
       file(ACCOUNTING_ROOT, 'accounting.service.ts')?.source ?? '';
-    const accountingController =
-      file(ACCOUNTING_ROOT, 'accounting.controller.ts')?.source ?? '';
+    const canonicalSaleController =
+      file(ACCOUNTING_ROOT, 'accounting-canonical-sale.controller.ts')
+        ?.source ?? '';
+    const canonicalChangeController =
+      file(ACCOUNTING_ROOT, 'accounting-canonical-change.controller.ts')
+        ?.source ?? '';
+    const providerSettlementController =
+      file(ACCOUNTING_ROOT, 'accounting-provider-settlement.controller.ts')
+        ?.source ?? '';
+    const canonicalControllerSources = [
+      canonicalSaleController,
+      canonicalChangeController,
+      providerSettlementController,
+    ].join('\n');
     const accountingModule =
       file(ACCOUNTING_ROOT, 'accounting.module.ts')?.source ?? '';
 
@@ -240,22 +252,24 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(providerSettlementExecutionService).not.toContain(
       'accountingJournalEntry.',
     );
-    expect(accountingController).toContain(
+    expect(canonicalSaleController).toContain(
       "@Post('journal/canonical-sales/replay')",
     );
-    expect(accountingController).toContain(
+    expect(canonicalChangeController).toContain(
       "@Get('journal/canonical-changes/shadow-preview')",
     );
-    expect(accountingController).toContain(
+    expect(canonicalChangeController).toContain(
       "@Post('journal/canonical-changes/replay')",
     );
-    expect(accountingController).toContain(
+    expect(providerSettlementController).toContain(
       "@Get('journal/provider-settlement/shadow-preview')",
     );
-    expect(accountingController).toContain(
+    expect(providerSettlementController).toContain(
       "@Post('journal/provider-settlement/replay')",
     );
-    expect(accountingController).not.toContain('automation/order-accrual');
+    expect(canonicalControllerSources).not.toContain(
+      'automation/order-accrual',
+    );
     expect(accountingService).not.toContain('autoAccrueOrderRevenue');
     expect(accountingModule).toContain('OrderFinancialFactsModule');
     expect(accountingModule).toContain('OrderFinancialChangeFactsModule');
@@ -320,8 +334,14 @@ describe('Phase 9 canonical financial facts boundary', () => {
       file(ACCOUNTING_ROOT, 'accounting.service.ts')?.source ?? '';
     const accountingJournalService =
       file(ACCOUNTING_ROOT, 'accounting-journal.service.ts')?.source ?? '';
-    const accountingController =
-      file(ACCOUNTING_ROOT, 'accounting.controller.ts')?.source ?? '';
+    const accountingControllerSources = scanTypeScript(ACCOUNTING_ROOT, {
+      productionOnly: true,
+    })
+      .filter(({ path }) => path.endsWith('.controller.ts'))
+      .map(({ source }) => source)
+      .join('\n');
+    const accountingReportsController =
+      file(ACCOUNTING_ROOT, 'accounting-reports.controller.ts')?.source ?? '';
     const accountingExpenseService =
       file(ACCOUNTING_ROOT, 'accounting-expense.service.ts')?.source ?? '';
     const accountingFinancialReportsService =
@@ -337,13 +357,19 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(accountingSourceType).not.toContain('FANTUAN');
     expect(accountingService).not.toContain('AccountingSourceType.ORDER');
     expect(accountingService).not.toContain('orderId: normalized.orderId');
-    expect(accountingController).not.toContain('orderId?: string | null;');
-    expect(accountingController).not.toContain("@Post('tx')");
-    expect(accountingController).not.toContain("@Get('tx')");
-    expect(accountingController).not.toContain("@Put('tx/:txStableId')");
-    expect(accountingController).not.toContain("@Delete('tx/:txStableId')");
-    expect(accountingController).not.toContain('type TxBody');
-    expect(accountingController).toContain("@Get('export/tx.csv')");
+    expect(accountingControllerSources).not.toContain(
+      'orderId?: string | null;',
+    );
+    expect(accountingControllerSources).not.toContain("@Post('tx')");
+    expect(accountingControllerSources).not.toContain("@Get('tx')");
+    expect(accountingControllerSources).not.toContain(
+      "@Put('tx/:txStableId')",
+    );
+    expect(accountingControllerSources).not.toContain(
+      "@Delete('tx/:txStableId')",
+    );
+    expect(accountingControllerSources).not.toContain('type TxBody');
+    expect(accountingReportsController).toContain("@Get('export/tx.csv')");
     expect(accountingService).not.toContain('async createTx(');
     expect(accountingService).not.toContain('async listTx(');
     expect(accountingService).not.toContain('async updateTx(');
