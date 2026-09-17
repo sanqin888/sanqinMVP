@@ -523,7 +523,7 @@ describe('Accounting Inbox core persistence writer', () => {
         action: 'CREATE',
         entityType: 'ACCOUNTING_TRUSTED_SENDER',
         entityId: 'acctsender_1',
-        operatorUserId: 'user_stable_1',
+        operatorActorRef: 'user_stable_1',
         afterJson: {
           trustedSenderStableId: 'acctsender_1',
           email: 'owner@example.com',

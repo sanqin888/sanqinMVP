@@ -309,7 +309,7 @@ export async function discardInboxItemInTx(
       action: 'DISCARD',
       entityType: 'ACCOUNTING_INBOX_ITEM',
       entityId: inboxItemStableId,
-      operatorUserId: operatorUserStableId,
+      operatorActorRef: operatorUserStableId,
     },
   });
   return { inboxItemStableId, discarded: true, replayed: false };

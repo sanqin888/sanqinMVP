@@ -88,7 +88,7 @@ export async function suggestInboxClassificationInTx(
       action: 'SUGGEST_CLASSIFICATION',
       entityType: 'ACCOUNTING_INBOX_ITEM',
       entityId: item.inboxItemStableId,
-      operatorUserId: ACCOUNTING_INBOX_CLASSIFIER_ACTOR,
+      operatorActorRef: ACCOUNTING_INBOX_CLASSIFIER_ACTOR,
       beforeJson: {
         classification: item.classification,
         selectedProvider: item.selectedProvider,
@@ -173,7 +173,7 @@ export async function setInboxClassificationInTx(
       action: 'CLASSIFY',
       entityType: 'ACCOUNTING_INBOX_ITEM',
       entityId: inboxItemStableId,
-      operatorUserId: operatorUserStableId,
+      operatorActorRef: operatorUserStableId,
       beforeJson: {
         classification: item.classification,
         selectedProvider: item.selectedProvider,
@@ -266,7 +266,7 @@ export async function confirmOtherInboxItemInTx(
       action: 'CONFIRM_OTHER_DOCUMENT',
       entityType: 'ACCOUNTING_INBOX_ITEM',
       entityId: inboxItemStableId,
-      operatorUserId: operatorUserStableId,
+      operatorActorRef: operatorUserStableId,
       afterJson: {
         classification: AccountingInboxClassification.OTHER_DOCUMENT,
         reviewedAt: reviewedAt.toISOString(),

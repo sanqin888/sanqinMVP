@@ -61,7 +61,7 @@ describe('provider financial review writer', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           entityId: 'acctfindoc_1',
-          operatorUserId: 'user_stable_admin',
+          operatorActorRef: 'user_stable_admin',
         }) as unknown,
       }),
     );

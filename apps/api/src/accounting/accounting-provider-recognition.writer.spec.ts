@@ -67,7 +67,7 @@ describe('Accounting provider recognition writer', () => {
         action: 'UPDATE_RECOGNITION_RULE',
         entityType: 'ACCOUNTING_PROVIDER_RECOGNITION_RULE',
         entityId: 'acct_recognition_uber_monthly_statement',
-        operatorUserId: 'user_1',
+        operatorActorRef: 'user_1',
       }) as unknown,
     });
   });

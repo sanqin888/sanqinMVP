@@ -1678,8 +1678,10 @@ model AccountingJournalEntry {
   occurredAt         DateTime
   currency           String                     @default("CAD")
   memo               String?
-  createdByUserStableId String
-  updatedByUserStableId String
+  /// Accounting actor reference: an authenticated userStableId or a registered system:* actor key.
+  createdByActorRef     String
+  /// Accounting actor reference: an authenticated userStableId or a registered system:* actor key.
+  updatedByActorRef     String
   createdAt          DateTime                   @default(now())
   updatedAt          DateTime                   @updatedAt
   version            Int                        @default(1)
@@ -1728,8 +1730,8 @@ model AccountingTransaction {
   counterparty    String?
   memo            String?
   attachmentUrls  String[]                   @default([])
-  createdByUserId String
-  updatedByUserId String
+  createdByUserStableId String
+  updatedByUserStableId String
   createdAt       DateTime                   @default(now())
   updatedAt       DateTime                   @updatedAt
   version         Int                        @default(1)
@@ -1767,7 +1769,7 @@ model AccountingExpenseDocument {
   extractionJson       Json?
   memo                 String?
   confirmedAt          DateTime?
-  confirmedByUserId    String?
+  confirmedByUserStableId String?
   createdAt            DateTime                             @default(now())
   updatedAt            DateTime                             @updatedAt
   transactions         AccountingTransaction[]
@@ -2038,11 +2040,12 @@ model AccountingAuditLog {
   entityId       String
   beforeJson     Json?
   afterJson      Json?
-  operatorUserId String
+  /// Accounting actor reference: an authenticated userStableId or a registered system:* actor key.
+  operatorActorRef String
   createdAt      DateTime @default(now())
 
   @@index([entityType, entityId, createdAt])
-  @@index([operatorUserId, createdAt])
+  @@index([operatorActorRef, createdAt])
 }
 
 model AccountingPeriodClose {
@@ -2051,7 +2054,7 @@ model AccountingPeriodClose {
   periodKey      String
   startAt        DateTime
   endAt          DateTime
-  closedByUserId String
+  closedByUserStableId String
   closedAt       DateTime @default(now())
 
   @@unique([periodType, periodKey])

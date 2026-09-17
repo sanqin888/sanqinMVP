@@ -162,7 +162,7 @@ describe('AccountingOperationsService expense-write characterization', () => {
         taxCents: 130,
         totalCents: 1130,
         currency: 'CAD',
-        confirmedByUserId: 'user_stable_1',
+        confirmedByUserStableId: 'user_stable_1',
       }) as unknown as Record<string, unknown>,
     });
     const allocationCreateArgs = createAllocationMany.mock.calls[0]?.[0];
@@ -197,8 +197,8 @@ describe('AccountingOperationsService expense-write characterization', () => {
           documentId: 'expense-document-db-id',
           idempotencyKey: `expense:${generatedDocumentStableId}:0`,
           externalRef: generatedDocumentStableId,
-          createdByUserId: 'user_stable_1',
-          updatedByUserId: 'user_stable_1',
+          createdByUserStableId: 'user_stable_1',
+          updatedByUserStableId: 'user_stable_1',
         }) as unknown as Record<string, unknown>,
         expect.objectContaining({
           amountCents: 400,
@@ -216,7 +216,7 @@ describe('AccountingOperationsService expense-write characterization', () => {
         expect.objectContaining({
           action: 'CREATE',
           entityType: 'ACCOUNTING_TRANSACTION',
-          operatorUserId: 'user_stable_1',
+          operatorActorRef: 'user_stable_1',
           afterJson: expect.objectContaining({
             categoryStableId: 'expense_food',
             documentStableId: generatedDocumentStableId,
@@ -225,7 +225,7 @@ describe('AccountingOperationsService expense-write characterization', () => {
         expect.objectContaining({
           action: 'CREATE',
           entityType: 'ACCOUNTING_TRANSACTION',
-          operatorUserId: 'user_stable_1',
+          operatorActorRef: 'user_stable_1',
           afterJson: expect.objectContaining({
             categoryStableId: 'expense_packaging',
             documentStableId: generatedDocumentStableId,
@@ -741,7 +741,7 @@ describe('AccountingOperationsService expense-write characterization', () => {
         subtotalCents: 1000,
         taxCents: 130,
         totalCents: 1130,
-        confirmedByUserId: 'user_stable_2',
+        confirmedByUserStableId: 'user_stable_2',
         attachmentUrls: [
           '/api/v1/accounting/files/bills/original.pdf',
           '/api/v1/accounting/files/receipts/new.jpg',
@@ -754,8 +754,8 @@ describe('AccountingOperationsService expense-write characterization', () => {
           documentId: 'inbox-document-db-id',
           idempotencyKey: 'expense:inbox_doc_1:0',
           externalRef: 'inbox_doc_1',
-          createdByUserId: 'user_stable_2',
-          updatedByUserId: 'user_stable_2',
+          createdByUserStableId: 'user_stable_2',
+          updatedByUserStableId: 'user_stable_2',
         }) as unknown as Record<string, unknown>,
       ],
     });
@@ -784,7 +784,7 @@ describe('AccountingOperationsService expense-write characterization', () => {
           action: 'DELETE',
           entityType: 'ACCOUNTING_TRANSACTION',
           entityId: 'accttx_replaced',
-          operatorUserId: 'user_stable_2',
+          operatorActorRef: 'user_stable_2',
           beforeJson: expect.objectContaining({
             documentStableId: 'inbox_doc_1',
             idempotencyKey: 'expense:inbox_doc_1:old',
@@ -793,7 +793,7 @@ describe('AccountingOperationsService expense-write characterization', () => {
         expect.objectContaining({
           action: 'CREATE',
           entityType: 'ACCOUNTING_TRANSACTION',
-          operatorUserId: 'user_stable_2',
+          operatorActorRef: 'user_stable_2',
           afterJson: expect.objectContaining({
             categoryStableId: 'expense_food',
             documentStableId: 'inbox_doc_1',

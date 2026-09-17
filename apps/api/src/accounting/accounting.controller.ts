@@ -724,7 +724,7 @@ export class AccountingController {
     return this.accountingService.listAuditLogs({
       entityType,
       entityId,
-      operatorUserId,
+      operatorActorRef: operatorUserId,
       from,
       to,
     });

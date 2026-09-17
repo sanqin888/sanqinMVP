@@ -100,7 +100,7 @@ export async function upsertAccountingProviderRecognitionRuleInTx(
       action: 'UPDATE_RECOGNITION_RULE',
       entityType: 'ACCOUNTING_PROVIDER_RECOGNITION_RULE',
       entityId: ruleStableId,
-      operatorUserId: operatorUserStableId,
+      operatorActorRef: operatorUserStableId,
       beforeJson: before as unknown as Prisma.InputJsonValue,
       afterJson: row as unknown as Prisma.InputJsonValue,
     },

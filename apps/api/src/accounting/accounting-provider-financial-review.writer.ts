@@ -98,7 +98,7 @@ export async function confirmProviderFinancialInboxItemInTx(
       action: 'CONFIRM',
       entityType: 'ACCOUNTING_PROVIDER_FINANCIAL_DOCUMENT',
       entityId: document.documentStableId,
-      operatorUserId: operatorUserStableId,
+      operatorActorRef: operatorUserStableId,
       afterJson: {
         provider: document.provider,
         documentType: document.documentType,

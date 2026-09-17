@@ -79,7 +79,7 @@ export async function stageAccountingImageRetentionCandidateInTx(
       action: 'IMAGE_RETENTION_CANDIDATE',
       entityType: 'ACCOUNTING_SOURCE_ARTIFACT',
       entityId: context.artifact.artifactStableId,
-      operatorUserId: input.operatorUserStableId,
+      operatorActorRef: input.operatorUserStableId,
       afterJson: {
         state: AccountingArtifactBinaryRetentionState.CANDIDATE_READY,
         contentHash: input.contentHash,
@@ -145,7 +145,7 @@ export async function discardAccountingImageRetentionCandidateInTx(
       action: 'IMAGE_RETENTION_CANDIDATE_DISCARDED',
       entityType: 'ACCOUNTING_SOURCE_ARTIFACT',
       entityId: context.artifact.artifactStableId,
-      operatorUserId: operatorUserStableId,
+      operatorActorRef: operatorUserStableId,
       beforeJson: {
         state: retention.state,
         candidateContentHash: retention.candidateContentHash,
@@ -245,7 +245,7 @@ export async function beginAccountingImageOriginalPurgeInTx(
       action: 'IMAGE_RETENTION_ACCEPTED',
       entityType: 'ACCOUNTING_SOURCE_ARTIFACT',
       entityId: context.artifact.artifactStableId,
-      operatorUserId: operatorUserStableId,
+      operatorActorRef: operatorUserStableId,
       beforeJson: {
         state: retention.state,
         originalContentHash: context.artifact.contentHash,
@@ -317,7 +317,7 @@ export async function finalizeAccountingImageOriginalPurgeInTx(
       action: 'IMAGE_ORIGINAL_BINARY_PURGED',
       entityType: 'ACCOUNTING_SOURCE_ARTIFACT',
       entityId: context.artifact.artifactStableId,
-      operatorUserId: retention.acceptedByUserStableId ?? operatorUserStableId,
+      operatorActorRef: retention.acceptedByUserStableId ?? operatorUserStableId,
       beforeJson: {
         state: AccountingArtifactBinaryRetentionState.PURGE_PENDING,
         originalContentHash: context.artifact.contentHash,

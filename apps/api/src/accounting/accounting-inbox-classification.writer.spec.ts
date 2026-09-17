@@ -70,7 +70,7 @@ describe('Accounting Inbox classification writer', () => {
     expect(tx.accountingAuditLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         action: 'SUGGEST_CLASSIFICATION',
-        operatorUserId: ACCOUNTING_INBOX_CLASSIFIER_ACTOR,
+        operatorActorRef: ACCOUNTING_INBOX_CLASSIFIER_ACTOR,
       }) as unknown,
     });
   });
@@ -148,7 +148,7 @@ describe('Accounting Inbox classification writer', () => {
           classification: AccountingInboxClassification.EXPENSE_DOCUMENT,
           selectedProvider: null,
         },
-        operatorUserId: 'user_operator_1',
+        operatorActorRef: 'user_operator_1',
       }) as unknown,
     });
   });
