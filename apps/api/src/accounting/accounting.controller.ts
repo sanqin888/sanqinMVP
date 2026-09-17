@@ -89,7 +89,7 @@ export class AccountingController {
     private readonly chart: AccountingChartService,
     private readonly expense: AccountingExpenseService,
     private readonly reports: AccountingFinancialReportsService,
-    private readonly inbox: AccountingInboxService,
+    private readonly inboxService: AccountingInboxService,
     private readonly acquisition: AccountingInboxAcquisitionService,
     private readonly imageRetention: AccountingImageRetentionService,
     private readonly providerFinancial: AccountingProviderFinancialService,
@@ -184,7 +184,7 @@ export class AccountingController {
     @Query('classification') classification?: AccountingInboxClassification,
     @Query('limit') limit?: string,
   ) {
-    return this.inbox.listUnifiedInboxItems({
+    return this.inboxService.listUnifiedInboxItems({
       status,
       classification,
       limit: this.parseNonNegativeNumber(limit, 'limit'),
@@ -193,14 +193,14 @@ export class AccountingController {
 
   @Get('inbox/image-retention/pending')
   imageRetentionQueue(@Query('limit') limit?: string) {
-    return this.inbox.listImageRetentionQueue(
+    return this.inboxService.listImageRetentionQueue(
       this.parseNonNegativeNumber(limit, 'limit'),
     );
   }
 
   @Get('inbox/manual-uploads')
   manualUploadLibrary(@Query('limit') limit?: string) {
-    return this.inbox.listManualUploadLibrary(
+    return this.inboxService.listManualUploadLibrary(
       this.parseNonNegativeNumber(limit, 'limit'),
     );
   }
@@ -223,7 +223,7 @@ export class AccountingController {
 
   @Get('inbox/provider-recognition-rules')
   listProviderRecognitionRules() {
-    return this.inbox.listProviderRecognitionRules();
+    return this.inboxService.listProviderRecognitionRules();
   }
 
   @Put('inbox/provider-recognition-rules/:ruleStableId')
@@ -239,7 +239,7 @@ export class AccountingController {
     },
     @Req() req: AuthedAccountingRequest,
   ) {
-    return this.inbox.updateProviderRecognitionRule(
+    return this.inboxService.updateProviderRecognitionRule(
       ruleStableId,
       body,
       this.requireOperatorUserId(req),
@@ -248,7 +248,7 @@ export class AccountingController {
 
   @Get('inbox/trusted-senders')
   listTrustedSenders() {
-    return this.inbox.listTrustedSenders();
+    return this.inboxService.listTrustedSenders();
   }
 
   @Put('inbox/trusted-senders')
@@ -256,7 +256,7 @@ export class AccountingController {
     @Body() body: { email: string; label?: string | null; isActive?: boolean },
     @Req() req: AuthedAccountingRequest,
   ) {
-    return this.inbox.upsertTrustedSender(
+    return this.inboxService.upsertTrustedSender(
       body,
       this.requireOperatorUserId(req),
     );
@@ -272,7 +272,7 @@ export class AccountingController {
     },
     @Req() req: AuthedAccountingRequest,
   ) {
-    return this.inbox.setUnifiedInboxClassification(
+    return this.inboxService.setUnifiedInboxClassification(
       inboxItemStableId,
       body,
       this.requireOperatorUserId(req),
@@ -284,7 +284,7 @@ export class AccountingController {
     @Param('inboxItemStableId') inboxItemStableId: string,
     @Req() req: AuthedAccountingRequest,
   ) {
-    return this.inbox.confirmUnifiedInboxOther(
+    return this.inboxService.confirmUnifiedInboxOther(
       inboxItemStableId,
       this.requireOperatorUserId(req),
     );
@@ -378,7 +378,7 @@ export class AccountingController {
     @Param('inboxItemStableId') inboxItemStableId: string,
     @Req() req: AuthedAccountingRequest,
   ) {
-    return this.inbox.discardUnifiedInboxItem(
+    return this.inboxService.discardUnifiedInboxItem(
       inboxItemStableId,
       this.requireOperatorUserId(req),
     );
