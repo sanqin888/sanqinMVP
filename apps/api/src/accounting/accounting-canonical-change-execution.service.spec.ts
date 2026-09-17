@@ -128,7 +128,6 @@ const makeService = (report: CanonicalChangeShadowPreviewReport) => {
     previewRange: jest.fn().mockResolvedValue(report),
   };
   const accounting = {
-    assertNoLegacyOrderRevenueAccrual: jest.fn().mockResolvedValue(undefined),
     createCanonicalChangeJournalEntry: jest.fn().mockResolvedValue({}),
   };
   return {
@@ -156,7 +155,6 @@ describe('AccountingCanonicalChangeExecutionService', () => {
       service.executeRange({ ...input, expectedPlanHash: OTHER_PLAN_HASH }),
     ).rejects.toBeInstanceOf(ConflictException);
 
-    expect(accounting.assertNoLegacyOrderRevenueAccrual).not.toHaveBeenCalled();
     expect(accounting.createCanonicalChangeJournalEntry).not.toHaveBeenCalled();
   });
 
@@ -215,9 +213,6 @@ describe('AccountingCanonicalChangeExecutionService', () => {
 
     const result = await service.executeRange(input);
 
-    expect(accounting.assertNoLegacyOrderRevenueAccrual).toHaveBeenCalledTimes(
-      1,
-    );
     expect(accounting.createCanonicalChangeJournalEntry).toHaveBeenCalledTimes(
       1,
     );
@@ -252,7 +247,6 @@ describe('AccountingCanonicalChangeExecutionService', () => {
     await expect(service.executeRange(input)).rejects.toBeInstanceOf(
       ConflictException,
     );
-    expect(accounting.assertNoLegacyOrderRevenueAccrual).not.toHaveBeenCalled();
     expect(accounting.createCanonicalChangeJournalEntry).not.toHaveBeenCalled();
   });
 
@@ -272,7 +266,6 @@ describe('AccountingCanonicalChangeExecutionService', () => {
     await expect(service.executeRange(input)).rejects.toBeInstanceOf(
       ConflictException,
     );
-    expect(accounting.assertNoLegacyOrderRevenueAccrual).not.toHaveBeenCalled();
     expect(accounting.createCanonicalChangeJournalEntry).not.toHaveBeenCalled();
   });
 });

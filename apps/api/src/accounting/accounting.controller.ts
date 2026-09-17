@@ -62,23 +62,6 @@ type AuthedAccountingRequest = Request & {
   user?: { id?: string; userStableId?: string };
 };
 
-type TxBody = {
-  type: AccountingTxType;
-  source: AccountingSourceType;
-  amountCents: number;
-  currency?: string;
-  occurredAt: string;
-  categoryStableId: string;
-  accountStableId?: string | null;
-  toAccountStableId?: string | null;
-  idempotencyKey?: string | null;
-  externalRef?: string | null;
-  counterparty?: string | null;
-  memo?: string | null;
-  attachmentUrls?: string[];
-  lastKnownUpdatedAt?: string;
-};
-
 @Controller('accounting')
 @UseGuards(SessionAuthGuard, RolesGuard)
 @Roles('ADMIN', 'ACCOUNTANT')
@@ -459,61 +442,6 @@ export class AccountingController {
       limit: this.parseNonNegativeNumber(limit, 'limit'),
       status,
     });
-  }
-
-  @Post('tx')
-  async createTx(@Body() body: TxBody, @Req() req: AuthedAccountingRequest) {
-    return this.accountingService.createTx(
-      body,
-      this.requireOperatorUserId(req),
-    );
-  }
-
-  @Get('tx')
-  async listTx(
-    @Query('from') from?: string,
-    @Query('to') to?: string,
-    @Query('categoryStableId') categoryStableId?: string,
-    @Query('source') source?: AccountingSourceType,
-    @Query('keyword') keyword?: string,
-    @Query('limit') limit?: string,
-    @Query('offset') offset?: string,
-    @Query('cursor') cursor?: string,
-  ) {
-    return this.accountingService.listTx({
-      from,
-      to,
-      categoryStableId,
-      source,
-      keyword,
-      limit: this.parseNonNegativeNumber(limit, 'limit'),
-      offset: this.parseNonNegativeNumber(offset, 'offset'),
-      cursor,
-    });
-  }
-
-  @Put('tx/:txStableId')
-  async updateTx(
-    @Param('txStableId') txStableId: string,
-    @Body() body: TxBody,
-    @Req() req: AuthedAccountingRequest,
-  ) {
-    return this.accountingService.updateTx(
-      txStableId,
-      body,
-      this.requireOperatorUserId(req),
-    );
-  }
-
-  @Delete('tx/:txStableId')
-  async deleteTx(
-    @Param('txStableId') txStableId: string,
-    @Req() req: AuthedAccountingRequest,
-  ) {
-    return this.accountingService.deleteTx(
-      txStableId,
-      this.requireOperatorUserId(req),
-    );
   }
 
   @Post('period-close/month/:periodKey')

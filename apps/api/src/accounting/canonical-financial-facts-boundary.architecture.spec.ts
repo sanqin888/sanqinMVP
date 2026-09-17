@@ -188,7 +188,7 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(replayService).not.toContain('../prisma/');
     expect(replayService).toContain('executeRange(');
     expect(replayService).toContain('expectedPlanHash');
-    expect(replayService).toContain('assertNoLegacyOrderRevenueAccrual');
+    expect(replayService).not.toContain('assertNoLegacyOrderRevenueAccrual');
     expect(changePreviewService).toContain("from '../orders/public-api'");
     expect(changePreviewService).toContain("from '../payments/public-api'");
     expect(changePreviewService).toContain("from '../loyalty/public-api'");
@@ -205,7 +205,7 @@ describe('Phase 9 canonical financial facts boundary', () => {
       "from './accounting-canonical-change-preview.service'",
     );
     expect(changeExecutionService).toContain('expectedPlanHash');
-    expect(changeExecutionService).toContain(
+    expect(changeExecutionService).not.toContain(
       'assertNoLegacyOrderRevenueAccrual',
     );
     expect(changeExecutionService).toContain(
@@ -227,6 +227,9 @@ describe('Phase 9 canonical financial facts boundary', () => {
       "from './accounting-provider-settlement-preview.service'",
     );
     expect(providerSettlementExecutionService).toContain('expectedPlanHash');
+    expect(providerSettlementExecutionService).not.toContain(
+      'assertNoLegacyOrderRevenueAccrual',
+    );
     expect(providerSettlementExecutionService).toContain(
       'createProviderSettlementReplacementGroup',
     );
@@ -307,7 +310,7 @@ describe('Phase 9 canonical financial facts boundary', () => {
     ]);
   });
 
-  it('keeps the retired single-entry Order/provider transaction contract physically absent', () => {
+  it('keeps generic single-entry transaction authority absent while retaining Expense split persistence', () => {
     const schema = readFileSync(PRISMA_SCHEMA, 'utf8');
     const accountingTransaction =
       schema.match(/model AccountingTransaction\s*{([\s\S]*?)\n}/)?.[1] ?? '';
@@ -319,8 +322,11 @@ describe('Phase 9 canonical financial facts boundary', () => {
       file(ACCOUNTING_ROOT, 'accounting-journal.service.ts')?.source ?? '';
     const accountingController =
       file(ACCOUNTING_ROOT, 'accounting.controller.ts')?.source ?? '';
+    const accountingExpenseService =
+      file(ACCOUNTING_ROOT, 'accounting-expense.service.ts')?.source ?? '';
 
     expect(accountingTransaction).not.toMatch(/\borderId\b/);
+    expect(accountingTransaction).toContain('documentId');
     expect(accountingSourceType).toContain('MANUAL');
     expect(accountingSourceType).toContain('OTHER');
     expect(accountingSourceType).not.toContain('ORDER');
@@ -329,12 +335,43 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(accountingService).not.toContain('AccountingSourceType.ORDER');
     expect(accountingService).not.toContain('orderId: normalized.orderId');
     expect(accountingController).not.toContain('orderId?: string | null;');
-    expect(accountingService).not.toContain(
+    expect(accountingController).not.toContain("@Post('tx')");
+    expect(accountingController).not.toContain("@Get('tx')");
+    expect(accountingController).not.toContain("@Put('tx/:txStableId')");
+    expect(accountingController).not.toContain("@Delete('tx/:txStableId')");
+    expect(accountingController).not.toContain('type TxBody');
+    expect(accountingController).toContain("@Get('export/tx.csv')");
+    expect(accountingService).not.toContain('async createTx(');
+    expect(accountingService).not.toContain('async listTx(');
+    expect(accountingService).not.toContain('async updateTx(');
+    expect(accountingService).not.toContain('async deleteTx(');
+    expect(accountingService).not.toContain('type UpsertTxDto');
+    expect(accountingService).not.toContain('ACCOUNTING_TX_PUBLIC_SELECT');
+    expect(accountingService).toContain('async pnlReport(');
+    expect(accountingService).toContain('async exportTxCsv(');
+    expect(accountingJournalService).not.toContain(
       'assertNoLegacyOrderRevenueAccrual',
     );
-    expect(accountingJournalService).toContain(
-      'assertNoLegacyOrderRevenueAccrual',
+    expect(accountingExpenseService).toContain(
+      'accountingTransaction.createMany',
     );
+
+    const transactionMutationCallers = scanTypeScript(ACCOUNTING_ROOT, {
+      productionOnly: true,
+    })
+      .filter(({ source }) =>
+        /accountingTransaction\.(?:create|createMany|update|updateMany|delete|deleteMany|upsert)\s*\(/.test(
+          source,
+        ),
+      )
+      .map(({ path }) =>
+        path.slice(API_SRC_ROOT.length + 1).replaceAll('\\', '/'),
+      )
+      .sort();
+
+    expect(transactionMutationCallers).toEqual([
+      'accounting/accounting-expense.service.ts',
+    ]);
   });
 
   it('prevents Accounting from consuming owner internals before or after the later posting cutover', () => {

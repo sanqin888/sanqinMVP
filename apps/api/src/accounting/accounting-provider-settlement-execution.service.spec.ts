@@ -276,7 +276,6 @@ const makeReport = (params?: {
 const makeService = (report = makeReport()) => {
   const preview = { previewRange: jest.fn().mockResolvedValue(report) };
   const accounting = {
-    assertNoLegacyOrderRevenueAccrual: jest.fn().mockResolvedValue(undefined),
     createProviderSettlementReplacementGroup: jest
       .fn()
       .mockResolvedValue([{}, {}, {}]),
@@ -307,7 +306,6 @@ describe('AccountingProviderSettlementExecutionService', () => {
       service.executeRange({ ...input, expectedPlanHash: OTHER_PLAN_HASH }),
     ).rejects.toBeInstanceOf(ConflictException);
 
-    expect(accounting.assertNoLegacyOrderRevenueAccrual).not.toHaveBeenCalled();
     expect(
       accounting.createProviderSettlementReplacementGroup,
     ).not.toHaveBeenCalled();
@@ -318,9 +316,6 @@ describe('AccountingProviderSettlementExecutionService', () => {
 
     const result = await service.executeRange(input);
 
-    expect(accounting.assertNoLegacyOrderRevenueAccrual).toHaveBeenCalledTimes(
-      1,
-    );
     expect(
       accounting.createProviderSettlementReplacementGroup,
     ).toHaveBeenCalledTimes(1);
@@ -424,7 +419,6 @@ describe('AccountingProviderSettlementExecutionService', () => {
     await expect(service.executeRange(input)).rejects.toBeInstanceOf(
       ConflictException,
     );
-    expect(accounting.assertNoLegacyOrderRevenueAccrual).not.toHaveBeenCalled();
     expect(
       accounting.createProviderSettlementReplacementGroup,
     ).not.toHaveBeenCalled();
