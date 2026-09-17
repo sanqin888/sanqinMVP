@@ -155,7 +155,7 @@
     "forbiddenLegacyDelegates": ["businessConfig"],
     "forbiddenLegacyDelegateRoots": ["apps/api/src"],
     "migratedLegacyConfigConsumers": [
-      "apps/api/src/accounting/accounting.service.ts",
+      "apps/api/src/accounting/accounting-period.service.ts",
       "apps/api/src/promotions/promotions.service.ts",
       "apps/api/src/pos/pos-exchange-rate.service.ts",
       "apps/api/src/pos/pos-connectivity-watchdog.service.ts",
@@ -659,7 +659,7 @@
     "accounting-reporting-analytics -> architecture-foundation": 1,
     "accounting-reporting-analytics -> external-channels": 1,
     "accounting-reporting-analytics -> identity-customer-benefits": 2,
-    "accounting-reporting-analytics -> runtime-data-ci-ops": 6,
+    "accounting-reporting-analytics -> runtime-data-ci-ops": 5,
     "brand-store -> architecture-foundation": 2,
     "brand-store -> runtime-data-ci-ops": 3,
     "catalog-pricing-offers -> architecture-foundation": 2,
