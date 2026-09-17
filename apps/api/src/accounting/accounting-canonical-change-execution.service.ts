@@ -12,7 +12,7 @@ import {
   type CanonicalChangeShadowPreviewInput,
   type CanonicalChangeShadowPreviewReport,
 } from './accounting-canonical-change-preview.service';
-import { AccountingService } from './accounting.service';
+import { AccountingJournalService } from './accounting-journal.service';
 
 export const CANONICAL_CHANGE_SYSTEM_ACTOR =
   'system:accounting-canonical-change-posting';
@@ -41,7 +41,7 @@ type ReadyWrite = {
 export class AccountingCanonicalChangeExecutionService {
   constructor(
     private readonly preview: AccountingCanonicalChangePreviewService,
-    private readonly accounting: AccountingService,
+    private readonly journal: AccountingJournalService,
   ) {}
 
   async executeRange(
@@ -101,9 +101,9 @@ export class AccountingCanonicalChangeExecutionService {
       });
     }
 
-    await this.accounting.assertNoLegacyOrderRevenueAccrual();
+    await this.journal.assertNoLegacyOrderRevenueAccrual();
     for (const { journal, authority } of readyWrites) {
-      await this.accounting.createCanonicalChangeJournalEntry(
+      await this.journal.createCanonicalChangeJournalEntry(
         journal,
         CANONICAL_CHANGE_SYSTEM_ACTOR,
         authority,

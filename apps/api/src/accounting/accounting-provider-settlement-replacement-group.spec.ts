@@ -10,7 +10,8 @@ import {
 } from '@prisma/client';
 
 import type { ProviderSettlementReplacementGroupAuthorityV1 } from './accounting-provider-settlement-write-authority';
-import { AccountingService } from './accounting.service';
+import { AccountingJournalService } from './accounting-journal.service';
+import { AccountingPeriodService } from './accounting-period.service';
 
 const originalEntryStableId = 'journal_sale_1';
 const originalIdempotencyHash = 'c'.repeat(64);
@@ -299,12 +300,12 @@ const makeService = () => {
       timezone: 'America/Toronto',
     }),
   };
+  const period = new AccountingPeriodService(
+    prisma as never,
+    storeConfig as never,
+  );
   return {
-    service: new AccountingService(
-      prisma as never,
-      storeConfig as never,
-      {} as never,
-    ),
+    service: new AccountingJournalService(prisma as never, period),
     tx,
     transaction,
   };
@@ -320,7 +321,7 @@ const writeInput = {
   ],
 };
 
-describe('AccountingService provider settlement replacement group', () => {
+describe('AccountingJournalService provider settlement replacement group', () => {
   it('places the statement, all historical reversals, and their audits inside one Serializable transaction callback', async () => {
     const { service, tx, transaction } = makeService();
 

@@ -10,7 +10,8 @@ import type {
 } from '../orders/public-api';
 import type { BrandStoreConfigReaderPort } from '../store/public-api';
 import { AccountingCanonicalSaleReplayService } from './accounting-canonical-sale-replay.service';
-import { AccountingService } from './accounting.service';
+import { AccountingJournalService } from './accounting-journal.service';
+import { AccountingPeriodService } from './accounting-period.service';
 
 function makeFact(
   orderStableId: string,
@@ -116,14 +117,7 @@ function balanceFact(
 }
 
 function makeService() {
-  const accounting: jest.Mocked<
-    Pick<
-      AccountingService,
-      | 'requireCanonicalFinancialPostingStartAt'
-      | 'assertNoLegacyOrderRevenueAccrual'
-      | 'createJournalEntry'
-    >
-  > = {
+  const accounting = {
     requireCanonicalFinancialPostingStartAt: jest
       .fn()
       .mockResolvedValue(new Date('2026-06-01T04:00:00.000Z')),
@@ -153,7 +147,8 @@ function makeService() {
   };
 
   const service = new AccountingCanonicalSaleReplayService(
-    accounting as unknown as AccountingService,
+    accounting as unknown as AccountingPeriodService,
+    accounting as unknown as AccountingJournalService,
     orders,
     loyalty,
     storeConfig as unknown as BrandStoreConfigReaderPort,

@@ -1,7 +1,10 @@
 import { Module } from '@nestjs/common';
 import { AccountingController } from './accounting.controller';
 import { AccountingService } from './accounting.service';
-import { PrismaModule } from '../prisma/prisma.module';
+import { AccountingPeriodService } from './accounting-period.service';
+import { AccountingJournalService } from './accounting-journal.service';
+import { PrismaModule, PrismaService } from '../prisma/prisma.module';
+import { ACCOUNTING_DB } from './accounting-db';
 import { AuthModule } from '../auth/auth.module';
 import { UberEatsModule } from '../integrations/ubereats/ubereats.module';
 import { AccountingAutomationScheduler } from './accounting-automation.scheduler';
@@ -40,6 +43,9 @@ import { PaymentFinancialFactsModule } from '../payments/public-api';
   ],
   controllers: [AccountingController],
   providers: [
+    { provide: ACCOUNTING_DB, useExisting: PrismaService },
+    AccountingPeriodService,
+    AccountingJournalService,
     AccountingService,
     AccountingCanonicalSalePostingService,
     AccountingCanonicalSaleReplayService,

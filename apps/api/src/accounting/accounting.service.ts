@@ -1,55 +1,21 @@
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { createId } from '@paralleldrive/cuid2';
 import { DateTime } from 'luxon';
 import { Prisma } from '@prisma/client';
 import {
   AccountingDocumentStatus,
-  AccountingJournalEntryKind,
-  AccountingJournalSource,
   AccountingSourceType,
   AccountingTxType,
 } from './accounting-contracts';
-import { PrismaService } from '../prisma/prisma.service';
+import { ACCOUNTING_DB, type AccountingDb } from './accounting-db';
 import { runSerializableAccountingWrite } from './accounting-atomic-write';
-import {
-  AccountingJournalPolicyError,
-  hashJournalCreatePayload,
-  normalizeJournalCreate,
-  normalizeJournalUpdate,
-  type AccountingJournalCreateInput,
-  type AccountingJournalUpdateInput,
-  type NormalizedJournalCreate,
-  type NormalizedJournalLine,
-} from './accounting-journal-policy';
-import {
-  hashCanonicalChangeJournalWrite,
-  normalizeCanonicalChangeJournalWriteAuthority,
-  type CanonicalChangeJournalWriteAuthorityV1,
-} from './accounting-canonical-change-write-authority';
-import { CANONICAL_SALE_SOURCE_FACT_TYPE } from './accounting-canonical-sale-journal.policy';
-import {
-  buildProviderSettlementJournalWriteAuthority,
-  hashProviderSettlementJournalWrite,
-  normalizeProviderSettlementReplacementGroupAuthority,
-  type ProviderSettlementJournalWriteAuthorityV1,
-  type ProviderSettlementReplacementGroupAuthorityV1,
-  type ProviderSettlementReplacementGroupWriteInput,
-} from './accounting-provider-settlement-write-authority';
-import {
-  PROVIDER_FINANCIAL_SOURCE_FACT_TYPE,
-  UBER_PRE_CUTOVER_REVERSAL_SOURCE_FACT_TYPE,
-} from './accounting-provider-settlement.policy';
-import {
-  BRAND_STORE_CONFIG_READER,
-  type BrandStoreConfigReaderPort,
-} from '../store/public-api';
+import { writeAccountingAuditLog } from './accounting-audit-writer';
+import { AccountingPeriodService } from './accounting-period.service';
 import {
   ORDER_REPORTING_FACTS_READER,
   type OrderReportingFactsReaderPort,
@@ -126,223 +92,16 @@ const ACCOUNTING_TX_PUBLIC_SELECT = {
   },
 } satisfies Prisma.AccountingTransactionSelect;
 
-const ACCOUNTING_JOURNAL_PUBLIC_SELECT = {
-  entryStableId: true,
-  idempotencyKey: true,
-  kind: true,
-  source: true,
-  sourceFactType: true,
-  sourceFactStableId: true,
-  sourceFactVersion: true,
-  storeStableId: true,
-  occurredAt: true,
-  currency: true,
-  memo: true,
-  createdByActorRef: true,
-  updatedByActorRef: true,
-  createdAt: true,
-  updatedAt: true,
-  version: true,
-  deletedAt: true,
-  lines: {
-    orderBy: { lineNo: 'asc' as const },
-    select: {
-      lineNo: true,
-      debitCents: true,
-      creditCents: true,
-      memo: true,
-      account: {
-        select: {
-          accountStableId: true,
-          name: true,
-          type: true,
-          accountClass: true,
-          currency: true,
-        },
-      },
-      category: {
-        select: {
-          categoryStableId: true,
-          name: true,
-          type: true,
-        },
-      },
-    },
-  },
-} satisfies Prisma.AccountingJournalEntrySelect;
-
-const ACCOUNTING_JOURNAL_INTERNAL_SELECT = {
-  id: true,
-  idempotencyHash: true,
-  ...ACCOUNTING_JOURNAL_PUBLIC_SELECT,
-} satisfies Prisma.AccountingJournalEntrySelect;
-
-type AccountingJournalRow = Prisma.AccountingJournalEntryGetPayload<{
-  select: typeof ACCOUNTING_JOURNAL_PUBLIC_SELECT;
-}>;
-
-type AccountingJournalInternalRow = Prisma.AccountingJournalEntryGetPayload<{
-  select: typeof ACCOUNTING_JOURNAL_INTERNAL_SELECT;
-}>;
-
-type ResolvedJournalLine = NormalizedJournalLine & {
-  accountId: string;
-  categoryId: string | null;
-};
-
-type AccountingDbClient = PrismaService | Prisma.TransactionClient;
-
-type PreparedJournalWrite = {
-  normalized: NormalizedJournalCreate;
-  idempotencyHash: string;
-  auditAuthority: Prisma.InputJsonValue | null;
-};
+type AccountingDbClient = AccountingDb | Prisma.TransactionClient;
 
 @Injectable()
 export class AccountingService {
-  private static readonly DEFAULT_BUSINESS_TIMEZONE = 'America/Toronto';
-
   constructor(
-    private readonly prisma: PrismaService,
-    @Inject(BRAND_STORE_CONFIG_READER)
-    private readonly brandStoreConfigReader: BrandStoreConfigReaderPort,
+    @Inject(ACCOUNTING_DB) private readonly prisma: AccountingDb,
+    private readonly period: AccountingPeriodService,
     @Inject(ORDER_REPORTING_FACTS_READER)
     private readonly orderReportingFacts: OrderReportingFactsReaderPort,
   ) {}
-
-  private async getBusinessTimezone(): Promise<string> {
-    const { timezone } =
-      await this.brandStoreConfigReader.getConfiguredStoreSnapshot();
-    return timezone.trim() || AccountingService.DEFAULT_BUSINESS_TIMEZONE;
-  }
-
-  private async readAccountingStartDate(
-    db: AccountingDbClient,
-  ): Promise<string | null> {
-    const config = await db.accountingAutomationConfig.findUnique({
-      where: { id: 1 },
-      select: { accountingStartDate: true },
-    });
-    return config?.accountingStartDate?.toISOString().slice(0, 10) ?? null;
-  }
-
-  async getAccountingStartDate(): Promise<string | null> {
-    return this.readAccountingStartDate(this.prisma);
-  }
-
-  private async getAccountingStartAt(
-    db: AccountingDbClient = this.prisma,
-  ): Promise<Date | undefined> {
-    const startDate = await this.readAccountingStartDate(db);
-    if (!startDate) return undefined;
-    const timezone = await this.getBusinessTimezone();
-    const localStart = DateTime.fromISO(startDate, { zone: timezone }).startOf(
-      'day',
-    );
-    if (!localStart.isValid) {
-      throw new BadRequestException(
-        `Invalid accounting start date/timezone: ${startDate} / ${timezone}`,
-      );
-    }
-    return localStart.toUTC().toJSDate();
-  }
-
-  async requireCanonicalFinancialPostingStartAt(): Promise<Date> {
-    const startAt = await this.getAccountingStartAt();
-    if (!startAt) {
-      throw new ConflictException(
-        'accountingStartDate must be configured before canonical financial posting',
-      );
-    }
-    return startAt;
-  }
-
-  async readCanonicalSaleJournalAnchors(sourceFactStableIds: string[]): Promise<
-    Array<{
-      entryStableId: string;
-      sourceFactStableId: string;
-      idempotencyKey: string;
-    }>
-  > {
-    const stableIds = [
-      ...new Set(
-        sourceFactStableIds.map((value) => value.trim()).filter(Boolean),
-      ),
-    ].sort();
-    if (stableIds.length === 0) return [];
-
-    const rows = await this.prisma.accountingJournalEntry.findMany({
-      where: {
-        deletedAt: null,
-        source: AccountingJournalSource.ORDER,
-        sourceFactType: 'order.financial_sale.v1',
-        sourceFactStableId: { in: stableIds },
-      },
-      select: {
-        entryStableId: true,
-        idempotencyKey: true,
-        sourceFactStableId: true,
-      },
-      orderBy: { entryStableId: 'asc' },
-    });
-
-    const anchors = rows.flatMap((row) => {
-      const sourceFactStableId = row.sourceFactStableId?.trim();
-      if (!sourceFactStableId) return [];
-      return [
-        {
-          entryStableId: row.entryStableId,
-          sourceFactStableId,
-          idempotencyKey: row.idempotencyKey,
-        },
-      ];
-    });
-    const seen = new Set<string>();
-    for (const anchor of anchors) {
-      if (seen.has(anchor.sourceFactStableId)) {
-        throw new ConflictException(
-          `Duplicate canonical sale Journal anchor for ${anchor.sourceFactStableId}`,
-        );
-      }
-      seen.add(anchor.sourceFactStableId);
-    }
-    return anchors;
-  }
-
-  async assertNoLegacyOrderRevenueAccrual(): Promise<void> {
-    const legacyCount = await this.prisma.accountingTransaction.count({
-      where: {
-        OR: [
-          { idempotencyKey: { startsWith: 'AUTO_ORDER:' } },
-          { idempotencyKey: { startsWith: 'AUTO_ORDER_DAILY:' } },
-        ],
-      },
-    });
-    if (legacyCount > 0) {
-      throw new ConflictException(
-        `Canonical sale replay is blocked by ${legacyCount} legacy order revenue accrual transaction(s)`,
-      );
-    }
-  }
-
-  async assertOnOrAfterAccountingStartDate(
-    occurredAt: Date,
-    db: AccountingDbClient = this.prisma,
-  ) {
-    const startAt = await this.getAccountingStartAt(db);
-    if (startAt && occurredAt < startAt) {
-      throw new BadRequestException(
-        `occurredAt is before accounting start date ${startAt.toISOString().slice(0, 10)}`,
-      );
-    }
-  }
-
-  async clampAccountingFromDate(requested?: Date): Promise<Date | undefined> {
-    const startAt = await this.getAccountingStartAt();
-    if (!startAt) return requested;
-    if (!requested || requested < startAt) return startAt;
-    return requested;
-  }
 
   private parseDate(
     raw: string | undefined,
@@ -363,123 +122,10 @@ export class AccountingService {
     return date;
   }
 
-  private toPeriodKey(date: Date, timezone: string): string {
-    const zoned = DateTime.fromJSDate(date, { zone: timezone });
-    if (!zoned.isValid) {
-      throw new BadRequestException(
-        `Invalid occurredAt for timezone ${timezone}`,
-      );
-    }
-    const year = zoned.year;
-    const month = `${zoned.month}`.padStart(2, '0');
-    return `${year}-${month}`;
-  }
-
-  private monthBounds(periodKey: string, timezone: string) {
-    const parsed = /^(\d{4})-(\d{2})$/.exec(periodKey);
-    if (!parsed) {
-      throw new BadRequestException('periodKey must use YYYY-MM format');
-    }
-    const year = Number(parsed[1]);
-    const month = Number(parsed[2]);
-    const start = DateTime.fromObject(
-      { year, month, day: 1, hour: 0, minute: 0, second: 0, millisecond: 0 },
-      { zone: timezone },
-    );
-    if (!start.isValid) {
-      throw new BadRequestException(`Invalid periodKey: ${periodKey}`);
-    }
-
-    const end = start.endOf('month');
-    const startAt = start.toUTC().toJSDate();
-    const endAt = end.toUTC().toJSDate();
-    return { startAt, endAt };
-  }
-
-  private yearBounds(periodKey: string, timezone: string) {
-    if (!/^\d{4}$/.test(periodKey)) {
-      throw new BadRequestException('periodKey must use YYYY format');
-    }
-    const year = Number(periodKey);
-    const start = DateTime.fromObject(
-      { year, month: 1, day: 1, hour: 0, minute: 0, second: 0, millisecond: 0 },
-      { zone: timezone },
-    );
-    if (!start.isValid) {
-      throw new BadRequestException(`Invalid periodKey: ${periodKey}`);
-    }
-    return {
-      startAt: start.toUTC().toJSDate(),
-      endAt: start.endOf('year').toUTC().toJSDate(),
-    };
-  }
-
-  async assertEditableForPeriod(
-    occurredAt: Date,
-    type: AccountingTxType,
-    db: AccountingDbClient = this.prisma,
-    timezone?: string,
-  ) {
-    const businessTimezone = timezone ?? (await this.getBusinessTimezone());
-    const zoned = DateTime.fromJSDate(occurredAt, { zone: businessTimezone });
-    if (!zoned.isValid) {
-      throw new BadRequestException('Invalid accounting occurredAt');
-    }
-    const yearKey = `${zoned.year}`;
-    const yearLocked = await db.accountingPeriodClose.findUnique({
-      where: {
-        periodType_periodKey: {
-          periodType: 'YEAR',
-          periodKey: yearKey,
-        },
-      },
-      select: { id: true },
-    });
-    if (yearLocked) {
-      throw new ForbiddenException(
-        `财年 ${yearKey} 已硬锁账，不允许修改历史分录。`,
-      );
-    }
-
-    const periodKey = this.toPeriodKey(occurredAt, businessTimezone);
-    const monthClosed = await db.accountingPeriodClose.findUnique({
-      where: {
-        periodType_periodKey: {
-          periodType: 'MONTH',
-          periodKey,
-        },
-      },
-      select: { id: true },
-    });
-
-    if (!monthClosed) return;
-    if (type !== AccountingTxType.ADJUSTMENT) {
-      throw new ForbiddenException(
-        `期间 ${periodKey} 已月结；可先重新打开月份，或使用 ADJUSTMENT 调整。`,
-      );
-    }
-  }
-
-  async assertJournalEditableForPeriod(
-    occurredAt: Date,
-    kind: AccountingJournalEntryKind,
-    db: AccountingDbClient = this.prisma,
-    timezone?: string,
-  ) {
-    return this.assertEditableForPeriod(
-      occurredAt,
-      kind === AccountingJournalEntryKind.ADJUSTMENT
-        ? AccountingTxType.ADJUSTMENT
-        : AccountingTxType.EXPENSE,
-      db,
-      timezone,
-    );
-  }
-
   private async buildWhere(
     filters: TxFilters,
   ): Promise<Prisma.AccountingTransactionWhereInput> {
-    const fromDate = await this.clampAccountingFromDate(
+    const fromDate = await this.period.clampAccountingFromDate(
       this.parseDate(filters.from),
     );
     const toDate = this.parseDate(filters.to, true);
@@ -645,858 +291,19 @@ export class AccountingService {
     },
     db: AccountingDbClient = this.prisma,
   ) {
-    await db.accountingAuditLog.create({
-      data: {
-        action: params.action,
-        entityType: params.entityType,
-        entityId: params.entityId,
-        operatorActorRef: params.operatorActorRef,
-        beforeJson:
-          params.beforeJson === null ? Prisma.JsonNull : params.beforeJson,
-        afterJson:
-          params.afterJson === null ? Prisma.JsonNull : params.afterJson,
-      },
-    });
-  }
-
-  async createJournalEntry(
-    input: AccountingJournalCreateInput,
-    operatorUserStableId: string,
-  ): Promise<AccountingJournalRow> {
-    return this.createJournalEntryInternal(input, operatorUserStableId, null);
-  }
-
-  async createCanonicalChangeJournalEntry(
-    input: AccountingJournalCreateInput,
-    operatorActorRef: string,
-    authority: CanonicalChangeJournalWriteAuthorityV1,
-  ): Promise<AccountingJournalRow> {
-    const normalizedAuthority = this.applyJournalPolicy(() =>
-      normalizeCanonicalChangeJournalWriteAuthority(authority),
-    );
-    return this.createJournalEntryInternal(
-      input,
-      operatorActorRef,
-      normalizedAuthority,
-    );
-  }
-
-  async createProviderSettlementReplacementGroup(
-    input: ProviderSettlementReplacementGroupWriteInput,
-    operatorActorRef: string,
-    authority: ProviderSettlementReplacementGroupAuthorityV1,
-  ): Promise<AccountingJournalRow[]> {
-    const normalizedAuthority = this.applyJournalPolicy(() =>
-      normalizeProviderSettlementReplacementGroupAuthority(authority),
-    );
-    const documentAuthority = this.applyJournalPolicy(() =>
-      buildProviderSettlementJournalWriteAuthority({
-        group: normalizedAuthority,
-        role: 'PROVIDER_DOCUMENT',
-      }),
-    );
-    const documentJournal = this.prepareProviderSettlementJournalWrite(
-      input.documentJournal,
-      documentAuthority,
-    );
-    const reversals = [...input.uberPreCutoverReversals]
-      .sort((left, right) =>
-        left.originalJournalEntryStableId.localeCompare(
-          right.originalJournalEntryStableId,
-        ),
-      )
-      .map((reversal) => {
-        const writeAuthority = this.applyJournalPolicy(() =>
-          buildProviderSettlementJournalWriteAuthority({
-            group: normalizedAuthority,
-            role: 'UBER_PRE_CUTOVER_REVERSAL',
-            originalJournalEntryStableId: reversal.originalJournalEntryStableId,
-          }),
-        );
-        return this.prepareProviderSettlementJournalWrite(
-          reversal.journal,
-          writeAuthority,
-        );
-      });
-    const prepared = [documentJournal, ...reversals];
-    const idempotencyKeys = prepared.map(
-      (item) => item.normalized.idempotencyKey,
-    );
-    if (new Set(idempotencyKeys).size !== idempotencyKeys.length) {
-      throw new BadRequestException(
-        'provider settlement replacement group contains duplicate idempotency keys',
-      );
-    }
-    if (
-      reversals.length !== normalizedAuthority.historicalReversalAnchors.length
-    ) {
-      throw new BadRequestException(
-        'provider settlement replacement group reversal count does not match its authority anchors',
-      );
-    }
-
-    const operator = this.requireJournalValue(
-      operatorActorRef,
-      'operatorActorRef',
-    );
-    const timezone = await this.getBusinessTimezone();
-    const writeGroup = (tx: Prisma.TransactionClient) =>
-      this.createProviderSettlementReplacementGroupInTx(
-        prepared,
-        normalizedAuthority,
-        operator,
-        tx,
-        timezone,
-      );
-
-    try {
-      return await runSerializableAccountingWrite(this.prisma, writeGroup);
-    } catch (error) {
-      if (!this.isJournalUniqueConstraintError(error)) throw error;
-      return runSerializableAccountingWrite(this.prisma, writeGroup);
-    }
-  }
-
-  private async createJournalEntryInternal(
-    input: AccountingJournalCreateInput,
-    operatorActorRef: string,
-    writeAuthority: CanonicalChangeJournalWriteAuthorityV1 | null,
-  ): Promise<AccountingJournalRow> {
-    const normalized = this.applyJournalPolicy(() =>
-      normalizeJournalCreate(input),
-    );
-    if (writeAuthority) {
-      this.assertCanonicalChangeJournalAuthority(normalized, writeAuthority);
-    }
-    const idempotencyHash = writeAuthority
-      ? hashCanonicalChangeJournalWrite(normalized, writeAuthority)
-      : hashJournalCreatePayload(normalized);
-    const operator = this.requireJournalValue(
-      operatorActorRef,
-      'operatorActorRef',
-    );
-    const timezone = await this.getBusinessTimezone();
-    const prepared: PreparedJournalWrite = {
-      normalized,
-      idempotencyHash,
-      auditAuthority: writeAuthority
-        ? (writeAuthority as unknown as Prisma.InputJsonValue)
-        : null,
-    };
-
-    try {
-      return await runSerializableAccountingWrite(this.prisma, (tx) =>
-        this.createPreparedJournalEntryInTx(prepared, operator, tx, timezone),
-      );
-    } catch (error) {
-      if (!this.isJournalUniqueConstraintError(error)) throw error;
-      const existing = await this.prisma.accountingJournalEntry.findUnique({
-        where: { idempotencyKey: normalized.idempotencyKey },
-        select: ACCOUNTING_JOURNAL_INTERNAL_SELECT,
-      });
-      if (!existing) throw error;
-      return this.assertJournalIdempotentReplay(existing, idempotencyHash);
-    }
-  }
-
-  private async createPreparedJournalEntryInTx(
-    prepared: PreparedJournalWrite,
-    operator: string,
-    tx: Prisma.TransactionClient,
-    timezone: string,
-  ): Promise<AccountingJournalRow> {
-    const { normalized, idempotencyHash, auditAuthority } = prepared;
-    const existing = await tx.accountingJournalEntry.findUnique({
-      where: { idempotencyKey: normalized.idempotencyKey },
-      select: ACCOUNTING_JOURNAL_INTERNAL_SELECT,
-    });
-    if (existing) {
-      return this.assertJournalIdempotentReplay(existing, idempotencyHash);
-    }
-
-    await this.assertOnOrAfterAccountingStartDate(normalized.occurredAt, tx);
-    await this.assertJournalEditableForPeriod(
-      normalized.occurredAt,
-      normalized.kind,
-      tx,
-      timezone,
-    );
-    const lines = await this.resolveJournalLines(
-      tx,
-      normalized.currency,
-      normalized.lines,
-    );
-
-    const created = await tx.accountingJournalEntry.create({
-      data: {
-        entryStableId: `journal_${createId()}`,
-        idempotencyKey: normalized.idempotencyKey,
-        idempotencyHash,
-        kind: normalized.kind,
-        source: normalized.source,
-        sourceFactType: normalized.sourceFactType,
-        sourceFactStableId: normalized.sourceFactStableId,
-        sourceFactVersion: normalized.sourceFactVersion,
-        storeStableId: normalized.storeStableId,
-        occurredAt: normalized.occurredAt,
-        currency: normalized.currency,
-        memo: normalized.memo,
-        createdByActorRef: operator,
-        updatedByActorRef: operator,
-        lines: {
-          create: lines.map((line, index) => ({
-            lineNo: index + 1,
-            accountId: line.accountId,
-            categoryId: line.categoryId,
-            debitCents: line.debitCents,
-            creditCents: line.creditCents,
-            memo: line.memo,
-          })),
-        },
-      },
-      select: ACCOUNTING_JOURNAL_PUBLIC_SELECT,
-    });
-
-    const afterJson = auditAuthority
-      ? ({
-          journal: created,
-          writeAuthority: auditAuthority,
-        } as unknown as Prisma.InputJsonValue)
-      : (created as unknown as Prisma.InputJsonValue);
-    await this.createAuditLog(
-      {
-        action: 'CREATE',
-        entityType: 'ACCOUNTING_JOURNAL_ENTRY',
-        entityId: created.entryStableId,
-        operatorActorRef: operator,
-        afterJson,
-      },
-      tx,
-    );
-    return created;
-  }
-
-  async updateJournalEntry(
-    entryStableId: string,
-    input: AccountingJournalUpdateInput,
-    operatorUserStableId: string,
-  ): Promise<AccountingJournalRow> {
-    const stableId = this.requireJournalValue(entryStableId, 'entryStableId');
-    const operator = this.requireJournalValue(
-      operatorUserStableId,
-      'operatorUserStableId',
-    );
-    const expectedUpdatedAt = this.parseDate(input.lastKnownUpdatedAt);
-    if (!expectedUpdatedAt) {
-      throw new BadRequestException('lastKnownUpdatedAt is required');
-    }
-    const normalized = this.applyJournalPolicy(() =>
-      normalizeJournalUpdate(input),
-    );
-    const timezone = await this.getBusinessTimezone();
-
-    return runSerializableAccountingWrite(this.prisma, async (tx) => {
-      const existing = await tx.accountingJournalEntry.findUnique({
-        where: { entryStableId: stableId },
-        select: ACCOUNTING_JOURNAL_INTERNAL_SELECT,
-      });
-      if (!existing || existing.deletedAt) {
-        throw new NotFoundException('Journal entry not found');
-      }
-      const existingDbId = existing.id;
-      const existingPublic = this.toJournalPublic(existing);
-
-      await this.assertOnOrAfterAccountingStartDate(
-        existingPublic.occurredAt,
-        tx,
-      );
-      await this.assertOnOrAfterAccountingStartDate(normalized.occurredAt, tx);
-      await this.assertJournalEditableForPeriod(
-        existingPublic.occurredAt,
-        existingPublic.kind,
-        tx,
-        timezone,
-      );
-      await this.assertJournalEditableForPeriod(
-        normalized.occurredAt,
-        normalized.kind,
-        tx,
-        timezone,
-      );
-      const lines = await this.resolveJournalLines(
-        tx,
-        normalized.currency,
-        normalized.lines,
-      );
-      const updatedIdempotencyHash = hashJournalCreatePayload({
-        idempotencyKey: existingPublic.idempotencyKey,
-        source: existingPublic.source,
-        ...normalized,
-      });
-
-      const updateResult = await tx.accountingJournalEntry.updateMany({
-        where: {
-          entryStableId: stableId,
-          deletedAt: null,
-          updatedAt: expectedUpdatedAt,
-        },
-        data: {
-          kind: normalized.kind,
-          sourceFactType: normalized.sourceFactType,
-          sourceFactStableId: normalized.sourceFactStableId,
-          sourceFactVersion: normalized.sourceFactVersion,
-          storeStableId: normalized.storeStableId,
-          occurredAt: normalized.occurredAt,
-          currency: normalized.currency,
-          memo: normalized.memo,
-          idempotencyHash: updatedIdempotencyHash,
-          updatedByActorRef: operator,
-          version: { increment: 1 },
-        },
-      });
-      if (updateResult.count === 0) {
-        throw new ConflictException(
-          'Journal entry has been modified by another operation, please refresh and retry',
-        );
-      }
-
-      await tx.accountingJournalLine.deleteMany({
-        where: { entryId: existingDbId },
-      });
-      await tx.accountingJournalLine.createMany({
-        data: lines.map((line, index) => ({
-          entryId: existingDbId,
-          lineNo: index + 1,
-          accountId: line.accountId,
-          categoryId: line.categoryId,
-          debitCents: line.debitCents,
-          creditCents: line.creditCents,
-          memo: line.memo,
-        })),
-      });
-
-      const updated = await tx.accountingJournalEntry.findUnique({
-        where: { entryStableId: stableId },
-        select: ACCOUNTING_JOURNAL_PUBLIC_SELECT,
-      });
-      if (!updated) throw new NotFoundException('Journal entry not found');
-
-      await this.createAuditLog(
-        {
-          action: 'UPDATE',
-          entityType: 'ACCOUNTING_JOURNAL_ENTRY',
-          entityId: stableId,
-          operatorActorRef: operator,
-          beforeJson: existingPublic as unknown as Prisma.InputJsonValue,
-          afterJson: updated as unknown as Prisma.InputJsonValue,
-        },
-        tx,
-      );
-      return updated;
-    });
-  }
-
-  async deleteJournalEntry(
-    entryStableId: string,
-    operatorUserStableId: string,
-  ) {
-    const stableId = this.requireJournalValue(entryStableId, 'entryStableId');
-    const operator = this.requireJournalValue(
-      operatorUserStableId,
-      'operatorUserStableId',
-    );
-    const timezone = await this.getBusinessTimezone();
-
-    return runSerializableAccountingWrite(this.prisma, async (tx) => {
-      const existing = await tx.accountingJournalEntry.findUnique({
-        where: { entryStableId: stableId },
-        select: ACCOUNTING_JOURNAL_PUBLIC_SELECT,
-      });
-      if (!existing || existing.deletedAt) {
-        throw new NotFoundException('Journal entry not found');
-      }
-
-      await this.assertOnOrAfterAccountingStartDate(existing.occurredAt, tx);
-      await this.assertJournalEditableForPeriod(
-        existing.occurredAt,
-        existing.kind,
-        tx,
-        timezone,
-      );
-
-      const deleted = await tx.accountingJournalEntry.update({
-        where: { entryStableId: stableId },
-        data: {
-          deletedAt: new Date(),
-          updatedByActorRef: operator,
-          version: { increment: 1 },
-        },
-        select: ACCOUNTING_JOURNAL_PUBLIC_SELECT,
-      });
-
-      await this.createAuditLog(
-        {
-          action: 'DELETE',
-          entityType: 'ACCOUNTING_JOURNAL_ENTRY',
-          entityId: stableId,
-          operatorActorRef: operator,
-          beforeJson: existing as unknown as Prisma.InputJsonValue,
-          afterJson: deleted as unknown as Prisma.InputJsonValue,
-        },
-        tx,
-      );
-      return { ok: true };
-    });
-  }
-
-  private async resolveJournalLines(
-    db: AccountingDbClient,
-    currency: string,
-    lines: NormalizedJournalLine[],
-  ): Promise<ResolvedJournalLine[]> {
-    const accountStableIds = [
-      ...new Set(lines.map((line) => line.accountStableId)),
-    ];
-    const categoryStableIds = [
-      ...new Set(
-        lines
-          .map((line) => line.categoryStableId)
-          .filter((value): value is string => value !== null),
-      ),
-    ];
-    const accounts = await db.accountingAccount.findMany({
-      where: {
-        accountStableId: { in: accountStableIds },
-        isActive: true,
-      },
-      select: {
-        id: true,
-        accountStableId: true,
-        currency: true,
-      },
-    });
-    const categories = categoryStableIds.length
-      ? await db.accountingCategory.findMany({
-          where: {
-            categoryStableId: { in: categoryStableIds },
-            isActive: true,
-          },
-          select: { id: true, categoryStableId: true },
-        })
-      : [];
-
-    const accountByStableId = new Map(
-      accounts.map((account) => [account.accountStableId, account]),
-    );
-    const categoryByStableId = new Map(
-      categories.map((category) => [category.categoryStableId, category]),
-    );
-
-    return lines.map((line) => {
-      const account = accountByStableId.get(line.accountStableId);
-      if (!account) {
-        throw new BadRequestException(
-          `accountStableId is inactive or invalid: ${line.accountStableId}`,
-        );
-      }
-      if (account.currency !== currency) {
-        throw new BadRequestException(
-          `account currency mismatch for ${line.accountStableId}`,
-        );
-      }
-      const category = line.categoryStableId
-        ? categoryByStableId.get(line.categoryStableId)
-        : null;
-      if (line.categoryStableId && !category) {
-        throw new BadRequestException(
-          `categoryStableId is inactive or invalid: ${line.categoryStableId}`,
-        );
-      }
-      return {
-        ...line,
-        accountId: account.id,
-        categoryId: category?.id ?? null,
-      };
-    });
-  }
-
-  private toJournalPublic(
-    existing: AccountingJournalInternalRow,
-  ): AccountingJournalRow {
-    const { id, idempotencyHash, ...publicRow } = existing;
-    void id;
-    void idempotencyHash;
-    return publicRow;
-  }
-
-  private assertJournalIdempotentReplay(
-    existing: AccountingJournalInternalRow,
-    requestedHash: string,
-  ): AccountingJournalRow {
-    if (existing.idempotencyHash !== requestedHash) {
-      throw new ConflictException(
-        'idempotencyKey is already bound to different journal content or write authority',
-      );
-    }
-    return this.toJournalPublic(existing);
-  }
-
-  private prepareProviderSettlementJournalWrite(
-    input: AccountingJournalCreateInput,
-    authority: ProviderSettlementJournalWriteAuthorityV1,
-  ): PreparedJournalWrite {
-    const normalized = this.applyJournalPolicy(() =>
-      normalizeJournalCreate(input),
-    );
-    this.assertProviderSettlementJournalAuthority(normalized, authority);
-    return {
-      normalized,
-      idempotencyHash: hashProviderSettlementJournalWrite(
-        normalized,
-        authority,
-      ),
-      auditAuthority: authority as unknown as Prisma.InputJsonValue,
-    };
-  }
-
-  private async createProviderSettlementReplacementGroupInTx(
-    prepared: PreparedJournalWrite[],
-    authority: ProviderSettlementReplacementGroupAuthorityV1,
-    operator: string,
-    tx: Prisma.TransactionClient,
-    timezone: string,
-  ): Promise<AccountingJournalRow[]> {
-    await this.assertProviderSettlementAuthorityInTx(authority, tx);
-    await this.assertProviderSettlementHistoricalAnchorsInTx(authority, tx);
-
-    const existing = await tx.accountingJournalEntry.findMany({
-      where: {
-        idempotencyKey: {
-          in: prepared.map((item) => item.normalized.idempotencyKey),
-        },
-      },
-      select: ACCOUNTING_JOURNAL_INTERNAL_SELECT,
-    });
-    if (existing.length > 0 && existing.length !== prepared.length) {
-      throw new ConflictException(
-        'provider settlement replacement group is only partially persisted; review the existing Journals before retrying',
-      );
-    }
-    if (existing.length === prepared.length) {
-      const existingByKey = new Map(
-        existing.map((journal) => [journal.idempotencyKey, journal] as const),
-      );
-      return prepared.map((item) => {
-        const replay = existingByKey.get(item.normalized.idempotencyKey);
-        if (!replay) {
-          throw new ConflictException(
-            'provider settlement replacement group replay is missing an expected Journal',
-          );
-        }
-        return this.assertJournalIdempotentReplay(replay, item.idempotencyHash);
-      });
-    }
-
-    const rows: AccountingJournalRow[] = [];
-    for (const item of prepared) {
-      rows.push(
-        await this.createPreparedJournalEntryInTx(item, operator, tx, timezone),
-      );
-    }
-    return rows;
-  }
-
-  private async assertProviderSettlementAuthorityInTx(
-    authority: ProviderSettlementReplacementGroupAuthorityV1,
-    tx: Prisma.TransactionClient,
-  ): Promise<void> {
-    const document = await tx.accountingProviderFinancialDocument.findUnique({
-      where: { documentStableId: authority.documentStableId },
-      select: {
-        documentStableId: true,
-        provider: true,
-        documentType: true,
-        businessIdentityKey: true,
-        revision: true,
-        storeStableId: true,
-        providerDocumentRef: true,
-        periodStart: true,
-        periodEnd: true,
-        currency: true,
-        artifact: {
-          select: {
-            inboxItem: {
-              select: {
-                inboxItemStableId: true,
-                status: true,
-                materializedEntityType: true,
-                materializedEntityStableId: true,
-                reviewedAt: true,
-                reviewedByUserStableId: true,
-                version: true,
-              },
-            },
-          },
-        },
-      },
-    });
-    const latestRevision =
-      await tx.accountingProviderFinancialDocument.findFirst({
-        where: {
-          provider: authority.provider,
-          documentType: authority.documentType,
-          businessIdentityKey: authority.businessIdentityKey,
-        },
-        orderBy: { revision: 'desc' },
-        select: { documentStableId: true, revision: true },
-      });
-    const review = document?.artifact.inboxItem ?? null;
-    const dateOnly = (value: Date | null): string | null =>
-      value?.toISOString().slice(0, 10) ?? null;
-    if (
-      !document ||
-      document.provider !== authority.provider ||
-      document.documentType !== authority.documentType ||
-      document.businessIdentityKey !== authority.businessIdentityKey ||
-      document.revision !== authority.revision ||
-      document.storeStableId !== authority.storeStableId ||
-      document.providerDocumentRef !== authority.providerDocumentRef ||
-      dateOnly(document.periodStart) !== authority.periodStart ||
-      dateOnly(document.periodEnd) !== authority.periodEnd ||
-      document.currency !== 'CAD' ||
-      latestRevision?.documentStableId !== authority.documentStableId ||
-      latestRevision?.revision !== authority.revision ||
-      !review ||
-      review.inboxItemStableId !== authority.reviewEvidence.inboxItemStableId ||
-      review.status !== authority.reviewEvidence.status ||
-      review.materializedEntityType !==
-        authority.reviewEvidence.materializedEntityType ||
-      review.materializedEntityStableId !==
-        authority.reviewEvidence.materializedEntityStableId ||
-      review.reviewedAt?.toISOString() !==
-        authority.reviewEvidence.reviewedAt ||
-      review.reviewedByUserStableId !==
-        authority.reviewEvidence.reviewedByUserStableId ||
-      review.version !== authority.reviewEvidence.version
-    ) {
-      throw new ConflictException(
-        'provider settlement document/review authority changed after preview',
-      );
-    }
-
-    const coverage = await tx.accountingProviderFinancialCoverage.findFirst({
-      where: {
-        provider: authority.provider,
-        storeStableId: authority.storeStableId,
-      },
-      select: {
-        coverageStableId: true,
-        financialHistoryRequiredFrom: true,
-        financialCompleteThrough: true,
-        liveOrderFactCutoverAt: true,
-        orderDetailCoverageFrom: true,
-        updatedAt: true,
-      },
-    });
-    if (
-      !coverage ||
-      coverage.coverageStableId !==
-        authority.coverageEvidence.coverageStableId ||
-      dateOnly(coverage.financialHistoryRequiredFrom) !==
-        authority.coverageEvidence.financialHistoryRequiredFrom ||
-      dateOnly(coverage.financialCompleteThrough) !==
-        authority.coverageEvidence.financialCompleteThrough ||
-      (coverage.liveOrderFactCutoverAt?.toISOString() ?? null) !==
-        authority.coverageEvidence.liveOrderFactCutoverAt ||
-      dateOnly(coverage.orderDetailCoverageFrom) !==
-        authority.coverageEvidence.orderDetailCoverageFrom ||
-      coverage.updatedAt.toISOString() !== authority.coverageEvidence.updatedAt
-    ) {
-      throw new ConflictException(
-        'provider settlement coverage authority changed after preview',
-      );
-    }
-
-    const currentAccounts = await tx.accountingAccount.findMany({
-      where: {
-        accountStableId: {
-          in: authority.accountPrerequisites.map(
-            (account) => account.accountStableId,
-          ),
-        },
-      },
-      select: {
-        accountStableId: true,
-        accountClass: true,
-        currency: true,
-        isActive: true,
-      },
-    });
-    const currentByStableId = new Map(
-      currentAccounts.map(
-        (account) => [account.accountStableId, account] as const,
-      ),
-    );
-    for (const prerequisite of authority.accountPrerequisites) {
-      const current = currentByStableId.get(prerequisite.accountStableId);
-      if (
-        !current ||
-        current.accountClass !== prerequisite.actual.accountClass ||
-        current.currency !== prerequisite.actual.currency ||
-        current.isActive !== prerequisite.actual.isActive
-      ) {
-        throw new ConflictException(
-          `provider settlement account authority changed after preview: ${prerequisite.accountStableId}`,
-        );
-      }
-    }
-  }
-
-  private async assertProviderSettlementHistoricalAnchorsInTx(
-    authority: ProviderSettlementReplacementGroupAuthorityV1,
-    tx: Prisma.TransactionClient,
-  ): Promise<void> {
-    if (authority.historicalReversalAnchors.length === 0) return;
-    const rows = await tx.accountingJournalEntry.findMany({
-      where: {
-        entryStableId: {
-          in: authority.historicalReversalAnchors.map(
-            (anchor) => anchor.originalJournalEntryStableId,
-          ),
-        },
-      },
-      select: {
-        entryStableId: true,
-        idempotencyKey: true,
-        idempotencyHash: true,
-        version: true,
-        source: true,
-        sourceFactType: true,
-        sourceFactStableId: true,
-        deletedAt: true,
-      },
-    });
-    const byStableId = new Map(
-      rows.map((row) => [row.entryStableId, row] as const),
-    );
-    for (const anchor of authority.historicalReversalAnchors) {
-      const current = byStableId.get(anchor.originalJournalEntryStableId);
-      if (
-        !current ||
-        current.deletedAt !== null ||
-        current.source !== AccountingJournalSource.ORDER ||
-        current.sourceFactType !== CANONICAL_SALE_SOURCE_FACT_TYPE ||
-        current.sourceFactStableId !== anchor.sourceFactStableId ||
-        current.idempotencyKey !== anchor.idempotencyKey ||
-        current.idempotencyHash !== anchor.idempotencyHash ||
-        current.version !== anchor.version
-      ) {
-        throw new ConflictException(
-          `historical Uber SALE Journal authority changed after preview: ${anchor.originalJournalEntryStableId}`,
-        );
-      }
-    }
-  }
-
-  private assertProviderSettlementJournalAuthority(
-    journal: NormalizedJournalCreate,
-    authority: ProviderSettlementJournalWriteAuthorityV1,
-  ): void {
-    const group = authority.group;
-    if (authority.role === 'PROVIDER_DOCUMENT') {
-      const expectedKey = `provider-settlement:${group.documentStableId}:r${group.revision}:v1`;
-      if (
-        journal.kind !== AccountingJournalEntryKind.ADJUSTMENT ||
-        journal.source !== AccountingJournalSource.PLATFORM_STATEMENT ||
-        journal.sourceFactType !== PROVIDER_FINANCIAL_SOURCE_FACT_TYPE ||
-        journal.sourceFactStableId !== group.documentStableId ||
-        journal.sourceFactVersion !== group.revision ||
-        journal.storeStableId !== group.storeStableId ||
-        journal.currency !== 'CAD' ||
-        journal.idempotencyKey !== expectedKey
-      ) {
-        throw new BadRequestException(
-          'provider settlement document authority does not match the Journal source identity',
-        );
-      }
-      return;
-    }
-
-    const originalJournalEntryStableId = authority.originalJournalEntryStableId;
-    const expectedKey = `uber-pre-cutover-order-reversal:${originalJournalEntryStableId}:v1`;
-    if (
-      !originalJournalEntryStableId ||
-      journal.kind !== AccountingJournalEntryKind.ADJUSTMENT ||
-      journal.source !== AccountingJournalSource.SYSTEM ||
-      journal.sourceFactType !== UBER_PRE_CUTOVER_REVERSAL_SOURCE_FACT_TYPE ||
-      journal.sourceFactStableId !== originalJournalEntryStableId ||
-      journal.sourceFactVersion !== 1 ||
-      journal.storeStableId !== group.storeStableId ||
-      journal.currency !== 'CAD' ||
-      journal.idempotencyKey !== expectedKey
-    ) {
-      throw new BadRequestException(
-        'provider settlement reversal authority does not match the Journal source identity',
-      );
-    }
-  }
-
-  private assertCanonicalChangeJournalAuthority(
-    journal: NormalizedJournalCreate,
-    authority: CanonicalChangeJournalWriteAuthorityV1,
-  ): void {
-    const expectedIdempotencyKey = `${
-      authority.changeFactType === 'order.financial_reversal.v1'
-        ? 'canonical-reversal'
-        : 'canonical-adjustment'
-    }:${authority.changeFactStableId}:v1`;
-    if (
-      journal.kind !== AccountingJournalEntryKind.ADJUSTMENT ||
-      journal.source !== AccountingJournalSource.ORDER ||
-      journal.sourceFactType !== authority.changeFactType ||
-      journal.sourceFactStableId !== authority.changeFactStableId ||
-      journal.sourceFactVersion !== 1 ||
-      journal.idempotencyKey !== expectedIdempotencyKey
-    ) {
-      throw new BadRequestException(
-        'canonical change write authority does not match the Journal source identity',
-      );
-    }
-  }
-
-  private applyJournalPolicy<T>(work: () => T): T {
-    try {
-      return work();
-    } catch (error) {
-      if (error instanceof AccountingJournalPolicyError) {
-        throw new BadRequestException(error.message);
-      }
-      throw error;
-    }
-  }
-
-  private requireJournalValue(raw: string, field: string): string {
-    const value = raw?.trim();
-    if (!value) throw new BadRequestException(`${field} is required`);
-    return value;
-  }
-
-  private isJournalUniqueConstraintError(error: unknown): boolean {
-    return (
-      typeof error === 'object' &&
-      error !== null &&
-      'code' in error &&
-      (error as { code?: unknown }).code === 'P2002'
-    );
+    await writeAccountingAuditLog(db, params);
   }
 
   async createTx(payload: UpsertTxDto, operatorUserId: string) {
-    const timezone = await this.getBusinessTimezone();
+    const timezone = await this.period.getBusinessTimezone();
 
     return runSerializableAccountingWrite(this.prisma, async (tx) => {
       const normalized = await this.validatePayload(payload, tx);
-      await this.assertOnOrAfterAccountingStartDate(normalized.occurredAt, tx);
-      await this.assertEditableForPeriod(
+      await this.period.assertOnOrAfterAccountingStartDate(
+        normalized.occurredAt,
+        tx,
+      );
+      await this.period.assertEditableForPeriod(
         normalized.occurredAt,
         payload.type,
         tx,
@@ -1581,7 +388,7 @@ export class AccountingService {
     if (!expectedUpdatedAt) {
       throw new BadRequestException('Invalid lastKnownUpdatedAt');
     }
-    const timezone = await this.getBusinessTimezone();
+    const timezone = await this.period.getBusinessTimezone();
 
     return runSerializableAccountingWrite(this.prisma, async (tx) => {
       const existing = await tx.accountingTransaction.findUnique({
@@ -1592,15 +399,21 @@ export class AccountingService {
       }
 
       const normalized = await this.validatePayload(payload, tx);
-      await this.assertOnOrAfterAccountingStartDate(existing.occurredAt, tx);
-      await this.assertOnOrAfterAccountingStartDate(normalized.occurredAt, tx);
-      await this.assertEditableForPeriod(
+      await this.period.assertOnOrAfterAccountingStartDate(
+        existing.occurredAt,
+        tx,
+      );
+      await this.period.assertOnOrAfterAccountingStartDate(
+        normalized.occurredAt,
+        tx,
+      );
+      await this.period.assertEditableForPeriod(
         existing.occurredAt,
         existing.type,
         tx,
         timezone,
       );
-      await this.assertEditableForPeriod(
+      await this.period.assertEditableForPeriod(
         normalized.occurredAt,
         payload.type,
         tx,
@@ -1664,7 +477,7 @@ export class AccountingService {
   }
 
   async deleteTx(txStableId: string, operatorUserId: string) {
-    const timezone = await this.getBusinessTimezone();
+    const timezone = await this.period.getBusinessTimezone();
 
     return runSerializableAccountingWrite(this.prisma, async (tx) => {
       const existing = await tx.accountingTransaction.findUnique({
@@ -1674,8 +487,11 @@ export class AccountingService {
         throw new NotFoundException('Transaction not found');
       }
 
-      await this.assertOnOrAfterAccountingStartDate(existing.occurredAt, tx);
-      await this.assertEditableForPeriod(
+      await this.period.assertOnOrAfterAccountingStartDate(
+        existing.occurredAt,
+        tx,
+      );
+      await this.period.assertEditableForPeriod(
         existing.occurredAt,
         existing.type,
         tx,
@@ -1707,243 +523,13 @@ export class AccountingService {
     });
   }
 
-  async closeMonth(periodKey: string, operatorUserId: string) {
-    const timezone = await this.getBusinessTimezone();
-    const { startAt, endAt } = this.monthBounds(periodKey, timezone);
-    const yearKey = periodKey.slice(0, 4);
-
-    return runSerializableAccountingWrite(this.prisma, async (tx) => {
-      const accountingStartDate = await this.readAccountingStartDate(tx);
-      if (accountingStartDate && periodKey < accountingStartDate.slice(0, 7)) {
-        throw new BadRequestException(
-          `period ${periodKey} is before accounting start date ${accountingStartDate}`,
-        );
-      }
-
-      const yearLocked = await tx.accountingPeriodClose.findUnique({
-        where: {
-          periodType_periodKey: { periodType: 'YEAR', periodKey: yearKey },
-        },
-        select: { id: true },
-      });
-      if (yearLocked) {
-        throw new ConflictException(`财年 ${yearKey} 已硬锁账`);
-      }
-
-      const close = await tx.accountingPeriodClose.upsert({
-        where: {
-          periodType_periodKey: {
-            periodType: 'MONTH',
-            periodKey,
-          },
-        },
-        create: {
-          periodType: 'MONTH',
-          periodKey,
-          startAt,
-          endAt,
-          closedByUserStableId: operatorUserId,
-        },
-        update: {
-          startAt,
-          endAt,
-          closedByUserStableId: operatorUserId,
-          closedAt: new Date(),
-        },
-        select: {
-          periodType: true,
-          periodKey: true,
-          startAt: true,
-          endAt: true,
-          closedByUserStableId: true,
-          closedAt: true,
-        },
-      });
-
-      await this.createAuditLog(
-        {
-          action: 'PERIOD_CLOSE',
-          entityType: 'ACCOUNTING_PERIOD',
-          entityId: periodKey,
-          operatorActorRef: operatorUserId,
-          afterJson: close as unknown as Prisma.InputJsonValue,
-        },
-        tx,
-      );
-
-      return close;
-    });
-  }
-
-  async reopenMonth(periodKey: string, operatorUserId: string) {
-    const timezone = await this.getBusinessTimezone();
-    this.monthBounds(periodKey, timezone);
-    const yearKey = periodKey.slice(0, 4);
-
-    return runSerializableAccountingWrite(this.prisma, async (tx) => {
-      const yearLocked = await tx.accountingPeriodClose.findUnique({
-        where: {
-          periodType_periodKey: { periodType: 'YEAR', periodKey: yearKey },
-        },
-        select: { id: true },
-      });
-      if (yearLocked) {
-        throw new ForbiddenException(
-          `财年 ${yearKey} 已硬锁账，月份不能重新打开`,
-        );
-      }
-      const existing = await tx.accountingPeriodClose.findUnique({
-        where: {
-          periodType_periodKey: { periodType: 'MONTH', periodKey },
-        },
-        select: {
-          periodType: true,
-          periodKey: true,
-          startAt: true,
-          endAt: true,
-          closedByUserStableId: true,
-          closedAt: true,
-        },
-      });
-      if (!existing) return { reopened: false, periodKey };
-
-      await tx.accountingPeriodClose.delete({
-        where: {
-          periodType_periodKey: { periodType: 'MONTH', periodKey },
-        },
-      });
-      await this.createAuditLog(
-        {
-          action: 'PERIOD_REOPEN',
-          entityType: 'ACCOUNTING_PERIOD',
-          entityId: periodKey,
-          operatorActorRef: operatorUserId,
-          beforeJson: existing as unknown as Prisma.InputJsonValue,
-        },
-        tx,
-      );
-      return { reopened: true, periodKey };
-    });
-  }
-
-  async closeYear(periodKey: string, operatorUserId: string) {
-    const timezone = await this.getBusinessTimezone();
-    const { startAt, endAt } = this.yearBounds(periodKey, timezone);
-
-    return runSerializableAccountingWrite(this.prisma, async (tx) => {
-      const accountingStartDate = await this.readAccountingStartDate(tx);
-      const accountingStartYear = accountingStartDate?.slice(0, 4) ?? null;
-      if (accountingStartYear && periodKey < accountingStartYear) {
-        throw new BadRequestException(
-          `fiscal year ${periodKey} is before accounting start date ${accountingStartDate}`,
-        );
-      }
-      const firstRequiredMonth =
-        accountingStartDate && periodKey === accountingStartYear
-          ? Number(accountingStartDate.slice(5, 7))
-          : 1;
-      const requiredMonths = Array.from(
-        { length: 13 - firstRequiredMonth },
-        (_, index) =>
-          `${periodKey}-${String(firstRequiredMonth + index).padStart(2, '0')}`,
-      );
-      const monthRows = await tx.accountingPeriodClose.findMany({
-        where: { periodType: 'MONTH', periodKey: { in: requiredMonths } },
-        select: { periodKey: true },
-      });
-      const closedMonths = new Set(monthRows.map((row) => row.periodKey));
-      const missingMonths = requiredMonths.filter(
-        (month) => !closedMonths.has(month),
-      );
-      if (missingMonths.length) {
-        throw new ConflictException(
-          `年度硬锁前必须完成财务起始日期后的应结月份；未月结：${missingMonths.join(', ')}`,
-        );
-      }
-
-      const close = await tx.accountingPeriodClose.upsert({
-        where: {
-          periodType_periodKey: { periodType: 'YEAR', periodKey },
-        },
-        create: {
-          periodType: 'YEAR',
-          periodKey,
-          startAt,
-          endAt,
-          closedByUserStableId: operatorUserId,
-        },
-        update: {
-          startAt,
-          endAt,
-          closedByUserStableId: operatorUserId,
-          closedAt: new Date(),
-        },
-        select: {
-          periodType: true,
-          periodKey: true,
-          startAt: true,
-          endAt: true,
-          closedByUserStableId: true,
-          closedAt: true,
-        },
-      });
-      await this.createAuditLog(
-        {
-          action: 'YEAR_LOCK',
-          entityType: 'ACCOUNTING_PERIOD',
-          entityId: periodKey,
-          operatorActorRef: operatorUserId,
-          afterJson: close as unknown as Prisma.InputJsonValue,
-        },
-        tx,
-      );
-      return close;
-    });
-  }
-
-  async listPeriodCloseStatus(periodKeys?: string[]) {
-    return this.prisma.accountingPeriodClose.findMany({
-      where: {
-        periodType: 'MONTH',
-        ...(periodKeys?.length ? { periodKey: { in: periodKeys } } : {}),
-      },
-      select: {
-        periodType: true,
-        periodKey: true,
-        startAt: true,
-        endAt: true,
-        closedByUserStableId: true,
-        closedAt: true,
-      },
-      orderBy: { periodKey: 'asc' },
-    });
-  }
-
-  async listYearCloseStatus(years?: string[]) {
-    return this.prisma.accountingPeriodClose.findMany({
-      where: {
-        periodType: 'YEAR',
-        ...(years?.length ? { periodKey: { in: years } } : {}),
-      },
-      select: {
-        periodType: true,
-        periodKey: true,
-        startAt: true,
-        endAt: true,
-        closedByUserStableId: true,
-        closedAt: true,
-      },
-      orderBy: { periodKey: 'asc' },
-    });
-  }
-
   async pnlReport(query: {
     from?: string;
     to?: string;
     groupBy?: 'month' | 'quarter' | 'year';
   }) {
     const groupBy = query.groupBy ?? 'month';
-    const timezone = await this.getBusinessTimezone();
+    const timezone = await this.period.getBusinessTimezone();
     const rows = await this.prisma.accountingTransaction.findMany({
       where: await this.buildWhere({ from: query.from, to: query.to }),
       select: {
@@ -2035,7 +621,7 @@ export class AccountingService {
 
       sources.set(row.source, (sources.get(row.source) ?? 0) + row.amountCents);
 
-      const monthKey = this.toPeriodKey(row.occurredAt, timezone);
+      const monthKey = this.period.toPeriodKey(row.occurredAt, timezone);
       const monthNet =
         row.type === AccountingTxType.INCOME
           ? row.amountCents
@@ -2085,7 +671,7 @@ export class AccountingService {
     if (!nowInTimezone.isValid) {
       throw new BadRequestException(`Invalid now for timezone ${timezone}`);
     }
-    const currentMonth = this.toPeriodKey(now, timezone);
+    const currentMonth = this.period.toPeriodKey(now, timezone);
     const lastMonth = `${nowInTimezone
       .minus({ months: 1 })
       .toFormat('yyyy-MM')}`;
@@ -2110,7 +696,7 @@ export class AccountingService {
       .map((item) => item.period)
       .filter((item) => /^\d{4}-\d{2}$/.test(item));
     const closeMap = new Map(
-      (await this.listPeriodCloseStatus(monthPeriods)).map((row) => [
+      (await this.period.listPeriodCloseStatus(monthPeriods)).map((row) => [
         row.periodKey,
         row,
       ]),
@@ -2423,7 +1009,9 @@ export class AccountingService {
   }
 
   async accountBalanceReport(from?: string, to?: string) {
-    const fromDate = await this.clampAccountingFromDate(this.parseDate(from));
+    const fromDate = await this.period.clampAccountingFromDate(
+      this.parseDate(from),
+    );
     const toDate = this.parseDate(to, true);
     const txRows = await this.prisma.accountingTransaction.findMany({
       where: {
@@ -2546,7 +1134,7 @@ export class AccountingService {
   }
 
   async cashflowOverview(query: { from?: string; to?: string }) {
-    const fromDate = await this.clampAccountingFromDate(
+    const fromDate = await this.period.clampAccountingFromDate(
       this.parseDate(query.from),
     );
     const toDate = this.parseDate(query.to, true);
@@ -2597,7 +1185,7 @@ export class AccountingService {
   }
 
   async dimensionSlice(query: { from?: string; to?: string }) {
-    const timezone = await this.getBusinessTimezone();
+    const timezone = await this.period.getBusinessTimezone();
     const parseStoreBoundary = (
       raw: string | undefined,
       boundary: 'start' | 'end',
@@ -2612,7 +1200,7 @@ export class AccountingService {
       return bounded.toUTC().toJSDate();
     };
 
-    const fromDate = await this.clampAccountingFromDate(
+    const fromDate = await this.period.clampAccountingFromDate(
       parseStoreBoundary(query.from, 'start'),
     );
     const toDate = parseStoreBoundary(query.to, 'end');

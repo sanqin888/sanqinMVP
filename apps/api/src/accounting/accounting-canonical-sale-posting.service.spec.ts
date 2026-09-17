@@ -12,7 +12,8 @@ import type {
   OrderFinancialFactsReaderPort,
   OrderFinancialReplayCandidateV1,
 } from '../orders/public-api';
-import { AccountingService } from './accounting.service';
+import { AccountingJournalService } from './accounting-journal.service';
+import { AccountingPeriodService } from './accounting-period.service';
 import { CANONICAL_SALE_SYSTEM_ACTOR } from './accounting-canonical-sale-journal.policy';
 import { AccountingCanonicalSalePostingService } from './accounting-canonical-sale-posting.service';
 
@@ -83,12 +84,7 @@ function loyaltyFact(
 }
 
 function makeService() {
-  const accounting: jest.Mocked<
-    Pick<
-      AccountingService,
-      'requireCanonicalFinancialPostingStartAt' | 'createJournalEntry'
-    >
-  > = {
+  const accounting = {
     requireCanonicalFinancialPostingStartAt: jest.fn(),
     createJournalEntry: jest.fn(),
   };
@@ -104,7 +100,8 @@ function makeService() {
     readFactsForRange: jest.fn(),
   };
   const service = new AccountingCanonicalSalePostingService(
-    accounting as unknown as AccountingService,
+    accounting as unknown as AccountingPeriodService,
+    accounting as unknown as AccountingJournalService,
     orders,
     loyalty,
   );

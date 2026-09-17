@@ -1,8 +1,8 @@
 import { ForbiddenException } from '@nestjs/common';
 import { AccountingJournalEntryKind, AccountingTxType } from '@prisma/client';
-import { AccountingService } from './accounting.service';
+import { AccountingPeriodService } from './accounting-period.service';
 
-describe('AccountingService period-close characterization', () => {
+describe('AccountingPeriodService period-close characterization', () => {
   const makeService = () => {
     const tx = {
       accountingAutomationConfig: {
@@ -27,10 +27,9 @@ describe('AccountingService period-close characterization', () => {
         timezone: 'America/Toronto',
       }),
     };
-    const service = new AccountingService(
+    const service = new AccountingPeriodService(
       prisma as never,
       brandStoreConfigReader as never,
-      {} as never,
     );
     return { service, prisma };
   };

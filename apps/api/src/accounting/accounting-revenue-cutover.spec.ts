@@ -1,5 +1,5 @@
 import { ConflictException } from '@nestjs/common';
-import { AccountingService } from './accounting.service';
+import { AccountingJournalService } from './accounting-journal.service';
 
 describe('Accounting canonical revenue cutover guard', () => {
   const makeService = (legacyCount: number) => {
@@ -8,14 +8,7 @@ describe('Accounting canonical revenue cutover guard', () => {
         count: jest.fn().mockResolvedValue(legacyCount),
       },
     };
-    const brandStoreConfigReader = {
-      getConfiguredStoreSnapshot: jest.fn(),
-    };
-    const service = new AccountingService(
-      prisma as never,
-      brandStoreConfigReader as never,
-      {} as never,
-    );
+    const service = new AccountingJournalService(prisma as never, {} as never);
     return { service, prisma };
   };
 
