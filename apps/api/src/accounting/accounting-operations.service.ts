@@ -101,9 +101,10 @@ export type AccountingExpenseInput = {
   splits: AccountingExpenseSplitInput[];
 };
 
-type NormalizedExpensePaymentAllocation = AccountingExpensePaymentAllocationInput & {
-  sortOrder: number;
-};
+type NormalizedExpensePaymentAllocation =
+  AccountingExpensePaymentAllocationInput & {
+    sortOrder: number;
+  };
 
 type ResolvedExpensePaymentAllocation = NormalizedExpensePaymentAllocation & {
   accountDbId: string;
@@ -915,10 +916,11 @@ export class AccountingOperationsService {
     this.assertNoLegacyExpensePaymentAccount(input);
     const occurredAt = this.parseDate(input.occurredAt);
     this.assertMoney(input.totalCents, 'totalCents');
-    const normalizedPaymentAllocations = this.normalizeExpensePaymentAllocations(
-      input.paymentAllocations,
-      input.totalCents,
-    );
+    const normalizedPaymentAllocations =
+      this.normalizeExpensePaymentAllocations(
+        input.paymentAllocations,
+        input.totalCents,
+      );
     if (!input.splits.length) {
       throw new BadRequestException('at least one expense split is required');
     }
@@ -1218,10 +1220,11 @@ export class AccountingOperationsService {
     this.assertNoLegacyExpensePaymentAccount(input);
     const occurredAt = this.parseDate(input.occurredAt);
     this.assertMoney(input.totalCents, 'totalCents');
-    const normalizedPaymentAllocations = this.normalizeExpensePaymentAllocations(
-      input.paymentAllocations,
-      input.totalCents,
-    );
+    const normalizedPaymentAllocations =
+      this.normalizeExpensePaymentAllocations(
+        input.paymentAllocations,
+        input.totalCents,
+      );
     if (!input.splits.length) {
       throw new BadRequestException('at least one expense split is required');
     }
@@ -1402,10 +1405,11 @@ export class AccountingOperationsService {
 
     const occurredAt = this.parseDate(input.occurredAt);
     this.assertMoney(input.totalCents, 'totalCents');
-    const normalizedPaymentAllocations = this.normalizeExpensePaymentAllocations(
-      input.paymentAllocations,
-      input.totalCents,
-    );
+    const normalizedPaymentAllocations =
+      this.normalizeExpensePaymentAllocations(
+        input.paymentAllocations,
+        input.totalCents,
+      );
     if (!input.splits.length) {
       throw new BadRequestException('at least one expense split is required');
     }
@@ -1771,7 +1775,10 @@ export class AccountingOperationsService {
         );
       }
       seenAccounts.add(accountStableId);
-      if (!Number.isInteger(allocation.amountCents) || allocation.amountCents <= 0) {
+      if (
+        !Number.isInteger(allocation.amountCents) ||
+        allocation.amountCents <= 0
+      ) {
         throw new BadRequestException(
           'payment allocation amountCents must be a positive integer',
         );
@@ -1785,8 +1792,10 @@ export class AccountingOperationsService {
 
     if (
       normalized.length > 0 &&
-      normalized.reduce((sum, allocation) => sum + allocation.amountCents, 0) !==
-        totalCents
+      normalized.reduce(
+        (sum, allocation) => sum + allocation.amountCents,
+        0,
+      ) !== totalCents
     ) {
       throw new BadRequestException(
         'payment allocations do not match CAD booking total',

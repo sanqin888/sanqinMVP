@@ -52,8 +52,25 @@ describe('AccountingOperationsService expense-write characterization', () => {
         });
       },
     );
-    const createMany = jest.fn().mockResolvedValue({ count: 2 });
-    const createAllocationMany = jest.fn().mockResolvedValue({ count: 2 });
+    type TransactionCreateManyArgs = {
+      data: Array<Record<string, unknown>>;
+    };
+    type PaymentAllocationCreateManyArgs = {
+      data: Array<{
+        paymentAllocationStableId: string;
+        expenseDocumentId: string;
+        accountId: string;
+        amountCents: number;
+        sortOrder: number;
+      }>;
+    };
+    const createMany = jest.fn((args: TransactionCreateManyArgs) =>
+      Promise.resolve({ count: args.data.length }),
+    );
+    const createAllocationMany = jest.fn(
+      (args: PaymentAllocationCreateManyArgs) =>
+        Promise.resolve({ count: args.data.length }),
+    );
     const createAuditMany = jest.fn().mockResolvedValue({ count: 2 });
     const tx = {
       accountingAccount: {
@@ -148,23 +165,26 @@ describe('AccountingOperationsService expense-write characterization', () => {
         confirmedByUserId: 'user_stable_1',
       }) as unknown as Record<string, unknown>,
     });
-    expect(createAllocationMany).toHaveBeenCalledWith({
-      data: [
-        expect.objectContaining({
-          paymentAllocationStableId: expect.stringMatching(/^expensepay_/),
-          expenseDocumentId: 'expense-document-db-id',
-          accountId: 'account-rbc-db-id',
-          amountCents: 600,
-          sortOrder: 0,
-        }) as unknown as Record<string, unknown>,
-        expect.objectContaining({
-          paymentAllocationStableId: expect.stringMatching(/^expensepay_/),
-          expenseDocumentId: 'expense-document-db-id',
-          accountId: 'account-cash-db-id',
-          amountCents: 530,
-          sortOrder: 1,
-        }) as unknown as Record<string, unknown>,
-      ],
+    const allocationCreateArgs = createAllocationMany.mock.calls[0]?.[0];
+    expect(allocationCreateArgs).toBeDefined();
+    expect(allocationCreateArgs?.data).toHaveLength(2);
+    expect(
+      allocationCreateArgs?.data[0]?.paymentAllocationStableId,
+    ).toMatch(/^expensepay_/);
+    expect(allocationCreateArgs?.data[0]).toMatchObject({
+      expenseDocumentId: 'expense-document-db-id',
+      accountId: 'account-rbc-db-id',
+      amountCents: 600,
+      sortOrder: 0,
+    });
+    expect(
+      allocationCreateArgs?.data[1]?.paymentAllocationStableId,
+    ).toMatch(/^expensepay_/);
+    expect(allocationCreateArgs?.data[1]).toMatchObject({
+      expenseDocumentId: 'expense-document-db-id',
+      accountId: 'account-cash-db-id',
+      amountCents: 530,
+      sortOrder: 1,
     });
     expect(createMany).toHaveBeenCalledWith({
       data: [
@@ -188,8 +208,13 @@ describe('AccountingOperationsService expense-write characterization', () => {
         }) as unknown as Record<string, unknown>,
       ],
     });
-    expect(createMany.mock.calls[0]?.[0].data[0]).not.toHaveProperty('accountId');
-    expect(createMany.mock.calls[0]?.[0].data[1]).not.toHaveProperty('accountId');
+    const transactionCreateArgs = createMany.mock.calls[0]?.[0];
+    expect(transactionCreateArgs?.data[0]).not.toHaveProperty(
+      'accountId',
+    );
+    expect(transactionCreateArgs?.data[1]).not.toHaveProperty(
+      'accountId',
+    );
     expect(createAuditMany).toHaveBeenCalledWith({
       data: [
         expect.objectContaining({
@@ -225,7 +250,10 @@ describe('AccountingOperationsService expense-write characterization', () => {
   });
 
   it('rejects duplicate payment accounts before touching persistence', async () => {
-    const service = new AccountingOperationsService({} as never, accounting as never);
+    const service = new AccountingOperationsService(
+      {} as never,
+      accounting as never,
+    );
 
     await expect(
       service.createExpense(
@@ -250,7 +278,10 @@ describe('AccountingOperationsService expense-write characterization', () => {
   });
 
   it('rejects the retired single-account Expense payload instead of silently ignoring it', async () => {
-    const service = new AccountingOperationsService({} as never, accounting as never);
+    const service = new AccountingOperationsService(
+      {} as never,
+      accounting as never,
+    );
 
     await expect(
       service.createExpense(
@@ -274,7 +305,10 @@ describe('AccountingOperationsService expense-write characterization', () => {
   });
 
   it('rejects payment allocations that do not close to the CAD booking total', async () => {
-    const service = new AccountingOperationsService({} as never, accounting as never);
+    const service = new AccountingOperationsService(
+      {} as never,
+      accounting as never,
+    );
 
     await expect(
       service.createExpense(

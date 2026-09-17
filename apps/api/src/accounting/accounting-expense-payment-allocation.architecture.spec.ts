@@ -2,7 +2,13 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const ACCOUNTING_ROOT = __dirname;
-const PRISMA_SCHEMA = resolve(ACCOUNTING_ROOT, '..', '..', 'prisma', 'schema.prisma');
+const PRISMA_SCHEMA = resolve(
+  ACCOUNTING_ROOT,
+  '..',
+  '..',
+  'prisma',
+  'schema.prisma',
+);
 const OPERATIONS_SERVICE = resolve(
   ACCOUNTING_ROOT,
   'accounting-operations.service.ts',
@@ -22,10 +28,7 @@ describe('Accounting Expense payment allocation boundary', () => {
     const schema = readFileSync(PRISMA_SCHEMA, 'utf8');
     const expenseDocument = modelBody(schema, 'AccountingExpenseDocument');
     const account = modelBody(schema, 'AccountingAccount');
-    const allocation = modelBody(
-      schema,
-      'AccountingExpensePaymentAllocation',
-    );
+    const allocation = modelBody(schema, 'AccountingExpensePaymentAllocation');
 
     expect(expenseDocument).not.toMatch(/\baccountId\b/);
     expect(expenseDocument).not.toMatch(/\baccount\s+AccountingAccount/);

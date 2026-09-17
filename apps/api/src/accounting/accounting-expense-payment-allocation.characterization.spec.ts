@@ -92,7 +92,9 @@ describe('Accounting Expense payment allocation characterization', () => {
         }),
       ]),
     );
-    expect(prisma.accountingExpensePaymentAllocation.findMany).toHaveBeenCalledWith(
+    expect(
+      prisma.accountingExpensePaymentAllocation.findMany,
+    ).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
           expenseDocument: {
