@@ -589,7 +589,6 @@ export class AccountingCanonicalSaleReplayService {
       );
     }
 
-    await this.journal.assertNoLegacyOrderRevenueAccrual();
     for (const { journal } of readyJournals) {
       await this.journal.createJournalEntry(
         journal,

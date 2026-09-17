@@ -139,10 +139,6 @@ export class AccountingProviderSettlementExecutionService {
       }
     }
 
-    if (readyDocuments.length > 0) {
-      await this.journal.assertNoLegacyOrderRevenueAccrual();
-    }
-
     let journalEntriesPostedOrReplayed = 0;
     let providerDocumentsPostedOrReplayed = 0;
     let uberReversalsPostedOrReplayed = 0;

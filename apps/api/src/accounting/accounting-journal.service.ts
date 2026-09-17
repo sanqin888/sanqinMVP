@@ -175,22 +175,6 @@ export class AccountingJournalService {
     return anchors;
   }
 
-  async assertNoLegacyOrderRevenueAccrual(): Promise<void> {
-    const legacyCount = await this.prisma.accountingTransaction.count({
-      where: {
-        OR: [
-          { idempotencyKey: { startsWith: 'AUTO_ORDER:' } },
-          { idempotencyKey: { startsWith: 'AUTO_ORDER_DAILY:' } },
-        ],
-      },
-    });
-    if (legacyCount > 0) {
-      throw new ConflictException(
-        `Canonical sale replay is blocked by ${legacyCount} legacy order revenue accrual transaction(s)`,
-      );
-    }
-  }
-
   async createJournalEntry(
     input: AccountingJournalCreateInput,
     operatorActorRef: string,

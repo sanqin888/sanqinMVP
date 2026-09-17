@@ -121,7 +121,6 @@ function makeService() {
     requireCanonicalFinancialPostingStartAt: jest
       .fn()
       .mockResolvedValue(new Date('2026-06-01T04:00:00.000Z')),
-    assertNoLegacyOrderRevenueAccrual: jest.fn().mockResolvedValue(undefined),
     createJournalEntry: jest.fn().mockResolvedValue({} as never),
   };
   const orders: jest.Mocked<OrderFinancialFactsReaderPort> = {
@@ -303,9 +302,6 @@ describe('Accounting canonical SALE replay', () => {
       acknowledgedBlockedOrderStableIds: ['order_mutated'],
     });
 
-    expect(accounting.assertNoLegacyOrderRevenueAccrual).toHaveBeenCalledTimes(
-      1,
-    );
     expect(accounting.createJournalEntry).toHaveBeenCalledTimes(1);
     expect(accounting.createJournalEntry).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -334,7 +330,6 @@ describe('Accounting canonical SALE replay', () => {
         acknowledgedBlockedOrderStableIds: [],
       }),
     ).rejects.toThrow('Canonical sale replay plan changed after preview');
-    expect(accounting.assertNoLegacyOrderRevenueAccrual).not.toHaveBeenCalled();
     expect(accounting.createJournalEntry).not.toHaveBeenCalled();
   });
 

@@ -101,7 +101,6 @@ export class AccountingCanonicalChangeExecutionService {
       });
     }
 
-    await this.journal.assertNoLegacyOrderRevenueAccrual();
     for (const { journal, authority } of readyWrites) {
       await this.journal.createCanonicalChangeJournalEntry(
         journal,
