@@ -48,10 +48,11 @@ import { AccountingCanonicalChangePreviewService } from './accounting-canonical-
 import { AccountingCanonicalChangeExecutionService } from './accounting-canonical-change-execution.service';
 import { AccountingProviderSettlementPreviewService } from './accounting-provider-settlement-preview.service';
 import { AccountingProviderSettlementExecutionService } from './accounting-provider-settlement-execution.service';
-import {
-  AccountingOperationsService,
-  type AccountingExpenseInput,
-} from './accounting-operations.service';
+import { AccountingChartService } from './accounting-chart.service';
+import type { AccountingExpenseInput } from './accounting-expense.contracts';
+import { AccountingExpenseService } from './accounting-expense.service';
+import { AccountingFinancialReportsService } from './accounting-financial-reports.service';
+import { AccountingInboxService } from './accounting-inbox.service';
 import {
   UBER_EATS_REPORTING,
   type UberEatsReportingPort,
@@ -85,7 +86,10 @@ export class AccountingController {
   constructor(
     private readonly accountingService: AccountingService,
     private readonly period: AccountingPeriodService,
-    private readonly operations: AccountingOperationsService,
+    private readonly chart: AccountingChartService,
+    private readonly expense: AccountingExpenseService,
+    private readonly reports: AccountingFinancialReportsService,
+    private readonly inboxService: AccountingInboxService,
     private readonly acquisition: AccountingInboxAcquisitionService,
     private readonly imageRetention: AccountingImageRetentionService,
     private readonly providerFinancial: AccountingProviderFinancialService,
@@ -142,7 +146,7 @@ export class AccountingController {
 
   @Post('setup/initialize')
   initializeAccounting() {
-    return this.operations.initializeDefaults();
+    return this.chart.initializeDefaults();
   }
 
   @Get('dashboard')
@@ -152,7 +156,7 @@ export class AccountingController {
     const resolvedFrom =
       from?.trim() ||
       new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-    return this.operations.dashboard(resolvedFrom, resolvedTo);
+    return this.reports.dashboard(resolvedFrom, resolvedTo);
   }
 
   @Post('expenses')
@@ -160,7 +164,7 @@ export class AccountingController {
     @Body() body: AccountingExpenseInput,
     @Req() req: AuthedAccountingRequest,
   ) {
-    return this.operations.createExpense(body, this.requireOperatorUserId(req));
+    return this.expense.createExpense(body, this.requireOperatorUserId(req));
   }
 
   @Get('expenses')
@@ -168,7 +172,7 @@ export class AccountingController {
     @Query('status') status?: AccountingDocumentStatus,
     @Query('limit') limit?: string,
   ) {
-    return this.operations.listExpenseDocuments({
+    return this.expense.listExpenseDocuments({
       status,
       limit: this.parseNonNegativeNumber(limit, 'limit'),
     });
@@ -180,7 +184,7 @@ export class AccountingController {
     @Query('classification') classification?: AccountingInboxClassification,
     @Query('limit') limit?: string,
   ) {
-    return this.operations.listUnifiedInboxItems({
+    return this.inboxService.listUnifiedInboxItems({
       status,
       classification,
       limit: this.parseNonNegativeNumber(limit, 'limit'),
@@ -189,14 +193,14 @@ export class AccountingController {
 
   @Get('inbox/image-retention/pending')
   imageRetentionQueue(@Query('limit') limit?: string) {
-    return this.operations.listImageRetentionQueue(
+    return this.inboxService.listImageRetentionQueue(
       this.parseNonNegativeNumber(limit, 'limit'),
     );
   }
 
   @Get('inbox/manual-uploads')
   manualUploadLibrary(@Query('limit') limit?: string) {
-    return this.operations.listManualUploadLibrary(
+    return this.inboxService.listManualUploadLibrary(
       this.parseNonNegativeNumber(limit, 'limit'),
     );
   }
@@ -219,7 +223,7 @@ export class AccountingController {
 
   @Get('inbox/provider-recognition-rules')
   listProviderRecognitionRules() {
-    return this.operations.listProviderRecognitionRules();
+    return this.inboxService.listProviderRecognitionRules();
   }
 
   @Put('inbox/provider-recognition-rules/:ruleStableId')
@@ -235,7 +239,7 @@ export class AccountingController {
     },
     @Req() req: AuthedAccountingRequest,
   ) {
-    return this.operations.updateProviderRecognitionRule(
+    return this.inboxService.updateProviderRecognitionRule(
       ruleStableId,
       body,
       this.requireOperatorUserId(req),
@@ -244,7 +248,7 @@ export class AccountingController {
 
   @Get('inbox/trusted-senders')
   listTrustedSenders() {
-    return this.operations.listTrustedSenders();
+    return this.inboxService.listTrustedSenders();
   }
 
   @Put('inbox/trusted-senders')
@@ -252,7 +256,7 @@ export class AccountingController {
     @Body() body: { email: string; label?: string | null; isActive?: boolean },
     @Req() req: AuthedAccountingRequest,
   ) {
-    return this.operations.upsertTrustedSender(
+    return this.inboxService.upsertTrustedSender(
       body,
       this.requireOperatorUserId(req),
     );
@@ -268,7 +272,7 @@ export class AccountingController {
     },
     @Req() req: AuthedAccountingRequest,
   ) {
-    return this.operations.setUnifiedInboxClassification(
+    return this.inboxService.setUnifiedInboxClassification(
       inboxItemStableId,
       body,
       this.requireOperatorUserId(req),
@@ -280,7 +284,7 @@ export class AccountingController {
     @Param('inboxItemStableId') inboxItemStableId: string,
     @Req() req: AuthedAccountingRequest,
   ) {
-    return this.operations.confirmUnifiedInboxOther(
+    return this.inboxService.confirmUnifiedInboxOther(
       inboxItemStableId,
       this.requireOperatorUserId(req),
     );
@@ -292,7 +296,7 @@ export class AccountingController {
     @Body() body: AccountingExpenseInput,
     @Req() req: AuthedAccountingRequest,
   ) {
-    return this.operations.confirmUnifiedInboxExpense(
+    return this.expense.confirmUnifiedInboxExpense(
       inboxItemStableId,
       body,
       this.requireOperatorUserId(req),
@@ -374,7 +378,7 @@ export class AccountingController {
     @Param('inboxItemStableId') inboxItemStableId: string,
     @Req() req: AuthedAccountingRequest,
   ) {
-    return this.operations.discardUnifiedInboxItem(
+    return this.inboxService.discardUnifiedInboxItem(
       inboxItemStableId,
       this.requireOperatorUserId(req),
     );
@@ -674,12 +678,12 @@ export class AccountingController {
       currency?: string;
     },
   ) {
-    return this.operations.createAccount(body);
+    return this.chart.createAccount(body);
   }
 
   @Get('accounts')
   async listAccounts() {
-    return this.operations.listAccounts();
+    return this.chart.listAccounts();
   }
 
   @Get('report/account-balance')
@@ -798,7 +802,7 @@ export class AccountingController {
 
   @Get('categories')
   async categories(@Query('includeInactive') includeInactive?: string) {
-    return this.operations.listCategories(includeInactive === 'true');
+    return this.chart.listCategories(includeInactive === 'true');
   }
 
   @Post('categories')
@@ -811,7 +815,7 @@ export class AccountingController {
       sortOrder?: number;
     },
   ) {
-    return this.operations.createCategory(body);
+    return this.chart.createCategory(body);
   }
 
   @Put('categories/:categoryStableId')
@@ -825,6 +829,6 @@ export class AccountingController {
       isActive?: boolean;
     },
   ) {
-    return this.operations.updateCategory(categoryStableId, body);
+    return this.chart.updateCategory(categoryStableId, body);
   }
 }

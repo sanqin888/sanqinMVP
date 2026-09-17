@@ -17,6 +17,8 @@ const PRISMA_FREE_BOUNDARIES = [
   'accounting-inbox-core.orchestrator.ts',
   'accounting-inbox-acquisition.service.ts',
   'accounting-image-retention.service.ts',
+  'accounting-expense.contracts.ts',
+  'accounting-expense-input.ts',
   'accounting-gmail-ingest.service.ts',
   'accounting-provider-recognition.policy.ts',
   'accounting-provider-financial.parser.ts',
@@ -26,6 +28,8 @@ const PRISMA_FREE_BOUNDARIES = [
   'accounting-provider-settlement-write-authority.ts',
   'accounting-provider-settlement-preview.service.ts',
   'accounting-provider-settlement-execution.service.ts',
+  'accounting-chart.service.ts',
+  'accounting-inbox.service.ts',
 ] as const;
 
 const prismaNamedImport = (source: string): string =>
@@ -47,10 +51,12 @@ describe('Phase 9 Slice 7-C Accounting Prisma contract boundary', () => {
     expect(contract).not.toContain('../prisma/');
   });
 
-  it('keeps mixed legacy services on owner enums while persistence mechanics retain only the Prisma namespace', () => {
+  it('keeps Accounting persistence services on owner enums while persistence mechanics retain only the Prisma namespace', () => {
     for (const file of [
       'accounting.service.ts',
-      'accounting-operations.service.ts',
+      'accounting-expense.service.ts',
+      'accounting-financial-reports.service.ts',
+      'accounting-provider-settlement-query.service.ts',
     ]) {
       const source = read(file);
       const prismaImport = prismaNamedImport(source);

@@ -9,9 +9,9 @@ import {
   AccountingSourceType,
   AccountingTxType,
 } from '@prisma/client';
-import { AccountingOperationsService } from './accounting-operations.service';
+import { AccountingExpenseService } from './accounting-expense.service';
 
-describe('AccountingOperationsService expense-write characterization', () => {
+describe('AccountingExpenseService expense-write characterization', () => {
   const documentRow = (documentStableId: string) => ({
     documentStableId,
     source: AccountingDocumentSource.MANUAL,
@@ -121,7 +121,7 @@ describe('AccountingOperationsService expense-write characterization', () => {
       },
       $transaction: transaction,
     };
-    const service = new AccountingOperationsService(
+    const service = new AccountingExpenseService(
       prisma as never,
       accounting as never,
     );
@@ -246,7 +246,7 @@ describe('AccountingOperationsService expense-write characterization', () => {
   });
 
   it('rejects duplicate payment accounts before touching persistence', async () => {
-    const service = new AccountingOperationsService(
+    const service = new AccountingExpenseService(
       {} as never,
       accounting as never,
     );
@@ -274,7 +274,7 @@ describe('AccountingOperationsService expense-write characterization', () => {
   });
 
   it('rejects the retired single-account Expense payload instead of silently ignoring it', async () => {
-    const service = new AccountingOperationsService(
+    const service = new AccountingExpenseService(
       {} as never,
       accounting as never,
     );
@@ -301,7 +301,7 @@ describe('AccountingOperationsService expense-write characterization', () => {
   });
 
   it('rejects payment allocations that do not close to the CAD booking total', async () => {
-    const service = new AccountingOperationsService(
+    const service = new AccountingExpenseService(
       {} as never,
       accounting as never,
     );
@@ -357,7 +357,7 @@ describe('AccountingOperationsService expense-write characterization', () => {
           callback(tx),
       ),
     };
-    const service = new AccountingOperationsService(
+    const service = new AccountingExpenseService(
       prisma as never,
       accounting as never,
     );
@@ -415,7 +415,7 @@ describe('AccountingOperationsService expense-write characterization', () => {
       },
       $transaction: transaction,
     };
-    const service = new AccountingOperationsService(
+    const service = new AccountingExpenseService(
       prisma as never,
       accounting as never,
     );
@@ -538,7 +538,7 @@ describe('AccountingOperationsService expense-write characterization', () => {
       },
       $transaction: transaction,
     };
-    const service = new AccountingOperationsService(
+    const service = new AccountingExpenseService(
       prisma as never,
       accounting as never,
     );
@@ -701,7 +701,7 @@ describe('AccountingOperationsService expense-write characterization', () => {
       accountingAccount: { findUnique: jest.fn() },
       $transaction: transaction,
     };
-    const service = new AccountingOperationsService(
+    const service = new AccountingExpenseService(
       prisma as never,
       accounting as never,
     );
@@ -854,7 +854,7 @@ describe('AccountingOperationsService expense-write characterization', () => {
       accountingAccount: { findUnique: jest.fn() },
       $transaction: transaction,
     };
-    const service = new AccountingOperationsService(
+    const service = new AccountingExpenseService(
       prisma as never,
       accounting as never,
     );

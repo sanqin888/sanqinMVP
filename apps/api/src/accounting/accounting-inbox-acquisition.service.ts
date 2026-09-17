@@ -32,7 +32,7 @@ import {
   ACCOUNTING_RECEIPT_IMAGE_POLICY,
   detectAccountingReceiptImageType,
 } from './accounting-receipt-image';
-import { AccountingOperationsService } from './accounting-operations.service';
+import { AccountingInboxService } from './accounting-inbox.service';
 import {
   AccountingProviderFinancialProcessingError,
   AccountingProviderFinancialService,
@@ -103,7 +103,7 @@ export class AccountingInboxAcquisitionService {
   private readonly logger = new Logger(AccountingInboxAcquisitionService.name);
 
   constructor(
-    private readonly operations: AccountingOperationsService,
+    private readonly inbox: AccountingInboxService,
     private readonly providerFinancial: AccountingProviderFinancialService,
   ) {}
 
@@ -127,7 +127,7 @@ export class AccountingInboxAcquisitionService {
     operatorUserStableId: string,
   ) {
     const deleted =
-      await this.operations.permanentlyDeleteManualUpload(inboxItemStableId);
+      await this.inbox.permanentlyDeleteManualUpload(inboxItemStableId);
     const storageCleanupFailures: string[] = [];
     for (const storedUrl of deleted.storedUrls) {
       if (!(await this.removeStoredFile(storedUrl))) {
@@ -193,7 +193,7 @@ export class AccountingInboxAcquisitionService {
     const normalizedText = normalizeBodyText(text);
     if (!normalizedText) return null;
     const contentHash = sha256(Buffer.from(normalizedText, 'utf8'));
-    const artifact = await this.operations.registerInboxArtifact({
+    const artifact = await this.inbox.registerInboxArtifact({
       acquisitionMode: AccountingArtifactAcquisitionMode.EMAIL,
       kind: AccountingArtifactKind.EMAIL_BODY,
       transportIdentity: `gmail:${context.messageId}:body`,
@@ -265,10 +265,10 @@ export class AccountingInboxAcquisitionService {
       detected.extension,
     );
     let artifact: Awaited<
-      ReturnType<AccountingOperationsService['registerInboxArtifact']>
+      ReturnType<AccountingInboxService['registerInboxArtifact']>
     >;
     try {
-      artifact = await this.operations.registerInboxArtifact({
+      artifact = await this.inbox.registerInboxArtifact({
         acquisitionMode: input.acquisitionMode,
         kind: detected.kind,
         transportIdentity: input.transportIdentity,
@@ -329,7 +329,7 @@ export class AccountingInboxAcquisitionService {
 
   private async parseFileIfEligible(
     artifact: Awaited<
-      ReturnType<AccountingOperationsService['registerInboxArtifact']>
+      ReturnType<AccountingInboxService['registerInboxArtifact']>
     >,
     acquisitionMode: AccountingArtifactAcquisitionMode,
     kind: AccountingArtifactKind,
@@ -372,7 +372,7 @@ export class AccountingInboxAcquisitionService {
           ? (provider.ambiguousRuleStableIds ?? [])
           : [];
       if (ambiguousRuleStableIds.length) {
-        await this.operations.recordInboxParseRun({
+        await this.inbox.recordInboxParseRun({
           artifactStableId: artifact.artifactStableId,
           parserName: GENERIC_PARSER_NAME,
           parserVersion: GENERIC_PARSER_VERSION,
@@ -387,7 +387,7 @@ export class AccountingInboxAcquisitionService {
       }
 
       if (acquisitionMode === AccountingArtifactAcquisitionMode.PROVIDER_API) {
-        await this.operations.recordInboxParseRun({
+        await this.inbox.recordInboxParseRun({
           artifactStableId: artifact.artifactStableId,
           parserName: GENERIC_PARSER_NAME,
           parserVersion: GENERIC_PARSER_VERSION,
@@ -451,7 +451,7 @@ export class AccountingInboxAcquisitionService {
                 reviewReason: 'STRUCTURED_EXPENSE_BATCH',
               }),
         };
-        await this.operations.recordInboxParseRun({
+        await this.inbox.recordInboxParseRun({
           artifactStableId: artifact.artifactStableId,
           parserName: ACCOUNTING_STRUCTURED_EXPENSE_CSV_PARSER_NAME,
           parserVersion: ACCOUNTING_STRUCTURED_EXPENSE_CSV_PARSER_VERSION,
@@ -459,7 +459,7 @@ export class AccountingInboxAcquisitionService {
           resultJson: result,
         });
         if (singleRow) {
-          await this.operations.suggestUnifiedInboxClassification(
+          await this.inbox.suggestUnifiedInboxClassification(
             artifact.artifactStableId,
             {
               classification: AccountingInboxClassification.EXPENSE_DOCUMENT,
@@ -470,7 +470,7 @@ export class AccountingInboxAcquisitionService {
         return false;
       }
 
-      await this.operations.recordInboxParseRun({
+      await this.inbox.recordInboxParseRun({
         artifactStableId: artifact.artifactStableId,
         parserName: GENERIC_PARSER_NAME,
         parserVersion: GENERIC_PARSER_VERSION,
@@ -631,7 +631,7 @@ export class AccountingInboxAcquisitionService {
 
   private async parseTextIfEligible(
     artifact: Awaited<
-      ReturnType<AccountingOperationsService['registerInboxArtifact']>
+      ReturnType<AccountingInboxService['registerInboxArtifact']>
     >,
     text: string,
     inputKind: 'EMAIL_BODY',
@@ -683,13 +683,10 @@ export class AccountingInboxAcquisitionService {
   ) {
     if (result.reviewDisposition !== 'LIKELY_BILL') return;
     try {
-      await this.operations.suggestUnifiedInboxClassification(
-        artifactStableId,
-        {
-          classification: AccountingInboxClassification.EXPENSE_DOCUMENT,
-          selectedProvider: null,
-        },
-      );
+      await this.inbox.suggestUnifiedInboxClassification(artifactStableId, {
+        classification: AccountingInboxClassification.EXPENSE_DOCUMENT,
+        selectedProvider: null,
+      });
     } catch (error) {
       this.logger.warn(
         `Accounting Inbox expense suggestion failed for ${artifactStableId}: ${
@@ -707,7 +704,7 @@ export class AccountingInboxAcquisitionService {
       'textractEvidence' in result && result.textractEvidence
         ? TEXTRACT_LINE_ITEM_HINTS_PARSER_VERSION
         : GENERIC_PARSER_VERSION;
-    await this.operations.recordInboxParseRun({
+    await this.inbox.recordInboxParseRun({
       artifactStableId,
       parserName: GENERIC_PARSER_NAME,
       parserVersion,
@@ -719,7 +716,7 @@ export class AccountingInboxAcquisitionService {
 
   private async recordParseFailureIfEligible(
     artifact: Awaited<
-      ReturnType<AccountingOperationsService['registerInboxArtifact']>
+      ReturnType<AccountingInboxService['registerInboxArtifact']>
     >,
     error: unknown,
   ) {
@@ -731,7 +728,7 @@ export class AccountingInboxAcquisitionService {
     this.logger.warn(
       `Accounting Inbox parse failed for ${artifact.artifactStableId}: ${message}`,
     );
-    await this.operations.recordInboxParseRun({
+    await this.inbox.recordInboxParseRun({
       artifactStableId: artifact.artifactStableId,
       parserName: GENERIC_PARSER_NAME,
       parserVersion: GENERIC_PARSER_VERSION,
