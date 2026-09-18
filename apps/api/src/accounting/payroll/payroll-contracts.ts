@@ -53,9 +53,7 @@ export const PayrollVacationTreatment = {
   PAID_EACH_RUN: 'PAID_EACH_RUN',
   ACCRUED: 'ACCRUED',
 } as const;
-export type PayrollVacationTreatment = ValueOf<
-  typeof PayrollVacationTreatment
->;
+export type PayrollVacationTreatment = ValueOf<typeof PayrollVacationTreatment>;
 
 export const PayrollRemitterType = {
   QUARTERLY: 'QUARTERLY',

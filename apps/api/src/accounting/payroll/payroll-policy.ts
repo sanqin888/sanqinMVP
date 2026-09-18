@@ -66,9 +66,7 @@ export const assertPayrollEmployeeConfig = (
 ): void => {
   assertPositiveInteger(input.version, 'version');
 
-  if (
-    input.provinceOfEmployment !== PAYROLL_SUPPORTED_PROVINCE_OF_EMPLOYMENT
-  ) {
+  if (input.provinceOfEmployment !== PAYROLL_SUPPORTED_PROVINCE_OF_EMPLOYMENT) {
     throw new Error(
       `unsupported payroll province of employment: ${input.provinceOfEmployment}`,
     );
@@ -101,7 +99,10 @@ export const assertPayrollEmployeeConfig = (
   if (input.cppTreatment === PayrollCppTreatment.EXEMPT_REVIEWED) {
     assertNonBlank(input.cppExceptionCode, 'cppExceptionCode');
     assertNonBlank(input.cppExceptionNote, 'cppExceptionNote');
-  } else if (input.cppExceptionCode !== null || input.cppExceptionNote !== null) {
+  } else if (
+    input.cppExceptionCode !== null ||
+    input.cppExceptionNote !== null
+  ) {
     throw new Error(
       'CPP exception evidence must be null for STANDARD treatment',
     );
@@ -191,10 +192,7 @@ export const assertPayrollCalculatedEvidenceComplete = (
     }
   }
 
-  assertPositiveInteger(
-    input.payPeriodsPerYear as number,
-    'payPeriodsPerYear',
-  );
+  assertPositiveInteger(input.payPeriodsPerYear as number, 'payPeriodsPerYear');
   assertPayrollCalculationEvidenceVersion(
     input.calculationEvidenceVersion as number,
   );
@@ -214,9 +212,7 @@ export const assertPayrollCalculatedEvidenceComplete = (
     input.calculationProfileVersion as string,
     'calculationProfileVersion',
   );
-  if (
-    input.calculationProfileVersion !== PAYROLL_CALCULATION_PROFILE_VERSION
-  ) {
+  if (input.calculationProfileVersion !== PAYROLL_CALCULATION_PROFILE_VERSION) {
     throw new Error(
       `unsupported payroll calculation profile: ${String(
         input.calculationProfileVersion,

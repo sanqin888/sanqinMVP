@@ -95,7 +95,9 @@ describe('Phase 9 Slice 8P-B1 Payroll ownership boundary', () => {
       /enum AccountingJournalSource \{[\s\S]*?\bPAYROLL\b[\s\S]*?\}/,
     );
     expect(contracts).toContain("PAYROLL: 'PAYROLL'");
-    expect(payrollProductionFiles()).not.toContain('payroll-posting.service.ts');
+    expect(payrollProductionFiles()).not.toContain(
+      'payroll-posting.service.ts',
+    );
   });
 
   it('does not provision Payroll CoA or settlement persistence in B1', () => {
