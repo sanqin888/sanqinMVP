@@ -21,6 +21,14 @@ const EXPECTED_CONTROLLER_CAPABILITIES = {
   ],
   'accounting-inbox.controller.ts': ['AccountingInboxService'],
   'accounting-period.controller.ts': ['AccountingPeriodService'],
+  'payroll/accounting-payroll.controller.ts': [
+    'AccountingPayrollConfigService',
+    'AccountingPayrollEmployeeService',
+    'AccountingPayrollFinalizationService',
+    'AccountingPayrollOpeningService',
+    'AccountingPayrollRunService',
+    'AccountingPayrollYtdService',
+  ],
   'accounting-provider-financial.controller.ts': [
     'AccountingProviderFinancialService',
   ],
@@ -87,6 +95,26 @@ const EXPECTED_ROUTES = [
   'GET categories',
   'POST categories',
   'PUT categories/:categoryStableId',
+  'GET payroll/employers',
+  'POST payroll/employers',
+  'PUT payroll/employers/:employerStableId',
+  'GET payroll/employers/:employerStableId/configs',
+  'POST payroll/employers/:employerStableId/configs',
+  'GET payroll/employers/:employerStableId/employees',
+  'POST payroll/employers/:employerStableId/employees',
+  'PUT payroll/employees/:employeeStableId',
+  'GET payroll/employees/:employeeStableId/configs',
+  'POST payroll/employees/:employeeStableId/configs',
+  'GET payroll/employees/:employeeStableId/openings/:taxYear',
+  'PUT payroll/employees/:employeeStableId/openings/:taxYear',
+  'GET payroll/employees/:employeeStableId/ytd/:taxYear',
+  'GET payroll/runs',
+  'POST payroll/runs',
+  'GET payroll/runs/:runStableId',
+  'PUT payroll/runs/:runStableId',
+  'POST payroll/runs/:runStableId/calculate',
+  'POST payroll/runs/:runStableId/approve',
+  'POST payroll/runs/:runStableId/void',
 ].sort();
 
 function read(name: string): string {
@@ -127,7 +155,7 @@ function routes(source: string): string[] {
   );
 }
 
-describe('Phase 9 Slice 8A-5 Accounting controller vertical boundary', () => {
+describe('Phase 9 Accounting controller vertical boundary', () => {
   it('replaces the god controller with explicit vertical transport adapters', () => {
     expect(
       existsSync(resolve(ACCOUNTING_ROOT, 'accounting.controller.ts')),
@@ -143,7 +171,7 @@ describe('Phase 9 Slice 8A-5 Accounting controller vertical boundary', () => {
       expect(source).toContain("@Controller('accounting')");
       expect(source).toContain('@UseGuards(SessionAuthGuard, RolesGuard)');
       expect(source).toContain("@Roles('ADMIN', 'ACCOUNTANT')");
-      expect(source).toContain("from '../auth/public-api'");
+      expect(source).toMatch(/from '\.\.\/(?:\.\.\/)*auth\/public-api'/);
       expect(source).not.toContain('@prisma/client');
       expect(source).not.toContain('../prisma/');
       expect(accountingCapabilities(source)).toEqual(

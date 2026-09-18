@@ -1,9 +1,9 @@
 # Phase 9 Payroll Vertical — Readiness, Design and Closeout Gate
 
-Status: **8P-B2 LOCAL SOURCE COMPLETE / REVIEW PENDING — NO MIGRATION**  
+Status: **8P-B3 LOCAL SOURCE COMPLETE / REVIEW PENDING — MIGRATION REQUIRED**  
 Planning date: 2026-09-16  
-Implementation baseline: `origin/dev@963485a8` (8P-B1 source + migration present in dev)  
-Current implementation branch: `feat/phase9-slice8p-b2-ontario-calculator`
+Implementation baseline: `origin/dev@bf175d2a` (8P-B2 merged / CI #5864 green)  
+Current implementation branch: `feat/phase9-slice8p-b3-payroll-lifecycle`
 
 ## 1. Decision and insertion point
 
@@ -1232,4 +1232,87 @@ Production Payroll source through B2 remains framework- and Prisma-neutral. The 
 
 Focused source characterization covers pay-date policy selection, official 2026 constants, CPP/F5 golden evidence, CPP2/EI maxima, federal BPAF/Ontario OHP, the exact weekly tax case, 52/53 and 26/27 schedules, vacation accrued/paid treatment, reviewed CPP/EI exceptions, claim code E, YTD maxima and structured fail-closed cases.
 
-Per repository workflow, no local lint/build/Jest/architecture scanner execution is claimed before user review. 8P-B2 is currently **LOCAL SOURCE COMPLETE / REVIEW PENDING / NO MIGRATION**.
+The local-review state above has advanced: 8P-B2 merged through PR #2388 / squash `bf175d2a` after final head `f6de240b` passed CI #5864 across Architecture and all API/Web lint/build/strict/test gates. B2 is therefore **MERGED / CI GREEN / NO MIGRATION** and is the runtime-calculation baseline for B3.
+
+## 23. 8P-B3 Payroll lifecycle + canonical YTD API — local implementation review state
+
+8P-B3 starts from merged `origin/dev@bf175d2a` and activates the B1/B2 Payroll foundation as an explicit Accounting-owned runtime vertical. It adds authenticated lifecycle/configuration transport and persistence orchestration, but deliberately does **not** activate Payroll Journal posting, employee-payment settlement, CRA-remittance settlement, correction/reversal posting, Pay Statement PDF rendering or Web UI.
+
+### 23.1 Accounting-owned runtime boundary
+
+B3 keeps one Accounting composition root and one Payroll transport adapter:
+
+- `AccountingPayrollController` uses the existing Accounting `SessionAuthGuard + RolesGuard` policy and remains `ADMIN / ACCOUNTANT` only;
+- external routes accept/return Payroll stable IDs, date-only strings and integer cents/minutes; internal Payroll UUID relations remain inside persistence services;
+- `AccountingPayrollConfigService`, `AccountingPayrollEmployeeService`, `AccountingPayrollOpeningService`, `AccountingPayrollRunService`, `AccountingPayrollFinalizationService` and `AccountingPayrollYtdService` split the runtime by capability rather than reintroducing a broad Accounting facade;
+- Payroll runtime consumes Prisma only through the existing Accounting-local `ACCOUNTING_DB / accounting-db.ts` seam. Payroll production source has no direct `@prisma/client` import, so B3 does not add a new Accounting -> Runtime direct-import allowance;
+- architecture guards continue to reject Payroll direct mutation of `AccountingTransaction`, `AccountingJournalEntry` or `AccountingJournalLine`.
+
+### 23.2 Config and same-employer opening lifecycle
+
+Employer/employee configuration remains append-only and effective-dated. Service-side Serializable writes allocate monotonically increasing config versions and preserve stable config identities for later run freezing.
+
+`PayrollEmployeeYearOpening` is editable only until the first run in that employee/tax year reaches APPROVED. The freeze is based on durable `approvedAt`, so a later VOID does not make previously consumed opening evidence editable again.
+
+B3 closes one B1/B2 evidence gap for mid-year same-employer startup. If opening `nonPeriodicEarningsYtdCents > 0`, the B2 T4127 regular-bonus path also requires prior non-periodic credit/deduction evidence. The opening therefore gains three required integer-cent facts:
+
+- `nonPeriodicCppBaseContributionYtdCents`;
+- `nonPeriodicCppAdditionalDeductionYtdCents`;
+- `nonPeriodicEiPremiumYtdCents`.
+
+The policy requires all three to be zero when non-periodic earnings are zero. They are not given schema defaults: unknown historical evidence must not be silently rewritten as zero.
+
+### 23.3 Canonical YTD derivation and pay schedule
+
+Canonical YTD is rebuilt from first principles as:
+
+`same-employer opening + earlier APPROVED/POSTED PayrollRun persisted facts`.
+
+`DRAFT`, `CALCULATED` and `VOIDED` runs do not contribute. B3 does not trust the previous run's `ytdAfterJson` as a ledger; frozen snapshots remain calculation/approval evidence while the canonical aggregate is reconstructed from opening fields plus finalized run amount fields and persisted non-periodic contribution evidence.
+
+The schedule helper derives the actual CRA pay-period count from `payScheduleAnchorDate`: weekly may resolve to 52/53, biweekly to 26/27, semi-monthly to 24 and monthly to 12. The resolved count is frozen on each calculated run.
+
+### 23.4 Run state machine activated in B3
+
+B3 exposes only the pre-Journal lifecycle:
+
+- create/update `DRAFT`;
+- `DRAFT -> CALCULATED`;
+- explicit `CALCULATED -> CALCULATED` recalculation;
+- editing a calculated run invalidates its evidence and returns it to `DRAFT`;
+- `CALCULATED -> APPROVED`;
+- `APPROVED -> VOIDED` only while no later finalized run for that employee exists.
+
+Calculation freezes the effective employer/employee config stable IDs, policy/profile identity, resolved pay-period count, input/output JSON, `ytdBefore`, `ytdAfter` and a canonical SHA-256 calculation hash.
+
+Approval runs inside the existing Accounting Serializable transaction helper. It validates the persisted hash, re-derives canonical YTD/effective configs, rebuilds the calculation, and requires the fresh hash to equal the frozen hash. A changed opening, newly finalized earlier run, effective config change or other calculation-input drift therefore returns a stale-calculation conflict and requires recalculation.
+
+B3 intentionally exposes no `POSTED` or `REVERSED` mutation endpoint. Those states remain reserved for 8P-D Accounting Journal/correction authority.
+
+### 23.5 B2 evidence correction discovered during B3
+
+B3 review found one B2 output inconsistency: reviewed CPP-exempt or EI-non-insurable runs correctly deducted zero CPP/EI but still reported gross earnings as pensionable/insurable earnings. B3 corrects the headline bases so reviewed `EXEMPT_REVIEWED` CPP yields zero `pensionableEarningsCents`, and reviewed `NON_INSURABLE_REVIEWED` EI yields zero `insurableEarningsCents`. Focused B2 characterization is extended so canonical YTD cannot accumulate excluded earnings bases.
+
+### 23.6 Migration handoff
+
+**MIGRATION REQUIRED.**
+
+Reason: B3 adds three persisted, required evidence columns to `PayrollEmployeeYearOpening`. No migration file is created or edited by MCP.
+
+Suggested migration name:
+
+`phase9_slice8p_b3_payroll_opening_non_periodic_evidence`
+
+After the reviewed B3 schema/source PR is merged into `dev`, generate the companion migration in the user's verified disposable/local development database with:
+
+`pnpm --filter api exec prisma migrate dev --create-only --name phase9_slice8p_b3_payroll_opening_non_periodic_evidence`
+
+Expected SQL should add only the three integer columns above. Because they intentionally have no defaults and are required, review the target database first: if any `PayrollEmployeeYearOpening` rows already exist, the generated SQL must not be applied until a correct evidence backfill/staged constraint plan is defined. Do not replace unknown non-periodic evidence with zero merely to satisfy `NOT NULL`.
+
+Promotion from `dev` to `main` / production remains blocked until the companion migration is generated locally, reviewed, committed and merged back into `dev`.
+
+### 23.7 Local validation state
+
+Per repository workflow, no local Prisma generate/validate, scanner, lint, build, strict TypeScript or Jest command is claimed during the local implementation phase. GitHub Actions is the authoritative validation gate after remote delivery.
+
+Current local state: **8P-B3 SOURCE COMPLETE / REVIEW PENDING / MIGRATION REQUIRED**.

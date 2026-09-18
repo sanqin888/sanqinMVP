@@ -121,6 +121,9 @@ export type PayrollYearOpeningPolicyInput = {
   insurableEarningsYtdCents: number;
   employeeEiYtdCents: number;
   incomeTaxYtdCents: number;
+  nonPeriodicCppBaseContributionYtdCents: number;
+  nonPeriodicCppAdditionalDeductionYtdCents: number;
+  nonPeriodicEiPremiumYtdCents: number;
   vacationPayPaidYtdCents: number;
   vacationPayAccruedYtdCents: number;
   sourceNote: string;

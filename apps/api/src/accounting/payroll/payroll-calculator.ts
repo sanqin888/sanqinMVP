@@ -107,8 +107,10 @@ export const calculateOntarioHourlyPayroll = (
       periodicTaxableEarningsCents,
       nonPeriodicTaxableEarningsCents,
     );
-    const pensionableEarningsCents = grossPayCents;
-    const insurableEarningsCents = grossPayCents;
+    const pensionableEarningsCents =
+      input.cppTreatment === PayrollCppTreatment.STANDARD ? grossPayCents : 0;
+    const insurableEarningsCents =
+      input.eiTreatment === PayrollEiTreatment.INSURABLE ? grossPayCents : 0;
 
     const employeeCppRegularCents =
       input.cppTreatment === PayrollCppTreatment.STANDARD
