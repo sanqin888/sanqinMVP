@@ -1,9 +1,9 @@
 # Phase 9 Payroll Vertical — Readiness, Design and Closeout Gate
 
-Status: **8P-A ANALYSIS COMPLETE / REVIEW PENDING — SOURCE IMPLEMENTATION NOT STARTED**  
+Status: **8P-B1 LOCAL SOURCE COMPLETE / REVIEW PENDING — MIGRATION REQUIRED**  
 Planning date: 2026-09-16  
-Latest readiness baseline: `origin/dev@6d216eab` (2026-09-17), CI #5855 green  
-Current audit branch: `docs/phase9-slice8p-a-readiness`
+Implementation baseline: `origin/dev@5e968136` (PR #2386 merged)  
+Current implementation branch: `feat/phase9-slice8p-b1-payroll-foundation-dev2386`
 
 ## 1. Decision and insertion point
 
@@ -1118,3 +1118,49 @@ Remaining values such as SanQ's actual remitter type, employee TD1 values, EI re
 Recommended state after user review:
 
 **8P-A ANALYSIS COMPLETE / READY FOR 8P-B1 SCHEMA-CONTRACT IMPLEMENTATION / MIGRATION REQUIRED AFTER SOURCE REVIEW**.
+
+## 21. 8P-B1 local implementation review state
+
+8P-B1 is now locally implemented from merged `origin/dev@5e968136` and is intentionally limited to the approved schema/contracts/architecture foundation.
+
+Implemented source scope:
+
+- Prisma adds the six approved Payroll core models: `PayrollEmployer`, `PayrollEmployerConfigVersion`, `PayrollEmployee`, `PayrollEmployeeConfigVersion`, `PayrollEmployeeYearOpening`, and `PayrollRun`.
+- Prisma adds the approved Payroll enums and adds `PAYROLL` to `AccountingJournalSource`.
+- `PayrollRun` freezes employer/employee config references through their stable config identities, while Payroll-internal aggregate ownership may still use internal UUID relations.
+- draft-input, effective-config, same-employer YTD opening, calculated-evidence completeness and immutable run-state transitions are pinned in owner-local pure policy code.
+- Payroll production code remains framework/Prisma neutral in B1 and has no controller, service, repository, Journal writer or transport surface.
+- architecture regression forbids User/Store DB relations, direct Journal/Transaction mutation, Payroll CoA provisioning and settlement-table pre-creation.
+- ID inventory is refreshed to include the six Payroll models and their stable business identities.
+
+Explicitly still absent:
+
+- CRA/Ontario tax, CPP/CPP2 or EI formulas/constants;
+- Payroll HTTP API or Web UI;
+- Payroll Journal posting/write authority;
+- Payroll CoA system-account provisioning;
+- employee-payment / CRA-remittance settlement persistence;
+- PDF dependency/pay-statement renderer;
+- SIN, bank, T4 or ROE persistence.
+
+### 21.1 Migration handoff
+
+**MIGRATION REQUIRED.**
+
+Reason: B1 adds persisted Prisma enums/models/relations and extends the persisted `AccountingJournalSource` enum with `PAYROLL`.
+
+Suggested migration name: `phase9_payroll_b1_foundation`.
+
+After the reviewed schema/source change is merged into `dev`, generate locally with:
+
+`pnpm --filter api exec prisma migrate dev --create-only --name phase9_payroll_b1_foundation`
+
+Expected generated SQL should be additive only: create the Payroll enums, add `PAYROLL` to the Accounting Journal source enum, create the six new Payroll tables, and create their approved unique/index constraints and Payroll-internal foreign keys.
+
+There is no existing production Payroll table/data to rename or backfill. Review the generated SQL for enum alteration ordering, table/constraint names, nullable calculated fields, stable-config foreign keys and accidental destructive statements. No migration file was created or edited by MCP.
+
+Promotion to `main` / production remains blocked until the user-generated migration is reviewed, committed and merged back into `dev`.
+
+### 21.2 Local validation state
+
+Per repository workflow, no local Prisma generation/validation, lint, build, Jest or architecture scanner execution is claimed before user review. The current state is **LOCAL SOURCE COMPLETE / REVIEW PENDING**, not CI-green or deployable.
