@@ -23,10 +23,7 @@ import {
   type PayrollCraRemittancePreviewV1,
   type PayrollCraRemittanceRunEvidenceV1,
 } from './payroll-cra-remittance-evidence';
-import {
-  payrollCraRemittanceDto,
-  type PayrollCraRemittanceViewRecord,
-} from './payroll-cra-remittance-presenter';
+import { payrollCraRemittanceDto } from './payroll-cra-remittance-presenter';
 import {
   normalizePayrollOptionalText,
   parsePayrollDateOnly,
@@ -52,7 +49,7 @@ const REMITTANCE_INCLUDE = {
     orderBy: [{ payDate: 'asc' as const }, { id: 'asc' as const }],
     include: { run: { select: { runStableId: true } } },
   },
-} as const;
+};
 
 const isUniqueConstraintError = (error: unknown): boolean =>
   typeof error === 'object' &&
@@ -135,9 +132,7 @@ export class AccountingPayrollCraRemittanceService {
       include: REMITTANCE_INCLUDE,
       orderBy: [{ createdAt: 'desc' }, { remittanceStableId: 'desc' }],
     });
-    return rows.map((row) =>
-      payrollCraRemittanceDto(row as PayrollCraRemittanceViewRecord),
-    );
+    return rows.map((row) => payrollCraRemittanceDto(row));
   }
 
   async settle(
@@ -333,20 +328,19 @@ export class AccountingPayrollCraRemittanceService {
         include: REMITTANCE_INCLUDE,
       });
       if (replay) {
-        const replayView = replay as PayrollCraRemittanceViewRecord;
         if (
-          replayView.employer.employerStableId !== input.employerStableId ||
-          replayView.paymentAccountStableId !== input.paymentAccountStableId ||
-          !sameDate(replayView.paymentDate, input.paymentDate) ||
-          replayView.reference !== input.reference ||
-          replayView.currency !== 'CAD' ||
-          !replayView.journalEntryStableId
+          replay.employer.employerStableId !== input.employerStableId ||
+          replay.paymentAccountStableId !== input.paymentAccountStableId ||
+          !sameDate(replay.paymentDate, input.paymentDate) ||
+          replay.reference !== input.reference ||
+          replay.currency !== 'CAD' ||
+          !replay.journalEntryStableId
         ) {
           throw new ConflictException(
             'CRA remittance evidence is already bound to a different settlement',
           );
         }
-        return payrollCraRemittanceDto(replayView);
+        return payrollCraRemittanceDto(replay);
       }
 
       const preview = await this.buildPreview(
@@ -486,9 +480,7 @@ export class AccountingPayrollCraRemittanceService {
         data: { journalEntryStableId: journal.entryStableId },
         include: REMITTANCE_INCLUDE,
       });
-      const after = payrollCraRemittanceDto(
-        updated as PayrollCraRemittanceViewRecord,
-      );
+      const after = payrollCraRemittanceDto(updated);
       await writeAccountingAuditLog(tx, {
         action: 'PAYROLL_CRA_REMITTANCE_POST',
         entityType: 'PAYROLL_CRA_REMITTANCE',
