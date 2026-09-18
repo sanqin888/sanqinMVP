@@ -23,6 +23,7 @@ const EXPECTED_CONTROLLER_CAPABILITIES = {
   'accounting-period.controller.ts': ['AccountingPeriodService'],
   'payroll/accounting-payroll.controller.ts': [
     'AccountingPayrollConfigService',
+    'AccountingPayrollCraRemittanceService',
     'AccountingPayrollEmployeePaymentService',
     'AccountingPayrollEmployeeService',
     'AccountingPayrollFinalizationService',
@@ -103,6 +104,7 @@ const EXPECTED_ROUTES = [
   'PUT payroll/employers/:employerStableId',
   'GET payroll/employers/:employerStableId/configs',
   'POST payroll/employers/:employerStableId/configs',
+  'GET payroll/employers/:employerStableId/cra-remittances/preview',
   'GET payroll/employers/:employerStableId/employees',
   'POST payroll/employers/:employerStableId/employees',
   'PUT payroll/employees/:employeeStableId',

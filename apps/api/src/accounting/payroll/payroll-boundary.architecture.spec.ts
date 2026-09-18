@@ -28,7 +28,7 @@ const modelSource = (schema: string, model: string): string => {
   return match[0];
 };
 
-describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2/D3-A Payroll ownership boundary', () => {
+describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2/D3-A/D3-B1 Payroll ownership boundary', () => {
   const schema = read(PRISMA_SCHEMA);
 
   it('adds only the approved Payroll core persistence models', () => {
@@ -40,6 +40,8 @@ describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2/D3-A Payroll ownership boundary', ()
       'PayrollEmployeeYearOpening',
       'PayrollRun',
       'PayrollEmployeePayment',
+      'PayrollCraRemittance',
+      'PayrollCraRemittanceRun',
     ];
 
     for (const model of expectedModels) {
@@ -47,7 +49,8 @@ describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2/D3-A Payroll ownership boundary', ()
     }
 
     expect(schema).toContain('model PayrollEmployeePayment {');
-    expect(schema).not.toContain('model PayrollCraRemittance {');
+    expect(schema).toContain('model PayrollCraRemittance {');
+    expect(schema).toContain('model PayrollCraRemittanceRun {');
   });
 
   it('keeps Payroll cross-owner identities stable and scalar', () => {
@@ -55,6 +58,8 @@ describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2/D3-A Payroll ownership boundary', ()
     const employee = modelSource(schema, 'PayrollEmployee');
     const run = modelSource(schema, 'PayrollRun');
     const payment = modelSource(schema, 'PayrollEmployeePayment');
+    const remittance = modelSource(schema, 'PayrollCraRemittance');
+    const remittanceRun = modelSource(schema, 'PayrollCraRemittanceRun');
 
     expect(employer).toContain('employerStableId');
     expect(employer).toContain('defaultStoreStableId String?');
@@ -78,6 +83,17 @@ describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2/D3-A Payroll ownership boundary', ()
     expect(payment).toMatch(/amountCents\s+Int/);
     expect(payment).not.toMatch(/AccountingAccount\??\s+@relation/);
     expect(payment).not.toMatch(/AccountingJournalEntry\??\s+@relation/);
+
+    expect(remittance).toContain('remittanceStableId');
+    expect(remittance).toMatch(/evidenceHash\s+String\s+@unique/);
+    expect(remittance).toContain('paymentAccountStableId');
+    expect(remittance).toContain('journalEntryStableId');
+    expect(remittance).not.toMatch(/AccountingAccount\??\s+@relation/);
+    expect(remittance).not.toMatch(/AccountingJournalEntry\??\s+@relation/);
+    expect(remittanceRun).toMatch(/runId\s+String\s+@unique\s+@db\.Uuid/);
+    expect(remittanceRun).toContain('employerConfigStableId');
+    expect(remittanceRun).toContain('calculationHash');
+    expect(remittanceRun).toContain('postedAccrualJournalEntryStableId');
 
     const lifecycleContracts = read(
       resolve(PAYROLL_ROOT, 'payroll-lifecycle.contracts.ts'),
@@ -116,7 +132,7 @@ describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2/D3-A Payroll ownership boundary', ()
     expect(source).not.toContain('@Injectable(');
   });
 
-  it('allows Payroll runtime transport through D3-A without bypassing Accounting-owned Journal persistence', () => {
+  it('allows Payroll runtime transport through D3-B1 without bypassing Accounting-owned Journal persistence', () => {
     const source = payrollProductionFiles()
       .map((name) => read(resolve(PAYROLL_ROOT, name)))
       .join('\n');
@@ -186,7 +202,7 @@ describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2/D3-A Payroll ownership boundary', ()
     expect(authority).not.toContain('expense_labor');
   });
 
-  it('requires the reviewed Payroll CoA defaults while keeping CRA settlement persistence deferred after D3-A', () => {
+  it('pins D3-B1 CRA persistence/preview while keeping the CRA Journal writer deferred', () => {
     const chart = read(
       resolve(ACCOUNTING_ROOT, 'accounting-chart-of-accounts.ts'),
     );
@@ -199,7 +215,20 @@ describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2/D3-A Payroll ownership boundary', ()
     expect(chart).toContain('account_payroll_ei_payable');
     expect(chart).toContain('account_payroll_vacation_payable');
     expect(schema).toContain('PayrollEmployeePayment');
-    expect(schema).not.toContain('PayrollCraRemittance');
+    expect(schema).toContain('PayrollCraRemittance');
+    expect(schema).toContain('PayrollCraRemittanceRun');
+
+    const controller = read(
+      resolve(PAYROLL_ROOT, 'accounting-payroll.controller.ts'),
+    );
+    const preview = read(
+      resolve(PAYROLL_ROOT, 'accounting-payroll-cra-remittance.service.ts'),
+    );
+    expect(controller).toContain('cra-remittances/preview');
+    expect(preview).toContain('PayrollRunStatus.POSTED');
+    expect(preview).toContain('craRemittanceEvidence: null');
+    expect(preview).toContain('buildPayrollCraRemittancePreview');
+    expect(preview).not.toContain('createPayrollCraRemittanceJournalInTx');
   });
 
   it('pins the approved PayrollRun evidence and correction shape', () => {
