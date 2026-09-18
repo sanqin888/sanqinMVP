@@ -36,13 +36,11 @@ export const parseOptionalPayrollTimestamp = (
   return value;
 };
 
-export const payrollDateOnly = (date: Date | null | undefined): string | null =>
-  date ? date.toISOString().slice(0, 10) : null;
+export const payrollDateOnly = (
+  date: Date | null | undefined,
+): string | null => (date ? date.toISOString().slice(0, 10) : null);
 
-export const requirePayrollStableId = (
-  raw: string,
-  field: string,
-): string => {
+export const requirePayrollStableId = (raw: string, field: string): string => {
   const value = raw?.trim();
   if (!value) throw new BadRequestException(`${field} is required`);
   return value;

@@ -144,10 +144,7 @@ const validateEmploymentDates = (
 export class AccountingPayrollEmployeeService {
   constructor(@Inject(ACCOUNTING_DB) private readonly prisma: AccountingDb) {}
 
-  async listEmployees(
-    employerStableIdRaw: string,
-    includeInactive = false,
-  ) {
+  async listEmployees(employerStableIdRaw: string, includeInactive = false) {
     const employerStableId = requirePayrollStableId(
       employerStableIdRaw,
       'employerStableId',
@@ -208,8 +205,7 @@ export class AccountingPayrollEmployeeService {
         data: {
           employerId: employer.id,
           legalName: requirePayrollText(input.legalName, 'legalName'),
-          displayName:
-            normalizePayrollOptionalText(input.displayName) ?? null,
+          displayName: normalizePayrollOptionalText(input.displayName) ?? null,
           userStableId:
             normalizePayrollOptionalText(input.userStableId) ?? null,
           storeStableId:

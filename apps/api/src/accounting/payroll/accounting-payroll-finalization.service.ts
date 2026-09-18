@@ -63,10 +63,7 @@ export class AccountingPayrollFinalizationService {
   ) {}
 
   async calculateRun(runStableIdRaw: string, actorRef: string) {
-    const runStableId = requirePayrollStableId(
-      runStableIdRaw,
-      'runStableId',
-    );
+    const runStableId = requirePayrollStableId(runStableIdRaw, 'runStableId');
 
     return runSerializableAccountingWrite(this.prisma, async (tx) => {
       const existing = await tx.payrollRun.findUnique({
@@ -163,10 +160,7 @@ export class AccountingPayrollFinalizationService {
   }
 
   async approveRun(runStableIdRaw: string, actorRef: string) {
-    const runStableId = requirePayrollStableId(
-      runStableIdRaw,
-      'runStableId',
-    );
+    const runStableId = requirePayrollStableId(runStableIdRaw, 'runStableId');
 
     return runSerializableAccountingWrite(this.prisma, async (tx) => {
       const existing = await tx.payrollRun.findUnique({
@@ -242,10 +236,7 @@ export class AccountingPayrollFinalizationService {
   }
 
   async voidRun(runStableIdRaw: string, actorRef: string) {
-    const runStableId = requirePayrollStableId(
-      runStableIdRaw,
-      'runStableId',
-    );
+    const runStableId = requirePayrollStableId(runStableIdRaw, 'runStableId');
 
     return runSerializableAccountingWrite(this.prisma, async (tx) => {
       const existing = await tx.payrollRun.findUnique({

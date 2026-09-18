@@ -17,8 +17,7 @@ import { requirePayrollStableId } from './payroll-lifecycle-input';
 
 type PayrollDbClient = AccountingDb | AccountingTransactionClient;
 
-const beginningOfYear = (year: number): Date =>
-  new Date(Date.UTC(year, 0, 1));
+const beginningOfYear = (year: number): Date => new Date(Date.UTC(year, 0, 1));
 
 @Injectable()
 export class AccountingPayrollYtdService {

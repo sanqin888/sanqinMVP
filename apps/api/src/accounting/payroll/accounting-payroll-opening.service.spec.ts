@@ -40,8 +40,8 @@ describe('Accounting Payroll year opening lifecycle', () => {
     };
     const prisma = {
       ...tx,
-      $transaction: jest.fn(
-        (work: (client: typeof tx) => Promise<unknown>) => work(tx),
+      $transaction: jest.fn((work: (client: typeof tx) => Promise<unknown>) =>
+        work(tx),
       ),
     };
     const service = new AccountingPayrollOpeningService(prisma as never);

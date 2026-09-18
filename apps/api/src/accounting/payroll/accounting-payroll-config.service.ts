@@ -78,10 +78,7 @@ export class AccountingPayrollConfigService {
     return rows.map(employerDto);
   }
 
-  async createEmployer(
-    input: CreatePayrollEmployerInput,
-    actorRef: string,
-  ) {
+  async createEmployer(input: CreatePayrollEmployerInput, actorRef: string) {
     const legalName = requirePayrollText(input.legalName, 'legalName');
     const displayName = normalizePayrollOptionalText(input.displayName) ?? null;
     const defaultStoreStableId =

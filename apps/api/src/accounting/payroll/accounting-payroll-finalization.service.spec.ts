@@ -96,8 +96,8 @@ const makeService = () => {
   };
   const prisma = {
     ...tx,
-    $transaction: jest.fn(
-      (work: (client: typeof tx) => Promise<unknown>) => work(tx),
+    $transaction: jest.fn((work: (client: typeof tx) => Promise<unknown>) =>
+      work(tx),
     ),
   };
   const ytd = {
@@ -123,39 +123,41 @@ describe('Accounting Payroll finalization lifecycle', () => {
     const existing = runRow(PayrollRunStatus.CALCULATED);
     tx.payrollRun.findUnique.mockResolvedValue(existing);
 
-    jest.spyOn(calculationModule, 'buildPayrollRunCalculation').mockResolvedValue({
-      ok: true,
-      calculation: {
-        employeeConfigStableId: 'employee_config_1',
-        employerConfigStableId: 'employer_config_1',
-        input: {
-          provinceOfEmployment: 'ON',
-          calculationProfileVersion: 'ON_HOURLY_SIMPLE_V1',
-          payDate: existing.payDate,
-          payFrequency: 'BIWEEKLY',
-          payPeriodsPerYear: 26,
-          regularMinutes: 4_800,
-          regularHourlyRateCents: 2_000,
-          overtimeMinutes: 0,
-          overtimeHourlyRateCents: 0,
-          vacationTopUpCents: 0,
-          federalTd1Mode: 'NO_FORM_DEFAULT',
-          federalTd1TotalClaimCents: null,
-          ontarioTd1Mode: 'NO_FORM_DEFAULT',
-          ontarioTd1TotalClaimCents: null,
-          incomeTaxTreatment: 'STANDARD',
-          additionalTaxPerPayCents: 0,
-          cppTreatment: 'STANDARD',
-          eiTreatment: 'INSURABLE',
-          eiEmployerMultiplierMicros: 1_400_000,
-          vacationTreatment: 'ACCRUED',
-          vacationRateBasisPoints: 400,
-          ytd: emptyPayrollYtd(),
+    jest
+      .spyOn(calculationModule, 'buildPayrollRunCalculation')
+      .mockResolvedValue({
+        ok: true,
+        calculation: {
+          employeeConfigStableId: 'employee_config_1',
+          employerConfigStableId: 'employer_config_1',
+          input: {
+            provinceOfEmployment: 'ON',
+            calculationProfileVersion: 'ON_HOURLY_SIMPLE_V1',
+            payDate: existing.payDate,
+            payFrequency: 'BIWEEKLY',
+            payPeriodsPerYear: 26,
+            regularMinutes: 4_800,
+            regularHourlyRateCents: 2_000,
+            overtimeMinutes: 0,
+            overtimeHourlyRateCents: 0,
+            vacationTopUpCents: 0,
+            federalTd1Mode: 'NO_FORM_DEFAULT',
+            federalTd1TotalClaimCents: null,
+            ontarioTd1Mode: 'NO_FORM_DEFAULT',
+            ontarioTd1TotalClaimCents: null,
+            incomeTaxTreatment: 'STANDARD',
+            additionalTaxPerPayCents: 0,
+            cppTreatment: 'STANDARD',
+            eiTreatment: 'INSURABLE',
+            eiEmployerMultiplierMicros: 1_400_000,
+            vacationTreatment: 'ACCRUED',
+            vacationRateBasisPoints: 400,
+            ytd: emptyPayrollYtd(),
+          },
+          output: existing.calculationOutputJson as never,
+          calculationHash: 'sha256:stale-different-hash',
         },
-        output: existing.calculationOutputJson as never,
-        calculationHash: 'sha256:stale-different-hash',
-      },
-    });
+      });
 
     await expect(
       service.approveRun(existing.runStableId, 'actor_2'),

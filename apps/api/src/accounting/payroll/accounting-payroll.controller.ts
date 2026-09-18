@@ -188,10 +188,7 @@ export class AccountingPayrollController {
     @Body() body: CreatePayrollRunInput,
     @Req() req: AuthedAccountingRequest,
   ) {
-    return this.runs.createDraft(
-      body,
-      requireAccountingOperatorUserId(req),
-    );
+    return this.runs.createDraft(body, requireAccountingOperatorUserId(req));
   }
 
   @Get('payroll/runs/:runStableId')

@@ -9,7 +9,10 @@ import { ACCOUNTING_DB, type AccountingDb } from '../accounting-db';
 import { runSerializableAccountingWrite } from '../accounting-atomic-write';
 import { writeAccountingAuditLog } from '../accounting-audit-writer';
 import { PayrollRunStatus } from './payroll-contracts';
-import { assertPayrollRunDraft, assertPayrollRunStatusTransition } from './payroll-policy';
+import {
+  assertPayrollRunDraft,
+  assertPayrollRunStatusTransition,
+} from './payroll-policy';
 import type {
   CreatePayrollRunInput,
   UpdatePayrollRunInput,
@@ -69,10 +72,7 @@ export class AccountingPayrollRunService {
   }
 
   async getRun(runStableIdRaw: string) {
-    const runStableId = requirePayrollStableId(
-      runStableIdRaw,
-      'runStableId',
-    );
+    const runStableId = requirePayrollStableId(runStableIdRaw, 'runStableId');
     const run = await this.prisma.payrollRun.findUnique({
       where: { runStableId },
       include: PAYROLL_RUN_INCLUDE,
@@ -229,10 +229,7 @@ export class AccountingPayrollRunService {
     input: UpdatePayrollRunInput,
     actorRef: string,
   ) {
-    const runStableId = requirePayrollStableId(
-      runStableIdRaw,
-      'runStableId',
-    );
+    const runStableId = requirePayrollStableId(runStableIdRaw, 'runStableId');
 
     return runSerializableAccountingWrite(this.prisma, async (tx) => {
       const existing = await tx.payrollRun.findUnique({
@@ -256,7 +253,9 @@ export class AccountingPayrollRunService {
           );
         } catch (error) {
           throw new ConflictException(
-            error instanceof Error ? error.message : 'invalid payroll transition',
+            error instanceof Error
+              ? error.message
+              : 'invalid payroll transition',
           );
         }
       }

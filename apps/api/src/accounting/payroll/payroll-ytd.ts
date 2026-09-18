@@ -44,9 +44,7 @@ const requireAmount = (
   runStableId: string,
 ): number => {
   if (!Number.isSafeInteger(value) || (value as number) < 0) {
-    throw new Error(
-      `finalized PayrollRun ${runStableId} has invalid ${field}`,
-    );
+    throw new Error(`finalized PayrollRun ${runStableId} has invalid ${field}`);
   }
   return value as number;
 };
@@ -60,9 +58,8 @@ const readNonPeriodicEvidence = (
       `finalized PayrollRun ${row.runStableId} is missing calculation output evidence`,
     );
   }
-  const contributionEvidence = (
-    output as Record<string, unknown>
-  ).contributionEvidence;
+  const contributionEvidence = (output as Record<string, unknown>)
+    .contributionEvidence;
   if (
     !contributionEvidence ||
     typeof contributionEvidence !== 'object' ||
@@ -85,9 +82,7 @@ const readNonPeriodicEvidence = (
 
   return {
     cppBaseContributionCents: read('employeeCppBaseNonPeriodicCents'),
-    cppAdditionalDeductionCents: read(
-      'cppTaxDeductionNonPeriodicCents',
-    ),
+    cppAdditionalDeductionCents: read('cppTaxDeductionNonPeriodicCents'),
     eiPremiumCents: read('employeeEiNonPeriodicCents'),
   };
 };

@@ -9,7 +9,11 @@ type CanonicalJson =
   | { [key: string]: CanonicalJson };
 
 const canonicalize = (value: unknown): CanonicalJson => {
-  if (value === null || typeof value === 'boolean' || typeof value === 'string') {
+  if (
+    value === null ||
+    typeof value === 'boolean' ||
+    typeof value === 'string'
+  ) {
     return value;
   }
   if (typeof value === 'number') {
