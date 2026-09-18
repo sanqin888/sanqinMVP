@@ -16,9 +16,72 @@ export type AccountingPdfFonts = {
   unicode: boolean;
 };
 
+type AccountingPdfTextOptions = {
+  width?: number;
+  align?: 'left' | 'center' | 'right' | 'justify';
+  lineBreak?: boolean;
+  ellipsis?: boolean | string;
+};
+
+export interface AccountingPdfDocument {
+  y: number;
+  page: {
+    width: number;
+    height: number;
+  };
+  addPage(): this;
+  font(name: string): this;
+  fontSize(size: number): this;
+  text(
+    text: string,
+    x?: number,
+    y?: number,
+    options?: AccountingPdfTextOptions,
+  ): this;
+  moveDown(lines?: number): this;
+  fillColor(color: string): this;
+  rect(x: number, y: number, width: number, height: number): this;
+  fill(color?: string): this;
+  moveTo(x: number, y: number): this;
+  lineTo(x: number, y: number): this;
+  lineWidth(width: number): this;
+  strokeColor(color: string): this;
+  stroke(): this;
+  registerFont(name: string, src: string, family?: string): this;
+  on(
+    event: 'data',
+    listener: (chunk: Buffer | Uint8Array) => void,
+  ): this;
+  on(event: 'error', listener: (error: Error) => void): this;
+  on(event: 'end', listener: () => void): this;
+  removeAllListeners(event?: string): this;
+  end(): void;
+  destroy(error?: Error): void;
+}
+
+type AccountingPdfDocumentOptions = {
+  size: 'LETTER';
+  margins: {
+    top: number;
+    right: number;
+    bottom: number;
+    left: number;
+  };
+  compress: boolean;
+  info: {
+    Title: string;
+    Subject: string;
+    Author: string;
+    Creator: string;
+    Producer: string;
+    CreationDate: Date;
+    ModDate: Date;
+  };
+};
+
 type PdfKitConstructor = new (
-  options?: PDFKit.PDFDocumentOptions,
-) => PDFKit.PDFDocument;
+  options?: AccountingPdfDocumentOptions,
+) => AccountingPdfDocument;
 
 const loadPdfKitConstructor = (): PdfKitConstructor => {
   const moduleValue: unknown = createRequire(__filename)('pdfkit');
@@ -39,8 +102,6 @@ const loadPdfKitConstructor = (): PdfKitConstructor => {
 
 const PDFDocument = loadPdfKitConstructor();
 
-export type AccountingPdfDocument = PDFKit.PDFDocument;
-
 export type AccountingPdfRenderContext = {
   doc: AccountingPdfDocument;
   fonts: AccountingPdfFonts;
@@ -59,14 +120,6 @@ const resolveFontPath = (envKey: string, fallback: string): string | null => {
   return existsSync(fallback) ? fallback : null;
 };
 
-type PdfKitFontRegistry = {
-  registerFont(
-    name: string,
-    src: string,
-    family?: string,
-  ): AccountingPdfDocument;
-};
-
 const registerFonts = (
   doc: AccountingPdfDocument,
   requiresUnicode: boolean,
@@ -81,13 +134,12 @@ const registerFonts = (
   );
 
   if (regular && bold) {
-    const fontRegistry = doc as AccountingPdfDocument & PdfKitFontRegistry;
-    fontRegistry.registerFont(
+    doc.registerFont(
       'SanQPdfRegular',
       regular,
       'NotoSansCJKsc-Regular',
     );
-    fontRegistry.registerFont('SanQPdfBold', bold, 'NotoSansCJKsc-Bold');
+    doc.registerFont('SanQPdfBold', bold, 'NotoSansCJKsc-Bold');
     return {
       regular: 'SanQPdfRegular',
       bold: 'SanQPdfBold',
