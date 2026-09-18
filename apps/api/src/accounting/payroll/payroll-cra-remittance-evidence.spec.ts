@@ -75,8 +75,8 @@ describe('Payroll CRA remittance evidence', () => {
   });
 
   it('rejects a run outside the remittance period', () => {
-    expect(() =>
-      preview([run('run_a', { payDate: '2026-10-01' })]),
-    ).toThrow('outside the CRA remittance period');
+    expect(() => preview([run('run_a', { payDate: '2026-10-01' })])).toThrow(
+      'outside the CRA remittance period',
+    );
   });
 });

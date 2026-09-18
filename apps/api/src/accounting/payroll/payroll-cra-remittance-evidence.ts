@@ -156,9 +156,9 @@ export const buildPayrollCraRemittancePreview = (input: {
     throw new Error('remittance periodStart cannot be after periodEnd');
   }
 
-  const includedRuns = input.includedRuns.map(normalizeRun).sort((left, right) =>
-    left.runStableId.localeCompare(right.runStableId),
-  );
+  const includedRuns = input.includedRuns
+    .map(normalizeRun)
+    .sort((left, right) => left.runStableId.localeCompare(right.runStableId));
   const duplicateRun = includedRuns.find(
     (run, index) =>
       index > 0 && run.runStableId === includedRuns[index - 1]?.runStableId,
