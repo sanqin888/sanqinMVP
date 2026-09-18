@@ -220,9 +220,6 @@ CREATE INDEX "PayrollEmployer_defaultStoreStableId_idx" ON "PayrollEmployer"("de
 CREATE UNIQUE INDEX "PayrollEmployerConfigVersion_configStableId_key" ON "PayrollEmployerConfigVersion"("configStableId");
 
 -- CreateIndex
-CREATE INDEX "PayrollEmployerConfigVersion_employerId_effectiveFrom_idx" ON "PayrollEmployerConfigVersion"("employerId", "effectiveFrom");
-
--- CreateIndex
 CREATE UNIQUE INDEX "PayrollEmployerConfigVersion_employerId_version_key" ON "PayrollEmployerConfigVersion"("employerId", "version");
 
 -- CreateIndex
@@ -242,9 +239,6 @@ CREATE UNIQUE INDEX "PayrollEmployee_employerId_userStableId_key" ON "PayrollEmp
 
 -- CreateIndex
 CREATE UNIQUE INDEX "PayrollEmployeeConfigVersion_configStableId_key" ON "PayrollEmployeeConfigVersion"("configStableId");
-
--- CreateIndex
-CREATE INDEX "PayrollEmployeeConfigVersion_employeeId_effectiveFrom_idx" ON "PayrollEmployeeConfigVersion"("employeeId", "effectiveFrom");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "PayrollEmployeeConfigVersion_employeeId_version_key" ON "PayrollEmployeeConfigVersion"("employeeId", "version");
