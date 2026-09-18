@@ -1795,7 +1795,6 @@ model PayrollEmployerConfigVersion {
 
   @@unique([employerId, version])
   @@unique([employerId, effectiveFrom])
-  @@index([employerId, effectiveFrom])
 }
 
 model PayrollEmployee {
@@ -1858,7 +1857,6 @@ model PayrollEmployeeConfigVersion {
 
   @@unique([employeeId, version])
   @@unique([employeeId, effectiveFrom])
-  @@index([employeeId, effectiveFrom])
 }
 
 model PayrollEmployeeYearOpening {
