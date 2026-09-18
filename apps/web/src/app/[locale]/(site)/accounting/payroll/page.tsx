@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api/client';
 import { PayrollRunPanel } from './payroll-run-panel';
 import { PayrollSetupPanel } from './payroll-setup-panel';
+import { PayrollCraRemittancePanel } from './payroll-cra-remittance-panel';
 import {
   type PayrollEmployee,
   type PayrollEmployeeConfig,
@@ -184,8 +185,8 @@ export default function AccountingPayrollPage() {
 
       <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
         {isZh
-          ? '当前 Payroll 已支持工资应计入账和员工净工资付款记账。员工付款只清除 Net Pay 应付负债；CRA 汇款和已入账工资冲销仍属于后续 8P-D3/D4。'
-          : 'Payroll now supports accrual posting and employee net-pay settlement. Employee payment clears only Net Pay payable; CRA remittance and posted-run reversal remain in 8P-D3/D4.'}
+          ? '当前 Payroll 已支持工资应计入账、员工净工资付款和 CRA 工资代扣/供款汇款。员工付款与 CRA 汇款只清除各自应付负债，不会重写工资费用；已入账工资冲销仍属于后续 8P-D4。'
+          : 'Payroll now supports accrual posting, employee net-pay settlement and CRA payroll remittance. Employee and CRA settlements clear only their respective liabilities without rewriting payroll expense; posted-run reversal remains in 8P-D4.'}
       </div>
 
       <PayrollSetupPanel
@@ -206,6 +207,11 @@ export default function AccountingPayrollPage() {
           setSelectedRunStableId('');
         }}
         onChanged={refreshPayrollState}
+      />
+
+      <PayrollCraRemittancePanel
+        isZh={isZh}
+        employerStableId={selectedEmployerStableId}
       />
 
       <PayrollYearOpeningPanel

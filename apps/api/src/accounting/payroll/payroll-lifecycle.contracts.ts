@@ -122,3 +122,11 @@ export type CreatePayrollEmployeePaymentInput = {
   paymentDate: string;
   reference?: string | null;
 };
+
+export type CreatePayrollCraRemittanceInput = {
+  anchorDate: string;
+  expectedEvidenceHash: string;
+  paymentAccountStableId: string;
+  paymentDate: string;
+  reference?: string | null;
+};

@@ -1,9 +1,9 @@
 # Phase 9 Payroll Vertical — Readiness, Design and Closeout Gate
 
-Status: **8P-D3-B1 SOURCE + MIGRATION REVIEWED — CI RE-RUN PENDING**  
+Status: **8P-D3-B2 LOCAL SOURCE REVIEW PENDING — NO MIGRATION**  
 Planning date: 2026-09-16  
-Implementation baseline: `origin/dev@73a70839` (8P-D3-A merged through PR #2393; final head `58204478`, PR CI #5891 and post-merge CI #5892 green)  
-Current implementation branch: `feat/phase9-slice8p-d3b-cra-remittance-settlement`
+Implementation baseline: `origin/dev@95cfbf70` (8P-D3-B1 merged through PR #2394; final head `f35249af`, PR CI #5897 and post-merge CI #5898 green)  
+Current implementation branch: `feat/phase9-slice8p-d3b2-cra-remittance-settlement`
 
 ## 1. Decision and insertion point
 
@@ -1570,7 +1570,7 @@ D3-A deliberately keeps `PayrollCraRemittance` persistence absent. Employer-peri
 
 Current D3-A state: **MERGED / CI GREEN / NO MIGRATION** through PR #2393, final head `58204478`, PR CI #5891, squash `73a70839` and post-merge CI #5892.
 
-## 28. 8P-D3-B1 CRA remittance persistence + canonical preview — local implementation review state
+## 28. 8P-D3-B1 CRA remittance persistence + canonical preview — merged closeout
 
 8P-D3-B1 starts from merged `origin/dev@73a70839`. It adds the durable employer-period remittance evidence shape and a read-only server-authoritative preview, but deliberately does **not** create a remittance settlement, payment Journal or Web payment action yet.
 
@@ -1617,6 +1617,80 @@ The SQL is additive and matches the intended D3-B1 persistence shape: it creates
 
 PR CI #5894 passed Prisma generation, the architecture baseline gate and the full Web job, but API lint failed one type-aware test matcher in `accounting-payroll-cra-remittance.service.spec.ts` (`@typescript-eslint/no-unsafe-assignment`). The redundant nested matcher was removed and pushed in `6f0929f4`. CI #5895 again passed Prisma generation, Architecture and Web, then failed only on the follow-on unused `prisma` fixture; `e017cd85` removed that stale destructure. CI #5896 passed API lint, API build, strict declaration checks, shared strict and the full Web job, then failed only in `accounting-controller-vertical-boundary.architecture.spec.ts`: the explicit Payroll capability allowlist and exact authenticated Accounting route inventory had not yet been extended for `AccountingPayrollCraRemittanceService` and `GET payroll/employers/:employerStableId/cra-remittances/preview`. D3-B1 production source, migration and focused Payroll tests passed. The local follow-up updates only those two explicit 8A architecture inventories.
 
-Promotion to main/production remains blocked until this migration-bearing PR is merged to `dev` and all required CI gates are green.
+The migration-bearing D3-B1 source is now merged to `dev`; PR CI #5897 and post-merge CI #5898 are green. Production promotion remains governed by the normal dev→main release/deployment gate.
 
-Current D3-B1 state: **SOURCE + MIGRATION REVIEWED / CI RE-RUN PENDING / ARCHITECTURE BASELINE FIX UNPUSHED**.
+Current D3-B1 state: **MERGED / CI GREEN / COMPANION MIGRATION MERGED** through PR #2394, final head `f35249af`, PR CI #5897, squash `95cfbf70` and post-merge CI #5898.
+
+## 29. 8P-D3-B2 CRA remittance settlement / Journal / employer UI — local implementation review state
+
+8P-D3-B2 starts from merged `origin/dev@95cfbf70`. It completes the executable CRA settlement path on top of the reviewed D3-B1 persistence/evidence model. **No Prisma schema or migration change is required.**
+
+### 29.1 Server-authoritative settlement
+
+The write endpoint is:
+
+`POST /accounting/payroll/employers/:employerStableId/cra-remittances`
+
+The client supplies only `anchorDate`, `expectedEvidenceHash`, `paymentAccountStableId`, actual `paymentDate` and optional `reference`. It cannot supply amount or CRA component totals.
+
+Inside one Accounting Serializable transaction the service:
+
+1. checks whether the unique evidence hash already belongs to an identical completed settlement and returns that immutable fact on an exact replay;
+2. recomputes the D3-B1 preview from currently unremitted POSTED PayrollRuns;
+3. requires `expectedEvidenceHash` to match the recomputed preview;
+4. requires at least one positive included Payroll liability and `paymentDate >= max(included run payDate)`;
+5. creates the parent remittance and immutable included-run evidence rows;
+6. reads the three Payroll liability accounts plus the selected payment source;
+7. builds and writes the owner-specific Payroll CRA Journal;
+8. freezes the resulting Journal stable ID on the remittance;
+9. writes `PAYROLL_CRA_REMITTANCE_POST` Accounting audit evidence.
+
+The B1 `evidenceHash @unique` and child `runId @unique` remain the database concurrency/idempotency backstops. A race that consumes the same PayrollRun is retried/recomputed rather than silently duplicating the liability settlement.
+
+### 29.2 Journal authority
+
+D3-B2 adds source fact `payroll.cra_remittance.v1`. Its Journal is employer-level with `storeStableId = null` and actual payment date as `occurredAt`:
+
+`Dr income-tax payable + Dr CPP/CPP2 payable + Dr EI payable / Cr selected BANK`
+
+Only positive liability lines are emitted. The payment source must be an **active CAD ASSET/BANK** account; CASH and PLATFORM_WALLET are rejected. No wage expense, employer-contribution expense or labor category is touched.
+
+The Accounting Journal writer independently re-reads, immediately before persistence:
+
+- the complete remittance parent fact and its frozen payment fields;
+- every child included-run evidence row;
+- every current PayrollRun, which must remain POSTED and match frozen config/calculation/accrual/component evidence;
+- every referenced D1 `payroll.run.accrual.v1` Journal, which must remain active and point to the expected run;
+- all three Payroll liability accounts and the selected BANK account.
+
+Any drift fails closed before the Journal is written. Normal Accounting start-date and period-lock rules continue to apply through the existing Journal writer.
+
+A real payment after the statutory `dueDate` is allowed and remains dated to the actual payment date. D3-B2 does not rewrite late payments to the due date. Payment before the latest included Payroll pay date is rejected both by settlement orchestration and by the pure Journal authority.
+
+### 29.3 Read surface and employer-level UI
+
+D3-B2 adds a period-scoped history read:
+
+`GET /accounting/payroll/employers/:employerStableId/cra-remittances?anchorDate=YYYY-MM-DD`
+
+This is intentionally separate from the unremitted preview. Because one statutory period may have a later supplementary remittance, the UI needs both the remaining canonical preview and already completed immutable settlements.
+
+The Payroll page now exposes an employer-level CRA panel. It loads active Accounting accounts, canonical preview and completed period remittances; it offers only active CAD BANK accounts, shows the server-owned tax/CPP/CPP2/EI breakdown and included runs, never renders an editable amount, warns without blocking when the actual payment date is later than CRA due date, and refreshes preview/history after posting.
+
+### 29.4 Characterization / architecture boundary
+
+Focused coverage now pins:
+
+- canonical liability-only Journal shape and `storeStableId=null`;
+- BANK-only payment authority and rejection of CASH / PLATFORM_WALLET;
+- late-payment acceptance and pre-payday rejection;
+- canonical parent/component reconciliation and tamper rejection;
+- service hash mismatch, exact replay, period history and atomic Journal/audit path;
+- Journal-writer re-read failure on changed PayrollRun, deleted accrual Journal or changed BANK authority;
+- exactly one Payroll production caller of `createPayrollCraRemittanceJournalInTx`;
+- exact authenticated Accounting route inventory including preview/list/POST;
+- POST contract excludes amount and CRA components.
+
+D3-B2 introduces no package/lockfile change, no scanner allowance, no new public context edge, no Prisma model/ID and no migration. Per repository workflow no local lint/build/strict/Jest/scanner run is claimed before user review.
+
+Current D3-B2 state: **LOCAL SOURCE REVIEW PENDING / NO MIGRATION / NO LOCAL CI CLAIMED**.

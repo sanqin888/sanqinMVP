@@ -1,17 +1,17 @@
 # Current ID inventory
 
-Phase 9 Slice 8P-D3-B1 working snapshot: `origin/dev@73a70839` plus local CRA
-remittance persistence + canonical preview source (2026-09-18). Current source of truth
-remains `apps/api/prisma/schema.prisma`; schema/migration authority follows `AGENTS.md`.
+Phase 9 Slice 8P-D3-B2 working snapshot: `origin/dev@95cfbf70` plus local CRA
+settlement / Journal / employer-UI source (2026-09-18). Current source of truth remains
+`apps/api/prisma/schema.prisma`; schema/migration authority follows `AGENTS.md`.
 
-The working schema contains **94 models**: 84 UUID-backed primary keys, six integer
-primary keys, and four natural/stable-token primary keys. Payroll through D3-A is merged
-in `dev`. D3-B1 adds Accounting/Payroll-owned UUID models `PayrollCraRemittance` and
-`PayrollCraRemittanceRun`. The parent exposes public `remittanceStableId`; its
-`evidenceHash` and future `journalEntryStableId` are stable scalar evidence. The child
-uses internal UUID relations only and freezes business evidence through `runStableId`
-via its PayrollRun relation plus employer-config/calculation/Journal stable scalars.
-User-generated companion migration `20260918215432_phase9_slice8p_d3_cra_remittance` is reviewed against the working schema as additive create-table/unique/index/RESTRICT-FK-only SQL; it is present on PR #2394 and pending green CI/merge to `dev`.
+The working schema remains **94 models**: 84 UUID-backed primary keys, six integer
+primary keys, and four natural/stable-token primary keys. Payroll through D3-B1 is merged
+in `dev`; reviewed companion migration
+`20260918215432_phase9_slice8p_d3_cra_remittance` is also merged and additive-only.
+D3-B2 adds no Prisma model, column or persisted identifier. Existing
+`PayrollCraRemittance.remittanceStableId`, `evidenceHash`,
+`journalEntryStableId`, PayrollRun stable identity and frozen config/calculation/Journal
+stable scalars are reused for settlement, replay and audit authority.
 
 ## Primary-key families
 

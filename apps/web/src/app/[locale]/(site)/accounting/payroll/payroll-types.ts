@@ -167,6 +167,52 @@ export type PayrollEmployeePayment = {
   createdAt: string;
 };
 
+export type PayrollCraRemittanceRunEvidence = {
+  runStableId: string;
+  employerConfigStableId: string;
+  calculationHash: string;
+  postedAccrualJournalEntryStableId: string;
+  payDate: string;
+  incomeTaxCents: number;
+  employeeCppCents: number;
+  employeeCpp2Cents: number;
+  employerCppCents: number;
+  employerCpp2Cents: number;
+  employeeEiCents: number;
+  employerEiCents: number;
+  craRemittanceCents: number;
+};
+
+export type PayrollCraRemittancePreview = {
+  employerStableId: string;
+  remitterType: PayrollEmployerConfig['remitterType'];
+  remittancePolicyVersion: string;
+  periodStart: string;
+  periodEnd: string;
+  dueDate: string;
+  includedRuns: PayrollCraRemittanceRunEvidence[];
+  incomeTaxCents: number;
+  employeeCppCents: number;
+  employeeCpp2Cents: number;
+  employerCppCents: number;
+  employerCpp2Cents: number;
+  employeeEiCents: number;
+  employerEiCents: number;
+  totalAmountCents: number;
+  currency: 'CAD';
+  evidenceHash: string;
+};
+
+export type PayrollCraRemittance = PayrollCraRemittancePreview & {
+  remittanceStableId: string;
+  paymentAccountStableId: string | null;
+  paymentDate: string | null;
+  reference: string | null;
+  journalEntryStableId: string | null;
+  createdByActorRef: string;
+  createdAt: string;
+};
+
 export const payrollLocalDateToday = (): string => {
   const now = new Date();
   return [
