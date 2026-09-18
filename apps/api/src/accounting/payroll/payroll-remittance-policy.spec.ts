@@ -97,8 +97,7 @@ describe('Payroll CRA remittance policy', () => {
 
   it('handles year-end Threshold 1 and quarterly carryover due dates', () => {
     expect(
-      derive(PayrollRemitterType.ACCELERATED_THRESHOLD_1, '2026-12-31')
-        .dueDate,
+      derive(PayrollRemitterType.ACCELERATED_THRESHOLD_1, '2026-12-31').dueDate,
     ).toBe('2027-01-11');
     expect(derive(PayrollRemitterType.QUARTERLY, '2026-12-31').dueDate).toBe(
       '2027-01-15',
@@ -106,9 +105,9 @@ describe('Payroll CRA remittance policy', () => {
   });
 
   it('fails closed outside the reviewed 2026 remittance policy', () => {
-    expect(() =>
-      derive(PayrollRemitterType.REGULAR, '2027-01-01'),
-    ).toThrow('supports only 2026 pay dates');
+    expect(() => derive(PayrollRemitterType.REGULAR, '2027-01-01')).toThrow(
+      'supports only 2026 pay dates',
+    );
   });
 
   it('rejects invalid pay dates', () => {
