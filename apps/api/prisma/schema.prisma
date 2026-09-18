@@ -1775,6 +1775,7 @@ model PayrollEmployer {
   configs              PayrollEmployerConfigVersion[]
   employees            PayrollEmployee[]
   runs                 PayrollRun[]
+  craRemittances       PayrollCraRemittance[]
 
   @@index([isActive, legalName])
   @@index([defaultStoreStableId])
@@ -1961,6 +1962,7 @@ model PayrollRun {
   correctionOfRun                   PayrollRun?                    @relation("PayrollRunCorrection", fields: [correctionOfRunId], references: [id], onDelete: Restrict)
   corrections                       PayrollRun[]                   @relation("PayrollRunCorrection")
   employeePayment                   PayrollEmployeePayment?
+  craRemittanceEvidence             PayrollCraRemittanceRun?
 
   @@unique([employeeId, periodStart, periodEnd, payDate, correctionSequence])
   @@index([employerId, payDate])
@@ -1988,6 +1990,63 @@ model PayrollEmployeePayment {
 
   @@index([paymentDate])
   @@index([paymentAccountStableId, paymentDate])
+}
+
+model PayrollCraRemittance {
+  id                         String                    @id @default(uuid()) @db.Uuid
+  remittanceStableId         String                    @unique @default(cuid())
+  employerId                 String                    @db.Uuid
+  remitterType               PayrollRemitterType
+  remittancePolicyVersion    String
+  periodStart                DateTime                  @db.Date
+  periodEnd                  DateTime                  @db.Date
+  dueDate                    DateTime                  @db.Date
+  incomeTaxCents             Int
+  employeeCppCents           Int
+  employeeCpp2Cents          Int
+  employerCppCents           Int
+  employerCpp2Cents          Int
+  employeeEiCents            Int
+  employerEiCents            Int
+  totalAmountCents           Int
+  currency                   String                    @default("CAD")
+  evidenceHash               String                    @unique
+  paymentAccountStableId     String?
+  paymentDate                DateTime?                 @db.Date
+  reference                  String?
+  journalEntryStableId       String?                   @unique
+  createdByActorRef          String
+  createdAt                  DateTime                  @default(now())
+  employer                   PayrollEmployer           @relation(fields: [employerId], references: [id], onDelete: Restrict)
+  runs                       PayrollCraRemittanceRun[]
+
+  @@index([employerId, periodStart, periodEnd])
+  @@index([dueDate])
+  @@index([paymentDate])
+  @@index([paymentAccountStableId, paymentDate])
+}
+
+model PayrollCraRemittanceRun {
+  id                               String               @id @default(uuid()) @db.Uuid
+  remittanceId                     String               @db.Uuid
+  runId                            String               @unique @db.Uuid
+  employerConfigStableId           String
+  calculationHash                  String
+  postedAccrualJournalEntryStableId String
+  payDate                          DateTime             @db.Date
+  incomeTaxCents                   Int
+  employeeCppCents                 Int
+  employeeCpp2Cents                Int
+  employerCppCents                 Int
+  employerCpp2Cents                Int
+  employeeEiCents                  Int
+  employerEiCents                  Int
+  craRemittanceCents               Int
+  remittance                       PayrollCraRemittance @relation(fields: [remittanceId], references: [id], onDelete: Restrict)
+  run                              PayrollRun           @relation(fields: [runId], references: [id], onDelete: Restrict)
+
+  @@index([remittanceId])
+  @@index([payDate])
 }
 
 model AccountingTransaction {

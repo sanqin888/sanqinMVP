@@ -25,6 +25,7 @@ import { AccountingPayrollYtdService } from './accounting-payroll-ytd.service';
 import { AccountingPayrollPayStatementService } from './accounting-payroll-pay-statement.service';
 import { AccountingPayrollPostingService } from './accounting-payroll-posting.service';
 import { AccountingPayrollEmployeePaymentService } from './accounting-payroll-employee-payment.service';
+import { AccountingPayrollCraRemittanceService } from './accounting-payroll-cra-remittance.service';
 import type {
   CreatePayrollEmployeeConfigInput,
   CreatePayrollEmployeeInput,
@@ -52,6 +53,7 @@ export class AccountingPayrollController {
     private readonly payStatements: AccountingPayrollPayStatementService,
     private readonly posting: AccountingPayrollPostingService,
     private readonly employeePayments: AccountingPayrollEmployeePaymentService,
+    private readonly craRemittances: AccountingPayrollCraRemittanceService,
   ) {}
 
   @Get('payroll/employers')
@@ -99,6 +101,14 @@ export class AccountingPayrollController {
       body,
       requireAccountingOperatorUserId(req),
     );
+  }
+
+  @Get('payroll/employers/:employerStableId/cra-remittances/preview')
+  previewCraRemittance(
+    @Param('employerStableId') employerStableId: string,
+    @Query('anchorDate') anchorDate?: string,
+  ) {
+    return this.craRemittances.preview(employerStableId, anchorDate ?? '');
   }
 
   @Get('payroll/employers/:employerStableId/employees')

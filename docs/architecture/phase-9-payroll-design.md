@@ -1,9 +1,9 @@
 # Phase 9 Payroll Vertical — Readiness, Design and Closeout Gate
 
-Status: **8P-D3-A LOCAL SOURCE REVIEW PENDING — NO MIGRATION**  
+Status: **8P-D3-B1 LOCAL SOURCE REVIEW PENDING — MIGRATION REQUIRED**  
 Planning date: 2026-09-16  
-Implementation baseline: `origin/dev@6b1d2dcd` (8P-D2 merged through PR #2392; PR CI #5888 and post-merge CI #5889 green)  
-Current implementation branch: `feat/phase9-slice8p-d3a-cra-remittance-policy`
+Implementation baseline: `origin/dev@73a70839` (8P-D3-A merged through PR #2393; final head `58204478`, PR CI #5891 and post-merge CI #5892 green)  
+Current implementation branch: `feat/phase9-slice8p-d3b-cra-remittance-settlement`
 
 ## 1. Decision and insertion point
 
@@ -1568,4 +1568,59 @@ Focused tests pin monthly/quarterly boundaries, both Threshold 1 halves, all fou
 
 D3-A deliberately keeps `PayrollCraRemittance` persistence absent. Employer-period remittance facts, immutable included-run/component evidence, server-authoritative preview/settlement, BANK-only payment authority, liability-clearing Journal and operator UI remain D3-B and will require a separately user-generated/reviewed additive migration.
 
-Current D3-A state: **LOCAL SOURCE REVIEW PENDING / NO MIGRATION / NO LOCAL CI CLAIMED**.
+Current D3-A state: **MERGED / CI GREEN / NO MIGRATION** through PR #2393, final head `58204478`, PR CI #5891, squash `73a70839` and post-merge CI #5892.
+
+## 28. 8P-D3-B1 CRA remittance persistence + canonical preview — local implementation review state
+
+8P-D3-B1 starts from merged `origin/dev@73a70839`. It adds the durable employer-period remittance evidence shape and a read-only server-authoritative preview, but deliberately does **not** create a remittance settlement, payment Journal or Web payment action yet.
+
+### 28.1 Persistence and identity
+
+D3-B1 adds two Accounting/Payroll-owned UUID models:
+
+- `PayrollCraRemittance` — public `remittanceStableId`, employer/remitter-period snapshot, policy version, due date, component totals, `currency=CAD`, unique canonical `evidenceHash`, nullable future payment account/date/reference and nullable unique Journal stable-ID evidence;
+- `PayrollCraRemittanceRun` — immutable included-run evidence with internal `runId @unique`, frozen employer-config stable ID, calculation hash, D1 accrual Journal stable ID, payday and all seven CRA source-deduction/contribution components.
+
+There is intentionally **no unique employer+period constraint**. CRA may receive a later supplementary remittance for another PayrollRun in the same statutory period. Instead, `PayrollCraRemittanceRun.runId @unique` guarantees that one PayrollRun can belong to at most one CRA settlement fact, while `PayrollCraRemittance.evidenceHash @unique` provides stable replay identity for one exact frozen run set.
+
+Accounting Account and Journal references remain stable scalar IDs rather than cross-model FKs. The parent owns an internal FK to PayrollEmployer and each included-run row owns internal FKs to its parent remittance and PayrollRun, all with RESTRICT deletion.
+
+### 28.2 Canonical preview and remitter-config transitions
+
+The employer-level endpoint is:
+
+`GET /accounting/payroll/employers/:employerStableId/cra-remittances/preview?anchorDate=YYYY-MM-DD`
+
+The server resolves the effective employer config for the anchor date, derives the D3-A remittance period, then reads only unremitted `POSTED` PayrollRuns in that date window. Every candidate must retain frozen calculation hash, employer-config stable ID, D1 accrual Journal stable ID and posted evidence.
+
+Each run's **own frozen employer config** is re-used to derive its remitter period. A run is included only when its frozen remitter type + period boundaries match the anchor period. This prevents an employer-config change inside a calendar month from silently moving old-type runs into the new remitter bucket.
+
+The preview freezes and hashes sorted included-run evidence and independently verifies for every run:
+
+`craRemittanceCents = incomeTax + employeeCPP + employeeCPP2 + employerCPP + employerCPP2 + employeeEI + employerEI`
+
+Parent totals are then recomputed from those components. The browser never supplies or calculates a remittance amount.
+
+### 28.3 D3-B2 handoff
+
+D3-B1 exposes no settlement POST and does not write Journal rows. D3-B2 will consume `expectedEvidenceHash`, recompute the preview inside the Accounting Serializable transaction, create the parent + included-run rows, allow only an active CAD BANK payment account, and post exactly:
+
+`Dr income-tax payable + Dr CPP/CPP2 payable + Dr EI payable / Cr selected BANK`
+
+using employer-level `storeStableId=null`. It will also add identical-retry handling, Journal authority re-read of every frozen included run/accrual Journal, audit evidence and the employer-level Web settlement panel.
+
+### 28.4 Migration handoff
+
+**MIGRATION REQUIRED.** D3-B1 changes `schema.prisma` by adding `PayrollCraRemittance`, `PayrollCraRemittanceRun` and their PayrollEmployer/PayrollRun relations. MCP does not create or edit `apps/api/prisma/migrations/**`.
+
+Suggested migration name:
+
+`phase9_slice8p_d3_cra_remittance`
+
+After the schema/source change is merged to `dev`, generate locally against the verified disposable/local development database:
+
+`pnpm --filter api exec prisma migrate dev --create-only --name phase9_slice8p_d3_cra_remittance`
+
+Expected SQL is additive only: two CREATE TABLE operations, the stable/evidence/Journal unique indexes, `PayrollCraRemittanceRun.runId` uniqueness, ordinary date/employer indexes, and RESTRICT FKs to PayrollEmployer/PayrollRun/parent remittance. There should be **no drop, rename, historical backfill, enum rewrite or alteration of existing Payroll rows**. Promotion to main/production remains blocked until the user-generated migration is reviewed and merged back into dev.
+
+Current D3-B1 state: **LOCAL SOURCE REVIEW PENDING / MIGRATION REQUIRED / NO LOCAL CI CLAIMED**.
