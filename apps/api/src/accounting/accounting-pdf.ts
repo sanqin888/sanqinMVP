@@ -82,7 +82,11 @@ const registerFonts = (
 
   if (regular && bold) {
     const fontRegistry = doc as AccountingPdfDocument & PdfKitFontRegistry;
-    fontRegistry.registerFont('SanQPdfRegular', regular, 'NotoSansCJKsc-Regular');
+    fontRegistry.registerFont(
+      'SanQPdfRegular',
+      regular,
+      'NotoSansCJKsc-Regular',
+    );
     fontRegistry.registerFont('SanQPdfBold', bold, 'NotoSansCJKsc-Bold');
     return {
       regular: 'SanQPdfRegular',
