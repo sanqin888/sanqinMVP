@@ -1,9 +1,9 @@
 # Phase 9 Payroll Vertical — Readiness, Design and Closeout Gate
 
-Status: **8P-B1 LOCAL SOURCE COMPLETE / REVIEW PENDING — MIGRATION REQUIRED**  
+Status: **8P-B2 LOCAL SOURCE COMPLETE / REVIEW PENDING — NO MIGRATION**  
 Planning date: 2026-09-16  
-Implementation baseline: `origin/dev@5e968136` (PR #2386 merged)  
-Current implementation branch: `feat/phase9-slice8p-b1-payroll-foundation-dev2386`
+Implementation baseline: `origin/dev@963485a8` (8P-B1 source + migration present in dev)  
+Current implementation branch: `feat/phase9-slice8p-b2-ontario-calculator`
 
 ## 1. Decision and insertion point
 
@@ -1164,3 +1164,72 @@ Promotion to `main` / production remains blocked until the user-generated migrat
 ### 21.2 Local validation state
 
 Per repository workflow, no local Prisma generation/validation, lint, build, Jest or architecture scanner execution is claimed before user review. The current state is **LOCAL SOURCE COMPLETE / REVIEW PENDING**, not CI-green or deployable.
+
+### 21.3 B1 merged/migration closeout update
+
+The earlier local-review state above has now advanced. The 8P-B1 source merged through PR #2387 / dev commit `6dae3bd8`. The duplicate effective-date indexes were removed before final migration alignment in `2110e508`, and the user-generated additive migration `20260918120954_phase9_payroll_b1_foundation` is present in dev at `963485a8`. The reviewed migration creates only the approved Payroll enums/tables/indexes/foreign keys and adds `PAYROLL` to `AccountingJournalSource`; no destructive/backfill/CoA data step is part of B1. B1 is therefore the merged persistence baseline for B2.
+
+## 22. 8P-B2 Ontario statutory calculation core — local implementation review state
+
+8P-B2 starts from `origin/dev@963485a8` and remains a **pure Accounting/Payroll calculation layer**. It does not add or alter Prisma persistence, HTTP routes, Nest providers, Journal writers, AccountingTransaction mutation, CoA provisioning, settlement tables, Web UI or package dependencies. No migration is required.
+
+### 22.1 Versioned policy registry
+
+The calculator selects statutory policy by **pay date** and records one of two distinct 2026 identities:
+
+- `CA-ON-2026-01` — CRA T4127 122nd edition, effective 2026-01-01 through 2026-06-30;
+- `CA-ON-2026-07` — CRA T4127 123rd edition, effective 2026-07-01 through 2026-12-31.
+
+The 123rd edition states that the Option 1, CPP and EI formulas did not change for July 2026, so the two identities intentionally share the applicable 2026 Ontario/federal/CPP/EI parameters while preserving historical policy provenance.
+
+The registry pins 2026 federal/Ontario brackets and constants, federal BPAF phaseout parameters, Ontario BPA/OHP/surtax/tax-reduction parameters, CPP/CPP2 limits/rates and EI limits/rate. Unsupported pay dates fail closed.
+
+### 22.2 Supported calculation profile
+
+`ON_HOURLY_SIMPLE_V1` supports:
+
+- Ontario hourly regular earnings using integer minutes/rates;
+- explicitly supplied overtime minutes/rate without aggregate-hour inference;
+- CRA T4127 Option 1 periodic tax;
+- federal/Ontario filed TD1 total claims or official no-form defaults;
+- reviewed claim-code-E handling, with Ontario Health Premium retained;
+- additional per-pay tax for standard treatment;
+- CPP + CPP2 with YTD maxima;
+- reviewed full-pay-period CPP exemption;
+- EI insurable / reviewed non-insurable treatment and configured employer multiplier;
+- vacation accrued or paid each run;
+- paid vacation/top-up as the supported non-periodic earnings branch;
+- deterministic YTD output/evidence for later B3 lifecycle freezing.
+
+The profile continues to fail closed for commissions/TD1X, Quebec/QPP/QPIP/interprovincial transfers, RPP/RRSP/PRPP/RCA/source-deduction factors, union dues, taxable benefits, partial-period CPP proration, EHT, automatic vacation-entitlement-year top-up derivation and other inputs not represented by this simple profile.
+
+### 22.3 CRA formula characterization
+
+The pure statutory math layer pins:
+
+- actual `P` values 52/53 weekly, 26/27 biweekly, 24 semi-monthly and 12 monthly;
+- CPP basic exemption and annual maximum behavior;
+- CPP2 YMPE/YAMPE threshold/max behavior;
+- EI regular-pay formula/max;
+- T4127 `F5 = C × (0.0100 / 0.0595) + C2` with proportional `F5A/F5B` allocation;
+- federal Option 1 tax credits/brackets;
+- Ontario base tax, surtax, OHP and tax reduction with dependent factor `Y = 0` for this profile;
+- regular-bonus Step 1/Step 2 difference for supported paid-vacation non-periodic earnings.
+
+Characterization includes the CRA regular-bonus example where `F5=$34.33`, `F5A=$9.81` and `F5B=$24.52`. It also pins the expected exact Option 1 result behind the published T4032 Ontario weekly `$615` claim-code-1 table case: the table displays `$54.00` because it is a range table, while the exact T4127 formula yields a `$53.86` characterization target.
+
+### 22.4 Historical non-periodic YTD evidence
+
+Exact regular-bonus tax requires more than the B1 headline `nonPeriodicEarningsYtdCents`: T4127 also needs the prior non-periodic additional CPP/CPP2 deduction allocation (`F5B_YTD`) and the related base CPP/EI credit evidence.
+
+B2 does **not** expand the B1 schema merely to add those intermediate facts. Instead the calculator accepts versioned supplemental `nonPeriodicTaxEvidenceYtd` evidence and returns the updated evidence in its calculation output. B3 can derive/carry this evidence from earlier finalized SanQ calculation snapshots.
+
+If an employee has same-employer prior non-periodic earnings but that exact supplemental evidence is unavailable (for example, an incomplete mid-year external opening), B2 returns structured `PRIOR_NON_PERIODIC_EVIDENCE_REQUIRED` and does not fabricate a plausible tax result.
+
+### 22.5 Architecture and validation state
+
+Production Payroll source through B2 remains framework- and Prisma-neutral. The B1 architecture regression is extended to enumerate the B2 pure calculator files and continues to prohibit Nest/Prisma access, direct Journal/AccountingTransaction mutation, Payroll CoA provisioning and settlement persistence.
+
+Focused source characterization covers pay-date policy selection, official 2026 constants, CPP/F5 golden evidence, CPP2/EI maxima, federal BPAF/Ontario OHP, the exact weekly tax case, 52/53 and 26/27 schedules, vacation accrued/paid treatment, reviewed CPP/EI exceptions, claim code E, YTD maxima and structured fail-closed cases.
+
+Per repository workflow, no local lint/build/Jest/architecture scanner execution is claimed before user review. 8P-B2 is currently **LOCAL SOURCE COMPLETE / REVIEW PENDING / NO MIGRATION**.

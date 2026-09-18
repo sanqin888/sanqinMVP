@@ -28,7 +28,7 @@ const modelSource = (schema: string, model: string): string => {
   return match[0];
 };
 
-describe('Phase 9 Slice 8P-B1 Payroll ownership boundary', () => {
+describe('Phase 9 Slice 8P-B1/B2 Payroll ownership boundary', () => {
   const schema = read(PRISMA_SCHEMA);
 
   it('adds only the approved Payroll core persistence models', () => {
@@ -70,10 +70,16 @@ describe('Phase 9 Slice 8P-B1 Payroll ownership boundary', () => {
     expect(run).not.toMatch(/AccountingJournalEntry\??\s+@relation/);
   });
 
-  it('keeps Payroll source code framework- and Prisma-neutral in B1', () => {
+  it('keeps Payroll source code pure, framework-neutral and Prisma-neutral through B2', () => {
     expect(payrollProductionFiles()).toEqual([
+      'payroll-calculator-validation.ts',
+      'payroll-calculator.contracts.ts',
+      'payroll-calculator.ts',
       'payroll-contracts.ts',
+      'payroll-income-tax-calculator.ts',
       'payroll-policy.ts',
+      'payroll-statutory-math.ts',
+      'payroll-statutory-policy.ts',
     ]);
 
     const source = payrollProductionFiles()
@@ -82,7 +88,9 @@ describe('Phase 9 Slice 8P-B1 Payroll ownership boundary', () => {
 
     expect(source).not.toContain('@prisma/client');
     expect(source).not.toContain('../prisma');
+    expect(source).not.toContain('@nestjs/');
     expect(source).not.toContain('@Controller(');
+    expect(source).not.toContain('@Injectable(');
     expect(source).not.toContain('.accountingTransaction.');
     expect(source).not.toContain('.accountingJournalEntry.');
     expect(source).not.toContain('.accountingJournalLine.');
@@ -100,7 +108,7 @@ describe('Phase 9 Slice 8P-B1 Payroll ownership boundary', () => {
     );
   });
 
-  it('does not provision Payroll CoA or settlement persistence in B1', () => {
+  it('does not provision Payroll CoA or settlement persistence through B2', () => {
     const chart = read(
       resolve(ACCOUNTING_ROOT, 'accounting-chart-of-accounts.ts'),
     );
