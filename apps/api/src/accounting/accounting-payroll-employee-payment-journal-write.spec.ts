@@ -66,8 +66,7 @@ function makeService() {
       runStableId: paymentFact.runStableId,
       status: 'POSTED',
       calculationHash: paymentFact.calculationHash,
-      postedJournalEntryStableId:
-        paymentFact.postedAccrualJournalEntryStableId,
+      postedJournalEntryStableId: paymentFact.postedAccrualJournalEntryStableId,
       storeStableId: paymentFact.storeStableId,
       netPayCents: paymentFact.amountCents,
     },

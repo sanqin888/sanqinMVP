@@ -174,9 +174,7 @@ describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2 Payroll ownership boundary', () => {
       ),
     );
 
-    expect(callers).toEqual([
-      'accounting-payroll-employee-payment.service.ts',
-    ]);
+    expect(callers).toEqual(['accounting-payroll-employee-payment.service.ts']);
     expect(settlement).toContain('PayrollRunStatus.POSTED');
     expect(settlement).toContain('run.netPayCents');
     expect(authority).toContain('payroll.employee-payment.v1');

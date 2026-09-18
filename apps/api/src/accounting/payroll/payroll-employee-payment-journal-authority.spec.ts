@@ -70,7 +70,9 @@ describe('Payroll employee payment Journal authority', () => {
         ],
       }),
     );
-    expect(plan.journal.lines.some((line) => line.categoryStableId)).toBe(false);
+    expect(plan.journal.lines.some((line) => line.categoryStableId)).toBe(
+      false,
+    );
     expect(
       plan.journal.lines.some((line) =>
         line.accountStableId.includes('wages_expense'),

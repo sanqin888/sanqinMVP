@@ -287,8 +287,7 @@ export class AccountingJournalService {
           normalized,
           normalizedAuthority,
         ),
-        auditAuthority:
-          normalizedAuthority as unknown as Prisma.InputJsonValue,
+        auditAuthority: normalizedAuthority as unknown as Prisma.InputJsonValue,
       },
       operator,
       tx,
@@ -852,8 +851,7 @@ export class AccountingJournalService {
         },
       },
     });
-    const paymentDate =
-      payment?.paymentDate.toISOString().slice(0, 10) ?? null;
+    const paymentDate = payment?.paymentDate.toISOString().slice(0, 10) ?? null;
     if (
       !payment ||
       payment.journalEntryStableId !== null ||

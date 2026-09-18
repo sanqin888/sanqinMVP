@@ -34,7 +34,9 @@ const createdPayment = () => ({
   run: { runStableId: 'payroll_run_1' },
 });
 
-function makeService(existingPayment: ReturnType<typeof createdPayment> | null = null) {
+function makeService(
+  existingPayment: ReturnType<typeof createdPayment> | null = null,
+) {
   const runRow = run();
   const created = createdPayment();
   const tx = {
@@ -113,7 +115,9 @@ describe('AccountingPayrollEmployeePaymentService', () => {
         }) as unknown,
       }),
     );
-    expect(journal.createPayrollEmployeePaymentJournalInTx).toHaveBeenCalledWith(
+    expect(
+      journal.createPayrollEmployeePaymentJournalInTx,
+    ).toHaveBeenCalledWith(
       expect.objectContaining({
         sourceFactType: 'payroll.employee-payment.v1',
         sourceFactStableId: 'payroll_payment_1',
@@ -161,7 +165,9 @@ describe('AccountingPayrollEmployeePaymentService', () => {
     expect(result.paymentStableId).toBe('payroll_payment_1');
     expect(tx.payrollEmployeePayment.create).not.toHaveBeenCalled();
     expect(tx.payrollEmployeePayment.update).not.toHaveBeenCalled();
-    expect(journal.createPayrollEmployeePaymentJournalInTx).not.toHaveBeenCalled();
+    expect(
+      journal.createPayrollEmployeePaymentJournalInTx,
+    ).not.toHaveBeenCalled();
   });
 
   it('fails closed when a replay changes the selected payment account', async () => {
@@ -184,7 +190,9 @@ describe('AccountingPayrollEmployeePaymentService', () => {
     ).rejects.toThrow(
       'Payroll run already has a different employee payment settlement',
     );
-    expect(journal.createPayrollEmployeePaymentJournalInTx).not.toHaveBeenCalled();
+    expect(
+      journal.createPayrollEmployeePaymentJournalInTx,
+    ).not.toHaveBeenCalled();
   });
 
   it('requires POSTED accrual authority and a payment date on or after pay date', async () => {

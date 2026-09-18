@@ -221,8 +221,7 @@ export class AccountingPayrollEmployeePaymentService {
             paymentStableId: created.paymentStableId,
             runStableId: run.runStableId,
             calculationHash: run.calculationHash,
-            postedAccrualJournalEntryStableId:
-              run.postedJournalEntryStableId,
+            postedAccrualJournalEntryStableId: run.postedJournalEntryStableId,
             storeStableId: run.storeStableId,
             paymentDate: payrollDateOnly(input.paymentDate)!,
             paymentAccountStableId: input.paymentAccountStableId,
