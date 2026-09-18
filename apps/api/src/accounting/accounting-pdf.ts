@@ -59,8 +59,16 @@ const resolveFontPath = (envKey: string, fallback: string): string | null => {
   return existsSync(fallback) ? fallback : null;
 };
 
+type PdfKitFontRegistry = {
+  registerFont(
+    name: string,
+    src: string,
+    family?: string,
+  ): AccountingPdfDocument;
+};
+
 const registerFonts = (
-  doc: PDFDocument,
+  doc: AccountingPdfDocument,
   requiresUnicode: boolean,
 ): AccountingPdfFonts => {
   const regular = resolveFontPath(
@@ -73,8 +81,9 @@ const registerFonts = (
   );
 
   if (regular && bold) {
-    doc.registerFont('SanQPdfRegular', regular, 'NotoSansCJKsc-Regular');
-    doc.registerFont('SanQPdfBold', bold, 'NotoSansCJKsc-Bold');
+    const fontRegistry = doc as AccountingPdfDocument & PdfKitFontRegistry;
+    fontRegistry.registerFont('SanQPdfRegular', regular, 'NotoSansCJKsc-Regular');
+    fontRegistry.registerFont('SanQPdfBold', bold, 'NotoSansCJKsc-Bold');
     return {
       regular: 'SanQPdfRegular',
       bold: 'SanQPdfBold',
