@@ -62,7 +62,7 @@ const runRow = (status: PayrollRunStatus) => {
     netPayCents: 130_000,
     craRemittanceCents: 40_800,
     compensationExpenseCents: 166_400,
-    supportedEmployerPayrollCostCents: 185_200,
+    supportedEmployerPayrollCostCents: 177_200,
     calculationEvidenceVersion: 1,
     calculationInputJson,
     calculationOutputJson,

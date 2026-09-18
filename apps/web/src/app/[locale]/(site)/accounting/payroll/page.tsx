@@ -163,8 +163,8 @@ export default function AccountingPayrollPage() {
           </h1>
           <p className="mt-1 max-w-3xl text-sm text-slate-500">
             {isZh
-              ? 'Ontario hourly payroll：配置、年中 YTD、工资计算、审批和工资单。法定计算全部由后端冻结并留证。'
-              : 'Ontario hourly payroll: configuration, mid-year YTD, calculation, approval and pay statements. Statutory calculations remain server-owned and frozen as evidence.'}
+              ? 'Ontario hourly payroll：配置、年中 YTD、工资计算、审批、工资应计入账和工资单。法定计算全部由后端冻结并留证。'
+              : 'Ontario hourly payroll: configuration, mid-year YTD, calculation, approval, payroll accrual posting and pay statements. Statutory calculations remain server-owned and frozen as evidence.'}
           </p>
         </div>
         <button

@@ -19,6 +19,7 @@ export function PayrollRunReview({
   busy,
   calculate,
   approve,
+  postRun,
   voidRun,
 }: {
   isZh: boolean;
@@ -26,6 +27,7 @@ export function PayrollRunReview({
   busy: boolean;
   calculate: (runStableId: string) => void;
   approve: (runStableId: string) => void;
+  postRun: (runStableId: string) => void;
   voidRun: (runStableId: string) => void;
 }) {
   const ytd = run.ytdAfter;
@@ -67,13 +69,22 @@ export function PayrollRunReview({
             </button>
           ) : null}
           {run.status === 'APPROVED' ? (
-            <button
-              disabled={busy}
-              onClick={() => voidRun(run.runStableId)}
-              className="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700 disabled:opacity-50"
-            >
-              {isZh ? '作废' : 'Void'}
-            </button>
+            <>
+              <button
+                disabled={busy}
+                onClick={() => postRun(run.runStableId)}
+                className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+              >
+                {isZh ? '记账工资应计' : 'Post payroll accrual'}
+              </button>
+              <button
+                disabled={busy}
+                onClick={() => voidRun(run.runStableId)}
+                className="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700 disabled:opacity-50"
+              >
+                {isZh ? '作废' : 'Void'}
+              </button>
+            </>
           ) : null}
           {statementStatuses.has(run.status) ? (
             <a
@@ -140,6 +151,12 @@ export function PayrollRunReview({
           <span>P: {run.payPeriodsPerYear ?? '—'}</span>
           <span>Profile: {run.calculationProfileVersion ?? '—'}</span>
           <span>Statement: {run.payStatementTemplateVersion ?? '—'}</span>
+          <span>
+            Journal: {run.postedJournalEntryStableId ?? '—'}
+          </span>
+          <span>
+            {isZh ? '入账时间' : 'Posted at'}: {run.postedAt ?? '—'}
+          </span>
         </div>
       </div>
 

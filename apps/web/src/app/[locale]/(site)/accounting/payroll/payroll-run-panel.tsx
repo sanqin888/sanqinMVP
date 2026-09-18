@@ -256,6 +256,19 @@ export function PayrollRunPanel({
     );
   }
 
+  function postRun(runStableId: string) {
+    void execute(
+      () =>
+        apiFetch(
+          '/accounting/payroll/runs/' +
+            encodeURIComponent(runStableId) +
+            '/post',
+          { method: 'POST' },
+        ),
+      isZh ? '工资应计已入账。' : 'Payroll accrual posted.',
+    );
+  }
+
   function voidRun(runStableId: string) {
     if (
       typeof window !== 'undefined' &&
@@ -456,6 +469,7 @@ export function PayrollRunPanel({
             busy={busy}
             calculate={calculate}
             approve={approve}
+            postRun={postRun}
             voidRun={voidRun}
           />
         ) : (

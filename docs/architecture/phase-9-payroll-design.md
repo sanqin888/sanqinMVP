@@ -1,9 +1,9 @@
 # Phase 9 Payroll Vertical — Readiness, Design and Closeout Gate
 
-Status: **8P-C LOCAL SOURCE COMPLETE / REVIEW PENDING — DEPENDENCY LOCK HANDOFF REQUIRED / NO MIGRATION**  
+Status: **8P-D1 LOCAL SOURCE COMPLETE / REVIEW PENDING — PAYROLL COA DATA MIGRATION REQUIRED / NO PRISMA SCHEMA MIGRATION**  
 Planning date: 2026-09-16  
-Implementation baseline: `origin/dev@dca67435` (8P-B3 merged; PR #2389 final head `dc48ea9a`, CI #5868 green, companion migration merged)  
-Current implementation branch: `feat/phase9-slice8p-c-payroll-ui-pdf`
+Implementation baseline: `origin/dev@b252382d` (8P-C merged through PR #2390; final head `54c82a1c`, CI #5877 green, squash `b252382d`)  
+Current implementation branch: `feat/phase9-slice8p-d-payroll-financial-posting`
 
 ## 1. Decision and insertion point
 
@@ -1383,4 +1383,102 @@ Payroll production source still has zero direct `@prisma/client` imports and no 
 
 Focused source coverage adds real PDF Buffer header/EOF characterization, Unicode-font fail-closed behavior and approval-time pay-statement-template freezing. Per repository workflow, no local package install, lint, build, strict TypeScript or Jest execution is claimed by MCP before user review.
 
-Current local state: **8P-C SOURCE COMPLETE / REVIEW PENDING / DEPENDENCY LOCK HANDOFF REQUIRED / NO MIGRATION**.
+8P-C has advanced beyond this local-review state. The user generated the PDFKit lockfile with repository-pinned pnpm 9.0.0, final PR head `54c82a1c` passed CI #5877 across Architecture plus API/Web install, lint, build, strict and tests, and PR #2390 squash-merged to `dev` as `b252382d`. 8P-C is therefore **MERGED / CI GREEN / NO PRISMA MIGRATION** and is the baseline for 8P-D.
+
+## 25. 8P-D1 Payroll accrual Journal posting — local implementation review state
+
+8P-D is deliberately split into four reviewable packages. D1 activates only approved-run accrual posting. Employee payment settlement remains D2, CRA remittance settlement remains D3, and posted-run reversal/correction/period-lock hardening remains D4.
+
+### 25.1 Canonical accrual fact and Journal mapping
+
+D1 defines `payroll.run.accrual.v1` as the canonical Accounting source fact for one finalized PayrollRun. Its deterministic Journal identity is:
+
+- source: `AccountingJournalSource.PAYROLL`;
+- kind: `STANDARD`;
+- source fact stable ID: `PayrollRun.runStableId`;
+- source fact version: `1`;
+- idempotency key: `payroll-run-accrual:<runStableId>:v1`;
+- occurred-at date: the frozen Payroll pay date;
+- currency: CAD;
+- Store attribution: the frozen run `storeStableId`.
+
+The owner-specific policy rechecks the frozen calculation hash plus all headline components before producing any Journal. It requires:
+
+- employee deductions = income tax + employee CPP + employee CPP2 + employee EI;
+- net pay + employee deductions = gross pay;
+- CRA remittance = employee deductions + employer CPP + employer CPP2 + employer EI;
+- compensation expense = gross pay + accrued vacation;
+- supported employer payroll cost = compensation expense + employer CPP + employer CPP2 + employer EI.
+
+The exact D1 Journal is:
+
+- debit `account_payroll_wages_expense` / category `expense_labor` for `compensationExpenseCents`;
+- debit `account_payroll_employer_contributions_expense` / category `expense_labor` for employer CPP + CPP2 + EI;
+- credit `account_payroll_net_pay_payable` for net pay;
+- credit `account_payroll_income_tax_payable` for employee income tax withheld;
+- credit `account_payroll_cpp_payable` for employee + employer CPP/CPP2;
+- credit `account_payroll_ei_payable` for employee + employer EI;
+- credit `account_payroll_vacation_payable` for accrued vacation pay.
+
+Zero-value credit/contribution lines are omitted, but zero compensation cannot create an accrual Journal.
+
+### 25.2 Payroll-specific write authority and atomic transition
+
+The browser/controller does not receive generic Journal-write authority. `POST /accounting/payroll/runs/:runStableId/post` delegates to an Accounting Payroll posting service that consumes the existing Chart and Journal capabilities.
+
+Posting uses one existing Accounting Serializable transaction. Inside that transaction:
+
+1. the run must be `APPROVED` or an idempotent `POSTED` replay;
+2. calculated evidence must be complete and the persisted calculation evidence hash must still reproduce exactly;
+3. the Payroll-specific authority binds the frozen run identity/hash/pay date/Store and exact monetary components;
+4. `AccountingJournalService` independently re-reads the PayrollRun and all seven Payroll control-account facts inside the same transaction;
+5. normal Accounting period-start/period-lock/account/category/currency/balance/idempotency checks remain authoritative;
+6. only after the Journal write succeeds does the same transaction perform `APPROVED -> POSTED`, freeze `postedJournalEntryStableId / postedAt`, and write `PAYROLL_RUN_POST` audit evidence.
+
+A retry of an already POSTED run must reproduce the same authority and same Journal stable ID. A different Journal under the same finalized run identity fails closed.
+
+Payroll production code still contains no direct JournalEntry/JournalLine mutation; the actual Journal persistence remains owned by `AccountingJournalService`.
+
+### 25.3 CoA data-migration gate
+
+**PAYROLL COA DATA MIGRATION REQUIRED BEFORE D1 MAY MERGE/DEPLOY AS ACTIVE POSTING.**
+
+This is a data-only Accounting Chart-of-Accounts provisioning step. It cannot be generated from `schema.prisma` by normal `prisma migrate dev --create-only` because D1 changes no Prisma schema. The durable migration must follow the existing Tip Revenue data-seed pattern and provision exactly these active CAD system accounts:
+
+- `account_payroll_wages_expense` — EXPENSE;
+- `account_payroll_employer_contributions_expense` — EXPENSE;
+- `account_payroll_net_pay_payable` — LIABILITY;
+- `account_payroll_income_tax_payable` — LIABILITY;
+- `account_payroll_cpp_payable` — LIABILITY;
+- `account_payroll_ei_payable` — LIABILITY;
+- `account_payroll_vacation_payable` — LIABILITY.
+
+No opening Journal/backfill is created by account provisioning.
+
+Per `AGENTS.md`, MCP does not create, edit or delete `apps/api/prisma/migrations/**`. The operator must add the data-only migration locally and return it for review. Suggested migration name: `phase9_slice8p_d0_payroll_coa`.
+
+Until that migration is present and reviewed:
+
+- D1 source intentionally does **not** add the seven IDs to `DEFAULT_ACCOUNTING_ACCOUNTS`;
+- the cumulative CoA migration guard is not weakened;
+- runtime posting fails closed because the account-prerequisite authority requires all seven active CAD accounts.
+
+After the migration is present, the same D1 branch should add the seven stable IDs to `DEFAULT_ACCOUNTING_ACCOUNTS` and extend `accounting-journal-boundary.architecture.spec.ts` so TypeScript defaults and cumulative durable migrations remain synchronized.
+
+### 25.4 Scope deliberately deferred to D2-D4
+
+D1 adds no `PayrollEmployeePayment` or `PayrollCraRemittance` persistence and no structural Prisma migration. It does not clear employee net-pay liability, does not record a CRA payment, and does not expose `POSTED -> REVERSED`.
+
+Next packages remain:
+
+- **8P-D2** — one-full-settlement employee payment fact + liability-clearing Journal;
+- **8P-D3** — employer/remitter-period CRA remittance fact + immutable included-run/component evidence + liability-clearing Journal;
+- **8P-D4** — explicit inverse Payroll reversal/correction, correction run linkage, retry/replay and period-lock hardening.
+
+### 25.5 Local review state
+
+Source now contains the D1 authority/policy, atomic posting service/controller route, posted-Journal DTO/UI evidence and focused characterization for mapping, stale authority, account prerequisite and replay behavior. The pre-existing finalization fixture's inconsistent supported-employer-cost example is corrected from 185200 cents to the calculator-consistent 177200 cents.
+
+No `schema.prisma`, package manifest, lockfile or migration file is changed by D1. Per repository workflow, no local lint/build/strict/Jest/scanner execution is claimed before user review.
+
+Current local state: **8P-D1 SOURCE COMPLETE / REVIEW PENDING / PAYROLL COA DATA MIGRATION HANDOFF REQUIRED / NO PRISMA SCHEMA MIGRATION**.
