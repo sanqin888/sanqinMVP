@@ -4,10 +4,7 @@ import {
 } from '../accounting-contracts';
 import { buildPayrollCraRemittancePreview } from './payroll-cra-remittance-evidence';
 import { AccountingPayrollCraRemittanceService } from './accounting-payroll-cra-remittance.service';
-import {
-  PayrollRemitterType,
-  PayrollRunStatus,
-} from './payroll-contracts';
+import { PayrollRemitterType, PayrollRunStatus } from './payroll-contracts';
 import { PAYROLL_ACCOUNT_IDS } from './payroll-journal-write-authority';
 
 const frozenRun = (overrides: Record<string, unknown> = {}) => ({
@@ -90,8 +87,7 @@ const remittanceRow = (journalEntryStableId: string | null) => {
     runs: preview.includedRuns.map((run) => ({
       employerConfigStableId: run.employerConfigStableId,
       calculationHash: run.calculationHash,
-      postedAccrualJournalEntryStableId:
-        run.postedAccrualJournalEntryStableId,
+      postedAccrualJournalEntryStableId: run.postedAccrualJournalEntryStableId,
       payDate: new Date(run.payDate + 'T00:00:00.000Z'),
       incomeTaxCents: run.incomeTaxCents,
       employeeCppCents: run.employeeCppCents,
@@ -318,7 +314,9 @@ describe('AccountingPayrollCraRemittanceService', () => {
 
     expect(result.remittanceStableId).toBe('cra_remittance_1');
     expect(tx.payrollCraRemittance.create).not.toHaveBeenCalled();
-    expect(journal.createPayrollCraRemittanceJournalInTx).not.toHaveBeenCalled();
+    expect(
+      journal.createPayrollCraRemittanceJournalInTx,
+    ).not.toHaveBeenCalled();
   });
 
   it('lists existing settlements for the resolved remittance period', async () => {
@@ -327,10 +325,7 @@ describe('AccountingPayrollCraRemittanceService', () => {
       remittanceRow('journal_cra_remittance_1'),
     ]);
 
-    const result = await service.listForPeriod(
-      'employer_sanq',
-      '2026-09-18',
-    );
+    const result = await service.listForPeriod('employer_sanq', '2026-09-18');
 
     expect(result).toHaveLength(1);
     expect(result[0]?.remittanceStableId).toBe('cra_remittance_1');

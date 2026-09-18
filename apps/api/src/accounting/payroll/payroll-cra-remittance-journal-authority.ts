@@ -57,11 +57,7 @@ export type PayrollCraRemittanceFactV1 = {
 };
 
 export type PayrollCraRemittanceAccountPrerequisiteV1 = {
-  role:
-    | 'INCOME_TAX_PAYABLE'
-    | 'CPP_PAYABLE'
-    | 'EI_PAYABLE'
-    | 'PAYMENT_SOURCE';
+  role: 'INCOME_TAX_PAYABLE' | 'CPP_PAYABLE' | 'EI_PAYABLE' | 'PAYMENT_SOURCE';
   accountStableId: string;
   expected: {
     accountClass: AccountingAccountClassValue;
@@ -331,12 +327,7 @@ const buildPayrollCraRemittanceJournalFromFact = (
     cppCents,
     'Clear CPP/CPP2 payable',
   );
-  pushDebit(
-    lines,
-    PAYROLL_ACCOUNT_IDS.eiPayable,
-    eiCents,
-    'Clear EI payable',
-  );
+  pushDebit(lines, PAYROLL_ACCOUNT_IDS.eiPayable, eiCents, 'Clear EI payable');
   lines.push({
     accountStableId: fact.paymentAccountStableId,
     creditCents: fact.totalAmountCents,

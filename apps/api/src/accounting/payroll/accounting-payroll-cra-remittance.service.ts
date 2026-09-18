@@ -150,7 +150,9 @@ export class AccountingPayrollCraRemittanceService {
       'employerStableId',
     );
     const anchorDate = parsePayrollDateOnly(input.anchorDate, 'anchorDate');
-    const expectedEvidenceHash = requireEvidenceHash(input.expectedEvidenceHash);
+    const expectedEvidenceHash = requireEvidenceHash(
+      input.expectedEvidenceHash,
+    );
     const paymentAccountStableId = requirePayrollStableId(
       input.paymentAccountStableId,
       'paymentAccountStableId',
@@ -331,21 +333,20 @@ export class AccountingPayrollCraRemittanceService {
         include: REMITTANCE_INCLUDE,
       });
       if (replay) {
+        const replayView = replay as PayrollCraRemittanceViewRecord;
         if (
-          replay.employer.employerStableId !== input.employerStableId ||
-          replay.paymentAccountStableId !== input.paymentAccountStableId ||
-          !sameDate(replay.paymentDate, input.paymentDate) ||
-          replay.reference !== input.reference ||
-          replay.currency !== 'CAD' ||
-          !replay.journalEntryStableId
+          replayView.employer.employerStableId !== input.employerStableId ||
+          replayView.paymentAccountStableId !== input.paymentAccountStableId ||
+          !sameDate(replayView.paymentDate, input.paymentDate) ||
+          replayView.reference !== input.reference ||
+          replayView.currency !== 'CAD' ||
+          !replayView.journalEntryStableId
         ) {
           throw new ConflictException(
             'CRA remittance evidence is already bound to a different settlement',
           );
         }
-        return payrollCraRemittanceDto(
-          replay as PayrollCraRemittanceViewRecord,
-        );
+        return payrollCraRemittanceDto(replayView);
       }
 
       const preview = await this.buildPreview(
@@ -358,10 +359,7 @@ export class AccountingPayrollCraRemittanceService {
           'CRA remittance preview changed; refresh and review before posting',
         );
       }
-      if (
-        preview.includedRuns.length === 0 ||
-        preview.totalAmountCents <= 0
-      ) {
+      if (preview.includedRuns.length === 0 || preview.totalAmountCents <= 0) {
         throw new ConflictException(
           'CRA remittance has no positive unremitted Payroll liability',
         );

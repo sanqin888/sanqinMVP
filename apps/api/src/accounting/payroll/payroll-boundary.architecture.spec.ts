@@ -234,7 +234,9 @@ describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2/D3-A/D3-B1/D3-B2 Payroll ownership b
     expect(schema).toContain('PayrollCraRemittance');
     expect(schema).toContain('PayrollCraRemittanceRun');
     expect(controller).toContain('cra-remittances/preview');
-    expect(controller).toContain("@Post('payroll/employers/:employerStableId/cra-remittances')");
+    expect(controller).toContain(
+      "@Post('payroll/employers/:employerStableId/cra-remittances')",
+    );
     expect(settlement).toContain('PayrollRunStatus.POSTED');
     expect(settlement).toContain('craRemittanceEvidence: null');
     expect(settlement).toContain('buildPayrollCraRemittancePreview');

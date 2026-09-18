@@ -325,10 +325,7 @@ export class AccountingJournalService {
         normalizedAuthority,
       ),
     );
-    await this.assertPayrollCraRemittanceAuthorityInTx(
-      normalizedAuthority,
-      tx,
-    );
+    await this.assertPayrollCraRemittanceAuthorityInTx(normalizedAuthority, tx);
 
     const operator = this.requireJournalValue(
       operatorActorRef,

@@ -120,7 +120,9 @@ describe('Payroll CRA remittance Journal authority', () => {
         ],
       }),
     );
-    expect(plan.journal.lines.some((line) => line.categoryStableId)).toBe(false);
+    expect(plan.journal.lines.some((line) => line.categoryStableId)).toBe(
+      false,
+    );
     expect(
       plan.journal.lines.some(
         (line) =>
