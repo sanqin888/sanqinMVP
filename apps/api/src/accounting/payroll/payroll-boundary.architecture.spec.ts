@@ -178,7 +178,7 @@ describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2 Payroll ownership boundary', () => {
     expect(settlement).toContain('PayrollRunStatus.POSTED');
     expect(settlement).toContain('run.netPayCents');
     expect(authority).toContain('payroll.employee-payment.v1');
-    expect(authority).toContain('account_payroll_net_pay_payable');
+    expect(authority).toContain('PAYROLL_ACCOUNT_IDS.netPayPayable');
     expect(authority).toContain('AccountingAccountType.BANK');
     expect(authority).toContain('AccountingAccountType.CASH');
     expect(authority).not.toContain('wages_expense');

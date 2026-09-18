@@ -9,8 +9,9 @@ primary keys, and four natural/stable-token primary keys. The merged Payroll fou
 through D1 remains in `dev`. D2 adds one Accounting/Payroll-owned UUID model,
 `PayrollEmployeePayment`, with public `paymentStableId`, unique internal `runId`,
 stable scalar `paymentAccountStableId` and stable scalar `journalEntryStableId`.
-The D2 table is schema-first and remains **MIGRATION REQUIRED** until the
-user-generated companion migration is reviewed and merged into `dev`.
+The D2 companion migration `20260918200458_phase9_slice8p_d2_payroll_employee_payment`
+has been user-generated and reviewed as additive create-table/unique/index/FK-only SQL;
+it remains pending merge into `dev` with PR #2392.
 
 ## Primary-key families
 

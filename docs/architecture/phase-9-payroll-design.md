@@ -1,6 +1,6 @@
 # Phase 9 Payroll Vertical — Readiness, Design and Closeout Gate
 
-Status: **8P-D2 SOURCE REVIEWED — MIGRATION REQUIRED**  
+Status: **8P-D2 SOURCE + MIGRATION REVIEWED — CI RE-RUN PENDING**  
 Planning date: 2026-09-16  
 Implementation baseline: `origin/dev@3bae5682` (8P-D1 merged through PR #2391; final head `266a91de`, CI #5884 green, squash `3bae5682`)  
 Current implementation branch: `feat/phase9-slice8p-d2-payroll-employee-payment`
@@ -1527,18 +1527,14 @@ The Payroll review UI adds a separate employee-payment panel only for POSTED run
 
 CRA remittance remains D3 and posted-run reversal/correction remains D4.
 
-### 26.5 Migration handoff
+### 26.5 Migration review
 
-**MIGRATION REQUIRED.**
+**MIGRATION REVIEWED / ADDITIVE / PENDING MERGE TO `dev`.**
 
-D2 changes `schema.prisma` by adding `PayrollEmployeePayment` and the one-to-one `PayrollRun.employeePayment` relation. Per `AGENTS.md`, MCP does not create or edit `apps/api/prisma/migrations/**`.
+D2 changes `schema.prisma` by adding `PayrollEmployeePayment` and the one-to-one `PayrollRun.employeePayment` relation. Per `AGENTS.md`, MCP did not create or edit the migration; the user-generated migration is `apps/api/prisma/migrations/20260918200458_phase9_slice8p_d2_payroll_employee_payment/migration.sql`.
 
-After the schema/source PR is reviewed and merged into `dev`, generate locally against the verified disposable/local development database:
+The reviewed SQL matches the intended schema exactly: it creates the new table, unique `paymentStableId`, unique `runId`, nullable unique `journalEntryStableId`, `runId -> PayrollRun.id` with `ON DELETE RESTRICT`, and the payment-date/account-date indexes. It contains **no drops, destructive renames, alteration of existing columns or historical backfill**.
 
-```bash
-pnpm --filter api exec prisma migrate dev --create-only --name phase9_slice8p_d2_payroll_employee_payment
-```
+PR #2392 CI #5887 validated Prisma generation, architecture scan, API lint/build/strict and the full Web job, but API Jest failed one stale source-text architecture assertion after D2 was changed to reuse the canonical D1 `PAYROLL_ACCOUNT_IDS.netPayPayable` constant. The production implementation is unchanged by that failure; the architecture regression is being corrected to assert canonical constant reuse before CI is re-run.
 
-The generated SQL should be additive: create the new table, unique stable ID, unique `runId`, nullable unique `journalEntryStableId`, `runId -> PayrollRun.id` RESTRICT foreign key, and the payment-date/account-date indexes. It should contain **no drops, destructive renames or historical backfill**. Promotion to `main` / production remains blocked until that user-generated migration has been reviewed and merged back into `dev`.
-
-Current D2 state: **SOURCE REVIEWED / MIGRATION REQUIRED / NO LOCAL CI CLAIMED**.
+Current D2 state: **SOURCE + MIGRATION REVIEWED / CI RE-RUN PENDING / NO LOCAL CI CLAIMED**.
