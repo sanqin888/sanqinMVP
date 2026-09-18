@@ -37,8 +37,7 @@ const accounts = (): PayrollAccountFact[] => [
 ];
 
 const runRow = (
-  status: (typeof PayrollRunStatus)[keyof typeof PayrollRunStatus] =
-    PayrollRunStatus.APPROVED,
+  status: (typeof PayrollRunStatus)[keyof typeof PayrollRunStatus] = PayrollRunStatus.APPROVED,
 ) => {
   const calculationInputJson = { version: 1, payDate: '2026-09-18' };
   const calculationOutputJson = { version: 1, grossPayCents: 160_000 };
@@ -143,10 +142,8 @@ function makeService(status = PayrollRunStatus.APPROVED) {
     },
   };
   const prisma = {
-    $transaction: jest.fn(
-      (
-        work: (client: typeof tx) => Promise<unknown>,
-      ) => work(tx),
+    $transaction: jest.fn((work: (client: typeof tx) => Promise<unknown>) =>
+      work(tx),
     ),
   };
   const chart = {

@@ -66,14 +66,9 @@ const assertPostTransition = (): void => {
   }
 };
 
-const requireAmount = (
-  value: number | null,
-  field: string,
-): number => {
+const requireAmount = (value: number | null, field: string): number => {
   if (value === null) {
-    throw new ConflictException(
-      `${field} is required before Payroll posting`,
-    );
+    throw new ConflictException(`${field} is required before Payroll posting`);
   }
   return value;
 };
@@ -177,9 +172,7 @@ export class AccountingPayrollPostingService {
         existing.status !== PayrollRunStatus.APPROVED &&
         existing.status !== PayrollRunStatus.POSTED
       ) {
-        throw new ConflictException(
-          'Only APPROVED Payroll runs can be posted',
-        );
+        throw new ConflictException('Only APPROVED Payroll runs can be posted');
       }
       assertCalculatedEvidence(existing);
       const persistedHash = hashPayrollCalculationEvidence({

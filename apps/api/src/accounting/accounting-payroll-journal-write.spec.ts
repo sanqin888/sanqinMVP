@@ -91,8 +91,7 @@ function makeService() {
     vacationPayAccruedCents: fact.vacationPayAccruedCents,
     compensationExpenseCents: fact.compensationExpenseCents,
     craRemittanceCents: fact.craRemittanceCents,
-    supportedEmployerPayrollCostCents:
-      fact.supportedEmployerPayrollCostCents,
+    supportedEmployerPayrollCostCents: fact.supportedEmployerPayrollCostCents,
   };
   const tx = {
     payrollRun: {

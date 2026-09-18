@@ -193,8 +193,7 @@ describe('Accounting double-entry journal ownership boundary', () => {
     for (const item of expected) {
       expect(
         DEFAULT_ACCOUNTING_ACCOUNTS.find(
-          ({ accountStableId }) =>
-            accountStableId === item.accountStableId,
+          ({ accountStableId }) => accountStableId === item.accountStableId,
         ),
       ).toEqual({
         ...item,

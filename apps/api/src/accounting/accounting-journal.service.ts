@@ -232,8 +232,7 @@ export class AccountingJournalService {
           normalized,
           normalizedAuthority,
         ),
-        auditAuthority:
-          normalizedAuthority as unknown as Prisma.InputJsonValue,
+        auditAuthority: normalizedAuthority as unknown as Prisma.InputJsonValue,
       },
       operator,
       tx,

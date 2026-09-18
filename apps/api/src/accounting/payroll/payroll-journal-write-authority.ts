@@ -18,7 +18,8 @@ export const PAYROLL_LABOR_CATEGORY_STABLE_ID = 'expense_labor';
 
 export const PAYROLL_ACCOUNT_IDS = {
   wagesExpense: 'account_payroll_wages_expense',
-  employerContributionsExpense: 'account_payroll_employer_contributions_expense',
+  employerContributionsExpense:
+    'account_payroll_employer_contributions_expense',
   netPayPayable: 'account_payroll_net_pay_payable',
   incomeTaxPayable: 'account_payroll_income_tax_payable',
   cppPayable: 'account_payroll_cpp_payable',
@@ -238,8 +239,11 @@ export const normalizePayrollRunAccrualFact = (
     );
   }
   if (
-    sumMoney('gross reconciliation', normalized.netPayCents, employeeDeductions) !==
-    normalized.grossPayCents
+    sumMoney(
+      'gross reconciliation',
+      normalized.netPayCents,
+      employeeDeductions,
+    ) !== normalized.grossPayCents
   ) {
     throw new AccountingJournalPolicyError(
       'Payroll net pay plus deductions does not match grossPayCents',
@@ -473,7 +477,9 @@ export const assertPayrollRunAccrualJournalAuthority = (
   const expected = normalizeJournalCreate(
     buildPayrollRunAccrualJournalFromFact(authority.fact),
   );
-  if (hashJournalCreatePayload(journal) !== hashJournalCreatePayload(expected)) {
+  if (
+    hashJournalCreatePayload(journal) !== hashJournalCreatePayload(expected)
+  ) {
     throw new AccountingJournalPolicyError(
       'Payroll accrual Journal does not match its frozen Payroll authority',
     );
