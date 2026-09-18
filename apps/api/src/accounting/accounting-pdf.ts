@@ -48,10 +48,7 @@ export interface AccountingPdfDocument {
   strokeColor(color: string): this;
   stroke(): this;
   registerFont(name: string, src: string, family?: string): this;
-  on(
-    event: 'data',
-    listener: (chunk: Buffer | Uint8Array) => void,
-  ): this;
+  on(event: 'data', listener: (chunk: Buffer | Uint8Array) => void): this;
   on(event: 'error', listener: (error: Error) => void): this;
   on(event: 'end', listener: () => void): this;
   removeAllListeners(event?: string): this;
@@ -134,11 +131,7 @@ const registerFonts = (
   );
 
   if (regular && bold) {
-    doc.registerFont(
-      'SanQPdfRegular',
-      regular,
-      'NotoSansCJKsc-Regular',
-    );
+    doc.registerFont('SanQPdfRegular', regular, 'NotoSansCJKsc-Regular');
     doc.registerFont('SanQPdfBold', bold, 'NotoSansCJKsc-Bold');
     return {
       regular: 'SanQPdfRegular',
