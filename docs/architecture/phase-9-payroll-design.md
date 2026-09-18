@@ -1615,8 +1615,8 @@ The user-generated migration `20260918215432_phase9_slice8p_d3_cra_remittance` i
 
 The SQL is additive and matches the intended D3-B1 persistence shape: it creates `PayrollCraRemittance` and `PayrollCraRemittanceRun`, the expected stable/evidence/Journal unique indexes, `PayrollCraRemittanceRun.runId` uniqueness, ordinary date/employer indexes, and RESTRICT FKs to PayrollEmployer, PayrollRun and the parent remittance. It contains **no drop, rename, backfill, enum rewrite or alteration of existing Payroll rows**. Nullable `journalEntryStableId` uniqueness is compatible with PostgreSQL's multiple-NULL unique-index semantics.
 
-PR CI #5894 passed Prisma generation, the architecture baseline gate and the full Web job, but API lint failed one type-aware test matcher in `accounting-payroll-cra-remittance.service.spec.ts` (`@typescript-eslint/no-unsafe-assignment`). The production source and migration were not implicated. The redundant nested `expect.objectContaining()` matcher is removed locally because the same POSTED/unremitted query invariant is already pinned by the Payroll architecture regression.
+PR CI #5894 passed Prisma generation, the architecture baseline gate and the full Web job, but API lint failed one type-aware test matcher in `accounting-payroll-cra-remittance.service.spec.ts` (`@typescript-eslint/no-unsafe-assignment`). The redundant nested matcher was removed and pushed in `6f0929f4`. CI #5895 then again passed Prisma generation, Architecture and the full Web job, but API lint exposed the expected follow-on cleanup: the test still destructured an unused `prisma` fixture after that matcher was removed (`@typescript-eslint/no-unused-vars`). Production source and migration remain uninvolved. The local fix now destructures only `service`.
 
 Promotion to main/production remains blocked until this migration-bearing PR is merged to `dev` and all required CI gates are green.
 
-Current D3-B1 state: **SOURCE + MIGRATION REVIEWED / CI RE-RUN PENDING / LOCAL LINT FIX UNPUSHED**.
+Current D3-B1 state: **SOURCE + MIGRATION REVIEWED / CI RE-RUN PENDING / SECOND LOCAL LINT FIX UNPUSHED**.

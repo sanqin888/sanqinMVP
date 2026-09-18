@@ -58,7 +58,7 @@ describe('AccountingPayrollCraRemittanceService preview', () => {
         remitterType: PayrollRemitterType.ACCELERATED_THRESHOLD_1,
       },
     });
-    const { prisma, service } = setup([frozenRun(), otherType]);
+    const { service } = setup([frozenRun(), otherType]);
 
     const result = await service.preview('employer_sanq', '2026-09-18');
 
