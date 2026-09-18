@@ -1,9 +1,9 @@
 # Phase 9 Payroll Vertical — Readiness, Design and Closeout Gate
 
-Status: **8P-D1 LOCAL SOURCE COMPLETE / COA DATA MIGRATION REVIEWED / CI PENDING — NO PRISMA SCHEMA MIGRATION**  
+Status: **8P-D2 SOURCE REVIEWED — MIGRATION REQUIRED**  
 Planning date: 2026-09-16  
-Implementation baseline: `origin/dev@b252382d` (8P-C merged through PR #2390; final head `54c82a1c`, CI #5877 green, squash `b252382d`)  
-Current implementation branch: `feat/phase9-slice8p-d-payroll-financial-posting`
+Implementation baseline: `origin/dev@3bae5682` (8P-D1 merged through PR #2391; final head `266a91de`, CI #5884 green, squash `3bae5682`)  
+Current implementation branch: `feat/phase9-slice8p-d2-payroll-employee-payment`
 
 ## 1. Decision and insertion point
 
@@ -1475,4 +1475,70 @@ Source now contains the D1 authority/policy, atomic posting service/controller r
 
 D1 changes no `schema.prisma`, package manifest or lockfile. The only migration in the feature branch is the operator-created/reviewed data-only Payroll CoA seed `20260918185000_phase9_slice8p_d0_payroll_coa`. Per repository workflow, no local lint/build/strict/Jest/scanner execution is claimed before remote CI.
 
-Current state: **8P-D1 SOURCE + REVIEWED COA DATA MIGRATION COMPLETE / CI PENDING / NO PRISMA SCHEMA MIGRATION**.
+Current D1 state: **MERGED / CI GREEN / COA DATA MIGRATION MERGED** through PR #2391, final head `266a91de`, CI #5884 and squash `3bae5682`.
+
+## 26. 8P-D2 employee net-pay settlement — local implementation review state
+
+8P-D2 starts from merged `origin/dev@3bae5682` and activates the second Payroll financial fact: actual employee payment. It does not change the D1 payroll accrual or statutory calculation. The settlement is explicitly one full payment per posted PayrollRun and clears only the employee net-pay liability.
+
+### 26.1 Persisted settlement fact and public identity
+
+D2 adds one Accounting/Payroll-owned model, `PayrollEmployeePayment`:
+
+- internal UUID `id`;
+- public/business `paymentStableId`;
+- one required internal `runId` relation with a unique constraint, so a PayrollRun can have at most one employee-payment settlement;
+- stable scalar `paymentAccountStableId`, never an `AccountingAccount.id` FK;
+- frozen `amountCents`, `currency=CAD`, date-only `paymentDate`, optional operator reference;
+- stable scalar `journalEntryStableId` evidence, never an `AccountingJournalEntry.id` FK;
+- actor/time audit evidence.
+
+The API exposes `GET/POST /accounting/payroll/runs/:runStableId/employee-payment`. The POST contract deliberately has **no amount field**. The server always takes the amount from the already-POSTED run's frozen `netPayCents`.
+
+### 26.2 Full-settlement and account policy
+
+Employee payment is allowed only when:
+
+1. the PayrollRun is `POSTED`;
+2. D1 accrual evidence (`calculationHash`, `postedJournalEntryStableId`, `postedAt`) is complete;
+3. frozen `netPayCents` is positive;
+4. `paymentDate >= payDate`;
+5. the selected payment account is active, CAD, `ASSET`, and has `type=BANK|CASH`;
+6. `account_payroll_net_pay_payable` remains active CAD `LIABILITY`.
+
+`PLATFORM_WALLET` is intentionally rejected as an employee-payment source. A retry with the same run/account/date/reference replays the same persisted settlement; a changed replay fails closed.
+
+### 26.3 Owner-specific Journal authority and atomicity
+
+The D2 fact type is `payroll.employee-payment.v1`. Its only allowed Journal is:
+
+```text
+Dr account_payroll_net_pay_payable  = frozen PayrollRun.netPayCents
+Cr selected BANK/CASH account       = same amount
+```
+
+There is no wage expense, employer-contribution expense, tax/CPP/EI liability movement, or labour category on this settlement Journal. Payment timing therefore never rewrites the original payroll accrual.
+
+`AccountingPayrollEmployeePaymentService` creates the payment fact, asks the existing `AccountingJournalService` to write the owner-authorized Journal, freezes the returned Journal stable ID on the payment row and writes audit evidence inside one Accounting Serializable transaction. `AccountingJournalService` independently re-reads the payment fact, POSTED PayrollRun, referenced active D1 accrual Journal and both account facts immediately before persistence. Any failure rolls back both the payment row and Journal write.
+
+### 26.4 Operator UI
+
+The Payroll review UI adds a separate employee-payment panel only for POSTED runs. It reads the existing Accounting account list, exposes only CAD BANK/CASH choices, displays the frozen Net Pay as read-only settlement amount, accepts payment date/reference, and displays the resulting payment stable ID and Journal stable ID after success.
+
+CRA remittance remains D3 and posted-run reversal/correction remains D4.
+
+### 26.5 Migration handoff
+
+**MIGRATION REQUIRED.**
+
+D2 changes `schema.prisma` by adding `PayrollEmployeePayment` and the one-to-one `PayrollRun.employeePayment` relation. Per `AGENTS.md`, MCP does not create or edit `apps/api/prisma/migrations/**`.
+
+After the schema/source PR is reviewed and merged into `dev`, generate locally against the verified disposable/local development database:
+
+```bash
+pnpm --filter api exec prisma migrate dev --create-only --name phase9_slice8p_d2_payroll_employee_payment
+```
+
+The generated SQL should be additive: create the new table, unique stable ID, unique `runId`, nullable unique `journalEntryStableId`, `runId -> PayrollRun.id` RESTRICT foreign key, and the payment-date/account-date indexes. It should contain **no drops, destructive renames or historical backfill**. Promotion to `main` / production remains blocked until that user-generated migration has been reviewed and merged back into `dev`.
+
+Current D2 state: **SOURCE REVIEWED / MIGRATION REQUIRED / NO LOCAL CI CLAIMED**.

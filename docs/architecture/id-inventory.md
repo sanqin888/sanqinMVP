@@ -1,23 +1,22 @@
 # Current ID inventory
 
-Phase 9 Slice 8P-B3 working snapshot: `origin/dev@bf175d2a` plus the local
-Payroll lifecycle/YTD source and additive YearOpening evidence schema (2026-09-18).
-Current source of truth remains `apps/api/prisma/schema.prisma`; schema/migration
-authority follows `AGENTS.md`.
+Phase 9 Slice 8P-D2 working snapshot: `origin/dev@3bae5682` plus the local
+employee net-pay settlement source/schema (2026-09-18). Current source of truth remains
+`apps/api/prisma/schema.prisma`; schema/migration authority follows `AGENTS.md`.
 
-The working schema still contains **91 models**: 81 UUID-backed primary keys, six integer
-primary keys, and four natural/stable-token primary keys. The six Payroll B1 models and
-their structural migration are already present in `dev`. B3 adds no model or business-ID
-family; it only extends `PayrollEmployeeYearOpening` with three required non-periodic
-CPP/EI YTD evidence fields. That B3 column change is schema-first and remains
-**MIGRATION REQUIRED** until the user-generated companion migration is reviewed and
-merged into `dev`.
+The working schema contains **92 models**: 82 UUID-backed primary keys, six integer
+primary keys, and four natural/stable-token primary keys. The merged Payroll foundation
+through D1 remains in `dev`. D2 adds one Accounting/Payroll-owned UUID model,
+`PayrollEmployeePayment`, with public `paymentStableId`, unique internal `runId`,
+stable scalar `paymentAccountStableId` and stable scalar `journalEntryStableId`.
+The D2 table is schema-first and remains **MIGRATION REQUIRED** until the
+user-generated companion migration is reviewed and merged into `dev`.
 
 ## Primary-key families
 
 | Family | Models |
 |---|---|
-| UUID-backed (81) | UberRateLimitLease; User; UserSession; TrustedDevice; AuthChallenge; Store; StoreConfig; PosDevice; UserInvite; UserAddress; Order; PosPrintJob; Coupon; CouponTemplate; CouponProgram; PromotionRule; UserCoupon; OrderItem; UberWebhookInbox; UberOrderAction; OrderAmendment; OrderAmendmentItem; LoyaltyAccount; LoyaltyTenderReservation; LoyaltyLedger; CheckoutIntent; CloverMerchantAuthorization; PaymentTransaction; PaymentCheckoutAttempt; MessagingSuppression; MessagingSend; MessagingDeliveryEvent; MessagingWebhookEvent; RecipientFailureCounter; MenuCategory; MenuItem; MenuPackagingType; MenuItemPackaging; MenuItemComponent; MenuOptionGroupTemplate; MenuOptionTemplateChoice; MenuOptionChoiceLink; MenuItemOptionGroup; AccountingCategory; AccountingAccount; AccountingJournalEntry; AccountingJournalLine; PayrollEmployer; PayrollEmployerConfigVersion; PayrollEmployee; PayrollEmployeeConfigVersion; PayrollEmployeeYearOpening; PayrollRun; AccountingTransaction; AccountingExpenseDocument; AccountingExpensePaymentAllocation; AccountingSourceArtifact; AccountingArtifactBinaryRetention; AccountingParseRun; AccountingInboxItem; AccountingTrustedSender; AccountingProviderRecognitionRule; AccountingProviderFinancialDocument; AccountingProviderFinancialLine; AccountingProviderFinancialCoverage; UberFinancialReport; AccountingAuditLog; AccountingPeriodClose; AnalyticsEvent; OpsEvent; UberMerchantConnection; UberStoreMapping; UberItemChannelConfig; UberCategoryConfig; UberModifierGroupConfig; UberOptionItemConfig; UberOptionChildGroupBinding; UberMenuPublishVersion; UberPublishedMenuItem; UberReconciliationReport; UberOpsTicket |
+| UUID-backed (82) | UberRateLimitLease; User; UserSession; TrustedDevice; AuthChallenge; Store; StoreConfig; PosDevice; UserInvite; UserAddress; Order; PosPrintJob; Coupon; CouponTemplate; CouponProgram; PromotionRule; UserCoupon; OrderItem; UberWebhookInbox; UberOrderAction; OrderAmendment; OrderAmendmentItem; LoyaltyAccount; LoyaltyTenderReservation; LoyaltyLedger; CheckoutIntent; CloverMerchantAuthorization; PaymentTransaction; PaymentCheckoutAttempt; MessagingSuppression; MessagingSend; MessagingDeliveryEvent; MessagingWebhookEvent; RecipientFailureCounter; MenuCategory; MenuItem; MenuPackagingType; MenuItemPackaging; MenuItemComponent; MenuOptionGroupTemplate; MenuOptionTemplateChoice; MenuOptionChoiceLink; MenuItemOptionGroup; AccountingCategory; AccountingAccount; AccountingJournalEntry; AccountingJournalLine; PayrollEmployer; PayrollEmployerConfigVersion; PayrollEmployee; PayrollEmployeeConfigVersion; PayrollEmployeeYearOpening; PayrollRun; PayrollEmployeePayment; AccountingTransaction; AccountingExpenseDocument; AccountingExpensePaymentAllocation; AccountingSourceArtifact; AccountingArtifactBinaryRetention; AccountingParseRun; AccountingInboxItem; AccountingTrustedSender; AccountingProviderRecognitionRule; AccountingProviderFinancialDocument; AccountingProviderFinancialLine; AccountingProviderFinancialCoverage; UberFinancialReport; AccountingAuditLog; AccountingPeriodClose; AnalyticsEvent; OpsEvent; UberMerchantConnection; UberStoreMapping; UberItemChannelConfig; UberCategoryConfig; UberModifierGroupConfig; UberOptionItemConfig; UberOptionChildGroupBinding; UberMenuPublishVersion; UberPublishedMenuItem; UberReconciliationReport; UberOpsTicket |
 | Integer (6) | BrandConfig singleton; LoyaltyProgramPolicy singleton; BusinessHour; Holiday; MenuDailySpecial; AccountingAutomationConfig singleton |
 | Natural/stable-token (4) | UberRateLimitState.`partitionKey`; PosConnectivityReadModel.`storeStableId`; CloverOAuthStateRequest.`stateHash`; UberOAuthStateRequest.`nonce` |
 
@@ -29,7 +28,7 @@ merged into `dev`.
 | Orders and Offers | `Order.orderStableId`, `Coupon.couponStableId`, `CouponTemplate.couponStableId`, `CouponProgram.programStableId`, `PromotionRule.stableId`, `OrderAmendment.amendmentStableId` |
 | Catalog | `MenuCategory.stableId`, `MenuItem.stableId`, `MenuPackagingType.stableId`, `MenuDailySpecial.stableId`, `MenuOptionGroupTemplate.stableId`, `MenuOptionTemplateChoice.stableId` plus stable references for components/options |
 | Payments and Loyalty | `PaymentTransaction.attemptId`, `PaymentCheckoutAttempt.attemptId`, `PaymentCheckoutAttempt.orderStableId`, `LoyaltyLedger.ledgerStableId` |
-| Accounting / Payroll | `categoryStableId`, `accountStableId`, `entryStableId`, `txStableId`, `documentStableId`, `paymentAllocationStableId`, `artifactStableId`, `inboxItemStableId`, `trustedSenderStableId`, `ruleStableId`, `coverageStableId`, `reportStableId`; Payroll adds `employerStableId`, config `configStableId`, `employeeStableId`, `openingStableId`, and `runStableId` |
+| Accounting / Payroll | `categoryStableId`, `accountStableId`, `entryStableId`, `txStableId`, `documentStableId`, `paymentAllocationStableId`, `artifactStableId`, `inboxItemStableId`, `trustedSenderStableId`, `ruleStableId`, `coverageStableId`, `reportStableId`; Payroll adds `employerStableId`, config `configStableId`, `employeeStableId`, `openingStableId`, `runStableId`, and D2 `paymentStableId` |
 | Uber channel | `versionStableId`, `reportStableId`, `ticketStableId` and stable menu/category/template/choice references |
 
 ## External/provider identities

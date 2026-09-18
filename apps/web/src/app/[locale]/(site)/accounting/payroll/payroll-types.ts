@@ -146,6 +146,27 @@ export type PayrollCalculationResponse =
       };
     };
 
+export type PayrollPaymentAccount = {
+  accountStableId: string;
+  name: string;
+  type: 'CASH' | 'BANK' | 'PLATFORM_WALLET';
+  accountClass: 'ASSET';
+  currency: string;
+};
+
+export type PayrollEmployeePayment = {
+  paymentStableId: string;
+  runStableId: string;
+  paymentAccountStableId: string;
+  amountCents: number;
+  currency: string;
+  paymentDate: string;
+  reference: string | null;
+  journalEntryStableId: string | null;
+  createdByActorRef: string;
+  createdAt: string;
+};
+
 export const payrollLocalDateToday = (): string => {
   const now = new Date();
   return [

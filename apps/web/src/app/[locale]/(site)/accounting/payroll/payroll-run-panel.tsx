@@ -12,6 +12,7 @@ import {
   type PayrollRun,
 } from './payroll-types';
 import { PayrollRunReview } from './payroll-run-review';
+import { PayrollEmployeePaymentPanel } from './payroll-employee-payment-panel';
 
 type Props = {
   isZh: boolean;
@@ -463,15 +464,18 @@ export function PayrollRunPanel({
         </div>
 
         {selectedRun ? (
-          <PayrollRunReview
-            isZh={isZh}
-            run={selectedRun}
-            busy={busy}
-            calculate={calculate}
-            approve={approve}
-            postRun={postRun}
-            voidRun={voidRun}
-          />
+          <div className="space-y-4">
+            <PayrollRunReview
+              isZh={isZh}
+              run={selectedRun}
+              busy={busy}
+              calculate={calculate}
+              approve={approve}
+              postRun={postRun}
+              voidRun={voidRun}
+            />
+            <PayrollEmployeePaymentPanel isZh={isZh} run={selectedRun} />
+          </div>
         ) : (
           <div className="rounded-xl border border-dashed border-slate-300 p-6 text-sm text-slate-500">
             {isZh ? '选择一张工资记录查看明细。' : 'Select a payroll run to review.'}
