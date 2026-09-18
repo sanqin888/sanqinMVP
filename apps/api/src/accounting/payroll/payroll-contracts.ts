@@ -66,6 +66,7 @@ export type PayrollRemitterType = ValueOf<typeof PayrollRemitterType>;
 export const PAYROLL_SUPPORTED_PROVINCE_OF_EMPLOYMENT = 'ON' as const;
 export const PAYROLL_CALCULATION_PROFILE_VERSION = 'ON_HOURLY_SIMPLE_V1';
 export const PAYROLL_CALCULATION_EVIDENCE_VERSION = 1;
+export const PAYROLL_PAY_STATEMENT_TEMPLATE_VERSION = 'PAY_STATEMENT_V1';
 
 export type PayrollEmployerConfigPolicyInput = {
   version: number;

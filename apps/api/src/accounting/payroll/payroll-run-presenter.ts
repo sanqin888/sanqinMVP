@@ -42,6 +42,7 @@ export type PayrollRunViewRecord = {
   supportedEmployerPayrollCostCents: number | null;
   calculationEvidenceVersion: number | null;
   calculationHash: string | null;
+  payStatementTemplateVersion: string | null;
   ytdBeforeJson: unknown;
   ytdAfterJson: unknown;
   approvedByActorRef: string | null;
@@ -97,6 +98,7 @@ export const payrollRunDto = (row: PayrollRunViewRecord) => ({
   supportedEmployerPayrollCostCents: row.supportedEmployerPayrollCostCents,
   calculationEvidenceVersion: row.calculationEvidenceVersion,
   calculationHash: row.calculationHash,
+  payStatementTemplateVersion: row.payStatementTemplateVersion,
   ytdBefore: row.ytdBeforeJson ?? null,
   ytdAfter: row.ytdAfterJson ?? null,
   approvedByActorRef: row.approvedByActorRef,

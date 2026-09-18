@@ -28,7 +28,7 @@ const modelSource = (schema: string, model: string): string => {
   return match[0];
 };
 
-describe('Phase 9 Slice 8P-B1/B2/B3 Payroll ownership boundary', () => {
+describe('Phase 9 Slice 8P-B1/B2/B3/C Payroll ownership boundary', () => {
   const schema = read(PRISMA_SCHEMA);
 
   it('adds only the approved Payroll core persistence models', () => {
@@ -124,7 +124,7 @@ describe('Phase 9 Slice 8P-B1/B2/B3 Payroll ownership boundary', () => {
     );
   });
 
-  it('does not provision Payroll CoA or settlement persistence through B3', () => {
+  it('does not provision Payroll CoA or settlement persistence through 8P-C', () => {
     const chart = read(
       resolve(ACCOUNTING_ROOT, 'accounting-chart-of-accounts.ts'),
     );
@@ -144,6 +144,9 @@ describe('Phase 9 Slice 8P-B1/B2/B3 Payroll ownership boundary', () => {
     expect(run).toContain('calculationOutputJson');
     expect(run).toContain('ytdBeforeJson');
     expect(run).toContain('ytdAfterJson');
+    expect(run).toContain('payStatementTemplateVersion');
+    const contracts = read(resolve(PAYROLL_ROOT, 'payroll-contracts.ts'));
+    expect(contracts).toContain('PAY_STATEMENT_V1');
     const opening = modelSource(schema, 'PayrollEmployeeYearOpening');
     expect(opening).toContain('nonPeriodicCppBaseContributionYtdCents');
     expect(opening).toContain('nonPeriodicCppAdditionalDeductionYtdCents');

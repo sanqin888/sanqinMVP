@@ -165,6 +165,46 @@ describe('Accounting Payroll finalization lifecycle', () => {
     expect(tx.payrollRun.update).not.toHaveBeenCalled();
   });
 
+  it('freezes the pay-statement template version when approval succeeds', async () => {
+    const { service, tx } = makeService();
+    const existing = runRow(PayrollRunStatus.CALCULATED);
+    tx.payrollRun.findUnique.mockResolvedValue(existing);
+    tx.payrollRun.update.mockImplementation(
+      ({ data }: { data: Record<string, unknown> }) => ({
+        ...existing,
+        ...data,
+        status: PayrollRunStatus.APPROVED,
+        approvedAt: new Date('2026-09-18T13:00:00.000Z'),
+        employee: existing.employee,
+        employer: existing.employer,
+      }),
+    );
+
+    jest
+      .spyOn(calculationModule, 'buildPayrollRunCalculation')
+      .mockResolvedValue({
+        ok: true,
+        calculation: {
+          employeeConfigStableId: 'employee_config_1',
+          employerConfigStableId: 'employer_config_1',
+          input: existing.calculationInputJson as never,
+          output: existing.calculationOutputJson as never,
+          calculationHash: existing.calculationHash,
+        },
+      });
+
+    await service.approveRun(existing.runStableId, 'actor_2');
+
+    expect(tx.payrollRun.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: PayrollRunStatus.APPROVED,
+          payStatementTemplateVersion: 'PAY_STATEMENT_V1',
+        }) as unknown,
+      }),
+    );
+  });
+
   it('blocks voiding an approved run once a later finalized run exists', async () => {
     const { service, tx } = makeService();
     const existing = runRow(PayrollRunStatus.APPROVED);

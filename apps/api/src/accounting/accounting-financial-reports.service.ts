@@ -361,6 +361,7 @@ export class AccountingFinancialReportsService {
     operatorUserId: string,
   ) {
     const report = await this.pnlReport(query);
+    const pdfBuffer = await renderAccountingPnlPdf(template, report);
     await this.createAuditLog({
       action: 'EXPORT_PDF',
       entityType: 'ACCOUNTING_REPORT',
@@ -368,7 +369,7 @@ export class AccountingFinancialReportsService {
       operatorActorRef: operatorUserId,
       afterJson: { template, query } as Prisma.JsonObject,
     });
-    return renderAccountingPnlPdf(template, report);
+    return pdfBuffer;
   }
 
   async accountBalanceReport(from?: string, to?: string) {

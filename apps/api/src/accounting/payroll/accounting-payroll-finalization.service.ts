@@ -9,6 +9,7 @@ import { runSerializableAccountingWrite } from '../accounting-atomic-write';
 import { writeAccountingAuditLog } from '../accounting-audit-writer';
 import {
   PAYROLL_CALCULATION_EVIDENCE_VERSION,
+  PAYROLL_PAY_STATEMENT_TEMPLATE_VERSION,
   PayrollRunStatus,
 } from './payroll-contracts';
 import {
@@ -215,6 +216,7 @@ export class AccountingPayrollFinalizationService {
           status: PayrollRunStatus.APPROVED,
           approvedByActorRef: actorRef,
           approvedAt: new Date(),
+          payStatementTemplateVersion: PAYROLL_PAY_STATEMENT_TEMPLATE_VERSION,
           version: { increment: 1 },
           updatedByActorRef: actorRef,
         },

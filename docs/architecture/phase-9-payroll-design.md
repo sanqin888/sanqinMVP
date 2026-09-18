@@ -1,9 +1,9 @@
 # Phase 9 Payroll Vertical — Readiness, Design and Closeout Gate
 
-Status: **8P-B3 LOCAL SOURCE COMPLETE / REVIEW PENDING — MIGRATION REQUIRED**  
+Status: **8P-C LOCAL SOURCE COMPLETE / REVIEW PENDING — DEPENDENCY LOCK HANDOFF REQUIRED / NO MIGRATION**  
 Planning date: 2026-09-16  
-Implementation baseline: `origin/dev@bf175d2a` (8P-B2 merged / CI #5864 green)  
-Current implementation branch: `feat/phase9-slice8p-b3-payroll-lifecycle`
+Implementation baseline: `origin/dev@dca67435` (8P-B3 merged; PR #2389 final head `dc48ea9a`, CI #5868 green, companion migration merged)  
+Current implementation branch: `feat/phase9-slice8p-c-payroll-ui-pdf`
 
 ## 1. Decision and insertion point
 
@@ -1315,4 +1315,72 @@ Promotion from `dev` to `main` / production remains blocked until the companion 
 
 Per repository workflow, no local Prisma generate/validate, scanner, lint, build, strict TypeScript or Jest command is claimed during the local implementation phase. GitHub Actions is the authoritative validation gate after remote delivery.
 
-Current local state: **8P-B3 SOURCE COMPLETE / REVIEW PENDING / MIGRATION REQUIRED**.
+The local-review state above has advanced: 8P-B3 merged through PR #2389 with final head `dc48ea9a`; CI #5868 passed Architecture and all API/Web lint/build/strict/test gates. The user-generated B3 companion migration is included in the merged `dev@dca67435` baseline. B3 is therefore **MERGED / CI GREEN / COMPANION MIGRATION MERGED** and is the runtime/API baseline for 8P-C.
+
+## 24. 8P-C Payroll operator UI + pay-statement PDF — local implementation review state
+
+8P-C starts from merged `origin/dev@dca67435`. It adds the operator-facing Accounting Payroll surface and finalized Pay Statement rendering while keeping statutory calculation authority in the B2/B3 backend and keeping all 8P-D financial posting/settlement work out of scope.
+
+### 24.1 Operator UI boundary
+
+The Accounting Web shell gains a first-class `/accounting/payroll` surface. It consumes only the authenticated B3 Accounting Payroll API and contains **no federal/Ontario tax, CPP/CPP2 or EI formula constants**.
+
+The UI supports:
+
+- employer selection/creation plus explicit effective-dated remitter type and EI employer multiplier;
+- employee selection/creation plus explicit Ontario effective-dated pay frequency, pay-schedule anchor, hourly rate, Federal/Ontario TD1 mode/claim totals, reviewed claim-code-E treatment, additional per-pay tax, CPP/EI reviewed exception evidence and vacation treatment;
+- same-employer mid-year Year Opening review/edit before approval, including all B3 non-periodic CPP/EI opening evidence;
+- run create/edit, explicit overtime input, calculate/recalculate, server-result review, YTD review, approve/freeze and guarded void;
+- finalized Pay Statement PDF download.
+
+Browser code performs only display/unit conversion such as dollars<->integer cents and hours<->integer minutes. The server remains the sole statutory calculator and approval stale-check authority.
+
+### 24.2 Pay Statement V1 evidence contract
+
+`PAY_STATEMENT_V1` is frozen onto `PayrollRun.payStatementTemplateVersion` during `CALCULATED -> APPROVED`. The statement endpoint accepts only finalized `APPROVED / POSTED / REVERSED` runs and rejects DRAFT, CALCULATED and VOIDED facts.
+
+The PDF snapshot is constructed only from the frozen run/config/evidence facts. It includes employer/employee name, pay period/date/frequency, regular/overtime/vacation earnings, gross pay, income tax, CPP/CPP2, EI, total deductions, net pay and selected YTD facts. It does not call or reimplement the statutory calculator.
+
+Missing frozen amount/YTD evidence, unsupported template version or missing approval/config evidence fails closed. Successful statement export writes `PAYROLL_PAY_STATEMENT_EXPORT` to the existing Accounting audit log.
+
+### 24.3 Shared PDF primitive and broken Accounting PDF repair
+
+The previous Accounting report PDF implementation manually concatenated PDF objects/xref offsets and encoded UTF-8 text into built-in Helvetica. 8P-C removes that low-level writer and replaces it with one Accounting-owned PDFKit primitive used by both Financial Report PDF and Payroll Pay Statement PDF.
+
+The shared primitive:
+
+- streams PDFKit output to a real Buffer rather than manually computing byte offsets;
+- fixes metadata dates from frozen evidence (or a deterministic fallback) rather than using ad-hoc timestamps;
+- supports pagination and explicit money/text alignment;
+- uses Noto Sans CJK TTC fonts for Unicode names/category labels in the production Alpine image;
+- allows `SANQ_PDF_FONT_REGULAR` / `SANQ_PDF_FONT_BOLD` overrides;
+- falls back to built-in Helvetica only for ASCII documents;
+- fails closed for Unicode content when the CJK font is unavailable instead of silently producing mojibake.
+
+The existing `GET /accounting/export/report.pdf` route is unchanged externally but now renders through PDFKit. Report export audit is written only after successful rendering, so a PDF render failure no longer records a false successful export.
+
+### 24.4 Dependency/runtime packaging
+
+The user explicitly authorized the new PDF dependency. Source declares:
+
+- `pdfkit@^0.20.2` in API runtime dependencies;
+- `@types/pdfkit@^0.17.6` in API dev dependencies;
+- Alpine `font-noto-cjk` in the API runner image.
+
+The SanQ MCP has no package-manager execution tool and the current lockfile does not already contain PDFKit's complete dependency graph. Therefore MCP intentionally does **not** hand-edit `pnpm-lock.yaml` or fabricate integrity metadata.
+
+Before remote delivery, the user must run real pnpm against this branch/workspace so the lockfile is generated by pnpm:
+
+`pnpm --filter api add pdfkit@0.20.2`
+
+`pnpm --filter api add -D @types/pdfkit@0.17.6`
+
+After that lockfile update is visible in the workspace, it must be reviewed before commit/PR. This is a dependency-lock handoff, **not a Prisma migration**; 8P-C changes no Prisma schema and requires no migration.
+
+### 24.5 Architecture and validation state
+
+Payroll production source still has zero direct `@prisma/client` imports and no direct `AccountingTransaction` / Journal delegate mutation. 8P-C adds no Payroll CoA, payment/remittance persistence, POSTED/REVERSED mutation path or 8P-D financial authority. The existing expected direct-import baseline therefore remains Foundation **1** / External **1** / Identity **2** / Runtime **4**, total **8**, public SCC empty.
+
+Focused source coverage adds real PDF Buffer header/EOF characterization, Unicode-font fail-closed behavior and approval-time pay-statement-template freezing. Per repository workflow, no local package install, lint, build, strict TypeScript or Jest execution is claimed by MCP before user review.
+
+Current local state: **8P-C SOURCE COMPLETE / REVIEW PENDING / DEPENDENCY LOCK HANDOFF REQUIRED / NO MIGRATION**.
