@@ -185,11 +185,7 @@ const drawPdfHeading = (
       width: doc.page.width - PDF_LEFT - PDF_RIGHT,
     });
   doc.moveDown(0.25);
-  doc
-    .font(fonts.regular)
-    .fontSize(9)
-    .fillColor('#64748b')
-    .text(subtitle);
+  doc.font(fonts.regular).fontSize(9).fillColor('#64748b').text(subtitle);
   doc.fillColor('#0f172a');
   doc.moveDown(1);
 };
@@ -439,4 +435,3 @@ export function renderAccountingPnlPdf(
     },
   );
 }
-

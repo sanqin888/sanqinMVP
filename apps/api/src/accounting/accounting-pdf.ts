@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import PDFDocument = require('pdfkit');
+import { createRequire } from 'node:module';
 
 const DEFAULT_CJK_REGULAR_FONT =
   '/usr/share/fonts/noto/NotoSansCJK-Regular.ttc';
@@ -16,7 +16,30 @@ export type AccountingPdfFonts = {
   unicode: boolean;
 };
 
-export type AccountingPdfDocument = PDFDocument;
+type PdfKitConstructor = new (
+  options?: PDFKit.PDFDocumentOptions,
+) => PDFKit.PDFDocument;
+
+const loadPdfKitConstructor = (): PdfKitConstructor => {
+  const moduleValue: unknown = createRequire(__filename)('pdfkit');
+
+  if (typeof moduleValue === 'function') {
+    return moduleValue as PdfKitConstructor;
+  }
+
+  if (moduleValue && typeof moduleValue === 'object') {
+    const namedExport = (moduleValue as { PDFDocument?: unknown }).PDFDocument;
+    if (typeof namedExport === 'function') {
+      return namedExport as PdfKitConstructor;
+    }
+  }
+
+  throw new Error('pdfkit did not expose a PDFDocument constructor');
+};
+
+const PDFDocument = loadPdfKitConstructor();
+
+export type AccountingPdfDocument = PDFKit.PDFDocument;
 
 export type AccountingPdfRenderContext = {
   doc: AccountingPdfDocument;
@@ -73,9 +96,7 @@ const registerFonts = (
 };
 
 export const containsNonAscii = (value: string): boolean =>
-  Array.from(value).some(
-    (character) => (character.codePointAt(0) ?? 0) > 0x7f,
-  );
+  Array.from(value).some((character) => (character.codePointAt(0) ?? 0) > 0x7f);
 
 export const renderAccountingPdf = (
   options: AccountingPdfOptions,
