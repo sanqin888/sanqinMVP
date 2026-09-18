@@ -41,11 +41,7 @@ export const multiplyMoney = (
   valueCents: number,
   multiplier: number,
   field = 'money',
-): number =>
-  toSafeNumber(
-    BigInt(valueCents) * BigInt(multiplier),
-    field,
-  );
+): number => toSafeNumber(BigInt(valueCents) * BigInt(multiplier), field);
 
 export const sumMoney = (field: string, ...values: number[]): number =>
   toSafeNumber(
@@ -107,15 +103,10 @@ export const calculateEmployeeCpp2Cents = ({
     return 0;
   }
 
-  const threshold = Math.max(
-    pensionableEarningsYtdCents,
-    policy.cpp.ympeCents,
-  );
+  const threshold = Math.max(pensionableEarningsYtdCents, policy.cpp.ympeCents);
   const contributionEarnings = Math.max(
     0,
-    pensionableEarningsYtdCents +
-      pensionableEarningsCents -
-      threshold,
+    pensionableEarningsYtdCents + pensionableEarningsCents - threshold,
   );
   const formulaAmount = multiplyRatioCents(
     contributionEarnings,
@@ -176,10 +167,7 @@ export const splitCppForTax = ({
     policy.cpp.totalRateBasisPoints,
     'totalFirstAdditionalCppCents',
   );
-  const nonPeriodicCppCents = Math.max(
-    0,
-    totalCppCents - regularCppCents,
-  );
+  const nonPeriodicCppCents = Math.max(0, totalCppCents - regularCppCents);
   const regularBaseCppCents = multiplyRatioCents(
     regularCppCents,
     policy.cpp.baseRateBasisPoints,
@@ -194,8 +182,7 @@ export const splitCppForTax = ({
   );
   const totalBaseCppCents = regularBaseCppCents + nonPeriodicBaseCppCents;
 
-  const totalTaxDeductionCents =
-    totalFirstAdditionalCppCents + totalCpp2Cents;
+  const totalTaxDeductionCents = totalFirstAdditionalCppCents + totalCpp2Cents;
   const cppTaxDeductionRegularCents =
     totalPensionableEarningsCents === 0
       ? 0
@@ -367,9 +354,7 @@ export type AnnualOntarioTaxInput = {
   policy: OntarioPayrollStatutoryPolicy;
 };
 
-export const calculateAnnualOntarioTax = (
-  input: AnnualOntarioTaxInput,
-) => {
+export const calculateAnnualOntarioTax = (input: AnnualOntarioTaxInput) => {
   const { policy } = input;
   const federalClaimCents =
     input.federalTd1Mode === PayrollTd1Mode.NO_FORM_DEFAULT
@@ -453,9 +438,7 @@ export const calculateAnnualOntarioTax = (
   );
   const basicOntarioTaxCents = Math.max(
     0,
-    ontarioGrossTaxCents -
-      ontarioPersonalCreditCents -
-      ontarioCppEiCreditCents,
+    ontarioGrossTaxCents - ontarioPersonalCreditCents - ontarioCppEiCreditCents,
   );
   const ontarioSurtaxCents = calculateOntarioSurtaxCents(
     basicOntarioTaxCents,
@@ -476,9 +459,7 @@ export const calculateAnnualOntarioTax = (
   );
   const ontarioAnnualTaxCents = Math.max(
     0,
-    taxBeforeReduction +
-      ontarioHealthPremiumCents -
-      ontarioTaxReductionCents,
+    taxBeforeReduction + ontarioHealthPremiumCents - ontarioTaxReductionCents,
   );
 
   return {

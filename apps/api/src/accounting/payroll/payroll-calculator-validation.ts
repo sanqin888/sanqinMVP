@@ -239,10 +239,7 @@ export const resolvePriorNonPeriodicTaxEvidence = (
       'ytd.nonPeriodicTaxEvidenceYtd.cppAdditionalDeductionCents',
       resolved.cppAdditionalDeductionCents,
     ],
-    [
-      'ytd.nonPeriodicTaxEvidenceYtd.eiPremiumCents',
-      resolved.eiPremiumCents,
-    ],
+    ['ytd.nonPeriodicTaxEvidenceYtd.eiPremiumCents', resolved.eiPremiumCents],
   ]);
   if (invalid) {
     return invalid;

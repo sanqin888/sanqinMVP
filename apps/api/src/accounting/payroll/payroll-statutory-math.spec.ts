@@ -85,12 +85,12 @@ describe('Ontario Payroll 2026 statutory math', () => {
   });
 
   it('pins the federal no-TD1 BPAF phaseout boundaries', () => {
-    expect(
-      calculateFederalBasicPersonalAmountCents(18_144_000, policy),
-    ).toBe(1_645_200);
-    expect(
-      calculateFederalBasicPersonalAmountCents(25_848_200, policy),
-    ).toBe(1_482_900);
+    expect(calculateFederalBasicPersonalAmountCents(18_144_000, policy)).toBe(
+      1_645_200,
+    );
+    expect(calculateFederalBasicPersonalAmountCents(25_848_200, policy)).toBe(
+      1_482_900,
+    );
   });
 
   it('matches Ontario Health Premium breakpoints', () => {

@@ -7,44 +7,34 @@ import {
 describe('Ontario Payroll statutory policy registry', () => {
   it('selects the 122nd edition identity through June 30, 2026', () => {
     expect(
-      selectOntarioPayrollStatutoryPolicy(
-        new Date('2026-01-01T12:00:00.000Z'),
-      )?.version,
+      selectOntarioPayrollStatutoryPolicy(new Date('2026-01-01T12:00:00.000Z'))
+        ?.version,
     ).toBe('CA-ON-2026-01');
     expect(
-      selectOntarioPayrollStatutoryPolicy(
-        new Date('2026-06-30T12:00:00.000Z'),
-      )?.version,
+      selectOntarioPayrollStatutoryPolicy(new Date('2026-06-30T12:00:00.000Z'))
+        ?.version,
     ).toBe('CA-ON-2026-01');
   });
 
   it('selects the 123rd edition identity from July 1, 2026', () => {
     expect(
-      selectOntarioPayrollStatutoryPolicy(
-        new Date('2026-07-01T12:00:00.000Z'),
-      )?.version,
+      selectOntarioPayrollStatutoryPolicy(new Date('2026-07-01T12:00:00.000Z'))
+        ?.version,
     ).toBe('CA-ON-2026-07');
     expect(
-      selectOntarioPayrollStatutoryPolicy(
-        new Date('2026-12-31T12:00:00.000Z'),
-      )?.version,
+      selectOntarioPayrollStatutoryPolicy(new Date('2026-12-31T12:00:00.000Z'))
+        ?.version,
     ).toBe('CA-ON-2026-07');
   });
 
   it('fails closed outside the supported policy calendar', () => {
     expect(
-      selectOntarioPayrollStatutoryPolicy(
-        new Date('2025-12-31T12:00:00.000Z'),
-      ),
+      selectOntarioPayrollStatutoryPolicy(new Date('2025-12-31T12:00:00.000Z')),
     ).toBeNull();
     expect(
-      selectOntarioPayrollStatutoryPolicy(
-        new Date('2027-01-01T12:00:00.000Z'),
-      ),
+      selectOntarioPayrollStatutoryPolicy(new Date('2027-01-01T12:00:00.000Z')),
     ).toBeNull();
-    expect(
-      selectOntarioPayrollStatutoryPolicy(new Date('invalid')),
-    ).toBeNull();
+    expect(selectOntarioPayrollStatutoryPolicy(new Date('invalid'))).toBeNull();
   });
 
   it('pins the 2026 CPP, EI and Ontario headline constants', () => {

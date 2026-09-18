@@ -137,8 +137,7 @@ export const calculateOntarioHourlyPayroll = (
       input.cppTreatment === PayrollCppTreatment.STANDARD
         ? calculateEmployeeCpp2Cents({
             pensionableEarningsCents: periodicTaxableEarningsCents,
-            pensionableEarningsYtdCents:
-              input.ytd.pensionableEarningsYtdCents,
+            pensionableEarningsYtdCents: input.ytd.pensionableEarningsYtdCents,
             employeeCpp2YtdCents: input.ytd.employeeCpp2YtdCents,
             policy,
           })
@@ -147,8 +146,7 @@ export const calculateOntarioHourlyPayroll = (
       input.cppTreatment === PayrollCppTreatment.STANDARD
         ? calculateEmployeeCpp2Cents({
             pensionableEarningsCents,
-            pensionableEarningsYtdCents:
-              input.ytd.pensionableEarningsYtdCents,
+            pensionableEarningsYtdCents: input.ytd.pensionableEarningsYtdCents,
             employeeCpp2YtdCents: input.ytd.employeeCpp2YtdCents,
             policy,
           })
@@ -194,8 +192,7 @@ export const calculateOntarioHourlyPayroll = (
       priorNonPeriodicEvidence,
       periodicTaxableEarningsCents,
       nonPeriodicTaxableEarningsCents,
-      cppTaxDeductionRegularCents:
-        cppTaxSplit.cppTaxDeductionRegularCents,
+      cppTaxDeductionRegularCents: cppTaxSplit.cppTaxDeductionRegularCents,
       cppTaxDeductionNonPeriodicCents:
         cppTaxSplit.cppTaxDeductionNonPeriodicCents,
       regularCppCents: employeeCppRegularCents,
@@ -302,10 +299,8 @@ export const calculateOntarioHourlyPayroll = (
           employeeCppRegularCents,
           employeeCppNonPeriodicCents,
           employeeCppBaseRegularCents: cppTaxSplit.regularBaseCppCents,
-          employeeCppBaseNonPeriodicCents:
-            cppTaxSplit.nonPeriodicBaseCppCents,
-          cppTaxDeductionRegularCents:
-            cppTaxSplit.cppTaxDeductionRegularCents,
+          employeeCppBaseNonPeriodicCents: cppTaxSplit.nonPeriodicBaseCppCents,
+          cppTaxDeductionRegularCents: cppTaxSplit.cppTaxDeductionRegularCents,
           cppTaxDeductionNonPeriodicCents:
             cppTaxSplit.cppTaxDeductionNonPeriodicCents,
           employeeCpp2RegularCents,

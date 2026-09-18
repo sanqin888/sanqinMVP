@@ -128,10 +128,7 @@ export const calculatePayrollIncomeTax = ({
   taxEvidence: PayrollTaxEvidence;
 } => {
   const periodicAnnualTaxableIncomeCents = multiplyMoney(
-    Math.max(
-      0,
-      periodicTaxableEarningsCents - cppTaxDeductionRegularCents,
-    ),
+    Math.max(0, periodicTaxableEarningsCents - cppTaxDeductionRegularCents),
     input.payPeriodsPerYear,
     'periodicAnnualTaxableIncomeCents',
   );
@@ -217,10 +214,8 @@ export const calculatePayrollIncomeTax = ({
     policy,
   });
   const beforeCurrentAnnualTax = calculateAnnualOntarioTax({
-    annualTaxableIncomeCents:
-      annualTaxableIncomeBeforeCurrentNonPeriodicCents,
-    annualGrossEmploymentIncomeCents:
-      annualGrossBeforeCurrentNonPeriodicCents,
+    annualTaxableIncomeCents: annualTaxableIncomeBeforeCurrentNonPeriodicCents,
+    annualGrossEmploymentIncomeCents: annualGrossBeforeCurrentNonPeriodicCents,
     federalTd1Mode: input.federalTd1Mode,
     federalTd1TotalClaimCents: input.federalTd1TotalClaimCents,
     ontarioTd1Mode: input.ontarioTd1Mode,
@@ -230,8 +225,7 @@ export const calculatePayrollIncomeTax = ({
   });
   const withCurrentAnnualTax = calculateAnnualOntarioTax({
     annualTaxableIncomeCents: annualTaxableIncomeWithNonPeriodicCents,
-    annualGrossEmploymentIncomeCents:
-      annualGrossWithCurrentNonPeriodicCents,
+    annualGrossEmploymentIncomeCents: annualGrossWithCurrentNonPeriodicCents,
     federalTd1Mode: input.federalTd1Mode,
     federalTd1TotalClaimCents: input.federalTd1TotalClaimCents,
     ontarioTd1Mode: input.ontarioTd1Mode,

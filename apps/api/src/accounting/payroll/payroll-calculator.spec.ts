@@ -106,12 +106,15 @@ describe('Ontario hourly Payroll calculator', () => {
     [PayrollPayFrequency.BIWEEKLY, 27],
     [PayrollPayFrequency.SEMIMONTHLY, 24],
     [PayrollPayFrequency.MONTHLY, 12],
-  ] as const)('supports CRA pay-period count %s/%i', (payFrequency, payPeriodsPerYear) => {
-    const result = calculateOntarioHourlyPayroll(
-      input({ payFrequency, payPeriodsPerYear }),
-    );
-    expect(result.ok).toBe(true);
-  });
+  ] as const)(
+    'supports CRA pay-period count %s/%i',
+    (payFrequency, payPeriodsPerYear) => {
+      const result = calculateOntarioHourlyPayroll(
+        input({ payFrequency, payPeriodsPerYear }),
+      );
+      expect(result.ok).toBe(true);
+    },
+  );
 
   it('fails closed for an invalid frequency/pay-period combination', () => {
     const result = calculateOntarioHourlyPayroll(
@@ -281,8 +284,7 @@ describe('Ontario hourly Payroll calculator', () => {
 
     const unsupported = calculateOntarioHourlyPayroll(
       input({
-        incomeTaxTreatment:
-          PayrollIncomeTaxTreatment.TD1_CLAIM_CODE_E_REVIEWED,
+        incomeTaxTreatment: PayrollIncomeTaxTreatment.TD1_CLAIM_CODE_E_REVIEWED,
         additionalTaxPerPayCents: 100,
       }),
     );
