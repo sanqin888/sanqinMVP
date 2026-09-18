@@ -1949,6 +1949,9 @@ model PayrollRun {
   approvedAt                        DateTime?
   postedJournalEntryStableId        String?
   postedAt                          DateTime?
+  reversalJournalEntryStableId      String?                       @unique
+  reversedByActorRef                String?
+  reversalReason                    String?
   reversedAt                        DateTime?
   voidedAt                          DateTime?
   createdByActorRef                 String

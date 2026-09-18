@@ -2,6 +2,10 @@ import type {
   PayrollCalculationYtdInput,
   PayrollNonPeriodicTaxEvidenceYtd,
 } from './payroll-calculator.contracts';
+import {
+  PayrollRunStatus,
+  type PayrollRunStatus as PayrollRunStatusType,
+} from './payroll-contracts';
 
 export type PayrollYtdOpeningRecord = {
   grossEarningsYtdCents: number;
@@ -23,6 +27,9 @@ export type PayrollYtdOpeningRecord = {
 
 export type PayrollFinalizedRunYtdRecord = {
   runStableId: string;
+  status: PayrollRunStatusType;
+  reversalJournalEntryStableId: string | null;
+  reversedAt: Date | null;
   grossPayCents: number | null;
   netPayCents: number | null;
   periodicTaxableEarningsCents: number | null;
@@ -87,10 +94,15 @@ const readNonPeriodicEvidence = (
   };
 };
 
-const safeAdd = (field: string, left: number, right: number): number => {
-  const result = left + right;
+const safeApply = (
+  field: string,
+  left: number,
+  amount: number,
+  direction: 1 | -1,
+): number => {
+  const result = left + amount * direction;
   if (!Number.isSafeInteger(result) || result < 0) {
-    throw new Error(`payroll YTD overflow in ${field}`);
+    throw new Error(`payroll YTD effect is invalid in ${field}`);
   }
   return result;
 };
@@ -154,18 +166,23 @@ export const aggregatePayrollYtd = (
       eiPremiumCents: 0,
     };
 
-  for (const row of finalizedRuns) {
-    ytd.grossEarningsYtdCents = safeAdd(
+  const applyRunEffect = (
+    row: PayrollFinalizedRunYtdRecord,
+    direction: 1 | -1,
+  ): void => {
+    ytd.grossEarningsYtdCents = safeApply(
       'grossEarningsYtdCents',
       ytd.grossEarningsYtdCents,
       requireAmount(row.grossPayCents, 'grossPayCents', row.runStableId),
+      direction,
     );
-    ytd.netPayYtdCents = safeAdd(
+    ytd.netPayYtdCents = safeApply(
       'netPayYtdCents',
       ytd.netPayYtdCents,
       requireAmount(row.netPayCents, 'netPayCents', row.runStableId),
+      direction,
     );
-    ytd.periodicEarningsYtdCents = safeAdd(
+    ytd.periodicEarningsYtdCents = safeApply(
       'periodicEarningsYtdCents',
       ytd.periodicEarningsYtdCents,
       requireAmount(
@@ -173,18 +190,20 @@ export const aggregatePayrollYtd = (
         'periodicTaxableEarningsCents',
         row.runStableId,
       ),
+      direction,
     );
     const nonPeriodic = requireAmount(
       row.nonPeriodicTaxableEarningsCents,
       'nonPeriodicTaxableEarningsCents',
       row.runStableId,
     );
-    ytd.nonPeriodicEarningsYtdCents = safeAdd(
+    ytd.nonPeriodicEarningsYtdCents = safeApply(
       'nonPeriodicEarningsYtdCents',
       ytd.nonPeriodicEarningsYtdCents,
       nonPeriodic,
+      direction,
     );
-    ytd.pensionableEarningsYtdCents = safeAdd(
+    ytd.pensionableEarningsYtdCents = safeApply(
       'pensionableEarningsYtdCents',
       ytd.pensionableEarningsYtdCents,
       requireAmount(
@@ -192,13 +211,15 @@ export const aggregatePayrollYtd = (
         'pensionableEarningsCents',
         row.runStableId,
       ),
+      direction,
     );
-    ytd.employeeCppYtdCents = safeAdd(
+    ytd.employeeCppYtdCents = safeApply(
       'employeeCppYtdCents',
       ytd.employeeCppYtdCents,
       requireAmount(row.employeeCppCents, 'employeeCppCents', row.runStableId),
+      direction,
     );
-    ytd.employeeCpp2YtdCents = safeAdd(
+    ytd.employeeCpp2YtdCents = safeApply(
       'employeeCpp2YtdCents',
       ytd.employeeCpp2YtdCents,
       requireAmount(
@@ -206,8 +227,9 @@ export const aggregatePayrollYtd = (
         'employeeCpp2Cents',
         row.runStableId,
       ),
+      direction,
     );
-    ytd.insurableEarningsYtdCents = safeAdd(
+    ytd.insurableEarningsYtdCents = safeApply(
       'insurableEarningsYtdCents',
       ytd.insurableEarningsYtdCents,
       requireAmount(
@@ -215,18 +237,21 @@ export const aggregatePayrollYtd = (
         'insurableEarningsCents',
         row.runStableId,
       ),
+      direction,
     );
-    ytd.employeeEiYtdCents = safeAdd(
+    ytd.employeeEiYtdCents = safeApply(
       'employeeEiYtdCents',
       ytd.employeeEiYtdCents,
       requireAmount(row.employeeEiCents, 'employeeEiCents', row.runStableId),
+      direction,
     );
-    ytd.incomeTaxYtdCents = safeAdd(
+    ytd.incomeTaxYtdCents = safeApply(
       'incomeTaxYtdCents',
       ytd.incomeTaxYtdCents,
       requireAmount(row.incomeTaxCents, 'incomeTaxCents', row.runStableId),
+      direction,
     );
-    ytd.vacationPayPaidYtdCents = safeAdd(
+    ytd.vacationPayPaidYtdCents = safeApply(
       'vacationPayPaidYtdCents',
       ytd.vacationPayPaidYtdCents,
       requireAmount(
@@ -234,8 +259,9 @@ export const aggregatePayrollYtd = (
         'vacationPayPaidCents',
         row.runStableId,
       ),
+      direction,
     );
-    ytd.vacationPayAccruedYtdCents = safeAdd(
+    ytd.vacationPayAccruedYtdCents = safeApply(
       'vacationPayAccruedYtdCents',
       ytd.vacationPayAccruedYtdCents,
       requireAmount(
@@ -243,27 +269,57 @@ export const aggregatePayrollYtd = (
         'vacationPayAccruedCents',
         row.runStableId,
       ),
+      direction,
     );
 
     if (nonPeriodic > 0) {
       const evidence = readNonPeriodicEvidence(row);
       nonPeriodicEvidence = {
-        cppBaseContributionCents: safeAdd(
+        cppBaseContributionCents: safeApply(
           'nonPeriodicTaxEvidence.cppBaseContributionCents',
           nonPeriodicEvidence.cppBaseContributionCents,
           evidence.cppBaseContributionCents,
+          direction,
         ),
-        cppAdditionalDeductionCents: safeAdd(
+        cppAdditionalDeductionCents: safeApply(
           'nonPeriodicTaxEvidence.cppAdditionalDeductionCents',
           nonPeriodicEvidence.cppAdditionalDeductionCents,
           evidence.cppAdditionalDeductionCents,
+          direction,
         ),
-        eiPremiumCents: safeAdd(
+        eiPremiumCents: safeApply(
           'nonPeriodicTaxEvidence.eiPremiumCents',
           nonPeriodicEvidence.eiPremiumCents,
           evidence.eiPremiumCents,
+          direction,
         ),
       };
+    }
+  };
+
+  for (const row of finalizedRuns) {
+    if (
+      row.status !== PayrollRunStatus.APPROVED &&
+      row.status !== PayrollRunStatus.POSTED &&
+      row.status !== PayrollRunStatus.REVERSED
+    ) {
+      throw new Error(
+        `PayrollRun ${row.runStableId} has non-finalized YTD status ${row.status}`,
+      );
+    }
+
+    if (
+      row.status === PayrollRunStatus.REVERSED &&
+      (!row.reversalJournalEntryStableId || !row.reversedAt)
+    ) {
+      throw new Error(
+        `REVERSED PayrollRun ${row.runStableId} is missing reversal evidence`,
+      );
+    }
+
+    applyRunEffect(row, 1);
+    if (row.status === PayrollRunStatus.REVERSED) {
+      applyRunEffect(row, -1);
     }
   }
 

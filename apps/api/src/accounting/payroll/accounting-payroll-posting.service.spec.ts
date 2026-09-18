@@ -108,6 +108,9 @@ const runRow = (
       status === PayrollRunStatus.POSTED
         ? new Date('2026-09-18T13:05:00.000Z')
         : null,
+    reversalJournalEntryStableId: null,
+    reversedByActorRef: null,
+    reversalReason: null,
     reversedAt: null,
     voidedAt: null,
     createdByActorRef: 'actor_1',

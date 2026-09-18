@@ -61,6 +61,13 @@ import {
   normalizePayrollCraRemittanceWriteAuthority,
   type PayrollCraRemittanceJournalWriteAuthorityV1,
 } from './payroll/payroll-cra-remittance-journal-authority';
+import {
+  assertPayrollRunReversalJournalAuthority,
+  hashPayrollRunReversalJournalWrite,
+  normalizePayrollRunReversalWriteAuthority,
+  type PayrollRunReversalJournalWriteAuthorityV1,
+} from './payroll/payroll-reversal-journal-authority';
+import { PayrollRunStatus } from './payroll/payroll-contracts';
 
 const ACCOUNTING_JOURNAL_PUBLIC_SELECT = {
   entryStableId: true,
@@ -253,6 +260,49 @@ export class AccountingJournalService {
     if (journal.deletedAt) {
       throw new ConflictException(
         'Payroll accrual Journal was deleted and cannot be replayed',
+      );
+    }
+    return journal;
+  }
+
+  async createPayrollRunReversalJournalInTx(
+    input: AccountingJournalCreateInput,
+    operatorActorRef: string,
+    authority: PayrollRunReversalJournalWriteAuthorityV1,
+    tx: Prisma.TransactionClient,
+  ): Promise<AccountingJournalRow> {
+    const normalizedAuthority = this.applyJournalPolicy(() =>
+      normalizePayrollRunReversalWriteAuthority(authority),
+    );
+    const normalized = this.applyJournalPolicy(() =>
+      normalizeJournalCreate(input),
+    );
+    this.applyJournalPolicy(() =>
+      assertPayrollRunReversalJournalAuthority(normalized, normalizedAuthority),
+    );
+    await this.assertPayrollRunReversalAuthorityInTx(normalizedAuthority, tx);
+
+    const operator = this.requireJournalValue(
+      operatorActorRef,
+      'operatorActorRef',
+    );
+    const timezone = await this.period.getBusinessTimezone();
+    const journal = await this.createPreparedJournalEntryInTx(
+      {
+        normalized,
+        idempotencyHash: hashPayrollRunReversalJournalWrite(
+          normalized,
+          normalizedAuthority,
+        ),
+        auditAuthority: normalizedAuthority as unknown as Prisma.InputJsonValue,
+      },
+      operator,
+      tx,
+      timezone,
+    );
+    if (journal.deletedAt) {
+      throw new ConflictException(
+        'Payroll reversal Journal was deleted and cannot be replayed',
       );
     }
     return journal;
@@ -1091,6 +1141,175 @@ export class AccountingJournalService {
       ) {
         throw new ConflictException(
           `Payroll CRA remittance account authority changed before posting: ${prerequisite.accountStableId}`,
+        );
+      }
+    }
+  }
+
+  private async assertPayrollRunReversalAuthorityInTx(
+    authority: PayrollRunReversalJournalWriteAuthorityV1,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    const fact = authority.fact;
+    const run = await tx.payrollRun.findUnique({
+      where: { runStableId: fact.runStableId },
+      select: {
+        employeeId: true,
+        correctionSequence: true,
+        status: true,
+        calculationHash: true,
+        approvedAt: true,
+        postedJournalEntryStableId: true,
+        postedAt: true,
+        reversalJournalEntryStableId: true,
+        reversedByActorRef: true,
+        reversalReason: true,
+        reversedAt: true,
+        storeStableId: true,
+        payDate: true,
+        grossPayCents: true,
+        totalEmployeeDeductionsCents: true,
+        netPayCents: true,
+        incomeTaxCents: true,
+        employeeCppCents: true,
+        employeeCpp2Cents: true,
+        employeeEiCents: true,
+        employerCppCents: true,
+        employerCpp2Cents: true,
+        employerEiCents: true,
+        vacationPayAccruedCents: true,
+        compensationExpenseCents: true,
+        craRemittanceCents: true,
+        supportedEmployerPayrollCostCents: true,
+        employeePayment: { select: { paymentStableId: true } },
+        craRemittanceEvidence: { select: { id: true } },
+      },
+    });
+    const dateOnly = (value: Date | null): string | null =>
+      value?.toISOString().slice(0, 10) ?? null;
+    const reversalStateIsValid =
+      run?.status === PayrollRunStatus.POSTED
+        ? run.reversalJournalEntryStableId === null
+        : run?.status === PayrollRunStatus.REVERSED &&
+          Boolean(run.reversalJournalEntryStableId);
+
+    if (
+      !run ||
+      !reversalStateIsValid ||
+      run.calculationHash !== fact.calculationHash ||
+      run.approvedAt?.toISOString() !== fact.approvedAt ||
+      !run.postedAt ||
+      run.postedJournalEntryStableId !==
+        fact.postedAccrualJournalEntryStableId ||
+      run.reversedAt?.toISOString() !== fact.reversedAt ||
+      run.reversedByActorRef !== fact.reversedByActorRef ||
+      run.reversalReason !== fact.reversalReason ||
+      run.storeStableId !== fact.storeStableId ||
+      dateOnly(run.payDate) !== fact.payDate ||
+      run.grossPayCents !== fact.grossPayCents ||
+      run.totalEmployeeDeductionsCents !== fact.totalEmployeeDeductionsCents ||
+      run.netPayCents !== fact.netPayCents ||
+      run.incomeTaxCents !== fact.incomeTaxCents ||
+      run.employeeCppCents !== fact.employeeCppCents ||
+      run.employeeCpp2Cents !== fact.employeeCpp2Cents ||
+      run.employeeEiCents !== fact.employeeEiCents ||
+      run.employerCppCents !== fact.employerCppCents ||
+      run.employerCpp2Cents !== fact.employerCpp2Cents ||
+      run.employerEiCents !== fact.employerEiCents ||
+      run.vacationPayAccruedCents !== fact.vacationPayAccruedCents ||
+      run.compensationExpenseCents !== fact.compensationExpenseCents ||
+      run.craRemittanceCents !== fact.craRemittanceCents ||
+      run.supportedEmployerPayrollCostCents !==
+        fact.supportedEmployerPayrollCostCents ||
+      run.employeePayment !== null ||
+      run.craRemittanceEvidence !== null
+    ) {
+      throw new ConflictException(
+        'Payroll reversal authority changed before Journal posting',
+      );
+    }
+
+    if (run.status === PayrollRunStatus.POSTED) {
+      const laterFinalized = await tx.payrollRun.findFirst({
+        where: {
+          employeeId: run.employeeId,
+          status: {
+            in: [
+              PayrollRunStatus.APPROVED,
+              PayrollRunStatus.POSTED,
+              PayrollRunStatus.REVERSED,
+            ],
+          },
+          OR: [
+            { payDate: { gt: run.payDate } },
+            {
+              payDate: run.payDate,
+              correctionSequence: { gt: run.correctionSequence },
+            },
+          ],
+        },
+        select: { runStableId: true },
+      });
+      if (laterFinalized) {
+        throw new ConflictException(
+          'Cannot reverse this run after a later Payroll run has been finalized',
+        );
+      }
+    }
+
+    const accrualJournal = await tx.accountingJournalEntry.findUnique({
+      where: { entryStableId: fact.postedAccrualJournalEntryStableId },
+      select: {
+        source: true,
+        sourceFactType: true,
+        sourceFactStableId: true,
+        sourceFactVersion: true,
+        deletedAt: true,
+      },
+    });
+    if (
+      !accrualJournal ||
+      accrualJournal.deletedAt ||
+      accrualJournal.source !== AccountingJournalSource.PAYROLL ||
+      accrualJournal.sourceFactType !== 'payroll.run.accrual.v1' ||
+      accrualJournal.sourceFactStableId !== fact.runStableId ||
+      accrualJournal.sourceFactVersion !== 1
+    ) {
+      throw new ConflictException(
+        'Payroll accrual Journal authority is not active for reversal',
+      );
+    }
+
+    const currentAccounts = await tx.accountingAccount.findMany({
+      where: {
+        accountStableId: {
+          in: authority.accountPrerequisites.map(
+            (account) => account.accountStableId,
+          ),
+        },
+      },
+      select: {
+        accountStableId: true,
+        accountClass: true,
+        currency: true,
+        isActive: true,
+      },
+    });
+    const currentByStableId = new Map(
+      currentAccounts.map(
+        (account) => [account.accountStableId, account] as const,
+      ),
+    );
+    for (const prerequisite of authority.accountPrerequisites) {
+      const current = currentByStableId.get(prerequisite.accountStableId);
+      if (
+        !current ||
+        current.accountClass !== prerequisite.actual.accountClass ||
+        current.currency !== prerequisite.actual.currency ||
+        current.isActive !== prerequisite.actual.isActive
+      ) {
+        throw new ConflictException(
+          `Payroll reversal account authority changed before posting: ${prerequisite.accountStableId}`,
         );
       }
     }

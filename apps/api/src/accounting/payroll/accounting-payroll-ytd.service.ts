@@ -52,12 +52,19 @@ export class AccountingPayrollYtdService {
           lt: beforePayDate ?? nextYearStart,
         },
         status: {
-          in: [PayrollRunStatus.APPROVED, PayrollRunStatus.POSTED],
+          in: [
+            PayrollRunStatus.APPROVED,
+            PayrollRunStatus.POSTED,
+            PayrollRunStatus.REVERSED,
+          ],
         },
       },
       orderBy: [{ payDate: 'asc' }, { createdAt: 'asc' }],
       select: {
         runStableId: true,
+        status: true,
+        reversalJournalEntryStableId: true,
+        reversedAt: true,
         grossPayCents: true,
         netPayCents: true,
         periodicTaxableEarningsCents: true,

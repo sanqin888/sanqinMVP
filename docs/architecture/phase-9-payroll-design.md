@@ -1693,4 +1693,66 @@ Focused coverage now pins:
 
 D3-B2 introduces no package/lockfile change, no scanner allowance, no new public context edge, no Prisma model/ID and no migration. Per repository workflow no local lint/build/strict/Jest/scanner run is claimed before user review.
 
-Current D3-B2 state: **LOCAL SOURCE REVIEW PENDING / NO MIGRATION / NO LOCAL CI CLAIMED**.
+Current D3-B2 state: **MERGED / PR CI GREEN / NO MIGRATION** through PR #2395, final head `057330af`, PR CI #5901 and squash `ccc76515`. The squash merge commit itself has no separate Actions run recorded; PR CI is the authoritative validation evidence.
+
+## 30. 8P-D4-B posted-run reversal authority + canonical YTD — local implementation review state
+
+8P-D4-B starts from merged `origin/dev@ccc76515`. It activates only explicit reversal of an unsettled POSTED PayrollRun. Correction-run creation and operator correction-chain UI remain D4-C.
+
+### 30.1 Durable reversal evidence and API
+
+D4-B keeps reversal ownership on `PayrollRun` rather than creating a second reversal table. The schema adds three nullable durable fields beside the existing `reversedAt`:
+
+- `reversalJournalEntryStableId @unique` — stable scalar evidence for the inverse Journal, never an `AccountingJournalEntry.id` FK;
+- `reversedByActorRef` — the actor that created the immutable reversal fact;
+- `reversalReason` — required operator audit reason.
+
+The write route is `POST /accounting/payroll/runs/:runStableId/reverse`. The request accepts only `reason`; the browser cannot submit amounts, accounting date or Journal fields. Existing `correctionOfRunId/correctionSequence` remain untouched until D4-C.
+
+### 30.2 Canonical reversal fact and Journal mapping
+
+D4-B defines `payroll.run.reversal.v1` as an explicit inverse Payroll fact bound to the original run stable ID, frozen calculation hash, D1 accrual Journal stable ID, pay date, Store attribution, all D1 headline amounts, reversal actor/time and reason.
+
+The deterministic Journal remains normal Payroll accounting rather than a generic adjustment:
+
+- source: `PAYROLL`;
+- kind: `STANDARD`;
+- source fact stable ID: original `runStableId`;
+- idempotency key: `payroll-run-reversal:<runStableId>:v1`;
+- occurred-at: the original frozen Payroll `payDate`;
+- credit wages expense / `expense_labor` for the original compensation expense;
+- credit employer-contribution expense / `expense_labor` for original employer CPP/CPP2/EI;
+- debit net-pay, income-tax, CPP/CPP2, EI and accrued-vacation payables for the exact amounts originally credited by D1.
+
+Using `STANDARD` is intentional. Existing month-close rules therefore require the original month to be open, and a year hard lock remains absolute. D4-B does not use `ADJUSTMENT` to bypass a closed month because that would also collapse the labor-category effect in financial-report projection.
+
+### 30.3 Settlement and later-finalized blockers
+
+A new reversal is fail-closed when either independent settlement fact already exists:
+
+- `PayrollEmployeePayment` exists for the run; or
+- `PayrollCraRemittanceRun` already includes the run.
+
+D4-B never fabricates employee repayment or CRA refund/remittance-adjustment facts. Those would require separate real-world settlement workflows if ever needed.
+
+A new reversal is also blocked when the same employee has a later finalized `APPROVED`, `POSTED` or `REVERSED` run, ordered by later pay date or a higher same-pay-date `correctionSequence`. DRAFT/CALCULATED/VOIDED rows do not block reversal.
+
+The orchestration service checks these rules, and `AccountingJournalService` independently re-reads the PayrollRun, both settlement relations, the later-finalized condition, the active D1 accrual Journal and all seven Payroll control accounts immediately before Journal persistence in the same Serializable Accounting transaction.
+
+### 30.4 Atomic transition, replay and YTD semantics
+
+For a new reversal the transaction freezes reversal actor/time/reason while the run is still POSTED, asks the Journal owner to validate and post the inverse Journal, then freezes `reversalJournalEntryStableId`, performs `POSTED -> REVERSED`, increments run version and writes `PAYROLL_RUN_REVERSE` audit evidence. Any Journal/period/authority failure rolls back the transient reversal metadata.
+
+An exact retry of an already REVERSED run must use the same reason and reproduce the same reversal Journal stable ID. A changed reason or different Journal binding fails closed.
+
+Canonical YTD now reads `APPROVED / POSTED / REVERSED` finalized rows. A REVERSED row is replayed explicitly as `+ original run effect` followed by `- reversal effect`; its net contribution is zero without deleting the historical Payroll fact from the reconstruction model. Persisted Payroll money remains non-negative; signed behavior exists only in the YTD effect application.
+
+### 30.5 Migration / deferred scope / local review
+
+**MIGRATION REQUIRED.** D4-B changes `schema.prisma` only by adding nullable `reversalJournalEntryStableId @unique`, `reversedByActorRef` and `reversalReason` to `PayrollRun`. It adds no model, enum, FK, backfill, CoA account or package dependency. Per `AGENTS.md`, MCP does not create or edit `apps/api/prisma/migrations/**`; the operator must generate the additive migration locally after source review.
+
+D4-C remains responsible for correction-run creation from a REVERSED predecessor, immediate-parent `correctionOfRunId` linkage, monotonic `correctionSequence`, correction-chain/operator UI and final D4 closeout.
+
+Focused source characterization has been added for inverse Journal shape, settlement/later-run blockers, original accrual authority re-read, period-lock delegation, replay/reason drift and explicit YTD reversal effects. Architecture guards pin the single Payroll reversal Journal writer, exact authenticated route and no-client-amount/date contract. No package/lockfile, public context edge, scanner allowance or direct-import baseline change is introduced.
+
+Current D4-B state: **REMOTE FEATURE BRANCH / MIGRATION REQUIRED / PR BLOCKED PENDING OPERATOR MIGRATION / NO CI CLAIMED**.

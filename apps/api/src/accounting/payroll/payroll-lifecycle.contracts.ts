@@ -130,3 +130,7 @@ export type CreatePayrollCraRemittanceInput = {
   paymentDate: string;
   reference?: string | null;
 };
+
+export type ReversePayrollRunInput = {
+  reason: string;
+};

@@ -31,6 +31,9 @@ describe('Payroll canonical YTD aggregation', () => {
     const ytd = aggregatePayrollYtd(opening, [
       {
         runStableId: 'run_1',
+        status: 'POSTED',
+        reversalJournalEntryStableId: null,
+        reversedAt: null,
         grossPayCents: 120_000,
         netPayCents: 90_000,
         periodicTaxableEarningsCents: 110_000,
@@ -72,6 +75,72 @@ describe('Payroll canonical YTD aggregation', () => {
         eiPremiumCents: 720,
       },
     });
+  });
+
+  it('keeps an explicit REVERSED run as original plus inverse YTD effects', () => {
+    const ytd = aggregatePayrollYtd(opening, [
+      {
+        runStableId: 'run_reversed',
+        status: 'REVERSED',
+        reversalJournalEntryStableId: 'journal_reversal_1',
+        reversedAt: new Date('2026-09-18T22:00:00.000Z'),
+        grossPayCents: 120_000,
+        netPayCents: 90_000,
+        periodicTaxableEarningsCents: 110_000,
+        nonPeriodicTaxableEarningsCents: 10_000,
+        pensionableEarningsCents: 120_000,
+        employeeCppCents: 7_000,
+        employeeCpp2Cents: 0,
+        insurableEarningsCents: 120_000,
+        employeeEiCents: 2_000,
+        incomeTaxCents: 21_000,
+        vacationPayPaidCents: 10_000,
+        vacationPayAccruedCents: 0,
+        calculationOutputJson: {
+          contributionEvidence: {
+            employeeCppBaseNonPeriodicCents: 300,
+            cppTaxDeductionNonPeriodicCents: 80,
+            employeeEiNonPeriodicCents: 120,
+          },
+        },
+      },
+    ]);
+
+    expect(ytd).toEqual(payrollYtdFromOpening(opening));
+  });
+
+  it('fails closed when a REVERSED row lacks durable reversal evidence', () => {
+    expect(() =>
+      aggregatePayrollYtd(opening, [
+        {
+          runStableId: 'run_reversed_invalid',
+          status: 'REVERSED',
+          reversalJournalEntryStableId: null,
+          reversedAt: null,
+          grossPayCents: 120_000,
+          netPayCents: 90_000,
+          periodicTaxableEarningsCents: 120_000,
+          nonPeriodicTaxableEarningsCents: 0,
+          pensionableEarningsCents: 120_000,
+          employeeCppCents: 7_000,
+          employeeCpp2Cents: 0,
+          insurableEarningsCents: 120_000,
+          employeeEiCents: 2_000,
+          incomeTaxCents: 21_000,
+          vacationPayPaidCents: 0,
+          vacationPayAccruedCents: 0,
+          calculationOutputJson: {
+            contributionEvidence: {
+              employeeCppBaseNonPeriodicCents: 0,
+              cppTaxDeductionNonPeriodicCents: 0,
+              employeeEiNonPeriodicCents: 0,
+            },
+          },
+        },
+      ]),
+    ).toThrow(
+      'REVERSED PayrollRun run_reversed_invalid is missing reversal evidence',
+    );
   });
 
   it('keeps non-periodic evidence null when no non-periodic earnings exist', () => {

@@ -28,7 +28,7 @@ const modelSource = (schema: string, model: string): string => {
   return match[0];
 };
 
-describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2/D3-A/D3-B1/D3-B2 Payroll ownership boundary', () => {
+describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2/D3-A/D3-B1/D3-B2/D4-B Payroll ownership boundary', () => {
   const schema = read(PRISMA_SCHEMA);
 
   it('adds only the approved Payroll core persistence models', () => {
@@ -74,6 +74,12 @@ describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2/D3-A/D3-B1/D3-B2 Payroll ownership b
 
     expect(run).toContain('storeStableId');
     expect(run).toContain('postedJournalEntryStableId');
+    expect(run).toMatch(
+      /reversalJournalEntryStableId\s+String\?\s+@unique/,
+    );
+    expect(run).toContain('reversedByActorRef');
+    expect(run).toContain('reversalReason');
+    expect(run).toContain('reversedAt');
     expect(run).not.toMatch(/AccountingJournalEntry\??\s+@relation/);
 
     expect(payment).toContain('paymentStableId');
@@ -132,7 +138,7 @@ describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2/D3-A/D3-B1/D3-B2 Payroll ownership b
     expect(source).not.toContain('@Injectable(');
   });
 
-  it('allows Payroll runtime transport through D3-B2 without bypassing Accounting-owned Journal persistence', () => {
+  it('allows Payroll runtime transport through D4-B without bypassing Accounting-owned Journal persistence', () => {
     const source = payrollProductionFiles()
       .map((name) => read(resolve(PAYROLL_ROOT, name)))
       .join('\n');
@@ -257,6 +263,53 @@ describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2/D3-A/D3-B1/D3-B2 Payroll ownership b
     expect(remittanceInput).not.toContain('amountCents');
     expect(remittanceInput).not.toContain('incomeTaxCents');
     expect(remittanceInput).not.toContain('employeeCppCents');
+  });
+
+  it('enables D4-B reversal only through Payroll authority and preserves explicit inverse YTD semantics', () => {
+    const controller = read(
+      resolve(PAYROLL_ROOT, 'accounting-payroll.controller.ts'),
+    );
+    const reversal = read(
+      resolve(PAYROLL_ROOT, 'accounting-payroll-reversal.service.ts'),
+    );
+    const authority = read(
+      resolve(PAYROLL_ROOT, 'payroll-reversal-journal-authority.ts'),
+    );
+    const ytdService = read(
+      resolve(PAYROLL_ROOT, 'accounting-payroll-ytd.service.ts'),
+    );
+    const ytd = read(resolve(PAYROLL_ROOT, 'payroll-ytd.ts'));
+    const lifecycleContracts = read(
+      resolve(PAYROLL_ROOT, 'payroll-lifecycle.contracts.ts'),
+    );
+    const reversalInput =
+      lifecycleContracts.match(
+        /export type ReversePayrollRunInput = \{[\s\S]*?\n\};/,
+      )?.[0] ?? '';
+    const callers = payrollProductionFiles().filter((name) =>
+      read(resolve(PAYROLL_ROOT, name)).includes(
+        '.createPayrollRunReversalJournalInTx(',
+      ),
+    );
+
+    expect(controller).toContain(
+      "@Post('payroll/runs/:runStableId/reverse')",
+    );
+    expect(callers).toEqual(['accounting-payroll-reversal.service.ts']);
+    expect(reversal).toContain('PayrollRunStatus.POSTED');
+    expect(reversal).toContain('existing.employeePayment');
+    expect(reversal).toContain('existing.craRemittanceEvidence');
+    expect(reversal).toContain('later Payroll run has been finalized');
+    expect(authority).toContain('payroll.run.reversal.v1');
+    expect(authority).toContain('AccountingJournalEntryKind.STANDARD');
+    expect(authority).not.toContain('AccountingJournalEntryKind.ADJUSTMENT');
+    expect(authority).toContain('PAYROLL_LABOR_CATEGORY_STABLE_ID');
+    expect(reversalInput).toContain('reason: string');
+    expect(reversalInput).not.toContain('amountCents');
+    expect(reversalInput).not.toContain('occurredAt');
+    expect(ytdService).toContain('PayrollRunStatus.REVERSED');
+    expect(ytd).toContain('applyRunEffect(row, 1)');
+    expect(ytd).toContain('applyRunEffect(row, -1)');
   });
 
   it('pins the approved PayrollRun evidence and correction shape', () => {
