@@ -169,14 +169,16 @@ describe('Accounting Payroll finalization lifecycle', () => {
     const { service, tx } = makeService();
     const existing = runRow(PayrollRunStatus.CALCULATED);
     tx.payrollRun.findUnique.mockResolvedValue(existing);
-    tx.payrollRun.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
-      ...existing,
-      ...data,
-      status: PayrollRunStatus.APPROVED,
-      approvedAt: new Date('2026-09-18T13:00:00.000Z'),
-      employee: existing.employee,
-      employer: existing.employer,
-    }));
+    tx.payrollRun.update.mockImplementation(
+      ({ data }: { data: Record<string, unknown> }) => ({
+        ...existing,
+        ...data,
+        status: PayrollRunStatus.APPROVED,
+        approvedAt: new Date('2026-09-18T13:00:00.000Z'),
+        employee: existing.employee,
+        employer: existing.employer,
+      }),
+    );
 
     jest
       .spyOn(calculationModule, 'buildPayrollRunCalculation')

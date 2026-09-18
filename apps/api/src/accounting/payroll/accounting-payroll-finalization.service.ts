@@ -216,8 +216,7 @@ export class AccountingPayrollFinalizationService {
           status: PayrollRunStatus.APPROVED,
           approvedByActorRef: actorRef,
           approvedAt: new Date(),
-          payStatementTemplateVersion:
-            PAYROLL_PAY_STATEMENT_TEMPLATE_VERSION,
+          payStatementTemplateVersion: PAYROLL_PAY_STATEMENT_TEMPLATE_VERSION,
           version: { increment: 1 },
           updatedByActorRef: actorRef,
         },

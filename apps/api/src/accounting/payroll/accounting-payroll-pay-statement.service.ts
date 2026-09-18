@@ -10,7 +10,10 @@ import {
   PAYROLL_PAY_STATEMENT_TEMPLATE_VERSION,
   PayrollRunStatus,
 } from './payroll-contracts';
-import { payrollDateOnly, requirePayrollStableId } from './payroll-lifecycle-input';
+import {
+  payrollDateOnly,
+  requirePayrollStableId,
+} from './payroll-lifecycle-input';
 import {
   renderPayrollPayStatementPdf,
   type PayrollPayStatementSnapshot,
@@ -115,10 +118,7 @@ export class AccountingPayrollPayStatementService {
   constructor(@Inject(ACCOUNTING_DB) private readonly prisma: AccountingDb) {}
 
   async render(runStableIdRaw: string, actorRef: string) {
-    const runStableId = requirePayrollStableId(
-      runStableIdRaw,
-      'runStableId',
-    );
+    const runStableId = requirePayrollStableId(runStableIdRaw, 'runStableId');
     const run = await this.prisma.payrollRun.findUnique({
       where: { runStableId },
       include: {
@@ -151,8 +151,7 @@ export class AccountingPayrollPayStatementService {
       );
     }
     if (
-      run.payStatementTemplateVersion !==
-      PAYROLL_PAY_STATEMENT_TEMPLATE_VERSION
+      run.payStatementTemplateVersion !== PAYROLL_PAY_STATEMENT_TEMPLATE_VERSION
     ) {
       throw new ConflictException(
         'Payroll run does not have the supported frozen pay-statement template version',

@@ -1,7 +1,7 @@
-import type PDFDocument from 'pdfkit';
 import {
   containsNonAscii,
   renderAccountingPdf,
+  type AccountingPdfDocument,
   type AccountingPdfFonts,
 } from '../accounting-pdf';
 import type { PayrollCalculationYtdOutput } from './payroll-calculator.contracts';
@@ -56,14 +56,14 @@ const BOTTOM = 54;
 const money = (cents: number) => '$' + (cents / 100).toFixed(2);
 const hours = (minutes: number) => (minutes / 60).toFixed(2);
 
-const ensureSpace = (doc: PDFDocument, height: number) => {
+const ensureSpace = (doc: AccountingPdfDocument, height: number) => {
   if (doc.y + height <= doc.page.height - BOTTOM) return;
   doc.addPage();
   doc.y = 54;
 };
 
 const drawSectionTitle = (
-  doc: PDFDocument,
+  doc: AccountingPdfDocument,
   fonts: AccountingPdfFonts,
   title: string,
 ) => {
@@ -73,7 +73,7 @@ const drawSectionTitle = (
 };
 
 const drawKeyValue = (
-  doc: PDFDocument,
+  doc: AccountingPdfDocument,
   fonts: AccountingPdfFonts,
   label: string,
   value: string,
@@ -97,7 +97,7 @@ const drawKeyValue = (
 };
 
 const drawMoneyRow = (
-  doc: PDFDocument,
+  doc: AccountingPdfDocument,
   fonts: AccountingPdfFonts,
   label: string,
   valueCents: number,
@@ -236,9 +236,7 @@ export const renderPayrollPayStatementPdf = (
       doc.moveDown(0.6);
       ensureSpace(doc, 58);
       const netY = doc.y;
-      doc
-        .rect(LEFT, netY, doc.page.width - LEFT - RIGHT, 46)
-        .fill('#f8fafc');
+      doc.rect(LEFT, netY, doc.page.width - LEFT - RIGHT, 46).fill('#f8fafc');
       doc
         .font(fonts.bold)
         .fontSize(12)

@@ -1,8 +1,8 @@
-import type PDFDocument from 'pdfkit';
 import type { AccountingFinancialReportFact } from './accounting-financial-report-policy';
 import {
   containsNonAscii,
   renderAccountingPdf,
+  type AccountingPdfDocument,
   type AccountingPdfFonts,
 } from './accounting-pdf';
 
@@ -166,53 +166,75 @@ const PDF_LEFT = 54;
 const PDF_RIGHT = 54;
 const PDF_BOTTOM = 54;
 
-const ensurePdfSpace = (doc: PDFDocument, height: number) => {
+const ensurePdfSpace = (doc: AccountingPdfDocument, height: number) => {
   if (doc.y + height <= doc.page.height - PDF_BOTTOM) return;
   doc.addPage();
   doc.y = 54;
 };
 
 const drawPdfHeading = (
-  doc: PDFDocument,
+  doc: AccountingPdfDocument,
   fonts: AccountingPdfFonts,
   title: string,
   subtitle: string,
 ) => {
-  doc.font(fonts.bold).fontSize(20).text(title, PDF_LEFT, doc.y, {
-    width: doc.page.width - PDF_LEFT - PDF_RIGHT,
-  });
+  doc
+    .font(fonts.bold)
+    .fontSize(20)
+    .text(title, PDF_LEFT, doc.y, {
+      width: doc.page.width - PDF_LEFT - PDF_RIGHT,
+    });
   doc.moveDown(0.25);
-  doc.font(fonts.regular).fontSize(9).fillColor('#64748b').text(subtitle);
+  doc
+    .font(fonts.regular)
+    .fontSize(9)
+    .fillColor('#64748b')
+    .text(subtitle);
   doc.fillColor('#0f172a');
   doc.moveDown(1);
 };
 
 const drawPdfMetric = (
-  doc: PDFDocument,
+  doc: AccountingPdfDocument,
   fonts: AccountingPdfFonts,
   label: string,
   value: string,
 ) => {
   ensurePdfSpace(doc, 26);
   const y = doc.y;
-  doc.font(fonts.regular).fontSize(9).fillColor('#64748b').text(label, PDF_LEFT, y, {
-    width: 180,
-  });
-  doc.font(fonts.bold).fontSize(11).fillColor('#0f172a').text(value, PDF_LEFT + 190, y, {
-    width: doc.page.width - PDF_LEFT - PDF_RIGHT - 190,
-    align: 'right',
-  });
+  doc
+    .font(fonts.regular)
+    .fontSize(9)
+    .fillColor('#64748b')
+    .text(label, PDF_LEFT, y, {
+      width: 180,
+    });
+  doc
+    .font(fonts.bold)
+    .fontSize(11)
+    .fillColor('#0f172a')
+    .text(value, PDF_LEFT + 190, y, {
+      width: doc.page.width - PDF_LEFT - PDF_RIGHT - 190,
+      align: 'right',
+    });
   doc.y = y + 22;
 };
 
 const drawPdfTableHeader = (
-  doc: PDFDocument,
+  doc: AccountingPdfDocument,
   fonts: AccountingPdfFonts,
-  columns: Array<{ label: string; x: number; width: number; align?: 'left' | 'right' }>,
+  columns: Array<{
+    label: string;
+    x: number;
+    width: number;
+    align?: 'left' | 'right';
+  }>,
 ) => {
   ensurePdfSpace(doc, 28);
   const y = doc.y;
-  doc.rect(PDF_LEFT, y, doc.page.width - PDF_LEFT - PDF_RIGHT, 22).fill('#f1f5f9');
+  doc
+    .rect(PDF_LEFT, y, doc.page.width - PDF_LEFT - PDF_RIGHT, 22)
+    .fill('#f1f5f9');
   for (const column of columns) {
     doc
       .font(fonts.bold)
@@ -229,9 +251,14 @@ const drawPdfTableHeader = (
 };
 
 const drawPdfTableRow = (
-  doc: PDFDocument,
+  doc: AccountingPdfDocument,
   fonts: AccountingPdfFonts,
-  columns: Array<{ value: string; x: number; width: number; align?: 'left' | 'right' }>,
+  columns: Array<{
+    value: string;
+    x: number;
+    width: number;
+    align?: 'left' | 'right';
+  }>,
 ) => {
   ensurePdfSpace(doc, 22);
   const y = doc.y;
@@ -328,10 +355,25 @@ export function renderAccountingPnlPdf(
 
       const periodColumns = [
         { label: 'Period', x: PDF_LEFT, width: 130 },
-        { label: 'Income', x: PDF_LEFT + 140, width: 85, align: 'right' as const },
-        { label: 'Expense', x: PDF_LEFT + 235, width: 85, align: 'right' as const },
+        {
+          label: 'Income',
+          x: PDF_LEFT + 140,
+          width: 85,
+          align: 'right' as const,
+        },
+        {
+          label: 'Expense',
+          x: PDF_LEFT + 235,
+          width: 85,
+          align: 'right' as const,
+        },
         { label: 'Net', x: PDF_LEFT + 330, width: 85, align: 'right' as const },
-        { label: 'State', x: PDF_LEFT + 425, width: 62, align: 'right' as const },
+        {
+          label: 'State',
+          x: PDF_LEFT + 425,
+          width: 62,
+          align: 'right' as const,
+        },
       ];
       drawPdfTableHeader(doc, fonts, periodColumns);
 
@@ -373,7 +415,12 @@ export function renderAccountingPnlPdf(
       const categoryColumns = [
         { label: 'Category', x: PDF_LEFT, width: 275 },
         { label: 'Type', x: PDF_LEFT + 285, width: 90 },
-        { label: 'Amount', x: PDF_LEFT + 385, width: 102, align: 'right' as const },
+        {
+          label: 'Amount',
+          x: PDF_LEFT + 385,
+          width: 102,
+          align: 'right' as const,
+        },
       ];
       drawPdfTableHeader(doc, fonts, categoryColumns);
 

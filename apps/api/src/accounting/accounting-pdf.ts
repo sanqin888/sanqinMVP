@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import PDFDocument from 'pdfkit';
+import PDFDocument = require('pdfkit');
 
 const DEFAULT_CJK_REGULAR_FONT =
   '/usr/share/fonts/noto/NotoSansCJK-Regular.ttc';
@@ -16,8 +16,10 @@ export type AccountingPdfFonts = {
   unicode: boolean;
 };
 
+export type AccountingPdfDocument = PDFDocument;
+
 export type AccountingPdfRenderContext = {
-  doc: PDFDocument;
+  doc: AccountingPdfDocument;
   fonts: AccountingPdfFonts;
 };
 
@@ -28,10 +30,7 @@ type AccountingPdfOptions = {
   requiresUnicode?: boolean;
 };
 
-const resolveFontPath = (
-  envKey: string,
-  fallback: string,
-): string | null => {
+const resolveFontPath = (envKey: string, fallback: string): string | null => {
   const explicit = process.env[envKey]?.trim();
   if (explicit) return existsSync(explicit) ? explicit : null;
   return existsSync(fallback) ? fallback : null;
@@ -51,11 +50,7 @@ const registerFonts = (
   );
 
   if (regular && bold) {
-    doc.registerFont(
-      'SanQPdfRegular',
-      regular,
-      'NotoSansCJKsc-Regular',
-    );
+    doc.registerFont('SanQPdfRegular', regular, 'NotoSansCJKsc-Regular');
     doc.registerFont('SanQPdfBold', bold, 'NotoSansCJKsc-Bold');
     return {
       regular: 'SanQPdfRegular',
@@ -78,7 +73,9 @@ const registerFonts = (
 };
 
 export const containsNonAscii = (value: string): boolean =>
-  /[^\u0000-\u007f]/.test(value);
+  Array.from(value).some(
+    (character) => (character.codePointAt(0) ?? 0) > 0x7f,
+  );
 
 export const renderAccountingPdf = (
   options: AccountingPdfOptions,
@@ -109,7 +106,7 @@ export const renderAccountingPdf = (
     doc.on('data', (chunk: Buffer | Uint8Array) => {
       chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
     });
-    doc.on('error', reject);
+    doc.on('error', (error: Error) => reject(error));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
 
     try {
@@ -120,6 +117,6 @@ export const renderAccountingPdf = (
       doc.removeAllListeners('data');
       doc.removeAllListeners('end');
       doc.destroy();
-      reject(error);
+      reject(error instanceof Error ? error : new Error(String(error)));
     }
   });
