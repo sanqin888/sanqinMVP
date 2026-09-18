@@ -44,6 +44,7 @@ WORKDIR /app
 # never leaves the SanQ runtime. Poppler handles PDF text/font mappings while
 # Tesseract remains the image-only OCR path.
 RUN apk add --no-cache \
+    font-noto-cjk \
     poppler-utils \
     tesseract-ocr \
     tesseract-ocr-data-eng \

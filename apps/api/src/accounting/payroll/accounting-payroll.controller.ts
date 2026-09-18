@@ -7,8 +7,10 @@ import {
   Put,
   Query,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { Roles, RolesGuard, SessionAuthGuard } from '../../auth/public-api';
 import {
   type AuthedAccountingRequest,
@@ -20,6 +22,7 @@ import { AccountingPayrollOpeningService } from './accounting-payroll-opening.se
 import { AccountingPayrollRunService } from './accounting-payroll-run.service';
 import { AccountingPayrollFinalizationService } from './accounting-payroll-finalization.service';
 import { AccountingPayrollYtdService } from './accounting-payroll-ytd.service';
+import { AccountingPayrollPayStatementService } from './accounting-payroll-pay-statement.service';
 import type {
   CreatePayrollEmployeeConfigInput,
   CreatePayrollEmployeeInput,
@@ -43,6 +46,7 @@ export class AccountingPayrollController {
     private readonly runs: AccountingPayrollRunService,
     private readonly finalization: AccountingPayrollFinalizationService,
     private readonly ytd: AccountingPayrollYtdService,
+    private readonly payStatements: AccountingPayrollPayStatementService,
   ) {}
 
   @Get('payroll/employers')
@@ -229,6 +233,24 @@ export class AccountingPayrollController {
       runStableId,
       requireAccountingOperatorUserId(req),
     );
+  }
+
+  @Get('payroll/runs/:runStableId/pay-statement.pdf')
+  async payStatementPdf(
+    @Param('runStableId') runStableId: string,
+    @Req() req: AuthedAccountingRequest,
+    @Res() res: Response,
+  ) {
+    const statement = await this.payStatements.render(
+      runStableId,
+      requireAccountingOperatorUserId(req),
+    );
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename="' + statement.filename + '"',
+    );
+    return res.send(statement.buffer);
   }
 
   @Post('payroll/runs/:runStableId/void')

@@ -1,4 +1,10 @@
+import type PDFDocument from 'pdfkit';
 import type { AccountingFinancialReportFact } from './accounting-financial-report-policy';
+import {
+  containsNonAscii,
+  renderAccountingPdf,
+  type AccountingPdfFonts,
+} from './accounting-pdf';
 
 export type AccountingPnlExportReport = {
   summary: {
@@ -156,66 +162,234 @@ export function renderAccountingPnlCsv(
   return lines.join('\n');
 }
 
+const PDF_LEFT = 54;
+const PDF_RIGHT = 54;
+const PDF_BOTTOM = 54;
+
+const ensurePdfSpace = (doc: PDFDocument, height: number) => {
+  if (doc.y + height <= doc.page.height - PDF_BOTTOM) return;
+  doc.addPage();
+  doc.y = 54;
+};
+
+const drawPdfHeading = (
+  doc: PDFDocument,
+  fonts: AccountingPdfFonts,
+  title: string,
+  subtitle: string,
+) => {
+  doc.font(fonts.bold).fontSize(20).text(title, PDF_LEFT, doc.y, {
+    width: doc.page.width - PDF_LEFT - PDF_RIGHT,
+  });
+  doc.moveDown(0.25);
+  doc.font(fonts.regular).fontSize(9).fillColor('#64748b').text(subtitle);
+  doc.fillColor('#0f172a');
+  doc.moveDown(1);
+};
+
+const drawPdfMetric = (
+  doc: PDFDocument,
+  fonts: AccountingPdfFonts,
+  label: string,
+  value: string,
+) => {
+  ensurePdfSpace(doc, 26);
+  const y = doc.y;
+  doc.font(fonts.regular).fontSize(9).fillColor('#64748b').text(label, PDF_LEFT, y, {
+    width: 180,
+  });
+  doc.font(fonts.bold).fontSize(11).fillColor('#0f172a').text(value, PDF_LEFT + 190, y, {
+    width: doc.page.width - PDF_LEFT - PDF_RIGHT - 190,
+    align: 'right',
+  });
+  doc.y = y + 22;
+};
+
+const drawPdfTableHeader = (
+  doc: PDFDocument,
+  fonts: AccountingPdfFonts,
+  columns: Array<{ label: string; x: number; width: number; align?: 'left' | 'right' }>,
+) => {
+  ensurePdfSpace(doc, 28);
+  const y = doc.y;
+  doc.rect(PDF_LEFT, y, doc.page.width - PDF_LEFT - PDF_RIGHT, 22).fill('#f1f5f9');
+  for (const column of columns) {
+    doc
+      .font(fonts.bold)
+      .fontSize(8)
+      .fillColor('#334155')
+      .text(column.label, column.x, y + 6, {
+        width: column.width,
+        align: column.align ?? 'left',
+        lineBreak: false,
+      });
+  }
+  doc.fillColor('#0f172a');
+  doc.y = y + 26;
+};
+
+const drawPdfTableRow = (
+  doc: PDFDocument,
+  fonts: AccountingPdfFonts,
+  columns: Array<{ value: string; x: number; width: number; align?: 'left' | 'right' }>,
+) => {
+  ensurePdfSpace(doc, 22);
+  const y = doc.y;
+  for (const column of columns) {
+    doc
+      .font(fonts.regular)
+      .fontSize(8.5)
+      .fillColor('#0f172a')
+      .text(column.value, column.x, y, {
+        width: column.width,
+        align: column.align ?? 'left',
+        lineBreak: false,
+        ellipsis: true,
+      });
+  }
+  doc
+    .moveTo(PDF_LEFT, y + 17)
+    .lineTo(doc.page.width - PDF_RIGHT, y + 17)
+    .lineWidth(0.5)
+    .strokeColor('#e2e8f0')
+    .stroke();
+  doc.y = y + 21;
+};
+
 export function renderAccountingPnlPdf(
   template: 'MANAGEMENT' | 'BOSS',
   report: AccountingPnlExportReport,
-): Buffer {
+): Promise<Buffer> {
   const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
-  const textLines =
-    template === 'MANAGEMENT'
-      ? [
-          `模板: 管理版（明细）`,
-          `收入: ${money(report.summary.incomeCents)}`,
-          `费用: ${money(report.summary.expenseCents)}`,
-          `调整: ${money(report.summary.adjustmentCents)}`,
-          `净利润: ${money(report.summary.netProfitCents)}`,
-          ...report.periods
-            .slice(0, 12)
-            .map(
-              (item) =>
-                `${item.period} | ${money(item.netProfitCents)} | ${item.isClosed ? '已锁账' : '未锁账'}`,
-            ),
-        ]
-      : [
-          `模板: 老板版（摘要）`,
-          `净利润: ${money(report.summary.netProfitCents)}`,
-          `本月: ${money(report.trends.currentMonthNetCents)}`,
-          `上月: ${money(report.trends.lastMonthNetCents)}`,
-          `季度累计: ${money(report.trends.quarterToDateNetCents)}`,
-        ];
+  const requiresUnicode =
+    template === 'MANAGEMENT' &&
+    report.byCategoryTree.some((row) => containsNonAscii(row.categoryName));
 
-  const objects: string[] = [];
-  const escapedText = textLines
-    .map(
-      (line, index) =>
-        `${50} ${780 - index * 22} Td (${line.replace(/[()\\]/g, '\\$&')}) Tj`,
-    )
-    .join(' T* ');
-  const contentStream = `BT /F1 12 Tf ${escapedText} ET`;
-  objects.push('1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj');
-  objects.push('2 0 obj << /Type /Pages /Count 1 /Kids [3 0 R] >> endobj');
-  objects.push(
-    '3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >> endobj',
-  );
-  objects.push(
-    '4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj',
-  );
-  objects.push(
-    `5 0 obj << /Length ${contentStream.length} >> stream\n${contentStream}\nendstream endobj`,
-  );
+  return renderAccountingPdf(
+    {
+      title:
+        template === 'MANAGEMENT'
+          ? 'SanQ Accounting Management Report'
+          : 'SanQ Accounting Executive Report',
+      subject: 'Accounting profit and loss export',
+      requiresUnicode,
+    },
+    ({ doc, fonts }) => {
+      drawPdfHeading(
+        doc,
+        fonts,
+        template === 'MANAGEMENT'
+          ? 'SanQ Accounting - Management Report'
+          : 'SanQ Accounting - Executive Report',
+        'Server-generated accounting report',
+      );
 
-  let pdf = '%PDF-1.4\n';
-  const xref: number[] = [0];
-  for (const object of objects) {
-    xref.push(pdf.length);
-    pdf += `${object}\n`;
-  }
-  const xrefOffset = pdf.length;
-  pdf += `xref\n0 ${xref.length}\n`;
-  pdf += '0000000000 65535 f \n';
-  for (let index = 1; index < xref.length; index += 1) {
-    pdf += `${String(xref[index]).padStart(10, '0')} 00000 n \n`;
-  }
-  pdf += `trailer << /Size ${xref.length} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
-  return Buffer.from(pdf, 'utf8');
+      drawPdfMetric(doc, fonts, 'Income', money(report.summary.incomeCents));
+      drawPdfMetric(doc, fonts, 'Expense', money(report.summary.expenseCents));
+      drawPdfMetric(
+        doc,
+        fonts,
+        'Adjustment',
+        money(report.summary.adjustmentCents),
+      );
+      drawPdfMetric(
+        doc,
+        fonts,
+        'Net profit',
+        money(report.summary.netProfitCents),
+      );
+
+      if (template === 'BOSS') {
+        doc.moveDown(0.5);
+        drawPdfMetric(
+          doc,
+          fonts,
+          'Current month net',
+          money(report.trends.currentMonthNetCents),
+        );
+        drawPdfMetric(
+          doc,
+          fonts,
+          'Last month net',
+          money(report.trends.lastMonthNetCents),
+        );
+        drawPdfMetric(
+          doc,
+          fonts,
+          'Quarter-to-date net',
+          money(report.trends.quarterToDateNetCents),
+        );
+        return;
+      }
+
+      doc.moveDown(0.75);
+      doc.font(fonts.bold).fontSize(12).text('Periods');
+      doc.moveDown(0.5);
+
+      const periodColumns = [
+        { label: 'Period', x: PDF_LEFT, width: 130 },
+        { label: 'Income', x: PDF_LEFT + 140, width: 85, align: 'right' as const },
+        { label: 'Expense', x: PDF_LEFT + 235, width: 85, align: 'right' as const },
+        { label: 'Net', x: PDF_LEFT + 330, width: 85, align: 'right' as const },
+        { label: 'State', x: PDF_LEFT + 425, width: 62, align: 'right' as const },
+      ];
+      drawPdfTableHeader(doc, fonts, periodColumns);
+
+      for (const row of report.periods) {
+        drawPdfTableRow(doc, fonts, [
+          { value: row.period, x: PDF_LEFT, width: 130 },
+          {
+            value: money(row.incomeCents),
+            x: PDF_LEFT + 140,
+            width: 85,
+            align: 'right',
+          },
+          {
+            value: money(row.expenseCents),
+            x: PDF_LEFT + 235,
+            width: 85,
+            align: 'right',
+          },
+          {
+            value: money(row.netProfitCents),
+            x: PDF_LEFT + 330,
+            width: 85,
+            align: 'right',
+          },
+          {
+            value: row.isClosed ? 'CLOSED' : 'OPEN',
+            x: PDF_LEFT + 425,
+            width: 62,
+            align: 'right',
+          },
+        ]);
+      }
+
+      ensurePdfSpace(doc, 60);
+      doc.moveDown(0.75);
+      doc.font(fonts.bold).fontSize(12).text('Categories');
+      doc.moveDown(0.5);
+
+      const categoryColumns = [
+        { label: 'Category', x: PDF_LEFT, width: 275 },
+        { label: 'Type', x: PDF_LEFT + 285, width: 90 },
+        { label: 'Amount', x: PDF_LEFT + 385, width: 102, align: 'right' as const },
+      ];
+      drawPdfTableHeader(doc, fonts, categoryColumns);
+
+      for (const row of report.byCategoryTree) {
+        drawPdfTableRow(doc, fonts, [
+          { value: row.categoryName, x: PDF_LEFT, width: 275 },
+          { value: row.type, x: PDF_LEFT + 285, width: 90 },
+          {
+            value: money(row.amountCents),
+            x: PDF_LEFT + 385,
+            width: 102,
+            align: 'right',
+          },
+        ]);
+      }
+    },
+  );
 }
+

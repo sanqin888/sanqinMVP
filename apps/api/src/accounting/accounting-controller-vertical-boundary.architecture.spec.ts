@@ -26,6 +26,7 @@ const EXPECTED_CONTROLLER_CAPABILITIES = {
     'AccountingPayrollEmployeeService',
     'AccountingPayrollFinalizationService',
     'AccountingPayrollOpeningService',
+    'AccountingPayrollPayStatementService',
     'AccountingPayrollRunService',
     'AccountingPayrollYtdService',
   ],
@@ -114,6 +115,7 @@ const EXPECTED_ROUTES = [
   'PUT payroll/runs/:runStableId',
   'POST payroll/runs/:runStableId/calculate',
   'POST payroll/runs/:runStableId/approve',
+  'GET payroll/runs/:runStableId/pay-statement.pdf',
   'POST payroll/runs/:runStableId/void',
 ].sort();
 
