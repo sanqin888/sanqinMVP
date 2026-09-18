@@ -1,6 +1,6 @@
 # Phase 9 Payroll Vertical — Readiness, Design and Closeout Gate
 
-Status: **8P-D3-B1 LOCAL SOURCE REVIEW PENDING — MIGRATION REQUIRED**  
+Status: **8P-D3-B1 SOURCE + MIGRATION REVIEWED — CI RE-RUN PENDING**  
 Planning date: 2026-09-16  
 Implementation baseline: `origin/dev@73a70839` (8P-D3-A merged through PR #2393; final head `58204478`, PR CI #5891 and post-merge CI #5892 green)  
 Current implementation branch: `feat/phase9-slice8p-d3b-cra-remittance-settlement`
@@ -1609,18 +1609,14 @@ D3-B1 exposes no settlement POST and does not write Journal rows. D3-B2 will con
 
 using employer-level `storeStableId=null`. It will also add identical-retry handling, Journal authority re-read of every frozen included run/accrual Journal, audit evidence and the employer-level Web settlement panel.
 
-### 28.4 Migration handoff
+### 28.4 Migration review
 
-**MIGRATION REQUIRED.** D3-B1 changes `schema.prisma` by adding `PayrollCraRemittance`, `PayrollCraRemittanceRun` and their PayrollEmployer/PayrollRun relations. MCP does not create or edit `apps/api/prisma/migrations/**`.
+The user-generated migration `20260918215432_phase9_slice8p_d3_cra_remittance` is present on PR #2394 head `ec10eb60` and has been reviewed against the current `schema.prisma`.
 
-Suggested migration name:
+The SQL is additive and matches the intended D3-B1 persistence shape: it creates `PayrollCraRemittance` and `PayrollCraRemittanceRun`, the expected stable/evidence/Journal unique indexes, `PayrollCraRemittanceRun.runId` uniqueness, ordinary date/employer indexes, and RESTRICT FKs to PayrollEmployer, PayrollRun and the parent remittance. It contains **no drop, rename, backfill, enum rewrite or alteration of existing Payroll rows**. Nullable `journalEntryStableId` uniqueness is compatible with PostgreSQL's multiple-NULL unique-index semantics.
 
-`phase9_slice8p_d3_cra_remittance`
+PR CI #5894 passed Prisma generation, the architecture baseline gate and the full Web job, but API lint failed one type-aware test matcher in `accounting-payroll-cra-remittance.service.spec.ts` (`@typescript-eslint/no-unsafe-assignment`). The production source and migration were not implicated. The redundant nested `expect.objectContaining()` matcher is removed locally because the same POSTED/unremitted query invariant is already pinned by the Payroll architecture regression.
 
-After the schema/source change is merged to `dev`, generate locally against the verified disposable/local development database:
+Promotion to main/production remains blocked until this migration-bearing PR is merged to `dev` and all required CI gates are green.
 
-`pnpm --filter api exec prisma migrate dev --create-only --name phase9_slice8p_d3_cra_remittance`
-
-Expected SQL is additive only: two CREATE TABLE operations, the stable/evidence/Journal unique indexes, `PayrollCraRemittanceRun.runId` uniqueness, ordinary date/employer indexes, and RESTRICT FKs to PayrollEmployer/PayrollRun/parent remittance. There should be **no drop, rename, historical backfill, enum rewrite or alteration of existing Payroll rows**. Promotion to main/production remains blocked until the user-generated migration is reviewed and merged back into dev.
-
-Current D3-B1 state: **LOCAL SOURCE REVIEW PENDING / MIGRATION REQUIRED / NO LOCAL CI CLAIMED**.
+Current D3-B1 state: **SOURCE + MIGRATION REVIEWED / CI RE-RUN PENDING / LOCAL LINT FIX UNPUSHED**.

@@ -68,14 +68,6 @@ describe('AccountingPayrollCraRemittanceService preview', () => {
       'run_regular',
     ]);
     expect(result.totalAmountCents).toBe(45_200);
-    expect(prisma.payrollRun.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          status: PayrollRunStatus.POSTED,
-          craRemittanceEvidence: null,
-        }),
-      }),
-    );
   });
 
   it('returns an empty canonical preview when the period has no eligible runs', async () => {
