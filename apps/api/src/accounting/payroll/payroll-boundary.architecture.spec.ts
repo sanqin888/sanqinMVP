@@ -28,7 +28,7 @@ const modelSource = (schema: string, model: string): string => {
   return match[0];
 };
 
-describe('Phase 9 Slice 8P-B1/B2/B3/C Payroll ownership boundary', () => {
+describe('Phase 9 Slice 8P-B1/B2/B3/C/D1 Payroll ownership boundary', () => {
   const schema = read(PRISMA_SCHEMA);
 
   it('adds only the approved Payroll core persistence models', () => {
@@ -94,7 +94,7 @@ describe('Phase 9 Slice 8P-B1/B2/B3/C Payroll ownership boundary', () => {
     expect(source).not.toContain('@Injectable(');
   });
 
-  it('allows B3 Payroll runtime transport without bypassing Accounting-owned financial writers', () => {
+  it('allows Payroll runtime transport through D1 without bypassing Accounting-owned Journal persistence', () => {
     const source = payrollProductionFiles()
       .map((name) => read(resolve(PAYROLL_ROOT, name)))
       .join('\n');
@@ -112,24 +112,46 @@ describe('Phase 9 Slice 8P-B1/B2/B3/C Payroll ownership boundary', () => {
     expect(source).not.toContain('.accountingJournalLine.');
   });
 
-  it('registers Payroll as an explicit Journal source without enabling posting', () => {
+  it('registers Payroll as an explicit Journal source and enables only the D1 owner-specific accrual writer', () => {
     const contracts = read(resolve(ACCOUNTING_ROOT, 'accounting-contracts.ts'));
+    const posting = read(
+      resolve(PAYROLL_ROOT, 'accounting-payroll-posting.service.ts'),
+    );
+    const authority = read(
+      resolve(PAYROLL_ROOT, 'payroll-journal-write-authority.ts'),
+    );
 
     expect(schema).toMatch(
       /enum AccountingJournalSource \{[\s\S]*?\bPAYROLL\b[\s\S]*?\}/,
     );
     expect(contracts).toContain("PAYROLL: 'PAYROLL'");
-    expect(payrollProductionFiles()).not.toContain(
-      'payroll-posting.service.ts',
+    expect(posting).toContain('createPayrollRunAccrualJournalInTx');
+    const payrollJournalWriterCallers = payrollProductionFiles().filter(
+      (name) =>
+        read(resolve(PAYROLL_ROOT, name)).includes(
+          '.createPayrollRunAccrualJournalInTx(',
+        ),
     );
+    expect(payrollJournalWriterCallers).toEqual([
+      'accounting-payroll-posting.service.ts',
+    ]);
+    expect(authority).toContain('payroll.run.accrual.v1');
+    expect(authority).toContain('account_payroll_wages_expense');
+    expect(authority).toContain('account_payroll_net_pay_payable');
   });
 
-  it('does not provision Payroll CoA or settlement persistence through 8P-C', () => {
+  it('requires the reviewed Payroll CoA defaults while keeping settlement persistence deferred after D1', () => {
     const chart = read(
       resolve(ACCOUNTING_ROOT, 'accounting-chart-of-accounts.ts'),
     );
 
-    expect(chart).not.toContain('account_payroll_');
+    expect(chart).toContain('account_payroll_wages_expense');
+    expect(chart).toContain('account_payroll_employer_contributions_expense');
+    expect(chart).toContain('account_payroll_net_pay_payable');
+    expect(chart).toContain('account_payroll_income_tax_payable');
+    expect(chart).toContain('account_payroll_cpp_payable');
+    expect(chart).toContain('account_payroll_ei_payable');
+    expect(chart).toContain('account_payroll_vacation_payable');
     expect(schema).not.toContain('PayrollEmployeePayment');
     expect(schema).not.toContain('PayrollCraRemittance');
   });

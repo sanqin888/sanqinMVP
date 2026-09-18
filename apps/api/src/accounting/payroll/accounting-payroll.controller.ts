@@ -23,6 +23,7 @@ import { AccountingPayrollRunService } from './accounting-payroll-run.service';
 import { AccountingPayrollFinalizationService } from './accounting-payroll-finalization.service';
 import { AccountingPayrollYtdService } from './accounting-payroll-ytd.service';
 import { AccountingPayrollPayStatementService } from './accounting-payroll-pay-statement.service';
+import { AccountingPayrollPostingService } from './accounting-payroll-posting.service';
 import type {
   CreatePayrollEmployeeConfigInput,
   CreatePayrollEmployeeInput,
@@ -47,6 +48,7 @@ export class AccountingPayrollController {
     private readonly finalization: AccountingPayrollFinalizationService,
     private readonly ytd: AccountingPayrollYtdService,
     private readonly payStatements: AccountingPayrollPayStatementService,
+    private readonly posting: AccountingPayrollPostingService,
   ) {}
 
   @Get('payroll/employers')
@@ -230,6 +232,17 @@ export class AccountingPayrollController {
     @Req() req: AuthedAccountingRequest,
   ) {
     return this.finalization.approveRun(
+      runStableId,
+      requireAccountingOperatorUserId(req),
+    );
+  }
+
+  @Post('payroll/runs/:runStableId/post')
+  postRun(
+    @Param('runStableId') runStableId: string,
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.posting.postRunAccrual(
       runStableId,
       requireAccountingOperatorUserId(req),
     );

@@ -125,6 +125,9 @@ export type PayrollRun = {
   calculationEvidenceVersion: number | null;
   calculationHash: string | null;
   payStatementTemplateVersion: string | null;
+  postedJournalEntryStableId: string | null;
+  postedAt: string | null;
+  reversedAt: string | null;
   ytdBefore: PayrollYtd | null;
   ytdAfter: PayrollYtd | null;
   approvedByActorRef: string | null;
