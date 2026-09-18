@@ -1,17 +1,17 @@
 # Current ID inventory
 
-Phase 9 Slice 8P-D2 working snapshot: `origin/dev@3bae5682` plus the local
-employee net-pay settlement source/schema (2026-09-18). Current source of truth remains
+Phase 9 Slice 8P-D3-A working snapshot: `origin/dev@6b1d2dcd` plus the local pure
+CRA remittance calendar policy (2026-09-18). Current source of truth remains
 `apps/api/prisma/schema.prisma`; schema/migration authority follows `AGENTS.md`.
 
 The working schema contains **92 models**: 82 UUID-backed primary keys, six integer
-primary keys, and four natural/stable-token primary keys. The merged Payroll foundation
-through D1 remains in `dev`. D2 adds one Accounting/Payroll-owned UUID model,
-`PayrollEmployeePayment`, with public `paymentStableId`, unique internal `runId`,
-stable scalar `paymentAccountStableId` and stable scalar `journalEntryStableId`.
-The D2 companion migration `20260918200458_phase9_slice8p_d2_payroll_employee_payment`
-has been user-generated and reviewed as additive create-table/unique/index/FK-only SQL;
-it remains pending merge into `dev` with PR #2392.
+primary keys, and four natural/stable-token primary keys. Payroll through D2 is merged in
+`dev`. D2 adds the Accounting/Payroll-owned UUID model `PayrollEmployeePayment`, with
+public `paymentStableId`, unique internal `runId`, stable scalar
+`paymentAccountStableId` and stable scalar `journalEntryStableId`; companion migration
+`20260918200458_phase9_slice8p_d2_payroll_employee_payment` is reviewed and merged.
+D3-A adds no persisted model or identifier; `PayrollCraRemittance` identities remain
+explicitly deferred to D3-B.
 
 ## Primary-key families
 

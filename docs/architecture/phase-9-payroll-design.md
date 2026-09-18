@@ -1,9 +1,9 @@
 # Phase 9 Payroll Vertical — Readiness, Design and Closeout Gate
 
-Status: **8P-D2 SOURCE + MIGRATION REVIEWED — CI RE-RUN PENDING**  
+Status: **8P-D3-A LOCAL SOURCE REVIEW PENDING — NO MIGRATION**  
 Planning date: 2026-09-16  
-Implementation baseline: `origin/dev@3bae5682` (8P-D1 merged through PR #2391; final head `266a91de`, CI #5884 green, squash `3bae5682`)  
-Current implementation branch: `feat/phase9-slice8p-d2-payroll-employee-payment`
+Implementation baseline: `origin/dev@6b1d2dcd` (8P-D2 merged through PR #2392; PR CI #5888 and post-merge CI #5889 green)  
+Current implementation branch: `feat/phase9-slice8p-d3a-cra-remittance-policy`
 
 ## 1. Decision and insertion point
 
@@ -1529,12 +1529,43 @@ CRA remittance remains D3 and posted-run reversal/correction remains D4.
 
 ### 26.5 Migration review
 
-**MIGRATION REVIEWED / ADDITIVE / PENDING MERGE TO `dev`.**
+**MIGRATION REVIEWED / ADDITIVE / MERGED TO `dev`.**
 
 D2 changes `schema.prisma` by adding `PayrollEmployeePayment` and the one-to-one `PayrollRun.employeePayment` relation. Per `AGENTS.md`, MCP did not create or edit the migration; the user-generated migration is `apps/api/prisma/migrations/20260918200458_phase9_slice8p_d2_payroll_employee_payment/migration.sql`.
 
 The reviewed SQL matches the intended schema exactly: it creates the new table, unique `paymentStableId`, unique `runId`, nullable unique `journalEntryStableId`, `runId -> PayrollRun.id` with `ON DELETE RESTRICT`, and the payment-date/account-date indexes. It contains **no drops, destructive renames, alteration of existing columns or historical backfill**.
 
-PR #2392 CI #5887 validated Prisma generation, architecture scan, API lint/build/strict and the full Web job, but API Jest failed one stale source-text architecture assertion after D2 was changed to reuse the canonical D1 `PAYROLL_ACCOUNT_IDS.netPayPayable` constant. The production implementation is unchanged by that failure; the architecture regression is being corrected to assert canonical constant reuse before CI is re-run.
+PR #2392 final head `3e821f7f` passed PR CI #5888 across Architecture/API/Web gates after the stale source-text architecture assertion was corrected to assert canonical `PAYROLL_ACCOUNT_IDS.netPayPayable` reuse. The PR squash-merged as `6b1d2dcd`; post-merge CI #5889 also passed all required gates.
 
-Current D2 state: **SOURCE + MIGRATION REVIEWED / CI RE-RUN PENDING / NO LOCAL CI CLAIMED**.
+Current D2 state: **MERGED / CI GREEN / COMPANION MIGRATION MERGED**.
+
+## 27. 8P-D3-A CRA remittance period / due-date policy — local implementation review state
+
+8P-D3-A starts from merged `origin/dev@6b1d2dcd` and isolates CRA remittance calendar semantics before any D3 persistence or Journal write is introduced. It adds no Prisma model, migration, API route, UI, settlement fact or Accounting posting behavior.
+
+### 27.1 Versioned pure policy
+
+The framework-neutral `payroll-remittance-policy.ts` exposes `CA-CRA-REMIT-2026-V1` and derives a canonical remittance period from only the reviewed `PayrollRemitterType` plus the PayrollRun payday. The policy deliberately uses **payday**, not `PayrollRun.periodStart/periodEnd`, because CRA remittance timing is based on when remuneration is paid.
+
+For 2026 Ontario Payroll it pins:
+
+- `QUARTERLY`: calendar quarters, due on the 15th of the following month;
+- `REGULAR`: calendar month, due on the 15th of the following month;
+- `ACCELERATED_THRESHOLD_1`: 1-15 due the 25th of the same month, 16-month-end due the 10th of the following month;
+- `ACCELERATED_THRESHOLD_2`: 1-7 / 8-14 / 15-21 / 22-month-end, due on the third CRA working day after the period end.
+
+Nominal due dates that land on a Saturday, Sunday or CRA-recognized public holiday move to the next CRA working day. Threshold 2 working-day counting skips the same non-working dates. T4001 also calls Threshold 1/2 employers with only one payroll per month "monthly accelerated" remitters; D3-A does not add a fifth due-date algorithm because actual remuneration still lands in one of the reviewed Threshold bands. D3-B must create remittance facts only from included POSTED runs and must not synthesize empty accelerated bands.
+
+### 27.2 Reviewed 2026 Ontario holiday boundary
+
+The policy freezes the CRA-recognized 2026 public holidays relevant to the current Ontario-only Payroll profile. Quebec-only Saint-Jean-Baptiste Day is intentionally excluded. `2027-01-01` is included only as a carry-over holiday so a Threshold 2 period ending `2026-12-31` can calculate its third working day correctly; this does not make 2027 pay dates supported.
+
+The reviewed policy therefore fails closed for a payday outside calendar year 2026. A future tax/remittance year must introduce a deliberately reviewed policy version rather than silently reusing the 2026 calendar.
+
+### 27.3 Characterization and deferred D3-B scope
+
+Focused tests pin monthly/quarterly boundaries, both Threshold 1 halves, all four Threshold 2 bands, weekend/holiday due-date movement, the 2026-12-31 cross-year working-day case, and unsupported-year rejection. The Payroll architecture regression now treats the remittance policy as part of the Prisma/Nest-neutral policy core.
+
+D3-A deliberately keeps `PayrollCraRemittance` persistence absent. Employer-period remittance facts, immutable included-run/component evidence, server-authoritative preview/settlement, BANK-only payment authority, liability-clearing Journal and operator UI remain D3-B and will require a separately user-generated/reviewed additive migration.
+
+Current D3-A state: **LOCAL SOURCE REVIEW PENDING / NO MIGRATION / NO LOCAL CI CLAIMED**.

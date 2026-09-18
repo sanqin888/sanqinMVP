@@ -28,7 +28,7 @@ const modelSource = (schema: string, model: string): string => {
   return match[0];
 };
 
-describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2 Payroll ownership boundary', () => {
+describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2/D3-A Payroll ownership boundary', () => {
   const schema = read(PRISMA_SCHEMA);
 
   it('adds only the approved Payroll core persistence models', () => {
@@ -91,20 +91,21 @@ describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2 Payroll ownership boundary', () => {
     expect(settlementInput).not.toContain('amountCents');
   });
 
-  it('keeps the statutory calculator/policy core framework-neutral and Prisma-neutral', () => {
-    const calculatorCoreFiles = [
+  it('keeps the statutory/remittance policy core framework-neutral and Prisma-neutral', () => {
+    const payrollPolicyCoreFiles = [
       'payroll-calculator-validation.ts',
       'payroll-calculator.contracts.ts',
       'payroll-calculator.ts',
       'payroll-contracts.ts',
       'payroll-income-tax-calculator.ts',
       'payroll-policy.ts',
+      'payroll-remittance-policy.ts',
       'payroll-schedule.ts',
       'payroll-statutory-math.ts',
       'payroll-statutory-policy.ts',
     ];
 
-    const source = calculatorCoreFiles
+    const source = payrollPolicyCoreFiles
       .map((name) => read(resolve(PAYROLL_ROOT, name)))
       .join('\n');
 
@@ -115,7 +116,7 @@ describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2 Payroll ownership boundary', () => {
     expect(source).not.toContain('@Injectable(');
   });
 
-  it('allows Payroll runtime transport through D2 without bypassing Accounting-owned Journal persistence', () => {
+  it('allows Payroll runtime transport through D3-A without bypassing Accounting-owned Journal persistence', () => {
     const source = payrollProductionFiles()
       .map((name) => read(resolve(PAYROLL_ROOT, name)))
       .join('\n');
@@ -185,7 +186,7 @@ describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2 Payroll ownership boundary', () => {
     expect(authority).not.toContain('expense_labor');
   });
 
-  it('requires the reviewed Payroll CoA defaults while keeping CRA settlement persistence deferred after D2', () => {
+  it('requires the reviewed Payroll CoA defaults while keeping CRA settlement persistence deferred after D3-A', () => {
     const chart = read(
       resolve(ACCOUNTING_ROOT, 'accounting-chart-of-accounts.ts'),
     );
