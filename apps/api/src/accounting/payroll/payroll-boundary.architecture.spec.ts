@@ -140,12 +140,18 @@ describe('Phase 9 Slice 8P-B1/B2/B3/C/D1 Payroll ownership boundary', () => {
     expect(authority).toContain('account_payroll_net_pay_payable');
   });
 
-  it('keeps Payroll CoA default registration and settlement persistence gated after D1 source preparation', () => {
+  it('requires the reviewed Payroll CoA defaults while keeping settlement persistence deferred after D1', () => {
     const chart = read(
       resolve(ACCOUNTING_ROOT, 'accounting-chart-of-accounts.ts'),
     );
 
-    expect(chart).not.toContain('account_payroll_');
+    expect(chart).toContain('account_payroll_wages_expense');
+    expect(chart).toContain('account_payroll_employer_contributions_expense');
+    expect(chart).toContain('account_payroll_net_pay_payable');
+    expect(chart).toContain('account_payroll_income_tax_payable');
+    expect(chart).toContain('account_payroll_cpp_payable');
+    expect(chart).toContain('account_payroll_ei_payable');
+    expect(chart).toContain('account_payroll_vacation_payable');
     expect(schema).not.toContain('PayrollEmployeePayment');
     expect(schema).not.toContain('PayrollCraRemittance');
   });

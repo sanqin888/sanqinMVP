@@ -1,6 +1,6 @@
 # Phase 9 Payroll Vertical — Readiness, Design and Closeout Gate
 
-Status: **8P-D1 LOCAL SOURCE COMPLETE / REVIEW PENDING — PAYROLL COA DATA MIGRATION REQUIRED / NO PRISMA SCHEMA MIGRATION**  
+Status: **8P-D1 LOCAL SOURCE COMPLETE / COA DATA MIGRATION REVIEWED / CI PENDING — NO PRISMA SCHEMA MIGRATION**  
 Planning date: 2026-09-16  
 Implementation baseline: `origin/dev@b252382d` (8P-C merged through PR #2390; final head `54c82a1c`, CI #5877 green, squash `b252382d`)  
 Current implementation branch: `feat/phase9-slice8p-d-payroll-financial-posting`
@@ -1441,7 +1441,7 @@ Payroll production code still contains no direct JournalEntry/JournalLine mutati
 
 ### 25.3 CoA data-migration gate
 
-**PAYROLL COA DATA MIGRATION REQUIRED BEFORE D1 MAY MERGE/DEPLOY AS ACTIVE POSTING.**
+**PAYROLL COA DATA MIGRATION REVIEWED / PRESENT ON THE D1 FEATURE BRANCH.**
 
 This is a data-only Accounting Chart-of-Accounts provisioning step. It cannot be generated from `schema.prisma` by normal `prisma migrate dev --create-only` because D1 changes no Prisma schema. The durable migration must follow the existing Tip Revenue data-seed pattern and provision exactly these active CAD system accounts:
 
@@ -1455,15 +1455,9 @@ This is a data-only Accounting Chart-of-Accounts provisioning step. It cannot be
 
 No opening Journal/backfill is created by account provisioning.
 
-Per `AGENTS.md`, MCP does not create, edit or delete `apps/api/prisma/migrations/**`. The operator must add the data-only migration locally and return it for review. Suggested migration name: `phase9_slice8p_d0_payroll_coa`.
+Per `AGENTS.md`, MCP did not create or edit the migration. The operator added `20260918185000_phase9_slice8p_d0_payroll_coa` locally in commit `c4b9135b`. Review confirms that it is an additive data-only `AccountingAccount` seed using `ON CONFLICT ("accountStableId") DO UPDATE`, provisions exactly the seven required active CAD accounts with the expected EXPENSE/LIABILITY classes, and creates no Journal/opening/backfill facts.
 
-Until that migration is present and reviewed:
-
-- D1 source intentionally does **not** add the seven IDs to `DEFAULT_ACCOUNTING_ACCOUNTS`;
-- the cumulative CoA migration guard is not weakened;
-- runtime posting fails closed because the account-prerequisite authority requires all seven active CAD accounts.
-
-After the migration is present, the same D1 branch should add the seven stable IDs to `DEFAULT_ACCOUNTING_ACCOUNTS` and extend `accounting-journal-boundary.architecture.spec.ts` so TypeScript defaults and cumulative durable migrations remain synchronized.
+With that durable evidence present, D1 now adds the same seven stable IDs to `DEFAULT_ACCOUNTING_ACCOUNTS`. `accounting-journal-boundary.architecture.spec.ts` includes the Payroll migration in the cumulative CoA seed set and separately pins each Payroll account name/class plus CAD/active/no-Journal constraints. Runtime posting still revalidates those account facts and fails closed if deployment state does not match the reviewed seed.
 
 ### 25.4 Scope deliberately deferred to D2-D4
 
@@ -1479,6 +1473,6 @@ Next packages remain:
 
 Source now contains the D1 authority/policy, atomic posting service/controller route, posted-Journal DTO/UI evidence and focused characterization for mapping, stale authority, account prerequisite and replay behavior. The pre-existing finalization fixture's inconsistent supported-employer-cost example is corrected from 185200 cents to the calculator-consistent 177200 cents.
 
-No `schema.prisma`, package manifest, lockfile or migration file is changed by D1. Per repository workflow, no local lint/build/strict/Jest/scanner execution is claimed before user review.
+D1 changes no `schema.prisma`, package manifest or lockfile. The only migration in the feature branch is the operator-created/reviewed data-only Payroll CoA seed `20260918185000_phase9_slice8p_d0_payroll_coa`. Per repository workflow, no local lint/build/strict/Jest/scanner execution is claimed before remote CI.
 
-Current local state: **8P-D1 SOURCE COMPLETE / REVIEW PENDING / PAYROLL COA DATA MIGRATION HANDOFF REQUIRED / NO PRISMA SCHEMA MIGRATION**.
+Current state: **8P-D1 SOURCE + REVIEWED COA DATA MIGRATION COMPLETE / CI PENDING / NO PRISMA SCHEMA MIGRATION**.

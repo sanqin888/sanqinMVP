@@ -21,10 +21,15 @@ const TIP_REVENUE_MIGRATION = resolve(
   API_ROOT,
   'prisma/migrations/20260915110000_phase9_slice6c_a1_tip_revenue_coa/migration.sql',
 );
+const PAYROLL_COA_MIGRATION = resolve(
+  API_ROOT,
+  'prisma/migrations/20260918185000_phase9_slice8p_d0_payroll_coa/migration.sql',
+);
 const ACCOUNTING_COA_SEED_MIGRATIONS = [
   JOURNAL_MIGRATION,
   STORE_BALANCE_LIABILITY_MIGRATION,
   TIP_REVENUE_MIGRATION,
+  PAYROLL_COA_MIGRATION,
 ];
 
 function read(path: string): string {
@@ -143,5 +148,66 @@ describe('Accounting double-entry journal ownership boundary', () => {
     expect(migration).toContain('"isActive"');
     expect(migration).toContain('true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP');
     expect(migration).not.toContain('INSERT INTO "AccountingJournalEntry"');
+  });
+
+  it('pins Payroll control accounts to active CAD expense/liability classes without backfill journals', () => {
+    const migration = read(PAYROLL_COA_MIGRATION);
+    const expected = [
+      {
+        accountStableId: 'account_payroll_wages_expense',
+        name: '工资费用',
+        accountClass: 'EXPENSE',
+      },
+      {
+        accountStableId: 'account_payroll_employer_contributions_expense',
+        name: '雇主 CPP/CPP2/EI 费用',
+        accountClass: 'EXPENSE',
+      },
+      {
+        accountStableId: 'account_payroll_net_pay_payable',
+        name: '应付员工净工资',
+        accountClass: 'LIABILITY',
+      },
+      {
+        accountStableId: 'account_payroll_income_tax_payable',
+        name: '应付工资所得税',
+        accountClass: 'LIABILITY',
+      },
+      {
+        accountStableId: 'account_payroll_cpp_payable',
+        name: '应付 CPP/CPP2',
+        accountClass: 'LIABILITY',
+      },
+      {
+        accountStableId: 'account_payroll_ei_payable',
+        name: '应付 EI',
+        accountClass: 'LIABILITY',
+      },
+      {
+        accountStableId: 'account_payroll_vacation_payable',
+        name: '应付假期工资',
+        accountClass: 'LIABILITY',
+      },
+    ];
+
+    for (const item of expected) {
+      expect(
+        DEFAULT_ACCOUNTING_ACCOUNTS.find(
+          ({ accountStableId }) =>
+            accountStableId === item.accountStableId,
+        ),
+      ).toEqual({
+        ...item,
+        type: null,
+      });
+      expect(migration).toContain(`'${item.accountStableId}'`);
+      expect(migration).toContain(`'${item.accountClass}'`);
+    }
+
+    expect(migration).toContain("'CAD'");
+    expect(migration).toContain('"isActive"');
+    expect(migration).toContain('true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP');
+    expect(migration).not.toContain('INSERT INTO "AccountingJournalEntry"');
+    expect(migration).not.toContain('AccountingJournalLine');
   });
 });
