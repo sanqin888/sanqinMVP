@@ -48,6 +48,28 @@ type QuickRow = {
   recognitionHint: boolean;
 };
 
+function recognizedForeignCurrencyCode(
+  extraction: ReturnType<typeof latestParse>,
+): string | null {
+  const candidates = [
+    extraction.sourceCurrency?.toUpperCase() ?? null,
+    extraction.textractEvidence?.currencySuggestion?.code?.toUpperCase() ?? null,
+  ];
+  return (
+    candidates.find((currency) => currency !== null && currency !== 'CAD') ?? null
+  );
+}
+
+function hasUnsafeCurrencyEvidence(
+  extraction: ReturnType<typeof latestParse>,
+): boolean {
+  return (
+    extraction.sourceCurrencyEvidence === 'AMBIGUOUS' ||
+    extraction.textractEvidence?.currencySuggestion?.ambiguous === true ||
+    recognizedForeignCurrencyCode(extraction) !== null
+  );
+}
+
 export function AccountingInboxExpenseReviewPanel({
   item,
   categories,
@@ -105,17 +127,13 @@ export function AccountingInboxExpenseReviewPanel({
     const subtotalCents =
       extraction.subtotalCents ?? extraction.totalCents ?? 0;
     const taxCents = extraction.taxCents ?? 0;
-    const detectedSourceCurrency = extraction.sourceCurrency?.toUpperCase() ?? '';
-    const canPrefillCadBookAmount =
-      extraction.sourceCurrencyEvidence === 'EXPLICIT_TEXT' &&
-      detectedSourceCurrency === 'CAD';
     const recognizedLineItemHints = reconciledTextractLineItemHints(extraction);
 
     setDate(extraction.date ?? '');
-    setSourceCurrency(detectedSourceCurrency);
+    setSourceCurrency('CAD');
     setTotal(
-      canPrefillCadBookAmount
-        ? toDollars(extraction.totalCents ?? subtotalCents + taxCents)
+      extraction.totalCents != null
+        ? toDollars(extraction.totalCents)
         : '',
     );
     setPaymentAllocations([makeExpensePaymentAllocationDraft()]);
@@ -124,8 +142,11 @@ export function AccountingInboxExpenseReviewPanel({
       {
         key: makeReviewKey(),
         categoryStableId: defaultCategory,
-        amount: canPrefillCadBookAmount ? toDollars(subtotalCents) : '',
-        tax: canPrefillCadBookAmount ? toDollars(taxCents) : '',
+        amount:
+          extraction.subtotalCents != null || extraction.totalCents != null
+            ? toDollars(subtotalCents)
+            : '',
+        tax: extraction.taxCents != null ? toDollars(taxCents) : '',
       },
     ]);
     setQuickRows(
@@ -166,9 +187,13 @@ export function AccountingInboxExpenseReviewPanel({
       differenceCents: totalCents - subtotalCents - taxCents,
     };
   }, [rows, total]);
+  const extraction = latestParse(item);
   const hasRecognizedQuickRows = quickRows.some((row) => row.recognitionHint);
+  const recognizedForeignCurrency = recognizedForeignCurrencyCode(extraction);
+  const unsafeCurrencyEvidence = hasUnsafeCurrencyEvidence(extraction);
   const canAggregateRecognizedQuickRows =
-    !hasRecognizedQuickRows || sourceCurrency.trim().toUpperCase() === 'CAD';
+    !hasRecognizedQuickRows ||
+    (sourceCurrency.trim().toUpperCase() === 'CAD' && !unsafeCurrencyEvidence);
 
   function addQuickRow(options?: {
     focusAmount?: boolean;
@@ -216,9 +241,13 @@ export function AccountingInboxExpenseReviewPanel({
   function aggregateQuickRows() {
     if (!canAggregateRecognizedQuickRows) {
       setError(
-        isZh
-          ? '识别条目金额来自原始凭证。请先确认原始币种为 CAD，再汇总到 CAD 费用分类。'
-          : 'Recognized item amounts come from the source document. Confirm the source currency is CAD before aggregating them into CAD expense categories.',
+        unsafeCurrencyEvidence
+          ? isZh
+            ? '识别结果提示非 CAD 或存在币种冲突，不能直接把识别条目汇总为 CAD。请按实际 CAD 金额手动归类。'
+            : 'Recognition indicates a non-CAD or conflicting currency, so detected line amounts cannot be aggregated directly into CAD. Classify the actual CAD amounts manually.'
+          : isZh
+            ? '识别条目金额来自原始凭证。请先确认原始币种为 CAD，再汇总到 CAD 费用分类。'
+            : 'Recognized item amounts come from the source document. Confirm the source currency is CAD before aggregating them into CAD expense categories.',
       );
       return;
     }
@@ -308,7 +337,6 @@ export function AccountingInboxExpenseReviewPanel({
     }
   }
 
-  const extraction = latestParse(item);
   const sourceCurrencyEvidence = extraction.sourceCurrencyEvidence ?? 'UNKNOWN';
   const sourceSubtotalCents = extraction.subtotalCents ?? null;
   const sourceTaxCents = extraction.taxCents ?? null;
@@ -324,6 +352,19 @@ export function AccountingInboxExpenseReviewPanel({
           : ` (${textractCurrencyConfidence.toFixed(1)}%)`
       }`
     : null;
+  const normalizedSourceCurrency = sourceCurrency.trim().toUpperCase();
+  const sourceAmountCurrencyLabel =
+    (recognizedForeignCurrency ?? normalizedSourceCurrency) || '?';
+  const ambiguousCurrencyEvidence =
+    sourceCurrencyEvidence === 'AMBIGUOUS' ||
+    extraction.textractEvidence?.currencySuggestion?.ambiguous === true;
+  const foreignCurrencyWarning =
+    recognizedForeignCurrency ??
+    (normalizedSourceCurrency && normalizedSourceCurrency !== 'CAD'
+      ? normalizedSourceCurrency
+      : null);
+  const showCurrencyWarning =
+    ambiguousCurrencyEvidence || foreignCurrencyWarning !== null;
   const evidenceUrl =
     item.artifact.kind === 'IMAGE'
       ? `/api/v1/accounting/inbox/artifacts/${encodeURIComponent(item.artifact.artifactStableId)}/content`
@@ -362,28 +403,14 @@ export function AccountingInboxExpenseReviewPanel({
         </details>
       ) : null}
       <div className="mt-4 rounded-lg border bg-white p-3 text-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <strong>{isZh ? '原始凭证金额' : 'Source document amounts'}</strong>
-          <label className="flex items-center gap-2 text-xs text-slate-600">
-            <span>{isZh ? '原始币种' : 'Source currency'}</span>
-            <input
-              className="w-20 rounded border px-2 py-1 uppercase"
-              maxLength={3}
-              value={sourceCurrency}
-              onChange={(event) => {
-                setSourceCurrency(event.target.value.toUpperCase());
-                setError(null);
-              }}
-            />
-          </label>
-        </div>
+        <strong>{isZh ? '原始凭证金额' : 'Source document amounts'}</strong>
         <div className="mt-3 grid gap-2 sm:grid-cols-3">
           <div>
             <span className="text-slate-500">{isZh ? '税前' : 'Subtotal'}</span>
             <strong className="ml-2">
               {sourceSubtotalCents == null
                 ? '-'
-                : `${sourceCurrency || '?'} ${money(sourceSubtotalCents)}`}
+                : `${sourceAmountCurrencyLabel} ${money(sourceSubtotalCents)}`}
             </strong>
           </div>
           <div>
@@ -391,7 +418,7 @@ export function AccountingInboxExpenseReviewPanel({
             <strong className="ml-2">
               {sourceTaxCents == null
                 ? '-'
-                : `${sourceCurrency || '?'} ${money(sourceTaxCents)}`}
+                : `${sourceAmountCurrencyLabel} ${money(sourceTaxCents)}`}
             </strong>
           </div>
           <div>
@@ -399,41 +426,65 @@ export function AccountingInboxExpenseReviewPanel({
             <strong className="ml-2">
               {sourceTotalCents == null
                 ? '-'
-                : `${sourceCurrency || '?'} ${money(sourceTotalCents)}`}
+                : `${sourceAmountCurrencyLabel} ${money(sourceTotalCents)}`}
             </strong>
           </div>
         </div>
         <p className="mt-2 text-xs text-slate-500">
           {sourceCurrencyEvidence === 'EXPLICIT_TEXT'
             ? isZh
-              ? '币种来自凭证中的明确文字；仍可在确认前人工修正。'
-              : 'Currency came from explicit document text and can still be corrected before confirmation.'
+              ? '凭证正文识别到明确币种；编辑币种仍默认 CAD，识别结果仅作人工录入参考。'
+              : 'The document contains explicit currency evidence; the editor still defaults to CAD and uses recognition only as an entry aid.'
             : sourceCurrencyEvidence === 'AMBIGUOUS'
               ? isZh
-                ? '凭证中出现多个币种，请人工确认原始币种。'
-                : 'Multiple currencies were detected; confirm the source currency manually.'
+                ? '凭证中出现多个币种；编辑币种仍默认 CAD，请结合下方提示人工核对。'
+                : 'Multiple currencies were detected; the editor still defaults to CAD, so verify the warning below manually.'
               : isZh
-                ? '凭证未明确币种，请先人工确认原始币种；CAD 记账金额不会自动从原始金额带入。'
-                : 'The document did not state a currency. Confirm the source currency manually; CAD booking amounts are not copied from the source amounts.'}
+                ? '凭证正文未明确币种；编辑币种默认 CAD。'
+                : 'The document text did not state a currency; the editor defaults to CAD.'}
         </p>
         {textractCurrencySuggestion ? (
           <p className="mt-1 text-xs text-slate-500">
             {isZh
-              ? `AWS Textract 币种建议：${textractCurrencySuggestion}${textractCurrencyConfidence == null ? '' : `（${textractCurrencyConfidence.toFixed(1)}%）`}。仅作识别参考，不会自动成为原始币种或 CAD 记账币种。`
-              : `AWS Textract currency suggestion: ${textractCurrencySuggestion}${textractCurrencyConfidence == null ? '' : ` (${textractCurrencyConfidence.toFixed(1)}%)`}. This is recognition evidence only and does not become source or CAD booking currency automatically.`}
+              ? `AWS Textract 币种建议：${textractCurrencySuggestion}${textractCurrencyConfidence == null ? '' : `（${textractCurrencyConfidence.toFixed(1)}%）`}。仅作人工录入参考；币种编辑框仍默认 CAD，识别到的总额仍会预填，非 CAD 时在下方红字提醒核对。`
+              : `AWS Textract currency suggestion: ${textractCurrencySuggestion}${textractCurrencyConfidence == null ? '' : ` (${textractCurrencyConfidence.toFixed(1)}%)`}. This is an entry aid only: the currency field still defaults to CAD, detected totals are still prefilled, and non-CAD evidence is flagged below for review.`}
           </p>
         ) : null}
       </div>
-      {sourceCurrency && sourceCurrency !== 'CAD' ? (
-        <p className="mt-3 rounded bg-orange-50 px-3 py-2 text-xs text-orange-800">
-          {isZh
-            ? '这是外币凭证。下面所有类别金额和总额必须填写实际记入 SanQ 的 CAD 金额（例如银行卡实际扣款），不要直接照抄外币金额。'
-            : 'This is a foreign-currency document. Enter the actual CAD booked amounts below (for example, the card charge), not the source-currency amounts.'}
-        </p>
-      ) : null}
-      <div className="mt-4 grid gap-3 md:grid-cols-2">
+      <div className="mt-4 grid gap-3 md:grid-cols-[140px_minmax(0,1fr)_minmax(0,1fr)]">
         <label className="text-sm">
-          <span className="mb-1 block text-slate-500">{isZh ? '费用日期' : 'Expense date'}</span>
+          <span className="mb-1 block text-slate-500">
+            {isZh ? '原始币种' : 'Source currency'}
+          </span>
+          <input
+            className="w-full rounded border bg-white px-3 py-2 uppercase"
+            maxLength={3}
+            value={sourceCurrency}
+            onChange={(event) => {
+              setSourceCurrency(event.target.value.toUpperCase());
+              setError(null);
+            }}
+          />
+          {showCurrencyWarning ? (
+            <span className="mt-1 block text-xs text-red-600">
+              {recognizedForeignCurrency
+                ? isZh
+                  ? `识别结果提示原始币种为 ${recognizedForeignCurrency}。币种输入框仍默认 CAD，账单总额已按识别值预填，请人工核对并按实际记账需要修改。`
+                  : `Recognition suggests ${recognizedForeignCurrency}. The currency field still defaults to CAD and the detected total has been prefilled; verify and adjust it for the actual booking as needed.`
+                : ambiguousCurrencyEvidence
+                  ? isZh
+                    ? '识别结果包含多个或冲突币种。币种输入框仍默认 CAD，识别总额仍会预填，请人工核对后修正。'
+                    : 'Recognition found multiple or conflicting currencies. The currency field still defaults to CAD and the detected total is still prefilled; verify and correct it manually.'
+                  : isZh
+                    ? `当前币种输入为 ${foreignCurrencyWarning}。识别总额仅作预填参考，请按实际记账需要核对。`
+                    : `The currency field is currently ${foreignCurrencyWarning}. The detected total is only a prefill aid; verify it for the actual booking.`}
+            </span>
+          ) : null}
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block text-slate-500">
+            {isZh ? '费用日期' : 'Expense date'}
+          </span>
           <input
             className="w-full rounded border bg-white px-3 py-2"
             type="date"
@@ -455,15 +506,6 @@ export function AccountingInboxExpenseReviewPanel({
             />
           </div>
         </label>
-      </div>
-      <div className="mt-4">
-        <ExpensePaymentAllocationsEditor
-          accounts={accounts}
-          totalCents={calculated.totalCents}
-          allocations={paymentAllocations}
-          onChange={setPaymentAllocations}
-          isZh={isZh}
-        />
       </div>
       <section className="mt-4 rounded-lg border border-amber-200 bg-amber-100/60 p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -731,6 +773,15 @@ export function AccountingInboxExpenseReviewPanel({
       >
         + {isZh ? '增加类别' : 'Add category'}
       </button>
+      <div className="mt-4">
+        <ExpensePaymentAllocationsEditor
+          accounts={accounts}
+          totalCents={calculated.totalCents}
+          allocations={paymentAllocations}
+          onChange={setPaymentAllocations}
+          isZh={isZh}
+        />
+      </div>
       <label className="mt-4 block text-sm">
         <span className="mb-1 block text-slate-500">{isZh ? '备注' : 'Memo'}</span>
         <textarea
