@@ -90,6 +90,9 @@ const yearOpening = (
   insurableEarningsYtdCents: 2_000_000,
   employeeEiYtdCents: 40_000,
   incomeTaxYtdCents: 260_000,
+  nonPeriodicCppBaseContributionYtdCents: 2_000,
+  nonPeriodicCppAdditionalDeductionYtdCents: 500,
+  nonPeriodicEiPremiumYtdCents: 600,
   vacationPayPaidYtdCents: 80_000,
   vacationPayAccruedYtdCents: 0,
   sourceNote: 'Reviewed prior payroll register',
@@ -253,6 +256,19 @@ describe('Payroll B1 invariant policy', () => {
     expect(() =>
       assertPayrollYearOpening(yearOpening({ employeeCppYtdCents: -1 })),
     ).toThrow('employeeCppYtdCents');
+    expect(() =>
+      assertPayrollYearOpening(
+        yearOpening({ nonPeriodicEiPremiumYtdCents: -1 }),
+      ),
+    ).toThrow('nonPeriodicEiPremiumYtdCents');
+    expect(() =>
+      assertPayrollYearOpening(
+        yearOpening({
+          nonPeriodicEarningsYtdCents: 0,
+          nonPeriodicCppBaseContributionYtdCents: 1,
+        }),
+      ),
+    ).toThrow('non-periodic contribution evidence');
   });
 
   it('requires complete versioned evidence before CALCULATED is meaningful', () => {

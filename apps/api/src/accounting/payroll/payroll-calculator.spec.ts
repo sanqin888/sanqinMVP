@@ -220,6 +220,8 @@ describe('Ontario hourly Payroll calculator', () => {
       ),
     );
 
+    expect(output.pensionableEarningsCents).toBe(0);
+    expect(output.insurableEarningsCents).toBe(0);
     expect(output.employeeCppCents).toBe(0);
     expect(output.employeeCpp2Cents).toBe(0);
     expect(output.employeeEiCents).toBe(0);

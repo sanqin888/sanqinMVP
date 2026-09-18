@@ -1,14 +1,17 @@
 # Current ID inventory
 
-Phase 9 Slice 8P-B1 working snapshot: `origin/dev@5e968136` plus the local
-Payroll schema/contracts foundation (2026-09-17). Current source of truth remains
-`apps/api/prisma/schema.prisma`; schema/migration authority follows `AGENTS.md`.
+Phase 9 Slice 8P-B3 working snapshot: `origin/dev@bf175d2a` plus the local
+Payroll lifecycle/YTD source and additive YearOpening evidence schema (2026-09-18).
+Current source of truth remains `apps/api/prisma/schema.prisma`; schema/migration
+authority follows `AGENTS.md`.
 
-The working schema contains **91 models**: 81 UUID-backed primary keys, six integer
-primary keys, and four natural/stable-token primary keys. This refresh absorbs the
-Accounting/Inbox/Provider persistence added during Phase 9, the prior removal of
-`PlatformSettlementRecord`, and the six additive Payroll B1 models. The Payroll count is
-schema-first only until its user-generated migration is reviewed and merged into `dev`.
+The working schema still contains **91 models**: 81 UUID-backed primary keys, six integer
+primary keys, and four natural/stable-token primary keys. The six Payroll B1 models and
+their structural migration are already present in `dev`. B3 adds no model or business-ID
+family; it only extends `PayrollEmployeeYearOpening` with three required non-periodic
+CPP/EI YTD evidence fields. That B3 column change is schema-first and remains
+**MIGRATION REQUIRED** until the user-generated companion migration is reviewed and
+merged into `dev`.
 
 ## Primary-key families
 

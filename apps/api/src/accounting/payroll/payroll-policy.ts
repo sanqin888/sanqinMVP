@@ -173,12 +173,32 @@ export const assertPayrollYearOpening = (
     ['insurableEarningsYtdCents', input.insurableEarningsYtdCents],
     ['employeeEiYtdCents', input.employeeEiYtdCents],
     ['incomeTaxYtdCents', input.incomeTaxYtdCents],
+    [
+      'nonPeriodicCppBaseContributionYtdCents',
+      input.nonPeriodicCppBaseContributionYtdCents,
+    ],
+    [
+      'nonPeriodicCppAdditionalDeductionYtdCents',
+      input.nonPeriodicCppAdditionalDeductionYtdCents,
+    ],
+    ['nonPeriodicEiPremiumYtdCents', input.nonPeriodicEiPremiumYtdCents],
     ['vacationPayPaidYtdCents', input.vacationPayPaidYtdCents],
     ['vacationPayAccruedYtdCents', input.vacationPayAccruedYtdCents],
   ];
 
   for (const [field, value] of moneyFields) {
     assertNonNegativeInteger(value, field);
+  }
+
+  if (
+    input.nonPeriodicEarningsYtdCents === 0 &&
+    (input.nonPeriodicCppBaseContributionYtdCents !== 0 ||
+      input.nonPeriodicCppAdditionalDeductionYtdCents !== 0 ||
+      input.nonPeriodicEiPremiumYtdCents !== 0)
+  ) {
+    throw new Error(
+      'non-periodic contribution evidence must be zero when nonPeriodicEarningsYtdCents is zero',
+    );
   }
 };
 

@@ -11,6 +11,7 @@ import { AccountingPeriodController } from './accounting-period.controller';
 import { AccountingProviderFinancialController } from './accounting-provider-financial.controller';
 import { AccountingProviderSettlementController } from './accounting-provider-settlement.controller';
 import { AccountingReportsController } from './accounting-reports.controller';
+import { AccountingPayrollController } from './payroll/accounting-payroll.controller';
 import { AccountingService } from './accounting.service';
 import { AccountingPeriodService } from './accounting-period.service';
 import { AccountingJournalService } from './accounting-journal.service';
@@ -35,6 +36,12 @@ import { AccountingCanonicalChangePreviewService } from './accounting-canonical-
 import { AccountingCanonicalChangeExecutionService } from './accounting-canonical-change-execution.service';
 import { AccountingProviderSettlementPreviewService } from './accounting-provider-settlement-preview.service';
 import { AccountingProviderSettlementExecutionService } from './accounting-provider-settlement-execution.service';
+import { AccountingPayrollConfigService } from './payroll/accounting-payroll-config.service';
+import { AccountingPayrollEmployeeService } from './payroll/accounting-payroll-employee.service';
+import { AccountingPayrollOpeningService } from './payroll/accounting-payroll-opening.service';
+import { AccountingPayrollRunService } from './payroll/accounting-payroll-run.service';
+import { AccountingPayrollFinalizationService } from './payroll/accounting-payroll-finalization.service';
+import { AccountingPayrollYtdService } from './payroll/accounting-payroll-ytd.service';
 import { BrandStoreConfigModule } from '../store/public-api';
 import { LoyaltyFinancialFactsModule } from '../loyalty/public-api';
 import {
@@ -69,6 +76,7 @@ import { PaymentFinancialFactsModule } from '../payments/public-api';
     AccountingProviderSettlementController,
     AccountingReportsController,
     AccountingAuditController,
+    AccountingPayrollController,
   ],
   providers: [
     { provide: ACCOUNTING_DB, useExisting: PrismaService },
@@ -92,6 +100,12 @@ import { PaymentFinancialFactsModule } from '../payments/public-api';
     AccountingProviderFinancialHistoryService,
     AccountingGmailIngestService,
     AccountingAutomationScheduler,
+    AccountingPayrollConfigService,
+    AccountingPayrollEmployeeService,
+    AccountingPayrollOpeningService,
+    AccountingPayrollRunService,
+    AccountingPayrollFinalizationService,
+    AccountingPayrollYtdService,
   ],
 })
 export class AccountingModule {}

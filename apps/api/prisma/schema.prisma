@@ -1875,6 +1875,9 @@ model PayrollEmployeeYearOpening {
   insurableEarningsYtdCents   Int
   employeeEiYtdCents          Int
   incomeTaxYtdCents           Int
+  nonPeriodicCppBaseContributionYtdCents    Int
+  nonPeriodicCppAdditionalDeductionYtdCents Int
+  nonPeriodicEiPremiumYtdCents              Int
   vacationPayPaidYtdCents     Int
   vacationPayAccruedYtdCents  Int
   sourceNote                  String
