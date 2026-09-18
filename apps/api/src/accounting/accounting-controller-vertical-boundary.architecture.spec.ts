@@ -105,6 +105,8 @@ const EXPECTED_ROUTES = [
   'GET payroll/employers/:employerStableId/configs',
   'POST payroll/employers/:employerStableId/configs',
   'GET payroll/employers/:employerStableId/cra-remittances/preview',
+  'GET payroll/employers/:employerStableId/cra-remittances',
+  'POST payroll/employers/:employerStableId/cra-remittances',
   'GET payroll/employers/:employerStableId/employees',
   'POST payroll/employers/:employerStableId/employees',
   'PUT payroll/employees/:employeeStableId',

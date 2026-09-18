@@ -28,7 +28,7 @@ const modelSource = (schema: string, model: string): string => {
   return match[0];
 };
 
-describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2/D3-A/D3-B1 Payroll ownership boundary', () => {
+describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2/D3-A/D3-B1/D3-B2 Payroll ownership boundary', () => {
   const schema = read(PRISMA_SCHEMA);
 
   it('adds only the approved Payroll core persistence models', () => {
@@ -132,7 +132,7 @@ describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2/D3-A/D3-B1 Payroll ownership boundar
     expect(source).not.toContain('@Injectable(');
   });
 
-  it('allows Payroll runtime transport through D3-B1 without bypassing Accounting-owned Journal persistence', () => {
+  it('allows Payroll runtime transport through D3-B2 without bypassing Accounting-owned Journal persistence', () => {
     const source = payrollProductionFiles()
       .map((name) => read(resolve(PAYROLL_ROOT, name)))
       .join('\n');
@@ -202,33 +202,61 @@ describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2/D3-A/D3-B1 Payroll ownership boundar
     expect(authority).not.toContain('expense_labor');
   });
 
-  it('pins D3-B1 CRA persistence/preview while keeping the CRA Journal writer deferred', () => {
+  it('enables only the D3-B2 owner-specific CRA remittance writer and keeps settlement liability-only', () => {
     const chart = read(
       resolve(ACCOUNTING_ROOT, 'accounting-chart-of-accounts.ts'),
     );
-
-    expect(chart).toContain('account_payroll_wages_expense');
-    expect(chart).toContain('account_payroll_employer_contributions_expense');
-    expect(chart).toContain('account_payroll_net_pay_payable');
-    expect(chart).toContain('account_payroll_income_tax_payable');
-    expect(chart).toContain('account_payroll_cpp_payable');
-    expect(chart).toContain('account_payroll_ei_payable');
-    expect(chart).toContain('account_payroll_vacation_payable');
-    expect(schema).toContain('PayrollEmployeePayment');
-    expect(schema).toContain('PayrollCraRemittance');
-    expect(schema).toContain('PayrollCraRemittanceRun');
-
     const controller = read(
       resolve(PAYROLL_ROOT, 'accounting-payroll.controller.ts'),
     );
-    const preview = read(
+    const settlement = read(
       resolve(PAYROLL_ROOT, 'accounting-payroll-cra-remittance.service.ts'),
     );
+    const authority = read(
+      resolve(PAYROLL_ROOT, 'payroll-cra-remittance-journal-authority.ts'),
+    );
+    const lifecycleContracts = read(
+      resolve(PAYROLL_ROOT, 'payroll-lifecycle.contracts.ts'),
+    );
+    const remittanceInput =
+      lifecycleContracts.match(
+        /export type CreatePayrollCraRemittanceInput = \{[\s\S]*?\n\};/,
+      )?.[0] ?? '';
+    const callers = payrollProductionFiles().filter((name) =>
+      read(resolve(PAYROLL_ROOT, name)).includes(
+        '.createPayrollCraRemittanceJournalInTx(',
+      ),
+    );
+
+    expect(chart).toContain('account_payroll_income_tax_payable');
+    expect(chart).toContain('account_payroll_cpp_payable');
+    expect(chart).toContain('account_payroll_ei_payable');
+    expect(schema).toContain('PayrollCraRemittance');
+    expect(schema).toContain('PayrollCraRemittanceRun');
     expect(controller).toContain('cra-remittances/preview');
-    expect(preview).toContain('PayrollRunStatus.POSTED');
-    expect(preview).toContain('craRemittanceEvidence: null');
-    expect(preview).toContain('buildPayrollCraRemittancePreview');
-    expect(preview).not.toContain('createPayrollCraRemittanceJournalInTx');
+    expect(controller).toContain(
+      "@Post('payroll/employers/:employerStableId/cra-remittances')",
+    );
+    expect(settlement).toContain('PayrollRunStatus.POSTED');
+    expect(settlement).toContain('craRemittanceEvidence: null');
+    expect(settlement).toContain('buildPayrollCraRemittancePreview');
+    expect(settlement).toContain('expectedEvidenceHash');
+    expect(settlement).toContain('createPayrollCraRemittanceJournalInTx');
+    expect(callers).toEqual(['accounting-payroll-cra-remittance.service.ts']);
+    expect(authority).toContain('payroll.cra_remittance.v1');
+    expect(authority).toContain('PAYROLL_ACCOUNT_IDS.incomeTaxPayable');
+    expect(authority).toContain('PAYROLL_ACCOUNT_IDS.cppPayable');
+    expect(authority).toContain('PAYROLL_ACCOUNT_IDS.eiPayable');
+    expect(authority).toContain('AccountingAccountType.BANK');
+    expect(authority).not.toContain('AccountingAccountType.CASH');
+    expect(authority).not.toContain('expense_labor');
+    expect(authority).toContain('storeStableId: null');
+    expect(remittanceInput).toContain('expectedEvidenceHash');
+    expect(remittanceInput).toContain('paymentAccountStableId');
+    expect(remittanceInput).toContain('paymentDate');
+    expect(remittanceInput).not.toContain('amountCents');
+    expect(remittanceInput).not.toContain('incomeTaxCents');
+    expect(remittanceInput).not.toContain('employeeCppCents');
   });
 
   it('pins the approved PayrollRun evidence and correction shape', () => {

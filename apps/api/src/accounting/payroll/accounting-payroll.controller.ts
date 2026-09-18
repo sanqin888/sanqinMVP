@@ -29,6 +29,7 @@ import { AccountingPayrollCraRemittanceService } from './accounting-payroll-cra-
 import type {
   CreatePayrollEmployeeConfigInput,
   CreatePayrollEmployeeInput,
+  CreatePayrollCraRemittanceInput,
   CreatePayrollEmployeePaymentInput,
   CreatePayrollEmployerConfigInput,
   CreatePayrollEmployerInput,
@@ -109,6 +110,30 @@ export class AccountingPayrollController {
     @Query('anchorDate') anchorDate?: string,
   ) {
     return this.craRemittances.preview(employerStableId, anchorDate ?? '');
+  }
+
+  @Get('payroll/employers/:employerStableId/cra-remittances')
+  listCraRemittances(
+    @Param('employerStableId') employerStableId: string,
+    @Query('anchorDate') anchorDate?: string,
+  ) {
+    return this.craRemittances.listForPeriod(
+      employerStableId,
+      anchorDate ?? '',
+    );
+  }
+
+  @Post('payroll/employers/:employerStableId/cra-remittances')
+  settleCraRemittance(
+    @Param('employerStableId') employerStableId: string,
+    @Body() body: CreatePayrollCraRemittanceInput,
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.craRemittances.settle(
+      employerStableId,
+      body,
+      requireAccountingOperatorUserId(req),
+    );
   }
 
   @Get('payroll/employers/:employerStableId/employees')

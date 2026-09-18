@@ -55,6 +55,12 @@ import {
   normalizePayrollEmployeePaymentWriteAuthority,
   type PayrollEmployeePaymentJournalWriteAuthorityV1,
 } from './payroll/payroll-employee-payment-journal-authority';
+import {
+  assertPayrollCraRemittanceJournalAuthority,
+  hashPayrollCraRemittanceJournalWrite,
+  normalizePayrollCraRemittanceWriteAuthority,
+  type PayrollCraRemittanceJournalWriteAuthorityV1,
+} from './payroll/payroll-cra-remittance-journal-authority';
 
 const ACCOUNTING_JOURNAL_PUBLIC_SELECT = {
   entryStableId: true,
@@ -296,6 +302,52 @@ export class AccountingJournalService {
     if (journal.deletedAt) {
       throw new ConflictException(
         'Payroll employee payment Journal was deleted and cannot be replayed',
+      );
+    }
+    return journal;
+  }
+
+  async createPayrollCraRemittanceJournalInTx(
+    input: AccountingJournalCreateInput,
+    operatorActorRef: string,
+    authority: PayrollCraRemittanceJournalWriteAuthorityV1,
+    tx: Prisma.TransactionClient,
+  ): Promise<AccountingJournalRow> {
+    const normalizedAuthority = this.applyJournalPolicy(() =>
+      normalizePayrollCraRemittanceWriteAuthority(authority),
+    );
+    const normalized = this.applyJournalPolicy(() =>
+      normalizeJournalCreate(input),
+    );
+    this.applyJournalPolicy(() =>
+      assertPayrollCraRemittanceJournalAuthority(
+        normalized,
+        normalizedAuthority,
+      ),
+    );
+    await this.assertPayrollCraRemittanceAuthorityInTx(normalizedAuthority, tx);
+
+    const operator = this.requireJournalValue(
+      operatorActorRef,
+      'operatorActorRef',
+    );
+    const timezone = await this.period.getBusinessTimezone();
+    const journal = await this.createPreparedJournalEntryInTx(
+      {
+        normalized,
+        idempotencyHash: hashPayrollCraRemittanceJournalWrite(
+          normalized,
+          normalizedAuthority,
+        ),
+        auditAuthority: normalizedAuthority as unknown as Prisma.InputJsonValue,
+      },
+      operator,
+      tx,
+      timezone,
+    );
+    if (journal.deletedAt) {
+      throw new ConflictException(
+        'Payroll CRA remittance Journal was deleted and cannot be replayed',
       );
     }
     return journal;
@@ -824,6 +876,224 @@ export class AccountingJournalService {
       );
     }
     return rows;
+  }
+
+  private async assertPayrollCraRemittanceAuthorityInTx(
+    authority: PayrollCraRemittanceJournalWriteAuthorityV1,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    const fact = authority.fact;
+    const remittance = await tx.payrollCraRemittance.findUnique({
+      where: { remittanceStableId: fact.remittanceStableId },
+      select: {
+        remitterType: true,
+        remittancePolicyVersion: true,
+        periodStart: true,
+        periodEnd: true,
+        dueDate: true,
+        incomeTaxCents: true,
+        employeeCppCents: true,
+        employeeCpp2Cents: true,
+        employerCppCents: true,
+        employerCpp2Cents: true,
+        employeeEiCents: true,
+        employerEiCents: true,
+        totalAmountCents: true,
+        currency: true,
+        evidenceHash: true,
+        paymentAccountStableId: true,
+        paymentDate: true,
+        journalEntryStableId: true,
+        employer: { select: { employerStableId: true } },
+        runs: {
+          select: {
+            employerConfigStableId: true,
+            calculationHash: true,
+            postedAccrualJournalEntryStableId: true,
+            payDate: true,
+            incomeTaxCents: true,
+            employeeCppCents: true,
+            employeeCpp2Cents: true,
+            employerCppCents: true,
+            employerCpp2Cents: true,
+            employeeEiCents: true,
+            employerEiCents: true,
+            craRemittanceCents: true,
+            run: {
+              select: {
+                runStableId: true,
+                status: true,
+                employerConfigStableId: true,
+                calculationHash: true,
+                postedJournalEntryStableId: true,
+                postedAt: true,
+                payDate: true,
+                incomeTaxCents: true,
+                employeeCppCents: true,
+                employeeCpp2Cents: true,
+                employerCppCents: true,
+                employerCpp2Cents: true,
+                employeeEiCents: true,
+                employerEiCents: true,
+                craRemittanceCents: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    const dateOnly = (value: Date | null): string | null =>
+      value?.toISOString().slice(0, 10) ?? null;
+    if (
+      !remittance ||
+      remittance.journalEntryStableId !== null ||
+      remittance.employer.employerStableId !== fact.employerStableId ||
+      remittance.remitterType !== fact.remitterType ||
+      remittance.remittancePolicyVersion !== fact.remittancePolicyVersion ||
+      dateOnly(remittance.periodStart) !== fact.periodStart ||
+      dateOnly(remittance.periodEnd) !== fact.periodEnd ||
+      dateOnly(remittance.dueDate) !== fact.dueDate ||
+      remittance.incomeTaxCents !== fact.incomeTaxCents ||
+      remittance.employeeCppCents !== fact.employeeCppCents ||
+      remittance.employeeCpp2Cents !== fact.employeeCpp2Cents ||
+      remittance.employerCppCents !== fact.employerCppCents ||
+      remittance.employerCpp2Cents !== fact.employerCpp2Cents ||
+      remittance.employeeEiCents !== fact.employeeEiCents ||
+      remittance.employerEiCents !== fact.employerEiCents ||
+      remittance.totalAmountCents !== fact.totalAmountCents ||
+      remittance.currency !== 'CAD' ||
+      remittance.evidenceHash !== fact.evidenceHash ||
+      remittance.paymentAccountStableId !== fact.paymentAccountStableId ||
+      dateOnly(remittance.paymentDate) !== fact.paymentDate
+    ) {
+      throw new ConflictException(
+        'Payroll CRA remittance authority changed before Journal posting',
+      );
+    }
+
+    const expectedRuns = new Map(
+      fact.includedRuns.map((run) => [run.runStableId, run] as const),
+    );
+    if (
+      remittance.runs.length !== fact.includedRuns.length ||
+      remittance.runs.length !== expectedRuns.size
+    ) {
+      throw new ConflictException(
+        'Payroll CRA remittance included-run authority changed before Journal posting',
+      );
+    }
+    for (const evidence of remittance.runs) {
+      const runStableId = evidence.run.runStableId;
+      const expected = expectedRuns.get(runStableId);
+      if (
+        !expected ||
+        evidence.employerConfigStableId !== expected.employerConfigStableId ||
+        evidence.calculationHash !== expected.calculationHash ||
+        evidence.postedAccrualJournalEntryStableId !==
+          expected.postedAccrualJournalEntryStableId ||
+        dateOnly(evidence.payDate) !== expected.payDate ||
+        evidence.incomeTaxCents !== expected.incomeTaxCents ||
+        evidence.employeeCppCents !== expected.employeeCppCents ||
+        evidence.employeeCpp2Cents !== expected.employeeCpp2Cents ||
+        evidence.employerCppCents !== expected.employerCppCents ||
+        evidence.employerCpp2Cents !== expected.employerCpp2Cents ||
+        evidence.employeeEiCents !== expected.employeeEiCents ||
+        evidence.employerEiCents !== expected.employerEiCents ||
+        evidence.craRemittanceCents !== expected.craRemittanceCents ||
+        evidence.run.status !== 'POSTED' ||
+        evidence.run.employerConfigStableId !==
+          expected.employerConfigStableId ||
+        evidence.run.calculationHash !== expected.calculationHash ||
+        evidence.run.postedJournalEntryStableId !==
+          expected.postedAccrualJournalEntryStableId ||
+        !evidence.run.postedAt ||
+        dateOnly(evidence.run.payDate) !== expected.payDate ||
+        evidence.run.incomeTaxCents !== expected.incomeTaxCents ||
+        evidence.run.employeeCppCents !== expected.employeeCppCents ||
+        evidence.run.employeeCpp2Cents !== expected.employeeCpp2Cents ||
+        evidence.run.employerCppCents !== expected.employerCppCents ||
+        evidence.run.employerCpp2Cents !== expected.employerCpp2Cents ||
+        evidence.run.employeeEiCents !== expected.employeeEiCents ||
+        evidence.run.employerEiCents !== expected.employerEiCents ||
+        evidence.run.craRemittanceCents !== expected.craRemittanceCents
+      ) {
+        throw new ConflictException(
+          `Payroll CRA remittance run authority changed before Journal posting: ${runStableId}`,
+        );
+      }
+    }
+
+    const accrualJournals = await tx.accountingJournalEntry.findMany({
+      where: {
+        entryStableId: {
+          in: fact.includedRuns.map(
+            (run) => run.postedAccrualJournalEntryStableId,
+          ),
+        },
+      },
+      select: {
+        entryStableId: true,
+        source: true,
+        sourceFactType: true,
+        sourceFactStableId: true,
+        deletedAt: true,
+      },
+    });
+    const accrualByStableId = new Map(
+      accrualJournals.map((entry) => [entry.entryStableId, entry] as const),
+    );
+    for (const run of fact.includedRuns) {
+      const accrual = accrualByStableId.get(
+        run.postedAccrualJournalEntryStableId,
+      );
+      if (
+        !accrual ||
+        accrual.deletedAt ||
+        accrual.source !== AccountingJournalSource.PAYROLL ||
+        accrual.sourceFactType !== 'payroll.run.accrual.v1' ||
+        accrual.sourceFactStableId !== run.runStableId
+      ) {
+        throw new ConflictException(
+          `Payroll accrual Journal authority is not active for CRA remittance: ${run.runStableId}`,
+        );
+      }
+    }
+
+    const currentAccounts = await tx.accountingAccount.findMany({
+      where: {
+        accountStableId: {
+          in: authority.accountPrerequisites.map(
+            (account) => account.accountStableId,
+          ),
+        },
+      },
+      select: {
+        accountStableId: true,
+        accountClass: true,
+        type: true,
+        currency: true,
+        isActive: true,
+      },
+    });
+    const currentByStableId = new Map(
+      currentAccounts.map(
+        (account) => [account.accountStableId, account] as const,
+      ),
+    );
+    for (const prerequisite of authority.accountPrerequisites) {
+      const current = currentByStableId.get(prerequisite.accountStableId);
+      if (
+        !current ||
+        current.accountClass !== prerequisite.actual.accountClass ||
+        current.type !== prerequisite.actual.accountType ||
+        current.currency !== prerequisite.actual.currency ||
+        current.isActive !== prerequisite.actual.isActive
+      ) {
+        throw new ConflictException(
+          `Payroll CRA remittance account authority changed before posting: ${prerequisite.accountStableId}`,
+        );
+      }
+    }
   }
 
   private async assertPayrollEmployeePaymentAuthorityInTx(
