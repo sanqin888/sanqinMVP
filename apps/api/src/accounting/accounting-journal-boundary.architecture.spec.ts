@@ -205,9 +205,7 @@ describe('Accounting double-entry journal ownership boundary', () => {
 
     expect(migration).toContain("'CAD'");
     expect(migration).toContain('"isActive"');
-    expect(migration).toMatch(
-      /true,\s*CURRENT_TIMESTAMP,\s*CURRENT_TIMESTAMP/,
-    );
+    expect(migration).toMatch(/true,\s*CURRENT_TIMESTAMP,\s*CURRENT_TIMESTAMP/);
     expect(migration).not.toContain('INSERT INTO "AccountingJournalEntry"');
     expect(migration).not.toContain('AccountingJournalLine');
   });
