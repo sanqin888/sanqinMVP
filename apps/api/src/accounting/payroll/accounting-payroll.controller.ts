@@ -24,9 +24,11 @@ import { AccountingPayrollFinalizationService } from './accounting-payroll-final
 import { AccountingPayrollYtdService } from './accounting-payroll-ytd.service';
 import { AccountingPayrollPayStatementService } from './accounting-payroll-pay-statement.service';
 import { AccountingPayrollPostingService } from './accounting-payroll-posting.service';
+import { AccountingPayrollEmployeePaymentService } from './accounting-payroll-employee-payment.service';
 import type {
   CreatePayrollEmployeeConfigInput,
   CreatePayrollEmployeeInput,
+  CreatePayrollEmployeePaymentInput,
   CreatePayrollEmployerConfigInput,
   CreatePayrollEmployerInput,
   CreatePayrollRunInput,
@@ -49,6 +51,7 @@ export class AccountingPayrollController {
     private readonly ytd: AccountingPayrollYtdService,
     private readonly payStatements: AccountingPayrollPayStatementService,
     private readonly posting: AccountingPayrollPostingService,
+    private readonly employeePayments: AccountingPayrollEmployeePaymentService,
   ) {}
 
   @Get('payroll/employers')
@@ -244,6 +247,24 @@ export class AccountingPayrollController {
   ) {
     return this.posting.postRunAccrual(
       runStableId,
+      requireAccountingOperatorUserId(req),
+    );
+  }
+
+  @Get('payroll/runs/:runStableId/employee-payment')
+  getEmployeePayment(@Param('runStableId') runStableId: string) {
+    return this.employeePayments.getForRun(runStableId);
+  }
+
+  @Post('payroll/runs/:runStableId/employee-payment')
+  settleEmployeePayment(
+    @Param('runStableId') runStableId: string,
+    @Body() body: CreatePayrollEmployeePaymentInput,
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.employeePayments.settleRun(
+      runStableId,
+      body,
       requireAccountingOperatorUserId(req),
     );
   }

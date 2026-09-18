@@ -23,6 +23,7 @@ const EXPECTED_CONTROLLER_CAPABILITIES = {
   'accounting-period.controller.ts': ['AccountingPeriodService'],
   'payroll/accounting-payroll.controller.ts': [
     'AccountingPayrollConfigService',
+    'AccountingPayrollEmployeePaymentService',
     'AccountingPayrollEmployeeService',
     'AccountingPayrollFinalizationService',
     'AccountingPayrollOpeningService',
@@ -117,6 +118,8 @@ const EXPECTED_ROUTES = [
   'POST payroll/runs/:runStableId/calculate',
   'POST payroll/runs/:runStableId/approve',
   'POST payroll/runs/:runStableId/post',
+  'GET payroll/runs/:runStableId/employee-payment',
+  'POST payroll/runs/:runStableId/employee-payment',
   'GET payroll/runs/:runStableId/pay-statement.pdf',
   'POST payroll/runs/:runStableId/void',
 ].sort();

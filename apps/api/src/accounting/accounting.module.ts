@@ -44,6 +44,7 @@ import { AccountingPayrollFinalizationService } from './payroll/accounting-payro
 import { AccountingPayrollYtdService } from './payroll/accounting-payroll-ytd.service';
 import { AccountingPayrollPayStatementService } from './payroll/accounting-payroll-pay-statement.service';
 import { AccountingPayrollPostingService } from './payroll/accounting-payroll-posting.service';
+import { AccountingPayrollEmployeePaymentService } from './payroll/accounting-payroll-employee-payment.service';
 import { BrandStoreConfigModule } from '../store/public-api';
 import { LoyaltyFinancialFactsModule } from '../loyalty/public-api';
 import {
@@ -110,6 +111,7 @@ import { PaymentFinancialFactsModule } from '../payments/public-api';
     AccountingPayrollYtdService,
     AccountingPayrollPayStatementService,
     AccountingPayrollPostingService,
+    AccountingPayrollEmployeePaymentService,
   ],
 })
 export class AccountingModule {}

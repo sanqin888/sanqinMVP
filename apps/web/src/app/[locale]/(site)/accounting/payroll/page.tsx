@@ -184,8 +184,8 @@ export default function AccountingPayrollPage() {
 
       <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
         {isZh
-          ? '当前 8P-C 只负责工资计算/审核/工资单；不会自动付款给员工、不会自动向 CRA 汇款，也不会写 Payroll Journal。这些属于后续 8P-D。'
-          : '8P-C covers calculation review and pay statements only. It does not pay employees, remit CRA funds, or post Payroll Journals; those remain in 8P-D.'}
+          ? '当前 Payroll 已支持工资应计入账和员工净工资付款记账。员工付款只清除 Net Pay 应付负债；CRA 汇款和已入账工资冲销仍属于后续 8P-D3/D4。'
+          : 'Payroll now supports accrual posting and employee net-pay settlement. Employee payment clears only Net Pay payable; CRA remittance and posted-run reversal remain in 8P-D3/D4.'}
       </div>
 
       <PayrollSetupPanel

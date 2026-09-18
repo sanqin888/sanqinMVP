@@ -28,7 +28,7 @@ const modelSource = (schema: string, model: string): string => {
   return match[0];
 };
 
-describe('Phase 9 Slice 8P-B1/B2/B3/C/D1 Payroll ownership boundary', () => {
+describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2 Payroll ownership boundary', () => {
   const schema = read(PRISMA_SCHEMA);
 
   it('adds only the approved Payroll core persistence models', () => {
@@ -39,13 +39,14 @@ describe('Phase 9 Slice 8P-B1/B2/B3/C/D1 Payroll ownership boundary', () => {
       'PayrollEmployeeConfigVersion',
       'PayrollEmployeeYearOpening',
       'PayrollRun',
+      'PayrollEmployeePayment',
     ];
 
     for (const model of expectedModels) {
       expect(schema).toContain(`model ${model} {`);
     }
 
-    expect(schema).not.toContain('model PayrollEmployeePayment {');
+    expect(schema).toContain('model PayrollEmployeePayment {');
     expect(schema).not.toContain('model PayrollCraRemittance {');
   });
 
@@ -53,6 +54,7 @@ describe('Phase 9 Slice 8P-B1/B2/B3/C/D1 Payroll ownership boundary', () => {
     const employer = modelSource(schema, 'PayrollEmployer');
     const employee = modelSource(schema, 'PayrollEmployee');
     const run = modelSource(schema, 'PayrollRun');
+    const payment = modelSource(schema, 'PayrollEmployeePayment');
 
     expect(employer).toContain('employerStableId');
     expect(employer).toContain('defaultStoreStableId String?');
@@ -68,6 +70,25 @@ describe('Phase 9 Slice 8P-B1/B2/B3/C/D1 Payroll ownership boundary', () => {
     expect(run).toContain('storeStableId');
     expect(run).toContain('postedJournalEntryStableId');
     expect(run).not.toMatch(/AccountingJournalEntry\??\s+@relation/);
+
+    expect(payment).toContain('paymentStableId');
+    expect(payment).toContain('paymentAccountStableId');
+    expect(payment).toContain('journalEntryStableId');
+    expect(payment).toMatch(/runId\s+String\s+@unique\s+@db\.Uuid/);
+    expect(payment).toMatch(/amountCents\s+Int/);
+    expect(payment).not.toMatch(/AccountingAccount\??\s+@relation/);
+    expect(payment).not.toMatch(/AccountingJournalEntry\??\s+@relation/);
+
+    const lifecycleContracts = read(
+      resolve(PAYROLL_ROOT, 'payroll-lifecycle.contracts.ts'),
+    );
+    const settlementInput =
+      lifecycleContracts.match(
+        /export type CreatePayrollEmployeePaymentInput = \{[\s\S]*?\n\};/,
+      )?.[0] ?? '';
+    expect(settlementInput).toContain('paymentAccountStableId');
+    expect(settlementInput).toContain('paymentDate');
+    expect(settlementInput).not.toContain('amountCents');
   });
 
   it('keeps the statutory calculator/policy core framework-neutral and Prisma-neutral', () => {
@@ -94,7 +115,7 @@ describe('Phase 9 Slice 8P-B1/B2/B3/C/D1 Payroll ownership boundary', () => {
     expect(source).not.toContain('@Injectable(');
   });
 
-  it('allows Payroll runtime transport through D1 without bypassing Accounting-owned Journal persistence', () => {
+  it('allows Payroll runtime transport through D2 without bypassing Accounting-owned Journal persistence', () => {
     const source = payrollProductionFiles()
       .map((name) => read(resolve(PAYROLL_ROOT, name)))
       .join('\n');
@@ -140,7 +161,31 @@ describe('Phase 9 Slice 8P-B1/B2/B3/C/D1 Payroll ownership boundary', () => {
     expect(authority).toContain('account_payroll_net_pay_payable');
   });
 
-  it('requires the reviewed Payroll CoA defaults while keeping settlement persistence deferred after D1', () => {
+  it('enables only the D2 owner-specific employee-payment writer and keeps the source fact narrow', () => {
+    const settlement = read(
+      resolve(PAYROLL_ROOT, 'accounting-payroll-employee-payment.service.ts'),
+    );
+    const authority = read(
+      resolve(PAYROLL_ROOT, 'payroll-employee-payment-journal-authority.ts'),
+    );
+    const callers = payrollProductionFiles().filter((name) =>
+      read(resolve(PAYROLL_ROOT, name)).includes(
+        '.createPayrollEmployeePaymentJournalInTx(',
+      ),
+    );
+
+    expect(callers).toEqual(['accounting-payroll-employee-payment.service.ts']);
+    expect(settlement).toContain('PayrollRunStatus.POSTED');
+    expect(settlement).toContain('run.netPayCents');
+    expect(authority).toContain('payroll.employee-payment.v1');
+    expect(authority).toContain('PAYROLL_ACCOUNT_IDS.netPayPayable');
+    expect(authority).toContain('AccountingAccountType.BANK');
+    expect(authority).toContain('AccountingAccountType.CASH');
+    expect(authority).not.toContain('wages_expense');
+    expect(authority).not.toContain('expense_labor');
+  });
+
+  it('requires the reviewed Payroll CoA defaults while keeping CRA settlement persistence deferred after D2', () => {
     const chart = read(
       resolve(ACCOUNTING_ROOT, 'accounting-chart-of-accounts.ts'),
     );
@@ -152,7 +197,7 @@ describe('Phase 9 Slice 8P-B1/B2/B3/C/D1 Payroll ownership boundary', () => {
     expect(chart).toContain('account_payroll_cpp_payable');
     expect(chart).toContain('account_payroll_ei_payable');
     expect(chart).toContain('account_payroll_vacation_payable');
-    expect(schema).not.toContain('PayrollEmployeePayment');
+    expect(schema).toContain('PayrollEmployeePayment');
     expect(schema).not.toContain('PayrollCraRemittance');
   });
 

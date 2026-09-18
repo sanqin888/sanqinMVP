@@ -116,3 +116,9 @@ export type UpdatePayrollRunInput = {
   overtimeHourlyRateCents?: number;
   vacationTopUpCents?: number;
 };
+
+export type CreatePayrollEmployeePaymentInput = {
+  paymentAccountStableId: string;
+  paymentDate: string;
+  reference?: string | null;
+};

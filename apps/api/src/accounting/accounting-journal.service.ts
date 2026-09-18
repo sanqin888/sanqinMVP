@@ -49,6 +49,12 @@ import {
   normalizePayrollRunAccrualWriteAuthority,
   type PayrollRunAccrualJournalWriteAuthorityV1,
 } from './payroll/payroll-journal-write-authority';
+import {
+  assertPayrollEmployeePaymentJournalAuthority,
+  hashPayrollEmployeePaymentJournalWrite,
+  normalizePayrollEmployeePaymentWriteAuthority,
+  type PayrollEmployeePaymentJournalWriteAuthorityV1,
+} from './payroll/payroll-employee-payment-journal-authority';
 
 const ACCOUNTING_JOURNAL_PUBLIC_SELECT = {
   entryStableId: true,
@@ -241,6 +247,55 @@ export class AccountingJournalService {
     if (journal.deletedAt) {
       throw new ConflictException(
         'Payroll accrual Journal was deleted and cannot be replayed',
+      );
+    }
+    return journal;
+  }
+
+  async createPayrollEmployeePaymentJournalInTx(
+    input: AccountingJournalCreateInput,
+    operatorActorRef: string,
+    authority: PayrollEmployeePaymentJournalWriteAuthorityV1,
+    tx: Prisma.TransactionClient,
+  ): Promise<AccountingJournalRow> {
+    const normalizedAuthority = this.applyJournalPolicy(() =>
+      normalizePayrollEmployeePaymentWriteAuthority(authority),
+    );
+    const normalized = this.applyJournalPolicy(() =>
+      normalizeJournalCreate(input),
+    );
+    this.applyJournalPolicy(() =>
+      assertPayrollEmployeePaymentJournalAuthority(
+        normalized,
+        normalizedAuthority,
+      ),
+    );
+    await this.assertPayrollEmployeePaymentAuthorityInTx(
+      normalizedAuthority,
+      tx,
+    );
+
+    const operator = this.requireJournalValue(
+      operatorActorRef,
+      'operatorActorRef',
+    );
+    const timezone = await this.period.getBusinessTimezone();
+    const journal = await this.createPreparedJournalEntryInTx(
+      {
+        normalized,
+        idempotencyHash: hashPayrollEmployeePaymentJournalWrite(
+          normalized,
+          normalizedAuthority,
+        ),
+        auditAuthority: normalizedAuthority as unknown as Prisma.InputJsonValue,
+      },
+      operator,
+      tx,
+      timezone,
+    );
+    if (journal.deletedAt) {
+      throw new ConflictException(
+        'Payroll employee payment Journal was deleted and cannot be replayed',
       );
     }
     return journal;
@@ -769,6 +824,110 @@ export class AccountingJournalService {
       );
     }
     return rows;
+  }
+
+  private async assertPayrollEmployeePaymentAuthorityInTx(
+    authority: PayrollEmployeePaymentJournalWriteAuthorityV1,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    const fact = authority.fact;
+    const payment = await tx.payrollEmployeePayment.findUnique({
+      where: { paymentStableId: fact.paymentStableId },
+      select: {
+        paymentAccountStableId: true,
+        amountCents: true,
+        currency: true,
+        paymentDate: true,
+        journalEntryStableId: true,
+        run: {
+          select: {
+            runStableId: true,
+            status: true,
+            calculationHash: true,
+            postedJournalEntryStableId: true,
+            storeStableId: true,
+            netPayCents: true,
+          },
+        },
+      },
+    });
+    const paymentDate = payment?.paymentDate.toISOString().slice(0, 10) ?? null;
+    if (
+      !payment ||
+      payment.journalEntryStableId !== null ||
+      payment.paymentAccountStableId !== fact.paymentAccountStableId ||
+      payment.amountCents !== fact.amountCents ||
+      payment.currency !== 'CAD' ||
+      paymentDate !== fact.paymentDate ||
+      payment.run.runStableId !== fact.runStableId ||
+      payment.run.status !== 'POSTED' ||
+      payment.run.calculationHash !== fact.calculationHash ||
+      payment.run.postedJournalEntryStableId !==
+        fact.postedAccrualJournalEntryStableId ||
+      payment.run.storeStableId !== fact.storeStableId ||
+      payment.run.netPayCents !== fact.amountCents
+    ) {
+      throw new ConflictException(
+        'Payroll employee payment authority changed before Journal posting',
+      );
+    }
+
+    const accrualJournal = await tx.accountingJournalEntry.findUnique({
+      where: { entryStableId: fact.postedAccrualJournalEntryStableId },
+      select: {
+        source: true,
+        sourceFactType: true,
+        sourceFactStableId: true,
+        deletedAt: true,
+      },
+    });
+    if (
+      !accrualJournal ||
+      accrualJournal.deletedAt ||
+      accrualJournal.source !== AccountingJournalSource.PAYROLL ||
+      accrualJournal.sourceFactType !== 'payroll.run.accrual.v1' ||
+      accrualJournal.sourceFactStableId !== fact.runStableId
+    ) {
+      throw new ConflictException(
+        'Payroll accrual Journal authority is not active for employee payment',
+      );
+    }
+
+    const currentAccounts = await tx.accountingAccount.findMany({
+      where: {
+        accountStableId: {
+          in: authority.accountPrerequisites.map(
+            (account) => account.accountStableId,
+          ),
+        },
+      },
+      select: {
+        accountStableId: true,
+        accountClass: true,
+        type: true,
+        currency: true,
+        isActive: true,
+      },
+    });
+    const currentByStableId = new Map(
+      currentAccounts.map(
+        (account) => [account.accountStableId, account] as const,
+      ),
+    );
+    for (const prerequisite of authority.accountPrerequisites) {
+      const current = currentByStableId.get(prerequisite.accountStableId);
+      if (
+        !current ||
+        current.accountClass !== prerequisite.actual.accountClass ||
+        current.type !== prerequisite.actual.accountType ||
+        current.currency !== prerequisite.actual.currency ||
+        current.isActive !== prerequisite.actual.isActive
+      ) {
+        throw new ConflictException(
+          `Payroll employee payment account authority changed before posting: ${prerequisite.accountStableId}`,
+        );
+      }
+    }
   }
 
   private async assertPayrollRunAccrualAuthorityInTx(
