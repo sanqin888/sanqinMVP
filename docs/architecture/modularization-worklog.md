@@ -2557,11 +2557,22 @@ is claimed per repository workflow.
 
 ### 2026-09-19 — Phase 9 closeout batch 1: report timezone correctness + fixture cleanup readiness
 
-**Branch/State:** `docs/phase9-final-closeout-audit-v2` from `origin/dev@11bf2589` / **SOURCE COMPLETE / REVIEW PENDING / NO MIGRATION / NO LOCAL CI CLAIMED / NO PRODUCTION MUTATION**.  
+**PR/SHA:** PR #2414 / final head `f4a62708` / squash `5717a568`  
+**State:** **MERGED TO DEV / PR CI #5961 GREEN / POST-MERGE CI #5962 GREEN / NO MIGRATION / PRODUCTION DEPLOYMENT PENDING**.  
 **Correctness fix:** `AccountingFinancialReportsService` no longer interprets date-only report filters through UTC-first `new Date('YYYY-MM-DD')` followed by local `setHours()`. It resolves the configured Accounting business timezone and converts date-only start/end boundaries through Luxon to UTC instants before Prisma filtering; full timestamp inputs retain their existing absolute-time semantics. A focused characterization pins `2026-09-01..2026-09-19` in `America/Toronto` to `2026-09-01T04:00:00.000Z..2026-09-20T03:59:59.999Z`. No route/response shape, Journal posting, period-lock, schema/migration, dependency, context direction or scanner allowance changes.  
 **Fixture readiness:** read-only production inventory expanded the known 2026-09-14 cleanup manifest from four canonical-change Orders to five linked verification Orders by identifying Store Balance top-up `cmu1b7h2r000aqf01xtnhpj8x`. Across those five: **4 OrderItems / 4 OrderAmendments / 1 OrderAmendmentItem / 9 PosPrintJobs / 14 LoyaltyLedger / 26 matching OpsEvents / 8 canonical JournalEntries / 26 JournalLines / 8 Journal CREATE Audits**, with **0 PaymentTransaction / 0 PaymentCheckoutAttempt / 0 LoyaltyTenderReservation / 0 Coupon / 0 UserCoupon / 0 MessagingSend**. The four canonical-change Orders net **+69,300 points micro / 0 Store Balance micro**; the dedicated top-up contributes **+100,000,000 Store Balance micro + 20,000,000 points micro**. No later Loyalty ledger row exists after the final verification row.  
 **Safety gate:** no fixture deletion/restoration was executed. The operator confirmed that the five Orders, test top-up/points and legacy CARD/CASH tenders are Phase 9 ADMIN-account test data with no intended real customer obligation. The next step remains a separately reviewed destructive work package; after this source batch is merged, provide the exact cleanup SQL/readiness checks for manual operator execution.  
 **Details:** `apps/api/src/accounting/{accounting-financial-reports.service.ts,accounting-financial-reports.characterization.spec.ts}`, `docs/architecture/phase-9-accounting-reporting-analytics.md`, this worklog.
+
+
+### 2026-09-19 — Phase 9 closeout batch 2: production fixture cleanup verified
+
+**Branch/State:** `docs/phase9-post-cleanup-closeout` from `origin/dev@5717a568` / **POST-CLEANUP READ-ONLY VERIFIED / DOCS REVIEW PENDING / NO SOURCE RUNTIME CHANGE / NO MIGRATION**.  
+**Cleanup result:** the operator executed and committed the reviewed five-Order Phase 9 cleanup. Independent production DB verification shows target Orders **0**, target `PosPrintJob` **0**, target `LoyaltyLedger` **0**, target `OpsEvent` **0**, target canonical Journals **0**, and target Journal audits **0**. The ADMIN test LoyaltyAccount is restored to **BRONZE / pointsMicro=0 / balanceMicro=0 / lifetimeSpendCents=0 / ledger_count=0**.  
+**Global integrity:** **1314 active JournalEntries / 4261 JournalLines / 1355 AccountingAuditLog**, debit = credit = **5,531,826 cents**, orphan JournalLines **0**, duplicate active source-fact anchors **0**, `AccountingTransaction=0`. The 2258-cent `RETENDER` historical exception remains untouched.  
+**Deferred evidence:** `PayrollCraRemittance=0`, reversed Payroll runs **0**, correction Payroll runs **0**, `AccountingPeriodClose=0`, `UberFinancialReport=0`; July 1-12 manual Uber history remains **36 Orders / 90,571 cents** and stays provider-gated.  
+**Remaining gate:** PR #2414 / squash `5717a568` passed PR CI #5961 and post-merge CI #5962 but is not yet on production `main` (`11bf2589`). After promotion/deployment, verify Accounting financial reports for Toronto range `2026-09-01..2026-09-18`; current canonical expected income is **190,693 cents ($1,906.93)** versus the pre-fix shifted-window result **203,300 cents ($2,033.00)**. Only after that active verification should Phase 9 be marked `PRODUCTION VERIFIED / CLOSED`.  
+**Details:** `docs/architecture/{phase-9-accounting-reporting-analytics.md,current-dependency-graph.md}`, this worklog; read-only production DB verification only.
 
 ## Rule for future entries
 
