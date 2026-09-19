@@ -668,9 +668,13 @@ export class AccountingFinancialReportsService {
   }
 
   private async resolveRange(from?: string, to?: string) {
+    const timezone =
+      from || to ? await this.period.getBusinessTimezone() : undefined;
     return {
-      fromDate: await this.period.clampAccountingFromDate(this.parseDate(from)),
-      toDate: this.parseDate(to, true),
+      fromDate: await this.period.clampAccountingFromDate(
+        this.parseDate(from, false, timezone),
+      ),
+      toDate: this.parseDate(to, true, timezone),
     };
   }
 
@@ -682,15 +686,24 @@ export class AccountingFinancialReportsService {
     };
   }
 
-  private parseDate(raw: string | undefined, endOfDay = false) {
+  private parseDate(
+    raw: string | undefined,
+    endOfDay = false,
+    timezone?: string,
+  ) {
     if (!raw) return undefined;
+    if (raw.length <= 10 && timezone) {
+      const parsed = DateTime.fromISO(raw, { zone: timezone });
+      if (!parsed.isValid || parsed.toISODate() !== raw) {
+        throw new BadRequestException(`Invalid date: ${raw}`);
+      }
+      const bounded = endOfDay ? parsed.endOf('day') : parsed.startOf('day');
+      return bounded.toUTC().toJSDate();
+    }
+
     const parsed = new Date(raw);
     if (Number.isNaN(parsed.getTime())) {
       throw new BadRequestException(`Invalid date: ${raw}`);
-    }
-    if (raw.length <= 10) {
-      if (endOfDay) parsed.setHours(23, 59, 59, 999);
-      else parsed.setHours(0, 0, 0, 0);
     }
     return parsed;
   }

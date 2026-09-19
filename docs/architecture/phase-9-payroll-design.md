@@ -307,6 +307,14 @@ Required Payroll closeout evidence:
 14. final Web 8B contracts include Payroll without browser-side statutory formula duplication;
 15. Phase 9 final closeout snapshot and documentation include Payroll production verification evidence together with the existing Revenue, change/reversal, Inbox/Expense and provider-settlement status.
 
+### 15.1 2026-09-19 8P-E evidence disposition
+
+Payroll 8P-E is **PRODUCTION VERIFIED WITH EXPLICIT DEFERRED EVIDENCE** for the production flows that have actually occurred. Production currently has **5 POSTED PayrollRun**, **5 PayrollEmployeePayment**, **0 PayrollCraRemittance**, **0 reversed runs**, **0 correction runs**, and **0 reversal Journal references**. The approved operator workflow/PDF/accrual/employee-payment evidence therefore remains valid without manufacturing artificial cash or correction events.
+
+Two evidence items remain deliberately deferred rather than failed: **real CRA-remittance settlement** is deferred until the next real CRA remittance, and **posted-run reversal/correction** is deferred until a real correction/reversal case occurs. Their source paths, migrations and CI coverage are complete, but the closeout record must continue to distinguish implementation proof from real-life settlement/correction evidence.
+
+Payroll period-close behavior is characterized by source/tests and the accrual/reversal authority is keyed to frozen `periodEnd`, but production currently has **0 AccountingPeriodClose** rows. No synthetic production close/mutation is authorized merely to satisfy the checklist; until a real closed-period Payroll case occurs, documentation must describe this as source/CI evidence rather than live production rejection evidence.
+
 ## 16. Explicit non-goals for the first Payroll slice
 
 The first Payroll vertical does not automatically expand into:
