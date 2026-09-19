@@ -3,13 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api/client';
-import {
-  type AccountingInboxItem,
-  type AccountingProviderFinancialDocument,
-  money,
-} from '../inbox/inbox-model';
-import type { ProviderSettlementShadowPreview } from './settlement-model';
+import type { AccountingInboxItem } from '../contracts/inbox';
+import type { AccountingProviderFinancialDocument } from '../contracts/provider-financial';
+import type { ProviderSettlementShadowPreview } from '../contracts/settlements';
 import { SettlementReplayGate } from './settlement-replay-gate';
+
+const money = (cents: number | null | undefined) =>
+  `$${((cents ?? 0) / 100).toFixed(2)}`;
 
 function nextIsoDate(date: string): string {
   const value = new Date(`${date}T00:00:00.000Z`);

@@ -1,4 +1,4 @@
-import type { AccountingInboxItem } from './inbox-model';
+import type { AccountingInboxItem } from '../contracts/inbox';
 
 export function findAccountingInboxItemByStableId(
   items: AccountingInboxItem[],

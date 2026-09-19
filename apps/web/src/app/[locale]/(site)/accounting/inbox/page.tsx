@@ -12,18 +12,17 @@ import {
   findAccountingInboxItemByStableId,
   retainReviewingInboxItemStableId,
 } from './reviewing-inbox-item';
-import {
-  type AccountingAccount,
-  type AccountingCategory,
-  type AccountingFinancialProvider,
-  type AccountingImageRetentionAccepted,
-  type AccountingImageRetentionQueueItem,
-  type AccountingInboxClassification,
-  type AccountingInboxItem,
-  type AccountingManualUploadLibraryItem,
-  type AccountingManualUploadResult,
-  type AccountingTrustedSender,
-} from './inbox-model';
+import type { AccountingAccount, AccountingCategory } from '../contracts/chart';
+import type { AccountingFinancialProvider } from '../contracts/core';
+import type {
+  AccountingImageRetentionAccepted,
+  AccountingImageRetentionQueueItem,
+  AccountingInboxClassification,
+  AccountingInboxItem,
+  AccountingManualUploadLibraryItem,
+  AccountingManualUploadResult,
+  AccountingTrustedSender,
+} from '../contracts/inbox';
 
 export default function AccountingInboxPage() {
   const params = useParams<{ locale: string }>();

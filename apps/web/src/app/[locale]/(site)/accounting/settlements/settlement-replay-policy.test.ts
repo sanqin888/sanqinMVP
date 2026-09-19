@@ -1,4 +1,4 @@
-import type { ProviderSettlementShadowPreview } from './settlement-model';
+import type { ProviderSettlementShadowPreview } from '../contracts/settlements';
 import { buildProviderSettlementReplayGate } from './settlement-replay-policy';
 
 const DOCUMENT_STABLE_ID = 'acctfindoc_june_2026';

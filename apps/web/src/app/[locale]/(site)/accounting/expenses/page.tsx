@@ -11,43 +11,8 @@ import {
   prepareExpensePaymentAllocations,
   type ExpensePaymentAllocationDraft,
 } from '../expense-payment-allocations';
-
-type Category = {
-  categoryStableId: string;
-  name: string;
-  type: 'INCOME' | 'EXPENSE' | 'ADJUSTMENT' | 'TRANSFER';
-  parentStableId: string | null;
-  sortOrder: number;
-};
-
-type Account = {
-  accountStableId: string;
-  name: string;
-  type: 'CASH' | 'BANK' | 'PLATFORM_WALLET';
-  currency: string;
-};
-
-type ExpenseDocument = {
-  documentStableId: string;
-  occurredAt: string | null;
-  totalCents: number | null;
-  taxCents: number | null;
-  memo: string | null;
-  attachmentUrls: string[];
-  paymentAllocations: Array<{
-    paymentAllocationStableId: string;
-    accountStableId: string;
-    accountName: string;
-    amountCents: number;
-    sortOrder: number;
-  }>;
-  splits: Array<{
-    txStableId: string;
-    categoryName: string;
-    amountCents: number;
-    taxCents: number;
-  }>;
-};
+import type { AccountingAccount, AccountingCategory } from '../contracts/chart';
+import type { AccountingExpenseDocument } from '../contracts/expenses';
 
 type TaxMode = 'EXEMPT' | 'HST13' | 'MANUAL';
 type SplitDraft = {
@@ -71,9 +36,9 @@ const makeKey = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 export default function AccountingExpensesPage() {
   const params = useParams<{ locale: string }>();
   const isZh = params?.locale === 'zh';
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [accounts, setAccounts] = useState<Account[]>([]);
-  const [documents, setDocuments] = useState<ExpenseDocument[]>([]);
+  const [categories, setCategories] = useState<AccountingCategory[]>([]);
+  const [accounts, setAccounts] = useState<AccountingAccount[]>([]);
+  const [documents, setDocuments] = useState<AccountingExpenseDocument[]>([]);
   const [occurredAt, setOccurredAt] = useState(new Date().toISOString().slice(0, 10));
   const [receiptTotal, setReceiptTotal] = useState('');
   const [paymentAllocations, setPaymentAllocations] = useState<
@@ -90,9 +55,11 @@ export default function AccountingExpensesPage() {
     setError(null);
     try {
       const [cats, accts, docs] = await Promise.all([
-        apiFetch<Category[]>('/accounting/categories'),
-        apiFetch<Account[]>('/accounting/accounts'),
-        apiFetch<ExpenseDocument[]>('/accounting/expenses?status=CONFIRMED&limit=100'),
+        apiFetch<AccountingCategory[]>('/accounting/categories'),
+        apiFetch<AccountingAccount[]>('/accounting/accounts'),
+        apiFetch<AccountingExpenseDocument[]>(
+          '/accounting/expenses?status=CONFIRMED&limit=100',
+        ),
       ]);
       setCategories(cats);
       setAccounts(accts);
