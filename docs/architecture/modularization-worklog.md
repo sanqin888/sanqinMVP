@@ -2465,12 +2465,20 @@ is claimed per repository workflow.
 
 ### 2026-09-18 — Phase 9 Slice 8P-D4-D Payroll accrual-date semantic correction
 
-**Branch/State:** `fix/phase9-payroll-accrual-period-end` from `origin/dev@c5ca3e1c`; PR integration is validated against the current `dev` merge-ref / **LOCAL SOURCE REVIEW PENDING / NO MIGRATION / NO LOCAL CI CLAIMED**.  
+**Branch/State:** PR #2399 / final head `143413ef` / squash `169017df` / **MERGED / CI GREEN / NO MIGRATION**. PR CI #5915 and post-merge push CI #5916 passed all required API/Web/Architecture gates.  
 **Scope/result:** before the first production Payroll fact, separates Payroll financial accrual timing from statutory payday timing. `payroll.run.accrual.v1` now carries server-owned `accrualDate = PayrollRun.periodEnd`; wage expense, employer contribution expense, vacation accrual and the matching payroll liabilities use that date as Journal `occurredAt`. `payDate` remains frozen separately for statutory calculation, YTD/config selection and CRA remittance-period policy. The inverse `payroll.run.reversal.v1` uses the same `accrualDate`, so accrual and reversal are governed by the same Accounting period lock.  
 **Settlement semantics:** employee net-pay Journal remains on actual employee-payment `paymentDate`; CRA remittance Journal remains on actual CRA payment date. No statutory/YTD/remittance formula is changed. MONTHLY June work paid in July therefore recognizes expense/liability on June 30 while retaining the July payday. BIWEEKLY remains supported; MVP cross-month biweekly accrues wholly on its period end, with any future cross-month allocation explicitly deferred.  
 **Authority hardening:** `AccountingJournalService` re-reads both PayrollRun `payDate` and `periodEnd` and rejects an authority whose derived accrual date drifts. Focused Journal/period-lock characterization uses deliberately different payday and accrual dates, and architecture guards prohibit returning to `occurredAt = payDate`.  
 **Architecture/migration:** no Prisma schema/model/column/constraint, migration, package/lockfile, public context edge, scanner allowance or direct-import baseline change. Expected baseline remains Foundation **1** / External **1** / Identity **2** / Runtime **4**, total **8**, public SCC empty pending authoritative CI after operator review.  
 **Details:** `apps/api/src/accounting/payroll/{payroll-journal-write-authority.ts,payroll-reversal-journal-authority.ts,accounting-payroll-posting.service.ts,accounting-payroll-reversal.service.ts,payroll-boundary.architecture.spec.ts}`, `apps/api/src/accounting/accounting-journal.service.ts`, focused Payroll Journal specs, `docs/architecture/{phase-9-payroll-design.md,current-dependency-graph.md,id-inventory.md}`, this worklog.
+
+### 2026-09-18 — Phase 9 8P-E deployment prerequisite: API Docker builder heap
+
+**Branch/State:** `fix/api-docker-build-heap` from `origin/dev@169017df` / **LOCAL SOURCE REVIEW PENDING / NO MIGRATION / NO LOCAL CI CLAIMED**.  
+**Observed failure:** production-VM `docker compose build` reached `nest build` successfully after shared-library builds and Prisma generation, then Node 20 aborted near a ~972 MiB heap limit with `Ineffective mark-compacts near heap limit / JavaScript heap out of memory`. GitHub CI for the same source had already passed API build/strict/Jest, isolating the failure to the small deployment VM's builder memory envelope rather than a TypeScript/Payroll source failure.  
+**Fix:** scope `NODE_OPTIONS=--max-old-space-size=1536` only to the API Docker builder's `pnpm --filter api build` layer. The final runner does not inherit the setting, so production API runtime memory behavior is unchanged. The existing duplicate shared-library/Prisma work inside the Docker build is intentionally left untouched in this hotfix.  
+**Architecture/migration:** Docker build infrastructure only; no Prisma/schema/migration, package/lockfile, API runtime contract, public context edge, scanner allowance or direct-import baseline change.  
+**Verification after merge:** rebuild the API image on the production VM; because the VM has ~2 GiB RAM and 4 GiB swap, prefer API-first/sequential image build if full parallel `docker compose build` causes host-level memory pressure. Then continue 8P-E controlled Payroll verification.
 
 ## Rule for future entries
 
