@@ -43,6 +43,7 @@ with its own stable ID and an **optional** `userStableId` link when the employee
 The primary operator workflow should support the user's requested flow:
 
 1. choose or create an employee;
+   - after a successful create, the operator UI must refresh the employer employee list, select the server-returned `employeeStableId`, and clear the reusable name fields so a successful request cannot look like a no-op or be accidentally repeated;
 2. enter pay-period start/end and pay date;
 3. enter hourly rate and hours for the period;
 4. backend calculates statutory deductions/contributions and employer payroll cost;
@@ -680,6 +681,8 @@ The remitter type should drive period/due-date policy after the operator configu
 The first Ontario pay statement must at least expose the pay period, wage rate, gross wages and calculation basis, each deduction and its purpose, and net wages. Electronic delivery is acceptable only where the employee can make/retain a paper copy.
 
 The pay statement should be generated from immutable finalized PayrollRun evidence and record a template/renderer version. The PDF bytes do not need to become the payroll source of truth; regeneration from the same finalized run must reproduce the same financial amounts.
+
+8P-E controlled production verification on 2026-09-19 confirmed the frozen PayrollRun amounts, YTD values and export audit trail were rendered correctly, but the V1 layout placed only the non-editable-source footer on a second LETTER page. The scoped source correction keeps `PAY_STATEMENT_V1` financial/content semantics unchanged, compacts the ten YTD facts into a two-column five-row grid, and adds a one-page PDF regression assertion. This is a renderer-only defect fix: no PayrollRun evidence, API contract, Journal fact, schema, migration or statutory calculation changes. PR #2403 source head `19e6289f` passed authoritative PR CI #5928 across API/Web/Architecture. Status is **PR CI GREEN / MERGE + DEPLOYMENT + PDF RE-VERIFICATION PENDING** until the reviewed change is merged/deployed and a production export confirms one-page output.
 
 ### 19.16 Explicit MVP exclusions surfaced by 8P-A
 
