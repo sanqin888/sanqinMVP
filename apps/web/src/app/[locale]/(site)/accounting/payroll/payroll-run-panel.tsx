@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch } from '@/lib/api/client';
 import {
   parseHoursToMinutes,
@@ -13,6 +13,7 @@ import {
 } from './payroll-types';
 import { PayrollRunReview } from './payroll-run-review';
 import { PayrollEmployeePaymentPanel } from './payroll-employee-payment-panel';
+import { suggestNextPayrollPeriod } from './payroll-period-suggestion';
 
 type Props = {
   isZh: boolean;
@@ -58,12 +59,49 @@ export function PayrollRunPanel({
   const [overtimeHours, setOvertimeHours] = useState('0');
   const [overtimeRate, setOvertimeRate] = useState('0.00');
   const [vacationTopUp, setVacationTopUp] = useState('0.00');
+  const [periodSuggestionNote, setPeriodSuggestionNote] = useState<string | null>(
+    null,
+  );
+  const periodDatesDirtyRef = useRef(false);
+  const autoPrefilledEmployeeRef = useRef('');
 
   const selectedRun = useMemo(
     () => runs.find((item) => item.runStableId === selectedRunStableId) ?? null,
     [runs, selectedRunStableId],
   );
   const currentConfig = employeeConfigs[0] ?? null;
+
+  useEffect(() => {
+    periodDatesDirtyRef.current = false;
+    autoPrefilledEmployeeRef.current = '';
+    setPeriodSuggestionNote(null);
+  }, [employeeStableId]);
+
+  useEffect(() => {
+    if (
+      !employeeStableId ||
+      periodDatesDirtyRef.current ||
+      autoPrefilledEmployeeRef.current === employeeStableId
+    ) {
+      return;
+    }
+
+    const suggestion = suggestNextPayrollPeriod(
+      employeeStableId,
+      currentConfig,
+      runs,
+    );
+    if (!suggestion) return;
+
+    setPeriodStart(suggestion.periodStart);
+    setPeriodEnd(suggestion.periodEnd);
+    autoPrefilledEmployeeRef.current = employeeStableId;
+    setPeriodSuggestionNote(
+      isZh
+        ? `已按上一张工资截止日 ${suggestion.previousPeriodEnd} 和 MONTHLY 周期自动预填。`
+        : `Prefilled from the previous payroll end ${suggestion.previousPeriodEnd} and MONTHLY frequency.`,
+    );
+  }, [currentConfig, employeeStableId, isZh, runs]);
 
   async function execute(
     action: () => Promise<unknown>,
@@ -142,6 +180,8 @@ export function PayrollRunPanel({
             }),
           },
         );
+        autoPrefilledEmployeeRef.current = employeeStableId;
+        setPeriodSuggestionNote(null);
         onRunSelect(created.runStableId);
       },
       isZh ? '工资草稿已创建。' : 'Payroll draft created.',
@@ -149,6 +189,9 @@ export function PayrollRunPanel({
   }
 
   function loadRunIntoEditor(run: PayrollRun) {
+    periodDatesDirtyRef.current = true;
+    autoPrefilledEmployeeRef.current = employeeStableId;
+    setPeriodSuggestionNote(null);
     setPeriodStart(run.periodStart);
     setPeriodEnd(run.periodEnd);
     setPayDate(run.payDate);
@@ -379,6 +422,14 @@ export function PayrollRunPanel({
           {message}
         </p>
       ) : null}
+      {periodSuggestionNote ? (
+        <p className="rounded-xl bg-sky-50 px-3 py-2 text-sm text-sky-800">
+          {periodSuggestionNote}{' '}
+          {isZh
+            ? '发薪日仍需按工资单实际日期确认。'
+            : 'Confirm the actual pay date separately.'}
+        </p>
+      ) : null}
 
       <form
         className="grid gap-3 rounded-xl border border-slate-200 p-4 sm:grid-cols-2 xl:grid-cols-4"
@@ -390,7 +441,11 @@ export function PayrollRunPanel({
             type="date"
             className="mt-1 block w-full rounded-lg border px-3 py-2 text-sm text-slate-900"
             value={periodStart}
-            onChange={(event) => setPeriodStart(event.target.value)}
+            onChange={(event) => {
+              periodDatesDirtyRef.current = true;
+              setPeriodSuggestionNote(null);
+              setPeriodStart(event.target.value);
+            }}
           />
         </label>
         <label className="text-xs text-slate-500">
@@ -399,7 +454,11 @@ export function PayrollRunPanel({
             type="date"
             className="mt-1 block w-full rounded-lg border px-3 py-2 text-sm text-slate-900"
             value={periodEnd}
-            onChange={(event) => setPeriodEnd(event.target.value)}
+            onChange={(event) => {
+              periodDatesDirtyRef.current = true;
+              setPeriodSuggestionNote(null);
+              setPeriodEnd(event.target.value);
+            }}
           />
         </label>
         <label className="text-xs text-slate-500">

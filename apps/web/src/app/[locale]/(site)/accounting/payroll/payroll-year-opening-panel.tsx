@@ -197,70 +197,94 @@ export function PayrollYearOpeningPanel({ isZh, employeeStableId }: Props) {
       {message ? <p className="rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</p> : null}
 
       {opening ? (
-        <p className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">
-          {isZh ? '当前 Opening' : 'Current opening'} v{opening.version} · {opening.asOfDate} · {payrollMoney(opening.grossEarningsYtdCents)}
-        </p>
-      ) : null}
-
-      <form className="space-y-4" onSubmit={save}>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="text-xs text-slate-500">
-            {isZh ? '截至日期' : 'As-of date'}
-            <input
-              type="date"
-              className="mt-1 block w-full rounded-lg border px-3 py-2 text-sm text-slate-900"
-              value={asOfDate}
-              onChange={(event) => setAsOfDate(event.target.value)}
-              required
-            />
-          </label>
-          <label className="text-xs text-slate-500">
-            {isZh ? '证据说明' : 'Evidence note'}
-            <input
-              className="mt-1 block w-full rounded-lg border px-3 py-2 text-sm text-slate-900"
-              value={sourceNote}
-              onChange={(event) => setSourceNote(event.target.value)}
-              required
-            />
-          </label>
+        <div className="rounded-xl bg-slate-50 px-3 py-3 text-sm text-slate-600">
+          <p className="font-medium text-slate-800">
+            {isZh ? '当前 Opening' : 'Current opening'} v{opening.version}
+          </p>
+          <p className="mt-1 text-xs">
+            {isZh ? '截至' : 'As of'} {opening.asOfDate} · Gross YTD{' '}
+            {payrollMoney(opening.grossEarningsYtdCents)}
+          </p>
         </div>
+      ) : (
+        <p className="rounded-xl bg-slate-50 px-3 py-3 text-sm text-slate-600">
+          {isZh
+            ? '当前员工没有 Year Opening。只有接入 SanQ 前已经存在同雇主 YTD 时才需要填写。'
+            : 'This employee has no Year Opening. Add one only when same-employer YTD existed before SanQ payroll started.'}
+        </p>
+      )}
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {MONEY_FIELDS.map(([field, en, zh]) => (
-            <label key={field} className="text-xs text-slate-500">
-              {isZh ? zh : en}
+      <details className="rounded-xl border border-slate-200 p-3">
+        <summary className="cursor-pointer text-sm font-medium">
+          {opening
+            ? isZh
+              ? '更新 Year Opening'
+              : 'Update Year Opening'
+            : isZh
+              ? '新增 Year Opening'
+              : 'Add Year Opening'}
+        </summary>
+
+        <form className="mt-4 space-y-4" onSubmit={save}>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="text-xs text-slate-500">
+              {isZh ? '截至日期' : 'As-of date'}
               <input
-                inputMode="decimal"
+                type="date"
                 className="mt-1 block w-full rounded-lg border px-3 py-2 text-sm text-slate-900"
-                value={values[field]}
-                onChange={(event) =>
-                  setValues((current) => ({
-                    ...current,
-                    [field]: event.target.value,
-                  }))
-                }
+                value={asOfDate}
+                onChange={(event) => setAsOfDate(event.target.value)}
+                required
               />
             </label>
-          ))}
-        </div>
+            <label className="text-xs text-slate-500">
+              {isZh ? '证据说明' : 'Evidence note'}
+              <input
+                className="mt-1 block w-full rounded-lg border px-3 py-2 text-sm text-slate-900"
+                value={sourceNote}
+                onChange={(event) => setSourceNote(event.target.value)}
+                required
+              />
+            </label>
+          </div>
 
-        <button
-          disabled={saving}
-          className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium disabled:opacity-50"
-        >
-          {saving
-            ? isZh
-              ? '保存中…'
-              : 'Saving…'
-            : opening
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {MONEY_FIELDS.map(([field, en, zh]) => (
+              <label key={field} className="text-xs text-slate-500">
+                {isZh ? zh : en}
+                <input
+                  inputMode="decimal"
+                  className="mt-1 block w-full rounded-lg border px-3 py-2 text-sm text-slate-900"
+                  value={values[field]}
+                  onChange={(event) =>
+                    setValues((current) => ({
+                      ...current,
+                      [field]: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+            ))}
+          </div>
+
+          <button
+            disabled={saving}
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium disabled:opacity-50"
+          >
+            {saving
               ? isZh
-                ? '更新 Year Opening'
-                : 'Update Year Opening'
-              : isZh
-                ? '保存 Year Opening'
-                : 'Save Year Opening'}
-        </button>
-      </form>
+                ? '保存中…'
+                : 'Saving…'
+              : opening
+                ? isZh
+                  ? '更新 Year Opening'
+                  : 'Update Year Opening'
+                : isZh
+                  ? '保存 Year Opening'
+                  : 'Save Year Opening'}
+          </button>
+        </form>
+      </details>
     </section>
   );
 }
