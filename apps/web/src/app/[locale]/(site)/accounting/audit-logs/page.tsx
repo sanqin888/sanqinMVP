@@ -2,22 +2,15 @@
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api/client';
-
-type AuditLog = {
-  action: string;
-  entityType: string;
-  entityId: string;
-  operatorUserId: string;
-  createdAt: string;
-};
+import type { AccountingAuditLog } from '../contracts/audit';
 
 export default function AccountingAuditLogsPage() {
-  const [rows, setRows] = useState<AuditLog[]>([]);
+  const [rows, setRows] = useState<AccountingAuditLog[]>([]);
   const [entityType, setEntityType] = useState('');
 
   const load = async (nextEntityType?: string) => {
     const query = nextEntityType ? `?entityType=${encodeURIComponent(nextEntityType)}` : '';
-    const data = await apiFetch<AuditLog[]>(`/accounting/audit-logs${query}`);
+    const data = await apiFetch<AccountingAuditLog[]>(`/accounting/audit-logs${query}`);
     setRows(data);
   };
 
@@ -54,7 +47,7 @@ export default function AccountingAuditLogsPage() {
                   <td className="px-2 py-2">{row.action}</td>
                   <td className="px-2 py-2">{row.entityType}</td>
                   <td className="px-2 py-2">{row.entityId}</td>
-                  <td className="px-2 py-2">{row.operatorUserId}</td>
+                  <td className="px-2 py-2">{row.operatorActorRef}</td>
                 </tr>
               ))}
             </tbody>

@@ -96,7 +96,7 @@ export class AccountingService {
   }
 
   async listAuditLogs(filters: AuditLogFilters) {
-    const rows = await this.prisma.accountingAuditLog.findMany({
+    return this.prisma.accountingAuditLog.findMany({
       where: this.buildAuditWhere(filters),
       select: {
         action: true,
@@ -110,10 +110,5 @@ export class AccountingService {
       orderBy: { createdAt: 'desc' },
       take: 200,
     });
-    return rows.map(({ operatorActorRef, ...row }) => ({
-      ...row,
-      // Preserve the current Web/PWA read contract until the planned 8B cleanup.
-      operatorUserId: operatorActorRef,
-    }));
   }
 }
