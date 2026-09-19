@@ -306,9 +306,9 @@ describe('AccountingPayrollReversalService', () => {
       'actor_retry',
     );
 
-    expect(
-      journal.createPayrollRunReversalJournalInTx,
-    ).toHaveBeenCalledTimes(1);
+    expect(journal.createPayrollRunReversalJournalInTx).toHaveBeenCalledTimes(
+      1,
+    );
     expect(tx.payrollRun.update).not.toHaveBeenCalled();
     expect(tx.accountingAuditLog.create).not.toHaveBeenCalled();
     expect(result.status).toBe(PayrollRunStatus.REVERSED);
