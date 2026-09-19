@@ -1,6 +1,6 @@
 # Post-Modularization Accounting Product Roadmap
 
-Status: **PLANNED / START GATE NOT YET SATISFIED — DO NOT REOPEN PHASE 9**  
+Status: **PLANNED / START GATE SATISFIED — DO NOT REOPEN PHASE 9**  
 Planning date: 2026-09-19  
 Baseline: Phase 9 **PRODUCTION VERIFIED / CLOSED** at production `main@dbea68f3`
 
@@ -31,7 +31,7 @@ Implementation may begin only after:
 
 Already-deferred real evidence does not block the project unless a slice directly depends on it: real CRA remittance, real Payroll reversal/correction, first real production period-close evidence, and Uber provider-history/cutover evidence.
 
-Until this gate is satisfied, this document is planning only.
+The repository-wide modularization gate is satisfied at `origin/dev@1b18fb00` on 2026-09-19 after PR #2418 passed CI #5972 and the final tail audit was closed. This roadmap remains a separate post-modularization product project; begin only from a fresh Slice A readiness audit and the normal local-review -> user-authorization -> PR/CI workflow.
 
 ## 3. Current baseline
 
