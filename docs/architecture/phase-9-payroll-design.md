@@ -682,7 +682,22 @@ The first Ontario pay statement must at least expose the pay period, wage rate, 
 
 The pay statement should be generated from immutable finalized PayrollRun evidence and record a template/renderer version. The PDF bytes do not need to become the payroll source of truth; regeneration from the same finalized run must reproduce the same financial amounts.
 
-8P-E controlled production verification on 2026-09-19 confirmed the frozen PayrollRun amounts, YTD values and export audit trail were rendered correctly, but the V1 layout placed only the non-editable-source footer on a second LETTER page. The scoped source correction keeps `PAY_STATEMENT_V1` financial/content semantics unchanged, compacts the ten YTD facts into a two-column five-row grid, and adds a one-page PDF regression assertion. This is a renderer-only defect fix: no PayrollRun evidence, API contract, Journal fact, schema, migration or statutory calculation changes. PR #2403 source head `19e6289f` passed authoritative PR CI #5928 across API/Web/Architecture. Status is **PR CI GREEN / MERGE + DEPLOYMENT + PDF RE-VERIFICATION PENDING** until the reviewed change is merged/deployed and a production export confirms one-page output.
+8P-E controlled production verification on 2026-09-19 confirmed the frozen PayrollRun amounts, YTD values and export audit trail were rendered correctly, but the V1 layout placed only the non-editable-source footer on a second LETTER page. PR #2403 ultimately merged as `c8f7a6d8` after final-head PR CI #5930 passed, and post-merge CI #5931 also passed. The deployed renderer compacts the ten YTD facts into a two-column five-row grid without changing `PAY_STATEMENT_V1` financial/content semantics; production re-export confirmed the complete pay statement now fits one LETTER page. The same PR also corrected employee-create feedback/selection so a successful create refreshes and selects the server-returned employee identity instead of looking like a no-op. No PayrollRun evidence, API contract, Journal fact, schema, migration or statutory calculation changed.
+
+### 19.15.1 Payroll operator workspace information architecture
+
+8P-E production use also showed that one vertically stacked Payroll page makes high-frequency run entry unnecessarily error-prone: employer/employee statutory setup, Year Opening and employer-level CRA remittance appeared between the employee selector and the recurring PayrollRun workflow. The operator surface should follow task frequency and ownership rather than implementation order.
+
+The approved Web-only information architecture is:
+
+- a sticky Payroll context bar owns the active employer and employee selectors;
+- **Runs** is the default/high-frequency workspace and contains only PayrollRun create/calculate/approve/post, pay-statement and employee net-pay settlement flows;
+- **Employees** owns low-frequency employer/employee maintenance, effective-dated statutory config and employee Year Opening;
+- **CRA** is an explicitly employer-level workspace and contains CRA remittance preview/history/settlement without implying that the active employee scopes the remittance;
+- low-frequency statutory-config and Year Opening editors remain collapsed until the operator intentionally expands them, while their current effective facts remain visible as read-only summaries;
+- for a `MONTHLY` employee, entering the Runs workspace may prefill the next `periodStart/periodEnd` from the latest canonical POSTED run (`previous periodEnd + 1 day` through that calendar month's end). The UI states the source date/frequency, never guesses `payDate`, never advances past an unfinished/reversed latest run, and stops auto-writing dates once the operator edits them or explicitly loads an existing run.
+
+This is an Accounting Web adapter reorganization only. Existing Payroll API routes, server authority, stable identities, statutory/YTD calculations, Journal semantics, settlement/remittance ownership and database contracts stay unchanged.
 
 ### 19.16 Explicit MVP exclusions surfaced by 8P-A
 

@@ -23,7 +23,6 @@ type Props = {
   employeeConfigs: PayrollEmployeeConfig[];
   selectedEmployerStableId: string;
   selectedEmployeeStableId: string;
-  onEmployerSelect: (value: string) => void;
   onEmployeeSelect: (value: string) => void;
   onChanged: () => Promise<void>;
 };
@@ -36,7 +35,6 @@ export function PayrollSetupPanel({
   employeeConfigs,
   selectedEmployerStableId,
   selectedEmployeeStableId,
-  onEmployerSelect,
   onEmployeeSelect,
   onChanged,
 }: Props) {
@@ -129,12 +127,12 @@ export function PayrollSetupPanel({
     <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
       <div>
         <h2 className="text-lg font-semibold">
-          {isZh ? '工资设置' : 'Payroll setup'}
+          {isZh ? '员工与工资设置' : 'Employees & payroll setup'}
         </h2>
         <p className="mt-1 text-sm text-slate-500">
           {isZh
-            ? '雇主、员工和 effective-dated 法定工资配置。所有 reviewed facts 都显式保存，浏览器不计算税。'
-            : 'Employer, employee and effective-dated statutory payroll configuration. Reviewed facts are explicit; no tax is calculated in the browser.'}
+            ? '这里只维护低频的雇主、员工和 effective-dated 法定配置。当前生效事实先以摘要显示，需要新增版本时再主动展开表单。'
+            : 'Use this workspace for low-frequency employer, employee and effective-dated statutory setup. Current facts stay summarized until you intentionally open a new-version form.'}
         </p>
       </div>
 
@@ -146,42 +144,52 @@ export function PayrollSetupPanel({
 
       <div className="grid gap-4 xl:grid-cols-2">
         <div className="space-y-3 rounded-xl border border-slate-200 p-4">
-          <h3 className="font-semibold">{isZh ? '雇主' : 'Employer'}</h3>
-          <select
-            className="w-full rounded-lg border border-slate-300 px-3 py-2"
-            value={selectedEmployerStableId}
-            onChange={(event) => onEmployerSelect(event.target.value)}
-          >
-            <option value="">{isZh ? '选择雇主' : 'Select employer'}</option>
-            {employers.map((item) => (
-              <option key={item.employerStableId} value={item.employerStableId}>
-                {item.displayName ?? item.legalName}
-              </option>
-            ))}
-          </select>
+          <div>
+            <h3 className="font-semibold">{isZh ? '雇主设置' : 'Employer setup'}</h3>
+            <p className="mt-1 text-xs text-slate-500">
+              {isZh
+                ? '当前雇主由页面顶部选择。CRA remitter 与 EI multiplier 只在这里维护。'
+                : 'The employer is selected in the sticky context above. Maintain CRA remitter and EI multiplier only here.'}
+            </p>
+          </div>
 
           {selectedEmployer ? (
             <div className="rounded-lg bg-slate-50 p-3 text-sm">
               <p className="font-medium">
                 {selectedEmployer.displayName ?? selectedEmployer.legalName}
               </p>
-              <p className="mt-1 text-slate-500">
-                {currentEmployerConfig
-                  ? (isZh ? '当前配置 v' : 'Current config v') +
-                    currentEmployerConfig.version +
-                    ' · ' +
-                    currentEmployerConfig.remitterType +
-                    ' · EI x' +
-                    (
+              {currentEmployerConfig ? (
+                <div className="mt-2 grid gap-1 text-xs text-slate-500 sm:grid-cols-2">
+                  <span>
+                    {isZh ? '当前配置' : 'Current config'} v
+                    {currentEmployerConfig.version}
+                  </span>
+                  <span>
+                    {isZh ? '生效日' : 'Effective'}:{' '}
+                    {currentEmployerConfig.effectiveFrom}
+                  </span>
+                  <span>
+                    CRA: {currentEmployerConfig.remitterType}
+                  </span>
+                  <span>
+                    EI x
+                    {(
                       currentEmployerConfig.eiEmployerMultiplierMicros /
                       1_000_000
-                    ).toFixed(2)
-                  : isZh
-                    ? '还没有雇主配置'
-                    : 'No employer config yet'}
-              </p>
+                    ).toFixed(2)}
+                  </span>
+                </div>
+              ) : (
+                <p className="mt-1 text-slate-500">
+                  {isZh ? '还没有雇主配置' : 'No employer config yet'}
+                </p>
+              )}
             </div>
-          ) : null}
+          ) : (
+            <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
+              {isZh ? '先在顶部选择雇主。' : 'Select an employer above first.'}
+            </p>
+          )}
 
           <details className="rounded-lg border border-slate-200 p-3">
             <summary className="cursor-pointer text-sm font-medium">
@@ -211,51 +219,77 @@ export function PayrollSetupPanel({
           </details>
 
           {selectedEmployerStableId ? (
-            <PayrollEmployerConfigForm
-              isZh={isZh}
-              employerStableId={selectedEmployerStableId}
-              onChanged={onChanged}
-            />
+            <details className="rounded-lg border border-slate-200 p-3">
+              <summary className="cursor-pointer text-sm font-medium">
+                {isZh
+                  ? '新增雇主法定配置版本'
+                  : 'Add employer statutory config version'}
+              </summary>
+              <div className="mt-3">
+                <PayrollEmployerConfigForm
+                  isZh={isZh}
+                  employerStableId={selectedEmployerStableId}
+                  onChanged={onChanged}
+                />
+              </div>
+            </details>
           ) : null}
         </div>
 
         <div className="space-y-3 rounded-xl border border-slate-200 p-4">
-          <h3 className="font-semibold">{isZh ? '员工' : 'Employee'}</h3>
-          <select
-            className="w-full rounded-lg border border-slate-300 px-3 py-2"
-            value={selectedEmployeeStableId}
-            onChange={(event) => onEmployeeSelect(event.target.value)}
-            disabled={!selectedEmployerStableId}
-          >
-            <option value="">{isZh ? '选择员工' : 'Select employee'}</option>
-            {employees.map((item) => (
-              <option key={item.employeeStableId} value={item.employeeStableId}>
-                {item.displayName ?? item.legalName}
-              </option>
-            ))}
-          </select>
+          <div>
+            <h3 className="font-semibold">{isZh ? '员工设置' : 'Employee setup'}</h3>
+            <p className="mt-1 text-xs text-slate-500">
+              {isZh
+                ? '当前员工由页面顶部选择。工资频率、时薪、TD1、CPP、EI 和 Vacation 只在这里维护。'
+                : 'The employee is selected in the sticky context above. Maintain frequency, rate, TD1, CPP, EI and Vacation only here.'}
+            </p>
+          </div>
 
           {selectedEmployee ? (
             <div className="rounded-lg bg-slate-50 p-3 text-sm">
               <p className="font-medium">
                 {selectedEmployee.displayName ?? selectedEmployee.legalName}
               </p>
-              <p className="mt-1 text-slate-500">
-                {currentEmployeeConfig
-                  ? currentEmployeeConfig.payFrequency +
-                    ' · ' +
-                    payrollMoney(currentEmployeeConfig.defaultHourlyRateCents) +
-                    '/h · vacation ' +
-                    (
-                      currentEmployeeConfig.vacationRateBasisPoints / 100
-                    ).toFixed(2) +
-                    '%'
-                  : isZh
-                    ? '还没有员工工资配置'
-                    : 'No employee payroll config yet'}
+              <p className="mt-1 text-xs text-slate-500">
+                {isZh ? '入职日' : 'Employment start'}:{' '}
+                {selectedEmployee.employmentStartDate}
               </p>
+              {currentEmployeeConfig ? (
+                <div className="mt-2 grid gap-1 text-xs text-slate-500 sm:grid-cols-2">
+                  <span>
+                    {isZh ? '当前配置' : 'Current config'} v
+                    {currentEmployeeConfig.version} ·{' '}
+                    {currentEmployeeConfig.effectiveFrom}
+                  </span>
+                  <span>
+                    {currentEmployeeConfig.payFrequency} ·{' '}
+                    {payrollMoney(currentEmployeeConfig.defaultHourlyRateCents)}
+                    /h
+                  </span>
+                  <span>
+                    Tax {currentEmployeeConfig.incomeTaxTreatment} · CPP{' '}
+                    {currentEmployeeConfig.cppTreatment}
+                  </span>
+                  <span>
+                    EI {currentEmployeeConfig.eiTreatment} · Vacation{' '}
+                    {(currentEmployeeConfig.vacationRateBasisPoints / 100).toFixed(
+                      2,
+                    )}
+                    %
+                  </span>
+                </div>
+              ) : (
+                <p className="mt-1 text-slate-500">
+                  {isZh ? '还没有员工工资配置' : 'No employee payroll config yet'}
+                </p>
+              )}
             </div>
-          ) : null}
+          ) : (
+            <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
+              {isZh ? '先在顶部选择员工。' : 'Select an employee above first.'}
+            </p>
+          )}
 
           {selectedEmployerStableId ? (
             <details className="rounded-lg border border-slate-200 p-3">
@@ -301,11 +335,20 @@ export function PayrollSetupPanel({
           ) : null}
 
           {selectedEmployeeStableId ? (
-            <PayrollEmployeeConfigForm
-              isZh={isZh}
-              employeeStableId={selectedEmployeeStableId}
-              onChanged={onChanged}
-            />
+            <details className="rounded-lg border border-slate-200 p-3">
+              <summary className="cursor-pointer text-sm font-medium">
+                {isZh
+                  ? '新增员工法定配置版本'
+                  : 'Add employee statutory config version'}
+              </summary>
+              <div className="mt-3">
+                <PayrollEmployeeConfigForm
+                  isZh={isZh}
+                  employeeStableId={selectedEmployeeStableId}
+                  onChanged={onChanged}
+                />
+              </div>
+            </details>
           ) : null}
         </div>
       </div>
