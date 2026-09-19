@@ -1,4 +1,7 @@
-import type { PayrollEmployeeConfig, PayrollRun } from './payroll-types';
+import type {
+  PayrollEmployeeConfig,
+  PayrollRun,
+} from '../contracts/payroll';
 
 export type PayrollPeriodSuggestion = {
   periodStart: string;

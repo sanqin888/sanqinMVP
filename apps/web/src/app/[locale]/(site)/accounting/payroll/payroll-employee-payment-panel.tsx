@@ -2,13 +2,12 @@
 
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '@/lib/api/client';
-import {
-  payrollLocalDateToday,
-  payrollMoney,
-  type PayrollEmployeePayment,
-  type PayrollPaymentAccount,
-  type PayrollRun,
-} from './payroll-types';
+import type { AccountingAccount } from '../contracts/chart';
+import type {
+  PayrollEmployeePayment,
+  PayrollRun,
+} from '../contracts/payroll';
+import { payrollLocalDateToday, payrollMoney } from './payroll-ui';
 
 export function PayrollEmployeePaymentPanel({
   isZh,
@@ -17,7 +16,7 @@ export function PayrollEmployeePaymentPanel({
   isZh: boolean;
   run: PayrollRun;
 }) {
-  const [accounts, setAccounts] = useState<PayrollPaymentAccount[]>([]);
+  const [accounts, setAccounts] = useState<AccountingAccount[]>([]);
   const [payment, setPayment] = useState<PayrollEmployeePayment | null>(null);
   const [paymentAccountStableId, setPaymentAccountStableId] = useState('');
   const [paymentDate, setPaymentDate] = useState(
@@ -58,7 +57,7 @@ export function PayrollEmployeePaymentPanel({
     let cancelled = false;
     setLoading(true);
     void Promise.all([
-      apiFetch<PayrollPaymentAccount[]>('/accounting/accounts'),
+      apiFetch<AccountingAccount[]>('/accounting/accounts'),
       apiFetch<PayrollEmployeePayment | null>(
         '/accounting/payroll/runs/' +
           encodeURIComponent(run.runStableId) +

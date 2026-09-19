@@ -2,10 +2,11 @@
 
 import { FormEvent, type ReactNode, useState } from 'react';
 import { apiFetch } from '@/lib/api/client';
-import {
-  parseMoneyToCents,
-  payrollLocalDateToday,
-} from './payroll-types';
+import type {
+  PayrollEmployeeConfig,
+  PayrollEmployerConfig,
+} from '../contracts/payroll';
+import { parseMoneyToCents, payrollLocalDateToday } from './payroll-ui';
 const inputClass =
   'mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900';
 
@@ -20,9 +21,8 @@ export function PayrollEmployerConfigForm({
   onChanged,
 }: SharedProps & { employerStableId: string }) {
   const [effectiveFrom, setEffectiveFrom] = useState(payrollLocalDateToday());
-  const [remitterType, setRemitterType] = useState<
-    'QUARTERLY' | 'REGULAR' | 'ACCELERATED_THRESHOLD_1' | 'ACCELERATED_THRESHOLD_2'
-  >('REGULAR');
+  const [remitterType, setRemitterType] =
+    useState<PayrollEmployerConfig['remitterType']>('REGULAR');
   const [eiMultiplier, setEiMultiplier] = useState('1.4');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -126,27 +126,27 @@ export function PayrollEmployeeConfigForm({
   const [effectiveFrom, setEffectiveFrom] = useState(payrollLocalDateToday());
   const [anchorDate, setAnchorDate] = useState(payrollLocalDateToday());
   const [payFrequency, setPayFrequency] =
-    useState<'WEEKLY' | 'BIWEEKLY' | 'SEMIMONTHLY' | 'MONTHLY'>('BIWEEKLY');
+    useState<PayrollEmployeeConfig['payFrequency']>('BIWEEKLY');
   const [hourlyRate, setHourlyRate] = useState('17.60');
   const [federalTd1Mode, setFederalTd1Mode] =
-    useState<'FILED_TOTAL_CLAIM' | 'NO_FORM_DEFAULT'>('NO_FORM_DEFAULT');
+    useState<PayrollEmployeeConfig['federalTd1Mode']>('NO_FORM_DEFAULT');
   const [federalClaim, setFederalClaim] = useState('');
   const [ontarioTd1Mode, setOntarioTd1Mode] =
-    useState<'FILED_TOTAL_CLAIM' | 'NO_FORM_DEFAULT'>('NO_FORM_DEFAULT');
+    useState<PayrollEmployeeConfig['ontarioTd1Mode']>('NO_FORM_DEFAULT');
   const [ontarioClaim, setOntarioClaim] = useState('');
   const [incomeTaxTreatment, setIncomeTaxTreatment] =
-    useState<'STANDARD' | 'TD1_CLAIM_CODE_E_REVIEWED'>('STANDARD');
+    useState<PayrollEmployeeConfig['incomeTaxTreatment']>('STANDARD');
   const [additionalTax, setAdditionalTax] = useState('0.00');
   const [cppTreatment, setCppTreatment] =
-    useState<'STANDARD' | 'EXEMPT_REVIEWED'>('STANDARD');
+    useState<PayrollEmployeeConfig['cppTreatment']>('STANDARD');
   const [cppExceptionCode, setCppExceptionCode] = useState('');
   const [cppExceptionNote, setCppExceptionNote] = useState('');
   const [eiTreatment, setEiTreatment] =
-    useState<'INSURABLE' | 'NON_INSURABLE_REVIEWED'>('INSURABLE');
+    useState<PayrollEmployeeConfig['eiTreatment']>('INSURABLE');
   const [eiExceptionCode, setEiExceptionCode] = useState('');
   const [eiExceptionNote, setEiExceptionNote] = useState('');
   const [vacationTreatment, setVacationTreatment] =
-    useState<'ACCRUED' | 'PAID_EACH_RUN'>('ACCRUED');
+    useState<PayrollEmployeeConfig['vacationTreatment']>('ACCRUED');
   const [vacationRate, setVacationRate] = useState('4');
   const [vacationAgreementNote, setVacationAgreementNote] = useState('');
   const [busy, setBusy] = useState(false);

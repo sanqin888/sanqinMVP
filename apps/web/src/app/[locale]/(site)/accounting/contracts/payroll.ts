@@ -1,21 +1,42 @@
+export type PayrollRemitterType =
+  | 'QUARTERLY'
+  | 'REGULAR'
+  | 'ACCELERATED_THRESHOLD_1'
+  | 'ACCELERATED_THRESHOLD_2';
+
+export type PayrollPayFrequency =
+  | 'WEEKLY'
+  | 'BIWEEKLY'
+  | 'SEMIMONTHLY'
+  | 'MONTHLY';
+
+export type PayrollTd1Mode = 'FILED_TOTAL_CLAIM' | 'NO_FORM_DEFAULT';
+export type PayrollIncomeTaxTreatment =
+  | 'STANDARD'
+  | 'TD1_CLAIM_CODE_E_REVIEWED';
+export type PayrollCppTreatment = 'STANDARD' | 'EXEMPT_REVIEWED';
+export type PayrollEiTreatment =
+  | 'INSURABLE'
+  | 'NON_INSURABLE_REVIEWED';
+export type PayrollVacationTreatment = 'PAID_EACH_RUN' | 'ACCRUED';
+
 export type PayrollEmployer = {
   employerStableId: string;
   legalName: string;
   displayName: string | null;
   defaultStoreStableId: string | null;
   isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type PayrollEmployerConfig = {
   configStableId: string;
   version: number;
   effectiveFrom: string;
-  remitterType:
-    | 'QUARTERLY'
-    | 'REGULAR'
-    | 'ACCELERATED_THRESHOLD_1'
-    | 'ACCELERATED_THRESHOLD_2';
+  remitterType: PayrollRemitterType;
   eiEmployerMultiplierMicros: number;
+  createdAt: string;
 };
 
 export type PayrollEmployee = {
@@ -28,6 +49,8 @@ export type PayrollEmployee = {
   employmentEndDate: string | null;
   vacationServiceStartDate: string | null;
   isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type PayrollEmployeeConfig = {
@@ -35,26 +58,33 @@ export type PayrollEmployeeConfig = {
   version: number;
   effectiveFrom: string;
   provinceOfEmployment: string;
-  payFrequency: 'WEEKLY' | 'BIWEEKLY' | 'SEMIMONTHLY' | 'MONTHLY';
+  payFrequency: PayrollPayFrequency;
   payScheduleAnchorDate: string;
   defaultHourlyRateCents: number;
-  federalTd1Mode: 'FILED_TOTAL_CLAIM' | 'NO_FORM_DEFAULT';
+  federalTd1Mode: PayrollTd1Mode;
   federalTd1TotalClaimCents: number | null;
-  ontarioTd1Mode: 'FILED_TOTAL_CLAIM' | 'NO_FORM_DEFAULT';
+  ontarioTd1Mode: PayrollTd1Mode;
   ontarioTd1TotalClaimCents: number | null;
-  incomeTaxTreatment: 'STANDARD' | 'TD1_CLAIM_CODE_E_REVIEWED';
+  incomeTaxTreatment: PayrollIncomeTaxTreatment;
   additionalTaxPerPayCents: number;
-  cppTreatment: 'STANDARD' | 'EXEMPT_REVIEWED';
+  cppTreatment: PayrollCppTreatment;
   cppExceptionCode: string | null;
   cppExceptionNote: string | null;
-  eiTreatment: 'INSURABLE' | 'NON_INSURABLE_REVIEWED';
+  eiTreatment: PayrollEiTreatment;
   eiExceptionCode: string | null;
   eiExceptionNote: string | null;
-  vacationTreatment: 'PAID_EACH_RUN' | 'ACCRUED';
+  vacationTreatment: PayrollVacationTreatment;
   vacationRateBasisPoints: number;
   vacationAgreementConfirmedAt: string | null;
   vacationAgreementNote: string | null;
   calculationProfileVersion: string;
+  createdAt: string;
+};
+
+export type PayrollNonPeriodicTaxEvidenceYtd = {
+  cppBaseContributionCents: number;
+  cppAdditionalDeductionCents: number;
+  eiPremiumCents: number;
 };
 
 export type PayrollYtd = {
@@ -70,6 +100,13 @@ export type PayrollYtd = {
   incomeTaxYtdCents: number;
   vacationPayPaidYtdCents: number;
   vacationPayAccruedYtdCents: number;
+  nonPeriodicTaxEvidenceYtd: PayrollNonPeriodicTaxEvidenceYtd | null;
+};
+
+export type PayrollEmployeeYtdResponse = {
+  employeeStableId: string;
+  taxYear: number;
+  ytd: PayrollYtd;
 };
 
 export type PayrollRunStatus =
@@ -137,6 +174,8 @@ export type PayrollRun = {
   approvedByActorRef: string | null;
   approvedAt: string | null;
   voidedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type PayrollCalculationResponse =
@@ -150,12 +189,31 @@ export type PayrollCalculationResponse =
       };
     };
 
-export type PayrollPaymentAccount = {
-  accountStableId: string;
-  name: string;
-  type: 'CASH' | 'BANK' | 'PLATFORM_WALLET';
-  accountClass: 'ASSET';
-  currency: string;
+export type PayrollYearOpening = {
+  openingStableId: string;
+  taxYear: number;
+  asOfDate: string;
+  grossEarningsYtdCents: number;
+  netPayYtdCents: number;
+  periodicEarningsYtdCents: number;
+  nonPeriodicEarningsYtdCents: number;
+  pensionableEarningsYtdCents: number;
+  employeeCppYtdCents: number;
+  employeeCpp2YtdCents: number;
+  insurableEarningsYtdCents: number;
+  employeeEiYtdCents: number;
+  incomeTaxYtdCents: number;
+  nonPeriodicCppBaseContributionYtdCents: number;
+  nonPeriodicCppAdditionalDeductionYtdCents: number;
+  nonPeriodicEiPremiumYtdCents: number;
+  vacationPayPaidYtdCents: number;
+  vacationPayAccruedYtdCents: number;
+  sourceNote: string;
+  version: number;
+  confirmedByActorRef: string;
+  confirmedAt: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type PayrollEmployeePayment = {
@@ -189,7 +247,7 @@ export type PayrollCraRemittanceRunEvidence = {
 
 export type PayrollCraRemittancePreview = {
   employerStableId: string;
-  remitterType: PayrollEmployerConfig['remitterType'];
+  remitterType: PayrollRemitterType;
   remittancePolicyVersion: string;
   periodStart: string;
   periodEnd: string;
@@ -215,44 +273,4 @@ export type PayrollCraRemittance = PayrollCraRemittancePreview & {
   journalEntryStableId: string | null;
   createdByActorRef: string;
   createdAt: string;
-};
-
-export const payrollLocalDateToday = (): string => {
-  const now = new Date();
-  return [
-    now.getFullYear(),
-    String(now.getMonth() + 1).padStart(2, '0'),
-    String(now.getDate()).padStart(2, '0'),
-  ].join('-');
-};
-
-export const payrollMoney = (cents: number | null | undefined): string =>
-  cents == null ? '—' : '$' + (cents / 100).toFixed(2);
-
-export const payrollHours = (minutes: number): string =>
-  (minutes / 60).toFixed(2);
-
-export const parseMoneyToCents = (raw: string, field: string): number => {
-  const normalized = raw.trim();
-  if (!/^\d+(?:\.\d{1,2})?$/.test(normalized)) {
-    throw new Error(field + ' must be a non-negative amount with at most 2 decimals');
-  }
-  const [whole, fraction = ''] = normalized.split('.');
-  const cents = Number(whole) * 100 + Number(fraction.padEnd(2, '0'));
-  if (!Number.isSafeInteger(cents)) {
-    throw new Error(field + ' is too large');
-  }
-  return cents;
-};
-
-export const parseHoursToMinutes = (raw: string, field: string): number => {
-  const hours = Number(raw);
-  if (!Number.isFinite(hours) || hours < 0) {
-    throw new Error(field + ' must be a non-negative number');
-  }
-  const minutes = Math.round(hours * 60);
-  if (!Number.isSafeInteger(minutes)) {
-    throw new Error(field + ' is too large');
-  }
-  return minutes;
 };

@@ -2,38 +2,16 @@
 
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '@/lib/api/client';
+import type { PayrollYearOpening } from '../contracts/payroll';
 import {
   parseMoneyToCents,
   payrollLocalDateToday,
   payrollMoney,
-} from './payroll-types';
+} from './payroll-ui';
 
 type Props = {
   isZh: boolean;
   employeeStableId: string;
-};
-
-type Opening = {
-  openingStableId: string;
-  taxYear: number;
-  asOfDate: string;
-  grossEarningsYtdCents: number;
-  netPayYtdCents: number;
-  periodicEarningsYtdCents: number;
-  nonPeriodicEarningsYtdCents: number;
-  pensionableEarningsYtdCents: number;
-  employeeCppYtdCents: number;
-  employeeCpp2YtdCents: number;
-  insurableEarningsYtdCents: number;
-  employeeEiYtdCents: number;
-  incomeTaxYtdCents: number;
-  nonPeriodicCppBaseContributionYtdCents: number;
-  nonPeriodicCppAdditionalDeductionYtdCents: number;
-  nonPeriodicEiPremiumYtdCents: number;
-  vacationPayPaidYtdCents: number;
-  vacationPayAccruedYtdCents: number;
-  sourceNote: string;
-  version: number;
 };
 
 const MONEY_FIELDS = [
@@ -82,7 +60,7 @@ export function PayrollYearOpeningPanel({ isZh, employeeStableId }: Props) {
   const [asOfDate, setAsOfDate] = useState(payrollLocalDateToday());
   const [sourceNote, setSourceNote] = useState('Same-employer prior payroll before SanQ');
   const [values, setValues] = useState<Record<MoneyField, string>>(emptyValues);
-  const [opening, setOpening] = useState<Opening | null>(null);
+  const [opening, setOpening] = useState<PayrollYearOpening | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -107,7 +85,7 @@ export function PayrollYearOpeningPanel({ isZh, employeeStableId }: Props) {
     }
     setLoading(true);
     setError(null);
-    void apiFetch<Opening | null>(endpoint)
+    void apiFetch<PayrollYearOpening | null>(endpoint)
       .then((next) => {
         setOpening(next);
         if (!next) {
@@ -145,7 +123,7 @@ export function PayrollYearOpeningPanel({ isZh, employeeStableId }: Props) {
     setSaving(true);
     setError(null);
     setMessage(null);
-    void apiFetch<Opening>(endpoint, {
+    void apiFetch<PayrollYearOpening>(endpoint, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
