@@ -193,7 +193,7 @@ describe('AccountingPayrollReversalService', () => {
         kind: 'STANDARD',
         source: 'PAYROLL',
         sourceFactType: 'payroll.run.reversal.v1',
-        occurredAt: '2026-09-18',
+        occurredAt: '2026-09-14',
       }),
       'actor_reverse',
       expect.objectContaining({

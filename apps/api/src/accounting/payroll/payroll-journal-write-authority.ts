@@ -57,6 +57,7 @@ export type PayrollRunAccrualFactV1 = {
   approvedAt: string;
   storeStableId: string;
   payDate: string;
+  accrualDate: string;
   grossPayCents: number;
   totalEmployeeDeductionsCents: number;
   netPayCents: number;
@@ -189,6 +190,7 @@ export const normalizePayrollRunAccrualFact = (
     approvedAt: requireIsoDateTime(fact.approvedAt, 'approvedAt'),
     storeStableId: requireValue(fact.storeStableId, 'storeStableId'),
     payDate: requireDateOnly(fact.payDate, 'payDate'),
+    accrualDate: requireDateOnly(fact.accrualDate, 'accrualDate'),
     grossPayCents: requireMoney(fact.grossPayCents, 'grossPayCents'),
     totalEmployeeDeductionsCents: requireMoney(
       fact.totalEmployeeDeductionsCents,
@@ -418,7 +420,7 @@ const buildPayrollRunAccrualJournalFromFact = (
     sourceFactStableId: fact.runStableId,
     sourceFactVersion: PAYROLL_RUN_ACCRUAL_SOURCE_FACT_VERSION,
     storeStableId: fact.storeStableId,
-    occurredAt: fact.payDate,
+    occurredAt: fact.accrualDate,
     currency: 'CAD',
     memo: `Payroll accrual ${fact.runStableId}`,
     lines,

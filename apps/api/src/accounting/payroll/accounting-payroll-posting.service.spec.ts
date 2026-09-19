@@ -176,6 +176,7 @@ describe('AccountingPayrollPostingService', () => {
       expect.objectContaining({
         idempotencyKey: 'payroll-run-accrual:payroll_run_1:v1',
         source: 'PAYROLL',
+        occurredAt: '2026-09-14',
       }),
       'actor_post',
       expect.objectContaining({
