@@ -13,52 +13,12 @@ import {
   YAxis,
 } from 'recharts';
 import { apiFetch } from '@/lib/api/client';
-
-type PnlReport = {
-  groupBy: 'month' | 'quarter' | 'year';
-  summary: {
-    incomeCents: number;
-    expenseCents: number;
-    adjustmentCents: number;
-    netProfitCents: number;
-  };
-  periods: Array<{
-    period: string;
-    incomeCents: number;
-    expenseCents: number;
-    adjustmentCents: number;
-    netProfitCents: number;
-    isClosed: boolean;
-  }>;
-  byCategoryTree: Array<{
-    categoryStableId: string;
-    categoryName: string;
-    parentStableId?: string | null;
-    type: string;
-    amountCents: number;
-  }>;
-  bySource: Array<{ source: string; amountCents: number }>;
-  trends: {
-    currentMonthNetCents: number;
-    lastMonthNetCents: number;
-    quarterToDateNetCents: number;
-  };
-};
-
-type Cashflow = {
-  operatingCents: number;
-  investingCents: number;
-  financingCents: number;
-  netCashflowCents: number;
-};
-
-type AccountBalance = Array<{
-  accountStableId: string;
-  accountName: string;
-  inflowCents: number;
-  outflowCents: number;
-  balanceChangeCents: number;
-}>;
+import type {
+  AccountingAccountBalanceReport,
+  AccountingCashflowReport,
+  AccountingPnlReport,
+  AccountingReportGroupBy,
+} from '../contracts/reports';
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
@@ -66,20 +26,31 @@ export default function AccountingReportsPage() {
   const params = useParams<{ locale: string }>();
   const isZh = params?.locale === 'zh';
   const now = new Date();
-  const [from, setFrom] = useState(new Date(now.getFullYear(), 0, 1).toISOString().slice(0, 10));
+  const [from, setFrom] = useState(
+    new Date(now.getFullYear(), 0, 1).toISOString().slice(0, 10),
+  );
   const [to, setTo] = useState(now.toISOString().slice(0, 10));
-  const [groupBy, setGroupBy] = useState<'month' | 'quarter' | 'year'>('month');
-  const [report, setReport] = useState<PnlReport | null>(null);
-  const [cashflow, setCashflow] = useState<Cashflow | null>(null);
-  const [balances, setBalances] = useState<AccountBalance>([]);
+  const [groupBy, setGroupBy] = useState<AccountingReportGroupBy>('month');
+  const [report, setReport] = useState<AccountingPnlReport | null>(null);
+  const [cashflow, setCashflow] = useState<AccountingCashflowReport | null>(
+    null,
+  );
+  const [balances, setBalances] =
+    useState<AccountingAccountBalanceReport>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setError(null);
     void Promise.all([
-      apiFetch<PnlReport>(`/accounting/report/pnl?from=${from}&to=${to}&groupBy=${groupBy}`),
-      apiFetch<Cashflow>(`/accounting/report/cashflow?from=${from}&to=${to}`),
-      apiFetch<AccountBalance>(`/accounting/report/account-balance?from=${from}&to=${to}`),
+      apiFetch<AccountingPnlReport>(
+        `/accounting/report/pnl?from=${from}&to=${to}&groupBy=${groupBy}`,
+      ),
+      apiFetch<AccountingCashflowReport>(
+        `/accounting/report/cashflow?from=${from}&to=${to}`,
+      ),
+      apiFetch<AccountingAccountBalanceReport>(
+        `/accounting/report/account-balance?from=${from}&to=${to}`,
+      ),
     ])
       .then(([nextReport, nextCashflow, nextBalances]) => {
         setReport(nextReport);

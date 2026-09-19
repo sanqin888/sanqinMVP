@@ -1,5 +1,25 @@
 import type { AccountingFinancialProvider } from './core';
-import type { AccountingProviderFinancialDocument } from './provider-financial';
+import type {
+  AccountingFinancialDocumentType,
+  AccountingProviderFinancialDocument,
+} from './provider-financial';
+
+export type AccountingProviderRecognitionMatchMode = 'ANY' | 'ALL';
+
+export type AccountingProviderRecognitionRule = {
+  ruleStableId: string;
+  provider: AccountingFinancialProvider;
+  documentType: AccountingFinancialDocumentType;
+  requiredKeywords: string[];
+  optionalKeywords: string[];
+  optionalMatchMode: AccountingProviderRecognitionMatchMode;
+  priority: number;
+  isActive: boolean;
+  version: number;
+  updatedByUserStableId: string | null;
+  persisted: boolean;
+  changed?: boolean;
+};
 
 export type AccountingImageRetentionProfile =
   | 'SPACE_SAVER'
@@ -157,7 +177,7 @@ export type AccountingInboxParseResult = {
   excludedBeforeFinancialHistory?: boolean;
   financialHistoryRequiredFrom?: string;
   provider?: AccountingFinancialProvider;
-  documentType?: 'BATCH_CONTROL' | 'STATEMENT' | 'API_REPORT' | 'OTHER';
+  documentType?: AccountingFinancialDocumentType;
   businessIdentityKey?: string;
   providerMerchantRef?: string | null;
   providerDocumentRef?: string | null;

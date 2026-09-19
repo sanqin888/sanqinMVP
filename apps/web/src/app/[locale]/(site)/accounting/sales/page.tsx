@@ -3,20 +3,10 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api/client';
-
-type Slice = {
-  byChannel: Array<{ key: string; amountCents: number }>;
-  byPaymentMethod: Array<{ key: string; amountCents: number }>;
-};
-
-type Pnl = {
-  summary: {
-    incomeCents: number;
-    expenseCents: number;
-    adjustmentCents: number;
-    netProfitCents: number;
-  };
-};
+import type {
+  AccountingOrderDimensionSlice,
+  AccountingPnlReport,
+} from '../contracts/reports';
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
@@ -24,17 +14,25 @@ export default function AccountingSalesPage() {
   const params = useParams<{ locale: string }>();
   const isZh = params?.locale === 'zh';
   const now = new Date();
-  const [from, setFrom] = useState(new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10));
+  const [from, setFrom] = useState(
+    new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10),
+  );
   const [to, setTo] = useState(now.toISOString().slice(0, 10));
-  const [slice, setSlice] = useState<Slice | null>(null);
-  const [pnl, setPnl] = useState<Pnl | null>(null);
+  const [slice, setSlice] = useState<AccountingOrderDimensionSlice | null>(
+    null,
+  );
+  const [pnl, setPnl] = useState<AccountingPnlReport | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setError(null);
     void Promise.all([
-      apiFetch<Slice>(`/accounting/report/slice?from=${from}&to=${to}`),
-      apiFetch<Pnl>(`/accounting/report/pnl?from=${from}&to=${to}&groupBy=month`),
+      apiFetch<AccountingOrderDimensionSlice>(
+        `/accounting/report/slice?from=${from}&to=${to}`,
+      ),
+      apiFetch<AccountingPnlReport>(
+        `/accounting/report/pnl?from=${from}&to=${to}&groupBy=month`,
+      ),
     ])
       .then(([nextSlice, nextPnl]) => {
         setSlice(nextSlice);
