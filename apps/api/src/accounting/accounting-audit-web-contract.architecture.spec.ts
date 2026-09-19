@@ -19,14 +19,11 @@ describe('Phase 9 Slice 8B-A Accounting Audit transport contract', () => {
     expect(controllerSource).not.toContain("@Query('operatorUserId')");
   });
 
-  it(
-    'returns the canonical actor reference without the Slice 7-B compatibility remap',
-    () => {
-      expect(serviceSource).toContain('operatorActorRef: true');
-      expect(serviceSource).not.toContain('operatorUserId: operatorActorRef');
-      expect(serviceSource).not.toContain(
-        'Preserve the current Web/PWA read contract until the planned 8B cleanup.',
-      );
-    },
-  );
+  it('returns the canonical actor reference without the Slice 7-B compatibility remap', () => {
+    expect(serviceSource).toContain('operatorActorRef: true');
+    expect(serviceSource).not.toContain('operatorUserId: operatorActorRef');
+    expect(serviceSource).not.toContain(
+      'Preserve the current Web/PWA read contract until the planned 8B cleanup.',
+    );
+  });
 });
