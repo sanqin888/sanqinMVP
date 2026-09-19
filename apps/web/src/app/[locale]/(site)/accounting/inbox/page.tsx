@@ -20,6 +20,7 @@ import type {
   AccountingInboxClassification,
   AccountingInboxItem,
   AccountingManualUploadLibraryItem,
+  AccountingManualUploadPermanentDeleteResult,
   AccountingManualUploadResult,
   AccountingTrustedSender,
 } from '../contracts/inbox';
@@ -273,7 +274,7 @@ export default function AccountingInboxPage() {
     setError(null);
     setMessage(null);
     try {
-      const result = await apiFetch<{ storageCleanupComplete: boolean }>(
+      const result = await apiFetch<AccountingManualUploadPermanentDeleteResult>(
         `/accounting/inbox/manual-uploads/${item.inboxItemStableId}/permanent`,
         { method: 'DELETE' },
       );

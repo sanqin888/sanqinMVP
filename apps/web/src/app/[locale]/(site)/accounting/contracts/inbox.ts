@@ -231,6 +231,14 @@ export type AccountingManualUploadResult = {
   } | null;
 };
 
+export type AccountingManualUploadPermanentDeleteResult = {
+  inboxItemStableId: string;
+  deleted: true;
+  deletedArtifactStableIds: string[];
+  removedDuplicateCount: number;
+  storageCleanupComplete: boolean;
+};
+
 export type AccountingManualUploadLibraryItem = {
   inboxItemStableId: string;
   artifactStableId: string;

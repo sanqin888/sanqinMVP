@@ -29,6 +29,19 @@ export type AccountingAutomationRunResult = {
   };
 };
 
+export type AccountingUberFinancialReport = {
+  reportStableId: string;
+  workflowId: string;
+  reportType: string;
+  startDate: string;
+  endDate: string;
+  status: 'REQUESTED' | 'READY' | 'IMPORTED' | 'ERROR';
+  artifactUrls: string[];
+  requestedAt: string;
+  completedAt: string | null;
+  errorMessage: string | null;
+};
+
 export type AccountingPeriodClose = {
   periodType: 'MONTH' | 'YEAR';
   periodKey: string;

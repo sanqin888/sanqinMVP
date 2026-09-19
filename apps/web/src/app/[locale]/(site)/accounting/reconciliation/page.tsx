@@ -3,29 +3,19 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api/client';
-
-type UberReport = {
-  reportStableId: string;
-  workflowId: string;
-  reportType: string;
-  startDate: string;
-  endDate: string;
-  status: 'REQUESTED' | 'READY' | 'IMPORTED' | 'ERROR';
-  artifactUrls: string[];
-  requestedAt: string;
-  completedAt: string | null;
-  errorMessage: string | null;
-};
+import type { AccountingUberFinancialReport } from '../contracts/automation-period';
 
 export default function AccountingReconciliationPage() {
   const params = useParams<{ locale: string }>();
   const isZh = params?.locale === 'zh';
-  const [reports, setReports] = useState<UberReport[]>([]);
+  const [reports, setReports] = useState<AccountingUberFinancialReport[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setError(null);
-    void apiFetch<UberReport[]>('/accounting/automation/uber-reports?limit=100')
+    void apiFetch<AccountingUberFinancialReport[]>(
+      '/accounting/automation/uber-reports?limit=100',
+    )
       .then(setReports)
       .catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)));
   }, []);
