@@ -2,8 +2,7 @@ import { AccountingPayrollRunService } from './accounting-payroll-run.service';
 import { PayrollRunStatus } from './payroll-contracts';
 
 const parentRun = (
-  status: (typeof PayrollRunStatus)[keyof typeof PayrollRunStatus] =
-    PayrollRunStatus.REVERSED,
+  status: (typeof PayrollRunStatus)[keyof typeof PayrollRunStatus] = PayrollRunStatus.REVERSED,
 ) => ({
   id: '11111111-1111-4111-8111-111111111111',
   runStableId: 'payroll_run_original',
@@ -148,8 +147,8 @@ function makeService() {
     },
   };
   const prisma = {
-    $transaction: jest.fn(
-      (work: (client: typeof tx) => Promise<unknown>) => work(tx),
+    $transaction: jest.fn((work: (client: typeof tx) => Promise<unknown>) =>
+      work(tx),
     ),
   };
   const service = new AccountingPayrollRunService(prisma as never);
@@ -162,13 +161,11 @@ describe('AccountingPayrollRunService correction chain', () => {
     const parent = parentRun();
     const child = correctionRun();
     tx.payrollRun.findUnique.mockResolvedValue(parent);
-    tx.payrollRun.findFirst
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({
-        id: parent.id,
-        runStableId: parent.runStableId,
-        correctionSequence: 0,
-      });
+    tx.payrollRun.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      id: parent.id,
+      runStableId: parent.runStableId,
+      correctionSequence: 0,
+    });
     tx.payrollRun.create.mockResolvedValue(child);
 
     const result = await service.createCorrection(
@@ -251,13 +248,11 @@ describe('AccountingPayrollRunService correction chain', () => {
     const { service, tx } = makeService();
     const parent = parentRun();
     tx.payrollRun.findUnique.mockResolvedValue(parent);
-    tx.payrollRun.findFirst
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({
-        id: '55555555-5555-4555-8555-555555555555',
-        runStableId: 'payroll_run_newer',
-        correctionSequence: 1,
-      });
+    tx.payrollRun.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      id: '55555555-5555-4555-8555-555555555555',
+      runStableId: 'payroll_run_newer',
+      correctionSequence: 1,
+    });
 
     await expect(
       service.createCorrection(parent.runStableId, 'actor_correct'),
