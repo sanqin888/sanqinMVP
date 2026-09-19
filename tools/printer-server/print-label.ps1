@@ -44,6 +44,71 @@ function Resolve-OptionTextZh($option) {
   return Resolve-Text $option.nameEn
 }
 
+function Get-EnglishNameLines($graphics, [string]$text, $font, [single]$maxWidth) {
+  $normalized = ([regex]::Replace((Resolve-Text $text), "\s+", " ")).Trim()
+  if (-not $normalized) { return @() }
+
+  $lines = @()
+  $currentLine = ""
+
+  foreach ($word in @($normalized -split " ")) {
+    if (-not $word) { continue }
+    $candidate = if ($currentLine) { "$currentLine $word" } else { $word }
+    $candidateWidth = [single]($graphics.MeasureString($candidate, $font).Width)
+
+    if ($currentLine -and $candidateWidth -gt $maxWidth) {
+      $lines += $currentLine
+      $currentLine = $word
+    } else {
+      $currentLine = $candidate
+    }
+  }
+
+  if ($currentLine) {
+    $lines += $currentLine
+  }
+
+  return @($lines)
+}
+
+function Resolve-EnglishNameLayout(
+  $graphics,
+  [string]$text,
+  [string]$fontName,
+  [single]$maxWidth,
+  [double]$preferredPointSize = 9.0,
+  [double]$minimumPointSize = 7.5,
+  [int]$maxLines = 2
+) {
+  $pointSize = $preferredPointSize
+
+  while ($true) {
+    $font = New-Object System.Drawing.Font($fontName, $pointSize, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Point)
+    $lines = @(Get-EnglishNameLines $graphics $text $font $maxWidth)
+    $hasOverflowingLine = $false
+    foreach ($line in $lines) {
+      if ([single]($graphics.MeasureString($line, $font).Width) -gt $maxWidth) {
+        $hasOverflowingLine = $true
+        break
+      }
+    }
+
+    if (($lines.Count -le $maxLines -and -not $hasOverflowingLine) -or $pointSize -le $minimumPointSize) {
+      if ($lines.Count -gt $maxLines) {
+        $remaining = ($lines[($maxLines - 1)..($lines.Count - 1)] -join " ")
+        $lines = @($lines[0..($maxLines - 2)]) + @($remaining)
+      }
+      return [pscustomobject]@{
+        Font = $font
+        Lines = $lines
+      }
+    }
+
+    $font.Dispose()
+    $pointSize = [Math]::Max($minimumPointSize, $pointSize - 0.5)
+  }
+}
+
 $widthMm = if ($payload.labelWidthMm) { [double]$payload.labelWidthMm } else { 70.0 }
 $heightMm = if ($payload.labelHeightMm) { [double]$payload.labelHeightMm } else { 30.0 }
 $paperWidth = MmToHundredthsInch $widthMm
@@ -128,7 +193,7 @@ foreach ($label in $labels) {
       $contentBottom = [single]($usableHeight - $bottom)
 
       $pairFont = New-Object System.Drawing.Font($FontName, 14, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Point)
-      $nameEnFont = New-Object System.Drawing.Font($FontName, 9, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Point)
+      $nameEnFont = $null
       $nameZhFont = New-Object System.Drawing.Font($FontName, 10.5, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Point)
       $componentEnFont = New-Object System.Drawing.Font($FontName, 7, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Point)
       $componentZhFont = New-Object System.Drawing.Font($FontName, 8, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Point)
@@ -164,8 +229,18 @@ foreach ($label in $labels) {
 
         $englishCursor = $contentTop
         if ($nameEn) {
-          $nameEnHeight = [single]30
-          $graphics.DrawString($nameEn, $nameEnFont, $brush, (New-Object System.Drawing.RectangleF($englishX, $englishCursor, $englishWidth, $nameEnHeight)), $wrapFormat)
+          $nameEnLayout = Resolve-EnglishNameLayout $graphics $nameEn $FontName $englishWidth
+          $nameEnFont = $nameEnLayout.Font
+          $nameEnLines = @($nameEnLayout.Lines)
+          $nameEnLineHeight = [single]20
+          $nameEnHeight = if ($nameEnLines.Count -gt 1) { [single]40 } else { [single]30 }
+
+          for ($lineIndex = 0; $lineIndex -lt $nameEnLines.Count; $lineIndex += 1) {
+            $lineY = [single]($englishCursor + ($lineIndex * $nameEnLineHeight))
+            $lineRect = New-Object System.Drawing.RectangleF($englishX, $lineY, $englishWidth, $nameEnLineHeight)
+            $graphics.DrawString($nameEnLines[$lineIndex], $nameEnFont, $brush, $lineRect, $singleLineFormat)
+          }
+
           $englishCursor += $nameEnHeight + 1
         }
         if ($componentNameEn) {
@@ -198,7 +273,7 @@ foreach ($label in $labels) {
         $wrapFormat.Dispose()
         $pickupFormat.Dispose()
         $pairFont.Dispose()
-        $nameEnFont.Dispose()
+        if ($null -ne $nameEnFont) { $nameEnFont.Dispose() }
         $nameZhFont.Dispose()
         $componentEnFont.Dispose()
         $componentZhFont.Dispose()

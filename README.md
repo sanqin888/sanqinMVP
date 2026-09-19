@@ -126,7 +126,7 @@ POS_LABEL_PRINTER (Windows printer name for the 70x30mm food label printer; requ
 
 POS_LABEL_FONT (optional Windows font name; default: Microsoft YaHei UI)
 
-The label path uses the installed Windows printer driver through `tools/printer-server/print-label.ps1`, so it does not depend on a specific TSPL/ZPL command language. The label printer/driver should have a usable 70x30mm stock configured; the script also requests a 70x30mm custom paper size for each label job. Food labels use a bilingual two-column layout: English is printed in the wider left column with wrapping enabled, while Chinese is printed in the right column; localized menu options follow the same column language and free-form special instructions are preserved verbatim in both columns.
+The label path uses the installed Windows printer driver through `tools/printer-server/print-label.ps1`, so it does not depend on a specific TSPL/ZPL command language. The label printer/driver should have a usable 70x30mm stock configured; the script also requests a 70x30mm custom paper size for each label job. Food labels use a bilingual two-column layout: English is printed in the wider left column and product names are measured against the real font width, wrapped at word boundaries to at most two lines, then reduced from 9pt down to 7.5pt only when two lines still do not fit; ellipsis remains the final fallback at the minimum size. Chinese is printed in the right column; localized menu options follow the same column language and free-form special instructions are preserved verbatim in both columns.
 
 STORE_ID (optional consistency check only; store authorization comes from the authenticated POS device)
 
