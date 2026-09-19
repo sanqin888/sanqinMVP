@@ -181,7 +181,7 @@ describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2/D3-A/D3-B1/D3-B2/D4-B/D4-C/D4-D Payr
     expect(authority).toContain('account_payroll_wages_expense');
     expect(authority).toContain('account_payroll_net_pay_payable');
     expect(posting).toContain(
-      "accrualDate: run.periodEnd.toISOString().slice(0, 10)",
+      'accrualDate: run.periodEnd.toISOString().slice(0, 10)',
     );
     expect(authority).toContain('occurredAt: fact.accrualDate');
     expect(authority).not.toContain('occurredAt: fact.payDate');
@@ -306,7 +306,7 @@ describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2/D3-A/D3-B1/D3-B2/D4-B/D4-C/D4-D Payr
     expect(authority).not.toContain('AccountingJournalEntryKind.ADJUSTMENT');
     expect(authority).toContain('PAYROLL_LABOR_CATEGORY_STABLE_ID');
     expect(reversal).toContain(
-      "accrualDate: run.periodEnd.toISOString().slice(0, 10)",
+      'accrualDate: run.periodEnd.toISOString().slice(0, 10)',
     );
     expect(authority).toContain('occurredAt: fact.accrualDate');
     expect(authority).not.toContain('occurredAt: fact.payDate');
