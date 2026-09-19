@@ -1,4 +1,4 @@
-import type { AccountingInboxItem } from './inbox-model';
+import type { AccountingInboxItem } from '../contracts/inbox';
 import {
   findAccountingInboxItemByStableId,
   retainReviewingInboxItemStableId,
