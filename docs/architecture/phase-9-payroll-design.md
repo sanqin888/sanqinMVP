@@ -681,6 +681,8 @@ The first Ontario pay statement must at least expose the pay period, wage rate, 
 
 The pay statement should be generated from immutable finalized PayrollRun evidence and record a template/renderer version. The PDF bytes do not need to become the payroll source of truth; regeneration from the same finalized run must reproduce the same financial amounts.
 
+8P-E controlled production verification on 2026-09-19 confirmed the frozen PayrollRun amounts, YTD values and export audit trail were rendered correctly, but the V1 layout placed only the non-editable-source footer on a second LETTER page. The scoped source correction keeps `PAY_STATEMENT_V1` financial/content semantics unchanged, compacts the ten YTD facts into a two-column five-row grid, and adds a one-page PDF regression assertion. This is a renderer-only defect fix: no PayrollRun evidence, API contract, Journal fact, schema, migration or statutory calculation changes. Status is **LOCAL SOURCE COMPLETE / CI + DEPLOYMENT + PDF RE-VERIFICATION PENDING** until the reviewed change passes GitHub Actions and a production export confirms one-page output.
+
 ### 19.16 Explicit MVP exclusions surfaced by 8P-A
 
 The existing first-slice non-goals remain. 8P-A additionally recommends that **Ontario Employer Health Tax (EHT)** be explicitly treated as unsupported in the initial calculator unless separately added. Ontario currently has an EHT regime with an eligibility/exemption framework; silently labeling CPP/EI-only results as the employer's complete statutory burden could therefore be misleading.

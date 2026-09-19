@@ -2480,6 +2480,15 @@ is claimed per repository workflow.
 **Architecture/migration:** Docker build infrastructure only; no Prisma/schema/migration, package/lockfile, API runtime contract, public context edge, scanner allowance or direct-import baseline change.  
 **Verification after merge:** rebuild the API image on the production VM; because the VM has ~2 GiB RAM and 4 GiB swap, prefer API-first/sequential image build if full parallel `docker compose build` causes host-level memory pressure. Then continue 8P-E controlled Payroll verification.
 
+### 2026-09-19 — Phase 9 8P-E Pay Statement one-page forward fix
+
+**Branch/State:** `fix/payroll-pay-statement-one-page` from latest `origin/dev` / **LOCAL SOURCE COMPLETE / REVIEW PENDING / NO MIGRATION / NO LOCAL CI CLAIMED**.  
+**Production evidence:** the first controlled POSTED PayrollRun exported a correct `PAY_STATEMENT_V1`: employee/employer identity, June 2026 period, 2026-07-07 payday, earnings/deductions/net pay and YTD facts matched frozen PayrollRun evidence, and `PAYROLL_PAY_STATEMENT_EXPORT` audit evidence was written. Visual review found only one defect: the non-editable-source footer rendered alone on page 2.  
+**Fix:** keep all frozen facts and template semantics unchanged, but render the ten YTD facts as a two-column five-row grid so the complete statement plus footer fits one LETTER page with normal readability. The existing PDF characterization now asserts exactly one `/Type /Page` object, directly covering the observed regression. No browser/statutory formula, PayrollRun calculation, pay-statement API, audit behavior or financial fact changes.  
+**Architecture/migration:** internal Payroll PDF-renderer layout correction only; no Prisma/schema/migration, package/lockfile, public context edge, scanner allowance, direct-import baseline or compatibility change. Expected baseline remains Foundation **1** / External **1** / Identity **2** / Runtime **4**, total **8**, public SCC empty.  
+**Verification remaining:** after operator source review, use GitHub Actions as the authoritative validation gate; after merge/deployment, re-export the same finalized PayrollRun and confirm the PDF is one page with all previously verified fields/footer present before resuming Employee Payment settlement verification.  
+**Details:** `apps/api/src/accounting/payroll/{payroll-pay-statement.ts,payroll-pay-statement.spec.ts}`, `docs/architecture/{phase-9-payroll-design.md,current-dependency-graph.md}`, this worklog.
+
 ## Rule for future entries
 
 For each modularization code batch, append exactly one chronological entry before
