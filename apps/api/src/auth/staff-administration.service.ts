@@ -134,7 +134,10 @@ export class StaffAdministrationService implements StaffAdministrationPort {
             const nextStatus = params.status ?? target.status;
 
             if (nextRole !== 'ADMIN' && nextRole !== 'STAFF') {
-              throw new StaffAdministrationError('INVALID_ROLE', 'invalid role');
+              throw new StaffAdministrationError(
+                'INVALID_ROLE',
+                'invalid role',
+              );
             }
             if (nextStatus !== 'ACTIVE' && nextStatus !== 'DISABLED') {
               throw new StaffAdministrationError(
