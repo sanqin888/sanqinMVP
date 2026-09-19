@@ -699,6 +699,8 @@ The approved Web-only information architecture is:
 
 This is an Accounting Web adapter reorganization only. Existing Payroll API routes, server authority, stable identities, statutory/YTD calculations, Journal semantics, settlement/remittance ownership and database contracts stay unchanged.
 
+PR #2405 final head `ba672c19` passed PR CI #5938, squash-merged as `01e38a2a`, and post-merge CI #5939 passed. After deployment, production verification confirmed the sticky employee context/run isolation, MONTHLY `2026-08-31 -> 2026-09-01..2026-09-30` prefill with manual-edit preservation, summary-first Employees/Year Opening maintenance, and employer-level CRA isolation. This operator-workflow UI follow-up is **PRODUCTION VERIFIED / CLOSED**. It does not by itself close the overall 8P-E gate: CRA-remittance settlement evidence is intentionally deferred until SanQ's next real remittance instead of creating an early cash fact only for testing, and posted-run reversal/correction remains a separate closeout evidence item.
+
 ### 19.16 Explicit MVP exclusions surfaced by 8P-A
 
 The existing first-slice non-goals remain. 8P-A additionally recommends that **Ontario Employer Health Tax (EHT)** be explicitly treated as unsupported in the initial calculator unless separately added. Ontario currently has an EHT regime with an eligibility/exemption framework; silently labeling CPP/EI-only results as the employer's complete statutory burden could therefore be misleading.
