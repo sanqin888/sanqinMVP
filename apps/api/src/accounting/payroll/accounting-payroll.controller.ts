@@ -26,6 +26,7 @@ import { AccountingPayrollPayStatementService } from './accounting-payroll-pay-s
 import { AccountingPayrollPostingService } from './accounting-payroll-posting.service';
 import { AccountingPayrollEmployeePaymentService } from './accounting-payroll-employee-payment.service';
 import { AccountingPayrollCraRemittanceService } from './accounting-payroll-cra-remittance.service';
+import { AccountingPayrollReversalService } from './accounting-payroll-reversal.service';
 import type {
   CreatePayrollEmployeeConfigInput,
   CreatePayrollEmployeeInput,
@@ -34,6 +35,7 @@ import type {
   CreatePayrollEmployerConfigInput,
   CreatePayrollEmployerInput,
   CreatePayrollRunInput,
+  ReversePayrollRunInput,
   UpdatePayrollEmployeeInput,
   UpdatePayrollEmployerInput,
   UpdatePayrollRunInput,
@@ -55,6 +57,7 @@ export class AccountingPayrollController {
     private readonly posting: AccountingPayrollPostingService,
     private readonly employeePayments: AccountingPayrollEmployeePaymentService,
     private readonly craRemittances: AccountingPayrollCraRemittanceService,
+    private readonly reversals: AccountingPayrollReversalService,
   ) {}
 
   @Get('payroll/employers')
@@ -282,6 +285,19 @@ export class AccountingPayrollController {
   ) {
     return this.posting.postRunAccrual(
       runStableId,
+      requireAccountingOperatorUserId(req),
+    );
+  }
+
+  @Post('payroll/runs/:runStableId/reverse')
+  reverseRun(
+    @Param('runStableId') runStableId: string,
+    @Body() body: ReversePayrollRunInput,
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.reversals.reverseRun(
+      runStableId,
+      body,
       requireAccountingOperatorUserId(req),
     );
   }

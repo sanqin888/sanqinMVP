@@ -45,6 +45,9 @@ export type PayrollRunViewRecord = {
   payStatementTemplateVersion: string | null;
   postedJournalEntryStableId: string | null;
   postedAt: Date | null;
+  reversalJournalEntryStableId: string | null;
+  reversedByActorRef: string | null;
+  reversalReason: string | null;
   reversedAt: Date | null;
   ytdBeforeJson: unknown;
   ytdAfterJson: unknown;
@@ -104,6 +107,9 @@ export const payrollRunDto = (row: PayrollRunViewRecord) => ({
   payStatementTemplateVersion: row.payStatementTemplateVersion,
   postedJournalEntryStableId: row.postedJournalEntryStableId,
   postedAt: row.postedAt?.toISOString() ?? null,
+  reversalJournalEntryStableId: row.reversalJournalEntryStableId,
+  reversedByActorRef: row.reversedByActorRef,
+  reversalReason: row.reversalReason,
   reversedAt: row.reversedAt?.toISOString() ?? null,
   ytdBefore: row.ytdBeforeJson ?? null,
   ytdAfter: row.ytdAfterJson ?? null,

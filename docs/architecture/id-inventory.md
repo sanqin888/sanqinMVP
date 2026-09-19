@@ -1,17 +1,18 @@
 # Current ID inventory
 
-Phase 9 Slice 8P-D3-B2 working snapshot: `origin/dev@95cfbf70` plus local CRA
-settlement / Journal / employer-UI source (2026-09-18). Current source of truth remains
+Phase 9 Slice 8P-D4-B working snapshot: `feat/phase9-slice8p-d4b-payroll-reversal`
+from `origin/dev@ccc76515` (2026-09-18). Current source of truth remains
 `apps/api/prisma/schema.prisma`; schema/migration authority follows `AGENTS.md`.
 
 The working schema remains **94 models**: 84 UUID-backed primary keys, six integer
-primary keys, and four natural/stable-token primary keys. Payroll through D3-B1 is merged
-in `dev`; reviewed companion migration
-`20260918215432_phase9_slice8p_d3_cra_remittance` is also merged and additive-only.
-D3-B2 adds no Prisma model, column or persisted identifier. Existing
-`PayrollCraRemittance.remittanceStableId`, `evidenceHash`,
-`journalEntryStableId`, PayrollRun stable identity and frozen config/calculation/Journal
-stable scalars are reused for settlement, replay and audit authority.
+primary keys, and four natural/stable-token primary keys. Payroll D3-B2 is merged through
+PR #2395 / squash `ccc76515`; the reviewed D3 companion migration
+`20260918215432_phase9_slice8p_d3_cra_remittance` remains additive-only. D4-B adds no
+model or new public business identity. It adds nullable durable PayrollRun reversal
+evidence: unique stable scalar `reversalJournalEntryStableId` plus
+`reversedByActorRef` and `reversalReason`. The canonical reversal source fact reuses the
+existing `runStableId`; no Accounting Journal database UUID crosses the Payroll boundary.
+A user-generated additive migration is required and has not been created in this workspace.
 
 ## Primary-key families
 
