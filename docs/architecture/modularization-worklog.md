@@ -2482,7 +2482,7 @@ is claimed per repository workflow.
 
 ### 2026-09-19 — Phase 9 8P-E Pay Statement one-page forward fix
 
-**Branch/State:** `fix/payroll-pay-statement-one-page` from latest `origin/dev` / **LOCAL SOURCE COMPLETE / REVIEW PENDING / NO MIGRATION / NO LOCAL CI CLAIMED**.  
+**Branch/State:** PR #2403 / head `d2589b10` / **PR OPEN / CI PENDING / NO MIGRATION / NO LOCAL CI CLAIMED**.  
 **Production evidence:** the first controlled POSTED PayrollRun exported a correct `PAY_STATEMENT_V1`: employee/employer identity, June 2026 period, 2026-07-07 payday, earnings/deductions/net pay and YTD facts matched frozen PayrollRun evidence, and `PAYROLL_PAY_STATEMENT_EXPORT` audit evidence was written. Visual review found only one defect: the non-editable-source footer rendered alone on page 2.  
 **Fix:** keep all frozen facts and template semantics unchanged, but render the ten YTD facts as a two-column five-row grid so the complete statement plus footer fits one LETTER page with normal readability. The existing PDF characterization now asserts exactly one `/Type /Page` object, directly covering the observed regression. No browser/statutory formula, PayrollRun calculation, pay-statement API, audit behavior or financial fact changes.  
 **Architecture/migration:** internal Payroll PDF-renderer layout correction only; no Prisma/schema/migration, package/lockfile, public context edge, scanner allowance, direct-import baseline or compatibility change. Expected baseline remains Foundation **1** / External **1** / Identity **2** / Runtime **4**, total **8**, public SCC empty.  
