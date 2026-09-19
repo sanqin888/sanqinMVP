@@ -173,7 +173,7 @@ const buildPayrollRunReversalJournalFromFact = (
     sourceFactStableId: fact.runStableId,
     sourceFactVersion: PAYROLL_RUN_REVERSAL_SOURCE_FACT_VERSION,
     storeStableId: fact.storeStableId,
-    occurredAt: fact.payDate,
+    occurredAt: fact.accrualDate,
     currency: 'CAD',
     memo: `Payroll reversal ${fact.runStableId}: ${fact.reversalReason}`,
     lines,

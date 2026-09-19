@@ -47,7 +47,8 @@ const reversalFact = (): PayrollRunReversalFactV1 => ({
   approvedAt: '2026-09-18T13:00:00.000Z',
   postedAccrualJournalEntryStableId: 'journal_payroll_accrual_1',
   storeStableId: '4750_Yonge_Street',
-  payDate: '2026-09-18',
+  payDate: '2026-07-03',
+  accrualDate: '2026-06-30',
   grossPayCents: 160_000,
   totalEmployeeDeductionsCents: 30_000,
   netPayCents: 130_000,
@@ -92,6 +93,7 @@ function makeService() {
     reversedAt: new Date(fact.reversedAt),
     storeStableId: fact.storeStableId,
     payDate: new Date(fact.payDate + 'T00:00:00.000Z'),
+    periodEnd: new Date(fact.accrualDate + 'T00:00:00.000Z'),
     grossPayCents: fact.grossPayCents,
     totalEmployeeDeductionsCents: fact.totalEmployeeDeductionsCents,
     netPayCents: fact.netPayCents,
@@ -146,7 +148,7 @@ function makeService() {
         sourceFactStableId: 'payroll_run_1',
         sourceFactVersion: 1,
         storeStableId: '4750_Yonge_Street',
-        occurredAt: new Date('2026-09-18T00:00:00.000Z'),
+        occurredAt: new Date('2026-06-30T00:00:00.000Z'),
         currency: 'CAD',
         memo: 'Payroll reversal payroll_run_1: Incorrect regular hours',
         createdByActorRef: 'actor_reverse',
@@ -192,7 +194,7 @@ describe('AccountingJournalService Payroll reversal authority', () => {
     );
     expect(tx.payrollRun.findFirst).toHaveBeenCalledTimes(1);
     expect(period.assertJournalEditableForPeriod).toHaveBeenCalledWith(
-      new Date('2026-09-18T00:00:00.000Z'),
+      new Date('2026-06-30T00:00:00.000Z'),
       AccountingJournalEntryKind.STANDARD,
       tx,
       'America/Toronto',
@@ -292,7 +294,7 @@ describe('AccountingJournalService Payroll reversal authority', () => {
       ),
     ).rejects.toThrow('month closed');
     expect(period.assertJournalEditableForPeriod).toHaveBeenCalledWith(
-      new Date('2026-09-18T00:00:00.000Z'),
+      new Date('2026-06-30T00:00:00.000Z'),
       AccountingJournalEntryKind.STANDARD,
       tx,
       'America/Toronto',

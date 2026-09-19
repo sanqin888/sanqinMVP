@@ -47,7 +47,8 @@ const fact = (
   calculationHash: 'sha256:' + 'a'.repeat(64),
   approvedAt: '2026-09-18T13:00:00.000Z',
   storeStableId: '4750_Yonge_Street',
-  payDate: '2026-09-18',
+  payDate: '2026-07-03',
+  accrualDate: '2026-06-30',
   grossPayCents: 160_000,
   totalEmployeeDeductionsCents: 30_000,
   netPayCents: 130_000,
@@ -80,7 +81,7 @@ describe('Payroll accrual Journal write authority', () => {
       sourceFactStableId: 'payroll_run_1',
       sourceFactVersion: 1,
       storeStableId: '4750_Yonge_Street',
-      occurredAt: '2026-09-18',
+      occurredAt: '2026-06-30',
       currency: 'CAD',
     });
     expect(plan.journal.lines).toEqual([

@@ -46,7 +46,8 @@ const reversalFact = (): PayrollRunReversalFactV1 => ({
   approvedAt: '2026-09-18T13:00:00.000Z',
   postedAccrualJournalEntryStableId: 'journal_payroll_accrual_1',
   storeStableId: '4750_Yonge_Street',
-  payDate: '2026-09-18',
+  payDate: '2026-07-03',
+  accrualDate: '2026-06-30',
   grossPayCents: 160_000,
   totalEmployeeDeductionsCents: 30_000,
   netPayCents: 130_000,
@@ -81,7 +82,7 @@ describe('Payroll run reversal Journal authority', () => {
         sourceFactType: PAYROLL_RUN_REVERSAL_SOURCE_FACT_TYPE,
         sourceFactStableId: 'payroll_run_1',
         sourceFactVersion: 1,
-        occurredAt: '2026-09-18',
+        occurredAt: '2026-06-30',
         storeStableId: '4750_Yonge_Street',
       }),
     );

@@ -44,7 +44,8 @@ const payrollFact = (): PayrollRunAccrualFactV1 => ({
   calculationHash: 'sha256:' + 'a'.repeat(64),
   approvedAt: '2026-09-18T13:00:00.000Z',
   storeStableId: '4750_Yonge_Street',
-  payDate: '2026-09-18',
+  payDate: '2026-07-03',
+  accrualDate: '2026-06-30',
   grossPayCents: 160_000,
   totalEmployeeDeductionsCents: 30_000,
   netPayCents: 130_000,
@@ -78,6 +79,7 @@ function makeService() {
     approvedAt: new Date(fact.approvedAt),
     storeStableId: fact.storeStableId,
     payDate: new Date(fact.payDate + 'T00:00:00.000Z'),
+    periodEnd: new Date(fact.accrualDate + 'T00:00:00.000Z'),
     grossPayCents: fact.grossPayCents,
     totalEmployeeDeductionsCents: fact.totalEmployeeDeductionsCents,
     netPayCents: fact.netPayCents,
@@ -119,7 +121,7 @@ function makeService() {
         sourceFactStableId: 'payroll_run_1',
         sourceFactVersion: 1,
         storeStableId: '4750_Yonge_Street',
-        occurredAt: new Date('2026-09-18T00:00:00.000Z'),
+        occurredAt: new Date('2026-06-30T00:00:00.000Z'),
         currency: 'CAD',
         memo: 'Payroll accrual payroll_run_1',
         createdByActorRef: 'actor_post',
@@ -144,12 +146,12 @@ function makeService() {
     {} as never,
     period as unknown as AccountingPeriodService,
   );
-  return { service, tx, plan, runAuthority };
+  return { service, tx, period, plan, runAuthority };
 }
 
 describe('AccountingJournalService Payroll accrual authority', () => {
   it('revalidates the frozen run and account authority before creating the Journal', async () => {
-    const { service, tx, plan } = makeService();
+    const { service, tx, period, plan } = makeService();
 
     const result = await service.createPayrollRunAccrualJournalInTx(
       plan.journal,
@@ -161,6 +163,12 @@ describe('AccountingJournalService Payroll accrual authority', () => {
     expect(result.entryStableId).toBe('journal_payroll_1');
     expect(tx.payrollRun.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({ where: { runStableId: 'payroll_run_1' } }),
+    );
+    expect(period.assertJournalEditableForPeriod).toHaveBeenCalledWith(
+      new Date('2026-06-30T00:00:00.000Z'),
+      AccountingJournalEntryKind.STANDARD,
+      tx,
+      'America/Toronto',
     );
     expect(tx.accountingJournalEntry.create).toHaveBeenCalledTimes(1);
     expect(tx.accountingAuditLog.create).toHaveBeenCalledWith(
@@ -202,7 +210,7 @@ describe('AccountingJournalService Payroll accrual authority', () => {
       sourceFactStableId: 'payroll_run_1',
       sourceFactVersion: 1,
       storeStableId: '4750_Yonge_Street',
-      occurredAt: new Date('2026-09-18T00:00:00.000Z'),
+      occurredAt: new Date('2026-06-30T00:00:00.000Z'),
       currency: 'CAD',
       memo: 'Payroll accrual payroll_run_1',
       createdByActorRef: 'actor_post',
