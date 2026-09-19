@@ -2,15 +2,17 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch } from '@/lib/api/client';
+import type {
+  PayrollCalculationResponse,
+  PayrollEmployeeConfig,
+  PayrollRun,
+} from '../contracts/payroll';
 import {
   parseHoursToMinutes,
   parseMoneyToCents,
   payrollLocalDateToday,
   payrollMoney,
-  type PayrollCalculationResponse,
-  type PayrollEmployeeConfig,
-  type PayrollRun,
-} from './payroll-types';
+} from './payroll-ui';
 import { PayrollRunReview } from './payroll-run-review';
 import { PayrollEmployeePaymentPanel } from './payroll-employee-payment-panel';
 import { suggestNextPayrollPeriod } from './payroll-period-suggestion';
