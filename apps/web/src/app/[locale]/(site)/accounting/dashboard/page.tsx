@@ -4,30 +4,10 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api/client';
-
-type Dashboard = {
-  from: string;
-  to: string;
-  summary: {
-    incomeCents: number;
-    expenseCents: number;
-    adjustmentCents: number;
-    netProfitCents: number;
-    taxCents: number;
-  };
-  pending: { inboxItems: number };
-  topExpenseCategories: Array<{
-    categoryStableId: string;
-    name: string;
-    amountCents: number;
-  }>;
-  lastClosedMonth: string | null;
-};
-
-type Slice = {
-  byChannel: Array<{ key: string; amountCents: number }>;
-  byPaymentMethod: Array<{ key: string; amountCents: number }>;
-};
+import type {
+  AccountingDashboard,
+  AccountingOrderDimensionSlice,
+} from '../contracts/reports';
 
 const money = (cents: number | null | undefined) => `$${((cents ?? 0) / 100).toFixed(2)}`;
 
@@ -35,8 +15,10 @@ export default function AccountingDashboardPage() {
   const params = useParams<{ locale: string }>();
   const isZh = params?.locale === 'zh';
   const locale = isZh ? 'zh' : 'en';
-  const [dashboard, setDashboard] = useState<Dashboard | null>(null);
-  const [slice, setSlice] = useState<Slice | null>(null);
+  const [dashboard, setDashboard] = useState<AccountingDashboard | null>(null);
+  const [slice, setSlice] = useState<AccountingOrderDimensionSlice | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
 
   const range = useMemo(() => {
@@ -50,8 +32,12 @@ export default function AccountingDashboardPage() {
   useEffect(() => {
     setError(null);
     void Promise.all([
-      apiFetch<Dashboard>(`/accounting/dashboard?from=${range.from}&to=${range.to}`),
-      apiFetch<Slice>(`/accounting/report/slice?from=${range.from}&to=${range.to}`),
+      apiFetch<AccountingDashboard>(
+        `/accounting/dashboard?from=${range.from}&to=${range.to}`,
+      ),
+      apiFetch<AccountingOrderDimensionSlice>(
+        `/accounting/report/slice?from=${range.from}&to=${range.to}`,
+      ),
     ])
       .then(([nextDashboard, nextSlice]) => {
         setDashboard(nextDashboard);

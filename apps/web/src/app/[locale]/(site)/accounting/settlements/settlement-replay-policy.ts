@@ -1,7 +1,7 @@
 import type {
   ProviderSettlementDocumentPlan,
   ProviderSettlementShadowPreview,
-} from './settlement-model';
+} from '../contracts/settlements';
 
 const SHA256_HEX = /^[a-f0-9]{64}$/;
 const MONTH_NAMES = [

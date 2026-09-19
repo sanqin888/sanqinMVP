@@ -15,11 +15,10 @@ import {
   prepareExpensePaymentAllocations,
   type ExpensePaymentAllocationDraft,
 } from '../expense-payment-allocations';
+import type { AccountingAccount, AccountingCategory } from '../contracts/chart';
+import type { AccountingInboxItem } from '../contracts/inbox';
 import {
-  type AccountingAccount,
-  type AccountingCategory,
   type AccountingExpenseReviewRow,
-  type AccountingInboxItem,
   latestParse,
   makeReviewKey,
   money,

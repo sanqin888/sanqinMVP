@@ -1,5 +1,8 @@
 import { suggestNextPayrollPeriod } from './payroll-period-suggestion';
-import type { PayrollEmployeeConfig, PayrollRun } from './payroll-types';
+import type {
+  PayrollEmployeeConfig,
+  PayrollRun,
+} from '../contracts/payroll';
 
 const monthlyConfig: PayrollEmployeeConfig = {
   configStableId: 'config-monthly',
@@ -26,6 +29,7 @@ const monthlyConfig: PayrollEmployeeConfig = {
   vacationAgreementConfirmedAt: null,
   vacationAgreementNote: null,
   calculationProfileVersion: 'ON_HOURLY_SIMPLE_V1',
+  createdAt: '2026-06-01T00:00:00.000Z',
 };
 
 const baseRun: PayrollRun = {
@@ -85,6 +89,8 @@ const baseRun: PayrollRun = {
   approvedByActorRef: 'user-1',
   approvedAt: '2026-09-19T00:00:00.000Z',
   voidedAt: null,
+  createdAt: '2026-09-19T00:00:00.000Z',
+  updatedAt: '2026-09-19T00:00:00.000Z',
 };
 
 function run(overrides: Partial<PayrollRun>): PayrollRun {

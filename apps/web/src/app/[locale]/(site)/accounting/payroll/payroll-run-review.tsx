@@ -1,10 +1,7 @@
 'use client';
 
-import {
-  payrollHours,
-  payrollMoney,
-  type PayrollRun,
-} from './payroll-types';
+import type { PayrollRun } from '../contracts/payroll';
+import { payrollHours, payrollMoney } from './payroll-ui';
 
 const editableStatuses = new Set<PayrollRun['status']>(['DRAFT', 'CALCULATED']);
 const statementStatuses = new Set<PayrollRun['status']>([

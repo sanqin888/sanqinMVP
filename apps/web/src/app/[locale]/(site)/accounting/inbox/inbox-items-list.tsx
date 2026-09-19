@@ -1,12 +1,11 @@
 'use client';
 
-import {
-  type AccountingFinancialProvider,
-  type AccountingInboxClassification,
-  type AccountingInboxItem,
-  latestParse,
-  money,
-} from './inbox-model';
+import type { AccountingFinancialProvider } from '../contracts/core';
+import type {
+  AccountingInboxClassification,
+  AccountingInboxItem,
+} from '../contracts/inbox';
+import { latestParse, money } from './inbox-model';
 
 type Props = {
   items: AccountingInboxItem[];

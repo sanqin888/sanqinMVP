@@ -1,7 +1,5 @@
-import {
-  reconciledTextractLineItemHints,
-  type AccountingInboxParseResult,
-} from './inbox-model';
+import type { AccountingInboxParseResult } from '../contracts/inbox';
+import { reconciledTextractLineItemHints } from './inbox-model';
 
 describe('reconciledTextractLineItemHints', () => {
   const baseEvidence: NonNullable<

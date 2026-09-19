@@ -1,4 +1,4 @@
-import type { AccountingFinancialProvider } from '../inbox/inbox-model';
+import type { AccountingFinancialProvider } from './core';
 
 export type ProviderSettlementShadowPreview = {
   version: 3;

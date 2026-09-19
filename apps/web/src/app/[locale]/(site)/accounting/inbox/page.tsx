@@ -12,18 +12,18 @@ import {
   findAccountingInboxItemByStableId,
   retainReviewingInboxItemStableId,
 } from './reviewing-inbox-item';
-import {
-  type AccountingAccount,
-  type AccountingCategory,
-  type AccountingFinancialProvider,
-  type AccountingImageRetentionAccepted,
-  type AccountingImageRetentionQueueItem,
-  type AccountingInboxClassification,
-  type AccountingInboxItem,
-  type AccountingManualUploadLibraryItem,
-  type AccountingManualUploadResult,
-  type AccountingTrustedSender,
-} from './inbox-model';
+import type { AccountingAccount, AccountingCategory } from '../contracts/chart';
+import type { AccountingFinancialProvider } from '../contracts/core';
+import type {
+  AccountingImageRetentionAccepted,
+  AccountingImageRetentionQueueItem,
+  AccountingInboxClassification,
+  AccountingInboxItem,
+  AccountingManualUploadLibraryItem,
+  AccountingManualUploadPermanentDeleteResult,
+  AccountingManualUploadResult,
+  AccountingTrustedSender,
+} from '../contracts/inbox';
 
 export default function AccountingInboxPage() {
   const params = useParams<{ locale: string }>();
@@ -274,7 +274,7 @@ export default function AccountingInboxPage() {
     setError(null);
     setMessage(null);
     try {
-      const result = await apiFetch<{ storageCleanupComplete: boolean }>(
+      const result = await apiFetch<AccountingManualUploadPermanentDeleteResult>(
         `/accounting/inbox/manual-uploads/${item.inboxItemStableId}/permanent`,
         { method: 'DELETE' },
       );

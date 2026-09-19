@@ -9,7 +9,7 @@ import type {
   AccountingImageRetentionDerivativePreview,
   AccountingImageRetentionProfile,
   AccountingImageRetentionQueueItem,
-} from './inbox-model';
+} from '../contracts/inbox';
 
 type Props = {
   item: AccountingImageRetentionQueueItem;

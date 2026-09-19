@@ -1,6 +1,6 @@
 'use client';
 
-import type { AccountingImageRetentionQueueItem } from './inbox-model';
+import type { AccountingImageRetentionQueueItem } from '../contracts/inbox';
 
 type Props = {
   items: AccountingImageRetentionQueueItem[];

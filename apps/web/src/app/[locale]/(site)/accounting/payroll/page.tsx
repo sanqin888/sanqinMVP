@@ -6,14 +6,14 @@ import { apiFetch } from '@/lib/api/client';
 import { PayrollRunPanel } from './payroll-run-panel';
 import { PayrollSetupPanel } from './payroll-setup-panel';
 import { PayrollCraRemittancePanel } from './payroll-cra-remittance-panel';
-import {
-  payrollMoney,
-  type PayrollEmployee,
-  type PayrollEmployeeConfig,
-  type PayrollEmployer,
-  type PayrollEmployerConfig,
-  type PayrollRun,
-} from './payroll-types';
+import type {
+  PayrollEmployee,
+  PayrollEmployeeConfig,
+  PayrollEmployer,
+  PayrollEmployerConfig,
+  PayrollRun,
+} from '../contracts/payroll';
+import { payrollMoney } from './payroll-ui';
 import { PayrollYearOpeningPanel } from './payroll-year-opening-panel';
 
 type PayrollView = 'runs' | 'employees' | 'cra';

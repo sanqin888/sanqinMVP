@@ -2,14 +2,13 @@
 
 import { FormEvent, useMemo, useState } from 'react';
 import { apiFetch } from '@/lib/api/client';
-import {
-  payrollLocalDateToday,
-  payrollMoney,
-  type PayrollEmployee,
-  type PayrollEmployeeConfig,
-  type PayrollEmployer,
-  type PayrollEmployerConfig,
-} from './payroll-types';
+import type {
+  PayrollEmployee,
+  PayrollEmployeeConfig,
+  PayrollEmployer,
+  PayrollEmployerConfig,
+} from '../contracts/payroll';
+import { payrollLocalDateToday, payrollMoney } from './payroll-ui';
 import {
   PayrollEmployeeConfigForm,
   PayrollEmployerConfigForm,

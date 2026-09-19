@@ -2,15 +2,17 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '@/lib/api/client';
-import { money } from '../inbox/inbox-model';
 import type {
   ProviderSettlementExecutionReport,
   ProviderSettlementShadowPreview,
-} from './settlement-model';
+} from '../contracts/settlements';
 import {
   buildProviderSettlementReplayGate,
   type ProviderSettlementReplayGate,
 } from './settlement-replay-policy';
+
+const money = (cents: number | null | undefined) =>
+  `$${((cents ?? 0) / 100).toFixed(2)}`;
 
 type ExecutionState = 'IDLE' | 'EXECUTING' | 'VERIFYING' | 'VERIFIED' | 'UNKNOWN';
 

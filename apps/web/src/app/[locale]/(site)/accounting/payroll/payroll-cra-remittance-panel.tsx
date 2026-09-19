@@ -8,13 +8,12 @@ import {
   useState,
 } from 'react';
 import { apiFetch } from '@/lib/api/client';
-import {
-  payrollLocalDateToday,
-  payrollMoney,
-  type PayrollCraRemittance,
-  type PayrollCraRemittancePreview,
-  type PayrollPaymentAccount,
-} from './payroll-types';
+import type { AccountingAccount } from '../contracts/chart';
+import type {
+  PayrollCraRemittance,
+  PayrollCraRemittancePreview,
+} from '../contracts/payroll';
+import { payrollLocalDateToday, payrollMoney } from './payroll-ui';
 
 const latestIncludedPayDate = (
   preview: PayrollCraRemittancePreview | null,
@@ -32,7 +31,7 @@ export function PayrollCraRemittancePanel({
   employerStableId: string;
 }) {
   const [anchorDate, setAnchorDate] = useState(payrollLocalDateToday());
-  const [accounts, setAccounts] = useState<PayrollPaymentAccount[]>([]);
+  const [accounts, setAccounts] = useState<AccountingAccount[]>([]);
   const [preview, setPreview] = useState<PayrollCraRemittancePreview | null>(
     null,
   );
@@ -66,7 +65,7 @@ export function PayrollCraRemittancePanel({
       const encodedEmployer = encodeURIComponent(employerStableId);
       const encodedAnchor = encodeURIComponent(anchorDate);
       const [nextAccounts, nextPreview, nextRemittances] = await Promise.all([
-        apiFetch<PayrollPaymentAccount[]>('/accounting/accounts'),
+        apiFetch<AccountingAccount[]>('/accounting/accounts'),
         apiFetch<PayrollCraRemittancePreview>(
           '/accounting/payroll/employers/' +
             encodedEmployer +

@@ -1,6 +1,6 @@
 'use client';
 
-import type { AccountingManualUploadLibraryItem } from './inbox-model';
+import type { AccountingManualUploadLibraryItem } from '../contracts/inbox';
 
 type Props = {
   items: AccountingManualUploadLibraryItem[];
