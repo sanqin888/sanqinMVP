@@ -12,7 +12,11 @@ describe('StaffAdministrationService', () => {
       userInvite: {
         findMany: jest.fn(),
       },
+      $transaction: jest.fn(),
     };
+    prisma.$transaction.mockImplementation(
+      (work: (tx: typeof prisma) => Promise<unknown>) => work(prisma),
+    );
     const authService = {
       createStaffInvite: jest.fn(),
       resendStaffInvite: jest.fn(),
@@ -127,6 +131,33 @@ describe('StaffAdministrationService', () => {
       where: { role: 'ADMIN', status: 'ACTIVE' },
     });
     expect(prisma.user.update).not.toHaveBeenCalled();
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+      isolationLevel: 'Serializable',
+    });
+  });
+
+  it('preserves the last-active-admin invariant before disabling an admin', async () => {
+    const { service, prisma } = createService();
+    prisma.user.findUnique.mockResolvedValue({
+      id: 'target-db-id',
+      userStableId: 'target-stable-id',
+      role: 'ADMIN',
+      status: 'ACTIVE',
+    });
+    prisma.user.count.mockResolvedValue(1);
+
+    await expect(
+      service.updateStaff({
+        actorUserStableId: 'actor-stable-id',
+        targetUserStableId: 'target-stable-id',
+        status: 'DISABLED',
+      }),
+    ).rejects.toMatchObject({
+      code: 'LAST_ACTIVE_ADMIN',
+      message: 'Cannot modify last active admin',
+    });
+
+    expect(prisma.user.update).not.toHaveBeenCalled();
   });
 
   it('allows an admin demotion when another active admin remains', async () => {
@@ -177,6 +208,63 @@ describe('StaffAdministrationService', () => {
         },
       },
     });
+  });
+
+  it('retries a serialization conflict and re-checks the invariant after a concurrent admin removal', async () => {
+    const { service, prisma } = createService();
+    const target = {
+      id: 'target-db-id',
+      userStableId: 'target-stable-id',
+      role: 'ADMIN',
+      status: 'ACTIVE',
+    };
+    const createdAt = new Date('2026-08-01T00:00:00.000Z');
+
+    prisma.user.findUnique.mockResolvedValue(target);
+    prisma.user.count.mockResolvedValueOnce(2).mockResolvedValueOnce(1);
+    prisma.user.update.mockResolvedValue({
+      userStableId: 'target-stable-id',
+      email: 'target@example.com',
+      role: 'STAFF',
+      status: 'ACTIVE',
+      createdAt,
+      firstName: 'Target',
+      lastName: null,
+      sessions: [],
+    });
+
+    let transactionAttempt = 0;
+    prisma.$transaction.mockImplementation(
+      async (
+        work: (tx: typeof prisma) => Promise<unknown>,
+        options: { isolationLevel?: string },
+      ) => {
+        expect(options).toEqual({ isolationLevel: 'Serializable' });
+        transactionAttempt += 1;
+        const result = await work(prisma);
+        if (transactionAttempt === 1) {
+          throw Object.assign(new Error('serialization conflict'), {
+            code: 'P2034',
+          });
+        }
+        return result;
+      },
+    );
+
+    await expect(
+      service.updateStaff({
+        actorUserStableId: 'actor-stable-id',
+        targetUserStableId: 'target-stable-id',
+        role: 'STAFF',
+      }),
+    ).rejects.toMatchObject({
+      code: 'LAST_ACTIVE_ADMIN',
+      message: 'Cannot modify last active admin',
+    });
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+    expect(prisma.user.count).toHaveBeenCalledTimes(2);
+    expect(prisma.user.update).toHaveBeenCalledTimes(1);
   });
 
   it('creates and delivers an invite from a stable inviter identity', async () => {
