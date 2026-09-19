@@ -65,14 +65,16 @@ export function PayrollSetupPanel({
   const currentEmployerConfig = employerConfigs[0] ?? null;
   const currentEmployeeConfig = employeeConfigs[0] ?? null;
 
-  async function submit(action: () => Promise<unknown>) {
+  async function submit<T>(action: () => Promise<T>): Promise<T | null> {
     setBusy(true);
     setError(null);
     try {
-      await action();
+      const result = await action();
       await onChanged();
+      return result;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
+      return null;
     } finally {
       setBusy(false);
     }
@@ -96,23 +98,31 @@ export function PayrollSetupPanel({
   function createEmployee(event: FormEvent) {
     event.preventDefault();
     if (!selectedEmployerStableId) return;
-    void submit(() =>
-      apiFetch(
-        '/accounting/payroll/employers/' +
-          encodeURIComponent(selectedEmployerStableId) +
-          '/employees',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            legalName: employeeName,
-            displayName: employeeDisplayName || null,
-            storeStableId: storeStableId || null,
-            employmentStartDate: employeeStart,
-          }),
-        },
-      ),
-    );
+
+    void (async () => {
+      const created = await submit(() =>
+        apiFetch<PayrollEmployee>(
+          '/accounting/payroll/employers/' +
+            encodeURIComponent(selectedEmployerStableId) +
+            '/employees',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              legalName: employeeName,
+              displayName: employeeDisplayName || null,
+              storeStableId: storeStableId || null,
+              employmentStartDate: employeeStart,
+            }),
+          },
+        ),
+      );
+      if (!created) return;
+
+      onEmployeeSelect(created.employeeStableId);
+      setEmployeeName('');
+      setEmployeeDisplayName('');
+    })();
   }
 
   return (

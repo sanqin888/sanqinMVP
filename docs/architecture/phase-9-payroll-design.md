@@ -43,6 +43,7 @@ with its own stable ID and an **optional** `userStableId` link when the employee
 The primary operator workflow should support the user's requested flow:
 
 1. choose or create an employee;
+   - after a successful create, the operator UI must refresh the employer employee list, select the server-returned `employeeStableId`, and clear the reusable name fields so a successful request cannot look like a no-op or be accidentally repeated;
 2. enter pay-period start/end and pay date;
 3. enter hourly rate and hours for the period;
 4. backend calculates statutory deductions/contributions and employer payroll cost;
