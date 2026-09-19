@@ -1,18 +1,17 @@
 # Current ID inventory
 
-Phase 9 Slice 8P-D4-C working snapshot: `feat/phase9-slice8p-d4c-payroll-corrections`
-from `origin/dev@a9956fe7` (2026-09-18). Current source of truth remains
+Phase 9 Slice 8P-D4-D working snapshot: `fix/phase9-payroll-accrual-period-end`
+from `origin/dev@c5ca3e1c` (2026-09-18). Current source of truth remains
 `apps/api/prisma/schema.prisma`; schema/migration authority follows `AGENTS.md`.
 
 The working schema remains **94 models**: 84 UUID-backed primary keys, six integer
-primary keys, and four natural/stable-token primary keys. Payroll D4-B is merged through
-PR #2396 / squash `a9956fe7`, and reviewed additive migration
-`20260918235731_phase9_slice8p_d4b_payroll_reversal_evidence` is in dev. D4-C adds no
-model, column, constraint or new stable business identity. Correction children reuse
-`PayrollRun.runStableId`; internal `correctionOfRunId` remains a UUID relation while the
-public DTO exposes only `correctionOfRunStableId`. Existing `correctionSequence` and the
-employee/period/pay-date/sequence unique tuple remain the chain/concurrency authority.
-No migration is expected for D4-C.
+primary keys, and four natural/stable-token primary keys. Payroll D4-C is merged through
+PR #2397 / squash `c5ca3e1c` after CI #5908. D4-D adds no model, column, constraint or
+new stable business identity. `PayrollRun.periodEnd` and `PayrollRun.payDate` already
+exist as frozen date facts; the new `accrualDate` is an in-memory owner-authority field
+derived from `periodEnd`, not persisted identity. Existing stable IDs, internal UUID
+relations and employee/period/pay-date/sequence uniqueness are unchanged. No migration
+is expected for D4-D.
 
 ## Primary-key families
 

@@ -1167,6 +1167,7 @@ export class AccountingJournalService {
         reversedAt: true,
         storeStableId: true,
         payDate: true,
+        periodEnd: true,
         grossPayCents: true,
         totalEmployeeDeductionsCents: true,
         netPayCents: true,
@@ -1206,6 +1207,7 @@ export class AccountingJournalService {
       run.reversalReason !== fact.reversalReason ||
       run.storeStableId !== fact.storeStableId ||
       dateOnly(run.payDate) !== fact.payDate ||
+      dateOnly(run.periodEnd) !== fact.accrualDate ||
       run.grossPayCents !== fact.grossPayCents ||
       run.totalEmployeeDeductionsCents !== fact.totalEmployeeDeductionsCents ||
       run.netPayCents !== fact.netPayCents ||
@@ -1432,6 +1434,7 @@ export class AccountingJournalService {
         approvedAt: true,
         storeStableId: true,
         payDate: true,
+        periodEnd: true,
         grossPayCents: true,
         totalEmployeeDeductionsCents: true,
         netPayCents: true,
@@ -1457,6 +1460,7 @@ export class AccountingJournalService {
       run.approvedAt?.toISOString() !== fact.approvedAt ||
       run.storeStableId !== fact.storeStableId ||
       dateOnly(run.payDate) !== fact.payDate ||
+      dateOnly(run.periodEnd) !== fact.accrualDate ||
       run.grossPayCents !== fact.grossPayCents ||
       run.totalEmployeeDeductionsCents !== fact.totalEmployeeDeductionsCents ||
       run.netPayCents !== fact.netPayCents ||

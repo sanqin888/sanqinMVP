@@ -1398,7 +1398,8 @@ D1 defines `payroll.run.accrual.v1` as the canonical Accounting source fact for 
 - source fact stable ID: `PayrollRun.runStableId`;
 - source fact version: `1`;
 - idempotency key: `payroll-run-accrual:<runStableId>:v1`;
-- occurred-at date: the frozen Payroll pay date;
+- statutory/payday date: the frozen Payroll `payDate`;
+- accrual occurred-at date: the frozen Payroll `periodEnd`, carried as owner-derived `accrualDate`;
 - currency: CAD;
 - Store attribution: the frozen run `storeStableId`.
 
@@ -1430,7 +1431,7 @@ Posting uses one existing Accounting Serializable transaction. Inside that trans
 
 1. the run must be `APPROVED` or an idempotent `POSTED` replay;
 2. calculated evidence must be complete and the persisted calculation evidence hash must still reproduce exactly;
-3. the Payroll-specific authority binds the frozen run identity/hash/pay date/Store and exact monetary components;
+3. the Payroll-specific authority binds the frozen run identity/hash/pay date/accrual date/Store and exact monetary components;
 4. `AccountingJournalService` independently re-reads the PayrollRun and all seven Payroll control-account facts inside the same transaction;
 5. normal Accounting period-start/period-lock/account/category/currency/balance/idempotency checks remain authoritative;
 6. only after the Journal write succeeds does the same transaction perform `APPROVED -> POSTED`, freeze `postedJournalEntryStableId / postedAt`, and write `PAYROLL_RUN_POST` audit evidence.
@@ -1801,4 +1802,23 @@ Focused characterization pins canonical child creation, replay, rejection of non
 
 D4-C changes no Prisma model, column, constraint, package, lockfile, public context edge, scanner allowance or direct-import baseline. **NO MIGRATION EXPECTED.**
 
-Current D4-C state: **LOCAL SOURCE REVIEW PENDING / NO MIGRATION / NO LOCAL CI CLAIMED**.
+Current D4-C state: **MERGED / CI GREEN / NO MIGRATION** through PR #2397, final head `10b21117`, CI #5908 and squash `c5ca3e1c`.
+
+## 32. 8P-D4-D Payroll accrual-date semantic correction — local implementation review state
+
+Before the first controlled production PayrollRun is posted, D4-D separates financial expense recognition from statutory payday semantics. The persisted PayrollRun already freezes both `periodEnd` and `payDate`, so no schema change is required.
+
+The owner-derived `payroll.run.accrual.v1` fact now carries both:
+
+- `payDate`: statutory/payday identity used by the calculator, YTD, employee configuration selection and CRA remittance-period policy;
+- `accrualDate`: derived only from frozen `PayrollRun.periodEnd`, used as the Accounting Journal `occurredAt` for wage/employer-contribution/vacation expense and payroll liabilities.
+
+The inverse `payroll.run.reversal.v1` uses the same frozen `accrualDate`, so an original Payroll accrual and its reversal are controlled by the same Accounting month/year lock. `AccountingJournalService` independently re-reads both `payDate` and `periodEnd` from PayrollRun before either accrual or reversal Journal persistence and fails closed if the owner authority drifts.
+
+Employee net-pay settlement remains dated by actual `PayrollEmployeePayment.paymentDate`. CRA remittance settlement remains dated by actual remittance `paymentDate`, and CRA inclusion/due-date policy remains payday-based. The statutory calculator/YTD/remittance code is intentionally unchanged.
+
+For the current MONTHLY operating policy, a June 1-30 PayrollRun paid in early July therefore recognizes Payroll expense/liability on June 30 while retaining the July payday for payroll tax/YTD/CRA semantics. Existing BIWEEKLY support remains available; the MVP policy recognizes a cross-month biweekly run wholly on its `periodEnd`. If operations later require strict cross-month labor accrual allocation, that is a separate future policy and not part of D4-D.
+
+D4-D changes no Prisma model/column/constraint, migration, package/lockfile, public context edge, scanner allowance or direct-import baseline. Source characterization uses deliberately different `accrualDate` and `payDate` values, period-lock characterization pins `periodEnd`, and architecture guards prevent regression to `occurredAt = payDate`.
+
+Current D4-D state: **LOCAL SOURCE REVIEW PENDING / NO MIGRATION / NO LOCAL CI CLAIMED**.

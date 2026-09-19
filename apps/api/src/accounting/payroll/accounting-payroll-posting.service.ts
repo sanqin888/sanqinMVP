@@ -89,6 +89,7 @@ const buildAccrualFact = (
     approvedAt: run.approvedAt.toISOString(),
     storeStableId: run.storeStableId,
     payDate: run.payDate.toISOString().slice(0, 10),
+    accrualDate: run.periodEnd.toISOString().slice(0, 10),
     grossPayCents: requireAmount(run.grossPayCents, 'grossPayCents'),
     totalEmployeeDeductionsCents: requireAmount(
       run.totalEmployeeDeductionsCents,

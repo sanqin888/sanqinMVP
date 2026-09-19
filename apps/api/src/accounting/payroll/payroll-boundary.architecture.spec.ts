@@ -28,7 +28,7 @@ const modelSource = (schema: string, model: string): string => {
   return match[0];
 };
 
-describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2/D3-A/D3-B1/D3-B2/D4-B/D4-C Payroll ownership boundary', () => {
+describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2/D3-A/D3-B1/D3-B2/D4-B/D4-C/D4-D Payroll ownership boundary', () => {
   const schema = read(PRISMA_SCHEMA);
 
   it('adds only the approved Payroll core persistence models', () => {
@@ -180,6 +180,11 @@ describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2/D3-A/D3-B1/D3-B2/D4-B/D4-C Payroll o
     expect(authority).toContain('payroll.run.accrual.v1');
     expect(authority).toContain('account_payroll_wages_expense');
     expect(authority).toContain('account_payroll_net_pay_payable');
+    expect(posting).toContain(
+      'accrualDate: run.periodEnd.toISOString().slice(0, 10)',
+    );
+    expect(authority).toContain('occurredAt: fact.accrualDate');
+    expect(authority).not.toContain('occurredAt: fact.payDate');
   });
 
   it('enables only the D2 owner-specific employee-payment writer and keeps the source fact narrow', () => {
@@ -300,6 +305,11 @@ describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2/D3-A/D3-B1/D3-B2/D4-B/D4-C Payroll o
     expect(authority).toContain('AccountingJournalEntryKind.STANDARD');
     expect(authority).not.toContain('AccountingJournalEntryKind.ADJUSTMENT');
     expect(authority).toContain('PAYROLL_LABOR_CATEGORY_STABLE_ID');
+    expect(reversal).toContain(
+      'accrualDate: run.periodEnd.toISOString().slice(0, 10)',
+    );
+    expect(authority).toContain('occurredAt: fact.accrualDate');
+    expect(authority).not.toContain('occurredAt: fact.payDate');
     expect(reversalInput).toContain('reason: string');
     expect(reversalInput).not.toContain('amountCents');
     expect(reversalInput).not.toContain('occurredAt');
