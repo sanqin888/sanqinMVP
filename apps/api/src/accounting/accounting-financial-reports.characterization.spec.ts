@@ -219,6 +219,62 @@ describe('AccountingFinancialReportsService canonical fact characterization', ()
     );
   });
 
+  it('interprets date-only report ranges in the configured business timezone', async () => {
+    const prisma = {
+      accountingJournalEntry: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      accountingTransaction: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      accountingCategory: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+    };
+    const period = {
+      clampAccountingFromDate: jest.fn((value: Date | undefined) =>
+        Promise.resolve(value),
+      ),
+      getBusinessTimezone: jest.fn().mockResolvedValue('America/Toronto'),
+      toPeriodKey: jest.fn().mockReturnValue('2026-09'),
+      listPeriodCloseStatus: jest.fn().mockResolvedValue([]),
+    };
+    const service = new AccountingFinancialReportsService(
+      prisma as never,
+      period as never,
+    );
+
+    await service.pnlReport({
+      from: '2026-09-01',
+      to: '2026-09-19',
+      groupBy: 'month',
+    });
+
+    const expectedRange = {
+      gte: new Date('2026-09-01T04:00:00.000Z'),
+      lte: new Date('2026-09-20T03:59:59.999Z'),
+    };
+    expect(prisma.accountingJournalEntry.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          deletedAt: null,
+          source: { not: AccountingJournalSource.EXPENSE_DOCUMENT },
+          occurredAt: expectedRange,
+        },
+      }),
+    );
+    expect(prisma.accountingTransaction.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          deletedAt: null,
+          type: AccountingTxType.EXPENSE,
+          document: { status: AccountingDocumentStatus.CONFIRMED },
+          occurredAt: expectedRange,
+        },
+      }),
+    );
+  });
+
   it('derives cashflow from CASH/BANK movements only', async () => {
     const prisma = {
       accountingJournalEntry: {
