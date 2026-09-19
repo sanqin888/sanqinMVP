@@ -12,14 +12,14 @@ export class AccountingAuditController {
   async listAuditLogs(
     @Query('entityType') entityType?: string,
     @Query('entityId') entityId?: string,
-    @Query('operatorUserId') operatorUserId?: string,
+    @Query('operatorActorRef') operatorActorRef?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
     return this.accountingService.listAuditLogs({
       entityType,
       entityId,
-      operatorActorRef: operatorUserId,
+      operatorActorRef,
       from,
       to,
     });
