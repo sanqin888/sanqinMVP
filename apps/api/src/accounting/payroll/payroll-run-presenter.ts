@@ -58,6 +58,7 @@ export type PayrollRunViewRecord = {
   updatedAt: Date;
   employee: { employeeStableId: string };
   employer: { employerStableId: string };
+  correctionOfRun: { runStableId: string } | null;
 };
 
 export const payrollRunDto = (row: PayrollRunViewRecord) => ({
@@ -65,6 +66,7 @@ export const payrollRunDto = (row: PayrollRunViewRecord) => ({
   employerStableId: row.employer.employerStableId,
   employeeStableId: row.employee.employeeStableId,
   status: row.status,
+  correctionOfRunStableId: row.correctionOfRun?.runStableId ?? null,
   correctionSequence: row.correctionSequence,
   version: row.version,
   periodStart: payrollDateOnly(row.periodStart),

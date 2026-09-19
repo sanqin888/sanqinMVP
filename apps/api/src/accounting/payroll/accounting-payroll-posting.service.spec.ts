@@ -119,6 +119,7 @@ const runRow = (
     updatedAt: new Date('2026-09-18T13:00:00.000Z'),
     employee: { employeeStableId: 'employee_1' },
     employer: { employerStableId: 'employer_1' },
+    correctionOfRun: null,
   };
 };
 

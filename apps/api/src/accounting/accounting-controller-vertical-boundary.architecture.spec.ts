@@ -120,6 +120,7 @@ const EXPECTED_ROUTES = [
   'POST payroll/runs',
   'GET payroll/runs/:runStableId',
   'PUT payroll/runs/:runStableId',
+  'POST payroll/runs/:runStableId/corrections',
   'POST payroll/runs/:runStableId/calculate',
   'POST payroll/runs/:runStableId/approve',
   'POST payroll/runs/:runStableId/post',

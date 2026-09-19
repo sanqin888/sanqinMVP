@@ -256,6 +256,17 @@ export class AccountingPayrollController {
     );
   }
 
+  @Post('payroll/runs/:runStableId/corrections')
+  createCorrection(
+    @Param('runStableId') runStableId: string,
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.runs.createCorrection(
+      runStableId,
+      requireAccountingOperatorUserId(req),
+    );
+  }
+
   @Post('payroll/runs/:runStableId/calculate')
   calculateRun(
     @Param('runStableId') runStableId: string,

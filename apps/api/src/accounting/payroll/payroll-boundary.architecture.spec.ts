@@ -28,7 +28,7 @@ const modelSource = (schema: string, model: string): string => {
   return match[0];
 };
 
-describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2/D3-A/D3-B1/D3-B2/D4-B Payroll ownership boundary', () => {
+describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2/D3-A/D3-B1/D3-B2/D4-B/D4-C Payroll ownership boundary', () => {
   const schema = read(PRISMA_SCHEMA);
 
   it('adds only the approved Payroll core persistence models', () => {
@@ -306,6 +306,32 @@ describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2/D3-A/D3-B1/D3-B2/D4-B Payroll owners
     expect(ytdService).toContain('PayrollRunStatus.REVERSED');
     expect(ytd).toContain('applyRunEffect(row, 1)');
     expect(ytd).toContain('applyRunEffect(row, -1)');
+  });
+
+  it('keeps D4-C correction creation Payroll-owned, linear and stable-ID based', () => {
+    const controller = read(
+      resolve(PAYROLL_ROOT, 'accounting-payroll.controller.ts'),
+    );
+    const runs = read(
+      resolve(PAYROLL_ROOT, 'accounting-payroll-run.service.ts'),
+    );
+    const presenter = read(resolve(PAYROLL_ROOT, 'payroll-run-presenter.ts'));
+
+    expect(controller).toContain(
+      "@Post('payroll/runs/:runStableId/corrections')",
+    );
+    expect(runs).toContain('PayrollRunStatus.REVERSED');
+    expect(runs).toContain('correctionOfRunId: parent.id');
+    expect(runs).toContain('parent.correctionSequence + 1');
+    expect(runs).toContain(
+      'Only the latest Payroll correction predecessor can create the next correction',
+    );
+    expect(runs).toContain(
+      'Payroll correction identity fields cannot be changed',
+    );
+    expect(runs).not.toContain('CreatePayrollCorrectionInput');
+    expect(presenter).toContain('correctionOfRunStableId');
+    expect(presenter).not.toContain('correctionOfRunId:');
   });
 
   it('pins the approved PayrollRun evidence and correction shape', () => {
