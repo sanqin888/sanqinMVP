@@ -2,38 +2,25 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api/client';
-
-type MatchMode = 'ANY' | 'ALL';
-type Provider = 'CLOVER' | 'UBER_EATS' | 'FANTUAN';
-type DocumentType = 'BATCH_CONTROL' | 'STATEMENT' | 'API_REPORT' | 'OTHER';
-
-type ProviderRecognitionRule = {
-  ruleStableId: string;
-  provider: Provider;
-  documentType: DocumentType;
-  requiredKeywords: string[];
-  optionalKeywords: string[];
-  optionalMatchMode: MatchMode;
-  priority: number;
-  isActive: boolean;
-  version: number;
-  updatedByUserStableId: string | null;
-  persisted: boolean;
-  changed?: boolean;
-};
+import type { AccountingFinancialProvider } from '../contracts/core';
+import type {
+  AccountingProviderRecognitionMatchMode,
+  AccountingProviderRecognitionRule,
+} from '../contracts/inbox';
+import type { AccountingFinancialDocumentType } from '../contracts/provider-financial';
 
 type Props = {
   isZh: boolean;
 };
 
-const providerLabels: Record<Provider, string> = {
+const providerLabels: Record<AccountingFinancialProvider, string> = {
   CLOVER: 'Clover',
   UBER_EATS: 'Uber Eats',
   FANTUAN: 'Fantuan',
 };
 
 export function AccountingProviderRecognitionRulesSettings({ isZh }: Props) {
-  const [rules, setRules] = useState<ProviderRecognitionRule[]>([]);
+  const [rules, setRules] = useState<AccountingProviderRecognitionRule[]>([]);
   const [keywordDrafts, setKeywordDrafts] = useState<
     Record<string, { required: string; optional: string }>
   >({});
@@ -46,7 +33,7 @@ export function AccountingProviderRecognitionRulesSettings({ isZh }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const loaded = await apiFetch<ProviderRecognitionRule[]>(
+      const loaded = await apiFetch<AccountingProviderRecognitionRule[]>(
         '/accounting/inbox/provider-recognition-rules',
       );
       setRules(loaded);
@@ -74,7 +61,7 @@ export function AccountingProviderRecognitionRulesSettings({ isZh }: Props) {
 
   function editRule(
     ruleStableId: string,
-    patch: Partial<ProviderRecognitionRule>,
+    patch: Partial<AccountingProviderRecognitionRule>,
   ) {
     setRules((current) =>
       current.map((rule) =>
@@ -83,13 +70,13 @@ export function AccountingProviderRecognitionRulesSettings({ isZh }: Props) {
     );
   }
 
-  async function saveRule(rule: ProviderRecognitionRule) {
+  async function saveRule(rule: AccountingProviderRecognitionRule) {
     setBusyRuleId(rule.ruleStableId);
     setMessage(null);
     setError(null);
     try {
       const draft = keywordDrafts[rule.ruleStableId];
-      const updated = await apiFetch<ProviderRecognitionRule>(
+      const updated = await apiFetch<AccountingProviderRecognitionRule>(
         `/accounting/inbox/provider-recognition-rules/${encodeURIComponent(rule.ruleStableId)}`,
         {
           method: 'PUT',
@@ -250,7 +237,8 @@ export function AccountingProviderRecognitionRulesSettings({ isZh }: Props) {
                   value={rule.optionalMatchMode}
                   onChange={(event) =>
                     editRule(rule.ruleStableId, {
-                      optionalMatchMode: event.target.value as MatchMode,
+                      optionalMatchMode:
+                        event.target.value as AccountingProviderRecognitionMatchMode,
                     })
                   }
                 >
@@ -302,7 +290,10 @@ function keywordsFromTextarea(value: string): string[] {
     .filter(Boolean);
 }
 
-function documentTypeLabel(documentType: DocumentType, isZh: boolean) {
+function documentTypeLabel(
+  documentType: AccountingFinancialDocumentType,
+  isZh: boolean,
+) {
   switch (documentType) {
     case 'BATCH_CONTROL':
       return isZh ? '批次控制 / Closeout' : 'Batch control / Closeout';

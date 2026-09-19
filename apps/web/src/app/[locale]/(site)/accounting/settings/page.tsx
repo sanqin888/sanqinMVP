@@ -4,56 +4,18 @@ import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api/client';
+import type {
+  AccountingAutomationRunResult,
+  AccountingAutomationSettings,
+  AccountingPeriodClose,
+} from '../contracts/automation-period';
+import type {
+  AccountingAccount,
+  AccountingCategory,
+} from '../contracts/chart';
 import { AccountingProviderRecognitionRulesSettings } from './provider-recognition-rules';
 
-type CategoryType = 'INCOME' | 'EXPENSE' | 'ADJUSTMENT' | 'TRANSFER';
-type Category = {
-  categoryStableId: string;
-  name: string;
-  type: CategoryType;
-  parentStableId: string | null;
-  isActive: boolean;
-  sortOrder: number;
-};
-type Account = {
-  accountStableId: string;
-  name: string;
-  type: 'CASH' | 'BANK' | 'PLATFORM_WALLET';
-  currency: string;
-};
-type AutomationSettings = {
-  timezone: string;
-  runHour: number;
-  runMinute: number;
-  gmailEnabled: boolean;
-  uberReportsEnabled: boolean;
-  accountingStartDate: string | null;
-  nextRunAt: string | null;
-};
-type AutomationResult = {
-  gmail?: {
-    configured: boolean;
-    scannedMessages: number;
-    importedDocuments: number;
-    duplicateDocuments: number;
-    failedDocuments: number;
-    skippedBeforeStartDate: number;
-  };
-  uber?: Array<unknown>;
-  uberFinancialHistory?: {
-    scannedReports: number;
-    importedReports: number;
-    importedArtifacts: number;
-    deferredArtifacts: number;
-    skippedBeforeStartDate: number;
-    skippedOrderDetailReports: number;
-  };
-};
-type PeriodClose = {
-  periodType: 'MONTH' | 'YEAR';
-  periodKey: string;
-  closedAt: string;
-};
+type CategoryType = AccountingCategory['type'];
 
 const pad2 = (value: number) => String(value).padStart(2, '0');
 
@@ -61,12 +23,13 @@ export default function AccountingSettingsPage() {
   const params = useParams<{ locale: string }>();
   const isZh = params?.locale === 'zh';
   const locale = isZh ? 'zh' : 'en';
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [accounts, setAccounts] = useState<Account[]>([]);
-  const [automation, setAutomation] = useState<AutomationSettings | null>(null);
+  const [categories, setCategories] = useState<AccountingCategory[]>([]);
+  const [accounts, setAccounts] = useState<AccountingAccount[]>([]);
+  const [automation, setAutomation] =
+    useState<AccountingAutomationSettings | null>(null);
   const [automationTime, setAutomationTime] = useState('02:15');
   const [accountName, setAccountName] = useState('');
-  const [accountType, setAccountType] = useState<Account['type']>('BANK');
+  const [accountType, setAccountType] = useState<AccountingAccount['type']>('BANK');
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryType, setNewCategoryType] = useState<CategoryType>('EXPENSE');
   const [newCategoryParent, setNewCategoryParent] = useState('');
@@ -74,7 +37,8 @@ export default function AccountingSettingsPage() {
   const [year, setYear] = useState(String(new Date().getFullYear()));
   const [monthClosed, setMonthClosed] = useState(false);
   const [yearLocked, setYearLocked] = useState(false);
-  const [automationResult, setAutomationResult] = useState<AutomationResult | null>(null);
+  const [automationResult, setAutomationResult] =
+    useState<AccountingAutomationRunResult | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -82,9 +46,9 @@ export default function AccountingSettingsPage() {
   const load = useCallback(async () => {
     try {
       const [cats, accts, automationSettings] = await Promise.all([
-        apiFetch<Category[]>('/accounting/categories?includeInactive=true'),
-        apiFetch<Account[]>('/accounting/accounts'),
-        apiFetch<AutomationSettings>('/accounting/automation/settings'),
+        apiFetch<AccountingCategory[]>('/accounting/categories?includeInactive=true'),
+        apiFetch<AccountingAccount[]>('/accounting/accounts'),
+        apiFetch<AccountingAutomationSettings>('/accounting/automation/settings'),
       ]);
       setCategories(cats);
       setAccounts(accts);
@@ -98,8 +62,12 @@ export default function AccountingSettingsPage() {
   const loadPeriodStatus = useCallback(async () => {
     try {
       const [months, years] = await Promise.all([
-        apiFetch<PeriodClose[]>(`/accounting/period-close/month?periodKeys=${encodeURIComponent(month)}`),
-        apiFetch<PeriodClose[]>(`/accounting/period-close/year?periodKeys=${encodeURIComponent(year)}`),
+        apiFetch<AccountingPeriodClose[]>(
+          `/accounting/period-close/month?periodKeys=${encodeURIComponent(month)}`,
+        ),
+        apiFetch<AccountingPeriodClose[]>(
+          `/accounting/period-close/year?periodKeys=${encodeURIComponent(year)}`,
+        ),
       ]);
       setMonthClosed(months.some((item) => item.periodKey === month));
       setYearLocked(years.some((item) => item.periodKey === year));
@@ -165,13 +133,13 @@ export default function AccountingSettingsPage() {
     finally { setBusy(null); }
   }
 
-  function editCategory(stableId: string, patch: Partial<Category>) {
+  function editCategory(stableId: string, patch: Partial<AccountingCategory>) {
     setCategories((current) => current.map((category) =>
       category.categoryStableId === stableId ? { ...category, ...patch } : category,
     ));
   }
 
-  async function saveCategory(category: Category) {
+  async function saveCategory(category: AccountingCategory) {
     setBusy(`category-${category.categoryStableId}`); setError(null);
     try {
       await apiFetch(`/accounting/categories/${encodeURIComponent(category.categoryStableId)}`, {
@@ -195,7 +163,7 @@ export default function AccountingSettingsPage() {
     const runHour = Number(hourRaw); const runMinute = Number(minuteRaw);
     setBusy('automation-settings'); setError(null);
     try {
-      const updated = await apiFetch<AutomationSettings>('/accounting/automation/settings', {
+      const updated = await apiFetch<AccountingAutomationSettings>('/accounting/automation/settings', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           timezone: automation.timezone,
@@ -216,7 +184,7 @@ export default function AccountingSettingsPage() {
   async function runAutomation() {
     setBusy('automation'); setError(null);
     try {
-      const result = await apiFetch<AutomationResult>('/accounting/automation/run', { method: 'POST' });
+      const result = await apiFetch<AccountingAutomationRunResult>('/accounting/automation/run', { method: 'POST' });
       setAutomationResult(result);
       setMessage(isZh ? '自动采集已执行。' : 'Accounting intake completed.');
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
@@ -307,7 +275,7 @@ export default function AccountingSettingsPage() {
         <div className="mt-3 divide-y text-sm">{accounts.map((account) => <div key={account.accountStableId} className="flex justify-between py-2"><span>{account.name}</span><span className="text-slate-500">{account.type} · {account.currency}</span></div>)}</div>
         <form onSubmit={addAccount} className="mt-4 flex flex-wrap gap-2 border-t pt-4">
           <input className="min-w-64 flex-1 rounded border px-3 py-2 text-sm" placeholder={isZh ? '例如 TD Business' : 'e.g. TD Business'} value={accountName} onChange={(event) => setAccountName(event.target.value)} />
-          <select className="rounded border px-3 py-2 text-sm" value={accountType} onChange={(event) => setAccountType(event.target.value as Account['type'])}><option value="BANK">{isZh ? '银行' : 'Bank'}</option><option value="CASH">{isZh ? '现金' : 'Cash'}</option><option value="PLATFORM_WALLET">{isZh ? '平台待结算' : 'Platform wallet'}</option></select>
+          <select className="rounded border px-3 py-2 text-sm" value={accountType} onChange={(event) => setAccountType(event.target.value as AccountingAccount['type'])}><option value="BANK">{isZh ? '银行' : 'Bank'}</option><option value="CASH">{isZh ? '现金' : 'Cash'}</option><option value="PLATFORM_WALLET">{isZh ? '平台待结算' : 'Platform wallet'}</option></select>
           <button disabled={busy !== null} className="rounded bg-slate-900 px-4 py-2 text-sm text-white disabled:opacity-50">{isZh ? '添加账户' : 'Add account'}</button>
         </form>
       </section>

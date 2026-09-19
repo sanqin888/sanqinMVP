@@ -1,5 +1,11 @@
 import type { AccountingFinancialProvider } from './core';
 
+export type AccountingFinancialDocumentType =
+  | 'BATCH_CONTROL'
+  | 'STATEMENT'
+  | 'API_REPORT'
+  | 'OTHER';
+
 export type AccountingProviderFinancialLine = {
   lineStableId: string;
   lineNo: number;
@@ -18,7 +24,7 @@ export type AccountingProviderFinancialLine = {
 export type AccountingProviderFinancialDocument = {
   documentStableId: string;
   provider: AccountingFinancialProvider;
-  documentType: 'BATCH_CONTROL' | 'STATEMENT' | 'API_REPORT' | 'OTHER';
+  documentType: AccountingFinancialDocumentType;
   revision: number;
   storeStableId: string | null;
   providerMerchantRef: string | null;
