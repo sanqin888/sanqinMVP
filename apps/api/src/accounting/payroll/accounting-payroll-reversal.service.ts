@@ -207,9 +207,7 @@ export class AccountingPayrollReversalService {
         existing.status !== PayrollRunStatus.POSTED &&
         existing.status !== PayrollRunStatus.REVERSED
       ) {
-        throw new ConflictException(
-          'Only POSTED Payroll runs can be reversed',
-        );
+        throw new ConflictException('Only POSTED Payroll runs can be reversed');
       }
 
       assertCalculatedEvidence(existing);
@@ -346,9 +344,7 @@ export class AccountingPayrollReversalService {
             'REVERSED Payroll run is bound to a different reversal Journal entry',
           );
         }
-        return payrollRunDto(
-          existing as unknown as PayrollRunViewRecord,
-        );
+        return payrollRunDto(existing as unknown as PayrollRunViewRecord);
       }
 
       const updated = await tx.payrollRun.update({

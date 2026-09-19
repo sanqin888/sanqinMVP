@@ -74,9 +74,7 @@ describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2/D3-A/D3-B1/D3-B2/D4-B Payroll owners
 
     expect(run).toContain('storeStableId');
     expect(run).toContain('postedJournalEntryStableId');
-    expect(run).toMatch(
-      /reversalJournalEntryStableId\s+String\?\s+@unique/,
-    );
+    expect(run).toMatch(/reversalJournalEntryStableId\s+String\?\s+@unique/);
     expect(run).toContain('reversedByActorRef');
     expect(run).toContain('reversalReason');
     expect(run).toContain('reversedAt');
@@ -292,9 +290,7 @@ describe('Phase 9 Slice 8P-B1/B2/B3/C/D1/D2/D3-A/D3-B1/D3-B2/D4-B Payroll owners
       ),
     );
 
-    expect(controller).toContain(
-      "@Post('payroll/runs/:runStableId/reverse')",
-    );
+    expect(controller).toContain("@Post('payroll/runs/:runStableId/reverse')");
     expect(callers).toEqual(['accounting-payroll-reversal.service.ts']);
     expect(reversal).toContain('PayrollRunStatus.POSTED');
     expect(reversal).toContain('existing.employeePayment');

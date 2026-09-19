@@ -128,20 +128,18 @@ function makeService() {
       findFirst: jest.fn().mockResolvedValue(null),
       update: jest
         .fn()
-        .mockImplementation(
-          ({ data }: { data: Record<string, unknown> }) => {
-            current = {
-              ...current,
-              ...data,
-              version:
-                typeof data.version === 'object' && data.version !== null
-                  ? current.version + 1
-                  : current.version,
-              updatedAt: new Date('2026-09-18T22:00:00.000Z'),
-            } as typeof current;
-            return Promise.resolve(current);
-          },
-        ),
+        .mockImplementation(({ data }: { data: Record<string, unknown> }) => {
+          current = {
+            ...current,
+            ...data,
+            version:
+              typeof data.version === 'object' && data.version !== null
+                ? current.version + 1
+                : current.version,
+            updatedAt: new Date('2026-09-18T22:00:00.000Z'),
+          } as typeof current;
+          return Promise.resolve(current);
+        }),
     },
     accountingAuditLog: {
       create: jest.fn().mockResolvedValue({}),
@@ -308,7 +306,9 @@ describe('AccountingPayrollReversalService', () => {
       'actor_retry',
     );
 
-    expect(journal.createPayrollRunReversalJournalInTx).toHaveBeenCalledTimes(1);
+    expect(
+      journal.createPayrollRunReversalJournalInTx,
+    ).toHaveBeenCalledTimes(1);
     expect(tx.payrollRun.update).not.toHaveBeenCalled();
     expect(tx.accountingAuditLog.create).not.toHaveBeenCalled();
     expect(result.status).toBe(PayrollRunStatus.REVERSED);

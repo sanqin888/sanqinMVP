@@ -131,7 +131,7 @@ describe('Payroll run reversal Journal authority', () => {
         fact: expect.objectContaining({
           postedAccrualJournalEntryStableId: 'journal_payroll_accrual_1',
           reversalReason: 'Incorrect regular hours',
-        }),
+        }) as unknown,
       }),
     );
   });

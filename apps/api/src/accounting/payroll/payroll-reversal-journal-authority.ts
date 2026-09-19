@@ -191,7 +191,9 @@ export const buildPayrollRunReversalWritePlan = (input: {
       version: 1,
       role: 'RUN_REVERSAL',
       fact,
-      accountPrerequisites: buildPayrollAccountPrerequisites(input.accountFacts),
+      accountPrerequisites: buildPayrollAccountPrerequisites(
+        input.accountFacts,
+      ),
     },
   };
 };
