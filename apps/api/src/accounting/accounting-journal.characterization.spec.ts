@@ -3,7 +3,8 @@ import {
   AccountingJournalEntryKind,
   AccountingJournalSource,
 } from '@prisma/client';
-import { AccountingService } from './accounting.service';
+import { AccountingJournalService } from './accounting-journal.service';
+import { AccountingPeriodService } from './accounting-period.service';
 
 const basePayload = {
   idempotencyKey: 'journal:manual:1',
@@ -27,7 +28,7 @@ const basePayload = {
   ],
 };
 
-describe('AccountingService double-entry journal characterization', () => {
+describe('AccountingJournalService double-entry journal characterization', () => {
   const makeService = () => {
     const tx = {
       accountingAutomationConfig: {
@@ -82,11 +83,11 @@ describe('AccountingService double-entry journal characterization', () => {
         timezone: 'America/Toronto',
       }),
     };
-    const service = new AccountingService(
+    const period = new AccountingPeriodService(
       prisma as never,
       brandStoreConfigReader as never,
-      {} as never,
     );
+    const service = new AccountingJournalService(prisma as never, period);
     return { service, prisma };
   };
 

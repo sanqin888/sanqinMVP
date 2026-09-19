@@ -1,21 +1,24 @@
 # Current ID inventory
 
-Phase 1 closeout snapshot: `origin/dev@a050d8b2` (2026-08-30). Current source of truth:
-`apps/api/prisma/schema.prisma`. Phase 8 Slice 8.3A0 later removes the test-era
-`UberOrderItemModifier` model under explicit destructive-migration authorization.
+Phase 9 Slice 8P-D4-C working snapshot: `feat/phase9-slice8p-d4c-payroll-corrections`
+from `origin/dev@a9956fe7` (2026-09-18). Current source of truth remains
+`apps/api/prisma/schema.prisma`; schema/migration authority follows `AGENTS.md`.
 
-The schema currently contains **74 models**: 64 UUID-backed primary keys, six integer
-primary keys, and four natural/stable-token primary keys. Phase 8 Slice 8.3C removed the
-test-era `UberOrderCancellation` model after production verification and the authorized
-destructive migration. This refresh also absorbs pre-existing inventory drift from
-`LoyaltyProgramPolicy` / `PosConnectivityReadModel`. Schema/migration authority still
-follows `AGENTS.md`.
+The working schema remains **94 models**: 84 UUID-backed primary keys, six integer
+primary keys, and four natural/stable-token primary keys. Payroll D4-B is merged through
+PR #2396 / squash `a9956fe7`, and reviewed additive migration
+`20260918235731_phase9_slice8p_d4b_payroll_reversal_evidence` is in dev. D4-C adds no
+model, column, constraint or new stable business identity. Correction children reuse
+`PayrollRun.runStableId`; internal `correctionOfRunId` remains a UUID relation while the
+public DTO exposes only `correctionOfRunStableId`. Existing `correctionSequence` and the
+employee/period/pay-date/sequence unique tuple remain the chain/concurrency authority.
+No migration is expected for D4-C.
 
 ## Primary-key families
 
 | Family | Models |
 |---|---|
-| UUID-backed (64) | UberRateLimitLease; User; UserSession; TrustedDevice; AuthChallenge; Store; StoreConfig; PosDevice; UserInvite; UserAddress; Order; PosPrintJob; Coupon; CouponTemplate; CouponProgram; PromotionRule; UserCoupon; OrderItem; UberWebhookInbox; UberOrderAction; OrderAmendment; OrderAmendmentItem; LoyaltyAccount; LoyaltyTenderReservation; LoyaltyLedger; CheckoutIntent; CloverMerchantAuthorization; PaymentTransaction; PaymentCheckoutAttempt; MessagingSuppression; MessagingSend; MessagingDeliveryEvent; MessagingWebhookEvent; RecipientFailureCounter; MenuCategory; MenuItem; MenuPackagingType; MenuItemPackaging; MenuItemComponent; MenuOptionGroupTemplate; MenuOptionTemplateChoice; MenuOptionChoiceLink; MenuItemOptionGroup; AccountingCategory; AccountingAccount; AccountingTransaction; AccountingExpenseDocument; PlatformSettlementRecord; UberFinancialReport; AccountingAuditLog; AccountingPeriodClose; AnalyticsEvent; OpsEvent; UberMerchantConnection; UberStoreMapping; UberItemChannelConfig; UberCategoryConfig; UberModifierGroupConfig; UberOptionItemConfig; UberOptionChildGroupBinding; UberMenuPublishVersion; UberPublishedMenuItem; UberReconciliationReport; UberOpsTicket |
+| UUID-backed (84) | UberRateLimitLease; User; UserSession; TrustedDevice; AuthChallenge; Store; StoreConfig; PosDevice; UserInvite; UserAddress; Order; PosPrintJob; Coupon; CouponTemplate; CouponProgram; PromotionRule; UserCoupon; OrderItem; UberWebhookInbox; UberOrderAction; OrderAmendment; OrderAmendmentItem; LoyaltyAccount; LoyaltyTenderReservation; LoyaltyLedger; CheckoutIntent; CloverMerchantAuthorization; PaymentTransaction; PaymentCheckoutAttempt; MessagingSuppression; MessagingSend; MessagingDeliveryEvent; MessagingWebhookEvent; RecipientFailureCounter; MenuCategory; MenuItem; MenuPackagingType; MenuItemPackaging; MenuItemComponent; MenuOptionGroupTemplate; MenuOptionTemplateChoice; MenuOptionChoiceLink; MenuItemOptionGroup; AccountingCategory; AccountingAccount; AccountingJournalEntry; AccountingJournalLine; PayrollEmployer; PayrollEmployerConfigVersion; PayrollEmployee; PayrollEmployeeConfigVersion; PayrollEmployeeYearOpening; PayrollRun; PayrollEmployeePayment; PayrollCraRemittance; PayrollCraRemittanceRun; AccountingTransaction; AccountingExpenseDocument; AccountingExpensePaymentAllocation; AccountingSourceArtifact; AccountingArtifactBinaryRetention; AccountingParseRun; AccountingInboxItem; AccountingTrustedSender; AccountingProviderRecognitionRule; AccountingProviderFinancialDocument; AccountingProviderFinancialLine; AccountingProviderFinancialCoverage; UberFinancialReport; AccountingAuditLog; AccountingPeriodClose; AnalyticsEvent; OpsEvent; UberMerchantConnection; UberStoreMapping; UberItemChannelConfig; UberCategoryConfig; UberModifierGroupConfig; UberOptionItemConfig; UberOptionChildGroupBinding; UberMenuPublishVersion; UberPublishedMenuItem; UberReconciliationReport; UberOpsTicket |
 | Integer (6) | BrandConfig singleton; LoyaltyProgramPolicy singleton; BusinessHour; Holiday; MenuDailySpecial; AccountingAutomationConfig singleton |
 | Natural/stable-token (4) | UberRateLimitState.`partitionKey`; PosConnectivityReadModel.`storeStableId`; CloverOAuthStateRequest.`stateHash`; UberOAuthStateRequest.`nonce` |
 
@@ -27,7 +30,7 @@ follows `AGENTS.md`.
 | Orders and Offers | `Order.orderStableId`, `Coupon.couponStableId`, `CouponTemplate.couponStableId`, `CouponProgram.programStableId`, `PromotionRule.stableId`, `OrderAmendment.amendmentStableId` |
 | Catalog | `MenuCategory.stableId`, `MenuItem.stableId`, `MenuPackagingType.stableId`, `MenuDailySpecial.stableId`, `MenuOptionGroupTemplate.stableId`, `MenuOptionTemplateChoice.stableId` plus stable references for components/options |
 | Payments and Loyalty | `PaymentTransaction.attemptId`, `PaymentCheckoutAttempt.attemptId`, `PaymentCheckoutAttempt.orderStableId`, `LoyaltyLedger.ledgerStableId` |
-| Accounting | `categoryStableId`, `accountStableId`, `txStableId`, `documentStableId`, `settlementStableId`, `reportStableId` |
+| Accounting / Payroll | `categoryStableId`, `accountStableId`, `entryStableId`, `txStableId`, `documentStableId`, `paymentAllocationStableId`, `artifactStableId`, `inboxItemStableId`, `trustedSenderStableId`, `ruleStableId`, `coverageStableId`, `reportStableId`; Payroll adds `employerStableId`, config `configStableId`, `employeeStableId`, `openingStableId`, `runStableId`, D2 `paymentStableId`, and D3-B1 `remittanceStableId` |
 | Uber channel | `versionStableId`, `reportStableId`, `ticketStableId` and stable menu/category/template/choice references |
 
 ## External/provider identities
@@ -49,7 +52,7 @@ follows `AGENTS.md`.
 | `Order.userId` | Nullable internal User database identity, stored as PostgreSQL UUID after the Phase 4 rollout recovery | Keep repository/internal or rename/type as `UserDbId`; public contracts use stable identity |
 | `UserAddress.addressStableId` | Public Customer address identity. Schema default is already `cuid()`, but the historical application generator rewrote `c...` to `a...`; production audit on 2026-09-06 found 2/2 rows in that legacy shape | New writes use the canonical shared `c...` generator. The two audited historical rows have been deterministically repaired in production by restoring the first character to `c`, and the saved-address resolution path is verified. Keep the global normalizer strict. |
 | Accounting legacy Order linkage | **RESOLVED in Phase 9 Slice 6D-A / 7-A**: provider settlement `orderId` disappeared with `PlatformSettlementRecord`, and `AccountingTransaction.orderId` is contracted after production verified zero rows | Keep canonical Order identity in Orders-owned financial facts and Journal stable fact references; do not reintroduce an ambiguous scalar `orderId` into AccountingTransaction |
-| Accounting actor / user audit identity | **Slice 7-B source contract**: human-only persisted identities use explicit `*UserStableId`, while Journal/Audit actor fields use `*ActorRef` because production contains both authenticated user stable IDs and registered `system:*` actors | Preserve existing strings exactly through the Class B rename migration; do not add a User DB FK or reinterpret system actors as users. The legacy Audit Web/PWA `operatorUserId` response/query label remains only until planned Slice 8B contract cleanup |
+| Accounting actor / user audit identity | **RESOLVED in Phase 9 Slice 7-B / production-applied**: human-only persisted identities use explicit `*UserStableId`, while Journal/Audit actor fields use `*ActorRef` because production contains both authenticated user stable IDs and registered `system:*` actors | Corrected Class B rename migration is production-applied and preserves existing strings exactly; do not add a User DB FK or reinterpret system actors as users. The legacy Audit Web/PWA `operatorUserId` response/query label remains only until planned Slice 8B contract cleanup |
 | Uber persistence `storeId` | Required SanQ store stable identity; Prisma no longer supplies an implicit `"default"` value | Every new write must pass explicit store identity. Do not backfill Test Store/sandbox history for this contraction; remove those verification-era rows selectively during Uber Production Cutover Cleanup after verification approval. |
 | BusinessHour/Holiday `storeId` | Store DB UUID with legacy default UUID | Move public contracts to stable identity and keep conversion inside persistence |
 

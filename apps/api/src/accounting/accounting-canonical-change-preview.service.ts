@@ -38,7 +38,8 @@ import {
   type CanonicalChangeBlockReason,
   type CanonicalChangeClassification,
 } from './accounting-canonical-change-journal.policy';
-import { AccountingService } from './accounting.service';
+import { AccountingJournalService } from './accounting-journal.service';
+import { AccountingPeriodService } from './accounting-period.service';
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_PREVIEW_RANGE_DAYS = 370;
@@ -266,7 +267,8 @@ const hashCanonicalChangeDraft = (
 @Injectable()
 export class AccountingCanonicalChangePreviewService {
   constructor(
-    private readonly accounting: AccountingService,
+    private readonly period: AccountingPeriodService,
+    private readonly journal: AccountingJournalService,
     @Inject(ORDER_FINANCIAL_CHANGE_FACTS_READER)
     private readonly changes: OrderFinancialChangeFactsReaderPort,
     @Inject(ORDER_FINANCIAL_FACTS_READER)
@@ -285,7 +287,7 @@ export class AccountingCanonicalChangePreviewService {
     input: CanonicalChangeShadowPreviewInput,
   ): Promise<CanonicalChangeShadowPreviewReport> {
     const accountingStartAt =
-      await this.accounting.requireCanonicalFinancialPostingStartAt();
+      await this.period.requireCanonicalFinancialPostingStartAt();
     const storeStableId = input.storeStableId.trim();
     if (!storeStableId) {
       throw new BadRequestException('storeStableId is required');
@@ -389,7 +391,7 @@ export class AccountingCanonicalChangePreviewService {
     );
     const [anchors, paymentFacts, paymentReversalFacts, loyaltyFacts] =
       await Promise.all([
-        this.accounting.readCanonicalSaleJournalAnchors(saleFactStableIds),
+        this.journal.readCanonicalSaleJournalAnchors(saleFactStableIds),
         this.payments.readFactsByOrderStableIds(orderStableIds),
         this.paymentReversals.readReversalFactsByOrderStableIds(orderStableIds),
         this.loyalty.readFactsByOrderStableIds(orderStableIds),

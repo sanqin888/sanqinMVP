@@ -3,7 +3,14 @@ import { resolve } from 'node:path';
 
 const API_SRC_ROOT = resolve(__dirname, '..');
 const PRISMA_SCHEMA = resolve(API_SRC_ROOT, '..', 'prisma', 'schema.prisma');
-const ACCOUNTING_SERVICE = resolve(__dirname, 'accounting.service.ts');
+const ACCOUNTING_JOURNAL_SERVICE = resolve(
+  __dirname,
+  'accounting-journal.service.ts',
+);
+const ACCOUNTING_AUDIT_WRITER = resolve(
+  __dirname,
+  'accounting-audit-writer.ts',
+);
 const INBOX_CLASSIFICATION_WRITER = resolve(
   __dirname,
   'accounting-inbox-classification.writer.ts',
@@ -51,14 +58,13 @@ describe('Phase 9 Slice 7-B Accounting actor/stable identity contract', () => {
   });
 
   it('writes automated Accounting actors through ActorRef fields rather than user identity fields', () => {
-    const accountingService = read(ACCOUNTING_SERVICE);
+    const journalService = read(ACCOUNTING_JOURNAL_SERVICE);
+    const auditWriter = read(ACCOUNTING_AUDIT_WRITER);
     const inboxClassificationWriter = read(INBOX_CLASSIFICATION_WRITER);
 
-    expect(accountingService).toContain('createdByActorRef: operator');
-    expect(accountingService).toContain('updatedByActorRef: operator');
-    expect(accountingService).toContain(
-      'operatorActorRef: params.operatorActorRef',
-    );
+    expect(journalService).toContain('createdByActorRef: operator');
+    expect(journalService).toContain('updatedByActorRef: operator');
+    expect(auditWriter).toContain('operatorActorRef: input.operatorActorRef');
     expect(inboxClassificationWriter).toContain(
       'operatorActorRef: ACCOUNTING_INBOX_CLASSIFIER_ACTOR',
     );

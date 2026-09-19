@@ -9,11 +9,19 @@ const PRISMA_SCHEMA = resolve(
   'prisma',
   'schema.prisma',
 );
-const OPERATIONS_SERVICE = resolve(
+const EXPENSE_CONTRACT = resolve(
   ACCOUNTING_ROOT,
-  'accounting-operations.service.ts',
+  'accounting-expense.contracts.ts',
+);
+const EXPENSE_SERVICE = resolve(
+  ACCOUNTING_ROOT,
+  'accounting-expense.service.ts',
 );
 const ACCOUNTING_SERVICE = resolve(ACCOUNTING_ROOT, 'accounting.service.ts');
+const FINANCIAL_REPORTS_SERVICE = resolve(
+  ACCOUNTING_ROOT,
+  'accounting-financial-reports.service.ts',
+);
 
 const modelBody = (schema: string, modelName: string) => {
   const match = schema.match(
@@ -52,8 +60,9 @@ describe('Accounting Expense payment allocation boundary', () => {
   });
 
   it('exposes paymentAllocations instead of the old single-account Expense input', () => {
-    const operations = readFileSync(OPERATIONS_SERVICE, 'utf8');
-    const input = operations.match(
+    const expenseContract = readFileSync(EXPENSE_CONTRACT, 'utf8');
+    const expenseService = readFileSync(EXPENSE_SERVICE, 'utf8');
+    const input = expenseContract.match(
       /export type AccountingExpenseInput = \{([\s\S]*?)\n\};/,
     )?.[1];
 
@@ -62,20 +71,24 @@ describe('Accounting Expense payment allocation boundary', () => {
       'paymentAllocations?: AccountingExpensePaymentAllocationInput[]',
     );
     expect(input).not.toMatch(/\baccountStableId\?\s*:/);
-    expect(operations).toContain(
+    expect(expenseService).toContain(
       'accountStableId is no longer supported for expenses; use paymentAllocations',
     );
   });
 
-  it('uses payment allocations, not Expense category splits, for account-balance outflow', () => {
-    const service = readFileSync(ACCOUNTING_SERVICE, 'utf8');
+  it('keeps account-balance Expense outflow on confirmed payment allocations', () => {
+    const broadService = readFileSync(ACCOUNTING_SERVICE, 'utf8');
+    const reportsService = readFileSync(FINANCIAL_REPORTS_SERVICE, 'utf8');
 
-    expect(service).toContain(
+    expect(reportsService).toContain('async accountBalanceReport(');
+    expect(reportsService).toContain(
       'this.prisma.accountingExpensePaymentAllocation.findMany',
     );
-    expect(service).toContain(
-      'row.type === AccountingTxType.EXPENSE && row.documentId',
+    expect(reportsService).toContain('AccountingDocumentStatus.CONFIRMED');
+    expect(reportsService).toContain('allocation.amountCents');
+    expect(broadService).not.toContain(
+      'this.prisma.accountingExpensePaymentAllocation.findMany',
     );
-    expect(service).toContain('allocation.amountCents');
+    expect(broadService).not.toContain('async accountBalanceReport(');
   });
 });

@@ -15,7 +15,7 @@ import {
   BRAND_STORE_CONFIG_READER,
   type BrandStoreConfigReaderPort,
 } from '../store/public-api';
-import { AccountingOperationsService } from './accounting-operations.service';
+import { AccountingInboxService } from './accounting-inbox.service';
 import {
   hashAccountingJson,
   PROVIDER_FINANCIAL_HISTORY_START_DATE,
@@ -46,7 +46,7 @@ export class AccountingProviderFinancialProcessingError extends Error {}
 @Injectable()
 export class AccountingProviderFinancialService {
   constructor(
-    private readonly operations: AccountingOperationsService,
+    private readonly inbox: AccountingInboxService,
     @Inject(BRAND_STORE_CONFIG_READER)
     private readonly storeConfig: BrandStoreConfigReaderPort,
   ) {}
@@ -57,7 +57,7 @@ export class AccountingProviderFinancialService {
     try {
       const recognition = matchAccountingProviderRecognitionRule(
         input.text,
-        await this.operations.listProviderRecognitionRules(),
+        await this.inbox.listProviderRecognitionRules(),
       );
       if (!recognition.rule) {
         return {
@@ -76,7 +76,7 @@ export class AccountingProviderFinancialService {
         matchedOptionalKeywords: recognition.matchedOptionalKeywords,
         extractedText: input.text.slice(0, 100_000),
       };
-      await this.operations.recordInboxParseRun({
+      await this.inbox.recordInboxParseRun({
         artifactStableId: input.artifactStableId,
         parserName: ACCOUNTING_PROVIDER_RECOGNITION_PARSER_NAME,
         parserVersion: providerRecognitionParserVersion(recognition.rule),
@@ -84,7 +84,7 @@ export class AccountingProviderFinancialService {
         resultHash: hashAccountingJson(recognitionResult),
         resultJson: recognitionResult,
       });
-      await this.operations.suggestUnifiedInboxClassification(
+      await this.inbox.suggestUnifiedInboxClassification(
         input.artifactStableId,
         {
           classification:
@@ -113,7 +113,7 @@ export class AccountingProviderFinancialService {
         parsed.periodEnd &&
         parsed.periodEnd < PROVIDER_FINANCIAL_HISTORY_START_DATE,
       );
-      await this.operations.recordInboxParseRun({
+      await this.inbox.recordInboxParseRun({
         artifactStableId: input.artifactStableId,
         parserName: ACCOUNTING_PROVIDER_FINANCIAL_PARSER_NAME,
         parserVersion: ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION,
@@ -158,7 +158,7 @@ export class AccountingProviderFinancialService {
       parsed.periodEnd &&
       parsed.periodEnd < PROVIDER_FINANCIAL_HISTORY_START_DATE
     ) {
-      await this.operations.recordInboxParseRun({
+      await this.inbox.recordInboxParseRun({
         artifactStableId: input.artifactStableId,
         parserName: ACCOUNTING_PROVIDER_FINANCIAL_PARSER_NAME,
         parserVersion: ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION,
@@ -183,7 +183,7 @@ export class AccountingProviderFinancialService {
         input.artifactStableId,
         parsed,
       );
-      await this.operations.recordInboxParseRun({
+      await this.inbox.recordInboxParseRun({
         artifactStableId: input.artifactStableId,
         parserName: ACCOUNTING_PROVIDER_FINANCIAL_PARSER_NAME,
         parserVersion: ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION,
@@ -207,7 +207,7 @@ export class AccountingProviderFinancialService {
           ? error.message
           : 'Unknown provider financial processing error';
       try {
-        await this.operations.recordInboxParseRun({
+        await this.inbox.recordInboxParseRun({
           artifactStableId: input.artifactStableId,
           parserName: ACCOUNTING_PROVIDER_FINANCIAL_PARSER_NAME,
           parserVersion: ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION,
@@ -230,9 +230,7 @@ export class AccountingProviderFinancialService {
     operatorUserStableId: string,
   ) {
     const inbox =
-      await this.operations.readUnifiedInboxProviderReviewContext(
-        inboxItemStableId,
-      );
+      await this.inbox.readUnifiedInboxProviderReviewContext(inboxItemStableId);
     if (!inbox) throw new NotFoundException('accounting inbox item not found');
     if (inbox.status !== AccountingInboxStatus.PENDING_REVIEW) {
       throw new ConflictException(
@@ -263,11 +261,11 @@ export class AccountingProviderFinancialService {
         );
       }
       const store = await this.storeConfig.getConfiguredStoreSnapshot();
-      await this.operations.ensureProviderFinancialCoverage(
+      await this.inbox.ensureProviderFinancialCoverage(
         inbox.selectedProvider,
         store.storeStableId,
       );
-      return this.operations.confirmProviderFinancialInboxItem(
+      return this.inbox.confirmProviderFinancialInboxItem(
         inboxItemStableId,
         operatorUserStableId,
       );
@@ -306,7 +304,7 @@ export class AccountingProviderFinancialService {
     }
 
     await this.materializeParsed(inbox.artifact.artifactStableId, parsed);
-    return this.operations.confirmProviderFinancialInboxItem(
+    return this.inbox.confirmProviderFinancialInboxItem(
       inboxItemStableId,
       operatorUserStableId,
     );
@@ -338,7 +336,7 @@ export class AccountingProviderFinancialService {
     parsed: ParsedProviderFinancialDocument,
   ) {
     const store = await this.storeConfig.getConfiguredStoreSnapshot();
-    const document = await this.operations.recordProviderFinancialDocument({
+    const document = await this.inbox.recordProviderFinancialDocument({
       artifactStableId,
       provider: parsed.provider,
       documentType: parsed.documentType,
@@ -354,7 +352,7 @@ export class AccountingProviderFinancialService {
       rawMetadata: parsed.rawMetadata,
       lines: parsed.lines,
     });
-    await this.operations.ensureProviderFinancialCoverage(
+    await this.inbox.ensureProviderFinancialCoverage(
       parsed.provider,
       store.storeStableId,
     );
@@ -366,7 +364,7 @@ export class AccountingProviderFinancialService {
     reportType: string;
   }) {
     if (input.reportType === 'ORDERS_AND_ITEMS_REPORT') return;
-    await this.operations.recordInboxParseRun({
+    await this.inbox.recordInboxParseRun({
       artifactStableId: input.artifactStableId,
       parserName: ACCOUNTING_PROVIDER_FINANCIAL_PARSER_NAME,
       parserVersion: ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION,

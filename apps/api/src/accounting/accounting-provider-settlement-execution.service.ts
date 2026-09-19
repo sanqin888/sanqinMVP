@@ -17,7 +17,7 @@ import {
   AccountingProviderSettlementPreviewService,
   type ProviderSettlementShadowPreviewInput,
 } from './accounting-provider-settlement-preview.service';
-import { AccountingService } from './accounting.service';
+import { AccountingJournalService } from './accounting-journal.service';
 
 export const PROVIDER_SETTLEMENT_SYSTEM_ACTOR =
   'system:accounting-provider-settlement';
@@ -54,7 +54,7 @@ export type ProviderSettlementExecutionReport =
 export class AccountingProviderSettlementExecutionService {
   constructor(
     private readonly preview: AccountingProviderSettlementPreviewService,
-    private readonly accounting: AccountingService,
+    private readonly journal: AccountingJournalService,
   ) {}
 
   async executeRange(
@@ -139,10 +139,6 @@ export class AccountingProviderSettlementExecutionService {
       }
     }
 
-    if (readyDocuments.length > 0) {
-      await this.accounting.assertNoLegacyOrderRevenueAccrual();
-    }
-
     let journalEntriesPostedOrReplayed = 0;
     let providerDocumentsPostedOrReplayed = 0;
     let uberReversalsPostedOrReplayed = 0;
@@ -174,15 +170,14 @@ export class AccountingProviderSettlementExecutionService {
           originalJournalEntryStableId: reversal.originalJournalEntryStableId,
         };
       });
-      const rows =
-        await this.accounting.createProviderSettlementReplacementGroup(
-          {
-            documentJournal,
-            uberPreCutoverReversals: reversalWrites,
-          },
-          PROVIDER_SETTLEMENT_SYSTEM_ACTOR,
-          authority,
-        );
+      const rows = await this.journal.createProviderSettlementReplacementGroup(
+        {
+          documentJournal,
+          uberPreCutoverReversals: reversalWrites,
+        },
+        PROVIDER_SETTLEMENT_SYSTEM_ACTOR,
+        authority,
+      );
       if (rows.length !== 1 + reversalWrites.length) {
         throw new ConflictException(
           `Provider settlement replacement group returned an unexpected Journal count: ${document.documentStableId}`,

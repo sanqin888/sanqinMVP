@@ -61,6 +61,36 @@ export const DEFAULT_ACCOUNTING_ACCOUNTS: readonly AccountingDefaultAccount[] =
       accountClass: AccountingAccountClass.LIABILITY,
     },
     {
+      accountStableId: 'account_payroll_net_pay_payable',
+      name: '应付员工净工资',
+      type: null,
+      accountClass: AccountingAccountClass.LIABILITY,
+    },
+    {
+      accountStableId: 'account_payroll_income_tax_payable',
+      name: '应付工资所得税',
+      type: null,
+      accountClass: AccountingAccountClass.LIABILITY,
+    },
+    {
+      accountStableId: 'account_payroll_cpp_payable',
+      name: '应付 CPP/CPP2',
+      type: null,
+      accountClass: AccountingAccountClass.LIABILITY,
+    },
+    {
+      accountStableId: 'account_payroll_ei_payable',
+      name: '应付 EI',
+      type: null,
+      accountClass: AccountingAccountClass.LIABILITY,
+    },
+    {
+      accountStableId: 'account_payroll_vacation_payable',
+      name: '应付假期工资',
+      type: null,
+      accountClass: AccountingAccountClass.LIABILITY,
+    },
+    {
       accountStableId: 'account_opening_balance_equity',
       name: '期初余额权益',
       type: null,
@@ -105,6 +135,18 @@ export const DEFAULT_ACCOUNTING_ACCOUNTS: readonly AccountingDefaultAccount[] =
     {
       accountStableId: 'account_general_operating_expense',
       name: '一般经营费用',
+      type: null,
+      accountClass: AccountingAccountClass.EXPENSE,
+    },
+    {
+      accountStableId: 'account_payroll_wages_expense',
+      name: '工资费用',
+      type: null,
+      accountClass: AccountingAccountClass.EXPENSE,
+    },
+    {
+      accountStableId: 'account_payroll_employer_contributions_expense',
+      name: '雇主 CPP/CPP2/EI 费用',
       type: null,
       accountClass: AccountingAccountClass.EXPENSE,
     },

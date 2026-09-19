@@ -35,7 +35,8 @@ import {
   CANONICAL_SALE_SYSTEM_ACTOR,
   type CanonicalSaleJournalPolicyErrorCode,
 } from './accounting-canonical-sale-journal.policy';
-import { AccountingService } from './accounting.service';
+import { AccountingJournalService } from './accounting-journal.service';
+import { AccountingPeriodService } from './accounting-period.service';
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_PREVIEW_RANGE_DAYS = 370;
@@ -215,7 +216,8 @@ function replayPlanHash(params: {
 @Injectable()
 export class AccountingCanonicalSaleReplayService {
   constructor(
-    private readonly accounting: AccountingService,
+    private readonly period: AccountingPeriodService,
+    private readonly journal: AccountingJournalService,
     @Inject(ORDER_FINANCIAL_FACTS_READER)
     private readonly orders: OrderFinancialFactsReaderPort,
     @Inject(LOYALTY_FINANCIAL_FACTS_READER)
@@ -228,7 +230,7 @@ export class AccountingCanonicalSaleReplayService {
     input: CanonicalSaleReplayPreviewInput,
   ): Promise<CanonicalSaleReplayPlan> {
     const accountingStartAt =
-      await this.accounting.requireCanonicalFinancialPostingStartAt();
+      await this.period.requireCanonicalFinancialPostingStartAt();
     const storeStableId = input.storeStableId.trim();
     if (!storeStableId) {
       throw new BadRequestException('storeStableId is required');
@@ -587,9 +589,8 @@ export class AccountingCanonicalSaleReplayService {
       );
     }
 
-    await this.accounting.assertNoLegacyOrderRevenueAccrual();
     for (const { journal } of readyJournals) {
-      await this.accounting.createJournalEntry(
+      await this.journal.createJournalEntry(
         journal,
         CANONICAL_SALE_SYSTEM_ACTOR,
       );
