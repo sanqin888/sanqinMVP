@@ -137,6 +137,61 @@ const drawMoneyRow = (
   doc.y = y + 21;
 };
 
+type YtdItem = {
+  label: string;
+  valueCents: number;
+};
+
+const drawYtdGrid = (
+  doc: AccountingPdfDocument,
+  fonts: AccountingPdfFonts,
+  items: readonly YtdItem[],
+) => {
+  const gap = 18;
+  const availableWidth = doc.page.width - LEFT - RIGHT;
+  const columnWidth = (availableWidth - gap) / 2;
+  const valueWidth = 78;
+  const labelWidth = columnWidth - valueWidth - 8;
+
+  for (let index = 0; index < items.length; index += 2) {
+    ensureSpace(doc, 22);
+    const y = doc.y;
+
+    for (let column = 0; column < 2; column += 1) {
+      const item = items[index + column];
+      if (!item) continue;
+
+      const x = LEFT + column * (columnWidth + gap);
+      doc
+        .font(fonts.regular)
+        .fontSize(8)
+        .fillColor('#64748b')
+        .text(item.label, x, y, {
+          width: labelWidth,
+          lineBreak: false,
+          ellipsis: true,
+        });
+      doc
+        .font(fonts.bold)
+        .fontSize(9)
+        .fillColor('#0f172a')
+        .text(money(item.valueCents), x + columnWidth - valueWidth, y, {
+          width: valueWidth,
+          align: 'right',
+          lineBreak: false,
+        });
+    }
+
+    doc
+      .moveTo(LEFT, y + 17)
+      .lineTo(doc.page.width - RIGHT, y + 17)
+      .lineWidth(0.4)
+      .strokeColor('#e2e8f0')
+      .stroke();
+    doc.y = y + 21;
+  }
+};
+
 export const renderPayrollPayStatementPdf = (
   snapshot: PayrollPayStatementSnapshot,
 ): Promise<Buffer> => {
@@ -252,68 +307,50 @@ export const renderPayrollPayStatementPdf = (
       doc.y = netY + 60;
 
       drawSectionTitle(doc, fonts, 'Year to date');
-      drawKeyValue(
-        doc,
-        fonts,
-        'Gross earnings YTD',
-        money(snapshot.ytd.grossEarningsYtdCents),
-      );
-      drawKeyValue(
-        doc,
-        fonts,
-        'Net pay YTD',
-        money(snapshot.ytd.netPayYtdCents),
-      );
-      drawKeyValue(
-        doc,
-        fonts,
-        'Income tax YTD',
-        money(snapshot.ytd.incomeTaxYtdCents),
-      );
-      drawKeyValue(
-        doc,
-        fonts,
-        'CPP YTD',
-        money(snapshot.ytd.employeeCppYtdCents),
-      );
-      drawKeyValue(
-        doc,
-        fonts,
-        'CPP2 YTD',
-        money(snapshot.ytd.employeeCpp2YtdCents),
-      );
-      drawKeyValue(
-        doc,
-        fonts,
-        'EI YTD',
-        money(snapshot.ytd.employeeEiYtdCents),
-      );
-      drawKeyValue(
-        doc,
-        fonts,
-        'Pensionable earnings YTD',
-        money(snapshot.ytd.pensionableEarningsYtdCents),
-      );
-      drawKeyValue(
-        doc,
-        fonts,
-        'Insurable earnings YTD',
-        money(snapshot.ytd.insurableEarningsYtdCents),
-      );
-      drawKeyValue(
-        doc,
-        fonts,
-        'Vacation paid YTD',
-        money(snapshot.ytd.vacationPayPaidYtdCents),
-      );
-      drawKeyValue(
-        doc,
-        fonts,
-        'Vacation accrued YTD',
-        money(snapshot.ytd.vacationPayAccruedYtdCents),
-      );
+      drawYtdGrid(doc, fonts, [
+        {
+          label: 'Gross earnings YTD',
+          valueCents: snapshot.ytd.grossEarningsYtdCents,
+        },
+        {
+          label: 'Net pay YTD',
+          valueCents: snapshot.ytd.netPayYtdCents,
+        },
+        {
+          label: 'Income tax YTD',
+          valueCents: snapshot.ytd.incomeTaxYtdCents,
+        },
+        {
+          label: 'CPP YTD',
+          valueCents: snapshot.ytd.employeeCppYtdCents,
+        },
+        {
+          label: 'CPP2 YTD',
+          valueCents: snapshot.ytd.employeeCpp2YtdCents,
+        },
+        {
+          label: 'EI YTD',
+          valueCents: snapshot.ytd.employeeEiYtdCents,
+        },
+        {
+          label: 'Pensionable earnings YTD',
+          valueCents: snapshot.ytd.pensionableEarningsYtdCents,
+        },
+        {
+          label: 'Insurable earnings YTD',
+          valueCents: snapshot.ytd.insurableEarningsYtdCents,
+        },
+        {
+          label: 'Vacation paid YTD',
+          valueCents: snapshot.ytd.vacationPayPaidYtdCents,
+        },
+        {
+          label: 'Vacation accrued YTD',
+          valueCents: snapshot.ytd.vacationPayAccruedYtdCents,
+        },
+      ]);
 
-      doc.moveDown(0.8);
+      doc.moveDown(0.6);
       doc
         .font(fonts.regular)
         .fontSize(7.5)

@@ -58,15 +58,18 @@ describe('Payroll pay-statement PDF', () => {
     else process.env.SANQ_PDF_FONT_BOLD = previousBold;
   });
 
-  it('renders a complete finalized statement with ASCII fallback fonts', async () => {
+  it('renders a complete finalized statement on one LETTER page with ASCII fallback fonts', async () => {
     process.env.SANQ_PDF_FONT_REGULAR = '/definitely/missing-regular.ttf';
     process.env.SANQ_PDF_FONT_BOLD = '/definitely/missing-bold.ttf';
 
     const buffer = await renderPayrollPayStatementPdf(snapshot());
+    const pageCount =
+      buffer.toString('latin1').match(/\/Type\s*\/Page\b/g)?.length ?? 0;
 
     expect(buffer.subarray(0, 5).toString('ascii')).toBe('%PDF-');
     expect(buffer.toString('ascii').trimEnd().endsWith('%%EOF')).toBe(true);
     expect(buffer.length).toBeGreaterThan(1_000);
+    expect(pageCount).toBe(1);
   });
 
   it('fails closed for Unicode names when the CJK runtime font is missing', async () => {
