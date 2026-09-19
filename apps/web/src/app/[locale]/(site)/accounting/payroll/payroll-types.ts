@@ -85,6 +85,7 @@ export type PayrollRun = {
   employerStableId: string;
   employeeStableId: string;
   status: PayrollRunStatus;
+  correctionOfRunStableId: string | null;
   correctionSequence: number;
   version: number;
   periodStart: string;
@@ -127,6 +128,9 @@ export type PayrollRun = {
   payStatementTemplateVersion: string | null;
   postedJournalEntryStableId: string | null;
   postedAt: string | null;
+  reversalJournalEntryStableId: string | null;
+  reversedByActorRef: string | null;
+  reversalReason: string | null;
   reversedAt: string | null;
   ytdBefore: PayrollYtd | null;
   ytdAfter: PayrollYtd | null;

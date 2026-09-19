@@ -1695,7 +1695,7 @@ D3-B2 introduces no package/lockfile change, no scanner allowance, no new public
 
 Current D3-B2 state: **MERGED / PR CI GREEN / NO MIGRATION** through PR #2395, final head `057330af`, PR CI #5901 and squash `ccc76515`. The squash merge commit itself has no separate Actions run recorded; PR CI is the authoritative validation evidence.
 
-## 30. 8P-D4-B posted-run reversal authority + canonical YTD — local implementation review state
+## 30. 8P-D4-B posted-run reversal authority + canonical YTD — merged state
 
 8P-D4-B starts from merged `origin/dev@ccc76515`. It activates only explicit reversal of an unsettled POSTED PayrollRun. Correction-run creation and operator correction-chain UI remain D4-C.
 
@@ -1749,10 +1749,56 @@ Canonical YTD now reads `APPROVED / POSTED / REVERSED` finalized rows. A REVERSE
 
 ### 30.5 Migration / deferred scope / local review
 
-**MIGRATION REQUIRED.** D4-B changes `schema.prisma` only by adding nullable `reversalJournalEntryStableId @unique`, `reversedByActorRef` and `reversalReason` to `PayrollRun`. It adds no model, enum, FK, backfill, CoA account or package dependency. Per `AGENTS.md`, MCP does not create or edit `apps/api/prisma/migrations/**`; the operator must generate the additive migration locally after source review.
+D4-B required and now includes the reviewed operator-generated additive migration `20260918235731_phase9_slice8p_d4b_payroll_reversal_evidence`. It adds only nullable `reversalJournalEntryStableId @unique`, `reversedByActorRef` and `reversalReason` to `PayrollRun`, with no model, enum, FK, backfill, CoA account or package dependency.
 
 D4-C remains responsible for correction-run creation from a REVERSED predecessor, immediate-parent `correctionOfRunId` linkage, monotonic `correctionSequence`, correction-chain/operator UI and final D4 closeout.
 
 Focused source characterization has been added for inverse Journal shape, settlement/later-run blockers, original accrual authority re-read, period-lock delegation, replay/reason drift and explicit YTD reversal effects. Architecture guards pin the single Payroll reversal Journal writer, exact authenticated route and no-client-amount/date contract. No package/lockfile, public context edge, scanner allowance or direct-import baseline change is introduced.
 
-Current D4-B state: **REMOTE FEATURE BRANCH / MIGRATION REQUIRED / PR BLOCKED PENDING OPERATOR MIGRATION / NO CI CLAIMED**.
+Current D4-B state: **MERGED / CI GREEN / COMPANION MIGRATION MERGED** through PR #2396, final head `ef0953ff`, CI #5905 and squash `a9956fe7`.
+
+## 31. 8P-D4-C correction chain + operator workflow — local implementation review state
+
+8P-D4-C starts from merged `origin/dev@a9956fe7`. It completes the operator correction workflow without adding persistence. Existing `PayrollRun.correctionOfRunId`, `correctionSequence` and the unique employee/period/pay-date/sequence tuple remain the canonical chain storage.
+
+### 31.1 Linear correction creation
+
+The new route is `POST /accounting/payroll/runs/:runStableId/corrections`. It accepts no correction amounts, dates or identity fields from the client.
+
+A correction can be created only from a `REVERSED` predecessor. The predecessor must be the latest run for the same employee, period and pay date unless an already-created canonical direct child is being replayed. A new child:
+
+- links `correctionOfRunId` to the immediate predecessor;
+- sets `correctionSequence = predecessor + 1`;
+- preserves employer, employee, period start/end, pay date and store identity;
+- copies regular/overtime minutes and rates plus vacation top-up as editable starting inputs;
+- starts as a fresh `DRAFT` with no frozen config, calculation, YTD, approval, Journal, reversal or settlement evidence.
+
+The child then uses the existing calculate → approve → post → settlement pipeline. If a posted correction is itself wrong, it must first be reversed and then becomes the immediate predecessor of the next correction.
+
+Creation runs inside the existing Serializable Accounting write boundary. The persisted unique run tuple remains the concurrency backstop; a concurrent P2002 attempt retries and converges to the winning direct child rather than creating a branch.
+
+### 31.2 Correction identity and public contract
+
+Correction DRAFT/CALCULATED records may continue editing work inputs, but their period start/end, pay date and store identity are frozen. This prevents the correction chain from changing which Payroll fact is being corrected.
+
+The API exposes only `correctionOfRunStableId` to browser consumers. Internal `correctionOfRunId` UUID remains inside Payroll persistence and never crosses the public boundary.
+
+### 31.3 Operator workflow
+
+The Payroll UI now completes both halves of D4:
+
+- POSTED runs expose a reversal action requiring a reason and explicit confirmation;
+- REVERSED runs expose “Create correction”;
+- creating a correction selects and loads the new DRAFT into the existing hours/rates editor;
+- run history marks correction sequence numbers;
+- review details show predecessor stable ID and reversal Journal/reason/actor/time evidence.
+
+EmployeePayment and CRA-remittance blockers remain server-authoritative in D4-B; the UI does not attempt to infer or bypass them.
+
+### 31.4 Characterization / architecture / migration
+
+Focused characterization pins canonical child creation, replay, rejection of non-REVERSED or non-latest predecessors, concurrent unique-conflict convergence, immutable correction identity and continued work-input edits. Architecture guards pin the exact correction route, Payroll ownership, immediate-predecessor linkage and stable-ID DTO.
+
+D4-C changes no Prisma model, column, constraint, package, lockfile, public context edge, scanner allowance or direct-import baseline. **NO MIGRATION EXPECTED.**
+
+Current D4-C state: **LOCAL SOURCE REVIEW PENDING / NO MIGRATION / NO LOCAL CI CLAIMED**.

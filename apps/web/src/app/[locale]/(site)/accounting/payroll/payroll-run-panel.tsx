@@ -270,6 +270,69 @@ export function PayrollRunPanel({
     );
   }
 
+  function reverseRun(runStableId: string) {
+    if (typeof window === 'undefined') return;
+    const reason = window
+      .prompt(
+        isZh
+          ? '请输入冲销原因。冲销会按原发薪日反向记账；已支付员工工资或已汇缴 CRA 的记录不能冲销。'
+          : 'Enter the reversal reason. The reversal posts on the original pay date; runs already settled to the employee or CRA cannot be reversed.',
+      )
+      ?.trim();
+    if (!reason) return;
+    if (
+      !window.confirm(
+        isZh
+          ? '确认冲销这张已入账工资？原记录会保留，并创建精确反向 Journal。'
+          : 'Reverse this posted payroll run? The original remains immutable and an exact inverse Journal will be created.',
+      )
+    ) {
+      return;
+    }
+
+    void execute(
+      () =>
+        apiFetch(
+          '/accounting/payroll/runs/' +
+            encodeURIComponent(runStableId) +
+            '/reverse',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reason }),
+          },
+        ),
+      isZh ? '工资已冲销。' : 'Payroll run reversed.',
+    );
+  }
+
+  function createCorrection(runStableId: string) {
+    if (
+      typeof window !== 'undefined' &&
+      !window.confirm(
+        isZh
+          ? '从这张已冲销记录创建下一条更正草稿？周期、发薪日和门店会保持不变。'
+          : 'Create the next correction draft from this reversed run? Period, pay date and store will remain fixed.',
+      )
+    ) {
+      return;
+    }
+
+    void execute(
+      async () => {
+        const created = await apiFetch<PayrollRun>(
+          '/accounting/payroll/runs/' +
+            encodeURIComponent(runStableId) +
+            '/corrections',
+          { method: 'POST' },
+        );
+        loadRunIntoEditor(created);
+        onRunSelect(created.runStableId);
+      },
+      isZh ? '更正草稿已创建并载入。' : 'Correction draft created and loaded.',
+    );
+  }
+
   function voidRun(runStableId: string) {
     if (
       typeof window !== 'undefined' &&
@@ -456,6 +519,13 @@ export function PayrollRunPanel({
               <p className="mt-1 text-xs text-slate-500">
                 {run.periodStart} → {run.periodEnd}
               </p>
+              {run.correctionSequence > 0 ? (
+                <p className="mt-1 text-xs font-medium text-amber-700">
+                  {isZh
+                    ? `更正 #${run.correctionSequence}`
+                    : `Correction #${run.correctionSequence}`}
+                </p>
+              ) : null}
               <p className="mt-2 text-sm font-semibold">
                 {payrollMoney(run.netPayCents)}
               </p>
@@ -472,6 +542,8 @@ export function PayrollRunPanel({
               calculate={calculate}
               approve={approve}
               postRun={postRun}
+              reverseRun={reverseRun}
+              createCorrection={createCorrection}
               voidRun={voidRun}
             />
             <PayrollEmployeePaymentPanel isZh={isZh} run={selectedRun} />

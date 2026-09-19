@@ -85,6 +85,7 @@ const runRow = (status: PayrollRunStatus) => {
     updatedAt: new Date('2026-09-18T12:00:00.000Z'),
     employee: { employeeStableId: 'employee_stable_1' },
     employer: { employerStableId: 'employer_stable_1' },
+    correctionOfRun: null,
   };
 };
 

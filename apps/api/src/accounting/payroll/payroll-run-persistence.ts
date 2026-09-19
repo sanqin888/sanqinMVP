@@ -7,6 +7,7 @@ import { canonicalPayrollJson } from './payroll-calculation-evidence';
 export const PAYROLL_RUN_INCLUDE = {
   employee: { select: { employeeStableId: true } },
   employer: { select: { employerStableId: true } },
+  correctionOfRun: { select: { runStableId: true } },
 } as const;
 
 export const payrollJsonValue = (value: unknown): AccountingJsonValue =>

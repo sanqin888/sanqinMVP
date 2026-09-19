@@ -33,6 +33,8 @@ import {
   type PayrollRunViewRecord,
 } from './payroll-run-presenter';
 
+const CORRECTION_ATTEMPTS = 2;
+
 const assertDraft = (input: Parameters<typeof assertPayrollRunDraft>[0]) => {
   try {
     assertPayrollRunDraft(input);
@@ -42,6 +44,15 @@ const assertDraft = (input: Parameters<typeof assertPayrollRunDraft>[0]) => {
     );
   }
 };
+
+const isUniqueConstraintError = (error: unknown): boolean =>
+  typeof error === 'object' &&
+  error !== null &&
+  'code' in error &&
+  (error as { code?: unknown }).code === 'P2002';
+
+const sameDate = (left: Date, right: Date): boolean =>
+  left.getTime() === right.getTime();
 
 @Injectable()
 export class AccountingPayrollRunService {
@@ -79,6 +90,121 @@ export class AccountingPayrollRunService {
     });
     if (!run) throw new NotFoundException('Payroll run not found');
     return payrollRunDto(run as PayrollRunViewRecord);
+  }
+
+  async createCorrection(runStableIdRaw: string, actorRef: string) {
+    const runStableId = requirePayrollStableId(runStableIdRaw, 'runStableId');
+
+    let lastError: unknown;
+    for (let attempt = 0; attempt < CORRECTION_ATTEMPTS; attempt += 1) {
+      try {
+        return await this.createCorrectionOnce(runStableId, actorRef);
+      } catch (error) {
+        lastError = error;
+        if (!isUniqueConstraintError(error)) throw error;
+      }
+    }
+
+    if (lastError instanceof Error) throw lastError;
+    throw new ConflictException('Payroll correction retry exhausted');
+  }
+
+  private async createCorrectionOnce(runStableId: string, actorRef: string) {
+    return runSerializableAccountingWrite(this.prisma, async (tx) => {
+      const parent = await tx.payrollRun.findUnique({
+        where: { runStableId },
+        include: PAYROLL_RUN_INCLUDE,
+      });
+      if (!parent) throw new NotFoundException('Payroll run not found');
+      if (parent.status !== PayrollRunStatus.REVERSED) {
+        throw new ConflictException(
+          'Only REVERSED Payroll runs can create a correction',
+        );
+      }
+
+      const existingChild = await tx.payrollRun.findFirst({
+        where: { correctionOfRunId: parent.id },
+        orderBy: [{ correctionSequence: 'desc' }, { createdAt: 'desc' }],
+        include: PAYROLL_RUN_INCLUDE,
+      });
+      if (existingChild) {
+        const isCanonicalDirectChild =
+          existingChild.employerId === parent.employerId &&
+          existingChild.employeeId === parent.employeeId &&
+          existingChild.correctionSequence === parent.correctionSequence + 1 &&
+          sameDate(existingChild.periodStart, parent.periodStart) &&
+          sameDate(existingChild.periodEnd, parent.periodEnd) &&
+          sameDate(existingChild.payDate, parent.payDate) &&
+          existingChild.storeStableId === parent.storeStableId;
+        if (!isCanonicalDirectChild) {
+          throw new ConflictException(
+            'Payroll correction chain contains an invalid direct child',
+          );
+        }
+        return payrollRunDto(existingChild as PayrollRunViewRecord);
+      }
+
+      const latest = await tx.payrollRun.findFirst({
+        where: {
+          employeeId: parent.employeeId,
+          periodStart: parent.periodStart,
+          periodEnd: parent.periodEnd,
+          payDate: parent.payDate,
+        },
+        orderBy: [{ correctionSequence: 'desc' }, { createdAt: 'desc' }],
+        select: {
+          id: true,
+          runStableId: true,
+          correctionSequence: true,
+        },
+      });
+      if (!latest || latest.id !== parent.id) {
+        throw new ConflictException(
+          'Only the latest Payroll correction predecessor can create the next correction',
+        );
+      }
+
+      const correctionSequence = parent.correctionSequence + 1;
+      if (!Number.isSafeInteger(correctionSequence)) {
+        throw new ConflictException('Payroll correction sequence overflow');
+      }
+      const draft = {
+        correctionSequence,
+        periodStart: parent.periodStart,
+        periodEnd: parent.periodEnd,
+        payDate: parent.payDate,
+        storeStableId: parent.storeStableId,
+        regularMinutes: parent.regularMinutes,
+        regularHourlyRateCents: parent.regularHourlyRateCents,
+        overtimeMinutes: parent.overtimeMinutes,
+        overtimeHourlyRateCents: parent.overtimeHourlyRateCents,
+        vacationTopUpCents: parent.vacationTopUpCents,
+      };
+      assertDraft(draft);
+
+      const created = await tx.payrollRun.create({
+        data: {
+          employerId: parent.employerId,
+          employeeId: parent.employeeId,
+          correctionOfRunId: parent.id,
+          ...draft,
+          createdByActorRef: actorRef,
+          updatedByActorRef: actorRef,
+        },
+        include: PAYROLL_RUN_INCLUDE,
+      });
+      const parentDto = payrollRunDto(parent as PayrollRunViewRecord);
+      const dto = payrollRunDto(created as PayrollRunViewRecord);
+      await writeAccountingAuditLog(tx, {
+        action: 'PAYROLL_RUN_CORRECTION_CREATE',
+        entityType: 'PAYROLL_RUN',
+        entityId: created.runStableId,
+        operatorActorRef: actorRef,
+        beforeJson: payrollJsonValue(parentDto),
+        afterJson: payrollJsonValue(dto),
+      });
+      return dto;
+    });
   }
 
   async createDraft(input: CreatePayrollRunInput, actorRef: string) {
@@ -272,8 +398,24 @@ export class AccountingPayrollRunService {
         input.payDate === undefined
           ? existing.payDate
           : parsePayrollDateOnly(input.payDate, 'payDate');
+      const storeStableId =
+        normalizePayrollOptionalText(input.storeStableId) ??
+        existing.storeStableId;
       if (payDate < periodEnd) {
         throw new BadRequestException('payDate cannot be before periodEnd');
+      }
+
+      if (
+        (existing.correctionOfRunId !== null ||
+          existing.correctionSequence > 0) &&
+        (!sameDate(periodStart, existing.periodStart) ||
+          !sameDate(periodEnd, existing.periodEnd) ||
+          !sameDate(payDate, existing.payDate) ||
+          storeStableId !== existing.storeStableId)
+      ) {
+        throw new ConflictException(
+          'Payroll correction identity fields cannot be changed',
+        );
       }
 
       const employee = await tx.payrollEmployee.findUnique({
@@ -317,9 +459,7 @@ export class AccountingPayrollRunService {
         periodStart,
         periodEnd,
         payDate,
-        storeStableId:
-          normalizePayrollOptionalText(input.storeStableId) ??
-          existing.storeStableId,
+        storeStableId,
         regularMinutes: requireNonNegativePayrollInteger(
           input.regularMinutes ?? existing.regularMinutes,
           'regularMinutes',

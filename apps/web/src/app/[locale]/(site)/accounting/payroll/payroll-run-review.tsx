@@ -20,6 +20,8 @@ export function PayrollRunReview({
   calculate,
   approve,
   postRun,
+  reverseRun,
+  createCorrection,
   voidRun,
 }: {
   isZh: boolean;
@@ -28,6 +30,8 @@ export function PayrollRunReview({
   calculate: (runStableId: string) => void;
   approve: (runStableId: string) => void;
   postRun: (runStableId: string) => void;
+  reverseRun: (runStableId: string) => void;
+  createCorrection: (runStableId: string) => void;
   voidRun: (runStableId: string) => void;
 }) {
   const ytd = run.ytdAfter;
@@ -85,6 +89,24 @@ export function PayrollRunReview({
                 {isZh ? '作废' : 'Void'}
               </button>
             </>
+          ) : null}
+          {run.status === 'POSTED' ? (
+            <button
+              disabled={busy}
+              onClick={() => reverseRun(run.runStableId)}
+              className="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700 disabled:opacity-50"
+            >
+              {isZh ? '冲销' : 'Reverse'}
+            </button>
+          ) : null}
+          {run.status === 'REVERSED' ? (
+            <button
+              disabled={busy}
+              onClick={() => createCorrection(run.runStableId)}
+              className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 disabled:opacity-50"
+            >
+              {isZh ? '创建更正草稿' : 'Create correction'}
+            </button>
           ) : null}
           {statementStatuses.has(run.status) ? (
             <a
@@ -147,6 +169,18 @@ export function PayrollRunReview({
           <span>
             {isZh ? '加班工时' : 'Overtime hours'}: {payrollHours(run.overtimeMinutes)}
           </span>
+          <span>
+            {isZh ? '更正序列' : 'Correction sequence'}:{' '}
+            {run.correctionSequence > 0
+              ? `#${run.correctionSequence}`
+              : isZh
+                ? '原始记录'
+                : 'Original'}
+          </span>
+          <span className="break-all">
+            {isZh ? '上一条记录' : 'Predecessor'}:{' '}
+            {run.correctionOfRunStableId ?? '—'}
+          </span>
           <span>Policy: {run.statutoryPolicyVersion ?? '—'}</span>
           <span>P: {run.payPeriodsPerYear ?? '—'}</span>
           <span>Profile: {run.calculationProfileVersion ?? '—'}</span>
@@ -157,6 +191,25 @@ export function PayrollRunReview({
           <span>
             {isZh ? '入账时间' : 'Posted at'}: {run.postedAt ?? '—'}
           </span>
+          {run.reversedAt ? (
+            <>
+              <span className="break-all">
+                {isZh ? '冲销 Journal' : 'Reversal Journal'}:{' '}
+                {run.reversalJournalEntryStableId ?? '—'}
+              </span>
+              <span>
+                {isZh ? '冲销时间' : 'Reversed at'}: {run.reversedAt}
+              </span>
+              <span className="break-all">
+                {isZh ? '冲销原因' : 'Reversal reason'}:{' '}
+                {run.reversalReason ?? '—'}
+              </span>
+              <span className="break-all">
+                {isZh ? '冲销操作人' : 'Reversed by'}:{' '}
+                {run.reversedByActorRef ?? '—'}
+              </span>
+            </>
+          ) : null}
         </div>
       </div>
 

@@ -113,6 +113,7 @@ const postedRun = () => {
     updatedAt: new Date('2026-09-18T13:05:00.000Z'),
     employee: { employeeStableId: 'employee_1' },
     employer: { employerStableId: 'employer_1' },
+    correctionOfRun: null,
     employeePayment: null as null | { paymentStableId: string },
     craRemittanceEvidence: null as null | {
       remittance: { remittanceStableId: string };
