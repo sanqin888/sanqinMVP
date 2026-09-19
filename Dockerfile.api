@@ -24,9 +24,12 @@ COPY libs/shared ./libs/shared
 WORKDIR /app/apps/api
 RUN npx prisma generate
 
-# 5. 构建 API (这会自动触发 libs 的构建，因为 api/package.json 里配了 prebuild 脚本)
+# 5. 构建 API。
+# Lightsail 生产 VM 只有约 2 GiB RAM；随着 API 源码增长，Node 20 在容器构建阶段
+# 会把默认 old-space 限制在约 1 GiB，Nest/TypeScript 编译可能在到达该限制前 OOM。
+# 仅放宽 builder 这一步的 heap；不会传入最终 runner，也不会改变线上 API 运行时内存策略。
 WORKDIR /app
-RUN pnpm --filter api build
+RUN NODE_OPTIONS=--max-old-space-size=1536 pnpm --filter api build
 
 # 6. 生成仅包含 API workspace 依赖的便携运行目录。
 # 不使用 --prod，以保留 Prisma CLI / Studio 的现有运行时诊断能力。

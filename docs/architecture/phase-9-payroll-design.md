@@ -1821,4 +1821,8 @@ For the current MONTHLY operating policy, a June 1-30 PayrollRun paid in early J
 
 D4-D changes no Prisma model/column/constraint, migration, package/lockfile, public context edge, scanner allowance or direct-import baseline. Source characterization uses deliberately different `accrualDate` and `payDate` values, period-lock characterization pins `periodEnd`, and architecture guards prevent regression to `occurredAt = payDate`.
 
-Current D4-D state: **LOCAL SOURCE REVIEW PENDING / NO MIGRATION / NO LOCAL CI CLAIMED**.
+Current D4-D state: **MERGED / CI GREEN / NO MIGRATION** through PR #2399 / final head `143413ef` / squash `169017df`; PR CI #5915 and post-merge CI #5916 passed all required gates.
+
+### 32.1 Controlled-verification deployment prerequisite
+
+The first production deployment attempt after D4-D exposed an infrastructure-only API image build failure on the approximately 2 GiB Lightsail VM: Node 20 exhausted its default ~1 GiB old-space during `nest build` even though the same source passed GitHub API build/strict/Jest gates. The API Docker builder therefore requires an explicit build-only heap allowance. The approved local fix scopes `NODE_OPTIONS=--max-old-space-size=1536` to the `RUN pnpm --filter api build` layer in `Dockerfile.api`; it does not alter the runner image, API runtime memory policy, Payroll semantics, schema, migrations, packages or architecture boundaries.
