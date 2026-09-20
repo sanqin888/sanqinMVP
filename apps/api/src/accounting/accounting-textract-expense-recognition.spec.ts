@@ -162,20 +162,22 @@ describe('Accounting Textract expense recognition', () => {
         engine: 'AWS_TEXTRACT',
         layoutMode: 'GEOMETRY',
         truncated: false,
-        lines: expect.arrayContaining([
-          expect.objectContaining({
-            lineId: 'p1-l1',
-            text: 'FOODY MART SUPERMARKET',
-            confidence: 98.5,
-            geometry: {
-              left: 0.2,
-              top: 0.05,
-              width: 0.6,
-              height: 0.02,
-            },
-          }),
-        ]) as unknown,
       }),
+    );
+    expect(result.documentExtraction.lines[0]).toEqual(
+      expect.objectContaining({
+        lineId: 'p1-l1',
+        text: 'FOODY MART SUPERMARKET',
+        confidence: 98.5,
+      }),
+    );
+    expect(result.documentExtraction.lines[0]?.geometry?.left).toBeCloseTo(0.2);
+    expect(result.documentExtraction.lines[0]?.geometry?.top).toBeCloseTo(0.05);
+    expect(result.documentExtraction.lines[0]?.geometry?.width).toBeCloseTo(
+      0.6,
+    );
+    expect(result.documentExtraction.lines[0]?.geometry?.height).toBeCloseTo(
+      0.02,
     );
     expect(result.evidence).toEqual(
       expect.objectContaining({
