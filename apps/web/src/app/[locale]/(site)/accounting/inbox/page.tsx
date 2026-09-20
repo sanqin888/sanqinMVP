@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api/client';
+import type {
+  AccountingProviderFinancialConfirmationResult,
+} from '../contracts/provider-financial';
 import { AccountingInboxExpenseReviewPanel } from './expense-review-panel';
 import { AccountingImageRetentionPanel } from './image-retention-panel';
 import { AccountingImageRetentionQueue } from './image-retention-queue';
@@ -63,6 +66,10 @@ export default function AccountingInboxPage() {
   const [confirmingOtherId, setConfirmingOtherId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [
+    confirmedProviderDocumentStableId,
+    setConfirmedProviderDocumentStableId,
+  ] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -106,6 +113,7 @@ export default function AccountingInboxPage() {
     setUploading(true);
     setError(null);
     setMessage(null);
+    setConfirmedProviderDocumentStableId(null);
     try {
       const formData = new FormData();
       formData.append('file', file);
@@ -148,6 +156,7 @@ export default function AccountingInboxPage() {
     setBusySender(true);
     setError(null);
     setMessage(null);
+    setConfirmedProviderDocumentStableId(null);
     try {
       await apiFetch('/accounting/inbox/trusted-senders', {
         method: 'PUT',
@@ -181,6 +190,7 @@ export default function AccountingInboxPage() {
     setClassifyingId(item.inboxItemStableId);
     setError(null);
     setMessage(null);
+    setConfirmedProviderDocumentStableId(null);
     try {
       await apiFetch(`/accounting/inbox/${item.inboxItemStableId}/classification`, {
         method: 'PUT',
@@ -208,11 +218,14 @@ export default function AccountingInboxPage() {
     setConfirmingProviderId(item.inboxItemStableId);
     setError(null);
     setMessage(null);
+    setConfirmedProviderDocumentStableId(null);
     try {
-      await apiFetch(
-        `/accounting/inbox/${item.inboxItemStableId}/provider-financial/confirm`,
-        { method: 'POST' },
-      );
+      const result =
+        await apiFetch<AccountingProviderFinancialConfirmationResult>(
+          `/accounting/inbox/${item.inboxItemStableId}/provider-financial/confirm`,
+          { method: 'POST' },
+        );
+      setConfirmedProviderDocumentStableId(result.documentStableId);
       setMessage(
         isZh
           ? '平台财务资料已确认并移至“平台结算”；当前不会因此自动生成会计分录。'
@@ -230,6 +243,7 @@ export default function AccountingInboxPage() {
     setConfirmingOtherId(item.inboxItemStableId);
     setError(null);
     setMessage(null);
+    setConfirmedProviderDocumentStableId(null);
     try {
       await apiFetch(`/accounting/inbox/${item.inboxItemStableId}/other/confirm`, {
         method: 'POST',
@@ -249,6 +263,7 @@ export default function AccountingInboxPage() {
     setDiscardingId(item.inboxItemStableId);
     setError(null);
     setMessage(null);
+    setConfirmedProviderDocumentStableId(null);
     try {
       await apiFetch(`/accounting/inbox/${item.inboxItemStableId}`, {
         method: 'DELETE',
@@ -273,6 +288,7 @@ export default function AccountingInboxPage() {
     setDeletingUploadId(item.inboxItemStableId);
     setError(null);
     setMessage(null);
+    setConfirmedProviderDocumentStableId(null);
     try {
       const result = await apiFetch<AccountingManualUploadPermanentDeleteResult>(
         `/accounting/inbox/manual-uploads/${item.inboxItemStableId}/permanent`,
@@ -302,6 +318,7 @@ export default function AccountingInboxPage() {
     setRunning(true);
     setError(null);
     setMessage(null);
+    setConfirmedProviderDocumentStableId(null);
     try {
       await apiFetch('/accounting/automation/run', { method: 'POST' });
       setMessage(
@@ -389,9 +406,22 @@ export default function AccountingInboxPage() {
         <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
       ) : null}
       {message ? (
-        <p className="rounded bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-          {message}
-        </p>
+        <div className="flex flex-wrap items-center gap-2 rounded bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+          <span>{message}</span>
+          {confirmedProviderDocumentStableId ? (
+            <a
+              href={
+                '/' +
+                locale +
+                '/accounting/settlements#provider-' +
+                confirmedProviderDocumentStableId
+              }
+              className="rounded border border-emerald-300 bg-white px-2 py-1 font-medium text-emerald-800"
+            >
+              {isZh ? '继续复核识别结果' : 'Continue to review extraction'}
+            </a>
+          ) : null}
+        </div>
       ) : null}
 
       <section className="grid gap-4 lg:grid-cols-2">

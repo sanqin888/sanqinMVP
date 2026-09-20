@@ -9,6 +9,7 @@ import type {
   ProviderSettlementPostingState,
   ProviderSettlementShadowPreview,
 } from '../contracts/settlements';
+import { ProviderFinancialReviewPanel } from '../provider-financial-review-panel';
 import { SettlementReplayGate } from './settlement-replay-gate';
 import {
   findSettlementNetLine,
@@ -74,8 +75,8 @@ function StatementLines({
     <details className="rounded-xl border border-slate-200 bg-slate-50 p-4">
       <summary className="cursor-pointer text-sm font-semibold text-slate-800">
         {isZh
-          ? `Canonical 明细（${document.lines.length} 条）`
-          : `Canonical lines (${document.lines.length})`}
+          ? `机器 Canonical 明细（${document.lines.length} 条）`
+          : `Machine canonical lines (${document.lines.length})`}
       </summary>
       <div className="mt-4 overflow-x-auto">
         <table className="min-w-[780px] w-full text-left text-xs">
@@ -136,7 +137,10 @@ function ReadOnlyFinancialDocumentCard({
   const netPayout = findSettlementNetLine(document.lines);
 
   return (
-    <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+    <section
+      id={'provider-' + document.documentStableId}
+      className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -193,8 +197,8 @@ function ReadOnlyFinancialDocumentCard({
             {postingState
               ? 'Journal'
               : isZh
-                ? 'Canonical 明细'
-                : 'Canonical lines'}
+                ? '机器 Canonical 明细'
+                : 'Machine canonical lines'}
           </p>
           <p className="mt-1 break-all font-mono text-xs">
             {postingState
@@ -204,7 +208,7 @@ function ReadOnlyFinancialDocumentCard({
         </div>
         <div className="rounded-xl bg-emerald-50 p-3 text-sm">
           <p className="text-xs text-emerald-700">
-            {isZh ? '净结算' : 'Net payout'}
+            {isZh ? '机器净结算' : 'Machine net payout'}
           </p>
           <p className="mt-1 text-lg font-semibold text-emerald-900">
             {netPayout ? money(netPayout.amountCents) : '—'}
@@ -213,6 +217,14 @@ function ReadOnlyFinancialDocumentCard({
       </div>
 
       <StatementLines document={document} isZh={isZh} />
+
+      <ProviderFinancialReviewPanel
+        document={document}
+        evidenceUrl={evidenceUrl}
+        parseResult={item.artifact.parseRuns[0]?.resultJson ?? null}
+        isZh={isZh}
+        readOnly
+      />
     </section>
   );
 }
@@ -648,6 +660,14 @@ export default function AccountingSettlementsPage() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (loading || typeof window === 'undefined') return;
+    const hash = window.location.hash;
+    if (!hash.startsWith('#provider-')) return;
+    const targetId = hash.slice(1);
+    window.document.getElementById(targetId)?.scrollIntoView({ block: 'start' });
+  }, [loading, items.length]);
+
   const providerDocuments = useMemo(
     () =>
       items
@@ -860,10 +880,15 @@ export default function AccountingSettlementsPage() {
             );
             const netPayout = findSettlementNetLine(document.lines);
             const postingState = postingStates[document.documentStableId];
+            const selectedPlan =
+              selectedPreview?.providerDocuments.find(
+                (plan) => plan.documentStableId === document.documentStableId,
+              ) ?? null;
 
             return (
               <section
                 key={document.documentStableId}
+                id={'provider-' + document.documentStableId}
                 className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -953,7 +978,9 @@ export default function AccountingSettlementsPage() {
                     </p>
                   </div>
                   <div className="rounded-xl bg-slate-50 p-3 text-sm">
-                    <p className="text-xs text-slate-500">Canonical lines</p>
+                    <p className="text-xs text-slate-500">
+                      {isZh ? '机器 Canonical 行' : 'Machine canonical lines'}
+                    </p>
                     <p className="mt-1 text-lg font-semibold">
                       {document.lines.length}
                     </p>
@@ -962,20 +989,26 @@ export default function AccountingSettlementsPage() {
 
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   <div className="rounded-xl border border-slate-200 p-3">
-                    <p className="text-xs text-slate-500">Sales</p>
+                    <p className="text-xs text-slate-500">
+                      {isZh ? '机器 Sales' : 'Machine Sales'}
+                    </p>
                     <p className="mt-1 text-lg font-semibold">
                       {sales ? money(sales.amountCents) : '—'}
                     </p>
                   </div>
                   <div className="rounded-xl border border-slate-200 p-3">
-                    <p className="text-xs text-slate-500">Tax on Sales</p>
+                    <p className="text-xs text-slate-500">
+                      {isZh ? '机器 Tax on Sales' : 'Machine Tax on Sales'}
+                    </p>
                     <p className="mt-1 text-lg font-semibold">
                       {salesTax ? money(salesTax.amountCents) : '—'}
                     </p>
                   </div>
                   <div className="rounded-xl border border-slate-200 p-3">
                     <p className="text-xs text-slate-500">
-                      {isZh ? '平台佣金 / 费用' : 'Commission / fees'}
+                      {isZh
+                        ? '机器平台佣金 / 费用'
+                        : 'Machine commission / fees'}
                     </p>
                     <p className="mt-1 text-lg font-semibold">
                       {commission ? money(commission.amountCents) : '—'}
@@ -983,7 +1016,7 @@ export default function AccountingSettlementsPage() {
                   </div>
                   <div className="rounded-xl border border-slate-200 bg-emerald-50 p-3">
                     <p className="text-xs text-emerald-700">
-                      {isZh ? '净结算' : 'Net payout'}
+                      {isZh ? '机器净结算' : 'Machine net payout'}
                     </p>
                     <p className="mt-1 text-lg font-semibold text-emerald-900">
                       {netPayout ? money(netPayout.amountCents) : '—'}
@@ -992,6 +1025,27 @@ export default function AccountingSettlementsPage() {
                 </div>
 
                 <StatementLines document={document} isZh={isZh} />
+
+                <ProviderFinancialReviewPanel
+                  document={document}
+                  evidenceUrl={evidenceUrl}
+                  parseResult={item.artifact.parseRuns[0]?.resultJson ?? null}
+                  isZh={isZh}
+                  controlTotalChecks={selectedPlan?.controlTotalChecks ?? []}
+                  previewStatus={selectedPlan?.status ?? null}
+                  onConfirmed={() => {
+                    if (
+                      preview?.documentStableId === document.documentStableId
+                    ) {
+                      setPreview(null);
+                    }
+                    setPostingNotice(
+                      isZh
+                        ? '人工复核已确认；旧 Shadow Preview 已作废。请重新运行 Shadow Preview 后再入账。'
+                        : 'Human review confirmed; the previous Shadow Preview is stale. Rerun Shadow Preview before posting.',
+                    );
+                  }}
+                />
 
                 {selectedPreview ? (
                   <ShadowPreviewPanel
