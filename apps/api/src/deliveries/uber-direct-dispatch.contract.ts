@@ -59,9 +59,7 @@ export interface UberDirectDeliveryResult {
   deliveryCostCents?: number;
 }
 
-export type UberDirectDeliveryDispatchFailureKind =
-  | 'SAFE_TO_RETRY'
-  | 'UNKNOWN';
+export type UberDirectDeliveryDispatchFailureKind = 'SAFE_TO_RETRY' | 'UNKNOWN';
 
 export class UberDirectDeliveryDispatchError extends Error {
   constructor(

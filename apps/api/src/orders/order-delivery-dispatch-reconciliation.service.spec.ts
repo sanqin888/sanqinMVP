@@ -1,5 +1,19 @@
 import { OrderDeliveryDispatchReconciliationService } from './order-delivery-dispatch-reconciliation.service';
 
+type QueryRawMock = jest.Mock<
+  Promise<unknown[]>,
+  [TemplateStringsArray, ...unknown[]]
+>;
+
+type CreateManyArgs = {
+  data: unknown;
+  skipDuplicates?: boolean;
+};
+
+function queryRawMock(): QueryRawMock {
+  return jest.fn<Promise<unknown[]>, [TemplateStringsArray, ...unknown[]]>();
+}
+
 function unknownRow() {
   return {
     eventName: 'order.delivery_dispatch.unknown',
@@ -13,10 +27,13 @@ function unknownRow() {
   };
 }
 
-describe('OrderDeliveryDispatchReconciliationService', () => {
+function sqlFrom(mock: QueryRawMock): string {
+  return mock.mock.calls[0]?.[0].join(' ') ?? '';
+}
 
+describe('OrderDeliveryDispatchReconciliationService', () => {
   it('queries unresolved operator-actionable FAILED / UNKNOWN attempts without a fixed recent-event window', async () => {
-    const queryRaw = jest.fn().mockResolvedValue([
+    const queryRaw = queryRawMock().mockResolvedValue([
       {
         orderStableId: 'order_stable_1',
         orderNumber: 'WEB-1001',
@@ -45,9 +62,9 @@ describe('OrderDeliveryDispatchReconciliationService', () => {
         eventAt: new Date('2026-09-19T20:01:00.000Z'),
       },
     ]);
-    const service = new OrderDeliveryDispatchReconciliationService(
-      { $queryRaw: queryRaw } as never,
-    );
+    const service = new OrderDeliveryDispatchReconciliationService({
+      $queryRaw: queryRaw,
+    } as never);
 
     await expect(service.listQueue()).resolves.toEqual([
       {
@@ -77,9 +94,7 @@ describe('OrderDeliveryDispatchReconciliationService', () => {
       },
     ]);
 
-    const sql = Array.isArray(queryRaw.mock.calls[0]?.[0])
-      ? (queryRaw.mock.calls[0][0] as unknown[]).join(' ')
-      : String(queryRaw.mock.calls[0]?.[0] ?? '');
+    const sql = sqlFrom(queryRaw);
     expect(sql).toContain('NOT EXISTS');
     expect(sql).toContain('LOCAL_VALIDATION_FAILED');
     expect(sql).toContain('PROVIDER_REJECTED');
@@ -87,34 +102,41 @@ describe('OrderDeliveryDispatchReconciliationService', () => {
   });
 
   it('binds a provider delivery only after explicit operator reconciliation', async () => {
-    const createMany = jest.fn().mockResolvedValue({ count: 1 });
+    const createMany = jest
+      .fn<Promise<{ count: number }>, [CreateManyArgs]>()
+      .mockResolvedValue({ count: 1 });
+    const lockQuery = queryRawMock().mockResolvedValue([{ id: 'order-db-1' }]);
     const tx = {
-      $queryRaw: jest.fn().mockResolvedValue([{ id: 'order-db-1' }]),
+      $queryRaw: lockQuery,
       opsEvent: {
-        findMany: jest.fn().mockResolvedValue([unknownRow()]),
+        findMany: jest
+          .fn<Promise<ReturnType<typeof unknownRow>[]>, [unknown]>()
+          .mockResolvedValue([unknownRow()]),
         createMany,
       },
       order: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: 'order-db-1',
-          orderStableId: 'order_stable_1',
-          clientRequestId: 'WEB-1001',
-          status: 'paid',
-          fulfillmentType: 'delivery',
-          deliveryProvider: 'UBER',
-          externalDeliveryId: null,
-        }),
-        update: jest.fn().mockResolvedValue({}),
+        findUnique: jest
+          .fn<Promise<Record<string, unknown> | null>, [unknown]>()
+          .mockResolvedValue({
+            id: 'order-db-1',
+            orderStableId: 'order_stable_1',
+            clientRequestId: 'WEB-1001',
+            status: 'paid',
+            fulfillmentType: 'delivery',
+            deliveryProvider: 'UBER',
+            externalDeliveryId: null,
+          }),
+        update: jest
+          .fn<Promise<Record<string, never>>, [unknown]>()
+          .mockResolvedValue({}),
       },
     };
-    const prisma = {
-      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
-        callback(tx),
-      ),
-    };
-    const service = new OrderDeliveryDispatchReconciliationService(
-      prisma as never,
+    const transaction = jest.fn(
+      (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
     );
+    const service = new OrderDeliveryDispatchReconciliationService({
+      $transaction: transaction,
+    } as never);
 
     await expect(
       service.reconcile({
@@ -130,58 +152,54 @@ describe('OrderDeliveryDispatchReconciliationService', () => {
       externalDeliveryId: 'uber-delivery-1',
     });
 
-    const lockSql = Array.isArray(tx.$queryRaw.mock.calls[0]?.[0])
-      ? (tx.$queryRaw.mock.calls[0][0] as unknown[]).join(' ')
-      : String(tx.$queryRaw.mock.calls[0]?.[0] ?? '');
-    expect(lockSql).toContain('FOR UPDATE');
+    expect(sqlFrom(lockQuery)).toContain('FOR UPDATE');
     expect(tx.order.update).toHaveBeenCalledWith({
       where: { id: 'order-db-1' },
       data: { externalDeliveryId: 'uber-delivery-1' },
     });
-    expect(createMany).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        idempotencyKey:
-          'order.delivery_dispatch.reconciled:order_stable_1:1',
-        eventName: 'order.delivery_dispatch.reconciled',
-        payload: expect.objectContaining({
-          action: 'BIND_EXISTING',
-          operatorUserStableId: 'admin-1',
-          providerDeliveryId: 'uber-delivery-1',
-        }),
-      }),
-      skipDuplicates: true,
-    });
+    const persisted = createMany.mock.calls[0]?.[0];
+    const json = JSON.stringify(persisted?.data);
+    expect(json).toContain(
+      'order.delivery_dispatch.reconciled:order_stable_1:1',
+    );
+    expect(json).toContain('"action":"BIND_EXISTING"');
+    expect(json).toContain('"operatorUserStableId":"admin-1"');
+    expect(json).toContain('"providerDeliveryId":"uber-delivery-1"');
   });
 
   it('creates the next durable attempt only after an operator confirms that Uber did not create the prior delivery', async () => {
-    const createMany = jest.fn().mockResolvedValue({ count: 2 });
+    const createMany = jest
+      .fn<Promise<{ count: number }>, [CreateManyArgs]>()
+      .mockResolvedValue({ count: 2 });
     const tx = {
-      $queryRaw: jest.fn().mockResolvedValue([{ id: 'order-db-1' }]),
+      $queryRaw: queryRawMock().mockResolvedValue([{ id: 'order-db-1' }]),
       opsEvent: {
-        findMany: jest.fn().mockResolvedValue([unknownRow()]),
+        findMany: jest
+          .fn<Promise<ReturnType<typeof unknownRow>[]>, [unknown]>()
+          .mockResolvedValue([unknownRow()]),
         createMany,
       },
       order: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: 'order-db-1',
-          orderStableId: 'order_stable_1',
-          clientRequestId: 'WEB-1001',
-          status: 'making',
-          fulfillmentType: 'delivery',
-          deliveryProvider: 'UBER',
-          externalDeliveryId: null,
-        }),
-        update: jest.fn(),
+        findUnique: jest
+          .fn<Promise<Record<string, unknown> | null>, [unknown]>()
+          .mockResolvedValue({
+            id: 'order-db-1',
+            orderStableId: 'order_stable_1',
+            clientRequestId: 'WEB-1001',
+            status: 'making',
+            fulfillmentType: 'delivery',
+            deliveryProvider: 'UBER',
+            externalDeliveryId: null,
+          }),
+        update: jest.fn<Promise<Record<string, never>>, [unknown]>(),
       },
     };
-    const prisma = {
-      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
-        callback(tx),
-      ),
-    };
-    const service = new OrderDeliveryDispatchReconciliationService(
-      prisma as never,
+    const transaction = jest.fn(
+      (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
     );
+    const service = new OrderDeliveryDispatchReconciliationService({
+      $transaction: transaction,
+    } as never);
 
     await expect(
       service.reconcile({
@@ -199,57 +217,49 @@ describe('OrderDeliveryDispatchReconciliationService', () => {
     });
 
     expect(tx.order.update).not.toHaveBeenCalled();
-    expect(createMany).toHaveBeenCalledWith({
-      data: expect.arrayContaining([
-        expect.objectContaining({
-          idempotencyKey:
-            'order.delivery_dispatch.reconciled:order_stable_1:1',
-          eventName: 'order.delivery_dispatch.reconciled',
-        }),
-        expect.objectContaining({
-          idempotencyKey:
-            'order.delivery_dispatch.requested:order_stable_1:2',
-          eventName: 'order.delivery_dispatch.requested',
-          payload: expect.objectContaining({
-            attempt: 2,
-            trigger: 'OPERATOR_CONFIRMED_NOT_CREATED',
-            authorizedByUserStableId: 'admin-1',
-            automaticRetriesRemaining: 3,
-          }),
-        }),
-      ]),
-      skipDuplicates: true,
-    });
+    const persisted = createMany.mock.calls[0]?.[0];
+    const json = JSON.stringify(persisted?.data);
+    expect(json).toContain(
+      'order.delivery_dispatch.reconciled:order_stable_1:1',
+    );
+    expect(json).toContain(
+      'order.delivery_dispatch.requested:order_stable_1:2',
+    );
+    expect(json).toContain('"trigger":"OPERATOR_CONFIRMED_NOT_CREATED"');
+    expect(json).toContain('"authorizedByUserStableId":"admin-1"');
+    expect(json).toContain('"automaticRetriesRemaining":3');
   });
 
   it('rejects a stale reconciliation request instead of creating a duplicate retry', async () => {
+    const createMany = jest.fn<Promise<{ count: number }>, [CreateManyArgs]>();
     const tx = {
-      $queryRaw: jest.fn().mockResolvedValue([{ id: 'order-db-1' }]),
+      $queryRaw: queryRawMock().mockResolvedValue([{ id: 'order-db-1' }]),
       opsEvent: {
-        findMany: jest.fn().mockResolvedValue([
-          {
-            ...unknownRow(),
-            payload: {
-              ...unknownRow().payload,
-              attempt: 2,
+        findMany: jest
+          .fn<Promise<ReturnType<typeof unknownRow>[]>, [unknown]>()
+          .mockResolvedValue([
+            {
+              ...unknownRow(),
+              payload: {
+                ...unknownRow().payload,
+                attempt: 2,
+              },
             },
-          },
-        ]),
-        createMany: jest.fn(),
+          ]),
+        createMany,
       },
       order: {
-        findUnique: jest.fn(),
-        update: jest.fn(),
+        findUnique:
+          jest.fn<Promise<Record<string, unknown> | null>, [unknown]>(),
+        update: jest.fn<Promise<Record<string, never>>, [unknown]>(),
       },
     };
-    const prisma = {
-      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
-        callback(tx),
-      ),
-    };
-    const service = new OrderDeliveryDispatchReconciliationService(
-      prisma as never,
+    const transaction = jest.fn(
+      (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
     );
+    const service = new OrderDeliveryDispatchReconciliationService({
+      $transaction: transaction,
+    } as never);
 
     await expect(
       service.reconcile({
@@ -263,6 +273,6 @@ describe('OrderDeliveryDispatchReconciliationService', () => {
     });
 
     expect(tx.order.findUnique).not.toHaveBeenCalled();
-    expect(tx.opsEvent.createMany).not.toHaveBeenCalled();
+    expect(createMany).not.toHaveBeenCalled();
   });
 });

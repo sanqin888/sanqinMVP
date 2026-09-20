@@ -97,7 +97,9 @@ const RETRYABLE_ORDER_STATUSES = new Set<OrderStatus>([
 export class OrderDeliveryDispatchReconciliationService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async listQueue(limit = 50): Promise<OrderDeliveryDispatchReconciliationItem[]> {
+  async listQueue(
+    limit = 50,
+  ): Promise<OrderDeliveryDispatchReconciliationItem[]> {
     const safeLimit = Math.max(1, Math.min(100, Math.round(limit)));
     const rows = await this.prisma.$queryRaw<
       Array<{
@@ -488,9 +490,7 @@ export class OrderDeliveryDispatchReconciliationService {
     return this.latestAttemptByOrder(rows).get(orderStableId) ?? null;
   }
 
-  private latestAttemptByOrder(
-    rows: JournalRow[],
-  ): Map<string, ParsedAttempt> {
+  private latestAttemptByOrder(rows: JournalRow[]): Map<string, ParsedAttempt> {
     const latestByAttempt = new Map<string, ParsedAttempt>();
 
     for (const row of rows) {
@@ -532,7 +532,9 @@ export class OrderDeliveryDispatchReconciliationService {
   }
 }
 
-function stateForEvent(eventName: string): OrderDeliveryDispatchQueueState | null {
+function stateForEvent(
+  eventName: string,
+): OrderDeliveryDispatchQueueState | null {
   if (eventName === ORDER_DELIVERY_DISPATCH_REQUESTED_EVENT) return 'PENDING';
   if (eventName === ORDER_DELIVERY_DISPATCH_ATTEMPT_STARTED_EVENT) {
     return 'IN_FLIGHT';

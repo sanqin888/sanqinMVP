@@ -4,11 +4,7 @@ import {
   OnApplicationBootstrap,
   OnModuleDestroy,
 } from '@nestjs/common';
-import {
-  DeliveryProvider,
-  FulfillmentType,
-  OrderStatus,
-} from '@prisma/client';
+import { DeliveryProvider, FulfillmentType, OrderStatus } from '@prisma/client';
 import { PrismaService } from '../orders-prisma';
 import {
   ORDER_DELIVERY_DISPATCH_ATTEMPT_STARTED_EVENT,

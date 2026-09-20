@@ -1,4 +1,10 @@
-import { UberDirectDeliveryDispatchError } from '../deliveries/public-api';
+import {
+  UberDirectDeliveryDispatchError,
+  type UberDirectDeliveryDispatcherPort,
+} from '../deliveries/public-api';
+import type {
+  DeliveryDispatchFailureDetail,
+} from './order-delivery-dispatch-journal.service';
 import { OrderDeliveryDispatchUseCase } from './order-delivery-dispatch.use-case';
 
 function deliveryOrder() {
@@ -9,7 +15,7 @@ function deliveryOrder() {
     pickupCode: 'A100',
     fulfillmentType: 'delivery',
     deliveryProvider: 'UBER',
-    externalDeliveryId: null,
+    externalDeliveryId: null as string | null,
     status: 'paid',
     totalCents: 2599,
     paidAt: new Date('2026-09-19T20:00:00.000Z'),
@@ -41,38 +47,85 @@ function checkoutMetadata() {
   };
 }
 
+type JournalInput = Record<string, unknown>;
+type NotificationInput = {
+  orderNumber: string;
+  deliveryProvider: string;
+  errorMessage: string;
+  orderDetailUrl: string;
+};
+
 describe('OrderDeliveryDispatchUseCase durable dispatch', () => {
-  function setup(createDelivery: jest.Mock) {
+  function setup(
+    createDelivery: jest.MockedFunction<
+      UberDirectDeliveryDispatcherPort['createDelivery']
+    >,
+  ) {
+    const findUnique = jest
+      .fn<Promise<ReturnType<typeof deliveryOrder> | null>, [unknown]>()
+      .mockResolvedValue(deliveryOrder());
     const prisma = {
-      order: {
-        findUnique: jest.fn().mockResolvedValue(deliveryOrder()),
-      },
+      order: { findUnique },
       checkoutIntent: {
         findFirst: jest
-          .fn()
+          .fn<
+            Promise<{ metadataJson: ReturnType<typeof checkoutMetadata> }>,
+            [unknown]
+          >()
           .mockResolvedValue({ metadataJson: checkoutMetadata() }),
       },
     };
+    const recordFailed = jest
+      .fn<Promise<void>, [JournalInput]>()
+      .mockResolvedValue();
+    const recordUnknown = jest
+      .fn<Promise<void>, [JournalInput]>()
+      .mockResolvedValue();
+    const recordSucceeded = jest
+      .fn<Promise<void>, [JournalInput]>()
+      .mockResolvedValue();
+    const persistProviderSuccess = jest
+      .fn<Promise<'SUCCEEDED' | 'UNKNOWN'>, [JournalInput]>()
+      .mockResolvedValue('SUCCEEDED');
+    const recordFailedAndScheduleAutomaticRetry = jest
+      .fn<Promise<void>, [JournalInput]>()
+      .mockResolvedValue();
+    const listFailureHistory = jest
+      .fn<Promise<DeliveryDispatchFailureDetail[]>, [string, number?]>()
+      .mockResolvedValue([]);
     const dispatchJournal = {
-      recordFailed: jest.fn().mockResolvedValue(undefined),
-      recordUnknown: jest.fn().mockResolvedValue(undefined),
-      recordSucceeded: jest.fn().mockResolvedValue(undefined),
-      persistProviderSuccess: jest.fn().mockResolvedValue('SUCCEEDED'),
-      recordFailedAndScheduleAutomaticRetry: jest
-        .fn()
-        .mockResolvedValue(undefined),
-      listFailureHistory: jest.fn().mockResolvedValue([]),
+      recordFailed,
+      recordUnknown,
+      recordSucceeded,
+      persistProviderSuccess,
+      recordFailedAndScheduleAutomaticRetry,
+      listFailureHistory,
     };
-    const listActiveAdminRecipients = jest.fn().mockResolvedValue([
-      {
-        userStableId: 'admin-1',
-        email: 'admin@example.com',
-        phone: null,
-        language: 'EN',
-      },
-    ]);
+    const listActiveAdminRecipients = jest
+      .fn<
+        Promise<
+          Array<{
+            userStableId: string;
+            email: string;
+            phone: string | null;
+            language: string;
+          }>
+        >,
+        []
+      >()
+      .mockResolvedValue([
+        {
+          userStableId: 'admin-1',
+          email: 'admin@example.com',
+          phone: null,
+          language: 'EN',
+        },
+      ]);
     const notifyDeliveryDispatchFailed = jest
-      .fn()
+      .fn<
+        Promise<{ ok: boolean; sentCount: number; failedCount: number }>,
+        [NotificationInput]
+      >()
       .mockResolvedValue({ ok: true, sentCount: 1, failedCount: 0 });
 
     const service = new OrderDeliveryDispatchUseCase(
@@ -92,7 +145,9 @@ describe('OrderDeliveryDispatchUseCase durable dispatch', () => {
   }
 
   it('records UNKNOWN, does not blindly retry, and reuses the admin delivery alert path for reconciliation', async () => {
-    const createDelivery = jest.fn().mockRejectedValue(
+    const createDelivery =
+      jest.fn<UberDirectDeliveryDispatcherPort['createDelivery']>();
+    createDelivery.mockRejectedValue(
       new UberDirectDeliveryDispatchError(
         'timeout of 20000ms exceeded',
         'UNKNOWN',
@@ -108,30 +163,30 @@ describe('OrderDeliveryDispatchUseCase durable dispatch', () => {
     });
 
     expect(createDelivery).toHaveBeenCalledTimes(1);
-    expect(dispatchJournal.recordUnknown).toHaveBeenCalledWith(
-      expect.objectContaining({
-        orderStableId: 'order_stable_1',
-        attempt: 1,
-        reason: 'PROVIDER_OUTCOME_UNKNOWN',
-      }),
-    );
+    expect(dispatchJournal.recordUnknown.mock.calls[0]?.[0]).toMatchObject({
+      orderStableId: 'order_stable_1',
+      attempt: 1,
+      reason: 'PROVIDER_OUTCOME_UNKNOWN',
+    });
     expect(dispatchJournal.recordFailed).not.toHaveBeenCalled();
     expect(
       dispatchJournal.recordFailedAndScheduleAutomaticRetry,
     ).not.toHaveBeenCalled();
-    expect(notifyDeliveryDispatchFailed).toHaveBeenCalledWith(
-      expect.objectContaining({
-        orderNumber: 'WEB-1001',
-        deliveryProvider: 'Uber Direct',
-        errorMessage: expect.stringContaining('Provider outcome is UNKNOWN'),
-        orderDetailUrl:
-          'https://sanq.ca/zh/admin/delivery-dispatch?order=order_stable_1',
-      }),
-    );
+
+    const notification = notifyDeliveryDispatchFailed.mock.calls[0]?.[0];
+    expect(notification).toMatchObject({
+      orderNumber: 'WEB-1001',
+      deliveryProvider: 'Uber Direct',
+      orderDetailUrl:
+        'https://sanq.ca/zh/admin/delivery-dispatch?order=order_stable_1',
+    });
+    expect(notification?.errorMessage).toContain('Provider outcome is UNKNOWN');
   });
 
   it('schedules a safe automatic retry without alerting Admin while retry allowance remains', async () => {
-    const createDelivery = jest.fn().mockRejectedValue(
+    const createDelivery =
+      jest.fn<UberDirectDeliveryDispatcherPort['createDelivery']>();
+    createDelivery.mockRejectedValue(
       new UberDirectDeliveryDispatchError(
         'Uber Direct API error (400): invalid request',
         'SAFE_TO_RETRY',
@@ -148,24 +203,25 @@ describe('OrderDeliveryDispatchUseCase durable dispatch', () => {
     });
 
     expect(dispatchJournal.recordFailed).not.toHaveBeenCalled();
-    expect(
-      dispatchJournal.recordFailedAndScheduleAutomaticRetry,
-    ).toHaveBeenCalledWith(
-      expect.objectContaining({
-        orderStableId: 'order_stable_1',
-        attempt: 1,
-        nextAttempt: 2,
-        externalReference: 'WEB-1001',
-        automaticRetriesRemaining: 2,
-        notBefore: expect.any(Date),
-      }),
-    );
+    const retry =
+      dispatchJournal.recordFailedAndScheduleAutomaticRetry.mock.calls[0]?.[0];
+    expect(retry).toMatchObject({
+      orderStableId: 'order_stable_1',
+      attempt: 1,
+      nextAttempt: 2,
+      externalReference: 'WEB-1001',
+      automaticRetriesRemaining: 2,
+      statusCode: 400,
+    });
+    expect(retry?.notBefore).toBeInstanceOf(Date);
     expect(dispatchJournal.recordUnknown).not.toHaveBeenCalled();
     expect(notifyDeliveryDispatchFailed).not.toHaveBeenCalled();
   });
 
   it('alerts Admin with the complete failure history only after three automatic retries are exhausted', async () => {
-    const createDelivery = jest.fn().mockRejectedValue(
+    const createDelivery =
+      jest.fn<UberDirectDeliveryDispatcherPort['createDelivery']>();
+    createDelivery.mockRejectedValue(
       new UberDirectDeliveryDispatchError(
         'Uber Direct API error (400): invalid request',
         'SAFE_TO_RETRY',
@@ -208,31 +264,25 @@ describe('OrderDeliveryDispatchUseCase durable dispatch', () => {
       'order_stable_1',
       1,
     );
-    expect(dispatchJournal.recordFailed).toHaveBeenCalledWith(
-      expect.objectContaining({
-        orderStableId: 'order_stable_1',
-        attempt: 4,
-        reason: 'PROVIDER_REJECTED',
-        failureHistory: expect.arrayContaining([
-          expect.objectContaining({ attempt: 1 }),
-          expect.objectContaining({ attempt: 2 }),
-          expect.objectContaining({ attempt: 3 }),
-          expect.objectContaining({ attempt: 4 }),
-        ]),
-      }),
-    );
-    expect(notifyDeliveryDispatchFailed).toHaveBeenCalledWith(
-      expect.objectContaining({
-        orderNumber: 'WEB-1001',
-        errorMessage: expect.stringContaining('Automatic retries exhausted'),
-        orderDetailUrl:
-          'https://sanq.ca/zh/admin/delivery-dispatch?order=order_stable_1',
-      }),
-    );
+    const failed = dispatchJournal.recordFailed.mock.calls[0]?.[0];
+    expect(failed).toMatchObject({
+      orderStableId: 'order_stable_1',
+      attempt: 4,
+      reason: 'PROVIDER_REJECTED',
+    });
+    expect(JSON.stringify(failed?.failureHistory)).toContain('"attempt":1');
+    expect(JSON.stringify(failed?.failureHistory)).toContain('"attempt":4');
+
+    const notification = notifyDeliveryDispatchFailed.mock.calls[0]?.[0];
+    expect(notification?.errorMessage).toContain('Automatic retries exhausted');
+    expect(notification?.errorMessage).toContain('Attempt 1');
+    expect(notification?.errorMessage).toContain('Attempt 4');
   });
 
   it('persists provider success through the durable journal transaction', async () => {
-    const createDelivery = jest.fn().mockResolvedValue({
+    const createDelivery =
+      jest.fn<UberDirectDeliveryDispatcherPort['createDelivery']>();
+    createDelivery.mockResolvedValue({
       deliveryId: 'uber-delivery-1',
       externalDeliveryId: 'WEB-1001',
       status: 'pending',
@@ -245,23 +295,26 @@ describe('OrderDeliveryDispatchUseCase durable dispatch', () => {
       automaticRetriesRemaining: 3,
     });
 
-    expect(dispatchJournal.persistProviderSuccess).toHaveBeenCalledWith(
-      expect.objectContaining({
-        orderDbId: 'order-db-1',
-        orderStableId: 'order_stable_1',
-        attempt: 1,
-        externalReference: 'WEB-1001',
-        response: expect.objectContaining({
-          deliveryId: 'uber-delivery-1',
-        }),
-      }),
+    expect(
+      dispatchJournal.persistProviderSuccess.mock.calls[0]?.[0],
+    ).toMatchObject({
+      orderDbId: 'order-db-1',
+      orderStableId: 'order_stable_1',
+      attempt: 1,
+      externalReference: 'WEB-1001',
+    });
+    const persistedSuccess =
+      dispatchJournal.persistProviderSuccess.mock.calls[0]?.[0];
+    expect(JSON.stringify(persistedSuccess?.response)).toContain(
+      'uber-delivery-1',
     );
     expect(dispatchJournal.recordUnknown).not.toHaveBeenCalled();
     expect(dispatchJournal.recordFailed).not.toHaveBeenCalled();
   });
 
   it('does not create another provider delivery when the Order is already bound', async () => {
-    const createDelivery = jest.fn();
+    const createDelivery =
+      jest.fn<UberDirectDeliveryDispatcherPort['createDelivery']>();
     const { service, prisma, dispatchJournal } = setup(createDelivery);
     prisma.order.findUnique.mockResolvedValue({
       ...deliveryOrder(),
@@ -275,11 +328,9 @@ describe('OrderDeliveryDispatchUseCase durable dispatch', () => {
     });
 
     expect(createDelivery).not.toHaveBeenCalled();
-    expect(dispatchJournal.recordSucceeded).toHaveBeenCalledWith(
-      expect.objectContaining({
-        providerDeliveryId: 'uber-delivery-existing',
-        reason: 'ALREADY_BOUND',
-      }),
-    );
+    expect(dispatchJournal.recordSucceeded.mock.calls[0]?.[0]).toMatchObject({
+      providerDeliveryId: 'uber-delivery-existing',
+      reason: 'ALREADY_BOUND',
+    });
   });
 });

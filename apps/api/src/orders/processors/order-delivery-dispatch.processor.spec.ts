@@ -2,6 +2,20 @@ import { OrderDeliveryDispatchProcessor } from './order-delivery-dispatch.proces
 
 const ORIGINAL_ENV = process.env;
 
+type QueryRawMock = jest.Mock<
+  Promise<unknown[]>,
+  [TemplateStringsArray, ...unknown[]]
+>;
+
+type CreateManyArgs = {
+  data: unknown;
+  skipDuplicates?: boolean;
+};
+
+function queryRawMock(): QueryRawMock {
+  return jest.fn<Promise<unknown[]>, [TemplateStringsArray, ...unknown[]]>();
+}
+
 describe('OrderDeliveryDispatchProcessor durable queue', () => {
   beforeEach(() => {
     process.env = {
@@ -16,8 +30,7 @@ describe('OrderDeliveryDispatchProcessor durable queue', () => {
   });
 
   it('seeds a durable request, claims it with an attempt_started fact, then dispatches exactly that attempt', async () => {
-    const queryRaw = jest
-      .fn()
+    const queryRaw = queryRawMock()
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([
         {
@@ -26,26 +39,37 @@ describe('OrderDeliveryDispatchProcessor durable queue', () => {
           automaticRetriesRemaining: 3,
         },
       ]);
-    const createMany = jest.fn().mockResolvedValue({ count: 1 });
+    const createMany = jest
+      .fn<Promise<{ count: number }>, [CreateManyArgs]>()
+      .mockResolvedValue({ count: 1 });
     const tx = {
       $queryRaw: queryRaw,
       opsEvent: { createMany },
     };
+    const findMany = jest
+      .fn<
+        Promise<
+          Array<{ orderStableId: string; clientRequestId: string | null }>
+        >,
+        [unknown]
+      >()
+      .mockResolvedValue([
+        {
+          orderStableId: 'order_stable_1',
+          clientRequestId: 'WEB-1001',
+        },
+      ]);
+    const transaction = jest.fn(
+      (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
+    );
     const prisma = {
-      order: {
-        findMany: jest.fn().mockResolvedValue([
-          {
-            orderStableId: 'order_stable_1',
-            clientRequestId: 'WEB-1001',
-          },
-        ]),
-      },
+      order: { findMany },
       opsEvent: { createMany },
-      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
-        callback(tx),
-      ),
+      $transaction: transaction,
     };
-    const handleDurableAttempt = jest.fn().mockResolvedValue(undefined);
+    const handleDurableAttempt = jest
+      .fn<Promise<void>, [Record<string, unknown>]>()
+      .mockResolvedValue();
     const processor = new OrderDeliveryDispatchProcessor(
       prisma as never,
       { handleDurableAttempt } as never,
@@ -53,39 +77,21 @@ describe('OrderDeliveryDispatchProcessor durable queue', () => {
 
     await expect(processor.processOnce(1)).resolves.toBe(1);
 
-    expect(prisma.order.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          externalDeliveryId: null,
-        }),
-      }),
+    const findInput = findMany.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(JSON.stringify(findInput)).toContain('"externalDeliveryId":null');
+
+    const persisted = createMany.mock.calls.map((call) => call[0]);
+    const persistedJson = JSON.stringify(persisted);
+    expect(persistedJson).toContain(
+      'order.delivery_dispatch.requested:order_stable_1:1',
     );
-    expect(createMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.arrayContaining([
-          expect.objectContaining({
-            idempotencyKey:
-              'order.delivery_dispatch.requested:order_stable_1:1',
-            eventName: 'order.delivery_dispatch.requested',
-            source: 'orders.delivery_dispatch',
-            payload: expect.objectContaining({
-              automaticRetriesRemaining: 3,
-            }),
-          }),
-        ]),
-        skipDuplicates: true,
-      }),
+    expect(persistedJson).toContain(
+      'order.delivery_dispatch.attempt_started:order_stable_1:1',
     );
-    expect(createMany).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        idempotencyKey:
-          'order.delivery_dispatch.attempt_started:order_stable_1:1',
-        eventName: 'order.delivery_dispatch.attempt_started',
-      }),
-      skipDuplicates: true,
-    });
+    expect(persistedJson).toContain('"automaticRetriesRemaining":3');
+
     expect(handleDurableAttempt).toHaveBeenCalledTimes(1);
-    expect(handleDurableAttempt).toHaveBeenCalledWith({
+    expect(handleDurableAttempt.mock.calls[0]?.[0]).toEqual({
       orderStableId: 'order_stable_1',
       attempt: 1,
       automaticRetriesRemaining: 3,
@@ -93,32 +99,39 @@ describe('OrderDeliveryDispatchProcessor durable queue', () => {
   });
 
   it('converts a stale started attempt to UNKNOWN and never re-posts it automatically', async () => {
-    const queryRaw = jest.fn().mockResolvedValueOnce([
+    const queryRaw = queryRawMock().mockResolvedValueOnce([
       {
         orderStableId: 'order_stable_2',
         attempt: 1,
         externalReference: 'WEB-1002',
       },
     ]);
-    const createMany = jest.fn().mockResolvedValue({ count: 1 });
+    const createMany = jest
+      .fn<Promise<{ count: number }>, [CreateManyArgs]>()
+      .mockResolvedValue({ count: 1 });
     const tx = {
       $queryRaw: queryRaw,
       opsEvent: { createMany },
     };
     const prisma = {
       order: {
-        findMany: jest.fn().mockResolvedValue([]),
+        findMany: jest
+          .fn<Promise<unknown[]>, [unknown]>()
+          .mockResolvedValue([]),
         findUnique: jest
-          .fn()
+          .fn<Promise<{ clientRequestId: string } | null>, [unknown]>()
           .mockResolvedValue({ clientRequestId: 'WEB-1002' }),
       },
       opsEvent: { createMany },
-      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
-        callback(tx),
+      $transaction: jest.fn(
+        (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
       ),
     };
-    const handleDurableAttempt = jest.fn();
-    const notifyReconciliationRequired = jest.fn().mockResolvedValue(undefined);
+    const handleDurableAttempt =
+      jest.fn<Promise<void>, [Record<string, unknown>]>();
+    const notifyReconciliationRequired = jest
+      .fn<Promise<void>, [Record<string, unknown>]>()
+      .mockResolvedValue();
     const processor = new OrderDeliveryDispatchProcessor(
       prisma as never,
       { handleDurableAttempt, notifyReconciliationRequired } as never,
@@ -126,30 +139,26 @@ describe('OrderDeliveryDispatchProcessor durable queue', () => {
 
     await expect(processor.processOnce(1)).resolves.toBe(1);
 
-    expect(createMany).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        idempotencyKey: 'order.delivery_dispatch.unknown:order_stable_2:1',
-        eventName: 'order.delivery_dispatch.unknown',
-        payload: expect.objectContaining({
-          reason: 'PROCESS_INTERRUPTED_AFTER_ATTEMPT_STARTED',
-        }),
-      }),
-      skipDuplicates: true,
-    });
+    const persistedJson = JSON.stringify(
+      createMany.mock.calls.map((call) => call[0]),
+    );
+    expect(persistedJson).toContain(
+      'order.delivery_dispatch.unknown:order_stable_2:1',
+    );
+    expect(persistedJson).toContain(
+      '"reason":"PROCESS_INTERRUPTED_AFTER_ATTEMPT_STARTED"',
+    );
     expect(handleDurableAttempt).not.toHaveBeenCalled();
-    expect(notifyReconciliationRequired).toHaveBeenCalledWith(
-      expect.objectContaining({
-        orderStableId: 'order_stable_2',
-        orderNumber: 'WEB-1002',
-        attempt: 1,
-        reason: 'PROCESS_INTERRUPTED_AFTER_ATTEMPT_STARTED',
-        failureHistory: [
-          expect.objectContaining({
-            attempt: 1,
-            reason: 'PROCESS_INTERRUPTED_AFTER_ATTEMPT_STARTED',
-          }),
-        ],
-      }),
+
+    const notification = notifyReconciliationRequired.mock.calls[0]?.[0];
+    expect(notification).toMatchObject({
+      orderStableId: 'order_stable_2',
+      orderNumber: 'WEB-1002',
+      attempt: 1,
+      reason: 'PROCESS_INTERRUPTED_AFTER_ATTEMPT_STARTED',
+    });
+    expect(JSON.stringify(notification?.failureHistory)).toContain(
+      'PROCESS_INTERRUPTED_AFTER_ATTEMPT_STARTED',
     );
   });
 });

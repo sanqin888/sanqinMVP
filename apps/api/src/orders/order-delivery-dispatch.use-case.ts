@@ -1,9 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import {
-  DeliveryProvider,
-  FulfillmentType,
-  OrderStatus,
-} from '@prisma/client';
+import { DeliveryProvider, FulfillmentType, OrderStatus } from '@prisma/client';
 import {
   OPERATIONS_ALERT_RECIPIENTS,
   type OperationsAlertRecipientPort,
@@ -83,8 +79,7 @@ export class OrderDeliveryDispatchUseCase {
     }
     const cycleStartAttempt = Math.max(
       1,
-      attempt -
-        (UBER_DIRECT_AUTOMATIC_RETRY_COUNT - automaticRetriesRemaining),
+      attempt - (UBER_DIRECT_AUTOMATIC_RETRY_COUNT - automaticRetriesRemaining),
     );
 
     const order = await this.prisma.order.findUnique({
@@ -390,8 +385,7 @@ export class OrderDeliveryDispatchUseCase {
       orderStableId: params.orderStableId,
       orderNumber: params.orderNumber,
       deliveryProvider: 'Uber Direct',
-      errorMessage:
-        `${details} Search Uber Direct Dashboard for ${params.orderNumber}. If the delivery exists, bind its orderUuid in SanQ. If it does not exist, use the SanQ retry button. If you create it manually in Dashboard, return to SanQ and bind the new orderUuid.`,
+      errorMessage: `${details} Search Uber Direct Dashboard for ${params.orderNumber}. If the delivery exists, bind its orderUuid in SanQ. If it does not exist, use the SanQ retry button. If you create it manually in Dashboard, return to SanQ and bind the new orderUuid.`,
       reconciliationRequired: true,
     });
   }
@@ -429,7 +423,9 @@ export class OrderDeliveryDispatchUseCase {
             })),
             orderNumber: params.orderNumber,
             deliveryProvider: params.deliveryProvider,
-            errorMessage: sanitizeDeliveryDispatchErrorMessage(params.errorMessage),
+            errorMessage: sanitizeDeliveryDispatchErrorMessage(
+              params.errorMessage,
+            ),
             orderDetailUrl: params.reconciliationRequired
               ? `${publicBaseUrl}/zh/admin/delivery-dispatch?order=${encodeURIComponent(
                   params.orderStableId,
@@ -475,5 +471,4 @@ export class OrderDeliveryDispatchUseCase {
       .join(' | ');
     return `${headline}. ${details}`;
   }
-
 }

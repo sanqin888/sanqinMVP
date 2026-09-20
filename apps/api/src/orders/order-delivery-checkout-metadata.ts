@@ -45,10 +45,7 @@ export function readOrderDeliveryDestinationSnapshot(
       asString(deliveryDestination?.addressLine2) ??
       asString(customer?.addressLine2) ??
       null,
-    city:
-      asString(deliveryDestination?.city) ??
-      asString(customer?.city) ??
-      null,
+    city: asString(deliveryDestination?.city) ?? asString(customer?.city) ?? null,
     province:
       asString(deliveryDestination?.province) ??
       asString(customer?.province) ??
@@ -117,9 +114,7 @@ export function computeOrderDeliveryPickupReadyAtFromCheckoutMetadata(params: {
   );
   if (typeof prepMinutes !== 'number') return undefined;
 
-  const pickupAt = new Date(
-    params.acceptedAt.getTime() + prepMinutes * 60_000,
-  );
+  const pickupAt = new Date(params.acceptedAt.getTime() + prepMinutes * 60_000);
   return Number.isNaN(pickupAt.getTime()) ? undefined : pickupAt;
 }
 

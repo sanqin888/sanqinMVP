@@ -1,5 +1,4 @@
-export const ORDER_DELIVERY_DISPATCH_SOURCE =
-  'orders.delivery_dispatch';
+export const ORDER_DELIVERY_DISPATCH_SOURCE = 'orders.delivery_dispatch';
 
 export const ORDER_DELIVERY_DISPATCH_REQUESTED_EVENT =
   'order.delivery_dispatch.requested';
@@ -35,7 +34,8 @@ export const orderDeliveryDispatchRequestedIdempotencyKey = (
 export const orderDeliveryDispatchAttemptStartedIdempotencyKey = (
   orderStableId: string,
   attempt: number,
-): string => `order.delivery_dispatch.attempt_started:${orderStableId}:${attempt}`;
+): string =>
+  `order.delivery_dispatch.attempt_started:${orderStableId}:${attempt}`;
 
 export const orderDeliveryDispatchSucceededIdempotencyKey = (
   orderStableId: string,

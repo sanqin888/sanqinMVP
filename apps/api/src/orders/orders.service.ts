@@ -899,7 +899,7 @@ export class OrdersService
     return updated;
   }
 
-  private async handleOrderPaidSideEffects(order: OrderWithItems) {
+  private handleOrderPaidSideEffects(order: OrderWithItems): void {
     // 1. 积分按折后商品消费额计算；积分抵扣本身在 Loyalty 结算时再扣除。
     const netSubtotalForRewards = Math.max(
       0,

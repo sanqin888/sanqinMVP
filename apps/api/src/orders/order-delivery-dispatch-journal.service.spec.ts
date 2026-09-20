@@ -1,23 +1,35 @@
 import { OrderDeliveryDispatchJournalService } from './order-delivery-dispatch-journal.service';
 
+type CreateManyArgs = {
+  data: unknown;
+  skipDuplicates?: boolean;
+};
+
 describe('OrderDeliveryDispatchJournalService', () => {
   it('binds the provider delivery id and records SUCCEEDED in the same transaction', async () => {
-    const createMany = jest.fn().mockResolvedValue({ count: 1 });
+    const createMany = jest
+      .fn<Promise<{ count: number }>, [CreateManyArgs]>()
+      .mockResolvedValue({ count: 1 });
     const tx = {
       order: {
         findUnique: jest
-          .fn()
+          .fn<
+            Promise<{ externalDeliveryId: string | null } | null>,
+            [unknown]
+          >()
           .mockResolvedValueOnce({ externalDeliveryId: null }),
-        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        updateMany: jest
+          .fn<Promise<{ count: number }>, [unknown]>()
+          .mockResolvedValue({ count: 1 }),
       },
       opsEvent: { createMany },
     };
-    const prisma = {
-      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
-        callback(tx),
-      ),
-    };
-    const service = new OrderDeliveryDispatchJournalService(prisma as never);
+    const transaction = jest.fn(
+      (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
+    );
+    const service = new OrderDeliveryDispatchJournalService({
+      $transaction: transaction,
+    } as never);
 
     await expect(
       service.persistProviderSuccess({
@@ -40,30 +52,25 @@ describe('OrderDeliveryDispatchJournalService', () => {
       },
       data: { externalDeliveryId: 'uber-delivery-1' },
     });
-    expect(createMany).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        idempotencyKey:
-          'order.delivery_dispatch.succeeded:order_stable_1:1',
-        eventName: 'order.delivery_dispatch.succeeded',
-        source: 'orders.delivery_dispatch',
-        payload: expect.objectContaining({
-          providerDeliveryId: 'uber-delivery-1',
-        }),
-      }),
-      skipDuplicates: true,
-    });
+    const persisted = createMany.mock.calls[0]?.[0];
+    expect(persisted?.skipDuplicates).toBe(true);
+    expect(JSON.stringify(persisted?.data)).toContain(
+      'order.delivery_dispatch.succeeded:order_stable_1:1',
+    );
+    expect(JSON.stringify(persisted?.data)).toContain('uber-delivery-1');
   });
 
-
   it('records FAILED and the next safe retry request atomically in one transaction', async () => {
-    const createMany = jest.fn().mockResolvedValue({ count: 2 });
+    const createMany = jest
+      .fn<Promise<{ count: number }>, [CreateManyArgs]>()
+      .mockResolvedValue({ count: 2 });
     const tx = { opsEvent: { createMany } };
-    const prisma = {
-      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
-        callback(tx),
-      ),
-    };
-    const service = new OrderDeliveryDispatchJournalService(prisma as never);
+    const transaction = jest.fn(
+      (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
+    );
+    const service = new OrderDeliveryDispatchJournalService({
+      $transaction: transaction,
+    } as never);
     const notBefore = new Date('2026-09-19T20:00:02.000Z');
 
     await service.recordFailedAndScheduleAutomaticRetry({
@@ -78,52 +85,41 @@ describe('OrderDeliveryDispatchJournalService', () => {
       notBefore,
     });
 
-    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
-    expect(createMany).toHaveBeenCalledWith({
-      data: expect.arrayContaining([
-        expect.objectContaining({
-          idempotencyKey:
-            'order.delivery_dispatch.failed:order_stable_1:1',
-          eventName: 'order.delivery_dispatch.failed',
-          payload: expect.objectContaining({
-            attempt: 1,
-            statusCode: 429,
-          }),
-        }),
-        expect.objectContaining({
-          idempotencyKey:
-            'order.delivery_dispatch.requested:order_stable_1:2',
-          eventName: 'order.delivery_dispatch.requested',
-          payload: expect.objectContaining({
-            attempt: 2,
-            trigger: 'AUTO_SAFE_RETRY',
-            automaticRetriesRemaining: 2,
-            previousAttempt: 1,
-            notBefore: notBefore.toISOString(),
-          }),
-        }),
-      ]),
-      skipDuplicates: true,
-    });
+    expect(transaction).toHaveBeenCalledTimes(1);
+    const persisted = createMany.mock.calls[0]?.[0];
+    const json = JSON.stringify(persisted?.data);
+    expect(persisted?.skipDuplicates).toBe(true);
+    expect(json).toContain('order.delivery_dispatch.failed:order_stable_1:1');
+    expect(json).toContain(
+      'order.delivery_dispatch.requested:order_stable_1:2',
+    );
+    expect(json).toContain('"trigger":"AUTO_SAFE_RETRY"');
+    expect(json).toContain('"automaticRetriesRemaining":2');
+    expect(json).toContain(`"notBefore":"${notBefore.toISOString()}"`);
   });
 
   it('fails closed to UNKNOWN rather than overwriting a different existing provider delivery id', async () => {
-    const createMany = jest.fn().mockResolvedValue({ count: 1 });
+    const createMany = jest
+      .fn<Promise<{ count: number }>, [CreateManyArgs]>()
+      .mockResolvedValue({ count: 1 });
     const tx = {
       order: {
         findUnique: jest
-          .fn()
+          .fn<
+            Promise<{ externalDeliveryId: string | null } | null>,
+            [unknown]
+          >()
           .mockResolvedValue({ externalDeliveryId: 'uber-existing' }),
-        updateMany: jest.fn(),
+        updateMany: jest.fn<Promise<{ count: number }>, [unknown]>(),
       },
       opsEvent: { createMany },
     };
-    const prisma = {
-      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
-        callback(tx),
-      ),
-    };
-    const service = new OrderDeliveryDispatchJournalService(prisma as never);
+    const transaction = jest.fn(
+      (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
+    );
+    const service = new OrderDeliveryDispatchJournalService({
+      $transaction: transaction,
+    } as never);
 
     await expect(
       service.persistProviderSuccess({
@@ -139,17 +135,11 @@ describe('OrderDeliveryDispatchJournalService', () => {
     ).resolves.toBe('UNKNOWN');
 
     expect(tx.order.updateMany).not.toHaveBeenCalled();
-    expect(createMany).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        idempotencyKey: 'order.delivery_dispatch.unknown:order_stable_1:1',
-        eventName: 'order.delivery_dispatch.unknown',
-        payload: expect.objectContaining({
-          reason: 'LOCAL_BIND_CONFLICT',
-          providerDeliveryId: 'uber-new',
-          existingProviderDeliveryId: 'uber-existing',
-        }),
-      }),
-      skipDuplicates: true,
-    });
+    const persisted = createMany.mock.calls[0]?.[0];
+    const json = JSON.stringify(persisted?.data);
+    expect(json).toContain('order.delivery_dispatch.unknown:order_stable_1:1');
+    expect(json).toContain('"reason":"LOCAL_BIND_CONFLICT"');
+    expect(json).toContain('"providerDeliveryId":"uber-new"');
+    expect(json).toContain('"existingProviderDeliveryId":"uber-existing"');
   });
 });

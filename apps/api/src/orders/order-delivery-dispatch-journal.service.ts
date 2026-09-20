@@ -56,16 +56,14 @@ export class OrderDeliveryDispatchJournalService {
             attempt: params.attempt,
             externalReference: params.externalReference,
             reason: 'LOCAL_BIND_CONFLICT',
-            errorMessage:
-              `Uber returned provider delivery ${params.response.deliveryId}, but SanQ Order is already bound to ${current.externalDeliveryId}. Verify both deliveries in Uber Direct Dashboard and resolve any duplicate before reconciling.`,
+            errorMessage: `Uber returned provider delivery ${params.response.deliveryId}, but SanQ Order is already bound to ${current.externalDeliveryId}. Verify both deliveries in Uber Direct Dashboard and resolve any duplicate before reconciling.`,
             providerDeliveryId: params.response.deliveryId,
             existingProviderDeliveryId: current.externalDeliveryId,
             failureHistory: [
               {
                 attempt: params.attempt,
                 reason: 'LOCAL_BIND_CONFLICT',
-                errorMessage:
-                  `Uber returned provider delivery ${params.response.deliveryId}, but SanQ Order is already bound to ${current.externalDeliveryId}. Verify both deliveries in Uber Direct Dashboard and resolve any duplicate before reconciling.`,
+                errorMessage: `Uber returned provider delivery ${params.response.deliveryId}, but SanQ Order is already bound to ${current.externalDeliveryId}. Verify both deliveries in Uber Direct Dashboard and resolve any duplicate before reconciling.`,
                 statusCode: null,
               },
             ],
@@ -98,16 +96,14 @@ export class OrderDeliveryDispatchJournalService {
                 attempt: params.attempt,
                 externalReference: params.externalReference,
                 reason: 'LOCAL_BIND_CONFLICT',
-                errorMessage:
-                  `Uber returned provider delivery ${params.response.deliveryId}, but SanQ Order concurrently became bound to ${raced.externalDeliveryId}. Verify both deliveries in Uber Direct Dashboard and resolve any duplicate before reconciling.`,
+                errorMessage: `Uber returned provider delivery ${params.response.deliveryId}, but SanQ Order concurrently became bound to ${raced.externalDeliveryId}. Verify both deliveries in Uber Direct Dashboard and resolve any duplicate before reconciling.`,
                 providerDeliveryId: params.response.deliveryId,
                 existingProviderDeliveryId: raced.externalDeliveryId,
                 failureHistory: [
                   {
                     attempt: params.attempt,
                     reason: 'LOCAL_BIND_CONFLICT',
-                    errorMessage:
-                      `Uber returned provider delivery ${params.response.deliveryId}, but SanQ Order concurrently became bound to ${raced.externalDeliveryId}. Verify both deliveries in Uber Direct Dashboard and resolve any duplicate before reconciling.`,
+                    errorMessage: `Uber returned provider delivery ${params.response.deliveryId}, but SanQ Order concurrently became bound to ${raced.externalDeliveryId}. Verify both deliveries in Uber Direct Dashboard and resolve any duplicate before reconciling.`,
                     statusCode: null,
                   },
                 ],
@@ -223,7 +219,6 @@ export class OrderDeliveryDispatchJournalService {
     });
   }
 
-
   async recordFailedAndScheduleAutomaticRetry(params: {
     orderStableId: string;
     attempt: number;
@@ -332,9 +327,7 @@ export class OrderDeliveryDispatchJournalService {
           statusCode,
         } satisfies DeliveryDispatchFailureDetail;
       })
-      .filter(
-        (item): item is DeliveryDispatchFailureDetail => item !== null,
-      )
+      .filter((item): item is DeliveryDispatchFailureDetail => item !== null)
       .reverse();
   }
 
