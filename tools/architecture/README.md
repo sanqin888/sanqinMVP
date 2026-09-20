@@ -231,10 +231,9 @@ node tools/architecture/scan-architecture.mjs --report
   explicit opt-in so provider activation does not silently recreate the retired event path;
 - Order paid Loyalty settlement uses the Identity-owned `LOYALTY_ORDER_PAID_SETTLEMENT` public
   capability and crosses contexts only with `orderStableId` plus reward subtotal/redeem cents and
-  earn multiplier. `OrderEventsBus` is private Orders/Fulfillment same-process fast-path
-  infrastructure: Messaging, Loyalty and Uber cannot own/import it and Orders must not export it
-  publicly. The durable `OrderLifecycleOutboxProcessor` remains the retry/replay owner and cannot
-  be replaced by the in-memory bus;
+  earn multiplier. The former private Orders/Fulfillment `OrderEventsBus` is retired and must stay
+  deleted; Messaging, Loyalty and Uber must not recreate or own an equivalent in-memory paid-order
+  bus. Durable Orders lifecycle/dispatch processors remain the retry/replay owners;
 - Benefits loyalty policy is exposed through `loyalty/public-api.ts`; all
   LoyaltyService policy readers must use transitional `BrandConfig` storage,
   transaction-bound reads must stay on the existing Prisma transaction client,

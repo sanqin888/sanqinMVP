@@ -4763,6 +4763,7 @@ if (ordersUberDirectDispatchBoundary) {
     boundary.ownerService,
     boundary.ownerModule,
     boundary.publicSurface,
+    boundary.useCase,
     boundary.fulfillmentProcessor,
     boundary.ordersModule,
   ];
@@ -4861,32 +4862,41 @@ if (ordersUberDirectDispatchBoundary) {
     }
   }
 
+  const useCasePath = join(REPOSITORY_ROOT, boundary.useCase);
+  if (existsSync(useCasePath)) {
+    const source = readFileSync(useCasePath, 'utf8');
+    if (
+      !source.includes("from '../deliveries/public-api'") ||
+      !source.includes('UBER_DIRECT_DELIVERY_DISPATCHER') ||
+      !source.includes('UberDirectDeliveryDispatcherPort') ||
+      !source.includes('private readonly uberDirectDispatcher') ||
+      !source.includes('this.uberDirectDispatcher.createDelivery') ||
+      source.includes('deliveries/uber-direct.service') ||
+      /\bUberDirectService\b/.test(source)
+    ) {
+      failures.push(
+        `Orders Uber Direct dispatch use case must consume the Deliveries public dispatcher capability: ${boundary.useCase}`,
+      );
+    }
+  }
+
   const fulfillmentProcessorPath = join(
     REPOSITORY_ROOT,
     boundary.fulfillmentProcessor,
   );
   if (existsSync(fulfillmentProcessorPath)) {
     const source = readFileSync(fulfillmentProcessorPath, 'utf8');
-    const consumesPublicDispatcherDirectly =
-      source.includes("from '../../deliveries/public-api'") &&
-      source.includes('UBER_DIRECT_DELIVERY_DISPATCHER') &&
-      source.includes('UberDirectDeliveryDispatcherPort') &&
-      source.includes('private readonly uberDirectDispatcher') &&
-      source.includes('this.uberDirectDispatcher.createDelivery');
-    const delegatesToDeliveryDispatchUseCase =
-      source.includes("from '../order-delivery-dispatch.use-case'") &&
-      source.includes(
-        'private readonly orderDeliveryDispatchUseCase: OrderDeliveryDispatchUseCase',
-      ) &&
-      source.includes('this.orderDeliveryDispatchUseCase.handle(payload)');
-
     if (
-      (!consumesPublicDispatcherDirectly && !delegatesToDeliveryDispatchUseCase) ||
+      source.includes('UBER_DIRECT_DELIVERY_DISPATCHER') ||
+      source.includes('UberDirectDeliveryDispatcherPort') ||
+      source.includes('OrderDeliveryDispatchUseCase') ||
+      source.includes('order.paid.verified') ||
+      source.includes('onOrderPaidVerified') ||
       source.includes('deliveries/uber-direct.service') ||
       /\bUberDirectService\b/.test(source)
     ) {
       failures.push(
-        `Orders fulfillment delivery dispatch must consume Uber Direct through the Deliveries public dispatcher capability, directly or through the internal delivery-dispatch use case: ${boundary.fulfillmentProcessor}`,
+        `FulfillmentProcessor must remain free of Uber Direct paid-order dispatch after durable replacement: ${boundary.fulfillmentProcessor}`,
       );
     }
   }
@@ -8275,7 +8285,6 @@ if (orderPaidSettlementBoundary) {
     boundary.loyaltyPublicSurface,
     boundary.ordersService,
     boundary.ordersModule,
-    boundary.ordersEventBus,
     boundary.ordersPublicSurface,
     boundary.messagingModule,
     boundary.orderIngestionContract,
@@ -8295,6 +8304,7 @@ if (orderPaidSettlementBoundary) {
 
   for (const retiredPath of [
     boundary.retiredLoyaltyProcessor,
+    boundary.retiredOrdersEventBus,
     boundary.retiredMessagingEventBus,
   ]) {
     if (retiredPath && existsSync(join(REPOSITORY_ROOT, retiredPath))) {
@@ -8379,7 +8389,6 @@ if (orderPaidSettlementBoundary) {
     'LOYALTY_ORDER_PAID_SETTLEMENT',
     'loyaltyOrderPaidSettlement.settleOrderPaid',
     'orderStableId: order.orderStableId',
-    "from './order-events.bus'",
   ]) {
     if (ordersServiceSource && !ordersServiceSource.includes(requiredToken)) {
       failures.push(
@@ -8406,12 +8415,12 @@ if (orderPaidSettlementBoundary) {
   const ordersModuleSource = readBoundarySource(boundary.ordersModule);
   if (
     ordersModuleSource &&
-    (!ordersModuleSource.includes("from './order-events.bus'") ||
-      !ordersModuleSource.includes('OrderEventsBus,') ||
+    (ordersModuleSource.includes("from './order-events.bus'") ||
+      ordersModuleSource.includes('OrderEventsBus') ||
       ordersModuleSource.includes('MessagingModule'))
   ) {
     failures.push(
-      `OrdersModule must privately own OrderEventsBus without MessagingModule: ${boundary.ordersModule}`,
+      `OrdersModule must keep the retired OrderEventsBus absent and must not compose MessagingModule: ${boundary.ordersModule}`,
     );
   }
 
