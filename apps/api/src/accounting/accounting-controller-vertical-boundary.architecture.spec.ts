@@ -169,9 +169,9 @@ function accountingCapabilities(source: string): string[] {
 }
 
 function routes(source: string): string[] {
-  return [
-    ...source.matchAll(/@(Get|Post|Put|Delete)\(\s*'([^']+)'\s*\)/g),
-  ].map(([, method, route]) => `${method.toUpperCase()} ${route}`);
+  return [...source.matchAll(/@(Get|Post|Put|Delete)\(\s*'([^']+)'\s*\)/g)].map(
+    ([, method, route]) => `${method.toUpperCase()} ${route}`,
+  );
 }
 
 describe('Phase 9 Accounting controller vertical boundary', () => {
