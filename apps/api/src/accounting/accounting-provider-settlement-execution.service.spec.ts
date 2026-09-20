@@ -16,6 +16,13 @@ import {
 
 const PLAN_HASH = 'a'.repeat(64);
 const OTHER_PLAN_HASH = 'b'.repeat(64);
+const HUMAN_REVIEW_AUTHORITY = {
+  reviewRevisionStableId: 'acctfinreview_july_1',
+  revision: 1,
+  reviewHash: 'c'.repeat(64),
+  confirmedAt: '2026-09-20T14:00:00.000Z',
+  confirmedByUserStableId: 'user_admin_1',
+};
 
 const statementJournal = {
   idempotencyKey: 'provider-settlement:provider_doc_june:r1:v1',
@@ -77,7 +84,10 @@ const reversalJournal = (entryStableId: string) => ({
   ],
 });
 
-const makeDocument = (status = 'READY') => ({
+const makeDocument = (
+  status = 'READY',
+  humanReviewRevision: typeof HUMAN_REVIEW_AUTHORITY | null = null,
+) => ({
   documentStableId: 'provider_doc_june',
   provider: AccountingFinancialProvider.UBER_EATS,
   documentType: AccountingFinancialDocumentType.STATEMENT,
@@ -99,6 +109,7 @@ const makeDocument = (status = 'READY') => ({
     reviewedByUserStableId: 'user_admin_1',
     version: 2,
   },
+  humanReviewRevision,
   coverageEvidence: {
     coverageStableId: 'coverage_uber',
     financialHistoryRequiredFrom: '2026-06-01',
@@ -238,9 +249,13 @@ const makeReversal = (
 
 const makeReport = (params?: {
   documentStatus?: string;
+  humanReviewRevision?: typeof HUMAN_REVIEW_AUTHORITY | null;
   reversals?: ReturnType<typeof makeReversal>[];
 }) => {
-  const document = makeDocument(params?.documentStatus ?? 'READY');
+  const document = makeDocument(
+    params?.documentStatus ?? 'READY',
+    params?.humanReviewRevision ?? null,
+  );
   const reversals = params?.reversals ?? [
     makeReversal('journal_sale_1'),
     makeReversal('journal_sale_2'),
@@ -360,6 +375,25 @@ describe('AccountingProviderSettlementExecutionService', () => {
         journalEntriesPostedOrReplayed: 3,
         providerDocumentsPostedOrReplayed: 1,
         uberReversalsPostedOrReplayed: 2,
+      }),
+    );
+  });
+
+  it('binds a confirmed human review revision into settlement write authority', async () => {
+    const report = makeReport({
+      humanReviewRevision: HUMAN_REVIEW_AUTHORITY,
+    });
+    const { service, accounting } = makeService(report);
+
+    await service.executeRange(input);
+
+    expect(
+      accounting.createProviderSettlementReplacementGroup,
+    ).toHaveBeenCalledWith(
+      expect.any(Object),
+      PROVIDER_SETTLEMENT_SYSTEM_ACTOR,
+      expect.objectContaining({
+        humanReviewRevision: HUMAN_REVIEW_AUTHORITY,
       }),
     );
   });

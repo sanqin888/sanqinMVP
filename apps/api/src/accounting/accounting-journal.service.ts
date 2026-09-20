@@ -11,6 +11,7 @@ import { ACCOUNTING_DB, type AccountingDb } from './accounting-db';
 import {
   AccountingJournalEntryKind,
   AccountingJournalSource,
+  AccountingProviderFinancialReviewStatus,
 } from './accounting-contracts';
 import { runSerializableAccountingWrite } from './accounting-atomic-write';
 import { writeAccountingAuditLog } from './accounting-audit-writer';
@@ -34,6 +35,7 @@ import {
   buildProviderSettlementJournalWriteAuthority,
   hashProviderSettlementJournalWrite,
   normalizeProviderSettlementReplacementGroupAuthority,
+  type ProviderFinancialHumanReviewAuthorityV1,
   type ProviderSettlementJournalWriteAuthorityV1,
   type ProviderSettlementReplacementGroupAuthorityV1,
   type ProviderSettlementReplacementGroupWriteInput,
@@ -1524,6 +1526,7 @@ export class AccountingJournalService {
     const document = await tx.accountingProviderFinancialDocument.findUnique({
       where: { documentStableId: authority.documentStableId },
       select: {
+        id: true,
         documentStableId: true,
         provider: true,
         documentType: true,
@@ -1595,11 +1598,19 @@ export class AccountingJournalService {
       );
     }
 
+    await this.assertProviderFinancialHumanReviewAuthorityInTx(
+      document.id,
+      authority.humanReviewRevision,
+      tx,
+      authority.documentStableId,
+    );
+
     for (const evidence of authority.supplementaryEvidenceDocuments ?? []) {
       const supplementary =
         await tx.accountingProviderFinancialDocument.findUnique({
           where: { documentStableId: evidence.documentStableId },
           select: {
+            id: true,
             documentStableId: true,
             provider: true,
             documentType: true,
@@ -1667,6 +1678,13 @@ export class AccountingJournalService {
           `provider settlement supplementary evidence changed after preview: ${evidence.documentStableId}`,
         );
       }
+
+      await this.assertProviderFinancialHumanReviewAuthorityInTx(
+        supplementary.id,
+        evidence.humanReviewRevision,
+        tx,
+        evidence.documentStableId,
+      );
     }
 
     const coverage = await tx.accountingProviderFinancialCoverage.findFirst({
@@ -1734,6 +1752,56 @@ export class AccountingJournalService {
           `provider settlement account authority changed after preview: ${prerequisite.accountStableId}`,
         );
       }
+    }
+  }
+
+  private async assertProviderFinancialHumanReviewAuthorityInTx(
+    documentDbId: string,
+    authority: ProviderFinancialHumanReviewAuthorityV1 | undefined,
+    tx: Prisma.TransactionClient,
+    documentStableId: string,
+  ): Promise<void> {
+    const confirmed =
+      await tx.accountingProviderFinancialReviewRevision.findMany({
+        where: {
+          documentId: documentDbId,
+          status: AccountingProviderFinancialReviewStatus.CONFIRMED,
+        },
+        orderBy: { revision: 'desc' },
+        take: 2,
+        select: {
+          reviewRevisionStableId: true,
+          revision: true,
+          reviewHash: true,
+          confirmedAt: true,
+          confirmedByUserStableId: true,
+        },
+      });
+
+    if (!authority) {
+      if (confirmed.length > 0) {
+        throw new ConflictException(
+          `provider financial human review authority changed after preview: ${documentStableId}`,
+        );
+      }
+      return;
+    }
+
+    const current = confirmed[0] ?? null;
+    if (
+      confirmed.length !== 1 ||
+      !current ||
+      current.reviewRevisionStableId !==
+        authority.reviewRevisionStableId ||
+      current.revision !== authority.revision ||
+      current.reviewHash !== authority.reviewHash ||
+      current.confirmedAt?.toISOString() !== authority.confirmedAt ||
+      current.confirmedByUserStableId !==
+        authority.confirmedByUserStableId
+    ) {
+      throw new ConflictException(
+        `provider financial human review authority changed after preview: ${documentStableId}`,
+      );
     }
   }
 

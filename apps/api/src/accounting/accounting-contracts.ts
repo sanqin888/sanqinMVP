@@ -216,3 +216,20 @@ export const AccountingFinancialTaxRole = {
 export type AccountingFinancialTaxRole = ValueOf<
   typeof AccountingFinancialTaxRole
 >;
+
+export const AccountingProviderFinancialReviewStatus = {
+  DRAFT: 'DRAFT',
+  CONFIRMED: 'CONFIRMED',
+  SUPERSEDED: 'SUPERSEDED',
+} as const;
+export type AccountingProviderFinancialReviewStatus = ValueOf<
+  typeof AccountingProviderFinancialReviewStatus
+>;
+
+export const AccountingProviderFinancialCorrectionReason = {
+  EXTRACTION_CORRECTION: 'EXTRACTION_CORRECTION',
+  SEMANTIC_CLASSIFICATION: 'SEMANTIC_CLASSIFICATION',
+} as const;
+export type AccountingProviderFinancialCorrectionReason = ValueOf<
+  typeof AccountingProviderFinancialCorrectionReason
+>;

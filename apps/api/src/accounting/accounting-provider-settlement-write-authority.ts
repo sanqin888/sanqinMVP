@@ -37,6 +37,14 @@ export type ProviderSettlementHistoricalJournalAnchorV1 = {
   sourceFactStableId: string;
 };
 
+export type ProviderFinancialHumanReviewAuthorityV1 = {
+  reviewRevisionStableId: string;
+  revision: number;
+  reviewHash: string;
+  confirmedAt: string;
+  confirmedByUserStableId: string;
+};
+
 export type ProviderSettlementSupplementaryEvidenceAuthorityV1 = {
   documentStableId: string;
   provider: AccountingFinancialProvider;
@@ -56,6 +64,7 @@ export type ProviderSettlementSupplementaryEvidenceAuthorityV1 = {
     reviewedByUserStableId: string;
     version: number;
   };
+  humanReviewRevision?: ProviderFinancialHumanReviewAuthorityV1;
 };
 
 export type ProviderSettlementReplacementGroupAuthorityV1 = {
@@ -80,6 +89,7 @@ export type ProviderSettlementReplacementGroupAuthorityV1 = {
     reviewedByUserStableId: string;
     version: number;
   };
+  humanReviewRevision?: ProviderFinancialHumanReviewAuthorityV1;
   supplementaryEvidenceDocuments?: ProviderSettlementSupplementaryEvidenceAuthorityV1[];
   coverageEvidence: {
     coverageStableId: string;
@@ -239,6 +249,34 @@ const normalizeHistoricalAnchors = (
   );
 };
 
+const normalizeHumanReviewAuthority = (
+  review: ProviderFinancialHumanReviewAuthorityV1 | undefined,
+): ProviderFinancialHumanReviewAuthorityV1 | undefined => {
+  if (!review) return undefined;
+  return {
+    reviewRevisionStableId: requireValue(
+      review.reviewRevisionStableId,
+      'humanReviewRevision.reviewRevisionStableId',
+    ),
+    revision: requirePositiveInteger(
+      review.revision,
+      'humanReviewRevision.revision',
+    ),
+    reviewHash: requireSha256(
+      review.reviewHash,
+      'humanReviewRevision.reviewHash',
+    ),
+    confirmedAt: requireValue(
+      review.confirmedAt,
+      'humanReviewRevision.confirmedAt',
+    ),
+    confirmedByUserStableId: requireValue(
+      review.confirmedByUserStableId,
+      'humanReviewRevision.confirmedByUserStableId',
+    ),
+  };
+};
+
 const normalizeSupplementaryEvidenceDocuments = (
   authority: ProviderSettlementReplacementGroupAuthorityV1,
 ): ProviderSettlementSupplementaryEvidenceAuthorityV1[] => {
@@ -278,6 +316,9 @@ const normalizeSupplementaryEvidenceDocuments = (
         'provider settlement supplementary evidence requires confirmed linked review evidence',
       );
     }
+    const humanReviewRevision = normalizeHumanReviewAuthority(
+      document.humanReviewRevision,
+    );
     return {
       documentStableId,
       provider: document.provider,
@@ -325,6 +366,7 @@ const normalizeSupplementaryEvidenceDocuments = (
           'supplementaryEvidenceDocuments.reviewEvidence.version',
         ),
       },
+      ...(humanReviewRevision ? { humanReviewRevision } : {}),
     };
   });
   const stableIds = new Set(
@@ -374,6 +416,9 @@ export const normalizeProviderSettlementReplacementGroupAuthority = (
   }
   const supplementaryEvidenceDocuments =
     normalizeSupplementaryEvidenceDocuments(authority);
+  const humanReviewRevision = normalizeHumanReviewAuthority(
+    authority.humanReviewRevision,
+  );
 
   return {
     version: 1,
@@ -416,6 +461,7 @@ export const normalizeProviderSettlementReplacementGroupAuthority = (
         'reviewEvidence.version',
       ),
     },
+    ...(humanReviewRevision ? { humanReviewRevision } : {}),
     ...(supplementaryEvidenceDocuments.length > 0
       ? { supplementaryEvidenceDocuments }
       : {}),

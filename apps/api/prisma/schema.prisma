@@ -378,6 +378,17 @@ enum AccountingFinancialTaxRole {
   OTHER_TAX
 }
 
+enum AccountingProviderFinancialReviewStatus {
+  DRAFT
+  CONFIRMED
+  SUPERSEDED
+}
+
+enum AccountingProviderFinancialCorrectionReason {
+  EXTRACTION_CORRECTION
+  SEMANTIC_CLASSIFICATION
+}
+
 enum UberFinancialReportStatus {
   REQUESTED
   READY
@@ -2304,6 +2315,7 @@ model AccountingProviderFinancialDocument {
   supersedes              AccountingProviderFinancialDocument? @relation("AccountingProviderFinancialRevision", fields: [supersedesDocumentId], references: [id], onDelete: Restrict)
   revisions               AccountingProviderFinancialDocument[] @relation("AccountingProviderFinancialRevision")
   lines                   AccountingProviderFinancialLine[]
+  reviewRevisions         AccountingProviderFinancialReviewRevision[]
 
   @@unique([provider, documentType, businessIdentityKey, revision], map: "AcctProviderFinDoc_identity_rev_key")
   @@index([provider, documentType, periodStart, periodEnd], map: "AcctProviderFinDoc_period_idx")
@@ -2331,6 +2343,46 @@ model AccountingProviderFinancialLine {
   @@unique([documentId, lineNo])
   @@index([component, postingTreatment])
   @@index([occurredAt])
+}
+
+model AccountingProviderFinancialReviewRevision {
+  id                        String                                  @id @default(uuid()) @db.Uuid
+  reviewRevisionStableId    String                                  @unique @default(cuid())
+  documentId                String                                  @db.Uuid
+  revision                  Int
+  status                    AccountingProviderFinancialReviewStatus @default(DRAFT)
+  reviewHash                String
+  note                      String?
+  createdByUserStableId     String
+  confirmedByUserStableId   String?
+  confirmedAt               DateTime?
+  createdAt                 DateTime                                @default(now())
+  updatedAt                 DateTime                                @updatedAt
+  document                  AccountingProviderFinancialDocument     @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  corrections               AccountingProviderFinancialReviewCorrection[]
+
+  @@unique([documentId, revision], map: "AcctProviderFinReview_doc_rev_key")
+  @@index([documentId, status, revision], map: "AcctProviderFinReview_doc_status_rev_idx")
+}
+
+model AccountingProviderFinancialReviewCorrection {
+  id                        String                                      @id @default(uuid()) @db.Uuid
+  correctionStableId        String                                      @unique @default(cuid())
+  reviewRevisionId          String                                      @db.Uuid
+  sourceLineStableId        String
+  reason                    AccountingProviderFinancialCorrectionReason
+  note                      String?
+  effectiveRawCode          String?
+  effectiveRawName          String?
+  effectiveComponent        AccountingFinancialComponent
+  effectivePostingTreatment AccountingFinancialPostingTreatment
+  effectiveTaxRole          AccountingFinancialTaxRole
+  effectiveAmountCents      Int
+  createdAt                 DateTime                                    @default(now())
+  reviewRevision            AccountingProviderFinancialReviewRevision   @relation(fields: [reviewRevisionId], references: [id], onDelete: Cascade)
+
+  @@unique([reviewRevisionId, sourceLineStableId], map: "AcctProviderFinReviewCorr_line_key")
+  @@index([sourceLineStableId], map: "AcctProviderFinReviewCorr_source_line_idx")
 }
 
 model AccountingProviderFinancialCoverage {

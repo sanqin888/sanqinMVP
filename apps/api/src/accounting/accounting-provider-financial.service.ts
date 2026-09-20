@@ -39,6 +39,12 @@ import {
   ACCOUNTING_FANTUAN_ADJUSTMENT_DETAIL_PARSER_VERSION,
   parseFantuanAdjustmentDetailXlsx,
 } from './accounting-fantuan-adjustment-detail-xlsx';
+import {
+  AccountingProviderFinancialReviewService,
+} from './accounting-provider-financial-review.service';
+import type {
+  ProviderFinancialReviewDraftInput,
+} from './accounting-provider-financial-review.policy';
 import { getAccountingUploadsDir } from './accounting-storage-path';
 
 export type AccountingProviderFinancialParseContext = Omit<
@@ -88,6 +94,7 @@ export class AccountingProviderFinancialService {
     private readonly inbox: AccountingInboxService,
     @Inject(BRAND_STORE_CONFIG_READER)
     private readonly storeConfig: BrandStoreConfigReaderPort,
+    private readonly humanReview: AccountingProviderFinancialReviewService,
   ) {}
 
   async parseForInboxSuggestion(
@@ -323,6 +330,36 @@ export class AccountingProviderFinancialService {
       }
       throw new AccountingProviderFinancialProcessingError(message);
     }
+  }
+
+  listHumanReviewRevisions(documentStableId: string) {
+    return this.humanReview.listReviewRevisions(documentStableId);
+  }
+
+  createHumanReviewDraft(
+    documentStableId: string,
+    input: ProviderFinancialReviewDraftInput,
+    operatorUserStableId: string,
+  ) {
+    return this.humanReview.createDraft(
+      documentStableId,
+      input,
+      operatorUserStableId,
+    );
+  }
+
+  confirmHumanReviewRevision(
+    documentStableId: string,
+    reviewRevisionStableId: string,
+    expectedReviewHash: string,
+    operatorUserStableId: string,
+  ) {
+    return this.humanReview.confirmRevision(
+      documentStableId,
+      reviewRevisionStableId,
+      expectedReviewHash,
+      operatorUserStableId,
+    );
   }
 
   async confirmSelectedInboxFinancialEvidence(

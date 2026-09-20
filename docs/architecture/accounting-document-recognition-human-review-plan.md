@@ -1,8 +1,8 @@
 # Accounting Document Recognition & Human Review Plan
 
-Status: **SLICE 0 LOCAL IMPLEMENTED / REVIEW PENDING / NO RUNTIME CHANGE YET**  
+Status: **SLICE 0 MERGED / SLICE 1 SOURCE IMPLEMENTED / MIGRATION REQUIRED**  
 Planning date: 2026-09-20  
-Audit baseline: `origin/dev@1ede0599`  
+Audit baseline: `origin/dev@1ede0599`; Slice 1 implementation baseline: `origin/dev@bbd0b1c0`  
 Owner: **Accounting / Reporting / Analytics**  
 Phase 9 status: **remains PRODUCTION VERIFIED / CLOSED — do not reopen Phase 9**
 
@@ -573,7 +573,32 @@ Scope:
 - replay binds and revalidates review authority;
 - unreviewed provider documents remain fail-closed where correction is required.
 
-Expected: **Prisma migration required**.
+Implementation status on 2026-09-20: **SOURCE IMPLEMENTED / REVIEWED LOCALLY / MIGRATION REQUIRED**.
+
+Implemented source semantics:
+
+- `AccountingProviderFinancialDocument` remains the immutable machine/source materialization;
+- separate Human Review Revision and typed Correction persistence stores full deterministic correction sets, including an explicit zero-correction revision when the reviewer returns to/accepts the machine evidence unchanged;
+- review revisions use `DRAFT / CONFIRMED / SUPERSEDED`, stable review identity, operator identity, timestamps and SHA-256 review hash;
+- `EXTRACTION_CORRECTION` may correct source-visible label/value association or amount but cannot alter Accounting classification fields;
+- `SEMANTIC_CLASSIFICATION` may change Accounting component/posting/tax-role only, cannot rewrite source evidence values, and requires a review note;
+- machine lines are never updated; Settlement projects the latest confirmed review over the immutable source lines and reruns provider reconciliation;
+- creating or confirming a review revision is blocked once the provider document has an active posted Journal;
+- Settlement replay authority carries the exact confirmed review stable ID/revision/hash/operator/timestamp, and the Serializable Journal write revalidates that authority before persistence;
+- if Preview had no review but one is confirmed before execution, or if the confirmed revision/hash changes after Preview, execution fails closed and requires a new Preview;
+- existing Fantuan supplementary evidence remains a separate evidence mechanism; if that supporting document itself has a confirmed Human Review Revision, its exact review authority is bound and revalidated too;
+- no OCR engine, parser, provider wire contract, package dependency, context direction or public SCC changes are part of Slice 1.
+
+**MIGRATION REQUIRED.** Suggested migration name:
+`accounting_provider_financial_human_review_revision`.
+
+After this schema/source PR is merged into `dev`, generate the companion migration only on the user's verified disposable/local development database:
+
+`pnpm --filter api exec prisma migrate dev --create-only --name accounting_provider_financial_human_review_revision`
+
+Expected generated SQL is additive: create the two review enums, create
+`AccountingProviderFinancialReviewRevision` and
+`AccountingProviderFinancialReviewCorrection`, their foreign keys, stable-ID/identity unique constraints and indexes. There is no existing Human Review table/data to rename or backfill. Review the generated SQL for accidental drops/renames, enum replacement instead of enum creation, unexpected cascading outside ReviewRevision -> Correction, incorrect FK targets, missing unique/index constraints, or any destructive operation. Promotion to `main` / production remains blocked until that migration is generated locally, reviewed, committed and merged back into `dev`.
 
 ### Slice 2 — Human Review UI
 

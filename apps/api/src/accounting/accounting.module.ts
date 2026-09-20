@@ -24,6 +24,7 @@ import { AccountingGmailIngestService } from './accounting-gmail-ingest.service'
 import { AccountingInboxAcquisitionService } from './accounting-inbox-acquisition.service';
 import { AccountingImageRetentionService } from './accounting-image-retention.service';
 import { AccountingProviderFinancialService } from './accounting-provider-financial.service';
+import { AccountingProviderFinancialReviewService } from './accounting-provider-financial-review.service';
 import { AccountingProviderFinancialHistoryService } from './accounting-provider-financial-history.service';
 import { AccountingChartService } from './accounting-chart.service';
 import { AccountingExpenseService } from './accounting-expense.service';
@@ -100,6 +101,7 @@ import { PaymentFinancialFactsModule } from '../payments/public-api';
     AccountingInboxService,
     AccountingProviderSettlementQueryService,
     AccountingProviderFinancialService,
+    AccountingProviderFinancialReviewService,
     AccountingInboxAcquisitionService,
     AccountingImageRetentionService,
     AccountingProviderFinancialHistoryService,
