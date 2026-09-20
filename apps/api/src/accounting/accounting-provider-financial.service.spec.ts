@@ -43,6 +43,7 @@ All amounts shown are in CAD funds
     const service = new AccountingProviderFinancialService(
       operations as never,
       storeConfig as never,
+      {} as never,
     );
 
     const result = await service.parseForInboxSuggestion({
@@ -88,6 +89,7 @@ Net Total $2,021.83
     const service = new AccountingProviderFinancialService(
       operations as never,
       storeConfig as never,
+      {} as never,
     );
 
     await expect(
@@ -140,6 +142,7 @@ Net Total
     const service = new AccountingProviderFinancialService(
       operations as never,
       storeConfig as never,
+      {} as never,
     );
 
     await expect(
@@ -189,6 +192,7 @@ Net Total
     const service = new AccountingProviderFinancialService(
       operations as never,
       storeConfig as never,
+      {} as never,
     );
 
     await expect(
@@ -268,6 +272,7 @@ Total transfer amount $3813.11
     const service = new AccountingProviderFinancialService(
       operations as never,
       storeConfig as never,
+      {} as never,
     );
 
     await service.confirmSelectedInboxFinancialEvidence(
@@ -335,6 +340,7 @@ Total transfer amount $3813.11
     const service = new AccountingProviderFinancialService(
       operations as never,
       storeConfig as never,
+      {} as never,
     );
 
     await expect(
@@ -379,6 +385,7 @@ Total transfer amount $3813.11
     const service = new AccountingProviderFinancialService(
       operations as never,
       storeConfig as never,
+      {} as never,
     );
 
     const result = await service.parseAndMaterialize({

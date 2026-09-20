@@ -161,10 +161,26 @@ export type ProviderSettlementDocumentInput = {
   }>;
 };
 
+export type ProviderSettlementControlTotalCheck = {
+  key:
+    | 'UBER_TOTAL_EARNINGS'
+    | 'UBER_TOTAL_FEES'
+    | 'UBER_TOTAL_MARKETING'
+    | 'UBER_TOTAL_AMENDMENTS'
+    | 'UBER_NET_TOTAL';
+  status: 'MATCHED' | 'MISMATCH' | 'INCOMPLETE';
+  controlRawName: string;
+  controlLineStableId: string | null;
+  expectedCents: number | null;
+  calculatedCents: number | null;
+  deltaCents: number | null;
+};
+
 export type ProviderSettlementDocumentPlan = {
   salesAuthority: ProviderSalesAuthority;
   status: 'READY' | 'BLOCKED' | 'NOOP';
   blockReasons: string[];
+  controlTotalChecks: ProviderSettlementControlTotalCheck[];
   decisions: ProviderSettlementLineDecision[];
   draftJournal: AccountingJournalCreateInput | null;
   debitCents: number;
@@ -406,17 +422,192 @@ const toJournalLines = (
       memo,
     }));
 
+type UberControlTotalRule = {
+  key: ProviderSettlementControlTotalCheck['key'];
+  controlRawName: string;
+  componentRawNames: readonly string[];
+  requireEveryComponent: boolean;
+};
+
+const UBER_CONTROL_TOTAL_RULES: readonly UberControlTotalRule[] = [
+  {
+    key: 'UBER_TOTAL_EARNINGS',
+    controlRawName: 'Total Earnings',
+    componentRawNames: [
+      'Sales',
+      'Tax on Sales',
+      'Tips',
+      'Container Fees',
+      'Tax on Container Fees',
+      'Other Earnings',
+      'Tax on Other Earnings',
+    ],
+    requireEveryComponent: false,
+  },
+  {
+    key: 'UBER_TOTAL_FEES',
+    controlRawName: 'Total Uber Fees',
+    componentRawNames: [
+      'Marketplace Fees',
+      'Tax on Marketplace Fees',
+      'Other Charges',
+      'Tax On Other Charges',
+    ],
+    requireEveryComponent: false,
+  },
+  {
+    key: 'UBER_TOTAL_MARKETING',
+    controlRawName: 'Total Marketing Spends',
+    componentRawNames: [
+      'Offers On Items',
+      'Provider Subsidy',
+      'Marketing Adjustment',
+      'Other Offer Charges',
+      'Tax on offer spends',
+      'Ad Spends',
+      'Ad Credits',
+      'Tax on Net Ad Spends',
+    ],
+    requireEveryComponent: false,
+  },
+  {
+    key: 'UBER_TOTAL_AMENDMENTS',
+    controlRawName: 'Total Amendments',
+    componentRawNames: [
+      'Net Chargeback Amount',
+      'Net Tax On Chargeback',
+      'Marketplace Facilitator Tax',
+      'Adjustments',
+      'Tax On Adjustments',
+    ],
+    requireEveryComponent: false,
+  },
+  {
+    key: 'UBER_NET_TOTAL',
+    controlRawName: 'Net Total',
+    componentRawNames: [
+      'Total Earnings',
+      'Total Uber Fees',
+      'Total Marketing Spends',
+      'Total Amendments',
+    ],
+    requireEveryComponent: true,
+  },
+] as const;
+
+const normalizeControlRawName = (rawName: string | null): string =>
+  rawName?.trim().toLowerCase() ?? '';
+
+const sumControlAmounts = (
+  lines: ProviderSettlementDocumentInput['lines'],
+  rawNames: readonly string[],
+): number => {
+  const accepted = new Set(rawNames.map((name) => name.toLowerCase()));
+  let total = 0;
+  for (const line of lines) {
+    if (!accepted.has(normalizeControlRawName(line.rawName))) continue;
+    const next = total + line.amountCents;
+    if (!Number.isSafeInteger(next)) {
+      throw new Error('Provider control total exceeds safe integer range');
+    }
+    total = next;
+  }
+  return total;
+};
+
+// Reconcile source controls before posting disposition changes which lines are
+// POSTABLE. A balanced draft Journal alone cannot prove extraction integrity.
+const buildProviderControlTotalChecks = (
+  document: ProviderSettlementDocumentInput,
+): ProviderSettlementControlTotalCheck[] => {
+  if (
+    document.provider !== AccountingFinancialProvider.UBER_EATS ||
+    document.documentType !== AccountingFinancialDocumentType.STATEMENT
+  ) {
+    return [];
+  }
+
+  return UBER_CONTROL_TOTAL_RULES.map((rule) => {
+    const controlLines = document.lines.filter(
+      (line) =>
+        normalizeControlRawName(line.rawName) ===
+        rule.controlRawName.toLowerCase(),
+    );
+    const componentPresence = rule.componentRawNames.map((rawName) =>
+      document.lines.filter(
+        (line) =>
+          normalizeControlRawName(line.rawName) === rawName.toLowerCase(),
+      ),
+    );
+    const componentsComplete =
+      !rule.requireEveryComponent ||
+      componentPresence.every((matches) => matches.length === 1);
+    const calculatedCents = sumControlAmounts(
+      document.lines,
+      rule.componentRawNames,
+    );
+
+    if (controlLines.length !== 1 || !componentsComplete) {
+      return {
+        key: rule.key,
+        status: 'INCOMPLETE' as const,
+        controlRawName: rule.controlRawName,
+        controlLineStableId:
+          controlLines.length === 1
+            ? (controlLines[0]?.lineStableId ?? null)
+            : null,
+        expectedCents:
+          controlLines.length === 1
+            ? (controlLines[0]?.amountCents ?? null)
+            : null,
+        calculatedCents,
+        deltaCents: null,
+      };
+    }
+
+    const controlLine = controlLines[0];
+    if (!controlLine) {
+      throw new Error('Provider control total line missing after validation');
+    }
+    const deltaCents = calculatedCents - controlLine.amountCents;
+    if (!Number.isSafeInteger(deltaCents)) {
+      throw new Error(
+        'Provider control total delta exceeds safe integer range',
+      );
+    }
+    return {
+      key: rule.key,
+      status: deltaCents === 0 ? ('MATCHED' as const) : ('MISMATCH' as const),
+      controlRawName: rule.controlRawName,
+      controlLineStableId: controlLine.lineStableId,
+      expectedCents: controlLine.amountCents,
+      calculatedCents,
+      deltaCents,
+    };
+  });
+};
+
 export function buildProviderSettlementDocumentPlan(params: {
   document: ProviderSettlementDocumentInput;
   salesAuthority: ProviderSalesAuthority;
   occurredAt: Date;
 }): ProviderSettlementDocumentPlan {
   const { document } = params;
+  const controlTotalChecks = buildProviderControlTotalChecks(document);
+  const controlBlockReasons = [
+    ...(controlTotalChecks.some((check) => check.status === 'MISMATCH')
+      ? ['PROVIDER_CONTROL_TOTAL_MISMATCH']
+      : []),
+    ...(controlTotalChecks.some((check) => check.status === 'INCOMPLETE')
+      ? ['PROVIDER_CONTROL_TOTAL_INCOMPLETE']
+      : []),
+  ];
   if (document.currency !== 'CAD') {
     return {
       salesAuthority: params.salesAuthority,
       status: 'BLOCKED',
-      blockReasons: ['UNSUPPORTED_CURRENCY'],
+      blockReasons: ['UNSUPPORTED_CURRENCY', ...controlBlockReasons].sort(),
+      controlTotalChecks,
       decisions: [],
       draftJournal: null,
       debitCents: 0,
@@ -446,13 +637,17 @@ export function buildProviderSettlementDocumentPlan(params: {
     ),
   ).sort();
 
-  if (blocked.length > 0) {
+  if (blocked.length > 0 || controlBlockReasons.length > 0) {
     return {
       salesAuthority: params.salesAuthority,
       status: 'BLOCKED',
       blockReasons: Array.from(
-        new Set(blocked.map((line) => line.reason)),
+        new Set([
+          ...blocked.map((line) => line.reason),
+          ...controlBlockReasons,
+        ]),
       ).sort(),
+      controlTotalChecks,
       decisions,
       draftJournal: null,
       debitCents: 0,
@@ -465,6 +660,7 @@ export function buildProviderSettlementDocumentPlan(params: {
       salesAuthority: params.salesAuthority,
       status: 'NOOP',
       blockReasons: [],
+      controlTotalChecks,
       decisions,
       draftJournal: null,
       debitCents: 0,
@@ -503,6 +699,7 @@ export function buildProviderSettlementDocumentPlan(params: {
     salesAuthority: params.salesAuthority,
     status: 'READY',
     blockReasons: [],
+    controlTotalChecks,
     decisions,
     draftJournal: {
       idempotencyKey: `provider-settlement:${document.documentStableId}:r${document.revision}:v1`,

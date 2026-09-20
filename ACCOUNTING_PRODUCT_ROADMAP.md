@@ -1,18 +1,25 @@
 # Post-Modularization Accounting Product Roadmap
 
 Status: **PLANNED / START GATE SATISFIED — DO NOT REOPEN PHASE 9**  
-Planning date: 2026-09-19  
-Baseline: Phase 9 **PRODUCTION VERIFIED / CLOSED** at production `main@dbea68f3`
+Planning date: 2026-09-20  
+Baseline: Phase 9 **PRODUCTION VERIFIED / CLOSED** at production `main@dbea68f3`  
+Document-recognition audit baseline: `origin/dev@1ede0599`
 
 ## 1. Purpose and placement
 
 This is the approved follow-on plan for:
 
-1. ExpenseDocument -> canonical Journal cutover and final `AccountingTransaction` contraction;
-2. canonical Accounting Sales Analytics;
-3. Trial Balance;
-4. an initial **资产负债变动表 / Balance Movement Statement**;
-5. later promotion to a formal Balance Sheet after a real fiscal-year opening balance is entered.
+1. provider-document recognition safety and auditable Human Review Revision;
+2. ExpenseDocument -> canonical Journal cutover and final `AccountingTransaction` contraction;
+3. canonical Accounting Sales Analytics;
+4. Trial Balance;
+5. an initial **资产负债变动表 / Balance Movement Statement**;
+6. later promotion to a formal Balance Sheet after a real fiscal-year opening balance is entered.
+
+The document-recognition/human-review work is an immediate Accounting correctness package.
+It may precede Slice A without reopening Phase 9 because it hardens the already-live
+provider-evidence/settlement workflow rather than extending the closed modularization
+program.
 
 This work belongs in **Accounting**, not Admin. Admin remains operational reporting (orders, gross order total, AOV, menu/channel operations). Any later Admin financial summary must consume an Accounting-owned report contract rather than duplicate P&L, tax, settlement or balance calculations.
 
@@ -31,7 +38,7 @@ Implementation may begin only after:
 
 Already-deferred real evidence does not block the project unless a slice directly depends on it: real CRA remittance, real Payroll reversal/correction, first real production period-close evidence, and Uber provider-history/cutover evidence.
 
-The repository-wide modularization gate is satisfied at `origin/dev@1b18fb00` on 2026-09-19 after PR #2418 passed CI #5972 and the final tail audit was closed. This roadmap remains a separate post-modularization product project; begin only from a fresh Slice A readiness audit and the normal local-review -> user-authorization -> PR/CI workflow.
+The repository-wide modularization gate is satisfied at `origin/dev@1b18fb00` on 2026-09-19 after PR #2418 passed CI #5972 and the final tail audit was closed. This roadmap remains a separate post-modularization product project. The document-recognition correctness package now precedes Slice A; each source slice still begins from a fresh readiness audit and the normal local-review -> user-authorization -> PR/CI workflow.
 
 ## 3. Current baseline
 
@@ -62,7 +69,48 @@ Reports currently combine canonical Journal facts with confirmed Expense facts, 
 
 The canonical Journal already provides balanced entries, stable source-fact identity, category dimensions, audit and period locks. The CoA has ASSET / LIABILITY / EQUITY / REVENUE / EXPENSE classes and includes cash/bank/provider pending assets, HST accounts, Store Balance/Payroll liabilities, opening-balance equity, revenue and operating/provider/payment expense accounts.
 
-## 4. Opening-balance policy
+## 4. Immediate Work Package 0 — Document Recognition & Human Review Safety
+
+Detailed design and audit: `docs/architecture/accounting-document-recognition-human-review-plan.md`
+
+This work package is now **P0 Accounting correctness** and should be completed before new
+financial-feature work that depends on provider settlement authority.
+
+State: **Slice 0 merged in PR #2428 (`bbd0b1c0`); Slice 1 Human Review Revision source implemented locally / migration required / not yet production-promotable**.
+
+Baseline audited state before Slice 0:
+
+- images use Sharp/local geometry preparation and AWS Textract AnalyzeExpense when enabled,
+  with local Tesseract fallback;
+- PDF uses Poppler plain text first and invokes Textract only when no local text is found;
+- CSV/XLSX use native structured paths where implemented, including the Fantuan Adjustment
+  Detail workbook;
+- provider evidence can be classified/confirmed, but machine-derived financial lines have
+  no durable human correction/review revision;
+- settlement planning proves Journal debit/credit balance but has no general statement
+  control-total integrity gate before READY.
+
+Required order:
+
+1. **Slice 0:** provider control-total fail-closed plus the real Uber layout regression,
+   with no schema/dependency change;
+2. **Slice 1:** versioned Human Review Revision persistence/authority; expected Prisma
+   migration;
+3. **Slice 2:** Accounting Inbox/Settlement review UI for source vs machine vs reviewed
+   effective values;
+4. **Slice 3:** layout-aware provider-neutral document extraction boundary using current
+   installed capabilities first;
+5. **Slice 4:** SanQ ground-truth benchmark of current stack vs PaddleOCR/PP-StructureV3,
+   Textract and BDA;
+6. **Slice 5:** optional recognition-engine cutover only after benchmark and explicit
+   dependency/runtime authorization;
+7. **Slice 6:** optional suspense workflow only after a separate Accounting policy decision.
+
+Do not use a new OCR engine as a substitute for reconciliation or human review. Machine
+extraction, operator correction, reconciliation and posting authority remain separate
+auditable layers.
+
+## 5. Opening-balance policy
 
 The operator does not have a reliable real-world 2026-06-01 opening balance and does not intend to force the current year to reconcile to real cash/bank balances.
 
@@ -79,7 +127,7 @@ Do not invent a historical opening Journal.
 
 Until a reviewed real fiscal-year opening is entered, the product is **资产负债变动表 / Balance Movement Statement**, not a formal Balance Sheet.
 
-## 5. Slice A — Expense Journal Canonicalization
+## 6. Slice A — Expense Journal Canonicalization
 
 Do this first so Trial Balance/balance reporting no longer depends on a parallel single-entry Expense path.
 
@@ -121,7 +169,7 @@ Expected end-state contraction:
 - architecture guard requires 0 `AccountingTransaction` mutation callers;
 - final model drop, if performed, follows destructive migration review rules.
 
-## 6. Slice B — Canonical Sales Analytics
+## 7. Slice B — Canonical Sales Analytics
 
 Accounting Journal/canonical financial facts own amounts. Orders may provide narrow business dimensions such as channel or canonical primary payment method, but must not become the amount authority again.
 
@@ -198,7 +246,7 @@ Split the current generic “会计调整 / Adjustments” presentation into at 
 
 Do not rewrite valid historical Journals merely to simplify presentation.
 
-## 7. Slice C — Trial Balance and Balance Movement
+## 8. Slice C — Trial Balance and Balance Movement
 
 Start only after Expense -> Journal cutover removes parallel Expense arithmetic from authoritative financial reporting.
 
@@ -253,7 +301,7 @@ The UI must clearly say:
 
 At a future fiscal-year opening, after reviewed real opening balances are available, post an explicit balanced OPENING_BALANCE Journal. Only then promote the product label to **资产负债表 / Balance Sheet** for dates on/after that verified opening.
 
-## 8. Slice D — Reporting polish
+## 9. Slice D — Reporting polish
 
 After canonical foundations are stable:
 
@@ -265,7 +313,7 @@ After canonical foundations are stable:
 - add drill-through from totals to Journal/source facts;
 - visually distinguish management metrics from accounting statement values.
 
-## 9. Architecture rules
+## 10. Architecture rules
 
 Preserve:
 
@@ -289,7 +337,7 @@ Orders / External Channels / Payroll / Expense evidence owners
 
 Any new context direction, scanner allowance, provider ownership change or production-payment semantic change requires explicit architecture authorization before implementation.
 
-## 10. Deferred evidence and coverage
+## 11. Deferred evidence and coverage
 
 The Phase 9 deferred items remain future evidence, not reopened debt:
 
@@ -301,21 +349,35 @@ The Phase 9 deferred items remain future evidence, not reopened debt:
 
 Where incomplete evidence affects a requested report, show the coverage state. For example, Uber Channel Contribution without complete commission evidence should be incomplete/unavailable, not inferred from Order totals.
 
-## 11. Migration expectations
+## 12. Migration expectations
 
+- Document-recognition Slice 0 control-total hardening: no migration expected.
+- Human Review Revision persistence: additive Accounting schema work is expected and
+  therefore **MIGRATION REQUIRED** when that slice is implemented.
+- PaddleOCR adoption, if later approved: dependency/runtime-image authorization is
+  required; it is not authorized by this roadmap.
 - Sales Analytics/report UI: normally no migration.
 - Expense -> Journal cutover: may not need additive schema, but final `AccountingTransaction` model contraction is destructive and requires separate migration review/authorization.
 - Accounts Payable, if chosen: separate CoA/schema/migration decision.
 - Trial Balance / Balance Movement: normally no migration if Journal/CoA are sufficient.
 - future real opening balance: reviewed data operation through Journal authority, not fabricated migration history.
 
-This roadmap itself authorizes no migration.
+This roadmap itself authorizes no migration or new OCR/runtime dependency.
 
-## 12. Acceptance and handoff
+## 13. Acceptance and handoff
 
 Every future slice must begin with a read-only readiness audit, preserve the final modularization graph unless explicitly authorized otherwise, add financial-semantic and boundary regressions, compare fixed historical totals before cutover, and keep unavailable real/provider evidence explicitly deferred.
 
-After repository-wide modularization closes, start with:
+The immediate next source work is:
+
+**Accounting Document Recognition / Human Review — Slice 0: provider control-total
+fail-closed + Uber layout regression.**
+
+That slice is intentionally schema-free and dependency-free. After it is reviewed, the
+Human Review Revision persistence slice requires a separate schema/migration readiness
+decision.
+
+The previously approved Expense roadmap remains next after this correctness package:
 
 **Post-Modularization Accounting — Slice A: Expense Journal Canonicalization Readiness Audit**
 
@@ -329,4 +391,4 @@ Re-confirm:
 - period lock/idempotency/audit;
 - exact migration/contraction requirements.
 
-Implementation starts only after that audit is reviewed.
+Each implementation slice starts only after its readiness audit is reviewed.

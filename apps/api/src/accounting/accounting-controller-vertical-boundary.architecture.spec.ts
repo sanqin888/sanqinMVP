@@ -68,6 +68,9 @@ const EXPECTED_ROUTES = [
   'DELETE inbox/:inboxItemStableId/image-retention/candidate',
   'POST inbox/:inboxItemStableId/image-retention/accept',
   'GET inbox/artifacts/:artifactStableId/content',
+  'GET provider-financial/:documentStableId/review-revisions',
+  'POST provider-financial/:documentStableId/review-revisions',
+  'POST provider-financial/:documentStableId/review-revisions/:reviewRevisionStableId/confirm',
   'POST inbox/:inboxItemStableId/provider-financial/confirm',
   'DELETE inbox/manual-uploads/:inboxItemStableId/permanent',
   'DELETE inbox/:inboxItemStableId',
@@ -166,7 +169,8 @@ function accountingCapabilities(source: string): string[] {
 }
 
 function routes(source: string): string[] {
-  return [...source.matchAll(/@(Get|Post|Put|Delete)\('([^']+)'\)/g)].map(
+  const routePattern = /@(Get|Post|Put|Delete)\(\s*'([^']+)'\s*,?\s*\)/g;
+  return [...source.matchAll(routePattern)].map(
     ([, method, route]) => `${method.toUpperCase()} ${route}`,
   );
 }

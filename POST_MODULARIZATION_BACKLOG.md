@@ -57,6 +57,8 @@ Core Lane A — Identity / PWA / workstation
   A5 Browser E2E stage 1 / stable browser journeys
 
 Core Lane B — Accounting / reporting
+  B0 Document recognition + human review safety
+    ↓
   B1 Expense -> canonical Journal
     ↓
   B2 Canonical Sales Analytics
@@ -342,7 +344,30 @@ Physical printers and real Clover hardware remain separate production/device ver
 
 This lane follows `ACCOUNTING_PRODUCT_ROADMAP.md`. Phase 9 remains closed.
 
-### 5.1 B1 — Expense -> canonical Journal
+### 5.1 B0 — Document recognition + human review safety
+
+Priority: **P0 ACCOUNTING CORRECTNESS / BEFORE NEW FINANCIAL FEATURES**  
+Complexity: **H / XL only if a new OCR runtime is later adopted**  
+State: **SLICE 0 MERGED (#2428 / `bbd0b1c0`) / SLICE 1 SOURCE IMPLEMENTED / MIGRATION REQUIRED / NOT DEPLOYED**  
+External gate: **none for control-total + review work; benchmark/provider choices later**  
+Detailed plan: `docs/architecture/accounting-document-recognition-human-review-plan.md`
+
+Two real provider-evidence cases exposed a workflow-level correctness gap rather than a remaining Phase 9 modularization defect. An Uber monthly PDF lost label/value layout when Poppler plain text was parsed, causing `Tax on Sales` to inherit the Sales amount while the source `Net Total` remained correct; because settlement planning currently proves only Journal balance, the malformed normalized document could still reach READY. A separate Fantuan Summary Adjustment correctly failed closed until a Detail workbook was supplied, but also demonstrated that the operator cannot create a durable reviewed resolution when machine extraction or semantic mapping needs human intervention.
+
+Target:
+
+- add provider control-total reconciliation before settlement READY;
+- preserve original source and machine extraction as immutable evidence;
+- add a versioned Human Review Revision instead of silently mutating parser output;
+- distinguish extraction correction, semantic classification and supplementary evidence;
+- bind Shadow Preview/replay authority to the exact reviewed revision/hash;
+- keep XLSX/CSV on native structured parsers and converge PDF/image recognition behind an Accounting-owned extraction boundary;
+- benchmark current Poppler/Textract/Tesseract against PaddleOCR/PP-StructureV3 and BDA on SanQ ground truth before any recognition-engine cutover;
+- do not adopt Paddle/BDA, add dependencies, or introduce suspense accounting merely from this planning decision.
+
+The first implementation slice is intentionally smaller than the full redesign: **control-total fail-closed + the real Uber layout regression fixture, with no schema or dependency change**. Human Review Revision persistence follows as an expand-contract Accounting change and is expected to require a Prisma migration. Any Paddle runtime adoption requires separate dependency/runtime authorization.
+
+### 5.2 B1 — Expense -> canonical Journal
 
 Priority: **P0 CORE FINANCIAL FOUNDATION**  
 Complexity: **H / potentially XL if Accounts Payable persistence is chosen**  
@@ -368,7 +393,7 @@ Mandatory readiness decision:
 
 Do not silently treat an unpaid expense as cash/bank paid. If Accounts Payable is selected and schema/CoA changes are required, follow the repository's migration authorization workflow.
 
-### 5.2 B2 — Canonical Sales Analytics
+### 5.3 B2 — Canonical Sales Analytics
 
 Priority: **P1**  
 Complexity: **H**  
@@ -391,7 +416,7 @@ Target Accounting views:
 
 Journal/canonical financial facts own amounts. Orders may provide narrow channel/payment dimensions, not recreate revenue truth.
 
-### 5.3 B3 — Trial Balance + Balance Movement Statement
+### 5.4 B3 — Trial Balance + Balance Movement Statement
 
 Priority: **P1/P2**  
 Complexity: **H**  
@@ -408,7 +433,7 @@ Keep the existing policy:
 
 Do not call it a formal Balance Sheet until reviewed real fiscal-year opening balances are posted.
 
-### 5.4 B4 — Accounting reporting UI / export polish
+### 5.5 B4 — Accounting reporting UI / export polish
 
 Priority: **P2**  
 Complexity: **M**  
@@ -426,7 +451,7 @@ Then improve the Accounting reports surface:
 
 Avoid polishing current mixed-authority widgets immediately before replacing their underlying semantics.
 
-### 5.5 B5 — Admin 数据 -> “经营报表” redesign
+### 5.6 B5 — Admin 数据 -> “经营报表” redesign
 
 Priority: **P2**  
 Complexity: **M**  
