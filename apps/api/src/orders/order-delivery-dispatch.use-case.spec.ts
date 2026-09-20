@@ -2,9 +2,7 @@ import {
   UberDirectDeliveryDispatchError,
   type UberDirectDeliveryDispatcherPort,
 } from '../deliveries/public-api';
-import type {
-  DeliveryDispatchFailureDetail,
-} from './order-delivery-dispatch-journal.service';
+import type { DeliveryDispatchFailureDetail } from './order-delivery-dispatch-journal.service';
 import { OrderDeliveryDispatchUseCase } from './order-delivery-dispatch.use-case';
 
 function deliveryOrder() {

@@ -45,7 +45,8 @@ export function readOrderDeliveryDestinationSnapshot(
       asString(deliveryDestination?.addressLine2) ??
       asString(customer?.addressLine2) ??
       null,
-    city: asString(deliveryDestination?.city) ?? asString(customer?.city) ?? null,
+    city:
+      asString(deliveryDestination?.city) ?? asString(customer?.city) ?? null,
     province:
       asString(deliveryDestination?.province) ??
       asString(customer?.province) ??

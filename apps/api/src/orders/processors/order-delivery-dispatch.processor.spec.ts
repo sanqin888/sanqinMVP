@@ -127,8 +127,10 @@ describe('OrderDeliveryDispatchProcessor durable queue', () => {
         (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
       ),
     };
-    const handleDurableAttempt =
-      jest.fn<Promise<void>, [Record<string, unknown>]>();
+    const handleDurableAttempt = jest.fn<
+      Promise<void>,
+      [Record<string, unknown>]
+    >();
     const notifyReconciliationRequired = jest
       .fn<Promise<void>, [Record<string, unknown>]>()
       .mockResolvedValue();

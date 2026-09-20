@@ -249,8 +249,10 @@ describe('OrderDeliveryDispatchReconciliationService', () => {
         createMany,
       },
       order: {
-        findUnique:
-          jest.fn<Promise<Record<string, unknown> | null>, [unknown]>(),
+        findUnique: jest.fn<
+          Promise<Record<string, unknown> | null>,
+          [unknown]
+        >(),
         update: jest.fn<Promise<Record<string, never>>, [unknown]>(),
       },
     };
