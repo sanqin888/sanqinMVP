@@ -343,34 +343,31 @@ Sales (4 Orders) $120.00
       },
     });
 
-    expect(lineByName(parsed!, 'Sales')).toEqual(
-      expect.objectContaining({
-        amountCents: 260336,
-        rawPayload: expect.objectContaining({
-          extractionEvidence: expect.objectContaining({
-            strategy: 'LAYOUT_ROW_PAIR',
-            engine: 'POPPLER',
-            labelLine: expect.objectContaining({ lineId: 'p1-l1' }),
-            amountLine: expect.objectContaining({ lineId: 'p1-l2' }),
-          }) as unknown,
-        }) as unknown,
-      }),
-    );
-    expect(lineByName(parsed!, 'Tax on Sales')).toEqual(
-      expect.objectContaining({
-        amountCents: 33848,
-        rawPayload: expect.objectContaining({
-          extractionEvidence: expect.objectContaining({
-            strategy: 'LAYOUT_ROW_PAIR',
-            labelLine: expect.objectContaining({ lineId: 'p1-l3' }),
-            amountLine: expect.objectContaining({ lineId: 'p1-l4' }),
-          }) as unknown,
-        }) as unknown,
-      }),
-    );
+    const sales = lineByName(parsed!, 'Sales');
+    expect(sales?.amountCents).toBe(260336);
+    expect(sales?.rawPayload).toMatchObject({
+      extractionEvidence: {
+        strategy: 'LAYOUT_ROW_PAIR',
+        engine: 'POPPLER',
+        labelLine: { lineId: 'p1-l1' },
+        amountLine: { lineId: 'p1-l2' },
+      },
+    });
+
+    const salesTax = lineByName(parsed!, 'Tax on Sales');
+    expect(salesTax?.amountCents).toBe(33848);
+    expect(salesTax?.rawPayload).toMatchObject({
+      extractionEvidence: {
+        strategy: 'LAYOUT_ROW_PAIR',
+        labelLine: { lineId: 'p1-l3' },
+        amountLine: { lineId: 'p1-l4' },
+      },
+    });
     expect(lineByName(parsed!, 'Total Earnings')?.amountCents).toBe(294184);
     expect(lineByName(parsed!, 'Net Total')?.amountCents).toBe(143194);
-    expect(parsed?.lines.some((line) => line.amountCents === 12000)).toBe(false);
+    expect(parsed?.lines.some((line) => line.amountCents === 12000)).toBe(
+      false,
+    );
     expect(parsed?.rawMetadata).toEqual(
       expect.objectContaining({
         documentExtractionEngine: 'POPPLER',

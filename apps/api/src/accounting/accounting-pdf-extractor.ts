@@ -110,9 +110,7 @@ function runPdftotextCommand(
 
     child.on('error', (error) => {
       finishReject(
-        new Error(
-          `Accounting PDF ${operation} unavailable: ${error.message}`,
-        ),
+        new Error(`Accounting PDF ${operation} unavailable: ${error.message}`),
       );
     });
     child.stdout.on('data', (chunk: Buffer) => {
@@ -149,21 +147,17 @@ function runPdftotextCommand(
 
     child.stdin.on('error', (error) => {
       finishReject(
-        new Error(
-          `Accounting PDF ${operation} input failed: ${error.message}`,
-        ),
+        new Error(`Accounting PDF ${operation} input failed: ${error.message}`),
       );
     });
     child.stdin.end(buffer);
   });
 }
 
-
 function parseXmlAttribute(source: string, name: string): number | null {
-  const match = new RegExp(
-    `\\b${name}=["'](-?\\d+(?:\\.\\d+)?)["']`,
-    'i',
-  ).exec(source);
+  const match = new RegExp(`\\b${name}=["'](-?\\d+(?:\\.\\d+)?)["']`, 'i').exec(
+    source,
+  );
   if (!match) return null;
   const value = Number(match[1]);
   return Number.isFinite(value) ? value : null;
@@ -181,9 +175,7 @@ function decodeXmlText(value: string): string {
     .replace(/&#x([0-9a-f]+);/gi, (_, code: string) =>
       decodeXmlCodePoint(code, 16),
     )
-    .replace(/&#(\d+);/g, (_, code: string) =>
-      decodeXmlCodePoint(code, 10),
-    )
+    .replace(/&#(\d+);/g, (_, code: string) => decodeXmlCodePoint(code, 10))
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
     .replace(/&lt;/g, '<')
@@ -260,11 +252,7 @@ export function parsePopplerBboxLayout(
             ACCOUNTING_DOCUMENT_EXTRACTION_POLICY.maxLineTextChars,
           ),
           confidence: null,
-          geometry: normalizePdfGeometry(
-            lineAttributes,
-            pageWidth,
-            pageHeight,
-          ),
+          geometry: normalizePdfGeometry(lineAttributes, pageWidth, pageHeight),
         });
       }
     }
@@ -277,9 +265,7 @@ export function parsePopplerBboxLayout(
     version: 1,
     inputKind: 'PDF',
     engine: 'POPPLER',
-    layoutMode: lines.some((line) => line.geometry)
-      ? 'GEOMETRY'
-      : 'TEXT_ONLY',
+    layoutMode: lines.some((line) => line.geometry) ? 'GEOMETRY' : 'TEXT_ONLY',
     truncated: totalLineCount > ACCOUNTING_DOCUMENT_EXTRACTION_POLICY.maxLines,
     lines,
   };

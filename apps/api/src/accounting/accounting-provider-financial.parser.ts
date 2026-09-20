@@ -450,8 +450,7 @@ function parseUberMonthlyStatement(
       monthlySummaryOnly: true,
       payoutSectionsExcludedFromNormalizedLines: true,
       documentExtractionEngine: summaryExtraction?.engine ?? null,
-      layoutAwareExtraction:
-        summaryExtraction?.layoutMode === 'GEOMETRY',
+      layoutAwareExtraction: summaryExtraction?.layoutMode === 'GEOMETRY',
     },
     lines,
   };
@@ -718,8 +717,7 @@ function resolveNamedAmountFromLayout(
         }
         const amountCents = parseMoneyCents(line.text);
         if (amountCents == null) return [];
-        const labelRight =
-          labelLine.geometry.left + labelLine.geometry.width;
+        const labelRight = labelLine.geometry.left + labelLine.geometry.width;
         if (line.geometry.left + 0.005 < labelRight) return [];
         const overlapRatio = verticalOverlapRatio(labelLine, line);
         if (overlapRatio < 0.35) return [];

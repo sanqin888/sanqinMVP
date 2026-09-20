@@ -118,10 +118,7 @@ export function parseAccountingDocumentExtraction(
   ) {
     return undefined;
   }
-  if (
-    record.layoutMode !== 'GEOMETRY' &&
-    record.layoutMode !== 'TEXT_ONLY'
-  ) {
+  if (record.layoutMode !== 'GEOMETRY' && record.layoutMode !== 'TEXT_ONLY') {
     return undefined;
   }
   if (typeof record.truncated !== 'boolean' || !Array.isArray(record.lines)) {
