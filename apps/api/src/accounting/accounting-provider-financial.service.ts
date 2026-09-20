@@ -4,6 +4,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import {
   AccountingFinancialProvider,
   AccountingInboxClassification,
@@ -32,6 +34,12 @@ import {
   matchAccountingProviderRecognitionRule,
   providerRecognitionParserVersion,
 } from './accounting-provider-recognition.policy';
+import {
+  ACCOUNTING_FANTUAN_ADJUSTMENT_DETAIL_PARSER_NAME,
+  ACCOUNTING_FANTUAN_ADJUSTMENT_DETAIL_PARSER_VERSION,
+  parseFantuanAdjustmentDetailXlsx,
+} from './accounting-fantuan-adjustment-detail-xlsx';
+import { getAccountingUploadsDir } from './accounting-storage-path';
 
 export type AccountingProviderFinancialParseContext = Omit<
   ProviderFinancialParseInput,
@@ -42,6 +50,37 @@ export type AccountingProviderFinancialParseContext = Omit<
 };
 
 export class AccountingProviderFinancialProcessingError extends Error {}
+
+const ACCOUNTING_INBOX_STORAGE_PREFIX = '/api/v1/accounting/files/inbox/';
+const XLSX_MIME =
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+const isXlsxArtifact = (artifact: {
+  originalFilename?: string | null;
+  mimeType?: string | null;
+}): boolean =>
+  artifact.mimeType?.split(';')[0]?.trim().toLowerCase() === XLSX_MIME ||
+  artifact.originalFilename?.trim().toLowerCase().endsWith('.xlsx') === true;
+
+const resolveInboxStoredFilePath = (storedUrl: string): string => {
+  if (!storedUrl.startsWith(ACCOUNTING_INBOX_STORAGE_PREFIX)) {
+    throw new ConflictException(
+      'provider financial evidence storage URL is invalid',
+    );
+  }
+  const fileName = path.basename(
+    storedUrl.slice(ACCOUNTING_INBOX_STORAGE_PREFIX.length),
+  );
+  if (
+    !fileName ||
+    storedUrl !== `${ACCOUNTING_INBOX_STORAGE_PREFIX}${fileName}`
+  ) {
+    throw new ConflictException(
+      'provider financial evidence storage URL is invalid',
+    );
+  }
+  return path.join(getAccountingUploadsDir(), 'inbox', fileName);
+};
 
 @Injectable()
 export class AccountingProviderFinancialService {
@@ -145,6 +184,67 @@ export class AccountingProviderFinancialService {
         error instanceof Error
           ? error.message
           : 'Unknown provider financial suggestion error';
+      throw new AccountingProviderFinancialProcessingError(message);
+    }
+  }
+
+  async parseFantuanAdjustmentDetailForInboxSuggestion(input: {
+    artifactStableId: string;
+    buffer: Buffer;
+    originalFilename?: string | null;
+  }) {
+    try {
+      const parsed = parseFantuanAdjustmentDetailXlsx({
+        buffer: input.buffer,
+        originalFilename: input.originalFilename,
+      });
+      if (!parsed) return { matched: false as const };
+
+      const parseResult = this.buildParseResult(parsed);
+      const excludedBeforeFinancialHistory = Boolean(
+        parsed.periodEnd &&
+        parsed.periodEnd < PROVIDER_FINANCIAL_HISTORY_START_DATE,
+      );
+      await this.inbox.recordInboxParseRun({
+        artifactStableId: input.artifactStableId,
+        parserName: ACCOUNTING_FANTUAN_ADJUSTMENT_DETAIL_PARSER_NAME,
+        parserVersion: ACCOUNTING_FANTUAN_ADJUSTMENT_DETAIL_PARSER_VERSION,
+        status: excludedBeforeFinancialHistory
+          ? AccountingParseStatus.SKIPPED
+          : AccountingParseStatus.SUCCESS,
+        ...(excludedBeforeFinancialHistory
+          ? {}
+          : { resultHash: hashAccountingJson(parseResult) }),
+        resultJson: excludedBeforeFinancialHistory
+          ? {
+              ...parseResult,
+              excludedBeforeFinancialHistory: true,
+              financialHistoryRequiredFrom:
+                PROVIDER_FINANCIAL_HISTORY_START_DATE,
+            }
+          : parseResult,
+      });
+      await this.inbox.suggestUnifiedInboxClassification(
+        input.artifactStableId,
+        {
+          classification:
+            AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
+          selectedProvider: AccountingFinancialProvider.FANTUAN,
+        },
+      );
+      return {
+        matched: true as const,
+        materialized: false as const,
+        parserValidated: true as const,
+        excludedBeforeFinancialHistory,
+        provider: AccountingFinancialProvider.FANTUAN,
+        documentType: parsed.documentType,
+      };
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Unknown Fantuan adjustment detail parsing error';
       throw new AccountingProviderFinancialProcessingError(message);
     }
   }
@@ -271,6 +371,56 @@ export class AccountingProviderFinancialService {
       );
     }
 
+    if (isXlsxArtifact(inbox.artifact)) {
+      if (inbox.selectedProvider !== AccountingFinancialProvider.FANTUAN) {
+        throw new ConflictException(
+          'XLSX provider financial evidence is currently supported only for ' +
+            'Fantuan adjustment details',
+        );
+      }
+      if (!inbox.artifact.storedUrl) {
+        throw new ConflictException(
+          'Fantuan adjustment detail evidence is missing stored XLSX content',
+        );
+      }
+      let buffer: Buffer;
+      try {
+        buffer = await fs.promises.readFile(
+          resolveInboxStoredFilePath(inbox.artifact.storedUrl),
+        );
+      } catch {
+        throw new ConflictException(
+          'Fantuan adjustment detail XLSX content is unavailable',
+        );
+      }
+      const parsed = parseFantuanAdjustmentDetailXlsx({
+        buffer,
+        originalFilename: inbox.artifact.originalFilename,
+      });
+      if (!parsed) {
+        throw new ConflictException(
+          'the Fantuan adjustment detail parser could not validate this XLSX ' +
+            'evidence',
+        );
+      }
+      if (
+        parsed.periodEnd &&
+        parsed.periodEnd < PROVIDER_FINANCIAL_HISTORY_START_DATE
+      ) {
+        throw new ConflictException(
+          `provider financial evidence is before the ${PROVIDER_FINANCIAL_HISTORY_START_DATE} financial-history boundary`,
+        );
+      }
+      await this.materializeParsed(inbox.artifact.artifactStableId, parsed, {
+        name: ACCOUNTING_FANTUAN_ADJUSTMENT_DETAIL_PARSER_NAME,
+        version: ACCOUNTING_FANTUAN_ADJUSTMENT_DETAIL_PARSER_VERSION,
+      });
+      return this.inbox.confirmProviderFinancialInboxItem(
+        inboxItemStableId,
+        operatorUserStableId,
+      );
+    }
+
     const extractedText = inbox.artifact.parseRuns
       .map((run) => jsonRecord(run.resultJson).extractedText)
       .find(
@@ -312,7 +462,7 @@ export class AccountingProviderFinancialService {
 
   private buildParseResult(
     parsed: ParsedProviderFinancialDocument,
-    text: string,
+    text?: string,
   ) {
     return {
       providerFinancial: true,
@@ -327,13 +477,22 @@ export class AccountingProviderFinancialService {
       lineCount: parsed.lines.length,
       lines: parsed.lines,
       rawMetadata: parsed.rawMetadata,
-      extractedText: text.slice(0, 100_000),
+      ...(text === undefined
+        ? {}
+        : { extractedText: text.slice(0, 100_000) }),
     };
   }
 
   private async materializeParsed(
     artifactStableId: string,
     parsed: ParsedProviderFinancialDocument,
+    parserIdentity: {
+      name: string;
+      version: string;
+    } = {
+      name: ACCOUNTING_PROVIDER_FINANCIAL_PARSER_NAME,
+      version: ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION,
+    },
   ) {
     const store = await this.storeConfig.getConfiguredStoreSnapshot();
     const document = await this.inbox.recordProviderFinancialDocument({
@@ -347,8 +506,8 @@ export class AccountingProviderFinancialService {
       periodStart: parsed.periodStart,
       periodEnd: parsed.periodEnd,
       currency: parsed.currency,
-      parserName: ACCOUNTING_PROVIDER_FINANCIAL_PARSER_NAME,
-      parserVersion: ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION,
+      parserName: parserIdentity.name,
+      parserVersion: parserIdentity.version,
       rawMetadata: parsed.rawMetadata,
       lines: parsed.lines,
     });

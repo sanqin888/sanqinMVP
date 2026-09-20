@@ -634,7 +634,18 @@ When Uber enables the required production path:
 - preserve the already-closed architecture boundaries;
 - after Production Verification succeeds, inventory and remove Test Store/sandbox data through a separately reviewed cleanup.
 
-### 8.5 Phase 9 deferred real-world evidence
+### 8.5 Fantuan settlement Adjustment decomposition
+
+State: **LOCAL SOURCE / REVIEW PENDING / DEPENDENCY LOCK PENDING / NO MIGRATION**  
+Complexity: **M / ACCOUNTING PROVIDER-EVIDENCE CORRECTNESS**
+
+A real August 2026 Fantuan settlement exposed a non-zero Summary `Adjustment` of **2694 cents**. The provider Detail workbook proves that the net is composed of two explicit `Order type = Adjustment` rows: `Fee type = Compensation` **+3354 cents** and `Fee type = Deduction` **-660 cents**. The Summary Sales/Sales Tax/Commission totals already equal the ordinary Order rows and exclude the compensation, so the adjustment cannot be safely guessed as Sales/Tax or posted as one generic component.
+
+The local correction keeps the Summary as the sole monthly settlement authority and treats the XLSX Detail as supplementary evidence only. XLSX classification is based on stable columns, not remarks: only `Order type = Adjustment` rows are considered, and `Fee type = Compensation / Deduction` receive explicit canonical raw codes while unknown fee types remain fail-closed. A non-zero Summary Adjustment is READY only when exactly one confirmed same-period Detail exists, every Adjustment fee type is supported, and the Detail net equals the Summary amount exactly. The Summary Adjustment becomes control evidence; Compensation posts to Other Operating Revenue, Deduction to Chargeback/Adjustment Expense, and Fantuan Pending receives their net. The Detail never creates a second settlement Journal.
+
+Replay authority conditionally binds the supplementary document identity/revision/review evidence and revalidates it inside the existing Serializable settlement transaction. Existing provider plans with no supplementary evidence omit the new optional authority field so historical Uber/Clover plan hashes and idempotency remain unchanged. The change stays entirely inside Accounting plus the existing Accounting Inbox Web adapter; there is no Prisma/schema/migration or new context direction. Direct XLSX parsing requires the explicitly authorized API dependency `@keep-lts/xlsx`; the manifest is locally changed, but `pnpm-lock.yaml` must be generated with repository-pinned pnpm before remote submission because the MCP workspace exposes no package-manager execution and the repository forbids hand-editing the lockfile.
+
+### 8.6 Phase 9 deferred real-world evidence
 
 State: **EVENT-TRIGGERED EVIDENCE ONLY — DO NOT REOPEN PHASE 9**
 

@@ -9,6 +9,10 @@ import {
   AccountingInboxStatus,
 } from '@prisma/client';
 import { AccountingProviderSettlementPreviewService } from './accounting-provider-settlement-preview.service';
+import {
+  FANTUAN_ADJUSTMENT_DETAIL_EVIDENCE_KIND,
+  FANTUAN_ADJUSTMENT_RAW_CODES,
+} from './accounting-fantuan-adjustment-detail.contract';
 
 const confirmedReview = (
   documentStableId: string,
@@ -133,6 +137,251 @@ describe('AccountingProviderSettlementPreviewService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  it('resolves a Fantuan summary Adjustment only from one confirmed same-period detail whose net matches', async () => {
+    const statementStableId = 'fantuan_statement_aug';
+    const detailStableId = 'fantuan_adjustment_detail_aug';
+    const operations = {
+      readProviderSettlementDocuments: jest.fn().mockResolvedValue([
+        {
+          documentStableId: statementStableId,
+          provider: AccountingFinancialProvider.FANTUAN,
+          documentType: AccountingFinancialDocumentType.STATEMENT,
+          businessIdentityKey: 'fantuan:statement:2026-08-01:2026-08-31',
+          revision: 1,
+          supersedesDocumentId: null,
+          storeStableId: '4750_Yonge_Street',
+          providerDocumentRef: '2026-08-01:2026-08-31',
+          periodStart: new Date('2026-08-01T00:00:00.000Z'),
+          periodEnd: new Date('2026-08-31T00:00:00.000Z'),
+          settledAt: null,
+          payoutAt: null,
+          currency: 'CAD',
+          rawMetadata: { evidenceKind: 'FANTUAN_SETTLEMENT_SUMMARY' },
+          ...confirmedReview(statementStableId, 'inbox_fantuan_statement_aug'),
+          lines: [
+            {
+              lineStableId: 'line-summary-adjustment',
+              lineNo: 1,
+              rawCode: null,
+              rawName: 'Adjustment',
+              component: AccountingFinancialComponent.ADJUSTMENT,
+              postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+              taxRole: AccountingFinancialTaxRole.NONE,
+              amountCents: 2694,
+              occurredAt: null,
+            },
+          ],
+        },
+        {
+          documentStableId: detailStableId,
+          provider: AccountingFinancialProvider.FANTUAN,
+          documentType: AccountingFinancialDocumentType.OTHER,
+          businessIdentityKey:
+            'fantuan:adjustment-detail:2026-08-01:2026-08-31',
+          revision: 1,
+          supersedesDocumentId: null,
+          storeStableId: '4750_Yonge_Street',
+          providerDocumentRef:
+            'adjustment-detail:2026-08-01:2026-08-31',
+          periodStart: new Date('2026-08-01T00:00:00.000Z'),
+          periodEnd: new Date('2026-08-31T00:00:00.000Z'),
+          settledAt: null,
+          payoutAt: null,
+          currency: 'CAD',
+          rawMetadata: {
+            evidenceKind: FANTUAN_ADJUSTMENT_DETAIL_EVIDENCE_KIND,
+            adjustmentNetCents: 2694,
+          },
+          ...confirmedReview(detailStableId, 'inbox_fantuan_detail_aug'),
+          lines: [
+            {
+              lineStableId: 'line-compensation',
+              lineNo: 1,
+              rawCode: FANTUAN_ADJUSTMENT_RAW_CODES.COMPENSATION,
+              rawName: 'Compensation',
+              component: AccountingFinancialComponent.ADJUSTMENT,
+              postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+              taxRole: AccountingFinancialTaxRole.NONE,
+              amountCents: 3354,
+              occurredAt: null,
+            },
+            {
+              lineStableId: 'line-deduction',
+              lineNo: 2,
+              rawCode: FANTUAN_ADJUSTMENT_RAW_CODES.DEDUCTION,
+              rawName: 'Deduction',
+              component: AccountingFinancialComponent.ADJUSTMENT,
+              postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+              taxRole: AccountingFinancialTaxRole.NONE,
+              amountCents: -660,
+              occurredAt: null,
+            },
+          ],
+        },
+      ]),
+      readProviderFinancialCoverage: jest.fn().mockResolvedValue([
+        {
+          coverageStableId: 'coverage_fantuan_1',
+          provider: AccountingFinancialProvider.FANTUAN,
+          storeStableId: '4750_Yonge_Street',
+          financialHistoryRequiredFrom: new Date('2026-06-01T00:00:00.000Z'),
+          financialCompleteThrough: null,
+          liveOrderFactCutoverAt: null,
+          orderDetailCoverageFrom: null,
+          updatedAt: new Date('2026-09-19T12:00:00.000Z'),
+        },
+      ]),
+      readAccountingAccountFacts: jest.fn().mockResolvedValue([
+        accountFact('account_fantuan_pending', AccountingAccountClass.ASSET),
+        accountFact(
+          'account_other_operating_revenue',
+          AccountingAccountClass.REVENUE,
+        ),
+        accountFact(
+          'account_chargeback_adjustment_expense',
+          AccountingAccountClass.EXPENSE,
+        ),
+      ]),
+      readSettlementShadowExistingJournals: jest.fn().mockResolvedValue([]),
+      readOrderSaleJournalsByFactStableIds: jest.fn().mockResolvedValue([]),
+    };
+    const orderFinancialFacts = {
+      readFactsForRange: jest.fn().mockResolvedValue([]),
+    };
+    const service = new AccountingProviderSettlementPreviewService(
+      operations as never,
+      operations as never,
+      accounting as never,
+      storeConfig as never,
+      orderFinancialFacts as never,
+    );
+
+    const result = await service.previewRange({
+      fromDate: '2026-08-01',
+      toDateExclusive: '2026-09-01',
+      storeStableId: '4750_Yonge_Street',
+      provider: AccountingFinancialProvider.FANTUAN,
+    });
+
+    const statement = result.providerDocuments.find(
+      (document) => document.documentStableId === statementStableId,
+    );
+    const detail = result.providerDocuments.find(
+      (document) => document.documentStableId === detailStableId,
+    );
+    expect(statement).toEqual(
+      expect.objectContaining({
+        status: 'READY',
+        blockReasons: [],
+        supplementaryEvidenceDocuments: [
+          expect.objectContaining({
+            documentStableId: detailStableId,
+            revision: 1,
+          }),
+        ],
+        debitCents: 3354,
+        creditCents: 3354,
+      }),
+    );
+    expect(statement?.decisions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          rawName: 'Adjustment',
+          disposition: 'CONTROL_TOTAL',
+        }),
+        expect.objectContaining({
+          rawCode: FANTUAN_ADJUSTMENT_RAW_CODES.COMPENSATION,
+          disposition: 'POSTABLE',
+          targetAccountStableId: 'account_other_operating_revenue',
+        }),
+        expect.objectContaining({
+          rawCode: FANTUAN_ADJUSTMENT_RAW_CODES.DEDUCTION,
+          disposition: 'POSTABLE',
+          targetAccountStableId: 'account_chargeback_adjustment_expense',
+        }),
+      ]),
+    );
+    expect(detail?.status).toBe('NOOP');
+    expect(result.amounts.readyProviderDebitCents).toBe(3354);
+    expect(result.amounts.readyProviderCreditCents).toBe(3354);
+    expect(orderFinancialFacts.readFactsForRange).not.toHaveBeenCalled();
+  });
+
+  it('keeps Fantuan Adjustment blocked when same-period detail evidence is absent', async () => {
+    const statementStableId = 'fantuan_statement_aug_missing_detail';
+    const operations = {
+      readProviderSettlementDocuments: jest.fn().mockResolvedValue([
+        {
+          documentStableId: statementStableId,
+          provider: AccountingFinancialProvider.FANTUAN,
+          documentType: AccountingFinancialDocumentType.STATEMENT,
+          businessIdentityKey: 'fantuan:statement:2026-08-01:2026-08-31',
+          revision: 1,
+          supersedesDocumentId: null,
+          storeStableId: '4750_Yonge_Street',
+          providerDocumentRef: '2026-08-01:2026-08-31',
+          periodStart: new Date('2026-08-01T00:00:00.000Z'),
+          periodEnd: new Date('2026-08-31T00:00:00.000Z'),
+          settledAt: null,
+          payoutAt: null,
+          currency: 'CAD',
+          rawMetadata: null,
+          ...confirmedReview(statementStableId, 'inbox_fantuan_missing_detail'),
+          lines: [
+            {
+              lineStableId: 'line-summary-adjustment',
+              lineNo: 1,
+              rawCode: null,
+              rawName: 'Adjustment',
+              component: AccountingFinancialComponent.ADJUSTMENT,
+              postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+              taxRole: AccountingFinancialTaxRole.NONE,
+              amountCents: 2694,
+              occurredAt: null,
+            },
+          ],
+        },
+      ]),
+      readProviderFinancialCoverage: jest.fn().mockResolvedValue([
+        {
+          coverageStableId: 'coverage_fantuan_1',
+          provider: AccountingFinancialProvider.FANTUAN,
+          storeStableId: '4750_Yonge_Street',
+          financialHistoryRequiredFrom: new Date('2026-06-01T00:00:00.000Z'),
+          financialCompleteThrough: null,
+          liveOrderFactCutoverAt: null,
+          orderDetailCoverageFrom: null,
+          updatedAt: new Date('2026-09-19T12:00:00.000Z'),
+        },
+      ]),
+      readAccountingAccountFacts: jest.fn().mockResolvedValue([]),
+      readSettlementShadowExistingJournals: jest.fn().mockResolvedValue([]),
+      readOrderSaleJournalsByFactStableIds: jest.fn().mockResolvedValue([]),
+    };
+    const service = new AccountingProviderSettlementPreviewService(
+      operations as never,
+      operations as never,
+      accounting as never,
+      storeConfig as never,
+      { readFactsForRange: jest.fn().mockResolvedValue([]) } as never,
+    );
+
+    const result = await service.previewRange({
+      fromDate: '2026-08-01',
+      toDateExclusive: '2026-09-01',
+      storeStableId: '4750_Yonge_Street',
+      provider: AccountingFinancialProvider.FANTUAN,
+    });
+
+    expect(result.providerDocuments[0]).toEqual(
+      expect.objectContaining({
+        status: 'BLOCKED',
+        blockReasons: ['FANTUAN_ADJUSTMENT_DETAIL_REQUIRED'],
+        draftJournal: null,
+      }),
+    );
   });
 
   it('blocks pre-live Uber Order reversals until a READY authoritative statement covers the same date', async () => {

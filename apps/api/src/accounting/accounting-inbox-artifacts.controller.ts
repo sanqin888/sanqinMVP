@@ -135,7 +135,9 @@ export class AccountingInboxArtifactsController {
         ? 'application/pdf'
         : (kind === 'uber-reports' || kind === 'inbox') && extension === '.csv'
           ? 'text/csv; charset=utf-8'
-          : (kind === 'bills' ||
+          : kind === 'inbox' && extension === '.xlsx'
+            ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            : (kind === 'bills' ||
                 kind === 'receipts' ||
                 kind === 'inbox' ||
                 kind === 'image-retention') &&

@@ -322,6 +322,108 @@ const writeInput = {
 };
 
 describe('AccountingJournalService provider settlement replacement group', () => {
+  it('revalidates supplementary provider evidence inside the Serializable settlement transaction', async () => {
+    const { service, tx } = makeService();
+    const supplementaryAuthority: ProviderSettlementReplacementGroupAuthorityV1 =
+      {
+        ...authority,
+        supplementaryEvidenceDocuments: [
+          {
+            documentStableId: 'provider_detail_june',
+            provider: AccountingFinancialProvider.UBER_EATS,
+            documentType: AccountingFinancialDocumentType.OTHER,
+            businessIdentityKey: 'uber:supplementary:june-2026',
+            revision: 1,
+            providerDocumentRef: 'detail-june-2026',
+            storeStableId: '4750_Yonge_Street',
+            periodStart: '2026-06-01',
+            periodEnd: '2026-06-30',
+            reviewEvidence: {
+              inboxItemStableId: 'inbox_detail_june',
+              status: AccountingInboxStatus.CONFIRMED,
+              materializedEntityType:
+                AccountingInboxMaterializedEntityType.PROVIDER_FINANCIAL_DOCUMENT,
+              materializedEntityStableId: 'provider_detail_june',
+              reviewedAt: '2026-09-15T12:05:00.000Z',
+              reviewedByUserStableId: 'user_admin_1',
+              version: 2,
+            },
+          },
+        ],
+      };
+
+    tx.accountingProviderFinancialDocument.findUnique
+      .mockReset()
+      .mockResolvedValueOnce({
+        documentStableId: 'provider_doc_june',
+        provider: AccountingFinancialProvider.UBER_EATS,
+        documentType: AccountingFinancialDocumentType.STATEMENT,
+        businessIdentityKey: 'uber:statement:june-2026',
+        revision: 1,
+        storeStableId: '4750_Yonge_Street',
+        providerDocumentRef: 'june-2026',
+        periodStart: new Date('2026-06-01T00:00:00.000Z'),
+        periodEnd: new Date('2026-06-30T00:00:00.000Z'),
+        currency: 'CAD',
+        artifact: {
+          inboxItem: {
+            inboxItemStableId: 'inbox_june',
+            status: AccountingInboxStatus.CONFIRMED,
+            materializedEntityType:
+              AccountingInboxMaterializedEntityType.PROVIDER_FINANCIAL_DOCUMENT,
+            materializedEntityStableId: 'provider_doc_june',
+            reviewedAt: new Date('2026-09-15T12:00:00.000Z'),
+            reviewedByUserStableId: 'user_admin_1',
+            version: 2,
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        documentStableId: 'provider_detail_june',
+        provider: AccountingFinancialProvider.UBER_EATS,
+        documentType: AccountingFinancialDocumentType.OTHER,
+        businessIdentityKey: 'uber:supplementary:june-2026',
+        revision: 1,
+        storeStableId: '4750_Yonge_Street',
+        providerDocumentRef: 'detail-june-2026',
+        periodStart: new Date('2026-06-01T00:00:00.000Z'),
+        periodEnd: new Date('2026-06-30T00:00:00.000Z'),
+        artifact: {
+          inboxItem: {
+            inboxItemStableId: 'inbox_detail_june',
+            status: AccountingInboxStatus.CONFIRMED,
+            materializedEntityType:
+              AccountingInboxMaterializedEntityType.PROVIDER_FINANCIAL_DOCUMENT,
+            materializedEntityStableId: 'provider_detail_june',
+            reviewedAt: new Date('2026-09-15T12:05:00.000Z'),
+            reviewedByUserStableId: 'user_admin_1',
+            version: 2,
+          },
+        },
+      });
+    tx.accountingProviderFinancialDocument.findFirst
+      .mockReset()
+      .mockResolvedValueOnce({
+        documentStableId: 'provider_doc_june',
+        revision: 1,
+      })
+      .mockResolvedValueOnce({
+        documentStableId: 'provider_detail_june_newer',
+        revision: 2,
+      });
+
+    await expect(
+      service.createProviderSettlementReplacementGroup(
+        writeInput,
+        'system:accounting-provider-settlement',
+        supplementaryAuthority,
+      ),
+    ).rejects.toThrow(
+      'provider settlement supplementary evidence changed after preview',
+    );
+    expect(tx.accountingJournalEntry.create).not.toHaveBeenCalled();
+  });
+
   it('places the statement, all historical reversals, and their audits inside one Serializable transaction callback', async () => {
     const { service, tx, transaction } = makeService();
 

@@ -12,6 +12,9 @@ import type {
   AccountingJournalCreateInput,
   AccountingJournalLineInput,
 } from './accounting-journal-policy';
+import {
+  FANTUAN_ADJUSTMENT_RAW_CODES,
+} from './accounting-fantuan-adjustment-detail.contract';
 
 export const PROVIDER_SETTLEMENT_SYSTEM_ACTOR =
   'system:accounting-provider-settlement';
@@ -29,6 +32,7 @@ export const PROVIDER_SETTLEMENT_ACCOUNT_IDS = {
   hstRecoverable: 'account_hst_recoverable',
   salesRevenue: 'account_sales_revenue',
   tipRevenue: 'account_tip_revenue',
+  otherOperatingRevenue: 'account_other_operating_revenue',
   platformCommissionExpense: 'account_platform_commission_expense',
   platformPromotionExpense: 'account_platform_promotion_expense',
   advertisingExpense: 'account_advertising_expense',
@@ -74,6 +78,11 @@ export const PROVIDER_SETTLEMENT_ACCOUNT_REQUIREMENTS = {
     isActive: true,
   },
   [PROVIDER_SETTLEMENT_ACCOUNT_IDS.tipRevenue]: {
+    accountClass: AccountingAccountClass.REVENUE,
+    currency: 'CAD',
+    isActive: true,
+  },
+  [PROVIDER_SETTLEMENT_ACCOUNT_IDS.otherOperatingRevenue]: {
     accountClass: AccountingAccountClass.REVENUE,
     currency: 'CAD',
     isActive: true,
@@ -146,6 +155,7 @@ export type ProviderSettlementDocumentInput = {
   lines: Array<{
     lineStableId: string;
     lineNo: number;
+    rawCode?: string | null;
     rawName: string | null;
     component: AccountingFinancialComponent;
     postingTreatment: AccountingFinancialPostingTreatment;
@@ -213,10 +223,23 @@ export function resolveProviderSalesAuthority(params: {
   return 'SPLIT_PERIOD_BLOCKED';
 }
 
-const targetAccountFor = (
-  component: AccountingFinancialComponent,
-): string | null => {
-  switch (component) {
+const targetAccountFor = (params: {
+  provider: AccountingFinancialProvider;
+  line: ProviderSettlementDocumentInput['lines'][number];
+}): string | null => {
+  const { provider, line } = params;
+  if (
+    provider === AccountingFinancialProvider.FANTUAN &&
+    line.component === AccountingFinancialComponent.ADJUSTMENT
+  ) {
+    if (line.rawCode === FANTUAN_ADJUSTMENT_RAW_CODES.COMPENSATION) {
+      return PROVIDER_SETTLEMENT_ACCOUNT_IDS.otherOperatingRevenue;
+    }
+    if (line.rawCode === FANTUAN_ADJUSTMENT_RAW_CODES.DEDUCTION) {
+      return PROVIDER_SETTLEMENT_ACCOUNT_IDS.chargebackAdjustmentExpense;
+    }
+  }
+  switch (line.component) {
     case AccountingFinancialComponent.SALES:
       return PROVIDER_SETTLEMENT_ACCOUNT_IDS.salesRevenue;
     case AccountingFinancialComponent.SALES_TAX:
@@ -332,7 +355,10 @@ export function classifyProviderSettlementLine(params: {
     };
   }
 
-  const targetAccountStableId = targetAccountFor(line.component);
+  const targetAccountStableId = targetAccountFor({
+    provider: params.provider,
+    line,
+  });
   if (!targetAccountStableId) {
     return {
       ...line,
