@@ -376,7 +376,8 @@ export class AccountingProviderFinancialReviewService {
           },
         });
       if (
-        latestReview?.reviewRevisionStableId !== review.reviewRevisionStableId ||
+        latestReview?.reviewRevisionStableId !==
+          review.reviewRevisionStableId ||
         latestReview.revision !== review.revision ||
         latestReview.status !== AccountingProviderFinancialReviewStatus.DRAFT
       ) {

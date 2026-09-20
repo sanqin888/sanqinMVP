@@ -249,7 +249,7 @@ const resolveFantuanAdjustmentDetail = (
   if (
     !reviewEvidence ||
     !detail.storeStableId ||
-    (detail.reviewRevisions?.length ?? 0) > 0 && !humanReviewRevision
+    ((detail.reviewRevisions?.length ?? 0) > 0 && !humanReviewRevision)
   ) {
     return {
       lines: controlLines,
