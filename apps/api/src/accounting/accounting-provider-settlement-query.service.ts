@@ -72,6 +72,35 @@ export class AccountingProviderSettlementQueryService {
     });
   }
 
+  async readProviderDocumentPostingStates(documentStableIds: string[]) {
+    const stableIds = Array.from(new Set(documentStableIds));
+    if (stableIds.length === 0) return [];
+
+    const journals = await this.readSettlementShadowExistingJournals({
+      providerDocumentStableIds: stableIds,
+      uberOrderEntryStableIds: [],
+    });
+    const journalByDocumentStableId = new Map(
+      journals.flatMap((journal) =>
+        journal.sourceFactStableId
+          ? [[journal.sourceFactStableId, journal.entryStableId] as const]
+          : [],
+      ),
+    );
+
+    return stableIds.map((documentStableId) => {
+      const existingJournalEntryStableId =
+        journalByDocumentStableId.get(documentStableId) ?? null;
+      return {
+        documentStableId,
+        postingState: existingJournalEntryStableId
+          ? ('POSTED' as const)
+          : ('NOT_POSTED' as const),
+        existingJournalEntryStableId,
+      };
+    });
+  }
+
   async readProviderFinancialCoverage(params: {
     storeStableId: string;
     providers: AccountingFinancialProvider[];

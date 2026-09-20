@@ -1,5 +1,11 @@
 import type { AccountingFinancialProvider } from './core';
 
+export type ProviderSettlementPostingState = {
+  documentStableId: string;
+  postingState: 'POSTED' | 'NOT_POSTED';
+  existingJournalEntryStableId: string | null;
+};
+
 export type ProviderSettlementShadowPreview = {
   version: 3;
   range: {

@@ -5,8 +5,15 @@ import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api/client';
 import type { AccountingInboxItem } from '../contracts/inbox';
 import type { AccountingProviderFinancialDocument } from '../contracts/provider-financial';
-import type { ProviderSettlementShadowPreview } from '../contracts/settlements';
+import type {
+  ProviderSettlementPostingState,
+  ProviderSettlementShadowPreview,
+} from '../contracts/settlements';
 import { SettlementReplayGate } from './settlement-replay-gate';
+import {
+  findSettlementNetLine,
+  settlementDocumentBucket,
+} from './settlement-summary';
 
 const money = (cents: number | null | undefined) =>
   `$${((cents ?? 0) / 100).toFixed(2)}`;
@@ -97,6 +104,110 @@ function StatementLines({
         </table>
       </div>
     </details>
+  );
+}
+
+function evidenceUrlFor(item: AccountingInboxItem): string | null {
+  return item.artifact.kind === 'IMAGE'
+    ? `/api/v1/accounting/inbox/artifacts/${encodeURIComponent(
+        item.artifact.artifactStableId,
+      )}/content`
+    : item.artifact.storedUrl;
+}
+
+function ReadOnlyFinancialDocumentCard({
+  item,
+  document,
+  isZh,
+  postingState,
+}: {
+  item: AccountingInboxItem;
+  document: AccountingProviderFinancialDocument;
+  isZh: boolean;
+  postingState?: ProviderSettlementPostingState;
+}) {
+  const evidenceUrl = evidenceUrlFor(item);
+  const netPayout = findSettlementNetLine(document.lines);
+
+  return (
+    <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-base font-semibold">
+              {documentTitle(document, isZh)}
+            </h3>
+            <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800">
+              CONFIRMED
+            </span>
+            {postingState ? (
+              <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-800">
+                {isZh ? '已入账' : 'POSTED'}
+              </span>
+            ) : (
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-700">
+                {document.documentType}
+              </span>
+            )}
+            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-700">
+              Revision {document.revision}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">
+            {item.artifact.originalFilename ??
+              item.artifact.emailSubject ??
+              document.documentStableId}
+          </p>
+        </div>
+        {evidenceUrl ? (
+          <a
+            href={evidenceUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded border border-slate-300 px-3 py-2 text-sm text-blue-700"
+          >
+            {isZh ? '查看原始文件' : 'Open evidence'}
+          </a>
+        ) : null}
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-xl bg-slate-50 p-3 text-sm">
+          <p className="text-xs text-slate-500">{isZh ? '门店' : 'Store'}</p>
+          <p className="mt-1 break-all font-medium">
+            {document.storeStableId ?? '—'}
+          </p>
+        </div>
+        <div className="rounded-xl bg-slate-50 p-3 text-sm">
+          <p className="text-xs text-slate-500">Document type</p>
+          <p className="mt-1 font-medium">{document.documentType}</p>
+        </div>
+        <div className="rounded-xl bg-slate-50 p-3 text-sm">
+          <p className="text-xs text-slate-500">
+            {postingState
+              ? 'Journal'
+              : isZh
+                ? 'Canonical 明细'
+                : 'Canonical lines'}
+          </p>
+          <p className="mt-1 break-all font-mono text-xs">
+            {postingState
+              ? postingState.existingJournalEntryStableId ?? '—'
+              : document.lines.length}
+          </p>
+        </div>
+        <div className="rounded-xl bg-emerald-50 p-3 text-sm">
+          <p className="text-xs text-emerald-700">
+            {isZh ? '净结算' : 'Net payout'}
+          </p>
+          <p className="mt-1 text-lg font-semibold text-emerald-900">
+            {netPayout ? money(netPayout.amountCents) : '—'}
+          </p>
+        </div>
+      </div>
+
+      <StatementLines document={document} isZh={isZh} />
+    </section>
   );
 }
 
@@ -415,21 +526,46 @@ export default function AccountingSettlementsPage() {
     documentStableId: string;
     data: ProviderSettlementShadowPreview;
   } | null>(null);
+  const [postingStates, setPostingStates] = useState<
+    Record<string, ProviderSettlementPostingState>
+  >({});
+  const [postingNotice, setPostingNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setPostingNotice(null);
     try {
       const confirmed = await apiFetch<AccountingInboxItem[]>(
         '/accounting/inbox?status=CONFIRMED&classification=PROVIDER_FINANCIAL_DOCUMENT&limit=200',
       );
-      setItems(
-        confirmed.filter(
-          (item) =>
-            item.materializedEntityType === 'PROVIDER_FINANCIAL_DOCUMENT' &&
-            item.artifact.financialDocument !== null,
+      const materialized = confirmed.filter(
+        (item) =>
+          item.materializedEntityType === 'PROVIDER_FINANCIAL_DOCUMENT' &&
+          item.artifact.financialDocument !== null,
+      );
+      const statementIds = materialized.flatMap((item) => {
+        const document = item.artifact.financialDocument;
+        return document?.documentType === 'STATEMENT'
+          ? [document.documentStableId]
+          : [];
+      });
+      const postingStateRows =
+        statementIds.length > 0
+          ? await apiFetch<ProviderSettlementPostingState[]>(
+              `/accounting/journal/provider-settlement/posting-states?${new URLSearchParams({
+                documentStableIds: statementIds.join(','),
+              }).toString()}`,
+            )
+          : [];
+
+      setItems(materialized);
+      setPostingStates(
+        Object.fromEntries(
+          postingStateRows.map((state) => [state.documentStableId, state]),
         ),
       );
+      setPreview(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -441,7 +577,7 @@ export default function AccountingSettlementsPage() {
     void load();
   }, [load]);
 
-  const statements = useMemo(
+  const providerDocuments = useMemo(
     () =>
       items
         .flatMap((item) =>
@@ -456,6 +592,67 @@ export default function AccountingSettlementsPage() {
         ),
     [items],
   );
+  const pendingStatements = useMemo(
+    () =>
+      providerDocuments.filter(
+        ({ document }) =>
+          settlementDocumentBucket(
+            document,
+            postingStates[document.documentStableId],
+          ) === 'PENDING',
+      ),
+    [postingStates, providerDocuments],
+  );
+  const postedStatements = useMemo(
+    () =>
+      providerDocuments.filter(
+        ({ document }) =>
+          settlementDocumentBucket(
+            document,
+            postingStates[document.documentStableId],
+          ) === 'POSTED',
+      ),
+    [postingStates, providerDocuments],
+  );
+  const supportingDocuments = useMemo(
+    () =>
+      providerDocuments.filter(
+        ({ document }) =>
+          settlementDocumentBucket(
+            document,
+            postingStates[document.documentStableId],
+          ) === 'SUPPORTING',
+      ),
+    [postingStates, providerDocuments],
+  );
+
+  function applyPreview(
+    documentStableId: string,
+    data: ProviderSettlementShadowPreview,
+  ) {
+    const documentPlan = data.providerDocuments.find(
+      (plan) => plan.documentStableId === documentStableId,
+    );
+    if (documentPlan?.status === 'ALREADY_POSTED') {
+      setPostingStates((current) => ({
+        ...current,
+        [documentStableId]: {
+          documentStableId,
+          postingState: 'POSTED',
+          existingJournalEntryStableId:
+            documentPlan.existingJournalEntryStableId,
+        },
+      }));
+      setPreview(null);
+      setPostingNotice(
+        isZh
+          ? '结算单已确认入账，并已移至“已入账结算”。'
+          : 'The settlement is posted and has moved to Posted settlements.',
+      );
+      return;
+    }
+    setPreview({ documentStableId, data });
+  }
 
   async function runShadowPreview(document: AccountingProviderFinancialDocument) {
     if (!document.storeStableId || !document.periodStart || !document.periodEnd) {
@@ -478,7 +675,7 @@ export default function AccountingSettlementsPage() {
       const data = await apiFetch<ProviderSettlementShadowPreview>(
         `/accounting/journal/provider-settlement/shadow-preview?${query.toString()}`,
       );
-      setPreview({ documentStableId: document.documentStableId, data });
+      applyPreview(document.documentStableId, data);
     } catch (cause) {
       setPreviewError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -495,8 +692,8 @@ export default function AccountingSettlementsPage() {
           </h1>
           <p className="mt-1 max-w-3xl text-sm text-slate-500">
             {isZh
-              ? '查看已经人工确认并 materialize 的平台财务凭证、canonical 明细、coverage 与 shadow plan。真实 replay 仅在严格 READY 且完成 planHash 强确认后开放。'
-              : 'Review operator-confirmed materialized provider evidence, canonical lines, coverage, and the shadow plan. Real replay is exposed only for a strictly READY plan after strong planHash confirmation.'}
+              ? '待处理区只保留尚未入账的月结单；已入账记录和补充证据分别归档。Shadow Preview 仍是只读，真实 replay 仅在严格 READY 且完成 planHash 强确认后开放。'
+              : 'The work queue contains only unposted monthly statements; posted history and supporting evidence are archived separately. Shadow Preview remains read-only, and real replay is exposed only for a strictly READY plan after strong planHash confirmation.'}
           </p>
         </div>
         <button
@@ -530,7 +727,7 @@ export default function AccountingSettlementsPage() {
         </p>
       ) : null}
 
-      {!loading && statements.length === 0 ? (
+      {!loading && pendingStatements.length + postedStatements.length === 0 ? (
         <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="font-semibold">
             {isZh ? '还没有已确认结算单' : 'No confirmed statements yet'}
@@ -543,154 +740,259 @@ export default function AccountingSettlementsPage() {
         </section>
       ) : null}
 
-      <div className="space-y-5">
-        {statements.map(({ item, document }) => {
-          const evidenceUrl =
-            item.artifact.kind === 'IMAGE'
-              ? `/api/v1/accounting/inbox/artifacts/${encodeURIComponent(item.artifact.artifactStableId)}/content`
-              : item.artifact.storedUrl;
-          const selectedPreview =
-            preview?.documentStableId === document.documentStableId ? preview.data : null;
-          const sales = document.lines.find((line) => line.component === 'SALES');
-          const salesTax =
-            document.lines.find(
-              (line) => line.rawName?.toLowerCase() === 'tax on sales',
-            ) ?? document.lines.find((line) => line.component === 'SALES_TAX');
-          const commission = document.lines.find(
-            (line) => line.component === 'COMMISSION',
-          );
-          const netTotal = document.lines.find(
-            (line) => line.rawName?.toLowerCase() === 'net total',
-          );
-          return (
-            <section
-              key={document.documentStableId}
-              className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"
-            >
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-lg font-semibold">{documentTitle(document, isZh)}</h2>
-                    <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800">
-                      CONFIRMED
-                    </span>
-                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-700">
-                      Revision {document.revision}
-                    </span>
+      {postingNotice ? (
+        <p className="rounded bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          {postingNotice}
+        </p>
+      ) : null}
+
+      <section className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-lg font-semibold">
+              {isZh ? '待处理结算' : 'Pending settlements'}
+            </h2>
+            <p className="text-xs text-slate-500">
+              {isZh
+                ? '仅显示尚未生成 settlement Journal 的已确认月结单。'
+                : 'Confirmed monthly statements without a settlement Journal.'}
+            </p>
+          </div>
+          <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-900">
+            {pendingStatements.length}
+          </span>
+        </div>
+
+        {pendingStatements.length === 0 && !loading ? (
+          <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
+            {isZh ? '当前没有待处理结算单。' : 'There are no pending settlements.'}
+          </div>
+        ) : null}
+
+        <div className="space-y-5">
+          {pendingStatements.map(({ item, document }) => {
+            const evidenceUrl = evidenceUrlFor(item);
+            const selectedPreview =
+              preview?.documentStableId === document.documentStableId
+                ? preview.data
+                : null;
+            const sales = document.lines.find(
+              (line) => line.component === 'SALES',
+            );
+            const salesTax =
+              document.lines.find(
+                (line) => line.rawName?.toLowerCase() === 'tax on sales',
+              ) ??
+              document.lines.find((line) => line.component === 'SALES_TAX');
+            const commission = document.lines.find(
+              (line) => line.component === 'COMMISSION',
+            );
+            const netPayout = findSettlementNetLine(document.lines);
+            const postingState = postingStates[document.documentStableId];
+
+            return (
+              <section
+                key={document.documentStableId}
+                className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="text-lg font-semibold">
+                        {documentTitle(document, isZh)}
+                      </h2>
+                      <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800">
+                        CONFIRMED
+                      </span>
+                      <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-900">
+                        {postingState?.postingState === 'NOT_POSTED'
+                          ? isZh
+                            ? '未入账'
+                            : 'NOT POSTED'
+                          : isZh
+                            ? '状态未知'
+                            : 'STATE UNKNOWN'}
+                      </span>
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-700">
+                        Revision {document.revision}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {item.artifact.originalFilename ??
+                        item.artifact.emailSubject ??
+                        document.documentStableId}
+                    </p>
                   </div>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {item.artifact.originalFilename ?? item.artifact.emailSubject ?? document.documentStableId}
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {evidenceUrl ? (
-                    <a
-                      href={evidenceUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="rounded border border-slate-300 px-3 py-2 text-sm text-blue-700"
+                  <div className="flex flex-wrap gap-2">
+                    {evidenceUrl ? (
+                      <a
+                        href={evidenceUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded border border-slate-300 px-3 py-2 text-sm text-blue-700"
+                      >
+                        {isZh ? '查看原始文件' : 'Open evidence'}
+                      </a>
+                    ) : null}
+                    <button
+                      type="button"
+                      disabled={
+                        previewingId === document.documentStableId ||
+                        !document.storeStableId ||
+                        !document.periodStart ||
+                        !document.periodEnd
+                      }
+                      onClick={() => void runShadowPreview(document)}
+                      className="rounded bg-slate-900 px-3 py-2 text-sm text-white disabled:opacity-50"
                     >
-                      {isZh ? '查看原始文件' : 'Open evidence'}
-                    </a>
-                  ) : null}
-                  <button
-                    type="button"
-                    disabled={
-                      previewingId === document.documentStableId ||
-                      !document.storeStableId ||
-                      !document.periodStart ||
-                      !document.periodEnd
-                    }
-                    onClick={() => void runShadowPreview(document)}
-                    className="rounded bg-slate-900 px-3 py-2 text-sm text-white disabled:opacity-50"
-                  >
-                    {previewingId === document.documentStableId
-                      ? isZh
-                        ? '生成中…'
-                        : 'Building…'
-                      : selectedPreview
+                      {previewingId === document.documentStableId
                         ? isZh
-                          ? '重新运行 Shadow Preview'
-                          : 'Refresh shadow preview'
-                        : isZh
-                          ? '运行 Shadow Preview'
-                          : 'Run shadow preview'}
-                  </button>
+                          ? '生成中…'
+                          : 'Building…'
+                        : selectedPreview
+                          ? isZh
+                            ? '重新运行 Shadow Preview'
+                            : 'Refresh shadow preview'
+                          : isZh
+                            ? '运行 Shadow Preview'
+                            : 'Run shadow preview'}
+                    </button>
+                  </div>
                 </div>
-              </div>
 
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <div className="rounded-xl bg-slate-50 p-3 text-sm">
-                  <p className="text-xs text-slate-500">{isZh ? '门店' : 'Store'}</p>
-                  <p className="mt-1 break-all font-medium">{document.storeStableId ?? '—'}</p>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="rounded-xl bg-slate-50 p-3 text-sm">
+                    <p className="text-xs text-slate-500">
+                      {isZh ? '门店' : 'Store'}
+                    </p>
+                    <p className="mt-1 break-all font-medium">
+                      {document.storeStableId ?? '—'}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-slate-50 p-3 text-sm">
+                    <p className="text-xs text-slate-500">Parser</p>
+                    <p className="mt-1 break-all font-mono text-xs">
+                      {document.parserName}:v{document.parserVersion}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-slate-50 p-3 text-sm">
+                    <p className="text-xs text-slate-500">Provider ref</p>
+                    <p className="mt-1 break-all font-mono text-xs">
+                      {document.providerDocumentRef ?? '—'}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-slate-50 p-3 text-sm">
+                    <p className="text-xs text-slate-500">Canonical lines</p>
+                    <p className="mt-1 text-lg font-semibold">
+                      {document.lines.length}
+                    </p>
+                  </div>
                 </div>
-                <div className="rounded-xl bg-slate-50 p-3 text-sm">
-                  <p className="text-xs text-slate-500">Parser</p>
-                  <p className="mt-1 break-all font-mono text-xs">
-                    {document.parserName}:v{document.parserVersion}
-                  </p>
-                </div>
-                <div className="rounded-xl bg-slate-50 p-3 text-sm">
-                  <p className="text-xs text-slate-500">Provider ref</p>
-                  <p className="mt-1 break-all font-mono text-xs">
-                    {document.providerDocumentRef ?? '—'}
-                  </p>
-                </div>
-                <div className="rounded-xl bg-slate-50 p-3 text-sm">
-                  <p className="text-xs text-slate-500">Canonical lines</p>
-                  <p className="mt-1 text-lg font-semibold">{document.lines.length}</p>
-                </div>
-              </div>
 
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <div className="rounded-xl border border-slate-200 p-3">
-                  <p className="text-xs text-slate-500">Sales</p>
-                  <p className="mt-1 text-lg font-semibold">
-                    {sales ? money(sales.amountCents) : '—'}
-                  </p>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="rounded-xl border border-slate-200 p-3">
+                    <p className="text-xs text-slate-500">Sales</p>
+                    <p className="mt-1 text-lg font-semibold">
+                      {sales ? money(sales.amountCents) : '—'}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 p-3">
+                    <p className="text-xs text-slate-500">Tax on Sales</p>
+                    <p className="mt-1 text-lg font-semibold">
+                      {salesTax ? money(salesTax.amountCents) : '—'}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 p-3">
+                    <p className="text-xs text-slate-500">
+                      {isZh ? '平台佣金 / 费用' : 'Commission / fees'}
+                    </p>
+                    <p className="mt-1 text-lg font-semibold">
+                      {commission ? money(commission.amountCents) : '—'}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-emerald-50 p-3">
+                    <p className="text-xs text-emerald-700">
+                      {isZh ? '净结算' : 'Net payout'}
+                    </p>
+                    <p className="mt-1 text-lg font-semibold text-emerald-900">
+                      {netPayout ? money(netPayout.amountCents) : '—'}
+                    </p>
+                  </div>
                 </div>
-                <div className="rounded-xl border border-slate-200 p-3">
-                  <p className="text-xs text-slate-500">Tax on Sales</p>
-                  <p className="mt-1 text-lg font-semibold">
-                    {salesTax ? money(salesTax.amountCents) : '—'}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-slate-200 p-3">
-                  <p className="text-xs text-slate-500">
-                    {isZh ? '平台佣金 / 费用' : 'Commission / fees'}
-                  </p>
-                  <p className="mt-1 text-lg font-semibold">
-                    {commission ? money(commission.amountCents) : '—'}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-emerald-50 p-3">
-                  <p className="text-xs text-emerald-700">Net Total</p>
-                  <p className="mt-1 text-lg font-semibold text-emerald-900">
-                    {netTotal ? money(netTotal.amountCents) : '—'}
-                  </p>
-                </div>
-              </div>
 
-              <StatementLines document={document} isZh={isZh} />
+                <StatementLines document={document} isZh={isZh} />
 
-              {selectedPreview ? (
-                <ShadowPreviewPanel
-                  preview={selectedPreview}
-                  documentStableId={document.documentStableId}
-                  isZh={isZh}
-                  locale={locale}
-                  onPreviewUpdated={(data) =>
-                    setPreview({
-                      documentStableId: document.documentStableId,
-                      data,
-                    })
-                  }
-                />
-              ) : null}
-            </section>
-          );
-        })}
-      </div>
+                {selectedPreview ? (
+                  <ShadowPreviewPanel
+                    preview={selectedPreview}
+                    documentStableId={document.documentStableId}
+                    isZh={isZh}
+                    locale={locale}
+                    onPreviewUpdated={(data) =>
+                      applyPreview(document.documentStableId, data)
+                    }
+                  />
+                ) : null}
+              </section>
+            );
+          })}
+        </div>
+      </section>
+
+      <details className="rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
+        <summary className="cursor-pointer text-base font-semibold text-slate-800">
+          {isZh
+            ? `已入账结算（${postedStatements.length}）`
+            : `Posted settlements (${postedStatements.length})`}
+        </summary>
+        <p className="mt-2 text-xs text-slate-500">
+          {isZh
+            ? '这些月结单已经生成 settlement Journal，不再提供 Replay 操作；这里保留原始凭证、Journal 标识和 canonical 明细用于审计。'
+            : 'These monthly statements already have settlement Journals. Replay is no longer offered; evidence, Journal identity, and canonical lines remain available for audit.'}
+        </p>
+        <div className="mt-4 space-y-4">
+          {postedStatements.length === 0 ? (
+            <p className="text-sm text-slate-500">
+              {isZh ? '还没有已入账结算单。' : 'No posted settlements yet.'}
+            </p>
+          ) : (
+            postedStatements.map(({ item, document }) => (
+              <ReadOnlyFinancialDocumentCard
+                key={document.documentStableId}
+                item={item}
+                document={document}
+                isZh={isZh}
+                postingState={postingStates[document.documentStableId]}
+              />
+            ))
+          )}
+        </div>
+      </details>
+
+      {supportingDocuments.length > 0 ? (
+        <details className="rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
+          <summary className="cursor-pointer text-base font-semibold text-slate-800">
+            {isZh
+              ? `补充 / 控制证据（${supportingDocuments.length}）`
+              : `Supporting / control evidence (${supportingDocuments.length})`}
+          </summary>
+          <p className="mt-2 text-xs text-slate-500">
+            {isZh
+              ? '这些已确认文件用于补充或控制核对，不作为独立的月结 Replay 工作项。'
+              : 'These confirmed documents support or control reconciliation and are not independent monthly replay work items.'}
+          </p>
+          <div className="mt-4 space-y-4">
+            {supportingDocuments.map(({ item, document }) => (
+              <ReadOnlyFinancialDocumentCard
+                key={document.documentStableId}
+                item={item}
+                document={document}
+                isZh={isZh}
+              />
+            ))}
+          </div>
+        </details>
+      ) : null}
     </div>
   );
 }
