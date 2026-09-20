@@ -12,16 +12,96 @@ import {
 } from './accounting-provider-settlement.policy';
 import { FANTUAN_ADJUSTMENT_RAW_CODES } from './accounting-fantuan-adjustment-detail.contract';
 
-const uberDocument = (
-  lines: Array<{
-    lineStableId: string;
-    lineNo: number;
-    rawName: string;
-    component: AccountingFinancialComponent;
-    postingTreatment: AccountingFinancialPostingTreatment;
-    amountCents: number;
-  }>,
-) => ({
+type SettlementTestLine = {
+  lineStableId: string;
+  lineNo: number;
+  rawName: string;
+  component: AccountingFinancialComponent;
+  postingTreatment: AccountingFinancialPostingTreatment;
+  amountCents: number;
+};
+
+const sumUberTestLines = (
+  lines: SettlementTestLine[],
+  rawNames: readonly string[],
+) => {
+  const names = new Set(rawNames.map((name) => name.toLowerCase()));
+  return lines.reduce(
+    (sum, line) =>
+      names.has(line.rawName.toLowerCase()) ? sum + line.amountCents : sum,
+    0,
+  );
+};
+
+const withUberControlTotals = (
+  inputLines: SettlementTestLine[],
+): SettlementTestLine[] => {
+  const lines = [...inputLines];
+  const appendControl = (
+    rawName: string,
+    componentRawNames: readonly string[],
+  ) => {
+    if (
+      lines.some(
+        (line) => line.rawName.toLowerCase() === rawName.toLowerCase(),
+      )
+    ) {
+      return;
+    }
+    lines.push({
+      lineStableId: `line-control-${rawName
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')}`,
+      lineNo: lines.length + 1,
+      rawName,
+      component: AccountingFinancialComponent.CONTROL_TOTAL,
+      postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+      amountCents: sumUberTestLines(lines, componentRawNames),
+    });
+  };
+
+  appendControl('Total Earnings', [
+    'Sales',
+    'Tax on Sales',
+    'Tips',
+    'Container Fees',
+    'Tax on Container Fees',
+    'Other Earnings',
+    'Tax on Other Earnings',
+  ]);
+  appendControl('Total Uber Fees', [
+    'Marketplace Fees',
+    'Tax on Marketplace Fees',
+    'Other Charges',
+    'Tax On Other Charges',
+  ]);
+  appendControl('Total Marketing Spends', [
+    'Offers On Items',
+    'Provider Subsidy',
+    'Marketing Adjustment',
+    'Other Offer Charges',
+    'Tax on offer spends',
+    'Ad Spends',
+    'Ad Credits',
+    'Tax on Net Ad Spends',
+  ]);
+  appendControl('Total Amendments', [
+    'Net Chargeback Amount',
+    'Net Tax On Chargeback',
+    'Marketplace Facilitator Tax',
+    'Adjustments',
+    'Tax On Adjustments',
+  ]);
+  appendControl('Net Total', [
+    'Total Earnings',
+    'Total Uber Fees',
+    'Total Marketing Spends',
+    'Total Amendments',
+  ]);
+  return lines;
+};
+
+const uberDocument = (lines: SettlementTestLine[]) => ({
   documentStableId: 'provider_doc_1',
   revision: 1,
   provider: AccountingFinancialProvider.UBER_EATS,
@@ -30,8 +110,202 @@ const uberDocument = (
   periodStart: '2026-08-01',
   periodEnd: '2026-08-31',
   currency: 'CAD',
-  lines,
+  lines: withUberControlTotals(lines),
 });
+
+// Read-only production evidence B4842290 came from Poppler text shaped like:
+// Sales (84 Orders) / Tax on Sales / $2,603.36 / $338.48.
+// The legacy label-followed-by-next-token parser therefore duplicated Sales into Tax.
+const observedJulyUberLayoutLossLines = (): SettlementTestLine[] => {
+  const rows: Array<
+    [
+      string,
+      AccountingFinancialComponent,
+      AccountingFinancialPostingTreatment,
+      number,
+    ]
+  > = [
+    [
+      'Sales',
+      AccountingFinancialComponent.SALES,
+      AccountingFinancialPostingTreatment.POSTABLE,
+      260336,
+    ],
+    [
+      'Tax on Sales',
+      AccountingFinancialComponent.SALES_TAX,
+      AccountingFinancialPostingTreatment.POSTABLE,
+      260336,
+    ],
+    [
+      'Tips',
+      AccountingFinancialComponent.TIP,
+      AccountingFinancialPostingTreatment.POSTABLE,
+      0,
+    ],
+    [
+      'Container Fees',
+      AccountingFinancialComponent.OTHER,
+      AccountingFinancialPostingTreatment.POSTABLE,
+      0,
+    ],
+    [
+      'Tax on Container Fees',
+      AccountingFinancialComponent.OTHER,
+      AccountingFinancialPostingTreatment.POSTABLE,
+      0,
+    ],
+    [
+      'Other Earnings',
+      AccountingFinancialComponent.OTHER,
+      AccountingFinancialPostingTreatment.POSTABLE,
+      0,
+    ],
+    [
+      'Tax on Other Earnings',
+      AccountingFinancialComponent.OTHER,
+      AccountingFinancialPostingTreatment.POSTABLE,
+      0,
+    ],
+    [
+      'Total Earnings',
+      AccountingFinancialComponent.CONTROL_TOTAL,
+      AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+      294184,
+    ],
+    [
+      'Marketplace Fees',
+      AccountingFinancialComponent.COMMISSION,
+      AccountingFinancialPostingTreatment.POSTABLE,
+      -61088,
+    ],
+    [
+      'Tax on Marketplace Fees',
+      AccountingFinancialComponent.COMMISSION_TAX,
+      AccountingFinancialPostingTreatment.POSTABLE,
+      -7941,
+    ],
+    [
+      'Other Charges',
+      AccountingFinancialComponent.PLATFORM_OTHER_FEE,
+      AccountingFinancialPostingTreatment.POSTABLE,
+      -1,
+    ],
+    [
+      'Tax On Other Charges',
+      AccountingFinancialComponent.PLATFORM_OTHER_FEE_TAX,
+      AccountingFinancialPostingTreatment.POSTABLE,
+      0,
+    ],
+    [
+      'Total Uber Fees',
+      AccountingFinancialComponent.CONTROL_TOTAL,
+      AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+      -69030,
+    ],
+    [
+      'Offers On Items',
+      AccountingFinancialComponent.PROMOTION,
+      AccountingFinancialPostingTreatment.POSTABLE,
+      -51779,
+    ],
+    [
+      'Marketing Adjustment',
+      AccountingFinancialComponent.ADJUSTMENT,
+      AccountingFinancialPostingTreatment.POSTABLE,
+      0,
+    ],
+    [
+      'Other Offer Charges',
+      AccountingFinancialComponent.PROMOTION,
+      AccountingFinancialPostingTreatment.POSTABLE,
+      0,
+    ],
+    [
+      'Tax on offer spends',
+      AccountingFinancialComponent.SALES_TAX,
+      AccountingFinancialPostingTreatment.POSTABLE,
+      -6729,
+    ],
+    [
+      'Ad Spends',
+      AccountingFinancialComponent.ADVERTISING,
+      AccountingFinancialPostingTreatment.POSTABLE,
+      -25753,
+    ],
+    [
+      'Ad Credits',
+      AccountingFinancialComponent.ADVERTISING_CREDIT,
+      AccountingFinancialPostingTreatment.POSTABLE,
+      4999,
+    ],
+    [
+      'Tax on Net Ad Spends',
+      AccountingFinancialComponent.ADVERTISING_TAX,
+      AccountingFinancialPostingTreatment.POSTABLE,
+      -2698,
+    ],
+    [
+      'Total Marketing Spends',
+      AccountingFinancialComponent.CONTROL_TOTAL,
+      AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+      -81960,
+    ],
+    [
+      'Net Chargeback Amount',
+      AccountingFinancialComponent.CHARGEBACK,
+      AccountingFinancialPostingTreatment.POSTABLE,
+      0,
+    ],
+    [
+      'Net Tax On Chargeback',
+      AccountingFinancialComponent.CHARGEBACK_TAX,
+      AccountingFinancialPostingTreatment.POSTABLE,
+      0,
+    ],
+    [
+      'Marketplace Facilitator Tax',
+      AccountingFinancialComponent.OTHER,
+      AccountingFinancialPostingTreatment.RECONCILIATION_ONLY,
+      0,
+    ],
+    [
+      'Adjustments',
+      AccountingFinancialComponent.ADJUSTMENT,
+      AccountingFinancialPostingTreatment.POSTABLE,
+      0,
+    ],
+    [
+      'Tax On Adjustments',
+      AccountingFinancialComponent.ADJUSTMENT,
+      AccountingFinancialPostingTreatment.POSTABLE,
+      0,
+    ],
+    [
+      'Total Amendments',
+      AccountingFinancialComponent.CONTROL_TOTAL,
+      AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+      0,
+    ],
+    [
+      'Net Total',
+      AccountingFinancialComponent.CONTROL_TOTAL,
+      AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+      143194,
+    ],
+  ];
+
+  return rows.map(
+    ([rawName, component, postingTreatment, amountCents], index) => ({
+      lineStableId: `line-july-${index + 1}`,
+      lineNo: index + 1,
+      rawName,
+      component,
+      postingTreatment,
+      amountCents,
+    }),
+  );
+};
 
 describe('Accounting provider settlement shadow policy', () => {
   it('uses statement authority before live Uber Order cutover and maps tip as non-taxable store revenue', () => {
@@ -127,6 +401,74 @@ describe('Accounting provider settlement shadow policy', () => {
     expect(plan.debitCents).toBe(plan.creditCents);
     expect(plan.requiredAccountStableIds).toContain(
       PROVIDER_SETTLEMENT_ACCOUNT_IDS.tipRevenue,
+    );
+  });
+
+  it('fails closed when the observed July Uber layout loss breaks source control totals', () => {
+    const plan = buildProviderSettlementDocumentPlan({
+      document: uberDocument(observedJulyUberLayoutLossLines()),
+      salesAuthority: 'STATEMENT_AUTHORITATIVE',
+      occurredAt: new Date('2026-08-01T03:59:59.999Z'),
+    });
+
+    expect(plan.status).toBe('BLOCKED');
+    expect(plan.blockReasons).toContain('PROVIDER_CONTROL_TOTAL_MISMATCH');
+    expect(plan.draftJournal).toBeNull();
+    expect(plan.debitCents).toBe(0);
+    expect(plan.creditCents).toBe(0);
+    expect(
+      plan.controlTotalChecks.find(
+        (check) => check.key === 'UBER_TOTAL_EARNINGS',
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        status: 'MISMATCH',
+        expectedCents: 294184,
+        calculatedCents: 520672,
+        deltaCents: 226488,
+      }),
+    );
+    expect(
+      plan.controlTotalChecks.find((check) => check.key === 'UBER_NET_TOTAL'),
+    ).toEqual(
+      expect.objectContaining({
+        status: 'MATCHED',
+        expectedCents: 143194,
+        calculatedCents: 143194,
+        deltaCents: 0,
+      }),
+    );
+  });
+
+  it('fails closed when an Uber statement is missing required control totals', () => {
+    const plan = buildProviderSettlementDocumentPlan({
+      document: {
+        ...uberDocument([]),
+        lines: [
+          {
+            lineStableId: 'line-sales-only',
+            lineNo: 1,
+            rawName: 'Sales',
+            component: AccountingFinancialComponent.SALES,
+            postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+            amountCents: 1000,
+          },
+        ],
+      },
+      salesAuthority: 'STATEMENT_AUTHORITATIVE',
+      occurredAt: new Date('2026-09-01T03:59:59.999Z'),
+    });
+
+    expect(plan.status).toBe('BLOCKED');
+    expect(plan.blockReasons).toContain('PROVIDER_CONTROL_TOTAL_INCOMPLETE');
+    expect(plan.controlTotalChecks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: 'UBER_NET_TOTAL',
+          status: 'INCOMPLETE',
+          expectedCents: null,
+        }),
+      ]),
     );
   });
 

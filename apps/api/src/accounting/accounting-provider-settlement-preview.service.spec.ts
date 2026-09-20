@@ -121,6 +121,61 @@ const uberStatement = (params: {
       amountCents: params.amountCents ?? 1000,
       occurredAt: null,
     },
+    {
+      lineStableId: `line_${params.documentStableId}_total_earnings`,
+      lineNo: 2,
+      rawCode: null,
+      rawName: 'Total Earnings',
+      component: AccountingFinancialComponent.CONTROL_TOTAL,
+      postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+      taxRole: AccountingFinancialTaxRole.NONE,
+      amountCents: params.amountCents ?? 1000,
+      occurredAt: null,
+    },
+    {
+      lineStableId: `line_${params.documentStableId}_total_fees`,
+      lineNo: 3,
+      rawCode: null,
+      rawName: 'Total Uber Fees',
+      component: AccountingFinancialComponent.CONTROL_TOTAL,
+      postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+      taxRole: AccountingFinancialTaxRole.NONE,
+      amountCents: 0,
+      occurredAt: null,
+    },
+    {
+      lineStableId: `line_${params.documentStableId}_total_marketing`,
+      lineNo: 4,
+      rawCode: null,
+      rawName: 'Total Marketing Spends',
+      component: AccountingFinancialComponent.CONTROL_TOTAL,
+      postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+      taxRole: AccountingFinancialTaxRole.NONE,
+      amountCents: 0,
+      occurredAt: null,
+    },
+    {
+      lineStableId: `line_${params.documentStableId}_total_amendments`,
+      lineNo: 5,
+      rawCode: null,
+      rawName: 'Total Amendments',
+      component: AccountingFinancialComponent.CONTROL_TOTAL,
+      postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+      taxRole: AccountingFinancialTaxRole.NONE,
+      amountCents: 0,
+      occurredAt: null,
+    },
+    {
+      lineStableId: `line_${params.documentStableId}_net_total`,
+      lineNo: 6,
+      rawCode: null,
+      rawName: 'Net Total',
+      component: AccountingFinancialComponent.CONTROL_TOTAL,
+      postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+      taxRole: AccountingFinancialTaxRole.NONE,
+      amountCents: params.amountCents ?? 1000,
+      occurredAt: null,
+    },
   ],
 });
 
@@ -521,36 +576,16 @@ describe('AccountingProviderSettlementPreviewService', () => {
   it('blocks a statement tip draft until the dedicated tip revenue account is provisioned', async () => {
     const operations = {
       readProviderSettlementDocuments: jest.fn().mockResolvedValue([
-        {
+        uberStatement({
           documentStableId: 'provider_doc_tip_1',
-          provider: AccountingFinancialProvider.UBER_EATS,
-          documentType: AccountingFinancialDocumentType.STATEMENT,
           businessIdentityKey: 'uber:statement:aug-2026',
           revision: 1,
-          supersedesDocumentId: null,
-          storeStableId: '4750_Yonge_Street',
-          providerDocumentRef: 'aug-2026',
-          periodStart: new Date('2026-08-01T00:00:00.000Z'),
-          periodEnd: new Date('2026-08-31T00:00:00.000Z'),
-          settledAt: null,
-          payoutAt: null,
-          currency: 'CAD',
-          rawMetadata: null,
-          ...confirmedReview('provider_doc_tip_1', 'inbox_tip_1'),
-          lines: [
-            {
-              lineStableId: 'line-tip',
-              lineNo: 1,
-              rawCode: null,
-              rawName: 'Tips',
-              component: AccountingFinancialComponent.TIP,
-              postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
-              taxRole: AccountingFinancialTaxRole.NONE,
-              amountCents: 500,
-              occurredAt: null,
-            },
-          ],
-        },
+          periodStart: '2026-08-01',
+          periodEnd: '2026-08-31',
+          reviewStatus: 'CONFIRMED',
+          component: AccountingFinancialComponent.TIP,
+          amountCents: 500,
+        }),
       ]),
       readProviderFinancialCoverage: jest
         .fn()
@@ -724,6 +759,79 @@ describe('AccountingProviderSettlementPreviewService', () => {
     );
     expect(result.providerDocuments[0].blockReasons).toContain(
       'LATEST_REVISION_OUTSIDE_REQUESTED_RANGE',
+    );
+  });
+
+  it('surfaces Uber control-total mismatches and withholds the draft Journal', async () => {
+    const statement = uberStatement({
+      documentStableId: 'provider_doc_control_mismatch',
+      businessIdentityKey: 'uber:statement:control-mismatch',
+      revision: 1,
+      periodStart: '2026-08-01',
+      periodEnd: '2026-08-31',
+      reviewStatus: 'CONFIRMED',
+      amountCents: 1000,
+    });
+    const totalEarnings = statement.lines.find(
+      (line) => line.rawName === 'Total Earnings',
+    );
+    if (!totalEarnings) {
+      throw new Error('test fixture is missing Total Earnings');
+    }
+    totalEarnings.amountCents = 900;
+
+    const operations = {
+      readProviderSettlementDocuments: jest.fn().mockResolvedValue([statement]),
+      readProviderFinancialCoverage: jest
+        .fn()
+        .mockResolvedValue([uberCoverage()]),
+      readAccountingAccountFacts: jest
+        .fn()
+        .mockResolvedValue([
+          accountFact('account_uber_pending', AccountingAccountClass.ASSET),
+          accountFact('account_sales_revenue', AccountingAccountClass.REVENUE),
+        ]),
+      readSettlementShadowExistingJournals: jest.fn().mockResolvedValue([]),
+      readOrderSaleJournalsByFactStableIds: jest.fn().mockResolvedValue([]),
+    };
+    const orderFinancialFacts = {
+      readFactsForRange: jest.fn().mockResolvedValue([]),
+    };
+    const service = new AccountingProviderSettlementPreviewService(
+      operations as never,
+      operations as never,
+      accounting as never,
+      storeConfig as never,
+      orderFinancialFacts as never,
+    );
+
+    const result = await service.previewRange({
+      fromDate: '2026-08-01',
+      toDateExclusive: '2026-09-01',
+      storeStableId: '4750_Yonge_Street',
+      provider: AccountingFinancialProvider.UBER_EATS,
+    });
+
+    const plan = result.providerDocuments[0];
+    expect(plan).toEqual(
+      expect.objectContaining({
+        status: 'BLOCKED',
+        draftJournal: null,
+        debitCents: 0,
+        creditCents: 0,
+      }),
+    );
+    expect(plan.blockReasons).toContain('PROVIDER_CONTROL_TOTAL_MISMATCH');
+    expect(plan.controlTotalChecks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: 'UBER_TOTAL_EARNINGS',
+          status: 'MISMATCH',
+          expectedCents: 900,
+          calculatedCents: 1000,
+          deltaCents: 100,
+        }),
+      ]),
     );
   });
 

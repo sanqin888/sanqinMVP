@@ -76,6 +76,20 @@ export type ProviderSettlementDocumentPlan = {
   } | null;
   status: 'READY' | 'BLOCKED' | 'NOOP' | 'ALREADY_POSTED';
   blockReasons: string[];
+  controlTotalChecks: Array<{
+    key:
+      | 'UBER_TOTAL_EARNINGS'
+      | 'UBER_TOTAL_FEES'
+      | 'UBER_TOTAL_MARKETING'
+      | 'UBER_TOTAL_AMENDMENTS'
+      | 'UBER_NET_TOTAL';
+    status: 'MATCHED' | 'MISMATCH' | 'INCOMPLETE';
+    controlRawName: string;
+    controlLineStableId: string | null;
+    expectedCents: number | null;
+    calculatedCents: number | null;
+    deltaCents: number | null;
+  }>;
   existingJournalEntryStableId: string | null;
   priorPostedRevision: number | null;
   decisions: Array<{

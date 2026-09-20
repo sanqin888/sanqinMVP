@@ -637,6 +637,7 @@ export class AccountingProviderSettlementPreviewService {
         blockReasons: Array.from(
           new Set([...(basePlan?.blockReasons ?? []), ...extraBlocks]),
         ).sort(),
+        controlTotalChecks: basePlan?.controlTotalChecks ?? [],
         accountPrerequisites,
         missingRequiredAccounts,
         invalidRequiredAccounts,
