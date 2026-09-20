@@ -1791,13 +1791,11 @@ export class AccountingJournalService {
     if (
       confirmed.length !== 1 ||
       !current ||
-      current.reviewRevisionStableId !==
-        authority.reviewRevisionStableId ||
+      current.reviewRevisionStableId !== authority.reviewRevisionStableId ||
       current.revision !== authority.revision ||
       current.reviewHash !== authority.reviewHash ||
       current.confirmedAt?.toISOString() !== authority.confirmedAt ||
-      current.confirmedByUserStableId !==
-        authority.confirmedByUserStableId
+      current.confirmedByUserStableId !== authority.confirmedByUserStableId
     ) {
       throw new ConflictException(
         `provider financial human review authority changed after preview: ${documentStableId}`,

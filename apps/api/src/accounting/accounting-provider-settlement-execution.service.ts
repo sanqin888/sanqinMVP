@@ -242,13 +242,11 @@ export class AccountingProviderSettlementExecutionService {
     const confirmedHumanReview =
       humanReview?.confirmedAt && humanReview.confirmedByUserStableId
         ? {
-            reviewRevisionStableId:
-              humanReview.reviewRevisionStableId,
+            reviewRevisionStableId: humanReview.reviewRevisionStableId,
             revision: humanReview.revision,
             reviewHash: humanReview.reviewHash,
             confirmedAt: humanReview.confirmedAt,
-            confirmedByUserStableId:
-              humanReview.confirmedByUserStableId,
+            confirmedByUserStableId: humanReview.confirmedByUserStableId,
           }
         : null;
     if (humanReview && !confirmedHumanReview) {
@@ -346,10 +344,7 @@ export class AccountingProviderSettlementExecutionService {
             supplementaryEvidenceDocuments: (
               document.supplementaryEvidenceDocuments ?? []
             ).map((evidence) => {
-              const {
-                humanReviewRevision,
-                ...baseEvidence
-              } = evidence;
+              const { humanReviewRevision, ...baseEvidence } = evidence;
               return {
                 ...baseEvidence,
                 reviewEvidence: {
@@ -358,9 +353,7 @@ export class AccountingProviderSettlementExecutionService {
                   materializedEntityType:
                     AccountingInboxMaterializedEntityType.PROVIDER_FINANCIAL_DOCUMENT,
                 },
-                ...(humanReviewRevision
-                  ? { humanReviewRevision }
-                  : {}),
+                ...(humanReviewRevision ? { humanReviewRevision } : {}),
               };
             }),
           }

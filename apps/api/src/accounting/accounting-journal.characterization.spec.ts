@@ -179,15 +179,17 @@ describe('AccountingJournalService double-entry journal characterization', () =>
 
   it('fails closed when confirmed human review authority changes after settlement preview', async () => {
     const { service, prisma } = makeService();
-    prisma.accountingProviderFinancialReviewRevision.findMany.mockResolvedValue([
-      {
-        reviewRevisionStableId: 'acctfinreview_current',
-        revision: 2,
-        reviewHash: 'c'.repeat(64),
-        confirmedAt: new Date('2026-09-20T14:00:00.000Z'),
-        confirmedByUserStableId: 'user_admin_2',
-      },
-    ]);
+    prisma.accountingProviderFinancialReviewRevision.findMany.mockResolvedValue(
+      [
+        {
+          reviewRevisionStableId: 'acctfinreview_current',
+          revision: 2,
+          reviewHash: 'c'.repeat(64),
+          confirmedAt: new Date('2026-09-20T14:00:00.000Z'),
+          confirmedByUserStableId: 'user_admin_2',
+        },
+      ],
+    );
     const authority = {
       reviewRevisionStableId: 'acctfinreview_previewed',
       revision: 1,
@@ -216,15 +218,17 @@ describe('AccountingJournalService double-entry journal characterization', () =>
 
   it('fails closed when human review is confirmed after a preview that had no review', async () => {
     const { service, prisma } = makeService();
-    prisma.accountingProviderFinancialReviewRevision.findMany.mockResolvedValue([
-      {
-        reviewRevisionStableId: 'acctfinreview_new',
-        revision: 1,
-        reviewHash: 'd'.repeat(64),
-        confirmedAt: new Date('2026-09-20T14:00:00.000Z'),
-        confirmedByUserStableId: 'user_admin_1',
-      },
-    ]);
+    prisma.accountingProviderFinancialReviewRevision.findMany.mockResolvedValue(
+      [
+        {
+          reviewRevisionStableId: 'acctfinreview_new',
+          revision: 1,
+          reviewHash: 'd'.repeat(64),
+          confirmedAt: new Date('2026-09-20T14:00:00.000Z'),
+          confirmedByUserStableId: 'user_admin_1',
+        },
+      ],
+    );
     const revalidator = service as unknown as {
       assertProviderFinancialHumanReviewAuthorityInTx(
         documentDbId: string,

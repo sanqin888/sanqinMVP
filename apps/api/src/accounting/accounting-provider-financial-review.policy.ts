@@ -51,7 +51,7 @@ export type NormalizedProviderFinancialReviewCorrection = {
 };
 
 const hasOwn = (value: object, key: string): boolean =>
-  Object.prototype.hasOwnProperty.call(value, key);
+  Object.getOwnPropertyDescriptor(value, key) !== undefined;
 
 const optionalText = (value: string | null | undefined): string | null => {
   if (value === null || value === undefined) return null;
@@ -164,10 +164,7 @@ export function normalizeProviderFinancialReviewDraft(params: {
     const hasRawName = hasOwn(inputCorrection, 'rawName');
     const hasAmount = hasOwn(inputCorrection, 'amountCents');
     const hasComponent = hasOwn(inputCorrection, 'component');
-    const hasPostingTreatment = hasOwn(
-      inputCorrection,
-      'postingTreatment',
-    );
+    const hasPostingTreatment = hasOwn(inputCorrection, 'postingTreatment');
     const hasTaxRole = hasOwn(inputCorrection, 'taxRole');
 
     if (

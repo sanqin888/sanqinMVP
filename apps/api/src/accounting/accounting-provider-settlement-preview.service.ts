@@ -145,15 +145,9 @@ const confirmedReviewEvidence = (document: ProviderDocumentRow) => {
   };
 };
 
-const confirmedHumanReviewRevision = (
-  document: ProviderDocumentRow,
-) => {
+const confirmedHumanReviewRevision = (document: ProviderDocumentRow) => {
   const review = document.reviewRevisions?.[0] ?? null;
-  if (
-    !review ||
-    !review.confirmedAt ||
-    !review.confirmedByUserStableId
-  ) {
+  if (!review || !review.confirmedAt || !review.confirmedByUserStableId) {
     return null;
   }
   return {
@@ -255,8 +249,7 @@ const resolveFantuanAdjustmentDetail = (
   if (
     !reviewEvidence ||
     !detail.storeStableId ||
-    ((detail.reviewRevisions?.length ?? 0) > 0 &&
-      !humanReviewRevision)
+    (detail.reviewRevisions?.length ?? 0) > 0 && !humanReviewRevision
   ) {
     return {
       lines: controlLines,
@@ -425,8 +418,7 @@ export class AccountingProviderSettlementPreviewService {
             effectiveRawCode: correction.effectiveRawCode,
             effectiveRawName: correction.effectiveRawName,
             effectiveComponent: correction.effectiveComponent,
-            effectivePostingTreatment:
-              correction.effectivePostingTreatment,
+            effectivePostingTreatment: correction.effectivePostingTreatment,
             effectiveTaxRole: correction.effectiveTaxRole,
             effectiveAmountCents: correction.effectiveAmountCents,
           })),
@@ -558,19 +550,16 @@ export class AccountingProviderSettlementPreviewService {
       const humanReviewRow = document.reviewRevisions?.[0] ?? null;
       const humanReviewRevision = humanReviewRow
         ? {
-            reviewRevisionStableId:
-              humanReviewRow.reviewRevisionStableId,
+            reviewRevisionStableId: humanReviewRow.reviewRevisionStableId,
             revision: humanReviewRow.revision,
             reviewHash: humanReviewRow.reviewHash,
             confirmedAt: humanReviewRow.confirmedAt?.toISOString() ?? null,
-            confirmedByUserStableId:
-              humanReviewRow.confirmedByUserStableId,
+            confirmedByUserStableId: humanReviewRow.confirmedByUserStableId,
           }
         : null;
       const humanReviewBlocks =
         humanReviewRow &&
-        (!humanReviewRow.confirmedAt ||
-          !humanReviewRow.confirmedByUserStableId)
+        (!humanReviewRow.confirmedAt || !humanReviewRow.confirmedByUserStableId)
           ? ['PROVIDER_HUMAN_REVIEW_AUTHORITY_INCOMPLETE']
           : [];
       const reviewEvidence = review

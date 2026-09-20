@@ -46,14 +46,12 @@ const reviewDtoRow = {
     {
       correctionStableId: 'acctfincorr_1',
       sourceLineStableId: 'line_sales_tax',
-      reason:
-        AccountingProviderFinancialCorrectionReason.EXTRACTION_CORRECTION,
+      reason: AccountingProviderFinancialCorrectionReason.EXTRACTION_CORRECTION,
       note: 'Source PDF shows $338.48',
       effectiveRawCode: null,
       effectiveRawName: 'Tax on Sales',
       effectiveComponent: AccountingFinancialComponent.SALES_TAX,
-      effectivePostingTreatment:
-        AccountingFinancialPostingTreatment.POSTABLE,
+      effectivePostingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
       effectiveTaxRole: AccountingFinancialTaxRole.SALES_TAX,
       effectiveAmountCents: 33848,
     },
@@ -106,7 +104,7 @@ describe('AccountingProviderFinancialReviewService', () => {
       count: 0,
     });
     db.accountingProviderFinancialReviewRevision.create.mockImplementation(
-      async ({ data }: { data: Record<string, unknown> }) => ({
+      ({ data }: { data: Record<string, unknown> }) => ({
         ...reviewDtoRow,
         reviewHash: data.reviewHash,
       }),
@@ -136,7 +134,7 @@ describe('AccountingProviderFinancialReviewService', () => {
       expect.objectContaining({
         revision: 1,
         status: AccountingProviderFinancialReviewStatus.DRAFT,
-        reviewHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+        reviewHash: expect.stringMatching(/^[a-f0-9]{64}$/) as unknown,
       }),
     );
     expect(
@@ -153,12 +151,11 @@ describe('AccountingProviderFinancialReviewService', () => {
               expect.objectContaining({
                 sourceLineStableId: 'line_sales_tax',
                 effectiveAmountCents: 33848,
-                effectiveComponent:
-                  AccountingFinancialComponent.SALES_TAX,
+                effectiveComponent: AccountingFinancialComponent.SALES_TAX,
               }),
             ],
           },
-        }),
+        }) as unknown,
       }),
     );
     expect(db.accountingAuditLog.create).toHaveBeenCalledWith({
@@ -166,7 +163,7 @@ describe('AccountingProviderFinancialReviewService', () => {
         action: 'CREATE_REVIEW_DRAFT',
         entityType: 'ACCOUNTING_PROVIDER_FINANCIAL_REVIEW_REVISION',
         operatorActorRef: 'user_admin_1',
-      }),
+      }) as unknown,
     });
   });
 
@@ -289,7 +286,7 @@ describe('AccountingProviderFinancialReviewService', () => {
         action: 'CONFIRM_REVIEW',
         entityId: draft.reviewRevisionStableId,
         operatorActorRef: 'user_admin_2',
-      }),
+      }) as unknown,
     });
   });
 });

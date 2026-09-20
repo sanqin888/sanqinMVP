@@ -48,10 +48,7 @@ export class AccountingProviderFinancialReviewService {
   constructor(@Inject(ACCOUNTING_DB) private readonly prisma: AccountingDb) {}
 
   async listReviewRevisions(documentStableId: string) {
-    const stableId = requireStableValue(
-      documentStableId,
-      'documentStableId',
-    );
+    const stableId = requireStableValue(documentStableId, 'documentStableId');
     const document =
       await this.prisma.accountingProviderFinancialDocument.findUnique({
         where: { documentStableId: stableId },
@@ -100,10 +97,7 @@ export class AccountingProviderFinancialReviewService {
     input: ProviderFinancialReviewDraftInput,
     operatorUserStableId: string,
   ) {
-    const stableId = requireStableValue(
-      documentStableId,
-      'documentStableId',
-    );
+    const stableId = requireStableValue(documentStableId, 'documentStableId');
     const operator = requireStableValue(
       operatorUserStableId,
       'operatorUserStableId',
@@ -136,9 +130,7 @@ export class AccountingProviderFinancialReviewService {
             },
           });
         if (!document) {
-          throw new NotFoundException(
-            'provider financial document not found',
-          );
+          throw new NotFoundException('provider financial document not found');
         }
 
         const latestDocument =
@@ -250,8 +242,7 @@ export class AccountingProviderFinancialReviewService {
                         effectivePostingTreatment:
                           correction.effectivePostingTreatment,
                         effectiveTaxRole: correction.effectiveTaxRole,
-                        effectiveAmountCents:
-                          correction.effectiveAmountCents,
+                        effectiveAmountCents: correction.effectiveAmountCents,
                       })),
                     },
                   }
@@ -289,8 +280,7 @@ export class AccountingProviderFinancialReviewService {
         await tx.accountingAuditLog.create({
           data: {
             action: 'CREATE_REVIEW_DRAFT',
-            entityType:
-              'ACCOUNTING_PROVIDER_FINANCIAL_REVIEW_REVISION',
+            entityType: 'ACCOUNTING_PROVIDER_FINANCIAL_REVIEW_REVISION',
             entityId: created.reviewRevisionStableId,
             operatorActorRef: operator,
             afterJson: {
@@ -320,10 +310,7 @@ export class AccountingProviderFinancialReviewService {
     expectedReviewHash: string,
     operatorUserStableId: string,
   ) {
-    const stableId = requireStableValue(
-      documentStableId,
-      'documentStableId',
-    );
+    const stableId = requireStableValue(documentStableId, 'documentStableId');
     const reviewStableId = requireStableValue(
       reviewRevisionStableId,
       'reviewRevisionStableId',
@@ -389,8 +376,7 @@ export class AccountingProviderFinancialReviewService {
           },
         });
       if (
-        latestReview?.reviewRevisionStableId !==
-          review.reviewRevisionStableId ||
+        latestReview?.reviewRevisionStableId !== review.reviewRevisionStableId ||
         latestReview.revision !== review.revision ||
         latestReview.status !== AccountingProviderFinancialReviewStatus.DRAFT
       ) {
@@ -410,8 +396,7 @@ export class AccountingProviderFinancialReviewService {
           select: { documentStableId: true, revision: true },
         });
       if (
-        latestDocument?.documentStableId !==
-          review.document.documentStableId ||
+        latestDocument?.documentStableId !== review.document.documentStableId ||
         latestDocument.revision !== review.document.revision
       ) {
         throw new ConflictException(
@@ -446,8 +431,7 @@ export class AccountingProviderFinancialReviewService {
       await tx.accountingAuditLog.create({
         data: {
           action: 'CONFIRM_REVIEW',
-          entityType:
-            'ACCOUNTING_PROVIDER_FINANCIAL_REVIEW_REVISION',
+          entityType: 'ACCOUNTING_PROVIDER_FINANCIAL_REVIEW_REVISION',
           entityId: review.reviewRevisionStableId,
           operatorActorRef: operator,
           afterJson: {
@@ -487,37 +471,36 @@ export class AccountingProviderFinancialReviewService {
     tx: AccountingTransactionClient,
     reviewRevisionStableId: string,
   ) {
-    const row =
-      await tx.accountingProviderFinancialReviewRevision.findUnique({
-        where: { reviewRevisionStableId },
-        select: {
-          reviewRevisionStableId: true,
-          revision: true,
-          status: true,
-          reviewHash: true,
-          note: true,
-          createdByUserStableId: true,
-          confirmedByUserStableId: true,
-          confirmedAt: true,
-          createdAt: true,
-          updatedAt: true,
-          corrections: {
-            select: {
-              correctionStableId: true,
-              sourceLineStableId: true,
-              reason: true,
-              note: true,
-              effectiveRawCode: true,
-              effectiveRawName: true,
-              effectiveComponent: true,
-              effectivePostingTreatment: true,
-              effectiveTaxRole: true,
-              effectiveAmountCents: true,
-            },
-            orderBy: { sourceLineStableId: 'asc' },
+    const row = await tx.accountingProviderFinancialReviewRevision.findUnique({
+      where: { reviewRevisionStableId },
+      select: {
+        reviewRevisionStableId: true,
+        revision: true,
+        status: true,
+        reviewHash: true,
+        note: true,
+        createdByUserStableId: true,
+        confirmedByUserStableId: true,
+        confirmedAt: true,
+        createdAt: true,
+        updatedAt: true,
+        corrections: {
+          select: {
+            correctionStableId: true,
+            sourceLineStableId: true,
+            reason: true,
+            note: true,
+            effectiveRawCode: true,
+            effectiveRawName: true,
+            effectiveComponent: true,
+            effectivePostingTreatment: true,
+            effectiveTaxRole: true,
+            effectiveAmountCents: true,
           },
+          orderBy: { sourceLineStableId: 'asc' },
         },
-      });
+      },
+    });
     if (!row) {
       throw new NotFoundException(
         'provider financial review revision not found',

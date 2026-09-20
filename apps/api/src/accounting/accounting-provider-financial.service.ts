@@ -39,12 +39,8 @@ import {
   ACCOUNTING_FANTUAN_ADJUSTMENT_DETAIL_PARSER_VERSION,
   parseFantuanAdjustmentDetailXlsx,
 } from './accounting-fantuan-adjustment-detail-xlsx';
-import {
-  AccountingProviderFinancialReviewService,
-} from './accounting-provider-financial-review.service';
-import type {
-  ProviderFinancialReviewDraftInput,
-} from './accounting-provider-financial-review.policy';
+import { AccountingProviderFinancialReviewService } from './accounting-provider-financial-review.service';
+import type { ProviderFinancialReviewDraftInput } from './accounting-provider-financial-review.policy';
 import { getAccountingUploadsDir } from './accounting-storage-path';
 
 export type AccountingProviderFinancialParseContext = Omit<
