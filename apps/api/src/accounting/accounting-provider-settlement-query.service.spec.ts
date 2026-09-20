@@ -57,9 +57,9 @@ describe('AccountingProviderSettlementQueryService posting states', () => {
       accountingJournalEntry: { findMany },
     } as never);
 
-    await expect(service.readProviderDocumentPostingStates([])).resolves.toEqual(
-      [],
-    );
+    await expect(
+      service.readProviderDocumentPostingStates([]),
+    ).resolves.toEqual([]);
     expect(findMany).not.toHaveBeenCalled();
   });
 });
