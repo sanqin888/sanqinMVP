@@ -52,6 +52,12 @@ function dispositionClass(disposition: string): string {
   return 'bg-slate-100 text-slate-700';
 }
 
+function controlTotalStatusClass(status: string): string {
+  if (status === 'MATCHED') return 'bg-emerald-100 text-emerald-800';
+  if (status === 'MISMATCH') return 'bg-red-100 text-red-800';
+  return 'bg-amber-100 text-amber-800';
+}
+
 function formatDateTime(value: string | null, locale: string): string {
   if (!value) return '—';
   return new Date(value).toLocaleString(locale === 'zh' ? 'zh-CN' : 'en-CA');
@@ -228,6 +234,7 @@ function ShadowPreviewPanel({
     (plan) => plan.documentStableId === documentStableId,
   );
   const coverage = documentPlan?.coverageEvidence ?? null;
+  const controlTotalChecks = documentPlan?.controlTotalChecks ?? [];
   const reversalPlans = preview.uberPreCutoverOrderReversals;
 
   if (!documentPlan) {
@@ -281,6 +288,70 @@ function ShadowPreviewPanel({
               </li>
             ))}
           </ul>
+        </div>
+      ) : null}
+
+      {controlTotalChecks.length ? (
+        <div className="rounded-xl border border-slate-200 p-4">
+          <h4 className="text-sm font-semibold">
+            {isZh ? '原始控制总额校验' : 'Source control-total reconciliation'}
+          </h4>
+          <p className="mt-1 text-xs text-slate-500">
+            {isZh
+              ? '源文件中的 section / Net Total 必须与识别后的 canonical 金额一致，否则结算保持 BLOCKED。'
+              : 'Source section and Net Total controls must match the extracted canonical amounts or the settlement remains BLOCKED.'}
+          </p>
+          <div className="mt-3 overflow-x-auto">
+            <table className="min-w-[680px] w-full text-left text-xs">
+              <thead className="border-b border-slate-200 text-slate-500">
+                <tr>
+                  <th className="px-2 py-2">{isZh ? '控制项' : 'Control'}</th>
+                  <th className="px-2 py-2">Status</th>
+                  <th className="px-2 py-2 text-right">
+                    {isZh ? '源文件总额' : 'Source total'}
+                  </th>
+                  <th className="px-2 py-2 text-right">
+                    {isZh ? '识别计算值' : 'Calculated'}
+                  </th>
+                  <th className="px-2 py-2 text-right">
+                    {isZh ? '差额' : 'Delta'}
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {controlTotalChecks.map((check) => (
+                  <tr key={check.key}>
+                    <td className="px-2 py-2 font-medium">
+                      {check.controlRawName}
+                    </td>
+                    <td className="px-2 py-2">
+                      <span
+                        className={
+                          'rounded-full px-2 py-0.5 text-[11px] ' +
+                          controlTotalStatusClass(check.status)
+                        }
+                      >
+                        {check.status}
+                      </span>
+                    </td>
+                    <td className="px-2 py-2 text-right">
+                      {check.expectedCents === null
+                        ? '—'
+                        : money(check.expectedCents)}
+                    </td>
+                    <td className="px-2 py-2 text-right">
+                      {check.calculatedCents === null
+                        ? '—'
+                        : money(check.calculatedCents)}
+                    </td>
+                    <td className="px-2 py-2 text-right">
+                      {check.deltaCents === null ? '—' : money(check.deltaCents)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : null}
 
