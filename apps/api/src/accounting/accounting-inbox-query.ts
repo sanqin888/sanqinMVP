@@ -533,6 +533,10 @@ export async function readAccountingInboxProviderReviewContext(
         select: {
           artifactStableId: true,
           acquisitionMode: true,
+          kind: true,
+          mimeType: true,
+          originalFilename: true,
+          storedUrl: true,
           bodyText: true,
           emailSubject: true,
           financialDocument: {

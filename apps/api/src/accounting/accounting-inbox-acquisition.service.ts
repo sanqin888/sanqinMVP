@@ -347,6 +347,28 @@ export class AccountingInboxAcquisitionService {
     if (artifact.inboxItem?.status !== AccountingInboxStatus.PENDING_REVIEW) {
       return false;
     }
+    if (kind === AccountingArtifactKind.OTHER) {
+      const detail =
+        await this.providerFinancial.parseFantuanAdjustmentDetailForInboxSuggestion(
+          {
+            artifactStableId: artifact.artifactStableId,
+            buffer,
+            originalFilename: providerContext.originalFilename,
+          },
+        );
+      if (detail.matched) return true;
+      await this.inbox.recordInboxParseRun({
+        artifactStableId: artifact.artifactStableId,
+        parserName: GENERIC_PARSER_NAME,
+        parserVersion: GENERIC_PARSER_VERSION,
+        status: AccountingParseStatus.SKIPPED,
+        resultJson: {
+          inputKind: 'XLSX',
+          xlsxStructureUnrecognized: true,
+        },
+      });
+      return false;
+    }
     if (kind === AccountingArtifactKind.CSV) {
       const text = buffer.toString('utf8');
       const provider = await this.parseProviderEvidence(acquisitionMode, {
@@ -762,6 +784,25 @@ export class AccountingInboxAcquisitionService {
     }
     const extension = path.extname(file.originalname ?? '').toLowerCase();
     const declaredMime = file.mimetype?.split(';')[0]?.trim().toLowerCase();
+    const zipSignature =
+      file.buffer.length >= 4 &&
+      file.buffer[0] === 0x50 &&
+      file.buffer[1] === 0x4b &&
+      [0x03, 0x05, 0x07].includes(file.buffer[2] ?? -1) &&
+      [0x04, 0x06, 0x08].includes(file.buffer[3] ?? -1);
+    if (
+      (extension === '.xlsx' ||
+        declaredMime ===
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') &&
+      zipSignature
+    ) {
+      return {
+        kind: AccountingArtifactKind.OTHER,
+        extension: '.xlsx',
+        mimeType:
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      };
+    }
     if (
       extension === '.csv' ||
       declaredMime === 'text/csv' ||
@@ -777,7 +818,7 @@ export class AccountingInboxAcquisitionService {
       };
     }
     throw new BadRequestException(
-      'Unsupported accounting evidence file; use PDF, CSV, JPEG, PNG, or WebP',
+      'Unsupported accounting evidence file; use PDF, CSV, XLSX, JPEG, PNG, or WebP',
     );
   }
 

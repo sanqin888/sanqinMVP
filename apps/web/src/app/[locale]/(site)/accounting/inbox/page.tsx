@@ -401,13 +401,13 @@ export default function AccountingInboxPage() {
           </h2>
           <p className="mt-1 text-sm text-slate-500">
             {isZh
-              ? '支持 PDF、CSV、JPEG、PNG、WebP，文件会进入与 Gmail 相同的收件箱流程。'
-              : 'PDF, CSV, JPEG, PNG, and WebP use the same Inbox pipeline as Gmail.'}
+              ? '支持 PDF、CSV、XLSX、JPEG、PNG、WebP，文件会进入与 Gmail 相同的收件箱流程。'
+              : 'PDF, CSV, XLSX, JPEG, PNG, and WebP use the same Inbox pipeline as Gmail.'}
           </p>
           <label className="mt-3 inline-flex cursor-pointer rounded border px-3 py-2 text-sm">
             <input
               type="file"
-              accept=".pdf,.csv,image/jpeg,image/png,image/webp"
+              accept=".pdf,.csv,.xlsx,image/jpeg,image/png,image/webp"
               className="hidden"
               disabled={uploading}
               onChange={(event) => {

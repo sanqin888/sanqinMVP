@@ -10,6 +10,7 @@ import {
   PROVIDER_SETTLEMENT_ACCOUNT_IDS,
   resolveProviderSalesAuthority,
 } from './accounting-provider-settlement.policy';
+import { FANTUAN_ADJUSTMENT_RAW_CODES } from './accounting-fantuan-adjustment-detail.contract';
 
 const uberDocument = (
   lines: Array<{
@@ -396,6 +397,68 @@ describe('Accounting provider settlement shadow policy', () => {
     expect(
       journalLines.get(PROVIDER_SETTLEMENT_ACCOUNT_IDS.hstPayable),
     ).toEqual(expect.objectContaining({ debitCents: 0, creditCents: 26997 }));
+  });
+
+  it('maps validated Fantuan adjustment detail compensation and deduction into distinct accounts', () => {
+    const plan = buildProviderSettlementDocumentPlan({
+      document: {
+        documentStableId: 'fantuan_aug_statement',
+        revision: 1,
+        provider: AccountingFinancialProvider.FANTUAN,
+        documentType: AccountingFinancialDocumentType.STATEMENT,
+        storeStableId: '4750_Yonge_Street',
+        periodStart: '2026-08-01',
+        periodEnd: '2026-08-31',
+        currency: 'CAD',
+        lines: [
+          {
+            lineStableId: 'detail-compensation',
+            lineNo: 1,
+            rawCode: FANTUAN_ADJUSTMENT_RAW_CODES.COMPENSATION,
+            rawName: 'Compensation',
+            component: AccountingFinancialComponent.ADJUSTMENT,
+            postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+            amountCents: 3354,
+          },
+          {
+            lineStableId: 'detail-deduction',
+            lineNo: 2,
+            rawCode: FANTUAN_ADJUSTMENT_RAW_CODES.DEDUCTION,
+            rawName: 'Deduction',
+            component: AccountingFinancialComponent.ADJUSTMENT,
+            postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+            amountCents: -660,
+          },
+        ],
+      },
+      salesAuthority: 'STATEMENT_AUTHORITATIVE',
+      occurredAt: new Date('2026-09-01T03:59:59.999Z'),
+    });
+
+    expect(plan.status).toBe('READY');
+    expect(plan.blockReasons).toEqual([]);
+    expect(plan.requiredAccountStableIds).toEqual(
+      expect.arrayContaining([
+        PROVIDER_SETTLEMENT_ACCOUNT_IDS.fantuanPending,
+        PROVIDER_SETTLEMENT_ACCOUNT_IDS.otherOperatingRevenue,
+        PROVIDER_SETTLEMENT_ACCOUNT_IDS.chargebackAdjustmentExpense,
+      ]),
+    );
+    const journalLines = new Map(
+      plan.draftJournal?.lines.map((line) => [line.accountStableId, line]) ??
+        [],
+    );
+    expect(
+      journalLines.get(PROVIDER_SETTLEMENT_ACCOUNT_IDS.fantuanPending),
+    ).toEqual(expect.objectContaining({ debitCents: 2694, creditCents: 0 }));
+    expect(
+      journalLines.get(PROVIDER_SETTLEMENT_ACCOUNT_IDS.otherOperatingRevenue),
+    ).toEqual(expect.objectContaining({ debitCents: 0, creditCents: 3354 }));
+    expect(
+      journalLines.get(
+        PROVIDER_SETTLEMENT_ACCOUNT_IDS.chargebackAdjustmentExpense,
+      ),
+    ).toEqual(expect.objectContaining({ debitCents: 660, creditCents: 0 }));
   });
 
   it.each<[string, AccountingFinancialComponent]>([

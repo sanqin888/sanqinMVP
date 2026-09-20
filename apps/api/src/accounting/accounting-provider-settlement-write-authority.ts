@@ -37,6 +37,27 @@ export type ProviderSettlementHistoricalJournalAnchorV1 = {
   sourceFactStableId: string;
 };
 
+export type ProviderSettlementSupplementaryEvidenceAuthorityV1 = {
+  documentStableId: string;
+  provider: AccountingFinancialProvider;
+  documentType: AccountingFinancialDocumentType;
+  businessIdentityKey: string;
+  revision: number;
+  providerDocumentRef: string | null;
+  storeStableId: string;
+  periodStart: string;
+  periodEnd: string;
+  reviewEvidence: {
+    inboxItemStableId: string;
+    status: 'CONFIRMED';
+    materializedEntityType: 'PROVIDER_FINANCIAL_DOCUMENT';
+    materializedEntityStableId: string;
+    reviewedAt: string;
+    reviewedByUserStableId: string;
+    version: number;
+  };
+};
+
 export type ProviderSettlementReplacementGroupAuthorityV1 = {
   version: 1;
   expectedPlanHash: string;
@@ -59,6 +80,7 @@ export type ProviderSettlementReplacementGroupAuthorityV1 = {
     reviewedByUserStableId: string;
     version: number;
   };
+  supplementaryEvidenceDocuments?: ProviderSettlementSupplementaryEvidenceAuthorityV1[];
   coverageEvidence: {
     coverageStableId: string;
     financialHistoryRequiredFrom: string;
@@ -217,6 +239,107 @@ const normalizeHistoricalAnchors = (
   );
 };
 
+const normalizeSupplementaryEvidenceDocuments = (
+  authority: ProviderSettlementReplacementGroupAuthorityV1,
+): ProviderSettlementSupplementaryEvidenceAuthorityV1[] => {
+  const documents = authority.supplementaryEvidenceDocuments ?? [];
+  if (!Array.isArray(documents)) {
+    throw new AccountingJournalPolicyError(
+      'provider settlement supplementaryEvidenceDocuments must be an array',
+    );
+  }
+  const normalized = documents.map((document) => {
+    const documentStableId = requireValue(
+      document.documentStableId,
+      'supplementaryEvidenceDocuments.documentStableId',
+    );
+    if (documentStableId === authority.documentStableId) {
+      throw new AccountingJournalPolicyError(
+        'provider settlement supplementary evidence cannot be the primary document',
+      );
+    }
+    if (
+      document.provider !== authority.provider ||
+      document.storeStableId !== authority.storeStableId ||
+      document.periodStart !== authority.periodStart ||
+      document.periodEnd !== authority.periodEnd
+    ) {
+      throw new AccountingJournalPolicyError(
+        'provider settlement supplementary evidence must match the primary provider/store/period',
+      );
+    }
+    if (
+      document.reviewEvidence.status !== AccountingInboxStatus.CONFIRMED ||
+      document.reviewEvidence.materializedEntityType !==
+        AccountingInboxMaterializedEntityType.PROVIDER_FINANCIAL_DOCUMENT ||
+      document.reviewEvidence.materializedEntityStableId !== documentStableId
+    ) {
+      throw new AccountingJournalPolicyError(
+        'provider settlement supplementary evidence requires confirmed linked review evidence',
+      );
+    }
+    return {
+      documentStableId,
+      provider: document.provider,
+      documentType: document.documentType,
+      businessIdentityKey: requireValue(
+        document.businessIdentityKey,
+        'supplementaryEvidenceDocuments.businessIdentityKey',
+      ),
+      revision: requirePositiveInteger(
+        document.revision,
+        'supplementaryEvidenceDocuments.revision',
+      ),
+      providerDocumentRef: optionalValue(document.providerDocumentRef),
+      storeStableId: requireValue(
+        document.storeStableId,
+        'supplementaryEvidenceDocuments.storeStableId',
+      ),
+      periodStart: requireValue(
+        document.periodStart,
+        'supplementaryEvidenceDocuments.periodStart',
+      ),
+      periodEnd: requireValue(
+        document.periodEnd,
+        'supplementaryEvidenceDocuments.periodEnd',
+      ),
+      reviewEvidence: {
+        inboxItemStableId: requireValue(
+          document.reviewEvidence.inboxItemStableId,
+          'supplementaryEvidenceDocuments.reviewEvidence.inboxItemStableId',
+        ),
+        status: AccountingInboxStatus.CONFIRMED,
+        materializedEntityType:
+          AccountingInboxMaterializedEntityType.PROVIDER_FINANCIAL_DOCUMENT,
+        materializedEntityStableId: documentStableId,
+        reviewedAt: requireValue(
+          document.reviewEvidence.reviewedAt,
+          'supplementaryEvidenceDocuments.reviewEvidence.reviewedAt',
+        ),
+        reviewedByUserStableId: requireValue(
+          document.reviewEvidence.reviewedByUserStableId,
+          'supplementaryEvidenceDocuments.reviewEvidence.reviewedByUserStableId',
+        ),
+        version: requirePositiveInteger(
+          document.reviewEvidence.version,
+          'supplementaryEvidenceDocuments.reviewEvidence.version',
+        ),
+      },
+    };
+  });
+  const stableIds = new Set(
+    normalized.map((document) => document.documentStableId),
+  );
+  if (stableIds.size !== normalized.length) {
+    throw new AccountingJournalPolicyError(
+      'provider settlement supplementary evidence contains duplicate document IDs',
+    );
+  }
+  return normalized.sort((left, right) =>
+    left.documentStableId.localeCompare(right.documentStableId),
+  );
+};
+
 export const normalizeProviderSettlementReplacementGroupAuthority = (
   authority: ProviderSettlementReplacementGroupAuthorityV1,
 ): ProviderSettlementReplacementGroupAuthorityV1 => {
@@ -249,6 +372,8 @@ export const normalizeProviderSettlementReplacementGroupAuthority = (
       'provider settlement review evidence is linked to a different document',
     );
   }
+  const supplementaryEvidenceDocuments =
+    normalizeSupplementaryEvidenceDocuments(authority);
 
   return {
     version: 1,
@@ -291,6 +416,9 @@ export const normalizeProviderSettlementReplacementGroupAuthority = (
         'reviewEvidence.version',
       ),
     },
+    ...(supplementaryEvidenceDocuments.length > 0
+      ? { supplementaryEvidenceDocuments }
+      : {}),
     coverageEvidence: {
       coverageStableId: requireValue(
         authority.coverageEvidence.coverageStableId,
