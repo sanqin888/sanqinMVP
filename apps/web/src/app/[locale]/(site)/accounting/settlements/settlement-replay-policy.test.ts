@@ -154,6 +154,32 @@ function makePreview(): ProviderSettlementShadowPreview {
   };
 }
 
+function addNoopSupportingDocument(
+  preview: ProviderSettlementShadowPreview,
+): void {
+  const supportingId = 'acctfindoc_supporting_detail';
+  const source = preview.providerDocuments[0];
+  preview.providerDocuments.push({
+    ...source,
+    documentStableId: supportingId,
+    documentType: 'OTHER',
+    businessIdentityKey: 'provider:supporting-detail:2026-06',
+    providerDocumentRef: 'supporting-detail:2026-06',
+    reviewEvidence: source.reviewEvidence
+      ? {
+          ...source.reviewEvidence,
+          materializedEntityStableId: supportingId,
+        }
+      : null,
+    status: 'NOOP',
+    blockReasons: [],
+    draftJournal: null,
+    debitCents: 0,
+    creditCents: 0,
+  });
+  preview.counts.providerDocuments += 1;
+}
+
 describe('provider settlement replay UI gate', () => {
   it('opens only for the exact one-document READY June replacement group', () => {
     const gate = buildProviderSettlementReplayGate(
@@ -176,6 +202,21 @@ describe('provider settlement replay UI gate', () => {
         providerPendingNetCents: 122285,
       }),
     );
+  });
+
+  it('allows NOOP supporting evidence beside the one READY target document', () => {
+    const preview = makePreview();
+    addNoopSupportingDocument(preview);
+
+    const gate = buildProviderSettlementReplayGate(
+      preview,
+      DOCUMENT_STABLE_ID,
+    );
+
+    expect(gate.status).toBe('READY');
+    expect(gate.blockReasons).toEqual([]);
+    expect(gate.summary.providerDocuments).toBe(1);
+    expect(gate.summary.totalJournals).toBe(84);
   });
 
   it('fails closed when any historical reversal is not READY', () => {
@@ -235,8 +276,9 @@ describe('provider settlement replay UI gate', () => {
     );
   });
 
-  it('recognizes the fresh post-write state and never re-opens replay', () => {
+  it('recognizes the fresh post-write state with NOOP supporting evidence', () => {
     const preview = makePreview();
+    addNoopSupportingDocument(preview);
     preview.providerDocuments[0] = {
       ...preview.providerDocuments[0],
       status: 'ALREADY_POSTED',

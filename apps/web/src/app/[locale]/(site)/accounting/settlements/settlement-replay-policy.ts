@@ -86,6 +86,9 @@ export function buildProviderSettlementReplayGate(
       (candidate) => candidate.documentStableId === documentStableId,
     ) ?? null;
   const reversals = preview.uberPreCutoverOrderReversals;
+  const actionableDocuments = preview.providerDocuments.filter(
+    (candidate) => candidate.status !== 'NOOP',
+  );
   const summary = {
     providerDocuments: document ? 1 : 0,
     reversalJournals: reversals.length,
@@ -100,8 +103,9 @@ export function buildProviderSettlementReplayGate(
 
   const completed = Boolean(
     document &&
-      preview.providerDocuments.length === 1 &&
-      preview.counts.providerDocuments === 1 &&
+      actionableDocuments.length === 1 &&
+      actionableDocuments[0]?.documentStableId === documentStableId &&
+      preview.counts.providerDocuments === preview.providerDocuments.length &&
       preview.counts.preCutoverUberSaleJournals === reversals.length &&
       document.status === 'ALREADY_POSTED' &&
       reversals.every((reversal) => reversal.status === 'ALREADY_REVERSED') &&
@@ -122,7 +126,10 @@ export function buildProviderSettlementReplayGate(
   const blockReasons: string[] = [];
   if (!SHA256_HEX.test(preview.planHash)) blockReasons.push('PLAN_HASH_INVALID');
   if (!document) blockReasons.push('TARGET_DOCUMENT_NOT_IN_PREVIEW');
-  if (preview.providerDocuments.length !== 1) {
+  if (
+    actionableDocuments.length !== 1 ||
+    actionableDocuments[0]?.documentStableId !== documentStableId
+  ) {
     blockReasons.push('EXPECTED_EXACTLY_ONE_PROVIDER_DOCUMENT');
   }
   if (preview.counts.providerDocuments !== preview.providerDocuments.length) {
