@@ -92,6 +92,22 @@ Net Total $2,021.83
       {} as never,
     );
 
+    const documentExtraction = {
+      version: 1 as const,
+      inputKind: 'PDF' as const,
+      engine: 'POPPLER' as const,
+      layoutMode: 'GEOMETRY' as const,
+      truncated: false,
+      lines: [
+        {
+          lineId: 'p1-l1',
+          page: 1,
+          text: 'Marketplace Fees',
+          confidence: null,
+          geometry: { left: 0.1, top: 0.4, width: 0.2, height: 0.02 },
+        },
+      ],
+    };
     await expect(
       service.parseForInboxSuggestion({
         artifactStableId: 'acctart_uber_partial',
@@ -101,6 +117,7 @@ Consolidated Monthly Summary
 Marketplace Fees
 Net Total
 `,
+        documentExtraction,
       }),
     ).resolves.toEqual(
       expect.objectContaining({
@@ -117,6 +134,14 @@ Net Total
           AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
         selectedProvider: AccountingFinancialProvider.UBER_EATS,
       },
+    );
+    expect(operations.recordInboxParseRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resultJson: expect.objectContaining({
+          providerRecognition: true,
+          documentExtraction,
+        }) as unknown,
+      }),
     );
     expect(operations.recordInboxParseRun).toHaveBeenCalledTimes(1);
     expect(operations.recordInboxParseRun).toHaveBeenCalledWith(
@@ -367,6 +392,209 @@ Total transfer amount $3813.11
     );
   });
 
+  it('reuses persisted layout extraction when confirmation materializes provider evidence', async () => {
+    const flattened = `
+Monthly Statement
+Statement Number #B4842290
+Date Jul 01-31, 2026
+Sales (84 Orders)
+Tax on Sales
+
+$2,603.36
+$338.48
+Total Earnings $2,941.84
+Net Total $1,431.94*
+`;
+    const documentExtraction = {
+      version: 1 as const,
+      inputKind: 'PDF' as const,
+      engine: 'POPPLER' as const,
+      layoutMode: 'GEOMETRY' as const,
+      truncated: false,
+      lines: [
+        {
+          lineId: 'p1-l1',
+          page: 1,
+          text: 'Sales (84 Orders)',
+          confidence: null,
+          geometry: { left: 0.1, top: 0.3, width: 0.25, height: 0.02 },
+        },
+        {
+          lineId: 'p1-l2',
+          page: 1,
+          text: '$2,603.36',
+          confidence: null,
+          geometry: { left: 0.75, top: 0.3, width: 0.15, height: 0.02 },
+        },
+        {
+          lineId: 'p1-l3',
+          page: 1,
+          text: 'Tax on Sales',
+          confidence: null,
+          geometry: { left: 0.1, top: 0.33, width: 0.2, height: 0.02 },
+        },
+        {
+          lineId: 'p1-l4',
+          page: 1,
+          text: '$338.48',
+          confidence: null,
+          geometry: { left: 0.75, top: 0.33, width: 0.12, height: 0.02 },
+        },
+      ],
+    };
+    const operations = {
+      readUnifiedInboxProviderReviewContext: jest.fn().mockResolvedValue({
+        status: AccountingInboxStatus.PENDING_REVIEW,
+        classification:
+          AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
+        selectedProvider: AccountingFinancialProvider.UBER_EATS,
+        materializedEntityType: null,
+        materializedEntityStableId: null,
+        artifact: {
+          artifactStableId: 'acctart_uber_july_layout',
+          acquisitionMode: 'MANUAL_UPLOAD',
+          bodyText: null,
+          emailSubject: null,
+          financialDocument: null,
+          parseRuns: [
+            {
+              parserName: 'accounting-provider-recognition',
+              parserVersion: '1',
+              status: AccountingParseStatus.SUCCESS,
+              resultJson: {
+                extractedText: flattened,
+                documentExtraction,
+              },
+            },
+          ],
+        },
+      }),
+      recordProviderFinancialDocument: jest.fn().mockResolvedValue({
+        documentStableId: 'acctfindoc_uber_july_layout',
+        revision: 1,
+        replayed: false,
+      }),
+      ensureProviderFinancialCoverage: jest.fn().mockResolvedValue({}),
+      confirmProviderFinancialInboxItem: jest.fn().mockResolvedValue({
+        confirmed: true,
+        documentStableId: 'acctfindoc_uber_july_layout',
+      }),
+    };
+    const storeConfig = {
+      getConfiguredStoreSnapshot: jest.fn().mockResolvedValue({
+        storeStableId: '4750_Yonge_Street',
+      }),
+    };
+    const service = new AccountingProviderFinancialService(
+      operations as never,
+      storeConfig as never,
+      {} as never,
+    );
+
+    await service.confirmSelectedInboxFinancialEvidence(
+      'acctinbox_uber_july_layout',
+      'user_operator_1',
+    );
+
+    expect(operations.recordProviderFinancialDocument).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: AccountingFinancialProvider.UBER_EATS,
+        providerDocumentRef: 'B4842290',
+        parserVersion: '4',
+        lines: expect.arrayContaining([
+          expect.objectContaining({
+            rawName: 'Sales',
+            amountCents: 260336,
+          }),
+          expect.objectContaining({
+            rawName: 'Tax on Sales',
+            amountCents: 33848,
+            rawPayload: expect.objectContaining({
+              extractionEvidence: expect.objectContaining({
+                strategy: 'LAYOUT_ROW_PAIR',
+              }) as unknown,
+            }) as unknown,
+          }),
+        ]) as unknown,
+      }),
+    );
+  });
+
+  it('fails closed when persisted document extraction evidence is malformed', async () => {
+    const operations = {
+      readUnifiedInboxProviderReviewContext: jest.fn().mockResolvedValue({
+        status: AccountingInboxStatus.PENDING_REVIEW,
+        classification:
+          AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
+        selectedProvider: AccountingFinancialProvider.UBER_EATS,
+        materializedEntityType: null,
+        materializedEntityStableId: null,
+        artifact: {
+          artifactStableId: 'acctart_invalid_layout',
+          acquisitionMode: 'MANUAL_UPLOAD',
+          bodyText: null,
+          emailSubject: null,
+          financialDocument: null,
+          parseRuns: [
+            {
+              parserName: 'accounting-provider-recognition',
+              parserVersion: '1',
+              status: AccountingParseStatus.SUCCESS,
+              resultJson: {
+                extractedText: `
+Monthly Statement
+Statement Number #INVALID-LAYOUT
+Date Jul 01-31, 2026
+Sales (1 Orders) $10.00
+Net Total $10.00
+`,
+                documentExtraction: {
+                  version: 1,
+                  inputKind: 'PDF',
+                  engine: 'POPPLER',
+                  layoutMode: 'GEOMETRY',
+                  truncated: false,
+                  lines: [
+                    {
+                      lineId: 'p1-l1',
+                      page: 1,
+                      text: 'Sales (1 Orders)',
+                      confidence: null,
+                      geometry: null,
+                    },
+                  ],
+                },
+              },
+            },
+          ],
+        },
+      }),
+      recordProviderFinancialDocument: jest.fn(),
+      ensureProviderFinancialCoverage: jest.fn(),
+      confirmProviderFinancialInboxItem: jest.fn(),
+    };
+    const service = new AccountingProviderFinancialService(
+      operations as never,
+      {
+        getConfiguredStoreSnapshot: jest.fn().mockResolvedValue({
+          storeStableId: '4750_Yonge_Street',
+        }),
+      } as never,
+      {} as never,
+    );
+
+    await expect(
+      service.confirmSelectedInboxFinancialEvidence(
+        'acctinbox_invalid_layout',
+        'user_operator_1',
+      ),
+    ).rejects.toThrow(
+      'provider document extraction evidence is invalid; reprocess the source artifact before confirmation',
+    );
+    expect(operations.recordProviderFinancialDocument).not.toHaveBeenCalled();
+    expect(operations.confirmProviderFinancialInboxItem).not.toHaveBeenCalled();
+  });
+
   it('materializes recognized provider evidence on or after the financial-history boundary', async () => {
     const operations = {
       recordInboxParseRun: jest.fn().mockResolvedValue({}),
@@ -426,7 +654,7 @@ Total transfer amount $3813.11
         periodStart: '2026-08-01',
         periodEnd: '2026-08-31',
         parserName: 'accounting-provider-financial',
-        parserVersion: '3',
+        parserVersion: '4',
       }),
     );
     expect(operations.ensureProviderFinancialCoverage).toHaveBeenCalledWith(

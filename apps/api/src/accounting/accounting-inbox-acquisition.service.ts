@@ -18,6 +18,10 @@ import {
   extractAccountingText,
 } from './accounting-pdf-extractor';
 import {
+  createTextOnlyAccountingDocumentExtraction,
+  type AccountingDocumentExtraction,
+} from './accounting-document-extraction';
+import {
   classifyAccountingDocumentText,
   type AccountingReviewMetadata,
 } from './accounting-document-review';
@@ -48,7 +52,7 @@ import { normalizeAccountingManualUploadFilename } from './accounting-upload-fil
 export const ACCOUNTING_INBOX_FILE_MAX_BYTES = 25 * 1024 * 1024;
 const GENERIC_PARSER_NAME = 'accounting-generic-document-review';
 const GENERIC_PARSER_VERSION = '2';
-const TEXTRACT_LINE_ITEM_HINTS_PARSER_VERSION = '3';
+const DOCUMENT_EXTRACTION_PARSER_VERSION = '4';
 
 type AccountingInboxFile = {
   originalname: string;
@@ -90,11 +94,13 @@ type ImageReviewExtraction = TextReviewExtraction & {
   ocrEngine: 'AWS_TEXTRACT' | 'TESSERACT';
   ocrStatus: 'SUCCESS' | 'ERROR';
   ocrFallbackFrom?: 'AWS_TEXTRACT';
+  documentExtraction: AccountingDocumentExtraction;
   textractEvidence?: AccountingTextractExpenseEvidence;
 };
 
 type PdfReviewExtraction = TextReviewExtraction & {
   textRecognitionEngine: 'POPPLER' | 'AWS_TEXTRACT';
+  documentExtraction: AccountingDocumentExtraction;
   textractEvidence?: AccountingTextractExpenseEvidence;
 };
 
@@ -509,6 +515,7 @@ export class AccountingInboxAcquisitionService {
       const local = await extractAccountingPdf(buffer);
       let text = local.text;
       let extraction = local.extraction;
+      let documentExtraction = local.documentExtraction;
       let textRecognitionEngine: PdfReviewExtraction['textRecognitionEngine'] =
         'POPPLER';
       let textractEvidence: AccountingTextractExpenseEvidence | undefined;
@@ -516,6 +523,7 @@ export class AccountingInboxAcquisitionService {
       let provider = await this.parseProviderEvidence(acquisitionMode, {
         artifactStableId: artifact.artifactStableId,
         text,
+        documentExtraction,
         ...providerContext,
       });
       if (provider.matched) return true;
@@ -530,11 +538,13 @@ export class AccountingInboxAcquisitionService {
             await recognizeAccountingExpensePdfWithTextract(buffer);
           text = textract.text;
           extraction = textract.extraction;
+          documentExtraction = textract.documentExtraction;
           textRecognitionEngine = 'AWS_TEXTRACT';
           textractEvidence = textract.evidence;
           provider = await this.parseProviderEvidence(acquisitionMode, {
             artifactStableId: artifact.artifactStableId,
             text,
+            documentExtraction,
             ...providerContext,
           });
           if (provider.matched) return true;
@@ -557,6 +567,7 @@ export class AccountingInboxAcquisitionService {
         ...classifyAccountingDocumentText(text, extraction),
         extractedText: text.slice(0, 100_000),
         textRecognitionEngine,
+        documentExtraction,
         ...(textractEvidence ? { textractEvidence } : {}),
         ...(ambiguousRuleStableIds.length
           ? {
@@ -579,6 +590,11 @@ export class AccountingInboxAcquisitionService {
 
       let text = '';
       let extraction = extractAccountingText('');
+      let documentExtraction = createTextOnlyAccountingDocumentExtraction({
+        inputKind: 'IMAGE',
+        engine: 'TESSERACT',
+        text: '',
+      });
       let ocrEngine: ImageReviewExtraction['ocrEngine'] = 'TESSERACT';
       let textractEvidence: AccountingTextractExpenseEvidence | undefined;
       let textractAttempted = false;
@@ -590,6 +606,7 @@ export class AccountingInboxAcquisitionService {
             await recognizeAccountingExpenseImageWithTextract(buffer);
           text = textract.text;
           extraction = textract.extraction;
+          documentExtraction = textract.documentExtraction;
           ocrEngine = 'AWS_TEXTRACT';
           textractEvidence = textract.evidence;
         } catch (error) {
@@ -604,11 +621,17 @@ export class AccountingInboxAcquisitionService {
       if (ocrEngine === 'TESSERACT') {
         text = (await extractAccountingImageText(buffer)).text;
         extraction = extractAccountingText(text);
+        documentExtraction = createTextOnlyAccountingDocumentExtraction({
+          inputKind: 'IMAGE',
+          engine: 'TESSERACT',
+          text,
+        });
       }
 
       const provider = await this.parseProviderEvidence(acquisitionMode, {
         artifactStableId: artifact.artifactStableId,
         text,
+        documentExtraction,
         ...providerContext,
       });
       if (provider.matched) return true;
@@ -629,6 +652,7 @@ export class AccountingInboxAcquisitionService {
         extractedText: text.slice(0, 100_000),
         ocrEngine,
         ocrStatus: 'SUCCESS',
+        documentExtraction,
         ...(textractAttempted && ocrEngine === 'TESSERACT'
           ? { ocrFallbackFrom: 'AWS_TEXTRACT' as const }
           : {}),
@@ -723,8 +747,8 @@ export class AccountingInboxAcquisitionService {
     result: TextReviewExtraction | PdfReviewExtraction | ImageReviewExtraction,
   ) {
     const parserVersion =
-      'textractEvidence' in result && result.textractEvidence
-        ? TEXTRACT_LINE_ITEM_HINTS_PARSER_VERSION
+      'documentExtraction' in result
+        ? DOCUMENT_EXTRACTION_PARSER_VERSION
         : GENERIC_PARSER_VERSION;
     await this.inbox.recordInboxParseRun({
       artifactStableId,

@@ -32,6 +32,7 @@ function line(text: string, top: number) {
     BlockType: 'LINE',
     Text: text,
     Page: 1,
+    Confidence: 98.5,
     Geometry: {
       BoundingBox: {
         Left: 0.2,
@@ -152,6 +153,28 @@ describe('Accounting Textract expense recognition', () => {
         totalCents: 4238,
         sourceCurrency: null,
         sourceCurrencyEvidence: 'UNKNOWN',
+      }),
+    );
+    expect(result.documentExtraction).toEqual(
+      expect.objectContaining({
+        version: 1,
+        inputKind: 'IMAGE',
+        engine: 'AWS_TEXTRACT',
+        layoutMode: 'GEOMETRY',
+        truncated: false,
+        lines: expect.arrayContaining([
+          expect.objectContaining({
+            lineId: 'p1-l1',
+            text: 'FOODY MART SUPERMARKET',
+            confidence: 98.5,
+            geometry: {
+              left: 0.2,
+              top: 0.05,
+              width: 0.6,
+              height: 0.02,
+            },
+          }),
+        ]) as unknown,
       }),
     );
     expect(result.evidence).toEqual(
@@ -408,6 +431,13 @@ describe('Accounting Textract expense recognition', () => {
         date: '2026-09-16',
         totalCents: 2000,
         sourceCurrency: 'USD',
+      }),
+    );
+    expect(result.documentExtraction).toEqual(
+      expect.objectContaining({
+        inputKind: 'PDF',
+        engine: 'AWS_TEXTRACT',
+        layoutMode: 'GEOMETRY',
       }),
     );
     expect(result.evidence.submittedDocument).toEqual({

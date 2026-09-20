@@ -5,13 +5,19 @@ import {
   AccountingFinancialProvider,
   AccountingFinancialTaxRole,
 } from './accounting-contracts';
+import {
+  sliceAccountingDocumentExtractionBeforeMarker,
+  type AccountingDocumentExtraction,
+  type AccountingDocumentExtractionLine,
+} from './accounting-document-extraction';
 
 export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_NAME =
   'accounting-provider-financial';
-export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION = '3';
+export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION = '4';
 
 export type ProviderFinancialParseInput = {
   text: string;
+  documentExtraction?: AccountingDocumentExtraction;
   originalFilename?: string | null;
   emailSubject?: string | null;
   providerHint?: AccountingFinancialProvider | null;
@@ -73,7 +79,7 @@ export function parseProviderFinancialEvidence(
       ) {
         return null;
       }
-      return parseUberMonthlyStatement(text);
+      return parseUberMonthlyStatement(text, input);
     case AccountingFinancialProvider.FANTUAN:
       if (
         input.documentTypeHint &&
@@ -244,6 +250,7 @@ function parseCloverStatement(
 
 function parseUberMonthlyStatement(
   text: string,
+  input: ProviderFinancialParseInput,
 ): ParsedProviderFinancialDocument | null {
   const periodMatch =
     /Date\s+([A-Za-z]{3})\s+(\d{1,2})-(\d{1,2}),\s+(\d{4})/i.exec(text);
@@ -257,13 +264,26 @@ function parseUberMonthlyStatement(
   if (!period) return null;
   const statementNumber = capture(text, /Statement Number\s*#?([A-Z0-9_-]+)/i);
   const summary = text.split(/Payout Period:/i)[0] ?? text;
+  const summaryExtraction = sliceAccountingDocumentExtractionBeforeMarker(
+    input.documentExtraction,
+    'Payout Period:',
+  );
   const lines: ParsedLine[] = [];
   const add = (
     label: string,
     component: AccountingFinancialComponent,
     treatment: AccountingFinancialPostingTreatment,
     taxRole: AccountingFinancialTaxRole = AccountingFinancialTaxRole.NONE,
-  ) => pushNamedSummary(lines, summary, label, component, treatment, taxRole);
+  ) =>
+    pushNamedSummary(
+      lines,
+      summary,
+      label,
+      component,
+      treatment,
+      taxRole,
+      summaryExtraction,
+    );
 
   add(
     'Sales',
@@ -429,6 +449,9 @@ function parseUberMonthlyStatement(
       evidenceKind: 'UBER_MONTHLY_STATEMENT',
       monthlySummaryOnly: true,
       payoutSectionsExcludedFromNormalizedLines: true,
+      documentExtractionEngine: summaryExtraction?.engine ?? null,
+      layoutAwareExtraction:
+        summaryExtraction?.layoutMode === 'GEOMETRY',
     },
     lines,
   };
@@ -533,15 +556,17 @@ function pushNamedSummary(
   component: AccountingFinancialComponent,
   treatment: AccountingFinancialPostingTreatment,
   taxRole: AccountingFinancialTaxRole = AccountingFinancialTaxRole.NONE,
+  documentExtraction?: AccountingDocumentExtraction,
 ) {
-  const amount = findNamedAmount(text, label);
-  if (amount == null) return;
+  const resolution = resolveNamedAmount(text, label, documentExtraction);
+  if (!resolution) return;
   lines.push({
     rawName: label,
     component,
     postingTreatment: treatment,
     taxRole,
-    amountCents: amount,
+    amountCents: resolution.amountCents,
+    ...(resolution.rawPayload ? { rawPayload: resolution.rawPayload } : {}),
   });
 }
 
@@ -611,17 +636,163 @@ function sectionHst(text: string, heading: string): number | null {
   return raw ? parseMoneyCents(raw) : null;
 }
 
-function findNamedAmount(text: string, label: string): number | null {
+type NamedAmountResolution = {
+  amountCents: number;
+  rawPayload?: Record<string, unknown>;
+};
+
+function verticalOverlapRatio(
+  left: AccountingDocumentExtractionLine,
+  right: AccountingDocumentExtractionLine,
+): number {
+  if (!left.geometry || !right.geometry || left.page !== right.page) return 0;
+  const overlap = Math.max(
+    0,
+    Math.min(
+      left.geometry.top + left.geometry.height,
+      right.geometry.top + right.geometry.height,
+    ) - Math.max(left.geometry.top, right.geometry.top),
+  );
+  const minHeight = Math.min(left.geometry.height, right.geometry.height);
+  return minHeight > 0 ? overlap / minHeight : 0;
+}
+
+function documentLineEvidence(line: AccountingDocumentExtractionLine) {
+  return {
+    lineId: line.lineId,
+    page: line.page,
+    text: line.text,
+    confidence: line.confidence,
+    geometry: line.geometry,
+  };
+}
+
+function resolveNamedAmountFromLayout(
+  label: string,
+  extraction: AccountingDocumentExtraction | undefined,
+): NamedAmountResolution | null {
+  if (!extraction || extraction.layoutMode !== 'GEOMETRY') return null;
+  const labelPattern = new RegExp(
+    `^${escapeRegex(label)}(?:\\s*\\([^)]*\\))?(?:\\s+|$)`,
+    'i',
+  );
+  const labelLines = extraction.lines
+    .filter((line) => labelPattern.test(line.text))
+    .sort(
+      (left, right) =>
+        left.page - right.page ||
+        (left.geometry?.top ?? 0) - (right.geometry?.top ?? 0) ||
+        (left.geometry?.left ?? 0) - (right.geometry?.left ?? 0),
+    );
+
+  for (const labelLine of labelLines) {
+    const match = labelPattern.exec(labelLine.text);
+    const inlineToken = match
+      ? labelLine.text.slice(match[0].length).trim().split(/\\s+/)[0]
+      : undefined;
+    const inlineAmount = inlineToken ? parseMoneyCents(inlineToken) : null;
+    if (inlineAmount != null) {
+      return {
+        amountCents: inlineAmount,
+        rawPayload: {
+          extractionEvidence: {
+            version: 1,
+            strategy: 'LAYOUT_INLINE',
+            engine: extraction.engine,
+            labelLine: documentLineEvidence(labelLine),
+            amountLine: documentLineEvidence(labelLine),
+          },
+        },
+      };
+    }
+    if (!labelLine.geometry) continue;
+
+    const rowCandidates = extraction.lines
+      .flatMap((line) => {
+        if (
+          line.lineId === labelLine.lineId ||
+          line.page !== labelLine.page ||
+          !line.geometry
+        ) {
+          return [];
+        }
+        const amountCents = parseMoneyCents(line.text);
+        if (amountCents == null) return [];
+        const labelRight =
+          labelLine.geometry.left + labelLine.geometry.width;
+        if (line.geometry.left + 0.005 < labelRight) return [];
+        const overlapRatio = verticalOverlapRatio(labelLine, line);
+        if (overlapRatio < 0.35) return [];
+        const labelCenter =
+          labelLine.geometry.top + labelLine.geometry.height / 2;
+        const valueCenter = line.geometry.top + line.geometry.height / 2;
+        return [
+          {
+            line,
+            amountCents,
+            overlapRatio,
+            centerDelta: Math.abs(labelCenter - valueCenter),
+            horizontalGap: Math.max(0, line.geometry.left - labelRight),
+          },
+        ];
+      })
+      .sort(
+        (left, right) =>
+          right.overlapRatio - left.overlapRatio ||
+          left.centerDelta - right.centerDelta ||
+          left.horizontalGap - right.horizontalGap,
+      );
+
+    const best = rowCandidates[0];
+    if (best) {
+      return {
+        amountCents: best.amountCents,
+        rawPayload: {
+          extractionEvidence: {
+            version: 1,
+            strategy: 'LAYOUT_ROW_PAIR',
+            engine: extraction.engine,
+            labelLine: documentLineEvidence(labelLine),
+            amountLine: documentLineEvidence(best.line),
+          },
+        },
+      };
+    }
+  }
+  return null;
+}
+
+function resolveNamedAmount(
+  text: string,
+  label: string,
+  extraction?: AccountingDocumentExtraction,
+): NamedAmountResolution | null {
+  const layout = resolveNamedAmountFromLayout(label, extraction);
+  if (layout) return layout;
+  if (extraction?.layoutMode === 'GEOMETRY') {
+    const labelPattern = new RegExp(
+      `^${escapeRegex(label)}(?:\\s*\\([^)]*\\))?(?:\\s+|$)`,
+      'i',
+    );
+    if (extraction.lines.some((line) => labelPattern.test(line.text))) {
+      return null;
+    }
+  }
+
   const regex = new RegExp(
     `${escapeRegex(label)}(?:\\s*\\([^\\n)]*\\))?\\s+([^\\s]+)`,
     'gi',
   );
   for (const match of text.matchAll(regex)) {
     const raw = match[1];
-    const amount = raw ? parseMoneyCents(raw) : null;
-    if (amount != null) return amount;
+    const amountCents = raw ? parseMoneyCents(raw) : null;
+    if (amountCents != null) return { amountCents };
   }
   return null;
+}
+
+function findNamedAmount(text: string, label: string): number | null {
+  return resolveNamedAmount(text, label)?.amountCents ?? null;
 }
 
 function parseMoneyCents(raw: string): number | null {

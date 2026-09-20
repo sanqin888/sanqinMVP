@@ -1,4 +1,10 @@
 import { spawn } from 'node:child_process';
+import {
+  ACCOUNTING_DOCUMENT_EXTRACTION_POLICY,
+  createTextOnlyAccountingDocumentExtraction,
+  type AccountingDocumentExtraction,
+  type AccountingDocumentExtractionGeometry,
+} from './accounting-document-extraction';
 
 export type AccountingPdfExtraction = {
   date: string | null;
@@ -21,6 +27,7 @@ const PDF_TEXT_MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
 const PDF_TEXT_MAX_STDERR_BYTES = 16 * 1024;
 
 export type AccountingPdfTextRunner = (buffer: Buffer) => Promise<string>;
+export type AccountingPdfLayoutRunner = (buffer: Buffer) => Promise<string>;
 
 function normalizeExtractedPdfText(value: string): string {
   let normalized = '';
@@ -52,8 +59,28 @@ export async function extractPdfText(
 }
 
 function runPdftotext(buffer: Buffer): Promise<string> {
+  return runPdftotextCommand(
+    buffer,
+    ['-enc', 'UTF-8', '-nopgbrk', '-', '-'],
+    'text extraction',
+  );
+}
+
+function runPdftotextBboxLayout(buffer: Buffer): Promise<string> {
+  return runPdftotextCommand(
+    buffer,
+    ['-bbox-layout', '-enc', 'UTF-8', '-nopgbrk', '-', '-'],
+    'layout extraction',
+  );
+}
+
+function runPdftotextCommand(
+  buffer: Buffer,
+  args: string[],
+  operation: string,
+): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn('pdftotext', ['-enc', 'UTF-8', '-nopgbrk', '-', '-'], {
+    const child = spawn('pdftotext', args, {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     const stdoutChunks: Buffer[] = [];
@@ -78,13 +105,13 @@ function runPdftotext(buffer: Buffer): Promise<string> {
 
     const timer = setTimeout(() => {
       child.kill('SIGKILL');
-      finishReject(new Error('Accounting PDF text extraction timed out'));
+      finishReject(new Error(`Accounting PDF ${operation} timed out`));
     }, PDF_TEXT_TIMEOUT_MS);
 
     child.on('error', (error) => {
       finishReject(
         new Error(
-          `Accounting PDF text extractor unavailable: ${error.message}`,
+          `Accounting PDF ${operation} unavailable: ${error.message}`,
         ),
       );
     });
@@ -93,7 +120,7 @@ function runPdftotext(buffer: Buffer): Promise<string> {
       if (stdoutBytes > PDF_TEXT_MAX_OUTPUT_BYTES) {
         child.kill('SIGKILL');
         finishReject(
-          new Error('Accounting PDF text extraction output exceeded limit'),
+          new Error(`Accounting PDF ${operation} output exceeded limit`),
         );
         return;
       }
@@ -112,7 +139,7 @@ function runPdftotext(buffer: Buffer): Promise<string> {
         const detail = Buffer.concat(stderrChunks).toString('utf8').trim();
         finishReject(
           new Error(
-            `Accounting PDF text extraction failed with exit code ${code ?? 'unknown'}${detail ? `: ${detail}` : ''}`,
+            `Accounting PDF ${operation} failed with exit code ${code ?? 'unknown'}${detail ? `: ${detail}` : ''}`,
           ),
         );
         return;
@@ -123,12 +150,156 @@ function runPdftotext(buffer: Buffer): Promise<string> {
     child.stdin.on('error', (error) => {
       finishReject(
         new Error(
-          `Accounting PDF text extraction input failed: ${error.message}`,
+          `Accounting PDF ${operation} input failed: ${error.message}`,
         ),
       );
     });
     child.stdin.end(buffer);
   });
+}
+
+
+function parseXmlAttribute(source: string, name: string): number | null {
+  const match = new RegExp(
+    `\\b${name}=["'](-?\\d+(?:\\.\\d+)?)["']`,
+    'i',
+  ).exec(source);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : null;
+}
+
+function decodeXmlCodePoint(code: string, radix: number): string {
+  const value = Number.parseInt(code, radix);
+  return Number.isInteger(value) && value >= 0 && value <= 0x10ffff
+    ? String.fromCodePoint(value)
+    : '';
+}
+
+function decodeXmlText(value: string): string {
+  return value
+    .replace(/&#x([0-9a-f]+);/gi, (_, code: string) =>
+      decodeXmlCodePoint(code, 16),
+    )
+    .replace(/&#(\d+);/g, (_, code: string) =>
+      decodeXmlCodePoint(code, 10),
+    )
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
+function normalizePdfGeometry(
+  attributes: string,
+  pageWidth: number,
+  pageHeight: number,
+): AccountingDocumentExtractionGeometry | null {
+  const xMin = parseXmlAttribute(attributes, 'xMin');
+  const yMin = parseXmlAttribute(attributes, 'yMin');
+  const xMax = parseXmlAttribute(attributes, 'xMax');
+  const yMax = parseXmlAttribute(attributes, 'yMax');
+  if (
+    xMin == null ||
+    yMin == null ||
+    xMax == null ||
+    yMax == null ||
+    pageWidth <= 0 ||
+    pageHeight <= 0 ||
+    xMax <= xMin ||
+    yMax <= yMin
+  ) {
+    return null;
+  }
+  const left = Math.max(0, Math.min(1, xMin / pageWidth));
+  const top = Math.max(0, Math.min(1, yMin / pageHeight));
+  const right = Math.max(left, Math.min(1, xMax / pageWidth));
+  const bottom = Math.max(top, Math.min(1, yMax / pageHeight));
+  return {
+    left,
+    top,
+    width: right - left,
+    height: bottom - top,
+  };
+}
+
+export function parsePopplerBboxLayout(
+  source: string,
+): AccountingDocumentExtraction {
+  const lines: AccountingDocumentExtraction['lines'] = [];
+  const pagePattern = /<page\b([^>]*)>([\s\S]*?)<\/page>/gi;
+  let pageMatch: RegExpExecArray | null;
+  let pageNumber = 0;
+  while ((pageMatch = pagePattern.exec(source))) {
+    pageNumber += 1;
+    const pageAttributes = pageMatch[1] ?? '';
+    const pageBody = pageMatch[2] ?? '';
+    const pageWidth = parseXmlAttribute(pageAttributes, 'width') ?? 0;
+    const pageHeight = parseXmlAttribute(pageAttributes, 'height') ?? 0;
+    const linePattern = /<line\b([^>]*)>([\s\S]*?)<\/line>/gi;
+    let lineMatch: RegExpExecArray | null;
+    let lineNumber = 0;
+    while ((lineMatch = linePattern.exec(pageBody))) {
+      const lineAttributes = lineMatch[1] ?? '';
+      const lineBody = lineMatch[2] ?? '';
+      const words = Array.from(
+        lineBody.matchAll(/<word\b[^>]*>([\s\S]*?)<\/word>/gi),
+      )
+        .map((match) => decodeXmlText(match[1] ?? '').trim())
+        .filter(Boolean);
+      const text = words.join(' ').trim();
+      if (!text) continue;
+      lineNumber += 1;
+      if (lines.length < ACCOUNTING_DOCUMENT_EXTRACTION_POLICY.maxLines) {
+        lines.push({
+          lineId: `p${pageNumber}-l${lineNumber}`,
+          page: pageNumber,
+          text: text.slice(
+            0,
+            ACCOUNTING_DOCUMENT_EXTRACTION_POLICY.maxLineTextChars,
+          ),
+          confidence: null,
+          geometry: normalizePdfGeometry(
+            lineAttributes,
+            pageWidth,
+            pageHeight,
+          ),
+        });
+      }
+    }
+  }
+
+  const totalLineCount = Array.from(
+    source.matchAll(/<line\b[^>]*>[\s\S]*?<\/line>/gi),
+  ).length;
+  return {
+    version: 1,
+    inputKind: 'PDF',
+    engine: 'POPPLER',
+    layoutMode: lines.some((line) => line.geometry)
+      ? 'GEOMETRY'
+      : 'TEXT_ONLY',
+    truncated: totalLineCount > ACCOUNTING_DOCUMENT_EXTRACTION_POLICY.maxLines,
+    lines,
+  };
+}
+
+export async function extractPdfLayout(
+  buffer: Buffer,
+  runner: AccountingPdfLayoutRunner = runPdftotextBboxLayout,
+): Promise<AccountingDocumentExtraction> {
+  if (
+    buffer.length < 5 ||
+    buffer.subarray(0, 5).toString('ascii') !== '%PDF-'
+  ) {
+    return createTextOnlyAccountingDocumentExtraction({
+      inputKind: 'PDF',
+      engine: 'POPPLER',
+      text: '',
+    });
+  }
+  return parsePopplerBboxLayout(await runner(buffer));
 }
 
 function moneyAfterLabel(text: string, labels: RegExp[]): number | null {
@@ -298,7 +469,23 @@ export function extractAccountingText(text: string): AccountingPdfExtraction {
 export async function extractAccountingPdf(buffer: Buffer): Promise<{
   text: string;
   extraction: AccountingPdfExtraction;
+  documentExtraction: AccountingDocumentExtraction;
 }> {
   const text = await extractPdfText(buffer);
-  return { text, extraction: extractAccountingText(text) };
+  let documentExtraction = createTextOnlyAccountingDocumentExtraction({
+    inputKind: 'PDF',
+    engine: 'POPPLER',
+    text,
+  });
+  try {
+    const layout = await extractPdfLayout(buffer);
+    if (layout.lines.length > 0) documentExtraction = layout;
+  } catch {
+    // Preserve the existing native-PDF text path if optional layout extraction fails.
+  }
+  return {
+    text,
+    extraction: extractAccountingText(text),
+    documentExtraction,
+  };
 }

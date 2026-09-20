@@ -23,6 +23,7 @@ const PRISMA_FREE_BOUNDARIES = [
   'accounting-expense.contracts.ts',
   'accounting-expense-input.ts',
   'accounting-gmail-ingest.service.ts',
+  'accounting-document-extraction.ts',
   'accounting-provider-recognition.policy.ts',
   'accounting-provider-financial.parser.ts',
   'accounting-provider-financial-review.policy.ts',
