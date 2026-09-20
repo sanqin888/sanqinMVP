@@ -2,12 +2,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { normalizeExternalOrderRef } from '../common/utils/external-id';
-import type {
-  UberDirectDeliveryDispatcherPort,
-  UberDirectDeliveryOptions,
-  UberDirectDeliveryResult,
-  UberDirectManifestItem,
-  UberDirectPickupDetails,
+import {
+  UberDirectDeliveryDispatchError,
+  type UberDirectDeliveryDispatcherPort,
+  type UberDirectDeliveryOptions,
+  type UberDirectDeliveryResult,
+  type UberDirectManifestItem,
+  type UberDirectPickupDetails,
 } from './uber-direct-dispatch.contract';
 
 interface UberDirectOAuthResponse {
@@ -175,37 +176,40 @@ export class UberDirectService implements UberDirectDeliveryDispatcherPort {
   async createDelivery(
     options: UberDirectDeliveryOptions,
   ): Promise<UberDirectDeliveryResult> {
-    const pickup = this.resolvePickup(options.pickup);
-    this.ensureConfigured(pickup);
-
-    const url = `${this.apiBase}/v1/customers/${encodeURIComponent(
-      this.customerId,
-    )}/deliveries`;
-    const externalOrderRef = normalizeExternalOrderRef(options.orderRef);
-    const payload = this.buildPayload(options, externalOrderRef, pickup);
-
-    // 仅在需要调试时打印 payload，默认不打
-    if (process.env.DEBUG_UBER_DIRECT === '1') {
-      try {
-        this.logger.debug(
-          `[UberDirectService] Creating Uber Direct delivery. orderRef=${options.orderRef}, url=${url}, payload=${JSON.stringify(
-            payload,
-          )}`,
-        );
-      } catch {
-        this.logger.debug(
-          `[UberDirectService] Failed to stringify Uber Direct payload for logging`,
-        );
-      }
-    }
-
+    let createRequestAttempted = false;
     try {
+      const pickup = this.resolvePickup(options.pickup);
+      this.ensureConfigured(pickup);
+
+      const url = `${this.apiBase}/v1/customers/${encodeURIComponent(
+        this.customerId,
+      )}/deliveries`;
+      const externalOrderRef = normalizeExternalOrderRef(options.orderRef);
+      const payload = this.buildPayload(options, externalOrderRef, pickup);
+
+      // 仅在需要调试时打印 payload，默认不打
+      if (process.env.DEBUG_UBER_DIRECT === '1') {
+        try {
+          this.logger.debug(
+            `[UberDirectService] Creating Uber Direct delivery. orderRef=${options.orderRef}, url=${url}, payload=${JSON.stringify(
+              payload,
+            )}`,
+          );
+        } catch {
+          this.logger.debug(
+            `[UberDirectService] Failed to stringify Uber Direct payload for logging`,
+          );
+        }
+      }
+
+      const authHeader = await this.buildAuthHeader();
+      createRequestAttempted = true;
       const response = await this.http.axiosRef.post<UberDirectApiResponse>(
         url,
         payload,
         {
           headers: {
-            Authorization: await this.buildAuthHeader(),
+            Authorization: authHeader,
             'Content-Type': 'application/json',
             Accept: 'application/json',
           },
@@ -213,17 +217,22 @@ export class UberDirectService implements UberDirectDeliveryDispatcherPort {
         },
       );
 
-      const normalized = this.normalizeResponse(
-        response.data,
-        externalOrderRef,
-      );
-
-      return normalized;
+      try {
+        return this.normalizeResponse(response.data, externalOrderRef);
+      } catch (error) {
+        throw new UberDirectDeliveryDispatchError(
+          this.formatUnknownError(error),
+          'UNKNOWN',
+        );
+      }
     } catch (error: unknown) {
       this.logger.error(
         `[UberDirectService] Failed to create Uber Direct delivery for orderRef=${options.orderRef}`,
       );
-      throw this.wrapUberError(error);
+      if (error instanceof UberDirectDeliveryDispatchError) {
+        throw error;
+      }
+      throw this.wrapUberError(error, createRequestAttempted);
     }
   }
 
@@ -584,7 +593,10 @@ export class UberDirectService implements UberDirectDeliveryDispatcherPort {
     }
   }
 
-  private wrapUberError(error: unknown): Error {
+  private wrapUberError(
+    error: unknown,
+    createRequestAttempted: boolean,
+  ): UberDirectDeliveryDispatchError {
     if (this.isAxiosErrorLike(error)) {
       const axiosError: AxiosErrorLike = error;
       const status =
@@ -615,8 +627,18 @@ export class UberDirectService implements UberDirectDeliveryDispatcherPort {
         stack,
       );
 
-      return new Error(
+      const definitiveRejection =
+        !createRequestAttempted ||
+        (typeof status === 'number' &&
+          status >= 400 &&
+          status < 500 &&
+          status !== 408 &&
+          status !== 409);
+
+      return new UberDirectDeliveryDispatchError(
         `Uber Direct API error${status ? ` (${status})` : ''}: ${message}`,
+        definitiveRejection ? 'SAFE_TO_RETRY' : 'UNKNOWN',
+        status,
       );
     }
 
@@ -624,7 +646,10 @@ export class UberDirectService implements UberDirectDeliveryDispatcherPort {
     this.logger.error(
       `[UberDirectService] Unknown error type while calling Uber Direct: ${formatted}`,
     );
-    return new Error(formatted);
+    return new UberDirectDeliveryDispatchError(
+      formatted,
+      createRequestAttempted ? 'UNKNOWN' : 'SAFE_TO_RETRY',
+    );
   }
 
   private extractErrorSummary(

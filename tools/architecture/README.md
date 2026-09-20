@@ -188,12 +188,14 @@ node tools/architecture/scan-architecture.mjs --report
   write. The use case must consume Customer/Notifications public capabilities, obtain checkout
   metadata through the Orders-local `orders-prisma` facade, preserve non-blocking delivery and
   PII-redacted structured logging, and remain internal to `OrdersModule` composition;
-- Phase 5 Slice 5C moves paid-order Uber Direct dispatch preparation, provider invocation,
-  local delivery-id persistence and operations-alert policy into the internal
-  `OrderDeliveryDispatchUseCase`. `FulfillmentProcessor` remains the lifecycle consumer and
-  delegates `order.paid.verified` payloads only; provider/auth/notification ports and dropoff
-  extraction must not return to the processor. The use case stays on Orders-local persistence
-  plus public Delivery/Auth/Notifications capabilities and remains internal to `OrdersModule`;
+- Phase 5 Slice 5C first moved paid-order Uber Direct orchestration into the internal
+  `OrderDeliveryDispatchUseCase`. The 2026-09-19 reliability replacement then removes the private
+  `order.paid.verified` / `OrderEventsBus` route entirely. Orders now owns the durable
+  `orders.delivery_dispatch` journal/processor and ADMIN+MFA reconciliation; provider execution
+  still crosses the public Delivery dispatcher port, safe provider rejections may receive up to
+  three automatic retries, and UNKNOWN outcomes remain fail-closed. `FulfillmentProcessor` is
+  print/fulfillment-only and must not regain Uber Direct paid-order dispatch policy. The journal,
+  use case, processor and reconciliation services remain internal to `OrdersModule`;
 - Phase 5 Slice 5D moves the read-only one-hour average preparation-time query into the internal
   `OrderPrepTimeQueryUseCase`. The public `/orders/prep-time` route delegates to this use case;
   `OrdersService` must not regain the query policy. Historical fallback `15` minutes and minimum

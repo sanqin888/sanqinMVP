@@ -87,7 +87,6 @@ import {
   LOCATION_GEOCODER,
   type LocationGeocoderPort,
 } from '../location/public-api';
-import { OrderEventsBus } from './order-events.bus';
 import { OrderReadyNotificationUseCase } from './order-ready-notification.use-case';
 import type { OrderDto } from './dto/order.dto';
 import { OrderItemSnapshotBuilder } from './order-item-snapshot.builder';
@@ -295,7 +294,6 @@ export class OrdersService
     @Inject(LOCATION_GEOCODER)
     private readonly locationGeocoder: LocationGeocoderPort,
     private readonly orderReadyNotificationUseCase: OrderReadyNotificationUseCase,
-    private readonly orderEventsBus: OrderEventsBus,
     private readonly orderItemSnapshotBuilder: OrderItemSnapshotBuilder,
   ) {}
 
@@ -919,17 +917,13 @@ export class OrdersService
       });
     }
 
-    const checkoutIntent = await this.prisma.checkoutIntent.findFirst({
-      where: { orderId: order.id },
-      orderBy: { createdAt: 'desc' },
-      select: { metadataJson: true },
-    });
+    this.settleOrderPaidLoyalty(order, netSubtotalForRewards);
+  }
 
-    const pickupTime = this.computePickupTimeFromCheckoutMetadata({
-      acceptedAt: order.paidAt,
-      metadata: checkoutIntent?.metadataJson,
-    });
-
+  private settleOrderPaidLoyalty(
+    order: OrderWithItems,
+    netSubtotalForRewards: number,
+  ): void {
     void this.loyaltyOrderPaidSettlement.settleOrderPaid({
       orderStableId: order.orderStableId,
       subtotalCents: netSubtotalForRewards,
@@ -938,74 +932,6 @@ export class OrdersService
         order.promotionSnapshot,
       ),
     });
-
-    this.orderEventsBus.emitOrderPaidVerified({
-      orderId: order.id,
-      userId: order.userId ?? undefined,
-      amountCents: netSubtotalForRewards,
-      redeemValueCents: order.loyaltyRedeemCents ?? 0,
-      pickupTime,
-    });
-
-    this.logger.log(`Emitted order.paid.verified for order ${order.id}`);
-  }
-
-  private computePickupTimeFromCheckoutMetadata(params: {
-    acceptedAt: Date;
-    metadata: unknown;
-  }): string | undefined {
-    const prepMinutes = this.extractPrepMinutes(params.metadata);
-    if (typeof prepMinutes !== 'number' || prepMinutes <= 0) {
-      return undefined;
-    }
-
-    const pickupAt = new Date(
-      params.acceptedAt.getTime() + prepMinutes * 60_000,
-    );
-    if (Number.isNaN(pickupAt.getTime())) {
-      return undefined;
-    }
-
-    return pickupAt.toISOString();
-  }
-
-  private extractPrepMinutes(metadata: unknown): number | undefined {
-    const root = this.asRecord(metadata);
-    const estimate = this.asRecord(root?.estimated);
-
-    return this.normalizeMinutes(
-      this.asNumber(root?.prepMinutes) ??
-        this.asNumber(root?.estimatedPrepMinutes) ??
-        this.asNumber(root?.prepareMinutes) ??
-        this.asNumber(root?.estimatedReadyMinutes) ??
-        this.asNumber(estimate?.prepMinutes) ??
-        this.asNumber(estimate?.estimatedPrepMinutes),
-    );
-  }
-
-  private normalizeMinutes(value: number | undefined): number | undefined {
-    if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
-    if (value <= 0) return undefined;
-    return Math.max(1, Math.round(value));
-  }
-
-  private asRecord(value: unknown): Record<string, unknown> | undefined {
-    return value && typeof value === 'object' && !Array.isArray(value)
-      ? (value as Record<string, unknown>)
-      : undefined;
-  }
-
-  private asNumber(value: unknown): number | undefined {
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      return value;
-    }
-    if (typeof value === 'string' && value.trim().length > 0) {
-      const parsed = Number(value);
-      if (Number.isFinite(parsed)) {
-        return parsed;
-      }
-    }
-    return undefined;
   }
 
   /**

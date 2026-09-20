@@ -1,31 +1,58 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { DeliveryProvider, FulfillmentType, Prisma } from '@prisma/client';
+import {
+  DeliveryProvider,
+  FulfillmentType,
+  OrderStatus,
+} from '@prisma/client';
 import {
   OPERATIONS_ALERT_RECIPIENTS,
   type OperationsAlertRecipientPort,
 } from '../auth/public-api';
 import {
   UBER_DIRECT_DELIVERY_DISPATCHER,
+  UberDirectDeliveryDispatchError,
   type UberDirectDeliveryDispatcherPort,
+  type UberDirectDeliveryResult,
   type UberDirectDropoffDetails,
 } from '../deliveries/public-api';
 import {
   DELIVERY_DISPATCH_FAILURE_NOTIFICATION,
   type DeliveryDispatchFailureNotificationPort,
 } from '../notifications/public-api';
+import {
+  OrderDeliveryDispatchJournalService,
+  sanitizeDeliveryDispatchErrorMessage,
+  type DeliveryDispatchFailureDetail,
+} from './order-delivery-dispatch-journal.service';
+import {
+  readAutomaticRetryDelayMs,
+  UBER_DIRECT_AUTOMATIC_RETRY_COUNT,
+} from './order-delivery-dispatch-journal';
+import {
+  computeOrderDeliveryPickupReadyAtFromCheckoutMetadata,
+  extractOrderDeliveryDestinationFromCheckoutMetadata,
+} from './order-delivery-checkout-metadata';
 import { PrismaService } from './orders-prisma';
 
-export type OrderPaidDeliveryDispatchInput = {
-  orderId: string;
-  pickupTime?: string;
+export type DurableOrderDeliveryDispatchAttemptInput = {
+  orderStableId: string;
+  attempt: number;
+  automaticRetriesRemaining: number;
 };
+
+const DURABLE_DISPATCHABLE_STATUSES = new Set<OrderStatus>([
+  OrderStatus.paid,
+  OrderStatus.making,
+  OrderStatus.ready,
+]);
 
 @Injectable()
 export class OrderDeliveryDispatchUseCase {
-  private readonly logger = new Logger('FulfillmentProcessor');
+  private readonly logger = new Logger(OrderDeliveryDispatchUseCase.name);
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly dispatchJournal: OrderDeliveryDispatchJournalService,
     @Inject(UBER_DIRECT_DELIVERY_DISPATCHER)
     private readonly uberDirectDispatcher: UberDirectDeliveryDispatcherPort,
     @Inject(OPERATIONS_ALERT_RECIPIENTS)
@@ -34,28 +61,83 @@ export class OrderDeliveryDispatchUseCase {
     private readonly deliveryDispatchFailureNotification: DeliveryDispatchFailureNotificationPort,
   ) {}
 
-  async handle(payload: OrderPaidDeliveryDispatchInput): Promise<void> {
+  async handleDurableAttempt(
+    input: DurableOrderDeliveryDispatchAttemptInput,
+  ): Promise<void> {
+    const orderStableId = input.orderStableId.trim();
+    const attempt = Math.round(input.attempt);
+    const automaticRetriesRemaining = Math.max(
+      0,
+      Math.min(
+        UBER_DIRECT_AUTOMATIC_RETRY_COUNT,
+        Math.round(input.automaticRetriesRemaining),
+      ),
+    );
+    if (
+      !orderStableId ||
+      !Number.isInteger(attempt) ||
+      attempt < 1 ||
+      !Number.isInteger(automaticRetriesRemaining)
+    ) {
+      throw new Error('INVALID_DURABLE_DELIVERY_DISPATCH_ATTEMPT');
+    }
+    const cycleStartAttempt = Math.max(
+      1,
+      attempt -
+        (UBER_DIRECT_AUTOMATIC_RETRY_COUNT - automaticRetriesRemaining),
+    );
+
     const order = await this.prisma.order.findUnique({
-      where: { id: payload.orderId },
+      where: { orderStableId },
       include: { items: true },
     });
 
     if (!order) {
-      this.logger.warn(`[Fulfillment] Order not found: ${payload.orderId}`);
+      await this.dispatchJournal.recordFailed({
+        orderStableId,
+        attempt,
+        reason: 'ORDER_NOT_FOUND',
+        errorMessage: 'Order no longer exists',
+      });
       return;
     }
+
+    const orderNumber = order.clientRequestId ?? order.orderStableId;
+    const externalReference = orderNumber;
 
     if (
       order.fulfillmentType !== FulfillmentType.delivery ||
       order.deliveryProvider !== DeliveryProvider.UBER
     ) {
+      await this.dispatchJournal.recordFailed({
+        orderStableId,
+        attempt,
+        externalReference,
+        reason: 'ORDER_NOT_UBER_DELIVERY',
+        errorMessage: 'Order is not an Uber Direct delivery',
+      });
       return;
     }
 
     if (order.externalDeliveryId) {
-      this.logger.log(
-        `[Fulfillment] Skip Uber dispatch, already dispatched: ${payload.orderId}`,
-      );
+      await this.dispatchJournal.recordSucceeded({
+        orderStableId,
+        attempt,
+        externalReference,
+        providerDeliveryId: order.externalDeliveryId,
+        reason: 'ALREADY_BOUND',
+      });
+      return;
+    }
+
+    if (!DURABLE_DISPATCHABLE_STATUSES.has(order.status)) {
+      await this.dispatchJournal.recordFailed({
+        orderStableId,
+        attempt,
+        externalReference,
+        reason: 'ORDER_NOT_DISPATCHABLE',
+        errorMessage: `Order status ${order.status} is not eligible for new delivery dispatch`,
+      });
       return;
     }
 
@@ -65,19 +147,53 @@ export class OrderDeliveryDispatchUseCase {
       select: { metadataJson: true },
     });
 
-    let providerDeliveryCreated = false;
+    let destination: UberDirectDropoffDetails | null = null;
     try {
-      const destination = this.extractDropoff(
+      destination = extractOrderDeliveryDestinationFromCheckoutMetadata(
         checkoutIntent?.metadataJson ?? null,
         order,
       );
       if (!destination) {
         throw new Error('DELIVERY_DESTINATION_REQUIRED');
       }
-      const response = await this.uberDirectDispatcher.createDelivery({
-        orderRef: order.clientRequestId ?? order.orderStableId,
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      const failureHistory: DeliveryDispatchFailureDetail[] = [
+        {
+          attempt,
+          reason: 'LOCAL_VALIDATION_FAILED',
+          errorMessage,
+          statusCode: null,
+        },
+      ];
+      await this.dispatchJournal.recordFailed({
+        orderStableId,
+        attempt,
+        externalReference,
+        reason: 'LOCAL_VALIDATION_FAILED',
+        errorMessage,
+        failureHistory,
+      });
+      await this.notifyDeliveryDispatchFailure({
+        orderStableId,
+        orderNumber,
+        deliveryProvider: 'Uber Direct',
+        errorMessage: this.formatFailureHistory(
+          failureHistory,
+          'Local validation failed; automatic retries were skipped because the same request would fail again',
+        ),
+        reconciliationRequired: true,
+      });
+      return;
+    }
+
+    let response: UberDirectDeliveryResult;
+    try {
+      response = await this.uberDirectDispatcher.createDelivery({
+        orderRef: externalReference,
         pickupCode: order.pickupCode ?? undefined,
-        reference: order.clientRequestId ?? order.orderStableId,
+        reference: externalReference,
         totalCents: order.totalCents ?? 0,
         items: order.items.map((item) => ({
           name: item.displayName || item.productStableId,
@@ -85,38 +201,199 @@ export class OrderDeliveryDispatchUseCase {
           priceCents: item.unitPriceCents ?? undefined,
         })),
         destination,
-        pickupReadyAt: this.parsePickupTime(payload.pickupTime),
+        pickupReadyAt: computeOrderDeliveryPickupReadyAtFromCheckoutMetadata({
+          acceptedAt: order.paidAt,
+          metadata: checkoutIntent?.metadataJson,
+        }),
       });
-      providerDeliveryCreated = true;
-
-      await this.prisma.order.update({
-        where: { id: order.id },
-        data: { externalDeliveryId: response.deliveryId },
-      });
-
-      this.logger.log(`[Fulfillment] Uber dispatched: ${payload.orderId}`);
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      if (providerDeliveryCreated) {
-        this.logger.error({
-          event: 'uber_direct_delivery_created_persistence_failed',
-          orderId: order.id,
-          orderStableId: order.orderStableId,
-          reason: errorMessage,
+      if (
+        error instanceof UberDirectDeliveryDispatchError &&
+        error.failureKind === 'SAFE_TO_RETRY'
+      ) {
+        const currentFailure: DeliveryDispatchFailureDetail = {
+          attempt,
+          reason: 'PROVIDER_REJECTED',
+          errorMessage,
+          statusCode: error.statusCode ?? null,
+        };
+
+        if (automaticRetriesRemaining > 0) {
+          const nextAttempt = attempt + 1;
+          const retryDelayMs = readAutomaticRetryDelayMs(
+            automaticRetriesRemaining,
+          );
+          await this.dispatchJournal.recordFailedAndScheduleAutomaticRetry({
+            orderStableId,
+            attempt,
+            externalReference,
+            reason: currentFailure.reason,
+            errorMessage,
+            statusCode: currentFailure.statusCode ?? undefined,
+            nextAttempt,
+            automaticRetriesRemaining: automaticRetriesRemaining - 1,
+            notBefore: new Date(Date.now() + retryDelayMs),
+          });
+          this.logger.warn({
+            event: 'uber_direct_dispatch_auto_retry_scheduled',
+            orderStableId,
+            attempt,
+            nextAttempt,
+            automaticRetriesRemaining: automaticRetriesRemaining - 1,
+            retryDelayMs,
+            statusCode: error.statusCode ?? null,
+            errorMessage: sanitizeDeliveryDispatchErrorMessage(errorMessage),
+          });
+          return;
+        }
+
+        const failureHistory = [
+          ...(await this.dispatchJournal.listFailureHistory(
+            orderStableId,
+            cycleStartAttempt,
+          )),
+          currentFailure,
+        ];
+        await this.dispatchJournal.recordFailed({
+          orderStableId,
+          attempt,
+          externalReference,
+          reason: currentFailure.reason,
+          errorMessage,
+          statusCode: currentFailure.statusCode ?? undefined,
+          failureHistory,
+        });
+        await this.notifyDeliveryDispatchFailure({
+          orderStableId,
+          orderNumber,
+          deliveryProvider: 'Uber Direct',
+          errorMessage: this.formatFailureHistory(
+            failureHistory,
+            'Automatic retries exhausted',
+          ),
+          reconciliationRequired: true,
         });
         return;
       }
-      this.logger.error(
-        `[Fulfillment] Uber dispatch failed for ${payload.orderId}: ${errorMessage}`,
-      );
-      await this.notifyDeliveryDispatchFailure({
-        orderStableId: order.orderStableId,
-        orderNumber: order.clientRequestId ?? order.orderStableId,
-        deliveryProvider: 'Uber Direct',
+
+      const currentFailure: DeliveryDispatchFailureDetail = {
+        attempt,
+        reason: 'PROVIDER_OUTCOME_UNKNOWN',
         errorMessage,
+        statusCode:
+          error instanceof UberDirectDeliveryDispatchError
+            ? (error.statusCode ?? null)
+            : null,
+      };
+      const failureHistory = [
+        ...(await this.dispatchJournal.listFailureHistory(
+          orderStableId,
+          cycleStartAttempt,
+        )),
+        currentFailure,
+      ];
+      await this.dispatchJournal.recordUnknown({
+        orderStableId,
+        attempt,
+        externalReference,
+        reason: currentFailure.reason,
+        errorMessage,
+        statusCode: currentFailure.statusCode ?? undefined,
+        failureHistory,
       });
+      this.logger.error({
+        event: 'uber_direct_dispatch_reconciliation_required',
+        orderStableId,
+        attempt,
+        reason: 'PROVIDER_OUTCOME_UNKNOWN',
+        errorType: error instanceof Error ? error.name : 'UnknownError',
+      });
+      await this.notifyReconciliationRequired({
+        orderStableId,
+        orderNumber,
+        attempt,
+        reason: 'PROVIDER_OUTCOME_UNKNOWN',
+        failureHistory,
+      });
+      return;
     }
+
+    try {
+      const outcome = await this.dispatchJournal.persistProviderSuccess({
+        orderDbId: order.id,
+        orderStableId,
+        attempt,
+        externalReference,
+        response,
+      });
+      if (outcome === 'UNKNOWN') {
+        this.logger.error({
+          event: 'uber_direct_dispatch_reconciliation_required',
+          orderStableId,
+          attempt,
+          reason: 'LOCAL_BIND_CONFLICT',
+          providerDeliveryId: response.deliveryId,
+        });
+        await this.notifyReconciliationRequired({
+          orderStableId,
+          orderNumber,
+          attempt,
+          reason: 'LOCAL_BIND_CONFLICT',
+          failureHistory: await this.dispatchJournal.listFailureHistory(
+            orderStableId,
+            cycleStartAttempt,
+          ),
+        });
+        return;
+      }
+
+      this.logger.log({
+        event: 'uber_direct_dispatch_succeeded',
+        orderStableId,
+        attempt,
+        providerDeliveryId: response.deliveryId,
+      });
+    } catch (error) {
+      this.logger.error({
+        event: 'uber_direct_delivery_created_persistence_failed',
+        orderId: order.id,
+        orderStableId,
+        attempt,
+        providerDeliveryId: response.deliveryId,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+      // Deliberately leave attempt_started without a terminal event. The durable
+      // processor will conservatively turn a stale claim into UNKNOWN after the
+      // database/process recovers. Never re-POST automatically.
+      throw error;
+    }
+  }
+
+  async notifyReconciliationRequired(params: {
+    orderStableId: string;
+    orderNumber: string;
+    attempt: number;
+    reason: string;
+    failureHistory?: DeliveryDispatchFailureDetail[];
+  }): Promise<void> {
+    const details =
+      params.failureHistory && params.failureHistory.length > 0
+        ? this.formatFailureHistory(
+            params.failureHistory,
+            'Provider outcome is UNKNOWN; automatic retry is blocked to avoid duplicate courier creation',
+          )
+        : `Provider outcome is UNKNOWN at attempt ${params.attempt} (${params.reason}); automatic retry is blocked to avoid duplicate courier creation.`;
+
+    await this.notifyDeliveryDispatchFailure({
+      orderStableId: params.orderStableId,
+      orderNumber: params.orderNumber,
+      deliveryProvider: 'Uber Direct',
+      errorMessage:
+        `${details} Search Uber Direct Dashboard for ${params.orderNumber}. If the delivery exists, bind its orderUuid in SanQ. If it does not exist, use the SanQ retry button. If you create it manually in Dashboard, return to SanQ and bind the new orderUuid.`,
+      reconciliationRequired: true,
+    });
   }
 
   private async notifyDeliveryDispatchFailure(params: {
@@ -124,6 +401,7 @@ export class OrderDeliveryDispatchUseCase {
     orderNumber: string;
     deliveryProvider: string;
     errorMessage: string;
+    reconciliationRequired?: boolean;
   }): Promise<void> {
     try {
       const recipients =
@@ -151,10 +429,12 @@ export class OrderDeliveryDispatchUseCase {
             })),
             orderNumber: params.orderNumber,
             deliveryProvider: params.deliveryProvider,
-            errorMessage: params.errorMessage
-              .replace(/\s+/g, ' ')
-              .slice(0, 240),
-            orderDetailUrl: `${publicBaseUrl}/zh/order/${params.orderStableId}`,
+            errorMessage: sanitizeDeliveryDispatchErrorMessage(params.errorMessage),
+            orderDetailUrl: params.reconciliationRequired
+              ? `${publicBaseUrl}/zh/admin/delivery-dispatch?order=${encodeURIComponent(
+                  params.orderStableId,
+                )}`
+              : `${publicBaseUrl}/zh/order/${params.orderStableId}`,
           },
         );
 
@@ -177,76 +457,23 @@ export class OrderDeliveryDispatchUseCase {
     }
   }
 
-  private extractDropoff(
-    metadata: Prisma.JsonValue | null,
-    order: { contactPhone: string | null; contactName: string | null },
-  ): UberDirectDropoffDetails | null {
-    const root = this.asRecord(metadata);
-    const customer = this.asRecord(root?.customer);
-    const deliveryDestination = this.asRecord(root?.deliveryDestination);
-    if (!customer) return null;
-
-    const addressLine1 =
-      this.asString(deliveryDestination?.addressLine1) ??
-      this.asString(customer.addressLine1);
-    const city =
-      this.asString(deliveryDestination?.city) ?? this.asString(customer.city);
-    const province =
-      this.asString(deliveryDestination?.province) ??
-      this.asString(customer.province);
-    const postalCode =
-      this.asString(deliveryDestination?.postalCode) ??
-      this.asString(customer.postalCode);
-    const phone =
-      this.asString(deliveryDestination?.phone) ??
-      this.asString(customer.phone) ??
-      order.contactPhone;
-
-    if (!phone) {
-      throw new Error(
-        'DELIVERY_PHONE_REQUIRED: Uber Direct dropoff requires a phone',
-      );
-    }
-    if (!addressLine1 || !city || !province || !postalCode) return null;
-
-    const firstName = this.asString(customer.firstName) ?? '';
-    const lastName = this.asString(customer.lastName) ?? '';
-    return {
-      name:
-        [firstName, lastName].filter(Boolean).join(' ') ||
-        order.contactName ||
-        'Customer',
-      phone,
-      addressLine1,
-      addressLine2:
-        this.asString(deliveryDestination?.addressLine2) ??
-        this.asString(customer.addressLine2),
-      city,
-      province,
-      postalCode,
-      country:
-        this.asString(deliveryDestination?.country) ??
-        this.asString(customer.country) ??
-        'Canada',
-      instructions: this.asString(customer.notes),
-    };
+  private formatFailureHistory(
+    history: DeliveryDispatchFailureDetail[],
+    headline: string,
+  ): string {
+    const details = history
+      .slice(-8)
+      .map((failure) => {
+        const status =
+          typeof failure.statusCode === 'number'
+            ? `HTTP ${failure.statusCode}`
+            : 'no HTTP status';
+        return `Attempt ${failure.attempt}: ${failure.reason}; ${status}; ${sanitizeDeliveryDispatchErrorMessage(
+          failure.errorMessage,
+        ).slice(0, 320)}`;
+      })
+      .join(' | ');
+    return `${headline}. ${details}`;
   }
 
-  private asRecord(value: unknown): Record<string, unknown> | undefined {
-    return value && typeof value === 'object' && !Array.isArray(value)
-      ? (value as Record<string, unknown>)
-      : undefined;
-  }
-
-  private asString(value: unknown): string | undefined {
-    if (typeof value !== 'string') return undefined;
-    const trimmed = value.trim();
-    return trimmed.length > 0 ? trimmed : undefined;
-  }
-
-  private parsePickupTime(pickupTime?: string): Date | undefined {
-    if (!pickupTime) return undefined;
-    const parsed = new Date(pickupTime);
-    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
-  }
 }
