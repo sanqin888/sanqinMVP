@@ -88,6 +88,11 @@ export function AccountingInboxItemsList({
             item.materializedEntityType !== null ||
             item.artifact.acquisitionMode === 'PROVIDER_API';
           const classifying = classifyingId === item.inboxItemStableId;
+          const providerSupplementaryEvidence =
+            parse.providerFinancial === true && parse.documentType === 'OTHER';
+          const providerFinancialSuggestionOverridden =
+            providerSupplementaryEvidence &&
+            item.classification === 'OTHER_DOCUMENT';
           return (
             <div
               key={item.inboxItemStableId}
@@ -119,7 +124,7 @@ export function AccountingInboxItemsList({
                 {!quarantined && item.status === 'PENDING_REVIEW' ? (
                   <div className="mt-3 flex flex-wrap items-end gap-2">
                     <label className="grid gap-1 text-xs text-slate-500">
-                      <span>{isZh ? '资料类型' : 'Document type'}</span>
+                      <span>{isZh ? '资料分类' : 'Inbox classification'}</span>
                       <select
                         className="rounded border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-800 disabled:bg-slate-100"
                         value={item.classification}
@@ -146,10 +151,12 @@ export function AccountingInboxItemsList({
                           {isZh ? '费用单' : 'Expense / invoice'}
                         </option>
                         <option value="PROVIDER_FINANCIAL_DOCUMENT">
-                          {isZh ? '结算单' : 'Statement / settlement'}
+                          {isZh
+                            ? '平台财务资料'
+                            : 'Provider financial evidence'}
                         </option>
                         <option value="OTHER_DOCUMENT">
-                          {isZh ? '其他' : 'Other'}
+                          {isZh ? '其他资料（非平台财务）' : 'Other evidence'}
                         </option>
                       </select>
                     </label>
@@ -234,6 +241,11 @@ export function AccountingInboxItemsList({
                   <p className="mt-2 text-xs text-blue-700">
                     {isZh ? '系统建议' : 'System suggestion'}:{' '}
                     {parse.provider ?? '—'} · {parse.documentType ?? '—'}
+                    {providerSupplementaryEvidence
+                      ? isZh
+                        ? ' · 补充证据（不单独入账）'
+                        : ' · supporting evidence (not posted independently)'
+                      : ''}
                     {parse.periodStart || parse.periodEnd
                       ? ` · ${parse.periodStart ?? '—'} → ${parse.periodEnd ?? '—'}`
                       : ''}
@@ -248,6 +260,13 @@ export function AccountingInboxItemsList({
                     {isZh ? '系统建议' : 'System suggestion'}:{' '}
                     {parse.reviewDisposition}
                     {parse.confidence ? ` · ${parse.confidence}` : ''}
+                  </p>
+                ) : null}
+                {providerFinancialSuggestionOverridden ? (
+                  <p className="mt-2 text-xs text-amber-700">
+                    {isZh
+                      ? '系统已识别这是一份平台财务补充证据。若保持“其他”，只会作为普通其他资料审核，不会参与平台结算匹配；如需用于 Fantuan 月结，请改回“平台财务资料”并选择 Fantuan。'
+                      : 'The system identified this as supporting provider financial evidence. Keeping it as Other only reviews it as generic evidence and excludes it from provider-settlement matching; for Fantuan settlement use, switch back to Provider financial evidence and select Fantuan.'}
                   </p>
                 ) : null}
               </div>
@@ -363,8 +382,8 @@ export function AccountingInboxItemsList({
                         ? '确认中…'
                         : 'Confirming…'
                       : isZh
-                        ? '确认结算单'
-                        : 'Confirm statement'}
+                        ? '确认平台财务资料'
+                        : 'Confirm provider financial evidence'}
                   </button>
                 ) : null}
                 {!quarantined &&

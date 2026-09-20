@@ -40,6 +40,7 @@ const EXPECTED_CONTROLLER_CAPABILITIES = {
   'accounting-provider-settlement.controller.ts': [
     'AccountingProviderSettlementExecutionService',
     'AccountingProviderSettlementPreviewService',
+    'AccountingProviderSettlementQueryService',
   ],
   'accounting-reports.controller.ts': [
     'AccountingFinancialReportsService',
@@ -84,6 +85,7 @@ const EXPECTED_ROUTES = [
   'GET journal/canonical-sales/replay-preview',
   'GET journal/canonical-changes/shadow-preview',
   'GET journal/provider-settlement/shadow-preview',
+  'GET journal/provider-settlement/posting-states',
   'POST journal/provider-settlement/replay',
   'POST journal/canonical-changes/replay',
   'POST journal/canonical-sales/replay',
