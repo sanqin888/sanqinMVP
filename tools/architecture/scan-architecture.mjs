@@ -4763,6 +4763,7 @@ if (ordersUberDirectDispatchBoundary) {
     boundary.ownerService,
     boundary.ownerModule,
     boundary.publicSurface,
+    boundary.useCase,
     boundary.fulfillmentProcessor,
     boundary.ordersModule,
   ];
@@ -4861,32 +4862,41 @@ if (ordersUberDirectDispatchBoundary) {
     }
   }
 
+  const useCasePath = join(REPOSITORY_ROOT, boundary.useCase);
+  if (existsSync(useCasePath)) {
+    const source = readFileSync(useCasePath, 'utf8');
+    if (
+      !source.includes("from '../deliveries/public-api'") ||
+      !source.includes('UBER_DIRECT_DELIVERY_DISPATCHER') ||
+      !source.includes('UberDirectDeliveryDispatcherPort') ||
+      !source.includes('private readonly uberDirectDispatcher') ||
+      !source.includes('this.uberDirectDispatcher.createDelivery') ||
+      source.includes('deliveries/uber-direct.service') ||
+      /\bUberDirectService\b/.test(source)
+    ) {
+      failures.push(
+        `Orders Uber Direct dispatch use case must consume the Deliveries public dispatcher capability: ${boundary.useCase}`,
+      );
+    }
+  }
+
   const fulfillmentProcessorPath = join(
     REPOSITORY_ROOT,
     boundary.fulfillmentProcessor,
   );
   if (existsSync(fulfillmentProcessorPath)) {
     const source = readFileSync(fulfillmentProcessorPath, 'utf8');
-    const consumesPublicDispatcherDirectly =
-      source.includes("from '../../deliveries/public-api'") &&
-      source.includes('UBER_DIRECT_DELIVERY_DISPATCHER') &&
-      source.includes('UberDirectDeliveryDispatcherPort') &&
-      source.includes('private readonly uberDirectDispatcher') &&
-      source.includes('this.uberDirectDispatcher.createDelivery');
-    const delegatesToDeliveryDispatchUseCase =
-      source.includes("from '../order-delivery-dispatch.use-case'") &&
-      source.includes(
-        'private readonly orderDeliveryDispatchUseCase: OrderDeliveryDispatchUseCase',
-      ) &&
-      source.includes('this.orderDeliveryDispatchUseCase.handle(payload)');
-
     if (
-      (!consumesPublicDispatcherDirectly && !delegatesToDeliveryDispatchUseCase) ||
+      source.includes('UBER_DIRECT_DELIVERY_DISPATCHER') ||
+      source.includes('UberDirectDeliveryDispatcherPort') ||
+      source.includes('OrderDeliveryDispatchUseCase') ||
+      source.includes('order.paid.verified') ||
+      source.includes('onOrderPaidVerified') ||
       source.includes('deliveries/uber-direct.service') ||
       /\bUberDirectService\b/.test(source)
     ) {
       failures.push(
-        `Orders fulfillment delivery dispatch must consume Uber Direct through the Deliveries public dispatcher capability, directly or through the internal delivery-dispatch use case: ${boundary.fulfillmentProcessor}`,
+        `FulfillmentProcessor must remain free of Uber Direct paid-order dispatch after durable replacement: ${boundary.fulfillmentProcessor}`,
       );
     }
   }
@@ -5318,6 +5328,10 @@ if (ordersDeliveryDispatchUseCaseDecomposition) {
       'DeliveryDispatchFailureNotificationPort',
       'uber_direct_delivery_created_persistence_failed',
       'DELIVERY_DESTINATION_REQUIRED',
+      'SAFE_TO_RETRY',
+      'recordFailedAndScheduleAutomaticRetry',
+      'automaticRetriesRemaining',
+      'UBER_DIRECT_AUTOMATIC_RETRY_COUNT',
     ]) {
       if (!source.includes(requiredSymbol)) {
         failures.push(
@@ -5337,15 +5351,138 @@ if (ordersDeliveryDispatchUseCaseDecomposition) {
     }
   }
 
+  const journalPath = join(REPOSITORY_ROOT, boundary.journal);
+  if (existsSync(journalPath)) {
+    const source = readFileSync(journalPath, 'utf8');
+    for (const requiredSymbol of [
+      'ORDER_DELIVERY_DISPATCH_SOURCE',
+      'ORDER_DELIVERY_DISPATCH_REQUESTED_EVENT',
+      'ORDER_DELIVERY_DISPATCH_ATTEMPT_STARTED_EVENT',
+      'ORDER_DELIVERY_DISPATCH_SUCCEEDED_EVENT',
+      'ORDER_DELIVERY_DISPATCH_FAILED_EVENT',
+      'ORDER_DELIVERY_DISPATCH_UNKNOWN_EVENT',
+      'ORDER_DELIVERY_DISPATCH_RECONCILED_EVENT',
+      'UBER_DIRECT_AUTOMATIC_RETRY_COUNT',
+      'readAutomaticRetryDelayMs',
+      'BIND_EXISTING',
+      'CONFIRM_NOT_CREATED_RETRY',
+    ]) {
+      if (!source.includes(requiredSymbol)) {
+        failures.push(
+          `Orders durable delivery-dispatch journal is missing ${requiredSymbol}: ${boundary.journal}`,
+        );
+      }
+    }
+  }
+
+  const journalServicePath = join(REPOSITORY_ROOT, boundary.journalService);
+  if (existsSync(journalServicePath)) {
+    const source = readFileSync(journalServicePath, 'utf8');
+    if (
+      !source.includes('OrderDeliveryDispatchJournalService') ||
+      !source.includes('persistProviderSuccess') ||
+      !source.includes('recordFailedAndScheduleAutomaticRetry') ||
+      !source.includes("trigger: 'AUTO_SAFE_RETRY'") ||
+      !source.includes('this.prisma.$transaction') ||
+      !source.includes('externalDeliveryId') ||
+      !source.includes('ORDER_DELIVERY_DISPATCH_UNKNOWN_EVENT')
+    ) {
+      failures.push(
+        `Orders delivery-dispatch provider-success bind must remain an Orders-owned durable journal transaction: ${boundary.journalService}`,
+      );
+    }
+  }
+
+  const durableProcessorPath = join(REPOSITORY_ROOT, boundary.durableProcessor);
+  if (existsSync(durableProcessorPath)) {
+    const source = readFileSync(durableProcessorPath, 'utf8');
+    if (
+      !source.includes("from '../order-delivery-dispatch-journal'") ||
+      !source.includes("from '../order-delivery-dispatch.use-case'") ||
+      !source.includes('FOR UPDATE OF event SKIP LOCKED') ||
+      !source.includes('PROCESS_INTERRUPTED_AFTER_ATTEMPT_STARTED') ||
+      !source.includes('handleDurableAttempt') ||
+      !source.includes('automaticRetriesRemaining') ||
+      !source.includes("payload->>'notBefore'") ||
+      source.includes('isUberDirectDurableDispatchEnabled') ||
+      source.includes('../deliveries/public-api') ||
+      source.includes('UBER_DIRECT_DELIVERY_DISPATCHER')
+    ) {
+      failures.push(
+        `Orders durable delivery-dispatch processor must claim persisted attempts, fail stale in-flight work to UNKNOWN, and delegate provider orchestration to the use case: ${boundary.durableProcessor}`,
+      );
+    }
+  }
+
+  const reconciliationPath = join(
+    REPOSITORY_ROOT,
+    boundary.reconciliationService,
+  );
+  if (existsSync(reconciliationPath)) {
+    const source = readFileSync(reconciliationPath, 'utf8');
+    if (
+      !source.includes('OrderDeliveryDispatchReconciliationService') ||
+      !source.includes('BIND_EXISTING') ||
+      !source.includes('CONFIRM_NOT_CREATED_RETRY') ||
+      !source.includes('operatorUserStableId') ||
+      !source.includes('nextAttempt') ||
+      !source.includes('FOR UPDATE') ||
+      source.includes('UBER_DIRECT_DELIVERY_DISPATCHER') ||
+      source.includes('.createDelivery(')
+    ) {
+      failures.push(
+        `Orders delivery-dispatch UNKNOWN recovery must remain explicit operator reconciliation and must not call the provider directly: ${boundary.reconciliationService}`,
+      );
+    }
+  }
+
+  const adminControllerPath = join(REPOSITORY_ROOT, boundary.adminController);
+  if (existsSync(adminControllerPath)) {
+    const source = readFileSync(adminControllerPath, 'utf8');
+    if (
+      !source.includes('AdminMfaGuard') ||
+      !source.includes("@Roles('ADMIN')") ||
+      !source.includes('delivery-dispatch') ||
+      !source.includes('reconcile')
+    ) {
+      failures.push(
+        `Orders delivery-dispatch reconciliation transport must remain ADMIN + MFA guarded: ${boundary.adminController}`,
+      );
+    }
+  }
+
+  const ordersServicePath = join(REPOSITORY_ROOT, boundary.ordersService);
+  if (existsSync(ordersServicePath)) {
+    const source = readFileSync(ordersServicePath, 'utf8');
+    if (
+      source.includes('OrderEventsBus') ||
+      source.includes('emitOrderPaidVerified') ||
+      source.includes('isUberDirectDurableDispatchEnabled')
+    ) {
+      failures.push(
+        `Orders paid side effects must not restore the retired private Uber Direct paid-event path: ${boundary.ordersService}`,
+      );
+    }
+  }
+
+  const retiredPaidEventBusPath = join(
+    REPOSITORY_ROOT,
+    'apps/api/src/orders/order-events.bus.ts',
+  );
+  if (existsSync(retiredPaidEventBusPath)) {
+    failures.push(
+      'Retired Orders order.paid.verified private EventEmitter must not return; Uber Direct dispatch is durable-only.',
+    );
+  }
+
   const processorPath = join(REPOSITORY_ROOT, boundary.fulfillmentProcessor);
   if (existsSync(processorPath)) {
     const source = readFileSync(processorPath, 'utf8');
     if (
-      !source.includes("from '../order-delivery-dispatch.use-case'") ||
-      !source.includes(
-        'private readonly orderDeliveryDispatchUseCase: OrderDeliveryDispatchUseCase',
-      ) ||
-      !source.includes('this.orderDeliveryDispatchUseCase.handle(payload)') ||
+      source.includes('OrderEventsBus') ||
+      source.includes('OrderDeliveryDispatchUseCase') ||
+      source.includes('onOrderPaidVerified') ||
+      source.includes('order.paid.verified') ||
       source.includes('UBER_DIRECT_DELIVERY_DISPATCHER') ||
       source.includes('DELIVERY_DISPATCH_FAILURE_NOTIFICATION') ||
       source.includes('OPERATIONS_ALERT_RECIPIENTS') ||
@@ -5353,7 +5490,7 @@ if (ordersDeliveryDispatchUseCaseDecomposition) {
       /\bextractDropoff\s*\(/.test(source)
     ) {
       failures.push(
-        `FulfillmentProcessor must delegate paid-order delivery dispatch orchestration without regaining provider/alert policy: ${boundary.fulfillmentProcessor}`,
+        `FulfillmentProcessor must remain print/fulfillment-only and must not regain Uber Direct paid-order dispatch policy: ${boundary.fulfillmentProcessor}`,
       );
     }
   }
@@ -5363,11 +5500,37 @@ if (ordersDeliveryDispatchUseCaseDecomposition) {
     const source = readFileSync(ordersModulePath, 'utf8');
     if (
       !source.includes("from './order-delivery-dispatch.use-case'") ||
+      !source.includes("from './order-delivery-dispatch-journal.service'") ||
+      !source.includes(
+        "from './order-delivery-dispatch-reconciliation.service'",
+      ) ||
+      !source.includes(
+        "from './processors/order-delivery-dispatch.processor'",
+      ) ||
+      !source.includes(
+        "from './admin-order-delivery-dispatch.controller'",
+      ) ||
+      !/providers:\s*\[[\s\S]*OrderDeliveryDispatchJournalService/.test(
+        source,
+      ) ||
+      !/providers:\s*\[[\s\S]*OrderDeliveryDispatchReconciliationService/.test(
+        source,
+      ) ||
       !/providers:\s*\[[\s\S]*OrderDeliveryDispatchUseCase/.test(source) ||
-      /exports:\s*\[[\s\S]*OrderDeliveryDispatchUseCase/.test(source)
+      !/providers:\s*\[[\s\S]*OrderDeliveryDispatchProcessor/.test(source) ||
+      !/controllers:\s*\[[\s\S]*AdminOrderDeliveryDispatchController/.test(
+        source,
+      ) ||
+      /exports:\s*\[[\s\S]*OrderDeliveryDispatchUseCase/.test(source) ||
+      /exports:\s*\[[\s\S]*OrderDeliveryDispatchJournalService/.test(
+        source,
+      ) ||
+      /exports:\s*\[[\s\S]*OrderDeliveryDispatchReconciliationService/.test(
+        source,
+      )
     ) {
       failures.push(
-        `OrderDeliveryDispatchUseCase must stay an internal Orders application provider and must not be exported as a cross-context service: ${boundary.ordersModule}`,
+        `Orders durable delivery-dispatch journal, processor, reconciliation transport and use case must remain internal Orders composition and must not be exported as cross-context services: ${boundary.ordersModule}`,
       );
     }
   }
@@ -8122,7 +8285,6 @@ if (orderPaidSettlementBoundary) {
     boundary.loyaltyPublicSurface,
     boundary.ordersService,
     boundary.ordersModule,
-    boundary.ordersEventBus,
     boundary.ordersPublicSurface,
     boundary.messagingModule,
     boundary.orderIngestionContract,
@@ -8142,6 +8304,7 @@ if (orderPaidSettlementBoundary) {
 
   for (const retiredPath of [
     boundary.retiredLoyaltyProcessor,
+    boundary.retiredOrdersEventBus,
     boundary.retiredMessagingEventBus,
   ]) {
     if (retiredPath && existsSync(join(REPOSITORY_ROOT, retiredPath))) {
@@ -8226,7 +8389,6 @@ if (orderPaidSettlementBoundary) {
     'LOYALTY_ORDER_PAID_SETTLEMENT',
     'loyaltyOrderPaidSettlement.settleOrderPaid',
     'orderStableId: order.orderStableId',
-    "from './order-events.bus'",
   ]) {
     if (ordersServiceSource && !ordersServiceSource.includes(requiredToken)) {
       failures.push(
@@ -8253,12 +8415,12 @@ if (orderPaidSettlementBoundary) {
   const ordersModuleSource = readBoundarySource(boundary.ordersModule);
   if (
     ordersModuleSource &&
-    (!ordersModuleSource.includes("from './order-events.bus'") ||
-      !ordersModuleSource.includes('OrderEventsBus,') ||
+    (ordersModuleSource.includes("from './order-events.bus'") ||
+      ordersModuleSource.includes('OrderEventsBus') ||
       ordersModuleSource.includes('MessagingModule'))
   ) {
     failures.push(
-      `OrdersModule must privately own OrderEventsBus without MessagingModule: ${boundary.ordersModule}`,
+      `OrdersModule must keep the retired OrderEventsBus absent and must not compose MessagingModule: ${boundary.ordersModule}`,
     );
   }
 

@@ -53,7 +53,6 @@ describe('Uber accepted-order lifecycle boundary architecture', () => {
 
   it('keeps first-print preparation durable-only after Uber acceptance', () => {
     const ordersService = source('../../orders/orders.service.ts');
-    const eventsBus = source('../../orders/order-events.bus.ts');
     const fulfillment = source(
       '../../orders/processors/fulfillment.processor.ts',
     );
@@ -63,12 +62,12 @@ describe('Uber accepted-order lifecycle boundary architecture', () => {
     );
 
     expect(ordersService).not.toContain('emitOrderAccepted');
-    expect(eventsBus).not.toContain('order.prep_started');
-    expect(eventsBus).not.toContain('emitOrderAccepted');
-    expect(eventsBus).not.toContain('onOrderAccepted');
-    expect(eventsBus).toContain('order.paid.verified');
+    expect(ordersService).not.toContain('emitOrderPaidVerified');
+    expect(ordersService).not.toContain('OrderEventsBus');
     expect(fulfillment).not.toContain("origin: 'memory'");
     expect(fulfillment).not.toContain('onOrderAccepted');
+    expect(fulfillment).not.toContain('onOrderPaidVerified');
+    expect(fulfillment).not.toContain('OrderEventsBus');
     expect(posOrders).toContain("order.channel === 'ubereats'");
     expect(posOrders).toContain('getFulfillmentTimingForStore');
     expect(posOrders).toContain('activateImmediatePreparation');

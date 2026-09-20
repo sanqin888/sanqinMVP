@@ -188,12 +188,14 @@ node tools/architecture/scan-architecture.mjs --report
   write. The use case must consume Customer/Notifications public capabilities, obtain checkout
   metadata through the Orders-local `orders-prisma` facade, preserve non-blocking delivery and
   PII-redacted structured logging, and remain internal to `OrdersModule` composition;
-- Phase 5 Slice 5C moves paid-order Uber Direct dispatch preparation, provider invocation,
-  local delivery-id persistence and operations-alert policy into the internal
-  `OrderDeliveryDispatchUseCase`. `FulfillmentProcessor` remains the lifecycle consumer and
-  delegates `order.paid.verified` payloads only; provider/auth/notification ports and dropoff
-  extraction must not return to the processor. The use case stays on Orders-local persistence
-  plus public Delivery/Auth/Notifications capabilities and remains internal to `OrdersModule`;
+- Phase 5 Slice 5C first moved paid-order Uber Direct orchestration into the internal
+  `OrderDeliveryDispatchUseCase`. The 2026-09-19 reliability replacement then removes the private
+  `order.paid.verified` / `OrderEventsBus` route entirely. Orders now owns the durable
+  `orders.delivery_dispatch` journal/processor and ADMIN+MFA reconciliation; provider execution
+  still crosses the public Delivery dispatcher port, safe provider rejections may receive up to
+  three automatic retries, and UNKNOWN outcomes remain fail-closed. `FulfillmentProcessor` is
+  print/fulfillment-only and must not regain Uber Direct paid-order dispatch policy. The journal,
+  use case, processor and reconciliation services remain internal to `OrdersModule`;
 - Phase 5 Slice 5D moves the read-only one-hour average preparation-time query into the internal
   `OrderPrepTimeQueryUseCase`. The public `/orders/prep-time` route delegates to this use case;
   `OrdersService` must not regain the query policy. Historical fallback `15` minutes and minimum
@@ -229,10 +231,9 @@ node tools/architecture/scan-architecture.mjs --report
   explicit opt-in so provider activation does not silently recreate the retired event path;
 - Order paid Loyalty settlement uses the Identity-owned `LOYALTY_ORDER_PAID_SETTLEMENT` public
   capability and crosses contexts only with `orderStableId` plus reward subtotal/redeem cents and
-  earn multiplier. `OrderEventsBus` is private Orders/Fulfillment same-process fast-path
-  infrastructure: Messaging, Loyalty and Uber cannot own/import it and Orders must not export it
-  publicly. The durable `OrderLifecycleOutboxProcessor` remains the retry/replay owner and cannot
-  be replaced by the in-memory bus;
+  earn multiplier. The former private Orders/Fulfillment `OrderEventsBus` is retired and must stay
+  deleted; Messaging, Loyalty and Uber must not recreate or own an equivalent in-memory paid-order
+  bus. Durable Orders lifecycle/dispatch processors remain the retry/replay owners;
 - Benefits loyalty policy is exposed through `loyalty/public-api.ts`; all
   LoyaltyService policy readers must use transitional `BrandConfig` storage,
   transaction-bound reads must stay on the existing Prisma transaction client,

@@ -56,7 +56,7 @@ Slice 0 locks or inventories the current behavior before any owner movement. Exi
 | Amendment | `createAmendment()` | Slice 2 extends characterization to canonical ADD/SWAP OrderItem snapshot materialization, payment-method-only RETENDER, kitchen amendment handoff, positive label-plan delta and customer full-receipt reprint after amount/payment changes. |
 | Durable lifecycle/outbox | `OrderPreparationService` + `OrderLifecycleOutboxProcessor` | Tests lock accepted-fact gating, row locks/SKIP LOCKED, idempotent `prep_started`, replay after failure, and the Orders-owned `order.initial_print_handoff` checkpoint; the previous `PosPrintJob` existence probe is removed in Slice 2. |
 | Print | `FulfillmentProcessor` -> `ORDER_PRINT_HANDOFF_REQUESTED` -> `PosGateway` | Slice 2 locks Print-owned AUTO/REPRINT/AMENDMENT identity/routing, database target claim before socket emission, ACK/timeout terminality, stale-delivery recovery, and Windows-agent `jobId + target` replay suppression. |
-| Uber Direct | `FulfillmentProcessor.onPaid` -> `UberDirectService.createDelivery()` | **New adapter characterization** locks canonical request -> provider payload mapping, server-token auth, provider response normalization/cost extraction, and rejection of a DB UUID as `orderRef`. No provider call or runtime behavior is changed. |
+| Uber Direct | durable Orders dispatch processor -> `OrderDeliveryDispatchUseCase` -> public Uber Direct dispatcher | **2026-09-19 durable-dispatch direct replacement** removes the private paid-event route and makes the Orders-owned `OpsEvent` attempt journal authoritative. Safe provider rejections get the initial call plus up to 3 automatic retries (2s/5s/10s); UNKNOWN never auto-retries and enters ADMIN+MFA reconciliation. |
 
 ## Direct Prisma/persistence inventory inside `apps/api/src/orders/**`
 
@@ -72,7 +72,9 @@ This is a source inventory, not a claim that every listed access should be remov
 | `order-preparation.service.ts` | transaction-scoped `order`, `opsEvent`, raw SQL against `Order` / `OpsEvent` | Orders lifecycle/outbox behavior; currently intentional L3 transaction/locking implementation. |
 | `pos-order-read.service.ts` | `order`, `orderAmendment` | Orders-owned read model. |
 | `admin-member-orders-read.service.ts` | `order`, `orderItem` | Orders-owned read model. |
-| `processors/fulfillment.processor.ts` | `order`, `checkoutIntent` | Order read is local; checkout metadata dependency remains cross-owner. |
+| `processors/fulfillment.processor.ts` | `order` | Print/fulfillment materialization only; Uber Direct paid-order dispatch no longer enters this processor. |
+| `order-delivery-dispatch.use-case.ts` | `order`, `checkoutIntent` | Orders-owned delivery dispatch orchestration; checkout metadata remains the temporary destination/prep source until the later CheckoutIntent contraction. |
+| `processors/order-delivery-dispatch.processor.ts` | `order`, `opsEvent`, raw SQL against `Order` / `OpsEvent` | Durable Uber Direct seed/claim/stale recovery and retry scheduling. |
 | `processors/order-lifecycle-outbox.processor.ts` | `$transaction` + raw SQL across `OpsEvent`, `Order` | Durable Orders lifecycle reads only its own event/order facts and checkpoints successful INITIAL handoff as `order.initial_print_handoff`; Slice 2 removes the Print-owned `PosPrintJob` probe. |
 
 Unique non-Orders persistence surfaces still reached directly from the Orders tree after the later Phase 8 Slice 8.3A0 contraction are therefore:
@@ -85,7 +87,7 @@ Slice 4B removes Catalog `MenuItem`; Slice 4C removes Identity / Customer `User`
 
 The narrow public ports already in use are not listed as concrete-service debt here. After Slice 4E, the remaining concrete business-service imports in production Orders code are limited to the intentionally preserved transaction/preparation mutation seam; `FulfillmentProcessor` no longer imports the concrete Uber Direct provider implementation.
 
-`PrismaService` remains the broadest concrete infrastructure dependency: it is consumed directly by `orders.service.ts`, `order-ingestion.service.ts`, `order-scheduling-query.service.ts`, `order-label-plan.service.ts`, `print-pos-payload.service.ts`, `order-preparation.service.ts`, `pos-order-read.service.ts`, `processors/fulfillment.processor.ts`, and `processors/order-lifecycle-outbox.processor.ts`; `admin-member-orders-read.service.ts` consumes the same service through the local `orders-prisma.ts` re-export. This is why Commerce -> Runtime remains **10** even though some individual persistence accesses are valid Orders-owned data.
+`PrismaService` remains the broadest concrete infrastructure dependency. In addition to the historical Orders consumers, the post-modularization durable-dispatch processor/journal/reconciliation services use the same Orders-local Prisma composition for `OpsEvent` state and `Order.externalDeliveryId` binding. These are owner-local persistence seams and do not create a new bounded-context direction; historical direct-import ceilings remain monotonic ceilings rather than a reason to hide valid persistence behind facades.
 
 | Consumer | Concrete dependency | Current purpose / classification |
 |---|---|---|
@@ -100,15 +102,9 @@ Slice 0 also recorded two direct POS type couplings from Orders implementation c
 
 ## EventEmitter / lifecycle consumer inventory
 
-Slice 0 initially found two in-process event mechanisms plus the durable Orders lifecycle facts. Slice 1E retires the private prep-started first-print event, leaving only one private Node event plus the durable lifecycle.
+Slice 0 initially found two private in-process event mechanisms plus the durable Orders lifecycle facts. Slice 1E retired the prep-started first-print event. The 2026-09-19 Uber Direct reliability replacement retires the final private `order.paid.verified` bus as well: `OrderEventsBus` is deleted, `OrdersService.handleOrderPaidSideEffects()` retains only loyalty/coupon side effects, and Uber Direct discovery/dispatch is durable-only through `orders.delivery_dispatch` facts.
 
-### Private Node `EventEmitter` — `OrderEventsBus`
-
-| Event/channel | Emitter | Consumer | Current side effect |
-|---|---|---|---|
-| `order.paid.verified` | `OrdersService.handleOrderPaidSideEffects()` | `FulfillmentProcessor.onPaid` | For eligible delivery orders, call Uber Direct and persist `Order.externalDeliveryId`. |
-
-The former same-process `order.prep_started` / compatibility-named `emitOrderAccepted()` path was a Slice 0 baseline fact and is retired by Slice 1E. Initial AUTO printing now consumes only durable `orders.lifecycle/order.prep_started`. `NotificationProcessor` is still wired in `OrdersModule` but registers no event consumer; it only logs that automatic invoice email is disabled, so it remains a later atomic deletion candidate after confirming no composition/bootstrap dependency. The obsolete uncalled `OrdersService.notifyDeliveryDispatchFailureAlert()` helper was removed in the pre-Slice 3 Uber Direct alert hardening batch once the active `FulfillmentProcessor` path became canonical. Slice 4A then removed the remaining verified-dead `dispatchPriorityDelivery()` / `buildUberPickupOverride()` delivery tail together with `ensureLoyaltyAccountWithTx()`; none is part of the current source graph.
+The former same-process `order.prep_started` / compatibility-named `emitOrderAccepted()` path was a Slice 0 baseline fact and is retired by Slice 1E. Initial AUTO printing now consumes only durable `orders.lifecycle/order.prep_started`. `NotificationProcessor` is still wired in `OrdersModule` but registers no event consumer; it only logs that automatic invoice email is disabled, so it remains a later atomic deletion candidate after confirming no composition/bootstrap dependency. The obsolete uncalled `OrdersService.notifyDeliveryDispatchFailureAlert()` helper was removed in the pre-Slice 3 Uber Direct alert hardening batch. Slice 4A then removed the remaining verified-dead `dispatchPriorityDelivery()` / `buildUberPickupOverride()` delivery tail together with `ensureLoyaltyAccountWithTx()`; none is part of the current source graph.
 
 ### Nest `EventEmitter2`
 
@@ -120,7 +116,7 @@ The former same-process `order.prep_started` / compatibility-named `emitOrderAcc
 
 ### Durable lifecycle facts
 
-`UberOrderActionPrismaAdapter` appends `orders.lifecycle / order.accepted` with an idempotency key after external acceptance. `OrderLifecycleOutboxProcessor` claims accepted immediate Orders and calls `OrderPreparationService`, while the scheduled processor activates due scheduled Orders. `OrderPreparationService` changes the Order to `making` and appends `orders.lifecycle / order.prep_started` in the same transaction. The outbox processor then materializes that durable fact through `FulfillmentProcessor.handleAcceptedLifecycle()`.
+`UberOrderActionPrismaAdapter` appends `orders.lifecycle / order.accepted` with an idempotency key after external acceptance. `OrderLifecycleOutboxProcessor` claims accepted immediate Orders and calls `OrderPreparationService`, while the scheduled processor activates due scheduled Orders. `OrderPreparationService` changes the Order to `making` and appends `orders.lifecycle / order.prep_started` in the same transaction. The outbox processor then materializes that durable fact through `FulfillmentProcessor.handleAcceptedLifecycle()`. Separately, the post-modularization Uber Direct reliability slice uses source `orders.delivery_dispatch` in the same generic `OpsEvent` infrastructure for dispatch `requested / attempt_started / succeeded / failed / unknown / reconciled` facts; it is not part of the order-acceptance/preparation lifecycle state machine.
 
 ## In-memory + durable duplicate-side-effect audit
 
@@ -145,11 +141,25 @@ At the Slice 0 baseline, sequential AUTO calls reused `(orderStableId, kind)` bu
 
 ACK/timeout mutation uses the same row-lock discipline, `COMPLETED` is terminal, and stale `DELIVERED` targets are recovered after restart/reconnect. The unchanged Windows agent additionally persists successful `jobId + target` completion and suppresses repeated in-flight/completed physical delivery. This closes the known Slice-0 Print hardening debt without a schema or wire-protocol migration.
 
-### Finding 3 — `order.paid.verified` / Uber Direct is not durable
+### Finding 3 — Uber Direct durable dispatch directly replaces the private paid-event path
 
-The Uber Direct dispatch fast path is private in-memory delivery, not part of `orders.lifecycle`. It first checks `Order.externalDeliveryId`, calls the provider, then writes the returned provider delivery ID. Therefore there is no duplicate interaction with the current durable accepted/prep outbox. However, a process loss after provider success but before `externalDeliveryId` persistence is not recoverable from the current in-memory event alone, and a later manual/retriggered provider call could create a second provider delivery if the provider itself does not deduplicate the reference.
+The historical gap was real: the private in-memory `order.paid.verified` path could observe provider success before `Order.externalDeliveryId` became durable. A process/database failure in that interval left no reliable local fact proving whether retry was safe.
 
-This is a **durability/idempotency gap**, not evidence of an active duplicate caused by the two event systems. It belongs to the later controlled Fulfillment/Uber Direct slice and must not be changed casually because it is externally observable provider behavior.
+The 2026-09-19 reliability slice replaces that path inside the existing Orders/Fulfillment -> Deliveries ownership boundary without a schema migration or compatibility flag:
+
+- `OrderEventsBus` / `order.paid.verified` is deleted; Orders/Fulfillment has no second Uber Direct dispatch route;
+- Orders records durable `OpsEvent` facts for `requested -> attempt_started -> succeeded|failed|unknown -> reconciled`;
+- the processor claims work with `FOR UPDATE ... SKIP LOCKED`; a started attempt that survives past the stale threshold without a terminal fact becomes UNKNOWN rather than being re-posted;
+- one dispatch cycle performs the initial create plus up to **3 automatic retries** with 2s/5s/10s delay only for provider outcomes classified `SAFE_TO_RETRY`;
+- local validation failures notify immediately because repeating the same invalid request cannot help;
+- timeout/no-response/5xx/ambiguous provider responses are UNKNOWN and never automatically retried because another POST could create a second courier;
+- provider success is bound to `Order.externalDeliveryId` in the same local transaction as the SUCCEEDED journal fact;
+- final FAILED / UNKNOWN notifications reuse the existing Admin Email-first / SMS-fallback capability and include the durable per-attempt failure history;
+- the Admin page lets FAILED orders start a new SanQ retry cycle after the cause is fixed, or lets staff create a delivery manually in Uber Direct Dashboard and then bind its `orderUuid` back to SanQ;
+- UNKNOWN requires Dashboard verification by SanQ order number before binding an existing delivery or authorizing another SanQ attempt;
+- reconciliation queries unresolved action-required facts directly and row-locks the Order before mutation so concurrent Admin actions serialize.
+
+This is a direct source replacement, not an active compatibility. Production verification still must prove successful provider/local binding, the safe-retry exhaustion path, UNKNOWN reconciliation, manual Dashboard-create + bind recovery, and absence of duplicate provider creation before this backlog item is marked production verified.
 
 ### Finding 4 — explicit reprint/amendment events are intentionally separate from AUTO idempotency
 

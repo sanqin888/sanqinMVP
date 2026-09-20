@@ -1,5 +1,7 @@
 export {
   UBER_DIRECT_DELIVERY_DISPATCHER,
+  UberDirectDeliveryDispatchError,
+  type UberDirectDeliveryDispatchFailureKind,
   type UberDirectDeliveryDispatcherPort,
   type UberDirectDeliveryOptions,
   type UberDirectDeliveryResult,

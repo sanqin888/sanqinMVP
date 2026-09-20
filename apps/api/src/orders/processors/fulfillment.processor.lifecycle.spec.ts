@@ -23,7 +23,6 @@ describe('FulfillmentProcessor durable accepted lifecycle', () => {
       return [];
     });
     const processor = new FulfillmentProcessor(
-      {} as never,
       {
         order: {
           findUnique: jest.fn().mockResolvedValue({
@@ -34,7 +33,6 @@ describe('FulfillmentProcessor durable accepted lifecycle', () => {
           }),
         },
       } as never,
-      {} as never,
       { emitAsync } as never,
       {
         getByStableId: jest.fn().mockResolvedValue({ orderNumber: '1001' }),
