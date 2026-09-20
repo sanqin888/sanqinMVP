@@ -1,6 +1,8 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import {
   AccountingFinancialComponent,
+  AccountingFinancialDocumentType,
+  AccountingFinancialPostingTreatment,
   AccountingFinancialProvider,
   AccountingInboxMaterializedEntityType,
   AccountingInboxStatus,
@@ -26,6 +28,10 @@ import {
   resolveProviderSalesAuthority,
   UBER_PRE_CUTOVER_REVERSAL_SOURCE_FACT_TYPE,
 } from './accounting-provider-settlement.policy';
+import {
+  FANTUAN_ADJUSTMENT_DETAIL_EVIDENCE_KIND,
+  FANTUAN_ADJUSTMENT_SUPPORTED_RAW_CODES,
+} from './accounting-fantuan-adjustment-detail.contract';
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_PREVIEW_RANGE_DAYS = 370;
@@ -108,6 +114,188 @@ const documentOverlapsRange = (
     row.periodStart < toExclusive &&
     row.periodEnd >= fromInclusive,
   );
+
+const jsonRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+
+const confirmedReviewEvidence = (document: ProviderDocumentRow) => {
+  const review = document.artifact.inboxItem;
+  if (
+    !review ||
+    review.status !== AccountingInboxStatus.CONFIRMED ||
+    review.materializedEntityType !==
+      AccountingInboxMaterializedEntityType.PROVIDER_FINANCIAL_DOCUMENT ||
+    review.materializedEntityStableId !== document.documentStableId ||
+    !review.reviewedAt ||
+    !review.reviewedByUserStableId
+  ) {
+    return null;
+  }
+  return {
+    inboxItemStableId: review.inboxItemStableId,
+    status: review.status,
+    materializedEntityType: review.materializedEntityType,
+    materializedEntityStableId: review.materializedEntityStableId,
+    reviewedAt: review.reviewedAt.toISOString(),
+    reviewedByUserStableId: review.reviewedByUserStableId,
+    version: review.version,
+  };
+};
+
+const isFantuanAdjustmentDetail = (document: ProviderDocumentRow): boolean =>
+  document.provider === AccountingFinancialProvider.FANTUAN &&
+  document.documentType === AccountingFinancialDocumentType.OTHER &&
+  jsonRecord(document.rawMetadata).evidenceKind ===
+    FANTUAN_ADJUSTMENT_DETAIL_EVIDENCE_KIND;
+
+type ProviderSettlementSupplementaryEvidence = {
+  documentStableId: string;
+  provider: AccountingFinancialProvider;
+  documentType: AccountingFinancialDocumentType;
+  businessIdentityKey: string;
+  revision: number;
+  providerDocumentRef: string | null;
+  storeStableId: string;
+  periodStart: string;
+  periodEnd: string;
+  reviewEvidence: NonNullable<ReturnType<typeof confirmedReviewEvidence>>;
+};
+
+const resolveFantuanAdjustmentDetail = (
+  statement: ProviderDocumentRow,
+  candidateDocuments: ProviderDocumentRow[],
+): {
+  lines: ProviderDocumentRow['lines'];
+  blockReasons: string[];
+  supplementaryEvidenceDocuments: ProviderSettlementSupplementaryEvidence[];
+} => {
+  const summaryAdjustments = statement.lines.filter(
+    (line) =>
+      line.component === AccountingFinancialComponent.ADJUSTMENT &&
+      line.amountCents !== 0,
+  );
+  if (
+    statement.provider !== AccountingFinancialProvider.FANTUAN ||
+    statement.documentType !== AccountingFinancialDocumentType.STATEMENT ||
+    summaryAdjustments.length === 0
+  ) {
+    return {
+      lines: statement.lines,
+      blockReasons: [],
+      supplementaryEvidenceDocuments: [],
+    };
+  }
+
+  const controlLines = statement.lines.map((line) =>
+    line.component === AccountingFinancialComponent.ADJUSTMENT
+      ? {
+          ...line,
+          postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+        }
+      : line,
+  );
+  const periodStart = isoDate(statement.periodStart);
+  const periodEnd = isoDate(statement.periodEnd);
+  if (!periodStart || !periodEnd) {
+    return {
+      lines: controlLines,
+      blockReasons: ['FANTUAN_ADJUSTMENT_DETAIL_PERIOD_MISSING'],
+      supplementaryEvidenceDocuments: [],
+    };
+  }
+
+  const details = candidateDocuments.filter(
+    (document) =>
+      isFantuanAdjustmentDetail(document) &&
+      isoDate(document.periodStart) === periodStart &&
+      isoDate(document.periodEnd) === periodEnd,
+  );
+  if (details.length === 0) {
+    return {
+      lines: controlLines,
+      blockReasons: ['FANTUAN_ADJUSTMENT_DETAIL_REQUIRED'],
+      supplementaryEvidenceDocuments: [],
+    };
+  }
+  if (details.length !== 1) {
+    return {
+      lines: controlLines,
+      blockReasons: ['FANTUAN_ADJUSTMENT_DETAIL_AMBIGUOUS'],
+      supplementaryEvidenceDocuments: [],
+    };
+  }
+
+  const detail = details[0];
+  const reviewEvidence = confirmedReviewEvidence(detail);
+  if (!reviewEvidence || !detail.storeStableId) {
+    return {
+      lines: controlLines,
+      blockReasons: ['FANTUAN_ADJUSTMENT_DETAIL_NOT_CONFIRMED'],
+      supplementaryEvidenceDocuments: [],
+    };
+  }
+
+  const unsupportedLines = detail.lines.filter(
+    (line) =>
+      line.component !== AccountingFinancialComponent.ADJUSTMENT ||
+      line.postingTreatment !==
+        AccountingFinancialPostingTreatment.CONTROL_TOTAL ||
+      !FANTUAN_ADJUSTMENT_SUPPORTED_RAW_CODES.has(line.rawCode ?? ''),
+  );
+  if (unsupportedLines.length > 0) {
+    return {
+      lines: controlLines,
+      blockReasons: ['FANTUAN_ADJUSTMENT_DETAIL_UNSUPPORTED_FEE_TYPE'],
+      supplementaryEvidenceDocuments: [],
+    };
+  }
+
+  const summaryNetCents = summaryAdjustments.reduce(
+    (sum, line) => sum + line.amountCents,
+    0,
+  );
+  const detailNetCents = detail.lines.reduce(
+    (sum, line) => sum + line.amountCents,
+    0,
+  );
+  if (
+    !Number.isSafeInteger(summaryNetCents) ||
+    !Number.isSafeInteger(detailNetCents) ||
+    summaryNetCents !== detailNetCents
+  ) {
+    return {
+      lines: controlLines,
+      blockReasons: ['FANTUAN_ADJUSTMENT_DETAIL_NET_MISMATCH'],
+      supplementaryEvidenceDocuments: [],
+    };
+  }
+
+  const detailPostingLines = detail.lines.map((line, index) => ({
+    ...line,
+    lineNo: statement.lines.length + index + 1,
+    postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+  }));
+  return {
+    lines: [...controlLines, ...detailPostingLines],
+    blockReasons: [],
+    supplementaryEvidenceDocuments: [
+      {
+        documentStableId: detail.documentStableId,
+        provider: detail.provider,
+        documentType: detail.documentType,
+        businessIdentityKey: detail.businessIdentityKey,
+        revision: detail.revision,
+        providerDocumentRef: detail.providerDocumentRef,
+        storeStableId: detail.storeStableId,
+        periodStart,
+        periodEnd,
+        reviewEvidence,
+      },
+    ],
+  };
+};
 
 type ProviderSettlementAccountRequirement = {
   accountClass: AccountingAccountFact['accountClass'];
@@ -282,6 +470,10 @@ export class AccountingProviderSettlementPreviewService {
             .toUTC()
             .toJSDate()
         : null;
+      const fantuanAdjustmentResolution = resolveFantuanAdjustmentDetail(
+        document,
+        documents,
+      );
       const basePlan = occurrenceDate
         ? buildProviderSettlementDocumentPlan({
             document: {
@@ -293,7 +485,7 @@ export class AccountingProviderSettlementPreviewService {
               periodStart,
               periodEnd,
               currency: document.currency,
-              lines: document.lines,
+              lines: fantuanAdjustmentResolution.lines,
             },
             salesAuthority,
             occurredAt: occurrenceDate,
@@ -309,6 +501,8 @@ export class AccountingProviderSettlementPreviewService {
       const currentPosting = existingByDocumentStableId.get(
         document.documentStableId,
       );
+      const supplementaryEvidenceDocuments =
+        fantuanAdjustmentResolution.supplementaryEvidenceDocuments;
       const review = document.artifact.inboxItem;
       const reviewEvidence = review
         ? {
@@ -398,6 +592,7 @@ export class AccountingProviderSettlementPreviewService {
           : []),
         ...(requiresMutationAuthority ? reviewBlocks : []),
         ...(priorPostedRevision ? ['SUPERSEDED_REVISION_ALREADY_POSTED'] : []),
+        ...fantuanAdjustmentResolution.blockReasons,
         ...accountPrerequisites.flatMap((account) => account.blockReasons),
       ];
       const status = currentPosting
@@ -417,6 +612,9 @@ export class AccountingProviderSettlementPreviewService {
         currency: document.currency,
         salesAuthority,
         latestRevisionInRequestedRange,
+        ...(supplementaryEvidenceDocuments.length > 0
+          ? { supplementaryEvidenceDocuments }
+          : {}),
         reviewEvidence,
         coverageEvidence: coverage
           ? {

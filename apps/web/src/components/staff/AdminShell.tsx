@@ -45,6 +45,7 @@ type AdminNavigationItem = {
   labelEn: string;
   icon: LucideIcon;
   match?: StaffNavigationMatch;
+  roles?: AdminShellProps['role'][];
 };
 
 type AdminPageSection = {
@@ -64,10 +65,13 @@ type AdminCategory = {
   pageSections?: AdminPageSection[];
 };
 
-function buildCategories(locale: Locale): AdminCategory[] {
+function buildCategories(
+  locale: Locale,
+  role: AdminShellProps['role'],
+): AdminCategory[] {
   const adminRoot = `/${locale}/admin`;
 
-  return [
+  const categories: AdminCategory[] = [
     {
       id: 'brand',
       href: `${adminRoot}/brand`,
@@ -228,9 +232,23 @@ function buildCategories(locale: Locale): AdminCategory[] {
           labelEn: 'UberEats',
           icon: Truck,
         },
+        {
+          href: `${adminRoot}/delivery-dispatch`,
+          labelZh: '配送异常',
+          labelEn: 'Delivery reconciliation',
+          icon: Activity,
+          roles: ['ADMIN'],
+        },
       ],
     },
   ];
+
+  return categories.map((category) => ({
+    ...category,
+    items: category.items.filter(
+      (item) => !item.roles || item.roles.includes(role),
+    ),
+  }));
 }
 
 function AdminBrand({ locale }: { locale: Locale }) {
@@ -452,7 +470,7 @@ export function AdminShell({ children, locale, role, onLogout }: AdminShellProps
   const searchParams = useSearchParams();
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const isZh = locale === 'zh';
-  const categories = buildCategories(locale);
+  const categories = buildCategories(locale, role);
   const activeCategory = resolveActiveCategory(pathname, categories);
   const selectedStoreStableId = searchParams.get('store')?.trim() ?? '';
   const isPosDevicesPage = pathname.endsWith('/pos-devices');

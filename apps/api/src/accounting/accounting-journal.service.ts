@@ -1595,6 +1595,80 @@ export class AccountingJournalService {
       );
     }
 
+    for (const evidence of authority.supplementaryEvidenceDocuments ?? []) {
+      const supplementary =
+        await tx.accountingProviderFinancialDocument.findUnique({
+          where: { documentStableId: evidence.documentStableId },
+          select: {
+            documentStableId: true,
+            provider: true,
+            documentType: true,
+            businessIdentityKey: true,
+            revision: true,
+            storeStableId: true,
+            providerDocumentRef: true,
+            periodStart: true,
+            periodEnd: true,
+            artifact: {
+              select: {
+                inboxItem: {
+                  select: {
+                    inboxItemStableId: true,
+                    status: true,
+                    materializedEntityType: true,
+                    materializedEntityStableId: true,
+                    reviewedAt: true,
+                    reviewedByUserStableId: true,
+                    version: true,
+                  },
+                },
+              },
+            },
+          },
+        });
+      const supplementaryLatest =
+        await tx.accountingProviderFinancialDocument.findFirst({
+          where: {
+            provider: evidence.provider,
+            documentType: evidence.documentType,
+            businessIdentityKey: evidence.businessIdentityKey,
+          },
+          orderBy: { revision: 'desc' },
+          select: { documentStableId: true, revision: true },
+        });
+      const supplementaryReview = supplementary?.artifact.inboxItem ?? null;
+      if (
+        !supplementary ||
+        supplementary.provider !== evidence.provider ||
+        supplementary.documentType !== evidence.documentType ||
+        supplementary.businessIdentityKey !== evidence.businessIdentityKey ||
+        supplementary.revision !== evidence.revision ||
+        supplementary.storeStableId !== evidence.storeStableId ||
+        supplementary.providerDocumentRef !== evidence.providerDocumentRef ||
+        dateOnly(supplementary.periodStart) !== evidence.periodStart ||
+        dateOnly(supplementary.periodEnd) !== evidence.periodEnd ||
+        supplementaryLatest?.documentStableId !== evidence.documentStableId ||
+        supplementaryLatest?.revision !== evidence.revision ||
+        !supplementaryReview ||
+        supplementaryReview.inboxItemStableId !==
+          evidence.reviewEvidence.inboxItemStableId ||
+        supplementaryReview.status !== evidence.reviewEvidence.status ||
+        supplementaryReview.materializedEntityType !==
+          evidence.reviewEvidence.materializedEntityType ||
+        supplementaryReview.materializedEntityStableId !==
+          evidence.reviewEvidence.materializedEntityStableId ||
+        supplementaryReview.reviewedAt?.toISOString() !==
+          evidence.reviewEvidence.reviewedAt ||
+        supplementaryReview.reviewedByUserStableId !==
+          evidence.reviewEvidence.reviewedByUserStableId ||
+        supplementaryReview.version !== evidence.reviewEvidence.version
+      ) {
+        throw new ConflictException(
+          `provider settlement supplementary evidence changed after preview: ${evidence.documentStableId}`,
+        );
+      }
+    }
+
     const coverage = await tx.accountingProviderFinancialCoverage.findFirst({
       where: {
         provider: authority.provider,

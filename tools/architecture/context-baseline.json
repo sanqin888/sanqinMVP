@@ -526,6 +526,7 @@
     "ownerService": "apps/api/src/deliveries/uber-direct.service.ts",
     "ownerModule": "apps/api/src/deliveries/deliveries.module.ts",
     "publicSurface": "apps/api/src/deliveries/public-api.ts",
+    "useCase": "apps/api/src/orders/order-delivery-dispatch.use-case.ts",
     "fulfillmentProcessor": "apps/api/src/orders/processors/fulfillment.processor.ts",
     "ordersModule": "apps/api/src/orders/orders.module.ts"
   },
@@ -553,6 +554,12 @@
   },
   "ordersDeliveryDispatchUseCaseDecomposition": {
     "useCase": "apps/api/src/orders/order-delivery-dispatch.use-case.ts",
+    "journal": "apps/api/src/orders/order-delivery-dispatch-journal.ts",
+    "journalService": "apps/api/src/orders/order-delivery-dispatch-journal.service.ts",
+    "reconciliationService": "apps/api/src/orders/order-delivery-dispatch-reconciliation.service.ts",
+    "durableProcessor": "apps/api/src/orders/processors/order-delivery-dispatch.processor.ts",
+    "adminController": "apps/api/src/orders/admin-order-delivery-dispatch.controller.ts",
+    "ordersService": "apps/api/src/orders/orders.service.ts",
     "fulfillmentProcessor": "apps/api/src/orders/processors/fulfillment.processor.ts",
     "ordersModule": "apps/api/src/orders/orders.module.ts"
   },
@@ -594,7 +601,7 @@
     "retiredLoyaltyProcessor": "apps/api/src/loyalty/loyalty-event.processor.ts",
     "ordersService": "apps/api/src/orders/orders.service.ts",
     "ordersModule": "apps/api/src/orders/orders.module.ts",
-    "ordersEventBus": "apps/api/src/orders/order-events.bus.ts",
+    "retiredOrdersEventBus": "apps/api/src/orders/order-events.bus.ts",
     "ordersPublicSurface": "apps/api/src/orders/public-api.ts",
     "retiredMessagingEventBus": "apps/api/src/messaging/order-events.bus.ts",
     "messagingModule": "apps/api/src/messaging/messaging.module.ts",

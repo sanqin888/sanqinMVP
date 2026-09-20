@@ -320,6 +320,21 @@ export class AccountingProviderSettlementExecutionService {
         reviewedByUserStableId: review.reviewedByUserStableId,
         version: review.version,
       },
+      ...((document.supplementaryEvidenceDocuments?.length ?? 0) > 0
+        ? {
+            supplementaryEvidenceDocuments: (
+              document.supplementaryEvidenceDocuments ?? []
+            ).map((evidence) => ({
+              ...evidence,
+              reviewEvidence: {
+                ...evidence.reviewEvidence,
+                status: AccountingInboxStatus.CONFIRMED,
+                materializedEntityType:
+                  AccountingInboxMaterializedEntityType.PROVIDER_FINANCIAL_DOCUMENT,
+              },
+            })),
+          }
+        : {}),
       coverageEvidence: {
         coverageStableId: coverage.coverageStableId,
         financialHistoryRequiredFrom: coverage.financialHistoryRequiredFrom,

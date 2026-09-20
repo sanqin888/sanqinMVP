@@ -97,16 +97,22 @@ These items may run independently or in small focused PRs. They should not be bu
 
 Priority: **P0 / FIRST RELIABILITY PROJECT**  
 Complexity: **H**  
-External gate: **none for source hardening**  
+State: **SOURCE REVIEWED / PRODUCTION VERIFICATION PENDING / DIRECT REPLACEMENT / NO MIGRATION**  
+External gate: **production verification only**  
 Blocks: no current product task, but removes a real duplicate/missing-delivery failure window.
 
-Current paid-order Uber Direct dispatch is still initiated by the private in-memory `order.paid.verified` bus. `OrderDeliveryDispatchUseCase` calls the provider and only afterwards persists `Order.externalDeliveryId`. If provider creation succeeds but that persistence/process step fails, current source logs `uber_direct_delivery_created_persistence_failed` and returns without a durable reconciliation fact.
+The historical private `order.paid.verified` Uber Direct fast path is removed rather than retained behind a compatibility flag. The 2026-09-19 source hardening directly replaces it with an Orders-owned durable `OpsEvent` attempt journal/processor plus ADMIN+MFA reconciliation. There is no historical Uber Direct Order population to migrate. Each dispatch cycle performs the initial provider create plus up to **3 automatic retries** only when the provider outcome proves retry is safe, with 2s/5s/10s backoff. Local validation failures skip pointless retries and notify immediately. Timeout/no-response/5xx/ambiguous outcomes are UNKNOWN and never automatically retried because another POST could create a duplicate courier.
+
+FAILED / UNKNOWN reuse the existing Admin delivery-dispatch Email-first / SMS-fallback alert path and deep-link to the Admin `/delivery-dispatch` page. After the automatic retry allowance is exhausted, the alert/page preserves the per-attempt HTTP status/reason/error history; the Admin page also exposes the checkout-derived recipient, phone, address and delivery instructions needed for manual Dashboard creation. For FAILED, Admin may fix the cause and start a new SanQ cycle (again with up to 3 safe automatic retries), or create a delivery manually in Uber Direct Dashboard and then return to SanQ to bind its internal `orderUuid`. For UNKNOWN, Dashboard verification by SanQ order number is mandatory before either binding an existing delivery or authorizing a new SanQ attempt.
 
 Target:
 
 - make dispatch intent/result durably recoverable and idempotent;
-- prevent a restart/retry from blindly creating a second courier delivery;
+- prevent restart/network ambiguity from blindly creating a second courier delivery;
+- automatically absorb transient/repeated **provably safe** failures with up to 3 retries before notifying Admin;
+- preserve detailed failure evidence for operational diagnosis;
 - support reconciliation after “provider succeeded / local persistence unknown”;
+- actively alert Admin recipients through the existing delivery-dispatch notification route and provide a guarded Admin reconciliation UI;
 - preserve existing Orders / Uber Direct ownership boundaries;
 - do not deepen the current CheckoutIntent dependency merely to solve replay.
 
@@ -628,7 +634,18 @@ When Uber enables the required production path:
 - preserve the already-closed architecture boundaries;
 - after Production Verification succeeds, inventory and remove Test Store/sandbox data through a separately reviewed cleanup.
 
-### 8.5 Phase 9 deferred real-world evidence
+### 8.5 Fantuan settlement Adjustment decomposition
+
+State: **LOCAL SOURCE / REVIEW PENDING / DEPENDENCY LOCK PENDING / NO MIGRATION**  
+Complexity: **M / ACCOUNTING PROVIDER-EVIDENCE CORRECTNESS**
+
+A real August 2026 Fantuan settlement exposed a non-zero Summary `Adjustment` of **2694 cents**. The provider Detail workbook proves that the net is composed of two explicit `Order type = Adjustment` rows: `Fee type = Compensation` **+3354 cents** and `Fee type = Deduction` **-660 cents**. The Summary Sales/Sales Tax/Commission totals already equal the ordinary Order rows and exclude the compensation, so the adjustment cannot be safely guessed as Sales/Tax or posted as one generic component.
+
+The local correction keeps the Summary as the sole monthly settlement authority and treats the XLSX Detail as supplementary evidence only. XLSX classification is based on stable columns, not remarks: only `Order type = Adjustment` rows are considered, and `Fee type = Compensation / Deduction` receive explicit canonical raw codes while unknown fee types remain fail-closed. A non-zero Summary Adjustment is READY only when exactly one confirmed same-period Detail exists, every Adjustment fee type is supported, and the Detail net equals the Summary amount exactly. The Summary Adjustment becomes control evidence; Compensation posts to Other Operating Revenue, Deduction to Chargeback/Adjustment Expense, and Fantuan Pending receives their net. The Detail never creates a second settlement Journal.
+
+Replay authority conditionally binds the supplementary document identity/revision/review evidence and revalidates it inside the existing Serializable settlement transaction. Existing provider plans with no supplementary evidence omit the new optional authority field so historical Uber/Clover plan hashes and idempotency remain unchanged. The change stays entirely inside Accounting plus the existing Accounting Inbox Web adapter; there is no Prisma/schema/migration or new context direction. Direct XLSX parsing requires the explicitly authorized API dependency `@keep-lts/xlsx`; the manifest is locally changed, but `pnpm-lock.yaml` must be generated with repository-pinned pnpm before remote submission because the MCP workspace exposes no package-manager execution and the repository forbids hand-editing the lockfile.
+
+### 8.6 Phase 9 deferred real-world evidence
 
 State: **EVENT-TRIGGERED EVIDENCE ONLY — DO NOT REOPEN PHASE 9**
 

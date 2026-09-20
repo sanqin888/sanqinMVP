@@ -134,4 +134,133 @@ describe('UberDirectService characterization', () => {
 
     expect(post).not.toHaveBeenCalled();
   });
+
+  it('classifies a definitive provider 4xx rejection as safe to retry automatically', async () => {
+    const post = jest.fn().mockRejectedValue({
+      isAxiosError: true,
+      response: {
+        status: 400,
+        data: { message: 'invalid delivery request' },
+      },
+      message: 'Request failed with status code 400',
+    });
+    const service = new UberDirectService({
+      axiosRef: { post },
+    } as unknown as HttpService);
+
+    await expect(
+      service.createDelivery({
+        orderRef: 'SQT2609051235',
+        totalCents: 1000,
+        items: [],
+        destination: {
+          name: 'Jane Doe',
+          phone: '+14165550123',
+          addressLine1: '100 King St W',
+          city: 'Toronto',
+          province: 'ON',
+          postalCode: 'M5X 1A9',
+        },
+      }),
+    ).rejects.toMatchObject({
+      name: 'UberDirectDeliveryDispatchError',
+      failureKind: 'SAFE_TO_RETRY',
+      statusCode: 400,
+    });
+  });
+
+  it('classifies Direct rate-limit 429 as SAFE_TO_RETRY because Uber rejected the request', async () => {
+    const post = jest.fn().mockRejectedValue({
+      isAxiosError: true,
+      response: {
+        status: 429,
+        data: { code: 'customer_limited', message: 'rate limited' },
+      },
+      message: 'Request failed with status code 429',
+    });
+    const service = new UberDirectService({
+      axiosRef: { post },
+    } as unknown as HttpService);
+
+    await expect(
+      service.createDelivery({
+        orderRef: 'SQT2609051238',
+        totalCents: 1000,
+        items: [],
+        destination: {
+          name: 'Jane Doe',
+          phone: '+14165550123',
+          addressLine1: '100 King St W',
+          city: 'Toronto',
+          province: 'ON',
+          postalCode: 'M5X 1A9',
+        },
+      }),
+    ).rejects.toMatchObject({
+      name: 'UberDirectDeliveryDispatchError',
+      failureKind: 'SAFE_TO_RETRY',
+      statusCode: 429,
+    });
+  });
+
+  it('classifies a timeout after the create request starts as UNKNOWN', async () => {
+    const post = jest.fn().mockRejectedValue({
+      isAxiosError: true,
+      message: 'timeout of 20000ms exceeded',
+    });
+    const service = new UberDirectService({
+      axiosRef: { post },
+    } as unknown as HttpService);
+
+    await expect(
+      service.createDelivery({
+        orderRef: 'SQT2609051236',
+        totalCents: 1000,
+        items: [],
+        destination: {
+          name: 'Jane Doe',
+          phone: '+14165550123',
+          addressLine1: '100 King St W',
+          city: 'Toronto',
+          province: 'ON',
+          postalCode: 'M5X 1A9',
+        },
+      }),
+    ).rejects.toMatchObject({
+      name: 'UberDirectDeliveryDispatchError',
+      failureKind: 'UNKNOWN',
+    });
+  });
+
+  it('classifies a provider success response without a delivery id as UNKNOWN', async () => {
+    const post = jest.fn().mockResolvedValue({
+      data: {
+        external_delivery_id: 'SQT2609051237',
+        status: 'pending',
+      },
+    });
+    const service = new UberDirectService({
+      axiosRef: { post },
+    } as unknown as HttpService);
+
+    await expect(
+      service.createDelivery({
+        orderRef: 'SQT2609051237',
+        totalCents: 1000,
+        items: [],
+        destination: {
+          name: 'Jane Doe',
+          phone: '+14165550123',
+          addressLine1: '100 King St W',
+          city: 'Toronto',
+          province: 'ON',
+          postalCode: 'M5X 1A9',
+        },
+      }),
+    ).rejects.toMatchObject({
+      name: 'UberDirectDeliveryDispatchError',
+      failureKind: 'UNKNOWN',
+      message: 'Uber Direct response missing delivery id',
+    });
+  });
 });

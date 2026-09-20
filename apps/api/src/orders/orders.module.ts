@@ -2,10 +2,11 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from './orders-prisma';
 import { OrdersController } from './orders.controller';
-import { OrderEventsBus } from './order-events.bus';
 import { OrderInvoiceUseCase } from './order-invoice.use-case';
 import { OrderReadyNotificationUseCase } from './order-ready-notification.use-case';
 import { OrderDeliveryDispatchUseCase } from './order-delivery-dispatch.use-case';
+import { OrderDeliveryDispatchJournalService } from './order-delivery-dispatch-journal.service';
+import { OrderDeliveryDispatchReconciliationService } from './order-delivery-dispatch-reconciliation.service';
 import { OrderPrepTimeQueryUseCase } from './order-prep-time-query.use-case';
 import { OrderPublicSummaryQueryUseCase } from './order-public-summary-query.use-case';
 import { OrderManagementQueryUseCase } from './order-management-query.use-case';
@@ -22,6 +23,7 @@ import { CatalogOrderFactsModule } from '../menu/public-api';
 import { OrderBenefitsReadModule } from '../benefits/public-api/order-benefits-read.module';
 import { NotificationProcessor } from './processors/notification.processor';
 import { FulfillmentProcessor } from './processors/fulfillment.processor';
+import { OrderDeliveryDispatchProcessor } from './processors/order-delivery-dispatch.processor';
 import { OrderLifecycleOutboxProcessor } from './processors/order-lifecycle-outbox.processor';
 import { ScheduledOrderProcessor } from './processors/scheduled-order.processor';
 import { PrintPosPayloadService } from './print-pos-payload.service';
@@ -40,6 +42,7 @@ import { PAYMENT_ORDER_PREPARATION } from './payment-order-preparation.contract'
 import { PAYMENT_ORDER_FINALIZATION } from './payment-order-finalization.contract';
 import { AdminMemberOrdersController } from './admin-member-orders.controller';
 import { AdminMemberOrdersReadService } from './admin-member-orders-read.service';
+import { AdminOrderDeliveryDispatchController } from './admin-order-delivery-dispatch.controller';
 
 @Module({
   imports: [
@@ -55,11 +58,16 @@ import { AdminMemberOrdersReadService } from './admin-member-orders-read.service
     CatalogOrderFactsModule,
     OrderBenefitsReadModule,
   ],
-  controllers: [OrdersController, AdminMemberOrdersController],
+  controllers: [
+    OrdersController,
+    AdminMemberOrdersController,
+    AdminOrderDeliveryDispatchController,
+  ],
   providers: [
-    OrderEventsBus,
     OrderInvoiceUseCase,
     OrderReadyNotificationUseCase,
+    OrderDeliveryDispatchJournalService,
+    OrderDeliveryDispatchReconciliationService,
     OrderDeliveryDispatchUseCase,
     OrderPrepTimeQueryUseCase,
     OrderPublicSummaryQueryUseCase,
@@ -96,6 +104,7 @@ import { AdminMemberOrdersReadService } from './admin-member-orders-read.service
     OrderItemSnapshotBuilder,
     NotificationProcessor,
     FulfillmentProcessor,
+    OrderDeliveryDispatchProcessor,
     OrderLifecycleOutboxProcessor,
     ScheduledOrderProcessor,
   ],

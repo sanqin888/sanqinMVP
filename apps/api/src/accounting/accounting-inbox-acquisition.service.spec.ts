@@ -131,6 +131,9 @@ describe('AccountingInboxAcquisitionService', () => {
     const providerFinancial = {
       parseAndMaterialize: jest.fn().mockResolvedValue({ matched: false }),
       parseForInboxSuggestion: jest.fn().mockResolvedValue({ matched: false }),
+      parseFantuanAdjustmentDetailForInboxSuggestion: jest
+        .fn()
+        .mockResolvedValue({ matched: false }),
       recordUnsupportedUberApiParse: jest.fn().mockResolvedValue(undefined),
     };
     return {
@@ -142,6 +145,49 @@ describe('AccountingInboxAcquisitionService', () => {
       providerFinancial,
     };
   }
+
+  it('accepts manual XLSX evidence and routes it only to the Fantuan adjustment-detail parser', async () => {
+    const { service, operations, providerFinancial } = makeService();
+    providerFinancial.parseFantuanAdjustmentDetailForInboxSuggestion.mockResolvedValue(
+      {
+        matched: true,
+        provider: AccountingFinancialProvider.FANTUAN,
+      },
+    );
+    const xlsxBuffer = Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x01, 0x02]);
+
+    const result = await service.acquireManualFile({
+      originalname: 'Fantuan_Settlement_Details2026-08-01_2026-08-31_en.xlsx',
+      mimetype:
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      buffer: xlsxBuffer,
+    });
+
+    expect(result.kind).toBe(AccountingArtifactKind.OTHER);
+    expect(operations.registerInboxArtifact).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: AccountingArtifactKind.OTHER,
+        mimeType:
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        originalFilename:
+          'Fantuan_Settlement_Details2026-08-01_2026-08-31_en.xlsx',
+        storedUrl: expect.stringMatching(
+          /^\/api\/v1\/accounting\/files\/inbox\/.+\.xlsx$/,
+        ) as unknown,
+      }),
+    );
+    expect(
+      providerFinancial.parseFantuanAdjustmentDetailForInboxSuggestion,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        artifactStableId: 'acctart_other',
+        buffer: xlsxBuffer,
+        originalFilename:
+          'Fantuan_Settlement_Details2026-08-01_2026-08-31_en.xlsx',
+      }),
+    );
+    expect(providerFinancial.parseForInboxSuggestion).not.toHaveBeenCalled();
+  });
 
   it('sends manual PDF evidence through SourceArtifact and suggestion-only parsing', async () => {
     const { service, operations, providerFinancial } = makeService();

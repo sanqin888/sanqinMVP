@@ -130,18 +130,26 @@ export class AccountingInboxArtifactsController {
           : extension === '.webp'
             ? 'image/webp'
             : null;
-    const contentType =
-      (kind === 'bills' || kind === 'inbox') && extension === '.pdf'
-        ? 'application/pdf'
-        : (kind === 'uber-reports' || kind === 'inbox') && extension === '.csv'
-          ? 'text/csv; charset=utf-8'
-          : (kind === 'bills' ||
-                kind === 'receipts' ||
-                kind === 'inbox' ||
-                kind === 'image-retention') &&
-              imageContentType
-            ? imageContentType
-            : null;
+    let contentType: string | null = null;
+    if ((kind === 'bills' || kind === 'inbox') && extension === '.pdf') {
+      contentType = 'application/pdf';
+    } else if (
+      (kind === 'uber-reports' || kind === 'inbox') &&
+      extension === '.csv'
+    ) {
+      contentType = 'text/csv; charset=utf-8';
+    } else if (kind === 'inbox' && extension === '.xlsx') {
+      contentType =
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    } else if (
+      (kind === 'bills' ||
+        kind === 'receipts' ||
+        kind === 'inbox' ||
+        kind === 'image-retention') &&
+      imageContentType
+    ) {
+      contentType = imageContentType;
+    }
     if (!contentType || safeName !== fileName) {
       throw new NotFoundException('accounting file not found');
     }

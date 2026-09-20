@@ -5,16 +5,9 @@ import {
   PaymentMethod,
   Prisma,
 } from '@prisma/client';
-import {
-  Injectable,
-  Logger,
-  OnModuleDestroy,
-  OnModuleInit,
-} from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
-import { OrderEventsBus } from '../order-events.bus';
 import { PrismaService } from '../../prisma/prisma.service';
-import { OrderDeliveryDispatchUseCase } from '../order-delivery-dispatch.use-case';
 import type { PrintPosPayloadDto } from '../order-print-payload.contract';
 import type { OrderItemOptionsSnapshot } from '../order-item-options';
 import type { OrderItemDto } from '../dto/order.dto';
@@ -30,30 +23,15 @@ import {
 } from '../pos-print-dispatch.contract';
 
 @Injectable()
-export class FulfillmentProcessor implements OnModuleInit, OnModuleDestroy {
+export class FulfillmentProcessor {
   private readonly logger = new Logger(FulfillmentProcessor.name);
 
-  private readonly onPaid = async (payload: {
-    orderId: string;
-    pickupTime?: string;
-  }) => this.orderDeliveryDispatchUseCase.handle(payload);
-
   constructor(
-    private readonly events: OrderEventsBus,
     private readonly prisma: PrismaService,
-    private readonly orderDeliveryDispatchUseCase: OrderDeliveryDispatchUseCase,
     private readonly eventEmitter: EventEmitter2,
     private readonly printPosPayloadService: PrintPosPayloadService,
     private readonly orderLabelPlanService: OrderLabelPlanService,
   ) {}
-
-  onModuleInit(): void {
-    this.events.onOrderPaidVerified(this.onPaid);
-  }
-
-  onModuleDestroy(): void {
-    this.events.offOrderPaidVerified(this.onPaid);
-  }
 
   /** Durable prep_started handoff to the Print-owned unique initial job. */
   async handleAcceptedLifecycle(payload: {

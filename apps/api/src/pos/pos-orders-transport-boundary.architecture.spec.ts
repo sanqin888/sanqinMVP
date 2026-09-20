@@ -19,7 +19,7 @@ describe('Orders ↔ POS transport boundary', () => {
     );
 
     expect(controller).toContain("@Controller('orders')");
-    expect(module).toContain('controllers: [OrdersController,');
+    expect(module).toMatch(/controllers:\s*\[[\s\S]*\bOrdersController,/);
     expect(appModule).toContain(
       "import { OrdersModule } from './orders/public-api'",
     );

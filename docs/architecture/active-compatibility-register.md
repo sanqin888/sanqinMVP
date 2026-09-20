@@ -2,7 +2,7 @@
 
 Machine-readable source:
 `docs/architecture/active-compatibility-register.json`. Repository-wide modularization closeout base:
-`origin/dev@1b18fb00` (2026-09-19). The register intentionally remains non-empty because Clover provider/cutover compatibility is tracked independently of the closed modularization program.
+`origin/dev@1b18fb00` (2026-09-19). The register intentionally remains non-empty because the Clover provider/payment cutovers are tracked independently of the closed modularization program.
 
 Operational fallback (retry, provider timeout recovery, email-to-SMS fallback, and
 safe default values unrelated to an old version) is not compatibility debt.
@@ -13,7 +13,6 @@ safe default values unrelated to an old version) is not compatibility debt.
 |---|---|---|---|---|
 | `payments.pos-card-legacy.v1` | active / pre-production | direct paid Order → Unified Payment Core + Terminal + finalize | POS ↔ Clover realtime/recovery complete; real-device acceptance; one settlement cycle reconciled; pre-cutover Accounting facts resolved; clean production stability window; legacy calls zero | Phase J cleanup after Terminal synchronization/cutover stability |
 | `payments.web-checkout-v1.v1` | guarded production | CheckoutIntent/Clover v1 Web path → Unified Payment Core + v3 truth | Test App/device acceptance complete; App installed/OAuth-authorized on operating production merchant; fresh production-merchant correlation audit passes; Web cutover accepted; one settlement cycle reconciled; old calls zero before compatibility deletion | Deferred until production-merchant Unified authorization and accepted cutover |
-
 The payment entries are no longer governed by a whole-context freeze. The POS
 Clover Terminal path is pre-production and may be structurally modularized before
 Clover real-device access is restored, provided the live Web Ecommerce path and

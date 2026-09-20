@@ -28,7 +28,6 @@ import type {
   CatalogOrderItemMaterializationFact,
 } from '../menu/public-api';
 import type { OrderReadyNotificationPort } from '../notifications/public-api';
-import { OrderEventsBus } from './order-events.bus';
 import { OrderReadyNotificationUseCase } from './order-ready-notification.use-case';
 import { DeliveryType } from '@prisma/client';
 import { CreateOrderInput } from '@shared/order';
@@ -177,11 +176,7 @@ describe('OrdersService', () => {
   let locationGeocoder: { geocode: jest.Mock };
   let orderReadyNotification: { notifyOrderReady: jest.Mock };
   let orderReadyNotificationUseCase: OrderReadyNotificationUseCase;
-  let orderEventsBus: OrderEventsBus;
   let orderItemSnapshotBuilder: OrderItemSnapshotBuilder;
-  let emitOrderPaidVerified: jest.SpiedFunction<
-    OrderEventsBus['emitOrderPaidVerified']
-  >;
   beforeEach(() => {
     prisma = {
       $transaction: jest
@@ -322,13 +317,9 @@ describe('OrdersService', () => {
       orderReadyNotification as unknown as OrderReadyNotificationPort,
     );
 
-    orderEventsBus = new OrderEventsBus();
     orderItemSnapshotBuilder = new OrderItemSnapshotBuilder(
       catalogOrderFacts as unknown as CatalogOrderFactsReaderPort,
     );
-    emitOrderPaidVerified = jest
-      .spyOn(orderEventsBus, 'emitOrderPaidVerified')
-      .mockImplementation(() => undefined);
 
     service = new OrdersService(
       prisma as unknown as PrismaService,
@@ -346,7 +337,6 @@ describe('OrdersService', () => {
       catalogOrderFacts as unknown as CatalogOrderFactsReaderPort,
       locationGeocoder as unknown as LocationGeocoderPort,
       orderReadyNotificationUseCase as unknown as OrderReadyNotificationUseCase,
-      orderEventsBus,
       orderItemSnapshotBuilder as unknown as OrderItemSnapshotBuilder,
     );
   });
@@ -1127,7 +1117,6 @@ describe('OrdersService', () => {
     });
     expect(updateArgs.data.status).toBe('making');
     expect(updateArgs.data.makingAt).toBeInstanceOf(Date);
-    expect(emitOrderPaidVerified).not.toHaveBeenCalled();
   });
 
   it('propagates NotFoundException when advancing a missing order', async () => {
@@ -1506,13 +1495,6 @@ describe('OrdersService', () => {
     };
 
     return service.create(dto).then(() => {
-      expect(emitOrderPaidVerified).toHaveBeenCalledWith(
-        expect.objectContaining({
-          orderId: 'order-1',
-          amountCents: 1000,
-          redeemValueCents: 0,
-        }),
-      );
       expect(loyaltyOrderPaidSettlement.settleOrderPaid).toHaveBeenCalledWith({
         orderStableId: 'cord-1',
         subtotalCents: 1000,
@@ -1582,13 +1564,6 @@ describe('OrdersService', () => {
     // ✅ 不会删除订单
     expect(prisma.order.delete).not.toHaveBeenCalled();
 
-    expect(emitOrderPaidVerified).toHaveBeenCalledWith(
-      expect.objectContaining({
-        orderId: 'order-err',
-        amountCents: 1000,
-        redeemValueCents: 0,
-      }),
-    );
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining(
         'Cannot calculate dynamic delivery fee (missing coords)',
