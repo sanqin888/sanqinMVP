@@ -183,8 +183,7 @@ describe('AccountingProviderSettlementPreviewService', () => {
           revision: 1,
           supersedesDocumentId: null,
           storeStableId: '4750_Yonge_Street',
-          providerDocumentRef:
-            'adjustment-detail:2026-08-01:2026-08-31',
+          providerDocumentRef: 'adjustment-detail:2026-08-01:2026-08-31',
           periodStart: new Date('2026-08-01T00:00:00.000Z'),
           periodEnd: new Date('2026-08-31T00:00:00.000Z'),
           settledAt: null,
@@ -202,7 +201,8 @@ describe('AccountingProviderSettlementPreviewService', () => {
               rawCode: FANTUAN_ADJUSTMENT_RAW_CODES.COMPENSATION,
               rawName: 'Compensation',
               component: AccountingFinancialComponent.ADJUSTMENT,
-              postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+              postingTreatment:
+                AccountingFinancialPostingTreatment.CONTROL_TOTAL,
               taxRole: AccountingFinancialTaxRole.NONE,
               amountCents: 3354,
               occurredAt: null,
@@ -213,7 +213,8 @@ describe('AccountingProviderSettlementPreviewService', () => {
               rawCode: FANTUAN_ADJUSTMENT_RAW_CODES.DEDUCTION,
               rawName: 'Deduction',
               component: AccountingFinancialComponent.ADJUSTMENT,
-              postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+              postingTreatment:
+                AccountingFinancialPostingTreatment.CONTROL_TOTAL,
               taxRole: AccountingFinancialTaxRole.NONE,
               amountCents: -660,
               occurredAt: null,
@@ -233,17 +234,19 @@ describe('AccountingProviderSettlementPreviewService', () => {
           updatedAt: new Date('2026-09-19T12:00:00.000Z'),
         },
       ]),
-      readAccountingAccountFacts: jest.fn().mockResolvedValue([
-        accountFact('account_fantuan_pending', AccountingAccountClass.ASSET),
-        accountFact(
-          'account_other_operating_revenue',
-          AccountingAccountClass.REVENUE,
-        ),
-        accountFact(
-          'account_chargeback_adjustment_expense',
-          AccountingAccountClass.EXPENSE,
-        ),
-      ]),
+      readAccountingAccountFacts: jest
+        .fn()
+        .mockResolvedValue([
+          accountFact('account_fantuan_pending', AccountingAccountClass.ASSET),
+          accountFact(
+            'account_other_operating_revenue',
+            AccountingAccountClass.REVENUE,
+          ),
+          accountFact(
+            'account_chargeback_adjustment_expense',
+            AccountingAccountClass.EXPENSE,
+          ),
+        ]),
       readSettlementShadowExistingJournals: jest.fn().mockResolvedValue([]),
       readOrderSaleJournalsByFactStableIds: jest.fn().mockResolvedValue([]),
     };

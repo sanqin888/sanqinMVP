@@ -6,9 +6,7 @@ import {
   AccountingFinancialProvider,
   AccountingFinancialTaxRole,
 } from './accounting-contracts';
-import type {
-  ParsedProviderFinancialDocument,
-} from './accounting-provider-financial.parser';
+import type { ParsedProviderFinancialDocument } from './accounting-provider-financial.parser';
 import {
   FANTUAN_ADJUSTMENT_DETAIL_EVIDENCE_KIND,
   FANTUAN_ADJUSTMENT_RAW_CODES,
@@ -53,7 +51,7 @@ const textValue = (value: unknown): string => {
     return String(value).trim();
   }
   if (value instanceof Date) return value.toISOString();
-  return String(value).trim();
+  return '';
 };
 
 const moneyCents = (value: unknown): number | null => {
@@ -145,9 +143,7 @@ export function parseFantuanAdjustmentDetailXlsx(input: {
   if (rows.length === 0) return null;
 
   const normalized = rows.map(normalizedRow);
-  const headers = new Set(
-    normalized.flatMap((row) => Object.keys(row)),
-  );
+  const headers = new Set(normalized.flatMap((row) => Object.keys(row)));
   if (REQUIRED_HEADERS.some((header) => !headers.has(header))) {
     return null;
   }
@@ -177,9 +173,7 @@ export function parseFantuanAdjustmentDetailXlsx(input: {
         'filename or Settle Time rows',
     );
   }
-  if (
-    settleDates.some((date) => date < period.start || date > period.end)
-  ) {
+  if (settleDates.some((date) => date < period.start || date > period.end)) {
     throw new Error(
       'Fantuan adjustment detail contains an Adjustment outside the statement period',
     );

@@ -12,9 +12,7 @@ import type {
   AccountingJournalCreateInput,
   AccountingJournalLineInput,
 } from './accounting-journal-policy';
-import {
-  FANTUAN_ADJUSTMENT_RAW_CODES,
-} from './accounting-fantuan-adjustment-detail.contract';
+import { FANTUAN_ADJUSTMENT_RAW_CODES } from './accounting-fantuan-adjustment-detail.contract';
 
 export const PROVIDER_SETTLEMENT_SYSTEM_ACTOR =
   'system:accounting-provider-settlement';

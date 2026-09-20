@@ -80,8 +80,7 @@ export type ProviderSettlementReplacementGroupAuthorityV1 = {
     reviewedByUserStableId: string;
     version: number;
   };
-  supplementaryEvidenceDocuments?:
-    ProviderSettlementSupplementaryEvidenceAuthorityV1[];
+  supplementaryEvidenceDocuments?: ProviderSettlementSupplementaryEvidenceAuthorityV1[];
   coverageEvidence: {
     coverageStableId: string;
     financialHistoryRequiredFrom: string;

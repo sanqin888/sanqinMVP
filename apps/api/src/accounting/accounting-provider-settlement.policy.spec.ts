@@ -445,7 +445,8 @@ describe('Accounting provider settlement shadow policy', () => {
       ]),
     );
     const journalLines = new Map(
-      plan.draftJournal?.lines.map((line) => [line.accountStableId, line]) ?? [],
+      plan.draftJournal?.lines.map((line) => [line.accountStableId, line]) ??
+        [],
     );
     expect(
       journalLines.get(PROVIDER_SETTLEMENT_ACCOUNT_IDS.fantuanPending),

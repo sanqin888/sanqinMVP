@@ -477,9 +477,7 @@ export class AccountingProviderFinancialService {
       lineCount: parsed.lines.length,
       lines: parsed.lines,
       rawMetadata: parsed.rawMetadata,
-      ...(text === undefined
-        ? {}
-        : { extractedText: text.slice(0, 100_000) }),
+      ...(text === undefined ? {} : { extractedText: text.slice(0, 100_000) }),
     };
   }
 

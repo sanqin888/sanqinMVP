@@ -240,7 +240,8 @@ const resolveFantuanAdjustmentDetail = (
   const unsupportedLines = detail.lines.filter(
     (line) =>
       line.component !== AccountingFinancialComponent.ADJUSTMENT ||
-      line.postingTreatment !== AccountingFinancialPostingTreatment.CONTROL_TOTAL ||
+      line.postingTreatment !==
+        AccountingFinancialPostingTreatment.CONTROL_TOTAL ||
       !FANTUAN_ADJUSTMENT_SUPPORTED_RAW_CODES.has(line.rawCode ?? ''),
   );
   if (unsupportedLines.length > 0) {
@@ -500,6 +501,8 @@ export class AccountingProviderSettlementPreviewService {
       const currentPosting = existingByDocumentStableId.get(
         document.documentStableId,
       );
+      const supplementaryEvidenceDocuments =
+        fantuanAdjustmentResolution.supplementaryEvidenceDocuments;
       const review = document.artifact.inboxItem;
       const reviewEvidence = review
         ? {
@@ -609,11 +612,8 @@ export class AccountingProviderSettlementPreviewService {
         currency: document.currency,
         salesAuthority,
         latestRevisionInRequestedRange,
-        ...(fantuanAdjustmentResolution.supplementaryEvidenceDocuments.length > 0
-          ? {
-              supplementaryEvidenceDocuments:
-                fantuanAdjustmentResolution.supplementaryEvidenceDocuments,
-            }
+        ...(supplementaryEvidenceDocuments.length > 0
+          ? { supplementaryEvidenceDocuments }
           : {}),
         reviewEvidence,
         coverageEvidence: coverage
