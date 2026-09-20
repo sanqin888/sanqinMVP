@@ -294,7 +294,7 @@ export class OrderDeliveryDispatchJournalService {
     });
 
     return rows
-      .map((row) => {
+      .map<DeliveryDispatchFailureDetail | null>((row) => {
         const payload =
           row.payload &&
           typeof row.payload === 'object' &&
