@@ -5,6 +5,7 @@ import type {
   AccountingInboxClassification,
   AccountingInboxItem,
 } from '../contracts/inbox';
+import { ProviderFinancialReviewPanel } from '../provider-financial-review-panel';
 import { latestParse, money } from './inbox-model';
 
 type Props = {
@@ -430,6 +431,20 @@ export function AccountingInboxItemsList({
                   </button>
                 ) : null}
               </div>
+
+              {financial &&
+              item.materializedEntityType ===
+                'PROVIDER_FINANCIAL_DOCUMENT' &&
+              item.status === 'PENDING_REVIEW' ? (
+                <div className="lg:col-span-3">
+                  <ProviderFinancialReviewPanel
+                    document={financial}
+                    evidenceUrl={evidenceUrl}
+                    parseResult={parse}
+                    isZh={isZh}
+                  />
+                </div>
+              ) : null}
             </div>
           );
         })}

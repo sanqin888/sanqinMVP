@@ -348,7 +348,7 @@ This lane follows `ACCOUNTING_PRODUCT_ROADMAP.md`. Phase 9 remains closed.
 
 Priority: **P0 ACCOUNTING CORRECTNESS / BEFORE NEW FINANCIAL FEATURES**  
 Complexity: **H / XL only if a new OCR runtime is later adopted**  
-State: **SLICE 0 MERGED (#2428 / `bbd0b1c0`) / SLICE 1 SOURCE IMPLEMENTED / MIGRATION REQUIRED / NOT DEPLOYED**  
+State: **SLICE 0 MERGED (#2428 / `bbd0b1c0`) / SLICE 1 + MIGRATION MERGED (#2429 / `1903b32a`, CI #6017 GREEN) / SLICE 2 LOCAL IMPLEMENTED / REVIEW PENDING**  
 External gate: **none for control-total + review work; benchmark/provider choices later**  
 Detailed plan: `docs/architecture/accounting-document-recognition-human-review-plan.md`
 

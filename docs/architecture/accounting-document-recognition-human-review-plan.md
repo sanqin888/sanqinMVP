@@ -1,8 +1,8 @@
 # Accounting Document Recognition & Human Review Plan
 
-Status: **SLICE 0 MERGED / SLICE 1 SOURCE IMPLEMENTED / MIGRATION REQUIRED**  
+Status: **SLICE 0 + SLICE 1 MERGED / SLICE 2 LOCAL IMPLEMENTED / REVIEW PENDING**  
 Planning date: 2026-09-20  
-Audit baseline: `origin/dev@1ede0599`; Slice 1 implementation baseline: `origin/dev@bbd0b1c0`  
+Audit baseline: `origin/dev@1ede0599`; Slice 2 implementation baseline: `origin/dev@1903b32a`  
 Owner: **Accounting / Reporting / Analytics**  
 Phase 9 status: **remains PRODUCTION VERIFIED / CLOSED — do not reopen Phase 9**
 
@@ -573,7 +573,7 @@ Scope:
 - replay binds and revalidates review authority;
 - unreviewed provider documents remain fail-closed where correction is required.
 
-Implementation status on 2026-09-20: **SOURCE IMPLEMENTED / REVIEWED LOCALLY / MIGRATION REQUIRED**.
+Implementation status on 2026-09-20: **MERGED TO DEV / CI GREEN / MIGRATION INCLUDED AND REVIEWED**.
 
 Implemented source semantics:
 
@@ -589,16 +589,8 @@ Implemented source semantics:
 - existing Fantuan supplementary evidence remains a separate evidence mechanism; if that supporting document itself has a confirmed Human Review Revision, its exact review authority is bound and revalidated too;
 - no OCR engine, parser, provider wire contract, package dependency, context direction or public SCC changes are part of Slice 1.
 
-**MIGRATION REQUIRED.** Suggested migration name:
-`accounting_provider_financial_human_review_revision`.
-
-After this schema/source PR is merged into `dev`, generate the companion migration only on the user's verified disposable/local development database:
-
-`pnpm --filter api exec prisma migrate dev --create-only --name accounting_provider_financial_human_review_revision`
-
-Expected generated SQL is additive: create the two review enums, create
-`AccountingProviderFinancialReviewRevision` and
-`AccountingProviderFinancialReviewCorrection`, their foreign keys, stable-ID/identity unique constraints and indexes. There is no existing Human Review table/data to rename or backfill. Review the generated SQL for accidental drops/renames, enum replacement instead of enum creation, unexpected cascading outside ReviewRevision -> Correction, incorrect FK targets, missing unique/index constraints, or any destructive operation. Promotion to `main` / production remains blocked until that migration is generated locally, reviewed, committed and merged back into `dev`.
+PR #2429 merged to `dev` as `1903b32a` with CI #6017 green. The user-generated migration
+`20260920150651_accounting_provider_financial_human_review_revision` was included in that PR and reviewed as additive-only: two enums, the ReviewRevision and ReviewCorrection tables, expected stable-ID/identity indexes, `ReviewRevision -> ProviderFinancialDocument` with `ON DELETE RESTRICT`, and `Correction -> ReviewRevision` with `ON DELETE CASCADE`. It contains no historical rename/backfill/drop operation.
 
 ### Slice 2 — Human Review UI
 
@@ -621,6 +613,21 @@ Provide:
 - stale-preview handling.
 
 Accounting Web remains an adapter; all allowed mappings/invariants stay server-owned.
+
+Implementation status on 2026-09-20: **LOCAL IMPLEMENTED / REVIEW PENDING** on
+`accounting/human-review-ui-slice2`.
+
+Implemented UI behavior:
+
+- materialized pending Provider Financial evidence exposes the Human Review panel directly inside Accounting Inbox; after Inbox confirmation, a handoff link jumps to the same document in Provider Settlements, where unposted statements remain editable;
+- the panel lazily loads versioned review history and shows original evidence access, machine recognition engine/confidence when available, immutable machine values, the current confirmed effective values and correction reasons side-by-side;
+- operators can create a full replacement review revision using `EXTRACTION_CORRECTION` or `SEMANTIC_CLASSIFICATION`, add per-line/revision notes, save a DRAFT and explicitly confirm the exact hash-bound draft;
+- money editing stays in exact decimal-string -> integer-cent conversion in the Web adapter; server policy remains authoritative for allowed edits/invariants;
+- current Shadow control-total reconciliation is shown next to reviewed values when a Preview exists;
+- confirming a review immediately invalidates the client-held Shadow Preview and requires a fresh Preview before replay, while server-side stale-authority rejection remains the final safety boundary;
+- review history remains visible on posted/supporting documents, but editing is intentionally disabled there in Slice 2. Supporting-evidence mutation after a parent settlement is posted needs a separate lifecycle audit before the UI exposes it;
+- the existing oversized Settlements page is not given the editor responsibility directly: review model, comparison, editor, history and orchestration are split into cohesive feature components;
+- no API route, Prisma schema/migration, OCR engine, package dependency or Accounting policy change is introduced by Slice 2.
 
 ### Slice 3 — Layout-aware extraction boundary using existing stack
 
