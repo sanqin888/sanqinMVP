@@ -169,7 +169,8 @@ function accountingCapabilities(source: string): string[] {
 }
 
 function routes(source: string): string[] {
-  return [...source.matchAll(/@(Get|Post|Put|Delete)\(\s*'([^']+)'\s*\)/g)].map(
+  const routePattern = /@(Get|Post|Put|Delete)\(\s*'([^']+)'\s*,?\s*\)/g;
+  return [...source.matchAll(routePattern)].map(
     ([, method, route]) => `${method.toUpperCase()} ${route}`,
   );
 }
