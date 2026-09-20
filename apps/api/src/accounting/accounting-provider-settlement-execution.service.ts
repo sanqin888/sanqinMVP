@@ -224,6 +224,7 @@ export class AccountingProviderSettlementExecutionService {
     expectedPlanHash: string,
   ): ProviderSettlementReplacementGroupAuthorityV1 {
     const review = document.reviewEvidence;
+    const humanReview = document.humanReviewRevision;
     const coverage = document.coverageEvidence;
     if (
       !review ||
@@ -236,6 +237,21 @@ export class AccountingProviderSettlementExecutionService {
     ) {
       throw new ConflictException(
         `READY provider document is missing confirmed review authority: ${document.documentStableId}`,
+      );
+    }
+    const confirmedHumanReview =
+      humanReview?.confirmedAt && humanReview.confirmedByUserStableId
+        ? {
+            reviewRevisionStableId: humanReview.reviewRevisionStableId,
+            revision: humanReview.revision,
+            reviewHash: humanReview.reviewHash,
+            confirmedAt: humanReview.confirmedAt,
+            confirmedByUserStableId: humanReview.confirmedByUserStableId,
+          }
+        : null;
+    if (humanReview && !confirmedHumanReview) {
+      throw new ConflictException(
+        `READY provider document has incomplete human review authority: ${document.documentStableId}`,
       );
     }
     if (
@@ -320,19 +336,26 @@ export class AccountingProviderSettlementExecutionService {
         reviewedByUserStableId: review.reviewedByUserStableId,
         version: review.version,
       },
+      ...(confirmedHumanReview
+        ? { humanReviewRevision: confirmedHumanReview }
+        : {}),
       ...((document.supplementaryEvidenceDocuments?.length ?? 0) > 0
         ? {
             supplementaryEvidenceDocuments: (
               document.supplementaryEvidenceDocuments ?? []
-            ).map((evidence) => ({
-              ...evidence,
-              reviewEvidence: {
-                ...evidence.reviewEvidence,
-                status: AccountingInboxStatus.CONFIRMED,
-                materializedEntityType:
-                  AccountingInboxMaterializedEntityType.PROVIDER_FINANCIAL_DOCUMENT,
-              },
-            })),
+            ).map((evidence) => {
+              const { humanReviewRevision, ...baseEvidence } = evidence;
+              return {
+                ...baseEvidence,
+                reviewEvidence: {
+                  ...evidence.reviewEvidence,
+                  status: AccountingInboxStatus.CONFIRMED,
+                  materializedEntityType:
+                    AccountingInboxMaterializedEntityType.PROVIDER_FINANCIAL_DOCUMENT,
+                },
+                ...(humanReviewRevision ? { humanReviewRevision } : {}),
+              };
+            }),
           }
         : {}),
       coverageEvidence: {

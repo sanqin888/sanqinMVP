@@ -32,6 +32,7 @@ import {
   FANTUAN_ADJUSTMENT_DETAIL_EVIDENCE_KIND,
   FANTUAN_ADJUSTMENT_SUPPORTED_RAW_CODES,
 } from './accounting-fantuan-adjustment-detail.contract';
+import { applyProviderFinancialReviewCorrections } from './accounting-provider-financial-review.policy';
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_PREVIEW_RANGE_DAYS = 370;
@@ -144,6 +145,20 @@ const confirmedReviewEvidence = (document: ProviderDocumentRow) => {
   };
 };
 
+const confirmedHumanReviewRevision = (document: ProviderDocumentRow) => {
+  const review = document.reviewRevisions?.[0] ?? null;
+  if (!review || !review.confirmedAt || !review.confirmedByUserStableId) {
+    return null;
+  }
+  return {
+    reviewRevisionStableId: review.reviewRevisionStableId,
+    revision: review.revision,
+    reviewHash: review.reviewHash,
+    confirmedAt: review.confirmedAt.toISOString(),
+    confirmedByUserStableId: review.confirmedByUserStableId,
+  };
+};
+
 const isFantuanAdjustmentDetail = (document: ProviderDocumentRow): boolean =>
   document.provider === AccountingFinancialProvider.FANTUAN &&
   document.documentType === AccountingFinancialDocumentType.OTHER &&
@@ -161,6 +176,7 @@ type ProviderSettlementSupplementaryEvidence = {
   periodStart: string;
   periodEnd: string;
   reviewEvidence: NonNullable<ReturnType<typeof confirmedReviewEvidence>>;
+  humanReviewRevision: ReturnType<typeof confirmedHumanReviewRevision>;
 };
 
 const resolveFantuanAdjustmentDetail = (
@@ -229,7 +245,12 @@ const resolveFantuanAdjustmentDetail = (
 
   const detail = details[0];
   const reviewEvidence = confirmedReviewEvidence(detail);
-  if (!reviewEvidence || !detail.storeStableId) {
+  const humanReviewRevision = confirmedHumanReviewRevision(detail);
+  if (
+    !reviewEvidence ||
+    !detail.storeStableId ||
+    ((detail.reviewRevisions?.length ?? 0) > 0 && !humanReviewRevision)
+  ) {
     return {
       lines: controlLines,
       blockReasons: ['FANTUAN_ADJUSTMENT_DETAIL_NOT_CONFIRMED'],
@@ -292,6 +313,7 @@ const resolveFantuanAdjustmentDetail = (
         periodStart,
         periodEnd,
         reviewEvidence,
+        humanReviewRevision,
       },
     ],
   };
@@ -377,11 +399,32 @@ export class AccountingProviderSettlementPreviewService {
     const documentTo = DateTime.fromISO(input.toDateExclusive, { zone: 'UTC' })
       .startOf('day')
       .toJSDate();
-    const allDocuments =
+    const machineDocuments =
       await this.settlementQuery.readProviderSettlementDocuments({
         storeStableId,
         ...(input.provider ? { provider: input.provider } : {}),
       });
+    const allDocuments = machineDocuments.map((document) => {
+      const reviewRevision = document.reviewRevisions?.[0] ?? null;
+      if (!reviewRevision) return document;
+      return {
+        ...document,
+        lines: applyProviderFinancialReviewCorrections({
+          sourceLines: document.lines,
+          corrections: reviewRevision.corrections.map((correction) => ({
+            sourceLineStableId: correction.sourceLineStableId,
+            reason: correction.reason,
+            note: correction.note,
+            effectiveRawCode: correction.effectiveRawCode,
+            effectiveRawName: correction.effectiveRawName,
+            effectiveComponent: correction.effectiveComponent,
+            effectivePostingTreatment: correction.effectivePostingTreatment,
+            effectiveTaxRole: correction.effectiveTaxRole,
+            effectiveAmountCents: correction.effectiveAmountCents,
+          })),
+        }),
+      };
+    });
     const candidateIdentityKeys = new Set(
       allDocuments
         .filter((document) =>
@@ -504,6 +547,21 @@ export class AccountingProviderSettlementPreviewService {
       const supplementaryEvidenceDocuments =
         fantuanAdjustmentResolution.supplementaryEvidenceDocuments;
       const review = document.artifact.inboxItem;
+      const humanReviewRow = document.reviewRevisions?.[0] ?? null;
+      const humanReviewRevision = humanReviewRow
+        ? {
+            reviewRevisionStableId: humanReviewRow.reviewRevisionStableId,
+            revision: humanReviewRow.revision,
+            reviewHash: humanReviewRow.reviewHash,
+            confirmedAt: humanReviewRow.confirmedAt?.toISOString() ?? null,
+            confirmedByUserStableId: humanReviewRow.confirmedByUserStableId,
+          }
+        : null;
+      const humanReviewBlocks =
+        humanReviewRow &&
+        (!humanReviewRow.confirmedAt || !humanReviewRow.confirmedByUserStableId)
+          ? ['PROVIDER_HUMAN_REVIEW_AUTHORITY_INCOMPLETE']
+          : [];
       const reviewEvidence = review
         ? {
             inboxItemStableId: review.inboxItemStableId,
@@ -592,6 +650,7 @@ export class AccountingProviderSettlementPreviewService {
           : []),
         ...(requiresMutationAuthority ? reviewBlocks : []),
         ...(priorPostedRevision ? ['SUPERSEDED_REVISION_ALREADY_POSTED'] : []),
+        ...humanReviewBlocks,
         ...fantuanAdjustmentResolution.blockReasons,
         ...accountPrerequisites.flatMap((account) => account.blockReasons),
       ];
@@ -616,6 +675,7 @@ export class AccountingProviderSettlementPreviewService {
           ? { supplementaryEvidenceDocuments }
           : {}),
         reviewEvidence,
+        humanReviewRevision,
         coverageEvidence: coverage
           ? {
               coverageStableId: coverage.coverageStableId,

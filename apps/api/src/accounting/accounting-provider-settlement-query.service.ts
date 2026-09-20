@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import {
   AccountingFinancialProvider,
   AccountingJournalSource,
+  AccountingProviderFinancialReviewStatus,
 } from './accounting-contracts';
 import { ACCOUNTING_DB, type AccountingDb } from './accounting-db';
 
@@ -62,6 +63,34 @@ export class AccountingProviderSettlementQueryService {
             occurredAt: true,
           },
           orderBy: { lineNo: 'asc' },
+        },
+        reviewRevisions: {
+          where: {
+            status: AccountingProviderFinancialReviewStatus.CONFIRMED,
+          },
+          orderBy: { revision: 'desc' },
+          take: 1,
+          select: {
+            reviewRevisionStableId: true,
+            revision: true,
+            reviewHash: true,
+            confirmedAt: true,
+            confirmedByUserStableId: true,
+            corrections: {
+              select: {
+                sourceLineStableId: true,
+                reason: true,
+                note: true,
+                effectiveRawCode: true,
+                effectiveRawName: true,
+                effectiveComponent: true,
+                effectivePostingTreatment: true,
+                effectiveTaxRole: true,
+                effectiveAmountCents: true,
+              },
+              orderBy: { sourceLineStableId: 'asc' },
+            },
+          },
         },
       },
       orderBy: [

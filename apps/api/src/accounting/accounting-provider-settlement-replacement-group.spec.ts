@@ -236,6 +236,9 @@ const makeService = () => {
         revision: 1,
       }),
     },
+    accountingProviderFinancialReviewRevision: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
     accountingProviderFinancialCoverage: {
       findFirst: jest.fn().mockResolvedValue({
         coverageStableId: 'coverage_uber',

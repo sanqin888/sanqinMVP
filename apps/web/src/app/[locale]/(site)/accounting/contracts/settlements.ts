@@ -66,6 +66,13 @@ export type ProviderSettlementDocumentPlan = {
     reviewedByUserStableId: string | null;
     version: number;
   } | null;
+  humanReviewRevision: {
+    reviewRevisionStableId: string;
+    revision: number;
+    reviewHash: string;
+    confirmedAt: string | null;
+    confirmedByUserStableId: string | null;
+  } | null;
   coverageEvidence: {
     coverageStableId: string;
     financialHistoryRequiredFrom: string | null;

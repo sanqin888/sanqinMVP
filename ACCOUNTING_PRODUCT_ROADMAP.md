@@ -76,7 +76,7 @@ Detailed design and audit: `docs/architecture/accounting-document-recognition-hu
 This work package is now **P0 Accounting correctness** and should be completed before new
 financial-feature work that depends on provider settlement authority.
 
-State: **Slice 0 local implementation complete / review pending / not pushed or deployed**.
+State: **Slice 0 merged in PR #2428 (`bbd0b1c0`); Slice 1 Human Review Revision source implemented locally / migration required / not yet production-promotable**.
 
 Baseline audited state before Slice 0:
 

@@ -48,6 +48,9 @@ describe('AccountingJournalService double-entry journal characterization', () =>
         deleteMany: jest.fn().mockResolvedValue({ count: 2 }),
         createMany: jest.fn().mockResolvedValue({ count: 2 }),
       },
+      accountingProviderFinancialReviewRevision: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
       accountingAccount: {
         findMany: jest.fn().mockResolvedValue([
           {
@@ -171,6 +174,77 @@ describe('AccountingJournalService double-entry journal characterization', () =>
 
     await expect(
       service.readCanonicalSaleJournalAnchors(['sale_fact_1']),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('fails closed when confirmed human review authority changes after settlement preview', async () => {
+    const { service, prisma } = makeService();
+    prisma.accountingProviderFinancialReviewRevision.findMany.mockResolvedValue(
+      [
+        {
+          reviewRevisionStableId: 'acctfinreview_current',
+          revision: 2,
+          reviewHash: 'c'.repeat(64),
+          confirmedAt: new Date('2026-09-20T14:00:00.000Z'),
+          confirmedByUserStableId: 'user_admin_2',
+        },
+      ],
+    );
+    const authority = {
+      reviewRevisionStableId: 'acctfinreview_previewed',
+      revision: 1,
+      reviewHash: 'b'.repeat(64),
+      confirmedAt: '2026-09-20T13:00:00.000Z',
+      confirmedByUserStableId: 'user_admin_1',
+    };
+    const revalidator = service as unknown as {
+      assertProviderFinancialHumanReviewAuthorityInTx(
+        documentDbId: string,
+        reviewAuthority: typeof authority | undefined,
+        tx: unknown,
+        documentStableId: string,
+      ): Promise<void>;
+    };
+
+    await expect(
+      revalidator.assertProviderFinancialHumanReviewAuthorityInTx(
+        'document-db-id',
+        authority,
+        prisma,
+        'acctfindoc_july',
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('fails closed when human review is confirmed after a preview that had no review', async () => {
+    const { service, prisma } = makeService();
+    prisma.accountingProviderFinancialReviewRevision.findMany.mockResolvedValue(
+      [
+        {
+          reviewRevisionStableId: 'acctfinreview_new',
+          revision: 1,
+          reviewHash: 'd'.repeat(64),
+          confirmedAt: new Date('2026-09-20T14:00:00.000Z'),
+          confirmedByUserStableId: 'user_admin_1',
+        },
+      ],
+    );
+    const revalidator = service as unknown as {
+      assertProviderFinancialHumanReviewAuthorityInTx(
+        documentDbId: string,
+        reviewAuthority: undefined,
+        tx: unknown,
+        documentStableId: string,
+      ): Promise<void>;
+    };
+
+    await expect(
+      revalidator.assertProviderFinancialHumanReviewAuthorityInTx(
+        'document-db-id',
+        undefined,
+        prisma,
+        'acctfindoc_july',
+      ),
     ).rejects.toBeInstanceOf(ConflictException);
   });
 

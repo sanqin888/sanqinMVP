@@ -74,6 +74,7 @@ function makePreview(): ProviderSettlementShadowPreview {
           reviewedByUserStableId: 'user_admin',
           version: 4,
         },
+        humanReviewRevision: null,
         coverageEvidence: {
           coverageStableId: 'coverage_uber',
           financialHistoryRequiredFrom: '2026-06-01',

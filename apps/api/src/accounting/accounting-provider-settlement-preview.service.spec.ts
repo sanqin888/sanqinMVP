@@ -7,6 +7,7 @@ import {
   AccountingFinancialTaxRole,
   AccountingInboxMaterializedEntityType,
   AccountingInboxStatus,
+  AccountingProviderFinancialCorrectionReason,
 } from '@prisma/client';
 import { AccountingProviderSettlementPreviewService } from './accounting-provider-settlement-preview.service';
 import {
@@ -96,6 +97,7 @@ const uberStatement = (params: {
   payoutAt: null,
   currency: 'CAD',
   rawMetadata: null,
+  reviewRevisions: [],
   ...(params.reviewStatus === 'CONFIRMED'
     ? confirmedReview(
         params.documentStableId,
@@ -833,6 +835,126 @@ describe('AccountingProviderSettlementPreviewService', () => {
         }),
       ]),
     );
+  });
+
+  it('uses a confirmed human review correction as the effective settlement fact', async () => {
+    const base = uberStatement({
+      documentStableId: 'provider_doc_reviewed_july',
+      businessIdentityKey: 'uber:statement:reviewed-july',
+      revision: 1,
+      periodStart: '2026-07-01',
+      periodEnd: '2026-07-31',
+      reviewStatus: 'CONFIRMED',
+      amountCents: 260336,
+    });
+    const statement = {
+      ...base,
+      reviewRevisions: [
+        {
+          reviewRevisionStableId: 'acctfinreview_july_1',
+          revision: 1,
+          reviewHash: 'c'.repeat(64),
+          confirmedAt: new Date('2026-09-20T14:00:00.000Z'),
+          confirmedByUserStableId: 'user_admin_1',
+          corrections: [
+            {
+              sourceLineStableId: 'line_reviewed_tax',
+              reason:
+                AccountingProviderFinancialCorrectionReason.EXTRACTION_CORRECTION,
+              note: 'Source PDF shows $338.48',
+              effectiveRawCode: null,
+              effectiveRawName: 'Tax on Sales',
+              effectiveComponent: AccountingFinancialComponent.SALES_TAX,
+              effectivePostingTreatment:
+                AccountingFinancialPostingTreatment.POSTABLE,
+              effectiveTaxRole: AccountingFinancialTaxRole.SALES_TAX,
+              effectiveAmountCents: 33848,
+            },
+          ],
+        },
+      ],
+      lines: [
+        base.lines[0],
+        {
+          lineStableId: 'line_reviewed_tax',
+          lineNo: 2,
+          rawCode: null,
+          rawName: 'Tax on Sales',
+          component: AccountingFinancialComponent.SALES_TAX,
+          postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+          taxRole: AccountingFinancialTaxRole.SALES_TAX,
+          amountCents: 260336,
+          occurredAt: null,
+        },
+        ...base.lines.slice(1).map((line) => ({
+          ...line,
+          lineNo: line.lineNo + 1,
+          ...(line.rawName === 'Total Earnings' || line.rawName === 'Net Total'
+            ? { amountCents: 294184 }
+            : {}),
+        })),
+      ],
+    };
+
+    const operations = {
+      readProviderSettlementDocuments: jest.fn().mockResolvedValue([statement]),
+      readProviderFinancialCoverage: jest
+        .fn()
+        .mockResolvedValue([uberCoverage()]),
+      readAccountingAccountFacts: jest
+        .fn()
+        .mockResolvedValue([
+          accountFact('account_uber_pending', AccountingAccountClass.ASSET),
+          accountFact('account_sales_revenue', AccountingAccountClass.REVENUE),
+          accountFact('account_hst_payable', AccountingAccountClass.LIABILITY),
+        ]),
+      readSettlementShadowExistingJournals: jest.fn().mockResolvedValue([]),
+      readOrderSaleJournalsByFactStableIds: jest.fn().mockResolvedValue([]),
+    };
+    const orderFinancialFacts = {
+      readFactsForRange: jest.fn().mockResolvedValue([]),
+    };
+    const service = new AccountingProviderSettlementPreviewService(
+      operations as never,
+      operations as never,
+      accounting as never,
+      storeConfig as never,
+      orderFinancialFacts as never,
+    );
+
+    const result = await service.previewRange({
+      fromDate: '2026-07-01',
+      toDateExclusive: '2026-08-01',
+      storeStableId: '4750_Yonge_Street',
+      provider: AccountingFinancialProvider.UBER_EATS,
+    });
+
+    const plan = result.providerDocuments[0];
+    expect(plan.status).toBe('READY');
+    expect(plan.humanReviewRevision).toEqual({
+      reviewRevisionStableId: 'acctfinreview_july_1',
+      revision: 1,
+      reviewHash: 'c'.repeat(64),
+      confirmedAt: '2026-09-20T14:00:00.000Z',
+      confirmedByUserStableId: 'user_admin_1',
+    });
+    expect(
+      plan.controlTotalChecks.find(
+        (check) => check.key === 'UBER_TOTAL_EARNINGS',
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        status: 'MATCHED',
+        expectedCents: 294184,
+        calculatedCents: 294184,
+        deltaCents: 0,
+      }),
+    );
+    expect(
+      plan.decisions.find(
+        (decision) => decision.lineStableId === 'line_reviewed_tax',
+      ),
+    ).toEqual(expect.objectContaining({ amountCents: 33848 }));
   });
 
   it('requires explicit provider coverage and exact class/currency/active account prerequisites', async () => {
