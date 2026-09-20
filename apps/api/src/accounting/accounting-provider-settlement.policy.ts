@@ -571,12 +571,13 @@ const buildProviderControlTotalChecks = (
     }
     const deltaCents = calculatedCents - controlLine.amountCents;
     if (!Number.isSafeInteger(deltaCents)) {
-      throw new Error('Provider control total delta exceeds safe integer range');
+      throw new Error(
+        'Provider control total delta exceeds safe integer range',
+      );
     }
     return {
       key: rule.key,
-      status:
-        deltaCents === 0 ? ('MATCHED' as const) : ('MISMATCH' as const),
+      status: deltaCents === 0 ? ('MATCHED' as const) : ('MISMATCH' as const),
       controlRawName: rule.controlRawName,
       controlLineStableId: controlLine.lineStableId,
       expectedCents: controlLine.amountCents,

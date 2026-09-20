@@ -42,9 +42,7 @@ const withUberControlTotals = (
     componentRawNames: readonly string[],
   ) => {
     if (
-      lines.some(
-        (line) => line.rawName.toLowerCase() === rawName.toLowerCase(),
-      )
+      lines.some((line) => line.rawName.toLowerCase() === rawName.toLowerCase())
     ) {
       return;
     }
