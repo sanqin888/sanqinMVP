@@ -704,7 +704,8 @@ function resolveNamedAmountFromLayout(
         },
       };
     }
-    if (!labelLine.geometry) continue;
+    const labelGeometry = labelLine.geometry;
+    if (!labelGeometry) continue;
 
     const rowCandidates = extraction.lines
       .flatMap((line) => {
@@ -717,12 +718,11 @@ function resolveNamedAmountFromLayout(
         }
         const amountCents = parseMoneyCents(line.text);
         if (amountCents == null) return [];
-        const labelRight = labelLine.geometry.left + labelLine.geometry.width;
+        const labelRight = labelGeometry.left + labelGeometry.width;
         if (line.geometry.left + 0.005 < labelRight) return [];
         const overlapRatio = verticalOverlapRatio(labelLine, line);
         if (overlapRatio < 0.35) return [];
-        const labelCenter =
-          labelLine.geometry.top + labelLine.geometry.height / 2;
+        const labelCenter = labelGeometry.top + labelGeometry.height / 2;
         const valueCenter = line.geometry.top + line.geometry.height / 2;
         return [
           {
