@@ -734,6 +734,47 @@ public SCC baseline remains empty. No dependency/lockfile,
 Prisma schema/migration, HTTP route, Web, payment, Orders, Uber or durable-outbox change is included.
 Per the Phase 4 rollout policy, Slice 4A will not be deployed separately.
 
+#### Post-closeout hardening — Staff last-active-admin atomicity
+
+Status: **SOURCE IMPLEMENTED / LOCAL REVIEW APPROVED / REMOTE SUBMISSION AUTHORIZED / NO MIGRATION** on 2026-09-19. This is
+post-closeout hardening of the already-owned Identity invariant and does **not** reopen Phase 4.
+
+`StaffAdministrationService.updateStaff()` now executes the target re-read, self-modification
+protection, role/status validation, active-ADMIN predicate check and User update in one Prisma
+interactive transaction at PostgreSQL `Serializable` isolation. Prisma `P2034` serialization
+conflicts retry the **whole use case** up to three attempts, so two concurrent requests that both
+initially observe two active ADMINs cannot both commit demotion/disable writes; after one wins, the
+other transaction is aborted by the database and its retry re-evaluates the current active-admin
+set, preserving the existing `LAST_ACTIVE_ADMIN` result.
+
+The readiness audit considered ordinary transactions, target-row locking, advisory locking and the
+repository's existing Serializable patterns. A normal transaction does not prevent predicate
+write-skew; locking only each target User row is insufficient because competing requests can update
+different ADMIN rows. A shared advisory transaction lock would also serialize correctly, and the
+repository uses that technique inside Uber persistence adapters, but it would add PostgreSQL lock-key
+SQL to the Identity application owner. The chosen pattern matches existing Coupons/Accounting
+Serializable + `P2034` retry semantics, requires no dependency/schema/migration, and keeps Prisma
+generated types out of the Staff Administration service.
+
+Regression coverage preserves the existing demotion characterization, adds the equivalent active
+ADMIN disable case, asserts `Serializable` isolation, and models a commit-time serialization conflict
+followed by a retry that sees only one active ADMIN and returns `LAST_ACTIVE_ADMIN`. Admin transport,
+stable `userStableId` contracts, ADMIN/STAFF role semantics, invite behavior and the existing 400/404
+mapping are unchanged. No context direction, direct-import count, scanner allowance or public SCC
+changes.
+
+The repository-wide final-tail audit also reviewed the older Admin Members ->
+`AccountSecurityAdministrationService.setAccountStatus()` route. Its ADMIN/STAFF-visible member list
+and arbitrary stable-user account-status operation are **intentional development/test compatibility**:
+while the membership system still needs active end-to-end testing, STAFF/ADMIN accounts are deliberately
+allowed to appear in Member management and exercise member behaviors. This means the Member-management
+status path is not treated as the canonical Staff-administration invariant path and is not a blocker to
+closing modularization. The compatibility is explicitly deferred rather than silently normalized: once
+STAFF/ADMIN identities are no longer needed for membership-system testing, a dedicated contraction should
+scope Member list/status mutation to customer/member identities and remove the test-only overlap. The
+current Staff atomicity hardening remains authoritative for normal Staff administration and does not alter
+this temporary testing capability.
+
 #### Slice 4B — Customer + Security admin boundary
 
 Status: **PRODUCTION VERIFIED**.

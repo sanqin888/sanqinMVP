@@ -26,6 +26,17 @@ type StaffInviteRecord = {
   invitedBy?: { userStableId: string } | null;
 };
 
+const MAX_STAFF_ADMINISTRATION_SERIALIZABLE_ATTEMPTS = 3;
+
+function isRetryableTransactionError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === 'P2034'
+  );
+}
+
 export class StaffAdministrationService implements StaffAdministrationPort {
   constructor(
     private readonly prisma: PrismaService,
@@ -91,70 +102,104 @@ export class StaffAdministrationService implements StaffAdministrationPort {
   }
 
   async updateStaff(params: UpdateStaffInput): Promise<StaffUserDto> {
-    const target = await this.prisma.user.findUnique({
-      where: { userStableId: params.targetUserStableId },
-    });
+    let lastError: unknown;
 
-    if (!target) {
-      throw new StaffAdministrationError('USER_NOT_FOUND', 'User not found');
-    }
+    for (
+      let attempt = 0;
+      attempt < MAX_STAFF_ADMINISTRATION_SERIALIZABLE_ATTEMPTS;
+      attempt += 1
+    ) {
+      try {
+        return await this.prisma.$transaction(
+          async (tx) => {
+            const target = await tx.user.findUnique({
+              where: { userStableId: params.targetUserStableId },
+            });
 
-    if (target.userStableId === params.actorUserStableId) {
-      throw new StaffAdministrationError(
-        'CURRENT_USER_MODIFICATION',
-        'Cannot modify current user',
-      );
-    }
+            if (!target) {
+              throw new StaffAdministrationError(
+                'USER_NOT_FOUND',
+                'User not found',
+              );
+            }
 
-    const nextRole = params.role ?? target.role;
-    const nextStatus = params.status ?? target.status;
+            if (target.userStableId === params.actorUserStableId) {
+              throw new StaffAdministrationError(
+                'CURRENT_USER_MODIFICATION',
+                'Cannot modify current user',
+              );
+            }
 
-    if (nextRole !== 'ADMIN' && nextRole !== 'STAFF') {
-      throw new StaffAdministrationError('INVALID_ROLE', 'invalid role');
-    }
-    if (nextStatus !== 'ACTIVE' && nextStatus !== 'DISABLED') {
-      throw new StaffAdministrationError('INVALID_STATUS', 'invalid status');
-    }
+            const nextRole = params.role ?? target.role;
+            const nextStatus = params.status ?? target.status;
 
-    const removingAdmin =
-      target.role === 'ADMIN' &&
-      target.status === 'ACTIVE' &&
-      (nextRole !== 'ADMIN' || nextStatus !== 'ACTIVE');
+            if (nextRole !== 'ADMIN' && nextRole !== 'STAFF') {
+              throw new StaffAdministrationError(
+                'INVALID_ROLE',
+                'invalid role',
+              );
+            }
+            if (nextStatus !== 'ACTIVE' && nextStatus !== 'DISABLED') {
+              throw new StaffAdministrationError(
+                'INVALID_STATUS',
+                'invalid status',
+              );
+            }
 
-    if (removingAdmin) {
-      const activeAdminCount = await this.prisma.user.count({
-        where: { role: 'ADMIN', status: 'ACTIVE' },
-      });
-      if (activeAdminCount <= 1) {
-        throw new StaffAdministrationError(
-          'LAST_ACTIVE_ADMIN',
-          'Cannot modify last active admin',
+            const removingAdmin =
+              target.role === 'ADMIN' &&
+              target.status === 'ACTIVE' &&
+              (nextRole !== 'ADMIN' || nextStatus !== 'ACTIVE');
+
+            if (removingAdmin) {
+              const activeAdminCount = await tx.user.count({
+                where: { role: 'ADMIN', status: 'ACTIVE' },
+              });
+              if (activeAdminCount <= 1) {
+                throw new StaffAdministrationError(
+                  'LAST_ACTIVE_ADMIN',
+                  'Cannot modify last active admin',
+                );
+              }
+            }
+
+            const updated = await tx.user.update({
+              where: { id: target.id },
+              data: { role: nextRole, status: nextStatus },
+              include: {
+                sessions: {
+                  orderBy: { createdAt: 'desc' },
+                  take: 1,
+                  select: { createdAt: true },
+                },
+              },
+            });
+
+            return {
+              userStableId: updated.userStableId,
+              email: updated.email ?? null,
+              role: nextRole,
+              status: nextStatus,
+              createdAt: updated.createdAt,
+              lastLoginAt: updated.sessions[0]?.createdAt ?? null,
+              name:
+                [updated.firstName, updated.lastName]
+                  .filter(Boolean)
+                  .join(' ') || null,
+            };
+          },
+          { isolationLevel: 'Serializable' },
         );
+      } catch (error) {
+        lastError = error;
+        if (!isRetryableTransactionError(error)) throw error;
       }
     }
 
-    const updated = await this.prisma.user.update({
-      where: { id: target.id },
-      data: { role: nextRole, status: nextStatus },
-      include: {
-        sessions: {
-          orderBy: { createdAt: 'desc' },
-          take: 1,
-          select: { createdAt: true },
-        },
-      },
-    });
-
-    return {
-      userStableId: updated.userStableId,
-      email: updated.email ?? null,
-      role: nextRole,
-      status: nextStatus,
-      createdAt: updated.createdAt,
-      lastLoginAt: updated.sessions[0]?.createdAt ?? null,
-      name:
-        [updated.firstName, updated.lastName].filter(Boolean).join(' ') || null,
-    };
+    if (lastError instanceof Error) throw lastError;
+    throw new Error(
+      'staff administration serializable transaction retry exhausted',
+    );
   }
 
   async listInvites(): Promise<{ invites: StaffInviteDto[] }> {

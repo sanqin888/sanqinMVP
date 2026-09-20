@@ -1,9 +1,9 @@
 # Phase 9 Payroll Vertical — Readiness, Design and Closeout Gate
 
-Status: **8P-D3-B2 LOCAL SOURCE REVIEW PENDING — NO MIGRATION**  
+Status: **8P-E PRODUCTION VERIFIED WITH EXPLICIT DEFERRED EVIDENCE — PHASE 9 PRODUCTION VERIFIED / CLOSED — NO MIGRATION PENDING**  
 Planning date: 2026-09-16  
-Implementation baseline: `origin/dev@95cfbf70` (8P-D3-B1 merged through PR #2394; final head `f35249af`, PR CI #5897 and post-merge CI #5898 green)  
-Current implementation branch: `feat/phase9-slice8p-d3b2-cra-remittance-settlement`
+Final Phase 9 production baseline: `main@dbea68f3` (2026-09-19)  
+Deferred live evidence remains intentionally limited to real CRA-remittance settlement, real posted-run reversal/correction, and an actual production period-close case; no synthetic production mutation is required for Phase 9 closure.
 
 ## 1. Decision and insertion point
 

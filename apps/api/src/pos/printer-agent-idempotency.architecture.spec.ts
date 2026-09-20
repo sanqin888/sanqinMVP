@@ -74,4 +74,29 @@ describe('POS printer dispatch idempotency boundary', () => {
       '$graphics.DrawString("#$orderNumber", $orderFont',
     );
   });
+
+  it('fits English label names by measured two-line wrapping before ellipsis fallback', () => {
+    const labelScript = read(LABEL_SCRIPT_PATH);
+
+    expect(labelScript).toContain('function Get-EnglishNameLines');
+    expect(labelScript).toContain('function Resolve-EnglishNameLayout');
+    expect(labelScript).toContain('[double]$preferredPointSize = 9.0');
+    expect(labelScript).toContain('[double]$minimumPointSize = 7.5');
+    expect(labelScript).toContain('[int]$maxLines = 2');
+    expect(labelScript).toContain(
+      '$candidateWidth = [single]($graphics.MeasureString($candidate, $font).Width)',
+    );
+    expect(labelScript).toContain(
+      '$nameEnLayout = Resolve-EnglishNameLayout $graphics $nameEn $FontName $englishWidth',
+    );
+    expect(labelScript).toContain(
+      '$nameEnHeight = if ($nameEnLines.Count -gt 1) { [single]40 } else { [single]30 }',
+    );
+    expect(labelScript).toContain(
+      '$graphics.DrawString($nameEnLines[$lineIndex], $nameEnFont, $brush, $lineRect, $singleLineFormat)',
+    );
+    expect(labelScript).not.toContain(
+      '$graphics.DrawString($nameEn, $nameEnFont, $brush',
+    );
+  });
 });
