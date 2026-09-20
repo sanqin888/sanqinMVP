@@ -39,6 +39,10 @@ import {
   ACCOUNTING_FANTUAN_ADJUSTMENT_DETAIL_PARSER_VERSION,
   parseFantuanAdjustmentDetailXlsx,
 } from './accounting-fantuan-adjustment-detail-xlsx';
+import {
+  parseAccountingDocumentExtraction,
+  type AccountingDocumentExtraction,
+} from './accounting-document-extraction';
 import { AccountingProviderFinancialReviewService } from './accounting-provider-financial-review.service';
 import type { ProviderFinancialReviewDraftInput } from './accounting-provider-financial-review.policy';
 import { getAccountingUploadsDir } from './accounting-storage-path';
@@ -117,6 +121,9 @@ export class AccountingProviderFinancialService {
         matchedRequiredKeywords: recognition.matchedRequiredKeywords,
         matchedOptionalKeywords: recognition.matchedOptionalKeywords,
         extractedText: input.text.slice(0, 100_000),
+        ...(input.documentExtraction
+          ? { documentExtraction: input.documentExtraction }
+          : {}),
       };
       await this.inbox.recordInboxParseRun({
         artifactStableId: input.artifactStableId,
@@ -150,7 +157,11 @@ export class AccountingProviderFinancialService {
         };
       }
 
-      const parseResult = this.buildParseResult(parsed, input.text);
+      const parseResult = this.buildParseResult(
+        parsed,
+        input.text,
+        input.documentExtraction,
+      );
       const excludedBeforeFinancialHistory = Boolean(
         parsed.periodEnd &&
         parsed.periodEnd < PROVIDER_FINANCIAL_HISTORY_START_DATE,
@@ -256,7 +267,11 @@ export class AccountingProviderFinancialService {
     const parsed = parseProviderFinancialEvidence(input);
     if (!parsed) return { matched: false as const };
 
-    const parseResult = this.buildParseResult(parsed, input.text);
+    const parseResult = this.buildParseResult(
+      parsed,
+      input.text,
+      input.documentExtraction,
+    );
     if (
       parsed.periodEnd &&
       parsed.periodEnd < PROVIDER_FINANCIAL_HISTORY_START_DATE
@@ -460,6 +475,17 @@ export class AccountingProviderFinancialService {
         (value): value is string =>
           typeof value === 'string' && Boolean(value.trim()),
       );
+    const documentExtractionPayload = inbox.artifact.parseRuns
+      .map((run) => jsonRecord(run.resultJson).documentExtraction)
+      .find((value) => value !== undefined);
+    const documentExtraction = parseAccountingDocumentExtraction(
+      documentExtractionPayload,
+    );
+    if (documentExtractionPayload !== undefined && !documentExtraction) {
+      throw new ConflictException(
+        'provider document extraction evidence is invalid; reprocess the source artifact before confirmation',
+      );
+    }
     const text = extractedText?.trim() || inbox.artifact.bodyText?.trim() || '';
     if (!text) {
       throw new ConflictException(
@@ -469,6 +495,7 @@ export class AccountingProviderFinancialService {
 
     const parsed = parseProviderFinancialEvidence({
       text,
+      ...(documentExtraction ? { documentExtraction } : {}),
       emailSubject: inbox.artifact.emailSubject,
       providerHint: inbox.selectedProvider,
     });
@@ -496,6 +523,7 @@ export class AccountingProviderFinancialService {
   private buildParseResult(
     parsed: ParsedProviderFinancialDocument,
     text?: string,
+    documentExtraction?: AccountingDocumentExtraction,
   ) {
     return {
       providerFinancial: true,
@@ -511,6 +539,7 @@ export class AccountingProviderFinancialService {
       lines: parsed.lines,
       rawMetadata: parsed.rawMetadata,
       ...(text === undefined ? {} : { extractedText: text.slice(0, 100_000) }),
+      ...(documentExtraction ? { documentExtraction } : {}),
     };
   }
 

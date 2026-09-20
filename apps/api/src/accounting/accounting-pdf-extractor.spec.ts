@@ -1,6 +1,8 @@
 import {
   extractAccountingText,
+  extractPdfLayout,
   extractPdfText,
+  parsePopplerBboxLayout,
 } from './accounting-pdf-extractor';
 
 describe('accounting text extraction', () => {
@@ -68,6 +70,102 @@ describe('accounting text extraction', () => {
       'Monthly Statement\nSanQ Roujiamo 三秦肉夹馍\n Net Total $1,222.85',
     );
     expect(runner).toHaveBeenCalledTimes(1);
+    expect(runner).toHaveBeenCalledWith(pdf);
+  });
+
+  it('normalizes Poppler bbox-layout lines into Accounting-owned geometry', () => {
+    const extraction = parsePopplerBboxLayout(`
+      <doc>
+        <page width="612" height="792">
+          <flow>
+            <block>
+              <line xMin="61.2" yMin="79.2" xMax="183.6" yMax="95.04">
+                <word xMin="61.2" yMin="79.2" xMax="100" yMax="95.04">Sales</word>
+                <word xMin="105" yMin="79.2" xMax="183.6" yMax="95.04">(84 Orders)</word>
+              </line>
+              <line xMin="459" yMin="79.2" xMax="550.8" yMax="95.04">
+                <word xMin="459" yMin="79.2" xMax="550.8" yMax="95.04">$2,603.36</word>
+              </line>
+              <line xMin="61.2" yMin="99" xMax="183.6" yMax="114.84">
+                <word xMin="61.2" yMin="99" xMax="183.6" yMax="114.84">Tax on Sales</word>
+              </line>
+              <line xMin="459" yMin="99" xMax="550.8" yMax="114.84">
+                <word xMin="459" yMin="99" xMax="550.8" yMax="114.84">$338.48</word>
+              </line>
+            </block>
+          </flow>
+        </page>
+      </doc>
+    `);
+
+    expect(extraction).toEqual(
+      expect.objectContaining({
+        inputKind: 'PDF',
+        engine: 'POPPLER',
+        layoutMode: 'GEOMETRY',
+        truncated: false,
+      }),
+    );
+    expect(extraction.lines).toHaveLength(4);
+    expect(extraction.lines[0]).toEqual(
+      expect.objectContaining({
+        lineId: 'p1-l1',
+        page: 1,
+        text: 'Sales (84 Orders)',
+      }),
+    );
+    expect(extraction.lines[0]?.geometry?.left).toBeCloseTo(0.1);
+    expect(extraction.lines[0]?.geometry?.top).toBeCloseTo(0.1);
+    expect(extraction.lines[0]?.geometry?.width).toBeCloseTo(0.2);
+    expect(extraction.lines[0]?.geometry?.height).toBeCloseTo(0.02);
+    expect(extraction.lines[1]).toEqual(
+      expect.objectContaining({
+        lineId: 'p1-l2',
+        text: '$2,603.36',
+      }),
+    );
+    expect(extraction.lines[1]?.geometry?.left).toBeCloseTo(0.75);
+    expect(extraction.lines[1]?.geometry?.top).toBeCloseTo(0.1);
+    expect(extraction.lines[2]).toEqual(
+      expect.objectContaining({
+        lineId: 'p1-l3',
+        text: 'Tax on Sales',
+      }),
+    );
+    expect(extraction.lines[3]).toEqual(
+      expect.objectContaining({
+        lineId: 'p1-l4',
+        text: '$338.48',
+      }),
+    );
+  });
+
+  it('delegates valid PDF bytes to the optional Poppler layout runner', async () => {
+    const pdf = Buffer.from('%PDF-1.4\nsynthetic');
+    const runner = jest.fn(() =>
+      Promise.resolve(
+        '<doc><page width="100" height="100">' +
+          '<line xMin="10" yMin="20" xMax="30" yMax="30">' +
+          '<word xMin="10" yMin="20" xMax="30" yMax="30">Total</word>' +
+          '</line></page></doc>',
+      ),
+    );
+
+    const extraction = await extractPdfLayout(pdf, runner);
+
+    expect(extraction).toEqual(
+      expect.objectContaining({
+        engine: 'POPPLER',
+        layoutMode: 'GEOMETRY',
+      }),
+    );
+    expect(extraction.lines[0]).toEqual(
+      expect.objectContaining({ text: 'Total' }),
+    );
+    expect(extraction.lines[0]?.geometry?.left).toBeCloseTo(0.1);
+    expect(extraction.lines[0]?.geometry?.top).toBeCloseTo(0.2);
+    expect(extraction.lines[0]?.geometry?.width).toBeCloseTo(0.2);
+    expect(extraction.lines[0]?.geometry?.height).toBeCloseTo(0.1);
     expect(runner).toHaveBeenCalledWith(pdf);
   });
 

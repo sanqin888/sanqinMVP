@@ -1,8 +1,8 @@
 # Accounting Document Recognition & Human Review Plan
 
-Status: **SLICE 0 + SLICE 1 MERGED / SLICE 2 LOCAL IMPLEMENTED / REVIEW PENDING**  
+Status: **SLICE 0-2 MERGED / SLICE 3 SOURCE IMPLEMENTED / REMOTE CI PENDING**  
 Planning date: 2026-09-20  
-Audit baseline: `origin/dev@1ede0599`; Slice 2 implementation baseline: `origin/dev@1903b32a`  
+Audit baseline: `origin/dev@1ede0599`; Slice 3 implementation baseline: `origin/dev@e52c44b9`  
 Owner: **Accounting / Reporting / Analytics**  
 Phase 9 status: **remains PRODUCTION VERIFIED / CLOSED — do not reopen Phase 9**
 
@@ -633,15 +633,33 @@ Implemented UI behavior:
 
 Goal: stop provider parsing from depending only on flattened text.
 
-First use current installed capabilities where practical:
+Source implementation on `origin/dev@e52c44b9`:
 
-- retain Poppler native PDF extraction;
-- capture/normalize layout/geometry where possible;
-- retain Textract geometry evidence instead of flattening it immediately;
-- converge image/PDF recognition onto one Accounting-owned extraction contract;
-- keep current Textract/Tesseract behavior as compatibility during shadow comparison.
+- adds an Accounting-owned versioned `AccountingDocumentExtraction` contract with bounded
+  page/line text, optional normalized geometry, engine identity, confidence and truncation
+  metadata;
+- retains the existing Poppler native-text path and adds `pdftotext -bbox-layout` as an
+  optional layout pass, falling back to the existing text-only result if the layout pass is
+  unavailable;
+- retains Textract `LINE` geometry/confidence instead of discarding it after text flattening;
+- represents the existing Tesseract fallback through the same contract as text-only evidence;
+- persists extraction evidence in the existing parse-run JSON and revalidates that evidence
+  before operator confirmation/materialization; malformed persisted layout evidence fails
+  closed rather than silently degrading;
+- upgrades the provider-financial parser to v4 and makes the known Uber monthly-statement
+  label/value path layout-aware. A label with geometry must resolve to an inline value or a
+  same-row value to its right; if the label is present but cannot be paired reliably, that
+  field is omitted and the downstream control-total gate remains authoritative;
+- records the exact label/value line evidence used for a layout-derived provider line in its
+  immutable machine `rawPayload`, preserving page, bbox, confidence and engine identity;
+- pins the observed July Uber failure shape so `Sales = 260336` and
+  `Tax on Sales = 33848` instead of allowing flattened Poppler order to duplicate Sales;
+- does not change Clover/Fantuan parsing semantics in this slice and does not add a new OCR
+  runtime, package dependency, Prisma model/migration, provider wire contract or context edge.
 
-No new OCR dependency is required for the first version of this boundary.
+The current recognition ordering remains unchanged: native PDF uses Poppler first; scanned PDF
+may use the existing Textract fallback; images use Textract when enabled with Tesseract fallback.
+Slice 4 remains responsible for benchmark-based engine selection.
 
 ### Slice 4 — Recognition benchmark: existing vs Paddle vs BDA
 
@@ -711,21 +729,24 @@ Do not use suspense as a generic bypass for missing evidence.
 
 ## 12. Recovery of the current Uber July document
 
-Until Slice 0/1 is implemented:
+The already-materialized malformed July document remains immutable machine evidence. Do not
+silently rewrite its stored parser output merely because Slice 3 can now extract the source
+layout correctly.
 
-- do not replay the incorrect July provider plan;
-- preserve the original PDF and current machine extraction as audit evidence.
+For that existing document:
 
-After Human Review Revision exists:
+1. keep the original PDF and machine extraction as audit evidence;
+2. create an `EXTRACTION_CORRECTION` Human Review Revision against the existing document;
+3. set Tax on Sales to `33848` cents with a source-evidence correction reason;
+4. run control-total reconciliation;
+5. require a fresh Shadow Preview;
+6. confirm that provider pending equals `143194` cents;
+7. only then permit replay.
 
-1. create an extraction correction against the existing source document;
-2. set Tax on Sales to `33848` cents with a source-evidence correction reason;
-3. run control-total reconciliation;
-4. require a fresh Shadow Preview;
-5. confirm that provider pending equals `143194` cents;
-6. only then permit replay.
-
-No direct database edit and no silent overwrite of the original parsed lines is required.
+For a newly acquired/reprocessed copy of the source after Slice 3, Poppler layout evidence is
+available to pair the Sales and Tax-on-Sales rows correctly before materialization. That does
+not authorize overwriting the historical machine revision or bypassing Human Review authority
+on the existing document.
 
 ## 13. Testing requirements
 

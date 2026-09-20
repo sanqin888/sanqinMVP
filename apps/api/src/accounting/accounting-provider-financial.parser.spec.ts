@@ -256,6 +256,183 @@ Net Payout $216.02
     );
   });
 
+  it('uses layout rows for the observed July Uber statement instead of flattened label order', () => {
+    const parsed = parseProviderFinancialEvidence({
+      providerHint: AccountingFinancialProvider.UBER_EATS,
+      documentTypeHint: AccountingFinancialDocumentType.STATEMENT,
+      text: `
+Monthly Statement
+Statement Number #B4842290
+Date Jul 01-31, 2026
+Consolidated Monthly Summary
+Sales (84 Orders)
+Tax on Sales
+
+$2,603.36
+$338.48
+Total Earnings $2,941.84
+Net Total $1,431.94*
+Payout Period:
+Jun 29, 2026 - Jul 05, 2026
+Sales (4 Orders) $120.00
+`,
+      documentExtraction: {
+        version: 1,
+        inputKind: 'PDF',
+        engine: 'POPPLER',
+        layoutMode: 'GEOMETRY',
+        truncated: false,
+        lines: [
+          {
+            lineId: 'p1-l1',
+            page: 1,
+            text: 'Sales (84 Orders)',
+            confidence: null,
+            geometry: { left: 0.1, top: 0.3, width: 0.25, height: 0.02 },
+          },
+          {
+            lineId: 'p1-l2',
+            page: 1,
+            text: '$2,603.36',
+            confidence: null,
+            geometry: { left: 0.75, top: 0.3, width: 0.15, height: 0.02 },
+          },
+          {
+            lineId: 'p1-l3',
+            page: 1,
+            text: 'Tax on Sales',
+            confidence: null,
+            geometry: { left: 0.1, top: 0.33, width: 0.2, height: 0.02 },
+          },
+          {
+            lineId: 'p1-l4',
+            page: 1,
+            text: '$338.48',
+            confidence: null,
+            geometry: { left: 0.75, top: 0.33, width: 0.12, height: 0.02 },
+          },
+          {
+            lineId: 'p1-l5',
+            page: 1,
+            text: 'Total Earnings $2,941.84',
+            confidence: null,
+            geometry: { left: 0.1, top: 0.4, width: 0.8, height: 0.02 },
+          },
+          {
+            lineId: 'p1-l6',
+            page: 1,
+            text: 'Net Total $1,431.94*',
+            confidence: null,
+            geometry: { left: 0.1, top: 0.6, width: 0.8, height: 0.02 },
+          },
+          {
+            lineId: 'p1-l7',
+            page: 1,
+            text: 'Payout Period:',
+            confidence: null,
+            geometry: { left: 0.1, top: 0.7, width: 0.3, height: 0.02 },
+          },
+          {
+            lineId: 'p1-l8',
+            page: 1,
+            text: 'Sales (4 Orders) $120.00',
+            confidence: null,
+            geometry: { left: 0.1, top: 0.8, width: 0.8, height: 0.02 },
+          },
+        ],
+      },
+    });
+
+    const sales = lineByName(parsed!, 'Sales');
+    expect(sales?.amountCents).toBe(260336);
+    expect(sales?.rawPayload).toMatchObject({
+      extractionEvidence: {
+        strategy: 'LAYOUT_ROW_PAIR',
+        engine: 'POPPLER',
+        labelLine: { lineId: 'p1-l1' },
+        amountLine: { lineId: 'p1-l2' },
+      },
+    });
+
+    const salesTax = lineByName(parsed!, 'Tax on Sales');
+    expect(salesTax?.amountCents).toBe(33848);
+    expect(salesTax?.rawPayload).toMatchObject({
+      extractionEvidence: {
+        strategy: 'LAYOUT_ROW_PAIR',
+        labelLine: { lineId: 'p1-l3' },
+        amountLine: { lineId: 'p1-l4' },
+      },
+    });
+    expect(lineByName(parsed!, 'Total Earnings')?.amountCents).toBe(294184);
+    expect(lineByName(parsed!, 'Net Total')?.amountCents).toBe(143194);
+    expect(parsed?.lines.some((line) => line.amountCents === 12000)).toBe(
+      false,
+    );
+    expect(parsed?.rawMetadata).toEqual(
+      expect.objectContaining({
+        documentExtractionEngine: 'POPPLER',
+        layoutAwareExtraction: true,
+      }),
+    );
+  });
+
+  it('fails a geometry-backed Uber label closed instead of falling back to flattened adjacency', () => {
+    const parsed = parseProviderFinancialEvidence({
+      providerHint: AccountingFinancialProvider.UBER_EATS,
+      documentTypeHint: AccountingFinancialDocumentType.STATEMENT,
+      text: `
+Monthly Statement
+Statement Number #LAYOUT-BLOCK
+Date Jul 01-31, 2026
+Sales (84 Orders)
+Tax on Sales
+$2,603.36
+$338.48
+Net Total $2,941.84
+`,
+      documentExtraction: {
+        version: 1,
+        inputKind: 'PDF',
+        engine: 'POPPLER',
+        layoutMode: 'GEOMETRY',
+        truncated: false,
+        lines: [
+          {
+            lineId: 'p1-l1',
+            page: 1,
+            text: 'Sales (84 Orders)',
+            confidence: null,
+            geometry: { left: 0.1, top: 0.3, width: 0.25, height: 0.02 },
+          },
+          {
+            lineId: 'p1-l2',
+            page: 1,
+            text: '$2,603.36',
+            confidence: null,
+            geometry: { left: 0.75, top: 0.3, width: 0.15, height: 0.02 },
+          },
+          {
+            lineId: 'p1-l3',
+            page: 1,
+            text: 'Tax on Sales',
+            confidence: null,
+            geometry: { left: 0.1, top: 0.33, width: 0.2, height: 0.02 },
+          },
+          {
+            lineId: 'p1-l4',
+            page: 1,
+            text: '$338.48',
+            confidence: null,
+            geometry: { left: 0.75, top: 0.5, width: 0.12, height: 0.02 },
+          },
+        ],
+      },
+    });
+
+    expect(lineByName(parsed!, 'Sales')?.amountCents).toBe(260336);
+    expect(lineByName(parsed!, 'Tax on Sales')).toBeUndefined();
+  });
+
   it('parses Fantuan posting components while keeping section and tax totals as controls', () => {
     const parsed = parseProviderFinancialEvidence({
       providerHint: AccountingFinancialProvider.FANTUAN,
