@@ -86,7 +86,7 @@ const periodFromFilename = (
   filename: string | null | undefined,
 ): Period | null => {
   const matches = Array.from(
-    (filename ?? '').matchAll(/\b20\d{2}-\d{2}-\d{2}\b/g),
+    (filename ?? '').matchAll(/(?<!\d)20\d{2}-\d{2}-\d{2}(?!\d)/g),
     (match) => match[0],
   );
   if (matches.length < 2 || matches[0] > matches[1]) return null;
