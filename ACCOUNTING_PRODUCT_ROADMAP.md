@@ -76,7 +76,7 @@ Detailed design and audit: `docs/architecture/accounting-document-recognition-hu
 This work package is now **P0 Accounting correctness** and should be completed before new
 financial-feature work that depends on provider settlement authority.
 
-State: **Slice 0 merged in PR #2428 (`bbd0b1c0`); Slice 1 Human Review Revision + migration merged in PR #2429 (`1903b32a`, CI #6017 green); Slice 2 Human Review UI merged in PR #2431 (`e52c44b9`); Slice 3 layout-aware extraction merged in PR #2432 (`caabf1c1`) with green CI; Evidence Viewer Slice 1 merged in PR #2435 (`0371a155`, CI #6039 green); Evidence Viewer Slice 1B merged in PR #2436 (`9ae4d85d`, CI #6042 green), with additive migration `20260921124637_add_accounting_evidence_folders` committed as `cc4c8016` and SQL reviewed as safe/additive; Evidence Viewer Slice 2 merged in PR #2438 as `4d68379e` with CI green; Slice 3V-A merged in PR #2439 as `0d6909bb` after PR CI #6054 and merged-head CI #6055 passed; Slice 3V-B merged in PR #2440 as `0ac9117f` after final head `3c5c0400`, PR CI #6057 and merged-head CI #6058 passed; Reliability Slice A CSV ParseRun integrity merged in PR #2442 as `994f5a67`; Expense layout/self-consistency + Expense Human Review authority is implemented in source and requires its additive user-generated migration before production promotion. Production verification of the new scanned-PDF path remains pending.**
+State: **Slice 0 merged in PR #2428 (`bbd0b1c0`); Slice 1 Human Review Revision + migration merged in PR #2429 (`1903b32a`, CI #6017 green); Slice 2 Human Review UI merged in PR #2431 (`e52c44b9`); Slice 3 layout-aware extraction merged in PR #2432 (`caabf1c1`) with green CI; Evidence Viewer Slice 1 merged in PR #2435 (`0371a155`, CI #6039 green); Slice 1B merged in PR #2436 (`9ae4d85d`, CI #6042 green), with additive migration `20260921124637_add_accounting_evidence_folders` committed as `cc4c8016` and SQL reviewed as safe/additive; Evidence Viewer Slice 2 merged in PR #2438 as `4d68379e` with CI green; Slice 3V-A merged in PR #2439 as `0d6909bb` after PR CI #6054 and merged-head CI #6055 passed; Slice 3V-B merged in PR #2440 as `0ac9117f` after final head `3c5c0400`, PR CI #6057 and merged-head CI #6058 passed; Reliability Slice A CSV ParseRun integrity merged in PR #2442 as `994f5a67`; Reliability Slice B Expense reconciliation + booking correction merged in PR #2443 as `6e89bc3b` with no migration; original Document Recognition Slice C Inbox pre-confirm UX merged in PR #2445 as `da77b9a5` after final head `3cd7e645` passed CI #6074. Production verification of the new scanned-PDF path remains pending.**
 
 Baseline audited state before Slice 0:
 
@@ -160,6 +160,8 @@ Until a reviewed real fiscal-year opening is entered, the product is **资产负
 
 ## 6. Slice A — Expense Journal Canonicalization
 
+**2026-09-21 B1-A local source state:** **LOCAL SOURCE COMPLETE / USER REVIEW PENDING / MIGRATION REQUIRED / NO GRAPH CHANGE** on branch `accounting/b1a-expense-split-ownership` from `origin/dev@502647b8`. Readiness found that `AccountingTransaction` is not only the legacy Expense reporting path but also the sole persisted category/tax split carrier, so C1 cannot safely delete that writer first. B1-A therefore adds dedicated Expense-owned `AccountingExpenseSplit` persistence and registers `accounting.expense-split-ownership.v1`: every new/confirmed Expense atomically dual-writes the new split facts plus the temporary legacy Transaction copy, while existing Expense UI/report reads remain unchanged. C0 reads both representations and fails closed on `SPLIT_PERSISTENCE_MISMATCH`; it still builds canonical draft facts from the legacy copy in this slice. The 2026-09-21 read-only production preflight found zero confirmed Expenses, zero legacy Expense transactions and zero canonical Expense Journals, so no historical split backfill is currently required, but the preflight must be repeated before deployment. No Journal writer/read cutover, Accounts Payable, package dependency, provider behavior or cross-context direction changes in B1-A. The additive Prisma table requires a user-generated/reviewed companion migration before promotion.
+
 Do this first so Trial Balance/balance reporting no longer depends on a parallel single-entry Expense path.
 
 Target:
@@ -176,6 +178,7 @@ Accounting Journal
 Requirements:
 
 - ExpenseDocument remains evidence/document owner;
+- category/tax split persistence must belong to Expense itself rather than remain permanently encoded only as legacy `AccountingTransaction` rows;
 - preserve category splits, payment allocations, CAD rules, audit and period lock;
 - use deterministic stable source fact/idempotency;
 - use Expense-specific authority, not arbitrary Web Journal writes;
@@ -192,6 +195,23 @@ Requirements:
 - add an explicit Accounts Payable liability flow.
 
 Never silently credit cash/bank when no payment allocation exists. Accounts Payable CoA/schema work, if selected, is a separate migration/architecture decision.
+
+### B1-A — Expense split ownership foundation
+
+The 2026-09-21 readiness audit found that `AccountingTransaction` EXPENSE rows are still doing two jobs: legacy report arithmetic and the only durable category/tax split persistence for an Expense. Directly deleting that writer would therefore delete the source facts required by the later canonical Journal policy.
+
+B1-A is an explicit expand-contract foundation:
+
+- add dedicated `AccountingExpenseSplit` persistence owned by `AccountingExpenseDocument`;
+- atomically dual-write the new split rows and the legacy `AccountingTransaction` compatibility copy inside the existing Serializable Expense write;
+- keep Expense query/UI, C0 draft construction and authoritative financial reports on the legacy copy during this slice;
+- make C0 read both representations and fail closed on `SPLIT_PERSISTENCE_MISMATCH`;
+- register `accounting.expense-split-ownership.v1` with zero-mismatch parity as the exit gate;
+- do not start Expense Journal writes or report cutover in B1-A.
+
+A read-only production preflight on 2026-09-21 found **0 confirmed Expense documents / 0 active legacy Expense transactions / 0 canonical Expense Journals**. Therefore the additive split table currently needs no historical backfill. The preflight must be repeated before deployment; if confirmed Expenses appear before migration/cutover, their split facts require an explicit deterministic backfill/parity plan rather than an inferred fallback.
+
+B1-A requires an additive Prisma migration. MCP changes only `schema.prisma`; the migration is generated in the user-local development checkout and reviewed under the normal repository workflow before any promotion to production.
 
 Expected end-state contraction:
 
@@ -426,9 +446,7 @@ Readiness re-confirmed on 2026-09-21:
   report cutover or legacy mutation removal yet;
 - C0 requires no Prisma migration, dependency change or context-edge change.
 
-After C0 review/merge, the next implementation gate is atomic Expense confirmation ->
-Expense-specific Journal authority plus report parity/cutover. The `AccountingTransaction` writer
-is removed only after that replacement parity is proven.
+After C0 review/merge, B1-A first establishes dedicated Expense-owned split persistence and a registered old/new parity gate. Only after its additive migration is reviewed/deployed and split parity is proven may the next implementation gate cut Expense/C0 reads to `AccountingExpenseSplit`, add atomic Expense-specific Journal authority and proceed to report parity/cutover. The `AccountingTransaction` writer is removed only after those replacement facts and Journal authority are proven.
 
 **Payment-completion product gate added before C1:** confirmed Expenses may retain the formal
 unknown-payment state (`paymentAllocations = []`), but the Expenses surface now owns a narrow,

@@ -26,6 +26,7 @@ const MAX_PREVIEW_RANGE_DAYS = 370;
 
 export type CanonicalExpensePreviewBlockCode =
   | 'INCOMPLETE_DOCUMENT'
+  | 'SPLIT_PERSISTENCE_MISMATCH'
   | CanonicalExpenseJournalPolicyErrorCode;
 
 export type CanonicalExpensePreviewClassification =
@@ -50,6 +51,13 @@ export type CanonicalExpenseShadowEntry = {
     taxCents: number;
     totalCents: number | null;
     paymentAllocatedCents: number;
+  };
+  splitPersistence: {
+    status: 'MATCHED' | 'MISMATCH';
+    legacyCount: number;
+    expenseSplitCount: number;
+    legacyHash: string;
+    expenseSplitHash: string;
   };
   existingJournal: {
     entryStableId: string;
@@ -77,6 +85,7 @@ export type CanonicalExpenseShadowPreviewReport = {
     ready: number;
     blocked: number;
     alreadyPosted: number;
+    splitPersistenceMismatches: number;
     byClassification: Record<string, number>;
   };
   amounts: {
@@ -129,6 +138,44 @@ const journalTotals = (journal: AccountingJournalCreateInput | null) => {
     }),
     { debitCents: 0, creditCents: 0 },
   );
+};
+
+type ExpenseSplitProjection = {
+  categoryStableId: string;
+  amountCents: number;
+  taxCents: number;
+};
+
+const normalizeExpenseSplitProjection = (
+  splits: ExpenseSplitProjection[],
+): ExpenseSplitProjection[] =>
+  splits
+    .map((split) => ({ ...split }))
+    .sort(
+      (left, right) =>
+        left.categoryStableId.localeCompare(right.categoryStableId) ||
+        left.amountCents - right.amountCents ||
+        left.taxCents - right.taxCents,
+    );
+
+const expenseSplitPersistenceParity = (
+  legacySplits: ExpenseSplitProjection[],
+  expenseSplits: ExpenseSplitProjection[],
+) => {
+  const normalizedLegacy = normalizeExpenseSplitProjection(legacySplits);
+  const normalizedExpenseSplits = normalizeExpenseSplitProjection(expenseSplits);
+  const legacyHash = hashAccountingJson(normalizedLegacy);
+  const expenseSplitHash = hashAccountingJson(normalizedExpenseSplits);
+  return {
+    status:
+      legacyHash === expenseSplitHash
+        ? ('MATCHED' as const)
+        : ('MISMATCH' as const),
+    legacyCount: normalizedLegacy.length,
+    expenseSplitCount: normalizedExpenseSplits.length,
+    legacyHash,
+    expenseSplitHash,
+  };
 };
 
 @Injectable()
@@ -208,6 +255,14 @@ export class AccountingExpenseJournalPreviewService {
             category: { select: { categoryStableId: true } },
           },
         },
+        splits: {
+          orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+          select: {
+            amountCents: true,
+            taxCents: true,
+            category: { select: { categoryStableId: true } },
+          },
+        },
       },
     });
 
@@ -256,6 +311,19 @@ export class AccountingExpenseJournalPreviewService {
           'legacy payment allocations',
         ),
       };
+      const legacySplitProjection = document.transactions.map((tx) => ({
+        categoryStableId: tx.category.categoryStableId,
+        amountCents: tx.amountCents,
+        taxCents: tx.taxCents,
+      }));
+      const splitPersistence = expenseSplitPersistenceParity(
+        legacySplitProjection,
+        document.splits.map((split) => ({
+          categoryStableId: split.category.categoryStableId,
+          amountCents: split.amountCents,
+          taxCents: split.taxCents,
+        })),
+      );
 
       if (existingJournal) {
         return {
@@ -266,10 +334,35 @@ export class AccountingExpenseJournalPreviewService {
           classification: 'ALREADY_POSTED' as const,
           blockReasons: [],
           legacy,
+          splitPersistence,
           existingJournal: {
             entryStableId: existingJournal.entryStableId,
             idempotencyKey: existingJournal.idempotencyKey,
           },
+          draftJournal: null,
+          draftHash: null,
+          debitCents: 0,
+          creditCents: 0,
+        };
+      }
+
+      if (splitPersistence.status === 'MISMATCH') {
+        return {
+          documentStableId: document.documentStableId,
+          occurredAt: document.occurredAt?.toISOString() ?? '',
+          currency: document.currency,
+          status: 'BLOCKED' as const,
+          classification: 'SPLIT_PERSISTENCE_MISMATCH' as const,
+          blockReasons: [
+            {
+              code: 'SPLIT_PERSISTENCE_MISMATCH' as const,
+              message:
+                'Expense-owned split persistence does not match the legacy AccountingTransaction compatibility copy',
+            },
+          ],
+          legacy,
+          splitPersistence,
+          existingJournal: null,
           draftJournal: null,
           draftHash: null,
           debitCents: 0,
@@ -297,6 +390,7 @@ export class AccountingExpenseJournalPreviewService {
             },
           ],
           legacy,
+          splitPersistence,
           existingJournal: null,
           draftJournal: null,
           draftHash: null,
@@ -338,6 +432,7 @@ export class AccountingExpenseJournalPreviewService {
           classification: 'READY' as const,
           blockReasons: [],
           legacy,
+          splitPersistence,
           existingJournal: null,
           draftJournal,
           draftHash,
@@ -356,6 +451,7 @@ export class AccountingExpenseJournalPreviewService {
           classification: error.code,
           blockReasons: [{ code: error.code, message: error.message }],
           legacy,
+          splitPersistence,
           existingJournal: null,
           draftJournal: null,
           draftHash: null,
@@ -400,6 +496,9 @@ export class AccountingExpenseJournalPreviewService {
         blocked: entries.filter((entry) => entry.status === 'BLOCKED').length,
         alreadyPosted: entries.filter(
           (entry) => entry.status === 'ALREADY_POSTED',
+        ).length,
+        splitPersistenceMismatches: entries.filter(
+          (entry) => entry.splitPersistence.status === 'MISMATCH',
         ).length,
         byClassification,
       },

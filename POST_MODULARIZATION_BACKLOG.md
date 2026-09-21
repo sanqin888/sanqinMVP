@@ -348,7 +348,7 @@ This lane follows `ACCOUNTING_PRODUCT_ROADMAP.md`. Phase 9 remains closed.
 
 Priority: **P0 ACCOUNTING CORRECTNESS / BEFORE NEW FINANCIAL FEATURES**  
 Complexity: **H / XL only if a new OCR runtime is later adopted**  
-State: **SLICE 0 MERGED (#2428 / `bbd0b1c0`) / SLICE 1 + MIGRATION MERGED (#2429 / `1903b32a`, CI #6017 GREEN) / SLICE 2 MERGED (#2431 / `e52c44b9`) / SLICE 3 MERGED (#2432 / `caabf1c1`, CI GREEN) / EVIDENCE VIEWER SLICE 1 MERGED (#2435 / `0371a155`, CI #6039 GREEN) / SLICE 1B MERGED (#2436 / `9ae4d85d`, CI #6042 GREEN) / SLICE 1B MIGRATION SQL REVIEWED (`cc4c8016`) / EVIDENCE VIEWER SLICE 2 MERGED (#2438 / `4d68379e`, CI GREEN) / SLICE 3V-A MERGED (#2439 / `0d6909bb`, PR CI #6054 + MERGED-HEAD CI #6055 GREEN) / SLICE 3V-B MERGED (#2440 / `0ac9117f`, PR CI #6057 + MERGED-HEAD CI #6058 GREEN) / PRODUCTION VERIFICATION PENDING**  
+State: **SLICE 0 MERGED (#2428 / `bbd0b1c0`) / SLICE 1 + MIGRATION MERGED (#2429 / `1903b32a`, CI #6017 GREEN) / SLICE 2 MERGED (#2431 / `e52c44b9`) / SLICE 3 MERGED (#2432 / `caabf1c1`, CI GREEN) / EVIDENCE VIEWER SLICE 1 MERGED (#2435 / `0371a155`, CI #6039 GREEN) / SLICE 1B MERGED (#2436 / `9ae4d85d`, CI #6042 GREEN) / SLICE 1B MIGRATION SQL REVIEWED (`cc4c8016`) / EVIDENCE VIEWER SLICE 2 MERGED (#2438 / `4d68379e`, CI GREEN) / SLICE 3V-A MERGED (#2439 / `0d6909bb`, PR CI #6054 + MERGED-HEAD CI #6055 GREEN) / SLICE 3V-B MERGED (#2440 / `0ac9117f`, PR CI #6057 + MERGED-HEAD CI #6058 GREEN) / RELIABILITY SLICE A MERGED (#2442 / `994f5a67`) / RELIABILITY SLICE B MERGED (#2443 / `6e89bc3b`, NO MIGRATION) / ORIGINAL SLICE C UX MERGED (#2445 / `da77b9a5`, CI #6074 GREEN) / 3V-B PRODUCTION VERIFICATION PENDING**  
 External gate: **none; active production verification remains for Slice 3V-B scanned-PDF routing**  
 Detailed plan: `docs/architecture/accounting-document-recognition-human-review-plan.md`
 
@@ -380,7 +380,9 @@ Hard unlocks: canonical reporting, Trial Balance, Balance Movement.
 
 Do this first.
 
-Current financial reports still combine canonical Journal facts with confirmed Expense split/payment-allocation facts. The remaining `AccountingTransaction` Expense writer is intentional and active even though production currently has zero rows.
+Current financial reports still combine canonical Journal facts with confirmed Expense split/payment-allocation facts. The remaining `AccountingTransaction` Expense writer is intentional and active even though the 2026-09-21 production preflight found zero confirmed Expenses, zero active Expense transactions and zero canonical Expense Journals.
+
+**B1-A state:** **LOCAL SOURCE COMPLETE / USER REVIEW PENDING / MIGRATION REQUIRED / NO JOURNAL OR REPORT CUTOVER** on branch `accounting/b1a-expense-split-ownership`. Readiness found that legacy `AccountingTransaction` EXPENSE rows are also the only persisted category/tax split facts, so B1 cannot delete them atomically. B1-A adds dedicated `AccountingExpenseSplit` ownership, same-transaction dual-write under registered compatibility `accounting.expense-split-ownership.v1`, and C0 fail-closed semantic parity. Expense/UI/report reads remain on the legacy copy in this slice. The additive migration requires the normal user-local generation/review flow, and the zero-row production preflight must be repeated immediately before deployment.
 
 Target:
 

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "baselineCommit": "1b18fb00",
-  "updatedAt": "2026-09-19",
+  "updatedAt": "2026-09-21",
   "requiredFields": [
     "compat_id",
     "old_owner",
@@ -54,6 +54,28 @@
       "governance_note": "The 2026-09-09 operator decision explicitly freezes the production Web Clover path while Test App/device acceptance and production-merchant authorization are incomplete. Do not modify /v1/charges execution, CARD/Apple Pay/Google Pay tokenization, 3DS/session/pricing-token/contact-verification, Web paid-Order creation, Web external-payment refund, production webhook merchant scope or persisted Web payment/surcharge facts merely to advance modularization. Non-payment bounded-context work may proceed. Resume Web Unified Payment work only after the stated provider/merchant gate, beginning with a fresh read-only production-merchant readiness/correlation audit before any v3 shadow or traffic authority change.",
       "evidence": [
         "docs/payments/clover-pos-integration-charter.md sections 3.8, 9.1 and 12.5"
+      ]
+    },
+    {
+      "compat_id": "accounting.expense-split-ownership.v1",
+      "status": "active_expand_contract",
+      "old_owner": "AccountingTransaction EXPENSE rows as the persisted Expense category/tax split copy and current financial-report/C0 read source",
+      "new_owner": "AccountingExpenseDocument plus dedicated AccountingExpenseSplit rows as the Expense-owned persisted category/tax split facts",
+      "dual_write_or_read": [
+        "B1-A atomically writes every new/confirmed Expense split to AccountingExpenseSplit and the legacy AccountingTransaction compatibility copy inside the same Serializable Expense write",
+        "Expense query/UI and authoritative financial reports continue reading the legacy AccountingTransaction split copy during B1-A",
+        "C0 canonical Expense shadow preview continues building draft facts from legacy AccountingTransaction but also reads AccountingExpenseSplit and fails closed with SPLIT_PERSISTENCE_MISMATCH when semantic category/amount/tax parity differs"
+      ],
+      "parity_metric": "For every confirmed Expense in the reviewed accounting range, semantic split row count plus categoryStableId/amountCents/taxCents multiset hashes must match between AccountingExpenseSplit and the legacy AccountingTransaction copy; C0 splitPersistenceMismatches must remain zero before any read or Journal-authority cutover",
+      "rollback": "Before read cutover, forward-fix the additive AccountingExpenseSplit write/parity path or stop deployment; existing Expense UI/reports remain on AccountingTransaction. Do not delete or rewrite legacy Expense rows merely to hide a parity mismatch.",
+      "exit_criteria": "Companion additive migration is reviewed/merged/deployed after a fresh production preflight; new Expense writes prove zero split parity mismatches across the accepted observation window; Expense/C0 reads are cut to AccountingExpenseSplit; canonical Expense Journal authority is accepted; legacy AccountingTransaction Expense writes/read arithmetic reach zero and are removed in later B1 contraction slices",
+      "remove_pr": "Post-Modularization Accounting B1 Expense Journal cutover/contraction after split parity, read cutover and canonical Journal authority are production-verified",
+      "deadline": "Remove within B1 before Canonical Sales Analytics / Trial Balance work proceeds",
+      "evidence": [
+        "ACCOUNTING_PRODUCT_ROADMAP.md",
+        "POST_MODULARIZATION_BACKLOG.md",
+        "apps/api/src/accounting/accounting-expense-split.writer.ts",
+        "apps/api/src/accounting/accounting-expense-journal-preview.service.ts"
       ]
     }
   ],
