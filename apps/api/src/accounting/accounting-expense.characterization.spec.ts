@@ -119,6 +119,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
           Promise.resolve(documentRow(args.where.documentStableId)),
         ),
       },
+      accountingInboxItem: { findMany: jest.fn().mockResolvedValue([]) },
       $transaction: transaction,
     };
     const service = new AccountingExpenseService(
@@ -536,6 +537,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
           }),
         ),
       },
+      accountingInboxItem: { findMany: jest.fn().mockResolvedValue([]) },
       $transaction: transaction,
     };
     const service = new AccountingExpenseService(
@@ -690,6 +692,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
       );
     const prisma = {
       accountingExpenseDocument: { findUnique },
+      accountingInboxItem: { findMany: jest.fn().mockResolvedValue([]) },
       accountingCategory: {
         findMany: jest.fn().mockResolvedValue([
           {
