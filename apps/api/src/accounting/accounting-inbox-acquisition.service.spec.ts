@@ -1061,7 +1061,7 @@ describe('AccountingInboxAcquisitionService', () => {
         artifactStableId: 'acctart_csv',
         parserName: 'accounting-generic-document-review',
         status: AccountingParseStatus.SUCCESS,
-        resultHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+        resultHash: expect.stringMatching(/^[a-f0-9]{64}$/) as unknown,
         resultJson: expect.objectContaining({
           inputKind: 'CSV',
           providerRecognitionAmbiguousRuleStableIds: [
@@ -1139,7 +1139,7 @@ describe('AccountingInboxAcquisitionService', () => {
         artifactStableId: 'acctart_csv',
         parserName: 'accounting-structured-expense-csv',
         status: AccountingParseStatus.SUCCESS,
-        resultHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+        resultHash: expect.stringMatching(/^[a-f0-9]{64}$/) as unknown,
         resultJson: expect.objectContaining({
           inputKind: 'CSV',
           structuredExpenseCsv: true,
@@ -1181,7 +1181,7 @@ describe('AccountingInboxAcquisitionService', () => {
         artifactStableId: 'acctart_csv',
         parserName: 'accounting-structured-expense-csv',
         status: AccountingParseStatus.SUCCESS,
-        resultHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+        resultHash: expect.stringMatching(/^[a-f0-9]{64}$/) as unknown,
         resultJson: expect.objectContaining({
           structuredExpenseCsv: true,
           structuredExpenseRowCount: 2,
