@@ -5,6 +5,10 @@ import { apiFetch } from '@/lib/api/client';
 import {
   AccountingEvidenceFileManager,
 } from './accounting-evidence-file-manager';
+import {
+  AccountingEvidenceTablePreview,
+  accountingEvidenceSupportsTabularPreview,
+} from './accounting-evidence-table-preview';
 import type {
   AccountingInboxItem,
   AccountingManualUploadPermanentDeleteResult,
@@ -45,6 +49,10 @@ export function AccountingEvidenceViewer({
   const downloadUrl = accountingEvidenceDownloadUrl(evidence.artifactStableId);
   const browserPreview =
     evidence.kind === 'PDF' || evidence.kind === 'IMAGE';
+  const tabularPreview = accountingEvidenceSupportsTabularPreview({
+    kind: evidence.kind,
+    filename: evidence.filename,
+  });
   const title =
     evidence.filename ??
     (isZh ? 'Accounting 原始证据' : 'Accounting source evidence');
@@ -183,6 +191,13 @@ export function AccountingEvidenceViewer({
                   title={title}
                   className="min-h-[65vh] w-full flex-1 rounded-lg border border-slate-200 bg-white"
                 />
+              ) : tabularPreview ? (
+                <AccountingEvidenceTablePreview
+                  key={evidence.artifactStableId}
+                  artifactStableId={evidence.artifactStableId}
+                  filename={evidence.filename}
+                  isZh={isZh}
+                />
               ) : (
                 <div className="m-auto max-w-xl rounded-xl border border-slate-200 bg-white p-6 text-center shadow-sm">
                   <p className="font-medium text-slate-900">
@@ -192,8 +207,8 @@ export function AccountingEvidenceViewer({
                   </p>
                   <p className="mt-2 text-sm leading-6 text-slate-600">
                     {isZh
-                      ? 'CSV / XLSX 的安全表格预览将在下一批加入。当前不会自动下载；如需原文件，请点击右上角“下载文件”。'
-                      : 'A safe table preview for CSV / XLSX is planned for the next slice. Nothing downloads automatically; use Download only when you need the source file.'}
+                      ? '当前不会自动下载；如需原文件，请点击右上角“下载文件”。'
+                      : 'Nothing downloads automatically; use Download only when you need the source file.'}
                   </p>
                 </div>
               )}

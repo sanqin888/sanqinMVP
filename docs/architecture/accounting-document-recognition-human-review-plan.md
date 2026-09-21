@@ -842,10 +842,15 @@ Delivery slices:
    organizational metadata only: confirmed/posted/provider evidence may be moved without
    changing content hashes, source facts, Human Review, settlement or Journal authority.
    Folder creation and every actual move are audit logged. V1 intentionally does not add
-   nested folders, folder rename or folder deletion.
+   nested folders, folder rename or folder deletion. **Merged in PR #2436 as `9ae4d85d`,
+   CI #6042 green; additive migration `20260921124637_add_accounting_evidence_folders`
+   committed as `cc4c8016` and SQL-reviewed as matching the schema without backfill/drop.**
 3. **Evidence Viewer Slice 2 — structured preview:** use the existing native CSV/XLSX parsing
    stack to expose bounded, non-executing tabular preview data. Do not emulate Excel, execute
    formulas/macros/external links, or make workbook formatting part of Accounting authority.
+   Source implementation uses the existing CSV tokenizer and `@keep-lts/xlsx`, routes through
+   authenticated `artifactStableId` delivery, and bounds preview to 8 MiB source files,
+   200 rows, 40 columns, 500 characters per cell and 20 worksheets.
 4. Later contraction may remove remaining Web dependence on raw `storedUrl` only after all
    consumers use the stable-ID boundary.
 
@@ -887,11 +892,15 @@ future new OCR/runtime dependency still requires separate authorization.
 **Evidence Viewer Slice 1:** ordinary Accounting-internal read-boundary/UI change; no migration
 or dependency is expected.
 
-**Evidence Viewer Slice 1B:** additive Accounting persistence change; **MIGRATION REQUIRED**.
-The migration should create logical folder + assignment tables, unique stable/name-key and
-one-folder-per-artifact constraints, the folder lookup index and foreign keys. Existing artifacts
-require no backfill and remain Unfiled because absence of an assignment is the virtual root.
-No physical file or `storedUrl` migration is permitted.
+**Evidence Viewer Slice 1B:** additive Accounting persistence change; migration
+`20260921124637_add_accounting_evidence_folders` has been generated, committed and SQL-reviewed.
+It creates only the logical folder + assignment tables, stable/name-key uniqueness,
+one-folder-per-artifact identity, lookup indexes and foreign keys. Existing artifacts require no
+backfill and remain Unfiled because absence of an assignment is the virtual root. No physical file
+or `storedUrl` migration is present.
+
+**Evidence Viewer Slice 2:** ordinary Accounting-internal read/UI capability; no schema,
+migration or dependency change is expected.
 
 No recognition or delivery change should rewrite historical machine extraction or posted
 financial facts. Retain source/review evidence.

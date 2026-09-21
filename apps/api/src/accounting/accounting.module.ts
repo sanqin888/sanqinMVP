@@ -25,6 +25,7 @@ import { AccountingInboxAcquisitionService } from './accounting-inbox-acquisitio
 import { AccountingArtifactDeliveryService } from './accounting-artifact-delivery.service';
 import { AccountingEvidenceFileManagerService } from './accounting-evidence-file-manager.service';
 import { AccountingImageRetentionService } from './accounting-image-retention.service';
+import { AccountingTabularPreviewService } from './accounting-tabular-preview.service';
 import { AccountingProviderFinancialService } from './accounting-provider-financial.service';
 import { AccountingProviderFinancialReviewService } from './accounting-provider-financial-review.service';
 import { AccountingProviderFinancialHistoryService } from './accounting-provider-financial-history.service';
@@ -108,6 +109,7 @@ import { PaymentFinancialFactsModule } from '../payments/public-api';
     AccountingArtifactDeliveryService,
     AccountingEvidenceFileManagerService,
     AccountingImageRetentionService,
+    AccountingTabularPreviewService,
     AccountingProviderFinancialHistoryService,
     AccountingGmailIngestService,
     AccountingAutomationScheduler,
