@@ -37,9 +37,7 @@ import type {
   AccountingExpensePaymentCompletionInput,
   AccountingExpensePaymentState,
 } from './accounting-expense.contracts';
-import {
-  AccountingExpenseJournalPostingService,
-} from './accounting-expense-journal-posting.service';
+import { AccountingExpenseJournalPostingService } from './accounting-expense-journal-posting.service';
 import { CANONICAL_EXPENSE_SOURCE_FACT_TYPE } from './accounting-expense-journal.policy';
 import {
   listAccountingExpenseDocuments,
@@ -192,8 +190,7 @@ export class AccountingExpenseService {
   constructor(
     @Inject(ACCOUNTING_DB) private readonly prisma: AccountingDb,
     private readonly period: AccountingPeriodService,
-    private readonly expenseJournalPosting:
-      AccountingExpenseJournalPostingService,
+    private readonly expenseJournalPosting: AccountingExpenseJournalPostingService,
   ) {}
 
   async confirmUnifiedInboxExpense(

@@ -71,9 +71,7 @@ describe('AccountingExpenseJournalPostingService', () => {
     expect(tx.accountingExpenseDocument.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({ where: { documentStableId: 'expense_1' } }),
     );
-    expect(
-      journal.createCanonicalExpenseJournalEntryInTx,
-    ).toHaveBeenCalledWith(
+    expect(journal.createCanonicalExpenseJournalEntryInTx).toHaveBeenCalledWith(
       expect.objectContaining({
         idempotencyKey: 'canonical-expense:expense_1:v1',
         source: 'EXPENSE_DOCUMENT',

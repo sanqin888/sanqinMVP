@@ -171,9 +171,7 @@ export const hashCanonicalExpenseJournalWriteAuthority = (
 ): string => {
   const authority =
     normalizeCanonicalExpenseJournalWriteAuthority(authorityRaw);
-  return createHash('sha256')
-    .update(JSON.stringify(authority))
-    .digest('hex');
+  return createHash('sha256').update(JSON.stringify(authority)).digest('hex');
 };
 
 export const hashCanonicalExpenseJournalWrite = (

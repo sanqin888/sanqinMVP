@@ -11,12 +11,8 @@ import {
   type CanonicalExpenseFactV1,
 } from './accounting-expense-journal.policy';
 import { AccountingJournalPolicyError } from './accounting-journal-policy';
-import {
-  buildCanonicalExpenseJournalWritePlan,
-} from './accounting-expense-journal-write-authority';
-import {
-  compareAccountingExpenseSplitPersistence,
-} from './accounting-expense-split-parity';
+import { buildCanonicalExpenseJournalWritePlan } from './accounting-expense-journal-write-authority';
+import { compareAccountingExpenseSplitPersistence } from './accounting-expense-split-parity';
 import { AccountingJournalService } from './accounting-journal.service';
 
 type PersistedExpensePostingFact = {

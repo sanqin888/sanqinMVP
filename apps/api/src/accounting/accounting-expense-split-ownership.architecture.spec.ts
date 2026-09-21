@@ -17,10 +17,7 @@ const EXPENSE_SPLIT_WRITER = resolve(
   ACCOUNTING_ROOT,
   'accounting-expense-split.writer.ts',
 );
-const EXPENSE_QUERY = resolve(
-  ACCOUNTING_ROOT,
-  'accounting-expense.query.ts',
-);
+const EXPENSE_QUERY = resolve(ACCOUNTING_ROOT, 'accounting-expense.query.ts');
 const EXPENSE_PREVIEW = resolve(
   ACCOUNTING_ROOT,
   'accounting-expense-journal-preview.service.ts',

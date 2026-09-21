@@ -3,9 +3,7 @@ import {
   AccountingJournalEntryKind,
   AccountingJournalSource,
 } from './accounting-contracts';
-import {
-  buildCanonicalExpenseJournalWritePlan,
-} from './accounting-expense-journal-write-authority';
+import { buildCanonicalExpenseJournalWritePlan } from './accounting-expense-journal-write-authority';
 import { AccountingJournalService } from './accounting-journal.service';
 import { AccountingPeriodService } from './accounting-period.service';
 
@@ -212,5 +210,4 @@ describe('AccountingJournalService canonical Expense authority', () => {
     );
     expect(tx.accountingJournalEntry.create).not.toHaveBeenCalled();
   });
-
 });
