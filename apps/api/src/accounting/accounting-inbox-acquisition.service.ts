@@ -33,9 +33,12 @@ import { extractAccountingImageText } from './accounting-image-ocr';
 import {
   isAccountingTextractExpenseRecognitionEnabled,
   recognizeAccountingExpenseImageWithTextract,
-  recognizeAccountingExpensePdfWithTextract,
   type AccountingTextractExpenseEvidence,
 } from './accounting-textract-expense-recognition';
+import {
+  recognizeAccountingScannedPdfWithTextract,
+  type AccountingScannedPdfOcrEvidence,
+} from './accounting-scanned-pdf-recognition';
 import {
   ACCOUNTING_RECEIPT_IMAGE_POLICY,
   detectAccountingReceiptImageType,
@@ -57,7 +60,7 @@ export const ACCOUNTING_INBOX_FILE_MAX_BYTES = 25 * 1024 * 1024;
 const GENERIC_PARSER_NAME = 'accounting-generic-document-review';
 const GENERIC_PARSER_VERSION = '2';
 const DOCUMENT_EXTRACTION_PARSER_VERSION = '4';
-const PDF_ROUTING_PARSER_VERSION = '5';
+const PDF_ROUTING_PARSER_VERSION = '6';
 
 type AccountingInboxFile = {
   originalname: string;
@@ -107,7 +110,7 @@ type PdfReviewExtraction = TextReviewExtraction & {
   textRecognitionEngine: 'POPPLER' | 'AWS_TEXTRACT';
   documentExtraction: AccountingDocumentExtraction;
   pdfNativeTextUsability: AccountingPdfNativeTextUsability;
-  textractEvidence?: AccountingTextractExpenseEvidence;
+  pdfOcrEvidence?: AccountingScannedPdfOcrEvidence;
 };
 
 @Injectable()
@@ -528,7 +531,7 @@ export class AccountingInboxAcquisitionService {
       });
       let textRecognitionEngine: PdfReviewExtraction['textRecognitionEngine'] =
         'POPPLER';
-      let textractEvidence: AccountingTextractExpenseEvidence | undefined;
+      let pdfOcrEvidence: AccountingScannedPdfOcrEvidence | undefined;
       let ambiguousRuleStableIds: string[] = [];
 
       if (pdfNativeTextUsability.disposition === 'USABLE_NATIVE_TEXT') {
@@ -546,42 +549,31 @@ export class AccountingInboxAcquisitionService {
             : [];
       }
 
-      // Slice 3V-A classifies weak native text separately from provider semantics,
-      // but does not widen the legacy raw-PDF Textract fallback before 3V-B adds
-      // bounded page rasterization. Preserve only the historical blank-text case.
       if (
         pdfNativeTextUsability.disposition === 'SCAN_CANDIDATE' &&
-        pdfNativeTextUsability.reason === 'NO_NATIVE_TEXT' &&
         isAccountingTextractExpenseRecognitionEnabled() &&
         acquisitionMode !== AccountingArtifactAcquisitionMode.PROVIDER_API
       ) {
-        try {
-          const textract =
-            await recognizeAccountingExpensePdfWithTextract(buffer);
-          text = textract.text;
-          extraction = textract.extraction;
-          documentExtraction = textract.documentExtraction;
-          textRecognitionEngine = 'AWS_TEXTRACT';
-          textractEvidence = textract.evidence;
-          const provider = await this.parseProviderEvidence(acquisitionMode, {
-            artifactStableId: artifact.artifactStableId,
-            text,
-            documentExtraction,
-            pdfNativeTextUsability,
-            ...providerContext,
-          });
-          if (provider.matched) return true;
-          ambiguousRuleStableIds =
-            'ambiguousRuleStableIds' in provider
-              ? (provider.ambiguousRuleStableIds ?? [])
-              : [];
-        } catch (error) {
-          this.logger.warn(
-            `Accounting Textract PDF recognition failed for ${artifact.artifactStableId}; retaining local PDF result: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          );
-        }
+        const textract =
+          await recognizeAccountingScannedPdfWithTextract(buffer);
+        text = textract.text;
+        extraction = textract.extraction;
+        documentExtraction = textract.documentExtraction;
+        textRecognitionEngine = 'AWS_TEXTRACT';
+        pdfOcrEvidence = textract.evidence;
+        const provider = await this.parseProviderEvidence(acquisitionMode, {
+          artifactStableId: artifact.artifactStableId,
+          text,
+          documentExtraction,
+          pdfNativeTextUsability,
+          pdfOcrEvidence,
+          ...providerContext,
+        });
+        if (provider.matched) return true;
+        ambiguousRuleStableIds =
+          'ambiguousRuleStableIds' in provider
+            ? (provider.ambiguousRuleStableIds ?? [])
+            : [];
       }
 
       const review =
@@ -600,7 +592,7 @@ export class AccountingInboxAcquisitionService {
         textRecognitionEngine,
         documentExtraction,
         pdfNativeTextUsability,
-        ...(textractEvidence ? { textractEvidence } : {}),
+        ...(pdfOcrEvidence ? { pdfOcrEvidence } : {}),
         ...(ambiguousRuleStableIds.length
           ? {
               providerRecognitionAmbiguousRuleStableIds: ambiguousRuleStableIds,

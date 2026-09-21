@@ -47,6 +47,7 @@ import {
   parseAccountingPdfNativeTextUsability,
   type AccountingPdfNativeTextUsability,
 } from './accounting-pdf-routing';
+import type { AccountingScannedPdfOcrEvidence } from './accounting-scanned-pdf-recognition';
 import { AccountingProviderFinancialReviewService } from './accounting-provider-financial-review.service';
 import type { ProviderFinancialReviewDraftInput } from './accounting-provider-financial-review.policy';
 import { getAccountingUploadsDir } from './accounting-storage-path';
@@ -58,6 +59,7 @@ export type AccountingProviderFinancialParseContext = Omit<
   artifactStableId: string;
   text: string;
   pdfNativeTextUsability?: AccountingPdfNativeTextUsability;
+  pdfOcrEvidence?: AccountingScannedPdfOcrEvidence;
 };
 
 export class AccountingProviderFinancialProcessingError extends Error {}
@@ -132,6 +134,9 @@ export class AccountingProviderFinancialService {
         ...(input.pdfNativeTextUsability
           ? { pdfNativeTextUsability: input.pdfNativeTextUsability }
           : {}),
+        ...(input.pdfOcrEvidence
+          ? { pdfOcrEvidence: input.pdfOcrEvidence }
+          : {}),
       };
       await this.inbox.recordInboxParseRun({
         artifactStableId: input.artifactStableId,
@@ -170,6 +175,7 @@ export class AccountingProviderFinancialService {
         input.text,
         input.documentExtraction,
         input.pdfNativeTextUsability,
+        input.pdfOcrEvidence,
       );
       const excludedBeforeFinancialHistory = Boolean(
         parsed.periodEnd &&
@@ -563,6 +569,7 @@ export class AccountingProviderFinancialService {
     text?: string,
     documentExtraction?: AccountingDocumentExtraction,
     pdfNativeTextUsability?: AccountingPdfNativeTextUsability,
+    pdfOcrEvidence?: AccountingScannedPdfOcrEvidence,
   ) {
     return {
       providerFinancial: true,
@@ -580,6 +587,7 @@ export class AccountingProviderFinancialService {
       ...(text === undefined ? {} : { extractedText: text.slice(0, 100_000) }),
       ...(documentExtraction ? { documentExtraction } : {}),
       ...(pdfNativeTextUsability ? { pdfNativeTextUsability } : {}),
+      ...(pdfOcrEvidence ? { pdfOcrEvidence } : {}),
     };
   }
 
