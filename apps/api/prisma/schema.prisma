@@ -2170,6 +2170,7 @@ model AccountingSourceArtifact {
   parseRuns              AccountingParseRun[]
   financialDocument      AccountingProviderFinancialDocument?
   binaryRetention        AccountingArtifactBinaryRetention?
+  evidenceFolderAssignment AccountingEvidenceFolderAssignment?
 
   @@unique([acquisitionMode, transportIdentity])
   @@index([contentHash, createdAt])
@@ -2209,6 +2210,30 @@ model AccountingArtifactBinaryRetention {
   artifact                 AccountingSourceArtifact                 @relation(fields: [artifactId], references: [id], onDelete: Restrict)
 
   @@index([state, updatedAt])
+}
+
+model AccountingEvidenceFolder {
+  id                    String                               @id @default(uuid()) @db.Uuid
+  folderStableId        String                               @unique @default(cuid())
+  name                  String
+  nameKey               String                               @unique
+  createdByUserStableId String
+  createdAt             DateTime                             @default(now())
+  updatedAt             DateTime                             @updatedAt
+  assignments           AccountingEvidenceFolderAssignment[]
+
+  @@index([createdAt])
+}
+
+model AccountingEvidenceFolderAssignment {
+  artifactId          String                   @id @db.Uuid
+  folderId            String                   @db.Uuid
+  movedByUserStableId String
+  movedAt             DateTime                 @updatedAt
+  artifact            AccountingSourceArtifact @relation(fields: [artifactId], references: [id], onDelete: Cascade)
+  folder              AccountingEvidenceFolder @relation(fields: [folderId], references: [id], onDelete: Restrict)
+
+  @@index([folderId, movedAt])
 }
 
 model AccountingParseRun {

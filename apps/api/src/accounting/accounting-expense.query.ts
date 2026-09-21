@@ -1,4 +1,8 @@
-import { Prisma } from '@prisma/client';
+import {
+  AccountingArtifactKind,
+  AccountingInboxMaterializedEntityType,
+  Prisma,
+} from '@prisma/client';
 import type { AccountingDocumentStatus } from './accounting-contracts';
 import type { AccountingDb } from './accounting-db';
 
@@ -71,7 +75,16 @@ export async function listAccountingExpenseDocuments(
     orderBy: { createdAt: 'desc' },
     take,
   });
-  return rows.map(presentAccountingExpenseDocument);
+  const sourceEvidence = await readExpenseSourceEvidence(
+    db,
+    rows.map((row) => row.documentStableId),
+  );
+  return rows.map((row) =>
+    presentAccountingExpenseDocument(
+      row,
+      sourceEvidence.get(row.documentStableId) ?? null,
+    ),
+  );
 }
 
 export async function readAccountingExpenseDocument(
@@ -82,10 +95,79 @@ export async function readAccountingExpenseDocument(
     where: { documentStableId },
     select: ACCOUNTING_DOCUMENT_SELECT,
   });
-  return row ? presentAccountingExpenseDocument(row) : null;
+  if (!row) return null;
+  const sourceEvidence = await readExpenseSourceEvidence(db, [
+    documentStableId,
+  ]);
+  return presentAccountingExpenseDocument(
+    row,
+    sourceEvidence.get(documentStableId) ?? null,
+  );
 }
 
-function presentAccountingExpenseDocument(row: AccountingDocumentRow) {
+type AccountingExpenseSourceEvidence = {
+  artifactStableId: string;
+  kind: AccountingArtifactKind;
+  originalFilename: string | null;
+};
+
+async function readExpenseSourceEvidence(
+  db: AccountingDb,
+  documentStableIds: string[],
+): Promise<Map<string, AccountingExpenseSourceEvidence>> {
+  if (!documentStableIds.length) return new Map();
+
+  const inboxItems = await db.accountingInboxItem.findMany({
+    where: {
+      materializedEntityType:
+        AccountingInboxMaterializedEntityType.EXPENSE_DOCUMENT,
+      materializedEntityStableId: { in: documentStableIds },
+    },
+    select: {
+      materializedEntityStableId: true,
+      artifact: {
+        select: {
+          artifactStableId: true,
+          kind: true,
+          originalFilename: true,
+          storedUrl: true,
+          binaryRetention: {
+            select: {
+              retainedStoredUrl: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  return new Map(
+    inboxItems.flatMap((item) => {
+      if (
+        !item.materializedEntityStableId ||
+        (!item.artifact.storedUrl &&
+          !item.artifact.binaryRetention?.retainedStoredUrl)
+      ) {
+        return [];
+      }
+      return [
+        [
+          item.materializedEntityStableId,
+          {
+            artifactStableId: item.artifact.artifactStableId,
+            kind: item.artifact.kind,
+            originalFilename: item.artifact.originalFilename,
+          },
+        ] as const,
+      ];
+    }),
+  );
+}
+
+function presentAccountingExpenseDocument(
+  row: AccountingDocumentRow,
+  sourceEvidence: AccountingExpenseSourceEvidence | null,
+) {
   return {
     documentStableId: row.documentStableId,
     source: row.source,
@@ -97,6 +179,7 @@ function presentAccountingExpenseDocument(row: AccountingDocumentRow) {
     currency: row.currency,
     emailSubject: row.emailSubject,
     attachmentUrls: row.attachmentUrls,
+    sourceEvidence,
     extractedText: row.extractedText?.slice(0, 20_000) ?? null,
     extraction: row.extractionJson,
     memo: row.memo,

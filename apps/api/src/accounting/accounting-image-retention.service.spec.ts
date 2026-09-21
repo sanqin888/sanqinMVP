@@ -213,13 +213,6 @@ describe('AccountingImageRetentionService', () => {
       finalizeImageOriginalPurge: jest.fn().mockResolvedValue({
         state: AccountingArtifactBinaryRetentionState.COMPRESSED_ONLY,
       }),
-      readImageArtifactContentContext: jest.fn().mockResolvedValue({
-        artifactStableId: 'acctart_image_1',
-        kind: AccountingArtifactKind.IMAGE,
-        mimeType: 'image/jpeg',
-        storedUrl: '/api/v1/accounting/files/inbox/original.jpg',
-        binaryRetention: compressedRetention,
-      }),
     };
     const service = new AccountingImageRetentionService(operations as never);
 
@@ -237,8 +230,5 @@ describe('AccountingImageRetentionService', () => {
     ).toBeLessThan(
       operations.finalizeImageOriginalPurge.mock.invocationCallOrder[0],
     );
-
-    const content = await service.resolveArtifactContent('acctart_image_1');
-    expect(content).toEqual({ filePath: retainedPath, mimeType: 'image/webp' });
   });
 });

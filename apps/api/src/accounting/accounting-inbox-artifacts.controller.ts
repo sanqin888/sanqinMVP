@@ -26,6 +26,11 @@ import {
   type AuthedAccountingRequest,
   requireAccountingOperatorUserId,
 } from './accounting-controller-support';
+import {
+  AccountingArtifactDeliveryService,
+  accountingArtifactContentDisposition,
+} from './accounting-artifact-delivery.service';
+import { AccountingEvidenceFileManagerService } from './accounting-evidence-file-manager.service';
 import { AccountingImageRetentionService } from './accounting-image-retention.service';
 import type { AccountingImageRetentionProfile } from './accounting-receipt-image';
 import { getAccountingUploadsDir } from './accounting-storage-path';
@@ -37,6 +42,8 @@ export class AccountingInboxArtifactsController {
   constructor(
     private readonly acquisition: AccountingInboxAcquisitionService,
     private readonly imageRetention: AccountingImageRetentionService,
+    private readonly artifactDelivery: AccountingArtifactDeliveryService,
+    private readonly evidenceFileManager: AccountingEvidenceFileManagerService,
   ) {}
 
   @Post('inbox/artifacts')
@@ -90,16 +97,59 @@ export class AccountingInboxArtifactsController {
     );
   }
 
+  @Get('evidence-file-manager')
+  accountingEvidenceFileManager() {
+    return this.evidenceFileManager.listFileManager();
+  }
+
+  @Post('evidence-folders')
+  createAccountingEvidenceFolder(
+    @Body() body: { name?: unknown },
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.evidenceFileManager.createFolder(
+      body.name,
+      requireAccountingOperatorUserId(req),
+    );
+  }
+
+  @Post('evidence-files/move')
+  moveAccountingEvidenceFiles(
+    @Body()
+    body: {
+      artifactStableIds?: unknown;
+      targetFolderStableId?: unknown;
+    },
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.evidenceFileManager.moveArtifacts(
+      {
+        artifactStableIds: body.artifactStableIds,
+        targetFolderStableId: body.targetFolderStableId,
+      },
+      requireAccountingOperatorUserId(req),
+    );
+  }
+
   @Get('inbox/artifacts/:artifactStableId/content')
   async accountingInboxArtifactContent(
     @Param('artifactStableId') artifactStableId: string,
     @Res() res: Response,
   ) {
     const resolved =
-      await this.imageRetention.resolveArtifactContent(artifactStableId);
-    res.setHeader('Content-Type', resolved.mimeType);
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Cache-Control', 'private, no-store');
+      await this.artifactDelivery.resolveArtifactContent(artifactStableId);
+    this.setArtifactDeliveryHeaders(res, resolved, 'inline');
+    return res.sendFile(resolved.filePath);
+  }
+
+  @Get('inbox/artifacts/:artifactStableId/download')
+  async accountingInboxArtifactDownload(
+    @Param('artifactStableId') artifactStableId: string,
+    @Res() res: Response,
+  ) {
+    const resolved =
+      await this.artifactDelivery.resolveArtifactContent(artifactStableId);
+    this.setArtifactDeliveryHeaders(res, resolved, 'attachment');
     return res.sendFile(resolved.filePath);
   }
 
@@ -112,6 +162,22 @@ export class AccountingInboxArtifactsController {
       inboxItemStableId,
       requireAccountingOperatorUserId(req),
     );
+  }
+
+  private setArtifactDeliveryHeaders(
+    res: Response,
+    resolved: Awaited<
+      ReturnType<AccountingArtifactDeliveryService['resolveArtifactContent']>
+    >,
+    disposition: 'inline' | 'attachment',
+  ) {
+    res.setHeader('Content-Type', resolved.mimeType);
+    res.setHeader(
+      'Content-Disposition',
+      accountingArtifactContentDisposition(disposition, resolved.filename),
+    );
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'private, no-store');
   }
 
   @Get('files/:kind/:fileName')

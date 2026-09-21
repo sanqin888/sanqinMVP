@@ -1,8 +1,8 @@
 # Accounting Document Recognition & Human Review Plan
 
-Status: **SLICE 0-2 MERGED / SLICE 3 SOURCE IMPLEMENTED / REMOTE CI PENDING**  
-Planning date: 2026-09-20  
-Audit baseline: `origin/dev@1ede0599`; Slice 3 implementation baseline: `origin/dev@e52c44b9`  
+Status: **SLICE 0-3 MERGED / CI GREEN / POPPLER PDF PATH AUDITED / EVIDENCE VIEWER SLICE 1 SOURCE IMPLEMENTED / LOCAL REVIEW**  
+Planning date: 2026-09-20; updated: 2026-09-21  
+Audit baseline: `origin/dev@1ede0599`; Slice 3 merged in PR #2432 as `caabf1c1`; current follow-up baseline: `origin/dev@971a3172`  
 Owner: **Accounting / Reporting / Analytics**  
 Phase 9 status: **remains PRODUCTION VERIFIED / CLOSED — do not reopen Phase 9**
 
@@ -243,8 +243,15 @@ and the current implementation now uses the Detail as supplementary evidence whi
 Summary remains monthly authority.
 
 That solution is valid evidence-driven reconciliation, but it exposed a workflow gap:
-supplementary evidence is currently the only supported resolution path. There is no
-general operator review authority for:
+supplementary evidence is currently the only supported resolution path. A later real July
+2026 Chinese Fantuan Detail workbook also showed that provider-native structured exports
+can vary by locale: ordinary rows use `单据类型 = 订单`, while the observed adjustment rows
+use `单据类型 = 扣款`, blank `订单类型`, and Chinese column labels such as `单据时间`,
+`单据号` and `结算金额`. The native XLSX adapter therefore owns explicit observed
+English/Chinese aliases and keeps unknown non-order document types fail-closed; it does not
+guess an unobserved Chinese Compensation label from amount sign or remarks.
+
+There is no general operator review authority for:
 
 - correcting a source-reading error;
 - classifying a source line when the source evidence is sufficient but the parser lacks a
@@ -262,19 +269,22 @@ Use the strongest native representation first:
 | --- | --- | --- |
 | CSV | native structured parser | manual review |
 | XLSX | native workbook/cell parser | manual review |
-| DOCX | future native DOCX extraction or BDA | manual review |
-| machine-generated PDF | layout-aware native PDF extraction | Paddle/BDA/Textract |
-| scanned PDF | PaddleOCR or AWS document recognition | alternate engine/manual review |
-| JPEG/PNG/WebP | local preprocessing + Paddle/Textract | alternate engine/manual review |
+| DOCX | not currently accepted; future native parser decision | manual review |
+| native-text PDF | local Poppler text + bbox/layout | fail closed / Human Review |
+| scanned PDF | local Poppler page detection + bounded page rasterization -> synchronous Textract image OCR per page | fail closed / Human Review |
+| JPEG/PNG/WebP | synchronous Textract image path when enabled | existing Tesseract fallback / Human Review |
 | email body | native text | manual review |
 
 The output of each adapter should converge on one internal document-extraction contract,
-not one universal OCR implementation.
+not one universal OCR implementation. This table is the current approved routing direction;
+Paddle/BDA and S3/async Textract are not fallback defaults.
 
 ## 6. Recognition-engine assessment
 
-No vendor or open-source engine should be assumed universally "more accurate" without a
-SanQ-specific benchmark.
+This section records the engine assessment that informed the 2026-09-21 architecture decision.
+It is no longer a gate requiring a Paddle/BDA benchmark before the normal PDF path can proceed.
+New engines should still not be adopted from generic vendor claims; they require a demonstrated
+SanQ gap plus explicit architecture/dependency authorization.
 
 ### 6.1 AWS Textract
 
@@ -288,36 +298,41 @@ Strengths for SanQ:
 - geometry/confidence evidence;
 - no model runtime load on the 2 GB production VM.
 
-Limitations for this project:
+Limitations / current role for this project:
 
 - provider monthly statements are not necessarily receipt/invoice layouts;
-- current SanQ PDF path only invokes Textract when Poppler returns no text;
-- per-document cloud cost remains;
+- native-text PDFs stay on local Poppler and do not use Textract merely because Textract can
+  accept PDFs;
+- the existing scanned-PDF fallback still sends PDF bytes directly to synchronous
+  `AnalyzeExpense`; Slice 3V replaces that with bounded local page rasterization and
+  synchronous image-page OCR;
+- per-document/page cloud cost remains;
 - a successful OCR result still needs Accounting reconciliation and human review.
 
 ### 6.2 Bedrock Data Automation (BDA)
 
-Current integration: **not present**.
+Current integration: **not present; not part of the currently approved normal recognition path**.
 
-Potential advantages:
+Potential advantages considered during the earlier assessment:
 
 - custom Blueprint-style semantic extraction is a better conceptual fit for fields such as
   Sales, Tax, Commission, Adjustment and Net Total;
 - supports document inputs including PDF/images and async DOCX;
 - useful for varying provider statement layouts.
 
-Limitations:
+Limitations / current disposition:
 
 - higher per-document/page cost than the simplest Textract path;
 - no XLSX input, so Excel still requires native parsing;
-- should not be adopted without a SanQ statement benchmark;
-- still requires deterministic Accounting validation and human review.
+- adopting it would introduce a new external recognition/configuration path;
+- it is not currently justified by a demonstrated gap in the local-PDF + page-Textract target;
+- it would still require deterministic Accounting validation and human review.
 
 ### 6.3 PaddleOCR / PP-StructureV3
 
-Current integration: **not present**.
+Current integration: **not present; not part of the currently approved normal recognition path**.
 
-Potential advantages:
+Potential advantages considered during the earlier assessment:
 
 - local image and PDF recognition;
 - layout/table/document-structure extraction rather than plain text only;
@@ -325,7 +340,7 @@ Potential advantages:
   adapter;
 - can reduce cloud OCR calls if quality is sufficient.
 
-Limitations:
+Limitations / current disposition:
 
 - it is not a native XLSX/CSV/DOCX parser;
 - local installation adds Python/Paddle model/runtime dependencies;
@@ -333,19 +348,22 @@ Limitations:
 - adopting it changes the production image/runtime footprint and therefore requires an
   explicit dependency/runtime authorization.
 
-The first Paddle work should be an isolated benchmark/spike, not a production cutover.
-If production-quality Paddle inference cannot fit safely inside the existing API image/runtime,
-moving it to another process/container would change the repository's approved deployment
-topology and requires explicit architecture authorization before implementation.
+No Paddle work is scheduled in the current plan. If a future real document class exposes a
+gap that Poppler + bounded Textract fallback cannot safely cover, Paddle may be reconsidered as
+an isolated benchmark/spike. Any runtime adoption or separate process/container still requires
+explicit dependency and architecture authorization before implementation.
 
 ### 6.4 Existing Tesseract / Poppler
 
-Keep them during evaluation.
+Current approved role:
 
-- Poppler remains useful for deterministic native PDF text extraction.
-- Tesseract remains a useful emergency local OCR fallback.
-- Neither current plain-text output path solves the complete reviewed-document problem by
-  itself.
+- Poppler is the primary deterministic native-text PDF extractor and bbox/layout source;
+- the same installed Poppler runtime is the planned local rasterizer for bounded scanned-PDF
+  pages before Textract image OCR;
+- Tesseract remains the existing local image fallback, not the preferred scanned-PDF statement
+  engine;
+- recognition output still does not by itself create posting authority; control totals and
+  Human Review remain separate layers.
 
 ## 7. Target internal extraction contract
 
@@ -657,59 +675,79 @@ Source implementation on `origin/dev@e52c44b9`:
 - does not change Clover/Fantuan parsing semantics in this slice and does not add a new OCR
   runtime, package dependency, Prisma model/migration, provider wire contract or context edge.
 
-The current recognition ordering remains unchanged: native PDF uses Poppler first; scanned PDF
-may use the existing Textract fallback; images use Textract when enabled with Tesseract fallback.
-Slice 4 remains responsible for benchmark-based engine selection.
+Slice 3 was subsequently merged in PR #2432 as `caabf1c1`; its PR CI completed green. The
+previous `REMOTE CI PENDING` status is obsolete.
 
-### Slice 4 — Recognition benchmark: existing vs Paddle vs BDA
+#### 2026-09-21 Poppler / PDF path audit
 
-Build a sanitized ground-truth corpus containing at least:
+A fresh read-only audit against `origin/dev@971a3172` establishes the following runtime facts:
 
-- Uber monthly statements across several months/layouts;
-- Clover statement/closeout samples;
-- Fantuan Summary and Detail;
-- ordinary vendor receipts/invoices;
-- English, bilingual and difficult phone photos;
-- scanned PDF and native-text PDF samples.
+- native PDFs already use local Poppler `pdftotext`, with an Accounting-owned optional
+  `-bbox-layout` pass that normalizes page/line geometry into `AccountingDocumentExtraction`;
+- provider parser v4 uses that geometry for Uber monthly-statement label/value pairing and
+  fails closed when a geometry-backed label cannot be paired safely;
+- the historical July Uber source shape is explained by flattened-text ordering: `Sales` and
+  `Tax on Sales` appeared before their amounts, so the old adjacency parser duplicated Sales;
+- focused regression coverage pins the intended July values `Sales = 260336`,
+  `Tax on Sales = 33848`, and `Net Total = 143194`, but the current bbox fixtures are synthetic;
+- a real July Fantuan production artifact has persisted `POPPLER / GEOMETRY` extraction with
+  clean same-row label/value geometry, proving that the deployed Poppler bbox path is operating
+  on real documents;
+- current scanned-PDF fallback is weaker than the target architecture: fallback is triggered
+  only when native text is exactly blank (`!text.trim()`), and the current Textract helper sends
+  the PDF bytes directly to synchronous `AnalyzeExpense`;
+- `Dockerfile.api` already installs `poppler-utils`, so local page rasterization can use the
+  existing runtime instead of adding a package or service;
+- Poppler/Alpine versions are not pinned today. Reproducibility pinning is a separate runtime
+  decision, not silently bundled into document-recognition correctness work.
 
-Measure:
+The remaining proof gap is therefore not another generic OCR benchmark. It is deterministic
+SanQ evidence that the local Poppler path handles representative real provider documents and
+that scanned PDFs use a bounded, page-aware OCR fallback.
 
-- field exact-match rate;
-- money exact-match rate;
-- label/value pairing accuracy;
-- missing-field rate;
-- false-field rate;
-- provider control-total reconciliation pass rate;
-- latency;
-- peak RAM/CPU;
-- cloud cost/document;
-- fallback/manual-review rate.
+### Slice 3V — Poppler golden verification + scanned-PDF routing hardening
 
-Benchmark candidates:
-
-1. current Poppler/Textract/Tesseract;
-2. PaddleOCR / PP-StructureV3;
-3. AWS Textract;
-4. BDA Blueprint for provider statements.
-
-Do not choose an engine by generic vendor claims; choose from SanQ ground truth.
-
-### Slice 5 — Optional recognition-engine cutover
-
-Only after Slice 4 results and explicit dependency/runtime authorization.
-
-Possible target:
+The approved recognition direction is now:
 
 ```text
-native structured files -> native parsers
-native PDF              -> local layout-aware extraction first
-image/scanned PDF       -> Paddle primary if proven
-low-confidence/failure  -> Textract or BDA fallback
-provider statements     -> best benchmarked adapter
+XLSX / CSV              -> native structured parser
+native-text PDF          -> local Poppler text + bbox/layout
+scanned PDF              -> local PDF validation/page detection
+                            -> local page rasterization
+                            -> one image page at a time to synchronous Textract
+                            -> merge page-aware text/geometry
+JPG / PNG / WebP         -> synchronous Textract image path
+recognition uncertainty  -> fail closed / Human Review
 ```
 
-The exact primary/fallback ordering is a benchmark result, not a pre-decided architecture
-rule.
+This supersedes the earlier plan to benchmark PaddleOCR/BDA before choosing the normal PDF
+path. SanQ will not introduce S3 + asynchronous Textract jobs merely to support ordinary
+multi-page scanned PDFs, and it will not adopt Paddle/BDA in this work package without a new,
+explicit architecture decision.
+
+3V should be delivered in narrow steps:
+
+1. capture sanitized real Poppler bbox golden evidence for representative provider PDFs,
+   especially the observed Uber column-order shape, and exercise
+   `Poppler bbox -> provider parser -> control-total` without mutating historical production
+   documents;
+2. replace the literal blank-text test with a conservative Accounting-owned
+   `usable native PDF text` decision derived from real fixtures rather than an arbitrary
+   threshold;
+3. for PDFs without usable native text, obtain a bounded page count and rasterize one page at
+   a time locally with Poppler, prepare each page under the existing Textract image limits,
+   call synchronous Textract, then merge lines back into one PDF-level
+   `AccountingDocumentExtraction` with original page numbers;
+4. enforce page/size/time/line limits fail-closed. A page-limit overflow must go to Human
+   Review rather than silently OCR only a prefix;
+5. keep provider financial semantics in SanQ. Textract page-level OCR/layout may be merged,
+   but per-page `TOTAL`, `TAX` or other `AnalyzeExpense` semantic fields must not be blindly
+   aggregated into provider statement totals;
+6. separately audit the current `PROVIDER_API` scanned-PDF fallback exclusion before changing
+   it. Do not broaden provider ingestion behavior without evidence.
+
+No new npm dependency, S3 bucket, async Textract workflow, queue, schema or migration is
+required for this target.
 
 ### Slice 6 — Optional suspense workflow
 
@@ -727,26 +765,92 @@ Define:
 
 Do not use suspense as a generic bypass for missing evidence.
 
-## 12. Recovery of the current Uber July document
+## 12. Historical Uber July status and golden-fixture rule
 
-The already-materialized malformed July document remains immutable machine evidence. Do not
-silently rewrite its stored parser output merely because Slice 3 can now extract the source
-layout correctly.
+The historical July Uber document remains immutable machine evidence. The operator has now
+completed Human Review/correction and posted the reviewed result, so this work package must not
+reprocess, rematerialize or rewrite that posted document merely to prove the newer parser.
 
-For that existing document:
+Its retained source PDF may still be used read-only to derive a sanitized deterministic golden
+fixture for regression coverage. That fixture exists to prove that a future statement with the
+same layout resolves `Sales = 260336`, `Tax on Sales = 33848`, and `Net Total = 143194`; it does
+not reopen the posted settlement or Journal.
 
-1. keep the original PDF and machine extraction as audit evidence;
-2. create an `EXTRACTION_CORRECTION` Human Review Revision against the existing document;
-3. set Tax on Sales to `33848` cents with a source-evidence correction reason;
-4. run control-total reconciliation;
-5. require a fresh Shadow Preview;
-6. confirm that provider pending equals `143194` cents;
-7. only then permit replay.
+For newly acquired statements, Poppler layout evidence may pair the rows correctly before
+materialization, subject to the existing control-total and Human Review authority.
 
-For a newly acquired/reprocessed copy of the source after Slice 3, Poppler layout evidence is
-available to pair the Sales and Tax-on-Sales rows correctly before materialization. That does
-not authorize overwriting the historical machine revision or bypassing Human Review authority
-on the existing document.
+## 12A. Accounting Evidence Viewer & Artifact Delivery Boundary
+
+Operators currently reach source evidence through mixed paths: retained images use an
+authenticated artifact-stable-id content route, while PDFs/CSV/XLSX and several historical
+screens still expose storage URLs directly. Browser behavior therefore varies by file type and
+can immediately download a file when the operator only wanted to inspect the evidence.
+
+Target UX:
+
+```text
+Accounting evidence record
+    -> View source evidence
+    -> authenticated Evidence Viewer
+         -> PDF: browser-native inline preview
+         -> image: inline image preview
+         -> CSV/XLSX: safe SanQ structured preview in a later slice
+         -> unsupported: metadata/message only
+         -> explicit Download original/retained evidence button
+         -> permanent Delete button always visible; protected evidence is disabled/grey
+```
+
+Target delivery boundary:
+
+```text
+GET /accounting/inbox/artifacts/:artifactStableId/content
+    -> authenticated binary delivery
+    -> Content-Disposition: inline
+
+GET /accounting/inbox/artifacts/:artifactStableId/download
+    -> same authenticated artifact resolution
+    -> Content-Disposition: attachment
+```
+
+The artifact stable ID is the UI/business boundary; `storedUrl` and local filesystem paths are
+storage implementation details. Image-retention semantics remain authoritative: when the
+original image has already been purged by an accepted retention policy, the viewer can only
+serve the retained derivative and must not imply that it is the original binary.
+
+The Viewer must not invent a second deletion policy. Its Delete button reuses the existing
+manual-upload `canPermanentDelete` capability and existing
+`DELETE /accounting/inbox/manual-uploads/:inboxItemStableId/permanent` route. Only eligible
+unconfirmed manual uploads are enabled. Confirmed/posted evidence, provider financial evidence,
+non-manual sources and other protected evidence show the same button disabled/grey. The server
+writer remains authoritative even if a client capability is stale or tampered with; no new
+artifact-delete route is introduced.
+
+Delivery slices:
+
+1. **Evidence Viewer Slice 1 — artifact delivery + browser-native preview:** generalize the
+   protected stable-ID delivery resolver beyond IMAGE, add explicit inline/download semantics,
+   and route PDF/image evidence through one Web viewer. CSV/XLSX/unsupported binary evidence
+   must not auto-download from the viewer; it may show an explicit download action until the
+   structured preview exists. The Viewer also exposes the existing permanent-delete action:
+   deletable manual uploads are enabled after confirmation, while all protected evidence keeps
+   the Delete button visibly disabled. **Merged in PR #2435 as `0371a155`; CI #6039 green.**
+2. **Evidence Viewer Slice 1B — logical file manager:** keep all physical binaries and
+   `storedUrl` values unchanged, but add Accounting-owned logical folders and a separate
+   artifact->folder assignment. The Viewer opens a file manager that supports creating
+   first-level folders, filtering All/Unfiled/folder, selecting multiple retained evidence
+   files and moving them to a chosen folder or back to Unfiled. Folder assignment is
+   organizational metadata only: confirmed/posted/provider evidence may be moved without
+   changing content hashes, source facts, Human Review, settlement or Journal authority.
+   Folder creation and every actual move are audit logged. V1 intentionally does not add
+   nested folders, folder rename or folder deletion.
+3. **Evidence Viewer Slice 2 — structured preview:** use the existing native CSV/XLSX parsing
+   stack to expose bounded, non-executing tabular preview data. Do not emulate Excel, execute
+   formulas/macros/external links, or make workbook formatting part of Accounting authority.
+4. Later contraction may remove remaining Web dependence on raw `storedUrl` only after all
+   consumers use the stable-ID boundary.
+
+This presentation/access work does not mutate source artifacts, content hashes, Human Review,
+provider financial facts, settlement authority, Journal facts or posting state.
 
 ## 13. Testing requirements
 
@@ -776,25 +880,33 @@ provider SDK DTOs inside the adapter boundary.
 Do not generate the migration through MCP. Follow the repository's user-local migration
 workflow after the source/schema change is reviewed and merged to `dev`.
 
-**Paddle adoption:** dependency/runtime image change requiring separate explicit
-authorization before editing manifests/lockfile/Docker runtime.
+**Scanned-PDF raster fallback:** existing-runtime change only if implemented with the already
+installed Poppler + existing Textract SDK path; no dependency or migration is expected. Any
+future new OCR/runtime dependency still requires separate authorization.
 
-**BDA adoption:** external provider integration/configuration change; no automatic
-authorization is implied by this plan.
+**Evidence Viewer Slice 1:** ordinary Accounting-internal read-boundary/UI change; no migration
+or dependency is expected.
 
-No engine cutover should rewrite historical machine extraction. Use shadow comparison and
-retain evidence.
+**Evidence Viewer Slice 1B:** additive Accounting persistence change; **MIGRATION REQUIRED**.
+The migration should create logical folder + assignment tables, unique stable/name-key and
+one-folder-per-artifact constraints, the folder lookup index and foreign keys. Existing artifacts
+require no backfill and remain Unfiled because absence of an assignment is the virtual root.
+No physical file or `storedUrl` migration is permitted.
+
+No recognition or delivery change should rewrite historical machine extraction or posted
+financial facts. Retain source/review evidence.
 
 ## 15. Decisions intentionally left open
 
-The following are not pre-approved:
+The following remain open and must not be guessed during implementation:
 
-1. whether SanQ will adopt PaddleOCR after benchmarking;
-2. whether BDA will be used for provider statements;
-3. whether DOCX should be accepted by Accounting Inbox;
-4. whether unresolved provider components may use a suspense account;
-5. exact persisted review-revision schema names/fields;
-6. exact recognition primary/fallback ordering.
+1. the exact conservative rule for deciding whether a PDF's native text layer is usable;
+2. the scanned-PDF maximum page count and aggregate OCR resource limits;
+3. whether Provider API ingestion should participate in scanned-PDF raster/Textract fallback;
+4. whether the runtime should pin a specific Alpine/Poppler version for golden reproducibility;
+5. whether DOCX should be accepted by Accounting Inbox;
+6. whether unresolved provider components may use a suspense account;
+7. the exact bounded CSV/XLSX preview response contract for Evidence Viewer Slice 2.
 
-Those decisions should be made from the implementation readiness audit, sample benchmark
-and Accounting policy requirements rather than from a single incident.
+PaddleOCR/BDA and S3/async Textract are not part of the currently approved normal recognition
+path. Reintroducing any of them requires a new explicit decision based on a demonstrated gap.

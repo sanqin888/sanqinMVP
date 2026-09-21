@@ -49,7 +49,7 @@ import {
   listAccountingManualUploadLibrary,
   listAccountingTrustedSenders,
   listAccountingUnifiedInboxItems,
-  readAccountingImageArtifactContentContext,
+  readAccountingArtifactContentContext,
   readAccountingImageRetentionContext,
   readAccountingInboxProviderReviewContext,
 } from './accounting-inbox-query';
@@ -133,11 +133,8 @@ export class AccountingInboxService {
     return readAccountingImageRetentionContext(this.prisma, inboxItemStableId);
   }
 
-  readImageArtifactContentContext(artifactStableId: string) {
-    return readAccountingImageArtifactContentContext(
-      this.prisma,
-      artifactStableId,
-    );
+  readArtifactContentContext(artifactStableId: string) {
+    return readAccountingArtifactContentContext(this.prisma, artifactStableId);
   }
 
   async stageImageRetentionCandidate(
