@@ -18,3 +18,9 @@ export type AccountingExpenseInput = {
   memo?: string | null;
   splits: AccountingExpenseSplitInput[];
 };
+
+export type AccountingExpensePaymentCompletionInput = {
+  paymentAllocations: AccountingExpensePaymentAllocationInput[];
+};
+
+export type AccountingExpensePaymentState = 'ASSIGNED' | 'UNASSIGNED';

@@ -1,231 +1,171 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api/client';
-import { AccountingEvidenceViewer } from '../accounting-evidence-viewer';
-import {
-  ExpensePaymentAllocationsEditor,
-  expensePaymentAllocationErrorMessage,
-  makeExpensePaymentAllocationDraft,
-  prepareExpensePaymentAllocations,
-  type ExpensePaymentAllocationDraft,
-} from '../expense-payment-allocations';
 import type { AccountingAccount, AccountingCategory } from '../contracts/chart';
-import type { AccountingExpenseDocument } from '../contracts/expenses';
+import type {
+  AccountingExpenseDocument,
+  AccountingExpenseRecordsPage,
+} from '../contracts/expenses';
+import { ExpenseEditor } from './expense-editor';
+import {
+  EMPTY_EXPENSE_RECORD_FILTERS,
+  ExpenseRecordsPanel,
+  UNASSIGNED_PAYMENT_FILTER,
+  type ExpenseRecordFilters,
+} from './expense-records-panel';
 
-type TaxMode = 'EXEMPT' | 'HST13' | 'MANUAL';
-type SplitDraft = {
-  key: string;
-  categoryStableId: string;
-  amount: string;
-  taxMode: TaxMode;
-  manualTax: string;
+const EMPTY_RECORDS_PAGE: AccountingExpenseRecordsPage = {
+  items: [],
+  total: 0,
+  limit: 10,
+  offset: 0,
 };
-
-const money = (cents: number | null | undefined) =>
-  `$${((cents ?? 0) / 100).toFixed(2)}`;
-
-const dollarsToCents = (value: string) => {
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? Math.round(parsed * 100) : 0;
-};
-
-const makeKey = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 export default function AccountingExpensesPage() {
   const params = useParams<{ locale: string }>();
-  const isZh = params?.locale === 'zh';
+  const locale = params?.locale === 'zh' ? 'zh' : 'en';
+  const isZh = locale === 'zh';
   const [categories, setCategories] = useState<AccountingCategory[]>([]);
   const [accounts, setAccounts] = useState<AccountingAccount[]>([]);
-  const [documents, setDocuments] = useState<AccountingExpenseDocument[]>([]);
-  const [occurredAt, setOccurredAt] = useState(new Date().toISOString().slice(0, 10));
-  const [receiptTotal, setReceiptTotal] = useState('');
-  const [paymentAllocations, setPaymentAllocations] = useState<
-    ExpensePaymentAllocationDraft[]
-  >(() => [makeExpensePaymentAllocationDraft()]);
-  const [memo, setMemo] = useState('');
-  const [splits, setSplits] = useState<SplitDraft[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+  const [recordsPage, setRecordsPage] =
+    useState<AccountingExpenseRecordsPage>(EMPTY_RECORDS_PAGE);
+  const [filters, setFilters] = useState<ExpenseRecordFilters>(
+    EMPTY_EXPENSE_RECORD_FILTERS,
+  );
+  const [pageSize, setPageSize] = useState(10);
+  const [offset, setOffset] = useState(0);
+  const [editingDocument, setEditingDocument] =
+    useState<AccountingExpenseDocument | null>(null);
+  const [loadingReference, setLoadingReference] = useState(true);
+  const [loadingRecords, setLoadingRecords] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  useEffect(() => {
+    let active = true;
+    async function loadReferenceData() {
+      setLoadingReference(true);
+      setError(null);
+      try {
+        const [cats, accts] = await Promise.all([
+          apiFetch<AccountingCategory[]>('/accounting/categories'),
+          apiFetch<AccountingAccount[]>('/accounting/accounts'),
+        ]);
+        if (!active) return;
+        setCategories(cats);
+        setAccounts(accts);
+      } catch (cause) {
+        if (active) {
+          setError(cause instanceof Error ? cause.message : String(cause));
+        }
+      } finally {
+        if (active) setLoadingReference(false);
+      }
+    }
+    void loadReferenceData();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const loadRecords = useCallback(async () => {
+    setLoadingRecords(true);
     setError(null);
     try {
-      const [cats, accts, docs] = await Promise.all([
-        apiFetch<AccountingCategory[]>('/accounting/categories'),
-        apiFetch<AccountingAccount[]>('/accounting/accounts'),
-        apiFetch<AccountingExpenseDocument[]>(
-          '/accounting/expenses?status=CONFIRMED&limit=100',
-        ),
-      ]);
-      setCategories(cats);
-      setAccounts(accts);
-      setDocuments(docs);
-      const parentStableIds = new Set(
-        cats.map((category) => category.parentStableId).filter((value): value is string => Boolean(value)),
+      const query = new URLSearchParams({
+        limit: String(pageSize),
+        offset: String(offset),
+      });
+      if (filters.from) query.set('from', filters.from);
+      if (filters.to) query.set('to', filters.to);
+      if (filters.minAmount.trim()) {
+        const minAmount = Number(filters.minAmount);
+        if (!Number.isFinite(minAmount) || minAmount < 0) {
+          throw new Error(
+            isZh
+              ? '最低金额必须是大于或等于 0 的数字。'
+              : 'Minimum amount must be a number greater than or equal to 0.',
+          );
+        }
+        query.set('minTotalCents', String(Math.round(minAmount * 100)));
+      }
+      if (filters.paymentFilter === UNASSIGNED_PAYMENT_FILTER) {
+        query.set('paymentState', 'UNASSIGNED');
+      } else if (filters.paymentFilter) {
+        query.set('paymentAccountStableId', filters.paymentFilter);
+      }
+
+      const page = await apiFetch<AccountingExpenseRecordsPage>(
+        `/accounting/expenses/records?${query.toString()}`,
       );
-      const firstExpense = cats.find(
-        (category) => category.type === 'EXPENSE' && !parentStableIds.has(category.categoryStableId),
-      );
-      if (!splits.length && firstExpense) {
-        setSplits([
-          {
-            key: makeKey(),
-            categoryStableId: firstExpense.categoryStableId,
-            amount: '',
-            taxMode: 'EXEMPT',
-            manualTax: '',
-          },
-        ]);
+      setRecordsPage(page);
+      if (page.total > 0 && page.offset >= page.total) {
+        setOffset(
+          Math.max(
+            Math.floor((page.total - 1) / page.limit) * page.limit,
+            0,
+          ),
+        );
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
-      setLoading(false);
+      setLoadingRecords(false);
     }
-  }, [splits.length]);
+  }, [filters, isZh, offset, pageSize]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    void loadRecords();
+  }, [loadRecords]);
 
-  const expenseCategories = useMemo(() => {
-    const parentStableIds = new Set(
-      categories
-        .map((category) => category.parentStableId)
-        .filter((value): value is string => Boolean(value)),
-    );
-    return categories.filter(
-      (category) =>
-        category.type === 'EXPENSE' &&
-        !parentStableIds.has(category.categoryStableId),
-    );
-  }, [categories]);
-
-  const categoryParents = useMemo(
-    () => new Map(categories.map((category) => [category.categoryStableId, category.name])),
-    [categories],
+  const parentCategoryStableIds = new Set(
+    categories
+      .map((category) => category.parentStableId)
+      .filter((value): value is string => Boolean(value)),
+  );
+  const hasExpenseCategory = categories.some(
+    (category) =>
+      category.type === 'EXPENSE' &&
+      !parentCategoryStableIds.has(category.categoryStableId),
   );
 
-  const calculated = useMemo(() => {
-    const rows = splits.map((split) => {
-      const amountCents = dollarsToCents(split.amount);
-      const taxCents =
-        split.taxMode === 'HST13'
-          ? Math.round(amountCents * 0.13)
-          : split.taxMode === 'MANUAL'
-            ? dollarsToCents(split.manualTax)
-            : 0;
-      return { ...split, amountCents, taxCents };
+  async function handleSaved() {
+    setEditingDocument(null);
+    if (offset === 0) {
+      await loadRecords();
+    } else {
+      setOffset(0);
+    }
+  }
+
+  function startPaymentCompletion(document: AccountingExpenseDocument) {
+    setEditingDocument(document);
+    window.requestAnimationFrame(() => {
+      window.document
+        .getElementById('expense-editor')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
-    const subtotalCents = rows.reduce((sum, row) => sum + row.amountCents, 0);
-    const taxCents = rows.reduce((sum, row) => sum + row.taxCents, 0);
-    const calculatedTotalCents = subtotalCents + taxCents;
-    const receiptTotalCents = dollarsToCents(receiptTotal);
-    return {
-      rows,
-      subtotalCents,
-      taxCents,
-      calculatedTotalCents,
-      receiptTotalCents,
-      differenceCents: receiptTotalCents - calculatedTotalCents,
-    };
-  }, [receiptTotal, splits]);
-
-  function addSplit() {
-    const defaultCategory = expenseCategories[0]?.categoryStableId ?? '';
-    setSplits((current) => [
-      ...current,
-      {
-        key: makeKey(),
-        categoryStableId: current.at(-1)?.categoryStableId || defaultCategory,
-        amount: '',
-        taxMode: current.at(-1)?.taxMode ?? 'EXEMPT',
-        manualTax: '',
-      },
-    ]);
   }
 
-  async function onSubmit(event: FormEvent) {
-    event.preventDefault();
-    setError(null);
-    if (!receiptTotal.trim()) {
-      setError(isZh ? '请输入小票/账单总额。' : 'Enter the receipt total.');
-      return;
-    }
-    if (calculated.differenceCents !== 0) {
-      setError(
-        isZh
-          ? `尚未对平，差额 ${money(calculated.differenceCents)}。`
-          : `The expense is not balanced. Difference: ${money(calculated.differenceCents)}.`,
-      );
-      return;
-    }
-    const preparedPaymentAllocations = prepareExpensePaymentAllocations(
-      paymentAllocations,
-      calculated.receiptTotalCents,
+  if (loadingReference) {
+    return (
+      <p className="text-sm text-slate-500">
+        {isZh ? '加载中…' : 'Loading…'}
+      </p>
     );
-    if (preparedPaymentAllocations.error) {
-      setError(
-        expensePaymentAllocationErrorMessage(
-          preparedPaymentAllocations.error,
-          isZh,
-        ),
-      );
-      return;
-    }
-    setSubmitting(true);
-    try {
-      await apiFetch('/accounting/expenses', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          occurredAt,
-          totalCents: calculated.receiptTotalCents,
-          paymentAllocations: preparedPaymentAllocations.paymentAllocations,
-          attachmentUrls: [],
-          memo: memo.trim() || null,
-          splits: calculated.rows
-            .filter((row) => row.amountCents > 0)
-            .map((row) => ({
-              categoryStableId: row.categoryStableId,
-              amountCents: row.amountCents,
-              taxCents: row.taxCents,
-            })),
-        }),
-      });
-      setReceiptTotal('');
-      setPaymentAllocations([makeExpensePaymentAllocationDraft()]);
-      setMemo('');
-      setSplits((current) => [
-        {
-          key: makeKey(),
-          categoryStableId: current[0]?.categoryStableId || expenseCategories[0]?.categoryStableId || '',
-          amount: '',
-          taxMode: 'EXEMPT',
-          manualTax: '',
-        },
-      ]);
-      await load();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setSubmitting(false);
-    }
   }
 
-  if (loading) return <p className="text-sm text-slate-500">{isZh ? '加载中…' : 'Loading…'}</p>;
-
-  if (!expenseCategories.length) {
+  if (!hasExpenseCategory) {
     return (
       <section className="rounded-xl border border-amber-200 bg-amber-50 p-5">
-        <h1 className="text-xl font-semibold">{isZh ? '尚未初始化财务分类' : 'Accounting is not initialized'}</h1>
+        <h1 className="text-xl font-semibold">
+          {isZh ? '尚未初始化财务分类' : 'Accounting is not initialized'}
+        </h1>
         <p className="mt-2 text-sm text-slate-600">
-          {isZh ? '请先到“设置与月结”完成一次初始化。' : 'Open Settings & close and initialize accounting first.'}
+          {isZh
+            ? '请先到“设置与月结”完成一次初始化。'
+            : 'Open Settings & close and initialize accounting first.'}
         </p>
       </section>
     );
@@ -237,139 +177,46 @@ export default function AccountingExpensesPage() {
         <h1 className="text-2xl font-bold">{isZh ? '支出' : 'Expenses'}</h1>
         <p className="mt-1 text-sm text-slate-500">
           {isZh
-            ? '这里查看已经确认的费用；有凭证的账单请在财务收件箱完成识别、归类和确认。'
-            : 'Review confirmed expenses here. Use Accounting Inbox to recognize, classify, and confirm expenses that have supporting evidence.'}
+            ? '先查看和筛选已确认的支出记录；未指定付款账户的记录可在本页补充付款事实。'
+            : 'Review and filter confirmed expense records first. Missing payment facts can be completed on this page.'}
         </p>
       </div>
 
-      <form onSubmit={onSubmit} className="space-y-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div>
-          <h2 className="text-lg font-semibold">
-            {isZh ? '无凭证手工新增支出' : 'Add expense without evidence'}
-          </h2>
-          <p className="mt-1 text-sm text-slate-500">
-            {isZh
-              ? '仅用于没有收据、发票或邮件凭证的手工补录；所有记账金额均为 CAD。'
-              : 'Use only for manual entries without a receipt, invoice, or email artifact. All booked amounts are CAD.'}
-          </p>
-        </div>
-        <div className="grid gap-3 md:grid-cols-2">
-          <label className="text-sm">
-            <span className="mb-1 block text-slate-500">{isZh ? '日期' : 'Date'}</span>
-            <input className="w-full rounded border px-3 py-2" type="date" value={occurredAt} onChange={(event) => setOccurredAt(event.target.value)} />
-          </label>
-          <label className="text-sm">
-            <span className="mb-1 block text-slate-500">{isZh ? 'CAD 记账总额' : 'CAD booking total'}</span>
-            <div className="flex rounded border bg-white px-3 py-2"><span className="mr-1">CAD $</span><input className="min-w-0 flex-1 outline-none" inputMode="decimal" value={receiptTotal} onChange={(event) => setReceiptTotal(event.target.value)} placeholder="0.00" /></div>
-          </label>
-        </div>
+      {error ? (
+        <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-700">
+          {error}
+        </p>
+      ) : null}
 
-        <ExpensePaymentAllocationsEditor
-          accounts={accounts}
-          totalCents={calculated.receiptTotalCents}
-          allocations={paymentAllocations}
-          onChange={setPaymentAllocations}
-          isZh={isZh}
-        />
+      <ExpenseRecordsPanel
+        documents={recordsPage.items}
+        total={recordsPage.total}
+        limit={pageSize}
+        offset={offset}
+        accounts={accounts}
+        loading={loadingRecords}
+        isZh={isZh}
+        onApplyFilters={(nextFilters) => {
+          setFilters(nextFilters);
+          setOffset(0);
+        }}
+        onPageChange={setOffset}
+        onPageSizeChange={(nextLimit) => {
+          setPageSize(nextLimit);
+          setOffset(0);
+        }}
+        onCompletePayment={startPaymentCompletion}
+      />
 
-        <section>
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="font-semibold">{isZh ? '费用分类' : 'Expense splits'}</h2>
-            <button type="button" onClick={addSplit} className="rounded border px-3 py-1.5 text-sm">
-              + {isZh ? '增加类别' : 'Add category'}
-            </button>
-          </div>
-
-          <div className="space-y-2">
-            {splits.map((split) => (
-              <div key={split.key} className="grid gap-2 rounded-lg bg-slate-50 p-3 md:grid-cols-[1.5fr_140px_140px_120px_70px] md:items-end">
-                <label className="text-sm"><span className="mb-1 block text-slate-500">{isZh ? '类别' : 'Category'}</span><select className="w-full rounded border bg-white px-3 py-2" value={split.categoryStableId} onChange={(event) => setSplits((current) => current.map((item) => item.key === split.key ? { ...item, categoryStableId: event.target.value } : item))}>{expenseCategories.map((category) => <option key={category.categoryStableId} value={category.categoryStableId}>{categoryParents.get(category.parentStableId ?? '') ? `${categoryParents.get(category.parentStableId ?? '')} › ` : ''}{category.name}</option>)}</select></label>
-                <label className="text-sm"><span className="mb-1 block text-slate-500">{isZh ? '税前金额' : 'Before tax'}</span><input className="w-full rounded border bg-white px-3 py-2" inputMode="decimal" value={split.amount} onChange={(event) => setSplits((current) => current.map((item) => item.key === split.key ? { ...item, amount: event.target.value } : item))} placeholder="0.00" /></label>
-                <label className="text-sm"><span className="mb-1 block text-slate-500">{isZh ? '税' : 'Tax'}</span><select className="w-full rounded border bg-white px-3 py-2" value={split.taxMode} onChange={(event) => setSplits((current) => current.map((item) => item.key === split.key ? { ...item, taxMode: event.target.value as TaxMode } : item))}><option value="EXEMPT">{isZh ? '免税' : 'Exempt'}</option><option value="HST13">HST 13%</option><option value="MANUAL">{isZh ? '手动税额' : 'Manual tax'}</option></select></label>
-                {split.taxMode === 'MANUAL' ? <label className="text-sm"><span className="mb-1 block text-slate-500">HST</span><input className="w-full rounded border bg-white px-3 py-2" inputMode="decimal" value={split.manualTax} onChange={(event) => setSplits((current) => current.map((item) => item.key === split.key ? { ...item, manualTax: event.target.value } : item))} placeholder="0.00" /></label> : <div className="pb-2 text-sm text-slate-600">HST {money(calculated.rows.find((row) => row.key === split.key)?.taxCents ?? 0)}</div>}
-                <button type="button" className="pb-2 text-sm text-red-600" disabled={splits.length <= 1} onClick={() => setSplits((current) => current.filter((item) => item.key !== split.key))}>{isZh ? '删除' : 'Remove'}</button>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <div className="grid gap-4 rounded-xl border border-slate-200 p-4 md:grid-cols-2">
-          <div>
-            <p className="text-sm font-medium">{isZh ? '凭证文件' : 'Evidence files'}</p>
-            <p className="mt-1 text-sm text-slate-500">
-              {isZh
-                ? '文件上传已统一到财务收件箱；在那里上传 PDF、CSV 或图片，再审核是否作为费用入账。'
-                : 'File intake now goes through Accounting Inbox. Upload PDF, CSV, or images there, then review whether the evidence should become an expense.'}
-            </p>
-            <Link className="mt-2 inline-flex rounded border px-3 py-2 text-sm text-blue-600" href={`/${params.locale}/accounting/inbox`}>
-              {isZh ? '打开财务收件箱' : 'Open Accounting Inbox'}
-            </Link>
-          </div>
-          <label className="text-sm"><span className="mb-1 block text-slate-500">{isZh ? '备注' : 'Memo'}</span><textarea className="min-h-24 w-full rounded border px-3 py-2" value={memo} onChange={(event) => setMemo(event.target.value)} /></label>
-        </div>
-
-        <div className="rounded-xl bg-slate-900 p-4 text-white">
-          <div className="grid gap-2 text-sm sm:grid-cols-4">
-            <div><p className="text-slate-400">{isZh ? '税前合计' : 'Subtotal'}</p><p className="text-lg font-semibold">{money(calculated.subtotalCents)}</p></div>
-            <div><p className="text-slate-400">HST</p><p className="text-lg font-semibold">{money(calculated.taxCents)}</p></div>
-            <div><p className="text-slate-400">{isZh ? '分类合计' : 'Calculated total'}</p><p className="text-lg font-semibold">{money(calculated.calculatedTotalCents)}</p></div>
-            <div><p className="text-slate-400">{isZh ? '差额' : 'Difference'}</p><p className={`text-lg font-semibold ${calculated.differenceCents === 0 ? 'text-emerald-300' : 'text-amber-300'}`}>{money(calculated.differenceCents)}</p></div>
-          </div>
-          <p className="mt-2 text-xs text-slate-300">{calculated.differenceCents === 0 ? (isZh ? '✓ 已与小票总额对平' : '✓ Balanced to receipt total') : (isZh ? '保存前必须对平。' : 'Balance the receipt before saving.')}</p>
-        </div>
-
-        {error ? <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
-        <button type="submit" disabled={submitting || calculated.differenceCents !== 0 || calculated.receiptTotalCents <= 0} className="rounded bg-slate-900 px-5 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50">{submitting ? (isZh ? '保存中…' : 'Saving…') : (isZh ? '保存支出' : 'Save expense')}</button>
-      </form>
-
-      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-semibold">{isZh ? '最近支出' : 'Recent expenses'}</h2>
-        <div className="mt-3 divide-y text-sm">
-          {documents.length ? documents.map((document) => (
-            <div key={document.documentStableId} className="grid gap-2 py-3 md:grid-cols-[130px_110px_1fr_140px]">
-              <span>{document.occurredAt ? new Date(document.occurredAt).toLocaleDateString() : '-'}</span>
-              <strong>{money(document.totalCents)}</strong>
-              <div className="text-slate-600">
-                <div>{document.splits.map((split) => `${split.categoryName} ${money(split.amountCents + split.taxCents)}`).join(' / ') || document.memo || '-'}</div>
-                <div className="mt-1 text-xs text-slate-500">
-                  {isZh ? '付款：' : 'Paid from: '}
-                  {document.paymentAllocations.length
-                    ? document.paymentAllocations
-                        .map((allocation) => `${allocation.accountName} ${money(allocation.amountCents)}`)
-                        .join(' / ')
-                    : isZh
-                      ? '暂未指定'
-                      : 'Not specified'}
-                </div>
-              </div>
-              <div className="text-right">
-                {document.sourceEvidence ? (
-                  <AccountingEvidenceViewer
-                    evidence={{
-                      artifactStableId: document.sourceEvidence.artifactStableId,
-                      filename: document.sourceEvidence.originalFilename,
-                      kind: document.sourceEvidence.kind,
-                    }}
-                    isZh={isZh}
-                    label={isZh ? '查看凭证' : 'View receipt'}
-                    className="text-blue-600 hover:underline"
-                  />
-                ) : document.attachmentUrls[0] ? (
-                  <a
-                    className="text-blue-600 hover:underline"
-                    href={document.attachmentUrls[0]}
-                    download
-                  >
-                    {isZh ? '下载凭证' : 'Download receipt'}
-                  </a>
-                ) : (
-                  '-'
-                )}
-              </div>
-            </div>
-          )) : <p className="py-4 text-slate-500">{isZh ? '暂无支出。' : 'No expenses yet.'}</p>}
-        </div>
-      </section>
+      <ExpenseEditor
+        locale={locale}
+        isZh={isZh}
+        categories={categories}
+        accounts={accounts}
+        editingDocument={editingDocument}
+        onSaved={handleSaved}
+        onCancelEdit={() => setEditingDocument(null)}
+      />
     </div>
   );
 }

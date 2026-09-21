@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { createId } from '@paralleldrive/cuid2';
 import { Prisma } from '@prisma/client';
+import { DateTime } from 'luxon';
 import {
   AccountingArtifactKind,
   AccountingDocumentSource,
@@ -14,10 +15,12 @@ import {
   AccountingInboxClassification,
   AccountingInboxMaterializedEntityType,
   AccountingInboxStatus,
+  AccountingJournalSource,
   AccountingSourceType,
   AccountingTxType,
 } from './accounting-contracts';
 import { runSerializableAccountingWrite } from './accounting-atomic-write';
+import { writeAccountingAuditLog } from './accounting-audit-writer';
 import { ACCOUNTING_DB, type AccountingDb } from './accounting-db';
 import {
   linkAndConfirmInboxExpenseInTx,
@@ -32,9 +35,15 @@ import { AccountingPeriodService } from './accounting-period.service';
 import type {
   AccountingExpenseInput,
   AccountingExpensePaymentAllocationInput,
+  AccountingExpensePaymentCompletionInput,
+  AccountingExpensePaymentState,
 } from './accounting-expense.contracts';
 import {
+  CANONICAL_EXPENSE_SOURCE_FACT_TYPE,
+} from './accounting-expense-journal.policy';
+import {
   listAccountingExpenseDocuments,
+  listAccountingExpenseRecords,
   readAccountingExpenseDocument,
 } from './accounting-expense.query';
 import {
@@ -601,6 +610,194 @@ export class AccountingExpenseService {
       ...params,
       startAt,
     });
+  }
+
+  async listExpenseRecords(params: {
+    from?: string;
+    to?: string;
+    minTotalCents?: number;
+    paymentAccountStableId?: string;
+    paymentState?: AccountingExpensePaymentState;
+    limit?: number;
+    offset?: number;
+  }) {
+    const paymentAccountStableId =
+      params.paymentAccountStableId?.trim() || undefined;
+    if (paymentAccountStableId && params.paymentState) {
+      throw new BadRequestException(
+        'paymentAccountStableId and paymentState cannot be combined',
+      );
+    }
+
+    const timezone =
+      params.from || params.to
+        ? await this.period.getBusinessTimezone()
+        : undefined;
+    const parseBoundary = (
+      raw: string | undefined,
+      field: 'from' | 'to',
+    ) => {
+      const value = raw?.trim();
+      if (!value) return undefined;
+      if (!timezone || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        throw new BadRequestException(`${field} must use YYYY-MM-DD`);
+      }
+      const parsed = DateTime.fromISO(value, { zone: timezone });
+      if (!parsed.isValid || parsed.toISODate() !== value) {
+        throw new BadRequestException(`Invalid ${field}: ${value}`);
+      }
+      const boundary =
+        field === 'to'
+          ? parsed.plus({ days: 1 }).startOf('day')
+          : parsed.startOf('day');
+      return boundary.toUTC().toJSDate();
+    };
+    const requestedStartAt = parseBoundary(params.from, 'from');
+    const toExclusive = parseBoundary(params.to, 'to');
+    if (
+      requestedStartAt &&
+      toExclusive &&
+      requestedStartAt >= toExclusive
+    ) {
+      throw new BadRequestException('from must not be after to');
+    }
+
+    const startAt =
+      await this.period.clampAccountingFromDate(requestedStartAt);
+    const limit = Math.min(Math.max(params.limit ?? 10, 1), 50);
+    const offset = Math.max(params.offset ?? 0, 0);
+    return listAccountingExpenseRecords(this.prisma, {
+      status: AccountingDocumentStatus.CONFIRMED,
+      limit,
+      offset,
+      startAt,
+      toExclusive,
+      minTotalCents: params.minTotalCents,
+      paymentAccountStableId,
+      paymentState: params.paymentState,
+    });
+  }
+
+  async completeExpensePaymentAllocations(
+    documentStableId: string,
+    input: AccountingExpensePaymentCompletionInput,
+    operatorUserStableId: string,
+  ) {
+    if (
+      !Array.isArray(input.paymentAllocations) ||
+      input.paymentAllocations.length === 0
+    ) {
+      throw new BadRequestException(
+        'paymentAllocations must contain at least one allocation',
+      );
+    }
+
+    await runSerializableAccountingWrite(this.prisma, async (tx) => {
+      const document = await tx.accountingExpenseDocument.findUnique({
+        where: { documentStableId },
+        select: {
+          id: true,
+          status: true,
+          occurredAt: true,
+          totalCents: true,
+          paymentAllocations: {
+            select: {
+              amountCents: true,
+              account: { select: { accountStableId: true } },
+            },
+          },
+        },
+      });
+      if (!document) {
+        throw new NotFoundException('expense document not found');
+      }
+      if (document.status !== AccountingDocumentStatus.CONFIRMED) {
+        throw new ConflictException('expense document is not confirmed');
+      }
+      if (!document.occurredAt || document.totalCents == null) {
+        throw new ConflictException(
+          'confirmed expense document is missing booking facts',
+        );
+      }
+
+      const normalizedPaymentAllocations =
+        this.normalizeExpensePaymentAllocations(
+          input.paymentAllocations,
+          document.totalCents,
+        );
+      const requestedByAccount = new Map(
+        normalizedPaymentAllocations.map((allocation) => [
+          allocation.accountStableId,
+          allocation.amountCents,
+        ]),
+      );
+      const existingMatches =
+        document.paymentAllocations.length === requestedByAccount.size &&
+        document.paymentAllocations.every(
+          (allocation) =>
+            requestedByAccount.get(allocation.account.accountStableId) ===
+            allocation.amountCents,
+        );
+      if (document.paymentAllocations.length > 0) {
+        if (existingMatches) return;
+        throw new ConflictException(
+          'expense payment allocations are already completed',
+        );
+      }
+
+      await this.period.assertEditableForPeriod(
+        document.occurredAt,
+        AccountingTxType.EXPENSE,
+        tx,
+      );
+      await tx.accountingExpenseDocument.update({
+        where: { id: document.id },
+        data: { updatedAt: new Date() },
+        select: { id: true },
+      });
+      const existingJournal = await tx.accountingJournalEntry.findFirst({
+        where: {
+          deletedAt: null,
+          source: AccountingJournalSource.EXPENSE_DOCUMENT,
+          sourceFactType: CANONICAL_EXPENSE_SOURCE_FACT_TYPE,
+          sourceFactStableId: documentStableId,
+        },
+        select: { entryStableId: true },
+      });
+      if (existingJournal) {
+        throw new ConflictException(
+          'posted expense payment facts cannot be completed in place',
+        );
+      }
+
+      const resolvedPaymentAllocations =
+        await this.resolveExpensePaymentAllocations(
+          tx,
+          normalizedPaymentAllocations,
+        );
+      await createAccountingExpensePaymentAllocationsInTx(
+        tx,
+        document.id,
+        resolvedPaymentAllocations,
+      );
+      await writeAccountingAuditLog(tx, {
+        action: 'COMPLETE_EXPENSE_PAYMENT_ALLOCATIONS',
+        entityType: 'ACCOUNTING_EXPENSE_DOCUMENT',
+        entityId: documentStableId,
+        operatorActorRef: operatorUserStableId,
+        beforeJson: { paymentAllocations: [] },
+        afterJson: {
+          paymentAllocations: normalizedPaymentAllocations.map(
+            ({ accountStableId, amountCents }) => ({
+              accountStableId,
+              amountCents,
+            }),
+          ),
+        },
+      });
+    });
+
+    return this.getExpenseDocument(documentStableId);
   }
 
   async getExpenseDocument(documentStableId: string) {

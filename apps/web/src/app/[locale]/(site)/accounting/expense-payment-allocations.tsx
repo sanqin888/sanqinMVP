@@ -34,6 +34,7 @@ type Props = {
   allocations: ExpensePaymentAllocationDraft[];
   onChange: (allocations: ExpensePaymentAllocationDraft[]) => void;
   isZh: boolean;
+  allowUnknown?: boolean;
 };
 
 const money = (cents: number) => {
@@ -125,6 +126,7 @@ export function ExpensePaymentAllocationsEditor({
   allocations,
   onChange,
   isZh,
+  allowUnknown = true,
 }: Props) {
   const cadAccounts = accounts.filter((account) => account.currency === 'CAD');
   const prepared = prepareExpensePaymentAllocations(allocations, totalCents);
@@ -161,9 +163,13 @@ export function ExpensePaymentAllocationsEditor({
         <div>
           <strong className="text-sm">{isZh ? '付款账户' : 'Payment accounts'}</strong>
           <p className="mt-1 text-xs text-slate-500">
-            {isZh
-              ? '可拆分到多个 CAD 账户；如果暂时不知道付款账户，可以全部留空。'
-              : 'Split the payment across multiple CAD accounts, or leave all rows blank if the payment account is not known yet.'}
+            {allowUnknown
+              ? isZh
+                ? '可拆分到多个 CAD 账户；如果暂时不知道付款账户，可以全部留空。'
+                : 'Split the payment across multiple CAD accounts, or leave all rows blank if the payment account is not known yet.'
+              : isZh
+                ? '请把 CAD 记账总额完整分配到一个或多个付款账户。'
+                : 'Allocate the full CAD booking total across one or more payment accounts.'}
           </p>
         </div>
         <button
@@ -197,7 +203,15 @@ export function ExpensePaymentAllocationsEditor({
                   value={allocation.accountStableId}
                   onChange={(event) => selectAccount(allocation, event.target.value)}
                 >
-                  <option value="">{isZh ? '暂不指定' : 'Not specified'}</option>
+                  <option value="">
+                    {allowUnknown
+                      ? isZh
+                        ? '暂不指定'
+                        : 'Not specified'
+                      : isZh
+                        ? '选择付款账户'
+                        : 'Choose payment account'}
+                  </option>
                   {cadAccounts.map((account) => (
                     <option
                       key={account.accountStableId}
