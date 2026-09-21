@@ -59,9 +59,7 @@ export async function rasterizeAccountingPdfPage(
   if (!raster.length) {
     throw new Error(`Accounting scanned PDF page ${page} raster is empty`);
   }
-  if (
-    raster.length > ACCOUNTING_SCANNED_PDF_RASTER_POLICY.maxRasterPageBytes
-  ) {
+  if (raster.length > ACCOUNTING_SCANNED_PDF_RASTER_POLICY.maxRasterPageBytes) {
     throw new Error(
       `Accounting scanned PDF page ${page} raster exceeded byte limit`,
     );
@@ -75,8 +73,7 @@ function runPdfInfo(buffer: Buffer): Promise<string> {
     args: ['-'],
     buffer,
     operation: 'page inspection',
-    maxStdoutBytes:
-      ACCOUNTING_SCANNED_PDF_RASTER_POLICY.maxInfoOutputBytes,
+    maxStdoutBytes: ACCOUNTING_SCANNED_PDF_RASTER_POLICY.maxInfoOutputBytes,
   }).then((output) => output.toString('utf8'));
 }
 
@@ -101,8 +98,7 @@ function runPdfToCairoPage(
     ],
     buffer,
     operation: `page ${page} rasterization`,
-    maxStdoutBytes:
-      ACCOUNTING_SCANNED_PDF_RASTER_POLICY.maxRasterPageBytes,
+    maxStdoutBytes: ACCOUNTING_SCANNED_PDF_RASTER_POLICY.maxRasterPageBytes,
   });
 }
 
@@ -165,9 +161,7 @@ function runPopplerCommand(params: {
       stdoutChunks.push(chunk);
     });
     child.stderr.on('data', (chunk: Buffer) => {
-      if (
-        stderrBytes >= ACCOUNTING_SCANNED_PDF_RASTER_POLICY.maxStderrBytes
-      ) {
+      if (stderrBytes >= ACCOUNTING_SCANNED_PDF_RASTER_POLICY.maxStderrBytes) {
         return;
       }
       const remaining =

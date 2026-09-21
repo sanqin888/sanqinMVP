@@ -47,9 +47,7 @@ import {
   parseAccountingPdfNativeTextUsability,
   type AccountingPdfNativeTextUsability,
 } from './accounting-pdf-routing';
-import type {
-  AccountingScannedPdfOcrEvidence,
-} from './accounting-scanned-pdf-recognition';
+import type { AccountingScannedPdfOcrEvidence } from './accounting-scanned-pdf-recognition';
 import { AccountingProviderFinancialReviewService } from './accounting-provider-financial-review.service';
 import type { ProviderFinancialReviewDraftInput } from './accounting-provider-financial-review.policy';
 import { getAccountingUploadsDir } from './accounting-storage-path';

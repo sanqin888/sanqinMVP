@@ -9,7 +9,9 @@ const pdf = Buffer.from('%PDF-1.7\n%%EOF', 'ascii');
 describe('Accounting scanned PDF rasterizer', () => {
   it('reads a bounded page count from Poppler pdfinfo output', async () => {
     const runner = jest.fn(() =>
-      Promise.resolve('Title: sanitized\nPages:          3\nPDF version: 1.7\n'),
+      Promise.resolve(
+        'Title: sanitized\nPages:          3\nPDF version: 1.7\n',
+      ),
     );
 
     await expect(inspectAccountingPdfPageCount(pdf, runner)).resolves.toBe(3);
@@ -43,7 +45,9 @@ describe('Accounting scanned PDF rasterizer', () => {
 
   it('rejects empty and oversized page raster output', async () => {
     await expect(
-      rasterizeAccountingPdfPage(pdf, 1, () => Promise.resolve(Buffer.alloc(0))),
+      rasterizeAccountingPdfPage(pdf, 1, () =>
+        Promise.resolve(Buffer.alloc(0)),
+      ),
     ).rejects.toThrow('page 1 raster is empty');
 
     await expect(

@@ -400,11 +400,11 @@ describe('Accounting Textract expense recognition', () => {
 
   it('submits a prepared page image and exposes only Textract LINE geometry for scanned PDFs', async () => {
     const input = await receiptImage();
-    let submitted: Buffer | null = null;
+    let submittedPrefixHex: string | null = null;
     const result = await recognizeAccountingDocumentPageImageWithTextract(
       input,
       (document) => {
-        submitted = document;
+        submittedPrefixHex = document.subarray(0, 3).toString('hex');
         return Promise.resolve({
           $metadata: { requestId: 'textract-page-request' },
           AnalyzeExpenseModelVersion: '1.0',
@@ -427,10 +427,7 @@ describe('Accounting Textract expense recognition', () => {
       },
     );
 
-    expect(submitted).not.toBeNull();
-    expect(submitted?.subarray(0, 3)).toEqual(
-      Buffer.from([0xff, 0xd8, 0xff]),
-    );
+    expect(submittedPrefixHex).toBe('ffd8ff');
     expect(result.documentExtraction).toEqual(
       expect.objectContaining({
         inputKind: 'IMAGE',
@@ -462,9 +459,7 @@ describe('Accounting Textract expense recognition', () => {
           $metadata: {},
           ExpenseDocuments: [
             {
-              SummaryFields: [
-                summaryField('TOTAL', '1128.87', 99, 'USD'),
-              ],
+              SummaryFields: [summaryField('TOTAL', '1128.87', 99, 'USD')],
               Blocks: [],
             },
           ],

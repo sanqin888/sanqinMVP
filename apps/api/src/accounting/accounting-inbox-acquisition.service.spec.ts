@@ -61,12 +61,8 @@ import {
   isAccountingTextractExpenseRecognitionEnabled,
   recognizeAccountingExpenseImageWithTextract,
 } from './accounting-textract-expense-recognition';
-import {
-  recognizeAccountingScannedPdfWithTextract,
-} from './accounting-scanned-pdf-recognition';
-import {
-  AccountingProviderFinancialProcessingError,
-} from './accounting-provider-financial.service';
+import { recognizeAccountingScannedPdfWithTextract } from './accounting-scanned-pdf-recognition';
+import { AccountingProviderFinancialProcessingError } from './accounting-provider-financial.service';
 
 function scannedPdfRecognitionResult(text: string) {
   const lines = text.split('\n').map((line, index) => ({

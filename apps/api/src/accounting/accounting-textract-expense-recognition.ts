@@ -163,7 +163,7 @@ export async function recognizeAccountingDocumentPageImageWithTextract(
   return {
     documentExtraction,
     requestId: response.$metadata.requestId ?? null,
-    modelVersion: response.AnalyzeExpenseModelVersion ?? null,
+    modelVersion: null,
     submittedImage: {
       width: prepared.width,
       height: prepared.height,

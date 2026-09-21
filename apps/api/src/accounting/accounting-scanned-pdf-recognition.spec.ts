@@ -6,9 +6,7 @@ import {
   ACCOUNTING_SCANNED_PDF_RECOGNITION_POLICY,
   recognizeAccountingScannedPdfWithTextract,
 } from './accounting-scanned-pdf-recognition';
-import type {
-  AccountingTextractDocumentPageRecognition,
-} from './accounting-textract-expense-recognition';
+import type { AccountingTextractDocumentPageRecognition } from './accounting-textract-expense-recognition';
 
 const pdf = Buffer.from('%PDF-1.7\n%%EOF', 'ascii');
 
@@ -214,19 +212,22 @@ describe('Accounting scanned PDF recognition', () => {
       },
       expected: 'returned no OCR geometry',
     },
-  ])('fails closed for $name page extraction', async ({ extraction, expected }) => {
-    await expect(
-      recognizeAccountingScannedPdfWithTextract(pdf, {
-        inspectPageCount: () => Promise.resolve(1),
-        rasterizePage: () => Promise.resolve(Buffer.from('page')),
-        recognizePage: () =>
-          Promise.resolve({
-            ...pageRecognition([]),
-            documentExtraction: extraction,
-          }),
-      }),
-    ).rejects.toThrow(expected);
-  });
+  ])(
+    'fails closed for $name page extraction',
+    async ({ extraction, expected }) => {
+      await expect(
+        recognizeAccountingScannedPdfWithTextract(pdf, {
+          inspectPageCount: () => Promise.resolve(1),
+          rasterizePage: () => Promise.resolve(Buffer.from('page')),
+          recognizePage: () =>
+            Promise.resolve({
+              ...pageRecognition([]),
+              documentExtraction: extraction,
+            }),
+        }),
+      ).rejects.toThrow(expected);
+    },
+  );
 
   it('fails closed instead of truncating merged lines', async () => {
     const firstPageCount = 1_200;
@@ -258,12 +259,15 @@ describe('Accounting scanned PDF recognition', () => {
   });
 
   it('fails closed when aggregate prepared-image bytes exceed the document budget', async () => {
+    const overBudgetPageBytes =
+      ACCOUNTING_SCANNED_PDF_RECOGNITION_POLICY.maxAggregatePreparedImageBytes /
+        ACCOUNTING_SCANNED_PDF_RECOGNITION_POLICY.maxPages +
+      1;
+
     await expect(
       recognizeAccountingScannedPdfWithTextract(pdf, {
         inspectPageCount: () =>
-          Promise.resolve(
-            ACCOUNTING_SCANNED_PDF_RECOGNITION_POLICY.maxPages,
-          ),
+          Promise.resolve(ACCOUNTING_SCANNED_PDF_RECOGNITION_POLICY.maxPages),
         rasterizePage: () => Promise.resolve(Buffer.from('page')),
         recognizePage: () =>
           Promise.resolve(
@@ -277,10 +281,7 @@ describe('Accounting scanned PDF recognition', () => {
                   geometry: geometry(0.1),
                 },
               ],
-              ACCOUNTING_SCANNED_PDF_RECOGNITION_POLICY
-                .maxAggregatePreparedImageBytes /
-                ACCOUNTING_SCANNED_PDF_RECOGNITION_POLICY.maxPages +
-                1,
+              overBudgetPageBytes,
             ),
           ),
       }),
