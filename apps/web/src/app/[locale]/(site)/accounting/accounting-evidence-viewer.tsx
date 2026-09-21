@@ -2,6 +2,9 @@
 
 import { useState } from 'react';
 import { apiFetch } from '@/lib/api/client';
+import {
+  AccountingEvidenceFileManager,
+} from './accounting-evidence-file-manager';
 import type {
   AccountingInboxItem,
   AccountingManualUploadPermanentDeleteResult,
@@ -35,6 +38,7 @@ export function AccountingEvidenceViewer({
   onDeleted,
 }: Props) {
   const [open, setOpen] = useState(false);
+  const [managingFiles, setManagingFiles] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const contentUrl = accountingEvidenceContentUrl(evidence.artifactStableId);
@@ -112,6 +116,13 @@ export function AccountingEvidenceViewer({
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setManagingFiles(true)}
+                  className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                >
+                  {isZh ? '文件管理' : 'Manage files'}
+                </button>
                 {browserPreview ? (
                   <a
                     href={contentUrl}
@@ -189,6 +200,13 @@ export function AccountingEvidenceViewer({
             </div>
           </section>
         </div>
+      ) : null}
+
+      {managingFiles ? (
+        <AccountingEvidenceFileManager
+          isZh={isZh}
+          onClose={() => setManagingFiles(false)}
+        />
       ) : null}
     </>
   );

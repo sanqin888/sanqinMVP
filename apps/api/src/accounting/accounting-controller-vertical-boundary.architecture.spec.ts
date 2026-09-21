@@ -17,6 +17,7 @@ const EXPECTED_CONTROLLER_CAPABILITIES = {
   'accounting-expense.controller.ts': ['AccountingExpenseService'],
   'accounting-inbox-artifacts.controller.ts': [
     'AccountingArtifactDeliveryService',
+    'AccountingEvidenceFileManagerService',
     'AccountingImageRetentionService',
     'AccountingInboxAcquisitionService',
   ],
@@ -58,6 +59,9 @@ const EXPECTED_ROUTES = [
   'GET inbox/image-retention/pending',
   'GET inbox/manual-uploads',
   'POST inbox/artifacts',
+  'GET evidence-file-manager',
+  'POST evidence-folders',
+  'POST evidence-files/move',
   'GET inbox/provider-recognition-rules',
   'PUT inbox/provider-recognition-rules/:ruleStableId',
   'GET inbox/trusted-senders',
