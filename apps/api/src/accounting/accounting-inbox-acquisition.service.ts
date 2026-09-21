@@ -22,6 +22,10 @@ import {
   type AccountingDocumentExtraction,
 } from './accounting-document-extraction';
 import {
+  assessAccountingPdfNativeTextUsability,
+  type AccountingPdfNativeTextUsability,
+} from './accounting-pdf-routing';
+import {
   classifyAccountingDocumentText,
   type AccountingReviewMetadata,
 } from './accounting-document-review';
@@ -53,6 +57,7 @@ export const ACCOUNTING_INBOX_FILE_MAX_BYTES = 25 * 1024 * 1024;
 const GENERIC_PARSER_NAME = 'accounting-generic-document-review';
 const GENERIC_PARSER_VERSION = '2';
 const DOCUMENT_EXTRACTION_PARSER_VERSION = '4';
+const PDF_ROUTING_PARSER_VERSION = '5';
 
 type AccountingInboxFile = {
   originalname: string;
@@ -101,6 +106,7 @@ type ImageReviewExtraction = TextReviewExtraction & {
 type PdfReviewExtraction = TextReviewExtraction & {
   textRecognitionEngine: 'POPPLER' | 'AWS_TEXTRACT';
   documentExtraction: AccountingDocumentExtraction;
+  pdfNativeTextUsability: AccountingPdfNativeTextUsability;
   textractEvidence?: AccountingTextractExpenseEvidence;
 };
 
@@ -516,20 +522,36 @@ export class AccountingInboxAcquisitionService {
       let text = local.text;
       let extraction = local.extraction;
       let documentExtraction = local.documentExtraction;
+      const pdfNativeTextUsability = assessAccountingPdfNativeTextUsability({
+        text,
+        documentExtraction,
+      });
       let textRecognitionEngine: PdfReviewExtraction['textRecognitionEngine'] =
         'POPPLER';
       let textractEvidence: AccountingTextractExpenseEvidence | undefined;
+      let ambiguousRuleStableIds: string[] = [];
 
-      let provider = await this.parseProviderEvidence(acquisitionMode, {
-        artifactStableId: artifact.artifactStableId,
-        text,
-        documentExtraction,
-        ...providerContext,
-      });
-      if (provider.matched) return true;
+      if (pdfNativeTextUsability.disposition === 'USABLE_NATIVE_TEXT') {
+        const provider = await this.parseProviderEvidence(acquisitionMode, {
+          artifactStableId: artifact.artifactStableId,
+          text,
+          documentExtraction,
+          pdfNativeTextUsability,
+          ...providerContext,
+        });
+        if (provider.matched) return true;
+        ambiguousRuleStableIds =
+          'ambiguousRuleStableIds' in provider
+            ? (provider.ambiguousRuleStableIds ?? [])
+            : [];
+      }
 
+      // Slice 3V-A classifies weak native text separately from provider semantics,
+      // but does not widen the legacy raw-PDF Textract fallback before 3V-B adds
+      // bounded page rasterization. Preserve only the historical blank-text case.
       if (
-        !text.trim() &&
+        pdfNativeTextUsability.disposition === 'SCAN_CANDIDATE' &&
+        pdfNativeTextUsability.reason === 'NO_NATIVE_TEXT' &&
         isAccountingTextractExpenseRecognitionEnabled() &&
         acquisitionMode !== AccountingArtifactAcquisitionMode.PROVIDER_API
       ) {
@@ -541,13 +563,18 @@ export class AccountingInboxAcquisitionService {
           documentExtraction = textract.documentExtraction;
           textRecognitionEngine = 'AWS_TEXTRACT';
           textractEvidence = textract.evidence;
-          provider = await this.parseProviderEvidence(acquisitionMode, {
+          const provider = await this.parseProviderEvidence(acquisitionMode, {
             artifactStableId: artifact.artifactStableId,
             text,
             documentExtraction,
+            pdfNativeTextUsability,
             ...providerContext,
           });
           if (provider.matched) return true;
+          ambiguousRuleStableIds =
+            'ambiguousRuleStableIds' in provider
+              ? (provider.ambiguousRuleStableIds ?? [])
+              : [];
         } catch (error) {
           this.logger.warn(
             `Accounting Textract PDF recognition failed for ${artifact.artifactStableId}; retaining local PDF result: ${
@@ -557,17 +584,22 @@ export class AccountingInboxAcquisitionService {
         }
       }
 
-      const ambiguousRuleStableIds =
-        'ambiguousRuleStableIds' in provider
-          ? (provider.ambiguousRuleStableIds ?? [])
-          : [];
+      const review =
+        textRecognitionEngine === 'AWS_TEXTRACT' ||
+        pdfNativeTextUsability.disposition === 'USABLE_NATIVE_TEXT'
+          ? classifyAccountingDocumentText(text, extraction)
+          : {
+              reviewDisposition: 'UNRECOGNIZED' as const,
+              reviewReason: 'NO_READABLE_TEXT' as const,
+            };
       const result: PdfReviewExtraction = {
         ...extraction,
         inputKind: 'PDF',
-        ...classifyAccountingDocumentText(text, extraction),
+        ...review,
         extractedText: text.slice(0, 100_000),
         textRecognitionEngine,
         documentExtraction,
+        pdfNativeTextUsability,
         ...(textractEvidence ? { textractEvidence } : {}),
         ...(ambiguousRuleStableIds.length
           ? {
@@ -747,9 +779,11 @@ export class AccountingInboxAcquisitionService {
     result: TextReviewExtraction | PdfReviewExtraction | ImageReviewExtraction,
   ) {
     const parserVersion =
-      'documentExtraction' in result
-        ? DOCUMENT_EXTRACTION_PARSER_VERSION
-        : GENERIC_PARSER_VERSION;
+      'pdfNativeTextUsability' in result
+        ? PDF_ROUTING_PARSER_VERSION
+        : 'documentExtraction' in result
+          ? DOCUMENT_EXTRACTION_PARSER_VERSION
+          : GENERIC_PARSER_VERSION;
     await this.inbox.recordInboxParseRun({
       artifactStableId,
       parserName: GENERIC_PARSER_NAME,

@@ -1,9 +1,9 @@
 # Post-Modularization Accounting Product Roadmap
 
-Status: **B0 IN PROGRESS — SLICE 0-3 MERGED / CI GREEN / POPPLER PATH AUDITED / EVIDENCE VIEWER SLICE 1 + 1B MERGED / 1B MIGRATION SQL REVIEWED / EVIDENCE VIEWER SLICE 2 SOURCE IMPLEMENTED / LOCAL REVIEW — DO NOT REOPEN PHASE 9**  
+Status: **B0 IN PROGRESS — SLICE 0-3 MERGED / CI GREEN / SLICE 3V-A SOURCE IMPLEMENTED / LOCAL REVIEW / EVIDENCE VIEWER SLICE 1 + 1B + 2 MERGED / 1B MIGRATION SQL REVIEWED — DO NOT REOPEN PHASE 9**  
 Planning date: 2026-09-20; updated: 2026-09-21  
 Baseline: Phase 9 **PRODUCTION VERIFIED / CLOSED** at production `main@dbea68f3`  
-Document-recognition audit baseline: `origin/dev@1ede0599`; Slice 3 merged as `caabf1c1`; Evidence Viewer Slice 1 merged as `0371a155`; Slice 1B merged as `9ae4d85d`; additive folder migration committed as `cc4c8016`; current Evidence Viewer Slice 2 baseline: `origin/dev@cc4c8016`
+Document-recognition audit baseline: `origin/dev@1ede0599`; Slice 3 merged as `caabf1c1`; Evidence Viewer Slice 1 merged as `0371a155`; Slice 1B merged as `9ae4d85d`; additive folder migration committed as `cc4c8016`; Evidence Viewer Slice 2 merged in PR #2438 as `4d68379e`; current Slice 3V-A base: `origin/dev@4d68379e`
 
 ## 1. Purpose and placement
 
@@ -76,7 +76,7 @@ Detailed design and audit: `docs/architecture/accounting-document-recognition-hu
 This work package is now **P0 Accounting correctness** and should be completed before new
 financial-feature work that depends on provider settlement authority.
 
-State: **Slice 0 merged in PR #2428 (`bbd0b1c0`); Slice 1 Human Review Revision + migration merged in PR #2429 (`1903b32a`, CI #6017 green); Slice 2 Human Review UI merged in PR #2431 (`e52c44b9`); Slice 3 layout-aware extraction merged in PR #2432 (`caabf1c1`) with green CI; Evidence Viewer Slice 1 merged in PR #2435 (`0371a155`, CI #6039 green); Evidence Viewer Slice 1B merged in PR #2436 (`9ae4d85d`, CI #6042 green), with additive migration `20260921124637_add_accounting_evidence_folders` committed as `cc4c8016` and SQL reviewed as safe/additive. Evidence Viewer Slice 2 is source-implemented for local review with no schema/dependency change.**
+State: **Slice 0 merged in PR #2428 (`bbd0b1c0`); Slice 1 Human Review Revision + migration merged in PR #2429 (`1903b32a`, CI #6017 green); Slice 2 Human Review UI merged in PR #2431 (`e52c44b9`); Slice 3 layout-aware extraction merged in PR #2432 (`caabf1c1`) with green CI; Evidence Viewer Slice 1 merged in PR #2435 (`0371a155`, CI #6039 green); Evidence Viewer Slice 1B merged in PR #2436 (`9ae4d85d`, CI #6042 green), with additive migration `20260921124637_add_accounting_evidence_folders` committed as `cc4c8016` and SQL reviewed as safe/additive; Evidence Viewer Slice 2 merged in PR #2438 as `4d68379e` with CI green; Slice 3V-A native-PDF usability + sanitized Poppler golden is source-implemented on branch `accounting/document-recognition-3v-a` for local review with no schema/dependency/runtime-package change.**
 
 Baseline audited state before Slice 0:
 
@@ -104,11 +104,16 @@ Required order:
    bbox/Textract geometry normalized into an Accounting-owned extraction contract, Tesseract
    retained as text-only fallback, and the observed Uber July label/value regression pinned
    without adding a dependency/schema change;
-5. **Slice 3V:** local-PDF verification/routing hardening — sanitize real Poppler bbox golden
-   evidence, define a conservative usable-native-text decision from fixtures, and for scanned
-   PDFs rasterize bounded pages locally with existing Poppler before calling synchronous
-   Textract per image page and merging page-aware geometry. No S3/async Textract, Paddle or BDA
-   is part of the approved normal path;
+5. **Slice 3V:** local-PDF verification/routing hardening, intentionally split:
+   - **3V-A:** native-text usability + sanitized Poppler golden — source-implemented for local
+     review. Provider semantic mapping now requires usable native text; Poppler text-only
+     evidence may use only same-line label/value pairs and never flattened cross-line adjacency.
+     The sanitized July Uber regression pins `260336 / 33848 / 143194` through control-total
+     reconciliation;
+   - **3V-B:** still pending — for PDFs without usable native text, rasterize bounded pages
+     locally with existing Poppler before calling synchronous Textract per image page and
+     merging page-aware geometry. No S3/async Textract, Paddle or BDA is part of the approved
+     normal path;
 6. **Evidence Viewer Slice 1:** unify protected artifact-stable-id delivery, make `/content`
    inline and add explicit `/download`, with browser-native PDF/image preview while structured
    CSV/XLSX preview remains a later bounded adapter slice — merged in PR #2435;

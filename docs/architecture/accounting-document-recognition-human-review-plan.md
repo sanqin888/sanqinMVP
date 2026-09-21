@@ -1,8 +1,8 @@
 # Accounting Document Recognition & Human Review Plan
 
-Status: **SLICE 0-3 MERGED / CI GREEN / POPPLER PDF PATH AUDITED / EVIDENCE VIEWER SLICE 1 SOURCE IMPLEMENTED / LOCAL REVIEW**  
+Status: **SLICE 0-3 MERGED / CI GREEN / SLICE 3V-A SOURCE IMPLEMENTED / LOCAL REVIEW / EVIDENCE VIEWER SLICE 1 + 1B + 2 MERGED — DO NOT REOPEN PHASE 9**  
 Planning date: 2026-09-20; updated: 2026-09-21  
-Audit baseline: `origin/dev@1ede0599`; Slice 3 merged in PR #2432 as `caabf1c1`; current follow-up baseline: `origin/dev@971a3172`  
+Audit baseline: `origin/dev@1ede0599`; Slice 3 merged in PR #2432 as `caabf1c1`; current Slice 3V-A base: `origin/dev@4d68379e`  
 Owner: **Accounting / Reporting / Analytics**  
 Phase 9 status: **remains PRODUCTION VERIFIED / CLOSED — do not reopen Phase 9**
 
@@ -749,6 +749,51 @@ explicit architecture decision.
 No new npm dependency, S3 bucket, async Textract workflow, queue, schema or migration is
 required for this target.
 
+#### Slice 3V-A — Native PDF usability + sanitized Poppler golden
+
+Source implementation on `origin/dev@4d68379e` / branch
+`accounting/document-recognition-3v-a` establishes the first half of Slice 3V without
+activating the new scanned-PDF raster path:
+
+- `accounting-pdf-routing.ts` owns a provider-neutral native-text decision with three outcomes:
+  `USABLE_NATIVE_TEXT`, `SCAN_CANDIDATE`, and `FAIL_CLOSED`;
+- usable native text requires at least eight Unicode letter/number characters, at least two
+  meaningful tokens, and either at least two meaningful lines or at least four Han characters.
+  This deliberately recognizes CJK text without relying on ASCII-only scoring;
+- blank or fragment-only layers become `SCAN_CANDIDATE`; extraction truncation is
+  `FAIL_CLOSED`; replacement/private-use/control-character contamination fails closed when at
+  least four suspicious characters comprise at least 20% of non-whitespace characters;
+- the decision records bounded quality metrics, including meaningful characters/tokens/lines,
+  Han characters, suspicious-character ratio, extraction line count and geometry line count;
+- provider semantic mapping runs only for `USABLE_NATIVE_TEXT`. Weak/suspicious native text is
+  retained for operator review instead of being interpreted as financial facts;
+- 3V-A intentionally does **not** broaden the old whole-PDF Textract path. Until 3V-B replaces it,
+  only the historical `NO_NATIVE_TEXT` case may still use that legacy fallback. An
+  `INSUFFICIENT_NATIVE_TEXT` candidate stays local/manual rather than being sent through the
+  unsafe old raw-PDF path;
+- persisted PDF routing evidence is revalidated before later manual provider confirmation, so an
+  operator cannot bypass a non-usable native-text decision merely by selecting a provider;
+- provider-financial parser v5 treats explicit `POPPLER / TEXT_ONLY` PDF evidence
+  conservatively: it accepts a named amount only when label and value remain on the same extracted
+  line, records that line evidence, and never falls back to cross-line flattened adjacency. A
+  provider statement whose columns collapse into separate label/value line groups therefore fails
+  closed instead of recreating the July column-order bug;
+- sanitized July Uber fixtures preserve the observed flattened
+  `Sales / Tax on Sales / $2,603.36 / $338.48` shape plus representative two-column bbox
+  relationships. Source identifiers are removed and the source PDF itself is not committed.
+  Regression coverage runs `bbox -> Accounting extraction -> provider parser -> settlement
+  control totals` and pins `Sales = 260336`, `Tax on Sales = 33848`,
+  `Net Total = 143194`, payout-section exclusion, and five matched Uber control-total checks;
+- bbox coordinates in the sanitized fixture are representative geometry, not byte-for-byte
+  production floating-point coordinates. Tests assert page/row/right-of-label relationships and
+  financial semantics rather than exact Poppler coordinate bytes;
+- no historical source artifact, machine extraction, Human Review Revision, posted settlement or
+  Journal is rewritten or reprocessed by this source batch.
+
+3V-B remains the separate next PDF-routing slice: bounded page inspection/rasterization,
+synchronous Textract image OCR per page, page-number-aware geometry merge and whole-document
+fail-closed completeness.
+
 ### Slice 6 — Optional suspense workflow
 
 Only if separately approved.
@@ -907,15 +952,15 @@ financial facts. Retain source/review evidence.
 
 ## 15. Decisions intentionally left open
 
-The following remain open and must not be guessed during implementation:
+Slice 3V-A resolves the native-text usability decision above. Evidence Viewer Slice 2 also
+resolved the bounded CSV/XLSX preview contract and is merged. The following decisions remain
+open and must not be guessed during later implementation:
 
-1. the exact conservative rule for deciding whether a PDF's native text layer is usable;
-2. the scanned-PDF maximum page count and aggregate OCR resource limits;
-3. whether Provider API ingestion should participate in scanned-PDF raster/Textract fallback;
-4. whether the runtime should pin a specific Alpine/Poppler version for golden reproducibility;
-5. whether DOCX should be accepted by Accounting Inbox;
-6. whether unresolved provider components may use a suspense account;
-7. the exact bounded CSV/XLSX preview response contract for Evidence Viewer Slice 2.
+1. the scanned-PDF maximum page count and aggregate OCR resource limits;
+2. whether Provider API ingestion should participate in scanned-PDF raster/Textract fallback;
+3. whether the runtime should pin a specific Alpine/Poppler version for golden reproducibility;
+4. whether DOCX should be accepted by Accounting Inbox;
+5. whether unresolved provider components may use a suspense account.
 
 PaddleOCR/BDA and S3/async Textract are not part of the currently approved normal recognition
 path. Reintroducing any of them requires a new explicit decision based on a demonstrated gap.

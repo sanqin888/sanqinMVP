@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Sanitized representative of the read-only July 2026 Uber statement page.
+  Merchant/address/document identifiers are removed. The preserved regression
+  shape is the observed two-column label/value geometry whose flattened Poppler
+  text placed Sales and Tax labels before their amounts.
+-->
+<doc>
+  <page width="612" height="792">
+    <flow>
+      <block>
+        <line xMin="72" yMin="240" xMax="188" yMax="254">
+          <word xMin="72" yMin="240" xMax="101" yMax="254">Sales</word>
+          <word xMin="106" yMin="240" xMax="188" yMax="254">(84 Orders)</word>
+        </line>
+        <line xMin="468" yMin="240" xMax="540" yMax="254">
+          <word xMin="468" yMin="240" xMax="540" yMax="254">$2,603.36</word>
+        </line>
+        <line xMin="72" yMin="260" xMax="150" yMax="274">
+          <word xMin="72" yMin="260" xMax="150" yMax="274">Tax on Sales</word>
+        </line>
+        <line xMin="480" yMin="260" xMax="540" yMax="274">
+          <word xMin="480" yMin="260" xMax="540" yMax="274">$338.48</word>
+        </line>
+        <line xMin="72" yMin="540" xMax="128" yMax="554">
+          <word xMin="72" yMin="540" xMax="128" yMax="554">Net Total</word>
+        </line>
+        <line xMin="468" yMin="540" xMax="540" yMax="554">
+          <word xMin="468" yMin="540" xMax="540" yMax="554">$1,431.94*</word>
+        </line>
+        <line xMin="72" yMin="620" xMax="145" yMax="634">
+          <word xMin="72" yMin="620" xMax="145" yMax="634">Payout Period:</word>
+        </line>
+        <line xMin="72" yMin="650" xMax="185" yMax="664">
+          <word xMin="72" yMin="650" xMax="101" yMax="664">Sales</word>
+          <word xMin="106" yMin="650" xMax="185" yMax="664">(4 Orders)</word>
+        </line>
+        <line xMin="485" yMin="650" xMax="540" yMax="664">
+          <word xMin="485" yMin="650" xMax="540" yMax="664">$120.00</word>
+        </line>
+      </block>
+    </flow>
+  </page>
+</doc>

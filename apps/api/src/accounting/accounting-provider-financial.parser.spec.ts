@@ -376,6 +376,89 @@ Sales (4 Orders) $120.00
     );
   });
 
+  it('fails a Poppler text-only Uber statement closed instead of trusting flattened column order', () => {
+    const text = `
+Monthly Statement
+Statement Number #TEXT-ONLY
+Date Jul 01-31, 2026
+Sales (84 Orders)
+Tax on Sales
+$2,603.36
+$338.48
+Net Total $1,431.94*
+`;
+
+    const parsed = parseProviderFinancialEvidence({
+      providerHint: AccountingFinancialProvider.UBER_EATS,
+      documentTypeHint: AccountingFinancialDocumentType.STATEMENT,
+      text,
+      documentExtraction: {
+        version: 1,
+        inputKind: 'PDF',
+        engine: 'POPPLER',
+        layoutMode: 'TEXT_ONLY',
+        truncated: false,
+        lines: text
+          .split('\n')
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map((line, index) => ({
+            lineId: `p1-l${index + 1}`,
+            page: 1,
+            text: line,
+            confidence: null,
+            geometry: null,
+          })),
+      },
+    });
+
+    expect(parsed).toBeNull();
+  });
+
+  it('accepts same-line amounts when a usable native PDF has only Poppler text evidence', () => {
+    const text = `
+Monthly Statement
+Statement Number #TEXT-INLINE
+Date Jul 01-31, 2026
+Sales (84 Orders) $2,603.36
+Tax on Sales $338.48
+Total Earnings $2,941.84
+Net Total $2,941.84
+`;
+    const parsed = parseProviderFinancialEvidence({
+      providerHint: AccountingFinancialProvider.UBER_EATS,
+      documentTypeHint: AccountingFinancialDocumentType.STATEMENT,
+      text,
+      documentExtraction: {
+        version: 1,
+        inputKind: 'PDF',
+        engine: 'POPPLER',
+        layoutMode: 'TEXT_ONLY',
+        truncated: false,
+        lines: text
+          .split('\n')
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map((line, index) => ({
+            lineId: `p1-l${index + 1}`,
+            page: 1,
+            text: line,
+            confidence: null,
+            geometry: null,
+          })),
+      },
+    });
+
+    expect(lineByName(parsed!, 'Sales')?.amountCents).toBe(260336);
+    expect(lineByName(parsed!, 'Tax on Sales')?.amountCents).toBe(33848);
+    expect(lineByName(parsed!, 'Sales')?.rawPayload).toMatchObject({
+      extractionEvidence: {
+        strategy: 'TEXT_LINE_INLINE',
+        engine: 'POPPLER',
+      },
+    });
+  });
+
   it('fails a geometry-backed Uber label closed instead of falling back to flattened adjacency', () => {
     const parsed = parseProviderFinancialEvidence({
       providerHint: AccountingFinancialProvider.UBER_EATS,
