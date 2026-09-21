@@ -419,6 +419,10 @@ export function AccountingInboxItemsList({
                           {parse.textRecognitionEngine ?? parse.ocrEngine ?? '—'}
                         </strong>
                       </span>
+                      <span>
+                        {isZh ? '识别置信度' : 'Recognition confidence'}:{' '}
+                        <strong>{parse.confidence ?? '—'}</strong>
+                      </span>
                     </div>
                     {expenseRecognitionConsistency === 'MISMATCH' ? (
                       <p className="mt-2 font-medium">
@@ -465,30 +469,44 @@ export function AccountingInboxItemsList({
                 item.status === 'PENDING_REVIEW' &&
                 item.classification === 'PROVIDER_FINANCIAL_DOCUMENT' &&
                 item.selectedProvider ? (
-                  <button
-                    disabled={confirmingProviderId === item.inboxItemStableId}
-                    onClick={() => void onConfirmProviderFinancial(item)}
-                    className="rounded border px-3 py-1.5 text-sm text-emerald-700 disabled:opacity-50"
-                  >
-                    {confirmingProviderId === item.inboxItemStableId
-                      ? isZh
-                        ? '确认中…'
-                        : 'Confirming…'
-                      : isZh
-                        ? '确认平台财务资料'
-                        : 'Confirm provider financial evidence'}
-                  </button>
+                  <div className="max-w-sm text-right">
+                    <button
+                      disabled={confirmingProviderId === item.inboxItemStableId}
+                      onClick={() => void onConfirmProviderFinancial(item)}
+                      className="rounded border px-3 py-1.5 text-sm text-emerald-700 disabled:opacity-50"
+                    >
+                      {confirmingProviderId === item.inboxItemStableId
+                        ? isZh
+                          ? '确认中…'
+                          : 'Confirming…'
+                        : isZh
+                          ? '确认平台财务资料'
+                          : 'Confirm provider financial evidence'}
+                    </button>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {isZh
+                        ? '确认后会转入“平台结算”，原始证据将受保护；此动作本身不会生成会计分录。'
+                        : 'Confirmation moves this evidence to Provider settlements and protects the source evidence; this action itself does not post a journal entry.'}
+                    </p>
+                  </div>
                 ) : null}
                 {!quarantined &&
                 item.status === 'PENDING_REVIEW' &&
                 item.classification === 'EXPENSE_DOCUMENT' &&
                 parse.requiresBatchExpenseImport !== true ? (
-                  <button
-                    onClick={() => onReviewExpense(item)}
-                    className="rounded border px-3 py-1.5 text-sm text-blue-700"
-                  >
-                    {isZh ? '查看并审核费用' : 'Open expense review'}
-                  </button>
+                  <div className="max-w-sm text-right">
+                    <button
+                      onClick={() => onReviewExpense(item)}
+                      className="rounded border px-3 py-1.5 text-sm text-blue-700"
+                    >
+                      {isZh ? '查看并审核费用' : 'Open expense review'}
+                    </button>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {isZh
+                        ? '打开审核页不会入账；只有在审核页确认创建费用后才会生成正式费用记录。'
+                        : 'Opening review does not post anything; a formal expense is created only after confirmation in the review panel.'}
+                    </p>
+                  </div>
                 ) : null}
                 {!quarantined &&
                 item.status === 'PENDING_REVIEW' &&
