@@ -15,6 +15,9 @@ const EXPECTED_CONTROLLER_CAPABILITIES = {
   ],
   'accounting-chart.controller.ts': ['AccountingChartService'],
   'accounting-expense.controller.ts': ['AccountingExpenseService'],
+  'accounting-expense-journal.controller.ts': [
+    'AccountingExpenseJournalPreviewService',
+  ],
   'accounting-inbox-artifacts.controller.ts': [
     'AccountingArtifactDeliveryService',
     'AccountingEvidenceFileManagerService',
@@ -95,6 +98,7 @@ const EXPECTED_ROUTES = [
   'GET report/pnl',
   'GET journal/canonical-sales/replay-preview',
   'GET journal/canonical-changes/shadow-preview',
+  'GET journal/canonical-expenses/shadow-preview',
   'GET journal/provider-settlement/shadow-preview',
   'GET journal/provider-settlement/posting-states',
   'POST journal/provider-settlement/replay',

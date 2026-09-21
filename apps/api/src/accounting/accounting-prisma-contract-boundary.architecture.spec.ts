@@ -16,6 +16,7 @@ const PRISMA_FREE_BOUNDARIES = [
   'accounting-journal-policy.ts',
   'accounting-canonical-sale-journal.policy.ts',
   'accounting-canonical-change-journal.policy.ts',
+  'accounting-expense-journal.policy.ts',
   'accounting-inbox-core.policy.ts',
   'accounting-inbox-core.orchestrator.ts',
   'accounting-inbox-acquisition.service.ts',

@@ -383,8 +383,8 @@ Where incomplete evidence affects a requested report, show the coverage state. F
 ## 12. Migration expectations
 
 - Document-recognition Slice 0 control-total hardening: no migration expected.
-- Human Review Revision persistence: additive Accounting schema work is expected and
-  therefore **MIGRATION REQUIRED** when that slice is implemented.
+- Expense booking correction uses existing Expense evidence/audit fields; the discarded
+  Expense Human Review Revision prototype is not part of the merged design, so **NO MIGRATION**.
 - Scanned-PDF page rasterization with the already installed Poppler plus the existing Textract
   SDK path requires no new dependency; any future new OCR/runtime dependency still requires
   separate authorization.
@@ -400,23 +400,28 @@ This roadmap itself authorizes no migration or new OCR/runtime dependency.
 
 Every future slice must begin with a read-only readiness audit, preserve the final modularization graph unless explicitly authorized otherwise, add financial-semantic and boundary regressions, compare fixed historical totals before cutover, and keep unavailable real/provider evidence explicitly deferred.
 
-The immediate handoff for the current correctness package is the user-local additive Prisma
-migration for Expense Human Review Revision, followed by SQL review and merge back into `dev`.
-Until that migration is merged, the schema-changing state must not be promoted to `main` or
-production. No new OCR/runtime dependency is required.
+The Expense recognition/correction package is merged with no schema migration. The current
+handoff is the Expense Journal canonicalization work below; no new OCR/runtime dependency is
+required.
 
-The previously approved Expense roadmap remains next after this correctness package:
+**Post-Modularization Accounting — Slice C0: Expense Journal Canonicalization Shadow Preview**
 
-**Post-Modularization Accounting — Slice A: Expense Journal Canonicalization Readiness Audit**
+Readiness re-confirmed on 2026-09-21:
 
-Re-confirm:
+- Expense remains the only active `AccountingTransaction` mutation owner;
+- the sole accidental production Expense/Transaction was operator-removed and independently
+  verified absent before C0, leaving zero confirmed Expense rows and zero retained Expense
+  `AccountingTransaction` rows requiring replay;
+- payment allocations may be absent by current product policy, so canonical posting must fail
+  closed with `MISSING_PAYMENT_ALLOCATION` rather than infer cash/bank or create Accounts Payable;
+- canonical mapping is debit `account_general_operating_expense` with the existing expense
+  category dimension, debit `account_hst_recoverable` for recoverable tax, and credit only the
+  reviewed CAD payment allocation account(s);
+- C0 is read-only: deterministic Expense source fact/idempotency, per-document draft hash,
+  `READY / BLOCKED / ALREADY_POSTED` classification and range `planHash`; no Journal writer,
+  report cutover or legacy mutation removal yet;
+- C0 requires no Prisma migration, dependency change or context-edge change.
 
-- only Expense still writes `AccountingTransaction`;
-- production Expense/Transaction row counts;
-- paid vs unpaid Expense policy;
-- Journal account/category/HST mapping;
-- payment allocation semantics;
-- period lock/idempotency/audit;
-- exact migration/contraction requirements.
-
-Each implementation slice starts only after its readiness audit is reviewed.
+After C0 review/merge, the next implementation gate is atomic Expense confirmation ->
+Expense-specific Journal authority plus report parity/cutover. The `AccountingTransaction` writer
+is removed only after that replacement parity is proven.

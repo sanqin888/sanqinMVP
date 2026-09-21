@@ -1,6 +1,6 @@
 # Accounting Document Recognition & Human Review Plan
 
-Status: **SLICE 0-3 + 3V-A + 3V-B DEV MERGED / CI GREEN / 3V-B PRODUCTION VERIFICATION PENDING / EVIDENCE VIEWER SLICE 1 + 1B + 2 MERGED / RELIABILITY SLICE A MERGED / EXPENSE REVIEW HARDENING PR OPEN — NO MIGRATION — DO NOT REOPEN PHASE 9**  
+Status: **SLICE 0-3 + 3V-A + 3V-B DEV MERGED / CI GREEN / 3V-B PRODUCTION VERIFICATION PENDING / EVIDENCE VIEWER SLICE 1 + 1B + 2 MERGED / RELIABILITY SLICE A MERGED / EXPENSE REVIEW HARDENING MERGED / CI GREEN — NO MIGRATION — DO NOT REOPEN PHASE 9**  
 Planning date: 2026-09-20; updated: 2026-09-21  
 Audit baseline: `origin/dev@1ede0599`; Slice 3 merged in PR #2432 as `caabf1c1`; Slice 3V-A merged in PR #2439 as `0d6909bb` after PR CI #6054 and merged-head CI #6055 passed; Slice 3V-B merged in PR #2440 as `0ac9117f` after final head `3c5c0400`, PR CI #6057 and merged-head CI #6058 green  
 Owner: **Accounting / Reporting / Analytics**  
@@ -862,7 +862,7 @@ Phase 9 status or production evidence is changed. Per repository workflow, local
 have not been run before user review; GitHub Actions remains the validation gate after explicit
 remote authorization.
 
-#### Reliability Slice B — Expense layout reconciliation + Human Review authority
+#### Reliability Slice B — Expense layout reconciliation + booking correction audit
 
 Expense recognition now treats source amounts as a deterministic evidence set instead of three
 independent suggestions. Native-text PDFs keep Poppler text extraction and additionally use the
