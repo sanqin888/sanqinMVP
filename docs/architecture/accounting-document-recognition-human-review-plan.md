@@ -243,8 +243,15 @@ and the current implementation now uses the Detail as supplementary evidence whi
 Summary remains monthly authority.
 
 That solution is valid evidence-driven reconciliation, but it exposed a workflow gap:
-supplementary evidence is currently the only supported resolution path. There is no
-general operator review authority for:
+supplementary evidence is currently the only supported resolution path. A later real July
+2026 Chinese Fantuan Detail workbook also showed that provider-native structured exports
+can vary by locale: ordinary rows use `单据类型 = 订单`, while the observed adjustment rows
+use `单据类型 = 扣款`, blank `订单类型`, and Chinese column labels such as `单据时间`,
+`单据号` and `结算金额`. The native XLSX adapter therefore owns explicit observed
+English/Chinese aliases and keeps unknown non-order document types fail-closed; it does not
+guess an unobserved Chinese Compensation label from amount sign or remarks.
+
+There is no general operator review authority for:
 
 - correcting a source-reading error;
 - classifying a source line when the source evidence is sufficient but the parser lacks a

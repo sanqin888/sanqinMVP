@@ -92,6 +92,106 @@ describe('Fantuan adjustment detail XLSX parser', () => {
     ]);
   });
 
+  it('parses observed Chinese Fantuan Deduction rows', () => {
+    const parsed = parseFantuanAdjustmentDetailXlsx({
+      originalFilename:
+        'Fantuan_Settlement_Details2026-07-01_2026-07-31.xlsx',
+      buffer: makeWorkbook([
+        {
+          商户名称: '三秦肉夹馍·凉皮(YG)',
+          商户编号: '15507',
+          单据类型: '订单',
+          单据时间: '2026-07-31 18:55:54',
+          单据号: '#normal',
+          订单类型: '外卖',
+          结算金额: 32.43,
+          备注: '',
+        },
+        {
+          商户名称: '三秦肉夹馍·凉皮(YG)',
+          商户编号: '15507',
+          单据类型: '扣款',
+          单据时间: '2026-07-24 13:50:58',
+          单据号: '#35201',
+          订单类型: '',
+          结算金额: -2.35,
+          备注: 'Refund to customer - Restaunrant',
+        },
+        {
+          商户名称: '三秦肉夹馍·凉皮(YG)',
+          商户编号: '15507',
+          单据类型: '扣款',
+          单据时间: '2026-07-17 17:24:18',
+          单据号: '#29158',
+          订单类型: '',
+          结算金额: -12.26,
+          备注: 'Refund to customer - Restaunrant',
+        },
+      ]),
+    });
+
+    expect(parsed).toEqual(
+      expect.objectContaining({
+        provider: AccountingFinancialProvider.FANTUAN,
+        documentType: AccountingFinancialDocumentType.OTHER,
+        providerMerchantRef: '15507',
+        businessIdentityKey: 'fantuan:adjustment-detail:2026-07-01:2026-07-31',
+        periodStart: '2026-07-01',
+        periodEnd: '2026-07-31',
+        rawMetadata: expect.objectContaining({
+          evidenceKind: 'FANTUAN_SETTLEMENT_ADJUSTMENT_DETAIL',
+          adjustmentRowCount: 2,
+          adjustmentNetCents: -1461,
+          unknownFeeTypes: [],
+        }) as unknown,
+      }),
+    );
+    expect(parsed?.lines).toEqual([
+      expect.objectContaining({
+        externalRef: '#35201',
+        rawCode: FANTUAN_ADJUSTMENT_RAW_CODES.DEDUCTION,
+        rawName: '扣款',
+        amountCents: -235,
+      }),
+      expect.objectContaining({
+        externalRef: '#29158',
+        rawCode: FANTUAN_ADJUSTMENT_RAW_CODES.DEDUCTION,
+        rawName: '扣款',
+        amountCents: -1226,
+      }),
+    ]);
+  });
+
+  it('keeps an unknown Chinese non-order document type fail-closed', () => {
+    const parsed = parseFantuanAdjustmentDetailXlsx({
+      originalFilename:
+        'Fantuan_Settlement_Details2026-07-01_2026-07-31.xlsx',
+      buffer: makeWorkbook([
+        {
+          单据类型: '未知调整类型',
+          单据时间: '2026-07-20 12:00:00',
+          单据号: '#unknown-cn',
+          订单类型: '',
+          结算金额: 1.23,
+          备注: '',
+        },
+      ]),
+    });
+
+    expect(parsed?.lines[0]).toEqual(
+      expect.objectContaining({
+        rawCode: FANTUAN_ADJUSTMENT_RAW_CODES.UNKNOWN,
+        rawName: '未知调整类型',
+        amountCents: 123,
+      }),
+    );
+    expect(parsed?.rawMetadata).toEqual(
+      expect.objectContaining({
+        unknownFeeTypes: ['未知调整类型'],
+      }),
+    );
+  });
+
   it('preserves an unknown Adjustment fee type as fail-closed evidence', () => {
     const parsed = parseFantuanAdjustmentDetailXlsx({
       originalFilename:

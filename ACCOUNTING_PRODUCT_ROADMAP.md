@@ -84,7 +84,8 @@ Baseline audited state before Slice 0:
   with local Tesseract fallback;
 - PDF uses Poppler plain text first and invokes Textract only when no local text is found;
 - CSV/XLSX use native structured paths where implemented, including the Fantuan Adjustment
-  Detail workbook;
+  Detail workbook; observed English and Chinese Fantuan export columns are normalized inside
+  that provider parser rather than sent through OCR;
 - provider evidence can be classified/confirmed, but machine-derived financial lines have
   no durable human correction/review revision;
 - settlement planning proves Journal debit/credit balance but has no general statement
