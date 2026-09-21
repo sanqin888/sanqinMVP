@@ -118,6 +118,21 @@ Marketplace Fees
 Net Total
 `,
         documentExtraction,
+        pdfNativeTextUsability: {
+          disposition: 'USABLE_NATIVE_TEXT',
+          reason: 'NATIVE_TEXT_USABLE',
+          metrics: {
+            characterCount: 64,
+            meaningfulCharacterCount: 52,
+            meaningfulTokenCount: 8,
+            meaningfulLineCount: 4,
+            hanCharacterCount: 0,
+            suspiciousCharacterCount: 0,
+            suspiciousCharacterRatio: 0,
+            extractionLineCount: 1,
+            geometryLineCount: 1,
+          },
+        },
       }),
     ).resolves.toEqual(
       expect.objectContaining({
@@ -140,6 +155,10 @@ Net Total
         resultJson: expect.objectContaining({
           providerRecognition: true,
           documentExtraction,
+          pdfNativeTextUsability: expect.objectContaining({
+            disposition: 'USABLE_NATIVE_TEXT',
+            reason: 'NATIVE_TEXT_USABLE',
+          }) as unknown,
         }) as unknown,
       }),
     );
@@ -500,7 +519,7 @@ Net Total $1,431.94*
       expect.objectContaining({
         provider: AccountingFinancialProvider.UBER_EATS,
         providerDocumentRef: 'B4842290',
-        parserVersion: '4',
+        parserVersion: '5',
         lines: expect.arrayContaining([
           expect.objectContaining({
             rawName: 'Sales',
@@ -518,6 +537,92 @@ Net Total $1,431.94*
         ]) as unknown,
       }),
     );
+  });
+
+  it('does not let manual provider confirmation bypass a non-usable native PDF decision', async () => {
+    const operations = {
+      readUnifiedInboxProviderReviewContext: jest.fn().mockResolvedValue({
+        status: AccountingInboxStatus.PENDING_REVIEW,
+        classification:
+          AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
+        selectedProvider: AccountingFinancialProvider.UBER_EATS,
+        materializedEntityType: null,
+        materializedEntityStableId: null,
+        artifact: {
+          artifactStableId: 'acctart_weak_native_pdf',
+          acquisitionMode: 'MANUAL_UPLOAD',
+          bodyText: null,
+          emailSubject: null,
+          financialDocument: null,
+          parseRuns: [
+            {
+              parserName: 'accounting-generic-document-review',
+              parserVersion: '5',
+              status: AccountingParseStatus.SUCCESS,
+              resultJson: {
+                extractedText: 'Page 1',
+                textRecognitionEngine: 'POPPLER',
+                pdfNativeTextUsability: {
+                  disposition: 'SCAN_CANDIDATE',
+                  reason: 'INSUFFICIENT_NATIVE_TEXT',
+                  metrics: {
+                    characterCount: 6,
+                    meaningfulCharacterCount: 5,
+                    meaningfulTokenCount: 1,
+                    meaningfulLineCount: 1,
+                    hanCharacterCount: 0,
+                    suspiciousCharacterCount: 0,
+                    suspiciousCharacterRatio: 0,
+                    extractionLineCount: 1,
+                    geometryLineCount: 0,
+                  },
+                },
+                documentExtraction: {
+                  version: 1,
+                  inputKind: 'PDF',
+                  engine: 'POPPLER',
+                  layoutMode: 'TEXT_ONLY',
+                  truncated: false,
+                  lines: [
+                    {
+                      lineId: 'p1-l1',
+                      page: 1,
+                      text: 'Page 1',
+                      confidence: null,
+                      geometry: null,
+                    },
+                  ],
+                },
+              },
+            },
+          ],
+        },
+      }),
+      recordProviderFinancialDocument: jest.fn(),
+      ensureProviderFinancialCoverage: jest.fn(),
+      confirmProviderFinancialInboxItem: jest.fn(),
+    };
+    const storeConfig = {
+      getConfiguredStoreSnapshot: jest.fn().mockResolvedValue({
+        storeStableId: '4750_Yonge_Street',
+      }),
+    };
+    const service = new AccountingProviderFinancialService(
+      operations as never,
+      storeConfig as never,
+      {} as never,
+    );
+
+    await expect(
+      service.confirmSelectedInboxFinancialEvidence(
+        'acctinbox_weak_native_pdf',
+        'user_operator_1',
+      ),
+    ).rejects.toThrow(
+      'provider PDF native text is not usable; scanned-PDF OCR routing must complete before confirmation',
+    );
+    expect(operations.recordProviderFinancialDocument).not.toHaveBeenCalled();
+    expect(operations.confirmProviderFinancialInboxItem).not.toHaveBeenCalled();
   });
 
   it('fails closed when persisted document extraction evidence is malformed', async () => {
@@ -654,7 +759,7 @@ Total transfer amount $3813.11
         periodStart: '2026-08-01',
         periodEnd: '2026-08-31',
         parserName: 'accounting-provider-financial',
-        parserVersion: '4',
+        parserVersion: '5',
       }),
     );
     expect(operations.ensureProviderFinancialCoverage).toHaveBeenCalledWith(

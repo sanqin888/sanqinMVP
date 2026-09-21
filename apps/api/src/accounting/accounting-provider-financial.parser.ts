@@ -13,7 +13,7 @@ import {
 
 export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_NAME =
   'accounting-provider-financial';
-export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION = '4';
+export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION = '5';
 
 export type ProviderFinancialParseInput = {
   text: string;
@@ -760,6 +760,47 @@ function resolveNamedAmountFromLayout(
   return null;
 }
 
+function resolveNamedAmountFromPopplerTextLine(
+  label: string,
+  extraction: AccountingDocumentExtraction | undefined,
+): NamedAmountResolution | null {
+  if (
+    !extraction ||
+    extraction.inputKind !== 'PDF' ||
+    extraction.engine !== 'POPPLER' ||
+    extraction.layoutMode !== 'TEXT_ONLY'
+  ) {
+    return null;
+  }
+  const labelPattern = new RegExp(
+    `^${escapeRegex(label)}(?:\\s*\\([^)]*\\))?(?:\\s+|$)`,
+    'i',
+  );
+  for (const line of extraction.lines) {
+    const match = labelPattern.exec(line.text);
+    if (!match) continue;
+    const inlineToken = line.text
+      .slice(match[0].length)
+      .trim()
+      .split(/\\s+/)[0];
+    const amountCents = inlineToken ? parseMoneyCents(inlineToken) : null;
+    if (amountCents == null) continue;
+    return {
+      amountCents,
+      rawPayload: {
+        extractionEvidence: {
+          version: 1,
+          strategy: 'TEXT_LINE_INLINE',
+          engine: extraction.engine,
+          labelLine: documentLineEvidence(line),
+          amountLine: documentLineEvidence(line),
+        },
+      },
+    };
+  }
+  return null;
+}
+
 function resolveNamedAmount(
   text: string,
   label: string,
@@ -767,6 +808,13 @@ function resolveNamedAmount(
 ): NamedAmountResolution | null {
   const layout = resolveNamedAmountFromLayout(label, extraction);
   if (layout) return layout;
+  if (
+    extraction?.inputKind === 'PDF' &&
+    extraction.engine === 'POPPLER' &&
+    extraction.layoutMode === 'TEXT_ONLY'
+  ) {
+    return resolveNamedAmountFromPopplerTextLine(label, extraction);
+  }
   if (extraction?.layoutMode === 'GEOMETRY') {
     const labelPattern = new RegExp(
       `^${escapeRegex(label)}(?:\\s*\\([^)]*\\))?(?:\\s+|$)`,
