@@ -59,6 +59,8 @@ const EXPECTED_ROUTES = [
   'GET dashboard',
   'POST expenses',
   'GET expenses',
+  'GET expenses/records',
+  'PUT expenses/:documentStableId/payment-allocations',
   'GET inbox',
   'GET inbox/image-retention/pending',
   'GET inbox/manual-uploads',

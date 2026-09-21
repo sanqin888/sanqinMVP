@@ -395,7 +395,9 @@ Mandatory readiness decision:
 - either require complete payment allocation before posting; or
 - explicitly model unpaid expense / Accounts Payable.
 
-Do not silently treat an unpaid expense as cash/bank paid. If Accounts Payable is selected and schema/CoA changes are required, follow the repository's migration authorization workflow.
+The accepted current product path is the first option: an Expense may still be confirmed while its payment account is unknown, but canonical Expense Journal posting remains fail-closed until the reviewed payment allocation is complete. The Expenses page provides a one-way post-confirm completion action only for confirmed documents whose allocation set is empty; it cannot edit date, amount, category, tax, memo or evidence and cannot replace an already-completed or already-posted payment fact. No Accounts Payable inference is introduced.
+
+Do not silently treat an unpaid expense as cash/bank paid. If Accounts Payable is selected later and schema/CoA changes are required, follow the repository's migration authorization workflow.
 
 ### 5.3 B2 — Canonical Sales Analytics
 

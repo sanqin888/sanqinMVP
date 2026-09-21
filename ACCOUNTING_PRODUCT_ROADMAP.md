@@ -429,3 +429,15 @@ Readiness re-confirmed on 2026-09-21:
 After C0 review/merge, the next implementation gate is atomic Expense confirmation ->
 Expense-specific Journal authority plus report parity/cutover. The `AccountingTransaction` writer
 is removed only after that replacement parity is proven.
+
+**Payment-completion product gate added before C1:** confirmed Expenses may retain the formal
+unknown-payment state (`paymentAllocations = []`), but the Expenses surface now owns a narrow,
+one-way completion workflow. Only the payment-allocation child facts may be added after confirmation;
+date, booked total, category/tax splits, memo and evidence remain immutable through this action.
+Completion must use active CAD accounts, close exactly to the booked total, respect Accounting period
+locks, use the Expense parent row as the Serializable concurrency anchor, write audit evidence, and
+fail if allocations already differ or an Expense Journal already exists. Identical retries are
+idempotent. The records surface filters the complete confirmed-Expense
+set server-side by local-business date range, minimum amount and payment account/unassigned state
+before pagination (10 rows by default). This product slice does not authorize Journal C1, add
+Accounts Payable, change schema, or reopen Phase 9.

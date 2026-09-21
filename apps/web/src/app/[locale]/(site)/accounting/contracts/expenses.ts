@@ -1,5 +1,12 @@
 import type { AccountingInboxItem } from './inbox';
 
+export type AccountingExpenseRecordsPage = {
+  items: AccountingExpenseDocument[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
 export type AccountingExpenseDocument = {
   documentStableId: string;
   source: 'MANUAL' | 'GMAIL';

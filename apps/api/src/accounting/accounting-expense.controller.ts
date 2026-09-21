@@ -1,9 +1,11 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
   Param,
   Post,
+  Put,
   Query,
   Req,
   UseGuards,
@@ -15,8 +17,21 @@ import {
   parseNonNegativeAccountingNumber,
   requireAccountingOperatorUserId,
 } from './accounting-controller-support';
-import type { AccountingExpenseInput } from './accounting-expense.contracts';
+import type {
+  AccountingExpenseInput,
+  AccountingExpensePaymentCompletionInput,
+  AccountingExpensePaymentState,
+} from './accounting-expense.contracts';
 import { AccountingExpenseService } from './accounting-expense.service';
+
+function parseExpensePaymentState(
+  raw: string | undefined,
+): AccountingExpensePaymentState | undefined {
+  const value = raw?.trim();
+  if (!value) return undefined;
+  if (value === 'ASSIGNED' || value === 'UNASSIGNED') return value;
+  throw new BadRequestException('paymentState must be ASSIGNED or UNASSIGNED');
+}
 
 @Controller('accounting')
 @UseGuards(SessionAuthGuard, RolesGuard)
@@ -44,6 +59,43 @@ export class AccountingExpenseController {
       status,
       limit: parseNonNegativeAccountingNumber(limit, 'limit'),
     });
+  }
+
+  @Get('expenses/records')
+  listExpenseRecords(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('minTotalCents') minTotalCents?: string,
+    @Query('paymentAccountStableId') paymentAccountStableId?: string,
+    @Query('paymentState') paymentState?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.expense.listExpenseRecords({
+      from,
+      to,
+      minTotalCents: parseNonNegativeAccountingNumber(
+        minTotalCents,
+        'minTotalCents',
+      ),
+      paymentAccountStableId,
+      paymentState: parseExpensePaymentState(paymentState),
+      limit: parseNonNegativeAccountingNumber(limit, 'limit'),
+      offset: parseNonNegativeAccountingNumber(offset, 'offset'),
+    });
+  }
+
+  @Put('expenses/:documentStableId/payment-allocations')
+  completeExpensePaymentAllocations(
+    @Param('documentStableId') documentStableId: string,
+    @Body() body: AccountingExpensePaymentCompletionInput,
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.expense.completeExpensePaymentAllocations(
+      documentStableId,
+      body,
+      requireAccountingOperatorUserId(req),
+    );
   }
 
   @Post('inbox/:inboxItemStableId/expense/confirm')

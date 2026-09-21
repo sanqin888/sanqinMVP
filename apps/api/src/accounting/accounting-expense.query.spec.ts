@@ -1,5 +1,8 @@
 import { AccountingArtifactKind } from '@prisma/client';
-import { listAccountingExpenseDocuments } from './accounting-expense.query';
+import {
+  listAccountingExpenseDocuments,
+  listAccountingExpenseRecords,
+} from './accounting-expense.query';
 
 describe('Accounting expense source evidence query', () => {
   it('projects the materialized inbox artifact as stable source evidence', async () => {
@@ -62,6 +65,74 @@ describe('Accounting expense source evidence query', () => {
       expect.objectContaining({
         where: expect.objectContaining({
           materializedEntityStableId: { in: ['expense_1'] },
+        }) as unknown,
+      }),
+    );
+  });
+
+  it('applies record filters before pagination and returns the full match count', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const count = jest.fn().mockResolvedValue(37);
+    const db = {
+      accountingExpenseDocument: { findMany, count },
+    };
+
+    const result = await listAccountingExpenseRecords(db as never, {
+      status: 'CONFIRMED' as never,
+      startAt: new Date('2026-06-01T04:00:00.000Z'),
+      toExclusive: new Date('2026-07-01T04:00:00.000Z'),
+      minTotalCents: 5000,
+      paymentAccountStableId: 'account_cibc',
+      limit: 10,
+      offset: 20,
+    });
+
+    expect(result).toEqual({
+      items: [],
+      total: 37,
+      limit: 10,
+      offset: 20,
+    });
+    const where = expect.objectContaining({
+      status: 'CONFIRMED',
+      occurredAt: {
+        gte: new Date('2026-06-01T04:00:00.000Z'),
+        lt: new Date('2026-07-01T04:00:00.000Z'),
+      },
+      totalCents: { gte: 5000 },
+      paymentAllocations: {
+        some: { account: { accountStableId: 'account_cibc' } },
+      },
+    }) as unknown;
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where,
+        skip: 20,
+        take: 10,
+      }),
+    );
+    expect(count).toHaveBeenCalledWith({ where });
+  });
+
+  it('filters the full record set for expenses with no payment allocation', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const count = jest.fn().mockResolvedValue(4);
+    const db = {
+      accountingExpenseDocument: { findMany, count },
+    };
+
+    const result = await listAccountingExpenseRecords(db as never, {
+      status: 'CONFIRMED' as never,
+      paymentState: 'UNASSIGNED',
+      limit: 10,
+      offset: 0,
+    });
+
+    expect(result.total).toBe(4);
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          paymentAllocations: { none: {} },
         }) as unknown,
       }),
     );
