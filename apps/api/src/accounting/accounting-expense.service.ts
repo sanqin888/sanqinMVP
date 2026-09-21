@@ -32,7 +32,14 @@ import { AccountingPeriodService } from './accounting-period.service';
 import type {
   AccountingExpenseInput,
   AccountingExpensePaymentAllocationInput,
+  AccountingInboxExpenseConfirmInput,
 } from './accounting-expense.contracts';
+import {
+  AccountingExpenseReviewPolicyError,
+  normalizeAccountingExpenseReviewEffective,
+  type NormalizedAccountingExpenseReviewEffective,
+} from './accounting-expense-review.policy';
+import { readLatestExpenseReviewAuthorityInTx } from './accounting-expense-review.service';
 import {
   listAccountingExpenseDocuments,
   readAccountingExpenseDocument,
@@ -43,6 +50,7 @@ import {
   parseAccountingExpenseDate,
 } from './accounting-expense-input';
 import { createAccountingExpensePaymentAllocationsInTx } from './accounting-expense-payment-allocation.writer';
+import { hashAccountingJson } from './accounting-inbox-core.policy';
 
 type NormalizedExpensePaymentAllocation =
   AccountingExpensePaymentAllocationInput & {
@@ -53,6 +61,77 @@ type ResolvedExpensePaymentAllocation = NormalizedExpensePaymentAllocation & {
   accountDbId: string;
 };
 
+function optionalMachineInteger(
+  record: Record<string, unknown>,
+  key: string,
+): number | null {
+  const value = record[key];
+  return typeof value === 'number' && Number.isSafeInteger(value) ? value : null;
+}
+
+function requiresExpenseHumanReview(
+  extraction: Record<string, unknown>,
+  effective: NormalizedAccountingExpenseReviewEffective,
+): boolean {
+  const textractEvidence = accountingJsonRecord(extraction.textractEvidence);
+  if (
+    extraction.financialConsistency === 'MISMATCH' ||
+    textractEvidence.financialConsistency === 'MISMATCH'
+  ) {
+    return true;
+  }
+
+  const machineDate = accountingOptionalString(extraction.date);
+  if (machineDate && machineDate !== effective.occurredAt) return true;
+
+  const machineSourceCurrency = accountingOptionalString(
+    extraction.sourceCurrency,
+  )?.toUpperCase();
+  const comparableAmountCurrency =
+    machineSourceCurrency ?? effective.sourceCurrency ?? 'CAD';
+  if (comparableAmountCurrency === 'CAD') {
+    const subtotalCents = effective.splits.reduce(
+      (sum, split) => sum + split.amountCents,
+      0,
+    );
+    const taxCents = effective.splits.reduce(
+      (sum, split) => sum + split.taxCents,
+      0,
+    );
+    const machineSubtotalCents = optionalMachineInteger(
+      extraction,
+      'subtotalCents',
+    );
+    const machineTaxCents = optionalMachineInteger(extraction, 'taxCents');
+    const machineTotalCents = optionalMachineInteger(extraction, 'totalCents');
+    if (
+      (machineSubtotalCents != null && machineSubtotalCents !== subtotalCents) ||
+      (machineTaxCents != null && machineTaxCents !== taxCents) ||
+      (machineTotalCents != null && machineTotalCents !== effective.totalCents)
+    ) {
+      return true;
+    }
+  }
+
+  const suggestedCategoryStableId = accountingOptionalString(
+    extraction.suggestedCategoryStableId,
+  );
+  if (
+    suggestedCategoryStableId &&
+    effective.splits.some(
+      (split) => split.categoryStableId !== suggestedCategoryStableId,
+    )
+  ) {
+    return true;
+  }
+
+  return Boolean(
+    machineSourceCurrency &&
+      effective.sourceCurrency &&
+      machineSourceCurrency !== effective.sourceCurrency,
+  );
+}
+
 @Injectable()
 export class AccountingExpenseService {
   constructor(
@@ -62,7 +141,7 @@ export class AccountingExpenseService {
 
   async confirmUnifiedInboxExpense(
     inboxItemStableId: string,
-    input: AccountingExpenseInput,
+    input: AccountingInboxExpenseConfirmInput,
     operatorUserStableId: string,
   ) {
     this.assertNoLegacyExpensePaymentAccount(input);
@@ -193,6 +272,79 @@ export class AccountingExpenseService {
       ) {
         throw new BadRequestException('sourceCurrency must be a 3-letter code');
       }
+
+      let reviewEffective: NormalizedAccountingExpenseReviewEffective;
+      try {
+        reviewEffective = normalizeAccountingExpenseReviewEffective({
+          occurredAt: occurredAt.toISOString().slice(0, 10),
+          totalCents: input.totalCents,
+          sourceCurrency: reviewedSourceCurrency,
+          paymentAllocations: normalizedPaymentAllocations.map((allocation) => ({
+            accountStableId: allocation.accountStableId,
+            amountCents: allocation.amountCents,
+          })),
+          memo: input.memo,
+          splits: normalizedSplits,
+        });
+      } catch (error) {
+        if (error instanceof AccountingExpenseReviewPolicyError) {
+          throw new BadRequestException(error.message);
+        }
+        throw error;
+      }
+
+      const latestReview = await readLatestExpenseReviewAuthorityInTx(
+        tx,
+        inbox.id,
+      );
+      const currentParse = inbox.artifact.parseRuns[0] ?? null;
+      if (latestReview) {
+        if (latestReview.status !== 'CONFIRMED') {
+          throw new ConflictException(
+            'the latest expense human review is not confirmed',
+          );
+        }
+        if (
+          latestReview.sourceInboxVersion !== inbox.version ||
+          latestReview.sourceParseRunStableId !==
+            (currentParse?.parseRunStableId ?? null) ||
+          latestReview.sourceResultHash !== (currentParse?.resultHash ?? null)
+        ) {
+          throw new ConflictException(
+            'expense human review is stale for the current inbox extraction',
+          );
+        }
+        if (
+          input.reviewRevisionStableId?.trim() !==
+            latestReview.reviewRevisionStableId ||
+          input.expectedReviewHash?.trim().toLowerCase() !==
+            latestReview.reviewHash
+        ) {
+          throw new ConflictException(
+            'expense confirmation must bind the current confirmed human review revision',
+          );
+        }
+        if (
+          hashAccountingJson(reviewEffective) !==
+          hashAccountingJson(latestReview.effective)
+        ) {
+          throw new ConflictException(
+            'expense fields changed after human review confirmation',
+          );
+        }
+      } else {
+        if (input.reviewRevisionStableId || input.expectedReviewHash) {
+          throw new ConflictException(
+            'expense confirmation references a missing human review revision',
+          );
+        }
+        if (requiresExpenseHumanReview(extraction, reviewEffective)) {
+          throw new ConflictException(
+            'machine extraction mismatch or operator correction requires a confirmed human expense review',
+          );
+        }
+      }
+
       const artifactUrl = inbox.artifact.storedUrl
         ? inbox.artifact.kind === AccountingArtifactKind.IMAGE
           ? `/api/v1/accounting/inbox/artifacts/${encodeURIComponent(inbox.artifact.artifactStableId)}/content`
@@ -213,6 +365,18 @@ export class AccountingExpenseService {
         bookedSubtotalCents: subtotalCents,
         bookedTaxCents: taxCents,
         bookedTotalCents: input.totalCents,
+        ...(latestReview
+          ? {
+              humanReviewRevision: {
+                reviewRevisionStableId: latestReview.reviewRevisionStableId,
+                revision: latestReview.revision,
+                reviewHash: latestReview.reviewHash,
+                confirmedAt: latestReview.confirmedAt,
+                confirmedByUserStableId:
+                  latestReview.confirmedByUserStableId,
+              },
+            }
+          : {}),
       } satisfies Record<string, unknown>;
 
       const created = await tx.accountingExpenseDocument.create({

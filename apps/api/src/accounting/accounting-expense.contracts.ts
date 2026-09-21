@@ -18,3 +18,8 @@ export type AccountingExpenseInput = {
   memo?: string | null;
   splits: AccountingExpenseSplitInput[];
 };
+
+export type AccountingInboxExpenseConfirmInput = AccountingExpenseInput & {
+  reviewRevisionStableId?: string | null;
+  expectedReviewHash?: string | null;
+};

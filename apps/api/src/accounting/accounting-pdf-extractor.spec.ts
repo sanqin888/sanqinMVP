@@ -3,6 +3,7 @@ import {
   extractPdfLayout,
   extractPdfText,
   parsePopplerBboxLayout,
+  reconcileAccountingExpenseExtractionWithLayout,
 } from './accounting-pdf-extractor';
 
 describe('accounting text extraction', () => {
@@ -22,6 +23,144 @@ describe('accounting text extraction', () => {
       totalCents: 11300,
       suggestedCategoryStableId: 'expense_telecom',
     });
+  });
+
+  it('marks inconsistent recognized money as a low-confidence mismatch', () => {
+    const extraction = extractAccountingText(`
+      Invoice Date: 2026-08-15
+      Bell internet service
+      Subtotal $100.00
+      HST $13.00
+      Total $120.00
+    `);
+
+    expect(extraction).toEqual(
+      expect.objectContaining({
+        subtotalCents: 10000,
+        taxCents: 1300,
+        totalCents: 12000,
+        financialConsistency: 'MISMATCH',
+        confidence: 'LOW',
+      }),
+    );
+  });
+
+  it('uses layout geometry to reject a Bell-style HST discount false match', () => {
+    const flattened = extractAccountingText(`
+      Bell Business Internet
+      BILL DATE June 28, 2026
+      Amount due $84.69
+      - 185.00 ON HST Other Total discounts of $185.00 have been applied
+      Taxes 9.74
+      Total current charges 84.69
+    `);
+    expect(flattened.taxCents).toBe(18500);
+
+    const layout = {
+      version: 1 as const,
+      inputKind: 'PDF' as const,
+      engine: 'POPPLER' as const,
+      layoutMode: 'GEOMETRY' as const,
+      truncated: false,
+      lines: [
+        {
+          lineId: 'p1-l1',
+          page: 1,
+          text: 'Taxes',
+          confidence: null,
+          geometry: { left: 0.1, top: 0.4, width: 0.1, height: 0.02 },
+        },
+        {
+          lineId: 'p1-l2',
+          page: 1,
+          text: '9.74',
+          confidence: null,
+          geometry: { left: 0.7, top: 0.4, width: 0.08, height: 0.02 },
+        },
+        {
+          lineId: 'p1-l3',
+          page: 1,
+          text: 'Total current charges',
+          confidence: null,
+          geometry: { left: 0.1, top: 0.45, width: 0.25, height: 0.02 },
+        },
+        {
+          lineId: 'p1-l4',
+          page: 1,
+          text: '84.69',
+          confidence: null,
+          geometry: { left: 0.7, top: 0.45, width: 0.08, height: 0.02 },
+        },
+        {
+          lineId: 'p1-l5',
+          page: 1,
+          text: '- 185.00 ON HST Other',
+          confidence: null,
+          geometry: { left: 0.5, top: 0.55, width: 0.3, height: 0.02 },
+        },
+      ],
+    };
+    const extraction = reconcileAccountingExpenseExtractionWithLayout(
+      flattened,
+      layout,
+    );
+
+    expect(extraction).toEqual(
+      expect.objectContaining({
+        date: '2026-06-28',
+        suggestedCategoryStableId: 'expense_telecom',
+        subtotalCents: 7495,
+        taxCents: 974,
+        totalCents: 8469,
+        financialConsistency: 'MATCHED',
+        confidence: 'HIGH',
+        amountEvidence: {
+          subtotal: expect.objectContaining({
+            strategy: 'DERIVED_TOTAL_MINUS_TAX',
+          }),
+          tax: expect.objectContaining({
+            strategy: 'LAYOUT_ROW_PAIR',
+            labelLineId: 'p1-l1',
+            amountLineId: 'p1-l2',
+          }),
+          total: expect.objectContaining({
+            strategy: 'LAYOUT_ROW_PAIR',
+            labelLineId: 'p1-l3',
+            amountLineId: 'p1-l4',
+          }),
+        },
+      }),
+    );
+  });
+
+  it('does not treat descriptive text after a generic Total label as an inline amount', () => {
+    const flattened = extractAccountingText(`
+      Bell Business Internet
+      Invoice Date: 2026-06-28
+      Total $84.69
+    `);
+    const extraction = reconcileAccountingExpenseExtractionWithLayout(
+      flattened,
+      {
+        version: 1,
+        inputKind: 'PDF',
+        engine: 'POPPLER',
+        layoutMode: 'GEOMETRY',
+        truncated: false,
+        lines: [
+          {
+            lineId: 'p1-l1',
+            page: 1,
+            text: 'Total discounts of $185.00 have been applied',
+            confidence: null,
+            geometry: { left: 0.1, top: 0.3, width: 0.5, height: 0.02 },
+          },
+        ],
+      },
+    );
+
+    expect(extraction.totalCents).toBe(8469);
+    expect(extraction.amountEvidence?.total).toBeUndefined();
   });
 
   it('keeps unrecognized dates nullable for manual review', () => {

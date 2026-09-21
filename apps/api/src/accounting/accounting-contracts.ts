@@ -226,6 +226,15 @@ export type AccountingProviderFinancialReviewStatus = ValueOf<
   typeof AccountingProviderFinancialReviewStatus
 >;
 
+export const AccountingExpenseReviewStatus = {
+  DRAFT: 'DRAFT',
+  CONFIRMED: 'CONFIRMED',
+  SUPERSEDED: 'SUPERSEDED',
+} as const;
+export type AccountingExpenseReviewStatus = ValueOf<
+  typeof AccountingExpenseReviewStatus
+>;
+
 export const AccountingProviderFinancialCorrectionReason = {
   EXTRACTION_CORRECTION: 'EXTRACTION_CORRECTION',
   SEMANTIC_CLASSIFICATION: 'SEMANTIC_CLASSIFICATION',

@@ -30,6 +30,7 @@ import { AccountingProviderFinancialService } from './accounting-provider-financ
 import { AccountingProviderFinancialReviewService } from './accounting-provider-financial-review.service';
 import { AccountingProviderFinancialHistoryService } from './accounting-provider-financial-history.service';
 import { AccountingChartService } from './accounting-chart.service';
+import { AccountingExpenseReviewService } from './accounting-expense-review.service';
 import { AccountingExpenseService } from './accounting-expense.service';
 import { AccountingFinancialReportsService } from './accounting-financial-reports.service';
 import { AccountingInboxService } from './accounting-inbox.service';
@@ -100,6 +101,7 @@ import { PaymentFinancialFactsModule } from '../payments/public-api';
     AccountingProviderSettlementExecutionService,
     AccountingChartService,
     AccountingExpenseService,
+    AccountingExpenseReviewService,
     AccountingFinancialReportsService,
     AccountingInboxService,
     AccountingProviderSettlementQueryService,

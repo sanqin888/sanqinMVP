@@ -14,7 +14,10 @@ const EXPECTED_CONTROLLER_CAPABILITIES = {
     'AccountingCanonicalSaleReplayService',
   ],
   'accounting-chart.controller.ts': ['AccountingChartService'],
-  'accounting-expense.controller.ts': ['AccountingExpenseService'],
+  'accounting-expense.controller.ts': [
+    'AccountingExpenseReviewService',
+    'AccountingExpenseService',
+  ],
   'accounting-inbox-artifacts.controller.ts': [
     'AccountingArtifactDeliveryService',
     'AccountingEvidenceFileManagerService',
@@ -69,6 +72,9 @@ const EXPECTED_ROUTES = [
   'PUT inbox/trusted-senders',
   'PUT inbox/:inboxItemStableId/classification',
   'POST inbox/:inboxItemStableId/other/confirm',
+  'GET inbox/:inboxItemStableId/expense/review-revisions',
+  'POST inbox/:inboxItemStableId/expense/review-revisions',
+  'POST inbox/:inboxItemStableId/expense/review-revisions/:reviewRevisionStableId/confirm',
   'POST inbox/:inboxItemStableId/expense/confirm',
   'POST inbox/:inboxItemStableId/image-retention/candidate',
   'DELETE inbox/:inboxItemStableId/image-retention/candidate',

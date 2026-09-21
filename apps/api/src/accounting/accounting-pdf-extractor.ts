@@ -6,11 +6,34 @@ import {
   type AccountingDocumentExtractionGeometry,
 } from './accounting-document-extraction';
 
+export type AccountingFinancialConsistency =
+  | 'MATCHED'
+  | 'MISMATCH'
+  | 'INSUFFICIENT';
+
+export type AccountingAmountEvidenceStrategy =
+  | 'LAYOUT_INLINE'
+  | 'LAYOUT_ROW_PAIR'
+  | 'DERIVED_TOTAL_MINUS_TAX';
+
+export type AccountingAmountEvidence = {
+  strategy: AccountingAmountEvidenceStrategy;
+  labelLineId?: string;
+  amountLineId?: string;
+  page?: number;
+};
+
 export type AccountingPdfExtraction = {
   date: string | null;
   subtotalCents: number | null;
   taxCents: number | null;
   totalCents: number | null;
+  financialConsistency: AccountingFinancialConsistency;
+  amountEvidence?: {
+    subtotal?: AccountingAmountEvidence;
+    tax?: AccountingAmountEvidence;
+    total?: AccountingAmountEvidence;
+  };
   sourceCurrency: string | null;
   sourceCurrencyEvidence: 'EXPLICIT_TEXT' | 'AMBIGUOUS' | 'UNKNOWN';
   suggestedCategoryStableId: string | null;
@@ -304,6 +327,210 @@ function moneyAfterLabel(text: string, labels: RegExp[]): number | null {
   return null;
 }
 
+export function evaluateAccountingFinancialConsistency(
+  subtotalCents: number | null,
+  taxCents: number | null,
+  totalCents: number | null,
+): AccountingFinancialConsistency {
+  if (subtotalCents == null || taxCents == null || totalCents == null) {
+    return 'INSUFFICIENT';
+  }
+  return subtotalCents + taxCents === totalCents ? 'MATCHED' : 'MISMATCH';
+}
+
+type AccountingDocumentLine = AccountingDocumentExtraction['lines'][number];
+
+type LayoutAmountResolution = {
+  amountCents: number;
+  evidence: AccountingAmountEvidence;
+};
+
+const escapeRegex = (value: string): string =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+function parseMoneyCents(value: string): number | null {
+  const money = /^(?:CAD\s*)?\$?\s*(-?\d{1,6}(?:,\d{3})*(?:\.\d{2}))/i.exec(
+    value.trim(),
+  );
+  if (!money) return null;
+  const parsed = Number(money[1].replace(/,/g, ''));
+  return Number.isFinite(parsed) ? Math.round(parsed * 100) : null;
+}
+
+function verticalOverlapRatio(
+  left: AccountingDocumentLine,
+  right: AccountingDocumentLine,
+): number {
+  if (!left.geometry || !right.geometry || left.page !== right.page) return 0;
+  const overlap = Math.max(
+    0,
+    Math.min(
+      left.geometry.top + left.geometry.height,
+      right.geometry.top + right.geometry.height,
+    ) - Math.max(left.geometry.top, right.geometry.top),
+  );
+  const minHeight = Math.min(left.geometry.height, right.geometry.height);
+  return minHeight > 0 ? overlap / minHeight : 0;
+}
+
+function resolveLayoutAmount(
+  labels: string[],
+  extraction: AccountingDocumentExtraction,
+): LayoutAmountResolution | null {
+  if (extraction.layoutMode !== 'GEOMETRY') return null;
+
+  for (const label of labels) {
+    const labelPattern = new RegExp(
+      `^${escapeRegex(label)}(?:\\s*\\([^)]*\\))?(?:\\s+|$)`,
+      'i',
+    );
+    const labelLines = extraction.lines
+      .filter((line) => labelPattern.test(line.text.trim()))
+      .sort(
+        (left, right) =>
+          left.page - right.page ||
+          (left.geometry?.top ?? 0) - (right.geometry?.top ?? 0) ||
+          (left.geometry?.left ?? 0) - (right.geometry?.left ?? 0),
+      );
+
+    for (const labelLine of labelLines) {
+      const normalizedLabelText = labelLine.text.trim();
+      const match = labelPattern.exec(normalizedLabelText);
+      const inlineText = match
+        ? normalizedLabelText.slice(match[0].length).trim()
+        : '';
+      const inlineAmount = inlineText ? parseMoneyCents(inlineText) : null;
+      if (inlineAmount != null) {
+        return {
+          amountCents: inlineAmount,
+          evidence: {
+            strategy: 'LAYOUT_INLINE',
+            labelLineId: labelLine.lineId,
+            amountLineId: labelLine.lineId,
+            page: labelLine.page,
+          },
+        };
+      }
+
+      const labelGeometry = labelLine.geometry;
+      if (!labelGeometry) continue;
+      const labelRight = labelGeometry.left + labelGeometry.width;
+      const labelCenter = labelGeometry.top + labelGeometry.height / 2;
+      const candidates = extraction.lines
+        .flatMap((line) => {
+          if (
+            line.lineId === labelLine.lineId ||
+            line.page !== labelLine.page ||
+            !line.geometry
+          ) {
+            return [];
+          }
+          const amountCents = parseMoneyCents(line.text);
+          if (amountCents == null) return [];
+          if (line.geometry.left + 0.005 < labelRight) return [];
+          const overlapRatio = verticalOverlapRatio(labelLine, line);
+          if (overlapRatio < 0.35) return [];
+          const valueCenter = line.geometry.top + line.geometry.height / 2;
+          return [
+            {
+              line,
+              amountCents,
+              overlapRatio,
+              centerDelta: Math.abs(labelCenter - valueCenter),
+              horizontalGap: Math.max(0, line.geometry.left - labelRight),
+            },
+          ];
+        })
+        .sort(
+          (left, right) =>
+            right.overlapRatio - left.overlapRatio ||
+            left.centerDelta - right.centerDelta ||
+            left.horizontalGap - right.horizontalGap,
+        );
+      const best = candidates[0];
+      if (best) {
+        return {
+          amountCents: best.amountCents,
+          evidence: {
+            strategy: 'LAYOUT_ROW_PAIR',
+            labelLineId: labelLine.lineId,
+            amountLineId: best.line.lineId,
+            page: labelLine.page,
+          },
+        };
+      }
+    }
+  }
+  return null;
+}
+
+export function reconcileAccountingExpenseExtractionWithLayout(
+  extraction: AccountingPdfExtraction,
+  documentExtraction: AccountingDocumentExtraction,
+): AccountingPdfExtraction {
+  const subtotal = resolveLayoutAmount(
+    ['Amount before taxes', 'Amount before tax', 'Sub-total', 'Subtotal'],
+    documentExtraction,
+  );
+  const tax = resolveLayoutAmount(
+    ['Total taxes', 'Total tax', 'Taxes', 'GST/HST', 'HST', 'GST'],
+    documentExtraction,
+  );
+  const total = resolveLayoutAmount(
+    [
+      'Total current charges',
+      'Invoice total',
+      'Grand total',
+      'Total amount due',
+      'Amount due',
+      'Balance due',
+      'Total amount',
+      'Total',
+    ],
+    documentExtraction,
+  );
+
+  let subtotalCents = subtotal?.amountCents ?? extraction.subtotalCents;
+  const taxCents = tax?.amountCents ?? extraction.taxCents;
+  const totalCents = total?.amountCents ?? extraction.totalCents;
+  const amountEvidence: AccountingPdfExtraction['amountEvidence'] = {
+    ...(subtotal ? { subtotal: subtotal.evidence } : {}),
+    ...(tax ? { tax: tax.evidence } : {}),
+    ...(total ? { total: total.evidence } : {}),
+  };
+
+  if (
+    !subtotal &&
+    tax &&
+    total &&
+    totalCents != null &&
+    taxCents != null &&
+    totalCents - taxCents >= 0
+  ) {
+    subtotalCents = totalCents - taxCents;
+    amountEvidence.subtotal = {
+      strategy: 'DERIVED_TOTAL_MINUS_TAX',
+      page: total.evidence.page ?? tax.evidence.page,
+    };
+  }
+
+  const financialConsistency = evaluateAccountingFinancialConsistency(
+    subtotalCents,
+    taxCents,
+    totalCents,
+  );
+  return {
+    ...extraction,
+    subtotalCents,
+    taxCents,
+    totalCents,
+    financialConsistency,
+    ...(Object.keys(amountEvidence).length ? { amountEvidence } : {}),
+    confidence:
+      financialConsistency === 'MISMATCH' ? 'LOW' : extraction.confidence,
+  };
+}
+
 function detectDate(text: string): string | null {
   const isoLike =
     /\b(20\d{2})[-/.](0?[1-9]|1[0-2])[-/.]([0-2]?\d|3[01])\b/.exec(text);
@@ -430,18 +657,26 @@ export function extractAccountingText(text: string): AccountingPdfExtraction {
   ).length;
   const requiresSplit = priceTokenCount >= 8 && !suggestion.stableId;
   const date = detectDate(normalizedText);
-  const confidence: AccountingPdfExtraction['confidence'] =
+  const financialConsistency = evaluateAccountingFinancialConsistency(
+    subtotalCents,
+    taxCents,
+    totalCents,
+  );
+  const baseConfidence: AccountingPdfExtraction['confidence'] =
     totalCents != null && suggestion.stableId && date
       ? 'HIGH'
       : totalCents != null || suggestion.stableId
         ? 'MEDIUM'
         : 'LOW';
+  const confidence: AccountingPdfExtraction['confidence'] =
+    financialConsistency === 'MISMATCH' ? 'LOW' : baseConfidence;
 
   return {
     date,
     subtotalCents,
     taxCents,
     totalCents,
+    financialConsistency,
     sourceCurrency: sourceCurrency.sourceCurrency,
     sourceCurrencyEvidence: sourceCurrency.sourceCurrencyEvidence,
     suggestedCategoryStableId: suggestion.stableId,
@@ -469,9 +704,13 @@ export async function extractAccountingPdf(buffer: Buffer): Promise<{
   } catch {
     // Preserve the existing native-PDF text path if optional layout extraction fails.
   }
+  const extraction = reconcileAccountingExpenseExtractionWithLayout(
+    extractAccountingText(text),
+    documentExtraction,
+  );
   return {
     text,
-    extraction: extractAccountingText(text),
+    extraction,
     documentExtraction,
   };
 }

@@ -1,6 +1,6 @@
 # Accounting Document Recognition & Human Review Plan
 
-Status: **SLICE 0-3 + 3V-A + 3V-B DEV MERGED / CI GREEN / 3V-B PRODUCTION VERIFICATION PENDING / EVIDENCE VIEWER SLICE 1 + 1B + 2 MERGED — DO NOT REOPEN PHASE 9**  
+Status: **SLICE 0-3 + 3V-A + 3V-B DEV MERGED / CI GREEN / 3V-B PRODUCTION VERIFICATION PENDING / EVIDENCE VIEWER SLICE 1 + 1B + 2 MERGED / RELIABILITY SLICE A MERGED / EXPENSE REVIEW HARDENING IMPLEMENTED — MIGRATION REQUIRED BEFORE PRODUCTION — DO NOT REOPEN PHASE 9**  
 Planning date: 2026-09-20; updated: 2026-09-21  
 Audit baseline: `origin/dev@1ede0599`; Slice 3 merged in PR #2432 as `caabf1c1`; Slice 3V-A merged in PR #2439 as `0d6909bb` after PR CI #6054 and merged-head CI #6055 passed; Slice 3V-B merged in PR #2440 as `0ac9117f` after final head `3c5c0400`, PR CI #6057 and merged-head CI #6058 green  
 Owner: **Accounting / Reporting / Analytics**  
@@ -843,8 +843,9 @@ scanned-PDF path remains pending.
 
 #### Reliability Slice A — CSV ParseRun SUCCESS integrity
 
-Local source work on branch `accounting/structured-csv-result-hash` fixes a post-Phase-9 Inbox
-integrity defect without changing CSV classification or financial semantics. `AccountingInboxCore`
+Reliability Slice A is merged to `dev` through PR #2442 / squash `994f5a67`; final remote validation
+passed API/Web after the test-only typed matcher follow-up. It fixes a post-Phase-9 Inbox integrity
+defect without changing CSV classification or financial semantics. `AccountingInboxCore`
 requires every successful parse run to carry a SHA-256 `resultHash`, but two CSV acquisition paths
 were bypassing that invariant at the orchestration call site: structured-expense CSV success and
 same-priority provider-recognition ambiguity success. Both now hash the exact persisted
@@ -860,6 +861,55 @@ runtime dependency, context direction, scanner allowance, public contract, provi
 Phase 9 status or production evidence is changed. Per repository workflow, local lint/build/tests
 have not been run before user review; GitHub Actions remains the validation gate after explicit
 remote authorization.
+
+#### Reliability Slice B — Expense layout reconciliation + Human Review authority
+
+Expense recognition now treats source amounts as a deterministic evidence set instead of three
+independent suggestions. Native-text PDFs keep Poppler text extraction and additionally use the
+existing bbox/layout geometry to pair Accounting-owned expense labels with same-row/right-hand
+amounts. The resolver accepts direct inline amounts only when the label is followed immediately by
+money, so descriptive text such as `Total discounts of $185.00` cannot become a generic Total.
+Observed Bell-style `Taxes -> 9.74` plus `Total current charges -> 84.69` geometry can replace an
+unsafe flattened-text HST match; when subtotal is absent but tax and total are reliable, subtotal is
+recorded as the deterministic `total - tax` derivation with explicit evidence strategy.
+
+All ordinary Expense recognition paths now expose `financialConsistency = MATCHED / MISMATCH /
+INSUFFICIENT`. Native Poppler PDFs, bounded scanned-PDF page OCR and image Textract normalize into
+the same invariant. Exact integer-cent `subtotal + tax == total` is required for `MATCHED`;
+`MISMATCH` forces LOW extraction confidence and is shown prominently in Web rather than allowing a
+misleading HIGH result. Source-currency arithmetic remains distinct from CAD booking arithmetic:
+foreign-source totals are reconciled internally in their source currency and are not compared
+numerically to a later CAD booking amount merely because FX conversion changes the number.
+
+Ordinary Expense evidence now has a separate Accounting-owned `AccountingExpenseReviewRevision`
+authority bound to the unmaterialized Inbox item. Machine extraction stays immutable. Each human
+revision stores a normalized effective snapshot (date, source currency, category splits,
+subtotal/tax/total through the split values, payment allocations and memo), DRAFT/CONFIRMED/
+SUPERSEDED state, operator identity, note, source Inbox version, source ParseRun stable ID/result
+hash and deterministic review hash. Draft creation validates balanced money, valid active Expense
+categories and CAD payment accounts. Confirmation fails closed if the Inbox version or machine
+ParseRun changed, if a newer draft exists, or if the hash no longer matches.
+
+Final Expense materialization remains the only action that creates the ExpenseDocument and
+AccountingTransaction rows. A machine `MISMATCH`, or an operator change to a machine-observed date,
+CAD amount, category or source-currency field, requires the current latest CONFIRMED human revision
+and exact review hash. Changing the form after confirmation invalidates that authority. Clean,
+self-consistent machine evidence can still follow the existing direct confirmation path without an
+extra review click. The materialized Expense `extractionJson` records the exact confirmed review
+stable ID/revision/hash/operator/timestamp when review authority was required.
+
+Saving or confirming an Expense Human Review does **not** materialize the Inbox item. Eligible
+manual-upload evidence therefore remains permanently deletable until final Expense creation. The
+existing permanent-delete writer now also removes Expense Review audit rows before Inbox deletion;
+review persistence itself cascades with the Inbox item, so human-corrected amounts are not left
+behind after an authorized permanent deletion.
+
+This Slice B schema is additive and requires a user-generated Prisma migration for the new review
+enum/table/relation/indexes. No assistant/MCP migration file is generated. The source/schema state
+may merge to `dev` under repository policy, but promotion to `main`, production deployment and
+production migration remain blocked until the user-generated migration is reviewed and merged back
+into `dev`. No package/runtime dependency, provider wire contract, context direction, architecture
+scanner allowance or public SCC is added; Phase 9 remains closed.
 
 ### Slice 6 — Optional suspense workflow
 

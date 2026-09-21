@@ -117,11 +117,24 @@ export type AccountingInboxParsedFinancialLine = {
   amountCents: number;
 };
 
+export type AccountingExpenseAmountEvidence = {
+  strategy: 'LAYOUT_INLINE' | 'LAYOUT_ROW_PAIR' | 'DERIVED_TOTAL_MINUS_TAX';
+  labelLineId?: string;
+  amountLineId?: string;
+  page?: number;
+};
+
 export type AccountingInboxParseResult = {
   date?: string | null;
   subtotalCents?: number | null;
   taxCents?: number | null;
   totalCents?: number | null;
+  financialConsistency?: 'MATCHED' | 'MISMATCH' | 'INSUFFICIENT';
+  amountEvidence?: {
+    subtotal?: AccountingExpenseAmountEvidence;
+    tax?: AccountingExpenseAmountEvidence;
+    total?: AccountingExpenseAmountEvidence;
+  };
   sourceCurrency?: string | null;
   sourceCurrencyEvidence?: 'EXPLICIT_TEXT' | 'AMBIGUOUS' | 'UNKNOWN';
   suggestedCategoryStableId?: string | null;
@@ -199,6 +212,7 @@ export type AccountingInboxItem = {
     | 'PROVIDER_FINANCIAL_DOCUMENT'
     | null;
   materializedEntityStableId: string | null;
+  version: number;
   createdAt: string;
   artifact: {
     artifactStableId: string;

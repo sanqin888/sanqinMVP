@@ -114,6 +114,12 @@ export function AccountingInboxItemsList({
           const providerFinancialSuggestionOverridden =
             providerSupplementaryEvidence &&
             item.classification === 'OTHER_DOCUMENT';
+          const expenseRecognitionConsistency =
+            parse.textractEvidence?.financialConsistency === 'MISMATCH'
+              ? 'MISMATCH'
+              : (parse.financialConsistency ??
+                parse.textractEvidence?.financialConsistency ??
+                'INSUFFICIENT');
           return (
             <div
               key={item.inboxItemStableId}
@@ -350,11 +356,78 @@ export function AccountingInboxItemsList({
                       ) : null}
                     </div>
                   </div>
-                ) : parse.totalCents != null ? (
-                  <p>
-                    {isZh ? '识别总额' : 'Detected total'}:{' '}
-                    <strong>{money(parse.totalCents)}</strong>
-                  </p>
+                ) : parse.date ||
+                  parse.subtotalCents != null ||
+                  parse.taxCents != null ||
+                  parse.totalCents != null ? (
+                  <div
+                    className={`rounded-lg border p-3 text-xs ${
+                      expenseRecognitionConsistency === 'MISMATCH'
+                        ? 'border-red-300 bg-red-50 text-red-800'
+                        : expenseRecognitionConsistency === 'MATCHED'
+                          ? 'border-emerald-200 bg-emerald-50/50 text-slate-700'
+                          : 'border-amber-200 bg-amber-50 text-slate-700'
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <strong>{isZh ? '费用识别预览' : 'Expense recognition preview'}</strong>
+                      <span className="font-medium">
+                        {expenseRecognitionConsistency === 'MATCHED'
+                          ? isZh
+                            ? '金额已自洽'
+                            : 'Amounts reconcile'
+                          : expenseRecognitionConsistency === 'MISMATCH'
+                            ? isZh
+                              ? '金额不自洽 · 必须人工复核'
+                              : 'Mismatch · human review required'
+                            : isZh
+                              ? '证据不足 · 请核对'
+                              : 'Insufficient evidence · verify'}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+                      <span>
+                        {isZh ? '日期' : 'Date'}: <strong>{parse.date ?? '—'}</strong>
+                      </span>
+                      <span>
+                        {isZh ? '分类' : 'Category'}:{' '}
+                        <strong>{parse.suggestedCategoryName ?? '—'}</strong>
+                      </span>
+                      <span>
+                        {isZh ? '税前' : 'Subtotal'}:{' '}
+                        <strong>
+                          {parse.subtotalCents == null
+                            ? '—'
+                            : money(parse.subtotalCents)}
+                        </strong>
+                      </span>
+                      <span>
+                        {isZh ? '税' : 'Tax'}:{' '}
+                        <strong>
+                          {parse.taxCents == null ? '—' : money(parse.taxCents)}
+                        </strong>
+                      </span>
+                      <span>
+                        {isZh ? '总额' : 'Total'}:{' '}
+                        <strong>
+                          {parse.totalCents == null ? '—' : money(parse.totalCents)}
+                        </strong>
+                      </span>
+                      <span>
+                        {isZh ? '引擎' : 'Engine'}:{' '}
+                        <strong>
+                          {parse.textRecognitionEngine ?? parse.ocrEngine ?? '—'}
+                        </strong>
+                      </span>
+                    </div>
+                    {expenseRecognitionConsistency === 'MISMATCH' ? (
+                      <p className="mt-2 font-medium">
+                        {isZh
+                          ? '系统识别的税前 + 税额 ≠ 总额。不要直接确认费用，请打开审核后按原始凭证订正并完成人工复核。'
+                          : 'Recognized subtotal + tax does not equal total. Do not confirm directly; open review, correct from source evidence, and confirm Human Review.'}
+                      </p>
+                    ) : null}
+                  </div>
                 ) : null}
                 {evidence ? (
                   <AccountingEvidenceViewer
@@ -414,7 +487,7 @@ export function AccountingInboxItemsList({
                     onClick={() => onReviewExpense(item)}
                     className="rounded border px-3 py-1.5 text-sm text-blue-700"
                   >
-                    {isZh ? '审核费用' : 'Review expense'}
+                    {isZh ? '查看并审核费用' : 'Open expense review'}
                   </button>
                 ) : null}
                 {!quarantined &&

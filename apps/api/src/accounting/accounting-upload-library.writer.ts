@@ -24,6 +24,9 @@ export async function permanentlyDeleteManualUploadInTx(
       status: true,
       materializedEntityType: true,
       materializedEntityStableId: true,
+      expenseReviewRevisions: {
+        select: { reviewRevisionStableId: true },
+      },
       artifact: {
         select: {
           id: true,
@@ -48,6 +51,9 @@ export async function permanentlyDeleteManualUploadInTx(
               status: true,
               materializedEntityType: true,
               materializedEntityStableId: true,
+              expenseReviewRevisions: {
+                select: { reviewRevisionStableId: true },
+              },
               artifact: {
                 select: {
                   id: true,
@@ -176,10 +182,21 @@ export async function permanentlyDeleteManualUploadInTx(
     item.artifact.artifactStableId,
     ...duplicateArtifactStableIds,
   ];
+  const reviewRevisionStableIds = [
+    ...item.expenseReviewRevisions.map(
+      (review) => review.reviewRevisionStableId,
+    ),
+    ...item.artifact.duplicateInboxItems.flatMap((duplicate) =>
+      duplicate.expenseReviewRevisions.map(
+        (review) => review.reviewRevisionStableId,
+      ),
+    ),
+  ];
   const auditEntityIds = [
     item.inboxItemStableId,
     ...duplicateInboxStableIds,
     ...artifactStableIds,
+    ...reviewRevisionStableIds,
     ...(expenseDocument ? [expenseDocument.documentStableId] : []),
   ];
   const storedUrls = uniqueStoredUrls([

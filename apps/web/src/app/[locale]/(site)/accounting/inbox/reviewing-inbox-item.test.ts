@@ -17,6 +17,7 @@ function makeInboxItem(
     trustDecision: 'NOT_APPLICABLE',
     materializedEntityType: null,
     materializedEntityStableId: null,
+    version: 1,
     createdAt: '2026-09-17T00:00:00.000Z',
     artifact: {
       artifactStableId: `artifact_${inboxItemStableId}`,

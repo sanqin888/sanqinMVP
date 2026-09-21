@@ -466,6 +466,8 @@ describe('AccountingExpenseService expense-write characterization', () => {
     const tx = {
       accountingInboxItem: {
         findUnique: jest.fn().mockResolvedValue({
+          id: 'inbox-cloudflare-db-id',
+          version: 1,
           status: AccountingInboxStatus.PENDING_REVIEW,
           classification: AccountingInboxClassification.EXPENSE_DOCUMENT,
           selectedProvider: null,
@@ -485,6 +487,8 @@ describe('AccountingExpenseService expense-write characterization', () => {
             },
             parseRuns: [
               {
+                parseRunStableId: 'acctparse_cloudflare',
+                resultHash: 'f'.repeat(64),
                 resultJson: {
                   sourceCurrency: 'USD',
                   sourceCurrencyEvidence: 'EXPLICIT_TEXT',
@@ -516,6 +520,9 @@ describe('AccountingExpenseService expense-write characterization', () => {
         ]),
       },
       accountingExpenseDocument: { create: createDocument },
+      accountingExpenseReviewRevision: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
       accountingExpensePaymentAllocation: { createMany: createAllocationMany },
       accountingTransaction: { createMany },
       accountingAuditLog: { createMany: createAuditMany },

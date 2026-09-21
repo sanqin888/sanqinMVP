@@ -76,7 +76,7 @@ Detailed design and audit: `docs/architecture/accounting-document-recognition-hu
 This work package is now **P0 Accounting correctness** and should be completed before new
 financial-feature work that depends on provider settlement authority.
 
-State: **Slice 0 merged in PR #2428 (`bbd0b1c0`); Slice 1 Human Review Revision + migration merged in PR #2429 (`1903b32a`, CI #6017 green); Slice 2 Human Review UI merged in PR #2431 (`e52c44b9`); Slice 3 layout-aware extraction merged in PR #2432 (`caabf1c1`) with green CI; Evidence Viewer Slice 1 merged in PR #2435 (`0371a155`, CI #6039 green); Evidence Viewer Slice 1B merged in PR #2436 (`9ae4d85d`, CI #6042 green), with additive migration `20260921124637_add_accounting_evidence_folders` committed as `cc4c8016` and SQL reviewed as safe/additive; Evidence Viewer Slice 2 merged in PR #2438 as `4d68379e` with CI green; Slice 3V-A merged in PR #2439 as `0d6909bb` after PR CI #6054 and merged-head CI #6055 passed; Slice 3V-B merged in PR #2440 as `0ac9117f` after final head `3c5c0400`, PR CI #6057 and merged-head CI #6058 passed, with no schema/dependency/runtime-package change. Production verification of the new scanned-PDF path remains pending.**
+State: **Slice 0 merged in PR #2428 (`bbd0b1c0`); Slice 1 Human Review Revision + migration merged in PR #2429 (`1903b32a`, CI #6017 green); Slice 2 Human Review UI merged in PR #2431 (`e52c44b9`); Slice 3 layout-aware extraction merged in PR #2432 (`caabf1c1`) with green CI; Evidence Viewer Slice 1 merged in PR #2435 (`0371a155`, CI #6039 green); Evidence Viewer Slice 1B merged in PR #2436 (`9ae4d85d`, CI #6042 green), with additive migration `20260921124637_add_accounting_evidence_folders` committed as `cc4c8016` and SQL reviewed as safe/additive; Evidence Viewer Slice 2 merged in PR #2438 as `4d68379e` with CI green; Slice 3V-A merged in PR #2439 as `0d6909bb` after PR CI #6054 and merged-head CI #6055 passed; Slice 3V-B merged in PR #2440 as `0ac9117f` after final head `3c5c0400`, PR CI #6057 and merged-head CI #6058 passed; Reliability Slice A CSV ParseRun integrity merged in PR #2442 as `994f5a67`; Expense layout/self-consistency + Expense Human Review authority is implemented in source and requires its additive user-generated migration before production promotion. Production verification of the new scanned-PDF path remains pending.**
 
 Baseline audited state before Slice 0:
 
@@ -126,9 +126,15 @@ Required order:
    with additive migration `20260921124637_add_accounting_evidence_folders` reviewed and
    committed to `dev`;
 8. **Evidence Viewer Slice 2:** bounded non-executing CSV/XLSX table preview using existing
-   native parser capabilities; source-implemented on
-   `accounting/evidence-structured-preview-slice2` for local review;
-9. **Slice 6:** optional suspense workflow only after a separate Accounting policy decision.
+   native parser capabilities — merged in PR #2438 as `4d68379e`;
+9. **Reliability Slice A:** restore the successful-ParseRun SHA-256 `resultHash` invariant for
+   structured-expense CSV and ambiguous provider-recognition CSV — merged in PR #2442 as
+   `994f5a67`;
+10. **Reliability Slice B:** reconcile ordinary Expense source amounts, expose fail-visible
+    `MATCHED / MISMATCH / INSUFFICIENT` status, and add versioned Expense Human Review authority
+    for auditable field/amount correction before materialization. Source/schema implementation is
+    additive; the matching user-generated migration must be reviewed and merged before production;
+11. **Slice 6:** optional suspense workflow only after a separate Accounting policy decision.
 
 Do not use a new OCR engine as a substitute for reconciliation or human review. Machine
 extraction, operator correction, reconciliation and posting authority remain separate
@@ -393,14 +399,10 @@ This roadmap itself authorizes no migration or new OCR/runtime dependency.
 
 Every future slice must begin with a read-only readiness audit, preserve the final modularization graph unless explicitly authorized otherwise, add financial-semantic and boundary regressions, compare fixed historical totals before cutover, and keep unavailable real/provider evidence explicitly deferred.
 
-The immediate next source work is:
-
-**Accounting Document Recognition / Human Review — Slice 0: provider control-total
-fail-closed + Uber layout regression.**
-
-That slice is intentionally schema-free and dependency-free. After it is reviewed, the
-Human Review Revision persistence slice requires a separate schema/migration readiness
-decision.
+The immediate handoff for the current correctness package is the user-local additive Prisma
+migration for Expense Human Review Revision, followed by SQL review and merge back into `dev`.
+Until that migration is merged, the schema-changing state must not be promoted to `main` or
+production. No new OCR/runtime dependency is required.
 
 The previously approved Expense roadmap remains next after this correctness package:
 
