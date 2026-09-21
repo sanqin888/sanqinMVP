@@ -208,8 +208,7 @@ export function normalizeAccountingPreviewRows(rows: unknown[][]): {
   truncatedColumns: boolean;
   truncatedCells: boolean;
 } {
-  const truncatedRows =
-    rows.length > ACCOUNTING_TABULAR_PREVIEW_LIMITS.maxRows;
+  const truncatedRows = rows.length > ACCOUNTING_TABULAR_PREVIEW_LIMITS.maxRows;
   let truncatedColumns = false;
   let truncatedCells = false;
 

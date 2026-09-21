@@ -49,17 +49,14 @@ function scanAccountingCsv(
   const storesCurrentRow = () =>
     limits === null || completedRowCount < limits.maxRows;
   const storesCurrentCell = () =>
-    storesCurrentRow() &&
-    (limits === null || columnIndex < limits.maxColumns);
+    storesCurrentRow() && (limits === null || columnIndex < limits.maxColumns);
 
   const appendCellText = (value: string) => {
     cellCharacterCount += value.length;
     if (!storesCurrentCell()) return;
     if (limits === null || cell.length < limits.maxCellCharacters) {
       const remaining =
-        limits === null
-          ? value.length
-          : limits.maxCellCharacters - cell.length;
+        limits === null ? value.length : limits.maxCellCharacters - cell.length;
       cell += value.slice(0, remaining);
       if (remaining < value.length) truncatedCells = true;
     } else {
