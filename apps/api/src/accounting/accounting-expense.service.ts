@@ -75,10 +75,16 @@ function requiresExpenseHumanReview(
   extraction: Record<string, unknown>,
   effective: NormalizedAccountingExpenseReviewEffective,
 ): boolean {
-  const textractEvidence = accountingJsonRecord(extraction.textractEvidence);
+  const textractEvidence = extraction.textractEvidence;
+  const textractFinancialConsistency =
+    textractEvidence &&
+    typeof textractEvidence === 'object' &&
+    !Array.isArray(textractEvidence)
+      ? (textractEvidence as Record<string, unknown>).financialConsistency
+      : null;
   if (
     extraction.financialConsistency === 'MISMATCH' ||
-    textractEvidence.financialConsistency === 'MISMATCH'
+    textractFinancialConsistency === 'MISMATCH'
   ) {
     return true;
   }
