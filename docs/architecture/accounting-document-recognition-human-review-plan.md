@@ -841,6 +841,26 @@ batch. Existing control-total reconciliation and Human Review stay downstream au
 OCR/provider mapping. Source/CI delivery is complete; active production verification of the new
 scanned-PDF path remains pending.
 
+#### Reliability Slice A — CSV ParseRun SUCCESS integrity
+
+Local source work on branch `accounting/structured-csv-result-hash` fixes a post-Phase-9 Inbox
+integrity defect without changing CSV classification or financial semantics. `AccountingInboxCore`
+requires every successful parse run to carry a SHA-256 `resultHash`, but two CSV acquisition paths
+were bypassing that invariant at the orchestration call site: structured-expense CSV success and
+same-priority provider-recognition ambiguity success. Both now hash the exact persisted
+`resultJson` through the existing Accounting-owned `hashAccountingJson()` helper before recording
+the `SUCCESS` ParseRun.
+
+The structured-expense parser, one-row Expense suggestion, multi-row/invalid-row
+`requiresBatchExpenseImport` fail-closed behavior, Provider API routing, provider recognition,
+materialization and Journal authority are intentionally unchanged. Focused acquisition regressions
+pin a policy-valid 64-character SHA-256 result hash for single-row structured expense CSV,
+multi-row batch CSV and ambiguous provider-recognition CSV. No Prisma/schema/migration, package or
+runtime dependency, context direction, scanner allowance, public contract, provider wire behavior,
+Phase 9 status or production evidence is changed. Per repository workflow, local lint/build/tests
+have not been run before user review; GitHub Actions remains the validation gate after explicit
+remote authorization.
+
 ### Slice 6 — Optional suspense workflow
 
 Only if separately approved.

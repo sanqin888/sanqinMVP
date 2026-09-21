@@ -29,6 +29,7 @@ import {
   classifyAccountingDocumentText,
   type AccountingReviewMetadata,
 } from './accounting-document-review';
+import { hashAccountingJson } from './accounting-inbox-core.policy';
 import { extractAccountingImageText } from './accounting-image-ocr';
 import {
   isAccountingTextractExpenseRecognitionEnabled,
@@ -409,16 +410,18 @@ export class AccountingInboxAcquisitionService {
           ? (provider.ambiguousRuleStableIds ?? [])
           : [];
       if (ambiguousRuleStableIds.length) {
+        const result = {
+          inputKind: 'CSV' as const,
+          providerRecognitionAmbiguousRuleStableIds: ambiguousRuleStableIds,
+          extractedText: text.slice(0, 100_000),
+        };
         await this.inbox.recordInboxParseRun({
           artifactStableId: artifact.artifactStableId,
           parserName: GENERIC_PARSER_NAME,
           parserVersion: GENERIC_PARSER_VERSION,
           status: AccountingParseStatus.SUCCESS,
-          resultJson: {
-            inputKind: 'CSV',
-            providerRecognitionAmbiguousRuleStableIds: ambiguousRuleStableIds,
-            extractedText: text.slice(0, 100_000),
-          },
+          resultHash: hashAccountingJson(result),
+          resultJson: result,
         });
         return false;
       }
@@ -493,6 +496,7 @@ export class AccountingInboxAcquisitionService {
           parserName: ACCOUNTING_STRUCTURED_EXPENSE_CSV_PARSER_NAME,
           parserVersion: ACCOUNTING_STRUCTURED_EXPENSE_CSV_PARSER_VERSION,
           status: AccountingParseStatus.SUCCESS,
+          resultHash: hashAccountingJson(result),
           resultJson: result,
         });
         if (singleRow) {
