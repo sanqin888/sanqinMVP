@@ -14,15 +14,32 @@ import {
 
 export const ACCOUNTING_FANTUAN_ADJUSTMENT_DETAIL_PARSER_NAME =
   'accounting-fantuan-adjustment-detail-xlsx';
-export const ACCOUNTING_FANTUAN_ADJUSTMENT_DETAIL_PARSER_VERSION = '1';
+export const ACCOUNTING_FANTUAN_ADJUSTMENT_DETAIL_PARSER_VERSION = '2';
 
-const REQUIRED_HEADERS = [
-  'fee type',
-  'settle time',
-  'order no.',
-  'order type',
-  'total transfer amount',
-] as const;
+const COLUMN_ALIASES = {
+  feeType: ['fee type', '单据类型'],
+  settleTime: ['settle time', '单据时间'],
+  orderNo: ['order no.', '单据号'],
+  orderType: ['order type', '订单类型'],
+  totalTransferAmount: ['total transfer amount', '结算金额'],
+  storeId: ['store id', '商户编号'],
+  remarks: ['remarks', '备注'],
+} as const;
+
+type CanonicalColumn = keyof typeof COLUMN_ALIASES;
+
+const REQUIRED_COLUMNS = [
+  'feeType',
+  'settleTime',
+  'orderNo',
+  'orderType',
+  'totalTransferAmount',
+] as const satisfies readonly CanonicalColumn[];
+
+const ORDINARY_FEE_TYPES = new Set(['order', '订单']);
+const COMPENSATION_FEE_TYPES = new Set(['compensation']);
+const DEDUCTION_FEE_TYPES = new Set(['deduction', '扣款']);
+const ADJUSTMENT_ORDER_TYPES = new Set(['adjustment']);
 
 type SheetRow = Record<string, unknown>;
 
@@ -43,6 +60,24 @@ const normalizedRow = (row: SheetRow): Record<string, unknown> =>
   Object.fromEntries(
     Object.entries(row).map(([key, value]) => [normalizeHeader(key), value]),
   );
+
+const hasColumn = (
+  headers: ReadonlySet<string>,
+  column: CanonicalColumn,
+): boolean => {
+  const aliases: readonly string[] = COLUMN_ALIASES[column];
+  return aliases.some((alias) => headers.has(alias));
+};
+
+const columnValue = (
+  row: Record<string, unknown>,
+  column: CanonicalColumn,
+): unknown => {
+  for (const alias of COLUMN_ALIASES[column]) {
+    if (Object.prototype.hasOwnProperty.call(row, alias)) return row[alias];
+  }
+  return null;
+};
 
 const textValue = (value: unknown): string => {
   if (value === null || value === undefined) return '';
@@ -144,17 +179,20 @@ export function parseFantuanAdjustmentDetailXlsx(input: {
 
   const normalized = rows.map(normalizedRow);
   const headers = new Set(normalized.flatMap((row) => Object.keys(row)));
-  if (REQUIRED_HEADERS.some((header) => !headers.has(header))) {
+  if (REQUIRED_COLUMNS.some((column) => !hasColumn(headers, column))) {
     return null;
   }
 
-  const adjustmentRows = normalized.filter(
-    (row) => textValue(row['order type']).toLowerCase() === 'adjustment',
-  );
+  const adjustmentRows = normalized.filter((row) => {
+    const feeType = textValue(columnValue(row, 'feeType')).toLowerCase();
+    const orderType = textValue(columnValue(row, 'orderType')).toLowerCase();
+    if (ADJUSTMENT_ORDER_TYPES.has(orderType)) return true;
+    return Boolean(feeType) && !ORDINARY_FEE_TYPES.has(feeType);
+  });
   if (adjustmentRows.length === 0) return null;
 
   const parsedSettleDates = adjustmentRows.map((row) =>
-    isoDateFromValue(row['settle time']),
+    isoDateFromValue(columnValue(row, 'settleTime')),
   );
   if (parsedSettleDates.some((value) => value === null)) {
     throw new Error(
@@ -180,7 +218,7 @@ export function parseFantuanAdjustmentDetailXlsx(input: {
   }
 
   const storeIds = distinctText(
-    normalized.map((row) => textValue(row['store id'])),
+    normalized.map((row) => textValue(columnValue(row, 'storeId'))),
   );
   if (storeIds.length > 1) {
     throw new Error(
@@ -190,12 +228,13 @@ export function parseFantuanAdjustmentDetailXlsx(input: {
 
   const unknownFeeTypes: string[] = [];
   const lines = adjustmentRows.map((row) => {
-    const feeType = textValue(row['fee type']);
+    const feeType = textValue(columnValue(row, 'feeType'));
     const normalizedFeeType = feeType.toLowerCase();
-    const orderNo = textValue(row['order no.']);
-    const settleTime = textValue(row['settle time']);
-    const remarks = textValue(row['remarks']);
-    const amountCents = moneyCents(row['total transfer amount']);
+    const orderNo = textValue(columnValue(row, 'orderNo'));
+    const settleTime = textValue(columnValue(row, 'settleTime'));
+    const orderType = textValue(columnValue(row, 'orderType'));
+    const remarks = textValue(columnValue(row, 'remarks'));
+    const amountCents = moneyCents(columnValue(row, 'totalTransferAmount'));
     if (amountCents === null) {
       throw new Error(
         `Fantuan adjustment row ${orderNo || '(no order number)'} has an ` +
@@ -203,12 +242,11 @@ export function parseFantuanAdjustmentDetailXlsx(input: {
       );
     }
 
-    const rawCode =
-      normalizedFeeType === 'compensation'
-        ? FANTUAN_ADJUSTMENT_RAW_CODES.COMPENSATION
-        : normalizedFeeType === 'deduction'
-          ? FANTUAN_ADJUSTMENT_RAW_CODES.DEDUCTION
-          : FANTUAN_ADJUSTMENT_RAW_CODES.UNKNOWN;
+    const rawCode = COMPENSATION_FEE_TYPES.has(normalizedFeeType)
+      ? FANTUAN_ADJUSTMENT_RAW_CODES.COMPENSATION
+      : DEDUCTION_FEE_TYPES.has(normalizedFeeType)
+        ? FANTUAN_ADJUSTMENT_RAW_CODES.DEDUCTION
+        : FANTUAN_ADJUSTMENT_RAW_CODES.UNKNOWN;
     if (rawCode === FANTUAN_ADJUSTMENT_RAW_CODES.UNKNOWN) {
       unknownFeeTypes.push(feeType || '(blank)');
     }
@@ -223,7 +261,7 @@ export function parseFantuanAdjustmentDetailXlsx(input: {
       amountCents,
       rawPayload: {
         feeType: feeType || null,
-        orderType: textValue(row['order type']) || null,
+        orderType: orderType || null,
         orderNo: orderNo || null,
         settleTime: settleTime || null,
         remarks: remarks || null,
