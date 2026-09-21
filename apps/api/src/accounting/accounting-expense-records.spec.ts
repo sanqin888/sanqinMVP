@@ -9,8 +9,8 @@ describe('Accounting Expense record search', () => {
     };
     const period = {
       getBusinessTimezone: jest.fn().mockResolvedValue('America/Toronto'),
-      clampAccountingFromDate: jest.fn(
-        (value: Date | undefined) => Promise.resolve(value),
+      clampAccountingFromDate: jest.fn((value: Date | undefined) =>
+        Promise.resolve(value),
       ),
     };
     const service = new AccountingExpenseService(
@@ -55,10 +55,7 @@ describe('Accounting Expense record search', () => {
   });
 
   it('rejects mutually exclusive payment-account filters', async () => {
-    const service = new AccountingExpenseService(
-      {} as never,
-      {} as never,
-    );
+    const service = new AccountingExpenseService({} as never, {} as never);
 
     await expect(
       service.listExpenseRecords({

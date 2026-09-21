@@ -38,9 +38,7 @@ import type {
   AccountingExpensePaymentCompletionInput,
   AccountingExpensePaymentState,
 } from './accounting-expense.contracts';
-import {
-  CANONICAL_EXPENSE_SOURCE_FACT_TYPE,
-} from './accounting-expense-journal.policy';
+import { CANONICAL_EXPENSE_SOURCE_FACT_TYPE } from './accounting-expense-journal.policy';
 import {
   listAccountingExpenseDocuments,
   listAccountingExpenseRecords,
@@ -633,10 +631,7 @@ export class AccountingExpenseService {
       params.from || params.to
         ? await this.period.getBusinessTimezone()
         : undefined;
-    const parseBoundary = (
-      raw: string | undefined,
-      field: 'from' | 'to',
-    ) => {
+    const parseBoundary = (raw: string | undefined, field: 'from' | 'to') => {
       const value = raw?.trim();
       if (!value) return undefined;
       if (!timezone || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
@@ -654,16 +649,11 @@ export class AccountingExpenseService {
     };
     const requestedStartAt = parseBoundary(params.from, 'from');
     const toExclusive = parseBoundary(params.to, 'to');
-    if (
-      requestedStartAt &&
-      toExclusive &&
-      requestedStartAt >= toExclusive
-    ) {
+    if (requestedStartAt && toExclusive && requestedStartAt >= toExclusive) {
       throw new BadRequestException('from must not be after to');
     }
 
-    const startAt =
-      await this.period.clampAccountingFromDate(requestedStartAt);
+    const startAt = await this.period.clampAccountingFromDate(requestedStartAt);
     const limit = Math.min(Math.max(params.limit ?? 10, 1), 50);
     const offset = Math.max(params.offset ?? 0, 0);
     return listAccountingExpenseRecords(this.prisma, {

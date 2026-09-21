@@ -5,9 +5,7 @@ import {
 } from '@prisma/client';
 import type { AccountingDocumentStatus } from './accounting-contracts';
 import type { AccountingDb } from './accounting-db';
-import type {
-  AccountingExpensePaymentState,
-} from './accounting-expense.contracts';
+import type { AccountingExpensePaymentState } from './accounting-expense.contracts';
 
 const ACCOUNTING_DOCUMENT_SELECT = {
   documentStableId: true,
