@@ -5,6 +5,7 @@ import { AccountingCanonicalChangeController } from './accounting-canonical-chan
 import { AccountingCanonicalSaleController } from './accounting-canonical-sale.controller';
 import { AccountingChartController } from './accounting-chart.controller';
 import { AccountingExpenseController } from './accounting-expense.controller';
+import { AccountingExpenseJournalController } from './accounting-expense-journal.controller';
 import { AccountingInboxArtifactsController } from './accounting-inbox-artifacts.controller';
 import { AccountingInboxController } from './accounting-inbox.controller';
 import { AccountingPeriodController } from './accounting-period.controller';
@@ -30,6 +31,7 @@ import { AccountingProviderFinancialService } from './accounting-provider-financ
 import { AccountingProviderFinancialReviewService } from './accounting-provider-financial-review.service';
 import { AccountingProviderFinancialHistoryService } from './accounting-provider-financial-history.service';
 import { AccountingChartService } from './accounting-chart.service';
+import { AccountingExpenseJournalPreviewService } from './accounting-expense-journal-preview.service';
 import { AccountingExpenseService } from './accounting-expense.service';
 import { AccountingFinancialReportsService } from './accounting-financial-reports.service';
 import { AccountingInboxService } from './accounting-inbox.service';
@@ -75,6 +77,7 @@ import { PaymentFinancialFactsModule } from '../payments/public-api';
   controllers: [
     AccountingChartController,
     AccountingExpenseController,
+    AccountingExpenseJournalController,
     AccountingInboxController,
     AccountingInboxArtifactsController,
     AccountingProviderFinancialController,
@@ -100,6 +103,7 @@ import { PaymentFinancialFactsModule } from '../payments/public-api';
     AccountingProviderSettlementExecutionService,
     AccountingChartService,
     AccountingExpenseService,
+    AccountingExpenseJournalPreviewService,
     AccountingFinancialReportsService,
     AccountingInboxService,
     AccountingProviderSettlementQueryService,
