@@ -64,7 +64,10 @@ const normalizedRow = (row: SheetRow): Record<string, unknown> =>
 const hasColumn = (
   headers: ReadonlySet<string>,
   column: CanonicalColumn,
-): boolean => COLUMN_ALIASES[column].some((alias) => headers.has(alias));
+): boolean => {
+  const aliases: readonly string[] = COLUMN_ALIASES[column];
+  return aliases.some((alias) => headers.has(alias));
+};
 
 const columnValue = (
   row: Record<string, unknown>,

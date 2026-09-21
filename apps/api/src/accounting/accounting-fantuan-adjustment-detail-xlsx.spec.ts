@@ -94,8 +94,7 @@ describe('Fantuan adjustment detail XLSX parser', () => {
 
   it('parses observed Chinese Fantuan Deduction rows', () => {
     const parsed = parseFantuanAdjustmentDetailXlsx({
-      originalFilename:
-        'Fantuan_Settlement_Details2026-07-01_2026-07-31.xlsx',
+      originalFilename: 'Fantuan_Settlement_Details2026-07-01_2026-07-31.xlsx',
       buffer: makeWorkbook([
         {
           商户名称: '三秦肉夹馍·凉皮(YG)',
@@ -164,8 +163,7 @@ describe('Fantuan adjustment detail XLSX parser', () => {
 
   it('keeps an unknown Chinese non-order document type fail-closed', () => {
     const parsed = parseFantuanAdjustmentDetailXlsx({
-      originalFilename:
-        'Fantuan_Settlement_Details2026-07-01_2026-07-31.xlsx',
+      originalFilename: 'Fantuan_Settlement_Details2026-07-01_2026-07-31.xlsx',
       buffer: makeWorkbook([
         {
           单据类型: '未知调整类型',
