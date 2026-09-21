@@ -26,7 +26,18 @@ describe('Accounting expense source evidence query', () => {
             createdAt: new Date('2026-09-20T01:00:00.000Z'),
             confirmedAt: new Date('2026-09-20T02:00:00.000Z'),
             paymentAllocations: [],
-            transactions: [],
+            splits: [
+              {
+                splitStableId: 'expensesplit_1',
+                amountCents: 1000,
+                taxCents: 130,
+                sortOrder: 0,
+                category: {
+                  categoryStableId: 'expense_telecom',
+                  name: 'Telecom',
+                },
+              },
+            ],
           },
         ]),
       },
@@ -59,6 +70,16 @@ describe('Accounting expense source evidence query', () => {
           kind: AccountingArtifactKind.PDF,
           originalFilename: 'invoice.pdf',
         },
+        splits: [
+          {
+            splitStableId: 'expensesplit_1',
+            categoryStableId: 'expense_telecom',
+            categoryName: 'Telecom',
+            amountCents: 1000,
+            taxCents: 130,
+            sortOrder: 0,
+          },
+        ],
       }),
     );
     expect(db.accountingInboxItem.findMany).toHaveBeenCalledWith(
@@ -159,7 +180,7 @@ describe('Accounting expense source evidence query', () => {
             createdAt: new Date('2026-09-20T01:00:00.000Z'),
             confirmedAt: new Date('2026-09-20T02:00:00.000Z'),
             paymentAllocations: [],
-            transactions: [],
+            splits: [],
           },
         ]),
       },

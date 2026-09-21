@@ -37,6 +37,7 @@ import type {
   AccountingExpensePaymentCompletionInput,
   AccountingExpensePaymentState,
 } from './accounting-expense.contracts';
+import { AccountingExpenseJournalPostingService } from './accounting-expense-journal-posting.service';
 import { CANONICAL_EXPENSE_SOURCE_FACT_TYPE } from './accounting-expense-journal.policy';
 import {
   listAccountingExpenseDocuments,
@@ -189,6 +190,7 @@ export class AccountingExpenseService {
   constructor(
     @Inject(ACCOUNTING_DB) private readonly prisma: AccountingDb,
     private readonly period: AccountingPeriodService,
+    private readonly expenseJournalPosting: AccountingExpenseJournalPostingService,
   ) {}
 
   async confirmUnifiedInboxExpense(
@@ -449,6 +451,11 @@ export class AccountingExpenseService {
         documentStableId,
         operatorUserStableId,
       );
+      await this.expenseJournalPosting.postConfirmedExpenseIfReadyInTx(
+        tx,
+        documentStableId,
+        operatorUserStableId,
+      );
     });
 
     return this.getExpenseDocument(documentStableId);
@@ -589,6 +596,11 @@ export class AccountingExpenseService {
             } as Prisma.InputJsonValue,
           })),
         });
+        await this.expenseJournalPosting.postConfirmedExpenseIfReadyInTx(
+          tx,
+          documentStableId,
+          operatorUserStableId,
+        );
         return created;
       },
     );
@@ -726,7 +738,14 @@ export class AccountingExpenseService {
             allocation.amountCents,
         );
       if (document.paymentAllocations.length > 0) {
-        if (existingMatches) return;
+        if (existingMatches) {
+          await this.expenseJournalPosting.postConfirmedExpenseIfReadyInTx(
+            tx,
+            documentStableId,
+            operatorUserStableId,
+          );
+          return;
+        }
         throw new ConflictException(
           'expense payment allocations are already completed',
         );
@@ -782,6 +801,11 @@ export class AccountingExpenseService {
           ),
         },
       });
+      await this.expenseJournalPosting.postConfirmedExpenseIfReadyInTx(
+        tx,
+        documentStableId,
+        operatorUserStableId,
+      );
     });
 
     return this.getExpenseDocument(documentStableId);
@@ -1007,6 +1031,11 @@ export class AccountingExpenseService {
           operatorUserStableId,
         );
       }
+      await this.expenseJournalPosting.postConfirmedExpenseIfReadyInTx(
+        tx,
+        documentStableId,
+        operatorUserStableId,
+      );
     });
 
     return this.getExpenseDocument(documentStableId);

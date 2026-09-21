@@ -5,6 +5,9 @@ describe('Accounting Expense payment completion', () => {
   const period = {
     assertEditableForPeriod: jest.fn().mockResolvedValue(undefined),
   };
+  const expenseJournalPosting = {
+    postConfirmedExpenseIfReadyInTx: jest.fn().mockResolvedValue(null),
+  };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -48,6 +51,7 @@ describe('Accounting Expense payment completion', () => {
     const service = new AccountingExpenseService(
       prisma as never,
       period as never,
+      expenseJournalPosting as never,
     );
     jest
       .spyOn(service, 'getExpenseDocument')
@@ -97,6 +101,9 @@ describe('Accounting Expense payment completion', () => {
         },
       }) as unknown,
     });
+    expect(
+      expenseJournalPosting.postConfirmedExpenseIfReadyInTx,
+    ).toHaveBeenCalledWith(tx, 'expense_1', 'user_stable_1');
     expect(result).toEqual({ documentStableId: 'expense_1' });
   });
 
@@ -125,6 +132,7 @@ describe('Accounting Expense payment completion', () => {
     const service = new AccountingExpenseService(
       prisma as never,
       period as never,
+      expenseJournalPosting as never,
     );
     jest
       .spyOn(service, 'getExpenseDocument')
@@ -142,6 +150,9 @@ describe('Accounting Expense payment completion', () => {
       ),
     ).resolves.toEqual({ documentStableId: 'expense_1' });
     expect(period.assertEditableForPeriod).not.toHaveBeenCalled();
+    expect(
+      expenseJournalPosting.postConfirmedExpenseIfReadyInTx,
+    ).toHaveBeenCalledWith(tx, 'expense_1', 'user_stable_1');
   });
 
   it('rejects replacement of an already completed payment fact', async () => {
@@ -169,6 +180,7 @@ describe('Accounting Expense payment completion', () => {
     const service = new AccountingExpenseService(
       prisma as never,
       period as never,
+      expenseJournalPosting as never,
     );
 
     await expect(
@@ -204,6 +216,7 @@ describe('Accounting Expense payment completion', () => {
     const service = new AccountingExpenseService(
       prisma as never,
       period as never,
+      expenseJournalPosting as never,
     );
 
     await expect(
@@ -245,6 +258,7 @@ describe('Accounting Expense payment completion', () => {
     const service = new AccountingExpenseService(
       prisma as never,
       period as never,
+      expenseJournalPosting as never,
     );
 
     await expect(
@@ -287,6 +301,7 @@ describe('Accounting Expense payment completion', () => {
     const service = new AccountingExpenseService(
       prisma as never,
       period as never,
+      expenseJournalPosting as never,
     );
 
     await expect(

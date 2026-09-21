@@ -45,7 +45,11 @@ describe('AccountingExpenseService provider-financial expense guard', () => {
         }),
       },
     });
-    const service = new AccountingExpenseService(prisma as never, {} as never);
+    const service = new AccountingExpenseService(
+      prisma as never,
+      {} as never,
+      {} as never,
+    );
 
     await expect(
       service.confirmUnifiedInboxExpense(
@@ -97,7 +101,11 @@ describe('AccountingExpenseService provider-financial expense guard', () => {
         }),
       },
     });
-    const service = new AccountingExpenseService(prisma as never, {} as never);
+    const service = new AccountingExpenseService(
+      prisma as never,
+      {} as never,
+      {} as never,
+    );
 
     await expect(
       service.confirmUnifiedInboxExpense(

@@ -448,6 +448,23 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(expenseSplitMutationCallers).toEqual([
       'accounting/accounting-expense-split.writer.ts',
     ]);
+
+    const canonicalExpenseJournalCallers = scanTypeScript(ACCOUNTING_ROOT, {
+      productionOnly: true,
+    })
+      .filter(
+        ({ source, path }) =>
+          !path.endsWith('accounting-journal.service.ts') &&
+          source.includes('.createCanonicalExpenseJournalEntryInTx('),
+      )
+      .map(({ path }) =>
+        path.slice(API_SRC_ROOT.length + 1).replaceAll('\\', '/'),
+      )
+      .sort();
+
+    expect(canonicalExpenseJournalCallers).toEqual([
+      'accounting/accounting-expense-journal-posting.service.ts',
+    ]);
   });
 
   it('prevents Accounting from consuming owner internals before or after the later posting cutover', () => {

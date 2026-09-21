@@ -37,16 +37,17 @@ const ACCOUNTING_DOCUMENT_SELECT = {
     },
     orderBy: [{ sortOrder: 'asc' as const }, { createdAt: 'asc' as const }],
   },
-  transactions: {
-    where: { deletedAt: null },
+  splits: {
     select: {
-      txStableId: true,
+      splitStableId: true,
       amountCents: true,
       taxCents: true,
+      sortOrder: true,
       category: {
         select: { categoryStableId: true, name: true },
       },
     },
+    orderBy: [{ sortOrder: 'asc' as const }, { createdAt: 'asc' as const }],
   },
 } satisfies Prisma.AccountingExpenseDocumentSelect;
 
@@ -260,12 +261,13 @@ function presentAccountingExpenseDocument(
       amountCents: allocation.amountCents,
       sortOrder: allocation.sortOrder,
     })),
-    splits: row.transactions.map((tx) => ({
-      txStableId: tx.txStableId,
-      categoryStableId: tx.category.categoryStableId,
-      categoryName: tx.category.name,
-      amountCents: tx.amountCents,
-      taxCents: tx.taxCents,
+    splits: row.splits.map((split) => ({
+      splitStableId: split.splitStableId,
+      categoryStableId: split.category.categoryStableId,
+      categoryName: split.category.name,
+      amountCents: split.amountCents,
+      taxCents: split.taxCents,
+      sortOrder: split.sortOrder,
     })),
   };
 }

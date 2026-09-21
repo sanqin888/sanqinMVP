@@ -18,6 +18,7 @@ import {
   normalizeJournalCreate,
   type AccountingJournalCreateInput,
 } from './accounting-journal-policy';
+import { compareAccountingExpenseSplitPersistence } from './accounting-expense-split-parity';
 import { hashAccountingJson } from './accounting-inbox-core.policy';
 import { AccountingPeriodService } from './accounting-period.service';
 
@@ -138,45 +139,6 @@ const journalTotals = (journal: AccountingJournalCreateInput | null) => {
     }),
     { debitCents: 0, creditCents: 0 },
   );
-};
-
-type ExpenseSplitProjection = {
-  categoryStableId: string;
-  amountCents: number;
-  taxCents: number;
-};
-
-const normalizeExpenseSplitProjection = (
-  splits: ExpenseSplitProjection[],
-): ExpenseSplitProjection[] =>
-  splits
-    .map((split) => ({ ...split }))
-    .sort(
-      (left, right) =>
-        left.categoryStableId.localeCompare(right.categoryStableId) ||
-        left.amountCents - right.amountCents ||
-        left.taxCents - right.taxCents,
-    );
-
-const expenseSplitPersistenceParity = (
-  legacySplits: ExpenseSplitProjection[],
-  expenseSplits: ExpenseSplitProjection[],
-) => {
-  const normalizedLegacy = normalizeExpenseSplitProjection(legacySplits);
-  const normalizedExpenseSplits =
-    normalizeExpenseSplitProjection(expenseSplits);
-  const legacyHash = hashAccountingJson(normalizedLegacy);
-  const expenseSplitHash = hashAccountingJson(normalizedExpenseSplits);
-  return {
-    status:
-      legacyHash === expenseSplitHash
-        ? ('MATCHED' as const)
-        : ('MISMATCH' as const),
-    legacyCount: normalizedLegacy.length,
-    expenseSplitCount: normalizedExpenseSplits.length,
-    legacyHash,
-    expenseSplitHash,
-  };
 };
 
 @Injectable()
@@ -317,7 +279,7 @@ export class AccountingExpenseJournalPreviewService {
         amountCents: tx.amountCents,
         taxCents: tx.taxCents,
       }));
-      const splitPersistence = expenseSplitPersistenceParity(
+      const splitPersistence = compareAccountingExpenseSplitPersistence(
         legacySplitProjection,
         document.splits.map((split) => ({
           categoryStableId: split.category.categoryStableId,
@@ -409,10 +371,10 @@ export class AccountingExpenseJournalPreviewService {
         taxCents: document.taxCents,
         totalCents: document.totalCents,
         memo: document.memo,
-        splits: document.transactions.map((tx) => ({
-          categoryStableId: tx.category.categoryStableId,
-          amountCents: tx.amountCents,
-          taxCents: tx.taxCents,
+        splits: document.splits.map((split) => ({
+          categoryStableId: split.category.categoryStableId,
+          amountCents: split.amountCents,
+          taxCents: split.taxCents,
         })),
         paymentAllocations: document.paymentAllocations.map((allocation) => ({
           accountStableId: allocation.account.accountStableId,
