@@ -510,6 +510,26 @@ describe('AccountingInboxAcquisitionService', () => {
 
   it('normalizes mojibake multipart filenames before persistence and parsing', async () => {
     const { service, operations, providerFinancial } = makeService();
+    const nativeText =
+      'Invoice 2026-09-16\nSubtotal CAD 75.00\nHST CAD 9.75\nTotal CAD 84.75';
+    pdfExtraction.mockResolvedValueOnce({
+      text: nativeText,
+      extraction: extractAccountingText(nativeText),
+      documentExtraction: {
+        version: 1,
+        inputKind: 'PDF',
+        engine: 'POPPLER',
+        layoutMode: 'TEXT_ONLY',
+        truncated: false,
+        lines: nativeText.split('\n').map((text, index) => ({
+          lineId: `p1-l${index + 1}`,
+          page: 1,
+          text,
+          confidence: null,
+          geometry: null,
+        })),
+      },
+    });
     await service.acquireManualFile({
       originalname:
         '6 2026_SanQ Roujiamo \u00e4\u00b8\u0089\u00e7\u00a7\u00a6\u00e8\u0082\u0089\u00e5\u00a4\u00b9\u00e9\u00a6\u008d.pdf',
@@ -1072,6 +1092,26 @@ describe('AccountingInboxAcquisitionService', () => {
 
   it('does not fall back to generic parsing after recognized provider processing fails', async () => {
     const { service, operations, providerFinancial } = makeService();
+    const nativeText =
+      'Monthly Statement\nDate Jul 01-31, 2026\nSales $100.00\nNet Total $100.00';
+    pdfExtraction.mockResolvedValueOnce({
+      text: nativeText,
+      extraction: extractAccountingText(nativeText),
+      documentExtraction: {
+        version: 1,
+        inputKind: 'PDF',
+        engine: 'POPPLER',
+        layoutMode: 'TEXT_ONLY',
+        truncated: false,
+        lines: nativeText.split('\n').map((text, index) => ({
+          lineId: `p1-l${index + 1}`,
+          page: 1,
+          text,
+          confidence: null,
+          geometry: null,
+        })),
+      },
+    });
     providerFinancial.parseForInboxSuggestion.mockRejectedValueOnce(
       new AccountingProviderFinancialProcessingError(
         'simulated provider persistence failure',

@@ -269,12 +269,14 @@ function parseUberMonthlyStatement(
     'Payout Period:',
   );
   const lines: ParsedLine[] = [];
+  const namedLabels: string[] = [];
   const add = (
     label: string,
     component: AccountingFinancialComponent,
     treatment: AccountingFinancialPostingTreatment,
     taxRole: AccountingFinancialTaxRole = AccountingFinancialTaxRole.NONE,
-  ) =>
+  ) => {
+    namedLabels.push(label);
     pushNamedSummary(
       lines,
       summary,
@@ -284,6 +286,7 @@ function parseUberMonthlyStatement(
       taxRole,
       summaryExtraction,
     );
+  };
 
   add(
     'Sales',
@@ -435,6 +438,11 @@ function parseUberMonthlyStatement(
     AccountingFinancialComponent.CONTROL_TOTAL,
     AccountingFinancialPostingTreatment.CONTROL_TOTAL,
   );
+  if (
+    hasUnresolvedPopplerTextOnlyNamedAmount(namedLabels, summaryExtraction)
+  ) {
+    return null;
+  }
   if (!lines.length) return null;
   return {
     provider: AccountingFinancialProvider.UBER_EATS,
@@ -758,6 +766,40 @@ function resolveNamedAmountFromLayout(
     }
   }
   return null;
+}
+
+function hasUnresolvedPopplerTextOnlyNamedAmount(
+  labels: string[],
+  extraction: AccountingDocumentExtraction | undefined,
+): boolean {
+  if (
+    !extraction ||
+    extraction.inputKind !== 'PDF' ||
+    extraction.engine !== 'POPPLER' ||
+    extraction.layoutMode !== 'TEXT_ONLY'
+  ) {
+    return false;
+  }
+
+  return labels.some((label) => {
+    const labelPattern = new RegExp(
+      `^${escapeRegex(label)}(?:\\s*\\([^)]*\\))?(?:\\s+|$)`,
+      'i',
+    );
+    const matchingLines = extraction.lines.filter((line) =>
+      labelPattern.test(line.text),
+    );
+    if (!matchingLines.length) return false;
+    return matchingLines.some((line) => {
+      const match = labelPattern.exec(line.text);
+      if (!match) return true;
+      const inlineToken = line.text
+        .slice(match[0].length)
+        .trim()
+        .split(/\\s+/)[0];
+      return !inlineToken || parseMoneyCents(inlineToken) == null;
+    });
+  });
 }
 
 function resolveNamedAmountFromPopplerTextLine(
