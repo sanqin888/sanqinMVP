@@ -68,9 +68,7 @@ export class AccountingArtifactDeliveryService {
   }
 }
 
-export function accountingArtifactContentUrl(
-  artifactStableId: string,
-): string {
+export function accountingArtifactContentUrl(artifactStableId: string): string {
   return `/api/v1/accounting/inbox/artifacts/${encodeURIComponent(artifactStableId)}/content`;
 }
 
@@ -84,7 +82,10 @@ export function accountingArtifactContentDisposition(
   disposition: 'inline' | 'attachment',
   filename: string,
 ): string {
-  const normalized = path.basename(filename).replace(/[\r\n]/g, '').trim();
+  const normalized = path
+    .basename(filename)
+    .replace(/[\r\n]/g, '')
+    .trim();
   const safeName = normalized || 'accounting-evidence';
   const asciiFallback =
     safeName
