@@ -2693,6 +2693,14 @@ is claimed per repository workflow.
 **Architecture/scope:** `accounting-pdf-rasterizer.ts` and `accounting-scanned-pdf-recognition.ts` are added to the existing Prisma-free Accounting architecture guard. No Prisma/schema/migration, package/runtime dependency, context direction, scanner allowance, public SCC, Web Clover/POS Clover, Phase 9 status, Expense->Journal, Sales Analytics or Trial Balance work changes. PR CI #6057 and merged-head CI #6058 passed architecture, lint, build, strict declaration and API/Web test gates. Active production verification of the scanned-PDF route remains pending.  
 **Details:** `apps/api/src/accounting/accounting-pdf-rasterizer{,.spec}.ts`, `accounting-scanned-pdf-recognition{,.spec}.ts`, Textract page adapter/spec, Inbox acquisition/spec, provider geometry regression, Prisma-free architecture guard, `docs/architecture/accounting-document-recognition-human-review-plan.md`, `ACCOUNTING_PRODUCT_ROADMAP.md`, `POST_MODULARIZATION_BACKLOG.md`, `docs/architecture/current-dependency-graph.md`, this worklog.
 
+### 2026-09-21 — Post-modularization Accounting / Document Recognition Reliability Slice A CSV ParseRun integrity
+
+**Local state:** branch `accounting/structured-csv-result-hash` from `origin/dev@14a19ef2`. **LOCAL SOURCE COMPLETE / USER REVIEW PENDING / NO MIGRATION / NO NEW DEPENDENCY**. Phase 9 remains closed; CI, deployment and production verification are not claimed.  
+**Root cause / fix:** Inbox Core already rejects any `AccountingParseStatus.SUCCESS` without a SHA-256 `resultHash`, but `AccountingInboxAcquisitionService` had two direct CSV success writes that omitted it: structured-expense CSV and same-priority provider-recognition ambiguity. Both now hash the exact result payload with existing Accounting-owned `hashAccountingJson()` before persistence.  
+**Behavior preserved:** structured CSV recognition, single-row Expense suggestion, multi-row/invalid-row `requiresBatchExpenseImport`, Provider API behavior, provider matching/materialization, source evidence and Journal semantics are unchanged. Focused acquisition tests now require a policy-valid SHA-256 hash for single-row structured CSV, batch structured CSV and ambiguous provider-recognition CSV.  
+**Architecture:** no Prisma/schema/migration, package/lockfile, public contract, provider wire behavior, context direction, direct-import allowance, scanner baseline or SCC change. Per `AGENTS.md`, no local lint/build/test command was run before user review; GitHub Actions remains the validation authority after explicit remote authorization.  
+**Details:** `apps/api/src/accounting/accounting-inbox-acquisition.service{,.spec}.ts`, `docs/architecture/accounting-document-recognition-human-review-plan.md`, `docs/architecture/current-dependency-graph.md`, this worklog.
+
 ## Rule for future entries
 
 For each modularization code batch, append exactly one chronological entry before

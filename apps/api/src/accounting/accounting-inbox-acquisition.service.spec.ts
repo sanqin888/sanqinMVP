@@ -1040,6 +1040,40 @@ describe('AccountingInboxAcquisitionService', () => {
     expect(operations.suggestUnifiedInboxClassification).not.toHaveBeenCalled();
   });
 
+  it('records ambiguous CSV recognition success with a policy-valid result hash', async () => {
+    const { service, operations, providerFinancial } = makeService();
+    providerFinancial.parseForInboxSuggestion.mockResolvedValueOnce({
+      matched: false,
+      ambiguousRuleStableIds: [
+        'acct_recognition_uber_monthly_statement',
+        'acct_recognition_fantuan_statement',
+      ],
+    });
+
+    await service.acquireManualFile({
+      originalname: 'ambiguous.csv',
+      mimetype: 'text/csv',
+      buffer: Buffer.from('Metric,Amount\nNet Total,100.00\n', 'utf8'),
+    });
+
+    expect(operations.recordInboxParseRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        artifactStableId: 'acctart_csv',
+        parserName: 'accounting-generic-document-review',
+        status: AccountingParseStatus.SUCCESS,
+        resultHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+        resultJson: expect.objectContaining({
+          inputKind: 'CSV',
+          providerRecognitionAmbiguousRuleStableIds: [
+            'acct_recognition_uber_monthly_statement',
+            'acct_recognition_fantuan_statement',
+          ],
+        }) as unknown,
+      }) as unknown,
+    );
+    expect(operations.suggestUnifiedInboxClassification).not.toHaveBeenCalled();
+  });
+
   it('keeps Provider API CSV evidence on the existing automatic materialization path', async () => {
     const { service, providerFinancial } = makeService();
     textractEnabled.mockReturnValue(true);
@@ -1105,6 +1139,7 @@ describe('AccountingInboxAcquisitionService', () => {
         artifactStableId: 'acctart_csv',
         parserName: 'accounting-structured-expense-csv',
         status: AccountingParseStatus.SUCCESS,
+        resultHash: expect.stringMatching(/^[a-f0-9]{64}$/),
         resultJson: expect.objectContaining({
           inputKind: 'CSV',
           structuredExpenseCsv: true,
@@ -1146,6 +1181,7 @@ describe('AccountingInboxAcquisitionService', () => {
         artifactStableId: 'acctart_csv',
         parserName: 'accounting-structured-expense-csv',
         status: AccountingParseStatus.SUCCESS,
+        resultHash: expect.stringMatching(/^[a-f0-9]{64}$/),
         resultJson: expect.objectContaining({
           structuredExpenseCsv: true,
           structuredExpenseRowCount: 2,
