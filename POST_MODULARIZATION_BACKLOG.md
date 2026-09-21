@@ -348,8 +348,8 @@ This lane follows `ACCOUNTING_PRODUCT_ROADMAP.md`. Phase 9 remains closed.
 
 Priority: **P0 ACCOUNTING CORRECTNESS / BEFORE NEW FINANCIAL FEATURES**  
 Complexity: **H / XL only if a new OCR runtime is later adopted**  
-State: **SLICE 0 MERGED (#2428 / `bbd0b1c0`) / SLICE 1 + MIGRATION MERGED (#2429 / `1903b32a`, CI #6017 GREEN) / SLICE 2 MERGED (#2431 / `e52c44b9`) / SLICE 3 MERGED (#2432 / `caabf1c1`, CI GREEN) / POPPLER PATH AUDITED / EVIDENCE VIEWER SLICE 1 SOURCE IMPLEMENTED / LOCAL REVIEW**  
-External gate: **none for current local-PDF / Human Review / Evidence Viewer work**  
+State: **SLICE 0 MERGED (#2428 / `bbd0b1c0`) / SLICE 1 + MIGRATION MERGED (#2429 / `1903b32a`, CI #6017 GREEN) / SLICE 2 MERGED (#2431 / `e52c44b9`) / SLICE 3 MERGED (#2432 / `caabf1c1`, CI GREEN) / POPPLER PATH AUDITED / EVIDENCE VIEWER SLICE 1 MERGED (#2435 / `0371a155`, CI #6039 GREEN) / SLICE 1B SOURCE IMPLEMENTED / LOCAL REVIEW / MIGRATION REQUIRED**  
+External gate: **Slice 1B user-local Prisma migration before main/production promotion**  
 Detailed plan: `docs/architecture/accounting-document-recognition-human-review-plan.md`
 
 Two real provider-evidence cases exposed a workflow-level correctness gap rather than a remaining Phase 9 modularization defect. An Uber monthly PDF lost label/value layout when Poppler plain text was parsed, causing `Tax on Sales` to inherit the Sales amount while the source `Net Total` remained correct; because settlement planning currently proves only Journal balance, the malformed normalized document could still reach READY. A separate Fantuan Summary Adjustment correctly failed closed until a Detail workbook was supplied, but also demonstrated that the operator cannot create a durable reviewed resolution when machine extraction or semantic mapping needs human intervention.
@@ -364,10 +364,12 @@ Target:
 - keep XLSX/CSV on native structured parsers and converge PDF/image recognition behind an Accounting-owned extraction boundary;
 - keep native-text PDFs local-first with Poppler text+bbox; treat scanned PDFs as a bounded local page-rasterization problem and call synchronous Textract per rendered image page, then merge page-aware extraction evidence;
 - do not introduce S3/async Textract, Paddle/BDA or a new OCR dependency for the normal path without a new explicit architecture decision;
-- unify source-evidence access behind authenticated `artifactStableId` delivery so normal inspection opens an online viewer and downloading is an explicit operator action; PDF/image preview lands before bounded CSV/XLSX structured preview;
+- unify source-evidence access behind authenticated `artifactStableId` delivery so normal inspection opens an online viewer and downloading is an explicit operator action;
+- organize retained Accounting evidence with logical folders/assignments only; never physically move source binaries merely to change the operator-visible folder. Allow audited multi-file moves, including confirmed/posted evidence, because organization state is separate from financial authority;
+- keep bounded CSV/XLSX structured preview as the next Viewer-specific read capability;
 - do not introduce suspense accounting merely from this planning decision.
 
-The original implementation sequence through layout-aware Slice 3 is now merged. The historical Uber July document has already been Human-Reviewed/corrected and posted, so later Poppler golden verification must remain read-only and must not reopen that Journal/settlement. The next recognition work is Slice 3V local-PDF verification/routing hardening. In parallel, Evidence Viewer Slice 1 is an Accounting-internal read-boundary/UI change with no schema or dependency change.
+The original implementation sequence through layout-aware Slice 3 is now merged. The historical Uber July document has already been Human-Reviewed/corrected and posted, so later Poppler golden verification must remain read-only and must not reopen that Journal/settlement. The next recognition work is Slice 3V local-PDF verification/routing hardening. Evidence Viewer Slice 1 is merged; Slice 1B adds only logical organization state and is blocked from main/production promotion until its user-generated Prisma migration is reviewed and merged.
 
 ### 5.2 B1 — Expense -> canonical Journal
 

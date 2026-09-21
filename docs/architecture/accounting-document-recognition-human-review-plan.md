@@ -833,11 +833,20 @@ Delivery slices:
    must not auto-download from the viewer; it may show an explicit download action until the
    structured preview exists. The Viewer also exposes the existing permanent-delete action:
    deletable manual uploads are enabled after confirmation, while all protected evidence keeps
-   the Delete button visibly disabled.
-2. **Evidence Viewer Slice 2 — structured preview:** use the existing native CSV/XLSX parsing
+   the Delete button visibly disabled. **Merged in PR #2435 as `0371a155`; CI #6039 green.**
+2. **Evidence Viewer Slice 1B — logical file manager:** keep all physical binaries and
+   `storedUrl` values unchanged, but add Accounting-owned logical folders and a separate
+   artifact->folder assignment. The Viewer opens a file manager that supports creating
+   first-level folders, filtering All/Unfiled/folder, selecting multiple retained evidence
+   files and moving them to a chosen folder or back to Unfiled. Folder assignment is
+   organizational metadata only: confirmed/posted/provider evidence may be moved without
+   changing content hashes, source facts, Human Review, settlement or Journal authority.
+   Folder creation and every actual move are audit logged. V1 intentionally does not add
+   nested folders, folder rename or folder deletion.
+3. **Evidence Viewer Slice 2 — structured preview:** use the existing native CSV/XLSX parsing
    stack to expose bounded, non-executing tabular preview data. Do not emulate Excel, execute
    formulas/macros/external links, or make workbook formatting part of Accounting authority.
-3. Later contraction may remove remaining Web dependence on raw `storedUrl` only after all
+4. Later contraction may remove remaining Web dependence on raw `storedUrl` only after all
    consumers use the stable-ID boundary.
 
 This presentation/access work does not mutate source artifacts, content hashes, Human Review,
@@ -877,6 +886,12 @@ future new OCR/runtime dependency still requires separate authorization.
 
 **Evidence Viewer Slice 1:** ordinary Accounting-internal read-boundary/UI change; no migration
 or dependency is expected.
+
+**Evidence Viewer Slice 1B:** additive Accounting persistence change; **MIGRATION REQUIRED**.
+The migration should create logical folder + assignment tables, unique stable/name-key and
+one-folder-per-artifact constraints, the folder lookup index and foreign keys. Existing artifacts
+require no backfill and remain Unfiled because absence of an assignment is the virtual root.
+No physical file or `storedUrl` migration is permitted.
 
 No recognition or delivery change should rewrite historical machine extraction or posted
 financial facts. Retain source/review evidence.

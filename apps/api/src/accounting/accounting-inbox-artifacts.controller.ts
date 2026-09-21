@@ -30,6 +30,7 @@ import {
   AccountingArtifactDeliveryService,
   accountingArtifactContentDisposition,
 } from './accounting-artifact-delivery.service';
+import { AccountingEvidenceFileManagerService } from './accounting-evidence-file-manager.service';
 import { AccountingImageRetentionService } from './accounting-image-retention.service';
 import type { AccountingImageRetentionProfile } from './accounting-receipt-image';
 import { getAccountingUploadsDir } from './accounting-storage-path';
@@ -42,6 +43,7 @@ export class AccountingInboxArtifactsController {
     private readonly acquisition: AccountingInboxAcquisitionService,
     private readonly imageRetention: AccountingImageRetentionService,
     private readonly artifactDelivery: AccountingArtifactDeliveryService,
+    private readonly evidenceFileManager: AccountingEvidenceFileManagerService,
   ) {}
 
   @Post('inbox/artifacts')
@@ -91,6 +93,40 @@ export class AccountingInboxArtifactsController {
   ) {
     return this.imageRetention.acceptCandidate(
       inboxItemStableId,
+      requireAccountingOperatorUserId(req),
+    );
+  }
+
+  @Get('evidence-file-manager')
+  accountingEvidenceFileManager() {
+    return this.evidenceFileManager.listFileManager();
+  }
+
+  @Post('evidence-folders')
+  createAccountingEvidenceFolder(
+    @Body() body: { name?: unknown },
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.evidenceFileManager.createFolder(
+      body.name,
+      requireAccountingOperatorUserId(req),
+    );
+  }
+
+  @Post('evidence-files/move')
+  moveAccountingEvidenceFiles(
+    @Body()
+    body: {
+      artifactStableIds?: unknown;
+      targetFolderStableId?: unknown;
+    },
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.evidenceFileManager.moveArtifacts(
+      {
+        artifactStableIds: body.artifactStableIds,
+        targetFolderStableId: body.targetFolderStableId,
+      },
       requireAccountingOperatorUserId(req),
     );
   }
