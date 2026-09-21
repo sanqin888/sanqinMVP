@@ -21,6 +21,13 @@ const confirmedExpense = (overrides: Record<string, unknown> = {}) => ({
       category: { categoryStableId: 'expense_telecom' },
     },
   ],
+  splits: [
+    {
+      amountCents: 7495,
+      taxCents: 974,
+      category: { categoryStableId: 'expense_telecom' },
+    },
+  ],
   ...overrides,
 });
 
@@ -72,6 +79,7 @@ describe('AccountingExpenseJournalPreviewService', () => {
       ready: 1,
       blocked: 0,
       alreadyPosted: 0,
+      splitPersistenceMismatches: 0,
       byClassification: { READY: 1 },
     });
     expect(first.entries[0]).toEqual(
@@ -98,6 +106,7 @@ describe('AccountingExpenseJournalPreviewService', () => {
       ready: 0,
       blocked: 1,
       alreadyPosted: 0,
+      splitPersistenceMismatches: 0,
       byClassification: { MISSING_PAYMENT_ALLOCATION: 1 },
     });
     expect(report.entries[0]).toEqual(
@@ -106,6 +115,45 @@ describe('AccountingExpenseJournalPreviewService', () => {
         classification: 'MISSING_PAYMENT_ALLOCATION',
         draftJournal: null,
         draftHash: null,
+      }),
+    );
+  });
+
+  it('fails closed when Expense-owned splits diverge from the legacy compatibility copy', async () => {
+    const { service } = makeService({
+      documents: [
+        confirmedExpense({
+          splits: [
+            {
+              amountCents: 7000,
+              taxCents: 910,
+              category: { categoryStableId: 'expense_telecom' },
+            },
+          ],
+        }),
+      ],
+    });
+
+    const report = await service.previewRange(input);
+
+    expect(report.counts).toEqual({
+      candidates: 1,
+      ready: 0,
+      blocked: 1,
+      alreadyPosted: 0,
+      splitPersistenceMismatches: 1,
+      byClassification: { SPLIT_PERSISTENCE_MISMATCH: 1 },
+    });
+    expect(report.entries[0]).toEqual(
+      expect.objectContaining({
+        status: 'BLOCKED',
+        classification: 'SPLIT_PERSISTENCE_MISMATCH',
+        splitPersistence: expect.objectContaining({
+          status: 'MISMATCH',
+          legacyCount: 1,
+          expenseSplitCount: 1,
+        }) as unknown,
+        draftJournal: null,
       }),
     );
   });
@@ -129,6 +177,7 @@ describe('AccountingExpenseJournalPreviewService', () => {
       ready: 0,
       blocked: 0,
       alreadyPosted: 1,
+      splitPersistenceMismatches: 0,
       byClassification: { ALREADY_POSTED: 1 },
     });
     expect(report.entries[0]).toEqual(

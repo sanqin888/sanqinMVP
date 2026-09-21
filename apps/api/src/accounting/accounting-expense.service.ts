@@ -16,7 +16,6 @@ import {
   AccountingInboxMaterializedEntityType,
   AccountingInboxStatus,
   AccountingJournalSource,
-  AccountingSourceType,
   AccountingTxType,
 } from './accounting-contracts';
 import { runSerializableAccountingWrite } from './accounting-atomic-write';
@@ -50,6 +49,10 @@ import {
   parseAccountingExpenseDate,
 } from './accounting-expense-input';
 import { createAccountingExpensePaymentAllocationsInTx } from './accounting-expense-payment-allocation.writer';
+import {
+  createAccountingExpenseSplitCompatibilityInTx,
+  deleteAccountingExpenseSplitCompatibilityInTx,
+} from './accounting-expense-split.writer';
 
 type NormalizedExpensePaymentAllocation =
   AccountingExpensePaymentAllocationInput & {
@@ -394,24 +397,21 @@ export class AccountingExpenseService {
         resolvedPaymentAllocations,
       );
 
-      const splitRows = normalizedSplits.map((split, index) => ({
-        txStableId: `accttx_${createId()}`,
-        type: AccountingTxType.EXPENSE,
-        source: AccountingSourceType.MANUAL,
-        amountCents: split.amountCents,
-        taxCents: split.taxCents,
-        currency: 'CAD',
-        occurredAt,
-        categoryId: categoryMap.get(split.categoryStableId)!,
-        documentId: created.id,
-        idempotencyKey: `expense:${documentStableId}:${index}`,
-        externalRef: documentStableId,
-        memo: input.memo?.trim() || null,
-        attachmentUrls,
-        createdByUserStableId: operatorUserStableId,
-        updatedByUserStableId: operatorUserStableId,
-      }));
-      await tx.accountingTransaction.createMany({ data: splitRows });
+      const { legacyTransactionRows: splitRows } =
+        await createAccountingExpenseSplitCompatibilityInTx(tx, {
+          expenseDocumentDbId: created.id,
+          documentStableId,
+          occurredAt,
+          memo: input.memo?.trim() || null,
+          attachmentUrls,
+          operatorUserStableId,
+          splits: normalizedSplits.map((split, index) => ({
+            categoryDbId: categoryMap.get(split.categoryStableId)!,
+            amountCents: split.amountCents,
+            taxCents: split.taxCents,
+            sortOrder: index,
+          })),
+        });
       await tx.accountingAuditLog.createMany({
         data: [
           {
@@ -552,24 +552,21 @@ export class AccountingExpenseService {
           resolvedPaymentAllocations,
         );
 
-        const splitRows = normalizedSplits.map((split, index) => ({
-          txStableId: `accttx_${createId()}`,
-          type: AccountingTxType.EXPENSE,
-          source: AccountingSourceType.MANUAL,
-          amountCents: split.amountCents,
-          taxCents: split.taxCents,
-          currency: 'CAD',
-          occurredAt,
-          categoryId: categoryMap.get(split.categoryStableId)!.id,
-          documentId: created.id,
-          idempotencyKey: `expense:${documentStableId}:${index}`,
-          externalRef: documentStableId,
-          memo: input.memo?.trim() || null,
-          attachmentUrls,
-          createdByUserStableId: operatorUserStableId,
-          updatedByUserStableId: operatorUserStableId,
-        }));
-        await tx.accountingTransaction.createMany({ data: splitRows });
+        const { legacyTransactionRows: splitRows } =
+          await createAccountingExpenseSplitCompatibilityInTx(tx, {
+            expenseDocumentDbId: created.id,
+            documentStableId,
+            occurredAt,
+            memo: input.memo?.trim() || null,
+            attachmentUrls,
+            operatorUserStableId,
+            splits: normalizedSplits.map((split, index) => ({
+              categoryDbId: categoryMap.get(split.categoryStableId)!.id,
+              amountCents: split.amountCents,
+              taxCents: split.taxCents,
+              sortOrder: index,
+            })),
+          });
         await tx.accountingAuditLog.createMany({
           data: splitRows.map((row, index) => ({
             action: 'CREATE',
@@ -912,6 +909,7 @@ export class AccountingExpenseService {
       await tx.accountingTransaction.deleteMany({
         where: { documentId: existing.id, deletedAt: null },
       });
+      await deleteAccountingExpenseSplitCompatibilityInTx(tx, existing.id);
       await tx.accountingExpensePaymentAllocation.deleteMany({
         where: { expenseDocumentId: existing.id },
       });
@@ -935,24 +933,21 @@ export class AccountingExpenseService {
         existing.id,
         resolvedPaymentAllocations,
       );
-      const splitRows = normalizedSplits.map((split, index) => ({
-        txStableId: `accttx_${createId()}`,
-        type: AccountingTxType.EXPENSE,
-        source: AccountingSourceType.MANUAL,
-        amountCents: split.amountCents,
-        taxCents: split.taxCents,
-        currency: 'CAD',
-        occurredAt,
-        categoryId: categoryMap.get(split.categoryStableId)!,
-        documentId: existing.id,
-        idempotencyKey: `expense:${documentStableId}:${index}`,
-        externalRef: documentStableId,
-        memo: input.memo?.trim() || null,
-        attachmentUrls,
-        createdByUserStableId: operatorUserStableId,
-        updatedByUserStableId: operatorUserStableId,
-      }));
-      await tx.accountingTransaction.createMany({ data: splitRows });
+      const { legacyTransactionRows: splitRows } =
+        await createAccountingExpenseSplitCompatibilityInTx(tx, {
+          expenseDocumentDbId: existing.id,
+          documentStableId,
+          occurredAt,
+          memo: input.memo?.trim() || null,
+          attachmentUrls,
+          operatorUserStableId,
+          splits: normalizedSplits.map((split, index) => ({
+            categoryDbId: categoryMap.get(split.categoryStableId)!,
+            amountCents: split.amountCents,
+            taxCents: split.taxCents,
+            sortOrder: index,
+          })),
+        });
       await tx.accountingAuditLog.createMany({
         data: [
           ...replacedRows.map((row) => ({

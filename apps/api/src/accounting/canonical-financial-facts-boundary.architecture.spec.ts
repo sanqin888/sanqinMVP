@@ -324,7 +324,7 @@ describe('Phase 9 canonical financial facts boundary', () => {
     ]);
   });
 
-  it('keeps generic single-entry transaction authority absent while retaining Expense split persistence', () => {
+  it('keeps generic single-entry transaction authority absent while retaining the temporary Expense split compatibility copy', () => {
     const schema = readFileSync(PRISMA_SCHEMA, 'utf8');
     const accountingTransaction =
       schema.match(/model AccountingTransaction\s*{([\s\S]*?)\n}/)?.[1] ?? '';
@@ -344,6 +344,8 @@ describe('Phase 9 canonical financial facts boundary', () => {
       file(ACCOUNTING_ROOT, 'accounting-reports.controller.ts')?.source ?? '';
     const accountingExpenseService =
       file(ACCOUNTING_ROOT, 'accounting-expense.service.ts')?.source ?? '';
+    const accountingExpenseSplitWriter =
+      file(ACCOUNTING_ROOT, 'accounting-expense-split.writer.ts')?.source ?? '';
     const accountingFinancialReportsService =
       file(ACCOUNTING_ROOT, 'accounting-financial-reports.service.ts')
         ?.source ?? '';
@@ -399,7 +401,16 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(accountingJournalService).not.toContain(
       'assertNoLegacyOrderRevenueAccrual',
     );
-    expect(accountingExpenseService).toContain(
+    expect(accountingExpenseService).not.toContain(
+      'accountingTransaction.createMany',
+    );
+    expect(accountingExpenseSplitWriter).toContain(
+      '@compat accounting.expense-split-ownership.v1',
+    );
+    expect(accountingExpenseSplitWriter).toContain(
+      'accountingExpenseSplit.createMany',
+    );
+    expect(accountingExpenseSplitWriter).toContain(
       'accountingTransaction.createMany',
     );
 
@@ -417,7 +428,25 @@ describe('Phase 9 canonical financial facts boundary', () => {
       .sort();
 
     expect(transactionMutationCallers).toEqual([
+      'accounting/accounting-expense-split.writer.ts',
       'accounting/accounting-expense.service.ts',
+    ]);
+
+    const expenseSplitMutationCallers = scanTypeScript(ACCOUNTING_ROOT, {
+      productionOnly: true,
+    })
+      .filter(({ source }) =>
+        /accountingExpenseSplit\.(?:create|createMany|update|updateMany|delete|deleteMany|upsert)\s*\(/.test(
+          source,
+        ),
+      )
+      .map(({ path }) =>
+        path.slice(API_SRC_ROOT.length + 1).replaceAll('\\', '/'),
+      )
+      .sort();
+
+    expect(expenseSplitMutationCallers).toEqual([
+      'accounting/accounting-expense-split.writer.ts',
     ]);
   });
 
