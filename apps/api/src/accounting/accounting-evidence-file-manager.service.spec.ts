@@ -136,10 +136,7 @@ describe('AccountingEvidenceFileManagerService', () => {
     };
     const prisma = {
       $transaction: jest.fn(
-        (
-          callback: (client: typeof tx) => Promise<unknown>,
-          _options: unknown,
-        ) => callback(tx),
+        (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
       ),
     };
     const service = new AccountingEvidenceFileManagerService(prisma as never);
@@ -219,10 +216,7 @@ describe('AccountingEvidenceFileManagerService', () => {
     };
     const prisma = {
       $transaction: jest.fn(
-        (
-          callback: (client: typeof tx) => Promise<unknown>,
-          _options: unknown,
-        ) => callback(tx),
+        (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
       ),
     };
     const service = new AccountingEvidenceFileManagerService(prisma as never);
@@ -300,10 +294,7 @@ describe('AccountingEvidenceFileManagerService', () => {
     };
     const prisma = {
       $transaction: jest.fn(
-        (
-          callback: (client: typeof tx) => Promise<unknown>,
-          _options: unknown,
-        ) => callback(tx),
+        (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
       ),
     };
     const service = new AccountingEvidenceFileManagerService(prisma as never);
@@ -347,10 +338,7 @@ describe('AccountingEvidenceFileManagerService', () => {
     };
     const prisma = {
       $transaction: jest.fn(
-        (
-          callback: (client: typeof tx) => Promise<unknown>,
-          _options: unknown,
-        ) => callback(tx),
+        (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
       ),
     };
     const service = new AccountingEvidenceFileManagerService(prisma as never);
@@ -398,10 +386,7 @@ describe('AccountingEvidenceFileManagerService', () => {
     };
     const prisma = {
       $transaction: jest.fn(
-        (
-          callback: (client: typeof tx) => Promise<unknown>,
-          _options: unknown,
-        ) => callback(tx),
+        (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
       ),
     };
     const service = new AccountingEvidenceFileManagerService(prisma as never);

@@ -96,8 +96,7 @@ export class AccountingEvidenceFileManagerService {
               folderStableId:
                 artifact.evidenceFolderAssignment.folder.folderStableId,
               name: artifact.evidenceFolderAssignment.folder.name,
-              movedAt:
-                artifact.evidenceFolderAssignment.movedAt.toISOString(),
+              movedAt: artifact.evidenceFolderAssignment.movedAt.toISOString(),
             }
           : null,
       })),
@@ -230,8 +229,7 @@ export class AccountingEvidenceFileManagerService {
           );
         }
 
-        const beforeFolder =
-          artifact.evidenceFolderAssignment?.folder ?? null;
+        const beforeFolder = artifact.evidenceFolderAssignment?.folder ?? null;
         const beforeFolderStableId = beforeFolder?.folderStableId ?? null;
         const targetFolderResolvedStableId =
           targetFolder?.folderStableId ?? null;
@@ -306,12 +304,19 @@ export function normalizeAccountingEvidenceFolderName(rawName: unknown): {
       `folder name must be at most ${ACCOUNTING_EVIDENCE_FOLDER_NAME_MAX_LENGTH} characters`,
     );
   }
-  if (
-    name === '.' ||
-    name === '..' ||
-    /[\\/\u0000-\u001f\u007f]/.test(name)
-  ) {
-    throw new BadRequestException('folder name contains unsupported characters');
+  const containsUnsupportedCharacter = [...name].some((character) => {
+    const codePoint = character.codePointAt(0) ?? 0;
+    return (
+      character === '/' ||
+      character === '\\' ||
+      codePoint < 32 ||
+      codePoint === 127
+    );
+  });
+  if (name === '.' || name === '..' || containsUnsupportedCharacter) {
+    throw new BadRequestException(
+      'folder name contains unsupported characters',
+    );
   }
   return {
     name,
