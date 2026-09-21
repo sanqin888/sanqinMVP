@@ -18,6 +18,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { createId } from '@paralleldrive/cuid2';
 import sharp from 'sharp';
+import { accountingArtifactContentUrl } from './accounting-artifact-delivery.service';
 import { getAccountingUploadsDir } from './accounting-storage-path';
 import { AccountingInboxService } from './accounting-inbox.service';
 import {
@@ -140,7 +141,7 @@ export class AccountingImageRetentionService {
       state: AccountingArtifactBinaryRetentionState.CANDIDATE_READY,
       artifactStableId: context.artifact.artifactStableId,
       original: {
-        url: artifactContentUrl(context.artifact.artifactStableId),
+        url: accountingArtifactContentUrl(context.artifact.artifactStableId),
         byteSize: original.length,
         mimeType: context.artifact.mimeType,
         width: originalDimensions.width,
@@ -279,44 +280,6 @@ export class AccountingImageRetentionService {
     );
   }
 
-  async resolveArtifactContent(artifactStableId: string) {
-    const context =
-      await this.inbox.readImageArtifactContentContext(artifactStableId);
-    if (!context || context.kind !== AccountingArtifactKind.IMAGE) {
-      throw new NotFoundException('accounting image evidence not found');
-    }
-    const retention = context.binaryRetention;
-    let storedUrl = context.storedUrl;
-    let mimeType = context.mimeType;
-    if (
-      retention &&
-      (retention.state ===
-        AccountingArtifactBinaryRetentionState.PURGE_PENDING ||
-        retention.state ===
-          AccountingArtifactBinaryRetentionState.COMPRESSED_ONLY) &&
-      retention.retainedStoredUrl &&
-      retention.retainedMimeType
-    ) {
-      storedUrl = retention.retainedStoredUrl;
-      mimeType = retention.retainedMimeType;
-    }
-    if (!storedUrl || !mimeType) {
-      throw new NotFoundException('accounting image binary not found');
-    }
-    const isRetained = storedUrl.startsWith(RETENTION_FILE_PREFIX);
-    const filePath = this.resolveStoredUrl(
-      storedUrl,
-      isRetained ? RETENTION_FILE_PREFIX : INBOX_FILE_PREFIX,
-      isRetained ? 'image-retention' : 'inbox',
-    );
-    try {
-      await fs.promises.access(filePath, fs.constants.R_OK);
-    } catch {
-      throw new NotFoundException('accounting image binary not found');
-    }
-    return { filePath, mimeType };
-  }
-
   private async requireConfirmedImageContext(inboxItemStableId: string) {
     const context =
       await this.inbox.readImageRetentionContext(inboxItemStableId);
@@ -368,7 +331,7 @@ export class AccountingImageRetentionService {
       artifactStableId: context.artifact.artifactStableId,
       originalPurgedAt: retention.originalPurgedAt?.toISOString() ?? null,
       retained: {
-        url: artifactContentUrl(context.artifact.artifactStableId),
+        url: accountingArtifactContentUrl(context.artifact.artifactStableId),
         contentHash: retention.retainedContentHash,
         byteSize: retention.retainedByteSize,
         mimeType: retention.retainedMimeType,
@@ -465,10 +428,6 @@ export class AccountingImageRetentionService {
     }
     return true;
   }
-}
-
-export function artifactContentUrl(artifactStableId: string): string {
-  return `/api/v1/accounting/inbox/artifacts/${encodeURIComponent(artifactStableId)}/content`;
 }
 
 function sha256(buffer: Buffer): string {

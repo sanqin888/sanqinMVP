@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api/client';
+import { AccountingEvidenceViewer } from '../accounting-evidence-viewer';
 import {
   ExpensePaymentAllocationsEditor,
   expensePaymentAllocationErrorMessage,
@@ -341,7 +342,30 @@ export default function AccountingExpensesPage() {
                       : 'Not specified'}
                 </div>
               </div>
-              <div className="text-right">{document.attachmentUrls[0] ? <a className="text-blue-600 hover:underline" href={document.attachmentUrls[0]} target="_blank" rel="noreferrer">{isZh ? '查看凭证' : 'Receipt'}</a> : '-'}</div>
+              <div className="text-right">
+                {document.sourceEvidence ? (
+                  <AccountingEvidenceViewer
+                    evidence={{
+                      artifactStableId: document.sourceEvidence.artifactStableId,
+                      filename: document.sourceEvidence.originalFilename,
+                      kind: document.sourceEvidence.kind,
+                    }}
+                    isZh={isZh}
+                    label={isZh ? '查看凭证' : 'View receipt'}
+                    className="text-blue-600 hover:underline"
+                  />
+                ) : document.attachmentUrls[0] ? (
+                  <a
+                    className="text-blue-600 hover:underline"
+                    href={document.attachmentUrls[0]}
+                    download
+                  >
+                    {isZh ? '下载凭证' : 'Download receipt'}
+                  </a>
+                ) : (
+                  '-'
+                )}
+              </div>
             </div>
           )) : <p className="py-4 text-slate-500">{isZh ? '暂无支出。' : 'No expenses yet.'}</p>}
         </div>

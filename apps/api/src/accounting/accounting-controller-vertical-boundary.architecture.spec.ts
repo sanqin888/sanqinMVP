@@ -16,6 +16,7 @@ const EXPECTED_CONTROLLER_CAPABILITIES = {
   'accounting-chart.controller.ts': ['AccountingChartService'],
   'accounting-expense.controller.ts': ['AccountingExpenseService'],
   'accounting-inbox-artifacts.controller.ts': [
+    'AccountingArtifactDeliveryService',
     'AccountingImageRetentionService',
     'AccountingInboxAcquisitionService',
   ],
@@ -68,6 +69,7 @@ const EXPECTED_ROUTES = [
   'DELETE inbox/:inboxItemStableId/image-retention/candidate',
   'POST inbox/:inboxItemStableId/image-retention/accept',
   'GET inbox/artifacts/:artifactStableId/content',
+  'GET inbox/artifacts/:artifactStableId/download',
   'GET provider-financial/:documentStableId/review-revisions',
   'POST provider-financial/:documentStableId/review-revisions',
   'POST provider-financial/:documentStableId/review-revisions/:reviewRevisionStableId/confirm',

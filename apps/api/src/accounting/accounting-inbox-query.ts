@@ -501,7 +501,7 @@ export async function readAccountingImageRetentionContext(
   });
 }
 
-export async function readAccountingImageArtifactContentContext(
+export async function readAccountingArtifactContentContext(
   client: AccountingInboxReadClient,
   artifactStableId: string,
 ) {
@@ -511,6 +511,7 @@ export async function readAccountingImageArtifactContentContext(
       artifactStableId: true,
       kind: true,
       mimeType: true,
+      originalFilename: true,
       storedUrl: true,
       binaryRetention: true,
     },

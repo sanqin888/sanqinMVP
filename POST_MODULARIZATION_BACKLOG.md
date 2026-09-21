@@ -348,8 +348,8 @@ This lane follows `ACCOUNTING_PRODUCT_ROADMAP.md`. Phase 9 remains closed.
 
 Priority: **P0 ACCOUNTING CORRECTNESS / BEFORE NEW FINANCIAL FEATURES**  
 Complexity: **H / XL only if a new OCR runtime is later adopted**  
-State: **SLICE 0 MERGED (#2428 / `bbd0b1c0`) / SLICE 1 + MIGRATION MERGED (#2429 / `1903b32a`, CI #6017 GREEN) / SLICE 2 MERGED (#2431 / `e52c44b9`) / SLICE 3 SOURCE IMPLEMENTED / REMOTE CI PENDING**  
-External gate: **none for control-total + review work; benchmark/provider choices later**  
+State: **SLICE 0 MERGED (#2428 / `bbd0b1c0`) / SLICE 1 + MIGRATION MERGED (#2429 / `1903b32a`, CI #6017 GREEN) / SLICE 2 MERGED (#2431 / `e52c44b9`) / SLICE 3 MERGED (#2432 / `caabf1c1`, CI GREEN) / POPPLER PATH AUDITED / EVIDENCE VIEWER SLICE 1 SOURCE IMPLEMENTED / LOCAL REVIEW**  
+External gate: **none for current local-PDF / Human Review / Evidence Viewer work**  
 Detailed plan: `docs/architecture/accounting-document-recognition-human-review-plan.md`
 
 Two real provider-evidence cases exposed a workflow-level correctness gap rather than a remaining Phase 9 modularization defect. An Uber monthly PDF lost label/value layout when Poppler plain text was parsed, causing `Tax on Sales` to inherit the Sales amount while the source `Net Total` remained correct; because settlement planning currently proves only Journal balance, the malformed normalized document could still reach READY. A separate Fantuan Summary Adjustment correctly failed closed until a Detail workbook was supplied, but also demonstrated that the operator cannot create a durable reviewed resolution when machine extraction or semantic mapping needs human intervention.
@@ -362,10 +362,12 @@ Target:
 - distinguish extraction correction, semantic classification and supplementary evidence;
 - bind Shadow Preview/replay authority to the exact reviewed revision/hash;
 - keep XLSX/CSV on native structured parsers and converge PDF/image recognition behind an Accounting-owned extraction boundary;
-- benchmark current Poppler/Textract/Tesseract against PaddleOCR/PP-StructureV3 and BDA on SanQ ground truth before any recognition-engine cutover;
-- do not adopt Paddle/BDA, add dependencies, or introduce suspense accounting merely from this planning decision.
+- keep native-text PDFs local-first with Poppler text+bbox; treat scanned PDFs as a bounded local page-rasterization problem and call synchronous Textract per rendered image page, then merge page-aware extraction evidence;
+- do not introduce S3/async Textract, Paddle/BDA or a new OCR dependency for the normal path without a new explicit architecture decision;
+- unify source-evidence access behind authenticated `artifactStableId` delivery so normal inspection opens an online viewer and downloading is an explicit operator action; PDF/image preview lands before bounded CSV/XLSX structured preview;
+- do not introduce suspense accounting merely from this planning decision.
 
-The first implementation slice is intentionally smaller than the full redesign: **control-total fail-closed + the real Uber layout regression fixture, with no schema or dependency change**. Human Review Revision persistence follows as an expand-contract Accounting change and is expected to require a Prisma migration. Any Paddle runtime adoption requires separate dependency/runtime authorization.
+The original implementation sequence through layout-aware Slice 3 is now merged. The historical Uber July document has already been Human-Reviewed/corrected and posted, so later Poppler golden verification must remain read-only and must not reopen that Journal/settlement. The next recognition work is Slice 3V local-PDF verification/routing hardening. In parallel, Evidence Viewer Slice 1 is an Accounting-internal read-boundary/UI change with no schema or dependency change.
 
 ### 5.2 B1 — Expense -> canonical Journal
 

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api/client';
+import { AccountingEvidenceViewer } from '../accounting-evidence-viewer';
 import type { AccountingInboxItem } from '../contracts/inbox';
 import type { AccountingProviderFinancialDocument } from '../contracts/provider-financial';
 import type {
@@ -114,12 +115,14 @@ function StatementLines({
   );
 }
 
-function evidenceUrlFor(item: AccountingInboxItem): string | null {
-  return item.artifact.kind === 'IMAGE'
-    ? `/api/v1/accounting/inbox/artifacts/${encodeURIComponent(
-        item.artifact.artifactStableId,
-      )}/content`
-    : item.artifact.storedUrl;
+function evidenceFor(item: AccountingInboxItem) {
+  return item.artifact.storedUrl
+    ? {
+        artifactStableId: item.artifact.artifactStableId,
+        filename: item.artifact.originalFilename,
+        kind: item.artifact.kind,
+      }
+    : null;
 }
 
 function ReadOnlyFinancialDocumentCard({
@@ -133,7 +136,7 @@ function ReadOnlyFinancialDocumentCard({
   isZh: boolean;
   postingState?: ProviderSettlementPostingState;
 }) {
-  const evidenceUrl = evidenceUrlFor(item);
+  const evidence = evidenceFor(item);
   const netPayout = findSettlementNetLine(document.lines);
 
   return (
@@ -169,15 +172,13 @@ function ReadOnlyFinancialDocumentCard({
               document.documentStableId}
           </p>
         </div>
-        {evidenceUrl ? (
-          <a
-            href={evidenceUrl}
-            target="_blank"
-            rel="noreferrer"
+        {evidence ? (
+          <AccountingEvidenceViewer
+            evidence={evidence}
+            isZh={isZh}
+            label={isZh ? '查看证据' : 'Open evidence'}
             className="rounded border border-slate-300 px-3 py-2 text-sm text-blue-700"
-          >
-            {isZh ? '查看原始文件' : 'Open evidence'}
-          </a>
+          />
         ) : null}
       </div>
 
@@ -220,7 +221,7 @@ function ReadOnlyFinancialDocumentCard({
 
       <ProviderFinancialReviewPanel
         document={document}
-        evidenceUrl={evidenceUrl}
+        evidence={evidence}
         parseResult={item.artifact.parseRuns[0]?.resultJson ?? null}
         isZh={isZh}
         readOnly
@@ -862,7 +863,7 @@ export default function AccountingSettlementsPage() {
 
         <div className="space-y-5">
           {pendingStatements.map(({ item, document }) => {
-            const evidenceUrl = evidenceUrlFor(item);
+            const evidence = evidenceFor(item);
             const selectedPreview =
               preview?.documentStableId === document.documentStableId
                 ? preview.data
@@ -920,15 +921,13 @@ export default function AccountingSettlementsPage() {
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {evidenceUrl ? (
-                      <a
-                        href={evidenceUrl}
-                        target="_blank"
-                        rel="noreferrer"
+                    {evidence ? (
+                      <AccountingEvidenceViewer
+                        evidence={evidence}
+                        isZh={isZh}
+                        label={isZh ? '查看证据' : 'Open evidence'}
                         className="rounded border border-slate-300 px-3 py-2 text-sm text-blue-700"
-                      >
-                        {isZh ? '查看原始文件' : 'Open evidence'}
-                      </a>
+                      />
                     ) : null}
                     <button
                       type="button"
@@ -1028,7 +1027,7 @@ export default function AccountingSettlementsPage() {
 
                 <ProviderFinancialReviewPanel
                   document={document}
-                  evidenceUrl={evidenceUrl}
+                  evidence={evidence}
                   parseResult={item.artifact.parseRuns[0]?.resultJson ?? null}
                   isZh={isZh}
                   controlTotalChecks={selectedPlan?.controlTotalChecks ?? []}

@@ -1,3 +1,5 @@
+import type { AccountingInboxItem } from './inbox';
+
 export type AccountingExpenseDocument = {
   documentStableId: string;
   source: 'MANUAL' | 'GMAIL';
@@ -9,6 +11,11 @@ export type AccountingExpenseDocument = {
   currency: string;
   emailSubject: string | null;
   attachmentUrls: string[];
+  sourceEvidence: {
+    artifactStableId: string;
+    kind: AccountingInboxItem['artifact']['kind'];
+    originalFilename: string | null;
+  } | null;
   extractedText: string | null;
   extraction: unknown;
   memo: string | null;

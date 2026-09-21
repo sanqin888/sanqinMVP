@@ -1,9 +1,11 @@
 'use client';
 
+import { AccountingEvidenceViewer } from '../accounting-evidence-viewer';
 import type { AccountingFinancialProvider } from '../contracts/core';
 import type {
   AccountingInboxClassification,
   AccountingInboxItem,
+  AccountingManualUploadPermanentDeleteResult,
 } from '../contracts/inbox';
 import { ProviderFinancialReviewPanel } from '../provider-financial-review-panel';
 import { latestParse, money } from './inbox-model';
@@ -27,6 +29,10 @@ type Props = {
   onConfirmProviderFinancial: (item: AccountingInboxItem) => Promise<void>;
   onConfirmOther: (item: AccountingInboxItem) => Promise<void>;
   onDiscard: (item: AccountingInboxItem) => Promise<void>;
+  permanentDeleteCapabilities: ReadonlyMap<string, boolean>;
+  onEvidenceDeleted: (
+    result: AccountingManualUploadPermanentDeleteResult,
+  ) => Promise<void>;
 };
 
 const providerOptions: Array<{
@@ -53,6 +59,8 @@ export function AccountingInboxItemsList({
   onConfirmProviderFinancial,
   onConfirmOther,
   onDiscard,
+  permanentDeleteCapabilities,
+  onEvidenceDeleted,
 }: Props) {
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -79,10 +87,22 @@ export function AccountingInboxItemsList({
             item.artifact.senderEmail ||
             item.artifact.kind;
           const quarantined = item.status === 'QUARANTINED';
-          const evidenceUrl =
-            item.artifact.kind === 'IMAGE'
-              ? `/api/v1/accounting/inbox/artifacts/${encodeURIComponent(item.artifact.artifactStableId)}/content`
-              : item.artifact.storedUrl;
+          const manualUploadDeleteCapability =
+            permanentDeleteCapabilities.get(item.inboxItemStableId);
+          const evidence = item.artifact.storedUrl
+            ? {
+                artifactStableId: item.artifact.artifactStableId,
+                filename: item.artifact.originalFilename,
+                kind: item.artifact.kind,
+                deletion:
+                  manualUploadDeleteCapability === undefined
+                    ? null
+                    : {
+                        inboxItemStableId: item.inboxItemStableId,
+                        canPermanentDelete: manualUploadDeleteCapability,
+                      },
+              }
+            : null;
           const classificationLocked =
             quarantined ||
             item.status !== 'PENDING_REVIEW' ||
@@ -336,15 +356,14 @@ export function AccountingInboxItemsList({
                     <strong>{money(parse.totalCents)}</strong>
                   </p>
                 ) : null}
-                {evidenceUrl ? (
-                  <a
+                {evidence ? (
+                  <AccountingEvidenceViewer
+                    evidence={evidence}
+                    isZh={isZh}
+                    onDeleted={onEvidenceDeleted}
+                    label={isZh ? '查看证据' : 'Open evidence'}
                     className="text-blue-600 hover:underline"
-                    href={evidenceUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {isZh ? '查看原始文件' : 'Open evidence'}
-                  </a>
+                  />
                 ) : item.artifact.bodyText ? (
                   <details>
                     <summary className="cursor-pointer text-blue-600">
@@ -439,7 +458,7 @@ export function AccountingInboxItemsList({
                 <div className="lg:col-span-3">
                   <ProviderFinancialReviewPanel
                     document={financial}
-                    evidenceUrl={evidenceUrl}
+                    evidence={evidence}
                     parseResult={parse}
                     isZh={isZh}
                   />

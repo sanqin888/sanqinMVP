@@ -26,6 +26,10 @@ import {
   type AuthedAccountingRequest,
   requireAccountingOperatorUserId,
 } from './accounting-controller-support';
+import {
+  AccountingArtifactDeliveryService,
+  accountingArtifactContentDisposition,
+} from './accounting-artifact-delivery.service';
 import { AccountingImageRetentionService } from './accounting-image-retention.service';
 import type { AccountingImageRetentionProfile } from './accounting-receipt-image';
 import { getAccountingUploadsDir } from './accounting-storage-path';
@@ -37,6 +41,7 @@ export class AccountingInboxArtifactsController {
   constructor(
     private readonly acquisition: AccountingInboxAcquisitionService,
     private readonly imageRetention: AccountingImageRetentionService,
+    private readonly artifactDelivery: AccountingArtifactDeliveryService,
   ) {}
 
   @Post('inbox/artifacts')
@@ -96,10 +101,19 @@ export class AccountingInboxArtifactsController {
     @Res() res: Response,
   ) {
     const resolved =
-      await this.imageRetention.resolveArtifactContent(artifactStableId);
-    res.setHeader('Content-Type', resolved.mimeType);
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Cache-Control', 'private, no-store');
+      await this.artifactDelivery.resolveArtifactContent(artifactStableId);
+    this.setArtifactDeliveryHeaders(res, resolved, 'inline');
+    return res.sendFile(resolved.filePath);
+  }
+
+  @Get('inbox/artifacts/:artifactStableId/download')
+  async accountingInboxArtifactDownload(
+    @Param('artifactStableId') artifactStableId: string,
+    @Res() res: Response,
+  ) {
+    const resolved =
+      await this.artifactDelivery.resolveArtifactContent(artifactStableId);
+    this.setArtifactDeliveryHeaders(res, resolved, 'attachment');
     return res.sendFile(resolved.filePath);
   }
 
@@ -112,6 +126,22 @@ export class AccountingInboxArtifactsController {
       inboxItemStableId,
       requireAccountingOperatorUserId(req),
     );
+  }
+
+  private setArtifactDeliveryHeaders(
+    res: Response,
+    resolved: Awaited<
+      ReturnType<AccountingArtifactDeliveryService['resolveArtifactContent']>
+    >,
+    disposition: 'inline' | 'attachment',
+  ) {
+    res.setHeader('Content-Type', resolved.mimeType);
+    res.setHeader(
+      'Content-Disposition',
+      accountingArtifactContentDisposition(disposition, resolved.filename),
+    );
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'private, no-store');
   }
 
   @Get('files/:kind/:fileName')

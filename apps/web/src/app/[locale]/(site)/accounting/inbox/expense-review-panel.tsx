@@ -8,6 +8,7 @@ import {
   useState,
 } from 'react';
 import { apiFetch } from '@/lib/api/client';
+import { AccountingEvidenceViewer } from '../accounting-evidence-viewer';
 import {
   ExpensePaymentAllocationsEditor,
   expensePaymentAllocationErrorMessage,
@@ -16,7 +17,10 @@ import {
   type ExpensePaymentAllocationDraft,
 } from '../expense-payment-allocations';
 import type { AccountingAccount, AccountingCategory } from '../contracts/chart';
-import type { AccountingInboxItem } from '../contracts/inbox';
+import type {
+  AccountingInboxItem,
+  AccountingManualUploadPermanentDeleteResult,
+} from '../contracts/inbox';
 import {
   type AccountingExpenseReviewRow,
   latestParse,
@@ -34,6 +38,10 @@ type Props = {
   isZh: boolean;
   onClose: () => void;
   onConfirmed: (item: AccountingInboxItem) => Promise<void>;
+  canPermanentDelete: boolean;
+  onEvidenceDeleted: (
+    result: AccountingManualUploadPermanentDeleteResult,
+  ) => Promise<void>;
 };
 
 type QuickTaxMode = 'EXEMPT' | 'HST13';
@@ -76,6 +84,8 @@ export function AccountingInboxExpenseReviewPanel({
   isZh,
   onClose,
   onConfirmed,
+  canPermanentDelete,
+  onEvidenceDeleted,
 }: Props) {
   const [date, setDate] = useState('');
   const [total, setTotal] = useState('');
@@ -364,10 +374,20 @@ export function AccountingInboxExpenseReviewPanel({
       : null);
   const showCurrencyWarning =
     ambiguousCurrencyEvidence || foreignCurrencyWarning !== null;
-  const evidenceUrl =
-    item.artifact.kind === 'IMAGE'
-      ? `/api/v1/accounting/inbox/artifacts/${encodeURIComponent(item.artifact.artifactStableId)}/content`
-      : item.artifact.storedUrl;
+  const evidence = item.artifact.storedUrl
+    ? {
+        artifactStableId: item.artifact.artifactStableId,
+        filename: item.artifact.originalFilename,
+        kind: item.artifact.kind,
+        deletion:
+          item.artifact.acquisitionMode === 'MANUAL_UPLOAD'
+            ? {
+                inboxItemStableId: item.inboxItemStableId,
+                canPermanentDelete,
+              }
+            : null,
+      }
+    : null;
 
   return (
     <section className="rounded-xl border border-amber-200 bg-amber-50 p-5">
@@ -835,15 +855,14 @@ export function AccountingInboxExpenseReviewPanel({
               ? '确认并入账'
               : 'Confirm and post'}
         </button>
-        {evidenceUrl ? (
-          <a
+        {evidence ? (
+          <AccountingEvidenceViewer
+            evidence={evidence}
+            isZh={isZh}
+            onDeleted={onEvidenceDeleted}
+            label={isZh ? '查看凭证' : 'Open source'}
             className="rounded border bg-white px-4 py-2 text-sm text-blue-600"
-            href={evidenceUrl}
-            target="_blank"
-            rel="noreferrer"
-          >
-            {isZh ? '打开原始文件' : 'Open original file'}
-          </a>
+          />
         ) : null}
       </div>
     </section>
