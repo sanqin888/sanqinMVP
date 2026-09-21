@@ -24,10 +24,12 @@ const confirmedExpense = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-const makeService = (params: {
-  documents?: Array<Record<string, unknown>>;
-  journals?: Array<Record<string, unknown>>;
-} = {}) => {
+const makeService = (
+  params: {
+    documents?: Array<Record<string, unknown>>;
+    journals?: Array<Record<string, unknown>>;
+  } = {},
+) => {
   const prisma = {
     accountingExpenseDocument: {
       findMany: jest.fn().mockResolvedValue(params.documents ?? []),
