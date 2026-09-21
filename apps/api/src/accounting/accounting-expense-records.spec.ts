@@ -16,6 +16,7 @@ describe('Accounting Expense record search', () => {
     const service = new AccountingExpenseService(
       prisma as never,
       period as never,
+      {} as never,
     );
 
     const result = await service.listExpenseRecords({
@@ -55,7 +56,11 @@ describe('Accounting Expense record search', () => {
   });
 
   it('rejects mutually exclusive payment-account filters', async () => {
-    const service = new AccountingExpenseService({} as never, {} as never);
+    const service = new AccountingExpenseService(
+      {} as never,
+      {} as never,
+      {} as never,
+    );
 
     await expect(
       service.listExpenseRecords({

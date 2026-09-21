@@ -36,10 +36,11 @@ export type AccountingExpenseDocument = {
     sortOrder: number;
   }>;
   splits: Array<{
-    txStableId: string;
+    splitStableId: string;
     categoryStableId: string;
     categoryName: string;
     amountCents: number;
     taxCents: number;
+    sortOrder: number;
   }>;
 };

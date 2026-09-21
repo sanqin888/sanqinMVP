@@ -141,7 +141,7 @@ export function ExpensePaymentCompletionForm({
         <div className="mt-2 space-y-2">
           {document.splits.map((split) => (
             <div
-              key={split.txStableId}
+              key={split.splitStableId}
               className="grid gap-2 rounded border bg-slate-100 p-3 text-sm sm:grid-cols-3"
             >
               <div>

@@ -9,6 +9,7 @@ import { createId } from '@paralleldrive/cuid2';
 import { Prisma } from '@prisma/client';
 import { ACCOUNTING_DB, type AccountingDb } from './accounting-db';
 import {
+  AccountingDocumentStatus,
   AccountingJournalEntryKind,
   AccountingJournalSource,
   AccountingProviderFinancialReviewStatus,
@@ -31,6 +32,13 @@ import {
   type CanonicalChangeJournalWriteAuthorityV1,
 } from './accounting-canonical-change-write-authority';
 import { CANONICAL_SALE_SOURCE_FACT_TYPE } from './accounting-canonical-sale-journal.policy';
+import {
+  assertCanonicalExpenseJournalAuthority,
+  hashCanonicalExpenseJournalWrite,
+  hashCanonicalExpenseJournalWriteAuthority,
+  normalizeCanonicalExpenseJournalWriteAuthority,
+  type CanonicalExpenseJournalWriteAuthorityV1,
+} from './accounting-expense-journal-write-authority';
 import {
   buildProviderSettlementJournalWriteAuthority,
   hashProviderSettlementJournalWrite,
@@ -206,6 +214,11 @@ export class AccountingJournalService {
     input: AccountingJournalCreateInput,
     operatorActorRef: string,
   ): Promise<AccountingJournalRow> {
+    if (input.source === AccountingJournalSource.EXPENSE_DOCUMENT) {
+      throw new BadRequestException(
+        'canonical Expense Journals require Expense-specific write authority',
+      );
+    }
     return this.createJournalEntryInternal(input, operatorActorRef, null);
   }
 
@@ -222,6 +235,49 @@ export class AccountingJournalService {
       operatorActorRef,
       normalizedAuthority,
     );
+  }
+
+  async createCanonicalExpenseJournalEntryInTx(
+    input: AccountingJournalCreateInput,
+    operatorActorRef: string,
+    authority: CanonicalExpenseJournalWriteAuthorityV1,
+    tx: Prisma.TransactionClient,
+  ): Promise<AccountingJournalRow> {
+    const normalizedAuthority = this.applyJournalPolicy(() =>
+      normalizeCanonicalExpenseJournalWriteAuthority(authority),
+    );
+    const normalized = this.applyJournalPolicy(() =>
+      normalizeJournalCreate(input),
+    );
+    this.applyJournalPolicy(() =>
+      assertCanonicalExpenseJournalAuthority(normalized, normalizedAuthority),
+    );
+    await this.assertCanonicalExpenseAuthorityInTx(normalizedAuthority, tx);
+
+    const operator = this.requireJournalValue(
+      operatorActorRef,
+      'operatorActorRef',
+    );
+    const timezone = await this.period.getBusinessTimezone();
+    const journal = await this.createPreparedJournalEntryInTx(
+      {
+        normalized,
+        idempotencyHash: hashCanonicalExpenseJournalWrite(
+          normalized,
+          normalizedAuthority,
+        ),
+        auditAuthority: normalizedAuthority as unknown as Prisma.InputJsonValue,
+      },
+      operator,
+      tx,
+      timezone,
+    );
+    if (journal.deletedAt) {
+      throw new ConflictException(
+        'canonical Expense Journal was deleted and cannot be replayed',
+      );
+    }
+    return journal;
   }
 
   async createPayrollRunAccrualJournalInTx(
@@ -627,6 +683,11 @@ export class AccountingJournalService {
       if (!existing || existing.deletedAt) {
         throw new NotFoundException('Journal entry not found');
       }
+      if (existing.source === AccountingJournalSource.EXPENSE_DOCUMENT) {
+        throw new ConflictException(
+          'canonical Expense Journals cannot be updated in place',
+        );
+      }
       const existingDbId = existing.id;
       const existingPublic = this.toJournalPublic(existing);
 
@@ -738,6 +799,11 @@ export class AccountingJournalService {
       });
       if (!existing || existing.deletedAt) {
         throw new NotFoundException('Journal entry not found');
+      }
+      if (existing.source === AccountingJournalSource.EXPENSE_DOCUMENT) {
+        throw new ConflictException(
+          'canonical Expense Journals cannot be deleted in place',
+        );
       }
 
       await this.period.assertOnOrAfterAccountingStartDate(
@@ -1420,6 +1486,96 @@ export class AccountingJournalService {
           `Payroll employee payment account authority changed before posting: ${prerequisite.accountStableId}`,
         );
       }
+    }
+  }
+
+  private async assertCanonicalExpenseAuthorityInTx(
+    authority: CanonicalExpenseJournalWriteAuthorityV1,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    const document = await tx.accountingExpenseDocument.findUnique({
+      where: { documentStableId: authority.fact.documentStableId },
+      select: {
+        status: true,
+        occurredAt: true,
+        subtotalCents: true,
+        taxCents: true,
+        totalCents: true,
+        currency: true,
+        memo: true,
+        splits: {
+          orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+          select: {
+            splitStableId: true,
+            amountCents: true,
+            taxCents: true,
+            category: { select: { categoryStableId: true } },
+          },
+        },
+        paymentAllocations: {
+          orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+          select: {
+            paymentAllocationStableId: true,
+            amountCents: true,
+            account: { select: { accountStableId: true } },
+          },
+        },
+      },
+    });
+    if (
+      !document ||
+      document.status !== AccountingDocumentStatus.CONFIRMED ||
+      !document.occurredAt ||
+      document.subtotalCents == null ||
+      document.taxCents == null ||
+      document.totalCents == null
+    ) {
+      throw new ConflictException(
+        'canonical Expense authority changed before Journal posting',
+      );
+    }
+
+    let currentAuthority: CanonicalExpenseJournalWriteAuthorityV1;
+    try {
+      currentAuthority = normalizeCanonicalExpenseJournalWriteAuthority({
+        version: 1,
+        role: 'EXPENSE_DOCUMENT',
+        fact: {
+          version: 1,
+          documentStableId: authority.fact.documentStableId,
+          occurredAt: document.occurredAt.toISOString(),
+          currency: document.currency,
+          subtotalCents: document.subtotalCents,
+          taxCents: document.taxCents,
+          totalCents: document.totalCents,
+          memo: document.memo,
+          splits: document.splits.map((split) => ({
+            categoryStableId: split.category.categoryStableId,
+            amountCents: split.amountCents,
+            taxCents: split.taxCents,
+          })),
+          paymentAllocations: document.paymentAllocations.map((allocation) => ({
+            accountStableId: allocation.account.accountStableId,
+            amountCents: allocation.amountCents,
+          })),
+        },
+        splitStableIds: document.splits.map((split) => split.splitStableId),
+        paymentAllocationStableIds: document.paymentAllocations.map(
+          (allocation) => allocation.paymentAllocationStableId,
+        ),
+      });
+    } catch {
+      throw new ConflictException(
+        'canonical Expense authority changed before Journal posting',
+      );
+    }
+    if (
+      hashCanonicalExpenseJournalWriteAuthority(currentAuthority) !==
+      hashCanonicalExpenseJournalWriteAuthority(authority)
+    ) {
+      throw new ConflictException(
+        'canonical Expense authority changed before Journal posting',
+      );
     }
   }
 

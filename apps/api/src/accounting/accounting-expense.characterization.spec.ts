@@ -29,12 +29,15 @@ describe('AccountingExpenseService expense-write characterization', () => {
     createdAt: new Date('2026-09-11T14:01:00.000Z'),
     confirmedAt: new Date('2026-09-11T14:01:00.000Z'),
     paymentAllocations: [],
-    transactions: [],
+    splits: [],
   });
 
   const accounting = {
     assertOnOrAfterAccountingStartDate: jest.fn().mockResolvedValue(undefined),
     assertEditableForPeriod: jest.fn().mockResolvedValue(undefined),
+  };
+  const expenseJournalPosting = {
+    postConfirmedExpenseIfReadyInTx: jest.fn().mockResolvedValue(null),
   };
 
   beforeEach(() => {
@@ -139,6 +142,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
     const service = new AccountingExpenseService(
       prisma as never,
       accounting as never,
+      expenseJournalPosting as never,
     );
 
     const result = await service.createExpense(
@@ -277,6 +281,9 @@ describe('AccountingExpenseService expense-write characterization', () => {
       AccountingTxType.EXPENSE,
       tx,
     );
+    expect(
+      expenseJournalPosting.postConfirmedExpenseIfReadyInTx,
+    ).toHaveBeenCalledWith(tx, generatedDocumentStableId, 'user_stable_1');
     expect(result.documentStableId).toBe(generatedDocumentStableId);
   });
 
@@ -284,6 +291,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
     const service = new AccountingExpenseService(
       {} as never,
       accounting as never,
+      expenseJournalPosting as never,
     );
 
     await expect(
@@ -312,6 +320,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
     const service = new AccountingExpenseService(
       {} as never,
       accounting as never,
+      expenseJournalPosting as never,
     );
 
     await expect(
@@ -339,6 +348,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
     const service = new AccountingExpenseService(
       {} as never,
       accounting as never,
+      expenseJournalPosting as never,
     );
 
     await expect(
@@ -395,6 +405,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
     const service = new AccountingExpenseService(
       prisma as never,
       accounting as never,
+      expenseJournalPosting as never,
     );
 
     await expect(
@@ -453,6 +464,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
     const service = new AccountingExpenseService(
       prisma as never,
       accounting as never,
+      expenseJournalPosting as never,
     );
 
     await expect(
@@ -582,6 +594,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
     const service = new AccountingExpenseService(
       prisma as never,
       accounting as never,
+      expenseJournalPosting as never,
     );
 
     const result = await service.confirmUnifiedInboxExpense(
@@ -713,6 +726,9 @@ describe('AccountingExpenseService expense-write characterization', () => {
       AccountingTxType.EXPENSE,
       tx,
     );
+    expect(
+      expenseJournalPosting.postConfirmedExpenseIfReadyInTx,
+    ).toHaveBeenCalledWith(tx, createdDocumentStableId, 'user_stable_3');
     expect(result.documentStableId).toBe(createdDocumentStableId);
   });
 
@@ -795,6 +811,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
     const service = new AccountingExpenseService(
       prisma as never,
       accounting as never,
+      expenseJournalPosting as never,
     );
 
     const result = await service.confirmInboxDocument(
@@ -915,6 +932,9 @@ describe('AccountingExpenseService expense-write characterization', () => {
       AccountingTxType.EXPENSE,
       tx,
     );
+    expect(
+      expenseJournalPosting.postConfirmedExpenseIfReadyInTx,
+    ).toHaveBeenCalledWith(tx, 'inbox_doc_1', 'user_stable_2');
     expect(result.documentStableId).toBe('inbox_doc_1');
   });
 
@@ -962,6 +982,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
     const service = new AccountingExpenseService(
       prisma as never,
       accounting as never,
+      expenseJournalPosting as never,
     );
 
     await expect(
