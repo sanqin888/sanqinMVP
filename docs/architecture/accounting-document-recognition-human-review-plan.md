@@ -1,8 +1,8 @@
 # Accounting Document Recognition & Human Review Plan
 
-Status: **SLICE 0 MERGED / SLICE 1 SOURCE IMPLEMENTED / MIGRATION REQUIRED**  
+Status: **SLICE 0-2 MERGED / SLICE 3 SOURCE IMPLEMENTED / REMOTE CI PENDING**  
 Planning date: 2026-09-20  
-Audit baseline: `origin/dev@1ede0599`; Slice 1 implementation baseline: `origin/dev@bbd0b1c0`  
+Audit baseline: `origin/dev@1ede0599`; Slice 3 implementation baseline: `origin/dev@e52c44b9`  
 Owner: **Accounting / Reporting / Analytics**  
 Phase 9 status: **remains PRODUCTION VERIFIED / CLOSED — do not reopen Phase 9**
 
@@ -573,7 +573,7 @@ Scope:
 - replay binds and revalidates review authority;
 - unreviewed provider documents remain fail-closed where correction is required.
 
-Implementation status on 2026-09-20: **SOURCE IMPLEMENTED / REVIEWED LOCALLY / MIGRATION REQUIRED**.
+Implementation status on 2026-09-20: **MERGED TO DEV / CI GREEN / MIGRATION INCLUDED AND REVIEWED**.
 
 Implemented source semantics:
 
@@ -589,16 +589,8 @@ Implemented source semantics:
 - existing Fantuan supplementary evidence remains a separate evidence mechanism; if that supporting document itself has a confirmed Human Review Revision, its exact review authority is bound and revalidated too;
 - no OCR engine, parser, provider wire contract, package dependency, context direction or public SCC changes are part of Slice 1.
 
-**MIGRATION REQUIRED.** Suggested migration name:
-`accounting_provider_financial_human_review_revision`.
-
-After this schema/source PR is merged into `dev`, generate the companion migration only on the user's verified disposable/local development database:
-
-`pnpm --filter api exec prisma migrate dev --create-only --name accounting_provider_financial_human_review_revision`
-
-Expected generated SQL is additive: create the two review enums, create
-`AccountingProviderFinancialReviewRevision` and
-`AccountingProviderFinancialReviewCorrection`, their foreign keys, stable-ID/identity unique constraints and indexes. There is no existing Human Review table/data to rename or backfill. Review the generated SQL for accidental drops/renames, enum replacement instead of enum creation, unexpected cascading outside ReviewRevision -> Correction, incorrect FK targets, missing unique/index constraints, or any destructive operation. Promotion to `main` / production remains blocked until that migration is generated locally, reviewed, committed and merged back into `dev`.
+PR #2429 merged to `dev` as `1903b32a` with CI #6017 green. The user-generated migration
+`20260920150651_accounting_provider_financial_human_review_revision` was included in that PR and reviewed as additive-only: two enums, the ReviewRevision and ReviewCorrection tables, expected stable-ID/identity indexes, `ReviewRevision -> ProviderFinancialDocument` with `ON DELETE RESTRICT`, and `Correction -> ReviewRevision` with `ON DELETE CASCADE`. It contains no historical rename/backfill/drop operation.
 
 ### Slice 2 — Human Review UI
 
@@ -622,19 +614,52 @@ Provide:
 
 Accounting Web remains an adapter; all allowed mappings/invariants stay server-owned.
 
+Implementation status on 2026-09-20: **LOCAL IMPLEMENTED / REVIEW PENDING** on
+`accounting/human-review-ui-slice2`.
+
+Implemented UI behavior:
+
+- materialized pending Provider Financial evidence exposes the Human Review panel directly inside Accounting Inbox; after Inbox confirmation, a handoff link jumps to the same document in Provider Settlements, where unposted statements remain editable;
+- the panel lazily loads versioned review history and shows original evidence access, machine recognition engine/confidence when available, immutable machine values, the current confirmed effective values and correction reasons side-by-side;
+- operators can create a full replacement review revision using `EXTRACTION_CORRECTION` or `SEMANTIC_CLASSIFICATION`, add per-line/revision notes, save a DRAFT and explicitly confirm the exact hash-bound draft;
+- money editing stays in exact decimal-string -> integer-cent conversion in the Web adapter; server policy remains authoritative for allowed edits/invariants;
+- current Shadow control-total reconciliation is shown next to reviewed values when a Preview exists;
+- confirming a review immediately invalidates the client-held Shadow Preview and requires a fresh Preview before replay, while server-side stale-authority rejection remains the final safety boundary;
+- review history remains visible on posted/supporting documents, but editing is intentionally disabled there in Slice 2. Supporting-evidence mutation after a parent settlement is posted needs a separate lifecycle audit before the UI exposes it;
+- the existing oversized Settlements page is not given the editor responsibility directly: review model, comparison, editor, history and orchestration are split into cohesive feature components;
+- no API route, Prisma schema/migration, OCR engine, package dependency or Accounting policy change is introduced by Slice 2.
+
 ### Slice 3 — Layout-aware extraction boundary using existing stack
 
 Goal: stop provider parsing from depending only on flattened text.
 
-First use current installed capabilities where practical:
+Source implementation on `origin/dev@e52c44b9`:
 
-- retain Poppler native PDF extraction;
-- capture/normalize layout/geometry where possible;
-- retain Textract geometry evidence instead of flattening it immediately;
-- converge image/PDF recognition onto one Accounting-owned extraction contract;
-- keep current Textract/Tesseract behavior as compatibility during shadow comparison.
+- adds an Accounting-owned versioned `AccountingDocumentExtraction` contract with bounded
+  page/line text, optional normalized geometry, engine identity, confidence and truncation
+  metadata;
+- retains the existing Poppler native-text path and adds `pdftotext -bbox-layout` as an
+  optional layout pass, falling back to the existing text-only result if the layout pass is
+  unavailable;
+- retains Textract `LINE` geometry/confidence instead of discarding it after text flattening;
+- represents the existing Tesseract fallback through the same contract as text-only evidence;
+- persists extraction evidence in the existing parse-run JSON and revalidates that evidence
+  before operator confirmation/materialization; malformed persisted layout evidence fails
+  closed rather than silently degrading;
+- upgrades the provider-financial parser to v4 and makes the known Uber monthly-statement
+  label/value path layout-aware. A label with geometry must resolve to an inline value or a
+  same-row value to its right; if the label is present but cannot be paired reliably, that
+  field is omitted and the downstream control-total gate remains authoritative;
+- records the exact label/value line evidence used for a layout-derived provider line in its
+  immutable machine `rawPayload`, preserving page, bbox, confidence and engine identity;
+- pins the observed July Uber failure shape so `Sales = 260336` and
+  `Tax on Sales = 33848` instead of allowing flattened Poppler order to duplicate Sales;
+- does not change Clover/Fantuan parsing semantics in this slice and does not add a new OCR
+  runtime, package dependency, Prisma model/migration, provider wire contract or context edge.
 
-No new OCR dependency is required for the first version of this boundary.
+The current recognition ordering remains unchanged: native PDF uses Poppler first; scanned PDF
+may use the existing Textract fallback; images use Textract when enabled with Tesseract fallback.
+Slice 4 remains responsible for benchmark-based engine selection.
 
 ### Slice 4 — Recognition benchmark: existing vs Paddle vs BDA
 
@@ -704,21 +729,24 @@ Do not use suspense as a generic bypass for missing evidence.
 
 ## 12. Recovery of the current Uber July document
 
-Until Slice 0/1 is implemented:
+The already-materialized malformed July document remains immutable machine evidence. Do not
+silently rewrite its stored parser output merely because Slice 3 can now extract the source
+layout correctly.
 
-- do not replay the incorrect July provider plan;
-- preserve the original PDF and current machine extraction as audit evidence.
+For that existing document:
 
-After Human Review Revision exists:
+1. keep the original PDF and machine extraction as audit evidence;
+2. create an `EXTRACTION_CORRECTION` Human Review Revision against the existing document;
+3. set Tax on Sales to `33848` cents with a source-evidence correction reason;
+4. run control-total reconciliation;
+5. require a fresh Shadow Preview;
+6. confirm that provider pending equals `143194` cents;
+7. only then permit replay.
 
-1. create an extraction correction against the existing source document;
-2. set Tax on Sales to `33848` cents with a source-evidence correction reason;
-3. run control-total reconciliation;
-4. require a fresh Shadow Preview;
-5. confirm that provider pending equals `143194` cents;
-6. only then permit replay.
-
-No direct database edit and no silent overwrite of the original parsed lines is required.
+For a newly acquired/reprocessed copy of the source after Slice 3, Poppler layout evidence is
+available to pair the Sales and Tax-on-Sales rows correctly before materialization. That does
+not authorize overwriting the historical machine revision or bypassing Human Review authority
+on the existing document.
 
 ## 13. Testing requirements
 

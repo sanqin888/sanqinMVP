@@ -8,6 +8,14 @@ jest.mock('./accounting-pdf-extractor', () => {
       Promise.resolve({
         text: '',
         extraction: actual.extractAccountingText(''),
+        documentExtraction: {
+          version: 1 as const,
+          inputKind: 'PDF' as const,
+          engine: 'POPPLER' as const,
+          layoutMode: 'TEXT_ONLY' as const,
+          truncated: false,
+          lines: [],
+        },
       }),
     ),
   };
@@ -95,6 +103,14 @@ describe('AccountingInboxAcquisitionService', () => {
     pdfExtraction.mockResolvedValue({
       text: '',
       extraction: extractAccountingText(''),
+      documentExtraction: {
+        version: 1,
+        inputKind: 'PDF',
+        engine: 'POPPLER',
+        layoutMode: 'TEXT_ONLY',
+        truncated: false,
+        lines: [],
+      },
     });
     textractEnabled.mockReset();
     textractEnabled.mockReturnValue(false);
@@ -224,6 +240,20 @@ describe('AccountingInboxAcquisitionService', () => {
     pdfExtraction.mockResolvedValue({
       text: nativeText,
       extraction: extractAccountingText(nativeText),
+      documentExtraction: {
+        version: 1,
+        inputKind: 'PDF',
+        engine: 'POPPLER',
+        layoutMode: 'TEXT_ONLY',
+        truncated: false,
+        lines: nativeText.split('\n').map((text, index) => ({
+          lineId: `p1-l${index + 1}`,
+          page: 1,
+          text,
+          confidence: null,
+          geometry: null,
+        })),
+      },
     });
 
     await service.acquireManualFile({
@@ -254,6 +284,20 @@ describe('AccountingInboxAcquisitionService', () => {
     textractPdfRecognition.mockResolvedValue({
       text: textractText,
       extraction: extractAccountingText(textractText),
+      documentExtraction: {
+        version: 1,
+        inputKind: 'PDF',
+        engine: 'AWS_TEXTRACT',
+        layoutMode: 'TEXT_ONLY',
+        truncated: false,
+        lines: textractText.split('\n').map((text, index) => ({
+          lineId: `p1-l${index + 1}`,
+          page: 1,
+          text,
+          confidence: 99,
+          geometry: null,
+        })),
+      },
       evidence: {
         provider: 'AWS_TEXTRACT_ANALYZE_EXPENSE',
         modelVersion: '1.0',
@@ -298,6 +342,10 @@ describe('AccountingInboxAcquisitionService', () => {
     expect(providerFinancial.parseForInboxSuggestion).toHaveBeenCalledWith(
       expect.objectContaining({
         text: textractText,
+        documentExtraction: expect.objectContaining({
+          engine: 'AWS_TEXTRACT',
+          inputKind: 'PDF',
+        }) as unknown,
       }),
     );
     expect(operations.recordInboxParseRun).toHaveBeenCalledWith(
@@ -307,6 +355,10 @@ describe('AccountingInboxAcquisitionService', () => {
           textRecognitionEngine: 'AWS_TEXTRACT',
           totalCents: 2000,
           sourceCurrency: 'USD',
+          documentExtraction: expect.objectContaining({
+            engine: 'AWS_TEXTRACT',
+            inputKind: 'PDF',
+          }) as unknown,
           textractEvidence: expect.objectContaining({
             provider: 'AWS_TEXTRACT_ANALYZE_EXPENSE',
             submittedDocument: {
@@ -472,6 +524,27 @@ describe('AccountingInboxAcquisitionService', () => {
         requiresSplit: false,
         textLength: 73,
       },
+      documentExtraction: {
+        version: 1,
+        inputKind: 'IMAGE',
+        engine: 'AWS_TEXTRACT',
+        layoutMode: 'GEOMETRY',
+        truncated: false,
+        lines: [
+          {
+            lineId: 'p1-l1',
+            page: 1,
+            text: 'FOODY MART',
+            confidence: 99,
+            geometry: {
+              left: 0.2,
+              top: 0.05,
+              width: 0.6,
+              height: 0.02,
+            },
+          },
+        ],
+      },
       evidence: {
         provider: 'AWS_TEXTRACT_ANALYZE_EXPENSE',
         modelVersion: '1.0',
@@ -560,11 +633,16 @@ describe('AccountingInboxAcquisitionService', () => {
       expect.objectContaining({
         artifactStableId: 'acctart_image',
         text: expect.stringContaining('Total after Tax 42.38') as unknown,
+        documentExtraction: expect.objectContaining({
+          engine: 'AWS_TEXTRACT',
+          inputKind: 'IMAGE',
+          layoutMode: 'GEOMETRY',
+        }) as unknown,
       }),
     );
     expect(operations.recordInboxParseRun).toHaveBeenCalledWith(
       expect.objectContaining({
-        parserVersion: '3',
+        parserVersion: '4',
         status: AccountingParseStatus.SUCCESS,
         resultJson: expect.objectContaining({
           inputKind: 'IMAGE',
@@ -572,6 +650,10 @@ describe('AccountingInboxAcquisitionService', () => {
           ocrStatus: 'SUCCESS',
           totalCents: 4238,
           sourceCurrency: null,
+          documentExtraction: expect.objectContaining({
+            engine: 'AWS_TEXTRACT',
+            layoutMode: 'GEOMETRY',
+          }) as unknown,
           textractEvidence: expect.objectContaining({
             provider: 'AWS_TEXTRACT_ANALYZE_EXPENSE',
             currencySuggestion: {
@@ -619,11 +701,16 @@ describe('AccountingInboxAcquisitionService', () => {
     expect(imageOcr).toHaveBeenCalledWith(original);
     expect(operations.recordInboxParseRun).toHaveBeenCalledWith(
       expect.objectContaining({
-        parserVersion: '2',
+        parserVersion: '4',
         status: AccountingParseStatus.SUCCESS,
         resultJson: expect.objectContaining({
           ocrEngine: 'TESSERACT',
           ocrFallbackFrom: 'AWS_TEXTRACT',
+          documentExtraction: expect.objectContaining({
+            inputKind: 'IMAGE',
+            engine: 'TESSERACT',
+            layoutMode: 'TEXT_ONLY',
+          }) as unknown,
         }) as unknown,
       }) as unknown,
     );

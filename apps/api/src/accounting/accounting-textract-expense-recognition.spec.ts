@@ -32,6 +32,7 @@ function line(text: string, top: number) {
     BlockType: 'LINE',
     Text: text,
     Page: 1,
+    Confidence: 98.5,
     Geometry: {
       BoundingBox: {
         Left: 0.2,
@@ -153,6 +154,30 @@ describe('Accounting Textract expense recognition', () => {
         sourceCurrency: null,
         sourceCurrencyEvidence: 'UNKNOWN',
       }),
+    );
+    expect(result.documentExtraction).toEqual(
+      expect.objectContaining({
+        version: 1,
+        inputKind: 'IMAGE',
+        engine: 'AWS_TEXTRACT',
+        layoutMode: 'GEOMETRY',
+        truncated: false,
+      }),
+    );
+    expect(result.documentExtraction.lines[0]).toEqual(
+      expect.objectContaining({
+        lineId: 'p1-l1',
+        text: 'FOODY MART SUPERMARKET',
+        confidence: 98.5,
+      }),
+    );
+    expect(result.documentExtraction.lines[0]?.geometry?.left).toBeCloseTo(0.2);
+    expect(result.documentExtraction.lines[0]?.geometry?.top).toBeCloseTo(0.05);
+    expect(result.documentExtraction.lines[0]?.geometry?.width).toBeCloseTo(
+      0.6,
+    );
+    expect(result.documentExtraction.lines[0]?.geometry?.height).toBeCloseTo(
+      0.02,
     );
     expect(result.evidence).toEqual(
       expect.objectContaining({
@@ -408,6 +433,13 @@ describe('Accounting Textract expense recognition', () => {
         date: '2026-09-16',
         totalCents: 2000,
         sourceCurrency: 'USD',
+      }),
+    );
+    expect(result.documentExtraction).toEqual(
+      expect.objectContaining({
+        inputKind: 'PDF',
+        engine: 'AWS_TEXTRACT',
+        layoutMode: 'GEOMETRY',
       }),
     );
     expect(result.evidence.submittedDocument).toEqual({

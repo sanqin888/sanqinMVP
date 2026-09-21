@@ -1,9 +1,9 @@
 # Post-Modularization Accounting Product Roadmap
 
-Status: **PLANNED / START GATE SATISFIED — DO NOT REOPEN PHASE 9**  
+Status: **B0 IN PROGRESS — SLICE 0-2 MERGED / SLICE 3 SOURCE IMPLEMENTED — DO NOT REOPEN PHASE 9**  
 Planning date: 2026-09-20  
 Baseline: Phase 9 **PRODUCTION VERIFIED / CLOSED** at production `main@dbea68f3`  
-Document-recognition audit baseline: `origin/dev@1ede0599`
+Document-recognition audit baseline: `origin/dev@1ede0599`; Slice 3 baseline: `origin/dev@e52c44b9`
 
 ## 1. Purpose and placement
 
@@ -76,7 +76,7 @@ Detailed design and audit: `docs/architecture/accounting-document-recognition-hu
 This work package is now **P0 Accounting correctness** and should be completed before new
 financial-feature work that depends on provider settlement authority.
 
-State: **Slice 0 merged in PR #2428 (`bbd0b1c0`); Slice 1 Human Review Revision source implemented locally / migration required / not yet production-promotable**.
+State: **Slice 0 merged in PR #2428 (`bbd0b1c0`); Slice 1 Human Review Revision + migration merged in PR #2429 (`1903b32a`, CI #6017 green); Slice 2 Human Review UI local implemented / review pending**.
 
 Baseline audited state before Slice 0:
 
@@ -99,7 +99,10 @@ Required order:
 3. **Slice 2:** Accounting Inbox/Settlement review UI for source vs machine vs reviewed
    effective values;
 4. **Slice 3:** layout-aware provider-neutral document extraction boundary using current
-   installed capabilities first;
+   installed capabilities first — **source implemented on `origin/dev@e52c44b9`**, with
+   Poppler bbox/Textract geometry normalized into an Accounting-owned extraction contract,
+   Tesseract retained as text-only fallback, and the observed Uber July label/value regression
+   pinned without adding a dependency/schema change;
 5. **Slice 4:** SanQ ground-truth benchmark of current stack vs PaddleOCR/PP-StructureV3,
    Textract and BDA;
 6. **Slice 5:** optional recognition-engine cutover only after benchmark and explicit

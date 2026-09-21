@@ -2,8 +2,14 @@ import {
   AnalyzeExpenseCommand,
   TextractClient,
   type AnalyzeExpenseCommandOutput,
+  type Block as TextractBlock,
 } from '@aws-sdk/client-textract';
 import sharp from 'sharp';
+import {
+  ACCOUNTING_DOCUMENT_EXTRACTION_POLICY,
+  createTextOnlyAccountingDocumentExtraction,
+  type AccountingDocumentExtraction,
+} from './accounting-document-extraction';
 import { analyzeAccountingReceiptImageGeometry } from './accounting-image-ocr';
 import {
   extractAccountingText,
@@ -87,6 +93,7 @@ export type AccountingTextractExpenseEvidence = {
 export type AccountingTextractExpenseRecognition = {
   text: string;
   extraction: AccountingPdfExtraction;
+  documentExtraction: AccountingDocumentExtraction;
   evidence: AccountingTextractExpenseEvidence;
 };
 
@@ -150,7 +157,11 @@ function mapTextractExpenseResponse(
     throw new Error('Accounting Textract returned no expense document');
   }
 
-  const text = extractTextractDocumentText(document);
+  const documentExtraction = extractTextractDocumentExtraction(
+    document,
+    submittedDocument.kind,
+  );
+  const text = documentExtraction.lines.map((line) => line.text).join('\n');
   const generic = extractAccountingText(text);
   const summaryFields = document.SummaryFields ?? [];
   const subtotal = selectSummaryField(summaryFields, 'SUBTOTAL');
@@ -214,6 +225,7 @@ function mapTextractExpenseResponse(
   return {
     text,
     extraction,
+    documentExtraction,
     evidence: {
       provider: 'AWS_TEXTRACT_ANALYZE_EXPENSE',
       modelVersion: null,
@@ -348,32 +360,32 @@ async function prepareAccountingTextractReceiptImage(buffer: Buffer): Promise<{
   };
 }
 
-function extractTextractDocumentText(
-  document: TextractExpenseDocument,
-): string {
-  const lines = (document.Blocks ?? [])
-    .flatMap((block) => {
-      const text = block.BlockType === 'LINE' ? (block.Text?.trim() ?? '') : '';
-      return text
-        ? [
-            {
-              text,
-              page: block.Page ?? 0,
-              top: block.Geometry?.BoundingBox?.Top ?? 0,
-              left: block.Geometry?.BoundingBox?.Left ?? 0,
-            },
-          ]
-        : [];
-    })
-    .sort(
-      (left, right) =>
-        left.page - right.page ||
-        left.top - right.top ||
-        left.left - right.left,
-    )
-    .map((line) => line.text);
-  if (lines.length) return lines.join('\n');
+function normalizedTextractGeometry(
+  block: TextractBlock,
+): AccountingDocumentExtraction['lines'][number]['geometry'] {
+  const box = block.Geometry?.BoundingBox;
+  if (
+    box?.Left == null ||
+    box.Top == null ||
+    box.Width == null ||
+    box.Height == null
+  ) {
+    return null;
+  }
+  const left = Math.max(0, Math.min(1, box.Left));
+  const top = Math.max(0, Math.min(1, box.Top));
+  const right = Math.max(left, Math.min(1, box.Left + box.Width));
+  const bottom = Math.max(top, Math.min(1, box.Top + box.Height));
+  if (right <= left || bottom <= top) return null;
+  return {
+    left,
+    top,
+    width: right - left,
+    height: bottom - top,
+  };
+}
 
+function textractFallbackText(document: TextractExpenseDocument): string {
   const fallback: string[] = [];
   for (const field of document.SummaryFields ?? []) {
     const label = field.LabelDetection?.Text?.trim();
@@ -390,6 +402,70 @@ function extractTextractDocumentText(
     }
   }
   return fallback.join('\n');
+}
+
+function extractTextractDocumentExtraction(
+  document: TextractExpenseDocument,
+  inputKind: AccountingDocumentExtraction['inputKind'],
+): AccountingDocumentExtraction {
+  const allRawLines = (document.Blocks ?? [])
+    .flatMap((block) => {
+      const text = block.BlockType === 'LINE' ? (block.Text?.trim() ?? '') : '';
+      return text
+        ? [
+            {
+              text: text.slice(
+                0,
+                ACCOUNTING_DOCUMENT_EXTRACTION_POLICY.maxLineTextChars,
+              ),
+              page: Math.max(1, block.Page ?? 1),
+              confidence: block.Confidence ?? null,
+              geometry: normalizedTextractGeometry(block),
+            },
+          ]
+        : [];
+    })
+    .sort(
+      (left, right) =>
+        left.page - right.page ||
+        (left.geometry?.top ?? 0) - (right.geometry?.top ?? 0) ||
+        (left.geometry?.left ?? 0) - (right.geometry?.left ?? 0),
+    );
+  const rawLines = allRawLines.slice(
+    0,
+    ACCOUNTING_DOCUMENT_EXTRACTION_POLICY.maxLines,
+  );
+
+  if (!rawLines.length) {
+    return createTextOnlyAccountingDocumentExtraction({
+      inputKind,
+      engine: 'AWS_TEXTRACT',
+      text: textractFallbackText(document),
+    });
+  }
+
+  const pageCounts = new Map<number, number>();
+  return {
+    version: 1,
+    inputKind,
+    engine: 'AWS_TEXTRACT',
+    layoutMode: rawLines.some((line) => line.geometry)
+      ? 'GEOMETRY'
+      : 'TEXT_ONLY',
+    truncated:
+      allRawLines.length > ACCOUNTING_DOCUMENT_EXTRACTION_POLICY.maxLines,
+    lines: rawLines.map((line) => {
+      const next = (pageCounts.get(line.page) ?? 0) + 1;
+      pageCounts.set(line.page, next);
+      return {
+        lineId: `p${line.page}-l${next}`,
+        page: line.page,
+        text: line.text,
+        confidence: line.confidence,
+        geometry: line.geometry,
+      };
+    }),
+  };
 }
 
 function normalizedFieldType(field: { Type?: { Text?: string } }): string {
