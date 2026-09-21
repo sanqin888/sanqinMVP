@@ -7,7 +7,10 @@ import {
   inspectAccountingPdfPageCount,
   rasterizeAccountingPdfPage,
 } from './accounting-pdf-rasterizer';
-import { extractAccountingText } from './accounting-pdf-extractor';
+import {
+  extractAccountingText,
+  reconcileAccountingExpenseExtractionWithLayout,
+} from './accounting-pdf-extractor';
 import {
   ACCOUNTING_TEXTRACT_EXPENSE_POLICY,
   recognizeAccountingDocumentPageImageWithTextract,
@@ -160,7 +163,10 @@ export async function recognizeAccountingScannedPdfWithTextract(
 
   return {
     text,
-    extraction: extractAccountingText(text),
+    extraction: reconcileAccountingExpenseExtractionWithLayout(
+      extractAccountingText(text),
+      documentExtraction,
+    ),
     documentExtraction,
     evidence: {
       provider: 'AWS_TEXTRACT_ANALYZE_EXPENSE_PAGE_OCR',

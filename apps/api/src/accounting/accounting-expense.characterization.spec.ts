@@ -486,9 +486,12 @@ describe('AccountingExpenseService expense-write characterization', () => {
             parseRuns: [
               {
                 resultJson: {
+                  date: '2026-09-15',
                   sourceCurrency: 'USD',
                   sourceCurrencyEvidence: 'EXPLICIT_TEXT',
                   totalCents: 2000,
+                  financialConsistency: 'MISMATCH',
+                  suggestedCategoryStableId: 'expense_other',
                   extractedText: 'Amount due USD 20.00',
                 },
               },
@@ -581,6 +584,24 @@ describe('AccountingExpenseService expense-write characterization', () => {
           reviewedSourceCurrency: 'USD',
           bookedCurrency: 'CAD',
           bookedTotalCents: 2746,
+          bookingReview: expect.objectContaining({
+            machineFinancialConsistency: 'MISMATCH',
+            machine: expect.objectContaining({
+              date: '2026-09-15',
+              totalCents: 2000,
+              sourceCurrency: 'USD',
+              suggestedCategoryStableId: 'expense_other',
+            }) as unknown,
+            reviewedBooking: expect.objectContaining({
+              occurredAt: '2026-09-16',
+              totalCents: 2746,
+              currency: 'CAD',
+              sourceCurrency: 'USD',
+              categoryStableIds: ['expense_software'],
+            }) as unknown,
+            correctedFields: ['occurredAt', 'categoryStableId'],
+            operatorUserStableId: 'user_stable_3',
+          }) as unknown,
         }) as unknown,
       }) as unknown as Record<string, unknown>,
       select: { id: true },
@@ -604,6 +625,20 @@ describe('AccountingExpenseService expense-write characterization', () => {
           documentId: 'expense-document-db-id',
         }) as unknown as Record<string, unknown>,
       ],
+    });
+    expect(createAuditMany).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          action: 'CONFIRM_EXPENSE_BOOKING',
+          entityType: 'ACCOUNTING_EXPENSE_DOCUMENT',
+          entityId: createdDocumentStableId,
+          operatorActorRef: 'user_stable_3',
+          afterJson: expect.objectContaining({
+            machineFinancialConsistency: 'MISMATCH',
+            correctedFields: ['occurredAt', 'categoryStableId'],
+          }) as unknown,
+        }) as unknown as Record<string, unknown>,
+      ]) as unknown as Record<string, unknown>[],
     });
     expect(updateInbox).toHaveBeenCalledWith({
       where: expect.objectContaining({

@@ -53,6 +53,127 @@ type ResolvedExpensePaymentAllocation = NormalizedExpensePaymentAllocation & {
   accountDbId: string;
 };
 
+function optionalMachineInteger(
+  record: Record<string, unknown>,
+  key: string,
+): number | null {
+  const value = record[key];
+  return typeof value === 'number' && Number.isSafeInteger(value)
+    ? value
+    : null;
+}
+
+function buildExpenseCorrectionAudit(input: {
+  extraction: Record<string, unknown>;
+  occurredAt: Date;
+  subtotalCents: number;
+  taxCents: number;
+  totalCents: number;
+  reviewedSourceCurrency: string | null;
+  splits: Array<{
+    categoryStableId: string;
+    amountCents: number;
+    taxCents: number;
+  }>;
+  operatorUserStableId: string;
+  confirmedAt: Date;
+}) {
+  const machineDate = accountingOptionalString(input.extraction.date);
+  const machineSourceCurrency =
+    accountingOptionalString(input.extraction.sourceCurrency)?.toUpperCase() ??
+    null;
+  const machineSubtotalCents = optionalMachineInteger(
+    input.extraction,
+    'subtotalCents',
+  );
+  const machineTaxCents = optionalMachineInteger(input.extraction, 'taxCents');
+  const machineTotalCents = optionalMachineInteger(
+    input.extraction,
+    'totalCents',
+  );
+  const suggestedCategoryStableId = accountingOptionalString(
+    input.extraction.suggestedCategoryStableId,
+  );
+  const textractEvidence = input.extraction.textractEvidence;
+  const textractFinancialConsistency =
+    textractEvidence &&
+    typeof textractEvidence === 'object' &&
+    !Array.isArray(textractEvidence)
+      ? accountingOptionalString(
+          (textractEvidence as Record<string, unknown>).financialConsistency,
+        )
+      : null;
+  const machineFinancialConsistency =
+    accountingOptionalString(input.extraction.financialConsistency) ??
+    textractFinancialConsistency;
+  const occurredAtDate = input.occurredAt.toISOString().slice(0, 10);
+  const correctedFields: string[] = [];
+
+  if (machineDate && machineDate !== occurredAtDate) {
+    correctedFields.push('occurredAt');
+  }
+  if (
+    machineSourceCurrency &&
+    input.reviewedSourceCurrency &&
+    machineSourceCurrency !== input.reviewedSourceCurrency
+  ) {
+    correctedFields.push('sourceCurrency');
+  }
+
+  const comparableAmountCurrency =
+    machineSourceCurrency ?? input.reviewedSourceCurrency ?? 'CAD';
+  if (comparableAmountCurrency === 'CAD') {
+    if (
+      machineSubtotalCents != null &&
+      machineSubtotalCents !== input.subtotalCents
+    ) {
+      correctedFields.push('subtotalCents');
+    }
+    if (machineTaxCents != null && machineTaxCents !== input.taxCents) {
+      correctedFields.push('taxCents');
+    }
+    if (machineTotalCents != null && machineTotalCents !== input.totalCents) {
+      correctedFields.push('totalCents');
+    }
+  }
+
+  const reviewedCategoryStableIds = Array.from(
+    new Set(input.splits.map((split) => split.categoryStableId)),
+  );
+  if (
+    suggestedCategoryStableId &&
+    (reviewedCategoryStableIds.length !== 1 ||
+      reviewedCategoryStableIds[0] !== suggestedCategoryStableId)
+  ) {
+    correctedFields.push('categoryStableId');
+  }
+
+  return {
+    version: 1,
+    machineFinancialConsistency,
+    machine: {
+      date: machineDate,
+      subtotalCents: machineSubtotalCents,
+      taxCents: machineTaxCents,
+      totalCents: machineTotalCents,
+      sourceCurrency: machineSourceCurrency,
+      suggestedCategoryStableId,
+    },
+    reviewedBooking: {
+      occurredAt: occurredAtDate,
+      subtotalCents: input.subtotalCents,
+      taxCents: input.taxCents,
+      totalCents: input.totalCents,
+      currency: 'CAD',
+      sourceCurrency: input.reviewedSourceCurrency,
+      categoryStableIds: reviewedCategoryStableIds,
+    },
+    correctedFields,
+    operatorUserStableId: input.operatorUserStableId,
+    confirmedAt: input.confirmedAt.toISOString(),
+  };
+}
+
 @Injectable()
 export class AccountingExpenseService {
   constructor(
@@ -193,6 +314,20 @@ export class AccountingExpenseService {
       ) {
         throw new BadRequestException('sourceCurrency must be a 3-letter code');
       }
+
+      const confirmedAt = new Date();
+      const correctionAudit = buildExpenseCorrectionAudit({
+        extraction,
+        occurredAt,
+        subtotalCents,
+        taxCents,
+        totalCents: input.totalCents,
+        reviewedSourceCurrency,
+        splits: normalizedSplits,
+        operatorUserStableId,
+        confirmedAt,
+      });
+
       const artifactUrl = inbox.artifact.storedUrl
         ? inbox.artifact.kind === AccountingArtifactKind.IMAGE
           ? `/api/v1/accounting/inbox/artifacts/${encodeURIComponent(inbox.artifact.artifactStableId)}/content`
@@ -213,6 +348,7 @@ export class AccountingExpenseService {
         bookedSubtotalCents: subtotalCents,
         bookedTaxCents: taxCents,
         bookedTotalCents: input.totalCents,
+        bookingReview: correctionAudit,
       } satisfies Record<string, unknown>;
 
       const created = await tx.accountingExpenseDocument.create({
@@ -240,7 +376,7 @@ export class AccountingExpenseService {
             inbox.artifact.bodyText,
           extractionJson: extractionJson as Prisma.InputJsonValue,
           memo: input.memo?.trim() || null,
-          confirmedAt: new Date(),
+          confirmedAt,
           confirmedByUserStableId: operatorUserStableId,
         },
         select: { id: true },
@@ -270,26 +406,35 @@ export class AccountingExpenseService {
       }));
       await tx.accountingTransaction.createMany({ data: splitRows });
       await tx.accountingAuditLog.createMany({
-        data: splitRows.map((row, index) => ({
-          action: 'CREATE',
-          entityType: 'ACCOUNTING_TRANSACTION',
-          entityId: row.txStableId,
-          operatorActorRef: operatorUserStableId,
-          afterJson: {
-            txStableId: row.txStableId,
-            type: row.type,
-            source: row.source,
-            amountCents: row.amountCents,
-            taxCents: row.taxCents,
-            currency: row.currency,
-            occurredAt: occurredAt.toISOString(),
-            categoryStableId: normalizedSplits[index].categoryStableId,
-            documentStableId,
-            idempotencyKey: row.idempotencyKey,
-            externalRef: row.externalRef,
-            attachmentUrls,
-          } as Prisma.InputJsonValue,
-        })),
+        data: [
+          {
+            action: 'CONFIRM_EXPENSE_BOOKING',
+            entityType: 'ACCOUNTING_EXPENSE_DOCUMENT',
+            entityId: documentStableId,
+            operatorActorRef: operatorUserStableId,
+            afterJson: correctionAudit as Prisma.InputJsonValue,
+          },
+          ...splitRows.map((row, index) => ({
+            action: 'CREATE',
+            entityType: 'ACCOUNTING_TRANSACTION',
+            entityId: row.txStableId,
+            operatorActorRef: operatorUserStableId,
+            afterJson: {
+              txStableId: row.txStableId,
+              type: row.type,
+              source: row.source,
+              amountCents: row.amountCents,
+              taxCents: row.taxCents,
+              currency: row.currency,
+              occurredAt: occurredAt.toISOString(),
+              categoryStableId: normalizedSplits[index].categoryStableId,
+              documentStableId,
+              idempotencyKey: row.idempotencyKey,
+              externalRef: row.externalRef,
+              attachmentUrls,
+            } as Prisma.InputJsonValue,
+          })),
+        ],
       });
       await linkAndConfirmInboxExpenseInTx(
         tx,

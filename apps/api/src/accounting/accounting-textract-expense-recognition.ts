@@ -12,6 +12,7 @@ import {
 } from './accounting-document-extraction';
 import { analyzeAccountingReceiptImageGeometry } from './accounting-image-ocr';
 import {
+  evaluateAccountingFinancialConsistency,
   extractAccountingText,
   type AccountingPdfExtraction,
 } from './accounting-pdf-extractor';
@@ -233,17 +234,26 @@ function mapTextractExpenseResponse(
   const lineItemHintsTruncated =
     parsedLineItemHints.length > TEXTRACT_MAX_LINE_ITEM_HINTS;
 
+  const effectiveSubtotalCents = subtotalCents ?? generic.subtotalCents;
+  const effectiveTaxCents = taxCents ?? generic.taxCents;
+  const effectiveTotalCents = totalCents ?? generic.totalCents;
+  const effectiveFinancialConsistency = evaluateAccountingFinancialConsistency(
+    effectiveSubtotalCents,
+    effectiveTaxCents,
+    effectiveTotalCents,
+  );
   const extraction: AccountingPdfExtraction = {
     ...generic,
     date: reviewedDate,
-    subtotalCents: subtotalCents ?? generic.subtotalCents,
-    taxCents: taxCents ?? generic.taxCents,
-    totalCents: totalCents ?? generic.totalCents,
+    subtotalCents: effectiveSubtotalCents,
+    taxCents: effectiveTaxCents,
+    totalCents: effectiveTotalCents,
+    financialConsistency: effectiveFinancialConsistency,
     confidence: deriveTextractExtractionConfidence({
       date: reviewedDate,
       generic,
-      totalCents: totalCents ?? generic.totalCents,
-      financialConsistency,
+      totalCents: effectiveTotalCents,
+      financialConsistency: effectiveFinancialConsistency,
     }),
   };
 
