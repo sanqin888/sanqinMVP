@@ -1,8 +1,8 @@
 # Accounting Document Recognition & Human Review Plan
 
-Status: **SLICE 0-3 + 3V-A MERGED / CI GREEN / SLICE 3V-B SOURCE IMPLEMENTED / LOCAL REVIEW / EVIDENCE VIEWER SLICE 1 + 1B + 2 MERGED — DO NOT REOPEN PHASE 9**  
+Status: **SLICE 0-3 + 3V-A + 3V-B DEV MERGED / CI GREEN / 3V-B PRODUCTION VERIFICATION PENDING / EVIDENCE VIEWER SLICE 1 + 1B + 2 MERGED — DO NOT REOPEN PHASE 9**  
 Planning date: 2026-09-20; updated: 2026-09-21  
-Audit baseline: `origin/dev@1ede0599`; Slice 3 merged in PR #2432 as `caabf1c1`; Slice 3V-A merged in PR #2439 as `0d6909bb` after PR CI #6054 and merged-head CI #6055 passed; current Slice 3V-B base: `origin/dev@0d6909bb`  
+Audit baseline: `origin/dev@1ede0599`; Slice 3 merged in PR #2432 as `caabf1c1`; Slice 3V-A merged in PR #2439 as `0d6909bb` after PR CI #6054 and merged-head CI #6055 passed; Slice 3V-B merged in PR #2440 as `0ac9117f` after final head `3c5c0400`, PR CI #6057 and merged-head CI #6058 green  
 Owner: **Accounting / Reporting / Analytics**  
 Phase 9 status: **remains PRODUCTION VERIFIED / CLOSED — do not reopen Phase 9**
 
@@ -795,9 +795,9 @@ passed.
 
 #### Slice 3V-B — Bounded scanned-PDF page raster + Textract merge
 
-Source implementation on `origin/dev@0d6909bb` / branch
-`accounting/document-recognition-3v-b` replaces the temporary whole-PDF Textract fallback
-without adding another OCR engine or remote document-storage workflow:
+Final implementation merged in PR #2440 as `0ac9117f` after final head `3c5c0400`;
+PR CI #6057 and merged-head CI #6058 passed. The merged path replaces the temporary whole-PDF
+Textract fallback without adding another OCR engine or remote document-storage workflow:
 
 - only `SCAN_CANDIDATE` PDFs enter this path. `USABLE_NATIVE_TEXT` remains on local Poppler
   text/layout and `FAIL_CLOSED` remains local/manual; Provider API remains excluded;
@@ -836,9 +836,10 @@ without adding another OCR engine or remote document-storage workflow:
   S3/async Textract, queue, PaddleOCR, BDA, Prisma/schema/migration, package/lockfile or
   Docker/runtime-package change is introduced.
 
-The historical posted Uber July statement remains immutable and is not reprocessed by this
-source batch. Existing control-total reconciliation and Human Review stay downstream authority
-after OCR/provider mapping.
+The historical posted Uber July statement remains immutable and was not reprocessed by this
+batch. Existing control-total reconciliation and Human Review stay downstream authority after
+OCR/provider mapping. Source/CI delivery is complete; active production verification of the new
+scanned-PDF path remains pending.
 
 ### Slice 6 — Optional suspense workflow
 
