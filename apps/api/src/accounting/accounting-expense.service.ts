@@ -79,9 +79,9 @@ function buildExpenseCorrectionAudit(input: {
   confirmedAt: Date;
 }) {
   const machineDate = accountingOptionalString(input.extraction.date);
-  const machineSourceCurrency = accountingOptionalString(
-    input.extraction.sourceCurrency,
-  )?.toUpperCase() ?? null;
+  const machineSourceCurrency =
+    accountingOptionalString(input.extraction.sourceCurrency)?.toUpperCase() ??
+    null;
   const machineSubtotalCents = optionalMachineInteger(
     input.extraction,
     'subtotalCents',

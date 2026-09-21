@@ -18,4 +18,3 @@ export type AccountingExpenseInput = {
   memo?: string | null;
   splits: AccountingExpenseSplitInput[];
 };
-
