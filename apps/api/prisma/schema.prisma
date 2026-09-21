@@ -384,12 +384,6 @@ enum AccountingProviderFinancialReviewStatus {
   SUPERSEDED
 }
 
-enum AccountingExpenseReviewStatus {
-  DRAFT
-  CONFIRMED
-  SUPERSEDED
-}
-
 enum AccountingProviderFinancialCorrectionReason {
   EXTRACTION_CORRECTION
   SEMANTIC_CLASSIFICATION
@@ -2280,35 +2274,11 @@ model AccountingInboxItem {
   version                  Int                           @default(1)
   artifact                 AccountingSourceArtifact      @relation("AccountingInboxArtifact", fields: [artifactId], references: [id], onDelete: Restrict)
   duplicateOfArtifact      AccountingSourceArtifact?     @relation("AccountingInboxDuplicateArtifact", fields: [duplicateOfArtifactId], references: [id], onDelete: Restrict)
-  expenseReviewRevisions   AccountingExpenseReviewRevision[]
 
   @@index([status, createdAt])
   @@index([classification, status, createdAt])
   @@index([duplicateOfArtifactId])
   @@index([materializedEntityType, materializedEntityStableId], map: "AcctInbox_materialized_idx")
-}
-
-model AccountingExpenseReviewRevision {
-  id                      String                        @id @default(uuid()) @db.Uuid
-  reviewRevisionStableId  String                        @unique @default(cuid())
-  inboxItemId             String                        @db.Uuid
-  revision                Int
-  status                  AccountingExpenseReviewStatus @default(DRAFT)
-  sourceInboxVersion      Int
-  sourceParseRunStableId  String?
-  sourceResultHash        String?
-  reviewHash              String
-  note                    String?
-  effectiveJson           Json
-  createdByUserStableId   String
-  confirmedByUserStableId String?
-  confirmedAt             DateTime?
-  createdAt               DateTime                      @default(now())
-  updatedAt               DateTime                      @updatedAt
-  inboxItem               AccountingInboxItem           @relation(fields: [inboxItemId], references: [id], onDelete: Cascade)
-
-  @@unique([inboxItemId, revision], map: "AcctExpenseReview_inbox_rev_key")
-  @@index([inboxItemId, status, revision], map: "AcctExpenseReview_inbox_status_rev_idx")
 }
 
 model AccountingTrustedSender {

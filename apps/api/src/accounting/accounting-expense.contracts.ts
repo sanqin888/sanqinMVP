@@ -19,7 +19,3 @@ export type AccountingExpenseInput = {
   splits: AccountingExpenseSplitInput[];
 };
 
-export type AccountingInboxExpenseConfirmInput = AccountingExpenseInput & {
-  reviewRevisionStableId?: string | null;
-  expectedReviewHash?: string | null;
-};

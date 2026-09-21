@@ -448,8 +448,6 @@ export async function readAccountingInboxExpenseContext(
   return client.accountingInboxItem.findUnique({
     where: { inboxItemStableId },
     select: {
-      id: true,
-      version: true,
       status: true,
       classification: true,
       selectedProvider: true,
@@ -468,11 +466,7 @@ export async function readAccountingInboxExpenseContext(
           parseRuns: {
             orderBy: { createdAt: 'desc' },
             take: 1,
-            select: {
-              parseRunStableId: true,
-              resultHash: true,
-              resultJson: true,
-            },
+            select: { resultJson: true },
           },
         },
       },

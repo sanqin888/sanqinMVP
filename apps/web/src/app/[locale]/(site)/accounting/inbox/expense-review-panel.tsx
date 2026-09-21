@@ -18,11 +18,6 @@ import {
 } from '../expense-payment-allocations';
 import type { AccountingAccount, AccountingCategory } from '../contracts/chart';
 import type {
-  AccountingExpenseReviewDraftInput,
-  AccountingExpenseReviewEffective,
-  AccountingExpenseReviewRevision,
-} from '../contracts/expenses';
-import type {
   AccountingInboxItem,
   AccountingManualUploadPermanentDeleteResult,
 } from '../contracts/inbox';
@@ -82,6 +77,25 @@ function hasUnsafeCurrencyEvidence(
   );
 }
 
+function correctionFieldLabel(field: string, isZh: boolean): string {
+  switch (field) {
+    case 'date':
+      return isZh ? '日期' : 'date';
+    case 'sourceCurrency':
+      return isZh ? '原始币种' : 'source currency';
+    case 'subtotalCents':
+      return isZh ? '税前金额' : 'subtotal';
+    case 'taxCents':
+      return isZh ? 'HST' : 'tax';
+    case 'totalCents':
+      return isZh ? '总额' : 'total';
+    case 'categoryStableId':
+      return isZh ? '费用分类' : 'category';
+    default:
+      return field;
+  }
+}
+
 export function AccountingInboxExpenseReviewPanel({
   item,
   categories,
@@ -105,13 +119,6 @@ export function AccountingInboxExpenseReviewPanel({
   const quickAmountInputs = useRef(new Map<string, HTMLInputElement>());
   const pendingQuickAmountFocus = useRef<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [reviewSaving, setReviewSaving] = useState(false);
-  const [reviewLoading, setReviewLoading] = useState(false);
-  const [reviewNote, setReviewNote] = useState('');
-  const [reviewRevisions, setReviewRevisions] = useState<
-    AccountingExpenseReviewRevision[]
-  >([]);
-  const [reviewMessage, setReviewMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const expenseCategories = useMemo(() => {
@@ -185,31 +192,6 @@ export function AccountingInboxExpenseReviewPanel({
   }, [expenseCategories, item]);
 
   useEffect(() => {
-    let cancelled = false;
-    setReviewLoading(true);
-    setReviewMessage(null);
-    void apiFetch<AccountingExpenseReviewRevision[]>(
-      `/accounting/inbox/${encodeURIComponent(item.inboxItemStableId)}/expense/review-revisions`,
-    )
-      .then((revisions) => {
-        if (cancelled) return;
-        setReviewRevisions(revisions);
-        setReviewNote(revisions[0]?.note ?? '');
-      })
-      .catch((cause: unknown) => {
-        if (!cancelled) {
-          setError(cause instanceof Error ? cause.message : String(cause));
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setReviewLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [item.inboxItemStableId]);
-
-  useEffect(() => {
     const key = pendingQuickAmountFocus.current;
     if (!key) return;
     const input = quickAmountInputs.current.get(key);
@@ -234,85 +216,80 @@ export function AccountingInboxExpenseReviewPanel({
     };
   }, [rows, total]);
   const extraction = latestParse(item);
-  const preparedReviewPaymentAllocations = useMemo(
-    () =>
-      prepareExpensePaymentAllocations(
-        paymentAllocations,
-        calculated.totalCents,
-      ),
-    [paymentAllocations, calculated.totalCents],
-  );
-  const currentReviewEffective = useMemo<AccountingExpenseReviewEffective>(
-    () => ({
-      version: 1,
-      occurredAt: date,
-      totalCents: calculated.totalCents,
-      sourceCurrency: sourceCurrency.trim().toUpperCase() || null,
-      paymentAllocations: preparedReviewPaymentAllocations.paymentAllocations,
-      memo: memo.trim() || null,
-      splits: rows
-        .filter((row) => toCents(row.amount) > 0 || toCents(row.tax) > 0)
-        .map((row) => ({
-          categoryStableId: row.categoryStableId,
-          amountCents: toCents(row.amount),
-          taxCents: toCents(row.tax),
-        })),
-    }),
-    [
-      calculated.totalCents,
-      date,
-      memo,
-      preparedReviewPaymentAllocations.paymentAllocations,
-      rows,
-      sourceCurrency,
-    ],
-  );
   const recognitionConsistency =
     extraction.textractEvidence?.financialConsistency === 'MISMATCH'
       ? 'MISMATCH'
       : (extraction.financialConsistency ??
         extraction.textractEvidence?.financialConsistency ??
         'INSUFFICIENT');
-  const machineFieldChanged = Boolean(
-    (extraction.date && extraction.date !== date) ||
-      (extraction.subtotalCents != null &&
-        extraction.subtotalCents !== calculated.subtotalCents) ||
-      (extraction.taxCents != null &&
-        extraction.taxCents !== calculated.taxCents) ||
-      (extraction.totalCents != null &&
-        extraction.totalCents !== calculated.totalCents) ||
-      (extraction.suggestedCategoryStableId &&
-        currentReviewEffective.splits.some(
-          (split) =>
-            split.categoryStableId !== extraction.suggestedCategoryStableId,
-        )) ||
-      (extraction.sourceCurrency &&
-        sourceCurrency.trim() &&
-        extraction.sourceCurrency.toUpperCase() !==
-          sourceCurrency.trim().toUpperCase()),
-  );
-  const latestReview = reviewRevisions[0] ?? null;
-  const confirmedReview =
-    latestReview?.status === 'CONFIRMED' ? latestReview : null;
-  const currentParseRunStableId =
-    item.artifact.parseRuns[0]?.parseRunStableId ?? null;
-  const reviewAuthorityCurrent = Boolean(
-    confirmedReview &&
-      confirmedReview.sourceInboxVersion === item.version &&
-      confirmedReview.sourceParseRunStableId === currentParseRunStableId,
-  );
-  const reviewMatchesCurrent = Boolean(
-    reviewAuthorityCurrent &&
-      confirmedReview &&
-      JSON.stringify(confirmedReview.effective) ===
-        JSON.stringify(currentReviewEffective),
-  );
-  const humanReviewRequired =
-    recognitionConsistency === 'MISMATCH' ||
-    machineFieldChanged ||
-    reviewRevisions.length > 0;
-  const humanReviewReady =
-    !humanReviewRequired || Boolean(confirmedReview && reviewMatchesCurrent);
+  const normalizedSourceCurrency = sourceCurrency.trim().toUpperCase();
+  const bookingCorrectedFields = useMemo(() => {
+    const corrected: string[] = [];
+    const machineSourceCurrency = extraction.sourceCurrency?.toUpperCase() ?? null;
+    const comparableAmountCurrency =
+      machineSourceCurrency || normalizedSourceCurrency || 'CAD';
+
+    if (extraction.date && date && extraction.date !== date) {
+      corrected.push('date');
+    }
+    if (
+      machineSourceCurrency &&
+      normalizedSourceCurrency &&
+      machineSourceCurrency !== normalizedSourceCurrency
+    ) {
+      corrected.push('sourceCurrency');
+    }
+    if (comparableAmountCurrency === 'CAD') {
+      if (
+        extraction.subtotalCents != null &&
+        extraction.subtotalCents !== calculated.subtotalCents
+      ) {
+        corrected.push('subtotalCents');
+      }
+      if (
+        extraction.taxCents != null &&
+        extraction.taxCents !== calculated.taxCents
+      ) {
+        corrected.push('taxCents');
+      }
+      if (
+        extraction.totalCents != null &&
+        extraction.totalCents !== calculated.totalCents
+      ) {
+        corrected.push('totalCents');
+      }
+    }
+
+    const reviewedCategoryStableIds = Array.from(
+      new Set(
+        rows
+          .filter((row) => toCents(row.amount) > 0 || toCents(row.tax) > 0)
+          .map((row) => row.categoryStableId),
+      ),
+    );
+    if (
+      extraction.suggestedCategoryStableId &&
+      (reviewedCategoryStableIds.length !== 1 ||
+        reviewedCategoryStableIds[0] !== extraction.suggestedCategoryStableId)
+    ) {
+      corrected.push('categoryStableId');
+    }
+
+    return corrected;
+  }, [
+    calculated.subtotalCents,
+    calculated.taxCents,
+    calculated.totalCents,
+    date,
+    extraction.date,
+    extraction.sourceCurrency,
+    extraction.subtotalCents,
+    extraction.suggestedCategoryStableId,
+    extraction.taxCents,
+    extraction.totalCents,
+    normalizedSourceCurrency,
+    rows,
+  ]);
   const hasRecognizedQuickRows = quickRows.some((row) => row.recognitionHint);
   const recognizedForeignCurrency = recognizedForeignCurrencyCode(extraction);
   const unsafeCurrencyEvidence = hasUnsafeCurrencyEvidence(extraction);
@@ -401,116 +378,6 @@ export function AccountingInboxExpenseReviewPanel({
     setShowQuick(false);
   }
 
-  async function refreshExpenseReviewRevisions() {
-    const revisions = await apiFetch<AccountingExpenseReviewRevision[]>(
-      `/accounting/inbox/${encodeURIComponent(item.inboxItemStableId)}/expense/review-revisions`,
-    );
-    setReviewRevisions(revisions);
-    setReviewNote(revisions[0]?.note ?? reviewNote);
-    return revisions;
-  }
-
-  async function saveExpenseReviewDraft() {
-    if (!date || calculated.totalCents <= 0 || calculated.differenceCents !== 0) {
-      setError(
-        isZh
-          ? '人工复核前请先把日期和金额调整到完整、对平状态。'
-          : 'Complete the date and balance the amounts before saving human review.',
-      );
-      return;
-    }
-    if (preparedReviewPaymentAllocations.error) {
-      setError(
-        expensePaymentAllocationErrorMessage(
-          preparedReviewPaymentAllocations.error,
-          isZh,
-        ),
-      );
-      return;
-    }
-    if (!currentReviewEffective.splits.length) {
-      setError(
-        isZh
-          ? '至少需要一个费用分类。'
-          : 'At least one expense split is required.',
-      );
-      return;
-    }
-
-    const payload: AccountingExpenseReviewDraftInput = {
-      expectedInboxVersion: item.version,
-      note: reviewNote.trim() || null,
-      effective: {
-        occurredAt: currentReviewEffective.occurredAt,
-        totalCents: currentReviewEffective.totalCents,
-        sourceCurrency: currentReviewEffective.sourceCurrency,
-        paymentAllocations: currentReviewEffective.paymentAllocations,
-        memo: currentReviewEffective.memo,
-        splits: currentReviewEffective.splits,
-      },
-    };
-    setReviewSaving(true);
-    setError(null);
-    setReviewMessage(null);
-    try {
-      await apiFetch<AccountingExpenseReviewRevision>(
-        `/accounting/inbox/${encodeURIComponent(item.inboxItemStableId)}/expense/review-revisions`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        },
-      );
-      await refreshExpenseReviewRevisions();
-      setReviewMessage(
-        isZh
-          ? '人工复核草稿已保存；机器识别结果保持不变。'
-          : 'Human review draft saved; machine extraction remains unchanged.',
-      );
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setReviewSaving(false);
-    }
-  }
-
-  async function confirmExpenseReview() {
-    const draft = reviewRevisions.find(
-      (revision) => revision.status === 'DRAFT',
-    );
-    if (!draft) {
-      setError(
-        isZh
-          ? '没有可确认的人工复核草稿。'
-          : 'There is no human review draft to confirm.',
-      );
-      return;
-    }
-    setReviewSaving(true);
-    setError(null);
-    setReviewMessage(null);
-    try {
-      await apiFetch<AccountingExpenseReviewRevision>(
-        `/accounting/inbox/${encodeURIComponent(item.inboxItemStableId)}/expense/review-revisions/${encodeURIComponent(draft.reviewRevisionStableId)}/confirm`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ expectedReviewHash: draft.reviewHash }),
-        },
-      );
-      await refreshExpenseReviewRevisions();
-      setReviewMessage(
-        isZh
-          ? '人工复核已确认；当前字段可作为费用入账依据。'
-          : 'Human review confirmed; the reviewed fields can now authorize expense posting.',
-      );
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setReviewSaving(false);
-    }
-  }
-
   async function confirmExpense() {
     if (!date) {
       setError(isZh ? '请确认费用日期。' : 'Confirm the expense date.');
@@ -534,14 +401,6 @@ export function AccountingInboxExpenseReviewPanel({
           preparedPaymentAllocations.error,
           isZh,
         ),
-      );
-      return;
-    }
-    if (!humanReviewReady) {
-      setError(
-        isZh
-          ? '机器识别不自洽或当前字段已人工修改。请先保存并确认人工复核，再创建费用。'
-          : 'Machine extraction is inconsistent or recognized fields were edited. Save and confirm human review before creating the expense.',
       );
       return;
     }
@@ -569,13 +428,6 @@ export function AccountingInboxExpenseReviewPanel({
                 amountCents: toCents(row.amount),
                 taxCents: toCents(row.tax),
               })),
-            ...(confirmedReview && reviewMatchesCurrent
-              ? {
-                  reviewRevisionStableId:
-                    confirmedReview.reviewRevisionStableId,
-                  expectedReviewHash: confirmedReview.reviewHash,
-                }
-              : {}),
           }),
         },
       );
@@ -602,7 +454,6 @@ export function AccountingInboxExpenseReviewPanel({
           : ` (${textractCurrencyConfidence.toFixed(1)}%)`
       }`
     : null;
-  const normalizedSourceCurrency = sourceCurrency.trim().toUpperCase();
   const sourceAmountCurrencyLabel =
     (recognizedForeignCurrency ?? normalizedSourceCurrency) || '?';
   const ambiguousCurrencyEvidence =
@@ -688,8 +539,8 @@ export function AccountingInboxExpenseReviewPanel({
                 : 'Amounts reconcile'
               : recognitionConsistency === 'MISMATCH'
                 ? isZh
-                  ? '金额不自洽 · 必须人工复核'
-                  : 'Amount mismatch · human review required'
+                  ? '金额不自洽 · 需人工订正'
+                  : 'Amount mismatch · correction required'
                 : isZh
                   ? '金额证据不足 · 请核对'
                   : 'Insufficient amount evidence · verify'}
@@ -744,8 +595,8 @@ export function AccountingInboxExpenseReviewPanel({
         {recognitionConsistency === 'MISMATCH' ? (
           <p className="mt-2 rounded bg-red-100 px-3 py-2 text-xs font-medium text-red-700">
             {isZh
-              ? '系统/AWS 提取的税前、税额和总额无法自洽。当前机器值不能作为最终会计依据；请根据原始凭证修正字段，然后保存并确认“人工复核”。'
-              : 'System/AWS subtotal, tax, and total do not reconcile. Machine values cannot authorize posting; correct them from the source evidence, then save and confirm Human Review.'}
+              ? '系统/AWS 提取的税前、税额和总额无法自洽。当前机器值仅作为识别证据；请根据原始凭证，在下方“最终入账值”中直接修正。'
+              : 'System/AWS subtotal, tax, and total do not reconcile. Machine values remain recognition evidence only; correct the editable Final booking values below from the source document.'}
           </p>
         ) : null}
         {textractCurrencySuggestion ? (
@@ -756,7 +607,31 @@ export function AccountingInboxExpenseReviewPanel({
           </p>
         ) : null}
       </div>
-      <div className="mt-4 grid gap-3 md:grid-cols-[140px_minmax(0,1fr)_minmax(0,1fr)]">
+      <section className="mt-4 rounded-lg border border-blue-200 bg-blue-50/70 p-3">
+        <strong className="text-sm">
+          {isZh ? '最终入账值（可编辑）' : 'Final booking values (editable)'}
+        </strong>
+        <p className="mt-1 text-xs text-slate-600">
+          {isZh
+            ? '上方机器识别结果保持只读。请在这里按原始凭证修正日期、币种、总额、分类、税前金额和 HST；确认创建费用时，系统会自动保存机器值、最终值和订正字段。'
+            : 'Machine extraction above remains read-only. Correct date, currency, total, category, subtotal, and HST here from the source document; confirmation automatically records machine values, final values, and corrected fields.'}
+        </p>
+        {bookingCorrectedFields.length ? (
+          <p className="mt-2 rounded bg-white px-3 py-2 text-xs font-medium text-blue-800">
+            {isZh ? '已人工订正：' : 'Manually corrected: '}
+            {bookingCorrectedFields
+              .map((field) => correctionFieldLabel(field, isZh))
+              .join(isZh ? '、' : ', ')}
+          </p>
+        ) : (
+          <p className="mt-2 text-xs text-slate-500">
+            {isZh
+              ? '当前最终入账值尚未偏离机器已识别字段。'
+              : 'Final booking values currently match the machine-observed fields.'}
+          </p>
+        )}
+      </section>
+      <div className="mt-3 grid gap-3 md:grid-cols-[140px_minmax(0,1fr)_minmax(0,1fr)]">
         <label className="text-sm">
           <span className="mb-1 block text-slate-500">
             {isZh ? '原始币种' : 'Source currency'}
@@ -1095,101 +970,6 @@ export function AccountingInboxExpenseReviewPanel({
           onChange={(event) => setMemo(event.target.value)}
         />
       </label>
-      <section
-        className={`mt-4 rounded-lg border p-3 ${
-          humanReviewRequired && !humanReviewReady
-            ? 'border-amber-300 bg-amber-100/70'
-            : 'border-slate-200 bg-white'
-        }`}
-      >
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div>
-            <strong className="text-sm">
-              {isZh ? '人工复核 / 字段订正' : 'Human review / field correction'}
-            </strong>
-            <p className="mt-1 text-xs text-slate-600">
-              {isZh
-                ? '机器识别结果不会被覆盖。这里保存的是独立、可审计的人工版本；仅保存/确认人工复核不会创建费用，文件在最终入账前仍保持未物化状态。'
-                : 'Machine extraction is never overwritten. This saves a separate auditable human version; saving or confirming review does not create the expense or materialize the evidence.'}
-            </p>
-          </div>
-          <span className="text-xs text-slate-500">
-            {reviewLoading
-              ? isZh
-                ? '读取中…'
-                : 'Loading…'
-              : latestReview
-                ? `v${latestReview.revision} · ${latestReview.status}`
-                : isZh
-                  ? '尚无人工版本'
-                  : 'No human revision yet'}
-          </span>
-        </div>
-        {humanReviewRequired && !humanReviewReady ? (
-          <p className="mt-3 rounded bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
-            {recognitionConsistency === 'MISMATCH'
-              ? isZh
-                ? '机器金额不自洽：必须按原始凭证修正字段，并完成“保存草稿 → 确认人工复核”，之后才能创建费用。'
-                : 'Machine amounts do not reconcile. Correct the fields from the source, then Save draft → Confirm human review before creating the expense.'
-              : isZh
-                ? '当前表单与机器识别值或已确认人工版本不同，需要重新保存并确认人工复核。'
-                : 'The current form differs from machine extraction or the confirmed human revision. Save and confirm a new human review.'}
-          </p>
-        ) : null}
-        {confirmedReview && reviewMatchesCurrent ? (
-          <p className="mt-3 rounded bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">
-            {isZh
-              ? `人工复核 v${confirmedReview.revision} 已确认，当前表单与 review hash 一致。`
-              : `Human review v${confirmedReview.revision} is confirmed and matches the current form.`}
-          </p>
-        ) : null}
-        <label className="mt-3 block text-sm">
-          <span className="mb-1 block text-slate-500">
-            {isZh ? '复核说明（可选）' : 'Review note (optional)'}
-          </span>
-          <textarea
-            className="min-h-16 w-full rounded border bg-white px-3 py-2"
-            value={reviewNote}
-            onChange={(event) => setReviewNote(event.target.value)}
-            placeholder={
-              isZh
-                ? '例如：Bell Tax Summary 显示 HST $9.74，机器原先误取折扣 $185。'
-                : 'Example: Bell Tax Summary shows HST $9.74; machine extraction had picked the $185 discount.'
-            }
-          />
-        </label>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => void saveExpenseReviewDraft()}
-            disabled={reviewSaving || reviewLoading}
-            className="rounded border bg-white px-3 py-1.5 text-sm disabled:opacity-50"
-          >
-            {reviewSaving
-              ? isZh
-                ? '处理中…'
-                : 'Working…'
-              : isZh
-                ? '保存人工复核草稿'
-                : 'Save human review draft'}
-          </button>
-          <button
-            type="button"
-            onClick={() => void confirmExpenseReview()}
-            disabled={
-              reviewSaving ||
-              reviewLoading ||
-              !reviewRevisions.some((revision) => revision.status === 'DRAFT')
-            }
-            className="rounded bg-amber-700 px-3 py-1.5 text-sm text-white disabled:opacity-50"
-          >
-            {isZh ? '确认人工复核' : 'Confirm human review'}
-          </button>
-        </div>
-        {reviewMessage ? (
-          <p className="mt-2 text-xs text-emerald-700">{reviewMessage}</p>
-        ) : null}
-      </section>
       <div className="mt-4 grid gap-3 rounded-lg bg-white p-3 text-sm sm:grid-cols-4">
         <div>
           <span className="text-slate-500">{isZh ? 'CAD 税前' : 'CAD subtotal'}</span>
@@ -1222,8 +1002,6 @@ export function AccountingInboxExpenseReviewPanel({
           onClick={() => void confirmExpense()}
           disabled={
             saving ||
-            reviewLoading ||
-            !humanReviewReady ||
             !date ||
             calculated.differenceCents !== 0 ||
             calculated.totalCents <= 0

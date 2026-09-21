@@ -22,8 +22,6 @@ const PRISMA_FREE_BOUNDARIES = [
   'accounting-image-retention.service.ts',
   'accounting-expense.contracts.ts',
   'accounting-expense-input.ts',
-  'accounting-expense-review.policy.ts',
-  'accounting-expense-review.service.ts',
   'accounting-gmail-ingest.service.ts',
   'accounting-document-extraction.ts',
   'accounting-pdf-routing.ts',

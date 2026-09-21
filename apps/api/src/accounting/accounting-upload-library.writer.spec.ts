@@ -37,9 +37,6 @@ describe('Accounting upload library writer', () => {
       status: AccountingInboxStatus.DISCARDED,
       materializedEntityType: null,
       materializedEntityStableId: null,
-      expenseReviewRevisions: [
-        { reviewRevisionStableId: 'acctexpreview_primary' },
-      ],
       artifact: {
         id: 'artifact-db-1',
         artifactStableId: 'acctart_1',
@@ -55,9 +52,6 @@ describe('Accounting upload library writer', () => {
             status: AccountingInboxStatus.DUPLICATE,
             materializedEntityType: null,
             materializedEntityStableId: null,
-            expenseReviewRevisions: [
-              { reviewRevisionStableId: 'acctexpreview_duplicate' },
-            ],
             artifact: {
               id: 'artifact-db-2',
               artifactStableId: 'acctart_2',
@@ -96,16 +90,6 @@ describe('Accounting upload library writer', () => {
       deletedArtifactStableIds: ['acctart_1', 'acctart_2'],
       removedDuplicateCount: 1,
       storedUrls: ['/api/v1/accounting/files/inbox/original.pdf'],
-    });
-    expect(tx.accountingAuditLog.deleteMany).toHaveBeenCalledWith({
-      where: {
-        entityId: {
-          in: expect.arrayContaining([
-            'acctexpreview_primary',
-            'acctexpreview_duplicate',
-          ]) as unknown as string[],
-        },
-      },
     });
     expect(tx.accountingExpenseDocument.delete).toHaveBeenCalledWith({
       where: { id: 'expense-db-1' },

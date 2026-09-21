@@ -131,9 +131,10 @@ Required order:
    structured-expense CSV and ambiguous provider-recognition CSV — merged in PR #2442 as
    `994f5a67`;
 10. **Reliability Slice B:** reconcile ordinary Expense source amounts, expose fail-visible
-    `MATCHED / MISMATCH / INSUFFICIENT` status, and add versioned Expense Human Review authority
-    for auditable field/amount correction before materialization. Source/schema implementation is
-    additive; the matching user-generated migration must be reviewed and merged before production;
+    `MATCHED / MISMATCH / INSUFFICIENT` status, keep machine extraction read-only, and make the
+    existing final booking fields explicitly editable for operator correction. Confirmation records
+    machine values, final values and corrected fields in Expense evidence/audit. No Expense review
+    persistence or Prisma migration is required;
 11. **Slice 6:** optional suspense workflow only after a separate Accounting policy decision.
 
 Do not use a new OCR engine as a substitute for reconciliation or human review. Machine

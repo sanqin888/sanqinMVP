@@ -1,6 +1,6 @@
 # Accounting Document Recognition & Human Review Plan
 
-Status: **SLICE 0-3 + 3V-A + 3V-B DEV MERGED / CI GREEN / 3V-B PRODUCTION VERIFICATION PENDING / EVIDENCE VIEWER SLICE 1 + 1B + 2 MERGED / RELIABILITY SLICE A MERGED / EXPENSE REVIEW HARDENING IMPLEMENTED — MIGRATION REQUIRED BEFORE PRODUCTION — DO NOT REOPEN PHASE 9**  
+Status: **SLICE 0-3 + 3V-A + 3V-B DEV MERGED / CI GREEN / 3V-B PRODUCTION VERIFICATION PENDING / EVIDENCE VIEWER SLICE 1 + 1B + 2 MERGED / RELIABILITY SLICE A MERGED / EXPENSE REVIEW HARDENING PR OPEN — NO MIGRATION — DO NOT REOPEN PHASE 9**  
 Planning date: 2026-09-20; updated: 2026-09-21  
 Audit baseline: `origin/dev@1ede0599`; Slice 3 merged in PR #2432 as `caabf1c1`; Slice 3V-A merged in PR #2439 as `0d6909bb` after PR CI #6054 and merged-head CI #6055 passed; Slice 3V-B merged in PR #2440 as `0ac9117f` after final head `3c5c0400`, PR CI #6057 and merged-head CI #6058 green  
 Owner: **Accounting / Reporting / Analytics**  
@@ -881,35 +881,26 @@ misleading HIGH result. Source-currency arithmetic remains distinct from CAD boo
 foreign-source totals are reconciled internally in their source currency and are not compared
 numerically to a later CAD booking amount merely because FX conversion changes the number.
 
-Ordinary Expense evidence now has a separate Accounting-owned `AccountingExpenseReviewRevision`
-authority bound to the unmaterialized Inbox item. Machine extraction stays immutable. Each human
-revision stores a normalized effective snapshot (date, source currency, category splits,
-subtotal/tax/total through the split values, payment allocations and memo), DRAFT/CONFIRMED/
-SUPERSEDED state, operator identity, note, source Inbox version, source ParseRun stable ID/result
-hash and deterministic review hash. Draft creation validates balanced money, valid active Expense
-categories and CAD payment accounts. Confirmation fails closed if the Inbox version or machine
-ParseRun changed, if a newer draft exists, or if the hash no longer matches.
+Ordinary Expense keeps machine extraction immutable and read-only, but does **not** introduce a
+second persisted Human Review state machine. The existing Expense booking form remains the operator
+authority for date, source currency, category splits, subtotal/tax/total, payment allocations and
+memo. Web now makes that distinction explicit: machine values are shown as recognition evidence,
+while the lower **Final booking values** section is editable and surfaces which machine-observed
+fields have been manually corrected.
 
 Final Expense materialization remains the only action that creates the ExpenseDocument and
-AccountingTransaction rows. A machine `MISMATCH`, or an operator change to a machine-observed date,
-CAD amount, category or source-currency field, requires the current latest CONFIRMED human revision
-and exact review hash. Changing the form after confirmation invalidates that authority. Clean,
-self-consistent machine evidence can still follow the existing direct confirmation path without an
-extra review click. The materialized Expense `extractionJson` records the exact confirmed review
-stable ID/revision/hash/operator/timestamp when review authority was required.
+AccountingTransaction rows. Server-side booking validation still requires exact integer-cent
+balance for the final operator values. At confirmation, Accounting records a deterministic
+`bookingReview` snapshot in the Expense `extractionJson`: machine values, final booked values,
+machine financial-consistency state, corrected field names, operator identity and confirmation
+timestamp. A matching `CONFIRM_EXPENSE_BOOKING` AccountingAuditLog entry preserves the same review
+evidence. Foreign-source amounts remain distinct from CAD booking amounts, so FX conversion alone
+does not create a false amount-correction flag.
 
-Saving or confirming an Expense Human Review does **not** materialize the Inbox item. Eligible
-manual-upload evidence therefore remains permanently deletable until final Expense creation. The
-existing permanent-delete writer now also removes Expense Review audit rows before Inbox deletion;
-review persistence itself cascades with the Inbox item, so human-corrected amounts are not left
-behind after an authorized permanent deletion.
-
-This Slice B schema is additive and requires a user-generated Prisma migration for the new review
-enum/table/relation/indexes. No assistant/MCP migration file is generated. The source/schema state
-may merge to `dev` under repository policy, but promotion to `main`, production deployment and
-production migration remain blocked until the user-generated migration is reviewed and merged back
-into `dev`. No package/runtime dependency, provider wire contract, context direction, architecture
-scanner allowance or public SCC is added; Phase 9 remains closed.
+No Expense review enum/table/relation/API is added, and Provider Financial Human Review remains
+unchanged. Slice B therefore requires **no Prisma migration**, no package/runtime dependency, no
+provider wire change, no context direction, no architecture scanner allowance and no public SCC
+change; Phase 9 remains closed.
 
 ### Slice 6 — Optional suspense workflow
 

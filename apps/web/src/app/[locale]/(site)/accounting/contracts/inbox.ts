@@ -212,7 +212,6 @@ export type AccountingInboxItem = {
     | 'PROVIDER_FINANCIAL_DOCUMENT'
     | null;
   materializedEntityStableId: string | null;
-  version: number;
   createdAt: string;
   artifact: {
     artifactStableId: string;

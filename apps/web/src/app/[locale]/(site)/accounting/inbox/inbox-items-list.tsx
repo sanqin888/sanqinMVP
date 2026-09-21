@@ -378,8 +378,8 @@ export function AccountingInboxItemsList({
                             : 'Amounts reconcile'
                           : expenseRecognitionConsistency === 'MISMATCH'
                             ? isZh
-                              ? '金额不自洽 · 必须人工复核'
-                              : 'Mismatch · human review required'
+                              ? '金额不自洽 · 需人工订正'
+                              : 'Mismatch · correction required'
                             : isZh
                               ? '证据不足 · 请核对'
                               : 'Insufficient evidence · verify'}
@@ -423,8 +423,8 @@ export function AccountingInboxItemsList({
                     {expenseRecognitionConsistency === 'MISMATCH' ? (
                       <p className="mt-2 font-medium">
                         {isZh
-                          ? '系统识别的税前 + 税额 ≠ 总额。不要直接确认费用，请打开审核后按原始凭证订正并完成人工复核。'
-                          : 'Recognized subtotal + tax does not equal total. Do not confirm directly; open review, correct from source evidence, and confirm Human Review.'}
+                          ? '系统识别的税前 + 税额 ≠ 总额。请打开费用审核，按原始凭证在“最终入账值”中直接订正。'
+                          : 'Recognized subtotal + tax does not equal total. Open expense review and correct the Final booking values directly from source evidence.'}
                       </p>
                     ) : null}
                   </div>
