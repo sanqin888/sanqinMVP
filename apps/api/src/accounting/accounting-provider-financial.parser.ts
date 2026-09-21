@@ -438,9 +438,7 @@ function parseUberMonthlyStatement(
     AccountingFinancialComponent.CONTROL_TOTAL,
     AccountingFinancialPostingTreatment.CONTROL_TOTAL,
   );
-  if (
-    hasUnresolvedPopplerTextOnlyNamedAmount(namedLabels, summaryExtraction)
-  ) {
+  if (hasUnresolvedPopplerTextOnlyNamedAmount(namedLabels, summaryExtraction)) {
     return null;
   }
   if (!lines.length) return null;
