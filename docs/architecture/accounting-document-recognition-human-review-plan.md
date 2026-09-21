@@ -1,8 +1,8 @@
 # Accounting Document Recognition & Human Review Plan
 
-Status: **SLICE 0-3 MERGED / CI GREEN / SLICE 3V-A SOURCE IMPLEMENTED / LOCAL REVIEW / EVIDENCE VIEWER SLICE 1 + 1B + 2 MERGED — DO NOT REOPEN PHASE 9**  
+Status: **SLICE 0-3 + 3V-A MERGED / CI GREEN / SLICE 3V-B SOURCE IMPLEMENTED / LOCAL REVIEW / EVIDENCE VIEWER SLICE 1 + 1B + 2 MERGED — DO NOT REOPEN PHASE 9**  
 Planning date: 2026-09-20; updated: 2026-09-21  
-Audit baseline: `origin/dev@1ede0599`; Slice 3 merged in PR #2432 as `caabf1c1`; current Slice 3V-A base: `origin/dev@4d68379e`  
+Audit baseline: `origin/dev@1ede0599`; Slice 3 merged in PR #2432 as `caabf1c1`; Slice 3V-A merged in PR #2439 as `0d6909bb` after PR CI #6054 and merged-head CI #6055 passed; current Slice 3V-B base: `origin/dev@0d6909bb`  
 Owner: **Accounting / Reporting / Analytics**  
 Phase 9 status: **remains PRODUCTION VERIFIED / CLOSED — do not reopen Phase 9**
 
@@ -790,9 +790,55 @@ activating the new scanned-PDF raster path:
 - no historical source artifact, machine extraction, Human Review Revision, posted settlement or
   Journal is rewritten or reprocessed by this source batch.
 
-3V-B remains the separate next PDF-routing slice: bounded page inspection/rasterization,
-synchronous Textract image OCR per page, page-number-aware geometry merge and whole-document
-fail-closed completeness.
+Slice 3V-A merged in PR #2439 as `0d6909bb`; PR CI #6054 and merged-head CI #6055
+passed.
+
+#### Slice 3V-B — Bounded scanned-PDF page raster + Textract merge
+
+Source implementation on `origin/dev@0d6909bb` / branch
+`accounting/document-recognition-3v-b` replaces the temporary whole-PDF Textract fallback
+without adding another OCR engine or remote document-storage workflow:
+
+- only `SCAN_CANDIDATE` PDFs enter this path. `USABLE_NATIVE_TEXT` remains on local Poppler
+  text/layout and `FAIL_CLOSED` remains local/manual; Provider API remains excluded;
+- page inspection uses the already-installed Poppler `pdfinfo`; PDFs are limited to **6 pages**.
+  A larger document is rejected before page rasterization or Textract;
+- pages are rasterized sequentially with the existing Poppler `pdftocairo` at **200 DPI**.
+  Each Poppler command has a **10 second** timeout, bounded stderr, and a **20 MiB** raster-output
+  ceiling. The existing Inbox source-file ceiling remains **25 MiB**;
+- each rendered page is prepared as a non-cropped JPEG under the existing synchronous Textract
+  image policy: at most **9,500,000 bytes** and **9000 px** on either axis. The receipt-specific
+  crop heuristic is deliberately not reused for provider statements;
+- synchronous AnalyzeExpense requests remain sequential (**concurrency 1**) and reuse the
+  existing **20 second** Textract request timeout;
+- the scanned-PDF adapter consumes **only Textract LINE blocks** for OCR text/confidence/geometry.
+  AnalyzeExpense `SummaryFields`, line-item groups, inferred totals/tax/currency and receipt
+  semantics are not merged into provider statement authority;
+- successful page extraction requires non-empty OCR lines and layout geometry. Every line is
+  remapped to the original PDF page and deterministic `pN-lX` identity before the pages are
+  merged in page/top/left order;
+- the complete PDF is capped at **2000 merged lines** and **57,000,000 bytes** of aggregate
+  prepared Textract page images. Overflow is an error; the adapter never truncates to a
+  successful prefix;
+- any page-count, raster, image-preparation, Textract, empty-page, geometry, aggregate-resource
+  or merged-line failure aborts the whole OCR result. Inbox acquisition records the parse as
+  `ERROR`, retains the SourceArtifact/PENDING_REVIEW evidence, and does not call provider
+  parsing/materialization on a partial prefix;
+- the generic PDF review parse-run contract advances to v6 and records bounded
+  `pdfOcrEvidence` diagnostics (page count, DPI, request/model IDs, prepared image
+  dimensions/bytes and line counts) separately from receipt `textractEvidence`; when provider
+  recognition succeeds before generic review, the same OCR evidence is carried into the
+  provider-recognition/provider-financial parse runs instead of being dropped;
+- Provider API behavior remains unchanged. Its current public ingress is CSV-only, and the
+  scanned-PDF OCR branch keeps the explicit `acquisitionMode !== PROVIDER_API` guard. Enabling
+  Provider API PDF OCR later would require a new evidence-backed decision;
+- no raw PDF bytes are submitted to Textract by the normal scanned-PDF path after 3V-B. No
+  S3/async Textract, queue, PaddleOCR, BDA, Prisma/schema/migration, package/lockfile or
+  Docker/runtime-package change is introduced.
+
+The historical posted Uber July statement remains immutable and is not reprocessed by this
+source batch. Existing control-total reconciliation and Human Review stay downstream authority
+after OCR/provider mapping.
 
 ### Slice 6 — Optional suspense workflow
 
@@ -952,15 +998,18 @@ financial facts. Retain source/review evidence.
 
 ## 15. Decisions intentionally left open
 
-Slice 3V-A resolves the native-text usability decision above. Evidence Viewer Slice 2 also
-resolved the bounded CSV/XLSX preview contract and is merged. The following decisions remain
+Slice 3V-A resolves the native-text usability decision above. Slice 3V-B resolves the
+initial scanned-PDF limits and keeps Provider API excluded from PDF OCR. Evidence Viewer Slice 2
+also resolved the bounded CSV/XLSX preview contract and is merged. The following decisions remain
 open and must not be guessed during later implementation:
 
-1. the scanned-PDF maximum page count and aggregate OCR resource limits;
-2. whether Provider API ingestion should participate in scanned-PDF raster/Textract fallback;
-3. whether the runtime should pin a specific Alpine/Poppler version for golden reproducibility;
-4. whether DOCX should be accepted by Accounting Inbox;
-5. whether unresolved provider components may use a suspense account.
+1. whether the runtime should pin a specific Alpine/Poppler version for golden reproducibility;
+2. whether DOCX should be accepted by Accounting Inbox;
+3. whether unresolved provider components may use a suspense account.
+
+The 3V-B six-page/resource limits are intentionally conservative first-production bounds. Raise
+them only from real document evidence and a new bounded-resource review rather than silently
+changing the policy.
 
 PaddleOCR/BDA and S3/async Textract are not part of the currently approved normal recognition
 path. Reintroducing any of them requires a new explicit decision based on a demonstrated gap.
