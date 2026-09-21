@@ -1,6 +1,10 @@
 'use client';
 
-import type { AccountingManualUploadLibraryItem } from '../contracts/inbox';
+import { AccountingEvidenceViewer } from '../accounting-evidence-viewer';
+import type {
+  AccountingManualUploadLibraryItem,
+  AccountingManualUploadPermanentDeleteResult,
+} from '../contracts/inbox';
 
 type Props = {
   items: AccountingManualUploadLibraryItem[];
@@ -10,6 +14,9 @@ type Props = {
   deletingId: string | null;
   onDiscard: (item: AccountingManualUploadLibraryItem) => Promise<void>;
   onPermanentDelete: (item: AccountingManualUploadLibraryItem) => Promise<void>;
+  onEvidenceDeleted: (
+    result: AccountingManualUploadPermanentDeleteResult,
+  ) => Promise<void>;
 };
 
 export function AccountingManualUploadLibrary({
@@ -20,6 +27,7 @@ export function AccountingManualUploadLibrary({
   deletingId,
   onDiscard,
   onPermanentDelete,
+  onEvidenceDeleted,
 }: Props) {
   return (
     <details className="rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -101,14 +109,21 @@ export function AccountingManualUploadLibrary({
                     </p>
                   ) : null}
                   {item.contentUrl ? (
-                    <a
+                    <AccountingEvidenceViewer
+                      evidence={{
+                        artifactStableId: item.artifactStableId,
+                        filename: item.originalFilename,
+                        kind: item.kind,
+                        deletion: {
+                          inboxItemStableId: item.inboxItemStableId,
+                          canPermanentDelete: item.canPermanentDelete,
+                        },
+                      }}
+                      isZh={isZh}
+                      onDeleted={onEvidenceDeleted}
+                      label={isZh ? '查看文件' : 'Open file'}
                       className="mt-1 inline-block text-blue-600 hover:underline"
-                      href={item.contentUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      {isZh ? '查看文件' : 'Open file'}
-                    </a>
+                    />
                   ) : item.status === 'DUPLICATE' ? (
                     <p className="mt-1 text-xs text-slate-500">
                       {isZh

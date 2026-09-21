@@ -2,6 +2,10 @@
 
 import { useMemo, useState } from 'react';
 import { apiFetch } from '@/lib/api/client';
+import {
+  AccountingEvidenceViewer,
+  type AccountingEvidenceSource,
+} from './accounting-evidence-viewer';
 import type { AccountingInboxParseResult } from './contracts/inbox';
 import type {
   AccountingProviderFinancialDocument,
@@ -24,7 +28,7 @@ import {
 
 type Props = {
   document: AccountingProviderFinancialDocument;
-  evidenceUrl: string | null;
+  evidence: AccountingEvidenceSource | null;
   parseResult: AccountingInboxParseResult | null;
   isZh: boolean;
   readOnly?: boolean;
@@ -35,7 +39,7 @@ type Props = {
 
 export function ProviderFinancialReviewPanel({
   document,
-  evidenceUrl,
+  evidence,
   parseResult,
   isZh,
   readOnly = false,
@@ -320,18 +324,15 @@ export function ProviderFinancialReviewPanel({
               <p className="text-slate-500">
                 {isZh ? '原始证据' : 'Source evidence'}
               </p>
-              {evidenceUrl ? (
-                <a
-                  href={evidenceUrl}
-                  target="_blank"
-                  rel="noreferrer"
+              {evidence ? (
+                <AccountingEvidenceViewer
+                  evidence={evidence}
+                  isZh={isZh}
                   className="mt-1 inline-block font-medium text-blue-700 hover:underline"
-                >
-                  {isZh ? '打开原始文件' : 'Open original evidence'}
-                </a>
+                />
               ) : (
                 <p className="mt-1 text-slate-700">
-                  {isZh ? '无可直接打开的文件链接' : 'No direct evidence link'}
+                  {isZh ? '无可查看的原始文件' : 'No source evidence available'}
                 </p>
               )}
             </div>

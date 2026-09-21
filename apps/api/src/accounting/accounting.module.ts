@@ -22,6 +22,7 @@ import { UberEatsModule } from '../integrations/ubereats/ubereats.module';
 import { AccountingAutomationScheduler } from './accounting-automation.scheduler';
 import { AccountingGmailIngestService } from './accounting-gmail-ingest.service';
 import { AccountingInboxAcquisitionService } from './accounting-inbox-acquisition.service';
+import { AccountingArtifactDeliveryService } from './accounting-artifact-delivery.service';
 import { AccountingImageRetentionService } from './accounting-image-retention.service';
 import { AccountingProviderFinancialService } from './accounting-provider-financial.service';
 import { AccountingProviderFinancialReviewService } from './accounting-provider-financial-review.service';
@@ -103,6 +104,7 @@ import { PaymentFinancialFactsModule } from '../payments/public-api';
     AccountingProviderFinancialService,
     AccountingProviderFinancialReviewService,
     AccountingInboxAcquisitionService,
+    AccountingArtifactDeliveryService,
     AccountingImageRetentionService,
     AccountingProviderFinancialHistoryService,
     AccountingGmailIngestService,

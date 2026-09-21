@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api/client';
 import type {
@@ -36,6 +36,16 @@ export default function AccountingInboxPage() {
   const [manualUploads, setManualUploads] = useState<
     AccountingManualUploadLibraryItem[]
   >([]);
+  const permanentDeleteCapabilities = useMemo(
+    () =>
+      new Map<string, boolean>(
+        manualUploads.map(
+          (item) =>
+            [item.inboxItemStableId, item.canPermanentDelete] as const,
+        ),
+      ),
+    [manualUploads],
+  );
   const [categories, setCategories] = useState<AccountingCategory[]>([]);
   const [accounts, setAccounts] = useState<AccountingAccount[]>([]);
   const [trustedSenders, setTrustedSenders] = useState<AccountingTrustedSender[]>([]);
@@ -284,6 +294,24 @@ export default function AccountingInboxPage() {
     }
   }
 
+  async function handlePermanentDeleteResult(
+    result: AccountingManualUploadPermanentDeleteResult,
+  ) {
+    if (reviewingInboxItemStableId === result.inboxItemStableId) {
+      setReviewingInboxItemStableId(null);
+    }
+    setMessage(
+      result.storageCleanupComplete
+        ? isZh
+          ? '未确认文件及相关数据库记录已永久删除。'
+          : 'The unconfirmed file and its related database records were permanently deleted.'
+        : isZh
+          ? '数据库记录已永久删除，但有物理文件清理失败；服务器日志已记录待清理路径。'
+          : 'Database records were permanently deleted, but some physical file cleanup failed. The server log records the cleanup path.',
+    );
+    await load();
+  }
+
   async function permanentlyDeleteUpload(item: AccountingManualUploadLibraryItem) {
     setDeletingUploadId(item.inboxItemStableId);
     setError(null);
@@ -294,19 +322,7 @@ export default function AccountingInboxPage() {
         `/accounting/inbox/manual-uploads/${item.inboxItemStableId}/permanent`,
         { method: 'DELETE' },
       );
-      if (reviewingInboxItemStableId === item.inboxItemStableId) {
-        setReviewingInboxItemStableId(null);
-      }
-      setMessage(
-        result.storageCleanupComplete
-          ? isZh
-            ? '未确认文件及相关数据库记录已永久删除。'
-            : 'The unconfirmed file and its related database records were permanently deleted.'
-          : isZh
-            ? '数据库记录已永久删除，但有物理文件清理失败；服务器日志已记录待清理路径。'
-            : 'Database records were permanently deleted, but some physical file cleanup failed. The server log records the cleanup path.',
-      );
-      await load();
+      await handlePermanentDeleteResult(result);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -545,6 +561,8 @@ export default function AccountingInboxPage() {
         onConfirmProviderFinancial={confirmProviderFinancial}
         onConfirmOther={confirmOther}
         onDiscard={discard}
+        permanentDeleteCapabilities={permanentDeleteCapabilities}
+        onEvidenceDeleted={handlePermanentDeleteResult}
       />
 
       {reviewing ? (
@@ -555,6 +573,10 @@ export default function AccountingInboxPage() {
           isZh={isZh}
           onClose={() => setReviewingInboxItemStableId(null)}
           onConfirmed={handleExpenseConfirmed}
+          canPermanentDelete={
+            permanentDeleteCapabilities.get(reviewing.inboxItemStableId) ?? false
+          }
+          onEvidenceDeleted={handlePermanentDeleteResult}
         />
       ) : null}
 
@@ -581,6 +603,7 @@ export default function AccountingInboxPage() {
         deletingId={deletingUploadId}
         onDiscard={discard}
         onPermanentDelete={permanentlyDeleteUpload}
+        onEvidenceDeleted={handlePermanentDeleteResult}
       />
     </div>
   );
