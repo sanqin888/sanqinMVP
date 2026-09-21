@@ -997,7 +997,12 @@ export function AccountingInboxExpenseReviewPanel({
           {error}
         </p>
       ) : null}
-      <div className="mt-4 flex flex-wrap gap-2">
+      <p className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+        {isZh
+          ? '确认后会创建正式费用记录并写入财务账目；原始凭证将进入受保护证据链，之后不能再永久删除。'
+          : 'Confirmation creates the formal expense and posts it to the accounting records; the source evidence then becomes protected and can no longer be permanently deleted.'}
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
         <button
           onClick={() => void confirmExpense()}
           disabled={

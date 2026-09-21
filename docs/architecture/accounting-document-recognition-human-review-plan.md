@@ -1,6 +1,6 @@
 # Accounting Document Recognition & Human Review Plan
 
-Status: **SLICE 0-3 + 3V-A + 3V-B DEV MERGED / CI GREEN / 3V-B PRODUCTION VERIFICATION PENDING / EVIDENCE VIEWER SLICE 1 + 1B + 2 MERGED / RELIABILITY SLICE A MERGED / EXPENSE REVIEW HARDENING MERGED / CI GREEN — NO MIGRATION — DO NOT REOPEN PHASE 9**  
+Status: **SLICE 0-3 + 3V-A + 3V-B DEV MERGED / CI GREEN / 3V-B PRODUCTION VERIFICATION PENDING / EVIDENCE VIEWER SLICE 1 + 1B + 2 MERGED / RELIABILITY SLICE A MERGED / EXPENSE REVIEW HARDENING MERGED / ORIGINAL SLICE C UX CLOSEOUT LOCAL SOURCE COMPLETE — NO MIGRATION — DO NOT REOPEN PHASE 9**  
 Planning date: 2026-09-20; updated: 2026-09-21  
 Audit baseline: `origin/dev@1ede0599`; Slice 3 merged in PR #2432 as `caabf1c1`; Slice 3V-A merged in PR #2439 as `0d6909bb` after PR CI #6054 and merged-head CI #6055 passed; Slice 3V-B merged in PR #2440 as `0ac9117f` after final head `3c5c0400`, PR CI #6057 and merged-head CI #6058 green  
 Owner: **Accounting / Reporting / Analytics**  
@@ -901,6 +901,21 @@ No Expense review enum/table/relation/API is added, and Provider Financial Human
 unchanged. Slice B therefore requires **no Prisma migration**, no package/runtime dependency, no
 provider wire change, no context direction, no architecture scanner allowance and no public SCC
 change; Phase 9 remains closed.
+
+#### Original Slice C — Inbox pre-confirm visibility + irreversible-action UX closeout
+
+This final A/B/C closeout is Web-only. The Expense Inbox summary surfaces recognition confidence
+alongside the already-present date/category/subtotal/tax/total/engine and reconciliation status.
+Opening Expense review is explicitly described as non-posting; the final confirmation warning states
+that creating the Expense writes the formal accounting record and protects the source evidence from
+permanent deletion. Provider Financial confirmation similarly states before action that evidence
+moves to Provider settlements, becomes protected, and does not itself post a Journal entry.
+
+Manual Upload Library makes evidence lifecycle visible with `未确认 · 可永久删除` /
+`Unconfirmed · permanent delete available` and `已确认 · 受保护` / `Confirmed · protected` badges.
+No backend materialization, deletion, review, settlement or Journal semantics change. The separately
+merged Expense Journal canonicalization C0 shadow preview (PR #2444) is a future-roadmap readiness
+tool and is not part of this original Slice C; this closeout does not start C1 Journal cutover.
 
 ### Slice 6 — Optional suspense workflow
 

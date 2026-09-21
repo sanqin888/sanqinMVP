@@ -78,6 +78,17 @@ export function AccountingManualUploadLibrary({
                     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
                       {statusLabel(item.status, isZh)}
                     </span>
+                    {item.canPermanentDelete ? (
+                      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
+                        {isZh
+                          ? '未确认 · 可永久删除'
+                          : 'Unconfirmed · permanent delete available'}
+                      </span>
+                    ) : item.status === 'CONFIRMED' ? (
+                      <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">
+                        {isZh ? '已确认 · 受保护' : 'Confirmed · protected'}
+                      </span>
+                    ) : null}
                     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
                       {item.kind}
                     </span>

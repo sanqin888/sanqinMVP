@@ -406,6 +406,10 @@ required.
 
 **Post-Modularization Accounting — Slice C0: Expense Journal Canonicalization Shadow Preview**
 
+> Naming note: this roadmap C0 is separate from the earlier Document Recognition **original Slice C**
+> (Inbox pre-confirm visibility / irreversible-action UX). The original Slice C closes independently;
+> do not treat its completion as authorization to continue into Journal C1.
+
 Readiness re-confirmed on 2026-09-21:
 
 - Expense remains the only active `AccountingTransaction` mutation owner;

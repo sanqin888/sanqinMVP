@@ -43,6 +43,17 @@ describe('Accounting Inbox expense review UX guard', () => {
     expect(source).not.toContain('确认人工复核');
   });
 
+  it('warns that final expense confirmation posts the expense and protects the source evidence', () => {
+    const source = readFileSync(
+      resolve(__dirname, 'expense-review-panel.tsx'),
+      'utf8',
+    );
+
+    expect(source).toContain('确认后会创建正式费用记录并写入财务账目');
+    expect(source).toContain('之后不能再永久删除');
+    expect(source).toContain('Confirm and create expense');
+  });
+
   it('keeps source currency before expense date and payment allocations immediately before memo', () => {
     const source = readFileSync(
       resolve(__dirname, 'expense-review-panel.tsx'),
