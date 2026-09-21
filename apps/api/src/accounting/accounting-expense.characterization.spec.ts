@@ -77,9 +77,8 @@ describe('AccountingExpenseService expense-write characterization', () => {
     const createMany = jest.fn((args: TransactionCreateManyArgs) =>
       Promise.resolve({ count: args.data.length }),
     );
-    const createExpenseSplitMany = jest.fn(
-      (args: ExpenseSplitCreateManyArgs) =>
-        Promise.resolve({ count: args.data.length }),
+    const createExpenseSplitMany = jest.fn((args: ExpenseSplitCreateManyArgs) =>
+      Promise.resolve({ count: args.data.length }),
     );
     const createAllocationMany = jest.fn(
       (args: PaymentAllocationCreateManyArgs) =>

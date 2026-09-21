@@ -41,15 +41,11 @@ describe('Accounting Expense split ownership foundation', () => {
     const category = modelBody(schema, 'AccountingCategory');
     const split = modelBody(schema, 'AccountingExpenseSplit');
 
-    expect(expenseDocument).toMatch(
-      /\bsplits\s+AccountingExpenseSplit\[\]/,
-    );
+    expect(expenseDocument).toMatch(/\bsplits\s+AccountingExpenseSplit\[\]/);
     expect(expenseDocument).toMatch(
       /\btransactions\s+AccountingTransaction\[\]/,
     );
-    expect(category).toMatch(
-      /\bexpenseSplits\s+AccountingExpenseSplit\[\]/,
-    );
+    expect(category).toMatch(/\bexpenseSplits\s+AccountingExpenseSplit\[\]/);
 
     expect(split).toContain('splitStableId');
     expect(split).toContain('expenseDocumentId');
@@ -70,9 +66,7 @@ describe('Accounting Expense split ownership foundation', () => {
 
     expect(service).toContain('createAccountingExpenseSplitCompatibilityInTx');
     expect(service).not.toContain('accountingTransaction.createMany');
-    expect(writer).toContain(
-      '@compat accounting.expense-split-ownership.v1',
-    );
+    expect(writer).toContain('@compat accounting.expense-split-ownership.v1');
     expect(writer).toContain('accountingExpenseSplit.createMany');
     expect(writer).toContain('accountingTransaction.createMany');
   });

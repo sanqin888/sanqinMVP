@@ -163,7 +163,8 @@ const expenseSplitPersistenceParity = (
   expenseSplits: ExpenseSplitProjection[],
 ) => {
   const normalizedLegacy = normalizeExpenseSplitProjection(legacySplits);
-  const normalizedExpenseSplits = normalizeExpenseSplitProjection(expenseSplits);
+  const normalizedExpenseSplits =
+    normalizeExpenseSplitProjection(expenseSplits);
   const legacyHash = hashAccountingJson(normalizedLegacy);
   const expenseSplitHash = hashAccountingJson(normalizedExpenseSplits);
   return {
