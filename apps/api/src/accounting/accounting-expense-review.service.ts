@@ -205,10 +205,7 @@ export class AccountingExpenseReviewService {
   constructor(@Inject(ACCOUNTING_DB) private readonly prisma: AccountingDb) {}
 
   async listReviewRevisions(inboxItemStableId: string) {
-    const stableId = requireStableValue(
-      inboxItemStableId,
-      'inboxItemStableId',
-    );
+    const stableId = requireStableValue(inboxItemStableId, 'inboxItemStableId');
     const inbox = await this.prisma.accountingInboxItem.findUnique({
       where: { inboxItemStableId: stableId },
       select: { id: true },
@@ -227,10 +224,7 @@ export class AccountingExpenseReviewService {
     input: AccountingExpenseReviewDraftInput,
     operatorUserStableId: string,
   ) {
-    const stableId = requireStableValue(
-      inboxItemStableId,
-      'inboxItemStableId',
-    );
+    const stableId = requireStableValue(inboxItemStableId, 'inboxItemStableId');
     const operator = requireStableValue(
       operatorUserStableId,
       'operatorUserStableId',
@@ -276,12 +270,13 @@ export class AccountingExpenseReviewService {
         }
         await assertEffectiveReferencesInTx(tx, normalized.effective);
 
-        const latestReview =
-          await tx.accountingExpenseReviewRevision.findFirst({
+        const latestReview = await tx.accountingExpenseReviewRevision.findFirst(
+          {
             where: { inboxItemId: inbox.id },
             orderBy: { revision: 'desc' },
             select: { revision: true },
-          });
+          },
+        );
         const reviewRevision = (latestReview?.revision ?? 0) + 1;
         const sourceParse = inbox.artifact.parseRuns[0] ?? null;
         const reviewHash = hashAccountingJson({
@@ -351,10 +346,7 @@ export class AccountingExpenseReviewService {
     expectedReviewHash: string,
     operatorUserStableId: string,
   ) {
-    const stableId = requireStableValue(
-      inboxItemStableId,
-      'inboxItemStableId',
-    );
+    const stableId = requireStableValue(inboxItemStableId, 'inboxItemStableId');
     const reviewStableId = requireStableValue(
       reviewRevisionStableId,
       'reviewRevisionStableId',

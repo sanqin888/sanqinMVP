@@ -66,7 +66,9 @@ function optionalMachineInteger(
   key: string,
 ): number | null {
   const value = record[key];
-  return typeof value === 'number' && Number.isSafeInteger(value) ? value : null;
+  return typeof value === 'number' && Number.isSafeInteger(value)
+    ? value
+    : null;
 }
 
 function requiresExpenseHumanReview(
@@ -105,7 +107,8 @@ function requiresExpenseHumanReview(
     const machineTaxCents = optionalMachineInteger(extraction, 'taxCents');
     const machineTotalCents = optionalMachineInteger(extraction, 'totalCents');
     if (
-      (machineSubtotalCents != null && machineSubtotalCents !== subtotalCents) ||
+      (machineSubtotalCents != null &&
+        machineSubtotalCents !== subtotalCents) ||
       (machineTaxCents != null && machineTaxCents !== taxCents) ||
       (machineTotalCents != null && machineTotalCents !== effective.totalCents)
     ) {
@@ -127,8 +130,8 @@ function requiresExpenseHumanReview(
 
   return Boolean(
     machineSourceCurrency &&
-      effective.sourceCurrency &&
-      machineSourceCurrency !== effective.sourceCurrency,
+    effective.sourceCurrency &&
+    machineSourceCurrency !== effective.sourceCurrency,
   );
 }
 
@@ -279,10 +282,12 @@ export class AccountingExpenseService {
           occurredAt: occurredAt.toISOString().slice(0, 10),
           totalCents: input.totalCents,
           sourceCurrency: reviewedSourceCurrency,
-          paymentAllocations: normalizedPaymentAllocations.map((allocation) => ({
-            accountStableId: allocation.accountStableId,
-            amountCents: allocation.amountCents,
-          })),
+          paymentAllocations: normalizedPaymentAllocations.map(
+            (allocation) => ({
+              accountStableId: allocation.accountStableId,
+              amountCents: allocation.amountCents,
+            }),
+          ),
           memo: input.memo,
           splits: normalizedSplits,
         });
@@ -372,8 +377,7 @@ export class AccountingExpenseService {
                 revision: latestReview.revision,
                 reviewHash: latestReview.reviewHash,
                 confirmedAt: latestReview.confirmedAt,
-                confirmedByUserStableId:
-                  latestReview.confirmedByUserStableId,
+                confirmedByUserStableId: latestReview.confirmedByUserStableId,
               },
             }
           : {}),

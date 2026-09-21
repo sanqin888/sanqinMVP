@@ -115,7 +115,9 @@ export function normalizeAccountingExpenseReviewEffective(
   input: AccountingExpenseReviewEffectiveInput,
 ): NormalizedAccountingExpenseReviewEffective {
   if (!input || typeof input !== 'object') {
-    throw new AccountingExpenseReviewPolicyError('effective review is required');
+    throw new AccountingExpenseReviewPolicyError(
+      'effective review is required',
+    );
   }
 
   const totalCents = requirePositiveMoney(
@@ -287,7 +289,8 @@ export function parseStoredAccountingExpenseReviewEffective(
     totalCents:
       typeof record.totalCents === 'number' ? record.totalCents : Number.NaN,
     sourceCurrency:
-      typeof record.sourceCurrency === 'string' || record.sourceCurrency === null
+      typeof record.sourceCurrency === 'string' ||
+      record.sourceCurrency === null
         ? record.sourceCurrency
         : null,
     paymentAllocations,
@@ -298,4 +301,3 @@ export function parseStoredAccountingExpenseReviewEffective(
     splits,
   });
 }
-

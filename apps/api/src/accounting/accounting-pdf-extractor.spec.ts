@@ -117,17 +117,17 @@ describe('accounting text extraction', () => {
         amountEvidence: {
           subtotal: expect.objectContaining({
             strategy: 'DERIVED_TOTAL_MINUS_TAX',
-          }),
+          }) as unknown,
           tax: expect.objectContaining({
             strategy: 'LAYOUT_ROW_PAIR',
             labelLineId: 'p1-l1',
             amountLineId: 'p1-l2',
-          }),
+          }) as unknown,
           total: expect.objectContaining({
             strategy: 'LAYOUT_ROW_PAIR',
             labelLineId: 'p1-l3',
             amountLineId: 'p1-l4',
-          }),
+          }) as unknown,
         },
       }),
     );

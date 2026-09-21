@@ -120,7 +120,9 @@ describe('AccountingExpenseService provider-financial expense guard', () => {
     };
     const prisma = withTransaction(tx);
     const period = {
-      assertOnOrAfterAccountingStartDate: jest.fn().mockResolvedValue(undefined),
+      assertOnOrAfterAccountingStartDate: jest
+        .fn()
+        .mockResolvedValue(undefined),
       assertEditableForPeriod: jest.fn().mockResolvedValue(undefined),
     };
     const service = new AccountingExpenseService(
