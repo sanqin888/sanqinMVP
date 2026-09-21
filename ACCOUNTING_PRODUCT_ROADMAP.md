@@ -1,9 +1,9 @@
 # Post-Modularization Accounting Product Roadmap
 
-Status: **B0 IN PROGRESS — SLICE 0-3 MERGED / CI GREEN / POPPLER PATH AUDITED / EVIDENCE VIEWER SLICE 1 MERGED / SLICE 1B SOURCE IMPLEMENTED / LOCAL REVIEW / MIGRATION REQUIRED — DO NOT REOPEN PHASE 9**  
+Status: **B0 IN PROGRESS — SLICE 0-3 MERGED / CI GREEN / POPPLER PATH AUDITED / EVIDENCE VIEWER SLICE 1 + 1B MERGED / 1B MIGRATION SQL REVIEWED / EVIDENCE VIEWER SLICE 2 SOURCE IMPLEMENTED / LOCAL REVIEW — DO NOT REOPEN PHASE 9**  
 Planning date: 2026-09-20; updated: 2026-09-21  
 Baseline: Phase 9 **PRODUCTION VERIFIED / CLOSED** at production `main@dbea68f3`  
-Document-recognition audit baseline: `origin/dev@1ede0599`; Slice 3 merged as `caabf1c1`; Evidence Viewer Slice 1 merged as `0371a155`; current Slice 1B baseline: `origin/dev@0371a155`
+Document-recognition audit baseline: `origin/dev@1ede0599`; Slice 3 merged as `caabf1c1`; Evidence Viewer Slice 1 merged as `0371a155`; Slice 1B merged as `9ae4d85d`; additive folder migration committed as `cc4c8016`; current Evidence Viewer Slice 2 baseline: `origin/dev@cc4c8016`
 
 ## 1. Purpose and placement
 
@@ -76,7 +76,7 @@ Detailed design and audit: `docs/architecture/accounting-document-recognition-hu
 This work package is now **P0 Accounting correctness** and should be completed before new
 financial-feature work that depends on provider settlement authority.
 
-State: **Slice 0 merged in PR #2428 (`bbd0b1c0`); Slice 1 Human Review Revision + migration merged in PR #2429 (`1903b32a`, CI #6017 green); Slice 2 Human Review UI merged in PR #2431 (`e52c44b9`); Slice 3 layout-aware extraction merged in PR #2432 (`caabf1c1`) with green CI; Evidence Viewer Slice 1 merged in PR #2435 (`0371a155`, CI #6039 green). Slice 1B logical file manager is source-implemented for local review and requires an additive Prisma migration.**
+State: **Slice 0 merged in PR #2428 (`bbd0b1c0`); Slice 1 Human Review Revision + migration merged in PR #2429 (`1903b32a`, CI #6017 green); Slice 2 Human Review UI merged in PR #2431 (`e52c44b9`); Slice 3 layout-aware extraction merged in PR #2432 (`caabf1c1`) with green CI; Evidence Viewer Slice 1 merged in PR #2435 (`0371a155`, CI #6039 green); Evidence Viewer Slice 1B merged in PR #2436 (`9ae4d85d`, CI #6042 green), with additive migration `20260921124637_add_accounting_evidence_folders` committed as `cc4c8016` and SQL reviewed as safe/additive. Evidence Viewer Slice 2 is source-implemented for local review with no schema/dependency change.**
 
 Baseline audited state before Slice 0:
 
@@ -114,10 +114,12 @@ Required order:
    CSV/XLSX preview remains a later bounded adapter slice — merged in PR #2435;
 7. **Evidence Viewer Slice 1B:** add logical Accounting evidence folders plus an independent
    artifact-folder assignment and audited multi-file move UI. Physical binaries and
-   `storedUrl` remain unchanged; existing files begin in virtual Unfiled. This is additive
-   persistence and requires a user-generated Prisma migration;
+   `storedUrl` remain unchanged; existing files begin in virtual Unfiled — merged in PR #2436,
+   with additive migration `20260921124637_add_accounting_evidence_folders` reviewed and
+   committed to `dev`;
 8. **Evidence Viewer Slice 2:** bounded non-executing CSV/XLSX table preview using existing
-   native parser capabilities;
+   native parser capabilities; source-implemented on
+   `accounting/evidence-structured-preview-slice2` for local review;
 9. **Slice 6:** optional suspense workflow only after a separate Accounting policy decision.
 
 Do not use a new OCR engine as a substitute for reconciliation or human review. Machine
