@@ -93,19 +93,6 @@ export type AccountingDashboard = {
   lastClosedMonth: string | null;
 };
 
-export type AccountingOrderDimensionSlice = {
-  from: string | null;
-  to: string | null;
-  byChannel: Array<{
-    key: string;
-    amountCents: number;
-  }>;
-  byPaymentMethod: Array<{
-    key: string;
-    amountCents: number;
-  }>;
-};
-
 export type AccountingSalesSummary = {
   grossSalesCents: number;
   discountsCents: number;

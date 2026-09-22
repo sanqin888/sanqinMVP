@@ -3,7 +3,6 @@ import { OrderStatus } from '@prisma/client';
 
 import { readOrderItemComponentsSnapshot } from './order-item-components';
 import type {
-  OrderPaidTotalDimensionsV1,
   OrderReportingFactsReaderPort,
   OrderReportingItemFactV1,
   OrderReportingMetricsV1,
@@ -79,48 +78,6 @@ export class OrderReportingFactsReaderService implements OrderReportingFactsRead
         totalCents: entry._sum.totalCents ?? 0,
       })),
       timeline,
-    };
-  }
-
-  async readPaidTotalDimensionsForRange(
-    startDate?: Date,
-    endDate?: Date,
-  ): Promise<OrderPaidTotalDimensionsV1> {
-    const orders = await this.prisma.order.findMany({
-      where: {
-        paidAt: {
-          ...(startDate ? { gte: startDate } : {}),
-          ...(endDate ? { lte: endDate } : {}),
-        },
-      },
-      select: {
-        totalCents: true,
-        channel: true,
-        paymentMethod: true,
-      },
-    });
-
-    const byChannel = new Map<string, number>();
-    const byPaymentMethod = new Map<string, number>();
-    for (const order of orders) {
-      byChannel.set(
-        order.channel,
-        (byChannel.get(order.channel) ?? 0) + order.totalCents,
-      );
-      byPaymentMethod.set(
-        order.paymentMethod,
-        (byPaymentMethod.get(order.paymentMethod) ?? 0) + order.totalCents,
-      );
-    }
-
-    return {
-      byChannel: Array.from(byChannel.entries()).map(([key, amountCents]) => ({
-        key,
-        amountCents,
-      })),
-      byPaymentMethod: Array.from(byPaymentMethod.entries()).map(
-        ([key, amountCents]) => ({ key, amountCents }),
-      ),
     };
   }
 

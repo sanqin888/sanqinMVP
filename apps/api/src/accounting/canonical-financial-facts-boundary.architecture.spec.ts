@@ -421,7 +421,7 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(accountingFinancialReportsService).not.toContain(
       'accountingExpensePaymentAllocation.findMany',
     );
-    expect(accountingService).toContain('async dimensionSlice(');
+    expect(accountingService).not.toContain('async dimensionSlice(');
     expect(accountingJournalService).not.toContain(
       'assertNoLegacyOrderRevenueAccrual',
     );

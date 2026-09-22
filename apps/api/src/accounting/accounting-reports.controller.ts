@@ -15,7 +15,6 @@ import {
 } from './accounting-controller-support';
 import { AccountingFinancialReportsService } from './accounting-financial-reports.service';
 import { AccountingSalesAnalyticsService } from './accounting-sales-analytics.service';
-import { AccountingService } from './accounting.service';
 
 @Controller('accounting')
 @UseGuards(SessionAuthGuard, RolesGuard)
@@ -24,7 +23,6 @@ export class AccountingReportsController {
   constructor(
     private readonly reports: AccountingFinancialReportsService,
     private readonly salesAnalytics: AccountingSalesAnalyticsService,
-    private readonly accountingService: AccountingService,
   ) {}
 
   @Get('dashboard')
@@ -70,11 +68,6 @@ export class AccountingReportsController {
     @Query('to') to?: string,
   ) {
     return this.reports.cashflowOverview({ from, to });
-  }
-
-  @Get('report/slice')
-  async dimensionSlice(@Query('from') from?: string, @Query('to') to?: string) {
-    return this.accountingService.dimensionSlice({ from, to });
   }
 
   @Get('export/tx.csv')
