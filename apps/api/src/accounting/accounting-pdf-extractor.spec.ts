@@ -100,18 +100,14 @@ describe('accounting text extraction', () => {
       },
     );
 
-    expect(extraction).toEqual(
+    expect(extraction.totalCents).toBe(2254);
+    expect(extraction.financialConsistency).toBe('MATCHED');
+    expect(extraction.amountEvidence?.total).toEqual(
       expect.objectContaining({
-        totalCents: 2254,
-        financialConsistency: 'MATCHED',
-        amountEvidence: expect.objectContaining({
-          total: expect.objectContaining({
-            strategy: 'LAYOUT_ROW_PAIR',
-            labelLineId: 'p2-l1',
-            amountLineId: 'p2-l2',
-            page: 2,
-          }) as unknown,
-        }),
+        strategy: 'LAYOUT_ROW_PAIR',
+        labelLineId: 'p2-l1',
+        amountLineId: 'p2-l2',
+        page: 2,
       }),
     );
   });
