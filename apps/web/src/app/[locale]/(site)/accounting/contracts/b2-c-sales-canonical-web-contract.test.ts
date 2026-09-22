@@ -7,26 +7,19 @@ const salesPageSource = readFileSync(
   resolve(ACCOUNTING_ROOT, 'sales', 'page.tsx'),
   'utf8',
 );
-const dashboardPageSource = readFileSync(
-  resolve(ACCOUNTING_ROOT, 'dashboard', 'page.tsx'),
-  'utf8',
-);
 const reportsContractSource = readFileSync(
   resolve(__dirname, 'reports.ts'),
   'utf8',
 );
 
 describe('B2-C canonical Sales Web cutover', () => {
-  it('moves the Sales page to the canonical Sales report without changing Dashboard yet', () => {
+  it('keeps the Sales page on the canonical Sales report', () => {
     expect(salesPageSource).toContain('AccountingSalesAnalyticsReport');
     expect(salesPageSource).toContain('/accounting/report/sales?');
     expect(salesPageSource).not.toContain('/accounting/report/slice');
     expect(salesPageSource).not.toContain('/accounting/report/pnl');
     expect(salesPageSource).not.toContain('AccountingOrderDimensionSlice');
     expect(salesPageSource).not.toContain('AccountingPnlReport');
-
-    expect(dashboardPageSource).toContain('/accounting/report/slice');
-    expect(dashboardPageSource).toContain('AccountingOrderDimensionSlice');
   });
 
   it('keeps canonical Sales dimensions, tender mix and provider coverage explicit in the Web contract', () => {
