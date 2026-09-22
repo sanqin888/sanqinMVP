@@ -44,6 +44,20 @@ export class AccountingChartController {
     return this.chart.listAccounts();
   }
 
+  @Put('accounts/:accountStableId/expense-management-policy')
+  async updateAccountExpenseManagementPolicy(
+    @Param('accountStableId') accountStableId: string,
+    @Body()
+    body: {
+      includeFundedExpensesInManagementReports: boolean;
+    },
+  ) {
+    return this.chart.updateAccountExpenseManagementPolicy(
+      accountStableId,
+      body.includeFundedExpensesInManagementReports,
+    );
+  }
+
   @Get('categories')
   async categories(@Query('includeInactive') includeInactive?: string) {
     return this.chart.listCategories(includeInactive === 'true');

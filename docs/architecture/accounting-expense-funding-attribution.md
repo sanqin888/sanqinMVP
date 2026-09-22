@@ -1,8 +1,8 @@
 # Accounting Expense Funding Attribution (EFA)
 
-Status: **EFA-B1 MERGED / CI GREEN / MIGRATION REVIEWED + COMMITTED TO DEV / PRODUCTION APPLICATION PENDING — EFA-B2 LOCAL SOURCE IMPLEMENTED / REVIEW PENDING — SALES B2 PRODUCTION VERIFIED / CLOSED — PHASE 9 REMAINS CLOSED**  
+Status: **EFA-B1 MERGED / CI GREEN / MIGRATION REVIEWED + COMMITTED TO DEV / PRODUCTION APPLICATION PENDING — EFA-B2 MERGED / CI GREEN — EFA-C LOCAL SOURCE IMPLEMENTED / REVIEW PENDING / NO NEW MIGRATION / NO GRAPH CHANGE — SALES B2 PRODUCTION VERIFIED / CLOSED — PHASE 9 REMAINS CLOSED**  
 Planning/audit date: 2026-09-22  
-Audit baseline: `origin/dev@3e445345`  
+Audit baseline: `origin/dev@6674ab1c`  
 Owner: **Accounting / Reporting / Analytics**
 
 ## 1. Purpose
@@ -286,7 +286,7 @@ This document records the read-only audit, production preflight, v1/v2 boundary,
 
 ### EFA-B1 — additive persistence foundation
 
-State: **LOCAL SOURCE IMPLEMENTED / REVIEW PENDING / MIGRATION REQUIRED**.
+State: **MERGED / CI GREEN / MIGRATION REVIEWED + COMMITTED TO DEV / PRODUCTION APPLICATION PENDING** through PR #2468 / `2250b22d`; migration committed to `dev` as `3e445345`.
 
 Additive source changes:
 
@@ -312,7 +312,7 @@ B1 deliberately does **not**:
 
 ### EFA-B2 — canonical Expense v2 posting
 
-State: **LOCAL SOURCE IMPLEMENTED / REVIEW PENDING / NO MIGRATION / NO GRAPH CHANGE** on `accounting/efa-b2-expense-v2-posting` from `origin/dev@3e445345`.
+State: **MERGED / CI GREEN / NO MIGRATION / NO GRAPH CHANGE** through PR #2469 / `6674ab1cdd6bcba78998698cde69469c40b0b03d`; CI #6150 passed.
 
 Implemented locally:
 
@@ -326,24 +326,25 @@ Implemented locally:
 - revalidates persisted v2 source authority immediately before each Journal write, rejects any v1/v2 source-fact-version crossover or stale funding-group anchor once a canonical Expense anchor exists, and retains the existing period-lock/idempotent replay path;
 - focused regressions cover duplicate-account grouping, missing funding, mixed-account 1:N posting, invalid funding accounts, legacy-allocation rejection, period lock, idempotent retry and source-authority drift.
 
-Still intentionally deferred to EFA-C/D:
-
-- no current Expense write path sets `fundingAttributionVersion = 2` or writes `paidFromAccountId` yet;
-- no Web/PWA Expense UI cutover;
-- no query/report Management filtering;
-- no removal of historical `AccountingExpensePaymentAllocation`.
+After B2, the posting engine is active source code but remains dormant until EFA-C writes v2 facts. Management filtering remains intentionally deferred to EFA-D, and historical `AccountingExpensePaymentAllocation` remains the immutable/readable v1 authority.
 
 ### EFA-C — Expense write/UI cutover
 
-Planned:
+State: **LOCAL SOURCE IMPLEMENTED / REVIEW PENDING / NO NEW MIGRATION / NO GRAPH CHANGE** on `accounting/efa-c-expense-write-ui-cutover` from `origin/dev@6674ab1c`.
 
-- new Expense writes explicitly persist funding version 2;
-- Inbox and Expenses editor place payment account on each category row;
-- payment completion becomes split-funding completion;
-- adding a category may inherit the previous row's account for convenience;
-- Expense records/query supports historical v1 plus v2;
-- remove the default standalone payment-allocation card from the v2 UI;
-- operator deletes/recreates the Accounting PWA after deployment; no long-lived old-write payload compatibility is required.
+Implemented locally:
+
+- current manual Expense, unified Inbox Expense confirmation and pending-document confirmation write `fundingAttributionVersion = 2`;
+- every current write payload explicitly carries `paidFromAccountStableId` per split; null remains a deliberate confirmed-but-unposted state, while stale document-level `accountStableId` / `paymentAllocations` write payloads fail closed;
+- v2 writes never create document-level `AccountingExpensePaymentAllocation`; historical v1 allocations and the v1 completion endpoint remain readable/usable for legacy records;
+- Inbox and Expenses editor place payment account directly on each category row and remove the standalone v2 allocation card; category rows expose category / pre-tax / tax mode / HST / payment account / delete, and newly added rows inherit the previous funding account. The Inbox Quick Classify Calculator also carries payment account per row, inherits it on Enter/Next item, and aggregates by category + payment account so same-category rows funded by different accounts are never collapsed together;
+- repeated use of the same funding account across multiple splits is valid; Web does not group Journals and delegates all grouping to the B2 posting authority;
+- confirmed-but-unposted v2 Expenses gain an audited, period-locked split-funding completion route that requires every split exactly once, permits identical replay, rejects replacement of already-assigned funding and delegates posting to B2;
+- Expense records/query dual-read historical v1 allocations and v2 split funding for account filters plus `ASSIGNED / UNASSIGNED`;
+- Accounting Settings exposes the existing account policy on account creation and adds a narrow update path/UI for active operational accounts; EFA-C does not consume the flag in Dashboard/P&L calculations;
+- no Journal schema/policy redesign, JournalLine funding dimension, Orders/Payments/Clover/Uber change, dependency/package addition, Prisma schema change or new context edge is introduced.
+
+Deployment gate: production still lacks the B1 columns as of the EFA-C readiness audit. Apply the already-reviewed additive migration `20260922183548_accounting_efa_b1_funding_attribution_foundation` before deploying EFA-C API/Web, then delete/reinstall the single-user Accounting PWA so no stale v1 write client remains.
 
 ### EFA-D — management reporting cutover / production verification
 

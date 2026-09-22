@@ -11,6 +11,7 @@ export type AccountingExpenseDocument = {
   documentStableId: string;
   source: 'MANUAL' | 'GMAIL';
   status: 'PENDING_REVIEW' | 'CONFIRMED' | 'DUPLICATE' | 'ERROR' | 'DISCARDED';
+  fundingAttributionVersion: 1 | 2;
   occurredAt: string | null;
   subtotalCents: number | null;
   taxCents: number | null;
@@ -41,6 +42,8 @@ export type AccountingExpenseDocument = {
     categoryName: string;
     amountCents: number;
     taxCents: number;
+    paidFromAccountStableId: string | null;
+    paidFromAccountName: string | null;
     sortOrder: number;
   }>;
 };

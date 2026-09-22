@@ -1,6 +1,6 @@
 'use client';
 
-import type { AccountingCategory } from '../contracts/chart';
+import type { AccountingAccount, AccountingCategory } from '../contracts/chart';
 
 export type ExpenseSplitTaxMode = 'EXEMPT' | 'HST13' | 'MANUAL';
 
@@ -10,12 +10,14 @@ export type ExpenseSplitDraft = {
   amount: string;
   taxMode: ExpenseSplitTaxMode;
   manualTax: string;
+  paidFromAccountStableId: string;
 };
 
 type Props = {
   isZh: boolean;
   splits: ExpenseSplitDraft[];
   expenseCategories: AccountingCategory[];
+  accounts: AccountingAccount[];
   categoryParents: Map<string, string>;
   taxCentsByKey: Map<string, number>;
   onAdd: () => void;
@@ -28,6 +30,7 @@ export function ExpenseSplitEditor({
   isZh,
   splits,
   expenseCategories,
+  accounts,
   categoryParents,
   taxCentsByKey,
   onAdd,
@@ -63,7 +66,7 @@ export function ExpenseSplitEditor({
         {splits.map((split) => (
           <div
             key={split.key}
-            className="grid gap-2 rounded-lg bg-slate-50 p-3 md:grid-cols-[1.5fr_140px_140px_120px_70px] md:items-end"
+            className="grid gap-2 rounded-lg bg-slate-50 p-3 md:grid-cols-[1.5fr_130px_125px_120px_180px_70px] md:items-end"
           >
             <label className="text-sm">
               <span className="mb-1 block text-slate-500">
@@ -150,6 +153,35 @@ export function ExpenseSplitEditor({
                 HST {money(taxCentsByKey.get(split.key) ?? 0)}
               </div>
             )}
+
+            <label className="text-sm">
+              <span className="mb-1 block text-slate-500">
+                {isZh ? '付款账户' : 'Payment account'}
+              </span>
+              <select
+                className="w-full rounded border bg-white px-3 py-2"
+                value={split.paidFromAccountStableId}
+                onChange={(event) =>
+                  patchSplit(split.key, {
+                    paidFromAccountStableId: event.target.value,
+                  })
+                }
+              >
+                <option value="">
+                  {isZh ? '稍后指定' : 'Assign later'}
+                </option>
+                {accounts
+                  .filter((account) => account.currency === 'CAD')
+                  .map((account) => (
+                    <option
+                      key={account.accountStableId}
+                      value={account.accountStableId}
+                    >
+                      {account.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
 
             <button
               type="button"

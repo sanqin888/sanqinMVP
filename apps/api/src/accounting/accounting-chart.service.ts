@@ -397,6 +397,54 @@ export class AccountingChartService {
     };
   }
 
+  async updateAccountExpenseManagementPolicy(
+    accountStableId: string,
+    includeFundedExpensesInManagementReports: boolean,
+  ) {
+    if (typeof includeFundedExpensesInManagementReports !== 'boolean') {
+      throw new BadRequestException(
+        'includeFundedExpensesInManagementReports must be boolean',
+      );
+    }
+    const existing = await this.prisma.accountingAccount.findUnique({
+      where: { accountStableId },
+      select: {
+        id: true,
+        accountClass: true,
+        type: true,
+        isActive: true,
+      },
+    });
+    if (!existing) throw new NotFoundException('account not found');
+    if (
+      !existing.isActive ||
+      existing.accountClass !== AccountingAccountClass.ASSET ||
+      !existing.type
+    ) {
+      throw new ConflictException(
+        'expense management policy requires an active operational ASSET account',
+      );
+    }
+
+    const updated = await this.prisma.accountingAccount.update({
+      where: { id: existing.id },
+      data: { includeFundedExpensesInManagementReports },
+      select: {
+        accountStableId: true,
+        name: true,
+        type: true,
+        accountClass: true,
+        currency: true,
+        includeFundedExpensesInManagementReports: true,
+      },
+    });
+    return {
+      ...updated,
+      includeFundedExpensesInManagementReports:
+        updated.includeFundedExpensesInManagementReports ?? true,
+    };
+  }
+
   private async getCategory(categoryStableId: string) {
     const row = await this.prisma.accountingCategory.findUnique({
       where: { categoryStableId },

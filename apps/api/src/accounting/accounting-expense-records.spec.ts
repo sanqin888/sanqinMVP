@@ -45,9 +45,35 @@ describe('Accounting Expense record search', () => {
             lt: new Date('2026-07-01T04:00:00.000Z'),
           },
           totalCents: { gte: 5000 },
-          paymentAllocations: {
-            some: { account: { accountStableId: 'account_cibc' } },
-          },
+          OR: [
+            {
+              AND: [
+                {
+                  OR: [
+                    { fundingAttributionVersion: 1 },
+                    { fundingAttributionVersion: null },
+                  ],
+                },
+                {
+                  paymentAllocations: {
+                    some: { account: { accountStableId: 'account_cibc' } },
+                  },
+                },
+              ],
+            },
+            {
+              AND: [
+                { fundingAttributionVersion: 2 },
+                {
+                  splits: {
+                    some: {
+                      paidFromAccount: { accountStableId: 'account_cibc' },
+                    },
+                  },
+                },
+              ],
+            },
+          ],
         }) as unknown,
         skip: 10,
         take: 10,

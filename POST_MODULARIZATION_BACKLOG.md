@@ -456,13 +456,13 @@ Priority: **P1**
 Complexity: **H**  
 Depends on: **B2 production closeout — satisfied 2026-09-22**.
 
-Current state: **EFA-A COMPLETE / EFA-B1 MERGED + CI GREEN + MIGRATION REVIEWED + COMMITTED TO DEV / EFA-B2 LOCAL SOURCE IMPLEMENTED + REVIEW PENDING**.
+Current state: **EFA-A COMPLETE / EFA-B1 MERGED + CI GREEN + MIGRATION REVIEWED + COMMITTED TO DEV / PRODUCTION APPLICATION PENDING / EFA-B2 MERGED + CI GREEN / EFA-C LOCAL SOURCE IMPLEMENTED + REVIEW PENDING + NO NEW MIGRATION + NO GRAPH CHANGE**.
 
 Detailed audit/design: `docs/architecture/accounting-expense-funding-attribution.md`.
 
-EFA moves funding ownership from a document-level allocation model to split-level attribution for new Expense v2 facts while preserving historical Expense v1 authority. EFA-B2 now implements the dormant canonical v2 posting engine: splits are grouped by funding account, allowing one ExpenseDocument to produce multiple balanced canonical Journals without adding a JournalLine funding dimension. Current Expense create/Inbox/completion writes remain v1 until EFA-C.
+EFA moves funding ownership from a document-level allocation model to split-level attribution for new Expense v2 facts while preserving historical Expense v1 authority. EFA-B2 merged through PR #2469 / `6674ab1cdd6bcba78998698cde69469c40b0b03d` with CI #6150 green and provides the grouped canonical v2 posting engine without adding a JournalLine funding dimension. EFA-C now locally cuts current Expense/Inbox writes and UI to version-2 split funding, adds split-level completion for confirmed-unposted v2 Expenses, preserves v1 allocation reads/completion, dual-reads records filters, and exposes account policy configuration. Production deployment remains gated on applying the already-reviewed B1 additive migration before the EFA-C runtime is started and reinstalling the single-user Accounting PWA.
 
-The account-level flag `includeFundedExpensesInManagementReports` is intentionally narrow: it controls only whether Expense groups funded by that operational account participate in Management P&L/expense analytics. Canonical Journal, account movement, actual cash flow, audit/evidence and future GST/HST reporting retain the facts.
+The account-level flag `includeFundedExpensesInManagementReports` is intentionally narrow: EFA-C only configures it. EFA-D will consume it to control Management P&L/expense analytics. Canonical Journal, account movement, actual cash flow, audit/evidence and future GST/HST reporting retain the facts.
 
 The Accounting PWA has one operator and may be deleted/recreated at the v2 cutover, so no long-lived old-client write contract is required. Historical v1 records remain readable and immutable.
 

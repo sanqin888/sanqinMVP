@@ -1,6 +1,6 @@
 # Post-Modularization Accounting Product Roadmap
 
-Status: **EFA-B1 MERGED / CI GREEN / MIGRATION REVIEWED + COMMITTED TO DEV / PRODUCTION APPLICATION PENDING — EFA-B2 LOCAL SOURCE IMPLEMENTED / REVIEW PENDING — B2 PRODUCTION VERIFIED / CLOSED — B1 CLOSED / B0 3V-B PRODUCTION VERIFICATION STILL PENDING — DO NOT REOPEN PHASE 9**  
+Status: **EFA-B1 MERGED / CI GREEN / MIGRATION REVIEWED + COMMITTED TO DEV / PRODUCTION APPLICATION PENDING — EFA-B2 MERGED / CI GREEN — EFA-C LOCAL SOURCE IMPLEMENTED / REVIEW PENDING / NO NEW MIGRATION / NO GRAPH CHANGE — B2 PRODUCTION VERIFIED / CLOSED — B1 CLOSED / B0 3V-B PRODUCTION VERIFICATION STILL PENDING — DO NOT REOPEN PHASE 9**  
 Planning date: 2026-09-20; updated: 2026-09-22  
 Baseline: Phase 9 **PRODUCTION VERIFIED / CLOSED** at production `main@dbea68f3`  
 Document-recognition audit baseline: `origin/dev@1ede0599`; Slice 3 merged as `caabf1c1`; Evidence Viewer Slice 1 merged as `0371a155`; Slice 1B merged as `9ae4d85d`; additive folder migration committed as `cc4c8016`; Evidence Viewer Slice 2 merged in PR #2438 as `4d68379e`; Slice 3V-A merged in PR #2439 as `0d6909bb` with PR CI #6054 and merged-head CI #6055 green; Slice 3V-B merged in PR #2440 as `0ac9117f` after final head `3c5c0400`, PR CI #6057 and merged-head CI #6058 green
@@ -361,7 +361,7 @@ Do not rewrite valid historical Journals merely to simplify presentation.
 
 Detailed readiness/design: `docs/architecture/accounting-expense-funding-attribution.md`.
 
-**2026-09-22 state:** **EFA-A COMPLETE / EFA-B1 MERGED + CI GREEN + MIGRATION REVIEWED + COMMITTED TO DEV / PRODUCTION APPLICATION PENDING / EFA-B2 LOCAL SOURCE IMPLEMENTED + REVIEW PENDING**. B2-E is deployed and production-verified, so Sales B2 is closed. EFA is inserted before B3 Trial Balance so B3 can characterize the final Expense Journal cardinality rather than a transitional one.
+**2026-09-22 state:** **EFA-A COMPLETE / EFA-B1 MERGED + CI GREEN + MIGRATION REVIEWED + COMMITTED TO DEV / PRODUCTION APPLICATION PENDING / EFA-B2 MERGED + CI GREEN / EFA-C LOCAL SOURCE IMPLEMENTED + REVIEW PENDING + NO NEW MIGRATION + NO GRAPH CHANGE**. B2-E is deployed and production-verified, so Sales B2 is closed. EFA is inserted before B3 Trial Balance so B3 can characterize the final Expense Journal cardinality rather than a transitional one.
 
 The operator explicitly accepts deleting/recreating the single-user Accounting PWA during the later v2 cutover. Therefore no long-lived old-client write compatibility layer is required. Historical `accounting.expense_document.v1` source facts/Journals remain immutable/readable.
 
@@ -381,7 +381,9 @@ Management visibility is an account policy, not a deletion rule. A funding accou
 
 EFA-B1 is additive only: it introduces `fundingAttributionVersion`, nullable split-level funding relation and the account management-policy flag. Source merged through PR #2468 / `2250b22d`; PR CI #6145 passed. User-generated migration `20260922183548_accounting_efa_b1_funding_attribution_foundation` was reviewed as additive-only and is committed to `dev` as `3e445345`. Production application is still a later gate.
 
-EFA-B2 is implemented locally on top of that dev baseline: `CanonicalExpenseFactV2`, persisted split-funding authority, per-funding-account balanced Journal grouping, deterministic account-scoped v2 idempotency, v1/v2 authority revalidation, operational funding-account validation, and focused retry/period-lock/grouping/drift regressions. It does not yet activate v2 Expense writes or change Web/PWA/report behavior; those remain EFA-C/D.
+EFA-B2 merged through PR #2469 / `6674ab1cdd6bcba78998698cde69469c40b0b03d` with CI #6150 green. It provides `CanonicalExpenseFactV2`, persisted split-funding authority, per-funding-account balanced Journal grouping, deterministic account-scoped v2 idempotency, v1/v2 authority revalidation, operational funding-account validation, and focused retry/period-lock/grouping/drift regressions.
+
+EFA-C is now locally implemented from `origin/dev@6674ab1c`: current Expense/Inbox writes use explicit split-level funding and version 2, confirmed-but-unposted v2 completion is split-level, Expense records dual-read v1/v2 funding, and the Accounting Settings UI can create/view/update the account Management-expense policy. The standalone v2 payment-allocation card is removed and newly added category rows inherit the previous funding account. Inbox Quick Classify rows also carry/inherit payment account and aggregate by category + payment account rather than category alone. Historical v1 allocation completion remains supported. The already-reviewed B1 additive migration must be applied before EFA-C production deployment, followed by Accounting PWA reinstall. Management-report filtering remains exclusively EFA-D.
 
 ## 8. Slice C — Trial Balance and Balance Movement
 

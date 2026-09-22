@@ -21,6 +21,7 @@ import type {
   AccountingExpenseInput,
   AccountingExpensePaymentCompletionInput,
   AccountingExpensePaymentState,
+  AccountingExpenseSplitFundingCompletionInput,
 } from './accounting-expense.contracts';
 import { AccountingExpenseService } from './accounting-expense.service';
 
@@ -92,6 +93,19 @@ export class AccountingExpenseController {
     @Req() req: AuthedAccountingRequest,
   ) {
     return this.expense.completeExpensePaymentAllocations(
+      documentStableId,
+      body,
+      requireAccountingOperatorUserId(req),
+    );
+  }
+
+  @Put('expenses/:documentStableId/split-funding')
+  completeExpenseSplitFunding(
+    @Param('documentStableId') documentStableId: string,
+    @Body() body: AccountingExpenseSplitFundingCompletionInput,
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.expense.completeExpenseSplitFunding(
       documentStableId,
       body,
       requireAccountingOperatorUserId(req),
