@@ -64,9 +64,6 @@ describe('AccountingExpenseJournalPostingService', () => {
     expect(tx.accountingExpenseDocument.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({ where: { documentStableId: 'expense_1' } }),
     );
-    const persistedRead =
-      tx.accountingExpenseDocument.findUnique.mock.calls[0]?.[0];
-    expect(persistedRead?.select).not.toHaveProperty('transactions');
     expect(journal.createCanonicalExpenseJournalEntryInTx).toHaveBeenCalledWith(
       expect.objectContaining({
         idempotencyKey: 'canonical-expense:expense_1:v1',
@@ -120,5 +117,4 @@ describe('AccountingExpenseJournalPostingService', () => {
       journal.createCanonicalExpenseJournalEntryInTx,
     ).not.toHaveBeenCalled();
   });
-
 });

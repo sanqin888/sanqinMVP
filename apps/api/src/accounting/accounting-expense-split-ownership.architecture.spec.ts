@@ -98,7 +98,9 @@ describe('Accounting Expense split ownership and Journal boundary', () => {
     expect(preview).toContain('document.transactions.map');
     expect(preview).toContain('splits: document.splits.map');
     expect(reports).not.toContain('accountingTransaction.findMany');
-    expect(uploadLibraryWriter).toContain('_count: { select: { splits: true } }');
+    expect(uploadLibraryWriter).toContain(
+      '_count: { select: { splits: true } }',
+    );
     expect(uploadLibraryWriter).not.toContain(
       '_count: { select: { transactions: true } }',
     );
@@ -124,5 +126,6 @@ describe('Accounting Expense split ownership and Journal boundary', () => {
     );
     expect(posting).not.toContain('SPLIT_PERSISTENCE_MISMATCH');
     expect(posting).not.toContain('document.transactions');
+    expect(posting).not.toContain('transactions: {');
   });
 });

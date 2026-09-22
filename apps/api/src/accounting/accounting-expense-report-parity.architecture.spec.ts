@@ -35,7 +35,9 @@ describe('Accounting B1-C Expense report parity and cutover boundary', () => {
       'source: { not: AccountingJournalSource.EXPENSE_DOCUMENT }',
     );
     expect(reports).not.toContain('accountingTransaction.findMany');
-    expect(reports).not.toContain('accountingExpensePaymentAllocation.findMany');
+    expect(reports).not.toContain(
+      'accountingExpensePaymentAllocation.findMany',
+    );
   });
 
   it('stops the legacy Expense Transaction compatibility writer after B1-C1 cutover', () => {
