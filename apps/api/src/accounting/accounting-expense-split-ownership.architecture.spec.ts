@@ -44,17 +44,16 @@ const modelBody = (schema: string, modelName: string) => {
 };
 
 describe('Accounting Expense split ownership and Journal boundary', () => {
-  it('keeps dedicated Expense-owned split persistence while retaining legacy schema for later contraction', () => {
+  it('keeps dedicated Expense-owned split persistence after legacy schema contraction', () => {
     const schema = readFileSync(PRISMA_SCHEMA, 'utf8');
     const expenseDocument = modelBody(schema, 'AccountingExpenseDocument');
     const category = modelBody(schema, 'AccountingCategory');
     const split = modelBody(schema, 'AccountingExpenseSplit');
 
     expect(expenseDocument).toMatch(/\bsplits\s+AccountingExpenseSplit\[\]/);
-    expect(expenseDocument).toMatch(
-      /\btransactions\s+AccountingTransaction\[\]/,
-    );
+    expect(expenseDocument).not.toContain('AccountingTransaction');
     expect(category).toMatch(/\bexpenseSplits\s+AccountingExpenseSplit\[\]/);
+    expect(category).not.toContain('AccountingTransaction');
 
     expect(split).toContain('splitStableId');
     expect(split).toContain('expenseDocumentId');

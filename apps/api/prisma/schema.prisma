@@ -248,11 +248,6 @@ enum PayrollRemitterType {
   ACCELERATED_THRESHOLD_2
 }
 
-enum AccountingSourceType {
-  MANUAL
-  OTHER
-}
-
 enum AccountingDocumentSource {
   MANUAL
   GMAIL
@@ -1696,7 +1691,6 @@ model AccountingCategory {
   updatedAt        DateTime                @updatedAt
   parent           AccountingCategory?     @relation("AccountingCategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
   children         AccountingCategory[]    @relation("AccountingCategoryTree")
-  transactions     AccountingTransaction[]
   expenseSplits    AccountingExpenseSplit[]
   journalLines     AccountingJournalLine[]
 
@@ -1715,8 +1709,6 @@ model AccountingAccount {
   isActive         Boolean                     @default(true)
   createdAt        DateTime                    @default(now())
   updatedAt        DateTime                    @updatedAt
-  outgoingTx                AccountingTransaction[]              @relation("AccountingTxAccount")
-  incomingTx                AccountingTransaction[]              @relation("AccountingTxToAccount")
   expensePaymentAllocations AccountingExpensePaymentAllocation[]
   journalLines              AccountingJournalLine[]
 
@@ -2064,44 +2056,6 @@ model PayrollCraRemittanceRun {
   @@index([payDate])
 }
 
-model AccountingTransaction {
-  id              String                     @id @default(uuid()) @db.Uuid
-  txStableId      String                     @unique @default(cuid())
-  type            AccountingTxType
-  source          AccountingSourceType
-  amountCents     Int
-  taxCents        Int                        @default(0)
-  currency        String                     @default("CAD")
-  occurredAt      DateTime
-  categoryId      String                     @db.Uuid
-  accountId       String?                    @db.Uuid
-  toAccountId     String?                    @db.Uuid
-  documentId      String?                    @db.Uuid
-  idempotencyKey  String?                    @unique
-  externalRef     String?
-  counterparty    String?
-  memo            String?
-  attachmentUrls  String[]                   @default([])
-  createdByUserStableId String
-  updatedByUserStableId String
-  createdAt       DateTime                   @default(now())
-  updatedAt       DateTime                   @updatedAt
-  version         Int                        @default(1)
-  deletedAt       DateTime?
-  category        AccountingCategory         @relation(fields: [categoryId], references: [id])
-  account         AccountingAccount?         @relation("AccountingTxAccount", fields: [accountId], references: [id])
-  toAccount       AccountingAccount?         @relation("AccountingTxToAccount", fields: [toAccountId], references: [id])
-  document        AccountingExpenseDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
-
-  @@index([occurredAt])
-  @@index([categoryId, occurredAt])
-  @@index([source, occurredAt])
-  @@index([accountId, occurredAt])
-  @@index([toAccountId, occurredAt])
-  @@index([documentId])
-  @@index([deletedAt])
-}
-
 model AccountingExpenseDocument {
   id                   String                               @id @default(uuid()) @db.Uuid
   documentStableId     String                               @unique @default(cuid())
@@ -2124,7 +2078,6 @@ model AccountingExpenseDocument {
   confirmedByUserStableId String?
   createdAt            DateTime                             @default(now())
   updatedAt            DateTime                             @updatedAt
-  transactions         AccountingTransaction[]
   splits               AccountingExpenseSplit[]
   paymentAllocations   AccountingExpensePaymentAllocation[]
 

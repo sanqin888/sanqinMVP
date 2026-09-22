@@ -13,25 +13,27 @@ safe default values unrelated to an old version) is not compatibility debt.
 |---|---|---|---|---|
 | `payments.pos-card-legacy.v1` | active / pre-production | direct paid Order → Unified Payment Core + Terminal + finalize | POS ↔ Clover realtime/recovery complete; real-device acceptance; one settlement cycle reconciled; pre-cutover Accounting facts resolved; clean production stability window; legacy calls zero | Phase J cleanup after Terminal synchronization/cutover stability |
 | `payments.web-checkout-v1.v1` | guarded production | CheckoutIntent/Clover v1 Web path → Unified Payment Core + v3 truth | Test App/device acceptance complete; App installed/OAuth-authorized on operating production merchant; fresh production-merchant correlation audit passes; Web cutover accepted; one settlement cycle reconciled; old calls zero before compatibility deletion | Deferred until production-merchant Unified authorization and accepted cutover |
-| `accounting.expense-split-ownership.v1` | active / contraction pending | retained historical `AccountingTransaction` EXPENSE compatibility evidence → Expense-owned splits/payment facts + canonical Expense Journal | B1-C1 merged/deployed; zero production Expense Transaction reads/writes; legacy-comparison routes retired or replaced under explicit contract review | Remove within B1 before Canonical Sales Analytics / Trial Balance |
+| `accounting.expense-split-ownership.v1` | source contracted / migration pending | retained historical `AccountingTransaction` EXPENSE compatibility evidence → Expense-owned splits/payment facts + canonical Expense Journal | B1-C2 source complete; user-generated destructive migration reviewed/merged/deployed; production confirms table+enum absent and canonical Expense authority unchanged | Close before Canonical Sales Analytics / Trial Balance |
 
-B1-A/B1-B/B1-C0 are deployed through production head `f164be7a`; the additive
-Expense-split migration is applied and B1-B has real runtime evidence. Reviewed Expense
-`expense_iet91ut05fafso8rl48kds9v` booked CAD 84.69 with one Expense-owned split,
-one complete payment allocation and one canonical Expense v1 Journal. Full-range
-read-only parity reconstruction from 2026-06-01 has zero split/anchor blockers and exact
-P&L, recoverable-tax, payment-account and OPERATING cashflow parity.
+B1-C1 is production-verified through PR #2452 / `cdd3b47a`; final head `dc849d20`
+passed CI #6099. Post-cutover Expense `expense_bmwt1anetgvhiglbc6wsjzf8` proves new
+Expense-owned split/payment facts and canonical Journal posting create zero legacy
+Transaction rows.
 
-B1-C1 is locally complete pending user review. It removes Expense Transaction authority
-from financial reports and new Expense writes, moves split audit identity to
-`ACCOUNTING_EXPENSE_SPLIT`, and requires zero production `AccountingTransaction`
-mutation callers. Existing legacy rows/model/table are not deleted in this slice. The
-legacy-comparison routes `report/expense-journal-parity` and
-`journal/canonical-expenses/shadow-preview` remain temporarily available to avoid an
-unapproved HTTP-contract removal. Because B1-C1 stops new legacy copies, those routes are
-pre-cutover evidence/diagnostic only and will fail closed for new post-cutover Expenses
-until a later explicit route replacement/removal decision. Do not repair such expected post-cutover mismatch by
-recreating legacy rows.
+B1-C2 source contraction is complete locally pending review on
+`accounting/b1c2-final-persistence-contraction`. C2A removes the two legacy comparison
+routes plus their legacy-only services/tests/module wiring; repository search found no
+Web/PWA consumer. C2B removes the `AccountingTransaction` Prisma model,
+`AccountingSourceType` enum, Transaction relations and dead Accounting-owned source-type
+contract while retaining permanent architecture guards against reintroduction.
+
+The compatibility remains active only because the destructive migration is intentionally
+user-generated. Immediately before this source change, read-only production evidence
+showed exactly one physical `AccountingTransaction` row: active `EXPENSE / MANUAL`,
+7495 cents amount + 974 cents tax = CAD 84.69. The user explicitly approved disposal of
+that compatibility row/table/enum. Move this entry to Closed only after the generated
+migration is reviewed, merged, deployed and production verifies the table and enum are
+absent while canonical Expense reporting/posting remains healthy.
 
 The payment entries are no longer governed by a whole-context freeze. The POS
 Clover Terminal path is pre-production and may be structurally modularized before
