@@ -98,6 +98,7 @@ const EXPECTED_ROUTES = [
   'POST period-close/year/:periodKey',
   'GET period-close/year',
   'GET report/pnl',
+  'GET report/expense-journal-parity',
   'GET journal/canonical-sales/replay-preview',
   'GET journal/canonical-changes/shadow-preview',
   'GET journal/canonical-expenses/shadow-preview',

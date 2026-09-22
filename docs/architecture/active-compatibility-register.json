@@ -65,11 +65,12 @@
         "B1-A atomically writes every new/confirmed Expense split to AccountingExpenseSplit and the legacy AccountingTransaction compatibility copy inside the same Serializable Expense write",
         "B1-B reads Expense API/C0 category/amount/tax facts from AccountingExpenseSplit; C0 and the posting authority still shadow-compare legacy AccountingTransaction semantics and fail closed with SPLIT_PERSISTENCE_MISMATCH",
         "Expense API/Web cut directly to splitStableId; no response-level txStableId compatibility alias is retained",
-        "Authoritative financial reports and legacy Expense Transaction writes remain unchanged until B1-C report parity/cutover"
+        "B1-C0 adds read-only report/expense-journal-parity evidence across Expense P&L categories, recoverable input tax, payment-account movement, CASH/BANK cashflow, split parity and canonical Journal anchor coverage",
+        "Authoritative financial reports and legacy Expense Transaction writes remain unchanged until B1-C1 passes real production parity evidence"
       ],
-      "parity_metric": "For every confirmed Expense in the reviewed accounting range, semantic split row count plus categoryStableId/amountCents/taxCents multiset hashes must match between AccountingExpenseSplit and the legacy AccountingTransaction copy; splitPersistenceMismatches must remain zero through B1-B and the later report cutover observation window",
-      "rollback": "After B1-B owner-read cutover, forward-fix AccountingExpenseSplit/parity/Journal authority without silently falling back business facts to AccountingTransaction; financial reports remain on the legacy arithmetic until B1-C. Do not delete or rewrite legacy Expense rows merely to hide a parity mismatch.",
-      "exit_criteria": "Companion additive migration is reviewed and merged; B1-B owner reads plus canonical Expense Journal authority are accepted and production-verified with zero split mismatches; B1-C proves report parity, cuts authoritative reporting to Journal facts, and stops legacy Expense Transaction writes/read arithmetic before compatibility deletion",
+      "parity_metric": "For every confirmed Expense in the full canonical accounting range, split semantic hashes must match and canonical Expense Journals must exactly match legacy category-level P&L, recoverable input tax, payment-account movement and CASH/BANK cashflow both per Expense source fact and in aggregate; there must be no missing, duplicate or orphan canonical Expense Journal anchors and no non-v1 Expense-document Journal authority. Partial date ranges are diagnostic-only, and an empty confirmed-Expense population is explicitly not accepted as cutover evidence.",
+      "rollback": "Before B1-C1 report cutover, the parity preview is read-only and requires no data rollback; forward-fix AccountingExpenseSplit/parity/Journal authority while authoritative reports remain on legacy arithmetic. Do not delete or rewrite legacy Expense rows merely to hide a parity mismatch.",
+      "exit_criteria": "Companion additive migration is deployed; B1-B owner reads plus canonical Expense Journal authority are production-verified on at least one reviewed complete-payment Expense; B1-C0 reports zero split/report deltas and no missing/duplicate/orphan Journal anchors; B1-C1 then cuts authoritative reporting to Journal facts and stops legacy Expense Transaction writes/read arithmetic before compatibility deletion",
       "remove_pr": "Post-Modularization Accounting B1 Expense Journal cutover/contraction after split parity, read cutover and canonical Journal authority are production-verified",
       "deadline": "Remove within B1 before Canonical Sales Analytics / Trial Balance work proceeds",
       "evidence": [
@@ -78,7 +79,8 @@
         "apps/api/src/accounting/accounting-expense-split.writer.ts",
         "apps/api/src/accounting/accounting-expense-journal-preview.service.ts",
         "apps/api/src/accounting/accounting-expense-journal-posting.service.ts",
-        "apps/api/src/accounting/accounting-expense-journal-write-authority.ts"
+        "apps/api/src/accounting/accounting-expense-journal-write-authority.ts",
+        "apps/api/src/accounting/accounting-expense-report-parity.service.ts"
       ]
     }
   ],
