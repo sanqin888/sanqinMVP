@@ -324,12 +324,10 @@ describe('Phase 9 canonical financial facts boundary', () => {
     ]);
   });
 
-  it('keeps generic single-entry transaction authority absent while retaining the temporary Expense split compatibility copy', () => {
+  it('keeps generic single-entry AccountingTransaction persistence fully contracted', () => {
     const schema = readFileSync(PRISMA_SCHEMA, 'utf8');
-    const accountingTransaction =
-      schema.match(/model AccountingTransaction\s*{([\s\S]*?)\n}/)?.[1] ?? '';
-    const accountingSourceType =
-      schema.match(/enum AccountingSourceType\s*{([\s\S]*?)\n}/)?.[1] ?? '';
+    const accountingContracts =
+      file(ACCOUNTING_ROOT, 'accounting-contracts.ts')?.source ?? '';
     const accountingService =
       file(ACCOUNTING_ROOT, 'accounting.service.ts')?.source ?? '';
     const accountingJournalService =
@@ -350,14 +348,9 @@ describe('Phase 9 canonical financial facts boundary', () => {
       file(ACCOUNTING_ROOT, 'accounting-financial-reports.service.ts')
         ?.source ?? '';
 
-    expect(accountingTransaction).not.toMatch(/\borderId\b/);
-    expect(accountingTransaction).toContain('documentId');
-    expect(accountingSourceType).toContain('MANUAL');
-    expect(accountingSourceType).toContain('OTHER');
-    expect(accountingSourceType).not.toContain('ORDER');
-    expect(accountingSourceType).not.toContain('UBER');
-    expect(accountingSourceType).not.toContain('FANTUAN');
-    expect(accountingService).not.toContain('AccountingSourceType.ORDER');
+    expect(schema).not.toMatch(/\bmodel AccountingTransaction\s*{/);
+    expect(schema).not.toMatch(/\benum AccountingSourceType\s*{/);
+    expect(accountingContracts).not.toContain('AccountingSourceType');
     expect(accountingService).not.toContain('orderId: normalized.orderId');
     expect(accountingControllerSources).not.toContain(
       'orderId?: string | null;',

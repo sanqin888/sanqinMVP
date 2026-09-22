@@ -58,31 +58,31 @@
     },
     {
       "compat_id": "accounting.expense-split-ownership.v1",
-      "status": "active_contraction_pending",
-      "old_owner": "Historical AccountingTransaction EXPENSE rows retained only as pre-cutover compatibility evidence; no new authoritative report or write ownership after B1-C1",
+      "status": "source_contracted_migration_pending",
+      "old_owner": "Retired AccountingTransaction EXPENSE persistence retained physically only until the approved destructive migration is generated and deployed",
       "new_owner": "AccountingExpenseDocument plus AccountingExpenseSplit/payment-allocation child facts for Expense authority and canonical Expense Journal for financial reporting",
       "dual_write_or_read": [
-        "B1-A/B1-B/B1-C0 are production-deployed through f164be7a and the additive Expense-split migration is applied",
-        "Real reviewed Expense expense_iet91ut05fafso8rl48kds9v proves same-transaction split/payment persistence plus canonical Expense v1 Journal posting",
-        "Full-range production reconstruction from 2026-06-01 has zero split/Journal-anchor blockers and exact P&L, input-tax, payment-account and OPERATING cashflow parity",
-        "B1-C1 merged through PR #2452 / cdd3b47a after final head dc849d20 passed CI #6099 and production now runs the cutover",
-        "Post-cutover Expense expense_bmwt1anetgvhiglbc6wsjzf8 booked 3222 cents with one ExpenseSplit, one complete payment allocation and one canonical Expense v1 Journal while creating zero legacy Transaction rows; total active AccountingTransaction count remains exactly one pre-cutover EXPENSE/MANUAL row",
-        "Across both canonical Expense Journals, P&L is 10347 cents, recoverable tax 1344 cents and primary-bank/CASH+BANK movement -11691 cents",
-        "B1-C2 readiness found no Web/PWA consumer of report/expense-journal-parity or journal/canonical-expenses/shadow-preview; route retirement changes the Accounting HTTP contract and final AccountingTransaction model/table cleanup is destructive, so both still require separate explicit operator approval"
+        "B1-C1 is production-verified through PR #2452 / cdd3b47a and post-cutover Expense evidence proves zero new AccountingTransaction writes",
+        "B1-C2 readiness evidence is merged through PR #2455 and found no Web/PWA consumer of report/expense-journal-parity or journal/canonical-expenses/shadow-preview",
+        "B1-C2A source removes both legacy diagnostics plus their legacy-only services/tests/module wiring",
+        "B1-C2B source removes the Prisma AccountingTransaction model, AccountingSourceType enum, Transaction relations and dead Accounting-owned source-type contract while permanent architecture guards require them to remain absent",
+        "Read-only production evidence immediately before contraction shows exactly one active EXPENSE/MANUAL AccountingTransaction row: 7495 cents amount plus 974 cents tax = CAD 84.69",
+        "The destructive table/enum/row disposal is explicitly operator-approved, but the migration remains user-generated under repository rules"
       ],
-      "parity_metric": "The pre-cutover full canonical range passed zero-delta split/P&L/input-tax/account-movement/cashflow parity with one real reviewed Expense and no missing, duplicate, orphan or non-v1 Expense Journal anchors. After B1-C1 stops dual-write, the old legacy-comparison endpoint is not the canonical post-cutover health metric.",
-      "rollback": "Before B1-C1 is deployed, revert the source cutover and keep existing production legacy arithmetic. After deployment, preserve historical legacy rows; do not recreate legacy rows for new Expenses merely to satisfy the old parity endpoint. Any route replacement/removal or destructive table/model cleanup requires separate explicit review.",
-      "exit_criteria": "B1-C1 is merged and production-verified with zero Expense Transaction reads/writes; the legacy-comparison routes are explicitly retired or replaced; only then remove the retained AccountingTransaction Expense compatibility surface under the destructive-migration workflow",
-      "remove_pr": "Post-Modularization Accounting B1 Expense Journal cutover/contraction after split parity, read cutover and canonical Journal authority are production-verified",
-      "deadline": "Remove within B1 before Canonical Sales Analytics / Trial Balance work proceeds",
+      "parity_metric": "Pre-cutover full-range replacement evidence passed exact Expense split/P&L/input-tax/account-movement/cashflow parity; post-cutover production evidence proves new Expenses use only Expense-owned facts and canonical Journal authority with zero legacy Transaction write. Final closure requires post-migration verification that the retired table/enum are absent and canonical Expense posting/reporting remains healthy.",
+      "rollback": "Before the destructive migration is deployed, revert the source contraction if necessary while preserving canonical Expense authority. After the table/enum are physically dropped, use forward-fix only; do not recreate AccountingTransaction compatibility persistence or synthetic legacy rows without a new explicitly reviewed migration decision.",
+      "exit_criteria": "B1-C2 source is merged with CI green; the user-generated destructive migration is reviewed and merged; production deploy removes AccountingTransaction and AccountingSourceType; both retired diagnostic routes are unavailable; canonical Expense posting/reporting remains healthy; then move this entry to closed",
+      "remove_pr": "Post-Modularization Accounting B1-C2 Expense compatibility contraction; source PR followed by user-generated companion migration",
+      "deadline": "Close before Canonical Sales Analytics / Trial Balance proceeds",
       "evidence": [
         "ACCOUNTING_PRODUCT_ROADMAP.md",
         "POST_MODULARIZATION_BACKLOG.md",
+        "apps/api/prisma/schema.prisma",
         "apps/api/src/accounting/accounting-expense-split.writer.ts",
-        "apps/api/src/accounting/accounting-expense-journal-preview.service.ts",
         "apps/api/src/accounting/accounting-expense-journal-posting.service.ts",
         "apps/api/src/accounting/accounting-expense-journal-write-authority.ts",
-        "apps/api/src/accounting/accounting-expense-report-parity.service.ts"
+        "apps/api/src/accounting/accounting-expense-split-ownership.architecture.spec.ts",
+        "apps/api/src/accounting/canonical-financial-facts-boundary.architecture.spec.ts"
       ]
     }
   ],

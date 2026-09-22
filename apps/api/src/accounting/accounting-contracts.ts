@@ -48,12 +48,6 @@ export const AccountingJournalSource = {
 } as const;
 export type AccountingJournalSource = ValueOf<typeof AccountingJournalSource>;
 
-export const AccountingSourceType = {
-  MANUAL: 'MANUAL',
-  OTHER: 'OTHER',
-} as const;
-export type AccountingSourceType = ValueOf<typeof AccountingSourceType>;
-
 export const AccountingDocumentSource = {
   MANUAL: 'MANUAL',
   GMAIL: 'GMAIL',

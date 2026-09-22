@@ -257,13 +257,13 @@ The legacy-comparison diagnostic routes `GET /accounting/report/expense-journal-
 
 ### B1-C2 — Expense compatibility contraction
 
-**2026-09-21 readiness state:** **PRODUCTION GATE PASSED / CONTRACTION READY / EXPLICIT CONTRACT + DESTRUCTIVE APPROVAL REQUIRED** on branch `accounting/b1c2-expense-compat-contraction` from `origin/dev@cdd3b47a`.
+**2026-09-21 source state:** **C2A + C2B SOURCE COMPLETE / MIGRATION REQUIRED / DESTRUCTIVE APPROVAL RECORDED / NO GRAPH CHANGE** on branch `accounting/b1c2-final-persistence-contraction-v2` from `origin/dev@5c84100b`. The earlier readiness evidence from PR #2455 remains authoritative.
 
-Production now runs `cdd3b47a`. Post-cutover Expense `expense_bmwt1anetgvhiglbc6wsjzf8` confirmed at CAD 32.22 with one Expense-owned split, one complete payment allocation and one canonical Expense v1 Journal. Its Journal debits CAD 28.52 to operating expense with category `expense_software`, debits CAD 3.70 to recoverable HST/GST and credits CAD 32.22 to `account_primary_bank`. It creates **zero** legacy `AccountingTransaction` rows; total active Transaction count remains exactly 1, the pre-cutover compatibility row for `expense_iet91ut05fafso8rl48kds9v`.
+Production currently runs the B1-C1 cutover. Post-cutover Expense `expense_bmwt1anetgvhiglbc6wsjzf8` confirmed zero new legacy writes; read-only verification immediately before contraction showed exactly one active `AccountingTransaction` compatibility row, `EXPENSE / MANUAL`, 7495 cents amount + 974 cents tax = CAD 84.69. No Web/PWA consumer exists for either retained legacy-comparison route.
 
-Across both canonical Expense Journals, production evidence is Expense P&L CAD 103.47, recoverable tax CAD 13.44 and primary-bank / CASH+BANK movement CAD -116.91. No Web/PWA consumer exists for either retained legacy-comparison route. The runtime gate for compatibility contraction is therefore satisfied.
+C2A removes `GET /accounting/report/expense-journal-parity` and `GET /accounting/journal/canonical-expenses/shadow-preview` plus their legacy-only services/tests/module wiring. C2B removes the Prisma `AccountingTransaction` model, `AccountingSourceType` enum and Category/Account/ExpenseDocument Transaction relations, and keeps permanent architecture guards against reintroduction. The user explicitly authorized disposal of the historical compatibility row/table/enum.
 
-Route removal changes the Accounting HTTP contract and final `AccountingTransaction` model/table removal is destructive. Both remain explicitly gated for separate operator approval. B2 Canonical Sales Analytics remains gated only on closing this registered compatibility.
+Compatibility is **not closed** until the separately user-generated destructive Prisma migration is reviewed, merged, deployed and production verification confirms the table/enum are absent while canonical Expense posting/reporting remains healthy. B2 Canonical Sales Analytics remains gated on that closure.
 
 Expected end-state contraction:
 
