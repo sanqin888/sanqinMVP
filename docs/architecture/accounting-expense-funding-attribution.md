@@ -1,8 +1,8 @@
 # Accounting Expense Funding Attribution (EFA)
 
-Status: **EFA-B1 MERGED / CI GREEN / MIGRATION REVIEWED + COMMITTED TO DEV / PRODUCTION APPLICATION PENDING — EFA-B2 MERGED / CI GREEN — EFA-C MERGED / CI GREEN / NO NEW MIGRATION / NO GRAPH CHANGE — EFA-D LOCAL SOURCE IMPLEMENTED / REVIEW PENDING / NO NEW MIGRATION / NO GRAPH CHANGE — SALES B2 PRODUCTION VERIFIED / CLOSED — PHASE 9 REMAINS CLOSED**  
+Status: **EFA PRODUCTION DEPLOYED / PARTIAL VERIFICATION — B1 MIGRATION APPLIED — B2/C/D DEPLOYED — INCLUDED-ACCOUNT V2 WRITE + JOURNAL VERIFIED — EXCLUDED + MIXED-ACCOUNT VERIFICATION PENDING — SALES B2 PRODUCTION VERIFIED / CLOSED — PHASE 9 REMAINS CLOSED**  
 Planning/audit date: 2026-09-22  
-Audit baseline: `origin/dev@42e25b04`  
+Audit baseline: production `main@2d3abc0e`  
 Owner: **Accounting / Reporting / Analytics**
 
 ## 1. Purpose
@@ -344,13 +344,13 @@ Implemented:
 - Accounting Settings exposes the existing account policy on account creation and adds a narrow update path/UI for active operational accounts; EFA-C does not consume the flag in Dashboard/P&L calculations;
 - no Journal schema/policy redesign, JournalLine funding dimension, Orders/Payments/Clover/Uber change, dependency/package addition, Prisma schema change or new context edge is introduced.
 
-Deployment gate: production still lacks the B1 columns as of the EFA-C readiness audit. Apply the already-reviewed additive migration `20260922183548_accounting_efa_b1_funding_attribution_foundation` before deploying EFA-C API/Web, then delete/reinstall the single-user Accounting PWA so no stale v1 write client remains.
+Production cutover completed on 2026-09-22: `main@2d3abc0e` is deployed and migration `20260922183548_accounting_efa_b1_funding_attribution_foundation` is applied. The three B1 columns, split funding FK/index and account policy default are present in production. The first post-cutover Expense has persisted as v2, proving the active write path is no longer using the historical v1 allocation authority.
 
 ### EFA-D — management reporting cutover / production verification
 
-State: **LOCAL SOURCE IMPLEMENTED / REVIEW PENDING / NO NEW MIGRATION / NO GRAPH CHANGE** on `accounting/efa-d-management-reporting-cutover` from `origin/dev@42e25b04`.
+State: **MERGED / CI GREEN / PRODUCTION DEPLOYED / PARTIAL VERIFICATION / NO NEW MIGRATION / NO GRAPH CHANGE** through PR #2471 / final head `ddb01f74` / squash merge `2d3abc0e`; CI #6158 passed API/Web/Architecture gates.
 
-Implemented locally:
+Implemented:
 
 - `AccountingFinancialReportsService` now makes report scope explicit: Dashboard and P&L use `MANAGEMENT`, while raw canonical transaction CSV uses `CANONICAL`; Management/Boss CSV/PDF and annual P&L inherit the existing P&L management scope;
 - management filtering applies only to canonical `EXPENSE_DOCUMENT` v2 Journal groups (`accounting.expense_document.v2`, source-fact version 2). Historical v1 Expense Journals and all non-Expense-v2 facts remain unchanged;
@@ -360,11 +360,11 @@ Implemented locally:
 - characterization covers an included v2 Expense group, an excluded v2 group, a historical v1 group on the same excluded account, canonical CSV retention, management P&L/category arithmetic and canonical Dashboard input-tax arithmetic;
 - no Web route/response change, Journal redesign, JournalLine funding dimension, Prisma schema/migration, package/dependency, provider path or context edge is introduced.
 
-Production verification still requires the EFA-B1 migration to be applied before EFA-C/D runtime deployment, followed by Accounting PWA reinstall. Then verify one included-account Expense, one excluded-account Expense and one mixed-account receipt, confirm the expected 1..N balanced v2 Journal groups, and reconcile Management vs canonical arithmetic independently before closing EFA and starting B3.
+Production deployment/readiness gates are now passed: migration `20260922183548_accounting_efa_b1_funding_attribution_foundation` finished successfully at `2026-09-22 22:51:15Z`, production is on `main@2d3abc0e`, and the pre-existing three Expense records remain v1 with their original legacy allocations and balanced v1 Journals. Included-account verification is also complete for `expense_nha2w24tprp8s74921k3ge9p`: it persisted `fundingAttributionVersion=2`, split `2843c + 369c = 3212c` to `account_primary_bank` (`includeFundedExpensesInManagementReports=true`) and created exactly one balanced v2 Journal `journal_fgaxlv64pm70ks8b17j9ithn` with idempotency `canonical-expense:expense_nha2w24tprp8s74921k3ge9p:funding:account_primary_bank:v2` and debit=credit=`3212c`. EFA remains open until one excluded-account Expense and one mixed-account receipt verify the management filter and expected 1..N Journal grouping, followed by Management-vs-canonical arithmetic reconciliation.
 
 ## 15. Migration gate for EFA-B1
 
-**MIGRATION REVIEWED + COMMITTED TO DEV / PRODUCTION APPLICATION STILL PENDING.**
+**MIGRATION REVIEWED + COMMITTED + APPLIED TO PRODUCTION.**
 
 The B1 schema change is additive, but persisted database columns/FK/index are required before later runtime code may depend on them in production. Source merged through PR #2468 / `2250b22d` with CI #6145 green. The user-generated migration was reviewed as additive-only and is committed to `dev` as `3e445345`:
 
@@ -382,7 +382,7 @@ Reviewed SQL shape:
 
 No historical backfill is required in B1. Existing v1 Expense rows keep `paidFromAccountId = NULL` and retain their existing `AccountingExpensePaymentAllocation` authority.
 
-The migration remains additive only: no table/column drop, rename, enum contraction, NOT NULL tightening or history rewrite. Promotion to `main` / production still requires the normal reviewed deployment/migration-application gate.
+The migration remains additive only: no table/column drop, rename, enum contraction, NOT NULL tightening or history rewrite. Production application completed successfully on 2026-09-22 before the EFA-C/D runtime was activated.
 
 ## 16. Architecture effect
 
