@@ -90,9 +90,7 @@ describe('Accounting Expense funding attribution foundation', () => {
       'row.includeFundedExpensesInManagementReports ?? true',
     );
     expect(chartService).toContain('updateAccountExpenseManagementPolicy');
-    expect(expenseContract).toContain(
-      'paidFromAccountStableId: string | null',
-    );
+    expect(expenseContract).toContain('paidFromAccountStableId: string | null');
     expect(expenseContract).not.toContain(
       'paymentAllocations?: AccountingExpensePaymentAllocationInput[]',
     );

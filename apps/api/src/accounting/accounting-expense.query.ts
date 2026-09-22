@@ -351,8 +351,7 @@ function presentAccountingExpenseDocument(
       categoryName: split.category.name,
       amountCents: split.amountCents,
       taxCents: split.taxCents,
-      paidFromAccountStableId:
-        split.paidFromAccount?.accountStableId ?? null,
+      paidFromAccountStableId: split.paidFromAccount?.accountStableId ?? null,
       paidFromAccountName: split.paidFromAccount?.name ?? null,
       sortOrder: split.sortOrder,
     })),

@@ -69,9 +69,7 @@ describe('Accounting Expense payment allocation boundary', () => {
     expect(input).toBeDefined();
     expect(input).not.toContain('paymentAllocations');
     expect(input).not.toMatch(/\baccountStableId\?\s*:/);
-    expect(expenseContract).toContain(
-      'paidFromAccountStableId: string | null',
-    );
+    expect(expenseContract).toContain('paidFromAccountStableId: string | null');
     expect(expenseContract).toContain(
       'AccountingExpensePaymentCompletionInput',
     );

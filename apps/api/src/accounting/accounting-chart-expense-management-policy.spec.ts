@@ -102,7 +102,10 @@ describe('AccountingChartService expense management policy', () => {
     } as never);
 
     await expect(
-      service.updateAccountExpenseManagementPolicy('account_hst_payable', false),
+      service.updateAccountExpenseManagementPolicy(
+        'account_hst_payable',
+        false,
+      ),
     ).rejects.toThrow(
       'expense management policy requires an active operational ASSET account',
     );

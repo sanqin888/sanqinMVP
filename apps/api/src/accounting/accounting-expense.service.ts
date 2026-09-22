@@ -214,8 +214,7 @@ export class AccountingExpenseService {
       return {
         ...split,
         taxCents,
-        paidFromAccountStableId:
-          split.paidFromAccountStableId?.trim() || null,
+        paidFromAccountStableId: split.paidFromAccountStableId?.trim() || null,
       };
     });
     const subtotalCents = normalizedSplits.reduce(
@@ -311,8 +310,10 @@ export class AccountingExpenseService {
         );
       }
 
-      const fundingAccountDbIds =
-        await this.resolveExpenseSplitFundingAccounts(tx, normalizedSplits);
+      const fundingAccountDbIds = await this.resolveExpenseSplitFundingAccounts(
+        tx,
+        normalizedSplits,
+      );
 
       const metadata = accountingJsonRecord(inbox.artifact.metadataJson);
       const extractedSourceCurrency = accountingOptionalString(
@@ -468,8 +469,7 @@ export class AccountingExpenseService {
       return {
         ...split,
         taxCents,
-        paidFromAccountStableId:
-          split.paidFromAccountStableId?.trim() || null,
+        paidFromAccountStableId: split.paidFromAccountStableId?.trim() || null,
       };
     });
     const subtotalCents = normalizedSplits.reduce(
@@ -1015,8 +1015,7 @@ export class AccountingExpenseService {
       return {
         ...split,
         taxCents,
-        paidFromAccountStableId:
-          split.paidFromAccountStableId?.trim() || null,
+        paidFromAccountStableId: split.paidFromAccountStableId?.trim() || null,
       };
     });
     const subtotalCents = normalizedSplits.reduce(
@@ -1065,8 +1064,10 @@ export class AccountingExpenseService {
         AccountingTxType.EXPENSE,
         tx,
       );
-      const fundingAccountDbIds =
-        await this.resolveExpenseSplitFundingAccounts(tx, normalizedSplits);
+      const fundingAccountDbIds = await this.resolveExpenseSplitFundingAccounts(
+        tx,
+        normalizedSplits,
+      );
 
       const current = await tx.accountingExpenseDocument.findUnique({
         where: { id: existing.id },
