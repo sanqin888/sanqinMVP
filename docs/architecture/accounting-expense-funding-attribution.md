@@ -1,8 +1,8 @@
 # Accounting Expense Funding Attribution (EFA)
 
-Status: **EFA-B1 LOCAL SOURCE IMPLEMENTED / REVIEW PENDING / MIGRATION REQUIRED — B2 PRODUCTION VERIFIED / CLOSED — PHASE 9 REMAINS CLOSED**  
+Status: **EFA-B1 MERGED / CI GREEN / MIGRATION REVIEWED + COMMITTED TO DEV / PRODUCTION APPLICATION PENDING — EFA-B2 LOCAL SOURCE IMPLEMENTED / REVIEW PENDING — SALES B2 PRODUCTION VERIFIED / CLOSED — PHASE 9 REMAINS CLOSED**  
 Planning/audit date: 2026-09-22  
-Audit baseline: `origin/dev@eeca118e`  
+Audit baseline: `origin/dev@3e445345`  
 Owner: **Accounting / Reporting / Analytics**
 
 ## 1. Purpose
@@ -312,16 +312,26 @@ B1 deliberately does **not**:
 
 ### EFA-B2 — canonical Expense v2 posting
 
-Planned:
+State: **LOCAL SOURCE IMPLEMENTED / REVIEW PENDING / NO MIGRATION / NO GRAPH CHANGE** on `accounting/efa-b2-expense-v2-posting` from `origin/dev@3e445345`.
 
-- define `CanonicalExpenseFactV2`;
-- derive authority only from persisted v2 splits;
-- group splits by funding account;
-- create all grouped Journals atomically in the existing Serializable Expense transaction;
-- use deterministic account-scoped v2 idempotency keys;
-- keep historical v1 write authority frozen;
-- enforce operational funding-account validity server-side;
-- characterize retry, period lock, duplicate account grouping and source-authority drift.
+Implemented locally:
+
+- defines `CanonicalExpenseFactV2` while preserving `CanonicalExpenseFactV1` and its v1 idempotency/source-fact contract;
+- derives v2 write authority from persisted Expense v2 splits plus the persisted funding-account facts required to enforce the operational-account invariant;
+- groups splits by `paidFromAccountStableId` and creates one balanced Journal per funding account;
+- reuses the caller's existing Serializable Expense transaction for the full grouped write set;
+- uses deterministic account-scoped v2 idempotency keys `canonical-expense:<documentStableId>:funding:<accountStableId>:v2`;
+- rejects v2 documents that retain legacy document-level payment allocations and leaves incomplete split funding unposted;
+- enforces active CAD `ASSET` funding accounts with operational type `CASH / BANK / PLATFORM_WALLET`;
+- revalidates persisted v2 source authority immediately before each Journal write, rejects any v1/v2 source-fact-version crossover or stale funding-group anchor once a canonical Expense anchor exists, and retains the existing period-lock/idempotent replay path;
+- focused regressions cover duplicate-account grouping, missing funding, mixed-account 1:N posting, invalid funding accounts, legacy-allocation rejection, period lock, idempotent retry and source-authority drift.
+
+Still intentionally deferred to EFA-C/D:
+
+- no current Expense write path sets `fundingAttributionVersion = 2` or writes `paidFromAccountId` yet;
+- no Web/PWA Expense UI cutover;
+- no query/report Management filtering;
+- no removal of historical `AccountingExpensePaymentAllocation`.
 
 ### EFA-C — Expense write/UI cutover
 
@@ -349,23 +359,15 @@ Planned:
 
 ## 15. Migration gate for EFA-B1
 
-**MIGRATION REQUIRED.**
+**MIGRATION REVIEWED + COMMITTED TO DEV / PRODUCTION APPLICATION STILL PENDING.**
 
-The B1 schema change is additive, but persisted database columns/FK/index are required before later runtime code may depend on them.
-
-Suggested migration name:
+The B1 schema change is additive, but persisted database columns/FK/index are required before later runtime code may depend on them in production. Source merged through PR #2468 / `2250b22d` with CI #6145 green. The user-generated migration was reviewed as additive-only and is committed to `dev` as `3e445345`:
 
 ```text
-accounting_efa_b1_funding_attribution_foundation
+20260922183548_accounting_efa_b1_funding_attribution_foundation
 ```
 
-User-local generation command after the B1 source change is merged to `dev` and a disposable/local development database is verified:
-
-```bash
-pnpm --filter api exec prisma migrate dev --create-only --name accounting_efa_b1_funding_attribution_foundation
-```
-
-Expected generated SQL shape:
+Reviewed SQL shape:
 
 - add nullable `AccountingExpenseDocument.fundingAttributionVersion` with default `1`;
 - add nullable `AccountingExpenseSplit.paidFromAccountId`;
@@ -375,15 +377,13 @@ Expected generated SQL shape:
 
 No historical backfill is required in B1. Existing v1 Expense rows keep `paidFromAccountId = NULL` and retain their existing `AccountingExpensePaymentAllocation` authority.
 
-Expected risk is therefore additive only. No table/column drop, rename, enum contraction, NOT NULL tightening or history rewrite is approved in B1.
-
-Promotion to `main` / production is blocked until the user-generated migration is reviewed and merged back into `dev`.
+The migration remains additive only: no table/column drop, rename, enum contraction, NOT NULL tightening or history rewrite. Promotion to `main` / production still requires the normal reviewed deployment/migration-application gate.
 
 ## 16. Architecture effect
 
 EFA remains inside the existing Accounting L3 owner and Accounting Web adapter.
 
-Expected graph effect through EFA-B1:
+Expected graph effect through EFA-B2:
 
 ```text
 new context direction: none

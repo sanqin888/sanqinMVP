@@ -1,6 +1,6 @@
 # Post-Modularization Accounting Product Roadmap
 
-Status: **EFA-B1 LOCAL SOURCE IMPLEMENTED / REVIEW PENDING / MIGRATION REQUIRED — B2 PRODUCTION VERIFIED / CLOSED — B1 CLOSED / B0 3V-B PRODUCTION VERIFICATION STILL PENDING — DO NOT REOPEN PHASE 9**  
+Status: **EFA-B1 MERGED / CI GREEN / MIGRATION REVIEWED + COMMITTED TO DEV / PRODUCTION APPLICATION PENDING — EFA-B2 LOCAL SOURCE IMPLEMENTED / REVIEW PENDING — B2 PRODUCTION VERIFIED / CLOSED — B1 CLOSED / B0 3V-B PRODUCTION VERIFICATION STILL PENDING — DO NOT REOPEN PHASE 9**  
 Planning date: 2026-09-20; updated: 2026-09-22  
 Baseline: Phase 9 **PRODUCTION VERIFIED / CLOSED** at production `main@dbea68f3`  
 Document-recognition audit baseline: `origin/dev@1ede0599`; Slice 3 merged as `caabf1c1`; Evidence Viewer Slice 1 merged as `0371a155`; Slice 1B merged as `9ae4d85d`; additive folder migration committed as `cc4c8016`; Evidence Viewer Slice 2 merged in PR #2438 as `4d68379e`; Slice 3V-A merged in PR #2439 as `0d6909bb` with PR CI #6054 and merged-head CI #6055 green; Slice 3V-B merged in PR #2440 as `0ac9117f` after final head `3c5c0400`, PR CI #6057 and merged-head CI #6058 green
@@ -361,7 +361,7 @@ Do not rewrite valid historical Journals merely to simplify presentation.
 
 Detailed readiness/design: `docs/architecture/accounting-expense-funding-attribution.md`.
 
-**2026-09-22 state:** **EFA-A COMPLETE / EFA-B1 LOCAL SOURCE IMPLEMENTED + REVIEW PENDING / MIGRATION REQUIRED**. B2-E is deployed and production-verified, so B2 is closed. EFA is inserted before B3 Trial Balance so B3 can characterize the final Expense Journal cardinality rather than a transitional one.
+**2026-09-22 state:** **EFA-A COMPLETE / EFA-B1 MERGED + CI GREEN + MIGRATION REVIEWED + COMMITTED TO DEV / PRODUCTION APPLICATION PENDING / EFA-B2 LOCAL SOURCE IMPLEMENTED + REVIEW PENDING**. B2-E is deployed and production-verified, so Sales B2 is closed. EFA is inserted before B3 Trial Balance so B3 can characterize the final Expense Journal cardinality rather than a transitional one.
 
 The operator explicitly accepts deleting/recreating the single-user Accounting PWA during the later v2 cutover. Therefore no long-lived old-client write compatibility layer is required. Historical `accounting.expense_document.v1` source facts/Journals remain immutable/readable.
 
@@ -379,9 +379,9 @@ ExpenseDocument
 
 Management visibility is an account policy, not a deletion rule. A funding account can set `includeFundedExpensesInManagementReports=false`; Expense groups funded by that account are later excluded from Management Dashboard/P&L/category/trend/export views while remaining in canonical Journal, account movement, actual cash flow, audit/evidence and future GST/HST statutory reporting.
 
-EFA-B1 is additive only: it introduces `fundingAttributionVersion`, nullable split-level funding relation and the account management-policy flag. Current v1 Expense input/posting remains unchanged in B1. No Journal schema, report arithmetic, provider path, context edge, package or scanner allowance changes.
+EFA-B1 is additive only: it introduces `fundingAttributionVersion`, nullable split-level funding relation and the account management-policy flag. Source merged through PR #2468 / `2250b22d`; PR CI #6145 passed. User-generated migration `20260922183548_accounting_efa_b1_funding_attribution_foundation` was reviewed as additive-only and is committed to `dev` as `3e445345`. Production application is still a later gate.
 
-**MIGRATION REQUIRED:** suggested migration `accounting_efa_b1_funding_attribution_foundation`. MCP must not generate/edit it; production promotion is blocked until the user-generated migration is reviewed and merged back to `dev`.
+EFA-B2 is implemented locally on top of that dev baseline: `CanonicalExpenseFactV2`, persisted split-funding authority, per-funding-account balanced Journal grouping, deterministic account-scoped v2 idempotency, v1/v2 authority revalidation, operational funding-account validation, and focused retry/period-lock/grouping/drift regressions. It does not yet activate v2 Expense writes or change Web/PWA/report behavior; those remain EFA-C/D.
 
 ## 8. Slice C — Trial Balance and Balance Movement
 

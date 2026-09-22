@@ -18,6 +18,18 @@ const EXPENSE_POLICY = resolve(
   ACCOUNTING_ROOT,
   'accounting-expense-journal.policy.ts',
 );
+const EXPENSE_POSTING = resolve(
+  ACCOUNTING_ROOT,
+  'accounting-expense-journal-posting.service.ts',
+);
+const EXPENSE_WRITE_AUTHORITY = resolve(
+  ACCOUNTING_ROOT,
+  'accounting-expense-journal-write-authority.ts',
+);
+const JOURNAL_SERVICE = resolve(
+  ACCOUNTING_ROOT,
+  'accounting-journal.service.ts',
+);
 
 const modelBody = (schema: string, modelName: string) => {
   const match = schema.match(
@@ -84,6 +96,33 @@ describe('Accounting Expense funding attribution foundation', () => {
     expect(expensePolicy).toContain('accounting.expense_document.v1');
     expect(expensePolicy).toContain(
       'idempotencyKey: `canonical-expense:${documentStableId}:v1`',
+    );
+  });
+
+  it('pins the v2 grouped-posting boundary without mutating historical v1 authority', () => {
+    const expensePolicy = readFileSync(EXPENSE_POLICY, 'utf8');
+    const expensePosting = readFileSync(EXPENSE_POSTING, 'utf8');
+    const expenseWriteAuthority = readFileSync(EXPENSE_WRITE_AUTHORITY, 'utf8');
+    const journalService = readFileSync(JOURNAL_SERVICE, 'utf8');
+
+    expect(expensePolicy).toContain('accounting.expense_document.v1');
+    expect(expensePolicy).toContain('accounting.expense_document.v2');
+    expect(expensePolicy).toContain(
+      'canonical-expense:${documentStableId}:funding:${group.accountStableId}:v2',
+    );
+    expect(expensePosting).toContain('fundingAttributionVersion === 1');
+    expect(expensePosting).toContain('fundingAttributionVersion !== 2');
+    expect(expensePosting).toContain(
+      'Expense v2 cannot retain legacy document-level payment allocations',
+    );
+    expect(expenseWriteAuthority).toContain(
+      'buildCanonicalExpenseJournalWritePlansV2',
+    );
+    expect(expenseWriteAuthority).toContain(
+      'AccountingAccountType.PLATFORM_WALLET',
+    );
+    expect(journalService).toContain(
+      'canonical Expense source fact version cannot change after Journal posting',
     );
   });
 });
