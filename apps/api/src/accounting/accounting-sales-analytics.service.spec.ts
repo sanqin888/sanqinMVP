@@ -164,9 +164,9 @@ function makeService(options?: {
   ];
   const journalQueries: JournalFindManyQueryCapture[] = [];
   const journalFindMany = jest.fn(
-    async (query: JournalFindManyQueryCapture): Promise<unknown[]> => {
+    (query: JournalFindManyQueryCapture): Promise<unknown[]> => {
       journalQueries.push(query);
-      return journalResponses.shift() ?? [];
+      return Promise.resolve(journalResponses.shift() ?? []);
     },
   );
   const providerFindMany = jest.fn().mockResolvedValue(
@@ -277,14 +277,18 @@ describe('AccountingSalesAnalyticsService', () => {
       netSalesRevenueCents: 1800,
       contributionCents: 1700,
     });
-    expect(report.byChannel.find((row) => row.key === 'in_store')).toMatchObject({
+    expect(
+      report.byChannel.find((row) => row.key === 'in_store'),
+    ).toMatchObject({
       key: 'in_store',
       summary: {
         grossSalesCents: 800,
         contributionCents: 800,
       },
     });
-    expect(report.byChannel.find((row) => row.key === 'ubereats')).toMatchObject({
+    expect(
+      report.byChannel.find((row) => row.key === 'ubereats'),
+    ).toMatchObject({
       key: 'ubereats',
       summary: {
         grossSalesCents: 1000,
@@ -449,9 +453,7 @@ describe('AccountingSalesAnalyticsService', () => {
 
     expect(report.from).toBe('2026-06-01');
     expect(report.to).toBe('2026-06-02');
-    expect(journalQueries[0]?.where?.storeStableId).toBe(
-      STORE.storeStableId,
-    );
+    expect(journalQueries[0]?.where?.storeStableId).toBe(STORE.storeStableId);
     expect(journalQueries[0]?.where?.occurredAt).toEqual({
       gte: new Date('2026-06-01T04:00:00.000Z'),
       lt: new Date('2026-06-03T04:00:00.000Z'),
