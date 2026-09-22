@@ -102,7 +102,9 @@ describe('Accounting internal capability boundary', () => {
     }
     expect(reports).toContain('accountingJournalEntry.findMany');
     expect(reports).not.toContain('accountingTransaction.findMany');
-    expect(reports).not.toContain('accountingExpensePaymentAllocation.findMany');
+    expect(reports).not.toContain(
+      'accountingExpensePaymentAllocation.findMany',
+    );
     expect(reports).not.toContain('ORDER_REPORTING_FACTS_READER');
     expect(broad).toContain('ORDER_REPORTING_FACTS_READER');
     expect(broad).toContain('readPaidTotalDimensionsForRange');
