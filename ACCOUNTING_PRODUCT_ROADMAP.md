@@ -249,11 +249,21 @@ B1-C1 remains gated on: B1-A migration deployed first, B1-B API/Web deployed, Ac
 
 ### B1-C1 — Authoritative Expense report cutover
 
-**2026-09-21 source state:** **LOCAL SOURCE COMPLETE / USER REVIEW PENDING / PRODUCTION PARITY GATE PASSED / NO MIGRATION / NO GRAPH CHANGE** on branch `accounting/b1c1-expense-report-cutover` from `origin/dev@f164be7a`. Production has the B1-A migration/table and B1-B runtime, and the first real reviewed Expense provides zero-delta full-range replacement evidence.
+**2026-09-21 state:** **PRODUCTION VERIFIED / MERGED / CI GREEN / PRODUCTION PARITY GATE PASSED / NO MIGRATION / NO GRAPH CHANGE**. PR #2452 merged to `dev` as `cdd3b47a` after final head `dc849d20` passed CI #6099. Production now runs `cdd3b47a`; post-cutover Expense `expense_bmwt1anetgvhiglbc6wsjzf8` proves zero legacy Transaction write while preserving ExpenseSplit + canonical Journal authority and correct Journal-driven report arithmetic.
 
 B1-C1 cuts authoritative P&L/export, account-balance and cashflow reads to canonical Journal facts including `EXPENSE_DOCUMENT`; removes the parallel `AccountingTransaction` Expense projection and report-side `AccountingExpensePaymentAllocation` arithmetic; stops legacy Expense Transaction create/delete paths; removes the posting authority's dependency on legacy split shadow parity so new post-cutover Expenses can post from Expense-owned facts alone; moves Upload Library delete protection from legacy Transaction counts to Expense-owned split counts; records split CREATE/DELETE audit facts as `ACCOUNTING_EXPENSE_SPLIT`; and tightens architecture guards to zero production `AccountingTransaction` mutation callers. The `AccountingTransaction` model/table and existing historical compatibility row are retained for later separately reviewed destructive contraction.
 
 The legacy-comparison diagnostic routes `GET /accounting/report/expense-journal-parity` and `GET /accounting/journal/canonical-expenses/shadow-preview` are intentionally retained in this slice to avoid an unapproved HTTP-contract removal. After B1-C1 stops legacy dual-write, new Expenses will make those legacy-comparison diagnostics fail closed; they are therefore pre-cutover evidence/diagnostic surfaces only, not post-cutover canonical-health monitors. Replacing or removing them belongs to the later explicit compatibility contraction.
+
+### B1-C2 — Expense compatibility contraction
+
+**2026-09-21 readiness state:** **PRODUCTION GATE PASSED / CONTRACTION READY / EXPLICIT CONTRACT + DESTRUCTIVE APPROVAL REQUIRED** on branch `accounting/b1c2-expense-compat-contraction` from `origin/dev@cdd3b47a`.
+
+Production now runs `cdd3b47a`. Post-cutover Expense `expense_bmwt1anetgvhiglbc6wsjzf8` confirmed at CAD 32.22 with one Expense-owned split, one complete payment allocation and one canonical Expense v1 Journal. Its Journal debits CAD 28.52 to operating expense with category `expense_software`, debits CAD 3.70 to recoverable HST/GST and credits CAD 32.22 to `account_primary_bank`. It creates **zero** legacy `AccountingTransaction` rows; total active Transaction count remains exactly 1, the pre-cutover compatibility row for `expense_iet91ut05fafso8rl48kds9v`.
+
+Across both canonical Expense Journals, production evidence is Expense P&L CAD 103.47, recoverable tax CAD 13.44 and primary-bank / CASH+BANK movement CAD -116.91. No Web/PWA consumer exists for either retained legacy-comparison route. The runtime gate for compatibility contraction is therefore satisfied.
+
+Route removal changes the Accounting HTTP contract and final `AccountingTransaction` model/table removal is destructive. Both remain explicitly gated for separate operator approval. B2 Canonical Sales Analytics remains gated only on closing this registered compatibility.
 
 Expected end-state contraction:
 
