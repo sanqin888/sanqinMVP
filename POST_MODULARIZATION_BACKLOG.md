@@ -390,7 +390,7 @@ Production now runs the B1-A/B1-B/B1-C0 stack and has real replacement evidence 
 
 **B1-C1 state:** **PRODUCTION VERIFIED / MERGED / CI GREEN / NO MIGRATION / NO GRAPH CHANGE**. PR #2452 merged to `dev` as `cdd3b47a` after final head `dc849d20` passed CI #6099. Production now runs the cutover; post-cutover Expense `expense_bmwt1anetgvhiglbc6wsjzf8` proves zero legacy Transaction write while preserving ExpenseSplit + canonical Journal authority and Journal-driven P&L/account-balance/cashflow behavior.
 
-**B1-C2 state:** **C2A + C2B SOURCE COMPLETE / MIGRATION REQUIRED / DESTRUCTIVE APPROVAL RECORDED / NO GRAPH CHANGE**. The readiness evidence merged via PR #2455 remains valid. C2A retires both legacy Expense comparison routes and their legacy-only wiring; C2B removes the `AccountingTransaction` Prisma model, obsolete `AccountingSourceType` enum and Transaction relations while architecture guards require them to stay absent. Read-only production evidence immediately before contraction showed exactly one active historical compatibility row totaling CAD 84.69, and its disposal with the table/enum is explicitly approved. Compatibility remains open until the user-generated destructive migration is reviewed/merged/deployed and production verification passes; B2 remains gated until then.
+**B1-C2 state:** **PRODUCTION VERIFIED / CLOSED / MIGRATION DEPLOYED / NO GRAPH CHANGE**. Source merged through PR #2456 / `1cd8ee92`; migration `20260922041449_post_mod_accounting_b1c2_drop_legacy_accounting_transaction` is committed at `24e99b40`, CI #6110/#6111 passed and production applied it at `2026-09-22T04:34:24Z`. Production confirms the retired table/enum are absent, both legacy diagnostics are unregistered, and no post-deploy Prisma/relation errors occurred. Post-migration Expense `expense_v618ly4fflr6jzyvgeiz3e16` created one ExpenseSplit, one complete 3287-cent payment allocation and one balanced three-line canonical Expense Journal with debit=credit=3287. `accounting.expense-split-ownership.v1` is closed; B2 Canonical Sales Analytics is now unblocked for readiness audit.
 
 Target:
 
@@ -413,7 +413,9 @@ Do not silently treat an unpaid expense as cash/bank paid. If Accounts Payable i
 
 Priority: **P1**  
 Complexity: **H**  
-Depends on: **B1** by approved Accounting roadmap sequence.
+Depends on: **B1** by approved Accounting roadmap sequence — **satisfied 2026-09-22 by B1-C2 production closeout**.
+
+Current state: **READY FOR READ-ONLY READINESS AUDIT / IMPLEMENTATION NOT STARTED**. The audit must inventory the current Sales UI/API, canonical Journal amount sources, channel/payment dimensions, provider-coverage gaps and historical replacement semantics before selecting implementation slices.
 
 The current Accounting Sales page mixes canonical posted income with Orders-owned paid-total channel/payment slices. Those Order totals are useful business dimensions but are not canonical Accounting revenue.
 
