@@ -32,10 +32,7 @@ describe('Accounting Expense funding attribution foundation', () => {
     const schema = readFileSync(PRISMA_SCHEMA, 'utf8');
     const expenseDocument = modelBody(schema, 'AccountingExpenseDocument');
     const split = modelBody(schema, 'AccountingExpenseSplit');
-    const allocation = modelBody(
-      schema,
-      'AccountingExpensePaymentAllocation',
-    );
+    const allocation = modelBody(schema, 'AccountingExpensePaymentAllocation');
 
     expect(expenseDocument).toMatch(
       /fundingAttributionVersion\s+Int\?\s+@default\(1\)/,
@@ -76,9 +73,7 @@ describe('Accounting Expense funding attribution foundation', () => {
     const expenseContract = readFileSync(EXPENSE_CONTRACT, 'utf8');
     const expensePolicy = readFileSync(EXPENSE_POLICY, 'utf8');
 
-    expect(chartService).toContain(
-      'includeFundedExpensesInManagementReports',
-    );
+    expect(chartService).toContain('includeFundedExpensesInManagementReports');
     expect(chartService).toContain(
       'row.includeFundedExpensesInManagementReports ?? true',
     );
