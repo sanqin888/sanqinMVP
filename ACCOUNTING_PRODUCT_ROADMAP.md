@@ -1,6 +1,6 @@
 # Post-Modularization Accounting Product Roadmap
 
-Status: **B2 PRODUCTION VERIFIED / CLOSED — B1 CLOSED / B2-P0A PRODUCTION VERIFIED / B2-P0B PRODUCTION VERIFIED + COMPLETE / B2-A MERGED + CI GREEN / B2-B MERGED + CI GREEN / B2-C MERGED + CI GREEN / B2-D MERGED + CI GREEN / B2-E MERGED + CI GREEN + PRODUCTION VERIFIED / B0 3V-B PRODUCTION VERIFICATION STILL PENDING — DO NOT REOPEN PHASE 9**  
+Status: **EFA-B1 LOCAL SOURCE IMPLEMENTED / REVIEW PENDING / MIGRATION REQUIRED — B2 PRODUCTION VERIFIED / CLOSED — B1 CLOSED / B0 3V-B PRODUCTION VERIFICATION STILL PENDING — DO NOT REOPEN PHASE 9**  
 Planning date: 2026-09-20; updated: 2026-09-22  
 Baseline: Phase 9 **PRODUCTION VERIFIED / CLOSED** at production `main@dbea68f3`  
 Document-recognition audit baseline: `origin/dev@1ede0599`; Slice 3 merged as `caabf1c1`; Evidence Viewer Slice 1 merged as `0371a155`; Slice 1B merged as `9ae4d85d`; additive folder migration committed as `cc4c8016`; Evidence Viewer Slice 2 merged in PR #2438 as `4d68379e`; Slice 3V-A merged in PR #2439 as `0d6909bb` with PR CI #6054 and merged-head CI #6055 green; Slice 3V-B merged in PR #2440 as `0ac9117f` after final head `3c5c0400`, PR CI #6057 and merged-head CI #6058 green
@@ -12,9 +12,10 @@ This is the approved follow-on plan for:
 1. provider-document recognition safety and auditable Human Review Revision;
 2. ExpenseDocument -> canonical Journal cutover and final `AccountingTransaction` contraction;
 3. canonical Accounting Sales Analytics;
-4. Trial Balance;
-5. an initial **资产负债变动表 / Balance Movement Statement**;
-6. later promotion to a formal Balance Sheet after a real fiscal-year opening balance is entered.
+4. Expense Funding Attribution (split-level funding + Management reporting scope);
+5. Trial Balance;
+6. an initial **资产负债变动表 / Balance Movement Statement**;
+7. later promotion to a formal Balance Sheet after a real fiscal-year opening balance is entered.
 
 The document-recognition/human-review work is an immediate Accounting correctness package.
 It may precede Slice A without reopening Phase 9 because it hardens the already-live
@@ -44,26 +45,20 @@ The repository-wide modularization gate is satisfied at `origin/dev@1b18fb00` on
 
 ### Sales
 
-The current Accounting Sales page mixes two amount authorities:
-
-- top-line posted income: Accounting P&L/canonical financial projection;
-- “按渠道 / By channel” and “按支付方式 / By payment method”: Orders-owned paid-total dimension slice based on persisted Order totals.
-
-The latter is intentionally non-canonical for revenue and must not be relabeled as Accounting income. The current explanatory copy is also stale because canonical sale/tax/refund posting now exists.
+B2 Canonical Sales Analytics is production-verified/closed. Accounting Sales and the Dashboard sales summaries consume the canonical `GET /accounting/report/sales` projection. Monetary amounts come from Accounting Journal lines; Orders contributes only the narrow descriptive attribution boundary for channel/canonical primary payment evidence. The legacy paid-total `/accounting/report/slice` surface and its Accounting -> Orders reporting dependency are retired.
 
 ### Expenses
 
-Confirmed expenses currently materialize as:
+Confirmed Expense v1 facts currently materialize as:
 
 ```text
 AccountingExpenseDocument
-├─ AccountingTransaction split rows        <- expense/category facts
-└─ AccountingExpensePaymentAllocation      <- payment account allocation
+├─ AccountingExpenseSplit                 <- expense/category/tax facts
+├─ AccountingExpensePaymentAllocation     <- reviewed document-level payment ownership
+└─ canonical accounting.expense_document.v1 Journal
 ```
 
-`AccountingExpenseService` remains the only permitted production mutation owner for `AccountingTransaction`. Production currently has **0 AccountingTransaction rows**, but the source writer is intentional and active; this is not unfinished Phase 9 cleanup.
-
-Reports currently combine canonical Journal facts with confirmed Expense facts, and account-movement/cash-flow reporting also reads Expense payment allocations.
+`AccountingTransaction` and `AccountingSourceType` were physically retired in B1-C2. Authoritative P&L/export, account movement and cash flow now read canonical Journal facts for Expenses. Historical/current v1 posting still treats category splits and payment allocations as independent child sets, which is the funding-attribution gap addressed by EFA before B3 Trial Balance.
 
 ### Journal / CoA
 
@@ -361,6 +356,32 @@ Split the current generic “会计调整 / Adjustments” presentation into at 
 - genuine manual accounting adjustment.
 
 Do not rewrite valid historical Journals merely to simplify presentation.
+
+## 7A. Expense Funding Attribution (EFA)
+
+Detailed readiness/design: `docs/architecture/accounting-expense-funding-attribution.md`.
+
+**2026-09-22 state:** **EFA-A COMPLETE / EFA-B1 LOCAL SOURCE IMPLEMENTED + REVIEW PENDING / MIGRATION REQUIRED**. B2-E is deployed and production-verified, so B2 is closed. EFA is inserted before B3 Trial Balance so B3 can characterize the final Expense Journal cardinality rather than a transitional one.
+
+The operator explicitly accepts deleting/recreating the single-user Accounting PWA during the later v2 cutover. Therefore no long-lived old-client write compatibility layer is required. Historical `accounting.expense_document.v1` source facts/Journals remain immutable/readable.
+
+Target:
+
+```text
+ExpenseDocument
+  └─ ExpenseSplit
+       ├─ category
+       ├─ amount/tax
+       └─ paidFromAccount
+             ↓ group by funding account
+       1..N balanced Expense v2 Journals
+```
+
+Management visibility is an account policy, not a deletion rule. A funding account can set `includeFundedExpensesInManagementReports=false`; Expense groups funded by that account are later excluded from Management Dashboard/P&L/category/trend/export views while remaining in canonical Journal, account movement, actual cash flow, audit/evidence and future GST/HST statutory reporting.
+
+EFA-B1 is additive only: it introduces `fundingAttributionVersion`, nullable split-level funding relation and the account management-policy flag. Current v1 Expense input/posting remains unchanged in B1. No Journal schema, report arithmetic, provider path, context edge, package or scanner allowance changes.
+
+**MIGRATION REQUIRED:** suggested migration `accounting_efa_b1_funding_attribution_foundation`. MCP must not generate/edit it; production promotion is blocked until the user-generated migration is reviewed and merged back to `dev`.
 
 ## 8. Slice C — Trial Balance and Balance Movement
 
