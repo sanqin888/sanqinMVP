@@ -33,11 +33,17 @@ import {
 } from './accounting-canonical-change-write-authority';
 import { CANONICAL_SALE_SOURCE_FACT_TYPE } from './accounting-canonical-sale-journal.policy';
 import {
+  CANONICAL_EXPENSE_SOURCE_FACT_TYPE,
+  CANONICAL_EXPENSE_SOURCE_FACT_TYPE_V2,
+} from './accounting-expense-journal.policy';
+import {
   assertCanonicalExpenseJournalAuthority,
+  buildCanonicalExpenseJournalWritePlansV2,
   hashCanonicalExpenseJournalWrite,
   hashCanonicalExpenseJournalWriteAuthority,
   normalizeCanonicalExpenseJournalWriteAuthority,
-  type CanonicalExpenseJournalWriteAuthorityV1,
+  type CanonicalExpenseFundingAccountFactV2,
+  type CanonicalExpenseJournalWriteAuthority,
 } from './accounting-expense-journal-write-authority';
 import {
   buildProviderSettlementJournalWriteAuthority,
@@ -240,7 +246,7 @@ export class AccountingJournalService {
   async createCanonicalExpenseJournalEntryInTx(
     input: AccountingJournalCreateInput,
     operatorActorRef: string,
-    authority: CanonicalExpenseJournalWriteAuthorityV1,
+    authority: CanonicalExpenseJournalWriteAuthority,
     tx: Prisma.TransactionClient,
   ): Promise<AccountingJournalRow> {
     const normalizedAuthority = this.applyJournalPolicy(() =>
@@ -1490,13 +1496,14 @@ export class AccountingJournalService {
   }
 
   private async assertCanonicalExpenseAuthorityInTx(
-    authority: CanonicalExpenseJournalWriteAuthorityV1,
+    authority: CanonicalExpenseJournalWriteAuthority,
     tx: Prisma.TransactionClient,
   ): Promise<void> {
     const document = await tx.accountingExpenseDocument.findUnique({
       where: { documentStableId: authority.fact.documentStableId },
       select: {
         status: true,
+        fundingAttributionVersion: true,
         occurredAt: true,
         subtotalCents: true,
         taxCents: true,
@@ -1510,6 +1517,15 @@ export class AccountingJournalService {
             amountCents: true,
             taxCents: true,
             category: { select: { categoryStableId: true } },
+            paidFromAccount: {
+              select: {
+                accountStableId: true,
+                accountClass: true,
+                type: true,
+                currency: true,
+                isActive: true,
+              },
+            },
           },
         },
         paymentAllocations: {
@@ -1535,13 +1551,142 @@ export class AccountingJournalService {
       );
     }
 
-    let currentAuthority: CanonicalExpenseJournalWriteAuthorityV1;
-    try {
-      currentAuthority = normalizeCanonicalExpenseJournalWriteAuthority({
-        version: 1,
-        role: 'EXPENSE_DOCUMENT',
-        fact: {
+    const fundingAttributionVersion =
+      document.fundingAttributionVersion ?? 1;
+    const existingExpenseAnchors = await tx.accountingJournalEntry.findMany({
+      where: {
+        source: AccountingJournalSource.EXPENSE_DOCUMENT,
+        sourceFactStableId: authority.fact.documentStableId,
+        deletedAt: null,
+      },
+      select: {
+        idempotencyKey: true,
+        sourceFactType: true,
+        sourceFactVersion: true,
+      },
+    });
+    const expectedSourceFactType =
+      authority.version === 1
+        ? CANONICAL_EXPENSE_SOURCE_FACT_TYPE
+        : CANONICAL_EXPENSE_SOURCE_FACT_TYPE_V2;
+    const expectedAnchorKeys =
+      authority.version === 1
+        ? new Set([`canonical-expense:${authority.fact.documentStableId}:v1`])
+        : new Set(
+            authority.fact.splits.map(
+              (split) =>
+                `canonical-expense:${authority.fact.documentStableId}:funding:${split.paidFromAccountStableId}:v2`,
+            ),
+          );
+    if (
+      existingExpenseAnchors.some(
+        (entry) =>
+          entry.sourceFactType !== expectedSourceFactType ||
+          entry.sourceFactVersion !== authority.version,
+      )
+    ) {
+      throw new ConflictException(
+        'canonical Expense source fact version cannot change after Journal posting',
+      );
+    }
+    if (
+      existingExpenseAnchors.some(
+        (entry) => !expectedAnchorKeys.has(entry.idempotencyKey),
+      )
+    ) {
+      throw new ConflictException(
+        'canonical Expense source authority cannot change after Journal posting',
+      );
+    }
+
+    if (authority.version === 1) {
+      if (fundingAttributionVersion !== 1) {
+        throw new ConflictException(
+          'canonical Expense authority changed before Journal posting',
+        );
+      }
+      let currentAuthority: CanonicalExpenseJournalWriteAuthority;
+      try {
+        currentAuthority = normalizeCanonicalExpenseJournalWriteAuthority({
           version: 1,
+          role: 'EXPENSE_DOCUMENT',
+          fact: {
+            version: 1,
+            documentStableId: authority.fact.documentStableId,
+            occurredAt: document.occurredAt.toISOString(),
+            currency: document.currency,
+            subtotalCents: document.subtotalCents,
+            taxCents: document.taxCents,
+            totalCents: document.totalCents,
+            memo: document.memo,
+            splits: document.splits.map((split) => ({
+              categoryStableId: split.category.categoryStableId,
+              amountCents: split.amountCents,
+              taxCents: split.taxCents,
+            })),
+            paymentAllocations: document.paymentAllocations.map(
+              (allocation) => ({
+                accountStableId: allocation.account.accountStableId,
+                amountCents: allocation.amountCents,
+              }),
+            ),
+          },
+          splitStableIds: document.splits.map((split) => split.splitStableId),
+          paymentAllocationStableIds: document.paymentAllocations.map(
+            (allocation) => allocation.paymentAllocationStableId,
+          ),
+        });
+      } catch {
+        throw new ConflictException(
+          'canonical Expense authority changed before Journal posting',
+        );
+      }
+      if (
+        hashCanonicalExpenseJournalWriteAuthority(currentAuthority) !==
+        hashCanonicalExpenseJournalWriteAuthority(authority)
+      ) {
+        throw new ConflictException(
+          'canonical Expense authority changed before Journal posting',
+        );
+      }
+      return;
+    }
+
+    if (
+      fundingAttributionVersion !== 2 ||
+      document.paymentAllocations.length > 0 ||
+      document.splits.some((split) => !split.paidFromAccount)
+    ) {
+      throw new ConflictException(
+        'canonical Expense authority changed before Journal posting',
+      );
+    }
+
+    const fundingAccountFactsByStableId = new Map<
+      string,
+      CanonicalExpenseFundingAccountFactV2
+    >();
+    for (const split of document.splits) {
+      const account = split.paidFromAccount;
+      if (!account) {
+        throw new ConflictException(
+          'canonical Expense authority changed before Journal posting',
+        );
+      }
+      fundingAccountFactsByStableId.set(account.accountStableId, {
+        accountStableId: account.accountStableId,
+        accountClass: account.accountClass,
+        accountType: account.type,
+        currency: account.currency,
+        isActive: account.isActive,
+      });
+    }
+
+    let currentAuthority: CanonicalExpenseJournalWriteAuthority | undefined;
+    try {
+      const plans = buildCanonicalExpenseJournalWritePlansV2({
+        fact: {
+          version: 2,
           documentStableId: authority.fact.documentStableId,
           occurredAt: document.occurredAt.toISOString(),
           currency: document.currency,
@@ -1549,29 +1694,39 @@ export class AccountingJournalService {
           taxCents: document.taxCents,
           totalCents: document.totalCents,
           memo: document.memo,
-          splits: document.splits.map((split) => ({
-            categoryStableId: split.category.categoryStableId,
-            amountCents: split.amountCents,
-            taxCents: split.taxCents,
-          })),
-          paymentAllocations: document.paymentAllocations.map((allocation) => ({
-            accountStableId: allocation.account.accountStableId,
-            amountCents: allocation.amountCents,
-          })),
+          splits: document.splits.map((split) => {
+            const account = split.paidFromAccount;
+            if (!account) {
+              throw new ConflictException(
+                'canonical Expense authority changed before Journal posting',
+              );
+            }
+            return {
+              splitStableId: split.splitStableId,
+              categoryStableId: split.category.categoryStableId,
+              paidFromAccountStableId: account.accountStableId,
+              amountCents: split.amountCents,
+              taxCents: split.taxCents,
+            };
+          }),
         },
-        splitStableIds: document.splits.map((split) => split.splitStableId),
-        paymentAllocationStableIds: document.paymentAllocations.map(
-          (allocation) => allocation.paymentAllocationStableId,
-        ),
+        fundingAccountFacts: [...fundingAccountFactsByStableId.values()],
       });
+      currentAuthority = plans.find(
+        (plan) =>
+          plan.authority.fundingAccountStableId ===
+          authority.fundingAccountStableId,
+      )?.authority;
     } catch {
       throw new ConflictException(
         'canonical Expense authority changed before Journal posting',
       );
     }
+
     if (
+      !currentAuthority ||
       hashCanonicalExpenseJournalWriteAuthority(currentAuthority) !==
-      hashCanonicalExpenseJournalWriteAuthority(authority)
+        hashCanonicalExpenseJournalWriteAuthority(authority)
     ) {
       throw new ConflictException(
         'canonical Expense authority changed before Journal posting',

@@ -456,11 +456,11 @@ Priority: **P1**
 Complexity: **H**  
 Depends on: **B2 production closeout — satisfied 2026-09-22**.
 
-Current state: **EFA-A COMPLETE / EFA-B1 LOCAL SOURCE IMPLEMENTED + REVIEW PENDING / MIGRATION REQUIRED**.
+Current state: **EFA-A COMPLETE / EFA-B1 MERGED + CI GREEN + MIGRATION REVIEWED + COMMITTED TO DEV / EFA-B2 LOCAL SOURCE IMPLEMENTED + REVIEW PENDING**.
 
 Detailed audit/design: `docs/architecture/accounting-expense-funding-attribution.md`.
 
-EFA moves funding ownership from a document-level allocation model to split-level attribution for new Expense v2 facts while preserving historical Expense v1 authority. New v2 posting will group splits by funding account, allowing one ExpenseDocument to produce multiple balanced canonical Journals without adding a JournalLine funding dimension.
+EFA moves funding ownership from a document-level allocation model to split-level attribution for new Expense v2 facts while preserving historical Expense v1 authority. EFA-B2 now implements the dormant canonical v2 posting engine: splits are grouped by funding account, allowing one ExpenseDocument to produce multiple balanced canonical Journals without adding a JournalLine funding dimension. Current Expense create/Inbox/completion writes remain v1 until EFA-C.
 
 The account-level flag `includeFundedExpensesInManagementReports` is intentionally narrow: it controls only whether Expense groups funded by that operational account participate in Management P&L/expense analytics. Canonical Journal, account movement, actual cash flow, audit/evidence and future GST/HST reporting retain the facts.
 

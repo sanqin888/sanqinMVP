@@ -1,5 +1,6 @@
 import {
   buildCanonicalExpenseJournal,
+  buildCanonicalExpenseJournalsV2,
   CanonicalExpenseJournalPolicyError,
 } from './accounting-expense-journal.policy';
 
@@ -23,6 +24,41 @@ const fact = (overrides: Record<string, unknown> = {}) => ({
     {
       accountStableId: 'account_primary_bank',
       amountCents: 8469,
+    },
+  ],
+  ...overrides,
+});
+
+const factV2 = (overrides: Record<string, unknown> = {}) => ({
+  version: 2 as const,
+  documentStableId: 'expense_v2',
+  occurredAt: '2026-09-22T04:00:00.000Z',
+  currency: 'CAD',
+  subtotalCents: 9495,
+  taxCents: 1234,
+  totalCents: 10729,
+  memo: 'Mixed funding receipt',
+  splits: [
+    {
+      splitStableId: 'expensesplit_meat',
+      categoryStableId: 'expense_meat',
+      paidFromAccountStableId: 'account_cibc',
+      amountCents: 6000,
+      taxCents: 780,
+    },
+    {
+      splitStableId: 'expensesplit_supplies',
+      categoryStableId: 'expense_kitchen_supplies',
+      paidFromAccountStableId: 'account_cibc',
+      amountCents: 2000,
+      taxCents: 260,
+    },
+    {
+      splitStableId: 'expensesplit_telecom',
+      categoryStableId: 'expense_telecom',
+      paidFromAccountStableId: 'account_primary_bank',
+      amountCents: 1495,
+      taxCents: 194,
     },
   ],
   ...overrides,
@@ -100,6 +136,110 @@ describe('canonical Expense Journal policy', () => {
           }),
         ),
       'SPLIT_AMOUNT_MISMATCH',
+    );
+  });
+
+  it('groups Expense v2 splits into one balanced Journal per funding account', () => {
+    const journals = buildCanonicalExpenseJournalsV2(factV2());
+
+    expect(journals).toHaveLength(2);
+    expect(journals[0]).toEqual(
+      expect.objectContaining({
+        idempotencyKey:
+          'canonical-expense:expense_v2:funding:account_cibc:v2',
+        sourceFactType: 'accounting.expense_document.v2',
+        sourceFactStableId: 'expense_v2',
+        sourceFactVersion: 2,
+        lines: [
+          {
+            accountStableId: 'account_general_operating_expense',
+            categoryStableId: 'expense_meat',
+            debitCents: 6000,
+            creditCents: 0,
+            memo: 'Expense expense_v2',
+          },
+          {
+            accountStableId: 'account_general_operating_expense',
+            categoryStableId: 'expense_kitchen_supplies',
+            debitCents: 2000,
+            creditCents: 0,
+            memo: 'Expense expense_v2',
+          },
+          {
+            accountStableId: 'account_hst_recoverable',
+            debitCents: 1040,
+            creditCents: 0,
+            memo: 'Recoverable HST/GST for expense_v2',
+          },
+          {
+            accountStableId: 'account_cibc',
+            debitCents: 0,
+            creditCents: 9040,
+            memo: 'Expense payment for expense_v2',
+          },
+        ],
+      }),
+    );
+    expect(journals[1]).toEqual(
+      expect.objectContaining({
+        idempotencyKey:
+          'canonical-expense:expense_v2:funding:account_primary_bank:v2',
+        sourceFactType: 'accounting.expense_document.v2',
+        sourceFactVersion: 2,
+        lines: expect.arrayContaining([
+          expect.objectContaining({
+            accountStableId: 'account_primary_bank',
+            creditCents: 1689,
+          }),
+        ]),
+      }),
+    );
+  });
+
+  it('fails closed when an Expense v2 split has zero total value', () => {
+    expectPolicyErrorCode(
+      () =>
+        buildCanonicalExpenseJournalsV2(
+          factV2({
+            splits: [
+              {
+                splitStableId: 'expensesplit_zero',
+                categoryStableId: 'expense_meat',
+                paidFromAccountStableId: 'account_cibc',
+                amountCents: 0,
+                taxCents: 0,
+              },
+              {
+                splitStableId: 'expensesplit_rest',
+                categoryStableId: 'expense_kitchen_supplies',
+                paidFromAccountStableId: 'account_primary_bank',
+                amountCents: 9495,
+                taxCents: 1234,
+              },
+            ],
+          }),
+        ),
+      'INVALID_AMOUNT',
+    );
+  });
+
+  it('fails closed when an Expense v2 split has no funding account', () => {
+    expectPolicyErrorCode(
+      () =>
+        buildCanonicalExpenseJournalsV2(
+          factV2({
+            splits: [
+              {
+                splitStableId: 'expensesplit_missing_funding',
+                categoryStableId: 'expense_meat',
+                paidFromAccountStableId: '',
+                amountCents: 9495,
+                taxCents: 1234,
+              },
+            ],
+          }),
+        ),
+      'MISSING_FUNDING_ACCOUNT',
     );
   });
 });
