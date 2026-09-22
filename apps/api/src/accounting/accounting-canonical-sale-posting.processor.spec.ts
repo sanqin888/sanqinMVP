@@ -147,7 +147,9 @@ describe('Accounting canonical SALE posting processor', () => {
     });
     expect(posting.previewCanonicalSale.mock.calls).toEqual([['missing']]);
     expect(posting.postCanonicalSale.mock.calls).toEqual([['missing']]);
-    expect(settlementQuery.readProviderFinancialCoverage).not.toHaveBeenCalled();
+    expect(
+      settlementQuery.readProviderFinancialCoverage,
+    ).not.toHaveBeenCalled();
   });
 
   it('defers Uber SALE facts while provider coverage remains statement-authoritative', async () => {
@@ -261,7 +263,7 @@ describe('Accounting canonical SALE posting processor', () => {
 
   it('keeps a full reconciliation incomplete when the posting budget leaves work uninspected', async () => {
     const { processor, posting, orders } = makeProcessor();
-    orders.readFactsForRange.mockImplementation(async (range) =>
+    orders.readFactsForRange.mockImplementation((range) =>
       range.fromInclusive.getTime() === START.getTime()
         ? [saleFact('one'), saleFact('two')]
         : [],

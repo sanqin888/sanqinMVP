@@ -305,9 +305,8 @@ export class AccountingCanonicalSalePostingProcessor
     });
     state.uberCoverageLoaded = true;
     state.uberLiveOrderFactCutoverAt =
-      rows.find(
-        (row) => row.provider === AccountingFinancialProvider.UBER_EATS,
-      )?.liveOrderFactCutoverAt ?? null;
+      rows.find((row) => row.provider === AccountingFinancialProvider.UBER_EATS)
+        ?.liveOrderFactCutoverAt ?? null;
   }
 
   private isAutomaticPostingAuthoritative(
@@ -316,18 +315,13 @@ export class AccountingCanonicalSalePostingProcessor
   ): boolean {
     if (fact.channel !== 'ubereats') return true;
     const cutover = state.uberLiveOrderFactCutoverAt;
-    return Boolean(
-      cutover && fact.occurredAt.getTime() >= cutover.getTime(),
-    );
+    return Boolean(cutover && fact.occurredAt.getTime() >= cutover.getTime());
   }
 
-  private resolveMode(
-    now: Date,
-  ): AccountingCanonicalSalePostingProcessorMode {
+  private resolveMode(now: Date): AccountingCanonicalSalePostingProcessorMode {
     if (
       this.lastFullReconcileAtMs === null ||
-      now.getTime() - this.lastFullReconcileAtMs >=
-        this.fullReconcileIntervalMs
+      now.getTime() - this.lastFullReconcileAtMs >= this.fullReconcileIntervalMs
     ) {
       return 'FULL';
     }
@@ -368,8 +362,6 @@ export class AccountingCanonicalSalePostingProcessor
     raw: number | undefined,
     fallback: number,
   ): number {
-    return Number.isInteger(raw) && (raw ?? 0) > 0
-      ? (raw as number)
-      : fallback;
+    return Number.isInteger(raw) && (raw ?? 0) > 0 ? (raw as number) : fallback;
   }
 }
