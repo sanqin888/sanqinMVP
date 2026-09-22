@@ -494,12 +494,9 @@ export class AccountingExpenseReportParityService {
       });
     }
     const cashflowDeltas = {
-      operatingCents:
-        journalCashflow.OPERATING - legacyCashflow.OPERATING,
-      investingCents:
-        journalCashflow.INVESTING - legacyCashflow.INVESTING,
-      financingCents:
-        journalCashflow.FINANCING - legacyCashflow.FINANCING,
+      operatingCents: journalCashflow.OPERATING - legacyCashflow.OPERATING,
+      investingCents: journalCashflow.INVESTING - legacyCashflow.INVESTING,
+      financingCents: journalCashflow.FINANCING - legacyCashflow.FINANCING,
     };
     if (
       cashflowDeltas.operatingCents !== 0 ||

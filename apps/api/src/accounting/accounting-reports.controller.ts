@@ -47,10 +47,7 @@ export class AccountingReportsController {
   }
 
   @Get('report/expense-journal-parity')
-  expenseJournalParity(
-    @Query('from') from?: string,
-    @Query('to') to?: string,
-  ) {
+  expenseJournalParity(@Query('from') from?: string, @Query('to') to?: string) {
     return this.expenseReportParity.preview({ from, to });
   }
 
