@@ -415,7 +415,11 @@ Priority: **P1**
 Complexity: **H**  
 Depends on: **B1** by approved Accounting roadmap sequence — **satisfied 2026-09-22 by B1-C2 production closeout**.
 
-Current state: **READY FOR READ-ONLY READINESS AUDIT / IMPLEMENTATION NOT STARTED**. The audit must inventory the current Sales UI/API, canonical Journal amount sources, channel/payment dimensions, provider-coverage gaps and historical replacement semantics before selecting implementation slices.
+Current state: **B2-P0A PRODUCTION VERIFIED / B2-P0B LOCAL SOURCE IMPLEMENTED / B2-A NOT STARTED**. The readiness audit found a prerequisite reliability gap before Sales Analytics projection work: Orders continued to create durable immutable `order.financial_sale.v1` facts, but the canonical SALE posting service had no runtime consumer after the controlled 2026-09-13 replay.
+
+P0A used the existing guarded replay to catch up `2026-09-13..2026-09-23` exclusive: 131/131 READY, 0 BLOCKED, zero parity delta, balanced 213172-cent debit/credit. Production read-only verification then found 131 immutable facts / 131 exactly-one Journal anchors / 0 missing / 0 duplicate.
+
+P0B on local branch `accounting/b2-p0b-continuous-sale-posting` adds an Accounting-owned durable convergence processor without changing Journal design or Orders ownership. Startup performs full recovery in bounded chunks; steady state scans a recent window and periodically re-runs full reconciliation. It posts only missing `IMMUTABLE_SALE_SNAPSHOT` facts through the existing canonical posting service, never auto-reconstructs `LEGACY_CURRENT_ORDER`, and relies on the existing Journal idempotency key for concurrent/retry convergence. POS/Web facts are eligible immediately. Uber facts remain deferred until Accounting provider coverage has a non-null `liveOrderFactCutoverAt`, then only facts at/after that instant are eligible. No schema/migration, package, new queue/table, provider wire or new context direction is introduced. CI/deployment/new-order production verification remain pending before B2-A.
 
 The current Accounting Sales page mixes canonical posted income with Orders-owned paid-total channel/payment slices. Those Order totals are useful business dimensions but are not canonical Accounting revenue.
 
