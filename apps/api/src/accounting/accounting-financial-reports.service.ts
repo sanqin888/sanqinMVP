@@ -20,9 +20,7 @@ import {
   type AccountingFinancialReportFact,
   type AccountingFinancialReportProjection,
 } from './accounting-financial-report-policy';
-import {
-  CANONICAL_EXPENSE_SOURCE_FACT_TYPE_V2,
-} from './accounting-expense-journal.policy';
+import { CANONICAL_EXPENSE_SOURCE_FACT_TYPE_V2 } from './accounting-expense-journal.policy';
 import { countAccountingInboxReviewItems } from './accounting-inbox-query';
 import { AccountingPeriodService } from './accounting-period.service';
 
