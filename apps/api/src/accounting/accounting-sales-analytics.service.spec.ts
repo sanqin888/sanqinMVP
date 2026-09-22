@@ -128,6 +128,16 @@ const uberProviderStatement = {
   ],
 };
 
+type JournalFindManyQueryCapture = {
+  where?: {
+    storeStableId?: string;
+    occurredAt?: {
+      gte?: Date;
+      lt?: Date;
+    };
+  };
+};
+
 function makeService(options?: {
   journals?: unknown[];
   originalJournals?: unknown[];
@@ -135,27 +145,30 @@ function makeService(options?: {
   attributionRows?: unknown[];
   coverageRows?: unknown[];
 }) {
-  const journalFindMany = jest
-    .fn()
-    .mockResolvedValueOnce(
-      options?.journals ?? [
-        saleJournal,
-        changeJournal,
-        uberOriginalSale,
-        uberHistoricalReversal,
-        uberProviderStatement,
-      ],
-    )
-    .mockResolvedValueOnce(
-      options?.originalJournals ?? [
-        {
-          entryStableId: 'journal_uber_original',
-          source: 'ORDER',
-          sourceFactType: 'order.financial_sale.v1',
-          sourceFactStableId: 'legacy_uber_order',
-        },
-      ],
-    );
+  const journalResponses: unknown[][] = [
+    options?.journals ?? [
+      saleJournal,
+      changeJournal,
+      uberOriginalSale,
+      uberHistoricalReversal,
+      uberProviderStatement,
+    ],
+    options?.originalJournals ?? [
+      {
+        entryStableId: 'journal_uber_original',
+        source: 'ORDER',
+        sourceFactType: 'order.financial_sale.v1',
+        sourceFactStableId: 'legacy_uber_order',
+      },
+    ],
+  ];
+  const journalQueries: JournalFindManyQueryCapture[] = [];
+  const journalFindMany = jest.fn(
+    async (query: JournalFindManyQueryCapture): Promise<unknown[]> => {
+      journalQueries.push(query);
+      return journalResponses.shift() ?? [];
+    },
+  );
   const providerFindMany = jest.fn().mockResolvedValue(
     options?.providerDocuments ?? [
       {
@@ -241,6 +254,7 @@ function makeService(options?: {
       storeConfig as never,
     ),
     journalFindMany,
+    journalQueries,
     providerFindMany,
     settlementQuery,
     orderAttribution,
@@ -263,37 +277,33 @@ describe('AccountingSalesAnalyticsService', () => {
       netSalesRevenueCents: 1800,
       contributionCents: 1700,
     });
-    expect(report.byChannel).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          key: 'in_store',
-          summary: expect.objectContaining({
-            grossSalesCents: 800,
-            contributionCents: 800,
-          }),
-        }),
-        expect.objectContaining({
-          key: 'ubereats',
-          summary: expect.objectContaining({
-            grossSalesCents: 1000,
-            platformCommissionCents: 100,
-            contributionCents: 900,
-          }),
-        }),
-      ]),
-    );
-    expect(report.byPrimaryPaymentMethod).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          key: 'CARD',
-          summary: expect.objectContaining({ grossSalesCents: 800 }),
-        }),
-        expect.objectContaining({
-          key: 'UBEREATS',
-          summary: expect.objectContaining({ grossSalesCents: 1000 }),
-        }),
-      ]),
-    );
+    expect(report.byChannel.find((row) => row.key === 'in_store')).toMatchObject({
+      key: 'in_store',
+      summary: {
+        grossSalesCents: 800,
+        contributionCents: 800,
+      },
+    });
+    expect(report.byChannel.find((row) => row.key === 'ubereats')).toMatchObject({
+      key: 'ubereats',
+      summary: {
+        grossSalesCents: 1000,
+        platformCommissionCents: 100,
+        contributionCents: 900,
+      },
+    });
+    expect(
+      report.byPrimaryPaymentMethod.find((row) => row.key === 'CARD'),
+    ).toMatchObject({
+      key: 'CARD',
+      summary: { grossSalesCents: 800 },
+    });
+    expect(
+      report.byPrimaryPaymentMethod.find((row) => row.key === 'UBEREATS'),
+    ).toMatchObject({
+      key: 'UBEREATS',
+      summary: { grossSalesCents: 1000 },
+    });
     expect(report.tenderMix).toEqual(
       expect.arrayContaining([
         { tender: 'CLOVER_CARD', amountCents: 904 },
@@ -361,12 +371,11 @@ describe('AccountingSalesAnalyticsService', () => {
     });
 
     expect(report.summary.grossSalesCents).toBe(1000);
-    expect(report.byChannel).toEqual([
-      expect.objectContaining({
-        key: 'UNATTRIBUTED',
-        summary: expect.objectContaining({ grossSalesCents: 1000 }),
-      }),
-    ]);
+    expect(report.byChannel).toHaveLength(1);
+    expect(report.byChannel[0]).toMatchObject({
+      key: 'UNATTRIBUTED',
+      summary: { grossSalesCents: 1000 },
+    });
     expect(report.attribution).toEqual({
       immutableOrderAttributedJournalEntries: 0,
       legacyOrderAttributedJournalEntries: 0,
@@ -425,7 +434,7 @@ describe('AccountingSalesAnalyticsService', () => {
   });
 
   it('clamps the requested range to accountingStartDate and uses Journal occurredAt bounds', async () => {
-    const { service, journalFindMany } = makeService({
+    const { service, journalQueries } = makeService({
       journals: [],
       originalJournals: [],
       providerDocuments: [],
@@ -440,17 +449,13 @@ describe('AccountingSalesAnalyticsService', () => {
 
     expect(report.from).toBe('2026-06-01');
     expect(report.to).toBe('2026-06-02');
-    expect(journalFindMany.mock.calls[0][0]).toEqual(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          storeStableId: STORE.storeStableId,
-          occurredAt: {
-            gte: new Date('2026-06-01T04:00:00.000Z'),
-            lt: new Date('2026-06-03T04:00:00.000Z'),
-          },
-        }),
-      }),
+    expect(journalQueries[0]?.where?.storeStableId).toBe(
+      STORE.storeStableId,
     );
+    expect(journalQueries[0]?.where?.occurredAt).toEqual({
+      gte: new Date('2026-06-01T04:00:00.000Z'),
+      lt: new Date('2026-06-03T04:00:00.000Z'),
+    });
   });
 
   it('rejects reversed or excessively large date ranges', async () => {

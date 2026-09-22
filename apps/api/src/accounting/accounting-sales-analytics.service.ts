@@ -259,8 +259,8 @@ export class AccountingSalesAnalyticsService {
         ? [journal.sourceFactStableId]
         : [],
     );
-    const historicalOrderSourceIds =
-      historicalReversalOriginalEntryIds.flatMap((entryStableId) => {
+    const historicalOrderSourceIds = historicalReversalOriginalEntryIds.flatMap(
+      (entryStableId) => {
         const original = originalJournalByEntry.get(entryStableId);
         if (
           original?.source === AccountingJournalSource.ORDER &&
@@ -270,7 +270,8 @@ export class AccountingSalesAnalyticsService {
           return [original.sourceFactStableId];
         }
         return [];
-      });
+      },
+    );
     const requestedAttributionIds = Array.from(
       new Set([...directOrderSourceIds, ...historicalOrderSourceIds]),
     );
@@ -514,9 +515,7 @@ export class AccountingSalesAnalyticsService {
     }
 
     let attributionSourceFactStableId = sourceFactStableId;
-    if (
-      sourceFactType === 'accounting.uber_pre_cutover_order_reversal.v1'
-    ) {
+    if (sourceFactType === 'accounting.uber_pre_cutover_order_reversal.v1') {
       const original = params.originalJournalByEntry.get(sourceFactStableId);
       attributionSourceFactStableId =
         original?.sourceFactStableId ?? sourceFactStableId;
@@ -528,13 +527,11 @@ export class AccountingSalesAnalyticsService {
     if (!attribution) {
       return {
         channel:
-          sourceFactType ===
-          'accounting.uber_pre_cutover_order_reversal.v1'
+          sourceFactType === 'accounting.uber_pre_cutover_order_reversal.v1'
             ? 'ubereats'
             : 'UNATTRIBUTED',
         primaryPaymentMethod:
-          sourceFactType ===
-          'accounting.uber_pre_cutover_order_reversal.v1'
+          sourceFactType === 'accounting.uber_pre_cutover_order_reversal.v1'
             ? 'UBEREATS'
             : 'UNATTRIBUTED',
         quality: 'MISSING',
@@ -614,8 +611,8 @@ export class AccountingSalesAnalyticsService {
       const coverage = coverageByProvider.get(provider) ?? null;
       const coverageStartsInRange = Boolean(
         coverage &&
-          params.to >=
-            coverage.financialHistoryRequiredFrom.toISOString().slice(0, 10),
+        params.to >=
+          coverage.financialHistoryRequiredFrom.toISOString().slice(0, 10),
       );
       const applicable =
         coverageStartsInRange ||

@@ -10,8 +10,7 @@ const file = (suffix: string) =>
 
 describe('B2 canonical Journal Sales projection boundary', () => {
   it('keeps Sales money Journal-owned while joining only public descriptive attribution', () => {
-    const service =
-      file('accounting-sales-analytics.service.ts')?.source ?? '';
+    const service = file('accounting-sales-analytics.service.ts')?.source ?? '';
 
     expect(service).toContain("from '../orders/public-api'");
     expect(service).toContain('ORDER_SALES_ATTRIBUTION_READER');
@@ -19,7 +18,9 @@ describe('B2 canonical Journal Sales projection boundary', () => {
     expect(service).toContain('ACCOUNTING_SALES_SOURCE_FACT_TYPES');
     expect(service).toContain('projectAccountingSalesComponentLine');
     expect(service).toContain('projectAccountingSalesTenderLine');
-    expect(service).toContain("'accounting.uber_pre_cutover_order_reversal.v1'");
+    expect(service).toContain(
+      "'accounting.uber_pre_cutover_order_reversal.v1'",
+    );
     expect(service).toContain("'accounting.provider_financial_document.v1'");
 
     expect(service).not.toContain("from '../orders/order-");
@@ -30,8 +31,7 @@ describe('B2 canonical Journal Sales projection boundary', () => {
   });
 
   it('exposes the new canonical Sales read path without retiring legacy consumers yet', () => {
-    const controller =
-      file('accounting-reports.controller.ts')?.source ?? '';
+    const controller = file('accounting-reports.controller.ts')?.source ?? '';
     const module = file('accounting.module.ts')?.source ?? '';
 
     expect(controller).toContain("@Get('report/sales')");
@@ -45,8 +45,7 @@ describe('B2 canonical Journal Sales projection boundary', () => {
   });
 
   it('keeps provider completeness explicit instead of treating missing fees as zero', () => {
-    const service =
-      file('accounting-sales-analytics.service.ts')?.source ?? '';
+    const service = file('accounting-sales-analytics.service.ts')?.source ?? '';
     const contract =
       file('accounting-sales-analytics.contract.ts')?.source ?? '';
 

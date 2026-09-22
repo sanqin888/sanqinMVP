@@ -47,10 +47,7 @@ export class AccountingReportsController {
   }
 
   @Get('report/sales')
-  async salesReport(
-    @Query('from') from?: string,
-    @Query('to') to?: string,
-  ) {
+  async salesReport(@Query('from') from?: string, @Query('to') to?: string) {
     return this.salesAnalytics.report({ from, to });
   }
 
