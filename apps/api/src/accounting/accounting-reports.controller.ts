@@ -14,6 +14,7 @@ import {
   requireAccountingOperatorUserId,
 } from './accounting-controller-support';
 import { AccountingFinancialReportsService } from './accounting-financial-reports.service';
+import { AccountingSalesAnalyticsService } from './accounting-sales-analytics.service';
 import { AccountingService } from './accounting.service';
 
 @Controller('accounting')
@@ -22,6 +23,7 @@ import { AccountingService } from './accounting.service';
 export class AccountingReportsController {
   constructor(
     private readonly reports: AccountingFinancialReportsService,
+    private readonly salesAnalytics: AccountingSalesAnalyticsService,
     private readonly accountingService: AccountingService,
   ) {}
 
@@ -42,6 +44,11 @@ export class AccountingReportsController {
     @Query('groupBy') groupBy?: 'month' | 'quarter' | 'year',
   ) {
     return this.reports.pnlReport({ from, to, groupBy });
+  }
+
+  @Get('report/sales')
+  async salesReport(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.salesAnalytics.report({ from, to });
   }
 
   @Get('report/account-balance')
