@@ -152,6 +152,9 @@ describe('Phase 9 canonical financial facts boundary', () => {
     const postingService =
       file(ACCOUNTING_ROOT, 'accounting-canonical-sale-posting.service.ts')
         ?.source ?? '';
+    const postingProcessor =
+      file(ACCOUNTING_ROOT, 'accounting-canonical-sale-posting.processor.ts')
+        ?.source ?? '';
     const replayService =
       file(ACCOUNTING_ROOT, 'accounting-canonical-sale-replay.service.ts')
         ?.source ?? '';
@@ -194,6 +197,15 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(postingService).toContain("from './accounting-journal.service'");
     expect(postingService).not.toContain("from './accounting.service'");
     expect(postingService).not.toContain('../prisma/');
+    expect(postingProcessor).toContain("from '../orders/public-api'");
+    expect(postingProcessor).toContain("from '../store/public-api'");
+    expect(postingProcessor).toContain(
+      "from './accounting-provider-settlement-query.service'",
+    );
+    expect(postingProcessor).toContain('IMMUTABLE_SALE_SNAPSHOT');
+    expect(postingProcessor).toContain('uberLiveOrderFactCutoverAt');
+    expect(postingProcessor).not.toContain('../prisma/');
+    expect(postingProcessor).not.toContain('orders-prisma');
     expect(replayService).toContain("from '../orders/public-api'");
     expect(replayService).toContain("from '../loyalty/public-api'");
     expect(replayService).toContain("from '../store/public-api'");
@@ -277,6 +289,9 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(accountingModule).toContain('LoyaltyFinancialFactsModule');
     expect(accountingModule).toContain('AccountingCanonicalSaleReplayService');
     expect(accountingModule).toContain(
+      'AccountingCanonicalSalePostingProcessor',
+    );
+    expect(accountingModule).toContain(
       'AccountingCanonicalChangePreviewService',
     );
     expect(accountingModule).toContain(
@@ -288,6 +303,22 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(accountingModule).toContain(
       'AccountingProviderSettlementExecutionService',
     );
+
+    const canonicalSalePostingCallers = scanTypeScript(ACCOUNTING_ROOT, {
+      productionOnly: true,
+    })
+      .filter(
+        ({ path, source }) =>
+          !path.endsWith('accounting-canonical-sale-posting.service.ts') &&
+          source.includes('postCanonicalSale('),
+      )
+      .map(({ path }) =>
+        path.slice(API_SRC_ROOT.length + 1).replaceAll('\\', '/'),
+      )
+      .sort();
+    expect(canonicalSalePostingCallers).toEqual([
+      'accounting/accounting-canonical-sale-posting.processor.ts',
+    ]);
 
     const canonicalChangeWriterCallers = scanTypeScript(ACCOUNTING_ROOT, {
       productionOnly: true,
