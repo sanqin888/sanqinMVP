@@ -1,12 +1,6 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
-import { DateTime } from 'luxon';
 import { Prisma } from '@prisma/client';
 import { ACCOUNTING_DB, type AccountingDb } from './accounting-db';
-import { AccountingPeriodService } from './accounting-period.service';
-import {
-  ORDER_REPORTING_FACTS_READER,
-  type OrderReportingFactsReaderPort,
-} from '../orders/public-api';
 
 type AuditLogFilters = {
   entityType?: string;
@@ -18,12 +12,7 @@ type AuditLogFilters = {
 
 @Injectable()
 export class AccountingService {
-  constructor(
-    @Inject(ACCOUNTING_DB) private readonly prisma: AccountingDb,
-    private readonly period: AccountingPeriodService,
-    @Inject(ORDER_REPORTING_FACTS_READER)
-    private readonly orderReportingFacts: OrderReportingFactsReaderPort,
-  ) {}
+  constructor(@Inject(ACCOUNTING_DB) private readonly prisma: AccountingDb) {}
 
   private parseDate(
     raw: string | undefined,
@@ -60,38 +49,6 @@ export class AccountingService {
             },
           }
         : {}),
-    };
-  }
-
-  async dimensionSlice(query: { from?: string; to?: string }) {
-    const timezone = await this.period.getBusinessTimezone();
-    const parseStoreBoundary = (
-      raw: string | undefined,
-      boundary: 'start' | 'end',
-    ): Date | undefined => {
-      if (!raw) return undefined;
-      const parsed = DateTime.fromISO(raw, { zone: timezone });
-      if (!parsed.isValid) {
-        throw new BadRequestException(`Invalid date: ${raw}`);
-      }
-      const bounded =
-        boundary === 'start' ? parsed.startOf('day') : parsed.endOf('day');
-      return bounded.toUTC().toJSDate();
-    };
-
-    const fromDate = await this.period.clampAccountingFromDate(
-      parseStoreBoundary(query.from, 'start'),
-    );
-    const toDate = parseStoreBoundary(query.to, 'end');
-    const dimensions =
-      await this.orderReportingFacts.readPaidTotalDimensionsForRange(
-        fromDate,
-        toDate,
-      );
-    return {
-      from: query.from ?? null,
-      to: query.to ?? null,
-      ...dimensions,
     };
   }
 

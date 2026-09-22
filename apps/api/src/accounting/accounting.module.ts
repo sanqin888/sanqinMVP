@@ -35,6 +35,7 @@ import { AccountingExpenseService } from './accounting-expense.service';
 import { AccountingFinancialReportsService } from './accounting-financial-reports.service';
 import { AccountingInboxService } from './accounting-inbox.service';
 import { AccountingProviderSettlementQueryService } from './accounting-provider-settlement-query.service';
+import { AccountingSalesAnalyticsService } from './accounting-sales-analytics.service';
 import { AccountingCanonicalSalePostingProcessor } from './accounting-canonical-sale-posting.processor';
 import { AccountingCanonicalSalePostingService } from './accounting-canonical-sale-posting.service';
 import { AccountingCanonicalSaleReplayService } from './accounting-canonical-sale-replay.service';
@@ -58,7 +59,7 @@ import { LoyaltyFinancialFactsModule } from '../loyalty/public-api';
 import {
   OrderFinancialChangeFactsModule,
   OrderFinancialFactsModule,
-  OrderReportingFactsModule,
+  OrderSalesAttributionModule,
 } from '../orders/public-api';
 import { PaymentFinancialFactsModule } from '../payments/public-api';
 
@@ -71,7 +72,7 @@ import { PaymentFinancialFactsModule } from '../payments/public-api';
     LoyaltyFinancialFactsModule,
     OrderFinancialFactsModule,
     OrderFinancialChangeFactsModule,
-    OrderReportingFactsModule,
+    OrderSalesAttributionModule,
     PaymentFinancialFactsModule,
   ],
   controllers: [
@@ -105,6 +106,7 @@ import { PaymentFinancialFactsModule } from '../payments/public-api';
     AccountingExpenseService,
     AccountingExpenseJournalPostingService,
     AccountingFinancialReportsService,
+    AccountingSalesAnalyticsService,
     AccountingInboxService,
     AccountingProviderSettlementQueryService,
     AccountingProviderFinancialService,

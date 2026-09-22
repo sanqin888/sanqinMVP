@@ -14,7 +14,7 @@ import {
   requireAccountingOperatorUserId,
 } from './accounting-controller-support';
 import { AccountingFinancialReportsService } from './accounting-financial-reports.service';
-import { AccountingService } from './accounting.service';
+import { AccountingSalesAnalyticsService } from './accounting-sales-analytics.service';
 
 @Controller('accounting')
 @UseGuards(SessionAuthGuard, RolesGuard)
@@ -22,7 +22,7 @@ import { AccountingService } from './accounting.service';
 export class AccountingReportsController {
   constructor(
     private readonly reports: AccountingFinancialReportsService,
-    private readonly accountingService: AccountingService,
+    private readonly salesAnalytics: AccountingSalesAnalyticsService,
   ) {}
 
   @Get('dashboard')
@@ -44,6 +44,11 @@ export class AccountingReportsController {
     return this.reports.pnlReport({ from, to, groupBy });
   }
 
+  @Get('report/sales')
+  async salesReport(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.salesAnalytics.report({ from, to });
+  }
+
   @Get('report/account-balance')
   async accountBalanceReport(
     @Query('from') from?: string,
@@ -63,11 +68,6 @@ export class AccountingReportsController {
     @Query('to') to?: string,
   ) {
     return this.reports.cashflowOverview({ from, to });
-  }
-
-  @Get('report/slice')
-  async dimensionSlice(@Query('from') from?: string, @Query('to') to?: string) {
-    return this.accountingService.dimensionSlice({ from, to });
   }
 
   @Get('export/tx.csv')

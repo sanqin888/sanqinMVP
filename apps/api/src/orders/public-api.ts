@@ -83,8 +83,6 @@ export {
 export { OrderExternalFactsModule } from './order-external-facts.module';
 export {
   ORDER_REPORTING_FACTS_READER,
-  type OrderPaidTotalDimensionFactV1,
-  type OrderPaidTotalDimensionsV1,
   type OrderReportingBreakdownFactV1,
   type OrderReportingFactsReaderPort,
   type OrderReportingItemComponentFactV1,
@@ -93,6 +91,16 @@ export {
   type OrderReportingMetricsV1,
 } from './order-reporting-facts-reader.contract';
 export { OrderReportingFactsModule } from './order-reporting-facts.module';
+export {
+  ORDER_SALES_ATTRIBUTION_READER,
+  type OrderSalesAttributionChannelV1,
+  type OrderSalesAttributionPrimaryPaymentMethodV1,
+  type OrderSalesAttributionReaderPort,
+  type OrderSalesAttributionSourceEvidenceV1,
+  type OrderSalesAttributionV1,
+  type OrderSalesPrimaryPaymentMethodEvidenceV1,
+} from './order-sales-attribution.contract';
+export { OrderSalesAttributionModule } from './order-sales-attribution.module';
 export {
   ORDER_FINANCIAL_FACTS_READER,
   type OrderFinancialChannelV1,

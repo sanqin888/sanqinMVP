@@ -21,26 +21,35 @@ const FOREIGN_OWNER_PRISMA_DELEGATES = [
   'uberStoreMapping',
 ] as const;
 
-describe('Phase 9 Slice 7-D Accounting -> Orders reporting boundary', () => {
-  it('keeps Accounting dimensionSlice off Orders persistence', () => {
+describe('B2-E Accounting legacy Orders paid-total contraction', () => {
+  it('removes the Accounting reporting-reader dependency while retaining operational Reports', () => {
     const accountingService = read('accounting/accounting.service.ts');
     const accountingModule = read('accounting/accounting.module.ts');
+    const reportsModule = read('reports/reports.module.ts');
 
     expect(accountingService).not.toContain('this.prisma.order');
-    expect(accountingService).toContain('ORDER_REPORTING_FACTS_READER');
-    expect(accountingService).toContain('readPaidTotalDimensionsForRange');
-    expect(accountingModule).toContain('OrderReportingFactsModule');
+    expect(accountingService).not.toContain('ORDER_REPORTING_FACTS_READER');
+    expect(accountingService).not.toContain('readPaidTotalDimensionsForRange');
+    expect(accountingService).not.toContain('dimensionSlice');
+    expect(accountingModule).not.toContain('OrderReportingFactsModule');
+
+    expect(reportsModule).toContain('OrderReportingFactsModule');
+    expect(reportsModule).toContain('ORDER_REPORTING_FACTS_READER');
+    expect(reportsModule).toContain('readMetricsForRange');
+    expect(reportsModule).toContain('readItemsForRange');
   });
 
-  it('keeps the paid-total projection explicitly non-canonical and Orders-owned', () => {
+  it('retires only the paid-total Orders reporting contract surface', () => {
     const contract = read('orders/order-reporting-facts-reader.contract.ts');
     const publicApi = read('orders/public-api.ts');
 
-    expect(contract).toContain('OrderPaidTotalDimensionsV1');
-    expect(contract).toContain('readPaidTotalDimensionsForRange');
-    expect(contract).toContain('not a canonical revenue fact');
-    expect(publicApi).toContain('OrderPaidTotalDimensionsV1');
+    expect(contract).not.toContain('OrderPaidTotalDimensionFactV1');
+    expect(contract).not.toContain('OrderPaidTotalDimensionsV1');
+    expect(contract).not.toContain('readPaidTotalDimensionsForRange');
+    expect(publicApi).not.toContain('OrderPaidTotalDimensionFactV1');
+    expect(publicApi).not.toContain('OrderPaidTotalDimensionsV1');
     expect(publicApi).toContain('ORDER_REPORTING_FACTS_READER');
+    expect(publicApi).toContain('OrderReportingFactsModule');
   });
 
   it('keeps all Accounting production source off contracted foreign-owner Prisma delegates', () => {
