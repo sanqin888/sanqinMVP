@@ -58,19 +58,19 @@
     },
     {
       "compat_id": "accounting.expense-split-ownership.v1",
-      "status": "active_expand_contract",
-      "old_owner": "AccountingTransaction EXPENSE rows retained as the temporary split compatibility copy and current authoritative financial-report arithmetic source",
-      "new_owner": "AccountingExpenseDocument plus AccountingExpenseSplit and payment-allocation child facts as the Expense-owned source for API/C0 and canonical Journal authority",
+      "status": "active_contraction_pending",
+      "old_owner": "Historical AccountingTransaction EXPENSE rows retained only as pre-cutover compatibility evidence; no new authoritative report or write ownership after B1-C1",
+      "new_owner": "AccountingExpenseDocument plus AccountingExpenseSplit/payment-allocation child facts for Expense authority and canonical Expense Journal for financial reporting",
       "dual_write_or_read": [
-        "B1-A atomically writes every new/confirmed Expense split to AccountingExpenseSplit and the legacy AccountingTransaction compatibility copy inside the same Serializable Expense write",
-        "B1-B reads Expense API/C0 category/amount/tax facts from AccountingExpenseSplit; C0 and the posting authority still shadow-compare legacy AccountingTransaction semantics and fail closed with SPLIT_PERSISTENCE_MISMATCH",
-        "Expense API/Web cut directly to splitStableId; no response-level txStableId compatibility alias is retained",
-        "B1-C0 adds read-only report/expense-journal-parity evidence across Expense P&L categories, recoverable input tax, payment-account movement, CASH/BANK cashflow, split parity and canonical Journal anchor coverage",
-        "Authoritative financial reports and legacy Expense Transaction writes remain unchanged until B1-C1 passes real production parity evidence"
+        "B1-A/B1-B/B1-C0 are production-deployed through f164be7a and the additive Expense-split migration is applied",
+        "Real reviewed Expense expense_iet91ut05fafso8rl48kds9v proves same-transaction split/payment persistence plus canonical Expense v1 Journal posting",
+        "Full-range production reconstruction from 2026-06-01 has zero split/Journal-anchor blockers and exact P&L, input-tax, payment-account and OPERATING cashflow parity",
+        "B1-C1 local source cuts authoritative reports to canonical Journals and stops new AccountingTransaction Expense writes/deletes; architecture requires zero production AccountingTransaction mutation callers",
+        "The legacy-comparison routes report/expense-journal-parity and journal/canonical-expenses/shadow-preview are retained temporarily for HTTP-contract safety but are pre-cutover evidence only; new post-cutover Expenses without legacy copies will make them fail closed until explicit route replacement/removal"
       ],
-      "parity_metric": "For every confirmed Expense in the full canonical accounting range, split semantic hashes must match and canonical Expense Journals must exactly match legacy category-level P&L, recoverable input tax, payment-account movement and CASH/BANK cashflow both per Expense source fact and in aggregate; there must be no missing, duplicate or orphan canonical Expense Journal anchors and no non-v1 Expense-document Journal authority. Partial date ranges are diagnostic-only, and an empty confirmed-Expense population is explicitly not accepted as cutover evidence.",
-      "rollback": "Before B1-C1 report cutover, the parity preview is read-only and requires no data rollback; forward-fix AccountingExpenseSplit/parity/Journal authority while authoritative reports remain on legacy arithmetic. Do not delete or rewrite legacy Expense rows merely to hide a parity mismatch.",
-      "exit_criteria": "Companion additive migration is deployed; B1-B owner reads plus canonical Expense Journal authority are production-verified on at least one reviewed complete-payment Expense; B1-C0 reports zero split/report deltas and no missing/duplicate/orphan Journal anchors; B1-C1 then cuts authoritative reporting to Journal facts and stops legacy Expense Transaction writes/read arithmetic before compatibility deletion",
+      "parity_metric": "The pre-cutover full canonical range passed zero-delta split/P&L/input-tax/account-movement/cashflow parity with one real reviewed Expense and no missing, duplicate, orphan or non-v1 Expense Journal anchors. After B1-C1 stops dual-write, the old legacy-comparison endpoint is not the canonical post-cutover health metric.",
+      "rollback": "Before B1-C1 is deployed, revert the source cutover and keep existing production legacy arithmetic. After deployment, preserve historical legacy rows; do not recreate legacy rows for new Expenses merely to satisfy the old parity endpoint. Any route replacement/removal or destructive table/model cleanup requires separate explicit review.",
+      "exit_criteria": "B1-C1 is merged and production-verified with zero Expense Transaction reads/writes; the legacy-comparison routes are explicitly retired or replaced; only then remove the retained AccountingTransaction Expense compatibility surface under the destructive-migration workflow",
       "remove_pr": "Post-Modularization Accounting B1 Expense Journal cutover/contraction after split parity, read cutover and canonical Journal authority are production-verified",
       "deadline": "Remove within B1 before Canonical Sales Analytics / Trial Balance work proceeds",
       "evidence": [

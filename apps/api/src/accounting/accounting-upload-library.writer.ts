@@ -121,7 +121,7 @@ export async function permanentlyDeleteManualUploadInTx(
     id: string;
     documentStableId: string;
     status: AccountingDocumentStatus;
-    _count: { transactions: number };
+    _count: { splits: number };
   } | null = null;
   if (
     item.materializedEntityType ===
@@ -134,7 +134,7 @@ export async function permanentlyDeleteManualUploadInTx(
         id: true,
         documentStableId: true,
         status: true,
-        _count: { select: { transactions: true } },
+        _count: { select: { splits: true } },
       },
     });
   } else if (item.status === AccountingInboxStatus.DISCARDED) {
@@ -144,7 +144,7 @@ export async function permanentlyDeleteManualUploadInTx(
         id: true,
         documentStableId: true,
         status: true,
-        _count: { select: { transactions: true } },
+        _count: { select: { splits: true } },
       },
     });
   }
@@ -153,9 +153,9 @@ export async function permanentlyDeleteManualUploadInTx(
       'confirmed expense evidence cannot be permanently deleted',
     );
   }
-  if (expenseDocument?._count.transactions) {
+  if (expenseDocument?._count.splits) {
     throw new AccountingInboxWriterConflictError(
-      'expense evidence with accounting transactions cannot be permanently deleted',
+      'expense evidence with Expense-owned splits cannot be permanently deleted',
     );
   }
 

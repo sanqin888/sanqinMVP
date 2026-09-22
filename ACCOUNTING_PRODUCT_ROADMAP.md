@@ -160,9 +160,9 @@ Until a reviewed real fiscal-year opening is entered, the product is **资产负
 
 ## 6. Slice A — Expense Journal Canonicalization
 
-**2026-09-21 B1-A state:** **SOURCE + COMPANION MIGRATION MERGED TO DEV / CI GREEN / PRODUCTION DEPLOYMENT NOT CLAIMED**. B1-A merged in PR #2448 as `8614633a` after CI #6082 passed; the user-generated companion migration `20260921224139_post_mod_accounting_b1a_expense_split_ownership` was committed to `dev` as `7e54853a` and reviewed as additive-only: create `AccountingExpenseSplit`, its indexes/unique key, `ExpenseDocument -> Split ON DELETE CASCADE`, and `Category -> Split ON DELETE RESTRICT`, with no drop/rename/backfill/enum change. The 2026-09-21 read-only production preflight still found zero confirmed Expense documents, zero active legacy Expense transactions and zero canonical Expense Journals; no historical backfill is currently required. Production migration/deployment remains a later promotion gate and is not claimed by the dev merge.
+**2026-09-21 B1-A state:** **PRODUCTION DEPLOYED / MIGRATION VERIFIED**. B1-A merged in PR #2448 as `8614633a` after CI #6082 passed; the user-generated companion migration `20260921224139_post_mod_accounting_b1a_expense_split_ownership` was committed to `dev` as `7e54853a` and reviewed as additive-only. The post-deployment read-only check confirms that migration is finished/not rolled back in production Prisma history and `AccountingExpenseSplit` exists.
 
-**2026-09-21 B1-B state:** **MERGED / CI GREEN / PRODUCTION VERIFICATION PENDING / NO MIGRATION / NO REPORT CUTOVER**. PR #2449 merged to `dev` as `324a16eb` after final head `acb8db42` passed CI #6086. Expense API/C0 canonical split reads now use `AccountingExpenseSplit`; the legacy Transaction representation remains only for semantic parity and current financial-report arithmetic. Expense API/Web cut directly to `splitStableId`; no old-PWA `txStableId` compatibility is retained because the operator explicitly accepted reinstalling the Accounting PWA after deployment. Complete reviewed payment allocations post the canonical Expense Journal in the same Serializable transaction; unknown payment remains confirmed-but-unposted until the one-way completion workflow supplies reviewed allocation. Journal authority is rebuilt/revalidated from persisted ExpenseDocument + split/payment child stable IDs rather than request payload. Production still lacks the B1-A split table as of the final B1-C readiness preflight, so B1-B production verification is not yet claimed.
+**2026-09-21 B1-B state:** **PRODUCTION VERIFIED / CI GREEN / NO REPORT CUTOVER**. PR #2449 merged to `dev` as `324a16eb` after final head `acb8db42` passed CI #6086. Production now runs the B1-A/B1-B/B1-C0 stack. Real reviewed Expense `expense_iet91ut05fafso8rl48kds9v` confirmed at CAD 84.69 with one Expense-owned split, one complete payment allocation and one canonical `accounting.expense_document.v1` Journal created through the same-transaction posting authority. Unknown-payment confirmation remains intentionally unposted until the one-way completion workflow supplies reviewed allocation.
 
 Do this first so Trial Balance/balance reporting no longer depends on a parallel single-entry Expense path.
 
@@ -232,7 +232,7 @@ Posting rules:
 
 ### B1-C0 — Expense report parity preview
 
-**2026-09-21 local source state:** **LOCAL SOURCE COMPLETE / USER REVIEW PENDING / READ-ONLY / NO CUTOVER / NO MIGRATION / NO GRAPH CHANGE** on branch `accounting/b1c-expense-report-cutover` from `origin/dev@324a16eb`.
+**2026-09-21 state:** **PRODUCTION PARITY EVIDENCE PASSED / MERGED / CI GREEN / READ-ONLY / NO CUTOVER / NO MIGRATION / NO GRAPH CHANGE**. PR #2450 merged to `dev` as `f164be7a` after final head `12909b5d` passed CI #6090. The full canonical range from accounting start date 2026-06-01 currently contains one reviewed confirmed Expense; read-only production reconstruction of the C0 gate shows split mismatch 0, missing/duplicate/orphan/non-v1 Journal anchors 0, P&L 7495=7495 cents, recoverable tax 974=974 cents, payment-account movement -8469=-8469 cents and OPERATING cashflow -8469=-8469 cents.
 
 B1-C0 exists because B1-C1 cannot cut authoritative reports before B1-B is production-verified. It adds a read-only `GET /accounting/report/expense-journal-parity` gate that compares the currently authoritative legacy Expense report arithmetic with canonical Expense Journals both per Expense source fact and in aggregate:
 
@@ -246,6 +246,14 @@ B1-C0 exists because B1-C1 cannot cut authoritative reports before B1-B is produ
 A zero-Expense population is explicitly **not** accepted as cutover evidence. Confirmed Expenses with unknown payment allocations remain blockers because they are intentionally unposted under the current no-Accounts-Payable policy. B1-C0 does not change P&L, account balance, cashflow, exports or the legacy Expense Transaction writer.
 
 B1-C1 remains gated on: B1-A migration deployed first, B1-B API/Web deployed, Accounting PWA reinstalled, at least one reviewed confirmed Expense with complete payment allocation posted through the canonical Journal path, zero split/report parity deltas, and no missing/duplicate/orphan Expense Journal anchors.
+
+### B1-C1 — Authoritative Expense report cutover
+
+**2026-09-21 source state:** **LOCAL SOURCE COMPLETE / USER REVIEW PENDING / PRODUCTION PARITY GATE PASSED / NO MIGRATION / NO GRAPH CHANGE** on branch `accounting/b1c1-expense-report-cutover` from `origin/dev@f164be7a`. Production has the B1-A migration/table and B1-B runtime, and the first real reviewed Expense provides zero-delta full-range replacement evidence.
+
+B1-C1 cuts authoritative P&L/export, account-balance and cashflow reads to canonical Journal facts including `EXPENSE_DOCUMENT`; removes the parallel `AccountingTransaction` Expense projection and report-side `AccountingExpensePaymentAllocation` arithmetic; stops legacy Expense Transaction create/delete paths; removes the posting authority's dependency on legacy split shadow parity so new post-cutover Expenses can post from Expense-owned facts alone; moves Upload Library delete protection from legacy Transaction counts to Expense-owned split counts; records split CREATE/DELETE audit facts as `ACCOUNTING_EXPENSE_SPLIT`; and tightens architecture guards to zero production `AccountingTransaction` mutation callers. The `AccountingTransaction` model/table and existing historical compatibility row are retained for later separately reviewed destructive contraction.
+
+The legacy-comparison diagnostic routes `GET /accounting/report/expense-journal-parity` and `GET /accounting/journal/canonical-expenses/shadow-preview` are intentionally retained in this slice to avoid an unapproved HTTP-contract removal. After B1-C1 stops legacy dual-write, new Expenses will make those legacy-comparison diagnostics fail closed; they are therefore pre-cutover evidence/diagnostic surfaces only, not post-cutover canonical-health monitors. Replacing or removing them belongs to the later explicit compatibility contraction.
 
 Expected end-state contraction:
 

@@ -26,13 +26,6 @@ const expenseRow = (overrides: Record<string, unknown> = {}) => ({
       account: { accountStableId: 'account_primary_bank' },
     },
   ],
-  transactions: [
-    {
-      amountCents: 7495,
-      taxCents: 974,
-      category: { categoryStableId: 'expense_telecom' },
-    },
-  ],
   ...overrides,
 });
 
@@ -120,31 +113,6 @@ describe('AccountingExpenseJournalPostingService', () => {
         'user_stable_1',
       ),
     ).resolves.toBeNull();
-    expect(
-      journal.createCanonicalExpenseJournalEntryInTx,
-    ).not.toHaveBeenCalled();
-  });
-
-  it('fails closed before Journal posting when owner splits diverge from the legacy copy', async () => {
-    const { service, tx, journal } = makeService(
-      expenseRow({
-        transactions: [
-          {
-            amountCents: 7000,
-            taxCents: 910,
-            category: { categoryStableId: 'expense_telecom' },
-          },
-        ],
-      }),
-    );
-
-    await expect(
-      service.postConfirmedExpenseIfReadyInTx(
-        tx as never,
-        'expense_1',
-        'user_stable_1',
-      ),
-    ).rejects.toThrow('SPLIT_PERSISTENCE_MISMATCH');
     expect(
       journal.createCanonicalExpenseJournalEntryInTx,
     ).not.toHaveBeenCalled();

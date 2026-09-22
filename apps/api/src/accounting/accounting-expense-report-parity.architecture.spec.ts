@@ -15,7 +15,7 @@ const EXPENSE_SPLIT_WRITER = resolve(
   'accounting-expense-split.writer.ts',
 );
 
-describe('Accounting B1-C0 Expense report parity gate', () => {
+describe('Accounting B1-C Expense report parity and cutover boundary', () => {
   it('keeps the parity preview read-only across legacy and canonical sources', () => {
     const parity = readFileSync(PARITY_SERVICE, 'utf8');
 
@@ -28,21 +28,22 @@ describe('Accounting B1-C0 Expense report parity gate', () => {
     );
   });
 
-  it('does not perform the authoritative report cutover before production parity evidence exists', () => {
+  it('keeps authoritative reports on canonical Journal facts after B1-C1 cutover', () => {
     const reports = readFileSync(REPORTS_SERVICE, 'utf8');
 
-    expect(reports).toContain(
+    expect(reports).not.toContain(
       'source: { not: AccountingJournalSource.EXPENSE_DOCUMENT }',
     );
-    expect(reports).toContain('accountingTransaction.findMany');
-    expect(reports).toContain('accountingExpensePaymentAllocation.findMany');
+    expect(reports).not.toContain('accountingTransaction.findMany');
+    expect(reports).not.toContain(
+      'accountingExpensePaymentAllocation.findMany',
+    );
   });
 
-  it('does not stop the registered legacy Expense compatibility writer in C0', () => {
+  it('stops the legacy Expense Transaction compatibility writer after B1-C1 cutover', () => {
     const writer = readFileSync(EXPENSE_SPLIT_WRITER, 'utf8');
 
-    expect(writer).toContain('@compat accounting.expense-split-ownership.v1');
     expect(writer).toContain('accountingExpenseSplit.createMany');
-    expect(writer).toContain('accountingTransaction.createMany');
+    expect(writer).not.toContain('accountingTransaction.createMany');
   });
 });

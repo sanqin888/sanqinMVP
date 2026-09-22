@@ -67,7 +67,7 @@ describe('Accounting upload library writer', () => {
       id: 'expense-db-1',
       documentStableId: 'expense_1',
       status: AccountingDocumentStatus.DISCARDED,
-      _count: { transactions: 0 },
+      _count: { splits: 0 },
     });
     tx.accountingAuditLog.deleteMany.mockResolvedValue({ count: 2 });
     tx.accountingExpenseDocument.delete.mockResolvedValue({});

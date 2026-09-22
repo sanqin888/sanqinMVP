@@ -3,9 +3,7 @@ import { Prisma } from '@prisma/client';
 import { DateTime } from 'luxon';
 import {
   AccountingAccountType,
-  AccountingDocumentStatus,
   AccountingJournalEntryKind,
-  AccountingJournalSource,
   AccountingTxType,
 } from './accounting-contracts';
 import { writeAccountingAuditLog } from './accounting-audit-writer';
@@ -17,7 +15,6 @@ import {
 } from './accounting-financial-report-export';
 import {
   classifyAccountingCashflowContext,
-  projectAccountingExpenseReportSplit,
   projectAccountingJournalReportEntry,
   type AccountingFinancialReportFact,
   type AccountingFinancialReportProjection,
@@ -375,36 +372,21 @@ export class AccountingFinancialReportsService {
   async accountBalanceReport(from?: string, to?: string) {
     const { fromDate, toDate } = await this.resolveRange(from, to);
     const occurredAt = this.occurredAtWhere(fromDate, toDate);
-    const [journalLines, expensePaymentAllocations] = await Promise.all([
-      this.prisma.accountingJournalLine.findMany({
-        where: {
-          entry: {
-            deletedAt: null,
-            source: { not: AccountingJournalSource.EXPENSE_DOCUMENT },
-            ...(occurredAt ? { occurredAt } : {}),
-          },
+    const journalLines = await this.prisma.accountingJournalLine.findMany({
+      where: {
+        entry: {
+          deletedAt: null,
+          ...(occurredAt ? { occurredAt } : {}),
         },
-        select: {
-          debitCents: true,
-          creditCents: true,
-          account: {
-            select: { accountStableId: true, name: true, type: true },
-          },
+      },
+      select: {
+        debitCents: true,
+        creditCents: true,
+        account: {
+          select: { accountStableId: true, name: true, type: true },
         },
-      }),
-      this.prisma.accountingExpensePaymentAllocation.findMany({
-        where: {
-          expenseDocument: {
-            status: AccountingDocumentStatus.CONFIRMED,
-            ...(occurredAt ? { occurredAt } : {}),
-          },
-        },
-        select: {
-          amountCents: true,
-          account: { select: { accountStableId: true, name: true } },
-        },
-      }),
-    ]);
+      },
+    });
 
     const summary = new Map<
       string,
@@ -435,15 +417,6 @@ export class AccountingFinancialReportsService {
       item.outflowCents += line.creditCents;
       item.balanceChangeCents += line.debitCents - line.creditCents;
     }
-    for (const allocation of expensePaymentAllocations) {
-      const item = upsert(
-        allocation.account.accountStableId,
-        allocation.account.name,
-      );
-      item.outflowCents += allocation.amountCents;
-      item.balanceChangeCents -= allocation.amountCents;
-    }
-
     return Array.from(summary.values()).sort(
       (a, b) => b.balanceChangeCents - a.balanceChangeCents,
     );
@@ -463,57 +436,30 @@ export class AccountingFinancialReportsService {
   async cashflowOverview(query: { from?: string; to?: string }) {
     const { fromDate, toDate } = await this.resolveRange(query.from, query.to);
     const occurredAt = this.occurredAtWhere(fromDate, toDate);
-    const [journalEntries, expensePaymentAllocations] = await Promise.all([
-      this.prisma.accountingJournalEntry.findMany({
-        where: {
-          deletedAt: null,
-          source: { not: AccountingJournalSource.EXPENSE_DOCUMENT },
-          kind: {
-            notIn: [
-              AccountingJournalEntryKind.TRANSFER,
-              AccountingJournalEntryKind.OPENING_BALANCE,
-            ],
-          },
-          ...(occurredAt ? { occurredAt } : {}),
+    const journalEntries = await this.prisma.accountingJournalEntry.findMany({
+      where: {
+        deletedAt: null,
+        kind: {
+          notIn: [
+            AccountingJournalEntryKind.TRANSFER,
+            AccountingJournalEntryKind.OPENING_BALANCE,
+          ],
         },
-        select: {
-          memo: true,
-          lines: {
-            select: {
-              debitCents: true,
-              creditCents: true,
-              memo: true,
-              account: { select: { name: true, type: true } },
-              category: { select: { name: true } },
-            },
+        ...(occurredAt ? { occurredAt } : {}),
+      },
+      select: {
+        memo: true,
+        lines: {
+          select: {
+            debitCents: true,
+            creditCents: true,
+            memo: true,
+            account: { select: { name: true, type: true } },
+            category: { select: { name: true } },
           },
         },
-      }),
-      this.prisma.accountingExpensePaymentAllocation.findMany({
-        where: {
-          expenseDocument: {
-            status: AccountingDocumentStatus.CONFIRMED,
-            ...(occurredAt ? { occurredAt } : {}),
-          },
-        },
-        select: {
-          amountCents: true,
-          account: { select: { name: true, type: true } },
-          expenseDocument: {
-            select: {
-              memo: true,
-              transactions: {
-                where: { deletedAt: null },
-                select: {
-                  memo: true,
-                  category: { select: { name: true } },
-                },
-              },
-            },
-          },
-        },
-      }),
-    ]);
+      },
+    });
 
     let operating = 0;
     let investing = 0;
@@ -552,21 +498,6 @@ export class AccountingFinancialReportsService {
       );
     }
 
-    for (const allocation of expensePaymentAllocations) {
-      if (!isCashAccount(allocation.account.type)) continue;
-      addMovement(
-        classifyAccountingCashflowContext([
-          allocation.expenseDocument.memo,
-          allocation.account.name,
-          ...allocation.expenseDocument.transactions.flatMap((transaction) => [
-            transaction.memo,
-            transaction.category.name,
-          ]),
-        ]),
-        -allocation.amountCents,
-      );
-    }
-
     return {
       from: query.from ?? null,
       to: query.to ?? null,
@@ -583,82 +514,52 @@ export class AccountingFinancialReportsService {
   ): Promise<AccountingFinancialReportProjection> {
     const { fromDate, toDate } = await this.resolveRange(from, to);
     const occurredAt = this.occurredAtWhere(fromDate, toDate);
-    const [journalEntries, expenseRows] = await Promise.all([
-      this.prisma.accountingJournalEntry.findMany({
-        where: {
-          deletedAt: null,
-          source: { not: AccountingJournalSource.EXPENSE_DOCUMENT },
-          ...(occurredAt ? { occurredAt } : {}),
-        },
-        select: {
-          entryStableId: true,
-          kind: true,
-          source: true,
-          occurredAt: true,
-          currency: true,
-          memo: true,
-          createdAt: true,
-          updatedAt: true,
-          lines: {
-            orderBy: { lineNo: 'asc' },
-            select: {
-              lineNo: true,
-              debitCents: true,
-              creditCents: true,
-              memo: true,
-              account: {
-                select: {
-                  accountStableId: true,
-                  name: true,
-                  type: true,
-                  accountClass: true,
-                },
+    const journalEntries = await this.prisma.accountingJournalEntry.findMany({
+      where: {
+        deletedAt: null,
+        ...(occurredAt ? { occurredAt } : {}),
+      },
+      select: {
+        entryStableId: true,
+        kind: true,
+        source: true,
+        occurredAt: true,
+        currency: true,
+        memo: true,
+        createdAt: true,
+        updatedAt: true,
+        lines: {
+          orderBy: { lineNo: 'asc' },
+          select: {
+            lineNo: true,
+            debitCents: true,
+            creditCents: true,
+            memo: true,
+            account: {
+              select: {
+                accountStableId: true,
+                name: true,
+                type: true,
+                accountClass: true,
               },
-              category: {
-                select: { categoryStableId: true, name: true, type: true },
-              },
+            },
+            category: {
+              select: { categoryStableId: true, name: true, type: true },
             },
           },
         },
-        orderBy: [{ occurredAt: 'asc' }, { createdAt: 'asc' }],
-      }),
-      this.prisma.accountingTransaction.findMany({
-        where: {
-          deletedAt: null,
-          type: AccountingTxType.EXPENSE,
-          document: { status: AccountingDocumentStatus.CONFIRMED },
-          ...(occurredAt ? { occurredAt } : {}),
-        },
-        select: {
-          txStableId: true,
-          amountCents: true,
-          taxCents: true,
-          occurredAt: true,
-          currency: true,
-          memo: true,
-          createdAt: true,
-          updatedAt: true,
-          category: {
-            select: { categoryStableId: true, name: true, type: true },
-          },
-        },
-        orderBy: [{ occurredAt: 'asc' }, { createdAt: 'asc' }],
-      }),
-    ]);
+      },
+      orderBy: [{ occurredAt: 'asc' }, { createdAt: 'asc' }],
+    });
 
     const facts: AccountingFinancialReportFact[] = [];
     let journalInputTaxCents = 0;
-    let expenseInputTaxCents = 0;
     for (const entry of journalEntries) {
       const projected = projectAccountingJournalReportEntry(entry);
       facts.push(...projected.facts);
       journalInputTaxCents += projected.journalInputTaxCents;
     }
-    for (const row of expenseRows) {
-      const projected = projectAccountingExpenseReportSplit(row);
-      facts.push(...projected.facts);
-      expenseInputTaxCents += projected.expenseInputTaxCents;
-    }
+    const expenseInputTaxCents = 0;
 
     facts.sort((a, b) => {
       const occurredDiff = a.occurredAt.getTime() - b.occurredAt.getTime();

@@ -51,8 +51,8 @@ import {
 } from './accounting-expense-input';
 import { createAccountingExpensePaymentAllocationsInTx } from './accounting-expense-payment-allocation.writer';
 import {
-  createAccountingExpenseSplitCompatibilityInTx,
-  deleteAccountingExpenseSplitCompatibilityInTx,
+  createAccountingExpenseSplitsInTx,
+  deleteAccountingExpenseSplitsInTx,
 } from './accounting-expense-split.writer';
 
 type NormalizedExpensePaymentAllocation =
@@ -399,21 +399,15 @@ export class AccountingExpenseService {
         resolvedPaymentAllocations,
       );
 
-      const { legacyTransactionRows: splitRows } =
-        await createAccountingExpenseSplitCompatibilityInTx(tx, {
-          expenseDocumentDbId: created.id,
-          documentStableId,
-          occurredAt,
-          memo: input.memo?.trim() || null,
-          attachmentUrls,
-          operatorUserStableId,
-          splits: normalizedSplits.map((split, index) => ({
-            categoryDbId: categoryMap.get(split.categoryStableId)!,
-            amountCents: split.amountCents,
-            taxCents: split.taxCents,
-            sortOrder: index,
-          })),
-        });
+      const splitRows = await createAccountingExpenseSplitsInTx(tx, {
+        expenseDocumentDbId: created.id,
+        splits: normalizedSplits.map((split, index) => ({
+          categoryDbId: categoryMap.get(split.categoryStableId)!,
+          amountCents: split.amountCents,
+          taxCents: split.taxCents,
+          sortOrder: index,
+        })),
+      });
       await tx.accountingAuditLog.createMany({
         data: [
           {
@@ -425,22 +419,16 @@ export class AccountingExpenseService {
           },
           ...splitRows.map((row, index) => ({
             action: 'CREATE',
-            entityType: 'ACCOUNTING_TRANSACTION',
-            entityId: row.txStableId,
+            entityType: 'ACCOUNTING_EXPENSE_SPLIT',
+            entityId: row.splitStableId,
             operatorActorRef: operatorUserStableId,
             afterJson: {
-              txStableId: row.txStableId,
-              type: row.type,
-              source: row.source,
+              splitStableId: row.splitStableId,
               amountCents: row.amountCents,
               taxCents: row.taxCents,
-              currency: row.currency,
-              occurredAt: occurredAt.toISOString(),
+              sortOrder: row.sortOrder,
               categoryStableId: normalizedSplits[index].categoryStableId,
               documentStableId,
-              idempotencyKey: row.idempotencyKey,
-              externalRef: row.externalRef,
-              attachmentUrls,
             } as Prisma.InputJsonValue,
           })),
         ],
@@ -559,40 +547,28 @@ export class AccountingExpenseService {
           resolvedPaymentAllocations,
         );
 
-        const { legacyTransactionRows: splitRows } =
-          await createAccountingExpenseSplitCompatibilityInTx(tx, {
-            expenseDocumentDbId: created.id,
-            documentStableId,
-            occurredAt,
-            memo: input.memo?.trim() || null,
-            attachmentUrls,
-            operatorUserStableId,
-            splits: normalizedSplits.map((split, index) => ({
-              categoryDbId: categoryMap.get(split.categoryStableId)!.id,
-              amountCents: split.amountCents,
-              taxCents: split.taxCents,
-              sortOrder: index,
-            })),
-          });
+        const splitRows = await createAccountingExpenseSplitsInTx(tx, {
+          expenseDocumentDbId: created.id,
+          splits: normalizedSplits.map((split, index) => ({
+            categoryDbId: categoryMap.get(split.categoryStableId)!.id,
+            amountCents: split.amountCents,
+            taxCents: split.taxCents,
+            sortOrder: index,
+          })),
+        });
         await tx.accountingAuditLog.createMany({
           data: splitRows.map((row, index) => ({
             action: 'CREATE',
-            entityType: 'ACCOUNTING_TRANSACTION',
-            entityId: row.txStableId,
+            entityType: 'ACCOUNTING_EXPENSE_SPLIT',
+            entityId: row.splitStableId,
             operatorActorRef: operatorUserStableId,
             afterJson: {
-              txStableId: row.txStableId,
-              type: row.type,
-              source: row.source,
+              splitStableId: row.splitStableId,
               amountCents: row.amountCents,
               taxCents: row.taxCents,
-              currency: row.currency,
-              occurredAt: occurredAt.toISOString(),
+              sortOrder: row.sortOrder,
               categoryStableId: normalizedSplits[index].categoryStableId,
               documentStableId,
-              idempotencyKey: row.idempotencyKey,
-              externalRef: row.externalRef,
-              attachmentUrls,
             } as Prisma.InputJsonValue,
           })),
         });
@@ -915,25 +891,17 @@ export class AccountingExpenseService {
       const attachmentUrls = Array.from(
         new Set([...current.attachmentUrls, ...newAttachmentUrls]),
       );
-      const replacedRows = await tx.accountingTransaction.findMany({
-        where: { documentId: existing.id, deletedAt: null },
+      const replacedRows = await tx.accountingExpenseSplit.findMany({
+        where: { expenseDocumentId: existing.id },
         select: {
-          txStableId: true,
-          type: true,
-          source: true,
+          splitStableId: true,
           amountCents: true,
           taxCents: true,
-          currency: true,
-          occurredAt: true,
-          idempotencyKey: true,
-          externalRef: true,
-          attachmentUrls: true,
+          sortOrder: true,
+          category: { select: { categoryStableId: true } },
         },
       });
-      await tx.accountingTransaction.deleteMany({
-        where: { documentId: existing.id, deletedAt: null },
-      });
-      await deleteAccountingExpenseSplitCompatibilityInTx(tx, existing.id);
+      await deleteAccountingExpenseSplitsInTx(tx, existing.id);
       await tx.accountingExpensePaymentAllocation.deleteMany({
         where: { expenseDocumentId: existing.id },
       });
@@ -957,60 +925,43 @@ export class AccountingExpenseService {
         existing.id,
         resolvedPaymentAllocations,
       );
-      const { legacyTransactionRows: splitRows } =
-        await createAccountingExpenseSplitCompatibilityInTx(tx, {
-          expenseDocumentDbId: existing.id,
-          documentStableId,
-          occurredAt,
-          memo: input.memo?.trim() || null,
-          attachmentUrls,
-          operatorUserStableId,
-          splits: normalizedSplits.map((split, index) => ({
-            categoryDbId: categoryMap.get(split.categoryStableId)!,
-            amountCents: split.amountCents,
-            taxCents: split.taxCents,
-            sortOrder: index,
-          })),
-        });
+      const splitRows = await createAccountingExpenseSplitsInTx(tx, {
+        expenseDocumentDbId: existing.id,
+        splits: normalizedSplits.map((split, index) => ({
+          categoryDbId: categoryMap.get(split.categoryStableId)!,
+          amountCents: split.amountCents,
+          taxCents: split.taxCents,
+          sortOrder: index,
+        })),
+      });
       await tx.accountingAuditLog.createMany({
         data: [
           ...replacedRows.map((row) => ({
             action: 'DELETE',
-            entityType: 'ACCOUNTING_TRANSACTION',
-            entityId: row.txStableId,
+            entityType: 'ACCOUNTING_EXPENSE_SPLIT',
+            entityId: row.splitStableId,
             operatorActorRef: operatorUserStableId,
             beforeJson: {
-              txStableId: row.txStableId,
-              type: row.type,
-              source: row.source,
+              splitStableId: row.splitStableId,
               amountCents: row.amountCents,
               taxCents: row.taxCents,
-              currency: row.currency,
-              occurredAt: row.occurredAt.toISOString(),
+              sortOrder: row.sortOrder,
+              categoryStableId: row.category.categoryStableId,
               documentStableId,
-              idempotencyKey: row.idempotencyKey,
-              externalRef: row.externalRef,
-              attachmentUrls: row.attachmentUrls,
             } as Prisma.InputJsonValue,
           })),
           ...splitRows.map((row, index) => ({
             action: 'CREATE',
-            entityType: 'ACCOUNTING_TRANSACTION',
-            entityId: row.txStableId,
+            entityType: 'ACCOUNTING_EXPENSE_SPLIT',
+            entityId: row.splitStableId,
             operatorActorRef: operatorUserStableId,
             afterJson: {
-              txStableId: row.txStableId,
-              type: row.type,
-              source: row.source,
+              splitStableId: row.splitStableId,
               amountCents: row.amountCents,
               taxCents: row.taxCents,
-              currency: row.currency,
-              occurredAt: occurredAt.toISOString(),
+              sortOrder: row.sortOrder,
               categoryStableId: normalizedSplits[index].categoryStableId,
               documentStableId,
-              idempotencyKey: row.idempotencyKey,
-              externalRef: row.externalRef,
-              attachmentUrls,
             } as Prisma.InputJsonValue,
           })),
         ],

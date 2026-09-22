@@ -7,7 +7,6 @@ import {
 } from './accounting-contracts';
 import {
   classifyAccountingCashflowContext,
-  projectAccountingExpenseReportSplit,
   projectAccountingJournalReportEntry,
   type AccountingFinancialReportJournalEntry,
 } from './accounting-financial-report-policy';
@@ -224,7 +223,7 @@ describe('Accounting canonical financial report policy', () => {
     expect(projected.journalInputTaxCents).toBe(6);
   });
 
-  it('excludes Expense Journals from Expense P&L facts', () => {
+  it('projects Expense Journals into P&L and recoverable input tax', () => {
     const projected = projectAccountingJournalReportEntry(
       entry({
         source: AccountingJournalSource.EXPENSE_DOCUMENT,
@@ -239,45 +238,51 @@ describe('Accounting canonical financial report policy', () => {
               '一般经营费用',
               AccountingAccountClass.EXPENSE,
             ),
+            category: {
+              categoryStableId: 'expense_telecom',
+              name: '通讯',
+              type: AccountingTxType.EXPENSE,
+            },
+          },
+          {
+            lineNo: 2,
+            debitCents: 13,
+            creditCents: 0,
+            memo: null,
+            account: account(
+              'account_hst_recoverable',
+              'HST/GST 待抵扣',
+              AccountingAccountClass.ASSET,
+            ),
+            category: null,
+          },
+          {
+            lineNo: 3,
+            debitCents: 0,
+            creditCents: 113,
+            memo: null,
+            account: account(
+              'account_primary_bank',
+              '主要银行账户',
+              AccountingAccountClass.ASSET,
+              AccountingAccountType.BANK,
+            ),
             category: null,
           },
         ],
       }),
     );
 
-    expect(projected).toEqual({
-      facts: [],
-      journalInputTaxCents: 0,
-      expenseInputTaxCents: 0,
-    });
-  });
-
-  it('projects confirmed Expense splits with their category and recoverable tax', () => {
-    const projected = projectAccountingExpenseReportSplit({
-      txStableId: 'accttx_expense_1',
-      amountCents: 1000,
-      taxCents: 130,
-      occurredAt: at,
-      currency: 'CAD',
-      memo: 'ingredients',
-      createdAt: at,
-      updatedAt: at,
-      category: {
-        categoryStableId: 'expense_food',
-        name: '食材',
-        type: AccountingTxType.EXPENSE,
-      },
-    });
-
     expect(projected.facts).toEqual([
       expect.objectContaining({
         type: AccountingTxType.EXPENSE,
-        amountCents: 1000,
-        taxCents: 130,
+        amountCents: 100,
+        categoryStableId: 'expense_telecom',
         source: AccountingJournalSource.EXPENSE_DOCUMENT,
       }),
     ]);
-    expect(projected.expenseInputTaxCents).toBe(130);
+    expect(projected.journalInputTaxCents).toBe(13);
+    expect(projected.expenseInputTaxCents).toBe(0);
   });
 
   it('keeps transfer magnitude visible without changing P&L or cashflow', () => {
