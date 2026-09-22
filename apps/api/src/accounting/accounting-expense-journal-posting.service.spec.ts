@@ -73,9 +73,7 @@ const expenseRowV2 = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-const makeService = (
-  document: Record<string, unknown> = expenseRow(),
-) => {
+const makeService = (document: Record<string, unknown> = expenseRow()) => {
   const tx = {
     accountingExpenseDocument: {
       findUnique: jest.fn().mockResolvedValue(document),
@@ -211,8 +209,7 @@ describe('AccountingExpenseJournalPostingService', () => {
     ).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
-        idempotencyKey:
-          'canonical-expense:expense_v2:funding:account_cibc:v2',
+        idempotencyKey: 'canonical-expense:expense_v2:funding:account_cibc:v2',
         sourceFactType: 'accounting.expense_document.v2',
         sourceFactStableId: 'expense_v2',
         sourceFactVersion: 2,

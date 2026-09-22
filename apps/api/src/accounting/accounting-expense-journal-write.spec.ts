@@ -237,8 +237,7 @@ function makeServiceV2() {
       findUnique: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue({
         entryStableId: 'journal_expense_v2_cibc',
-        idempotencyKey:
-          'canonical-expense:expense_v2:funding:account_cibc:v2',
+        idempotencyKey: 'canonical-expense:expense_v2:funding:account_cibc:v2',
         kind: AccountingJournalEntryKind.STANDARD,
         source: AccountingJournalSource.EXPENSE_DOCUMENT,
         sourceFactType: 'accounting.expense_document.v2',
@@ -518,8 +517,7 @@ describe('AccountingJournalService canonical Expense authority', () => {
     );
     tx.accountingJournalEntry.findMany.mockResolvedValue([
       {
-        idempotencyKey:
-          'canonical-expense:expense_v2:funding:account_cibc:v2',
+        idempotencyKey: 'canonical-expense:expense_v2:funding:account_cibc:v2',
         sourceFactType: 'accounting.expense_document.v2',
         sourceFactVersion: 2,
       },
@@ -528,8 +526,7 @@ describe('AccountingJournalService canonical Expense authority', () => {
       id: 'journal-db-v2',
       idempotencyHash,
       entryStableId: 'journal_expense_v2_cibc',
-      idempotencyKey:
-        'canonical-expense:expense_v2:funding:account_cibc:v2',
+      idempotencyKey: 'canonical-expense:expense_v2:funding:account_cibc:v2',
       kind: AccountingJournalEntryKind.STANDARD,
       source: AccountingJournalSource.EXPENSE_DOCUMENT,
       sourceFactType: 'accounting.expense_document.v2',
@@ -558,8 +555,7 @@ describe('AccountingJournalService canonical Expense authority', () => {
     ).resolves.toEqual(
       expect.objectContaining({
         entryStableId: 'journal_expense_v2_cibc',
-        idempotencyKey:
-          'canonical-expense:expense_v2:funding:account_cibc:v2',
+        idempotencyKey: 'canonical-expense:expense_v2:funding:account_cibc:v2',
       }),
     );
     expect(tx.accountingJournalEntry.create).not.toHaveBeenCalled();

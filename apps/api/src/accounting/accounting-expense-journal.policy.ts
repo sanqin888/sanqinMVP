@@ -333,10 +333,7 @@ export function buildCanonicalExpenseJournalsV2(
       );
     }
     seenSplitStableIds.add(splitStableId);
-    requireValue(
-      split.categoryStableId,
-      `splits[${index}].categoryStableId`,
-    );
+    requireValue(split.categoryStableId, `splits[${index}].categoryStableId`);
     if (!split.paidFromAccountStableId?.trim()) {
       throw new CanonicalExpenseJournalPolicyError(
         'MISSING_FUNDING_ACCOUNT',

@@ -1551,8 +1551,7 @@ export class AccountingJournalService {
       );
     }
 
-    const fundingAttributionVersion =
-      document.fundingAttributionVersion ?? 1;
+    const fundingAttributionVersion = document.fundingAttributionVersion ?? 1;
     const existingExpenseAnchors = await tx.accountingJournalEntry.findMany({
       where: {
         source: AccountingJournalSource.EXPENSE_DOCUMENT,

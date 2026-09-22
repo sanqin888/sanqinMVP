@@ -145,8 +145,7 @@ describe('canonical Expense Journal policy', () => {
     expect(journals).toHaveLength(2);
     expect(journals[0]).toEqual(
       expect.objectContaining({
-        idempotencyKey:
-          'canonical-expense:expense_v2:funding:account_cibc:v2',
+        idempotencyKey: 'canonical-expense:expense_v2:funding:account_cibc:v2',
         sourceFactType: 'accounting.expense_document.v2',
         sourceFactStableId: 'expense_v2',
         sourceFactVersion: 2,
@@ -186,13 +185,15 @@ describe('canonical Expense Journal policy', () => {
           'canonical-expense:expense_v2:funding:account_primary_bank:v2',
         sourceFactType: 'accounting.expense_document.v2',
         sourceFactVersion: 2,
-        lines: expect.arrayContaining([
-          expect.objectContaining({
-            accountStableId: 'account_primary_bank',
-            creditCents: 1689,
-          }),
-        ]),
       }),
+    );
+    expect(journals[1]?.lines).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          accountStableId: 'account_primary_bank',
+          creditCents: 1689,
+        }),
+      ]),
     );
   });
 

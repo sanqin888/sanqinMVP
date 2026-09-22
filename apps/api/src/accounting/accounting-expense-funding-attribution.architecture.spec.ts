@@ -102,10 +102,7 @@ describe('Accounting Expense funding attribution foundation', () => {
   it('pins the v2 grouped-posting boundary without mutating historical v1 authority', () => {
     const expensePolicy = readFileSync(EXPENSE_POLICY, 'utf8');
     const expensePosting = readFileSync(EXPENSE_POSTING, 'utf8');
-    const expenseWriteAuthority = readFileSync(
-      EXPENSE_WRITE_AUTHORITY,
-      'utf8',
-    );
+    const expenseWriteAuthority = readFileSync(EXPENSE_WRITE_AUTHORITY, 'utf8');
     const journalService = readFileSync(JOURNAL_SERVICE, 'utf8');
 
     expect(expensePolicy).toContain('accounting.expense_document.v1');

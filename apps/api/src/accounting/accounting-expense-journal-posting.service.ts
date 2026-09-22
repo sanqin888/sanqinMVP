@@ -179,8 +179,7 @@ export class AccountingExpenseJournalPostingService {
       throw new ConflictException('expense document is not confirmed');
     }
 
-    const fundingAttributionVersion =
-      document.fundingAttributionVersion ?? 1;
+    const fundingAttributionVersion = document.fundingAttributionVersion ?? 1;
 
     if (fundingAttributionVersion === 1) {
       if (document.paymentAllocations.length === 0) {
