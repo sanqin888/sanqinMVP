@@ -1,0 +1,47 @@
+Monthly Statement
+July 2026
+Sanitized Merchant
+Statement Number
+#SANITIZED-JULY
+Date
+Jul 01-31, 2026
+Consolidated Monthly Summary
+Earnings
+Sales (84 Orders)
+Tax on Sales
+
+$2,603.36
+$338.48
+Tips $0.00
+Container Fees $0.00
+Tax on Container Fees $0.00
+Other Earnings $0.00
+Tax on Other Earnings $0.00
+Total Earnings $2,941.84
+Uber Fees
+Marketplace Fees -$610.88
+Tax on Marketplace Fees -$79.41
+Other Charges -$0.01
+Tax On Other Charges $0.00
+Total Uber Fees -$690.30
+Marketing Spends
+Offers On Items -$517.79
+Marketing Adjustment $0.00
+Other Offer Charges $0.00
+Tax on offer spends -$67.29
+Ad Spends -$257.53
+Ad Credits $49.99
+Tax on Net Ad Spends -$26.98
+Total Marketing Spends -$819.60
+Amendments
+Net Chargeback Amount (0 Orders) $0.00
+Net Tax On Chargeback $0.00
+Marketplace Facilitator Tax $0.00
+Adjustments $0.00
+Tax On Adjustments $0.00
+Total Amendments $0.00
+Net Total
+$1,431.94*
+Payout Period:
+Jun 29, 2026 - Jul 05, 2026
+Sales (4 Orders) $120.00

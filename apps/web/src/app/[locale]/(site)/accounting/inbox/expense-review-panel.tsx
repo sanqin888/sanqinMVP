@@ -77,6 +77,25 @@ function hasUnsafeCurrencyEvidence(
   );
 }
 
+function correctionFieldLabel(field: string, isZh: boolean): string {
+  switch (field) {
+    case 'date':
+      return isZh ? '日期' : 'date';
+    case 'sourceCurrency':
+      return isZh ? '原始币种' : 'source currency';
+    case 'subtotalCents':
+      return isZh ? '税前金额' : 'subtotal';
+    case 'taxCents':
+      return isZh ? 'HST' : 'tax';
+    case 'totalCents':
+      return isZh ? '总额' : 'total';
+    case 'categoryStableId':
+      return isZh ? '费用分类' : 'category';
+    default:
+      return field;
+  }
+}
+
 export function AccountingInboxExpenseReviewPanel({
   item,
   categories,
@@ -197,6 +216,80 @@ export function AccountingInboxExpenseReviewPanel({
     };
   }, [rows, total]);
   const extraction = latestParse(item);
+  const recognitionConsistency =
+    extraction.textractEvidence?.financialConsistency === 'MISMATCH'
+      ? 'MISMATCH'
+      : (extraction.financialConsistency ??
+        extraction.textractEvidence?.financialConsistency ??
+        'INSUFFICIENT');
+  const normalizedSourceCurrency = sourceCurrency.trim().toUpperCase();
+  const bookingCorrectedFields = useMemo(() => {
+    const corrected: string[] = [];
+    const machineSourceCurrency = extraction.sourceCurrency?.toUpperCase() ?? null;
+    const comparableAmountCurrency =
+      machineSourceCurrency || normalizedSourceCurrency || 'CAD';
+
+    if (extraction.date && date && extraction.date !== date) {
+      corrected.push('date');
+    }
+    if (
+      machineSourceCurrency &&
+      normalizedSourceCurrency &&
+      machineSourceCurrency !== normalizedSourceCurrency
+    ) {
+      corrected.push('sourceCurrency');
+    }
+    if (comparableAmountCurrency === 'CAD') {
+      if (
+        extraction.subtotalCents != null &&
+        extraction.subtotalCents !== calculated.subtotalCents
+      ) {
+        corrected.push('subtotalCents');
+      }
+      if (
+        extraction.taxCents != null &&
+        extraction.taxCents !== calculated.taxCents
+      ) {
+        corrected.push('taxCents');
+      }
+      if (
+        extraction.totalCents != null &&
+        extraction.totalCents !== calculated.totalCents
+      ) {
+        corrected.push('totalCents');
+      }
+    }
+
+    const reviewedCategoryStableIds = Array.from(
+      new Set(
+        rows
+          .filter((row) => toCents(row.amount) > 0 || toCents(row.tax) > 0)
+          .map((row) => row.categoryStableId),
+      ),
+    );
+    if (
+      extraction.suggestedCategoryStableId &&
+      (reviewedCategoryStableIds.length !== 1 ||
+        reviewedCategoryStableIds[0] !== extraction.suggestedCategoryStableId)
+    ) {
+      corrected.push('categoryStableId');
+    }
+
+    return corrected;
+  }, [
+    calculated.subtotalCents,
+    calculated.taxCents,
+    calculated.totalCents,
+    date,
+    extraction.date,
+    extraction.sourceCurrency,
+    extraction.subtotalCents,
+    extraction.suggestedCategoryStableId,
+    extraction.taxCents,
+    extraction.totalCents,
+    normalizedSourceCurrency,
+    rows,
+  ]);
   const hasRecognizedQuickRows = quickRows.some((row) => row.recognitionHint);
   const recognizedForeignCurrency = recognizedForeignCurrencyCode(extraction);
   const unsafeCurrencyEvidence = hasUnsafeCurrencyEvidence(extraction);
@@ -361,7 +454,6 @@ export function AccountingInboxExpenseReviewPanel({
           : ` (${textractCurrencyConfidence.toFixed(1)}%)`
       }`
     : null;
-  const normalizedSourceCurrency = sourceCurrency.trim().toUpperCase();
   const sourceAmountCurrencyLabel =
     (recognizedForeignCurrency ?? normalizedSourceCurrency) || '?';
   const ambiguousCurrencyEvidence =
@@ -421,8 +513,46 @@ export function AccountingInboxExpenseReviewPanel({
           </pre>
         </details>
       ) : null}
-      <div className="mt-4 rounded-lg border bg-white p-3 text-sm">
-        <strong>{isZh ? '原始凭证金额' : 'Source document amounts'}</strong>
+      <div
+        className={`mt-4 rounded-lg border p-3 text-sm ${
+          recognitionConsistency === 'MISMATCH'
+            ? 'border-red-300 bg-red-50'
+            : recognitionConsistency === 'MATCHED'
+              ? 'border-emerald-200 bg-emerald-50/50'
+              : 'bg-white'
+        }`}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <strong>{isZh ? '机器识别结果' : 'Machine extraction'}</strong>
+          <span
+            className={`rounded px-2 py-1 text-xs font-medium ${
+              recognitionConsistency === 'MISMATCH'
+                ? 'bg-red-100 text-red-700'
+                : recognitionConsistency === 'MATCHED'
+                  ? 'bg-emerald-100 text-emerald-700'
+                  : 'bg-amber-100 text-amber-700'
+            }`}
+          >
+            {recognitionConsistency === 'MATCHED'
+              ? isZh
+                ? '金额已自洽'
+                : 'Amounts reconcile'
+              : recognitionConsistency === 'MISMATCH'
+                ? isZh
+                  ? '金额不自洽 · 需人工订正'
+                  : 'Amount mismatch · correction required'
+                : isZh
+                  ? '金额证据不足 · 请核对'
+                  : 'Insufficient amount evidence · verify'}
+          </span>
+        </div>
+        <p className="mt-2 text-xs text-slate-500">
+          {isZh ? '识别引擎' : 'Recognition engine'}:{' '}
+          {extraction.textRecognitionEngine ?? extraction.ocrEngine ?? '—'} ·{' '}
+          {isZh ? '日期' : 'Date'}: {extraction.date ?? '—'} ·{' '}
+          {isZh ? '建议分类' : 'Suggested category'}:{' '}
+          {extraction.suggestedCategoryName ?? '—'}
+        </p>
         <div className="mt-3 grid gap-2 sm:grid-cols-3">
           <div>
             <span className="text-slate-500">{isZh ? '税前' : 'Subtotal'}</span>
@@ -462,6 +592,13 @@ export function AccountingInboxExpenseReviewPanel({
                 ? '凭证正文未明确币种；编辑币种默认 CAD。'
                 : 'The document text did not state a currency; the editor defaults to CAD.'}
         </p>
+        {recognitionConsistency === 'MISMATCH' ? (
+          <p className="mt-2 rounded bg-red-100 px-3 py-2 text-xs font-medium text-red-700">
+            {isZh
+              ? '系统/AWS 提取的税前、税额和总额无法自洽。当前机器值仅作为识别证据；请根据原始凭证，在下方“最终入账值”中直接修正。'
+              : 'System/AWS subtotal, tax, and total do not reconcile. Machine values remain recognition evidence only; correct the editable Final booking values below from the source document.'}
+          </p>
+        ) : null}
         {textractCurrencySuggestion ? (
           <p className="mt-1 text-xs text-slate-500">
             {isZh
@@ -470,7 +607,31 @@ export function AccountingInboxExpenseReviewPanel({
           </p>
         ) : null}
       </div>
-      <div className="mt-4 grid gap-3 md:grid-cols-[140px_minmax(0,1fr)_minmax(0,1fr)]">
+      <section className="mt-4 rounded-lg border border-blue-200 bg-blue-50/70 p-3">
+        <strong className="text-sm">
+          {isZh ? '最终入账值（可编辑）' : 'Final booking values (editable)'}
+        </strong>
+        <p className="mt-1 text-xs text-slate-600">
+          {isZh
+            ? '上方机器识别结果保持只读。请在这里按原始凭证修正日期、币种、总额、分类、税前金额和 HST；确认创建费用时，系统会自动保存机器值、最终值和订正字段。'
+            : 'Machine extraction above remains read-only. Correct date, currency, total, category, subtotal, and HST here from the source document; confirmation automatically records machine values, final values, and corrected fields.'}
+        </p>
+        {bookingCorrectedFields.length ? (
+          <p className="mt-2 rounded bg-white px-3 py-2 text-xs font-medium text-blue-800">
+            {isZh ? '已人工订正：' : 'Manually corrected: '}
+            {bookingCorrectedFields
+              .map((field) => correctionFieldLabel(field, isZh))
+              .join(isZh ? '、' : ', ')}
+          </p>
+        ) : (
+          <p className="mt-2 text-xs text-slate-500">
+            {isZh
+              ? '当前最终入账值尚未偏离机器已识别字段。'
+              : 'Final booking values currently match the machine-observed fields.'}
+          </p>
+        )}
+      </section>
+      <div className="mt-3 grid gap-3 md:grid-cols-[140px_minmax(0,1fr)_minmax(0,1fr)]">
         <label className="text-sm">
           <span className="mb-1 block text-slate-500">
             {isZh ? '原始币种' : 'Source currency'}
@@ -836,7 +997,12 @@ export function AccountingInboxExpenseReviewPanel({
           {error}
         </p>
       ) : null}
-      <div className="mt-4 flex flex-wrap gap-2">
+      <p className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+        {isZh
+          ? '确认后会创建正式费用记录并写入财务账目；原始凭证将进入受保护证据链，之后不能再永久删除。'
+          : 'Confirmation creates the formal expense and posts it to the accounting records; the source evidence then becomes protected and can no longer be permanently deleted.'}
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
         <button
           onClick={() => void confirmExpense()}
           disabled={
@@ -852,8 +1018,8 @@ export function AccountingInboxExpenseReviewPanel({
               ? '入账中…'
               : 'Posting…'
             : isZh
-              ? '确认并入账'
-              : 'Confirm and post'}
+              ? '确认并创建费用'
+              : 'Confirm and create expense'}
         </button>
         {evidence ? (
           <AccountingEvidenceViewer

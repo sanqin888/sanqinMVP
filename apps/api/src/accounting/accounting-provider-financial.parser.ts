@@ -13,7 +13,7 @@ import {
 
 export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_NAME =
   'accounting-provider-financial';
-export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION = '4';
+export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION = '5';
 
 export type ProviderFinancialParseInput = {
   text: string;
@@ -269,12 +269,14 @@ function parseUberMonthlyStatement(
     'Payout Period:',
   );
   const lines: ParsedLine[] = [];
+  const namedLabels: string[] = [];
   const add = (
     label: string,
     component: AccountingFinancialComponent,
     treatment: AccountingFinancialPostingTreatment,
     taxRole: AccountingFinancialTaxRole = AccountingFinancialTaxRole.NONE,
-  ) =>
+  ) => {
+    namedLabels.push(label);
     pushNamedSummary(
       lines,
       summary,
@@ -284,6 +286,7 @@ function parseUberMonthlyStatement(
       taxRole,
       summaryExtraction,
     );
+  };
 
   add(
     'Sales',
@@ -435,6 +438,9 @@ function parseUberMonthlyStatement(
     AccountingFinancialComponent.CONTROL_TOTAL,
     AccountingFinancialPostingTreatment.CONTROL_TOTAL,
   );
+  if (hasUnresolvedPopplerTextOnlyNamedAmount(namedLabels, summaryExtraction)) {
+    return null;
+  }
   if (!lines.length) return null;
   return {
     provider: AccountingFinancialProvider.UBER_EATS,
@@ -760,6 +766,81 @@ function resolveNamedAmountFromLayout(
   return null;
 }
 
+function hasUnresolvedPopplerTextOnlyNamedAmount(
+  labels: string[],
+  extraction: AccountingDocumentExtraction | undefined,
+): boolean {
+  if (
+    !extraction ||
+    extraction.inputKind !== 'PDF' ||
+    extraction.engine !== 'POPPLER' ||
+    extraction.layoutMode !== 'TEXT_ONLY'
+  ) {
+    return false;
+  }
+
+  return labels.some((label) => {
+    const labelPattern = new RegExp(
+      `^${escapeRegex(label)}(?:\\s*\\([^)]*\\))?(?:\\s+|$)`,
+      'i',
+    );
+    const matchingLines = extraction.lines.filter((line) =>
+      labelPattern.test(line.text),
+    );
+    if (!matchingLines.length) return false;
+    return matchingLines.some((line) => {
+      const match = labelPattern.exec(line.text);
+      if (!match) return true;
+      const inlineToken = line.text
+        .slice(match[0].length)
+        .trim()
+        .split(/\\s+/)[0];
+      return !inlineToken || parseMoneyCents(inlineToken) == null;
+    });
+  });
+}
+
+function resolveNamedAmountFromPopplerTextLine(
+  label: string,
+  extraction: AccountingDocumentExtraction | undefined,
+): NamedAmountResolution | null {
+  if (
+    !extraction ||
+    extraction.inputKind !== 'PDF' ||
+    extraction.engine !== 'POPPLER' ||
+    extraction.layoutMode !== 'TEXT_ONLY'
+  ) {
+    return null;
+  }
+  const labelPattern = new RegExp(
+    `^${escapeRegex(label)}(?:\\s*\\([^)]*\\))?(?:\\s+|$)`,
+    'i',
+  );
+  for (const line of extraction.lines) {
+    const match = labelPattern.exec(line.text);
+    if (!match) continue;
+    const inlineToken = line.text
+      .slice(match[0].length)
+      .trim()
+      .split(/\\s+/)[0];
+    const amountCents = inlineToken ? parseMoneyCents(inlineToken) : null;
+    if (amountCents == null) continue;
+    return {
+      amountCents,
+      rawPayload: {
+        extractionEvidence: {
+          version: 1,
+          strategy: 'TEXT_LINE_INLINE',
+          engine: extraction.engine,
+          labelLine: documentLineEvidence(line),
+          amountLine: documentLineEvidence(line),
+        },
+      },
+    };
+  }
+  return null;
+}
+
 function resolveNamedAmount(
   text: string,
   label: string,
@@ -767,6 +848,13 @@ function resolveNamedAmount(
 ): NamedAmountResolution | null {
   const layout = resolveNamedAmountFromLayout(label, extraction);
   if (layout) return layout;
+  if (
+    extraction?.inputKind === 'PDF' &&
+    extraction.engine === 'POPPLER' &&
+    extraction.layoutMode === 'TEXT_ONLY'
+  ) {
+    return resolveNamedAmountFromPopplerTextLine(label, extraction);
+  }
   if (extraction?.layoutMode === 'GEOMETRY') {
     const labelPattern = new RegExp(
       `^${escapeRegex(label)}(?:\\s*\\([^)]*\\))?(?:\\s+|$)`,

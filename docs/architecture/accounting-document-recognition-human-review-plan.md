@@ -1,8 +1,8 @@
 # Accounting Document Recognition & Human Review Plan
 
-Status: **SLICE 0-3 MERGED / CI GREEN / POPPLER PDF PATH AUDITED / EVIDENCE VIEWER SLICE 1 SOURCE IMPLEMENTED / LOCAL REVIEW**  
+Status: **SLICE 0-3 + 3V-A + 3V-B DEV MERGED / CI GREEN / 3V-B PRODUCTION VERIFICATION PENDING / EVIDENCE VIEWER SLICE 1 + 1B + 2 MERGED / RELIABILITY SLICE A + B MERGED / EXPENSE REVIEW HARDENING MERGED / ORIGINAL SLICE C UX CLOSEOUT MERGED (#2445 / `da77b9a5`, CI #6074 GREEN) — NO MIGRATION — DO NOT REOPEN PHASE 9**  
 Planning date: 2026-09-20; updated: 2026-09-21  
-Audit baseline: `origin/dev@1ede0599`; Slice 3 merged in PR #2432 as `caabf1c1`; current follow-up baseline: `origin/dev@971a3172`  
+Audit baseline: `origin/dev@1ede0599`; Slice 3 merged in PR #2432 as `caabf1c1`; Slice 3V-A merged in PR #2439 as `0d6909bb` after PR CI #6054 and merged-head CI #6055 passed; Slice 3V-B merged in PR #2440 as `0ac9117f` after final head `3c5c0400`, PR CI #6057 and merged-head CI #6058 green  
 Owner: **Accounting / Reporting / Analytics**  
 Phase 9 status: **remains PRODUCTION VERIFIED / CLOSED — do not reopen Phase 9**
 
@@ -749,6 +749,176 @@ explicit architecture decision.
 No new npm dependency, S3 bucket, async Textract workflow, queue, schema or migration is
 required for this target.
 
+#### Slice 3V-A — Native PDF usability + sanitized Poppler golden
+
+Source implementation on `origin/dev@4d68379e` / branch
+`accounting/document-recognition-3v-a` establishes the first half of Slice 3V without
+activating the new scanned-PDF raster path:
+
+- `accounting-pdf-routing.ts` owns a provider-neutral native-text decision with three outcomes:
+  `USABLE_NATIVE_TEXT`, `SCAN_CANDIDATE`, and `FAIL_CLOSED`;
+- usable native text requires at least eight Unicode letter/number characters, at least two
+  meaningful tokens, and either at least two meaningful lines or at least four Han characters.
+  This deliberately recognizes CJK text without relying on ASCII-only scoring;
+- blank or fragment-only layers become `SCAN_CANDIDATE`; extraction truncation is
+  `FAIL_CLOSED`; replacement/private-use/control-character contamination fails closed when at
+  least four suspicious characters comprise at least 20% of non-whitespace characters;
+- the decision records bounded quality metrics, including meaningful characters/tokens/lines,
+  Han characters, suspicious-character ratio, extraction line count and geometry line count;
+- provider semantic mapping runs only for `USABLE_NATIVE_TEXT`. Weak/suspicious native text is
+  retained for operator review instead of being interpreted as financial facts;
+- 3V-A intentionally does **not** broaden the old whole-PDF Textract path. Until 3V-B replaces it,
+  only the historical `NO_NATIVE_TEXT` case may still use that legacy fallback. An
+  `INSUFFICIENT_NATIVE_TEXT` candidate stays local/manual rather than being sent through the
+  unsafe old raw-PDF path;
+- persisted PDF routing evidence is revalidated before later manual provider confirmation, so an
+  operator cannot bypass a non-usable native-text decision merely by selecting a provider;
+- provider-financial parser v5 treats explicit `POPPLER / TEXT_ONLY` PDF evidence
+  conservatively: it accepts a named amount only when label and value remain on the same extracted
+  line, records that line evidence, and never falls back to cross-line flattened adjacency. A
+  provider statement whose columns collapse into separate label/value line groups therefore fails
+  closed instead of recreating the July column-order bug;
+- sanitized July Uber fixtures preserve the observed flattened
+  `Sales / Tax on Sales / $2,603.36 / $338.48` shape plus representative two-column bbox
+  relationships. Source identifiers are removed and the source PDF itself is not committed.
+  Regression coverage runs `bbox -> Accounting extraction -> provider parser -> settlement
+  control totals` and pins `Sales = 260336`, `Tax on Sales = 33848`,
+  `Net Total = 143194`, payout-section exclusion, and five matched Uber control-total checks;
+- bbox coordinates in the sanitized fixture are representative geometry, not byte-for-byte
+  production floating-point coordinates. Tests assert page/row/right-of-label relationships and
+  financial semantics rather than exact Poppler coordinate bytes;
+- no historical source artifact, machine extraction, Human Review Revision, posted settlement or
+  Journal is rewritten or reprocessed by this source batch.
+
+Slice 3V-A merged in PR #2439 as `0d6909bb`; PR CI #6054 and merged-head CI #6055
+passed.
+
+#### Slice 3V-B — Bounded scanned-PDF page raster + Textract merge
+
+Final implementation merged in PR #2440 as `0ac9117f` after final head `3c5c0400`;
+PR CI #6057 and merged-head CI #6058 passed. The merged path replaces the temporary whole-PDF
+Textract fallback without adding another OCR engine or remote document-storage workflow:
+
+- only `SCAN_CANDIDATE` PDFs enter this path. `USABLE_NATIVE_TEXT` remains on local Poppler
+  text/layout and `FAIL_CLOSED` remains local/manual; Provider API remains excluded;
+- page inspection uses the already-installed Poppler `pdfinfo`; PDFs are limited to **6 pages**.
+  A larger document is rejected before page rasterization or Textract;
+- pages are rasterized sequentially with the existing Poppler `pdftocairo` at **200 DPI**.
+  Each Poppler command has a **10 second** timeout, bounded stderr, and a **20 MiB** raster-output
+  ceiling. The existing Inbox source-file ceiling remains **25 MiB**;
+- each rendered page is prepared as a non-cropped JPEG under the existing synchronous Textract
+  image policy: at most **9,500,000 bytes** and **9000 px** on either axis. The receipt-specific
+  crop heuristic is deliberately not reused for provider statements;
+- synchronous AnalyzeExpense requests remain sequential (**concurrency 1**) and reuse the
+  existing **20 second** Textract request timeout;
+- the scanned-PDF adapter consumes **only Textract LINE blocks** for OCR text/confidence/geometry.
+  AnalyzeExpense `SummaryFields`, line-item groups, inferred totals/tax/currency and receipt
+  semantics are not merged into provider statement authority;
+- successful page extraction requires non-empty OCR lines and layout geometry. Every line is
+  remapped to the original PDF page and deterministic `pN-lX` identity before the pages are
+  merged in page/top/left order;
+- the complete PDF is capped at **2000 merged lines** and **57,000,000 bytes** of aggregate
+  prepared Textract page images. Overflow is an error; the adapter never truncates to a
+  successful prefix;
+- any page-count, raster, image-preparation, Textract, empty-page, geometry, aggregate-resource
+  or merged-line failure aborts the whole OCR result. Inbox acquisition records the parse as
+  `ERROR`, retains the SourceArtifact/PENDING_REVIEW evidence, and does not call provider
+  parsing/materialization on a partial prefix;
+- the generic PDF review parse-run contract advances to v6 and records bounded
+  `pdfOcrEvidence` diagnostics (page count, DPI, request/model IDs, prepared image
+  dimensions/bytes and line counts) separately from receipt `textractEvidence`; when provider
+  recognition succeeds before generic review, the same OCR evidence is carried into the
+  provider-recognition/provider-financial parse runs instead of being dropped;
+- Provider API behavior remains unchanged. Its current public ingress is CSV-only, and the
+  scanned-PDF OCR branch keeps the explicit `acquisitionMode !== PROVIDER_API` guard. Enabling
+  Provider API PDF OCR later would require a new evidence-backed decision;
+- no raw PDF bytes are submitted to Textract by the normal scanned-PDF path after 3V-B. No
+  S3/async Textract, queue, PaddleOCR, BDA, Prisma/schema/migration, package/lockfile or
+  Docker/runtime-package change is introduced.
+
+The historical posted Uber July statement remains immutable and was not reprocessed by this
+batch. Existing control-total reconciliation and Human Review stay downstream authority after
+OCR/provider mapping. Source/CI delivery is complete; active production verification of the new
+scanned-PDF path remains pending.
+
+#### Reliability Slice A — CSV ParseRun SUCCESS integrity
+
+Reliability Slice A is merged to `dev` through PR #2442 / squash `994f5a67`; final remote validation
+passed API/Web after the test-only typed matcher follow-up. It fixes a post-Phase-9 Inbox integrity
+defect without changing CSV classification or financial semantics. `AccountingInboxCore`
+requires every successful parse run to carry a SHA-256 `resultHash`, but two CSV acquisition paths
+were bypassing that invariant at the orchestration call site: structured-expense CSV success and
+same-priority provider-recognition ambiguity success. Both now hash the exact persisted
+`resultJson` through the existing Accounting-owned `hashAccountingJson()` helper before recording
+the `SUCCESS` ParseRun.
+
+The structured-expense parser, one-row Expense suggestion, multi-row/invalid-row
+`requiresBatchExpenseImport` fail-closed behavior, Provider API routing, provider recognition,
+materialization and Journal authority are intentionally unchanged. Focused acquisition regressions
+pin a policy-valid 64-character SHA-256 result hash for single-row structured expense CSV,
+multi-row batch CSV and ambiguous provider-recognition CSV. No Prisma/schema/migration, package or
+runtime dependency, context direction, scanner allowance, public contract, provider wire behavior,
+Phase 9 status or production evidence is changed. Per repository workflow, local lint/build/tests
+have not been run before user review; GitHub Actions remains the validation gate after explicit
+remote authorization.
+
+#### Reliability Slice B — Expense layout reconciliation + booking correction audit
+
+Expense recognition now treats source amounts as a deterministic evidence set instead of three
+independent suggestions. Native-text PDFs keep Poppler text extraction and additionally use the
+existing bbox/layout geometry to pair Accounting-owned expense labels with same-row/right-hand
+amounts. The resolver accepts direct inline amounts only when the label is followed immediately by
+money, so descriptive text such as `Total discounts of $185.00` cannot become a generic Total.
+Observed Bell-style `Taxes -> 9.74` plus `Total current charges -> 84.69` geometry can replace an
+unsafe flattened-text HST match; when subtotal is absent but tax and total are reliable, subtotal is
+recorded as the deterministic `total - tax` derivation with explicit evidence strategy.
+
+All ordinary Expense recognition paths now expose `financialConsistency = MATCHED / MISMATCH /
+INSUFFICIENT`. Native Poppler PDFs, bounded scanned-PDF page OCR and image Textract normalize into
+the same invariant. Exact integer-cent `subtotal + tax == total` is required for `MATCHED`;
+`MISMATCH` forces LOW extraction confidence and is shown prominently in Web rather than allowing a
+misleading HIGH result. Source-currency arithmetic remains distinct from CAD booking arithmetic:
+foreign-source totals are reconciled internally in their source currency and are not compared
+numerically to a later CAD booking amount merely because FX conversion changes the number.
+
+Ordinary Expense keeps machine extraction immutable and read-only, but does **not** introduce a
+second persisted Human Review state machine. The existing Expense booking form remains the operator
+authority for date, source currency, category splits, subtotal/tax/total, payment allocations and
+memo. Web now makes that distinction explicit: machine values are shown as recognition evidence,
+while the lower **Final booking values** section is editable and surfaces which machine-observed
+fields have been manually corrected.
+
+Final Expense materialization remains the only action that creates the ExpenseDocument and
+AccountingTransaction rows. Server-side booking validation still requires exact integer-cent
+balance for the final operator values. At confirmation, Accounting records a deterministic
+`bookingReview` snapshot in the Expense `extractionJson`: machine values, final booked values,
+machine financial-consistency state, corrected field names, operator identity and confirmation
+timestamp. A matching `CONFIRM_EXPENSE_BOOKING` AccountingAuditLog entry preserves the same review
+evidence. Foreign-source amounts remain distinct from CAD booking amounts, so FX conversion alone
+does not create a false amount-correction flag.
+
+No Expense review enum/table/relation/API is added, and Provider Financial Human Review remains
+unchanged. Slice B therefore requires **no Prisma migration**, no package/runtime dependency, no
+provider wire change, no context direction, no architecture scanner allowance and no public SCC
+change; Phase 9 remains closed.
+
+#### Original Slice C — Inbox pre-confirm visibility + irreversible-action UX closeout
+
+**Final state:** **MERGED / CI GREEN / WEB-ONLY / NO MIGRATION** through PR #2445 / final head `3cd7e645` / squash `da77b9a5`; final PR CI #6074 passed all required checks.
+
+This final A/B/C closeout is Web-only. The Expense Inbox summary surfaces recognition confidence
+alongside the already-present date/category/subtotal/tax/total/engine and reconciliation status.
+Opening Expense review is explicitly described as non-posting; the final confirmation warning states
+that creating the Expense writes the formal accounting record and protects the source evidence from
+permanent deletion. Provider Financial confirmation similarly states before action that evidence
+moves to Provider settlements, becomes protected, and does not itself post a Journal entry.
+
+Manual Upload Library makes evidence lifecycle visible with `未确认 · 可永久删除` /
+`Unconfirmed · permanent delete available` and `已确认 · 受保护` / `Confirmed · protected` badges.
+No backend materialization, deletion, review, settlement or Journal semantics change. The separately
+merged Expense Journal canonicalization C0 shadow preview (PR #2444) is a future-roadmap readiness
+tool and is not part of this original Slice C; this closeout does not start C1 Journal cutover.
+
 ### Slice 6 — Optional suspense workflow
 
 Only if separately approved.
@@ -842,10 +1012,15 @@ Delivery slices:
    organizational metadata only: confirmed/posted/provider evidence may be moved without
    changing content hashes, source facts, Human Review, settlement or Journal authority.
    Folder creation and every actual move are audit logged. V1 intentionally does not add
-   nested folders, folder rename or folder deletion.
+   nested folders, folder rename or folder deletion. **Merged in PR #2436 as `9ae4d85d`,
+   CI #6042 green; additive migration `20260921124637_add_accounting_evidence_folders`
+   committed as `cc4c8016` and SQL-reviewed as matching the schema without backfill/drop.**
 3. **Evidence Viewer Slice 2 — structured preview:** use the existing native CSV/XLSX parsing
    stack to expose bounded, non-executing tabular preview data. Do not emulate Excel, execute
    formulas/macros/external links, or make workbook formatting part of Accounting authority.
+   Source implementation uses the existing CSV tokenizer and `@keep-lts/xlsx`, routes through
+   authenticated `artifactStableId` delivery, and bounds preview to 8 MiB source files,
+   200 rows, 40 columns, 500 characters per cell and 20 worksheets.
 4. Later contraction may remove remaining Web dependence on raw `storedUrl` only after all
    consumers use the stable-ID boundary.
 
@@ -887,26 +1062,33 @@ future new OCR/runtime dependency still requires separate authorization.
 **Evidence Viewer Slice 1:** ordinary Accounting-internal read-boundary/UI change; no migration
 or dependency is expected.
 
-**Evidence Viewer Slice 1B:** additive Accounting persistence change; **MIGRATION REQUIRED**.
-The migration should create logical folder + assignment tables, unique stable/name-key and
-one-folder-per-artifact constraints, the folder lookup index and foreign keys. Existing artifacts
-require no backfill and remain Unfiled because absence of an assignment is the virtual root.
-No physical file or `storedUrl` migration is permitted.
+**Evidence Viewer Slice 1B:** additive Accounting persistence change; migration
+`20260921124637_add_accounting_evidence_folders` has been generated, committed and SQL-reviewed.
+It creates only the logical folder + assignment tables, stable/name-key uniqueness,
+one-folder-per-artifact identity, lookup indexes and foreign keys. Existing artifacts require no
+backfill and remain Unfiled because absence of an assignment is the virtual root. No physical file
+or `storedUrl` migration is present.
+
+**Evidence Viewer Slice 2:** ordinary Accounting-internal read/UI capability; no schema,
+migration or dependency change is expected.
 
 No recognition or delivery change should rewrite historical machine extraction or posted
 financial facts. Retain source/review evidence.
 
 ## 15. Decisions intentionally left open
 
-The following remain open and must not be guessed during implementation:
+Slice 3V-A resolves the native-text usability decision above. Slice 3V-B resolves the
+initial scanned-PDF limits and keeps Provider API excluded from PDF OCR. Evidence Viewer Slice 2
+also resolved the bounded CSV/XLSX preview contract and is merged. The following decisions remain
+open and must not be guessed during later implementation:
 
-1. the exact conservative rule for deciding whether a PDF's native text layer is usable;
-2. the scanned-PDF maximum page count and aggregate OCR resource limits;
-3. whether Provider API ingestion should participate in scanned-PDF raster/Textract fallback;
-4. whether the runtime should pin a specific Alpine/Poppler version for golden reproducibility;
-5. whether DOCX should be accepted by Accounting Inbox;
-6. whether unresolved provider components may use a suspense account;
-7. the exact bounded CSV/XLSX preview response contract for Evidence Viewer Slice 2.
+1. whether the runtime should pin a specific Alpine/Poppler version for golden reproducibility;
+2. whether DOCX should be accepted by Accounting Inbox;
+3. whether unresolved provider components may use a suspense account.
+
+The 3V-B six-page/resource limits are intentionally conservative first-production bounds. Raise
+them only from real document evidence and a new bounded-resource review rather than silently
+changing the policy.
 
 PaddleOCR/BDA and S3/async Textract are not part of the currently approved normal recognition
 path. Reintroducing any of them requires a new explicit decision based on a demonstrated gap.

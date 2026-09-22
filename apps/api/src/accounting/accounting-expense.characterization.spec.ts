@@ -29,12 +29,15 @@ describe('AccountingExpenseService expense-write characterization', () => {
     createdAt: new Date('2026-09-11T14:01:00.000Z'),
     confirmedAt: new Date('2026-09-11T14:01:00.000Z'),
     paymentAllocations: [],
-    transactions: [],
+    splits: [],
   });
 
   const accounting = {
     assertOnOrAfterAccountingStartDate: jest.fn().mockResolvedValue(undefined),
     assertEditableForPeriod: jest.fn().mockResolvedValue(undefined),
+  };
+  const expenseJournalPosting = {
+    postConfirmedExpenseIfReadyInTx: jest.fn().mockResolvedValue(null),
   };
 
   beforeEach(() => {
@@ -64,7 +67,20 @@ describe('AccountingExpenseService expense-write characterization', () => {
         sortOrder: number;
       }>;
     };
+    type ExpenseSplitCreateManyArgs = {
+      data: Array<{
+        splitStableId: string;
+        expenseDocumentId: string;
+        categoryId: string;
+        amountCents: number;
+        taxCents: number;
+        sortOrder: number;
+      }>;
+    };
     const createMany = jest.fn((args: TransactionCreateManyArgs) =>
+      Promise.resolve({ count: args.data.length }),
+    );
+    const createExpenseSplitMany = jest.fn((args: ExpenseSplitCreateManyArgs) =>
       Promise.resolve({ count: args.data.length }),
     );
     const createAllocationMany = jest.fn(
@@ -91,6 +107,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
       },
       accountingExpenseDocument: { create: createDocument },
       accountingExpensePaymentAllocation: { createMany: createAllocationMany },
+      accountingExpenseSplit: { createMany: createExpenseSplitMany },
       accountingTransaction: { createMany },
       accountingAuditLog: { createMany: createAuditMany },
     };
@@ -125,6 +142,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
     const service = new AccountingExpenseService(
       prisma as never,
       accounting as never,
+      expenseJournalPosting as never,
     );
 
     const result = await service.createExpense(
@@ -187,6 +205,26 @@ describe('AccountingExpenseService expense-write characterization', () => {
       amountCents: 530,
       sortOrder: 1,
     });
+    expect(createExpenseSplitMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          splitStableId: expect.stringMatching(/^expensesplit_/) as unknown,
+          expenseDocumentId: 'expense-document-db-id',
+          categoryId: 'category-food-db-id',
+          amountCents: 600,
+          taxCents: 78,
+          sortOrder: 0,
+        }) as unknown as Record<string, unknown>,
+        expect.objectContaining({
+          splitStableId: expect.stringMatching(/^expensesplit_/) as unknown,
+          expenseDocumentId: 'expense-document-db-id',
+          categoryId: 'category-packaging-db-id',
+          amountCents: 400,
+          taxCents: 52,
+          sortOrder: 1,
+        }) as unknown as Record<string, unknown>,
+      ],
+    });
     expect(createMany).toHaveBeenCalledWith({
       data: [
         expect.objectContaining({
@@ -243,6 +281,9 @@ describe('AccountingExpenseService expense-write characterization', () => {
       AccountingTxType.EXPENSE,
       tx,
     );
+    expect(
+      expenseJournalPosting.postConfirmedExpenseIfReadyInTx,
+    ).toHaveBeenCalledWith(tx, generatedDocumentStableId, 'user_stable_1');
     expect(result.documentStableId).toBe(generatedDocumentStableId);
   });
 
@@ -250,6 +291,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
     const service = new AccountingExpenseService(
       {} as never,
       accounting as never,
+      expenseJournalPosting as never,
     );
 
     await expect(
@@ -278,6 +320,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
     const service = new AccountingExpenseService(
       {} as never,
       accounting as never,
+      expenseJournalPosting as never,
     );
 
     await expect(
@@ -305,6 +348,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
     const service = new AccountingExpenseService(
       {} as never,
       accounting as never,
+      expenseJournalPosting as never,
     );
 
     await expect(
@@ -361,6 +405,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
     const service = new AccountingExpenseService(
       prisma as never,
       accounting as never,
+      expenseJournalPosting as never,
     );
 
     await expect(
@@ -419,6 +464,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
     const service = new AccountingExpenseService(
       prisma as never,
       accounting as never,
+      expenseJournalPosting as never,
     );
 
     await expect(
@@ -460,6 +506,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
       },
     );
     const createMany = jest.fn().mockResolvedValue({ count: 1 });
+    const createExpenseSplitMany = jest.fn().mockResolvedValue({ count: 1 });
     const createAllocationMany = jest.fn().mockResolvedValue({ count: 1 });
     const createAuditMany = jest.fn().mockResolvedValue({ count: 1 });
     const updateInbox = jest.fn().mockResolvedValue({ count: 1 });
@@ -486,9 +533,12 @@ describe('AccountingExpenseService expense-write characterization', () => {
             parseRuns: [
               {
                 resultJson: {
+                  date: '2026-09-15',
                   sourceCurrency: 'USD',
                   sourceCurrencyEvidence: 'EXPLICIT_TEXT',
                   totalCents: 2000,
+                  financialConsistency: 'MISMATCH',
+                  suggestedCategoryStableId: 'expense_other',
                   extractedText: 'Amount due USD 20.00',
                 },
               },
@@ -517,6 +567,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
       },
       accountingExpenseDocument: { create: createDocument },
       accountingExpensePaymentAllocation: { createMany: createAllocationMany },
+      accountingExpenseSplit: { createMany: createExpenseSplitMany },
       accountingTransaction: { createMany },
       accountingAuditLog: { createMany: createAuditMany },
     };
@@ -543,6 +594,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
     const service = new AccountingExpenseService(
       prisma as never,
       accounting as never,
+      expenseJournalPosting as never,
     );
 
     const result = await service.confirmUnifiedInboxExpense(
@@ -567,6 +619,17 @@ describe('AccountingExpenseService expense-write characterization', () => {
 
     expect(transaction).toHaveBeenCalledTimes(1);
     expect(createdDocumentStableId).toMatch(/^expense_/);
+    expect(createExpenseSplitMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          expenseDocumentId: 'expense-document-db-id',
+          categoryId: 'category-software-db-id',
+          amountCents: 2746,
+          taxCents: 0,
+          sortOrder: 0,
+        }) as unknown as Record<string, unknown>,
+      ],
+    });
     expect(createDocument).toHaveBeenCalledWith({
       data: expect.objectContaining({
         documentStableId: createdDocumentStableId,
@@ -581,6 +644,24 @@ describe('AccountingExpenseService expense-write characterization', () => {
           reviewedSourceCurrency: 'USD',
           bookedCurrency: 'CAD',
           bookedTotalCents: 2746,
+          bookingReview: expect.objectContaining({
+            machineFinancialConsistency: 'MISMATCH',
+            machine: expect.objectContaining({
+              date: '2026-09-15',
+              totalCents: 2000,
+              sourceCurrency: 'USD',
+              suggestedCategoryStableId: 'expense_other',
+            }) as unknown,
+            reviewedBooking: expect.objectContaining({
+              occurredAt: '2026-09-16',
+              totalCents: 2746,
+              currency: 'CAD',
+              sourceCurrency: 'USD',
+              categoryStableIds: ['expense_software'],
+            }) as unknown,
+            correctedFields: ['occurredAt', 'categoryStableId'],
+            operatorUserStableId: 'user_stable_3',
+          }) as unknown,
         }) as unknown,
       }) as unknown as Record<string, unknown>,
       select: { id: true },
@@ -604,6 +685,20 @@ describe('AccountingExpenseService expense-write characterization', () => {
           documentId: 'expense-document-db-id',
         }) as unknown as Record<string, unknown>,
       ],
+    });
+    expect(createAuditMany).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          action: 'CONFIRM_EXPENSE_BOOKING',
+          entityType: 'ACCOUNTING_EXPENSE_DOCUMENT',
+          entityId: createdDocumentStableId,
+          operatorActorRef: 'user_stable_3',
+          afterJson: expect.objectContaining({
+            machineFinancialConsistency: 'MISMATCH',
+            correctedFields: ['occurredAt', 'categoryStableId'],
+          }) as unknown,
+        }) as unknown as Record<string, unknown>,
+      ]) as unknown as Record<string, unknown>[],
     });
     expect(updateInbox).toHaveBeenCalledWith({
       where: expect.objectContaining({
@@ -631,6 +726,9 @@ describe('AccountingExpenseService expense-write characterization', () => {
       AccountingTxType.EXPENSE,
       tx,
     );
+    expect(
+      expenseJournalPosting.postConfirmedExpenseIfReadyInTx,
+    ).toHaveBeenCalledWith(tx, createdDocumentStableId, 'user_stable_3');
     expect(result.documentStableId).toBe(createdDocumentStableId);
   });
 
@@ -650,9 +748,11 @@ describe('AccountingExpenseService expense-write characterization', () => {
       },
     ]);
     const deleteMany = jest.fn().mockResolvedValue({ count: 1 });
+    const deleteExpenseSplits = jest.fn().mockResolvedValue({ count: 0 });
     const deletePaymentAllocations = jest.fn().mockResolvedValue({ count: 0 });
     const updateDocument = jest.fn().mockResolvedValue({});
     const createMany = jest.fn().mockResolvedValue({ count: 1 });
+    const createExpenseSplitMany = jest.fn().mockResolvedValue({ count: 1 });
     const createAuditMany = jest.fn().mockResolvedValue({ count: 2 });
     const currentDocument = jest.fn().mockResolvedValue({
       status: AccountingDocumentStatus.PENDING_REVIEW,
@@ -660,6 +760,10 @@ describe('AccountingExpenseService expense-write characterization', () => {
     });
     const tx = {
       accountingTransaction: { findMany: replacedRows, deleteMany, createMany },
+      accountingExpenseSplit: {
+        deleteMany: deleteExpenseSplits,
+        createMany: createExpenseSplitMany,
+      },
       accountingExpenseDocument: {
         findUnique: currentDocument,
         update: updateDocument,
@@ -707,6 +811,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
     const service = new AccountingExpenseService(
       prisma as never,
       accounting as never,
+      expenseJournalPosting as never,
     );
 
     const result = await service.confirmInboxDocument(
@@ -734,8 +839,22 @@ describe('AccountingExpenseService expense-write characterization', () => {
     expect(deleteMany).toHaveBeenCalledWith({
       where: { documentId: 'inbox-document-db-id', deletedAt: null },
     });
+    expect(deleteExpenseSplits).toHaveBeenCalledWith({
+      where: { expenseDocumentId: 'inbox-document-db-id' },
+    });
     expect(deletePaymentAllocations).toHaveBeenCalledWith({
       where: { expenseDocumentId: 'inbox-document-db-id' },
+    });
+    expect(createExpenseSplitMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          expenseDocumentId: 'inbox-document-db-id',
+          categoryId: 'category-food-db-id',
+          amountCents: 1000,
+          taxCents: 130,
+          sortOrder: 0,
+        }) as unknown as Record<string, unknown>,
+      ],
     });
     expect(updateDocument).toHaveBeenCalledWith({
       where: { id: 'inbox-document-db-id' },
@@ -813,6 +932,9 @@ describe('AccountingExpenseService expense-write characterization', () => {
       AccountingTxType.EXPENSE,
       tx,
     );
+    expect(
+      expenseJournalPosting.postConfirmedExpenseIfReadyInTx,
+    ).toHaveBeenCalledWith(tx, 'inbox_doc_1', 'user_stable_2');
     expect(result.documentStableId).toBe('inbox_doc_1');
   });
 
@@ -860,6 +982,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
     const service = new AccountingExpenseService(
       prisma as never,
       accounting as never,
+      expenseJournalPosting as never,
     );
 
     await expect(

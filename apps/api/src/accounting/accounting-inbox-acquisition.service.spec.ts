@@ -33,7 +33,10 @@ jest.mock('./accounting-image-ocr', () => ({
 jest.mock('./accounting-textract-expense-recognition', () => ({
   isAccountingTextractExpenseRecognitionEnabled: jest.fn(() => false),
   recognizeAccountingExpenseImageWithTextract: jest.fn(),
-  recognizeAccountingExpensePdfWithTextract: jest.fn(),
+}));
+
+jest.mock('./accounting-scanned-pdf-recognition', () => ({
+  recognizeAccountingScannedPdfWithTextract: jest.fn(),
 }));
 
 import * as fs from 'node:fs';
@@ -57,9 +60,53 @@ import {
 import {
   isAccountingTextractExpenseRecognitionEnabled,
   recognizeAccountingExpenseImageWithTextract,
-  recognizeAccountingExpensePdfWithTextract,
 } from './accounting-textract-expense-recognition';
+import { recognizeAccountingScannedPdfWithTextract } from './accounting-scanned-pdf-recognition';
 import { AccountingProviderFinancialProcessingError } from './accounting-provider-financial.service';
+
+function scannedPdfRecognitionResult(text: string) {
+  const lines = text.split('\n').map((line, index) => ({
+    lineId: `p1-l${index + 1}`,
+    page: 1,
+    text: line,
+    confidence: 99,
+    geometry: {
+      left: 0.1,
+      top: 0.1 + index * 0.05,
+      width: 0.8,
+      height: 0.03,
+    },
+  }));
+  return {
+    text,
+    extraction: extractAccountingText(text),
+    documentExtraction: {
+      version: 1 as const,
+      inputKind: 'PDF' as const,
+      engine: 'AWS_TEXTRACT' as const,
+      layoutMode: 'GEOMETRY' as const,
+      truncated: false,
+      lines,
+    },
+    evidence: {
+      provider: 'AWS_TEXTRACT_ANALYZE_EXPENSE_PAGE_OCR' as const,
+      pageCount: 1,
+      rasterDpi: 200,
+      totalPreparedImageBytes: 12_345,
+      pages: [
+        {
+          page: 1,
+          requestId: 'request-page-1',
+          modelVersion: '1.0',
+          width: 1700,
+          height: 2200,
+          preparedImageBytes: 12_345,
+          lineCount: lines.length,
+        },
+      ],
+    },
+  };
+}
 
 function registeredArtifact(kind: AccountingArtifactKind, contentHash: string) {
   return {
@@ -92,8 +139,8 @@ describe('AccountingInboxAcquisitionService', () => {
   const textractRecognition = jest.mocked(
     recognizeAccountingExpenseImageWithTextract,
   );
-  const textractPdfRecognition = jest.mocked(
-    recognizeAccountingExpensePdfWithTextract,
+  const scannedPdfRecognition = jest.mocked(
+    recognizeAccountingScannedPdfWithTextract,
   );
   let uploadRoot: string;
 
@@ -115,7 +162,7 @@ describe('AccountingInboxAcquisitionService', () => {
     textractEnabled.mockReset();
     textractEnabled.mockReturnValue(false);
     textractRecognition.mockReset();
-    textractPdfRecognition.mockReset();
+    scannedPdfRecognition.mockReset();
     imageOcr.mockResolvedValue({
       text: 'Invoice subtotal $75.00\nHST $9.75\nTotal $84.75',
       engine: 'TESSERACT',
@@ -205,8 +252,28 @@ describe('AccountingInboxAcquisitionService', () => {
     expect(providerFinancial.parseForInboxSuggestion).not.toHaveBeenCalled();
   });
 
-  it('sends manual PDF evidence through SourceArtifact and suggestion-only parsing', async () => {
+  it('sends usable native PDF evidence through SourceArtifact and suggestion-only parsing', async () => {
     const { service, operations, providerFinancial } = makeService();
+    const nativeText =
+      'Invoice 2026-09-16\nSubtotal CAD 75.00\nHST CAD 9.75\nTotal CAD 84.75';
+    pdfExtraction.mockResolvedValueOnce({
+      text: nativeText,
+      extraction: extractAccountingText(nativeText),
+      documentExtraction: {
+        version: 1,
+        inputKind: 'PDF',
+        engine: 'POPPLER',
+        layoutMode: 'TEXT_ONLY',
+        truncated: false,
+        lines: nativeText.split('\n').map((text, index) => ({
+          lineId: `p1-l${index + 1}`,
+          page: 1,
+          text,
+          confidence: null,
+          geometry: null,
+        })),
+      },
+    });
     const result = await service.acquireManualFile({
       originalname: 'invoice.pdf',
       mimetype: 'application/pdf',
@@ -230,6 +297,17 @@ describe('AccountingInboxAcquisitionService', () => {
     );
     expect(providerFinancial.parseForInboxSuggestion).toHaveBeenCalled();
     expect(providerFinancial.parseAndMaterialize).not.toHaveBeenCalled();
+    expect(operations.recordInboxParseRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        parserVersion: '6',
+        resultJson: expect.objectContaining({
+          pdfNativeTextUsability: expect.objectContaining({
+            disposition: 'USABLE_NATIVE_TEXT',
+            reason: 'NATIVE_TEXT_USABLE',
+          }) as unknown,
+        }) as unknown,
+      }) as unknown,
+    );
   });
 
   it('keeps native-text PDF on local extraction even when Textract is enabled', async () => {
@@ -262,7 +340,7 @@ describe('AccountingInboxAcquisitionService', () => {
       buffer: Buffer.from('%PDF-1.4\n%%EOF', 'ascii'),
     });
 
-    expect(textractPdfRecognition).not.toHaveBeenCalled();
+    expect(scannedPdfRecognition).not.toHaveBeenCalled();
     expect(operations.recordInboxParseRun).toHaveBeenCalledWith(
       expect.objectContaining({
         resultJson: expect.objectContaining({
@@ -275,62 +353,179 @@ describe('AccountingInboxAcquisitionService', () => {
     );
   });
 
-  it('uses Textract only as a synchronous fallback for scanned PDFs with no local text', async () => {
+  it('routes weak native text through bounded scanned-PDF recognition', async () => {
     const { service, operations, providerFinancial } = makeService();
     textractEnabled.mockReturnValue(true);
-    const scannedPdf = Buffer.from('%PDF-1.4\nscanned\n%%EOF', 'ascii');
-    const textractText =
-      'Cloud service invoice\nSep 16 2026\nSubtotal USD 20.00\nTax USD 0.00\nTotal USD 20.00';
-    textractPdfRecognition.mockResolvedValue({
-      text: textractText,
-      extraction: extractAccountingText(textractText),
+    const weakText = 'Page 1';
+    const ocrText =
+      'Invoice 2026-09-16\nSubtotal CAD 75.00\nHST CAD 9.75\nTotal CAD 84.75';
+    pdfExtraction.mockResolvedValueOnce({
+      text: weakText,
+      extraction: extractAccountingText(weakText),
       documentExtraction: {
         version: 1,
         inputKind: 'PDF',
-        engine: 'AWS_TEXTRACT',
+        engine: 'POPPLER',
         layoutMode: 'TEXT_ONLY',
         truncated: false,
-        lines: textractText.split('\n').map((text, index) => ({
-          lineId: `p1-l${index + 1}`,
-          page: 1,
-          text,
-          confidence: 99,
-          geometry: null,
-        })),
-      },
-      evidence: {
-        provider: 'AWS_TEXTRACT_ANALYZE_EXPENSE',
-        modelVersion: '1.0',
-        requestId: 'request-pdf-1',
-        vendorName: 'Cloud service',
-        dateCandidates: [{ text: 'Sep 16 2026', confidence: 99 }],
-        summaryFields: {
-          subtotal: null,
-          tax: null,
-          total: null,
-          amountPaid: null,
-        },
-        currencySuggestion: {
-          code: 'USD',
-          confidence: 98,
-          ambiguous: false,
-        },
-        financialConsistency: 'INSUFFICIENT',
-        lineItemCount: 0,
-        lineItemPriceCount: 0,
-        lineItemPriceSumCents: null,
-        lineItemsReconcileToSubtotal: null,
-        lineItemHints: [],
-        lineItemHintsTruncated: false,
-        submittedDocument: {
-          kind: 'PDF',
-          cropApplied: false,
-          width: null,
-          height: null,
-          byteSize: scannedPdf.length,
-        },
+        lines: [
+          {
+            lineId: 'p1-l1',
+            page: 1,
+            text: weakText,
+            confidence: null,
+            geometry: null,
+          },
+        ],
       },
     });
+    scannedPdfRecognition.mockResolvedValueOnce(
+      scannedPdfRecognitionResult(ocrText),
+    );
+
+    const pdf = Buffer.from('%PDF-1.4\n%%EOF', 'ascii');
+    await service.acquireManualFile({
+      originalname: 'weak-native-layer.pdf',
+      mimetype: 'application/pdf',
+      buffer: pdf,
+    });
+
+    expect(scannedPdfRecognition).toHaveBeenCalledWith(pdf);
+    expect(providerFinancial.parseForInboxSuggestion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: ocrText,
+        documentExtraction: expect.objectContaining({
+          inputKind: 'PDF',
+          engine: 'AWS_TEXTRACT',
+          layoutMode: 'GEOMETRY',
+        }) as unknown,
+        pdfNativeTextUsability: expect.objectContaining({
+          disposition: 'SCAN_CANDIDATE',
+          reason: 'INSUFFICIENT_NATIVE_TEXT',
+        }) as unknown,
+      }),
+    );
+    expect(operations.recordInboxParseRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        parserVersion: '6',
+        resultJson: expect.objectContaining({
+          textRecognitionEngine: 'AWS_TEXTRACT',
+          pdfOcrEvidence: expect.objectContaining({
+            provider: 'AWS_TEXTRACT_ANALYZE_EXPENSE_PAGE_OCR',
+            pageCount: 1,
+          }) as unknown,
+        }) as unknown,
+      }) as unknown,
+    );
+  });
+
+  it('keeps scan candidates in manual review when Textract is disabled', async () => {
+    const { service, operations, providerFinancial } = makeService();
+    const weakText = 'Page 1';
+    pdfExtraction.mockResolvedValueOnce({
+      text: weakText,
+      extraction: extractAccountingText(weakText),
+      documentExtraction: {
+        version: 1,
+        inputKind: 'PDF',
+        engine: 'POPPLER',
+        layoutMode: 'TEXT_ONLY',
+        truncated: false,
+        lines: [
+          {
+            lineId: 'p1-l1',
+            page: 1,
+            text: weakText,
+            confidence: null,
+            geometry: null,
+          },
+        ],
+      },
+    });
+
+    await service.acquireManualFile({
+      originalname: 'weak-native-disabled.pdf',
+      mimetype: 'application/pdf',
+      buffer: Buffer.from('%PDF-1.4\n%%EOF', 'ascii'),
+    });
+
+    expect(scannedPdfRecognition).not.toHaveBeenCalled();
+    expect(providerFinancial.parseForInboxSuggestion).not.toHaveBeenCalled();
+    expect(operations.recordInboxParseRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        parserVersion: '6',
+        status: AccountingParseStatus.SUCCESS,
+        resultJson: expect.objectContaining({
+          textRecognitionEngine: 'POPPLER',
+          reviewDisposition: 'UNRECOGNIZED',
+          reviewReason: 'NO_READABLE_TEXT',
+          pdfNativeTextUsability: expect.objectContaining({
+            disposition: 'SCAN_CANDIDATE',
+            reason: 'INSUFFICIENT_NATIVE_TEXT',
+          }) as unknown,
+        }) as unknown,
+      }) as unknown,
+    );
+  });
+
+  it('fails suspicious native text closed without provider parsing or OCR fallback', async () => {
+    const { service, operations, providerFinancial } = makeService();
+    textractEnabled.mockReturnValue(true);
+    const suspiciousText =
+      '\uE000\uE001\uE002\uE003 \uFFFD\uFFFD\uFFFD\uFFFD 12345678';
+    pdfExtraction.mockResolvedValueOnce({
+      text: suspiciousText,
+      extraction: extractAccountingText(suspiciousText),
+      documentExtraction: {
+        version: 1,
+        inputKind: 'PDF',
+        engine: 'POPPLER',
+        layoutMode: 'TEXT_ONLY',
+        truncated: false,
+        lines: [
+          {
+            lineId: 'p1-l1',
+            page: 1,
+            text: suspiciousText,
+            confidence: null,
+            geometry: null,
+          },
+        ],
+      },
+    });
+
+    await service.acquireManualFile({
+      originalname: 'suspicious-native-layer.pdf',
+      mimetype: 'application/pdf',
+      buffer: Buffer.from('%PDF-1.4\n%%EOF', 'ascii'),
+    });
+
+    expect(providerFinancial.parseForInboxSuggestion).not.toHaveBeenCalled();
+    expect(scannedPdfRecognition).not.toHaveBeenCalled();
+    expect(operations.recordInboxParseRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        parserVersion: '6',
+        resultJson: expect.objectContaining({
+          reviewDisposition: 'UNRECOGNIZED',
+          reviewReason: 'NO_READABLE_TEXT',
+          pdfNativeTextUsability: expect.objectContaining({
+            disposition: 'FAIL_CLOSED',
+            reason: 'SUSPICIOUS_NATIVE_TEXT',
+          }) as unknown,
+        }) as unknown,
+      }) as unknown,
+    );
+  });
+
+  it('uses bounded page-raster Textract OCR for scanned PDFs with no local text', async () => {
+    const { service, operations, providerFinancial } = makeService();
+    textractEnabled.mockReturnValue(true);
+    const scannedPdf = Buffer.from('%PDF-1.4\nscanned\n%%EOF', 'ascii');
+    const ocrText =
+      'Cloud service invoice\nSep 16 2026\nSubtotal USD 20.00\nTax USD 0.00\nTotal USD 20.00';
+    scannedPdfRecognition.mockResolvedValueOnce(
+      scannedPdfRecognitionResult(ocrText),
+    );
 
     await service.acquireManualFile({
       originalname: 'scanned-invoice.pdf',
@@ -338,44 +533,90 @@ describe('AccountingInboxAcquisitionService', () => {
       buffer: scannedPdf,
     });
 
-    expect(textractPdfRecognition).toHaveBeenCalledWith(scannedPdf);
+    expect(scannedPdfRecognition).toHaveBeenCalledWith(scannedPdf);
     expect(providerFinancial.parseForInboxSuggestion).toHaveBeenCalledWith(
       expect.objectContaining({
-        text: textractText,
+        text: ocrText,
         documentExtraction: expect.objectContaining({
           engine: 'AWS_TEXTRACT',
           inputKind: 'PDF',
+          layoutMode: 'GEOMETRY',
         }) as unknown,
       }),
     );
     expect(operations.recordInboxParseRun).toHaveBeenCalledWith(
       expect.objectContaining({
+        parserVersion: '6',
         resultJson: expect.objectContaining({
           inputKind: 'PDF',
           textRecognitionEngine: 'AWS_TEXTRACT',
+          pdfNativeTextUsability: expect.objectContaining({
+            disposition: 'SCAN_CANDIDATE',
+            reason: 'NO_NATIVE_TEXT',
+          }) as unknown,
           totalCents: 2000,
           sourceCurrency: 'USD',
           documentExtraction: expect.objectContaining({
             engine: 'AWS_TEXTRACT',
             inputKind: 'PDF',
+            layoutMode: 'GEOMETRY',
           }) as unknown,
-          textractEvidence: expect.objectContaining({
-            provider: 'AWS_TEXTRACT_ANALYZE_EXPENSE',
-            submittedDocument: {
-              kind: 'PDF',
-              cropApplied: false,
-              width: null,
-              height: null,
-              byteSize: scannedPdf.length,
-            },
+          pdfOcrEvidence: expect.objectContaining({
+            provider: 'AWS_TEXTRACT_ANALYZE_EXPENSE_PAGE_OCR',
+            pageCount: 1,
+            rasterDpi: 200,
           }) as unknown,
         }) as unknown,
       }) as unknown,
     );
   });
 
+  it('records scanned-PDF OCR failure as an error without partial provider parsing', async () => {
+    const { service, operations, providerFinancial } = makeService();
+    textractEnabled.mockReturnValue(true);
+    scannedPdfRecognition.mockRejectedValueOnce(
+      new Error('Accounting scanned PDF page 2 OCR failed'),
+    );
+
+    await service.acquireManualFile({
+      originalname: 'scanned-failure.pdf',
+      mimetype: 'application/pdf',
+      buffer: Buffer.from('%PDF-1.4\nscanned\n%%EOF', 'ascii'),
+    });
+
+    expect(providerFinancial.parseForInboxSuggestion).not.toHaveBeenCalled();
+    expect(operations.recordInboxParseRun).toHaveBeenCalledTimes(1);
+    expect(operations.recordInboxParseRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        parserVersion: '2',
+        status: AccountingParseStatus.ERROR,
+        errorMessage: 'Accounting scanned PDF page 2 OCR failed',
+      }),
+    );
+  });
+
   it('normalizes mojibake multipart filenames before persistence and parsing', async () => {
     const { service, operations, providerFinancial } = makeService();
+    const nativeText =
+      'Invoice 2026-09-16\nSubtotal CAD 75.00\nHST CAD 9.75\nTotal CAD 84.75';
+    pdfExtraction.mockResolvedValueOnce({
+      text: nativeText,
+      extraction: extractAccountingText(nativeText),
+      documentExtraction: {
+        version: 1,
+        inputKind: 'PDF',
+        engine: 'POPPLER',
+        layoutMode: 'TEXT_ONLY',
+        truncated: false,
+        lines: nativeText.split('\n').map((text, index) => ({
+          lineId: `p1-l${index + 1}`,
+          page: 1,
+          text,
+          confidence: null,
+          geometry: null,
+        })),
+      },
+    });
     await service.acquireManualFile({
       originalname:
         '6 2026_SanQ Roujiamo \u00e4\u00b8\u0089\u00e7\u00a7\u00a6\u00e8\u0082\u0089\u00e5\u00a4\u00b9\u00e9\u00a6\u008d.pdf',
@@ -752,6 +993,26 @@ describe('AccountingInboxAcquisitionService', () => {
 
   it('keeps same-priority provider recognition ambiguity unclassified for manual review', async () => {
     const { service, operations, providerFinancial } = makeService();
+    const nativeText =
+      'Monthly statement\nSettlement period 2026-09-01 through 2026-09-30\nNet Total CAD 100.00';
+    pdfExtraction.mockResolvedValueOnce({
+      text: nativeText,
+      extraction: extractAccountingText(nativeText),
+      documentExtraction: {
+        version: 1,
+        inputKind: 'PDF',
+        engine: 'POPPLER',
+        layoutMode: 'TEXT_ONLY',
+        truncated: false,
+        lines: nativeText.split('\n').map((text, index) => ({
+          lineId: `p1-l${index + 1}`,
+          page: 1,
+          text,
+          confidence: null,
+          geometry: null,
+        })),
+      },
+    });
     providerFinancial.parseForInboxSuggestion.mockResolvedValueOnce({
       matched: false,
       ambiguousRuleStableIds: [
@@ -779,8 +1040,43 @@ describe('AccountingInboxAcquisitionService', () => {
     expect(operations.suggestUnifiedInboxClassification).not.toHaveBeenCalled();
   });
 
+  it('records ambiguous CSV recognition success with a policy-valid result hash', async () => {
+    const { service, operations, providerFinancial } = makeService();
+    providerFinancial.parseForInboxSuggestion.mockResolvedValueOnce({
+      matched: false,
+      ambiguousRuleStableIds: [
+        'acct_recognition_uber_monthly_statement',
+        'acct_recognition_fantuan_statement',
+      ],
+    });
+
+    await service.acquireManualFile({
+      originalname: 'ambiguous.csv',
+      mimetype: 'text/csv',
+      buffer: Buffer.from('Metric,Amount\nNet Total,100.00\n', 'utf8'),
+    });
+
+    expect(operations.recordInboxParseRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        artifactStableId: 'acctart_csv',
+        parserName: 'accounting-generic-document-review',
+        status: AccountingParseStatus.SUCCESS,
+        resultHash: expect.stringMatching(/^[a-f0-9]{64}$/) as unknown,
+        resultJson: expect.objectContaining({
+          inputKind: 'CSV',
+          providerRecognitionAmbiguousRuleStableIds: [
+            'acct_recognition_uber_monthly_statement',
+            'acct_recognition_fantuan_statement',
+          ],
+        }) as unknown,
+      }) as unknown,
+    );
+    expect(operations.suggestUnifiedInboxClassification).not.toHaveBeenCalled();
+  });
+
   it('keeps Provider API CSV evidence on the existing automatic materialization path', async () => {
     const { service, providerFinancial } = makeService();
+    textractEnabled.mockReturnValue(true);
     providerFinancial.parseAndMaterialize.mockResolvedValueOnce({
       matched: true,
     });
@@ -798,6 +1094,7 @@ describe('AccountingInboxAcquisitionService', () => {
 
     expect(providerFinancial.parseAndMaterialize).toHaveBeenCalled();
     expect(providerFinancial.parseForInboxSuggestion).not.toHaveBeenCalled();
+    expect(scannedPdfRecognition).not.toHaveBeenCalled();
   });
 
   it('does not route unsupported Provider API CSV through structured expense parsing', async () => {
@@ -842,6 +1139,7 @@ describe('AccountingInboxAcquisitionService', () => {
         artifactStableId: 'acctart_csv',
         parserName: 'accounting-structured-expense-csv',
         status: AccountingParseStatus.SUCCESS,
+        resultHash: expect.stringMatching(/^[a-f0-9]{64}$/) as unknown,
         resultJson: expect.objectContaining({
           inputKind: 'CSV',
           structuredExpenseCsv: true,
@@ -883,6 +1181,7 @@ describe('AccountingInboxAcquisitionService', () => {
         artifactStableId: 'acctart_csv',
         parserName: 'accounting-structured-expense-csv',
         status: AccountingParseStatus.SUCCESS,
+        resultHash: expect.stringMatching(/^[a-f0-9]{64}$/) as unknown,
         resultJson: expect.objectContaining({
           structuredExpenseCsv: true,
           structuredExpenseRowCount: 2,
@@ -918,6 +1217,26 @@ describe('AccountingInboxAcquisitionService', () => {
 
   it('does not fall back to generic parsing after recognized provider processing fails', async () => {
     const { service, operations, providerFinancial } = makeService();
+    const nativeText =
+      'Monthly Statement\nDate Jul 01-31, 2026\nSales $100.00\nNet Total $100.00';
+    pdfExtraction.mockResolvedValueOnce({
+      text: nativeText,
+      extraction: extractAccountingText(nativeText),
+      documentExtraction: {
+        version: 1,
+        inputKind: 'PDF',
+        engine: 'POPPLER',
+        layoutMode: 'TEXT_ONLY',
+        truncated: false,
+        lines: nativeText.split('\n').map((text, index) => ({
+          lineId: `p1-l${index + 1}`,
+          page: 1,
+          text,
+          confidence: null,
+          geometry: null,
+        })),
+      },
+    });
     providerFinancial.parseForInboxSuggestion.mockRejectedValueOnce(
       new AccountingProviderFinancialProcessingError(
         'simulated provider persistence failure',

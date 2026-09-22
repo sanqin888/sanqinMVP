@@ -1697,6 +1697,7 @@ model AccountingCategory {
   parent           AccountingCategory?     @relation("AccountingCategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
   children         AccountingCategory[]    @relation("AccountingCategoryTree")
   transactions     AccountingTransaction[]
+  expenseSplits    AccountingExpenseSplit[]
   journalLines     AccountingJournalLine[]
 
   @@unique([name, type])
@@ -2124,12 +2125,31 @@ model AccountingExpenseDocument {
   createdAt            DateTime                             @default(now())
   updatedAt            DateTime                             @updatedAt
   transactions         AccountingTransaction[]
+  splits               AccountingExpenseSplit[]
   paymentAllocations   AccountingExpensePaymentAllocation[]
 
   @@unique([gmailMessageId, gmailAttachmentId])
   @@index([status, createdAt])
   @@index([source, createdAt])
   @@index([occurredAt])
+}
+
+model AccountingExpenseSplit {
+  id                String                    @id @default(uuid()) @db.Uuid
+  splitStableId     String                    @unique @default(cuid())
+  expenseDocumentId String                    @db.Uuid
+  categoryId        String                    @db.Uuid
+  amountCents       Int
+  taxCents          Int                       @default(0)
+  sortOrder         Int                       @default(0)
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+  expenseDocument   AccountingExpenseDocument @relation(fields: [expenseDocumentId], references: [id], onDelete: Cascade)
+  category          AccountingCategory        @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  @@unique([expenseDocumentId, sortOrder])
+  @@index([expenseDocumentId])
+  @@index([categoryId])
 }
 
 model AccountingExpensePaymentAllocation {

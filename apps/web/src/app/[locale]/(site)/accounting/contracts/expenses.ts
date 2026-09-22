@@ -1,5 +1,12 @@
 import type { AccountingInboxItem } from './inbox';
 
+export type AccountingExpenseRecordsPage = {
+  items: AccountingExpenseDocument[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
 export type AccountingExpenseDocument = {
   documentStableId: string;
   source: 'MANUAL' | 'GMAIL';
@@ -29,10 +36,11 @@ export type AccountingExpenseDocument = {
     sortOrder: number;
   }>;
   splits: Array<{
-    txStableId: string;
+    splitStableId: string;
     categoryStableId: string;
     categoryName: string;
     amountCents: number;
     taxCents: number;
+    sortOrder: number;
   }>;
 };

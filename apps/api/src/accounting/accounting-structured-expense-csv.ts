@@ -1,3 +1,5 @@
+import { parseAccountingCsvTable } from './accounting-csv';
+
 export const ACCOUNTING_STRUCTURED_EXPENSE_CSV_PARSER_NAME =
   'accounting-structured-expense-csv';
 export const ACCOUNTING_STRUCTURED_EXPENSE_CSV_PARSER_VERSION = '1';
@@ -83,7 +85,7 @@ const COUNTERPARTY_HEADERS = [
 export function parseAccountingStructuredExpenseCsv(
   text: string,
 ): AccountingStructuredExpenseCsvParseResult {
-  const table = parseCsvTable(text);
+  const table = parseAccountingCsvTable(text);
   if (!table || table.length < 2) return { matched: false };
 
   const headers = trimTrailingEmptyCells(table[0]).map(normalizeHeader);
@@ -146,57 +148,6 @@ export function parseAccountingStructuredExpenseCsv(
 
   if (!rows.length) return { matched: false };
   return { matched: true, headers, rows, invalidRows };
-}
-
-function parseCsvTable(text: string): string[][] | null {
-  const source = text.replace(/^\uFEFF/, '');
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let cell = '';
-  let inQuotes = false;
-
-  for (let index = 0; index < source.length; index += 1) {
-    const char = source[index];
-    if (inQuotes) {
-      if (char === '"') {
-        if (source[index + 1] === '"') {
-          cell += '"';
-          index += 1;
-        } else {
-          inQuotes = false;
-        }
-      } else {
-        cell += char;
-      }
-      continue;
-    }
-
-    if (char === '"') {
-      if (cell.length) return null;
-      inQuotes = true;
-    } else if (char === ',') {
-      row.push(cell);
-      cell = '';
-    } else if (char === '\n' || char === '\r') {
-      if (char === '\r' && source[index + 1] === '\n') index += 1;
-      row.push(cell);
-      cell = '';
-      rows.push(row);
-      row = [];
-    } else {
-      cell += char;
-    }
-  }
-
-  if (inQuotes) return null;
-  if (cell.length || row.length) {
-    row.push(cell);
-    rows.push(row);
-  }
-  while (rows.length && rows[rows.length - 1].every((value) => !value.trim())) {
-    rows.pop();
-  }
-  return rows;
 }
 
 function trimTrailingEmptyCells(input: string[]): string[] {

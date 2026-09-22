@@ -348,8 +348,8 @@ This lane follows `ACCOUNTING_PRODUCT_ROADMAP.md`. Phase 9 remains closed.
 
 Priority: **P0 ACCOUNTING CORRECTNESS / BEFORE NEW FINANCIAL FEATURES**  
 Complexity: **H / XL only if a new OCR runtime is later adopted**  
-State: **SLICE 0 MERGED (#2428 / `bbd0b1c0`) / SLICE 1 + MIGRATION MERGED (#2429 / `1903b32a`, CI #6017 GREEN) / SLICE 2 MERGED (#2431 / `e52c44b9`) / SLICE 3 MERGED (#2432 / `caabf1c1`, CI GREEN) / POPPLER PATH AUDITED / EVIDENCE VIEWER SLICE 1 MERGED (#2435 / `0371a155`, CI #6039 GREEN) / SLICE 1B SOURCE IMPLEMENTED / LOCAL REVIEW / MIGRATION REQUIRED**  
-External gate: **Slice 1B user-local Prisma migration before main/production promotion**  
+State: **SLICE 0 MERGED (#2428 / `bbd0b1c0`) / SLICE 1 + MIGRATION MERGED (#2429 / `1903b32a`, CI #6017 GREEN) / SLICE 2 MERGED (#2431 / `e52c44b9`) / SLICE 3 MERGED (#2432 / `caabf1c1`, CI GREEN) / EVIDENCE VIEWER SLICE 1 MERGED (#2435 / `0371a155`, CI #6039 GREEN) / SLICE 1B MERGED (#2436 / `9ae4d85d`, CI #6042 GREEN) / SLICE 1B MIGRATION SQL REVIEWED (`cc4c8016`) / EVIDENCE VIEWER SLICE 2 MERGED (#2438 / `4d68379e`, CI GREEN) / SLICE 3V-A MERGED (#2439 / `0d6909bb`, PR CI #6054 + MERGED-HEAD CI #6055 GREEN) / SLICE 3V-B MERGED (#2440 / `0ac9117f`, PR CI #6057 + MERGED-HEAD CI #6058 GREEN) / RELIABILITY SLICE A MERGED (#2442 / `994f5a67`) / RELIABILITY SLICE B MERGED (#2443 / `6e89bc3b`, NO MIGRATION) / ORIGINAL SLICE C UX MERGED (#2445 / `da77b9a5`, CI #6074 GREEN) / 3V-B PRODUCTION VERIFICATION PENDING**  
+External gate: **none; active production verification remains for Slice 3V-B scanned-PDF routing**  
 Detailed plan: `docs/architecture/accounting-document-recognition-human-review-plan.md`
 
 Two real provider-evidence cases exposed a workflow-level correctness gap rather than a remaining Phase 9 modularization defect. An Uber monthly PDF lost label/value layout when Poppler plain text was parsed, causing `Tax on Sales` to inherit the Sales amount while the source `Net Total` remained correct; because settlement planning currently proves only Journal balance, the malformed normalized document could still reach READY. A separate Fantuan Summary Adjustment correctly failed closed until a Detail workbook was supplied, but also demonstrated that the operator cannot create a durable reviewed resolution when machine extraction or semantic mapping needs human intervention.
@@ -366,10 +366,10 @@ Target:
 - do not introduce S3/async Textract, Paddle/BDA or a new OCR dependency for the normal path without a new explicit architecture decision;
 - unify source-evidence access behind authenticated `artifactStableId` delivery so normal inspection opens an online viewer and downloading is an explicit operator action;
 - organize retained Accounting evidence with logical folders/assignments only; never physically move source binaries merely to change the operator-visible folder. Allow audited multi-file moves, including confirmed/posted evidence, because organization state is separate from financial authority;
-- keep bounded CSV/XLSX structured preview as the next Viewer-specific read capability;
+- expose bounded CSV/XLSX structured preview through the authenticated artifact stable-ID boundary, rendering plain text values only and never executing formula/macro/external-link behavior;
 - do not introduce suspense accounting merely from this planning decision.
 
-The original implementation sequence through layout-aware Slice 3 is now merged. The historical Uber July document has already been Human-Reviewed/corrected and posted, so later Poppler golden verification must remain read-only and must not reopen that Journal/settlement. The next recognition work is Slice 3V local-PDF verification/routing hardening. Evidence Viewer Slice 1 is merged; Slice 1B adds only logical organization state and is blocked from main/production promotion until its user-generated Prisma migration is reviewed and merged.
+The original implementation sequence through layout-aware Slice 3 is merged. The historical Uber July document has already been Human-Reviewed/corrected and posted, so PDF verification remains read-only and does not reopen that Journal/settlement. Slice 3V is split: **3V-A** native-PDF usability + sanitized Poppler golden is merged in PR #2439, and **3V-B** bounded scanned-PDF page raster/Textract is merged in PR #2440 as `0ac9117f` after final head `3c5c0400`, with PR CI #6057 and merged-head CI #6058 green. 3V-B removes the raw-PDF Textract fallback: scan candidates are bounded to 6 pages, rasterized locally/sequentially at 200 DPI with existing Poppler, sent to synchronous Textract as page images, and merged only from LINE text/confidence/geometry with original page identities. AnalyzeExpense semantic totals/tax/line items do not become provider authority; page/resource failures abort the whole OCR result, while Provider API remains on its existing CSV-owned path. Source/CI work is complete; active production verification of the new scanned-PDF path remains pending. Evidence Viewer Slice 1/1B/2 are merged; Slice 1B's additive user-generated migration `20260921124637_add_accounting_evidence_folders` remains reviewed as matching the schema change with no backfill/drop/rename/physical-file mutation.
 
 ### 5.2 B1 — Expense -> canonical Journal
 
@@ -380,7 +380,13 @@ Hard unlocks: canonical reporting, Trial Balance, Balance Movement.
 
 Do this first.
 
-Current financial reports still combine canonical Journal facts with confirmed Expense split/payment-allocation facts. The remaining `AccountingTransaction` Expense writer is intentional and active even though production currently has zero rows.
+Current financial reports still combine canonical Journal facts with confirmed Expense split/payment-allocation facts. The remaining `AccountingTransaction` Expense writer is intentional and active even though the 2026-09-21 production preflight found zero confirmed Expenses, zero active Expense transactions and zero canonical Expense Journals.
+
+**B1-A state:** **SOURCE + COMPANION MIGRATION MERGED TO DEV / CI GREEN / PRODUCTION DEPLOYMENT NOT CLAIMED**. B1-A merged in PR #2448 as `8614633a` after CI #6082 passed. The companion migration `20260921224139_post_mod_accounting_b1a_expense_split_ownership` is on `dev@7e54853a` and was reviewed as additive-only create-table/index/FK SQL with no backfill/drop/rename/enum change.
+
+**B1-B state:** **MERGED / CI GREEN / PRODUCTION VERIFICATION PENDING / NO MIGRATION / NO JOURNAL REPORT CUTOVER**. PR #2449 merged to `dev` as `324a16eb` after final head `acb8db42` passed CI #6086. Expense API/C0 canonical split reads use `AccountingExpenseSplit`; canonical Expense posting is same-transaction and Expense-authority-gated when complete reviewed payment facts exist. Production verification is not claimed: the 2026-09-21 post-merge production preflight still shows no `AccountingExpenseSplit` table, zero confirmed Expenses, zero active legacy Expense transactions and zero canonical Expense Journals.
+
+**B1-C0 state:** **LOCAL SOURCE COMPLETE / USER REVIEW PENDING / READ-ONLY / NO CUTOVER / NO MIGRATION / NO GRAPH CHANGE** on branch `accounting/b1c-expense-report-cutover` from `origin/dev@324a16eb`. It adds `GET /accounting/report/expense-journal-parity` to compare legacy versus canonical Expense P&L categories, recoverable input tax, payment-account movement, CASH/BANK cashflow, split parity, Journal anchor coverage and canonical v1 authority per Expense and in aggregate. An empty Expense population is a blocker rather than cutover proof. Existing authoritative reports and the legacy Expense Transaction writer remain unchanged until B1-C1 has real production parity evidence.
 
 Target:
 
@@ -395,7 +401,9 @@ Mandatory readiness decision:
 - either require complete payment allocation before posting; or
 - explicitly model unpaid expense / Accounts Payable.
 
-Do not silently treat an unpaid expense as cash/bank paid. If Accounts Payable is selected and schema/CoA changes are required, follow the repository's migration authorization workflow.
+The accepted current product path is the first option: an Expense may still be confirmed while its payment account is unknown, but canonical Expense Journal posting remains fail-closed until the reviewed payment allocation is complete. The Expenses page provides a one-way post-confirm completion action only for confirmed documents whose allocation set is empty; it cannot edit date, amount, category, tax, memo or evidence and cannot replace an already-completed or already-posted payment fact. No Accounts Payable inference is introduced.
+
+Do not silently treat an unpaid expense as cash/bank paid. If Accounts Payable is selected later and schema/CoA changes are required, follow the repository's migration authorization workflow.
 
 ### 5.3 B2 — Canonical Sales Analytics
 

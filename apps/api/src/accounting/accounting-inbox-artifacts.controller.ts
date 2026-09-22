@@ -7,6 +7,7 @@ import {
   NotFoundException,
   Param,
   Post,
+  Query,
   Req,
   Res,
   UploadedFile,
@@ -32,6 +33,7 @@ import {
 } from './accounting-artifact-delivery.service';
 import { AccountingEvidenceFileManagerService } from './accounting-evidence-file-manager.service';
 import { AccountingImageRetentionService } from './accounting-image-retention.service';
+import { AccountingTabularPreviewService } from './accounting-tabular-preview.service';
 import type { AccountingImageRetentionProfile } from './accounting-receipt-image';
 import { getAccountingUploadsDir } from './accounting-storage-path';
 
@@ -44,6 +46,7 @@ export class AccountingInboxArtifactsController {
     private readonly imageRetention: AccountingImageRetentionService,
     private readonly artifactDelivery: AccountingArtifactDeliveryService,
     private readonly evidenceFileManager: AccountingEvidenceFileManagerService,
+    private readonly tabularPreview: AccountingTabularPreviewService,
   ) {}
 
   @Post('inbox/artifacts')
@@ -129,6 +132,14 @@ export class AccountingInboxArtifactsController {
       },
       requireAccountingOperatorUserId(req),
     );
+  }
+
+  @Get('inbox/artifacts/:artifactStableId/tabular-preview')
+  accountingInboxArtifactTabularPreview(
+    @Param('artifactStableId') artifactStableId: string,
+    @Query('sheetIndex') sheetIndex?: string,
+  ) {
+    return this.tabularPreview.previewArtifact(artifactStableId, sheetIndex);
   }
 
   @Get('inbox/artifacts/:artifactStableId/content')

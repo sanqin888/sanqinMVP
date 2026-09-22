@@ -28,6 +28,32 @@ describe('Accounting Inbox expense review UX guard', () => {
     expect(source).toContain('text-xs text-red-600');
   });
 
+  it('keeps machine extraction read-only and exposes editable final booking values without a second review workflow', () => {
+    const source = readFileSync(
+      resolve(__dirname, 'expense-review-panel.tsx'),
+      'utf8',
+    );
+
+    expect(source).toContain("最终入账值（可编辑）");
+    expect(source).toContain('bookingCorrectedFields');
+    expect(source).toContain('value={row.amount}');
+    expect(source).toContain('value={row.tax}');
+    expect(source).not.toContain('/expense/review-revisions');
+    expect(source).not.toContain('保存人工复核草稿');
+    expect(source).not.toContain('确认人工复核');
+  });
+
+  it('warns that final expense confirmation posts the expense and protects the source evidence', () => {
+    const source = readFileSync(
+      resolve(__dirname, 'expense-review-panel.tsx'),
+      'utf8',
+    );
+
+    expect(source).toContain('确认后会创建正式费用记录并写入财务账目');
+    expect(source).toContain('之后不能再永久删除');
+    expect(source).toContain('Confirm and create expense');
+  });
+
   it('keeps source currency before expense date and payment allocations immediately before memo', () => {
     const source = readFileSync(
       resolve(__dirname, 'expense-review-panel.tsx'),

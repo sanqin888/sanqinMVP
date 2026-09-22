@@ -22,16 +22,24 @@ import {
   type AccountingDocumentExtraction,
 } from './accounting-document-extraction';
 import {
+  assessAccountingPdfNativeTextUsability,
+  type AccountingPdfNativeTextUsability,
+} from './accounting-pdf-routing';
+import {
   classifyAccountingDocumentText,
   type AccountingReviewMetadata,
 } from './accounting-document-review';
+import { hashAccountingJson } from './accounting-inbox-core.policy';
 import { extractAccountingImageText } from './accounting-image-ocr';
 import {
   isAccountingTextractExpenseRecognitionEnabled,
   recognizeAccountingExpenseImageWithTextract,
-  recognizeAccountingExpensePdfWithTextract,
   type AccountingTextractExpenseEvidence,
 } from './accounting-textract-expense-recognition';
+import {
+  recognizeAccountingScannedPdfWithTextract,
+  type AccountingScannedPdfOcrEvidence,
+} from './accounting-scanned-pdf-recognition';
 import {
   ACCOUNTING_RECEIPT_IMAGE_POLICY,
   detectAccountingReceiptImageType,
@@ -53,6 +61,7 @@ export const ACCOUNTING_INBOX_FILE_MAX_BYTES = 25 * 1024 * 1024;
 const GENERIC_PARSER_NAME = 'accounting-generic-document-review';
 const GENERIC_PARSER_VERSION = '2';
 const DOCUMENT_EXTRACTION_PARSER_VERSION = '4';
+const PDF_ROUTING_PARSER_VERSION = '6';
 
 type AccountingInboxFile = {
   originalname: string;
@@ -101,7 +110,8 @@ type ImageReviewExtraction = TextReviewExtraction & {
 type PdfReviewExtraction = TextReviewExtraction & {
   textRecognitionEngine: 'POPPLER' | 'AWS_TEXTRACT';
   documentExtraction: AccountingDocumentExtraction;
-  textractEvidence?: AccountingTextractExpenseEvidence;
+  pdfNativeTextUsability: AccountingPdfNativeTextUsability;
+  pdfOcrEvidence?: AccountingScannedPdfOcrEvidence;
 };
 
 @Injectable()
@@ -400,16 +410,18 @@ export class AccountingInboxAcquisitionService {
           ? (provider.ambiguousRuleStableIds ?? [])
           : [];
       if (ambiguousRuleStableIds.length) {
+        const result = {
+          inputKind: 'CSV' as const,
+          providerRecognitionAmbiguousRuleStableIds: ambiguousRuleStableIds,
+          extractedText: text.slice(0, 100_000),
+        };
         await this.inbox.recordInboxParseRun({
           artifactStableId: artifact.artifactStableId,
           parserName: GENERIC_PARSER_NAME,
           parserVersion: GENERIC_PARSER_VERSION,
           status: AccountingParseStatus.SUCCESS,
-          resultJson: {
-            inputKind: 'CSV',
-            providerRecognitionAmbiguousRuleStableIds: ambiguousRuleStableIds,
-            extractedText: text.slice(0, 100_000),
-          },
+          resultHash: hashAccountingJson(result),
+          resultJson: result,
         });
         return false;
       }
@@ -484,6 +496,7 @@ export class AccountingInboxAcquisitionService {
           parserName: ACCOUNTING_STRUCTURED_EXPENSE_CSV_PARSER_NAME,
           parserVersion: ACCOUNTING_STRUCTURED_EXPENSE_CSV_PARSER_VERSION,
           status: AccountingParseStatus.SUCCESS,
+          resultHash: hashAccountingJson(result),
           resultJson: result,
         });
         if (singleRow) {
@@ -516,59 +529,74 @@ export class AccountingInboxAcquisitionService {
       let text = local.text;
       let extraction = local.extraction;
       let documentExtraction = local.documentExtraction;
-      let textRecognitionEngine: PdfReviewExtraction['textRecognitionEngine'] =
-        'POPPLER';
-      let textractEvidence: AccountingTextractExpenseEvidence | undefined;
-
-      let provider = await this.parseProviderEvidence(acquisitionMode, {
-        artifactStableId: artifact.artifactStableId,
+      const pdfNativeTextUsability = assessAccountingPdfNativeTextUsability({
         text,
         documentExtraction,
-        ...providerContext,
       });
-      if (provider.matched) return true;
+      let textRecognitionEngine: PdfReviewExtraction['textRecognitionEngine'] =
+        'POPPLER';
+      let pdfOcrEvidence: AccountingScannedPdfOcrEvidence | undefined;
+      let ambiguousRuleStableIds: string[] = [];
+
+      if (pdfNativeTextUsability.disposition === 'USABLE_NATIVE_TEXT') {
+        const provider = await this.parseProviderEvidence(acquisitionMode, {
+          artifactStableId: artifact.artifactStableId,
+          text,
+          documentExtraction,
+          pdfNativeTextUsability,
+          ...providerContext,
+        });
+        if (provider.matched) return true;
+        ambiguousRuleStableIds =
+          'ambiguousRuleStableIds' in provider
+            ? (provider.ambiguousRuleStableIds ?? [])
+            : [];
+      }
 
       if (
-        !text.trim() &&
+        pdfNativeTextUsability.disposition === 'SCAN_CANDIDATE' &&
         isAccountingTextractExpenseRecognitionEnabled() &&
         acquisitionMode !== AccountingArtifactAcquisitionMode.PROVIDER_API
       ) {
-        try {
-          const textract =
-            await recognizeAccountingExpensePdfWithTextract(buffer);
-          text = textract.text;
-          extraction = textract.extraction;
-          documentExtraction = textract.documentExtraction;
-          textRecognitionEngine = 'AWS_TEXTRACT';
-          textractEvidence = textract.evidence;
-          provider = await this.parseProviderEvidence(acquisitionMode, {
-            artifactStableId: artifact.artifactStableId,
-            text,
-            documentExtraction,
-            ...providerContext,
-          });
-          if (provider.matched) return true;
-        } catch (error) {
-          this.logger.warn(
-            `Accounting Textract PDF recognition failed for ${artifact.artifactStableId}; retaining local PDF result: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          );
-        }
+        const textract =
+          await recognizeAccountingScannedPdfWithTextract(buffer);
+        text = textract.text;
+        extraction = textract.extraction;
+        documentExtraction = textract.documentExtraction;
+        textRecognitionEngine = 'AWS_TEXTRACT';
+        pdfOcrEvidence = textract.evidence;
+        const provider = await this.parseProviderEvidence(acquisitionMode, {
+          artifactStableId: artifact.artifactStableId,
+          text,
+          documentExtraction,
+          pdfNativeTextUsability,
+          pdfOcrEvidence,
+          ...providerContext,
+        });
+        if (provider.matched) return true;
+        ambiguousRuleStableIds =
+          'ambiguousRuleStableIds' in provider
+            ? (provider.ambiguousRuleStableIds ?? [])
+            : [];
       }
 
-      const ambiguousRuleStableIds =
-        'ambiguousRuleStableIds' in provider
-          ? (provider.ambiguousRuleStableIds ?? [])
-          : [];
+      const review =
+        textRecognitionEngine === 'AWS_TEXTRACT' ||
+        pdfNativeTextUsability.disposition === 'USABLE_NATIVE_TEXT'
+          ? classifyAccountingDocumentText(text, extraction)
+          : {
+              reviewDisposition: 'UNRECOGNIZED' as const,
+              reviewReason: 'NO_READABLE_TEXT' as const,
+            };
       const result: PdfReviewExtraction = {
         ...extraction,
         inputKind: 'PDF',
-        ...classifyAccountingDocumentText(text, extraction),
+        ...review,
         extractedText: text.slice(0, 100_000),
         textRecognitionEngine,
         documentExtraction,
-        ...(textractEvidence ? { textractEvidence } : {}),
+        pdfNativeTextUsability,
+        ...(pdfOcrEvidence ? { pdfOcrEvidence } : {}),
         ...(ambiguousRuleStableIds.length
           ? {
               providerRecognitionAmbiguousRuleStableIds: ambiguousRuleStableIds,
@@ -747,9 +775,11 @@ export class AccountingInboxAcquisitionService {
     result: TextReviewExtraction | PdfReviewExtraction | ImageReviewExtraction,
   ) {
     const parserVersion =
-      'documentExtraction' in result
-        ? DOCUMENT_EXTRACTION_PARSER_VERSION
-        : GENERIC_PARSER_VERSION;
+      'pdfNativeTextUsability' in result
+        ? PDF_ROUTING_PARSER_VERSION
+        : 'documentExtraction' in result
+          ? DOCUMENT_EXTRACTION_PARSER_VERSION
+          : GENERIC_PARSER_VERSION;
     await this.inbox.recordInboxParseRun({
       artifactStableId,
       parserName: GENERIC_PARSER_NAME,

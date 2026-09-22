@@ -3,8 +3,8 @@ import sharp from 'sharp';
 import {
   ACCOUNTING_TEXTRACT_EXPENSE_POLICY,
   isAccountingTextractExpenseRecognitionEnabled,
+  recognizeAccountingDocumentPageImageWithTextract,
   recognizeAccountingExpenseImageWithTextract,
-  recognizeAccountingExpensePdfWithTextract,
 } from './accounting-textract-expense-recognition';
 
 function summaryField(
@@ -398,28 +398,28 @@ describe('Accounting Textract expense recognition', () => {
     expect(result.evidence.dateCandidates).toHaveLength(3);
   });
 
-  it('submits scanned PDF bytes unchanged through the synchronous expense mapper', async () => {
-    const pdf = Buffer.from('%PDF-1.4\nscanned-page\n%%EOF', 'ascii');
-    let submitted: Buffer | null = null;
-    const result = await recognizeAccountingExpensePdfWithTextract(
-      pdf,
+  it('submits a prepared page image and exposes only Textract LINE geometry for scanned PDFs', async () => {
+    const input = await receiptImage();
+    let submittedPrefixHex: string | null = null;
+    const result = await recognizeAccountingDocumentPageImageWithTextract(
+      input,
       (document) => {
-        submitted = document;
+        submittedPrefixHex = document.subarray(0, 3).toString('hex');
         return Promise.resolve({
-          $metadata: { requestId: 'textract-pdf-request' },
+          $metadata: { requestId: 'textract-page-request' },
           AnalyzeExpenseModelVersion: '1.0',
           ExpenseDocuments: [
             {
               SummaryFields: [
-                summaryField('SUBTOTAL', '20.00', 99, 'USD'),
-                summaryField('TAX', '0.00', 99, 'USD'),
-                summaryField('TOTAL', '20.00', 99, 'USD'),
+                summaryField('SUBTOTAL', '999.00', 99, 'USD'),
+                summaryField('TAX', '129.87', 99, 'USD'),
+                summaryField('TOTAL', '1128.87', 99, 'USD'),
               ],
               Blocks: [
-                line('Sep 16 2026', 0.1),
-                line('Subtotal USD 20.00', 0.5),
-                line('Tax USD 0.00', 0.55),
-                line('Total USD 20.00', 0.6),
+                line('Sales', 0.2),
+                line('$100.00', 0.2),
+                line('Tax', 0.3),
+                line('$13.00', 0.3),
               ],
             },
           ],
@@ -427,28 +427,45 @@ describe('Accounting Textract expense recognition', () => {
       },
     );
 
-    expect(submitted).toBe(pdf);
-    expect(result.extraction).toEqual(
-      expect.objectContaining({
-        date: '2026-09-16',
-        totalCents: 2000,
-        sourceCurrency: 'USD',
-      }),
-    );
+    expect(submittedPrefixHex).toBe('ffd8ff');
     expect(result.documentExtraction).toEqual(
       expect.objectContaining({
-        inputKind: 'PDF',
+        inputKind: 'IMAGE',
         engine: 'AWS_TEXTRACT',
         layoutMode: 'GEOMETRY',
+        truncated: false,
       }),
     );
-    expect(result.evidence.submittedDocument).toEqual({
-      kind: 'PDF',
-      cropApplied: false,
-      width: null,
-      height: null,
-      byteSize: pdf.length,
-    });
+    expect(result.documentExtraction.lines.map((line) => line.text)).toEqual([
+      'Sales',
+      '$100.00',
+      'Tax',
+      '$13.00',
+    ]);
+    expect(result).not.toHaveProperty('extraction');
+    expect(result).not.toHaveProperty('evidence.summaryFields');
+    expect(result.requestId).toBe('textract-page-request');
+    expect(result.submittedImage.byteSize).toBeLessThanOrEqual(
+      ACCOUNTING_TEXTRACT_EXPENSE_POLICY.maxImageBytes,
+    );
+  });
+
+  it('does not use AnalyzeExpense summary fields as OCR fallback for a scanned PDF page', async () => {
+    const input = await receiptImage();
+
+    await expect(
+      recognizeAccountingDocumentPageImageWithTextract(input, () =>
+        Promise.resolve({
+          $metadata: {},
+          ExpenseDocuments: [
+            {
+              SummaryFields: [summaryField('TOTAL', '1128.87', 99, 'USD')],
+              Blocks: [],
+            },
+          ],
+        } as AnalyzeExpenseCommandOutput),
+      ),
+    ).rejects.toThrow('returned no OCR lines');
   });
 
   it('requires explicit enablement before acquisition uses Textract', () => {

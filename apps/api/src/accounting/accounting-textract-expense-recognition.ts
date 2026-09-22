@@ -12,6 +12,7 @@ import {
 } from './accounting-document-extraction';
 import { analyzeAccountingReceiptImageGeometry } from './accounting-image-ocr';
 import {
+  evaluateAccountingFinancialConsistency,
   extractAccountingText,
   type AccountingPdfExtraction,
 } from './accounting-pdf-extractor';
@@ -97,6 +98,17 @@ export type AccountingTextractExpenseRecognition = {
   evidence: AccountingTextractExpenseEvidence;
 };
 
+export type AccountingTextractDocumentPageRecognition = {
+  documentExtraction: AccountingDocumentExtraction;
+  requestId: string | null;
+  modelVersion: string | null;
+  submittedImage: {
+    width: number;
+    height: number;
+    byteSize: number;
+  };
+};
+
 export type AccountingTextractExpenseRunner = (
   image: Buffer,
 ) => Promise<AnalyzeExpenseCommandOutput>;
@@ -124,27 +136,41 @@ export async function recognizeAccountingExpenseImageWithTextract(
   });
 }
 
-export async function recognizeAccountingExpensePdfWithTextract(
+export async function recognizeAccountingDocumentPageImageWithTextract(
   buffer: Buffer,
   runner: AccountingTextractExpenseRunner = runAnalyzeExpense,
-): Promise<AccountingTextractExpenseRecognition> {
-  if (
-    buffer.length < 5 ||
-    buffer.subarray(0, 5).toString('ascii') !== '%PDF-'
-  ) {
-    throw new Error('Accounting Textract PDF input is invalid');
+): Promise<AccountingTextractDocumentPageRecognition> {
+  const prepared = await prepareAccountingTextractDocumentPageImage(buffer);
+  const response = await runner(prepared.buffer);
+  const document = response.ExpenseDocuments?.[0];
+  if (!document) {
+    throw new Error('Accounting Textract returned no expense document');
   }
-  if (buffer.length > TEXTRACT_MAX_SYNC_BYTES) {
-    throw new Error('Accounting Textract PDF exceeded synchronous byte limit');
+  const documentExtraction = extractTextractLineDocumentExtraction(
+    document,
+    'IMAGE',
+  );
+  if (documentExtraction.truncated) {
+    throw new Error('Accounting Textract document page line limit exceeded');
   }
-  const response = await runner(buffer);
-  return mapTextractExpenseResponse(response, {
-    kind: 'PDF',
-    cropApplied: false,
-    width: null,
-    height: null,
-    byteSize: buffer.length,
-  });
+  if (!documentExtraction.lines.length) {
+    throw new Error('Accounting Textract document page returned no OCR lines');
+  }
+  if (!documentExtraction.lines.some((line) => line.geometry !== null)) {
+    throw new Error(
+      'Accounting Textract document page returned no layout geometry',
+    );
+  }
+  return {
+    documentExtraction,
+    requestId: response.$metadata.requestId ?? null,
+    modelVersion: null,
+    submittedImage: {
+      width: prepared.width,
+      height: prepared.height,
+      byteSize: prepared.buffer.length,
+    },
+  };
 }
 
 function mapTextractExpenseResponse(
@@ -208,17 +234,26 @@ function mapTextractExpenseResponse(
   const lineItemHintsTruncated =
     parsedLineItemHints.length > TEXTRACT_MAX_LINE_ITEM_HINTS;
 
+  const effectiveSubtotalCents = subtotalCents ?? generic.subtotalCents;
+  const effectiveTaxCents = taxCents ?? generic.taxCents;
+  const effectiveTotalCents = totalCents ?? generic.totalCents;
+  const effectiveFinancialConsistency = evaluateAccountingFinancialConsistency(
+    effectiveSubtotalCents,
+    effectiveTaxCents,
+    effectiveTotalCents,
+  );
   const extraction: AccountingPdfExtraction = {
     ...generic,
     date: reviewedDate,
-    subtotalCents: subtotalCents ?? generic.subtotalCents,
-    taxCents: taxCents ?? generic.taxCents,
-    totalCents: totalCents ?? generic.totalCents,
+    subtotalCents: effectiveSubtotalCents,
+    taxCents: effectiveTaxCents,
+    totalCents: effectiveTotalCents,
+    financialConsistency: effectiveFinancialConsistency,
     confidence: deriveTextractExtractionConfidence({
       date: reviewedDate,
       generic,
-      totalCents: totalCents ?? generic.totalCents,
-      financialConsistency,
+      totalCents: effectiveTotalCents,
+      financialConsistency: effectiveFinancialConsistency,
     }),
   };
 
@@ -272,6 +307,81 @@ async function runAnalyzeExpense(
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function prepareAccountingTextractDocumentPageImage(
+  buffer: Buffer,
+): Promise<{
+  buffer: Buffer;
+  width: number;
+  height: number;
+}> {
+  const metadata = await sharp(buffer, {
+    failOn: 'error',
+    limitInputPixels: ACCOUNTING_RECEIPT_IMAGE_POLICY.maxInputPixels,
+  }).metadata();
+  if (!metadata.width || !metadata.height) {
+    throw new Error(
+      'Accounting Textract document page source dimensions are unavailable',
+    );
+  }
+  if ((metadata.pages ?? 1) > 1) {
+    throw new Error(
+      'Accounting Textract document page input must contain exactly one image',
+    );
+  }
+
+  const encode = async (quality: number, maxDimension: number) =>
+    sharp(buffer, {
+      failOn: 'error',
+      limitInputPixels: ACCOUNTING_RECEIPT_IMAGE_POLICY.maxInputPixels,
+      autoOrient: true,
+    })
+      .resize({
+        width: maxDimension,
+        height: maxDimension,
+        fit: 'inside',
+        withoutEnlargement: true,
+      })
+      .jpeg({ quality, chromaSubsampling: '4:4:4' })
+      .toBuffer();
+
+  let prepared = await encode(
+    TEXTRACT_IMAGE_QUALITY,
+    TEXTRACT_MAX_IMAGE_DIMENSION,
+  );
+  if (prepared.length > TEXTRACT_MAX_SYNC_BYTES) {
+    prepared = await encode(
+      TEXTRACT_FALLBACK_IMAGE_QUALITY,
+      Math.min(7_500, TEXTRACT_MAX_IMAGE_DIMENSION),
+    );
+  }
+  if (prepared.length > TEXTRACT_MAX_SYNC_BYTES) {
+    throw new Error(
+      'Accounting Textract document page prepared image exceeded byte limit',
+    );
+  }
+
+  const preparedMetadata = await sharp(prepared).metadata();
+  if (!preparedMetadata.width || !preparedMetadata.height) {
+    throw new Error(
+      'Accounting Textract document page prepared dimensions are unavailable',
+    );
+  }
+  if (
+    preparedMetadata.width > TEXTRACT_MAX_IMAGE_DIMENSION ||
+    preparedMetadata.height > TEXTRACT_MAX_IMAGE_DIMENSION
+  ) {
+    throw new Error(
+      'Accounting Textract document page prepared image exceeded dimension limit',
+    );
+  }
+
+  return {
+    buffer: prepared,
+    width: preparedMetadata.width,
+    height: preparedMetadata.height,
+  };
 }
 
 async function prepareAccountingTextractReceiptImage(buffer: Buffer): Promise<{
@@ -404,7 +514,7 @@ function textractFallbackText(document: TextractExpenseDocument): string {
   return fallback.join('\n');
 }
 
-function extractTextractDocumentExtraction(
+function extractTextractLineDocumentExtraction(
   document: TextractExpenseDocument,
   inputKind: AccountingDocumentExtraction['inputKind'],
 ): AccountingDocumentExtraction {
@@ -436,14 +546,6 @@ function extractTextractDocumentExtraction(
     ACCOUNTING_DOCUMENT_EXTRACTION_POLICY.maxLines,
   );
 
-  if (!rawLines.length) {
-    return createTextOnlyAccountingDocumentExtraction({
-      inputKind,
-      engine: 'AWS_TEXTRACT',
-      text: textractFallbackText(document),
-    });
-  }
-
   const pageCounts = new Map<number, number>();
   return {
     version: 1,
@@ -466,6 +568,22 @@ function extractTextractDocumentExtraction(
       };
     }),
   };
+}
+
+function extractTextractDocumentExtraction(
+  document: TextractExpenseDocument,
+  inputKind: AccountingDocumentExtraction['inputKind'],
+): AccountingDocumentExtraction {
+  const lineExtraction = extractTextractLineDocumentExtraction(
+    document,
+    inputKind,
+  );
+  if (lineExtraction.lines.length) return lineExtraction;
+  return createTextOnlyAccountingDocumentExtraction({
+    inputKind,
+    engine: 'AWS_TEXTRACT',
+    text: textractFallbackText(document),
+  });
 }
 
 function normalizedFieldType(field: { Type?: { Text?: string } }): string {

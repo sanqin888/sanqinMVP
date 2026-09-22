@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "baselineCommit": "1b18fb00",
-  "updatedAt": "2026-09-19",
+  "updatedAt": "2026-09-21",
   "requiredFields": [
     "compat_id",
     "old_owner",
@@ -54,6 +54,33 @@
       "governance_note": "The 2026-09-09 operator decision explicitly freezes the production Web Clover path while Test App/device acceptance and production-merchant authorization are incomplete. Do not modify /v1/charges execution, CARD/Apple Pay/Google Pay tokenization, 3DS/session/pricing-token/contact-verification, Web paid-Order creation, Web external-payment refund, production webhook merchant scope or persisted Web payment/surcharge facts merely to advance modularization. Non-payment bounded-context work may proceed. Resume Web Unified Payment work only after the stated provider/merchant gate, beginning with a fresh read-only production-merchant readiness/correlation audit before any v3 shadow or traffic authority change.",
       "evidence": [
         "docs/payments/clover-pos-integration-charter.md sections 3.8, 9.1 and 12.5"
+      ]
+    },
+    {
+      "compat_id": "accounting.expense-split-ownership.v1",
+      "status": "active_expand_contract",
+      "old_owner": "AccountingTransaction EXPENSE rows retained as the temporary split compatibility copy and current authoritative financial-report arithmetic source",
+      "new_owner": "AccountingExpenseDocument plus AccountingExpenseSplit and payment-allocation child facts as the Expense-owned source for API/C0 and canonical Journal authority",
+      "dual_write_or_read": [
+        "B1-A atomically writes every new/confirmed Expense split to AccountingExpenseSplit and the legacy AccountingTransaction compatibility copy inside the same Serializable Expense write",
+        "B1-B reads Expense API/C0 category/amount/tax facts from AccountingExpenseSplit; C0 and the posting authority still shadow-compare legacy AccountingTransaction semantics and fail closed with SPLIT_PERSISTENCE_MISMATCH",
+        "Expense API/Web cut directly to splitStableId; no response-level txStableId compatibility alias is retained",
+        "B1-C0 adds read-only report/expense-journal-parity evidence across Expense P&L categories, recoverable input tax, payment-account movement, CASH/BANK cashflow, split parity and canonical Journal anchor coverage",
+        "Authoritative financial reports and legacy Expense Transaction writes remain unchanged until B1-C1 passes real production parity evidence"
+      ],
+      "parity_metric": "For every confirmed Expense in the full canonical accounting range, split semantic hashes must match and canonical Expense Journals must exactly match legacy category-level P&L, recoverable input tax, payment-account movement and CASH/BANK cashflow both per Expense source fact and in aggregate; there must be no missing, duplicate or orphan canonical Expense Journal anchors and no non-v1 Expense-document Journal authority. Partial date ranges are diagnostic-only, and an empty confirmed-Expense population is explicitly not accepted as cutover evidence.",
+      "rollback": "Before B1-C1 report cutover, the parity preview is read-only and requires no data rollback; forward-fix AccountingExpenseSplit/parity/Journal authority while authoritative reports remain on legacy arithmetic. Do not delete or rewrite legacy Expense rows merely to hide a parity mismatch.",
+      "exit_criteria": "Companion additive migration is deployed; B1-B owner reads plus canonical Expense Journal authority are production-verified on at least one reviewed complete-payment Expense; B1-C0 reports zero split/report deltas and no missing/duplicate/orphan Journal anchors; B1-C1 then cuts authoritative reporting to Journal facts and stops legacy Expense Transaction writes/read arithmetic before compatibility deletion",
+      "remove_pr": "Post-Modularization Accounting B1 Expense Journal cutover/contraction after split parity, read cutover and canonical Journal authority are production-verified",
+      "deadline": "Remove within B1 before Canonical Sales Analytics / Trial Balance work proceeds",
+      "evidence": [
+        "ACCOUNTING_PRODUCT_ROADMAP.md",
+        "POST_MODULARIZATION_BACKLOG.md",
+        "apps/api/src/accounting/accounting-expense-split.writer.ts",
+        "apps/api/src/accounting/accounting-expense-journal-preview.service.ts",
+        "apps/api/src/accounting/accounting-expense-journal-posting.service.ts",
+        "apps/api/src/accounting/accounting-expense-journal-write-authority.ts",
+        "apps/api/src/accounting/accounting-expense-report-parity.service.ts"
       ]
     }
   ],

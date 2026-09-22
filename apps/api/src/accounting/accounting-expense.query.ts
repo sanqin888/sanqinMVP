@@ -5,6 +5,7 @@ import {
 } from '@prisma/client';
 import type { AccountingDocumentStatus } from './accounting-contracts';
 import type { AccountingDb } from './accounting-db';
+import type { AccountingExpensePaymentState } from './accounting-expense.contracts';
 
 const ACCOUNTING_DOCUMENT_SELECT = {
   documentStableId: true,
@@ -36,16 +37,17 @@ const ACCOUNTING_DOCUMENT_SELECT = {
     },
     orderBy: [{ sortOrder: 'asc' as const }, { createdAt: 'asc' as const }],
   },
-  transactions: {
-    where: { deletedAt: null },
+  splits: {
     select: {
-      txStableId: true,
+      splitStableId: true,
       amountCents: true,
       taxCents: true,
+      sortOrder: true,
       category: {
         select: { categoryStableId: true, name: true },
       },
     },
+    orderBy: [{ sortOrder: 'asc' as const }, { createdAt: 'asc' as const }],
   },
 } satisfies Prisma.AccountingExpenseDocumentSelect;
 
@@ -75,16 +77,67 @@ export async function listAccountingExpenseDocuments(
     orderBy: { createdAt: 'desc' },
     take,
   });
-  const sourceEvidence = await readExpenseSourceEvidence(
-    db,
-    rows.map((row) => row.documentStableId),
-  );
-  return rows.map((row) =>
-    presentAccountingExpenseDocument(
-      row,
-      sourceEvidence.get(row.documentStableId) ?? null,
-    ),
-  );
+  return presentAccountingExpenseRows(db, rows);
+}
+
+export async function listAccountingExpenseRecords(
+  db: AccountingDb,
+  params: {
+    status: AccountingDocumentStatus;
+    limit: number;
+    offset: number;
+    startAt?: Date;
+    toExclusive?: Date;
+    minTotalCents?: number;
+    paymentAccountStableId?: string;
+    paymentState?: AccountingExpensePaymentState;
+  },
+) {
+  const occurredAt =
+    params.startAt || params.toExclusive
+      ? {
+          ...(params.startAt ? { gte: params.startAt } : {}),
+          ...(params.toExclusive ? { lt: params.toExclusive } : {}),
+        }
+      : undefined;
+  const paymentAllocations = params.paymentAccountStableId
+    ? {
+        some: {
+          account: {
+            accountStableId: params.paymentAccountStableId,
+          },
+        },
+      }
+    : params.paymentState === 'UNASSIGNED'
+      ? { none: {} }
+      : params.paymentState === 'ASSIGNED'
+        ? { some: {} }
+        : undefined;
+  const where = {
+    status: params.status,
+    ...(occurredAt ? { occurredAt } : {}),
+    ...(params.minTotalCents !== undefined
+      ? { totalCents: { gte: params.minTotalCents } }
+      : {}),
+    ...(paymentAllocations ? { paymentAllocations } : {}),
+  } satisfies Prisma.AccountingExpenseDocumentWhereInput;
+
+  const [rows, total] = await Promise.all([
+    db.accountingExpenseDocument.findMany({
+      where,
+      select: ACCOUNTING_DOCUMENT_SELECT,
+      orderBy: [{ createdAt: 'desc' }, { documentStableId: 'desc' }],
+      skip: params.offset,
+      take: params.limit,
+    }),
+    db.accountingExpenseDocument.count({ where }),
+  ]);
+  return {
+    items: await presentAccountingExpenseRows(db, rows),
+    total,
+    limit: params.limit,
+    offset: params.offset,
+  };
 }
 
 export async function readAccountingExpenseDocument(
@@ -102,6 +155,22 @@ export async function readAccountingExpenseDocument(
   return presentAccountingExpenseDocument(
     row,
     sourceEvidence.get(documentStableId) ?? null,
+  );
+}
+
+async function presentAccountingExpenseRows(
+  db: AccountingDb,
+  rows: AccountingDocumentRow[],
+) {
+  const sourceEvidence = await readExpenseSourceEvidence(
+    db,
+    rows.map((row) => row.documentStableId),
+  );
+  return rows.map((row) =>
+    presentAccountingExpenseDocument(
+      row,
+      sourceEvidence.get(row.documentStableId) ?? null,
+    ),
   );
 }
 
@@ -192,12 +261,13 @@ function presentAccountingExpenseDocument(
       amountCents: allocation.amountCents,
       sortOrder: allocation.sortOrder,
     })),
-    splits: row.transactions.map((tx) => ({
-      txStableId: tx.txStableId,
-      categoryStableId: tx.category.categoryStableId,
-      categoryName: tx.category.name,
-      amountCents: tx.amountCents,
-      taxCents: tx.taxCents,
+    splits: row.splits.map((split) => ({
+      splitStableId: split.splitStableId,
+      categoryStableId: split.category.categoryStableId,
+      categoryName: split.category.name,
+      amountCents: split.amountCents,
+      taxCents: split.taxCents,
+      sortOrder: split.sortOrder,
     })),
   };
 }

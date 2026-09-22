@@ -114,6 +114,12 @@ export function AccountingInboxItemsList({
           const providerFinancialSuggestionOverridden =
             providerSupplementaryEvidence &&
             item.classification === 'OTHER_DOCUMENT';
+          const expenseRecognitionConsistency =
+            parse.textractEvidence?.financialConsistency === 'MISMATCH'
+              ? 'MISMATCH'
+              : (parse.financialConsistency ??
+                parse.textractEvidence?.financialConsistency ??
+                'INSUFFICIENT');
           return (
             <div
               key={item.inboxItemStableId}
@@ -350,11 +356,82 @@ export function AccountingInboxItemsList({
                       ) : null}
                     </div>
                   </div>
-                ) : parse.totalCents != null ? (
-                  <p>
-                    {isZh ? '识别总额' : 'Detected total'}:{' '}
-                    <strong>{money(parse.totalCents)}</strong>
-                  </p>
+                ) : parse.date ||
+                  parse.subtotalCents != null ||
+                  parse.taxCents != null ||
+                  parse.totalCents != null ? (
+                  <div
+                    className={`rounded-lg border p-3 text-xs ${
+                      expenseRecognitionConsistency === 'MISMATCH'
+                        ? 'border-red-300 bg-red-50 text-red-800'
+                        : expenseRecognitionConsistency === 'MATCHED'
+                          ? 'border-emerald-200 bg-emerald-50/50 text-slate-700'
+                          : 'border-amber-200 bg-amber-50 text-slate-700'
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <strong>{isZh ? '费用识别预览' : 'Expense recognition preview'}</strong>
+                      <span className="font-medium">
+                        {expenseRecognitionConsistency === 'MATCHED'
+                          ? isZh
+                            ? '金额已自洽'
+                            : 'Amounts reconcile'
+                          : expenseRecognitionConsistency === 'MISMATCH'
+                            ? isZh
+                              ? '金额不自洽 · 需人工订正'
+                              : 'Mismatch · correction required'
+                            : isZh
+                              ? '证据不足 · 请核对'
+                              : 'Insufficient evidence · verify'}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+                      <span>
+                        {isZh ? '日期' : 'Date'}: <strong>{parse.date ?? '—'}</strong>
+                      </span>
+                      <span>
+                        {isZh ? '分类' : 'Category'}:{' '}
+                        <strong>{parse.suggestedCategoryName ?? '—'}</strong>
+                      </span>
+                      <span>
+                        {isZh ? '税前' : 'Subtotal'}:{' '}
+                        <strong>
+                          {parse.subtotalCents == null
+                            ? '—'
+                            : money(parse.subtotalCents)}
+                        </strong>
+                      </span>
+                      <span>
+                        {isZh ? '税' : 'Tax'}:{' '}
+                        <strong>
+                          {parse.taxCents == null ? '—' : money(parse.taxCents)}
+                        </strong>
+                      </span>
+                      <span>
+                        {isZh ? '总额' : 'Total'}:{' '}
+                        <strong>
+                          {parse.totalCents == null ? '—' : money(parse.totalCents)}
+                        </strong>
+                      </span>
+                      <span>
+                        {isZh ? '引擎' : 'Engine'}:{' '}
+                        <strong>
+                          {parse.textRecognitionEngine ?? parse.ocrEngine ?? '—'}
+                        </strong>
+                      </span>
+                      <span>
+                        {isZh ? '识别置信度' : 'Recognition confidence'}:{' '}
+                        <strong>{parse.confidence ?? '—'}</strong>
+                      </span>
+                    </div>
+                    {expenseRecognitionConsistency === 'MISMATCH' ? (
+                      <p className="mt-2 font-medium">
+                        {isZh
+                          ? '系统识别的税前 + 税额 ≠ 总额。请打开费用审核，按原始凭证在“最终入账值”中直接订正。'
+                          : 'Recognized subtotal + tax does not equal total. Open expense review and correct the Final booking values directly from source evidence.'}
+                      </p>
+                    ) : null}
+                  </div>
                 ) : null}
                 {evidence ? (
                   <AccountingEvidenceViewer
@@ -392,30 +469,44 @@ export function AccountingInboxItemsList({
                 item.status === 'PENDING_REVIEW' &&
                 item.classification === 'PROVIDER_FINANCIAL_DOCUMENT' &&
                 item.selectedProvider ? (
-                  <button
-                    disabled={confirmingProviderId === item.inboxItemStableId}
-                    onClick={() => void onConfirmProviderFinancial(item)}
-                    className="rounded border px-3 py-1.5 text-sm text-emerald-700 disabled:opacity-50"
-                  >
-                    {confirmingProviderId === item.inboxItemStableId
-                      ? isZh
-                        ? '确认中…'
-                        : 'Confirming…'
-                      : isZh
-                        ? '确认平台财务资料'
-                        : 'Confirm provider financial evidence'}
-                  </button>
+                  <div className="max-w-sm text-right">
+                    <button
+                      disabled={confirmingProviderId === item.inboxItemStableId}
+                      onClick={() => void onConfirmProviderFinancial(item)}
+                      className="rounded border px-3 py-1.5 text-sm text-emerald-700 disabled:opacity-50"
+                    >
+                      {confirmingProviderId === item.inboxItemStableId
+                        ? isZh
+                          ? '确认中…'
+                          : 'Confirming…'
+                        : isZh
+                          ? '确认平台财务资料'
+                          : 'Confirm provider financial evidence'}
+                    </button>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {isZh
+                        ? '确认后会转入“平台结算”，原始证据将受保护；此动作本身不会生成会计分录。'
+                        : 'Confirmation moves this evidence to Provider settlements and protects the source evidence; this action itself does not post a journal entry.'}
+                    </p>
+                  </div>
                 ) : null}
                 {!quarantined &&
                 item.status === 'PENDING_REVIEW' &&
                 item.classification === 'EXPENSE_DOCUMENT' &&
                 parse.requiresBatchExpenseImport !== true ? (
-                  <button
-                    onClick={() => onReviewExpense(item)}
-                    className="rounded border px-3 py-1.5 text-sm text-blue-700"
-                  >
-                    {isZh ? '审核费用' : 'Review expense'}
-                  </button>
+                  <div className="max-w-sm text-right">
+                    <button
+                      onClick={() => onReviewExpense(item)}
+                      className="rounded border px-3 py-1.5 text-sm text-blue-700"
+                    >
+                      {isZh ? '查看并审核费用' : 'Open expense review'}
+                    </button>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {isZh
+                        ? '打开审核页不会入账；只有在审核页确认创建费用后才会生成正式费用记录。'
+                        : 'Opening review does not post anything; a formal expense is created only after confirmation in the review panel.'}
+                    </p>
+                  </div>
                 ) : null}
                 {!quarantined &&
                 item.status === 'PENDING_REVIEW' &&
