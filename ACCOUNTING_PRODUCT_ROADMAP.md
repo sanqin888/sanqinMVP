@@ -257,22 +257,17 @@ The legacy-comparison diagnostic routes `GET /accounting/report/expense-journal-
 
 ### B1-C2 — Expense compatibility contraction
 
-**2026-09-21 source state:** **C2A + C2B SOURCE COMPLETE / MIGRATION REQUIRED / DESTRUCTIVE APPROVAL RECORDED / NO GRAPH CHANGE** on branch `accounting/b1c2-final-persistence-contraction-v2` from `origin/dev@5c84100b`. The earlier readiness evidence from PR #2455 remains authoritative.
+**2026-09-22 state:** **PRODUCTION VERIFIED / CLOSED / MIGRATION DEPLOYED / NO GRAPH CHANGE**. B1-C2 source merged through PR #2456 as `1cd8ee92`; the user-generated migration `20260922041449_post_mod_accounting_b1c2_drop_legacy_accounting_transaction` is committed at `24e99b40`, CI #6110/#6111 passed, and production applied the migration at `2026-09-22T04:34:24Z`.
 
-Production currently runs the B1-C1 cutover. Post-cutover Expense `expense_bmwt1anetgvhiglbc6wsjzf8` confirmed zero new legacy writes; read-only verification immediately before contraction showed exactly one active `AccountingTransaction` compatibility row, `EXPENSE / MANUAL`, 7495 cents amount + 974 cents tax = CAD 84.69. No Web/PWA consumer exists for either retained legacy-comparison route.
+Production verification confirms the `AccountingTransaction` table and `AccountingSourceType` enum are physically absent, both retired diagnostic routes are no longer registered, and the API starts without Prisma/relation errors. The single pre-cutover CAD 84.69 compatibility row was intentionally removed with the table under the approved destructive contraction.
 
-C2A removes `GET /accounting/report/expense-journal-parity` and `GET /accounting/journal/canonical-expenses/shadow-preview` plus their legacy-only services/tests/module wiring. C2B removes the Prisma `AccountingTransaction` model, `AccountingSourceType` enum and Category/Account/ExpenseDocument Transaction relations, and keeps permanent architecture guards against reintroduction. The user explicitly authorized disposal of the historical compatibility row/table/enum.
+Post-migration runtime evidence closes the final gate: Expense `expense_v618ly4fflr6jzyvgeiz3e16`, created at `2026-09-22T04:41:26Z`, persists one Expense-owned split (2909 cents + 378 cents tax), one 3287-cent `account_primary_bank` payment allocation and one canonical Expense v1 Journal `journal_cd4frymqkjt7cm0qvld773xu`. Its three Journal lines debit operating expense 2909, debit recoverable HST/GST 378 and credit primary bank 3287, so debit=credit=3287. Audit evidence records Expense confirmation, split creation and Journal creation after the legacy table was already absent.
 
-Compatibility is **not closed** until the separately user-generated destructive Prisma migration is reviewed, merged, deployed and production verification confirms the table/enum are absent while canonical Expense posting/reporting remains healthy. B2 Canonical Sales Analytics remains gated on that closure.
-
-Expected end-state contraction:
-
-- no `projectAccountingExpenseReportSplit()` in authoritative reporting;
-- no parallel payment-allocation arithmetic for already-posted Expense facts;
-- architecture guard requires 0 `AccountingTransaction` mutation callers;
-- final model drop, if performed, follows destructive migration review rules.
+`accounting.expense-split-ownership.v1` is closed. B2 Canonical Sales Analytics is no longer blocked by Expense compatibility and may proceed to a fresh readiness audit; this closeout does not itself start B2 implementation.
 
 ## 7. Slice B — Canonical Sales Analytics
+
+**2026-09-22 readiness state:** **B1 DEPENDENCY SATISFIED / READY FOR READ-ONLY READINESS AUDIT / IMPLEMENTATION NOT STARTED**. B1-C2 is production-verified and `accounting.expense-split-ownership.v1` is closed. Begin B2 by auditing the current Sales UI/API, canonical Journal dimensions, provider-coverage semantics and payment attribution boundaries before changing report behavior.
 
 Accounting Journal/canonical financial facts own amounts. Orders may provide narrow business dimensions such as channel or canonical primary payment method, but must not become the amount authority again.
 
