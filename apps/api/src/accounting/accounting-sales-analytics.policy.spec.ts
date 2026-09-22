@@ -18,9 +18,9 @@ describe('Accounting sales analytics policy', () => {
     ]) {
       expect(isAccountingSalesSourceFactType(sourceFactType)).toBe(true);
     }
-    expect(isAccountingSalesSourceFactType('accounting.expense_document.v1')).toBe(
-      false,
-    );
+    expect(
+      isAccountingSalesSourceFactType('accounting.expense_document.v1'),
+    ).toBe(false);
     expect(isAccountingSalesSourceFactType(null)).toBe(false);
   });
 

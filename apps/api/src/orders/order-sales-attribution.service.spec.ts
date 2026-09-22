@@ -360,9 +360,9 @@ describe('OrderSalesAttributionReaderService', () => {
       order: { findMany: findManyOrders },
     } as never);
 
-    await expect(
-      service.readBySourceFactStableIds([' ', '']),
-    ).resolves.toEqual([]);
+    await expect(service.readBySourceFactStableIds([' ', ''])).resolves.toEqual(
+      [],
+    );
     expect(findManyEvents).not.toHaveBeenCalled();
     expect(findManyOrders).not.toHaveBeenCalled();
   });

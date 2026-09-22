@@ -2,10 +2,7 @@ export const ORDER_SALES_ATTRIBUTION_READER = Symbol(
   'ORDER_SALES_ATTRIBUTION_READER',
 );
 
-export type OrderSalesAttributionChannelV1 =
-  | 'web'
-  | 'in_store'
-  | 'ubereats';
+export type OrderSalesAttributionChannelV1 = 'web' | 'in_store' | 'ubereats';
 
 export type OrderSalesAttributionPrimaryPaymentMethodV1 =
   | 'CASH'

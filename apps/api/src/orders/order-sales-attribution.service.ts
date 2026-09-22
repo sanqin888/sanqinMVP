@@ -83,9 +83,7 @@ const immutableSaleAttribution = (
 };
 
 @Injectable()
-export class OrderSalesAttributionReaderService
-  implements OrderSalesAttributionReaderPort
-{
+export class OrderSalesAttributionReaderService implements OrderSalesAttributionReaderPort {
   constructor(private readonly prisma: PrismaService) {}
 
   async readBySourceFactStableIds(
@@ -232,9 +230,7 @@ export class OrderSalesAttributionReaderService
   ): Promise<Map<string, OrderSalesAttributionV1>> {
     const stableIds = this.normalizeStableIds(orderStableIds);
     const immutable = await this.readImmutableSaleAttributions(stableIds);
-    const missingIds = stableIds.filter(
-      (stableId) => !immutable.has(stableId),
-    );
+    const missingIds = stableIds.filter((stableId) => !immutable.has(stableId));
     if (missingIds.length === 0) return immutable;
 
     const legacy = await this.readLegacySaleAttributions(missingIds);
