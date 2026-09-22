@@ -241,6 +241,165 @@ describe('AccountingFinancialReportsService canonical fact characterization', ()
     );
   });
 
+  it('applies funding-account policy only to Expense v2 management facts', async () => {
+    const occurredAt = new Date('2026-09-18T16:00:00.000Z');
+    const expenseEntry = (params: {
+      entryStableId: string;
+      sourceFactType: string;
+      sourceFactVersion: number;
+      amountCents: number;
+      taxCents: number;
+      fundingAccountStableId: string;
+      includeInManagement: boolean;
+      memo: string;
+    }) => ({
+      entryStableId: params.entryStableId,
+      kind: AccountingJournalEntryKind.STANDARD,
+      source: AccountingJournalSource.EXPENSE_DOCUMENT,
+      sourceFactType: params.sourceFactType,
+      sourceFactVersion: params.sourceFactVersion,
+      occurredAt,
+      currency: 'CAD',
+      memo: params.memo,
+      createdAt: occurredAt,
+      updatedAt: occurredAt,
+      lines: [
+        {
+          lineNo: 1,
+          debitCents: params.amountCents,
+          creditCents: 0,
+          memo: null,
+          account: {
+            accountStableId: 'account_general_operating_expense',
+            name: '一般经营费用',
+            type: null,
+            accountClass: AccountingAccountClass.EXPENSE,
+            includeFundedExpensesInManagementReports: true,
+          },
+          category: {
+            categoryStableId: 'expense_food',
+            name: '食材',
+            type: AccountingTxType.EXPENSE,
+          },
+        },
+        {
+          lineNo: 2,
+          debitCents: params.taxCents,
+          creditCents: 0,
+          memo: null,
+          account: {
+            accountStableId: 'account_hst_recoverable',
+            name: 'HST/GST 待抵扣',
+            type: null,
+            accountClass: AccountingAccountClass.ASSET,
+            includeFundedExpensesInManagementReports: true,
+          },
+          category: null,
+        },
+        {
+          lineNo: 3,
+          debitCents: 0,
+          creditCents: params.amountCents + params.taxCents,
+          memo: null,
+          account: {
+            accountStableId: params.fundingAccountStableId,
+            name: params.fundingAccountStableId,
+            type: AccountingAccountType.BANK,
+            accountClass: AccountingAccountClass.ASSET,
+            includeFundedExpensesInManagementReports:
+              params.includeInManagement,
+          },
+          category: null,
+        },
+      ],
+    });
+    const prisma = {
+      accountingJournalEntry: {
+        findMany: jest.fn().mockResolvedValue([
+          expenseEntry({
+            entryStableId: 'expense_v2_included',
+            sourceFactType: 'accounting.expense_document.v2',
+            sourceFactVersion: 2,
+            amountCents: 1000,
+            taxCents: 130,
+            fundingAccountStableId: 'account_primary_bank',
+            includeInManagement: true,
+            memo: 'included v2 expense',
+          }),
+          expenseEntry({
+            entryStableId: 'expense_v2_excluded',
+            sourceFactType: 'accounting.expense_document.v2',
+            sourceFactVersion: 2,
+            amountCents: 2000,
+            taxCents: 260,
+            fundingAccountStableId: 'account_cibc',
+            includeInManagement: false,
+            memo: 'excluded v2 expense',
+          }),
+          expenseEntry({
+            entryStableId: 'expense_v1_legacy',
+            sourceFactType: 'accounting.expense_document.v1',
+            sourceFactVersion: 1,
+            amountCents: 3000,
+            taxCents: 390,
+            fundingAccountStableId: 'account_cibc',
+            includeInManagement: false,
+            memo: 'legacy v1 expense',
+          }),
+        ]),
+      },
+      accountingCategory: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            categoryStableId: 'expense_food',
+            name: '食材',
+            type: AccountingTxType.EXPENSE,
+            parent: null,
+          },
+        ]),
+      },
+      accountingInboxItem: {
+        count: jest.fn().mockResolvedValue(0),
+      },
+      accountingPeriodClose: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+      accountingAuditLog: {
+        create: jest.fn().mockResolvedValue({}),
+      },
+    };
+    const period = {
+      clampAccountingFromDate: jest.fn((value: Date | undefined) =>
+        Promise.resolve(value),
+      ),
+      getBusinessTimezone: jest.fn().mockResolvedValue('America/Toronto'),
+      toPeriodKey: jest.fn().mockReturnValue('2026-09'),
+      listPeriodCloseStatus: jest.fn().mockResolvedValue([]),
+    };
+    const service = new AccountingFinancialReportsService(
+      prisma as never,
+      period as never,
+    );
+
+    const pnl = await service.pnlReport({ groupBy: 'month' });
+    expect(pnl.summary.expenseCents).toBe(4000);
+    expect(pnl.byCategory).toEqual([
+      expect.objectContaining({
+        categoryStableId: 'expense_food',
+        amountCents: 4000,
+      }),
+    ]);
+
+    const dashboard = await service.dashboard('2026-09-01', '2026-09-30');
+    expect(dashboard.summary.expenseCents).toBe(4000);
+    expect(dashboard.summary.taxCents).toBe(780);
+
+    const canonicalCsv = await service.exportTxCsv({}, 'user_stable_1');
+    expect(canonicalCsv).toContain('included v2 expense');
+    expect(canonicalCsv).toContain('excluded v2 expense');
+    expect(canonicalCsv).toContain('legacy v1 expense');
+  });
+
   it('interprets date-only report ranges in the configured business timezone', async () => {
     const prisma = {
       accountingJournalEntry: {
