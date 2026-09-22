@@ -1,7 +1,7 @@
 # Post-Modularization Accounting Product Roadmap
 
-Status: **B0 IN PROGRESS — SLICE 0-3 + 3V-A + 3V-B DEV MERGED / CI GREEN / 3V-B PRODUCTION VERIFICATION PENDING / EVIDENCE VIEWER SLICE 1 + 1B + 2 MERGED / 1B MIGRATION SQL REVIEWED — DO NOT REOPEN PHASE 9**  
-Planning date: 2026-09-20; updated: 2026-09-21  
+Status: **B2 PREPARATION IN PROGRESS — B1 CLOSED / B2-P0A PRODUCTION VERIFIED / B2-P0B LOCAL SOURCE IMPLEMENTED / B2-A NOT STARTED / B0 3V-B PRODUCTION VERIFICATION STILL PENDING — DO NOT REOPEN PHASE 9**  
+Planning date: 2026-09-20; updated: 2026-09-22  
 Baseline: Phase 9 **PRODUCTION VERIFIED / CLOSED** at production `main@dbea68f3`  
 Document-recognition audit baseline: `origin/dev@1ede0599`; Slice 3 merged as `caabf1c1`; Evidence Viewer Slice 1 merged as `0371a155`; Slice 1B merged as `9ae4d85d`; additive folder migration committed as `cc4c8016`; Evidence Viewer Slice 2 merged in PR #2438 as `4d68379e`; Slice 3V-A merged in PR #2439 as `0d6909bb` with PR CI #6054 and merged-head CI #6055 green; Slice 3V-B merged in PR #2440 as `0ac9117f` after final head `3c5c0400`, PR CI #6057 and merged-head CI #6058 green
 
@@ -257,24 +257,23 @@ The legacy-comparison diagnostic routes `GET /accounting/report/expense-journal-
 
 ### B1-C2 — Expense compatibility contraction
 
-**2026-09-21 source state:** **C2A + C2B SOURCE COMPLETE / MIGRATION REQUIRED / DESTRUCTIVE APPROVAL RECORDED / NO GRAPH CHANGE** on branch `accounting/b1c2-final-persistence-contraction-v2` from `origin/dev@5c84100b`. The earlier readiness evidence from PR #2455 remains authoritative.
+**2026-09-22 state:** **PRODUCTION VERIFIED / CLOSED / MIGRATION DEPLOYED / NO GRAPH CHANGE**. B1-C2 source merged through PR #2456 as `1cd8ee92`; the user-generated migration `20260922041449_post_mod_accounting_b1c2_drop_legacy_accounting_transaction` is committed at `24e99b40`, CI #6110/#6111 passed, and production applied the migration at `2026-09-22T04:34:24Z`.
 
-Production currently runs the B1-C1 cutover. Post-cutover Expense `expense_bmwt1anetgvhiglbc6wsjzf8` confirmed zero new legacy writes; read-only verification immediately before contraction showed exactly one active `AccountingTransaction` compatibility row, `EXPENSE / MANUAL`, 7495 cents amount + 974 cents tax = CAD 84.69. No Web/PWA consumer exists for either retained legacy-comparison route.
+Production verification confirms the `AccountingTransaction` table and `AccountingSourceType` enum are physically absent, both retired diagnostic routes are no longer registered, and the API starts without Prisma/relation errors. The single pre-cutover CAD 84.69 compatibility row was intentionally removed with the table under the approved destructive contraction.
 
-C2A removes `GET /accounting/report/expense-journal-parity` and `GET /accounting/journal/canonical-expenses/shadow-preview` plus their legacy-only services/tests/module wiring. C2B removes the Prisma `AccountingTransaction` model, `AccountingSourceType` enum and Category/Account/ExpenseDocument Transaction relations, and keeps permanent architecture guards against reintroduction. The user explicitly authorized disposal of the historical compatibility row/table/enum.
+Post-migration runtime evidence closes the final gate: Expense `expense_v618ly4fflr6jzyvgeiz3e16`, created at `2026-09-22T04:41:26Z`, persists one Expense-owned split (2909 cents + 378 cents tax), one 3287-cent `account_primary_bank` payment allocation and one canonical Expense v1 Journal `journal_cd4frymqkjt7cm0qvld773xu`. Its three Journal lines debit operating expense 2909, debit recoverable HST/GST 378 and credit primary bank 3287, so debit=credit=3287. Audit evidence records Expense confirmation, split creation and Journal creation after the legacy table was already absent.
 
-Compatibility is **not closed** until the separately user-generated destructive Prisma migration is reviewed, merged, deployed and production verification confirms the table/enum are absent while canonical Expense posting/reporting remains healthy. B2 Canonical Sales Analytics remains gated on that closure.
-
-Expected end-state contraction:
-
-- no `projectAccountingExpenseReportSplit()` in authoritative reporting;
-- no parallel payment-allocation arithmetic for already-posted Expense facts;
-- architecture guard requires 0 `AccountingTransaction` mutation callers;
-- final model drop, if performed, follows destructive migration review rules.
+`accounting.expense-split-ownership.v1` is closed. B2 Canonical Sales Analytics is no longer blocked by Expense compatibility and may proceed to a fresh readiness audit; this closeout does not itself start B2 implementation.
 
 ## 7. Slice B — Canonical Sales Analytics
 
-Accounting Journal/canonical financial facts own amounts. Orders may provide narrow business dimensions such as channel or canonical primary payment method, but must not become the amount authority again.
+**2026-09-22 readiness state:** **B1 DEPENDENCY SATISFIED / B2-P0A PRODUCTION VERIFIED / B2-P0B LOCAL SOURCE IMPLEMENTED / B2-A NOT STARTED**. The B2 readiness audit found that immutable Orders SALE facts remained durable after the 2026-09-13 historical Journal replay, but `AccountingCanonicalSalePostingService.postCanonicalSale()` had no production runtime caller. This was a continuity gap, not a Journal redesign requirement.
+
+**B2-P0A — Canonical SALE catch-up:** the operator ran the existing guarded replay for `2026-09-13..2026-09-23` exclusive. Preview/execution reported 131 candidates / 131 READY / 0 BLOCKED, zero parity delta and balanced debit/credit of 213172 cents. Read-only production verification then found 131 immutable SALE facts, 131 exactly-one canonical SALE Journal anchors, zero missing and zero duplicate anchors across Toronto business dates 2026-09-13 through 2026-09-22. P0A is complete.
+
+**B2-P0B — Continuous Canonical SALE Posting:** local branch `accounting/b2-p0b-continuous-sale-posting` adds an Accounting-owned convergence processor over the existing Orders public financial-fact reader. It performs startup full recovery in bounded seven-day chunks, frequent recent-window reconciliation, a periodic full reconciliation, batch Journal-anchor exclusion and bounded writes through the existing canonical posting service. Only `IMMUTABLE_SALE_SNAPSHOT` facts are eligible automatically; `LEGACY_CURRENT_ORDER` remains controlled-replay-only. POS/Web facts may converge automatically. Uber facts remain deferred while Accounting provider coverage has no `liveOrderFactCutoverAt`, and become eligible only at/after that cutover, preserving the existing statement-authoritative pre-cutover policy. Existing Journal idempotency is the multi-instance convergence authority. No new queue/table, Prisma schema/migration, package dependency, Orders implementation write-back, provider wire change or Journal policy redesign is introduced. Local diff/source review is complete; GitHub CI/deployment/forward-order verification are still pending.
+
+Accounting Journal/canonical financial facts own amounts. Orders may provide narrow business dimensions such as channel or canonical primary payment method, but must not become the amount authority again. B2-A Sales Analytics contracts/projection work should begin only after P0B is reviewed, CI-green, deployed and verified with new forward SALE facts rather than another manual replay.
 
 ### Net Sales Revenue
 

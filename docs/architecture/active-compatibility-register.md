@@ -13,37 +13,6 @@ safe default values unrelated to an old version) is not compatibility debt.
 |---|---|---|---|---|
 | `payments.pos-card-legacy.v1` | active / pre-production | direct paid Order → Unified Payment Core + Terminal + finalize | POS ↔ Clover realtime/recovery complete; real-device acceptance; one settlement cycle reconciled; pre-cutover Accounting facts resolved; clean production stability window; legacy calls zero | Phase J cleanup after Terminal synchronization/cutover stability |
 | `payments.web-checkout-v1.v1` | guarded production | CheckoutIntent/Clover v1 Web path → Unified Payment Core + v3 truth | Test App/device acceptance complete; App installed/OAuth-authorized on operating production merchant; fresh production-merchant correlation audit passes; Web cutover accepted; one settlement cycle reconciled; old calls zero before compatibility deletion | Deferred until production-merchant Unified authorization and accepted cutover |
-| `accounting.expense-split-ownership.v1` | source contracted / migration pending | retired historical `AccountingTransaction` EXPENSE compatibility persistence → Expense-owned splits/payment facts + canonical Expense Journal | B1-C2 source merged/CI-green; user-generated destructive migration reviewed/merged/deployed; production confirms table+enum absent and canonical Expense authority unchanged | Close before Canonical Sales Analytics / Trial Balance |
-
-B1-A/B1-B/B1-C0 are deployed through production head `f164be7a`; the additive
-Expense-split migration is applied and B1-B has real runtime evidence. Reviewed Expense
-`expense_iet91ut05fafso8rl48kds9v` booked CAD 84.69 with one Expense-owned split,
-one complete payment allocation and one canonical Expense v1 Journal. Full-range
-read-only parity reconstruction from 2026-06-01 has zero split/anchor blockers and exact
-P&L, recoverable-tax, payment-account and OPERATING cashflow parity.
-
-B1-C1 is merged through PR #2452 / `cdd3b47a`; final head `dc849d20` passed
-CI #6099 and production now runs the merged cutover. Post-cutover Expense
-`expense_bmwt1anetgvhiglbc6wsjzf8` booked CAD 32.22 with one ExpenseSplit, one complete
-payment allocation and one canonical Expense v1 Journal while creating zero legacy
-Transaction rows. Total active `AccountingTransaction` count remains exactly 1, the
-pre-cutover compatibility row for `expense_iet91ut05fafso8rl48kds9v`. Across both Expense
-Journals, P&L is 10347 cents, recoverable tax 1344 cents and primary-bank / CASH+BANK
-movement -11691 cents. No Web/PWA consumer exists for either legacy-comparison route.
-
-The readiness gate was merged through PR #2455 and the explicit contract/destructive
-approval has since been granted. B1-C2 source now removes both legacy diagnostic routes
-and the `AccountingTransaction` / `AccountingSourceType` persistence surface while
-retaining permanent architecture guards against reintroduction. Read-only production
-evidence immediately before contraction showed exactly one active historical row:
-`EXPENSE / MANUAL`, 7495 cents amount + 974 cents tax = CAD 84.69; disposal of that
-row/table/enum is explicitly approved.
-
-Compatibility remains open only because the destructive Prisma migration is intentionally
-user-generated. Close this entry only after that migration is reviewed, merged, deployed
-and production confirms the table and enum are absent while canonical Expense
-posting/reporting remains healthy. Do not recreate legacy rows merely to satisfy retired
-diagnostics.
 
 The payment entries are no longer governed by a whole-context freeze. The POS
 Clover Terminal path is pre-production and may be structurally modularized before
@@ -90,6 +59,7 @@ Orders remain 5D-C scope.
 
 | compat_id | Closed by | Result |
 |---|---|---|
+| `accounting.expense-split-ownership.v1` | PR #2456 / `1cd8ee92` + migration `20260922041449_post_mod_accounting_b1c2_drop_legacy_accounting_transaction` at `24e99b40`; production verification 2026-09-22 | Legacy `AccountingTransaction` Expense persistence and `AccountingSourceType` are physically removed; both legacy comparison routes are unregistered. Post-migration Expense `expense_v618ly4fflr6jzyvgeiz3e16` persisted one ExpenseSplit, one complete 3287-cent primary-bank allocation and balanced canonical Journal `journal_cd4frymqkjt7cm0qvld773xu` with debit=credit=3287, while API logs remained free of retired-table/Prisma relation errors. B2 Canonical Sales Analytics is unblocked for readiness audit. |
 | `accounting.order-revenue-journal-cutover.v1` | PR #2313 / `72395609`; production verification 2026-09-13 | Legacy `order-accrual` is unavailable and canonical Journal is the sole Revenue automation writer. Fresh production plan `83f242b85a4f85b48db9803454ba9a14b023c2f574678806e03e71983c86c258` yielded 1215 candidates / 1210 READY / five mutation-only blocks with zero parity delta and balanced 2,163,201-cent debit/credit. First replay persisted 1210 Journal entries / 3864 lines / 1210 audit rows with 1210 distinct source facts/idempotency keys, zero mutation SALE rows and zero retired `AUTO_ORDER*` rows; an identical second replay left all counts and amounts unchanged. The five mutations remain 5D-C scope. |
 | `pos-connectivity.read-model-shadow.v1` | PR #2258 / `d1c7d7b3`; final PR head `09ddc06c`, CI #5408 green | Pre-cutover evidence completed through PR #2254 / `8abf3162` and PR #2256 / `ee727ef2`, including ONLINE parity, UNKNOWN/OFFLINE provider unavailability, recovery and clean projection/shadow logs. Slice 5B then removed Uber direct `PosDevice` + old connectivity-helper reads and all shadow compatibility, made `PosConnectivityReadModel` authoritative through the required External Channels query port, moved the helper into POS ownership and removed the active compatibility entry. |
 | `brand-store.default-store-identity.v1` | PR #2119 / `7110dd46`, PR #2122 / `53688897`, PR #2124 / `0917f66c`; PR #2272 / `fb6f3bb8` | Explicit `storeStableId` owns Brand/Store, Admin, POS/Orders and Uber SanQ-store context; internal Store DB IDs and provider Uber Store IDs remain distinct. Phase 2 removed the eight Uber Prisma `storeId` defaults and production verification proved new canonical writes. Phase 8 Slice 8.5 removed the remaining Test Store provider-ID OpsTicket read/retry/dedup aliases and the menu-availability provider-ID alias; PR/merged-head CI passed and post-deploy Operations, pause/resume and item availability verification remained canonical with no new provider-UUID-scoped ticket. It includes no data-cleanup migration: all current Uber records remain test data and are retained until Uber Production Verification passes, then the complete test dataset will be removed through a separately reviewed cleanup. Provider wire compatibility remains separately protected. |

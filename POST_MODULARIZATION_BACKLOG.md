@@ -390,7 +390,7 @@ Production now runs the B1-A/B1-B/B1-C0 stack and has real replacement evidence 
 
 **B1-C1 state:** **PRODUCTION VERIFIED / MERGED / CI GREEN / NO MIGRATION / NO GRAPH CHANGE**. PR #2452 merged to `dev` as `cdd3b47a` after final head `dc849d20` passed CI #6099. Production now runs the cutover; post-cutover Expense `expense_bmwt1anetgvhiglbc6wsjzf8` proves zero legacy Transaction write while preserving ExpenseSplit + canonical Journal authority and Journal-driven P&L/account-balance/cashflow behavior.
 
-**B1-C2 state:** **C2A + C2B SOURCE COMPLETE / MIGRATION REQUIRED / DESTRUCTIVE APPROVAL RECORDED / NO GRAPH CHANGE**. The readiness evidence merged via PR #2455 remains valid. C2A retires both legacy Expense comparison routes and their legacy-only wiring; C2B removes the `AccountingTransaction` Prisma model, obsolete `AccountingSourceType` enum and Transaction relations while architecture guards require them to stay absent. Read-only production evidence immediately before contraction showed exactly one active historical compatibility row totaling CAD 84.69, and its disposal with the table/enum is explicitly approved. Compatibility remains open until the user-generated destructive migration is reviewed/merged/deployed and production verification passes; B2 remains gated until then.
+**B1-C2 state:** **PRODUCTION VERIFIED / CLOSED / MIGRATION DEPLOYED / NO GRAPH CHANGE**. Source merged through PR #2456 / `1cd8ee92`; migration `20260922041449_post_mod_accounting_b1c2_drop_legacy_accounting_transaction` is committed at `24e99b40`, CI #6110/#6111 passed and production applied it at `2026-09-22T04:34:24Z`. Production confirms the retired table/enum are absent, both legacy diagnostics are unregistered, and no post-deploy Prisma/relation errors occurred. Post-migration Expense `expense_v618ly4fflr6jzyvgeiz3e16` created one ExpenseSplit, one complete 3287-cent payment allocation and one balanced three-line canonical Expense Journal with debit=credit=3287. `accounting.expense-split-ownership.v1` is closed; B2 Canonical Sales Analytics is now unblocked for readiness audit.
 
 Target:
 
@@ -413,7 +413,13 @@ Do not silently treat an unpaid expense as cash/bank paid. If Accounts Payable i
 
 Priority: **P1**  
 Complexity: **H**  
-Depends on: **B1** by approved Accounting roadmap sequence.
+Depends on: **B1** by approved Accounting roadmap sequence — **satisfied 2026-09-22 by B1-C2 production closeout**.
+
+Current state: **B2-P0A PRODUCTION VERIFIED / B2-P0B LOCAL SOURCE IMPLEMENTED / B2-A NOT STARTED**. The readiness audit found a prerequisite reliability gap before Sales Analytics projection work: Orders continued to create durable immutable `order.financial_sale.v1` facts, but the canonical SALE posting service had no runtime consumer after the controlled 2026-09-13 replay.
+
+P0A used the existing guarded replay to catch up `2026-09-13..2026-09-23` exclusive: 131/131 READY, 0 BLOCKED, zero parity delta, balanced 213172-cent debit/credit. Production read-only verification then found 131 immutable facts / 131 exactly-one Journal anchors / 0 missing / 0 duplicate.
+
+P0B on local branch `accounting/b2-p0b-continuous-sale-posting` adds an Accounting-owned durable convergence processor without changing Journal design or Orders ownership. Startup performs full recovery in bounded chunks; steady state scans a recent window and periodically re-runs full reconciliation. It posts only missing `IMMUTABLE_SALE_SNAPSHOT` facts through the existing canonical posting service, never auto-reconstructs `LEGACY_CURRENT_ORDER`, and relies on the existing Journal idempotency key for concurrent/retry convergence. POS/Web facts are eligible immediately. Uber facts remain deferred until Accounting provider coverage has a non-null `liveOrderFactCutoverAt`, then only facts at/after that instant are eligible. No schema/migration, package, new queue/table, provider wire or new context direction is introduced. CI/deployment/new-order production verification remain pending before B2-A.
 
 The current Accounting Sales page mixes canonical posted income with Orders-owned paid-total channel/payment slices. Those Order totals are useful business dimensions but are not canonical Accounting revenue.
 
