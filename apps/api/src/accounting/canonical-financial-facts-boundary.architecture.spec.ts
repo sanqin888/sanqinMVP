@@ -391,11 +391,11 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(accountingFinancialReportsService).toContain(
       'accountingJournalEntry.findMany',
     );
-    expect(accountingFinancialReportsService).toContain(
+    expect(accountingFinancialReportsService).not.toContain(
       'accountingTransaction.findMany',
     );
-    expect(accountingFinancialReportsService).toContain(
-      'AccountingDocumentStatus.CONFIRMED',
+    expect(accountingFinancialReportsService).not.toContain(
+      'accountingExpensePaymentAllocation.findMany',
     );
     expect(accountingService).toContain('async dimensionSlice(');
     expect(accountingJournalService).not.toContain(
@@ -405,12 +405,9 @@ describe('Phase 9 canonical financial facts boundary', () => {
       'accountingTransaction.createMany',
     );
     expect(accountingExpenseSplitWriter).toContain(
-      '@compat accounting.expense-split-ownership.v1',
-    );
-    expect(accountingExpenseSplitWriter).toContain(
       'accountingExpenseSplit.createMany',
     );
-    expect(accountingExpenseSplitWriter).toContain(
+    expect(accountingExpenseSplitWriter).not.toContain(
       'accountingTransaction.createMany',
     );
 
@@ -427,10 +424,7 @@ describe('Phase 9 canonical financial facts boundary', () => {
       )
       .sort();
 
-    expect(transactionMutationCallers).toEqual([
-      'accounting/accounting-expense-split.writer.ts',
-      'accounting/accounting-expense.service.ts',
-    ]);
+    expect(transactionMutationCallers).toEqual([]);
 
     const expenseSplitMutationCallers = scanTypeScript(ACCOUNTING_ROOT, {
       productionOnly: true,

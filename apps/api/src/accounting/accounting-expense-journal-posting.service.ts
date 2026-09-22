@@ -12,7 +12,6 @@ import {
 } from './accounting-expense-journal.policy';
 import { AccountingJournalPolicyError } from './accounting-journal-policy';
 import { buildCanonicalExpenseJournalWritePlan } from './accounting-expense-journal-write-authority';
-import { compareAccountingExpenseSplitPersistence } from './accounting-expense-split-parity';
 import { AccountingJournalService } from './accounting-journal.service';
 
 type PersistedExpensePostingFact = {
@@ -34,11 +33,6 @@ type PersistedExpensePostingFact = {
     paymentAllocationStableId: string;
     amountCents: number;
     account: { accountStableId: string };
-  }>;
-  transactions: Array<{
-    amountCents: number;
-    taxCents: number;
-    category: { categoryStableId: string };
   }>;
 };
 
@@ -114,38 +108,11 @@ export class AccountingExpenseJournalPostingService {
             account: { select: { accountStableId: true } },
           },
         },
-        transactions: {
-          where: { deletedAt: null },
-          orderBy: [{ createdAt: 'asc' }, { txStableId: 'asc' }],
-          select: {
-            amountCents: true,
-            taxCents: true,
-            category: { select: { categoryStableId: true } },
-          },
-        },
       },
     });
     if (!document) throw new NotFoundException('expense document not found');
     if (document.status !== AccountingDocumentStatus.CONFIRMED) {
       throw new ConflictException('expense document is not confirmed');
-    }
-
-    const parity = compareAccountingExpenseSplitPersistence(
-      document.transactions.map((row) => ({
-        categoryStableId: row.category.categoryStableId,
-        amountCents: row.amountCents,
-        taxCents: row.taxCents,
-      })),
-      document.splits.map((row) => ({
-        categoryStableId: row.category.categoryStableId,
-        amountCents: row.amountCents,
-        taxCents: row.taxCents,
-      })),
-    );
-    if (parity.status === 'MISMATCH') {
-      throw new ConflictException(
-        'SPLIT_PERSISTENCE_MISMATCH: Expense-owned split facts do not match the legacy compatibility copy',
-      );
     }
 
     if (document.paymentAllocations.length === 0) {

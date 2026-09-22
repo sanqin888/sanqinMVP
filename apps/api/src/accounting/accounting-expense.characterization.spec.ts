@@ -6,7 +6,6 @@ import {
   AccountingInboxClassification,
   AccountingInboxMaterializedEntityType,
   AccountingInboxStatus,
-  AccountingSourceType,
   AccountingTxType,
 } from '@prisma/client';
 import { AccountingExpenseService } from './accounting-expense.service';
@@ -55,9 +54,6 @@ describe('AccountingExpenseService expense-write characterization', () => {
         });
       },
     );
-    type TransactionCreateManyArgs = {
-      data: Array<Record<string, unknown>>;
-    };
     type PaymentAllocationCreateManyArgs = {
       data: Array<{
         paymentAllocationStableId: string;
@@ -77,9 +73,6 @@ describe('AccountingExpenseService expense-write characterization', () => {
         sortOrder: number;
       }>;
     };
-    const createMany = jest.fn((args: TransactionCreateManyArgs) =>
-      Promise.resolve({ count: args.data.length }),
-    );
     const createExpenseSplitMany = jest.fn((args: ExpenseSplitCreateManyArgs) =>
       Promise.resolve({ count: args.data.length }),
     );
@@ -108,7 +101,6 @@ describe('AccountingExpenseService expense-write characterization', () => {
       accountingExpenseDocument: { create: createDocument },
       accountingExpensePaymentAllocation: { createMany: createAllocationMany },
       accountingExpenseSplit: { createMany: createExpenseSplitMany },
-      accountingTransaction: { createMany },
       accountingAuditLog: { createMany: createAuditMany },
     };
     const transaction = jest.fn(
@@ -225,36 +217,11 @@ describe('AccountingExpenseService expense-write characterization', () => {
         }) as unknown as Record<string, unknown>,
       ],
     });
-    expect(createMany).toHaveBeenCalledWith({
-      data: [
-        expect.objectContaining({
-          type: AccountingTxType.EXPENSE,
-          source: AccountingSourceType.MANUAL,
-          amountCents: 600,
-          taxCents: 78,
-          categoryId: 'category-food-db-id',
-          documentId: 'expense-document-db-id',
-          idempotencyKey: `expense:${generatedDocumentStableId}:0`,
-          externalRef: generatedDocumentStableId,
-          createdByUserStableId: 'user_stable_1',
-          updatedByUserStableId: 'user_stable_1',
-        }) as unknown as Record<string, unknown>,
-        expect.objectContaining({
-          amountCents: 400,
-          taxCents: 52,
-          categoryId: 'category-packaging-db-id',
-          idempotencyKey: `expense:${generatedDocumentStableId}:1`,
-        }) as unknown as Record<string, unknown>,
-      ],
-    });
-    const transactionCreateArgs = createMany.mock.calls[0]?.[0];
-    expect(transactionCreateArgs?.data[0]).not.toHaveProperty('accountId');
-    expect(transactionCreateArgs?.data[1]).not.toHaveProperty('accountId');
     expect(createAuditMany).toHaveBeenCalledWith({
       data: [
         expect.objectContaining({
           action: 'CREATE',
-          entityType: 'ACCOUNTING_TRANSACTION',
+          entityType: 'ACCOUNTING_EXPENSE_SPLIT',
           operatorActorRef: 'user_stable_1',
           afterJson: expect.objectContaining({
             categoryStableId: 'expense_food',
@@ -263,7 +230,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
         }) as unknown as Record<string, unknown>,
         expect.objectContaining({
           action: 'CREATE',
-          entityType: 'ACCOUNTING_TRANSACTION',
+          entityType: 'ACCOUNTING_EXPENSE_SPLIT',
           operatorActorRef: 'user_stable_1',
           afterJson: expect.objectContaining({
             categoryStableId: 'expense_packaging',
@@ -505,7 +472,6 @@ describe('AccountingExpenseService expense-write characterization', () => {
         return Promise.resolve({ id: 'expense-document-db-id' });
       },
     );
-    const createMany = jest.fn().mockResolvedValue({ count: 1 });
     const createExpenseSplitMany = jest.fn().mockResolvedValue({ count: 1 });
     const createAllocationMany = jest.fn().mockResolvedValue({ count: 1 });
     const createAuditMany = jest.fn().mockResolvedValue({ count: 1 });
@@ -568,7 +534,6 @@ describe('AccountingExpenseService expense-write characterization', () => {
       accountingExpenseDocument: { create: createDocument },
       accountingExpensePaymentAllocation: { createMany: createAllocationMany },
       accountingExpenseSplit: { createMany: createExpenseSplitMany },
-      accountingTransaction: { createMany },
       accountingAuditLog: { createMany: createAuditMany },
     };
     const transaction = jest.fn(
@@ -676,16 +641,6 @@ describe('AccountingExpenseService expense-write characterization', () => {
         }) as unknown as Record<string, unknown>,
       ],
     });
-    expect(createMany).toHaveBeenCalledWith({
-      data: [
-        expect.objectContaining({
-          currency: 'CAD',
-          amountCents: 2746,
-          taxCents: 0,
-          documentId: 'expense-document-db-id',
-        }) as unknown as Record<string, unknown>,
-      ],
-    });
     expect(createAuditMany).toHaveBeenCalledWith({
       data: expect.arrayContaining([
         expect.objectContaining({
@@ -735,23 +690,16 @@ describe('AccountingExpenseService expense-write characterization', () => {
   it('confirms an inbox document by replacing active splits inside the same transaction and preserving existing attachments', async () => {
     const replacedRows = jest.fn().mockResolvedValue([
       {
-        txStableId: 'accttx_replaced',
-        type: AccountingTxType.EXPENSE,
-        source: AccountingSourceType.MANUAL,
+        splitStableId: 'expensesplit_replaced',
         amountCents: 900,
         taxCents: 117,
-        currency: 'CAD',
-        occurredAt: new Date('2026-09-10T14:00:00.000Z'),
-        idempotencyKey: 'expense:inbox_doc_1:old',
-        externalRef: 'inbox_doc_1',
-        attachmentUrls: ['/api/v1/accounting/files/bills/original.pdf'],
+        sortOrder: 0,
+        category: { categoryStableId: 'expense_food' },
       },
     ]);
-    const deleteMany = jest.fn().mockResolvedValue({ count: 1 });
     const deleteExpenseSplits = jest.fn().mockResolvedValue({ count: 0 });
     const deletePaymentAllocations = jest.fn().mockResolvedValue({ count: 0 });
     const updateDocument = jest.fn().mockResolvedValue({});
-    const createMany = jest.fn().mockResolvedValue({ count: 1 });
     const createExpenseSplitMany = jest.fn().mockResolvedValue({ count: 1 });
     const createAuditMany = jest.fn().mockResolvedValue({ count: 2 });
     const currentDocument = jest.fn().mockResolvedValue({
@@ -759,8 +707,8 @@ describe('AccountingExpenseService expense-write characterization', () => {
       attachmentUrls: ['/api/v1/accounting/files/bills/original.pdf'],
     });
     const tx = {
-      accountingTransaction: { findMany: replacedRows, deleteMany, createMany },
       accountingExpenseSplit: {
+        findMany: replacedRows,
         deleteMany: deleteExpenseSplits,
         createMany: createExpenseSplitMany,
       },
@@ -836,9 +784,6 @@ describe('AccountingExpenseService expense-write characterization', () => {
     );
 
     expect(transaction).toHaveBeenCalledTimes(1);
-    expect(deleteMany).toHaveBeenCalledWith({
-      where: { documentId: 'inbox-document-db-id', deletedAt: null },
-    });
     expect(deleteExpenseSplits).toHaveBeenCalledWith({
       where: { expenseDocumentId: 'inbox-document-db-id' },
     });
@@ -870,51 +815,36 @@ describe('AccountingExpenseService expense-write characterization', () => {
         ],
       }) as unknown as Record<string, unknown>,
     });
-    expect(createMany).toHaveBeenCalledWith({
-      data: [
-        expect.objectContaining({
-          documentId: 'inbox-document-db-id',
-          idempotencyKey: 'expense:inbox_doc_1:0',
-          externalRef: 'inbox_doc_1',
-          createdByUserStableId: 'user_stable_2',
-          updatedByUserStableId: 'user_stable_2',
-        }) as unknown as Record<string, unknown>,
-      ],
-    });
     expect(currentDocument).toHaveBeenCalledWith({
       where: { id: 'inbox-document-db-id' },
       select: { status: true, attachmentUrls: true },
     });
     expect(replacedRows).toHaveBeenCalledWith({
-      where: { documentId: 'inbox-document-db-id', deletedAt: null },
+      where: { expenseDocumentId: 'inbox-document-db-id' },
       select: {
-        txStableId: true,
-        type: true,
-        source: true,
+        splitStableId: true,
         amountCents: true,
         taxCents: true,
-        currency: true,
-        occurredAt: true,
-        idempotencyKey: true,
-        externalRef: true,
-        attachmentUrls: true,
+        sortOrder: true,
+        category: { select: { categoryStableId: true } },
       },
     });
     expect(createAuditMany).toHaveBeenCalledWith({
       data: [
         expect.objectContaining({
           action: 'DELETE',
-          entityType: 'ACCOUNTING_TRANSACTION',
-          entityId: 'accttx_replaced',
+          entityType: 'ACCOUNTING_EXPENSE_SPLIT',
+          entityId: 'expensesplit_replaced',
           operatorActorRef: 'user_stable_2',
           beforeJson: expect.objectContaining({
+            splitStableId: 'expensesplit_replaced',
+            categoryStableId: 'expense_food',
             documentStableId: 'inbox_doc_1',
-            idempotencyKey: 'expense:inbox_doc_1:old',
           }) as unknown as Record<string, unknown>,
         }) as unknown as Record<string, unknown>,
         expect.objectContaining({
           action: 'CREATE',
-          entityType: 'ACCOUNTING_TRANSACTION',
+          entityType: 'ACCOUNTING_EXPENSE_SPLIT',
           operatorActorRef: 'user_stable_2',
           afterJson: expect.objectContaining({
             categoryStableId: 'expense_food',
@@ -939,14 +869,14 @@ describe('AccountingExpenseService expense-write characterization', () => {
   });
 
   it('rejects a concurrent second inbox confirmation before replacing ledger rows', async () => {
-    const deleteMany = jest.fn();
-    const createMany = jest.fn();
+    const deleteExpenseSplits = jest.fn();
+    const createExpenseSplits = jest.fn();
     const createAuditMany = jest.fn();
     const tx = {
-      accountingTransaction: {
+      accountingExpenseSplit: {
         findMany: jest.fn(),
-        deleteMany,
-        createMany,
+        deleteMany: deleteExpenseSplits,
+        createMany: createExpenseSplits,
       },
       accountingExpenseDocument: {
         findUnique: jest.fn().mockResolvedValue({
@@ -1003,8 +933,8 @@ describe('AccountingExpenseService expense-write characterization', () => {
       ),
     ).rejects.toBeInstanceOf(ConflictException);
 
-    expect(deleteMany).not.toHaveBeenCalled();
-    expect(createMany).not.toHaveBeenCalled();
+    expect(deleteExpenseSplits).not.toHaveBeenCalled();
+    expect(createExpenseSplits).not.toHaveBeenCalled();
     expect(createAuditMany).not.toHaveBeenCalled();
   });
 });

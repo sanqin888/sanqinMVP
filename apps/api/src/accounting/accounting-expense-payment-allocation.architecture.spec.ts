@@ -76,16 +76,14 @@ describe('Accounting Expense payment allocation boundary', () => {
     );
   });
 
-  it('keeps account-balance Expense outflow on confirmed payment allocations', () => {
+  it('keeps payment allocations as Expense posting facts but removes them from report arithmetic', () => {
     const broadService = readFileSync(ACCOUNTING_SERVICE, 'utf8');
     const reportsService = readFileSync(FINANCIAL_REPORTS_SERVICE, 'utf8');
 
     expect(reportsService).toContain('async accountBalanceReport(');
-    expect(reportsService).toContain(
+    expect(reportsService).not.toContain(
       'this.prisma.accountingExpensePaymentAllocation.findMany',
     );
-    expect(reportsService).toContain('AccountingDocumentStatus.CONFIRMED');
-    expect(reportsService).toContain('allocation.amountCents');
     expect(broadService).not.toContain(
       'this.prisma.accountingExpensePaymentAllocation.findMany',
     );

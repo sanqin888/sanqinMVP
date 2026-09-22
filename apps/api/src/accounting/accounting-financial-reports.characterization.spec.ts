@@ -1,7 +1,6 @@
 import {
   AccountingAccountClass,
   AccountingAccountType,
-  AccountingDocumentStatus,
   AccountingJournalEntryKind,
   AccountingJournalSource,
   AccountingTxType,
@@ -115,24 +114,57 @@ describe('AccountingFinancialReportsService canonical fact characterization', ()
               },
             ],
           },
-        ]),
-      },
-      accountingTransaction: {
-        findMany: jest.fn().mockResolvedValue([
           {
-            txStableId: 'expense_1',
-            amountCents: 500,
-            taxCents: 65,
+            entryStableId: 'expense_journal_1',
+            kind: AccountingJournalEntryKind.STANDARD,
+            source: AccountingJournalSource.EXPENSE_DOCUMENT,
             occurredAt,
             currency: 'CAD',
             memo: 'ingredients',
             createdAt: occurredAt,
             updatedAt: occurredAt,
-            category: {
-              categoryStableId: 'expense_food',
-              name: '食材',
-              type: AccountingTxType.EXPENSE,
-            },
+            lines: [
+              {
+                lineNo: 1,
+                debitCents: 500,
+                creditCents: 0,
+                memo: null,
+                account: account(
+                  'account_general_operating_expense',
+                  '一般经营费用',
+                  AccountingAccountClass.EXPENSE,
+                ),
+                category: {
+                  categoryStableId: 'expense_food',
+                  name: '食材',
+                  type: AccountingTxType.EXPENSE,
+                },
+              },
+              {
+                lineNo: 2,
+                debitCents: 65,
+                creditCents: 0,
+                memo: null,
+                account: account(
+                  'account_hst_recoverable',
+                  'HST/GST 待抵扣',
+                  AccountingAccountClass.ASSET,
+                ),
+                category: null,
+              },
+              {
+                lineNo: 3,
+                debitCents: 0,
+                creditCents: 565,
+                memo: null,
+                account: account(
+                  'account_primary_bank',
+                  '主要银行账户',
+                  AccountingAccountClass.ASSET,
+                ),
+                category: null,
+              },
+            ],
           },
         ]),
       },
@@ -204,16 +236,6 @@ describe('AccountingFinancialReportsService canonical fact characterization', ()
       expect.objectContaining({
         where: {
           deletedAt: null,
-          source: { not: AccountingJournalSource.EXPENSE_DOCUMENT },
-        },
-      }),
-    );
-    expect(prisma.accountingTransaction.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          deletedAt: null,
-          type: AccountingTxType.EXPENSE,
-          document: { status: AccountingDocumentStatus.CONFIRMED },
         },
       }),
     );
@@ -222,9 +244,6 @@ describe('AccountingFinancialReportsService canonical fact characterization', ()
   it('interprets date-only report ranges in the configured business timezone', async () => {
     const prisma = {
       accountingJournalEntry: {
-        findMany: jest.fn().mockResolvedValue([]),
-      },
-      accountingTransaction: {
         findMany: jest.fn().mockResolvedValue([]),
       },
       accountingCategory: {
@@ -258,17 +277,6 @@ describe('AccountingFinancialReportsService canonical fact characterization', ()
       expect.objectContaining({
         where: {
           deletedAt: null,
-          source: { not: AccountingJournalSource.EXPENSE_DOCUMENT },
-          occurredAt: expectedRange,
-        },
-      }),
-    );
-    expect(prisma.accountingTransaction.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          deletedAt: null,
-          type: AccountingTxType.EXPENSE,
-          document: { status: AccountingDocumentStatus.CONFIRMED },
           occurredAt: expectedRange,
         },
       }),
@@ -392,31 +400,27 @@ describe('AccountingFinancialReportsService canonical fact characterization', ()
               },
             ],
           },
-        ]),
-      },
-      accountingExpensePaymentAllocation: {
-        findMany: jest.fn().mockResolvedValue([
           {
-            amountCents: 200,
-            account: {
-              name: 'Primary Bank',
-              type: AccountingAccountType.BANK,
-            },
-            expenseDocument: {
-              memo: 'operating supplies',
-              transactions: [{ memo: null, category: { name: '厨房用品' } }],
-            },
-          },
-          {
-            amountCents: 100,
-            account: {
-              name: 'Uber Eats Pending',
-              type: AccountingAccountType.PLATFORM_WALLET,
-            },
-            expenseDocument: {
-              memo: 'platform deduction',
-              transactions: [{ memo: null, category: { name: '平台佣金' } }],
-            },
+            memo: 'operating supplies',
+            lines: [
+              {
+                debitCents: 200,
+                creditCents: 0,
+                memo: null,
+                account: { name: 'Operating Expense', type: null },
+                category: { name: '厨房用品' },
+              },
+              {
+                debitCents: 0,
+                creditCents: 200,
+                memo: null,
+                account: {
+                  name: 'Primary Bank',
+                  type: AccountingAccountType.BANK,
+                },
+                category: null,
+              },
+            ],
           },
         ]),
       },
@@ -445,23 +449,11 @@ describe('AccountingFinancialReportsService canonical fact characterization', ()
       expect.objectContaining({
         where: {
           deletedAt: null,
-          source: { not: AccountingJournalSource.EXPENSE_DOCUMENT },
           kind: {
             notIn: [
               AccountingJournalEntryKind.TRANSFER,
               AccountingJournalEntryKind.OPENING_BALANCE,
             ],
-          },
-        },
-      }),
-    );
-    expect(
-      prisma.accountingExpensePaymentAllocation.findMany,
-    ).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          expenseDocument: {
-            status: AccountingDocumentStatus.CONFIRMED,
           },
         },
       }),
