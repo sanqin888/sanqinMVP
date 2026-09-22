@@ -101,7 +101,8 @@ describe('Accounting internal capability boundary', () => {
       expect(broad).not.toContain(`async ${method}(`);
     }
     expect(reports).toContain('accountingJournalEntry.findMany');
-    expect(reports).toContain('AccountingDocumentStatus.CONFIRMED');
+    expect(reports).not.toContain('accountingTransaction.findMany');
+    expect(reports).not.toContain('accountingExpensePaymentAllocation.findMany');
     expect(reports).not.toContain('ORDER_REPORTING_FACTS_READER');
     expect(broad).toContain('ORDER_REPORTING_FACTS_READER');
     expect(broad).toContain('readPaidTotalDimensionsForRange');
