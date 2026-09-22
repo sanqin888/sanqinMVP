@@ -40,18 +40,6 @@ export type AccountingFinancialReportJournalEntry = {
   lines: AccountingFinancialReportJournalLine[];
 };
 
-export type AccountingFinancialReportExpenseSplit = {
-  txStableId: string;
-  amountCents: number;
-  taxCents: number;
-  occurredAt: Date;
-  currency: string;
-  memo: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-  category: AccountingFinancialReportCategory;
-};
-
 export type AccountingFinancialReportFact = {
   stableId: string;
   type: AccountingTxType;
@@ -181,10 +169,7 @@ function factFromLine(params: {
 export function projectAccountingJournalReportEntry(
   entry: AccountingFinancialReportJournalEntry,
 ): AccountingFinancialReportProjection {
-  if (
-    entry.source === AccountingJournalSource.EXPENSE_DOCUMENT ||
-    entry.kind === AccountingJournalEntryKind.OPENING_BALANCE
-  ) {
+  if (entry.kind === AccountingJournalEntryKind.OPENING_BALANCE) {
     return { facts: [], journalInputTaxCents: 0, expenseInputTaxCents: 0 };
   }
 
@@ -307,33 +292,6 @@ export function projectAccountingJournalReportEntry(
   }
 
   return { facts, journalInputTaxCents, expenseInputTaxCents: 0 };
-}
-
-export function projectAccountingExpenseReportSplit(
-  split: AccountingFinancialReportExpenseSplit,
-): AccountingFinancialReportProjection {
-  return {
-    facts: [
-      {
-        stableId: split.txStableId,
-        type: AccountingTxType.EXPENSE,
-        amountCents: split.amountCents,
-        taxCents: split.taxCents,
-        source: AccountingJournalSource.EXPENSE_DOCUMENT,
-        occurredAt: split.occurredAt,
-        currency: split.currency,
-        categoryStableId: split.category.categoryStableId,
-        categoryName: split.category.name,
-        accountStableId: null,
-        accountName: null,
-        memo: split.memo,
-        createdAt: split.createdAt,
-        updatedAt: split.updatedAt,
-      },
-    ],
-    journalInputTaxCents: 0,
-    expenseInputTaxCents: split.taxCents,
-  };
 }
 
 export function classifyAccountingCashflowContext(

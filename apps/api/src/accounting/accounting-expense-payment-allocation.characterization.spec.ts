@@ -2,7 +2,7 @@ import { AccountingPeriodService } from './accounting-period.service';
 import { AccountingFinancialReportsService } from './accounting-financial-reports.service';
 
 describe('Accounting Expense payment allocation characterization', () => {
-  it('reports confirmed Expense cash outflow from payment allocations without reading category split accounts', async () => {
+  it('reports Expense cash outflow from canonical Journal lines only', async () => {
     const prisma = {
       accountingAutomationConfig: {
         findUnique: jest.fn().mockResolvedValue(null),
@@ -18,17 +18,23 @@ describe('Accounting Expense payment allocation characterization', () => {
               type: 'CASH',
             },
           },
-        ]),
-      },
-      accountingExpensePaymentAllocation: {
-        findMany: jest.fn().mockResolvedValue([
           {
-            amountCents: 2000,
-            account: { accountStableId: 'account_rbc', name: 'RBC Debit' },
+            debitCents: 0,
+            creditCents: 2000,
+            account: {
+              accountStableId: 'account_rbc',
+              name: 'RBC Debit',
+              type: 'BANK',
+            },
           },
           {
-            amountCents: 2238,
-            account: { accountStableId: 'account_cash', name: 'Cash' },
+            debitCents: 0,
+            creditCents: 2238,
+            account: {
+              accountStableId: 'account_cash',
+              name: 'Cash',
+              type: 'CASH',
+            },
           },
         ]),
       },
@@ -77,18 +83,6 @@ describe('Accounting Expense payment allocation characterization', () => {
         where: {
           entry: {
             deletedAt: null,
-            source: { not: 'EXPENSE_DOCUMENT' },
-          },
-        },
-      }),
-    );
-    expect(
-      prisma.accountingExpensePaymentAllocation.findMany,
-    ).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          expenseDocument: {
-            status: 'CONFIRMED',
           },
         },
       }),

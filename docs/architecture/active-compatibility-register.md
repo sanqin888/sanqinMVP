@@ -13,24 +13,25 @@ safe default values unrelated to an old version) is not compatibility debt.
 |---|---|---|---|---|
 | `payments.pos-card-legacy.v1` | active / pre-production | direct paid Order → Unified Payment Core + Terminal + finalize | POS ↔ Clover realtime/recovery complete; real-device acceptance; one settlement cycle reconciled; pre-cutover Accounting facts resolved; clean production stability window; legacy calls zero | Phase J cleanup after Terminal synchronization/cutover stability |
 | `payments.web-checkout-v1.v1` | guarded production | CheckoutIntent/Clover v1 Web path → Unified Payment Core + v3 truth | Test App/device acceptance complete; App installed/OAuth-authorized on operating production merchant; fresh production-merchant correlation audit passes; Web cutover accepted; one settlement cycle reconciled; old calls zero before compatibility deletion | Deferred until production-merchant Unified authorization and accepted cutover |
-| `accounting.expense-split-ownership.v1` | active / expand-contract | `AccountingTransaction` EXPENSE compatibility/report copy → Expense-owned `AccountingExpenseSplit` + payment child facts | B1-B production verified; B1-C0 full-range parity ready with real Expense evidence; B1-C1 report cutover complete; legacy Expense Transaction reads/writes zero | Remove within B1 before Canonical Sales Analytics / Trial Balance |
+| `accounting.expense-split-ownership.v1` | active / contraction pending | retained historical `AccountingTransaction` EXPENSE compatibility evidence → Expense-owned splits/payment facts + canonical Expense Journal | B1-C1 merged/deployed; zero production Expense Transaction reads/writes; legacy-comparison routes retired or replaced under explicit contract review | Remove within B1 before Canonical Sales Analytics / Trial Balance |
 
-B1-A registers `accounting.expense-split-ownership.v1` because Expense category/tax
-splits cannot move atomically away from `AccountingTransaction`. Its source is merged
-through PR #2448 / `8614633a`, and the user-generated additive migration is on
-`dev@7e54853a` after SQL review. B1-B is merged through PR #2449 / `324a16eb`
-after final head `acb8db42` passed CI #6086: Expense API/C0 business facts use
-`AccountingExpenseSplit`, C0 and posting continue semantic parity against the legacy
-copy, and canonical Expense posting is Expense-specific and same-transaction when
-complete reviewed payment facts exist. B1-C0 adds a read-only
-`report/expense-journal-parity` evidence gate for P&L category totals, recoverable input
-tax, payment-account movement, CASH/BANK cashflow, split parity and canonical Journal
-anchor coverage. It intentionally leaves authoritative reports and the legacy Transaction
-writer unchanged. Do not repair parity mismatches by deleting/re-writing historical legacy
-rows or silently falling back business facts to them. The 2026-09-21 post-B1-B production
-preflight still shows no `AccountingExpenseSplit` table, zero confirmed Expenses, zero
-legacy Expense transactions and zero canonical Expense Journals; therefore B1-B production
-verification and B1-C1 cutover remain pending. An empty population is not cutover proof.
+B1-A/B1-B/B1-C0 are deployed through production head `f164be7a`; the additive
+Expense-split migration is applied and B1-B has real runtime evidence. Reviewed Expense
+`expense_iet91ut05fafso8rl48kds9v` booked CAD 84.69 with one Expense-owned split,
+one complete payment allocation and one canonical Expense v1 Journal. Full-range
+read-only parity reconstruction from 2026-06-01 has zero split/anchor blockers and exact
+P&L, recoverable-tax, payment-account and OPERATING cashflow parity.
+
+B1-C1 is locally complete pending user review. It removes Expense Transaction authority
+from financial reports and new Expense writes, moves split audit identity to
+`ACCOUNTING_EXPENSE_SPLIT`, and requires zero production `AccountingTransaction`
+mutation callers. Existing legacy rows/model/table are not deleted in this slice. The
+legacy-comparison routes `report/expense-journal-parity` and
+`journal/canonical-expenses/shadow-preview` remain temporarily available to avoid an
+unapproved HTTP-contract removal. Because B1-C1 stops new legacy copies, those routes are
+pre-cutover evidence/diagnostic only and will fail closed for new post-cutover Expenses
+until a later explicit route replacement/removal decision. Do not repair such expected post-cutover mismatch by
+recreating legacy rows.
 
 The payment entries are no longer governed by a whole-context freeze. The POS
 Clover Terminal path is pre-production and may be structurally modularized before

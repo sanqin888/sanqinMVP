@@ -34,6 +34,10 @@ const FINANCIAL_REPORTS = resolve(
   ACCOUNTING_ROOT,
   'accounting-financial-reports.service.ts',
 );
+const UPLOAD_LIBRARY_WRITER = resolve(
+  ACCOUNTING_ROOT,
+  'accounting-upload-library.writer.ts',
+);
 
 const modelBody = (schema: string, modelName: string) => {
   const match = schema.match(
@@ -44,7 +48,7 @@ const modelBody = (schema: string, modelName: string) => {
 };
 
 describe('Accounting Expense split ownership and Journal boundary', () => {
-  it('adds dedicated Expense-owned split persistence without contracting the legacy copy', () => {
+  it('keeps dedicated Expense-owned split persistence while retaining legacy schema for later contraction', () => {
     const schema = readFileSync(PRISMA_SCHEMA, 'utf8');
     const expenseDocument = modelBody(schema, 'AccountingExpenseDocument');
     const category = modelBody(schema, 'AccountingCategory');
@@ -69,21 +73,22 @@ describe('Accounting Expense split ownership and Journal boundary', () => {
     expect(split).toContain('@@index([categoryId])');
   });
 
-  it('keeps the legacy Transaction copy behind one registered compatibility writer', () => {
+  it('keeps AccountingExpenseSplit as the only Expense split persistence writer', () => {
     const service = readFileSync(EXPENSE_SERVICE, 'utf8');
     const writer = readFileSync(EXPENSE_SPLIT_WRITER, 'utf8');
 
-    expect(service).toContain('createAccountingExpenseSplitCompatibilityInTx');
+    expect(service).toContain('createAccountingExpenseSplitsInTx');
     expect(service).not.toContain('accountingTransaction.createMany');
-    expect(writer).toContain('@compat accounting.expense-split-ownership.v1');
+    expect(service).not.toContain('accountingTransaction.deleteMany');
     expect(writer).toContain('accountingExpenseSplit.createMany');
-    expect(writer).toContain('accountingTransaction.createMany');
+    expect(writer).not.toContain('accountingTransaction.createMany');
   });
 
-  it('cuts Expense owner reads to AccountingExpenseSplit while retaining legacy parity/report compatibility', () => {
+  it('keeps Expense owner reads on AccountingExpenseSplit and legacy reads only in the parity gate', () => {
     const query = readFileSync(EXPENSE_QUERY, 'utf8');
     const preview = readFileSync(EXPENSE_PREVIEW, 'utf8');
     const reports = readFileSync(FINANCIAL_REPORTS, 'utf8');
+    const uploadLibraryWriter = readFileSync(UPLOAD_LIBRARY_WRITER, 'utf8');
 
     expect(query).toContain('splits: {');
     expect(query).toContain('row.splits.map');
@@ -92,7 +97,11 @@ describe('Accounting Expense split ownership and Journal boundary', () => {
     expect(preview).toContain('SPLIT_PERSISTENCE_MISMATCH');
     expect(preview).toContain('document.transactions.map');
     expect(preview).toContain('splits: document.splits.map');
-    expect(reports).toContain('accountingTransaction.findMany');
+    expect(reports).not.toContain('accountingTransaction.findMany');
+    expect(uploadLibraryWriter).toContain('_count: { select: { splits: true } }');
+    expect(uploadLibraryWriter).not.toContain(
+      '_count: { select: { transactions: true } }',
+    );
   });
 
   it('routes canonical Expense Journal writes only through the Expense posting authority', () => {
@@ -113,6 +122,7 @@ describe('Accounting Expense split ownership and Journal boundary', () => {
     expect(journal).toContain(
       'canonical Expense Journals cannot be deleted in place',
     );
-    expect(posting).toContain('SPLIT_PERSISTENCE_MISMATCH');
+    expect(posting).not.toContain('SPLIT_PERSISTENCE_MISMATCH');
+    expect(posting).not.toContain('document.transactions');
   });
 });
