@@ -277,7 +277,13 @@ export class AccountingExpenseJournalPostingService {
       );
     }
 
-    const posted = [];
+    const posted: Array<
+      Awaited<
+        ReturnType<
+          AccountingJournalService['createCanonicalExpenseJournalEntryInTx']
+        >
+      >
+    > = [];
     for (const plan of plans) {
       posted.push(
         await this.journal.createCanonicalExpenseJournalEntryInTx(
