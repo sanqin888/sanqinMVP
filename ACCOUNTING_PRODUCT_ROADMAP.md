@@ -162,7 +162,7 @@ Until a reviewed real fiscal-year opening is entered, the product is **资产负
 
 **2026-09-21 B1-A state:** **SOURCE + COMPANION MIGRATION MERGED TO DEV / CI GREEN / PRODUCTION DEPLOYMENT NOT CLAIMED**. B1-A merged in PR #2448 as `8614633a` after CI #6082 passed; the user-generated companion migration `20260921224139_post_mod_accounting_b1a_expense_split_ownership` was committed to `dev` as `7e54853a` and reviewed as additive-only: create `AccountingExpenseSplit`, its indexes/unique key, `ExpenseDocument -> Split ON DELETE CASCADE`, and `Category -> Split ON DELETE RESTRICT`, with no drop/rename/backfill/enum change. The 2026-09-21 read-only production preflight still found zero confirmed Expense documents, zero active legacy Expense transactions and zero canonical Expense Journals; no historical backfill is currently required. Production migration/deployment remains a later promotion gate and is not claimed by the dev merge.
 
-**2026-09-21 B1-B local source state:** **LOCAL SOURCE COMPLETE / USER REVIEW PENDING / NO MIGRATION / NO GRAPH CHANGE / NO REPORT CUTOVER** on branch `accounting/b1b-expense-journal-authority` from `origin/dev@7e54853a`. Expense API/C0 canonical split reads move to `AccountingExpenseSplit`; the legacy Transaction representation remains only for semantic parity and current financial-report arithmetic. Expense API/Web cut directly to `splitStableId`; no old-PWA `txStableId` compatibility is retained because the user explicitly accepted reinstalling the Accounting PWA after deployment. Expense confirmation with complete reviewed payment allocations posts its canonical Journal inside the same Serializable transaction through an Expense-specific authority; confirmation without payment allocation remains confirmed-but-unposted, and later payment completion creates allocation + Journal atomically. Journal authority is rebuilt/revalidated from persisted ExpenseDocument + split/payment child stable IDs inside the same transaction, not from the request payload. `SPLIT_PERSISTENCE_MISMATCH` remains fail-closed. B1-C still owns authoritative report cutover and legacy `AccountingTransaction` write/read contraction.
+**2026-09-21 B1-B state:** **MERGED / CI GREEN / PRODUCTION VERIFICATION PENDING / NO MIGRATION / NO REPORT CUTOVER**. PR #2449 merged to `dev` as `324a16eb` after final head `acb8db42` passed CI #6086. Expense API/C0 canonical split reads now use `AccountingExpenseSplit`; the legacy Transaction representation remains only for semantic parity and current financial-report arithmetic. Expense API/Web cut directly to `splitStableId`; no old-PWA `txStableId` compatibility is retained because the operator explicitly accepted reinstalling the Accounting PWA after deployment. Complete reviewed payment allocations post the canonical Expense Journal in the same Serializable transaction; unknown payment remains confirmed-but-unposted until the one-way completion workflow supplies reviewed allocation. Journal authority is rebuilt/revalidated from persisted ExpenseDocument + split/payment child stable IDs rather than request payload. Production still lacks the B1-A split table as of the final B1-C readiness preflight, so B1-B production verification is not yet claimed.
 
 Do this first so Trial Balance/balance reporting no longer depends on a parallel single-entry Expense path.
 
@@ -229,6 +229,23 @@ Posting rules:
 - keep `SPLIT_PERSISTENCE_MISMATCH` fail-closed before Journal authority;
 - do not cut financial reports or remove legacy Expense Transaction writes in B1-B;
 - production rollout must apply the already-committed B1-A migration before starting B1-B API/Web code, because B1-B reads `AccountingExpenseSplit` directly.
+
+### B1-C0 — Expense report parity preview
+
+**2026-09-21 local source state:** **LOCAL SOURCE COMPLETE / USER REVIEW PENDING / READ-ONLY / NO CUTOVER / NO MIGRATION / NO GRAPH CHANGE** on branch `accounting/b1c-expense-report-cutover` from `origin/dev@324a16eb`.
+
+B1-C0 exists because B1-C1 cannot cut authoritative reports before B1-B is production-verified. It adds a read-only `GET /accounting/report/expense-journal-parity` gate that compares the currently authoritative legacy Expense report arithmetic with canonical Expense Journals both per Expense source fact and in aggregate:
+
+- category-level Expense P&L;
+- recoverable HST/GST input tax;
+- payment-account balance movement;
+- CASH/BANK cashflow classification and signed movement;
+- split-persistence parity;
+- missing/duplicate/orphan canonical Expense Journal anchors and any non-v1 Expense-document Journal authority.
+
+A zero-Expense population is explicitly **not** accepted as cutover evidence. Confirmed Expenses with unknown payment allocations remain blockers because they are intentionally unposted under the current no-Accounts-Payable policy. B1-C0 does not change P&L, account balance, cashflow, exports or the legacy Expense Transaction writer.
+
+B1-C1 remains gated on: B1-A migration deployed first, B1-B API/Web deployed, Accounting PWA reinstalled, at least one reviewed confirmed Expense with complete payment allocation posted through the canonical Journal path, zero split/report parity deltas, and no missing/duplicate/orphan Expense Journal anchors.
 
 Expected end-state contraction:
 
@@ -463,7 +480,7 @@ Readiness re-confirmed on 2026-09-21:
   report cutover or legacy mutation removal yet;
 - C0 requires no Prisma migration, dependency change or context-edge change.
 
-B1-A source and its companion migration are now merged to `dev`. B1-B performs the owner-read cutover and introduces atomic Expense-specific Journal authority while retaining legacy Transaction parity/report compatibility. B1-C remains the next gate after B1-B review/merge and production verification: prove report parity, cut authoritative P&L/account movement/cash flow to Journal facts, stop the legacy Expense Transaction writer/read arithmetic, and only then contract the registered compatibility.
+B1-A source/migration and B1-B owner-read/atomic Journal authority are now merged to `dev`. B1-C0 provides the read-only report-parity evidence gate while B1-B production verification remains pending. Only after the B1-A migration and B1-B runtime are deployed, the Accounting PWA is reinstalled, and a full-range B1-C0 report passes on real reviewed Expense evidence may B1-C1 cut authoritative P&L/account movement/cash flow to Journal facts, stop the legacy Expense Transaction writer/read arithmetic, and then proceed toward compatibility contraction.
 
 **Payment-completion product gate added before C1:** confirmed Expenses may retain the formal
 unknown-payment state (`paymentAllocations = []`), but the Expenses surface now owns a narrow,
