@@ -52,7 +52,7 @@ describe('Phase 9 Slice 8B-C Accounting Web vertical contracts', () => {
 
     expect(reportsContractSource).toContain('transferCents: number');
     expect(reportsContractSource).toContain('closeStatus:');
-    expect(reportsContractSource).toContain(
+    expect(reportsContractSource).not.toContain(
       'export type AccountingOrderDimensionSlice',
     );
   });

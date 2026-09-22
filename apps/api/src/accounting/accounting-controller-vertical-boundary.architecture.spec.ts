@@ -48,7 +48,6 @@ const EXPECTED_CONTROLLER_CAPABILITIES = {
   'accounting-reports.controller.ts': [
     'AccountingFinancialReportsService',
     'AccountingSalesAnalyticsService',
-    'AccountingService',
   ],
 } as const;
 
@@ -109,7 +108,6 @@ const EXPECTED_ROUTES = [
   'GET report/account-balance',
   'GET report/annual/:year',
   'GET report/cashflow',
-  'GET report/slice',
   'GET audit-logs',
   'GET export/tx.csv',
   'GET export/report.csv',

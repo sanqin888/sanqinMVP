@@ -59,7 +59,6 @@ import { LoyaltyFinancialFactsModule } from '../loyalty/public-api';
 import {
   OrderFinancialChangeFactsModule,
   OrderFinancialFactsModule,
-  OrderReportingFactsModule,
   OrderSalesAttributionModule,
 } from '../orders/public-api';
 import { PaymentFinancialFactsModule } from '../payments/public-api';
@@ -73,7 +72,6 @@ import { PaymentFinancialFactsModule } from '../payments/public-api';
     LoyaltyFinancialFactsModule,
     OrderFinancialFactsModule,
     OrderFinancialChangeFactsModule,
-    OrderReportingFactsModule,
     OrderSalesAttributionModule,
     PaymentFinancialFactsModule,
   ],

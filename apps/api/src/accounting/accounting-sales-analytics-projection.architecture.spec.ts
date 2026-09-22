@@ -30,18 +30,18 @@ describe('B2 canonical Journal Sales projection boundary', () => {
     expect(service).not.toContain('paymentBreakdownJson');
   });
 
-  it('exposes the new canonical Sales read path without retiring legacy consumers yet', () => {
+  it('keeps canonical Sales as the Accounting sales read path after legacy cleanup', () => {
     const controller = file('accounting-reports.controller.ts')?.source ?? '';
     const module = file('accounting.module.ts')?.source ?? '';
 
     expect(controller).toContain("@Get('report/sales')");
     expect(controller).toContain('this.salesAnalytics.report');
-    expect(controller).toContain("@Get('report/slice')");
-    expect(controller).toContain('this.accountingService.dimensionSlice');
+    expect(controller).not.toContain("@Get('report/slice')");
+    expect(controller).not.toContain('this.accountingService.dimensionSlice');
 
     expect(module).toContain('AccountingSalesAnalyticsService');
     expect(module).toContain('OrderSalesAttributionModule');
-    expect(module).toContain('OrderReportingFactsModule');
+    expect(module).not.toContain('OrderReportingFactsModule');
   });
 
   it('keeps provider completeness explicit instead of treating missing fees as zero', () => {

@@ -83,8 +83,6 @@ export {
 export { OrderExternalFactsModule } from './order-external-facts.module';
 export {
   ORDER_REPORTING_FACTS_READER,
-  type OrderPaidTotalDimensionFactV1,
-  type OrderPaidTotalDimensionsV1,
   type OrderReportingBreakdownFactV1,
   type OrderReportingFactsReaderPort,
   type OrderReportingItemComponentFactV1,

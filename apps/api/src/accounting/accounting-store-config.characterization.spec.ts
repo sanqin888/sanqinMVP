@@ -1,52 +1,7 @@
 import { AccountingTxType } from '@prisma/client';
 import { AccountingPeriodService } from './accounting-period.service';
-import { AccountingService } from './accounting.service';
 
-describe('AccountingService canonical store timezone characterization', () => {
-  it('uses StoreConfig timezone boundaries for sales dimension dates', async () => {
-    const readPaidTotalDimensionsForRange = jest.fn().mockResolvedValue({
-      byChannel: [{ key: 'in_store', amountCents: 2653 }],
-      byPaymentMethod: [
-        { key: 'CASH', amountCents: 2146 },
-        { key: 'CARD', amountCents: 507 },
-      ],
-    });
-    const prisma = {
-      accountingAutomationConfig: {
-        findUnique: jest.fn().mockResolvedValue(null),
-      },
-    };
-    const brandStoreConfigReader = {
-      getConfiguredStoreSnapshot: jest.fn().mockResolvedValue({
-        timezone: 'America/Toronto',
-      }),
-    };
-    const period = new AccountingPeriodService(
-      prisma as never,
-      brandStoreConfigReader as never,
-    );
-    const service = new AccountingService(prisma as never, period, {
-      readPaidTotalDimensionsForRange,
-    } as never);
-
-    await expect(
-      service.dimensionSlice({ from: '2026-09-02', to: '2026-09-02' }),
-    ).resolves.toEqual({
-      from: '2026-09-02',
-      to: '2026-09-02',
-      byChannel: [{ key: 'in_store', amountCents: 2653 }],
-      byPaymentMethod: [
-        { key: 'CASH', amountCents: 2146 },
-        { key: 'CARD', amountCents: 507 },
-      ],
-    });
-
-    expect(readPaidTotalDimensionsForRange).toHaveBeenCalledWith(
-      new Date('2026-09-02T04:00:00.000Z'),
-      new Date('2026-09-03T03:59:59.999Z'),
-    );
-  });
-
+describe('Accounting canonical store timezone characterization', () => {
   it('derives year and month locks from the StoreConfig timezone', async () => {
     const findUnique = jest.fn().mockResolvedValue(null);
     const prisma = {
