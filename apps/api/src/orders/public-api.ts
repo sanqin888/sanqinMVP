@@ -94,6 +94,16 @@ export {
 } from './order-reporting-facts-reader.contract';
 export { OrderReportingFactsModule } from './order-reporting-facts.module';
 export {
+  ORDER_SALES_ATTRIBUTION_READER,
+  type OrderSalesAttributionChannelV1,
+  type OrderSalesAttributionPrimaryPaymentMethodV1,
+  type OrderSalesAttributionReaderPort,
+  type OrderSalesAttributionSourceEvidenceV1,
+  type OrderSalesAttributionV1,
+  type OrderSalesPrimaryPaymentMethodEvidenceV1,
+} from './order-sales-attribution.contract';
+export { OrderSalesAttributionModule } from './order-sales-attribution.module';
+export {
   ORDER_FINANCIAL_FACTS_READER,
   type OrderFinancialChannelV1,
   type OrderFinancialDiscountsV1,
