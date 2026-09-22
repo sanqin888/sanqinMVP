@@ -13,4 +13,5 @@ export type AccountingAccount = {
   type: 'CASH' | 'BANK' | 'PLATFORM_WALLET';
   accountClass: 'ASSET' | 'LIABILITY' | 'EQUITY' | 'REVENUE' | 'EXPENSE';
   currency: string;
+  includeFundedExpensesInManagementReports: boolean;
 };

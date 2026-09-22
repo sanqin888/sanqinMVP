@@ -1,6 +1,6 @@
 # Post-Modularization Accounting Product Roadmap
 
-Status: **B2 IN PROGRESS — B1 CLOSED / B2-P0A PRODUCTION VERIFIED / B2-P0B PRODUCTION VERIFIED + COMPLETE / B2-A MERGED + CI GREEN / B2-B MERGED + CI GREEN / B2-C MERGED + CI GREEN / B2-D MERGED + CI GREEN / B2-E LOCAL SOURCE IMPLEMENTED + REVIEW PENDING / B0 3V-B PRODUCTION VERIFICATION STILL PENDING — DO NOT REOPEN PHASE 9**  
+Status: **EFA-B1 MERGED / CI GREEN / MIGRATION REVIEWED + COMMITTED TO DEV / PRODUCTION APPLICATION PENDING — EFA-B2 MERGED / CI GREEN — EFA-C MERGED / CI GREEN / NO NEW MIGRATION / NO GRAPH CHANGE — EFA-D LOCAL SOURCE IMPLEMENTED / REVIEW PENDING / NO NEW MIGRATION / NO GRAPH CHANGE — B2 PRODUCTION VERIFIED / CLOSED — B1 CLOSED / B0 3V-B PRODUCTION VERIFICATION STILL PENDING — DO NOT REOPEN PHASE 9**  
 Planning date: 2026-09-20; updated: 2026-09-22  
 Baseline: Phase 9 **PRODUCTION VERIFIED / CLOSED** at production `main@dbea68f3`  
 Document-recognition audit baseline: `origin/dev@1ede0599`; Slice 3 merged as `caabf1c1`; Evidence Viewer Slice 1 merged as `0371a155`; Slice 1B merged as `9ae4d85d`; additive folder migration committed as `cc4c8016`; Evidence Viewer Slice 2 merged in PR #2438 as `4d68379e`; Slice 3V-A merged in PR #2439 as `0d6909bb` with PR CI #6054 and merged-head CI #6055 green; Slice 3V-B merged in PR #2440 as `0ac9117f` after final head `3c5c0400`, PR CI #6057 and merged-head CI #6058 green
@@ -12,9 +12,10 @@ This is the approved follow-on plan for:
 1. provider-document recognition safety and auditable Human Review Revision;
 2. ExpenseDocument -> canonical Journal cutover and final `AccountingTransaction` contraction;
 3. canonical Accounting Sales Analytics;
-4. Trial Balance;
-5. an initial **资产负债变动表 / Balance Movement Statement**;
-6. later promotion to a formal Balance Sheet after a real fiscal-year opening balance is entered.
+4. Expense Funding Attribution (split-level funding + Management reporting scope);
+5. Trial Balance;
+6. an initial **资产负债变动表 / Balance Movement Statement**;
+7. later promotion to a formal Balance Sheet after a real fiscal-year opening balance is entered.
 
 The document-recognition/human-review work is an immediate Accounting correctness package.
 It may precede Slice A without reopening Phase 9 because it hardens the already-live
@@ -44,26 +45,20 @@ The repository-wide modularization gate is satisfied at `origin/dev@1b18fb00` on
 
 ### Sales
 
-The current Accounting Sales page mixes two amount authorities:
-
-- top-line posted income: Accounting P&L/canonical financial projection;
-- “按渠道 / By channel” and “按支付方式 / By payment method”: Orders-owned paid-total dimension slice based on persisted Order totals.
-
-The latter is intentionally non-canonical for revenue and must not be relabeled as Accounting income. The current explanatory copy is also stale because canonical sale/tax/refund posting now exists.
+B2 Canonical Sales Analytics is production-verified/closed. Accounting Sales and the Dashboard sales summaries consume the canonical `GET /accounting/report/sales` projection. Monetary amounts come from Accounting Journal lines; Orders contributes only the narrow descriptive attribution boundary for channel/canonical primary payment evidence. The legacy paid-total `/accounting/report/slice` surface and its Accounting -> Orders reporting dependency are retired.
 
 ### Expenses
 
-Confirmed expenses currently materialize as:
+Confirmed Expense v1 facts currently materialize as:
 
 ```text
 AccountingExpenseDocument
-├─ AccountingTransaction split rows        <- expense/category facts
-└─ AccountingExpensePaymentAllocation      <- payment account allocation
+├─ AccountingExpenseSplit                 <- expense/category/tax facts
+├─ AccountingExpensePaymentAllocation     <- reviewed document-level payment ownership
+└─ canonical accounting.expense_document.v1 Journal
 ```
 
-`AccountingExpenseService` remains the only permitted production mutation owner for `AccountingTransaction`. Production currently has **0 AccountingTransaction rows**, but the source writer is intentional and active; this is not unfinished Phase 9 cleanup.
-
-Reports currently combine canonical Journal facts with confirmed Expense facts, and account-movement/cash-flow reporting also reads Expense payment allocations.
+`AccountingTransaction` and `AccountingSourceType` were physically retired in B1-C2. Authoritative P&L/export, account movement and cash flow now read canonical Journal facts for Expenses. Historical/current v1 posting still treats category splits and payment allocations as independent child sets, which is the funding-attribution gap addressed by EFA before B3 Trial Balance.
 
 ### Journal / CoA
 
@@ -267,7 +262,7 @@ Post-migration runtime evidence closes the final gate: Expense `expense_v618ly4f
 
 ## 7. Slice B — Canonical Sales Analytics
 
-**2026-09-22 readiness state:** **B1 DEPENDENCY SATISFIED / B2-P0A PRODUCTION VERIFIED / B2-P0B PRODUCTION VERIFIED + COMPLETE / B2-A MERGED + CI GREEN / B2-B MERGED + CI GREEN / B2-C MERGED + CI GREEN / B2-D MERGED + CI GREEN / B2-E LOCAL SOURCE IMPLEMENTED + REVIEW PENDING**. The B2 readiness audit found that immutable Orders SALE facts remained durable after the 2026-09-13 historical Journal replay, but `AccountingCanonicalSalePostingService.postCanonicalSale()` had no production runtime caller. This was a continuity gap, not a Journal redesign requirement.
+**2026-09-22 closeout state:** **B2 PRODUCTION VERIFIED / CLOSED — B1 DEPENDENCY SATISFIED / B2-P0A PRODUCTION VERIFIED / B2-P0B PRODUCTION VERIFIED + COMPLETE / B2-A MERGED + CI GREEN / B2-B MERGED + CI GREEN / B2-C MERGED + CI GREEN / B2-D MERGED + CI GREEN / B2-E MERGED + CI GREEN + PRODUCTION VERIFIED**. The B2 readiness audit found that immutable Orders SALE facts remained durable after the 2026-09-13 historical Journal replay, but `AccountingCanonicalSalePostingService.postCanonicalSale()` had no production runtime caller. This was a continuity gap, not a Journal redesign requirement.
 
 **B2-P0A — Canonical SALE catch-up:** the operator ran the existing guarded replay for `2026-09-13..2026-09-23` exclusive. Preview/execution reported 131 candidates / 131 READY / 0 BLOCKED, zero parity delta and balanced debit/credit of 213172 cents. Read-only production verification then found 131 immutable SALE facts, 131 exactly-one canonical SALE Journal anchors, zero missing and zero duplicate anchors across Toronto business dates 2026-09-13 through 2026-09-22. P0A is complete.
 
@@ -281,11 +276,13 @@ Post-migration runtime evidence closes the final gate: Expense `expense_v618ly4f
 
 **B2-D — Dashboard Canonical Sales cutover:** **MERGED / CI GREEN** through PR #2464; final head `3530764e` passed CI #6134 and squash merged as `9e0dac17`. Dashboard keeps its existing Accounting-owned dashboard summary/expense/attention cards but replaces its two legacy Orders paid-total sales summaries with the existing `AccountingSalesAnalyticsReport` from `GET /accounting/report/sales`. The overview intentionally uses only `byChannel[*].summary.netSalesRevenueCents` and `byPrimaryPaymentMethod[*].summary.netSalesRevenueCents`; the payment section is explicitly labelled primary-payment revenue attribution and is not presented as tender mix. The full Sales-only daily, provider-coverage, tender and source/adjustment detail remains on the Sales page. No backend authority, schema/migration, package, Journal posting, settlement, Orders financial-fact or attribution-owner change was introduced.
 
-**B2-E — Legacy Sales slice cleanup:** **LOCAL SOURCE IMPLEMENTED / REVIEW PENDING** on `accounting/b2-e-legacy-sales-slice-cleanup` from `origin/dev@9e0dac17`. The authorized contraction removes `GET /accounting/report/slice`, `AccountingService.dimensionSlice()`, Accounting's `OrderReportingFactsModule` wiring, the paid-total-only `readPaidTotalDimensionsForRange()` reader method/DTOs, and the obsolete Web `AccountingOrderDimensionSlice`. The shared `OrderReportingFactsModule` remains intact for operational `ReportsModule` consumers of `readMetricsForRange()` and `readItemsForRange()`. Architecture regressions now forbid reintroducing the legacy Accounting seam while retaining the independent Reports boundary. No schema/migration, package, Journal posting, settlement, Orders financial-fact or attribution-owner change is introduced.
+**B2-E — Legacy Sales slice cleanup:** **MERGED / CI GREEN / PRODUCTION VERIFIED** through PR #2465; final head `bff7899a` passed CI #6136 and squash merged as `3448c271`. The contraction removes `GET /accounting/report/slice`, `AccountingService.dimensionSlice()`, Accounting's `OrderReportingFactsModule` wiring, the paid-total-only `readPaidTotalDimensionsForRange()` reader method/DTOs, and the obsolete Web `AccountingOrderDimensionSlice`. The shared `OrderReportingFactsModule` remains intact for operational `ReportsModule` consumers of `readMetricsForRange()` and `readItemsForRange()`. Architecture regressions forbid reintroducing the legacy Accounting seam while retaining the independent Reports boundary. No schema/migration, package, Journal posting, settlement, Orders financial-fact or attribution-owner change was introduced.
 
-The public-route contraction has an explicit PWA update path: production Web registers `next-pwa` with `skipWaiting: true`, while B2-C/B2-D leave zero current source consumers of the retired route. Because an already-open old PWA tab can still exist transiently, B2-E must not be called production-verified until a deployed Accounting PWA reload/launch confirms Dashboard and Sales use canonical `/accounting/report/sales` and the legacy route is no longer required.
+**B2 consolidated production verification:** deployed checkout `3448c271` started the API/Web/Uber worker cleanly. Production logs show Dashboard and canonical `GET /accounting/report/sales` returning 200, zero post-deploy `/accounting/report/slice` requests, and no Web runtime errors. A read-only Journal sanity query from the Accounting start date found balanced debit=credit for `order.financial_sale.v1` (1,353 entries / 2,394,791 cents), `order.financial_reversal.v1` (2 / 3,952 cents), `accounting.provider_financial_document.v1` (5 / 2,192,707 cents), and `accounting.uber_pre_cutover_order_reversal.v1` (119 / 405,369 cents). The operator also reported no visible anomaly after deployment. This closes the B2 public-route/PWA gate and the complete Canonical Sales Analytics work package.
 
-Accounting Journal/canonical financial facts continue to own every Accounting sales amount. B2-P0 is fully production-verified.
+**Deferred B4 polish tail:** selecting `2026-06-01..2026-06-30` correctly returns 200 for the current-period Sales query. The UI then computes the equal-length prior period `2026-05-02..2026-05-31`, which is before `accountingStartDate=2026-06-01`; the API correctly rejects that comparison with 400 and the UI omits the unavailable comparison. This is not a timezone defect and does not reopen B2. B4 should avoid issuing a known-out-of-coverage comparison request so expected control flow does not create API ERROR log noise.
+
+Accounting Journal/canonical financial facts continue to own every Accounting sales amount. **B2 is PRODUCTION VERIFIED / CLOSED.**
 
 ### Net Sales Revenue
 
@@ -359,6 +356,38 @@ Split the current generic “会计调整 / Adjustments” presentation into at 
 - genuine manual accounting adjustment.
 
 Do not rewrite valid historical Journals merely to simplify presentation.
+
+## 7A. Expense Funding Attribution (EFA)
+
+Detailed readiness/design: `docs/architecture/accounting-expense-funding-attribution.md`.
+
+**2026-09-22 state:** **EFA-A COMPLETE / EFA-B1 MERGED + CI GREEN + MIGRATION REVIEWED + COMMITTED TO DEV / PRODUCTION APPLICATION PENDING / EFA-B2 MERGED + CI GREEN / EFA-C MERGED + CI GREEN + NO NEW MIGRATION + NO GRAPH CHANGE / EFA-D LOCAL SOURCE IMPLEMENTED + REVIEW PENDING + NO NEW MIGRATION + NO GRAPH CHANGE**. EFA-C merged through PR #2470 / `42e25b04` after CI #6155 passed. B2-E is deployed and production-verified, so Sales B2 is closed. EFA is inserted before B3 Trial Balance so B3 can characterize the final Expense Journal cardinality rather than a transitional one.
+
+The operator explicitly accepts deleting/recreating the single-user Accounting PWA during the later v2 cutover. Therefore no long-lived old-client write compatibility layer is required. Historical `accounting.expense_document.v1` source facts/Journals remain immutable/readable.
+
+Target:
+
+```text
+ExpenseDocument
+  └─ ExpenseSplit
+       ├─ category
+       ├─ amount/tax
+       └─ paidFromAccount
+             ↓ group by funding account
+       1..N balanced Expense v2 Journals
+```
+
+Management visibility is an account policy, not a deletion rule. A funding account can set `includeFundedExpensesInManagementReports=false`; Expense groups funded by that account are later excluded from Management Dashboard/P&L/category/trend/export views while remaining in canonical Journal, account movement, actual cash flow, audit/evidence and future GST/HST statutory reporting.
+
+EFA-B1 is additive only: it introduces `fundingAttributionVersion`, nullable split-level funding relation and the account management-policy flag. Source merged through PR #2468 / `2250b22d`; PR CI #6145 passed. User-generated migration `20260922183548_accounting_efa_b1_funding_attribution_foundation` was reviewed as additive-only and is committed to `dev` as `3e445345`. Production application is still a later gate.
+
+EFA-B2 merged through PR #2469 / `6674ab1cdd6bcba78998698cde69469c40b0b03d` with CI #6150 green. It provides `CanonicalExpenseFactV2`, persisted split-funding authority, per-funding-account balanced Journal grouping, deterministic account-scoped v2 idempotency, v1/v2 authority revalidation, operational funding-account validation, and focused retry/period-lock/grouping/drift regressions.
+
+EFA-C merged through PR #2470 / final head `483109e6` / squash `42e25b04`; CI #6155 passed API/Web/Architecture gates. Current Expense/Inbox writes use explicit split-level funding and version 2, confirmed-but-unposted v2 completion is split-level, Expense records dual-read v1/v2 funding, and Accounting Settings can create/view/update the account Management-expense policy. The standalone v2 payment-allocation card is removed; new category rows and Inbox Quick Classify rows inherit payment account, and Quick Classify aggregates by category + payment account. Historical v1 allocation completion remains supported.
+
+EFA-D is locally implemented from `origin/dev@42e25b04`: reporting projection scope is explicit. Dashboard/P&L/category/trend plus Management/Boss exports use `MANAGEMENT`; raw transaction CSV remains `CANONICAL`. Only Expense v2 Journal groups consult their single operational funding account's `includeFundedExpensesInManagementReports`; excluded groups disappear from management Expense/P&L facts while historical v1 and canonical exports remain intact. Recoverable GST/HST is still accumulated from canonical Journal before the management filter, and account movement / actual cash flow remain on their independent canonical query paths. No new schema/migration or graph edge is introduced.
+
+The already-reviewed B1 additive migration must be applied before EFA-C/D production deployment, followed by Accounting PWA reinstall and the EFA-D included/excluded/mixed-account production verification.
 
 ## 8. Slice C — Trial Balance and Balance Movement
 

@@ -4,6 +4,7 @@ import { DateTime } from 'luxon';
 import {
   AccountingAccountType,
   AccountingJournalEntryKind,
+  AccountingJournalSource,
   AccountingTxType,
 } from './accounting-contracts';
 import { writeAccountingAuditLog } from './accounting-audit-writer';
@@ -19,6 +20,7 @@ import {
   type AccountingFinancialReportFact,
   type AccountingFinancialReportProjection,
 } from './accounting-financial-report-policy';
+import { CANONICAL_EXPENSE_SOURCE_FACT_TYPE_V2 } from './accounting-expense-journal.policy';
 import { countAccountingInboxReviewItems } from './accounting-inbox-query';
 import { AccountingPeriodService } from './accounting-period.service';
 
@@ -30,6 +32,8 @@ type FinancialFactFilters = {
   keyword?: string;
 };
 
+type FinancialReportScope = 'MANAGEMENT' | 'CANONICAL';
+
 @Injectable()
 export class AccountingFinancialReportsService {
   constructor(
@@ -38,7 +42,7 @@ export class AccountingFinancialReportsService {
   ) {}
 
   async dashboard(from: string, to: string) {
-    const projection = await this.readProjection(from, to);
+    const projection = await this.readProjection(from, to, 'MANAGEMENT');
     let incomeCents = 0;
     let expenseCents = 0;
     let adjustmentCents = 0;
@@ -102,7 +106,11 @@ export class AccountingFinancialReportsService {
   }) {
     const groupBy = query.groupBy ?? 'month';
     const timezone = await this.period.getBusinessTimezone();
-    const projection = await this.readProjection(query.from, query.to);
+    const projection = await this.readProjection(
+      query.from,
+      query.to,
+      'MANAGEMENT',
+    );
     const categoriesMeta = await this.prisma.accountingCategory.findMany({
       where: { isActive: true },
       select: {
@@ -299,7 +307,11 @@ export class AccountingFinancialReportsService {
   }
 
   async exportTxCsv(filters: FinancialFactFilters, operatorUserId: string) {
-    const projection = await this.readProjection(filters.from, filters.to);
+    const projection = await this.readProjection(
+      filters.from,
+      filters.to,
+      'CANONICAL',
+    );
     const keyword = filters.keyword?.trim().toLowerCase();
     const facts = projection.facts.filter((fact) => {
       if (
@@ -509,8 +521,9 @@ export class AccountingFinancialReportsService {
   }
 
   private async readProjection(
-    from?: string,
-    to?: string,
+    from: string | undefined,
+    to: string | undefined,
+    scope: FinancialReportScope,
   ): Promise<AccountingFinancialReportProjection> {
     const { fromDate, toDate } = await this.resolveRange(from, to);
     const occurredAt = this.occurredAtWhere(fromDate, toDate);
@@ -523,6 +536,8 @@ export class AccountingFinancialReportsService {
         entryStableId: true,
         kind: true,
         source: true,
+        sourceFactType: true,
+        sourceFactVersion: true,
         occurredAt: true,
         currency: true,
         memo: true,
@@ -541,6 +556,7 @@ export class AccountingFinancialReportsService {
                 name: true,
                 type: true,
                 accountClass: true,
+                includeFundedExpensesInManagementReports: true,
               },
             },
             category: {
@@ -556,8 +572,14 @@ export class AccountingFinancialReportsService {
     let journalInputTaxCents = 0;
     for (const entry of journalEntries) {
       const projected = projectAccountingJournalReportEntry(entry);
-      facts.push(...projected.facts);
       journalInputTaxCents += projected.journalInputTaxCents;
+      if (
+        scope === 'MANAGEMENT' &&
+        !this.includeJournalEntryInManagementProjection(entry)
+      ) {
+        continue;
+      }
+      facts.push(...projected.facts);
     }
     const expenseInputTaxCents = 0;
 
@@ -566,6 +588,41 @@ export class AccountingFinancialReportsService {
       return occurredDiff || a.stableId.localeCompare(b.stableId);
     });
     return { facts, journalInputTaxCents, expenseInputTaxCents };
+  }
+
+  private includeJournalEntryInManagementProjection(entry: {
+    source: AccountingJournalSource;
+    sourceFactType: string | null;
+    sourceFactVersion: number | null;
+    lines: Array<{
+      creditCents: number;
+      account: {
+        type: AccountingAccountType | null;
+        includeFundedExpensesInManagementReports: boolean | null;
+      };
+    }>;
+  }): boolean {
+    const isExpenseV2Group =
+      entry.source === AccountingJournalSource.EXPENSE_DOCUMENT &&
+      entry.sourceFactType === CANONICAL_EXPENSE_SOURCE_FACT_TYPE_V2 &&
+      entry.sourceFactVersion === 2;
+    if (!isExpenseV2Group) return true;
+
+    const fundingLines = entry.lines.filter(
+      (line) =>
+        line.creditCents > 0 &&
+        (line.account.type === AccountingAccountType.CASH ||
+          line.account.type === AccountingAccountType.BANK ||
+          line.account.type === AccountingAccountType.PLATFORM_WALLET),
+    );
+    if (fundingLines.length !== 1) {
+      throw new BadRequestException(
+        'Expense v2 Journal must have exactly one operational funding credit line',
+      );
+    }
+    return (
+      fundingLines[0].account.includeFundedExpensesInManagementReports !== false
+    );
   }
 
   private async resolveRange(from?: string, to?: string) {

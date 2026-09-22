@@ -77,6 +77,8 @@ describe('Accounting expense source evidence query', () => {
             categoryName: 'Telecom',
             amountCents: 1000,
             taxCents: 130,
+            paidFromAccountStableId: null,
+            paidFromAccountName: null,
             sortOrder: 0,
           },
         ],
@@ -121,9 +123,35 @@ describe('Accounting expense source evidence query', () => {
         lt: new Date('2026-07-01T04:00:00.000Z'),
       },
       totalCents: { gte: 5000 },
-      paymentAllocations: {
-        some: { account: { accountStableId: 'account_cibc' } },
-      },
+      OR: [
+        {
+          AND: [
+            {
+              OR: [
+                { fundingAttributionVersion: 1 },
+                { fundingAttributionVersion: null },
+              ],
+            },
+            {
+              paymentAllocations: {
+                some: { account: { accountStableId: 'account_cibc' } },
+              },
+            },
+          ],
+        },
+        {
+          AND: [
+            { fundingAttributionVersion: 2 },
+            {
+              splits: {
+                some: {
+                  paidFromAccount: { accountStableId: 'account_cibc' },
+                },
+              },
+            },
+          ],
+        },
+      ],
     }) as unknown;
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -153,7 +181,71 @@ describe('Accounting expense source evidence query', () => {
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          paymentAllocations: { none: {} },
+          OR: [
+            {
+              AND: [
+                {
+                  OR: [
+                    { fundingAttributionVersion: 1 },
+                    { fundingAttributionVersion: null },
+                  ],
+                },
+                { paymentAllocations: { none: {} } },
+              ],
+            },
+            {
+              AND: [
+                { fundingAttributionVersion: 2 },
+                { splits: { some: { paidFromAccountId: null } } },
+              ],
+            },
+          ],
+        }) as unknown,
+      }),
+    );
+  });
+
+  it('treats v1 allocations and fully funded v2 splits as ASSIGNED', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const count = jest.fn().mockResolvedValue(9);
+    const db = {
+      accountingExpenseDocument: { findMany, count },
+    };
+
+    await listAccountingExpenseRecords(db as never, {
+      status: 'CONFIRMED' as never,
+      paymentState: 'ASSIGNED',
+      limit: 10,
+      offset: 0,
+    });
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [
+            {
+              AND: [
+                {
+                  OR: [
+                    { fundingAttributionVersion: 1 },
+                    { fundingAttributionVersion: null },
+                  ],
+                },
+                { paymentAllocations: { some: {} } },
+              ],
+            },
+            {
+              AND: [
+                { fundingAttributionVersion: 2 },
+                { splits: { some: {} } },
+                {
+                  splits: {
+                    every: { paidFromAccountId: { not: null } },
+                  },
+                },
+              ],
+            },
+          ],
         }) as unknown,
       }),
     );

@@ -33,6 +33,7 @@ export class AccountingChartController {
       name: string;
       type: AccountingAccountType;
       currency?: string;
+      includeFundedExpensesInManagementReports?: boolean;
     },
   ) {
     return this.chart.createAccount(body);
@@ -41,6 +42,20 @@ export class AccountingChartController {
   @Get('accounts')
   async listAccounts() {
     return this.chart.listAccounts();
+  }
+
+  @Put('accounts/:accountStableId/expense-management-policy')
+  async updateAccountExpenseManagementPolicy(
+    @Param('accountStableId') accountStableId: string,
+    @Body()
+    body: {
+      includeFundedExpensesInManagementReports: boolean;
+    },
+  ) {
+    return this.chart.updateAccountExpenseManagementPolicy(
+      accountStableId,
+      body.includeFundedExpensesInManagementReports,
+    );
   }
 
   @Get('categories')

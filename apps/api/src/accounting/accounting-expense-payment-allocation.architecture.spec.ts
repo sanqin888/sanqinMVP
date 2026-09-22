@@ -59,7 +59,7 @@ describe('Accounting Expense payment allocation boundary', () => {
     expect(allocation).toContain('@@index([accountId])');
   });
 
-  it('exposes paymentAllocations instead of the old single-account Expense input', () => {
+  it('retains v1 allocation history while current Expense writes use split-level funding', () => {
     const expenseContract = readFileSync(EXPENSE_CONTRACT, 'utf8');
     const expenseService = readFileSync(EXPENSE_SERVICE, 'utf8');
     const input = expenseContract.match(
@@ -67,12 +67,17 @@ describe('Accounting Expense payment allocation boundary', () => {
     )?.[1];
 
     expect(input).toBeDefined();
-    expect(input).toContain(
-      'paymentAllocations?: AccountingExpensePaymentAllocationInput[]',
-    );
+    expect(input).not.toContain('paymentAllocations');
     expect(input).not.toMatch(/\baccountStableId\?\s*:/);
+    expect(expenseContract).toContain('paidFromAccountStableId: string | null');
+    expect(expenseContract).toContain(
+      'AccountingExpensePaymentCompletionInput',
+    );
     expect(expenseService).toContain(
-      'accountStableId is no longer supported for expenses; use paymentAllocations',
+      'document-level paymentAllocations are not supported for Expense v2',
+    );
+    expect(expenseService).toContain(
+      'legacy payment allocation completion only supports Expense v1',
     );
   });
 

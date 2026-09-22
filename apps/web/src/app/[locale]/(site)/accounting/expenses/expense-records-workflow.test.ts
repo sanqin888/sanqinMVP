@@ -45,45 +45,50 @@ describe('Accounting Expense records and payment completion UX', () => {
     expect(editorSource).not.toContain("method: 'POST'");
   });
 
-  it('only sends payment allocations when completing a confirmed Expense', () => {
+  it('uses split-level funding for v2 completion while retaining the historical v1 allocation path', () => {
+    expect(completionFormSource).toContain('/split-funding');
     expect(completionFormSource).toContain('/payment-allocations');
     expect(completionFormSource).toContain("method: 'PUT'");
+    expect(completionFormSource).toContain(
+      'paidFromAccountStableId: splitFunding[split.splitStableId]',
+    );
     expect(completionFormSource).toContain(
       'paymentAllocations: prepared.paymentAllocations',
     );
     expect(completionFormSource).toContain(
+      'document.fundingAttributionVersion === 2',
+    );
+    expect(completionFormSource).toContain(
       '日期、金额、费用分类和凭证不可在此修改',
     );
-    expect(completionFormSource).toContain('disabled');
-    expect(completionFormSource).toContain('readOnly');
     expect(completionFormSource).toContain('allowUnknown={false}');
     expect(paymentEditorSource).toContain(
       '请把 CAD 记账总额完整分配到一个或多个付款账户。',
     );
   });
 
-  it('orders create and completion forms as date, total, category, payment, then evidence', () => {
-    for (const source of [createFormSource, completionFormSource]) {
-      const dateIndex = source.indexOf("{isZh ? '日期' : 'Date'}");
-      const totalIndex = source.indexOf(
-        "{isZh ? 'CAD 记账总额' : 'CAD booking total'}",
-      );
-      const categoryIndex =
-        source === createFormSource
-          ? source.indexOf('<ExpenseSplitEditor')
-          : source.indexOf("{isZh ? '费用分类' : 'Expense splits'}");
-      const paymentIndex = source.indexOf(
-        '<ExpensePaymentAllocationsEditor',
-      );
-      const evidenceIndex = source.indexOf(
-        "{isZh ? '凭证文件' : 'Evidence files'}",
-      );
+  it('puts v2 payment-account selection inside expense split rows instead of a separate create card', () => {
+    expect(createFormSource).toContain('<ExpenseSplitEditor');
+    expect(createFormSource).toContain('accounts={accounts}');
+    expect(createFormSource).toContain(
+      'paidFromAccountStableId:',
+    );
+    expect(createFormSource).not.toContain(
+      '<ExpensePaymentAllocationsEditor',
+    );
+    expect(createFormSource).not.toContain('paymentAllocations:');
 
-      expect(dateIndex).toBeGreaterThan(-1);
-      expect(totalIndex).toBeGreaterThan(dateIndex);
-      expect(categoryIndex).toBeGreaterThan(totalIndex);
-      expect(paymentIndex).toBeGreaterThan(categoryIndex);
-      expect(evidenceIndex).toBeGreaterThan(paymentIndex);
-    }
+    const dateIndex = createFormSource.indexOf("{isZh ? '日期' : 'Date'}");
+    const totalIndex = createFormSource.indexOf(
+      "{isZh ? 'CAD 记账总额' : 'CAD booking total'}",
+    );
+    const splitIndex = createFormSource.indexOf('<ExpenseSplitEditor');
+    const evidenceIndex = createFormSource.indexOf(
+      "{isZh ? '凭证文件' : 'Evidence files'}",
+    );
+    expect(dateIndex).toBeGreaterThan(-1);
+    expect(totalIndex).toBeGreaterThan(dateIndex);
+    expect(splitIndex).toBeGreaterThan(totalIndex);
+    expect(evidenceIndex).toBeGreaterThan(splitIndex);
   });
 });

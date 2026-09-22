@@ -54,7 +54,7 @@ describe('Accounting Inbox expense review UX guard', () => {
     expect(source).toContain('Confirm and create expense');
   });
 
-  it('keeps source currency before expense date and payment allocations immediately before memo', () => {
+  it('keeps source currency before expense date and puts v2 payment accounts on final split rows', () => {
     const source = readFileSync(
       resolve(__dirname, 'expense-review-panel.tsx'),
       'utf8',
@@ -62,12 +62,32 @@ describe('Accounting Inbox expense review UX guard', () => {
 
     const sourceCurrencyIndex = source.indexOf('value={sourceCurrency}');
     const expenseDateIndex = source.indexOf('type="date"');
-    const paymentEditorIndex = source.indexOf('<ExpensePaymentAllocationsEditor');
+    const paymentAccountIndex = source.indexOf(
+      "isZh ? '付款账户' : 'Payment account'",
+    );
     const memoIndex = source.indexOf("{isZh ? '备注' : 'Memo'}");
 
     expect(sourceCurrencyIndex).toBeGreaterThan(-1);
     expect(sourceCurrencyIndex).toBeLessThan(expenseDateIndex);
-    expect(paymentEditorIndex).toBeGreaterThan(expenseDateIndex);
-    expect(paymentEditorIndex).toBeLessThan(memoIndex);
+    expect(paymentAccountIndex).toBeGreaterThan(expenseDateIndex);
+    expect(paymentAccountIndex).toBeLessThan(memoIndex);
+    expect(source).not.toContain('<ExpensePaymentAllocationsEditor');
+    expect(source).toContain("isZh ? '税' : 'Tax'");
+    expect(source).toContain('HST');
+    expect(source).toContain(
+      "aria-label={isZh ? '付款账户' : 'Payment account'}",
+    );
+    expect(source).toContain(
+      'inheritFrom?.paidFromAccountStableId ??',
+    );
+    expect(source).toContain(
+      'rows.at(-1)?.paidFromAccountStableId ??',
+    );
+    expect(source).toContain(
+      'row.paidFromAccountStableId,',
+    );
+    expect(source).toContain(
+      'paidFromAccountStableId: value.paidFromAccountStableId',
+    );
   });
 });

@@ -1707,9 +1707,11 @@ model AccountingAccount {
   accountClass     AccountingAccountClass
   currency         String                      @default("CAD")
   isActive         Boolean                     @default(true)
+  includeFundedExpensesInManagementReports Boolean? @default(true)
   createdAt        DateTime                    @default(now())
   updatedAt        DateTime                    @updatedAt
   expensePaymentAllocations AccountingExpensePaymentAllocation[]
+  fundedExpenseSplits       AccountingExpenseSplit[] @relation("AccountingExpenseFundingAccount")
   journalLines              AccountingJournalLine[]
 
   @@unique([name, type])
@@ -2061,6 +2063,7 @@ model AccountingExpenseDocument {
   documentStableId     String                               @unique @default(cuid())
   source               AccountingDocumentSource             @default(MANUAL)
   status               AccountingDocumentStatus             @default(PENDING_REVIEW)
+  fundingAttributionVersion Int?                             @default(1)
   occurredAt           DateTime?
   subtotalCents        Int?
   taxCents             Int?
@@ -2092,6 +2095,7 @@ model AccountingExpenseSplit {
   splitStableId     String                    @unique @default(cuid())
   expenseDocumentId String                    @db.Uuid
   categoryId        String                    @db.Uuid
+  paidFromAccountId String?                   @db.Uuid
   amountCents       Int
   taxCents          Int                       @default(0)
   sortOrder         Int                       @default(0)
@@ -2099,10 +2103,12 @@ model AccountingExpenseSplit {
   updatedAt         DateTime                  @updatedAt
   expenseDocument   AccountingExpenseDocument @relation(fields: [expenseDocumentId], references: [id], onDelete: Cascade)
   category          AccountingCategory        @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  paidFromAccount   AccountingAccount?         @relation("AccountingExpenseFundingAccount", fields: [paidFromAccountId], references: [id], onDelete: Restrict)
 
   @@unique([expenseDocumentId, sortOrder])
   @@index([expenseDocumentId])
   @@index([categoryId])
+  @@index([paidFromAccountId])
 }
 
 model AccountingExpensePaymentAllocation {

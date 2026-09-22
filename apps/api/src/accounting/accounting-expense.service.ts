@@ -9,6 +9,8 @@ import { createId } from '@paralleldrive/cuid2';
 import { Prisma } from '@prisma/client';
 import { DateTime } from 'luxon';
 import {
+  AccountingAccountClass,
+  AccountingAccountType,
   AccountingArtifactKind,
   AccountingDocumentSource,
   AccountingDocumentStatus,
@@ -36,6 +38,7 @@ import type {
   AccountingExpensePaymentAllocationInput,
   AccountingExpensePaymentCompletionInput,
   AccountingExpensePaymentState,
+  AccountingExpenseSplitFundingCompletionInput,
 } from './accounting-expense.contracts';
 import { AccountingExpenseJournalPostingService } from './accounting-expense-journal-posting.service';
 import { CANONICAL_EXPENSE_SOURCE_FACT_TYPE } from './accounting-expense-journal.policy';
@@ -51,6 +54,7 @@ import {
 } from './accounting-expense-input';
 import { createAccountingExpensePaymentAllocationsInTx } from './accounting-expense-payment-allocation.writer';
 import {
+  assignAccountingExpenseSplitFundingInTx,
   createAccountingExpenseSplitsInTx,
   deleteAccountingExpenseSplitsInTx,
 } from './accounting-expense-split.writer';
@@ -198,14 +202,9 @@ export class AccountingExpenseService {
     input: AccountingExpenseInput,
     operatorUserStableId: string,
   ) {
-    this.assertNoLegacyExpensePaymentAccount(input);
+    this.assertV2ExpenseFundingInput(input);
     const occurredAt = parseAccountingExpenseDate(input.occurredAt);
     assertAccountingExpenseMoney(input.totalCents, 'totalCents');
-    const normalizedPaymentAllocations =
-      this.normalizeExpensePaymentAllocations(
-        input.paymentAllocations,
-        input.totalCents,
-      );
     if (!input.splits.length) {
       throw new BadRequestException('at least one expense split is required');
     }
@@ -213,7 +212,11 @@ export class AccountingExpenseService {
       assertAccountingExpenseMoney(split.amountCents, 'split.amountCents');
       const taxCents = split.taxCents ?? 0;
       assertAccountingExpenseMoney(taxCents, 'split.taxCents');
-      return { ...split, taxCents };
+      return {
+        ...split,
+        taxCents,
+        paidFromAccountStableId: split.paidFromAccountStableId?.trim() || null,
+      };
     });
     const subtotalCents = normalizedSplits.reduce(
       (sum, split) => sum + split.amountCents,
@@ -308,11 +311,10 @@ export class AccountingExpenseService {
         );
       }
 
-      const resolvedPaymentAllocations =
-        await this.resolveExpensePaymentAllocations(
-          tx,
-          normalizedPaymentAllocations,
-        );
+      const fundingAccountDbIds = await this.resolveExpenseSplitFundingAccounts(
+        tx,
+        normalizedSplits,
+      );
 
       const metadata = accountingJsonRecord(inbox.artifact.metadataJson);
       const extractedSourceCurrency = accountingOptionalString(
@@ -371,6 +373,7 @@ export class AccountingExpenseService {
               ? AccountingDocumentSource.GMAIL
               : AccountingDocumentSource.MANUAL,
           status: AccountingDocumentStatus.CONFIRMED,
+          fundingAttributionVersion: 2,
           occurredAt,
           subtotalCents,
           taxCents,
@@ -393,16 +396,14 @@ export class AccountingExpenseService {
         },
         select: { id: true },
       });
-      await createAccountingExpensePaymentAllocationsInTx(
-        tx,
-        created.id,
-        resolvedPaymentAllocations,
-      );
 
       const splitRows = await createAccountingExpenseSplitsInTx(tx, {
         expenseDocumentDbId: created.id,
         splits: normalizedSplits.map((split, index) => ({
           categoryDbId: categoryMap.get(split.categoryStableId)!,
+          paidFromAccountDbId: split.paidFromAccountStableId
+            ? fundingAccountDbIds.get(split.paidFromAccountStableId)!
+            : null,
           amountCents: split.amountCents,
           taxCents: split.taxCents,
           sortOrder: index,
@@ -428,6 +429,8 @@ export class AccountingExpenseService {
               taxCents: row.taxCents,
               sortOrder: row.sortOrder,
               categoryStableId: normalizedSplits[index].categoryStableId,
+              paidFromAccountStableId:
+                normalizedSplits[index].paidFromAccountStableId,
               documentStableId,
             } as Prisma.InputJsonValue,
           })),
@@ -453,14 +456,9 @@ export class AccountingExpenseService {
     input: AccountingExpenseInput,
     operatorUserStableId: string,
   ) {
-    this.assertNoLegacyExpensePaymentAccount(input);
+    this.assertV2ExpenseFundingInput(input);
     const occurredAt = parseAccountingExpenseDate(input.occurredAt);
     assertAccountingExpenseMoney(input.totalCents, 'totalCents');
-    const normalizedPaymentAllocations =
-      this.normalizeExpensePaymentAllocations(
-        input.paymentAllocations,
-        input.totalCents,
-      );
     if (!input.splits.length) {
       throw new BadRequestException('at least one expense split is required');
     }
@@ -469,7 +467,11 @@ export class AccountingExpenseService {
       assertAccountingExpenseMoney(split.amountCents, 'split.amountCents');
       const taxCents = split.taxCents ?? 0;
       assertAccountingExpenseMoney(taxCents, 'split.taxCents');
-      return { ...split, taxCents };
+      return {
+        ...split,
+        taxCents,
+        paidFromAccountStableId: split.paidFromAccountStableId?.trim() || null,
+      };
     });
     const subtotalCents = normalizedSplits.reduce(
       (sum, split) => sum + split.amountCents,
@@ -519,17 +521,15 @@ export class AccountingExpenseService {
           AccountingTxType.EXPENSE,
           tx,
         );
-        const resolvedPaymentAllocations =
-          await this.resolveExpensePaymentAllocations(
-            tx,
-            normalizedPaymentAllocations,
-          );
+        const fundingAccountDbIds =
+          await this.resolveExpenseSplitFundingAccounts(tx, normalizedSplits);
 
         const created = await tx.accountingExpenseDocument.create({
           data: {
             documentStableId,
             source: AccountingDocumentSource.MANUAL,
             status: AccountingDocumentStatus.CONFIRMED,
+            fundingAttributionVersion: 2,
             occurredAt,
             subtotalCents,
             taxCents,
@@ -541,16 +541,14 @@ export class AccountingExpenseService {
             confirmedByUserStableId: operatorUserStableId,
           },
         });
-        await createAccountingExpensePaymentAllocationsInTx(
-          tx,
-          created.id,
-          resolvedPaymentAllocations,
-        );
 
         const splitRows = await createAccountingExpenseSplitsInTx(tx, {
           expenseDocumentDbId: created.id,
           splits: normalizedSplits.map((split, index) => ({
             categoryDbId: categoryMap.get(split.categoryStableId)!.id,
+            paidFromAccountDbId: split.paidFromAccountStableId
+              ? fundingAccountDbIds.get(split.paidFromAccountStableId)!
+              : null,
             amountCents: split.amountCents,
             taxCents: split.taxCents,
             sortOrder: index,
@@ -568,6 +566,8 @@ export class AccountingExpenseService {
               taxCents: row.taxCents,
               sortOrder: row.sortOrder,
               categoryStableId: normalizedSplits[index].categoryStableId,
+              paidFromAccountStableId:
+                normalizedSplits[index].paidFromAccountStableId,
               documentStableId,
             } as Prisma.InputJsonValue,
           })),
@@ -673,6 +673,7 @@ export class AccountingExpenseService {
         select: {
           id: true,
           status: true,
+          fundingAttributionVersion: true,
           occurredAt: true,
           totalCents: true,
           paymentAllocations: {
@@ -688,6 +689,11 @@ export class AccountingExpenseService {
       }
       if (document.status !== AccountingDocumentStatus.CONFIRMED) {
         throw new ConflictException('expense document is not confirmed');
+      }
+      if ((document.fundingAttributionVersion ?? 1) !== 1) {
+        throw new ConflictException(
+          'legacy payment allocation completion only supports Expense v1',
+        );
       }
       if (!document.occurredAt || document.totalCents == null) {
         throw new ConflictException(
@@ -787,6 +793,188 @@ export class AccountingExpenseService {
     return this.getExpenseDocument(documentStableId);
   }
 
+  async completeExpenseSplitFunding(
+    documentStableId: string,
+    input: AccountingExpenseSplitFundingCompletionInput,
+    operatorUserStableId: string,
+  ) {
+    if (!Array.isArray(input.splits) || input.splits.length === 0) {
+      throw new BadRequestException(
+        'splits must contain at least one funding assignment',
+      );
+    }
+
+    const requestedFunding = new Map<string, string>();
+    for (const row of input.splits) {
+      const splitStableId = row?.splitStableId?.trim();
+      const paidFromAccountStableId = row?.paidFromAccountStableId?.trim();
+      if (!splitStableId || !paidFromAccountStableId) {
+        throw new BadRequestException(
+          'splitStableId and paidFromAccountStableId are required',
+        );
+      }
+      if (requestedFunding.has(splitStableId)) {
+        throw new BadRequestException('split funding must not repeat a split');
+      }
+      requestedFunding.set(splitStableId, paidFromAccountStableId);
+    }
+
+    await runSerializableAccountingWrite(this.prisma, async (tx) => {
+      const document = await tx.accountingExpenseDocument.findUnique({
+        where: { documentStableId },
+        select: {
+          id: true,
+          status: true,
+          fundingAttributionVersion: true,
+          occurredAt: true,
+          paymentAllocations: {
+            select: { paymentAllocationStableId: true },
+          },
+          splits: {
+            orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+            select: {
+              id: true,
+              splitStableId: true,
+              paidFromAccount: {
+                select: { accountStableId: true },
+              },
+            },
+          },
+        },
+      });
+      if (!document) {
+        throw new NotFoundException('expense document not found');
+      }
+      if (document.status !== AccountingDocumentStatus.CONFIRMED) {
+        throw new ConflictException('expense document is not confirmed');
+      }
+      if ((document.fundingAttributionVersion ?? 1) !== 2) {
+        throw new ConflictException(
+          'split funding completion only supports Expense v2',
+        );
+      }
+      if (!document.occurredAt) {
+        throw new ConflictException(
+          'confirmed expense document is missing booking facts',
+        );
+      }
+      if (document.paymentAllocations.length > 0) {
+        throw new ConflictException(
+          'Expense v2 cannot retain legacy document-level payment allocations',
+        );
+      }
+      if (
+        document.splits.length !== requestedFunding.size ||
+        document.splits.some(
+          (split) => !requestedFunding.has(split.splitStableId),
+        )
+      ) {
+        throw new BadRequestException(
+          'split funding completion must include every expense split exactly once',
+        );
+      }
+
+      const alreadyComplete = document.splits.every(
+        (split) =>
+          split.paidFromAccount?.accountStableId ===
+          requestedFunding.get(split.splitStableId),
+      );
+      const conflicts = document.splits.some(
+        (split) =>
+          split.paidFromAccount &&
+          split.paidFromAccount.accountStableId !==
+            requestedFunding.get(split.splitStableId),
+      );
+      if (conflicts) {
+        throw new ConflictException(
+          'expense split funding is already assigned and cannot be replaced',
+        );
+      }
+      if (alreadyComplete) {
+        await this.expenseJournalPosting.postConfirmedExpenseIfReadyInTx(
+          tx,
+          documentStableId,
+          operatorUserStableId,
+        );
+        return;
+      }
+
+      await this.period.assertEditableForPeriod(
+        document.occurredAt,
+        AccountingTxType.EXPENSE,
+        tx,
+      );
+      await tx.accountingExpenseDocument.update({
+        where: { id: document.id },
+        data: { updatedAt: new Date() },
+        select: { id: true },
+      });
+
+      const existingJournal = await tx.accountingJournalEntry.findFirst({
+        where: {
+          deletedAt: null,
+          source: AccountingJournalSource.EXPENSE_DOCUMENT,
+          sourceFactStableId: documentStableId,
+        },
+        select: { entryStableId: true },
+      });
+      if (existingJournal) {
+        throw new ConflictException(
+          'posted expense split funding cannot be completed in place',
+        );
+      }
+
+      const fundingAccountDbIds = await this.resolveExpenseSplitFundingAccounts(
+        tx,
+        document.splits.map((split) => ({
+          paidFromAccountStableId: requestedFunding.get(split.splitStableId)!,
+        })),
+      );
+
+      for (const split of document.splits) {
+        if (split.paidFromAccount) continue;
+        const accountStableId = requestedFunding.get(split.splitStableId)!;
+        const updated = await assignAccountingExpenseSplitFundingInTx(tx, {
+          expenseSplitDbId: split.id,
+          expenseDocumentDbId: document.id,
+          paidFromAccountDbId: fundingAccountDbIds.get(accountStableId)!,
+        });
+        if (updated.count !== 1) {
+          throw new ConflictException(
+            'expense split funding changed during completion; reload and retry',
+          );
+        }
+      }
+
+      await writeAccountingAuditLog(tx, {
+        action: 'COMPLETE_EXPENSE_SPLIT_FUNDING',
+        entityType: 'ACCOUNTING_EXPENSE_DOCUMENT',
+        entityId: documentStableId,
+        operatorActorRef: operatorUserStableId,
+        beforeJson: {
+          splits: document.splits.map((split) => ({
+            splitStableId: split.splitStableId,
+            paidFromAccountStableId:
+              split.paidFromAccount?.accountStableId ?? null,
+          })),
+        },
+        afterJson: {
+          splits: document.splits.map((split) => ({
+            splitStableId: split.splitStableId,
+            paidFromAccountStableId: requestedFunding.get(split.splitStableId)!,
+          })),
+        },
+      });
+      await this.expenseJournalPosting.postConfirmedExpenseIfReadyInTx(
+        tx,
+        documentStableId,
+        operatorUserStableId,
+      );
+    });
+
+    return this.getExpenseDocument(documentStableId);
+  }
+
   async getExpenseDocument(documentStableId: string) {
     const document = await readAccountingExpenseDocument(
       this.prisma,
@@ -801,7 +989,7 @@ export class AccountingExpenseService {
     input: AccountingExpenseInput,
     operatorUserStableId: string,
   ) {
-    this.assertNoLegacyExpensePaymentAccount(input);
+    this.assertV2ExpenseFundingInput(input);
     const existing = await this.prisma.accountingExpenseDocument.findUnique({
       where: { documentStableId },
       select: { id: true, status: true, attachmentUrls: true },
@@ -813,11 +1001,6 @@ export class AccountingExpenseService {
 
     const occurredAt = parseAccountingExpenseDate(input.occurredAt);
     assertAccountingExpenseMoney(input.totalCents, 'totalCents');
-    const normalizedPaymentAllocations =
-      this.normalizeExpensePaymentAllocations(
-        input.paymentAllocations,
-        input.totalCents,
-      );
     if (!input.splits.length) {
       throw new BadRequestException('at least one expense split is required');
     }
@@ -825,7 +1008,11 @@ export class AccountingExpenseService {
       assertAccountingExpenseMoney(split.amountCents, 'split.amountCents');
       const taxCents = split.taxCents ?? 0;
       assertAccountingExpenseMoney(taxCents, 'split.taxCents');
-      return { ...split, taxCents };
+      return {
+        ...split,
+        taxCents,
+        paidFromAccountStableId: split.paidFromAccountStableId?.trim() || null,
+      };
     });
     const subtotalCents = normalizedSplits.reduce(
       (sum, split) => sum + split.amountCents,
@@ -873,11 +1060,10 @@ export class AccountingExpenseService {
         AccountingTxType.EXPENSE,
         tx,
       );
-      const resolvedPaymentAllocations =
-        await this.resolveExpensePaymentAllocations(
-          tx,
-          normalizedPaymentAllocations,
-        );
+      const fundingAccountDbIds = await this.resolveExpenseSplitFundingAccounts(
+        tx,
+        normalizedSplits,
+      );
 
       const current = await tx.accountingExpenseDocument.findUnique({
         where: { id: existing.id },
@@ -909,6 +1095,7 @@ export class AccountingExpenseService {
         where: { id: existing.id },
         data: {
           status: AccountingDocumentStatus.CONFIRMED,
+          fundingAttributionVersion: 2,
           occurredAt,
           subtotalCents,
           taxCents,
@@ -920,15 +1107,13 @@ export class AccountingExpenseService {
           confirmedByUserStableId: operatorUserStableId,
         },
       });
-      await createAccountingExpensePaymentAllocationsInTx(
-        tx,
-        existing.id,
-        resolvedPaymentAllocations,
-      );
       const splitRows = await createAccountingExpenseSplitsInTx(tx, {
         expenseDocumentDbId: existing.id,
         splits: normalizedSplits.map((split, index) => ({
           categoryDbId: categoryMap.get(split.categoryStableId)!,
+          paidFromAccountDbId: split.paidFromAccountStableId
+            ? fundingAccountDbIds.get(split.paidFromAccountStableId)!
+            : null,
           amountCents: split.amountCents,
           taxCents: split.taxCents,
           sortOrder: index,
@@ -961,6 +1146,8 @@ export class AccountingExpenseService {
               taxCents: row.taxCents,
               sortOrder: row.sortOrder,
               categoryStableId: normalizedSplits[index].categoryStableId,
+              paidFromAccountStableId:
+                normalizedSplits[index].paidFromAccountStableId,
               documentStableId,
             } as Prisma.InputJsonValue,
           })),
@@ -992,17 +1179,94 @@ export class AccountingExpenseService {
     return this.getExpenseDocument(documentStableId);
   }
 
-  private assertNoLegacyExpensePaymentAccount(input: AccountingExpenseInput) {
-    if (
-      Object.prototype.hasOwnProperty.call(
-        input as unknown as Record<string, unknown>,
-        'accountStableId',
-      )
-    ) {
+  private assertV2ExpenseFundingInput(input: AccountingExpenseInput) {
+    const rawInput = input as unknown as Record<string, unknown>;
+    if (Object.prototype.hasOwnProperty.call(rawInput, 'accountStableId')) {
       throw new BadRequestException(
-        'accountStableId is no longer supported for expenses; use paymentAllocations',
+        'document-level accountStableId is not supported for Expense v2',
       );
     }
+    if (Object.prototype.hasOwnProperty.call(rawInput, 'paymentAllocations')) {
+      throw new BadRequestException(
+        'document-level paymentAllocations are not supported for Expense v2; set paidFromAccountStableId on each split',
+      );
+    }
+    if (!Array.isArray(input.splits)) {
+      throw new BadRequestException('splits must be an array');
+    }
+    for (const split of input.splits) {
+      if (
+        !split ||
+        typeof split !== 'object' ||
+        !Object.prototype.hasOwnProperty.call(
+          split as unknown as Record<string, unknown>,
+          'paidFromAccountStableId',
+        )
+      ) {
+        throw new BadRequestException(
+          'each Expense v2 split must submit paidFromAccountStableId explicitly',
+        );
+      }
+    }
+  }
+
+  private async resolveExpenseSplitFundingAccounts(
+    tx: Prisma.TransactionClient,
+    splits: Array<{ paidFromAccountStableId: string | null }>,
+  ): Promise<Map<string, string>> {
+    const stableIds = Array.from(
+      new Set(
+        splits
+          .map((split) => split.paidFromAccountStableId?.trim() || null)
+          .filter((value): value is string => Boolean(value)),
+      ),
+    );
+    if (!stableIds.length) return new Map();
+
+    const accounts = await tx.accountingAccount.findMany({
+      where: { accountStableId: { in: stableIds } },
+      select: {
+        id: true,
+        accountStableId: true,
+        accountClass: true,
+        type: true,
+        currency: true,
+        isActive: true,
+      },
+    });
+    const accountByStableId = new Map(
+      accounts.map((account) => [account.accountStableId, account]),
+    );
+    for (const accountStableId of stableIds) {
+      const account = accountByStableId.get(accountStableId);
+      if (!account || !account.isActive) {
+        throw new BadRequestException(
+          `expense funding account is invalid: ${accountStableId}`,
+        );
+      }
+      if (
+        account.accountClass !== AccountingAccountClass.ASSET ||
+        (account.type !== AccountingAccountType.CASH &&
+          account.type !== AccountingAccountType.BANK &&
+          account.type !== AccountingAccountType.PLATFORM_WALLET)
+      ) {
+        throw new BadRequestException(
+          `expense funding account must be an operational ASSET account: ${accountStableId}`,
+        );
+      }
+      if (account.currency !== 'CAD') {
+        throw new BadRequestException(
+          'expense funding accounts must use CAD functional currency',
+        );
+      }
+    }
+
+    return new Map(
+      stableIds.map((accountStableId) => [
+        accountStableId,
+        accountByStableId.get(accountStableId)!.id,
+      ]),
+    );
   }
 
   private normalizeExpensePaymentAllocations(

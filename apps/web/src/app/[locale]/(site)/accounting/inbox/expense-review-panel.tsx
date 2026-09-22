@@ -9,13 +9,6 @@ import {
 } from 'react';
 import { apiFetch } from '@/lib/api/client';
 import { AccountingEvidenceViewer } from '../accounting-evidence-viewer';
-import {
-  ExpensePaymentAllocationsEditor,
-  expensePaymentAllocationErrorMessage,
-  makeExpensePaymentAllocationDraft,
-  prepareExpensePaymentAllocations,
-  type ExpensePaymentAllocationDraft,
-} from '../expense-payment-allocations';
 import type { AccountingAccount, AccountingCategory } from '../contracts/chart';
 import type {
   AccountingInboxItem,
@@ -45,12 +38,14 @@ type Props = {
 };
 
 type QuickTaxMode = 'EXEMPT' | 'HST13';
+type ReviewTaxMode = AccountingExpenseReviewRow['taxMode'];
 
 type QuickRow = {
   key: string;
   amount: string;
   categoryStableId: string;
   taxMode: QuickTaxMode;
+  paidFromAccountStableId: string;
   description: string | null;
   recognitionHint: boolean;
 };
@@ -65,6 +60,15 @@ function recognizedForeignCurrencyCode(
   return (
     candidates.find((currency) => currency !== null && currency !== 'CAD') ?? null
   );
+}
+
+function reviewTaxMode(
+  amountCents: number,
+  taxCents: number,
+): ReviewTaxMode {
+  if (taxCents === 0) return 'EXEMPT';
+  if (taxCents === Math.round(amountCents * 0.13)) return 'HST13';
+  return 'MANUAL';
 }
 
 function hasUnsafeCurrencyEvidence(
@@ -109,9 +113,6 @@ export function AccountingInboxExpenseReviewPanel({
   const [date, setDate] = useState('');
   const [total, setTotal] = useState('');
   const [sourceCurrency, setSourceCurrency] = useState('');
-  const [paymentAllocations, setPaymentAllocations] = useState<
-    ExpensePaymentAllocationDraft[]
-  >(() => [makeExpensePaymentAllocationDraft()]);
   const [memo, setMemo] = useState('');
   const [rows, setRows] = useState<AccountingExpenseReviewRow[]>([]);
   const [quickRows, setQuickRows] = useState<QuickRow[]>([]);
@@ -164,7 +165,6 @@ export function AccountingInboxExpenseReviewPanel({
         ? toDollars(extraction.totalCents)
         : '',
     );
-    setPaymentAllocations([makeExpensePaymentAllocationDraft()]);
     setMemo('');
     setRows([
       {
@@ -174,7 +174,9 @@ export function AccountingInboxExpenseReviewPanel({
           extraction.subtotalCents != null || extraction.totalCents != null
             ? toDollars(subtotalCents)
             : '',
+        taxMode: reviewTaxMode(subtotalCents, taxCents),
         tax: extraction.taxCents != null ? toDollars(taxCents) : '',
+        paidFromAccountStableId: '',
       },
     ]);
     setQuickRows(
@@ -183,6 +185,7 @@ export function AccountingInboxExpenseReviewPanel({
         amount: toDollars(hint.priceCents),
         categoryStableId: defaultCategory,
         taxMode: 'EXEMPT' as const,
+        paidFromAccountStableId: '',
         description: hint.description,
         recognitionHint: true,
       })),
@@ -311,6 +314,10 @@ export function AccountingInboxExpenseReviewPanel({
         expenseCategories[0]?.categoryStableId ||
         '',
       taxMode: inheritFrom?.taxMode ?? 'EXEMPT',
+      paidFromAccountStableId:
+        inheritFrom?.paidFromAccountStableId ??
+        rows.at(-1)?.paidFromAccountStableId ??
+        '',
       description: null,
       recognitionHint: false,
     };
@@ -353,26 +360,43 @@ export function AccountingInboxExpenseReviewPanel({
       );
       return;
     }
-    const grouped = new Map<string, { amountCents: number; taxCents: number }>();
+    const grouped = new Map<
+      string,
+      {
+        categoryStableId: string;
+        paidFromAccountStableId: string;
+        amountCents: number;
+        taxCents: number;
+      }
+    >();
     for (const row of quickRows) {
       const amountCents = toCents(row.amount);
       if (!amountCents || !row.categoryStableId) continue;
-      const taxCents = row.taxMode === 'HST13' ? Math.round(amountCents * 0.13) : 0;
-      const existing = grouped.get(row.categoryStableId) ?? {
+      const taxCents =
+        row.taxMode === 'HST13' ? Math.round(amountCents * 0.13) : 0;
+      const groupKey = JSON.stringify([
+        row.categoryStableId,
+        row.paidFromAccountStableId,
+      ]);
+      const existing = grouped.get(groupKey) ?? {
+        categoryStableId: row.categoryStableId,
+        paidFromAccountStableId: row.paidFromAccountStableId,
         amountCents: 0,
         taxCents: 0,
       };
       existing.amountCents += amountCents;
       existing.taxCents += taxCents;
-      grouped.set(row.categoryStableId, existing);
+      grouped.set(groupKey, existing);
     }
     if (!grouped.size) return;
     setRows(
-      Array.from(grouped.entries()).map(([categoryStableId, value]) => ({
+      Array.from(grouped.values()).map((value) => ({
         key: makeReviewKey(),
-        categoryStableId,
+        categoryStableId: value.categoryStableId,
         amount: toDollars(value.amountCents),
+        taxMode: reviewTaxMode(value.amountCents, value.taxCents),
         tax: toDollars(value.taxCents),
+        paidFromAccountStableId: value.paidFromAccountStableId,
       })),
     );
     setShowQuick(false);
@@ -391,19 +415,6 @@ export function AccountingInboxExpenseReviewPanel({
       );
       return;
     }
-    const preparedPaymentAllocations = prepareExpensePaymentAllocations(
-      paymentAllocations,
-      calculated.totalCents,
-    );
-    if (preparedPaymentAllocations.error) {
-      setError(
-        expensePaymentAllocationErrorMessage(
-          preparedPaymentAllocations.error,
-          isZh,
-        ),
-      );
-      return;
-    }
     setSaving(true);
     setError(null);
     try {
@@ -416,7 +427,6 @@ export function AccountingInboxExpenseReviewPanel({
             occurredAt: date,
             totalCents: calculated.totalCents,
             sourceCurrency: sourceCurrency.trim().toUpperCase() || null,
-            paymentAllocations: preparedPaymentAllocations.paymentAllocations,
             attachmentUrls: [],
             memo: memo.trim() || null,
             splits: rows
@@ -427,6 +437,8 @@ export function AccountingInboxExpenseReviewPanel({
                 categoryStableId: row.categoryStableId,
                 amountCents: toCents(row.amount),
                 taxCents: toCents(row.tax),
+                paidFromAccountStableId:
+                  row.paidFromAccountStableId || null,
               })),
           }),
         },
@@ -695,8 +707,8 @@ export function AccountingInboxExpenseReviewPanel({
             </strong>
             <p className="mt-1 text-xs text-slate-600">
               {isZh
-                ? 'Textract 条目与税前金额可靠闭合时会自动预填原始凭证金额；确认原始币种为 CAD 后可直接归类。手工新增时，金额后按 Enter 可继续下一项并继承上一项类别/税率。最终只保存类别汇总。'
-                : 'When Textract item amounts reliably reconcile to the subtotal, source-document amounts are prefilled automatically. Confirm the source currency is CAD before aggregating them. Manual rows keep the Enter-to-next category/tax workflow; only category totals are persisted.'}
+                ? 'Textract 条目与税前金额可靠闭合时会自动预填原始凭证金额；确认原始币种为 CAD 后可直接归类。手工新增时，金额后按 Enter 可继续下一项并继承上一项类别、税率和付款账户。汇总会保留“类别 + 付款账户”的归属。'
+                : 'When Textract item amounts reliably reconcile to the subtotal, source-document amounts are prefilled automatically. Confirm the source currency is CAD before aggregating them. Manual rows keep the Enter-to-next category, tax, and payment-account workflow; aggregation preserves category plus payment-account attribution.'}
             </p>
           </div>
           <button
@@ -732,7 +744,7 @@ export function AccountingInboxExpenseReviewPanel({
             {quickRows.map((row, index) => (
               <div
                 key={row.key}
-                className="grid gap-2 md:grid-cols-[180px_1fr_130px_70px]"
+                className="grid gap-2 md:grid-cols-[180px_1fr_130px_180px_70px]"
               >
                 <div className="min-w-0">
                   {row.recognitionHint ? (
@@ -813,6 +825,37 @@ export function AccountingInboxExpenseReviewPanel({
                   <option value="EXEMPT">{isZh ? '免税' : 'Tax exempt'}</option>
                   <option value="HST13">HST 13%</option>
                 </select>
+                <select
+                  className="rounded border bg-white px-3 py-2 text-sm"
+                  value={row.paidFromAccountStableId}
+                  onChange={(event) =>
+                    setQuickRows((current) =>
+                      current.map((entry) =>
+                        entry.key === row.key
+                          ? {
+                              ...entry,
+                              paidFromAccountStableId: event.target.value,
+                            }
+                          : entry,
+                      ),
+                    )
+                  }
+                  aria-label={isZh ? '付款账户' : 'Payment account'}
+                >
+                  <option value="">
+                    {isZh ? '稍后指定付款账户' : 'Assign payment account later'}
+                  </option>
+                  {accounts
+                    .filter((account) => account.currency === 'CAD')
+                    .map((account) => (
+                      <option
+                        key={account.accountStableId}
+                        value={account.accountStableId}
+                      >
+                        {account.name}
+                      </option>
+                    ))}
+                </select>
                 <button
                   type="button"
                   className="text-sm text-red-600"
@@ -850,7 +893,7 @@ export function AccountingInboxExpenseReviewPanel({
         {rows.map((row) => (
           <div
             key={row.key}
-            className="grid gap-2 md:grid-cols-[1.6fr_140px_140px_70px] md:items-end"
+            className="grid gap-2 md:grid-cols-[1.6fr_130px_120px_120px_180px_70px] md:items-end"
           >
             <label className="text-sm">
               <span className="mb-1 block text-slate-500">
@@ -890,23 +933,70 @@ export function AccountingInboxExpenseReviewPanel({
                 className="w-full rounded border bg-white px-3 py-2"
                 value={row.amount}
                 inputMode="decimal"
-                onChange={(event) =>
+                onChange={(event) => {
+                  const amount = event.target.value;
                   setRows((current) =>
                     current.map((entry) =>
                       entry.key === row.key
-                        ? { ...entry, amount: event.target.value }
+                        ? {
+                            ...entry,
+                            amount,
+                            tax:
+                              entry.taxMode === 'HST13'
+                                ? toDollars(
+                                    Math.round(toCents(amount) * 0.13),
+                                  )
+                                : entry.tax,
+                          }
                         : entry,
                     ),
-                  )
-                }
+                  );
+                }}
               />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block text-slate-500">
+                {isZh ? '税' : 'Tax'}
+              </span>
+              <select
+                className="w-full rounded border bg-white px-3 py-2"
+                value={row.taxMode}
+                onChange={(event) => {
+                  const taxMode = event.target.value as ReviewTaxMode;
+                  setRows((current) =>
+                    current.map((entry) =>
+                      entry.key === row.key
+                        ? {
+                            ...entry,
+                            taxMode,
+                            tax:
+                              taxMode === 'EXEMPT'
+                                ? '0.00'
+                                : taxMode === 'HST13'
+                                  ? toDollars(
+                                      Math.round(toCents(entry.amount) * 0.13),
+                                    )
+                                  : entry.tax,
+                          }
+                        : entry,
+                    ),
+                  );
+                }}
+              >
+                <option value="EXEMPT">{isZh ? '免税' : 'Exempt'}</option>
+                <option value="HST13">HST 13%</option>
+                <option value="MANUAL">
+                  {isZh ? '手动税额' : 'Manual tax'}
+                </option>
+              </select>
             </label>
             <label className="text-sm">
               <span className="mb-1 block text-slate-500">HST</span>
               <input
-                className="w-full rounded border bg-white px-3 py-2"
+                className="w-full rounded border bg-white px-3 py-2 disabled:bg-slate-100"
                 value={row.tax}
                 inputMode="decimal"
+                disabled={row.taxMode !== 'MANUAL'}
                 onChange={(event) =>
                   setRows((current) =>
                     current.map((entry) =>
@@ -917,6 +1007,41 @@ export function AccountingInboxExpenseReviewPanel({
                   )
                 }
               />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block text-slate-500">
+                {isZh ? '付款账户' : 'Payment account'}
+              </span>
+              <select
+                className="w-full rounded border bg-white px-3 py-2"
+                value={row.paidFromAccountStableId}
+                onChange={(event) =>
+                  setRows((current) =>
+                    current.map((entry) =>
+                      entry.key === row.key
+                        ? {
+                            ...entry,
+                            paidFromAccountStableId: event.target.value,
+                          }
+                        : entry,
+                    ),
+                  )
+                }
+              >
+                <option value="">
+                  {isZh ? '稍后指定' : 'Assign later'}
+                </option>
+                {accounts
+                  .filter((account) => account.currency === 'CAD')
+                  .map((account) => (
+                    <option
+                      key={account.accountStableId}
+                      value={account.accountStableId}
+                    >
+                      {account.name}
+                    </option>
+                  ))}
+              </select>
             </label>
             <button
               type="button"
@@ -946,22 +1071,16 @@ export function AccountingInboxExpenseReviewPanel({
                 expenseCategories[0]?.categoryStableId ||
                 '',
               amount: '',
+              taxMode: current.at(-1)?.taxMode ?? 'EXEMPT',
               tax: '',
+              paidFromAccountStableId:
+                current.at(-1)?.paidFromAccountStableId ?? '',
             },
           ])
         }
       >
         + {isZh ? '增加类别' : 'Add category'}
       </button>
-      <div className="mt-4">
-        <ExpensePaymentAllocationsEditor
-          accounts={accounts}
-          totalCents={calculated.totalCents}
-          allocations={paymentAllocations}
-          onChange={setPaymentAllocations}
-          isZh={isZh}
-        />
-      </div>
       <label className="mt-4 block text-sm">
         <span className="mb-1 block text-slate-500">{isZh ? '备注' : 'Memo'}</span>
         <textarea
