@@ -22,16 +22,19 @@ one complete payment allocation and one canonical Expense v1 Journal. Full-range
 read-only parity reconstruction from 2026-06-01 has zero split/anchor blockers and exact
 P&L, recoverable-tax, payment-account and OPERATING cashflow parity.
 
-B1-C1 is locally complete pending user review. It removes Expense Transaction authority
-from financial reports and new Expense writes, moves split audit identity to
-`ACCOUNTING_EXPENSE_SPLIT`, and requires zero production `AccountingTransaction`
-mutation callers. Existing legacy rows/model/table are not deleted in this slice. The
-legacy-comparison routes `report/expense-journal-parity` and
-`journal/canonical-expenses/shadow-preview` remain temporarily available to avoid an
-unapproved HTTP-contract removal. Because B1-C1 stops new legacy copies, those routes are
-pre-cutover evidence/diagnostic only and will fail closed for new post-cutover Expenses
-until a later explicit route replacement/removal decision. Do not repair such expected post-cutover mismatch by
-recreating legacy rows.
+B1-C1 is merged through PR #2452 / `cdd3b47a`; final head `dc849d20` passed
+CI #6099 and production now runs the merged cutover. Post-cutover Expense
+`expense_bmwt1anetgvhiglbc6wsjzf8` booked CAD 32.22 with one ExpenseSplit, one complete
+payment allocation and one canonical Expense v1 Journal while creating zero legacy
+Transaction rows. Total active `AccountingTransaction` count remains exactly 1, the
+pre-cutover compatibility row for `expense_iet91ut05fafso8rl48kds9v`. Across both Expense
+Journals, P&L is 10347 cents, recoverable tax 1344 cents and primary-bank / CASH+BANK
+movement -11691 cents. No Web/PWA consumer exists for either legacy-comparison route.
+
+The runtime exit gate is therefore satisfied. Route retirement changes the Accounting HTTP
+contract and final model/table cleanup is destructive; both still require separate explicit
+operator approval. Do not recreate legacy rows merely to keep the old diagnostic routes
+green.
 
 The payment entries are no longer governed by a whole-context freeze. The POS
 Clover Terminal path is pre-production and may be structurally modularized before
