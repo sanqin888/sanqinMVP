@@ -30,6 +30,10 @@ export default function AccountingSettingsPage() {
   const [automationTime, setAutomationTime] = useState('02:15');
   const [accountName, setAccountName] = useState('');
   const [accountType, setAccountType] = useState<AccountingAccount['type']>('BANK');
+  const [
+    includeNewAccountFundedExpensesInManagementReports,
+    setIncludeNewAccountFundedExpensesInManagementReports,
+  ] = useState(true);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryType, setNewCategoryType] = useState<CategoryType>('EXPENSE');
   const [newCategoryParent, setNewCategoryParent] = useState('');
@@ -109,11 +113,64 @@ export default function AccountingSettingsPage() {
     try {
       await apiFetch('/accounting/accounts', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: accountName.trim(), type: accountType, currency: 'CAD' }),
+        body: JSON.stringify({
+          name: accountName.trim(),
+          type: accountType,
+          currency: 'CAD',
+          includeFundedExpensesInManagementReports:
+            includeNewAccountFundedExpensesInManagementReports,
+        }),
       });
-      setAccountName(''); await load();
+      setAccountName('');
+      setIncludeNewAccountFundedExpensesInManagementReports(true);
+      await load();
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setBusy(null); }
+  }
+
+  function editAccountExpenseManagementPolicy(
+    accountStableId: string,
+    includeFundedExpensesInManagementReports: boolean,
+  ) {
+    setAccounts((current) =>
+      current.map((account) =>
+        account.accountStableId === accountStableId
+          ? { ...account, includeFundedExpensesInManagementReports }
+          : account,
+      ),
+    );
+  }
+
+  async function saveAccountExpenseManagementPolicy(
+    account: AccountingAccount,
+  ) {
+    setBusy(`account-policy-${account.accountStableId}`);
+    setError(null);
+    setMessage(null);
+    try {
+      await apiFetch(
+        `/accounting/accounts/${encodeURIComponent(account.accountStableId)}/expense-management-policy`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            includeFundedExpensesInManagementReports:
+              account.includeFundedExpensesInManagementReports,
+          }),
+        },
+      );
+      await load();
+      setMessage(
+        isZh
+          ? `${account.name} 的管理报表费用范围已保存。`
+          : `Management expense scope saved for ${account.name}.`,
+      );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+      await load();
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function addCategory(event: FormEvent) {
@@ -272,10 +329,66 @@ export default function AccountingSettingsPage() {
 
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-lg font-semibold">{isZh ? '资金账户' : 'Cash accounts'}</h2>
-        <div className="mt-3 divide-y text-sm">{accounts.map((account) => <div key={account.accountStableId} className="flex justify-between py-2"><span>{account.name}</span><span className="text-slate-500">{account.type} · {account.currency}</span></div>)}</div>
-        <form onSubmit={addAccount} className="mt-4 flex flex-wrap gap-2 border-t pt-4">
-          <input className="min-w-64 flex-1 rounded border px-3 py-2 text-sm" placeholder={isZh ? '例如 TD Business' : 'e.g. TD Business'} value={accountName} onChange={(event) => setAccountName(event.target.value)} />
+        <p className="mt-1 text-sm text-slate-500">
+          {isZh
+            ? '“计入管理报表费用”只控制后续 EFA-D 的管理报表范围；不会删除 Journal、账户流水、实际现金流或 HST 事实。'
+            : '“Include funded expenses in management reports” controls only the later EFA-D management-report scope; it does not remove Journal, account-movement, actual-cash-flow, or HST facts.'}
+        </p>
+        <div className="mt-3 space-y-2 text-sm">
+          {accounts.map((account) => (
+            <div
+              key={account.accountStableId}
+              className="grid gap-2 rounded-lg border p-3 md:grid-cols-[1.2fr_180px_minmax(220px,1fr)_auto] md:items-center"
+            >
+              <span>{account.name}</span>
+              <span className="text-slate-500">
+                {account.type} · {account.currency}
+              </span>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={account.includeFundedExpensesInManagementReports}
+                  onChange={(event) =>
+                    editAccountExpenseManagementPolicy(
+                      account.accountStableId,
+                      event.target.checked,
+                    )
+                  }
+                />
+                {isZh
+                  ? '计入管理报表费用'
+                  : 'Include funded expenses in management reports'}
+              </label>
+              <button
+                type="button"
+                onClick={() =>
+                  void saveAccountExpenseManagementPolicy(account)
+                }
+                disabled={busy !== null}
+                className="rounded border px-3 py-1.5 disabled:opacity-50"
+              >
+                {isZh ? '保存' : 'Save'}
+              </button>
+            </div>
+          ))}
+        </div>
+        <form onSubmit={addAccount} className="mt-4 grid gap-2 border-t pt-4 md:grid-cols-[minmax(220px,1fr)_180px_minmax(260px,1fr)_auto] md:items-center">
+          <input className="rounded border px-3 py-2 text-sm" placeholder={isZh ? '例如 TD Business' : 'e.g. TD Business'} value={accountName} onChange={(event) => setAccountName(event.target.value)} />
           <select className="rounded border px-3 py-2 text-sm" value={accountType} onChange={(event) => setAccountType(event.target.value as AccountingAccount['type'])}><option value="BANK">{isZh ? '银行' : 'Bank'}</option><option value="CASH">{isZh ? '现金' : 'Cash'}</option><option value="PLATFORM_WALLET">{isZh ? '平台待结算' : 'Platform wallet'}</option></select>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={includeNewAccountFundedExpensesInManagementReports}
+              onChange={(event) =>
+                setIncludeNewAccountFundedExpensesInManagementReports(
+                  event.target.checked,
+                )
+              }
+            />
+            {isZh
+              ? '计入管理报表费用'
+              : 'Include funded expenses in management reports'}
+          </label>
           <button disabled={busy !== null} className="rounded bg-slate-900 px-4 py-2 text-sm text-white disabled:opacity-50">{isZh ? '添加账户' : 'Add account'}</button>
         </form>
       </section>

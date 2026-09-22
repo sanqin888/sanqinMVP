@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client';
 
 export type AccountingExpenseSplitWrite = {
   categoryDbId: string;
+  paidFromAccountDbId?: string | null;
   amountCents: number;
   taxCents: number;
   sortOrder: number;
@@ -28,6 +29,7 @@ export async function createAccountingExpenseSplitsInTx(
     splitStableId: `expensesplit_${createId()}`,
     expenseDocumentId: input.expenseDocumentDbId,
     categoryId: split.categoryDbId,
+    paidFromAccountId: split.paidFromAccountDbId ?? null,
     amountCents: split.amountCents,
     taxCents: split.taxCents,
     sortOrder: split.sortOrder,

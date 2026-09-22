@@ -27,6 +27,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
     memo: 'ingredients',
     createdAt: new Date('2026-09-11T14:01:00.000Z'),
     confirmedAt: new Date('2026-09-11T14:01:00.000Z'),
+    fundingAttributionVersion: 2,
     paymentAllocations: [],
     splits: [],
   });
@@ -68,6 +69,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
         splitStableId: string;
         expenseDocumentId: string;
         categoryId: string;
+        paidFromAccountId?: string | null;
         amountCents: number;
         taxCents: number;
         sortOrder: number;
@@ -87,12 +89,16 @@ describe('AccountingExpenseService expense-write characterization', () => {
           {
             id: 'account-rbc-db-id',
             accountStableId: 'account_rbc',
+            accountClass: 'ASSET',
+            type: 'BANK',
             currency: 'CAD',
             isActive: true,
           },
           {
             id: 'account-cash-db-id',
             accountStableId: 'account_cash',
+            accountClass: 'ASSET',
+            type: 'CASH',
             currency: 'CAD',
             isActive: true,
           },
@@ -142,20 +148,18 @@ describe('AccountingExpenseService expense-write characterization', () => {
         occurredAt: '2026-09-11T14:00:00.000Z',
         totalCents: 1130,
         memo: 'ingredients',
-        paymentAllocations: [
-          { accountStableId: 'account_rbc', amountCents: 600 },
-          { accountStableId: 'account_cash', amountCents: 530 },
-        ],
         splits: [
           {
             categoryStableId: 'expense_food',
             amountCents: 600,
             taxCents: 78,
+            paidFromAccountStableId: 'account_rbc',
           },
           {
             categoryStableId: 'expense_packaging',
             amountCents: 400,
             taxCents: 52,
+            paidFromAccountStableId: 'account_rbc',
           },
         ],
       },
@@ -169,6 +173,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
         documentStableId: generatedDocumentStableId,
         source: AccountingDocumentSource.MANUAL,
         status: AccountingDocumentStatus.CONFIRMED,
+        fundingAttributionVersion: 2,
         subtotalCents: 1000,
         taxCents: 130,
         totalCents: 1130,
@@ -176,33 +181,14 @@ describe('AccountingExpenseService expense-write characterization', () => {
         confirmedByUserStableId: 'user_stable_1',
       }) as unknown as Record<string, unknown>,
     });
-    const allocationCreateArgs = createAllocationMany.mock.calls[0]?.[0];
-    expect(allocationCreateArgs).toBeDefined();
-    expect(allocationCreateArgs?.data).toHaveLength(2);
-    expect(allocationCreateArgs?.data[0]?.paymentAllocationStableId).toMatch(
-      /^expensepay_/,
-    );
-    expect(allocationCreateArgs?.data[0]).toMatchObject({
-      expenseDocumentId: 'expense-document-db-id',
-      accountId: 'account-rbc-db-id',
-      amountCents: 600,
-      sortOrder: 0,
-    });
-    expect(allocationCreateArgs?.data[1]?.paymentAllocationStableId).toMatch(
-      /^expensepay_/,
-    );
-    expect(allocationCreateArgs?.data[1]).toMatchObject({
-      expenseDocumentId: 'expense-document-db-id',
-      accountId: 'account-cash-db-id',
-      amountCents: 530,
-      sortOrder: 1,
-    });
+    expect(createAllocationMany).not.toHaveBeenCalled();
     expect(createExpenseSplitMany).toHaveBeenCalledWith({
       data: [
         expect.objectContaining({
           splitStableId: expect.stringMatching(/^expensesplit_/) as unknown,
           expenseDocumentId: 'expense-document-db-id',
           categoryId: 'category-food-db-id',
+          paidFromAccountId: 'account-rbc-db-id',
           amountCents: 600,
           taxCents: 78,
           sortOrder: 0,
@@ -211,6 +197,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
           splitStableId: expect.stringMatching(/^expensesplit_/) as unknown,
           expenseDocumentId: 'expense-document-db-id',
           categoryId: 'category-packaging-db-id',
+          paidFromAccountId: 'account-rbc-db-id',
           amountCents: 400,
           taxCents: 52,
           sortOrder: 1,
@@ -254,7 +241,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
     expect(result.documentStableId).toBe(generatedDocumentStableId);
   });
 
-  it('rejects duplicate payment accounts before touching persistence', async () => {
+  it('rejects a stale v1 document-level payment allocation payload before persistence', async () => {
     const service = new AccountingExpenseService(
       {} as never,
       accounting as never,
@@ -267,20 +254,22 @@ describe('AccountingExpenseService expense-write characterization', () => {
           occurredAt: '2026-09-16',
           totalCents: 1000,
           paymentAllocations: [
-            { accountStableId: 'account_rbc', amountCents: 500 },
-            { accountStableId: 'account_rbc', amountCents: 500 },
+            { accountStableId: 'account_rbc', amountCents: 1000 },
           ],
           splits: [
             {
               categoryStableId: 'expense_food',
               amountCents: 1000,
               taxCents: 0,
+              paidFromAccountStableId: 'account_rbc',
             },
           ],
-        },
+        } as never,
         'user_stable_3',
       ),
-    ).rejects.toThrow('paymentAllocations must not repeat an account');
+    ).rejects.toThrow(
+      'document-level paymentAllocations are not supported for Expense v2',
+    );
   });
 
   it('rejects the retired single-account Expense payload instead of silently ignoring it', async () => {
@@ -301,17 +290,18 @@ describe('AccountingExpenseService expense-write characterization', () => {
               categoryStableId: 'expense_food',
               amountCents: 1000,
               taxCents: 0,
+              paidFromAccountStableId: 'account_rbc',
             },
           ],
         } as never,
         'user_stable_3',
       ),
     ).rejects.toThrow(
-      'accountStableId is no longer supported for expenses; use paymentAllocations',
+      'document-level accountStableId is not supported for Expense v2',
     );
   });
 
-  it('rejects payment allocations that do not close to the CAD booking total', async () => {
+  it('rejects an old client that omits split-level funding attribution entirely', async () => {
     const service = new AccountingExpenseService(
       {} as never,
       accounting as never,
@@ -323,9 +313,6 @@ describe('AccountingExpenseService expense-write characterization', () => {
         {
           occurredAt: '2026-09-16',
           totalCents: 1000,
-          paymentAllocations: [
-            { accountStableId: 'account_rbc', amountCents: 900 },
-          ],
           splits: [
             {
               categoryStableId: 'expense_food',
@@ -333,10 +320,12 @@ describe('AccountingExpenseService expense-write characterization', () => {
               taxCents: 0,
             },
           ],
-        },
+        } as never,
         'user_stable_3',
       ),
-    ).rejects.toThrow('payment allocations do not match CAD booking total');
+    ).rejects.toThrow(
+      'each Expense v2 split must submit paidFromAccountStableId explicitly',
+    );
   });
 
   it('rejects inactive or missing payment accounts before creating the expense', async () => {
@@ -347,6 +336,8 @@ describe('AccountingExpenseService expense-write characterization', () => {
           {
             id: 'inactive-db-id',
             accountStableId: 'account_inactive',
+            accountClass: 'ASSET',
+            type: 'BANK',
             currency: 'CAD',
             isActive: false,
           },
@@ -380,20 +371,18 @@ describe('AccountingExpenseService expense-write characterization', () => {
         {
           occurredAt: '2026-09-16',
           totalCents: 1000,
-          paymentAllocations: [
-            { accountStableId: 'account_inactive', amountCents: 1000 },
-          ],
           splits: [
             {
               categoryStableId: 'expense_food',
               amountCents: 1000,
               taxCents: 0,
+              paidFromAccountStableId: 'account_inactive',
             },
           ],
         },
         'user_stable_3',
       ),
-    ).rejects.toThrow('payment account is invalid: account_inactive');
+    ).rejects.toThrow('expense funding account is invalid: account_inactive');
     expect(createDocument).not.toHaveBeenCalled();
   });
 
@@ -405,6 +394,8 @@ describe('AccountingExpenseService expense-write characterization', () => {
           {
             id: 'usd-bank-db-id',
             accountStableId: 'account_usd_bank',
+            accountClass: 'ASSET',
+            type: 'BANK',
             currency: 'USD',
             isActive: true,
           },
@@ -439,21 +430,19 @@ describe('AccountingExpenseService expense-write characterization', () => {
         {
           occurredAt: '2026-09-16',
           totalCents: 2746,
-          paymentAllocations: [
-            { accountStableId: 'account_usd_bank', amountCents: 2746 },
-          ],
           splits: [
             {
               categoryStableId: 'expense_software',
               amountCents: 2746,
               taxCents: 0,
+              paidFromAccountStableId: 'account_usd_bank',
             },
           ],
         },
         'user_stable_3',
       ),
     ).rejects.toThrow(
-      'expense payment accounts must use CAD functional currency',
+      'expense funding accounts must use CAD functional currency',
     );
     expect(transaction).toHaveBeenCalledTimes(1);
     expect(createDocument).not.toHaveBeenCalled();
@@ -526,6 +515,8 @@ describe('AccountingExpenseService expense-write characterization', () => {
           {
             id: 'bank-db-id',
             accountStableId: 'account_primary_bank',
+            accountClass: 'ASSET',
+            type: 'BANK',
             currency: 'CAD',
             isActive: true,
           },
@@ -568,14 +559,12 @@ describe('AccountingExpenseService expense-write characterization', () => {
         occurredAt: '2026-09-16',
         totalCents: 2746,
         sourceCurrency: 'USD',
-        paymentAllocations: [
-          { accountStableId: 'account_primary_bank', amountCents: 2746 },
-        ],
         splits: [
           {
             categoryStableId: 'expense_software',
             amountCents: 2746,
             taxCents: 0,
+            paidFromAccountStableId: 'account_primary_bank',
           },
         ],
       },
@@ -589,6 +578,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
         expect.objectContaining({
           expenseDocumentId: 'expense-document-db-id',
           categoryId: 'category-software-db-id',
+          paidFromAccountId: 'bank-db-id',
           amountCents: 2746,
           taxCents: 0,
           sortOrder: 0,
@@ -599,6 +589,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
       data: expect.objectContaining({
         documentStableId: createdDocumentStableId,
         status: AccountingDocumentStatus.CONFIRMED,
+        fundingAttributionVersion: 2,
         currency: 'CAD',
         subtotalCents: 2746,
         taxCents: 0,
@@ -631,16 +622,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
       }) as unknown as Record<string, unknown>,
       select: { id: true },
     });
-    expect(createAllocationMany).toHaveBeenCalledWith({
-      data: [
-        expect.objectContaining({
-          expenseDocumentId: 'expense-document-db-id',
-          accountId: 'bank-db-id',
-          amountCents: 2746,
-          sortOrder: 0,
-        }) as unknown as Record<string, unknown>,
-      ],
-    });
+    expect(createAllocationMany).not.toHaveBeenCalled();
     expect(createAuditMany).toHaveBeenCalledWith({
       data: expect.arrayContaining([
         expect.objectContaining({
@@ -716,6 +698,18 @@ describe('AccountingExpenseService expense-write characterization', () => {
         findUnique: currentDocument,
         update: updateDocument,
       },
+      accountingAccount: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'account-rbc-db-id',
+            accountStableId: 'account_rbc',
+            accountClass: 'ASSET',
+            type: 'BANK',
+            currency: 'CAD',
+            isActive: true,
+          },
+        ]),
+      },
       accountingExpensePaymentAllocation: {
         deleteMany: deletePaymentAllocations,
       },
@@ -777,6 +771,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
             categoryStableId: 'expense_food',
             amountCents: 1000,
             taxCents: 130,
+            paidFromAccountStableId: 'account_rbc',
           },
         ],
       },
@@ -795,6 +790,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
         expect.objectContaining({
           expenseDocumentId: 'inbox-document-db-id',
           categoryId: 'category-food-db-id',
+          paidFromAccountId: 'account-rbc-db-id',
           amountCents: 1000,
           taxCents: 130,
           sortOrder: 0,
@@ -805,6 +801,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
       where: { id: 'inbox-document-db-id' },
       data: expect.objectContaining({
         status: AccountingDocumentStatus.CONFIRMED,
+        fundingAttributionVersion: 2,
         subtotalCents: 1000,
         taxCents: 130,
         totalCents: 1130,
@@ -926,6 +923,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
               categoryStableId: 'expense_food',
               amountCents: 1000,
               taxCents: 130,
+              paidFromAccountStableId: null,
             },
           ],
         },

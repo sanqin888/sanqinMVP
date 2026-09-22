@@ -34,13 +34,24 @@ export function ExpensePaymentCompletionForm({
   const [paymentAllocations, setPaymentAllocations] = useState<
     ExpensePaymentAllocationDraft[]
   >(() => [makeExpensePaymentAllocationDraft()]);
+  const [splitFunding, setSplitFunding] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setPaymentAllocations([makeExpensePaymentAllocationDraft()]);
+    setSplitFunding(
+      Object.fromEntries(
+        document.splits.map((split) => [
+          split.splitStableId,
+          split.paidFromAccountStableId ?? '',
+        ]),
+      ),
+    );
     setError(null);
-  }, [document.documentStableId]);
+  }, [document.documentStableId, document.splits]);
+
+  const isV2 = document.fundingAttributionVersion === 2;
 
   const prepared = useMemo(
     () =>
@@ -54,7 +65,20 @@ export function ExpensePaymentCompletionForm({
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     setError(null);
-    if (prepared.error || prepared.paymentAllocations.length === 0) {
+
+    if (isV2) {
+      const missingFunding = document.splits.some(
+        (split) => !splitFunding[split.splitStableId]?.trim(),
+      );
+      if (missingFunding) {
+        setError(
+          isZh
+            ? '请为每一条费用分类选择付款账户。'
+            : 'Choose a payment account for every expense split.',
+        );
+        return;
+      }
+    } else if (prepared.error || prepared.paymentAllocations.length === 0) {
       setError(
         prepared.error
           ? expensePaymentAllocationErrorMessage(prepared.error, isZh)
@@ -67,16 +91,32 @@ export function ExpensePaymentCompletionForm({
 
     setSubmitting(true);
     try {
-      await apiFetch(
-        `/accounting/expenses/${document.documentStableId}/payment-allocations`,
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            paymentAllocations: prepared.paymentAllocations,
-          }),
-        },
-      );
+      if (isV2) {
+        await apiFetch(
+          `/accounting/expenses/${document.documentStableId}/split-funding`,
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              splits: document.splits.map((split) => ({
+                splitStableId: split.splitStableId,
+                paidFromAccountStableId: splitFunding[split.splitStableId],
+              })),
+            }),
+          },
+        );
+      } else {
+        await apiFetch(
+          `/accounting/expenses/${document.documentStableId}/payment-allocations`,
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              paymentAllocations: prepared.paymentAllocations,
+            }),
+          },
+        );
+      }
       await onSaved();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -142,7 +182,9 @@ export function ExpensePaymentCompletionForm({
           {document.splits.map((split) => (
             <div
               key={split.splitStableId}
-              className="grid gap-2 rounded border bg-slate-100 p-3 text-sm sm:grid-cols-3"
+              className={`grid gap-2 rounded border bg-slate-100 p-3 text-sm ${
+                isV2 ? 'sm:grid-cols-4' : 'sm:grid-cols-3'
+              }`}
             >
               <div>
                 <span className="block text-xs text-slate-500">
@@ -160,19 +202,53 @@ export function ExpensePaymentCompletionForm({
                 <span className="block text-xs text-slate-500">HST</span>
                 {money(split.taxCents)}
               </div>
+              {isV2 ? (
+                <label className="text-sm">
+                  <span className="block text-xs text-slate-500">
+                    {isZh ? '付款账户' : 'Payment account'}
+                  </span>
+                  <select
+                    className="mt-1 w-full rounded border bg-white px-2 py-1.5"
+                    value={splitFunding[split.splitStableId] ?? ''}
+                    disabled={Boolean(split.paidFromAccountStableId)}
+                    onChange={(event) =>
+                      setSplitFunding((current) => ({
+                        ...current,
+                        [split.splitStableId]: event.target.value,
+                      }))
+                    }
+                  >
+                    <option value="">
+                      {isZh ? '请选择' : 'Choose account'}
+                    </option>
+                    {accounts
+                      .filter((account) => account.currency === 'CAD')
+                      .map((account) => (
+                        <option
+                          key={account.accountStableId}
+                          value={account.accountStableId}
+                        >
+                          {account.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              ) : null}
             </div>
           ))}
         </div>
       </section>
 
-      <ExpensePaymentAllocationsEditor
-        accounts={accounts}
-        totalCents={document.totalCents ?? 0}
-        allocations={paymentAllocations}
-        onChange={setPaymentAllocations}
-        isZh={isZh}
-        allowUnknown={false}
-      />
+      {!isV2 ? (
+        <ExpensePaymentAllocationsEditor
+          accounts={accounts}
+          totalCents={document.totalCents ?? 0}
+          allocations={paymentAllocations}
+          onChange={setPaymentAllocations}
+          isZh={isZh}
+          allowUnknown={false}
+        />
+      ) : null}
 
       <section className="rounded-lg border border-slate-200 bg-slate-50 p-3">
         <h3 className="font-semibold">
@@ -227,8 +303,12 @@ export function ExpensePaymentCompletionForm({
         type="submit"
         disabled={
           submitting ||
-          prepared.paymentAllocations.length === 0 ||
-          Boolean(prepared.error)
+          (isV2
+            ? document.splits.some(
+                (split) => !splitFunding[split.splitStableId]?.trim(),
+              )
+            : prepared.paymentAllocations.length === 0 ||
+              Boolean(prepared.error))
         }
         className="rounded bg-slate-900 px-5 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
       >

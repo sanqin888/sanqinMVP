@@ -80,7 +80,7 @@ describe('Accounting Expense funding attribution foundation', () => {
     );
   });
 
-  it('exposes the account policy additively while leaving Expense v1 runtime contracts unchanged', () => {
+  it('cuts current Expense writes to split funding while retaining explicit v1 completion contracts', () => {
     const chartService = readFileSync(CHART_SERVICE, 'utf8');
     const expenseContract = readFileSync(EXPENSE_CONTRACT, 'utf8');
     const expensePolicy = readFileSync(EXPENSE_POLICY, 'utf8');
@@ -89,10 +89,19 @@ describe('Accounting Expense funding attribution foundation', () => {
     expect(chartService).toContain(
       'row.includeFundedExpensesInManagementReports ?? true',
     );
+    expect(chartService).toContain('updateAccountExpenseManagementPolicy');
     expect(expenseContract).toContain(
+      'paidFromAccountStableId: string | null',
+    );
+    expect(expenseContract).not.toContain(
       'paymentAllocations?: AccountingExpensePaymentAllocationInput[]',
     );
-    expect(expenseContract).not.toContain('paidFromAccountStableId');
+    expect(expenseContract).toContain(
+      'AccountingExpensePaymentCompletionInput',
+    );
+    expect(expenseContract).toContain(
+      'AccountingExpenseSplitFundingCompletionInput',
+    );
     expect(expensePolicy).toContain('accounting.expense_document.v1');
     expect(expensePolicy).toContain(
       'idempotencyKey: `canonical-expense:${documentStableId}:v1`',

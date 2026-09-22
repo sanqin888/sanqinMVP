@@ -11,6 +11,7 @@ const ACCOUNTING_DOCUMENT_SELECT = {
   documentStableId: true,
   source: true,
   status: true,
+  fundingAttributionVersion: true,
   occurredAt: true,
   subtotalCents: true,
   taxCents: true,
@@ -45,6 +46,12 @@ const ACCOUNTING_DOCUMENT_SELECT = {
       sortOrder: true,
       category: {
         select: { categoryStableId: true, name: true },
+      },
+      paidFromAccount: {
+        select: {
+          accountStableId: true,
+          name: true,
+        },
       },
     },
     orderBy: [{ sortOrder: 'asc' as const }, { createdAt: 'asc' as const }],
@@ -100,26 +107,102 @@ export async function listAccountingExpenseRecords(
           ...(params.toExclusive ? { lt: params.toExclusive } : {}),
         }
       : undefined;
-  const paymentAllocations = params.paymentAccountStableId
-    ? {
-        some: {
-          account: {
-            accountStableId: params.paymentAccountStableId,
-          },
-        },
-      }
-    : params.paymentState === 'UNASSIGNED'
-      ? { none: {} }
-      : params.paymentState === 'ASSIGNED'
-        ? { some: {} }
-        : undefined;
+  const fundingWhere: Prisma.AccountingExpenseDocumentWhereInput | undefined =
+    params.paymentAccountStableId
+      ? {
+          OR: [
+            {
+              AND: [
+                {
+                  OR: [
+                    { fundingAttributionVersion: 1 },
+                    { fundingAttributionVersion: null },
+                  ],
+                },
+                {
+                  paymentAllocations: {
+                    some: {
+                      account: {
+                        accountStableId: params.paymentAccountStableId,
+                      },
+                    },
+                  },
+                },
+              ],
+            },
+            {
+              AND: [
+                { fundingAttributionVersion: 2 },
+                {
+                  splits: {
+                    some: {
+                      paidFromAccount: {
+                        accountStableId: params.paymentAccountStableId,
+                      },
+                    },
+                  },
+                },
+              ],
+            },
+          ],
+        }
+      : params.paymentState === 'UNASSIGNED'
+        ? {
+            OR: [
+              {
+                AND: [
+                  {
+                    OR: [
+                      { fundingAttributionVersion: 1 },
+                      { fundingAttributionVersion: null },
+                    ],
+                  },
+                  { paymentAllocations: { none: {} } },
+                ],
+              },
+              {
+                AND: [
+                  { fundingAttributionVersion: 2 },
+                  { splits: { some: { paidFromAccountId: null } } },
+                ],
+              },
+            ],
+          }
+        : params.paymentState === 'ASSIGNED'
+          ? {
+              OR: [
+                {
+                  AND: [
+                    {
+                      OR: [
+                        { fundingAttributionVersion: 1 },
+                        { fundingAttributionVersion: null },
+                      ],
+                    },
+                    { paymentAllocations: { some: {} } },
+                  ],
+                },
+                {
+                  AND: [
+                    { fundingAttributionVersion: 2 },
+                    { splits: { some: {} } },
+                    {
+                      splits: {
+                        every: { paidFromAccountId: { not: null } },
+                      },
+                    },
+                  ],
+                },
+              ],
+            }
+          : undefined;
   const where = {
     status: params.status,
     ...(occurredAt ? { occurredAt } : {}),
     ...(params.minTotalCents !== undefined
       ? { totalCents: { gte: params.minTotalCents } }
       : {}),
-    ...(paymentAllocations ? { paymentAllocations } : {}),
+    ...(fundingWhere ?? {}),
   } satisfies Prisma.AccountingExpenseDocumentWhereInput;
 
   const [rows, total] = await Promise.all([
@@ -241,6 +324,7 @@ function presentAccountingExpenseDocument(
     documentStableId: row.documentStableId,
     source: row.source,
     status: row.status,
+    fundingAttributionVersion: row.fundingAttributionVersion ?? 1,
     occurredAt: row.occurredAt?.toISOString() ?? null,
     subtotalCents: row.subtotalCents,
     taxCents: row.taxCents,
@@ -267,6 +351,9 @@ function presentAccountingExpenseDocument(
       categoryName: split.category.name,
       amountCents: split.amountCents,
       taxCents: split.taxCents,
+      paidFromAccountStableId:
+        split.paidFromAccount?.accountStableId ?? null,
+      paidFromAccountName: split.paidFromAccount?.name ?? null,
       sortOrder: split.sortOrder,
     })),
   };

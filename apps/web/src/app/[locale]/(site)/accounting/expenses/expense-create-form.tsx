@@ -5,13 +5,6 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '@/lib/api/client';
 import type { AccountingAccount, AccountingCategory } from '../contracts/chart';
 import {
-  ExpensePaymentAllocationsEditor,
-  expensePaymentAllocationErrorMessage,
-  makeExpensePaymentAllocationDraft,
-  prepareExpensePaymentAllocations,
-  type ExpensePaymentAllocationDraft,
-} from '../expense-payment-allocations';
-import {
   ExpenseSplitEditor,
   type ExpenseSplitDraft,
 } from './expense-split-editor';
@@ -46,9 +39,6 @@ export function ExpenseCreateForm({
 }: Props) {
   const [occurredAt, setOccurredAt] = useState(defaultExpenseDate);
   const [receiptTotal, setReceiptTotal] = useState('');
-  const [paymentAllocations, setPaymentAllocations] = useState<
-    ExpensePaymentAllocationDraft[]
-  >(() => [makeExpensePaymentAllocationDraft()]);
   const [memo, setMemo] = useState('');
   const [splits, setSplits] = useState<ExpenseSplitDraft[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -87,6 +77,7 @@ export function ExpenseCreateForm({
           amount: '',
           taxMode: 'EXEMPT',
           manualTax: '',
+          paidFromAccountStableId: '',
         },
       ]);
     }
@@ -131,6 +122,8 @@ export function ExpenseCreateForm({
         amount: '',
         taxMode: current.at(-1)?.taxMode ?? 'EXEMPT',
         manualTax: '',
+        paidFromAccountStableId:
+          current.at(-1)?.paidFromAccountStableId ?? '',
       },
     ]);
   }
@@ -138,7 +131,6 @@ export function ExpenseCreateForm({
   function resetForm() {
     setOccurredAt(defaultExpenseDate());
     setReceiptTotal('');
-    setPaymentAllocations([makeExpensePaymentAllocationDraft()]);
     setMemo('');
     setSplits([
       {
@@ -147,6 +139,7 @@ export function ExpenseCreateForm({
         amount: '',
         taxMode: 'EXEMPT',
         manualTax: '',
+        paidFromAccountStableId: '',
       },
     ]);
   }
@@ -171,15 +164,6 @@ export function ExpenseCreateForm({
       return;
     }
 
-    const prepared = prepareExpensePaymentAllocations(
-      paymentAllocations,
-      calculated.receiptTotalCents,
-    );
-    if (prepared.error) {
-      setError(expensePaymentAllocationErrorMessage(prepared.error, isZh));
-      return;
-    }
-
     setSubmitting(true);
     try {
       await apiFetch('/accounting/expenses', {
@@ -188,7 +172,6 @@ export function ExpenseCreateForm({
         body: JSON.stringify({
           occurredAt,
           totalCents: calculated.receiptTotalCents,
-          paymentAllocations: prepared.paymentAllocations,
           attachmentUrls: [],
           memo: memo.trim() || null,
           splits: calculated.rows
@@ -197,6 +180,8 @@ export function ExpenseCreateForm({
               categoryStableId: row.categoryStableId,
               amountCents: row.amountCents,
               taxCents: row.taxCents,
+              paidFromAccountStableId:
+                row.paidFromAccountStableId || null,
             })),
         }),
       });
@@ -260,18 +245,11 @@ export function ExpenseCreateForm({
         isZh={isZh}
         splits={splits}
         expenseCategories={expenseCategories}
+        accounts={accounts}
         categoryParents={categoryParents}
         taxCentsByKey={calculated.taxCentsByKey}
         onAdd={addSplit}
         onChange={setSplits}
-      />
-
-      <ExpensePaymentAllocationsEditor
-        accounts={accounts}
-        totalCents={calculated.receiptTotalCents}
-        allocations={paymentAllocations}
-        onChange={setPaymentAllocations}
-        isZh={isZh}
       />
 
       <section className="rounded-lg border border-slate-200 bg-slate-50 p-3">

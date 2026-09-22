@@ -38,6 +38,26 @@ type Props = {
 const money = (cents: number | null | undefined) =>
   `$${((cents ?? 0) / 100).toFixed(2)}`;
 
+const hasUnassignedFunding = (document: AccountingExpenseDocument) =>
+  document.fundingAttributionVersion === 2
+    ? document.splits.some((split) => !split.paidFromAccountStableId)
+    : document.paymentAllocations.length === 0;
+
+const fundingSummary = (document: AccountingExpenseDocument) =>
+  document.fundingAttributionVersion === 2
+    ? document.splits
+        .map(
+          (split) =>
+            `${split.categoryName}: ${split.paidFromAccountName ?? '—'}`,
+        )
+        .join(' / ')
+    : document.paymentAllocations
+        .map(
+          (allocation) =>
+            `${allocation.accountName} ${money(allocation.amountCents)}`,
+        )
+        .join(' / ');
+
 export function ExpenseRecordsPanel({
   documents,
   total,
@@ -230,18 +250,9 @@ export function ExpenseRecordsPanel({
                 </div>
                 <div className="mt-1 text-xs text-slate-500">
                   {isZh ? '付款：' : 'Paid from: '}
-                  {document.paymentAllocations.length
-                    ? document.paymentAllocations
-                        .map(
-                          (allocation) =>
-                            `${allocation.accountName} ${money(
-                              allocation.amountCents,
-                            )}`,
-                        )
-                        .join(' / ')
-                    : null}
+                  {fundingSummary(document) || null}
                 </div>
-                {!document.paymentAllocations.length ? (
+                {hasUnassignedFunding(document) ? (
                   <span className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
                     {isZh
                       ? '付款账户未指定'
@@ -270,7 +281,7 @@ export function ExpenseRecordsPanel({
                     {isZh ? '下载凭证' : 'Download receipt'}
                   </a>
                 ) : null}
-                {!document.paymentAllocations.length ? (
+                {hasUnassignedFunding(document) ? (
                   <button
                     type="button"
                     className="rounded border border-amber-300 bg-amber-50 px-3 py-1.5 font-medium text-amber-800"

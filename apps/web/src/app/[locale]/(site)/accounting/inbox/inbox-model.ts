@@ -7,7 +7,9 @@ export type AccountingExpenseReviewRow = {
   key: string;
   categoryStableId: string;
   amount: string;
+  taxMode: 'EXEMPT' | 'HST13' | 'MANUAL';
   tax: string;
+  paidFromAccountStableId: string;
 };
 
 export type AccountingReviewLineItemHint = {

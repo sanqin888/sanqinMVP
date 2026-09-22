@@ -2,6 +2,7 @@ export type AccountingExpenseSplitInput = {
   categoryStableId: string;
   amountCents: number;
   taxCents?: number;
+  paidFromAccountStableId: string | null;
 };
 
 export type AccountingExpensePaymentAllocationInput = {
@@ -13,7 +14,6 @@ export type AccountingExpenseInput = {
   occurredAt: string;
   totalCents: number;
   sourceCurrency?: string | null;
-  paymentAllocations?: AccountingExpensePaymentAllocationInput[];
   attachmentUrls?: string[];
   memo?: string | null;
   splits: AccountingExpenseSplitInput[];
@@ -21,6 +21,13 @@ export type AccountingExpenseInput = {
 
 export type AccountingExpensePaymentCompletionInput = {
   paymentAllocations: AccountingExpensePaymentAllocationInput[];
+};
+
+export type AccountingExpenseSplitFundingCompletionInput = {
+  splits: Array<{
+    splitStableId: string;
+    paidFromAccountStableId: string;
+  }>;
 };
 
 export type AccountingExpensePaymentState = 'ASSIGNED' | 'UNASSIGNED';

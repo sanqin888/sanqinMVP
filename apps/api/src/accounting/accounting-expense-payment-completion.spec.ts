@@ -275,6 +275,152 @@ describe('Accounting Expense payment completion', () => {
     expect(update).not.toHaveBeenCalled();
   });
 
+  it('atomically completes v2 split-level funding and delegates grouping to the posting engine', async () => {
+    const updateSplit = jest.fn().mockResolvedValue({ count: 1 });
+    const auditCreate = jest.fn().mockResolvedValue({});
+    const tx = {
+      accountingExpenseDocument: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'expense-db-id',
+          status: AccountingDocumentStatus.CONFIRMED,
+          fundingAttributionVersion: 2,
+          occurredAt: new Date('2026-09-18T04:00:00.000Z'),
+          paymentAllocations: [],
+          splits: [
+            {
+              id: 'split-db-1',
+              splitStableId: 'expensesplit_1',
+              paidFromAccount: null,
+            },
+            {
+              id: 'split-db-2',
+              splitStableId: 'expensesplit_2',
+              paidFromAccount: null,
+            },
+          ],
+        }),
+        update: jest.fn().mockResolvedValue({ id: 'expense-db-id' }),
+      },
+      accountingJournalEntry: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+      accountingAccount: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'cibc-db-id',
+            accountStableId: 'account_cibc',
+            accountClass: 'ASSET',
+            type: 'BANK',
+            currency: 'CAD',
+            isActive: true,
+          },
+        ]),
+      },
+      accountingExpenseSplit: { updateMany: updateSplit },
+      accountingAuditLog: { create: auditCreate },
+    };
+    const prisma = {
+      $transaction: jest.fn(
+        (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
+      ),
+    };
+    const service = new AccountingExpenseService(
+      prisma as never,
+      period as never,
+      expenseJournalPosting as never,
+    );
+    jest
+      .spyOn(service, 'getExpenseDocument')
+      .mockResolvedValue({ documentStableId: 'expense_v2' } as never);
+
+    await expect(
+      service.completeExpenseSplitFunding(
+        'expense_v2',
+        {
+          splits: [
+            {
+              splitStableId: 'expensesplit_1',
+              paidFromAccountStableId: 'account_cibc',
+            },
+            {
+              splitStableId: 'expensesplit_2',
+              paidFromAccountStableId: 'account_cibc',
+            },
+          ],
+        },
+        'user_stable_1',
+      ),
+    ).resolves.toEqual({ documentStableId: 'expense_v2' });
+
+    expect(updateSplit).toHaveBeenCalledTimes(2);
+    expect(updateSplit).toHaveBeenNthCalledWith(1, {
+      where: {
+        id: 'split-db-1',
+        expenseDocumentId: 'expense-db-id',
+        paidFromAccountId: null,
+      },
+      data: { paidFromAccountId: 'cibc-db-id' },
+    });
+    expect(updateSplit).toHaveBeenNthCalledWith(2, {
+      where: {
+        id: 'split-db-2',
+        expenseDocumentId: 'expense-db-id',
+        paidFromAccountId: null,
+      },
+      data: { paidFromAccountId: 'cibc-db-id' },
+    });
+    expect(auditCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'COMPLETE_EXPENSE_SPLIT_FUNDING',
+        entityType: 'ACCOUNTING_EXPENSE_DOCUMENT',
+        entityId: 'expense_v2',
+        operatorActorRef: 'user_stable_1',
+      }) as unknown,
+    });
+    expect(
+      expenseJournalPosting.postConfirmedExpenseIfReadyInTx,
+    ).toHaveBeenCalledWith(tx, 'expense_v2', 'user_stable_1');
+  });
+
+  it('keeps the legacy payment-allocation completion route v1-only', async () => {
+    const tx = {
+      accountingExpenseDocument: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'expense-db-id',
+          status: AccountingDocumentStatus.CONFIRMED,
+          fundingAttributionVersion: 2,
+          occurredAt: new Date('2026-09-18T04:00:00.000Z'),
+          totalCents: 8469,
+          paymentAllocations: [],
+        }),
+      },
+    };
+    const prisma = {
+      $transaction: jest.fn(
+        (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
+      ),
+    };
+    const service = new AccountingExpenseService(
+      prisma as never,
+      period as never,
+      expenseJournalPosting as never,
+    );
+
+    await expect(
+      service.completeExpensePaymentAllocations(
+        'expense_v2',
+        {
+          paymentAllocations: [
+            { accountStableId: 'account_cibc', amountCents: 8469 },
+          ],
+        },
+        'user_stable_1',
+      ),
+    ).rejects.toThrow(
+      'legacy payment allocation completion only supports Expense v1',
+    );
+  });
+
   it('refuses in-place completion when a canonical Expense Journal already exists', async () => {
     const tx = {
       accountingExpenseDocument: {
