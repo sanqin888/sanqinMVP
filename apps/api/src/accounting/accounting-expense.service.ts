@@ -54,6 +54,7 @@ import {
 } from './accounting-expense-input';
 import { createAccountingExpensePaymentAllocationsInTx } from './accounting-expense-payment-allocation.writer';
 import {
+  assignAccountingExpenseSplitFundingInTx,
   createAccountingExpenseSplitsInTx,
   deleteAccountingExpenseSplitsInTx,
 } from './accounting-expense-split.writer';
@@ -933,15 +934,10 @@ export class AccountingExpenseService {
       for (const split of document.splits) {
         if (split.paidFromAccount) continue;
         const accountStableId = requestedFunding.get(split.splitStableId)!;
-        const updated = await tx.accountingExpenseSplit.updateMany({
-          where: {
-            id: split.id,
-            expenseDocumentId: document.id,
-            paidFromAccountId: null,
-          },
-          data: {
-            paidFromAccountId: fundingAccountDbIds.get(accountStableId)!,
-          },
+        const updated = await assignAccountingExpenseSplitFundingInTx(tx, {
+          expenseSplitDbId: split.id,
+          expenseDocumentDbId: document.id,
+          paidFromAccountDbId: fundingAccountDbIds.get(accountStableId)!,
         });
         if (updated.count !== 1) {
           throw new ConflictException(

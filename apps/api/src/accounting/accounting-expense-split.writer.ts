@@ -40,3 +40,23 @@ export async function createAccountingExpenseSplitsInTx(
 
   return expenseSplitRows;
 }
+
+export async function assignAccountingExpenseSplitFundingInTx(
+  tx: Prisma.TransactionClient,
+  input: {
+    expenseSplitDbId: string;
+    expenseDocumentDbId: string;
+    paidFromAccountDbId: string;
+  },
+) {
+  return tx.accountingExpenseSplit.updateMany({
+    where: {
+      id: input.expenseSplitDbId,
+      expenseDocumentId: input.expenseDocumentDbId,
+      paidFromAccountId: null,
+    },
+    data: {
+      paidFromAccountId: input.paidFromAccountDbId,
+    },
+  });
+}
