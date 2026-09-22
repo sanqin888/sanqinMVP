@@ -2779,6 +2779,15 @@ is claimed per repository workflow.
 **Contract/destructive gates:** the runtime exit gate is satisfied. Retiring the two diagnostics changes an Accounting HTTP contract; removing the `AccountingTransaction` Prisma model/table and obsolete `AccountingSourceType` enum is destructive, and the single historical compatibility row must be explicitly disposed of or preserved by an approved plan. Neither contraction is authorized by this verification alone. B2 Canonical Sales Analytics remains gated until `accounting.expense-split-ownership.v1` closes.
 **Details:** Accounting reports/Expense journal controllers and diagnostic services, Prisma `AccountingTransaction` model, active compatibility register, roadmap/backlog/dependency graph and this worklog.
 
+### 2026-09-21 — Post-Modularization Accounting B1-C2 source contraction
+
+**Source state:** **C2A + C2B SOURCE COMPLETE / MIGRATION REQUIRED / DESTRUCTIVE APPROVAL RECORDED / NO GRAPH CHANGE** on branch `accounting/b1c2-final-persistence-contraction-v2` from latest `origin/dev@5c84100b`. This follows the readiness documentation merged through PR #2455. Per repository workflow, no local lint/build/tests or migration generation were run.
+**C2A:** retires `GET /accounting/report/expense-journal-parity` and `GET /accounting/journal/canonical-expenses/shadow-preview`; removes their legacy-only controller/service/unit/architecture tests and module wiring; updates the controller route boundary. No Web/PWA consumer was found.
+**C2B:** removes the Prisma `AccountingTransaction` model and `AccountingSourceType` enum plus Category/Account/ExpenseDocument Transaction relations; removes the dead Accounting-owned `AccountingSourceType` contract; updates actor/split/canonical-financial-facts architecture assertions so the retired persistence cannot silently return. `Prisma.TransactionClient` aliases remain because they represent database transaction scopes, not the retired business table.
+**Destructive evidence:** read-only production verification immediately before source contraction found exactly one active historical row: `EXPENSE / MANUAL`, 7495 cents amount + 974 cents tax = CAD 84.69. Its authoritative business facts already exist in ExpenseDocument, ExpenseSplit, payment allocation, canonical Journal and audit evidence, and disposal of this compatibility row/table/enum is explicitly approved.
+**Gate:** compatibility is not closed. The required Prisma migration remains user-generated and must be reviewed, merged, deployed and production-verified before the active register entry moves to closed or B2 proceeds.
+**Details:** Accounting controllers/module/contracts, Expense ownership and canonical financial-facts architecture guards, `apps/api/prisma/schema.prisma`, active compatibility register, roadmap/backlog/dependency graph and this worklog.
+
 ## Rule for future entries
 
 For each modularization code batch, append exactly one chronological entry before

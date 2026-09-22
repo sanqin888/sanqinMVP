@@ -18,10 +18,6 @@ const EXPENSE_SPLIT_WRITER = resolve(
   'accounting-expense-split.writer.ts',
 );
 const EXPENSE_QUERY = resolve(ACCOUNTING_ROOT, 'accounting-expense.query.ts');
-const EXPENSE_PREVIEW = resolve(
-  ACCOUNTING_ROOT,
-  'accounting-expense-journal-preview.service.ts',
-);
 const EXPENSE_POSTING = resolve(
   ACCOUNTING_ROOT,
   'accounting-expense-journal-posting.service.ts',
@@ -48,17 +44,16 @@ const modelBody = (schema: string, modelName: string) => {
 };
 
 describe('Accounting Expense split ownership and Journal boundary', () => {
-  it('keeps dedicated Expense-owned split persistence while retaining legacy schema for later contraction', () => {
+  it('keeps dedicated Expense-owned split persistence after legacy schema contraction', () => {
     const schema = readFileSync(PRISMA_SCHEMA, 'utf8');
     const expenseDocument = modelBody(schema, 'AccountingExpenseDocument');
     const category = modelBody(schema, 'AccountingCategory');
     const split = modelBody(schema, 'AccountingExpenseSplit');
 
     expect(expenseDocument).toMatch(/\bsplits\s+AccountingExpenseSplit\[\]/);
-    expect(expenseDocument).toMatch(
-      /\btransactions\s+AccountingTransaction\[\]/,
-    );
+    expect(expenseDocument).not.toContain('AccountingTransaction');
     expect(category).toMatch(/\bexpenseSplits\s+AccountingExpenseSplit\[\]/);
+    expect(category).not.toContain('AccountingTransaction');
 
     expect(split).toContain('splitStableId');
     expect(split).toContain('expenseDocumentId');
@@ -84,9 +79,8 @@ describe('Accounting Expense split ownership and Journal boundary', () => {
     expect(writer).not.toContain('accountingTransaction.createMany');
   });
 
-  it('keeps Expense owner reads on AccountingExpenseSplit and legacy reads only in the parity gate', () => {
+  it('keeps Expense owner reads on AccountingExpenseSplit after legacy diagnostics retire', () => {
     const query = readFileSync(EXPENSE_QUERY, 'utf8');
-    const preview = readFileSync(EXPENSE_PREVIEW, 'utf8');
     const reports = readFileSync(FINANCIAL_REPORTS, 'utf8');
     const uploadLibraryWriter = readFileSync(UPLOAD_LIBRARY_WRITER, 'utf8');
 
@@ -94,9 +88,6 @@ describe('Accounting Expense split ownership and Journal boundary', () => {
     expect(query).toContain('row.splits.map');
     expect(query).not.toContain('transactions: {');
     expect(query).not.toContain('txStableId');
-    expect(preview).toContain('SPLIT_PERSISTENCE_MISMATCH');
-    expect(preview).toContain('document.transactions.map');
-    expect(preview).toContain('splits: document.splits.map');
     expect(reports).not.toContain('accountingTransaction.findMany');
     expect(uploadLibraryWriter).toContain(
       '_count: { select: { splits: true } }',

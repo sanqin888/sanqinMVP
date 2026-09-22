@@ -13,7 +13,6 @@ import {
   type AuthedAccountingRequest,
   requireAccountingOperatorUserId,
 } from './accounting-controller-support';
-import { AccountingExpenseReportParityService } from './accounting-expense-report-parity.service';
 import { AccountingFinancialReportsService } from './accounting-financial-reports.service';
 import { AccountingService } from './accounting.service';
 
@@ -23,7 +22,6 @@ import { AccountingService } from './accounting.service';
 export class AccountingReportsController {
   constructor(
     private readonly reports: AccountingFinancialReportsService,
-    private readonly expenseReportParity: AccountingExpenseReportParityService,
     private readonly accountingService: AccountingService,
   ) {}
 
@@ -44,11 +42,6 @@ export class AccountingReportsController {
     @Query('groupBy') groupBy?: 'month' | 'quarter' | 'year',
   ) {
     return this.reports.pnlReport({ from, to, groupBy });
-  }
-
-  @Get('report/expense-journal-parity')
-  expenseJournalParity(@Query('from') from?: string, @Query('to') to?: string) {
-    return this.expenseReportParity.preview({ from, to });
   }
 
   @Get('report/account-balance')
