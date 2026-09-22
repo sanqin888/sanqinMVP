@@ -951,7 +951,7 @@ export function AccountingInboxExpenseReviewPanel({
                         : entry,
                     ),
                   );
-                }
+                }}
               />
             </label>
             <label className="text-sm">
