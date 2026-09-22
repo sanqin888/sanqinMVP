@@ -49,6 +49,7 @@ const EXPECTED_CONTROLLER_CAPABILITIES = {
     'AccountingProviderSettlementQueryService',
   ],
   'accounting-reports.controller.ts': [
+    'AccountingExpenseReportParityService',
     'AccountingFinancialReportsService',
     'AccountingService',
   ],
