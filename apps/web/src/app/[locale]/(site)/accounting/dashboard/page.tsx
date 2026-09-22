@@ -6,7 +6,7 @@ import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api/client';
 import type {
   AccountingDashboard,
-  AccountingOrderDimensionSlice,
+  AccountingSalesAnalyticsReport,
 } from '../contracts/reports';
 
 const money = (cents: number | null | undefined) => `$${((cents ?? 0) / 100).toFixed(2)}`;
@@ -16,9 +16,7 @@ export default function AccountingDashboardPage() {
   const isZh = params?.locale === 'zh';
   const locale = isZh ? 'zh' : 'en';
   const [dashboard, setDashboard] = useState<AccountingDashboard | null>(null);
-  const [slice, setSlice] = useState<AccountingOrderDimensionSlice | null>(
-    null,
-  );
+  const [sales, setSales] = useState<AccountingSalesAnalyticsReport | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const range = useMemo(() => {
@@ -35,13 +33,13 @@ export default function AccountingDashboardPage() {
       apiFetch<AccountingDashboard>(
         `/accounting/dashboard?from=${range.from}&to=${range.to}`,
       ),
-      apiFetch<AccountingOrderDimensionSlice>(
-        `/accounting/report/slice?from=${range.from}&to=${range.to}`,
+      apiFetch<AccountingSalesAnalyticsReport>(
+        `/accounting/report/sales?from=${range.from}&to=${range.to}`,
       ),
     ])
-      .then(([nextDashboard, nextSlice]) => {
+      .then(([nextDashboard, nextSales]) => {
         setDashboard(nextDashboard);
-        setSlice(nextSlice);
+        setSales(nextSales);
       })
       .catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)));
   }, [range]);
@@ -102,17 +100,23 @@ export default function AccountingDashboardPage() {
 
       <section className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-semibold">{isZh ? '销售渠道' : 'Sales channels'}</h2>
+          <h2 className="text-lg font-semibold">{isZh ? '销售渠道 · 净销售收入' : 'Sales channels · Net sales revenue'}</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            {isZh ? '金额来自 canonical Journal。' : 'Amounts come from canonical Journal.'}
+          </p>
           <div className="mt-3 space-y-2 text-sm">
-            {(slice?.byChannel ?? []).map((item) => <div key={item.key} className="flex justify-between"><span>{item.key}</span><strong>{money(item.amountCents)}</strong></div>)}
-            {!slice?.byChannel?.length ? <p className="text-slate-500">{isZh ? '暂无订单数据。' : 'No order data.'}</p> : null}
+            {(sales?.byChannel ?? []).map((item) => <div key={item.key} className="flex justify-between"><span>{item.key}</span><strong>{money(item.summary.netSalesRevenueCents)}</strong></div>)}
+            {!sales?.byChannel?.length ? <p className="text-slate-500">{isZh ? '暂无 canonical 销售数据。' : 'No canonical sales data.'}</p> : null}
           </div>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-semibold">{isZh ? '支付方式' : 'Payment methods'}</h2>
+          <h2 className="text-lg font-semibold">{isZh ? '主支付方式 · 净销售收入' : 'Primary payment method · Net sales revenue'}</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            {isZh ? '用于收入归因，不等同于实际收款构成。' : 'Revenue attribution, not actual tender mix.'}
+          </p>
           <div className="mt-3 space-y-2 text-sm">
-            {(slice?.byPaymentMethod ?? []).map((item) => <div key={item.key} className="flex justify-between"><span>{item.key}</span><strong>{money(item.amountCents)}</strong></div>)}
-            {!slice?.byPaymentMethod?.length ? <p className="text-slate-500">{isZh ? '暂无订单数据。' : 'No order data.'}</p> : null}
+            {(sales?.byPrimaryPaymentMethod ?? []).map((item) => <div key={item.key} className="flex justify-between"><span>{item.key}</span><strong>{money(item.summary.netSalesRevenueCents)}</strong></div>)}
+            {!sales?.byPrimaryPaymentMethod?.length ? <p className="text-slate-500">{isZh ? '暂无 canonical 销售数据。' : 'No canonical sales data.'}</p> : null}
           </div>
         </div>
       </section>
