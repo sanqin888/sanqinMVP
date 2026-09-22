@@ -328,7 +328,7 @@ export class AccountingChartService {
   }
 
   async listAccounts() {
-    return this.prisma.accountingAccount.findMany({
+    const rows = await this.prisma.accountingAccount.findMany({
       where: {
         isActive: true,
         accountClass: AccountingAccountClass.ASSET,
@@ -340,9 +340,15 @@ export class AccountingChartService {
         type: true,
         accountClass: true,
         currency: true,
+        includeFundedExpensesInManagementReports: true,
       },
       orderBy: [{ type: 'asc' }, { name: 'asc' }],
     });
+    return rows.map((row) => ({
+      ...row,
+      includeFundedExpensesInManagementReports:
+        row.includeFundedExpensesInManagementReports ?? true,
+    }));
   }
 
   async readAccountingAccountFacts() {
@@ -361,16 +367,19 @@ export class AccountingChartService {
     name: string;
     type: 'CASH' | 'BANK' | 'PLATFORM_WALLET';
     currency?: string;
+    includeFundedExpensesInManagementReports?: boolean;
   }) {
     const name = input.name.trim();
     if (!name) throw new BadRequestException('name is required');
-    return this.prisma.accountingAccount.create({
+    const created = await this.prisma.accountingAccount.create({
       data: {
         accountStableId: `account_${createId()}`,
         name,
         type: input.type,
         accountClass: AccountingAccountClass.ASSET,
         currency: input.currency?.trim().toUpperCase() || 'CAD',
+        includeFundedExpensesInManagementReports:
+          input.includeFundedExpensesInManagementReports ?? true,
       },
       select: {
         accountStableId: true,
@@ -378,8 +387,14 @@ export class AccountingChartService {
         type: true,
         accountClass: true,
         currency: true,
+        includeFundedExpensesInManagementReports: true,
       },
     });
+    return {
+      ...created,
+      includeFundedExpensesInManagementReports:
+        created.includeFundedExpensesInManagementReports ?? true,
+    };
   }
 
   private async getCategory(categoryStableId: string) {

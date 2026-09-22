@@ -33,6 +33,7 @@ export class AccountingChartController {
       name: string;
       type: AccountingAccountType;
       currency?: string;
+      includeFundedExpensesInManagementReports?: boolean;
     },
   ) {
     return this.chart.createAccount(body);

@@ -450,11 +450,29 @@ Target Accounting views:
 
 Journal/canonical financial facts own amounts. Orders may provide narrow channel/payment dimensions, not recreate revenue truth.
 
+### 5.3A EFA — Expense Funding Attribution
+
+Priority: **P1**  
+Complexity: **H**  
+Depends on: **B2 production closeout — satisfied 2026-09-22**.
+
+Current state: **EFA-A COMPLETE / EFA-B1 LOCAL SOURCE IMPLEMENTED + REVIEW PENDING / MIGRATION REQUIRED**.
+
+Detailed audit/design: `docs/architecture/accounting-expense-funding-attribution.md`.
+
+EFA moves funding ownership from a document-level allocation model to split-level attribution for new Expense v2 facts while preserving historical Expense v1 authority. New v2 posting will group splits by funding account, allowing one ExpenseDocument to produce multiple balanced canonical Journals without adding a JournalLine funding dimension.
+
+The account-level flag `includeFundedExpensesInManagementReports` is intentionally narrow: it controls only whether Expense groups funded by that operational account participate in Management P&L/expense analytics. Canonical Journal, account movement, actual cash flow, audit/evidence and future GST/HST reporting retain the facts.
+
+The Accounting PWA has one operator and may be deleted/recreated at the v2 cutover, so no long-lived old-client write contract is required. Historical v1 records remain readable and immutable.
+
+EFA must close before B3 so Trial Balance characterizes the final Expense Journal cardinality.
+
 ### 5.4 B3 — Trial Balance + Balance Movement Statement
 
 Priority: **P1/P2**  
 Complexity: **H**  
-Depends on: **B1**, recommended after **B2** for one coherent report vocabulary.
+Depends on: **B1 + B2 + EFA**, with EFA closing the final Expense funding/Journal-cardinality model before Trial Balance.
 
 Build Trial Balance directly from Journal lines and then the zero-opening **资产负债变动表 / Balance Movement Statement**.
 
