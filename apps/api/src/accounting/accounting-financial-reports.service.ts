@@ -452,10 +452,7 @@ export class AccountingFinancialReportsService {
       where: {
         deletedAt: null,
         kind: {
-          notIn: [
-            AccountingJournalEntryKind.TRANSFER,
-            AccountingJournalEntryKind.OPENING_BALANCE,
-          ],
+          not: AccountingJournalEntryKind.OPENING_BALANCE,
         },
         ...(occurredAt ? { occurredAt } : {}),
       },

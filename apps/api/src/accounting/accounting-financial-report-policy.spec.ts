@@ -285,7 +285,7 @@ describe('Accounting canonical financial report policy', () => {
     expect(projected.expenseInputTaxCents).toBe(0);
   });
 
-  it('keeps transfer magnitude visible without changing P&L or cashflow', () => {
+  it('keeps transfer magnitude visible without creating P&L facts', () => {
     const projected = projectAccountingJournalReportEntry(
       entry({
         kind: AccountingJournalEntryKind.TRANSFER,

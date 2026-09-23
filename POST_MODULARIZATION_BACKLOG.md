@@ -511,7 +511,21 @@ Then improve the Accounting reports surface:
 
 **B4-A state (2026-09-23): MERGED / CI GREEN through PR #2482 / squash `58aa54c0`; CI #6190 passed.** The Reports Web adapter now consumes the existing canonical Trial Balance and Balance Movement endpoints through shared Web contracts, presents Management P&L separately from canonical statements, removes its legacy account-balance browser read, shows effective-range / whole-ledger / currency / timezone / period-close metadata, and preserves the required zero-opening / non-formal-Balance-Sheet disclosure. Report presets now resolve the business date in America/Toronto without Date -> UTC rollover. The old account-balance HTTP route is intentionally left registered for a later explicit contraction. B4-A adds no backend financial calculation, Prisma/schema/migration, dependency, context edge or scanner allowance; drill-through, P&L adjustment decomposition and Sales comparison cleanup remain later B4 work.
 
-**B4-B local source state (2026-09-23): READY FOR USER REVIEW.** Trial Balance and Balance Movement now have dedicated authenticated CSV/PDF export endpoints plus Reports-page download links. A narrow `AccountingStatementExportService` delegates once to the existing B3 projection, renders only the returned report, and records export audit evidence. CSV carries statement metadata, account/totals and Balance Movement opening-basis/reconciliation fields; PDF reuses current Accounting PDFKit/Noto CJK support and keeps the required non-formal-Balance-Sheet disclosure. No new monetary authority, Journal query, schema/migration, package, provider path or context edge is introduced.
+**B4-B state (2026-09-23): MERGED / CI GREEN through PR #2483 / squash `cbd8bb1d`; PR CI #6195 passed.** Trial Balance and Balance Movement now have dedicated authenticated CSV/PDF export endpoints plus Reports-page download links. A narrow `AccountingStatementExportService` delegates once to the existing B3 projection, renders only the returned report, and records export audit evidence. CSV carries statement metadata, account/totals and Balance Movement opening-basis/reconciliation fields; PDF reuses current Accounting PDFKit/Noto CJK support and keeps the required non-formal-Balance-Sheet disclosure. No new monetary authority, Journal query, schema/migration, package, provider path or context edge is introduced.
+
+#### PAYOUT-A — Provider payout / bank receipt contract foundation
+
+Priority: **P1 ACCOUNTING CORRECTNESS**  
+Complexity: **M**  
+State: **LOCAL SOURCE READY FOR REVIEW / NO RUNTIME WRITER / NO MIGRATION / NO GRAPH CHANGE**
+
+After B4-B, the next Accounting correctness gap is the actual transfer from `Clover/Uber/Fantuan Pending` into a BANK account. This is not another monthly-statement posting: Clover deposits frequently while Uber/Fantuan pay weekly, so payout dates naturally cross monthly statement boundaries.
+
+PAYOUT-A freezes `accounting.provider_payout.v1` as an Accounting-owned fact with provider, store, payout business date, destination bank account, positive CAD amount and optional provider reference. It deliberately has no provider-statement ID or statement period. The Journal contract is `TRANSFER` / `PAYMENT`, `Dr BANK / Cr provider PLATFORM_WALLET`, with exact provider-pending and destination-bank account prerequisites plus deterministic authority hashing. Shared provider-pending account mapping prevents the existing settlement path and the future payout path from drifting to different assets.
+
+The current Cash Movement query previously excluded every `TRANSFER` Journal. PAYOUT-A corrects that query boundary to exclude only `OPENING_BALANCE` and continue deriving movement from CASH/BANK lines. CASH↔BANK transfers therefore net to zero, while PLATFORM_WALLET→BANK receipts become visible as real bank cash movement. A production read-only audit before the change found zero active TRANSFER Journals, so existing production report numbers are unaffected by the query correction.
+
+No payout persistence, controller, UI or Journal writer is activated in PAYOUT-A. PAYOUT-B must first add a durable Accounting-owned payout fact and same-transaction Journal authority; that later persisted model is expected to require an additive user-generated migration. Detailed readiness: `docs/architecture/accounting-provider-payout-readiness.md`.
 
 Avoid polishing current mixed-authority widgets immediately before replacing their underlying semantics.
 
