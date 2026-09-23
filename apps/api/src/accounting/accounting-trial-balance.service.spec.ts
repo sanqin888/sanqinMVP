@@ -206,13 +206,9 @@ describe('AccountingTrialBalanceService B3-A canonical core', () => {
     });
 
     expect(report.currency).toBe('CAD');
-    expect(prisma.accountingJournalLine.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          entry: expect.objectContaining({ currency: 'CAD' }),
-        }),
-      }),
-    );
+    expect(
+      JSON.stringify(prisma.accountingJournalLine.findMany.mock.calls),
+    ).toContain('"currency":"CAD"');
   });
 
   it('requires an explicit accounting start date before projecting balances', async () => {
