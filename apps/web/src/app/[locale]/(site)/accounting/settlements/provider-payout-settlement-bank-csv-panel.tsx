@@ -8,6 +8,7 @@ import type { AccountingManualUploadLibraryItem } from '../contracts/inbox';
 import type {
   AccountingProviderPayoutBankMatchPreview,
 } from '../contracts/provider-payout-bank-match';
+import type { AccountingProviderPayoutBankRowScope } from '../contracts/provider-payout-bank-row-decisions';
 
 const money = (cents: number): string => `$${(cents / 100).toFixed(2)}`;
 
@@ -73,8 +74,12 @@ export function ProviderPayoutSettlementBankCsvPanel({
   const [excludedRowNumbers, setExcludedRowNumbers] = useState<Set<number>>(
     () => new Set(),
   );
+  const [decisionScope, setDecisionScope] =
+    useState<AccountingProviderPayoutBankRowScope | null>(null);
+  const [scopeDirty, setScopeDirty] = useState(false);
   const [loadingEvidence, setLoadingEvidence] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [confirmingScope, setConfirmingScope] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const reviewedBankCsvEvidence = useMemo(
@@ -175,22 +180,66 @@ export function ProviderPayoutSettlementBankCsvPanel({
         await apiFetch<AccountingProviderPayoutBankMatchPreview>(
           `/accounting/provider-payouts/bank-match-preview?${query.toString()}`,
         );
+      const persisted =
+        await apiFetch<AccountingProviderPayoutBankRowScope>(
+          `/accounting/provider-payouts/bank-row-decisions?${query.toString()}`,
+        );
+      const decisionByRow = new Map(
+        persisted.decisions.map((decision) => [
+          decision.rowNumber,
+          decision.decision,
+        ]),
+      );
       setExcludedRowNumbers(
         new Set(
           result.deposits
-            .filter(
-              (deposit) =>
-                deposit.providerHint === null &&
-                deposit.candidates.length === 0,
-            )
+            .filter((deposit) => {
+              const persistedDecision = decisionByRow.get(deposit.rowNumber);
+              if (persistedDecision) return persistedDecision === 'EXCLUDED';
+              return deposit.status !== 'EXACT_EXISTING_PAYOUT';
+            })
             .map((deposit) => deposit.rowNumber),
         ),
       );
+      setDecisionScope(persisted);
+      setScopeDirty(!persisted.confirmed);
       setPreview(result);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function confirmSettlementScope() {
+    if (!preview) return;
+    setConfirmingScope(true);
+    setError(null);
+    try {
+      const confirmed =
+        await apiFetch<AccountingProviderPayoutBankRowScope>(
+          '/accounting/provider-payouts/bank-row-decisions/confirm',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              artifactStableId,
+              storeStableId: storeStableId.trim(),
+              destinationBankAccountStableId: bankAccountStableId,
+              includedRowNumbers: preview.deposits
+                .filter(
+                  (deposit) => !excludedRowNumbers.has(deposit.rowNumber),
+                )
+                .map((deposit) => deposit.rowNumber),
+            }),
+          },
+        );
+      setDecisionScope(confirmed);
+      setScopeDirty(false);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setConfirmingScope(false);
     }
   }
 
@@ -203,8 +252,8 @@ export function ProviderPayoutSettlementBankCsvPanel({
       <div className="mt-3 space-y-3">
         <p className="text-xs text-slate-600">
           {isZh
-            ? '这里只消费财务收件箱中已标记“已审核”的银行 CSV。请在这里决定哪些平台到账属于本次结算；排除不会修改原始银行证据。未匹配且已识别平台的参与行可以直接带入上方到账表单，再由你确认后正式记账。'
-            : 'This surface consumes only reviewed bank CSV evidence from Accounting Inbox. Decide settlement inclusion here; exclusion never edits the original bank evidence. Included unmatched rows with a provider hint can populate the posting form above for explicit confirmation.'}
+            ? '这里只消费财务收件箱中已标记“已审核”的银行 CSV。先选择本次结算范围并确认；确认结果会持久保存，重新打开同一份 CSV 时恢复。排除不会修改原始银行证据。'
+            : 'This surface consumes only reviewed bank CSV evidence from Accounting Inbox. Select and confirm the settlement scope first; confirmed decisions are durable and restored when the same CSV is reopened. Exclusion never edits the original evidence.'}
         </p>
 
         <form
@@ -220,6 +269,8 @@ export function ProviderPayoutSettlementBankCsvPanel({
               onChange={(event) => {
                 setArtifactStableId(event.target.value);
                 setPreview(null);
+                setDecisionScope(null);
+                setScopeDirty(false);
                 setExcludedRowNumbers(new Set());
                 setError(null);
               }}
@@ -256,6 +307,8 @@ export function ProviderPayoutSettlementBankCsvPanel({
               onChange={(event) => {
                 setStoreStableId(event.target.value);
                 setPreview(null);
+                setDecisionScope(null);
+                setScopeDirty(false);
                 setExcludedRowNumbers(new Set());
               }}
             />
@@ -274,6 +327,8 @@ export function ProviderPayoutSettlementBankCsvPanel({
               onChange={(event) => {
                 setBankAccountStableId(event.target.value);
                 setPreview(null);
+                setDecisionScope(null);
+                setScopeDirty(false);
                 setExcludedRowNumbers(new Set());
               }}
             >
@@ -351,6 +406,21 @@ export function ProviderPayoutSettlementBankCsvPanel({
                   {isZh ? '人工排除' : 'Excluded'}: {excludedDepositCount}
                 </span>
               ) : null}
+              <span
+                className={
+                  decisionScope?.confirmed && !scopeDirty
+                    ? 'rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-800'
+                    : 'rounded-full bg-amber-100 px-2.5 py-1 text-amber-800'
+                }
+              >
+                {decisionScope?.confirmed && !scopeDirty
+                  ? isZh
+                    ? '结算范围已确认'
+                    : 'Scope confirmed'
+                  : isZh
+                    ? '结算范围未确认'
+                    : 'Scope not confirmed'}
+              </span>
             </div>
 
             <div className="overflow-x-auto rounded-lg border border-cyan-100 bg-white">
@@ -377,8 +447,14 @@ export function ProviderPayoutSettlementBankCsvPanel({
                   {preview.deposits.map((deposit) => {
                     const excluded = excludedRowNumbers.has(deposit.rowNumber);
                     const providerHint = deposit.providerHint;
+                    const persistedDecision = decisionScope?.decisions.find(
+                      (decision) => decision.rowNumber === deposit.rowNumber,
+                    );
                     const canUseForPosting =
                       !excluded &&
+                      !scopeDirty &&
+                      decisionScope?.confirmed === true &&
+                      persistedDecision?.decision === 'READY_FOR_POSTING' &&
                       deposit.status === 'UNMATCHED' &&
                       providerHint !== null;
                     return (
@@ -401,6 +477,7 @@ export function ProviderPayoutSettlementBankCsvPanel({
                                   }
                                   return next;
                                 });
+                                setScopeDirty(true);
                               }}
                             />
                             <span>
@@ -460,9 +537,14 @@ export function ProviderPayoutSettlementBankCsvPanel({
                             >
                               {isZh ? '带入入账表单' : 'Use for posting'}
                             </button>
-                          ) : deposit.status === 'EXACT_EXISTING_PAYOUT' ? (
+                          ) : persistedDecision?.decision ===
+                              'MATCH_EXISTING_PAYOUT' ? (
                             <span className="text-emerald-700">
-                              {isZh ? '已入账' : 'Already posted'}
+                              {isZh ? '已确认匹配' : 'Confirmed match'}
+                            </span>
+                          ) : !decisionScope?.confirmed || scopeDirty ? (
+                            <span className="text-slate-500">
+                              {isZh ? '先确认范围' : 'Confirm scope first'}
                             </span>
                           ) : (
                             '—'
@@ -475,10 +557,39 @@ export function ProviderPayoutSettlementBankCsvPanel({
               </table>
             </div>
 
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-cyan-200 bg-white p-3">
+              <div className="text-xs text-slate-600">
+                {isZh
+                  ? `确认后将持久保存：参与 ${includedDepositCount} 笔，排除 ${excludedDepositCount} 笔。以后重新打开同一份 CSV 会恢复这些决定。`
+                  : `Confirmation persists ${includedDepositCount} included and ${excludedDepositCount} excluded rows and restores them when this CSV is reopened.`}
+              </div>
+              <button
+                type="button"
+                disabled={
+                  confirmingScope ||
+                  (decisionScope?.confirmed === true && !scopeDirty)
+                }
+                onClick={() => void confirmSettlementScope()}
+                className="rounded-lg border border-cyan-400 bg-cyan-50 px-4 py-2 text-sm font-semibold text-cyan-950 disabled:opacity-50"
+              >
+                {confirmingScope
+                  ? isZh
+                    ? '确认中…'
+                    : 'Confirming…'
+                  : decisionScope?.confirmed && !scopeDirty
+                    ? isZh
+                      ? '本次结算范围已确认'
+                      : 'Settlement scope confirmed'
+                    : isZh
+                      ? '确认本次结算范围'
+                      : 'Confirm settlement scope'}
+              </button>
+            </div>
+
             <p className="text-xs text-slate-500">
               {isZh
-                ? '“排除”只影响当前结算会话，不修改原始 CSV；例如跨期到账可以保留为银行证据但不参与本次结算。EXACT / POSSIBLE / AMBIGUOUS 行不会提供新入账按钮，避免重复入账。'
-                : 'Exclusion affects only the current settlement session and never edits the original CSV. EXACT, POSSIBLE, and AMBIGUOUS rows do not expose a new-post action, preventing duplicate posting.'}
+                ? '排除决定会持久保存，但不会修改原始 CSV。首次加载尚未确认的文件时，仅已精确匹配现有 payout 的行默认参与；其他未匹配、可能匹配或多候选行默认不参与。POSSIBLE / AMBIGUOUS 行必须先排除或解决后才能确认范围。'
+                : 'Exclusion decisions are durable but never modify the original CSV. On first load of an unconfirmed file, only exact existing-payout matches start included; unmatched, possible and ambiguous rows start excluded. POSSIBLE / AMBIGUOUS rows must be excluded or resolved before scope confirmation.'}
             </p>
           </div>
         ) : null}
