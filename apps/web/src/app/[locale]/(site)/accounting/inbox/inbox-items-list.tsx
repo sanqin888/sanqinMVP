@@ -26,6 +26,7 @@ type Props = {
     selectedProvider: AccountingFinancialProvider | null,
   ) => Promise<void>;
   onReviewExpense: (item: AccountingInboxItem) => void;
+  onReviewBankCsv: (item: AccountingInboxItem) => void;
   onConfirmProviderFinancial: (item: AccountingInboxItem) => Promise<void>;
   onConfirmOther: (item: AccountingInboxItem) => Promise<void>;
   onDiscard: (item: AccountingInboxItem) => Promise<void>;
@@ -56,6 +57,7 @@ export function AccountingInboxItemsList({
   onTrustSender,
   onClassificationChange,
   onReviewExpense,
+  onReviewBankCsv,
   onConfirmProviderFinancial,
   onConfirmOther,
   onDiscard,
@@ -183,7 +185,9 @@ export function AccountingInboxItemsList({
                             : 'Provider financial evidence'}
                         </option>
                         <option value="OTHER_DOCUMENT">
-                          {isZh ? '其他资料（非平台财务）' : 'Other evidence'}
+                          {isZh
+                            ? '银行流水 / 其他资料'
+                            : 'Bank statement / other evidence'}
                         </option>
                       </select>
                     </label>
@@ -507,6 +511,18 @@ export function AccountingInboxItemsList({
                         : 'Opening review does not post anything; a formal expense is created only after confirmation in the review panel.'}
                     </p>
                   </div>
+                ) : null}
+                {!quarantined &&
+                item.status === 'PENDING_REVIEW' &&
+                item.artifact.kind === 'CSV' &&
+                (item.classification === 'OTHER_DOCUMENT' ||
+                  item.classification === 'UNKNOWN') ? (
+                  <button
+                    onClick={() => onReviewBankCsv(item)}
+                    className="rounded border px-3 py-1.5 text-sm text-cyan-700"
+                  >
+                    {isZh ? '预览银行到账' : 'Preview bank receipts'}
+                  </button>
                 ) : null}
                 {!quarantined &&
                 item.status === 'PENDING_REVIEW' &&

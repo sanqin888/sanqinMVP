@@ -6,6 +6,7 @@ import { apiFetch } from '@/lib/api/client';
 import type {
   AccountingProviderFinancialConfirmationResult,
 } from '../contracts/provider-financial';
+import { AccountingInboxBankCsvReviewPanel } from './bank-csv-review-panel';
 import { AccountingInboxExpenseReviewPanel } from './expense-review-panel';
 import { AccountingImageRetentionPanel } from './image-retention-panel';
 import { AccountingImageRetentionQueue } from './image-retention-queue';
@@ -55,9 +56,27 @@ export default function AccountingInboxPage() {
   const [reviewingInboxItemStableId, setReviewingInboxItemStableId] = useState<
     string | null
   >(null);
+  const [reviewingBankCsvInboxItemStableId, setReviewingBankCsvInboxItemStableId] =
+    useState<string | null>(null);
   const reviewing = findAccountingInboxItemByStableId(
     items,
     reviewingInboxItemStableId,
+  );
+  const reviewingBankCsv = findAccountingInboxItemByStableId(
+    items,
+    reviewingBankCsvInboxItemStableId,
+  );
+  const knownStoreStableIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          items.flatMap((item) => {
+            const storeStableId = item.artifact.financialDocument?.storeStableId;
+            return storeStableId ? [storeStableId] : [];
+          }),
+        ),
+      ).sort(),
+    [items],
   );
   const [optimizingImage, setOptimizingImage] =
     useState<AccountingImageRetentionQueueItem | null>(null);
@@ -213,6 +232,13 @@ export default function AccountingInboxPage() {
       ) {
         setReviewingInboxItemStableId(null);
       }
+      if (
+        reviewingBankCsvInboxItemStableId === item.inboxItemStableId &&
+        (item.artifact.kind !== 'CSV' ||
+          (classification !== 'OTHER_DOCUMENT' && classification !== 'UNKNOWN'))
+      ) {
+        setReviewingBankCsvInboxItemStableId(null);
+      }
       setMessage(
         isZh ? '资料类型已更新。' : 'Document classification updated.',
       );
@@ -281,6 +307,9 @@ export default function AccountingInboxPage() {
       if (reviewingInboxItemStableId === item.inboxItemStableId) {
         setReviewingInboxItemStableId(null);
       }
+      if (reviewingBankCsvInboxItemStableId === item.inboxItemStableId) {
+        setReviewingBankCsvInboxItemStableId(null);
+      }
       setMessage(
         isZh
           ? '已放弃处理；文件仍保留在“上传文件库”，如确认无用可再永久删除。'
@@ -299,6 +328,9 @@ export default function AccountingInboxPage() {
   ) {
     if (reviewingInboxItemStableId === result.inboxItemStableId) {
       setReviewingInboxItemStableId(null);
+    }
+    if (reviewingBankCsvInboxItemStableId === result.inboxItemStableId) {
+      setReviewingBankCsvInboxItemStableId(null);
     }
     setMessage(
       result.storageCleanupComplete
@@ -558,6 +590,9 @@ export default function AccountingInboxPage() {
         onReviewExpense={(item) =>
           setReviewingInboxItemStableId(item.inboxItemStableId)
         }
+        onReviewBankCsv={(item) =>
+          setReviewingBankCsvInboxItemStableId(item.inboxItemStableId)
+        }
         onConfirmProviderFinancial={confirmProviderFinancial}
         onConfirmOther={confirmOther}
         onDiscard={discard}
@@ -577,6 +612,16 @@ export default function AccountingInboxPage() {
             permanentDeleteCapabilities.get(reviewing.inboxItemStableId) ?? false
           }
           onEvidenceDeleted={handlePermanentDeleteResult}
+        />
+      ) : null}
+
+      {reviewingBankCsv ? (
+        <AccountingInboxBankCsvReviewPanel
+          item={reviewingBankCsv}
+          accounts={accounts}
+          knownStoreStableIds={knownStoreStableIds}
+          isZh={isZh}
+          onClose={() => setReviewingBankCsvInboxItemStableId(null)}
         />
       ) : null}
 

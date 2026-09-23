@@ -1,9 +1,10 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '@/lib/api/client';
 import type { AccountingAccount } from '../contracts/chart';
-import type { AccountingManualUploadResult } from '../contracts/inbox';
+import type { AccountingFinancialProvider } from '../contracts/core';
+import type { AccountingManualUploadLibraryItem } from '../contracts/inbox';
 import type {
   AccountingProviderPayoutBankMatchPreview,
 } from '../contracts/provider-payout-bank-match';
@@ -21,9 +22,9 @@ const statusLabel = (
     return isZh ? '存在多个精确候选' : 'Multiple exact candidates';
   }
   if (status === 'POSSIBLE_EXISTING_PAYOUT') {
-    return isZh ? '附近日期有候选' : 'Nearby candidate';
+    return isZh ? '可能匹配现有到账' : 'Possible existing payout';
   }
-  return isZh ? '未匹配' : 'Unmatched';
+  return isZh ? '未匹配，可核对后入账' : 'Unmatched; review before posting';
 };
 
 const statusClass = (
@@ -36,25 +37,78 @@ const statusClass = (
   return 'bg-blue-100 text-blue-800';
 };
 
-export function ProviderPayoutBankMatchPanel({
+const isReviewedBankCsvEvidence = (
+  item: AccountingManualUploadLibraryItem,
+): boolean =>
+  item.status === 'CONFIRMED' &&
+  item.classification === 'OTHER_DOCUMENT' &&
+  item.kind === 'CSV' &&
+  item.duplicateOf === null &&
+  item.contentUrl !== null;
+
+export function ProviderPayoutSettlementBankCsvPanel({
   isZh,
   knownStoreStableIds,
   eligibleBanks,
+  onUseDeposit,
 }: {
   isZh: boolean;
   knownStoreStableIds: string[];
   eligibleBanks: AccountingAccount[];
+  onUseDeposit: (deposit: {
+    provider: AccountingFinancialProvider;
+    payoutDate: string;
+    amountCents: number;
+    destinationBankAccountStableId: string;
+  }) => void;
 }) {
+  const [manualUploads, setManualUploads] = useState<
+    AccountingManualUploadLibraryItem[]
+  >([]);
+  const [artifactStableId, setArtifactStableId] = useState('');
   const [storeStableId, setStoreStableId] = useState('');
   const [bankAccountStableId, setBankAccountStableId] = useState('');
-  const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] =
     useState<AccountingProviderPayoutBankMatchPreview | null>(null);
   const [excludedRowNumbers, setExcludedRowNumbers] = useState<Set<number>>(
     () => new Set(),
   );
+  const [loadingEvidence, setLoadingEvidence] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const reviewedBankCsvEvidence = useMemo(
+    () => manualUploads.filter(isReviewedBankCsvEvidence),
+    [manualUploads],
+  );
+
+  const loadEvidence = useCallback(async () => {
+    setLoadingEvidence(true);
+    setError(null);
+    try {
+      const uploads = await apiFetch<AccountingManualUploadLibraryItem[]>(
+        '/accounting/inbox/manual-uploads?limit=200',
+      );
+      setManualUploads(uploads);
+      setArtifactStableId((current) =>
+        uploads.some(
+          (item) =>
+            item.artifactStableId === current &&
+            isReviewedBankCsvEvidence(item),
+        )
+          ? current
+          : '',
+      );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setLoadingEvidence(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadEvidence();
+  }, [loadEvidence]);
 
   useEffect(() => {
     if (!storeStableId && knownStoreStableIds.length > 0) {
@@ -91,8 +145,12 @@ export function ProviderPayoutBankMatchPanel({
 
   async function previewMatches(event: FormEvent) {
     event.preventDefault();
-    if (!file) {
-      setError(isZh ? '请选择银行 CSV。' : 'Select a bank CSV.');
+    if (!artifactStableId) {
+      setError(
+        isZh
+          ? '请选择一份已审核银行流水。'
+          : 'Select a reviewed bank statement.',
+      );
       return;
     }
     if (!storeStableId.trim()) {
@@ -108,18 +166,8 @@ export function ProviderPayoutBankMatchPanel({
     setError(null);
     setPreview(null);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const artifact = await apiFetch<AccountingManualUploadResult>(
-        '/accounting/inbox/artifacts',
-        {
-          method: 'POST',
-          body: formData,
-        },
-      );
       const query = new URLSearchParams({
-        artifactStableId:
-          artifact.duplicateOfArtifactStableId ?? artifact.artifactStableId,
+        artifactStableId,
         storeStableId: storeStableId.trim(),
         destinationBankAccountStableId: bankAccountStableId,
       });
@@ -149,13 +197,14 @@ export function ProviderPayoutBankMatchPanel({
   return (
     <details className="rounded-xl border border-cyan-200 bg-cyan-50/40 p-4">
       <summary className="cursor-pointer text-sm font-semibold text-cyan-950">
-        {isZh ? '银行 CSV 到账匹配预览' : 'Bank CSV payout match preview'}
+        {isZh ? '已审核银行流水 · 结算范围 / 入账' : 'Reviewed bank statement · settlement / posting'}
       </summary>
+
       <div className="mt-3 space-y-3">
         <p className="text-xs text-slate-600">
           {isZh
-            ? '只接受强银行流水格式：包括 CIBC 原始无表头四列导出（日期 / Description / Withdrawals / Deposits），或带独立“Withdrawals / Deposits”“Funds Out / Funds In”方向列的格式。这里只保存证据并寻找现有 payout 候选，不会自动记账，也不会从模糊的 Date + Amount + Description 猜测银行流水。'
-            : 'Only strong bank transaction formats are accepted, including the native CIBC headerless four-column export (date / Description / Withdrawals / Deposits) or files with explicit Withdrawals / Deposits or Funds Out / Funds In columns. This stores evidence and finds existing payout candidates only; it never posts automatically or guesses from a generic Date + Amount + Description table.'}
+            ? '这里只消费财务收件箱中已标记“已审核”的银行 CSV。请在这里决定哪些平台到账属于本次结算；排除不会修改原始银行证据。未匹配且已识别平台的参与行可以直接带入上方到账表单，再由你确认后正式记账。'
+            : 'This surface consumes only reviewed bank CSV evidence from Accounting Inbox. Decide settlement inclusion here; exclusion never edits the original bank evidence. Included unmatched rows with a provider hint can populate the posting form above for explicit confirmation.'}
         </p>
 
         <form
@@ -163,24 +212,45 @@ export function ProviderPayoutBankMatchPanel({
           onSubmit={(event) => void previewMatches(event)}
         >
           <label className="text-xs text-slate-600">
-            {isZh ? '银行 CSV' : 'Bank CSV'}
-            <input
-              type="file"
-              accept=".csv,text/csv"
-              className="mt-1 block w-full text-sm"
+            {isZh ? '已审核银行流水' : 'Reviewed bank statement'}
+            <select
+              className="mt-1 block w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900"
+              value={artifactStableId}
+              disabled={loadingEvidence}
               onChange={(event) => {
-                setFile(event.target.files?.[0] ?? null);
+                setArtifactStableId(event.target.value);
                 setPreview(null);
                 setExcludedRowNumbers(new Set());
                 setError(null);
               }}
-            />
+            >
+              <option value="">
+                {loadingEvidence
+                  ? isZh
+                    ? '正在读取…'
+                    : 'Loading…'
+                  : isZh
+                    ? '选择已审核 CSV'
+                    : 'Select reviewed CSV'}
+              </option>
+              {reviewedBankCsvEvidence.map((item) => (
+                <option
+                  key={item.artifactStableId}
+                  value={item.artifactStableId}
+                >
+                  {item.originalFilename ?? item.artifactStableId}
+                  {item.reviewedAt
+                    ? ` · ${item.reviewedAt.slice(0, 10)}`
+                    : ''}
+                </option>
+              ))}
+            </select>
           </label>
 
           <label className="text-xs text-slate-600">
             {isZh ? '门店 Stable ID' : 'Store stable ID'}
             <input
-              list="provider-payout-bank-match-stores"
+              list="provider-payout-settlement-bank-stores"
               className="mt-1 block w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900"
               value={storeStableId}
               onChange={(event) => {
@@ -189,7 +259,7 @@ export function ProviderPayoutBankMatchPanel({
                 setExcludedRowNumbers(new Set());
               }}
             />
-            <datalist id="provider-payout-bank-match-stores">
+            <datalist id="provider-payout-settlement-bank-stores">
               {knownStoreStableIds.map((store) => (
                 <option key={store} value={store} />
               ))}
@@ -224,7 +294,11 @@ export function ProviderPayoutBankMatchPanel({
           <div className="flex items-end">
             <button
               disabled={
-                busy || !file || !storeStableId.trim() || !bankAccountStableId
+                busy ||
+                loadingEvidence ||
+                !artifactStableId ||
+                !storeStableId.trim() ||
+                !bankAccountStableId
               }
               className="rounded-lg border border-cyan-300 bg-white px-4 py-2 text-sm font-medium text-cyan-950 disabled:opacity-50"
             >
@@ -233,11 +307,19 @@ export function ProviderPayoutBankMatchPanel({
                   ? '分析中…'
                   : 'Analyzing…'
                 : isZh
-                  ? '上传并预览匹配'
-                  : 'Upload and preview'}
+                  ? '加载结算行'
+                  : 'Load settlement rows'}
             </button>
           </div>
         </form>
+
+        {!loadingEvidence && reviewedBankCsvEvidence.length === 0 ? (
+          <p className="text-xs text-slate-500">
+            {isZh
+              ? '当前没有已审核银行 CSV。请先在财务收件箱完成银行流水预览、分类和审核确认。'
+              : 'No reviewed bank CSV is available. Complete preview, classification, and review in Accounting Inbox first.'}
+          </p>
+        ) : null}
 
         {error ? (
           <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -249,14 +331,10 @@ export function ProviderPayoutBankMatchPanel({
           <div className="space-y-3">
             <div className="flex flex-wrap gap-2 text-xs">
               <span className="rounded-full bg-white px-2.5 py-1">
-                {isZh ? '入账行' : 'Deposits'}: {preview.source.depositRowCount}
+                {isZh ? '银行入账行' : 'Deposits'}: {preview.source.depositRowCount}
               </span>
               <span className="rounded-full bg-white px-2.5 py-1">
                 {isZh ? '已精确匹配' : 'Exact'}: {preview.counts.exactExisting}
-              </span>
-              <span className="rounded-full bg-white px-2.5 py-1">
-                {isZh ? '精确候选冲突' : 'Ambiguous'}:{' '}
-                {preview.counts.ambiguousExisting}
               </span>
               <span className="rounded-full bg-white px-2.5 py-1">
                 {isZh ? '可能匹配' : 'Possible'}: {preview.counts.possibleExisting}
@@ -265,54 +343,48 @@ export function ProviderPayoutBankMatchPanel({
                 {isZh ? '未匹配' : 'Unmatched'}: {preview.counts.unmatched}
               </span>
               <span className="rounded-full bg-white px-2.5 py-1">
-                {isZh ? '本次参与' : 'Included this settlement'}:{' '}
-                {includedDepositCount} · {money(includedAmountCents)}
+                {isZh ? '本次参与' : 'Included'}: {includedDepositCount} ·{' '}
+                {money(includedAmountCents)}
               </span>
               {excludedDepositCount > 0 ? (
                 <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-700">
-                  {isZh ? '人工排除' : 'Manually excluded'}:{' '}
-                  {excludedDepositCount}
-                </span>
-              ) : null}
-              {preview.source.invalidRowCount > 0 ? (
-                <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-800">
-                  {isZh ? '异常行' : 'Invalid rows'}:{' '}
-                  {preview.source.invalidRowCount}
+                  {isZh ? '人工排除' : 'Excluded'}: {excludedDepositCount}
                 </span>
               ) : null}
             </div>
 
             <div className="overflow-x-auto rounded-lg border border-cyan-100 bg-white">
-              <table className="min-w-[920px] w-full text-left text-xs">
+              <table className="min-w-[1120px] w-full text-left text-xs">
                 <thead className="border-b border-slate-200 text-slate-500">
                   <tr>
-                    <th className="px-2 py-2">
-                      {isZh ? '本期参与' : 'Include'}
-                    </th>
-                    <th className="px-2 py-2">{isZh ? '行' : 'Row'}</th>
+                    <th className="px-2 py-2">{isZh ? '本期参与' : 'Include'}</th>
                     <th className="px-2 py-2">{isZh ? '日期' : 'Date'}</th>
                     <th className="px-2 py-2 text-right">
-                      {isZh ? '入账金额' : 'Deposit'}
+                      {isZh ? '金额' : 'Amount'}
                     </th>
                     <th className="px-2 py-2">
                       {isZh ? '银行描述' : 'Bank description'}
                     </th>
-                    <th className="px-2 py-2">Provider hint</th>
-                    <th className="px-2 py-2">{isZh ? '状态' : 'Status'}</th>
+                    <th className="px-2 py-2">Provider</th>
+                    <th className="px-2 py-2">{isZh ? '匹配状态' : 'Match status'}</th>
                     <th className="px-2 py-2">
                       {isZh ? '现有 payout 候选' : 'Existing payout candidates'}
                     </th>
+                    <th className="px-2 py-2">{isZh ? '操作' : 'Action'}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {preview.deposits.map((deposit) => {
                     const excluded = excludedRowNumbers.has(deposit.rowNumber);
+                    const providerHint = deposit.providerHint;
+                    const canUseForPosting =
+                      !excluded &&
+                      deposit.status === 'UNMATCHED' &&
+                      providerHint !== null;
                     return (
                       <tr
                         key={deposit.rowNumber}
-                        className={
-                          excluded ? 'bg-slate-50 text-slate-400' : ''
-                        }
+                        className={excluded ? 'bg-slate-50 text-slate-400' : ''}
                       >
                         <td className="px-2 py-2">
                           <label className="inline-flex items-center gap-1.5">
@@ -342,12 +414,11 @@ export function ProviderPayoutBankMatchPanel({
                             </span>
                           </label>
                         </td>
-                        <td className="px-2 py-2">{deposit.rowNumber}</td>
                         <td className="px-2 py-2">{deposit.occurredOn}</td>
                         <td className="px-2 py-2 text-right font-semibold">
                           {money(deposit.amountCents)}
                         </td>
-                        <td className="max-w-[280px] px-2 py-2">
+                        <td className="max-w-[300px] px-2 py-2">
                           {deposit.description ?? '—'}
                         </td>
                         <td className="px-2 py-2">
@@ -372,6 +443,31 @@ export function ProviderPayoutBankMatchPanel({
                                 )
                                 .join(' | ')}
                         </td>
+                        <td className="px-2 py-2">
+                          {canUseForPosting && providerHint ? (
+                            <button
+                              type="button"
+                              className="rounded border border-emerald-300 bg-emerald-50 px-2.5 py-1.5 font-medium text-emerald-800"
+                              onClick={() =>
+                                onUseDeposit({
+                                  provider: providerHint,
+                                  payoutDate: deposit.occurredOn,
+                                  amountCents: deposit.amountCents,
+                                  destinationBankAccountStableId:
+                                    bankAccountStableId,
+                                })
+                              }
+                            >
+                              {isZh ? '带入入账表单' : 'Use for posting'}
+                            </button>
+                          ) : deposit.status === 'EXACT_EXISTING_PAYOUT' ? (
+                            <span className="text-emerald-700">
+                              {isZh ? '已入账' : 'Already posted'}
+                            </span>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
                       </tr>
                     );
                   })}
@@ -381,8 +477,8 @@ export function ProviderPayoutBankMatchPanel({
 
             <p className="text-xs text-slate-500">
               {isZh
-                ? '没有 provider hint 且没有现有 payout 候选的普通银行入账默认排除；其他入账可通过“本期参与”人工取消。排除只影响本次 settlement preview，不会修改或删除原始银行证据，也不会自动创建 canonical payout。PAYOUT-E-A 的人工选择目前只存在于本次页面会话；持久化 reconciliation decision 留给后续 E-B。'
-                : 'Ordinary bank deposits with neither a provider hint nor an existing payout candidate start excluded by default; any other row can be removed by clearing Include. Exclusion affects only this settlement preview. It never edits or deletes the original bank evidence. PAYOUT-E-A never creates a canonical payout automatically. PAYOUT-E-A keeps this selection only for the current page session; durable reconciliation decisions remain E-B scope.'}
+                ? '“排除”只影响当前结算会话，不修改原始 CSV；例如跨期到账可以保留为银行证据但不参与本次结算。EXACT / POSSIBLE / AMBIGUOUS 行不会提供新入账按钮，避免重复入账。'
+                : 'Exclusion affects only the current settlement session and never edits the original CSV. EXACT, POSSIBLE, and AMBIGUOUS rows do not expose a new-post action, preventing duplicate posting.'}
             </p>
           </div>
         ) : null}

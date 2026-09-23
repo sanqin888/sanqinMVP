@@ -1,9 +1,9 @@
 # Accounting Provider Payout / Bank Receipt Readiness
 
 Date: 2026-09-23  
-Baseline: `origin/dev@1666b3ed` after PAYOUT-D merge/deployment  
-Work package: **PAYOUT-E-A — bank CSV payout match preview**  
-State: **LOCAL SOURCE READY FOR USER REVIEW / PREVIEW-ONLY / NO MIGRATION / NO NEW WRITER / NO NEW CONTEXT EDGE**
+Baseline: PAYOUT-E-A merged through PR #2490 / squash `1d90e6fd`; Inbox-only evidence workflow merged through PR #2492 / squash `c4324edd`, CI #6229 green  
+Work package: **PAYOUT-E-A — bank CSV payout match preview + Inbox evidence / Settlements decision split**  
+State: **PAYOUT-E-A MERGED / CI #6223 GREEN; INBOX-ONLY FOLLOW-UP MERGED / CI #6229 GREEN; SETTLEMENT ROW-DECISION FOLLOW-UP LOCAL SOURCE READY FOR USER REVIEW / PREVIEW-ONLY / NO MIGRATION / NO NEW WRITER / NO NEW CONTEXT EDGE**
 
 ## 1. Purpose
 
@@ -456,15 +456,22 @@ PAYOUT-E-A deliberately starts with **evidence + suggestions only**. It does not
 
 ### Evidence boundary
 
-The existing Accounting Inbox manual-upload boundary remains the source of bank CSV evidence:
+The existing Accounting Inbox manual-upload boundary is the **only** file-upload entry for bank CSV evidence:
 
 ```text
+Accounting Inbox
 POST /accounting/inbox/artifacts
         ↓
 Accounting SourceArtifact
         ↓
+Inbox item classification / review
+        ↓
+CSV row "Preview bank receipts"
+        ↓
 GET /accounting/provider-payouts/bank-match-preview
 ```
+
+The Settlements page must not render either a file input or the bank-match preview. Bank CSV review belongs to the Inbox evidence lifecycle: upload, classify, preview, then mark reviewed. Only after review does the operator continue to Settlements for formal payout posting. This preserves one acquisition path, one canonical SourceArtifact identity and one evidence-review owner.
 
 No second file-storage or bank-import subsystem is created.
 
@@ -474,7 +481,7 @@ Normal bank transaction CSVs do not automatically become provider statements or 
 - structured Expense CSV recognition uses its own expense-oriented schema;
 - otherwise the uploaded CSV remains reviewable Accounting evidence.
 
-Manual-upload deduplication deliberately discards a duplicate binary. The upload response already exposes `duplicateOfArtifactStableId`; E-A therefore previews the retained canonical/original artifact when the same bank CSV is uploaded again.
+Manual-upload deduplication deliberately discards a duplicate binary. Bank CSV preview is attached to the current Inbox CSV item rather than a downstream file selector. The preview action is available while a CSV is `OTHER_DOCUMENT` or still `UNKNOWN`; the persisted classification remains `OTHER_DOCUMENT`, whose UI label is now "银行流水 / 其他资料" / "Bank statement / other evidence". Provider-financial and Expense evidence keep their existing review paths.
 
 ### Strong bank CSV signature
 
@@ -541,17 +548,17 @@ A bank receipt date is not itself the provider settlement period. The June CIBC 
 
 These rows must remain in immutable June bank evidence while being excluded from a June settlement selection.
 
-PAYOUT-E-A therefore adds a row-level **Include** control in the Web preview:
+PAYOUT-E-A keeps those two responsibilities separate:
 
-- every deposit remains visible;
-- rows with neither a provider hint nor an existing payout candidate start excluded by default, which keeps ordinary bank deposits such as mobile deposits out of provider-settlement selection unless an operator deliberately includes them;
-- provider-hinted or candidate-bearing rows start included;
-- matching status/candidates remain visible even when excluded;
-- clearing Include removes that row only from the current preview's included count and included amount;
+- Inbox preview always shows every detected deposit and its existing-payout match status;
+- Inbox does **not** expose Include/Exclude because that is a settlement decision, not evidence classification;
+- after the CSV is classified as `OTHER_DOCUMENT` and confirmed/reviewed, Settlements may load that reviewed artifact;
+- rows with neither a provider hint nor an existing payout candidate start excluded in the Settlements session, keeping ordinary bank deposits such as mobile deposits out of provider settlement by default;
+- provider-hinted or candidate-bearing rows start included and may be manually excluded there;
 - the original CSV/SourceArtifact is never edited or deleted;
-- no payout or Journal is created by the exclusion action.
+- only an included `UNMATCHED` row with a provider hint may populate the payout-posting form; `EXACT`, `POSSIBLE` and `AMBIGUOUS` rows do not expose a new-post action.
 
-The exclusion is intentionally session-only in E-A. Persisting a durable bank-row identity plus user-confirmed include/exclude/match decision would create a new Accounting authority and belongs to PAYOUT-E-B rather than being hidden inside a preview slice.
+The inclusion/exclusion decision is intentionally session-only in E-A. Persisting a durable bank-row identity plus user-confirmed include/exclude/match decision would create a new Accounting authority and belongs to PAYOUT-E-B.
 
 ### Transport and Web
 
@@ -567,7 +574,11 @@ Inputs:
 - `storeStableId`;
 - `destinationBankAccountStableId`.
 
-The Provider bank receipts panel adds a collapsible CSV preview surface. It shows deposit/withdrawal/invalid counts and every exact/ambiguous/possible/unmatched row with existing payout candidates. The UI explicitly states that PAYOUT-E-A never creates a canonical payout automatically.
+The Accounting Inbox adds bank CSV review to the evidence row itself. A CSV classified as `OTHER_DOCUMENT` or still `UNKNOWN` can open the bank-receipt preview, which shows deposit/withdrawal/invalid counts and every exact/ambiguous/possible/unmatched row with existing payout candidates. This Inbox preview is read-only with respect to settlement scope: it has no Include/Exclude controls and tells the operator to classify and mark the evidence reviewed.
+
+Settlements separately reads the existing manual-upload library and admits only retained `CONFIRMED + OTHER_DOCUMENT + CSV` evidence into the settlement-decision surface. There the operator chooses the bank/store context, applies session-only Include/Exclude decisions, and may populate the formal payout form only from an included `UNMATCHED` row with a provider hint. Existing exact/possible/ambiguous candidates cannot create a new payout through this handoff.
+
+The Web characterization test pins this split: Inbox remains the only Accounting file-upload surface and owns evidence preview; Settlements owns settlement Include/Exclude and posting handoff but never uploads evidence.
 
 ### PAYOUT-E-A exclusions
 
