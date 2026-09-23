@@ -19,6 +19,7 @@ import { AccountingFinancialReportsService } from './accounting-financial-report
 import { AccountingSalesAnalyticsService } from './accounting-sales-analytics.service';
 import type { AccountingTrialBalanceReportV1 } from './accounting-trial-balance.contract';
 import { AccountingTrialBalanceService } from './accounting-trial-balance.service';
+import { AccountingStatementExportService } from './accounting-statement-export.service';
 
 @Controller('accounting')
 @UseGuards(SessionAuthGuard, RolesGuard)
@@ -29,6 +30,7 @@ export class AccountingReportsController {
     private readonly salesAnalytics: AccountingSalesAnalyticsService,
     private readonly balanceMovement: AccountingBalanceMovementService,
     private readonly trialBalance: AccountingTrialBalanceService,
+    private readonly statementExport: AccountingStatementExportService,
   ) {}
 
   @Get('dashboard')
@@ -164,5 +166,89 @@ export class AccountingReportsController {
       `attachment; filename="accounting-report-${template.toLowerCase()}-${ts}.pdf"`,
     );
     return res.send(pdfBuffer);
+  }
+
+  @Get('export/trial-balance.csv')
+  async exportTrialBalanceCsv(
+    @Query('from') from: string | undefined,
+    @Query('to') to: string | undefined,
+    @Query('currency') currency: string | undefined,
+    @Req() req: AuthedAccountingRequest,
+    @Res() res: Response,
+  ) {
+    const csv = await this.statementExport.exportTrialBalanceCsv(
+      { from, to, currency },
+      requireAccountingOperatorUserId(req),
+    );
+    const ts = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="accounting-trial-balance-${ts}.csv"`,
+    );
+    return res.send(csv);
+  }
+
+  @Get('export/trial-balance.pdf')
+  async exportTrialBalancePdf(
+    @Query('from') from: string | undefined,
+    @Query('to') to: string | undefined,
+    @Query('currency') currency: string | undefined,
+    @Req() req: AuthedAccountingRequest,
+    @Res() res: Response,
+  ) {
+    const pdf = await this.statementExport.exportTrialBalancePdf(
+      { from, to, currency },
+      requireAccountingOperatorUserId(req),
+    );
+    const ts = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="accounting-trial-balance-${ts}.pdf"`,
+    );
+    return res.send(pdf);
+  }
+
+  @Get('export/balance-movement.csv')
+  async exportBalanceMovementCsv(
+    @Query('from') from: string | undefined,
+    @Query('to') to: string | undefined,
+    @Query('currency') currency: string | undefined,
+    @Req() req: AuthedAccountingRequest,
+    @Res() res: Response,
+  ) {
+    const csv = await this.statementExport.exportBalanceMovementCsv(
+      { from, to, currency },
+      requireAccountingOperatorUserId(req),
+    );
+    const ts = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="accounting-balance-movement-${ts}.csv"`,
+    );
+    return res.send(csv);
+  }
+
+  @Get('export/balance-movement.pdf')
+  async exportBalanceMovementPdf(
+    @Query('from') from: string | undefined,
+    @Query('to') to: string | undefined,
+    @Query('currency') currency: string | undefined,
+    @Req() req: AuthedAccountingRequest,
+    @Res() res: Response,
+  ) {
+    const pdf = await this.statementExport.exportBalanceMovementPdf(
+      { from, to, currency },
+      requireAccountingOperatorUserId(req),
+    );
+    const ts = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="accounting-balance-movement-${ts}.pdf"`,
+    );
+    return res.send(pdf);
   }
 }
