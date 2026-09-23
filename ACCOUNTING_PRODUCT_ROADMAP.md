@@ -1,6 +1,6 @@
 # Post-Modularization Accounting Product Roadmap
 
-Status: **EFA PRODUCTION DEPLOYED / PARTIAL VERIFICATION — B1 MIGRATION APPLIED — B2/C/D DEPLOYED — INCLUDED-ACCOUNT V2 WRITE + JOURNAL VERIFIED — EXCLUDED + MIXED-ACCOUNT VERIFICATION PENDING — B2 PRODUCTION VERIFIED / CLOSED — B1 CLOSED / B0 3V-B PRODUCTION VERIFICATION STILL PENDING — DO NOT REOPEN PHASE 9**  
+Status: **EFA PRODUCTION VERIFIED / CLOSED — B3 READY FOR READINESS AUDIT — B2 PRODUCTION VERIFIED / CLOSED — B1 CLOSED / B0 3V-B PRODUCTION VERIFICATION STILL PENDING — DO NOT REOPEN PHASE 9**  
 Planning date: 2026-09-20; updated: 2026-09-22  
 Baseline: Phase 9 **PRODUCTION VERIFIED / CLOSED** at production `main@dbea68f3`  
 Document-recognition audit baseline: `origin/dev@1ede0599`; Slice 3 merged as `caabf1c1`; Evidence Viewer Slice 1 merged as `0371a155`; Slice 1B merged as `9ae4d85d`; additive folder migration committed as `cc4c8016`; Evidence Viewer Slice 2 merged in PR #2438 as `4d68379e`; Slice 3V-A merged in PR #2439 as `0d6909bb` with PR CI #6054 and merged-head CI #6055 green; Slice 3V-B merged in PR #2440 as `0ac9117f` after final head `3c5c0400`, PR CI #6057 and merged-head CI #6058 green
@@ -361,7 +361,7 @@ Do not rewrite valid historical Journals merely to simplify presentation.
 
 Detailed readiness/design: `docs/architecture/accounting-expense-funding-attribution.md`.
 
-**2026-09-22 state:** **EFA-A COMPLETE / EFA-B1 MIGRATION APPLIED IN PRODUCTION / EFA-B2+C+D MERGED + CI GREEN + DEPLOYED / INCLUDED-ACCOUNT V2 WRITE + JOURNAL VERIFIED / EXCLUDED + MIXED-ACCOUNT PRODUCTION VERIFICATION PENDING**. EFA-D merged through PR #2471 / final head `ddb01f74` / squash `2d3abc0e` after CI #6158 passed, and production is deployed at `main@2d3abc0e`. B2-E remains production-verified/closed. EFA is still inserted before B3 Trial Balance so B3 characterizes the final Expense Journal cardinality rather than a transitional one.
+**2026-09-22 state:** **EFA PRODUCTION VERIFIED / CLOSED**. EFA-D merged through PR #2471 / final head `ddb01f74` / squash `2d3abc0e` after CI #6158 passed, production is deployed at `main@2d3abc0e`, and the B1 migration is applied. Production verification now covers included-account, excluded-account and mixed-account Expense v2 paths, exact 1..N balanced Journal grouping, zero legacy payment-allocation rows on new v2 records, preservation of historical v1 authority, and Management-vs-canonical arithmetic. B2-E remains production-verified/closed. EFA's pre-B3 gate is therefore satisfied and B3 may begin readiness audit.
 
 The operator explicitly accepts deleting/recreating the single-user Accounting PWA during the later v2 cutover. Therefore no long-lived old-client write compatibility layer is required. Historical `accounting.expense_document.v1` source facts/Journals remain immutable/readable.
 
@@ -387,7 +387,7 @@ EFA-C merged through PR #2470 / final head `483109e6` / squash `42e25b04`; CI #6
 
 EFA-D is merged and deployed through PR #2471 / squash `2d3abc0e`, with CI #6158 green. Reporting projection scope is explicit: Dashboard/P&L/category/trend plus Management/Boss exports use `MANAGEMENT`; raw transaction CSV remains `CANONICAL`. Only Expense v2 Journal groups consult their single operational funding account's `includeFundedExpensesInManagementReports`; excluded groups disappear from management Expense/P&L facts while historical v1 and canonical exports remain intact. Recoverable GST/HST is still accumulated from canonical Journal before the management filter, and account movement / actual cash flow remain on their independent canonical query paths. No new schema/migration or graph edge is introduced.
 
-Production deployment and the B1 migration gate are complete. Included-account production verification is complete for `expense_nha2w24tprp8s74921k3ge9p` -> `account_primary_bank`: v2 split funding persisted and exactly one balanced v2 Journal `journal_fgaxlv64pm70ks8b17j9ithn` posted for `3212c`. EFA remains open for excluded-account and mixed-account production verification plus final Management-vs-canonical reconciliation before B3 starts.
+Production deployment, the B1 migration gate and the full EFA verification matrix are complete. Included `expense_nha2w24tprp8s74921k3ge9p` posts one balanced `3212c` Primary Bank v2 Journal. Excluded `expense_o5uf67it43suw1c4sk06jz3e` posts one balanced `9039c` CIBC v2 Journal while contributing `0c` Expense to Management reporting. Mixed `expense_ramw3wdzp4r0wkxndshpnyz2` posts two balanced account-scoped v2 Journals (`1174c` CIBC + `4102c` Primary Bank = `5276c`). For the excluded + mixed verification population, canonical Expense=`13214c`, HST=`1101c`, cash/account movement=`14315c`, Management Expense=`4097c`, and the excluded CIBC-funded Expense is exactly `9117c`. EFA is closed; B3 is ready for readiness audit.
 
 ## 8. Slice C — Trial Balance and Balance Movement
 

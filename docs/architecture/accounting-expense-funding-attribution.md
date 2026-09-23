@@ -1,6 +1,6 @@
 # Accounting Expense Funding Attribution (EFA)
 
-Status: **EFA PRODUCTION DEPLOYED / PARTIAL VERIFICATION — B1 MIGRATION APPLIED — B2/C/D DEPLOYED — INCLUDED-ACCOUNT V2 WRITE + JOURNAL VERIFIED — EXCLUDED + MIXED-ACCOUNT VERIFICATION PENDING — SALES B2 PRODUCTION VERIFIED / CLOSED — PHASE 9 REMAINS CLOSED**  
+Status: **EFA PRODUCTION VERIFIED / CLOSED — B1 MIGRATION APPLIED — B2/C/D DEPLOYED + VERIFIED — INCLUDED / EXCLUDED / MIXED-ACCOUNT V2 PATHS VERIFIED — MANAGEMENT VS CANONICAL RECONCILED — B3 READY FOR READINESS AUDIT — SALES B2 PRODUCTION VERIFIED / CLOSED — PHASE 9 REMAINS CLOSED**  
 Planning/audit date: 2026-09-22  
 Audit baseline: production `main@2d3abc0e`  
 Owner: **Accounting / Reporting / Analytics**
@@ -52,8 +52,8 @@ Therefore EFA does **not** need a long-lived old-client write-compatibility laye
 This does not mean historical Expense v1 records are rewritten. It means:
 
 - historical v1 source facts and Journals remain valid and readable;
-- the currently deployed v1 write path remains active until the v2 runtime cutover;
-- after the v2 Web/API cutover, the old PWA can be removed and recreated;
+- the pre-cutover v1 write path remained active until the v2 runtime cutover;
+- after the v2 Web/API cutover, the old PWA could be removed and recreated;
 - the server does not need to accept the old Expense write payload indefinitely.
 
 ## 4. Production data preflight
@@ -86,9 +86,9 @@ No production record currently contains ambiguous historical split-to-account at
 
 EFA deliberately does **not** infer or rewrite that history. Historical v1 payment ownership remains represented by `AccountingExpensePaymentAllocation`.
 
-## 5. Current v1 authority
+## 5. Historical v1 authority
 
-The current canonical Expense fact is:
+The historical/pre-cutover canonical Expense fact is:
 
 ```text
 accounting.expense_document.v1
@@ -194,7 +194,7 @@ EFA uses explicit Expense funding versions.
 - old PWA write compatibility is not retained after cutover;
 - source fact type/idempotency version must be distinct from v1.
 
-`AccountingExpenseDocument.fundingAttributionVersion` is introduced as a nullable expand-stage column with default `1`, so the additive schema can be deployed without a NOT NULL tightening. Null or `1` is treated as historical/current v1 during the transition; the v2 writer will explicitly persist version `2`.
+`AccountingExpenseDocument.fundingAttributionVersion` was introduced as a nullable expand-stage column with default `1`, so the additive schema could be deployed without a NOT NULL tightening. Null or `1` remains historical v1 authority; current post-cutover writes explicitly persist version `2`.
 
 ## 9. Management reporting policy
 
@@ -252,9 +252,9 @@ A dedicated CRA GST/HST return projection does not currently exist in this roadm
 
 ## 12. Expense records / filtering
 
-Current Expense records filter payment account/state through `AccountingExpensePaymentAllocation`.
+Expense records now dual-read funding authority by version. Historical v1 payment ownership remains in `AccountingExpensePaymentAllocation`, while current v2 funding ownership lives on `AccountingExpenseSplit.paidFromAccount`.
 
-During v1/v2 coexistence, read behavior must distinguish:
+During v1/v2 coexistence, read behavior distinguishes:
 
 - v1 records: payment account from `AccountingExpensePaymentAllocation`;
 - v2 records: funding account from `AccountingExpenseSplit.paidFromAccount`.
@@ -286,7 +286,7 @@ This document records the read-only audit, production preflight, v1/v2 boundary,
 
 ### EFA-B1 — additive persistence foundation
 
-State: **MERGED / CI GREEN / MIGRATION REVIEWED + COMMITTED TO DEV / PRODUCTION APPLICATION PENDING** through PR #2468 / `2250b22d`; migration committed to `dev` as `3e445345`.
+State: **MERGED / CI GREEN / MIGRATION REVIEWED + APPLIED TO PRODUCTION** through PR #2468 / `2250b22d`; migration committed to `dev` as `3e445345` and applied successfully in production on 2026-09-22.
 
 Additive source changes:
 
@@ -314,7 +314,7 @@ B1 deliberately does **not**:
 
 State: **MERGED / CI GREEN / NO MIGRATION / NO GRAPH CHANGE** through PR #2469 / `6674ab1cdd6bcba78998698cde69469c40b0b03d`; CI #6150 passed.
 
-Implemented locally:
+Implemented:
 
 - defines `CanonicalExpenseFactV2` while preserving `CanonicalExpenseFactV1` and its v1 idempotency/source-fact contract;
 - derives v2 write authority from persisted Expense v2 splits plus the persisted funding-account facts required to enforce the operational-account invariant;
@@ -348,7 +348,7 @@ Production cutover completed on 2026-09-22: `main@2d3abc0e` is deployed and migr
 
 ### EFA-D — management reporting cutover / production verification
 
-State: **MERGED / CI GREEN / PRODUCTION DEPLOYED / PARTIAL VERIFICATION / NO NEW MIGRATION / NO GRAPH CHANGE** through PR #2471 / final head `ddb01f74` / squash merge `2d3abc0e`; CI #6158 passed API/Web/Architecture gates.
+State: **PRODUCTION VERIFIED / CLOSED / NO NEW MIGRATION / NO GRAPH CHANGE** through PR #2471 / final head `ddb01f74` / squash merge `2d3abc0e`; CI #6158 passed API/Web/Architecture gates and production verification completed on 2026-09-22.
 
 Implemented:
 
@@ -360,7 +360,7 @@ Implemented:
 - characterization covers an included v2 Expense group, an excluded v2 group, a historical v1 group on the same excluded account, canonical CSV retention, management P&L/category arithmetic and canonical Dashboard input-tax arithmetic;
 - no Web route/response change, Journal redesign, JournalLine funding dimension, Prisma schema/migration, package/dependency, provider path or context edge is introduced.
 
-Production deployment/readiness gates are now passed: migration `20260922183548_accounting_efa_b1_funding_attribution_foundation` finished successfully at `2026-09-22 22:51:15Z`, production is on `main@2d3abc0e`, and the pre-existing three Expense records remain v1 with their original legacy allocations and balanced v1 Journals. Included-account verification is also complete for `expense_nha2w24tprp8s74921k3ge9p`: it persisted `fundingAttributionVersion=2`, split `2843c + 369c = 3212c` to `account_primary_bank` (`includeFundedExpensesInManagementReports=true`) and created exactly one balanced v2 Journal `journal_fgaxlv64pm70ks8b17j9ithn` with idempotency `canonical-expense:expense_nha2w24tprp8s74921k3ge9p:funding:account_primary_bank:v2` and debit=credit=`3212c`. EFA remains open until one excluded-account Expense and one mixed-account receipt verify the management filter and expected 1..N Journal grouping, followed by Management-vs-canonical arithmetic reconciliation.
+Production verification is complete on `main@2d3abc0e`. Migration `20260922183548_accounting_efa_b1_funding_attribution_foundation` finished successfully at `2026-09-22 22:51:15Z`, and the pre-existing three Expense records remain v1 with their original legacy allocations and balanced v1 Journals. The new v2 paths were verified with three production Expenses:\n\n- **Included account:** `expense_nha2w24tprp8s74921k3ge9p` persisted `fundingAttributionVersion=2`, split `2843c + 369c = 3212c` to `account_primary_bank` (`includeFundedExpensesInManagementReports=true`) and created exactly one balanced v2 Journal `journal_fgaxlv64pm70ks8b17j9ithn` with account-scoped v2 idempotency and debit=credit=`3212c`.\n- **Excluded account:** `expense_o5uf67it43suw1c4sk06jz3e` persisted one CIBC-funded split group (`includeFundedExpensesInManagementReports=false`) for `7999c + 1040c = 9039c`, created exactly one balanced v2 Journal `journal_au8vzuc76xjx35g5vgn21ne3`, retained canonical Expense/HST/account movement, and contributed `0c` Expense to the Management projection.\n- **Mixed account:** `expense_ramw3wdzp4r0wkxndshpnyz2` persisted six splits across CIBC and `account_primary_bank` with no legacy document-level allocation. It created exactly two balanced v2 Journals: CIBC `journal_z01kqyn4ampwosw62psd8kgm` for `1118c + 56c = 1174c`, and Primary Bank `journal_j08gfjm68x66k696gatvuu8k` for `4097c + 5c = 4102c`; together they reconcile exactly to the document total `5276c`.\n\nFor the excluded + mixed verification population, canonical Expense is `13214c`, canonical recoverable HST is `1101c`, and canonical cash/account movement is `14315c`; Management Expense is `4097c`, excluding exactly `9117c` funded by CIBC. Both new v2 documents have zero `AccountingExpensePaymentAllocation` rows, confirming split-level funding is authoritative. The production evidence therefore verifies included, excluded and mixed-account behavior, 1..N Journal grouping, v1 preservation, and Management-vs-canonical separation. **EFA is PRODUCTION VERIFIED / CLOSED; B3 Trial Balance / Balance Movement may proceed to readiness audit without reopening Phase 9.**
 
 ## 15. Migration gate for EFA-B1
 
