@@ -154,15 +154,15 @@ describe('AccountingStatementExportService', () => {
     expect(balanceMovement.project).not.toHaveBeenCalled();
     expect(csv).toContain('rowType');
     expect(db.accountingAuditLog.create).toHaveBeenCalledTimes(1);
-    expect(JSON.stringify(db.accountingAuditLog.create.mock.calls[0])).toContain(
-      '"action":"EXPORT_STATEMENT"',
-    );
-    expect(JSON.stringify(db.accountingAuditLog.create.mock.calls[0])).toContain(
-      '"entityId":"TRIAL_BALANCE"',
-    );
-    expect(JSON.stringify(db.accountingAuditLog.create.mock.calls[0])).toContain(
-      '"operatorActorRef":"user_admin"',
-    );
+    expect(
+      JSON.stringify(db.accountingAuditLog.create.mock.calls[0]),
+    ).toContain('"action":"EXPORT_STATEMENT"');
+    expect(
+      JSON.stringify(db.accountingAuditLog.create.mock.calls[0]),
+    ).toContain('"entityId":"TRIAL_BALANCE"');
+    expect(
+      JSON.stringify(db.accountingAuditLog.create.mock.calls[0]),
+    ).toContain('"operatorActorRef":"user_admin"');
   });
 
   it('exports Balance Movement from exactly one B3-C projection', async () => {
