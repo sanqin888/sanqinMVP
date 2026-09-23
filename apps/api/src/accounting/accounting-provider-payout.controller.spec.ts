@@ -2,19 +2,45 @@ import { BadRequestException } from '@nestjs/common';
 import { AccountingFinancialProvider } from './accounting-contracts';
 import { AccountingProviderPayoutController } from './accounting-provider-payout.controller';
 import { AccountingProviderPayoutService } from './accounting-provider-payout.service';
+import {
+  AccountingProviderPendingReconciliationService,
+} from './accounting-provider-pending-reconciliation.service';
 
 function makeController() {
   const payouts = {
     listPayouts: jest.fn().mockResolvedValue([]),
     recordPayout: jest.fn().mockResolvedValue({ payoutStableId: 'payout_1' }),
   };
+  const pendingReconciliation = {
+    reconcile: jest.fn().mockResolvedValue({ providers: [] }),
+  };
   const controller = new AccountingProviderPayoutController(
     payouts as unknown as AccountingProviderPayoutService,
+    pendingReconciliation as unknown as
+      AccountingProviderPendingReconciliationService,
   );
-  return { controller, payouts };
+  return { controller, payouts, pendingReconciliation };
 }
 
 describe('AccountingProviderPayoutController', () => {
+  it('delegates Provider Pending reconciliation as a read-only Accounting query', async () => {
+    const { controller, pendingReconciliation } = makeController();
+
+    await controller.reconcileProviderPending(
+      '4750_Yonge_Street',
+      '2026-06-01',
+      '2026-09-23',
+      'uber_eats',
+    );
+
+    expect(pendingReconciliation.reconcile).toHaveBeenCalledWith({
+      storeStableId: '4750_Yonge_Street',
+      from: '2026-06-01',
+      to: '2026-09-23',
+      provider: AccountingFinancialProvider.UBER_EATS,
+    });
+  });
+
   it('keeps history reads bounded and parses provider filters', async () => {
     const { controller, payouts } = makeController();
 

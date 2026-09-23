@@ -16,12 +16,36 @@ import {
   requireAccountingOperatorUserId,
 } from './accounting-controller-support';
 import { AccountingProviderPayoutService } from './accounting-provider-payout.service';
+import {
+  AccountingProviderPendingReconciliationService,
+} from './accounting-provider-pending-reconciliation.service';
 
 @Controller('accounting')
 @UseGuards(SessionAuthGuard, RolesGuard)
 @Roles('ADMIN', 'ACCOUNTANT')
 export class AccountingProviderPayoutController {
-  constructor(private readonly payouts: AccountingProviderPayoutService) {}
+  constructor(
+    private readonly payouts: AccountingProviderPayoutService,
+    private readonly pendingReconciliation:
+      AccountingProviderPendingReconciliationService,
+  ) {}
+
+  @Get('provider-pending-reconciliation')
+  reconcileProviderPending(
+    @Query('storeStableId') storeStableId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('provider') providerRaw?: string,
+  ) {
+    return this.pendingReconciliation.reconcile({
+      storeStableId: storeStableId ?? '',
+      ...(from ? { from } : {}),
+      ...(to ? { to } : {}),
+      ...(providerRaw
+        ? { provider: parseAccountingFinancialProvider(providerRaw) }
+        : {}),
+    });
+  }
 
   @Get('provider-payouts')
   listPayouts(
