@@ -78,14 +78,10 @@ const lineMovement = (line: ProviderPendingReconciliationLineV1): number => {
 const bucketFor = (
   line: ProviderPendingReconciliationLineV1,
 ): MovementBucket => {
-  if (
-    line.sourceFactType === PROVIDER_PAYOUT_RECONCILIATION_SOURCE_FACT_TYPE
-  ) {
+  if (line.sourceFactType === PROVIDER_PAYOUT_RECONCILIATION_SOURCE_FACT_TYPE) {
     return 'PAYOUT';
   }
-  if (
-    line.sourceFactType === UBER_PRE_CUTOVER_REVERSAL_SOURCE_FACT_TYPE
-  ) {
+  if (line.sourceFactType === UBER_PRE_CUTOVER_REVERSAL_SOURCE_FACT_TYPE) {
     return 'AUTHORITY_ADJUSTMENT';
   }
   if (
@@ -146,9 +142,7 @@ const providerRow = (params: {
   coverage: ProviderPendingCoverageEvidenceV1 | null;
 }): AccountingProviderPendingReconciliationRowV1 => {
   const providerLines = params.lines.filter(
-    (line) =>
-      line.provider === params.provider &&
-      line.occurredAt < params.toExclusive,
+    (line) => line.provider === params.provider && line.occurredAt < params.toExclusive,
   );
   const openingLines = providerLines.filter(
     (line) => line.occurredAt < params.fromInclusive,

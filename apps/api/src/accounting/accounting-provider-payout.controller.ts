@@ -16,9 +16,7 @@ import {
   requireAccountingOperatorUserId,
 } from './accounting-controller-support';
 import { AccountingProviderPayoutService } from './accounting-provider-payout.service';
-import {
-  AccountingProviderPendingReconciliationService,
-} from './accounting-provider-pending-reconciliation.service';
+import { AccountingProviderPendingReconciliationService } from './accounting-provider-pending-reconciliation.service';
 
 @Controller('accounting')
 @UseGuards(SessionAuthGuard, RolesGuard)
@@ -26,8 +24,7 @@ import {
 export class AccountingProviderPayoutController {
   constructor(
     private readonly payouts: AccountingProviderPayoutService,
-    private readonly pendingReconciliation:
-      AccountingProviderPendingReconciliationService,
+    private readonly pendingReconciliation: AccountingProviderPendingReconciliationService,
   ) {}
 
   @Get('provider-pending-reconciliation')

@@ -6,6 +6,25 @@ import { AccountingProviderPendingReconciliationService } from './accounting-pro
 import { AccountingProviderSettlementQueryService } from './accounting-provider-settlement-query.service';
 import { AccountingPeriodService } from './accounting-period.service';
 
+type ProviderPendingFindManyArgs = {
+  where: {
+    account: {
+      accountStableId: {
+        in: string[];
+      };
+    };
+    entry: {
+      deletedAt: null;
+      OR: Array<{ storeStableId: string | null }>;
+      currency: string;
+      occurredAt: {
+        gte: Date;
+        lt: Date;
+      };
+    };
+  };
+};
+
 describe('AccountingProviderPendingReconciliationService', () => {
   it('reads only canonical Accounting Journal lines for the provider Pending roll-forward', async () => {
     const prisma = {
@@ -64,23 +83,19 @@ describe('AccountingProviderPendingReconciliationService', () => {
       provider: AccountingFinancialProvider.UBER_EATS,
     });
 
-    expect(prisma.accountingJournalLine.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          account: {
-            accountStableId: { in: ['account_uber_pending'] },
-          },
-          entry: expect.objectContaining({
-            deletedAt: null,
-            OR: [
-              { storeStableId: '4750_Yonge_Street' },
-              { storeStableId: null },
-            ],
-            currency: 'CAD',
-          }),
-        }),
-      }),
-    );
+    const [findManyArgs] = prisma.accountingJournalLine.findMany.mock
+      .calls[0] as unknown as [ProviderPendingFindManyArgs];
+    expect(findManyArgs.where.account.accountStableId.in).toEqual([
+      'account_uber_pending',
+    ]);
+    expect(findManyArgs.where.entry).toMatchObject({
+      deletedAt: null,
+      OR: [
+        { storeStableId: '4750_Yonge_Street' },
+        { storeStableId: null },
+      ],
+      currency: 'CAD',
+    });
     expect(settlementQuery.readProviderFinancialCoverage).toHaveBeenCalledWith({
       storeStableId: '4750_Yonge_Street',
       providers: [AccountingFinancialProvider.UBER_EATS],

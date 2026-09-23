@@ -2,9 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import { AccountingFinancialProvider } from './accounting-contracts';
 import { AccountingProviderPayoutController } from './accounting-provider-payout.controller';
 import { AccountingProviderPayoutService } from './accounting-provider-payout.service';
-import {
-  AccountingProviderPendingReconciliationService,
-} from './accounting-provider-pending-reconciliation.service';
+import { AccountingProviderPendingReconciliationService } from './accounting-provider-pending-reconciliation.service';
 
 function makeController() {
   const payouts = {
@@ -16,8 +14,7 @@ function makeController() {
   };
   const controller = new AccountingProviderPayoutController(
     payouts as unknown as AccountingProviderPayoutService,
-    pendingReconciliation as unknown as
-      AccountingProviderPendingReconciliationService,
+    pendingReconciliation as unknown as AccountingProviderPendingReconciliationService,
   );
   return { controller, payouts, pendingReconciliation };
 }

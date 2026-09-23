@@ -179,10 +179,7 @@ describe('Provider Pending reconciliation policy', () => {
       otherMovementCents: 100,
       payoutReductionCents: 200,
       closingBalanceCents: -100,
-      warnings: [
-        'NEGATIVE_PENDING_BALANCE',
-        'OTHER_LEDGER_MOVEMENT_PRESENT',
-      ],
+      warnings: ['NEGATIVE_PENDING_BALANCE', 'OTHER_LEDGER_MOVEMENT_PRESENT'],
     });
   });
 });

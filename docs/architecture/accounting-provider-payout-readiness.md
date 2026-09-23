@@ -1,7 +1,7 @@
 # Accounting Provider Payout / Bank Receipt Readiness
 
 Date: 2026-09-23  
-Baseline: latest `origin/dev@488f9024` after PAYOUT-C production deployment/verification  
+Baseline: latest `origin/dev@ac9ffcc2` after PAYOUT-C production deployment/verification  
 Work package: **PAYOUT-D — Provider Pending canonical roll-forward**  
 State: **LOCAL SOURCE READY FOR USER REVIEW / READ-ONLY / NO MIGRATION / NO NEW CONTEXT EDGE**
 
