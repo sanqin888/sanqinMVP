@@ -323,6 +323,12 @@ enum AccountingFinancialProvider {
   FANTUAN
 }
 
+enum AccountingProviderPayoutBankRowDecisionKind {
+  EXCLUDED
+  READY_FOR_POSTING
+  MATCH_EXISTING_PAYOUT
+}
+
 enum AccountingProviderRecognitionMatchMode {
   ANY
   ALL
@@ -1768,24 +1774,52 @@ model AccountingJournalLine {
 }
 
 model AccountingProviderPayout {
-  id                             String                      @id @default(uuid()) @db.Uuid
-  payoutStableId                 String                      @unique
+  id                             String                                      @id @default(uuid()) @db.Uuid
+  payoutStableId                 String                                      @unique
   provider                       AccountingFinancialProvider
   storeStableId                  String
-  payoutDate                     DateTime                    @db.Date
+  payoutDate                     DateTime                                    @db.Date
   destinationBankAccountStableId String
   amountCents                    Int
-  currency                       String                      @default("CAD")
+  currency                       String                                      @default("CAD")
   providerReference              String?
-  journalEntryStableId           String?                     @unique
+  journalEntryStableId           String?                                     @unique
   createdByActorRef              String
-  createdAt                      DateTime                    @default(now())
-  updatedAt                      DateTime                    @updatedAt
+  createdAt                      DateTime                                    @default(now())
+  updatedAt                      DateTime                                    @updatedAt
+  bankRowMatches                 AccountingProviderPayoutBankRowDecision[]    @relation("AccountingProviderPayoutBankRowMatchedPayout")
 
   @@index([provider, payoutDate])
   @@index([storeStableId, payoutDate])
   @@index([destinationBankAccountStableId, payoutDate])
   @@index([provider, providerReference])
+}
+
+model AccountingProviderPayoutBankRowDecision {
+  id                             String                                       @id @default(uuid()) @db.Uuid
+  decisionStableId               String                                       @unique
+  artifactId                     String                                       @db.Uuid
+  rowNumber                      Int
+  rowFingerprint                 String
+  storeStableId                  String
+  destinationBankAccountStableId String
+  occurredOn                     DateTime                                     @db.Date
+  amountCents                    Int
+  description                    String?
+  providerHint                   AccountingFinancialProvider?
+  decision                       AccountingProviderPayoutBankRowDecisionKind
+  matchedPayoutStableId          String?
+  confirmedByActorRef            String
+  confirmedAt                    DateTime
+  createdAt                      DateTime                                     @default(now())
+  updatedAt                      DateTime                                     @updatedAt
+  artifact                       AccountingSourceArtifact                     @relation(fields: [artifactId], references: [id], onDelete: Restrict)
+  matchedPayout                  AccountingProviderPayout?                    @relation("AccountingProviderPayoutBankRowMatchedPayout", fields: [matchedPayoutStableId], references: [payoutStableId], onDelete: Restrict)
+
+  @@unique([artifactId, rowNumber, storeStableId, destinationBankAccountStableId], map: "AccountingProviderPayoutBankRowDecision_scope_key")
+  @@index([artifactId, storeStableId, destinationBankAccountStableId])
+  @@index([decision, confirmedAt])
+  @@index([matchedPayoutStableId])
 }
 
 model PayrollEmployer {
@@ -2171,6 +2205,7 @@ model AccountingSourceArtifact {
   financialDocument      AccountingProviderFinancialDocument?
   binaryRetention        AccountingArtifactBinaryRetention?
   evidenceFolderAssignment AccountingEvidenceFolderAssignment?
+  providerPayoutBankRowDecisions AccountingProviderPayoutBankRowDecision[]
 
   @@unique([acquisitionMode, transportIdentity])
   @@index([contentHash, createdAt])

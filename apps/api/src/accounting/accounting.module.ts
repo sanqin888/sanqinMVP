@@ -49,6 +49,7 @@ import { AccountingProviderSettlementPreviewService } from './accounting-provide
 import { AccountingProviderSettlementExecutionService } from './accounting-provider-settlement-execution.service';
 import { AccountingProviderPayoutService } from './accounting-provider-payout.service';
 import { AccountingProviderPayoutBankMatchService } from './accounting-provider-payout-bank-match.service';
+import { AccountingProviderPayoutBankRowDecisionService } from './accounting-provider-payout-bank-row-decision.service';
 import { AccountingProviderPendingReconciliationService } from './accounting-provider-pending-reconciliation.service';
 import { AccountingPayrollConfigService } from './payroll/accounting-payroll-config.service';
 import { AccountingPayrollEmployeeService } from './payroll/accounting-payroll-employee.service';
@@ -112,6 +113,7 @@ import { PaymentFinancialFactsModule } from '../payments/public-api';
     AccountingProviderSettlementExecutionService,
     AccountingProviderPayoutService,
     AccountingProviderPayoutBankMatchService,
+    AccountingProviderPayoutBankRowDecisionService,
     AccountingProviderPendingReconciliationService,
     AccountingChartService,
     AccountingExpenseService,

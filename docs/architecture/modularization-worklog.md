@@ -2989,11 +2989,21 @@ is claimed per repository workflow.
 
 ### 2026-09-23 — Accounting PAYOUT-E-A settlement row-decision ownership follow-up
 
-**State:** **LOCAL SOURCE READY FOR USER REVIEW / NO MIGRATION / NO API CONTRACT CHANGE / NO GRAPH CHANGE** on `feat/accounting-settlement-bank-row-decisions`.  
+**State:** **MERGED / CI GREEN / DEPLOYED / NO MIGRATION / NO API CONTRACT CHANGE / NO GRAPH CHANGE** through PR #2493 / squash `3d20fd4f`; CI #6232 passed API/Web Architecture, lint, build, strict and tests, and production deployment was verified on `main@3d20fd4f`.  
 **Reason:** operator review clarified that row-level “Include / Exclude” is not evidence classification. It decides whether a real bank receipt participates in the current provider settlement and therefore belongs beside payout posting, not in Inbox review.  
 **Change:** Inbox bank CSV preview is now evidence-only and shows detected deposits plus existing payout matches without Include/Exclude. Settlements separately loads only retained `CONFIRMED + OTHER_DOCUMENT + CSV` artifacts from the existing manual-upload library, owns session-only Include/Exclude, and lets an included `UNMATCHED` row with a provider hint populate the canonical payout form. `EXACT_EXISTING_PAYOUT`, `POSSIBLE_EXISTING_PAYOUT` and `AMBIGUOUS_EXISTING_PAYOUT` rows expose no new-post action, preventing duplicate payout creation through this handoff.  
 **Guard:** Web characterization asserts that Inbox has no `excludedRowNumbers`, Settlements filters reviewed evidence and owns the exclusion state, and only `UNMATCHED` rows offer “Use for posting”.  
 **Boundary:** decisions remain session-only; no durable bank-row reconciliation authority is introduced. No Prisma/schema/migration, backend route, writer, dependency, public context edge or scanner allowance changes.
+
+### 2026-09-23 — Accounting PAYOUT-E-B1 durable bank row reconciliation decisions
+
+**State:** **LOCAL SOURCE READY FOR USER REVIEW / MIGRATION REQUIRED / NO PAYOUT OR JOURNAL WRITER CHANGE / NO GRAPH CHANGE** on `feat/accounting-payout-e-b1-bank-row-decisions`.  
+**Reason:** production workflow proved session-only Include/Exclude is insufficient: after selecting rows there was no durable “confirm settlement scope” step, reopening the same CSV lost decisions, and provider-hinted unmatched deposits were overly broad defaults.  
+**Authority:** adds Accounting-owned `AccountingProviderPayoutBankRowDecision` plus `AccountingProviderPayoutBankRowDecisionKind` (`EXCLUDED`, `READY_FOR_POSTING`, `MATCH_EXISTING_PAYOUT`). Scope identity is immutable artifact row + store + destination bank; stable IDs are deterministic and row fingerprints bind parser version/date/amount/description/provider hint. `AccountingSourceArtifact` remains immutable and `AccountingProviderPayout` / canonical Journal authority are unchanged.  
+**Write path:** authenticated confirmation reparses the retained reviewed CSV server-side, reuses current PAYOUT-E-A match projection, and persists one decision for every recognized deposit row inside a Serializable Accounting transaction with per-row audit. Included exact matches become `MATCH_EXISTING_PAYOUT`; included unmatched rows require a provider hint and become `READY_FOR_POSTING`; unresolved possible/ambiguous rows fail closed; all non-included rows persist as `EXCLUDED`. Re-confirmation updates the same durable row decision, enabling a later Clover pass over the same CSV without mutating the evidence.  
+**Read/UI:** Settlements restores confirmed decisions on reopen. First load is conservative: only exact existing-payout matches start included; unmatched/possible/ambiguous rows start excluded. Any checkbox change marks the scope dirty until “Confirm settlement scope” succeeds. Existing posting handoff is gated behind a current confirmed `READY_FOR_POSTING` decision. If a previously READY row later becomes an exact payout match, the scope becomes unconfirmed until explicit reconfirmation converts it to MATCH.  
+**Boundary:** E-B1 does not create or modify payout/Journal facts and imports no Orders/Payments/integration implementation. E-B2 remains responsible for atomically binding one READY bank-row decision to exactly one canonical payout and transitioning the decision to MATCH.  
+**Migration:** **REQUIRED.** The assistant must not create anything under `apps/api/prisma/migrations/**`; user-local generation and SQL review are required before promotion to main/production. Detailed design/status: `docs/architecture/accounting-provider-payout-readiness.md`.
 
 ## Rule for future entries
 

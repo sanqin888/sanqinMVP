@@ -1,9 +1,9 @@
 # Accounting Provider Payout / Bank Receipt Readiness
 
 Date: 2026-09-23  
-Baseline: PAYOUT-E-A merged through PR #2490 / squash `1d90e6fd`; Inbox-only evidence workflow merged through PR #2492 / squash `c4324edd`, CI #6229 green  
-Work package: **PAYOUT-E-A — bank CSV payout match preview + Inbox evidence / Settlements decision split**  
-State: **PAYOUT-E-A MERGED / CI #6223 GREEN; INBOX-ONLY FOLLOW-UP MERGED / CI #6229 GREEN; SETTLEMENT ROW-DECISION FOLLOW-UP LOCAL SOURCE READY FOR USER REVIEW / PREVIEW-ONLY / NO MIGRATION / NO NEW WRITER / NO NEW CONTEXT EDGE**
+Baseline: PAYOUT-E-A merged through PR #2490 / squash `1d90e6fd`; Inbox-only evidence workflow merged through PR #2492 / squash `c4324edd`, CI #6229 green; settlement row-decision ownership follow-up merged through PR #2493 / squash `3d20fd4f`, CI #6232 green  
+Work package: **PAYOUT-E-B1 — durable bank row reconciliation decisions**  
+State: **PAYOUT-E-B1 LOCAL SOURCE READY FOR USER REVIEW / MIGRATION REQUIRED / NO PAYOUT OR JOURNAL WRITER CHANGE / NO NEW CONTEXT EDGE**
 
 ## 1. Purpose
 
@@ -595,11 +595,32 @@ Still deferred:
 
 PAYOUT-E-A adds no Prisma/schema/migration, package dependency, payout/Journal writer, provider/bank API or new context edge.
 
-## 13. Later slices
+## 13. PAYOUT-E-B — durable bank reconciliation
 
-After PAYOUT-E-A is production-verified, later work can decide whether the next smallest slice is:
+### PAYOUT-E-B1 — durable bank row decision authority
 
-- **PAYOUT-E-B:** durable bank evidence identity + explicit human-confirmed payout match; or
-- a payout reversal/correction slice if operator correction becomes the more urgent need.
+E-B1 adds the Accounting-owned persistence layer between immutable bank evidence and the already-frozen provider payout fact. It does **not** redesign `AccountingProviderPayout`, provider statements or the Journal writer.
 
-Automatic payout creation or bank API ingestion should not precede durable bank-evidence identity and an explicit confirmation contract.
+The durable scope identity is:
+
+`artifactStableId + rowNumber + storeStableId + destinationBankAccountStableId`
+
+The persisted row stores a deterministic `decisionStableId`, parser-bound row fingerprint, normalized date/amount/description/provider hint, operator/time and one decision:
+
+- `EXCLUDED`
+- `READY_FOR_POSTING`
+- `MATCH_EXISTING_PAYOUT`
+
+The original `AccountingSourceArtifact` remains immutable. Confirmation always reparses the retained reviewed CSV and derives decisions from the current bank-match preview; the browser cannot submit date, amount, provider or match authority. Included `EXACT_EXISTING_PAYOUT` rows become `MATCH_EXISTING_PAYOUT`; included `UNMATCHED` rows require a provider hint and become `READY_FOR_POSTING`; included `POSSIBLE_EXISTING_PAYOUT` or `AMBIGUOUS_EXISTING_PAYOUT` rows fail closed. All non-included deposit rows persist as `EXCLUDED`.
+
+A row fingerprint includes bank parser version plus row number/date/amount/description/provider hint. Reopening the same CSV restores confirmed choices. If parser output or current payout-match semantics no longer agree with the persisted decision, the scope is no longer treated as confirmed and requires explicit reconfirmation.
+
+The UI changes first-load defaults conservatively: for a scope with no durable decisions, only `EXACT_EXISTING_PAYOUT` rows start included; `UNMATCHED`, `POSSIBLE` and `AMBIGUOUS` rows start excluded. The operator must explicitly include the platform receipts intended for this reconciliation and press **Confirm settlement scope**. Changing any checkbox after confirmation makes the scope dirty until reconfirmed.
+
+E-B1 introduces no payout/Journal posting authority. Existing posting handoff is gated behind a confirmed, current `READY_FOR_POSTING` decision, but the final atomic bank-row-decision → payout binding belongs to E-B2.
+
+### PAYOUT-E-B2 — confirmed bank row to canonical payout
+
+E-B2 must bind a `READY_FOR_POSTING` bank-row decision to exactly one canonical `AccountingProviderPayout` in the same Accounting transaction, derive/reuse an idempotent payout identity from the bank-row authority, and transition the durable decision to `MATCH_EXISTING_PAYOUT`. This closes the remaining duplicate-posting window before any automatic bank import or auto-posting is considered.
+
+Automatic payout creation or bank API ingestion must not precede E-B2.

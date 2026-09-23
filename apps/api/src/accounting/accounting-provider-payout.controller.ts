@@ -17,6 +17,7 @@ import {
 } from './accounting-controller-support';
 import { AccountingProviderPayoutService } from './accounting-provider-payout.service';
 import { AccountingProviderPayoutBankMatchService } from './accounting-provider-payout-bank-match.service';
+import { AccountingProviderPayoutBankRowDecisionService } from './accounting-provider-payout-bank-row-decision.service';
 import { AccountingProviderPendingReconciliationService } from './accounting-provider-pending-reconciliation.service';
 
 @Controller('accounting')
@@ -26,6 +27,7 @@ export class AccountingProviderPayoutController {
   constructor(
     private readonly payouts: AccountingProviderPayoutService,
     private readonly bankMatch: AccountingProviderPayoutBankMatchService,
+    private readonly bankRowDecisions: AccountingProviderPayoutBankRowDecisionService,
     private readonly pendingReconciliation: AccountingProviderPendingReconciliationService,
   ) {}
 
@@ -41,6 +43,43 @@ export class AccountingProviderPayoutController {
       storeStableId: storeStableId ?? '',
       destinationBankAccountStableId: destinationBankAccountStableId ?? '',
     });
+  }
+
+  @Get('provider-payouts/bank-row-decisions')
+  getBankRowDecisions(
+    @Query('artifactStableId') artifactStableId?: string,
+    @Query('storeStableId') storeStableId?: string,
+    @Query('destinationBankAccountStableId')
+    destinationBankAccountStableId?: string,
+  ) {
+    return this.bankRowDecisions.getScope({
+      artifactStableId: artifactStableId ?? '',
+      storeStableId: storeStableId ?? '',
+      destinationBankAccountStableId: destinationBankAccountStableId ?? '',
+    });
+  }
+
+  @Post('provider-payouts/bank-row-decisions/confirm')
+  confirmBankRowDecisions(
+    @Body()
+    body: {
+      artifactStableId?: string;
+      storeStableId?: string;
+      destinationBankAccountStableId?: string;
+      includedRowNumbers?: number[];
+    },
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.bankRowDecisions.confirmScope(
+      {
+        artifactStableId: body.artifactStableId ?? '',
+        storeStableId: body.storeStableId ?? '',
+        destinationBankAccountStableId:
+          body.destinationBankAccountStableId ?? '',
+        includedRowNumbers: body.includedRowNumbers ?? [],
+      },
+      requireAccountingOperatorUserId(req),
+    );
   }
 
   @Get('provider-pending-reconciliation')
