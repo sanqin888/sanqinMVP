@@ -210,9 +210,7 @@ describe('AccountingReportsController Balance Movement transport', () => {
 
   it('preserves B3-C failures without transport translation', async () => {
     const { controller, balanceMovement } = makeController();
-    const conflict = new ConflictException(
-      'balance movement invariant failed',
-    );
+    const conflict = new ConflictException('balance movement invariant failed');
     balanceMovement.project.mockRejectedValueOnce(conflict);
 
     await expect(

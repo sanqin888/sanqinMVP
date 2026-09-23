@@ -232,12 +232,8 @@ export function projectAccountingBalanceMovement(
       case AccountingAccountClass.EXPENSE:
         addAmounts(expense, rowAmounts(row), 'Expense');
         break;
-      default: {
-        const exhaustive: never = row.accountClass;
-        throw new Error(
-          `Unsupported Balance Movement account class: ${exhaustive}`,
-        );
-      }
+      default:
+        throw new Error('Unsupported Balance Movement account class');
     }
   }
 

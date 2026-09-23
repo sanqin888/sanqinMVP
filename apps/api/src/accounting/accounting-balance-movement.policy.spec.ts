@@ -267,8 +267,7 @@ describe('B3-C Balance Movement projection', () => {
   it('fails closed when the accounting bridge does not reconcile', () => {
     const trialBalance = makeTrialBalance();
     const expenseIndex = trialBalance.accounts.findIndex(
-      (item) =>
-        item.accountStableId === 'account_general_operating_expense',
+      (item) => item.accountStableId === 'account_general_operating_expense',
     );
     trialBalance.accounts[expenseIndex] = {
       ...trialBalance.accounts[expenseIndex],

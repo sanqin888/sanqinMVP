@@ -10,7 +10,8 @@ const file = (suffix: string) =>
 
 describe('B3-C Balance Movement boundary', () => {
   it('derives only from the canonical B3-A Trial Balance contract', () => {
-    const service = file('accounting-balance-movement.service.ts')?.source ?? '';
+    const service =
+      file('accounting-balance-movement.service.ts')?.source ?? '';
     const policy = file('accounting-balance-movement.policy.ts')?.source ?? '';
 
     expect(service).toContain('AccountingTrialBalanceService');
@@ -23,9 +24,7 @@ describe('B3-C Balance Movement boundary', () => {
     expect(service).not.toContain('../orders/');
     expect(policy).not.toContain('Prisma');
     expect(policy).not.toContain('readProjection(');
-    expect(policy).not.toContain(
-      'includeFundedExpensesInManagementReports',
-    );
+    expect(policy).not.toContain('includeFundedExpensesInManagementReports');
     expect(policy).not.toContain('AccountingFinancialReportsService');
   });
 
@@ -59,7 +58,8 @@ describe('B3-C Balance Movement boundary', () => {
   });
 
   it('keeps B4 presentation/export work out of B3-C', () => {
-    const service = file('accounting-balance-movement.service.ts')?.source ?? '';
+    const service =
+      file('accounting-balance-movement.service.ts')?.source ?? '';
     const policy = file('accounting-balance-movement.policy.ts')?.source ?? '';
     const controller = file('accounting-reports.controller.ts')?.source ?? '';
 
