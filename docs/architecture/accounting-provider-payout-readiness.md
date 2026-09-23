@@ -1,9 +1,9 @@
 # Accounting Provider Payout / Bank Receipt Readiness
 
 Date: 2026-09-23  
-Baseline: `origin/dev@1666b3ed` after PAYOUT-D merge/deployment  
-Work package: **PAYOUT-E-A — bank CSV payout match preview**  
-State: **LOCAL SOURCE READY FOR USER REVIEW / PREVIEW-ONLY / NO MIGRATION / NO NEW WRITER / NO NEW CONTEXT EDGE**
+Baseline: PAYOUT-E-A merged through PR #2490 / squash `1d90e6fd`; Inbox-only evidence-selector follow-up is local on `feat/accounting-inbox-only-bank-evidence`  
+Work package: **PAYOUT-E-A — bank CSV payout match preview + Inbox-only intake contraction**  
+State: **PAYOUT-E-A MERGED / CI #6223 GREEN; INBOX-ONLY FOLLOW-UP LOCAL SOURCE READY FOR USER REVIEW / PREVIEW-ONLY / NO MIGRATION / NO NEW WRITER / NO NEW CONTEXT EDGE**
 
 ## 1. Purpose
 
@@ -456,15 +456,22 @@ PAYOUT-E-A deliberately starts with **evidence + suggestions only**. It does not
 
 ### Evidence boundary
 
-The existing Accounting Inbox manual-upload boundary remains the source of bank CSV evidence:
+The existing Accounting Inbox manual-upload boundary is the **only** file-upload entry for bank CSV evidence:
 
 ```text
+Accounting Inbox
 POST /accounting/inbox/artifacts
         ↓
 Accounting SourceArtifact
         ↓
+Inbox item classification / review
+        ↓
+CSV row "Preview bank receipts"
+        ↓
 GET /accounting/provider-payouts/bank-match-preview
 ```
+
+The Settlements page must not render either a file input or the bank-match preview. Bank CSV review belongs to the Inbox evidence lifecycle: upload, classify, preview, then mark reviewed. Only after review does the operator continue to Settlements for formal payout posting. This preserves one acquisition path, one canonical SourceArtifact identity and one evidence-review owner.
 
 No second file-storage or bank-import subsystem is created.
 
@@ -474,7 +481,7 @@ Normal bank transaction CSVs do not automatically become provider statements or 
 - structured Expense CSV recognition uses its own expense-oriented schema;
 - otherwise the uploaded CSV remains reviewable Accounting evidence.
 
-Manual-upload deduplication deliberately discards a duplicate binary. The upload response already exposes `duplicateOfArtifactStableId`; E-A therefore previews the retained canonical/original artifact when the same bank CSV is uploaded again.
+Manual-upload deduplication deliberately discards a duplicate binary. Bank CSV preview is attached to the current Inbox CSV item rather than a downstream file selector. The preview action is available while a CSV is `OTHER_DOCUMENT` or still `UNKNOWN`; the persisted classification remains `OTHER_DOCUMENT`, whose UI label is now "银行流水 / 其他资料" / "Bank statement / other evidence". Provider-financial and Expense evidence keep their existing review paths.
 
 ### Strong bank CSV signature
 
@@ -567,7 +574,9 @@ Inputs:
 - `storeStableId`;
 - `destinationBankAccountStableId`.
 
-The Provider bank receipts panel adds a collapsible CSV preview surface. It shows deposit/withdrawal/invalid counts and every exact/ambiguous/possible/unmatched row with existing payout candidates. The UI explicitly states that PAYOUT-E-A never creates a canonical payout automatically.
+The Accounting Inbox adds bank CSV review to the evidence row itself. A CSV classified as `OTHER_DOCUMENT` or still `UNKNOWN` can open the bank-receipt preview, which shows deposit/withdrawal/invalid counts and every exact/ambiguous/possible/unmatched row with existing payout candidates. The preview remains read-only and explicitly tells the operator to finish Inbox review before continuing to Settlements for posting.
+
+The Web characterization test pins the owner boundary: Inbox remains the only Accounting file-upload surface, the bank-match preview route is called only from the Inbox review panel, and the Provider payout panel in Settlements contains no bank-match preview component.
 
 ### PAYOUT-E-A exclusions
 
