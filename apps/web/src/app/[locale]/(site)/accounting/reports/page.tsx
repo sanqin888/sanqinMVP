@@ -131,6 +131,7 @@ export default function AccountingReportsPage() {
   );
 
   const exportQuery = new URLSearchParams({ from, to, groupBy }).toString();
+  const statementExportQuery = new URLSearchParams({ from, to }).toString();
 
   function setPreset(preset: AccountingReportPreset) {
     const range = accountingReportPresetRange(
@@ -152,26 +153,12 @@ export default function AccountingReportsPage() {
               : 'Management views support operating analysis; Trial Balance and Balance Movement use canonical Journal statement authority directly.'}
           </p>
         </div>
-        {view === 'management' ? (
-          <div className="flex flex-wrap gap-2">
-            <a
-              className="rounded border bg-white px-3 py-2 text-sm"
-              href={`/api/v1/accounting/export/report.pdf?template=MANAGEMENT&${exportQuery}`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              {isZh ? '管理版 PDF' : 'Management PDF'}
-            </a>
-            <a
-              className="rounded border bg-white px-3 py-2 text-sm"
-              href={`/api/v1/accounting/export/report.csv?template=MANAGEMENT&${exportQuery}`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              CSV
-            </a>
-          </div>
-        ) : null}
+        <ExportLinks
+          view={view}
+          managementQuery={exportQuery}
+          statementQuery={statementExportQuery}
+          isZh={isZh}
+        />
       </div>
 
       <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-4">
@@ -280,6 +267,54 @@ export default function AccountingReportsPage() {
       {view === 'balanceMovement' && balanceMovement ? (
         <BalanceMovementStatement report={balanceMovement} isZh={isZh} />
       ) : null}
+    </div>
+  );
+}
+
+function ExportLinks({
+  view,
+  managementQuery,
+  statementQuery,
+  isZh,
+}: {
+  view: ReportView;
+  managementQuery: string;
+  statementQuery: string;
+  isZh: boolean;
+}) {
+  const base =
+    view === 'management'
+      ? '/api/v1/accounting/export/report'
+      : view === 'trialBalance'
+        ? '/api/v1/accounting/export/trial-balance'
+        : '/api/v1/accounting/export/balance-movement';
+  const query =
+    view === 'management'
+      ? `template=MANAGEMENT&${managementQuery}`
+      : statementQuery;
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      <a
+        className="rounded border bg-white px-3 py-2 text-sm"
+        href={`${base}.pdf?${query}`}
+        target="_blank"
+        rel="noreferrer"
+      >
+        {view === 'management'
+          ? isZh
+            ? '管理版 PDF'
+            : 'Management PDF'
+          : 'PDF'}
+      </a>
+      <a
+        className="rounded border bg-white px-3 py-2 text-sm"
+        href={`${base}.csv?${query}`}
+        target="_blank"
+        rel="noreferrer"
+      >
+        CSV
+      </a>
     </div>
   );
 }

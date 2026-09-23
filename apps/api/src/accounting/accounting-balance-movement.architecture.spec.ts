@@ -57,7 +57,7 @@ describe('B3-C Balance Movement boundary', () => {
     expect(routeSource).not.toContain('../orders/');
   });
 
-  it('keeps B4 presentation/export work out of B3-C', () => {
+  it('keeps B4 export rendering out of the canonical B3-C projection', () => {
     const service =
       file('accounting-balance-movement.service.ts')?.source ?? '';
     const policy = file('accounting-balance-movement.policy.ts')?.source ?? '';
@@ -67,6 +67,13 @@ describe('B3-C Balance Movement boundary', () => {
     expect(service).not.toContain('pdf');
     expect(policy).not.toContain('csv');
     expect(policy).not.toContain('pdf');
-    expect(controller).not.toContain('export/balance-movement');
+    expect(controller).toContain("@Get('export/balance-movement.csv')");
+    expect(controller).toContain("@Get('export/balance-movement.pdf')");
+    expect(controller).toContain(
+      'this.statementExport.exportBalanceMovementCsv',
+    );
+    expect(controller).toContain(
+      'this.statementExport.exportBalanceMovementPdf',
+    );
   });
 });
