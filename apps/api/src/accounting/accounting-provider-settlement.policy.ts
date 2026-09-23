@@ -34,7 +34,9 @@ export const PROVIDER_SETTLEMENT_ACCOUNT_IDS = {
       AccountingFinancialProvider.UBER_EATS
     ],
   fantuanPending:
-    ACCOUNTING_PROVIDER_PENDING_ACCOUNT_IDS[AccountingFinancialProvider.FANTUAN],
+    ACCOUNTING_PROVIDER_PENDING_ACCOUNT_IDS[
+      AccountingFinancialProvider.FANTUAN
+    ],
   hstPayable: 'account_hst_payable',
   hstRecoverable: 'account_hst_recoverable',
   salesRevenue: 'account_sales_revenue',

@@ -45,8 +45,7 @@ const accountFact = (
 });
 
 const accountFacts = (
-  provider: AccountingFinancialProviderValue =
-    AccountingFinancialProvider.UBER_EATS,
+  provider: AccountingFinancialProviderValue = AccountingFinancialProvider.UBER_EATS,
 ): ProviderPayoutAccountFact[] => {
   const pendingAccountStableId =
     provider === AccountingFinancialProvider.CLOVER
@@ -55,10 +54,7 @@ const accountFacts = (
         ? 'account_fantuan_pending'
         : 'account_uber_pending';
   return [
-    accountFact(
-      pendingAccountStableId,
-      AccountingAccountType.PLATFORM_WALLET,
-    ),
+    accountFact(pendingAccountStableId, AccountingAccountType.PLATFORM_WALLET),
     accountFact('account_cibc', AccountingAccountType.BANK),
   ];
 };
