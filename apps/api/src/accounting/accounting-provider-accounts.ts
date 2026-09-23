@@ -18,3 +18,16 @@ export const providerPendingAccountStableId = (
   }
   return accountStableId;
 };
+
+export const providerForPendingAccountStableId = (
+  accountStableId: string,
+): AccountingFinancialProviderValue | null => {
+  for (const [provider, pendingAccountStableId] of Object.entries(
+    ACCOUNTING_PROVIDER_PENDING_ACCOUNT_IDS,
+  )) {
+    if (pendingAccountStableId === accountStableId) {
+      return provider as AccountingFinancialProviderValue;
+    }
+  }
+  return null;
+};

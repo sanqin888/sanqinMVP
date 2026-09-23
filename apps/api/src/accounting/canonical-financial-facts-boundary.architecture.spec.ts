@@ -175,6 +175,11 @@ describe('Phase 9 canonical financial facts boundary', () => {
     const providerPayoutService =
       file(ACCOUNTING_ROOT, 'accounting-provider-payout.service.ts')?.source ??
       '';
+    const providerPendingReconciliationService =
+      file(
+        ACCOUNTING_ROOT,
+        'accounting-provider-pending-reconciliation.service.ts',
+      )?.source ?? '';
     const accountingService =
       file(ACCOUNTING_ROOT, 'accounting.service.ts')?.source ?? '';
     const canonicalSaleController =
@@ -277,6 +282,30 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(providerPayoutService).not.toContain("from '../payments/");
     expect(providerPayoutService).not.toContain("from '../orders/");
     expect(providerPayoutService).not.toContain("from '../integrations/");
+    expect(providerPendingReconciliationService).toContain(
+      "from './accounting-db'",
+    );
+    expect(providerPendingReconciliationService).toContain(
+      "from './accounting-period.service'",
+    );
+    expect(providerPendingReconciliationService).toContain(
+      "from './accounting-provider-settlement-query.service'",
+    );
+    expect(providerPendingReconciliationService).not.toContain(
+      "from '../payments/",
+    );
+    expect(providerPendingReconciliationService).not.toContain(
+      "from '../orders/",
+    );
+    expect(providerPendingReconciliationService).not.toContain(
+      "from '../integrations/",
+    );
+    expect(providerPendingReconciliationService).not.toContain(
+      'createJournalEntry',
+    );
+    expect(providerPendingReconciliationService).not.toContain(
+      'createProviderPayoutJournalInTx',
+    );
     expect(canonicalSaleController).toContain(
       "@Post('journal/canonical-sales/replay')",
     );

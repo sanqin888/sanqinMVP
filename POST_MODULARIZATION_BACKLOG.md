@@ -517,7 +517,7 @@ Then improve the Accounting reports surface:
 
 Priority: **P1 ACCOUNTING CORRECTNESS**  
 Complexity: **M**  
-State: **PAYOUT-A MERGED / CI GREEN; PAYOUT-B MERGED / CI GREEN / MIGRATION MERGED + REVIEWED; PAYOUT-C LOCAL SOURCE READY FOR REVIEW / NO GRAPH CHANGE**
+State: **PAYOUT-A MERGED / CI GREEN; PAYOUT-B MERGED / CI GREEN / MIGRATION APPLIED; PAYOUT-C PRODUCTION VERIFIED; PAYOUT-D LOCAL SOURCE READY FOR REVIEW / NO GRAPH CHANGE**
 
 After B4-B, the next Accounting correctness gap is the actual transfer from `Clover/Uber/Fantuan Pending` into a BANK account. This is not another monthly-statement posting: Clover deposits frequently while Uber/Fantuan pay weekly, so payout dates naturally cross monthly statement boundaries.
 
@@ -527,7 +527,9 @@ PAYOUT-B now adds the durable Accounting-owned `AccountingProviderPayout` fact a
 
 PAYOUT-B deliberately does **not** reject a payout because the currently posted provider-pending balance is smaller than the deposit. Daily/weekly deposits may arrive before the monthly statement is uploaded, so that check would reject valid bank evidence; pending-balance discrepancies belong to PAYOUT-D reconciliation. PAYOUT-B merged through PR #2485 / squash `662aceb4` after CI #6201 passed. User-generated migration `20260923153202_accounting_provider_payout_persistence` entered `dev` at `da7edc2b`; SQL review confirms additive-only table/unique/index creation with no destructive or enum change.
 
-PAYOUT-C now exposes a dedicated authenticated Accounting transport adapter and a separate Provider bank receipts panel on `/accounting/settlements`. It reads active CAD BANK accounts, records only actual bank-received provider payouts, requires explicit real-bank confirmation before POST, and never copies or links a monthly statement Net payout. The client keeps one generated payout stable ID across an unchanged retry and invalidates it when material form facts change. Recent payout history shows provider/store/date/bank/amount/reference and canonical Journal anchor. No schema/migration, provider API, bank import, auto-match or cross-context edge is added. Production deployment remains gated on applying the already-reviewed payout migration to production. Detailed readiness: `docs/architecture/accounting-provider-payout-readiness.md`.
+PAYOUT-C is now **PRODUCTION VERIFIED** through PR #2486 / squash `488f9024`, CI #6205 green. Production is running that source and has applied `20260923153202_accounting_provider_payout_persistence`. Two live bank receipts were posted successfully: Uber Eats 28,448c for 2026-06-09 and Fantuan 86,057c for 2026-06-10, both into CIBC. Each produced exactly one durable payout fact, one balanced canonical `TRANSFER/PAYMENT` Journal (`Dr BANK / Cr Provider Pending`) and one `PROVIDER_PAYOUT_POST` audit; the June statement facts were not mutated.
+
+PAYOUT-D adds a **read-only canonical Pending roll-forward**, not a new authority. It reads only Accounting Journal lines for the three provider Pending accounts and explains each period as opening Pending + canonical Order movement + Provider Statement movement + authority adjustments + other movement − actual payouts = closing Pending. Uber pre-cutover reversal Journals are a separate authority-adjustment bucket, so replaced Order authority is visible and cannot be double-counted with provider statements. Provider financial coverage is reported as `COMPLETE / INCOMPLETE / UNKNOWN / NOT_APPLICABLE` evidence and does not alter the ledger balance. Negative Pending, unexpected other movement, and reversed payout direction remain visible warnings. A dedicated GET route and Settlements-page panel add no schema/migration, write path, provider API, bank import, package or cross-context edge. Detailed readiness: `docs/architecture/accounting-provider-payout-readiness.md`.
 
 Avoid polishing current mixed-authority widgets immediately before replacing their underlying semantics.
 
