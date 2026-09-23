@@ -90,10 +90,7 @@ describe('AccountingProviderPendingReconciliationService', () => {
     ]);
     expect(findManyArgs.where.entry).toMatchObject({
       deletedAt: null,
-      OR: [
-        { storeStableId: '4750_Yonge_Street' },
-        { storeStableId: null },
-      ],
+      OR: [{ storeStableId: '4750_Yonge_Street' }, { storeStableId: null }],
       currency: 'CAD',
     });
     expect(settlementQuery.readProviderFinancialCoverage).toHaveBeenCalledWith({

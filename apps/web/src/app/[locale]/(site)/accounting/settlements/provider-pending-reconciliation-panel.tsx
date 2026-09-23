@@ -60,9 +60,12 @@ const warningLabel = (
       ? '存在未归入 Order / Statement / authority adjustment / payout 的 Pending Journal movement。'
       : 'Pending contains Journal movement outside Order, Statement, authority adjustment, or payout buckets.';
   }
-  return isZh
-    ? '检测到 payout 对 Pending 的方向异常。'
-    : 'A payout moved Provider Pending in an unexpected direction.';
+  if (warning === 'PAYOUT_DIRECTION_UNEXPECTED') {
+    return isZh
+      ? '检测到 payout 对 Pending 的方向异常。'
+      : 'A payout moved Provider Pending in an unexpected direction.';
+  }
+  return warning;
 };
 
 export function ProviderPendingReconciliationPanel({
