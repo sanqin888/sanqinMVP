@@ -3,6 +3,7 @@ import { AccountingFinancialProvider } from './accounting-contracts';
 import { AccountingProviderPayoutController } from './accounting-provider-payout.controller';
 import { AccountingProviderPayoutService } from './accounting-provider-payout.service';
 import { AccountingProviderPayoutBankMatchService } from './accounting-provider-payout-bank-match.service';
+import { AccountingProviderPayoutBankRowDecisionService } from './accounting-provider-payout-bank-row-decision.service';
 import { AccountingProviderPendingReconciliationService } from './accounting-provider-pending-reconciliation.service';
 
 function makeController() {
@@ -13,15 +14,26 @@ function makeController() {
   const bankMatch = {
     preview: jest.fn().mockResolvedValue({ deposits: [] }),
   };
+  const bankRowDecisions = {
+    getScope: jest.fn().mockResolvedValue({ confirmed: false, decisions: [] }),
+    confirmScope: jest.fn().mockResolvedValue({ confirmed: true, decisions: [] }),
+  };
   const pendingReconciliation = {
     reconcile: jest.fn().mockResolvedValue({ providers: [] }),
   };
   const controller = new AccountingProviderPayoutController(
     payouts as unknown as AccountingProviderPayoutService,
     bankMatch as unknown as AccountingProviderPayoutBankMatchService,
+    bankRowDecisions as unknown as AccountingProviderPayoutBankRowDecisionService,
     pendingReconciliation as unknown as AccountingProviderPendingReconciliationService,
   );
-  return { controller, payouts, bankMatch, pendingReconciliation };
+  return {
+    controller,
+    payouts,
+    bankMatch,
+    bankRowDecisions,
+    pendingReconciliation,
+  };
 }
 
 describe('AccountingProviderPayoutController', () => {
@@ -39,6 +51,40 @@ describe('AccountingProviderPayoutController', () => {
       storeStableId: '4750_Yonge_Street',
       destinationBankAccountStableId: 'account_primary_bank',
     });
+  });
+
+  it('reads and confirms durable bank row decisions through authenticated Accounting contracts', async () => {
+    const { controller, bankRowDecisions } = makeController();
+
+    await controller.getBankRowDecisions(
+      'acctart_bank_1',
+      '4750_Yonge_Street',
+      'account_primary_bank',
+    );
+    expect(bankRowDecisions.getScope).toHaveBeenCalledWith({
+      artifactStableId: 'acctart_bank_1',
+      storeStableId: '4750_Yonge_Street',
+      destinationBankAccountStableId: 'account_primary_bank',
+    });
+
+    await controller.confirmBankRowDecisions(
+      {
+        artifactStableId: 'acctart_bank_1',
+        storeStableId: '4750_Yonge_Street',
+        destinationBankAccountStableId: 'account_primary_bank',
+        includedRowNumbers: [9, 10],
+      },
+      { user: { userStableId: 'user_accountant_1' } } as never,
+    );
+    expect(bankRowDecisions.confirmScope).toHaveBeenCalledWith(
+      {
+        artifactStableId: 'acctart_bank_1',
+        storeStableId: '4750_Yonge_Street',
+        destinationBankAccountStableId: 'account_primary_bank',
+        includedRowNumbers: [9, 10],
+      },
+      'user_accountant_1',
+    );
   });
 
   it('delegates Provider Pending reconciliation as a read-only Accounting query', async () => {

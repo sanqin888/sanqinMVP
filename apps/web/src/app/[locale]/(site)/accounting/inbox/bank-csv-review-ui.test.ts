@@ -52,7 +52,7 @@ describe('PAYOUT-E-A bank CSV evidence / settlement ownership UI', () => {
     expect(inboxListSource).toContain('value="OTHER_DOCUMENT"');
   });
 
-  it('moves settlement include/exclude and posting handoff to Settlements', () => {
+  it('persists settlement scope decisions before allowing posting handoff', () => {
     expect(payoutPanelSource).toContain('<ProviderPayoutSettlementBankCsvPanel');
     expect(settlementBankSource).toContain("item.status === 'CONFIRMED'");
     expect(settlementBankSource).toContain(
@@ -61,13 +61,21 @@ describe('PAYOUT-E-A bank CSV evidence / settlement ownership UI', () => {
     expect(settlementBankSource).toContain(
       '/accounting/inbox/manual-uploads?limit=200',
     );
-    expect(settlementBankSource).toContain('excludedRowNumbers');
-    expect(settlementBankSource).toContain('UNMATCHED');
-    expect(settlementBankSource).toContain('Use for posting');
-    expect(settlementBankSource).toContain('Already posted');
     expect(settlementBankSource).toContain(
-      "deposit.status === 'UNMATCHED'",
+      '/accounting/provider-payouts/bank-row-decisions?',
     );
+    expect(settlementBankSource).toContain(
+      '/accounting/provider-payouts/bank-row-decisions/confirm',
+    );
+    expect(settlementBankSource).toContain('Confirm settlement scope');
+    expect(settlementBankSource).toContain(
+      "return deposit.status !== 'EXACT_EXISTING_PAYOUT'",
+    );
+    expect(settlementBankSource).toContain(
+      "persistedDecision?.decision === 'READY_FOR_POSTING'",
+    );
+    expect(settlementBankSource).toContain('Use for posting');
+    expect(settlementBankSource).toContain('Confirmed match');
     expect(payoutPanelSource).toContain(
       'The unmatched bank deposit was copied into the form',
     );

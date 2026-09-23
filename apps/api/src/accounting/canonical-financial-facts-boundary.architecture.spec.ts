@@ -178,6 +178,11 @@ describe('Phase 9 canonical financial facts boundary', () => {
     const providerPayoutBankMatchService =
       file(ACCOUNTING_ROOT, 'accounting-provider-payout-bank-match.service.ts')
         ?.source ?? '';
+    const providerPayoutBankRowDecisionService =
+      file(
+        ACCOUNTING_ROOT,
+        'accounting-provider-payout-bank-row-decision.service.ts',
+      )?.source ?? '';
     const providerPendingReconciliationService =
       file(
         ACCOUNTING_ROOT,
@@ -299,6 +304,27 @@ describe('Phase 9 canonical financial facts boundary', () => {
       'createProviderPayoutJournalInTx',
     );
     expect(providerPayoutBankMatchService).not.toContain(
+      'accountingProviderPayout.create',
+    );
+    expect(providerPayoutBankRowDecisionService).toContain(
+      "from './accounting-db'",
+    );
+    expect(providerPayoutBankRowDecisionService).toContain(
+      "from './accounting-provider-payout-bank-match.service'",
+    );
+    expect(providerPayoutBankRowDecisionService).not.toContain(
+      "from '../payments/",
+    );
+    expect(providerPayoutBankRowDecisionService).not.toContain(
+      "from '../orders/",
+    );
+    expect(providerPayoutBankRowDecisionService).not.toContain(
+      "from '../integrations/",
+    );
+    expect(providerPayoutBankRowDecisionService).not.toContain(
+      'createProviderPayoutJournalInTx',
+    );
+    expect(providerPayoutBankRowDecisionService).not.toContain(
       'accountingProviderPayout.create',
     );
     expect(providerPendingReconciliationService).toContain(
