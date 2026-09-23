@@ -382,7 +382,7 @@ export function ProviderPayoutBankMatchPanel({
             <p className="text-xs text-slate-500">
               {isZh
                 ? '没有 provider hint 且没有现有 payout 候选的普通银行入账默认排除；其他入账可通过“本期参与”人工取消。排除只影响本次 settlement preview，不会修改或删除原始银行证据，也不会自动创建 canonical payout。PAYOUT-E-A 的人工选择目前只存在于本次页面会话；持久化 reconciliation decision 留给后续 E-B。'
-                : 'Ordinary bank deposits with neither a provider hint nor an existing payout candidate start excluded by default; any other row can be removed by clearing Include. Exclusion affects only this settlement preview, never edits or deletes the original bank evidence, and never creates a canonical payout automatically. PAYOUT-E-A keeps this selection only for the current page session; durable reconciliation decisions remain E-B scope.'}
+                : 'Ordinary bank deposits with neither a provider hint nor an existing payout candidate start excluded by default; any other row can be removed by clearing Include. Exclusion affects only this settlement preview. It never edits or deletes the original bank evidence. PAYOUT-E-A never creates a canonical payout automatically. PAYOUT-E-A keeps this selection only for the current page session; durable reconciliation decisions remain E-B scope.'}
             </p>
           </div>
         ) : null}
