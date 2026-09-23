@@ -5,6 +5,7 @@ import { apiFetch } from '@/lib/api/client';
 import type { AccountingAccount } from '../contracts/chart';
 import type { AccountingFinancialProvider } from '../contracts/core';
 import type { AccountingProviderPayout } from '../contracts/payouts';
+import { ProviderPayoutBankMatchPanel } from './provider-payout-bank-match-panel';
 
 const PROVIDERS: AccountingFinancialProvider[] = [
   'CLOVER',
@@ -375,6 +376,12 @@ export function ProviderPayoutPanel({
           </button>
         </div>
       </form>
+
+      <ProviderPayoutBankMatchPanel
+        isZh={isZh}
+        knownStoreStableIds={knownStoreStableIds}
+        eligibleBanks={eligibleBanks}
+      />
 
       <details className="rounded-xl border border-slate-200 bg-white p-4">
         <summary className="cursor-pointer text-sm font-semibold text-slate-800">

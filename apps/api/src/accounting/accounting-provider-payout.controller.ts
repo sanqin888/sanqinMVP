@@ -16,6 +16,7 @@ import {
   requireAccountingOperatorUserId,
 } from './accounting-controller-support';
 import { AccountingProviderPayoutService } from './accounting-provider-payout.service';
+import { AccountingProviderPayoutBankMatchService } from './accounting-provider-payout-bank-match.service';
 import { AccountingProviderPendingReconciliationService } from './accounting-provider-pending-reconciliation.service';
 
 @Controller('accounting')
@@ -24,8 +25,23 @@ import { AccountingProviderPendingReconciliationService } from './accounting-pro
 export class AccountingProviderPayoutController {
   constructor(
     private readonly payouts: AccountingProviderPayoutService,
+    private readonly bankMatch: AccountingProviderPayoutBankMatchService,
     private readonly pendingReconciliation: AccountingProviderPendingReconciliationService,
   ) {}
+
+  @Get('provider-payouts/bank-match-preview')
+  previewBankMatches(
+    @Query('artifactStableId') artifactStableId?: string,
+    @Query('storeStableId') storeStableId?: string,
+    @Query('destinationBankAccountStableId')
+    destinationBankAccountStableId?: string,
+  ) {
+    return this.bankMatch.preview({
+      artifactStableId: artifactStableId ?? '',
+      storeStableId: storeStableId ?? '',
+      destinationBankAccountStableId: destinationBankAccountStableId ?? '',
+    });
+  }
 
   @Get('provider-pending-reconciliation')
   reconcileProviderPending(
