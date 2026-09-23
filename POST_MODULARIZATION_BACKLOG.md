@@ -517,7 +517,7 @@ Then improve the Accounting reports surface:
 
 Priority: **P1 ACCOUNTING CORRECTNESS**  
 Complexity: **M**  
-State: **PAYOUT-A MERGED / CI GREEN; PAYOUT-B LOCAL SOURCE READY FOR REVIEW / MIGRATION REQUIRED / NO GRAPH CHANGE**
+State: **PAYOUT-A MERGED / CI GREEN; PAYOUT-B MERGED / CI GREEN / MIGRATION MERGED + REVIEWED; PAYOUT-C LOCAL SOURCE READY FOR REVIEW / NO GRAPH CHANGE**
 
 After B4-B, the next Accounting correctness gap is the actual transfer from `Clover/Uber/Fantuan Pending` into a BANK account. This is not another monthly-statement posting: Clover deposits frequently while Uber/Fantuan pay weekly, so payout dates naturally cross monthly statement boundaries.
 
@@ -525,7 +525,9 @@ PAYOUT-A merged through PR #2484 / squash `b919990f` after CI #6198 passed. It f
 
 PAYOUT-B now adds the durable Accounting-owned `AccountingProviderPayout` fact and same-transaction Journal authority. The persisted identity is caller-supplied `payoutStableId`; identical retries are idempotent, while conflicting reuse fails closed. The row stores provider/store/business-date/destination BANK/amount/CAD/reference and the resulting Journal anchor. Provider-reference is indexed but deliberately not unique, and there is no statement foreign key. Posting validates the current active CAD PLATFORM_WALLET/BANK prerequisites, writes the canonical Journal and saves the anchor in one Serializable Accounting transaction. Generic Journal create/update/delete cannot bypass the payout-specific authority.
 
-PAYOUT-B deliberately does **not** reject a payout because the currently posted provider-pending balance is smaller than the deposit. Daily/weekly deposits may arrive before the monthly statement is uploaded, so that check would reject valid bank evidence; pending-balance discrepancies belong to PAYOUT-D reconciliation. The B service is registered internally but has no controller/UI/runtime caller yet. The new additive Prisma model requires a user-generated migration before runtime exposure or production promotion. Detailed readiness: `docs/architecture/accounting-provider-payout-readiness.md`.
+PAYOUT-B deliberately does **not** reject a payout because the currently posted provider-pending balance is smaller than the deposit. Daily/weekly deposits may arrive before the monthly statement is uploaded, so that check would reject valid bank evidence; pending-balance discrepancies belong to PAYOUT-D reconciliation. PAYOUT-B merged through PR #2485 / squash `662aceb4` after CI #6201 passed. User-generated migration `20260923153202_accounting_provider_payout_persistence` entered `dev` at `da7edc2b`; SQL review confirms additive-only table/unique/index creation with no destructive or enum change.
+
+PAYOUT-C now exposes a dedicated authenticated Accounting transport adapter and a separate Provider bank receipts panel on `/accounting/settlements`. It reads active CAD BANK accounts, records only actual bank-received provider payouts, requires explicit real-bank confirmation before POST, and never copies or links a monthly statement Net payout. The client keeps one generated payout stable ID across an unchanged retry and invalidates it when material form facts change. Recent payout history shows provider/store/date/bank/amount/reference and canonical Journal anchor. No schema/migration, provider API, bank import, auto-match or cross-context edge is added. Production deployment remains gated on applying the already-reviewed payout migration to production. Detailed readiness: `docs/architecture/accounting-provider-payout-readiness.md`.
 
 Avoid polishing current mixed-authority widgets immediately before replacing their underlying semantics.
 
