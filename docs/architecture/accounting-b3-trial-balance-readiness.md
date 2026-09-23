@@ -1,11 +1,11 @@
 # Accounting B3 Trial Balance / Balance Movement Readiness
 
-Date: 2026-09-22  
-Repository baseline: latest `origin/dev@9ac715f36dafad376c78bc6a841c5917473a62f0`  
+Date: 2026-09-23  
+Repository baseline: latest `origin/dev@dcf126669101ef577cdb16138c387cd07c5df30f`  
 B3-A delivery: PR #2475 / squash `9c92eeda`; PR CI #6171 + merged-head CI #6172 green  
 B3-B delivery: PR #2476 / final head `7b859b69` / squash `ec2cff0f`; PR CI #6175 + merged-head CI #6176 green  
-Current implementation: B3-C Balance Movement on `feat/accounting-b3c-balance-movement-v2`  
-State: **B3 READINESS COMPLETE / B3-A + B3-B MERGED + CI GREEN / B3-C SOURCE IMPLEMENTED + LOCAL REVIEW PENDING / NO MIGRATION EXPECTED**
+B3-C delivery: PR #2478 / final head `12597b96` / squash `dcf12666`; final PR CI #6180 green after initial #6179 API-lint-only retry  
+State: **B3 READINESS COMPLETE / B3-A + B3-B + B3-C MERGED + CI GREEN / NO MIGRATION / NO GRAPH CHANGE / B3-D NEXT**
 
 ## 1. Decision
 
@@ -245,7 +245,7 @@ Still explicitly excluded from B3-B: Web/PWA UI, CSV/PDF export, Balance Movemen
 
 ### B3-C — Balance Movement Statement
 
-State: **SOURCE IMPLEMENTED / LOCAL REVIEW PENDING / NO MIGRATION EXPECTED / NO GRAPH CHANGE** on `feat/accounting-b3c-balance-movement-v2` from latest `origin/dev@9ac715f3`.
+State: **MERGED / CI GREEN / NO MIGRATION / NO GRAPH CHANGE** through PR #2478 / final head `12597b96` / squash `dcf12666`; final PR CI #6180 passed after the initial #6179 API-lint-only retry.
 
 B3-C does not query Journal, Prisma or Management reporting itself. `AccountingBalanceMovementService` calls the canonical B3-A `AccountingTrialBalanceService.project(query)` with unchanged `from?`, `to?`, `currency?` values and then applies a pure Balance Movement policy to those versioned account rows.
 
