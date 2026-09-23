@@ -1,9 +1,10 @@
 # Post-Modularization Accounting Product Roadmap
 
-Status: **EFA PRODUCTION VERIFIED / CLOSED — B3 READY FOR READINESS AUDIT — B2 PRODUCTION VERIFIED / CLOSED — B1 CLOSED / B0 3V-B PRODUCTION VERIFICATION STILL PENDING — DO NOT REOPEN PHASE 9**  
+Status: **B3-A SOURCE IMPLEMENTED / LOCAL REVIEW PENDING — B3 READINESS COMPLETE — EFA PRODUCTION VERIFIED / CLOSED — B2 PRODUCTION VERIFIED / CLOSED — B1 CLOSED / B0 3V-B PRODUCTION VERIFICATION STILL PENDING — DO NOT REOPEN PHASE 9**  
 Planning date: 2026-09-20; updated: 2026-09-22  
 Baseline: Phase 9 **PRODUCTION VERIFIED / CLOSED** at production `main@dbea68f3`  
-Document-recognition audit baseline: `origin/dev@1ede0599`; Slice 3 merged as `caabf1c1`; Evidence Viewer Slice 1 merged as `0371a155`; Slice 1B merged as `9ae4d85d`; additive folder migration committed as `cc4c8016`; Evidence Viewer Slice 2 merged in PR #2438 as `4d68379e`; Slice 3V-A merged in PR #2439 as `0d6909bb` with PR CI #6054 and merged-head CI #6055 green; Slice 3V-B merged in PR #2440 as `0ac9117f` after final head `3c5c0400`, PR CI #6057 and merged-head CI #6058 green
+Document-recognition audit baseline: `origin/dev@1ede0599`; Slice 3 merged as `caabf1c1`; Evidence Viewer Slice 1 merged as `0371a155`; Slice 1B merged as `9ae4d85d`; additive folder migration committed as `cc4c8016`; Evidence Viewer Slice 2 merged in PR #2438 as `4d68379e`; Slice 3V-A merged in PR #2439 as `0d6909bb` with PR CI #6054 and merged-head CI #6055 green; Slice 3V-B merged in PR #2440 as `0ac9117f` after final head `3c5c0400`, PR CI #6057 and merged-head CI #6058 green  
+B3 readiness baseline: `origin/dev@1182a46e`; exact-head CI #6168 green. Detailed readiness and B3-A design: `docs/architecture/accounting-b3-trial-balance-readiness.md`.
 
 ## 1. Purpose and placement
 
@@ -391,7 +392,13 @@ Production deployment, the B1 migration gate and the full EFA verification matri
 
 ## 8. Slice C — Trial Balance and Balance Movement
 
-Start only after Expense -> Journal cutover removes parallel Expense arithmetic from authoritative financial reporting.
+**2026-09-22 B3 readiness:** **COMPLETE** at `origin/dev@1182a46e`; exact-head CI #6168 is green. Read-only production inspection found 1,501 canonical Journal entries / 4,897 lines, debit=credit=`7,798,968c`, zero unbalanced entries, zero `OPENING_BALANCE` Journals, 29 CAD accounts, zero non-CAD Journals/accounts and zero period-close rows. Account-class reconstruction produced Assets=`2,104,938c`, Liabilities=`816,109c`, Direct Equity=`0c`, Revenue=`3,687,507c`, Expense=`2,398,678c`, therefore cumulative recorded earnings=`1,288,829c` and `Assets - Liabilities - Earnings = 0`. Seven current Journals have null `storeStableId`, all Expense-document Journals, so B3 v1 is explicitly whole-ledger/per-currency and does not offer a store filter. Detailed evidence and design are in `docs/architecture/accounting-b3-trial-balance-readiness.md`.
+
+**B3-A state:** **SOURCE IMPLEMENTED / LOCAL REVIEW PENDING / CI NOT YET RUN / NO MIGRATION EXPECTED** on `feat/accounting-b3a-trial-balance-core`. The implementation introduces an Accounting-owned versioned Trial Balance contract, pure projection policy and Journal-line query service with business-timezone range/clamp behavior, explicit `OPENING_BALANCE` treatment, debit/credit normal-side semantics, inactive historical-account retention, per-currency scope, month/year close metadata and fail-closed Journal/opening/period/closing balance invariants. It is registered only as an internal Accounting provider: no HTTP route, Web/PWA contract, CSV/PDF export, Balance Movement UI, schema/migration, store filter, FX conversion or old `account-balance` contraction is included. The service intentionally bypasses P&L Management filtering, so EFA-excluded Expense v2 Journals remain canonical Trial Balance facts.
+
+Implementation sequence is now `B3-A canonical Trial Balance core -> B3-B HTTP/public contract -> B3-C Balance Movement projection -> B3-D production reconciliation/closeout`. B4 remains the owner of UI/export/drill-through polish.
+
+Start only after Expense -> Journal cutover removes parallel Expense arithmetic from authoritative financial reporting. This gate is satisfied by B1 + EFA closeout.
 
 ### Trial Balance
 
