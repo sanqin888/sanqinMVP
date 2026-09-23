@@ -16,7 +16,9 @@ function makeController() {
   };
   const bankRowDecisions = {
     getScope: jest.fn().mockResolvedValue({ confirmed: false, decisions: [] }),
-    confirmScope: jest.fn().mockResolvedValue({ confirmed: true, decisions: [] }),
+    confirmScope: jest
+      .fn()
+      .mockResolvedValue({ confirmed: true, decisions: [] }),
   };
   const pendingReconciliation = {
     reconcile: jest.fn().mockResolvedValue({ providers: [] }),

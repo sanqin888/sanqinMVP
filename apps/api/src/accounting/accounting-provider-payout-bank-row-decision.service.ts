@@ -83,15 +83,16 @@ export class AccountingProviderPayoutBankRowDecisionService {
       normalized.artifactStableId,
     );
     const preview = await this.bankMatch.preview(normalized);
-    const rows = await this.prisma.accountingProviderPayoutBankRowDecision.findMany({
-      where: {
-        artifactId: artifact.id,
-        storeStableId: normalized.storeStableId,
-        destinationBankAccountStableId:
-          normalized.destinationBankAccountStableId,
-      },
-      orderBy: [{ rowNumber: 'asc' }],
-    });
+    const rows =
+      await this.prisma.accountingProviderPayoutBankRowDecision.findMany({
+        where: {
+          artifactId: artifact.id,
+          storeStableId: normalized.storeStableId,
+          destinationBankAccountStableId:
+            normalized.destinationBankAccountStableId,
+        },
+        orderBy: [{ rowNumber: 'asc' }],
+      });
 
     const currentByRow = new Map(
       preview.deposits.map((deposit) => [
@@ -104,9 +105,7 @@ export class AccountingProviderPayoutBankRowDecisionService {
         currentByRow.get(row.rowNumber) !== undefined &&
         currentByRow.get(row.rowNumber) === row.rowFingerprint,
     );
-    const rowByNumber = new Map(
-      currentRows.map((row) => [row.rowNumber, row]),
-    );
+    const rowByNumber = new Map(currentRows.map((row) => [row.rowNumber, row]));
     const confirmed = preview.deposits.every((deposit) => {
       const row = rowByNumber.get(deposit.rowNumber);
       return row ? this.isDecisionCurrent(row, deposit) : false;
@@ -154,9 +153,10 @@ export class AccountingProviderPayoutBankRowDecisionService {
       async (tx) => {
         const result: AccountingProviderPayoutBankRowDecisionView[] = [];
         for (const draft of drafts) {
-          const before = await tx.accountingProviderPayoutBankRowDecision.findUnique({
-            where: { decisionStableId: draft.decisionStableId },
-          });
+          const before =
+            await tx.accountingProviderPayoutBankRowDecision.findUnique({
+              where: { decisionStableId: draft.decisionStableId },
+            });
           if (
             before &&
             (before.artifactId !== artifact.id ||
@@ -200,9 +200,7 @@ export class AccountingProviderPayoutBankRowDecisionService {
               });
 
           const afterView = toView(saved as DecisionRecord);
-          const beforeView = before
-            ? toView(before as DecisionRecord)
-            : null;
+          const beforeView = before ? toView(before as DecisionRecord) : null;
           await writeAccountingAuditLog(tx, {
             action: 'PROVIDER_PAYOUT_BANK_ROW_DECISION_CONFIRM',
             entityType: 'ACCOUNTING_PROVIDER_PAYOUT_BANK_ROW_DECISION',

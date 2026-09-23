@@ -78,12 +78,14 @@ function makeService() {
   const tx = {
     accountingProviderPayoutBankRowDecision: {
       findUnique: jest.fn().mockResolvedValue(null),
-      create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => ({
-        id: '22222222-2222-4222-8222-222222222222',
-        ...data,
-        createdAt: new Date('2026-09-23T21:00:00.000Z'),
-        updatedAt: new Date('2026-09-23T21:00:00.000Z'),
-      })),
+      create: jest.fn(({ data }: { data: Record<string, unknown> }) =>
+        Promise.resolve({
+          id: '22222222-2222-4222-8222-222222222222',
+          ...data,
+          createdAt: new Date('2026-09-23T21:00:00.000Z'),
+          updatedAt: new Date('2026-09-23T21:00:00.000Z'),
+        }),
+      ),
       update: jest.fn(),
     },
     accountingAuditLog: {
@@ -97,8 +99,8 @@ function makeService() {
     accountingProviderPayoutBankRowDecision: {
       findMany: jest.fn().mockResolvedValue([]),
     },
-    $transaction: jest.fn(
-      (work: (client: typeof tx) => Promise<unknown>) => work(tx),
+    $transaction: jest.fn((work: (client: typeof tx) => Promise<unknown>) =>
+      work(tx),
     ),
   };
   const bankMatch = {
