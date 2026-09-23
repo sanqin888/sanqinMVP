@@ -14,17 +14,25 @@ const payoutPanelSource = readFileSync(
   resolve(__dirname, '../settlements/provider-payout-panel.tsx'),
   'utf8',
 );
+const settlementBankSource = readFileSync(
+  resolve(
+    __dirname,
+    '../settlements/provider-payout-settlement-bank-csv-panel.tsx',
+  ),
+  'utf8',
+);
 
-describe('PAYOUT-E-A Inbox bank CSV review UI', () => {
+describe('PAYOUT-E-A bank CSV evidence / settlement ownership UI', () => {
   it('keeps Accounting Inbox as the only file-upload surface', () => {
     expect(inboxPageSource).toContain("'/accounting/inbox/artifacts'");
     expect(inboxPageSource).toContain('type="file"');
     expect(bankReviewSource).not.toContain("'/accounting/inbox/artifacts'");
     expect(bankReviewSource).not.toContain('type="file"');
-    expect(payoutPanelSource).not.toContain('ProviderPayoutBankMatchPanel');
+    expect(settlementBankSource).not.toContain("'/accounting/inbox/artifacts'");
+    expect(settlementBankSource).not.toContain('type="file"');
   });
 
-  it('places bank payout matching inside Inbox review rather than Settlements', () => {
+  it('keeps evidence preview in Inbox without settlement include/exclude decisions', () => {
     expect(inboxListSource).toContain('Preview bank receipts');
     expect(inboxPageSource).toContain('<AccountingInboxBankCsvReviewPanel');
     expect(bankReviewSource).toContain(
@@ -32,8 +40,10 @@ describe('PAYOUT-E-A Inbox bank CSV review UI', () => {
     );
     expect(bankReviewSource).toContain('item.artifact.artifactStableId');
     expect(bankReviewSource).toContain(
-      'mark the evidence reviewed before continuing to Provider settlements',
+      'Include/exclude decisions belong to Provider settlements',
     );
+    expect(bankReviewSource).not.toContain('excludedRowNumbers');
+    expect(bankReviewSource).not.toContain('本期参与');
   });
 
   it('labels OTHER_DOCUMENT for bank statements without changing persistence classification', () => {
@@ -42,13 +52,24 @@ describe('PAYOUT-E-A Inbox bank CSV review UI', () => {
     expect(inboxListSource).toContain('value="OTHER_DOCUMENT"');
   });
 
-  it('surfaces matching states and session-only exclusion controls', () => {
-    expect(bankReviewSource).toContain('EXACT_EXISTING_PAYOUT');
-    expect(bankReviewSource).toContain('AMBIGUOUS_EXISTING_PAYOUT');
-    expect(bankReviewSource).toContain('POSSIBLE_EXISTING_PAYOUT');
-    expect(bankReviewSource).toContain('UNMATCHED');
-    expect(bankReviewSource).toContain('excludedRowNumbers');
-    expect(bankReviewSource).toContain('Provider hint');
-    expect(bankReviewSource).toContain('This does not edit the original CSV');
+  it('moves settlement include/exclude and posting handoff to Settlements', () => {
+    expect(payoutPanelSource).toContain('<ProviderPayoutSettlementBankCsvPanel');
+    expect(settlementBankSource).toContain("item.status === 'CONFIRMED'");
+    expect(settlementBankSource).toContain(
+      "item.classification === 'OTHER_DOCUMENT'",
+    );
+    expect(settlementBankSource).toContain(
+      '/accounting/inbox/manual-uploads?limit=200',
+    );
+    expect(settlementBankSource).toContain('excludedRowNumbers');
+    expect(settlementBankSource).toContain('UNMATCHED');
+    expect(settlementBankSource).toContain('Use for posting');
+    expect(settlementBankSource).toContain('Already posted');
+    expect(settlementBankSource).toContain(
+      "deposit.status === 'UNMATCHED'",
+    );
+    expect(payoutPanelSource).toContain(
+      'The unmatched bank deposit was copied into the form',
+    );
   });
 });

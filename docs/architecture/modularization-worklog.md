@@ -2981,11 +2981,19 @@ is claimed per repository workflow.
 
 ### 2026-09-23 — Accounting PAYOUT-E-A Inbox-only evidence intake follow-up
 
-**State:** **LOCAL SOURCE READY FOR USER REVIEW / NO MIGRATION / NO API CONTRACT CHANGE / NO GRAPH CHANGE** on `feat/accounting-inbox-only-bank-evidence`.  
+**State:** **MERGED / CI GREEN / NO MIGRATION / NO API CONTRACT CHANGE / NO GRAPH CHANGE** through PR #2492 / squash `c4324edd`; CI #6229 passed API/Web Architecture, lint, build, strict and tests.  
 **Reason:** production workflow review exposed a UX hazard: the same bank CSV could be uploaded either from Accounting Inbox or again from Settlements. Even though artifact dedupe prevented duplicate binary authority, two visible acquisition surfaces encouraged operator mistakes and made the canonical evidence workflow unclear.  
-**Change:** Accounting Inbox is now the only file-upload and bank-evidence review surface under Accounting. The Settlements bank-match panel is removed entirely. Inbox CSV rows classified as `OTHER_DOCUMENT` or still `UNKNOWN` expose a bank-receipt preview action bound to that exact `artifactStableId`; the persisted `OTHER_DOCUMENT` enum is unchanged, while its UI label becomes “银行流水 / 其他资料” / “Bank statement / other evidence”. The operator uploads, previews, classifies and marks evidence reviewed in Inbox, then proceeds to Settlements only for formal payout posting.  
-**Guard:** the PAYOUT-E-A Web characterization test now asserts that Inbox owns the artifact upload and bank-match preview route, while the Provider payout panel contains no bank-match preview component. A repo search confirms Accounting Web still has one real file input and one artifact-upload caller, both on the Inbox page.  
+**Change:** Accounting Inbox is the only file-upload surface under Accounting. Inbox CSV rows classified as `OTHER_DOCUMENT` or still `UNKNOWN` expose a bank-receipt preview action bound to that exact `artifactStableId`; the persisted `OTHER_DOCUMENT` enum is unchanged, while its UI label is “银行流水 / 其他资料” / “Bank statement / other evidence”.  
+**Guard:** the PAYOUT-E-A Web characterization test pins Inbox as the only upload surface. A repo search confirms Accounting Web has one real file input and one artifact-upload caller, both on the Inbox page.  
 **Boundary:** this is a Web workflow contraction only. It does not change `SourceArtifact`, payout matching, payout/Journal writers, Prisma, migrations, package dependencies, public context edges or scanner allowances.
+
+### 2026-09-23 — Accounting PAYOUT-E-A settlement row-decision ownership follow-up
+
+**State:** **LOCAL SOURCE READY FOR USER REVIEW / NO MIGRATION / NO API CONTRACT CHANGE / NO GRAPH CHANGE** on `feat/accounting-settlement-bank-row-decisions`.  
+**Reason:** operator review clarified that row-level “Include / Exclude” is not evidence classification. It decides whether a real bank receipt participates in the current provider settlement and therefore belongs beside payout posting, not in Inbox review.  
+**Change:** Inbox bank CSV preview is now evidence-only and shows detected deposits plus existing payout matches without Include/Exclude. Settlements separately loads only retained `CONFIRMED + OTHER_DOCUMENT + CSV` artifacts from the existing manual-upload library, owns session-only Include/Exclude, and lets an included `UNMATCHED` row with a provider hint populate the canonical payout form. `EXACT_EXISTING_PAYOUT`, `POSSIBLE_EXISTING_PAYOUT` and `AMBIGUOUS_EXISTING_PAYOUT` rows expose no new-post action, preventing duplicate payout creation through this handoff.  
+**Guard:** Web characterization asserts that Inbox has no `excludedRowNumbers`, Settlements filters reviewed evidence and owns the exclusion state, and only `UNMATCHED` rows offer “Use for posting”.  
+**Boundary:** decisions remain session-only; no durable bank-row reconciliation authority is introduced. No Prisma/schema/migration, backend route, writer, dependency, public context edge or scanner allowance changes.
 
 ## Rule for future entries
 
