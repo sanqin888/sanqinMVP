@@ -11,6 +11,7 @@ import type {
   ProviderSettlementShadowPreview,
 } from '../contracts/settlements';
 import { ProviderFinancialReviewPanel } from '../provider-financial-review-panel';
+import { ProviderPendingReconciliationPanel } from './provider-pending-reconciliation-panel';
 import { ProviderPayoutPanel } from './provider-payout-panel';
 import { SettlementReplayGate } from './settlement-replay-gate';
 import {
@@ -821,6 +822,11 @@ export default function AccountingSettlementsPage() {
           ? '安全边界：Shadow Preview 仍只读，READY 也不会自动写账。真实 replay 必须通过独立授权闸门，并在 POST 后立即用 fresh Preview reconciliation 核对结果。'
           : 'Safety boundary: Shadow Preview remains read-only and READY never writes automatically. Real replay requires the separate authorization gate and immediate fresh-Preview reconciliation after POST.'}
       </div>
+
+      <ProviderPendingReconciliationPanel
+        isZh={isZh}
+        knownStoreStableIds={knownStoreStableIds}
+      />
 
       <ProviderPayoutPanel
         isZh={isZh}

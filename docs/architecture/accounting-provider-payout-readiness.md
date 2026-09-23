@@ -1,9 +1,9 @@
 # Accounting Provider Payout / Bank Receipt Readiness
 
 Date: 2026-09-23  
-Baseline: `origin/dev@da7edc2b` after PAYOUT-B source + user-generated persistence migration  
-Work package: **PAYOUT-C — authenticated runtime/UI exposure**  
-State: **LOCAL SOURCE READY FOR USER REVIEW / NO MIGRATION / NO NEW CONTEXT EDGE / PRODUCTION MIGRATION APPLICATION STILL REQUIRED BEFORE DEPLOY**
+Baseline: latest `origin/dev@ac9ffcc2` after PAYOUT-C production deployment/verification  
+Work package: **PAYOUT-D — Provider Pending canonical roll-forward**  
+State: **LOCAL SOURCE READY FOR USER REVIEW / READ-ONLY / NO MIGRATION / NO NEW CONTEXT EDGE**
 
 ## 1. Purpose
 
@@ -282,11 +282,139 @@ Still excluded:
 
 The absence of an in-place edit path is intentional because the canonical payout fact is immutable. A dedicated reversal/correction design should be added before providing a convenience “edit/delete” action.
 
-## 10. Later slices
+## 10. PAYOUT-C production verification
 
-After PAYOUT-C:
+PAYOUT-C merged through PR #2486 / final head `cb298a3b` / squash `488f9024`; CI #6205 passed. Production is running `488f9024`.
 
-- **PAYOUT-D:** pending-balance reconciliation and production verification;
+The PAYOUT-B migration is applied in production:
+
+```text
+20260923153202_accounting_provider_payout_persistence
+finished_at = 2026-09-23T16:25:54.720044Z
+```
+
+Two real bank receipts were then recorded through the production UI:
+
+```text
+Uber Eats
+payoutStableId   payout_19505915-fb5e-450a-b8e2-93970d121794
+payoutDate       2026-06-09
+amount           28,448c
+bank             CIBC
+Journal          journal_xaty4dfjj2g4jyk7weie53uj
+
+Fantuan
+payoutStableId   payout_6c1afb5e-3246-4dbc-898e-2cf9ee36fc53
+payoutDate       2026-06-10
+amount           86,057c
+bank             CIBC
+Journal          journal_j13nrcsg1uifz6xl5f8hkyds
+```
+
+Read-only production verification confirmed for both:
+
+- exactly one `AccountingProviderPayout` row;
+- exactly one active canonical Journal anchor;
+- balanced debit = credit;
+- `TRANSFER / PAYMENT / accounting.provider_payout.v1`;
+- `Dr CIBC BANK / Cr provider PLATFORM_WALLET`;
+- exactly one `PROVIDER_PAYOUT_POST` audit;
+- June Uber/Fantuan provider statement rows kept their earlier `updatedAt`, so payout posting did not mutate statement facts.
+
+Therefore PAYOUT-C is **PRODUCTION VERIFIED**.
+
+## 11. PAYOUT-D Provider Pending canonical roll-forward
+
+PAYOUT-D is intentionally a read-only Accounting report. It does not attempt a one-to-one match between monthly statement payout totals and bank deposits.
+
+Production Journal composition proves why the roll-forward must use canonical Journal source/fact metadata:
+
+- Clover Pending is currently driven by canonical Order sales/reversals;
+- historical Uber Pending includes canonical Order sales that were later neutralized by `accounting.uber_pre_cutover_order_reversal.v1`, after which provider statements became authoritative;
+- Fantuan Pending is currently provider-statement-driven;
+- actual bank receipts reduce Pending through `accounting.provider_payout.v1`.
+
+The projection is:
+
+```text
+Opening Provider Pending
++ canonical Order movement
++ provider Statement movement
++ authority adjustment movement
++ other Journal movement
+- actual payout reduction
+= Closing Provider Pending
+```
+
+For every provider, the projection must satisfy:
+
+```text
+arithmeticDeltaCents = 0
+```
+
+That invariant demonstrates that the canonical Journal movement is internally explainable. It does **not** claim that the closing amount has been independently confirmed by a bank or provider.
+
+### Movement buckets
+
+- **Canonical Order:** Journal `source = ORDER`, excluding more specific authority buckets.
+- **Provider Statement:** `accounting.provider_financial_document.v1` / `PLATFORM_STATEMENT`.
+- **Authority adjustment:** currently `accounting.uber_pre_cutover_order_reversal.v1`.
+- **Actual payout:** `accounting.provider_payout.v1`.
+- **Other:** any remaining Pending Journal movement; this remains visible and raises a warning.
+
+Payout reduction is shown as a positive magnitude in the subtraction term. A payout that increases Pending instead raises `PAYOUT_DIRECTION_UNEXPECTED`.
+
+### Coverage evidence
+
+Provider financial coverage is surfaced independently from the Journal arithmetic:
+
+```text
+COMPLETE
+INCOMPLETE
+UNKNOWN
+NOT_APPLICABLE
+```
+
+Coverage cannot add, remove or change Journal movement. This prevents incomplete provider evidence metadata from silently changing the accounting balance.
+
+### Warnings
+
+PAYOUT-D surfaces rather than hides:
+
+- `NEGATIVE_PENDING_BALANCE`;
+- `OTHER_LEDGER_MOVEMENT_PRESENT`;
+- `PAYOUT_DIRECTION_UNEXPECTED`.
+
+A negative Pending balance is not automatically rejected because a real payout can precede delayed provider-statement posting.
+
+Store-scoped reconciliation also fails closed if any active Provider Pending Journal movement in the requested range has no `storeStableId`. Silently omitting an unscoped line would produce a falsely precise per-store closing balance. Production readiness audit on 2026-09-23 found zero active unscoped Clover/Uber/Fantuan Pending Journal lines.
+
+Clover currently has no Provider Financial Document or coverage row in production; its Pending movement is canonical Order-driven. PAYOUT-D therefore reports Clover coverage as `UNKNOWN` rather than assuming `NOT_APPLICABLE`. The coverage label is evidence metadata only and does not affect its Journal roll-forward.
+
+### Transport and UI
+
+Authenticated read-only route:
+
+```text
+GET /accounting/provider-pending-reconciliation
+```
+
+Inputs:
+
+- `storeStableId` required;
+- optional `from` / `to` business dates;
+- optional provider filter.
+
+The default range is Accounting start through the current business date. A later `from` date produces a true opening Pending from prior canonical Journal movement.
+
+The Settlements page exposes the reconciliation separately from payout posting and statement replay. The UI states explicitly that an internally balanced roll-forward is not an externally confirmed bank/provider closing balance.
+
+PAYOUT-D adds no schema/migration, provider API, bank import, auto-match, package or cross-context dependency.
+
+## 12. Later slices
+
+After PAYOUT-D production verification:
+
 - **PAYOUT-E (later):** bank CSV/API ingestion and suggested automatic matching;
 - a payout reversal/correction slice should be scheduled before an operator needs to amend a posted payout.
 
