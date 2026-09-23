@@ -318,11 +318,7 @@ const drawHeading = (
       width: doc.page.width - PDF_LEFT - PDF_RIGHT,
     });
   doc.moveDown(0.25);
-  doc
-    .font(fonts.regular)
-    .fontSize(8.5)
-    .fillColor('#64748b')
-    .text(subtitle);
+  doc.font(fonts.regular).fontSize(8.5).fillColor('#64748b').text(subtitle);
   doc.fillColor('#0f172a');
   doc.moveDown(0.75);
 };
@@ -614,10 +610,9 @@ export function renderAccountingBalanceMovementPdf(
       );
       drawStatementMetadata(doc, fonts, report);
 
-      const disclaimer =
-        report.openingBasis.zeroOpeningDisclaimerRequired
-          ? `Calculated from a $0 opening at ${report.accountingStartDate}. This shows cumulative recorded SanQ transaction movement and does not represent absolute real-world bank, cash, or other account balances.`
-          : 'Opening values include explicit OPENING_BALANCE Journals. This statement still does not claim absolute real-world balances and is not a formal Balance Sheet.';
+      const disclaimer = report.openingBasis.zeroOpeningDisclaimerRequired
+        ? `Calculated from a $0 opening at ${report.accountingStartDate}. This shows cumulative recorded SanQ transaction movement and does not represent absolute real-world bank, cash, or other account balances.`
+        : 'Opening values include explicit OPENING_BALANCE Journals. This statement still does not claim absolute real-world balances and is not a formal Balance Sheet.';
       doc
         .font(fonts.regular)
         .fontSize(8)

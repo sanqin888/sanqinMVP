@@ -137,34 +137,33 @@ describe('AccountingStatementExportService', () => {
     };
   };
 
-  it(
-    'exports Trial Balance from exactly one canonical projection and audits the effective range',
-    async () => {
-      const { service, db, trialBalance, balanceMovement } = makeService();
+  it('exports Trial Balance from exactly one canonical projection and audits the effective range', async () => {
+    const { service, db, trialBalance, balanceMovement } = makeService();
 
-      const csv = await service.exportTrialBalanceCsv(
-        { from: '2026-07-01', to: '2026-07-31', currency: 'cad' },
-        'user_admin',
-      );
+    const csv = await service.exportTrialBalanceCsv(
+      { from: '2026-07-01', to: '2026-07-31', currency: 'cad' },
+      'user_admin',
+    );
 
-      expect(trialBalance.project).toHaveBeenCalledTimes(1);
-      expect(trialBalance.project).toHaveBeenCalledWith({
-        from: '2026-07-01',
-        to: '2026-07-31',
-        currency: 'cad',
-      });
-      expect(balanceMovement.project).not.toHaveBeenCalled();
-      expect(csv).toContain('rowType');
-      expect(db.accountingAuditLog.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          action: 'EXPORT_STATEMENT',
-          entityType: 'ACCOUNTING_REPORT',
-          entityId: 'TRIAL_BALANCE',
-          operatorActorRef: 'user_admin',
-        }),
-      });
-    },
-  );
+    expect(trialBalance.project).toHaveBeenCalledTimes(1);
+    expect(trialBalance.project).toHaveBeenCalledWith({
+      from: '2026-07-01',
+      to: '2026-07-31',
+      currency: 'cad',
+    });
+    expect(balanceMovement.project).not.toHaveBeenCalled();
+    expect(csv).toContain('rowType');
+    expect(db.accountingAuditLog.create).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(db.accountingAuditLog.create.mock.calls[0])).toContain(
+      '"action":"EXPORT_STATEMENT"',
+    );
+    expect(JSON.stringify(db.accountingAuditLog.create.mock.calls[0])).toContain(
+      '"entityId":"TRIAL_BALANCE"',
+    );
+    expect(JSON.stringify(db.accountingAuditLog.create.mock.calls[0])).toContain(
+      '"operatorActorRef":"user_admin"',
+    );
+  });
 
   it('exports Balance Movement from exactly one B3-C projection', async () => {
     const { service, trialBalance, balanceMovement } = makeService();

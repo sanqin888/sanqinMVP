@@ -240,101 +240,95 @@ describe('AccountingReportsController statement exports', () => {
     return response;
   };
 
-  it(
-    'delegates Trial Balance CSV/PDF exports without re-projecting in the controller',
-    async () => {
-      const { controller, statementExport, trialBalance } = makeController();
-      const req = { user: { userStableId: 'user_admin' } } as never;
-      const csvResponse = makeResponse();
+  it('delegates Trial Balance CSV/PDF exports without re-projecting in the controller', async () => {
+    const { controller, statementExport, trialBalance } = makeController();
+    const req = { user: { userStableId: 'user_admin' } } as never;
+    const csvResponse = makeResponse();
 
-      const csv = await controller.exportTrialBalanceCsv(
-        ' 2026-06-01 ',
-        '2026-06-30',
-        'cad',
-        req,
-        csvResponse as never,
-      );
+    const csv = await controller.exportTrialBalanceCsv(
+      ' 2026-06-01 ',
+      '2026-06-30',
+      'cad',
+      req,
+      csvResponse as never,
+    );
 
-      expect(statementExport.exportTrialBalanceCsv).toHaveBeenCalledWith(
-        {
-          from: ' 2026-06-01 ',
-          to: '2026-06-30',
-          currency: 'cad',
-        },
-        'user_admin',
-      );
-      expect(trialBalance.project).not.toHaveBeenCalled();
-      expect(csvResponse.setHeader).toHaveBeenCalledWith(
-        'Content-Type',
-        'text/csv; charset=utf-8',
-      );
-      expect(csv).toBe('trial,csv');
+    expect(statementExport.exportTrialBalanceCsv).toHaveBeenCalledWith(
+      {
+        from: ' 2026-06-01 ',
+        to: '2026-06-30',
+        currency: 'cad',
+      },
+      'user_admin',
+    );
+    expect(trialBalance.project).not.toHaveBeenCalled();
+    expect(csvResponse.setHeader).toHaveBeenCalledWith(
+      'Content-Type',
+      'text/csv; charset=utf-8',
+    );
+    expect(csv).toBe('trial,csv');
 
-      const pdfResponse = makeResponse();
-      const pdf = await controller.exportTrialBalancePdf(
-        undefined,
-        undefined,
-        undefined,
-        req,
-        pdfResponse as never,
-      );
-      expect(statementExport.exportTrialBalancePdf).toHaveBeenCalledWith(
-        { from: undefined, to: undefined, currency: undefined },
-        'user_admin',
-      );
-      expect(pdfResponse.setHeader).toHaveBeenCalledWith(
-        'Content-Type',
-        'application/pdf',
-      );
-      expect(Buffer.isBuffer(pdf)).toBe(true);
-    },
-  );
+    const pdfResponse = makeResponse();
+    const pdf = await controller.exportTrialBalancePdf(
+      undefined,
+      undefined,
+      undefined,
+      req,
+      pdfResponse as never,
+    );
+    expect(statementExport.exportTrialBalancePdf).toHaveBeenCalledWith(
+      { from: undefined, to: undefined, currency: undefined },
+      'user_admin',
+    );
+    expect(pdfResponse.setHeader).toHaveBeenCalledWith(
+      'Content-Type',
+      'application/pdf',
+    );
+    expect(Buffer.isBuffer(pdf)).toBe(true);
+  });
 
-  it(
-    'delegates Balance Movement CSV/PDF exports to the statement export service',
-    async () => {
-      const { controller, statementExport, balanceMovement } = makeController();
-      const req = { user: { userStableId: 'user_accountant' } } as never;
+  it('delegates Balance Movement CSV/PDF exports to the statement export service', async () => {
+    const { controller, statementExport, balanceMovement } = makeController();
+    const req = { user: { userStableId: 'user_accountant' } } as never;
 
-      const csvResponse = makeResponse();
-      await controller.exportBalanceMovementCsv(
-        '2026-07-01',
-        '2026-07-31',
-        'CAD',
-        req,
-        csvResponse as never,
-      );
-      expect(statementExport.exportBalanceMovementCsv).toHaveBeenCalledWith(
-        {
-          from: '2026-07-01',
-          to: '2026-07-31',
-          currency: 'CAD',
-        },
-        'user_accountant',
-      );
-      expect(balanceMovement.project).not.toHaveBeenCalled();
+    const csvResponse = makeResponse();
+    await controller.exportBalanceMovementCsv(
+      '2026-07-01',
+      '2026-07-31',
+      'CAD',
+      req,
+      csvResponse as never,
+    );
+    expect(statementExport.exportBalanceMovementCsv).toHaveBeenCalledWith(
+      {
+        from: '2026-07-01',
+        to: '2026-07-31',
+        currency: 'CAD',
+      },
+      'user_accountant',
+    );
+    expect(balanceMovement.project).not.toHaveBeenCalled();
 
-      const pdfResponse = makeResponse();
-      const pdf = await controller.exportBalanceMovementPdf(
-        '2026-07-01',
-        '2026-07-31',
-        'CAD',
-        req,
-        pdfResponse as never,
-      );
-      expect(statementExport.exportBalanceMovementPdf).toHaveBeenCalledWith(
-        {
-          from: '2026-07-01',
-          to: '2026-07-31',
-          currency: 'CAD',
-        },
-        'user_accountant',
-      );
-      expect(pdfResponse.setHeader).toHaveBeenCalledWith(
-        'Content-Type',
-        'application/pdf',
-      );
-      expect(Buffer.isBuffer(pdf)).toBe(true);
-    },
-  );
+    const pdfResponse = makeResponse();
+    const pdf = await controller.exportBalanceMovementPdf(
+      '2026-07-01',
+      '2026-07-31',
+      'CAD',
+      req,
+      pdfResponse as never,
+    );
+    expect(statementExport.exportBalanceMovementPdf).toHaveBeenCalledWith(
+      {
+        from: '2026-07-01',
+        to: '2026-07-31',
+        currency: 'CAD',
+      },
+      'user_accountant',
+    );
+    expect(pdfResponse.setHeader).toHaveBeenCalledWith(
+      'Content-Type',
+      'application/pdf',
+    );
+    expect(Buffer.isBuffer(pdf)).toBe(true);
+  });
 });

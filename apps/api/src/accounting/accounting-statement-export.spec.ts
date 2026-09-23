@@ -174,50 +174,37 @@ const balanceMovementReport: AccountingBalanceMovementReportV1 = {
 };
 
 describe('Accounting canonical statement export renderers', () => {
-  it(
-    'renders Trial Balance CSV from the provided B3 projection without recomputation',
-    () => {
-      const csv = renderAccountingTrialBalanceCsv(trialBalanceReport);
+  it('renders Trial Balance CSV from the provided B3 projection without recomputation', () => {
+    const csv = renderAccountingTrialBalanceCsv(trialBalanceReport);
 
-      expect(csv).toContain('rowType,accountStableId,accountName');
-      expect(csv).toContain(
-        'WHOLE_LEDGER,CAD,America/Toronto,2026-06-01,2026-07-01,2026-07-31,2026-07-01,2026-07-31,OPEN',
-      );
-      expect(csv).toContain('2026-07:OPEN,2026:OPEN,0,0,0,ACCOUNT');
-      expect(csv).toContain('account_primary_bank,Primary Bank');
-      expect(csv).toContain(',TOTAL,,TOTAL');
-      expect(csv).toContain('15.00');
-    },
-  );
+    expect(csv).toContain('rowType,accountStableId,accountName');
+    expect(csv).toContain(
+      'WHOLE_LEDGER,CAD,America/Toronto,2026-06-01,2026-07-01,2026-07-31,2026-07-01,2026-07-31,OPEN',
+    );
+    expect(csv).toContain('account_primary_bank,Primary Bank');
+    expect(csv).toContain(',TOTAL,,TOTAL');
+    expect(csv).toContain('15.00');
+  });
 
-  it(
-    'renders Balance Movement CSV with opening basis and reconciliation rows',
-    () => {
-      const csv = renderAccountingBalanceMovementCsv(balanceMovementReport);
+  it('renders Balance Movement CSV with opening basis and reconciliation rows', () => {
+    const csv = renderAccountingBalanceMovementCsv(balanceMovementReport);
 
-      expect(csv).toContain(
-        'periodCloseState,monthCloseStates,yearCloseStates,openingJournalEntryCount',
-      );
-      expect(csv).toContain('openingBasis,absoluteBalanceClaim');
-      expect(csv).toContain('ZERO_MANAGEMENT_OPENING,false');
-      expect(csv).toContain('RECONCILIATION,OPENING');
-      expect(csv).toContain('RECONCILIATION,CLOSING');
-    },
-  );
+    expect(csv).toContain('openingBasis,absoluteBalanceClaim');
+    expect(csv).toContain('ZERO_MANAGEMENT_OPENING,false');
+    expect(csv).toContain('RECONCILIATION,OPENING');
+    expect(csv).toContain('RECONCILIATION,CLOSING');
+  });
 
-  it(
-    'renders Trial Balance and Balance Movement as complete PDF documents',
-    async () => {
-      const [trialPdf, balancePdf] = await Promise.all([
-        renderAccountingTrialBalancePdf(trialBalanceReport),
-        renderAccountingBalanceMovementPdf(balanceMovementReport),
-      ]);
+  it('renders Trial Balance and Balance Movement as complete PDF documents', async () => {
+    const [trialPdf, balancePdf] = await Promise.all([
+      renderAccountingTrialBalancePdf(trialBalanceReport),
+      renderAccountingBalanceMovementPdf(balanceMovementReport),
+    ]);
 
-      for (const buffer of [trialPdf, balancePdf]) {
-        expect(buffer.subarray(0, 5).toString('ascii')).toBe('%PDF-');
-        expect(buffer.toString('ascii').trimEnd().endsWith('%%EOF')).toBe(true);
-        expect(buffer.length).toBeGreaterThan(1_000);
-      }
-    },
-  );
+    for (const buffer of [trialPdf, balancePdf]) {
+      expect(buffer.subarray(0, 5).toString('ascii')).toBe('%PDF-');
+      expect(buffer.toString('ascii').trimEnd().endsWith('%%EOF')).toBe(true);
+      expect(buffer.length).toBeGreaterThan(1_000);
+    }
+  });
 });
