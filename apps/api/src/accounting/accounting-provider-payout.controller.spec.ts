@@ -2,6 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import { AccountingFinancialProvider } from './accounting-contracts';
 import { AccountingProviderPayoutController } from './accounting-provider-payout.controller';
 import { AccountingProviderPayoutService } from './accounting-provider-payout.service';
+import { AccountingProviderPayoutBankMatchService } from './accounting-provider-payout-bank-match.service';
 import { AccountingProviderPendingReconciliationService } from './accounting-provider-pending-reconciliation.service';
 
 function makeController() {
@@ -9,17 +10,37 @@ function makeController() {
     listPayouts: jest.fn().mockResolvedValue([]),
     recordPayout: jest.fn().mockResolvedValue({ payoutStableId: 'payout_1' }),
   };
+  const bankMatch = {
+    preview: jest.fn().mockResolvedValue({ deposits: [] }),
+  };
   const pendingReconciliation = {
     reconcile: jest.fn().mockResolvedValue({ providers: [] }),
   };
   const controller = new AccountingProviderPayoutController(
     payouts as unknown as AccountingProviderPayoutService,
+    bankMatch as unknown as AccountingProviderPayoutBankMatchService,
     pendingReconciliation as unknown as AccountingProviderPendingReconciliationService,
   );
-  return { controller, payouts, pendingReconciliation };
+  return { controller, payouts, bankMatch, pendingReconciliation };
 }
 
 describe('AccountingProviderPayoutController', () => {
+  it('delegates bank evidence matching as a read-only payout preview', async () => {
+    const { controller, bankMatch } = makeController();
+
+    await controller.previewBankMatches(
+      'acctart_bank_1',
+      '4750_Yonge_Street',
+      'account_primary_bank',
+    );
+
+    expect(bankMatch.preview).toHaveBeenCalledWith({
+      artifactStableId: 'acctart_bank_1',
+      storeStableId: '4750_Yonge_Street',
+      destinationBankAccountStableId: 'account_primary_bank',
+    });
+  });
+
   it('delegates Provider Pending reconciliation as a read-only Accounting query', async () => {
     const { controller, pendingReconciliation } = makeController();
 

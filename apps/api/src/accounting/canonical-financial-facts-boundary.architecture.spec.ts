@@ -175,6 +175,9 @@ describe('Phase 9 canonical financial facts boundary', () => {
     const providerPayoutService =
       file(ACCOUNTING_ROOT, 'accounting-provider-payout.service.ts')?.source ??
       '';
+    const providerPayoutBankMatchService =
+      file(ACCOUNTING_ROOT, 'accounting-provider-payout-bank-match.service.ts')
+        ?.source ?? '';
     const providerPendingReconciliationService =
       file(
         ACCOUNTING_ROOT,
@@ -282,6 +285,22 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(providerPayoutService).not.toContain("from '../payments/");
     expect(providerPayoutService).not.toContain("from '../orders/");
     expect(providerPayoutService).not.toContain("from '../integrations/");
+    expect(providerPayoutBankMatchService).toContain("from './accounting-db'");
+    expect(providerPayoutBankMatchService).toContain(
+      "from './accounting-artifact-delivery.service'",
+    );
+    expect(providerPayoutBankMatchService).not.toContain("from '../payments/");
+    expect(providerPayoutBankMatchService).not.toContain("from '../orders/");
+    expect(providerPayoutBankMatchService).not.toContain(
+      "from '../integrations/",
+    );
+    expect(providerPayoutBankMatchService).not.toContain('createJournalEntry');
+    expect(providerPayoutBankMatchService).not.toContain(
+      'createProviderPayoutJournalInTx',
+    );
+    expect(providerPayoutBankMatchService).not.toContain(
+      'accountingProviderPayout.create',
+    );
     expect(providerPendingReconciliationService).toContain(
       "from './accounting-db'",
     );
@@ -346,6 +365,12 @@ describe('Phase 9 canonical financial facts boundary', () => {
       'AccountingProviderSettlementExecutionService',
     );
     expect(accountingModule).toContain('AccountingProviderPayoutService');
+    expect(accountingModule).toContain(
+      'AccountingProviderPayoutBankMatchService',
+    );
+    expect(accountingModule).toContain(
+      'AccountingProviderPendingReconciliationService',
+    );
 
     const canonicalSalePostingCallers = scanTypeScript(ACCOUNTING_ROOT, {
       productionOnly: true,
