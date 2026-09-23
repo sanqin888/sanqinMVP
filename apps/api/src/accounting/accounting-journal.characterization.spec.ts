@@ -10,9 +10,7 @@ import {
 } from './accounting-contracts';
 import { AccountingJournalService } from './accounting-journal.service';
 import { AccountingPeriodService } from './accounting-period.service';
-import {
-  buildProviderPayoutWritePlan,
-} from './accounting-provider-payout-journal-authority';
+import { buildProviderPayoutWritePlan } from './accounting-provider-payout-journal-authority';
 
 const basePayload = {
   idempotencyKey: 'journal:manual:1',

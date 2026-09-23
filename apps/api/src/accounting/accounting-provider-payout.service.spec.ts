@@ -68,8 +68,8 @@ function makeService(existing: ReturnType<typeof payoutRow> | null = null) {
     },
   };
   const prisma = {
-    $transaction: jest.fn(
-      (work: (client: typeof tx) => Promise<unknown>) => work(tx),
+    $transaction: jest.fn((work: (client: typeof tx) => Promise<unknown>) =>
+      work(tx),
     ),
   };
   const journal = {
@@ -115,7 +115,7 @@ describe('AccountingProviderPayoutService', () => {
         currency: 'CAD',
         providerReference: 'UBER-2026-09-23',
         createdByActorRef: 'actor_accounting',
-      }),
+      }) as unknown,
     });
     expect(journal.createProviderPayoutJournalInTx).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -139,7 +139,7 @@ describe('AccountingProviderPayoutService', () => {
         role: 'PROVIDER_PAYOUT',
         fact: expect.objectContaining({
           providerReference: 'UBER-2026-09-23',
-        }),
+        }) as unknown,
       }),
       tx,
     );

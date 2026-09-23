@@ -8,9 +8,7 @@ import { ACCOUNTING_DB, type AccountingDb } from './accounting-db';
 import { AccountingJournalService } from './accounting-journal.service';
 import { AccountingJournalPolicyError } from './accounting-journal-policy';
 import { providerPendingAccountStableId } from './accounting-provider-accounts';
-import type {
-  CreateAccountingProviderPayoutInput,
-} from './accounting-provider-payout.contracts';
+import type { CreateAccountingProviderPayoutInput } from './accounting-provider-payout.contracts';
 import {
   buildProviderPayoutWritePlan,
   normalizeProviderPayoutFact,
@@ -65,10 +63,7 @@ export class AccountingProviderPayoutService {
     throw new ConflictException('Provider payout retry exhausted');
   }
 
-  private async recordPayoutOnce(
-    fact: ProviderPayoutFactV1,
-    actorRef: string,
-  ) {
+  private async recordPayoutOnce(fact: ProviderPayoutFactV1, actorRef: string) {
     const businessTimezone = await this.period.getBusinessTimezone();
 
     return runSerializableAccountingWrite(this.prisma, async (tx) => {
@@ -97,8 +92,7 @@ export class AccountingProviderPayoutService {
             provider: fact.provider,
             storeStableId: fact.storeStableId,
             payoutDate: payoutDateForDb(fact.payoutDate),
-            destinationBankAccountStableId:
-              fact.destinationBankAccountStableId,
+            destinationBankAccountStableId: fact.destinationBankAccountStableId,
             amountCents: fact.amountCents,
             currency: fact.currency,
             providerReference: fact.providerReference,
@@ -112,10 +106,7 @@ export class AccountingProviderPayoutService {
       const accountRows = await tx.accountingAccount.findMany({
         where: {
           accountStableId: {
-            in: [
-              pendingAccountStableId,
-              fact.destinationBankAccountStableId,
-            ],
+            in: [pendingAccountStableId, fact.destinationBankAccountStableId],
           },
         },
         select: {
@@ -185,8 +176,7 @@ export class AccountingProviderPayoutService {
         provider: input.provider,
         storeStableId: input.storeStableId,
         payoutDate: input.payoutDate,
-        destinationBankAccountStableId:
-          input.destinationBankAccountStableId,
+        destinationBankAccountStableId: input.destinationBankAccountStableId,
         amountCents: input.amountCents,
         currency: input.currency ?? 'CAD',
         providerReference: input.providerReference ?? null,
