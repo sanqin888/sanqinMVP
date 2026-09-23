@@ -466,7 +466,7 @@ EFA-D merged through PR #2471 / final head `ddb01f74` / squash `2d3abc0e`; CI #6
 
 The Accounting PWA has one operator and may be deleted/recreated at the v2 cutover, so no long-lived old-client write contract is required. Historical v1 records remain readable and immutable.
 
-EFA is closed; B3 readiness characterization is complete. B3-A merged through PR #2475 / squash `9c92eeda` with PR CI #6171 and merged-head CI #6172 green; B3-B merged through PR #2476 / squash `ec2cff0f` with PR CI #6175 and merged-head CI #6176 green; B3-C Balance Movement merged through PR #2478 / final head `12597b96` / squash `dcf12666` with final PR CI #6180 green.
+EFA is closed. B3-A/B/C are merged and B3-D production reconciliation passed on 2026-09-23; **B3 is PRODUCTION VERIFIED / CLOSED**. B4 is the next Accounting reporting work package.
 
 ### 5.4 B3 — Trial Balance + Balance Movement Statement
 
@@ -474,13 +474,13 @@ Priority: **P1/P2**
 Complexity: **H**  
 Depends on: **B1 + B2 + EFA — satisfied 2026-09-22**.
 
-Current state: **READINESS COMPLETE / B3-A + B3-B + B3-C MERGED + CI GREEN / NO MIGRATION / NO GRAPH CHANGE / B3-D NEXT** at latest baseline `origin/dev@dcf12666`. B3-A merged through PR #2475 / squash `9c92eeda`; B3-B merged through PR #2476 / squash `ec2cff0f`; B3-C merged through PR #2478 / final head `12597b96` / squash `dcf12666` with final PR CI #6180 green after the initial #6179 API-lint-only retry. Detailed audit/design: `docs/architecture/accounting-b3-trial-balance-readiness.md`.
+Current state: **PRODUCTION VERIFIED / CLOSED / NO MIGRATION / NO GRAPH CHANGE / B4 NEXT** at latest documentation baseline `origin/dev@b5d64e0e`. B3-A merged through PR #2475 / squash `9c92eeda`; B3-B through PR #2476 / squash `ec2cff0f`; B3-C through PR #2478 / final head `12597b96` / squash `dcf12666`; merge-evidence docs through PR #2479 / squash `b5d64e0e`. B3-D live API-to-canonical-Journal reconciliation passed on 2026-09-23. Detailed audit/design/closeout: `docs/architecture/accounting-b3-trial-balance-readiness.md`.
 
 The readiness audit proves the existing canonical Journal/CoA is sufficient: production snapshot has 1,501 Journal entries / 4,897 lines, debit=credit=`7,798,968c`, zero unbalanced entries and zero explicit opening Journals. Account-class reconstruction reconciles Assets=`2,104,938c`, Liabilities=`816,109c` and cumulative recorded earnings=`1,288,829c` to zero under the current management-opening policy. B3 therefore does not redesign Journal or revenue/expense posting.
 
 B3-A creates a versioned Accounting-owned whole-ledger/per-currency Trial Balance core directly from Journal lines. It keeps inactive historical accounts, treats ASSET/EXPENSE as debit-normal and LIABILITY/EQUITY/REVENUE as credit-normal, treats explicit `OPENING_BALANCE` Journals as opening facts, attaches period-close visibility and fails closed if individual Journals or opening/period/closing Trial Balance totals do not balance. It does not read Management filtering, so EFA-excluded Expense v2 Journals remain canonical statement facts.
 
-The implementation sequence is `B3-A core -> B3-B HTTP/public contract -> B3-C Balance Movement projection -> B3-D production reconciliation/closeout`. B3-B exposes the existing versioned B3-A report through authenticated `GET /accounting/report/trial-balance`. B3-C consumes that report rather than Journal/Prisma directly, projects ASSET / LIABILITY / direct EQUITY sections plus a `REVENUE - EXPENSE` recorded-earnings bridge, and exposes authenticated `GET /accounting/report/balance-movement`; opening, period and closing bridges each fail closed unless they reconcile to zero. B3-C also exposes zero-opening versus explicit-opening-Journal basis metadata while keeping `absoluteBalanceClaim=false`. Neither slice adds Web/UI, exports, a store filter, FX conversion, Prisma schema/migration or old account-balance contraction. Seven current production Journals have null `storeStableId`, all Expense-document Journals, so store-filtered statements remain deliberately deferred until complete multi-store Accounting attribution exists.
+The implementation sequence `B3-A core -> B3-B HTTP/public contract -> B3-C Balance Movement projection -> B3-D production reconciliation/closeout` is complete. B3-D verified the live authenticated endpoints against canonical Journal/CoA data: current default Trial Balance period debit/credit=`7,869,502c`, closing debit/credit balance=`5,846,443c`; the July fixed window reconciles opening=`1,431,643c`, period=`2,510,683c`, closing=`3,562,773c`; Balance Movement opening/period/closing equations each reconcile to `0c`. The `2026-05-01 -> 2026-06-30` request correctly clamps to effective `2026-06-01`, all close-status rows remain open, and an EFA-excluded CIBC funding account remains present in canonical Trial Balance at `-10,213c`, proving Management filtering does not leak into canonical statements. Ten current Journals have null `storeStableId`, including seven Expense v2 Journals, so store-filtered statements remain deliberately deferred until complete multi-store Accounting attribution exists.
 
 Build Trial Balance directly from Journal lines and then the zero-opening **资产负债变动表 / Balance Movement Statement**.
 
@@ -497,7 +497,7 @@ Do not call it a formal Balance Sheet until reviewed real fiscal-year opening ba
 
 Priority: **P2**  
 Complexity: **M**  
-Depends on: **B2 + B3 foundations**
+Depends on: **B2 + B3 foundations — satisfied; B3 PRODUCTION VERIFIED / CLOSED 2026-09-23**
 
 Then improve the Accounting reports surface:
 
@@ -508,6 +508,26 @@ Then improve the Accounting reports surface:
 - coverage/period-close indicators;
 - drill-through;
 - stale explanatory copy on Sales/Reports.
+
+**B4-A state (2026-09-23): MERGED / CI GREEN through PR #2482 / squash `58aa54c0`; CI #6190 passed.** The Reports Web adapter now consumes the existing canonical Trial Balance and Balance Movement endpoints through shared Web contracts, presents Management P&L separately from canonical statements, removes its legacy account-balance browser read, shows effective-range / whole-ledger / currency / timezone / period-close metadata, and preserves the required zero-opening / non-formal-Balance-Sheet disclosure. Report presets now resolve the business date in America/Toronto without Date -> UTC rollover. The old account-balance HTTP route is intentionally left registered for a later explicit contraction. B4-A adds no backend financial calculation, Prisma/schema/migration, dependency, context edge or scanner allowance; drill-through, P&L adjustment decomposition and Sales comparison cleanup remain later B4 work.
+
+**B4-B state (2026-09-23): MERGED / CI GREEN through PR #2483 / squash `cbd8bb1d`; PR CI #6195 passed.** Trial Balance and Balance Movement now have dedicated authenticated CSV/PDF export endpoints plus Reports-page download links. A narrow `AccountingStatementExportService` delegates once to the existing B3 projection, renders only the returned report, and records export audit evidence. CSV carries statement metadata, account/totals and Balance Movement opening-basis/reconciliation fields; PDF reuses current Accounting PDFKit/Noto CJK support and keeps the required non-formal-Balance-Sheet disclosure. No new monetary authority, Journal query, schema/migration, package, provider path or context edge is introduced.
+
+#### PAYOUT-A — Provider payout / bank receipt contract foundation
+
+Priority: **P1 ACCOUNTING CORRECTNESS**  
+Complexity: **M**  
+State: **PAYOUT-A MERGED / CI GREEN; PAYOUT-B MERGED / CI GREEN / MIGRATION MERGED + REVIEWED; PAYOUT-C LOCAL SOURCE READY FOR REVIEW / NO GRAPH CHANGE**
+
+After B4-B, the next Accounting correctness gap is the actual transfer from `Clover/Uber/Fantuan Pending` into a BANK account. This is not another monthly-statement posting: Clover deposits frequently while Uber/Fantuan pay weekly, so payout dates naturally cross monthly statement boundaries.
+
+PAYOUT-A merged through PR #2484 / squash `b919990f` after CI #6198 passed. It freezes `accounting.provider_payout.v1` as an Accounting-owned fact with provider, store, payout business date, destination bank account, positive CAD amount and optional provider reference. It deliberately has no provider-statement ID or statement period. The Journal contract is `TRANSFER` / `PAYMENT`, `Dr BANK / Cr provider PLATFORM_WALLET`, with exact provider-pending and destination-bank account prerequisites plus deterministic authority hashing. Shared provider-pending account mapping prevents the existing settlement path and payout path from drifting to different assets. Cash Movement admits TRANSFER Journals but continues deriving movement from CASH/BANK lines, so CASH↔BANK transfers net to zero while PLATFORM_WALLET→BANK receipts become visible.
+
+PAYOUT-B now adds the durable Accounting-owned `AccountingProviderPayout` fact and same-transaction Journal authority. The persisted identity is caller-supplied `payoutStableId`; identical retries are idempotent, while conflicting reuse fails closed. The row stores provider/store/business-date/destination BANK/amount/CAD/reference and the resulting Journal anchor. Provider-reference is indexed but deliberately not unique, and there is no statement foreign key. Posting validates the current active CAD PLATFORM_WALLET/BANK prerequisites, writes the canonical Journal and saves the anchor in one Serializable Accounting transaction. Generic Journal create/update/delete cannot bypass the payout-specific authority.
+
+PAYOUT-B deliberately does **not** reject a payout because the currently posted provider-pending balance is smaller than the deposit. Daily/weekly deposits may arrive before the monthly statement is uploaded, so that check would reject valid bank evidence; pending-balance discrepancies belong to PAYOUT-D reconciliation. PAYOUT-B merged through PR #2485 / squash `662aceb4` after CI #6201 passed. User-generated migration `20260923153202_accounting_provider_payout_persistence` entered `dev` at `da7edc2b`; SQL review confirms additive-only table/unique/index creation with no destructive or enum change.
+
+PAYOUT-C now exposes a dedicated authenticated Accounting transport adapter and a separate Provider bank receipts panel on `/accounting/settlements`. It reads active CAD BANK accounts, records only actual bank-received provider payouts, requires explicit real-bank confirmation before POST, and never copies or links a monthly statement Net payout. The client keeps one generated payout stable ID across an unchanged retry and invalidates it when material form facts change. Recent payout history shows provider/store/date/bank/amount/reference and canonical Journal anchor. No schema/migration, provider API, bank import, auto-match or cross-context edge is added. Production deployment remains gated on applying the already-reviewed payout migration to production. Detailed readiness: `docs/architecture/accounting-provider-payout-readiness.md`.
 
 Avoid polishing current mixed-authority widgets immediately before replacing their underlying semantics.
 

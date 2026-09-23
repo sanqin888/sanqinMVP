@@ -58,6 +58,13 @@ import {
   PROVIDER_FINANCIAL_SOURCE_FACT_TYPE,
   UBER_PRE_CUTOVER_REVERSAL_SOURCE_FACT_TYPE,
 } from './accounting-provider-settlement.policy';
+import {
+  assertProviderPayoutJournalAuthority,
+  hashProviderPayoutJournalWrite,
+  normalizeProviderPayoutWriteAuthority,
+  PROVIDER_PAYOUT_SOURCE_FACT_TYPE,
+  type ProviderPayoutJournalWriteAuthorityV1,
+} from './accounting-provider-payout-journal-authority';
 import { AccountingPeriodService } from './accounting-period.service';
 import {
   assertPayrollRunAccrualJournalAuthority,
@@ -225,6 +232,11 @@ export class AccountingJournalService {
         'canonical Expense Journals require Expense-specific write authority',
       );
     }
+    if (input.sourceFactType === PROVIDER_PAYOUT_SOURCE_FACT_TYPE) {
+      throw new BadRequestException(
+        'canonical provider payout Journals require payout-specific write authority',
+      );
+    }
     return this.createJournalEntryInternal(input, operatorActorRef, null);
   }
 
@@ -281,6 +293,49 @@ export class AccountingJournalService {
     if (journal.deletedAt) {
       throw new ConflictException(
         'canonical Expense Journal was deleted and cannot be replayed',
+      );
+    }
+    return journal;
+  }
+
+  async createProviderPayoutJournalInTx(
+    input: AccountingJournalCreateInput,
+    operatorActorRef: string,
+    authority: ProviderPayoutJournalWriteAuthorityV1,
+    tx: Prisma.TransactionClient,
+  ): Promise<AccountingJournalRow> {
+    const normalizedAuthority = this.applyJournalPolicy(() =>
+      normalizeProviderPayoutWriteAuthority(authority),
+    );
+    const normalized = this.applyJournalPolicy(() =>
+      normalizeJournalCreate(input),
+    );
+    this.applyJournalPolicy(() =>
+      assertProviderPayoutJournalAuthority(normalized, normalizedAuthority),
+    );
+    await this.assertProviderPayoutAuthorityInTx(normalizedAuthority, tx);
+
+    const operator = this.requireJournalValue(
+      operatorActorRef,
+      'operatorActorRef',
+    );
+    const timezone = normalizedAuthority.businessTimezone;
+    const journal = await this.createPreparedJournalEntryInTx(
+      {
+        normalized,
+        idempotencyHash: hashProviderPayoutJournalWrite(
+          normalized,
+          normalizedAuthority,
+        ),
+        auditAuthority: normalizedAuthority as unknown as Prisma.InputJsonValue,
+      },
+      operator,
+      tx,
+      timezone,
+    );
+    if (journal.deletedAt) {
+      throw new ConflictException(
+        'Provider payout Journal was deleted and cannot be replayed',
       );
     }
     return journal;
@@ -694,6 +749,16 @@ export class AccountingJournalService {
           'canonical Expense Journals cannot be updated in place',
         );
       }
+      if (existing.sourceFactType === PROVIDER_PAYOUT_SOURCE_FACT_TYPE) {
+        throw new ConflictException(
+          'canonical provider payout Journals cannot be updated in place',
+        );
+      }
+      if (normalized.sourceFactType === PROVIDER_PAYOUT_SOURCE_FACT_TYPE) {
+        throw new ConflictException(
+          'generic Journal update cannot create canonical provider payout authority',
+        );
+      }
       const existingDbId = existing.id;
       const existingPublic = this.toJournalPublic(existing);
 
@@ -809,6 +874,11 @@ export class AccountingJournalService {
       if (existing.source === AccountingJournalSource.EXPENSE_DOCUMENT) {
         throw new ConflictException(
           'canonical Expense Journals cannot be deleted in place',
+        );
+      }
+      if (existing.sourceFactType === PROVIDER_PAYOUT_SOURCE_FACT_TYPE) {
+        throw new ConflictException(
+          'canonical provider payout Journals cannot be deleted in place',
         );
       }
 
@@ -1386,6 +1456,79 @@ export class AccountingJournalService {
       ) {
         throw new ConflictException(
           `Payroll reversal account authority changed before posting: ${prerequisite.accountStableId}`,
+        );
+      }
+    }
+  }
+
+  private async assertProviderPayoutAuthorityInTx(
+    authority: ProviderPayoutJournalWriteAuthorityV1,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    const fact = authority.fact;
+    const payout = await tx.accountingProviderPayout.findUnique({
+      where: { payoutStableId: fact.payoutStableId },
+      select: {
+        provider: true,
+        storeStableId: true,
+        payoutDate: true,
+        destinationBankAccountStableId: true,
+        amountCents: true,
+        currency: true,
+        providerReference: true,
+        journalEntryStableId: true,
+      },
+    });
+    const payoutDate = payout?.payoutDate.toISOString().slice(0, 10) ?? null;
+    if (
+      !payout ||
+      payout.journalEntryStableId !== null ||
+      payout.provider !== fact.provider ||
+      payout.storeStableId !== fact.storeStableId ||
+      payoutDate !== fact.payoutDate ||
+      payout.destinationBankAccountStableId !==
+        fact.destinationBankAccountStableId ||
+      payout.amountCents !== fact.amountCents ||
+      payout.currency !== fact.currency ||
+      payout.providerReference !== fact.providerReference
+    ) {
+      throw new ConflictException(
+        'Provider payout authority changed before Journal posting',
+      );
+    }
+
+    const currentAccounts = await tx.accountingAccount.findMany({
+      where: {
+        accountStableId: {
+          in: authority.accountPrerequisites.map(
+            (account) => account.accountStableId,
+          ),
+        },
+      },
+      select: {
+        accountStableId: true,
+        accountClass: true,
+        type: true,
+        currency: true,
+        isActive: true,
+      },
+    });
+    const currentByStableId = new Map(
+      currentAccounts.map(
+        (account) => [account.accountStableId, account] as const,
+      ),
+    );
+    for (const prerequisite of authority.accountPrerequisites) {
+      const current = currentByStableId.get(prerequisite.accountStableId);
+      if (
+        !current ||
+        current.accountClass !== prerequisite.actual.accountClass ||
+        current.type !== prerequisite.actual.accountType ||
+        current.currency !== prerequisite.actual.currency ||
+        current.isActive !== prerequisite.actual.isActive
+      ) {
+        throw new ConflictException(
+          `Provider payout account authority changed before posting: ${prerequisite.accountStableId}`,
         );
       }
     }

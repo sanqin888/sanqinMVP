@@ -11,6 +11,7 @@ import type {
   ProviderSettlementShadowPreview,
 } from '../contracts/settlements';
 import { ProviderFinancialReviewPanel } from '../provider-financial-review-panel';
+import { ProviderPayoutPanel } from './provider-payout-panel';
 import { SettlementReplayGate } from './settlement-replay-gate';
 import {
   findSettlementNetLine,
@@ -717,6 +718,17 @@ export default function AccountingSettlementsPage() {
       ),
     [postingStates, providerDocuments],
   );
+  const knownStoreStableIds = useMemo(
+    () =>
+      [
+        ...new Set(
+          providerDocuments.flatMap(({ document }) =>
+            document.storeStableId ? [document.storeStableId] : [],
+          ),
+        ),
+      ].sort(),
+    [providerDocuments],
+  );
 
   function applyPreview(
     documentStableId: string,
@@ -809,6 +821,11 @@ export default function AccountingSettlementsPage() {
           ? '安全边界：Shadow Preview 仍只读，READY 也不会自动写账。真实 replay 必须通过独立授权闸门，并在 POST 后立即用 fresh Preview reconciliation 核对结果。'
           : 'Safety boundary: Shadow Preview remains read-only and READY never writes automatically. Real replay requires the separate authorization gate and immediate fresh-Preview reconciliation after POST.'}
       </div>
+
+      <ProviderPayoutPanel
+        isZh={isZh}
+        knownStoreStableIds={knownStoreStableIds}
+      />
 
       {error ? (
         <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>

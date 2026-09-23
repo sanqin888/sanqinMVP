@@ -40,6 +40,9 @@ const EXPECTED_CONTROLLER_CAPABILITIES = {
   'accounting-provider-financial.controller.ts': [
     'AccountingProviderFinancialService',
   ],
+  'accounting-provider-payout.controller.ts': [
+    'AccountingProviderPayoutService',
+  ],
   'accounting-provider-settlement.controller.ts': [
     'AccountingProviderSettlementExecutionService',
     'AccountingProviderSettlementPreviewService',
@@ -49,6 +52,7 @@ const EXPECTED_CONTROLLER_CAPABILITIES = {
     'AccountingBalanceMovementService',
     'AccountingFinancialReportsService',
     'AccountingSalesAnalyticsService',
+    'AccountingStatementExportService',
     'AccountingTrialBalanceService',
   ],
 } as const;
@@ -82,6 +86,8 @@ const EXPECTED_ROUTES = [
   'GET inbox/artifacts/:artifactStableId/download',
   'GET inbox/artifacts/:artifactStableId/tabular-preview',
   'GET provider-financial/:documentStableId/review-revisions',
+  'GET provider-payouts',
+  'POST provider-payouts',
   'POST provider-financial/:documentStableId/review-revisions',
   'POST provider-financial/:documentStableId/review-revisions/:reviewRevisionStableId/confirm',
   'POST inbox/:inboxItemStableId/provider-financial/confirm',
@@ -118,6 +124,10 @@ const EXPECTED_ROUTES = [
   'GET export/tx.csv',
   'GET export/report.csv',
   'GET export/report.pdf',
+  'GET export/trial-balance.csv',
+  'GET export/trial-balance.pdf',
+  'GET export/balance-movement.csv',
+  'GET export/balance-movement.pdf',
   'GET categories',
   'POST categories',
   'PUT categories/:categoryStableId',

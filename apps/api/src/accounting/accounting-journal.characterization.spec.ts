@@ -3,8 +3,14 @@ import {
   AccountingJournalEntryKind,
   AccountingJournalSource,
 } from '@prisma/client';
+import {
+  AccountingAccountClass,
+  AccountingAccountType,
+  AccountingFinancialProvider,
+} from './accounting-contracts';
 import { AccountingJournalService } from './accounting-journal.service';
 import { AccountingPeriodService } from './accounting-period.service';
+import { buildProviderPayoutWritePlan } from './accounting-provider-payout-journal-authority';
 
 const basePayload = {
   idempotencyKey: 'journal:manual:1',
@@ -50,6 +56,9 @@ describe('AccountingJournalService double-entry journal characterization', () =>
       },
       accountingProviderFinancialReviewRevision: {
         findMany: jest.fn().mockResolvedValue([]),
+      },
+      accountingProviderPayout: {
+        findUnique: jest.fn(),
       },
       accountingAccount: {
         findMany: jest.fn().mockResolvedValue([
@@ -175,6 +184,224 @@ describe('AccountingJournalService double-entry journal characterization', () =>
     await expect(
       service.readCanonicalSaleJournalAnchors(['sale_fact_1']),
     ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('creates a provider payout Journal only from its persisted payout authority', async () => {
+    const { service, prisma } = makeService();
+    const accountRows = [
+      {
+        id: 'account-bank-db-id',
+        accountStableId: 'account_primary_bank',
+        accountClass: AccountingAccountClass.ASSET,
+        type: AccountingAccountType.BANK,
+        currency: 'CAD',
+        isActive: true,
+      },
+      {
+        id: 'account-uber-db-id',
+        accountStableId: 'account_uber_pending',
+        accountClass: AccountingAccountClass.ASSET,
+        type: AccountingAccountType.PLATFORM_WALLET,
+        currency: 'CAD',
+        isActive: true,
+      },
+    ];
+    const plan = buildProviderPayoutWritePlan({
+      fact: {
+        payoutStableId: 'payout_uber_20260923_1',
+        provider: AccountingFinancialProvider.UBER_EATS,
+        storeStableId: '4750_Yonge_Street',
+        payoutDate: '2026-09-23',
+        destinationBankAccountStableId: 'account_primary_bank',
+        amountCents: 120_000,
+        currency: 'CAD',
+        providerReference: 'UBER-2026-09-23',
+      },
+      businessTimezone: 'America/Toronto',
+      accountFacts: accountRows.map((account) => ({
+        accountStableId: account.accountStableId,
+        accountClass: account.accountClass,
+        accountType: account.type,
+        currency: account.currency,
+        isActive: account.isActive,
+      })),
+    });
+    prisma.accountingProviderPayout.findUnique.mockResolvedValue({
+      provider: AccountingFinancialProvider.UBER_EATS,
+      storeStableId: '4750_Yonge_Street',
+      payoutDate: new Date('2026-09-23T00:00:00.000Z'),
+      destinationBankAccountStableId: 'account_primary_bank',
+      amountCents: 120_000,
+      currency: 'CAD',
+      providerReference: 'UBER-2026-09-23',
+      journalEntryStableId: null,
+    });
+    prisma.accountingAccount.findMany.mockResolvedValue(accountRows);
+    prisma.accountingJournalEntry.findUnique.mockResolvedValue(null);
+    prisma.accountingJournalEntry.create.mockResolvedValue(
+      journalRow({
+        entryStableId: 'journal_provider_payout_1',
+        idempotencyKey: plan.journal.idempotencyKey,
+        kind: AccountingJournalEntryKind.TRANSFER,
+        source: AccountingJournalSource.PAYMENT,
+        sourceFactType: 'accounting.provider_payout.v1',
+        sourceFactStableId: 'payout_uber_20260923_1',
+        sourceFactVersion: 1,
+        storeStableId: '4750_Yonge_Street',
+        occurredAt: new Date('2026-09-23T04:00:00.000Z'),
+        memo: 'UBER_EATS payout UBER-2026-09-23',
+      }),
+    );
+
+    await expect(
+      service.createProviderPayoutJournalInTx(
+        plan.journal,
+        'actor_accounting',
+        plan.authority,
+        prisma as never,
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        entryStableId: 'journal_provider_payout_1',
+        sourceFactStableId: 'payout_uber_20260923_1',
+      }),
+    );
+    expect(prisma.accountingJournalEntry.create).toHaveBeenCalled();
+  });
+
+  it('rejects provider payout facts through the generic Journal writer', async () => {
+    const { service } = makeService();
+    const plan = buildProviderPayoutWritePlan({
+      fact: {
+        payoutStableId: 'payout_uber_20260923_1',
+        provider: AccountingFinancialProvider.UBER_EATS,
+        storeStableId: '4750_Yonge_Street',
+        payoutDate: '2026-09-23',
+        destinationBankAccountStableId: 'account_primary_bank',
+        amountCents: 120_000,
+        currency: 'CAD',
+        providerReference: null,
+      },
+      businessTimezone: 'America/Toronto',
+      accountFacts: [
+        {
+          accountStableId: 'account_primary_bank',
+          accountClass: AccountingAccountClass.ASSET,
+          accountType: AccountingAccountType.BANK,
+          currency: 'CAD',
+          isActive: true,
+        },
+        {
+          accountStableId: 'account_uber_pending',
+          accountClass: AccountingAccountClass.ASSET,
+          accountType: AccountingAccountType.PLATFORM_WALLET,
+          currency: 'CAD',
+          isActive: true,
+        },
+      ],
+    });
+
+    await expect(
+      service.createJournalEntry(plan.journal, 'actor_accounting'),
+    ).rejects.toThrow(
+      'canonical provider payout Journals require payout-specific write authority',
+    );
+  });
+
+  it('rejects converting a generic Journal into provider payout authority', async () => {
+    const existing = internalJournalRow();
+    const { service, prisma } = makeService();
+    prisma.accountingJournalEntry.findUnique.mockResolvedValue(existing);
+
+    await expect(
+      service.updateJournalEntry(
+        'journal_stable_1',
+        {
+          kind: AccountingJournalEntryKind.TRANSFER,
+          sourceFactType: 'accounting.provider_payout.v1',
+          sourceFactStableId: 'payout_uber_20260923_1',
+          sourceFactVersion: 1,
+          storeStableId: '4750_Yonge_Street',
+          occurredAt: '2026-09-23T04:00:00.000Z',
+          currency: 'CAD',
+          memo: 'attempted payout conversion',
+          lines: [
+            {
+              accountStableId: 'account_primary_bank',
+              debitCents: 120_000,
+            },
+            {
+              accountStableId: 'account_uber_pending',
+              creditCents: 120_000,
+            },
+          ],
+          lastKnownUpdatedAt: existing.updatedAt.toISOString(),
+        },
+        'actor_accounting',
+      ),
+    ).rejects.toThrow(
+      'generic Journal update cannot create canonical provider payout authority',
+    );
+    expect(prisma.accountingJournalEntry.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('keeps canonical provider payout Journals immutable through generic update/delete paths', async () => {
+    const existing = internalJournalRow({
+      kind: AccountingJournalEntryKind.TRANSFER,
+      source: AccountingJournalSource.PAYMENT,
+      sourceFactType: 'accounting.provider_payout.v1',
+      sourceFactStableId: 'payout_uber_20260923_1',
+      sourceFactVersion: 1,
+      storeStableId: '4750_Yonge_Street',
+      occurredAt: new Date('2026-09-23T04:00:00.000Z'),
+    });
+    const updateCase = makeService();
+    updateCase.prisma.accountingJournalEntry.findUnique.mockResolvedValue(
+      existing,
+    );
+
+    await expect(
+      updateCase.service.updateJournalEntry(
+        'journal_stable_1',
+        {
+          kind: AccountingJournalEntryKind.TRANSFER,
+          sourceFactType: 'accounting.provider_payout.v1',
+          sourceFactStableId: 'payout_uber_20260923_1',
+          sourceFactVersion: 1,
+          storeStableId: '4750_Yonge_Street',
+          occurredAt: '2026-09-23T04:00:00.000Z',
+          currency: 'CAD',
+          memo: 'changed',
+          lines: [
+            {
+              accountStableId: 'account_primary_bank',
+              debitCents: 120_000,
+            },
+            {
+              accountStableId: 'account_uber_pending',
+              creditCents: 120_000,
+            },
+          ],
+          lastKnownUpdatedAt: existing.updatedAt.toISOString(),
+        },
+        'actor_accounting',
+      ),
+    ).rejects.toThrow(
+      'canonical provider payout Journals cannot be updated in place',
+    );
+
+    const deleteCase = makeService();
+    deleteCase.prisma.accountingJournalEntry.findUnique.mockResolvedValue(
+      existing,
+    );
+    await expect(
+      deleteCase.service.deleteJournalEntry(
+        'journal_stable_1',
+        'actor_accounting',
+      ),
+    ).rejects.toThrow(
+      'canonical provider payout Journals cannot be deleted in place',
+    );
   });
 
   it('fails closed when confirmed human review authority changes after settlement preview', async () => {

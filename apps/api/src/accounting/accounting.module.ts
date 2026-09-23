@@ -9,6 +9,7 @@ import { AccountingInboxArtifactsController } from './accounting-inbox-artifacts
 import { AccountingInboxController } from './accounting-inbox.controller';
 import { AccountingPeriodController } from './accounting-period.controller';
 import { AccountingProviderFinancialController } from './accounting-provider-financial.controller';
+import { AccountingProviderPayoutController } from './accounting-provider-payout.controller';
 import { AccountingProviderSettlementController } from './accounting-provider-settlement.controller';
 import { AccountingReportsController } from './accounting-reports.controller';
 import { AccountingPayrollController } from './payroll/accounting-payroll.controller';
@@ -38,6 +39,7 @@ import { AccountingProviderSettlementQueryService } from './accounting-provider-
 import { AccountingSalesAnalyticsService } from './accounting-sales-analytics.service';
 import { AccountingBalanceMovementService } from './accounting-balance-movement.service';
 import { AccountingTrialBalanceService } from './accounting-trial-balance.service';
+import { AccountingStatementExportService } from './accounting-statement-export.service';
 import { AccountingCanonicalSalePostingProcessor } from './accounting-canonical-sale-posting.processor';
 import { AccountingCanonicalSalePostingService } from './accounting-canonical-sale-posting.service';
 import { AccountingCanonicalSaleReplayService } from './accounting-canonical-sale-replay.service';
@@ -45,6 +47,7 @@ import { AccountingCanonicalChangePreviewService } from './accounting-canonical-
 import { AccountingCanonicalChangeExecutionService } from './accounting-canonical-change-execution.service';
 import { AccountingProviderSettlementPreviewService } from './accounting-provider-settlement-preview.service';
 import { AccountingProviderSettlementExecutionService } from './accounting-provider-settlement-execution.service';
+import { AccountingProviderPayoutService } from './accounting-provider-payout.service';
 import { AccountingPayrollConfigService } from './payroll/accounting-payroll-config.service';
 import { AccountingPayrollEmployeeService } from './payroll/accounting-payroll-employee.service';
 import { AccountingPayrollOpeningService } from './payroll/accounting-payroll-opening.service';
@@ -83,6 +86,7 @@ import { PaymentFinancialFactsModule } from '../payments/public-api';
     AccountingInboxController,
     AccountingInboxArtifactsController,
     AccountingProviderFinancialController,
+    AccountingProviderPayoutController,
     AccountingAutomationController,
     AccountingPeriodController,
     AccountingCanonicalSaleController,
@@ -104,6 +108,7 @@ import { PaymentFinancialFactsModule } from '../payments/public-api';
     AccountingCanonicalChangeExecutionService,
     AccountingProviderSettlementPreviewService,
     AccountingProviderSettlementExecutionService,
+    AccountingProviderPayoutService,
     AccountingChartService,
     AccountingExpenseService,
     AccountingExpenseJournalPostingService,
@@ -111,6 +116,7 @@ import { PaymentFinancialFactsModule } from '../payments/public-api';
     AccountingSalesAnalyticsService,
     AccountingBalanceMovementService,
     AccountingTrialBalanceService,
+    AccountingStatementExportService,
     AccountingInboxService,
     AccountingProviderSettlementQueryService,
     AccountingProviderFinancialService,

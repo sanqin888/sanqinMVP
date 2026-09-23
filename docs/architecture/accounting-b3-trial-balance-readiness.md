@@ -1,15 +1,15 @@
 # Accounting B3 Trial Balance / Balance Movement Readiness
 
 Date: 2026-09-23  
-Repository baseline: latest `origin/dev@dcf126669101ef577cdb16138c387cd07c5df30f`  
+Repository baseline: latest `origin/dev@b5d64e0eba36758cbdb46c63ad707241200ba58c`  
 B3-A delivery: PR #2475 / squash `9c92eeda`; PR CI #6171 + merged-head CI #6172 green  
 B3-B delivery: PR #2476 / final head `7b859b69` / squash `ec2cff0f`; PR CI #6175 + merged-head CI #6176 green  
 B3-C delivery: PR #2478 / final head `12597b96` / squash `dcf12666`; final PR CI #6180 green after initial #6179 API-lint-only retry  
-State: **B3 READINESS COMPLETE / B3-A + B3-B + B3-C MERGED + CI GREEN / NO MIGRATION / NO GRAPH CHANGE / B3-D NEXT**
+State: **B3 PRODUCTION VERIFIED / CLOSED / NO MIGRATION / NO GRAPH CHANGE / B4 NEXT**
 
 ## 1. Decision
 
-B3 is ready to implement without reopening Phase 9.
+B3 is implemented, production-reconciled and **PRODUCTION VERIFIED / CLOSED** without reopening Phase 9. B4 is the next Accounting reporting work package.
 
 The canonical Accounting Journal and Chart of Accounts already contain the monetary authority required for Trial Balance and the initial zero-opening Balance Movement Statement. B3 must therefore be a read-model/reporting project:
 
@@ -264,7 +264,38 @@ Authenticated `GET /accounting/report/balance-movement` is a thin transport unde
 
 ### B3-D — Production reconciliation / closeout
 
-After CI/deployment, reconcile fresh API output against canonical Journal/CoA totals, verify period/timezone/opening metadata and record final B3 evidence. B4 may then own UI/export/drill-through polish.
+State: **PRODUCTION VERIFIED / B3 CLOSED** on 2026-09-23.
+
+Live authenticated production requests to `GET /accounting/report/trial-balance` and `GET /accounting/report/balance-movement` returned `code=OK`. Read-only production Journal/CoA reconstruction independently matched the API projection under the actual B3-A account-netting algorithm.
+
+Current production snapshot:
+
+- 1,505 CAD canonical Journal entries / 4,906 Journal lines;
+- canonical Journal debit=credit=`7,869,502c`;
+- zero unbalanced Journal entries;
+- zero non-CAD Journal entries and zero non-CAD Accounting accounts;
+- zero explicit `OPENING_BALANCE` Journal entries;
+- 29 CAD Accounting accounts;
+- zero period-close rows, matching API month/year `isClosed=false` and `allMonthsClosed=false`;
+- ten current Journals with null `storeStableId`, including seven Expense v2 Journals, so `WHOLE_LEDGER` remains the correct v1 scope and a store filter remains unsafe.
+
+The default `2026-06-01 -> 2026-09-23` Trial Balance matched production reconstruction with period debit=credit=`7,869,502c` and closing debit/credit balance=`5,846,443c`. The fixed July `2026-07-01 -> 2026-07-31` window matched opening debit/credit balance=`1,431,643c`, period debit/credit=`2,510,683c`, and closing debit/credit balance=`3,562,773c`.
+
+The July Balance Movement projection reconciled independently in all three buckets:
+
+```text
+Opening:  868,002 - 314,553 - 0 - 553,449 = 0
+Period:   828,817 - 759,166 - 0 - 69,651  = 0
+Closing: 1,696,819 - 1,073,719 - 0 - 623,100 = 0
+```
+
+Recorded earnings also matched `Revenue - Expense`: opening `1,077,966 - 524,517 = 553,449c`, period `1,180,434 - 1,110,783 = 69,651c`, closing `2,258,400 - 1,635,300 = 623,100c`.
+
+Opening semantics passed: `ZERO_MANAGEMENT_OPENING`, explicit opening count `0`, `zeroOpeningDisclaimerRequired=true`, `absoluteBalanceClaim=false`. The requested `2026-05-01 -> 2026-06-30` range correctly preserved the requested dates while clamping the effective range to `2026-06-01 -> 2026-06-30`; the clamped June period debit/credit=`2,024,429c` and closing debit/credit balance=`1,431,643c` matched production reconstruction.
+
+EFA isolation also passed. The CIBC funding account `account_i4hhayw0pkqzi96cfnbnunbm` has `includeFundedExpensesInManagementReports=false`, but two Expense v2 canonical Journals totaling `10,213c` credit remain visible in Trial Balance as period/closing normal balance `-10,213c`. Management filtering therefore does not leak into canonical Trial Balance / Balance Movement statements.
+
+No B3 hotfix, schema change, migration, dependency change or architecture-graph change is required. **B3 is closed.** B4 may now own UI/export/drill-through polish.
 
 ## 10. Architecture effect
 
