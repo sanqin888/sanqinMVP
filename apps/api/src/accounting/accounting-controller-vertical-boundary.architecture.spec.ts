@@ -48,6 +48,7 @@ const EXPECTED_CONTROLLER_CAPABILITIES = {
   'accounting-reports.controller.ts': [
     'AccountingFinancialReportsService',
     'AccountingSalesAnalyticsService',
+    'AccountingTrialBalanceService',
   ],
 } as const;
 
@@ -97,6 +98,7 @@ const EXPECTED_ROUTES = [
   'GET period-close/year',
   'GET report/pnl',
   'GET report/sales',
+  'GET report/trial-balance',
   'GET journal/canonical-sales/replay-preview',
   'GET journal/canonical-changes/shadow-preview',
   'GET journal/provider-settlement/shadow-preview',
