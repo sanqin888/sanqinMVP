@@ -45,6 +45,73 @@ describe('accounting text extraction', () => {
     );
   });
 
+  it('prefers total including taxes over a zero balance due on paid invoices', () => {
+    const flattened = extractAccountingText(`
+      Invoice Date: 01-Jun-2026
+      Currency: USD
+      SubTotal $19.95
+      Tax $2.59
+      Payments $22.54
+      Balance Due $0.00
+      Total Including Taxes in USD $22.54
+    `);
+
+    expect(flattened).toEqual(
+      expect.objectContaining({
+        subtotalCents: 1995,
+        taxCents: 259,
+        totalCents: 2254,
+        financialConsistency: 'MATCHED',
+        sourceCurrency: 'USD',
+      }),
+    );
+
+    const extraction = reconcileAccountingExpenseExtractionWithLayout(
+      flattened,
+      {
+        version: 1,
+        inputKind: 'PDF',
+        engine: 'POPPLER',
+        layoutMode: 'GEOMETRY',
+        truncated: false,
+        lines: [
+          {
+            lineId: 'p1-l1',
+            page: 1,
+            text: 'Balance Due $0.00',
+            confidence: null,
+            geometry: { left: 0.6, top: 0.3, width: 0.2, height: 0.02 },
+          },
+          {
+            lineId: 'p2-l1',
+            page: 2,
+            text: 'Total Including Taxes in USD',
+            confidence: null,
+            geometry: { left: 0.05, top: 0.4, width: 0.2, height: 0.02 },
+          },
+          {
+            lineId: 'p2-l2',
+            page: 2,
+            text: '$22.54',
+            confidence: null,
+            geometry: { left: 0.9, top: 0.4, width: 0.05, height: 0.02 },
+          },
+        ],
+      },
+    );
+
+    expect(extraction.totalCents).toBe(2254);
+    expect(extraction.financialConsistency).toBe('MATCHED');
+    expect(extraction.amountEvidence?.total).toEqual(
+      expect.objectContaining({
+        strategy: 'LAYOUT_ROW_PAIR',
+        labelLineId: 'p2-l1',
+        amountLineId: 'p2-l2',
+        page: 2,
+      }),
+    );
+  });
+
   it('uses layout geometry to reject a Bell-style HST discount false match', () => {
     const flattened = extractAccountingText(`
       Bell Business Internet

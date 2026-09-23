@@ -456,23 +456,31 @@ Priority: **P1**
 Complexity: **H**  
 Depends on: **B2 production closeout — satisfied 2026-09-22**.
 
-Current state: **EFA-A COMPLETE / EFA-B1 MERGED + CI GREEN + MIGRATION REVIEWED + COMMITTED TO DEV / PRODUCTION APPLICATION PENDING / EFA-B2 MERGED + CI GREEN / EFA-C MERGED + CI GREEN + NO NEW MIGRATION + NO GRAPH CHANGE / EFA-D LOCAL SOURCE IMPLEMENTED + REVIEW PENDING + NO NEW MIGRATION + NO GRAPH CHANGE**.
+Current state: **PRODUCTION VERIFIED / CLOSED — B1 MIGRATION APPLIED — B2/C/D MERGED + CI GREEN + DEPLOYED + VERIFIED — INCLUDED / EXCLUDED / MIXED-ACCOUNT V2 PATHS VERIFIED — MANAGEMENT VS CANONICAL RECONCILED**.
 
 Detailed audit/design: `docs/architecture/accounting-expense-funding-attribution.md`.
 
 EFA moves funding ownership from a document-level allocation model to split-level attribution for new Expense v2 facts while preserving historical Expense v1 authority. EFA-B2 merged through PR #2469 / `6674ab1cdd6bcba78998698cde69469c40b0b03d` with CI #6150 green and provides the grouped canonical v2 posting engine without adding a JournalLine funding dimension. EFA-C merged through PR #2470 / `42e25b04` after CI #6155 passed; current Expense/Inbox writes and UI now use version-2 split funding, confirmed-unposted v2 completion is split-level, historical v1 allocation reads/completion remain, records dual-read both authorities, and account policy configuration is available in Settings.
 
-EFA-D is locally implemented on `accounting/efa-d-management-reporting-cutover` from `origin/dev@42e25b04`. The account-level flag `includeFundedExpensesInManagementReports` is consumed only by Management Dashboard/P&L/category/trend and Management/Boss export projections for Expense v2 Journal groups. Raw canonical transaction export, canonical Journal/audit, account movement, actual cash flow and recoverable GST/HST remain unfiltered; historical v1 Expense Journals are not retroactively hidden. Production deployment remains gated on applying the already-reviewed B1 additive migration before the EFA-C/D runtime is started and reinstalling the single-user Accounting PWA.
+EFA-D merged through PR #2471 / final head `ddb01f74` / squash `2d3abc0e`; CI #6158 passed and production is deployed at `main@2d3abc0e`. The B1 additive migration is applied. The account-level flag `includeFundedExpensesInManagementReports` is consumed only by Management Dashboard/P&L/category/trend and Management/Boss export projections for Expense v2 Journal groups. Raw canonical transaction export, canonical Journal/audit, account movement, actual cash flow and recoverable GST/HST remain unfiltered; historical v1 Expense Journals are not retroactively hidden. Production verification passed for included Primary Bank, excluded CIBC and mixed CIBC + Primary Bank records, including exact account-scoped 1..N Journal grouping and Management-vs-canonical reconciliation. Both newly verified v2 records have zero legacy `AccountingExpensePaymentAllocation` rows. **EFA is closed.**
 
 The Accounting PWA has one operator and may be deleted/recreated at the v2 cutover, so no long-lived old-client write contract is required. Historical v1 records remain readable and immutable.
 
-EFA must close before B3 so Trial Balance characterizes the final Expense Journal cardinality.
+EFA is closed; B3 readiness characterization is complete. B3-A merged through PR #2475 / squash `9c92eeda` with PR CI #6171 and merged-head CI #6172 green; B3-B merged through PR #2476 / squash `ec2cff0f` with PR CI #6175 and merged-head CI #6176 green; B3-C Balance Movement merged through PR #2478 / final head `12597b96` / squash `dcf12666` with final PR CI #6180 green.
 
 ### 5.4 B3 — Trial Balance + Balance Movement Statement
 
 Priority: **P1/P2**  
 Complexity: **H**  
-Depends on: **B1 + B2 + EFA**, with EFA closing the final Expense funding/Journal-cardinality model before Trial Balance.
+Depends on: **B1 + B2 + EFA — satisfied 2026-09-22**.
+
+Current state: **READINESS COMPLETE / B3-A + B3-B + B3-C MERGED + CI GREEN / NO MIGRATION / NO GRAPH CHANGE / B3-D NEXT** at latest baseline `origin/dev@dcf12666`. B3-A merged through PR #2475 / squash `9c92eeda`; B3-B merged through PR #2476 / squash `ec2cff0f`; B3-C merged through PR #2478 / final head `12597b96` / squash `dcf12666` with final PR CI #6180 green after the initial #6179 API-lint-only retry. Detailed audit/design: `docs/architecture/accounting-b3-trial-balance-readiness.md`.
+
+The readiness audit proves the existing canonical Journal/CoA is sufficient: production snapshot has 1,501 Journal entries / 4,897 lines, debit=credit=`7,798,968c`, zero unbalanced entries and zero explicit opening Journals. Account-class reconstruction reconciles Assets=`2,104,938c`, Liabilities=`816,109c` and cumulative recorded earnings=`1,288,829c` to zero under the current management-opening policy. B3 therefore does not redesign Journal or revenue/expense posting.
+
+B3-A creates a versioned Accounting-owned whole-ledger/per-currency Trial Balance core directly from Journal lines. It keeps inactive historical accounts, treats ASSET/EXPENSE as debit-normal and LIABILITY/EQUITY/REVENUE as credit-normal, treats explicit `OPENING_BALANCE` Journals as opening facts, attaches period-close visibility and fails closed if individual Journals or opening/period/closing Trial Balance totals do not balance. It does not read Management filtering, so EFA-excluded Expense v2 Journals remain canonical statement facts.
+
+The implementation sequence is `B3-A core -> B3-B HTTP/public contract -> B3-C Balance Movement projection -> B3-D production reconciliation/closeout`. B3-B exposes the existing versioned B3-A report through authenticated `GET /accounting/report/trial-balance`. B3-C consumes that report rather than Journal/Prisma directly, projects ASSET / LIABILITY / direct EQUITY sections plus a `REVENUE - EXPENSE` recorded-earnings bridge, and exposes authenticated `GET /accounting/report/balance-movement`; opening, period and closing bridges each fail closed unless they reconcile to zero. B3-C also exposes zero-opening versus explicit-opening-Journal basis metadata while keeping `absoluteBalanceClaim=false`. Neither slice adds Web/UI, exports, a store filter, FX conversion, Prisma schema/migration or old account-balance contraction. Seven current production Journals have null `storeStableId`, all Expense-document Journals, so store-filtered statements remain deliberately deferred until complete multi-store Accounting attribution exists.
 
 Build Trial Balance directly from Journal lines and then the zero-opening **资产负债变动表 / Balance Movement Statement**.
 
@@ -765,3 +773,37 @@ The temporary Project-source TXT notes were dispositioned in the modularization 
 Because PR #2420 is merged and this roadmap retains the unresolved CheckoutIntent requirement, those four TXT notes are no longer needed as execution sources and may be removed from the Project source list.
 
 The original full-site modularization audit Markdown should remain as historical baseline/reference evidence, not as the active execution plan.
+
+## 11. Later finance operations — Vehicle Mileage
+
+Priority: **LATER / AFTER CURRENT ACCOUNTING AND CORE BACKLOG**  
+Complexity: **M**  
+External gate: **none; CRA treatment must be re-verified against the rules in force when calculation/claim support is implemented**
+
+After the higher-priority Accounting and core backlog work is complete, add a **Vehicle Mileage** surface in the most appropriate authenticated finance/operations UI (Accounting or Admin, chosen by the readiness audit rather than by convenience).
+
+The initial goal is **recording first, calculation second**. SanQ currently uses a personally owned vehicle for recurring restaurant procurement trips, including routes that may start at the store or at home and may visit one or more suppliers before arriving at / returning to the store. The first slice should preserve reliable source data rather than trying to infer tax treatment from incomplete history.
+
+Recording should support, at minimum:
+
+- trip date;
+- business purpose;
+- start location;
+- zero or more supplier / business stops;
+- end location;
+- actual business kilometres claimed for the trip;
+- optional odometer start/end or other supporting mileage evidence;
+- notes/evidence sufficient to explain the procurement route later.
+
+Do not automatically treat every home-origin leg as business mileage. The later calculation policy must distinguish ordinary personal commuting from qualifying business travel / point-of-call treatment using the CRA rules and evidence applicable at that time.
+
+Once enough real trip data exists, add a separately reviewed calculation/reimbursement slice that:
+
+- applies the then-current CRA reasonable per-kilometre allowance rules and annual thresholds rather than hard-coding the 2026 rates into the recording model;
+- keeps personal commuting kilometres excluded unless the applicable CRA rules support business treatment;
+- supports multi-stop procurement routes without collapsing them into a simple home-to-store distance adjustment;
+- calculates any eligible GST/HST ITC using the CRA method applicable to the reimbursement/allowance structure actually chosen;
+- prevents duplicate recovery of the same vehicle cost through both mileage allowance and separately reimbursed fuel/maintenance/repair expenses;
+- posts any resulting expense, payable/reimbursement and HST effects through the existing Accounting canonical Journal boundary rather than creating a parallel finance ledger.
+
+This is a future operational-finance feature, not a reason to reopen the closed modularization program or to interrupt the current B-lane execution order.

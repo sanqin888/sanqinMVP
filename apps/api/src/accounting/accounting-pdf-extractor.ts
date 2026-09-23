@@ -479,6 +479,8 @@ export function reconcileAccountingExpenseExtractionWithLayout(
   const total = resolveLayoutAmount(
     [
       'Total current charges',
+      'Total including taxes',
+      'Total including tax',
       'Invoice total',
       'Grand total',
       'Total amount due',
@@ -644,6 +646,7 @@ export function extractAccountingText(text: string): AccountingPdfExtraction {
     /\btax\b/i,
   ]);
   const totalCents = moneyAfterLabel(normalizedText, [
+    /\btotal including tax(?:es)?(?: in [A-Z]{3})?\b/i,
     /\bamount due\b/i,
     /\bbalance due\b/i,
     /\bgrand total\b/i,
