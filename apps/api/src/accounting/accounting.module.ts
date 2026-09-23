@@ -46,6 +46,7 @@ import { AccountingCanonicalChangePreviewService } from './accounting-canonical-
 import { AccountingCanonicalChangeExecutionService } from './accounting-canonical-change-execution.service';
 import { AccountingProviderSettlementPreviewService } from './accounting-provider-settlement-preview.service';
 import { AccountingProviderSettlementExecutionService } from './accounting-provider-settlement-execution.service';
+import { AccountingProviderPayoutService } from './accounting-provider-payout.service';
 import { AccountingPayrollConfigService } from './payroll/accounting-payroll-config.service';
 import { AccountingPayrollEmployeeService } from './payroll/accounting-payroll-employee.service';
 import { AccountingPayrollOpeningService } from './payroll/accounting-payroll-opening.service';
@@ -105,6 +106,7 @@ import { PaymentFinancialFactsModule } from '../payments/public-api';
     AccountingCanonicalChangeExecutionService,
     AccountingProviderSettlementPreviewService,
     AccountingProviderSettlementExecutionService,
+    AccountingProviderPayoutService,
     AccountingChartService,
     AccountingExpenseService,
     AccountingExpenseJournalPostingService,
