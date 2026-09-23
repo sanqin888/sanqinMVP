@@ -1,9 +1,9 @@
 # Accounting Provider Payout / Bank Receipt Readiness
 
 Date: 2026-09-23  
-Baseline: `origin/dev@cbd8bb1d` after Accounting B4-B Statement exports (#2483)  
-Work package: **PAYOUT-A — contract/reporting foundation**  
-State: **LOCAL SOURCE / NO RUNTIME WRITER / NO MIGRATION / NO NEW CONTEXT EDGE**
+Baseline: `origin/dev@b919990f` after Accounting PAYOUT-A (#2484)  
+Work package: **PAYOUT-B — durable payout fact + atomic Journal authority**  
+State: **LOCAL SOURCE READY FOR USER REVIEW / MIGRATION REQUIRED / NO HTTP OR UI ENTRY / NO NEW CONTEXT EDGE**
 
 ## 1. Purpose
 
@@ -85,7 +85,7 @@ monthly statement revision
 sales/tax/fee components
 ```
 
-A later persistence slice may store this exact fact durably, but PAYOUT-A does not add schema or a write endpoint.
+PAYOUT-A merged through PR #2484 / final head `7e094c8b` / squash `b919990f`; CI #6198 passed after the initial CI #6197 reported only formatting findings. PAYOUT-B persists this exact fact without adding statement identity or statement-period fields.
 
 ## 5. Frozen Journal semantics
 
@@ -147,44 +147,92 @@ Not included now:
 - statement-to-payout allocation;
 - provider API changes.
 
-Therefore PAYOUT-A cannot create production money facts.
+PAYOUT-A had no production write caller and is now merged/CI-green. PAYOUT-B adds the internal persistence/write core but still exposes no HTTP/UI/runtime caller before its migration gate is satisfied.
 
-## 8. Next implementation gate — PAYOUT-B
+## 8. PAYOUT-B implementation — durable fact + atomic posting
 
-Before exposing any write route, PAYOUT-B should add a durable Accounting-owned payout fact and same-transaction Journal posting authority.
-
-Recommended persisted shape:
+The PAYOUT-B readiness audit confirms the existing Payroll employee-payment pattern is the correct local precedent. The implementation adds one Accounting-owned table:
 
 ```text
 AccountingProviderPayout
-  payoutStableId
+  id                             internal UUID
+  payoutStableId                 unique caller-supplied business identity
   provider
   storeStableId
-  payoutDate
+  payoutDate                     date-only
   destinationBankAccountStableId
   amountCents
   currency
   providerReference?
-  journalEntryStableId?
+  journalEntryStableId?          unique canonical anchor
   createdByActorRef
   createdAt
+  updatedAt
 ```
 
-The exact Prisma relation/index design must be re-audited before editing schema. A persisted payout fact will require an additive user-generated migration under the repository migration workflow.
+There is deliberately no relation to `AccountingProviderFinancialDocument`, no statement period, and no uniqueness requirement on `providerReference`. The latter is supporting bank/provider evidence, not the business identity.
 
-PAYOUT-B should:
+The posting transaction is:
 
-1. create the immutable payout fact;
-2. read/validate the pending and destination-account prerequisites;
-3. post its Journal in the same Serializable Accounting transaction;
-4. bind the Journal hash to the frozen payout fact + account authority;
-5. save the Journal anchor back to the payout fact;
-6. make an identical retry idempotent and reject conflicting reuse;
-7. enforce accounting start/period locks through the existing Journal writer.
+```text
+normalize frozen payout fact
+        ↓
+Serializable Accounting transaction
+        ↓
+find/create AccountingProviderPayout
+        ↓
+validate active CAD provider PLATFORM_WALLET + destination BANK
+        ↓
+revalidate persisted payout fact + current account prerequisites
+        ↓
+createProviderPayoutJournalInTx()
+        ↓
+Dr BANK / Cr provider pending
+        ↓
+save journalEntryStableId on payout
+        ↓
+write ACCOUNTING_PROVIDER_PAYOUT audit
+```
 
-Do not enforce a monthly-statement foreign key.
+The generic Journal writer rejects `accounting.provider_payout.v1`, and generic Journal update/delete paths reject an existing canonical payout Journal. This prevents a caller from bypassing the payout-specific persisted authority.
 
-Whether to block a payout when the current provider-pending balance is insufficient must be decided in PAYOUT-B readiness. Weekly/daily payouts can arrive before a monthly statement is uploaded, so a simplistic `payout <= current pending balance` rule can incorrectly block legitimate bank evidence when the provider economics authority is statement-lagged.
+### Idempotency and recovery
+
+`payoutStableId` is intentionally caller-supplied. The exact same stable ID + exact same frozen fields is an idempotent retry. Reusing the stable ID with a different provider, date, account, amount, currency or reference fails closed.
+
+If a matching persisted payout exists without a Journal anchor, the same write core can resume posting. If it already has an anchor, replay verifies that the referenced active Journal is `PAYMENT / accounting.provider_payout.v1` for the same payout before returning it.
+
+### Pending-balance policy
+
+PAYOUT-B does **not** require:
+
+```text
+current posted provider pending balance >= payout amount
+```
+
+This is intentional. Clover daily and Uber/Fantuan weekly deposits can occur before their monthly statement evidence is uploaded, so the current canonical pending balance may temporarily lag the real bank deposit. Blocking that deposit would discard stronger real-world bank evidence. PAYOUT-D reconciliation should surface a negative/unsupported pending balance and explain the missing statement coverage instead.
+
+### Runtime exposure gate
+
+PAYOUT-B registers the Accounting-local service but exposes no controller, HTTP route or Web UI. Architecture tests pin `createProviderPayoutJournalInTx()` to exactly one production caller, `AccountingProviderPayoutService`, and pin the payout controller caller set to zero.
+
+### Migration gate
+
+**MIGRATION REQUIRED.** The schema addition is additive-only and should create the new payout table plus its unique constraints/indexes. It requires no backfill, rename, enum change, drop or data contraction.
+
+Suggested migration name:
+
+```text
+accounting_provider_payout_persistence
+```
+
+User-local generation command against the verified disposable/local development database:
+
+```bash
+pnpm --filter api exec prisma migrate dev --create-only --name accounting_provider_payout_persistence
+```
+
+The generated SQL must be reviewed before application. Promotion to `main`, production deployment and PAYOUT-C runtime/UI exposure remain blocked until that migration has been generated locally, reviewed, committed and merged back into `dev`.
 
 ## 9. Later slices
 

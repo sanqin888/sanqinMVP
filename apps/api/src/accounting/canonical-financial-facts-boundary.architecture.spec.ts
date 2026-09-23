@@ -172,6 +172,9 @@ describe('Phase 9 canonical financial facts boundary', () => {
         ACCOUNTING_ROOT,
         'accounting-provider-settlement-execution.service.ts',
       )?.source ?? '';
+    const providerPayoutService =
+      file(ACCOUNTING_ROOT, 'accounting-provider-payout.service.ts')?.source ??
+      '';
     const accountingService =
       file(ACCOUNTING_ROOT, 'accounting.service.ts')?.source ?? '';
     const canonicalSaleController =
@@ -264,6 +267,16 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(providerSettlementExecutionService).not.toContain(
       'accountingJournalEntry.',
     );
+    expect(providerPayoutService).toContain("from './accounting-db'");
+    expect(providerPayoutService).toContain(
+      "from './accounting-journal.service'",
+    );
+    expect(providerPayoutService).toContain(
+      "from './accounting-period.service'",
+    );
+    expect(providerPayoutService).not.toContain("from '../payments/");
+    expect(providerPayoutService).not.toContain("from '../orders/");
+    expect(providerPayoutService).not.toContain("from '../integrations/");
     expect(canonicalSaleController).toContain(
       "@Post('journal/canonical-sales/replay')",
     );
@@ -303,6 +316,7 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(accountingModule).toContain(
       'AccountingProviderSettlementExecutionService',
     );
+    expect(accountingModule).toContain('AccountingProviderPayoutService');
 
     const canonicalSalePostingCallers = scanTypeScript(ACCOUNTING_ROOT, {
       productionOnly: true,
@@ -353,6 +367,37 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(providerSettlementWriterCallers).toEqual([
       'accounting/accounting-provider-settlement-execution.service.ts',
     ]);
+
+    const providerPayoutWriterCallers = scanTypeScript(ACCOUNTING_ROOT, {
+      productionOnly: true,
+    })
+      .filter(
+        ({ path, source }) =>
+          !path.endsWith('accounting-journal.service.ts') &&
+          source.includes('createProviderPayoutJournalInTx('),
+      )
+      .map(({ path }) =>
+        path.slice(API_SRC_ROOT.length + 1).replaceAll('\\', '/'),
+      )
+      .sort();
+    expect(providerPayoutWriterCallers).toEqual([
+      'accounting/accounting-provider-payout.service.ts',
+    ]);
+
+    const payoutControllerCallers = scanTypeScript(ACCOUNTING_ROOT, {
+      productionOnly: true,
+    })
+      .filter(
+        ({ path, source }) =>
+          path.endsWith('.controller.ts') &&
+          (source.includes('AccountingProviderPayoutService') ||
+            source.includes('provider-payout')),
+      )
+      .map(({ path }) =>
+        path.slice(API_SRC_ROOT.length + 1).replaceAll('\\', '/'),
+      )
+      .sort();
+    expect(payoutControllerCallers).toEqual([]);
   });
 
   it('keeps generic single-entry AccountingTransaction persistence fully contracted', () => {
