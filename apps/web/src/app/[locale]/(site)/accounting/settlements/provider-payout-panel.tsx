@@ -5,6 +5,7 @@ import { apiFetch } from '@/lib/api/client';
 import type { AccountingAccount } from '../contracts/chart';
 import type { AccountingFinancialProvider } from '../contracts/core';
 import type { AccountingProviderPayout } from '../contracts/payouts';
+import { ProviderPayoutSettlementBankCsvPanel } from './provider-payout-settlement-bank-csv-panel';
 
 const PROVIDERS: AccountingFinancialProvider[] = [
   'CLOVER',
@@ -375,6 +376,29 @@ export function ProviderPayoutPanel({
           </button>
         </div>
       </form>
+
+      <ProviderPayoutSettlementBankCsvPanel
+        isZh={isZh}
+        knownStoreStableIds={knownStoreStableIds}
+        eligibleBanks={eligibleBanks}
+        onUseDeposit={(deposit) => {
+          setProvider(deposit.provider);
+          setPayoutDate(deposit.payoutDate);
+          setAmount((deposit.amountCents / 100).toFixed(2));
+          setDestinationBankAccountStableId(
+            deposit.destinationBankAccountStableId,
+          );
+          setProviderReference('');
+          setConfirmed(false);
+          setPayoutStableId('');
+          setError(null);
+          setMessage(
+            isZh
+              ? '已将银行流水中的未匹配到账带入表单，请核对后勾选确认并正式记账。'
+              : 'The unmatched bank deposit was copied into the form. Verify it, confirm receipt, then post.',
+          );
+        }}
+      />
 
       <details className="rounded-xl border border-slate-200 bg-white p-4">
         <summary className="cursor-pointer text-sm font-semibold text-slate-800">

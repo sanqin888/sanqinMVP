@@ -60,9 +60,6 @@ export function AccountingInboxBankCsvReviewPanel({
   const [bankAccountStableId, setBankAccountStableId] = useState('');
   const [preview, setPreview] =
     useState<AccountingProviderPayoutBankMatchPreview | null>(null);
-  const [excludedRowNumbers, setExcludedRowNumbers] = useState<Set<number>>(
-    () => new Set(),
-  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -82,22 +79,6 @@ export function AccountingInboxBankCsvReviewPanel({
       setBankAccountStableId(eligibleBanks[0]?.accountStableId ?? '');
     }
   }, [bankAccountStableId, eligibleBanks]);
-
-  const includedDepositCount =
-    preview?.deposits.filter(
-      (deposit) => !excludedRowNumbers.has(deposit.rowNumber),
-    ).length ?? 0;
-  const excludedDepositCount = preview
-    ? preview.deposits.length - includedDepositCount
-    : 0;
-  const includedAmountCents =
-    preview?.deposits.reduce(
-      (sum, deposit) =>
-        excludedRowNumbers.has(deposit.rowNumber)
-          ? sum
-          : sum + deposit.amountCents,
-      0,
-    ) ?? 0;
 
   async function previewMatches(event: FormEvent) {
     event.preventDefault();
@@ -123,17 +104,6 @@ export function AccountingInboxBankCsvReviewPanel({
         await apiFetch<AccountingProviderPayoutBankMatchPreview>(
           `/accounting/provider-payouts/bank-match-preview?${query.toString()}`,
         );
-      setExcludedRowNumbers(
-        new Set(
-          result.deposits
-            .filter(
-              (deposit) =>
-                deposit.providerHint === null &&
-                deposit.candidates.length === 0,
-            )
-            .map((deposit) => deposit.rowNumber),
-        ),
-      );
       setPreview(result);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -180,7 +150,6 @@ export function AccountingInboxBankCsvReviewPanel({
             onChange={(event) => {
               setStoreStableId(event.target.value);
               setPreview(null);
-              setExcludedRowNumbers(new Set());
             }}
           />
           <datalist id="inbox-bank-review-stores">
@@ -198,7 +167,6 @@ export function AccountingInboxBankCsvReviewPanel({
             onChange={(event) => {
               setBankAccountStableId(event.target.value);
               setPreview(null);
-              setExcludedRowNumbers(new Set());
             }}
           >
             <option value="">
@@ -254,22 +222,12 @@ export function AccountingInboxBankCsvReviewPanel({
             <span className="rounded-full bg-white px-2.5 py-1">
               {isZh ? '未匹配' : 'Unmatched'}: {preview.counts.unmatched}
             </span>
-            <span className="rounded-full bg-white px-2.5 py-1">
-              {isZh ? '本次参与' : 'Included'}: {includedDepositCount} ·{' '}
-              {money(includedAmountCents)}
-            </span>
-            {excludedDepositCount > 0 ? (
-              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-700">
-                {isZh ? '人工排除' : 'Excluded'}: {excludedDepositCount}
-              </span>
-            ) : null}
           </div>
 
           <div className="overflow-x-auto rounded-lg border border-cyan-100 bg-white">
             <table className="min-w-[980px] w-full text-left text-xs">
               <thead className="border-b border-slate-200 text-slate-500">
                 <tr>
-                  <th className="px-2 py-2">{isZh ? '本期参与' : 'Include'}</th>
                   <th className="px-2 py-2">{isZh ? '行' : 'Row'}</th>
                   <th className="px-2 py-2">{isZh ? '日期' : 'Date'}</th>
                   <th className="px-2 py-2 text-right">
@@ -286,41 +244,8 @@ export function AccountingInboxBankCsvReviewPanel({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {preview.deposits.map((deposit) => {
-                  const excluded = excludedRowNumbers.has(deposit.rowNumber);
-                  return (
-                    <tr
-                      key={deposit.rowNumber}
-                      className={excluded ? 'bg-slate-50 text-slate-400' : ''}
-                    >
-                      <td className="px-2 py-2">
-                        <label className="inline-flex items-center gap-1.5">
-                          <input
-                            type="checkbox"
-                            checked={!excluded}
-                            onChange={(event) => {
-                              setExcludedRowNumbers((current) => {
-                                const next = new Set(current);
-                                if (event.target.checked) {
-                                  next.delete(deposit.rowNumber);
-                                } else {
-                                  next.add(deposit.rowNumber);
-                                }
-                                return next;
-                              });
-                            }}
-                          />
-                          <span>
-                            {excluded
-                              ? isZh
-                                ? '已排除'
-                                : 'Excluded'
-                              : isZh
-                                ? '参与'
-                                : 'Included'}
-                          </span>
-                        </label>
-                      </td>
+                {preview.deposits.map((deposit) => (
+                    <tr key={deposit.rowNumber}>
                       <td className="px-2 py-2">{deposit.rowNumber}</td>
                       <td className="px-2 py-2">{deposit.occurredOn}</td>
                       <td className="px-2 py-2 text-right font-semibold">
@@ -352,16 +277,15 @@ export function AccountingInboxBankCsvReviewPanel({
                               .join(' | ')}
                       </td>
                     </tr>
-                  );
-                })}
+                ))}
               </tbody>
             </table>
           </div>
 
           <p className="text-xs text-slate-500">
             {isZh
-              ? '没有 provider hint 且没有现有 payout 候选的普通银行入账默认排除；其他行可人工取消“本期参与”。该选择目前只影响本次预览，不修改原始 CSV，也不会创建 payout 或 Journal。'
-              : 'Ordinary deposits with neither a provider hint nor an existing payout candidate start excluded. Other rows can be removed from this preview by clearing Include. This does not edit the original CSV or create a payout or Journal.'}
+              ? '收件箱这里只用于核对材料内容和已有 payout 匹配，不做“本期参与 / 排除”决定。完成分类并标记已审核后，请到“平台结算”处理结算范围和正式入账。'
+              : 'Inbox only verifies the evidence and existing payout matches. Include/exclude decisions belong to Provider settlements after this evidence is classified and marked reviewed.'}
           </p>
         </div>
       ) : null}
