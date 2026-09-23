@@ -202,7 +202,7 @@ describe('AccountingTrialBalanceService B3-A canonical core', () => {
 
     const report = await service.project({
       from: '2026-06-01',
-      to: '2026-06-30',
+      to: '2026-07-31',
     });
 
     expect(report.currency).toBe('CAD');
