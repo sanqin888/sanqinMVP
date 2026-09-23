@@ -197,6 +197,24 @@ describe('AccountingTrialBalanceService B3-A canonical core', () => {
     expect(period.listYearCloseStatus).toHaveBeenCalledWith(['2026']);
   });
 
+  it('defaults omitted currency to CAD inside the canonical service', async () => {
+    const { service, prisma } = makeService();
+
+    const report = await service.project({
+      from: '2026-06-01',
+      to: '2026-06-30',
+    });
+
+    expect(report.currency).toBe('CAD');
+    expect(prisma.accountingJournalLine.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          entry: expect.objectContaining({ currency: 'CAD' }),
+        }),
+      }),
+    );
+  });
+
   it('requires an explicit accounting start date before projecting balances', async () => {
     const { service, prisma } = makeService({ accountingStartDate: null });
 

@@ -1,10 +1,10 @@
 # Accounting B3 Trial Balance / Balance Movement Readiness
 
 Date: 2026-09-22  
-Repository baseline: `origin/dev@1182a46eb8ca707d845c48267e2268a8626c1871`  
-Baseline CI: GitHub Actions CI #6168 green for API/Web/Architecture  
-Implementation branch: `feat/accounting-b3a-trial-balance-core`  
-State: **B3 READINESS COMPLETE / B3-A SOURCE IMPLEMENTED / LOCAL REVIEW PENDING / NO MIGRATION EXPECTED**
+Repository baseline: `origin/dev@9c92eedae3584b6efceec8e108034b6a624e0aa6`  
+B3-A delivery: PR #2475 / PR head `8a9280a5` / squash `9c92eeda`; PR CI #6171 + merged-head CI #6172 green  
+Current implementation: B3-B HTTP/public contract on latest `origin/dev@9c92eeda`  
+State: **B3 READINESS COMPLETE / B3-A MERGED + CI GREEN / B3-B SOURCE IMPLEMENTED + LOCAL REVIEW PENDING / NO MIGRATION EXPECTED**
 
 ## 1. Decision
 
@@ -230,7 +230,17 @@ Explicitly excluded:
 
 ### B3-B — Trial Balance HTTP/public contract
 
-Expose the B3-A projection through an authenticated Accounting report endpoint and pin transport/contract behavior without duplicating projection arithmetic.
+State: **SOURCE IMPLEMENTED / LOCAL REVIEW PENDING**.
+
+The existing `AccountingReportsController` exposes authenticated `GET /accounting/report/trial-balance` under the same `SessionAuthGuard` + `RolesGuard` and `ADMIN` / `ACCOUNTANT` role contract as the other Accounting reports. The route accepts only `from?`, `to?`, `currency?` and returns `AccountingTrialBalanceReportV1` by directly calling:
+
+```text
+AccountingTrialBalanceService.project({ from, to, currency })
+```
+
+B3-B performs no normalization, clamp, filtering, money arithmetic or DTO reconstruction. Exact query values are passed to B3-A; B3-A remains authoritative for default CAD, date validation, accounting-start clamp, canonical Journal reads, opening/period/closing totals and BadRequest/Conflict behavior. Controller/architecture characterization also keeps the Trial Balance route away from direct Prisma reads, Management projection arithmetic, ExpenseDocument arithmetic and Orders/provider facts.
+
+Still explicitly excluded from B3-B: Web/PWA UI, CSV/PDF export, Balance Movement, old `report/account-balance` deletion/rename, store filter, FX conversion, Prisma/schema/migration, Journal posting changes and Management Expense filtering.
 
 ### B3-C — Balance Movement Statement
 
@@ -248,7 +258,7 @@ After CI/deployment, reconcile fresh API output against canonical Journal/CoA to
 
 ## 10. Architecture effect
 
-B3-A is Accounting-internal.
+B3-A remains Accounting-internal projection authority. B3-B adds only an Accounting-owned HTTP transport on the existing Reports controller; it does not create another financial calculation or a new cross-context dependency.
 
 Expected graph effect:
 
@@ -258,6 +268,7 @@ Expected graph effect:
 - no Prisma/schema/migration;
 - no dependency manifest/lockfile change;
 - no Orders/Payments/Loyalty/Uber/Clover behavior change;
-- no Web contract change.
+- one new authenticated Accounting HTTP route returning the existing versioned B3-A report contract;
+- no Web/PWA consumer in B3-B.
 
 Phase 9 remains **PRODUCTION VERIFIED / CLOSED** and is not reopened.

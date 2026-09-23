@@ -15,6 +15,8 @@ import {
 } from './accounting-controller-support';
 import { AccountingFinancialReportsService } from './accounting-financial-reports.service';
 import { AccountingSalesAnalyticsService } from './accounting-sales-analytics.service';
+import type { AccountingTrialBalanceReportV1 } from './accounting-trial-balance.contract';
+import { AccountingTrialBalanceService } from './accounting-trial-balance.service';
 
 @Controller('accounting')
 @UseGuards(SessionAuthGuard, RolesGuard)
@@ -23,6 +25,7 @@ export class AccountingReportsController {
   constructor(
     private readonly reports: AccountingFinancialReportsService,
     private readonly salesAnalytics: AccountingSalesAnalyticsService,
+    private readonly trialBalance: AccountingTrialBalanceService,
   ) {}
 
   @Get('dashboard')
@@ -47,6 +50,15 @@ export class AccountingReportsController {
   @Get('report/sales')
   async salesReport(@Query('from') from?: string, @Query('to') to?: string) {
     return this.salesAnalytics.report({ from, to });
+  }
+
+  @Get('report/trial-balance')
+  trialBalanceReport(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('currency') currency?: string,
+  ): Promise<AccountingTrialBalanceReportV1> {
+    return this.trialBalance.project({ from, to, currency });
   }
 
   @Get('report/account-balance')
