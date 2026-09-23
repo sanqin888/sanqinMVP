@@ -466,7 +466,7 @@ EFA-D merged through PR #2471 / final head `ddb01f74` / squash `2d3abc0e`; CI #6
 
 The Accounting PWA has one operator and may be deleted/recreated at the v2 cutover, so no long-lived old-client write contract is required. Historical v1 records remain readable and immutable.
 
-EFA is closed; B3 readiness characterization is complete. B3-A merged through PR #2475 / squash `9c92eeda` with PR CI #6171 and merged-head CI #6172 green; B3-B HTTP/public contract is now source-implemented for local review.
+EFA is closed; B3 readiness characterization is complete. B3-A merged through PR #2475 / squash `9c92eeda` with PR CI #6171 and merged-head CI #6172 green; B3-B merged through PR #2476 / squash `ec2cff0f` with PR CI #6175 and merged-head CI #6176 green; B3-C Balance Movement is now source-implemented for local review.
 
 ### 5.4 B3 — Trial Balance + Balance Movement Statement
 
@@ -474,13 +474,13 @@ Priority: **P1/P2**
 Complexity: **H**  
 Depends on: **B1 + B2 + EFA — satisfied 2026-09-22**.
 
-Current state: **READINESS COMPLETE / B3-A MERGED + CI GREEN / B3-B SOURCE IMPLEMENTED + LOCAL REVIEW PENDING / NO MIGRATION EXPECTED** at latest baseline `origin/dev@9c92eeda`. B3-A merged through PR #2475 / PR head `8a9280a5` / squash `9c92eeda`; PR CI #6171 and merged-head CI #6172 are green. Detailed audit/design: `docs/architecture/accounting-b3-trial-balance-readiness.md`.
+Current state: **READINESS COMPLETE / B3-A + B3-B MERGED + CI GREEN / B3-C SOURCE IMPLEMENTED + LOCAL REVIEW PENDING / NO MIGRATION EXPECTED** at latest baseline `origin/dev@9ac715f3`. B3-A merged through PR #2475 / squash `9c92eeda`; B3-B merged through PR #2476 / final head `7b859b69` / squash `ec2cff0f` with PR CI #6175 and merged-head CI #6176 green. Detailed audit/design: `docs/architecture/accounting-b3-trial-balance-readiness.md`.
 
 The readiness audit proves the existing canonical Journal/CoA is sufficient: production snapshot has 1,501 Journal entries / 4,897 lines, debit=credit=`7,798,968c`, zero unbalanced entries and zero explicit opening Journals. Account-class reconstruction reconciles Assets=`2,104,938c`, Liabilities=`816,109c` and cumulative recorded earnings=`1,288,829c` to zero under the current management-opening policy. B3 therefore does not redesign Journal or revenue/expense posting.
 
 B3-A creates a versioned Accounting-owned whole-ledger/per-currency Trial Balance core directly from Journal lines. It keeps inactive historical accounts, treats ASSET/EXPENSE as debit-normal and LIABILITY/EQUITY/REVENUE as credit-normal, treats explicit `OPENING_BALANCE` Journals as opening facts, attaches period-close visibility and fails closed if individual Journals or opening/period/closing Trial Balance totals do not balance. It does not read Management filtering, so EFA-excluded Expense v2 Journals remain canonical statement facts.
 
-The implementation sequence is `B3-A core -> B3-B HTTP/public contract -> B3-C Balance Movement projection -> B3-D production reconciliation/closeout`. B3-B exposes the existing versioned B3-A report through authenticated `GET /accounting/report/trial-balance` and performs no second calculation: query values are passed to `AccountingTrialBalanceService`, which still owns CAD defaulting, date/clamp rules, canonical Journal reads and all amounts. B3-B does not add Web/UI, exports, Balance Movement, a store filter, FX conversion, Prisma schema/migration or old account-balance contraction. Seven current production Journals have null `storeStableId`, all Expense-document Journals, so store-filtered Trial Balance is deliberately deferred until complete multi-store Accounting attribution exists.
+The implementation sequence is `B3-A core -> B3-B HTTP/public contract -> B3-C Balance Movement projection -> B3-D production reconciliation/closeout`. B3-B exposes the existing versioned B3-A report through authenticated `GET /accounting/report/trial-balance`. B3-C consumes that report rather than Journal/Prisma directly, projects ASSET / LIABILITY / direct EQUITY sections plus a `REVENUE - EXPENSE` recorded-earnings bridge, and exposes authenticated `GET /accounting/report/balance-movement`; opening, period and closing bridges each fail closed unless they reconcile to zero. B3-C also exposes zero-opening versus explicit-opening-Journal basis metadata while keeping `absoluteBalanceClaim=false`. Neither slice adds Web/UI, exports, a store filter, FX conversion, Prisma schema/migration or old account-balance contraction. Seven current production Journals have null `storeStableId`, all Expense-document Journals, so store-filtered statements remain deliberately deferred until complete multi-store Accounting attribution exists.
 
 Build Trial Balance directly from Journal lines and then the zero-opening **资产负债变动表 / Balance Movement Statement**.
 

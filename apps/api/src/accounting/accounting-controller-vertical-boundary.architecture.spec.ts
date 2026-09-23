@@ -46,6 +46,7 @@ const EXPECTED_CONTROLLER_CAPABILITIES = {
     'AccountingProviderSettlementQueryService',
   ],
   'accounting-reports.controller.ts': [
+    'AccountingBalanceMovementService',
     'AccountingFinancialReportsService',
     'AccountingSalesAnalyticsService',
     'AccountingTrialBalanceService',
@@ -99,6 +100,7 @@ const EXPECTED_ROUTES = [
   'GET report/pnl',
   'GET report/sales',
   'GET report/trial-balance',
+  'GET report/balance-movement',
   'GET journal/canonical-sales/replay-preview',
   'GET journal/canonical-changes/shadow-preview',
   'GET journal/provider-settlement/shadow-preview',
