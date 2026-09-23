@@ -509,6 +509,8 @@ Then improve the Accounting reports surface:
 - drill-through;
 - stale explanatory copy on Sales/Reports.
 
+**B4-A local source state (2026-09-23): READY FOR USER REVIEW.** The Reports Web adapter now consumes the existing canonical Trial Balance and Balance Movement endpoints through shared Web contracts, presents Management P&L separately from canonical statements, removes its legacy account-balance browser read, shows effective-range / whole-ledger / currency / timezone / period-close metadata, and preserves the required zero-opening / non-formal-Balance-Sheet disclosure. Report presets now resolve the business date in America/Toronto without Date -> UTC rollover. The old account-balance HTTP route is intentionally left registered for a later explicit contraction. B4-A adds no backend financial calculation, Prisma/schema/migration, dependency, context edge or scanner allowance; exports, drill-through, P&L adjustment decomposition and Sales comparison cleanup remain later B4 work.
+
 Avoid polishing current mixed-authority widgets immediately before replacing their underlying semantics.
 
 ### 5.6 B5 — Admin 数据 -> “经营报表” redesign

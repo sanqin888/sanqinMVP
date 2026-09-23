@@ -1,4 +1,4 @@
-import type { AccountingCategory } from './chart';
+import type { AccountingAccount, AccountingCategory } from './chart';
 import type { AccountingFinancialProvider } from './core';
 
 export type AccountingReportGroupBy = 'month' | 'quarter' | 'year';
@@ -201,3 +201,142 @@ export type AccountingSalesAnalyticsReport = {
   };
   journalEntryCount: number;
 };
+
+export type AccountingTrialBalanceNormalSide = 'DEBIT' | 'CREDIT';
+
+export type AccountingTrialBalanceCloseStatus = {
+  months: Array<{
+    periodKey: string;
+    isClosed: boolean;
+  }>;
+  years: Array<{
+    periodKey: string;
+    isClosed: boolean;
+  }>;
+  allMonthsClosed: boolean;
+};
+
+export type AccountingTrialBalanceAccountRow = {
+  accountStableId: string;
+  accountName: string;
+  accountClass: AccountingAccount['accountClass'];
+  accountType: AccountingAccount['type'] | null;
+  currency: string;
+  isActive: boolean;
+  normalSide: AccountingTrialBalanceNormalSide;
+  openingDebitBalanceCents: number;
+  openingCreditBalanceCents: number;
+  openingNormalBalanceCents: number;
+  periodDebitCents: number;
+  periodCreditCents: number;
+  periodNormalMovementCents: number;
+  closingDebitBalanceCents: number;
+  closingCreditBalanceCents: number;
+  closingNormalBalanceCents: number;
+};
+
+export type AccountingTrialBalanceReport = {
+  version: 1;
+  scope: 'WHOLE_LEDGER';
+  currency: string;
+  timezone: string;
+  accountingStartDate: string;
+  requestedFrom: string;
+  requestedTo: string;
+  effectiveFrom: string;
+  effectiveTo: string;
+  openingBalanceJournal: {
+    entryCount: number;
+    debitCents: number;
+    creditCents: number;
+  };
+  totals: {
+    openingDebitBalanceCents: number;
+    openingCreditBalanceCents: number;
+    periodDebitCents: number;
+    periodCreditCents: number;
+    closingDebitBalanceCents: number;
+    closingCreditBalanceCents: number;
+  };
+  accounts: AccountingTrialBalanceAccountRow[];
+  closeStatus: AccountingTrialBalanceCloseStatus;
+};
+
+export type AccountingBalanceMovementAmounts = {
+  openingCumulativeCents: number;
+  periodMovementCents: number;
+  closingCumulativeCents: number;
+};
+
+export type AccountingBalanceMovementAccountRow =
+  AccountingBalanceMovementAmounts & {
+    accountStableId: string;
+    accountName: string;
+    accountType: AccountingAccount['type'] | null;
+    isActive: boolean;
+  };
+
+export type AccountingBalanceMovementSection =
+  AccountingBalanceMovementAmounts & {
+    accounts: AccountingBalanceMovementAccountRow[];
+  };
+
+export type AccountingBalanceMovementReport = {
+  version: 1;
+  statement: 'BALANCE_MOVEMENT';
+  scope: 'WHOLE_LEDGER';
+  currency: string;
+  timezone: string;
+  accountingStartDate: string;
+  requestedFrom: string;
+  requestedTo: string;
+  effectiveFrom: string;
+  effectiveTo: string;
+  openingBasis: {
+    kind: 'ZERO_MANAGEMENT_OPENING' | 'EXPLICIT_OPENING_JOURNAL';
+    explicitOpeningJournalEntryCount: number;
+    zeroOpeningDisclaimerRequired: boolean;
+    absoluteBalanceClaim: false;
+  };
+  openingBalanceJournal: {
+    entryCount: number;
+    debitCents: number;
+    creditCents: number;
+  };
+  assets: AccountingBalanceMovementSection;
+  liabilities: AccountingBalanceMovementSection;
+  directEquity: AccountingBalanceMovementSection;
+  earningsBridge: {
+    revenue: AccountingBalanceMovementAmounts;
+    expense: AccountingBalanceMovementAmounts;
+    recordedEarnings: AccountingBalanceMovementAmounts;
+  };
+  bridge: {
+    opening: {
+      assetsCents: number;
+      liabilitiesCents: number;
+      directEquityCents: number;
+      recordedEarningsCents: number;
+      totalEquityCents: number;
+      reconciliationCents: number;
+    };
+    period: {
+      assetsCents: number;
+      liabilitiesCents: number;
+      directEquityCents: number;
+      recordedEarningsCents: number;
+      totalEquityCents: number;
+      reconciliationCents: number;
+    };
+    closing: {
+      assetsCents: number;
+      liabilitiesCents: number;
+      directEquityCents: number;
+      recordedEarningsCents: number;
+      totalEquityCents: number;
+      reconciliationCents: number;
+    };
+  };
+  closeStatus: AccountingTrialBalanceCloseStatus;
+};
+
