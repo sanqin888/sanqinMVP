@@ -13,6 +13,8 @@ import {
   type AuthedAccountingRequest,
   requireAccountingOperatorUserId,
 } from './accounting-controller-support';
+import type { AccountingBalanceMovementReportV1 } from './accounting-balance-movement.contract';
+import { AccountingBalanceMovementService } from './accounting-balance-movement.service';
 import { AccountingFinancialReportsService } from './accounting-financial-reports.service';
 import { AccountingSalesAnalyticsService } from './accounting-sales-analytics.service';
 import type { AccountingTrialBalanceReportV1 } from './accounting-trial-balance.contract';
@@ -25,6 +27,7 @@ export class AccountingReportsController {
   constructor(
     private readonly reports: AccountingFinancialReportsService,
     private readonly salesAnalytics: AccountingSalesAnalyticsService,
+    private readonly balanceMovement: AccountingBalanceMovementService,
     private readonly trialBalance: AccountingTrialBalanceService,
   ) {}
 
@@ -59,6 +62,15 @@ export class AccountingReportsController {
     @Query('currency') currency?: string,
   ): Promise<AccountingTrialBalanceReportV1> {
     return this.trialBalance.project({ from, to, currency });
+  }
+
+  @Get('report/balance-movement')
+  balanceMovementReport(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('currency') currency?: string,
+  ): Promise<AccountingBalanceMovementReportV1> {
+    return this.balanceMovement.project({ from, to, currency });
   }
 
   @Get('report/account-balance')

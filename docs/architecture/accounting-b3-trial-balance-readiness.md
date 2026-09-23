@@ -1,10 +1,11 @@
 # Accounting B3 Trial Balance / Balance Movement Readiness
 
 Date: 2026-09-22  
-Repository baseline: `origin/dev@9c92eedae3584b6efceec8e108034b6a624e0aa6`  
-B3-A delivery: PR #2475 / PR head `8a9280a5` / squash `9c92eeda`; PR CI #6171 + merged-head CI #6172 green  
-Current implementation: B3-B HTTP/public contract on latest `origin/dev@9c92eeda`  
-State: **B3 READINESS COMPLETE / B3-A MERGED + CI GREEN / B3-B SOURCE IMPLEMENTED + LOCAL REVIEW PENDING / NO MIGRATION EXPECTED**
+Repository baseline: latest `origin/dev@9ac715f36dafad376c78bc6a841c5917473a62f0`  
+B3-A delivery: PR #2475 / squash `9c92eeda`; PR CI #6171 + merged-head CI #6172 green  
+B3-B delivery: PR #2476 / final head `7b859b69` / squash `ec2cff0f`; PR CI #6175 + merged-head CI #6176 green  
+Current implementation: B3-C Balance Movement on `feat/accounting-b3c-balance-movement-v2`  
+State: **B3 READINESS COMPLETE / B3-A + B3-B MERGED + CI GREEN / B3-C SOURCE IMPLEMENTED + LOCAL REVIEW PENDING / NO MIGRATION EXPECTED**
 
 ## 1. Decision
 
@@ -230,7 +231,7 @@ Explicitly excluded:
 
 ### B3-B — Trial Balance HTTP/public contract
 
-State: **SOURCE IMPLEMENTED / LOCAL REVIEW PENDING**.
+State: **MERGED / CI GREEN** through PR #2476 / final head `7b859b69` / squash `ec2cff0f`; PR CI #6175 and merged-head CI #6176 passed.
 
 The existing `AccountingReportsController` exposes authenticated `GET /accounting/report/trial-balance` under the same `SessionAuthGuard` + `RolesGuard` and `ADMIN` / `ACCOUNTANT` role contract as the other Accounting reports. The route accepts only `from?`, `to?`, `currency?` and returns `AccountingTrialBalanceReportV1` by directly calling:
 
@@ -244,13 +245,22 @@ Still explicitly excluded from B3-B: Web/PWA UI, CSV/PDF export, Balance Movemen
 
 ### B3-C — Balance Movement Statement
 
-Derive Assets / Liabilities / Equity bridge directly from the same B3-A account rows. Revenue and Expense normal balances bridge into cumulative recorded earnings so:
+State: **SOURCE IMPLEMENTED / LOCAL REVIEW PENDING / NO MIGRATION EXPECTED / NO GRAPH CHANGE** on `feat/accounting-b3c-balance-movement-v2` from latest `origin/dev@9ac715f3`.
+
+B3-C does not query Journal, Prisma or Management reporting itself. `AccountingBalanceMovementService` calls the canonical B3-A `AccountingTrialBalanceService.project(query)` with unchanged `from?`, `to?`, `currency?` values and then applies a pure Balance Movement policy to those versioned account rows.
+
+The v1 contract exposes account-level ASSET, LIABILITY and direct EQUITY movement sections with `openingCumulativeCents`, `periodMovementCents` and `closingCumulativeCents`. REVENUE and EXPENSE are not presented as balance-sheet sections; their signed normal balances are aggregated into an earnings bridge:
 
 ```text
-Assets - Liabilities - Direct Equity - Cumulative Recorded Earnings = 0
+Recorded Earnings = Revenue normal balance - Expense normal balance
+Assets - Liabilities - Direct Equity - Recorded Earnings = 0
 ```
 
-Keep the explicit zero-opening disclaimer until a reviewed formal opening Journal exists.
+The equation is checked independently for opening, period and closing values. B3-C also revalidates Trial Balance source balance, per-account roll-forward, currency consistency and duplicate account IDs; any mismatch fails closed through `ConflictException` rather than emitting a partially reconciled statement.
+
+Opening semantics remain explicit. With no `OPENING_BALANCE` Journal, `openingBasis.kind=ZERO_MANAGEMENT_OPENING`, `zeroOpeningDisclaimerRequired=true` and the statement represents cumulative recorded movement from `accountingStartDate`. If an explicit opening Journal later exists, the basis changes to `EXPLICIT_OPENING_JOURNAL`; B3-C still keeps `absoluteBalanceClaim=false`, so it does not promote itself to a formal Balance Sheet.
+
+Authenticated `GET /accounting/report/balance-movement` is a thin transport under the existing Accounting guards. B3-C adds no Web/PWA UI, CSV/PDF export, old `report/account-balance` contraction, store filter, FX conversion, Prisma/schema/migration, Journal posting change or Management Expense filtering. Those presentation/cutover items remain B4 or later work.
 
 ### B3-D — Production reconciliation / closeout
 
@@ -258,7 +268,7 @@ After CI/deployment, reconcile fresh API output against canonical Journal/CoA to
 
 ## 10. Architecture effect
 
-B3-A remains Accounting-internal projection authority. B3-B adds only an Accounting-owned HTTP transport on the existing Reports controller; it does not create another financial calculation or a new cross-context dependency.
+B3-A remains the canonical Accounting Trial Balance authority. B3-B exposes that authority over HTTP. B3-C stays inside the same Accounting owner and depends only on the B3-A service/contract; it creates no second Journal reader and no cross-context financial calculation.
 
 Expected graph effect:
 
@@ -268,7 +278,8 @@ Expected graph effect:
 - no Prisma/schema/migration;
 - no dependency manifest/lockfile change;
 - no Orders/Payments/Loyalty/Uber/Clover behavior change;
-- one new authenticated Accounting HTTP route returning the existing versioned B3-A report contract;
-- no Web/PWA consumer in B3-B.
+- existing authenticated Trial Balance route retained;
+- one additional authenticated Accounting route: `GET /accounting/report/balance-movement`;
+- no Web/PWA/export consumer in B3-C.
 
 Phase 9 remains **PRODUCTION VERIFIED / CLOSED** and is not reopened.
