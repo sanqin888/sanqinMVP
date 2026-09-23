@@ -43,7 +43,7 @@ describe('PAYOUT-E-A bank CSV evidence / settlement ownership UI', () => {
       'Include/exclude decisions belong to Provider settlements',
     );
     expect(bankReviewSource).not.toContain('excludedRowNumbers');
-    expect(bankReviewSource).not.toContain('本期参与');
+    expect(bankReviewSource).not.toContain('type="checkbox"');
   });
 
   it('labels OTHER_DOCUMENT for bank statements without changing persistence classification', () => {
