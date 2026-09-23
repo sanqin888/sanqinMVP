@@ -1,10 +1,10 @@
 # Post-Modularization Accounting Product Roadmap
 
-Status: **B3 PRODUCTION VERIFIED / CLOSED — B4 NEXT — EFA PRODUCTION VERIFIED / CLOSED — B2 PRODUCTION VERIFIED / CLOSED — B1 CLOSED / B0 3V-B PRODUCTION VERIFICATION STILL PENDING — DO NOT REOPEN PHASE 9**  
+Status: **B4-A LOCAL SOURCE READY FOR REVIEW — B3 PRODUCTION VERIFIED / CLOSED — EFA PRODUCTION VERIFIED / CLOSED — B2 PRODUCTION VERIFIED / CLOSED — B1 CLOSED / B0 3V-B PRODUCTION VERIFICATION STILL PENDING — DO NOT REOPEN PHASE 9**  
 Planning date: 2026-09-20; updated: 2026-09-23  
 Baseline: Phase 9 **PRODUCTION VERIFIED / CLOSED** at production `main@dbea68f3`  
 Document-recognition audit baseline: `origin/dev@1ede0599`; Slice 3 merged as `caabf1c1`; Evidence Viewer Slice 1 merged as `0371a155`; Slice 1B merged as `9ae4d85d`; additive folder migration committed as `cc4c8016`; Evidence Viewer Slice 2 merged in PR #2438 as `4d68379e`; Slice 3V-A merged in PR #2439 as `0d6909bb` with PR CI #6054 and merged-head CI #6055 green; Slice 3V-B merged in PR #2440 as `0ac9117f` after final head `3c5c0400`, PR CI #6057 and merged-head CI #6058 green  
-B3 closeout baseline: latest `origin/dev@b5d64e0e`; B3-A merged through PR #2475 / squash `9c92eeda`, B3-B through PR #2476 / squash `ec2cff0f`, B3-C through PR #2478 / final head `12597b96` / squash `dcf12666`, and merge-evidence docs through PR #2479 / squash `b5d64e0e`. B3-D production reconciliation passed on 2026-09-23 against live authenticated API output and read-only canonical Journal/CoA data. Detailed readiness, implementation and closeout evidence: `docs/architecture/accounting-b3-trial-balance-readiness.md`.
+B3 closeout baseline: latest `origin/dev@e29621bc`; B3-A merged through PR #2475 / squash `9c92eeda`, B3-B through PR #2476 / squash `ec2cff0f`, B3-C through PR #2478 / final head `12597b96` / squash `dcf12666`, and merge-evidence docs through PR #2479 / squash `b5d64e0e`. B3-D production reconciliation passed on 2026-09-23 against live authenticated API output and read-only canonical Journal/CoA data. Detailed readiness, implementation and closeout evidence: `docs/architecture/accounting-b3-trial-balance-readiness.md`.
 
 ## 1. Purpose and placement
 
@@ -468,6 +468,8 @@ After canonical foundations are stable:
 - add close/coverage indicators;
 - add drill-through from totals to Journal/source facts;
 - visually distinguish management metrics from accounting statement values.
+
+**B4-A local source state (2026-09-23):** **READY FOR USER REVIEW / NO MIGRATION / NO DEPENDENCY / NO GRAPH CHANGE** on branch `feat/accounting-b4a-statements-ui` from `origin/dev@e29621bc`. The Accounting Reports Web surface now consumes the existing B3 `/report/trial-balance` and `/report/balance-movement` contracts through first-class Web DTOs, separates Management P&L from canonical statements, removes the old `/report/account-balance` browser consumer, exposes requested/effective range, WHOLE_LEDGER/currency/timezone/period-close metadata, preserves inactive historical accounts, and renders the required zero-opening / non-formal-Balance-Sheet disclosure. Report date presets now derive today's date in `America/Toronto` and use date-only arithmetic instead of browser-local Date -> UTC serialization. The legacy account-balance HTTP route remains registered for a later explicit contraction; exports, Journal/source drill-through, P&L adjustment decomposition and Sales comparison-noise cleanup remain later B4 slices. Per repository workflow no local lint/build/test command was run before user review.
 
 ## 10. Architecture rules
 

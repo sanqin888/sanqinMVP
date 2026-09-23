@@ -2915,6 +2915,14 @@ is claimed per repository workflow.
 **Outcome:** no B3 hotfix, schema/migration, dependency, scanner allowance, context direction or SCC change is required. B3 implementation sequence A/B/C/D is complete and production verified.  
 **Evidence:** `docs/architecture/accounting-b3-trial-balance-readiness.md`, `ACCOUNTING_PRODUCT_ROADMAP.md`, `POST_MODULARIZATION_BACKLOG.md`, `docs/architecture/current-dependency-graph.md`, this worklog.
 
+### 2026-09-23 — Post-Modularization Accounting B4-A Statements Web UI cutover
+
+**State:** **LOCAL SOURCE READY FOR USER REVIEW / NO MIGRATION / NO DEPENDENCY / NO GRAPH CHANGE** on branch `feat/accounting-b4a-statements-ui` from `origin/dev@e29621bc`. Phase 9 and B3 remain closed.  
+**Implementation:** the Accounting Reports browser surface now has explicit Management P&L, Trial Balance and Balance Movement views. Trial Balance / Balance Movement consume only the existing B3 HTTP projections through shared Web contracts; the UI presents requested/effective range, WHOLE_LEDGER, currency, timezone, month-close state, inactive historical accounts, opening-Journal count, zero-opening disclosure and opening/period/closing reconciliation without recomputing statement money. The former Reports-page `/accounting/report/account-balance` read is removed, leaving that legacy HTTP route registered but without this browser consumer for a later explicit contraction.  
+**Presentation/date safety:** Management P&L is visually distinguished from canonical statements, and the existing Journal-only cashflow widget is relabelled as Cash movement with an explicit non-formal-Statement-of-Cash-Flows note. Reporting presets use a shared America/Toronto business-date helper plus date-only arithmetic, eliminating the previous browser-local Date -> UTC rollover risk on this page.  
+**Regression/boundary:** adds Web contract/source guards for the two B3 statement DTOs/endpoints, zero-opening disclosure and Management/canonical separation, plus focused Toronto date-preset unit coverage. No backend route/financial calculation, Prisma/schema/migration, Journal posting, provider behavior, package/lockfile, context direction, scanner allowance or SCC change is introduced. Exports, statement Journal/source drill-through, legacy account-balance HTTP contraction, P&L adjustment decomposition and Sales equal-period request cleanup remain later B4 slices. Per repository workflow no local lint/build/test command was run before user review.  
+**Details:** `apps/web/src/app/[locale]/(site)/accounting/contracts/reports.ts`, `accounting-reporting-date{,.test}.ts`, `reports/page.tsx`, `reports/accounting-statements.tsx`, `reports/b4a-statements-ui.test.ts`, `ACCOUNTING_PRODUCT_ROADMAP.md`, `POST_MODULARIZATION_BACKLOG.md`, `docs/architecture/current-dependency-graph.md`, this worklog.
+
 ## Rule for future entries
 
 For each modularization code batch, append exactly one chronological entry before
