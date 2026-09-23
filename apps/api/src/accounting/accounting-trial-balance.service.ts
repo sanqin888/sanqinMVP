@@ -7,9 +7,7 @@ import {
 import { DateTime } from 'luxon';
 import { ACCOUNTING_DB, type AccountingDb } from './accounting-db';
 import { AccountingPeriodService } from './accounting-period.service';
-import type {
-  AccountingTrialBalanceReportV1,
-} from './accounting-trial-balance.contract';
+import type { AccountingTrialBalanceReportV1 } from './accounting-trial-balance.contract';
 import {
   projectAccountingTrialBalance,
   type AccountingTrialBalanceJournalLineV1,
@@ -236,9 +234,7 @@ export class AccountingTrialBalanceService {
       this.period.listPeriodCloseStatus(monthKeys),
       this.period.listYearCloseStatus(yearKeys),
     ]);
-    const closedMonthKeys = new Set(
-      closedMonths.map((row) => row.periodKey),
-    );
+    const closedMonthKeys = new Set(closedMonths.map((row) => row.periodKey));
     const closedYearKeys = new Set(closedYears.map((row) => row.periodKey));
 
     return {

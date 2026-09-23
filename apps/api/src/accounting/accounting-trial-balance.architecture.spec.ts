@@ -22,9 +22,7 @@ describe('B3-A canonical Trial Balance boundary', () => {
 
     expect(service).not.toContain('AccountingFinancialReportsService');
     expect(service).not.toContain('readProjection(');
-    expect(service).not.toContain(
-      'includeFundedExpensesInManagementReports',
-    );
+    expect(service).not.toContain('includeFundedExpensesInManagementReports');
     expect(service).not.toContain('accountingExpenseDocument');
     expect(service).not.toContain('AccountingExpensePaymentAllocation');
     expect(service).not.toContain("from '../orders/");
@@ -35,8 +33,7 @@ describe('B3-A canonical Trial Balance boundary', () => {
 
   it('pins whole-ledger per-currency scope without a store filter', () => {
     const service = file('accounting-trial-balance.service.ts')?.source ?? '';
-    const contract =
-      file('accounting-trial-balance.contract.ts')?.source ?? '';
+    const contract = file('accounting-trial-balance.contract.ts')?.source ?? '';
 
     expect(contract).toContain("scope: 'WHOLE_LEDGER'");
     expect(contract).toContain('AccountingTrialBalanceNormalSideV1');
@@ -52,6 +49,6 @@ describe('B3-A canonical Trial Balance boundary', () => {
       file('accounting-reports.controller.ts')?.source ?? '';
 
     expect(module).toContain('AccountingTrialBalanceService');
-    expect(reportsController).not.toContain("report/trial-balance");
+    expect(reportsController).not.toContain('report/trial-balance');
   });
 });

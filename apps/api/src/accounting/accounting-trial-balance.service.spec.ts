@@ -159,9 +159,7 @@ describe('AccountingTrialBalanceService B3-A canonical core', () => {
       },
     });
     expect(
-      report.accounts.find(
-        (row) => row.accountStableId === 'account_old_bank',
-      ),
+      report.accounts.find((row) => row.accountStableId === 'account_old_bank'),
     ).toMatchObject({
       isActive: false,
       closingCreditBalanceCents: 565,
@@ -189,14 +187,11 @@ describe('AccountingTrialBalanceService B3-A canonical core', () => {
         },
       }),
     );
-    const dbRead = JSON.stringify(
-      prisma.accountingJournalLine.findMany.mock.calls[0]?.[0],
-    );
-    expect(dbRead).not.toContain('includeFundedExpensesInManagementReports');
-    const dbWhere = JSON.stringify(
-      prisma.accountingJournalLine.findMany.mock.calls[0]?.[0]?.where,
-    );
-    expect(dbWhere).not.toContain('isActive');
+    expect(
+      JSON.stringify(
+        prisma.accountingJournalLine.findMany.mock.calls,
+      ),
+    ).not.toContain('includeFundedExpensesInManagementReports');
     expect(period.listPeriodCloseStatus).toHaveBeenCalledWith([
       '2026-06',
       '2026-07',

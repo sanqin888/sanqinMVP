@@ -87,9 +87,7 @@ const toNormalAmount = (
   normalSide: AccountingTrialBalanceNormalSideV1,
   debitMinusCreditCents: number,
 ): number =>
-  normalSide === 'DEBIT'
-    ? debitMinusCreditCents
-    : -debitMinusCreditCents;
+  normalSide === 'DEBIT' ? debitMinusCreditCents : -debitMinusCreditCents;
 
 export function projectAccountingTrialBalance(params: {
   currency: string;
@@ -275,7 +273,9 @@ export function projectAccountingTrialBalance(params: {
     const classDiff =
       ACCOUNT_CLASS_ORDER.indexOf(left.accountClass) -
       ACCOUNT_CLASS_ORDER.indexOf(right.accountClass);
-    return classDiff || left.accountStableId.localeCompare(right.accountStableId);
+    return (
+      classDiff || left.accountStableId.localeCompare(right.accountStableId)
+    );
   });
 
   const totals = rows.reduce<AccountingTrialBalanceTotalsV1>(

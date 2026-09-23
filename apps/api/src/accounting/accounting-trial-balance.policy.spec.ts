@@ -180,9 +180,7 @@ describe('B3-A canonical Trial Balance projection', () => {
       closingNormalBalanceCents: -100,
     });
     expect(
-      result.accounts.find(
-        (row) => row.accountStableId === 'account_old_bank',
-      ),
+      result.accounts.find((row) => row.accountStableId === 'account_old_bank'),
     ).toMatchObject({
       accountClass: AccountingAccountClass.ASSET,
       isActive: false,
@@ -260,8 +258,6 @@ describe('B3-A canonical Trial Balance projection', () => {
         toExclusive: TO_EXCLUSIVE,
         lines: [mixedCurrency],
       }),
-    ).toThrow(
-      'Trial Balance account currency mismatch: account_store_cash',
-    );
+    ).toThrow('Trial Balance account currency mismatch: account_store_cash');
   });
 });
