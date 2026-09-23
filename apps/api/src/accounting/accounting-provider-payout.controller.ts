@@ -33,9 +33,7 @@ export class AccountingProviderPayoutController {
       ...(providerRaw
         ? { provider: parseAccountingFinancialProvider(providerRaw) }
         : {}),
-      ...(storeStableId?.trim()
-        ? { storeStableId: storeStableId.trim() }
-        : {}),
+      ...(storeStableId?.trim() ? { storeStableId: storeStableId.trim() } : {}),
       limit: parseNonNegativeAccountingNumber(limitRaw, 'limit'),
     });
   }

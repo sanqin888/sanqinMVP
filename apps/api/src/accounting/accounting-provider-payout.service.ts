@@ -72,9 +72,7 @@ export class AccountingProviderPayoutService {
       take: limit,
     });
     return rows.map((row) =>
-      accountingProviderPayoutDto(
-        row as AccountingProviderPayoutViewRecord,
-      ),
+      accountingProviderPayoutDto(row as AccountingProviderPayoutViewRecord),
     );
   }
 
