@@ -41,6 +41,7 @@ const EXPECTED_CONTROLLER_CAPABILITIES = {
     'AccountingProviderFinancialService',
   ],
   'accounting-provider-payout.controller.ts': [
+    'AccountingProviderPayoutBankMatchService',
     'AccountingProviderPayoutService',
     'AccountingProviderPendingReconciliationService',
   ],
@@ -89,6 +90,7 @@ const EXPECTED_ROUTES = [
   'GET provider-financial/:documentStableId/review-revisions',
   'GET provider-pending-reconciliation',
   'GET provider-payouts',
+  'GET provider-payouts/bank-match-preview',
   'POST provider-payouts',
   'POST provider-financial/:documentStableId/review-revisions',
   'POST provider-financial/:documentStableId/review-revisions/:reviewRevisionStableId/confirm',

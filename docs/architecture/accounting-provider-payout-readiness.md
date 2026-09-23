@@ -1,9 +1,9 @@
 # Accounting Provider Payout / Bank Receipt Readiness
 
 Date: 2026-09-23  
-Baseline: latest `origin/dev@ac9ffcc2` after PAYOUT-C production deployment/verification  
-Work package: **PAYOUT-D — Provider Pending canonical roll-forward**  
-State: **LOCAL SOURCE READY FOR USER REVIEW / READ-ONLY / NO MIGRATION / NO NEW CONTEXT EDGE**
+Baseline: `origin/dev@1666b3ed` after PAYOUT-D merge/deployment  
+Work package: **PAYOUT-E-A — bank CSV payout match preview**  
+State: **LOCAL SOURCE READY FOR USER REVIEW / PREVIEW-ONLY / NO MIGRATION / NO NEW WRITER / NO NEW CONTEXT EDGE**
 
 ## 1. Purpose
 
@@ -214,7 +214,7 @@ This is intentional. Clover daily and Uber/Fantuan weekly deposits can occur bef
 
 ### Runtime exposure gate
 
-PAYOUT-B registers the Accounting-local service but exposes no controller, HTTP route or Web UI. Architecture tests pin `createProviderPayoutJournalInTx()` to exactly one production caller, `AccountingProviderPayoutService`, and pin the payout controller caller set to zero.
+At PAYOUT-B merge, the Accounting-local service had no controller, HTTP route or Web UI. Architecture tests pinned `createProviderPayoutJournalInTx()` to exactly one production caller, `AccountingProviderPayoutService`; later PAYOUT-C intentionally added the dedicated payout controller without adding another Journal-writer caller.
 
 ### Migration gate
 
@@ -232,7 +232,7 @@ User-local generation command against the verified disposable/local development 
 pnpm --filter api exec prisma migrate dev --create-only --name accounting_provider_payout_persistence
 ```
 
-The user-generated migration is now committed as `20260923153202_accounting_provider_payout_persistence` at `dev@da7edc2b`. Review of the complete SQL confirms exactly one additive table, the two expected unique indexes and four lookup indexes. There is no DROP, rename, backfill, enum mutation, relation rewrite or data contraction. The **dev migration gate is satisfied**. Production deployment of payout-writing source still requires this committed migration to be applied there first.
+The user-generated migration was committed as `20260923153202_accounting_provider_payout_persistence` at `dev@da7edc2b`. Review of the complete SQL confirms exactly one additive table, the two expected unique indexes and four lookup indexes. There is no DROP, rename, backfill, enum mutation, relation rewrite or data contraction. The migration has since been applied in production, so both the dev and production PAYOUT-B migration gates are satisfied.
 
 ## 9. PAYOUT-C runtime/UI exposure
 
@@ -411,11 +411,184 @@ The Settlements page exposes the reconciliation separately from payout posting a
 
 PAYOUT-D adds no schema/migration, provider API, bank import, auto-match, package or cross-context dependency.
 
-## 12. Later slices
+### PAYOUT-D production verification
 
-After PAYOUT-D production verification:
+PAYOUT-D merged through PR #2488 / final head `6a3dc03f` / squash `1666b3ed`; CI #6214 passed. Production is now running `main@1666b3ed` with fresh API/Web/worker containers. Nest startup confirms:
 
-- **PAYOUT-E (later):** bank CSV/API ingestion and suggested automatic matching;
-- a payout reversal/correction slice should be scheduled before an operator needs to amend a posted payout.
+```text
+GET /api/v1/accounting/provider-pending-reconciliation
+```
 
-Bank import is not required for the first production payout workflow.
+Post-deploy API/Web error-log scans returned zero matches.
+
+An independent read-only reconstruction for the default Accounting period `2026-06-01..2026-09-23` confirms:
+
+```text
+Clover
+  canonical Order            +1,229,110c
+  Closing Pending             1,229,110c
+  arithmetic delta                    0
+
+Uber Eats
+  canonical Order              +326,092c
+  authority adjustment         -326,092c
+  provider Statement           +467,662c
+  actual payout                 -28,448c
+  Closing Pending               439,214c
+  arithmetic delta                    0
+
+Fantuan
+  provider Statement         +1,026,733c
+  actual payout                 -86,057c
+  Closing Pending               940,676c
+  arithmetic delta                    0
+
+Aggregate Closing Pending     2,609,000c
+Other movement                        0
+Active unscoped Pending lines         0
+```
+
+This closes the backend/data-path portion of PAYOUT-D production verification. A human operator visual spot-check of the deployed panel/API rendering remains outstanding; there is no accounting-data blocker.
+
+## 12. PAYOUT-E-A bank CSV payout match preview
+
+PAYOUT-E-A deliberately starts with **evidence + suggestions only**. It does not introduce a durable bank-transaction authority or automatically create provider payouts.
+
+### Evidence boundary
+
+The existing Accounting Inbox manual-upload boundary remains the source of bank CSV evidence:
+
+```text
+POST /accounting/inbox/artifacts
+        ↓
+Accounting SourceArtifact
+        ↓
+GET /accounting/provider-payouts/bank-match-preview
+```
+
+No second file-storage or bank-import subsystem is created.
+
+Normal bank transaction CSVs do not automatically become provider statements or Expenses:
+
+- provider-financial recognition requires the existing statement-specific recognition phrases;
+- structured Expense CSV recognition uses its own expense-oriented schema;
+- otherwise the uploaded CSV remains reviewable Accounting evidence.
+
+Manual-upload deduplication deliberately discards a duplicate binary. The upload response already exposes `duplicateOfArtifactStableId`; E-A therefore previews the retained canonical/original artifact when the same bank CSV is uploaded again.
+
+### Strong bank CSV signature
+
+The parser accepts only bounded CSVs with a strong bank signature.
+
+The production CIBC sample exported for June 2026 establishes CIBC's native CSV as a **headerless four-column format**:
+
+```text
+YYYY-MM-DD | Description | Withdrawal | Deposit
+```
+
+PAYOUT-E-A recognizes that format only when the first data row has the exact four-column directional shape, a valid date/amount direction, and a CIBC-style transaction-family description such as `Electronic Funds Transfer`, `Branch Transaction`, `Internet Banking`, `Point of Sale - Interac` or `CHEQUE`. This prevents a generic headerless four-column file from being guessed as CIBC.
+
+Headered bank CSVs remain supported when they contain a recognized transaction/posted date column plus one of the explicit directional column pairs:
+
+- `Withdrawals / Deposits`;
+- `Funds Out / Funds In`;
+- `Money Out / Money In`.
+
+Generic `Date + Amount + Description` and generic `Debit / Credit` files are not treated as bank evidence by this preview.
+
+Only positive inflow rows become deposit candidates. Withdrawals are counted and excluded from payout matching. Malformed dates/amounts or rows containing both inflow and outflow remain visible as invalid evidence rather than being silently dropped. Parser/file bounds fail closed.
+
+### Matching semantics
+
+The operator selects the SanQ store and active CAD BANK account represented by the uploaded statement. E-A compares deposit candidates only with existing `AccountingProviderPayout` rows that are:
+
+- for that exact `storeStableId`;
+- for that exact destination BANK stable ID;
+- CAD;
+- already anchored to a canonical Journal;
+- exactly the same amount;
+- within a bounded ±3-day payout-date window.
+
+Possible statuses are:
+
+```text
+EXACT_EXISTING_PAYOUT
+AMBIGUOUS_EXISTING_PAYOUT
+POSSIBLE_EXISTING_PAYOUT
+UNMATCHED
+```
+
+A provider name detected in the bank description is **only a hint**. When a provider hint exists, a same-date/same-amount payout for a contradictory provider cannot be called exact; it remains only a possible candidate. If no provider hint exists, same-date/same-amount may still be exact because the bank evidence itself has not contradicted the existing canonical payout.
+
+The verified June CIBC sample establishes these provider hints:
+
+- Uber EFT descriptions containing `Uber Holdings Canad` / `UBER HOLDINGS CANADA INC` -> `UBER_EATS`;
+- `FANTUAN` -> `FANTUAN`;
+- deposit descriptions containing `FIRST DATA CANADA(K)` -> `CLOVER`.
+
+The First Data mapping remains a hint, not posting authority.
+
+No status mutates payout, Journal, statement or bank-account persistence.
+
+### Cross-period bank receipts and manual exclusion
+
+A bank receipt date is not itself the provider settlement period. The June CIBC sample contains:
+
+```text
+2026-06-02 Uber    26,039c  -> provider settlement week 2026-05-25..2026-05-31
+2026-06-03 Fantuan 65,354c  -> provider settlement week 2026-05-25..2026-05-31
+```
+
+These rows must remain in immutable June bank evidence while being excluded from a June settlement selection.
+
+PAYOUT-E-A therefore adds a row-level **Include** control in the Web preview:
+
+- every deposit remains visible;
+- rows with neither a provider hint nor an existing payout candidate start excluded by default, which keeps ordinary bank deposits such as mobile deposits out of provider-settlement selection unless an operator deliberately includes them;
+- provider-hinted or candidate-bearing rows start included;
+- matching status/candidates remain visible even when excluded;
+- clearing Include removes that row only from the current preview's included count and included amount;
+- the original CSV/SourceArtifact is never edited or deleted;
+- no payout or Journal is created by the exclusion action.
+
+The exclusion is intentionally session-only in E-A. Persisting a durable bank-row identity plus user-confirmed include/exclude/match decision would create a new Accounting authority and belongs to PAYOUT-E-B rather than being hidden inside a preview slice.
+
+### Transport and Web
+
+Authenticated read-only preview route:
+
+```text
+GET /accounting/provider-payouts/bank-match-preview
+```
+
+Inputs:
+
+- `artifactStableId`;
+- `storeStableId`;
+- `destinationBankAccountStableId`.
+
+The Provider bank receipts panel adds a collapsible CSV preview surface. It shows deposit/withdrawal/invalid counts and every exact/ambiguous/possible/unmatched row with existing payout candidates. The UI explicitly states that PAYOUT-E-A never creates a canonical payout automatically.
+
+### PAYOUT-E-A exclusions
+
+Still deferred:
+
+- a persisted canonical bank-transaction model;
+- durable bank-row identity across different exports;
+- user-confirmed bank-row -> payout relationship persistence;
+- auto-creating an unmatched canonical payout;
+- bank API/Open Banking ingestion;
+- provider payout API ingestion;
+- automatic clearing/reconciliation;
+- payout reversal/correction.
+
+PAYOUT-E-A adds no Prisma/schema/migration, package dependency, payout/Journal writer, provider/bank API or new context edge.
+
+## 13. Later slices
+
+After PAYOUT-E-A is production-verified, later work can decide whether the next smallest slice is:
+
+- **PAYOUT-E-B:** durable bank evidence identity + explicit human-confirmed payout match; or
+- a payout reversal/correction slice if operator correction becomes the more urgent need.
+
+Automatic payout creation or bank API ingestion should not precede durable bank-evidence identity and an explicit confirmation contract.
