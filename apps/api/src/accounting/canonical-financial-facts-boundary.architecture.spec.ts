@@ -176,10 +176,8 @@ describe('Phase 9 canonical financial facts boundary', () => {
       file(ACCOUNTING_ROOT, 'accounting-provider-payout.service.ts')?.source ??
       '';
     const providerPayoutBankMatchService =
-      file(
-        ACCOUNTING_ROOT,
-        'accounting-provider-payout-bank-match.service.ts',
-      )?.source ?? '';
+      file(ACCOUNTING_ROOT, 'accounting-provider-payout-bank-match.service.ts')
+        ?.source ?? '';
     const providerPendingReconciliationService =
       file(
         ACCOUNTING_ROOT,

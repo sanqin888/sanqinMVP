@@ -74,13 +74,7 @@ describe('parseAccountingBankCsv', () => {
 
     expect(parsed).toEqual({
       matched: true,
-      headers: [
-        'date',
-        'description',
-        'withdrawals',
-        'deposits',
-        'balance',
-      ],
+      headers: ['date', 'description', 'withdrawals', 'deposits', 'balance'],
       depositRows: [
         {
           rowNumber: 2,

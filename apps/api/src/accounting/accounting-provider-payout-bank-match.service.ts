@@ -152,9 +152,7 @@ export class AccountingProviderPayoutBankMatchService {
         'bank CSV contains an invalid deposit date',
       );
     }
-    const from = new Date(
-      Math.min(...timestamps) - MATCH_WINDOW_DAYS * DAY_MS,
-    );
+    const from = new Date(Math.min(...timestamps) - MATCH_WINDOW_DAYS * DAY_MS);
     const to = new Date(Math.max(...timestamps) + MATCH_WINDOW_DAYS * DAY_MS);
 
     const rows = await this.prisma.accountingProviderPayout.findMany({
