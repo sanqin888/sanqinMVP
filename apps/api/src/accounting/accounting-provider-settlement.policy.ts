@@ -13,6 +13,10 @@ import type {
   AccountingJournalLineInput,
 } from './accounting-journal-policy';
 import { FANTUAN_ADJUSTMENT_RAW_CODES } from './accounting-fantuan-adjustment-detail.contract';
+import {
+  ACCOUNTING_PROVIDER_PENDING_ACCOUNT_IDS,
+  providerPendingAccountStableId,
+} from './accounting-provider-accounts';
 
 export const PROVIDER_SETTLEMENT_SYSTEM_ACTOR =
   'system:accounting-provider-settlement';
@@ -23,9 +27,14 @@ export const UBER_PRE_CUTOVER_REVERSAL_SOURCE_FACT_TYPE =
 
 export const PROVIDER_SETTLEMENT_ACCOUNT_IDS = {
   primaryBank: 'account_primary_bank',
-  cloverPending: 'account_clover_pending',
-  uberPending: 'account_uber_pending',
-  fantuanPending: 'account_fantuan_pending',
+  cloverPending:
+    ACCOUNTING_PROVIDER_PENDING_ACCOUNT_IDS[AccountingFinancialProvider.CLOVER],
+  uberPending:
+    ACCOUNTING_PROVIDER_PENDING_ACCOUNT_IDS[
+      AccountingFinancialProvider.UBER_EATS
+    ],
+  fantuanPending:
+    ACCOUNTING_PROVIDER_PENDING_ACCOUNT_IDS[AccountingFinancialProvider.FANTUAN],
   hstPayable: 'account_hst_payable',
   hstRecoverable: 'account_hst_recoverable',
   salesRevenue: 'account_sales_revenue',
@@ -188,20 +197,7 @@ export type ProviderSettlementDocumentPlan = {
   requiredAccountStableIds: string[];
 };
 
-const providerPendingAccount = (
-  provider: AccountingFinancialProvider,
-): string => {
-  switch (provider) {
-    case AccountingFinancialProvider.CLOVER:
-      return PROVIDER_SETTLEMENT_ACCOUNT_IDS.cloverPending;
-    case AccountingFinancialProvider.UBER_EATS:
-      return PROVIDER_SETTLEMENT_ACCOUNT_IDS.uberPending;
-    case AccountingFinancialProvider.FANTUAN:
-      return PROVIDER_SETTLEMENT_ACCOUNT_IDS.fantuanPending;
-    default:
-      throw new Error(`Unsupported financial provider: ${String(provider)}`);
-  }
-};
+const providerPendingAccount = providerPendingAccountStableId;
 
 export function resolveProviderSalesAuthority(params: {
   provider: AccountingFinancialProvider;

@@ -442,7 +442,7 @@ describe('AccountingFinancialReportsService canonical fact characterization', ()
     );
   });
 
-  it('derives cashflow from CASH/BANK movements only', async () => {
+  it('derives cashflow from CASH/BANK movements while netting internal cash transfers', async () => {
     const prisma = {
       accountingJournalEntry: {
         findMany: jest.fn().mockResolvedValue([
@@ -491,7 +491,7 @@ describe('AccountingFinancialReportsService canonical fact characterization', ()
             ],
           },
           {
-            memo: 'provider settlement',
+            memo: 'provider payout',
             lines: [
               {
                 debitCents: 900,
@@ -510,6 +510,31 @@ describe('AccountingFinancialReportsService canonical fact characterization', ()
                 account: {
                   name: 'Uber Eats Pending',
                   type: AccountingAccountType.PLATFORM_WALLET,
+                },
+                category: null,
+              },
+            ],
+          },
+          {
+            memo: 'internal cash transfer',
+            lines: [
+              {
+                debitCents: 500,
+                creditCents: 0,
+                memo: null,
+                account: {
+                  name: 'Primary Bank',
+                  type: AccountingAccountType.BANK,
+                },
+                category: null,
+              },
+              {
+                debitCents: 0,
+                creditCents: 500,
+                memo: null,
+                account: {
+                  name: 'Store Cash',
+                  type: AccountingAccountType.CASH,
                 },
                 category: null,
               },
@@ -609,10 +634,7 @@ describe('AccountingFinancialReportsService canonical fact characterization', ()
         where: {
           deletedAt: null,
           kind: {
-            notIn: [
-              AccountingJournalEntryKind.TRANSFER,
-              AccountingJournalEntryKind.OPENING_BALANCE,
-            ],
+            not: AccountingJournalEntryKind.OPENING_BALANCE,
           },
         },
       }),
