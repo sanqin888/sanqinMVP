@@ -5,12 +5,17 @@ import {
 import { AccountingProviderPayoutBankMatchService } from './accounting-provider-payout-bank-match.service';
 import { AccountingArtifactDeliveryService } from './accounting-artifact-delivery.service';
 
-jest.mock('node:fs', () => ({
-  promises: {
-    stat: jest.fn(),
-    readFile: jest.fn(),
-  },
-}));
+jest.mock('node:fs', () => {
+  const actual = jest.requireActual<typeof import('node:fs')>('node:fs');
+  return {
+    ...actual,
+    promises: {
+      ...actual.promises,
+      stat: jest.fn(),
+      readFile: jest.fn(),
+    },
+  };
+});
 
 import * as fs from 'node:fs';
 
