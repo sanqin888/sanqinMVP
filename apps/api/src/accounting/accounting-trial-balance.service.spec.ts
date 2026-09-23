@@ -188,9 +188,7 @@ describe('AccountingTrialBalanceService B3-A canonical core', () => {
       }),
     );
     expect(
-      JSON.stringify(
-        prisma.accountingJournalLine.findMany.mock.calls,
-      ),
+      JSON.stringify(prisma.accountingJournalLine.findMany.mock.calls),
     ).not.toContain('includeFundedExpensesInManagementReports');
     expect(period.listPeriodCloseStatus).toHaveBeenCalledWith([
       '2026-06',
