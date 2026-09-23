@@ -1,9 +1,9 @@
 # Accounting Provider Payout / Bank Receipt Readiness
 
 Date: 2026-09-23  
-Baseline: `origin/dev@b919990f` after Accounting PAYOUT-A (#2484)  
-Work package: **PAYOUT-B — durable payout fact + atomic Journal authority**  
-State: **LOCAL SOURCE READY FOR USER REVIEW / MIGRATION REQUIRED / NO HTTP OR UI ENTRY / NO NEW CONTEXT EDGE**
+Baseline: `origin/dev@da7edc2b` after PAYOUT-B source + user-generated persistence migration  
+Work package: **PAYOUT-C — authenticated runtime/UI exposure**  
+State: **LOCAL SOURCE READY FOR USER REVIEW / NO MIGRATION / NO NEW CONTEXT EDGE / PRODUCTION MIGRATION APPLICATION STILL REQUIRED BEFORE DEPLOY**
 
 ## 1. Purpose
 
@@ -232,14 +232,62 @@ User-local generation command against the verified disposable/local development 
 pnpm --filter api exec prisma migrate dev --create-only --name accounting_provider_payout_persistence
 ```
 
-The generated SQL must be reviewed before application. Promotion to `main`, production deployment and PAYOUT-C runtime/UI exposure remain blocked until that migration has been generated locally, reviewed, committed and merged back into `dev`.
+The user-generated migration is now committed as `20260923153202_accounting_provider_payout_persistence` at `dev@da7edc2b`. Review of the complete SQL confirms exactly one additive table, the two expected unique indexes and four lookup indexes. There is no DROP, rename, backfill, enum mutation, relation rewrite or data contraction. The **dev migration gate is satisfied**. Production deployment of payout-writing source still requires this committed migration to be applied there first.
 
-## 9. Later slices
+## 9. PAYOUT-C runtime/UI exposure
 
-After PAYOUT-B:
+PAYOUT-C adds no new financial authority. It exposes the existing PAYOUT-B owner service through a dedicated Accounting transport adapter:
 
-- **PAYOUT-C:** Accounting UI to record/inspect provider bank receipts;
+```text
+GET  /accounting/provider-payouts
+POST /accounting/provider-payouts
+```
+
+Both routes remain behind the standard Accounting `ADMIN | ACCOUNTANT` guards. GET is bounded to 1..200 rows and may filter by provider/store. POST requires the authenticated stable user ID and passes only the frozen payout fact to `AccountingProviderPayoutService`.
+
+The Web surface is deliberately placed inside **Accounting -> Provider settlements**, but visually and semantically separated from monthly statement replay. The form contains:
+
+- provider;
+- store stable ID;
+- actual bank receipt date;
+- actual received CAD amount;
+- destination active CAD BANK account;
+- optional provider/bank reference.
+
+Known store IDs discovered from provider evidence are only UI suggestions. A payout does not gain a statement ID, period, document revision or statement allocation.
+
+### Posting safety
+
+The operator must explicitly confirm that the amount/date were verified against the actual bank record. The UI states that monthly statement `Net payout` is not sufficient evidence and that the canonical payout cannot be edited in place after posting.
+
+Changing any material form fact clears that confirmation and clears the current client-generated `payoutStableId`. On POST, the client generates one opaque stable ID and retains it across an unchanged failed/ambiguous retry; after a successful response it is cleared for the next payout. This aligns the browser retry boundary with PAYOUT-B exact-fact idempotency.
+
+The first UI does not infer payout amount from monthly statements and does not automatically submit anything.
+
+### History
+
+The same panel exposes recent payout history from the Accounting-owned table, including provider, store, payout date, destination bank, amount, reference and canonical Journal anchor. This gives the operator immediate evidence that a POST succeeded and reduces accidental duplicate entry.
+
+### PAYOUT-C exclusions
+
+Still excluded:
+
+- bank CSV/API ingestion;
+- automatic payout matching;
+- provider payout API reads;
+- statement-to-payout allocation;
+- automatic clearing suggestions;
+- payout correction/reversal workflow;
+- PAYOUT-D pending-balance reconciliation.
+
+The absence of an in-place edit path is intentional because the canonical payout fact is immutable. A dedicated reversal/correction design should be added before providing a convenience “edit/delete” action.
+
+## 10. Later slices
+
+After PAYOUT-C:
+
 - **PAYOUT-D:** pending-balance reconciliation and production verification;
-- **PAYOUT-E (later):** bank CSV/API ingestion and suggested automatic matching.
+- **PAYOUT-E (later):** bank CSV/API ingestion and suggested automatic matching;
+- a payout reversal/correction slice should be scheduled before an operator needs to amend a posted payout.
 
 Bank import is not required for the first production payout workflow.

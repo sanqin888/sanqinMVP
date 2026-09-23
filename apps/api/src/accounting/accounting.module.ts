@@ -9,6 +9,7 @@ import { AccountingInboxArtifactsController } from './accounting-inbox-artifacts
 import { AccountingInboxController } from './accounting-inbox.controller';
 import { AccountingPeriodController } from './accounting-period.controller';
 import { AccountingProviderFinancialController } from './accounting-provider-financial.controller';
+import { AccountingProviderPayoutController } from './accounting-provider-payout.controller';
 import { AccountingProviderSettlementController } from './accounting-provider-settlement.controller';
 import { AccountingReportsController } from './accounting-reports.controller';
 import { AccountingPayrollController } from './payroll/accounting-payroll.controller';
@@ -85,6 +86,7 @@ import { PaymentFinancialFactsModule } from '../payments/public-api';
     AccountingInboxController,
     AccountingInboxArtifactsController,
     AccountingProviderFinancialController,
+    AccountingProviderPayoutController,
     AccountingAutomationController,
     AccountingPeriodController,
     AccountingCanonicalSaleController,

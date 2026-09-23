@@ -1,8 +1,16 @@
-import { ConflictException, Inject, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 
 import { runSerializableAccountingWrite } from './accounting-atomic-write';
-import { AccountingJournalSource } from './accounting-contracts';
+import {
+  AccountingJournalSource,
+  type AccountingFinancialProvider,
+} from './accounting-contracts';
 import { writeAccountingAuditLog } from './accounting-audit-writer';
 import { ACCOUNTING_DB, type AccountingDb } from './accounting-db';
 import { AccountingJournalService } from './accounting-journal.service';
@@ -42,6 +50,33 @@ export class AccountingProviderPayoutService {
     private readonly journal: AccountingJournalService,
     private readonly period: AccountingPeriodService,
   ) {}
+
+  async listPayouts(input: {
+    provider?: AccountingFinancialProvider;
+    storeStableId?: string;
+    limit?: number;
+  }) {
+    const limit = input.limit ?? 100;
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 200) {
+      throw new BadRequestException('limit must be between 1 and 200');
+    }
+
+    const rows = await this.prisma.accountingProviderPayout.findMany({
+      where: {
+        ...(input.provider ? { provider: input.provider } : {}),
+        ...(input.storeStableId
+          ? { storeStableId: input.storeStableId.trim() }
+          : {}),
+      },
+      orderBy: [{ payoutDate: 'desc' }, { createdAt: 'desc' }],
+      take: limit,
+    });
+    return rows.map((row) =>
+      accountingProviderPayoutDto(
+        row as AccountingProviderPayoutViewRecord,
+      ),
+    );
+  }
 
   async recordPayout(
     input: CreateAccountingProviderPayoutInput,

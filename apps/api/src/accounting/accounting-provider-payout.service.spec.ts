@@ -68,6 +68,9 @@ function makeService(existing: ReturnType<typeof payoutRow> | null = null) {
     },
   };
   const prisma = {
+    accountingProviderPayout: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
     $transaction: jest.fn((work: (client: typeof tx) => Promise<unknown>) =>
       work(tx),
     ),
@@ -85,7 +88,7 @@ function makeService(existing: ReturnType<typeof payoutRow> | null = null) {
     journal as unknown as AccountingJournalService,
     period as unknown as AccountingPeriodService,
   );
-  return { service, tx, journal };
+  return { service, tx, journal, prisma };
 }
 
 const input = () => ({
@@ -100,6 +103,49 @@ const input = () => ({
 });
 
 describe('AccountingProviderPayoutService', () => {
+  it('lists recent payouts as read-only Accounting history', async () => {
+    const { service, prisma } = makeService();
+    prisma.accountingProviderPayout.findMany.mockResolvedValue([
+      {
+        ...payoutRow(),
+        journalEntryStableId: 'journal_provider_payout_1',
+      },
+    ]);
+
+    const result = await service.listPayouts({
+      provider: AccountingFinancialProvider.UBER_EATS,
+      storeStableId: '4750_Yonge_Street',
+      limit: 50,
+    });
+
+    expect(prisma.accountingProviderPayout.findMany).toHaveBeenCalledWith({
+      where: {
+        provider: AccountingFinancialProvider.UBER_EATS,
+        storeStableId: '4750_Yonge_Street',
+      },
+      orderBy: [{ payoutDate: 'desc' }, { createdAt: 'desc' }],
+      take: 50,
+    });
+    expect(result).toEqual([
+      expect.objectContaining({
+        payoutStableId: 'payout_uber_20260923_1',
+        payoutDate: '2026-09-23',
+        journalEntryStableId: 'journal_provider_payout_1',
+      }),
+    ]);
+  });
+
+  it('rejects payout history limits outside the bounded API contract', async () => {
+    const { service } = makeService();
+
+    await expect(service.listPayouts({ limit: 0 })).rejects.toThrow(
+      'limit must be between 1 and 200',
+    );
+    await expect(service.listPayouts({ limit: 201 })).rejects.toThrow(
+      'limit must be between 1 and 200',
+    );
+  });
+
   it('persists the payout fact and binds its canonical Journal in one Accounting transaction', async () => {
     const { service, tx, journal } = makeService();
 

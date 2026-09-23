@@ -397,7 +397,9 @@ describe('Phase 9 canonical financial facts boundary', () => {
         path.slice(API_SRC_ROOT.length + 1).replaceAll('\\', '/'),
       )
       .sort();
-    expect(payoutControllerCallers).toEqual([]);
+    expect(payoutControllerCallers).toEqual([
+      'accounting/accounting-provider-payout.controller.ts',
+    ]);
   });
 
   it('keeps generic single-entry AccountingTransaction persistence fully contracted', () => {

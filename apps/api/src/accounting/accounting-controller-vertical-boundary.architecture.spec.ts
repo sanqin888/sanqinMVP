@@ -40,6 +40,9 @@ const EXPECTED_CONTROLLER_CAPABILITIES = {
   'accounting-provider-financial.controller.ts': [
     'AccountingProviderFinancialService',
   ],
+  'accounting-provider-payout.controller.ts': [
+    'AccountingProviderPayoutService',
+  ],
   'accounting-provider-settlement.controller.ts': [
     'AccountingProviderSettlementExecutionService',
     'AccountingProviderSettlementPreviewService',
@@ -83,6 +86,8 @@ const EXPECTED_ROUTES = [
   'GET inbox/artifacts/:artifactStableId/download',
   'GET inbox/artifacts/:artifactStableId/tabular-preview',
   'GET provider-financial/:documentStableId/review-revisions',
+  'GET provider-payouts',
+  'POST provider-payouts',
   'POST provider-financial/:documentStableId/review-revisions',
   'POST provider-financial/:documentStableId/review-revisions/:reviewRevisionStableId/confirm',
   'POST inbox/:inboxItemStableId/provider-financial/confirm',
