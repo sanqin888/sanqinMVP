@@ -773,3 +773,37 @@ The temporary Project-source TXT notes were dispositioned in the modularization 
 Because PR #2420 is merged and this roadmap retains the unresolved CheckoutIntent requirement, those four TXT notes are no longer needed as execution sources and may be removed from the Project source list.
 
 The original full-site modularization audit Markdown should remain as historical baseline/reference evidence, not as the active execution plan.
+
+## 11. Later finance operations — Vehicle Mileage
+
+Priority: **LATER / AFTER CURRENT ACCOUNTING AND CORE BACKLOG**  
+Complexity: **M**  
+External gate: **none; CRA treatment must be re-verified against the rules in force when calculation/claim support is implemented**
+
+After the higher-priority Accounting and core backlog work is complete, add a **Vehicle Mileage** surface in the most appropriate authenticated finance/operations UI (Accounting or Admin, chosen by the readiness audit rather than by convenience).
+
+The initial goal is **recording first, calculation second**. SanQ currently uses a personally owned vehicle for recurring restaurant procurement trips, including routes that may start at the store or at home and may visit one or more suppliers before arriving at / returning to the store. The first slice should preserve reliable source data rather than trying to infer tax treatment from incomplete history.
+
+Recording should support, at minimum:
+
+- trip date;
+- business purpose;
+- start location;
+- zero or more supplier / business stops;
+- end location;
+- actual business kilometres claimed for the trip;
+- optional odometer start/end or other supporting mileage evidence;
+- notes/evidence sufficient to explain the procurement route later.
+
+Do not automatically treat every home-origin leg as business mileage. The later calculation policy must distinguish ordinary personal commuting from qualifying business travel / point-of-call treatment using the CRA rules and evidence applicable at that time.
+
+Once enough real trip data exists, add a separately reviewed calculation/reimbursement slice that:
+
+- applies the then-current CRA reasonable per-kilometre allowance rules and annual thresholds rather than hard-coding the 2026 rates into the recording model;
+- keeps personal commuting kilometres excluded unless the applicable CRA rules support business treatment;
+- supports multi-stop procurement routes without collapsing them into a simple home-to-store distance adjustment;
+- calculates any eligible GST/HST ITC using the CRA method applicable to the reimbursement/allowance structure actually chosen;
+- prevents duplicate recovery of the same vehicle cost through both mileage allowance and separately reimbursed fuel/maintenance/repair expenses;
+- posts any resulting expense, payable/reimbursement and HST effects through the existing Accounting canonical Journal boundary rather than creating a parallel finance ledger.
+
+This is a future operational-finance feature, not a reason to reopen the closed modularization program or to interrupt the current B-lane execution order.
