@@ -143,8 +143,7 @@ const providerRow = (params: {
 }): AccountingProviderPendingReconciliationRowV1 => {
   const providerLines = params.lines.filter(
     (line) =>
-      line.provider === params.provider &&
-      line.occurredAt < params.toExclusive,
+      line.provider === params.provider && line.occurredAt < params.toExclusive,
   );
   const openingLines = providerLines.filter(
     (line) => line.occurredAt < params.fromInclusive,
