@@ -456,23 +456,23 @@ Priority: **P1**
 Complexity: **H**  
 Depends on: **B2 production closeout — satisfied 2026-09-22**.
 
-Current state: **EFA PRODUCTION DEPLOYED / PARTIAL VERIFICATION — B1 MIGRATION APPLIED — B2/C/D MERGED + CI GREEN + DEPLOYED — INCLUDED-ACCOUNT V2 WRITE + JOURNAL VERIFIED — EXCLUDED + MIXED-ACCOUNT VERIFICATION PENDING**.
+Current state: **PRODUCTION VERIFIED / CLOSED — B1 MIGRATION APPLIED — B2/C/D MERGED + CI GREEN + DEPLOYED + VERIFIED — INCLUDED / EXCLUDED / MIXED-ACCOUNT V2 PATHS VERIFIED — MANAGEMENT VS CANONICAL RECONCILED**.
 
 Detailed audit/design: `docs/architecture/accounting-expense-funding-attribution.md`.
 
 EFA moves funding ownership from a document-level allocation model to split-level attribution for new Expense v2 facts while preserving historical Expense v1 authority. EFA-B2 merged through PR #2469 / `6674ab1cdd6bcba78998698cde69469c40b0b03d` with CI #6150 green and provides the grouped canonical v2 posting engine without adding a JournalLine funding dimension. EFA-C merged through PR #2470 / `42e25b04` after CI #6155 passed; current Expense/Inbox writes and UI now use version-2 split funding, confirmed-unposted v2 completion is split-level, historical v1 allocation reads/completion remain, records dual-read both authorities, and account policy configuration is available in Settings.
 
-EFA-D merged through PR #2471 / final head `ddb01f74` / squash `2d3abc0e`; CI #6158 passed and production is deployed at `main@2d3abc0e`. The B1 additive migration is applied. The account-level flag `includeFundedExpensesInManagementReports` is consumed only by Management Dashboard/P&L/category/trend and Management/Boss export projections for Expense v2 Journal groups. Raw canonical transaction export, canonical Journal/audit, account movement, actual cash flow and recoverable GST/HST remain unfiltered; historical v1 Expense Journals are not retroactively hidden. The first production v2 Expense (`expense_nha2w24tprp8s74921k3ge9p`) is funded by included `account_primary_bank` and has exactly one balanced `3212c` v2 Journal; excluded-account and mixed-account verification remain open.
+EFA-D merged through PR #2471 / final head `ddb01f74` / squash `2d3abc0e`; CI #6158 passed and production is deployed at `main@2d3abc0e`. The B1 additive migration is applied. The account-level flag `includeFundedExpensesInManagementReports` is consumed only by Management Dashboard/P&L/category/trend and Management/Boss export projections for Expense v2 Journal groups. Raw canonical transaction export, canonical Journal/audit, account movement, actual cash flow and recoverable GST/HST remain unfiltered; historical v1 Expense Journals are not retroactively hidden. Production verification passed for included Primary Bank, excluded CIBC and mixed CIBC + Primary Bank records, including exact account-scoped 1..N Journal grouping and Management-vs-canonical reconciliation. Both newly verified v2 records have zero legacy `AccountingExpensePaymentAllocation` rows. **EFA is closed.**
 
 The Accounting PWA has one operator and may be deleted/recreated at the v2 cutover, so no long-lived old-client write contract is required. Historical v1 records remain readable and immutable.
 
-EFA must close before B3 so Trial Balance characterizes the final Expense Journal cardinality.
+EFA is closed, so B3 may now characterize the final Expense Journal cardinality.
 
 ### 5.4 B3 — Trial Balance + Balance Movement Statement
 
 Priority: **P1/P2**  
 Complexity: **H**  
-Depends on: **B1 + B2 + EFA**, with EFA closing the final Expense funding/Journal-cardinality model before Trial Balance.
+Depends on: **B1 + B2 + EFA — satisfied 2026-09-22**. EFA has closed the final Expense funding/Journal-cardinality model; B3 is ready for readiness audit.
 
 Build Trial Balance directly from Journal lines and then the zero-opening **资产负债变动表 / Balance Movement Statement**.
 
