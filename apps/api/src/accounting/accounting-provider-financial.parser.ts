@@ -751,8 +751,7 @@ function cloverFeeRowsFromLayout(
           !/^Description$/i.test(line.text.trim()),
       )
       .sort(
-        (left, right) =>
-          (left.geometry?.top ?? 0) - (right.geometry?.top ?? 0),
+        (left, right) => (left.geometry?.top ?? 0) - (right.geometry?.top ?? 0),
       );
 
     const rows = descriptions.flatMap((descriptionLine) => {
@@ -893,8 +892,8 @@ function pushCloverFees(
     return;
   }
 
-  const equipmentRows = rows.filter(
-    (row) => /^MONTHLY\s+EQUIPMENT\s+BILL$/i.test(row.description),
+  const equipmentRows = rows.filter((row) =>
+    /^MONTHLY\s+EQUIPMENT\s+BILL$/i.test(row.description),
   );
   const networkRows = rows.filter(
     (row) =>
@@ -950,10 +949,7 @@ function pushCloverFees(
     rawCode: CLOVER_STATEMENT_RAW_CODES.MONTHLY_EQUIPMENT_BILL,
     rawName: 'Monthly Equipment Bill',
     component: AccountingFinancialComponent.PLATFORM_OTHER_FEE,
-    amountCents: sumRows(
-      equipmentRows,
-      (row) => row.totalCents - row.taxCents,
-    ),
+    amountCents: sumRows(equipmentRows, (row) => row.totalCents - row.taxCents),
     sourceRows: equipmentRows,
   });
   pushAggregate({

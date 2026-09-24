@@ -471,10 +471,8 @@ const toJournalLines = (
     .map((bucket) => ({
       accountStableId: bucket.accountStableId,
       categoryStableId: bucket.categoryStableId,
-      debitCents:
-        bucket.netDebitCents > 0 ? bucket.netDebitCents : 0,
-      creditCents:
-        bucket.netDebitCents < 0 ? -bucket.netDebitCents : 0,
+      debitCents: bucket.netDebitCents > 0 ? bucket.netDebitCents : 0,
+      creditCents: bucket.netDebitCents < 0 ? -bucket.netDebitCents : 0,
       memo,
     }));
 
@@ -627,7 +625,9 @@ const buildCloverFeesControlTotalChecks = (
 
   const deltaCents = calculatedCents - controlLine.amountCents;
   if (!Number.isSafeInteger(deltaCents)) {
-    throw new Error('Clover Fees control total delta exceeds safe integer range');
+    throw new Error(
+      'Clover Fees control total delta exceeds safe integer range',
+    );
   }
   return [
     {
