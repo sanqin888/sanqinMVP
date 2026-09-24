@@ -70,10 +70,12 @@ export function AttentionSummary({
                     ? '当前没有触发 C1 异常阈值的波动'
                     : 'No movement currently crosses the C1 anomaly thresholds'}
               </h2>
-              <ConfidenceBadge
-                confidence={report.comparison.confidence}
-                locale={locale}
-              />
+              {lowSample ? (
+                <ConfidenceBadge
+                  confidence={report.comparison.confidence}
+                  locale={locale}
+                />
+              ) : null}
             </div>
             <p className="mt-1 text-sm leading-6 text-slate-600">
               {lowSample
@@ -135,10 +137,12 @@ export function AttentionSummary({
                     )}
                   </h3>
                 </div>
-                <ConfidenceBadge
-                  confidence={anomaly.confidence}
-                  locale={locale}
-                />
+                {anomaly.confidence === 'LOW_SAMPLE' ? (
+                  <ConfidenceBadge
+                    confidence={anomaly.confidence}
+                    locale={locale}
+                  />
+                ) : null}
               </div>
 
               <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -287,7 +291,9 @@ function MetricCard({
         </div>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <ConfidenceBadge confidence={confidence} locale={locale} />
+        {confidence === 'LOW_SAMPLE' ? (
+          <ConfidenceBadge confidence={confidence} locale={locale} />
+        ) : null}
         {note ? (
           <span className="text-[11px] text-slate-400">{note}</span>
         ) : null}
