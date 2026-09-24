@@ -26,15 +26,20 @@ describe('B5-C1 Business Operations architecture', () => {
     expect(module).toContain("from '../orders/public-api'");
   });
 
-  it('keeps the legacy report route/service separate from the additive business projection', () => {
+  it('contracts the legacy root report route while preserving the Business Operations projection', () => {
     const controller = read(resolve(REPORTS_ROOT, 'reports.controller.ts'));
-    const legacyService = read(resolve(REPORTS_ROOT, 'reports.service.ts'));
+    const topItemsService = read(resolve(REPORTS_ROOT, 'reports.service.ts'));
 
     expect(controller).toContain("@Get('business')");
-    expect(controller).toContain('@Get()');
+    expect(controller).not.toContain('@Get()');
     expect(controller).toContain('BusinessOperationsReportService');
-    expect(legacyService).not.toContain('BusinessOperationsReportService');
-    expect(legacyService).not.toContain('REPORTING_BUSINESS_ORDER_FACTS_QUERY');
+    expect(controller).not.toContain('ReportsService');
+    expect(topItemsService).not.toContain('BusinessOperationsReportService');
+    expect(topItemsService).not.toContain(
+      'REPORTING_BUSINESS_ORDER_FACTS_QUERY',
+    );
+    expect(topItemsService).not.toContain('getReport(');
+    expect(topItemsService).not.toContain('readMetricsForRange');
   });
 
   it('does not introduce POS/Print authority before a public seam is approved', () => {

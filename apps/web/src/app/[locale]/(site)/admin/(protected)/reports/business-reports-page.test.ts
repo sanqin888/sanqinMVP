@@ -66,7 +66,17 @@ describe('Admin Business Reports C2 UI contract', () => {
     );
     expect(executionSource).toContain('report.coverage.printHealth');
     expect(executionSource).toContain(
-      'C2 does not create a Reporting → POS/Print dependency',
+      'No Reporting → POS/Print dependency is introduced',
+    );
+  });
+
+  it('keeps partial operating history centralized in coverage instead of repeating it on KPI cards', () => {
+    expect(attentionSource).toContain("confidence === 'LOW_SAMPLE'");
+    expect(executionSource).toContain(
+      'Comparison available · operating history limited',
+    );
+    expect(executionSource).toContain(
+      'historical hours/temporary closures are not versioned',
     );
   });
 

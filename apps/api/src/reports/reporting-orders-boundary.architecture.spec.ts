@@ -30,6 +30,8 @@ describe('Reporting / Orders cycle-safe boundary', () => {
     expect(reportsModule).toContain("from '../orders/public-api'");
     expect(reportsModule).toContain('ORDER_REPORTING_FACTS_READER');
     expect(reportsModule).toContain('REPORTING_ORDER_FACTS_QUERY');
+    expect(reportsModule).toContain('readItemsForRange');
+    expect(reportsModule).not.toContain('readMetricsForRange');
     expect(baseline).toContain('"apps/api/src/reports/reports.module.ts"');
     expect(baseline).not.toContain(
       '"accounting-reporting-analytics -> commerce-orders-fulfillment"',
@@ -78,6 +80,9 @@ describe('Reporting / Orders cycle-safe boundary', () => {
     expect(ordersContract).toContain('OrderReportingOperationalRangeV1');
     expect(ordersContract).toContain('fromInclusive');
     expect(ordersContract).toContain('toExclusive');
+    expect(ordersContract).toContain('readItemsForRange');
+    expect(ordersContract).not.toContain('readMetricsForRange');
+    expect(ordersPublicApi).not.toContain('OrderReportingMetricsV1');
     expect(ordersContract).not.toContain('contactEmail');
     expect(ordersContract).not.toContain('contactPhone');
     expect(ordersContract).not.toContain('userId');

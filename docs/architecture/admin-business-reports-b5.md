@@ -1,8 +1,8 @@
 # B5 — Admin Business Reports / Operating Monitoring
 
 Date: 2026-09-24  
-Implementation baseline: `dev@af57715f` (B5-C1 merged through PR #2514; final head `d8f21ca6`; CI #6303 green)  
-Current local work: **B5-C2 Admin Today-first operating-monitoring UI — LOCAL SOURCE READY FOR REVIEW / WEB CONSUMER CUTOVER / NO BACKEND DEPENDENCY / NO MIGRATION / NO PACKAGE CHANGE / NO GRAPH CHANGE**
+Implementation baseline: `dev@81784c85` (B5-C2 merged through PR #2515; final head `6f455230`; squash `dfa8e21c`; CI #6306 green; deployed in production `main@81784c85`)  
+Current local work: **B5-D legacy report contraction + comparison-confidence UI polish — LOCAL SOURCE READY FOR REVIEW / HTTP CONTRACT CONTRACTION / NO MIGRATION / NO PACKAGE CHANGE / NO NEW GRAPH DIRECTION / POST-CONTRACTION PRODUCTION VERIFICATION PENDING**
 
 ## Product goal
 
@@ -393,15 +393,50 @@ trend.
 
 Source-level Web characterization records the endpoint cutover, Today-first evidence
 sections, commercial/production separation, bounded queue/coverage limitations and
-AdminShell Store-selector reuse. Per repository workflow, local lint/build/test/CI
-reproduction is not run before user review; GitHub Actions remains the authoritative
-validation gate after remote-delivery authorization.
+AdminShell Store-selector reuse. C2 merged through PR #2515 / final head `6f455230` /
+squash `dfa8e21c`; CI #6306 passed. Production `main@81784c85` was redeployed on
+2026-09-24 and the operator exercised Today, Yesterday, 7d, 28d and 90d. API request
+logs recorded five successful `GET /api/v1/reports/business` responses (all HTTP 200)
+for Store `4750_Yonge_Street`, while legacy `GET /api/v1/reports` recorded zero
+requests. No Web ERROR was observed; the only API ERROR in the observation window was
+an unrelated transient `/api/v1/auth/me` 401 followed by a normal 200. This satisfies
+the C2 deployed-and-observed gate for B5-D.
 
-### B5-D
+### B5-D — legacy route contraction + closeout polish
 
-Only after the new consumer is deployed and observed:
+B5-D may now contract the zero-consumer legacy report path. The local source change:
 
-- contract old `GET /reports`;
-- close compatibility;
-- production-verify store/timezone boundaries, comparison arithmetic, product semantics
-  and operational health behavior.
+- removes root `GET /reports` while retaining `GET /reports/business`;
+- removes the legacy mixed-KPI `ReportsService.getReport()` projection and its
+  process-timezone/chart/payment/fulfillment characterization;
+- removes `readMetricsForRange()` and its legacy metric DTOs from the Reporting-owned
+  adapter and Orders `ORDER_REPORTING_FACTS_READER` public surface because no remaining
+  production consumer exists;
+- retains `ReportsService.getTopItemsForRange()`, `REPORTING_TOP_ITEMS_QUERY`,
+  `readItemsForRange()` and immutable component expansion for Homepage weekly featured
+  ranking;
+- preserves B5 operational Order facts, Store operating-context seam, `GET
+  /reports/business`, Accounting authority boundaries and Print `UNAVAILABLE` behavior;
+- centralizes `OPERATING_CONTEXT_PARTIAL` explanation in Coverage instead of repeating
+  “营业上下文有限” on each KPI/anomaly card. `LOW_SAMPLE` remains visible on affected
+  cards; Coverage explains that Order history is usable while historical hours and
+  temporary-closure configuration are not versioned.
+
+This is an HTTP contract contraction but not a schema/persistence contraction. It adds
+no migration, package dependency, context direction, scanner allowance or SCC.
+
+Post-contraction production verification remains **PENDING** until this B5-D source is
+merged and deployed. The closeout verification must confirm:
+
+1. API startup maps `GET /api/v1/reports/business` and no longer maps root `GET
+   /api/v1/reports`;
+2. Admin Today / Yesterday / 7d / 28d / 90d load successfully for the selected Store
+   with no API/Web runtime error;
+3. store/timezone boundaries, expected/delta arithmetic, Commercial-vs-Production item
+   semantics, prep p50/p90 and bounded recent-queue behavior remain intact;
+4. Coverage is the single normal location for `OPERATING_CONTEXT_PARTIAL`, while
+   `LOW_SAMPLE` remains prominent when history is actually insufficient;
+5. Homepage automatic weekly featured-item ranking still resolves through
+   `REPORTING_TOP_ITEMS_QUERY` after `readMetricsForRange()` removal;
+6. post-deploy logs show no legacy `/reports` traffic. Only after these checks pass may
+   B5 be marked **PRODUCTION VERIFIED / CLOSED**.
