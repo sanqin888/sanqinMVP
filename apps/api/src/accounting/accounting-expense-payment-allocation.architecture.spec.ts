@@ -85,7 +85,7 @@ describe('Accounting Expense payment allocation boundary', () => {
     const broadService = readFileSync(ACCOUNTING_SERVICE, 'utf8');
     const reportsService = readFileSync(FINANCIAL_REPORTS_SERVICE, 'utf8');
 
-    expect(reportsService).toContain('async accountBalanceReport(');
+    expect(reportsService).not.toContain('async accountBalanceReport(');
     expect(reportsService).not.toContain(
       'this.prisma.accountingExpensePaymentAllocation.findMany',
     );

@@ -127,7 +127,6 @@ const EXPECTED_ROUTES = [
   'POST accounts',
   'GET accounts',
   'PUT accounts/:accountStableId/expense-management-policy',
-  'GET report/account-balance',
   'GET report/annual/:year',
   'GET report/cashflow',
   'GET audit-logs',

@@ -100,14 +100,6 @@ export class AccountingReportsController {
     });
   }
 
-  @Get('report/account-balance')
-  async accountBalanceReport(
-    @Query('from') from?: string,
-    @Query('to') to?: string,
-  ) {
-    return this.reports.accountBalanceReport(from, to);
-  }
-
   @Get('report/annual/:year')
   async annualReport(@Param('year') year: string) {
     return this.reports.annualReport(Number(year));
