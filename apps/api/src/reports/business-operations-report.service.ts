@@ -902,11 +902,11 @@ export class BusinessOperationsReportService {
       };
     }
 
-    const cutoff = args.now.minus({ hours: RECENT_QUEUE_WINDOW_HOURS }).toJSDate();
+    const cutoff = args.now
+      .minus({ hours: RECENT_QUEUE_WINDOW_HOURS })
+      .toJSDate();
     const recent = args.allOrders.filter(
-      (order) =>
-        order.createdAt >= cutoff &&
-        order.createdAt < args.now.toJSDate(),
+      (order) => order.createdAt >= cutoff && order.createdAt < args.now.toJSDate(),
     );
     const making = recent
       .filter((order) => order.status === 'making')
@@ -963,10 +963,11 @@ export class BusinessOperationsReportService {
       );
 
       const comparatorSummaries = comparatorWindows.map((window) => {
-        const comparatorStart = DateTime.fromJSDate(window.start).setZone(args.zone);
+        const comparatorStart = DateTime.fromJSDate(window.start).setZone(
+          args.zone,
+        );
         const isPartialFinalHour =
-          args.targetDay.hasSame(args.today, 'day') &&
-          hour === args.now.hour;
+          args.targetDay.hasSame(args.today, 'day') && hour === args.now.hour;
         const comparatorCutoff = isPartialFinalHour
           ? DateTime.fromJSDate(window.end).setZone(args.zone)
           : comparatorStart.plus({ hours: hour + 1 });
