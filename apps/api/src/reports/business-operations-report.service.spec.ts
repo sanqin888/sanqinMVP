@@ -96,9 +96,7 @@ describe('BusinessOperationsReportService', () => {
   });
 
   it('builds a Today-first same-weekday baseline, retains covered zero days, and cuts historical pace at the same local time', async () => {
-    jest
-      .useFakeTimers()
-      .setSystemTime(new Date('2026-09-24T18:00:00.000Z'));
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-24T18:00:00.000Z'));
 
     const coverageProbe = makeOrder('2026-07-02T12:00:00');
     const currentMaking = makeOrder('2026-09-24T12:00:00', {
@@ -288,9 +286,7 @@ describe('BusinessOperationsReportService', () => {
   });
 
   it('fails closed on future dates and ranges longer than 90 days', async () => {
-    jest
-      .useFakeTimers()
-      .setSystemTime(new Date('2026-09-24T18:00:00.000Z'));
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-24T18:00:00.000Z'));
     const service = new BusinessOperationsReportService(
       {
         readOperationalOrdersForRange: jest.fn(),
@@ -318,9 +314,7 @@ describe('BusinessOperationsReportService', () => {
   });
 
   it('reports low sample instead of manufacturing a baseline when prior coverage is absent', async () => {
-    jest
-      .useFakeTimers()
-      .setSystemTime(new Date('2026-09-24T18:00:00.000Z'));
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-24T18:00:00.000Z'));
     const current = makeOrder('2026-09-24T12:00:00');
     const service = new BusinessOperationsReportService(
       {

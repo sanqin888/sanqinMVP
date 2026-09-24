@@ -14,10 +14,7 @@ export type ReportingBusinessOrderStatusV1 =
   | 'ready'
   | 'completed';
 
-export type ReportingBusinessOrderChannelV1 =
-  | 'web'
-  | 'in_store'
-  | 'ubereats';
+export type ReportingBusinessOrderChannelV1 = 'web' | 'in_store' | 'ubereats';
 
 export type ReportingBusinessOrderPaymentMethodV1 =
   | 'CASH'

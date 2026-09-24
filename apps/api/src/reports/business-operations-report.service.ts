@@ -192,12 +192,7 @@ function resolveItemName(
     'productStableId' | 'displayName' | 'nameEn' | 'nameZh'
   >,
 ): string {
-  return (
-    item.displayName ||
-    item.nameZh ||
-    item.nameEn ||
-    item.productStableId
-  );
+  return item.displayName || item.nameZh || item.nameEn || item.productStableId;
 }
 
 function confidenceForSamples(
@@ -246,8 +241,7 @@ export class BusinessOperationsReportService {
       throw new BadRequestException('future report dates are not supported');
     }
 
-    const selectedDayCount =
-      Math.floor(toDay.diff(fromDay, 'days').days) + 1;
+    const selectedDayCount = Math.floor(toDay.diff(fromDay, 'days').days) + 1;
     if (selectedDayCount > MAX_RANGE_DAYS) {
       throw new BadRequestException(
         `report range cannot exceed ${MAX_RANGE_DAYS} days`,
@@ -310,9 +304,7 @@ export class BusinessOperationsReportService {
         now,
         observedOrdersFrom,
       }).map((comparatorWindow) =>
-        summarizeOrders(
-          filterOrdersByWindows(allOrders, [comparatorWindow]),
-        ),
+        summarizeOrders(filterOrdersByWindows(allOrders, [comparatorWindow])),
       );
 
       return {
@@ -342,9 +334,7 @@ export class BusinessOperationsReportService {
       targetOrders,
       baselinePeriods,
       (order) =>
-        DateTime.fromJSDate(order.createdAt)
-          .setZone(zone)
-          .toFormat('HH:00'),
+        DateTime.fromJSDate(order.createdAt).setZone(zone).toFormat('HH:00'),
     );
 
     const commercialItems = this.buildCommercialItems(
@@ -526,14 +516,12 @@ export class BusinessOperationsReportService {
   ): TimeWindow {
     const start = comparatorDay.startOf('day');
     const end = targetDay.hasSame(today, 'day')
-      ? comparatorDay
-          .startOf('day')
-          .set({
-            hour: now.hour,
-            minute: now.minute,
-            second: now.second,
-            millisecond: now.millisecond,
-          })
+      ? comparatorDay.startOf('day').set({
+          hour: now.hour,
+          minute: now.minute,
+          second: now.second,
+          millisecond: now.millisecond,
+        })
       : comparatorDay.plus({ days: 1 }).startOf('day');
 
     return {
@@ -602,12 +590,7 @@ export class BusinessOperationsReportService {
 
       for (const targetDay of args.targetDays) {
         const comparatorDay = targetDay.minus({ weeks: weekOffset });
-        if (
-          !this.isComparatorCovered(
-            comparatorDay,
-            args.observedOrdersFrom,
-          )
-        ) {
+        if (!this.isComparatorCovered(comparatorDay, args.observedOrdersFrom)) {
           covered = false;
           break;
         }
@@ -650,9 +633,7 @@ export class BusinessOperationsReportService {
       .map((key) => {
         const current = currentByKey.get(key) ?? emptySummary();
         const expected = expectedSummary(
-          baselineByPeriod.map(
-            (period) => period.get(key) ?? emptySummary(),
-          ),
+          baselineByPeriod.map((period) => period.get(key) ?? emptySummary()),
         );
         return {
           key,
@@ -711,9 +692,7 @@ export class BusinessOperationsReportService {
           baseline.get(productStableId),
         );
         const expectedQuantity = roundMetric(
-          median(
-            baselineEntries.map((entry) => entry?.quantity ?? 0),
-          ),
+          median(baselineEntries.map((entry) => entry?.quantity ?? 0)),
         );
         const fallbackName = baselineEntries.find(Boolean)?.name;
 
@@ -725,8 +704,7 @@ export class BusinessOperationsReportService {
           orderPenetrationRate:
             currentOrderCount > 0
               ? roundMetric(
-                  (currentEntry?.orderStableIds.size ?? 0) /
-                    currentOrderCount,
+                  (currentEntry?.orderStableIds.size ?? 0) / currentOrderCount,
                 )
               : 0,
           expectedQuantity,
@@ -782,9 +760,7 @@ export class BusinessOperationsReportService {
           baseline.get(productStableId),
         );
         const expectedQuantity = roundMetric(
-          median(
-            baselineEntries.map((entry) => entry?.quantity ?? 0),
-          ),
+          median(baselineEntries.map((entry) => entry?.quantity ?? 0)),
         );
         const fallbackName = baselineEntries.find(Boolean)?.name;
 
@@ -841,9 +817,7 @@ export class BusinessOperationsReportService {
       for (const component of item.components) {
         add(
           component.productStableId,
-          component.nameZh ||
-            component.nameEn ||
-            component.productStableId,
+          component.nameZh || component.nameEn || component.productStableId,
           item.qty * component.quantityPerParent,
           item.orderStableId,
         );
@@ -853,9 +827,7 @@ export class BusinessOperationsReportService {
     return result;
   }
 
-  private prepDurations(
-    orders: ReportingBusinessOrderFactV1[],
-  ): number[] {
+  private prepDurations(orders: ReportingBusinessOrderFactV1[]): number[] {
     return orders
       .filter(
         (
@@ -866,8 +838,7 @@ export class BusinessOperationsReportService {
         } => order.makingAt !== null && order.readyAt !== null,
       )
       .map(
-        (order) =>
-          (order.readyAt.getTime() - order.makingAt.getTime()) / 60000,
+        (order) => (order.readyAt.getTime() - order.makingAt.getTime()) / 60000,
       )
       .filter((minutes) => minutes >= 0);
   }
@@ -895,12 +866,8 @@ export class BusinessOperationsReportService {
       sampleCount: currentDurations.length,
       p50Minutes: this.roundNullable(percentile(currentDurations, 0.5)),
       p90Minutes: this.roundNullable(percentile(currentDurations, 0.9)),
-      expectedP50Minutes: this.roundNullable(
-        medianNullable(baselineP50),
-      ),
-      expectedP90Minutes: this.roundNullable(
-        medianNullable(baselineP90),
-      ),
+      expectedP50Minutes: this.roundNullable(medianNullable(baselineP50)),
+      expectedP90Minutes: this.roundNullable(medianNullable(baselineP90)),
       byChannel: Array.from(channels.entries())
         .map(([channel, orders]) => {
           const durations = this.prepDurations(orders);
@@ -935,9 +902,7 @@ export class BusinessOperationsReportService {
       };
     }
 
-    const cutoff = args.now
-      .minus({ hours: RECENT_QUEUE_WINDOW_HOURS })
-      .toJSDate();
+    const cutoff = args.now.minus({ hours: RECENT_QUEUE_WINDOW_HOURS }).toJSDate();
     const recent = args.allOrders.filter(
       (order) =>
         order.createdAt >= cutoff &&
@@ -998,9 +963,7 @@ export class BusinessOperationsReportService {
       );
 
       const comparatorSummaries = comparatorWindows.map((window) => {
-        const comparatorStart = DateTime.fromJSDate(window.start).setZone(
-          args.zone,
-        );
+        const comparatorStart = DateTime.fromJSDate(window.start).setZone(args.zone);
         const isPartialFinalHour =
           args.targetDay.hasSame(args.today, 'day') &&
           hour === args.now.hour;
@@ -1036,9 +999,7 @@ export class BusinessOperationsReportService {
     const orderTotalChangeCents =
       current.orderTotalCents - expected.orderTotalCents;
     const currentAverageExact =
-      current.orderCount > 0
-        ? current.orderTotalCents / current.orderCount
-        : 0;
+      current.orderCount > 0 ? current.orderTotalCents / current.orderCount : 0;
     const expectedAverageExact =
       expected.orderCount > 0
         ? expected.orderTotalCents / expected.orderCount
@@ -1051,8 +1012,7 @@ export class BusinessOperationsReportService {
     return {
       orderTotalChangeCents,
       volumeEffectCents,
-      averageOrderEffectCents:
-        orderTotalChangeCents - volumeEffectCents,
+      averageOrderEffectCents: orderTotalChangeCents - volumeEffectCents,
     };
   }
 
@@ -1188,9 +1148,7 @@ export class BusinessOperationsReportService {
       absoluteDelta: roundMetric(absoluteDelta),
       percentageDelta:
         args.expected !== 0
-          ? roundMetric(
-              (absoluteDelta / Math.abs(args.expected)) * 100,
-            )
+          ? roundMetric((absoluteDelta / Math.abs(args.expected)) * 100)
           : null,
       materialityFloor: roundMetric(materialFloor),
       mad: dispersion === null ? null : roundMetric(dispersion),
@@ -1198,8 +1156,7 @@ export class BusinessOperationsReportService {
       confidence: args.confidence,
       rangeFrom: args.rangeFrom,
       rangeTo: args.rangeTo,
-      direction:
-        absoluteDelta >= 0 ? 'ABOVE_EXPECTED' : 'BELOW_EXPECTED',
+      direction: absoluteDelta >= 0 ? 'ABOVE_EXPECTED' : 'BELOW_EXPECTED',
       contributors: args.contributors.slice(0, 5),
     });
   }
@@ -1208,10 +1165,7 @@ export class BusinessOperationsReportService {
     byChannel: BusinessOperationsDimensionRowV1[],
     byFulfillment: BusinessOperationsDimensionRowV1[],
     byHour: BusinessOperationsDimensionRowV1[],
-    metric:
-      | 'orderCount'
-      | 'orderTotalCents'
-      | 'averageOrderTotalCents',
+    metric: 'orderCount' | 'orderTotalCents' | 'averageOrderTotalCents',
   ): BusinessOperationsAnomalyV1['contributors'] {
     const rows: BusinessOperationsAnomalyV1['contributors'] = [
       ...byChannel.map((row) => ({
