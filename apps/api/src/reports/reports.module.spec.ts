@@ -1,5 +1,6 @@
 import { MODULE_METADATA } from '@nestjs/common/constants';
 
+import { ORDER_REPORTING_FACTS_READER } from '../orders/public-api';
 import {
   BRAND_STORE_CONFIG_READER,
   STORE_SCHEDULE_READER,
@@ -7,6 +8,10 @@ import {
   BrandStoreConfigModule,
   StoreStatusModule,
 } from '../store/public-api';
+import {
+  REPORTING_BUSINESS_ORDER_FACTS_QUERY,
+  type ReportingBusinessOrderFactsQueryPort,
+} from './reporting-business-order-facts-query.contract';
 import {
   REPORTING_STORE_OPERATING_CONTEXT_QUERY,
   type ReportingStoreOperatingContextQueryPort,
@@ -17,12 +22,98 @@ function metadata<T>(target: object, key: string): T[] {
   return (Reflect.getMetadata(key, target) as T[] | undefined) ?? [];
 }
 
-describe('ReportsModule B5 operating-context composition', () => {
+describe('ReportsModule B5 composition', () => {
   it('imports only Brand/Store public modules for the operating-context seam', () => {
     const imports = metadata<unknown>(ReportsModule, MODULE_METADATA.IMPORTS);
 
     expect(imports).toContain(BrandStoreConfigModule);
     expect(imports).toContain(StoreStatusModule);
+  });
+
+  it('maps Orders operational facts through a Reporting-owned B5-C1 port', async () => {
+    const providers = metadata<unknown>(
+      ReportsModule,
+      MODULE_METADATA.PROVIDERS,
+    );
+    const provider = providers.find(
+      (candidate) =>
+        typeof candidate === 'object' &&
+        candidate !== null &&
+        'provide' in candidate &&
+        candidate.provide === REPORTING_BUSINESS_ORDER_FACTS_QUERY,
+    ) as
+      | {
+          inject?: unknown[];
+          useFactory?: (reader: never) => ReportingBusinessOrderFactsQueryPort;
+        }
+      | undefined;
+
+    expect(provider?.inject).toEqual([ORDER_REPORTING_FACTS_READER]);
+    expect(provider?.useFactory).toBeDefined();
+
+    const reader = {
+      readOperationalOrdersForRange: jest.fn().mockResolvedValue([
+        {
+          orderStableId: 'order-1',
+          storeStableId: '4750_Yonge_Street',
+          status: 'completed',
+          createdAt: new Date('2026-09-24T16:00:00.000Z'),
+          paidAt: new Date('2026-09-24T16:00:00.000Z'),
+          makingAt: null,
+          readyAt: null,
+          totalCents: 2000,
+          subtotalCents: 1770,
+          taxCents: 230,
+          customerDeliveryFeeCents: 0,
+          channel: 'in_store',
+          primaryPaymentMethod: 'CARD',
+          fulfillmentType: 'dine_in',
+        },
+      ]),
+      readOperationalItemsForRange: jest.fn().mockResolvedValue([
+        {
+          orderStableId: 'order-1',
+          orderCreatedAt: new Date('2026-09-24T16:00:00.000Z'),
+          qty: 1,
+          productStableId: 'combo',
+          displayName: 'Combo',
+          nameEn: 'Combo',
+          nameZh: '套餐',
+          unitPriceCents: 2000,
+          isDailySpecialApplied: false,
+          components: [
+            {
+              productStableId: 'component',
+              nameEn: 'Component',
+              nameZh: '组件',
+              quantityPerParent: 1,
+            },
+          ],
+        },
+      ]),
+    };
+    const query = provider!.useFactory!(reader as never);
+    const range = {
+      storeStableId: '4750_Yonge_Street',
+      fromInclusive: new Date('2026-09-24T04:00:00.000Z'),
+      toExclusive: new Date('2026-09-25T04:00:00.000Z'),
+    };
+
+    await expect(
+      query.readOperationalOrdersForRange(range),
+    ).resolves.toHaveLength(1);
+    await expect(query.readOperationalItemsForRange(range)).resolves.toEqual([
+      expect.objectContaining({
+        productStableId: 'combo',
+        components: [
+          expect.objectContaining({
+            productStableId: 'component',
+          }),
+        ],
+      }),
+    ]);
+    expect(reader.readOperationalOrdersForRange).toHaveBeenCalledWith(range);
+    expect(reader.readOperationalItemsForRange).toHaveBeenCalledWith(range);
   });
 
   it('maps Brand/Store public readers into a Reporting-owned current-configuration contract', async () => {

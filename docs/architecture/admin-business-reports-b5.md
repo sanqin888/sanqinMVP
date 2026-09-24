@@ -1,8 +1,8 @@
 # B5 — Admin Business Reports / Operating Monitoring
 
 Date: 2026-09-24  
-Implementation baseline: `dev@35ba5d52` (B5-B1 merged through PR #2511; CI #6291 green)  
-Current local work: **B5-B2 Store operating-context seam — LOCAL SOURCE READY FOR REVIEW / AUTHORIZED READ-ONLY COMPOSITION DIRECTION / NO MIGRATION / NO DEPENDENCY**
+Implementation baseline: `dev@c64c07d3` (B5-B2 merged through PR #2513; CI #6298 green)  
+Current local work: **B5-C1 Business Operations projection + anomaly engine — LOCAL SOURCE READY FOR REVIEW / ADDITIVE HTTP CONTRACT / NO MIGRATION / NO NEW ARCHITECTURE DIRECTION**
 
 ## Product goal
 
@@ -199,40 +199,172 @@ Architecture tests lock that:
 - no broad `accounting-reporting-analytics -> brand-store` legacy direct-import
   allowance is added.
 
-## B5-B2 verification state
+## B5-B2 delivery state
+
+B5-B2 was merged through PR #2513 / squash `c64c07d3`; final head
+`7a8b09eb`; CI #6298 passed architecture, API/Web lint/build/strict declaration
+checks and tests. The only failed precursor run was limited to three Prettier findings
+in the new architecture spec; the corrected final head passed the full suite.
+
+## B5-C1 — Business Operations projection + anomaly engine
+
+B5-C1 is additive. The legacy `GET /reports`, `ReportsService`, Homepage ranking
+contract and existing Admin consumer remain unchanged.
+
+The new endpoint is:
+
+`GET /reports/business?storeStableId=...&from=YYYY-MM-DD&to=YYYY-MM-DD`
+
+`storeStableId` is required. `from` / `to` are optional and default to the
+selected store's current local date. Supplying only one date produces a single-day
+report. Future dates and ranges longer than 90 inclusive local calendar days fail
+closed.
+
+### Reporting-owned Orders seam
+
+B5-C1 introduces `REPORTING_BUSINESS_ORDER_FACTS_QUERY` as a Reporting-owned outbound
+port. The registered `ReportsModule` composition root adapts the B5-B1
+`ORDER_REPORTING_FACTS_READER` operational methods into this contract. The
+`BusinessOperationsReportService` imports neither Orders nor Store public/internal
+types; it depends only on Reporting-owned Orders and Store-context ports.
+
+This adds no new context direction beyond the already established composition seams,
+and it does not change scanner allowances or SCC state.
+
+### Time and range semantics
+
+All range interpretation is server-owned and uses the selected store timezone from
+B5-B2. The engine never uses `process.env.TZ` for the new contract.
+
+For a range ending today, the effective `toExclusive` is the current instant rather
+than end-of-day. Historical same-weekday comparators for the current local day are cut
+at the same wall-clock time. A 14:37 current view is therefore compared with prior
+same-weekdays only through 14:37, never with their complete day.
+
+For 7/28/90-day ranges, a comparator period preserves weekday structure by shifting
+the complete selected range by 1..8 weeks. A comparator period is admitted only when
+every selected date has coverage evidence. This is a rolling operational-monitoring
+baseline, not an Accounting-style disjoint prior-period comparison; for long selected
+ranges, shifted comparison windows can overlap the selected range while each comparison
+date still precedes its corresponding evaluated date.
+
+The Orders read extends four weeks earlier than the eight-week comparator window as a
+coverage probe. The response distinguishes:
+
+- `baselineProbeFrom`: the beginning of that bounded probe;
+- `firstObservedOrderInProbe`: the first reportable Order found inside it.
+
+Comparator dates before or on the first observed date in the bounded probe are not
+treated as authoritative zero days. Once coverage is established, later zero-Order
+comparator dates remain explicit zero samples; this prevents the engine from silently
+dropping real closed/outage/zero-demand days.
+
+### Baseline and anomaly policy
+
+The initial inspectable policy is returned in every response rather than hidden in UI
+code:
+
+- baseline: previous 8 same-weekday/comparable weekly periods;
+- minimum comparable periods: 4;
+- minimum current prep samples before a prep p90 anomaly can fire: 3;
+- robust center: median;
+- robust variability: median absolute deviation (MAD);
+- MAD qualification: 3× MAD when MAD is non-zero;
+- relative materiality floor: 25%;
+- absolute materiality floors:
+  - Order count: 3 Orders;
+  - Order total: 5,000 cents;
+  - average Order total: 300 cents;
+  - prep p90: 5 minutes.
+
+An anomaly must clear minimum sample, absolute/relative materiality and robust
+variability gates. Each emitted anomaly includes current/expected value, absolute delta,
+percentage change, actual materiality floor, MAD, sample count, confidence, range
+and top descriptive channel/fulfillment/hour contributors.
+
+These thresholds are **v1 sensitivity policy**, not accounting truth or permanent
+business constants; the API exposes them so later calibration can be explicit and
+auditable.
+
+Because Store operating history is still `CURRENT_CONFIGURATION_ONLY`, otherwise
+well-sampled comparisons currently report `OPERATING_CONTEXT_PARTIAL`; insufficient
+samples report `LOW_SAMPLE`. The engine may still surface a deterministic anomaly,
+but the UI can show its confidence rather than implying historical closure/schedule
+causality.
+
+### Projection contents
+
+`BusinessOperationsReportV1` contains only operational semantics:
+
+- Order total, Order count, average Order total and customer delivery-fee snapshots;
+- expected values and deltas;
+- daily current/expected timeline;
+- single-day cumulative hourly pace with zero-filled buckets;
+- channel, primary Order payment method and fulfillment breakdowns;
+- exact Order-total movement decomposition into volume effect + average-Order effect;
+- top-level commercial item/package demand with Order penetration;
+- component-expanded production demand, while standalone items remain their own
+  production units;
+- making -> ready prep p50/p90 using deterministic linear-interpolated percentiles,
+  with current channel breakdown;
+- a six-hour bounded current queue for `making` / `ready` only when the selected
+  report is exactly today;
+- deterministic anomalies for Order count, Order total, average Order total and prep
+  p90;
+- explicit coverage metadata.
+
+The count/AOV decomposition uses symmetric count × average effects and assigns the
+rounding remainder to the average-Order effect, so the two effects always reconcile
+exactly to the observed Order-total change.
+
+Commercial item money is not allocated to components. Historical Catalog category
+membership is not reconstructed. Accounting revenue/tax/tender/settlement semantics
+remain outside this contract.
+
+### Current Store context presentation
+
+The response exposes B5-B2 information under explicitly current labels:
+
+- `storeContext.currentStatus`;
+- `storeContext.currentConfiguration`;
+- `coverage.storeOperatingContext = CURRENT_CONFIGURATION_ONLY`.
+
+This prevents a historical report from presenting today's hours/pause state as if it
+were historical evidence.
+
+### POS/Print remains unavailable
+
+C1 returns `coverage.printHealth = UNAVAILABLE`. It does not read `PosPrintJob`,
+import POS internals or create a Reporting -> POS/Print dependency. Print health still
+requires a separately reviewed public seam from `store-operations-pos-print`.
+
+### B5-C1 verification state
 
 Per repository workflow, no local lint/build/test/CI reproduction is run before user
 review.
 
-Source tests characterize:
+Source characterization covers:
 
-- the three Store public reader injections;
-- normalized timezone/business-hours/holiday/current-status mapping;
-- `CURRENT_CONFIGURATION_ONLY` coverage;
-- exclusion of unrelated Store configuration;
-- confinement of the cross-context dependency to the registered composition root.
+- store-local Today defaults and 90-day/future-date guards;
+- eight same-weekday samples with a retained zero-Order day;
+- same-elapsed-time exclusion of comparator Orders after the current local cutoff;
+- low-sample behavior when prior coverage is absent;
+- exact decomposition reconciliation;
+- commercial package vs production-component semantics;
+- prep p50/p90 from lifecycle timestamps;
+- six-hour current queue bounding;
+- explainable anomaly fields and confidence;
+- Reporting-owned boundary composition and absence of direct Orders/Store/POS/Prisma
+  imports in the projection service.
 
 GitHub Actions remains the authoritative validation gate after user approval for remote
 delivery.
 
-### POS/Print follow-up
+### B5-C2
 
-Print-health ownership must be redesigned as a separate public read capability from
-`store-operations-pos-print`. It must not be folded into Orders merely because
-`PosPrintJob` has an Order relation.
-
-### B5-C1 / C2
-
-After the owner facts and store context exist:
-
-- Reporting builds `BusinessOperationsReportV1`;
-- server-owned same-weekday and same-elapsed-time baselines;
-- zero-filled time buckets;
-- count × average-Order decomposition;
-- channel / fulfillment / time / item diagnostics;
-- prep p50/p90 and bounded recent queue logic;
-- explicit coverage/confidence;
-- Admin Today-first monitoring UI.
+After C1 remote validation/merge, C2 can replace the Admin Business Reports
+presentation with the Today-first monitoring UI without changing the projection
+semantics.
 
 ### B5-D
 
