@@ -2425,8 +2425,8 @@ model AccountingProviderFinancialReviewRevision {
   createdAt                 DateTime                                @default(now())
   updatedAt                 DateTime                                @updatedAt
   document                  AccountingProviderFinancialDocument     @relation(fields: [documentId], references: [id], onDelete: Restrict)
-  effectiveSnapshotParseRun       AccountingParseRun?                @relation("AccountingProviderFinancialReviewEffectiveParseRun", fields: [effectiveSnapshotParseRunId], references: [id], onDelete: Restrict)
-  effectiveSnapshotSourceParseRun AccountingParseRun?                @relation("AccountingProviderFinancialReviewSourceParseRun", fields: [effectiveSnapshotSourceParseRunId], references: [id], onDelete: Restrict)
+  effectiveSnapshotParseRun       AccountingParseRun?                @relation("AccountingProviderFinancialReviewEffectiveParseRun", fields: [effectiveSnapshotParseRunId], references: [id], onDelete: Restrict, map: "AcctProviderFinReview_effective_parse_run_fkey")
+  effectiveSnapshotSourceParseRun AccountingParseRun?                @relation("AccountingProviderFinancialReviewSourceParseRun", fields: [effectiveSnapshotSourceParseRunId], references: [id], onDelete: Restrict, map: "AcctProviderFinReview_source_parse_run_fkey")
   corrections               AccountingProviderFinancialReviewCorrection[]
   effectiveLines            AccountingProviderFinancialReviewedLine[]
 
