@@ -278,7 +278,9 @@ describe('AccountingProviderPayoutService', () => {
       }) as unknown,
     });
     expect(journal.createProviderPayoutJournalInTx).toHaveBeenCalledTimes(1);
-    expect(tx.accountingProviderPayoutBankRowDecision.update).toHaveBeenCalledWith({
+    expect(
+      tx.accountingProviderPayoutBankRowDecision.update,
+    ).toHaveBeenCalledWith({
       where: { id: decision.id },
       data: {
         decision: 'MATCH_EXISTING_PAYOUT',
@@ -319,7 +321,9 @@ describe('AccountingProviderPayoutService', () => {
     );
 
     expect(tx.accountingProviderPayout.create).not.toHaveBeenCalled();
-    expect(tx.accountingProviderPayoutBankRowDecision.update).not.toHaveBeenCalled();
+    expect(
+      tx.accountingProviderPayoutBankRowDecision.update,
+    ).not.toHaveBeenCalled();
     expect(journal.createProviderPayoutJournalInTx).not.toHaveBeenCalled();
   });
 
@@ -364,7 +368,9 @@ describe('AccountingProviderPayoutService', () => {
       ),
     ).rejects.toThrow('multiple exact canonical payout matches');
     expect(tx.accountingProviderPayout.create).not.toHaveBeenCalled();
-    expect(tx.accountingProviderPayoutBankRowDecision.update).not.toHaveBeenCalled();
+    expect(
+      tx.accountingProviderPayoutBankRowDecision.update,
+    ).not.toHaveBeenCalled();
     expect(journal.createProviderPayoutJournalInTx).not.toHaveBeenCalled();
   });
 
@@ -397,7 +403,9 @@ describe('AccountingProviderPayoutService', () => {
 
     expect(result.payoutStableId).toBe('payout_existing_bankrow');
     expect(tx.accountingProviderPayout.create).not.toHaveBeenCalled();
-    expect(tx.accountingProviderPayoutBankRowDecision.update).not.toHaveBeenCalled();
+    expect(
+      tx.accountingProviderPayoutBankRowDecision.update,
+    ).not.toHaveBeenCalled();
     expect(journal.createProviderPayoutJournalInTx).not.toHaveBeenCalled();
   });
 

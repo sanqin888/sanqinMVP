@@ -224,12 +224,14 @@ describe('AccountingProviderPayoutBankRowDecisionService', () => {
       confirmedByActorRef: 'user_accountant_1',
       confirmedAt: '2026-09-23T21:00:00.000Z',
     };
-    prisma.accountingProviderPayoutBankRowDecision.findUnique.mockResolvedValue({
-      ...current,
-      occurredOn: new Date('2026-06-10T00:00:00.000Z'),
-      confirmedAt: new Date('2026-09-23T21:00:00.000Z'),
-      artifact: { artifactStableId: 'acctart_bank_1' },
-    });
+    prisma.accountingProviderPayoutBankRowDecision.findUnique.mockResolvedValue(
+      {
+        ...current,
+        occurredOn: new Date('2026-06-10T00:00:00.000Z'),
+        confirmedAt: new Date('2026-09-23T21:00:00.000Z'),
+        artifact: { artifactStableId: 'acctart_bank_1' },
+      },
+    );
     jest.spyOn(service, 'getScope').mockResolvedValue({
       version: 1,
       scope: 'PROVIDER_PAYOUT_BANK_ROW_DECISIONS',
@@ -251,13 +253,15 @@ describe('AccountingProviderPayoutBankRowDecisionService', () => {
 
   it('requires scope reconfirmation when a persisted READY decision is no longer current', async () => {
     const { service, prisma } = makeService();
-    prisma.accountingProviderPayoutBankRowDecision.findUnique.mockResolvedValue({
-      decisionStableId: 'bankrow_ready',
-      storeStableId: '4750_Yonge_Street',
-      destinationBankAccountStableId: 'account_cibc',
-      decision: 'READY_FOR_POSTING',
-      artifact: { artifactStableId: 'acctart_bank_1' },
-    });
+    prisma.accountingProviderPayoutBankRowDecision.findUnique.mockResolvedValue(
+      {
+        decisionStableId: 'bankrow_ready',
+        storeStableId: '4750_Yonge_Street',
+        destinationBankAccountStableId: 'account_cibc',
+        decision: 'READY_FOR_POSTING',
+        artifact: { artifactStableId: 'acctart_bank_1' },
+      },
+    );
     jest.spyOn(service, 'getScope').mockResolvedValue({
       version: 1,
       scope: 'PROVIDER_PAYOUT_BANK_ROW_DECISIONS',
@@ -276,20 +280,22 @@ describe('AccountingProviderPayoutBankRowDecisionService', () => {
 
   it('allows idempotent replay of an already matched decision without revalidating READY scope', async () => {
     const { service, prisma } = makeService();
-    prisma.accountingProviderPayoutBankRowDecision.findUnique.mockResolvedValue({
-      decisionStableId: 'bankrow_match',
-      rowNumber: 9,
-      rowFingerprint: 'fingerprint',
-      occurredOn: new Date('2026-06-09T00:00:00.000Z'),
-      amountCents: 28448,
-      description: 'UBER',
-      providerHint: AccountingFinancialProvider.UBER_EATS,
-      decision: 'MATCH_EXISTING_PAYOUT',
-      matchedPayoutStableId: 'payout_uber',
-      confirmedByActorRef: 'user_accountant_1',
-      confirmedAt: new Date('2026-09-23T21:00:00.000Z'),
-      artifact: { artifactStableId: 'acctart_bank_1' },
-    });
+    prisma.accountingProviderPayoutBankRowDecision.findUnique.mockResolvedValue(
+      {
+        decisionStableId: 'bankrow_match',
+        rowNumber: 9,
+        rowFingerprint: 'fingerprint',
+        occurredOn: new Date('2026-06-09T00:00:00.000Z'),
+        amountCents: 28448,
+        description: 'UBER',
+        providerHint: AccountingFinancialProvider.UBER_EATS,
+        decision: 'MATCH_EXISTING_PAYOUT',
+        matchedPayoutStableId: 'payout_uber',
+        confirmedByActorRef: 'user_accountant_1',
+        confirmedAt: new Date('2026-09-23T21:00:00.000Z'),
+        artifact: { artifactStableId: 'acctart_bank_1' },
+      },
+    );
     const getScope = jest.spyOn(service, 'getScope');
 
     await expect(

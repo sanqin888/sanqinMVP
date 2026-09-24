@@ -328,7 +328,9 @@ export class AccountingProviderPayoutService {
         },
       }));
 
-    const pendingAccountStableId = providerPendingAccountStableId(fact.provider);
+    const pendingAccountStableId = providerPendingAccountStableId(
+      fact.provider,
+    );
     const accountRows = await tx.accountingAccount.findMany({
       where: {
         accountStableId: {

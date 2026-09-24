@@ -149,8 +149,7 @@ export class AccountingProviderPayoutBankRowDecisionService {
     const scope = await this.getScope({
       artifactStableId: persisted.artifact.artifactStableId,
       storeStableId: persisted.storeStableId,
-      destinationBankAccountStableId:
-        persisted.destinationBankAccountStableId,
+      destinationBankAccountStableId: persisted.destinationBankAccountStableId,
     });
     const current = scope.decisions.find(
       (decision) => decision.decisionStableId === decisionStableId,
