@@ -1,8 +1,8 @@
 # B5 — Admin Business Reports / Operating Monitoring
 
 Date: 2026-09-24  
-Implementation baseline: `dev@c64c07d3` (B5-B2 merged through PR #2513; CI #6298 green)  
-Current local work: **B5-C1 Business Operations projection + anomaly engine — LOCAL SOURCE READY FOR REVIEW / ADDITIVE HTTP CONTRACT / NO MIGRATION / NO NEW ARCHITECTURE DIRECTION**
+Implementation baseline: `dev@af57715f` (B5-C1 merged through PR #2514; final head `d8f21ca6`; CI #6303 green)  
+Current local work: **B5-C2 Admin Today-first operating-monitoring UI — LOCAL SOURCE READY FOR REVIEW / WEB CONSUMER CUTOVER / NO BACKEND DEPENDENCY / NO MIGRATION / NO PACKAGE CHANGE / NO GRAPH CHANGE**
 
 ## Product goal
 
@@ -338,33 +338,64 @@ C1 returns `coverage.printHealth = UNAVAILABLE`. It does not read `PosPrintJob`,
 import POS internals or create a Reporting -> POS/Print dependency. Print health still
 requires a separately reviewed public seam from `store-operations-pos-print`.
 
-### B5-C1 verification state
+### B5-C1 delivery state
 
-Per repository workflow, no local lint/build/test/CI reproduction is run before user
-review.
+B5-C1 is **MERGED / CI GREEN** through PR #2514 / final head `d8f21ca6` /
+squash `af57715f`; CI #6303 passed the repository architecture, API/Web lint/build,
+strict declaration and test gates. The additive `GET /reports/business` contract is
+therefore the source baseline for C2. Legacy `GET /reports` remains available and is
+not contracted by C1 or C2.
 
-Source characterization covers:
+### B5-C2 — Admin Today-first operating-monitoring UI
 
-- store-local Today defaults and 90-day/future-date guards;
-- eight same-weekday samples with a retained zero-Order day;
-- same-elapsed-time exclusion of comparator Orders after the current local cutoff;
-- low-sample behavior when prior coverage is absent;
-- exact decomposition reconciliation;
-- commercial package vs production-component semantics;
-- prep p50/p90 from lifecycle timestamps;
-- six-hour current queue bounding;
-- explainable anomaly fields and confidence;
-- Reporting-owned boundary composition and absence of direct Orders/Store/POS/Prisma
-  imports in the projection service.
+C2 stays inside the existing Web/Admin adapter boundary. It does not add a backend
+module dependency, scanner allowance, database/schema change, migration or package
+dependency.
 
-GitHub Actions remains the authoritative validation gate after user approval for remote
-delivery.
+The Admin `/admin/reports` route is reduced to an App Router composition wrapper and
+the operating-monitoring behavior lives under
+`apps/web/src/features/admin/business-reports/**`. The existing
+`AdminStoreContextSelector` is reused with its `operations` context on Business
+Reports, so the selected `storeStableId` is explicit in both the URL and the page
+header. No implicit default Store is introduced.
 
-### B5-C2
+The UI consumes only `GET /reports/business` and provides:
 
-After C1 remote validation/merge, C2 can replace the Admin Business Reports
-presentation with the Today-first monitoring UI without changing the projection
-semantics.
+- Today by default plus Yesterday / 7d / 28d / 90d / custom (maximum 90 inclusive
+  calendar days);
+- an attention-first anomaly summary using C1 `anomalies[]`, including current,
+  expected, delta, percentage change, sample count, confidence, materiality/MAD evidence
+  and descriptive channel/fulfillment/hour contributors;
+- core Order total, Order count, average Order total and prep p50/p90 cards with
+  current/expected/delta presentation. Order total is explicitly described as an
+  operating Order measure rather than Accounting Revenue;
+- a Today cumulative pace chart with Order-count / Order-total toggle using C1
+  `hourlyPace`. The browser does not recalculate elapsed-time comparability; it renders
+  the server-owned same-elapsed-local-time projection. Multi-day selections fall back to
+  the C1 daily timeline rather than manufacturing hourly semantics;
+- exact Order-total change decomposition from C1 `volumeEffectCents` and
+  `averageOrderEffectCents`, plus channel and fulfillment current/expected/delta
+  evidence;
+- separate Commercial items and Production items tabs. Component-expanded production
+  demand has no allocated package revenue;
+- execution health from making->ready prep timing plus the C1 today-only bounded recent
+  queue. The UI never performs an unbounded status query or reconstructs stale
+  historical `making` / `ready` state;
+- explicit coverage/limitations for `LOW_SAMPLE`,
+  `OPERATING_CONTEXT_PARTIAL`, `CURRENT_CONFIGURATION_ONLY` and
+  `printHealth = UNAVAILABLE`, including the warning that current hours/pause status
+  are not historical facts.
+
+C2 intentionally does not add Gross Sales, Net Revenue, Tax, Tips, provider fees,
+settlement, tender mix, P&L, account balances, payment decline rate, Web conversion,
+delivery efficiency, historical category sales, promotion ROI or refund-occurrence
+trend.
+
+Source-level Web characterization records the endpoint cutover, Today-first evidence
+sections, commercial/production separation, bounded queue/coverage limitations and
+AdminShell Store-selector reuse. Per repository workflow, local lint/build/test/CI
+reproduction is not run before user review; GitHub Actions remains the authoritative
+validation gate after remote-delivery authorization.
 
 ### B5-D
 

@@ -556,7 +556,7 @@ Avoid polishing current mixed-authority widgets immediately before replacing the
 Priority: **P2**  
 Complexity: **M**  
 Depends on: **B2 terminology / financial contract stabilization — satisfied; B4 closed**  
-State: **B5-B1 + B5-B2 MERGED / CI GREEN; B5-C1 LOCAL SOURCE READY FOR REVIEW / ADDITIVE HTTP CONTRACT / NO MIGRATION / NO NEW ARCHITECTURE DIRECTION**. B5-B1: PR #2511 / squash `35ba5d52` / CI #6291 green. B5-B2: PR #2513 / squash `c64c07d3` / final head `7a8b09eb` / CI #6298 green. Detailed work package: `docs/architecture/admin-business-reports-b5.md`.
+State: **B5-B1 + B5-B2 + B5-C1 MERGED / CI GREEN; B5-C2 LOCAL SOURCE READY FOR REVIEW / WEB CONSUMER CUTOVER / NO BACKEND DEPENDENCY / NO MIGRATION / NO PACKAGE CHANGE / NO GRAPH CHANGE**. B5-B1: PR #2511 / squash `35ba5d52` / CI #6291 green. B5-B2: PR #2513 / squash `c64c07d3` / final head `7a8b09eb` / CI #6298 green. B5-C1: PR #2514 / final head `d8f21ca6` / squash `af57715f` / CI #6303 green. Detailed work package: `docs/architecture/admin-business-reports-b5.md`.
 
 B5 is now scoped as a store operating-monitoring surface, not merely a cleanup of the old Sales page. The product target is Today-first anomaly detection and explanation across Order count, Order total, average Order total, time-of-day, channel, fulfillment, product/package demand, production demand and execution health while canonical financial reporting remains Accounting-owned.
 
@@ -564,14 +564,16 @@ B5-B1 keeps the existing `ORDER_REPORTING_FACTS_READER` legacy methods untouched
 
 B5-B2, explicitly architecture-authorized on 2026-09-24 and now merged, adds a narrow read-only Reporting composition seam to existing Brand/Store public readers. `ReportsModule` adapts store config, schedule and current status into Reporting-owned `REPORTING_STORE_OPERATING_CONTEXT_QUERY`, exposing only stable store identity, timezone, active state, current configured business hours/holidays and effective current open/pause state. The contract explicitly marks `CURRENT_CONFIGURATION_ONLY` so anomaly logic cannot pretend today's schedule explains historical zero-order days. Because `reports.module.ts` is already a registered excluded composition root, this deliberate composition direction requires no legacy direct-import-limit increase, scanner exception or SCC allowance.
 
-B5-C1 locally adds `GET /reports/business` and `BusinessOperationsReportV1` without replacing the legacy route. Reporting owns both its operational-Order and Store-context ports; the new projection uses store-local ranges, up to eight prior same-weekday/comparable periods, same-elapsed-time Today comparisons, explicit bounded coverage probes, median/MAD anomaly qualification, exact Order-count/AOV decomposition, commercial-vs-production item semantics, making->ready p50/p90 and a six-hour bounded current queue. Current Store configuration is labeled current-only, and Print remains explicitly unavailable until a separately authorized POS/Print seam exists.
+B5-C1 is merged and adds `GET /reports/business` plus `BusinessOperationsReportV1` without replacing the legacy route. Reporting owns both its operational-Order and Store-context ports; the projection uses store-local ranges, up to eight prior same-weekday/comparable periods, same-elapsed-time Today comparisons, explicit bounded coverage probes, median/MAD anomaly qualification, exact Order-count/AOV decomposition, commercial-vs-production item semantics, making->ready p50/p90 and a six-hour bounded current queue. Current Store configuration is labeled current-only, and Print remains explicitly unavailable until a separately authorized POS/Print seam exists.
+
+B5-C2 locally replaces the Admin `/admin/reports` presentation with a feature-owned Today-first operating-monitoring UI consuming only `GET /reports/business`. It reuses the existing Admin Store selector in `operations` mode, keeps `storeStableId` explicit, surfaces C1 anomalies before detail, renders Order total/count/AOV/prep current-vs-expected evidence, Today cumulative pace, count/AOV decomposition, channel/fulfillment attribution, separate Commercial/Production item tabs, bounded recent queue and explicit coverage/limitations. It does not add Accounting calculations, reconstruct unavailable metrics, create Reporting -> POS/Print coupling, or contract legacy `GET /reports`.
 
 Important distinction:
 
 - `/accounting/reports` = Accounting financial reports;
 - `/admin/reports` = Admin **数据 -> 经营报表 / Business reports**.
 
-The Admin page currently reads the Orders/Reporting operational endpoint and displays Order totals, tax, delivery fees, AOV, payment/fulfillment breakdown and top items. It should remain an **operational management** surface.
+The Admin page is being cut over in B5-C2 to the dedicated Business Operations projection and remains an **operational management** surface. Legacy mixed-authority Sales widgets are no longer part of the new presentation, while the old HTTP endpoint itself remains until B5-D.
 
 Target:
 
