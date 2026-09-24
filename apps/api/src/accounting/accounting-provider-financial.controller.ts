@@ -43,6 +43,17 @@ export class AccountingProviderFinancialController {
     );
   }
 
+  @Post('provider-financial/:documentStableId/parser-reevaluation')
+  createProviderFinancialParserReevaluationDraft(
+    @Param('documentStableId') documentStableId: string,
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.providerFinancial.createParserReevaluationReviewDraft(
+      documentStableId,
+      requireAccountingOperatorUserId(req),
+    );
+  }
+
   @Post(
     'provider-financial/:documentStableId/review-revisions/:reviewRevisionStableId/confirm',
   )

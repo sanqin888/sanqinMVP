@@ -11,6 +11,11 @@ import {
 } from '@prisma/client';
 import { AccountingProviderSettlementPreviewService } from './accounting-provider-settlement-preview.service';
 import {
+  PROVIDER_SETTLEMENT_ACCOUNT_IDS,
+  PROVIDER_SETTLEMENT_CATEGORY_IDS,
+} from './accounting-provider-settlement.policy';
+import { CLOVER_STATEMENT_RAW_CODES } from './accounting-clover-statement.contract';
+import {
   FANTUAN_ADJUSTMENT_DETAIL_EVIDENCE_KIND,
   FANTUAN_ADJUSTMENT_RAW_CODES,
 } from './accounting-fantuan-adjustment-detail.contract';
@@ -955,6 +960,211 @@ describe('AccountingProviderSettlementPreviewService', () => {
         (decision) => decision.lineStableId === 'line_reviewed_tax',
       ),
     ).toEqual(expect.objectContaining({ amountCents: 33848 }));
+  });
+
+  it('uses a confirmed Clover parser snapshot as the complete settlement line set', async () => {
+    const documentStableId = 'clover_statement_june_reviewed';
+    const statement = {
+      documentStableId,
+      provider: AccountingFinancialProvider.CLOVER,
+      documentType: AccountingFinancialDocumentType.STATEMENT,
+      businessIdentityKey: 'clover:statement:29351880018:2026-06-01:2026-06-30',
+      revision: 1,
+      supersedesDocumentId: null,
+      storeStableId: '4750_Yonge_Street',
+      providerDocumentRef: '29351880018:2026-06-01:2026-06-30',
+      periodStart: new Date('2026-06-01T00:00:00.000Z'),
+      periodEnd: new Date('2026-06-30T00:00:00.000Z'),
+      settledAt: null,
+      payoutAt: null,
+      currency: 'CAD',
+      rawMetadata: null,
+      ...confirmedReview(documentStableId, 'inbox_clover_statement_june'),
+      reviewRevisions: [
+        {
+          reviewRevisionStableId: 'acctfinreview_clover_v7',
+          revision: 1,
+          reviewHash: 'd'.repeat(64),
+          confirmedAt: new Date('2026-09-24T15:30:00.000Z'),
+          confirmedByUserStableId: 'user_admin_1',
+          effectiveSnapshotParserName: 'accounting-provider-financial',
+          effectiveSnapshotParserVersion: '7',
+          effectiveSnapshotParseRun: {
+            resultJson: {
+              rawMetadata: {
+                evidenceKind: 'CLOVER_MONTHLY_PROCESSING_STATEMENT',
+              },
+            },
+          },
+          effectiveLines: [
+            {
+              reviewedLineStableId: 'reviewed_service_charges',
+              lineNo: 1,
+              sourceLineStableId: null,
+              rawCode: null,
+              rawName: 'Service Charges',
+              component: AccountingFinancialComponent.PROCESSING_FEE,
+              postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+              taxRole: AccountingFinancialTaxRole.NONE,
+              amountCents: -6264,
+              occurredAt: null,
+            },
+            {
+              reviewedLineStableId: 'reviewed_fees_control',
+              lineNo: 2,
+              sourceLineStableId: null,
+              rawCode: CLOVER_STATEMENT_RAW_CODES.FEES_TOTAL,
+              rawName: 'Fees',
+              component: AccountingFinancialComponent.CONTROL_TOTAL,
+              postingTreatment:
+                AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+              taxRole: AccountingFinancialTaxRole.NONE,
+              amountCents: -3575,
+              occurredAt: null,
+            },
+            {
+              reviewedLineStableId: 'reviewed_equipment',
+              lineNo: 3,
+              sourceLineStableId: null,
+              rawCode: CLOVER_STATEMENT_RAW_CODES.MONTHLY_EQUIPMENT_BILL,
+              rawName: 'Monthly Equipment Bill',
+              component: AccountingFinancialComponent.PLATFORM_OTHER_FEE,
+              postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+              taxRole: AccountingFinancialTaxRole.NONE,
+              amountCents: -3000,
+              occurredAt: null,
+            },
+            {
+              reviewedLineStableId: 'reviewed_equipment_hst',
+              lineNo: 4,
+              sourceLineStableId: null,
+              rawCode: CLOVER_STATEMENT_RAW_CODES.MONTHLY_EQUIPMENT_BILL_HST,
+              rawName: 'Monthly Equipment Bill HST',
+              component: AccountingFinancialComponent.PLATFORM_OTHER_FEE_TAX,
+              postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+              taxRole: AccountingFinancialTaxRole.INPUT_TAX,
+              amountCents: -390,
+              occurredAt: null,
+            },
+            {
+              reviewedLineStableId: 'reviewed_network',
+              lineNo: 5,
+              sourceLineStableId: null,
+              rawCode: CLOVER_STATEMENT_RAW_CODES.NETWORK_FEES,
+              rawName: 'Other Card/Network Fees',
+              component: AccountingFinancialComponent.PROCESSING_FEE,
+              postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+              taxRole: AccountingFinancialTaxRole.NONE,
+              amountCents: -185,
+              occurredAt: null,
+            },
+          ],
+          corrections: [],
+        },
+      ],
+      lines: [
+        {
+          lineStableId: 'machine_fee_v6',
+          lineNo: 1,
+          rawCode: null,
+          rawName: 'Fees',
+          component: AccountingFinancialComponent.PROCESSING_FEE,
+          postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+          taxRole: AccountingFinancialTaxRole.NONE,
+          amountCents: -3575,
+          occurredAt: null,
+        },
+      ],
+    };
+    const operations = {
+      readProviderSettlementDocuments: jest.fn().mockResolvedValue([statement]),
+      readProviderFinancialCoverage: jest.fn().mockResolvedValue([
+        {
+          coverageStableId: 'coverage_clover_1',
+          provider: AccountingFinancialProvider.CLOVER,
+          storeStableId: '4750_Yonge_Street',
+          financialHistoryRequiredFrom: new Date('2026-06-01T00:00:00.000Z'),
+          financialCompleteThrough: null,
+          liveOrderFactCutoverAt: null,
+          orderDetailCoverageFrom: null,
+          updatedAt: new Date('2026-09-24T15:30:00.000Z'),
+        },
+      ]),
+      readAccountingAccountFacts: jest
+        .fn()
+        .mockResolvedValue([
+          accountFact(
+            PROVIDER_SETTLEMENT_ACCOUNT_IDS.cloverPending,
+            AccountingAccountClass.ASSET,
+          ),
+          accountFact(
+            PROVIDER_SETTLEMENT_ACCOUNT_IDS.paymentProcessingFeeExpense,
+            AccountingAccountClass.EXPENSE,
+          ),
+          accountFact(
+            PROVIDER_SETTLEMENT_ACCOUNT_IDS.generalOperatingExpense,
+            AccountingAccountClass.EXPENSE,
+          ),
+          accountFact(
+            PROVIDER_SETTLEMENT_ACCOUNT_IDS.hstRecoverable,
+            AccountingAccountClass.ASSET,
+          ),
+        ]),
+      readSettlementShadowExistingJournals: jest.fn().mockResolvedValue([]),
+      readOrderSaleJournalsByFactStableIds: jest.fn().mockResolvedValue([]),
+    };
+    const service = new AccountingProviderSettlementPreviewService(
+      operations as never,
+      operations as never,
+      accounting as never,
+      storeConfig as never,
+      { readFactsForRange: jest.fn().mockResolvedValue([]) } as never,
+    );
+
+    const result = await service.previewRange({
+      fromDate: '2026-06-01',
+      toDateExclusive: '2026-07-01',
+      storeStableId: '4750_Yonge_Street',
+      provider: AccountingFinancialProvider.CLOVER,
+    });
+
+    const plan = result.providerDocuments[0];
+    expect(plan.status).toBe('READY');
+    expect(plan.controlTotalChecks).toEqual([
+      expect.objectContaining({
+        key: 'CLOVER_FEES_DETAIL',
+        status: 'MATCHED',
+        expectedCents: -3575,
+        calculatedCents: -3575,
+      }),
+    ]);
+    expect(plan.decisions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          lineStableId: 'reviewed_equipment',
+          targetAccountStableId:
+            PROVIDER_SETTLEMENT_ACCOUNT_IDS.generalOperatingExpense,
+          targetCategoryStableId:
+            PROVIDER_SETTLEMENT_CATEGORY_IDS.cloverMonthlyEquipment,
+        }),
+      ]),
+    );
+    expect(plan.draftJournal?.lines).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          accountStableId:
+            PROVIDER_SETTLEMENT_ACCOUNT_IDS.generalOperatingExpense,
+          categoryStableId:
+            PROVIDER_SETTLEMENT_CATEGORY_IDS.cloverMonthlyEquipment,
+          debitCents: 3000,
+        }),
+      ]),
+    );
+    expect(
+      plan.decisions.some(
+        (decision) => decision.lineStableId === 'machine_fee_v6',
+      ),
+    ).toBe(false);
   });
 
   it('requires explicit provider coverage and exact class/currency/active account prerequisites', async () => {

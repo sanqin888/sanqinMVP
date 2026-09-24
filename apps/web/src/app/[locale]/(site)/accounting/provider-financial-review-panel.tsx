@@ -19,6 +19,7 @@ import { ProviderFinancialReviewHistory } from './provider-financial-review-hist
 import {
   applyReviewedProviderFinancialLines,
   buildReviewCorrectionInputs,
+  formatCad,
   latestConfirmedProviderReview,
   latestDraftProviderReview,
   newReviewRowForLine,
@@ -57,6 +58,7 @@ export function ProviderFinancialReviewPanel({
   const [reviewNote, setReviewNote] = useState('');
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [reevaluating, setReevaluating] = useState(false);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -69,6 +71,10 @@ export function ProviderFinancialReviewPanel({
     () => latestDraftProviderReview(revisions),
     [revisions],
   );
+  const parserSnapshotDraft =
+    draftReview?.effectiveSnapshotParserName ? draftReview : null;
+  const parserSnapshotConfirmed =
+    confirmedReview?.effectiveSnapshotParserName ? confirmedReview : null;
   const effectiveLines = useMemo(
     () => applyReviewedProviderFinancialLines(document, confirmedReview),
     [document, confirmedReview],
@@ -87,8 +93,12 @@ export function ProviderFinancialReviewPanel({
     const draft = latestDraftProviderReview(nextRevisions);
     const confirmed = latestConfirmedProviderReview(nextRevisions);
     const seed = draft ?? confirmed;
-    setRows(reviewRowsFromRevision(document, seed));
-    setReviewNote(seed?.note ?? '');
+    setRows(
+      seed?.effectiveSnapshotParserName
+        ? []
+        : reviewRowsFromRevision(document, seed),
+    );
+    setReviewNote(seed?.effectiveSnapshotParserName ? '' : (seed?.note ?? ''));
     setDirty(false);
   }
 
@@ -221,6 +231,43 @@ export function ProviderFinancialReviewPanel({
     }
   }
 
+  async function createParserReevaluationDraft() {
+    setReevaluating(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const created =
+        await apiFetch<AccountingProviderFinancialReviewRevision>(
+          '/accounting/provider-financial/' +
+            encodeURIComponent(document.documentStableId) +
+            '/parser-reevaluation',
+          { method: 'POST' },
+        );
+      const refreshed = await apiFetch<
+        AccountingProviderFinancialReviewRevision[]
+      >(
+        '/accounting/provider-financial/' +
+          encodeURIComponent(document.documentStableId) +
+          '/review-revisions',
+      );
+      setRevisions(refreshed);
+      seedEditor(refreshed);
+      setMessage(
+        isZh
+          ? '已用当前解析器生成复核草稿 v' +
+              created.revision +
+              '。请核对完整有效快照后再确认。'
+          : 'Current parser created review draft v' +
+              created.revision +
+              '. Inspect the full effective snapshot before confirming it.',
+      );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setReevaluating(false);
+    }
+  }
+
   async function confirmDraft(
     revision: AccountingProviderFinancialReviewRevision,
   ) {
@@ -302,11 +349,33 @@ export function ProviderFinancialReviewPanel({
 
       {expanded ? (
         <div className="space-y-4 border-t border-violet-200 px-4 py-4">
-          <div className="flex justify-end">
+          <div className="flex flex-wrap justify-end gap-2">
+            {!readOnly &&
+            document.parserName === 'accounting-provider-financial' ? (
+              <button
+                type="button"
+                onClick={() => void createParserReevaluationDraft()}
+                disabled={
+                  reevaluating ||
+                  loading ||
+                  dirty ||
+                  Boolean(parserSnapshotDraft || parserSnapshotConfirmed)
+                }
+                className="rounded border border-violet-300 bg-violet-100 px-2.5 py-1.5 text-xs font-medium text-violet-900 disabled:opacity-50"
+              >
+                {reevaluating
+                  ? isZh
+                    ? '重新解析中…'
+                    : 'Re-evaluating…'
+                  : isZh
+                    ? '用当前解析器重新评估'
+                    : 'Re-evaluate with current parser'}
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => void loadRevisions()}
-              disabled={loading || dirty}
+              disabled={loading || dirty || reevaluating}
               className="rounded border border-violet-200 bg-white px-2.5 py-1.5 text-xs font-medium text-violet-800 disabled:opacity-50"
             >
               {loading
@@ -351,11 +420,19 @@ export function ProviderFinancialReviewPanel({
               </p>
               <p className="mt-1 text-slate-800">
                 {confirmedReview
-                  ? 'v' +
-                    confirmedReview.revision +
-                    ' · ' +
-                    confirmedReview.corrections.length +
-                    ' correction(s)'
+                  ? parserSnapshotConfirmed
+                    ? 'v' +
+                      confirmedReview.revision +
+                      ' · parser snapshot ' +
+                      parserSnapshotConfirmed.effectiveSnapshotParserName +
+                      ' v' +
+                      (parserSnapshotConfirmed.effectiveSnapshotParserVersion ??
+                        '—')
+                    : 'v' +
+                      confirmedReview.revision +
+                      ' · ' +
+                      confirmedReview.corrections.length +
+                      ' correction(s)'
                   : isZh
                     ? '机器结果'
                     : 'Machine result'}
@@ -390,28 +467,107 @@ export function ProviderFinancialReviewPanel({
                 previewStatus={previewStatus}
               />
 
+              {parserSnapshotDraft ? (
+                <div className="space-y-3 rounded-lg border border-violet-300 bg-white p-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h4 className="text-sm font-semibold text-violet-950">
+                        {isZh
+                          ? '待确认：当前解析器有效快照'
+                          : 'Pending confirmation: current parser effective snapshot'}
+                      </h4>
+                      <p className="mt-1 font-mono text-[11px] text-violet-700">
+                        {parserSnapshotDraft.effectiveSnapshotParserName} v
+                        {parserSnapshotDraft.effectiveSnapshotParserVersion ??
+                          '—'}{' '}
+                        · {parserSnapshotDraft.effectiveLines.length}{' '}
+                        {isZh ? '行' : 'lines'}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-600">
+                        {isZh
+                          ? '这是独立复核草稿；原机器文档不会被改写，确认前也不会影响结算。'
+                          : 'This is a separate review draft. The original machine document stays immutable and settlement is unchanged until confirmation.'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void confirmDraft(parserSnapshotDraft)}
+                      disabled={
+                        confirmingId ===
+                        parserSnapshotDraft.reviewRevisionStableId
+                      }
+                      className="rounded border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 disabled:opacity-50"
+                    >
+                      {confirmingId ===
+                      parserSnapshotDraft.reviewRevisionStableId
+                        ? isZh
+                          ? '确认中…'
+                          : 'Confirming…'
+                        : isZh
+                          ? '确认解析器快照 v' +
+                            parserSnapshotDraft.revision
+                          : 'Confirm parser snapshot v' +
+                            parserSnapshotDraft.revision}
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {parserSnapshotDraft.effectiveLines.map((line) => (
+                      <div
+                        key={line.reviewedLineStableId}
+                        className="grid gap-1 border-t border-slate-100 pt-2 text-xs first:border-t-0 first:pt-0 sm:grid-cols-[minmax(0,1fr)_auto]"
+                      >
+                        <div>
+                          <span className="font-medium text-slate-900">
+                            #{line.lineNo} · {line.rawName ?? line.component}
+                          </span>
+                          <span className="ml-2 font-mono text-[10px] text-slate-500">
+                            {line.component} · {line.postingTreatment} ·{' '}
+                            {line.taxRole}
+                          </span>
+                        </div>
+                        <span className="text-right font-medium">
+                          {formatCad(line.amountCents)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
               {!readOnly ? (
-                <ProviderFinancialReviewEditor
-                  document={document}
-                  rows={rows}
-                  reviewNote={reviewNote}
-                  isZh={isZh}
-                  saving={saving}
-                  dirty={dirty}
-                  draftReview={draftReview}
-                  confirmingId={confirmingId}
-                  onAddCorrection={addCorrection}
-                  onUpdateRow={updateRow}
-                  onChangeCorrectionLine={changeCorrectionLine}
-                  onRemoveCorrection={removeCorrection}
-                  onReviewNoteChange={(value) => {
-                    setReviewNote(value);
-                    setDirty(true);
-                    setMessage(null);
-                  }}
-                  onSaveDraft={() => void saveDraft()}
-                  onConfirmDraft={(revision) => void confirmDraft(revision)}
-                />
+                parserSnapshotDraft || parserSnapshotConfirmed ? (
+                  <p className="rounded-lg bg-violet-100 px-3 py-2 text-xs text-violet-800">
+                    {isZh
+                      ? parserSnapshotDraft
+                        ? '解析器快照草稿使用完整有效行集，不能与旧的一对一人工修正编辑器混合。请先核对并确认或保留该草稿。'
+                        : '当前有效复核来自完整解析器快照；旧的一对一人工修正编辑器已禁用，避免把结构化快照意外恢复成旧机器行。'
+                      : parserSnapshotDraft
+                        ? 'A parser snapshot draft owns a full effective line set and cannot be mixed with the legacy one-to-one correction editor. Inspect and confirm or leave this draft unconfirmed.'
+                        : 'The current effective review is a full parser snapshot. The legacy one-to-one correction editor is disabled so it cannot accidentally restore the old machine line structure.'}
+                  </p>
+                ) : (
+                  <ProviderFinancialReviewEditor
+                    document={document}
+                    rows={rows}
+                    reviewNote={reviewNote}
+                    isZh={isZh}
+                    saving={saving}
+                    dirty={dirty}
+                    draftReview={draftReview}
+                    confirmingId={confirmingId}
+                    onAddCorrection={addCorrection}
+                    onUpdateRow={updateRow}
+                    onChangeCorrectionLine={changeCorrectionLine}
+                    onRemoveCorrection={removeCorrection}
+                    onReviewNoteChange={(value) => {
+                      setReviewNote(value);
+                      setDirty(true);
+                      setMessage(null);
+                    }}
+                    onSaveDraft={() => void saveDraft()}
+                    onConfirmDraft={(revision) => void confirmDraft(revision)}
+                  />
+                )
               ) : (
                 <p className="rounded-lg bg-slate-100 px-3 py-2 text-xs text-slate-600">
                   {isZh

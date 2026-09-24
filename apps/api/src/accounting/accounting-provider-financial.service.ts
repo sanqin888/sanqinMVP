@@ -375,6 +375,16 @@ export class AccountingProviderFinancialService {
     );
   }
 
+  createParserReevaluationReviewDraft(
+    documentStableId: string,
+    operatorUserStableId: string,
+  ) {
+    return this.humanReview.createParserReevaluationDraft(
+      documentStableId,
+      operatorUserStableId,
+    );
+  }
+
   confirmHumanReviewRevision(
     documentStableId: string,
     reviewRevisionStableId: string,

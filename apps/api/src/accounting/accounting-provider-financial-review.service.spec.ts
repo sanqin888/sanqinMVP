@@ -37,11 +37,16 @@ const reviewDtoRow = {
   status: AccountingProviderFinancialReviewStatus.DRAFT,
   reviewHash: 'a'.repeat(64),
   note: 'Correct source pairing',
+  effectiveSnapshotParserName: null,
+  effectiveSnapshotParserVersion: null,
+  effectiveSnapshotParseRun: null,
+  effectiveSnapshotSourceParseRun: null,
   createdByUserStableId: 'user_admin_1',
   confirmedByUserStableId: null,
   confirmedAt: null,
   createdAt: new Date('2026-09-20T13:00:00.000Z'),
   updatedAt: new Date('2026-09-20T13:00:00.000Z'),
+  effectiveLines: [],
   corrections: [
     {
       correctionStableId: 'acctfincorr_1',
@@ -72,6 +77,14 @@ const makeDb = () => {
       updateMany: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
+    },
+    accountingSourceArtifact: {
+      findUnique: jest.fn(),
+    },
+    accountingParseRun: {
+      findMany: jest.fn(),
+      findUnique: jest.fn(),
+      upsert: jest.fn(),
     },
     accountingJournalEntry: {
       findFirst: jest.fn(),
@@ -205,6 +218,265 @@ describe('AccountingProviderFinancialReviewService', () => {
     ).not.toHaveBeenCalled();
   });
 
+  it('creates a parser re-evaluation draft as a full immutable effective snapshot', async () => {
+    const db = makeDb();
+    const documentStableId = 'acctfindoc_clover_june';
+    const document = {
+      id: 'document-clover-db-id',
+      artifactId: 'artifact-clover-db-id',
+      documentStableId,
+      provider: AccountingFinancialProvider.CLOVER,
+      documentType: AccountingFinancialDocumentType.STATEMENT,
+      businessIdentityKey: 'clover:statement:29351880018:2026-06-01:2026-06-30',
+      revision: 1,
+      providerMerchantRef: '29351880018',
+      providerDocumentRef: '29351880018:2026-06-01:2026-06-30',
+      periodStart: new Date('2026-06-01T00:00:00.000Z'),
+      periodEnd: new Date('2026-06-30T00:00:00.000Z'),
+      currency: 'CAD',
+      parserName: 'accounting-provider-financial',
+      parserVersion: '6',
+      artifact: {
+        artifactStableId: 'acctart_clover_june',
+        originalFilename: 'clover_062026.pdf',
+        emailSubject: null,
+      },
+    };
+    db.accountingProviderFinancialDocument.findUnique.mockResolvedValue(
+      document,
+    );
+    db.accountingProviderFinancialDocument.findFirst.mockResolvedValue({
+      documentStableId,
+      revision: 1,
+    });
+    db.accountingJournalEntry.findFirst.mockResolvedValue(null);
+    db.accountingSourceArtifact.findUnique.mockResolvedValue({
+      id: 'artifact-clover-db-id',
+    });
+    db.accountingProviderFinancialReviewRevision.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+    db.accountingParseRun.findMany.mockResolvedValue([
+      {
+        id: 'parse-run-db-id',
+        parseRunStableId: 'acctparserun_clover_recognition',
+        parserName: 'accounting-provider-recognition',
+        parserVersion: 'acct_recognition_clover_statement:v1',
+        resultHash: 'c'.repeat(64),
+        resultJson: {
+          extractedText: `
+MERCHANT CARD PROCESSING STATEMENT
+StatementPeriod 06/01/26 - 06/30/26
+Merchant Number 29351880018
+LOCATION
+SUMMARY
+Total Amount Submitted 3,362.10
+Third-Party Transactions 0.00
+Adjustments 0.00
+Interchange Charges 0.00
+Service Charges -62.64
+Fees -35.75
+Chargebacks/Reversals 0.00
+Total Amount Funded 3,263.71
+All amounts shown are in CAD funds
+SERVICE CHARGES
+Date Invoice Description Tax Total
+06/30/26 000086953 DISCOUNT FEES HST:0.00 -62.64
+Total HST:0.00 -62.64
+FEES
+Date Invoice Description Tax Total
+06/17/26 011981361 MONTHLY EQUIPMENT BILL HST:-3.90 -33.90
+06/25/26 000069239 MC LICENSE VOLUME FEE HST:0.00 -0.04
+06/25/26 000069240 MC-AUTH DIGITAL ENABLEMENT MIN HST:0.00 -0.25
+06/25/26 000069241 MC CLEARING CONNECTIVITY FEE HST:0.00 -0.50
+06/25/26 000069242 MC AUTH CONNECTIVITY FEE HST:0.00 -0.53
+06/25/26 000069243 MC ACQ CLEAR LARGE TICKET HST:0.00 -0.22
+06/25/26 000069244 MC ACQ CLEAR SMALL TICKET HST:0.00 -0.31
+Total HST:-3.90 -35.75
+`,
+        },
+      },
+    ]);
+    db.accountingParseRun.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 'parse-run-v7-db-id',
+        parseRunStableId: 'acctparserun_clover_v7',
+        resultHash: 'd'.repeat(64),
+      });
+    db.accountingParseRun.upsert.mockResolvedValue({
+      parseRunStableId: 'acctparserun_clover_v7',
+      status: 'SUCCESS',
+      resultHash: 'd'.repeat(64),
+      completedAt: new Date('2026-09-24T15:00:00.000Z'),
+    });
+    db.accountingProviderFinancialReviewRevision.updateMany.mockResolvedValue({
+      count: 0,
+    });
+    db.accountingProviderFinancialReviewRevision.create.mockImplementation(
+      ({ data }: { data: Record<string, unknown> }) => {
+        const effectiveLineWrite = data.effectiveLines as
+          | { create: Array<Record<string, unknown>> }
+          | undefined;
+        const effectiveLines =
+          effectiveLineWrite?.create.map((line, index) => ({
+            reviewedLineStableId: `acctfinreviewline_${index + 1}`,
+            ...line,
+          })) ?? [];
+        return {
+          reviewRevisionStableId: 'acctfinreview_clover_v7',
+          revision: data.revision,
+          status: data.status,
+          reviewHash: data.reviewHash,
+          note: data.note,
+          effectiveSnapshotParserName: data.effectiveSnapshotParserName,
+          effectiveSnapshotParserVersion: data.effectiveSnapshotParserVersion,
+          effectiveSnapshotParseRun: {
+            parseRunStableId: 'acctparserun_clover_v7',
+          },
+          effectiveSnapshotSourceParseRun: {
+            parseRunStableId: 'acctparserun_clover_recognition',
+          },
+          createdByUserStableId: data.createdByUserStableId,
+          confirmedByUserStableId: null,
+          confirmedAt: null,
+          createdAt: new Date('2026-09-24T15:00:00.000Z'),
+          updatedAt: new Date('2026-09-24T15:00:00.000Z'),
+          effectiveLines,
+          corrections: [],
+        };
+      },
+    );
+    db.accountingAuditLog.create.mockResolvedValue({});
+
+    const service = new AccountingProviderFinancialReviewService(db as never);
+    const result = await service.createParserReevaluationDraft(
+      documentStableId,
+      'user_admin_1',
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        revision: 1,
+        status: AccountingProviderFinancialReviewStatus.DRAFT,
+        effectiveSnapshotParserName: 'accounting-provider-financial',
+        effectiveSnapshotParserVersion: '7',
+        effectiveSnapshotParseRunStableId: 'acctparserun_clover_v7',
+        effectiveSnapshotSourceParseRunStableId:
+          'acctparserun_clover_recognition',
+        corrections: [],
+      }),
+    );
+    expect(result.effectiveLines).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          rawName: 'Fees',
+          component: AccountingFinancialComponent.CONTROL_TOTAL,
+          postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+          amountCents: -3575,
+        }),
+        expect.objectContaining({
+          rawName: 'Monthly Equipment Bill',
+          component: AccountingFinancialComponent.PLATFORM_OTHER_FEE,
+          amountCents: -3000,
+        }),
+        expect.objectContaining({
+          rawName: 'Monthly Equipment Bill HST',
+          component: AccountingFinancialComponent.PLATFORM_OTHER_FEE_TAX,
+          taxRole: AccountingFinancialTaxRole.INPUT_TAX,
+          amountCents: -390,
+        }),
+        expect.objectContaining({
+          rawName: 'Other Card/Network Fees',
+          component: AccountingFinancialComponent.PROCESSING_FEE,
+          amountCents: -185,
+        }),
+      ]),
+    );
+    expect(
+      db.accountingProviderFinancialReviewRevision.create,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          documentId: document.id,
+          effectiveSnapshotParserName: 'accounting-provider-financial',
+          effectiveSnapshotParserVersion: '7',
+          effectiveSnapshotParseRunId: 'parse-run-v7-db-id',
+          effectiveSnapshotSourceParseRunId: 'parse-run-db-id',
+          effectiveLines: expect.objectContaining({
+            create: expect.arrayContaining([
+              expect.objectContaining({
+                rawName: 'Monthly Equipment Bill',
+                amountCents: -3000,
+              }),
+            ]) as unknown,
+          }) as unknown,
+        }) as unknown,
+      }),
+    );
+    expect(db.accountingAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'CREATE_PARSER_REEVALUATION_REVIEW_DRAFT',
+        entityId: 'acctfinreview_clover_v7',
+        operatorActorRef: 'user_admin_1',
+      }) as unknown,
+    });
+  });
+
+  it('refuses to confirm an inconsistent parser effective snapshot', async () => {
+    const db = makeDb();
+    const expectedHash = 'e'.repeat(64);
+    db.accountingProviderFinancialReviewRevision.findUnique.mockResolvedValue({
+      id: 'review-snapshot-db-id',
+      reviewRevisionStableId: 'acctfinreview_snapshot_bad',
+      revision: 1,
+      status: AccountingProviderFinancialReviewStatus.DRAFT,
+      reviewHash: expectedHash,
+      documentId: sourceDocument.id,
+      effectiveSnapshotParserName: 'accounting-provider-financial',
+      effectiveSnapshotParserVersion: '7',
+      effectiveSnapshotParseRun: {
+        parseRunStableId: 'acctparserun_v6',
+        artifactId: 'artifact-db-id',
+        parserName: 'accounting-provider-financial',
+        parserVersion: '6',
+        status: 'SUCCESS',
+        resultJson: { rawMetadata: {} },
+      },
+      effectiveSnapshotSourceParseRun: {
+        parseRunStableId: 'acctparserun_source',
+        artifactId: 'artifact-db-id',
+        status: 'SUCCESS',
+      },
+      effectiveLines: [{ id: 'reviewed-line-db-id' }],
+      corrections: [],
+      document: {
+        documentStableId: sourceDocument.documentStableId,
+        artifactId: 'artifact-db-id',
+        provider: sourceDocument.provider,
+        documentType: sourceDocument.documentType,
+        businessIdentityKey: sourceDocument.businessIdentityKey,
+        revision: 1,
+      },
+    });
+
+    const service = new AccountingProviderFinancialReviewService(db as never);
+
+    await expect(
+      service.confirmRevision(
+        sourceDocument.documentStableId,
+        'acctfinreview_snapshot_bad',
+        expectedHash,
+        'user_admin_2',
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    expect(
+      db.accountingProviderFinancialReviewRevision.update,
+    ).not.toHaveBeenCalled();
+    expect(db.accountingAuditLog.create).not.toHaveBeenCalled();
+  });
+
   it('confirms only the latest draft and supersedes the prior confirmed review', async () => {
     const db = makeDb();
     const expectedHash = 'b'.repeat(64);
@@ -215,8 +487,15 @@ describe('AccountingProviderFinancialReviewService', () => {
       status: AccountingProviderFinancialReviewStatus.DRAFT,
       reviewHash: expectedHash,
       documentId: sourceDocument.id,
+      effectiveSnapshotParserName: null,
+      effectiveSnapshotParserVersion: null,
+      effectiveSnapshotParseRun: null,
+      effectiveSnapshotSourceParseRun: null,
+      effectiveLines: [],
+      corrections: [],
       document: {
         documentStableId: sourceDocument.documentStableId,
+        artifactId: 'artifact-db-id',
         provider: sourceDocument.provider,
         documentType: sourceDocument.documentType,
         businessIdentityKey: sourceDocument.businessIdentityKey,

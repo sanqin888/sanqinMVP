@@ -2285,6 +2285,8 @@ model AccountingParseRun {
   completedAt      DateTime?
   createdAt        DateTime              @default(now())
   artifact         AccountingSourceArtifact @relation(fields: [artifactId], references: [id], onDelete: Restrict)
+  providerFinancialReviewEffectiveRevisions AccountingProviderFinancialReviewRevision[] @relation("AccountingProviderFinancialReviewEffectiveParseRun")
+  providerFinancialReviewSourceRevisions    AccountingProviderFinancialReviewRevision[] @relation("AccountingProviderFinancialReviewSourceParseRun")
 
   @@unique([artifactId, parserName, parserVersion])
   @@index([artifactId, createdAt])
@@ -2413,16 +2415,46 @@ model AccountingProviderFinancialReviewRevision {
   status                    AccountingProviderFinancialReviewStatus @default(DRAFT)
   reviewHash                String
   note                      String?
+  effectiveSnapshotParserName    String?
+  effectiveSnapshotParserVersion String?
+  effectiveSnapshotParseRunId       String?                         @db.Uuid
+  effectiveSnapshotSourceParseRunId String?                         @db.Uuid
   createdByUserStableId     String
   confirmedByUserStableId   String?
   confirmedAt               DateTime?
   createdAt                 DateTime                                @default(now())
   updatedAt                 DateTime                                @updatedAt
   document                  AccountingProviderFinancialDocument     @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  effectiveSnapshotParseRun       AccountingParseRun?                @relation("AccountingProviderFinancialReviewEffectiveParseRun", fields: [effectiveSnapshotParseRunId], references: [id], onDelete: Restrict, map: "AcctProviderFinReview_effective_parse_run_fkey")
+  effectiveSnapshotSourceParseRun AccountingParseRun?                @relation("AccountingProviderFinancialReviewSourceParseRun", fields: [effectiveSnapshotSourceParseRunId], references: [id], onDelete: Restrict, map: "AcctProviderFinReview_source_parse_run_fkey")
   corrections               AccountingProviderFinancialReviewCorrection[]
+  effectiveLines            AccountingProviderFinancialReviewedLine[]
 
   @@unique([documentId, revision], map: "AcctProviderFinReview_doc_rev_key")
   @@index([documentId, status, revision], map: "AcctProviderFinReview_doc_status_rev_idx")
+  @@index([effectiveSnapshotParseRunId], map: "AcctProviderFinReview_effective_parse_run_idx")
+  @@index([effectiveSnapshotSourceParseRunId], map: "AcctProviderFinReview_source_parse_run_idx")
+}
+
+model AccountingProviderFinancialReviewedLine {
+  id                     String                                   @id @default(uuid()) @db.Uuid
+  reviewedLineStableId   String                                   @unique @default(cuid())
+  reviewRevisionId       String                                   @db.Uuid
+  lineNo                 Int
+  sourceLineStableId     String?
+  rawCode                String?
+  rawName                String?
+  component              AccountingFinancialComponent
+  postingTreatment       AccountingFinancialPostingTreatment
+  taxRole                AccountingFinancialTaxRole               @default(NONE)
+  amountCents            Int
+  occurredAt             DateTime?
+  rawPayload             Json?
+  createdAt              DateTime                                 @default(now())
+  reviewRevision         AccountingProviderFinancialReviewRevision @relation(fields: [reviewRevisionId], references: [id], onDelete: Cascade)
+
+  @@unique([reviewRevisionId, lineNo], map: "AcctProviderFinReviewedLine_rev_no_key")
+  @@index([sourceLineStableId], map: "AcctProviderFinReviewedLine_source_line_idx")
 }
 
 model AccountingProviderFinancialReviewCorrection {
