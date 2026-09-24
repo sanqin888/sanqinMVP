@@ -227,8 +227,7 @@ describe('AccountingProviderFinancialReviewService', () => {
       documentStableId,
       provider: AccountingFinancialProvider.CLOVER,
       documentType: AccountingFinancialDocumentType.STATEMENT,
-      businessIdentityKey:
-        'clover:statement:29351880018:2026-06-01:2026-06-30',
+      businessIdentityKey: 'clover:statement:29351880018:2026-06-01:2026-06-30',
       revision: 1,
       providerMerchantRef: '29351880018',
       providerDocumentRef: '29351880018:2026-06-01:2026-06-30',
@@ -243,7 +242,9 @@ describe('AccountingProviderFinancialReviewService', () => {
         emailSubject: null,
       },
     };
-    db.accountingProviderFinancialDocument.findUnique.mockResolvedValue(document);
+    db.accountingProviderFinancialDocument.findUnique.mockResolvedValue(
+      document,
+    );
     db.accountingProviderFinancialDocument.findFirst.mockResolvedValue({
       documentStableId,
       revision: 1,
@@ -408,8 +409,8 @@ Total HST:-3.90 -35.75
                 rawName: 'Monthly Equipment Bill',
                 amountCents: -3000,
               }),
-            ]),
-          }),
+            ]) as unknown,
+          }) as unknown,
         }) as unknown,
       }),
     );

@@ -472,33 +472,32 @@ export class AccountingProviderFinancialReviewService {
     );
 
     return runSerializableAccountingWrite(this.prisma, async (tx) => {
-      const document =
-        await tx.accountingProviderFinancialDocument.findUnique({
-          where: { documentStableId: stableId },
-          select: {
-            id: true,
-            artifactId: true,
-            documentStableId: true,
-            provider: true,
-            documentType: true,
-            businessIdentityKey: true,
-            revision: true,
-            providerMerchantRef: true,
-            providerDocumentRef: true,
-            periodStart: true,
-            periodEnd: true,
-            currency: true,
-            parserName: true,
-            parserVersion: true,
-            artifact: {
-              select: {
-                artifactStableId: true,
-                originalFilename: true,
-                emailSubject: true,
-              },
+      const document = await tx.accountingProviderFinancialDocument.findUnique({
+        where: { documentStableId: stableId },
+        select: {
+          id: true,
+          artifactId: true,
+          documentStableId: true,
+          provider: true,
+          documentType: true,
+          businessIdentityKey: true,
+          revision: true,
+          providerMerchantRef: true,
+          providerDocumentRef: true,
+          periodStart: true,
+          periodEnd: true,
+          currency: true,
+          parserName: true,
+          parserVersion: true,
+          artifact: {
+            select: {
+              artifactStableId: true,
+              originalFilename: true,
+              emailSubject: true,
             },
           },
-        });
+        },
+      });
       if (!document) {
         throw new NotFoundException('provider financial document not found');
       }
@@ -762,8 +761,8 @@ export class AccountingProviderFinancialReviewService {
         },
       });
 
-      const created =
-        await tx.accountingProviderFinancialReviewRevision.create({
+      const created = await tx.accountingProviderFinancialReviewRevision.create(
+        {
           data: {
             documentId: document.id,
             revision: reviewRevision,
@@ -846,7 +845,8 @@ export class AccountingProviderFinancialReviewService {
               orderBy: { sourceLineStableId: 'asc' },
             },
           },
-        });
+        },
+      );
 
       await tx.accountingAuditLog.create({
         data: {

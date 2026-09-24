@@ -968,8 +968,7 @@ describe('AccountingProviderSettlementPreviewService', () => {
       documentStableId,
       provider: AccountingFinancialProvider.CLOVER,
       documentType: AccountingFinancialDocumentType.STATEMENT,
-      businessIdentityKey:
-        'clover:statement:29351880018:2026-06-01:2026-06-30',
+      businessIdentityKey: 'clover:statement:29351880018:2026-06-01:2026-06-30',
       revision: 1,
       supersedesDocumentId: null,
       storeStableId: '4750_Yonge_Street',
@@ -1091,24 +1090,26 @@ describe('AccountingProviderSettlementPreviewService', () => {
           updatedAt: new Date('2026-09-24T15:30:00.000Z'),
         },
       ]),
-      readAccountingAccountFacts: jest.fn().mockResolvedValue([
-        accountFact(
-          PROVIDER_SETTLEMENT_ACCOUNT_IDS.cloverPending,
-          AccountingAccountClass.ASSET,
-        ),
-        accountFact(
-          PROVIDER_SETTLEMENT_ACCOUNT_IDS.paymentProcessingFeeExpense,
-          AccountingAccountClass.EXPENSE,
-        ),
-        accountFact(
-          PROVIDER_SETTLEMENT_ACCOUNT_IDS.generalOperatingExpense,
-          AccountingAccountClass.EXPENSE,
-        ),
-        accountFact(
-          PROVIDER_SETTLEMENT_ACCOUNT_IDS.hstRecoverable,
-          AccountingAccountClass.ASSET,
-        ),
-      ]),
+      readAccountingAccountFacts: jest
+        .fn()
+        .mockResolvedValue([
+          accountFact(
+            PROVIDER_SETTLEMENT_ACCOUNT_IDS.cloverPending,
+            AccountingAccountClass.ASSET,
+          ),
+          accountFact(
+            PROVIDER_SETTLEMENT_ACCOUNT_IDS.paymentProcessingFeeExpense,
+            AccountingAccountClass.EXPENSE,
+          ),
+          accountFact(
+            PROVIDER_SETTLEMENT_ACCOUNT_IDS.generalOperatingExpense,
+            AccountingAccountClass.EXPENSE,
+          ),
+          accountFact(
+            PROVIDER_SETTLEMENT_ACCOUNT_IDS.hstRecoverable,
+            AccountingAccountClass.ASSET,
+          ),
+        ]),
       readSettlementShadowExistingJournals: jest.fn().mockResolvedValue([]),
       readOrderSaleJournalsByFactStableIds: jest.fn().mockResolvedValue([]),
     };
