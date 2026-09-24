@@ -521,7 +521,9 @@ Then improve the Accounting reports surface:
 
 **B4-D2 state (2026-09-24): MERGED / CI GREEN / ADDITIVE SALES V1 METADATA / NO MIGRATION / NO DEPENDENCY / NO JOURNAL OR SALES MONEY CHANGE / NO GRAPH CHANGE through PR #2506 / squash `a72dd12b`; CI #6276 passed.** Sales exposes its already-resolved `accountingStartDate`; the Web requires the entire prior equal-length range to start on/after that date before issuing the comparison request. Canonical `/accounting/report/sales` remains the sole money source.
 
-**B4-D3 state (2026-09-24): IMPLEMENTED LOCALLY / AWAITING REVIEW / HTTP CONTRACT CONTRACTION / NO MIGRATION / NO DEPENDENCY / NO JOURNAL OR REPORT ARITHMETIC CHANGE / NO GRAPH CHANGE.** The legacy `GET /accounting/report/account-balance` surface has no runtime repo consumer after B4-A; its standalone service method is not reused by any surviving report. A 168-hour production API-log check found only Nest route registration and no actual request evidence. D3 removes the route, standalone method and unused Web DTO, deletes the now-dead one-method characterization spec, and changes architecture regressions to forbid reintroduction. Trial Balance, Balance Movement, P&L, Cash Movement, annual report and exports are unchanged.
+**B4-D3 state (2026-09-24): PRODUCTION VERIFIED / MERGED / CI GREEN / HTTP CONTRACT CONTRACTION / NO MIGRATION / NO DEPENDENCY / NO JOURNAL OR REPORT ARITHMETIC CHANGE / NO GRAPH CHANGE** through PR #2507 / final head `82b43a52` / squash `286888cf`; CI #6278 passed. Production is running `main@286888cf`; `/accounting/report/account-balance` is no longer present in Nest route mapping, and post-deploy runtime inspection found no Accounting 4xx/5xx or API/Web ERROR lines. Canonical Sales, P&L, Cash Movement, Trial Balance and Balance Movement all produced live 200 responses.
+
+**B4 overall state (2026-09-24): PRODUCTION VERIFIED / CLOSED.** B4-A/B/C1/C2/D1/D2/D3 satisfy the Reporting polish scope: canonical statement UI/exports, timezone-safe presets, coverage/close indicators, statement-to-Journal and Journal-to-source drill-through, Management-vs-statement separation, P&L adjustment decomposition, Sales comparison cleanup and final legacy account-balance contraction. The operator reported no visible UI anomaly after deployment. No B4-D4 or other B4 implementation tail remains.
 
 #### PAYOUT-A — Provider payout / bank receipt contract foundation
 
@@ -553,7 +555,12 @@ Avoid polishing current mixed-authority widgets immediately before replacing the
 
 Priority: **P2**  
 Complexity: **M**  
-Depends on: **B2 terminology / financial contract stabilization**
+Depends on: **B2 terminology / financial contract stabilization — satisfied; B4 closed**  
+State: **B5-B1 Orders operational facts LOCAL SOURCE READY FOR REVIEW / NO MIGRATION / NO DEPENDENCY / NO GRAPH-DIRECTION CHANGE** from `origin/dev@6911dde2`. Detailed work package: `docs/architecture/admin-business-reports-b5.md`.
+
+B5 is now scoped as a store operating-monitoring surface, not merely a cleanup of the old Sales page. The product target is Today-first anomaly detection and explanation across Order count, Order total, average Order total, time-of-day, channel, fulfillment, product/package demand, production demand and execution health while canonical financial reporting remains Accounting-owned.
+
+B5-B1 keeps the existing `ORDER_REPORTING_FACTS_READER` legacy methods untouched and adds store-scoped half-open-range operational Order/item facts. Orders remains the owner of persistence queries and immutable component decoding; Reporting will own aggregation/baselines later. The new public facts intentionally exclude customer PII and raw snapshot JSON. An architecture guard prevents the Orders reader from pulling `PosPrintJob`/POS internals across the separate `store-operations-pos-print` boundary.
 
 Important distinction:
 
@@ -565,10 +572,15 @@ The Admin page currently reads the Orders/Reporting operational endpoint and dis
 Target:
 
 - rename/reframe ambiguous “销售额/收入” labels so Order totals are not mistaken for accounting revenue;
-- improve store/channel/menu/order operational KPIs and equal-period comparisons;
-- retain top-item and fulfillment operational analysis;
-- if a financial summary is useful, consume an Accounting-owned contract rather than recomputing finance in Admin;
+- default to a store-scoped **Today** operating view against same-weekday / same-elapsed-time baselines;
+- detect and explain meaningful changes in Order count, Order total, average Order total, channel, fulfillment and time-of-day;
+- separate top-level commercial product/package demand from component-expanded production demand;
+- use `makingAt -> readyAt` for prep p50/p90 and bounded recent-queue diagnostics;
+- expose data coverage/confidence rather than inventing payment, delivery, conversion, historical category or historical closure authority that does not exist;
+- keep Accounting finance, Behavior Analytics and Marketing campaign lifecycle in their owner surfaces unless a later explicit public contract is added;
 - do not duplicate P&L, settlement, tax or account-balance logic.
+
+Implementation order: **B5-B1 Orders operational facts -> B5-B2 Store operating-context seam -> B5-C1 Business Operations projection/anomaly engine -> B5-C2 Admin monitoring UI -> B5-D legacy route contraction + production verification**.
 
 B2 comes first so Admin and Accounting can share stable vocabulary rather than implementing two competing meanings of “sales/revenue”.
 

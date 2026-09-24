@@ -60,15 +60,32 @@ describe('Reporting / Orders cycle-safe boundary', () => {
     );
   });
 
-  it('keeps immutable component decoding inside the Orders owner', () => {
+  it('keeps immutable component decoding and B5 operational Order facts inside the Orders owner without pulling POS/Print persistence across the boundary', () => {
     const ordersReader = read(
       resolve(API_ROOT, 'orders/order-reporting-facts-reader.service.ts'),
+    );
+    const ordersContract = read(
+      resolve(API_ROOT, 'orders/order-reporting-facts-reader.contract.ts'),
     );
     const ordersPublicApi = read(resolve(API_ROOT, 'orders/public-api.ts'));
 
     expect(ordersReader).toContain('readOrderItemComponentsSnapshot');
     expect(ordersReader).toContain('componentsJson');
+    expect(ordersReader).toContain('readOperationalOrdersForRange');
+    expect(ordersReader).toContain('readOperationalItemsForRange');
+    expect(ordersReader).not.toContain('posPrintJob');
+    expect(ordersReader).not.toContain("from '../pos/");
+    expect(ordersContract).toContain('OrderReportingOperationalRangeV1');
+    expect(ordersContract).toContain('fromInclusive');
+    expect(ordersContract).toContain('toExclusive');
+    expect(ordersContract).not.toContain('contactEmail');
+    expect(ordersContract).not.toContain('contactPhone');
+    expect(ordersContract).not.toContain('userId');
+    expect(ordersContract).not.toContain('promotionSnapshot');
+    expect(ordersContract).not.toContain('componentsJson');
     expect(ordersPublicApi).toContain('ORDER_REPORTING_FACTS_READER');
     expect(ordersPublicApi).toContain('OrderReportingFactsModule');
+    expect(ordersPublicApi).toContain('OrderReportingOperationalOrderFactV1');
+    expect(ordersPublicApi).toContain('OrderReportingOperationalItemFactV1');
   });
 });

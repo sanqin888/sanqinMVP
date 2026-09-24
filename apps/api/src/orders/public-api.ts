@@ -89,6 +89,13 @@ export {
   type OrderReportingItemFactV1,
   type OrderReportingMetricFactV1,
   type OrderReportingMetricsV1,
+  type OrderReportingOperationalChannelV1,
+  type OrderReportingOperationalFulfillmentV1,
+  type OrderReportingOperationalItemFactV1,
+  type OrderReportingOperationalOrderFactV1,
+  type OrderReportingOperationalPaymentMethodV1,
+  type OrderReportingOperationalRangeV1,
+  type OrderReportingOperationalStatusV1,
 } from './order-reporting-facts-reader.contract';
 export { OrderReportingFactsModule } from './order-reporting-facts.module';
 export {
