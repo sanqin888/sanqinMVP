@@ -474,15 +474,17 @@ export function AdminShell({ children, locale, role, onLogout }: AdminShellProps
   const activeCategory = resolveActiveCategory(pathname, categories);
   const selectedStoreStableId = searchParams.get('store')?.trim() ?? '';
   const isPosDevicesPage = pathname.endsWith('/pos-devices');
+  const isBusinessReportsPage = pathname.endsWith('/reports');
   const showStoreContext =
     role !== 'ACCOUNTANT' &&
     (activeCategory.id === 'catalog' ||
+      isBusinessReportsPage ||
       (activeCategory.id === 'store' &&
         (pathname.endsWith('/setting') || isPosDevicesPage)));
   const storeContext =
     activeCategory.id === 'catalog'
       ? 'catalog'
-      : isPosDevicesPage
+      : isPosDevicesPage || isBusinessReportsPage
         ? 'operations'
         : 'store';
 
