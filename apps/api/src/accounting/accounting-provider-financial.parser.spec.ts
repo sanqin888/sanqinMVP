@@ -147,6 +147,260 @@ Total HST:-3.90 -35.15
     );
   });
 
+  it('parses real Clover Poppler layout without flattened-column mispairing', () => {
+    const parsed = parseProviderFinancialEvidence({
+      providerHint: AccountingFinancialProvider.CLOVER,
+      documentTypeHint: AccountingFinancialDocumentType.STATEMENT,
+      text: `
+MERCHANT CARD PROCESSING STATEMENT
+LOCATION RECAP
+StatementPeriod
+06/01/26 - 06/30/26
+Merchant Number
+29351880018
+LOCATION
+SUMMARY
+Total Amount Submitted
+3,362.10
+Third-Party Transactions
+0.00
+Adjustments
+0.00
+Interchange Charges
+0.00
+Service Charges
+-62.64
+Fees
+-35.75
+Chargebacks/Reversals
+Total Amount Funded
+All amounts shown are in CAD funds
+0.00
+3,263.71
+SERVICE CHARGES
+Date
+Invoice
+Description
+Tax
+Total
+FEES
+Date
+Invoice
+Description
+Tax
+Total
+`,
+      documentExtraction: {
+        version: 1,
+        inputKind: 'PDF',
+        engine: 'POPPLER',
+        layoutMode: 'GEOMETRY',
+        truncated: false,
+        lines: [
+          {
+            lineId: 'p1-submitted-label',
+            page: 1,
+            text: 'Total Amount Submitted',
+            confidence: null,
+            geometry: { left: 0.46, top: 0.52, width: 0.25, height: 0.02 },
+          },
+          {
+            lineId: 'p1-submitted-value',
+            page: 1,
+            text: '3,362.10',
+            confidence: null,
+            geometry: { left: 0.88, top: 0.52, width: 0.09, height: 0.02 },
+          },
+          {
+            lineId: 'p1-third-party-label',
+            page: 1,
+            text: 'Third-Party Transactions',
+            confidence: null,
+            geometry: { left: 0.46, top: 0.55, width: 0.27, height: 0.02 },
+          },
+          {
+            lineId: 'p1-third-party-value',
+            page: 1,
+            text: '0.00',
+            confidence: null,
+            geometry: { left: 0.92, top: 0.55, width: 0.05, height: 0.02 },
+          },
+          {
+            lineId: 'p1-adjustments-label',
+            page: 1,
+            text: 'Adjustments',
+            confidence: null,
+            geometry: { left: 0.46, top: 0.58, width: 0.15, height: 0.02 },
+          },
+          {
+            lineId: 'p1-adjustments-value',
+            page: 1,
+            text: '0.00',
+            confidence: null,
+            geometry: { left: 0.92, top: 0.58, width: 0.05, height: 0.02 },
+          },
+          {
+            lineId: 'p1-interchange-label',
+            page: 1,
+            text: 'Interchange Charges',
+            confidence: null,
+            geometry: { left: 0.46, top: 0.6, width: 0.22, height: 0.02 },
+          },
+          {
+            lineId: 'p1-interchange-value',
+            page: 1,
+            text: '0.00',
+            confidence: null,
+            geometry: { left: 0.92, top: 0.6, width: 0.05, height: 0.02 },
+          },
+          {
+            lineId: 'p1-service-label',
+            page: 1,
+            text: 'Service Charges',
+            confidence: null,
+            geometry: { left: 0.46, top: 0.63, width: 0.18, height: 0.02 },
+          },
+          {
+            lineId: 'p1-service-value',
+            page: 1,
+            text: '-62.64',
+            confidence: null,
+            geometry: { left: 0.9, top: 0.63, width: 0.07, height: 0.02 },
+          },
+          {
+            lineId: 'p1-fees-label',
+            page: 1,
+            text: 'Fees',
+            confidence: null,
+            geometry: { left: 0.46, top: 0.66, width: 0.08, height: 0.02 },
+          },
+          {
+            lineId: 'p1-fees-value',
+            page: 1,
+            text: '-35.75',
+            confidence: null,
+            geometry: { left: 0.9, top: 0.66, width: 0.07, height: 0.02 },
+          },
+          {
+            lineId: 'p1-chargeback-label',
+            page: 1,
+            text: 'Chargebacks/Reversals',
+            confidence: null,
+            geometry: { left: 0.46, top: 0.69, width: 0.25, height: 0.02 },
+          },
+          {
+            lineId: 'p1-chargeback-value',
+            page: 1,
+            text: '0.00',
+            confidence: null,
+            geometry: { left: 0.92, top: 0.69, width: 0.05, height: 0.02 },
+          },
+          {
+            lineId: 'p1-funded-label',
+            page: 1,
+            text: 'Total Amount Funded',
+            confidence: null,
+            geometry: { left: 0.46, top: 0.72, width: 0.22, height: 0.02 },
+          },
+          {
+            lineId: 'p1-funded-value',
+            page: 1,
+            text: '3,263.71',
+            confidence: null,
+            geometry: { left: 0.88, top: 0.72, width: 0.09, height: 0.02 },
+          },
+          {
+            lineId: 'p5-service-heading',
+            page: 5,
+            text: 'S ERVICE C HARGES',
+            confidence: null,
+            geometry: { left: 0.06, top: 0.12, width: 0.3, height: 0.02 },
+          },
+          {
+            lineId: 'p5-service-total-label',
+            page: 5,
+            text: 'Total',
+            confidence: null,
+            geometry: { left: 0.06, top: 0.22, width: 0.08, height: 0.02 },
+          },
+          {
+            lineId: 'p5-service-total-value',
+            page: 5,
+            text: '-62.64',
+            confidence: null,
+            geometry: { left: 0.9, top: 0.22, width: 0.07, height: 0.02 },
+          },
+          {
+            lineId: 'p5-fees-heading',
+            page: 5,
+            text: 'F EES',
+            confidence: null,
+            geometry: { left: 0.06, top: 0.26, width: 0.15, height: 0.02 },
+          },
+          {
+            lineId: 'p5-fees-total-label',
+            page: 5,
+            text: 'Total',
+            confidence: null,
+            geometry: { left: 0.06, top: 0.4, width: 0.08, height: 0.02 },
+          },
+          {
+            lineId: 'p5-fees-hst',
+            page: 5,
+            text: 'HST:-3.90',
+            confidence: null,
+            geometry: { left: 0.75, top: 0.4, width: 0.1, height: 0.02 },
+          },
+          {
+            lineId: 'p5-fees-total-value',
+            page: 5,
+            text: '-35.75',
+            confidence: null,
+            geometry: { left: 0.9, top: 0.4, width: 0.07, height: 0.02 },
+          },
+        ],
+      },
+    });
+
+    expect(parsed).toEqual(
+      expect.objectContaining({
+        provider: AccountingFinancialProvider.CLOVER,
+        documentType: AccountingFinancialDocumentType.STATEMENT,
+        providerMerchantRef: '29351880018',
+        periodStart: '2026-06-01',
+        periodEnd: '2026-06-30',
+      }),
+    );
+    expect(lineByName(parsed!, 'Total Amount Submitted')?.amountCents).toBe(
+      336210,
+    );
+    expect(lineByName(parsed!, 'Chargebacks/Reversals')?.amountCents).toBe(0);
+    expect(lineByName(parsed!, 'Total Amount Funded')?.amountCents).toBe(326371);
+    expect(lineByName(parsed!, 'Service Charges')?.amountCents).toBe(-6264);
+    expect(lineByName(parsed!, 'Fees before HST')?.amountCents).toBe(-3185);
+    expect(lineByName(parsed!, 'Fees HST')).toEqual(
+      expect.objectContaining({
+        amountCents: -390,
+        component: AccountingFinancialComponent.PROCESSING_FEE_TAX,
+        taxRole: AccountingFinancialTaxRole.INPUT_TAX,
+      }),
+    );
+    expect(lineByName(parsed!, 'Total Amount Funded')?.rawPayload).toMatchObject({
+      extractionEvidence: {
+        strategy: 'LAYOUT_ROW_PAIR',
+        engine: 'POPPLER',
+        labelLine: { lineId: 'p1-funded-label' },
+        amountLine: { lineId: 'p1-funded-value' },
+      },
+    });
+    expect(parsed?.rawMetadata).toEqual(
+      expect.objectContaining({
+        documentExtractionEngine: 'POPPLER',
+        layoutAwareExtraction: true,
+      }),
+    );
+  });
+
   it('uses only the Uber consolidated monthly summary and excludes payout sections', () => {
     const parsed = parseProviderFinancialEvidence({
       providerHint: AccountingFinancialProvider.UBER_EATS,
