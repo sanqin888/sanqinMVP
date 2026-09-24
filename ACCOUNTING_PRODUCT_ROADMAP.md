@@ -285,6 +285,18 @@ Post-migration runtime evidence closes the final gate: Expense `expense_v618ly4f
 
 Accounting Journal/canonical financial facts continue to own every Accounting sales amount. **B2 is PRODUCTION VERIFIED / CLOSED.**
 
+### Provider Financial Coverage Advancement — post-B2 correctness tail
+
+**2026-09-23 delivery:** **PR #2501 / NO MIGRATION / NO DEPENDENCY / NO GRAPH CHANGE** on `accounting/provider-financial-coverage-advancement` from `origin/dev@d0c10099`. This is a post-modularization Accounting evidence-completeness correction and does **not** reopen Phase 9 or B2.
+
+Readiness audit confirmed that `AccountingProviderFinancialCoverage.financialCompleteThrough` is already the inclusive provider-evidence frontier consumed by canonical Sales Analytics, but no normal business writer advances it. Production read-only evidence currently has Uber Eats and Fantuan coverage starting `2026-06-01` with `financialCompleteThrough = null`, while both providers already have canonical posted `STATEMENT` documents continuously covering June, July and August 2026. Uber July is additionally bound to an exact confirmed Human Review Revision; Fantuan `OTHER` adjustment-detail evidence remains supplementary/NOOP and has no independent settlement Journal.
+
+The implemented rule is conservative and monotonic: only the latest revision of each confirmed `STATEMENT` business identity, with an exact Inbox materialization link and exactly one active canonical `accounting.provider_financial_document.v1` / `PLATFORM_STATEMENT` Journal anchor for the same revision/store, can form coverage intervals. Historical machine-confirmed statements remain eligible when no Human Review exists; once Human Review exists, the latest review revision must be `CONFIRMED` with operator/timestamp authority. `financialCompleteThrough` advances only across continuously adjacent/overlapping eligible intervals from the already-proven frontier and never jumps a gap or moves backward.
+
+Coverage mutation is deliberately **not** part of each provider replacement-group Journal transaction. `AccountingProviderSettlementExecutionService` first completes all READY Journal groups under the existing frozen coverage authority, then invokes one Accounting-owned Serializable coverage reconciliation per affected provider. The reconciliation service computes eligibility/frontier, while the existing Unified Inbox Core writer remains the designated Prisma mutation owner for `AccountingProviderFinancialCoverage`. This avoids both an architecture-boundary bypass and invalidating the same Preview's later document authorities through an early `coverage.updatedAt` change. A failed coverage reconciliation therefore leaves metadata conservatively behind already-posted Journals rather than allowing metadata to get ahead of ledger authority. ALREADY_POSTED statements also trigger the same idempotent reconciliation without rewriting Journals, which provides the controlled production backfill path after deployment.
+
+Current production data would derive an inclusive frontier of **2026-08-31** for both Uber Eats and Fantuan under this policy, but the readiness audit and this local source batch perform no production write. Production advancement remains a later deploy/verification action using the existing expected-plan-hash settlement replay boundary.
+
 ### Net Sales Revenue
 
 Define:

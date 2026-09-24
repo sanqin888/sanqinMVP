@@ -459,6 +459,20 @@ export async function readProviderFinancialDocumentReplay(
   };
 }
 
+export async function advanceProviderFinancialCompleteThroughInTx(
+  tx: AccountingTx,
+  coverageId: string,
+  financialCompleteThrough: Date,
+) {
+  return tx.accountingProviderFinancialCoverage.update({
+    where: { id: coverageId },
+    data: {
+      financialCompleteThrough,
+      updatedByUserStableId: null,
+    },
+  });
+}
+
 export async function ensureProviderFinancialCoverageInTx(
   tx: AccountingTx,
   provider: AccountingFinancialProvider,
