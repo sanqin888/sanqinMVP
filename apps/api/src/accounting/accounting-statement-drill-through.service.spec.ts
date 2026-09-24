@@ -43,9 +43,9 @@ describe('AccountingStatementDrillThroughService', () => {
         }),
       },
       accountingJournalEntry: {
-        count: jest.fn(async (args: JournalCountArgs) => {
+        count: jest.fn((args: JournalCountArgs) => {
           lastCountArgs = args;
-          return 1;
+          return Promise.resolve(1);
         }),
         findMany: jest.fn().mockResolvedValue([
           {
