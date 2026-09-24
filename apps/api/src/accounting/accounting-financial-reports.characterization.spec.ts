@@ -58,6 +58,7 @@ describe('AccountingFinancialReportsService canonical fact characterization', ()
             entryStableId: 'refund_1',
             kind: AccountingJournalEntryKind.ADJUSTMENT,
             source: AccountingJournalSource.ORDER,
+            sourceFactType: 'order.financial_reversal.v1',
             occurredAt,
             currency: 'CAD',
             memo: 'refund',
@@ -219,6 +220,16 @@ describe('AccountingFinancialReportsService canonical fact characterization', ()
       transferCents: 0,
       netProfitCents: 450,
     });
+    expect(report.adjustmentBreakdown).toEqual([
+      {
+        source: AccountingJournalSource.ORDER,
+        sourceFactType: 'order.financial_reversal.v1',
+        journalCount: 1,
+        revenueNetCents: -200,
+        expenseNetCents: 0,
+        netProfitEffectCents: -200,
+      },
+    ]);
     expect(report.bySource).toEqual(
       expect.arrayContaining([
         { source: AccountingJournalSource.ORDER, amountCents: 700 },
