@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { apiFetch } from '@/lib/api/client';
+import { apiFetch, apiFetchRaw } from '@/lib/api/client';
 import {
   AccountingEvidenceFileManager,
 } from './accounting-evidence-file-manager';
@@ -251,9 +251,7 @@ function ProtectedAccountingImage({
     setBlobUrl(null);
     setError(null);
 
-    void fetch(url, {
-      credentials: 'include',
-      cache: 'no-store',
+    void apiFetchRaw(url, {
       headers: { Accept: 'image/*' },
       signal: controller.signal,
     })
