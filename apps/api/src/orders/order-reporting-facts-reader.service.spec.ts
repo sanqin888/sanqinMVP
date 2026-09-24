@@ -149,7 +149,9 @@ describe('OrderReportingFactsReaderService', () => {
       toExclusive: new Date('2026-09-24T04:00:00.000Z'),
     };
 
-    await expect(service.readOperationalOrdersForRange(query)).resolves.toEqual([
+    await expect(
+      service.readOperationalOrdersForRange(query),
+    ).resolves.toEqual([
       {
         orderStableId: 'order-stable-1',
         storeStableId: '4750_Yonge_Street',
