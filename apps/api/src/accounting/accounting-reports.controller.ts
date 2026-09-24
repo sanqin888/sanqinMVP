@@ -11,6 +11,7 @@ import type { Response } from 'express';
 import { Roles, RolesGuard, SessionAuthGuard } from '../auth/public-api';
 import {
   type AuthedAccountingRequest,
+  parseNonNegativeAccountingNumber,
   requireAccountingOperatorUserId,
 } from './accounting-controller-support';
 import type { AccountingBalanceMovementReportV1 } from './accounting-balance-movement.contract';
@@ -19,6 +20,8 @@ import { AccountingFinancialReportsService } from './accounting-financial-report
 import { AccountingSalesAnalyticsService } from './accounting-sales-analytics.service';
 import type { AccountingTrialBalanceReportV1 } from './accounting-trial-balance.contract';
 import { AccountingTrialBalanceService } from './accounting-trial-balance.service';
+import type { AccountingStatementDrillThroughPhaseV1 } from './accounting-statement-drill-through.contract';
+import { AccountingStatementDrillThroughService } from './accounting-statement-drill-through.service';
 import { AccountingStatementExportService } from './accounting-statement-export.service';
 
 @Controller('accounting')
@@ -30,6 +33,7 @@ export class AccountingReportsController {
     private readonly salesAnalytics: AccountingSalesAnalyticsService,
     private readonly balanceMovement: AccountingBalanceMovementService,
     private readonly trialBalance: AccountingTrialBalanceService,
+    private readonly statementDrillThrough: AccountingStatementDrillThroughService,
     private readonly statementExport: AccountingStatementExportService,
   ) {}
 
@@ -73,6 +77,27 @@ export class AccountingReportsController {
     @Query('currency') currency?: string,
   ): Promise<AccountingBalanceMovementReportV1> {
     return this.balanceMovement.project({ from, to, currency });
+  }
+
+  @Get('report/statement-journals')
+  statementJournals(
+    @Query('accountStableId') accountStableId: string,
+    @Query('phase') phase: AccountingStatementDrillThroughPhaseV1,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('currency') currency?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.statementDrillThrough.read({
+      accountStableId,
+      phase,
+      from,
+      to,
+      currency,
+      limit: parseNonNegativeAccountingNumber(limit, 'limit'),
+      offset: parseNonNegativeAccountingNumber(offset, 'offset'),
+    });
   }
 
   @Get('report/account-balance')

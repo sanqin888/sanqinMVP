@@ -513,6 +513,8 @@ Then improve the Accounting reports surface:
 
 **B4-B state (2026-09-23): MERGED / CI GREEN through PR #2483 / squash `cbd8bb1d`; PR CI #6195 passed.** Trial Balance and Balance Movement now have dedicated authenticated CSV/PDF export endpoints plus Reports-page download links. A narrow `AccountingStatementExportService` delegates once to the existing B3 projection, renders only the returned report, and records export audit evidence. CSV carries statement metadata, account/totals and Balance Movement opening-basis/reconciliation fields; PDF reuses current Accounting PDFKit/Noto CJK support and keeps the required non-formal-Balance-Sheet disclosure. No new monetary authority, Journal query, schema/migration, package, provider path or context edge is introduced.
 
+**B4-C1 state (2026-09-23): IMPLEMENTED LOCALLY / AWAITING REVIEW / NO MIGRATION / NO DEPENDENCY / NO GRAPH CHANGE.** Canonical statement account amounts now have `OPENING | PERIOD | CLOSING` Journal drill-through backed only by Accounting persistence. The drill-through shares B3 Trial Balance scope/range resolution rather than duplicating business-date/opening semantics, returns complete balanced Journal lines and source-fact stable identity, and does not call foreign owner APIs or rebuild monetary facts. PAYOUT Journals are covered generically through their canonical `accounting.provider_payout.v1` lineage. The Web drawer supports pagination and business-timezone display; source-owner deep links are intentionally deferred to B4-C2.
+
 #### PAYOUT-A — Provider payout / bank receipt contract foundation
 
 Priority: **P1 ACCOUNTING CORRECTNESS**  

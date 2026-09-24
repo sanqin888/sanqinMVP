@@ -281,6 +281,80 @@ export type AccountingBalanceMovementSection =
     accounts: AccountingBalanceMovementAccountRow[];
   };
 
+export type AccountingStatementDrillThroughPhase =
+  | 'OPENING'
+  | 'PERIOD'
+  | 'CLOSING';
+
+export type AccountingStatementJournalLine = {
+  lineNo: number;
+  debitCents: number;
+  creditCents: number;
+  memo: string | null;
+  accountStableId: string;
+  accountName: string;
+  accountClass: AccountingAccount['accountClass'];
+  accountType: AccountingAccount['type'] | null;
+  categoryStableId: string | null;
+  categoryName: string | null;
+  categoryType: string | null;
+};
+
+export type AccountingStatementJournalEntry = {
+  entryStableId: string;
+  kind: string;
+  source: string;
+  sourceFactType: string | null;
+  sourceFactStableId: string | null;
+  sourceFactVersion: number | null;
+  storeStableId: string | null;
+  occurredAt: string;
+  currency: string;
+  memo: string | null;
+  accountDebitCents: number;
+  accountCreditCents: number;
+  accountNormalMovementCents: number;
+  entryDebitCents: number;
+  entryCreditCents: number;
+  highlightedLineNos: number[];
+  lines: AccountingStatementJournalLine[];
+};
+
+export type AccountingStatementJournalDrillThrough = {
+  version: 1;
+  scope: 'WHOLE_LEDGER';
+  phase: AccountingStatementDrillThroughPhase;
+  currency: string;
+  timezone: string;
+  accountingStartDate: string;
+  requestedFrom: string;
+  requestedTo: string;
+  effectiveFrom: string;
+  effectiveTo: string;
+  account: {
+    accountStableId: string;
+    accountName: string;
+    accountClass: AccountingAccount['accountClass'];
+    accountType: AccountingAccount['type'] | null;
+    currency: string;
+    isActive: boolean;
+    normalSide: AccountingTrialBalanceNormalSide;
+  };
+  pageSummary: {
+    journalEntryCount: number;
+    accountDebitCents: number;
+    accountCreditCents: number;
+    accountNormalMovementCents: number;
+  };
+  pagination: {
+    limit: number;
+    offset: number;
+    total: number;
+    hasMore: boolean;
+  };
+  entries: AccountingStatementJournalEntry[];
+};
+
 export type AccountingBalanceMovementReport = {
   version: 1;
   statement: 'BALANCE_MOVEMENT';

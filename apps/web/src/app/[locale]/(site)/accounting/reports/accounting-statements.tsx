@@ -13,6 +13,12 @@ import type {
 const money = (cents: number) =>
   `${cents < 0 ? '-' : ''}$${(Math.abs(cents) / 100).toFixed(2)}`;
 
+export type StatementDrillTarget = {
+  accountStableId: string;
+  accountName: string;
+  phase: 'OPENING' | 'PERIOD' | 'CLOSING';
+};
+
 function StatusBadge({
   children,
   tone = 'neutral',
@@ -109,9 +115,11 @@ function StatementMeta({
 export function TrialBalanceStatement({
   report,
   isZh,
+  onDrillThrough,
 }: {
   report: AccountingTrialBalanceReport;
   isZh: boolean;
+  onDrillThrough: (target: StatementDrillTarget) => void;
 }) {
   const balanced =
     report.totals.openingDebitBalanceCents ===
@@ -209,17 +217,38 @@ export function TrialBalanceStatement({
                 ) : null}
               </div>
               <div className="mt-4 grid grid-cols-3 gap-3 text-sm">
-                <MiniAmount
+                <DrillAmountButton
                   label={isZh ? '期初' : 'Opening'}
                   cents={row.openingNormalBalanceCents}
+                  onClick={() =>
+                    onDrillThrough({
+                      accountStableId: row.accountStableId,
+                      accountName: row.accountName,
+                      phase: 'OPENING',
+                    })
+                  }
                 />
-                <MiniAmount
+                <DrillAmountButton
                   label={isZh ? '本期' : 'Period'}
                   cents={row.periodNormalMovementCents}
+                  onClick={() =>
+                    onDrillThrough({
+                      accountStableId: row.accountStableId,
+                      accountName: row.accountName,
+                      phase: 'PERIOD',
+                    })
+                  }
                 />
-                <MiniAmount
+                <DrillAmountButton
                   label={isZh ? '期末' : 'Closing'}
                   cents={row.closingNormalBalanceCents}
+                  onClick={() =>
+                    onDrillThrough({
+                      accountStableId: row.accountStableId,
+                      accountName: row.accountName,
+                      phase: 'CLOSING',
+                    })
+                  }
                 />
               </div>
               <div className="mt-3 grid grid-cols-2 gap-3 border-t border-slate-100 pt-3 text-xs text-slate-500">
@@ -281,12 +310,67 @@ export function TrialBalanceStatement({
                         : ''}
                     </div>
                   </td>
-                  <MoneyCell cents={row.openingDebitBalanceCents} />
-                  <MoneyCell cents={row.openingCreditBalanceCents} />
-                  <MoneyCell cents={row.periodDebitCents} />
-                  <MoneyCell cents={row.periodCreditCents} />
-                  <MoneyCell cents={row.closingDebitBalanceCents} />
-                  <MoneyCell cents={row.closingCreditBalanceCents} last />
+                  <MoneyCell
+                    cents={row.openingDebitBalanceCents}
+                    onClick={() =>
+                      onDrillThrough({
+                        accountStableId: row.accountStableId,
+                        accountName: row.accountName,
+                        phase: 'OPENING',
+                      })
+                    }
+                  />
+                  <MoneyCell
+                    cents={row.openingCreditBalanceCents}
+                    onClick={() =>
+                      onDrillThrough({
+                        accountStableId: row.accountStableId,
+                        accountName: row.accountName,
+                        phase: 'OPENING',
+                      })
+                    }
+                  />
+                  <MoneyCell
+                    cents={row.periodDebitCents}
+                    onClick={() =>
+                      onDrillThrough({
+                        accountStableId: row.accountStableId,
+                        accountName: row.accountName,
+                        phase: 'PERIOD',
+                      })
+                    }
+                  />
+                  <MoneyCell
+                    cents={row.periodCreditCents}
+                    onClick={() =>
+                      onDrillThrough({
+                        accountStableId: row.accountStableId,
+                        accountName: row.accountName,
+                        phase: 'PERIOD',
+                      })
+                    }
+                  />
+                  <MoneyCell
+                    cents={row.closingDebitBalanceCents}
+                    onClick={() =>
+                      onDrillThrough({
+                        accountStableId: row.accountStableId,
+                        accountName: row.accountName,
+                        phase: 'CLOSING',
+                      })
+                    }
+                  />
+                  <MoneyCell
+                    cents={row.closingCreditBalanceCents}
+                    last
+                    onClick={() =>
+                      onDrillThrough({
+                        accountStableId: row.accountStableId,
+                        accountName: row.accountName,
+                        phase: 'CLOSING',
+                      })
+                    }
+                  />
                 </tr>
               ))}
               <tr className="border-t-2 border-slate-300 bg-slate-50 font-semibold">
@@ -309,9 +393,11 @@ export function TrialBalanceStatement({
 export function BalanceMovementStatement({
   report,
   isZh,
+  onDrillThrough,
 }: {
   report: AccountingBalanceMovementReport;
   isZh: boolean;
+  onDrillThrough: (target: StatementDrillTarget) => void;
 }) {
   const allBridgesReconciled =
     report.bridge.opening.reconciliationCents === 0 &&
@@ -362,16 +448,19 @@ export function BalanceMovementStatement({
           title={isZh ? '资产变动' : 'Assets movement'}
           section={report.assets}
           isZh={isZh}
+          onDrillThrough={onDrillThrough}
         />
         <MovementSectionCard
           title={isZh ? '负债变动' : 'Liabilities movement'}
           section={report.liabilities}
           isZh={isZh}
+          onDrillThrough={onDrillThrough}
         />
         <MovementSectionCard
           title={isZh ? '直接权益变动' : 'Direct equity movement'}
           section={report.directEquity}
           isZh={isZh}
+          onDrillThrough={onDrillThrough}
         />
       </div>
 
@@ -466,11 +555,50 @@ function MiniAmount({ label, cents }: { label: string; cents: number }) {
   );
 }
 
-function MoneyCell({ cents, last = false }: { cents: number; last?: boolean }) {
+function MoneyCell({
+  cents,
+  last = false,
+  onClick,
+}: {
+  cents: number;
+  last?: boolean;
+  onClick?: () => void;
+}) {
   return (
     <td className={`${last ? 'px-4' : 'px-3'} py-3 text-right tabular-nums`}>
-      {cents === 0 ? '—' : money(cents)}
+      {onClick ? (
+        <button
+          type="button"
+          className="rounded px-1 py-0.5 font-medium underline decoration-dotted underline-offset-4 hover:bg-slate-50"
+          onClick={onClick}
+        >
+          {cents === 0 ? '—' : money(cents)}
+        </button>
+      ) : cents === 0 ? (
+        '—'
+      ) : (
+        money(cents)
+      )}
     </td>
+  );
+}
+
+function DrillAmountButton({
+  label,
+  cents,
+  onClick,
+}: {
+  label: string;
+  cents: number;
+  onClick: () => void;
+}) {
+  return (
+    <button type="button" className="text-left" onClick={onClick}>
+      <p className="text-xs text-slate-500">{label}</p>
+      <p className="mt-1 font-semibold tabular-nums underline decoration-dotted underline-offset-4">
+        {money(cents)}
+      </p>
+    </button>
   );
 }
 
@@ -478,10 +606,12 @@ function MovementSectionCard({
   title,
   section,
   isZh,
+  onDrillThrough,
 }: {
   title: string;
   section: AccountingBalanceMovementSection;
   isZh: boolean;
+  onDrillThrough: (target: StatementDrillTarget) => void;
 }) {
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -502,7 +632,12 @@ function MovementSectionCard({
       </div>
       <div className="mt-4 space-y-3">
         {section.accounts.map((row) => (
-          <MovementAccountRow key={row.accountStableId} row={row} isZh={isZh} />
+          <MovementAccountRow
+            key={row.accountStableId}
+            row={row}
+            isZh={isZh}
+            onDrillThrough={onDrillThrough}
+          />
         ))}
         {!section.accounts.length ? (
           <p className="text-sm text-slate-500">
@@ -517,9 +652,11 @@ function MovementSectionCard({
 function MovementAccountRow({
   row,
   isZh,
+  onDrillThrough,
 }: {
   row: AccountingBalanceMovementAccountRow;
   isZh: boolean;
+  onDrillThrough: (target: StatementDrillTarget) => void;
 }) {
   return (
     <div className="border-t border-slate-100 pt-3 first:border-0 first:pt-0">
@@ -531,13 +668,48 @@ function MovementAccountRow({
             {!row.isActive ? (isZh ? ' · 已停用' : ' · Inactive') : ''}
           </p>
         </div>
-        <span className="text-sm font-semibold tabular-nums">
+        <button
+          type="button"
+          className="text-sm font-semibold tabular-nums underline decoration-dotted underline-offset-4"
+          onClick={() =>
+            onDrillThrough({
+              accountStableId: row.accountStableId,
+              accountName: row.accountName,
+              phase: 'CLOSING',
+            })
+          }
+        >
           {money(row.closingCumulativeCents)}
-        </span>
+        </button>
       </div>
-      <p className="mt-1 text-xs text-slate-500">
-        {isZh ? '本期' : 'Period'} {money(row.periodMovementCents)}
-      </p>
+      <div className="mt-1 flex gap-3 text-xs text-slate-500">
+        <button
+          type="button"
+          className="underline decoration-dotted underline-offset-4"
+          onClick={() =>
+            onDrillThrough({
+              accountStableId: row.accountStableId,
+              accountName: row.accountName,
+              phase: 'OPENING',
+            })
+          }
+        >
+          {isZh ? '期初' : 'Opening'} {money(row.openingCumulativeCents)}
+        </button>
+        <button
+          type="button"
+          className="underline decoration-dotted underline-offset-4"
+          onClick={() =>
+            onDrillThrough({
+              accountStableId: row.accountStableId,
+              accountName: row.accountName,
+              phase: 'PERIOD',
+            })
+          }
+        >
+          {isZh ? '本期' : 'Period'} {money(row.periodMovementCents)}
+        </button>
+      </div>
     </div>
   );
 }
