@@ -14,10 +14,7 @@ describe('Reporting / Brand-Store operating-context boundary', () => {
     const reportsModule = read(resolve(REPORTS_ROOT, 'reports.module.ts'));
     const reportsService = read(resolve(REPORTS_ROOT, 'reports.service.ts'));
     const reportingContract = read(
-      resolve(
-        REPORTS_ROOT,
-        'reporting-store-operating-context.contract.ts',
-      ),
+      resolve(REPORTS_ROOT, 'reporting-store-operating-context.contract.ts'),
     );
     const baseline = read(
       resolve(REPOSITORY_ROOT, 'tools/architecture/context-baseline.json'),
@@ -27,9 +24,7 @@ describe('Reporting / Brand-Store operating-context boundary', () => {
     expect(reportsModule).toContain('BRAND_STORE_CONFIG_READER');
     expect(reportsModule).toContain('STORE_SCHEDULE_READER');
     expect(reportsModule).toContain('STORE_STATUS_READER');
-    expect(reportsModule).toContain(
-      'REPORTING_STORE_OPERATING_CONTEXT_QUERY',
-    );
+    expect(reportsModule).toContain('REPORTING_STORE_OPERATING_CONTEXT_QUERY');
     expect(reportsService).not.toContain("from '../store/");
     expect(reportingContract).not.toContain("from '../store/");
     expect(reportingContract).not.toContain('@prisma/client');
@@ -41,10 +36,7 @@ describe('Reporting / Brand-Store operating-context boundary', () => {
 
   it('publishes only the store operating context needed by Reporting', () => {
     const reportingContract = read(
-      resolve(
-        REPORTS_ROOT,
-        'reporting-store-operating-context.contract.ts',
-      ),
+      resolve(REPORTS_ROOT, 'reporting-store-operating-context.contract.ts'),
     );
 
     expect(reportingContract).toContain('storeStableId');
