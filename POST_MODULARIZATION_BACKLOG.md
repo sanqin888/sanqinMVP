@@ -517,7 +517,7 @@ Then improve the Accounting reports surface:
 
 Priority: **P1 ACCOUNTING CORRECTNESS**  
 Complexity: **M**  
-State: **PAYOUT-A MERGED / CI GREEN; PAYOUT-B MERGED / CI GREEN / MIGRATION APPLIED; PAYOUT-C PRODUCTION VERIFIED; PAYOUT-D DEPLOYED / BACKEND DATA-PATH VERIFIED / UI SPOT-CHECK PENDING; PAYOUT-E-A + INBOX-ONLY + SETTLEMENT ROW-DECISION FOLLOW-UPS MERGED / CI GREEN / DEPLOYED; PAYOUT-E-B1 LOCAL SOURCE READY FOR REVIEW / MIGRATION REQUIRED / NO GRAPH CHANGE**
+State: **PAYOUT-A MERGED / CI GREEN; PAYOUT-B MERGED / CI GREEN / MIGRATION APPLIED; PAYOUT-C PRODUCTION VERIFIED; PAYOUT-D DEPLOYED / BACKEND DATA-PATH VERIFIED / UI SPOT-CHECK PENDING; PAYOUT-E-A + INBOX-ONLY + SETTLEMENT ROW-DECISION FOLLOW-UPS MERGED / CI GREEN / DEPLOYED; PAYOUT-E-B1 PRODUCTION VERIFIED / MIGRATION APPLIED; PAYOUT-E-B2 LOCAL SOURCE READY FOR REVIEW / NO MIGRATION / NO GRAPH CHANGE**
 
 After B4-B, the next Accounting correctness gap is the actual transfer from `Clover/Uber/Fantuan Pending` into a BANK account. This is not another monthly-statement posting: Clover deposits frequently while Uber/Fantuan pay weekly, so payout dates naturally cross monthly statement boundaries.
 
@@ -533,7 +533,9 @@ PAYOUT-D is now deployed at production `main@1666b3ed` after PR #2488 / CI #6214
 
 PAYOUT-E-A is merged through PR #2490 / squash `1d90e6fd`, CI #6223 green. Inbox-only workflow ownership merged through PR #2492 / squash `c4324edd`, CI #6229 green, and settlement row-decision ownership merged through PR #2493 / squash `3d20fd4f`, CI #6232 green and is production deployed. E-A remains evidence/match preview only.
 
-PAYOUT-E-B1 is now **LOCAL SOURCE READY FOR USER REVIEW / MIGRATION REQUIRED**. It adds a durable Accounting-owned reconciliation row between immutable SourceArtifact evidence and canonical ProviderPayout. Scope identity is artifact row + store + destination bank; persisted rows carry deterministic stable identity, parser-bound fingerprint, normalized row facts, operator/time, and `EXCLUDED / READY_FOR_POSTING / MATCH_EXISTING_PAYOUT`. Confirmation always reparses the server-side CSV and derives semantics from current E-A match status. Possible/ambiguous rows cannot be confirmed as included. First-load selection is conservative: only exact existing payout matches start included. Durable choices are restored on reopen and semantic drift forces reconfirmation. No payout/Journal writer changes occur in E-B1; E-B2 must atomically bind READY rows to exactly one payout before any auto-posting/bank API work. Detailed readiness: `docs/architecture/accounting-provider-payout-readiness.md`.
+PAYOUT-E-B1 is **PRODUCTION VERIFIED / MIGRATION APPLIED** at production `main@56d58ccd`. Migration `20260923230651_accounting_provider_payout_bank_row_decisions` is applied; the production table contains 27 durable decisions (25 `EXCLUDED`, 2 `MATCH_EXISTING_PAYOUT`) with zero invalid match shapes and zero orphan artifact references.
+
+PAYOUT-E-B2 is **LOCAL SOURCE READY FOR USER REVIEW / NO MIGRATION / NO GRAPH CHANGE**. It adds a decision-owned posting command that accepts only `decisionStableId`, revalidates that a READY scope is still current, derives payout facts from persisted Accounting authority, and atomically creates/anchors the canonical payout plus transitions the row to `MATCH_EXISTING_PAYOUT`. An exact payout appearing after preflight causes a fail-closed reconfirmation instead of an inferred binding or duplicate post; matched-decision replay remains idempotent. Existing manual payout entry is unchanged. Automatic bank ingestion/auto-posting remains blocked until E-B2 production verification. Detailed readiness: `docs/architecture/accounting-provider-payout-readiness.md`.
 
 Avoid polishing current mixed-authority widgets immediately before replacing their underlying semantics.
 

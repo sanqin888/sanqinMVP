@@ -287,6 +287,9 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(providerPayoutService).toContain(
       "from './accounting-period.service'",
     );
+    expect(providerPayoutService).toContain(
+      "from './accounting-provider-payout-bank-row-decision.service'",
+    );
     expect(providerPayoutService).not.toContain("from '../payments/");
     expect(providerPayoutService).not.toContain("from '../orders/");
     expect(providerPayoutService).not.toContain("from '../integrations/");

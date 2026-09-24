@@ -114,6 +114,17 @@ export class AccountingProviderPayoutController {
     });
   }
 
+  @Post('provider-payouts/from-bank-row-decision')
+  recordPayoutFromBankRowDecision(
+    @Body() body: { decisionStableId?: string },
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.payouts.recordPayoutFromBankRowDecision(
+      body.decisionStableId ?? '',
+      requireAccountingOperatorUserId(req),
+    );
+  }
+
   @Post('provider-payouts')
   recordPayout(
     @Body()

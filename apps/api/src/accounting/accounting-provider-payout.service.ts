@@ -15,6 +15,7 @@ import { writeAccountingAuditLog } from './accounting-audit-writer';
 import { ACCOUNTING_DB, type AccountingDb } from './accounting-db';
 import { AccountingJournalService } from './accounting-journal.service';
 import { AccountingJournalPolicyError } from './accounting-journal-policy';
+import { AccountingProviderPayoutBankRowDecisionService } from './accounting-provider-payout-bank-row-decision.service';
 import { providerPendingAccountStableId } from './accounting-provider-accounts';
 import type { CreateAccountingProviderPayoutInput } from './accounting-provider-payout.contracts';
 import {
@@ -49,6 +50,7 @@ export class AccountingProviderPayoutService {
     @Inject(ACCOUNTING_DB) private readonly prisma: AccountingDb,
     private readonly journal: AccountingJournalService,
     private readonly period: AccountingPeriodService,
+    private readonly bankRowDecisions: AccountingProviderPayoutBankRowDecisionService,
   ) {}
 
   async listPayouts(input: {
@@ -81,33 +83,46 @@ export class AccountingProviderPayoutService {
     actorRef: string,
   ) {
     const fact = this.normalizeInput(input);
-    let lastError: unknown;
-
-    for (let attempt = 0; attempt < PAYOUT_ATTEMPTS; attempt += 1) {
-      try {
-        return await this.recordPayoutOnce(fact, actorRef);
-      } catch (error) {
-        lastError = error;
-        if (!isUniqueConstraintError(error)) throw error;
-      }
-    }
-
-    if (lastError instanceof Error) throw lastError;
-    throw new ConflictException('Provider payout retry exhausted');
+    return this.withPayoutRetry(() => this.recordPayoutOnce(fact, actorRef));
   }
 
-  private async recordPayoutOnce(fact: ProviderPayoutFactV1, actorRef: string) {
+  async recordPayoutFromBankRowDecision(
+    decisionStableIdRaw: string,
+    actorRef: string,
+  ) {
+    const decisionStableId = decisionStableIdRaw.trim();
+    if (!decisionStableId) {
+      throw new BadRequestException('decisionStableId is required');
+    }
+    await this.bankRowDecisions.requireCurrentPostingDecision(decisionStableId);
     const businessTimezone = await this.period.getBusinessTimezone();
 
-    return runSerializableAccountingWrite(this.prisma, async (tx) => {
-      const existing = await tx.accountingProviderPayout.findUnique({
-        where: { payoutStableId: fact.payoutStableId },
-      });
-      if (existing) {
-        this.assertEquivalentPayout(existing, fact);
-        if (existing.journalEntryStableId) {
+    return this.withPayoutRetry(() =>
+      runSerializableAccountingWrite(this.prisma, async (tx) => {
+        const decision =
+          await tx.accountingProviderPayoutBankRowDecision.findUnique({
+            where: { decisionStableId },
+          });
+        if (!decision) {
+          throw new ConflictException('Bank row decision does not exist');
+        }
+
+        if (decision.decision === 'MATCH_EXISTING_PAYOUT') {
+          if (!decision.matchedPayoutStableId) {
+            throw new ConflictException(
+              'Matched bank row decision has no payout binding',
+            );
+          }
+          const existing = await tx.accountingProviderPayout.findUnique({
+            where: { payoutStableId: decision.matchedPayoutStableId },
+          });
+          if (!existing?.journalEntryStableId) {
+            throw new ConflictException(
+              'Matched bank row decision is not bound to an anchored payout',
+            );
+          }
           await this.assertExistingJournalAnchor(
-            fact.payoutStableId,
+            existing.payoutStableId,
             existing.journalEntryStableId,
             tx,
           );
@@ -115,89 +130,268 @@ export class AccountingProviderPayoutService {
             existing as AccountingProviderPayoutViewRecord,
           );
         }
-      }
 
-      const payout =
-        existing ??
-        (await tx.accountingProviderPayout.create({
-          data: {
-            payoutStableId: fact.payoutStableId,
-            provider: fact.provider,
-            storeStableId: fact.storeStableId,
-            payoutDate: payoutDateForDb(fact.payoutDate),
-            destinationBankAccountStableId: fact.destinationBankAccountStableId,
-            amountCents: fact.amountCents,
-            currency: fact.currency,
-            providerReference: fact.providerReference,
-            createdByActorRef: actorRef,
-          },
-        }));
-
-      const pendingAccountStableId = providerPendingAccountStableId(
-        fact.provider,
-      );
-      const accountRows = await tx.accountingAccount.findMany({
-        where: {
-          accountStableId: {
-            in: [pendingAccountStableId, fact.destinationBankAccountStableId],
-          },
-        },
-        select: {
-          accountStableId: true,
-          accountClass: true,
-          type: true,
-          currency: true,
-          isActive: true,
-        },
-      });
-      const accountFacts: ProviderPayoutAccountFact[] = accountRows.map(
-        (account) => ({
-          accountStableId: account.accountStableId,
-          accountClass: account.accountClass,
-          accountType: account.type,
-          currency: account.currency,
-          isActive: account.isActive,
-        }),
-      );
-
-      let plan: ReturnType<typeof buildProviderPayoutWritePlan>;
-      try {
-        plan = buildProviderPayoutWritePlan({
-          fact,
-          businessTimezone,
-          accountFacts,
-        });
-      } catch (error) {
-        if (error instanceof AccountingJournalPolicyError) {
-          throw new ConflictException(error.message);
+        if (decision.decision !== 'READY_FOR_POSTING') {
+          throw new ConflictException(
+            'Bank row decision is not ready for provider payout posting',
+          );
         }
-        throw error;
-      }
+        if (!decision.providerHint) {
+          throw new ConflictException(
+            'Bank row decision has no provider authority for payout posting',
+          );
+        }
 
-      const journal = await this.journal.createProviderPayoutJournalInTx(
-        plan.journal,
-        actorRef,
-        plan.authority,
+        const exactExisting = await this.findExactBankRowPayoutInTx(
+          {
+            provider: decision.providerHint as AccountingFinancialProvider,
+            storeStableId: decision.storeStableId,
+            payoutDate: decision.occurredOn,
+            destinationBankAccountStableId:
+              decision.destinationBankAccountStableId,
+            amountCents: decision.amountCents,
+          },
+          tx,
+        );
+        if (exactExisting) {
+          throw new ConflictException(
+            'Bank row now matches an existing canonical payout; reconfirm the settlement scope',
+          );
+        }
+
+        const fact = normalizeProviderPayoutFact({
+          payoutStableId: `payout_${decision.decisionStableId}`,
+          provider: decision.providerHint as AccountingFinancialProvider,
+          storeStableId: decision.storeStableId,
+          payoutDate: dateOnly(decision.occurredOn),
+          destinationBankAccountStableId:
+            decision.destinationBankAccountStableId,
+          amountCents: decision.amountCents,
+          currency: 'CAD',
+          providerReference: null,
+        });
+        const payout = await this.recordPayoutFactInTx(
+          fact,
+          actorRef,
+          businessTimezone,
+          tx,
+        );
+
+        await this.bindBankRowDecisionInTx(
+          decision,
+          payout.payoutStableId,
+          actorRef,
+          tx,
+        );
+        return payout;
+      }),
+    );
+  }
+
+  private async findExactBankRowPayoutInTx(
+    input: {
+      provider: AccountingFinancialProvider;
+      storeStableId: string;
+      payoutDate: Date;
+      destinationBankAccountStableId: string;
+      amountCents: number;
+    },
+    tx: Prisma.TransactionClient,
+  ) {
+    const candidates = await tx.accountingProviderPayout.findMany({
+      where: {
+        provider: input.provider,
+        storeStableId: input.storeStableId,
+        payoutDate: input.payoutDate,
+        destinationBankAccountStableId: input.destinationBankAccountStableId,
+        amountCents: input.amountCents,
+        currency: 'CAD',
+        journalEntryStableId: { not: null },
+      },
+      orderBy: [{ payoutStableId: 'asc' }],
+    });
+
+    for (const candidate of candidates) {
+      if (!candidate.journalEntryStableId) {
+        throw new ConflictException(
+          'Exact provider payout candidate is missing its Journal anchor',
+        );
+      }
+      await this.assertExistingJournalAnchor(
+        candidate.payoutStableId,
+        candidate.journalEntryStableId,
         tx,
       );
+    }
 
-      const updated = await tx.accountingProviderPayout.update({
-        where: { id: payout.id },
-        data: { journalEntryStableId: journal.entryStableId },
-      });
-      const after = accountingProviderPayoutDto(
-        updated as AccountingProviderPayoutViewRecord,
+    if (candidates.length > 1) {
+      throw new ConflictException(
+        'Bank row has multiple exact canonical payout matches',
       );
-      await writeAccountingAuditLog(tx, {
-        action: 'PROVIDER_PAYOUT_POST',
-        entityType: 'ACCOUNTING_PROVIDER_PAYOUT',
-        entityId: fact.payoutStableId,
-        operatorActorRef: actorRef,
-        beforeJson: null,
-        afterJson: after as unknown as Prisma.InputJsonValue,
+    }
+    return candidates[0] ?? null;
+  }
+
+  private async bindBankRowDecisionInTx(
+    decision: {
+      id: string;
+      decisionStableId: string;
+      decision: string;
+      matchedPayoutStableId: string | null;
+    },
+    payoutStableId: string,
+    actorRef: string,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    const updatedDecision =
+      await tx.accountingProviderPayoutBankRowDecision.update({
+        where: { id: decision.id },
+        data: {
+          decision: 'MATCH_EXISTING_PAYOUT',
+          matchedPayoutStableId: payoutStableId,
+        },
       });
-      return after;
+    await writeAccountingAuditLog(tx, {
+      action: 'PROVIDER_PAYOUT_BANK_ROW_DECISION_BIND',
+      entityType: 'ACCOUNTING_PROVIDER_PAYOUT_BANK_ROW_DECISION',
+      entityId: decision.decisionStableId,
+      operatorActorRef: actorRef,
+      beforeJson: {
+        decision: decision.decision,
+        matchedPayoutStableId: decision.matchedPayoutStableId,
+      } as Prisma.InputJsonValue,
+      afterJson: {
+        decision: updatedDecision.decision,
+        matchedPayoutStableId: updatedDecision.matchedPayoutStableId,
+      } as Prisma.InputJsonValue,
     });
+  }
+
+  private async withPayoutRetry<T>(work: () => Promise<T>): Promise<T> {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < PAYOUT_ATTEMPTS; attempt += 1) {
+      try {
+        return await work();
+      } catch (error) {
+        lastError = error;
+        if (!isUniqueConstraintError(error)) throw error;
+      }
+    }
+    if (lastError instanceof Error) throw lastError;
+    throw new ConflictException('Provider payout retry exhausted');
+  }
+
+  private async recordPayoutOnce(fact: ProviderPayoutFactV1, actorRef: string) {
+    const businessTimezone = await this.period.getBusinessTimezone();
+
+    return runSerializableAccountingWrite(this.prisma, async (tx) =>
+      this.recordPayoutFactInTx(fact, actorRef, businessTimezone, tx),
+    );
+  }
+
+  private async recordPayoutFactInTx(
+    fact: ProviderPayoutFactV1,
+    actorRef: string,
+    businessTimezone: string,
+    tx: Prisma.TransactionClient,
+  ) {
+    const existing = await tx.accountingProviderPayout.findUnique({
+      where: { payoutStableId: fact.payoutStableId },
+    });
+    if (existing) {
+      this.assertEquivalentPayout(existing, fact);
+      if (existing.journalEntryStableId) {
+        await this.assertExistingJournalAnchor(
+          fact.payoutStableId,
+          existing.journalEntryStableId,
+          tx,
+        );
+        return accountingProviderPayoutDto(
+          existing as AccountingProviderPayoutViewRecord,
+        );
+      }
+    }
+
+    const payout =
+      existing ??
+      (await tx.accountingProviderPayout.create({
+        data: {
+          payoutStableId: fact.payoutStableId,
+          provider: fact.provider,
+          storeStableId: fact.storeStableId,
+          payoutDate: payoutDateForDb(fact.payoutDate),
+          destinationBankAccountStableId: fact.destinationBankAccountStableId,
+          amountCents: fact.amountCents,
+          currency: fact.currency,
+          providerReference: fact.providerReference,
+          createdByActorRef: actorRef,
+        },
+      }));
+
+    const pendingAccountStableId = providerPendingAccountStableId(
+      fact.provider,
+    );
+    const accountRows = await tx.accountingAccount.findMany({
+      where: {
+        accountStableId: {
+          in: [pendingAccountStableId, fact.destinationBankAccountStableId],
+        },
+      },
+      select: {
+        accountStableId: true,
+        accountClass: true,
+        type: true,
+        currency: true,
+        isActive: true,
+      },
+    });
+    const accountFacts: ProviderPayoutAccountFact[] = accountRows.map(
+      (account) => ({
+        accountStableId: account.accountStableId,
+        accountClass: account.accountClass,
+        accountType: account.type,
+        currency: account.currency,
+        isActive: account.isActive,
+      }),
+    );
+
+    let plan: ReturnType<typeof buildProviderPayoutWritePlan>;
+    try {
+      plan = buildProviderPayoutWritePlan({
+        fact,
+        businessTimezone,
+        accountFacts,
+      });
+    } catch (error) {
+      if (error instanceof AccountingJournalPolicyError) {
+        throw new ConflictException(error.message);
+      }
+      throw error;
+    }
+
+    const journal = await this.journal.createProviderPayoutJournalInTx(
+      plan.journal,
+      actorRef,
+      plan.authority,
+      tx,
+    );
+
+    const updated = await tx.accountingProviderPayout.update({
+      where: { id: payout.id },
+      data: { journalEntryStableId: journal.entryStableId },
+    });
+    const after = accountingProviderPayoutDto(
+      updated as AccountingProviderPayoutViewRecord,
+    );
+    await writeAccountingAuditLog(tx, {
+      action: 'PROVIDER_PAYOUT_POST',
+      entityType: 'ACCOUNTING_PROVIDER_PAYOUT',
+      entityId: fact.payoutStableId,
+      operatorActorRef: actorRef,
+      beforeJson: null,
+      afterJson: after as unknown as Prisma.InputJsonValue,
+    });
+    return after;
   }
 
   private normalizeInput(
