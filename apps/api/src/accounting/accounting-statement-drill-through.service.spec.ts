@@ -22,6 +22,15 @@ describe('AccountingStatementDrillThroughService', () => {
   };
 
   const makeService = () => {
+    type JournalCountArgs = {
+      where: {
+        currency?: string;
+        OR?: unknown[];
+        kind?: unknown;
+        occurredAt?: unknown;
+      };
+    };
+    let lastCountArgs: JournalCountArgs | undefined;
     const prisma = {
       accountingAccount: {
         findUnique: jest.fn().mockResolvedValue({
@@ -34,7 +43,10 @@ describe('AccountingStatementDrillThroughService', () => {
         }),
       },
       accountingJournalEntry: {
-        count: jest.fn().mockResolvedValue(1),
+        count: jest.fn(async (args: JournalCountArgs) => {
+          lastCountArgs = args;
+          return 1;
+        }),
         findMany: jest.fn().mockResolvedValue([
           {
             entryStableId: 'journal_payout_1',
@@ -86,7 +98,12 @@ describe('AccountingStatementDrillThroughService', () => {
       prisma as never,
       trialBalance as never,
     );
-    return { service, prisma, trialBalance };
+    return {
+      service,
+      prisma,
+      trialBalance,
+      getLastCountArgs: () => lastCountArgs,
+    };
   };
 
   it('uses the B3 statement scope and preserves PAYOUT source lineage with the full balanced Journal', async () => {
@@ -131,7 +148,7 @@ describe('AccountingStatementDrillThroughService', () => {
   });
 
   it('uses explicit OPENING_BALANCE or pre-period Journals for the OPENING phase', async () => {
-    const { service, prisma } = makeService();
+    const { service, getLastCountArgs } = makeService();
 
     await service.read({
       accountStableId: 'account_primary_bank',
@@ -140,16 +157,7 @@ describe('AccountingStatementDrillThroughService', () => {
       to: '2026-07-31',
     });
 
-    const openingCountCall = prisma.accountingJournalEntry.count.mock
-      .calls[0]?.[0] as
-      | {
-          where: {
-            currency?: string;
-            OR?: unknown[];
-          };
-        }
-      | undefined;
-    expect(openingCountCall?.where).toMatchObject({
+    expect(getLastCountArgs()?.where).toMatchObject({
       currency: 'CAD',
       OR: [
         { kind: AccountingJournalEntryKind.OPENING_BALANCE },
@@ -159,7 +167,7 @@ describe('AccountingStatementDrillThroughService', () => {
   });
 
   it('excludes explicit OPENING_BALANCE Journals from the PERIOD phase', async () => {
-    const { service, prisma } = makeService();
+    const { service, getLastCountArgs } = makeService();
 
     await service.read({
       accountStableId: 'account_primary_bank',
@@ -168,16 +176,7 @@ describe('AccountingStatementDrillThroughService', () => {
       to: '2026-07-31',
     });
 
-    const periodCountCall = prisma.accountingJournalEntry.count.mock.calls[0]?.[0] as
-      | {
-          where: {
-            currency?: string;
-            kind?: unknown;
-            occurredAt?: unknown;
-          };
-        }
-      | undefined;
-    expect(periodCountCall?.where).toMatchObject({
+    expect(getLastCountArgs()?.where).toMatchObject({
       currency: 'CAD',
       kind: { not: AccountingJournalEntryKind.OPENING_BALANCE },
       occurredAt: {
