@@ -280,7 +280,8 @@ function parseCloverStatement(
     rawMetadata: {
       evidenceKind: 'CLOVER_MONTHLY_PROCESSING_STATEMENT',
       documentExtractionEngine: input.documentExtraction?.engine ?? null,
-      layoutAwareExtraction: input.documentExtraction?.layoutMode === 'GEOMETRY',
+      layoutAwareExtraction:
+        input.documentExtraction?.layoutMode === 'GEOMETRY',
     },
     lines,
   };
@@ -706,8 +707,7 @@ function sectionHstFromLayout(
           line.geometry.top - headingGeometry.top < 0.3,
       )
       .sort(
-        (left, right) =>
-          (left.geometry?.top ?? 0) - (right.geometry?.top ?? 0),
+        (left, right) => (left.geometry?.top ?? 0) - (right.geometry?.top ?? 0),
       )[0];
     if (!totalLine?.geometry) continue;
 

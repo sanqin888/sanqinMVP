@@ -375,7 +375,9 @@ Total
       336210,
     );
     expect(lineByName(parsed!, 'Chargebacks/Reversals')?.amountCents).toBe(0);
-    expect(lineByName(parsed!, 'Total Amount Funded')?.amountCents).toBe(326371);
+    expect(lineByName(parsed!, 'Total Amount Funded')?.amountCents).toBe(
+      326371,
+    );
     expect(lineByName(parsed!, 'Service Charges')?.amountCents).toBe(-6264);
     expect(lineByName(parsed!, 'Fees before HST')?.amountCents).toBe(-3185);
     expect(lineByName(parsed!, 'Fees HST')).toEqual(
@@ -385,7 +387,9 @@ Total
         taxRole: AccountingFinancialTaxRole.INPUT_TAX,
       }),
     );
-    expect(lineByName(parsed!, 'Total Amount Funded')?.rawPayload).toMatchObject({
+    expect(
+      lineByName(parsed!, 'Total Amount Funded')?.rawPayload,
+    ).toMatchObject({
       extractionEvidence: {
         strategy: 'LAYOUT_ROW_PAIR',
         engine: 'POPPLER',
