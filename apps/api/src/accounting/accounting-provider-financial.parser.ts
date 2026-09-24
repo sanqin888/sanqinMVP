@@ -13,7 +13,7 @@ import {
 
 export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_NAME =
   'accounting-provider-financial';
-export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION = '5';
+export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION = '6';
 
 export type ProviderFinancialParseInput = {
   text: string;
@@ -68,10 +68,12 @@ export function parseProviderFinancialEvidence(
       if (
         input.documentTypeHint === AccountingFinancialDocumentType.STATEMENT
       ) {
-        return parseCloverStatement(text);
+        return parseCloverStatement(text, input);
       }
       if (input.documentTypeHint) return null;
-      return parseCloverCloseout(text, input) ?? parseCloverStatement(text);
+      return (
+        parseCloverCloseout(text, input) ?? parseCloverStatement(text, input)
+      );
     case AccountingFinancialProvider.UBER_EATS:
       if (
         input.documentTypeHint &&
@@ -172,67 +174,99 @@ function parseCloverCloseout(
 
 function parseCloverStatement(
   text: string,
+  input: ProviderFinancialParseInput,
 ): ParsedProviderFinancialDocument | null {
   const period = capturePeriod(
     text,
     /StatementPeriod\s+(\d{2}\/\d{2}\/\d{2})\s*-\s*(\d{2}\/\d{2}\/\d{2})/i,
     parseSlashDate,
   );
-  const merchant = capture(text, /MerchantNumber\s+(\d+)/i);
+  const merchant = capture(text, /Merchant\s*Number\s+(\d+)/i);
   if (!period || !merchant) return null;
   const summary =
     between(text, 'LOCATION\nSUMMARY', 'All amounts shown') ?? text;
   const lines: ParsedLine[] = [];
-  pushNamedSummary(
-    lines,
-    summary,
+  const namedLabels: string[] = [];
+  const add = (
+    label: string,
+    component: AccountingFinancialComponent,
+    treatment: AccountingFinancialPostingTreatment,
+    taxRole: AccountingFinancialTaxRole = AccountingFinancialTaxRole.NONE,
+  ) => {
+    namedLabels.push(label);
+    pushNamedSummary(
+      lines,
+      summary,
+      label,
+      component,
+      treatment,
+      taxRole,
+      input.documentExtraction,
+    );
+  };
+
+  add(
     'Total Amount Submitted',
     AccountingFinancialComponent.SALES,
     AccountingFinancialPostingTreatment.CONTROL_TOTAL,
   );
-  pushNamedSummary(
-    lines,
-    summary,
+  add(
     'Third-Party Transactions',
     AccountingFinancialComponent.OTHER,
     AccountingFinancialPostingTreatment.UNCLASSIFIED,
   );
-  pushNamedSummary(
-    lines,
-    summary,
+  add(
     'Adjustments',
     AccountingFinancialComponent.ADJUSTMENT,
     AccountingFinancialPostingTreatment.POSTABLE,
   );
-  pushNamedSummary(
-    lines,
-    summary,
+  add(
     'Interchange Charges',
     AccountingFinancialComponent.PROCESSING_FEE,
     AccountingFinancialPostingTreatment.POSTABLE,
   );
 
-  const serviceCharges = findNamedAmount(summary, 'Service Charges');
-  const serviceTax = sectionHst(text, 'SERVICE CHARGES');
-  pushSplitFee(lines, 'Service Charges', serviceCharges, serviceTax);
-  const fees = findNamedAmount(summary, 'Fees');
-  const feesTax = sectionHst(text, 'FEES');
-  pushSplitFee(lines, 'Fees', fees, feesTax);
-
-  pushNamedSummary(
-    lines,
+  namedLabels.push('Service Charges');
+  const serviceCharges = resolveNamedAmount(
     summary,
+    'Service Charges',
+    input.documentExtraction,
+  )?.amountCents;
+  const serviceTax = sectionHst(
+    text,
+    'SERVICE CHARGES',
+    input.documentExtraction,
+  );
+  pushSplitFee(lines, 'Service Charges', serviceCharges ?? null, serviceTax);
+
+  namedLabels.push('Fees');
+  const fees = resolveNamedAmount(
+    summary,
+    'Fees',
+    input.documentExtraction,
+  )?.amountCents;
+  const feesTax = sectionHst(text, 'FEES', input.documentExtraction);
+  pushSplitFee(lines, 'Fees', fees ?? null, feesTax);
+
+  add(
     'Chargebacks/Reversals',
     AccountingFinancialComponent.CHARGEBACK,
     AccountingFinancialPostingTreatment.POSTABLE,
   );
-  pushNamedSummary(
-    lines,
-    summary,
+  add(
     'Total Amount Funded',
     AccountingFinancialComponent.PAYOUT,
     AccountingFinancialPostingTreatment.CONTROL_TOTAL,
   );
+
+  if (
+    hasUnresolvedPopplerTextOnlyNamedAmount(
+      namedLabels,
+      input.documentExtraction,
+    )
+  ) {
+    return null;
+  }
   if (!lines.length) return null;
   return {
     provider: AccountingFinancialProvider.CLOVER,
@@ -243,7 +277,12 @@ function parseCloverStatement(
     periodStart: period.start,
     periodEnd: period.end,
     currency: 'CAD',
-    rawMetadata: { evidenceKind: 'CLOVER_MONTHLY_PROCESSING_STATEMENT' },
+    rawMetadata: {
+      evidenceKind: 'CLOVER_MONTHLY_PROCESSING_STATEMENT',
+      documentExtractionEngine: input.documentExtraction?.engine ?? null,
+      layoutAwareExtraction:
+        input.documentExtraction?.layoutMode === 'GEOMETRY',
+    },
     lines,
   };
 }
@@ -632,7 +671,70 @@ function pushSplitFee(
   });
 }
 
-function sectionHst(text: string, heading: string): number | null {
+function compactSectionHeading(value: string): string {
+  return value.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+}
+
+function sectionHstFromLayout(
+  heading: string,
+  extraction: AccountingDocumentExtraction | undefined,
+): number | null {
+  if (!extraction || extraction.layoutMode !== 'GEOMETRY') return null;
+  const expectedHeading = compactSectionHeading(heading);
+  const headingLines = extraction.lines
+    .filter(
+      (line) =>
+        line.geometry &&
+        line.geometry.left < 0.35 &&
+        compactSectionHeading(line.text) === expectedHeading,
+    )
+    .sort(
+      (left, right) =>
+        left.page - right.page ||
+        (left.geometry?.top ?? 0) - (right.geometry?.top ?? 0),
+    );
+
+  for (const headingLine of headingLines) {
+    const headingGeometry = headingLine.geometry;
+    if (!headingGeometry) continue;
+    const totalLine = extraction.lines
+      .filter(
+        (line) =>
+          line.page === headingLine.page &&
+          line.geometry &&
+          /^Total$/i.test(line.text.trim()) &&
+          line.geometry.top > headingGeometry.top &&
+          line.geometry.top - headingGeometry.top < 0.3,
+      )
+      .sort(
+        (left, right) => (left.geometry?.top ?? 0) - (right.geometry?.top ?? 0),
+      )[0];
+    if (!totalLine?.geometry) continue;
+
+    const taxLine = extraction.lines.find((line) => {
+      if (
+        line.page !== totalLine.page ||
+        !line.geometry ||
+        verticalOverlapRatio(totalLine, line) < 0.35
+      ) {
+        return false;
+      }
+      return /^HST:\s*[^\s]+$/i.test(line.text.trim());
+    });
+    if (!taxLine) return 0;
+    const raw = /^HST:\s*([^\s]+)$/i.exec(taxLine.text.trim())?.[1];
+    return raw ? parseMoneyCents(raw) : null;
+  }
+  return null;
+}
+
+function sectionHst(
+  text: string,
+  heading: string,
+  extraction?: AccountingDocumentExtraction,
+): number | null {
+  const layoutAmount = sectionHstFromLayout(heading, extraction);
+  if (layoutAmount != null) return layoutAmount;
   const regex = new RegExp(
     `${escapeRegex(heading)}\\s+Date Invoice Description Tax Total[\\s\\S]*?Total HST:([^\\s]+)`,
     'i',
@@ -875,10 +977,6 @@ function resolveNamedAmount(
     if (amountCents != null) return { amountCents };
   }
   return null;
-}
-
-function findNamedAmount(text: string, label: string): number | null {
-  return resolveNamedAmount(text, label)?.amountCents ?? null;
 }
 
 function parseMoneyCents(raw: string): number | null {
