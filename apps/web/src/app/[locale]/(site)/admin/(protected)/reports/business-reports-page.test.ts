@@ -61,7 +61,9 @@ describe('Admin Business Reports C2 UI contract', () => {
 
   it('preserves bounded execution and coverage limitations instead of inventing new authority', () => {
     expect(executionSource).toContain('queue.windowHours');
-    expect(executionSource).toContain('CURRENT_CONFIGURATION_ONLY');
+    expect(executionSource).toContain(
+      'report.coverage.storeOperatingContext',
+    );
     expect(executionSource).toContain('report.coverage.printHealth');
     expect(executionSource).toContain(
       'C2 does not create a Reporting → POS/Print dependency',
