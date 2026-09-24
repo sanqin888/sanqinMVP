@@ -98,6 +98,7 @@ export async function listAccountingExpenseRecords(
     minTotalCents?: number;
     paymentAccountStableId?: string;
     paymentState?: AccountingExpensePaymentState;
+    documentStableId?: string;
   },
 ) {
   const occurredAt =
@@ -198,6 +199,9 @@ export async function listAccountingExpenseRecords(
           : undefined;
   const where = {
     status: params.status,
+    ...(params.documentStableId
+      ? { documentStableId: params.documentStableId }
+      : {}),
     ...(occurredAt ? { occurredAt } : {}),
     ...(params.minTotalCents !== undefined
       ? { totalCents: { gte: params.minTotalCents } }

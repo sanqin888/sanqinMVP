@@ -113,11 +113,17 @@ describe('AccountingProviderPayoutController', () => {
   it('keeps history reads bounded and parses provider filters', async () => {
     const { controller, payouts } = makeController();
 
-    await controller.listPayouts('uber_eats', ' 4750_Yonge_Street ', '50');
+    await controller.listPayouts(
+      'uber_eats',
+      ' 4750_Yonge_Street ',
+      '50',
+      ' payout_uber_20260923_1 ',
+    );
 
     expect(payouts.listPayouts).toHaveBeenCalledWith({
       provider: AccountingFinancialProvider.UBER_EATS,
       storeStableId: '4750_Yonge_Street',
+      payoutStableId: 'payout_uber_20260923_1',
       limit: 50,
     });
   });

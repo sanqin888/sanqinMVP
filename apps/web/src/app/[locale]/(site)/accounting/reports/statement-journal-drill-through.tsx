@@ -1,11 +1,13 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '@/lib/api/client';
 import type {
   AccountingStatementDrillThroughPhase,
   AccountingStatementJournalDrillThrough,
 } from '../contracts/reports';
+import { resolveAccountingSourceFactNavigation } from './source-fact-navigation';
 
 const PAGE_SIZE = 25;
 
@@ -35,6 +37,46 @@ function formatOccurredAt(
     minute: '2-digit',
     hour12: false,
   }).format(new Date(value));
+}
+
+function SourceFactIdentity({
+  sourceFactType,
+  sourceFactStableId,
+  isZh,
+}: {
+  sourceFactType: string | null;
+  sourceFactStableId: string | null;
+  isZh: boolean;
+}) {
+  if (!sourceFactType || !sourceFactStableId) {
+    return (
+      <p className="mt-1 break-all text-xs text-slate-500">
+        {isZh ? '无 source fact identity' : 'No source fact identity'}
+      </p>
+    );
+  }
+
+  const navigation = resolveAccountingSourceFactNavigation({
+    locale: isZh ? 'zh' : 'en',
+    sourceFactType,
+    sourceFactStableId,
+  });
+
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+      <span className="break-all text-slate-500">
+        {sourceFactType} · {sourceFactStableId}
+      </span>
+      {navigation ? (
+        <Link
+          className="font-medium text-blue-700 underline decoration-dashed underline-offset-2"
+          href={navigation.href}
+        >
+          {isZh ? '打开来源' : 'Open source'}
+        </Link>
+      ) : null}
+    </div>
+  );
 }
 
 export function StatementJournalDrillThrough({
@@ -179,13 +221,11 @@ export function StatementJournalDrillThrough({
                       )}{' '}
                       · {entry.kind} · {entry.source}
                     </p>
-                    <p className="mt-1 break-all text-xs text-slate-500">
-                      {entry.sourceFactType && entry.sourceFactStableId
-                        ? `${entry.sourceFactType} · ${entry.sourceFactStableId}`
-                        : isZh
-                          ? '无 source fact identity'
-                          : 'No source fact identity'}
-                    </p>
+                    <SourceFactIdentity
+                      sourceFactType={entry.sourceFactType}
+                      sourceFactStableId={entry.sourceFactStableId}
+                      isZh={isZh}
+                    />
                   </div>
                   <div className="text-right text-sm tabular-nums">
                     <div>

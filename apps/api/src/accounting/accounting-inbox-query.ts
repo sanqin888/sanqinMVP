@@ -51,6 +51,7 @@ export async function listAccountingUnifiedInboxItems(
     status?: AccountingInboxStatus;
     classification?: AccountingInboxClassification;
     limit?: number;
+    materializedEntityStableId?: string;
   },
 ) {
   const take = Math.min(Math.max(params.limit ?? 100, 1), 200);
@@ -62,6 +63,9 @@ export async function listAccountingUnifiedInboxItems(
       status: { in: statuses },
       ...(params.classification
         ? { classification: params.classification }
+        : {}),
+      ...(params.materializedEntityStableId
+        ? { materializedEntityStableId: params.materializedEntityStableId }
         : {}),
     },
     select: {

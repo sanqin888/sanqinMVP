@@ -102,8 +102,13 @@ export class AccountingInboxService {
     status?: AccountingInboxStatus;
     classification?: AccountingInboxClassification;
     limit?: number;
+    materializedEntityStableId?: string;
   }) {
-    return listAccountingUnifiedInboxItems(this.prisma, params);
+    return listAccountingUnifiedInboxItems(this.prisma, {
+      ...params,
+      materializedEntityStableId:
+        params.materializedEntityStableId?.trim() || undefined,
+    });
   }
 
   listManualUploadLibrary(limit?: number) {

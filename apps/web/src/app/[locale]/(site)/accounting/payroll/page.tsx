@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api/client';
 import { PayrollRunPanel } from './payroll-run-panel';
 import { PayrollSetupPanel } from './payroll-setup-panel';
@@ -21,6 +21,8 @@ type PayrollView = 'runs' | 'employees' | 'cra';
 export default function AccountingPayrollPage() {
   const params = useParams<{ locale: string }>();
   const isZh = params?.locale === 'zh';
+  const searchParams = useSearchParams();
+  const linkedRunStableId = searchParams.get('runStableId')?.trim() ?? '';
 
   const [employers, setEmployers] = useState<PayrollEmployer[]>([]);
   const [employerConfigs, setEmployerConfigs] = useState<
@@ -35,6 +37,9 @@ export default function AccountingPayrollPage() {
   const [selectedEmployeeStableId, setSelectedEmployeeStableId] = useState('');
   const [selectedRunStableId, setSelectedRunStableId] = useState('');
   const [activeView, setActiveView] = useState<PayrollView>('runs');
+  const [linkedRunResolving, setLinkedRunResolving] = useState(
+    Boolean(linkedRunStableId),
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -117,18 +122,51 @@ export default function AccountingPayrollPage() {
   }, [loadEmployers]);
 
   useEffect(() => {
+    if (!linkedRunStableId) {
+      setLinkedRunResolving(false);
+      return;
+    }
+    let cancelled = false;
+    setLinkedRunResolving(true);
+    setError(null);
+    void apiFetch<PayrollRun>(
+      '/accounting/payroll/runs/' + encodeURIComponent(linkedRunStableId),
+    )
+      .then((run) => {
+        if (cancelled) return;
+        setActiveView('runs');
+        setSelectedEmployerStableId(run.employerStableId);
+        setSelectedEmployeeStableId(run.employeeStableId);
+        setSelectedRunStableId(run.runStableId);
+      })
+      .catch((cause) => {
+        if (!cancelled) {
+          setError(cause instanceof Error ? cause.message : String(cause));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLinkedRunResolving(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [linkedRunStableId]);
+
+  useEffect(() => {
+    if (linkedRunResolving) return;
     setError(null);
     void loadEmployerScope(selectedEmployerStableId).catch((cause) =>
       setError(cause instanceof Error ? cause.message : String(cause)),
     );
-  }, [loadEmployerScope, selectedEmployerStableId]);
+  }, [linkedRunResolving, loadEmployerScope, selectedEmployerStableId]);
 
   useEffect(() => {
+    if (linkedRunResolving) return;
     setError(null);
     void loadEmployeeScope(selectedEmployeeStableId).catch((cause) =>
       setError(cause instanceof Error ? cause.message : String(cause)),
     );
-  }, [loadEmployeeScope, selectedEmployeeStableId]);
+  }, [linkedRunResolving, loadEmployeeScope, selectedEmployeeStableId]);
 
   const refreshPayrollState = useCallback(async () => {
     await loadEmployers();
