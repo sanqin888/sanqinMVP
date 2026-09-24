@@ -37,7 +37,7 @@ describe('B4-C1 Accounting statement Journal drill-through', () => {
     expect(drillSource).toContain('entry.lines.map');
   });
 
-  it('keeps C1 source-neutral instead of adding foreign-owner API lookups or deep links', () => {
+  it('keeps the C1 data fetch source-neutral without foreign-owner API lookups', () => {
     expect(drillSource).not.toContain('/orders/');
     expect(drillSource).not.toContain('/payroll/');
     expect(drillSource).not.toContain('/provider-payouts/');

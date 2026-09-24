@@ -24,6 +24,7 @@ describe('Accounting Expense record search', () => {
       to: '2026-06-30',
       minTotalCents: 5000,
       paymentAccountStableId: 'account_cibc',
+      documentStableId: 'expense_deep_link_1',
       limit: 10,
       offset: 10,
     });
@@ -40,6 +41,7 @@ describe('Accounting Expense record search', () => {
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
+          documentStableId: 'expense_deep_link_1',
           occurredAt: {
             gte: new Date('2026-06-01T04:00:00.000Z'),
             lt: new Date('2026-07-01T04:00:00.000Z'),

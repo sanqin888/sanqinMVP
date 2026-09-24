@@ -28,6 +28,17 @@ function nextIsoDate(date: string): string {
   return value.toISOString().slice(0, 10);
 }
 
+function linkedProviderDocumentStableIdFromHash(): string | null {
+  if (typeof window === 'undefined') return null;
+  const prefix = '#provider-';
+  if (!window.location.hash.startsWith(prefix)) return null;
+  try {
+    return decodeURIComponent(window.location.hash.slice(prefix.length));
+  } catch {
+    return null;
+  }
+}
+
 function documentTitle(
   document: AccountingProviderFinancialDocument,
   isZh: boolean,
@@ -622,8 +633,17 @@ export default function AccountingSettlementsPage() {
     setError(null);
     setPostingNotice(null);
     try {
+      const inboxQuery = new URLSearchParams({
+        status: 'CONFIRMED',
+        classification: 'PROVIDER_FINANCIAL_DOCUMENT',
+        limit: '200',
+      });
+      const linkedDocumentStableId = linkedProviderDocumentStableIdFromHash();
+      if (linkedDocumentStableId) {
+        inboxQuery.set('materializedEntityStableId', linkedDocumentStableId);
+      }
       const confirmed = await apiFetch<AccountingInboxItem[]>(
-        '/accounting/inbox?status=CONFIRMED&classification=PROVIDER_FINANCIAL_DOCUMENT&limit=200',
+        `/accounting/inbox?${inboxQuery.toString()}`,
       );
       const materialized = confirmed.filter(
         (item) =>
@@ -665,10 +685,11 @@ export default function AccountingSettlementsPage() {
 
   useEffect(() => {
     if (loading || typeof window === 'undefined') return;
-    const hash = window.location.hash;
-    if (!hash.startsWith('#provider-')) return;
-    const targetId = hash.slice(1);
-    window.document.getElementById(targetId)?.scrollIntoView({ block: 'start' });
+    const linkedDocumentStableId = linkedProviderDocumentStableIdFromHash();
+    if (!linkedDocumentStableId) return;
+    window.document
+      .getElementById(`provider-${linkedDocumentStableId}`)
+      ?.scrollIntoView({ block: 'start' });
   }, [loading, items.length]);
 
   const providerDocuments = useMemo(

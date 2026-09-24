@@ -10,8 +10,9 @@ const panelSource = readFileSync(
 describe('PAYOUT-C provider payout runtime UI', () => {
   it('mounts the payout workflow inside Provider settlements without binding it to a statement', () => {
     expect(pageSource).toContain('<ProviderPayoutPanel');
-    expect(panelSource).toContain("'/accounting/provider-payouts?limit=100'");
-    expect(panelSource).toContain("'/accounting/provider-payouts'");
+    expect(panelSource).toContain("new URLSearchParams({ limit: '100' })");
+    expect(panelSource).toContain("'payoutStableId'");
+    expect(panelSource).toContain('/accounting/provider-payouts?');
     expect(panelSource).not.toContain('documentStableId');
     expect(panelSource).not.toContain('periodStart');
     expect(panelSource).not.toContain('periodEnd');

@@ -146,6 +146,7 @@ describe('AccountingProviderPayoutService', () => {
     const result = await service.listPayouts({
       provider: AccountingFinancialProvider.UBER_EATS,
       storeStableId: '4750_Yonge_Street',
+      payoutStableId: ' payout_uber_20260923_1 ',
       limit: 50,
     });
 
@@ -153,6 +154,7 @@ describe('AccountingProviderPayoutService', () => {
       where: {
         provider: AccountingFinancialProvider.UBER_EATS,
         storeStableId: '4750_Yonge_Street',
+        payoutStableId: 'payout_uber_20260923_1',
       },
       orderBy: [{ payoutDate: 'desc' }, { createdAt: 'desc' }],
       take: 50,

@@ -56,6 +56,7 @@ export class AccountingProviderPayoutService {
   async listPayouts(input: {
     provider?: AccountingFinancialProvider;
     storeStableId?: string;
+    payoutStableId?: string;
     limit?: number;
   }) {
     const limit = input.limit ?? 100;
@@ -68,6 +69,9 @@ export class AccountingProviderPayoutService {
         ...(input.provider ? { provider: input.provider } : {}),
         ...(input.storeStableId
           ? { storeStableId: input.storeStableId.trim() }
+          : {}),
+        ...(input.payoutStableId?.trim()
+          ? { payoutStableId: input.payoutStableId.trim() }
           : {}),
       },
       orderBy: [{ payoutDate: 'desc' }, { createdAt: 'desc' }],

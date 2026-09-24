@@ -71,6 +71,7 @@ export class AccountingExpenseController {
     @Query('paymentState') paymentState?: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
+    @Query('documentStableId') documentStableId?: string,
   ) {
     return this.expense.listExpenseRecords({
       from,
@@ -83,6 +84,7 @@ export class AccountingExpenseController {
       paymentState: parseExpensePaymentState(paymentState),
       limit: parseNonNegativeAccountingNumber(limit, 'limit'),
       offset: parseNonNegativeAccountingNumber(offset, 'offset'),
+      documentStableId,
     });
   }
 

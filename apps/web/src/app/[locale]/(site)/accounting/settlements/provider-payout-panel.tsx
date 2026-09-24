@@ -23,6 +23,17 @@ const localDateToday = (): string => {
   return `${year}-${month}-${day}`;
 };
 
+const linkedPayoutStableIdFromHash = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  const prefix = '#payout-';
+  if (!window.location.hash.startsWith(prefix)) return null;
+  try {
+    return decodeURIComponent(window.location.hash.slice(prefix.length));
+  } catch {
+    return null;
+  }
+};
+
 const parseCents = (raw: string): number | null => {
   const value = raw.trim();
   if (!/^\d+(?:\.\d{1,2})?$/.test(value)) return null;
@@ -77,9 +88,16 @@ export function ProviderPayoutPanel({
     setLoading(true);
     setError(null);
     try {
+      const payoutQuery = new URLSearchParams({ limit: '100' });
+      const linkedPayoutStableId = linkedPayoutStableIdFromHash();
+      if (linkedPayoutStableId) {
+        payoutQuery.set('payoutStableId', linkedPayoutStableId);
+      }
       const [nextAccounts, nextPayouts] = await Promise.all([
         apiFetch<AccountingAccount[]>('/accounting/accounts'),
-        apiFetch<AccountingProviderPayout[]>('/accounting/provider-payouts?limit=100'),
+        apiFetch<AccountingProviderPayout[]>(
+          `/accounting/provider-payouts?${payoutQuery.toString()}`,
+        ),
       ]);
       setAccounts(nextAccounts);
       setPayouts(nextPayouts);
@@ -106,6 +124,17 @@ export function ProviderPayoutPanel({
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (loading) return;
+    const linkedPayoutStableId = linkedPayoutStableIdFromHash();
+    if (!linkedPayoutStableId) return;
+    const target = window.document.getElementById(
+      `payout-${linkedPayoutStableId}`,
+    );
+    target?.closest('details')?.setAttribute('open', '');
+    target?.scrollIntoView({ block: 'start' });
+  }, [loading, payouts.length]);
 
   useEffect(() => {
     if (!storeStableId && knownStoreStableIds.length > 0) {
@@ -448,7 +477,10 @@ export function ProviderPayoutPanel({
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {payouts.map((payout) => (
-                  <tr key={payout.payoutStableId}>
+                  <tr
+                    key={payout.payoutStableId}
+                    id={`payout-${payout.payoutStableId}`}
+                  >
                     <td className="px-2 py-2">{payout.payoutDate}</td>
                     <td className="px-2 py-2 font-medium">
                       {providerLabel(payout.provider, isZh)}
