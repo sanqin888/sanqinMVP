@@ -35,7 +35,9 @@ describe('B5-C1 Business Operations architecture', () => {
     expect(controller).toContain('BusinessOperationsReportService');
     expect(controller).not.toContain('ReportsService');
     expect(topItemsService).not.toContain('BusinessOperationsReportService');
-    expect(topItemsService).not.toContain('REPORTING_BUSINESS_ORDER_FACTS_QUERY');
+    expect(topItemsService).not.toContain(
+      'REPORTING_BUSINESS_ORDER_FACTS_QUERY',
+    );
     expect(topItemsService).not.toContain('getReport(');
     expect(topItemsService).not.toContain('readMetricsForRange');
   });
