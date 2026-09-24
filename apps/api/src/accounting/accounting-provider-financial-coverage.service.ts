@@ -15,6 +15,7 @@ import {
   type AccountingDb,
   type AccountingTransactionClient,
 } from './accounting-db';
+import { advanceProviderFinancialCompleteThroughInTx } from './accounting-inbox-core.writer';
 import { resolveProviderFinancialCoverageFrontier } from './accounting-provider-financial-coverage.policy';
 import { PROVIDER_FINANCIAL_SOURCE_FACT_TYPE } from './accounting-provider-settlement.policy';
 
@@ -271,15 +272,11 @@ export class AccountingProviderFinancialCoverageService {
       };
     }
 
-    await tx.accountingProviderFinancialCoverage.update({
-      where: { id: coverage.id },
-      data: {
-        financialCompleteThrough: new Date(
-          `${resolved.financialCompleteThrough}T00:00:00.000Z`,
-        ),
-        updatedByUserStableId: null,
-      },
-    });
+    await advanceProviderFinancialCompleteThroughInTx(
+      tx,
+      coverage.id,
+      new Date(`${resolved.financialCompleteThrough}T00:00:00.000Z`),
+    );
     await writeAccountingAuditLog(tx, {
       action: 'ADVANCE_FINANCIAL_COMPLETE_THROUGH',
       entityType: 'ACCOUNTING_PROVIDER_FINANCIAL_COVERAGE',

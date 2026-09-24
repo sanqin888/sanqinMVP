@@ -289,6 +289,9 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(providerFinancialCoverageService).toContain(
       "from './accounting-db'",
     );
+    expect(providerFinancialCoverageService).toContain(
+      "from './accounting-inbox-core.writer'",
+    );
     expect(providerFinancialCoverageService).not.toContain('../prisma/');
     expect(providerFinancialCoverageService).not.toContain("from '../orders/");
     expect(providerFinancialCoverageService).not.toContain(
