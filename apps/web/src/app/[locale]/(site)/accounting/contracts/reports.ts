@@ -44,6 +44,14 @@ export type AccountingPnlReport = {
     source: string;
     amountCents: number;
   }>;
+  adjustmentBreakdown: Array<{
+    source: string;
+    sourceFactType: string | null;
+    journalCount: number;
+    revenueNetCents: number;
+    expenseNetCents: number;
+    netProfitEffectCents: number;
+  }>;
   trends: {
     currentMonthNetCents: number;
     lastMonthNetCents: number;

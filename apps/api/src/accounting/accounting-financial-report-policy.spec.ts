@@ -27,6 +27,7 @@ const entry = (
   entryStableId: 'journal_1',
   kind: AccountingJournalEntryKind.STANDARD,
   source: AccountingJournalSource.ORDER,
+  sourceFactType: null,
   occurredAt: at,
   currency: 'CAD',
   memo: 'test journal',
@@ -122,6 +123,7 @@ describe('Accounting canonical financial report policy', () => {
       entry({
         kind: AccountingJournalEntryKind.ADJUSTMENT,
         source: AccountingJournalSource.ORDER,
+        sourceFactType: 'order.financial_reversal.v1',
         lines: [
           {
             lineNo: 1,
@@ -158,7 +160,72 @@ describe('Accounting canonical financial report policy', () => {
         categoryStableId: 'adjustment_general',
       }),
     ]);
+    expect(projected.adjustmentEffects).toEqual([
+      {
+        stableId: 'journal:journal_1:adjustment',
+        source: AccountingJournalSource.ORDER,
+        sourceFactType: 'order.financial_reversal.v1',
+        occurredAt: at,
+        memo: 'test journal',
+        revenueNetCents: -180,
+        expenseNetCents: 0,
+        netProfitEffectCents: -180,
+      },
+    ]);
   });
+
+  it(
+    'decomposes mixed revenue and expense adjustment effects without changing net arithmetic',
+    () => {
+      const projected = projectAccountingJournalReportEntry(
+        entry({
+          kind: AccountingJournalEntryKind.ADJUSTMENT,
+          source: AccountingJournalSource.SYSTEM,
+          sourceFactType: 'system.adjustment.test.v1',
+          lines: [
+            {
+              lineNo: 1,
+              debitCents: 200,
+              creditCents: 0,
+              memo: null,
+              account: account(
+                'account_sales_revenue',
+                '餐品销售收入',
+                AccountingAccountClass.REVENUE,
+              ),
+              category: null,
+            },
+            {
+              lineNo: 2,
+              debitCents: 0,
+              creditCents: 30,
+              memo: null,
+              account: account(
+                'account_general_operating_expense',
+                '一般经营费用',
+                AccountingAccountClass.EXPENSE,
+              ),
+              category: null,
+            },
+          ],
+        }),
+      );
+
+      expect(projected.facts).toEqual([
+        expect.objectContaining({
+          type: AccountingTxType.ADJUSTMENT,
+          amountCents: -170,
+        }),
+      ]);
+      expect(projected.adjustmentEffects).toEqual([
+        expect.objectContaining({
+          revenueNetCents: -200,
+          expenseNetCents: -30,
+          netProfitEffectCents: -170,
+        }),
+      ]);
+    },
+  );
 
   it('projects provider statement P&L and input tax', () => {
     const projected = projectAccountingJournalReportEntry(

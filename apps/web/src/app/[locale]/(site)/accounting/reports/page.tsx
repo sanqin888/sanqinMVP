@@ -37,6 +37,25 @@ type ReportView = 'management' | 'trialBalance' | 'balanceMovement';
 const money = (cents: number) =>
   `${cents < 0 ? '-' : ''}$${(Math.abs(cents) / 100).toFixed(2)}`;
 
+function adjustmentLabel(
+  sourceFactType: string | null,
+  source: string,
+  isZh: boolean,
+) {
+  if (sourceFactType === 'order.financial_reversal.v1') {
+    return isZh ? '订单退款 / 冲销' : 'Order reversal / refund';
+  }
+  if (sourceFactType === 'order.financial_adjustment.v1') {
+    return isZh ? '订单调整' : 'Order adjustment';
+  }
+  if (sourceFactType === 'accounting.uber_pre_cutover_order_reversal.v1') {
+    return isZh
+      ? 'Uber 历史订单冲销'
+      : 'Uber pre-cutover order reversal';
+  }
+  return sourceFactType ?? source;
+}
+
 function defaultReportRange() {
   return accountingReportPresetRange('year', accountingBusinessDateToday());
 }
@@ -422,7 +441,7 @@ function ManagementReport({
           cents={report?.summary.expenseCents ?? 0}
         />
         <Card
-          label={isZh ? '调整' : 'Adjustments'}
+          label={isZh ? '净调整影响' : 'Net adjustment effect'}
           cents={report?.summary.adjustmentCents ?? 0}
         />
         <Card
@@ -430,6 +449,68 @@ function ManagementReport({
           cents={report?.summary.netProfitCents ?? 0}
         />
       </div>
+
+      {report && report.adjustmentBreakdown.length > 0 ? (
+        <section className="rounded-xl border bg-white p-5">
+          <h2 className="text-lg font-semibold">
+            {isZh ? '调整影响分解' : 'Adjustment effect breakdown'}
+          </h2>
+          <p className="mt-1 text-xs text-slate-500">
+            {isZh
+              ? '仅分解 Management P&L 中的净调整影响；金额直接来自同一批 canonical Journal，不改变净利润计算。'
+              : 'This only decomposes the net adjustment effect in Management P&L. Amounts come from the same canonical Journals and do not change net-profit math.'}
+          </p>
+          <div className="mt-3 overflow-x-auto">
+            <table className="min-w-[760px] w-full text-left text-xs">
+              <thead className="border-b border-slate-200 text-slate-500">
+                <tr>
+                  <th className="px-2 py-2">
+                    {isZh ? '调整来源' : 'Adjustment source'}
+                  </th>
+                  <th className="px-2 py-2 text-right">
+                    {isZh ? 'Journal 数' : 'Journals'}
+                  </th>
+                  <th className="px-2 py-2 text-right">
+                    {isZh ? '收入净变动' : 'Revenue net change'}
+                  </th>
+                  <th className="px-2 py-2 text-right">
+                    {isZh ? '费用净变动' : 'Expense net change'}
+                  </th>
+                  <th className="px-2 py-2 text-right">
+                    {isZh ? '净利润影响' : 'Net profit effect'}
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {report.adjustmentBreakdown.map((row) => (
+                  <tr key={`${row.source}:${row.sourceFactType ?? 'unknown'}`}>
+                    <td className="px-2 py-2">
+                      <div className="font-medium text-slate-800">
+                        {adjustmentLabel(row.sourceFactType, row.source, isZh)}
+                      </div>
+                      <div className="mt-0.5 font-mono text-[10px] text-slate-400">
+                        {row.source} · {row.sourceFactType ?? '—'}
+                      </div>
+                    </td>
+                    <td className="px-2 py-2 text-right tabular-nums">
+                      {row.journalCount}
+                    </td>
+                    <td className="px-2 py-2 text-right tabular-nums">
+                      {money(row.revenueNetCents)}
+                    </td>
+                    <td className="px-2 py-2 text-right tabular-nums">
+                      {money(row.expenseNetCents)}
+                    </td>
+                    <td className="px-2 py-2 text-right font-semibold tabular-nums">
+                      {money(row.netProfitEffectCents)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
 
       <section className="rounded-xl border bg-white p-4 shadow-sm">
         <h2 className="mb-3 text-lg font-semibold">
