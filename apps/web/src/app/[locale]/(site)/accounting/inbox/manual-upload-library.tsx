@@ -1,5 +1,7 @@
 'use client';
 
+import { useState } from 'react';
+import { AccountingEvidenceFileManager } from '../accounting-evidence-file-manager';
 import { AccountingEvidenceViewer } from '../accounting-evidence-viewer';
 import type {
   AccountingManualUploadLibraryItem,
@@ -29,27 +31,55 @@ export function AccountingManualUploadLibrary({
   onPermanentDelete,
   onEvidenceDeleted,
 }: Props) {
-  return (
-    <details className="rounded-xl border border-slate-200 bg-white shadow-sm">
-      <summary className="cursor-pointer list-none px-5 py-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h2 className="font-semibold">
-              {isZh ? `上传文件库 ${items.length}` : `Upload library ${items.length}`}
-            </h2>
-            <p className="mt-1 text-sm text-slate-500">
-              {isZh
-                ? '管理手动上传的原始文件。未确认资料可放弃处理或永久删除；已确认财务证据只能查看。'
-                : 'Manage manually uploaded source files. Unconfirmed evidence can be abandoned or permanently deleted; confirmed financial evidence is view-only.'}
-            </p>
-          </div>
-          <span className="text-sm text-blue-700">
-            {isZh ? '展开管理' : 'Open manager'}
-          </span>
-        </div>
-      </summary>
+  const [expanded, setExpanded] = useState(false);
+  const [managingFiles, setManagingFiles] = useState(false);
 
-      <div className="border-t border-slate-200 px-5 pb-5">
+  return (
+    <>
+      <details
+        className="rounded-xl border border-slate-200 bg-white shadow-sm"
+        onToggle={(event) => setExpanded(event.currentTarget.open)}
+      >
+        <summary className="cursor-pointer list-none px-5 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="font-semibold">
+                {isZh
+                  ? `上传文件库 ${items.length}`
+                  : `Upload library ${items.length}`}
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                {isZh
+                  ? '管理手动上传的原始文件。未确认资料可放弃处理或永久删除；已确认财务证据只能查看。'
+                  : 'Manage manually uploaded source files. Unconfirmed evidence can be abandoned or permanently deleted; confirmed financial evidence is view-only.'}
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setManagingFiles(true);
+                }}
+                className="rounded border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+              >
+                {isZh ? '文件管理' : 'Manage files'}
+              </button>
+              <span className="text-sm text-blue-700">
+                {expanded
+                  ? isZh
+                    ? '折叠列表'
+                    : 'Collapse list'
+                  : isZh
+                    ? '展开列表'
+                    : 'Expand list'}
+              </span>
+            </div>
+          </div>
+        </summary>
+
+        <div className="border-t border-slate-200 px-5 pb-5">
         {loading ? (
           <p className="py-4 text-sm text-slate-500">
             {isZh ? '加载中…' : 'Loading…'}
@@ -198,8 +228,16 @@ export function AccountingManualUploadLibrary({
             );
           })}
         </div>
-      </div>
-    </details>
+        </div>
+      </details>
+
+      {managingFiles ? (
+        <AccountingEvidenceFileManager
+          isZh={isZh}
+          onClose={() => setManagingFiles(false)}
+        />
+      ) : null}
+    </>
   );
 }
 

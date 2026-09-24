@@ -1,4 +1,5 @@
 import {
+  accountingEvidenceBrowserPreviewMode,
   accountingEvidenceCanPermanentDelete,
   accountingEvidenceContentUrl,
   accountingEvidenceDownloadUrl,
@@ -13,6 +14,12 @@ const baseEvidence: AccountingEvidenceSource = {
 };
 
 describe('AccountingEvidenceViewer capability helpers', () => {
+  it('uses a dedicated image preview path instead of the PDF iframe path', () => {
+    expect(accountingEvidenceBrowserPreviewMode('IMAGE')).toBe('IMAGE');
+    expect(accountingEvidenceBrowserPreviewMode('PDF')).toBe('PDF');
+    expect(accountingEvidenceBrowserPreviewMode('CSV')).toBeNull();
+  });
+
   it('keeps delete disabled without an explicit permanent-delete capability', () => {
     expect(accountingEvidenceCanPermanentDelete(baseEvidence)).toBe(false);
     expect(
