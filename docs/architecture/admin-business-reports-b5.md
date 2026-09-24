@@ -1,8 +1,8 @@
 # B5 — Admin Business Reports / Operating Monitoring
 
 Date: 2026-09-24  
-Implementation baseline: `origin/dev@6911dde2`  
-Current local work: **B5-B1 Orders operational facts — LOCAL SOURCE READY FOR REVIEW / NO MIGRATION / NO DEPENDENCY / NO GRAPH-DIRECTION CHANGE**
+Implementation baseline: `dev@35ba5d52` (B5-B1 merged through PR #2511; CI #6291 green)  
+Current local work: **B5-B2 Store operating-context seam — LOCAL SOURCE READY FOR REVIEW / AUTHORIZED READ-ONLY COMPOSITION DIRECTION / NO MIGRATION / NO DEPENDENCY**
 
 ## Product goal
 
@@ -137,39 +137,83 @@ B5-B1 does not change:
 - database schema or migrations;
 - package dependencies.
 
-## Verification state
+## B5-B1 delivery state
+
+B5-B1 was merged through PR #2511 / squash `35ba5d52`; final head
+`35e76d0f`; CI #6291 passed architecture, API/Web lint/build/strict declaration
+checks and tests.
+
+## B5-B2 — Store operating-context seam
+
+The user explicitly authorized the new read-only Reporting -> Brand/Store architecture
+direction on 2026-09-24.
+
+The implementation keeps that knowledge inside the registered `ReportsModule`
+composition root. Reporting business code consumes only its own
+`REPORTING_STORE_OPERATING_CONTEXT_QUERY` contract.
+
+The composition root adapts existing Store public capabilities:
+
+- `BRAND_STORE_CONFIG_READER` for stable store identity, active state and timezone;
+- `STORE_SCHEDULE_READER` for current configured business hours and holidays;
+- `STORE_STATUS_READER` for effective current scheduled-open and temporary-close
+  state.
+
+The resulting Reporting contract exposes only:
+
+- `storeStableId`;
+- `timezone`;
+- `isActive`;
+- normalized business hours;
+- normalized holidays;
+- current effective schedule/temporary-close status;
+- explicit `historyCoverage = CURRENT_CONFIGURATION_ONLY`.
+
+The coverage marker is mandatory because current Store configuration is not a durable
+historical schedule/closure ledger. B5-C1 must not use today's Store config to assert
+why a historical zero-Order day occurred.
+
+The seam deliberately does **not** expose Store contact fields, tax config,
+auto-accept/allergen settings, delivery configuration or internal persistence metadata.
+
+The public Store status contract does not expose an effective temporary-close reason.
+B5-B2 therefore does not copy the raw config reason into Reporting because an expired
+auto-pause can transiently leave raw config metadata behind while
+`STORE_STATUS_READER` already reports the effective pause as false.
+
+No Reporting runtime report currently consumes the new query. Therefore B5-B2 changes
+the composition capability but does not change `GET /reports`, Admin UI, Homepage,
+Accounting or current report arithmetic.
+
+### Architecture-scanner treatment
+
+`apps/api/src/reports/reports.module.ts` is already a registered excluded composition
+root in `tools/architecture/context-baseline.json`. The new Store public imports are
+therefore a deliberate composition dependency but do not require increasing a legacy
+direct-import limit or adding a scanner exception/SCC allowance.
+
+Architecture tests lock that:
+
+- only the composition root imports `../store/public-api`;
+- Reporting service/business contract does not import Store internals or Prisma;
+- no broad `accounting-reporting-analytics -> brand-store` legacy direct-import
+  allowance is added.
+
+## B5-B2 verification state
 
 Per repository workflow, no local lint/build/test/CI reproduction is run before user
 review.
 
-Source characterization tests were added for:
+Source tests characterize:
 
-- storeStableId filtering;
-- half-open date ranges;
-- unchanged reportable Order statuses;
-- normalized lifecycle/channel/payment/fulfillment Order facts;
-- preservation of top-level commercial item identity;
-- immutable component normalization;
-- architecture prohibition on pulling POS/Print persistence into the Orders reader.
+- the three Store public reader injections;
+- normalized timezone/business-hours/holiday/current-status mapping;
+- `CURRENT_CONFIGURATION_ONLY` coverage;
+- exclusion of unrelated Store configuration;
+- confinement of the cross-context dependency to the registered composition root.
 
 GitHub Actions remains the authoritative validation gate after user approval for remote
 delivery.
-
-## Next work
-
-### B5-B2 — Store operating-context seam
-
-The previously reviewed design is a narrow read-only
-`accounting-reporting-analytics -> brand-store` public direction at the Reporting
-composition root, using existing Brand/Store public readers for:
-
-- store timezone;
-- business hours;
-- holidays;
-- current scheduled-open / temporary-closure state.
-
-That seam is required before the anomaly engine can correctly compare same operating
-windows.
 
 ### POS/Print follow-up
 

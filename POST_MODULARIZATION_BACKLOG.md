@@ -556,11 +556,13 @@ Avoid polishing current mixed-authority widgets immediately before replacing the
 Priority: **P2**  
 Complexity: **M**  
 Depends on: **B2 terminology / financial contract stabilization — satisfied; B4 closed**  
-State: **B5-B1 Orders operational facts LOCAL SOURCE READY FOR REVIEW / NO MIGRATION / NO DEPENDENCY / NO GRAPH-DIRECTION CHANGE** from `origin/dev@6911dde2`. Detailed work package: `docs/architecture/admin-business-reports-b5.md`.
+State: **B5-B1 MERGED / CI GREEN; B5-B2 LOCAL SOURCE READY FOR REVIEW / AUTHORIZED READ-ONLY COMPOSITION DIRECTION / NO MIGRATION / NO DEPENDENCY**. B5-B1: PR #2511 / squash `35ba5d52` / final head `35e76d0f` / CI #6291 green. Detailed work package: `docs/architecture/admin-business-reports-b5.md`.
 
 B5 is now scoped as a store operating-monitoring surface, not merely a cleanup of the old Sales page. The product target is Today-first anomaly detection and explanation across Order count, Order total, average Order total, time-of-day, channel, fulfillment, product/package demand, production demand and execution health while canonical financial reporting remains Accounting-owned.
 
 B5-B1 keeps the existing `ORDER_REPORTING_FACTS_READER` legacy methods untouched and adds store-scoped half-open-range operational Order/item facts. Orders remains the owner of persistence queries and immutable component decoding; Reporting will own aggregation/baselines later. The new public facts intentionally exclude customer PII and raw snapshot JSON. An architecture guard prevents the Orders reader from pulling `PosPrintJob`/POS internals across the separate `store-operations-pos-print` boundary.
+
+B5-B2, explicitly architecture-authorized on 2026-09-24, adds a narrow read-only Reporting composition seam to existing Brand/Store public readers. `ReportsModule` adapts store config, schedule and current status into Reporting-owned `REPORTING_STORE_OPERATING_CONTEXT_QUERY`, exposing only stable store identity, timezone, active state, current configured business hours/holidays and effective current open/pause state. The contract explicitly marks `CURRENT_CONFIGURATION_ONLY` so future anomaly logic cannot pretend today's schedule explains historical zero-order days. Because `reports.module.ts` is already a registered excluded composition root, this deliberate composition direction requires no legacy direct-import-limit increase, scanner exception or SCC allowance.
 
 Important distinction:
 
