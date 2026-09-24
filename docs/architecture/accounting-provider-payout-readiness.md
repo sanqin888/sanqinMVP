@@ -3,7 +3,7 @@
 Date: 2026-09-23  
 Baseline: PAYOUT-E-A merged through PR #2490 / squash `1d90e6fd`; Inbox-only evidence workflow merged through PR #2492 / squash `c4324edd`, CI #6229 green; settlement row-decision ownership follow-up merged through PR #2493 / squash `3d20fd4f`, CI #6232 green  
 Work package: **PAYOUT-E-B1 — durable bank row reconciliation decisions**  
-State: **PAYOUT-E-B1 LOCAL SOURCE READY FOR USER REVIEW / MIGRATION REQUIRED / NO PAYOUT OR JOURNAL WRITER CHANGE / NO NEW CONTEXT EDGE**
+State: **PAYOUT-E-B1 PRODUCTION VERIFIED / PAYOUT-E-B2 LOCAL SOURCE READY FOR USER REVIEW / NO MIGRATION / NO NEW CONTEXT EDGE**
 
 ## 1. Purpose
 
@@ -621,6 +621,10 @@ E-B1 introduces no payout/Journal posting authority. Existing posting handoff is
 
 ### PAYOUT-E-B2 — confirmed bank row to canonical payout
 
-E-B2 must bind a `READY_FOR_POSTING` bank-row decision to exactly one canonical `AccountingProviderPayout` in the same Accounting transaction, derive/reuse an idempotent payout identity from the bank-row authority, and transition the durable decision to `MATCH_EXISTING_PAYOUT`. This closes the remaining duplicate-posting window before any automatic bank import or auto-posting is considered.
+E-B2 binds a `READY_FOR_POSTING` bank-row decision to exactly one canonical `AccountingProviderPayout` in the same Accounting Serializable transaction, derives the idempotent payout identity as `payout_<decisionStableId>`, and transitions the durable decision to `MATCH_EXISTING_PAYOUT`. The HTTP command accepts only `decisionStableId`; provider/date/amount/store/bank authority is re-derived from the persisted Accounting-owned decision rather than trusted from browser form values.
 
-Automatic payout creation or bank API ingestion must not precede E-B2.
+The existing manual `POST /accounting/provider-payouts` path remains unchanged for manually evidenced payouts. The bank-row workflow uses `POST /accounting/provider-payouts/from-bank-row-decision`; replay of an already matched decision returns its anchored payout without creating another payout or Journal. Before a READY decision enters the writer, the E-B1 owner reparses/reprojects its current scope and requires the scope to remain confirmed and the row to remain `READY_FOR_POSTING`. If an exact canonical payout appears after that preflight but before the Accounting transaction completes, E-B2 fails closed and requires explicit scope reconfirmation rather than silently binding or creating a duplicate. Non-READY/non-MATCHED decisions fail closed. Payout creation, canonical Journal anchoring, row-decision transition and both audit writes share the same Accounting transaction.
+
+**2026-09-23 implementation state:** **LOCAL SOURCE READY FOR USER REVIEW / NO MIGRATION / NO DEPENDENCY CHANGE / NO GRAPH CHANGE** on `feat/accounting-payout-e-b2-bank-row-atomic-posting`. Production E-B1 preflight before this implementation confirmed migration `20260923230651_accounting_provider_payout_bank_row_decisions` applied successfully, API/Web containers healthy, 27 persisted decisions (25 `EXCLUDED`, 2 `MATCH_EXISTING_PAYOUT`), zero invalid match shapes and zero orphan artifact references.
+
+Automatic payout creation or bank API ingestion must not precede production verification of E-B2.

@@ -118,6 +118,55 @@ export class AccountingProviderPayoutBankRowDecisionService {
     });
   }
 
+  async requireCurrentPostingDecision(
+    decisionStableIdRaw: string,
+  ): Promise<AccountingProviderPayoutBankRowDecisionView> {
+    const decisionStableId = normalizeRequired(
+      decisionStableIdRaw,
+      'decisionStableId',
+    );
+    const persisted =
+      await this.prisma.accountingProviderPayoutBankRowDecision.findUnique({
+        where: { decisionStableId },
+        include: {
+          artifact: {
+            select: { artifactStableId: true },
+          },
+        },
+      });
+    if (!persisted) {
+      throw new ConflictException('Bank row decision does not exist');
+    }
+    if (persisted.decision === 'MATCH_EXISTING_PAYOUT') {
+      return toView(persisted as DecisionRecord);
+    }
+    if (persisted.decision !== 'READY_FOR_POSTING') {
+      throw new ConflictException(
+        'Bank row decision is not ready for provider payout posting',
+      );
+    }
+
+    const scope = await this.getScope({
+      artifactStableId: persisted.artifact.artifactStableId,
+      storeStableId: persisted.storeStableId,
+      destinationBankAccountStableId:
+        persisted.destinationBankAccountStableId,
+    });
+    const current = scope.decisions.find(
+      (decision) => decision.decisionStableId === decisionStableId,
+    );
+    if (
+      !scope.confirmed ||
+      !current ||
+      current.decision !== 'READY_FOR_POSTING'
+    ) {
+      throw new ConflictException(
+        'Bank row decision is no longer current and ready for posting; reconfirm the settlement scope',
+      );
+    }
+    return current;
+  }
+
   async confirmScope(
     input: ConfirmAccountingProviderPayoutBankRowScopeInput,
     actorRefRaw: string,

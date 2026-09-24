@@ -77,7 +77,10 @@ describe('PAYOUT-E-A bank CSV evidence / settlement ownership UI', () => {
     expect(settlementBankSource).toContain('Use for posting');
     expect(settlementBankSource).toContain('Confirmed match');
     expect(payoutPanelSource).toContain(
-      'The unmatched bank deposit was copied into the form',
+      '/accounting/provider-payouts/from-bank-row-decision',
+    );
+    expect(payoutPanelSource).toContain(
+      'Posting will atomically create the payout from that server-owned decision',
     );
   });
 });

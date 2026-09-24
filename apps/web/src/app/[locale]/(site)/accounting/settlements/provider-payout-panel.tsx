@@ -58,6 +58,7 @@ export function ProviderPayoutPanel({
     useState('');
   const [providerReference, setProviderReference] = useState('');
   const [payoutStableId, setPayoutStableId] = useState('');
+  const [bankRowDecisionStableId, setBankRowDecisionStableId] = useState('');
   const [confirmed, setConfirmed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -111,6 +112,7 @@ export function ProviderPayoutPanel({
       setStoreStableId(knownStoreStableIds[0]);
       setConfirmed(false);
       setPayoutStableId('');
+      setBankRowDecisionStableId('');
     }
   }, [knownStoreStableIds, storeStableId]);
 
@@ -121,6 +123,7 @@ export function ProviderPayoutPanel({
   function invalidateConfirmation() {
     setConfirmed(false);
     setPayoutStableId('');
+    setBankRowDecisionStableId('');
     setError(null);
     setMessage(null);
   }
@@ -159,29 +162,42 @@ export function ProviderPayoutPanel({
 
     const stableId =
       payoutStableId || `payout_${window.crypto.randomUUID()}`;
-    if (!payoutStableId) setPayoutStableId(stableId);
+    if (!bankRowDecisionStableId && !payoutStableId) {
+      setPayoutStableId(stableId);
+    }
 
     setBusy(true);
     setError(null);
     setMessage(null);
     try {
-      const posted = await apiFetch<AccountingProviderPayout>(
-        '/accounting/provider-payouts',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            payoutStableId: stableId,
-            provider,
-            storeStableId: storeStableId.trim(),
-            payoutDate,
-            destinationBankAccountStableId,
-            amountCents,
-            currency: 'CAD',
-            providerReference: providerReference.trim() || null,
-          }),
-        },
-      );
+      const posted = bankRowDecisionStableId
+        ? await apiFetch<AccountingProviderPayout>(
+            '/accounting/provider-payouts/from-bank-row-decision',
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                decisionStableId: bankRowDecisionStableId,
+              }),
+            },
+          )
+        : await apiFetch<AccountingProviderPayout>(
+            '/accounting/provider-payouts',
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                payoutStableId: stableId,
+                provider,
+                storeStableId: storeStableId.trim(),
+                payoutDate,
+                destinationBankAccountStableId,
+                amountCents,
+                currency: 'CAD',
+                providerReference: providerReference.trim() || null,
+              }),
+            },
+          );
       setMessage(
         isZh
           ? `${providerLabel(posted.provider, true)} 到账 ${money(posted.amountCents)} 已记账。`
@@ -190,6 +206,7 @@ export function ProviderPayoutPanel({
       setAmount('');
       setProviderReference('');
       setPayoutStableId('');
+      setBankRowDecisionStableId('');
       setConfirmed(false);
       await load();
     } catch (cause) {
@@ -389,13 +406,14 @@ export function ProviderPayoutPanel({
             deposit.destinationBankAccountStableId,
           );
           setProviderReference('');
-          setConfirmed(false);
+          setConfirmed(true);
           setPayoutStableId('');
+          setBankRowDecisionStableId(deposit.decisionStableId);
           setError(null);
           setMessage(
             isZh
-              ? '已将银行流水中的未匹配到账带入表单，请核对后勾选确认并正式记账。'
-              : 'The unmatched bank deposit was copied into the form. Verify it, confirm receipt, then post.',
+              ? '已选择已确认的银行流水行；正式记账将由服务端按该决定原子创建 payout 并绑定回流水行。'
+              : 'A confirmed bank row is selected. Posting will atomically create the payout from that server-owned decision and bind it back to the row.',
           );
         }}
       />

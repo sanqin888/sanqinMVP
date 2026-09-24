@@ -57,6 +57,7 @@ export function ProviderPayoutSettlementBankCsvPanel({
   knownStoreStableIds: string[];
   eligibleBanks: AccountingAccount[];
   onUseDeposit: (deposit: {
+    decisionStableId: string;
     provider: AccountingFinancialProvider;
     payoutDate: string;
     amountCents: number;
@@ -527,6 +528,8 @@ export function ProviderPayoutSettlementBankCsvPanel({
                               className="rounded border border-emerald-300 bg-emerald-50 px-2.5 py-1.5 font-medium text-emerald-800"
                               onClick={() =>
                                 onUseDeposit({
+                                  decisionStableId:
+                                    persistedDecision.decisionStableId,
                                   provider: providerHint,
                                   payoutDate: deposit.occurredOn,
                                   amountCents: deposit.amountCents,
