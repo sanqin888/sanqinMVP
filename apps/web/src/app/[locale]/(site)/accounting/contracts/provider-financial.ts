@@ -44,6 +44,7 @@ export type AccountingFinancialTaxRole =
 export type AccountingProviderFinancialLine = {
   lineStableId: string;
   lineNo: number;
+  rawCode?: string | null;
   rawName: string | null;
   component: AccountingFinancialComponent;
   postingTreatment: AccountingFinancialPostingTreatment;
@@ -92,17 +93,35 @@ export type AccountingProviderFinancialReviewCorrection = {
   effectiveAmountCents: number;
 };
 
+export type AccountingProviderFinancialReviewedLine = {
+  reviewedLineStableId: string;
+  lineNo: number;
+  sourceLineStableId: string | null;
+  rawCode: string | null;
+  rawName: string | null;
+  component: AccountingFinancialComponent;
+  postingTreatment: AccountingFinancialPostingTreatment;
+  taxRole: AccountingFinancialTaxRole;
+  amountCents: number;
+  occurredAt: string | null;
+};
+
 export type AccountingProviderFinancialReviewRevision = {
   reviewRevisionStableId: string;
   revision: number;
   status: AccountingProviderFinancialReviewStatus;
   reviewHash: string;
   note: string | null;
+  effectiveSnapshotParserName: string | null;
+  effectiveSnapshotParserVersion: string | null;
+  effectiveSnapshotParseRunStableId: string | null;
+  effectiveSnapshotSourceParseRunStableId: string | null;
   createdByUserStableId: string;
   confirmedByUserStableId: string | null;
   confirmedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  effectiveLines: AccountingProviderFinancialReviewedLine[];
   corrections: AccountingProviderFinancialReviewCorrection[];
 };
 

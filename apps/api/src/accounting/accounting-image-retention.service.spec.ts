@@ -100,6 +100,7 @@ describe('AccountingImageRetentionService', () => {
     const result = await service.createCandidate(
       'acctinbox_1',
       'BALANCED',
+      'CANADIAN TIRE',
       'user_1',
     );
 
@@ -107,6 +108,9 @@ describe('AccountingImageRetentionService', () => {
     expect(result.original.byteSize).toBe(original.length);
     expect(result.candidate.profile).toBe('BALANCED');
     expect(result.candidate.byteSize).toBeLessThan(original.length);
+    expect(path.basename(result.candidate.url)).toMatch(
+      /^CANADIAN-TIRE_\d{8}T\d{9}Z\.webp$/,
+    );
     expect(
       fs.existsSync(
         path.join(

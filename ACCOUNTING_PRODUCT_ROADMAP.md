@@ -74,6 +74,29 @@ financial-feature work that depends on provider settlement authority.
 
 State: **Slice 0 merged in PR #2428 (`bbd0b1c0`); Slice 1 Human Review Revision + migration merged in PR #2429 (`1903b32a`, CI #6017 green); Slice 2 Human Review UI merged in PR #2431 (`e52c44b9`); Slice 3 layout-aware extraction merged in PR #2432 (`caabf1c1`) with green CI; Evidence Viewer Slice 1 merged in PR #2435 (`0371a155`, CI #6039 green); Slice 1B merged in PR #2436 (`9ae4d85d`, CI #6042 green), with additive migration `20260921124637_add_accounting_evidence_folders` committed as `cc4c8016` and SQL reviewed as safe/additive; Evidence Viewer Slice 2 merged in PR #2438 as `4d68379e` with CI green; Slice 3V-A merged in PR #2439 as `0d6909bb` after PR CI #6054 and merged-head CI #6055 passed; Slice 3V-B merged in PR #2440 as `0ac9117f` after final head `3c5c0400`, PR CI #6057 and merged-head CI #6058 passed; Reliability Slice A CSV ParseRun integrity merged in PR #2442 as `994f5a67`; Reliability Slice B Expense reconciliation + booking correction merged in PR #2443 as `6e89bc3b` with no migration; original Document Recognition Slice C Inbox pre-confirm UX merged in PR #2445 as `da77b9a5` after final head `3cd7e645` passed CI #6074. Production verification of the new scanned-PDF path remains pending.**
 
+2026-09-24 follow-up: Clover statement semantic-detail parser v7 is **MERGED / CI GREEN**
+through PR #2516 (`b8e5b844`, CI #6310). It separates Monthly Equipment Bill base/HST from
+card/network fees, maps the base to the existing `expense_software` category, adds exact FEES
+detail reconciliation, and preserves category on settlement Journal lines. That source-only slice
+did not rewrite already materialized historical documents.
+
+The existing-materialized remediation is now **LOCAL SOURCE READY FOR REVIEW** on
+`accounting/provider-parser-reevaluation-review`. It keeps the original
+`AccountingProviderFinancialDocument` and machine lines immutable, reruns the current provider
+parser from persisted extraction evidence into a new immutable `AccountingParseRun`, stores the
+candidate full effective line set on a DRAFT Human Review Revision, keeps effective parser metadata
+on the immutable current-parser ParseRun, and switches settlement to that snapshot only after explicit
+confirmation. This slice adds an additive Prisma reviewed-line model
+and nullable review-to-ParseRun provenance fields. **MIGRATION REQUIRED.** Per `AGENTS.md`, no
+migration file is generated or edited by MCP. Suggested migration name:
+`accounting_provider_parser_reevaluation_review_snapshot`. After this schema/source change is
+reviewed and merged to `dev`, generate it against the verified disposable/local development
+database with `pnpm --filter api exec prisma migrate dev --create-only --name accounting_provider_parser_reevaluation_review_snapshot`.
+Expected SQL is additive only (nullable parser/current-ParseRun/source-ParseRun review provenance
+and new reviewed-line table/FKs/indexes);
+promotion to `main` / production remains blocked until the generated migration is reviewed,
+committed and merged back into `dev`.
+
 Baseline audited state before Slice 0:
 
 - images use Sharp/local geometry preparation and AWS Textract AnalyzeExpense when enabled,

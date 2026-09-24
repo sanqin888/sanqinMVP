@@ -46,6 +46,8 @@ export function AccountingImageRetentionPanel({
   const [profile, setProfile] = useState<AccountingImageRetentionProfile>(
     item.derivative?.profile ?? 'BALANCED',
   );
+  const [vendorName, setVendorName] = useState(item.vendorName ?? '');
+  const [vendorDirty, setVendorDirty] = useState(false);
   const [preview, setPreview] = useState<ReviewPreview | null>(() =>
     reviewPreviewFromQueue(item),
   );
@@ -64,11 +66,15 @@ export function AccountingImageRetentionPanel({
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ profile: nextProfile }),
+            body: JSON.stringify({
+              profile: nextProfile,
+              vendorName: vendorName.trim(),
+            }),
           },
         );
         setRetentionState('CANDIDATE_READY');
         setProfile(nextProfile);
+        setVendorDirty(false);
         setPreview({
           original: result.original,
           derivative: result.candidate,
@@ -79,16 +85,16 @@ export function AccountingImageRetentionPanel({
         setBusy(false);
       }
     },
-    [item.inboxItemStableId, retentionState],
+    [item.inboxItemStableId, retentionState, vendorName],
   );
 
   useEffect(() => {
     if (initializedRef.current) return;
     initializedRef.current = true;
-    if (item.retentionState === 'ORIGINAL_PRESENT') {
+    if (item.retentionState === 'ORIGINAL_PRESENT' && vendorName.trim()) {
       void regenerate('BALANCED');
     }
-  }, [item.retentionState, regenerate]);
+  }, [item.retentionState, regenerate, vendorName]);
 
   async function keepOriginal() {
     if (retentionState === 'PURGE_PENDING') return;
@@ -157,23 +163,59 @@ export function AccountingImageRetentionPanel({
         </div>
 
         {retentionState !== 'PURGE_PENDING' ? (
-          <div className="mt-4 flex flex-wrap gap-2">
-            {profiles.map((option) => (
-              <button
-                key={option}
-                type="button"
-                disabled={busy || accepting}
-                onClick={() => void regenerate(option)}
-                className={`rounded border px-3 py-2 text-sm disabled:opacity-50 ${
-                  profile === option
-                    ? 'border-slate-900 bg-slate-900 text-white'
-                    : 'border-slate-300 bg-white text-slate-700'
-                }`}
-              >
-                {profileLabel(option, isZh)}
-              </button>
-            ))}
-          </div>
+          <>
+            <div className="mt-4 rounded-lg border border-blue-200 bg-white p-3">
+              <label className="block text-sm font-medium text-slate-800">
+                {isZh ? '供应商名称' : 'Vendor name'}
+                <input
+                  value={vendorName}
+                  onChange={(event) => {
+                    setVendorName(event.target.value);
+                    setVendorDirty(true);
+                  }}
+                  placeholder={
+                    isZh
+                      ? 'OCR 未识别时请手动填写'
+                      : 'Enter manually when OCR did not identify the vendor'
+                  }
+                  disabled={busy || accepting}
+                  className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                />
+              </label>
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-slate-500">
+                  {isZh
+                    ? '压缩版将按“供应商名_时间戳.webp”命名；可在确认前修改供应商名并重新生成。'
+                    : 'The retained image is named Vendor_timestamp.webp. You can correct the vendor and regenerate before approval.'}
+                </p>
+                <button
+                  type="button"
+                  disabled={busy || accepting || !vendorName.trim()}
+                  onClick={() => void regenerate(profile)}
+                  className="rounded border border-blue-300 bg-blue-50 px-3 py-1.5 text-sm text-blue-800 disabled:opacity-50"
+                >
+                  {isZh ? '生成 / 更新压缩版' : 'Generate / update compressed image'}
+                </button>
+              </div>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {profiles.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  disabled={busy || accepting}
+                  onClick={() => void regenerate(option)}
+                  className={`rounded border px-3 py-2 text-sm disabled:opacity-50 ${
+                    profile === option
+                      ? 'border-slate-900 bg-slate-900 text-white'
+                      : 'border-slate-300 bg-white text-slate-700'
+                  }`}
+                >
+                  {profileLabel(option, isZh)}
+                </button>
+              ))}
+            </div>
+          </>
         ) : null}
 
         {busy && !preview ? (
@@ -259,6 +301,8 @@ export function AccountingImageRetentionPanel({
             disabled={
               retentionState === 'ORIGINAL_PRESENT' ||
               (retentionState === 'CANDIDATE_READY' && !preview) ||
+              (retentionState !== 'PURGE_PENDING' &&
+                (!vendorName.trim() || vendorDirty)) ||
               busy ||
               accepting
             }

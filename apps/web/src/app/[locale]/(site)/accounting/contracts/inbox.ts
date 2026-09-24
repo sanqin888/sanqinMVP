@@ -60,6 +60,7 @@ export type AccountingImageRetentionQueueItem = {
   inboxItemStableId: string;
   artifactStableId: string;
   originalFilename: string | null;
+  vendorName: string | null;
   retentionState: 'ORIGINAL_PRESENT' | 'CANDIDATE_READY' | 'PURGE_PENDING';
   createdAt: string;
   updatedAt: string;
@@ -264,6 +265,7 @@ export type AccountingManualUploadLibraryItem = {
     | null;
   materializedEntityStableId: string | null;
   originalFilename: string | null;
+  displayFilename: string | null;
   kind: 'PDF' | 'IMAGE' | 'CSV' | 'TEXT' | 'OTHER' | 'EMAIL_BODY';
   byteSize: number | null;
   contentUrl: string | null;

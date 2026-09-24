@@ -76,6 +76,26 @@ export class AccountingProviderSettlementQueryService {
             reviewHash: true,
             confirmedAt: true,
             confirmedByUserStableId: true,
+            effectiveSnapshotParserName: true,
+            effectiveSnapshotParserVersion: true,
+            effectiveSnapshotParseRun: {
+              select: { resultJson: true },
+            },
+            effectiveLines: {
+              select: {
+                reviewedLineStableId: true,
+                lineNo: true,
+                sourceLineStableId: true,
+                rawCode: true,
+                rawName: true,
+                component: true,
+                postingTreatment: true,
+                taxRole: true,
+                amountCents: true,
+                occurredAt: true,
+              },
+              orderBy: { lineNo: 'asc' },
+            },
             corrections: {
               select: {
                 sourceLineStableId: true,

@@ -1,8 +1,8 @@
 # B5 — Admin Business Reports / Operating Monitoring
 
 Date: 2026-09-24  
-Implementation baseline: `origin/dev@6911dde2`  
-Current local work: **B5-B1 Orders operational facts — LOCAL SOURCE READY FOR REVIEW / NO MIGRATION / NO DEPENDENCY / NO GRAPH-DIRECTION CHANGE**
+Implementation baseline: `dev@af57715f` (B5-C1 merged through PR #2514; final head `d8f21ca6`; CI #6303 green)  
+Current local work: **B5-C2 Admin Today-first operating-monitoring UI — LOCAL SOURCE READY FOR REVIEW / WEB CONSUMER CUTOVER / NO BACKEND DEPENDENCY / NO MIGRATION / NO PACKAGE CHANGE / NO GRAPH CHANGE**
 
 ## Product goal
 
@@ -137,58 +137,265 @@ B5-B1 does not change:
 - database schema or migrations;
 - package dependencies.
 
-## Verification state
+## B5-B1 delivery state
 
-Per repository workflow, no local lint/build/test/CI reproduction is run before user
-review.
+B5-B1 was merged through PR #2511 / squash `35ba5d52`; final head
+`35e76d0f`; CI #6291 passed architecture, API/Web lint/build/strict declaration
+checks and tests.
 
-Source characterization tests were added for:
+## B5-B2 — Store operating-context seam
 
-- storeStableId filtering;
-- half-open date ranges;
-- unchanged reportable Order statuses;
-- normalized lifecycle/channel/payment/fulfillment Order facts;
-- preservation of top-level commercial item identity;
-- immutable component normalization;
-- architecture prohibition on pulling POS/Print persistence into the Orders reader.
+The user explicitly authorized the new read-only Reporting -> Brand/Store architecture
+direction on 2026-09-24.
 
-GitHub Actions remains the authoritative validation gate after user approval for remote
-delivery.
+The implementation keeps that knowledge inside the registered `ReportsModule`
+composition root. Reporting business code consumes only its own
+`REPORTING_STORE_OPERATING_CONTEXT_QUERY` contract.
 
-## Next work
+The composition root adapts existing Store public capabilities:
 
-### B5-B2 — Store operating-context seam
+- `BRAND_STORE_CONFIG_READER` for stable store identity, active state and timezone;
+- `STORE_SCHEDULE_READER` for current configured business hours and holidays;
+- `STORE_STATUS_READER` for effective current scheduled-open and temporary-close
+  state.
 
-The previously reviewed design is a narrow read-only
-`accounting-reporting-analytics -> brand-store` public direction at the Reporting
-composition root, using existing Brand/Store public readers for:
+The resulting Reporting contract exposes only:
 
-- store timezone;
-- business hours;
-- holidays;
-- current scheduled-open / temporary-closure state.
+- `storeStableId`;
+- `timezone`;
+- `isActive`;
+- normalized business hours;
+- normalized holidays;
+- current effective schedule/temporary-close status;
+- explicit `historyCoverage = CURRENT_CONFIGURATION_ONLY`.
 
-That seam is required before the anomaly engine can correctly compare same operating
-windows.
+The coverage marker is mandatory because current Store configuration is not a durable
+historical schedule/closure ledger. B5-C1 must not use today's Store config to assert
+why a historical zero-Order day occurred.
 
-### POS/Print follow-up
+The seam deliberately does **not** expose Store contact fields, tax config,
+auto-accept/allergen settings, delivery configuration or internal persistence metadata.
 
-Print-health ownership must be redesigned as a separate public read capability from
-`store-operations-pos-print`. It must not be folded into Orders merely because
-`PosPrintJob` has an Order relation.
+The public Store status contract does not expose an effective temporary-close reason.
+B5-B2 therefore does not copy the raw config reason into Reporting because an expired
+auto-pause can transiently leave raw config metadata behind while
+`STORE_STATUS_READER` already reports the effective pause as false.
 
-### B5-C1 / C2
+No Reporting runtime report currently consumes the new query. Therefore B5-B2 changes
+the composition capability but does not change `GET /reports`, Admin UI, Homepage,
+Accounting or current report arithmetic.
 
-After the owner facts and store context exist:
+### Architecture-scanner treatment
 
-- Reporting builds `BusinessOperationsReportV1`;
-- server-owned same-weekday and same-elapsed-time baselines;
-- zero-filled time buckets;
-- count × average-Order decomposition;
-- channel / fulfillment / time / item diagnostics;
-- prep p50/p90 and bounded recent queue logic;
-- explicit coverage/confidence;
-- Admin Today-first monitoring UI.
+`apps/api/src/reports/reports.module.ts` is already a registered excluded composition
+root in `tools/architecture/context-baseline.json`. The new Store public imports are
+therefore a deliberate composition dependency but do not require increasing a legacy
+direct-import limit or adding a scanner exception/SCC allowance.
+
+Architecture tests lock that:
+
+- only the composition root imports `../store/public-api`;
+- Reporting service/business contract does not import Store internals or Prisma;
+- no broad `accounting-reporting-analytics -> brand-store` legacy direct-import
+  allowance is added.
+
+## B5-B2 delivery state
+
+B5-B2 was merged through PR #2513 / squash `c64c07d3`; final head
+`7a8b09eb`; CI #6298 passed architecture, API/Web lint/build/strict declaration
+checks and tests. The only failed precursor run was limited to three Prettier findings
+in the new architecture spec; the corrected final head passed the full suite.
+
+## B5-C1 — Business Operations projection + anomaly engine
+
+B5-C1 is additive. The legacy `GET /reports`, `ReportsService`, Homepage ranking
+contract and existing Admin consumer remain unchanged.
+
+The new endpoint is:
+
+`GET /reports/business?storeStableId=...&from=YYYY-MM-DD&to=YYYY-MM-DD`
+
+`storeStableId` is required. `from` / `to` are optional and default to the
+selected store's current local date. Supplying only one date produces a single-day
+report. Future dates and ranges longer than 90 inclusive local calendar days fail
+closed.
+
+### Reporting-owned Orders seam
+
+B5-C1 introduces `REPORTING_BUSINESS_ORDER_FACTS_QUERY` as a Reporting-owned outbound
+port. The registered `ReportsModule` composition root adapts the B5-B1
+`ORDER_REPORTING_FACTS_READER` operational methods into this contract. The
+`BusinessOperationsReportService` imports neither Orders nor Store public/internal
+types; it depends only on Reporting-owned Orders and Store-context ports.
+
+This adds no new context direction beyond the already established composition seams,
+and it does not change scanner allowances or SCC state.
+
+### Time and range semantics
+
+All range interpretation is server-owned and uses the selected store timezone from
+B5-B2. The engine never uses `process.env.TZ` for the new contract.
+
+For a range ending today, the effective `toExclusive` is the current instant rather
+than end-of-day. Historical same-weekday comparators for the current local day are cut
+at the same wall-clock time. A 14:37 current view is therefore compared with prior
+same-weekdays only through 14:37, never with their complete day.
+
+For 7/28/90-day ranges, a comparator period preserves weekday structure by shifting
+the complete selected range by 1..8 weeks. A comparator period is admitted only when
+every selected date has coverage evidence. This is a rolling operational-monitoring
+baseline, not an Accounting-style disjoint prior-period comparison; for long selected
+ranges, shifted comparison windows can overlap the selected range while each comparison
+date still precedes its corresponding evaluated date.
+
+The Orders read extends four weeks earlier than the eight-week comparator window as a
+coverage probe. The response distinguishes:
+
+- `baselineProbeFrom`: the beginning of that bounded probe;
+- `firstObservedOrderInProbe`: the first reportable Order found inside it.
+
+Comparator dates before or on the first observed date in the bounded probe are not
+treated as authoritative zero days. Once coverage is established, later zero-Order
+comparator dates remain explicit zero samples; this prevents the engine from silently
+dropping real closed/outage/zero-demand days.
+
+### Baseline and anomaly policy
+
+The initial inspectable policy is returned in every response rather than hidden in UI
+code:
+
+- baseline: previous 8 same-weekday/comparable weekly periods;
+- minimum comparable periods: 4;
+- minimum current prep samples before a prep p90 anomaly can fire: 3;
+- robust center: median;
+- robust variability: median absolute deviation (MAD);
+- MAD qualification: 3× MAD when MAD is non-zero;
+- relative materiality floor: 25%;
+- absolute materiality floors:
+  - Order count: 3 Orders;
+  - Order total: 5,000 cents;
+  - average Order total: 300 cents;
+  - prep p90: 5 minutes.
+
+An anomaly must clear minimum sample, absolute/relative materiality and robust
+variability gates. Each emitted anomaly includes current/expected value, absolute delta,
+percentage change, actual materiality floor, MAD, sample count, confidence, range
+and top descriptive channel/fulfillment/hour contributors.
+
+These thresholds are **v1 sensitivity policy**, not accounting truth or permanent
+business constants; the API exposes them so later calibration can be explicit and
+auditable.
+
+Because Store operating history is still `CURRENT_CONFIGURATION_ONLY`, otherwise
+well-sampled comparisons currently report `OPERATING_CONTEXT_PARTIAL`; insufficient
+samples report `LOW_SAMPLE`. The engine may still surface a deterministic anomaly,
+but the UI can show its confidence rather than implying historical closure/schedule
+causality.
+
+### Projection contents
+
+`BusinessOperationsReportV1` contains only operational semantics:
+
+- Order total, Order count, average Order total and customer delivery-fee snapshots;
+- expected values and deltas;
+- daily current/expected timeline;
+- single-day cumulative hourly pace with zero-filled buckets;
+- channel, primary Order payment method and fulfillment breakdowns;
+- exact Order-total movement decomposition into volume effect + average-Order effect;
+- top-level commercial item/package demand with Order penetration;
+- component-expanded production demand, while standalone items remain their own
+  production units;
+- making -> ready prep p50/p90 using deterministic linear-interpolated percentiles,
+  with current channel breakdown;
+- a six-hour bounded current queue for `making` / `ready` only when the selected
+  report is exactly today;
+- deterministic anomalies for Order count, Order total, average Order total and prep
+  p90;
+- explicit coverage metadata.
+
+The count/AOV decomposition uses symmetric count × average effects and assigns the
+rounding remainder to the average-Order effect, so the two effects always reconcile
+exactly to the observed Order-total change.
+
+Commercial item money is not allocated to components. Historical Catalog category
+membership is not reconstructed. Accounting revenue/tax/tender/settlement semantics
+remain outside this contract.
+
+### Current Store context presentation
+
+The response exposes B5-B2 information under explicitly current labels:
+
+- `storeContext.currentStatus`;
+- `storeContext.currentConfiguration`;
+- `coverage.storeOperatingContext = CURRENT_CONFIGURATION_ONLY`.
+
+This prevents a historical report from presenting today's hours/pause state as if it
+were historical evidence.
+
+### POS/Print remains unavailable
+
+C1 returns `coverage.printHealth = UNAVAILABLE`. It does not read `PosPrintJob`,
+import POS internals or create a Reporting -> POS/Print dependency. Print health still
+requires a separately reviewed public seam from `store-operations-pos-print`.
+
+### B5-C1 delivery state
+
+B5-C1 is **MERGED / CI GREEN** through PR #2514 / final head `d8f21ca6` /
+squash `af57715f`; CI #6303 passed the repository architecture, API/Web lint/build,
+strict declaration and test gates. The additive `GET /reports/business` contract is
+therefore the source baseline for C2. Legacy `GET /reports` remains available and is
+not contracted by C1 or C2.
+
+### B5-C2 — Admin Today-first operating-monitoring UI
+
+C2 stays inside the existing Web/Admin adapter boundary. It does not add a backend
+module dependency, scanner allowance, database/schema change, migration or package
+dependency.
+
+The Admin `/admin/reports` route is reduced to an App Router composition wrapper and
+the operating-monitoring behavior lives under
+`apps/web/src/features/admin/business-reports/**`. The existing
+`AdminStoreContextSelector` is reused with its `operations` context on Business
+Reports, so the selected `storeStableId` is explicit in both the URL and the page
+header. No implicit default Store is introduced.
+
+The UI consumes only `GET /reports/business` and provides:
+
+- Today by default plus Yesterday / 7d / 28d / 90d / custom (maximum 90 inclusive
+  calendar days);
+- an attention-first anomaly summary using C1 `anomalies[]`, including current,
+  expected, delta, percentage change, sample count, confidence, materiality/MAD evidence
+  and descriptive channel/fulfillment/hour contributors;
+- core Order total, Order count, average Order total and prep p50/p90 cards with
+  current/expected/delta presentation. Order total is explicitly described as an
+  operating Order measure rather than Accounting Revenue;
+- a Today cumulative pace chart with Order-count / Order-total toggle using C1
+  `hourlyPace`. The browser does not recalculate elapsed-time comparability; it renders
+  the server-owned same-elapsed-local-time projection. Multi-day selections fall back to
+  the C1 daily timeline rather than manufacturing hourly semantics;
+- exact Order-total change decomposition from C1 `volumeEffectCents` and
+  `averageOrderEffectCents`, plus channel and fulfillment current/expected/delta
+  evidence;
+- separate Commercial items and Production items tabs. Component-expanded production
+  demand has no allocated package revenue;
+- execution health from making->ready prep timing plus the C1 today-only bounded recent
+  queue. The UI never performs an unbounded status query or reconstructs stale
+  historical `making` / `ready` state;
+- explicit coverage/limitations for `LOW_SAMPLE`,
+  `OPERATING_CONTEXT_PARTIAL`, `CURRENT_CONFIGURATION_ONLY` and
+  `printHealth = UNAVAILABLE`, including the warning that current hours/pause status
+  are not historical facts.
+
+C2 intentionally does not add Gross Sales, Net Revenue, Tax, Tips, provider fees,
+settlement, tender mix, P&L, account balances, payment decline rate, Web conversion,
+delivery efficiency, historical category sales, promotion ROI or refund-occurrence
+trend.
+
+Source-level Web characterization records the endpoint cutover, Today-first evidence
+sections, commercial/production separation, bounded queue/coverage limitations and
+AdminShell Store-selector reuse. Per repository workflow, local lint/build/test/CI
+reproduction is not run before user review; GitHub Actions remains the authoritative
+validation gate after remote-delivery authorization.
 
 ### B5-D
 

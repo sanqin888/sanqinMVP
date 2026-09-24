@@ -56,11 +56,16 @@ const confirmed: AccountingProviderFinancialReviewRevision = {
   status: 'CONFIRMED',
   reviewHash: 'a'.repeat(64),
   note: 'Correct PDF pairing',
+  effectiveSnapshotParserName: null,
+  effectiveSnapshotParserVersion: null,
+  effectiveSnapshotParseRunStableId: null,
+  effectiveSnapshotSourceParseRunStableId: null,
   createdByUserStableId: 'user_admin_1',
   confirmedByUserStableId: 'user_admin_1',
   confirmedAt: '2026-09-20T14:00:00.000Z',
   createdAt: '2026-09-20T13:00:00.000Z',
   updatedAt: '2026-09-20T14:00:00.000Z',
+  effectiveLines: [],
   corrections: [
     {
       correctionStableId: 'acctfincorr_1',
@@ -92,6 +97,64 @@ describe('provider financial review UI model', () => {
     expect(document.lines[1]?.amountCents).toBe(260336);
     expect(effective[1]?.amountCents).toBe(33848);
     expect(effective[0]).toEqual(document.lines[0]);
+  });
+
+  it('uses a confirmed parser snapshot as the full effective line set', () => {
+    const snapshot: AccountingProviderFinancialReviewRevision = {
+      ...confirmed,
+      reviewRevisionStableId: 'acctfinreview_snapshot_1',
+      corrections: [],
+      effectiveSnapshotParserName: 'accounting-provider-financial',
+      effectiveSnapshotParserVersion: '7',
+      effectiveSnapshotParseRunStableId: 'acctparserun_v7',
+      effectiveSnapshotSourceParseRunStableId: 'acctparserun_v6',
+      effectiveLines: [
+        {
+          reviewedLineStableId: 'reviewed_fee_control',
+          lineNo: 1,
+          sourceLineStableId: null,
+          rawCode: 'CLOVER_FEES_TOTAL',
+          rawName: 'Fees',
+          component: 'CONTROL_TOTAL',
+          postingTreatment: 'CONTROL_TOTAL',
+          taxRole: 'NONE',
+          amountCents: -3575,
+          occurredAt: null,
+        },
+        {
+          reviewedLineStableId: 'reviewed_equipment',
+          lineNo: 2,
+          sourceLineStableId: null,
+          rawCode: 'CLOVER_MONTHLY_EQUIPMENT_BILL',
+          rawName: 'Monthly Equipment Bill',
+          component: 'PLATFORM_OTHER_FEE',
+          postingTreatment: 'POSTABLE',
+          taxRole: 'NONE',
+          amountCents: -3000,
+          occurredAt: null,
+        },
+      ],
+    };
+
+    const effective = applyReviewedProviderFinancialLines(document, snapshot);
+
+    expect(effective).toHaveLength(2);
+    expect(effective[0]).toEqual(
+      expect.objectContaining({
+        lineStableId: 'reviewed_fee_control',
+        component: 'CONTROL_TOTAL',
+        amountCents: -3575,
+      }),
+    );
+    expect(effective[1]).toEqual(
+      expect.objectContaining({
+        lineStableId: 'reviewed_equipment',
+        component: 'PLATFORM_OTHER_FEE',
+        amountCents: -3000,
+      }),
+    );
+    expect(document.lines).toHaveLength(2);
+    expect(document.lines[0]?.component).toBe('SALES');
   });
 
   it('selects the highest confirmed revision rather than a newer draft', () => {

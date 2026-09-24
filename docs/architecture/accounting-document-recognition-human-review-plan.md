@@ -1027,6 +1027,94 @@ Delivery slices:
 This presentation/access work does not mutate source artifacts, content hashes, Human Review,
 provider financial facts, settlement authority, Journal facts or posting state.
 
+### 12.1 2026-09-24 Clover statement semantic-detail follow-up
+
+A real June 2026 Clover monthly statement exposed two related machine-semantics defects in the
+existing provider parser. The FEES table contains a right-side column heading named `Total` before
+the later left-side section-total row, so selecting the first `Total` below the FEES heading can
+miss the section HST. The same section also mixes a `MONTHLY EQUIPMENT BILL` with card/network
+fees, so treating the whole FEES control amount as payment processing loses the business expense
+classification.
+
+The first remediation slice is intentionally parser/settlement-only and does not rewrite any
+materialized historical document. Parser v7:
+
+- distinguishes the actual left-side FEES total from the table-header `Total`;
+- reads fee-detail rows and preserves stable Clover raw codes plus source extraction evidence;
+- decomposes Monthly Equipment Bill base/HST from recognized card/network fees;
+- keeps the statement `Fees` amount as a control-only line and requires fee detail to reconcile
+  exactly before settlement can be READY;
+- maps the Monthly Equipment Bill base to the existing general-operating-expense account with
+  category `expense_software` (软件订阅), while its HST maps to recoverable input tax and
+  card/network rows remain payment-processing expense;
+- leaves unrecognized fee descriptions UNCLASSIFIED so the statement fails closed.
+
+Settlement Journal aggregation therefore preserves the optional category dimension when multiple
+provider lines hit the same account. This slice has no schema/dependency change. The already
+materialized June source document remains immutable and unmodified; applying parser v7 to an
+existing materialized document is a separate follow-up using the previously selected
+parser-re-evaluation -> Human Review effective-snapshot path.
+
+Implementation state: **MERGED / CI GREEN** through PR #2516 (`b8e5b844`, CI #6310). Production
+verification of the existing-materialized June statement is intentionally deferred to the
+effective-snapshot remediation below rather than rewriting the v6 machine document.
+
+### 12.2 Existing-materialized parser re-evaluation -> Human Review effective snapshot
+
+The follow-up remediation keeps the three evidence layers distinct:
+
+1. the original `AccountingSourceArtifact` and persisted extraction evidence remain immutable;
+2. the original `AccountingProviderFinancialDocument` + `AccountingProviderFinancialLine` machine
+   materialization remains immutable, including its historical parser version;
+3. re-evaluation with the current provider parser produces a new immutable `AccountingParseRun`
+   containing current-parser metadata plus a DRAFT Human Review Revision containing the complete
+   effective-line snapshot.
+
+The review snapshot is not a mutation patch against the old machine line list. This matters for
+parser changes such as Clover v6 -> v7 where one old `Fees` line can become a control line plus
+multiple expense/tax detail lines. The review therefore owns `AccountingProviderFinancialReviewedLine`
+children with independent line numbering and stable IDs; `sourceLineStableId` is optional because
+a structural split/merge does not always have a one-to-one source-line mapping.
+
+Creation is fail-closed: only the latest unposted provider-document revision may be re-evaluated;
+the current parser must preserve provider/document identity, merchant/document references, period
+and currency; a deterministic current-parser ParseRun is persisted, while the review hash/audit bind
+the source-extraction ParseRun provenance; duplicate active snapshots for the same current parser
+version are rejected. Confirmation additionally
+requires a non-empty effective line set, matching successful ParseRun parser identity, and no
+mixed legacy correction rows. Until confirmation, settlement continues to use the prior confirmed
+authority. After confirmation, Shadow Preview/settlement uses the full reviewed snapshot and reruns
+the existing provider reconciliation gates using reviewed effective lines plus raw metadata from the
+approved current-parser ParseRun; the historical machine rows remain available for machine-vs-effective
+comparison and audit.
+
+Persistence is additive: nullable parser-snapshot provenance fields are added to
+`AccountingProviderFinancialReviewRevision` plus the reviewed-line child model. Per repository
+migration policy, MCP changes `schema.prisma` only in this source slice and does not touch
+`apps/api/prisma/migrations/**`.
+
+**MIGRATION REQUIRED.** Suggested migration name:
+`accounting_provider_parser_reevaluation_review_snapshot`.
+
+After this schema/source change is reviewed and merged to `dev`, generate it only from the user's
+verified disposable/local development database with:
+
+`pnpm --filter api exec prisma migrate dev --create-only --name accounting_provider_parser_reevaluation_review_snapshot`
+
+Expected SQL is additive only: add four nullable snapshot-provenance columns to
+`AccountingProviderFinancialReviewRevision` (parser name/version, effective ParseRun FK and source
+evidence ParseRun FK); create
+`AccountingProviderFinancialReviewedLine`; add the review -> effective ParseRun and
+review -> source-evidence ParseRun foreign keys/indexes; and add the reviewed-line stable-ID,
+review/line-number uniqueness, source-line lookup index and
+review-revision foreign key. No rename, backfill, enum mutation, DROP, NOT NULL tightening or
+historical review/correction rewrite is expected. Promotion to `main` / production remains blocked
+until the user-generated migration is reviewed, committed and merged back into `dev`.
+
+Implementation state: **LOCAL SOURCE READY FOR REVIEW** on
+`accounting/provider-parser-reevaluation-review`; no migration/PR/CI/deployment/production
+verification is claimed yet.
+
 ## 13. Testing requirements
 
 Add focused tests for:
@@ -1071,6 +1159,12 @@ or `storedUrl` migration is present.
 
 **Evidence Viewer Slice 2:** ordinary Accounting-internal read/UI capability; no schema,
 migration or dependency change is expected.
+
+**Existing-materialized parser re-evaluation / effective snapshot:** additive Accounting persistence
+change; **MIGRATION REQUIRED**. The source/schema slice must not promote beyond `dev` until the
+user-generated migration named `accounting_provider_parser_reevaluation_review_snapshot` has been
+reviewed and merged. Expected migration shape is exactly the nullable review snapshot provenance
+plus the new reviewed-line table and approved indexes/FKs described in §12.2.
 
 No recognition or delivery change should rewrite historical machine extraction or posted
 financial facts. Retain source/review evidence.

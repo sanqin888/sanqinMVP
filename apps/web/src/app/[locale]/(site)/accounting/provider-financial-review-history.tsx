@@ -59,7 +59,23 @@ export function ProviderFinancialReviewHistory({
               <p className="mt-2 break-all font-mono text-[10px] text-slate-400">
                 {revision.reviewRevisionStableId} · {revision.reviewHash}
               </p>
-              {revision.corrections.length ? (
+              {revision.effectiveSnapshotParserName ? (
+                <div className="mt-2 rounded bg-violet-50 px-2 py-1.5 text-violet-800">
+                  <p className="font-mono text-[10px]">
+                    {revision.effectiveSnapshotParserName} v
+                    {revision.effectiveSnapshotParserVersion ?? '—'} ·{' '}
+                    {revision.effectiveLines.length} {isZh ? '行' : 'lines'}
+                  </p>
+                  <p className="mt-1 break-all text-[10px] text-violet-600">
+                    {isZh ? '有效 ParseRun' : 'Effective ParseRun'}:{' '}
+                    {revision.effectiveSnapshotParseRunStableId ?? '—'}
+                  </p>
+                  <p className="mt-1 break-all text-[10px] text-violet-600">
+                    {isZh ? '源证据 ParseRun' : 'Source evidence ParseRun'}:{' '}
+                    {revision.effectiveSnapshotSourceParseRunStableId ?? '—'}
+                  </p>
+                </div>
+              ) : revision.corrections.length ? (
                 <div className="mt-2 space-y-1">
                   {revision.corrections.map((correction) => (
                     <p

@@ -103,7 +103,9 @@ export function AccountingManualUploadLibrary({
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="truncate font-medium">
-                      {item.originalFilename ?? item.artifactStableId}
+                      {item.displayFilename ??
+                        item.originalFilename ??
+                        item.artifactStableId}
                     </p>
                     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
                       {statusLabel(item.status, isZh)}
@@ -153,7 +155,8 @@ export function AccountingManualUploadLibrary({
                     <AccountingEvidenceViewer
                       evidence={{
                         artifactStableId: item.artifactStableId,
-                        filename: item.originalFilename,
+                        filename:
+                          item.displayFilename ?? item.originalFilename,
                         kind: item.kind,
                         deletion: {
                           inboxItemStableId: item.inboxItemStableId,

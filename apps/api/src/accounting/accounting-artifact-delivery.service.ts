@@ -59,6 +59,7 @@ export class AccountingArtifactDeliveryService {
       filename: artifactDeliveryFilename({
         artifactStableId: context.artifactStableId,
         originalFilename: context.originalFilename,
+        displayFilename: context.displayFilename,
         filePath,
         mimeType,
         retainedDerivative,
@@ -130,6 +131,7 @@ function resolveArtifactStoredUrl(storedUrl: string): string {
 function artifactDeliveryFilename(input: {
   artifactStableId: string;
   originalFilename: string | null;
+  displayFilename: string | null;
   filePath: string;
   mimeType: string;
   retainedDerivative: boolean;
@@ -140,6 +142,13 @@ function artifactDeliveryFilename(input: {
       path.basename(input.filePath) ||
       input.artifactStableId
     );
+  }
+
+  if (input.displayFilename?.trim()) {
+    const parsedDisplay = path.parse(input.displayFilename.trim());
+    const displayExtension =
+      extensionForMimeType(input.mimeType) || parsedDisplay.ext;
+    return `${parsedDisplay.name || input.artifactStableId}${displayExtension}`;
   }
 
   const original =

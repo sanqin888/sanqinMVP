@@ -118,6 +118,19 @@ export function applyReviewedProviderFinancialLines(
   review: AccountingProviderFinancialReviewRevision | null,
 ): AccountingProviderFinancialLine[] {
   if (!review) return document.lines;
+  if (review.effectiveSnapshotParserName) {
+    return review.effectiveLines.map((line) => ({
+      lineStableId: line.reviewedLineStableId,
+      lineNo: line.lineNo,
+      rawCode: line.rawCode,
+      rawName: line.rawName,
+      component: line.component,
+      postingTreatment: line.postingTreatment,
+      taxRole: line.taxRole,
+      amountCents: line.amountCents,
+      occurredAt: line.occurredAt,
+    }));
+  }
   const corrections = new Map(
     review.corrections.map((correction) => [
       correction.sourceLineStableId,

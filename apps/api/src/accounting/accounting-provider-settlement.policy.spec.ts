@@ -8,13 +8,16 @@ import {
   buildProviderSettlementDocumentPlan,
   buildUberPreCutoverOrderReversalDraft,
   PROVIDER_SETTLEMENT_ACCOUNT_IDS,
+  PROVIDER_SETTLEMENT_CATEGORY_IDS,
   resolveProviderSalesAuthority,
 } from './accounting-provider-settlement.policy';
 import { FANTUAN_ADJUSTMENT_RAW_CODES } from './accounting-fantuan-adjustment-detail.contract';
+import { CLOVER_STATEMENT_RAW_CODES } from './accounting-clover-statement.contract';
 
 type SettlementTestLine = {
   lineStableId: string;
   lineNo: number;
+  rawCode?: string;
   rawName: string;
   component: AccountingFinancialComponent;
   postingTreatment: AccountingFinancialPostingTreatment;
@@ -506,6 +509,252 @@ describe('Accounting provider settlement shadow policy', () => {
         targetAccountStableId: null,
       }),
     );
+  });
+
+  it('maps Clover monthly equipment fees to software subscription and reconciles fee detail', () => {
+    const plan = buildProviderSettlementDocumentPlan({
+      document: {
+        documentStableId: 'clover_statement_june_2026',
+        revision: 1,
+        provider: AccountingFinancialProvider.CLOVER,
+        documentType: AccountingFinancialDocumentType.STATEMENT,
+        storeStableId: '4750_Yonge_Street',
+        periodStart: '2026-06-01',
+        periodEnd: '2026-06-30',
+        currency: 'CAD',
+        lines: [
+          {
+            lineStableId: 'line-service-charges',
+            lineNo: 1,
+            rawName: 'Service Charges',
+            component: AccountingFinancialComponent.PROCESSING_FEE,
+            postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+            amountCents: -6264,
+          },
+          {
+            lineStableId: 'line-fees-control',
+            lineNo: 2,
+            rawCode: CLOVER_STATEMENT_RAW_CODES.FEES_TOTAL,
+            rawName: 'Fees',
+            component: AccountingFinancialComponent.CONTROL_TOTAL,
+            postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+            amountCents: -3575,
+          },
+          {
+            lineStableId: 'line-equipment',
+            lineNo: 3,
+            rawCode: CLOVER_STATEMENT_RAW_CODES.MONTHLY_EQUIPMENT_BILL,
+            rawName: 'Monthly Equipment Bill',
+            component: AccountingFinancialComponent.PLATFORM_OTHER_FEE,
+            postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+            amountCents: -3000,
+          },
+          {
+            lineStableId: 'line-equipment-hst',
+            lineNo: 4,
+            rawCode: CLOVER_STATEMENT_RAW_CODES.MONTHLY_EQUIPMENT_BILL_HST,
+            rawName: 'Monthly Equipment Bill HST',
+            component: AccountingFinancialComponent.PLATFORM_OTHER_FEE_TAX,
+            postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+            amountCents: -390,
+          },
+          {
+            lineStableId: 'line-network',
+            lineNo: 5,
+            rawCode: CLOVER_STATEMENT_RAW_CODES.NETWORK_FEES,
+            rawName: 'Other Card/Network Fees',
+            component: AccountingFinancialComponent.PROCESSING_FEE,
+            postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+            amountCents: -185,
+          },
+        ],
+      },
+      salesAuthority: 'RECONCILIATION_ONLY',
+      occurredAt: new Date('2026-06-30T03:59:59.999Z'),
+    });
+
+    expect(plan.status).toBe('READY');
+    expect(plan.controlTotalChecks).toEqual([
+      expect.objectContaining({
+        key: 'CLOVER_FEES_DETAIL',
+        status: 'MATCHED',
+        expectedCents: -3575,
+        calculatedCents: -3575,
+        deltaCents: 0,
+      }),
+    ]);
+    expect(plan.decisions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          lineStableId: 'line-equipment',
+          disposition: 'POSTABLE',
+          targetAccountStableId:
+            PROVIDER_SETTLEMENT_ACCOUNT_IDS.generalOperatingExpense,
+          targetCategoryStableId:
+            PROVIDER_SETTLEMENT_CATEGORY_IDS.cloverMonthlyEquipment,
+        }),
+        expect.objectContaining({
+          lineStableId: 'line-equipment-hst',
+          targetAccountStableId: PROVIDER_SETTLEMENT_ACCOUNT_IDS.hstRecoverable,
+          targetCategoryStableId: null,
+        }),
+        expect.objectContaining({
+          lineStableId: 'line-network',
+          targetAccountStableId:
+            PROVIDER_SETTLEMENT_ACCOUNT_IDS.paymentProcessingFeeExpense,
+          targetCategoryStableId: null,
+        }),
+      ]),
+    );
+    expect(plan.debitCents).toBe(9839);
+    expect(plan.creditCents).toBe(9839);
+    expect(plan.draftJournal?.lines).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          accountStableId:
+            PROVIDER_SETTLEMENT_ACCOUNT_IDS.generalOperatingExpense,
+          categoryStableId:
+            PROVIDER_SETTLEMENT_CATEGORY_IDS.cloverMonthlyEquipment,
+          debitCents: 3000,
+          creditCents: 0,
+        }),
+        expect.objectContaining({
+          accountStableId: PROVIDER_SETTLEMENT_ACCOUNT_IDS.hstRecoverable,
+          categoryStableId: null,
+          debitCents: 390,
+          creditCents: 0,
+        }),
+        expect.objectContaining({
+          accountStableId:
+            PROVIDER_SETTLEMENT_ACCOUNT_IDS.paymentProcessingFeeExpense,
+          categoryStableId: null,
+          debitCents: 6449,
+          creditCents: 0,
+        }),
+        expect.objectContaining({
+          accountStableId: PROVIDER_SETTLEMENT_ACCOUNT_IDS.cloverPending,
+          categoryStableId: null,
+          debitCents: 0,
+          creditCents: 9839,
+        }),
+      ]),
+    );
+  });
+
+  it('fails closed when Clover fee detail does not reconcile to the statement Fees control', () => {
+    const plan = buildProviderSettlementDocumentPlan({
+      document: {
+        documentStableId: 'clover_statement_mismatch',
+        revision: 1,
+        provider: AccountingFinancialProvider.CLOVER,
+        documentType: AccountingFinancialDocumentType.STATEMENT,
+        storeStableId: '4750_Yonge_Street',
+        periodStart: '2026-06-01',
+        periodEnd: '2026-06-30',
+        currency: 'CAD',
+        lines: [
+          {
+            lineStableId: 'line-fees-control',
+            lineNo: 1,
+            rawCode: CLOVER_STATEMENT_RAW_CODES.FEES_TOTAL,
+            rawName: 'Fees',
+            component: AccountingFinancialComponent.CONTROL_TOTAL,
+            postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+            amountCents: -3575,
+          },
+          {
+            lineStableId: 'line-equipment',
+            lineNo: 2,
+            rawCode: CLOVER_STATEMENT_RAW_CODES.MONTHLY_EQUIPMENT_BILL,
+            rawName: 'Monthly Equipment Bill',
+            component: AccountingFinancialComponent.PLATFORM_OTHER_FEE,
+            postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+            amountCents: -3000,
+          },
+          {
+            lineStableId: 'line-equipment-hst',
+            lineNo: 3,
+            rawCode: CLOVER_STATEMENT_RAW_CODES.MONTHLY_EQUIPMENT_BILL_HST,
+            rawName: 'Monthly Equipment Bill HST',
+            component: AccountingFinancialComponent.PLATFORM_OTHER_FEE_TAX,
+            postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+            amountCents: -390,
+          },
+          {
+            lineStableId: 'line-network',
+            lineNo: 4,
+            rawCode: CLOVER_STATEMENT_RAW_CODES.NETWORK_FEES,
+            rawName: 'Other Card/Network Fees',
+            component: AccountingFinancialComponent.PROCESSING_FEE,
+            postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+            amountCents: -175,
+          },
+        ],
+      },
+      salesAuthority: 'RECONCILIATION_ONLY',
+      occurredAt: new Date('2026-06-30T03:59:59.999Z'),
+    });
+
+    expect(plan.status).toBe('BLOCKED');
+    expect(plan.blockReasons).toContain('PROVIDER_CONTROL_TOTAL_MISMATCH');
+    expect(plan.controlTotalChecks).toEqual([
+      expect.objectContaining({
+        key: 'CLOVER_FEES_DETAIL',
+        status: 'MISMATCH',
+        expectedCents: -3575,
+        calculatedCents: -3565,
+        deltaCents: 10,
+      }),
+    ]);
+    expect(plan.draftJournal).toBeNull();
+  });
+
+  it('fails closed when Clover fee detail contains an unclassified description', () => {
+    const plan = buildProviderSettlementDocumentPlan({
+      document: {
+        documentStableId: 'clover_statement_unknown_fee',
+        revision: 1,
+        provider: AccountingFinancialProvider.CLOVER,
+        documentType: AccountingFinancialDocumentType.STATEMENT,
+        storeStableId: '4750_Yonge_Street',
+        periodStart: '2026-06-01',
+        periodEnd: '2026-06-30',
+        currency: 'CAD',
+        lines: [
+          {
+            lineStableId: 'line-fees-control',
+            lineNo: 1,
+            rawCode: CLOVER_STATEMENT_RAW_CODES.FEES_TOTAL,
+            rawName: 'Fees',
+            component: AccountingFinancialComponent.CONTROL_TOTAL,
+            postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+            amountCents: -100,
+          },
+          {
+            lineStableId: 'line-unknown-fee',
+            lineNo: 2,
+            rawCode: CLOVER_STATEMENT_RAW_CODES.UNCLASSIFIED_FEES,
+            rawName: 'UNKNOWN CLOVER FEE',
+            component: AccountingFinancialComponent.OTHER,
+            postingTreatment: AccountingFinancialPostingTreatment.UNCLASSIFIED,
+            amountCents: -100,
+          },
+        ],
+      },
+      salesAuthority: 'RECONCILIATION_ONLY',
+      occurredAt: new Date('2026-06-30T03:59:59.999Z'),
+    });
+
+    expect(plan.controlTotalChecks).toEqual([
+      expect.objectContaining({
+        key: 'CLOVER_FEES_DETAIL',
+        status: 'MATCHED',
+        deltaCents: 0,
+      }),
+    ]);
+    expect(plan.status).toBe('BLOCKED');
+    expect(plan.blockReasons).toContain('UNCLASSIFIED_PROVIDER_COMPONENT');
+    expect(plan.draftJournal).toBeNull();
   });
 
   it('keeps Uber sales and sales tax reconciliation-only after live Order cutover while fees remain postable', () => {

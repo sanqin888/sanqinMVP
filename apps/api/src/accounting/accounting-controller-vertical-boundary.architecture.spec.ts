@@ -97,6 +97,7 @@ const EXPECTED_ROUTES = [
   'POST provider-payouts',
   'POST provider-payouts/from-bank-row-decision',
   'POST provider-payouts/bank-row-decisions/confirm',
+  'POST provider-financial/:documentStableId/parser-reevaluation',
   'POST provider-financial/:documentStableId/review-revisions',
   'POST provider-financial/:documentStableId/review-revisions/:reviewRevisionStableId/confirm',
   'POST inbox/:inboxItemStableId/provider-financial/confirm',

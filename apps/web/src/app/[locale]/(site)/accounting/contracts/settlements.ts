@@ -89,7 +89,8 @@ export type ProviderSettlementDocumentPlan = {
       | 'UBER_TOTAL_FEES'
       | 'UBER_TOTAL_MARKETING'
       | 'UBER_TOTAL_AMENDMENTS'
-      | 'UBER_NET_TOTAL';
+      | 'UBER_NET_TOTAL'
+      | 'CLOVER_FEES_DETAIL';
     status: 'MATCHED' | 'MISMATCH' | 'INCOMPLETE';
     controlRawName: string;
     controlLineStableId: string | null;
@@ -109,6 +110,7 @@ export type ProviderSettlementDocumentPlan = {
     disposition: 'POSTABLE' | 'RECONCILIATION_ONLY' | 'CONTROL_TOTAL' | 'BLOCKED';
     reason: string;
     targetAccountStableId: string | null;
+    targetCategoryStableId: string | null;
   }>;
   draftJournal: {
     idempotencyKey: string;

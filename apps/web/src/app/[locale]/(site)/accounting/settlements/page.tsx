@@ -520,7 +520,13 @@ function ShadowPreviewPanel({
                     </span>
                   </td>
                   <td className="px-2 py-2 font-mono text-[11px]">
-                    {decision.targetAccountStableId ?? '—'}
+                    <div>{decision.targetAccountStableId ?? '—'}</div>
+                    {decision.targetCategoryStableId ? (
+                      <div className="mt-1 text-slate-500">
+                        {isZh ? '分类' : 'category'}:{' '}
+                        {decision.targetCategoryStableId}
+                      </div>
+                    ) : null}
                   </td>
                   <td className="px-2 py-2 text-slate-600">{decision.reason}</td>
                 </tr>

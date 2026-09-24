@@ -1,4 +1,9 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+} from '@nestjs/common';
 import {
   AccountingFinancialComponent,
   AccountingFinancialDocumentType,
@@ -157,6 +162,67 @@ const confirmedHumanReviewRevision = (document: ProviderDocumentRow) => {
     confirmedAt: review.confirmedAt.toISOString(),
     confirmedByUserStableId: review.confirmedByUserStableId,
   };
+};
+
+const effectiveProviderFinancialRawMetadata = (
+  document: ProviderDocumentRow,
+): ProviderDocumentRow['rawMetadata'] => {
+  const review = document.reviewRevisions?.[0] ?? null;
+  if (!review?.effectiveSnapshotParserName) return document.rawMetadata;
+
+  const parseResult = jsonRecord(review.effectiveSnapshotParseRun?.resultJson);
+  const rawMetadata = parseResult.rawMetadata;
+  if (
+    !rawMetadata ||
+    typeof rawMetadata !== 'object' ||
+    Array.isArray(rawMetadata)
+  ) {
+    throw new ConflictException(
+      `confirmed parser re-evaluation review is missing effective metadata: ${document.documentStableId}`,
+    );
+  }
+  return rawMetadata as ProviderDocumentRow['rawMetadata'];
+};
+
+const effectiveProviderFinancialLines = (
+  document: ProviderDocumentRow,
+): ProviderDocumentRow['lines'] => {
+  const review = document.reviewRevisions?.[0] ?? null;
+  if (!review) return document.lines;
+
+  if (review.effectiveSnapshotParserName) {
+    if (review.effectiveLines.length === 0) {
+      throw new ConflictException(
+        `confirmed parser re-evaluation review is missing effective lines: ${document.documentStableId}`,
+      );
+    }
+    return review.effectiveLines.map((line) => ({
+      lineStableId: line.reviewedLineStableId,
+      lineNo: line.lineNo,
+      rawCode: line.rawCode,
+      rawName: line.rawName,
+      component: line.component,
+      postingTreatment: line.postingTreatment,
+      taxRole: line.taxRole,
+      amountCents: line.amountCents,
+      occurredAt: line.occurredAt,
+    }));
+  }
+
+  return applyProviderFinancialReviewCorrections({
+    sourceLines: document.lines,
+    corrections: review.corrections.map((correction) => ({
+      sourceLineStableId: correction.sourceLineStableId,
+      reason: correction.reason,
+      note: correction.note,
+      effectiveRawCode: correction.effectiveRawCode,
+      effectiveRawName: correction.effectiveRawName,
+      effectiveComponent: correction.effectiveComponent,
+      effectivePostingTreatment: correction.effectivePostingTreatment,
+      effectiveTaxRole: correction.effectiveTaxRole,
+      effectiveAmountCents: correction.effectiveAmountCents,
+    })),
+  });
 };
 
 const isFantuanAdjustmentDetail = (document: ProviderDocumentRow): boolean =>
@@ -404,27 +470,11 @@ export class AccountingProviderSettlementPreviewService {
         storeStableId,
         ...(input.provider ? { provider: input.provider } : {}),
       });
-    const allDocuments = machineDocuments.map((document) => {
-      const reviewRevision = document.reviewRevisions?.[0] ?? null;
-      if (!reviewRevision) return document;
-      return {
-        ...document,
-        lines: applyProviderFinancialReviewCorrections({
-          sourceLines: document.lines,
-          corrections: reviewRevision.corrections.map((correction) => ({
-            sourceLineStableId: correction.sourceLineStableId,
-            reason: correction.reason,
-            note: correction.note,
-            effectiveRawCode: correction.effectiveRawCode,
-            effectiveRawName: correction.effectiveRawName,
-            effectiveComponent: correction.effectiveComponent,
-            effectivePostingTreatment: correction.effectivePostingTreatment,
-            effectiveTaxRole: correction.effectiveTaxRole,
-            effectiveAmountCents: correction.effectiveAmountCents,
-          })),
-        }),
-      };
-    });
+    const allDocuments = machineDocuments.map((document) => ({
+      ...document,
+      rawMetadata: effectiveProviderFinancialRawMetadata(document),
+      lines: effectiveProviderFinancialLines(document),
+    }));
     const candidateIdentityKeys = new Set(
       allDocuments
         .filter((document) =>
