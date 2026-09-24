@@ -14,6 +14,10 @@ import type {
 } from './accounting-journal-policy';
 import { FANTUAN_ADJUSTMENT_RAW_CODES } from './accounting-fantuan-adjustment-detail.contract';
 import {
+  CLOVER_MONTHLY_EQUIPMENT_CATEGORY_STABLE_ID,
+  CLOVER_STATEMENT_RAW_CODES,
+} from './accounting-clover-statement.contract';
+import {
   ACCOUNTING_PROVIDER_PENDING_ACCOUNT_IDS,
   providerPendingAccountStableId,
 } from './accounting-provider-accounts';
@@ -24,6 +28,10 @@ export const PROVIDER_FINANCIAL_SOURCE_FACT_TYPE =
   'accounting.provider_financial_document.v1';
 export const UBER_PRE_CUTOVER_REVERSAL_SOURCE_FACT_TYPE =
   'accounting.uber_pre_cutover_order_reversal.v1';
+
+export const PROVIDER_SETTLEMENT_CATEGORY_IDS = {
+  cloverMonthlyEquipment: CLOVER_MONTHLY_EQUIPMENT_CATEGORY_STABLE_ID,
+} as const;
 
 export const PROVIDER_SETTLEMENT_ACCOUNT_IDS = {
   primaryBank: 'account_primary_bank',
@@ -150,6 +158,7 @@ export type ProviderSettlementLineDecision = {
   disposition: ProviderSettlementLineDisposition;
   reason: string;
   targetAccountStableId: string | null;
+  targetCategoryStableId: string | null;
 };
 
 export type ProviderSettlementDocumentInput = {
@@ -178,7 +187,8 @@ export type ProviderSettlementControlTotalCheck = {
     | 'UBER_TOTAL_FEES'
     | 'UBER_TOTAL_MARKETING'
     | 'UBER_TOTAL_AMENDMENTS'
-    | 'UBER_NET_TOTAL';
+    | 'UBER_NET_TOTAL'
+    | 'CLOVER_FEES_DETAIL';
   status: 'MATCHED' | 'MISMATCH' | 'INCOMPLETE';
   controlRawName: string;
   controlLineStableId: string | null;
@@ -287,6 +297,15 @@ const targetAccountFor = (params: {
   }
 };
 
+const targetCategoryFor = (params: {
+  provider: AccountingFinancialProvider;
+  line: ProviderSettlementDocumentInput['lines'][number];
+}): string | null =>
+  params.provider === AccountingFinancialProvider.CLOVER &&
+  params.line.rawCode === CLOVER_STATEMENT_RAW_CODES.MONTHLY_EQUIPMENT_BILL
+    ? PROVIDER_SETTLEMENT_CATEGORY_IDS.cloverMonthlyEquipment
+    : null;
+
 export function classifyProviderSettlementLine(params: {
   provider: AccountingFinancialProvider;
   salesAuthority: ProviderSalesAuthority;
@@ -299,6 +318,7 @@ export function classifyProviderSettlementLine(params: {
       disposition: 'CONTROL_TOTAL',
       reason: 'ZERO_AMOUNT',
       targetAccountStableId: null,
+      targetCategoryStableId: null,
     };
   }
   if (
@@ -311,6 +331,7 @@ export function classifyProviderSettlementLine(params: {
       disposition: 'CONTROL_TOTAL',
       reason: 'CONTROL_EVIDENCE_ONLY',
       targetAccountStableId: null,
+      targetCategoryStableId: null,
     };
   }
   if (
@@ -322,6 +343,7 @@ export function classifyProviderSettlementLine(params: {
       disposition: 'RECONCILIATION_ONLY',
       reason: 'PROVIDER_RECONCILIATION_ONLY',
       targetAccountStableId: null,
+      targetCategoryStableId: null,
     };
   }
   if (
@@ -332,6 +354,7 @@ export function classifyProviderSettlementLine(params: {
       disposition: 'BLOCKED',
       reason: 'UNCLASSIFIED_PROVIDER_COMPONENT',
       targetAccountStableId: null,
+      targetCategoryStableId: null,
     };
   }
   if (
@@ -344,6 +367,7 @@ export function classifyProviderSettlementLine(params: {
         disposition: 'BLOCKED',
         reason: 'DOCUMENT_CROSSES_LIVE_ORDER_CUTOVER',
         targetAccountStableId: null,
+        targetCategoryStableId: null,
       };
     }
     if (
@@ -355,6 +379,7 @@ export function classifyProviderSettlementLine(params: {
         disposition: 'RECONCILIATION_ONLY',
         reason: 'CANONICAL_ORDER_REVENUE_AUTHORITATIVE',
         targetAccountStableId: null,
+        targetCategoryStableId: null,
       };
     }
   }
@@ -364,6 +389,7 @@ export function classifyProviderSettlementLine(params: {
       disposition: 'RECONCILIATION_ONLY',
       reason: 'REFUND_REQUIRES_CANONICAL_CHANGE_OR_PROVIDER_REVERSAL_EVIDENCE',
       targetAccountStableId: null,
+      targetCategoryStableId: null,
     };
   }
 
@@ -377,6 +403,7 @@ export function classifyProviderSettlementLine(params: {
       disposition: 'BLOCKED',
       reason: 'UNMAPPED_PROVIDER_COMPONENT',
       targetAccountStableId: null,
+      targetCategoryStableId: null,
     };
   }
   return {
@@ -389,34 +416,65 @@ export function classifyProviderSettlementLine(params: {
           ? 'NON_TAXABLE_STORE_TIP_REVENUE'
           : 'SETTLEMENT_COMPONENT',
     targetAccountStableId,
+    targetCategoryStableId: targetCategoryFor({
+      provider: params.provider,
+      line,
+    }),
   };
 }
 
+type SettlementJournalBucket = {
+  accountStableId: string;
+  categoryStableId: string | null;
+  netDebitCents: number;
+};
+
+const settlementJournalBucketKey = (
+  accountStableId: string,
+  categoryStableId: string | null,
+) => `${accountStableId}\u0000${categoryStableId ?? ''}`;
+
 const addNet = (
-  target: Map<string, number>,
-  account: string,
+  target: Map<string, SettlementJournalBucket>,
+  accountStableId: string,
+  categoryStableId: string | null,
   value: number,
 ) => {
-  const next = (target.get(account) ?? 0) + value;
+  const key = settlementJournalBucketKey(accountStableId, categoryStableId);
+  const current = target.get(key);
+  const next = (current?.netDebitCents ?? 0) + value;
   if (!Number.isSafeInteger(next)) {
     throw new Error(
-      `Settlement account total exceeds safe integer range: ${account}`,
+      `Settlement account total exceeds safe integer range: ${accountStableId}`,
     );
   }
-  target.set(account, next);
+  target.set(key, {
+    accountStableId,
+    categoryStableId,
+    netDebitCents: next,
+  });
 };
 
 const toJournalLines = (
-  accountNetDebits: Map<string, number>,
+  accountNetDebits: Map<string, SettlementJournalBucket>,
   memo: string,
 ): AccountingJournalLineInput[] =>
-  Array.from(accountNetDebits.entries())
-    .filter(([, value]) => value !== 0)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([accountStableId, value]) => ({
-      accountStableId,
-      debitCents: value > 0 ? value : 0,
-      creditCents: value < 0 ? -value : 0,
+  Array.from(accountNetDebits.values())
+    .filter((bucket) => bucket.netDebitCents !== 0)
+    .sort(
+      (left, right) =>
+        left.accountStableId.localeCompare(right.accountStableId) ||
+        (left.categoryStableId ?? '').localeCompare(
+          right.categoryStableId ?? '',
+        ),
+    )
+    .map((bucket) => ({
+      accountStableId: bucket.accountStableId,
+      categoryStableId: bucket.categoryStableId,
+      debitCents:
+        bucket.netDebitCents > 0 ? bucket.netDebitCents : 0,
+      creditCents:
+        bucket.netDebitCents < 0 ? -bucket.netDebitCents : 0,
       memo,
     }));
 
@@ -513,11 +571,84 @@ const sumControlAmounts = (
   return total;
 };
 
+const CLOVER_FEES_DETAIL_RAW_CODES = new Set<string>([
+  CLOVER_STATEMENT_RAW_CODES.MONTHLY_EQUIPMENT_BILL,
+  CLOVER_STATEMENT_RAW_CODES.MONTHLY_EQUIPMENT_BILL_HST,
+  CLOVER_STATEMENT_RAW_CODES.NETWORK_FEES,
+  CLOVER_STATEMENT_RAW_CODES.NETWORK_FEES_HST,
+  CLOVER_STATEMENT_RAW_CODES.UNCLASSIFIED_FEES,
+]);
+
+const buildCloverFeesControlTotalChecks = (
+  document: ProviderSettlementDocumentInput,
+): ProviderSettlementControlTotalCheck[] => {
+  if (
+    document.provider !== AccountingFinancialProvider.CLOVER ||
+    document.documentType !== AccountingFinancialDocumentType.STATEMENT
+  ) {
+    return [];
+  }
+
+  const controlLines = document.lines.filter(
+    (line) => line.rawCode === CLOVER_STATEMENT_RAW_CODES.FEES_TOTAL,
+  );
+  if (controlLines.length === 0) return [];
+
+  const detailLines = document.lines.filter(
+    (line) =>
+      typeof line.rawCode === 'string' &&
+      CLOVER_FEES_DETAIL_RAW_CODES.has(line.rawCode),
+  );
+  let calculatedCents = 0;
+  for (const line of detailLines) {
+    const next = calculatedCents + line.amountCents;
+    if (!Number.isSafeInteger(next)) {
+      throw new Error('Clover Fees control total exceeds safe integer range');
+    }
+    calculatedCents = next;
+  }
+
+  const controlLine = controlLines.length === 1 ? controlLines[0] : null;
+  const detailsComplete =
+    detailLines.length > 0 || controlLine?.amountCents === 0;
+  if (!controlLine || !detailsComplete) {
+    return [
+      {
+        key: 'CLOVER_FEES_DETAIL',
+        status: 'INCOMPLETE',
+        controlRawName: 'Fees',
+        controlLineStableId: controlLine?.lineStableId ?? null,
+        expectedCents: controlLine?.amountCents ?? null,
+        calculatedCents,
+        deltaCents: null,
+      },
+    ];
+  }
+
+  const deltaCents = calculatedCents - controlLine.amountCents;
+  if (!Number.isSafeInteger(deltaCents)) {
+    throw new Error('Clover Fees control total delta exceeds safe integer range');
+  }
+  return [
+    {
+      key: 'CLOVER_FEES_DETAIL',
+      status: deltaCents === 0 ? 'MATCHED' : 'MISMATCH',
+      controlRawName: 'Fees',
+      controlLineStableId: controlLine.lineStableId,
+      expectedCents: controlLine.amountCents,
+      calculatedCents,
+      deltaCents,
+    },
+  ];
+};
+
 // Reconcile source controls before posting disposition changes which lines are
 // POSTABLE. A balanced draft Journal alone cannot prove extraction integrity.
 const buildProviderControlTotalChecks = (
   document: ProviderSettlementDocumentInput,
 ): ProviderSettlementControlTotalCheck[] => {
+  const cloverChecks = buildCloverFeesControlTotalChecks(document);
+  if (cloverChecks.length > 0) return cloverChecks;
   if (
     document.provider !== AccountingFinancialProvider.UBER_EATS ||
     document.documentType !== AccountingFinancialDocumentType.STATEMENT
@@ -668,12 +799,17 @@ export function buildProviderSettlementDocumentPlan(params: {
   }
 
   const pendingAccount = providerPendingAccount(document.provider);
-  const accountNetDebits = new Map<string, number>();
+  const accountNetDebits = new Map<string, SettlementJournalBucket>();
   for (const line of postable) {
     const target = line.targetAccountStableId;
     if (!target) continue;
-    addNet(accountNetDebits, pendingAccount, line.amountCents);
-    addNet(accountNetDebits, target, -line.amountCents);
+    addNet(accountNetDebits, pendingAccount, null, line.amountCents);
+    addNet(
+      accountNetDebits,
+      target,
+      line.targetCategoryStableId,
+      -line.amountCents,
+    );
   }
   const memo =
     `${document.provider} settlement ${document.documentStableId} ` +

@@ -1027,6 +1027,37 @@ Delivery slices:
 This presentation/access work does not mutate source artifacts, content hashes, Human Review,
 provider financial facts, settlement authority, Journal facts or posting state.
 
+### 12.1 2026-09-24 Clover statement semantic-detail follow-up
+
+A real June 2026 Clover monthly statement exposed two related machine-semantics defects in the
+existing provider parser. The FEES table contains a right-side column heading named `Total` before
+the later left-side section-total row, so selecting the first `Total` below the FEES heading can
+miss the section HST. The same section also mixes a `MONTHLY EQUIPMENT BILL` with card/network
+fees, so treating the whole FEES control amount as payment processing loses the business expense
+classification.
+
+The first remediation slice is intentionally parser/settlement-only and does not rewrite any
+materialized historical document. Parser v7:
+
+- distinguishes the actual left-side FEES total from the table-header `Total`;
+- reads fee-detail rows and preserves stable Clover raw codes plus source extraction evidence;
+- decomposes Monthly Equipment Bill base/HST from recognized card/network fees;
+- keeps the statement `Fees` amount as a control-only line and requires fee detail to reconcile
+  exactly before settlement can be READY;
+- maps the Monthly Equipment Bill base to the existing general-operating-expense account with
+  category `expense_software` (软件订阅), while its HST maps to recoverable input tax and
+  card/network rows remain payment-processing expense;
+- leaves unrecognized fee descriptions UNCLASSIFIED so the statement fails closed.
+
+Settlement Journal aggregation therefore preserves the optional category dimension when multiple
+provider lines hit the same account. This slice has no schema/dependency change. The already
+materialized June source document remains immutable and unmodified; applying parser v7 to an
+existing materialized document is a separate follow-up using the previously selected
+parser-re-evaluation -> Human Review effective-snapshot path.
+
+Implementation state: **LOCAL REVIEW ONLY** on
+`accounting/clover-statement-semantic-v7`; no PR/CI/deployment/production verification is claimed.
+
 ## 13. Testing requirements
 
 Add focused tests for:

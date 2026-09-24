@@ -371,6 +371,16 @@ Target:
 
 The original implementation sequence through layout-aware Slice 3 is merged. The historical Uber July document has already been Human-Reviewed/corrected and posted, so PDF verification remains read-only and does not reopen that Journal/settlement. Slice 3V is split: **3V-A** native-PDF usability + sanitized Poppler golden is merged in PR #2439, and **3V-B** bounded scanned-PDF page raster/Textract is merged in PR #2440 as `0ac9117f` after final head `3c5c0400`, with PR CI #6057 and merged-head CI #6058 green. 3V-B removes the raw-PDF Textract fallback: scan candidates are bounded to 6 pages, rasterized locally/sequentially at 200 DPI with existing Poppler, sent to synchronous Textract as page images, and merged only from LINE text/confidence/geometry with original page identities. AnalyzeExpense semantic totals/tax/line items do not become provider authority; page/resource failures abort the whole OCR result, while Provider API remains on its existing CSV-owned path. Source/CI work is complete; active production verification of the new scanned-PDF path remains pending. Evidence Viewer Slice 1/1B/2 are merged; Slice 1B's additive user-generated migration `20260921124637_add_accounting_evidence_folders` remains reviewed as matching the schema change with no backfill/drop/rename/physical-file mutation.
 
+**2026-09-24 Clover semantic-detail follow-up — LOCAL REVIEW ONLY:** parser v7 now has a
+focused source change for the real FEES-table shape where the column heading `Total` precedes the
+actual section total. The planned local slice decomposes the existing statement FEES control into
+Monthly Equipment Bill base/HST plus recognized card/network fees, maps the base to
+`expense_software`, preserves category in the settlement draft Journal, and blocks on a FEES
+detail/control mismatch or unclassified fee detail. No migration/dependency or historical
+materialized-document rewrite belongs to this first slice. Existing-materialized remediation
+remains the next separate Human Review effective-snapshot slice after this source change is
+reviewed.
+
 ### 5.2 B1 — Expense -> canonical Journal
 
 Priority: **P0 CORE FINANCIAL FOUNDATION**  
