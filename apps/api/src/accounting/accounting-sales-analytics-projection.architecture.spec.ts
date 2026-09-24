@@ -52,6 +52,7 @@ describe('B2 canonical Journal Sales projection boundary', () => {
     expect(service).toContain('readProviderFinancialCoverage');
     expect(service).toContain('resolveAccountingSalesProviderCoverage');
     expect(service).toContain("'UNATTRIBUTED_PROVIDER'");
+    expect(contract).toContain('accountingStartDate: string');
     expect(contract).toContain('providerCoverage');
     expect(contract).toContain('financialCompleteThrough');
     expect(contract).toContain('AccountingSalesProviderCoverageStatusV1');
