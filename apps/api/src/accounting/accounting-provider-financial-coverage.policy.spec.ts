@@ -1,6 +1,4 @@
-import {
-  resolveProviderFinancialCoverageFrontier,
-} from './accounting-provider-financial-coverage.policy';
+import { resolveProviderFinancialCoverageFrontier } from './accounting-provider-financial-coverage.policy';
 
 describe('provider financial coverage frontier policy', () => {
   it('advances from the required history boundary across contiguous posted periods', () => {
@@ -100,10 +98,7 @@ describe('provider financial coverage frontier policy', () => {
       }),
     ).toEqual({
       financialCompleteThrough: '2026-07-31',
-      evidenceDocumentStableIds: [
-        'doc_june_first_half',
-        'doc_june_to_july',
-      ],
+      evidenceDocumentStableIds: ['doc_june_first_half', 'doc_june_to_july'],
     });
   });
 

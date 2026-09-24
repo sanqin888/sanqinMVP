@@ -15,9 +15,7 @@ import {
   type AccountingDb,
   type AccountingTransactionClient,
 } from './accounting-db';
-import {
-  resolveProviderFinancialCoverageFrontier,
-} from './accounting-provider-financial-coverage.policy';
+import { resolveProviderFinancialCoverageFrontier } from './accounting-provider-financial-coverage.policy';
 import { PROVIDER_FINANCIAL_SOURCE_FACT_TYPE } from './accounting-provider-settlement.policy';
 
 export type ProviderFinancialCoverageReconciliationResult = {

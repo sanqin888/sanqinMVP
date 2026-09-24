@@ -85,8 +85,8 @@ function makeService(params?: {
     },
   };
   const prisma = {
-    $transaction: jest.fn(
-      (work: (client: typeof tx) => Promise<unknown>) => work(tx),
+    $transaction: jest.fn((work: (client: typeof tx) => Promise<unknown>) =>
+      work(tx),
     ),
   };
   return {
@@ -105,19 +105,13 @@ const input = {
 describe('AccountingProviderFinancialCoverageService', () => {
   it('advances only across confirmed STATEMENT documents with exact active canonical Journal anchors', async () => {
     const june = statement('doc_june', '2026-06-01', '2026-06-30');
-    const july = statement(
-      'doc_july',
-      '2026-07-01',
-      '2026-07-31',
-      1,
-      [
-        {
-          status: AccountingProviderFinancialReviewStatus.CONFIRMED,
-          confirmedAt: new Date('2026-09-21T05:03:53.924Z'),
-          confirmedByUserStableId: 'user_admin_1',
-        },
-      ],
-    );
+    const july = statement('doc_july', '2026-07-01', '2026-07-31', 1, [
+      {
+        status: AccountingProviderFinancialReviewStatus.CONFIRMED,
+        confirmedAt: new Date('2026-09-21T05:03:53.924Z'),
+        confirmedByUserStableId: 'user_admin_1',
+      },
+    ]);
     const august = statement('doc_august', '2026-08-01', '2026-08-31', 2);
     const { service, tx } = makeService({
       documents: [june, july, august],
@@ -158,9 +152,7 @@ describe('AccountingProviderFinancialCoverageService', () => {
         }) as unknown,
       }),
     );
-    expect(
-      tx.accountingProviderFinancialCoverage.update,
-    ).toHaveBeenCalledWith({
+    expect(tx.accountingProviderFinancialCoverage.update).toHaveBeenCalledWith({
       where: { id: 'coverage-db-id' },
       data: {
         financialCompleteThrough: new Date('2026-07-31T00:00:00.000Z'),
@@ -247,19 +239,13 @@ describe('AccountingProviderFinancialCoverageService', () => {
   });
 
   it('requires the latest Human Review revision to be confirmed when Human Review exists', async () => {
-    const june = statement(
-      'doc_june',
-      '2026-06-01',
-      '2026-06-30',
-      1,
-      [
-        {
-          status: AccountingProviderFinancialReviewStatus.DRAFT,
-          confirmedAt: null,
-          confirmedByUserStableId: null,
-        },
-      ],
-    );
+    const june = statement('doc_june', '2026-06-01', '2026-06-30', 1, [
+      {
+        status: AccountingProviderFinancialReviewStatus.DRAFT,
+        confirmedAt: null,
+        confirmedByUserStableId: null,
+      },
+    ]);
     const { service, tx } = makeService({
       documents: [june],
       journals: [journal('doc_june')],

@@ -85,8 +85,7 @@ export function resolveProviderFinancialCoverageFrontier(params: {
         left.documentStableId.localeCompare(right.documentStableId),
     );
 
-  let frontierMillis =
-    currentCompleteMillis ?? requiredFromMillis - DAY_MS;
+  let frontierMillis = currentCompleteMillis ?? requiredFromMillis - DAY_MS;
   const evidenceDocumentStableIds: string[] = [];
 
   for (const interval of intervals) {

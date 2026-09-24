@@ -173,10 +173,8 @@ describe('Phase 9 canonical financial facts boundary', () => {
         'accounting-provider-settlement-execution.service.ts',
       )?.source ?? '';
     const providerFinancialCoverageService =
-      file(
-        ACCOUNTING_ROOT,
-        'accounting-provider-financial-coverage.service.ts',
-      )?.source ?? '';
+      file(ACCOUNTING_ROOT, 'accounting-provider-financial-coverage.service.ts')
+        ?.source ?? '';
     const providerPayoutService =
       file(ACCOUNTING_ROOT, 'accounting-provider-payout.service.ts')?.source ??
       '';
@@ -478,9 +476,8 @@ describe('Phase 9 canonical financial facts boundary', () => {
     })
       .filter(
         ({ path, source }) =>
-          !path.endsWith(
-            'accounting-provider-financial-coverage.service.ts',
-          ) && source.includes('reconcilePostedCoverage('),
+          !path.endsWith('accounting-provider-financial-coverage.service.ts') &&
+          source.includes('reconcilePostedCoverage('),
       )
       .map(({ path }) =>
         path.slice(API_SRC_ROOT.length + 1).replaceAll('\\', '/'),
