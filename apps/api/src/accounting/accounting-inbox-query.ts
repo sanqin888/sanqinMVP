@@ -293,10 +293,9 @@ export async function listAccountingManualUploadLibrary(
       originalFilename: row.artifact.originalFilename,
       displayFilename:
         row.artifact.binaryRetention?.state ===
-          AccountingArtifactBinaryRetentionState.COMPRESSED_ONLY
+        AccountingArtifactBinaryRetentionState.COMPRESSED_ONLY
           ? accountingRetainedImageDisplayFilename({
-              retainedStoredUrl:
-                row.artifact.binaryRetention.retainedStoredUrl,
+              retainedStoredUrl: row.artifact.binaryRetention.retainedStoredUrl,
               vendorName:
                 vendorNames.get(row.materializedEntityStableId ?? '') ?? null,
               fallbackTimestamp:
@@ -307,7 +306,7 @@ export async function listAccountingManualUploadLibrary(
       kind: row.artifact.kind,
       byteSize:
         row.artifact.binaryRetention?.state ===
-          AccountingArtifactBinaryRetentionState.COMPRESSED_ONLY
+        AccountingArtifactBinaryRetentionState.COMPRESSED_ONLY
           ? (row.artifact.binaryRetention.retainedByteSize ??
             row.artifact.byteSize)
           : row.artifact.byteSize,
@@ -608,7 +607,7 @@ export async function readAccountingArtifactContentContext(
   ]);
   const displayFilename =
     artifact.binaryRetention?.state ===
-      AccountingArtifactBinaryRetentionState.COMPRESSED_ONLY
+    AccountingArtifactBinaryRetentionState.COMPRESSED_ONLY
       ? accountingRetainedImageDisplayFilename({
           retainedStoredUrl: artifact.binaryRetention.retainedStoredUrl,
           vendorName:

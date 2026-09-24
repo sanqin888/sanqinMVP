@@ -21,10 +21,7 @@ export function accountingRetainedImageFilename(
   if (!vendor) {
     throw new Error('vendor name is required for retained image filename');
   }
-  const stamp = timestamp
-    .toISOString()
-    .replace(/[-:]/g, '')
-    .replace('.', '');
+  const stamp = timestamp.toISOString().replace(/[-:]/g, '').replace('.', '');
   return `${vendor}_${stamp}.webp`;
 }
 
@@ -46,10 +43,7 @@ export function accountingRetainedImageDisplayFilename(input: {
   const retainedFilename = input.retainedStoredUrl
     ? path.basename(input.retainedStoredUrl)
     : null;
-  if (
-    retainedFilename &&
-    !LEGACY_RETENTION_PREFIX.test(retainedFilename)
-  ) {
+  if (retainedFilename && !LEGACY_RETENTION_PREFIX.test(retainedFilename)) {
     return retainedFilename;
   }
   if (input.vendorName) {
