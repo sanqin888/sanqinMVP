@@ -574,7 +574,6 @@ describe('Phase 9 canonical financial facts boundary', () => {
       'exportTxCsv',
       'exportPnlTemplate',
       'exportPnlPdf',
-      'accountBalanceReport',
       'annualReport',
       'cashflowOverview',
     ]) {
@@ -589,6 +588,12 @@ describe('Phase 9 canonical financial facts boundary', () => {
     );
     expect(accountingFinancialReportsService).not.toContain(
       'accountingExpensePaymentAllocation.findMany',
+    );
+    expect(accountingFinancialReportsService).not.toContain(
+      'async accountBalanceReport(',
+    );
+    expect(accountingReportsController).not.toContain(
+      "@Get('report/account-balance')",
     );
     expect(accountingService).not.toContain('async dimensionSlice(');
     expect(accountingJournalService).not.toContain(

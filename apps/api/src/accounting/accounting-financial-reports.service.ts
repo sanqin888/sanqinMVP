@@ -428,59 +428,6 @@ export class AccountingFinancialReportsService {
     return pdfBuffer;
   }
 
-  async accountBalanceReport(from?: string, to?: string) {
-    const { fromDate, toDate } = await this.resolveRange(from, to);
-    const occurredAt = this.occurredAtWhere(fromDate, toDate);
-    const journalLines = await this.prisma.accountingJournalLine.findMany({
-      where: {
-        entry: {
-          deletedAt: null,
-          ...(occurredAt ? { occurredAt } : {}),
-        },
-      },
-      select: {
-        debitCents: true,
-        creditCents: true,
-        account: {
-          select: { accountStableId: true, name: true, type: true },
-        },
-      },
-    });
-
-    const summary = new Map<
-      string,
-      {
-        accountStableId: string;
-        accountName: string;
-        inflowCents: number;
-        outflowCents: number;
-        balanceChangeCents: number;
-      }
-    >();
-    const upsert = (accountStableId: string, name: string) => {
-      const existing = summary.get(accountStableId) ?? {
-        accountStableId,
-        accountName: name,
-        inflowCents: 0,
-        outflowCents: 0,
-        balanceChangeCents: 0,
-      };
-      summary.set(accountStableId, existing);
-      return existing;
-    };
-
-    for (const line of journalLines) {
-      if (!line.account.type) continue;
-      const item = upsert(line.account.accountStableId, line.account.name);
-      item.inflowCents += line.debitCents;
-      item.outflowCents += line.creditCents;
-      item.balanceChangeCents += line.debitCents - line.creditCents;
-    }
-    return Array.from(summary.values()).sort(
-      (a, b) => b.balanceChangeCents - a.balanceChangeCents,
-    );
-  }
-
   async annualReport(year: number) {
     const startAt = new Date(Date.UTC(year, 0, 1, 0, 0, 0, 0));
     const endAt = new Date(Date.UTC(year, 11, 31, 23, 59, 59, 999));

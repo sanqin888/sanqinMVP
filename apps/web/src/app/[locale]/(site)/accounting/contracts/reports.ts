@@ -72,14 +72,6 @@ export type AccountingCashflowReport = {
   netCashflowCents: number;
 };
 
-export type AccountingAccountBalanceReport = Array<{
-  accountStableId: string;
-  accountName: string;
-  inflowCents: number;
-  outflowCents: number;
-  balanceChangeCents: number;
-}>;
-
 export type AccountingDashboard = {
   from: string;
   to: string;
