@@ -10,6 +10,9 @@ function makeController() {
   const payouts = {
     listPayouts: jest.fn().mockResolvedValue([]),
     recordPayout: jest.fn().mockResolvedValue({ payoutStableId: 'payout_1' }),
+    recordPayoutFromBankRowDecision: jest
+      .fn()
+      .mockResolvedValue({ payoutStableId: 'payout_bankrow_1' }),
   };
   const bankMatch = {
     preview: jest.fn().mockResolvedValue({ deposits: [] }),
@@ -117,6 +120,20 @@ describe('AccountingProviderPayoutController', () => {
       storeStableId: '4750_Yonge_Street',
       limit: 50,
     });
+  });
+
+  it('posts a confirmed bank row through the decision-owned atomic payout command', async () => {
+    const { controller, payouts } = makeController();
+
+    await controller.recordPayoutFromBankRowDecision(
+      { decisionStableId: 'bankrow_1' },
+      { user: { userStableId: 'user_accountant_1' } } as never,
+    );
+
+    expect(payouts.recordPayoutFromBankRowDecision).toHaveBeenCalledWith(
+      'bankrow_1',
+      'user_accountant_1',
+    );
   });
 
   it('passes only the payout contract plus authenticated stable actor to the writer', async () => {

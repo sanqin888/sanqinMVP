@@ -97,6 +97,7 @@ function makeService() {
       findUnique: jest.fn().mockResolvedValue(sourceArtifact),
     },
     accountingProviderPayoutBankRowDecision: {
+      findUnique: jest.fn(),
       findMany: jest.fn().mockResolvedValue([]),
     },
     $transaction: jest.fn((work: (client: typeof tx) => Promise<unknown>) =>
@@ -206,6 +207,104 @@ describe('AccountingProviderPayoutBankRowDecisionService', () => {
     });
     expect(stale.confirmed).toBe(false);
     expect(stale.decisions).toEqual([]);
+  });
+
+  it('revalidates a READY decision against the current confirmed scope before posting', async () => {
+    const { service, prisma } = makeService();
+    const current = {
+      decisionStableId: 'bankrow_ready',
+      rowNumber: 10,
+      rowFingerprint: 'fingerprint',
+      occurredOn: '2026-06-10',
+      amountCents: 86057,
+      description: 'FANTUAN',
+      providerHint: AccountingFinancialProvider.FANTUAN,
+      decision: 'READY_FOR_POSTING' as const,
+      matchedPayoutStableId: null,
+      confirmedByActorRef: 'user_accountant_1',
+      confirmedAt: '2026-09-23T21:00:00.000Z',
+    };
+    prisma.accountingProviderPayoutBankRowDecision.findUnique.mockResolvedValue(
+      {
+        ...current,
+        occurredOn: new Date('2026-06-10T00:00:00.000Z'),
+        confirmedAt: new Date('2026-09-23T21:00:00.000Z'),
+        artifact: { artifactStableId: 'acctart_bank_1' },
+      },
+    );
+    jest.spyOn(service, 'getScope').mockResolvedValue({
+      version: 1,
+      scope: 'PROVIDER_PAYOUT_BANK_ROW_DECISIONS',
+      artifactStableId: 'acctart_bank_1',
+      storeStableId: '4750_Yonge_Street',
+      destinationBankAccountStableId: 'account_cibc',
+      currency: 'CAD',
+      confirmed: true,
+      decisions: [current],
+    });
+
+    await expect(
+      service.requireCurrentPostingDecision('bankrow_ready'),
+    ).resolves.toMatchObject({
+      decisionStableId: 'bankrow_ready',
+      decision: 'READY_FOR_POSTING',
+    });
+  });
+
+  it('requires scope reconfirmation when a persisted READY decision is no longer current', async () => {
+    const { service, prisma } = makeService();
+    prisma.accountingProviderPayoutBankRowDecision.findUnique.mockResolvedValue(
+      {
+        decisionStableId: 'bankrow_ready',
+        storeStableId: '4750_Yonge_Street',
+        destinationBankAccountStableId: 'account_cibc',
+        decision: 'READY_FOR_POSTING',
+        artifact: { artifactStableId: 'acctart_bank_1' },
+      },
+    );
+    jest.spyOn(service, 'getScope').mockResolvedValue({
+      version: 1,
+      scope: 'PROVIDER_PAYOUT_BANK_ROW_DECISIONS',
+      artifactStableId: 'acctart_bank_1',
+      storeStableId: '4750_Yonge_Street',
+      destinationBankAccountStableId: 'account_cibc',
+      currency: 'CAD',
+      confirmed: false,
+      decisions: [],
+    });
+
+    await expect(
+      service.requireCurrentPostingDecision('bankrow_ready'),
+    ).rejects.toThrow('reconfirm the settlement scope');
+  });
+
+  it('allows idempotent replay of an already matched decision without revalidating READY scope', async () => {
+    const { service, prisma } = makeService();
+    prisma.accountingProviderPayoutBankRowDecision.findUnique.mockResolvedValue(
+      {
+        decisionStableId: 'bankrow_match',
+        rowNumber: 9,
+        rowFingerprint: 'fingerprint',
+        occurredOn: new Date('2026-06-09T00:00:00.000Z'),
+        amountCents: 28448,
+        description: 'UBER',
+        providerHint: AccountingFinancialProvider.UBER_EATS,
+        decision: 'MATCH_EXISTING_PAYOUT',
+        matchedPayoutStableId: 'payout_uber',
+        confirmedByActorRef: 'user_accountant_1',
+        confirmedAt: new Date('2026-09-23T21:00:00.000Z'),
+        artifact: { artifactStableId: 'acctart_bank_1' },
+      },
+    );
+    const getScope = jest.spyOn(service, 'getScope');
+
+    await expect(
+      service.requireCurrentPostingDecision('bankrow_match'),
+    ).resolves.toMatchObject({
+      decision: 'MATCH_EXISTING_PAYOUT',
+      matchedPayoutStableId: 'payout_uber',
+    });
+    expect(getScope).not.toHaveBeenCalled();
   });
 
   it('rejects decisions for evidence that has not completed Inbox review', async () => {

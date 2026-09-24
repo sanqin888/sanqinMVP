@@ -34,8 +34,13 @@ function makeService(existing: ReturnType<typeof payoutRow> | null = null) {
   const tx = {
     accountingProviderPayout: {
       findUnique: jest.fn().mockResolvedValue(existing),
+      findMany: jest.fn().mockResolvedValue([]),
       create: jest.fn().mockResolvedValue(created),
       update: jest.fn().mockResolvedValue(anchored),
+    },
+    accountingProviderPayoutBankRowDecision: {
+      findUnique: jest.fn(),
+      update: jest.fn(),
     },
     accountingAccount: {
       findMany: jest.fn().mockResolvedValue([
@@ -83,12 +88,18 @@ function makeService(existing: ReturnType<typeof payoutRow> | null = null) {
   const period = {
     getBusinessTimezone: jest.fn().mockResolvedValue('America/Toronto'),
   };
+  const bankRowDecisions = {
+    requireCurrentPostingDecision: jest.fn().mockResolvedValue({
+      decision: 'READY_FOR_POSTING',
+    }),
+  };
   const service = new AccountingProviderPayoutService(
     prisma as never,
     journal as unknown as AccountingJournalService,
     period as unknown as AccountingPeriodService,
+    bankRowDecisions as never,
   );
-  return { service, tx, journal, prisma };
+  return { service, tx, journal, prisma, bankRowDecisions };
 }
 
 const input = () => ({
@@ -100,6 +111,26 @@ const input = () => ({
   amountCents: 120_000,
   currency: 'CAD',
   providerReference: 'UBER-2026-09-23',
+});
+
+const readyBankRowDecision = () => ({
+  id: '22222222-2222-4222-8222-222222222222',
+  decisionStableId: 'bankrow_0123456789abcdef0123456789abcdef',
+  artifactId: '33333333-3333-4333-8333-333333333333',
+  rowNumber: 10,
+  rowFingerprint: 'fingerprint',
+  storeStableId: '4750_Yonge_Street',
+  destinationBankAccountStableId: 'account_primary_bank',
+  occurredOn: new Date('2026-09-23T00:00:00.000Z'),
+  amountCents: 120_000,
+  description: 'UBER',
+  providerHint: AccountingFinancialProvider.UBER_EATS,
+  decision: 'READY_FOR_POSTING',
+  matchedPayoutStableId: null as string | null,
+  confirmedByActorRef: 'actor_reviewer',
+  confirmedAt: new Date('2026-09-23T14:00:00.000Z'),
+  createdAt: new Date('2026-09-23T14:00:00.000Z'),
+  updatedAt: new Date('2026-09-23T14:00:00.000Z'),
 });
 
 describe('AccountingProviderPayoutService', () => {
@@ -194,6 +225,205 @@ describe('AccountingProviderPayoutService', () => {
       data: { journalEntryStableId: 'journal_provider_payout_1' },
     });
     expect(result.journalEntryStableId).toBe('journal_provider_payout_1');
+  });
+
+  it('atomically posts a READY bank row decision and binds it to one deterministic payout', async () => {
+    const { service, tx, journal } = makeService();
+    const decision = readyBankRowDecision();
+    const deterministicPayoutStableId = `payout_${decision.decisionStableId}`;
+    tx.accountingProviderPayoutBankRowDecision.findUnique.mockResolvedValue(
+      decision,
+    );
+    tx.accountingProviderPayout.create.mockImplementation(
+      ({ data }: { data: Record<string, unknown> }) =>
+        Promise.resolve({
+          ...payoutRow(),
+          ...data,
+          id: payoutRow().id,
+          payoutDate: new Date('2026-09-23T00:00:00.000Z'),
+          createdAt: payoutRow().createdAt,
+          updatedAt: payoutRow().updatedAt,
+          journalEntryStableId: null,
+        }),
+    );
+    tx.accountingProviderPayout.update.mockImplementation(
+      ({ data }: { data: { journalEntryStableId: string } }) =>
+        Promise.resolve({
+          ...payoutRow(),
+          payoutStableId: deterministicPayoutStableId,
+          providerReference: null,
+          journalEntryStableId: data.journalEntryStableId,
+        }),
+    );
+    tx.accountingProviderPayoutBankRowDecision.update.mockResolvedValue({
+      ...decision,
+      decision: 'MATCH_EXISTING_PAYOUT',
+      matchedPayoutStableId: deterministicPayoutStableId,
+    });
+
+    const result = await service.recordPayoutFromBankRowDecision(
+      decision.decisionStableId,
+      'actor_accounting',
+    );
+
+    expect(tx.accountingProviderPayout.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        payoutStableId: deterministicPayoutStableId,
+        provider: AccountingFinancialProvider.UBER_EATS,
+        storeStableId: '4750_Yonge_Street',
+        destinationBankAccountStableId: 'account_primary_bank',
+        amountCents: 120_000,
+        currency: 'CAD',
+        providerReference: null,
+      }) as unknown,
+    });
+    expect(journal.createProviderPayoutJournalInTx).toHaveBeenCalledTimes(1);
+    expect(
+      tx.accountingProviderPayoutBankRowDecision.update,
+    ).toHaveBeenCalledWith({
+      where: { id: decision.id },
+      data: {
+        decision: 'MATCH_EXISTING_PAYOUT',
+        matchedPayoutStableId: deterministicPayoutStableId,
+      },
+    });
+    expect(result.payoutStableId).toBe(deterministicPayoutStableId);
+    expect(tx.accountingAuditLog.create).toHaveBeenCalledTimes(2);
+  });
+
+  it('fails closed when an exact payout appears after READY preflight and requires scope reconfirmation', async () => {
+    const decision = readyBankRowDecision();
+    const existing = {
+      ...payoutRow(),
+      payoutStableId: 'payout_manual_exact',
+      providerReference: null,
+      journalEntryStableId: 'journal_manual_exact',
+    };
+    const { service, tx, journal } = makeService();
+    tx.accountingProviderPayoutBankRowDecision.findUnique.mockResolvedValue(
+      decision,
+    );
+    tx.accountingProviderPayout.findMany.mockResolvedValue([existing]);
+    tx.accountingJournalEntry.findUnique.mockResolvedValue({
+      source: AccountingJournalSource.PAYMENT,
+      sourceFactType: 'accounting.provider_payout.v1',
+      sourceFactStableId: existing.payoutStableId,
+      deletedAt: null,
+    });
+
+    await expect(
+      service.recordPayoutFromBankRowDecision(
+        decision.decisionStableId,
+        'actor_accounting',
+      ),
+    ).rejects.toThrow(
+      'now matches an existing canonical payout; reconfirm the settlement scope',
+    );
+
+    expect(tx.accountingProviderPayout.create).not.toHaveBeenCalled();
+    expect(
+      tx.accountingProviderPayoutBankRowDecision.update,
+    ).not.toHaveBeenCalled();
+    expect(journal.createProviderPayoutJournalInTx).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when a READY bank row now has multiple exact canonical payouts', async () => {
+    const decision = readyBankRowDecision();
+    const { service, tx, journal } = makeService();
+    tx.accountingProviderPayoutBankRowDecision.findUnique.mockResolvedValue(
+      decision,
+    );
+    tx.accountingProviderPayout.findMany.mockResolvedValue([
+      {
+        ...payoutRow(),
+        payoutStableId: 'payout_exact_1',
+        providerReference: null,
+        journalEntryStableId: 'journal_exact_1',
+      },
+      {
+        ...payoutRow(),
+        payoutStableId: 'payout_exact_2',
+        providerReference: null,
+        journalEntryStableId: 'journal_exact_2',
+      },
+    ]);
+    tx.accountingJournalEntry.findUnique
+      .mockResolvedValueOnce({
+        source: AccountingJournalSource.PAYMENT,
+        sourceFactType: 'accounting.provider_payout.v1',
+        sourceFactStableId: 'payout_exact_1',
+        deletedAt: null,
+      })
+      .mockResolvedValueOnce({
+        source: AccountingJournalSource.PAYMENT,
+        sourceFactType: 'accounting.provider_payout.v1',
+        sourceFactStableId: 'payout_exact_2',
+        deletedAt: null,
+      });
+
+    await expect(
+      service.recordPayoutFromBankRowDecision(
+        decision.decisionStableId,
+        'actor_accounting',
+      ),
+    ).rejects.toThrow('multiple exact canonical payout matches');
+    expect(tx.accountingProviderPayout.create).not.toHaveBeenCalled();
+    expect(
+      tx.accountingProviderPayoutBankRowDecision.update,
+    ).not.toHaveBeenCalled();
+    expect(journal.createProviderPayoutJournalInTx).not.toHaveBeenCalled();
+  });
+
+  it('replays an already matched bank row without creating another payout or Journal', async () => {
+    const decision = {
+      ...readyBankRowDecision(),
+      decision: 'MATCH_EXISTING_PAYOUT',
+      matchedPayoutStableId: 'payout_existing_bankrow',
+    };
+    const existing = {
+      ...payoutRow(),
+      payoutStableId: 'payout_existing_bankrow',
+      journalEntryStableId: 'journal_provider_payout_1',
+    };
+    const { service, tx, journal } = makeService(existing);
+    tx.accountingProviderPayoutBankRowDecision.findUnique.mockResolvedValue(
+      decision,
+    );
+    tx.accountingJournalEntry.findUnique.mockResolvedValue({
+      source: AccountingJournalSource.PAYMENT,
+      sourceFactType: 'accounting.provider_payout.v1',
+      sourceFactStableId: 'payout_existing_bankrow',
+      deletedAt: null,
+    });
+
+    const result = await service.recordPayoutFromBankRowDecision(
+      decision.decisionStableId,
+      'actor_retry',
+    );
+
+    expect(result.payoutStableId).toBe('payout_existing_bankrow');
+    expect(tx.accountingProviderPayout.create).not.toHaveBeenCalled();
+    expect(
+      tx.accountingProviderPayoutBankRowDecision.update,
+    ).not.toHaveBeenCalled();
+    expect(journal.createProviderPayoutJournalInTx).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when a bank row decision is not READY or MATCHED', async () => {
+    const { service, tx, journal } = makeService();
+    tx.accountingProviderPayoutBankRowDecision.findUnique.mockResolvedValue({
+      ...readyBankRowDecision(),
+      decision: 'EXCLUDED',
+    });
+
+    await expect(
+      service.recordPayoutFromBankRowDecision(
+        readyBankRowDecision().decisionStableId,
+        'actor_accounting',
+      ),
+    ).rejects.toThrow('not ready for provider payout posting');
+    expect(tx.accountingProviderPayout.create).not.toHaveBeenCalled();
+    expect(journal.createProviderPayoutJournalInTx).not.toHaveBeenCalled();
   });
 
   it('replays an identical anchored payout without creating another Journal', async () => {
