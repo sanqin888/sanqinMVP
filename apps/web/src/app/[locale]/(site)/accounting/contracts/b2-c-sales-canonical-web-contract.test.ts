@@ -28,6 +28,7 @@ describe('B2-C canonical Sales Web cutover', () => {
       'export type AccountingSalesSummary',
       'netSalesRevenueCents: number',
       'contributionCents: number',
+      'accountingStartDate: string',
       'byPrimaryPaymentMethod:',
       'tenderMix:',
       'providerCoverage:',

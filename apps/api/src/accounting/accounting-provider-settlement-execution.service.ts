@@ -4,6 +4,7 @@ import {
   Injectable,
 } from '@nestjs/common';
 import {
+  AccountingFinancialDocumentType,
   AccountingInboxMaterializedEntityType,
   AccountingInboxStatus,
 } from './accounting-contracts';
@@ -18,6 +19,7 @@ import {
   type ProviderSettlementShadowPreviewInput,
 } from './accounting-provider-settlement-preview.service';
 import { AccountingJournalService } from './accounting-journal.service';
+import { AccountingProviderFinancialCoverageService } from './accounting-provider-financial-coverage.service';
 
 export const PROVIDER_SETTLEMENT_SYSTEM_ACTOR =
   'system:accounting-provider-settlement';
@@ -55,6 +57,7 @@ export class AccountingProviderSettlementExecutionService {
   constructor(
     private readonly preview: AccountingProviderSettlementPreviewService,
     private readonly journal: AccountingJournalService,
+    private readonly coverage: AccountingProviderFinancialCoverageService,
   ) {}
 
   async executeRange(
@@ -186,6 +189,27 @@ export class AccountingProviderSettlementExecutionService {
       journalEntriesPostedOrReplayed += rows.length;
       providerDocumentsPostedOrReplayed += 1;
       uberReversalsPostedOrReplayed += reversalWrites.length;
+    }
+
+    const coverageProviders = Array.from(
+      new Set(
+        report.providerDocuments
+          .filter(
+            (document) =>
+              document.documentType ===
+                AccountingFinancialDocumentType.STATEMENT &&
+              (document.status === 'READY' ||
+                document.status === 'ALREADY_POSTED'),
+          )
+          .map((document) => document.provider),
+      ),
+    ).sort();
+    for (const provider of coverageProviders) {
+      await this.coverage.reconcilePostedCoverage({
+        provider,
+        storeStableId: report.range.storeStableId,
+        operatorActorRef: PROVIDER_SETTLEMENT_SYSTEM_ACTOR,
+      });
     }
 
     return {

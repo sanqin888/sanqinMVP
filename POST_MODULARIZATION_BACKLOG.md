@@ -433,7 +433,7 @@ B2-E is **MERGED / CI GREEN / PRODUCTION VERIFIED** through PR #2465; final head
 
 Consolidated production verification on deployed `3448c271` found Dashboard and canonical `/accounting/report/sales` returning 200, no post-deploy `/accounting/report/slice` traffic, no Web runtime errors, and balanced canonical Sales Journal populations across current order sales/reversals plus provider documents and historical Uber replacement reversals. The operator reported no visible anomaly. B2 is therefore **PRODUCTION VERIFIED / CLOSED**.
 
-B4 polish tail: the valid `2026-06-01..2026-06-30` Sales request succeeds; its automatically calculated equal-period comparison `2026-05-02..2026-05-31` is intentionally rejected because it predates `accountingStartDate=2026-06-01`, then the UI omits comparison. Later reporting polish should suppress that known-out-of-coverage comparison request to avoid expected HTTP 400 / ERROR log noise. This is not a timezone defect and does not block or reopen B2.
+B4 polish tail: the valid `2026-06-01..2026-06-30` Sales request succeeds; its formerly calculated equal-period comparison `2026-05-02..2026-05-31` predates `accountingStartDate=2026-06-01`. **B4-D2 is merged through PR #2506 / squash `a72dd12b`; the Web now suppresses that known-out-of-coverage comparison before a second request is issued.** B2 remains closed.
 
 Target Accounting views:
 
@@ -513,11 +513,21 @@ Then improve the Accounting reports surface:
 
 **B4-B state (2026-09-23): MERGED / CI GREEN through PR #2483 / squash `cbd8bb1d`; PR CI #6195 passed.** Trial Balance and Balance Movement now have dedicated authenticated CSV/PDF export endpoints plus Reports-page download links. A narrow `AccountingStatementExportService` delegates once to the existing B3 projection, renders only the returned report, and records export audit evidence. CSV carries statement metadata, account/totals and Balance Movement opening-basis/reconciliation fields; PDF reuses current Accounting PDFKit/Noto CJK support and keeps the required non-formal-Balance-Sheet disclosure. No new monetary authority, Journal query, schema/migration, package, provider path or context edge is introduced.
 
+**B4-C1 state (2026-09-24): MERGED / CI GREEN / NO MIGRATION / NO DEPENDENCY / NO GRAPH CHANGE through PR #2503 / squash `43b05537`; CI #6268 passed.** Canonical statement account amounts have `OPENING | PERIOD | CLOSING` Journal drill-through backed only by Accounting persistence. The drill-through shares B3 Trial Balance scope/range resolution rather than duplicating business-date/opening semantics, returns complete balanced Journal lines and source-fact stable identity, and does not call foreign owner APIs or rebuild monetary facts. PAYOUT Journals are covered generically through their canonical `accounting.provider_payout.v1` lineage.
+
+**B4-C2 state (2026-09-24): MERGED / CI GREEN / NO MIGRATION / NO DEPENDENCY / NO JOURNAL CHANGE / NO GRAPH CHANGE through PR #2504 / squash `151cf0f0`; CI #6271 passed.** The source-navigation adapter maps only reliable C1 identities to existing Order/Expense/Provider Statement/PAYOUT/Payroll destinations and keeps unmapped identities as fallback text. Same-owner stable-ID filters are additive navigation aids only; no foreign-owner enrichment or context edge is introduced.
+
+**B4-D1 state (2026-09-24): MERGED / CI GREEN / NO MIGRATION / NO DEPENDENCY / NO JOURNAL OR P&L ARITHMETIC CHANGE / NO GRAPH CHANGE through PR #2505 / squash `8928580f`; CI #6274 passed.** The opaque Management P&L adjustment bucket now has a reconciled Accounting-owned breakdown by source/sourceFactType without changing existing adjustment/net-profit arithmetic. Cash Movement was already Journal-only and remains unchanged.
+
+**B4-D2 state (2026-09-24): MERGED / CI GREEN / ADDITIVE SALES V1 METADATA / NO MIGRATION / NO DEPENDENCY / NO JOURNAL OR SALES MONEY CHANGE / NO GRAPH CHANGE through PR #2506 / squash `a72dd12b`; CI #6276 passed.** Sales exposes its already-resolved `accountingStartDate`; the Web requires the entire prior equal-length range to start on/after that date before issuing the comparison request. Canonical `/accounting/report/sales` remains the sole money source.
+
+**B4-D3 state (2026-09-24): IMPLEMENTED LOCALLY / AWAITING REVIEW / HTTP CONTRACT CONTRACTION / NO MIGRATION / NO DEPENDENCY / NO JOURNAL OR REPORT ARITHMETIC CHANGE / NO GRAPH CHANGE.** The legacy `GET /accounting/report/account-balance` surface has no runtime repo consumer after B4-A; its standalone service method is not reused by any surviving report. A 168-hour production API-log check found only Nest route registration and no actual request evidence. D3 removes the route, standalone method and unused Web DTO, deletes the now-dead one-method characterization spec, and changes architecture regressions to forbid reintroduction. Trial Balance, Balance Movement, P&L, Cash Movement, annual report and exports are unchanged.
+
 #### PAYOUT-A — Provider payout / bank receipt contract foundation
 
 Priority: **P1 ACCOUNTING CORRECTNESS**  
 Complexity: **M**  
-State: **PAYOUT-A MERGED / CI GREEN; PAYOUT-B MERGED / CI GREEN / MIGRATION APPLIED; PAYOUT-C PRODUCTION VERIFIED; PAYOUT-D DEPLOYED / BACKEND DATA-PATH VERIFIED / UI SPOT-CHECK PENDING; PAYOUT-E-A + INBOX-ONLY + SETTLEMENT ROW-DECISION FOLLOW-UPS MERGED / CI GREEN / DEPLOYED; PAYOUT-E-B1 PRODUCTION VERIFIED / MIGRATION APPLIED; PAYOUT-E-B2 LOCAL SOURCE READY FOR REVIEW / NO MIGRATION / NO GRAPH CHANGE**
+State: **PAYOUT-A MERGED / CI GREEN; PAYOUT-B MERGED / CI GREEN / MIGRATION APPLIED; PAYOUT-C PRODUCTION VERIFIED; PAYOUT-D DEPLOYED / BACKEND DATA-PATH VERIFIED / UI SPOT-CHECK PENDING; PAYOUT-E-A + INBOX-ONLY + SETTLEMENT ROW-DECISION FOLLOW-UPS MERGED / CI GREEN / DEPLOYED; PAYOUT-E-B1 PRODUCTION VERIFIED / MIGRATION APPLIED; PAYOUT-E-B2 PRODUCTION VERIFIED / NO MIGRATION / NO GRAPH CHANGE**
 
 After B4-B, the next Accounting correctness gap is the actual transfer from `Clover/Uber/Fantuan Pending` into a BANK account. This is not another monthly-statement posting: Clover deposits frequently while Uber/Fantuan pay weekly, so payout dates naturally cross monthly statement boundaries.
 
@@ -535,7 +545,7 @@ PAYOUT-E-A is merged through PR #2490 / squash `1d90e6fd`, CI #6223 green. Inbox
 
 PAYOUT-E-B1 is **PRODUCTION VERIFIED / MIGRATION APPLIED** at production `main@56d58ccd`. Migration `20260923230651_accounting_provider_payout_bank_row_decisions` is applied; the production table contains 27 durable decisions (25 `EXCLUDED`, 2 `MATCH_EXISTING_PAYOUT`) with zero invalid match shapes and zero orphan artifact references.
 
-PAYOUT-E-B2 is **LOCAL SOURCE READY FOR USER REVIEW / NO MIGRATION / NO GRAPH CHANGE**. It adds a decision-owned posting command that accepts only `decisionStableId`, revalidates that a READY scope is still current, derives payout facts from persisted Accounting authority, and atomically creates/anchors the canonical payout plus transitions the row to `MATCH_EXISTING_PAYOUT`. An exact payout appearing after preflight causes a fail-closed reconfirmation instead of an inferred binding or duplicate post; matched-decision replay remains idempotent. Existing manual payout entry is unchanged. Automatic bank ingestion/auto-posting remains blocked until E-B2 production verification. Detailed readiness: `docs/architecture/accounting-provider-payout-readiness.md`.
+PAYOUT-E-B2 is **PRODUCTION VERIFIED / NO MIGRATION / NO GRAPH CHANGE** through PR #2498 / squash `11c80d66`, merged-head CI #6252 green and production `main@11c80d66`. The reviewed June bank CSV produced five real READY decisions, and all five were posted through the decision-owned command: Uber 44,190c (06-16), Fantuan 45,536c (06-17), Uber 29,828c (06-23), Fantuan 77,093c (06-24), and Uber 16,551c (06-30). Each produced exactly one deterministic payout, one balanced `TRANSFER / PAYMENT / accounting.provider_payout.v1` Journal (`Dr CIBC / Cr provider Pending`), one `PROVIDER_PAYOUT_POST` audit and one `PROVIDER_PAYOUT_BANK_ROW_DECISION_BIND` audit, and each decision is now `MATCH_EXISTING_PAYOUT`. June Provider Pending remains coherent from the configured 2026-06-01 start: Uber closes at 3,268c after 119,017c payout reduction; Fantuan closes at 83,853c after 208,686c payout reduction; no unexplained Other movement was found in the audited buckets. Automatic bank ingestion/auto-posting is no longer blocked by E-B2 verification, but remains a separate future architecture decision. Detailed readiness: `docs/architecture/accounting-provider-payout-readiness.md`.
 
 Avoid polishing current mixed-authority widgets immediately before replacing their underlying semantics.
 
@@ -771,6 +781,17 @@ Capture evidence when the real event occurs:
 - documented 2258-cent fail-closed CARD/RETENDER historical exception if/when resolvable.
 
 These are evidence gates, not reasons to restart Phase 9 development.
+
+### 8.7 Provider Financial Coverage Advancement
+
+State: **DELIVERY PR #2501 / NO MIGRATION / NO GRAPH CHANGE**  
+Complexity: **S/M / ACCOUNTING PROVIDER-EVIDENCE CORRECTNESS**
+
+`financialCompleteThrough` already drives the fail-visible `COMPLETE / INCOMPLETE` provider-coverage signal in canonical Sales Analytics, but the current production lifecycle never advances it after a provider statement is reviewed and canonically posted. The approved rule is now: only the latest revision of a provider `STATEMENT` business identity may extend the inclusive frontier, and only when its Inbox materialization is confirmed, it has exactly one active canonical provider-statement Journal for the same revision/store, any existing Human Review has a latest `CONFIRMED` revision, and its period connects without a date gap to the previously proven frontier. Supporting `OTHER` evidence such as Fantuan adjustment detail does not independently extend coverage.
+
+The implementation adds a pure continuous-frontier policy plus an Accounting-owned Serializable reconciliation service. Settlement execution invokes it only after all READY replacement-group writes have completed, and also on ALREADY_POSTED statement replays so existing production coverage can be caught up without recreating Journals. The service owns qualification/orchestration while the existing Unified Inbox Core writer remains the sole Prisma mutation owner for `AccountingProviderFinancialCoverage`; the system update advances only `financialCompleteThrough`, clears stale human `updatedByUserStableId` attribution, and records an Accounting audit. It never mutates Journal movement, never creates a coverage row, never regresses the frontier and never jumps gaps.
+
+Read-only production evidence at the implementation baseline shows continuous posted June/July/August statements for both Uber Eats and Fantuan, so the policy currently derives `2026-08-31` for each while persisted values remain null. After source review/PR/CI/deploy, production verification should run the existing statement-bounded Shadow Preview + expected-plan-hash replay over already-posted evidence, verify zero new/replaced settlement Journals, verify one audited coverage advance per provider, and then confirm Sales/provider reconciliation reports surface the updated completeness boundary. This tail does not reopen Phase 9 or B2.
 
 ## 9. Dependency and sequencing rules
 

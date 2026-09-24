@@ -35,11 +35,13 @@ export class AccountingInboxController {
     @Query('status') status?: AccountingInboxStatus,
     @Query('classification') classification?: AccountingInboxClassification,
     @Query('limit') limit?: string,
+    @Query('materializedEntityStableId') materializedEntityStableId?: string,
   ) {
     return this.inbox.listUnifiedInboxItems({
       status,
       classification,
       limit: parseNonNegativeAccountingNumber(limit, 'limit'),
+      materializedEntityStableId,
     });
   }
 

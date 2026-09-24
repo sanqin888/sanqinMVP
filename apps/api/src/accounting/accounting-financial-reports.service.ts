@@ -149,6 +149,17 @@ export class AccountingFinancialReportsService {
       }
     >();
     const sources = new Map<string, number>();
+    const adjustmentBreakdown = new Map<
+      string,
+      {
+        source: AccountingJournalSource;
+        sourceFactType: string | null;
+        journalCount: number;
+        revenueNetCents: number;
+        expenseNetCents: number;
+        netProfitEffectCents: number;
+      }
+    >();
     const monthNetMap = new Map<string, number>();
 
     for (const fact of projection.facts) {
@@ -196,6 +207,23 @@ export class AccountingFinancialReportsService {
       monthNetMap.set(monthKey, (monthNetMap.get(monthKey) ?? 0) + monthNet);
     }
 
+    for (const effect of projection.adjustmentEffects) {
+      const key = `${effect.source}\u0000${effect.sourceFactType ?? ''}`;
+      const row = adjustmentBreakdown.get(key) ?? {
+        source: effect.source,
+        sourceFactType: effect.sourceFactType,
+        journalCount: 0,
+        revenueNetCents: 0,
+        expenseNetCents: 0,
+        netProfitEffectCents: 0,
+      };
+      row.journalCount += 1;
+      row.revenueNetCents += effect.revenueNetCents;
+      row.expenseNetCents += effect.expenseNetCents;
+      row.netProfitEffectCents += effect.netProfitEffectCents;
+      adjustmentBreakdown.set(key, row);
+    }
+
     const totals = Array.from(periods.values()).reduce(
       (acc, item) => ({
         income: acc.income + item.income,
@@ -205,6 +233,24 @@ export class AccountingFinancialReportsService {
       }),
       { income: 0, expense: 0, adjustment: 0, transfer: 0 },
     );
+    const adjustmentBreakdownRows = Array.from(
+      adjustmentBreakdown.values(),
+    ).sort(
+      (left, right) =>
+        Math.abs(right.netProfitEffectCents) -
+          Math.abs(left.netProfitEffectCents) ||
+        left.source.localeCompare(right.source) ||
+        (left.sourceFactType ?? '').localeCompare(right.sourceFactType ?? ''),
+    );
+    const adjustmentBreakdownNetCents = adjustmentBreakdownRows.reduce(
+      (sum, row) => sum + row.netProfitEffectCents,
+      0,
+    );
+    if (adjustmentBreakdownNetCents !== totals.adjustment) {
+      throw new BadRequestException(
+        'P&L adjustment breakdown does not reconcile to adjustment total',
+      );
+    }
 
     const categoryNodeMap = new Map(
       categoriesMeta.map((item) => [
@@ -291,6 +337,7 @@ export class AccountingFinancialReportsService {
         source,
         amountCents,
       })),
+      adjustmentBreakdown: adjustmentBreakdownRows,
       trends: {
         currentMonthNetCents: monthNetMap.get(currentMonth) ?? 0,
         lastMonthNetCents: monthNetMap.get(lastMonth) ?? 0,
@@ -379,59 +426,6 @@ export class AccountingFinancialReportsService {
       afterJson: { template, query } as Prisma.JsonObject,
     });
     return pdfBuffer;
-  }
-
-  async accountBalanceReport(from?: string, to?: string) {
-    const { fromDate, toDate } = await this.resolveRange(from, to);
-    const occurredAt = this.occurredAtWhere(fromDate, toDate);
-    const journalLines = await this.prisma.accountingJournalLine.findMany({
-      where: {
-        entry: {
-          deletedAt: null,
-          ...(occurredAt ? { occurredAt } : {}),
-        },
-      },
-      select: {
-        debitCents: true,
-        creditCents: true,
-        account: {
-          select: { accountStableId: true, name: true, type: true },
-        },
-      },
-    });
-
-    const summary = new Map<
-      string,
-      {
-        accountStableId: string;
-        accountName: string;
-        inflowCents: number;
-        outflowCents: number;
-        balanceChangeCents: number;
-      }
-    >();
-    const upsert = (accountStableId: string, name: string) => {
-      const existing = summary.get(accountStableId) ?? {
-        accountStableId,
-        accountName: name,
-        inflowCents: 0,
-        outflowCents: 0,
-        balanceChangeCents: 0,
-      };
-      summary.set(accountStableId, existing);
-      return existing;
-    };
-
-    for (const line of journalLines) {
-      if (!line.account.type) continue;
-      const item = upsert(line.account.accountStableId, line.account.name);
-      item.inflowCents += line.debitCents;
-      item.outflowCents += line.creditCents;
-      item.balanceChangeCents += line.debitCents - line.creditCents;
-    }
-    return Array.from(summary.values()).sort(
-      (a, b) => b.balanceChangeCents - a.balanceChangeCents,
-    );
   }
 
   async annualReport(year: number) {
@@ -566,6 +560,8 @@ export class AccountingFinancialReportsService {
     });
 
     const facts: AccountingFinancialReportFact[] = [];
+    const adjustmentEffects: AccountingFinancialReportProjection['adjustmentEffects'] =
+      [];
     let journalInputTaxCents = 0;
     for (const entry of journalEntries) {
       const projected = projectAccountingJournalReportEntry(entry);
@@ -577,6 +573,7 @@ export class AccountingFinancialReportsService {
         continue;
       }
       facts.push(...projected.facts);
+      adjustmentEffects.push(...projected.adjustmentEffects);
     }
     const expenseInputTaxCents = 0;
 
@@ -584,7 +581,16 @@ export class AccountingFinancialReportsService {
       const occurredDiff = a.occurredAt.getTime() - b.occurredAt.getTime();
       return occurredDiff || a.stableId.localeCompare(b.stableId);
     });
-    return { facts, journalInputTaxCents, expenseInputTaxCents };
+    adjustmentEffects.sort((a, b) => {
+      const occurredDiff = a.occurredAt.getTime() - b.occurredAt.getTime();
+      return occurredDiff || a.stableId.localeCompare(b.stableId);
+    });
+    return {
+      facts,
+      adjustmentEffects,
+      journalInputTaxCents,
+      expenseInputTaxCents,
+    };
   }
 
   private includeJournalEntryInManagementProjection(entry: {

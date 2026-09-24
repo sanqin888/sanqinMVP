@@ -14,7 +14,10 @@ import {
   type AccountingTrialBalanceProjectionV1,
 } from './accounting-trial-balance.policy';
 
-type ResolvedTrialBalanceRange = {
+export type AccountingStatementScope = {
+  currency: string;
+  timezone: string;
+  accountingStartDate: string;
   requestedFrom: string;
   requestedTo: string;
   effectiveFrom: string;
@@ -36,21 +39,19 @@ export class AccountingTrialBalanceService {
     to?: string;
     currency?: string;
   }): Promise<AccountingTrialBalanceReportV1> {
-    const timezone = await this.period.getBusinessTimezone();
-    const accountingStartDate = await this.period.getAccountingStartDate();
-    if (!accountingStartDate) {
-      throw new ConflictException(
-        'accountingStartDate must be configured before Trial Balance reporting',
-      );
-    }
-
-    const currency = this.resolveCurrency(query.currency);
-    const range = this.resolveRange({
-      from: query.from,
-      to: query.to,
+    const scope = await this.resolveStatementScope(query);
+    const {
+      currency,
       timezone,
       accountingStartDate,
-    });
+      requestedFrom,
+      requestedTo,
+      effectiveFrom,
+      effectiveTo,
+      accountingStartAt,
+      fromInclusive,
+      toExclusive,
+    } = scope;
 
     const rows = await this.prisma.accountingJournalLine.findMany({
       where: {
@@ -58,8 +59,8 @@ export class AccountingTrialBalanceService {
           deletedAt: null,
           currency,
           occurredAt: {
-            gte: range.accountingStartAt,
-            lt: range.toExclusive,
+            gte: accountingStartAt,
+            lt: toExclusive,
           },
         },
       },
@@ -106,8 +107,8 @@ export class AccountingTrialBalanceService {
     try {
       projection = projectAccountingTrialBalance({
         currency,
-        fromInclusive: range.fromInclusive,
-        toExclusive: range.toExclusive,
+        fromInclusive,
+        toExclusive,
         lines,
       });
     } catch (cause) {
@@ -119,8 +120,8 @@ export class AccountingTrialBalanceService {
     }
 
     const closeStatus = await this.readCloseStatus(
-      range.effectiveFrom,
-      range.effectiveTo,
+      effectiveFrom,
+      effectiveTo,
       timezone,
     );
 
@@ -130,14 +131,43 @@ export class AccountingTrialBalanceService {
       currency,
       timezone,
       accountingStartDate,
-      requestedFrom: range.requestedFrom,
-      requestedTo: range.requestedTo,
-      effectiveFrom: range.effectiveFrom,
-      effectiveTo: range.effectiveTo,
+      requestedFrom,
+      requestedTo,
+      effectiveFrom,
+      effectiveTo,
       openingBalanceJournal: projection.openingBalanceJournal,
       totals: projection.totals,
       accounts: projection.accounts,
       closeStatus,
+    };
+  }
+
+  async resolveStatementScope(query: {
+    from?: string;
+    to?: string;
+    currency?: string;
+  }): Promise<AccountingStatementScope> {
+    const timezone = await this.period.getBusinessTimezone();
+    const accountingStartDate = await this.period.getAccountingStartDate();
+    if (!accountingStartDate) {
+      throw new ConflictException(
+        'accountingStartDate must be configured before Trial Balance reporting',
+      );
+    }
+
+    const currency = this.resolveCurrency(query.currency);
+    const range = this.resolveRange({
+      from: query.from,
+      to: query.to,
+      timezone,
+      accountingStartDate,
+    });
+
+    return {
+      currency,
+      timezone,
+      accountingStartDate,
+      ...range,
     };
   }
 
@@ -154,7 +184,10 @@ export class AccountingTrialBalanceService {
     to?: string;
     timezone: string;
     accountingStartDate: string;
-  }): ResolvedTrialBalanceRange {
+  }): Omit<
+    AccountingStatementScope,
+    'currency' | 'timezone' | 'accountingStartDate'
+  > {
     const accountingStart = this.parseDateOnly(
       params.accountingStartDate,
       params.timezone,

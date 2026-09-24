@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api/client';
 import type { AccountingAccount, AccountingCategory } from '../contracts/chart';
 import type {
@@ -27,6 +27,9 @@ export default function AccountingExpensesPage() {
   const params = useParams<{ locale: string }>();
   const locale = params?.locale === 'zh' ? 'zh' : 'en';
   const isZh = locale === 'zh';
+  const searchParams = useSearchParams();
+  const linkedDocumentStableId =
+    searchParams.get('documentStableId')?.trim() ?? '';
   const [categories, setCategories] = useState<AccountingCategory[]>([]);
   const [accounts, setAccounts] = useState<AccountingAccount[]>([]);
   const [recordsPage, setRecordsPage] =
@@ -95,6 +98,9 @@ export default function AccountingExpensesPage() {
       } else if (filters.paymentFilter) {
         query.set('paymentAccountStableId', filters.paymentFilter);
       }
+      if (linkedDocumentStableId) {
+        query.set('documentStableId', linkedDocumentStableId);
+      }
 
       const page = await apiFetch<AccountingExpenseRecordsPage>(
         `/accounting/expenses/records?${query.toString()}`,
@@ -113,7 +119,11 @@ export default function AccountingExpensesPage() {
     } finally {
       setLoadingRecords(false);
     }
-  }, [filters, isZh, offset, pageSize]);
+  }, [filters, isZh, linkedDocumentStableId, offset, pageSize]);
+
+  useEffect(() => {
+    setOffset(0);
+  }, [linkedDocumentStableId]);
 
   useEffect(() => {
     void loadRecords();

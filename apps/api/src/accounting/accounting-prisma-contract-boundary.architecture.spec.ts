@@ -33,6 +33,8 @@ const PRISMA_FREE_BOUNDARIES = [
   'accounting-provider-financial-review.policy.ts',
   'accounting-provider-financial.service.ts',
   'accounting-provider-financial-history.service.ts',
+  'accounting-provider-financial-coverage.policy.ts',
+  'accounting-provider-financial-coverage.service.ts',
   'accounting-provider-settlement.policy.ts',
   'accounting-provider-settlement-write-authority.ts',
   'accounting-provider-settlement-preview.service.ts',

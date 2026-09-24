@@ -603,9 +603,11 @@ export class AccountingExpenseService {
     paymentState?: AccountingExpensePaymentState;
     limit?: number;
     offset?: number;
+    documentStableId?: string;
   }) {
     const paymentAccountStableId =
       params.paymentAccountStableId?.trim() || undefined;
+    const documentStableId = params.documentStableId?.trim() || undefined;
     if (paymentAccountStableId && params.paymentState) {
       throw new BadRequestException(
         'paymentAccountStableId and paymentState cannot be combined',
@@ -650,6 +652,7 @@ export class AccountingExpenseService {
       minTotalCents: params.minTotalCents,
       paymentAccountStableId,
       paymentState: params.paymentState,
+      documentStableId,
     });
   }
 

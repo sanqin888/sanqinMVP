@@ -32,6 +32,7 @@ export type AccountingFinancialReportJournalEntry = {
   entryStableId: string;
   kind: AccountingJournalEntryKind;
   source: AccountingJournalSource;
+  sourceFactType: string | null;
   occurredAt: Date;
   currency: string;
   memo: string | null;
@@ -57,8 +58,20 @@ export type AccountingFinancialReportFact = {
   updatedAt: Date;
 };
 
+export type AccountingFinancialReportAdjustmentEffect = {
+  stableId: string;
+  source: AccountingJournalSource;
+  sourceFactType: string | null;
+  occurredAt: Date;
+  memo: string | null;
+  revenueNetCents: number;
+  expenseNetCents: number;
+  netProfitEffectCents: number;
+};
+
 export type AccountingFinancialReportProjection = {
   facts: AccountingFinancialReportFact[];
+  adjustmentEffects: AccountingFinancialReportAdjustmentEffect[];
   journalInputTaxCents: number;
   expenseInputTaxCents: number;
 };
@@ -170,7 +183,12 @@ export function projectAccountingJournalReportEntry(
   entry: AccountingFinancialReportJournalEntry,
 ): AccountingFinancialReportProjection {
   if (entry.kind === AccountingJournalEntryKind.OPENING_BALANCE) {
-    return { facts: [], journalInputTaxCents: 0, expenseInputTaxCents: 0 };
+    return {
+      facts: [],
+      adjustmentEffects: [],
+      journalInputTaxCents: 0,
+      expenseInputTaxCents: 0,
+    };
   }
 
   const journalInputTaxCents = entry.lines.reduce(
@@ -187,7 +205,12 @@ export function projectAccountingJournalReportEntry(
       0,
     );
     if (amountCents === 0) {
-      return { facts: [], journalInputTaxCents, expenseInputTaxCents: 0 };
+      return {
+        facts: [],
+        adjustmentEffects: [],
+        journalInputTaxCents,
+        expenseInputTaxCents: 0,
+      };
     }
     return {
       facts: [
@@ -208,6 +231,7 @@ export function projectAccountingJournalReportEntry(
           updatedAt: entry.updatedAt,
         },
       ],
+      adjustmentEffects: [],
       journalInputTaxCents,
       expenseInputTaxCents: 0,
     };
@@ -234,7 +258,12 @@ export function projectAccountingJournalReportEntry(
     );
     const adjustmentCents = revenueNetCents - expenseNetCents;
     if (adjustmentCents === 0) {
-      return { facts: [], journalInputTaxCents, expenseInputTaxCents: 0 };
+      return {
+        facts: [],
+        adjustmentEffects: [],
+        journalInputTaxCents,
+        expenseInputTaxCents: 0,
+      };
     }
     return {
       facts: [
@@ -253,6 +282,18 @@ export function projectAccountingJournalReportEntry(
           memo: entry.memo,
           createdAt: entry.createdAt,
           updatedAt: entry.updatedAt,
+        },
+      ],
+      adjustmentEffects: [
+        {
+          stableId: `journal:${entry.entryStableId}:adjustment`,
+          source: entry.source,
+          sourceFactType: entry.sourceFactType ?? null,
+          occurredAt: entry.occurredAt,
+          memo: entry.memo,
+          revenueNetCents,
+          expenseNetCents,
+          netProfitEffectCents: adjustmentCents,
         },
       ],
       journalInputTaxCents,
@@ -291,7 +332,12 @@ export function projectAccountingJournalReportEntry(
     }
   }
 
-  return { facts, journalInputTaxCents, expenseInputTaxCents: 0 };
+  return {
+    facts,
+    adjustmentEffects: [],
+    journalInputTaxCents,
+    expenseInputTaxCents: 0,
+  };
 }
 
 export function classifyAccountingCashflowContext(

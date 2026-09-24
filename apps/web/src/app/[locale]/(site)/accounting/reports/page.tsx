@@ -28,12 +28,33 @@ import type {
 import {
   BalanceMovementStatement,
   TrialBalanceStatement,
+  type StatementDrillTarget,
 } from './accounting-statements';
+import { StatementJournalDrillThrough } from './statement-journal-drill-through';
 
 type ReportView = 'management' | 'trialBalance' | 'balanceMovement';
 
 const money = (cents: number) =>
   `${cents < 0 ? '-' : ''}$${(Math.abs(cents) / 100).toFixed(2)}`;
+
+function adjustmentLabel(
+  sourceFactType: string | null,
+  source: string,
+  isZh: boolean,
+) {
+  if (sourceFactType === 'order.financial_reversal.v1') {
+    return isZh ? '订单退款 / 冲销' : 'Order reversal / refund';
+  }
+  if (sourceFactType === 'order.financial_adjustment.v1') {
+    return isZh ? '订单调整' : 'Order adjustment';
+  }
+  if (sourceFactType === 'accounting.uber_pre_cutover_order_reversal.v1') {
+    return isZh
+      ? 'Uber 历史订单冲销'
+      : 'Uber pre-cutover order reversal';
+  }
+  return sourceFactType ?? source;
+}
 
 function defaultReportRange() {
   return accountingReportPresetRange('year', accountingBusinessDateToday());
@@ -55,6 +76,9 @@ export default function AccountingReportsPage() {
     useState<AccountingTrialBalanceReport | null>(null);
   const [balanceMovement, setBalanceMovement] =
     useState<AccountingBalanceMovementReport | null>(null);
+  const [drillTarget, setDrillTarget] = useState<StatementDrillTarget | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -138,6 +162,7 @@ export default function AccountingReportsPage() {
       preset,
       accountingBusinessDateToday(),
     );
+    setDrillTarget(null);
     setFrom(range.from);
     setTo(range.to);
   }
@@ -165,19 +190,28 @@ export default function AccountingReportsPage() {
         <div className="flex flex-wrap gap-2">
           <ViewButton
             active={view === 'management'}
-            onClick={() => setView('management')}
+            onClick={() => {
+              setDrillTarget(null);
+              setView('management');
+            }}
           >
             {isZh ? '管理损益' : 'Management P&L'}
           </ViewButton>
           <ViewButton
             active={view === 'trialBalance'}
-            onClick={() => setView('trialBalance')}
+            onClick={() => {
+              setDrillTarget(null);
+              setView('trialBalance');
+            }}
           >
             {isZh ? '试算平衡' : 'Trial Balance'}
           </ViewButton>
           <ViewButton
             active={view === 'balanceMovement'}
-            onClick={() => setView('balanceMovement')}
+            onClick={() => {
+              setDrillTarget(null);
+              setView('balanceMovement');
+            }}
           >
             {isZh ? '资产负债变动表' : 'Balance Movement'}
           </ViewButton>
@@ -215,14 +249,20 @@ export default function AccountingReportsPage() {
             type="date"
             className="rounded border px-3 py-2"
             value={from}
-            onChange={(event) => setFrom(event.target.value)}
+            onChange={(event) => {
+              setDrillTarget(null);
+              setFrom(event.target.value);
+            }}
           />
           <span className="self-center text-slate-400">→</span>
           <input
             type="date"
             className="rounded border px-3 py-2"
             value={to}
-            onChange={(event) => setTo(event.target.value)}
+            onChange={(event) => {
+              setDrillTarget(null);
+              setTo(event.target.value);
+            }}
           />
           {view === 'management' ? (
             <select
@@ -261,11 +301,36 @@ export default function AccountingReportsPage() {
       ) : null}
 
       {view === 'trialBalance' && trialBalance ? (
-        <TrialBalanceStatement report={trialBalance} isZh={isZh} />
+        <TrialBalanceStatement
+          report={trialBalance}
+          isZh={isZh}
+          onDrillThrough={setDrillTarget}
+        />
       ) : null}
 
       {view === 'balanceMovement' && balanceMovement ? (
-        <BalanceMovementStatement report={balanceMovement} isZh={isZh} />
+        <BalanceMovementStatement
+          report={balanceMovement}
+          isZh={isZh}
+          onDrillThrough={setDrillTarget}
+        />
+      ) : null}
+
+      {drillTarget && view !== 'management' ? (
+        <StatementJournalDrillThrough
+          accountStableId={drillTarget.accountStableId}
+          accountName={drillTarget.accountName}
+          phase={drillTarget.phase}
+          from={from}
+          to={to}
+          currency={
+            view === 'trialBalance'
+              ? trialBalance?.currency ?? 'CAD'
+              : balanceMovement?.currency ?? 'CAD'
+          }
+          isZh={isZh}
+          onClose={() => setDrillTarget(null)}
+        />
       ) : null}
     </div>
   );
@@ -376,7 +441,7 @@ function ManagementReport({
           cents={report?.summary.expenseCents ?? 0}
         />
         <Card
-          label={isZh ? '调整' : 'Adjustments'}
+          label={isZh ? '净调整影响' : 'Net adjustment effect'}
           cents={report?.summary.adjustmentCents ?? 0}
         />
         <Card
@@ -384,6 +449,68 @@ function ManagementReport({
           cents={report?.summary.netProfitCents ?? 0}
         />
       </div>
+
+      {report && report.adjustmentBreakdown.length > 0 ? (
+        <section className="rounded-xl border bg-white p-5">
+          <h2 className="text-lg font-semibold">
+            {isZh ? '调整影响分解' : 'Adjustment effect breakdown'}
+          </h2>
+          <p className="mt-1 text-xs text-slate-500">
+            {isZh
+              ? '仅分解 Management P&L 中的净调整影响；金额直接来自同一批 canonical Journal，不改变净利润计算。'
+              : 'This only decomposes the net adjustment effect in Management P&L. Amounts come from the same canonical Journals and do not change net-profit math.'}
+          </p>
+          <div className="mt-3 overflow-x-auto">
+            <table className="min-w-[760px] w-full text-left text-xs">
+              <thead className="border-b border-slate-200 text-slate-500">
+                <tr>
+                  <th className="px-2 py-2">
+                    {isZh ? '调整来源' : 'Adjustment source'}
+                  </th>
+                  <th className="px-2 py-2 text-right">
+                    {isZh ? 'Journal 数' : 'Journals'}
+                  </th>
+                  <th className="px-2 py-2 text-right">
+                    {isZh ? '收入净变动' : 'Revenue net change'}
+                  </th>
+                  <th className="px-2 py-2 text-right">
+                    {isZh ? '费用净变动' : 'Expense net change'}
+                  </th>
+                  <th className="px-2 py-2 text-right">
+                    {isZh ? '净利润影响' : 'Net profit effect'}
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {report.adjustmentBreakdown.map((row) => (
+                  <tr key={`${row.source}:${row.sourceFactType ?? 'unknown'}`}>
+                    <td className="px-2 py-2">
+                      <div className="font-medium text-slate-800">
+                        {adjustmentLabel(row.sourceFactType, row.source, isZh)}
+                      </div>
+                      <div className="mt-0.5 font-mono text-[10px] text-slate-400">
+                        {row.source} · {row.sourceFactType ?? '—'}
+                      </div>
+                    </td>
+                    <td className="px-2 py-2 text-right tabular-nums">
+                      {row.journalCount}
+                    </td>
+                    <td className="px-2 py-2 text-right tabular-nums">
+                      {money(row.revenueNetCents)}
+                    </td>
+                    <td className="px-2 py-2 text-right tabular-nums">
+                      {money(row.expenseNetCents)}
+                    </td>
+                    <td className="px-2 py-2 text-right font-semibold tabular-nums">
+                      {money(row.netProfitEffectCents)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
 
       <section className="rounded-xl border bg-white p-4 shadow-sm">
         <h2 className="mb-3 text-lg font-semibold">

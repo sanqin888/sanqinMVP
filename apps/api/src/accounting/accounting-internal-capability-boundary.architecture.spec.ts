@@ -93,7 +93,6 @@ describe('Accounting internal capability boundary', () => {
       'exportTxCsv',
       'exportPnlTemplate',
       'exportPnlPdf',
-      'accountBalanceReport',
       'annualReport',
       'cashflowOverview',
     ]) {
@@ -110,7 +109,9 @@ describe('Accounting internal capability boundary', () => {
     expect(broad).not.toContain('readPaidTotalDimensionsForRange');
     expect(broad).not.toContain('dimensionSlice');
     expect(controller).toContain('this.reports.pnlReport');
-    expect(controller).toContain('this.reports.accountBalanceReport');
+    expect(controller).not.toContain('this.reports.accountBalanceReport');
+    expect(controller).not.toContain("@Get('report/account-balance')");
+    expect(reports).not.toContain('async accountBalanceReport(');
     expect(controller).toContain('this.reports.cashflowOverview');
     expect(controller).not.toContain('this.accountingService.dimensionSlice');
   });

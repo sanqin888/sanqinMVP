@@ -451,6 +451,7 @@ describe('AccountingSalesAnalyticsService', () => {
       to: '2026-06-02',
     });
 
+    expect(report.accountingStartDate).toBe('2026-06-01');
     expect(report.from).toBe('2026-06-01');
     expect(report.to).toBe('2026-06-02');
     expect(journalQueries[0]?.where?.storeStableId).toBe(STORE.storeStableId);

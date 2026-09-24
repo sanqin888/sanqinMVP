@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useState } from 'react';
 import { apiFetch } from '@/lib/api/client';
 import {
@@ -47,8 +48,7 @@ export function AccountingEvidenceViewer({
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const contentUrl = accountingEvidenceContentUrl(evidence.artifactStableId);
   const downloadUrl = accountingEvidenceDownloadUrl(evidence.artifactStableId);
-  const browserPreview =
-    evidence.kind === 'PDF' || evidence.kind === 'IMAGE';
+  const browserPreviewMode = accountingEvidenceBrowserPreviewMode(evidence.kind);
   const tabularPreview = accountingEvidenceSupportsTabularPreview({
     kind: evidence.kind,
     filename: evidence.filename,
@@ -131,7 +131,7 @@ export function AccountingEvidenceViewer({
                 >
                   {isZh ? '文件管理' : 'Manage files'}
                 </button>
-                {browserPreview ? (
+                {browserPreviewMode ? (
                   <a
                     href={contentUrl}
                     target="_blank"
@@ -185,7 +185,17 @@ export function AccountingEvidenceViewer({
             ) : null}
 
             <div className="flex min-h-[65vh] flex-1 bg-slate-100 p-2 sm:p-4">
-              {browserPreview ? (
+              {browserPreviewMode === 'IMAGE' ? (
+                <div className="relative min-h-[65vh] w-full flex-1 overflow-hidden rounded-lg border border-slate-200 bg-white">
+                  <Image
+                    src={contentUrl}
+                    alt={title}
+                    fill
+                    unoptimized
+                    className="object-contain p-2"
+                  />
+                </div>
+              ) : browserPreviewMode === 'PDF' ? (
                 <iframe
                   src={contentUrl}
                   title={title}
@@ -225,6 +235,14 @@ export function AccountingEvidenceViewer({
       ) : null}
     </>
   );
+}
+
+export function accountingEvidenceBrowserPreviewMode(
+  kind: AccountingEvidenceSource['kind'],
+): 'PDF' | 'IMAGE' | null {
+  if (kind === 'PDF') return 'PDF';
+  if (kind === 'IMAGE') return 'IMAGE';
+  return null;
 }
 
 export function accountingEvidenceCanPermanentDelete(

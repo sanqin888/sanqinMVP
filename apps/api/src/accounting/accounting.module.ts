@@ -39,6 +39,7 @@ import { AccountingProviderSettlementQueryService } from './accounting-provider-
 import { AccountingSalesAnalyticsService } from './accounting-sales-analytics.service';
 import { AccountingBalanceMovementService } from './accounting-balance-movement.service';
 import { AccountingTrialBalanceService } from './accounting-trial-balance.service';
+import { AccountingStatementDrillThroughService } from './accounting-statement-drill-through.service';
 import { AccountingStatementExportService } from './accounting-statement-export.service';
 import { AccountingCanonicalSalePostingProcessor } from './accounting-canonical-sale-posting.processor';
 import { AccountingCanonicalSalePostingService } from './accounting-canonical-sale-posting.service';
@@ -47,6 +48,7 @@ import { AccountingCanonicalChangePreviewService } from './accounting-canonical-
 import { AccountingCanonicalChangeExecutionService } from './accounting-canonical-change-execution.service';
 import { AccountingProviderSettlementPreviewService } from './accounting-provider-settlement-preview.service';
 import { AccountingProviderSettlementExecutionService } from './accounting-provider-settlement-execution.service';
+import { AccountingProviderFinancialCoverageService } from './accounting-provider-financial-coverage.service';
 import { AccountingProviderPayoutService } from './accounting-provider-payout.service';
 import { AccountingProviderPayoutBankMatchService } from './accounting-provider-payout-bank-match.service';
 import { AccountingProviderPayoutBankRowDecisionService } from './accounting-provider-payout-bank-row-decision.service';
@@ -111,6 +113,7 @@ import { PaymentFinancialFactsModule } from '../payments/public-api';
     AccountingCanonicalChangeExecutionService,
     AccountingProviderSettlementPreviewService,
     AccountingProviderSettlementExecutionService,
+    AccountingProviderFinancialCoverageService,
     AccountingProviderPayoutService,
     AccountingProviderPayoutBankMatchService,
     AccountingProviderPayoutBankRowDecisionService,
@@ -122,6 +125,7 @@ import { PaymentFinancialFactsModule } from '../payments/public-api';
     AccountingSalesAnalyticsService,
     AccountingBalanceMovementService,
     AccountingTrialBalanceService,
+    AccountingStatementDrillThroughService,
     AccountingStatementExportService,
     AccountingInboxService,
     AccountingProviderSettlementQueryService,

@@ -104,12 +104,16 @@ export class AccountingProviderPayoutController {
     @Query('provider') providerRaw?: string,
     @Query('storeStableId') storeStableId?: string,
     @Query('limit') limitRaw?: string,
+    @Query('payoutStableId') payoutStableId?: string,
   ) {
     return this.payouts.listPayouts({
       ...(providerRaw
         ? { provider: parseAccountingFinancialProvider(providerRaw) }
         : {}),
       ...(storeStableId?.trim() ? { storeStableId: storeStableId.trim() } : {}),
+      ...(payoutStableId?.trim()
+        ? { payoutStableId: payoutStableId.trim() }
+        : {}),
       limit: parseNonNegativeAccountingNumber(limitRaw, 'limit'),
     });
   }

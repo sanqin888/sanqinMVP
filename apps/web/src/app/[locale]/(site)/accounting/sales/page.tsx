@@ -22,8 +22,10 @@ import type {
   AccountingSalesSummary,
   AccountingSalesTenderBucket,
 } from '../contracts/reports';
-
-const DAY_MS = 24 * 60 * 60 * 1000;
+import {
+  previousEqualRange,
+  previousEqualRangeWithinAccountingCoverage,
+} from './sales-comparison-range';
 
 const money = (cents: number) =>
   `${cents < 0 ? '-' : ''}$${(Math.abs(cents) / 100).toFixed(2)}`;
@@ -32,21 +34,6 @@ const channelCosts = (summary: AccountingSalesSummary) =>
   summary.platformCommissionCents +
   summary.paymentProcessingFeeCents +
   summary.platformPromotionCents;
-
-function previousEqualRange(from: string, to: string) {
-  const fromMs = Date.parse(`${from}T00:00:00.000Z`);
-  const toMs = Date.parse(`${to}T00:00:00.000Z`);
-  if (Number.isNaN(fromMs) || Number.isNaN(toMs) || toMs < fromMs) {
-    return null;
-  }
-  const days = Math.floor((toMs - fromMs) / DAY_MS) + 1;
-  const previousToMs = fromMs - DAY_MS;
-  const previousFromMs = previousToMs - (days - 1) * DAY_MS;
-  return {
-    from: new Date(previousFromMs).toISOString().slice(0, 10),
-    to: new Date(previousToMs).toISOString().slice(0, 10),
-  };
-}
 
 function salesReportUrl(from: string, to: string) {
   const query = new URLSearchParams({ from, to }).toString();
@@ -79,13 +66,22 @@ export default function AccountingSalesPage() {
   );
   const [previousReport, setPreviousReport] =
     useState<AccountingSalesAnalyticsReport | null>(null);
-  const [comparisonUnavailable, setComparisonUnavailable] = useState(false);
+  const [comparisonUnavailableReason, setComparisonUnavailableReason] = useState<
+    'OUTSIDE_ACCOUNTING_COVERAGE' | 'UNAVAILABLE' | null
+  >(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const comparisonRange = useMemo(
-    () => previousEqualRange(report?.from ?? from, report?.to ?? to),
-    [from, report?.from, report?.to, to],
+    () =>
+      report
+        ? previousEqualRangeWithinAccountingCoverage(
+            report.from,
+            report.to,
+            report.accountingStartDate,
+          )
+        : null,
+    [report],
   );
 
   useEffect(() => {
@@ -94,7 +90,7 @@ export default function AccountingSalesPage() {
     setError(null);
     setReport(null);
     setPreviousReport(null);
-    setComparisonUnavailable(false);
+    setComparisonUnavailableReason(null);
 
     void apiFetch<AccountingSalesAnalyticsReport>(salesReportUrl(from, to))
       .then(async (currentReport) => {
@@ -106,7 +102,17 @@ export default function AccountingSalesPage() {
           currentReport.to,
         );
         if (!previousRange) {
-          setComparisonUnavailable(true);
+          setComparisonUnavailableReason('UNAVAILABLE');
+          return;
+        }
+        if (
+          !previousEqualRangeWithinAccountingCoverage(
+            currentReport.from,
+            currentReport.to,
+            currentReport.accountingStartDate,
+          )
+        ) {
+          setComparisonUnavailableReason('OUTSIDE_ACCOUNTING_COVERAGE');
           return;
         }
 
@@ -119,12 +125,12 @@ export default function AccountingSalesPage() {
             previous.from !== previousRange.from ||
             previous.to !== previousRange.to
           ) {
-            setComparisonUnavailable(true);
+            setComparisonUnavailableReason('UNAVAILABLE');
             return;
           }
           setPreviousReport(previous);
         } catch {
-          if (!cancelled) setComparisonUnavailable(true);
+          if (!cancelled) setComparisonUnavailableReason('UNAVAILABLE');
         }
       })
       .catch((cause: unknown) => {
@@ -197,6 +203,10 @@ export default function AccountingSalesPage() {
             {isZh ? 'Journal 分录' : 'Journal entries'}:{' '}
             {report?.journalEntryCount ?? 0}
           </span>
+          <span>
+            {isZh ? 'Accounting 起始' : 'Accounting start'}:{' '}
+            {report?.accountingStartDate ?? '—'}
+          </span>
           {comparisonRange ? (
             <span>
               {isZh ? '等长前期' : 'Previous equal period'}:{' '}
@@ -216,11 +226,15 @@ export default function AccountingSalesPage() {
           {isZh ? '正在读取 canonical Sales…' : 'Loading canonical Sales…'}
         </p>
       ) : null}
-      {comparisonUnavailable && report ? (
+      {comparisonUnavailableReason && report ? (
         <p className="rounded bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          {isZh
-            ? '当前区间已加载；等长前期超出可用 Accounting 区间或暂不可读取，因此本次不显示前期对比。'
-            : 'The current range loaded successfully, but the previous equal period is outside the available Accounting range or could not be read, so comparison is omitted.'}
+          {comparisonUnavailableReason === 'OUTSIDE_ACCOUNTING_COVERAGE'
+            ? isZh
+              ? `等长前期无法完整落在 Accounting 覆盖范围内（起始 ${report.accountingStartDate}），因此不会发起前期查询。`
+              : `The previous equal period is not fully inside Accounting coverage (starts ${report.accountingStartDate}), so no comparison request is sent.`
+            : isZh
+              ? '当前区间已加载；等长前期暂不可读取，因此本次不显示前期对比。'
+              : 'The current range loaded successfully, but the previous equal period could not be read, so comparison is omitted.'}
         </p>
       ) : null}
 
@@ -276,8 +290,8 @@ export default function AccountingSalesPage() {
         </h2>
         <p className="mt-1 text-xs text-slate-500">
           {isZh
-            ? '金额来自 Journal；上方 KPI 同时显示等长前期对比。'
-            : 'Amounts come from Journal; KPI cards above include the equal-period comparison.'}
+            ? '金额来自 Journal；仅当前期完整落在 Accounting 覆盖范围内时，上方 KPI 才显示等长前期对比。'
+            : 'Amounts come from Journal; KPI cards show the equal-period comparison only when the full prior range is inside Accounting coverage.'}
         </p>
         <div className="mt-4 h-72 w-full">
           <ResponsiveContainer width="100%" height="100%">

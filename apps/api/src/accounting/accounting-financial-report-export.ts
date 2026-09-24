@@ -26,6 +26,14 @@ export type AccountingPnlExportReport = {
     type: string;
     amountCents: number;
   }>;
+  adjustmentBreakdown: Array<{
+    source: string;
+    sourceFactType: string | null;
+    journalCount: number;
+    revenueNetCents: number;
+    expenseNetCents: number;
+    netProfitEffectCents: number;
+  }>;
   trends: {
     currentMonthNetCents: number;
     lastMonthNetCents: number;
@@ -121,6 +129,33 @@ export function renderAccountingPnlCsv(
           .join(','),
       );
     }
+    if (report.adjustmentBreakdown.length > 0) {
+      lines.push('');
+      lines.push(
+        [
+          'adjustmentSource',
+          'sourceFactType',
+          'journalCount',
+          'revenueNet',
+          'expenseNet',
+          'netProfitEffect',
+        ].join(','),
+      );
+      for (const row of report.adjustmentBreakdown) {
+        lines.push(
+          [
+            row.source,
+            row.sourceFactType ?? '',
+            row.journalCount,
+            formatMoney(row.revenueNetCents),
+            formatMoney(row.expenseNetCents),
+            formatMoney(row.netProfitEffectCents),
+          ]
+            .map(escapeCsv)
+            .join(','),
+        );
+      }
+    }
   } else {
     lines.push(['metric', 'amount'].join(','));
     lines.push(
@@ -134,7 +169,7 @@ export function renderAccountingPnlCsv(
         .join(','),
     );
     lines.push(
-      ['调整', formatMoney(report.summary.adjustmentCents)]
+      ['净调整影响', formatMoney(report.summary.adjustmentCents)]
         .map(escapeCsv)
         .join(','),
     );
@@ -312,7 +347,7 @@ export function renderAccountingPnlPdf(
       drawPdfMetric(
         doc,
         fonts,
-        'Adjustment',
+        'Net adjustment effect',
         money(report.summary.adjustmentCents),
       );
       drawPdfMetric(
@@ -401,6 +436,74 @@ export function renderAccountingPnlPdf(
             align: 'right',
           },
         ]);
+      }
+
+      if (report.adjustmentBreakdown.length > 0) {
+        ensurePdfSpace(doc, 90);
+        doc.moveDown(0.75);
+        doc.font(fonts.bold).fontSize(12).text('Adjustment effects');
+        doc.moveDown(0.5);
+        const adjustmentColumns = [
+          { label: 'Source fact', x: PDF_LEFT, width: 205 },
+          {
+            label: 'Count',
+            x: PDF_LEFT + 215,
+            width: 45,
+            align: 'right' as const,
+          },
+          {
+            label: 'Revenue',
+            x: PDF_LEFT + 270,
+            width: 70,
+            align: 'right' as const,
+          },
+          {
+            label: 'Expense',
+            x: PDF_LEFT + 350,
+            width: 70,
+            align: 'right' as const,
+          },
+          {
+            label: 'Net',
+            x: PDF_LEFT + 430,
+            width: 57,
+            align: 'right' as const,
+          },
+        ];
+        drawPdfTableHeader(doc, fonts, adjustmentColumns);
+        for (const row of report.adjustmentBreakdown) {
+          drawPdfTableRow(doc, fonts, [
+            {
+              value: `${row.source} / ${row.sourceFactType ?? 'unknown'}`,
+              x: PDF_LEFT,
+              width: 205,
+            },
+            {
+              value: String(row.journalCount),
+              x: PDF_LEFT + 215,
+              width: 45,
+              align: 'right',
+            },
+            {
+              value: money(row.revenueNetCents),
+              x: PDF_LEFT + 270,
+              width: 70,
+              align: 'right',
+            },
+            {
+              value: money(row.expenseNetCents),
+              x: PDF_LEFT + 350,
+              width: 70,
+              align: 'right',
+            },
+            {
+              value: money(row.netProfitEffectCents),
+              x: PDF_LEFT + 430,
+              width: 57,
+              align: 'right',
+            },
+          ]);
+        }
       }
 
       ensurePdfSpace(doc, 60);

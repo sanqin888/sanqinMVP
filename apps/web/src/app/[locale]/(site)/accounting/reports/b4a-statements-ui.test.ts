@@ -20,6 +20,9 @@ describe('B4-A Accounting statements UI boundary', () => {
     expect(pageSource).toContain('/accounting/report/balance-movement?');
     expect(pageSource).not.toContain('/accounting/report/account-balance');
     expect(pageSource).not.toContain('AccountingAccountBalanceReport');
+    expect(contractsSource).not.toContain(
+      'export type AccountingAccountBalanceReport',
+    );
   });
 
   it('keeps Trial Balance and Balance Movement wire DTOs on the Web contract surface', () => {

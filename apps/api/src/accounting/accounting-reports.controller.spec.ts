@@ -128,6 +128,14 @@ const makeController = () => {
   const trialBalance = {
     project: jest.fn().mockResolvedValue(trialBalanceReport),
   };
+  const statementDrillThrough = {
+    read: jest.fn().mockResolvedValue({
+      version: 1,
+      scope: 'WHOLE_LEDGER',
+      phase: 'PERIOD',
+      entries: [],
+    }),
+  };
   const statementExport = {
     exportTrialBalanceCsv: jest.fn().mockResolvedValue('trial,csv'),
     exportTrialBalancePdf: jest
@@ -145,10 +153,12 @@ const makeController = () => {
       {} as never,
       balanceMovement as never,
       trialBalance as never,
+      statementDrillThrough as never,
       statementExport as never,
     ),
     balanceMovement,
     trialBalance,
+    statementDrillThrough,
     statementExport,
   };
 };
@@ -228,6 +238,32 @@ describe('AccountingReportsController Balance Movement transport', () => {
     await expect(
       controller.balanceMovementReport(undefined, undefined, undefined),
     ).rejects.toBe(conflict);
+  });
+});
+
+describe('AccountingReportsController statement drill-through', () => {
+  it('delegates account/phase/range/pagination unchanged to the Accounting drill-through service', async () => {
+    const { controller, statementDrillThrough } = makeController();
+
+    await controller.statementJournals(
+      'account_primary_bank',
+      'PERIOD',
+      '2026-06-01',
+      '2026-06-30',
+      'cad',
+      '25',
+      '50',
+    );
+
+    expect(statementDrillThrough.read).toHaveBeenCalledWith({
+      accountStableId: 'account_primary_bank',
+      phase: 'PERIOD',
+      from: '2026-06-01',
+      to: '2026-06-30',
+      currency: 'cad',
+      limit: 25,
+      offset: 50,
+    });
   });
 });
 
