@@ -555,7 +555,12 @@ Avoid polishing current mixed-authority widgets immediately before replacing the
 
 Priority: **P2**  
 Complexity: **M**  
-Depends on: **B2 terminology / financial contract stabilization**
+Depends on: **B2 terminology / financial contract stabilization — satisfied; B4 closed**  
+State: **B5-B1 Orders operational facts LOCAL SOURCE READY FOR REVIEW / NO MIGRATION / NO DEPENDENCY / NO GRAPH-DIRECTION CHANGE** from `origin/dev@6911dde2`. Detailed work package: `docs/architecture/admin-business-reports-b5.md`.
+
+B5 is now scoped as a store operating-monitoring surface, not merely a cleanup of the old Sales page. The product target is Today-first anomaly detection and explanation across Order count, Order total, average Order total, time-of-day, channel, fulfillment, product/package demand, production demand and execution health while canonical financial reporting remains Accounting-owned.
+
+B5-B1 keeps the existing `ORDER_REPORTING_FACTS_READER` legacy methods untouched and adds store-scoped half-open-range operational Order/item facts. Orders remains the owner of persistence queries and immutable component decoding; Reporting will own aggregation/baselines later. The new public facts intentionally exclude customer PII and raw snapshot JSON. An architecture guard prevents the Orders reader from pulling `PosPrintJob`/POS internals across the separate `store-operations-pos-print` boundary.
 
 Important distinction:
 
@@ -567,10 +572,15 @@ The Admin page currently reads the Orders/Reporting operational endpoint and dis
 Target:
 
 - rename/reframe ambiguous “销售额/收入” labels so Order totals are not mistaken for accounting revenue;
-- improve store/channel/menu/order operational KPIs and equal-period comparisons;
-- retain top-item and fulfillment operational analysis;
-- if a financial summary is useful, consume an Accounting-owned contract rather than recomputing finance in Admin;
+- default to a store-scoped **Today** operating view against same-weekday / same-elapsed-time baselines;
+- detect and explain meaningful changes in Order count, Order total, average Order total, channel, fulfillment and time-of-day;
+- separate top-level commercial product/package demand from component-expanded production demand;
+- use `makingAt -> readyAt` for prep p50/p90 and bounded recent-queue diagnostics;
+- expose data coverage/confidence rather than inventing payment, delivery, conversion, historical category or historical closure authority that does not exist;
+- keep Accounting finance, Behavior Analytics and Marketing campaign lifecycle in their owner surfaces unless a later explicit public contract is added;
 - do not duplicate P&L, settlement, tax or account-balance logic.
+
+Implementation order: **B5-B1 Orders operational facts -> B5-B2 Store operating-context seam -> B5-C1 Business Operations projection/anomaly engine -> B5-C2 Admin monitoring UI -> B5-D legacy route contraction + production verification**.
 
 B2 comes first so Admin and Accounting can share stable vocabulary rather than implementing two competing meanings of “sales/revenue”.
 
