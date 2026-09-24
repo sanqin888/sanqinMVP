@@ -84,6 +84,7 @@ describe('AccountingArtifactDeliveryService', () => {
         kind: AccountingArtifactKind.IMAGE,
         mimeType: 'image/jpeg',
         originalFilename: 'receipt.jpg',
+        displayFilename: 'CANADIAN-TIRE_20260923T013736693Z.webp',
         storedUrl: '/api/v1/accounting/files/inbox/original.jpg',
         binaryRetention: {
           state: AccountingArtifactBinaryRetentionState.COMPRESSED_ONLY,
@@ -100,7 +101,7 @@ describe('AccountingArtifactDeliveryService', () => {
     ).resolves.toEqual({
       filePath: retainedPath,
       mimeType: 'image/webp',
-      filename: 'receipt-retained.webp',
+      filename: 'CANADIAN-TIRE_20260923T013736693Z.webp',
       retainedDerivative: true,
     });
   });

@@ -8,10 +8,18 @@ import {
   AccountingInboxTrustDecision,
   Prisma,
 } from '@prisma/client';
+import {
+  accountingExpenseVendorName,
+  accountingRetainedImageDisplayFilename,
+  accountingRetainedImageVendorFromFilename,
+} from './accounting-image-retention-filename';
 
 export type AccountingInboxReadClient = Pick<
   Prisma.TransactionClient,
-  'accountingInboxItem' | 'accountingSourceArtifact' | 'accountingTrustedSender'
+  | 'accountingInboxItem'
+  | 'accountingSourceArtifact'
+  | 'accountingTrustedSender'
+  | 'accountingExpenseDocument'
 >;
 
 export async function getAccountingSenderTrustDecision(
@@ -226,6 +234,8 @@ export async function listAccountingManualUploadLibrary(
             select: {
               state: true,
               retainedStoredUrl: true,
+              retainedByteSize: true,
+              acceptedAt: true,
             },
           },
         },
@@ -234,6 +244,11 @@ export async function listAccountingManualUploadLibrary(
     orderBy: { createdAt: 'desc' },
     take,
   });
+
+  const vendorNames = await readExpenseVendorNames(
+    client,
+    rows.map((row) => row.materializedEntityStableId),
+  );
 
   return rows.map((row) => {
     const hasImageContent =
@@ -276,8 +291,26 @@ export async function listAccountingManualUploadLibrary(
       materializedEntityType: row.materializedEntityType,
       materializedEntityStableId: row.materializedEntityStableId,
       originalFilename: row.artifact.originalFilename,
+      displayFilename:
+        row.artifact.binaryRetention?.state ===
+          AccountingArtifactBinaryRetentionState.COMPRESSED_ONLY
+          ? accountingRetainedImageDisplayFilename({
+              retainedStoredUrl:
+                row.artifact.binaryRetention.retainedStoredUrl,
+              vendorName:
+                vendorNames.get(row.materializedEntityStableId ?? '') ?? null,
+              fallbackTimestamp:
+                row.artifact.binaryRetention.acceptedAt ?? row.createdAt,
+              originalFilename: row.artifact.originalFilename,
+            })
+          : row.artifact.originalFilename,
       kind: row.artifact.kind,
-      byteSize: row.artifact.byteSize,
+      byteSize:
+        row.artifact.binaryRetention?.state ===
+          AccountingArtifactBinaryRetentionState.COMPRESSED_ONLY
+          ? (row.artifact.binaryRetention.retainedByteSize ??
+            row.artifact.byteSize)
+          : row.artifact.byteSize,
       contentUrl,
       retentionState: row.artifact.binaryRetention?.state ?? null,
       duplicateOf: row.duplicateOfArtifact
@@ -327,6 +360,7 @@ export async function listAccountingImageRetentionQueue(
     },
     select: {
       inboxItemStableId: true,
+      materializedEntityStableId: true,
       createdAt: true,
       updatedAt: true,
       artifact: {
@@ -342,6 +376,11 @@ export async function listAccountingImageRetentionQueue(
     orderBy: { updatedAt: 'desc' },
     take,
   });
+
+  const vendorNames = await readExpenseVendorNames(
+    client,
+    rows.map((row) => row.materializedEntityStableId),
+  );
 
   return rows.map((row) => {
     const retention = row.artifact.binaryRetention!;
@@ -404,6 +443,12 @@ export async function listAccountingImageRetentionQueue(
       inboxItemStableId: row.inboxItemStableId,
       artifactStableId: row.artifact.artifactStableId,
       originalFilename: row.artifact.originalFilename,
+      vendorName:
+        accountingRetainedImageVendorFromFilename(
+          retention.candidateStoredUrl ?? retention.retainedStoredUrl,
+        ) ??
+        vendorNames.get(row.materializedEntityStableId ?? '') ??
+        null,
       retentionState: retention.state,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
@@ -417,6 +462,36 @@ export async function listAccountingImageRetentionQueue(
       derivative: candidate,
     };
   });
+}
+
+async function readExpenseVendorNames(
+  client: AccountingInboxReadClient,
+  documentStableIds: Array<string | null>,
+): Promise<Map<string, string>> {
+  const stableIds = [
+    ...new Set(
+      documentStableIds.filter(
+        (value): value is string => typeof value === 'string' && Boolean(value),
+      ),
+    ),
+  ];
+  if (!stableIds.length) return new Map();
+
+  const documents = await client.accountingExpenseDocument.findMany({
+    where: { documentStableId: { in: stableIds } },
+    select: {
+      documentStableId: true,
+      extractionJson: true,
+    },
+  });
+  const vendorNames = new Map<string, string>();
+  for (const document of documents) {
+    const vendorName = accountingExpenseVendorName(document.extractionJson);
+    if (vendorName) {
+      vendorNames.set(document.documentStableId, vendorName);
+    }
+  }
+  return vendorNames;
 }
 
 function accountingRetentionSavingsPercent(
@@ -509,7 +584,7 @@ export async function readAccountingArtifactContentContext(
   client: AccountingInboxReadClient,
   artifactStableId: string,
 ) {
-  return client.accountingSourceArtifact.findUnique({
+  const artifact = await client.accountingSourceArtifact.findUnique({
     where: { artifactStableId },
     select: {
       artifactStableId: true,
@@ -518,8 +593,40 @@ export async function readAccountingArtifactContentContext(
       originalFilename: true,
       storedUrl: true,
       binaryRetention: true,
+      inboxItem: {
+        select: {
+          materializedEntityStableId: true,
+          createdAt: true,
+        },
+      },
     },
   });
+  if (!artifact) return null;
+
+  const vendorNames = await readExpenseVendorNames(client, [
+    artifact.inboxItem?.materializedEntityStableId ?? null,
+  ]);
+  const displayFilename =
+    artifact.binaryRetention?.state ===
+      AccountingArtifactBinaryRetentionState.COMPRESSED_ONLY
+      ? accountingRetainedImageDisplayFilename({
+          retainedStoredUrl: artifact.binaryRetention.retainedStoredUrl,
+          vendorName:
+            vendorNames.get(
+              artifact.inboxItem?.materializedEntityStableId ?? '',
+            ) ?? null,
+          fallbackTimestamp:
+            artifact.binaryRetention.acceptedAt ??
+            artifact.inboxItem?.createdAt ??
+            new Date(0),
+          originalFilename: artifact.originalFilename,
+        })
+      : artifact.originalFilename;
+
+  return {
+    ...artifact,
+    displayFilename,
+  };
 }
 
 export async function readAccountingInboxProviderReviewContext(

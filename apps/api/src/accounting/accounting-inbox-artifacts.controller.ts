@@ -68,12 +68,14 @@ export class AccountingInboxArtifactsController {
   @Post('inbox/:inboxItemStableId/image-retention/candidate')
   createImageRetentionCandidate(
     @Param('inboxItemStableId') inboxItemStableId: string,
-    @Body() body: { profile?: AccountingImageRetentionProfile },
+    @Body()
+    body: { profile?: AccountingImageRetentionProfile; vendorName?: string },
     @Req() req: AuthedAccountingRequest,
   ) {
     return this.imageRetention.createCandidate(
       inboxItemStableId,
       body.profile ?? 'BALANCED',
+      body.vendorName ?? '',
       requireAccountingOperatorUserId(req),
     );
   }

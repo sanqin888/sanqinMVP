@@ -57,13 +57,28 @@ describe('Accounting manual upload library query', () => {
           financialDocument: null,
           duplicateInboxItems: [],
           binaryRetention: {
-            state: AccountingArtifactBinaryRetentionState.ORIGINAL_PRESENT,
-            retainedStoredUrl: null,
+            state: AccountingArtifactBinaryRetentionState.COMPRESSED_ONLY,
+            retainedStoredUrl:
+              '/api/v1/accounting/files/image-retention/acctart_image-random.webp',
+            retainedByteSize: 458_978,
+            acceptedAt: new Date('2026-09-16T01:08:09.123Z'),
           },
         },
       },
     ]);
-    const client = { accountingInboxItem: { findMany } };
+    const client = {
+      accountingInboxItem: { findMany },
+      accountingExpenseDocument: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            documentStableId: 'expense_1',
+            extractionJson: {
+              textractEvidence: { vendorName: 'CANADIAN TIRE' },
+            },
+          },
+        ]),
+      },
+    };
 
     const result = await listAccountingManualUploadLibrary(
       client as never,
@@ -99,6 +114,8 @@ describe('Accounting manual upload library query', () => {
       expect.objectContaining({
         inboxItemStableId: 'acctinbox_confirmed_image',
         contentUrl: '/api/v1/accounting/inbox/artifacts/acctart_image/content',
+        displayFilename: 'CANADIAN-TIRE_20260916T010809123Z.webp',
+        byteSize: 458_978,
         canDiscard: false,
         canPermanentDelete: false,
       }) as unknown,

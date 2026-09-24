@@ -12,6 +12,7 @@ describe('Accounting image retention queue query', () => {
     const findMany = jest.fn().mockResolvedValue([
       {
         inboxItemStableId: 'acctinbox_image_1',
+        materializedEntityStableId: 'expense_1',
         createdAt: new Date('2026-09-15T20:00:00.000Z'),
         updatedAt: new Date('2026-09-15T20:05:00.000Z'),
         artifact: {
@@ -37,7 +38,19 @@ describe('Accounting image retention queue query', () => {
         },
       },
     ]);
-    const client = { accountingInboxItem: { findMany } };
+    const client = {
+      accountingInboxItem: { findMany },
+      accountingExpenseDocument: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            documentStableId: 'expense_1',
+            extractionJson: {
+              textractEvidence: { vendorName: 'FOODY MART' },
+            },
+          },
+        ]),
+      },
+    };
 
     const result = await listAccountingImageRetentionQueue(client as never, 50);
 
@@ -72,6 +85,7 @@ describe('Accounting image retention queue query', () => {
       expect.objectContaining({
         inboxItemStableId: 'acctinbox_image_1',
         artifactStableId: 'acctart_image_1',
+        vendorName: 'FOODY MART',
         retentionState: AccountingArtifactBinaryRetentionState.CANDIDATE_READY,
         original: expect.objectContaining({
           url: '/api/v1/accounting/inbox/artifacts/acctart_image_1/content',

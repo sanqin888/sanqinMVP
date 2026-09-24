@@ -3,6 +3,7 @@ import {
   accountingEvidenceCanPermanentDelete,
   accountingEvidenceContentUrl,
   accountingEvidenceDownloadUrl,
+  accountingEvidenceImageContentTypeIsPreviewable,
   accountingEvidencePermanentDeleteUrl,
   type AccountingEvidenceSource,
 } from './accounting-evidence-viewer';
@@ -18,6 +19,21 @@ describe('AccountingEvidenceViewer capability helpers', () => {
     expect(accountingEvidenceBrowserPreviewMode('IMAGE')).toBe('IMAGE');
     expect(accountingEvidenceBrowserPreviewMode('PDF')).toBe('PDF');
     expect(accountingEvidenceBrowserPreviewMode('CSV')).toBeNull();
+  });
+
+  it('accepts browser image MIME types for protected blob previews', () => {
+    expect(accountingEvidenceImageContentTypeIsPreviewable('image/webp')).toBe(
+      true,
+    );
+    expect(
+      accountingEvidenceImageContentTypeIsPreviewable(
+        'image/jpeg; charset=binary',
+      ),
+    ).toBe(true);
+    expect(
+      accountingEvidenceImageContentTypeIsPreviewable('application/json'),
+    ).toBe(false);
+    expect(accountingEvidenceImageContentTypeIsPreviewable(null)).toBe(false);
   });
 
   it('keeps delete disabled without an explicit permanent-delete capability', () => {
