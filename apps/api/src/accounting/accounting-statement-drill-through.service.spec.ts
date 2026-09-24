@@ -140,14 +140,21 @@ describe('AccountingStatementDrillThroughService', () => {
       to: '2026-07-31',
     });
 
-    expect(prisma.accountingJournalEntry.count).toHaveBeenCalledWith({
-      where: expect.objectContaining({
-        currency: 'CAD',
-        OR: [
-          { kind: AccountingJournalEntryKind.OPENING_BALANCE },
-          { occurredAt: { lt: scope.fromInclusive } },
-        ],
-      }),
+    const openingCountCall = prisma.accountingJournalEntry.count.mock
+      .calls[0]?.[0] as
+      | {
+          where: {
+            currency?: string;
+            OR?: unknown[];
+          };
+        }
+      | undefined;
+    expect(openingCountCall?.where).toMatchObject({
+      currency: 'CAD',
+      OR: [
+        { kind: AccountingJournalEntryKind.OPENING_BALANCE },
+        { occurredAt: { lt: scope.fromInclusive } },
+      ],
     });
   });
 
@@ -161,15 +168,22 @@ describe('AccountingStatementDrillThroughService', () => {
       to: '2026-07-31',
     });
 
-    expect(prisma.accountingJournalEntry.count).toHaveBeenCalledWith({
-      where: expect.objectContaining({
-        currency: 'CAD',
-        kind: { not: AccountingJournalEntryKind.OPENING_BALANCE },
-        occurredAt: {
-          gte: scope.fromInclusive,
-          lt: scope.toExclusive,
-        },
-      }),
+    const periodCountCall = prisma.accountingJournalEntry.count.mock.calls[0]?.[0] as
+      | {
+          where: {
+            currency?: string;
+            kind?: unknown;
+            occurredAt?: unknown;
+          };
+        }
+      | undefined;
+    expect(periodCountCall?.where).toMatchObject({
+      currency: 'CAD',
+      kind: { not: AccountingJournalEntryKind.OPENING_BALANCE },
+      occurredAt: {
+        gte: scope.fromInclusive,
+        lt: scope.toExclusive,
+      },
     });
   });
 
