@@ -172,6 +172,11 @@ describe('Phase 9 canonical financial facts boundary', () => {
         ACCOUNTING_ROOT,
         'accounting-provider-settlement-execution.service.ts',
       )?.source ?? '';
+    const providerFinancialCoverageService =
+      file(
+        ACCOUNTING_ROOT,
+        'accounting-provider-financial-coverage.service.ts',
+      )?.source ?? '';
     const providerPayoutService =
       file(ACCOUNTING_ROOT, 'accounting-provider-payout.service.ts')?.source ??
       '';
@@ -279,6 +284,20 @@ describe('Phase 9 canonical financial facts boundary', () => {
     );
     expect(providerSettlementExecutionService).not.toContain(
       'accountingJournalEntry.',
+    );
+    expect(providerSettlementExecutionService).toContain(
+      'AccountingProviderFinancialCoverageService',
+    );
+    expect(providerFinancialCoverageService).toContain(
+      "from './accounting-db'",
+    );
+    expect(providerFinancialCoverageService).not.toContain('../prisma/');
+    expect(providerFinancialCoverageService).not.toContain("from '../orders/");
+    expect(providerFinancialCoverageService).not.toContain(
+      "from '../payments/",
+    );
+    expect(providerFinancialCoverageService).not.toContain(
+      "from '../integrations/",
     );
     expect(providerPayoutService).toContain("from './accounting-db'");
     expect(providerPayoutService).toContain(
@@ -393,6 +412,9 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(accountingModule).toContain(
       'AccountingProviderSettlementExecutionService',
     );
+    expect(accountingModule).toContain(
+      'AccountingProviderFinancialCoverageService',
+    );
     expect(accountingModule).toContain('AccountingProviderPayoutService');
     expect(accountingModule).toContain(
       'AccountingProviderPayoutBankMatchService',
@@ -448,6 +470,23 @@ describe('Phase 9 canonical financial facts boundary', () => {
       )
       .sort();
     expect(providerSettlementWriterCallers).toEqual([
+      'accounting/accounting-provider-settlement-execution.service.ts',
+    ]);
+
+    const providerCoverageWriterCallers = scanTypeScript(ACCOUNTING_ROOT, {
+      productionOnly: true,
+    })
+      .filter(
+        ({ path, source }) =>
+          !path.endsWith(
+            'accounting-provider-financial-coverage.service.ts',
+          ) && source.includes('reconcilePostedCoverage('),
+      )
+      .map(({ path }) =>
+        path.slice(API_SRC_ROOT.length + 1).replaceAll('\\', '/'),
+      )
+      .sort();
+    expect(providerCoverageWriterCallers).toEqual([
       'accounting/accounting-provider-settlement-execution.service.ts',
     ]);
 

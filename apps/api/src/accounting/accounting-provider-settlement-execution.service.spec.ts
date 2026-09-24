@@ -295,13 +295,26 @@ const makeService = (report = makeReport()) => {
       .fn()
       .mockResolvedValue([{}, {}, {}]),
   };
+  const coverage = {
+    reconcilePostedCoverage: jest.fn().mockResolvedValue({
+      status: 'ADVANCED',
+      provider: AccountingFinancialProvider.UBER_EATS,
+      storeStableId: '4750_Yonge_Street',
+      financialHistoryRequiredFrom: '2026-06-01',
+      previousFinancialCompleteThrough: null,
+      financialCompleteThrough: '2026-06-30',
+      evidenceDocumentStableIds: ['provider_doc_june'],
+    }),
+  };
   return {
     service: new AccountingProviderSettlementExecutionService(
       preview as never,
       accounting as never,
+      coverage as never,
     ),
     preview,
     accounting,
+    coverage,
   };
 };
 
@@ -327,7 +340,7 @@ describe('AccountingProviderSettlementExecutionService', () => {
   });
 
   it('writes one READY provider document and all of its covered Uber reversals as one replacement group', async () => {
-    const { service, accounting } = makeService();
+    const { service, accounting, coverage } = makeService();
 
     const result = await service.executeRange(input);
 
@@ -377,6 +390,33 @@ describe('AccountingProviderSettlementExecutionService', () => {
         uberReversalsPostedOrReplayed: 2,
       }),
     );
+    expect(coverage.reconcilePostedCoverage).toHaveBeenCalledWith({
+      provider: AccountingFinancialProvider.UBER_EATS,
+      storeStableId: '4750_Yonge_Street',
+      operatorActorRef: PROVIDER_SETTLEMENT_SYSTEM_ACTOR,
+    });
+  });
+
+  it('reconciles coverage for an already-posted statement without rewriting its Journal', async () => {
+    const report = makeReport({
+      documentStatus: 'ALREADY_POSTED',
+      reversals: [
+        makeReversal('journal_sale_1', 'ALREADY_REVERSED'),
+        makeReversal('journal_sale_2', 'ALREADY_REVERSED'),
+      ],
+    });
+    const { service, accounting, coverage } = makeService(report);
+
+    await service.executeRange(input);
+
+    expect(
+      accounting.createProviderSettlementReplacementGroup,
+    ).not.toHaveBeenCalled();
+    expect(coverage.reconcilePostedCoverage).toHaveBeenCalledWith({
+      provider: AccountingFinancialProvider.UBER_EATS,
+      storeStableId: '4750_Yonge_Street',
+      operatorActorRef: PROVIDER_SETTLEMENT_SYSTEM_ACTOR,
+    });
   });
 
   it('binds a confirmed human review revision into settlement write authority', async () => {
