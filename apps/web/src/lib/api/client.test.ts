@@ -1,6 +1,7 @@
 import {
   ApiError,
   apiFetch,
+  apiFetchRaw,
   getApiErrorMessage,
   type PayloadParser,
 } from './client';
@@ -56,6 +57,37 @@ describe('apiFetch contract', () => {
     );
     expect(init).not.toHaveProperty('unauthorized');
     expect(new Headers(init?.headers).get('accept')).toBe('application/json');
+  });
+
+  it('uses the canonical raw adapter for protected binary responses', async () => {
+    const response = {
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'image/webp' }),
+      blob: jest.fn(),
+    } as unknown as Response;
+    fetchMock.mockResolvedValue(response);
+
+    await expect(
+      apiFetchRaw('/accounting/inbox/artifacts/acctart_1/content', {
+        headers: { Accept: 'image/*' },
+      }),
+    ).resolves.toBe(response);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as unknown as Parameters<
+      typeof fetch
+    >;
+    expect(url).toBe(
+      '/api/v1/accounting/inbox/artifacts/acctart_1/content',
+    );
+    expect(init).toEqual(
+      expect.objectContaining({
+        cache: 'no-store',
+        credentials: 'include',
+      }),
+    );
+    expect(new Headers(init?.headers).get('accept')).toBe('image/*');
   });
 
   it('passes envelope details through the optional parser', async () => {

@@ -16,9 +16,12 @@ import {
 import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { createId } from '@paralleldrive/cuid2';
 import sharp from 'sharp';
 import { accountingArtifactContentUrl } from './accounting-artifact-delivery.service';
+import {
+  accountingRetainedImageFilename,
+  normalizeAccountingImageVendorName,
+} from './accounting-image-retention-filename';
 import { getAccountingUploadsDir } from './accounting-storage-path';
 import { AccountingInboxService } from './accounting-inbox.service';
 import {
@@ -44,6 +47,7 @@ export class AccountingImageRetentionService {
   async createCandidate(
     inboxItemStableId: string,
     profile: AccountingImageRetentionProfile,
+    vendorNameInput: string,
     operatorUserStableId: string,
   ) {
     if (
@@ -53,6 +57,12 @@ export class AccountingImageRetentionService {
       )
     ) {
       throw new BadRequestException('unsupported image retention profile');
+    }
+    const vendorName = normalizeAccountingImageVendorName(vendorNameInput);
+    if (!vendorName) {
+      throw new BadRequestException(
+        'vendor name is required before generating a compressed image',
+      );
     }
     const context = await this.requireConfirmedImageContext(inboxItemStableId);
     const state =
@@ -106,7 +116,7 @@ export class AccountingImageRetentionService {
     }
 
     const candidateStoredUrl = await this.storeCandidate(
-      context.artifact.artifactStableId,
+      vendorName,
       processed.buffer,
     );
     const candidateContentHash = sha256(processed.buffer);
@@ -348,10 +358,10 @@ export class AccountingImageRetentionService {
     };
   }
 
-  private async storeCandidate(artifactStableId: string, buffer: Buffer) {
+  private async storeCandidate(vendorName: string, buffer: Buffer) {
     const dir = path.join(getAccountingUploadsDir(), 'image-retention');
     await fs.promises.mkdir(dir, { recursive: true });
-    const fileName = `${artifactStableId}-${createId()}.webp`;
+    const fileName = accountingRetainedImageFilename(vendorName, new Date());
     await fs.promises.writeFile(path.join(dir, fileName), buffer, {
       flag: 'wx',
     });
