@@ -149,26 +149,26 @@ describe('OrderReportingFactsReaderService', () => {
       toExclusive: new Date('2026-09-24T04:00:00.000Z'),
     };
 
-    await expect(
-      service.readOperationalOrdersForRange(query),
-    ).resolves.toEqual([
-      {
-        orderStableId: 'order-stable-1',
-        storeStableId: '4750_Yonge_Street',
-        status: 'completed',
-        createdAt: new Date('2026-09-23T16:05:00.000Z'),
-        paidAt: new Date('2026-09-23T16:05:00.000Z'),
-        makingAt: new Date('2026-09-23T16:06:00.000Z'),
-        readyAt: new Date('2026-09-23T16:15:00.000Z'),
-        totalCents: 1599,
-        subtotalCents: 1415,
-        taxCents: 184,
-        customerDeliveryFeeCents: 0,
-        channel: 'in_store',
-        primaryPaymentMethod: 'CARD',
-        fulfillmentType: 'dine_in',
-      },
-    ]);
+    await expect(service.readOperationalOrdersForRange(query)).resolves.toEqual(
+      [
+        {
+          orderStableId: 'order-stable-1',
+          storeStableId: '4750_Yonge_Street',
+          status: 'completed',
+          createdAt: new Date('2026-09-23T16:05:00.000Z'),
+          paidAt: new Date('2026-09-23T16:05:00.000Z'),
+          makingAt: new Date('2026-09-23T16:06:00.000Z'),
+          readyAt: new Date('2026-09-23T16:15:00.000Z'),
+          totalCents: 1599,
+          subtotalCents: 1415,
+          taxCents: 184,
+          customerDeliveryFeeCents: 0,
+          channel: 'in_store',
+          primaryPaymentMethod: 'CARD',
+          fulfillmentType: 'dine_in',
+        },
+      ],
+    );
 
     expect(orderFindMany).toHaveBeenCalledWith({
       where: {
