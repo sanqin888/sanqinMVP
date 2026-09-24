@@ -172,6 +172,22 @@ export function CoverageAndLimitations({
 }) {
   const isZh = locale === 'zh';
   const currentStatus = report.storeContext.currentStatus;
+  const comparisonConfidenceValue =
+    report.comparison.confidence === 'LOW_SAMPLE'
+      ? confidenceLabel(report.comparison.confidence, locale)
+      : report.comparison.confidence === 'OPERATING_CONTEXT_PARTIAL'
+        ? isZh
+          ? '历史对比可用 · 营业历史信息有限'
+          : 'Comparison available · operating history limited'
+        : confidenceLabel(report.comparison.confidence, locale);
+  const comparisonConfidenceDetail =
+    report.comparison.confidence === 'OPERATING_CONTEXT_PARTIAL'
+      ? isZh
+        ? `${report.comparison.comparablePeriods} 个可比历史区间；订单历史可用于对比，但历史营业时间/临时暂停没有版本化快照，因此异常解释会更保守。`
+        : `${report.comparison.comparablePeriods} comparable periods. Order history supports comparison, but historical hours/temporary closures are not versioned, so anomaly interpretation stays conservative.`
+      : isZh
+        ? `${report.comparison.comparablePeriods} 个可比历史区间`
+        : `${report.comparison.comparablePeriods} comparable periods`;
 
   return (
     <section
@@ -195,12 +211,8 @@ export function CoverageAndLimitations({
       <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <CoverageCard
           title={isZh ? '比较置信度' : 'Comparison confidence'}
-          value={confidenceLabel(report.comparison.confidence, locale)}
-          detail={
-            isZh
-              ? `${report.comparison.comparablePeriods} 个可比历史区间`
-              : `${report.comparison.comparablePeriods} comparable periods`
-          }
+          value={comparisonConfidenceValue}
+          detail={comparisonConfidenceDetail}
         />
         <CoverageCard
           title={isZh ? '门店营业上下文' : 'Store operating context'}
@@ -216,8 +228,8 @@ export function CoverageAndLimitations({
           value={report.coverage.printHealth}
           detail={
             isZh
-              ? 'C2 不建立 Reporting → POS/Print 新依赖。'
-              : 'C2 does not create a Reporting → POS/Print dependency.'
+              ? '当前仍不建立 Reporting → POS/Print 新依赖。'
+              : 'No Reporting → POS/Print dependency is introduced.'
           }
           icon={<Printer className="size-4" aria-hidden="true" />}
         />
