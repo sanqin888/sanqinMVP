@@ -171,6 +171,7 @@ export type AccountingSalesAnalyticsReport = {
   version: 1;
   storeStableId: string;
   timezone: string;
+  accountingStartDate: string;
   from: string;
   to: string;
   summary: AccountingSalesSummary;

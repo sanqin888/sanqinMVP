@@ -389,6 +389,7 @@ export class AccountingSalesAnalyticsService {
       version: 1,
       storeStableId: store.storeStableId,
       timezone,
+      accountingStartDate: range.accountingStartDate,
       from: range.from,
       to: range.to,
       summary: summarizeAccountingSalesComponents(overallComponents),
@@ -676,6 +677,7 @@ export class AccountingSalesAnalyticsService {
     query: { from?: string; to?: string },
     timezone: string,
   ): Promise<{
+    accountingStartDate: string;
     from: string;
     to: string;
     fromInclusive: Date;
@@ -705,6 +707,16 @@ export class AccountingSalesAnalyticsService {
 
     const accountingStartAt =
       await this.period.requireCanonicalFinancialPostingStartAt();
+    const accountingStartDate = DateTime.fromJSDate(accountingStartAt, {
+      zone: 'UTC',
+    })
+      .setZone(timezone)
+      .toISODate();
+    if (!accountingStartDate) {
+      throw new ConflictException(
+        'Unable to resolve accountingStartDate in business timezone',
+      );
+    }
     const effectiveFromMillis = Math.max(
       fromLocal.startOf('day').toUTC().toMillis(),
       accountingStartAt.getTime(),
@@ -720,6 +732,7 @@ export class AccountingSalesAnalyticsService {
     }).setZone(timezone);
 
     return {
+      accountingStartDate,
       from: effectiveFrom.toISODate() ?? requestedFrom,
       to: requestedTo,
       fromInclusive: new Date(effectiveFromMillis),
