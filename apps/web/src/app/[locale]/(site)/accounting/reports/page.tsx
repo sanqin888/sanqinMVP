@@ -28,7 +28,9 @@ import type {
 import {
   BalanceMovementStatement,
   TrialBalanceStatement,
+  type StatementDrillTarget,
 } from './accounting-statements';
+import { StatementJournalDrillThrough } from './statement-journal-drill-through';
 
 type ReportView = 'management' | 'trialBalance' | 'balanceMovement';
 
@@ -55,6 +57,9 @@ export default function AccountingReportsPage() {
     useState<AccountingTrialBalanceReport | null>(null);
   const [balanceMovement, setBalanceMovement] =
     useState<AccountingBalanceMovementReport | null>(null);
+  const [drillTarget, setDrillTarget] = useState<StatementDrillTarget | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -138,6 +143,7 @@ export default function AccountingReportsPage() {
       preset,
       accountingBusinessDateToday(),
     );
+    setDrillTarget(null);
     setFrom(range.from);
     setTo(range.to);
   }
@@ -165,19 +171,28 @@ export default function AccountingReportsPage() {
         <div className="flex flex-wrap gap-2">
           <ViewButton
             active={view === 'management'}
-            onClick={() => setView('management')}
+            onClick={() => {
+              setDrillTarget(null);
+              setView('management');
+            }}
           >
             {isZh ? '管理损益' : 'Management P&L'}
           </ViewButton>
           <ViewButton
             active={view === 'trialBalance'}
-            onClick={() => setView('trialBalance')}
+            onClick={() => {
+              setDrillTarget(null);
+              setView('trialBalance');
+            }}
           >
             {isZh ? '试算平衡' : 'Trial Balance'}
           </ViewButton>
           <ViewButton
             active={view === 'balanceMovement'}
-            onClick={() => setView('balanceMovement')}
+            onClick={() => {
+              setDrillTarget(null);
+              setView('balanceMovement');
+            }}
           >
             {isZh ? '资产负债变动表' : 'Balance Movement'}
           </ViewButton>
@@ -215,14 +230,20 @@ export default function AccountingReportsPage() {
             type="date"
             className="rounded border px-3 py-2"
             value={from}
-            onChange={(event) => setFrom(event.target.value)}
+            onChange={(event) => {
+              setDrillTarget(null);
+              setFrom(event.target.value);
+            }}
           />
           <span className="self-center text-slate-400">→</span>
           <input
             type="date"
             className="rounded border px-3 py-2"
             value={to}
-            onChange={(event) => setTo(event.target.value)}
+            onChange={(event) => {
+              setDrillTarget(null);
+              setTo(event.target.value);
+            }}
           />
           {view === 'management' ? (
             <select
@@ -261,11 +282,36 @@ export default function AccountingReportsPage() {
       ) : null}
 
       {view === 'trialBalance' && trialBalance ? (
-        <TrialBalanceStatement report={trialBalance} isZh={isZh} />
+        <TrialBalanceStatement
+          report={trialBalance}
+          isZh={isZh}
+          onDrillThrough={setDrillTarget}
+        />
       ) : null}
 
       {view === 'balanceMovement' && balanceMovement ? (
-        <BalanceMovementStatement report={balanceMovement} isZh={isZh} />
+        <BalanceMovementStatement
+          report={balanceMovement}
+          isZh={isZh}
+          onDrillThrough={setDrillTarget}
+        />
+      ) : null}
+
+      {drillTarget && view !== 'management' ? (
+        <StatementJournalDrillThrough
+          accountStableId={drillTarget.accountStableId}
+          accountName={drillTarget.accountName}
+          phase={drillTarget.phase}
+          from={from}
+          to={to}
+          currency={
+            view === 'trialBalance'
+              ? trialBalance?.currency ?? 'CAD'
+              : balanceMovement?.currency ?? 'CAD'
+          }
+          isZh={isZh}
+          onClose={() => setDrillTarget(null)}
+        />
       ) : null}
     </div>
   );

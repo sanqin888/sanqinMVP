@@ -39,6 +39,7 @@ import { AccountingProviderSettlementQueryService } from './accounting-provider-
 import { AccountingSalesAnalyticsService } from './accounting-sales-analytics.service';
 import { AccountingBalanceMovementService } from './accounting-balance-movement.service';
 import { AccountingTrialBalanceService } from './accounting-trial-balance.service';
+import { AccountingStatementDrillThroughService } from './accounting-statement-drill-through.service';
 import { AccountingStatementExportService } from './accounting-statement-export.service';
 import { AccountingCanonicalSalePostingProcessor } from './accounting-canonical-sale-posting.processor';
 import { AccountingCanonicalSalePostingService } from './accounting-canonical-sale-posting.service';
@@ -124,6 +125,7 @@ import { PaymentFinancialFactsModule } from '../payments/public-api';
     AccountingSalesAnalyticsService,
     AccountingBalanceMovementService,
     AccountingTrialBalanceService,
+    AccountingStatementDrillThroughService,
     AccountingStatementExportService,
     AccountingInboxService,
     AccountingProviderSettlementQueryService,
