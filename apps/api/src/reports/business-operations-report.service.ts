@@ -906,7 +906,8 @@ export class BusinessOperationsReportService {
       .minus({ hours: RECENT_QUEUE_WINDOW_HOURS })
       .toJSDate();
     const recent = args.allOrders.filter(
-      (order) => order.createdAt >= cutoff && order.createdAt < args.now.toJSDate(),
+      (order) =>
+        order.createdAt >= cutoff && order.createdAt < args.now.toJSDate(),
     );
     const making = recent
       .filter((order) => order.status === 'making')
