@@ -16,6 +16,10 @@ import {
   type StoreStatusReaderPort,
 } from '../store/public-api';
 import {
+  REPORTING_BUSINESS_ORDER_FACTS_QUERY,
+  type ReportingBusinessOrderFactsQueryPort,
+} from './reporting-business-order-facts-query.contract';
+import {
   REPORTING_ORDER_FACTS_QUERY,
   type ReportingOrderFactsQueryPort,
 } from './reporting-order-facts-query.contract';
@@ -24,6 +28,7 @@ import {
   type ReportingStoreOperatingContextQueryPort,
 } from './reporting-store-operating-context.contract';
 import { REPORTING_TOP_ITEMS_QUERY } from './reporting-top-items-query.contract';
+import { BusinessOperationsReportService } from './business-operations-report.service';
 import { ReportsController } from './reports.controller';
 import { ReportsService } from './reports.service';
 
@@ -45,6 +50,27 @@ import { ReportsService } from './reports.service';
           orders.readMetricsForRange(startDate, endDate),
         readItemsForRange: (startDate, endDate) =>
           orders.readItemsForRange(startDate, endDate),
+      }),
+    },
+    {
+      provide: REPORTING_BUSINESS_ORDER_FACTS_QUERY,
+      inject: [ORDER_REPORTING_FACTS_READER],
+      useFactory: (
+        orders: OrderReportingFactsReaderPort,
+      ): ReportingBusinessOrderFactsQueryPort => ({
+        readOperationalOrdersForRange: async (query) => {
+          const rows = await orders.readOperationalOrdersForRange(query);
+          return rows.map((row) => ({ ...row }));
+        },
+        readOperationalItemsForRange: async (query) => {
+          const rows = await orders.readOperationalItemsForRange(query);
+          return rows.map((row) => ({
+            ...row,
+            components: row.components.map((component) => ({
+              ...component,
+            })),
+          }));
+        },
       }),
     },
     {
@@ -88,6 +114,7 @@ import { ReportsService } from './reports.service';
       }),
     },
     ReportsService,
+    BusinessOperationsReportService,
     {
       provide: REPORTING_TOP_ITEMS_QUERY,
       useExisting: ReportsService,
