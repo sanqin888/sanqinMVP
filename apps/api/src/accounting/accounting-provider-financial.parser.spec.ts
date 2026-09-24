@@ -5,6 +5,7 @@ import {
   AccountingFinancialProvider,
   AccountingFinancialTaxRole,
 } from '@prisma/client';
+import { CLOVER_STATEMENT_RAW_CODES } from './accounting-clover-statement.contract';
 import { parseProviderFinancialEvidence } from './accounting-provider-financial.parser';
 
 function lineByName(
@@ -80,7 +81,7 @@ Tips 4 $3.84
     );
   });
 
-  it('parses Clover monthly statement controls and separates fee HST', () => {
+  it('parses Clover monthly statement fee detail into equipment, HST, and network fees', () => {
     const parsed = parseProviderFinancialEvidence({
       providerHint: AccountingFinancialProvider.CLOVER,
       documentTypeHint: AccountingFinancialDocumentType.STATEMENT,
@@ -106,6 +107,7 @@ Total HST:0.00 -55.50
 FEES
 Date Invoice Description Tax Total
 05/17/26 011981361 MONTHLY EQUIPMENT BILL HST:-3.90 -33.90
+05/25/26 000069239 MC LICENSE VOLUME FEE HST:0.00 -1.25
 Total HST:-3.90 -35.15
 `,
     });
@@ -125,17 +127,34 @@ Total HST:-3.90 -35.15
         postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
       }),
     );
-    expect(lineByName(parsed!, 'Fees before HST')).toEqual(
+    expect(lineByName(parsed!, 'Fees')).toEqual(
       expect.objectContaining({
-        amountCents: -3125,
-        component: AccountingFinancialComponent.PROCESSING_FEE,
+        rawCode: CLOVER_STATEMENT_RAW_CODES.FEES_TOTAL,
+        amountCents: -3515,
+        component: AccountingFinancialComponent.CONTROL_TOTAL,
+        postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
       }),
     );
-    expect(lineByName(parsed!, 'Fees HST')).toEqual(
+    expect(lineByName(parsed!, 'Monthly Equipment Bill')).toEqual(
       expect.objectContaining({
+        rawCode: CLOVER_STATEMENT_RAW_CODES.MONTHLY_EQUIPMENT_BILL,
+        amountCents: -3000,
+        component: AccountingFinancialComponent.PLATFORM_OTHER_FEE,
+      }),
+    );
+    expect(lineByName(parsed!, 'Monthly Equipment Bill HST')).toEqual(
+      expect.objectContaining({
+        rawCode: CLOVER_STATEMENT_RAW_CODES.MONTHLY_EQUIPMENT_BILL_HST,
         amountCents: -390,
-        component: AccountingFinancialComponent.PROCESSING_FEE_TAX,
+        component: AccountingFinancialComponent.PLATFORM_OTHER_FEE_TAX,
         taxRole: AccountingFinancialTaxRole.INPUT_TAX,
+      }),
+    );
+    expect(lineByName(parsed!, 'Other Card/Network Fees')).toEqual(
+      expect.objectContaining({
+        rawCode: CLOVER_STATEMENT_RAW_CODES.NETWORK_FEES,
+        amountCents: -125,
+        component: AccountingFinancialComponent.PROCESSING_FEE,
       }),
     );
     expect(lineByName(parsed!, 'Total Amount Funded')).toEqual(
@@ -338,25 +357,186 @@ Total
             geometry: { left: 0.06, top: 0.26, width: 0.15, height: 0.02 },
           },
           {
+            lineId: 'p5-fees-description-header',
+            page: 5,
+            text: 'Description',
+            confidence: null,
+            geometry: { left: 0.276, top: 0.2969, width: 0.063, height: 0.01 },
+          },
+          {
+            lineId: 'p5-fees-column-total',
+            page: 5,
+            text: 'Total',
+            confidence: null,
+            geometry: { left: 0.9349, top: 0.2969, width: 0.027, height: 0.01 },
+          },
+          {
+            lineId: 'p5-fee-equipment-description',
+            page: 5,
+            text: 'MONTHLY EQUIPMENT BILL',
+            confidence: null,
+            geometry: { left: 0.276, top: 0.3109, width: 0.153, height: 0.01 },
+          },
+          {
+            lineId: 'p5-fee-equipment-hst',
+            page: 5,
+            text: 'HST:-3.90',
+            confidence: null,
+            geometry: { left: 0.753, top: 0.3109, width: 0.052, height: 0.01 },
+          },
+          {
+            lineId: 'p5-fee-equipment-total',
+            page: 5,
+            text: '-33.90',
+            confidence: null,
+            geometry: { left: 0.93, top: 0.3109, width: 0.033, height: 0.01 },
+          },
+          {
+            lineId: 'p5-fee-license-description',
+            page: 5,
+            text: 'MC LICENSE VOLUME FEE',
+            confidence: null,
+            geometry: { left: 0.276, top: 0.3231, width: 0.144, height: 0.01 },
+          },
+          {
+            lineId: 'p5-fee-license-hst',
+            page: 5,
+            text: 'HST:0.00',
+            confidence: null,
+            geometry: { left: 0.755, top: 0.3231, width: 0.048, height: 0.01 },
+          },
+          {
+            lineId: 'p5-fee-license-total',
+            page: 5,
+            text: '-0.04',
+            confidence: null,
+            geometry: { left: 0.936, top: 0.3231, width: 0.026, height: 0.01 },
+          },
+          {
+            lineId: 'p5-fee-digital-description',
+            page: 5,
+            text: 'MC-AUTH DIGITAL ENABLEMENT MIN',
+            confidence: null,
+            geometry: { left: 0.276, top: 0.3352, width: 0.203, height: 0.01 },
+          },
+          {
+            lineId: 'p5-fee-digital-hst',
+            page: 5,
+            text: 'HST:0.00',
+            confidence: null,
+            geometry: { left: 0.755, top: 0.3352, width: 0.048, height: 0.01 },
+          },
+          {
+            lineId: 'p5-fee-digital-total',
+            page: 5,
+            text: '-0.25',
+            confidence: null,
+            geometry: { left: 0.936, top: 0.3352, width: 0.026, height: 0.01 },
+          },
+          {
+            lineId: 'p5-fee-clear-description',
+            page: 5,
+            text: 'MC CLEARING CONNECTIVITY FEE',
+            confidence: null,
+            geometry: { left: 0.276, top: 0.3473, width: 0.191, height: 0.01 },
+          },
+          {
+            lineId: 'p5-fee-clear-hst',
+            page: 5,
+            text: 'HST:0.00',
+            confidence: null,
+            geometry: { left: 0.755, top: 0.3473, width: 0.048, height: 0.01 },
+          },
+          {
+            lineId: 'p5-fee-clear-total',
+            page: 5,
+            text: '-0.50',
+            confidence: null,
+            geometry: { left: 0.936, top: 0.3473, width: 0.026, height: 0.01 },
+          },
+          {
+            lineId: 'p5-fee-auth-description',
+            page: 5,
+            text: 'MC AUTH CONNECTIVITY FEE',
+            confidence: null,
+            geometry: { left: 0.276, top: 0.3594, width: 0.165, height: 0.01 },
+          },
+          {
+            lineId: 'p5-fee-auth-hst',
+            page: 5,
+            text: 'HST:0.00',
+            confidence: null,
+            geometry: { left: 0.755, top: 0.3594, width: 0.048, height: 0.01 },
+          },
+          {
+            lineId: 'p5-fee-auth-total',
+            page: 5,
+            text: '-0.53',
+            confidence: null,
+            geometry: { left: 0.936, top: 0.3594, width: 0.026, height: 0.01 },
+          },
+          {
+            lineId: 'p5-fee-large-description',
+            page: 5,
+            text: 'MC ACQ CLEAR LARGE TICKET',
+            confidence: null,
+            geometry: { left: 0.276, top: 0.3715, width: 0.171, height: 0.01 },
+          },
+          {
+            lineId: 'p5-fee-large-hst',
+            page: 5,
+            text: 'HST:0.00',
+            confidence: null,
+            geometry: { left: 0.755, top: 0.3715, width: 0.048, height: 0.01 },
+          },
+          {
+            lineId: 'p5-fee-large-total',
+            page: 5,
+            text: '-0.22',
+            confidence: null,
+            geometry: { left: 0.936, top: 0.3715, width: 0.026, height: 0.01 },
+          },
+          {
+            lineId: 'p5-fee-small-description',
+            page: 5,
+            text: 'MC ACQ CLEAR SMALL TICKET',
+            confidence: null,
+            geometry: { left: 0.276, top: 0.3837, width: 0.169, height: 0.01 },
+          },
+          {
+            lineId: 'p5-fee-small-hst',
+            page: 5,
+            text: 'HST:0.00',
+            confidence: null,
+            geometry: { left: 0.755, top: 0.3837, width: 0.048, height: 0.01 },
+          },
+          {
+            lineId: 'p5-fee-small-total',
+            page: 5,
+            text: '-0.31',
+            confidence: null,
+            geometry: { left: 0.936, top: 0.3837, width: 0.026, height: 0.01 },
+          },
+          {
             lineId: 'p5-fees-total-label',
             page: 5,
             text: 'Total',
             confidence: null,
-            geometry: { left: 0.06, top: 0.4, width: 0.08, height: 0.02 },
+            geometry: { left: 0.06, top: 0.4008, width: 0.027, height: 0.01 },
           },
           {
             lineId: 'p5-fees-hst',
             page: 5,
             text: 'HST:-3.90',
             confidence: null,
-            geometry: { left: 0.75, top: 0.4, width: 0.1, height: 0.02 },
+            geometry: { left: 0.753, top: 0.4008, width: 0.053, height: 0.01 },
           },
           {
             lineId: 'p5-fees-total-value',
             page: 5,
             text: '-35.75',
             confidence: null,
-            geometry: { left: 0.9, top: 0.4, width: 0.07, height: 0.02 },
+            geometry: { left: 0.93, top: 0.4008, width: 0.033, height: 0.01 },
           },
         ],
       },
@@ -379,14 +559,38 @@ Total
       326371,
     );
     expect(lineByName(parsed!, 'Service Charges')?.amountCents).toBe(-6264);
-    expect(lineByName(parsed!, 'Fees before HST')?.amountCents).toBe(-3185);
-    expect(lineByName(parsed!, 'Fees HST')).toEqual(
+    expect(lineByName(parsed!, 'Fees')).toEqual(
       expect.objectContaining({
+        rawCode: CLOVER_STATEMENT_RAW_CODES.FEES_TOTAL,
+        amountCents: -3575,
+        component: AccountingFinancialComponent.CONTROL_TOTAL,
+        postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+      }),
+    );
+    expect(lineByName(parsed!, 'Monthly Equipment Bill')).toEqual(
+      expect.objectContaining({
+        rawCode: CLOVER_STATEMENT_RAW_CODES.MONTHLY_EQUIPMENT_BILL,
+        amountCents: -3000,
+        component: AccountingFinancialComponent.PLATFORM_OTHER_FEE,
+      }),
+    );
+    expect(lineByName(parsed!, 'Monthly Equipment Bill HST')).toEqual(
+      expect.objectContaining({
+        rawCode: CLOVER_STATEMENT_RAW_CODES.MONTHLY_EQUIPMENT_BILL_HST,
         amountCents: -390,
-        component: AccountingFinancialComponent.PROCESSING_FEE_TAX,
+        component: AccountingFinancialComponent.PLATFORM_OTHER_FEE_TAX,
         taxRole: AccountingFinancialTaxRole.INPUT_TAX,
       }),
     );
+    expect(lineByName(parsed!, 'Other Card/Network Fees')).toEqual(
+      expect.objectContaining({
+        rawCode: CLOVER_STATEMENT_RAW_CODES.NETWORK_FEES,
+        amountCents: -185,
+        component: AccountingFinancialComponent.PROCESSING_FEE,
+      }),
+    );
+    expect(lineByName(parsed!, 'Fees before HST')).toBeUndefined();
+    expect(lineByName(parsed!, 'Fees HST')).toBeUndefined();
     expect(
       lineByName(parsed!, 'Total Amount Funded')?.rawPayload,
     ).toMatchObject({
