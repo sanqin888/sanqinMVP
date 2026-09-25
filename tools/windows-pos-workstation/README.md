@@ -2,15 +2,15 @@
 
 This directory owns only Windows workstation orchestration. It does not own POS authentication, device enrollment, order/payment state, Customer Display synchronization, printer transport, or PWA business behavior.
 
-## C1 scope
+## C1/C2 scope
 
-The launcher coordinates three already-existing runtime components:
+The workstation tools coordinate three already-existing runtime components:
 
 1. the installed **SanQ POS PWA** on the Windows primary monitor;
 2. the read-only **Customer Display** on a non-primary monitor;
 3. the existing printer agent at `C:\pos-printer-server`.
 
-It intentionally does **not** install Task Scheduler or Windows Startup entries in C1. Startup automation/recovery installation belongs to A4-C2.
+C1 established the manual launcher. C2 adds true borderless fullscreen plus optional current-user Task Scheduler startup/recovery around that same launcher. C2 does not add another POS/session/network/printer implementation.
 
 ## Why the installed POS shortcut is authoritative
 
@@ -22,10 +22,13 @@ Do not configure POS to run in Chrome while Customer Display runs in Edge, or vi
 
 ## Files
 
-- `launch-workstation.ps1` — idempotent manual workstation launcher.
-- `start-sanq-workstation.cmd` — convenience wrapper for Windows PowerShell.
+- `launch-workstation.ps1` — idempotent launcher with `Launch` and quiet `Ensure` modes.
+- `supervise-workstation.ps1` — one long-running current-user supervisor: initial Launch, then periodic Ensure.
+- `install-startup-task.ps1` — installs the supervisor as a current-user interactive Scheduled Task at logon.
+- `uninstall-startup-task.ps1` — removes only that Scheduled Task; it does not close POS/Display or stop printing.
+- `start-sanq-workstation.cmd` — convenience wrapper for a manual Launch.
 - `workstation.config.example.json` — non-secret configuration template.
-- `validate.ps1` — CI-only syntax/config validation; it does not launch anything.
+- `validate.ps1` — CI-only syntax/config/ScheduledTasks contract validation; it does not register tasks or launch workstation processes.
 
 ## First-time workstation setup
 
@@ -53,6 +56,7 @@ No administrator privileges should be required for the normal launcher when the 
 - `PrinterStartScript`: existing VBS wrapper used when health check fails.
 - `PrinterStartupTimeoutSeconds`: time allowed for the existing printer agent to become healthy.
 - `WindowStartupTimeoutSeconds`: time allowed for each browser window to become visible.
+- `EnsureIntervalSeconds`: periodic recovery interval used by the C2 supervisor. Allowed range is 30–3600 seconds; the example uses 60. Existing C1 configs without this property fall back to 60 seconds.
 - `LogDirectory`: optional local log directory. Empty defaults to `%LOCALAPPDATA%\SanQ\Workstation\logs`.
 
 The config contains no password, session cookie, POS device key, printer enrollment credential, or provider secret.
@@ -65,11 +69,41 @@ The launcher is intentionally idempotent. It keeps a non-secret `workstation-sta
 - if printer-agent health fails, the launcher starts the existing VBS wrapper and waits for health;
 - if a saved POS window handle is still valid, it is reused even if the current page title changed; otherwise the launcher falls back to title/new-window detection;
 - if a saved Customer Display window is still valid, it is reused;
-- POS is moved to the Windows primary display and maximized;
-- Customer Display is moved to the selected non-primary display and maximized;
+- Launch mode places POS on the Windows primary display and Customer Display on the selected non-primary display in borderless fullscreen, removing the normal Chromium/PWA caption controls and covering the taskbar area;
+- Ensure mode leaves healthy existing windows untouched so the periodic supervisor does not steal focus or repeatedly rearrange the workstation;
+- if POS or Customer Display is missing during Ensure, only that missing window is relaunched and placed in fullscreen;
 - no browser process is killed or forcibly reloaded.
 
-A printer failure does not prevent POS from opening. The launcher records a non-zero exit code so later C2 recovery automation can detect that the workstation is degraded without taking over printer retry semantics.
+A printer failure does not prevent POS from opening. The launcher records a non-zero exit code so recovery can continue without taking over printer retry semantics.
+
+## C2 startup / recovery
+
+C2 uses one Task Scheduler entry named `SanQ POS Workstation` by default. The task runs only for the current interactive user at logon and starts `supervise-workstation.ps1` hidden.
+
+The supervisor:
+
+1. runs one `Launch` immediately;
+2. waits `EnsureIntervalSeconds`;
+3. runs one `Ensure` at a time forever;
+4. keeps running after degraded launcher exit codes so a later ensure can recover missing printer/window state.
+
+Task settings use `MultipleInstances=IgnoreNew`, current-user interactive logon, limited run level, restart-on-supervisor-failure, and no execution time limit. The supervisor also holds a per-user local mutex so manually starting a second supervisor exits without creating a second recovery loop.
+
+To install after manual C1/C2 verification:
+
+```powershell
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\install-startup-task.ps1
+```
+
+The installer does **not** start the task immediately. Use the next Windows logon for the normal path, or deliberately test it from Task Scheduler / `Start-ScheduledTask`.
+
+To remove only the startup/recovery task:
+
+```powershell
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\uninstall-startup-task.ps1
+```
+
+Uninstalling the task does not close existing POS/Display windows and does not stop the printer agent.
 
 ## Manual fallback
 
@@ -82,16 +116,17 @@ If the launcher fails:
 
 Do not use a different browser/profile for the Customer Display; browser-local snapshot synchronization would no longer be shared.
 
-## C1 boundaries
+## C2 boundaries
 
-C1 does not:
+C2 installs only the one current-user interactive Scheduled Task described above. It does not:
 
-- create or install Scheduled Tasks;
-- modify Windows Startup;
-- auto-reload the POS after PWA/service-worker updates;
+- modify the Windows Startup folder or machine-wide services;
+- run GUI recovery when the configured user is not interactively logged in;
+- auto-reload a healthy POS for PWA/service-worker updates;
+- kill/restart a healthy browser process;
 - replace POS session keep-alive, connectivity heartbeat, or 401 recovery;
 - change Customer Display snapshot/storage/channel contracts;
 - change printer-agent reconnect, ACK/dedupe, enrollment, or print behavior;
 - write browser/session/device credentials.
 
-Those recovery/installation decisions belong to A4-C2/A4-D after C1 is reviewed and verified.
+A4-D owns the deliberate store-workstation operational verification and final runbook closeout.
