@@ -3282,6 +3282,14 @@ is claimed per repository workflow.
 **Coverage/architecture:** API characterization now pins legacy retained WebP naming and retained size while proving original provenance is preserved; Web characterization pins display-field selection. Physical files, `storedUrl`, content hashes, retention state machine, folder assignments, stable IDs, Human Review, settlement and Journal authority remain unchanged. This is an additive compatible Accounting/Web projection fix with no Prisma/schema, provider/payment, context direction, scanner allowance or SCC change. Per `AGENTS.md`, no local lint/build/test/scanner command is run before user review; GitHub Actions remains the remote validation gate after authorization.  
 **Details:** `apps/api/src/accounting/accounting-evidence-file-manager.service{,.spec}.ts`, `apps/web/src/app/[locale]/(site)/accounting/accounting-evidence-file-manager.tsx`, `apps/web/src/app/[locale]/(site)/accounting/accounting-evidence-file-manager.test.ts`, `apps/web/src/app/[locale]/(site)/accounting/contracts/evidence-file-manager.ts`, `docs/architecture/accounting-document-recognition-human-review-plan.md`, `ACCOUNTING_PRODUCT_ROADMAP.md`.
 
+### 2026-09-25 — Accounting Clover replay UI pending-line gate follow-up
+
+**State:** **MERGED / CI GREEN via PR #2541 / NO PRISMA / NO MIGRATION / NO DEPENDENCY / NO GRAPH CHANGE** on `fix/accounting-clover-replay-pending-gate-v2` from current `origin/dev`.  
+**Production evidence:** July Clover v8 recognition/materialization is confirmed in production with a fee-only READY settlement shape that posts processing fee, equipment expense and HST against `account_clover_fee_payable`. The Web replay gate nevertheless returned `PROVIDER_PENDING_LINE_MISSING` because it inherited a provider-pending-line invariant from the earlier replacement-group UI.  
+**Source change:** keep `providerPendingNetCents` nullable as summary-only data and remove its absence as an unconditional replay blocker. Server preview/execution remains authoritative for READY status, review linkage, coverage, required accounts, balanced draft, plan hash and replay idempotency; no backend settlement policy is relaxed.  
+**Coverage:** add a July-shaped Clover fee-only READY preview with no `account_clover_pending` line and an `account_clover_fee_payable` credit; it must open the replay gate with nullable pending-net summary. Existing Uber June replacement-group coverage remains unchanged. Per `AGENTS.md`, no local lint/build/test is run; GitHub Actions is the remote validation gate under the user's already-given delivery authorization.  
+**Details:** `apps/web/src/app/[locale]/(site)/accounting/settlements/settlement-replay-policy{,.test}.ts`, `ACCOUNTING_PRODUCT_ROADMAP.md`, `POST_MODULARIZATION_BACKLOG.md`, this worklog.
+
 ## Rule for future entries
 
 For each modularization code batch, append exactly one chronological entry before
