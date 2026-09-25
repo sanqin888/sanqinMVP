@@ -11,9 +11,9 @@ describe('Staff OAuth redirect policy', () => {
     expect(
       resolveStaffOauthRedirect('STAFF', '/zh/accounting/dashboard', 'zh'),
     ).toBe('/zh/store/pos');
-    expect(resolveStaffOauthRedirect('ACCOUNTANT', '/en/accounting', 'en')).toBe(
-      '/en/accounting/dashboard',
-    );
+    expect(
+      resolveStaffOauthRedirect('ACCOUNTANT', '/en/accounting', 'en'),
+    ).toBe('/en/accounting/dashboard');
   });
 
   it('rejects protocol-relative and non-staff destinations', () => {

@@ -31,11 +31,7 @@ function fromB64Json<T>(s: string): T {
 export class OauthStateService {
   private readonly secret = process.env.OAUTH_STATE_SECRET ?? '';
 
-  sign(params: {
-    callbackUrl: string;
-    language?: string;
-    audience?: string;
-  }) {
+  sign(params: { callbackUrl: string; language?: string; audience?: string }) {
     if (!this.secret) throw new Error('Missing OAUTH_STATE_SECRET');
 
     const cb = this.sanitizeCallback(params.callbackUrl);

@@ -1,10 +1,7 @@
 import { AuthService } from './auth.service';
 
 describe('AuthService staff Google OAuth boundary', () => {
-  function createService(params: {
-    byGoogle?: unknown;
-    byEmail?: unknown;
-  }) {
+  function createService(params: { byGoogle?: unknown; byEmail?: unknown }) {
     const tx = {
       user: {
         findFirst: jest.fn().mockResolvedValue(params.byGoogle ?? null),
@@ -14,7 +11,7 @@ describe('AuthService staff Google OAuth boundary', () => {
       },
     };
     const prisma = {
-      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
+      $transaction: jest.fn((callback: (client: typeof tx) => unknown) =>
         callback(tx),
       ),
     };
