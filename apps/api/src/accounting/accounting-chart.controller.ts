@@ -26,6 +26,11 @@ export class AccountingChartController {
     return this.chart.initializeDefaults();
   }
 
+  @Post('setup/provider-fee-clearing')
+  provisionProviderFeeClearingAccounts() {
+    return this.chart.provisionProviderFeeClearingAccounts();
+  }
+
   @Post('accounts')
   async createAccount(
     @Body()

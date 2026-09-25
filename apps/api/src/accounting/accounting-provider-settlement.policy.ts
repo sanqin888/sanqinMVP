@@ -13,6 +13,7 @@ import type {
   AccountingJournalLineInput,
 } from './accounting-journal-policy';
 import { FANTUAN_ADJUSTMENT_RAW_CODES } from './accounting-fantuan-adjustment-detail.contract';
+import { CLOVER_FEE_PAYABLE_ACCOUNT_STABLE_ID } from './accounting-provider-fee-clearing.contract';
 import {
   CLOVER_MONTHLY_EQUIPMENT_CATEGORY_STABLE_ID,
   CLOVER_STATEMENT_RAW_CODES,
@@ -37,6 +38,7 @@ export const PROVIDER_SETTLEMENT_ACCOUNT_IDS = {
   primaryBank: 'account_primary_bank',
   cloverPending:
     ACCOUNTING_PROVIDER_PENDING_ACCOUNT_IDS[AccountingFinancialProvider.CLOVER],
+  cloverFeePayable: CLOVER_FEE_PAYABLE_ACCOUNT_STABLE_ID,
   uberPending:
     ACCOUNTING_PROVIDER_PENDING_ACCOUNT_IDS[
       AccountingFinancialProvider.UBER_EATS
@@ -66,6 +68,11 @@ export const PROVIDER_SETTLEMENT_ACCOUNT_REQUIREMENTS = {
   },
   [PROVIDER_SETTLEMENT_ACCOUNT_IDS.cloverPending]: {
     accountClass: AccountingAccountClass.ASSET,
+    currency: 'CAD',
+    isActive: true,
+  },
+  [PROVIDER_SETTLEMENT_ACCOUNT_IDS.cloverFeePayable]: {
+    accountClass: AccountingAccountClass.LIABILITY,
     currency: 'CAD',
     isActive: true,
   },
@@ -210,6 +217,28 @@ export type ProviderSettlementDocumentPlan = {
 };
 
 const providerPendingAccount = providerPendingAccountStableId;
+
+const CLOVER_FEE_COMPONENTS = new Set<AccountingFinancialComponent>([
+  AccountingFinancialComponent.PROCESSING_FEE,
+  AccountingFinancialComponent.PROCESSING_FEE_TAX,
+  AccountingFinancialComponent.PLATFORM_OTHER_FEE,
+  AccountingFinancialComponent.PLATFORM_OTHER_FEE_TAX,
+]);
+
+const settlementCounterpartyAccountFor = (params: {
+  document: ProviderSettlementDocumentInput;
+  line: ProviderSettlementLineDecision;
+}): string => {
+  if (
+    params.document.provider === AccountingFinancialProvider.CLOVER &&
+    params.document.documentType ===
+      AccountingFinancialDocumentType.STATEMENT &&
+    CLOVER_FEE_COMPONENTS.has(params.line.component)
+  ) {
+    return PROVIDER_SETTLEMENT_ACCOUNT_IDS.cloverFeePayable;
+  }
+  return providerPendingAccount(params.document.provider);
+};
 
 export function resolveProviderSalesAuthority(params: {
   provider: AccountingFinancialProvider;
@@ -758,7 +787,7 @@ export function buildProviderSettlementDocumentPlan(params: {
       postable.flatMap((line) =>
         line.targetAccountStableId
           ? [
-              providerPendingAccount(document.provider),
+              settlementCounterpartyAccountFor({ document, line }),
               line.targetAccountStableId,
             ]
           : [],
@@ -798,12 +827,12 @@ export function buildProviderSettlementDocumentPlan(params: {
     };
   }
 
-  const pendingAccount = providerPendingAccount(document.provider);
   const accountNetDebits = new Map<string, SettlementJournalBucket>();
   for (const line of postable) {
     const target = line.targetAccountStableId;
     if (!target) continue;
-    addNet(accountNetDebits, pendingAccount, null, line.amountCents);
+    const counterparty = settlementCounterpartyAccountFor({ document, line });
+    addNet(accountNetDebits, counterparty, null, line.amountCents);
     addNet(
       accountNetDebits,
       target,
