@@ -18,10 +18,13 @@ export class GoogleStartGuard extends AuthGuard('google') {
     const languageParam = query['language'];
     const language =
       typeof languageParam === 'string' ? languageParam : undefined;
+    const audienceParam = query['audience'];
+    const audience =
+      typeof audienceParam === 'string' ? audienceParam : undefined;
 
     return {
       prompt: 'select_account',
-      state: this.state.sign({ callbackUrl, language }),
+      state: this.state.sign({ callbackUrl, language, audience }),
     };
   }
 }

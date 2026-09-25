@@ -143,7 +143,7 @@ This is evidence work, not a reason to rewrite the backup system.
 Priority: **P0 QUICK HARDENING**  
 Complexity: **L**  
 External gate: **none**  
-State: **LOCAL SOURCE READY FOR REVIEW / NO DEPENDENCY OR LOCKFILE CHANGE**
+State: **MERGED / CI GREEN / NO DEPENDENCY OR LOCKFILE CHANGE — PR #2529 / `dfb93962` / CI #6358**
 
 Root/CI pin pnpm `9.0.0`, while both Docker builders previously bootstrapped `pnpm@latest`.
 
@@ -156,7 +156,7 @@ Keep this separate from broader Compose readiness work (§7.1).
 Priority: **P0 QUICK HYGIENE**  
 Complexity: **L**  
 External gate: **none**  
-State: **LOCAL SOURCE READY FOR REVIEW / ATOMIC DEAD-CODE CONTRACTION**
+State: **MERGED / CI GREEN / ATOMIC DEAD-CODE CONTRACTION — PR #2529 / `dfb93962` / CI #6358**
 
 Readiness confirmed that `NotificationProcessor` had no event subscription, scheduled work, dynamic registration or downstream consumer. It only logged on module init that automatic invoice mail was disabled and had a no-op destroy hook.
 
@@ -218,7 +218,8 @@ This lane should be executed in order because later PWA/workstation/browser test
 Priority: **P0 CORE FOUNDATION**  
 Complexity: **H**  
 External gate: **none**  
-Hard unlocks: Accounting PWA direct launch, Windows POS PWA, stable Staff/PWA E2E.
+Hard unlocks: Accounting PWA direct launch, Windows POS PWA, stable Staff/PWA E2E.  
+State: **LOCAL SOURCE READY FOR REVIEW / UNIFIED STAFF ENTRY + SURFACE MATRIX / NO MIGRATION / NO PACKAGE OR GRAPH CHANGE**
 
 Target role matrix remains:
 
@@ -244,13 +245,15 @@ Required design:
 
 Do **not** automatically fold the full Admin Members STAFF/ADMIN identity-test cleanup (§7.2) into this slice. A1 must prevent STAFF/ACCOUNTANT from entering unauthorized application surfaces; the deeper membership-test identity overlap may remain until replacement E2E fixtures exist.
 
+2026-09-25 readiness/implementation: A1 converges Admin/Accounting/POS human authentication on `/{locale}/staff/login`, keeps POS device enrollment/device verification independent, contracts the Admin Web shell to ADMIN only, applies role-aware landing to all three surfaces, and adds a signed Staff OAuth audience so the Staff Google path cannot create/bind a CUSTOMER identity. Legacy Admin/Accounting/POS login URLs are hard-retired tombstones: they no longer authenticate or redirect and only instruct stale PWA users to uninstall/reinstall. Detailed audit: `docs/architecture/postmod-a1-unified-staff-entry.md`.
+
 ### 4.2 A2 — Accounting PWA direct-launch correction
 
 Priority: **P1**  
 Complexity: **M**  
 Depends on: **A1**
 
-Admin and Accounting already have distinct PWA identities/manifests, but Accounting direct launch must be proven against the unified login/landing model.
+Admin and Accounting already have distinct PWA identities/manifests, but Accounting direct launch must be proven against the unified login/landing model. A1 readiness confirmed the current 404 is structural: `accounting.webmanifest` starts at `/accounting`, locale middleware produces `/{locale}/accounting`, and no Accounting root `page.tsx` exists. A1 canonicalizes an unauthenticated return destination to `/accounting/dashboard`; A2 still owns the authenticated installed-PWA root landing/redirect and its launch verification.
 
 Target:
 

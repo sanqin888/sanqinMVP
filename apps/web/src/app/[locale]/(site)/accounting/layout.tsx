@@ -2,6 +2,11 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { AccountingShell } from '@/components/staff/AccountingShell';
+import {
+  buildStaffLoginPath,
+  isStaffRole,
+  staffDefaultLanding,
+} from '@/lib/staff-entry';
 import { serverApiFetch } from '@/server/api';
 
 export const metadata: Metadata = {
@@ -52,7 +57,15 @@ export default async function AccountingLayout({
   const role = session?.role;
 
   if (role !== 'ADMIN' && role !== 'ACCOUNTANT') {
-    redirect(`/${safeLocale}/accounting/login`);
+    if (isStaffRole(role)) {
+      redirect(staffDefaultLanding(role, safeLocale));
+    }
+    redirect(
+      buildStaffLoginPath(
+        safeLocale,
+        `/${safeLocale}/accounting/dashboard`,
+      ),
+    );
   }
 
   return <AccountingShell locale={safeLocale}>{children}</AccountingShell>;

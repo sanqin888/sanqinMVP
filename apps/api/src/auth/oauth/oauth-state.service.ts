@@ -2,7 +2,12 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { createHmac, timingSafeEqual } from 'crypto';
 
-type Payload = { cb: string; iat: number; language?: 'zh' | 'en' };
+type Payload = {
+  cb: string;
+  iat: number;
+  language?: 'zh' | 'en';
+  audience?: 'staff';
+};
 
 function b64url(buf: Buffer) {
   return buf
@@ -26,15 +31,21 @@ function fromB64Json<T>(s: string): T {
 export class OauthStateService {
   private readonly secret = process.env.OAUTH_STATE_SECRET ?? '';
 
-  sign(params: { callbackUrl: string; language?: string }) {
+  sign(params: {
+    callbackUrl: string;
+    language?: string;
+    audience?: string;
+  }) {
     if (!this.secret) throw new Error('Missing OAUTH_STATE_SECRET');
 
     const cb = this.sanitizeCallback(params.callbackUrl);
     const language = this.normalizeLanguage(params.language);
+    const audience = params.audience === 'staff' ? 'staff' : undefined;
     const payload: Payload = {
       cb,
       iat: Date.now(),
       ...(language ? { language } : {}),
+      ...(audience ? { audience } : {}),
     };
 
     const body = toB64Json(payload);
