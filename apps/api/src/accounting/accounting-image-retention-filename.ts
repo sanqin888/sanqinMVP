@@ -15,14 +15,18 @@ export function accountingExpenseVendorName(
 
 export function accountingRetainedImageFilename(
   vendorName: string,
-  timestamp: Date,
+  receiptDate: Date,
+  randomDigits: string,
 ): string {
   const vendor = sanitizeVendorFilenamePart(vendorName);
   if (!vendor) {
     throw new Error('vendor name is required for retained image filename');
   }
-  const stamp = timestamp.toISOString().replace(/[-:]/g, '').replace('.', '');
-  return `${vendor}_${stamp}.webp`;
+  if (!/^\d{4}$/.test(randomDigits)) {
+    throw new Error('retained image filename random suffix must be 4 digits');
+  }
+  const receiptStamp = receiptDate.toISOString().slice(0, 10).replace(/-/g, '');
+  return `${vendor}_${receiptStamp}_${randomDigits}.webp`;
 }
 
 export function accountingRetainedImageVendorFromFilename(
@@ -30,7 +34,9 @@ export function accountingRetainedImageVendorFromFilename(
 ): string | null {
   if (!storedUrl) return null;
   const fileName = path.basename(storedUrl);
-  const match = /^(.+)_\d{8}T\d{9}Z\.webp$/i.exec(fileName);
+  const match =
+    /^(.+)_\d{8}_\d{4}\.webp$/i.exec(fileName) ??
+    /^(.+)_\d{8}T\d{9}Z\.webp$/i.exec(fileName);
   return match?.[1]?.trim() || null;
 }
 
@@ -47,10 +53,12 @@ export function accountingRetainedImageDisplayFilename(input: {
     return retainedFilename;
   }
   if (input.vendorName) {
-    return accountingRetainedImageFilename(
-      input.vendorName,
-      input.fallbackTimestamp,
-    );
+    const vendor = sanitizeVendorFilenamePart(input.vendorName);
+    const stamp = input.fallbackTimestamp
+      .toISOString()
+      .replace(/[-:]/g, '')
+      .replace('.', '');
+    return vendor ? `${vendor}_${stamp}.webp` : retainedFilename;
   }
   if (retainedFilename) return retainedFilename;
   return input.originalFilename;

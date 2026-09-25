@@ -52,7 +52,7 @@ describe('PAYOUT-E-A bank CSV evidence / settlement ownership UI', () => {
     expect(inboxListSource).toContain('value="OTHER_DOCUMENT"');
   });
 
-  it('persists settlement scope decisions before allowing posting handoff', () => {
+  it('persists settlement scope decisions before allowing direct canonical posting', () => {
     expect(payoutPanelSource).toContain('<ProviderPayoutSettlementBankCsvPanel');
     expect(settlementBankSource).toContain("item.status === 'CONFIRMED'");
     expect(settlementBankSource).toContain(
@@ -74,13 +74,13 @@ describe('PAYOUT-E-A bank CSV evidence / settlement ownership UI', () => {
     expect(settlementBankSource).toContain(
       "persistedDecision?.decision === 'READY_FOR_POSTING'",
     );
-    expect(settlementBankSource).toContain('Use for posting');
+    expect(settlementBankSource).toContain('Confirm posting');
+    expect(settlementBankSource).not.toContain('Use for posting');
     expect(settlementBankSource).toContain('Confirmed match');
-    expect(payoutPanelSource).toContain(
+    expect(settlementBankSource).toContain(
       '/accounting/provider-payouts/from-bank-row-decision',
     );
-    expect(payoutPanelSource).toContain(
-      'Posting will atomically create the payout from that server-owned decision',
-    );
+    expect(settlementBankSource).toContain('confirmPosting');
+    expect(payoutPanelSource).not.toContain('onUseDeposit');
   });
 });

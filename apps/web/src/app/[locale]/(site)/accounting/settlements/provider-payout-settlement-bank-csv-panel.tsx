@@ -3,8 +3,8 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '@/lib/api/client';
 import type { AccountingAccount } from '../contracts/chart';
-import type { AccountingFinancialProvider } from '../contracts/core';
 import type { AccountingManualUploadLibraryItem } from '../contracts/inbox';
+import type { AccountingProviderPayout } from '../contracts/payouts';
 import type {
   AccountingProviderPayoutBankMatchPreview,
 } from '../contracts/provider-payout-bank-match';
@@ -51,18 +51,12 @@ export function ProviderPayoutSettlementBankCsvPanel({
   isZh,
   knownStoreStableIds,
   eligibleBanks,
-  onUseDeposit,
+  onPosted,
 }: {
   isZh: boolean;
   knownStoreStableIds: string[];
   eligibleBanks: AccountingAccount[];
-  onUseDeposit: (deposit: {
-    decisionStableId: string;
-    provider: AccountingFinancialProvider;
-    payoutDate: string;
-    amountCents: number;
-    destinationBankAccountStableId: string;
-  }) => void;
+  onPosted: () => Promise<void>;
 }) {
   const [manualUploads, setManualUploads] = useState<
     AccountingManualUploadLibraryItem[]
@@ -81,6 +75,7 @@ export function ProviderPayoutSettlementBankCsvPanel({
   const [loadingEvidence, setLoadingEvidence] = useState(true);
   const [busy, setBusy] = useState(false);
   const [confirmingScope, setConfirmingScope] = useState(false);
+  const [postingDecisionId, setPostingDecisionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const reviewedBankCsvEvidence = useMemo(
@@ -241,6 +236,42 @@ export function ProviderPayoutSettlementBankCsvPanel({
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setConfirmingScope(false);
+    }
+  }
+
+  async function confirmPosting(decisionStableId: string) {
+    setPostingDecisionId(decisionStableId);
+    setError(null);
+    try {
+      await apiFetch<AccountingProviderPayout>(
+        '/accounting/provider-payouts/from-bank-row-decision',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ decisionStableId }),
+        },
+      );
+      await onPosted();
+      const query = new URLSearchParams({
+        artifactStableId,
+        storeStableId: storeStableId.trim(),
+        destinationBankAccountStableId: bankAccountStableId,
+      });
+      const [nextPreview, nextScope] = await Promise.all([
+        apiFetch<AccountingProviderPayoutBankMatchPreview>(
+          `/accounting/provider-payouts/bank-match-preview?${query.toString()}`,
+        ),
+        apiFetch<AccountingProviderPayoutBankRowScope>(
+          `/accounting/provider-payouts/bank-row-decisions?${query.toString()}`,
+        ),
+      ]);
+      setPreview(nextPreview);
+      setDecisionScope(nextScope);
+      setScopeDirty(false);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setPostingDecisionId(null);
     }
   }
 
@@ -451,7 +482,7 @@ export function ProviderPayoutSettlementBankCsvPanel({
                     const persistedDecision = decisionScope?.decisions.find(
                       (decision) => decision.rowNumber === deposit.rowNumber,
                     );
-                    const canUseForPosting =
+                    const canConfirmPosting =
                       !excluded &&
                       !scopeDirty &&
                       decisionScope?.confirmed === true &&
@@ -522,23 +553,28 @@ export function ProviderPayoutSettlementBankCsvPanel({
                                 .join(' | ')}
                         </td>
                         <td className="px-2 py-2">
-                          {canUseForPosting && providerHint ? (
+                          {canConfirmPosting && providerHint ? (
                             <button
                               type="button"
-                              className="rounded border border-emerald-300 bg-emerald-50 px-2.5 py-1.5 font-medium text-emerald-800"
+                              disabled={
+                                postingDecisionId ===
+                                persistedDecision.decisionStableId
+                              }
+                              className="rounded border border-emerald-300 bg-emerald-50 px-2.5 py-1.5 font-medium text-emerald-800 disabled:opacity-50"
                               onClick={() =>
-                                onUseDeposit({
-                                  decisionStableId:
-                                    persistedDecision.decisionStableId,
-                                  provider: providerHint,
-                                  payoutDate: deposit.occurredOn,
-                                  amountCents: deposit.amountCents,
-                                  destinationBankAccountStableId:
-                                    bankAccountStableId,
-                                })
+                                void confirmPosting(
+                                  persistedDecision.decisionStableId,
+                                )
                               }
                             >
-                              {isZh ? '带入入账表单' : 'Use for posting'}
+                              {postingDecisionId ===
+                              persistedDecision.decisionStableId
+                                ? isZh
+                                  ? '入账中…'
+                                  : 'Posting…'
+                                : isZh
+                                  ? '确认入账'
+                                  : 'Confirm posting'}
                             </button>
                           ) : persistedDecision?.decision ===
                               'MATCH_EXISTING_PAYOUT' ? (

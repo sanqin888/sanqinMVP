@@ -27,6 +27,7 @@ function confirmedContext(input: {
     materializedEntityType:
       AccountingInboxMaterializedEntityType.EXPENSE_DOCUMENT,
     materializedEntityStableId: 'expense_1',
+    expenseOccurredAt: new Date('2026-09-19T04:00:00.000Z'),
     artifact: {
       artifactStableId: 'acctart_image_1',
       kind: AccountingArtifactKind.IMAGE,
@@ -109,7 +110,7 @@ describe('AccountingImageRetentionService', () => {
     expect(result.candidate.profile).toBe('BALANCED');
     expect(result.candidate.byteSize).toBeLessThan(original.length);
     expect(path.basename(result.candidate.url)).toMatch(
-      /^CANADIAN-TIRE_\d{8}T\d{9}Z\.webp$/,
+      /^CANADIAN-TIRE_20260919_\d{4}\.webp$/,
     );
     expect(
       fs.existsSync(

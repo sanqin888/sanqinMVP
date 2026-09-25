@@ -31,9 +31,8 @@ describe('PAYOUT-C provider payout runtime UI', () => {
     expect(panelSource).toContain(
       'payoutStableId || `payout_${window.crypto.randomUUID()}`',
     );
-    expect(panelSource).toContain(
-      'if (!bankRowDecisionStableId && !payoutStableId)',
-    );
+    expect(panelSource).toContain('if (!payoutStableId)');
+    expect(panelSource).not.toContain('bankRowDecisionStableId');
     expect(panelSource).toContain("setPayoutStableId('')");
   });
 });

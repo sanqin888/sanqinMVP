@@ -556,7 +556,7 @@ export async function readAccountingImageRetentionContext(
   client: AccountingInboxReadClient,
   inboxItemStableId: string,
 ) {
-  return client.accountingInboxItem.findUnique({
+  const item = await client.accountingInboxItem.findUnique({
     where: { inboxItemStableId },
     select: {
       status: true,
@@ -577,6 +577,22 @@ export async function readAccountingImageRetentionContext(
       },
     },
   });
+  if (!item) return null;
+
+  const expense =
+    item.materializedEntityStableId &&
+    item.materializedEntityType ===
+      AccountingInboxMaterializedEntityType.EXPENSE_DOCUMENT
+      ? await client.accountingExpenseDocument.findUnique({
+          where: { documentStableId: item.materializedEntityStableId },
+          select: { occurredAt: true },
+        })
+      : null;
+
+  return {
+    ...item,
+    expenseOccurredAt: expense?.occurredAt ?? null,
+  };
 }
 
 export async function readAccountingArtifactContentContext(

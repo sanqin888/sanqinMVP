@@ -185,8 +185,8 @@ export function AccountingImageRetentionPanel({
               <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                 <p className="text-xs text-slate-500">
                   {isZh
-                    ? '压缩版将按“供应商名_时间戳.webp”命名；可在确认前修改供应商名并重新生成。'
-                    : 'The retained image is named Vendor_timestamp.webp. You can correct the vendor and regenerate before approval.'}
+                    ? '压缩版将按“供应商名_票据日期_4位随机码.webp”命名；日期取已确认的票据日期，可在确认前修改供应商名并重新生成。'
+                    : 'The retained image is named Vendor_receipt-date_4-digit-code.webp using the confirmed receipt date. You can correct the vendor and regenerate before approval.'}
                 </p>
                 <button
                   type="button"

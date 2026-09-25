@@ -9,6 +9,7 @@ import type {
   AccountingProviderFeeBankRowScope,
   AccountingProviderFeeBankWithdrawalPreview,
 } from '../contracts/provider-fee-bank-row-decisions';
+import type { AccountingTrialBalanceReport } from '../contracts/reports';
 
 const money = (cents: number): string => `$${(cents / 100).toFixed(2)}`;
 
@@ -43,6 +44,7 @@ export function ProviderFeeBankWithdrawalPanel({
   const [excluded, setExcluded] = useState<Set<number>>(() => new Set());
   const [busy, setBusy] = useState(false);
   const [clearingId, setClearingId] = useState<string | null>(null);
+  const [feePayableCents, setFeePayableCents] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const reviewed = useMemo(
@@ -57,11 +59,21 @@ export function ProviderFeeBankWithdrawalPanel({
     setUploads(rows);
   }, []);
 
+  const loadFeePayable = useCallback(async () => {
+    const report = await apiFetch<AccountingTrialBalanceReport>(
+      '/accounting/report/trial-balance?currency=CAD',
+    );
+    const account = report.accounts.find(
+      (row) => row.accountStableId === 'account_clover_fee_payable',
+    );
+    setFeePayableCents(account?.closingCreditBalanceCents ?? 0);
+  }, []);
+
   useEffect(() => {
-    void loadEvidence().catch((cause) =>
+    void Promise.all([loadEvidence(), loadFeePayable()]).catch((cause) =>
       setError(cause instanceof Error ? cause.message : String(cause)),
     );
-  }, [loadEvidence]);
+  }, [loadEvidence, loadFeePayable]);
 
   useEffect(() => {
     if (!storeStableId && knownStoreStableIds.length) {
@@ -124,6 +136,7 @@ export function ProviderFeeBankWithdrawalPanel({
       );
       setPreview(nextPreview);
       setScope(nextScope);
+      await loadFeePayable();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -198,6 +211,23 @@ export function ProviderFeeBankWithdrawalPanel({
             ? '这里只清算已经由 Clover statement 记入“Clover 费用应付”的金额。银行扣款只做 Dr Clover 费用应付 / Cr 银行，不会再次生成费用。仅识别银行描述明确指向 Clover / First Data 的 withdrawal 行。'
             : 'This clears amounts already accrued by Clover statements into Clover fee payable. Bank withdrawals post only Dr Clover fee payable / Cr Bank and never recreate expense. Only withdrawals explicitly identified as Clover / First Data are eligible.'}
         </p>
+        <div className="rounded-lg border border-amber-200 bg-white px-3 py-2">
+          <div className="text-xs text-slate-500">
+            {isZh ? '当前 Clover 费用应付' : 'Current Clover fee payable'}
+          </div>
+          <div className="mt-0.5 text-lg font-semibold text-amber-950">
+            {feePayableCents === null
+              ? isZh
+                ? '读取中…'
+                : 'Loading…'
+              : `${money(feePayableCents)} CAD`}
+          </div>
+          <div className="mt-0.5 text-[11px] text-slate-500">
+            {isZh
+              ? '直接来自 canonical Journal 的当前贷方余额；每次银行扣款清算后自动刷新。'
+              : 'Current credit balance from canonical Journal; refreshed after each bank-withdrawal clearing.'}
+          </div>
+        </div>
 
         <form
           onSubmit={(event) => void loadRows(event)}
