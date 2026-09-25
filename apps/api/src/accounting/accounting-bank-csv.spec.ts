@@ -117,7 +117,7 @@ describe('parseAccountingBankCsv', () => {
 
   it('retains Clover / First Data withdrawals as provider-authoritative fee evidence', () => {
     const parsed = parseAccountingBankCsv(
-      'Date,Description,Withdrawals,Deposits\n2026-07-02,FIRST DATA CANADA(K),59.31,\n',
+      'Date,Description,Withdrawals,Deposits,Balance\n2026-07-02,FIRST DATA CANADA(K),59.31,,940.69\n',
     );
 
     expect(parsed).toMatchObject({
