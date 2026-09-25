@@ -294,7 +294,7 @@ Do not perform a cosmetic “split the big file” rewrite.
 
 2026-09-25 A3-B is MERGED / CI GREEN through PR #2533 / squash `feb2f839`; CI #6367 passed Web/API plus printer-agent rendering tests. Customer/kitchen deterministic rendering and the label payload contract are now covered without changing production rendering defaults. Production `tools/printer-server/assets/logo.png` is repository-managed on `dev` through commit `247d7dc9`, completing the binary production-asset handoff.
 
-2026-09-25 A3-C local implementation extracts the existing PRINT_JOB callback into an injectable handler while preserving the exact `jobId + target + success + optional error` ACK wire contract. Completed-state read/write functions accept an injected file path for isolated tests but production continues to use `~/.sanq-printer-completed-jobs.json`; direct Socket.IO reconnect behavior remains configured as infinite reconnect with 5s delay, and every `connect` event still rejoins the store. Focused tests cover success/failure ACK, completed duplicate suppression, in-flight duplicate coalescing, persisted completion reload across restart, persistence-failure in-memory safety, and reconnect store rejoin. No print business rule, server retry policy, enrollment or Windows adapter behavior changes.
+2026-09-25 A3-C is MERGED / CI GREEN through PR #2534 / squash `eb64a7a9`; CI #6370 passed Web/API plus printer-agent transport tests. The existing PRINT_JOB callback is now testable without changing the exact `jobId + target + success + optional error` ACK wire contract; completed-state persistence, reconnect, duplicate suppression and persistence-failure behavior are covered while production file path, server retry policy, enrollment and Windows adapters remain unchanged.
 
 ### 4.4 A4 — Windows POS PWA + dual-display workstation
 
@@ -318,6 +318,8 @@ Target workstation behavior:
 - verify printer-agent connectivity/recovery on the same workstation.
 
 This should be a dedicated workstation project, not a small PWA-manifest patch.
+
+2026-09-25 A4-A local implementation establishes the POS PWA identity / launch contract only. It adds independent `id=/pwa/pos`, language-neutral `start_url=/store/pos`, standalone POS metadata on the existing POS layout, and regression coverage proving Customer/Admin/Accounting/POS identities stay distinct. Existing locale middleware, unified Staff login, ADMIN/STAFF role admission and POS device-cookie enrollment gates remain authoritative; no Windows launcher, customer-display sync or printer-agent startup behavior changes in A4-A. Detailed work-package state: `docs/architecture/postmod-a4-windows-pos-workstation.md`.
 
 ### 4.5 A5 — Critical browser E2E, staged
 

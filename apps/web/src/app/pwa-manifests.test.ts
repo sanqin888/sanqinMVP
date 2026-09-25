@@ -30,9 +30,10 @@ describe('PWA manifests', () => {
     expect(manifest.scope).toBe('/');
   });
 
-  it('gives Admin and Accounting independent identities and language-neutral launch URLs', () => {
+  it('gives Admin, Accounting and POS independent identities and language-neutral launch URLs', () => {
     const admin = readStaffManifest('admin.webmanifest');
     const accounting = readStaffManifest('accounting.webmanifest');
+    const pos = readStaffManifest('pos.webmanifest');
 
     expect(admin).toMatchObject({
       id: '/pwa/admin',
@@ -48,13 +49,24 @@ describe('PWA manifests', () => {
       start_url: '/accounting/dashboard',
       scope: '/',
     });
+    expect(pos).toMatchObject({
+      id: '/pwa/pos',
+      name: 'SanQ POS',
+      short_name: 'SanQ POS',
+      start_url: '/store/pos',
+      scope: '/',
+    });
 
-    expect(new Set([manifestId(customerManifest()), admin.id, accounting.id]).size).toBe(3);
+    expect(
+      new Set([manifestId(customerManifest()), admin.id, accounting.id, pos.id])
+        .size,
+    ).toBe(4);
   });
 
   it('uses the repository-hosted PNG icons selected for the staff apps', () => {
     const admin = readStaffManifest('admin.webmanifest');
     const accounting = readStaffManifest('accounting.webmanifest');
+    const pos = readStaffManifest('pos.webmanifest');
 
     expect(admin.icons).toEqual([
       {
@@ -72,6 +84,30 @@ describe('PWA manifests', () => {
         purpose: 'any',
       },
     ]);
+    expect(pos.icons).toEqual([
+      {
+        src: '/images/icon-512-v2.png',
+        sizes: '512x512',
+        type: 'image/png',
+        purpose: 'any',
+      },
+    ]);
+  });
+
+  it('binds the POS route group to the POS manifest instead of the customer manifest', () => {
+    const filePath = path.join(
+      process.cwd(),
+      'src',
+      'app',
+      '[locale]',
+      '(device)',
+      'store',
+      'pos',
+      'layout.tsx',
+    );
+    const layout = readFileSync(filePath, 'utf8');
+
+    expect(layout).toContain('manifest: "/pos.webmanifest"');
   });
 });
 

@@ -1,0 +1,19 @@
+{
+  "id": "/pwa/pos",
+  "name": "SanQ POS",
+  "short_name": "SanQ POS",
+  "description": "SanQ point-of-sale workstation.",
+  "start_url": "/store/pos",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#020617",
+  "icons": [
+    {
+      "src": "/images/icon-512-v2.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
