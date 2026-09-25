@@ -1,6 +1,6 @@
 FROM node:20-alpine AS builder
-# 启用 pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# 与根 packageManager / CI 保持一致，避免 Docker 构建静默漂移到其他 pnpm 版本。
+RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 WORKDIR /app
 
 # 1. 复制依赖定义

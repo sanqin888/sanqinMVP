@@ -142,11 +142,12 @@ This is evidence work, not a reason to rewrite the backup system.
 
 Priority: **P0 QUICK HARDENING**  
 Complexity: **L**  
-External gate: **none**
+External gate: **none**  
+State: **LOCAL SOURCE READY FOR REVIEW / NO DEPENDENCY OR LOCKFILE CHANGE**
 
-Root/CI pin pnpm `9.0.0`, while both `Dockerfile.api` and `Dockerfile.web` currently bootstrap `pnpm@latest`.
+Root/CI pin pnpm `9.0.0`, while both Docker builders previously bootstrapped `pnpm@latest`.
 
-Replace runtime image build bootstrap with the repository-pinned pnpm version so CI, developer install and Docker build do not silently use different major/minor package-manager behavior.
+`Dockerfile.api` and `Dockerfile.web` now bootstrap the same `pnpm@9.0.0` declared by the root `packageManager` and GitHub Actions. This is a Docker-build reproducibility correction only: no package manifest, lockfile, Node version, image topology or runtime command changes.
 
 Keep this separate from broader Compose readiness work (§7.1).
 
@@ -154,14 +155,12 @@ Keep this separate from broader Compose readiness work (§7.1).
 
 Priority: **P0 QUICK HYGIENE**  
 Complexity: **L**  
-External gate: **none**
+External gate: **none**  
+State: **LOCAL SOURCE READY FOR REVIEW / ATOMIC DEAD-CODE CONTRACTION**
 
-`NotificationProcessor` currently only logs on module init that automatic invoice mail is disabled and has a no-op destroy hook. It is imported and registered by `OrdersModule`, but has no runtime processing responsibility.
+Readiness confirmed that `NotificationProcessor` had no event subscription, scheduled work, dynamic registration or downstream consumer. It only logged on module init that automatic invoice mail was disabled and had a no-op destroy hook.
 
-After a focused readiness check confirms no dynamic registration assumption remains:
-
-- remove the shell and module registration;
-- preserve manual thank-you/invoice behavior unchanged.
+The shell and its `OrdersModule` registration are removed atomically. Manual thank-you/invoice behavior remains owned by the existing explicit use case and is unchanged; no compatibility alias is retained.
 
 ### 3.5 Preserve AWS SNS + prepare SMS/SES production migration
 

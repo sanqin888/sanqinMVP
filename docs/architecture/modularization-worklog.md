@@ -3194,6 +3194,14 @@ is claimed per repository workflow.
 **Fix:** remove the unnecessary `fetch -> Response.blob() -> URL.createObjectURL()` layer. The viewer now renders a native `<img src="/api/v1/accounting/inbox/artifacts/:stableId/content">` directly against the same-origin protected content route. Browser session cookies continue to be sent automatically, Next image optimization remains bypassed, and an explicit image decode failure state is retained. Characterization forbids reintroducing Blob/object-URL or `next/image` on this path. New retained-image generation in the same review batch also corrects filename semantics to `<vendor>_<confirmed receipt date>_<4-digit random suffix>.webp`; existing retained files are not renamed.  
 **Validation:** per repository workflow, no local lint/build/test is run before user review; GitHub Actions remains the remote validation gate after authorization.
 
+### 2026-09-25 — Post-modularization P0 Docker reproducibility + Orders no-op cleanup
+
+**State:** **LOCAL SOURCE READY FOR REVIEW / NO MIGRATION / NO PACKAGE OR LOCKFILE CHANGE / NO GRAPH CHANGE** on `postmod/p0-pnpm-notification-cleanup` from latest `origin/dev`.  
+**Docker reproducibility:** `Dockerfile.api` and `Dockerfile.web` now bootstrap `pnpm@9.0.0`, matching the root `packageManager` and GitHub Actions instead of resolving `pnpm@latest`. Node 20, image topology, install/build commands and runtime commands are unchanged.  
+**Orders hygiene:** repository-wide search confirmed `NotificationProcessor` had no event subscription, scheduler, dynamic registration or downstream consumer; it only emitted a startup log and had a no-op destroy hook. The class and its `OrdersModule` provider registration are therefore removed atomically. Existing manual thank-you/invoice behavior remains unchanged through the existing explicit Orders/Messaging use case.  
+**Architecture/validation:** no cross-context direction, public contract, scanner allowance, SCC, schema, migration, provider/payment behavior or dependency manifest changes. Per `AGENTS.md`, local lint/build/test/scanner commands are not run before user review; GitHub Actions remains the remote validation gate after authorization.  
+**Details:** `Dockerfile.api`, `Dockerfile.web`, `apps/api/src/orders/orders.module.ts`, removed `apps/api/src/orders/processors/notification.processor.ts`, `POST_MODULARIZATION_BACKLOG.md`, `docs/architecture/{phase-5-commerce-orders-fulfillment.md,current-dependency-graph.md}`, this worklog.
+
 ## Rule for future entries
 
 For each modularization code batch, append exactly one chronological entry before
