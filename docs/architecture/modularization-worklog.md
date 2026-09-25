@@ -3213,12 +3213,21 @@ is claimed per repository workflow.
 
 ### 2026-09-25 — Post-modularization A2 Accounting PWA direct-launch correction
 
-**State:** **LOCAL SOURCE READY FOR REVIEW / NO MIGRATION / NO PACKAGE OR LOCKFILE CHANGE / NO GRAPH CHANGE** on `postmod/a2-accounting-pwa-direct-launch` from `origin/dev@524588b6`.  
+**State:** **MERGED / CI GREEN / NO MIGRATION / NO PACKAGE OR LOCKFILE CHANGE / NO GRAPH CHANGE** through PR #2531 / final head `f8c75c38` / squash `7b096909`; CI #6363 passed all required jobs.  
 **Readiness:** A1 established the unified Staff login and role/surface matrix. The remaining Accounting PWA failure was a launch-route mismatch: `accounting.webmanifest` still launched `/accounting`, locale middleware produced `/[locale]/accounting`, and that root page did not exist. This caused an authenticated installed Accounting PWA launch to 404 before reaching the dashboard.  
 **Source change:** new Accounting installs now use `start_url=/accounting/dashboard`. A localized `/[locale]/accounting/page.tsx` redirects to the dashboard solely as a canonical landing for already-installed or cached PWAs that still launch `/accounting`. The manifest identity/scope/icon remain unchanged.  
 **Auth/role behavior:** no Accounting-specific login path is restored. Middleware and the Accounting layout remain authoritative: no/expired session reaches the unified Staff login with a safe Accounting return destination, ADMIN/ACCOUNTANT may enter Accounting, and STAFF is redirected to the POS surface.  
 **Validation:** the existing PWA manifest regression is updated to require the dashboard launch URL. Per `AGENTS.md`, no local lint/build/test command is run before user review; GitHub Actions remains the remote validation gate.  
 **Architecture:** Web/PWA routing only; no Prisma/schema, dependency, context direction, scanner allowance, SCC, provider/payment or public ownership change.
+
+### 2026-09-25 — Post-modularization A3-A Printer-agent package / CI foundation
+
+**State:** **LOCAL SOURCE READY FOR REVIEW / NO MIGRATION / INDEPENDENT NPM MANIFEST+LOCK ADDED / NO GRAPH CHANGE** on `postmod/a3-printer-agent-hardening` from `origin/dev@7b096909`.  
+**Readiness:** the deployed Windows printer agent is a real independent production boundary. The store workstation already runs it as an npm package from `C:\pos-printer-server` with Node `v24.11.1`, but the repository previously contained only `printer-server.js` and `print-label.ps1`; dependency state, npm lockfile and startup wrappers were external to source control, and CI did not exercise the package at all.  
+**Source/package change:** repository-manage the production dependency set in `tools/printer-server/package.json` and the supplied npm lockfile, retain CommonJS and `node printer-server.js` startup semantics, capture the deployed BAT/VBS startup chain, and document fresh-workstation `npm ci` installation plus credential/state exclusions. The printer agent remains intentionally outside the root pnpm workspace; root `pnpm-workspace.yaml` and `pnpm-lock.yaml` are unchanged.  
+**CI:** add an independent Linux `printer-agent` job using Node 20, npm cache keyed by the printer-agent lockfile, `npm ci --prefix tools/printer-server`, and a side-effect-free `node --check printer-server.js` smoke test. CI does not start the health server, POS WebSocket, enrollment, Windows printer copy path or label PowerShell driver.  
+**Runtime compatibility:** `printer-server.js`, `print-label.ps1`, PRINT_JOB/ACK wire behavior, POS device enrollment, persistent/in-flight `jobId + target` dedupe and receipt/kitchen/label rendering are unchanged. The optional production `assets/logo.png` is still external to the repository and is deferred before exact rendering/golden reproducibility is considered complete.  
+**Architecture:** no Prisma/schema, provider/payment, context direction, direct-import allowance, scanner baseline or public SCC change. Per `AGENTS.md`, no local install/test/CI reproduction is run before user review; GitHub Actions is the remote validation gate.
 
 ## Rule for future entries
 

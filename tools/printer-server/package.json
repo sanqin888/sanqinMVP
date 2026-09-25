@@ -1,0 +1,24 @@
+{
+  "name": "pos-printer-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SanQ Windows POS printer agent",
+  "main": "printer-server.js",
+  "scripts": {
+    "start": "node printer-server.js",
+    "test": "node --check printer-server.js"
+  },
+  "license": "ISC",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20.12.2"
+  },
+  "dependencies": {
+    "body-parser": "^2.2.2",
+    "dotenv": "^17.2.4",
+    "express": "^5.2.1",
+    "iconv-lite": "^0.7.2",
+    "jimp": "^1.6.0",
+    "socket.io-client": "^4.8.3"
+  }
+}
