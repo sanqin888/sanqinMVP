@@ -112,3 +112,23 @@ jobs:
       - name: Test (web)
         if: matrix.app == 'web'
         run: pnpm --filter web test
+
+  printer-agent:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: tools/printer-server/package-lock.json
+
+      - name: Install printer-agent dependencies
+        run: npm ci --prefix tools/printer-server
+
+      - name: Printer-agent smoke test
+        run: npm test --prefix tools/printer-server

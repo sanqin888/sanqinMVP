@@ -275,7 +275,7 @@ Priority: **P1 RECOMMENDED WORKSTATION PREPARATION**
 Complexity: **H**  
 Depends on: none strictly  
 Recommended before: **A4 Windows POS workstation cutover**  
-Authorization note: any new/changed dependency manifest requires explicit approval.
+Authorization note: dependency-manifest changes are explicitly authorized for A3-A. The printer agent remains an independent npm package with its own `package-lock.json`; root pnpm workspace/lockfile stay unchanged.
 
 `tools/printer-server` is a real independently deployed Windows production boundary but is not a pnpm workspace package and remains a large standalone script.
 
@@ -289,6 +289,8 @@ Target:
 - add package/test smoke coverage appropriate to CI.
 
 Do not perform a cosmetic “split the big file” rewrite.
+
+2026-09-25 A3-A local implementation formalizes the deployed Windows printer agent as an independent npm package under `tools/printer-server`: the production dependency set and npm lockfile are repository-managed, deployed BAT/VBS startup wrappers are captured, and CI gains an isolated `npm ci` + side-effect-free syntax smoke gate. Root pnpm workspace/lockfile, `printer-server.js`, `print-label.ps1`, PRINT_JOB/ACK, enrollment, dedupe and print rendering behavior remain unchanged. Production `assets/logo.png` is still external to the repository and is explicitly deferred before exact rendering/golden reproducibility is considered complete.
 
 ### 4.4 A4 — Windows POS PWA + dual-display workstation
 
