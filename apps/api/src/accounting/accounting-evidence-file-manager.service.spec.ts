@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
+import { AccountingArtifactBinaryRetentionState } from '@prisma/client';
 import {
   AccountingEvidenceFileManagerService,
   normalizeAccountingEvidenceArtifactStableIds,
@@ -6,94 +7,133 @@ import {
 } from './accounting-evidence-file-manager.service';
 
 describe('AccountingEvidenceFileManagerService', () => {
-  it('lists retained evidence with logical folder placement only', async () => {
-    const prisma = {
-      accountingEvidenceFolder: {
-        findMany: jest.fn().mockResolvedValue([
+  it(
+    'lists retained evidence with logical placement and active-binary display projection',
+    async () => {
+      const prisma = {
+        accountingEvidenceFolder: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              folderStableId: 'folder_1',
+              name: 'Uber Eats',
+              createdAt: new Date('2026-09-21T12:00:00.000Z'),
+              updatedAt: new Date('2026-09-21T12:00:00.000Z'),
+              _count: { assignments: 1 },
+            },
+          ]),
+        },
+        accountingSourceArtifact: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              artifactStableId: 'acctart_1',
+              acquisitionMode: 'MANUAL_UPLOAD',
+              kind: 'PDF',
+              originalFilename: 'uber.pdf',
+              byteSize: 1000,
+              createdAt: new Date('2026-09-21T11:00:00.000Z'),
+              binaryRetention: null,
+              inboxItem: { materializedEntityStableId: null },
+              evidenceFolderAssignment: {
+                movedAt: new Date('2026-09-21T12:05:00.000Z'),
+                folder: {
+                  folderStableId: 'folder_1',
+                  name: 'Uber Eats',
+                },
+              },
+            },
+            {
+              artifactStableId: 'acctart_2',
+              acquisitionMode: 'MANUAL_UPLOAD',
+              kind: 'IMAGE',
+              originalFilename: 'receipt.jpg',
+              byteSize: 3_822_143,
+              createdAt: new Date('2026-09-21T10:00:00.000Z'),
+              binaryRetention: {
+                state: AccountingArtifactBinaryRetentionState.COMPRESSED_ONLY,
+                retainedStoredUrl:
+                  '/api/v1/accounting/files/image-retention/acctart_legacy-random.webp',
+                retainedByteSize: 411_770,
+                acceptedAt: new Date('2026-09-21T10:08:09.123Z'),
+              },
+              inboxItem: { materializedEntityStableId: 'expense_1' },
+              evidenceFolderAssignment: null,
+            },
+          ]),
+        },
+        accountingExpenseDocument: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              documentStableId: 'expense_1',
+              extractionJson: {
+                textractEvidence: { vendorName: 'Food Depot\nSupermarket' },
+              },
+            },
+          ]),
+        },
+      };
+      const service = new AccountingEvidenceFileManagerService(prisma as never);
+
+      const result = await service.listFileManager();
+
+      expect(result).toEqual({
+        folders: [
           {
             folderStableId: 'folder_1',
             name: 'Uber Eats',
-            createdAt: new Date('2026-09-21T12:00:00.000Z'),
-            updatedAt: new Date('2026-09-21T12:00:00.000Z'),
-            _count: { assignments: 1 },
+            fileCount: 1,
+            createdAt: '2026-09-21T12:00:00.000Z',
+            updatedAt: '2026-09-21T12:00:00.000Z',
           },
-        ]),
-      },
-      accountingSourceArtifact: {
-        findMany: jest.fn().mockResolvedValue([
-          {
+        ],
+        files: [
+          expect.objectContaining({
             artifactStableId: 'acctart_1',
-            acquisitionMode: 'MANUAL_UPLOAD',
-            kind: 'PDF',
             originalFilename: 'uber.pdf',
             byteSize: 1000,
-            createdAt: new Date('2026-09-21T11:00:00.000Z'),
-            evidenceFolderAssignment: {
-              movedAt: new Date('2026-09-21T12:05:00.000Z'),
-              folder: {
-                folderStableId: 'folder_1',
-                name: 'Uber Eats',
-              },
+            displayFilename: 'uber.pdf',
+            displayByteSize: 1000,
+            folder: {
+              folderStableId: 'folder_1',
+              name: 'Uber Eats',
+              movedAt: '2026-09-21T12:05:00.000Z',
             },
-          },
-          {
+          }),
+          expect.objectContaining({
             artifactStableId: 'acctart_2',
-            acquisitionMode: 'MANUAL_UPLOAD',
-            kind: 'IMAGE',
             originalFilename: 'receipt.jpg',
-            byteSize: 500,
-            createdAt: new Date('2026-09-21T10:00:00.000Z'),
-            evidenceFolderAssignment: null,
-          },
-        ]),
-      },
-    };
-    const service = new AccountingEvidenceFileManagerService(prisma as never);
-
-    const result = await service.listFileManager();
-
-    expect(result).toEqual({
-      folders: [
-        {
-          folderStableId: 'folder_1',
-          name: 'Uber Eats',
-          fileCount: 1,
-          createdAt: '2026-09-21T12:00:00.000Z',
-          updatedAt: '2026-09-21T12:00:00.000Z',
-        },
-      ],
-      files: [
+            byteSize: 3_822_143,
+            displayFilename:
+              'Food-Depot-Supermarket_20260921T100809123Z.webp',
+            displayByteSize: 411_770,
+            folder: null,
+          }),
+        ],
+        truncated: false,
+        fileLimit: 500,
+      });
+      expect(prisma.accountingSourceArtifact.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          artifactStableId: 'acctart_1',
-          folder: {
-            folderStableId: 'folder_1',
-            name: 'Uber Eats',
-            movedAt: '2026-09-21T12:05:00.000Z',
-          },
-        }),
-        expect.objectContaining({
-          artifactStableId: 'acctart_2',
-          folder: null,
-        }),
-      ],
-      truncated: false,
-      fileLimit: 500,
-    });
-    expect(prisma.accountingSourceArtifact.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          OR: [
-            { storedUrl: { not: null } },
-            {
-              binaryRetention: {
-                is: { retainedStoredUrl: { not: null } },
+          where: {
+            OR: [
+              { storedUrl: { not: null } },
+              {
+                binaryRetention: {
+                  is: { retainedStoredUrl: { not: null } },
+                },
               },
-            },
-          ],
+            ],
+          },
+        }),
+      );
+      expect(prisma.accountingExpenseDocument.findMany).toHaveBeenCalledWith({
+        where: { documentStableId: { in: ['expense_1'] } },
+        select: {
+          documentStableId: true,
+          extractionJson: true,
         },
-      }),
-    );
-  });
+      });
+    },
+  );
 
   it('normalizes folder names and rejects path-like names', () => {
     expect(normalizeAccountingEvidenceFolderName('  Uber   Eats  ')).toEqual({

@@ -92,6 +92,15 @@ Card Processing fee reconciliation before READY. `Amounts Funded` remains bank-r
 evidence and is not normalized as statement payout authority. No schema/migration, dependency,
 payment-provider runtime or graph-direction change is introduced.
 
+2026-09-25 Evidence File Manager retained-display follow-up is **LOCAL SOURCE READY FOR
+REVIEW / NO MIGRATION / NO DEPENDENCY / NO GRAPH-DIRECTION CHANGE** on
+`fix/accounting-evidence-retained-projection`. The Accounting-owned file-manager response now
+preserves original upload provenance while adding operator-visible retained-binary filename/size
+projection for accepted compressed images. The Web manager renders those display fields with
+fallback to the original metadata. Physical binaries, `storedUrl`, content hashes, retention
+state transitions, logical folder placement, Human Review, settlement and Journal authority are
+unchanged.
+
 The existing-materialized remediation is **MERGED / CI GREEN** through PR #2517
 (`a7a872bc`) with the user-generated additive migration committed to `dev` as `5e14e8db`.
 It keeps the original `AccountingProviderFinancialDocument` and machine lines immutable, reruns

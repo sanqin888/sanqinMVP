@@ -14,6 +14,8 @@ export type AccountingManagedEvidenceFile = {
   kind: AccountingInboxItem['artifact']['kind'];
   originalFilename: string | null;
   byteSize: number | null;
+  displayFilename: string | null;
+  displayByteSize: number | null;
   createdAt: string;
   folder: {
     folderStableId: string;
