@@ -5,10 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import {
-  AccountingArtifactBinaryRetentionState,
-  Prisma,
-} from '@prisma/client';
+import { AccountingArtifactBinaryRetentionState, Prisma } from '@prisma/client';
 import { ACCOUNTING_DB, type AccountingDb } from './accounting-db';
 import { runSerializableAccountingWrite } from './accounting-atomic-write';
 import {
