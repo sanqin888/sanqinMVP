@@ -94,7 +94,7 @@ payment-provider runtime or graph-direction change is introduced.
 
 2026-09-25 production follow-up: the July Clover v8 document materialized successfully and the
 backend settlement preview was READY, but the Web replay gate still enforced the historical
-provider-pending-line assumption used by earlier replacement-group flows. A narrow follow-up on
+provider-pending-line assumption used by earlier replacement-group flows. A narrow follow-up in PR #2540 on
 `fix/accounting-clover-replay-pending-gate` makes provider-pending net optional in the UI gate
 while retaining all backend READY/review/coverage/plan-hash/balance checks. No Accounting posting
 policy, schema, provider parser or settlement execution behavior changes.

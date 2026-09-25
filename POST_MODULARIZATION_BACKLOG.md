@@ -406,7 +406,7 @@ and Card-Processing fee controls to reconcile; nonzero unresolved components rem
 The statement `Amounts Funded` section is explicitly excluded from normalized provider lines.
 No migration, dependency, payment/Clover-terminal path or architecture direction changes.
 
-**2026-09-25 Clover replay UI-gate follow-up — LOCAL SOURCE READY FOR REMOTE CI:** production
+**2026-09-25 Clover replay UI-gate follow-up — PR #2540 / CI PENDING:** production
 verification of the July v8 materialization exposed one stale Web-only invariant:
 `PROVIDER_PENDING_LINE_MISSING` was raised whenever a READY provider Journal had no
 `account_*_pending` line. Clover fee-only settlement intentionally balances directly to
