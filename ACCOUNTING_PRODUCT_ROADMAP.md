@@ -110,6 +110,22 @@ removes only that unconditional UI blocker, and leaves backend settlement READY/
 plan-hash/balance/idempotency gates unchanged. No schema, parser, posting-policy or dependency
 change is introduced.
 
+2026-09-25 pre-sync Clover authority audit is **DESIGN FROZEN / READY FOR READ-ONLY SLICE A**.
+Real Gmail Closeout Reports prove that pre-sync Clover tender truth cannot be anchored to
+`Order.paymentMethod=CARD`: June Closeouts for 2026-05-29..2026-06-28 close exactly to the legacy
+June statement Amount Submitted 336,210c with 180 sales and 9,896c Tips; July Closeouts for
+2026-06-30..2026-07-30 close exactly to the modern July statement Amount Submitted 350,132c with
+230 sales and 7,207c Tips. Modern July/August statements separately disclose customer surcharge
+(5,551c / 6,252c), while legacy June does not. June `DISCOUNT FEES` 5,931c is merchant processing
+cost and must not be treated as customer surcharge. From Accounting start 2026-06-01 until a
+future durable Clover Payments cutover, Daily Closeout + Monthly Statement becomes Clover
+receivable/Pending authority; Order sales/HST/discount economics remain authoritative but historical
+CARD tender attribution becomes diagnostic-only. The current POS terminal rollout flag must not be
+read dynamically by Accounting; a later persisted payment-fact cutover timestamp is required.
+Detailed contract and staged remediation plan:
+`docs/architecture/accounting-clover-pre-sync-authority-plan.md`. No historical Journal mutation
+is authorized by this planning update.
+
 The existing-materialized remediation is **MERGED / CI GREEN** through PR #2517
 (`a7a872bc`) with the user-generated additive migration committed to `dev` as `5e14e8db`.
 It keeps the original `AccountingProviderFinancialDocument` and machine lines immutable, reruns
