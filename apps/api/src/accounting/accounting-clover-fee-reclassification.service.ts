@@ -40,7 +40,7 @@ export type CloverFeeReclassificationPreview = {
 const CLOVER_PENDING_ACCOUNT_STABLE_ID =
   ACCOUNTING_PROVIDER_PENDING_ACCOUNT_IDS[AccountingFinancialProvider.CLOVER];
 
-const LEGACY_CLOVER_FEE_DEBIT_ACCOUNT_STABLE_IDS = new Set([
+const LEGACY_CLOVER_FEE_DEBIT_ACCOUNT_STABLE_IDS = new Set<string>([
   PROVIDER_SETTLEMENT_ACCOUNT_IDS.paymentProcessingFeeExpense,
   PROVIDER_SETTLEMENT_ACCOUNT_IDS.generalOperatingExpense,
   PROVIDER_SETTLEMENT_ACCOUNT_IDS.hstRecoverable,
