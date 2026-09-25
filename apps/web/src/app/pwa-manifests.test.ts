@@ -45,7 +45,7 @@ describe('PWA manifests', () => {
       id: '/pwa/accounting',
       name: 'SanQ Accounting',
       short_name: 'SanQ Acct',
-      start_url: '/accounting',
+      start_url: '/accounting/dashboard',
       scope: '/',
     });
 

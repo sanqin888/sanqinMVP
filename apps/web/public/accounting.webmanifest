@@ -3,7 +3,7 @@
   "name": "SanQ Accounting",
   "short_name": "SanQ Acct",
   "description": "SanQ accounting and financial reporting workspace.",
-  "start_url": "/accounting",
+  "start_url": "/accounting/dashboard",
   "scope": "/",
   "display": "standalone",
   "background_color": "#172440",

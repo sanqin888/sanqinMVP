@@ -219,7 +219,7 @@ Priority: **P0 CORE FOUNDATION**
 Complexity: **H**  
 External gate: **none**  
 Hard unlocks: Accounting PWA direct launch, Windows POS PWA, stable Staff/PWA E2E.  
-State: **LOCAL SOURCE READY FOR REVIEW / UNIFIED STAFF ENTRY + SURFACE MATRIX / NO MIGRATION / NO PACKAGE OR GRAPH CHANGE**
+State: **MERGED / CI GREEN / UNIFIED STAFF ENTRY + SURFACE MATRIX / NO MIGRATION / NO PACKAGE OR GRAPH CHANGE — PR #2530 / `524588b6` / CI #6361**
 
 Target role matrix remains:
 
@@ -251,7 +251,8 @@ Do **not** automatically fold the full Admin Members STAFF/ADMIN identity-test c
 
 Priority: **P1**  
 Complexity: **M**  
-Depends on: **A1**
+Depends on: **A1**  
+State: **LOCAL SOURCE READY FOR REVIEW / DIRECT-LAUNCH ROOT CORRECTION / NO AUTH OR GRAPH CHANGE**
 
 Admin and Accounting already have distinct PWA identities/manifests, but Accounting direct launch must be proven against the unified login/landing model. A1 readiness confirmed the current 404 is structural: `accounting.webmanifest` starts at `/accounting`, locale middleware produces `/{locale}/accounting`, and no Accounting root `page.tsx` exists. A1 canonicalizes an unauthenticated return destination to `/accounting/dashboard`; A2 still owns the authenticated installed-PWA root landing/redirect and its launch verification.
 
@@ -265,6 +266,8 @@ Target:
 - no requirement to visit Admin first.
 
 Do not fix this first by adding more Accounting-specific authentication behavior that A1 would later remove.
+
+2026-09-25 A2 implementation keeps A1 authoritative and fixes only launch routing: new Accounting installs use `start_url=/accounting/dashboard`, while `/{locale}/accounting/page.tsx` redirects to the dashboard so already-installed/cached PWAs that still launch `/accounting` also recover. Middleware/layout/session/role behavior is unchanged: missing or expired sessions still reach the unified Staff login, ADMIN/ACCOUNTANT remain allowed, and STAFF is redirected to its own canonical surface.
 
 ### 4.3 A3 — Printer-agent package / test hardening
 
