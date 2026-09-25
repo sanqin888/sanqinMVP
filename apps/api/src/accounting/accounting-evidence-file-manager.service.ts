@@ -5,9 +5,13 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { AccountingArtifactBinaryRetentionState, Prisma } from '@prisma/client';
 import { ACCOUNTING_DB, type AccountingDb } from './accounting-db';
 import { runSerializableAccountingWrite } from './accounting-atomic-write';
+import {
+  accountingExpenseVendorName,
+  accountingRetainedImageDisplayFilename,
+} from './accounting-image-retention-filename';
 import { writeAccountingAuditLog } from './accounting-audit-writer';
 
 const ACCOUNTING_EVIDENCE_FOLDER_NAME_MAX_LENGTH = 80;
@@ -53,6 +57,19 @@ export class AccountingEvidenceFileManagerService {
           originalFilename: true,
           byteSize: true,
           createdAt: true,
+          binaryRetention: {
+            select: {
+              state: true,
+              retainedStoredUrl: true,
+              retainedByteSize: true,
+              acceptedAt: true,
+            },
+          },
+          inboxItem: {
+            select: {
+              materializedEntityStableId: true,
+            },
+          },
           evidenceFolderAssignment: {
             select: {
               movedAt: true,
@@ -75,6 +92,43 @@ export class AccountingEvidenceFileManagerService {
       0,
       ACCOUNTING_EVIDENCE_FILE_LIST_LIMIT,
     );
+    const expenseDocumentStableIds = [
+      ...new Set(
+        visibleArtifacts
+          .filter((artifact) =>
+            accountingEvidenceUsesRetainedBinary(
+              artifact.binaryRetention?.state,
+            ),
+          )
+          .map(
+            (artifact) =>
+              artifact.inboxItem?.materializedEntityStableId ?? null,
+          )
+          .filter(
+            (value): value is string =>
+              typeof value === 'string' && value.length > 0,
+          ),
+      ),
+    ];
+    const expenseVendorNames = new Map<string, string>();
+    if (expenseDocumentStableIds.length) {
+      const expenseDocuments =
+        await this.prisma.accountingExpenseDocument.findMany({
+          where: {
+            documentStableId: { in: expenseDocumentStableIds },
+          },
+          select: {
+            documentStableId: true,
+            extractionJson: true,
+          },
+        });
+      for (const document of expenseDocuments) {
+        const vendorName = accountingExpenseVendorName(document.extractionJson);
+        if (vendorName) {
+          expenseVendorNames.set(document.documentStableId, vendorName);
+        }
+      }
+    }
 
     return {
       folders: folders.map((folder) => ({
@@ -84,22 +138,45 @@ export class AccountingEvidenceFileManagerService {
         createdAt: folder.createdAt.toISOString(),
         updatedAt: folder.updatedAt.toISOString(),
       })),
-      files: visibleArtifacts.map((artifact) => ({
-        artifactStableId: artifact.artifactStableId,
-        acquisitionMode: artifact.acquisitionMode,
-        kind: artifact.kind,
-        originalFilename: artifact.originalFilename,
-        byteSize: artifact.byteSize,
-        createdAt: artifact.createdAt.toISOString(),
-        folder: artifact.evidenceFolderAssignment
-          ? {
-              folderStableId:
-                artifact.evidenceFolderAssignment.folder.folderStableId,
-              name: artifact.evidenceFolderAssignment.folder.name,
-              movedAt: artifact.evidenceFolderAssignment.movedAt.toISOString(),
-            }
-          : null,
-      })),
+      files: visibleArtifacts.map((artifact) => {
+        const retained = accountingEvidenceUsesRetainedBinary(
+          artifact.binaryRetention?.state,
+        )
+          ? artifact.binaryRetention
+          : null;
+        const materializedEntityStableId =
+          artifact.inboxItem?.materializedEntityStableId ?? null;
+        const displayFilename = retained
+          ? accountingRetainedImageDisplayFilename({
+              retainedStoredUrl: retained.retainedStoredUrl,
+              vendorName: materializedEntityStableId
+                ? (expenseVendorNames.get(materializedEntityStableId) ?? null)
+                : null,
+              fallbackTimestamp: retained.acceptedAt ?? artifact.createdAt,
+              originalFilename: artifact.originalFilename,
+            })
+          : artifact.originalFilename;
+
+        return {
+          artifactStableId: artifact.artifactStableId,
+          acquisitionMode: artifact.acquisitionMode,
+          kind: artifact.kind,
+          originalFilename: artifact.originalFilename,
+          byteSize: artifact.byteSize,
+          displayFilename,
+          displayByteSize: retained?.retainedByteSize ?? artifact.byteSize,
+          createdAt: artifact.createdAt.toISOString(),
+          folder: artifact.evidenceFolderAssignment
+            ? {
+                folderStableId:
+                  artifact.evidenceFolderAssignment.folder.folderStableId,
+                name: artifact.evidenceFolderAssignment.folder.name,
+                movedAt:
+                  artifact.evidenceFolderAssignment.movedAt.toISOString(),
+              }
+            : null,
+        };
+      }),
       truncated,
       fileLimit: ACCOUNTING_EVIDENCE_FILE_LIST_LIMIT,
     };
@@ -286,6 +363,15 @@ export class AccountingEvidenceFileManagerService {
       };
     });
   }
+}
+
+function accountingEvidenceUsesRetainedBinary(
+  state: AccountingArtifactBinaryRetentionState | null | undefined,
+): boolean {
+  return (
+    state === AccountingArtifactBinaryRetentionState.PURGE_PENDING ||
+    state === AccountingArtifactBinaryRetentionState.COMPRESSED_ONLY
+  );
 }
 
 export function normalizeAccountingEvidenceFolderName(rawName: unknown): {

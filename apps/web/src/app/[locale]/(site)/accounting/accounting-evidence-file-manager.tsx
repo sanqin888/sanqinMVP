@@ -427,12 +427,15 @@ function ManagedFileRow({
       />
       <div className="min-w-0 flex-1">
         <p className="truncate font-medium text-slate-900">
-          {file.originalFilename ?? file.artifactStableId}
+          {accountingManagedEvidenceDisplayFilename(file)}
         </p>
         <p className="mt-1 text-xs text-slate-500">
           {file.kind} · {file.acquisitionMode} ·{' '}
-          {formatAccountingEvidenceFileBytes(file.byteSize, isZh)} ·{' '}
-          {new Date(file.createdAt).toLocaleString()}
+          {formatAccountingEvidenceFileBytes(
+            accountingManagedEvidenceDisplayByteSize(file),
+            isZh,
+          )}{' '}
+          · {new Date(file.createdAt).toLocaleString()}
         </p>
         <p className="mt-1 text-xs text-slate-500">
           {isZh ? '位置' : 'Location'}:{' '}
@@ -441,6 +444,18 @@ function ManagedFileRow({
       </div>
     </label>
   );
+}
+
+export function accountingManagedEvidenceDisplayFilename(
+  file: AccountingManagedEvidenceFile,
+): string {
+  return file.displayFilename ?? file.originalFilename ?? file.artifactStableId;
+}
+
+export function accountingManagedEvidenceDisplayByteSize(
+  file: AccountingManagedEvidenceFile,
+): number | null {
+  return file.displayByteSize ?? file.byteSize;
 }
 
 export function filterAccountingEvidenceFiles(
