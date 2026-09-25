@@ -92,6 +92,13 @@ Card Processing fee reconciliation before READY. `Amounts Funded` remains bank-r
 evidence and is not normalized as statement payout authority. No schema/migration, dependency,
 payment-provider runtime or graph-direction change is introduced.
 
+2026-09-25 production follow-up: the July Clover v8 document materialized successfully and the
+backend settlement preview was READY, but the Web replay gate still enforced the historical
+provider-pending-line assumption used by earlier replacement-group flows. A narrow follow-up on
+`fix/accounting-clover-replay-pending-gate` makes provider-pending net optional in the UI gate
+while retaining all backend READY/review/coverage/plan-hash/balance checks. No Accounting posting
+policy, schema, provider parser or settlement execution behavior changes.
+
 The existing-materialized remediation is **MERGED / CI GREEN** through PR #2517
 (`a7a872bc`) with the user-generated additive migration committed to `dev` as `5e14e8db`.
 It keeps the original `AccountingProviderFinancialDocument` and machine lines immutable, reruns

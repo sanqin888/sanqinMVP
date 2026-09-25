@@ -406,6 +406,16 @@ and Card-Processing fee controls to reconcile; nonzero unresolved components rem
 The statement `Amounts Funded` section is explicitly excluded from normalized provider lines.
 No migration, dependency, payment/Clover-terminal path or architecture direction changes.
 
+**2026-09-25 Clover replay UI-gate follow-up — LOCAL SOURCE READY FOR REMOTE CI:** production
+verification of the July v8 materialization exposed one stale Web-only invariant:
+`PROVIDER_PENDING_LINE_MISSING` was raised whenever a READY provider Journal had no
+`account_*_pending` line. Clover fee-only settlement intentionally balances directly to
+`account_clover_fee_payable`, so the pending line is not part of that valid Journal shape.
+The follow-up keeps provider-pending net as nullable summary data, removes it as an unconditional
+Replay blocker, and adds a July-shaped Clover regression while preserving the original Uber
+replacement-group test. Backend settlement authority/execution, parser, schema and dependencies
+are unchanged.
+
 **Existing-materialized parser re-evaluation / Human Review effective snapshot — LOCAL SOURCE
 READY FOR REVIEW:** `accounting/provider-parser-reevaluation-review` adds the previously planned
 immutable remediation path. A historical provider document is re-evaluated only from persisted

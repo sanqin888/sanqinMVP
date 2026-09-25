@@ -253,6 +253,160 @@ describe('provider settlement replay UI gate', () => {
     );
   });
 
+  it('allows a fee-only Clover READY document without a provider-pending line', () => {
+    const preview = makePreview();
+    const document = preview.providerDocuments[0];
+    const coverage = preview.coverage[0];
+    if (!document?.draftJournal || !document.coverageEvidence || !coverage) {
+      throw new Error('expected provider settlement fixture prerequisites');
+    }
+    const cloverDocumentStableId = 'acctfindoc_clover_july';
+
+    preview.range = {
+      ...preview.range,
+      fromDate: '2026-07-01',
+      toDateExclusive: '2026-08-01',
+      provider: 'CLOVER',
+    };
+    preview.coverage = [
+      {
+        ...coverage,
+        coverageStableId: 'coverage_clover',
+        provider: 'CLOVER',
+        financialCompleteThrough: '2026-06-30',
+      },
+    ];
+    preview.providerDocuments[0] = {
+      ...document,
+      documentStableId: cloverDocumentStableId,
+      provider: 'CLOVER',
+      documentType: 'STATEMENT',
+      businessIdentityKey:
+        'clover:statement:merchant:2026-07-01:2026-07-31',
+      providerDocumentRef: 'merchant:2026-07-01:2026-07-31',
+      periodStart: '2026-07-01',
+      periodEnd: '2026-07-31',
+      salesAuthority: 'RECONCILIATION_ONLY',
+      reviewEvidence: document.reviewEvidence
+        ? {
+            ...document.reviewEvidence,
+            materializedEntityStableId: cloverDocumentStableId,
+          }
+        : null,
+      coverageEvidence: {
+        ...document.coverageEvidence,
+        coverageStableId: 'coverage_clover',
+        financialCompleteThrough: '2026-06-30',
+      },
+      controlTotalChecks: [
+        {
+          key: 'CLOVER_ACCOUNT_SUMMARY',
+          status: 'MATCHED',
+          controlRawName: 'Amount Processed',
+          controlLineStableId: 'line-amount-processed',
+          expectedCents: 340035,
+          calculatedCents: 340035,
+          deltaCents: 0,
+        },
+        {
+          key: 'CLOVER_FEE_SUMMARY',
+          status: 'MATCHED',
+          controlRawName: 'Account Summary Fees',
+          controlLineStableId: 'line-account-fees',
+          expectedCents: -10097,
+          calculatedCents: -10097,
+          deltaCents: 0,
+        },
+        {
+          key: 'CLOVER_FEES_DETAIL',
+          status: 'MATCHED',
+          controlRawName: 'Fee Summary Fees',
+          controlLineStableId: 'line-fee-summary',
+          expectedCents: -3612,
+          calculatedCents: -3612,
+          deltaCents: 0,
+        },
+        {
+          key: 'CLOVER_SERVICE_CHARGES_DETAIL',
+          status: 'MATCHED',
+          controlRawName: 'Service Charges Total',
+          controlLineStableId: 'line-service-charges',
+          expectedCents: -6485,
+          calculatedCents: -6485,
+          deltaCents: 0,
+        },
+        {
+          key: 'CLOVER_CARD_PROCESSING_FEES',
+          status: 'MATCHED',
+          controlRawName: 'Card Processing Total Fees',
+          controlLineStableId: 'line-card-processing-fees',
+          expectedCents: -6707,
+          calculatedCents: -6707,
+          deltaCents: 0,
+        },
+      ],
+      draftJournal: {
+        ...document.draftJournal,
+        idempotencyKey: `provider-settlement:${cloverDocumentStableId}:r1:v1`,
+        sourceFactStableId: cloverDocumentStableId,
+        occurredAt: '2026-08-01T03:59:59.999Z',
+        lines: [
+          {
+            accountStableId: 'account_payment_processing_fee_expense',
+            debitCents: 6707,
+            creditCents: 0,
+          },
+          {
+            accountStableId: 'account_general_operating_expense',
+            categoryStableId: 'expense_software',
+            debitCents: 3000,
+            creditCents: 0,
+          },
+          {
+            accountStableId: 'account_hst_recoverable',
+            debitCents: 390,
+            creditCents: 0,
+          },
+          {
+            accountStableId: 'account_clover_fee_payable',
+            debitCents: 0,
+            creditCents: 10097,
+          },
+        ],
+      },
+      debitCents: 10097,
+      creditCents: 10097,
+    };
+    preview.uberPreCutoverOrderReversals = [];
+    preview.counts.preCutoverUberOrderFacts = 0;
+    preview.counts.preCutoverUberSaleJournals = 0;
+    preview.counts.readyUberOrderReversals = 0;
+    preview.counts.blockedUberOrderReversals = 0;
+    preview.amounts.readyProviderDebitCents = 10097;
+    preview.amounts.readyProviderCreditCents = 10097;
+    preview.amounts.readyUberReversalDebitCents = 0;
+    preview.amounts.readyUberReversalCreditCents = 0;
+
+    const gate = buildProviderSettlementReplayGate(
+      preview,
+      cloverDocumentStableId,
+    );
+
+    expect(gate.status).toBe('READY');
+    expect(gate.blockReasons).toEqual([]);
+    expect(gate.confirmationPhrase).toBe('REPLAY JULY 2026');
+    expect(gate.summary).toEqual(
+      expect.objectContaining({
+        providerDocuments: 1,
+        reversalJournals: 0,
+        totalJournals: 1,
+        providerDebitCents: 10097,
+        providerCreditCents: 10097,
+        providerPendingNetCents: null,
+      }),
+    );
+  });
+
   it('allows NOOP supporting evidence beside the one READY target document', () => {
     const preview = makePreview();
     addNoopSupportingDocument(preview);
