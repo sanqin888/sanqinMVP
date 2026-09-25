@@ -1,0 +1,13 @@
+{
+  "PosPwaShortcutPath": "",
+  "PosWindowTitleContains": "SanQ POS",
+  "CustomerDisplayUrl": "https://sanq.ca/store/display",
+  "CustomerDisplayWindowTitleContains": "SanQ Customer Display",
+  "CustomerDisplayMonitorDeviceName": "",
+  "AllowSingleMonitorFallback": false,
+  "PrinterHealthUrl": "http://127.0.0.1:19191/",
+  "PrinterStartScript": "C:\\pos-printer-server\\start-printer-server.vbs",
+  "PrinterStartupTimeoutSeconds": 20,
+  "WindowStartupTimeoutSeconds": 25,
+  "LogDirectory": ""
+}

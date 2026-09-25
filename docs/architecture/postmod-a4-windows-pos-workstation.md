@@ -2,9 +2,9 @@
 
 ## Status
 
-2026-09-25: **A4-A MERGED / CI GREEN / A4-B LOCAL SOURCE READY FOR REVIEW / NO MIGRATION / NO NEW DEPENDENCY / NO GRAPH CHANGE**
+2026-09-25: **A4-A + A4-B MERGED / CI GREEN / A4-C1 LOCAL SOURCE READY FOR REVIEW / EXPLICITLY AUTHORIZED NEW OPERATIONAL BOUNDARY / NO MIGRATION / NO NEW DEPENDENCY / NO GRAPH CHANGE**
 
-A4-A merged through PR #2537 / squash `6f77d5cc`; CI #6381 passed Web/API/printer-agent. A4-B is on `postmod/a4b-customer-display-launch` from current `origin/dev`.
+A4-A merged through PR #2537 / squash `6f77d5cc` with CI #6381. A4-B merged through PR #2538 / squash `2d0d1a58` with CI #6383. A4-C1 is on `postmod/a4c1-windows-workstation-launcher` from current `origin/dev`.
 
 A4 is a workstation project layered on the existing Store Operations / POS / Print boundaries. It does not move authentication, device enrollment, order, payment, customer-display synchronization, or printer ownership.
 
@@ -75,7 +75,28 @@ Regression coverage locks the current local projection contract: the display rea
 
 ### A4-C — Windows workstation launcher / recovery
 
-Select and implement the Windows orchestration boundary for launching the POS main display, customer display on the second monitor, and printer agent, including restart/full-screen/recovery behavior. The repository currently has no general workstation launcher, so this slice requires an explicit implementation decision before source changes.
+#### A4-C1 — launcher foundation
+
+A4-C1 is the explicitly authorized new Windows operational boundary under `tools/windows-pos-workstation`. It coordinates existing owners only; it does not move Staff auth, POS device enrollment, orders/payments, browser-local display sync or printer transport into a new module.
+
+The canonical POS launch source is the real installed `SanQ POS.lnk` created by the Chromium-installed PWA. The launcher reads the shortcut target/profile arguments, launches or reuses that installed POS PWA, and uses the same Chromium executable/profile to open `https://sanq.ca/store/display` as the non-installable Customer Display app window. This same-profile invariant is required by the existing localStorage + BroadcastChannel synchronization contract.
+
+C1 runtime responsibilities are deliberately narrow:
+
+- health-check the existing printer agent at `127.0.0.1:19191` and start the existing VBS wrapper only when unhealthy;
+- launch/reuse POS and Customer Display windows without killing browser processes;
+- place/maximize POS on the Windows primary monitor;
+- place/maximize Customer Display on an explicitly configured or first available non-primary monitor;
+- preserve POS operation when the printer agent or second monitor is unavailable while returning a non-zero launcher status for diagnostics;
+- write local non-secret workstation logs;
+- persist only non-secret POS/Display window handles for idempotent reuse across title changes such as Staff-login redirection;
+- keep local `workstation.config.json` ignored by Git.
+
+No Scheduled Task or Windows Startup entry is installed in C1. No browser/session/device credential is stored in workstation config. A Windows CI job uses Windows PowerShell 5.1 to parse the launcher and validate the example JSON only; CI never launches browser/printer processes.
+
+#### A4-C2 — startup / recovery installation
+
+After C1 is reviewed and manually verified on the store workstation, C2 may add an idempotent Windows startup/Task Scheduler installer and periodic ensure/recovery policy. C2 must reuse C1 rather than adding another launcher implementation, and must not replace POS session/network recovery or printer-agent reconnect semantics.
 
 ### A4-D — Operational verification / runbook
 
