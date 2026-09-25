@@ -1,5 +1,16 @@
 import type { AccountingFinancialProvider } from './core';
 
+export type CloverFeeReclassificationPreview = {
+  documentStableId: string;
+  revision: number;
+  status: 'READY' | 'BLOCKED' | 'ALREADY_RECLASSIFIED' | 'NOOP';
+  blockReasons: string[];
+  originalJournalEntryStableId: string | null;
+  existingCorrectionJournalEntryStableId: string | null;
+  amountCents: number;
+  planHash: string;
+};
+
 export type ProviderSettlementPostingState = {
   documentStableId: string;
   postingState: 'POSTED' | 'NOT_POSTED';

@@ -608,6 +608,12 @@ describe('Accounting provider settlement shadow policy', () => {
     );
     expect(plan.debitCents).toBe(9839);
     expect(plan.creditCents).toBe(9839);
+    expect(plan.requiredAccountStableIds).toContain(
+      PROVIDER_SETTLEMENT_ACCOUNT_IDS.cloverFeePayable,
+    );
+    expect(plan.requiredAccountStableIds).not.toContain(
+      PROVIDER_SETTLEMENT_ACCOUNT_IDS.cloverPending,
+    );
     expect(plan.draftJournal?.lines).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -632,7 +638,7 @@ describe('Accounting provider settlement shadow policy', () => {
           creditCents: 0,
         }),
         expect.objectContaining({
-          accountStableId: PROVIDER_SETTLEMENT_ACCOUNT_IDS.cloverPending,
+          accountStableId: PROVIDER_SETTLEMENT_ACCOUNT_IDS.cloverFeePayable,
           categoryStableId: null,
           debitCents: 0,
           creditCents: 9839,

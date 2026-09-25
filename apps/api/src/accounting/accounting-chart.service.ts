@@ -12,6 +12,10 @@ import {
 } from './accounting-contracts';
 import { ACCOUNTING_DB, type AccountingDb } from './accounting-db';
 import { DEFAULT_ACCOUNTING_ACCOUNTS } from './accounting-chart-of-accounts';
+import {
+  CLOVER_FEE_PAYABLE_ACCOUNT_NAME,
+  CLOVER_FEE_PAYABLE_ACCOUNT_STABLE_ID,
+} from './accounting-provider-fee-clearing.contract';
 
 const DEFAULT_CATEGORY_TREE = [
   {
@@ -156,6 +160,34 @@ export class AccountingChartService {
       categories: await this.listCategories(),
       accounts: await this.listAccounts(),
     };
+  }
+
+  async provisionProviderFeeClearingAccounts() {
+    await this.prisma.accountingAccount.upsert({
+      where: {
+        accountStableId: CLOVER_FEE_PAYABLE_ACCOUNT_STABLE_ID,
+      },
+      create: {
+        accountStableId: CLOVER_FEE_PAYABLE_ACCOUNT_STABLE_ID,
+        name: CLOVER_FEE_PAYABLE_ACCOUNT_NAME,
+        type: null,
+        accountClass: AccountingAccountClass.LIABILITY,
+        currency: 'CAD',
+        isActive: true,
+      },
+      update: {
+        name: CLOVER_FEE_PAYABLE_ACCOUNT_NAME,
+        type: null,
+        accountClass: AccountingAccountClass.LIABILITY,
+        currency: 'CAD',
+        isActive: true,
+      },
+    });
+    return this.prisma.accountingAccount.findUnique({
+      where: {
+        accountStableId: CLOVER_FEE_PAYABLE_ACCOUNT_STABLE_ID,
+      },
+    });
   }
 
   async listCategories(includeInactive = false) {
