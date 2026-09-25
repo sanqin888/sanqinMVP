@@ -647,6 +647,233 @@ describe('Accounting provider settlement shadow policy', () => {
     );
   });
 
+  it('reconciles modern Clover account, fee, detail, and card-processing controls', () => {
+    const plan = buildProviderSettlementDocumentPlan({
+      document: {
+        documentStableId: 'clover_statement_august_2026',
+        revision: 1,
+        provider: AccountingFinancialProvider.CLOVER,
+        documentType: AccountingFinancialDocumentType.STATEMENT,
+        storeStableId: '4750_Yonge_Street',
+        periodStart: '2026-08-01',
+        periodEnd: '2026-08-31',
+        currency: 'CAD',
+        lines: [
+          {
+            lineStableId: 'modern-submitted',
+            lineNo: 1,
+            rawCode: CLOVER_STATEMENT_RAW_CODES.ACCOUNT_AMOUNT_SUBMITTED,
+            rawName: 'Amount Submitted',
+            component: AccountingFinancialComponent.SALES,
+            postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+            amountCents: 394993,
+          },
+          {
+            lineStableId: 'modern-paid-others',
+            lineNo: 2,
+            rawCode: CLOVER_STATEMENT_RAW_CODES.ACCOUNT_PAID_BY_OTHERS,
+            rawName: 'Paid by Others',
+            component: AccountingFinancialComponent.OTHER,
+            postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+            amountCents: 0,
+          },
+          {
+            lineStableId: 'modern-disputes',
+            lineNo: 3,
+            rawCode: CLOVER_STATEMENT_RAW_CODES.ACCOUNT_DISPUTES,
+            rawName: 'Disputes',
+            component: AccountingFinancialComponent.CHARGEBACK,
+            postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+            amountCents: 0,
+          },
+          {
+            lineStableId: 'modern-adjustments',
+            lineNo: 4,
+            rawCode: CLOVER_STATEMENT_RAW_CODES.ACCOUNT_ADJUSTMENTS,
+            rawName: 'Adjustments',
+            component: AccountingFinancialComponent.ADJUSTMENT,
+            postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+            amountCents: 0,
+          },
+          {
+            lineStableId: 'modern-account-fees',
+            lineNo: 5,
+            rawCode: CLOVER_STATEMENT_RAW_CODES.ACCOUNT_FEES_TOTAL,
+            rawName: 'Account Summary Fees',
+            component: AccountingFinancialComponent.CONTROL_TOTAL,
+            postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+            amountCents: -10684,
+          },
+          {
+            lineStableId: 'modern-processed',
+            lineNo: 6,
+            rawCode: CLOVER_STATEMENT_RAW_CODES.ACCOUNT_AMOUNT_PROCESSED,
+            rawName: 'Amount Processed',
+            component: AccountingFinancialComponent.CONTROL_TOTAL,
+            postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+            amountCents: 384309,
+          },
+          {
+            lineStableId: 'modern-fee-summary-fees',
+            lineNo: 7,
+            rawCode: CLOVER_STATEMENT_RAW_CODES.FEE_SUMMARY_FEES,
+            rawName: 'Fee Summary Fees',
+            component: AccountingFinancialComponent.CONTROL_TOTAL,
+            postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+            amountCents: -3591,
+          },
+          {
+            lineStableId: 'modern-icpf',
+            lineNo: 8,
+            rawCode: CLOVER_STATEMENT_RAW_CODES.FEE_SUMMARY_ICPF,
+            rawName: 'IC/PF',
+            component: AccountingFinancialComponent.OTHER,
+            postingTreatment: AccountingFinancialPostingTreatment.UNCLASSIFIED,
+            amountCents: 0,
+          },
+          {
+            lineStableId: 'modern-service-total',
+            lineNo: 9,
+            rawCode: CLOVER_STATEMENT_RAW_CODES.SERVICE_CHARGES_TOTAL,
+            rawName: 'Service Charges Total',
+            component: AccountingFinancialComponent.CONTROL_TOTAL,
+            postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+            amountCents: -7093,
+          },
+          {
+            lineStableId: 'modern-card-fees',
+            lineNo: 10,
+            rawCode: CLOVER_STATEMENT_RAW_CODES.CARD_PROCESSING_TOTAL_FEES,
+            rawName: 'Card Processing Total Fees',
+            component: AccountingFinancialComponent.CONTROL_TOTAL,
+            postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+            amountCents: -7294,
+          },
+          {
+            lineStableId: 'modern-equipment',
+            lineNo: 11,
+            rawCode: CLOVER_STATEMENT_RAW_CODES.EQUIPMENT_FEE,
+            rawName: 'Clover Equipment Fee',
+            component: AccountingFinancialComponent.PLATFORM_OTHER_FEE,
+            postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+            amountCents: -3000,
+          },
+          {
+            lineStableId: 'modern-equipment-hst',
+            lineNo: 12,
+            rawCode: CLOVER_STATEMENT_RAW_CODES.EQUIPMENT_FEE_HST,
+            rawName: 'Clover Equipment Fee HST',
+            component: AccountingFinancialComponent.PLATFORM_OTHER_FEE_TAX,
+            postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+            amountCents: -390,
+          },
+          {
+            lineStableId: 'modern-network',
+            lineNo: 13,
+            rawCode: CLOVER_STATEMENT_RAW_CODES.NETWORK_FEES,
+            rawName: 'Other Card/Network Fees',
+            component: AccountingFinancialComponent.PROCESSING_FEE,
+            postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+            amountCents: -201,
+          },
+          {
+            lineStableId: 'modern-service',
+            lineNo: 14,
+            rawCode: CLOVER_STATEMENT_RAW_CODES.SERVICE_CHARGES,
+            rawName: 'Service Charges',
+            component: AccountingFinancialComponent.PROCESSING_FEE,
+            postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+            amountCents: -7093,
+          },
+        ],
+      },
+      salesAuthority: 'RECONCILIATION_ONLY',
+      occurredAt: new Date('2026-08-31T03:59:59.999Z'),
+    });
+
+    expect(plan.status).toBe('READY');
+    expect(plan.controlTotalChecks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: 'CLOVER_ACCOUNT_SUMMARY',
+          status: 'MATCHED',
+          expectedCents: 384309,
+          calculatedCents: 384309,
+        }),
+        expect.objectContaining({
+          key: 'CLOVER_FEE_SUMMARY',
+          status: 'MATCHED',
+          expectedCents: -10684,
+          calculatedCents: -10684,
+        }),
+        expect.objectContaining({
+          key: 'CLOVER_FEES_DETAIL',
+          status: 'MATCHED',
+          expectedCents: -3591,
+          calculatedCents: -3591,
+        }),
+        expect.objectContaining({
+          key: 'CLOVER_SERVICE_CHARGES_DETAIL',
+          status: 'MATCHED',
+          expectedCents: -7093,
+          calculatedCents: -7093,
+        }),
+        expect.objectContaining({
+          key: 'CLOVER_CARD_PROCESSING_FEES',
+          status: 'MATCHED',
+          expectedCents: -7294,
+          calculatedCents: -7294,
+        }),
+      ]),
+    );
+    expect(plan.decisions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          lineStableId: 'modern-equipment',
+          targetAccountStableId:
+            PROVIDER_SETTLEMENT_ACCOUNT_IDS.generalOperatingExpense,
+          targetCategoryStableId:
+            PROVIDER_SETTLEMENT_CATEGORY_IDS.cloverEquipment,
+        }),
+        expect.objectContaining({
+          lineStableId: 'modern-network',
+          targetAccountStableId:
+            PROVIDER_SETTLEMENT_ACCOUNT_IDS.paymentProcessingFeeExpense,
+        }),
+        expect.objectContaining({
+          lineStableId: 'modern-service',
+          targetAccountStableId:
+            PROVIDER_SETTLEMENT_ACCOUNT_IDS.paymentProcessingFeeExpense,
+        }),
+      ]),
+    );
+    expect(plan.debitCents).toBe(10684);
+    expect(plan.creditCents).toBe(10684);
+    expect(plan.draftJournal?.lines).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          accountStableId:
+            PROVIDER_SETTLEMENT_ACCOUNT_IDS.generalOperatingExpense,
+          categoryStableId: PROVIDER_SETTLEMENT_CATEGORY_IDS.cloverEquipment,
+          debitCents: 3000,
+        }),
+        expect.objectContaining({
+          accountStableId: PROVIDER_SETTLEMENT_ACCOUNT_IDS.hstRecoverable,
+          debitCents: 390,
+        }),
+        expect.objectContaining({
+          accountStableId:
+            PROVIDER_SETTLEMENT_ACCOUNT_IDS.paymentProcessingFeeExpense,
+          debitCents: 7294,
+        }),
+        expect.objectContaining({
+          accountStableId: PROVIDER_SETTLEMENT_ACCOUNT_IDS.cloverFeePayable,
+          creditCents: 10684,
+        }),
+      ]),
+    );
+  });
+
   it('fails closed when Clover fee detail does not reconcile to the statement Fees control', () => {
     const plan = buildProviderSettlementDocumentPlan({
       document: {

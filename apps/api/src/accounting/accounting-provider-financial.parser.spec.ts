@@ -81,530 +81,286 @@ Tips 4 $3.84
     );
   });
 
-  it('parses Clover monthly statement fee detail into equipment, HST, and network fees', () => {
+  const modernCloverExtraction = (params: {
+    amountSubmittedCents: number;
+    accountFeesCents: number;
+    amountProcessedCents: number;
+    feeSummaryFeesCents: number;
+    serviceChargesCents: number;
+    cardProcessingFeesCents: number;
+    equipmentDescription: string;
+    networkRows: Array<{
+      invoice: string;
+      description: string;
+      amountCents: number;
+    }>;
+  }) => {
+    let lineNo = 0;
+    const line = (
+      page: number,
+      text: string,
+      left: number,
+      top: number,
+      width = 0.08,
+      height = 0.02,
+    ) => ({
+      lineId: `p${page}-l${++lineNo}`,
+      page,
+      text,
+      confidence: null,
+      geometry: { left, top, width, height },
+    });
+    const money = (cents: number) => {
+      const sign = cents < 0 ? '-' : '';
+      const absolute = Math.abs(cents);
+      return `${sign}$${(absolute / 100).toFixed(2)}`;
+    };
+    const feeRow = (
+      page: number,
+      top: number,
+      invoice: string,
+      description: string,
+      type: 'Fees' | 'Service Charges',
+      amountCents: number,
+      taxCents?: number,
+    ) => [
+      line(page, invoice, 0.27, top, 0.06, 0.012),
+      line(page, description, 0.36, top, 0.2, 0.012),
+      line(page, type, 0.64, top, 0.1, 0.012),
+      ...(taxCents == null
+        ? []
+        : [line(page, `HST: ${money(taxCents)}`, 0.77, top, 0.08, 0.012)]),
+      line(page, money(amountCents), 0.9, top, 0.06, 0.012),
+    ];
+
+    const firstNetworkRow = params.networkRows[0];
+    if (!firstNetworkRow) {
+      throw new Error('modern Clover fixture requires a network fee row');
+    }
+
+    const rows = [
+      line(1, 'YOUR CARD PROCESSING STATEMENT', 0.06, 0.1, 0.32),
+      line(1, 'Amount Submitted', 0.12, 0.3, 0.14),
+      line(1, money(params.amountSubmittedCents), 0.14, 0.35, 0.1),
+      line(1, 'Paid by Others', 0.44, 0.28, 0.12),
+      line(1, '$0.00', 0.47, 0.31, 0.06),
+      line(1, 'Disputes', 0.46, 0.35, 0.08),
+      line(1, '$0.00', 0.47, 0.38, 0.06),
+      line(1, 'Adjustments', 0.45, 0.41, 0.1),
+      line(1, '$0.00', 0.47, 0.44, 0.06),
+      line(1, 'Fees', 0.47, 0.47, 0.05),
+      line(1, money(params.accountFeesCents), 0.46, 0.5, 0.08),
+      line(1, 'Amount Processed', 0.74, 0.3, 0.14),
+      line(1, money(params.amountProcessedCents), 0.75, 0.35, 0.1),
+      line(1, 'Account Summary', 0.05, 0.56, 0.14),
+      line(2, 'Card Processing and Fee Summary', 0.05, 0.1, 0.3),
+      line(2, 'Fees', 0.8, 0.18, 0.05),
+      line(2, 'Total', 0.06, 0.3, 0.05),
+      line(2, money(Math.abs(params.cardProcessingFeesCents)), 0.8, 0.3, 0.08),
+      line(3, 'Fee Summary', 0.06, 0.1, 0.12),
+      line(3, 'Fees', 0.1, 0.15, 0.05),
+      line(3, money(params.feeSummaryFeesCents), 0.1, 0.18, 0.08),
+      line(3, 'IC/PF', 0.31, 0.15, 0.06),
+      line(3, '$0.00', 0.31, 0.18, 0.06),
+      line(3, 'Service Charges', 0.52, 0.15, 0.12),
+      line(3, money(params.serviceChargesCents), 0.54, 0.18, 0.08),
+      ...feeRow(
+        3,
+        0.4,
+        firstNetworkRow.invoice,
+        firstNetworkRow.description,
+        'Fees',
+        firstNetworkRow.amountCents,
+        0,
+      ),
+      ...params.networkRows.slice(1).flatMap((row, index) =>
+        feeRow(
+          4,
+          0.2 + index * 0.03,
+          row.invoice,
+          row.description,
+          'Fees',
+          row.amountCents,
+          0,
+        ),
+      ),
+      ...feeRow(
+        4,
+        0.3,
+        '012400617',
+        params.equipmentDescription,
+        'Fees',
+        -3390,
+        -390,
+      ),
+      ...feeRow(
+        4,
+        0.42,
+        '000078478',
+        'DISCOUNT FEES',
+        'Service Charges',
+        params.serviceChargesCents,
+      ),
+    ];
+
+    return {
+      version: 1 as const,
+      inputKind: 'PDF' as const,
+      engine: 'POPPLER' as const,
+      layoutMode: 'GEOMETRY' as const,
+      truncated: false,
+      lines: rows,
+    };
+  };
+
+  it('does not reinterpret the pre-July Clover statement layout with the modern parser', () => {
     const parsed = parseProviderFinancialEvidence({
       providerHint: AccountingFinancialProvider.CLOVER,
       documentTypeHint: AccountingFinancialDocumentType.STATEMENT,
       text: `
 MERCHANT CARD PROCESSING STATEMENT LOCATION RECAP
-StatementPeriod 05/01/26 - 05/31/26
-MerchantNumber 29351880018
-LOCATION
-SUMMARY
-Total Amount Submitted 2,880.92
-Third-Party Transactions 0.00
-Adjustments 0.00
-Interchange Charges 0.00
-Service Charges -55.50
-Fees -35.15
-Chargebacks/Reversals 0.00
-Total Amount Funded 2,790.27
-All amounts shown are in CAD funds
-SERVICE CHARGES
-Date Invoice Description Tax Total
-05/31/26 000086953 DISCOUNT FEES -51.52
-Total HST:0.00 -55.50
-FEES
-Date Invoice Description Tax Total
-05/17/26 011981361 MONTHLY EQUIPMENT BILL HST:-3.90 -33.90
-05/25/26 000069239 MC LICENSE VOLUME FEE HST:0.00 -1.25
-Total HST:-3.90 -35.15
+StatementPeriod 06/01/26 - 06/30/26
+Merchant Number 29351880018
+Total Amount Funded 3,263.71
 `,
     });
-
-    expect(parsed).toEqual(
-      expect.objectContaining({
-        provider: AccountingFinancialProvider.CLOVER,
-        documentType: AccountingFinancialDocumentType.STATEMENT,
-        providerMerchantRef: '29351880018',
-        periodStart: '2026-05-01',
-        periodEnd: '2026-05-31',
-      }),
-    );
-    expect(lineByName(parsed!, 'Total Amount Submitted')).toEqual(
-      expect.objectContaining({
-        amountCents: 288092,
-        postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
-      }),
-    );
-    expect(lineByName(parsed!, 'Fees')).toEqual(
-      expect.objectContaining({
-        rawCode: CLOVER_STATEMENT_RAW_CODES.FEES_TOTAL,
-        amountCents: -3515,
-        component: AccountingFinancialComponent.CONTROL_TOTAL,
-        postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
-      }),
-    );
-    expect(lineByName(parsed!, 'Monthly Equipment Bill')).toEqual(
-      expect.objectContaining({
-        rawCode: CLOVER_STATEMENT_RAW_CODES.MONTHLY_EQUIPMENT_BILL,
-        amountCents: -3000,
-        component: AccountingFinancialComponent.PLATFORM_OTHER_FEE,
-      }),
-    );
-    expect(lineByName(parsed!, 'Monthly Equipment Bill HST')).toEqual(
-      expect.objectContaining({
-        rawCode: CLOVER_STATEMENT_RAW_CODES.MONTHLY_EQUIPMENT_BILL_HST,
-        amountCents: -390,
-        component: AccountingFinancialComponent.PLATFORM_OTHER_FEE_TAX,
-        taxRole: AccountingFinancialTaxRole.INPUT_TAX,
-      }),
-    );
-    expect(lineByName(parsed!, 'Other Card/Network Fees')).toEqual(
-      expect.objectContaining({
-        rawCode: CLOVER_STATEMENT_RAW_CODES.NETWORK_FEES,
-        amountCents: -125,
-        component: AccountingFinancialComponent.PROCESSING_FEE,
-      }),
-    );
-    expect(lineByName(parsed!, 'Total Amount Funded')).toEqual(
-      expect.objectContaining({
-        amountCents: 279027,
-        component: AccountingFinancialComponent.PAYOUT,
-        postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
-      }),
-    );
+    expect(parsed).toBeNull();
   });
 
-  it('parses real Clover Poppler layout without flattened-column mispairing', () => {
+  it.each([
+    {
+      label: 'July with MONTHLY EQUIPMENT BILL across a six-page-style table',
+      period: '07/01/2026-07/31/2026',
+      amountSubmittedCents: 350132,
+      accountFeesCents: -10097,
+      amountProcessedCents: 340035,
+      feeSummaryFeesCents: -3612,
+      serviceChargesCents: -6485,
+      cardProcessingFeesCents: -6707,
+      equipmentDescription: 'MONTHLY EQUIPMENT BILL',
+      networkRows: [
+        {
+          invoice: '000145623',
+          description: 'VI DIGITAL COMM XBRD SVCS FEE',
+          amountCents: -21,
+        },
+        {
+          invoice: '000263262',
+          description: 'MC ACQ CLEAR LARGE TICKET',
+          amountCents: -201,
+        },
+      ],
+      expectedNetworkCents: -222,
+    },
+    {
+      label: 'August with Clover Flex 3 on the five-page statement',
+      period: '08/01/2026-08/31/2026',
+      amountSubmittedCents: 394993,
+      accountFeesCents: -10684,
+      amountProcessedCents: 384309,
+      feeSummaryFeesCents: -3591,
+      serviceChargesCents: -7093,
+      cardProcessingFeesCents: -7294,
+      equipmentDescription: 'Clover Flex 3',
+      networkRows: [
+        {
+          invoice: '000257278',
+          description: 'VI DIGITL COM US CNP SVC FEE M',
+          amountCents: -11,
+        },
+        {
+          invoice: '000141577',
+          description: 'MC-AUTH DIGITAL ENABLEMENT MIN',
+          amountCents: -190,
+        },
+      ],
+      expectedNetworkCents: -201,
+    },
+  ])('parses modern Clover $label', (fixture) => {
     const parsed = parseProviderFinancialEvidence({
       providerHint: AccountingFinancialProvider.CLOVER,
       documentTypeHint: AccountingFinancialDocumentType.STATEMENT,
       text: `
-MERCHANT CARD PROCESSING STATEMENT
-LOCATION RECAP
-StatementPeriod
-06/01/26 - 06/30/26
-Merchant Number
-29351880018
-LOCATION
-SUMMARY
-Total Amount Submitted
-3,362.10
-Third-Party Transactions
-0.00
-Adjustments
-0.00
-Interchange Charges
-0.00
-Service Charges
--62.64
-Fees
--35.75
-Chargebacks/Reversals
-Total Amount Funded
-All amounts shown are in CAD funds
-0.00
-3,263.71
-SERVICE CHARGES
-Date
-Invoice
-Description
-Tax
-Total
-FEES
-Date
-Invoice
-Description
-Tax
-Total
+YOUR CARD PROCESSING STATEMENT
+PERIOD: ${fixture.period}
+Merchant Number: 29351880018
+Card Processing and Fee Summary
+Fee Summary
 `,
-      documentExtraction: {
-        version: 1,
-        inputKind: 'PDF',
-        engine: 'POPPLER',
-        layoutMode: 'GEOMETRY',
-        truncated: false,
-        lines: [
-          {
-            lineId: 'p1-submitted-label',
-            page: 1,
-            text: 'Total Amount Submitted',
-            confidence: null,
-            geometry: { left: 0.46, top: 0.52, width: 0.25, height: 0.02 },
-          },
-          {
-            lineId: 'p1-submitted-value',
-            page: 1,
-            text: '3,362.10',
-            confidence: null,
-            geometry: { left: 0.88, top: 0.52, width: 0.09, height: 0.02 },
-          },
-          {
-            lineId: 'p1-third-party-label',
-            page: 1,
-            text: 'Third-Party Transactions',
-            confidence: null,
-            geometry: { left: 0.46, top: 0.55, width: 0.27, height: 0.02 },
-          },
-          {
-            lineId: 'p1-third-party-value',
-            page: 1,
-            text: '0.00',
-            confidence: null,
-            geometry: { left: 0.92, top: 0.55, width: 0.05, height: 0.02 },
-          },
-          {
-            lineId: 'p1-adjustments-label',
-            page: 1,
-            text: 'Adjustments',
-            confidence: null,
-            geometry: { left: 0.46, top: 0.58, width: 0.15, height: 0.02 },
-          },
-          {
-            lineId: 'p1-adjustments-value',
-            page: 1,
-            text: '0.00',
-            confidence: null,
-            geometry: { left: 0.92, top: 0.58, width: 0.05, height: 0.02 },
-          },
-          {
-            lineId: 'p1-interchange-label',
-            page: 1,
-            text: 'Interchange Charges',
-            confidence: null,
-            geometry: { left: 0.46, top: 0.6, width: 0.22, height: 0.02 },
-          },
-          {
-            lineId: 'p1-interchange-value',
-            page: 1,
-            text: '0.00',
-            confidence: null,
-            geometry: { left: 0.92, top: 0.6, width: 0.05, height: 0.02 },
-          },
-          {
-            lineId: 'p1-service-label',
-            page: 1,
-            text: 'Service Charges',
-            confidence: null,
-            geometry: { left: 0.46, top: 0.63, width: 0.18, height: 0.02 },
-          },
-          {
-            lineId: 'p1-service-value',
-            page: 1,
-            text: '-62.64',
-            confidence: null,
-            geometry: { left: 0.9, top: 0.63, width: 0.07, height: 0.02 },
-          },
-          {
-            lineId: 'p1-fees-label',
-            page: 1,
-            text: 'Fees',
-            confidence: null,
-            geometry: { left: 0.46, top: 0.66, width: 0.08, height: 0.02 },
-          },
-          {
-            lineId: 'p1-fees-value',
-            page: 1,
-            text: '-35.75',
-            confidence: null,
-            geometry: { left: 0.9, top: 0.66, width: 0.07, height: 0.02 },
-          },
-          {
-            lineId: 'p1-chargeback-label',
-            page: 1,
-            text: 'Chargebacks/Reversals',
-            confidence: null,
-            geometry: { left: 0.46, top: 0.69, width: 0.25, height: 0.02 },
-          },
-          {
-            lineId: 'p1-chargeback-value',
-            page: 1,
-            text: '0.00',
-            confidence: null,
-            geometry: { left: 0.92, top: 0.69, width: 0.05, height: 0.02 },
-          },
-          {
-            lineId: 'p1-funded-label',
-            page: 1,
-            text: 'Total Amount Funded',
-            confidence: null,
-            geometry: { left: 0.46, top: 0.72, width: 0.22, height: 0.02 },
-          },
-          {
-            lineId: 'p1-funded-value',
-            page: 1,
-            text: '3,263.71',
-            confidence: null,
-            geometry: { left: 0.88, top: 0.72, width: 0.09, height: 0.02 },
-          },
-          {
-            lineId: 'p5-service-heading',
-            page: 5,
-            text: 'S ERVICE C HARGES',
-            confidence: null,
-            geometry: { left: 0.06, top: 0.12, width: 0.3, height: 0.02 },
-          },
-          {
-            lineId: 'p5-service-total-label',
-            page: 5,
-            text: 'Total',
-            confidence: null,
-            geometry: { left: 0.06, top: 0.22, width: 0.08, height: 0.02 },
-          },
-          {
-            lineId: 'p5-service-total-value',
-            page: 5,
-            text: '-62.64',
-            confidence: null,
-            geometry: { left: 0.9, top: 0.22, width: 0.07, height: 0.02 },
-          },
-          {
-            lineId: 'p5-fees-heading',
-            page: 5,
-            text: 'F EES',
-            confidence: null,
-            geometry: { left: 0.06, top: 0.26, width: 0.15, height: 0.02 },
-          },
-          {
-            lineId: 'p5-fees-description-header',
-            page: 5,
-            text: 'Description',
-            confidence: null,
-            geometry: { left: 0.276, top: 0.2969, width: 0.063, height: 0.01 },
-          },
-          {
-            lineId: 'p5-fees-column-total',
-            page: 5,
-            text: 'Total',
-            confidence: null,
-            geometry: { left: 0.9349, top: 0.2969, width: 0.027, height: 0.01 },
-          },
-          {
-            lineId: 'p5-fee-equipment-description',
-            page: 5,
-            text: 'MONTHLY EQUIPMENT BILL',
-            confidence: null,
-            geometry: { left: 0.276, top: 0.3109, width: 0.153, height: 0.01 },
-          },
-          {
-            lineId: 'p5-fee-equipment-hst',
-            page: 5,
-            text: 'HST:-3.90',
-            confidence: null,
-            geometry: { left: 0.753, top: 0.3109, width: 0.052, height: 0.01 },
-          },
-          {
-            lineId: 'p5-fee-equipment-total',
-            page: 5,
-            text: '-33.90',
-            confidence: null,
-            geometry: { left: 0.93, top: 0.3109, width: 0.033, height: 0.01 },
-          },
-          {
-            lineId: 'p5-fee-license-description',
-            page: 5,
-            text: 'MC LICENSE VOLUME FEE',
-            confidence: null,
-            geometry: { left: 0.276, top: 0.3231, width: 0.144, height: 0.01 },
-          },
-          {
-            lineId: 'p5-fee-license-hst',
-            page: 5,
-            text: 'HST:0.00',
-            confidence: null,
-            geometry: { left: 0.755, top: 0.3231, width: 0.048, height: 0.01 },
-          },
-          {
-            lineId: 'p5-fee-license-total',
-            page: 5,
-            text: '-0.04',
-            confidence: null,
-            geometry: { left: 0.936, top: 0.3231, width: 0.026, height: 0.01 },
-          },
-          {
-            lineId: 'p5-fee-digital-description',
-            page: 5,
-            text: 'MC-AUTH DIGITAL ENABLEMENT MIN',
-            confidence: null,
-            geometry: { left: 0.276, top: 0.3352, width: 0.203, height: 0.01 },
-          },
-          {
-            lineId: 'p5-fee-digital-hst',
-            page: 5,
-            text: 'HST:0.00',
-            confidence: null,
-            geometry: { left: 0.755, top: 0.3352, width: 0.048, height: 0.01 },
-          },
-          {
-            lineId: 'p5-fee-digital-total',
-            page: 5,
-            text: '-0.25',
-            confidence: null,
-            geometry: { left: 0.936, top: 0.3352, width: 0.026, height: 0.01 },
-          },
-          {
-            lineId: 'p5-fee-clear-description',
-            page: 5,
-            text: 'MC CLEARING CONNECTIVITY FEE',
-            confidence: null,
-            geometry: { left: 0.276, top: 0.3473, width: 0.191, height: 0.01 },
-          },
-          {
-            lineId: 'p5-fee-clear-hst',
-            page: 5,
-            text: 'HST:0.00',
-            confidence: null,
-            geometry: { left: 0.755, top: 0.3473, width: 0.048, height: 0.01 },
-          },
-          {
-            lineId: 'p5-fee-clear-total',
-            page: 5,
-            text: '-0.50',
-            confidence: null,
-            geometry: { left: 0.936, top: 0.3473, width: 0.026, height: 0.01 },
-          },
-          {
-            lineId: 'p5-fee-auth-description',
-            page: 5,
-            text: 'MC AUTH CONNECTIVITY FEE',
-            confidence: null,
-            geometry: { left: 0.276, top: 0.3594, width: 0.165, height: 0.01 },
-          },
-          {
-            lineId: 'p5-fee-auth-hst',
-            page: 5,
-            text: 'HST:0.00',
-            confidence: null,
-            geometry: { left: 0.755, top: 0.3594, width: 0.048, height: 0.01 },
-          },
-          {
-            lineId: 'p5-fee-auth-total',
-            page: 5,
-            text: '-0.53',
-            confidence: null,
-            geometry: { left: 0.936, top: 0.3594, width: 0.026, height: 0.01 },
-          },
-          {
-            lineId: 'p5-fee-large-description',
-            page: 5,
-            text: 'MC ACQ CLEAR LARGE TICKET',
-            confidence: null,
-            geometry: { left: 0.276, top: 0.3715, width: 0.171, height: 0.01 },
-          },
-          {
-            lineId: 'p5-fee-large-hst',
-            page: 5,
-            text: 'HST:0.00',
-            confidence: null,
-            geometry: { left: 0.755, top: 0.3715, width: 0.048, height: 0.01 },
-          },
-          {
-            lineId: 'p5-fee-large-total',
-            page: 5,
-            text: '-0.22',
-            confidence: null,
-            geometry: { left: 0.936, top: 0.3715, width: 0.026, height: 0.01 },
-          },
-          {
-            lineId: 'p5-fee-small-description',
-            page: 5,
-            text: 'MC ACQ CLEAR SMALL TICKET',
-            confidence: null,
-            geometry: { left: 0.276, top: 0.3837, width: 0.169, height: 0.01 },
-          },
-          {
-            lineId: 'p5-fee-small-hst',
-            page: 5,
-            text: 'HST:0.00',
-            confidence: null,
-            geometry: { left: 0.755, top: 0.3837, width: 0.048, height: 0.01 },
-          },
-          {
-            lineId: 'p5-fee-small-total',
-            page: 5,
-            text: '-0.31',
-            confidence: null,
-            geometry: { left: 0.936, top: 0.3837, width: 0.026, height: 0.01 },
-          },
-          {
-            lineId: 'p5-fees-total-label',
-            page: 5,
-            text: 'Total',
-            confidence: null,
-            geometry: { left: 0.06, top: 0.4008, width: 0.027, height: 0.01 },
-          },
-          {
-            lineId: 'p5-fees-hst',
-            page: 5,
-            text: 'HST:-3.90',
-            confidence: null,
-            geometry: { left: 0.753, top: 0.4008, width: 0.053, height: 0.01 },
-          },
-          {
-            lineId: 'p5-fees-total-value',
-            page: 5,
-            text: '-35.75',
-            confidence: null,
-            geometry: { left: 0.93, top: 0.4008, width: 0.033, height: 0.01 },
-          },
-        ],
-      },
+      documentExtraction: modernCloverExtraction(fixture),
     });
 
+    const [periodStart = '', periodEnd = ''] = fixture.period.split('-');
+    const asIsoDate = (value: string) =>
+      `${value.slice(6, 10)}-${value.slice(0, 2)}-${value.slice(3, 5)}`;
     expect(parsed).toEqual(
       expect.objectContaining({
         provider: AccountingFinancialProvider.CLOVER,
         documentType: AccountingFinancialDocumentType.STATEMENT,
         providerMerchantRef: '29351880018',
-        periodStart: '2026-06-01',
-        periodEnd: '2026-06-30',
+        periodStart: asIsoDate(periodStart),
+        periodEnd: asIsoDate(periodEnd),
       }),
     );
-    expect(lineByName(parsed!, 'Total Amount Submitted')?.amountCents).toBe(
-      336210,
+    expect(lineByName(parsed!, 'Amount Submitted')?.amountCents).toBe(
+      fixture.amountSubmittedCents,
     );
-    expect(lineByName(parsed!, 'Chargebacks/Reversals')?.amountCents).toBe(0);
-    expect(lineByName(parsed!, 'Total Amount Funded')?.amountCents).toBe(
-      326371,
+    expect(lineByName(parsed!, 'Account Summary Fees')?.amountCents).toBe(
+      fixture.accountFeesCents,
     );
-    expect(lineByName(parsed!, 'Service Charges')?.amountCents).toBe(-6264);
-    expect(lineByName(parsed!, 'Fees')).toEqual(
+    expect(lineByName(parsed!, 'Amount Processed')?.amountCents).toBe(
+      fixture.amountProcessedCents,
+    );
+    expect(lineByName(parsed!, 'Fee Summary Fees')?.amountCents).toBe(
+      fixture.feeSummaryFeesCents,
+    );
+    expect(lineByName(parsed!, 'Service Charges Total')?.amountCents).toBe(
+      fixture.serviceChargesCents,
+    );
+    expect(lineByName(parsed!, 'Card Processing Total Fees')).toEqual(
       expect.objectContaining({
-        rawCode: CLOVER_STATEMENT_RAW_CODES.FEES_TOTAL,
-        amountCents: -3575,
-        component: AccountingFinancialComponent.CONTROL_TOTAL,
-        postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+        rawCode: CLOVER_STATEMENT_RAW_CODES.CARD_PROCESSING_TOTAL_FEES,
+        amountCents: fixture.cardProcessingFeesCents,
       }),
     );
-    expect(lineByName(parsed!, 'Monthly Equipment Bill')).toEqual(
+    expect(lineByName(parsed!, 'Clover Equipment Fee')).toEqual(
       expect.objectContaining({
-        rawCode: CLOVER_STATEMENT_RAW_CODES.MONTHLY_EQUIPMENT_BILL,
+        rawCode: CLOVER_STATEMENT_RAW_CODES.EQUIPMENT_FEE,
         amountCents: -3000,
         component: AccountingFinancialComponent.PLATFORM_OTHER_FEE,
       }),
     );
-    expect(lineByName(parsed!, 'Monthly Equipment Bill HST')).toEqual(
+    expect(lineByName(parsed!, 'Clover Equipment Fee HST')).toEqual(
       expect.objectContaining({
-        rawCode: CLOVER_STATEMENT_RAW_CODES.MONTHLY_EQUIPMENT_BILL_HST,
+        rawCode: CLOVER_STATEMENT_RAW_CODES.EQUIPMENT_FEE_HST,
         amountCents: -390,
-        component: AccountingFinancialComponent.PLATFORM_OTHER_FEE_TAX,
         taxRole: AccountingFinancialTaxRole.INPUT_TAX,
       }),
     );
     expect(lineByName(parsed!, 'Other Card/Network Fees')).toEqual(
       expect.objectContaining({
         rawCode: CLOVER_STATEMENT_RAW_CODES.NETWORK_FEES,
-        amountCents: -185,
-        component: AccountingFinancialComponent.PROCESSING_FEE,
+        amountCents: fixture.expectedNetworkCents,
       }),
     );
-    expect(lineByName(parsed!, 'Fees before HST')).toBeUndefined();
-    expect(lineByName(parsed!, 'Fees HST')).toBeUndefined();
+    expect(lineByName(parsed!, 'Service Charges')).toEqual(
+      expect.objectContaining({
+        rawCode: CLOVER_STATEMENT_RAW_CODES.SERVICE_CHARGES,
+        amountCents: fixture.serviceChargesCents,
+      }),
+    );
     expect(
-      lineByName(parsed!, 'Total Amount Funded')?.rawPayload,
-    ).toMatchObject({
-      extractionEvidence: {
-        strategy: 'LAYOUT_ROW_PAIR',
-        engine: 'POPPLER',
-        labelLine: { lineId: 'p1-funded-label' },
-        amountLine: { lineId: 'p1-funded-value' },
-      },
-    });
+      parsed?.lines.some(
+        (line) =>
+          line.postingTreatment ===
+          AccountingFinancialPostingTreatment.UNCLASSIFIED,
+      ),
+    ).toBe(false);
     expect(parsed?.rawMetadata).toEqual(
       expect.objectContaining({
+        statementLayout: 'MODERN_V1',
         documentExtractionEngine: 'POPPLER',
-        layoutAwareExtraction: true,
+        amountsFundedExcludedFromNormalizedLines: true,
       }),
     );
   });

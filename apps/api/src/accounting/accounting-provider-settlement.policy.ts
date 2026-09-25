@@ -15,6 +15,7 @@ import type {
 import { FANTUAN_ADJUSTMENT_RAW_CODES } from './accounting-fantuan-adjustment-detail.contract';
 import { CLOVER_FEE_PAYABLE_ACCOUNT_STABLE_ID } from './accounting-provider-fee-clearing.contract';
 import {
+  CLOVER_EQUIPMENT_CATEGORY_STABLE_ID,
   CLOVER_MONTHLY_EQUIPMENT_CATEGORY_STABLE_ID,
   CLOVER_STATEMENT_RAW_CODES,
 } from './accounting-clover-statement.contract';
@@ -31,6 +32,7 @@ export const UBER_PRE_CUTOVER_REVERSAL_SOURCE_FACT_TYPE =
   'accounting.uber_pre_cutover_order_reversal.v1';
 
 export const PROVIDER_SETTLEMENT_CATEGORY_IDS = {
+  cloverEquipment: CLOVER_EQUIPMENT_CATEGORY_STABLE_ID,
   cloverMonthlyEquipment: CLOVER_MONTHLY_EQUIPMENT_CATEGORY_STABLE_ID,
 } as const;
 
@@ -195,7 +197,11 @@ export type ProviderSettlementControlTotalCheck = {
     | 'UBER_TOTAL_MARKETING'
     | 'UBER_TOTAL_AMENDMENTS'
     | 'UBER_NET_TOTAL'
-    | 'CLOVER_FEES_DETAIL';
+    | 'CLOVER_ACCOUNT_SUMMARY'
+    | 'CLOVER_FEE_SUMMARY'
+    | 'CLOVER_FEES_DETAIL'
+    | 'CLOVER_SERVICE_CHARGES_DETAIL'
+    | 'CLOVER_CARD_PROCESSING_FEES';
   status: 'MATCHED' | 'MISMATCH' | 'INCOMPLETE';
   controlRawName: string;
   controlLineStableId: string | null;
@@ -331,8 +337,9 @@ const targetCategoryFor = (params: {
   line: ProviderSettlementDocumentInput['lines'][number];
 }): string | null =>
   params.provider === AccountingFinancialProvider.CLOVER &&
-  params.line.rawCode === CLOVER_STATEMENT_RAW_CODES.MONTHLY_EQUIPMENT_BILL
-    ? PROVIDER_SETTLEMENT_CATEGORY_IDS.cloverMonthlyEquipment
+  (params.line.rawCode === CLOVER_STATEMENT_RAW_CODES.EQUIPMENT_FEE ||
+    params.line.rawCode === CLOVER_STATEMENT_RAW_CODES.MONTHLY_EQUIPMENT_BILL)
+    ? PROVIDER_SETTLEMENT_CATEGORY_IDS.cloverEquipment
     : null;
 
 export function classifyProviderSettlementLine(params: {
@@ -598,7 +605,7 @@ const sumControlAmounts = (
   return total;
 };
 
-const CLOVER_FEES_DETAIL_RAW_CODES = new Set<string>([
+const LEGACY_CLOVER_FEES_DETAIL_RAW_CODES = new Set<string>([
   CLOVER_STATEMENT_RAW_CODES.MONTHLY_EQUIPMENT_BILL,
   CLOVER_STATEMENT_RAW_CODES.MONTHLY_EQUIPMENT_BILL_HST,
   CLOVER_STATEMENT_RAW_CODES.NETWORK_FEES,
@@ -606,16 +613,71 @@ const CLOVER_FEES_DETAIL_RAW_CODES = new Set<string>([
   CLOVER_STATEMENT_RAW_CODES.UNCLASSIFIED_FEES,
 ]);
 
-const buildCloverFeesControlTotalChecks = (
+const sumRawCodeAmounts = (
+  document: ProviderSettlementDocumentInput,
+  rawCodes: readonly string[],
+): number => {
+  const accepted = new Set(rawCodes);
+  let total = 0;
+  for (const line of document.lines) {
+    if (!line.rawCode || !accepted.has(line.rawCode)) continue;
+    const next = total + line.amountCents;
+    if (!Number.isSafeInteger(next)) {
+      throw new Error('Clover control total exceeds safe integer range');
+    }
+    total = next;
+  }
+  return total;
+};
+
+const rawCodeMatches = (
+  document: ProviderSettlementDocumentInput,
+  rawCode: string,
+) => document.lines.filter((line) => line.rawCode === rawCode);
+
+const buildRawCodeControlCheck = (params: {
+  document: ProviderSettlementDocumentInput;
+  key: ProviderSettlementControlTotalCheck['key'];
+  controlRawCode: string;
+  controlRawName: string;
+  componentRawCodes: readonly string[];
+  componentsComplete: boolean;
+}): ProviderSettlementControlTotalCheck => {
+  const controlLines = rawCodeMatches(params.document, params.controlRawCode);
+  const controlLine = controlLines.length === 1 ? controlLines[0] : null;
+  const calculatedCents = sumRawCodeAmounts(
+    params.document,
+    params.componentRawCodes,
+  );
+  if (!controlLine || !params.componentsComplete) {
+    return {
+      key: params.key,
+      status: 'INCOMPLETE',
+      controlRawName: params.controlRawName,
+      controlLineStableId: controlLine?.lineStableId ?? null,
+      expectedCents: controlLine?.amountCents ?? null,
+      calculatedCents,
+      deltaCents: null,
+    };
+  }
+  const deltaCents = calculatedCents - controlLine.amountCents;
+  if (!Number.isSafeInteger(deltaCents)) {
+    throw new Error('Clover control total delta exceeds safe integer range');
+  }
+  return {
+    key: params.key,
+    status: deltaCents === 0 ? 'MATCHED' : 'MISMATCH',
+    controlRawName: params.controlRawName,
+    controlLineStableId: controlLine.lineStableId,
+    expectedCents: controlLine.amountCents,
+    calculatedCents,
+    deltaCents,
+  };
+};
+
+const buildLegacyCloverFeesControlTotalChecks = (
   document: ProviderSettlementDocumentInput,
 ): ProviderSettlementControlTotalCheck[] => {
-  if (
-    document.provider !== AccountingFinancialProvider.CLOVER ||
-    document.documentType !== AccountingFinancialDocumentType.STATEMENT
-  ) {
-    return [];
-  }
-
   const controlLines = document.lines.filter(
     (line) => line.rawCode === CLOVER_STATEMENT_RAW_CODES.FEES_TOTAL,
   );
@@ -624,7 +686,7 @@ const buildCloverFeesControlTotalChecks = (
   const detailLines = document.lines.filter(
     (line) =>
       typeof line.rawCode === 'string' &&
-      CLOVER_FEES_DETAIL_RAW_CODES.has(line.rawCode),
+      LEGACY_CLOVER_FEES_DETAIL_RAW_CODES.has(line.rawCode),
   );
   let calculatedCents = 0;
   for (const line of detailLines) {
@@ -669,6 +731,163 @@ const buildCloverFeesControlTotalChecks = (
       deltaCents,
     },
   ];
+};
+
+const buildModernCloverControlTotalChecks = (
+  document: ProviderSettlementDocumentInput,
+): ProviderSettlementControlTotalCheck[] => {
+  const amountSubmitted = rawCodeMatches(
+    document,
+    CLOVER_STATEMENT_RAW_CODES.ACCOUNT_AMOUNT_SUBMITTED,
+  );
+  if (amountSubmitted.length === 0) return [];
+
+  const accountComponentCodes = [
+    CLOVER_STATEMENT_RAW_CODES.ACCOUNT_AMOUNT_SUBMITTED,
+    CLOVER_STATEMENT_RAW_CODES.ACCOUNT_PAID_BY_OTHERS,
+    CLOVER_STATEMENT_RAW_CODES.ACCOUNT_DISPUTES,
+    CLOVER_STATEMENT_RAW_CODES.ACCOUNT_ADJUSTMENTS,
+    CLOVER_STATEMENT_RAW_CODES.ACCOUNT_FEES_TOTAL,
+  ] as const;
+  const accountComplete =
+    amountSubmitted.length === 1 &&
+    accountComponentCodes
+      .slice(1)
+      .every((rawCode) => rawCodeMatches(document, rawCode).length === 1) &&
+    rawCodeMatches(
+      document,
+      CLOVER_STATEMENT_RAW_CODES.ACCOUNT_AMOUNT_PROCESSED,
+    ).length === 1;
+
+  const feeSummaryCodes = [
+    CLOVER_STATEMENT_RAW_CODES.FEE_SUMMARY_FEES,
+    CLOVER_STATEMENT_RAW_CODES.FEE_SUMMARY_ICPF,
+    CLOVER_STATEMENT_RAW_CODES.SERVICE_CHARGES_TOTAL,
+  ] as const;
+  const feeSummaryComplete =
+    feeSummaryCodes.every(
+      (rawCode) => rawCodeMatches(document, rawCode).length === 1,
+    ) &&
+    rawCodeMatches(
+      document,
+      CLOVER_STATEMENT_RAW_CODES.ACCOUNT_FEES_TOTAL,
+    ).length === 1;
+
+  const feeDetailCodes = [
+    CLOVER_STATEMENT_RAW_CODES.EQUIPMENT_FEE,
+    CLOVER_STATEMENT_RAW_CODES.EQUIPMENT_FEE_HST,
+    CLOVER_STATEMENT_RAW_CODES.NETWORK_FEES,
+    CLOVER_STATEMENT_RAW_CODES.NETWORK_FEES_HST,
+    CLOVER_STATEMENT_RAW_CODES.UNCLASSIFIED_FEES,
+  ] as const;
+  const feeSummaryControl = rawCodeMatches(
+    document,
+    CLOVER_STATEMENT_RAW_CODES.FEE_SUMMARY_FEES,
+  );
+  const feeDetailRawCodes = new Set<string>(feeDetailCodes);
+  const feeDetailCount = document.lines.filter(
+    (line) => line.rawCode && feeDetailRawCodes.has(line.rawCode),
+  ).length;
+  const feeDetailComplete =
+    feeSummaryControl.length === 1 &&
+    (feeDetailCount > 0 || feeSummaryControl[0]?.amountCents === 0);
+
+  const serviceDetailCodes = [
+    CLOVER_STATEMENT_RAW_CODES.SERVICE_CHARGES,
+    CLOVER_STATEMENT_RAW_CODES.SERVICE_CHARGES_HST,
+    CLOVER_STATEMENT_RAW_CODES.UNCLASSIFIED_SERVICE_CHARGES,
+  ] as const;
+  const serviceSummaryControl = rawCodeMatches(
+    document,
+    CLOVER_STATEMENT_RAW_CODES.SERVICE_CHARGES_TOTAL,
+  );
+  const serviceDetailRawCodes = new Set<string>(serviceDetailCodes);
+  const serviceDetailCount = document.lines.filter(
+    (line) => line.rawCode && serviceDetailRawCodes.has(line.rawCode),
+  ).length;
+  const serviceDetailComplete =
+    serviceSummaryControl.length === 1 &&
+    (serviceDetailCount > 0 || serviceSummaryControl[0]?.amountCents === 0);
+
+  const cardProcessingControl = rawCodeMatches(
+    document,
+    CLOVER_STATEMENT_RAW_CODES.CARD_PROCESSING_TOTAL_FEES,
+  );
+  const cardProcessingComponentCodes = [
+    CLOVER_STATEMENT_RAW_CODES.NETWORK_FEES,
+    CLOVER_STATEMENT_RAW_CODES.NETWORK_FEES_HST,
+    CLOVER_STATEMENT_RAW_CODES.SERVICE_CHARGES,
+    CLOVER_STATEMENT_RAW_CODES.SERVICE_CHARGES_HST,
+  ] as const;
+  const cardProcessingComponentRawCodes = new Set<string>(
+    cardProcessingComponentCodes,
+  );
+  const cardProcessingComponentCount = document.lines.filter(
+    (line) =>
+      line.rawCode && cardProcessingComponentRawCodes.has(line.rawCode),
+  ).length;
+  const cardProcessingComplete =
+    cardProcessingControl.length === 1 &&
+    (cardProcessingComponentCount > 0 ||
+      cardProcessingControl[0]?.amountCents === 0);
+
+  return [
+    buildRawCodeControlCheck({
+      document,
+      key: 'CLOVER_ACCOUNT_SUMMARY',
+      controlRawCode: CLOVER_STATEMENT_RAW_CODES.ACCOUNT_AMOUNT_PROCESSED,
+      controlRawName: 'Amount Processed',
+      componentRawCodes: accountComponentCodes,
+      componentsComplete: accountComplete,
+    }),
+    buildRawCodeControlCheck({
+      document,
+      key: 'CLOVER_FEE_SUMMARY',
+      controlRawCode: CLOVER_STATEMENT_RAW_CODES.ACCOUNT_FEES_TOTAL,
+      controlRawName: 'Account Summary Fees',
+      componentRawCodes: feeSummaryCodes,
+      componentsComplete: feeSummaryComplete,
+    }),
+    buildRawCodeControlCheck({
+      document,
+      key: 'CLOVER_FEES_DETAIL',
+      controlRawCode: CLOVER_STATEMENT_RAW_CODES.FEE_SUMMARY_FEES,
+      controlRawName: 'Fee Summary Fees',
+      componentRawCodes: feeDetailCodes,
+      componentsComplete: feeDetailComplete,
+    }),
+    buildRawCodeControlCheck({
+      document,
+      key: 'CLOVER_SERVICE_CHARGES_DETAIL',
+      controlRawCode: CLOVER_STATEMENT_RAW_CODES.SERVICE_CHARGES_TOTAL,
+      controlRawName: 'Service Charges Total',
+      componentRawCodes: serviceDetailCodes,
+      componentsComplete: serviceDetailComplete,
+    }),
+    buildRawCodeControlCheck({
+      document,
+      key: 'CLOVER_CARD_PROCESSING_FEES',
+      controlRawCode: CLOVER_STATEMENT_RAW_CODES.CARD_PROCESSING_TOTAL_FEES,
+      controlRawName: 'Card Processing Total Fees',
+      componentRawCodes: cardProcessingComponentCodes,
+      componentsComplete: cardProcessingComplete,
+    }),
+  ];
+};
+
+const buildCloverFeesControlTotalChecks = (
+  document: ProviderSettlementDocumentInput,
+): ProviderSettlementControlTotalCheck[] => {
+  if (
+    document.provider !== AccountingFinancialProvider.CLOVER ||
+    document.documentType !== AccountingFinancialDocumentType.STATEMENT
+  ) {
+    return [];
+  }
+  const modernChecks = buildModernCloverControlTotalChecks(document);
+  return modernChecks.length > 0
+    ? modernChecks
+    : buildLegacyCloverFeesControlTotalChecks(document);
 };
 
 // Reconcile source controls before posting disposition changes which lines are

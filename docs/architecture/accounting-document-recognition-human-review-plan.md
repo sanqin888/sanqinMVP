@@ -1059,7 +1059,38 @@ Implementation state: **MERGED / CI GREEN** through PR #2516 (`b8e5b844`, CI #63
 verification of the existing-materialized June statement is intentionally deferred to the
 effective-snapshot remediation below rather than rewriting the v6 machine document.
 
-### 12.2 Existing-materialized parser re-evaluation -> Human Review effective snapshot
+### 12.2 2026-09-25 Clover modern statement parser v8
+
+July and August 2026 Clover/Fiserv statements establish a new statement generation rather than a
+minor wording change. The active input now uses `YOUR CARD PROCESSING STATEMENT`, a four-digit
+`PERIOD`, Account Summary and Fee Summary, a Fees/Service Charges table that may continue across
+pages, and a separate `Amounts Funded` bank-reconciliation section. The already-posted June
+statement remains historical evidence and is not a reason to retain the old PDF parser contract.
+
+Parser v8 therefore:
+
+- recognizes only the modern statement anchors and requires layout-aware Poppler geometry;
+- preserves historical v7 materialized raw codes for settlement/audit but does not parse the
+  pre-July PDF layout;
+- extracts Account Summary, Fee Summary and Card Processing Total Fees as control evidence;
+- parses fee rows across page boundaries from invoice/description/type/tax/amount geometry;
+- maps the observed equipment descriptions `MONTHLY EQUIPMENT BILL` and `Clover Flex 3` to
+  semantic equipment-fee raw codes, retaining source descriptions in evidence;
+- recognizes `VI ...` in addition to existing card/network prefixes and leaves unsupported fee
+  semantics fail-closed;
+- emits Service Charges as processing-fee detail, while nonzero `IC/PF` remains unsupported and
+  therefore blocks posting;
+- requires exact Account Summary, Fee Summary, Fees-detail, Service-Charges-detail and
+  Card-Processing fee reconciliation before settlement can be READY;
+- explicitly excludes `Amounts Funded` from normalized provider lines because Clover states that
+  it may contain fees reported on earlier statements and collected in the current period.
+
+The current equipment base continues to use the existing `expense_software` category. Renaming or
+reclassifying that Accounting taxonomy is a separate decision and is not bundled with recognition
+correctness. This v8 source slice changes no Prisma schema/migration, dependency, Web Clover
+payment behavior, Clover terminal path or cross-context architecture direction.
+
+### 12.3 Existing-materialized parser re-evaluation -> Human Review effective snapshot
 
 The follow-up remediation keeps the three evidence layers distinct:
 
@@ -1164,7 +1195,7 @@ migration or dependency change is expected.
 change; **MIGRATION REQUIRED**. The source/schema slice must not promote beyond `dev` until the
 user-generated migration named `accounting_provider_parser_reevaluation_review_snapshot` has been
 reviewed and merged. Expected migration shape is exactly the nullable review snapshot provenance
-plus the new reviewed-line table and approved indexes/FKs described in §12.2.
+plus the new reviewed-line table and approved indexes/FKs described in §12.3.
 
 No recognition or delivery change should rewrite historical machine extraction or posted
 financial facts. Retain source/review evidence.

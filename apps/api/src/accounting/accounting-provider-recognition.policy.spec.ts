@@ -40,6 +40,45 @@ Net Total $1,222.85
     ]);
   });
 
+  it('recognizes only the modern Clover monthly statement anchors', () => {
+    const modern = matchAccountingProviderRecognitionRule(
+      `
+YOUR CARD PROCESSING STATEMENT
+PERIOD: 08/01/2026-08/31/2026
+Merchant Number: 29351880018
+Card Processing and Fee Summary
+Fee Summary
+`,
+      DEFAULT_ACCOUNTING_PROVIDER_RECOGNITION_RULES,
+    );
+
+    expect(modern.rule).toEqual(
+      expect.objectContaining({
+        ruleStableId: 'acct_recognition_clover_statement',
+        provider: AccountingFinancialProvider.CLOVER,
+        documentType: AccountingFinancialDocumentType.STATEMENT,
+        version: 2,
+      }) as unknown,
+    );
+    expect(modern.matchedRequiredKeywords).toEqual([
+      'YOUR CARD PROCESSING STATEMENT',
+      'Merchant Number',
+      'Card Processing and Fee Summary',
+      'Fee Summary',
+    ]);
+
+    const legacy = matchAccountingProviderRecognitionRule(
+      `
+MERCHANT CARD PROCESSING STATEMENT LOCATION RECAP
+StatementPeriod 06/01/26 - 06/30/26
+Merchant Number 29351880018
+Total Amount Funded 3,263.71
+`,
+      DEFAULT_ACCOUNTING_PROVIDER_RECOGNITION_RULES,
+    );
+    expect(legacy.rule).toBeNull();
+  });
+
   it('supports operator-edited optional ANY matching without changing provider ownership', () => {
     const rules = mergeAccountingProviderRecognitionRules([
       {
