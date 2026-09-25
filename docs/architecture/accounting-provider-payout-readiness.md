@@ -459,7 +459,7 @@ Other movement                        0
 Active unscoped Pending lines         0
 ```
 
-This closes the backend/data-path portion of PAYOUT-D production verification. A human operator visual spot-check of the deployed panel/API rendering remains outstanding; there is no accounting-data blocker.
+This closed the backend/data-path portion of PAYOUT-D production verification at the time. A human operator visual spot-check of the deployed panel/API rendering remained outstanding. The later 2026-09-25 Clover pre-sync authority audit does **not** invalidate PAYOUT-D arithmetic, but it does introduce a Clover economic-authority remediation blocker before the Clover Pending balance can be treated as provider-confirmed.
 
 ## 12. PAYOUT-E-A bank CSV payout match preview
 
