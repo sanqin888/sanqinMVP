@@ -2,9 +2,9 @@
 
 ## Status
 
-2026-09-25: **A4-A LOCAL SOURCE READY FOR REVIEW / NO MIGRATION / NO NEW DEPENDENCY / NO GRAPH CHANGE**
+2026-09-25: **A4-A MERGED / CI GREEN / A4-B LOCAL SOURCE READY FOR REVIEW / NO MIGRATION / NO NEW DEPENDENCY / NO GRAPH CHANGE**
 
-Branch: `postmod/a4a-pos-pwa-identity` from current `origin/dev`.
+A4-A merged through PR #2537 / squash `6f77d5cc`; CI #6381 passed Web/API/printer-agent. A4-B is on `postmod/a4b-customer-display-launch` from current `origin/dev`.
 
 A4 is a workstation project layered on the existing Store Operations / POS / Print boundaries. It does not move authentication, device enrollment, order, payment, customer-display synchronization, or printer ownership.
 
@@ -69,7 +69,9 @@ A4 phase-level active verification must later include:
 
 ### A4-B — Customer-display launch contract
 
-Define workstation launch expectations for the existing `/[locale]/store/display` route while keeping it read-only and preserving localStorage/BroadcastChannel/polling synchronization.
+A4-B keeps the existing `/{locale}/store/display` page as a non-installable, read-only workstation route rather than creating a fifth PWA identity. A route-specific layout removes the inherited customer manifest, disables Apple standalone capability for this surface, and marks the display non-indexable. The launch URL remains the existing localized route; A4-C may open it in a dedicated browser/app window on the second monitor.
+
+Regression coverage locks the current local projection contract: the display reads `POS_DISPLAY_STORAGE_KEY`, listens to `storage` and `POS_DISPLAY_CHANNEL`, retains the 800ms polling fallback, performs no network fetch/mutation, writes no display storage, and exposes no button/form/input interaction. The POS/payment writers, snapshot schema, BroadcastChannel name and polling cadence are unchanged.
 
 ### A4-C — Windows workstation launcher / recovery
 

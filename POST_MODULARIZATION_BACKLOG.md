@@ -319,7 +319,9 @@ Target workstation behavior:
 
 This should be a dedicated workstation project, not a small PWA-manifest patch.
 
-2026-09-25 A4-A local implementation establishes the POS PWA identity / launch contract only. It adds independent `id=/pwa/pos`, language-neutral `start_url=/store/pos`, standalone POS metadata on the existing POS layout, and regression coverage proving Customer/Admin/Accounting/POS identities stay distinct. Existing locale middleware, unified Staff login, ADMIN/STAFF role admission and POS device-cookie enrollment gates remain authoritative; no Windows launcher, customer-display sync or printer-agent startup behavior changes in A4-A. Detailed work-package state: `docs/architecture/postmod-a4-windows-pos-workstation.md`.
+2026-09-25 A4-A is MERGED / CI GREEN through PR #2537 / squash `6f77d5cc`; CI #6381 passed Web/API/printer-agent. POS now has independent `id=/pwa/pos`, language-neutral `start_url=/store/pos`, standalone POS metadata and regression coverage proving Customer/Admin/Accounting/POS identities stay distinct. Existing locale middleware, unified Staff login, ADMIN/STAFF admission and POS device-cookie enrollment gates remain authoritative.
+
+2026-09-25 A4-B local implementation defines the existing `/{locale}/store/display` as a non-installable, read-only workstation display route. A route-specific metadata layout removes the inherited Customer PWA manifest, disables Apple standalone capability for this route and marks it non-indexable. Regression coverage locks localStorage + storage-event + BroadcastChannel + 800ms polling synchronization and asserts no fetch/storage writes/forms/buttons/inputs. POS/payment snapshot writers and all sync keys/contracts remain unchanged. Detailed work-package state: `docs/architecture/postmod-a4-windows-pos-workstation.md`.
 
 ### 4.5 A5 — Critical browser E2E, staged
 
