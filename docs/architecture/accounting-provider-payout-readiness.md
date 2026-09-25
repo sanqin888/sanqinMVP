@@ -400,7 +400,7 @@ A negative Pending balance is not automatically rejected because a real payout c
 
 Store-scoped reconciliation also fails closed if any active Provider Pending Journal movement in the requested range has no `storeStableId`. Silently omitting an unscoped line would produce a falsely precise per-store closing balance. Production readiness audit on 2026-09-23 found zero active unscoped Clover/Uber/Fantuan Pending Journal lines.
 
-Clover currently has no Provider Financial Document or coverage row in production; its Pending movement is canonical Order-driven. PAYOUT-D therefore reports Clover coverage as `UNKNOWN` rather than assuming `NOT_APPLICABLE`. The coverage label is evidence metadata only and does not affect its Journal roll-forward.
+The original PAYOUT-D production audit found no Clover Provider Financial Document or coverage row at that time, so its Pending movement was Order-driven and coverage reported `UNKNOWN`. That observation is historical: Clover June/July statements have since been materialized and real Closeout evidence has established the pre-sync authority correction described above. Coverage metadata still cannot mutate Journal arithmetic, but future Clover reconciliation must project provider-document/Closeout coverage instead of treating Order-derived Pending as economically authoritative.
 
 ### Transport and UI
 
