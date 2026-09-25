@@ -420,6 +420,21 @@ unconditional Replay blocker, and adds a July-shaped Clover regression while pre
 existing Uber replacement-group coverage. Backend settlement authority/execution, parser, schema
 and dependencies are unchanged.
 
+**2026-09-25 Clover pre-sync financial authority plan — DESIGN FROZEN / READY FOR READ-ONLY
+SLICE A:** real Gmail Closeout Reports now prove that historical POS `CARD` tender attribution
+cannot own Clover receivable/Pending before production Terminal synchronization. June Closeouts
+2026-05-29..2026-06-28 reconcile exactly to the legacy June statement Amount Submitted
+336,210c (180 sales, 9,896c Tips); July Closeouts 2026-06-30..2026-07-30 reconcile exactly to
+modern July Amount Submitted 350,132c (230 sales, 7,207c Tips). July/August statement surcharge
+is explicit provider evidence; June `DISCOUNT FEES` 5,931c is merchant processing cost, not a
+customer surcharge substitute. From Accounting start 2026-06-01 to the future durable
+Payments-fact cutover, Daily Closeout + Monthly Statement is Clover receivable authority,
+CIBC remains cash-settlement authority, and Order CARD attribution is diagnostic-only while
+Order sales/HST/discount economics stay authoritative. The current POS rollout flag remains
+temporary runtime routing and must not dynamically reinterpret financial history. Detailed plan:
+`docs/architecture/accounting-clover-pre-sync-authority-plan.md`. No historical Journal mutation
+is authorized yet.
+
 **Existing-materialized parser re-evaluation / Human Review effective snapshot — LOCAL SOURCE
 READY FOR REVIEW:** `accounting/provider-parser-reevaluation-review` adds the previously planned
 immutable remediation path. A historical provider document is re-evaluated only from persisted
