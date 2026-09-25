@@ -142,11 +142,12 @@ This is evidence work, not a reason to rewrite the backup system.
 
 Priority: **P0 QUICK HARDENING**  
 Complexity: **L**  
-External gate: **none**
+External gate: **none**  
+State: **MERGED / CI GREEN / NO DEPENDENCY OR LOCKFILE CHANGE — PR #2529 / `dfb93962` / CI #6358**
 
-Root/CI pin pnpm `9.0.0`, while both `Dockerfile.api` and `Dockerfile.web` currently bootstrap `pnpm@latest`.
+Root/CI pin pnpm `9.0.0`, while both Docker builders previously bootstrapped `pnpm@latest`.
 
-Replace runtime image build bootstrap with the repository-pinned pnpm version so CI, developer install and Docker build do not silently use different major/minor package-manager behavior.
+`Dockerfile.api` and `Dockerfile.web` now bootstrap the same `pnpm@9.0.0` declared by the root `packageManager` and GitHub Actions. This is a Docker-build reproducibility correction only: no package manifest, lockfile, Node version, image topology or runtime command changes.
 
 Keep this separate from broader Compose readiness work (§7.1).
 
@@ -154,14 +155,12 @@ Keep this separate from broader Compose readiness work (§7.1).
 
 Priority: **P0 QUICK HYGIENE**  
 Complexity: **L**  
-External gate: **none**
+External gate: **none**  
+State: **MERGED / CI GREEN / ATOMIC DEAD-CODE CONTRACTION — PR #2529 / `dfb93962` / CI #6358**
 
-`NotificationProcessor` currently only logs on module init that automatic invoice mail is disabled and has a no-op destroy hook. It is imported and registered by `OrdersModule`, but has no runtime processing responsibility.
+Readiness confirmed that `NotificationProcessor` had no event subscription, scheduled work, dynamic registration or downstream consumer. It only logged on module init that automatic invoice mail was disabled and had a no-op destroy hook.
 
-After a focused readiness check confirms no dynamic registration assumption remains:
-
-- remove the shell and module registration;
-- preserve manual thank-you/invoice behavior unchanged.
+The shell and its `OrdersModule` registration are removed atomically. Manual thank-you/invoice behavior remains owned by the existing explicit use case and is unchanged; no compatibility alias is retained.
 
 ### 3.5 Preserve AWS SNS + prepare SMS/SES production migration
 
@@ -219,7 +218,8 @@ This lane should be executed in order because later PWA/workstation/browser test
 Priority: **P0 CORE FOUNDATION**  
 Complexity: **H**  
 External gate: **none**  
-Hard unlocks: Accounting PWA direct launch, Windows POS PWA, stable Staff/PWA E2E.
+Hard unlocks: Accounting PWA direct launch, Windows POS PWA, stable Staff/PWA E2E.  
+State: **MERGED / CI GREEN / UNIFIED STAFF ENTRY + SURFACE MATRIX / NO MIGRATION / NO PACKAGE OR GRAPH CHANGE — PR #2530 / `524588b6` / CI #6361**
 
 Target role matrix remains:
 
@@ -245,13 +245,16 @@ Required design:
 
 Do **not** automatically fold the full Admin Members STAFF/ADMIN identity-test cleanup (§7.2) into this slice. A1 must prevent STAFF/ACCOUNTANT from entering unauthorized application surfaces; the deeper membership-test identity overlap may remain until replacement E2E fixtures exist.
 
+2026-09-25 readiness/implementation: A1 converges Admin/Accounting/POS human authentication on `/{locale}/staff/login`, keeps POS device enrollment/device verification independent, contracts the Admin Web shell to ADMIN only, applies role-aware landing to all three surfaces, and adds a signed Staff OAuth audience so the Staff Google path cannot create/bind a CUSTOMER identity. Legacy Admin/Accounting/POS login URLs are hard-retired tombstones: they no longer authenticate or redirect and only instruct stale PWA users to uninstall/reinstall. Detailed audit: `docs/architecture/postmod-a1-unified-staff-entry.md`.
+
 ### 4.2 A2 — Accounting PWA direct-launch correction
 
 Priority: **P1**  
 Complexity: **M**  
-Depends on: **A1**
+Depends on: **A1**  
+State: **LOCAL SOURCE READY FOR REVIEW / DIRECT-LAUNCH ROOT CORRECTION / NO AUTH OR GRAPH CHANGE**
 
-Admin and Accounting already have distinct PWA identities/manifests, but Accounting direct launch must be proven against the unified login/landing model.
+Admin and Accounting already have distinct PWA identities/manifests, but Accounting direct launch must be proven against the unified login/landing model. A1 readiness confirmed the current 404 is structural: `accounting.webmanifest` starts at `/accounting`, locale middleware produces `/{locale}/accounting`, and no Accounting root `page.tsx` exists. A1 canonicalizes an unauthenticated return destination to `/accounting/dashboard`; A2 still owns the authenticated installed-PWA root landing/redirect and its launch verification.
 
 Target:
 
@@ -264,13 +267,15 @@ Target:
 
 Do not fix this first by adding more Accounting-specific authentication behavior that A1 would later remove.
 
+2026-09-25 A2 implementation keeps A1 authoritative and fixes only launch routing: new Accounting installs use `start_url=/accounting/dashboard`, while `/{locale}/accounting/page.tsx` redirects to the dashboard so already-installed/cached PWAs that still launch `/accounting` also recover. Middleware/layout/session/role behavior is unchanged: missing or expired sessions still reach the unified Staff login, ADMIN/ACCOUNTANT remain allowed, and STAFF is redirected to its own canonical surface.
+
 ### 4.3 A3 — Printer-agent package / test hardening
 
 Priority: **P1 RECOMMENDED WORKSTATION PREPARATION**  
 Complexity: **H**  
 Depends on: none strictly  
 Recommended before: **A4 Windows POS workstation cutover**  
-Authorization note: any new/changed dependency manifest requires explicit approval.
+Authorization note: dependency-manifest changes are explicitly authorized for A3-A. The printer agent remains an independent npm package with its own `package-lock.json`; root pnpm workspace/lockfile stay unchanged.
 
 `tools/printer-server` is a real independently deployed Windows production boundary but is not a pnpm workspace package and remains a large standalone script.
 
@@ -284,6 +289,12 @@ Target:
 - add package/test smoke coverage appropriate to CI.
 
 Do not perform a cosmetic “split the big file” rewrite.
+
+2026-09-25 A3-A is MERGED / CI GREEN through PR #2532 / squash `947df607`; CI #6365 passed Web/API plus the new printer-agent `npm ci` + smoke job. The deployed Windows printer agent is now a repository-managed independent npm package under `tools/printer-server`, with the production dependency set, npm lockfile and deployed BAT/VBS startup wrappers captured. Root pnpm workspace/lockfile and runtime PRINT_JOB/ACK, enrollment, dedupe and print rendering behavior remained unchanged.
+
+2026-09-25 A3-B is MERGED / CI GREEN through PR #2533 / squash `feb2f839`; CI #6367 passed Web/API plus printer-agent rendering tests. Customer/kitchen deterministic rendering and the label payload contract are now covered without changing production rendering defaults. Production `tools/printer-server/assets/logo.png` is repository-managed on `dev` through commit `247d7dc9`, completing the binary production-asset handoff.
+
+2026-09-25 A3-C local implementation extracts the existing PRINT_JOB callback into an injectable handler while preserving the exact `jobId + target + success + optional error` ACK wire contract. Completed-state read/write functions accept an injected file path for isolated tests but production continues to use `~/.sanq-printer-completed-jobs.json`; direct Socket.IO reconnect behavior remains configured as infinite reconnect with 5s delay, and every `connect` event still rejoins the store. Focused tests cover success/failure ACK, completed duplicate suppression, in-flight duplicate coalescing, persisted completion reload across restart, persistence-failure in-memory safety, and reconnect store rejoin. No print business rule, server retry policy, enrollment or Windows adapter behavior changes.
 
 ### 4.4 A4 — Windows POS PWA + dual-display workstation
 
@@ -378,6 +389,18 @@ recognized card/network fees, maps the base to `expense_software`, preserves cat
 settlement draft Journal, and blocks on FEES detail/control mismatch or unclassified fee detail.
 This first slice had no migration/dependency and intentionally did not rewrite historical machine
 materialization.
+
+**2026-09-25 Clover modern statement v8 — MERGED / CI GREEN via PR #2535:** July/August real
+statements now define the active input contract. Recognition and parsing move to the modern
+Account Summary / Fee Summary layout and Poppler geometry; pre-July PDF input is intentionally
+retired because June is already posted. Historical v7 materialized facts remain readable. Modern
+Fees rows may span pages, `VI ...` is treated as a card/network fee prefix, and the observed
+`MONTHLY EQUIPMENT BILL` / `Clover Flex 3` labels map to stable semantic equipment-fee raw
+codes while retaining the existing `expense_software` category pending any separate taxonomy
+change. Settlement requires Account Summary, Fee Summary, Fees-detail, Service-Charges-detail
+and Card-Processing fee controls to reconcile; nonzero unresolved components remain fail-closed.
+The statement `Amounts Funded` section is explicitly excluded from normalized provider lines.
+No migration, dependency, payment/Clover-terminal path or architecture direction changes.
 
 **Existing-materialized parser re-evaluation / Human Review effective snapshot — LOCAL SOURCE
 READY FOR REVIEW:** `accounting/provider-parser-reevaluation-review` adds the previously planned

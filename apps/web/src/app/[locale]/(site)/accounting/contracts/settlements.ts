@@ -101,7 +101,11 @@ export type ProviderSettlementDocumentPlan = {
       | 'UBER_TOTAL_MARKETING'
       | 'UBER_TOTAL_AMENDMENTS'
       | 'UBER_NET_TOTAL'
-      | 'CLOVER_FEES_DETAIL';
+      | 'CLOVER_ACCOUNT_SUMMARY'
+      | 'CLOVER_FEE_SUMMARY'
+      | 'CLOVER_FEES_DETAIL'
+      | 'CLOVER_SERVICE_CHARGES_DETAIL'
+      | 'CLOVER_CARD_PROCESSING_FEES';
     status: 'MATCHED' | 'MISMATCH' | 'INCOMPLETE';
     controlRawName: string;
     controlLineStableId: string | null;

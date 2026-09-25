@@ -14,7 +14,7 @@ import { CLOVER_STATEMENT_RAW_CODES } from './accounting-clover-statement.contra
 
 export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_NAME =
   'accounting-provider-financial';
-export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION = '7';
+export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION = '8';
 
 export type ProviderFinancialParseInput = {
   text: string;
@@ -178,97 +178,120 @@ function parseCloverStatement(
   text: string,
   input: ProviderFinancialParseInput,
 ): ParsedProviderFinancialDocument | null {
+  if (!/YOUR\s+CARD\s+PROCESSING\s+STATEMENT/i.test(text)) return null;
   const period = capturePeriod(
     text,
-    /StatementPeriod\s+(\d{2}\/\d{2}\/\d{2})\s*-\s*(\d{2}\/\d{2}\/\d{2})/i,
-    parseSlashDate,
+    /PERIOD:\s*(\d{2}\/\d{2}\/\d{4})\s*-\s*(\d{2}\/\d{2}\/\d{4})/i,
+    parseSlashDateFourDigit,
   );
-  const merchant = capture(text, /Merchant\s*Number\s+(\d+)/i);
-  if (!period || !merchant) return null;
-  const summary =
-    between(text, 'LOCATION\nSUMMARY', 'All amounts shown') ?? text;
-  const lines: ParsedLine[] = [];
-  const namedLabels: string[] = [];
-  const add = (
-    label: string,
-    component: AccountingFinancialComponent,
-    treatment: AccountingFinancialPostingTreatment,
-    taxRole: AccountingFinancialTaxRole = AccountingFinancialTaxRole.NONE,
-  ) => {
-    namedLabels.push(label);
-    pushNamedSummary(
-      lines,
-      summary,
-      label,
-      component,
-      treatment,
-      taxRole,
-      input.documentExtraction,
-    );
-  };
-
-  add(
-    'Total Amount Submitted',
-    AccountingFinancialComponent.SALES,
-    AccountingFinancialPostingTreatment.CONTROL_TOTAL,
-  );
-  add(
-    'Third-Party Transactions',
-    AccountingFinancialComponent.OTHER,
-    AccountingFinancialPostingTreatment.UNCLASSIFIED,
-  );
-  add(
-    'Adjustments',
-    AccountingFinancialComponent.ADJUSTMENT,
-    AccountingFinancialPostingTreatment.POSTABLE,
-  );
-  add(
-    'Interchange Charges',
-    AccountingFinancialComponent.PROCESSING_FEE,
-    AccountingFinancialPostingTreatment.POSTABLE,
-  );
-
-  namedLabels.push('Service Charges');
-  const serviceCharges = resolveNamedAmount(
-    summary,
-    'Service Charges',
-    input.documentExtraction,
-  )?.amountCents;
-  const serviceTax = sectionHst(
-    text,
-    'SERVICE CHARGES',
-    input.documentExtraction,
-  );
-  pushSplitFee(lines, 'Service Charges', serviceCharges ?? null, serviceTax);
-
-  namedLabels.push('Fees');
-  const fees = resolveNamedAmount(
-    summary,
-    'Fees',
-    input.documentExtraction,
-  )?.amountCents;
-  pushCloverFees(lines, text, fees ?? null, input.documentExtraction);
-
-  add(
-    'Chargebacks/Reversals',
-    AccountingFinancialComponent.CHARGEBACK,
-    AccountingFinancialPostingTreatment.POSTABLE,
-  );
-  add(
-    'Total Amount Funded',
-    AccountingFinancialComponent.PAYOUT,
-    AccountingFinancialPostingTreatment.CONTROL_TOTAL,
-  );
-
+  const merchant = capture(text, /Merchant\s*Number\s*:?\s*(\d+)/i);
+  const extraction = input.documentExtraction;
   if (
-    hasUnresolvedPopplerTextOnlyNamedAmount(
-      namedLabels,
-      input.documentExtraction,
-    )
+    !period ||
+    !merchant ||
+    !extraction ||
+    extraction.layoutMode !== 'GEOMETRY'
   ) {
     return null;
   }
-  if (!lines.length) return null;
+
+  const accountSummary = cloverModernAccountSummaryFromLayout(extraction);
+  const feeSummary = cloverModernFeeSummaryFromLayout(extraction);
+  const cardProcessingTotalFees =
+    cloverModernCardProcessingTotalFeesFromLayout(extraction);
+  if (!accountSummary || !feeSummary || !cardProcessingTotalFees) return null;
+
+  const lines: ParsedLine[] = [];
+  const pushControl = (
+    rawCode: string,
+    rawName: string,
+    component: AccountingFinancialComponent,
+    resolution: NamedAmountResolution,
+    treatment: AccountingFinancialPostingTreatment = AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+  ) => {
+    lines.push({
+      rawCode,
+      rawName,
+      component,
+      postingTreatment: treatment,
+      taxRole: AccountingFinancialTaxRole.NONE,
+      amountCents: resolution.amountCents,
+      ...(resolution.rawPayload ? { rawPayload: resolution.rawPayload } : {}),
+    });
+  };
+
+  pushControl(
+    CLOVER_STATEMENT_RAW_CODES.ACCOUNT_AMOUNT_SUBMITTED,
+    'Amount Submitted',
+    AccountingFinancialComponent.SALES,
+    accountSummary.amountSubmitted,
+  );
+  pushControl(
+    CLOVER_STATEMENT_RAW_CODES.ACCOUNT_PAID_BY_OTHERS,
+    'Paid by Others',
+    AccountingFinancialComponent.OTHER,
+    accountSummary.paidByOthers,
+  );
+  pushControl(
+    CLOVER_STATEMENT_RAW_CODES.ACCOUNT_DISPUTES,
+    'Disputes',
+    AccountingFinancialComponent.CHARGEBACK,
+    accountSummary.disputes,
+  );
+  pushControl(
+    CLOVER_STATEMENT_RAW_CODES.ACCOUNT_ADJUSTMENTS,
+    'Adjustments',
+    AccountingFinancialComponent.ADJUSTMENT,
+    accountSummary.adjustments,
+  );
+  pushControl(
+    CLOVER_STATEMENT_RAW_CODES.ACCOUNT_FEES_TOTAL,
+    'Account Summary Fees',
+    AccountingFinancialComponent.CONTROL_TOTAL,
+    accountSummary.fees,
+  );
+  pushControl(
+    CLOVER_STATEMENT_RAW_CODES.ACCOUNT_AMOUNT_PROCESSED,
+    'Amount Processed',
+    AccountingFinancialComponent.CONTROL_TOTAL,
+    accountSummary.amountProcessed,
+  );
+
+  pushControl(
+    CLOVER_STATEMENT_RAW_CODES.FEE_SUMMARY_FEES,
+    'Fee Summary Fees',
+    AccountingFinancialComponent.CONTROL_TOTAL,
+    feeSummary.fees,
+  );
+  pushControl(
+    CLOVER_STATEMENT_RAW_CODES.FEE_SUMMARY_ICPF,
+    'IC/PF',
+    AccountingFinancialComponent.OTHER,
+    feeSummary.icpf,
+    feeSummary.icpf.amountCents === 0
+      ? AccountingFinancialPostingTreatment.CONTROL_TOTAL
+      : AccountingFinancialPostingTreatment.UNCLASSIFIED,
+  );
+  pushControl(
+    CLOVER_STATEMENT_RAW_CODES.SERVICE_CHARGES_TOTAL,
+    'Service Charges Total',
+    AccountingFinancialComponent.CONTROL_TOTAL,
+    feeSummary.serviceCharges,
+  );
+  pushControl(
+    CLOVER_STATEMENT_RAW_CODES.CARD_PROCESSING_TOTAL_FEES,
+    'Card Processing Total Fees',
+    AccountingFinancialComponent.CONTROL_TOTAL,
+    cardProcessingTotalFees,
+  );
+
+  appendCloverModernFeeLines(
+    lines,
+    cloverModernFeeRowsFromLayout(extraction),
+    feeSummary.fees.amountCents,
+    feeSummary.serviceCharges.amountCents,
+  );
+
   return {
     provider: AccountingFinancialProvider.CLOVER,
     documentType: AccountingFinancialDocumentType.STATEMENT,
@@ -280,9 +303,10 @@ function parseCloverStatement(
     currency: 'CAD',
     rawMetadata: {
       evidenceKind: 'CLOVER_MONTHLY_PROCESSING_STATEMENT',
-      documentExtractionEngine: input.documentExtraction?.engine ?? null,
-      layoutAwareExtraction:
-        input.documentExtraction?.layoutMode === 'GEOMETRY',
+      statementLayout: 'MODERN_V1',
+      documentExtractionEngine: extraction.engine,
+      layoutAwareExtraction: true,
+      amountsFundedExcludedFromNormalizedLines: true,
     },
     lines,
   };
@@ -639,65 +663,279 @@ function pushLabelAmount(
   });
 }
 
-function pushSplitFee(
-  lines: ParsedLine[],
-  label: string,
-  total: number | null,
-  tax: number | null,
-) {
-  if (total == null) return;
-  if (tax == null || tax === 0) {
-    lines.push({
-      rawName: label,
-      component: AccountingFinancialComponent.PROCESSING_FEE,
-      postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
-      taxRole: AccountingFinancialTaxRole.NONE,
-      amountCents: total,
-    });
-    return;
-  }
-  lines.push({
-    rawName: `${label} before HST`,
-    component: AccountingFinancialComponent.PROCESSING_FEE,
-    postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
-    taxRole: AccountingFinancialTaxRole.NONE,
-    amountCents: total - tax,
-  });
-  lines.push({
-    rawName: `${label} HST`,
-    component: AccountingFinancialComponent.PROCESSING_FEE_TAX,
-    postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
-    taxRole: AccountingFinancialTaxRole.INPUT_TAX,
-    amountCents: tax,
-  });
-}
+type CloverModernSummary = {
+  amountSubmitted: NamedAmountResolution;
+  paidByOthers: NamedAmountResolution;
+  disputes: NamedAmountResolution;
+  adjustments: NamedAmountResolution;
+  fees: NamedAmountResolution;
+  amountProcessed: NamedAmountResolution;
+};
 
-type CloverFeeDetailRow = {
+type CloverModernFeeSummary = {
+  fees: NamedAmountResolution;
+  icpf: NamedAmountResolution;
+  serviceCharges: NamedAmountResolution;
+};
+
+type CloverModernFeeDetailRow = {
+  invoice: string;
   description: string;
+  rowType: 'Fees' | 'Service Charges';
   totalCents: number;
   taxCents: number;
   rawPayload: Record<string, unknown>;
 };
 
+const CLOVER_EQUIPMENT_FEE_DESCRIPTION =
+  /^(?:MONTHLY\s+EQUIPMENT\s+BILL|CLOVER\s+FLEX\s+3)$/i;
 const CLOVER_NETWORK_FEE_DESCRIPTION =
-  /^(?:MC(?:-|\s)|MASTERCARD\b|VISA\b|INTERAC\b)/i;
+  /^(?:MC(?:-|\s)|MASTERCARD\b|VISA\b|VI(?:-|\s)|INTERAC\b)/i;
+
+function exactLayoutLines(
+  extraction: AccountingDocumentExtraction,
+  text: string,
+): AccountingDocumentExtractionLine[] {
+  return extraction.lines
+    .filter(
+      (line) =>
+        line.geometry && line.text.trim().toLowerCase() === text.toLowerCase(),
+    )
+    .sort(
+      (left, right) =>
+        left.page - right.page ||
+        (left.geometry?.top ?? 0) - (right.geometry?.top ?? 0) ||
+        (left.geometry?.left ?? 0) - (right.geometry?.left ?? 0),
+    );
+}
+
+function resolveStackedAmountFromLayout(params: {
+  extraction: AccountingDocumentExtraction;
+  label: string;
+  page: number;
+  afterTop: number;
+  beforeTop: number;
+  maxTopDelta?: number;
+}): NamedAmountResolution | null {
+  const labelLines = exactLayoutLines(params.extraction, params.label).filter(
+    (line) =>
+      line.page === params.page &&
+      line.geometry &&
+      line.geometry.top >= params.afterTop &&
+      line.geometry.top < params.beforeTop,
+  );
+  for (const labelLine of labelLines) {
+    const labelGeometry = labelLine.geometry;
+    if (!labelGeometry) continue;
+    const labelCenter = labelGeometry.left + labelGeometry.width / 2;
+    const candidates = params.extraction.lines
+      .flatMap((line) => {
+        if (
+          line.lineId === labelLine.lineId ||
+          line.page !== labelLine.page ||
+          !line.geometry
+        ) {
+          return [];
+        }
+        const amountCents = parseMoneyCents(line.text);
+        if (amountCents == null) return [];
+        const topDelta = line.geometry.top - labelGeometry.top;
+        if (topDelta < -0.005 || topDelta > (params.maxTopDelta ?? 0.08)) {
+          return [];
+        }
+        const amountCenter = line.geometry.left + line.geometry.width / 2;
+        const centerDelta = Math.abs(amountCenter - labelCenter);
+        if (centerDelta > Math.max(0.09, labelGeometry.width * 0.8)) return [];
+        return [{ line, amountCents, topDelta, centerDelta }];
+      })
+      .sort(
+        (left, right) =>
+          left.topDelta - right.topDelta ||
+          left.centerDelta - right.centerDelta,
+      );
+    const best = candidates[0];
+    if (!best) continue;
+    return {
+      amountCents: best.amountCents,
+      rawPayload: {
+        extractionEvidence: {
+          version: 1,
+          strategy: 'CLOVER_MODERN_STACKED_LABEL',
+          engine: params.extraction.engine,
+          labelLine: documentLineEvidence(labelLine),
+          amountLine: documentLineEvidence(best.line),
+        },
+      },
+    };
+  }
+  return null;
+}
+
+function cloverModernAccountSummaryFromLayout(
+  extraction: AccountingDocumentExtraction,
+): CloverModernSummary | null {
+  const statementHeading = exactLayoutLines(
+    extraction,
+    'YOUR CARD PROCESSING STATEMENT',
+  )[0];
+  if (!statementHeading?.geometry) return null;
+  const statementGeometry = statementHeading.geometry;
+  const page = statementHeading.page;
+  const accountHeading = exactLayoutLines(extraction, 'Account Summary').find(
+    (line) =>
+      line.page === page &&
+      line.geometry &&
+      line.geometry.top > statementGeometry.top,
+  );
+  if (!accountHeading?.geometry) return null;
+  const accountGeometry = accountHeading.geometry;
+
+  const resolve = (label: string) =>
+    resolveStackedAmountFromLayout({
+      extraction,
+      label,
+      page,
+      afterTop: statementGeometry.top,
+      beforeTop: accountGeometry.top,
+    });
+  const amountSubmitted = resolve('Amount Submitted');
+  const paidByOthers = resolve('Paid by Others');
+  const disputes = resolve('Disputes');
+  const adjustments = resolve('Adjustments');
+  const fees = resolve('Fees');
+  const amountProcessed = resolve('Amount Processed');
+  if (
+    !amountSubmitted ||
+    !paidByOthers ||
+    !disputes ||
+    !adjustments ||
+    !fees ||
+    !amountProcessed
+  ) {
+    return null;
+  }
+  return {
+    amountSubmitted,
+    paidByOthers,
+    disputes,
+    adjustments,
+    fees,
+    amountProcessed,
+  };
+}
+
+function cloverModernFeeSummaryFromLayout(
+  extraction: AccountingDocumentExtraction,
+): CloverModernFeeSummary | null {
+  const heading = exactLayoutLines(extraction, 'Fee Summary')[0];
+  if (!heading?.geometry) return null;
+  const headingGeometry = heading.geometry;
+  const beforeTop = Math.min(1, headingGeometry.top + 0.13);
+  const resolve = (label: string) =>
+    resolveStackedAmountFromLayout({
+      extraction,
+      label,
+      page: heading.page,
+      afterTop: headingGeometry.top,
+      beforeTop,
+      maxTopDelta: 0.06,
+    });
+  const fees = resolve('Fees');
+  const icpf = resolve('IC/PF');
+  const serviceCharges = resolve('Service Charges');
+  return fees && icpf && serviceCharges ? { fees, icpf, serviceCharges } : null;
+}
+
+function cloverModernCardProcessingTotalFeesFromLayout(
+  extraction: AccountingDocumentExtraction,
+): NamedAmountResolution | null {
+  const heading = exactLayoutLines(
+    extraction,
+    'Card Processing and Fee Summary',
+  )[0];
+  if (!heading?.geometry) return null;
+  const headingGeometry = heading.geometry;
+
+  const feesHeader = exactLayoutLines(extraction, 'Fees')
+    .filter(
+      (line) =>
+        line.page === heading.page &&
+        line.geometry &&
+        line.geometry.left > 0.7 &&
+        line.geometry.top > headingGeometry.top &&
+        line.geometry.top - headingGeometry.top < 0.2,
+    )
+    .sort(
+      (left, right) => (left.geometry?.top ?? 0) - (right.geometry?.top ?? 0),
+    )[0];
+  if (!feesHeader?.geometry) return null;
+  const feesHeaderGeometry = feesHeader.geometry;
+
+  const totalRow = exactLayoutLines(extraction, 'Total')
+    .filter(
+      (line) =>
+        line.page === heading.page &&
+        line.geometry &&
+        line.geometry.left < 0.2 &&
+        line.geometry.top > feesHeaderGeometry.top &&
+        line.geometry.top - feesHeaderGeometry.top < 0.25,
+    )
+    .sort(
+      (left, right) => (left.geometry?.top ?? 0) - (right.geometry?.top ?? 0),
+    )[0];
+  if (!totalRow?.geometry) return null;
+
+  const headerCenter = feesHeaderGeometry.left + feesHeaderGeometry.width / 2;
+  const value = extraction.lines
+    .flatMap((line) => {
+      if (
+        line.page !== totalRow.page ||
+        !line.geometry ||
+        verticalOverlapRatio(totalRow, line) < 0.35
+      ) {
+        return [];
+      }
+      const amountCents = parseMoneyCents(line.text);
+      if (amountCents == null) return [];
+      const center = line.geometry.left + line.geometry.width / 2;
+      const centerDelta = Math.abs(center - headerCenter);
+      if (centerDelta > 0.1) return [];
+      return [{ line, amountCents, centerDelta }];
+    })
+    .sort((left, right) => left.centerDelta - right.centerDelta)[0];
+  if (!value) return null;
+
+  return {
+    amountCents: -Math.abs(value.amountCents),
+    rawPayload: {
+      extractionEvidence: {
+        version: 1,
+        strategy: 'CLOVER_MODERN_CARD_PROCESSING_TOTAL_FEES',
+        engine: extraction.engine,
+        sectionHeadingLine: documentLineEvidence(heading),
+        headerLine: documentLineEvidence(feesHeader),
+        totalRowLine: documentLineEvidence(totalRow),
+        amountLine: documentLineEvidence(value.line),
+      },
+    },
+  };
+}
 
 function parseHstToken(value: string): number | null {
   const raw = /^HST:\s*([^\s]+)$/i.exec(value.trim())?.[1];
   return raw ? parseMoneyCents(raw) : null;
 }
 
-function cloverFeeRowsFromLayout(
-  extraction: AccountingDocumentExtraction | undefined,
-): CloverFeeDetailRow[] {
-  if (!extraction || extraction.layoutMode !== 'GEOMETRY') return [];
-
-  const feeHeadings = extraction.lines
+function cloverModernFeeRowsFromLayout(
+  extraction: AccountingDocumentExtraction,
+): CloverModernFeeDetailRow[] {
+  const invoiceLines = extraction.lines
     .filter(
       (line) =>
         line.geometry &&
-        line.geometry.left < 0.35 &&
-        compactSectionHeading(line.text) === 'FEES',
+        line.geometry.left >= 0.2 &&
+        line.geometry.left < 0.36 &&
+        /^\d{6,12}$/.test(line.text.trim()),
     )
     .sort(
       (left, right) =>
@@ -705,215 +943,117 @@ function cloverFeeRowsFromLayout(
         (left.geometry?.top ?? 0) - (right.geometry?.top ?? 0),
     );
 
-  for (const heading of feeHeadings) {
-    const headingGeometry = heading.geometry;
-    if (!headingGeometry) continue;
-    const header = extraction.lines
+  return invoiceLines.flatMap((invoiceLine) => {
+    const invoiceGeometry = invoiceLine.geometry;
+    if (!invoiceGeometry) return [];
+    const rowLines = extraction.lines.filter(
+      (line) =>
+        line.page === invoiceLine.page &&
+        line.geometry &&
+        verticalOverlapRatio(invoiceLine, line) >= 0.35,
+    );
+    const typeLine = rowLines.find(
+      (line) =>
+        line.geometry &&
+        line.geometry.left > 0.55 &&
+        line.geometry.left < 0.8 &&
+        /^(?:Fees|Service Charges)$/i.test(line.text.trim()),
+    );
+    if (!typeLine?.geometry) return [];
+    const typeGeometry = typeLine.geometry;
+    const rowType = /^Fees$/i.test(typeLine.text.trim())
+      ? ('Fees' as const)
+      : ('Service Charges' as const);
+
+    const invoiceRight = invoiceGeometry.left + invoiceGeometry.width;
+    const descriptionLine = rowLines
       .filter(
         (line) =>
-          line.page === heading.page &&
           line.geometry &&
-          /^Description$/i.test(line.text.trim()) &&
-          line.geometry.top > headingGeometry.top &&
-          line.geometry.top - headingGeometry.top < 0.15,
+          line.geometry.left > invoiceRight &&
+          line.geometry.left < typeGeometry.left &&
+          line.text.trim() !== typeLine.text.trim(),
       )
       .sort(
-        (left, right) => (left.geometry?.top ?? 0) - (right.geometry?.top ?? 0),
+        (left, right) =>
+          (left.geometry?.left ?? 0) - (right.geometry?.left ?? 0),
       )[0];
-    const headerGeometry = header?.geometry;
-    if (!headerGeometry) continue;
-
-    const totalLine = extraction.lines
+    const amountLine = rowLines
       .filter(
         (line) =>
-          line.page === heading.page &&
           line.geometry &&
-          /^Total$/i.test(line.text.trim()) &&
-          line.geometry.left < 0.35 &&
-          line.geometry.top > headerGeometry.top &&
-          line.geometry.top - headingGeometry.top < 0.4,
+          line.geometry.left > 0.85 &&
+          parseMoneyCents(line.text) != null,
       )
       .sort(
-        (left, right) => (left.geometry?.top ?? 0) - (right.geometry?.top ?? 0),
+        (left, right) =>
+          (right.geometry?.left ?? 0) - (left.geometry?.left ?? 0),
       )[0];
-    const totalGeometry = totalLine?.geometry;
-    if (!totalGeometry) continue;
+    if (!descriptionLine || !amountLine) return [];
 
-    const descriptions = extraction.lines
-      .filter(
-        (line) =>
-          line.page === heading.page &&
-          line.geometry &&
-          line.geometry.left >= 0.2 &&
-          line.geometry.left < 0.7 &&
-          line.geometry.top > headerGeometry.top &&
-          line.geometry.top < totalGeometry.top &&
-          !/^Description$/i.test(line.text.trim()),
-      )
-      .sort(
-        (left, right) => (left.geometry?.top ?? 0) - (right.geometry?.top ?? 0),
-      );
+    const totalCents = parseMoneyCents(amountLine.text);
+    if (totalCents == null) return [];
+    const taxLine = rowLines.find((line) =>
+      /^HST:\s*[^\s]+$/i.test(line.text.trim()),
+    );
+    if (rowType === 'Fees' && !taxLine) return [];
+    const taxCents = taxLine ? parseHstToken(taxLine.text) : 0;
+    if (taxCents == null) return [];
 
-    const rows = descriptions.flatMap((descriptionLine) => {
-      const totalValueLine = extraction.lines
-        .filter(
-          (line) =>
-            line.page === descriptionLine.page &&
-            line.geometry &&
-            line.geometry.left >= 0.85 &&
-            verticalOverlapRatio(descriptionLine, line) >= 0.35 &&
-            parseMoneyCents(line.text) != null,
-        )
-        .sort(
-          (left, right) =>
-            (right.geometry?.left ?? 0) - (left.geometry?.left ?? 0),
-        )[0];
-      if (!totalValueLine) return [];
-
-      const totalCents = parseMoneyCents(totalValueLine.text);
-      if (totalCents == null) return [];
-      const taxLine = extraction.lines.find(
-        (line) =>
-          line.page === descriptionLine.page &&
-          line.geometry &&
-          verticalOverlapRatio(descriptionLine, line) >= 0.35 &&
-          /^HST:\s*[^\s]+$/i.test(line.text.trim()),
-      );
-      if (!taxLine) return [];
-      const taxCents = parseHstToken(taxLine.text);
-      if (taxCents == null) return [];
-
-      return [
-        {
-          description: descriptionLine.text.trim(),
-          totalCents,
-          taxCents,
-          rawPayload: {
-            extractionEvidence: {
-              version: 1,
-              strategy: 'CLOVER_FEES_LAYOUT_ROW',
-              engine: extraction.engine,
-              descriptionLine: documentLineEvidence(descriptionLine),
-              taxLine: documentLineEvidence(taxLine),
-              totalLine: documentLineEvidence(totalValueLine),
-            },
+    return [
+      {
+        invoice: invoiceLine.text.trim(),
+        description: descriptionLine.text.trim(),
+        rowType,
+        totalCents,
+        taxCents,
+        rawPayload: {
+          extractionEvidence: {
+            version: 1,
+            strategy: 'CLOVER_MODERN_FEE_TABLE_ROW',
+            engine: extraction.engine,
+            invoiceLine: documentLineEvidence(invoiceLine),
+            descriptionLine: documentLineEvidence(descriptionLine),
+            typeLine: documentLineEvidence(typeLine),
+            taxLine: taxLine ? documentLineEvidence(taxLine) : null,
+            amountLine: documentLineEvidence(amountLine),
           },
         },
-      ];
-    });
-
-    if (rows.length > 0) return rows;
-  }
-
-  return [];
-}
-
-function cloverFeeRowsFromText(text: string): CloverFeeDetailRow[] {
-  const sourceLines = text.split(/\r?\n/);
-  const headingIndex = sourceLines.findIndex(
-    (line) => compactSectionHeading(line) === 'FEES',
-  );
-  if (headingIndex < 0) return [];
-
-  const rows: CloverFeeDetailRow[] = [];
-  for (const sourceLine of sourceLines.slice(headingIndex + 1)) {
-    if (/^\s*Total(?:\s|$)/i.test(sourceLine)) break;
-    const match =
-      /^\s*(\d{2}\/\d{2}\/\d{2})\s+(\S+)\s+(.+?)\s+(HST:\s*[^\s]+)\s+([^\s]+)\s*$/.exec(
-        sourceLine,
-      );
-    if (!match) continue;
-    const description = match[3]?.trim();
-    const taxCents = match[4] ? parseHstToken(match[4]) : null;
-    const totalCents = match[5] ? parseMoneyCents(match[5]) : null;
-    if (!description || taxCents == null || totalCents == null) continue;
-    rows.push({
-      description,
-      totalCents,
-      taxCents,
-      rawPayload: {
-        extractionEvidence: {
-          version: 1,
-          strategy: 'CLOVER_FEES_TEXT_ROW',
-          sourceLine: sourceLine.trim(),
-        },
       },
-    });
-  }
-  return rows;
+    ];
+  });
 }
 
-function pushCloverFees(
+function appendCloverModernFeeLines(
   lines: ParsedLine[],
-  text: string,
-  total: number | null,
-  extraction?: AccountingDocumentExtraction,
+  rows: CloverModernFeeDetailRow[],
+  expectedFeesCents: number,
+  expectedServiceChargesCents: number,
 ) {
-  if (total == null) return;
-
-  const detailRows = cloverFeeRowsFromLayout(extraction);
-  const rows = detailRows.length > 0 ? detailRows : cloverFeeRowsFromText(text);
-  const hasFeesDetailSection =
-    text
-      .split(/\r?\n/)
-      .some((line) => compactSectionHeading(line) === 'FEES') ||
-    Boolean(
-      extraction?.lines.some(
-        (line) =>
-          line.geometry &&
-          line.geometry.left < 0.35 &&
-          compactSectionHeading(line.text) === 'FEES',
-      ),
-    );
-  if (rows.length === 0 && !hasFeesDetailSection) {
-    const tax = sectionHst(text, 'FEES', extraction);
-    pushSplitFee(lines, 'Fees', total, tax);
-    return;
-  }
-
-  lines.push({
-    rawCode: CLOVER_STATEMENT_RAW_CODES.FEES_TOTAL,
-    rawName: 'Fees',
-    component: AccountingFinancialComponent.CONTROL_TOTAL,
-    postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
-    taxRole: AccountingFinancialTaxRole.NONE,
-    amountCents: total,
-  });
-
-  if (rows.length === 0) {
-    lines.push({
-      rawCode: CLOVER_STATEMENT_RAW_CODES.UNCLASSIFIED_FEES,
-      rawName: 'Fees detail extraction unresolved',
-      component: AccountingFinancialComponent.OTHER,
-      postingTreatment: AccountingFinancialPostingTreatment.UNCLASSIFIED,
-      taxRole: AccountingFinancialTaxRole.NONE,
-      amountCents: total,
-    });
-    return;
-  }
-
-  const equipmentRows = rows.filter((row) =>
-    /^MONTHLY\s+EQUIPMENT\s+BILL$/i.test(row.description),
+  const feeRows = rows.filter((row) => row.rowType === 'Fees');
+  const serviceRows = rows.filter((row) => row.rowType === 'Service Charges');
+  const equipmentRows = feeRows.filter((row) =>
+    CLOVER_EQUIPMENT_FEE_DESCRIPTION.test(row.description),
   );
-  const networkRows = rows.filter(
+  const networkRows = feeRows.filter(
     (row) =>
-      !/^MONTHLY\s+EQUIPMENT\s+BILL$/i.test(row.description) &&
+      !CLOVER_EQUIPMENT_FEE_DESCRIPTION.test(row.description) &&
       CLOVER_NETWORK_FEE_DESCRIPTION.test(row.description),
   );
-  const unknownRows = rows.filter(
+  const unknownFeeRows = feeRows.filter(
     (row) =>
-      !/^MONTHLY\s+EQUIPMENT\s+BILL$/i.test(row.description) &&
+      !CLOVER_EQUIPMENT_FEE_DESCRIPTION.test(row.description) &&
       !CLOVER_NETWORK_FEE_DESCRIPTION.test(row.description),
   );
 
   const sumRows = (
-    selected: CloverFeeDetailRow[],
-    selector: (row: CloverFeeDetailRow) => number,
+    selected: CloverModernFeeDetailRow[],
+    selector: (row: CloverModernFeeDetailRow) => number,
   ) =>
     selected.reduce((sum, row) => {
       const next = sum + selector(row);
       if (!Number.isSafeInteger(next)) {
-        throw new Error('Clover fee detail exceeds safe integer range');
+        throw new Error('Clover modern fee detail exceeds safe integer range');
       }
       return next;
     }, 0);
@@ -922,9 +1062,9 @@ function pushCloverFees(
     rawCode: string;
     rawName: string;
     component: AccountingFinancialComponent;
-    taxRole?: AccountingFinancialTaxRole;
     amountCents: number;
-    sourceRows: CloverFeeDetailRow[];
+    sourceRows: CloverModernFeeDetailRow[];
+    taxRole?: AccountingFinancialTaxRole;
   }) => {
     if (params.amountCents === 0) return;
     lines.push({
@@ -936,7 +1076,9 @@ function pushCloverFees(
       amountCents: params.amountCents,
       rawPayload: {
         cloverFeeDetailRows: params.sourceRows.map((row) => ({
+          invoice: row.invoice,
           description: row.description,
+          rowType: row.rowType,
           totalCents: row.totalCents,
           taxCents: row.taxCents,
           evidence: row.rawPayload,
@@ -945,121 +1087,89 @@ function pushCloverFees(
     });
   };
 
-  pushAggregate({
-    rawCode: CLOVER_STATEMENT_RAW_CODES.MONTHLY_EQUIPMENT_BILL,
-    rawName: 'Monthly Equipment Bill',
-    component: AccountingFinancialComponent.PLATFORM_OTHER_FEE,
-    amountCents: sumRows(equipmentRows, (row) => row.totalCents - row.taxCents),
-    sourceRows: equipmentRows,
-  });
-  pushAggregate({
-    rawCode: CLOVER_STATEMENT_RAW_CODES.MONTHLY_EQUIPMENT_BILL_HST,
-    rawName: 'Monthly Equipment Bill HST',
-    component: AccountingFinancialComponent.PLATFORM_OTHER_FEE_TAX,
-    taxRole: AccountingFinancialTaxRole.INPUT_TAX,
-    amountCents: sumRows(equipmentRows, (row) => row.taxCents),
-    sourceRows: equipmentRows,
-  });
-  pushAggregate({
-    rawCode: CLOVER_STATEMENT_RAW_CODES.NETWORK_FEES,
-    rawName: 'Other Card/Network Fees',
-    component: AccountingFinancialComponent.PROCESSING_FEE,
-    amountCents: sumRows(networkRows, (row) => row.totalCents - row.taxCents),
-    sourceRows: networkRows,
-  });
-  pushAggregate({
-    rawCode: CLOVER_STATEMENT_RAW_CODES.NETWORK_FEES_HST,
-    rawName: 'Other Card/Network Fees HST',
-    component: AccountingFinancialComponent.PROCESSING_FEE_TAX,
-    taxRole: AccountingFinancialTaxRole.INPUT_TAX,
-    amountCents: sumRows(networkRows, (row) => row.taxCents),
-    sourceRows: networkRows,
-  });
-
-  for (const row of unknownRows) {
+  if (feeRows.length === 0 && expectedFeesCents !== 0) {
     lines.push({
       rawCode: CLOVER_STATEMENT_RAW_CODES.UNCLASSIFIED_FEES,
-      rawName: row.description,
+      rawName: 'Fees detail extraction unresolved',
       component: AccountingFinancialComponent.OTHER,
       postingTreatment: AccountingFinancialPostingTreatment.UNCLASSIFIED,
       taxRole: AccountingFinancialTaxRole.NONE,
-      amountCents: row.totalCents,
-      rawPayload: row.rawPayload,
+      amountCents: expectedFeesCents,
     });
-  }
-}
-
-function compactSectionHeading(value: string): string {
-  return value.replace(/[^A-Z0-9]/gi, '').toUpperCase();
-}
-
-function sectionHstFromLayout(
-  heading: string,
-  extraction: AccountingDocumentExtraction | undefined,
-): number | null {
-  if (!extraction || extraction.layoutMode !== 'GEOMETRY') return null;
-  const expectedHeading = compactSectionHeading(heading);
-  const headingLines = extraction.lines
-    .filter(
-      (line) =>
-        line.geometry &&
-        line.geometry.left < 0.35 &&
-        compactSectionHeading(line.text) === expectedHeading,
-    )
-    .sort(
-      (left, right) =>
-        left.page - right.page ||
-        (left.geometry?.top ?? 0) - (right.geometry?.top ?? 0),
-    );
-
-  for (const headingLine of headingLines) {
-    const headingGeometry = headingLine.geometry;
-    if (!headingGeometry) continue;
-    const totalLine = extraction.lines
-      .filter(
-        (line) =>
-          line.page === headingLine.page &&
-          line.geometry &&
-          /^Total$/i.test(line.text.trim()) &&
-          line.geometry.left < 0.35 &&
-          line.geometry.top > headingGeometry.top &&
-          line.geometry.top - headingGeometry.top < 0.3,
-      )
-      .sort(
-        (left, right) => (left.geometry?.top ?? 0) - (right.geometry?.top ?? 0),
-      )[0];
-    if (!totalLine?.geometry) continue;
-
-    const taxLine = extraction.lines.find((line) => {
-      if (
-        line.page !== totalLine.page ||
-        !line.geometry ||
-        verticalOverlapRatio(totalLine, line) < 0.35
-      ) {
-        return false;
-      }
-      return /^HST:\s*[^\s]+$/i.test(line.text.trim());
+  } else {
+    pushAggregate({
+      rawCode: CLOVER_STATEMENT_RAW_CODES.EQUIPMENT_FEE,
+      rawName: 'Clover Equipment Fee',
+      component: AccountingFinancialComponent.PLATFORM_OTHER_FEE,
+      amountCents: sumRows(
+        equipmentRows,
+        (row) => row.totalCents - row.taxCents,
+      ),
+      sourceRows: equipmentRows,
     });
-    if (!taxLine) return 0;
-    const raw = /^HST:\s*([^\s]+)$/i.exec(taxLine.text.trim())?.[1];
-    return raw ? parseMoneyCents(raw) : null;
+    pushAggregate({
+      rawCode: CLOVER_STATEMENT_RAW_CODES.EQUIPMENT_FEE_HST,
+      rawName: 'Clover Equipment Fee HST',
+      component: AccountingFinancialComponent.PLATFORM_OTHER_FEE_TAX,
+      taxRole: AccountingFinancialTaxRole.INPUT_TAX,
+      amountCents: sumRows(equipmentRows, (row) => row.taxCents),
+      sourceRows: equipmentRows,
+    });
+    pushAggregate({
+      rawCode: CLOVER_STATEMENT_RAW_CODES.NETWORK_FEES,
+      rawName: 'Other Card/Network Fees',
+      component: AccountingFinancialComponent.PROCESSING_FEE,
+      amountCents: sumRows(networkRows, (row) => row.totalCents - row.taxCents),
+      sourceRows: networkRows,
+    });
+    pushAggregate({
+      rawCode: CLOVER_STATEMENT_RAW_CODES.NETWORK_FEES_HST,
+      rawName: 'Other Card/Network Fees HST',
+      component: AccountingFinancialComponent.PROCESSING_FEE_TAX,
+      taxRole: AccountingFinancialTaxRole.INPUT_TAX,
+      amountCents: sumRows(networkRows, (row) => row.taxCents),
+      sourceRows: networkRows,
+    });
+    for (const row of unknownFeeRows) {
+      lines.push({
+        rawCode: CLOVER_STATEMENT_RAW_CODES.UNCLASSIFIED_FEES,
+        rawName: row.description,
+        component: AccountingFinancialComponent.OTHER,
+        postingTreatment: AccountingFinancialPostingTreatment.UNCLASSIFIED,
+        taxRole: AccountingFinancialTaxRole.NONE,
+        amountCents: row.totalCents,
+        rawPayload: row.rawPayload,
+      });
+    }
   }
-  return null;
-}
 
-function sectionHst(
-  text: string,
-  heading: string,
-  extraction?: AccountingDocumentExtraction,
-): number | null {
-  const layoutAmount = sectionHstFromLayout(heading, extraction);
-  if (layoutAmount != null) return layoutAmount;
-  const regex = new RegExp(
-    `${escapeRegex(heading)}\\s+Date Invoice Description Tax Total[\\s\\S]*?Total HST:([^\\s]+)`,
-    'i',
-  );
-  const raw = regex.exec(text)?.[1];
-  return raw ? parseMoneyCents(raw) : null;
+  if (serviceRows.length === 0 && expectedServiceChargesCents !== 0) {
+    lines.push({
+      rawCode: CLOVER_STATEMENT_RAW_CODES.UNCLASSIFIED_SERVICE_CHARGES,
+      rawName: 'Service Charges detail extraction unresolved',
+      component: AccountingFinancialComponent.OTHER,
+      postingTreatment: AccountingFinancialPostingTreatment.UNCLASSIFIED,
+      taxRole: AccountingFinancialTaxRole.NONE,
+      amountCents: expectedServiceChargesCents,
+    });
+    return;
+  }
+
+  pushAggregate({
+    rawCode: CLOVER_STATEMENT_RAW_CODES.SERVICE_CHARGES,
+    rawName: 'Service Charges',
+    component: AccountingFinancialComponent.PROCESSING_FEE,
+    amountCents: sumRows(serviceRows, (row) => row.totalCents - row.taxCents),
+    sourceRows: serviceRows,
+  });
+  pushAggregate({
+    rawCode: CLOVER_STATEMENT_RAW_CODES.SERVICE_CHARGES_HST,
+    rawName: 'Service Charges HST',
+    component: AccountingFinancialComponent.PROCESSING_FEE_TAX,
+    taxRole: AccountingFinancialTaxRole.INPUT_TAX,
+    amountCents: sumRows(serviceRows, (row) => row.taxCents),
+    sourceRows: serviceRows,
+  });
 }
 
 type NamedAmountResolution = {
@@ -1326,10 +1436,10 @@ function capturePeriod(
   return start && end ? { start, end } : null;
 }
 
-function parseSlashDate(value: string): string | null {
-  const match = /^(\d{2})\/(\d{2})\/(\d{2})$/.exec(value);
+function parseSlashDateFourDigit(value: string): string | null {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value);
   if (!match) return null;
-  return normalizeIsoDate(`20${match[3]}-${match[1]}-${match[2]}`);
+  return normalizeIsoDate(`${match[3]}-${match[1]}-${match[2]}`);
 }
 
 function parseEnglishDate(value: string): string | null {

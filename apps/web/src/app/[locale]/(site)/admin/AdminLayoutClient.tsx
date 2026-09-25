@@ -25,7 +25,9 @@ export default function AdminLayoutClient({
     } catch (error) {
       if (!(error instanceof ApiError)) throw error;
     } finally {
-      window.location.href = `/${locale}/admin/login`;
+      window.location.href = `/${locale}/staff/login?next=${encodeURIComponent(
+        `/${locale}/admin`,
+      )}`;
     }
   }
 

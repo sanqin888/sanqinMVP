@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { resolveLocalePreference } from "./lib/i18n/detect-locale";
+
 const SESSION_COOKIE_NAME = "session_id";
 const POS_DEVICE_ID_COOKIE = "posDeviceId";
 const POS_DEVICE_KEY_COOKIE = "posDeviceKey";
@@ -21,14 +22,17 @@ function isSeoCrawler(userAgent: string | null): boolean {
 }
 
 function ensureCookie(res: NextResponse, locale: Locale) {
-  // 记一个 1 年有效的 locale Cookie，Root Layout 用它来设置 <html lang>
   res.cookies.set("locale", locale, {
     path: "/",
     maxAge: 60 * 60 * 24 * 365,
   });
 }
 
-function ensureLocaleCookieIfNeeded(req: NextRequest, res: NextResponse, locale: Locale) {
+function ensureLocaleCookieIfNeeded(
+  req: NextRequest,
+  res: NextResponse,
+  locale: Locale,
+) {
   const currentLocale = req.cookies.get("locale")?.value;
   if (currentLocale === locale) {
     return;
@@ -36,9 +40,26 @@ function ensureLocaleCookieIfNeeded(req: NextRequest, res: NextResponse, locale:
   ensureCookie(res, locale);
 }
 
+function redirectToStaffLogin(
+  req: NextRequest,
+  locale: Locale,
+  options?: { needDevice?: boolean },
+) {
+  const url = req.nextUrl.clone();
+  const next = `${req.nextUrl.pathname}${req.nextUrl.search}`;
+  url.pathname = `/${locale}/staff/login`;
+  url.search = "";
+  url.searchParams.set("next", next);
+  if (options?.needDevice) {
+    url.searchParams.set("needDevice", "1");
+  }
+  const res = NextResponse.redirect(url);
+  ensureLocaleCookieIfNeeded(req, res, locale);
+  return res;
+}
+
 export async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
-  // 跳过静态资源、API 与不应本地化的协议入口
   if (
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api") ||
@@ -50,41 +71,47 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // 已有前缀：同步 Cookie 并放行
   if (startsWithLocale(pathname)) {
     const locale = (pathname.split("/")[1] as Locale) || "en";
-    // ===== POS protect =====
+
+    if (pathname.startsWith(`/${locale}/staff/login`)) {
+      const res = NextResponse.next();
+      ensureLocaleCookieIfNeeded(req, res, locale);
+      return res;
+    }
+
     if (pathname.startsWith(`/${locale}/store/pos`)) {
-      // 放行登录页
       if (pathname.startsWith(`/${locale}/store/pos/login`)) {
         const res = NextResponse.next();
         ensureLocaleCookieIfNeeded(req, res, locale);
         return res;
       }
 
-      // 需要 session
       const sessionId = req.cookies.get(SESSION_COOKIE_NAME)?.value;
       if (!sessionId) {
-        const url = req.nextUrl.clone();
-        url.pathname = `/${locale}/store/pos/login`;
-        url.search = "";
-        const res = NextResponse.redirect(url);
+        return redirectToStaffLogin(req, locale);
+      }
+
+      const did = req.cookies.get(POS_DEVICE_ID_COOKIE)?.value;
+      const dkey = req.cookies.get(POS_DEVICE_KEY_COOKIE)?.value;
+      if (!did || !dkey) {
+        return redirectToStaffLogin(req, locale, { needDevice: true });
+      }
+    }
+
+    if (pathname.startsWith(`/${locale}/accounting`)) {
+      if (pathname.startsWith(`/${locale}/accounting/login`)) {
+        const res = NextResponse.next();
         ensureLocaleCookieIfNeeded(req, res, locale);
         return res;
       }
 
-      // （可选更严格）也要求设备 cookie 已存在，否则直接去 login 让它先绑定设备
-      const did = req.cookies.get(POS_DEVICE_ID_COOKIE)?.value;
-      const dkey = req.cookies.get(POS_DEVICE_KEY_COOKIE)?.value;
-      if (!did || !dkey) {
-        const url = req.nextUrl.clone();
-        url.pathname = `/${locale}/store/pos/login`;
-        url.search = "needDevice=1";
-        const res = NextResponse.redirect(url);
-        ensureLocaleCookieIfNeeded(req, res, locale);
-        return res;
+      const sessionId = req.cookies.get(SESSION_COOKIE_NAME)?.value;
+      if (!sessionId) {
+        return redirectToStaffLogin(req, locale);
       }
     }
+
     if (pathname.startsWith(`/${locale}/admin`)) {
       if (
         pathname.startsWith(`/${locale}/admin/login`) ||
@@ -94,14 +121,10 @@ export async function middleware(req: NextRequest) {
         ensureLocaleCookieIfNeeded(req, res, locale);
         return res;
       }
+
       const sessionId = req.cookies.get(SESSION_COOKIE_NAME)?.value;
       if (!sessionId) {
-        const url = req.nextUrl.clone();
-        url.pathname = `/${locale}/admin/login`;
-        url.search = "";
-        const res = NextResponse.redirect(url);
-        ensureLocaleCookieIfNeeded(req, res, locale);
-        return res;
+        return redirectToStaffLogin(req, locale);
       }
     }
 
@@ -110,8 +133,6 @@ export async function middleware(req: NextRequest) {
     return res;
   }
 
-  // 无前缀：用户显式选择 > 会员偏好 > 浏览器语言。
-  // preferred_locale 记录当前设备上的手动选择；member_locale 由已认证会员会话同步。
   const hasSession = Boolean(req.cookies.get(SESSION_COOKIE_NAME)?.value);
   const memberLocale = hasSession
     ? (req.cookies.get("member_locale")?.value as Locale) || null
@@ -129,17 +150,15 @@ export async function middleware(req: NextRequest) {
 
   const url = req.nextUrl.clone();
   url.pathname = `/${locale}${pathname}`;
-  // 保留查询参数
   url.search = search;
 
   const res = NextResponse.redirect(url, { status: 308 });
-  ensureLocaleCookieIfNeeded(req, res, locale);
+  ensureCookie(res, locale);
   return res;
 }
 
 export const config = {
   matcher: [
-    // 捕获所有页面请求（静态资源等在上面已手动排除）
     "/((?!_next|.*\\..*).*)",
   ],
 };

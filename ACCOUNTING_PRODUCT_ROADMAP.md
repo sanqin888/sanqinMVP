@@ -80,6 +80,18 @@ card/network fees, maps the base to the existing `expense_software` category, ad
 detail reconciliation, and preserves category on settlement Journal lines. That source-only slice
 did not rewrite already materialized historical documents.
 
+2026-09-25 follow-up: Clover modern statement parser v8 is **MERGED / CI GREEN via PR #2535** on
+`accounting/clover-modern-statement-v8`. Real July/August statements establish a new stable
+layout (`YOUR CARD PROCESSING STATEMENT`, four-digit `PERIOD`, Account Summary, Fee Summary,
+cross-page Fees table). v8 intentionally stops accepting the pre-July PDF layout while preserving
+historical v7 materialized raw codes in settlement/reporting. It reads the modern layout from
+Poppler geometry, accepts the observed equipment aliases `MONTHLY EQUIPMENT BILL` and
+`Clover Flex 3` into semantic equipment-fee raw codes, recognizes `VI ...` network rows, and
+requires layered Account Summary / Fee Summary / Fees detail / Service Charges detail /
+Card Processing fee reconciliation before READY. `Amounts Funded` remains bank-reconciliation
+evidence and is not normalized as statement payout authority. No schema/migration, dependency,
+payment-provider runtime or graph-direction change is introduced.
+
 The existing-materialized remediation is **MERGED / CI GREEN** through PR #2517
 (`a7a872bc`) with the user-generated additive migration committed to `dev` as `5e14e8db`.
 It keeps the original `AccountingProviderFinancialDocument` and machine lines immutable, reruns
