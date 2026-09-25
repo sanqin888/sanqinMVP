@@ -11,6 +11,7 @@ import type {
   ProviderSettlementShadowPreview,
 } from '../contracts/settlements';
 import { ProviderFinancialReviewPanel } from '../provider-financial-review-panel';
+import { CloverFeeReclassificationPanel } from './clover-fee-reclassification-panel';
 import { ProviderPendingReconciliationPanel } from './provider-pending-reconciliation-panel';
 import { ProviderPayoutPanel } from './provider-payout-panel';
 import { SettlementReplayGate } from './settlement-replay-gate';
@@ -138,6 +139,7 @@ function evidenceFor(item: AccountingInboxItem) {
     : null;
 }
 
+
 function ReadOnlyFinancialDocumentCard({
   item,
   document,
@@ -231,6 +233,15 @@ function ReadOnlyFinancialDocumentCard({
       </div>
 
       <StatementLines document={document} isZh={isZh} />
+
+      {postingState &&
+      document.provider === 'CLOVER' &&
+      document.documentType === 'STATEMENT' ? (
+        <CloverFeeReclassificationPanel
+          documentStableId={document.documentStableId}
+          isZh={isZh}
+        />
+      ) : null}
 
       <ProviderFinancialReviewPanel
         document={document}

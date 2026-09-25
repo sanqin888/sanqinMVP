@@ -48,6 +48,7 @@ import { AccountingCanonicalChangePreviewService } from './accounting-canonical-
 import { AccountingCanonicalChangeExecutionService } from './accounting-canonical-change-execution.service';
 import { AccountingProviderSettlementPreviewService } from './accounting-provider-settlement-preview.service';
 import { AccountingProviderSettlementExecutionService } from './accounting-provider-settlement-execution.service';
+import { AccountingCloverFeeReclassificationService } from './accounting-clover-fee-reclassification.service';
 import { AccountingProviderFinancialCoverageService } from './accounting-provider-financial-coverage.service';
 import { AccountingProviderPayoutService } from './accounting-provider-payout.service';
 import { AccountingProviderPayoutBankMatchService } from './accounting-provider-payout-bank-match.service';
@@ -113,6 +114,7 @@ import { PaymentFinancialFactsModule } from '../payments/public-api';
     AccountingCanonicalChangeExecutionService,
     AccountingProviderSettlementPreviewService,
     AccountingProviderSettlementExecutionService,
+    AccountingCloverFeeReclassificationService,
     AccountingProviderFinancialCoverageService,
     AccountingProviderPayoutService,
     AccountingProviderPayoutBankMatchService,

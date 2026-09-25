@@ -1094,8 +1094,8 @@ describe('AccountingProviderSettlementPreviewService', () => {
         .fn()
         .mockResolvedValue([
           accountFact(
-            PROVIDER_SETTLEMENT_ACCOUNT_IDS.cloverPending,
-            AccountingAccountClass.ASSET,
+            PROVIDER_SETTLEMENT_ACCOUNT_IDS.cloverFeePayable,
+            AccountingAccountClass.LIABILITY,
           ),
           accountFact(
             PROVIDER_SETTLEMENT_ACCOUNT_IDS.paymentProcessingFeeExpense,
@@ -1157,6 +1157,12 @@ describe('AccountingProviderSettlementPreviewService', () => {
           categoryStableId:
             PROVIDER_SETTLEMENT_CATEGORY_IDS.cloverMonthlyEquipment,
           debitCents: 3000,
+        }),
+        expect.objectContaining({
+          accountStableId:
+            PROVIDER_SETTLEMENT_ACCOUNT_IDS.cloverFeePayable,
+          categoryStableId: null,
+          creditCents: 9839,
         }),
       ]),
     );

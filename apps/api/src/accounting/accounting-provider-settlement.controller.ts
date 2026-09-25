@@ -5,11 +5,17 @@ import {
   Get,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { Roles, RolesGuard, SessionAuthGuard } from '../auth/public-api';
-import { parseAccountingFinancialProvider } from './accounting-controller-support';
+import {
+  type AuthedAccountingRequest,
+  parseAccountingFinancialProvider,
+  requireAccountingOperatorUserId,
+} from './accounting-controller-support';
 import { AccountingProviderSettlementExecutionService } from './accounting-provider-settlement-execution.service';
+import { AccountingCloverFeeReclassificationService } from './accounting-clover-fee-reclassification.service';
 import { AccountingProviderSettlementPreviewService } from './accounting-provider-settlement-preview.service';
 import { AccountingProviderSettlementQueryService } from './accounting-provider-settlement-query.service';
 
@@ -21,6 +27,7 @@ export class AccountingProviderSettlementController {
     private readonly providerSettlementPreview: AccountingProviderSettlementPreviewService,
     private readonly providerSettlementExecution: AccountingProviderSettlementExecutionService,
     private readonly providerSettlementQuery: AccountingProviderSettlementQueryService,
+    private readonly cloverFeeReclassification: AccountingCloverFeeReclassificationService,
   ) {}
 
   @Get('journal/provider-settlement/shadow-preview')
@@ -61,6 +68,29 @@ export class AccountingProviderSettlementController {
     return this.providerSettlementQuery.readProviderDocumentPostingStates(
       stableIds,
     );
+  }
+
+  @Get('journal/provider-settlement/clover-fee-reclassification-preview')
+  previewCloverFeeReclassification(
+    @Query('documentStableId') documentStableId?: string,
+  ) {
+    return this.cloverFeeReclassification.preview(documentStableId ?? '');
+  }
+
+  @Post('journal/provider-settlement/clover-fee-reclassification')
+  executeCloverFeeReclassification(
+    @Body()
+    body: {
+      documentStableId?: string;
+      expectedPlanHash?: string;
+    },
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.cloverFeeReclassification.execute({
+      documentStableId: body.documentStableId ?? '',
+      expectedPlanHash: body.expectedPlanHash ?? '',
+      operatorActorRef: requireAccountingOperatorUserId(req),
+    });
   }
 
   @Post('journal/provider-settlement/replay')

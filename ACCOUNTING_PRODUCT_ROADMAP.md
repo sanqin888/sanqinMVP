@@ -80,22 +80,24 @@ card/network fees, maps the base to the existing `expense_software` category, ad
 detail reconciliation, and preserves category on settlement Journal lines. That source-only slice
 did not rewrite already materialized historical documents.
 
-The existing-materialized remediation is now **LOCAL SOURCE READY FOR REVIEW** on
-`accounting/provider-parser-reevaluation-review`. It keeps the original
-`AccountingProviderFinancialDocument` and machine lines immutable, reruns the current provider
-parser from persisted extraction evidence into a new immutable `AccountingParseRun`, stores the
-candidate full effective line set on a DRAFT Human Review Revision, keeps effective parser metadata
-on the immutable current-parser ParseRun, and switches settlement to that snapshot only after explicit
-confirmation. This slice adds an additive Prisma reviewed-line model
-and nullable review-to-ParseRun provenance fields. **MIGRATION REQUIRED.** Per `AGENTS.md`, no
-migration file is generated or edited by MCP. Suggested migration name:
-`accounting_provider_parser_reevaluation_review_snapshot`. After this schema/source change is
-reviewed and merged to `dev`, generate it against the verified disposable/local development
-database with `pnpm --filter api exec prisma migrate dev --create-only --name accounting_provider_parser_reevaluation_review_snapshot`.
-Expected SQL is additive only (nullable parser/current-ParseRun/source-ParseRun review provenance
-and new reviewed-line table/FKs/indexes);
-promotion to `main` / production remains blocked until the generated migration is reviewed,
-committed and merged back into `dev`.
+The existing-materialized remediation is **MERGED / CI GREEN** through PR #2517
+(`a7a872bc`) with the user-generated additive migration committed to `dev` as `5e14e8db`.
+It keeps the original `AccountingProviderFinancialDocument` and machine lines immutable, reruns
+the current provider parser from persisted extraction evidence into a new immutable
+`AccountingParseRun`, stores the candidate full effective line set on a DRAFT Human Review
+Revision, and switches settlement to that snapshot only after explicit confirmation.
+
+2026-09-24 Clover cash-flow correction is **LOCAL SOURCE READY FOR REVIEW** on
+`accounting/clover-fee-clearing`. Real May/June evidence proves Clover pays card sales gross and
+withdraws statement fees separately, including May `51.52 + 1.07 = 52.59` debited on June 1 and
+June `59.31` Discount Fees debited on July 2. Future Clover statement fee components therefore
+balance to a dedicated liability `account_clover_fee_payable` instead of
+`account_clover_pending`. The already-posted June `98.39` statement is repaired by a separate,
+plan-hash-gated, idempotent reclassification Journal `Dr Clover Pending / Cr Clover Fee Payable`;
+the original statement Journal and correctly classified expenses/HST remain immutable. This slice
+adds no Prisma/schema/migration/package change. Separate bank-withdrawal clearing
+(`Dr Clover Fee Payable / Cr Bank`) remains a follow-up because the current provider-payout bank
+workflow intentionally persists deposit rows only.
 
 Baseline audited state before Slice 0:
 

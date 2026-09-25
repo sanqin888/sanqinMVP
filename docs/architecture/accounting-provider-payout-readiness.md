@@ -329,7 +329,7 @@ PAYOUT-D is intentionally a read-only Accounting report. It does not attempt a o
 
 Production Journal composition proves why the roll-forward must use canonical Journal source/fact metadata:
 
-- Clover Pending is currently driven by canonical Order sales/reversals;
+- Clover sales Pending is driven by canonical Order sales/reversals and gross bank receipts; Clover statement fees are a separate liability settlement lane and must not reduce sales Pending;
 - historical Uber Pending includes canonical Order sales that were later neutralized by `accounting.uber_pre_cutover_order_reversal.v1`, after which provider statements became authoritative;
 - Fantuan Pending is currently provider-statement-driven;
 - actual bank receipts reduce Pending through `accounting.provider_payout.v1`.
@@ -357,7 +357,7 @@ That invariant demonstrates that the canonical Journal movement is internally ex
 ### Movement buckets
 
 - **Canonical Order:** Journal `source = ORDER`, excluding more specific authority buckets.
-- **Provider Statement:** `accounting.provider_financial_document.v1` / `PLATFORM_STATEMENT`.
+- **Provider Statement:** `accounting.provider_financial_document.v1` / `PLATFORM_STATEMENT`. For Clover, only actual Pending movement belongs in this bucket; statement-accrued processing/software/HST costs balance to `account_clover_fee_payable` and therefore stay outside sales Pending.
 - **Authority adjustment:** currently `accounting.uber_pre_cutover_order_reversal.v1`.
 - **Actual payout:** `accounting.provider_payout.v1`.
 - **Other:** any remaining Pending Journal movement; this remains visible and raises a warning.
@@ -385,7 +385,7 @@ PAYOUT-D surfaces rather than hides:
 - `OTHER_LEDGER_MOVEMENT_PRESENT`;
 - `PAYOUT_DIRECTION_UNEXPECTED`.
 
-A negative Pending balance is not automatically rejected because a real payout can precede delayed provider-statement posting.
+A negative Pending balance is not automatically rejected because a real payout can precede delayed provider-statement posting. However, Clover fee accruals are not a valid explanation for a negative sales Pending balance: real May/June evidence shows gross sales receipts and separate First Data fee debits, so fee liabilities must remain outside the Clover sales Pending roll-forward.
 
 Store-scoped reconciliation also fails closed if any active Provider Pending Journal movement in the requested range has no `storeStableId`. Silently omitting an unscoped line would produce a falsely precise per-store closing balance. Production readiness audit on 2026-09-23 found zero active unscoped Clover/Uber/Fantuan Pending Journal lines.
 
