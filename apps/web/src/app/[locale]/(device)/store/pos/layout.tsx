@@ -1,4 +1,5 @@
 // apps/web/src/app/[locale]/(device)/store/pos/layout.tsx
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import type { ReactNode } from "react";
@@ -11,6 +12,26 @@ import {
 import { serverApiFetch } from "@/server/api";
 import { PosDeviceFrame } from "@/components/store/PosDeviceFrame";
 import { PosSessionKeepAlive } from "./PosSessionKeepAlive";
+
+export const metadata: Metadata = {
+  title: "SanQ POS",
+  description: "SanQ point-of-sale workstation.",
+  manifest: "/pos.webmanifest",
+  icons: {
+    apple: [
+      {
+        url: "/images/icon-512-v2.png",
+        sizes: "512x512",
+        type: "image/png",
+      },
+    ],
+  },
+  appleWebApp: {
+    title: "SanQ POS",
+    statusBarStyle: "default",
+    capable: true,
+  },
+};
 
 const SESSION_COOKIE_NAME = "session_id";
 

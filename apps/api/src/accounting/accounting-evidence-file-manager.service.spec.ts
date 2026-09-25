@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
+import { AccountingArtifactBinaryRetentionState } from '@prisma/client';
 import {
   AccountingEvidenceFileManagerService,
   normalizeAccountingEvidenceArtifactStableIds,
@@ -6,7 +7,7 @@ import {
 } from './accounting-evidence-file-manager.service';
 
 describe('AccountingEvidenceFileManagerService', () => {
-  it('lists retained evidence with logical folder placement only', async () => {
+  it('lists retained evidence with logical placement and active-binary display projection', async () => {
     const prisma = {
       accountingEvidenceFolder: {
         findMany: jest.fn().mockResolvedValue([
@@ -28,6 +29,8 @@ describe('AccountingEvidenceFileManagerService', () => {
             originalFilename: 'uber.pdf',
             byteSize: 1000,
             createdAt: new Date('2026-09-21T11:00:00.000Z'),
+            binaryRetention: null,
+            inboxItem: { materializedEntityStableId: null },
             evidenceFolderAssignment: {
               movedAt: new Date('2026-09-21T12:05:00.000Z'),
               folder: {
@@ -41,9 +44,27 @@ describe('AccountingEvidenceFileManagerService', () => {
             acquisitionMode: 'MANUAL_UPLOAD',
             kind: 'IMAGE',
             originalFilename: 'receipt.jpg',
-            byteSize: 500,
+            byteSize: 3_822_143,
             createdAt: new Date('2026-09-21T10:00:00.000Z'),
+            binaryRetention: {
+              state: AccountingArtifactBinaryRetentionState.COMPRESSED_ONLY,
+              retainedStoredUrl:
+                '/api/v1/accounting/files/image-retention/acctart_legacy-random.webp',
+              retainedByteSize: 411_770,
+              acceptedAt: new Date('2026-09-21T10:08:09.123Z'),
+            },
+            inboxItem: { materializedEntityStableId: 'expense_1' },
             evidenceFolderAssignment: null,
+          },
+        ]),
+      },
+      accountingExpenseDocument: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            documentStableId: 'expense_1',
+            extractionJson: {
+              textractEvidence: { vendorName: 'Food Depot\nSupermarket' },
+            },
           },
         ]),
       },
@@ -65,6 +86,10 @@ describe('AccountingEvidenceFileManagerService', () => {
       files: [
         expect.objectContaining({
           artifactStableId: 'acctart_1',
+          originalFilename: 'uber.pdf',
+          byteSize: 1000,
+          displayFilename: 'uber.pdf',
+          displayByteSize: 1000,
           folder: {
             folderStableId: 'folder_1',
             name: 'Uber Eats',
@@ -73,6 +98,10 @@ describe('AccountingEvidenceFileManagerService', () => {
         }),
         expect.objectContaining({
           artifactStableId: 'acctart_2',
+          originalFilename: 'receipt.jpg',
+          byteSize: 3_822_143,
+          displayFilename: 'Food-Depot-Supermarket_20260921T100809123Z.webp',
+          displayByteSize: 411_770,
           folder: null,
         }),
       ],
@@ -93,6 +122,13 @@ describe('AccountingEvidenceFileManagerService', () => {
         },
       }),
     );
+    expect(prisma.accountingExpenseDocument.findMany).toHaveBeenCalledWith({
+      where: { documentStableId: { in: ['expense_1'] } },
+      select: {
+        documentStableId: true,
+        extractionJson: true,
+      },
+    });
   });
 
   it('normalizes folder names and rejects path-like names', () => {

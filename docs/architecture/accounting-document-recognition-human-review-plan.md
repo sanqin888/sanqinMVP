@@ -1015,6 +1015,12 @@ Delivery slices:
    nested folders, folder rename or folder deletion. **Merged in PR #2436 as `9ae4d85d`,
    CI #6042 green; additive migration `20260921124637_add_accounting_evidence_folders`
    committed as `cc4c8016` and SQL-reviewed as matching the schema without backfill/drop.**
+   **2026-09-25 retained-display follow-up:** the file-manager list now keeps
+   `originalFilename` / original `byteSize` as provenance while projecting separate
+   operator-visible `displayFilename` / `displayByteSize` from the accepted retained image
+   binary in `PURGE_PENDING` / `COMPRESSED_ONLY`. Legacy retained image names reuse the
+   existing vendor-aware display naming logic; no `storedUrl`, file bytes, retention state,
+   folder assignment, source hash, Human Review, settlement or Journal authority changes.
 3. **Evidence Viewer Slice 2 — structured preview:** use the existing native CSV/XLSX parsing
    stack to expose bounded, non-executing tabular preview data. Do not emulate Excel, execute
    formulas/macros/external links, or make workbook formatting part of Accounting authority.

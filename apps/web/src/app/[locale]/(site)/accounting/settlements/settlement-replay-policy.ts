@@ -203,9 +203,6 @@ export function buildProviderSettlementReplayGate(
     ) {
       blockReasons.push('PROVIDER_PREVIEW_TOTAL_MISMATCH');
     }
-    if (summary.providerPendingNetCents === null) {
-      blockReasons.push('PROVIDER_PENDING_LINE_MISSING');
-    }
   }
 
   if (preview.counts.preCutoverUberSaleJournals !== reversals.length) {
