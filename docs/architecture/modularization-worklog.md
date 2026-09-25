@@ -3284,7 +3284,7 @@ is claimed per repository workflow.
 
 ### 2026-09-25 — Accounting Clover replay UI pending-line gate follow-up
 
-**State:** **PR #2541 / CI PENDING / NO PRISMA / NO MIGRATION / NO DEPENDENCY / NO GRAPH CHANGE** on `fix/accounting-clover-replay-pending-gate-v2` from current `origin/dev`.  
+**State:** **MERGED / CI GREEN via PR #2541 / NO PRISMA / NO MIGRATION / NO DEPENDENCY / NO GRAPH CHANGE** on `fix/accounting-clover-replay-pending-gate-v2` from current `origin/dev`.  
 **Production evidence:** July Clover v8 recognition/materialization is confirmed in production with a fee-only READY settlement shape that posts processing fee, equipment expense and HST against `account_clover_fee_payable`. The Web replay gate nevertheless returned `PROVIDER_PENDING_LINE_MISSING` because it inherited a provider-pending-line invariant from the earlier replacement-group UI.  
 **Source change:** keep `providerPendingNetCents` nullable as summary-only data and remove its absence as an unconditional replay blocker. Server preview/execution remains authoritative for READY status, review linkage, coverage, required accounts, balanced draft, plan hash and replay idempotency; no backend settlement policy is relaxed.  
 **Coverage:** add a July-shaped Clover fee-only READY preview with no `account_clover_pending` line and an `account_clover_fee_payable` credit; it must open the replay gate with nullable pending-net summary. Existing Uber June replacement-group coverage remains unchanged. Per `AGENTS.md`, no local lint/build/test is run; GitHub Actions is the remote validation gate under the user's already-given delivery authorization.  
