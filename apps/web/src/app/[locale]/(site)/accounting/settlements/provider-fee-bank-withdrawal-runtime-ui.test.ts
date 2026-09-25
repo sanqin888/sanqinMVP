@@ -37,6 +37,15 @@ describe('Clover fee bank withdrawal clearing runtime UI', () => {
     expect(panelSource).toContain('确认银行扣款并清算');
   });
 
+  it('shows the current canonical Clover fee payable and refreshes it through Trial Balance', () => {
+    expect(panelSource).toContain('当前 Clover 费用应付');
+    expect(panelSource).toContain(
+      '/accounting/report/trial-balance?currency=CAD',
+    );
+    expect(panelSource).toContain('account_clover_fee_payable');
+    expect(panelSource).toContain('closingCreditBalanceCents');
+  });
+
   it('states the liability-to-bank accounting semantics without duplicate expense recognition', () => {
     expect(panelSource).toContain(
       'Dr Clover 费用应付 / Cr 银行，不会再次生成费用',

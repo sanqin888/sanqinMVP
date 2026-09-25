@@ -597,6 +597,8 @@ It uses source fact `accounting.provider_fee_bank_withdrawal.v1`, is idempotent 
 
 This is intentionally separate from statement accrual. Clover statements recognize processing/software/HST economics into `account_clover_fee_payable`; actual CIBC withdrawals clear that liability when cash leaves the bank. For the verified June statement, the 33.90, 1.85 and 3.33 June withdrawals plus the 59.31 July 2 withdrawal together clear the 98.39 payable. The operator remains responsible for selecting only bank withdrawals whose fee accrual is already present; row identity and payable-balance guards prevent duplicate/over-clearing but do not invent a statement-to-bank-row match.
 
+The fee-withdrawal panel now shows the current `account_clover_fee_payable` credit balance from the existing canonical Trial Balance projection and refreshes it after clearing. This is display-only reuse of canonical Journal authority; it does not introduce a parallel balance calculator or a new persistence/read authority.
+
 ### PAYOUT-E-A exclusions
 
 Still deferred:
@@ -641,6 +643,8 @@ E-B1 introduces no payout/Journal posting authority. Existing posting handoff is
 E-B2 binds a `READY_FOR_POSTING` bank-row decision to exactly one canonical `AccountingProviderPayout` in the same Accounting Serializable transaction, derives the idempotent payout identity as `payout_<decisionStableId>`, and transitions the durable decision to `MATCH_EXISTING_PAYOUT`. The HTTP command accepts only `decisionStableId`; provider/date/amount/store/bank authority is re-derived from the persisted Accounting-owned decision rather than trusted from browser form values.
 
 The existing manual `POST /accounting/provider-payouts` path remains unchanged for manually evidenced payouts. The bank-row workflow uses `POST /accounting/provider-payouts/from-bank-row-decision`; replay of an already matched decision returns its anchored payout without creating another payout or Journal. Before a READY decision enters the writer, the E-B1 owner reparses/reprojects its current scope and requires the scope to remain confirmed and the row to remain `READY_FOR_POSTING`. If an exact canonical payout appears after that preflight but before the Accounting transaction completes, E-B2 fails closed and requires explicit scope reconfirmation rather than silently binding or creating a duplicate. Non-READY/non-MATCHED decisions fail closed. Payout creation, canonical Journal anchoring, row-decision transition and both audit writes share the same Accounting transaction.
+
+The reviewed-bank Settlements UI now invokes that existing command directly on each confirmed `READY_FOR_POSTING` row through **Confirm posting / 确认入账**. It no longer copies bank-row facts into the manual Provider bank receipts form. The manual form remains available for separately evidenced payouts that do not originate from a durable bank-row decision; bank-row posting authority remains server-owned and accepts only `decisionStableId`.
 
 **2026-09-23 production state:** **PRODUCTION VERIFIED / NO MIGRATION / NO DEPENDENCY CHANGE / NO GRAPH CHANGE** through PR #2498 / squash `11c80d66`; merged-head CI #6252 passed API/Web architecture, lint, build, strict and test gates, and production `main@11c80d66` is running the route with healthy API/Web containers and no post-deploy API/Web error scan findings.
 
