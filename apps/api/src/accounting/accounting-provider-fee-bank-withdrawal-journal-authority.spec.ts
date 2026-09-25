@@ -143,10 +143,7 @@ describe('Provider fee bank withdrawal Journal authority', () => {
       ],
     });
     expect(() =>
-      assertProviderFeeBankWithdrawalJournalAuthority(
-        tampered,
-        plan.authority,
-      ),
+      assertProviderFeeBankWithdrawalJournalAuthority(tampered, plan.authority),
     ).toThrow(AccountingJournalPolicyError);
     expect(
       hashProviderFeeBankWithdrawalJournalWrite(normalized, plan.authority),

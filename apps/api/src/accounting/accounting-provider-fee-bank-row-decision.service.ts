@@ -322,10 +322,11 @@ export class AccountingProviderFeeBankRowDecisionService {
 
     const businessTimezone = await this.period.getBusinessTimezone();
     return runSerializableAccountingWrite(this.prisma, async (tx) => {
-      const decision =
-        await tx.accountingProviderFeeBankRowDecision.findUnique({
+      const decision = await tx.accountingProviderFeeBankRowDecision.findUnique(
+        {
           where: { decisionStableId },
-        });
+        },
+      );
       if (!decision) {
         throw new ConflictException(
           'Clover fee bank row decision disappeared before clearing',
@@ -613,7 +614,8 @@ export class AccountingProviderFeeBankRowDecisionService {
       !journal ||
       journal.deletedAt ||
       journal.source !== AccountingJournalSource.PAYMENT ||
-      journal.sourceFactType !== PROVIDER_FEE_BANK_WITHDRAWAL_SOURCE_FACT_TYPE ||
+      journal.sourceFactType !==
+        PROVIDER_FEE_BANK_WITHDRAWAL_SOURCE_FACT_TYPE ||
       journal.sourceFactStableId !== decisionStableId
     ) {
       throw new ConflictException(

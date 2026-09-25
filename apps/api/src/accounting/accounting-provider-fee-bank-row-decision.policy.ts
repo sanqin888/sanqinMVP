@@ -64,9 +64,7 @@ export function buildProviderFeeBankRowDecisionDrafts(input: {
     included.add(rowNumber);
   }
 
-  const byRow = new Map(
-    input.withdrawals.map((row) => [row.rowNumber, row]),
-  );
+  const byRow = new Map(input.withdrawals.map((row) => [row.rowNumber, row]));
   for (const rowNumber of included) {
     const row = byRow.get(rowNumber);
     if (!row) {

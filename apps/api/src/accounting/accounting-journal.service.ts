@@ -822,7 +822,8 @@ export class AccountingJournalService {
         );
       }
       if (
-        existing.sourceFactType === PROVIDER_FEE_BANK_WITHDRAWAL_SOURCE_FACT_TYPE
+        existing.sourceFactType ===
+        PROVIDER_FEE_BANK_WITHDRAWAL_SOURCE_FACT_TYPE
       ) {
         throw new ConflictException(
           'provider fee bank withdrawal Journals cannot be updated in place',
@@ -959,7 +960,8 @@ export class AccountingJournalService {
         );
       }
       if (
-        existing.sourceFactType === PROVIDER_FEE_BANK_WITHDRAWAL_SOURCE_FACT_TYPE
+        existing.sourceFactType ===
+        PROVIDER_FEE_BANK_WITHDRAWAL_SOURCE_FACT_TYPE
       ) {
         throw new ConflictException(
           'provider fee bank withdrawal Journals cannot be deleted in place',

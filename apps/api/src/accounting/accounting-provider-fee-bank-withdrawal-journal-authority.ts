@@ -253,9 +253,8 @@ export const hashProviderFeeBankWithdrawalJournalWrite = (
       JSON.stringify({
         version: 1,
         journalHash: hashJournalCreatePayload(journal),
-        writeAuthority: normalizeProviderFeeBankWithdrawalWriteAuthority(
-          authority,
-        ),
+        writeAuthority:
+          normalizeProviderFeeBankWithdrawalWriteAuthority(authority),
       }),
     )
     .digest('hex');
