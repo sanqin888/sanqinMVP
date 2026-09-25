@@ -220,25 +220,25 @@ describe('AccountingProviderFinancialReviewService', () => {
 
   it('creates a parser re-evaluation draft as a full immutable effective snapshot', async () => {
     const db = makeDb();
-    const documentStableId = 'acctfindoc_clover_june';
+    const documentStableId = 'acctfindoc_uber_august';
     const document = {
-      id: 'document-clover-db-id',
-      artifactId: 'artifact-clover-db-id',
+      id: 'document-uber-db-id',
+      artifactId: 'artifact-uber-db-id',
       documentStableId,
-      provider: AccountingFinancialProvider.CLOVER,
+      provider: AccountingFinancialProvider.UBER_EATS,
       documentType: AccountingFinancialDocumentType.STATEMENT,
-      businessIdentityKey: 'clover:statement:29351880018:2026-06-01:2026-06-30',
+      businessIdentityKey: 'uber:statement:3F0FE63E',
       revision: 1,
-      providerMerchantRef: '29351880018',
-      providerDocumentRef: '29351880018:2026-06-01:2026-06-30',
-      periodStart: new Date('2026-06-01T00:00:00.000Z'),
-      periodEnd: new Date('2026-06-30T00:00:00.000Z'),
+      providerMerchantRef: null,
+      providerDocumentRef: '3F0FE63E',
+      periodStart: new Date('2026-08-01T00:00:00.000Z'),
+      periodEnd: new Date('2026-08-31T00:00:00.000Z'),
       currency: 'CAD',
       parserName: 'accounting-provider-financial',
-      parserVersion: '6',
+      parserVersion: '7',
       artifact: {
-        artifactStableId: 'acctart_clover_june',
-        originalFilename: 'clover_062026.pdf',
+        artifactStableId: 'acctart_uber_august',
+        originalFilename: 'uber_082026.pdf',
         emailSubject: null,
       },
     };
@@ -251,7 +251,7 @@ describe('AccountingProviderFinancialReviewService', () => {
     });
     db.accountingJournalEntry.findFirst.mockResolvedValue(null);
     db.accountingSourceArtifact.findUnique.mockResolvedValue({
-      id: 'artifact-clover-db-id',
+      id: 'artifact-uber-db-id',
     });
     db.accountingProviderFinancialReviewRevision.findFirst
       .mockResolvedValueOnce(null)
@@ -259,40 +259,26 @@ describe('AccountingProviderFinancialReviewService', () => {
     db.accountingParseRun.findMany.mockResolvedValue([
       {
         id: 'parse-run-db-id',
-        parseRunStableId: 'acctparserun_clover_recognition',
+        parseRunStableId: 'acctparserun_uber_recognition',
         parserName: 'accounting-provider-recognition',
-        parserVersion: 'acct_recognition_clover_statement:v1',
+        parserVersion: 'acct_recognition_uber_monthly_statement:v1',
         resultHash: 'c'.repeat(64),
         resultJson: {
           extractedText: `
-MERCHANT CARD PROCESSING STATEMENT
-StatementPeriod 06/01/26 - 06/30/26
-Merchant Number 29351880018
-LOCATION
-SUMMARY
-Total Amount Submitted 3,362.10
-Third-Party Transactions 0.00
-Adjustments 0.00
-Interchange Charges 0.00
-Service Charges -62.64
-Fees -35.75
-Chargebacks/Reversals 0.00
-Total Amount Funded 3,263.71
-All amounts shown are in CAD funds
-SERVICE CHARGES
-Date Invoice Description Tax Total
-06/30/26 000086953 DISCOUNT FEES HST:0.00 -62.64
-Total HST:0.00 -62.64
-FEES
-Date Invoice Description Tax Total
-06/17/26 011981361 MONTHLY EQUIPMENT BILL HST:-3.90 -33.90
-06/25/26 000069239 MC LICENSE VOLUME FEE HST:0.00 -0.04
-06/25/26 000069240 MC-AUTH DIGITAL ENABLEMENT MIN HST:0.00 -0.25
-06/25/26 000069241 MC CLEARING CONNECTIVITY FEE HST:0.00 -0.50
-06/25/26 000069242 MC AUTH CONNECTIVITY FEE HST:0.00 -0.53
-06/25/26 000069243 MC ACQ CLEAR LARGE TICKET HST:0.00 -0.22
-06/25/26 000069244 MC ACQ CLEAR SMALL TICKET HST:0.00 -0.31
-Total HST:-3.90 -35.75
+Monthly Statement
+Statement Number #3F0FE63E
+Date Aug 01-31, 2026
+Consolidated Monthly Summary
+Sales (106 Orders) $3,300.67
+Tax on Sales $429.19
+Tips $0.00
+Total Earnings $3,729.86
+Marketplace Fees -$767.88
+Tax on Marketplace Fees -$99.81
+Total Uber Fees -$867.69
+Total Marketing Spends $0.00
+Total Amendments $0.00
+Net Total $2,862.17
 `,
         },
       },
@@ -300,15 +286,15 @@ Total HST:-3.90 -35.75
     db.accountingParseRun.findUnique
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce({
-        id: 'parse-run-v7-db-id',
-        parseRunStableId: 'acctparserun_clover_v7',
+        id: 'parse-run-v8-db-id',
+        parseRunStableId: 'acctparserun_uber_v8',
         resultHash: 'd'.repeat(64),
       });
     db.accountingParseRun.upsert.mockResolvedValue({
-      parseRunStableId: 'acctparserun_clover_v7',
+      parseRunStableId: 'acctparserun_uber_v8',
       status: 'SUCCESS',
       resultHash: 'd'.repeat(64),
-      completedAt: new Date('2026-09-24T15:00:00.000Z'),
+      completedAt: new Date('2026-09-25T15:00:00.000Z'),
     });
     db.accountingProviderFinancialReviewRevision.updateMany.mockResolvedValue({
       count: 0,
@@ -324,7 +310,7 @@ Total HST:-3.90 -35.75
             ...line,
           })) ?? [];
         return {
-          reviewRevisionStableId: 'acctfinreview_clover_v7',
+          reviewRevisionStableId: 'acctfinreview_uber_v8',
           revision: data.revision,
           status: data.status,
           reviewHash: data.reviewHash,
@@ -332,16 +318,16 @@ Total HST:-3.90 -35.75
           effectiveSnapshotParserName: data.effectiveSnapshotParserName,
           effectiveSnapshotParserVersion: data.effectiveSnapshotParserVersion,
           effectiveSnapshotParseRun: {
-            parseRunStableId: 'acctparserun_clover_v7',
+            parseRunStableId: 'acctparserun_uber_v8',
           },
           effectiveSnapshotSourceParseRun: {
-            parseRunStableId: 'acctparserun_clover_recognition',
+            parseRunStableId: 'acctparserun_uber_recognition',
           },
           createdByUserStableId: data.createdByUserStableId,
           confirmedByUserStableId: null,
           confirmedAt: null,
-          createdAt: new Date('2026-09-24T15:00:00.000Z'),
-          updatedAt: new Date('2026-09-24T15:00:00.000Z'),
+          createdAt: new Date('2026-09-25T15:00:00.000Z'),
+          updatedAt: new Date('2026-09-25T15:00:00.000Z'),
           effectiveLines,
           corrections: [],
         };
@@ -360,36 +346,29 @@ Total HST:-3.90 -35.75
         revision: 1,
         status: AccountingProviderFinancialReviewStatus.DRAFT,
         effectiveSnapshotParserName: 'accounting-provider-financial',
-        effectiveSnapshotParserVersion: '7',
-        effectiveSnapshotParseRunStableId: 'acctparserun_clover_v7',
+        effectiveSnapshotParserVersion: '8',
+        effectiveSnapshotParseRunStableId: 'acctparserun_uber_v8',
         effectiveSnapshotSourceParseRunStableId:
-          'acctparserun_clover_recognition',
+          'acctparserun_uber_recognition',
         corrections: [],
       }),
     );
     expect(result.effectiveLines).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          rawName: 'Fees',
-          component: AccountingFinancialComponent.CONTROL_TOTAL,
-          postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
-          amountCents: -3575,
+          rawName: 'Sales',
+          component: AccountingFinancialComponent.SALES,
+          amountCents: 330067,
         }),
         expect.objectContaining({
-          rawName: 'Monthly Equipment Bill',
-          component: AccountingFinancialComponent.PLATFORM_OTHER_FEE,
-          amountCents: -3000,
+          rawName: 'Tax on Sales',
+          component: AccountingFinancialComponent.SALES_TAX,
+          amountCents: 42919,
         }),
         expect.objectContaining({
-          rawName: 'Monthly Equipment Bill HST',
-          component: AccountingFinancialComponent.PLATFORM_OTHER_FEE_TAX,
-          taxRole: AccountingFinancialTaxRole.INPUT_TAX,
-          amountCents: -390,
-        }),
-        expect.objectContaining({
-          rawName: 'Other Card/Network Fees',
-          component: AccountingFinancialComponent.PROCESSING_FEE,
-          amountCents: -185,
+          rawName: 'Marketplace Fees',
+          component: AccountingFinancialComponent.COMMISSION,
+          amountCents: -76788,
         }),
       ]),
     );
@@ -400,14 +379,14 @@ Total HST:-3.90 -35.75
         data: expect.objectContaining({
           documentId: document.id,
           effectiveSnapshotParserName: 'accounting-provider-financial',
-          effectiveSnapshotParserVersion: '7',
-          effectiveSnapshotParseRunId: 'parse-run-v7-db-id',
+          effectiveSnapshotParserVersion: '8',
+          effectiveSnapshotParseRunId: 'parse-run-v8-db-id',
           effectiveSnapshotSourceParseRunId: 'parse-run-db-id',
           effectiveLines: expect.objectContaining({
             create: expect.arrayContaining([
               expect.objectContaining({
-                rawName: 'Monthly Equipment Bill',
-                amountCents: -3000,
+                rawName: 'Sales',
+                amountCents: 330067,
               }),
             ]) as unknown,
           }) as unknown,
@@ -417,7 +396,7 @@ Total HST:-3.90 -35.75
     expect(db.accountingAuditLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         action: 'CREATE_PARSER_REEVALUATION_REVIEW_DRAFT',
-        entityId: 'acctfinreview_clover_v7',
+        entityId: 'acctfinreview_uber_v8',
         operatorActorRef: 'user_admin_1',
       }) as unknown,
     });

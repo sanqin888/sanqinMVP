@@ -10,21 +10,19 @@ import { AccountingProviderFinancialService } from './accounting-provider-financ
 import { DEFAULT_ACCOUNTING_PROVIDER_RECOGNITION_RULES } from './accounting-provider-recognition.policy';
 
 describe('AccountingProviderFinancialService', () => {
-  const mayCloverStatement = `
-MERCHANT CARD PROCESSING STATEMENT LOCATION RECAP
-StatementPeriod 05/01/26 - 05/31/26
-MerchantNumber 29351880018
-LOCATION
-SUMMARY
-Total Amount Submitted 2,880.92
-Third-Party Transactions 0.00
-Adjustments 0.00
-Interchange Charges 0.00
-Service Charges -55.50
-Fees -35.15
-Chargebacks/Reversals 0.00
-Total Amount Funded 2,790.27
-All amounts shown are in CAD funds
+  const mayUberStatement = `
+Monthly Statement
+Statement Number #PREHISTORY-1
+Date May 01-31, 2026
+Consolidated Monthly Summary
+Sales (10 Orders) $200.00
+Tax on Sales $26.00
+Total Earnings $226.00
+Marketplace Fees -$40.00
+Total Uber Fees -$40.00
+Total Marketing Spends $0.00
+Total Amendments $0.00
+Net Total $186.00
 `;
 
   it('treats manual/email provider recognition as a review suggestion without materializing it', async () => {
@@ -298,8 +296,8 @@ Net Total
     await expect(
       service.parseAndMaterialize({
         artifactStableId: 'acctart_may',
-        text: mayCloverStatement,
-        providerHint: AccountingFinancialProvider.CLOVER,
+        text: mayUberStatement,
+        providerHint: AccountingFinancialProvider.UBER_EATS,
         documentTypeHint: AccountingFinancialDocumentType.STATEMENT,
       }),
     ).resolves.toEqual(
@@ -307,7 +305,7 @@ Net Total
         matched: true,
         materialized: false,
         excludedBeforeFinancialHistory: true,
-        provider: AccountingFinancialProvider.CLOVER,
+        provider: AccountingFinancialProvider.UBER_EATS,
         documentType: AccountingFinancialDocumentType.STATEMENT,
       }) as unknown,
     );
@@ -625,7 +623,7 @@ Net Total $1,431.94*
       expect.objectContaining({
         provider: AccountingFinancialProvider.UBER_EATS,
         providerDocumentRef: 'B4842290',
-        parserVersion: '7',
+        parserVersion: '8',
         lines: expect.arrayContaining([
           expect.objectContaining({
             rawName: 'Sales',
@@ -865,7 +863,7 @@ Total transfer amount $3813.11
         periodStart: '2026-08-01',
         periodEnd: '2026-08-31',
         parserName: 'accounting-provider-financial',
-        parserVersion: '7',
+        parserVersion: '8',
       }),
     );
     expect(operations.ensureProviderFinancialCoverage).toHaveBeenCalledWith(

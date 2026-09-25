@@ -390,6 +390,18 @@ settlement draft Journal, and blocks on FEES detail/control mismatch or unclassi
 This first slice had no migration/dependency and intentionally did not rewrite historical machine
 materialization.
 
+**2026-09-25 Clover modern statement v8 — MERGED / CI GREEN via PR #2535:** July/August real
+statements now define the active input contract. Recognition and parsing move to the modern
+Account Summary / Fee Summary layout and Poppler geometry; pre-July PDF input is intentionally
+retired because June is already posted. Historical v7 materialized facts remain readable. Modern
+Fees rows may span pages, `VI ...` is treated as a card/network fee prefix, and the observed
+`MONTHLY EQUIPMENT BILL` / `Clover Flex 3` labels map to stable semantic equipment-fee raw
+codes while retaining the existing `expense_software` category pending any separate taxonomy
+change. Settlement requires Account Summary, Fee Summary, Fees-detail, Service-Charges-detail
+and Card-Processing fee controls to reconcile; nonzero unresolved components remain fail-closed.
+The statement `Amounts Funded` section is explicitly excluded from normalized provider lines.
+No migration, dependency, payment/Clover-terminal path or architecture direction changes.
+
 **Existing-materialized parser re-evaluation / Human Review effective snapshot — LOCAL SOURCE
 READY FOR REVIEW:** `accounting/provider-parser-reevaluation-review` adds the previously planned
 immutable remediation path. A historical provider document is re-evaluated only from persisted
