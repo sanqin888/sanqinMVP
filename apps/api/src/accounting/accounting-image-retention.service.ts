@@ -13,7 +13,7 @@ import {
   AccountingInboxMaterializedEntityType,
   AccountingInboxStatus,
 } from './accounting-contracts';
-import { createHash } from 'node:crypto';
+import { createHash, randomInt } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import sharp from 'sharp';
@@ -115,8 +115,14 @@ export class AccountingImageRetentionService {
       );
     }
 
+    if (!context.expenseOccurredAt) {
+      throw new ConflictException(
+        'confirmed expense date is required for retained image filename',
+      );
+    }
     const candidateStoredUrl = await this.storeCandidate(
       vendorName,
+      context.expenseOccurredAt,
       processed.buffer,
     );
     const candidateContentHash = sha256(processed.buffer);
@@ -358,10 +364,19 @@ export class AccountingImageRetentionService {
     };
   }
 
-  private async storeCandidate(vendorName: string, buffer: Buffer) {
+  private async storeCandidate(
+    vendorName: string,
+    receiptDate: Date,
+    buffer: Buffer,
+  ) {
     const dir = path.join(getAccountingUploadsDir(), 'image-retention');
     await fs.promises.mkdir(dir, { recursive: true });
-    const fileName = accountingRetainedImageFilename(vendorName, new Date());
+    const randomDigits = randomInt(0, 10_000).toString().padStart(4, '0');
+    const fileName = accountingRetainedImageFilename(
+      vendorName,
+      receiptDate,
+      randomDigits,
+    );
     await fs.promises.writeFile(path.join(dir, fileName), buffer, {
       flag: 'wx',
     });

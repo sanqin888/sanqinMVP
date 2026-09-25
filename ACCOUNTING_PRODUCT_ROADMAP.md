@@ -1,7 +1,7 @@
 # Post-Modularization Accounting Product Roadmap
 
-Status: **PAYOUT-E-B1 PRODUCTION VERIFIED / MIGRATION APPLIED; PAYOUT-E-B2 PRODUCTION VERIFIED / NO MIGRATION; PAYOUT-E-A + INBOX-ONLY + SETTLEMENT ROW-DECISION FOLLOW-UPS DEPLOYED — PAYOUT-D DEPLOYED / BACKEND DATA-PATH VERIFIED / UI SPOT-CHECK PENDING — PAYOUT-C PRODUCTION VERIFIED — PAYOUT-B MIGRATION APPLIED — PAYOUT-A MERGED / CI GREEN — B4-B MERGED / CI GREEN — B4-A MERGED / CI GREEN — B3 PRODUCTION VERIFIED / CLOSED — EFA PRODUCTION VERIFIED / CLOSED — B2 PRODUCTION VERIFIED / CLOSED — B1 CLOSED / B0 3V-B PRODUCTION VERIFICATION STILL PENDING — DO NOT REOPEN PHASE 9**  
-Planning date: 2026-09-20; updated: 2026-09-23  
+Status: **CLOVER FEE BANK CLEARING PRODUCTION VERIFIED; PAYOUT-E-B1 PRODUCTION VERIFIED / MIGRATION APPLIED; PAYOUT-E-B2 PRODUCTION VERIFIED / NO MIGRATION; PAYOUT-E-A + INBOX-ONLY + SETTLEMENT ROW-DECISION FOLLOW-UPS DEPLOYED — PAYOUT-D DEPLOYED / BACKEND DATA-PATH VERIFIED / UI SPOT-CHECK PENDING — PAYOUT-C PRODUCTION VERIFIED — PAYOUT-B MIGRATION APPLIED — PAYOUT-A MERGED / CI GREEN — B4-B MERGED / CI GREEN — B4-A MERGED / CI GREEN — B3 PRODUCTION VERIFIED / CLOSED — EFA PRODUCTION VERIFIED / CLOSED — B2 PRODUCTION VERIFIED / CLOSED — B1 CLOSED / B0 3V-B PRODUCTION VERIFICATION STILL PENDING — DO NOT REOPEN PHASE 9**  
+Planning date: 2026-09-20; updated: 2026-09-25  
 Baseline: Phase 9 **PRODUCTION VERIFIED / CLOSED** at production `main@dbea68f3`  
 Document-recognition audit baseline: `origin/dev@1ede0599`; Slice 3 merged as `caabf1c1`; Evidence Viewer Slice 1 merged as `0371a155`; Slice 1B merged as `9ae4d85d`; additive folder migration committed as `cc4c8016`; Evidence Viewer Slice 2 merged in PR #2438 as `4d68379e`; Slice 3V-A merged in PR #2439 as `0d6909bb` with PR CI #6054 and merged-head CI #6055 green; Slice 3V-B merged in PR #2440 as `0ac9117f` after final head `3c5c0400`, PR CI #6057 and merged-head CI #6058 green  
 B3 closeout baseline: latest `origin/dev@e29621bc`; B3-A merged through PR #2475 / squash `9c92eeda`, B3-B through PR #2476 / squash `ec2cff0f`, B3-C through PR #2478 / final head `12597b96` / squash `dcf12666`, and merge-evidence docs through PR #2479 / squash `b5d64e0e`. B3-D production reconciliation passed on 2026-09-23 against live authenticated API output and read-only canonical Journal/CoA data. Detailed readiness, implementation and closeout evidence: `docs/architecture/accounting-b3-trial-balance-readiness.md`.
@@ -94,18 +94,20 @@ components therefore balance to dedicated liability `account_clover_fee_payable`
 `account_clover_pending`. Production historical reclassification
 `journal_ll3v2uxsfjefs6t6ve3bxpzb` corrected the posted June `98.39` statement without rewriting
 the original Journal or duplicating expense/HST. Production June Clover sales Pending now closes at
-`+48.38`, and Clover fee payable carries the separate `98.39` credit balance.
+`+48.38`, and that correction established the separate `98.39` Clover fee-payable credit before
+the later bank-withdrawal clearing described below.
 
-2026-09-24 bank-withdrawal follow-up is **LOCAL SOURCE READY FOR REVIEW / MIGRATION REQUIRED** on
-`accounting/clover-fee-bank-withdrawal-clearing`. The bank CSV parser now retains withdrawal rows
-while keeping payout deposits on their existing contract. A separate Accounting-owned durable
-withdrawal-decision model admits only explicit Clover / First Data withdrawal evidence from reviewed
-bank CSVs. Confirmed rows clear the existing liability with an authority-bound, idempotent
-`Dr Clover Fee Payable / Cr selected CAD Bank` Journal in the same Serializable transaction that
-marks the row `CLEARED`; no ExpenseDocument or expense Journal is created. The writer reparses and
-fingerprints the retained CSV evidence, validates account authority, and blocks a withdrawal larger
-than the current fee-payable credit balance. The additive Prisma change requires a user-generated
-migration before production promotion.
+2026-09-25 bank-withdrawal follow-up is **PRODUCTION VERIFIED**. PR #2525 is deployed with
+migration `20260925024320_accounting_provider_fee_bank_withdrawal_clearing` applied. The bank CSV
+parser retains withdrawal rows while keeping payout deposits on their existing contract. A separate
+Accounting-owned durable withdrawal-decision model admits only explicit Clover / First Data
+withdrawal evidence from reviewed bank CSVs. Production cleared the June 33.90 + 1.85 + 3.33 bank
+withdrawals and the July 2 59.31 withdrawal against the already-posted 98.39 Clover fee payable;
+the canonical `account_clover_fee_payable` balance is now 0.00. Each clearing uses the
+authority-bound, idempotent `Dr Clover Fee Payable / Cr selected CAD Bank` Journal in the same
+Serializable transaction that marks the row `CLEARED`; no ExpenseDocument or expense Journal is
+created. Unrelated First Data withdrawals remain explicitly excluded, and the post-operation API
+error scan is clean.
 
 Baseline audited state before Slice 0:
 

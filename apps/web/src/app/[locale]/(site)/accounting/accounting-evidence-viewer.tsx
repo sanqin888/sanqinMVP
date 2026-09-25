@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { apiFetch, apiFetchRaw } from '@/lib/api/client';
+import { useState } from 'react';
+import { apiFetch } from '@/lib/api/client';
 import {
   AccountingEvidenceFileManager,
 } from './accounting-evidence-file-manager';
@@ -241,81 +241,35 @@ function ProtectedAccountingImage({
   alt: string;
   isZh: boolean;
 }) {
-  const [blobUrl, setBlobUrl] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    let objectUrl: string | null = null;
-
-    setBlobUrl(null);
-    setError(null);
-
-    void apiFetchRaw(url, {
-      headers: { Accept: 'image/*' },
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        if (!response.ok) {
-          throw new Error(`Image preview request failed (${response.status})`);
-        }
-        if (
-          !accountingEvidenceImageContentTypeIsPreviewable(
-            response.headers.get('content-type'),
-          )
-        ) {
-          throw new Error('Image preview returned a non-image response');
-        }
-        return response.blob();
-      })
-      .then((blob) => {
-        if (controller.signal.aborted) return;
-        objectUrl = URL.createObjectURL(blob);
-        setBlobUrl(objectUrl);
-      })
-      .catch((cause: unknown) => {
-        if (controller.signal.aborted) return;
-        setError(cause instanceof Error ? cause.message : String(cause));
-      });
-
-    return () => {
-      controller.abort();
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [url]);
+  const [failed, setFailed] = useState(false);
 
   return (
     <div className="flex min-h-[65vh] w-full flex-1 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white p-2">
-      {error ? (
+      {failed ? (
         <div className="max-w-lg rounded-lg border border-red-200 bg-red-50 p-4 text-center text-sm text-red-700">
           <p className="font-medium">
             {isZh ? '图片预览加载失败' : 'Image preview failed to load'}
           </p>
-          <p className="mt-1 break-words text-xs">{error}</p>
+          <p className="mt-1 break-words text-xs">
+            {isZh
+              ? '浏览器无法解码这份受保护图片。可以先使用“下载文件”检查原始保留文件。'
+              : 'The browser could not decode this protected image. Use Download file to inspect the retained binary.'}
+          </p>
         </div>
-      ) : blobUrl ? (
-        // Protected Accounting evidence is fetched with the current session and
-        // rendered from a local object URL so browser preview never depends on
-        // Next image optimization or Content-Disposition handling.
+      ) : (
+        // The protected artifact route is same-origin, so a native image request
+        // carries the current session cookie automatically. Keep this out of
+        // Next image optimization and avoid an unnecessary Blob/object-URL layer.
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={blobUrl}
+          src={url}
           alt={alt}
+          onError={() => setFailed(true)}
           className="max-h-[75vh] max-w-full object-contain"
         />
-      ) : (
-        <p className="text-sm text-slate-500">
-          {isZh ? '正在加载图片预览…' : 'Loading image preview…'}
-        </p>
       )}
     </div>
   );
-}
-
-export function accountingEvidenceImageContentTypeIsPreviewable(
-  contentType: string | null,
-): boolean {
-  return Boolean(contentType?.toLowerCase().startsWith('image/'));
 }
 
 export function accountingEvidenceBrowserPreviewMode(

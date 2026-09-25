@@ -1,12 +1,18 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   accountingEvidenceBrowserPreviewMode,
   accountingEvidenceCanPermanentDelete,
   accountingEvidenceContentUrl,
   accountingEvidenceDownloadUrl,
-  accountingEvidenceImageContentTypeIsPreviewable,
   accountingEvidencePermanentDeleteUrl,
   type AccountingEvidenceSource,
 } from './accounting-evidence-viewer';
+
+const viewerSource = readFileSync(
+  resolve(__dirname, 'accounting-evidence-viewer.tsx'),
+  'utf8',
+);
 
 const baseEvidence: AccountingEvidenceSource = {
   artifactStableId: 'acctart_1',
@@ -21,19 +27,12 @@ describe('AccountingEvidenceViewer capability helpers', () => {
     expect(accountingEvidenceBrowserPreviewMode('CSV')).toBeNull();
   });
 
-  it('accepts browser image MIME types for protected blob previews', () => {
-    expect(accountingEvidenceImageContentTypeIsPreviewable('image/webp')).toBe(
-      true,
-    );
-    expect(
-      accountingEvidenceImageContentTypeIsPreviewable(
-        'image/jpeg; charset=binary',
-      ),
-    ).toBe(true);
-    expect(
-      accountingEvidenceImageContentTypeIsPreviewable('application/json'),
-    ).toBe(false);
-    expect(accountingEvidenceImageContentTypeIsPreviewable(null)).toBe(false);
+  it('renders protected images directly through the stable same-origin content route', () => {
+    expect(viewerSource).toContain('src={url}');
+    expect(viewerSource).toContain('onError={() => setFailed(true)}');
+    expect(viewerSource).not.toContain('URL.createObjectURL');
+    expect(viewerSource).not.toContain('response.blob()');
+    expect(viewerSource).not.toContain("from 'next/image'");
   });
 
   it('keeps delete disabled without an explicit permanent-delete capability', () => {
