@@ -166,7 +166,7 @@ export class AccountingCloverFeeReclassificationService {
         blockReasons: [],
         originalJournalEntryStableId:
           originalJournals.length === 1
-            ? originalJournals[0]?.entryStableId ?? null
+            ? (originalJournals[0]?.entryStableId ?? null)
             : null,
         existingCorrectionJournalEntryStableId:
           existingCorrection.entryStableId,
@@ -209,10 +209,7 @@ export class AccountingCloverFeeReclassificationService {
         (line) =>
           line.account.accountStableId === CLOVER_PENDING_ACCOUNT_STABLE_ID,
       )
-      .reduce(
-        (sum, line) => sum + line.debitCents - line.creditCents,
-        0,
-      );
+      .reduce((sum, line) => sum + line.debitCents - line.creditCents, 0);
     const feePayableTouched = original.lines.some(
       (line) =>
         line.account.accountStableId === CLOVER_FEE_PAYABLE_ACCOUNT_STABLE_ID,
@@ -236,9 +233,7 @@ export class AccountingCloverFeeReclassificationService {
       accounts.map((account) => [account.accountStableId, account]),
     );
     const pending = accountByStableId.get(CLOVER_PENDING_ACCOUNT_STABLE_ID);
-    const payable = accountByStableId.get(
-      CLOVER_FEE_PAYABLE_ACCOUNT_STABLE_ID,
-    );
+    const payable = accountByStableId.get(CLOVER_FEE_PAYABLE_ACCOUNT_STABLE_ID);
     const blockReasons = [
       ...(debitCents !== creditCents ? ['ORIGINAL_JOURNAL_UNBALANCED'] : []),
       ...(amountCents <= 0 ? ['NO_LEGACY_PENDING_CREDIT_TO_RECLASSIFY'] : []),
@@ -246,7 +241,9 @@ export class AccountingCloverFeeReclassificationService {
         ? ['ORIGINAL_JOURNAL_HAS_NON_PENDING_CREDITS']
         : []),
       ...(hasNonFeeDebit ? ['ORIGINAL_JOURNAL_HAS_NON_FEE_DEBITS'] : []),
-      ...(feePayableTouched ? ['ORIGINAL_JOURNAL_ALREADY_USES_FEE_PAYABLE'] : []),
+      ...(feePayableTouched
+        ? ['ORIGINAL_JOURNAL_ALREADY_USES_FEE_PAYABLE']
+        : []),
       ...(!pending ? ['CLOVER_PENDING_ACCOUNT_NOT_PROVISIONED'] : []),
       ...(pending &&
       (pending.accountClass !== AccountingAccountClass.ASSET ||
@@ -335,8 +332,7 @@ export class AccountingCloverFeeReclassificationService {
 
     const correction = await this.journal.createJournalEntry(
       {
-        idempotencyKey:
-          `clover-fee-pending-reclass:${preview.documentStableId}:r${preview.revision}:v1`,
+        idempotencyKey: `clover-fee-pending-reclass:${preview.documentStableId}:r${preview.revision}:v1`,
         kind: AccountingJournalEntryKind.ADJUSTMENT,
         source: AccountingJournalSource.PLATFORM_STATEMENT,
         sourceFactType: CLOVER_FEE_RECLASSIFICATION_SOURCE_FACT_TYPE,

@@ -231,7 +231,8 @@ const settlementCounterpartyAccountFor = (params: {
 }): string => {
   if (
     params.document.provider === AccountingFinancialProvider.CLOVER &&
-    params.document.documentType === AccountingFinancialDocumentType.STATEMENT &&
+    params.document.documentType ===
+      AccountingFinancialDocumentType.STATEMENT &&
     CLOVER_FEE_COMPONENTS.has(params.line.component)
   ) {
     return PROVIDER_SETTLEMENT_ACCOUNT_IDS.cloverFeePayable;

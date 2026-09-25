@@ -1159,8 +1159,7 @@ describe('AccountingProviderSettlementPreviewService', () => {
           debitCents: 3000,
         }),
         expect.objectContaining({
-          accountStableId:
-            PROVIDER_SETTLEMENT_ACCOUNT_IDS.cloverFeePayable,
+          accountStableId: PROVIDER_SETTLEMENT_ACCOUNT_IDS.cloverFeePayable,
           categoryStableId: null,
           creditCents: 9839,
         }),
