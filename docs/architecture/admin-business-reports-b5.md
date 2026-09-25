@@ -1,8 +1,8 @@
 # B5 — Admin Business Reports / Operating Monitoring
 
 Date: 2026-09-24  
-Implementation baseline: `dev@81784c85` (B5-C2 merged through PR #2515; final head `6f455230`; squash `dfa8e21c`; CI #6306 green; deployed in production `main@81784c85`)  
-Current local work: **B5-D legacy report contraction + comparison-confidence UI polish — LOCAL SOURCE READY FOR REVIEW / HTTP CONTRACT CONTRACTION / NO MIGRATION / NO PACKAGE CHANGE / NO NEW GRAPH DIRECTION / POST-CONTRACTION PRODUCTION VERIFICATION PENDING**
+Implementation baseline: B5-D PR #2520 / final head `3371e8a4` / squash `7a6908ac`; CI #6327 green; deployed in production `main@7a6908ac`  
+Current state: **B5 PRODUCTION VERIFIED / CLOSED / NO MIGRATION / NO PACKAGE CHANGE / NO NEW GRAPH DIRECTION**
 
 ## Product goal
 
@@ -404,7 +404,9 @@ the C2 deployed-and-observed gate for B5-D.
 
 ### B5-D — legacy route contraction + closeout polish
 
-B5-D may now contract the zero-consumer legacy report path. The local source change:
+B5-D contracted the zero-consumer legacy report path through PR #2520 / final head
+`3371e8a4` / squash `7a6908ac`. Final CI #6327 passed architecture, API/Web
+lint/build, strict declaration and tests. The delivered source change:
 
 - removes root `GET /reports` while retaining `GET /reports/business`;
 - removes the legacy mixed-KPI `ReportsService.getReport()` projection and its
@@ -425,18 +427,31 @@ B5-D may now contract the zero-consumer legacy report path. The local source cha
 This is an HTTP contract contraction but not a schema/persistence contraction. It adds
 no migration, package dependency, context direction, scanner allowance or SCC.
 
-Post-contraction production verification remains **PENDING** until this B5-D source is
-merged and deployed. The closeout verification must confirm:
+### B5-D production verification / B5 closeout
+
+B5-D is **PRODUCTION VERIFIED** on production `main@7a6908ac`, and the complete B5 work
+package is **CLOSED**.
+
+Runtime verification on 2026-09-24 established:
 
 1. API startup maps `GET /api/v1/reports/business` and no longer maps root `GET
    /api/v1/reports`;
-2. Admin Today / Yesterday / 7d / 28d / 90d load successfully for the selected Store
-   with no API/Web runtime error;
-3. store/timezone boundaries, expected/delta arithmetic, Commercial-vs-Production item
-   semantics, prep p50/p90 and bounded recent-queue behavior remain intact;
-4. Coverage is the single normal location for `OPERATING_CONTEXT_PARTIAL`, while
-   `LOW_SAMPLE` remains prominent when history is actually insufficient;
-5. Homepage automatic weekly featured-item ranking still resolves through
-   `REPORTING_TOP_ITEMS_QUERY` after `readMetricsForRange()` removal;
-6. post-deploy logs show no legacy `/reports` traffic. Only after these checks pass may
-   B5 be marked **PRODUCTION VERIFIED / CLOSED**.
+2. the selected Store `4750_Yonge_Street` successfully served Today, Yesterday, 7d,
+   28d (`2026-08-28..2026-09-24`) and 90d (`2026-06-27..2026-09-24`) report requests,
+   all HTTP 200;
+3. the operator confirmed the deployed Business Reports UI has no visible anomaly after
+   the confidence-display closeout; the source/CI characterization continues to guard
+   store/time semantics, comparison arithmetic, Commercial-vs-Production item meaning,
+   prep p50/p90 and bounded recent-queue behavior;
+4. Homepage `GET /api/v1/homepage/featured?locale=zh` returned HTTP 200 after deployment,
+   confirming the retained `REPORTING_TOP_ITEMS_QUERY` / `readItemsForRange()` path is
+   live after legacy metric contraction;
+5. post-deploy logs recorded zero legacy root `GET /api/v1/reports` requests;
+6. Web logs contained zero ERROR entries. The only API ERROR in the inspected window was
+   an unrelated unauthenticated `/api/v1/auth/me` HTTP 401; a `/robots.txt` 404 was a
+   WARN and is also unrelated to B5.
+
+No schema/migration, package dependency, scanner allowance, SCC or new context direction
+was introduced by B5-D. Accounting financial authority remains unchanged, Store
+operating-history coverage remains explicitly `CURRENT_CONFIGURATION_ONLY`, and Print
+health remains `UNAVAILABLE` pending a separately reviewed POS/Print public seam.

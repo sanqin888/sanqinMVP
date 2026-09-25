@@ -18,6 +18,15 @@ describe('parseAccountingBankCsv', () => {
       matched: true,
       headers: ['date', 'description', 'withdrawals', 'deposits'],
       withdrawalRowCount: 1,
+      withdrawalRows: [
+        {
+          rowNumber: 1,
+          occurredOn: '2026-06-30',
+          amountCents: 2000,
+          description: 'Branch Transaction ACC FEE- SELF SERV',
+          providerHint: null,
+        },
+      ],
       invalidRows: [],
       depositRows: [
         {
@@ -62,7 +71,7 @@ describe('parseAccountingBankCsv', () => {
     ).toEqual({ matched: false });
   });
 
-  it('recognizes a strong CIBC-style Withdrawals/Deposits CSV and keeps only deposits', () => {
+  it('recognizes a strong CIBC-style Withdrawals/Deposits CSV and retains both directions', () => {
     const parsed = parseAccountingBankCsv(
       [
         'Date,Description,Withdrawals ($),Deposits ($),Balance ($)',
@@ -91,9 +100,35 @@ describe('parseAccountingBankCsv', () => {
           providerHint: AccountingFinancialProvider.FANTUAN,
         },
       ],
+      withdrawalRows: [
+        {
+          rowNumber: 4,
+          occurredOn: '2026-06-11',
+          amountCents: 120000,
+          description: 'RENT',
+          providerHint: null,
+        },
+      ],
       withdrawalRowCount: 1,
       invalidRows: [],
       truncated: false,
+    });
+  });
+
+  it('retains Clover / First Data withdrawals as provider-authoritative fee evidence', () => {
+    const parsed = parseAccountingBankCsv(
+      'Date,Description,Withdrawals,Deposits,Balance\n2026-07-02,FIRST DATA CANADA(K),59.31,,940.69\n',
+    );
+
+    expect(parsed).toMatchObject({
+      matched: true,
+      withdrawalRows: [
+        {
+          occurredOn: '2026-07-02',
+          amountCents: 5931,
+          providerHint: AccountingFinancialProvider.CLOVER,
+        },
+      ],
     });
   });
 

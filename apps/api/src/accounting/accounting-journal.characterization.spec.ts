@@ -308,6 +308,27 @@ describe('AccountingJournalService double-entry journal characterization', () =>
     );
   });
 
+  it('rejects provider fee bank withdrawal Journals through the generic create path', async () => {
+    const { service } = makeService();
+
+    await expect(
+      service.createJournalEntry(
+        {
+          ...basePayload,
+          kind: AccountingJournalEntryKind.TRANSFER,
+          source: AccountingJournalSource.PAYMENT,
+          sourceFactType: 'accounting.provider_fee_bank_withdrawal.v1',
+          sourceFactStableId: 'feebankrow_test_1',
+          sourceFactVersion: 1,
+          storeStableId: '4750_Yonge_Street',
+        },
+        'actor_accounting',
+      ),
+    ).rejects.toThrow(
+      'provider fee bank withdrawal Journals require fee-clearing write authority',
+    );
+  });
+
   it('rejects converting a generic Journal into provider payout authority', async () => {
     const existing = internalJournalRow();
     const { service, prisma } = makeService();
@@ -401,6 +422,65 @@ describe('AccountingJournalService double-entry journal characterization', () =>
       ),
     ).rejects.toThrow(
       'canonical provider payout Journals cannot be deleted in place',
+    );
+  });
+
+  it('keeps provider fee bank withdrawal Journals immutable through generic update/delete paths', async () => {
+    const existing = internalJournalRow({
+      kind: AccountingJournalEntryKind.TRANSFER,
+      source: AccountingJournalSource.PAYMENT,
+      sourceFactType: 'accounting.provider_fee_bank_withdrawal.v1',
+      sourceFactStableId: 'feebankrow_test_1',
+      sourceFactVersion: 1,
+      storeStableId: '4750_Yonge_Street',
+      occurredAt: new Date('2026-07-02T04:00:00.000Z'),
+    });
+    const updateCase = makeService();
+    updateCase.prisma.accountingJournalEntry.findUnique.mockResolvedValue(
+      existing,
+    );
+
+    await expect(
+      updateCase.service.updateJournalEntry(
+        'journal_stable_1',
+        {
+          kind: AccountingJournalEntryKind.TRANSFER,
+          sourceFactType: 'accounting.provider_fee_bank_withdrawal.v1',
+          sourceFactStableId: 'feebankrow_test_1',
+          sourceFactVersion: 1,
+          storeStableId: '4750_Yonge_Street',
+          occurredAt: '2026-07-02T04:00:00.000Z',
+          currency: 'CAD',
+          memo: 'changed',
+          lines: [
+            {
+              accountStableId: 'account_clover_fee_payable',
+              debitCents: 5931,
+            },
+            {
+              accountStableId: 'account_primary_bank',
+              creditCents: 5931,
+            },
+          ],
+          lastKnownUpdatedAt: existing.updatedAt.toISOString(),
+        },
+        'actor_accounting',
+      ),
+    ).rejects.toThrow(
+      'provider fee bank withdrawal Journals cannot be updated in place',
+    );
+
+    const deleteCase = makeService();
+    deleteCase.prisma.accountingJournalEntry.findUnique.mockResolvedValue(
+      existing,
+    );
+    await expect(
+      deleteCase.service.deleteJournalEntry(
+        'journal_stable_1',
+        'actor_accounting',
+      ),
+    ).rejects.toThrow(
+      'provider fee bank withdrawal Journals cannot be deleted in place',
     );
   });
 

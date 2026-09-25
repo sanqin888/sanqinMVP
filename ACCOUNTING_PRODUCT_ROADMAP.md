@@ -87,17 +87,25 @@ the current provider parser from persisted extraction evidence into a new immuta
 `AccountingParseRun`, stores the candidate full effective line set on a DRAFT Human Review
 Revision, and switches settlement to that snapshot only after explicit confirmation.
 
-2026-09-24 Clover cash-flow correction is **LOCAL SOURCE READY FOR REVIEW** on
-`accounting/clover-fee-clearing`. Real May/June evidence proves Clover pays card sales gross and
-withdraws statement fees separately, including May `51.52 + 1.07 = 52.59` debited on June 1 and
-June `59.31` Discount Fees debited on July 2. Future Clover statement fee components therefore
-balance to a dedicated liability `account_clover_fee_payable` instead of
-`account_clover_pending`. The already-posted June `98.39` statement is repaired by a separate,
-plan-hash-gated, idempotent reclassification Journal `Dr Clover Pending / Cr Clover Fee Payable`;
-the original statement Journal and correctly classified expenses/HST remain immutable. This slice
-adds no Prisma/schema/migration/package change. Separate bank-withdrawal clearing
-(`Dr Clover Fee Payable / Cr Bank`) remains a follow-up because the current provider-payout bank
-workflow intentionally persists deposit rows only.
+2026-09-24 Clover cash-flow correction is **PRODUCTION VERIFIED** through PR #2522
+(squash `9c3b1cf2`, final PR head `1866d148`, CI #6335 green). Real May/June evidence proves
+Clover pays card sales gross and withdraws statement fees separately. Clover statement fee
+components therefore balance to dedicated liability `account_clover_fee_payable` instead of
+`account_clover_pending`. Production historical reclassification
+`journal_ll3v2uxsfjefs6t6ve3bxpzb` corrected the posted June `98.39` statement without rewriting
+the original Journal or duplicating expense/HST. Production June Clover sales Pending now closes at
+`+48.38`, and Clover fee payable carries the separate `98.39` credit balance.
+
+2026-09-24 bank-withdrawal follow-up is **LOCAL SOURCE READY FOR REVIEW / MIGRATION REQUIRED** on
+`accounting/clover-fee-bank-withdrawal-clearing`. The bank CSV parser now retains withdrawal rows
+while keeping payout deposits on their existing contract. A separate Accounting-owned durable
+withdrawal-decision model admits only explicit Clover / First Data withdrawal evidence from reviewed
+bank CSVs. Confirmed rows clear the existing liability with an authority-bound, idempotent
+`Dr Clover Fee Payable / Cr selected CAD Bank` Journal in the same Serializable transaction that
+marks the row `CLEARED`; no ExpenseDocument or expense Journal is created. The writer reparses and
+fingerprints the retained CSV evidence, validates account authority, and blocks a withdrawal larger
+than the current fee-payable credit balance. The additive Prisma change requires a user-generated
+migration before production promotion.
 
 Baseline audited state before Slice 0:
 

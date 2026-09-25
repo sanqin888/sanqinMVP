@@ -13,7 +13,7 @@ const BANK_CSV_LIMITS = {
   maxCellCharacters: 500,
 } as const;
 
-export type AccountingBankCsvDepositRow = {
+export type AccountingBankCsvBankRow = {
   rowNumber: number;
   occurredOn: string;
   amountCents: number;
@@ -21,12 +21,16 @@ export type AccountingBankCsvDepositRow = {
   providerHint: AccountingFinancialProviderValue | null;
 };
 
+export type AccountingBankCsvDepositRow = AccountingBankCsvBankRow;
+export type AccountingBankCsvWithdrawalRow = AccountingBankCsvBankRow;
+
 export type AccountingBankCsvParseResult =
   | { matched: false }
   | {
       matched: true;
       headers: string[];
       depositRows: AccountingBankCsvDepositRow[];
+      withdrawalRows: AccountingBankCsvWithdrawalRow[];
       withdrawalRowCount: number;
       invalidRows: Array<{
         rowNumber: number;
@@ -105,6 +109,7 @@ export function parseAccountingBankCsv(
     directionalPair.inflowIndex,
   );
   const depositRows: AccountingBankCsvDepositRow[] = [];
+  const withdrawalRows: AccountingBankCsvWithdrawalRow[] = [];
   const invalidRows: Array<{
     rowNumber: number;
     reason:
@@ -114,8 +119,6 @@ export function parseAccountingBankCsv(
       | 'INVALID_OUTFLOW'
       | 'BOTH_DIRECTIONS';
   }> = [];
-  let withdrawalRowCount = 0;
-
   const dataStartIndex = cibcHeaderless ? 0 : 1;
   for (let index = dataStartIndex; index < table.rows.length; index += 1) {
     const rowNumber = index + 1;
@@ -150,7 +153,19 @@ export function parseAccountingBankCsv(
       continue;
     }
     if (inflowCents === 0 && outflowCents > 0) {
-      withdrawalRowCount += 1;
+      const occurredOn = parseBankDate(cells[dateIndex]);
+      if (!occurredOn) {
+        invalidRows.push({ rowNumber, reason: 'INVALID_DATE' });
+        continue;
+      }
+      const description = optionalCell(cells, descriptionIndex);
+      withdrawalRows.push({
+        rowNumber,
+        occurredOn,
+        amountCents: outflowCents,
+        description,
+        providerHint: providerHintFromText(description),
+      });
       continue;
     }
     if (inflowCents === 0) continue;
@@ -174,7 +189,8 @@ export function parseAccountingBankCsv(
     matched: true,
     headers,
     depositRows,
-    withdrawalRowCount,
+    withdrawalRows,
+    withdrawalRowCount: withdrawalRows.length,
     invalidRows,
     truncated:
       table.truncatedRows || table.truncatedColumns || table.truncatedCells,

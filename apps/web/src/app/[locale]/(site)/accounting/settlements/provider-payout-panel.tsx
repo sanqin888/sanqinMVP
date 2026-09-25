@@ -6,6 +6,7 @@ import type { AccountingAccount } from '../contracts/chart';
 import type { AccountingFinancialProvider } from '../contracts/core';
 import type { AccountingProviderPayout } from '../contracts/payouts';
 import { ProviderPayoutSettlementBankCsvPanel } from './provider-payout-settlement-bank-csv-panel';
+import { ProviderFeeBankWithdrawalPanel } from './provider-fee-bank-withdrawal-panel';
 
 const PROVIDERS: AccountingFinancialProvider[] = [
   'CLOVER',
@@ -445,6 +446,12 @@ export function ProviderPayoutPanel({
               : 'A confirmed bank row is selected. Posting will atomically create the payout from that server-owned decision and bind it back to the row.',
           );
         }}
+      />
+
+      <ProviderFeeBankWithdrawalPanel
+        isZh={isZh}
+        knownStoreStableIds={knownStoreStableIds}
+        eligibleBanks={eligibleBanks}
       />
 
       <details className="rounded-xl border border-slate-200 bg-white p-4">
