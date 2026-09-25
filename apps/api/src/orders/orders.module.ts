@@ -21,7 +21,6 @@ import { OperationsAlertRecipientModule } from '../auth/public-api';
 import { NotificationModule } from '../notifications/public-api';
 import { CatalogOrderFactsModule } from '../menu/public-api';
 import { OrderBenefitsReadModule } from '../benefits/public-api/order-benefits-read.module';
-import { NotificationProcessor } from './processors/notification.processor';
 import { FulfillmentProcessor } from './processors/fulfillment.processor';
 import { OrderDeliveryDispatchProcessor } from './processors/order-delivery-dispatch.processor';
 import { OrderLifecycleOutboxProcessor } from './processors/order-lifecycle-outbox.processor';
@@ -102,7 +101,6 @@ import { AdminOrderDeliveryDispatchController } from './admin-order-delivery-dis
     },
     OrderLabelPlanService,
     OrderItemSnapshotBuilder,
-    NotificationProcessor,
     FulfillmentProcessor,
     OrderDeliveryDispatchProcessor,
     OrderLifecycleOutboxProcessor,
