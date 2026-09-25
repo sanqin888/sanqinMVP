@@ -23,6 +23,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { GoogleStartGuard } from './oauth/google.guard';
 import { OauthStateService } from './oauth/oauth-state.service';
 import type { GoogleProfile } from './oauth/google.strategy';
+import { resolveStaffOauthRedirect } from './staff-entry.policy';
 import type { TwoFactorMethod } from '@prisma/client';
 import * as geoip from 'geoip-lite';
 import * as requestIp from 'request-ip';
@@ -82,7 +83,13 @@ const resolveLoginLocation = (req: Request): string | undefined => {
 };
 
 const normalizeNextPath = (next?: string): string => {
-  if (typeof next === 'string' && next.startsWith('/')) return next;
+  if (
+    typeof next === 'string' &&
+    next.startsWith('/') &&
+    !next.startsWith('//')
+  ) {
+    return next;
+  }
   return '/';
 };
 
@@ -146,7 +153,7 @@ export class AuthController {
         : Array.isArray(stateParam) && typeof stateParam[0] === 'string'
           ? stateParam[0]
           : '';
-    const { cb, language } = this.oauthState.verify(stateRaw);
+    const { cb, language, audience } = this.oauthState.verify(stateRaw);
     const cookies = req.cookies as Partial<Record<string, string>> | undefined;
     const trustedDeviceToken =
       typeof cookies?.[TRUSTED_DEVICE_COOKIE] === 'string'
@@ -164,6 +171,7 @@ export class AuthController {
       loginLocation,
       trustedDeviceToken,
       language,
+      staffOnly: audience === 'staff',
     });
 
     res.cookie(
@@ -174,6 +182,23 @@ export class AuthController {
 
     const webBaseUrl = process.env.WEB_BASE_URL ?? '';
     const next = normalizeNextPath(cb || '/');
+
+    if (audience === 'staff') {
+      if (
+        result.user.role !== 'ADMIN' &&
+        result.user.role !== 'ACCOUNTANT' &&
+        result.user.role !== 'STAFF'
+      ) {
+        throw new ForbiddenException('Staff account required');
+      }
+      const redirectTarget = resolveStaffOauthRedirect(
+        result.user.role,
+        next,
+        language,
+      );
+      return res.redirect(302, `${webBaseUrl}${redirectTarget}`);
+    }
+
     const redirectTarget = result.isNewUser
       ? buildMembershipReferrerRedirect(next, 'google')
       : next;

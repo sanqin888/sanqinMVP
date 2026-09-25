@@ -3,6 +3,11 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import type { ReactNode } from "react";
 import type { Locale } from "@/lib/i18n/locales";
+import {
+  buildStaffLoginPath,
+  isStaffRole,
+  staffDefaultLanding,
+} from "@/lib/staff-entry";
 import { serverApiFetch } from "@/server/api";
 import { PosDeviceFrame } from "@/components/store/PosDeviceFrame";
 import { PosSessionKeepAlive } from "./PosSessionKeepAlive";
@@ -45,7 +50,14 @@ export default async function PosLayout({
   const role = session?.role;
 
   if (role !== "ADMIN" && role !== "STAFF") {
-    redirect(`/${safeLocale}/store/pos/login`);
+    if (isStaffRole(role)) {
+      redirect(staffDefaultLanding(role, safeLocale));
+    }
+    redirect(
+      buildStaffLoginPath(safeLocale, `/${safeLocale}/store/pos`, {
+        needDevice: true,
+      }),
+    );
   }
 
   return (

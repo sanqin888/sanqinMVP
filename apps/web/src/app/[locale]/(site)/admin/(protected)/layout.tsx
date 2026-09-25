@@ -2,6 +2,11 @@
 import { redirect } from 'next/navigation';
 import type { ReactNode } from 'react';
 import type { Locale } from '@/lib/i18n/locales';
+import {
+  buildStaffLoginPath,
+  isStaffRole,
+  staffDefaultLanding,
+} from '@/lib/staff-entry';
 import { serverApiFetch } from '@/server/api';
 import AdminLayoutClient from '../AdminLayoutClient';
 
@@ -35,8 +40,11 @@ export default async function AdminLayout({
   const session = await fetchAdminSession();
   const role = session?.role;
 
-  if (role !== 'ADMIN' && role !== 'STAFF' && role !== 'ACCOUNTANT') {
-    redirect(`/${safeLocale}/admin/login`);
+  if (role !== 'ADMIN') {
+    if (isStaffRole(role)) {
+      redirect(staffDefaultLanding(role, safeLocale));
+    }
+    redirect(buildStaffLoginPath(safeLocale, `/${safeLocale}/admin`));
   }
 
   return (

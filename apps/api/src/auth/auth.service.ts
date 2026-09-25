@@ -342,6 +342,7 @@ export class AuthService {
     loginLocation?: string;
     trustedDeviceToken?: string;
     language?: string;
+    staffOnly?: boolean;
   }) {
     const googleSub = params.googleSub;
     const email = normalizeEmail(params.email);
@@ -372,6 +373,12 @@ export class AuthService {
       }
 
       let base = byGoogle ?? byEmail ?? null;
+
+      if (params.staffOnly) {
+        if (!base || !this.isAdminRole(base.role)) {
+          throw new ForbiddenException('Staff account required');
+        }
+      }
 
       if (!base) {
         base = await tx.user.create({

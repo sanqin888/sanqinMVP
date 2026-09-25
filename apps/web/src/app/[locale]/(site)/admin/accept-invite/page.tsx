@@ -5,6 +5,11 @@ import { useRouter, useSearchParams, useParams } from "next/navigation";
 import { useState } from "react";
 import { apiFetch, getApiErrorMessage } from "@/lib/api/client";
 import type { Locale } from "@/lib/i18n/locales";
+import {
+  buildStaffLoginPath,
+  isStaffRole,
+  staffDefaultLanding,
+} from "@/lib/staff-entry";
 
 export default function AcceptInvitePage() {
   const router = useRouter();
@@ -27,14 +32,26 @@ export default function AcceptInvitePage() {
     setLoading(true);
 
     try {
-      await apiFetch<unknown>("/auth/accept-invite", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, password, name: name || undefined }),
-        unauthorized: "throw",
-      });
+      const result = await apiFetch<{ role?: string }>(
+        "/auth/accept-invite",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token, password, name: name || undefined }),
+          unauthorized: "throw",
+        },
+      );
 
-      router.push(`/${locale}/store/pos/login`);
+      if (!isStaffRole(result.role)) {
+        throw new Error("邀请账号角色无效");
+      }
+      const role = result.role;
+      const next = staffDefaultLanding(role, locale);
+      router.push(
+        buildStaffLoginPath(locale, next, {
+          needDevice: role === "STAFF",
+        }),
+      );
     } catch (err) {
       setError(getApiErrorMessage(err, "邀请处理失败"));
     } finally {
@@ -47,7 +64,7 @@ export default function AcceptInvitePage() {
       <div className="w-full max-w-md rounded-2xl border bg-white p-6 shadow-sm">
         <h1 className="text-xl font-semibold text-slate-900">接受邀请</h1>
         <p className="mt-2 text-sm text-slate-500">
-          设置密码后即可使用邀请邮件中的账号登录后台。
+          设置密码后即可使用邀请邮件中的账号登录对应员工工作区。
         </p>
 
         <form className="mt-6 space-y-4" onSubmit={handleSubmit}>

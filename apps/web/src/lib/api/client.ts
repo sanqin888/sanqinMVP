@@ -57,15 +57,19 @@ function redirectUnauthorized(message = '') {
   const locale = pathname.split('/')[1];
   const safeLocale = locale === 'zh' || locale === 'en' ? locale : 'en';
 
-  if (pathname.includes('/admin') || pathname.includes('/accounting')) {
-    if (message.includes('Admin MFA required')) {
-      window.location.href = `/${safeLocale}/admin/2fa`;
-    } else {
-      const next = encodeURIComponent(pathname);
-      window.location.href = `/${safeLocale}/admin/login?next=${next}`;
-    }
-  } else if (pathname.includes('/store/pos')) {
-    window.location.href = `/${safeLocale}/store/pos/login`;
+  if (pathname.includes('/admin') && message.includes('Admin MFA required')) {
+    window.location.href = `/${safeLocale}/admin/2fa`;
+    return;
+  }
+
+  if (
+    pathname.includes('/admin') ||
+    pathname.includes('/accounting') ||
+    pathname.includes('/store/pos')
+  ) {
+    const next = encodeURIComponent(`${pathname}${window.location.search}`);
+    const needDevice = pathname.includes('/store/pos') ? '&needDevice=1' : '';
+    window.location.href = `/${safeLocale}/staff/login?next=${next}${needDevice}`;
   }
 }
 
