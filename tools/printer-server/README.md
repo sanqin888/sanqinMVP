@@ -30,8 +30,8 @@ Do not commit `.env`, `.sanq-printer-device.json`, completed-job state, runtime 
 
 GitHub Actions installs this package with `npm ci` and runs `npm test`. The test suite imports `printer-server.js` without starting the local health server, connecting the POS WebSocket, enrolling a device, or accessing Windows printers.
 
-A3-B adds deterministic rendering-contract coverage for customer receipts and kitchen tickets using fixed print time and logo-free test mode, plus the exact JSON payload boundary passed to the Windows label PowerShell adapter. Transport/ACK/reconnect/dedupe tests remain a later A3 slice.
+A3-B adds deterministic rendering-contract coverage for customer receipts and kitchen tickets using fixed print time and logo-free test mode, plus the exact JSON payload boundary passed to the Windows label PowerShell adapter. A3-C adds transport coverage for success/failure ACKs, completed and in-flight duplicate suppression, persisted completion reload across process restart, persistence-failure safety, and store rejoin on reconnect. Tests use injected printers and temporary completion-state files; they never access Windows printers.
 
 ## Static assets
 
-`printer-server.js` optionally loads `assets/logo.png` for receipt logo output. The production logo asset is not yet repository-managed in A3-A; exact production receipt-asset reproducibility therefore remains a follow-up before rendering golden coverage is considered complete.
+`printer-server.js` optionally loads `assets/logo.png` for receipt logo output. The production logo asset is repository-managed at this path (added to `dev` in commit `247d7dc9`), so fresh workstation copies include the same receipt asset. Exact logo-raster golden coverage remains a separate rendering-test concern.

@@ -1218,12 +1218,12 @@ function printDeliveryKey(jobId, target) {
   return `${jobId}:${target}`;
 }
 
-function readCompletedPrintDeliveries() {
+function readCompletedPrintDeliveries(filePath = POS_PRINT_COMPLETION_FILE) {
   const completed = new Map();
-  if (!fs.existsSync(POS_PRINT_COMPLETION_FILE)) return completed;
+  if (!fs.existsSync(filePath)) return completed;
   try {
     const parsed = JSON.parse(
-      fs.readFileSync(POS_PRINT_COMPLETION_FILE, "utf8"),
+      fs.readFileSync(filePath, "utf8"),
     );
     const entries = Array.isArray(parsed?.completed) ? parsed.completed : [];
     for (const entry of entries) {
@@ -1242,17 +1242,23 @@ function readCompletedPrintDeliveries() {
   return completed;
 }
 
-function persistCompletedPrintDeliveries(completed) {
+function persistCompletedPrintDeliveries(
+  completed,
+  {
+    filePath = POS_PRINT_COMPLETION_FILE,
+    maxEntries = POS_PRINT_COMPLETION_MAX_ENTRIES,
+  } = {},
+) {
   const retained = [...completed.entries()]
     .sort((left, right) => right[1] - left[1])
-    .slice(0, POS_PRINT_COMPLETION_MAX_ENTRIES);
+    .slice(0, maxEntries);
   completed.clear();
   for (const [key, completedAt] of retained) {
     completed.set(key, completedAt);
   }
-  const directory = path.dirname(POS_PRINT_COMPLETION_FILE);
+  const directory = path.dirname(filePath);
   fs.mkdirSync(directory, { recursive: true });
-  const tempFile = `${POS_PRINT_COMPLETION_FILE}.${process.pid}.tmp`;
+  const tempFile = `${filePath}.${process.pid}.tmp`;
   try {
     fs.writeFileSync(
       tempFile,
@@ -1267,7 +1273,7 @@ function persistCompletedPrintDeliveries(completed) {
     } catch {
       // Windows may not apply POSIX mode bits; the file still remains local-only.
     }
-    fs.renameSync(tempFile, POS_PRINT_COMPLETION_FILE);
+    fs.renameSync(tempFile, filePath);
   } catch (error) {
     try {
       if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
@@ -1281,10 +1287,19 @@ function persistCompletedPrintDeliveries(completed) {
 const completedPrintDeliveries = readCompletedPrintDeliveries();
 const inFlightPrintDeliveries = new Map();
 
-function rememberCompletedPrintDelivery(jobId, target) {
+function rememberCompletedPrintDelivery(
+  jobId,
+  target,
+  {
+    completed = completedPrintDeliveries,
+    filePath = POS_PRINT_COMPLETION_FILE,
+    maxEntries = POS_PRINT_COMPLETION_MAX_ENTRIES,
+    now = Date.now(),
+  } = {},
+) {
   const key = printDeliveryKey(jobId, target);
-  completedPrintDeliveries.set(key, Date.now());
-  persistCompletedPrintDeliveries(completedPrintDeliveries);
+  completed.set(key, now);
+  persistCompletedPrintDeliveries(completed, { filePath, maxEntries });
 }
 
 function readSetCookieValue(setCookieHeaders, cookieName) {
@@ -1473,6 +1488,134 @@ async function printLabelPlanWithWindowsDriver(orderNumber, pickupCode, labelPla
   }
 }
 
+function createPrintJobHandler({
+  socket,
+  completed = completedPrintDeliveries,
+  inFlight = inFlightPrintDeliveries,
+  printCustomer = async (formattedPayload) => {
+    const customerBuffer = await buildCustomerReceiptEscPos(formattedPayload);
+    const frontPrinterName = process.env.POS_FRONT_PRINTER || "POS80";
+    if (!frontPrinterName) {
+      throw new Error("POS_FRONT_PRINTER_NOT_CONFIGURED");
+    }
+    console.log(`Cashier Print -> ${frontPrinterName}`);
+    await printEscPosTo(frontPrinterName, customerBuffer);
+  },
+  printKitchen = async (formattedPayload) => {
+    const kitchenBuffer = buildKitchenReceiptEscPos(formattedPayload);
+    const kitchenPrinterName = process.env.POS_KITCHEN_PRINTER;
+    if (!kitchenPrinterName) {
+      throw new Error("POS_KITCHEN_PRINTER_NOT_CONFIGURED");
+    }
+    console.log(`kitchen print -> ${kitchenPrinterName}`);
+    await printEscPosTo(kitchenPrinterName, kitchenBuffer);
+  },
+  printLabel = async (formattedPayload) => {
+    const orderId = formattedPayload.orderNumber || "Unknown";
+    await printLabelPlanWithWindowsDriver(
+      orderId,
+      formattedPayload.pickupCode,
+      formattedPayload.labelPlan,
+    );
+  },
+  rememberCompleted = (jobId, target) =>
+    rememberCompletedPrintDelivery(jobId, target, { completed }),
+} = {}) {
+  if (!socket || typeof socket.emit !== "function") {
+    throw new Error("PRINT_JOB_SOCKET_REQUIRED");
+  }
+
+  return async function handlePrintJob(job) {
+    const { jobId, target, payload: formattedPayload } = job || {};
+    const ack = (success, error) =>
+      socket.emit("PRINT_JOB_ACK", {
+        jobId,
+        target,
+        success,
+        ...(error ? { error: String(error.message || error) } : {}),
+      });
+
+    if (
+      !jobId ||
+      !["customer", "kitchen", "label"].includes(target) ||
+      !formattedPayload
+    ) {
+      console.error("[Cloud] Invalid PRINT_JOB envelope", job);
+      return;
+    }
+
+    const deliveryKey = printDeliveryKey(jobId, target);
+    if (completed.has(deliveryKey)) {
+      console.log(`[Cloud] Duplicate completed print ignored: ${deliveryKey}`);
+      ack(true);
+      return;
+    }
+
+    let printTask = inFlight.get(deliveryKey);
+    if (!printTask) {
+      printTask = (async () => {
+        const orderId = formattedPayload.orderNumber || "Unknown";
+        console.log(`[Cloud] 收到打印任务: ${orderId} (${deliveryKey})`);
+
+        if (target === "customer") {
+          await printCustomer(formattedPayload);
+        } else if (target === "kitchen") {
+          await printKitchen(formattedPayload);
+        } else {
+          await printLabel(formattedPayload);
+        }
+
+        try {
+          rememberCompleted(jobId, target);
+        } catch (error) {
+          // Physical printing has already succeeded. Preserve the in-memory
+          // completion and ACK success rather than asking the server to print again.
+          completed.set(deliveryKey, Date.now());
+          console.error(
+            `[Cloud] Failed to persist completed print dedupe state for ${deliveryKey}:`,
+            error,
+          );
+        }
+        console.log(` [Cloud] Print workflow over: ${deliveryKey}`);
+      })();
+      inFlight.set(deliveryKey, printTask);
+    } else {
+      console.log(`[Cloud] Duplicate in-flight print joined: ${deliveryKey}`);
+    }
+
+    try {
+      await printTask;
+      ack(true);
+    } catch (error) {
+      console.error("[Cloud] Failed print:", error);
+      ack(false, error);
+    } finally {
+      if (inFlight.get(deliveryKey) === printTask) {
+        inFlight.delete(deliveryKey);
+      }
+    }
+  };
+}
+
+function registerCloudConnectionHandlers(socket, storeId = STORE_ID) {
+  socket.on("connect", () => {
+    console.log(`[Cloud] Connected! Socket ID: ${socket.id}`);
+    socket.emit("joinStore", storeId ? { storeId } : {});
+  });
+
+  socket.on("joined", ({ room } = {}) => {
+    console.log(`[Cloud] Authorized room joined: ${room || "store room"}`);
+  });
+
+  socket.on("connect_error", (error) => {
+    console.error(`[Cloud] POS socket connection rejected: ${error.message}`);
+  });
+
+  socket.on("disconnect", (reason) => {
+    console.warn(`[Cloud] Disconnect: ${reason}`);
+  });
+}
+
 async function startCloudAutoPrint() {
   assertSecureDeviceTransport(API_URL);
   const credentials = await resolvePosDeviceCredentials();
@@ -1495,126 +1638,8 @@ async function startCloudAutoPrint() {
     },
   });
 
-  socket.on("connect", () => {
-    console.log(`[Cloud] Connected! Socket ID: ${socket.id}`);
-    socket.emit("joinStore", STORE_ID ? { storeId: STORE_ID } : {});
-  });
-
-  socket.on("joined", ({ room } = {}) => {
-    console.log(`[Cloud] Authorized room joined: ${room || "store room"}`);
-  });
-
-  socket.on("connect_error", (error) => {
-    console.error(`[Cloud] POS socket connection rejected: ${error.message}`);
-  });
-
-  socket.on("disconnect", (reason) => {
-    console.warn(`[Cloud] Disconnect: ${reason}`);
-  });
-
-  // 核心：监听云端指令。jobId + target 是云端稳定的 delivery identity；
-  // 已完成任务在本地持久去重，进程内重复 envelope 共用同一个 in-flight promise。
-  socket.on("PRINT_JOB", async (job) => {
-    const { jobId, target, payload: formattedPayload } = job || {};
-    const ack = (success, error) =>
-      socket.emit("PRINT_JOB_ACK", {
-        jobId,
-        target,
-        success,
-        ...(error ? { error: String(error.message || error) } : {}),
-      });
-    if (
-      !jobId ||
-      !["customer", "kitchen", "label"].includes(target) ||
-      !formattedPayload
-    ) {
-      console.error("[Cloud] Invalid PRINT_JOB envelope", job);
-      return;
-    }
-
-    const deliveryKey = printDeliveryKey(jobId, target);
-    if (completedPrintDeliveries.has(deliveryKey)) {
-      console.log(`[Cloud] Duplicate completed print ignored: ${deliveryKey}`);
-      ack(true);
-      return;
-    }
-
-    let printTask = inFlightPrintDeliveries.get(deliveryKey);
-    if (!printTask) {
-      printTask = (async () => {
-        // 这里的 formattedPayload 已经是后端生成的稳定 Order 打印快照。
-        const orderId = formattedPayload.orderNumber || "Unknown";
-        const targetCustomer = target === "customer";
-        const targetKitchen = target === "kitchen";
-        const targetLabel = target === "label";
-        console.log(`[Cloud] 收到打印任务: ${orderId} (${deliveryKey})`);
-
-        // ==========================================
-        // 🖨️ 任务 A: 前台打印机 (Customer Receipt)
-        // ==========================================
-        if (targetCustomer) {
-          const customerBuffer =
-            await buildCustomerReceiptEscPos(formattedPayload);
-          const frontPrinterName = process.env.POS_FRONT_PRINTER || "POS80";
-          if (frontPrinterName) {
-            console.log(`Cashier Print -> ${frontPrinterName}`);
-            await printEscPosTo(frontPrinterName, customerBuffer);
-          } else {
-            throw new Error("POS_FRONT_PRINTER_NOT_CONFIGURED");
-          }
-        }
-
-        // ==========================================
-        // 👨‍🍳 任务 B: 后厨打印机 (Kitchen Ticket)
-        // ==========================================
-        if (targetKitchen) {
-          const kitchenBuffer = buildKitchenReceiptEscPos(formattedPayload);
-          const kitchenPrinterName = process.env.POS_KITCHEN_PRINTER;
-          if (kitchenPrinterName) {
-            console.log(`kitchen print -> ${kitchenPrinterName}`);
-            await printEscPosTo(kitchenPrinterName, kitchenBuffer);
-          } else {
-            throw new Error("POS_KITCHEN_PRINTER_NOT_CONFIGURED");
-          }
-        }
-
-        if (targetLabel) {
-          await printLabelPlanWithWindowsDriver(
-            orderId,
-            formattedPayload.pickupCode,
-            formattedPayload.labelPlan,
-          );
-        }
-
-        try {
-          rememberCompletedPrintDelivery(jobId, target);
-        } catch (error) {
-          // Physical printing has already succeeded. Preserve the in-memory
-          // completion and ACK success rather than asking the server to print again.
-          console.error(
-            `[Cloud] Failed to persist completed print dedupe state for ${deliveryKey}:`,
-            error,
-          );
-        }
-        console.log(` [Cloud] Print workflow over: ${deliveryKey}`);
-      })();
-      inFlightPrintDeliveries.set(deliveryKey, printTask);
-    } else {
-      console.log(`[Cloud] Duplicate in-flight print joined: ${deliveryKey}`);
-    }
-
-    try {
-      await printTask;
-      ack(true);
-    } catch (err) {
-      console.error(`[Cloud] Failed print:`, err);
-      ack(false, err);
-    } finally {
-      if (inFlightPrintDeliveries.get(deliveryKey) === printTask) {
-        inFlightPrintDeliveries.delete(deliveryKey);
-      }
-    }
-  });
+  registerCloudConnectionHandlers(socket);
+  socket.on("PRINT_JOB", createPrintJobHandler({ socket }));
 
   socket.on("PRINT_SUMMARY", async (summaryData) => {
     console.log(`\n [Cloud] Received print task ”Daily Summary“`);
@@ -1644,4 +1669,8 @@ module.exports = {
   buildCustomerReceiptEscPos,
   buildKitchenReceiptEscPos,
   buildLabelPrintPayload,
+  createPrintJobHandler,
+  readCompletedPrintDeliveries,
+  rememberCompletedPrintDelivery,
+  registerCloudConnectionHandlers,
 };
