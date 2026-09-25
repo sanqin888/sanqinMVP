@@ -329,6 +329,12 @@ enum AccountingProviderPayoutBankRowDecisionKind {
   MATCH_EXISTING_PAYOUT
 }
 
+enum AccountingProviderFeeBankRowDecisionKind {
+  EXCLUDED
+  READY_FOR_CLEARING
+  CLEARED
+}
+
 enum AccountingProviderRecognitionMatchMode {
   ANY
   ALL
@@ -1822,6 +1828,32 @@ model AccountingProviderPayoutBankRowDecision {
   @@index([matchedPayoutStableId])
 }
 
+model AccountingProviderFeeBankRowDecision {
+  id                    String                                       @id @default(uuid()) @db.Uuid
+  decisionStableId      String                                       @unique
+  artifactId            String                                       @db.Uuid
+  rowNumber             Int
+  rowFingerprint        String
+  storeStableId         String
+  bankAccountStableId   String
+  occurredOn            DateTime                                     @db.Date
+  amountCents           Int
+  description           String?
+  providerHint          AccountingFinancialProvider?
+  decision              AccountingProviderFeeBankRowDecisionKind
+  journalEntryStableId  String?
+  confirmedByActorRef   String
+  confirmedAt           DateTime
+  createdAt             DateTime                                     @default(now())
+  updatedAt             DateTime                                     @updatedAt
+  artifact              AccountingSourceArtifact                     @relation(fields: [artifactId], references: [id], onDelete: Restrict)
+
+  @@unique([artifactId, rowNumber, storeStableId, bankAccountStableId], map: "AccountingProviderFeeBankRowDecision_scope_key")
+  @@index([artifactId, storeStableId, bankAccountStableId])
+  @@index([decision, confirmedAt])
+  @@index([journalEntryStableId])
+}
+
 model PayrollEmployer {
   id                   String                         @id @default(uuid()) @db.Uuid
   employerStableId     String                         @unique @default(cuid())
@@ -2206,6 +2238,7 @@ model AccountingSourceArtifact {
   binaryRetention        AccountingArtifactBinaryRetention?
   evidenceFolderAssignment AccountingEvidenceFolderAssignment?
   providerPayoutBankRowDecisions AccountingProviderPayoutBankRowDecision[]
+  providerFeeBankRowDecisions   AccountingProviderFeeBankRowDecision[]
 
   @@unique([acquisitionMode, transportIdentity])
   @@index([contentHash, createdAt])

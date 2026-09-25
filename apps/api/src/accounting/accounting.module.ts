@@ -53,6 +53,7 @@ import { AccountingProviderFinancialCoverageService } from './accounting-provide
 import { AccountingProviderPayoutService } from './accounting-provider-payout.service';
 import { AccountingProviderPayoutBankMatchService } from './accounting-provider-payout-bank-match.service';
 import { AccountingProviderPayoutBankRowDecisionService } from './accounting-provider-payout-bank-row-decision.service';
+import { AccountingProviderFeeBankRowDecisionService } from './accounting-provider-fee-bank-row-decision.service';
 import { AccountingProviderPendingReconciliationService } from './accounting-provider-pending-reconciliation.service';
 import { AccountingPayrollConfigService } from './payroll/accounting-payroll-config.service';
 import { AccountingPayrollEmployeeService } from './payroll/accounting-payroll-employee.service';
@@ -119,6 +120,7 @@ import { PaymentFinancialFactsModule } from '../payments/public-api';
     AccountingProviderPayoutService,
     AccountingProviderPayoutBankMatchService,
     AccountingProviderPayoutBankRowDecisionService,
+    AccountingProviderFeeBankRowDecisionService,
     AccountingProviderPendingReconciliationService,
     AccountingChartService,
     AccountingExpenseService,

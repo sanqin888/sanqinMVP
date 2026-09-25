@@ -65,6 +65,13 @@ import {
   PROVIDER_PAYOUT_SOURCE_FACT_TYPE,
   type ProviderPayoutJournalWriteAuthorityV1,
 } from './accounting-provider-payout-journal-authority';
+import {
+  assertProviderFeeBankWithdrawalJournalAuthority,
+  hashProviderFeeBankWithdrawalJournalWrite,
+  normalizeProviderFeeBankWithdrawalWriteAuthority,
+  PROVIDER_FEE_BANK_WITHDRAWAL_SOURCE_FACT_TYPE,
+  type ProviderFeeBankWithdrawalJournalWriteAuthorityV1,
+} from './accounting-provider-fee-bank-withdrawal-journal-authority';
 import { AccountingPeriodService } from './accounting-period.service';
 import {
   assertPayrollRunAccrualJournalAuthority,
@@ -237,6 +244,13 @@ export class AccountingJournalService {
         'canonical provider payout Journals require payout-specific write authority',
       );
     }
+    if (
+      input.sourceFactType === PROVIDER_FEE_BANK_WITHDRAWAL_SOURCE_FACT_TYPE
+    ) {
+      throw new BadRequestException(
+        'provider fee bank withdrawal Journals require fee-clearing write authority',
+      );
+    }
     return this.createJournalEntryInternal(input, operatorActorRef, null);
   }
 
@@ -336,6 +350,54 @@ export class AccountingJournalService {
     if (journal.deletedAt) {
       throw new ConflictException(
         'Provider payout Journal was deleted and cannot be replayed',
+      );
+    }
+    return journal;
+  }
+
+  async createProviderFeeBankWithdrawalJournalInTx(
+    input: AccountingJournalCreateInput,
+    operatorActorRef: string,
+    authority: ProviderFeeBankWithdrawalJournalWriteAuthorityV1,
+    tx: Prisma.TransactionClient,
+  ): Promise<AccountingJournalRow> {
+    const normalizedAuthority = this.applyJournalPolicy(() =>
+      normalizeProviderFeeBankWithdrawalWriteAuthority(authority),
+    );
+    const normalized = this.applyJournalPolicy(() =>
+      normalizeJournalCreate(input),
+    );
+    this.applyJournalPolicy(() =>
+      assertProviderFeeBankWithdrawalJournalAuthority(
+        normalized,
+        normalizedAuthority,
+      ),
+    );
+    await this.assertProviderFeeBankWithdrawalAuthorityInTx(
+      normalizedAuthority,
+      tx,
+    );
+
+    const operator = this.requireJournalValue(
+      operatorActorRef,
+      'operatorActorRef',
+    );
+    const journal = await this.createPreparedJournalEntryInTx(
+      {
+        normalized,
+        idempotencyHash: hashProviderFeeBankWithdrawalJournalWrite(
+          normalized,
+          normalizedAuthority,
+        ),
+        auditAuthority: normalizedAuthority as unknown as Prisma.InputJsonValue,
+      },
+      operator,
+      tx,
+      normalizedAuthority.businessTimezone,
+    );
+    if (journal.deletedAt) {
+      throw new ConflictException(
+        'provider fee bank withdrawal Journal was deleted and cannot be replayed',
       );
     }
     return journal;
@@ -759,6 +821,21 @@ export class AccountingJournalService {
           'generic Journal update cannot create canonical provider payout authority',
         );
       }
+      if (
+        existing.sourceFactType === PROVIDER_FEE_BANK_WITHDRAWAL_SOURCE_FACT_TYPE
+      ) {
+        throw new ConflictException(
+          'provider fee bank withdrawal Journals cannot be updated in place',
+        );
+      }
+      if (
+        normalized.sourceFactType ===
+        PROVIDER_FEE_BANK_WITHDRAWAL_SOURCE_FACT_TYPE
+      ) {
+        throw new ConflictException(
+          'generic Journal update cannot create provider fee bank withdrawal authority',
+        );
+      }
       const existingDbId = existing.id;
       const existingPublic = this.toJournalPublic(existing);
 
@@ -879,6 +956,13 @@ export class AccountingJournalService {
       if (existing.sourceFactType === PROVIDER_PAYOUT_SOURCE_FACT_TYPE) {
         throw new ConflictException(
           'canonical provider payout Journals cannot be deleted in place',
+        );
+      }
+      if (
+        existing.sourceFactType === PROVIDER_FEE_BANK_WITHDRAWAL_SOURCE_FACT_TYPE
+      ) {
+        throw new ConflictException(
+          'provider fee bank withdrawal Journals cannot be deleted in place',
         );
       }
 
@@ -1456,6 +1540,75 @@ export class AccountingJournalService {
       ) {
         throw new ConflictException(
           `Payroll reversal account authority changed before posting: ${prerequisite.accountStableId}`,
+        );
+      }
+    }
+  }
+
+  private async assertProviderFeeBankWithdrawalAuthorityInTx(
+    authority: ProviderFeeBankWithdrawalJournalWriteAuthorityV1,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    const fact = authority.fact;
+    const decision = await tx.accountingProviderFeeBankRowDecision.findUnique({
+      where: { decisionStableId: fact.decisionStableId },
+      select: {
+        decision: true,
+        storeStableId: true,
+        bankAccountStableId: true,
+        occurredOn: true,
+        amountCents: true,
+        providerHint: true,
+        journalEntryStableId: true,
+      },
+    });
+    if (
+      !decision ||
+      decision.decision !== 'READY_FOR_CLEARING' ||
+      decision.journalEntryStableId !== null ||
+      decision.providerHint !== 'CLOVER' ||
+      decision.storeStableId !== fact.storeStableId ||
+      decision.bankAccountStableId !== fact.bankAccountStableId ||
+      decision.occurredOn.toISOString().slice(0, 10) !== fact.withdrawalDate ||
+      decision.amountCents !== fact.amountCents
+    ) {
+      throw new ConflictException(
+        'Provider fee bank withdrawal authority changed before Journal posting',
+      );
+    }
+
+    const currentAccounts = await tx.accountingAccount.findMany({
+      where: {
+        accountStableId: {
+          in: authority.accountPrerequisites.map(
+            (account) => account.accountStableId,
+          ),
+        },
+      },
+      select: {
+        accountStableId: true,
+        accountClass: true,
+        type: true,
+        currency: true,
+        isActive: true,
+      },
+    });
+    const currentByStableId = new Map(
+      currentAccounts.map(
+        (account) => [account.accountStableId, account] as const,
+      ),
+    );
+    for (const prerequisite of authority.accountPrerequisites) {
+      const current = currentByStableId.get(prerequisite.accountStableId);
+      if (
+        !current ||
+        current.accountClass !== prerequisite.accountClass ||
+        current.type !== prerequisite.accountType ||
+        current.currency !== prerequisite.currency ||
+        current.isActive !== prerequisite.isActive
+      ) {
+        throw new ConflictException(
+          `Provider fee bank withdrawal account authority changed before posting: ${prerequisite.accountStableId}`,
         );
       }
     }

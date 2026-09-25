@@ -580,6 +580,23 @@ Settlements separately reads the existing manual-upload library and admits only 
 
 The Web characterization test pins this split: Inbox remains the only Accounting file-upload surface and owns evidence preview; Settlements owns settlement Include/Exclude and posting handoff but never uploads evidence.
 
+### Clover fee bank-withdrawal clearing
+
+The same reviewed bank CSV evidence lifecycle now exposes withdrawal rows without changing the provider-payout deposit contract. Deposit matching remains owned by `AccountingProviderPayoutBankRowDecision`; fee withdrawals use a separate Accounting-owned durable decision model so payout semantics stay deposit-only.
+
+Only withdrawal rows whose normalized bank description produces `providerHint=CLOVER` (currently explicit Clover / First Data Canada evidence) are eligible. The operator must explicitly include rows and confirm a durable withdrawal scope. Each confirmed row is fingerprinted against the immutable artifact, store and selected CAD bank account. Reopening reparses the source and fails closed if the row facts no longer match. Cleared rows cannot be excluded or rewritten.
+
+The canonical clearing Journal is strictly:
+
+```text
+Dr account_clover_fee_payable
+Cr selected CAD BANK
+```
+
+It uses source fact `accounting.provider_fee_bank_withdrawal.v1`, is idempotent by durable bank-row decision stable ID, and is written in the same Serializable transaction that transitions the decision from `READY_FOR_CLEARING` to `CLEARED`. The writer verifies current row authority, account class/type/currency/activity, and that the current Clover fee-payable credit balance is at least the withdrawal amount. No ExpenseDocument or expense Journal is created by this clearing path.
+
+This is intentionally separate from statement accrual. Clover statements recognize processing/software/HST economics into `account_clover_fee_payable`; actual CIBC withdrawals clear that liability when cash leaves the bank. For the verified June statement, the 33.90, 1.85 and 3.33 June withdrawals plus the 59.31 July 2 withdrawal together clear the 98.39 payable. The operator remains responsible for selecting only bank withdrawals whose fee accrual is already present; row identity and payable-balance guards prevent duplicate/over-clearing but do not invent a statement-to-bank-row match.
+
 ### PAYOUT-E-A exclusions
 
 Still deferred:
