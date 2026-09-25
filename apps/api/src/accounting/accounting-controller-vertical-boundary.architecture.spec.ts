@@ -41,6 +41,7 @@ const EXPECTED_CONTROLLER_CAPABILITIES = {
     'AccountingProviderFinancialService',
   ],
   'accounting-provider-payout.controller.ts': [
+    'AccountingProviderFeeBankRowDecisionService',
     'AccountingProviderPayoutBankMatchService',
     'AccountingProviderPayoutBankRowDecisionService',
     'AccountingProviderPayoutService',
@@ -96,6 +97,10 @@ const EXPECTED_ROUTES = [
   'GET provider-payouts',
   'GET provider-payouts/bank-match-preview',
   'GET provider-payouts/bank-row-decisions',
+  'GET provider-fees/bank-withdrawal-preview',
+  'GET provider-fees/bank-row-decisions',
+  'POST provider-fees/bank-row-decisions/confirm',
+  'POST provider-fees/from-bank-row-decision',
   'POST provider-payouts',
   'POST provider-payouts/from-bank-row-decision',
   'POST provider-payouts/bank-row-decisions/confirm',

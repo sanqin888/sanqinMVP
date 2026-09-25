@@ -18,6 +18,7 @@ import {
 import { AccountingProviderPayoutService } from './accounting-provider-payout.service';
 import { AccountingProviderPayoutBankMatchService } from './accounting-provider-payout-bank-match.service';
 import { AccountingProviderPayoutBankRowDecisionService } from './accounting-provider-payout-bank-row-decision.service';
+import { AccountingProviderFeeBankRowDecisionService } from './accounting-provider-fee-bank-row-decision.service';
 import { AccountingProviderPendingReconciliationService } from './accounting-provider-pending-reconciliation.service';
 
 @Controller('accounting')
@@ -28,6 +29,7 @@ export class AccountingProviderPayoutController {
     private readonly payouts: AccountingProviderPayoutService,
     private readonly bankMatch: AccountingProviderPayoutBankMatchService,
     private readonly bankRowDecisions: AccountingProviderPayoutBankRowDecisionService,
+    private readonly feeBankRows: AccountingProviderFeeBankRowDecisionService,
     private readonly pendingReconciliation: AccountingProviderPendingReconciliationService,
   ) {}
 
@@ -78,6 +80,65 @@ export class AccountingProviderPayoutController {
           body.destinationBankAccountStableId ?? '',
         includedRowNumbers: body.includedRowNumbers ?? [],
       },
+      requireAccountingOperatorUserId(req),
+    );
+  }
+
+  @Get('provider-fees/bank-withdrawal-preview')
+  previewProviderFeeBankWithdrawals(
+    @Query('artifactStableId') artifactStableId?: string,
+    @Query('storeStableId') storeStableId?: string,
+    @Query('bankAccountStableId') bankAccountStableId?: string,
+  ) {
+    return this.feeBankRows.preview({
+      artifactStableId: artifactStableId ?? '',
+      storeStableId: storeStableId ?? '',
+      bankAccountStableId: bankAccountStableId ?? '',
+    });
+  }
+
+  @Get('provider-fees/bank-row-decisions')
+  getProviderFeeBankRowDecisions(
+    @Query('artifactStableId') artifactStableId?: string,
+    @Query('storeStableId') storeStableId?: string,
+    @Query('bankAccountStableId') bankAccountStableId?: string,
+  ) {
+    return this.feeBankRows.getScope({
+      artifactStableId: artifactStableId ?? '',
+      storeStableId: storeStableId ?? '',
+      bankAccountStableId: bankAccountStableId ?? '',
+    });
+  }
+
+  @Post('provider-fees/bank-row-decisions/confirm')
+  confirmProviderFeeBankRowDecisions(
+    @Body()
+    body: {
+      artifactStableId?: string;
+      storeStableId?: string;
+      bankAccountStableId?: string;
+      includedRowNumbers?: number[];
+    },
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.feeBankRows.confirmScope(
+      {
+        artifactStableId: body.artifactStableId ?? '',
+        storeStableId: body.storeStableId ?? '',
+        bankAccountStableId: body.bankAccountStableId ?? '',
+        includedRowNumbers: body.includedRowNumbers ?? [],
+      },
+      requireAccountingOperatorUserId(req),
+    );
+  }
+
+  @Post('provider-fees/from-bank-row-decision')
+  clearProviderFeeBankRowDecision(
+    @Body() body: { decisionStableId?: string },
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.feeBankRows.clearDecision(
+      body.decisionStableId ?? '',
       requireAccountingOperatorUserId(req),
     );
   }

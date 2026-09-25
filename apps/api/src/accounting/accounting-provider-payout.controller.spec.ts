@@ -4,6 +4,7 @@ import { AccountingProviderPayoutController } from './accounting-provider-payout
 import { AccountingProviderPayoutService } from './accounting-provider-payout.service';
 import { AccountingProviderPayoutBankMatchService } from './accounting-provider-payout-bank-match.service';
 import { AccountingProviderPayoutBankRowDecisionService } from './accounting-provider-payout-bank-row-decision.service';
+import { AccountingProviderFeeBankRowDecisionService } from './accounting-provider-fee-bank-row-decision.service';
 import { AccountingProviderPendingReconciliationService } from './accounting-provider-pending-reconciliation.service';
 
 function makeController() {
@@ -23,6 +24,14 @@ function makeController() {
       .fn()
       .mockResolvedValue({ confirmed: true, decisions: [] }),
   };
+  const feeBankRows = {
+    preview: jest.fn().mockResolvedValue({ withdrawals: [] }),
+    getScope: jest.fn().mockResolvedValue({ confirmed: false, decisions: [] }),
+    confirmScope: jest
+      .fn()
+      .mockResolvedValue({ confirmed: true, decisions: [] }),
+    clearDecision: jest.fn().mockResolvedValue({ decision: 'CLEARED' }),
+  };
   const pendingReconciliation = {
     reconcile: jest.fn().mockResolvedValue({ providers: [] }),
   };
@@ -30,6 +39,7 @@ function makeController() {
     payouts as unknown as AccountingProviderPayoutService,
     bankMatch as unknown as AccountingProviderPayoutBankMatchService,
     bankRowDecisions as unknown as AccountingProviderPayoutBankRowDecisionService,
+    feeBankRows as unknown as AccountingProviderFeeBankRowDecisionService,
     pendingReconciliation as unknown as AccountingProviderPendingReconciliationService,
   );
   return {
@@ -37,6 +47,7 @@ function makeController() {
     payouts,
     bankMatch,
     bankRowDecisions,
+    feeBankRows,
     pendingReconciliation,
   };
 }
