@@ -9,5 +9,6 @@
   "PrinterStartScript": "C:\\pos-printer-server\\start-printer-server.vbs",
   "PrinterStartupTimeoutSeconds": 20,
   "WindowStartupTimeoutSeconds": 25,
+  "EnsureIntervalSeconds": 60,
   "LogDirectory": ""
 }
