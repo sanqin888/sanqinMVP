@@ -173,17 +173,19 @@ Tips 4 $3.84
         firstNetworkRow.amountCents,
         0,
       ),
-      ...params.networkRows.slice(1).flatMap((row, index) =>
-        feeRow(
-          4,
-          0.2 + index * 0.03,
-          row.invoice,
-          row.description,
-          'Fees',
-          row.amountCents,
-          0,
+      ...params.networkRows
+        .slice(1)
+        .flatMap((row, index) =>
+          feeRow(
+            4,
+            0.2 + index * 0.03,
+            row.invoice,
+            row.description,
+            'Fees',
+            row.amountCents,
+            0,
+          ),
         ),
-      ),
       ...feeRow(
         4,
         0.3,

@@ -768,10 +768,8 @@ const buildModernCloverControlTotalChecks = (
     feeSummaryCodes.every(
       (rawCode) => rawCodeMatches(document, rawCode).length === 1,
     ) &&
-    rawCodeMatches(
-      document,
-      CLOVER_STATEMENT_RAW_CODES.ACCOUNT_FEES_TOTAL,
-    ).length === 1;
+    rawCodeMatches(document, CLOVER_STATEMENT_RAW_CODES.ACCOUNT_FEES_TOTAL)
+      .length === 1;
 
   const feeDetailCodes = [
     CLOVER_STATEMENT_RAW_CODES.EQUIPMENT_FEE,
@@ -823,8 +821,7 @@ const buildModernCloverControlTotalChecks = (
     cardProcessingComponentCodes,
   );
   const cardProcessingComponentCount = document.lines.filter(
-    (line) =>
-      line.rawCode && cardProcessingComponentRawCodes.has(line.rawCode),
+    (line) => line.rawCode && cardProcessingComponentRawCodes.has(line.rawCode),
   ).length;
   const cardProcessingComplete =
     cardProcessingControl.length === 1 &&

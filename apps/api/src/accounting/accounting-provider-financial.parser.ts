@@ -207,8 +207,7 @@ function parseCloverStatement(
     rawName: string,
     component: AccountingFinancialComponent,
     resolution: NamedAmountResolution,
-    treatment: AccountingFinancialPostingTreatment =
-      AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+    treatment: AccountingFinancialPostingTreatment = AccountingFinancialPostingTreatment.CONTROL_TOTAL,
   ) => {
     lines.push({
       rawCode,
@@ -886,8 +885,7 @@ function cloverModernCardProcessingTotalFeesFromLayout(
     )[0];
   if (!totalRow?.geometry) return null;
 
-  const headerCenter =
-    feesHeaderGeometry.left + feesHeaderGeometry.width / 2;
+  const headerCenter = feesHeaderGeometry.left + feesHeaderGeometry.width / 2;
   const value = extraction.lines
     .flatMap((line) => {
       if (
@@ -1121,10 +1119,7 @@ function appendCloverModernFeeLines(
       rawCode: CLOVER_STATEMENT_RAW_CODES.NETWORK_FEES,
       rawName: 'Other Card/Network Fees',
       component: AccountingFinancialComponent.PROCESSING_FEE,
-      amountCents: sumRows(
-        networkRows,
-        (row) => row.totalCents - row.taxCents,
-      ),
+      amountCents: sumRows(networkRows, (row) => row.totalCents - row.taxCents),
       sourceRows: networkRows,
     });
     pushAggregate({
@@ -1164,10 +1159,7 @@ function appendCloverModernFeeLines(
     rawCode: CLOVER_STATEMENT_RAW_CODES.SERVICE_CHARGES,
     rawName: 'Service Charges',
     component: AccountingFinancialComponent.PROCESSING_FEE,
-    amountCents: sumRows(
-      serviceRows,
-      (row) => row.totalCents - row.taxCents,
-    ),
+    amountCents: sumRows(serviceRows, (row) => row.totalCents - row.taxCents),
     sourceRows: serviceRows,
   });
   pushAggregate({
