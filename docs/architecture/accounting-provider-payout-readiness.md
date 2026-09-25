@@ -327,9 +327,20 @@ Therefore PAYOUT-C is **PRODUCTION VERIFIED**.
 
 PAYOUT-D is intentionally a read-only Accounting report. It does not attempt a one-to-one match between monthly statement payout totals and bank deposits.
 
+> **2026-09-25 Clover authority correction:** the bullets below describe the Journal composition
+> that PAYOUT-D was built to project, not the final economic authority for pre-sync Clover CARD.
+> Real June/July Closeout + monthly-statement evidence subsequently proved that, from Accounting
+> start 2026-06-01 until production POS-Clover payment cutover, Clover receivable/Pending authority
+> must come from Clover Daily Closeout + Monthly Statement rather than
+> `Order.paymentMethod=CARD`. Order sale economics remain valid, but its pre-sync CARD tender
+> attribution is diagnostic-only. PAYOUT-D's arithmetic invariant remains valid as a ledger
+> explanation; the current Clover closing Pending must not be interpreted as externally confirmed
+> until the planned authority-replacement correction is completed. See
+> `docs/architecture/accounting-clover-pre-sync-authority-plan.md`.
+
 Production Journal composition proves why the roll-forward must use canonical Journal source/fact metadata:
 
-- Clover sales Pending is driven by canonical Order sales/reversals and gross bank receipts; Clover statement fees are a separate liability settlement lane and must not reduce sales Pending;
+- Historical Clover sales Pending is currently driven by canonical Order sales/reversals and gross bank receipts; this pre-sync tender authority is now explicitly superseded for future remediation by Closeout + statement evidence, while Clover statement fees remain a separate liability settlement lane and must not reduce sales Pending;
 - historical Uber Pending includes canonical Order sales that were later neutralized by `accounting.uber_pre_cutover_order_reversal.v1`, after which provider statements became authoritative;
 - Fantuan Pending is currently provider-statement-driven;
 - actual bank receipts reduce Pending through `accounting.provider_payout.v1`.
