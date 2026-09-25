@@ -583,7 +583,7 @@ Avoid polishing current mixed-authority widgets immediately before replacing the
 Priority: **P2**  
 Complexity: **M**  
 Depends on: **B2 terminology / financial contract stabilization — satisfied; B4 closed**  
-State: **B5-B1 + B5-B2 + B5-C1 + B5-C2 MERGED / CI GREEN; C2 PRODUCTION DEPLOYED + OBSERVED; B5-D LOCAL SOURCE READY FOR REVIEW / HTTP CONTRACT CONTRACTION / UI CONFIDENCE POLISH / NO MIGRATION / NO PACKAGE CHANGE / NO NEW GRAPH DIRECTION / POST-CONTRACTION PRODUCTION VERIFICATION PENDING**. B5-B1: PR #2511 / squash `35ba5d52` / CI #6291 green. B5-B2: PR #2513 / squash `c64c07d3` / final head `7a8b09eb` / CI #6298 green. B5-C1: PR #2514 / final head `d8f21ca6` / squash `af57715f` / CI #6303 green. B5-C2: PR #2515 / final head `6f455230` / squash `dfa8e21c` / CI #6306 green; deployed in production `main@81784c85`. Detailed work package: `docs/architecture/admin-business-reports-b5.md`.
+State: **B5 PRODUCTION VERIFIED / CLOSED / NO MIGRATION / NO PACKAGE CHANGE / NO NEW GRAPH DIRECTION**. B5-B1: PR #2511 / squash `35ba5d52` / CI #6291 green. B5-B2: PR #2513 / squash `c64c07d3` / final head `7a8b09eb` / CI #6298 green. B5-C1: PR #2514 / final head `d8f21ca6` / squash `af57715f` / CI #6303 green. B5-C2: PR #2515 / final head `6f455230` / squash `dfa8e21c` / CI #6306 green. B5-D: PR #2520 / final head `3371e8a4` / squash `7a6908ac` / CI #6327 green; production verified on `main@7a6908ac`. Detailed work package: `docs/architecture/admin-business-reports-b5.md`.
 
 B5 is now scoped as a store operating-monitoring surface, not merely a cleanup of the old Sales page. The product target is Today-first anomaly detection and explanation across Order count, Order total, average Order total, time-of-day, channel, fulfillment, product/package demand, production demand and execution health while canonical financial reporting remains Accounting-owned.
 
@@ -600,7 +600,7 @@ Important distinction:
 - `/accounting/reports` = Accounting financial reports;
 - `/admin/reports` = Admin **数据 -> 经营报表 / Business reports**.
 
-The Admin page is now cut over to the dedicated Business Operations projection and remains an **operational management** surface. B5-D locally removes the observed-zero-consumer root `GET /reports` contract and its legacy KPI/readMetrics projection while preserving Homepage `REPORTING_TOP_ITEMS_QUERY` / `readItemsForRange()`. The same closeout batch also stops repeating `OPERATING_CONTEXT_PARTIAL` on normal KPI/anomaly cards: only `LOW_SAMPLE` remains card-prominent, while Coverage explains the current-only Store-history limitation once.
+The Admin page is now cut over to the dedicated Business Operations projection and remains an **operational management** surface. B5-D removed the observed-zero-consumer root `GET /reports` contract and its legacy KPI/readMetrics projection while preserving Homepage `REPORTING_TOP_ITEMS_QUERY` / `readItemsForRange()`. The same closeout stopped repeating `OPERATING_CONTEXT_PARTIAL` on normal KPI/anomaly cards: only `LOW_SAMPLE` remains card-prominent, while Coverage explains the current-only Store-history limitation once. Production `main@7a6908ac` mapped only `/api/v1/reports/business`; Today / Yesterday / 7d / 28d / 90d requests all returned HTTP 200, Homepage featured returned 200, legacy root `/reports` traffic remained zero, Web logs had zero ERROR entries, and the operator reported no visible Business Reports UI anomaly. B5 is therefore closed.
 
 Target:
 
