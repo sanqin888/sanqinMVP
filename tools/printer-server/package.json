@@ -6,7 +6,7 @@
   "main": "printer-server.js",
   "scripts": {
     "start": "node printer-server.js",
-    "test": "node --check printer-server.js"
+    "test": "node --test"
   },
   "license": "ISC",
   "type": "commonjs",

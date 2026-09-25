@@ -28,9 +28,9 @@ Do not commit `.env`, `.sanq-printer-device.json`, completed-job state, runtime 
 
 ## CI boundary
 
-GitHub Actions installs this package with `npm ci` and runs `npm test`. A3-A keeps the smoke test deliberately side-effect free: it syntax-checks `printer-server.js` and does not start the local health server, connect the POS WebSocket, enroll a device, or access Windows printers.
+GitHub Actions installs this package with `npm ci` and runs `npm test`. The test suite imports `printer-server.js` without starting the local health server, connecting the POS WebSocket, enrolling a device, or accessing Windows printers.
 
-Rendering golden tests and transport/dedupe tests belong to later A3 slices.
+A3-B adds deterministic rendering-contract coverage for customer receipts and kitchen tickets using fixed print time and logo-free test mode, plus the exact JSON payload boundary passed to the Windows label PowerShell adapter. Transport/ACK/reconnect/dedupe tests remain a later A3 slice.
 
 ## Static assets
 

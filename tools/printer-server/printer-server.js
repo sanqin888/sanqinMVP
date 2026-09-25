@@ -485,7 +485,10 @@ function printEscPosTo(printerName, dataBuffer) {
 // ========== ESC/POS 小票内容生成 ==========
 
 // 顾客联
-async function buildCustomerReceiptEscPos(params) {
+async function buildCustomerReceiptEscPos(
+  params,
+  { now = new Date(), includeLogo = true } = {},
+) {
   const { orderNumber, pickupCode, fulfillment, paymentMethod, snapshot } =
     params;
   const locale = params.locale === "en" ? "en" : "zh";
@@ -587,20 +590,22 @@ async function buildCustomerReceiptEscPos(params) {
   chunks.push(cmd(ESC, 0x45, 0x00)); // 取消加粗
 
   // ==== Logo（可选） ====
-  try {
-    const logoPath =
-      process.env.POS_LOGO_PATH || path.join(__dirname, "assets", "logo.png");
-    if (fs.existsSync(logoPath)) {
-      chunks.push(cmd(ESC, 0x61, 0x01)); // 居中
-      const logoBuf = await escposRasterFromImage(logoPath, LOGO_WIDTH_DOTS);
-      chunks.push(logoBuf);
-      chunks.push(encLine("扫码访问 Review Us"));
-      chunks.push(cmd(ESC, 0x61, 0x00)); // 左对齐
-    } else {
-      console.warn("[logo] No logo picture found，pass:", logoPath);
+  if (includeLogo) {
+    try {
+      const logoPath =
+        process.env.POS_LOGO_PATH || path.join(__dirname, "assets", "logo.png");
+      if (fs.existsSync(logoPath)) {
+        chunks.push(cmd(ESC, 0x61, 0x01)); // 居中
+        const logoBuf = await escposRasterFromImage(logoPath, LOGO_WIDTH_DOTS);
+        chunks.push(logoBuf);
+        chunks.push(encLine("扫码访问 Review Us"));
+        chunks.push(cmd(ESC, 0x61, 0x00)); // 左对齐
+      } else {
+        console.warn("[logo] No logo picture found，pass:", logoPath);
+      }
+    } catch (e) {
+      console.warn("[logo] Print logo failed，pass:", e?.message || e);
     }
-  } catch (e) {
-    console.warn("[logo] Print logo failed，pass:", e?.message || e);
   }
   chunks.push(cmd(ESC, 0x61, 0x00)); // 左对齐
 
@@ -823,7 +828,7 @@ async function buildCustomerReceiptEscPos(params) {
   chunks.push(encLine("谢谢惠顾"));
   chunks.push(encLine("Thank you!"));
   chunks.push(encLine("顾客联 CUSTOMER COPY"));
-  chunks.push(encLine(`打印时间 Print: ${formatPrintTime()}`));
+  chunks.push(encLine(`打印时间 Print: ${formatPrintTime(now)}`));
   chunks.push(encLine(""));
   chunks.push(cmd(ESC, 0x61, 0x00)); // 左对齐
 
@@ -834,7 +839,7 @@ async function buildCustomerReceiptEscPos(params) {
 }
 
 // 后厨联
-function buildKitchenReceiptEscPos(params) {
+function buildKitchenReceiptEscPos(params, { now = new Date() } = {}) {
   const { fulfillment, snapshot } = params;
   const locale = params.locale === "en" ? "en" : "zh";
 
@@ -942,7 +947,7 @@ function buildKitchenReceiptEscPos(params) {
   chunks.push(cmd(ESC, 0x61, 0x01)); // 居中
   chunks.push(encLine(locale === "zh" ? "后厨联" : "KITCHEN COPY"));
   chunks.push(
-    encLine(`${locale === "zh" ? "打印时间" : "Print"}: ${formatPrintTime()}`),
+    encLine(`${locale === "zh" ? "打印时间" : "Print"}: ${formatPrintTime(now)}`),
   );
   chunks.push(encLine(""));
   chunks.push(cmd(ESC, 0x61, 0x00)); // 左对齐
@@ -1129,9 +1134,12 @@ app.post("/print-summary", async (req, res) => {
 
 // 仅保留一个简单的探活接口，方便查看服务是否存活
 app.get("/", (req, res) => res.send("Printer Server is Running (Cloud Mode)"));
-app.listen(19191, () =>
-  console.log("Local server is running, this is for health check."),
-);
+
+function startLocalHealthServer() {
+  return app.listen(19191, () =>
+    console.log("Local server is running, this is for health check."),
+  );
+}
 
 // ============================================================
 // 🚀 云端自动接单模块 (Cloud Auto-Print)
@@ -1400,9 +1408,20 @@ async function resolvePosDeviceCredentials() {
   return claimedCredentials;
 }
 
-async function printLabelPlanWithWindowsDriver(orderNumber, pickupCode, labelPlan) {
+function buildLabelPrintPayload(orderNumber, pickupCode, labelPlan) {
   const labels = Array.isArray(labelPlan?.labels) ? labelPlan.labels : [];
-  if (labels.length === 0) return;
+  return {
+    orderNumber: String(orderNumber || ""),
+    pickupCode: String(pickupCode || ""),
+    labelWidthMm: Number(labelPlan?.labelWidthMm || 70),
+    labelHeightMm: Number(labelPlan?.labelHeightMm || 30),
+    labels,
+  };
+}
+
+async function printLabelPlanWithWindowsDriver(orderNumber, pickupCode, labelPlan) {
+  const payload = buildLabelPrintPayload(orderNumber, pickupCode, labelPlan);
+  if (payload.labels.length === 0) return;
 
   const printerName = (process.env.POS_LABEL_PRINTER || "").trim();
   if (!printerName) {
@@ -1418,13 +1437,6 @@ async function printLabelPlanWithWindowsDriver(orderNumber, pickupCode, labelPla
     os.tmpdir(),
     `sanq-label-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.json`,
   );
-  const payload = {
-    orderNumber: String(orderNumber || ""),
-    pickupCode: String(pickupCode || ""),
-    labelWidthMm: Number(labelPlan?.labelWidthMm || 70),
-    labelHeightMm: Number(labelPlan?.labelHeightMm || 30),
-    labels,
-  };
   await fs.promises.writeFile(payloadPath, JSON.stringify(payload), "utf8");
 
   try {
@@ -1621,6 +1633,15 @@ async function startCloudAutoPrint() {
   });
 }
 
-void startCloudAutoPrint().catch((error) => {
-  console.error(`[Cloud] Auto-print disabled: ${error.message}`);
-});
+if (require.main === module) {
+  startLocalHealthServer();
+  void startCloudAutoPrint().catch((error) => {
+    console.error(`[Cloud] Auto-print disabled: ${error.message}`);
+  });
+}
+
+module.exports = {
+  buildCustomerReceiptEscPos,
+  buildKitchenReceiptEscPos,
+  buildLabelPrintPayload,
+};
