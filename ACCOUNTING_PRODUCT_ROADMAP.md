@@ -80,7 +80,7 @@ card/network fees, maps the base to the existing `expense_software` category, ad
 detail reconciliation, and preserves category on settlement Journal lines. That source-only slice
 did not rewrite already materialized historical documents.
 
-2026-09-25 follow-up: Clover modern statement parser v8 is **PR #2535 / CI PENDING** on
+2026-09-25 follow-up: Clover modern statement parser v8 is **MERGED / CI GREEN via PR #2535** on
 `accounting/clover-modern-statement-v8`. Real July/August statements establish a new stable
 layout (`YOUR CARD PROCESSING STATEMENT`, four-digit `PERIOD`, Account Summary, Fee Summary,
 cross-page Fees table). v8 intentionally stops accepting the pre-July PDF layout while preserving

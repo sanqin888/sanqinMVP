@@ -390,7 +390,7 @@ settlement draft Journal, and blocks on FEES detail/control mismatch or unclassi
 This first slice had no migration/dependency and intentionally did not rewrite historical machine
 materialization.
 
-**2026-09-25 Clover modern statement v8 — PR #2535 / CI PENDING:** July/August real
+**2026-09-25 Clover modern statement v8 — MERGED / CI GREEN via PR #2535:** July/August real
 statements now define the active input contract. Recognition and parsing move to the modern
 Account Summary / Fee Summary layout and Poppler geometry; pre-July PDF input is intentionally
 retired because June is already posted. Historical v7 materialized facts remain readable. Modern
