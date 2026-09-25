@@ -2,7 +2,7 @@
 
 Date: 2026-09-25  
 Baseline: `origin/dev@dfb93962` after P0 PR #2529  
-State: **LOCAL SOURCE READY FOR REVIEW / NO MIGRATION / NO PACKAGE CHANGE / NO GRAPH CHANGE**
+State: **MERGED / CI GREEN / NO MIGRATION / NO PACKAGE CHANGE / NO GRAPH CHANGE — PR #2530 / `524588b6` / CI #6361**
 
 ## 1. Frozen role/surface contract
 
@@ -57,7 +57,7 @@ scope     /
 
 The locale middleware rewrites `/accounting` to `/[locale]/accounting`, but there is no `accounting/page.tsx`; only the layout and child pages such as `accounting/dashboard` exist. Therefore an **already-authenticated** installed Accounting PWA launch reaches a real missing route and returns 404.
 
-A1 prevents the unauthenticated variant from returning to that missing root: Staff return-destination policy canonicalizes exact `/[locale]/accounting` to `/[locale]/accounting/dashboard`. The authenticated direct-launch 404 remains intentionally assigned to immediate follow-up **A2**, which should add one canonical Accounting root landing/redirect and pin manifest/locale/session launch behavior rather than adding another Accounting-specific login flow.
+A1 prevents the unauthenticated variant from returning to that missing root: Staff return-destination policy canonicalizes exact `/[locale]/accounting` to `/[locale]/accounting/dashboard`. Immediate follow-up **A2** now implements the remaining launch correction locally: new installs launch `/accounting/dashboard`, and the localized Accounting root exists only as a canonical redirect to the dashboard so stale/cached `/accounting` PWA launches recover without adding Accounting-specific authentication behavior.
 
 ## 5. Architecture and compatibility
 
