@@ -101,6 +101,15 @@ fallback to the original metadata. Physical binaries, `storedUrl`, content hashe
 state transitions, logical folder placement, Human Review, settlement and Journal authority are
 unchanged.
 
+2026-09-25 Clover replay UI-gate follow-up is **LOCAL SOURCE READY FOR REMOTE CI** on
+`fix/accounting-clover-replay-pending-gate-v2`. Production verification of the July v8
+materialization exposed a stale Web-only invariant: the replay gate required an
+`account_*_pending` line even when the authoritative Clover fee-only Journal correctly balances
+to `account_clover_fee_payable`. The fix keeps provider-pending net nullable as summary data,
+removes only that unconditional UI blocker, and leaves backend settlement READY/review/coverage/
+plan-hash/balance/idempotency gates unchanged. No schema, parser, posting-policy or dependency
+change is introduced.
+
 The existing-materialized remediation is **MERGED / CI GREEN** through PR #2517
 (`a7a872bc`) with the user-generated additive migration committed to `dev` as `5e14e8db`.
 It keeps the original `AccountingProviderFinancialDocument` and machine lines immutable, reruns
