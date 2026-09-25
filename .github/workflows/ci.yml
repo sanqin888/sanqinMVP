@@ -132,3 +132,14 @@ jobs:
 
       - name: Printer-agent smoke test
         run: npm test --prefix tools/printer-server
+
+  windows-workstation:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Validate Windows workstation launcher
+        shell: powershell
+        run: .\tools\windows-pos-workstation\validate.ps1
