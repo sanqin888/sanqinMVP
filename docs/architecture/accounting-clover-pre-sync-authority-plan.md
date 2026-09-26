@@ -34,8 +34,11 @@ The June Clover statement is the legacy layout. It reports:
 - Fees: **-3,575c / -$35.75**;
 - Amount Funded control: **326,371c / $3,263.71**.
 
-Gmail Closeout Reports from `app@clover.com` were independently summed. The contiguous provider
-batch window **2026-05-29 through 2026-06-28** closes exactly to the June statement:
+Gmail Closeout Reports from `app@clover.com` were independently summed. Production Gmail
+acquisition on 2026-09-26 materialized **27 actual provider batches** spanning **2026-05-29 through
+2026-06-28**. There are no Closeout batches on 2026-06-01/08/15/22 because the store had no
+Clover activity on those closed Mondays; those zero-activity dates are not missing provider
+evidence. The observed batch sequence closes exactly to the June statement:
 
 - Sales count: **180**;
 - Sales total: **336,210c / $3,362.10**;
@@ -70,7 +73,9 @@ principal:
 - Tips total: **7,207c / $72.07**.
 
 This proves that statement coverage must be derived from provider batch evidence, not assumed from
-calendar-month Closeout dates.
+calendar-month Closeout dates or from calendar-day continuity. A date with no provider batch may be
+a legitimate zero-activity date; coverage completeness is established by the ordered provider batch
+sequence closing the statement principal and any available transaction/refund controls.
 
 ### Surcharge versus merchant processing cost
 
@@ -215,9 +220,12 @@ expose explicit surcharge evidence; legacy statements may not.
 
 ### Slice A — Pre-Sync Authority Contract + Shadow Coverage
 
-**Implementation state (2026-09-25): LOCAL SOURCE READY FOR REVIEW.** No local
-lint/build/test has been run; remote CI remains the post-review validation gate. The implementation
-adds no Prisma migration, cutover timestamp, historical correction or Journal mutation.
+**Implementation state (2026-09-26): Slice A MERGED / CI GREEN through PR #2547 / squash
+`d68cc317`; production Gmail acquisition is verified. A follow-up source correction on
+`fix/accounting-clover-zero-activity-batch-gaps` removes the invalid calendar-day continuity
+assumption exposed by the real June batches; remote CI for that correction is pending.** Per
+`AGENTS.md`, no local lint/build/test is run before remote validation. Neither Slice A nor this
+follow-up adds a Prisma migration, cutover timestamp, historical correction or Journal mutation.
 
 No Journal mutation.
 
@@ -231,20 +239,25 @@ No Journal mutation.
 
 The implementation keeps the existing Human Review effective snapshot/correction semantics for
 statement evidence and requires exact Clover sender + Closeout subject + complete Batch Totals
-controls before automatic Closeout materialization. Coverage candidates must share the statement's existing
-Clover merchant reference and overlap its provider period, but are not forced into calendar-month
-boundaries.
+controls before automatic Closeout materialization. Coverage candidates must share the statement's
+existing Clover merchant reference, preserve the observed provider-batch order and overlap its
+provider period, but are not forced into calendar-month or calendar-day-continuity boundaries.
+Missing calendar dates do not fail coverage by themselves; missing provider evidence still fails
+closed when no exact principal/control closure can be found.
 
-Local characterization source now pins the confirmed June
-`2026-05-29..2026-06-28 / 180 / 336210c / Tips 9896c / Refund 0 / surcharge UNKNOWN`
-and July
-`2026-06-30..2026-07-30 / 230 / 350132c / Tips 7207c / Refund 0 / explicit surcharge 5551c`
-structures, plus fail-closed gap, duplicate-Batch and count-control cases. The shadow endpoint is
+Characterization source now pins the production-shaped June
+`2026-05-29..2026-06-28 / 27 batches / 180 / 336210c / Tips 9896c / Refund 0 / surcharge UNKNOWN`
+with the four zero-activity Mondays omitted, and July
+`2026-06-30..2026-07-30 / 31 batches / 230 / 350132c / Tips 7207c / Refund 0 / explicit surcharge 5551c`.
+It also preserves fail-closed behavior when missing provider evidence prevents principal closure,
+on duplicate Batch IDs, ambiguity and statement count/refund mismatches. The shadow endpoint is
 `GET /accounting/report/clover-pre-sync-authority-shadow?storeStableId=...`; Order CARD
 comparison is returned under an explicit `NON_AUTHORITATIVE` diagnostic contract.
 
-Exit gate remains: June and July provider principal must close exactly with no inferred surcharge;
-that gate is not marked CI-verified until the reviewed source is submitted and remote CI passes.
+Exit gate remains: June and July provider principal must close exactly with no inferred surcharge.
+Production Gmail ingestion has now supplied the real Closeout evidence and the raw totals close
+exactly; Slice A is not marked production-verified/closed until the zero-activity-date follow-up
+passes remote CI, is deployed, and the live shadow reports June and July as `CLOSED`.
 
 ### Slice B — Durable Clover payment-fact cutover contract
 
@@ -302,6 +315,6 @@ This plan does not:
 
 State:
 
-**READY FOR SLICE A READ-ONLY AUTHORITY/COVERAGE IMPLEMENTATION**  
+**SLICE A MERGED / CI GREEN; PRODUCTION EVIDENCE ACQUIRED; ZERO-ACTIVITY COVERAGE FOLLOW-UP PENDING REMOTE CI + LIVE SHADOW RE-VERIFICATION**  
 **NOT READY FOR HISTORICAL JOURNAL CORRECTION**  
 **SLICE B WILL REQUIRE SCHEMA/MIGRATION AUTHORIZATION AT IMPLEMENTATION TIME**

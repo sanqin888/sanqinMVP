@@ -162,25 +162,14 @@ export function projectCloverPreSyncAuthorityCoverage(params: {
   const statementStartDay = dateKeyToEpochDay(params.statement.periodStart);
   const statementEndDay = dateKeyToEpochDay(params.statement.periodEnd);
   const exactCandidates: CloverPreSyncCloseoutBatchEvidenceV1[][] = [];
-  let observedDateGap = false;
+  // Provider batches are ordered evidence, not a calendar-day series. A date with
+  // no batch can be a legitimate zero-activity day; statement controls below own
+  // completeness instead of synthetic daily continuity.
   for (let start = 0; start < candidates.length; start += 1) {
     const selected: CloverPreSyncCloseoutBatchEvidenceV1[] = [];
     let salesCents = 0;
     for (let index = start; index < candidates.length; index += 1) {
       const batch = candidates[index];
-      if (selected.length > 0) {
-        const previous = selected[selected.length - 1];
-        const previousDay = dateKeyToEpochDay(previous.businessDate);
-        const currentDay = dateKeyToEpochDay(batch.businessDate);
-        if (
-          previousDay == null ||
-          currentDay == null ||
-          currentDay !== previousDay + 1
-        ) {
-          observedDateGap = true;
-          break;
-        }
-      }
       selected.push(batch);
       salesCents += batch.salesCents;
       if (salesCents === params.statement.principalCents) {
@@ -209,9 +198,7 @@ export function projectCloverPreSyncAuthorityCoverage(params: {
   if (exactCandidates.length === 0) {
     return {
       status: 'FAIL_CLOSED',
-      issues: [
-        observedDateGap ? 'CLOSEOUT_DATE_GAP' : 'CLOSEOUT_COVERAGE_NOT_FOUND',
-      ],
+      issues: ['CLOSEOUT_COVERAGE_NOT_FOUND'],
       statementPrincipalCents: params.statement.principalCents,
       coveredCloseoutRange: null,
       batches: [],
