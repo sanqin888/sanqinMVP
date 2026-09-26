@@ -63,55 +63,47 @@ const statement = (
 });
 
 describe('Clover pre-sync authority coverage policy', () => {
-  it(
-    'characterizes June across zero-activity dates with May boundary batches and UNKNOWN surcharge',
-    () => {
-      const result = projectCloverPreSyncAuthorityCoverage({
-        statement: statement({}),
-        closeouts: closeouts({
-          from: '2026-05-29',
-          days: 31,
-          salesCents: 336210,
-          salesCount: 180,
-          tipsCents: 9896,
-          tipsCount: 47,
-          skipDates: [
-            '2026-06-01',
-            '2026-06-08',
-            '2026-06-15',
-            '2026-06-22',
-          ],
-        }),
-      });
+  it('characterizes June across zero-activity dates with May boundary batches and UNKNOWN surcharge', () => {
+    const result = projectCloverPreSyncAuthorityCoverage({
+      statement: statement({}),
+      closeouts: closeouts({
+        from: '2026-05-29',
+        days: 31,
+        salesCents: 336210,
+        salesCount: 180,
+        tipsCents: 9896,
+        tipsCount: 47,
+        skipDates: ['2026-06-01', '2026-06-08', '2026-06-15', '2026-06-22'],
+      }),
+    });
 
-      expect(result).toEqual(
-        expect.objectContaining({
-          status: 'CLOSED',
-          statementPrincipalCents: 336210,
-          coveredCloseoutRange: {
-            from: '2026-05-29',
-            to: '2026-06-28',
-            batchCount: 27,
-          },
-          closeout: {
-            salesCount: 180,
-            salesCents: 336210,
-            refundCount: 0,
-            refundCents: 0,
-            tipsCount: 47,
-            tipsCents: 9896,
-          },
-          surcharge: { status: 'UNKNOWN', amountCents: null },
-          controls: {
-            principalDeltaCents: 0,
-            transactionCountDelta: null,
-            refundCountDelta: null,
-            refundAmountDeltaCents: null,
-          },
-        }),
-      );
-    },
-  );
+    expect(result).toEqual(
+      expect.objectContaining({
+        status: 'CLOSED',
+        statementPrincipalCents: 336210,
+        coveredCloseoutRange: {
+          from: '2026-05-29',
+          to: '2026-06-28',
+          batchCount: 27,
+        },
+        closeout: {
+          salesCount: 180,
+          salesCents: 336210,
+          refundCount: 0,
+          refundCents: 0,
+          tipsCount: 47,
+          tipsCents: 9896,
+        },
+        surcharge: { status: 'UNKNOWN', amountCents: null },
+        controls: {
+          principalDeltaCents: 0,
+          transactionCountDelta: null,
+          refundCountDelta: null,
+          refundAmountDeltaCents: null,
+        },
+      }),
+    );
+  });
 
   it('characterizes July with explicit provider surcharge and count/refund controls', () => {
     const result = projectCloverPreSyncAuthorityCoverage({
