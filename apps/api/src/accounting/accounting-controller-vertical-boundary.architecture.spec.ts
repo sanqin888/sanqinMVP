@@ -48,6 +48,7 @@ const EXPECTED_CONTROLLER_CAPABILITIES = {
     'AccountingProviderPendingReconciliationService',
   ],
   'accounting-provider-settlement.controller.ts': [
+    'AccountingCloverAuthorityReplacementService',
     'AccountingCloverFeeReclassificationService',
     'AccountingProviderSettlementExecutionService',
     'AccountingProviderSettlementPreviewService',
@@ -135,6 +136,7 @@ const EXPECTED_ROUTES = [
   'GET journal/provider-settlement/posting-states',
   'GET journal/provider-settlement/clover-fee-reclassification-preview',
   'POST journal/provider-settlement/clover-fee-reclassification',
+  'POST journal/clover-authority-replacement',
   'POST journal/provider-settlement/replay',
   'POST journal/canonical-changes/replay',
   'POST journal/canonical-sales/replay',

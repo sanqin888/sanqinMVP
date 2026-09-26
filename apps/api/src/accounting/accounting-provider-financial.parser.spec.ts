@@ -6,6 +6,7 @@ import {
   AccountingFinancialTaxRole,
 } from '@prisma/client';
 import { CLOVER_CLOSEOUT_RAW_CODES } from './accounting-clover-closeout.contract';
+import { CLOVER_SALES_REPORT_RAW_CODES } from './accounting-clover-sales-report.contract';
 import { CLOVER_STATEMENT_RAW_CODES } from './accounting-clover-statement.contract';
 import {
   extractCloverModernStatementAuthorityControls,
@@ -85,6 +86,104 @@ Tips 4 $3.84
         postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
       }),
     );
+  });
+
+  it('parses a Clover Dashboard Sales Report as supplemental reconciliation evidence', () => {
+    const parsed = parseProviderFinancialEvidence({
+      providerHint: AccountingFinancialProvider.CLOVER,
+      documentTypeHint: AccountingFinancialDocumentType.OTHER,
+      originalFilename: 'SANQIN RESTAURANT-Sales Report 09_26_2026.csv',
+      text: `Sales Report
+"Mon, Jun 1, 2026, 1:00 a.m.  - Tue, Jun 30, 2026, 12:59 a.m. "
+"Requested on: Sat, Sep 26, 2026, 12:06 p.m. "
+Filters: none
+
+Net sales,"$2,750.27",from 157 transactions
+Amount Collected,"$2,882.88"
+Gross sales,"$2,750.27"
+
+Sales
+,Total,Jun 1,Jun 2,Jun 28,Jun 29
+Gross sales,"$2,750.27",$0.00,"$2,145.80","$604.47",$0.00
+Refunds,$0.00,$0.00,$0.00,$0.00,$0.00
+Net sales,"$2,750.27",$0.00,"$2,145.80","$604.47",$0.00
+Taxes,$0.00,$0.00,$0.00,$0.00,$0.00
+Tips,$83.43,$0.00,$65.70,$17.73,$0.00
+Surcharges,$49.18,$0.00,$34.30,$14.88,$0.00
+Amount collected,"$2,882.88",$0.00,"$2,245.80","$637.08",$0.00
+
+Tender types
+Tender,Total
+Credit and debit cards,"$2,882.88"
+Amount Collected,"$2,882.88"
+`,
+    });
+
+    expect(parsed).toMatchObject({
+      provider: AccountingFinancialProvider.CLOVER,
+      documentType: AccountingFinancialDocumentType.OTHER,
+      businessIdentityKey: 'clover:sales-report:2026-06-01:2026-06-29',
+      periodStart: '2026-06-01',
+      periodEnd: '2026-06-29',
+    });
+    expect(parsed?.rawMetadata).toMatchObject({
+      evidenceKind: 'CLOVER_SALES_REPORT',
+      transactionCount: 157,
+      tender: 'CREDIT_AND_DEBIT_CARDS',
+    });
+    const grossSalesLine = lineByName(parsed!, 'Gross sales');
+    expect(grossSalesLine).toMatchObject({
+      rawCode: CLOVER_SALES_REPORT_RAW_CODES.GROSS_SALES,
+      amountCents: 275_027,
+      postingTreatment: AccountingFinancialPostingTreatment.RECONCILIATION_ONLY,
+    });
+    expect(grossSalesLine?.rawPayload).toMatchObject({
+      transactionCount: 157,
+    });
+    expect(lineByName(parsed!, 'Tips')?.amountCents).toBe(8_343);
+    expect(lineByName(parsed!, 'Surcharges')?.amountCents).toBe(4_918);
+    expect(lineByName(parsed!, 'Amount collected')).toEqual(
+      expect.objectContaining({
+        rawCode: CLOVER_SALES_REPORT_RAW_CODES.AMOUNT_COLLECTED,
+        amountCents: 288_288,
+        postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+        rawPayload: {
+          daily: [
+            { date: '2026-06-01', amountCents: 0 },
+            { date: '2026-06-02', amountCents: 224_580 },
+            { date: '2026-06-28', amountCents: 63_708 },
+            { date: '2026-06-29', amountCents: 0 },
+          ],
+        },
+      }),
+    );
+  });
+
+  it('fails closed when a Clover Sales Report control total does not reconcile', () => {
+    const parsed = parseProviderFinancialEvidence({
+      providerHint: AccountingFinancialProvider.CLOVER,
+      documentTypeHint: AccountingFinancialDocumentType.OTHER,
+      text: `Sales Report
+"Mon, Jun 1, 2026, 1:00 a.m.  - Tue, Jun 30, 2026, 12:59 a.m. "
+Net sales,$100.00,from 1 transaction
+Amount Collected,$110.00
+Sales
+,Total,Jun 1
+Gross sales,$100.00,$100.00
+Refunds,$0.00,$0.00
+Net sales,$100.00,$100.00
+Taxes,$0.00,$0.00
+Tips,$5.00,$5.00
+Surcharges,$4.00,$4.00
+Amount collected,$110.00,$110.00
+Tender types
+Tender,Total
+Credit and debit cards,$110.00
+Amount Collected,$110.00
+`,
+    });
+
+    expect(parsed).toBeNull();
   });
 
   it('fails closed instead of materializing a partial Clover Closeout control set', () => {

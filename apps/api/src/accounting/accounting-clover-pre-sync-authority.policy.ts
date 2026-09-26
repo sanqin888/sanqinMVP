@@ -26,6 +26,32 @@ export type CloverPreSyncCloseoutBatchEvidenceV1 = {
   tipsCents: number;
 };
 
+export type CloverPreSyncSalesReportEvidenceV1 = {
+  documentStableId: string;
+  businessIdentityKey: string;
+  revision: number;
+  periodStart: string;
+  periodEnd: string;
+  transactionCount: number;
+  grossSalesCents: number;
+  refundCents: number;
+  taxesCents: number;
+  tipsCents: number;
+  surchargeCents: number;
+  amountCollectedCents: number;
+  dailyAmountCollected: Array<{ date: string; amountCents: number }>;
+};
+
+export type CloverSalesReportCloseoutMatchV1 =
+  | {
+      status: 'MATCHED';
+      report: CloverPreSyncSalesReportEvidenceV1;
+    }
+  | {
+      status: 'MISSING' | 'AMBIGUOUS' | 'MISMATCH';
+      report: null;
+    };
+
 export type CloverPreSyncCoverageIssueV1 =
   | 'BATCH_ID_CONFLICT'
   | 'CLOSEOUT_COVERAGE_NOT_FOUND'
@@ -95,6 +121,56 @@ const aggregate = (batches: CloverPreSyncCloseoutBatchEvidenceV1[]) =>
       tipsCents: 0,
     },
   );
+
+export function matchCloverSalesReportToCloseouts(params: {
+  reports: CloverPreSyncSalesReportEvidenceV1[];
+  closeouts: CloverPreSyncCloseoutBatchEvidenceV1[];
+}): CloverSalesReportCloseoutMatchV1 {
+  if (!params.reports.length) {
+    return { status: 'MISSING', report: null };
+  }
+
+  const totals = aggregate(params.closeouts);
+  const closeoutByDate = new Map(
+    params.closeouts.map((batch) => [batch.businessDate, batch] as const),
+  );
+  const matches = params.reports.filter((report) => {
+    if (
+      report.transactionCount !== totals.salesCount ||
+      report.amountCollectedCents !== totals.salesCents ||
+      report.tipsCents !== totals.tipsCents ||
+      report.refundCents !== totals.refundCents
+    ) {
+      return false;
+    }
+
+    const dailyByDate = new Map(
+      report.dailyAmountCollected.map((item) => [item.date, item.amountCents]),
+    );
+    if (
+      params.closeouts.some(
+        (batch) => dailyByDate.get(batch.businessDate) !== batch.salesCents,
+      )
+    ) {
+      return false;
+    }
+
+    return report.dailyAmountCollected.every((item) => {
+      const closeout = closeoutByDate.get(item.date);
+      return closeout
+        ? item.amountCents === closeout.salesCents
+        : item.amountCents === 0;
+    });
+  });
+
+  if (matches.length === 1) {
+    return { status: 'MATCHED', report: matches[0] };
+  }
+  if (matches.length > 1) {
+    return { status: 'AMBIGUOUS', report: null };
+  }
+  return { status: 'MISMATCH', report: null };
+}
 
 const deltasFor = (
   statement: CloverPreSyncStatementEvidenceV1,
