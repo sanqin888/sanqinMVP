@@ -35,6 +35,20 @@ type FinancialDocumentRow = Awaited<
   ReturnType<AccountingCloverPreSyncAuthorityService['readDocuments']>
 >[number];
 
+export type CloverPreSyncAuthorityPeriodV1 =
+  | {
+      status: 'CLOSED';
+      statement: CloverPreSyncStatementEvidenceV1;
+      coverage: ReturnType<typeof projectCloverPreSyncAuthorityCoverage>;
+      selectedCloseoutBatches: CloverPreSyncCloseoutBatchEvidenceV1[];
+    }
+  | {
+      status: 'FAIL_CLOSED';
+      statementDocumentStableId: string;
+      statementPeriodEnd: string | null;
+      issues: string[];
+    };
+
 const dateOnly = (value: Date | null): string | null =>
   value?.toISOString().slice(0, 10) ?? null;
 
@@ -62,6 +76,95 @@ export class AccountingCloverPreSyncAuthorityService {
     private readonly orderFacts: OrderFinancialFactsReaderPort,
     private readonly period: AccountingPeriodService,
   ) {}
+
+  async readAuthorityPeriods(params: {
+    storeStableId: string;
+  }): Promise<CloverPreSyncAuthorityPeriodV1[]> {
+    const storeStableId = params.storeStableId.trim();
+    if (!storeStableId) {
+      throw new BadRequestException('storeStableId is required');
+    }
+
+    const rows = await this.readDocuments(storeStableId);
+    const latestStatementRevision = new Map<string, number>();
+    for (const row of rows) {
+      if (row.documentType !== AccountingFinancialDocumentType.STATEMENT) {
+        continue;
+      }
+      latestStatementRevision.set(
+        row.businessIdentityKey,
+        Math.max(
+          latestStatementRevision.get(row.businessIdentityKey) ?? 0,
+          row.revision,
+        ),
+      );
+    }
+
+    const closeouts = rows
+      .filter(
+        (row) =>
+          row.documentType === AccountingFinancialDocumentType.BATCH_CONTROL,
+      )
+      .flatMap((row) => {
+        const evidence = this.closeoutEvidence(row);
+        return evidence ? [evidence] : [];
+      });
+    const closeoutByDocumentStableId = new Map(
+      closeouts.map(
+        (closeout) => [closeout.documentStableId, closeout] as const,
+      ),
+    );
+
+    return rows
+      .filter(
+        (row) =>
+          row.documentType === AccountingFinancialDocumentType.STATEMENT &&
+          row.revision === latestStatementRevision.get(row.businessIdentityKey),
+      )
+      .map((row): CloverPreSyncAuthorityPeriodV1 => {
+        const statement = this.statementEvidence(row);
+        if (!statement) {
+          return {
+            status: 'FAIL_CLOSED',
+            statementDocumentStableId: row.documentStableId,
+            statementPeriodEnd: dateOnly(row.periodEnd),
+            issues: ['STATEMENT_AUTHORITY_EVIDENCE_INCOMPLETE'],
+          };
+        }
+
+        const coverage = projectCloverPreSyncAuthorityCoverage({
+          statement,
+          closeouts,
+        });
+        if (coverage.status !== 'CLOSED') {
+          return {
+            status: 'FAIL_CLOSED',
+            statementDocumentStableId: row.documentStableId,
+            statementPeriodEnd: statement.periodEnd,
+            issues: coverage.issues,
+          };
+        }
+
+        const selectedCloseoutBatches = coverage.batches.map((batch) => {
+          const evidence = closeoutByDocumentStableId.get(
+            batch.documentStableId,
+          );
+          if (!evidence) {
+            throw new BadRequestException(
+              `Closed Clover authority coverage references missing Closeout evidence: ${batch.documentStableId}`,
+            );
+          }
+          return evidence;
+        });
+
+        return {
+          status: 'CLOSED',
+          statement,
+          coverage,
+          selectedCloseoutBatches,
+        };
+      });
+  }
 
   async shadow(params: {
     storeStableId: string;

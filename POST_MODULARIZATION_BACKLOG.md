@@ -453,14 +453,21 @@ one for July; the authenticated production shadow endpoint returned HTTP 200 aft
 zero new Accounting Journal entries were observed after that verification request. Detailed plan:
 `docs/architecture/accounting-clover-pre-sync-authority-plan.md`. Slice A is closed with zero
 Journal mutation, historical correction, cutover timestamp, Prisma migration or dependency change.
-Slice B is now **LOCAL SOURCE READY FOR REVIEW / MIGRATION REQUIRED / CUTOVER NOT SET** on
-`feat/accounting-clover-payment-fact-cutover`: the Accounting coverage model gains an independent
-nullable `providerPaymentFactCutoverAt`, the owner service permits only audited `null -> timestamp`
-recording for Clover (exact replay is idempotent; rewrite is rejected), readers expose the durable
-fact, and post-cutover missing canonical Payments evidence resolves to a fail-closed blocked state.
-There is no controller, runtime-flag listener or production go-live caller, so no cutover timestamp
-is set by this source. The companion additive Prisma migration and Slice E provider-tip completeness
-remain explicit pre-production-cutover gates.
+Slice B source plus user-generated migration
+`20260926064114_accounting_clover_payment_fact_cutover_contract` are merged to `dev`; migration
+review found one nullable `TIMESTAMP(3)` column only, no default/backfill/drop/data rewrite, and CI
+#6431/#6432 are green. The durable cutover remains unset and Slice E provider-tip completeness is
+still a hard production-cutover gate.
+
+Slice C is **LOCAL READ-ONLY PREVIEW READY FOR REVIEW** on
+`feat/accounting-clover-authority-replacement-preview-v2`. It reuses Slice A Closeout/Statement
+authority, anchors actual historical Order-derived Clover Pending Journals, truncates remediation at
+the Accounting start boundary, emits a deterministic plan hash and balanced draft only when every
+classification component has provider authority, and never posts. Production evidence confirms the
+excluded 2026-06-01 bank deposit 47,922c is exactly the 2026-05-29/30/31 pre-start Closeout Sales and
+must remain outside remediation. June requires +12,863c Pending but is blocked because surcharge is
+UNKNOWN; July produces a fully evidenced +31,325c Pending / -18,567c Store Cash / +7,207c Tips /
++5,551c surcharge draft. Slice D remains blocked.
 
 **Existing-materialized parser re-evaluation / Human Review effective snapshot — LOCAL SOURCE
 READY FOR REVIEW:** `accounting/provider-parser-reevaluation-review` adds the previously planned
