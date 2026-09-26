@@ -298,8 +298,7 @@ export class AccountingCloverAuthorityReplacementService {
         inScopeBatches.length === authority.selectedCloseoutBatches.length;
       const providerSurchargeCents =
         usesWholeStatementCoverage &&
-        authority.coverage.surcharge.status ===
-          'EXPLICIT_PROVIDER_EVIDENCE'
+        authority.coverage.surcharge.status === 'EXPLICIT_PROVIDER_EVIDENCE'
           ? authority.coverage.surcharge.amountCents
           : null;
 
@@ -319,7 +318,8 @@ export class AccountingCloverAuthorityReplacementService {
         orderStoreCashMovementCents: orderEvidence.storeCashMovementCents,
         orderTipRevenueCents: orderEvidence.tipRevenueCents,
         orderSurchargeRevenueCents: orderEvidence.surchargeRevenueCents,
-        unexpectedOrderPendingSourceFactTypes: orderEvidence.unexpectedPendingSourceFactTypes,
+        unexpectedOrderPendingSourceFactTypes:
+          orderEvidence.unexpectedPendingSourceFactTypes,
       });
 
       const simulatedOpeningAfterPriorAuthorityAdjustmentsCents =
@@ -539,9 +539,7 @@ export class AccountingCloverAuthorityReplacementService {
     for (const row of rows) {
       const pendingMovement = row.lines
         .filter(
-          (line) =>
-            line.account.accountStableId ===
-            CLOVER_PENDING_ACCOUNT_STABLE_ID,
+          (line) => line.account.accountStableId === CLOVER_PENDING_ACCOUNT_STABLE_ID,
         )
         .reduce((sum, line) => sum + line.debitCents - line.creditCents, 0);
       const storeCashMovement = row.lines
