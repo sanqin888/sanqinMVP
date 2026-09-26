@@ -420,8 +420,8 @@ unconditional Replay blocker, and adds a July-shaped Clover regression while pre
 existing Uber replacement-group coverage. Backend settlement authority/execution, parser, schema
 and dependencies are unchanged.
 
-**2026-09-26 Clover pre-sync financial authority Slice A — MERGED / CI GREEN via PR #2547 /
-PRODUCTION GMAIL EVIDENCE ACQUIRED / ZERO-ACTIVITY COVERAGE FOLLOW-UP PENDING REMOTE CI /
+**2026-09-26 Clover pre-sync financial authority Slice A — PRODUCTION VERIFIED / CLOSED /
+PR #2547 + PR #2549 / CI #6419 GREEN / PRODUCTION `main@b7a01075` /
 READ-ONLY SHADOW / NO PRISMA / NO JOURNAL MUTATION:** real Gmail Closeout Reports now prove that historical POS `CARD` tender attribution
 cannot own Clover receivable/Pending before production Terminal synchronization. June Closeouts
 2026-05-29..2026-06-28 reconcile exactly to the legacy June statement Amount Submitted
@@ -448,10 +448,12 @@ June remains `UNKNOWN`. Order `CARD` comparison is explicitly
 `NON_AUTHORITATIVE`. June/July characterization source fixes the confirmed ranges/totals and now
 allows legitimate no-batch calendar dates while still failing closed when missing provider
 evidence prevents principal closure, on duplicate Batch IDs, ambiguity or verifiable count/refund
-control mismatch. Detailed plan:
-`docs/architecture/accounting-clover-pre-sync-authority-plan.md`. Slice A contains zero Journal
-mutation, historical correction, cutover timestamp, Prisma migration, dependency or local
-lint/build/test execution.
+control mismatch. Production closeout found exactly one principal-closing sequence for June and
+one for July; the authenticated production shadow endpoint returned HTTP 200 after deployment, and
+zero new Accounting Journal entries were observed after that verification request. Detailed plan:
+`docs/architecture/accounting-clover-pre-sync-authority-plan.md`. Slice A is closed with zero
+Journal mutation, historical correction, cutover timestamp, Prisma migration or dependency change;
+Slice B remains a separate explicitly gated future migration.
 
 **Existing-materialized parser re-evaluation / Human Review effective snapshot — LOCAL SOURCE
 READY FOR REVIEW:** `accounting/provider-parser-reevaluation-review` adds the previously planned

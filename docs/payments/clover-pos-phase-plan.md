@@ -506,7 +506,11 @@ flag 临时切回 false，durable cutover 不得自动后退；缺少 Payments f
 payment execution provenance，但不能替代上述 provider-side financial authority。Production Web
 Clover 的 `/v1/charges`、refund、merchant scope 与 guarded compatibility 不在该修改范围。详细
 Accounting authority contract 见
-`docs/architecture/accounting-clover-pre-sync-authority-plan.md`。
+`docs/architecture/accounting-clover-pre-sync-authority-plan.md`。该 Accounting Slice A 已于
+2026-09-26 在 production `main@b7a01075` 完成验证并 CLOSED：June/July provider coverage 均唯一闭合，
+authenticated shadow GET 返回 200，且验证未产生任何 Journal 写入。这一 closeout **不代表** POS-Clover
+production payment cutover 已发生，也不设置 `providerPaymentFactCutoverAt`；后续 Slice B/schema/migration
+仍需单独明确授权。
 
 ## 新主链路
 
