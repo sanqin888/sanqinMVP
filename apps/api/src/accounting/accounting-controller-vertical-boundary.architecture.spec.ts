@@ -117,6 +117,7 @@ const EXPECTED_ROUTES = [
   'POST automation/run',
   'GET automation/settings',
   'PUT automation/settings',
+  'POST automation/uber-reports/request',
   'GET automation/uber-reports',
   'POST period-close/month/:periodKey',
   'DELETE period-close/month/:periodKey',

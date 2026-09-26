@@ -185,7 +185,13 @@ describe('Phase 9 Slice 8B-E Accounting Web contract architecture', () => {
     expect(automationContract).toContain(
       'export type AccountingUberFinancialReport',
     );
+    expect(automationContract).toContain(
+      'export type AccountingUberFinancialReportRequest',
+    );
     expect(automationContract).toContain('errorMessage: string | null');
+    expect(reconciliationPage).toContain(
+      '/accounting/automation/uber-reports/request',
+    );
     expect(reconciliationPage).not.toContain('type UberReport =');
   });
 });

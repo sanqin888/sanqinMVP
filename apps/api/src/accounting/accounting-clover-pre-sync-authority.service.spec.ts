@@ -145,7 +145,10 @@ const julyAuthorityExtraction = () => {
       line(2, '$0.00', 0.522, 0.305, 0.04),
       line(3, 'Surcharge Collected', 0.795, 0.402, 0.119),
       line(3, 'Card Type', 0.063, 0.413),
+      line(3, 'Items', 0.816, 0.429, 0.032),
+      line(3, 'Amount', 0.891, 0.429, 0.046),
       line(3, 'Total', 0.063, 0.538),
+      line(3, '156', 0.83, 0.538, 0.018),
       line(3, '$55.51', 0.903, 0.538, 0.034),
     ],
   };

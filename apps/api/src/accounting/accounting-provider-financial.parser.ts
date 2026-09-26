@@ -20,7 +20,7 @@ import { CLOVER_STATEMENT_RAW_CODES } from './accounting-clover-statement.contra
 
 export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_NAME =
   'accounting-provider-financial';
-export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION = '10';
+export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION = '11';
 
 export type ProviderFinancialParseInput = {
   text: string;
@@ -1278,6 +1278,9 @@ const parseNonNegativeIntegerToken = (value: string): number | null => {
   return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
 };
 
+const parseExplicitCurrencyMoneyCents = (value: string): number | null =>
+  value.includes('$') ? parseMoneyCents(value) : null;
+
 export function extractCloverModernStatementAuthorityControls(
   extraction: AccountingDocumentExtraction | undefined,
 ): CloverModernStatementAuthorityControls | null {
@@ -1418,12 +1421,33 @@ export function extractCloverModernStatementAuthorityControls(
         (left, right) => (left.geometry?.top ?? 0) - (right.geometry?.top ?? 0),
       )[0];
     if (surchargeHeader?.geometry && cardTypeTotalRow) {
-      surchargeCollectedCents = rowValueNearestHeader({
-        extraction,
-        row: cardTypeTotalRow,
-        header: surchargeHeader,
-        parse: parseMoneyCents,
-      });
+      const surchargeAmountHeader = exactLayoutLines(extraction, 'Amount')
+        .filter(
+          (line) =>
+            line.page === surchargeHeader.page &&
+            line.geometry &&
+            line.geometry.top > surchargeHeader.geometry!.top &&
+            line.geometry.top - surchargeHeader.geometry!.top < 0.08 &&
+            line.geometry.left > surchargeHeader.geometry!.left,
+        )
+        .sort(
+          (left, right) =>
+            Math.abs(
+              (left.geometry?.left ?? 0) - surchargeHeader.geometry!.left,
+            ) -
+            Math.abs(
+              (right.geometry?.left ?? 0) - surchargeHeader.geometry!.left,
+            ),
+        )[0];
+
+      if (surchargeAmountHeader?.geometry) {
+        surchargeCollectedCents = rowValueNearestHeader({
+          extraction,
+          row: cardTypeTotalRow,
+          header: surchargeAmountHeader,
+          parse: parseExplicitCurrencyMoneyCents,
+        });
+      }
     }
   }
 
