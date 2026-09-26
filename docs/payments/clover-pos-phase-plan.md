@@ -482,25 +482,31 @@ POS_CLOVER_TERMINAL_PAYMENT_ENABLED=true  -> Unified Payment Core + Clover Termi
 最终形态只有一条 CARD 主链路；Phase J 删除 legacy direct-paid CARD 时必须连同
 flag/config 和所有 route-choice branch 一起删除。
 
-Accounting 在该兼容期必须服从同一条 rollout 语义，而不是新增第二个 CARD
-boolean：legacy regime 下，in-store CARD 的 immutable Orders adjustment/reversal fact
-可作为临时的 order-declared settlement authority，使财务在 POS 与 Clover Terminal
-尚未 transaction-level 同步时仍可记真实营业退款；该证据必须在 preview/Journal/Audit
-中明确标记为 legacy/order-declared，绝不能伪装成 Payments/Clover provider evidence。
-Terminal production cutover 后，新发生的 CARD adjustment/reversal 必须重新要求
-Payments-owned canonical reversal evidence，缺失时 fail closed。
+Accounting 不得把该 runtime flag 当作动态财务计算开关。2026-09-25 的真实 June/July
+Clover Closeout + Monthly Statement 交叉审计证明：legacy POS 与物理 Clover Terminal 分离期间，
+`Order.paymentMethod=CARD` 不包含 provider tip / surcharge，也不保证与 Clover payment 一对一，因此
+不能继续作为 Clover receivable / Provider Pending authority。
 
-为保证历史 replay 稳定，不再引入额外 cutover timestamp。新 in-store CARD SALE fact 直接冻结
-Orders-owned `posCardExecutionEvidence=LEGACY_DIRECT_PAID|UNIFIED_PAYMENT_CORE`，来源是现有持久化
-payment breakdown：legacy direct-paid 没有 Unified payment breakdown；Unified finalization 会写入
-`cardCents` / `externalChargedCents`。Accounting 优先读取这个 immutable provenance；对字段上线前的旧
-SALE fact，则通过 owner facts 判定：存在 canonical Payments CARD SALE fact -> Unified/strict；不存在 ->
-legacy direct-paid。这样历史语义不依赖当前 rollout flag，也不需要 Accounting -> POS policy 依赖。
+从 Accounting start 2026-06-01 到 production Unified POS-Clover payment cutover 前，Clover 资金侧权威
+改为 provider evidence：Daily Closeout 提供 Batch/Sales/Refund/Net/Tax/Tips，Monthly Statement 作为
+period principal / fee / explicit surcharge control，CIBC 继续作为实际 bank settlement authority。
+Order 仍拥有 Sales/HST/discount/promotion 等 SanQ sale economics，但其 legacy CARD tender attribution
+仅作 diagnostic/supporting evidence。历史已生成 Journal 不删除，后续通过独立的 Accounting authority
+replacement / compensating Journal 流程修正。
 
-legacy/order-declared 模式只放宽 CARD refund/negative settlement evidence；CARD additional charge/
-collection 仍然必须有 change-scoped Payments money fact。Phase J 删除 compatibility 前，还必须确认所有
-legacy CARD accounting facts 已 journal/reconcile 或被明确列入受控 closeout 清理清单。Production Web
-Clover 的 `/v1/charges`、refund、merchant scope 与 guarded compatibility 不在该修改范围。
+因此此前“不再引入额外 cutover timestamp”的约束被真实生产证据**明确 supersede**。当前
+`POS_CLOVER_TERMINAL_PAYMENT_ENABLED` 仍只是临时 route-choice/cutback flag，Phase J 仍会删除；
+Accounting 不能读取其当前值来重新解释历史。正式 production go-live 应记录一个 durable
+Accounting payment-fact cutover（暂名 `providerPaymentFactCutoverAt`）：cutover 前使用
+Closeout/Statement authority，cutover 后要求 Payments-owned canonical Clover facts。若运营事故导致
+flag 临时切回 false，durable cutover 不得自动后退；缺少 Payments fact 的 post-cutover CARD 财务事实
+必须 fail closed / 显式 reconciliation。
+
+现有 Orders-owned `posCardExecutionEvidence=LEGACY_DIRECT_PAID|UNIFIED_PAYMENT_CORE` 仍可保留为
+payment execution provenance，但不能替代上述 provider-side financial authority。Production Web
+Clover 的 `/v1/charges`、refund、merchant scope 与 guarded compatibility 不在该修改范围。详细
+Accounting authority contract 见
+`docs/architecture/accounting-clover-pre-sync-authority-plan.md`。
 
 ## 新主链路
 

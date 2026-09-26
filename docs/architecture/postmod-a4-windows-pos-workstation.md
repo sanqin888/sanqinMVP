@@ -2,9 +2,9 @@
 
 ## Status
 
-2026-09-25: **A4-A + A4-B MERGED / CI GREEN / A4-C1 LOCAL SOURCE READY FOR REVIEW / EXPLICITLY AUTHORIZED NEW OPERATIONAL BOUNDARY / NO MIGRATION / NO NEW DEPENDENCY / NO GRAPH CHANGE**
+2026-09-25: **A4-A + A4-B + A4-C1 MERGED / CI GREEN / A4-C2 LOCAL SOURCE READY FOR REVIEW / SAME AUTHORIZED OPERATIONAL BOUNDARY / NO MIGRATION / NO NEW DEPENDENCY / NO GRAPH CHANGE**
 
-A4-A merged through PR #2537 / squash `6f77d5cc` with CI #6381. A4-B merged through PR #2538 / squash `2d0d1a58` with CI #6383. A4-C1 is on `postmod/a4c1-windows-workstation-launcher` from current `origin/dev`.
+A4-A merged through PR #2537 / squash `6f77d5cc` with CI #6381. A4-B merged through PR #2538 / squash `2d0d1a58` with CI #6383. A4-C1 merged through PR #2543 / squash `06afc5b5` with CI #6397 including the Windows workstation gate. A4-C2 is on `postmod/a4c2-windows-startup-recovery` from current `origin/dev`.
 
 A4 is a workstation project layered on the existing Store Operations / POS / Print boundaries. It does not move authentication, device enrollment, order, payment, customer-display synchronization, or printer ownership.
 
@@ -94,9 +94,17 @@ C1 runtime responsibilities are deliberately narrow:
 
 No Scheduled Task or Windows Startup entry is installed in C1. No browser/session/device credential is stored in workstation config. A Windows CI job uses Windows PowerShell 5.1 to parse the launcher and validate the example JSON only; CI never launches browser/printer processes.
 
-#### A4-C2 — startup / recovery installation
+#### A4-C2 — fullscreen + startup / recovery installation
 
-After C1 is reviewed and manually verified on the store workstation, C2 may add an idempotent Windows startup/Task Scheduler installer and periodic ensure/recovery policy. C2 must reuse C1 rather than adding another launcher implementation, and must not replace POS session/network recovery or printer-agent reconnect semantics.
+The first C1 store-workstation manual test proved the installed POS PWA, same-profile Customer Display, dual-monitor placement and local display synchronization path. It also exposed the remaining presentation gap: Windows maximize still left the taskbar visible and the Customer Display app frame showed its origin/window controls. C2 therefore folds the fullscreen correction into the startup/recovery Slice rather than creating a separate hotfix PR.
+
+C2 extends the same launcher with two explicit modes. `Launch` places/reuses POS and Customer Display and converts each target window to monitor-sized borderless fullscreen by removing the normal caption/frame/system controls and applying the full monitor bounds. `Ensure` performs the same printer/window existence checks but deliberately leaves healthy existing windows untouched; only a missing POS or Customer Display is relaunched and fullscreened. Neither mode reloads or kills a healthy browser process.
+
+Startup/recovery uses one current-user interactive Scheduled Task rather than independent overlapping timers. At Windows logon the task starts `supervise-workstation.ps1` hidden. The supervisor executes one `Launch`, then serial `Ensure` passes at `EnsureIntervalSeconds` (example/default 60 seconds). Task settings use interactive current-user logon, limited run level, `MultipleInstances=IgnoreNew`, restart-on-supervisor-failure and no execution time limit; the supervisor also holds a per-user local mutex. This prevents concurrent recovery loops while keeping GUI automation inside the logged-in desktop session.
+
+`install-startup-task.ps1` and `uninstall-startup-task.ps1` are deliberate workstation mutation tools only. They are committed as source but are not executed by CI or repository tooling. The installer does not start the task immediately; operational installation/test remains an A4-D store-workstation action after merge. Uninstall removes/stops only the Scheduled Task and leaves current POS/Display/printer processes untouched.
+
+C2 still does not own POS session renewal, 401/login recovery, PWA/service-worker reload policy, Customer Display storage/channel semantics or printer-agent reconnect/ACK/dedupe. It contains no browser/session/device credential and adds no dependency or schema change.
 
 ### A4-D — Operational verification / runbook
 

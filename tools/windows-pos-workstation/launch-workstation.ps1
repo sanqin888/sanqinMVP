@@ -1,6 +1,10 @@
 param(
   [Parameter(Mandatory = $false)]
-  [string]$ConfigPath = (Join-Path $PSScriptRoot "workstation.config.json")
+  [string]$ConfigPath = (Join-Path $PSScriptRoot "workstation.config.json"),
+
+  [Parameter(Mandatory = $false)]
+  [ValidateSet("Launch", "Ensure")]
+  [string]$Mode = "Launch"
 )
 
 Set-StrictMode -Version Latest
@@ -45,6 +49,23 @@ public static class SanQWindowNative {
 
     [DllImport("user32.dll")]
     public static extern int GetWindowTextLength(IntPtr hWnd);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool SetWindowPos(
+        IntPtr hWnd,
+        IntPtr hWndInsertAfter,
+        int X,
+        int Y,
+        int cx,
+        int cy,
+        uint uFlags
+    );
 }
 "@
 
@@ -233,11 +254,16 @@ function Test-PrinterHealth {
 }
 
 function Ensure-PrinterAgent {
-  param($Config)
+  param(
+    $Config,
+    [bool]$QuietHealthy = $false
+  )
 
   $healthUrl = [string](Get-ConfigProperty $Config "PrinterHealthUrl")
   if (Test-PrinterHealth $healthUrl) {
-    Write-WorkstationLog "INFO" "Printer agent health check passed."
+    if (-not $QuietHealthy) {
+      Write-WorkstationLog "INFO" "Printer agent health check passed."
+    }
     return $true
   }
 
@@ -379,7 +405,7 @@ function Wait-ForNewWindow {
   return $null
 }
 
-function Move-WindowToScreen {
+function Enter-WindowFullscreen {
   param(
     $WindowProcess,
     $Screen,
@@ -391,23 +417,39 @@ function Move-WindowToScreen {
     throw "$Label window has no visible handle."
   }
 
-  $bounds = $Screen.Bounds
+  $gwlStyle = -16
+  $wsCaption = 0x00C00000
+  $wsThickFrame = 0x00040000
+  $wsMinimizeBox = 0x00020000
+  $wsMaximizeBox = 0x00010000
+  $wsSysMenu = 0x00080000
+  $wsPopup = -2147483648
+  $swpFrameChanged = 0x0020
+  $swpShowWindow = 0x0040
+
+  $style = [SanQWindowNative]::GetWindowLong($handle, $gwlStyle)
+  $chromeMask = $wsCaption -bor $wsThickFrame -bor $wsMinimizeBox -bor $wsMaximizeBox -bor $wsSysMenu
+  $fullscreenStyle = ($style -band (-bnot $chromeMask)) -bor $wsPopup
+
   [void][SanQWindowNative]::ShowWindow($handle, 9)
-  $moved = [SanQWindowNative]::MoveWindow(
+  [void][SanQWindowNative]::SetWindowLong($handle, $gwlStyle, $fullscreenStyle)
+
+  $bounds = $Screen.Bounds
+  $moved = [SanQWindowNative]::SetWindowPos(
     $handle,
+    [IntPtr]::Zero,
     $bounds.X,
     $bounds.Y,
     $bounds.Width,
     $bounds.Height,
-    $true
+    ($swpFrameChanged -bor $swpShowWindow)
   )
 
   if (-not $moved) {
-    throw "Failed to move $Label window to $($Screen.DeviceName)."
+    throw "Failed to place $Label in fullscreen on $($Screen.DeviceName)."
   }
 
-  [void][SanQWindowNative]::ShowWindow($handle, 3)
-  Write-WorkstationLog "INFO" "$Label window placed on $($Screen.DeviceName) and maximized."
+  Write-WorkstationLog "INFO" "$Label window placed on $($Screen.DeviceName) in borderless fullscreen."
 }
 
 function Resolve-CustomerDisplayScreen {
@@ -450,7 +492,9 @@ if (-not (Test-Path -LiteralPath $ConfigPath -PathType Leaf)) {
 $config = Get-Content -LiteralPath $ConfigPath -Raw | ConvertFrom-Json
 $script:LogFile = Initialize-Log $config
 $script:StateFile = Join-Path (Split-Path -Parent $script:LogFile) "workstation-state.json"
-Write-WorkstationLog "INFO" "SanQ workstation launcher starting."
+if ($Mode -eq "Launch") {
+  Write-WorkstationLog "INFO" "SanQ workstation launcher starting (mode=Launch)."
+}
 
 $exitCode = 0
 
@@ -461,10 +505,12 @@ try {
   $browserProcessName = [IO.Path]::GetFileNameWithoutExtension($browserExecutable)
   $profileArguments = @(Get-BrowserProfileArguments $shortcut.Arguments)
 
-  Write-WorkstationLog "INFO" "Using installed SanQ POS PWA shortcut: $shortcutPath"
-  Write-WorkstationLog "INFO" "Using Chromium executable: $browserExecutable"
+  if ($Mode -eq "Launch") {
+    Write-WorkstationLog "INFO" "Using installed SanQ POS PWA shortcut: $shortcutPath"
+    Write-WorkstationLog "INFO" "Using Chromium executable: $browserExecutable"
+  }
 
-  if (-not (Ensure-PrinterAgent $config)) {
+  if (-not (Ensure-PrinterAgent $config ($Mode -eq "Ensure"))) {
     $exitCode = 2
   }
 
@@ -495,6 +541,7 @@ try {
     $posWindow = Get-WindowByTitle $browserProcessName $posTitle
   }
 
+  $posLaunched = $false
   if (-not $posWindow) {
     $existingHandles = @(
       Get-BrowserWindows $browserProcessName |
@@ -503,17 +550,21 @@ try {
     Write-WorkstationLog "INFO" "Launching installed SanQ POS PWA."
     Start-Process -FilePath $shortcutPath | Out-Null
     $posWindow = Wait-ForNewWindow $browserProcessName $existingHandles $posTitle $windowTimeout
-  } else {
+    $posLaunched = $true
+  } elseif ($Mode -eq "Launch") {
     Write-WorkstationLog "INFO" "Existing SanQ POS window found; reusing it."
   }
 
   if (-not $posWindow) {
     throw "SanQ POS window did not appear within $windowTimeout seconds."
   }
-  Move-WindowToScreen $posWindow $primaryScreen "POS"
+  if ($Mode -eq "Launch" -or $posLaunched) {
+    Enter-WindowFullscreen $posWindow $primaryScreen "POS"
+  }
   $posWindowHandle = [Int64]$posWindow.Handle
 
   [Int64]$displayWindowHandle = 0
+  $displayLaunched = $false
   if ($null -eq $customerScreen) {
     Write-WorkstationLog "ERROR" "No secondary monitor detected. Customer Display was not launched."
     if ($exitCode -eq 0) {
@@ -538,7 +589,8 @@ try {
       $displayArguments += "--app=$displayUrl"
       Start-Process -FilePath $browserExecutable -ArgumentList $displayArguments | Out-Null
       $displayWindow = Wait-ForNewWindow $browserProcessName $existingHandles $displayTitle $windowTimeout
-    } else {
+      $displayLaunched = $true
+    } elseif ($Mode -eq "Launch") {
       Write-WorkstationLog "INFO" "Existing Customer Display window found; reusing it."
     }
 
@@ -548,15 +600,19 @@ try {
         $exitCode = 4
       }
     } else {
-      Move-WindowToScreen $displayWindow $customerScreen "Customer Display"
+      if ($Mode -eq "Launch" -or $displayLaunched) {
+        Enter-WindowFullscreen $displayWindow $customerScreen "Customer Display"
+      }
       $displayWindowHandle = [Int64]$displayWindow.Handle
     }
   }
 
-  try {
-    Write-WorkstationState $posWindowHandle $displayWindowHandle
-  } catch {
-    Write-WorkstationLog "WARN" "Failed to persist non-secret workstation window state: $($_.Exception.Message)"
+  if ($Mode -eq "Launch" -or $posLaunched -or $displayLaunched) {
+    try {
+      Write-WorkstationState $posWindowHandle $displayWindowHandle
+    } catch {
+      Write-WorkstationLog "WARN" "Failed to persist non-secret workstation window state: $($_.Exception.Message)"
+    }
   }
 } catch {
   Write-WorkstationLog "ERROR" $_.Exception.Message
@@ -566,7 +622,9 @@ try {
 }
 
 if ($exitCode -eq 0) {
-  Write-WorkstationLog "INFO" "SanQ workstation launcher completed successfully."
+  if ($Mode -eq "Launch") {
+    Write-WorkstationLog "INFO" "SanQ workstation launcher completed successfully."
+  }
 } else {
   Write-WorkstationLog "WARN" "SanQ workstation launcher completed with exit code $exitCode. Review the log and use the manual fallback if needed."
 }

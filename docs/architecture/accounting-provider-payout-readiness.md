@@ -327,9 +327,20 @@ Therefore PAYOUT-C is **PRODUCTION VERIFIED**.
 
 PAYOUT-D is intentionally a read-only Accounting report. It does not attempt a one-to-one match between monthly statement payout totals and bank deposits.
 
+> **2026-09-25 Clover authority correction:** the bullets below describe the Journal composition
+> that PAYOUT-D was built to project, not the final economic authority for pre-sync Clover CARD.
+> Real June/July Closeout + monthly-statement evidence subsequently proved that, from Accounting
+> start 2026-06-01 until production POS-Clover payment cutover, Clover receivable/Pending authority
+> must come from Clover Daily Closeout + Monthly Statement rather than
+> `Order.paymentMethod=CARD`. Order sale economics remain valid, but its pre-sync CARD tender
+> attribution is diagnostic-only. PAYOUT-D's arithmetic invariant remains valid as a ledger
+> explanation; the current Clover closing Pending must not be interpreted as externally confirmed
+> until the planned authority-replacement correction is completed. See
+> `docs/architecture/accounting-clover-pre-sync-authority-plan.md`.
+
 Production Journal composition proves why the roll-forward must use canonical Journal source/fact metadata:
 
-- Clover sales Pending is driven by canonical Order sales/reversals and gross bank receipts; Clover statement fees are a separate liability settlement lane and must not reduce sales Pending;
+- Historical Clover sales Pending is currently driven by canonical Order sales/reversals and gross bank receipts; this pre-sync tender authority is now explicitly superseded for future remediation by Closeout + statement evidence, while Clover statement fees remain a separate liability settlement lane and must not reduce sales Pending;
 - historical Uber Pending includes canonical Order sales that were later neutralized by `accounting.uber_pre_cutover_order_reversal.v1`, after which provider statements became authoritative;
 - Fantuan Pending is currently provider-statement-driven;
 - actual bank receipts reduce Pending through `accounting.provider_payout.v1`.
@@ -389,7 +400,7 @@ A negative Pending balance is not automatically rejected because a real payout c
 
 Store-scoped reconciliation also fails closed if any active Provider Pending Journal movement in the requested range has no `storeStableId`. Silently omitting an unscoped line would produce a falsely precise per-store closing balance. Production readiness audit on 2026-09-23 found zero active unscoped Clover/Uber/Fantuan Pending Journal lines.
 
-Clover currently has no Provider Financial Document or coverage row in production; its Pending movement is canonical Order-driven. PAYOUT-D therefore reports Clover coverage as `UNKNOWN` rather than assuming `NOT_APPLICABLE`. The coverage label is evidence metadata only and does not affect its Journal roll-forward.
+The original PAYOUT-D production audit found no Clover Provider Financial Document or coverage row at that time, so its Pending movement was Order-driven and coverage reported `UNKNOWN`. That observation is historical: Clover June/July statements have since been materialized and real Closeout evidence has established the pre-sync authority correction described above. Coverage metadata still cannot mutate Journal arithmetic, but future Clover reconciliation must project provider-document/Closeout coverage instead of treating Order-derived Pending as economically authoritative.
 
 ### Transport and UI
 
@@ -448,7 +459,7 @@ Other movement                        0
 Active unscoped Pending lines         0
 ```
 
-This closes the backend/data-path portion of PAYOUT-D production verification. A human operator visual spot-check of the deployed panel/API rendering remains outstanding; there is no accounting-data blocker.
+This closed the backend/data-path portion of PAYOUT-D production verification at the time. A human operator visual spot-check of the deployed panel/API rendering remained outstanding. The later 2026-09-25 Clover pre-sync authority audit does **not** invalidate PAYOUT-D arithmetic, but it does introduce a Clover economic-authority remediation blocker before the Clover Pending balance can be treated as provider-confirmed.
 
 ## 12. PAYOUT-E-A bank CSV payout match preview
 

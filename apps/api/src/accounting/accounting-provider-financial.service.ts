@@ -7,6 +7,7 @@ import {
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
+  AccountingFinancialDocumentType,
   AccountingFinancialProvider,
   AccountingInboxClassification,
   AccountingInboxMaterializedEntityType,
@@ -51,6 +52,7 @@ import type { AccountingScannedPdfOcrEvidence } from './accounting-scanned-pdf-r
 import { AccountingProviderFinancialReviewService } from './accounting-provider-financial-review.service';
 import type { ProviderFinancialReviewDraftInput } from './accounting-provider-financial-review.policy';
 import { getAccountingUploadsDir } from './accounting-storage-path';
+import { CLOVER_CLOSEOUT_BOUNDARY_EVIDENCE_START_DATE } from './accounting-clover-closeout.contract';
 
 export type AccountingProviderFinancialParseContext = Omit<
   ProviderFinancialParseInput,
@@ -65,6 +67,19 @@ export type AccountingProviderFinancialParseContext = Omit<
 export class AccountingProviderFinancialProcessingError extends Error {}
 
 const ACCOUNTING_INBOX_STORAGE_PREFIX = '/api/v1/accounting/files/inbox/';
+const isExcludedBeforeFinancialHistory = (
+  parsed: ParsedProviderFinancialDocument,
+): boolean =>
+  Boolean(
+    parsed.periodEnd &&
+    parsed.periodEnd < PROVIDER_FINANCIAL_HISTORY_START_DATE &&
+    !(
+      parsed.provider === AccountingFinancialProvider.CLOVER &&
+      parsed.documentType === AccountingFinancialDocumentType.BATCH_CONTROL &&
+      parsed.periodEnd >= CLOVER_CLOSEOUT_BOUNDARY_EVIDENCE_START_DATE
+    ),
+  );
+
 const XLSX_MIME =
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
@@ -177,10 +192,8 @@ export class AccountingProviderFinancialService {
         input.pdfNativeTextUsability,
         input.pdfOcrEvidence,
       );
-      const excludedBeforeFinancialHistory = Boolean(
-        parsed.periodEnd &&
-        parsed.periodEnd < PROVIDER_FINANCIAL_HISTORY_START_DATE,
-      );
+      const excludedBeforeFinancialHistory =
+        isExcludedBeforeFinancialHistory(parsed);
       await this.inbox.recordInboxParseRun({
         artifactStableId: input.artifactStableId,
         parserName: ACCOUNTING_PROVIDER_FINANCIAL_PARSER_NAME,
@@ -288,10 +301,7 @@ export class AccountingProviderFinancialService {
       input.documentExtraction,
       input.pdfNativeTextUsability,
     );
-    if (
-      parsed.periodEnd &&
-      parsed.periodEnd < PROVIDER_FINANCIAL_HISTORY_START_DATE
-    ) {
+    if (isExcludedBeforeFinancialHistory(parsed)) {
       await this.inbox.recordInboxParseRun({
         artifactStableId: input.artifactStableId,
         parserName: ACCOUNTING_PROVIDER_FINANCIAL_PARSER_NAME,

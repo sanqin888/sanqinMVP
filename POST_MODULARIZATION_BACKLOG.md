@@ -323,7 +323,9 @@ This should be a dedicated workstation project, not a small PWA-manifest patch.
 
 2026-09-25 A4-B is MERGED / CI GREEN through PR #2538 / squash `2d0d1a58`; CI #6383 passed Web/API/printer-agent. `/{locale}/store/display` is now explicitly a non-installable, read-only workstation display route with metadata isolation from the Customer PWA identity and regression coverage for its existing localStorage/storage-event/BroadcastChannel/800ms-polling projection contract.
 
-2026-09-25 A4-C1 local implementation adds the first explicit Windows workstation orchestration boundary under `tools/windows-pos-workstation`. It launches the installed SanQ POS PWA from its real Windows shortcut, derives the Chromium executable/profile arguments from that shortcut, opens Customer Display in the same browser/profile, places/maximizes POS on the primary monitor and Display on a selected non-primary monitor, checks/starts the existing printer-agent wrapper, writes local logs and remains idempotent when windows are already present. C1 does not install Task Scheduler, modify Windows Startup, alter Web/POS/Display logic, or persist any browser/session/device credential. A Windows CI job syntax-validates the PowerShell and example config without launching workstation processes. Detailed work-package state: `docs/architecture/postmod-a4-windows-pos-workstation.md`.
+2026-09-25 A4-C1 is MERGED / CI GREEN through PR #2543 / squash `06afc5b5`; CI #6397 passed Web/API/printer-agent plus the new Windows workstation PowerShell gate. The repository now owns the bounded Windows workstation launcher under `tools/windows-pos-workstation`, preserving the installed POS PWA/browser-profile authority, Customer Display local-sync contract and existing printer-agent runtime.
+
+2026-09-25 A4-C2 local implementation extends that same operational boundary with borderless fullscreen and current-user startup/recovery. `Launch` places POS and Customer Display in monitor-sized borderless fullscreen so Chromium/PWA title controls and the Windows taskbar area are not shown; periodic `Ensure` leaves healthy windows untouched and only recovers missing POS/Display/printer-agent components. One interactive current-user Scheduled Task starts a hidden supervisor at logon; the supervisor runs one Launch and then serial Ensure passes at the configured interval, with duplicate supervisor protection and no browser kill/reload/session/device mutation. Installer/uninstaller scripts are source-only in this Slice; no Task Scheduler mutation is executed by repository tooling or CI. Detailed work-package state: `docs/architecture/postmod-a4-windows-pos-workstation.md`.
 
 ### 4.5 A5 — Critical browser E2E, staged
 
@@ -417,6 +419,33 @@ The follow-up keeps provider-pending net as nullable summary data, removes its a
 unconditional Replay blocker, and adds a July-shaped Clover regression while preserving the
 existing Uber replacement-group coverage. Backend settlement authority/execution, parser, schema
 and dependencies are unchanged.
+
+**2026-09-25 Clover pre-sync financial authority Slice A — LOCAL SOURCE READY FOR REVIEW /
+READ-ONLY SHADOW / NO PRISMA / NO JOURNAL MUTATION:** real Gmail Closeout Reports now prove that historical POS `CARD` tender attribution
+cannot own Clover receivable/Pending before production Terminal synchronization. June Closeouts
+2026-05-29..2026-06-28 reconcile exactly to the legacy June statement Amount Submitted
+336,210c (180 sales, 9,896c Tips); July Closeouts 2026-06-30..2026-07-30 reconcile exactly to
+modern July Amount Submitted 350,132c (230 sales, 7,207c Tips). July/August statement surcharge
+is explicit provider evidence; June `DISCOUNT FEES` 5,931c is merchant processing cost, not a
+customer surcharge substitute. From Accounting start 2026-06-01 to the future durable
+Payments-fact cutover, Daily Closeout + Monthly Statement is Clover receivable authority,
+CIBC remains cash-settlement authority, and Order CARD attribution is diagnostic-only while
+Order sales/HST/discount economics stay authoritative. The current POS rollout flag remains
+temporary runtime routing and must not dynamically reinterpret financial history. Slice A implementation reuses the existing Accounting Gmail Inbox and provider-financial
+materialization path for the exact `app@clover.com` + Closeout-subject contract, includes a
+bounded pre-start provider-evidence lookback for the June boundary, requires the complete Closeout
+Batch Totals control set, persists Closeout counts, rejects conflicting reuse of a Batch ID, and
+adds a read-only report projection that discovers a contiguous Closeout
+sequence from matching Clover merchant identity, provider controls and period overlap rather than
+assigning calendar-month batches. Modern statement
+layout evidence exposes Amount Submitted transaction/refund controls and explicit
+`Surcharge Collected`, while confirmed Human Review effective snapshots remain authoritative;
+June remains `UNKNOWN`. Order `CARD` comparison is explicitly
+`NON_AUTHORITATIVE`. June/July characterization source fixes the confirmed ranges/totals and
+fail-closed gap/duplicate/count behavior. Detailed plan:
+`docs/architecture/accounting-clover-pre-sync-authority-plan.md`. Slice A contains zero Journal
+mutation, historical correction, cutover timestamp, Prisma migration, dependency or local
+lint/build/test execution.
 
 **Existing-materialized parser re-evaluation / Human Review effective snapshot — LOCAL SOURCE
 READY FOR REVIEW:** `accounting/provider-parser-reevaluation-review` adds the previously planned
