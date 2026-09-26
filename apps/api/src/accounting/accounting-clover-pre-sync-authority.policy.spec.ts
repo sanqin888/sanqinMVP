@@ -23,19 +23,26 @@ const closeouts = (params: {
   salesCount: number;
   tipsCents: number;
   tipsCount: number;
-}): CloverPreSyncCloseoutBatchEvidenceV1[] =>
-  Array.from({ length: params.days }, (_, index) => ({
+  skipDates?: string[];
+}): CloverPreSyncCloseoutBatchEvidenceV1[] => {
+  const skipped = new Set(params.skipDates ?? []);
+  const businessDates = Array.from({ length: params.days }, (_, index) =>
+    addDays(params.from, index),
+  ).filter((businessDate) => !skipped.has(businessDate));
+
+  return businessDates.map((businessDate, index) => ({
     documentStableId: `acctfindoc_batch_${params.from}_${index}`,
     batchId: `batch_${params.from}_${index}`,
     providerMerchantRef: '29351880018',
-    businessDate: addDays(params.from, index),
-    salesCount: distribute(params.salesCount, index, params.days),
-    salesCents: distribute(params.salesCents, index, params.days),
+    businessDate,
+    salesCount: distribute(params.salesCount, index, businessDates.length),
+    salesCents: distribute(params.salesCents, index, businessDates.length),
     refundCount: 0,
     refundCents: 0,
-    tipsCount: distribute(params.tipsCount, index, params.days),
-    tipsCents: distribute(params.tipsCents, index, params.days),
+    tipsCount: distribute(params.tipsCount, index, businessDates.length),
+    tipsCents: distribute(params.tipsCents, index, businessDates.length),
   }));
+};
 
 const statement = (
   partial: Partial<CloverPreSyncStatementEvidenceV1>,
@@ -56,7 +63,7 @@ const statement = (
 });
 
 describe('Clover pre-sync authority coverage policy', () => {
-  it('characterizes June with May boundary batches and UNKNOWN surcharge', () => {
+  it('characterizes June across zero-activity dates with May boundary batches and UNKNOWN surcharge', () => {
     const result = projectCloverPreSyncAuthorityCoverage({
       statement: statement({}),
       closeouts: closeouts({
@@ -66,6 +73,7 @@ describe('Clover pre-sync authority coverage policy', () => {
         salesCount: 180,
         tipsCents: 9896,
         tipsCount: 47,
+        skipDates: ['2026-06-01', '2026-06-08', '2026-06-15', '2026-06-22'],
       }),
     });
 
@@ -76,7 +84,7 @@ describe('Clover pre-sync authority coverage policy', () => {
         coveredCloseoutRange: {
           from: '2026-05-29',
           to: '2026-06-28',
-          batchCount: 31,
+          batchCount: 27,
         },
         closeout: {
           salesCount: 180,
@@ -188,7 +196,7 @@ describe('Clover pre-sync authority coverage policy', () => {
     expect(result.issues).toContain('CLOSEOUT_COVERAGE_NOT_FOUND');
   });
 
-  it('fails closed on a Closeout coverage gap', () => {
+  it('fails closed when missing provider evidence prevents statement principal closure', () => {
     const batches = closeouts({
       from: '2026-05-29',
       days: 31,
@@ -205,7 +213,7 @@ describe('Clover pre-sync authority coverage policy', () => {
     });
 
     expect(result.status).toBe('FAIL_CLOSED');
-    expect(result.issues).toContain('CLOSEOUT_DATE_GAP');
+    expect(result.issues).toContain('CLOSEOUT_COVERAGE_NOT_FOUND');
   });
 
   it('fails closed on a duplicate Batch ID even when principal could match', () => {

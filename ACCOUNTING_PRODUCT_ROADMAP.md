@@ -110,7 +110,7 @@ removes only that unconditional UI blocker, and leaves backend settlement READY/
 plan-hash/balance/idempotency gates unchanged. No schema, parser, posting-policy or dependency
 change is introduced.
 
-2026-09-25 pre-sync Clover authority Slice A is **LOCAL SOURCE READY FOR REVIEW / READ-ONLY SHADOW / NO PRISMA / NO JOURNAL MUTATION**.
+2026-09-26 pre-sync Clover authority Slice A is **MERGED / CI GREEN via PR #2547 / PRODUCTION GMAIL EVIDENCE ACQUIRED / ZERO-ACTIVITY COVERAGE FOLLOW-UP PENDING REMOTE CI / READ-ONLY SHADOW / NO PRISMA / NO JOURNAL MUTATION**.
 Real Gmail Closeout Reports prove that pre-sync Clover tender truth cannot be anchored to
 `Order.paymentMethod=CARD`: June Closeouts for 2026-05-29..2026-06-28 close exactly to the legacy
 June statement Amount Submitted 336,210c with 180 sales and 9,896c Tips; July Closeouts for
@@ -126,8 +126,14 @@ Slice A now reuses the existing Gmail Inbox path to durably materialize only the
 `app@clover.com` + Closeout-subject contract, preserves the exact 2026-05-29..2026-05-31
 provider-evidence exception around the 2026-06-01 Accounting start, requires the complete Closeout
 Batch Totals control set, carries transaction counts, fails closed on Batch ID conflicts, and
-exposes a read-only statement-to-contiguous-Closeout shadow projection bound by existing Clover
-merchant identity and provider-period overlap rather than calendar-month assignment.
+exposes a read-only statement-to-observed-Closeout-sequence shadow projection bound by existing
+Clover merchant identity and provider-period overlap rather than calendar-month assignment or
+calendar-day continuity. Production Gmail ingestion materialized 113 unique Clover Closeouts
+through 2026-09-25. June uses 27 actual provider batches spanning 2026-05-29..2026-06-28 because
+2026-06-01/08/15/22 were closed zero-activity Mondays; those batches still reconcile exactly to
+336,210c / 180 sales / 9,896c Tips. The follow-up keeps duplicate/ambiguous/control mismatches
+fail-closed and reports incomplete provider evidence as coverage-not-found when principal closure
+cannot be established.
 Modern statement layout evidence now exposes transaction/refund controls plus explicit
 `Surcharge Collected`; confirmed Human Review effective snapshots remain authoritative when
 present; legacy June surcharge remains `UNKNOWN` and merchant `DISCOUNT FEES` is never
