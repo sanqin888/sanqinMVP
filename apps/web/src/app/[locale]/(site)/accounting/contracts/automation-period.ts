@@ -29,6 +29,23 @@ export type AccountingAutomationRunResult = {
   };
 };
 
+export type AccountingUberFinancialReportType =
+  | 'PAYMENT_DETAILS_REPORT'
+  | 'FINANCE_SUMMARY_REPORT';
+
+export type AccountingUberFinancialReportRequest = {
+  startDate: string;
+  endDate: string;
+  reportTypes: AccountingUberFinancialReportType[];
+};
+
+export type AccountingUberFinancialReportRequestResult = {
+  reportStableId: string;
+  workflowId: string;
+  reportType: AccountingUberFinancialReportType;
+  status: 'REQUESTED' | 'READY' | 'IMPORTED' | 'ERROR';
+};
+
 export type AccountingUberFinancialReport = {
   reportStableId: string;
   workflowId: string;
