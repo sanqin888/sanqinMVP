@@ -31,6 +31,7 @@ const sale = (
     paymentMethod: 'CARD',
     operation: 'SALE',
     amountCents: 1_000,
+    tipCents: 0,
     surchargeCents: 24,
     chargedTotalCents: 1_024,
     refundedAmountCents: 0,

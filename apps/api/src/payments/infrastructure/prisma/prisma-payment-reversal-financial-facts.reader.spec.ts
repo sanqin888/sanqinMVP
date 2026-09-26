@@ -16,6 +16,7 @@ const saleRow = (overrides: Record<string, unknown> = {}) => ({
   paymentMethod: PaymentTransactionMethod.CARD,
   operation: PaymentOperation.SALE,
   amountCents: 1000,
+  tipCents: 0,
   surchargeCents: 24,
   chargedTotalCents: 1024,
   refundedAmountCents: 0,

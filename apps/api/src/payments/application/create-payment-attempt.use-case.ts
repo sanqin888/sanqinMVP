@@ -506,6 +506,15 @@ export class TerminalPaymentService {
     if (outcome.currency?.toUpperCase() !== snapshot.currency) {
       problems.push('canonical currency missing or mismatched');
     }
+    if (outcome.tipCents === undefined) {
+      problems.push('canonical provider tip amount missing');
+    }
+    if (outcome.surchargeCents === undefined) {
+      problems.push('canonical provider surcharge amount missing');
+    }
+    if (outcome.chargedTotalCents === undefined) {
+      problems.push('canonical charged total missing');
+    }
     return problems;
   }
 

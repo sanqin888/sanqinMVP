@@ -517,9 +517,8 @@ source 已通过 PR #2552 合入，user-generated migration
 controller/flag listener/go-live caller，所以 production cutover timestamp 仍未设置。Accounting
 Slice C 现进入 read-only historical authority replacement preview：6/1 的 47,922c bank deposit
 精确对应 5/29-5/31 pre-start Closeout，因此保持 excluded；June 因 surcharge UNKNOWN 继续
-fail-closed，July 可以形成完整 provider-authoritative draft。另
-`PaymentFinancialFactV1` / `PaymentTransaction` 仍缺 provider-proven `tipCents`，所以 Slice E
-payment-fact completeness 继续作为真实 production cutover 的硬 gate。
+fail-closed，July 可以形成完整 provider-authoritative draft。
+Slice E readiness audit 已确认缺口属于 Payments owner：Platform v3 的 `tipAmount` 是独立 provider fact，现有 mapper 之前未持久化它，而且 `chargedTotalCents` 只计算 base + additional charges，会遗漏 tip。E1 当前本地 source 已增加 nullable `PaymentTransaction.tipCents`、`PaymentFinancialFactV1.tipCents`、Platform v3 tip 读取与 `amount + tip + additionalCharges` charged-total，并要求 Clover POS canonical success 对 tip/surcharge/charged-total fail closed。该 schema 改动 **MIGRATION REQUIRED**，MCP 不生成 migration；production Web Clover Ecommerce 未修改，`providerPaymentFactCutoverAt` 仍未设置。E2 refund/reversal tip authority 仍是 production cutover 的硬 gate。
 
 ## 新主链路
 

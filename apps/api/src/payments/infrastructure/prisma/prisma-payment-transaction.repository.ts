@@ -49,6 +49,7 @@ const toDomain = (row: PrismaPaymentTransactionRecord): PaymentTransaction =>
     paymentMethod: parsePaymentMethod(row.paymentMethod),
     operation: parsePaymentOperation(row.operation),
     amountCents: row.amountCents,
+    tipCents: row.tipCents,
     surchargeCents: row.surchargeCents,
     chargedTotalCents: row.chargedTotalCents,
     refundedAmountCents: row.refundedAmountCents,
@@ -629,6 +630,7 @@ export class PrismaPaymentTransactionRepository
           paymentMethod: snapshot.paymentMethod,
           operation: snapshot.operation,
           amountCents: snapshot.amountCents,
+          tipCents: snapshot.tipCents,
           surchargeCents: snapshot.surchargeCents,
           chargedTotalCents: snapshot.chargedTotalCents,
           refundedAmountCents: snapshot.refundedAmountCents,
@@ -1071,6 +1073,7 @@ export class PrismaPaymentTransactionRepository
       paymentMethod: parsePaymentMethod(row.paymentMethod),
       operation: parsePaymentOperation(row.operation),
       amountCents: row.amountCents,
+      tipCents: row.tipCents,
       surchargeCents: row.surchargeCents,
       chargedTotalCents: row.chargedTotalCents,
       refundedAmountCents: row.refundedAmountCents,
@@ -1085,6 +1088,7 @@ export class PrismaPaymentTransactionRepository
     const snapshot = transaction.toSnapshot();
     return {
       status: snapshot.status,
+      tipCents: snapshot.tipCents,
       surchargeCents: snapshot.surchargeCents,
       chargedTotalCents: snapshot.chargedTotalCents,
       refundedAmountCents: snapshot.refundedAmountCents,

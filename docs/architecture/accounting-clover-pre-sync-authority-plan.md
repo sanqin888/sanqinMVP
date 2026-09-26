@@ -374,6 +374,42 @@ Before production POS-Clover Sync becomes permanent:
 - refund/reversal facts must preserve the same authority;
 - Monthly Statement / Closeout becomes control/reconciliation evidence after cutover.
 
+#### Slice E1 — Sale fact completeness
+
+**Implementation state (2026-09-26): LOCAL SOURCE READY FOR REVIEW / ADDITIVE SCHEMA /
+MIGRATION REQUIRED / NO CUTOVER / WEB ECOMMERCE UNCHANGED.**
+
+Readiness audit against the latest `dev` and production evidence confirmed this is a Payments-owned
+fact-loss problem rather than an Accounting parser problem. The June 2026 six-page Clover statement
+contains no explicit surcharge field in persisted Poppler extraction geometry, and the June
+Closeouts also expose no surcharge field. Accounting therefore continues to fail closed instead of
+deriving June surcharge from fees, pricing rates or residual arithmetic.
+
+For post-cutover Unified POS payments, Platform v3 exposes provider `tipAmount` separately from the
+base payment `amount` and `additionalCharges`. E1 therefore:
+
+- adds nullable `PaymentTransaction.tipCents` as a provider observation;
+- carries `tipCents` through the Payments domain and `PaymentFinancialFactV1`;
+- reads Platform v3 `tipAmount` and fails closed when it is absent/invalid;
+- defines canonical customer charged total as provider base amount + provider tip + all provider
+  additional charges;
+- keeps `CREDIT_SURCHARGE` separately provider-read and never fixed-rate inferred;
+- requires canonical tip/surcharge/charged-total evidence before a Clover POS Terminal success may
+  finalize;
+- leaves production Web Clover Ecommerce behavior unchanged;
+- does not set `providerPaymentFactCutoverAt`, post Journals, or alter Accounting authority.
+
+The schema change is additive-only in source. Per repository policy MCP does not create/edit Prisma
+migration files. A user-generated nullable-column migration is required before this source may be
+promoted. Existing rows remain representable as `tipCents = null`; no backfill or guessed historical
+tip is permitted.
+
+#### Slice E2 — Reversal fact completeness
+
+Still pending after E1. Managed refund/void and external reversal evidence must explicitly preserve
+provider-proven refunded tip/additional-charge/customer-total authority. E1 intentionally does not
+guess refunded tip from the original sale and does not claim this gate complete.
+
 ## 9. Safety / non-goals
 
 This plan does not:
@@ -394,5 +430,6 @@ State:
 **SLICE A PRODUCTION VERIFIED / CLOSED**  
 **NOT READY FOR HISTORICAL JOURNAL CORRECTION**  
 **SLICE B SOURCE + ADDITIVE MIGRATION MERGED TO DEV / CI GREEN / PRODUCTION CUTOVER NOT SET**  
-**SLICE C LOCAL READ-ONLY PREVIEW READY FOR REVIEW / JUNE BLOCKED ON UNKNOWN SURCHARGE / JULY DRAFT READY**  
-**SLICE E PAYMENT-FACT COMPLETENESS REMAINS A HARD PRE-CUTOVER GATE**
+**SLICE C MERGED TO DEV / CI #6439 GREEN / READ-ONLY / JUNE BLOCKED ON UNKNOWN SURCHARGE / JULY DRAFT READY**  
+**SLICE E1 LOCAL SOURCE READY FOR REVIEW / MIGRATION REQUIRED / NO CUTOVER**  
+**SLICE E2 REVERSAL COMPLETENESS REMAINS A HARD PRE-CUTOVER GATE**

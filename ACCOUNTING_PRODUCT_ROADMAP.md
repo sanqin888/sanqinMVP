@@ -151,8 +151,8 @@ confirmed one nullable `TIMESTAMP(3)` column only, with no default/backfill/drop
 CI #6431/#6432 are green. The durable cutover timestamp remains unset and Slice E provider-proven
 tip authority is still a hard production-cutover gate.
 
-Slice C is now **LOCAL READ-ONLY PREVIEW READY FOR REVIEW**. It anchors actual historical
-Order-derived Clover Pending Journal movements to the closed Slice A provider-batch authority,
+Slice C is now **MERGED TO DEV / CI #6439 GREEN / READ-ONLY** through PR #2554 /
+squash `00472a34`. It anchors actual historical Order-derived Clover Pending Journal movements to the closed Slice A provider-batch authority,
 truncates provider evidence at the 2026-06-01 Accounting boundary, and emits deterministic
 human-review plans without posting. Production read-only evidence confirms the excluded 2026-06-01
 47,922c bank deposit equals the pre-start 2026-05-29/30/31 Closeouts exactly, so neither belongs in
@@ -163,6 +163,15 @@ explicit surcharge and 18,567c Store Cash tender reclassification. The simulated
 also closes against real payouts: June adjusted closing 43,459c equals the canonical 6/29 payout,
 and July adjusted 7/30 closing 3,532c equals the canonical 7/31 payout. Slice D posting remains
 blocked pending review and resolution of June's unknown surcharge.
+
+Slice E has now started as **E1 sale fact completeness / LOCAL SOURCE READY FOR REVIEW /
+MIGRATION REQUIRED**. The audit found no provider surcharge field in the persisted June statement
+geometry or June Closeouts, so Accounting will not manufacture the missing historical value.
+Instead, Payments now preserves Platform v3 provider `tipAmount`, exposes it as
+`PaymentFinancialFactV1.tipCents`, includes tip in canonical charged total, and fails closed for
+Clover POS success when canonical tip/surcharge/charged-total authority is incomplete. Web Ecommerce
+is unchanged and the durable payment-fact cutover remains unset. E2 refund/reversal completeness is
+still required before production cutover.
 
 The existing-materialized remediation is **MERGED / CI GREEN** through PR #2517
 (`a7a872bc`) with the user-generated additive migration committed to `dev` as `5e14e8db`.

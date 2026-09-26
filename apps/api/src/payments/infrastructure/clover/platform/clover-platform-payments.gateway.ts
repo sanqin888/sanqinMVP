@@ -170,6 +170,7 @@ const mapPlatformPayment = (
   const providerPaymentId = stringValue(payment, 'id');
   const externalPaymentId = stringValue(payment, 'externalPaymentId');
   const amountCents = integerValue(payment, 'amount');
+  const tipCents = integerValue(payment, 'tipAmount');
   const order = asRecord(payment.order);
   const currency = (
     stringValue(payment, 'currency') ?? stringValue(order, 'currency')
@@ -228,6 +229,14 @@ const mapPlatformPayment = (
       identity,
     );
   }
+  if (tipCents === undefined || tipCents < 0) {
+    return platformPaymentUnknown(
+      request,
+      'CLOVER_PLATFORM_TIP_AMOUNT_MISSING_OR_INVALID',
+      'Clover Platform payment is missing a valid provider tip amount',
+      identity,
+    );
+  }
   if (!currency || currency !== request.currency.toUpperCase()) {
     return platformPaymentUnknown(
       request,
@@ -268,7 +277,7 @@ const mapPlatformPayment = (
       identity,
     );
   }
-  const chargedTotalCents = amountCents + additionalChargeCents;
+  const chargedTotalCents = amountCents + tipCents + additionalChargeCents;
   if (!Number.isSafeInteger(chargedTotalCents)) {
     return platformPaymentUnknown(
       request,
@@ -308,6 +317,7 @@ const mapPlatformPayment = (
         identity,
       ),
       resultCode: resultCode ?? null,
+      tipCents,
       surchargeCents,
       chargedTotalCents,
       refundedAmountCents,
@@ -322,6 +332,7 @@ const mapPlatformPayment = (
     providerOrderId: stringValue(order, 'id'),
     amountCents,
     currency,
+    tipCents,
     surchargeCents,
     chargedTotalCents,
     refundedAmountCents,
