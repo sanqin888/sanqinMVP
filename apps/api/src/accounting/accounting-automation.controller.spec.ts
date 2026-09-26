@@ -81,14 +81,10 @@ describe('AccountingAutomationController Uber report validation', () => {
       },
       'reportTypes must contain only PAYMENT_DETAILS_REPORT or FINANCE_SUMMARY_REPORT',
     ],
-  ])('rejects an invalid manual report request %#', async (body, message) => {
+  ])('rejects an invalid manual report request %#', (body, message) => {
     const { controller, uberReporting } = makeController();
 
-    await expect(
-      controller.requestUberReports(body as never),
-    ).rejects.toMatchObject({
-      message,
-    });
+    expect(() => controller.requestUberReports(body as never)).toThrow(message);
     expect(uberReporting.requestFinancialReports).not.toHaveBeenCalled();
   });
 });
