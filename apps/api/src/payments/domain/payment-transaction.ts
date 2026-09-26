@@ -22,6 +22,7 @@ export type PaymentTransactionSnapshot = {
   paymentMethod: PaymentMethod;
   operation: PaymentOperation;
   amountCents: number;
+  tipCents: number | null;
   surchargeCents: number | null;
   chargedTotalCents: number | null;
   refundedAmountCents: number;
@@ -105,6 +106,7 @@ const mergeProviderFacts = (
   outcome: PaymentProviderOutcome,
   occurredAt: Date,
 ): PaymentTransactionSnapshot => {
+  const tipCents = keepWhenUndefined(snapshot.tipCents, outcome.tipCents);
   const surchargeCents = keepWhenUndefined(
     snapshot.surchargeCents,
     outcome.surchargeCents,
@@ -118,6 +120,7 @@ const mergeProviderFacts = (
     outcome.refundedAmountCents,
   );
 
+  if (tipCents !== null) requireMoney('tipCents', tipCents);
   if (surchargeCents !== null) requireMoney('surchargeCents', surchargeCents);
   if (chargedTotalCents !== null) {
     requireMoney('chargedTotalCents', chargedTotalCents);
@@ -126,6 +129,7 @@ const mergeProviderFacts = (
 
   return {
     ...snapshot,
+    tipCents,
     surchargeCents,
     chargedTotalCents,
     refundedAmountCents,
@@ -181,6 +185,7 @@ export class PaymentTransaction {
       paymentMethod: input.paymentMethod,
       operation: input.operation,
       amountCents: requirePositiveMoney('amountCents', input.amountCents),
+      tipCents: null,
       surchargeCents: null,
       chargedTotalCents: null,
       refundedAmountCents: 0,
@@ -209,6 +214,9 @@ export class PaymentTransaction {
     requireNonEmpty('payment idempotency key', snapshot.idempotencyKey);
     requirePositiveMoney('amountCents', snapshot.amountCents);
     requireMoney('refundedAmountCents', snapshot.refundedAmountCents);
+    if (snapshot.tipCents !== null) {
+      requireMoney('tipCents', snapshot.tipCents);
+    }
     if (snapshot.surchargeCents !== null) {
       requireMoney('surchargeCents', snapshot.surchargeCents);
     }

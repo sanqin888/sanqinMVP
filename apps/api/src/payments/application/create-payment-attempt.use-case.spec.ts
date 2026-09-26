@@ -235,6 +235,7 @@ const canonicalOutcome = (
     providerPaymentId: 'clover-payment-1',
     amountCents: request.amountCents,
     currency: request.currency,
+    tipCents: 0,
     surchargeCents: status === 'SUCCEEDED' ? 62 : 0,
     chargedTotalCents:
       status === 'SUCCEEDED' ? request.amountCents + 62 : request.amountCents,
@@ -301,8 +302,44 @@ describe('TerminalPaymentService', () => {
     expect(snapshot.providerPaymentId).toBe('clover-payment-1');
     expect(snapshot.externalPaymentId).toHaveLength(32);
     expect(snapshot.chargedTotalCents).toBe(2661);
+    expect(snapshot.tipCents).toBe(0);
     expect(snapshot.surchargeCents).toBe(62);
   });
+
+  it.each([
+    ['tip', { tipCents: undefined }, 'canonical provider tip amount missing'],
+    [
+      'surcharge',
+      { surchargeCents: undefined },
+      'canonical provider surcharge amount missing',
+    ],
+    [
+      'charged total',
+      { chargedTotalCents: undefined },
+      'canonical charged total missing',
+    ],
+  ] as const)(
+    'fails closed instead of finalizing a Clover POS sale when canonical %s authority is missing',
+    async (_label, overrides, expectedProblem) => {
+      const { service, provider } = createTerminalHarness();
+      provider.startPayment.mockImplementation((request) =>
+        Promise.resolve(
+          canonicalOutcome(request, 'SUCCEEDED', {
+            ...overrides,
+          }),
+        ),
+      );
+
+      const payment = await service.startSale(terminalInput);
+      const snapshot = payment.toSnapshot();
+
+      expect(snapshot.status).toBe('UNKNOWN');
+      expect(snapshot.failureCode).toBe(
+        'PAYMENT_PROVIDER_CORRELATION_MISMATCH',
+      );
+      expect(snapshot.failureMessage).toContain(expectedProblem);
+    },
+  );
 
   it('does not send a second sale for the same logical attempt', async () => {
     const { service, provider } = createTerminalHarness();

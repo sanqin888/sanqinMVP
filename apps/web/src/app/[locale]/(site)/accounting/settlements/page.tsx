@@ -12,6 +12,7 @@ import type {
 } from '../contracts/settlements';
 import { ProviderFinancialReviewPanel } from '../provider-financial-review-panel';
 import { CloverFeeReclassificationPanel } from './clover-fee-reclassification-panel';
+import { CloverAuthorityReplacementPanel } from './clover-authority-replacement-panel';
 import { ProviderPendingReconciliationPanel } from './provider-pending-reconciliation-panel';
 import { ProviderPayoutPanel } from './provider-payout-panel';
 import { SettlementReplayGate } from './settlement-replay-gate';
@@ -860,6 +861,14 @@ export default function AccountingSettlementsPage() {
           ? '安全边界：Shadow Preview 仍只读，READY 也不会自动写账。真实 replay 必须通过独立授权闸门，并在 POST 后立即用 fresh Preview reconciliation 核对结果。'
           : 'Safety boundary: Shadow Preview remains read-only and READY never writes automatically. Real replay requires the separate authorization gate and immediate fresh-Preview reconciliation after POST.'}
       </div>
+
+      {knownStoreStableIds.map((storeStableId) => (
+        <CloverAuthorityReplacementPanel
+          key={`clover-authority-${storeStableId}`}
+          storeStableId={storeStableId}
+          isZh={isZh}
+        />
+      ))}
 
       <ProviderPendingReconciliationPanel
         isZh={isZh}

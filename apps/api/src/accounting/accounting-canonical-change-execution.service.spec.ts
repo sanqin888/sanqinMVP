@@ -204,6 +204,7 @@ describe('AccountingCanonicalChangeExecutionService', () => {
           occurredAt: '2026-09-14T18:00:00.000Z',
           classification: 'UNMATCHED_PAYMENT_REVERSAL',
           baseRefundCents: 500,
+          tipRefundCents: 0,
           additionalChargeRefundCents: 0,
           customerRefundTotalCents: 500,
         },

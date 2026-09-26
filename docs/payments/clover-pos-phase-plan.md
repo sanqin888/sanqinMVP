@@ -515,11 +515,15 @@ source 已通过 PR #2552 合入，user-generated migration
 审阅确认只是一个 nullable `TIMESTAMP(3)` column，无 default/backfill/drop/data rewrite，CI
 #6431/#6432 全绿。writer 仍只有 Clover `null -> timestamp` 的 audited one-way 语义，并且没有
 controller/flag listener/go-live caller，所以 production cutover timestamp 仍未设置。Accounting
-Slice C 现进入 read-only historical authority replacement preview：6/1 的 47,922c bank deposit
-精确对应 5/29-5/31 pre-start Closeout，因此保持 excluded；June 因 surcharge UNKNOWN 继续
-fail-closed，July 可以形成完整 provider-authoritative draft。另
-`PaymentFinancialFactV1` / `PaymentTransaction` 仍缺 provider-proven `tipCents`，所以 Slice E
-payment-fact completeness 继续作为真实 production cutover 的硬 gate。
+Slice C 的 read-only historical authority replacement baseline 已合并：6/1 的 47,922c bank deposit
+精确对应 5/29-5/31 pre-start Closeout，因此保持 excluded。Slice D 本地实现新增 Clover Dashboard
+Sales Report supplemental evidence：June 报表的 157 笔、288,288c Amount Collected、8,343c Tips、
+4,918c Surcharges、0 refunds 及逐日 Amount Collected 与 6/2-6/28 Closeout 完整闭合，因此 June
+修正为 +12,863c Pending / +398c Store Cash debit / +8,343c Tips / +4,918c surcharge；July 继续使用
+Statement 的 5,551c surcharge。真实 posting 仍未在 production 执行。
+Slice E1 已完成 source + migration dev gate：PR #2556 / squash `ae6420fc`，user-generated migration `20260926132951_add_payment_transaction_tip_cents` 已进入 `dev@656265d0`；SQL 只有 nullable `PaymentTransaction.tipCents INTEGER`，无 default/backfill/NOT NULL/drop/data rewrite，CI #6448 全绿。E2 也已通过 PR #2557 / squash `8bb86e42` 合入 dev，CI #6449 全绿：POS full refund 将 tip 与 additional charges 分离，Platform v3 refund/void 必须返回与 original canonical sale 一致的 provider tip，managed reversal 复用 `tipCents` 持久化 refunded tip，`PaymentReversalFinancialFactV1` 暴露 nullable `tipRefundCents`；webhook 无法证明 tip 时继续 null/fail-closed。production Web Clover Ecommerce 未修改，`providerPaymentFactCutoverAt` 仍未设置。
+
+Post-E2 cutover scope 已选择 **Option A**：保留现有 provider-wide `providerPaymentFactCutoverAt`，不新增 source-scoped persistence。POS 可以先 operational go-live，但 Accounting durable cutover 继续保持 unset，直到 production Web Clover 也迁移并验收到 Unified Payments canonical facts 后，再一次性记录 provider-wide cutover。
 
 ## 新主链路
 

@@ -58,28 +58,65 @@ describe('Clover pre-sync authority replacement policy', () => {
     ]);
   });
 
-  it('fails closed for June because provider surcharge authority is unknown', () => {
+  it('uses explicit June surcharge evidence and reverses 398c from Store Cash into Clover Pending', () => {
     const result = buildCloverAuthorityReplacementPreview({
       ...baseInput,
       statementDocumentStableId: 'statement_june',
-      authorityFrom: '2026-06-01',
+      authorityFrom: '2026-06-02',
       authorityTo: '2026-06-28',
       occurredAt: '2026-06-29T03:59:59.999Z',
       providerPrincipalCents: 288_288,
       providerTipsCents: 8_343,
-      providerSurchargeCents: null,
+      providerSurchargeCents: 4_918,
       orderPendingMovementCents: 275_425,
+      orderStoreCashMovementCents: 200_000,
     });
 
     expect(result).toMatchObject({
-      status: 'BLOCKED',
-      blockReasons: ['PROVIDER_SURCHARGE_UNKNOWN'],
+      status: 'READY',
+      blockReasons: [],
       pendingAuthorityDeltaCents: 12_863,
       missingTipRevenueCents: 8_343,
-      missingSurchargeRevenueCents: null,
-      storeCashReclassificationCents: null,
-      draftJournal: null,
+      missingSurchargeRevenueCents: 4_918,
+      storeCashReclassificationCents: -398,
     });
+    expect(result.draftJournal?.lines).toEqual([
+      {
+        accountStableId: 'account_clover_pending',
+        debitCents: 12_863,
+        creditCents: 0,
+        memo: 'Replace Order-declared Clover Pending with provider authority',
+      },
+      {
+        accountStableId: 'account_store_cash',
+        debitCents: 398,
+        creditCents: 0,
+        memo: 'Aggregate tender reclassification required by provider authority',
+      },
+      {
+        accountStableId: 'account_tip_revenue',
+        debitCents: 0,
+        creditCents: 8_343,
+        memo: 'Provider-proven Clover tips not represented in Order economics',
+      },
+      {
+        accountStableId: 'account_card_surcharge_revenue',
+        debitCents: 0,
+        creditCents: 4_918,
+        memo: 'Provider-proven Clover surcharge not represented in Order economics',
+      },
+    ]);
+  });
+
+  it('fails closed when provider surcharge authority is unavailable', () => {
+    const result = buildCloverAuthorityReplacementPreview({
+      ...baseInput,
+      providerSurchargeCents: null,
+    });
+
+    expect(result.status).toBe('BLOCKED');
+    expect(result.blockReasons).toContain('PROVIDER_SURCHARGE_UNKNOWN');
+    expect(result.draftJournal).toBeNull();
   });
 
   it('fails closed when provider refunds require a not-yet-frozen remediation rule', () => {

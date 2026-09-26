@@ -42,10 +42,36 @@ const statement = (
   activityControlAmountSubmittedCents: principalCents,
 });
 
+const salesReport = (params: {
+  documentStableId: string;
+  periodStart: string;
+  periodEnd: string;
+  amountCollectedCents: number;
+  grossSalesCents: number;
+  tipsCents: number;
+  surchargeCents: number;
+  dailyAmountCollected: Array<{ date: string; amountCents: number }>;
+}) => ({
+  documentStableId: params.documentStableId,
+  businessIdentityKey: `clover:sales-report:${params.periodStart}:${params.periodEnd}`,
+  revision: 1,
+  periodStart: params.periodStart,
+  periodEnd: params.periodEnd,
+  transactionCount: 1,
+  grossSalesCents: params.grossSalesCents,
+  refundCents: 0,
+  taxesCents: 0,
+  tipsCents: params.tipsCents,
+  surchargeCents: params.surchargeCents,
+  amountCollectedCents: params.amountCollectedCents,
+  dailyAmountCollected: params.dailyAmountCollected,
+});
+
 const closedPeriod = (params: {
   statement: ReturnType<typeof statement>;
   batches: ReturnType<typeof closeout>[];
   surchargeCents: number | null;
+  supplementalSalesReports?: ReturnType<typeof salesReport>[];
 }) => ({
   status: 'CLOSED' as const,
   statement: params.statement,
@@ -92,6 +118,7 @@ const closedPeriod = (params: {
     },
   },
   selectedCloseoutBatches: params.batches,
+  supplementalSalesReports: params.supplementalSalesReports ?? [],
 });
 
 const orderRows = (params: {
@@ -123,7 +150,7 @@ const orderRows = (params: {
 ];
 
 describe('AccountingCloverAuthorityReplacementService', () => {
-  it('truncates pre-accounting Closeouts, keeps June blocked, and produces a deterministic July draft', async () => {
+  it('uses a matching Sales Report for truncated June surcharge and keeps July Statement authority', async () => {
     const juneBatches = [
       closeout('batch_pre_1', 'PRE1', '2026-05-29', 20_000, 500),
       closeout('batch_pre_2', 'PRE2', '2026-05-31', 10_000, 300),
@@ -145,6 +172,22 @@ describe('AccountingCloverAuthorityReplacementService', () => {
           ),
           batches: juneBatches,
           surchargeCents: null,
+          supplementalSalesReports: [
+            salesReport({
+              documentStableId: 'sales_report_june',
+              periodStart: '2026-06-01',
+              periodEnd: '2026-06-29',
+              amountCollectedCents: 28_000,
+              grossSalesCents: 26_700,
+              tipsCents: 1_000,
+              surchargeCents: 300,
+              dailyAmountCollected: [
+                { date: '2026-06-01', amountCents: 0 },
+                { date: '2026-06-02', amountCents: 28_000 },
+                { date: '2026-06-29', amountCents: 0 },
+              ],
+            }),
+          ],
         }),
         closedPeriod({
           statement: statement(
@@ -168,6 +211,7 @@ describe('AccountingCloverAuthorityReplacementService', () => {
     };
     const prisma = {
       accountingJournalEntry: {
+        findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest
           .fn()
           .mockResolvedValueOnce(
@@ -222,19 +266,21 @@ describe('AccountingCloverAuthorityReplacementService', () => {
       getAccountingStartDate: jest.fn().mockResolvedValue('2026-06-01'),
       getBusinessTimezone: jest.fn().mockResolvedValue('America/Toronto'),
     };
-
+    const journal = { createJournalEntry: jest.fn() };
     const service = new AccountingCloverAuthorityReplacementService(
       prisma as never,
       period as never,
       preSyncAuthority as never,
       pendingReconciliation as never,
       settlementQuery as never,
+      journal as never,
     );
+
     const report = await service.preview({
       storeStableId: '4750_Yonge_Street',
     });
 
-    expect(report.status).toBe('BLOCKED');
+    expect(report.status).toBe('READY_FOR_HUMAN_REVIEW');
     expect(report.globalIssues).toEqual([]);
     expect(report.periods).toHaveLength(2);
     expect(report.periods[0]).toMatchObject({
@@ -247,15 +293,27 @@ describe('AccountingCloverAuthorityReplacementService', () => {
       providerEvidence: {
         principalCents: 28_000,
         tipsCents: 1_000,
-        surchargeCents: null,
+        surchargeCents: 300,
+        surchargeAuthority: 'EXPLICIT_PROVIDER_EVIDENCE',
+        surchargeSource: 'SALES_REPORT',
+        surchargeSourceDocumentStableId: 'sales_report_june',
       },
       proposal: {
-        status: 'BLOCKED',
-        blockReasons: ['PROVIDER_SURCHARGE_UNKNOWN'],
+        status: 'READY',
+        blockReasons: [],
         pendingAuthorityDeltaCents: 3_000,
+        missingTipRevenueCents: 1_000,
+        missingSurchargeRevenueCents: 300,
+        storeCashReclassificationCents: 1_700,
       },
     });
     expect(report.periods[1]).toMatchObject({
+      providerEvidence: {
+        surchargeCents: 550,
+        surchargeAuthority: 'EXPLICIT_PROVIDER_EVIDENCE',
+        surchargeSource: 'STATEMENT',
+        surchargeSourceDocumentStableId: 'statement_july',
+      },
       proposal: {
         status: 'READY',
         pendingAuthorityDeltaCents: 5_000,
@@ -271,5 +329,142 @@ describe('AccountingCloverAuthorityReplacementService', () => {
     });
     expect(report.periods[1].proposal.draftJournal).not.toBeNull();
     expect(report.planHash).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it('posts only the authorized READY periods and verifies a fresh ALREADY_POSTED preview', async () => {
+    const journal = {
+      createJournalEntry: jest
+        .fn()
+        .mockResolvedValueOnce({ entryStableId: 'journal_june' })
+        .mockResolvedValueOnce({ entryStableId: 'journal_july' }),
+    };
+    const service = new AccountingCloverAuthorityReplacementService(
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      journal as never,
+    );
+    const juneJournal = {
+      idempotencyKey:
+        'clover-pre-sync-authority-adjustment:statement_june:2026-06-02:2026-06-28:v1',
+      kind: 'ADJUSTMENT',
+      source: 'PLATFORM_STATEMENT',
+      sourceFactType: 'accounting.clover_pre_sync_authority_adjustment.v1',
+      sourceFactStableId: 'statement_june:2026-06-02:2026-06-28',
+      sourceFactVersion: 1,
+      storeStableId: '4750_Yonge_Street',
+      occurredAt: '2026-06-29T03:59:59.999Z',
+      currency: 'CAD',
+      lines: [
+        {
+          accountStableId: 'account_clover_pending',
+          debitCents: 12_863,
+          creditCents: 0,
+        },
+        {
+          accountStableId: 'account_store_cash',
+          debitCents: 398,
+          creditCents: 0,
+        },
+        {
+          accountStableId: 'account_tip_revenue',
+          debitCents: 0,
+          creditCents: 8_343,
+        },
+        {
+          accountStableId: 'account_card_surcharge_revenue',
+          debitCents: 0,
+          creditCents: 4_918,
+        },
+      ],
+    };
+    const julyJournal = {
+      idempotencyKey:
+        'clover-pre-sync-authority-adjustment:statement_july:2026-06-30:2026-07-30:v1',
+      kind: 'ADJUSTMENT',
+      source: 'PLATFORM_STATEMENT',
+      sourceFactType: 'accounting.clover_pre_sync_authority_adjustment.v1',
+      sourceFactStableId: 'statement_july:2026-06-30:2026-07-30',
+      sourceFactVersion: 1,
+      storeStableId: '4750_Yonge_Street',
+      occurredAt: '2026-07-31T03:59:59.999Z',
+      currency: 'CAD',
+      lines: [
+        {
+          accountStableId: 'account_clover_pending',
+          debitCents: 31_325,
+          creditCents: 0,
+        },
+        {
+          accountStableId: 'account_store_cash',
+          debitCents: 0,
+          creditCents: 18_567,
+        },
+        {
+          accountStableId: 'account_tip_revenue',
+          debitCents: 0,
+          creditCents: 7_207,
+        },
+        {
+          accountStableId: 'account_card_surcharge_revenue',
+          debitCents: 0,
+          creditCents: 5_551,
+        },
+      ],
+    };
+    const readyPreview = {
+      status: 'READY_FOR_HUMAN_REVIEW',
+      planHash: 'a'.repeat(64),
+      globalIssues: [],
+      totals: { alreadyPostedPeriods: 0 },
+      periods: [
+        {
+          statementDocumentStableId: 'statement_june',
+          proposal: { status: 'READY', draftJournal: juneJournal },
+        },
+        {
+          statementDocumentStableId: 'statement_july',
+          proposal: { status: 'READY', draftJournal: julyJournal },
+        },
+      ],
+    };
+    const postedPreview = {
+      ...readyPreview,
+      status: 'ALREADY_POSTED',
+      planHash: 'b'.repeat(64),
+      totals: { alreadyPostedPeriods: 2 },
+      periods: readyPreview.periods.map((period) => ({
+        ...period,
+        proposal: { status: 'ALREADY_POSTED', draftJournal: null },
+      })),
+    };
+    jest
+      .spyOn(service, 'preview')
+      .mockResolvedValueOnce(readyPreview as never)
+      .mockResolvedValueOnce(postedPreview as never);
+
+    const result = await service.execute({
+      storeStableId: '4750_Yonge_Street',
+      expectedPlanHash: 'a'.repeat(64),
+      operatorActorRef: 'user_admin',
+    });
+
+    expect(journal.createJournalEntry).toHaveBeenNthCalledWith(
+      1,
+      juneJournal,
+      'user_admin',
+    );
+    expect(journal.createJournalEntry).toHaveBeenNthCalledWith(
+      2,
+      julyJournal,
+      'user_admin',
+    );
+    expect(result.status).toBe('ALREADY_POSTED');
+    expect(result.execution).toEqual({
+      journalEntriesPostedOrReplayed: 2,
+      alreadyPostedPeriods: 2,
+    });
   });
 });

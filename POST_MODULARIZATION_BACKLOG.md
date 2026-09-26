@@ -459,15 +459,37 @@ review found one nullable `TIMESTAMP(3)` column only, no default/backfill/drop/d
 #6431/#6432 are green. The durable cutover remains unset and Slice E provider-tip completeness is
 still a hard production-cutover gate.
 
-Slice C is **LOCAL READ-ONLY PREVIEW READY FOR REVIEW** on
-`feat/accounting-clover-authority-replacement-preview-v2`. It reuses Slice A Closeout/Statement
+Slice C is **MERGED / CI GREEN / READ-ONLY** through PR #2554 / squash
+`00472a34` / CI #6439. It reuses Slice A Closeout/Statement
 authority, anchors actual historical Order-derived Clover Pending Journals, truncates remediation at
 the Accounting start boundary, emits a deterministic plan hash and balanced draft only when every
 classification component has provider authority, and never posts. Production evidence confirms the
 excluded 2026-06-01 bank deposit 47,922c is exactly the 2026-05-29/30/31 pre-start Closeout Sales and
-must remain outside remediation. June requires +12,863c Pending but is blocked because surcharge is
-UNKNOWN; July produces a fully evidenced +31,325c Pending / -18,567c Store Cash / +7,207c Tips /
-+5,551c surcharge draft. Slice D remains blocked.
+must remain outside remediation. Slice D adds a Clover Dashboard Sales Report supplemental-evidence
+path without changing Slice A Statement/Closeout authority. The verified June report exactly matches
+the post-start Closeouts on 157 transactions, 288,288c Amount Collected, 8,343c Tips, 0 refunds and
+daily Amount Collected, and supplies 4,918c explicit surcharge. June therefore posts +12,863c Pending /
++398c Store Cash debit / +8,343c Tips / +4,918c surcharge; July remains +31,325c Pending /
+-18,567c Store Cash / +7,207c Tips / +5,551c surcharge. Slice D source/UI is local and ready for
+review; no production write has run.
+
+Slice E1 **sale fact completeness** is **SOURCE + USER-GENERATED ADDITIVE MIGRATION ON DEV / CI
+#6448 GREEN / NO CUTOVER** through PR #2556 / squash `ae6420fc` plus migration
+`20260926132951_add_payment_transaction_tip_cents` on `dev@656265d0`. The migration is one nullable
+`INTEGER` only with no backfill/default/destructive operation. Web Ecommerce remains guarded and
+unchanged.
+
+Slice E2 **reversal fact completeness** is **MERGED TO DEV / CI #6449 GREEN / NO NEW SCHEMA / NO
+MIGRATION / NO CUTOVER** through PR #2557 / squash `8bb86e42`. It splits expected refunded tip from
+true additional charges, requires canonical Platform refund/void tip evidence, reuses
+`PaymentTransaction.tipCents` for managed reversal persistence, publishes nullable
+`tipRefundCents`, and leaves webhook facts null when tip is not provider-proven. No production Web
+Clover or Accounting posting behavior is changed.
+
+Slice E3 **durable cutover scope readiness** is **OPTION A SELECTED / PROVIDER-WIDE CUTOVER RETAINED /
+TIMESTAMP UNSET**. POS may go live operationally before Web migration, but Accounting keeps provider-
+document authority and does not record `providerPaymentFactCutoverAt` until Web Clover also produces
+Unified Payments canonical facts. No source-scoped persisted cutover contract will be introduced.
 
 **Existing-materialized parser re-evaluation / Human Review effective snapshot — LOCAL SOURCE
 READY FOR REVIEW:** `accounting/provider-parser-reevaluation-review` adds the previously planned

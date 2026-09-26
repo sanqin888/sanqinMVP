@@ -79,6 +79,35 @@ Total Amount Funded 3,263.71
     expect(legacy.rule).toBeNull();
   });
 
+  it('recognizes Clover Dashboard Sales Report CSV as CLOVER / OTHER', () => {
+    const matched = matchAccountingProviderRecognitionRule(
+      `Sales Report
+Amount Collected,$2882.88
+Surcharges,$49.18
+Tender types
+Credit and debit cards,$2882.88
+Gross sales,$2750.27
+Tips,$83.43
+`,
+      DEFAULT_ACCOUNTING_PROVIDER_RECOGNITION_RULES,
+    );
+
+    expect(matched.rule).toEqual(
+      expect.objectContaining({
+        ruleStableId: 'acct_recognition_clover_sales_report',
+        provider: AccountingFinancialProvider.CLOVER,
+        documentType: AccountingFinancialDocumentType.OTHER,
+        version: 1,
+      }) as unknown,
+    );
+    expect(matched.matchedRequiredKeywords).toEqual([
+      'Sales Report',
+      'Amount Collected',
+      'Surcharges',
+      'Tender types',
+    ]);
+  });
+
   it('supports operator-edited optional ANY matching without changing provider ownership', () => {
     const rules = mergeAccountingProviderRecognitionRules([
       {

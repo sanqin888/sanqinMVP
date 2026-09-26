@@ -18,6 +18,7 @@ import { AccountingProviderSettlementExecutionService } from './accounting-provi
 import { AccountingCloverFeeReclassificationService } from './accounting-clover-fee-reclassification.service';
 import { AccountingProviderSettlementPreviewService } from './accounting-provider-settlement-preview.service';
 import { AccountingProviderSettlementQueryService } from './accounting-provider-settlement-query.service';
+import { AccountingCloverAuthorityReplacementService } from './accounting-clover-authority-replacement.service';
 
 @Controller('accounting')
 @UseGuards(SessionAuthGuard, RolesGuard)
@@ -28,6 +29,7 @@ export class AccountingProviderSettlementController {
     private readonly providerSettlementExecution: AccountingProviderSettlementExecutionService,
     private readonly providerSettlementQuery: AccountingProviderSettlementQueryService,
     private readonly cloverFeeReclassification: AccountingCloverFeeReclassificationService,
+    private readonly cloverAuthorityReplacement: AccountingCloverAuthorityReplacementService,
   ) {}
 
   @Get('journal/provider-settlement/shadow-preview')
@@ -88,6 +90,22 @@ export class AccountingProviderSettlementController {
   ) {
     return this.cloverFeeReclassification.execute({
       documentStableId: body.documentStableId ?? '',
+      expectedPlanHash: body.expectedPlanHash ?? '',
+      operatorActorRef: requireAccountingOperatorUserId(req),
+    });
+  }
+
+  @Post('journal/clover-authority-replacement')
+  executeCloverAuthorityReplacement(
+    @Body()
+    body: {
+      storeStableId?: string;
+      expectedPlanHash?: string;
+    },
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.cloverAuthorityReplacement.execute({
+      storeStableId: body.storeStableId ?? '',
       expectedPlanHash: body.expectedPlanHash ?? '',
       operatorActorRef: requireAccountingOperatorUserId(req),
     });

@@ -346,7 +346,7 @@ Net Total $2,862.17
         revision: 1,
         status: AccountingProviderFinancialReviewStatus.DRAFT,
         effectiveSnapshotParserName: 'accounting-provider-financial',
-        effectiveSnapshotParserVersion: '9',
+        effectiveSnapshotParserVersion: '10',
         effectiveSnapshotParseRunStableId: 'acctparserun_uber_v8',
         effectiveSnapshotSourceParseRunStableId:
           'acctparserun_uber_recognition',
@@ -379,7 +379,7 @@ Net Total $2,862.17
         data: expect.objectContaining({
           documentId: document.id,
           effectiveSnapshotParserName: 'accounting-provider-financial',
-          effectiveSnapshotParserVersion: '9',
+          effectiveSnapshotParserVersion: '10',
           effectiveSnapshotParseRunId: 'parse-run-v8-db-id',
           effectiveSnapshotSourceParseRunId: 'parse-run-db-id',
           effectiveLines: expect.objectContaining({

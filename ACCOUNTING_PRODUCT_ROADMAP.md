@@ -151,18 +151,38 @@ confirmed one nullable `TIMESTAMP(3)` column only, with no default/backfill/drop
 CI #6431/#6432 are green. The durable cutover timestamp remains unset and Slice E provider-proven
 tip authority is still a hard production-cutover gate.
 
-Slice C is now **LOCAL READ-ONLY PREVIEW READY FOR REVIEW**. It anchors actual historical
-Order-derived Clover Pending Journal movements to the closed Slice A provider-batch authority,
+Slice C is now **MERGED TO DEV / CI #6439 GREEN / READ-ONLY** through PR #2554 /
+squash `00472a34`. It anchors actual historical Order-derived Clover Pending Journal movements to the closed Slice A provider-batch authority,
 truncates provider evidence at the 2026-06-01 Accounting boundary, and emits deterministic
 human-review plans without posting. Production read-only evidence confirms the excluded 2026-06-01
 47,922c bank deposit equals the pre-start 2026-05-29/30/31 Closeouts exactly, so neither belongs in
-remediation. June in-scope Pending requires +12,863c authority replacement but remains blocked
-because 4,520c cannot be separated between unknown surcharge and tender reclassification without
-guessing. July is fully evidenced: +31,325c Clover Pending is balanced by 7,207c Tips, 5,551c
-explicit surcharge and 18,567c Store Cash tender reclassification. The simulated Pending roll-forward
-also closes against real payouts: June adjusted closing 43,459c equals the canonical 6/29 payout,
-and July adjusted 7/30 closing 3,532c equals the canonical 7/31 payout. Slice D posting remains
-blocked pending review and resolution of June's unknown surcharge.
+remediation. Slice D now supplements the legacy June Statement with a Clover Dashboard Sales Report
+downloaded 2026-09-26. Its 157 transactions / 288,288c Amount Collected / 8,343c Tips / 4,918c
+Surcharges / 0 refunds, plus daily Amount Collected, exactly match the 24 selected 2026-06-02..06-28
+Closeouts. June therefore has explicit 4,918c surcharge authority and the +12,863c Pending correction
+balances with +398c Store Cash debit, +8,343c Tips and +4,918c surcharge revenue. July remains fully
+evidenced at +31,325c Clover Pending / -18,567c Store Cash / +7,207c Tips / +5,551c surcharge.
+The simulated Pending roll-forward still closes against the canonical 6/29 and 7/31 payouts. Slice D
+source/UI is local and ready for review; no production write has run.
+
+Slice E1 sale fact completeness is **SOURCE + USER-GENERATED ADDITIVE MIGRATION ON DEV / CI #6448
+GREEN / NO CUTOVER**. Source merged through PR #2556 / squash `ae6420fc`; migration
+`20260926132951_add_payment_transaction_tip_cents` is on `dev@656265d0` and was reviewed as one
+nullable `INTEGER` with no default/backfill/NOT NULL/DROP/data rewrite. Payments preserves Platform
+v3 provider `tipAmount`, exposes `PaymentFinancialFactV1.tipCents`, includes tip in canonical charged
+total, and fails closed for incomplete POS provider facts. Web Ecommerce remains unchanged.
+
+Slice E2 reversal completeness is **MERGED TO DEV / CI #6449 GREEN / NO NEW MIGRATION / NO
+CUTOVER** through PR #2557 / head `7bf25b71` / squash `8bb86e42`. It separates full-refund tip from
+additional charges, requires Platform refund/void tip authority, persists managed refunded tip in the
+existing E1 `tipCents` column, publishes nullable `PaymentReversalFinancialFactV1.tipRefundCents`, and
+keeps webhook-only tip evidence null/fail-closed. Accounting only surfaces the new fact in read-only
+canonical-change preview; Journal posting policy is not redesigned.
+
+Post-E2 Slice E3 is **OPTION A SELECTED / PROVIDER-WIDE CUTOVER RETAINED / TIMESTAMP UNSET**. The
+current `providerPaymentFactCutoverAt` remains provider+store scoped. POS may go live operationally
+first, but Accounting must not record the durable cutover until production Web Clover has also migrated
+onto Unified Payments canonical facts. No source-scoped persisted cutover mechanism will be added.
 
 The existing-materialized remediation is **MERGED / CI GREEN** through PR #2517
 (`a7a872bc`) with the user-generated additive migration committed to `dev` as `5e14e8db`.

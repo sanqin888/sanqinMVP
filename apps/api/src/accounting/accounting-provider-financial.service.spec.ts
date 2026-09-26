@@ -682,7 +682,7 @@ Net Total $1,431.94*
       expect.objectContaining({
         provider: AccountingFinancialProvider.UBER_EATS,
         providerDocumentRef: 'B4842290',
-        parserVersion: '9',
+        parserVersion: '10',
         lines: expect.arrayContaining([
           expect.objectContaining({
             rawName: 'Sales',
@@ -922,7 +922,7 @@ Total transfer amount $3813.11
         periodStart: '2026-08-01',
         periodEnd: '2026-08-31',
         parserName: 'accounting-provider-financial',
-        parserVersion: '9',
+        parserVersion: '10',
       }),
     );
     expect(operations.ensureProviderFinancialCoverage).toHaveBeenCalledWith(

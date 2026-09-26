@@ -132,6 +132,8 @@ export class CloverPaymentProviderAdapter
       }
       if (request.operation === 'REFUND' || request.operation === 'VOID') {
         if (
+          request.expectedTipRefundCents === undefined ||
+          request.expectedTipRefundCents < 0 ||
           request.expectedAdditionalChargeRefundCents === undefined ||
           request.expectedAdditionalChargeRefundCents < 0
         ) {
@@ -148,7 +150,7 @@ export class CloverPaymentProviderAdapter
             failureCode:
               'CLOVER_PLATFORM_EXPECTED_REVERSAL_CHARGE_FACTS_MISSING',
             failureMessage:
-              'Canonical Clover reversal reconciliation requires expected additional-charge refund facts',
+              'Canonical Clover reversal reconciliation requires expected tip and additional-charge refund facts',
           };
         }
         return this.platform.getCanonicalReversal({
@@ -160,6 +162,7 @@ export class CloverPaymentProviderAdapter
           amountCents: request.amountCents,
           currency: request.currency,
           operation: request.operation,
+          expectedTipRefundCents: request.expectedTipRefundCents,
           expectedAdditionalChargeRefundCents:
             request.expectedAdditionalChargeRefundCents,
         });
@@ -221,6 +224,7 @@ export class CloverPaymentProviderAdapter
         execution.status === 'CANCELLED' ||
         request.amountCents === undefined ||
         !request.currency ||
+        request.expectedTipRefundCents === undefined ||
         request.expectedAdditionalChargeRefundCents === undefined
       ) {
         return execution;
@@ -235,6 +239,7 @@ export class CloverPaymentProviderAdapter
         amountCents: request.amountCents,
         currency: request.currency,
         operation: 'VOID',
+        expectedTipRefundCents: request.expectedTipRefundCents,
         expectedAdditionalChargeRefundCents:
           request.expectedAdditionalChargeRefundCents,
       });
@@ -265,6 +270,7 @@ export class CloverPaymentProviderAdapter
       }
       if (
         !request.currency ||
+        request.expectedTipRefundCents === undefined ||
         request.expectedAdditionalChargeRefundCents === undefined
       ) {
         return {
@@ -275,7 +281,7 @@ export class CloverPaymentProviderAdapter
           providerPaymentId: request.providerPaymentId,
           failureCode: 'CLOVER_REFUND_EXPECTED_FACTS_MISSING',
           failureMessage:
-            'Terminal refund requires original currency and additional-charge facts',
+            'Terminal refund requires original currency, tip and additional-charge facts',
         };
       }
       const execution = await this.terminal.refundPayment(request);
@@ -292,6 +298,7 @@ export class CloverPaymentProviderAdapter
         amountCents: request.amountCents,
         currency: request.currency,
         operation: 'REFUND',
+        expectedTipRefundCents: request.expectedTipRefundCents,
         expectedAdditionalChargeRefundCents:
           request.expectedAdditionalChargeRefundCents,
       });
