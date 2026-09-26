@@ -48,6 +48,7 @@ const EXPECTED_CONTROLLER_CAPABILITIES = {
     'AccountingProviderPendingReconciliationService',
   ],
   'accounting-provider-settlement.controller.ts': [
+    'AccountingCloverAuthorityReplacementService',
     'AccountingCloverFeeReclassificationService',
     'AccountingProviderSettlementExecutionService',
     'AccountingProviderSettlementPreviewService',
