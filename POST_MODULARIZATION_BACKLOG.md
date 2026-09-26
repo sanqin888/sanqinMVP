@@ -420,7 +420,8 @@ unconditional Replay blocker, and adds a July-shaped Clover regression while pre
 existing Uber replacement-group coverage. Backend settlement authority/execution, parser, schema
 and dependencies are unchanged.
 
-**2026-09-25 Clover pre-sync financial authority Slice A — LOCAL SOURCE READY FOR REVIEW /
+**2026-09-26 Clover pre-sync financial authority Slice A — MERGED / CI GREEN via PR #2547 /
+PRODUCTION GMAIL EVIDENCE ACQUIRED / ZERO-ACTIVITY COVERAGE FOLLOW-UP PENDING REMOTE CI /
 READ-ONLY SHADOW / NO PRISMA / NO JOURNAL MUTATION:** real Gmail Closeout Reports now prove that historical POS `CARD` tender attribution
 cannot own Clover receivable/Pending before production Terminal synchronization. June Closeouts
 2026-05-29..2026-06-28 reconcile exactly to the legacy June statement Amount Submitted
@@ -435,14 +436,19 @@ temporary runtime routing and must not dynamically reinterpret financial history
 materialization path for the exact `app@clover.com` + Closeout-subject contract, includes a
 bounded pre-start provider-evidence lookback for the June boundary, requires the complete Closeout
 Batch Totals control set, persists Closeout counts, rejects conflicting reuse of a Batch ID, and
-adds a read-only report projection that discovers a contiguous Closeout
-sequence from matching Clover merchant identity, provider controls and period overlap rather than
-assigning calendar-month batches. Modern statement
+adds a read-only report projection that discovers an ordered observed-provider-batch sequence from
+matching Clover merchant identity, provider controls and period overlap rather than assigning
+calendar-month batches or requiring every calendar date to have a batch. Production ingestion
+materialized 113 unique Clover batches through 2026-09-25; the June authority window contains 27
+actual batches because 2026-06-01/08/15/22 were zero-activity closed Mondays, yet those batches
+still close exactly to 336,210c / 180 sales / 9,896c Tips. Modern statement
 layout evidence exposes Amount Submitted transaction/refund controls and explicit
 `Surcharge Collected`, while confirmed Human Review effective snapshots remain authoritative;
 June remains `UNKNOWN`. Order `CARD` comparison is explicitly
-`NON_AUTHORITATIVE`. June/July characterization source fixes the confirmed ranges/totals and
-fail-closed gap/duplicate/count behavior. Detailed plan:
+`NON_AUTHORITATIVE`. June/July characterization source fixes the confirmed ranges/totals and now
+allows legitimate no-batch calendar dates while still failing closed when missing provider
+evidence prevents principal closure, on duplicate Batch IDs, ambiguity or verifiable count/refund
+control mismatch. Detailed plan:
 `docs/architecture/accounting-clover-pre-sync-authority-plan.md`. Slice A contains zero Journal
 mutation, historical correction, cutover timestamp, Prisma migration, dependency or local
 lint/build/test execution.
