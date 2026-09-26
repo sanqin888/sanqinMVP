@@ -105,7 +105,10 @@ export class AccountingAutomationController {
     });
   }
 
-  private requireBusinessDate(value: string | undefined, field: string): string {
+  private requireBusinessDate(
+    value: string | undefined,
+    field: string,
+  ): string {
     const normalized = value?.trim() ?? '';
     if (
       !/^\d{4}-\d{2}-\d{2}$/.test(normalized) ||
