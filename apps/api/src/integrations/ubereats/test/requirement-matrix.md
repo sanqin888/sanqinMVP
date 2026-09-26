@@ -389,6 +389,25 @@ Special Instructions 支持请求可向 Uber Tech Support 说明：SanQ 在 POST
 - 长期 injection success 目标 `99.9%`。
 - Production webhook delivery/retry/monitoring 与正式 merchant provisioning 的真实证据。
 
+### 2026-09-26 Production Validation re-audit
+
+Uber Case #60436794 在重新运行 Production Validation 后要求补充五类 fresh evidence：
+
+| Validator item | Current SanQ state | Required next action |
+| --- | --- | --- |
+| Promotions: Create promotions | External Channels 当前没有 Create Promotions capability；SanQ PromotionRule 仍明确只属于 Web/POS，Uber 订单只消费 provider 已给出的 promotion/discount facts | 先由 Uber 确认 Restaurant / Merchant-or-Brand-Developer validation 是否确实要求该 capability；确认前不得为通过验证临时扩大 Promotion ownership |
+| Reporting: Get Report files | `POST /v1/eats/report`、`eats.report.success`、CSV artifact 下载/持久化/重放安全代码已具备；生产 `UberFinancialReport=0` 且无真实 report webhook/artifact | Test App 已确认启用 `eats.report`；必须完成首次真实 request -> success webhook -> report files E2E，并以真实 CSV schema 固化后续 parser |
+| Cancel Notification Handling | durable inbox 已有 29 条 `orders.failure`，最新样本为 `PROCESSED`；canonical cancellation finalizer 已存在 | 不改业务设计；重新制造 fresh Test Store cancellation/failure，保留 Partner webhook 200、event ID 和最终处理证据 |
+| Resolve for Fulfillment Issues | 当前未实现；support form 已明确回答 No | 先让 Uber 明确本 Restaurant integration 需要的 endpoint/event/capability 或是否应排除；未明确前不得猜测实现 |
+| Scheduled Order Notification | durable inbox 已有 11 条 `orders.scheduled.notification`；最近样本对应 provider-confirmed ACCEPT/READY HTTP 200 | 不改业务设计；重新下 fresh scheduled test order，保留 webhook 200、event ID、ACCEPT/READY provider status |
+
+同日 Case #59609105 已为 Test Application 启用 `eats.store.status.notification`，并确认 `eats.report` 已启用。首次 pause/resume 后 Uber 已实际向当前 webhook endpoint 投递两次通知；验签成功，但在 envelope parsing 阶段以 `UBER_WEBHOOK_ENVELOPE_INVALID` 拒绝，未进入 durable inbox。当前兼容修正必须保持窄边界：
+
+- `store.provisioned` / `store.deprovisioned` / 其它已验证 store event 继续保留既有 `root.store_id` / `meta.resource_id` contract；
+- 仅 `store.status.changed` 额外允许以 `meta.user_id` 解析 Store identity；
+- Order webhook 的 `meta.resource_id`、Menu notification 的 `meta.user_id + meta.resource_id` 语义不变；
+- 部署后必须以真实 pause/resume 再次证明 Partner webhook HTTP 200、durable inbox insertion 和 merchant handler 完成，才可标记该项 live verified。
+
 ## Legacy Order API 退役门禁
 
 Uber Order bounded-context 不得重新引入旧 Order detail/action API。architecture regression

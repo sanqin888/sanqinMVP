@@ -158,6 +158,35 @@ describe('Uber webhook event domain parser', () => {
     });
   });
 
+  it('accepts store.status.changed when Uber identifies the store through meta.user_id', () => {
+    const payload = {
+      event_type: 'store.status.changed',
+      meta: { user_id: 'store-from-user-id' },
+      webhook_meta: { webhook_msg_uuid: 'fixture-store-status-meta-user-v1' },
+    };
+    expect(parseUberWebhookEnvelopeV1(payload)).toMatchObject({
+      eventType: 'store.status.changed',
+      resourceId: 'store-from-user-id',
+      userId: 'store-from-user-id',
+    });
+    expect(parseUberStoreStatusChangedV1(payload)).toMatchObject({
+      family: 'store-status',
+      storeId: 'store-from-user-id',
+    });
+  });
+
+  it('does not broaden meta.user_id fallback to other store event families', () => {
+    const payload = {
+      event_type: 'store.provisioned',
+      meta: { user_id: 'store-from-user-id' },
+      webhook_meta: {
+        webhook_msg_uuid: 'fixture-store-provisioned-meta-user-v1',
+      },
+    };
+    expect(parseUberWebhookEnvelopeV1(payload)).toBeNull();
+    expect(parseUberStoreProvisioningV1(payload)).toBeNull();
+  });
+
   it('parses and dispatches the menu refresh request contract', () => {
     const payload = {
       event_type: 'store.menu_refresh_request',
