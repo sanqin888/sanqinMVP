@@ -1159,12 +1159,14 @@ describe('Clover Platform Payments Gateway', () => {
   });
 
   it('fails closed when Platform omits provider tip authority', async () => {
-    jest.spyOn(global, 'fetch').mockResolvedValue(
-      new Response(
-        JSON.stringify(platformPayment({ tipAmount: undefined })),
-        { status: 200 },
-      ),
-    );
+    jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify(platformPayment({ tipAmount: undefined })),
+          { status: 200 },
+        ),
+      );
     const gateway = createPlatformGateway();
 
     await expect(

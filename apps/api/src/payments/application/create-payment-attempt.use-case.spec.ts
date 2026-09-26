@@ -334,7 +334,9 @@ describe('TerminalPaymentService', () => {
       const snapshot = payment.toSnapshot();
 
       expect(snapshot.status).toBe('UNKNOWN');
-      expect(snapshot.failureCode).toBe('PAYMENT_PROVIDER_CORRELATION_MISMATCH');
+      expect(snapshot.failureCode).toBe(
+        'PAYMENT_PROVIDER_CORRELATION_MISMATCH',
+      );
       expect(snapshot.failureMessage).toContain(expectedProblem);
     },
   );
