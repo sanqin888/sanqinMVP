@@ -55,6 +55,7 @@ const EXPECTED_CONTROLLER_CAPABILITIES = {
   ],
   'accounting-reports.controller.ts': [
     'AccountingBalanceMovementService',
+    'AccountingCloverAuthorityReplacementService',
     'AccountingCloverPreSyncAuthorityService',
     'AccountingFinancialReportsService',
     'AccountingSalesAnalyticsService',
@@ -124,6 +125,7 @@ const EXPECTED_ROUTES = [
   'GET report/pnl',
   'GET report/sales',
   'GET report/clover-pre-sync-authority-shadow',
+  'GET report/clover-authority-replacement-preview',
   'GET report/trial-balance',
   'GET report/balance-movement',
   'GET report/statement-journals',

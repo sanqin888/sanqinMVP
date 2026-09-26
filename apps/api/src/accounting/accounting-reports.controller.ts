@@ -23,6 +23,9 @@ import { AccountingTrialBalanceService } from './accounting-trial-balance.servic
 import type { AccountingStatementDrillThroughPhaseV1 } from './accounting-statement-drill-through.contract';
 import { AccountingStatementDrillThroughService } from './accounting-statement-drill-through.service';
 import { AccountingStatementExportService } from './accounting-statement-export.service';
+import {
+  AccountingCloverAuthorityReplacementService,
+} from './accounting-clover-authority-replacement.service';
 import { AccountingCloverPreSyncAuthorityService } from './accounting-clover-pre-sync-authority.service';
 
 @Controller('accounting')
@@ -37,6 +40,8 @@ export class AccountingReportsController {
     private readonly statementDrillThrough: AccountingStatementDrillThroughService,
     private readonly statementExport: AccountingStatementExportService,
     private readonly cloverPreSyncAuthority: AccountingCloverPreSyncAuthorityService,
+    private readonly cloverAuthorityReplacement:
+      AccountingCloverAuthorityReplacementService,
   ) {}
 
   @Get('dashboard')
@@ -71,6 +76,15 @@ export class AccountingReportsController {
     return this.cloverPreSyncAuthority.shadow({
       storeStableId: storeStableId ?? '',
       ...(statementDocumentStableId ? { statementDocumentStableId } : {}),
+    });
+  }
+
+  @Get('report/clover-authority-replacement-preview')
+  cloverAuthorityReplacementPreview(
+    @Query('storeStableId') storeStableId?: string,
+  ) {
+    return this.cloverAuthorityReplacement.preview({
+      storeStableId: storeStableId ?? '',
     });
   }
 

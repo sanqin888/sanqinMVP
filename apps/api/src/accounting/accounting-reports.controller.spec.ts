@@ -153,6 +153,15 @@ const makeController = () => {
       projections: [],
     }),
   };
+  const cloverAuthorityReplacement = {
+    preview: jest.fn().mockResolvedValue({
+      version: 1,
+      mode: 'READ_ONLY_PREVIEW',
+      status: 'BLOCKED',
+      planHash: 'hash',
+      periods: [],
+    }),
+  };
 
   return {
     controller: new AccountingReportsController(
@@ -163,12 +172,14 @@ const makeController = () => {
       statementDrillThrough as never,
       statementExport as never,
       cloverPreSyncAuthority as never,
+      cloverAuthorityReplacement as never,
     ),
     balanceMovement,
     trialBalance,
     statementDrillThrough,
     statementExport,
     cloverPreSyncAuthority,
+    cloverAuthorityReplacement,
   };
 };
 
@@ -184,6 +195,18 @@ describe('AccountingReportsController Clover pre-sync authority shadow transport
     expect(cloverPreSyncAuthority.shadow).toHaveBeenCalledWith({
       storeStableId: '4750_Yonge_Street',
       statementDocumentStableId: 'acctfindoc_july',
+    });
+  });
+});
+
+describe('AccountingReportsController Clover authority replacement preview transport', () => {
+  it('passes the store identity to the read-only historical replacement preview', async () => {
+    const { controller, cloverAuthorityReplacement } = makeController();
+
+    await controller.cloverAuthorityReplacementPreview('4750_Yonge_Street');
+
+    expect(cloverAuthorityReplacement.preview).toHaveBeenCalledWith({
+      storeStableId: '4750_Yonge_Street',
     });
   });
 });

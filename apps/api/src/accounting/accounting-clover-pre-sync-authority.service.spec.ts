@@ -392,7 +392,27 @@ describe('AccountingCloverPreSyncAuthorityService', () => {
     expect(result.projections.every((projection) => projection.authority)).toBe(
       true,
     );
-    expect(findMany).toHaveBeenCalledTimes(1);
+
+    const authorityPeriods = await service.readAuthorityPeriods({
+      storeStableId: '4750_Yonge_Street',
+    });
+    expect(authorityPeriods).toHaveLength(2);
+    expect(authorityPeriods[0]).toMatchObject({
+      status: 'CLOSED',
+      statement: { documentStableId: 'acctfindoc_june' },
+    });
+    expect(authorityPeriods[0]?.status).toBe('CLOSED');
+    if (authorityPeriods[0]?.status === 'CLOSED') {
+      expect(authorityPeriods[0].selectedCloseoutBatches[0]).toMatchObject({
+        businessDate: '2026-05-29',
+      });
+    }
+    expect(authorityPeriods[1]).toMatchObject({
+      status: 'CLOSED',
+      statement: { documentStableId: 'acctfindoc_july' },
+    });
+
+    expect(findMany).toHaveBeenCalledTimes(2);
     expect(readFactsForRange).toHaveBeenCalledTimes(2);
   });
 });

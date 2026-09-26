@@ -144,13 +144,25 @@ characterization source pins the confirmed 336,210c / 180 / 9,896c and
 sequence for each June and July statement, the authenticated shadow endpoint returned HTTP 200,
 and no Journal entry was created by deployment or the verification request. Detailed contract:
 `docs/architecture/accounting-clover-pre-sync-authority-plan.md`. No historical Journal mutation,
-authority replacement, cutover timestamp or Prisma migration is part of Slice A. Slice B is now
-**LOCAL SOURCE READY FOR REVIEW / MIGRATION REQUIRED / CUTOVER NOT SET**: it adds the independent
-nullable `providerPaymentFactCutoverAt` contract, an Accounting-owned immutable one-time writer,
-reader semantics and a fail-closed post-cutover authority policy without adding a controller,
-feature-flag listener or go-live caller. Production promotion remains blocked until the user-generated
-additive migration is reviewed and merged into `dev`; actual cutover remains blocked on Slice E,
-including provider-proven tip authority.
+authority replacement, cutover timestamp or Prisma migration is part of Slice A. Slice B source and
+its user-generated additive migration
+`20260926064114_accounting_clover_payment_fact_cutover_contract` are now merged to `dev`; review
+confirmed one nullable `TIMESTAMP(3)` column only, with no default/backfill/drop/data rewrite, and
+CI #6431/#6432 are green. The durable cutover timestamp remains unset and Slice E provider-proven
+tip authority is still a hard production-cutover gate.
+
+Slice C is now **LOCAL READ-ONLY PREVIEW READY FOR REVIEW**. It anchors actual historical
+Order-derived Clover Pending Journal movements to the closed Slice A provider-batch authority,
+truncates provider evidence at the 2026-06-01 Accounting boundary, and emits deterministic
+human-review plans without posting. Production read-only evidence confirms the excluded 2026-06-01
+47,922c bank deposit equals the pre-start 2026-05-29/30/31 Closeouts exactly, so neither belongs in
+remediation. June in-scope Pending requires +12,863c authority replacement but remains blocked
+because 4,520c cannot be separated between unknown surcharge and tender reclassification without
+guessing. July is fully evidenced: +31,325c Clover Pending is balanced by 7,207c Tips, 5,551c
+explicit surcharge and 18,567c Store Cash tender reclassification. The simulated Pending roll-forward
+also closes against real payouts: June adjusted closing 43,459c equals the canonical 6/29 payout,
+and July adjusted 7/30 closing 3,532c equals the canonical 7/31 payout. Slice D posting remains
+blocked pending review and resolution of June's unknown surcharge.
 
 The existing-materialized remediation is **MERGED / CI GREEN** through PR #2517
 (`a7a872bc`) with the user-generated additive migration committed to `dev` as `5e14e8db`.
