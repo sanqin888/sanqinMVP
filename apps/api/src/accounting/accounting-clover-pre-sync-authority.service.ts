@@ -142,7 +142,8 @@ export class AccountingCloverPreSyncAuthorityService {
       .filter(
         (row) =>
           row.documentType === AccountingFinancialDocumentType.OTHER &&
-          row.revision === latestSalesReportRevision.get(row.businessIdentityKey),
+          row.revision ===
+            latestSalesReportRevision.get(row.businessIdentityKey),
       )
       .flatMap((row) => {
         const evidence = this.salesReportEvidence(row);

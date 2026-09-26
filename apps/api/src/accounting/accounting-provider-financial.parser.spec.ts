@@ -119,29 +119,28 @@ Amount Collected,"$2,882.88"
 `,
     });
 
-    expect(parsed).toEqual(
-      expect.objectContaining({
-        provider: AccountingFinancialProvider.CLOVER,
-        documentType: AccountingFinancialDocumentType.OTHER,
-        businessIdentityKey: 'clover:sales-report:2026-06-01:2026-06-29',
-        periodStart: '2026-06-01',
-        periodEnd: '2026-06-29',
-        rawMetadata: expect.objectContaining({
-          evidenceKind: 'CLOVER_SALES_REPORT',
-          transactionCount: 157,
-          tender: 'CREDIT_AND_DEBIT_CARDS',
-        }),
-      }),
-    );
-    expect(lineByName(parsed!, 'Gross sales')).toEqual(
-      expect.objectContaining({
-        rawCode: CLOVER_SALES_REPORT_RAW_CODES.GROSS_SALES,
-        amountCents: 275_027,
-        postingTreatment:
-          AccountingFinancialPostingTreatment.RECONCILIATION_ONLY,
-        rawPayload: expect.objectContaining({ transactionCount: 157 }),
-      }),
-    );
+    expect(parsed).toMatchObject({
+      provider: AccountingFinancialProvider.CLOVER,
+      documentType: AccountingFinancialDocumentType.OTHER,
+      businessIdentityKey: 'clover:sales-report:2026-06-01:2026-06-29',
+      periodStart: '2026-06-01',
+      periodEnd: '2026-06-29',
+    });
+    expect(parsed?.rawMetadata).toMatchObject({
+      evidenceKind: 'CLOVER_SALES_REPORT',
+      transactionCount: 157,
+      tender: 'CREDIT_AND_DEBIT_CARDS',
+    });
+    const grossSalesLine = lineByName(parsed!, 'Gross sales');
+    expect(grossSalesLine).toMatchObject({
+      rawCode: CLOVER_SALES_REPORT_RAW_CODES.GROSS_SALES,
+      amountCents: 275_027,
+      postingTreatment:
+        AccountingFinancialPostingTreatment.RECONCILIATION_ONLY,
+    });
+    expect(grossSalesLine?.rawPayload).toMatchObject({
+      transactionCount: 157,
+    });
     expect(lineByName(parsed!, 'Tips')?.amountCents).toBe(8_343);
     expect(lineByName(parsed!, 'Surcharges')?.amountCents).toBe(4_918);
     expect(lineByName(parsed!, 'Amount collected')).toEqual(

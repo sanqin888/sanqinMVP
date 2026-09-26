@@ -356,20 +356,20 @@ export class AccountingCloverAuthorityReplacementService {
           orderEvidence.unexpectedPendingSourceFactTypes,
       });
 
-      const existingAuthorityAdjustment =
-        policy.draftJournal?.sourceFactStableId
-          ? await this.prisma.accountingJournalEntry.findFirst({
-              where: {
-                deletedAt: null,
-                sourceFactType:
-                  CLOVER_PRE_SYNC_AUTHORITY_ADJUSTMENT_SOURCE_FACT_TYPE,
-                sourceFactStableId: policy.draftJournal.sourceFactStableId,
-                storeStableId,
-              },
-              select: { entryStableId: true },
-              orderBy: { createdAt: 'asc' },
-            })
-          : null;
+      const existingAuthorityAdjustment = policy.draftJournal
+        ?.sourceFactStableId
+        ? await this.prisma.accountingJournalEntry.findFirst({
+            where: {
+              deletedAt: null,
+              sourceFactType:
+                CLOVER_PRE_SYNC_AUTHORITY_ADJUSTMENT_SOURCE_FACT_TYPE,
+              sourceFactStableId: policy.draftJournal.sourceFactStableId,
+              storeStableId,
+            },
+            select: { entryStableId: true },
+            orderBy: { createdAt: 'asc' },
+          })
+        : null;
       const proposalStatus =
         existingAuthorityAdjustment !== null ? 'ALREADY_POSTED' : policy.status;
       const proposedPendingAdjustmentCents =
@@ -436,7 +436,7 @@ export class AccountingCloverAuthorityReplacementService {
           actualPeriodMovementCents: reconciliationRow.periodNetMovementCents,
           actualClosingCents: reconciliationRow.closingBalanceCents,
           simulatedOpeningAfterPriorAuthorityAdjustmentsCents,
-          proposedAuthorityAdjustmentCents,
+          proposedAuthorityAdjustmentCents: proposedPendingAdjustmentCents,
           simulatedProviderAuthorityClosingCents,
         },
       });

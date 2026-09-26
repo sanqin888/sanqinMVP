@@ -157,7 +157,9 @@ export function matchCloverSalesReportToCloseouts(params: {
 
     return report.dailyAmountCollected.every((item) => {
       const closeout = closeoutByDate.get(item.date);
-      return closeout ? item.amountCents === closeout.salesCents : item.amountCents === 0;
+      return closeout
+        ? item.amountCents === closeout.salesCents
+        : item.amountCents === 0;
     });
   });
 

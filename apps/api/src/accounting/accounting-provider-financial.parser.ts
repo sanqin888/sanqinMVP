@@ -187,7 +187,10 @@ function parseCloverSalesReport(
       .find((row) => row[0]?.trim().toLowerCase() === label.toLowerCase());
   const parseReportRow = (
     label: string,
-  ): { totalCents: number; daily: Array<{ date: string; amountCents: number }> } | null => {
+  ): {
+    totalCents: number;
+    daily: Array<{ date: string; amountCents: number }>;
+  } | null => {
     const row = rowByLabel(label);
     if (!row || row.length < 2 + normalizedDailyDates.length) return null;
     const totalCents = parseMoneyCents(row[1] ?? '');
