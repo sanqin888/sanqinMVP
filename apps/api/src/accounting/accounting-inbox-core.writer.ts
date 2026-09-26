@@ -483,6 +483,21 @@ export async function advanceProviderFinancialCompleteThroughInTx(
   });
 }
 
+export async function recordProviderPaymentFactCutoverInTx(
+  tx: AccountingTx,
+  coverageId: string,
+  providerPaymentFactCutoverAt: Date,
+  updatedByUserStableId: string | null,
+) {
+  return tx.accountingProviderFinancialCoverage.update({
+    where: { id: coverageId },
+    data: {
+      providerPaymentFactCutoverAt,
+      updatedByUserStableId,
+    },
+  });
+}
+
 export async function ensureProviderFinancialCoverageInTx(
   tx: AccountingTx,
   provider: AccountingFinancialProvider,

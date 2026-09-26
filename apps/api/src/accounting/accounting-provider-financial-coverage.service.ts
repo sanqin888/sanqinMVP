@@ -15,7 +15,10 @@ import {
   type AccountingDb,
   type AccountingTransactionClient,
 } from './accounting-db';
-import { advanceProviderFinancialCompleteThroughInTx } from './accounting-inbox-core.writer';
+import {
+  advanceProviderFinancialCompleteThroughInTx,
+  recordProviderPaymentFactCutoverInTx,
+} from './accounting-inbox-core.writer';
 import { resolveProviderFinancialCoverageFrontier } from './accounting-provider-financial-coverage.policy';
 import { PROVIDER_FINANCIAL_SOURCE_FACT_TYPE } from './accounting-provider-settlement.policy';
 
@@ -118,13 +121,12 @@ export class AccountingProviderFinancialCoverageService {
         };
       }
 
-      await tx.accountingProviderFinancialCoverage.update({
-        where: { id: coverage.id },
-        data: {
-          providerPaymentFactCutoverAt: params.providerPaymentFactCutoverAt,
-          updatedByUserStableId: operatorUserStableId,
-        },
-      });
+      await recordProviderPaymentFactCutoverInTx(
+        tx,
+        coverage.id,
+        params.providerPaymentFactCutoverAt,
+        operatorUserStableId,
+      );
       await writeAccountingAuditLog(tx, {
         action: 'RECORD_PROVIDER_PAYMENT_FACT_CUTOVER',
         entityType: 'ACCOUNTING_PROVIDER_FINANCIAL_COVERAGE',
