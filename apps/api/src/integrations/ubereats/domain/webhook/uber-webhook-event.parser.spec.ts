@@ -179,7 +179,9 @@ describe('Uber webhook event domain parser', () => {
     const payload = {
       event_type: 'store.provisioned',
       meta: { user_id: 'store-from-user-id' },
-      webhook_meta: { webhook_msg_uuid: 'fixture-store-provisioned-meta-user-v1' },
+      webhook_meta: {
+        webhook_msg_uuid: 'fixture-store-provisioned-meta-user-v1',
+      },
     };
     expect(parseUberWebhookEnvelopeV1(payload)).toBeNull();
     expect(parseUberStoreProvisioningV1(payload)).toBeNull();
