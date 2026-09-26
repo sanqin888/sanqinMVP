@@ -110,7 +110,7 @@ removes only that unconditional UI blocker, and leaves backend settlement READY/
 plan-hash/balance/idempotency gates unchanged. No schema, parser, posting-policy or dependency
 change is introduced.
 
-2026-09-26 pre-sync Clover authority Slice A is **MERGED / CI GREEN via PR #2547 / PRODUCTION GMAIL EVIDENCE ACQUIRED / ZERO-ACTIVITY COVERAGE FOLLOW-UP PENDING REMOTE CI / READ-ONLY SHADOW / NO PRISMA / NO JOURNAL MUTATION**.
+2026-09-26 pre-sync Clover authority Slice A is **PRODUCTION VERIFIED / CLOSED / READ-ONLY SHADOW / NO PRISMA / NO JOURNAL MUTATION**. Slice A merged via PR #2547 / `d68cc317`; the zero-activity coverage correction merged via PR #2549 / `b7a01075`, with CI #6419 green and production running `main@b7a01075`.
 Real Gmail Closeout Reports prove that pre-sync Clover tender truth cannot be anchored to
 `Order.paymentMethod=CARD`: June Closeouts for 2026-05-29..2026-06-28 close exactly to the legacy
 June statement Amount Submitted 336,210c with 180 sales and 9,896c Tips; July Closeouts for
@@ -140,9 +140,17 @@ present; legacy June surcharge remains `UNKNOWN` and merchant `DISCOUNT FEES` is
 consulted as surcharge. Order `CARD` totals/counts are surfaced only as
 `NON_AUTHORITATIVE` diagnostics through the existing Orders financial-facts port. June/July
 characterization source pins the confirmed 336,210c / 180 / 9,896c and
-350,132c / 230 / 7,207c / 5,551c structures. Detailed contract:
+350,132c / 230 / 7,207c / 5,551c structures. Production verification found exactly one closing
+sequence for each June and July statement, the authenticated shadow endpoint returned HTTP 200,
+and no Journal entry was created by deployment or the verification request. Detailed contract:
 `docs/architecture/accounting-clover-pre-sync-authority-plan.md`. No historical Journal mutation,
-authority replacement, cutover timestamp, Prisma migration or local validation is part of Slice A.
+authority replacement, cutover timestamp or Prisma migration is part of Slice A. Slice B is now
+**LOCAL SOURCE READY FOR REVIEW / MIGRATION REQUIRED / CUTOVER NOT SET**: it adds the independent
+nullable `providerPaymentFactCutoverAt` contract, an Accounting-owned immutable one-time writer,
+reader semantics and a fail-closed post-cutover authority policy without adding a controller,
+feature-flag listener or go-live caller. Production promotion remains blocked until the user-generated
+additive migration is reviewed and merged into `dev`; actual cutover remains blocked on Slice E,
+including provider-proven tip authority.
 
 The existing-materialized remediation is **MERGED / CI GREEN** through PR #2517
 (`a7a872bc`) with the user-generated additive migration committed to `dev` as `5e14e8db`.

@@ -167,6 +167,7 @@ export class AccountingProviderSettlementQueryService {
         financialHistoryRequiredFrom: true,
         financialCompleteThrough: true,
         liveOrderFactCutoverAt: true,
+        providerPaymentFactCutoverAt: true,
         orderDetailCoverageFrom: true,
         updatedAt: true,
       },

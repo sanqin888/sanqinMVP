@@ -497,7 +497,7 @@ replacement / compensating Journal 流程修正。
 因此此前“不再引入额外 cutover timestamp”的约束被真实生产证据**明确 supersede**。当前
 `POS_CLOVER_TERMINAL_PAYMENT_ENABLED` 仍只是临时 route-choice/cutback flag，Phase J 仍会删除；
 Accounting 不能读取其当前值来重新解释历史。正式 production go-live 应记录一个 durable
-Accounting payment-fact cutover（暂名 `providerPaymentFactCutoverAt`）：cutover 前使用
+Accounting payment-fact cutover `providerPaymentFactCutoverAt`：cutover 前使用
 Closeout/Statement authority，cutover 后要求 Payments-owned canonical Clover facts。若运营事故导致
 flag 临时切回 false，durable cutover 不得自动后退；缺少 Payments fact 的 post-cutover CARD 财务事实
 必须 fail closed / 显式 reconciliation。
@@ -506,7 +506,16 @@ flag 临时切回 false，durable cutover 不得自动后退；缺少 Payments f
 payment execution provenance，但不能替代上述 provider-side financial authority。Production Web
 Clover 的 `/v1/charges`、refund、merchant scope 与 guarded compatibility 不在该修改范围。详细
 Accounting authority contract 见
-`docs/architecture/accounting-clover-pre-sync-authority-plan.md`。
+`docs/architecture/accounting-clover-pre-sync-authority-plan.md`。该 Accounting Slice A 已于
+2026-09-26 在 production `main@b7a01075` 完成验证并 CLOSED：June/July provider coverage 均唯一闭合，
+authenticated shadow GET 返回 200，且验证未产生任何 Journal 写入。这一 closeout **不代表** POS-Clover
+production payment cutover 已发生，也不设置 `providerPaymentFactCutoverAt`。Accounting Slice B
+现已在本地 source review gate 建立独立 nullable persisted contract、只允许 Clover `null -> timestamp`
+的一次性 audited writer、独立读取语义以及 post-cutover 缺 Payments canonical fact 时的 fail-closed
+policy；它没有 controller/flag listener/go-live caller，因此部署 source 本身不会设置 production
+timestamp。对应 Prisma migration 仍必须由用户本地生成、单独审阅并合回 `dev` 后才可 promotion。
+另外 `PaymentFinancialFactV1` / `PaymentTransaction` 仍缺 provider-proven `tipCents`，所以 Slice E
+payment-fact completeness 继续作为真实 production cutover 的硬 gate。
 
 ## 新主链路
 

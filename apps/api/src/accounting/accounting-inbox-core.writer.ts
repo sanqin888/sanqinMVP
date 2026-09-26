@@ -483,6 +483,21 @@ export async function advanceProviderFinancialCompleteThroughInTx(
   });
 }
 
+export async function recordProviderPaymentFactCutoverInTx(
+  tx: AccountingTx,
+  coverageId: string,
+  providerPaymentFactCutoverAt: Date,
+  updatedByUserStableId: string | null,
+) {
+  return tx.accountingProviderFinancialCoverage.update({
+    where: { id: coverageId },
+    data: {
+      providerPaymentFactCutoverAt,
+      updatedByUserStableId,
+    },
+  });
+}
+
 export async function ensureProviderFinancialCoverageInTx(
   tx: AccountingTx,
   provider: AccountingFinancialProvider,
@@ -517,6 +532,7 @@ export async function ensureProviderFinancialCoverageInTx(
       financialHistoryRequiredFrom: true,
       financialCompleteThrough: true,
       liveOrderFactCutoverAt: true,
+      providerPaymentFactCutoverAt: true,
       orderDetailCoverageFrom: true,
     },
   });
@@ -528,6 +544,8 @@ export async function ensureProviderFinancialCoverageInTx(
     financialCompleteThrough:
       row.financialCompleteThrough?.toISOString().slice(0, 10) ?? null,
     liveOrderFactCutoverAt: row.liveOrderFactCutoverAt?.toISOString() ?? null,
+    providerPaymentFactCutoverAt:
+      row.providerPaymentFactCutoverAt?.toISOString() ?? null,
     orderDetailCoverageFrom:
       row.orderDetailCoverageFrom?.toISOString().slice(0, 10) ?? null,
   };
