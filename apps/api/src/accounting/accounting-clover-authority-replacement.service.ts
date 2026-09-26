@@ -20,12 +20,8 @@ import {
 } from './accounting-clover-authority-replacement.policy';
 import { hashAccountingJson } from './accounting-inbox-core.policy';
 import { AccountingPeriodService } from './accounting-period.service';
-import {
-  AccountingProviderPendingReconciliationService,
-} from './accounting-provider-pending-reconciliation.service';
-import {
-  AccountingProviderSettlementQueryService,
-} from './accounting-provider-settlement-query.service';
+import { AccountingProviderPendingReconciliationService } from './accounting-provider-pending-reconciliation.service';
+import { AccountingProviderSettlementQueryService } from './accounting-provider-settlement-query.service';
 
 const EXPECTED_ORDER_PENDING_SOURCE_FACT_TYPES = new Set([
   'order.financial_sale.v1',
@@ -36,8 +32,7 @@ const EXPECTED_ORDER_PENDING_SOURCE_FACT_TYPES = new Set([
 const CLOVER_PENDING_ACCOUNT_STABLE_ID = 'account_clover_pending';
 const STORE_CASH_ACCOUNT_STABLE_ID = 'account_store_cash';
 const TIP_REVENUE_ACCOUNT_STABLE_ID = 'account_tip_revenue';
-const SURCHARGE_REVENUE_ACCOUNT_STABLE_ID =
-  'account_card_surcharge_revenue';
+const SURCHARGE_REVENUE_ACCOUNT_STABLE_ID = 'account_card_surcharge_revenue';
 
 type OrderAuthorityAnchor = {
   entryStableId: string;
@@ -145,10 +140,8 @@ export class AccountingCloverAuthorityReplacementService {
     @Inject(ACCOUNTING_DB) private readonly prisma: AccountingDb,
     private readonly period: AccountingPeriodService,
     private readonly preSyncAuthority: AccountingCloverPreSyncAuthorityService,
-    private readonly pendingReconciliation:
-      AccountingProviderPendingReconciliationService,
-    private readonly settlementQuery:
-      AccountingProviderSettlementQueryService,
+    private readonly pendingReconciliation: AccountingProviderPendingReconciliationService,
+    private readonly settlementQuery: AccountingProviderSettlementQueryService,
   ) {}
 
   async preview(input: {
@@ -251,7 +244,8 @@ export class AccountingCloverAuthorityReplacementService {
       inScopeBatches.forEach((batch) => claimedBatchIds.add(batch.batchId));
 
       const authorityFrom = inScopeBatches[0].businessDate;
-      const authorityTo = inScopeBatches[inScopeBatches.length - 1].businessDate;
+      const authorityTo =
+        inScopeBatches[inScopeBatches.length - 1].businessDate;
       const fromLocal = DateTime.fromISO(authorityFrom, {
         zone: timezone,
       }).startOf('day');
@@ -314,8 +308,7 @@ export class AccountingCloverAuthorityReplacementService {
         authorityFrom,
         authorityTo,
         occurredAt:
-          toLocal.toUTC().toISO() ??
-          toLocal.toUTC().toJSDate().toISOString(),
+          toLocal.toUTC().toISO() ?? toLocal.toUTC().toJSDate().toISOString(),
         storeStableId,
         providerPrincipalCents,
         providerTipsCents,
@@ -326,8 +319,7 @@ export class AccountingCloverAuthorityReplacementService {
         orderStoreCashMovementCents: orderEvidence.storeCashMovementCents,
         orderTipRevenueCents: orderEvidence.tipRevenueCents,
         orderSurchargeRevenueCents: orderEvidence.surchargeRevenueCents,
-        unexpectedOrderPendingSourceFactTypes:
-          orderEvidence.unexpectedPendingSourceFactTypes,
+        unexpectedOrderPendingSourceFactTypes: orderEvidence.unexpectedPendingSourceFactTypes,
       });
 
       const simulatedOpeningAfterPriorAuthorityAdjustmentsCents =
@@ -379,10 +371,8 @@ export class AccountingCloverAuthorityReplacementService {
           blockReasons: policy.blockReasons,
           pendingAuthorityDeltaCents: policy.pendingAuthorityDeltaCents,
           missingTipRevenueCents: policy.missingTipRevenueCents,
-          missingSurchargeRevenueCents:
-            policy.missingSurchargeRevenueCents,
-          storeCashReclassificationCents:
-            policy.storeCashReclassificationCents,
+          missingSurchargeRevenueCents: policy.missingSurchargeRevenueCents,
+          storeCashReclassificationCents: policy.storeCashReclassificationCents,
           draftJournal: policy.draftJournal,
         },
         pendingRollForward: {
@@ -390,8 +380,7 @@ export class AccountingCloverAuthorityReplacementService {
           actualPeriodMovementCents: reconciliationRow.periodNetMovementCents,
           actualClosingCents: reconciliationRow.closingBalanceCents,
           simulatedOpeningAfterPriorAuthorityAdjustmentsCents,
-          proposedAuthorityAdjustmentCents:
-            policy.pendingAuthorityDeltaCents,
+          proposedAuthorityAdjustmentCents: policy.pendingAuthorityDeltaCents,
           simulatedProviderAuthorityClosingCents,
         },
       });
@@ -436,9 +425,8 @@ export class AccountingCloverAuthorityReplacementService {
           periods.map((item) => item.providerEvidence.surchargeCents ?? 0),
           'Clover preview surcharge total',
         ),
-        readyPeriods: periods.filter(
-          (item) => item.proposal.status === 'READY',
-        ).length,
+        readyPeriods: periods.filter((item) => item.proposal.status === 'READY')
+          .length,
         blockedPeriods: periods.filter(
           (item) => item.proposal.status === 'BLOCKED',
         ).length,
@@ -555,38 +543,26 @@ export class AccountingCloverAuthorityReplacementService {
             line.account.accountStableId ===
             CLOVER_PENDING_ACCOUNT_STABLE_ID,
         )
-        .reduce(
-          (sum, line) => sum + line.debitCents - line.creditCents,
-          0,
-        );
+        .reduce((sum, line) => sum + line.debitCents - line.creditCents, 0);
       const storeCashMovement = row.lines
         .filter(
           (line) =>
             line.account.accountStableId === STORE_CASH_ACCOUNT_STABLE_ID,
         )
-        .reduce(
-          (sum, line) => sum + line.debitCents - line.creditCents,
-          0,
-        );
+        .reduce((sum, line) => sum + line.debitCents - line.creditCents, 0);
       const tipRevenue = row.lines
         .filter(
           (line) =>
             line.account.accountStableId === TIP_REVENUE_ACCOUNT_STABLE_ID,
         )
-        .reduce(
-          (sum, line) => sum + line.creditCents - line.debitCents,
-          0,
-        );
+        .reduce((sum, line) => sum + line.creditCents - line.debitCents, 0);
       const surchargeRevenue = row.lines
         .filter(
           (line) =>
             line.account.accountStableId ===
             SURCHARGE_REVENUE_ACCOUNT_STABLE_ID,
         )
-        .reduce(
-          (sum, line) => sum + line.creditCents - line.debitCents,
-          0,
-        );
+        .reduce((sum, line) => sum + line.creditCents - line.debitCents, 0);
 
       pendingMovementCents = safeSum(
         [pendingMovementCents, pendingMovement],

@@ -1,7 +1,5 @@
 import { AccountingFinancialProvider } from './accounting-contracts';
-import {
-  AccountingCloverAuthorityReplacementService,
-} from './accounting-clover-authority-replacement.service';
+import { AccountingCloverAuthorityReplacementService } from './accounting-clover-authority-replacement.service';
 
 const closeout = (
   documentStableId: string,

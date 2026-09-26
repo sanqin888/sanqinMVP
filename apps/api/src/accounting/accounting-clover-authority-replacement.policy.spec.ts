@@ -1,6 +1,4 @@
-import {
-  buildCloverAuthorityReplacementPreview,
-} from './accounting-clover-authority-replacement.policy';
+import { buildCloverAuthorityReplacementPreview } from './accounting-clover-authority-replacement.policy';
 
 const baseInput = {
   statementDocumentStableId: 'statement_july',
@@ -55,8 +53,7 @@ describe('Clover pre-sync authority replacement policy', () => {
         accountStableId: 'account_card_surcharge_revenue',
         debitCents: 0,
         creditCents: 5_551,
-        memo:
-          'Provider-proven Clover surcharge not represented in Order economics',
+        memo: 'Provider-proven Clover surcharge not represented in Order economics',
       },
     ]);
   });

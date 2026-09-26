@@ -49,8 +49,7 @@ export type CloverAuthorityReplacementPolicyResult = {
 const CLOVER_PENDING_ACCOUNT_STABLE_ID = 'account_clover_pending';
 const STORE_CASH_ACCOUNT_STABLE_ID = 'account_store_cash';
 const TIP_REVENUE_ACCOUNT_STABLE_ID = 'account_tip_revenue';
-const SURCHARGE_REVENUE_ACCOUNT_STABLE_ID =
-  'account_card_surcharge_revenue';
+const SURCHARGE_REVENUE_ACCOUNT_STABLE_ID = 'account_card_surcharge_revenue';
 
 const isSafeNonNegative = (value: number): boolean =>
   Number.isSafeInteger(value) && value >= 0;
@@ -112,9 +111,7 @@ export function buildCloverAuthorityReplacementPreview(
     input.providerSurchargeCents !== null &&
     input.orderSurchargeRevenueCents > input.providerSurchargeCents
   ) {
-    blockReasons.push(
-      'ORDER_SURCHARGE_REVENUE_EXCEEDS_PROVIDER_SURCHARGE',
-    );
+    blockReasons.push('ORDER_SURCHARGE_REVENUE_EXCEEDS_PROVIDER_SURCHARGE');
   }
   if (input.unexpectedOrderPendingSourceFactTypes.length > 0) {
     blockReasons.push('UNEXPECTED_ORDER_PENDING_SOURCE_FACT_TYPE');
@@ -239,8 +236,7 @@ export function buildCloverAuthorityReplacementPreview(
       lines.length === 0
         ? null
         : {
-            idempotencyKey:
-              `clover-pre-sync-authority-adjustment:${sourceFactStableId}:v1`,
+            idempotencyKey: `clover-pre-sync-authority-adjustment:${sourceFactStableId}:v1`,
             kind: AccountingJournalEntryKind.ADJUSTMENT,
             source: AccountingJournalSource.PLATFORM_STATEMENT,
             sourceFactType:
@@ -250,8 +246,7 @@ export function buildCloverAuthorityReplacementPreview(
             storeStableId: input.storeStableId,
             occurredAt: input.occurredAt,
             currency: 'CAD',
-            memo:
-              `Clover pre-sync authority replacement ${input.authorityFrom}..${input.authorityTo}`,
+            memo: `Clover pre-sync authority replacement ${input.authorityFrom}..${input.authorityTo}`,
             lines,
           },
   };
