@@ -62,6 +62,12 @@ The modern July statement reports:
 - Amount Submitted: **350,132c / $3,501.32**;
 - transaction count: **230**;
 - Surcharge Collected: **5,551c / $55.51**;
+- production Slice D verification on 2026-09-26 exposed a geometry-parser bug in the Summary by
+  Card Type table: the grouped `Surcharge Collected` header spans `Items` and `Amount`, so the
+  old nearest-value rule selected the `156` item count and interpreted it as $156.00. Parser v11
+  now resolves the nested `Amount` sub-column explicitly and accepts only an explicit currency
+  token for surcharge monetary authority; a bare item count therefore fails closed instead of
+  becoming money.
 - Visa surcharge: **$35.89**;
 - MasterCard surcharge: **$19.62**.
 
@@ -355,14 +361,16 @@ The current production-shaped preview math is:
   exactly matching the next canonical 2026-07-31 Clover payout of 3,532c.
 
 The route is `GET /accounting/report/clover-authority-replacement-preview?storeStableId=...`.
-Slice C itself remains the merged read-only baseline. Slice D is now **LOCAL SOURCE READY FOR REVIEW /
-NO SCHEMA / NO MIGRATION / NO PRODUCTION WRITE** and adds the separately authorized write gate at
-`POST /accounting/journal/clover-authority-replacement`.
+Slice C itself remains the merged read-only baseline. Slice D is **MERGED / PRODUCTION PREVIEW VERIFIED /
+PARSER V11 HOTFIX LOCAL / PRODUCTION POSTING BLOCKED / NO SCHEMA / NO MIGRATION** and adds the
+separately authorized write gate at `POST /accounting/journal/clover-authority-replacement`. Production
+posting remains blocked until the v11 surcharge parser hotfix is merged, deployed and the preview is
+re-verified with the provider-explicit $55.51 July surcharge.
 
 ### Slice D — Historical correction posting + reconciliation UI
 
-**Implementation state (2026-09-26): LOCAL SOURCE READY FOR REVIEW / NO SCHEMA / NO MIGRATION /
-NO PRODUCTION WRITE.**
+**Implementation state (2026-09-26): MERGED / PRODUCTION PREVIEW VERIFIED / PARSER V11 HOTFIX LOCAL /
+PRODUCTION POSTING BLOCKED / NO SCHEMA / NO MIGRATION.**
 
 - the legacy June Statement remains unchanged and still has no surcharge field; Slice D separately
   accepts a Clover Dashboard Sales Report as supplemental provider evidence only when its transaction

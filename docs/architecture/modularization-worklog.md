@@ -3366,6 +3366,14 @@ is claimed per repository workflow.
 **Safety:** Sales Report lines are reconciliation/control evidence only and never independently post revenue. Existing month-close semantics are preserved: ADJUSTMENT Journals remain allowed in month-closed periods, while year hard locks are not bypassed. No Prisma schema, migration, dependency, payment cutover, production Web Clover or existing Journal mutation is included. Per `AGENTS.md`, no local CI-equivalent commands are run before user review.  
 **Details:** `apps/api/src/accounting/accounting-clover-sales-report.contract.ts`, `accounting-provider-{recognition,financial}.policy/parser.ts`, `accounting-clover-pre-sync-authority.{policy,service}.ts`, `accounting-clover-authority-replacement.{policy,service}.ts`, `apps/web/src/app/[locale]/(site)/accounting/settlements/clover-authority-replacement-panel.tsx`, `docs/architecture/accounting-clover-pre-sync-authority-plan.md`, `ACCOUNTING_PRODUCT_ROADMAP.md`, `POST_MODULARIZATION_BACKLOG.md`, `docs/architecture/current-dependency-graph.md`.
 
+### 2026-09-26 — Clover Statement surcharge Amount-column parser hotfix
+
+**State:** **LOCAL SOURCE READY FOR REVIEW / PRODUCTION POSTING STILL BLOCKED / NO SCHEMA / NO MIGRATION / NO NEW DEPENDENCY / NO GRAPH CHANGE**.  
+**Production verification:** Slice D preview correctly resolved June Sales Report authority but showed July surcharge as $156.00 and Store Cash reclass as $85.18. Read-only production evidence proves the July Statement contains `Surcharge Collected` total $55.51 and 156 surcharge items; the legacy geometry selector anchored on the grouped `Surcharge Collected` heading and chose the nearer item-count cell. No historical authority Journal was posted.  
+**Fix:** provider parser v11 resolves the nested `Amount` sub-header under `Surcharge Collected` before reading the Total row and requires an explicit currency token, so `156` cannot be interpreted as 15,600c. Regression fixtures now reproduce the production `Items / Amount / 156 / $55.51` geometry and also prove a missing currency amount fails closed to null. The pre-sync authority service fixture is updated to the same production-shaped layout.  
+**Expected July preview after deployment:** +31,325c Clover Pending / -18,567c Store Cash / +7,207c Tips / +5,551c surcharge.  
+**Safety:** no Journal writer, Accounting policy, settlement route, schema, migration, dependency, payment cutover or production Web Clover behavior changes. Per `AGENTS.md`, no local lint/build/test command is run before user review.
+
 ### 2026-09-25 — Post-modularization A4-C1 Windows workstation launcher foundation
 
 **State:** **MERGED / CI GREEN / EXPLICITLY AUTHORIZED NEW OPERATIONAL BOUNDARY / NO MIGRATION / NO NEW DEPENDENCY / NO GRAPH CHANGE** through PR #2543 / final head `c04d150f` / squash `06afc5b5`; CI #6397 passed Web/API/printer-agent plus `windows-workstation`.  

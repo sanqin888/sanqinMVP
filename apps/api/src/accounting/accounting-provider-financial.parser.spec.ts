@@ -244,8 +244,11 @@ Card Type Totals
         line(2, '$0.00', 0.51, 0.3),
         line(3, 'Card Type', 0.06, 0.4),
         line(3, 'Surcharge Collected', 0.79, 0.4, 0.12),
+        line(3, 'Items', 0.816, 0.43),
+        line(3, 'Amount', 0.891, 0.43),
         line(3, 'Total', 0.06, 0.54),
-        line(3, '$55.51', 0.9, 0.54),
+        line(3, '156', 0.83, 0.54),
+        line(3, '$55.51', 0.903, 0.54),
       ],
     };
 
@@ -265,6 +268,21 @@ Card Type Totals
             candidate.text !== 'Surcharge Collected' &&
             candidate.text !== '$55.51' &&
             candidate.text !== 'Card Type',
+        ),
+      }),
+    ).toEqual({
+      transactionCount: 230,
+      amountSubmittedCents: 350132,
+      refundCount: 0,
+      refundAmountCents: 0,
+      surchargeCollectedCents: null,
+    });
+
+    expect(
+      extractCloverModernStatementAuthorityControls({
+        ...extraction,
+        lines: extraction.lines.filter(
+          (candidate) => candidate.text !== '$55.51',
         ),
       }),
     ).toEqual({
