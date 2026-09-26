@@ -12,6 +12,11 @@ export type ProviderFinancialCoverageFrontier = {
   evidenceDocumentStableIds: string[];
 };
 
+export type ProviderPaymentFactAuthority =
+  | 'PROVIDER_DOCUMENTS'
+  | 'PAYMENTS_CANONICAL_FACTS'
+  | 'BLOCKED_MISSING_CANONICAL_PAYMENT_FACT';
+
 const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -31,6 +36,34 @@ function dateOnlyMillis(value: string, field: string): number {
 
 function dateOnlyFromMillis(millis: number): string {
   return new Date(millis).toISOString().slice(0, 10);
+}
+
+export function resolveProviderPaymentFactAuthority(params: {
+  occurredAt: Date;
+  providerPaymentFactCutoverAt: Date | null;
+  hasCanonicalPaymentFact: boolean;
+}): ProviderPaymentFactAuthority {
+  const occurredAtMillis = params.occurredAt.getTime();
+  if (!Number.isFinite(occurredAtMillis)) {
+    throw new Error('occurredAt must be a valid Date');
+  }
+
+  if (!params.providerPaymentFactCutoverAt) {
+    return 'PROVIDER_DOCUMENTS';
+  }
+
+  const cutoverMillis = params.providerPaymentFactCutoverAt.getTime();
+  if (!Number.isFinite(cutoverMillis)) {
+    throw new Error('providerPaymentFactCutoverAt must be a valid Date');
+  }
+
+  if (occurredAtMillis < cutoverMillis) {
+    return 'PROVIDER_DOCUMENTS';
+  }
+
+  return params.hasCanonicalPaymentFact
+    ? 'PAYMENTS_CANONICAL_FACTS'
+    : 'BLOCKED_MISSING_CANONICAL_PAYMENT_FACT';
 }
 
 export function resolveProviderFinancialCoverageFrontier(params: {

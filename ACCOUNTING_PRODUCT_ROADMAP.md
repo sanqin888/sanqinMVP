@@ -144,8 +144,13 @@ characterization source pins the confirmed 336,210c / 180 / 9,896c and
 sequence for each June and July statement, the authenticated shadow endpoint returned HTTP 200,
 and no Journal entry was created by deployment or the verification request. Detailed contract:
 `docs/architecture/accounting-clover-pre-sync-authority-plan.md`. No historical Journal mutation,
-authority replacement, cutover timestamp or Prisma migration is part of Slice A. Slice B remains a
-separate future schema/migration gate and is not started by this closeout.
+authority replacement, cutover timestamp or Prisma migration is part of Slice A. Slice B is now
+**LOCAL SOURCE READY FOR REVIEW / MIGRATION REQUIRED / CUTOVER NOT SET**: it adds the independent
+nullable `providerPaymentFactCutoverAt` contract, an Accounting-owned immutable one-time writer,
+reader semantics and a fail-closed post-cutover authority policy without adding a controller,
+feature-flag listener or go-live caller. Production promotion remains blocked until the user-generated
+additive migration is reviewed and merged into `dev`; actual cutover remains blocked on Slice E,
+including provider-proven tip authority.
 
 The existing-materialized remediation is **MERGED / CI GREEN** through PR #2517
 (`a7a872bc`) with the user-generated additive migration committed to `dev` as `5e14e8db`.

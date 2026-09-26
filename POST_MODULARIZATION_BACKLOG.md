@@ -452,8 +452,15 @@ control mismatch. Production closeout found exactly one principal-closing sequen
 one for July; the authenticated production shadow endpoint returned HTTP 200 after deployment, and
 zero new Accounting Journal entries were observed after that verification request. Detailed plan:
 `docs/architecture/accounting-clover-pre-sync-authority-plan.md`. Slice A is closed with zero
-Journal mutation, historical correction, cutover timestamp, Prisma migration or dependency change;
-Slice B remains a separate explicitly gated future migration.
+Journal mutation, historical correction, cutover timestamp, Prisma migration or dependency change.
+Slice B is now **LOCAL SOURCE READY FOR REVIEW / MIGRATION REQUIRED / CUTOVER NOT SET** on
+`feat/accounting-clover-payment-fact-cutover`: the Accounting coverage model gains an independent
+nullable `providerPaymentFactCutoverAt`, the owner service permits only audited `null -> timestamp`
+recording for Clover (exact replay is idempotent; rewrite is rejected), readers expose the durable
+fact, and post-cutover missing canonical Payments evidence resolves to a fail-closed blocked state.
+There is no controller, runtime-flag listener or production go-live caller, so no cutover timestamp
+is set by this source. The companion additive Prisma migration and Slice E provider-tip completeness
+remain explicit pre-production-cutover gates.
 
 **Existing-materialized parser re-evaluation / Human Review effective snapshot — LOCAL SOURCE
 READY FOR REVIEW:** `accounting/provider-parser-reevaluation-review` adds the previously planned
