@@ -8,11 +8,15 @@ import {
 } from './accounting-contracts';
 import { AccountingProviderFinancialCoverageService } from './accounting-provider-financial-coverage.service';
 
-const coverageRow = (completeThrough: Date | null = null) => ({
+const coverageRow = (
+  completeThrough: Date | null = null,
+  providerPaymentFactCutoverAt: Date | null = null,
+) => ({
   id: 'coverage-db-id',
   coverageStableId: 'coverage_uber',
   financialHistoryRequiredFrom: new Date('2026-06-01T00:00:00.000Z'),
   financialCompleteThrough: completeThrough,
+  providerPaymentFactCutoverAt,
 });
 
 const confirmedInbox = (documentStableId: string) => ({
@@ -103,6 +107,102 @@ const input = {
 };
 
 describe('AccountingProviderFinancialCoverageService', () => {
+  describe('recordProviderPaymentFactCutover', () => {
+    const cutover = new Date('2026-10-01T14:30:00.000Z');
+    const cutoverInput = {
+      provider: AccountingFinancialProvider.CLOVER,
+      storeStableId: '4750_Yonge_Street',
+      providerPaymentFactCutoverAt: cutover,
+      operatorActorRef: 'user:admin_1',
+      operatorUserStableId: 'user_admin_1',
+    };
+
+    it('records the Clover payment-fact cutover exactly once with audit evidence', async () => {
+      const { service, tx } = makeService();
+
+      await expect(
+        service.recordProviderPaymentFactCutover(cutoverInput),
+      ).resolves.toEqual({
+        status: 'RECORDED',
+        provider: AccountingFinancialProvider.CLOVER,
+        storeStableId: '4750_Yonge_Street',
+        providerPaymentFactCutoverAt: cutover.toISOString(),
+      });
+      expect(
+        tx.accountingProviderFinancialCoverage.update,
+      ).toHaveBeenCalledWith({
+        where: { id: 'coverage-db-id' },
+        data: {
+          providerPaymentFactCutoverAt: cutover,
+          updatedByUserStableId: 'user_admin_1',
+        },
+      });
+      expect(tx.accountingAuditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          action: 'RECORD_PROVIDER_PAYMENT_FACT_CUTOVER',
+          entityType: 'ACCOUNTING_PROVIDER_FINANCIAL_COVERAGE',
+          entityId: 'coverage_uber',
+          operatorActorRef: 'user:admin_1',
+        }) as unknown,
+      });
+    });
+
+    it('is idempotent only for the exact persisted cutover timestamp', async () => {
+      const { service, tx } = makeService({
+        coverage: coverageRow(null, cutover),
+      });
+
+      await expect(
+        service.recordProviderPaymentFactCutover(cutoverInput),
+      ).resolves.toEqual({
+        status: 'UNCHANGED',
+        provider: AccountingFinancialProvider.CLOVER,
+        storeStableId: '4750_Yonge_Street',
+        providerPaymentFactCutoverAt: cutover.toISOString(),
+      });
+      expect(
+        tx.accountingProviderFinancialCoverage.update,
+      ).not.toHaveBeenCalled();
+      expect(tx.accountingAuditLog.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects moving or rewriting an already-recorded cutover', async () => {
+      const existing = new Date('2026-10-01T14:30:00.000Z');
+      const { service, tx } = makeService({
+        coverage: coverageRow(null, existing),
+      });
+
+      await expect(
+        service.recordProviderPaymentFactCutover({
+          ...cutoverInput,
+          providerPaymentFactCutoverAt: new Date(
+            '2026-10-01T15:00:00.000Z',
+          ),
+        }),
+      ).rejects.toThrow(
+        'provider payment-fact cutover is immutable once recorded',
+      );
+      expect(
+        tx.accountingProviderFinancialCoverage.update,
+      ).not.toHaveBeenCalled();
+      expect(tx.accountingAuditLog.create).not.toHaveBeenCalled();
+    });
+
+    it('does not allow the Clover-specific cutover contract to be reused for another provider', async () => {
+      const { service, prisma } = makeService();
+
+      await expect(
+        service.recordProviderPaymentFactCutover({
+          ...cutoverInput,
+          provider: AccountingFinancialProvider.UBER_EATS,
+        }),
+      ).rejects.toThrow(
+        'provider payment-fact cutover is currently supported only for CLOVER',
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+  });
+
   it('advances only across confirmed STATEMENT documents with exact active canonical Journal anchors', async () => {
     const june = statement('doc_june', '2026-06-01', '2026-06-30');
     const july = statement('doc_july', '2026-07-01', '2026-07-31', 1, [

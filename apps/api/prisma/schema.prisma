@@ -2518,6 +2518,7 @@ model AccountingProviderFinancialCoverage {
   financialHistoryRequiredFrom DateTime                  @db.Date
   financialCompleteThrough   DateTime?                   @db.Date
   liveOrderFactCutoverAt     DateTime?
+  providerPaymentFactCutoverAt DateTime?
   orderDetailCoverageFrom    DateTime?                   @db.Date
   updatedByUserStableId      String?
   createdAt                  DateTime                    @default(now())

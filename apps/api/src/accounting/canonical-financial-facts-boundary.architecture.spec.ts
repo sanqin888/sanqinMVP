@@ -300,6 +300,9 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(providerFinancialCoverageService).not.toContain(
       "from '../integrations/",
     );
+    expect(providerFinancialCoverageService).toContain(
+      'providerPaymentFactCutoverAt',
+    );
     expect(providerPayoutService).toContain("from './accounting-db'");
     expect(providerPayoutService).toContain(
       "from './accounting-journal.service'",
@@ -490,6 +493,20 @@ describe('Phase 9 canonical financial facts boundary', () => {
       'accounting/accounting-provider-settlement-execution.service.ts',
     ]);
 
+    const providerPaymentFactCutoverCallers = scanTypeScript(ACCOUNTING_ROOT, {
+      productionOnly: true,
+    })
+      .filter(
+        ({ path, source }) =>
+          !path.endsWith('accounting-provider-financial-coverage.service.ts') &&
+          source.includes('recordProviderPaymentFactCutover('),
+      )
+      .map(({ path }) =>
+        path.slice(API_SRC_ROOT.length + 1).replaceAll('\\', '/'),
+      )
+      .sort();
+    expect(providerPaymentFactCutoverCallers).toEqual([]);
+
     const providerPayoutWriterCallers = scanTypeScript(ACCOUNTING_ROOT, {
       productionOnly: true,
     })
@@ -522,6 +539,20 @@ describe('Phase 9 canonical financial facts boundary', () => {
     expect(payoutControllerCallers).toEqual([
       'accounting/accounting-provider-payout.controller.ts',
     ]);
+  });
+
+  it('keeps the temporary POS Clover rollout flag outside Accounting authority', () => {
+    const accountingProductionSource = scanTypeScript(ACCOUNTING_ROOT, {
+      productionOnly: true,
+    })
+      .map(({ source }) => source)
+      .join('\n');
+    const temporaryRolloutFlag = [
+      'POS_CLOVER_TERMINAL_PAYMENT',
+      'ENABLED',
+    ].join('_');
+
+    expect(accountingProductionSource).not.toContain(temporaryRolloutFlag);
   });
 
   it('keeps generic single-entry AccountingTransaction persistence fully contracted', () => {

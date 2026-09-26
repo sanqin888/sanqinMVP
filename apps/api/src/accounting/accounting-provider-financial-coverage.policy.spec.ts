@@ -1,4 +1,51 @@
-import { resolveProviderFinancialCoverageFrontier } from './accounting-provider-financial-coverage.policy';
+import {
+  resolveProviderFinancialCoverageFrontier,
+  resolveProviderPaymentFactAuthority,
+} from './accounting-provider-financial-coverage.policy';
+
+describe('provider payment-fact authority policy', () => {
+  const cutover = new Date('2026-10-01T14:30:00.000Z');
+
+  it('keeps provider documents authoritative before a durable cutover exists', () => {
+    expect(
+      resolveProviderPaymentFactAuthority({
+        occurredAt: new Date('2026-10-02T12:00:00.000Z'),
+        providerPaymentFactCutoverAt: null,
+        hasCanonicalPaymentFact: false,
+      }),
+    ).toBe('PROVIDER_DOCUMENTS');
+  });
+
+  it('keeps pre-cutover facts on provider-document authority', () => {
+    expect(
+      resolveProviderPaymentFactAuthority({
+        occurredAt: new Date('2026-10-01T14:29:59.999Z'),
+        providerPaymentFactCutoverAt: cutover,
+        hasCanonicalPaymentFact: true,
+      }),
+    ).toBe('PROVIDER_DOCUMENTS');
+  });
+
+  it('uses Payments canonical facts at and after the durable cutover', () => {
+    expect(
+      resolveProviderPaymentFactAuthority({
+        occurredAt: cutover,
+        providerPaymentFactCutoverAt: cutover,
+        hasCanonicalPaymentFact: true,
+      }),
+    ).toBe('PAYMENTS_CANONICAL_FACTS');
+  });
+
+  it('fails closed when a post-cutover fact is missing from Payments', () => {
+    expect(
+      resolveProviderPaymentFactAuthority({
+        occurredAt: new Date('2026-10-01T14:30:00.001Z'),
+        providerPaymentFactCutoverAt: cutover,
+        hasCanonicalPaymentFact: false,
+      }),
+    ).toBe('BLOCKED_MISSING_CANONICAL_PAYMENT_FACT');
+  });
+});
 
 describe('provider financial coverage frontier policy', () => {
   it('advances from the required history boundary across contiguous posted periods', () => {

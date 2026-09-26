@@ -668,6 +668,7 @@ describe('Accounting Inbox core persistence writer', () => {
       financialHistoryRequiredFrom: new Date('2026-06-01T00:00:00.000Z'),
       financialCompleteThrough: null,
       liveOrderFactCutoverAt: null,
+      providerPaymentFactCutoverAt: null,
       orderDetailCoverageFrom: null,
     });
 
@@ -680,6 +681,7 @@ describe('Accounting Inbox core persistence writer', () => {
     );
 
     expect(result.financialHistoryRequiredFrom).toBe('2026-06-01');
+    expect(result.providerPaymentFactCutoverAt).toBeNull();
     expect(tx.accountingProviderFinancialCoverage.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         create: expect.objectContaining({

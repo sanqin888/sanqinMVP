@@ -1,9 +1,9 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { ConflictException, Inject, Injectable } from '@nestjs/common';
 
 import { runSerializableAccountingWrite } from './accounting-atomic-write';
 import {
   AccountingFinancialDocumentType,
-  type AccountingFinancialProvider,
+  AccountingFinancialProvider,
   AccountingInboxMaterializedEntityType,
   AccountingInboxStatus,
   AccountingJournalSource,
@@ -29,12 +29,129 @@ export type ProviderFinancialCoverageReconciliationResult = {
   evidenceDocumentStableIds: string[];
 };
 
+export type ProviderPaymentFactCutoverRecordResult = {
+  status: 'RECORDED' | 'UNCHANGED';
+  provider: AccountingFinancialProvider;
+  storeStableId: string;
+  providerPaymentFactCutoverAt: string;
+};
+
 const dateOnly = (value: Date | null): string | null =>
   value?.toISOString().slice(0, 10) ?? null;
 
 @Injectable()
 export class AccountingProviderFinancialCoverageService {
   constructor(@Inject(ACCOUNTING_DB) private readonly prisma: AccountingDb) {}
+
+  async recordProviderPaymentFactCutover(params: {
+    provider: AccountingFinancialProvider;
+    storeStableId: string;
+    providerPaymentFactCutoverAt: Date;
+    operatorActorRef: string;
+    operatorUserStableId: string | null;
+  }): Promise<ProviderPaymentFactCutoverRecordResult> {
+    const storeStableId = params.storeStableId.trim();
+    const operatorActorRef = params.operatorActorRef.trim();
+    const operatorUserStableId = params.operatorUserStableId?.trim() || null;
+    const cutoverMillis = params.providerPaymentFactCutoverAt.getTime();
+
+    if (params.provider !== AccountingFinancialProvider.CLOVER) {
+      throw new ConflictException(
+        'provider payment-fact cutover is currently supported only for CLOVER',
+      );
+    }
+    if (!storeStableId) {
+      throw new Error(
+        'storeStableId is required for provider payment-fact cutover',
+      );
+    }
+    if (!operatorActorRef) {
+      throw new Error(
+        'operatorActorRef is required for provider payment-fact cutover',
+      );
+    }
+    if (!Number.isFinite(cutoverMillis)) {
+      throw new Error('providerPaymentFactCutoverAt must be a valid Date');
+    }
+
+    return runSerializableAccountingWrite(this.prisma, async (tx) => {
+      const coverage = await tx.accountingProviderFinancialCoverage.findUnique({
+        where: {
+          provider_storeStableId: {
+            provider: params.provider,
+            storeStableId,
+          },
+        },
+        select: {
+          id: true,
+          coverageStableId: true,
+          financialHistoryRequiredFrom: true,
+          providerPaymentFactCutoverAt: true,
+        },
+      });
+      if (!coverage) {
+        throw new ConflictException(
+          'provider financial coverage must be provisioned before recording payment-fact cutover',
+        );
+      }
+      if (
+        params.providerPaymentFactCutoverAt <
+        coverage.financialHistoryRequiredFrom
+      ) {
+        throw new ConflictException(
+          'provider payment-fact cutover cannot precede financial history boundary',
+        );
+      }
+
+      const existing = coverage.providerPaymentFactCutoverAt;
+      if (existing) {
+        if (existing.getTime() !== cutoverMillis) {
+          throw new ConflictException(
+            'provider payment-fact cutover is immutable once recorded',
+          );
+        }
+        return {
+          status: 'UNCHANGED',
+          provider: params.provider,
+          storeStableId,
+          providerPaymentFactCutoverAt: existing.toISOString(),
+        };
+      }
+
+      await tx.accountingProviderFinancialCoverage.update({
+        where: { id: coverage.id },
+        data: {
+          providerPaymentFactCutoverAt: params.providerPaymentFactCutoverAt,
+          updatedByUserStableId: operatorUserStableId,
+        },
+      });
+      await writeAccountingAuditLog(tx, {
+        action: 'RECORD_PROVIDER_PAYMENT_FACT_CUTOVER',
+        entityType: 'ACCOUNTING_PROVIDER_FINANCIAL_COVERAGE',
+        entityId: coverage.coverageStableId,
+        operatorActorRef,
+        beforeJson: {
+          provider: params.provider,
+          storeStableId,
+          providerPaymentFactCutoverAt: null,
+        },
+        afterJson: {
+          provider: params.provider,
+          storeStableId,
+          providerPaymentFactCutoverAt:
+            params.providerPaymentFactCutoverAt.toISOString(),
+        },
+      });
+
+      return {
+        status: 'RECORDED',
+        provider: params.provider,
+        storeStableId,
+        providerPaymentFactCutoverAt:
+          params.providerPaymentFactCutoverAt.toISOString(),
+      };
+    });
+  }
 
   async reconcilePostedCoverage(params: {
     provider: AccountingFinancialProvider;

@@ -517,6 +517,7 @@ export async function ensureProviderFinancialCoverageInTx(
       financialHistoryRequiredFrom: true,
       financialCompleteThrough: true,
       liveOrderFactCutoverAt: true,
+      providerPaymentFactCutoverAt: true,
       orderDetailCoverageFrom: true,
     },
   });
@@ -528,6 +529,8 @@ export async function ensureProviderFinancialCoverageInTx(
     financialCompleteThrough:
       row.financialCompleteThrough?.toISOString().slice(0, 10) ?? null,
     liveOrderFactCutoverAt: row.liveOrderFactCutoverAt?.toISOString() ?? null,
+    providerPaymentFactCutoverAt:
+      row.providerPaymentFactCutoverAt?.toISOString() ?? null,
     orderDetailCoverageFrom:
       row.orderDetailCoverageFrom?.toISOString().slice(0, 10) ?? null,
   };
