@@ -110,7 +110,7 @@ removes only that unconditional UI blocker, and leaves backend settlement READY/
 plan-hash/balance/idempotency gates unchanged. No schema, parser, posting-policy or dependency
 change is introduced.
 
-2026-09-25 pre-sync Clover authority audit is **DESIGN FROZEN / READY FOR READ-ONLY SLICE A**.
+2026-09-25 pre-sync Clover authority Slice A is **LOCAL SOURCE READY FOR REVIEW / READ-ONLY SHADOW / NO PRISMA / NO JOURNAL MUTATION**.
 Real Gmail Closeout Reports prove that pre-sync Clover tender truth cannot be anchored to
 `Order.paymentMethod=CARD`: June Closeouts for 2026-05-29..2026-06-28 close exactly to the legacy
 June statement Amount Submitted 336,210c with 180 sales and 9,896c Tips; July Closeouts for
@@ -122,9 +122,21 @@ future durable Clover Payments cutover, Daily Closeout + Monthly Statement becom
 receivable/Pending authority; Order sales/HST/discount economics remain authoritative but historical
 CARD tender attribution becomes diagnostic-only. The current POS terminal rollout flag must not be
 read dynamically by Accounting; a later persisted payment-fact cutover timestamp is required.
-Detailed contract and staged remediation plan:
-`docs/architecture/accounting-clover-pre-sync-authority-plan.md`. No historical Journal mutation
-is authorized by this planning update.
+Slice A now reuses the existing Gmail Inbox path to durably materialize only the exact
+`app@clover.com` + Closeout-subject contract, preserves the exact 2026-05-29..2026-05-31
+provider-evidence exception around the 2026-06-01 Accounting start, requires the complete Closeout
+Batch Totals control set, carries transaction counts, fails closed on Batch ID conflicts, and
+exposes a read-only statement-to-contiguous-Closeout shadow projection bound by existing Clover
+merchant identity and provider-period overlap rather than calendar-month assignment.
+Modern statement layout evidence now exposes transaction/refund controls plus explicit
+`Surcharge Collected`; confirmed Human Review effective snapshots remain authoritative when
+present; legacy June surcharge remains `UNKNOWN` and merchant `DISCOUNT FEES` is never
+consulted as surcharge. Order `CARD` totals/counts are surfaced only as
+`NON_AUTHORITATIVE` diagnostics through the existing Orders financial-facts port. June/July
+characterization source pins the confirmed 336,210c / 180 / 9,896c and
+350,132c / 230 / 7,207c / 5,551c structures. Detailed contract:
+`docs/architecture/accounting-clover-pre-sync-authority-plan.md`. No historical Journal mutation,
+authority replacement, cutover timestamp, Prisma migration or local validation is part of Slice A.
 
 The existing-materialized remediation is **MERGED / CI GREEN** through PR #2517
 (`a7a872bc`) with the user-generated additive migration committed to `dev` as `5e14e8db`.

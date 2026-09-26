@@ -183,4 +183,104 @@ describe('AccountingGmailIngestService unified Inbox cutover', () => {
       AccountingInboxTrustDecision.TRUSTED,
     );
   });
+
+  it('retains the bounded pre-start Clover Closeout window and trusts only the exact provider Closeout shape', async () => {
+    const acquisition = {
+      acquireEmailBody: jest
+        .fn()
+        .mockResolvedValue(
+          artifactResult('acctart_closeout', AccountingArtifactKind.EMAIL_BODY),
+        ),
+      acquireEmailAttachment: jest.fn(),
+    };
+    const operations = {
+      senderTrustDecision: jest
+        .fn()
+        .mockResolvedValue(AccountingInboxTrustDecision.UNTRUSTED),
+    };
+    const message = {
+      id: 'message-closeout',
+      internalDate: String(new Date('2026-05-30T12:00:00.000Z').getTime()),
+      payload: {
+        headers: [
+          { name: 'From', value: 'Clover <app@clover.com>' },
+          {
+            name: 'Subject',
+            value: 'MID 29351880018 Closeout Report for May 29, 2026',
+          },
+        ],
+        parts: [
+          {
+            partId: 'body',
+            mimeType: 'text/plain',
+            filename: '',
+            body: {
+              data: toBase64Url(
+                'Batch ID: 097NYJ27P2HZM\nBatch Totals\nSales 5 $57.21',
+              ),
+            },
+          },
+        ],
+      },
+    };
+    let listUrl = '';
+
+    jest.spyOn(global, 'fetch').mockImplementation((input) => {
+      const url =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+      if (url === 'https://oauth2.googleapis.com/token') {
+        return Promise.resolve(
+          new Response(JSON.stringify({ access_token: [REDACTED] }), {
+            status: 200,
+          }),
+        );
+      }
+      if (url.includes('/gmail/v1/users/me/messages?')) {
+        listUrl = url;
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ messages: [{ id: 'message-closeout' }] }),
+            { status: 200 },
+          ),
+        );
+      }
+      if (url.includes('/messages/message-closeout?format=full')) {
+        return Promise.resolve(
+          new Response(JSON.stringify(message), { status: 200 }),
+        );
+      }
+      return Promise.resolve(new Response('not found', { status: 404 }));
+    });
+
+    const service = new AccountingGmailIngestService(
+      acquisition as never,
+      operations as never,
+    );
+    const result = await service.ingestBillsMailbox({
+      accountingStartDate: '2026-06-01',
+      timezone: 'America/Toronto',
+    });
+
+    expect(decodeURIComponent(listUrl)).toContain('after:2026/05/28');
+    expect(result).toEqual(
+      expect.objectContaining({
+        scannedMessages: 1,
+        importedDocuments: 1,
+        skippedBeforeStartDate: 0,
+      }),
+    );
+    expect(operations.senderTrustDecision).not.toHaveBeenCalled();
+    expect(acquisition.acquireEmailBody).toHaveBeenCalledWith(
+      expect.objectContaining({
+        senderEmail: 'app@clover.com',
+        subject: 'MID 29351880018 Closeout Report for May 29, 2026',
+      }),
+      expect.stringContaining('097NYJ27P2HZM'),
+      AccountingInboxTrustDecision.TRUSTED,
+    );
+  });
 });

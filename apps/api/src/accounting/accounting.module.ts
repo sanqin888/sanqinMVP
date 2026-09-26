@@ -74,6 +74,9 @@ import {
   OrderSalesAttributionModule,
 } from '../orders/public-api';
 import { PaymentFinancialFactsModule } from '../payments/public-api';
+import {
+  AccountingCloverPreSyncAuthorityService,
+} from './accounting-clover-pre-sync-authority.service';
 
 @Module({
   imports: [
@@ -127,6 +130,7 @@ import { PaymentFinancialFactsModule } from '../payments/public-api';
     AccountingExpenseJournalPostingService,
     AccountingFinancialReportsService,
     AccountingSalesAnalyticsService,
+    AccountingCloverPreSyncAuthorityService,
     AccountingBalanceMovementService,
     AccountingTrialBalanceService,
     AccountingStatementDrillThroughService,

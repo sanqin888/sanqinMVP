@@ -610,6 +610,53 @@ describe('Accounting Inbox core persistence writer', () => {
     expect('accountingJournalEntry' in tx).toBe(false);
   });
 
+  it('fails closed when a Clover Batch ID is reused with different content', async () => {
+    const tx = makeTx();
+    tx.accountingSourceArtifact.findUnique.mockResolvedValue({
+      id: 'artifact-db-id-batch-2',
+      contentHash: SHA_B,
+      inboxItem: {
+        id: 'inbox-db-id',
+        status: AccountingInboxStatus.PENDING_REVIEW,
+      },
+    });
+    tx.accountingProviderFinancialDocument.findFirst.mockResolvedValue({
+      id: 'document-db-id-batch-1',
+      documentStableId: 'acctfindoc_batch_1',
+      revision: 1,
+      provider: AccountingFinancialProvider.CLOVER,
+      documentType: AccountingFinancialDocumentType.BATCH_CONTROL,
+      artifact: { contentHash: SHA_A },
+    });
+
+    await expect(
+      recordProviderFinancialDocumentInTx(
+        tx as never,
+        normalizeProviderFinancialDocument({
+          artifactStableId: 'acctart_batch_conflict',
+          provider: AccountingFinancialProvider.CLOVER,
+          documentType: AccountingFinancialDocumentType.BATCH_CONTROL,
+          businessIdentityKey: 'clover:batch:097NYJ27P2HZM',
+          providerDocumentRef: '097NYJ27P2HZM',
+          periodStart: '2026-09-06',
+          periodEnd: '2026-09-06',
+          parserName: 'accounting-provider-financial',
+          parserVersion: '9',
+          lines: [
+            {
+              component: AccountingFinancialComponent.SALES,
+              postingTreatment:
+                AccountingFinancialPostingTreatment.RECONCILIATION_ONLY,
+              amountCents: 5721,
+            },
+          ],
+        }),
+      ),
+    ).rejects.toThrow(AccountingInboxWriterConflictError);
+    expect(tx.accountingProviderFinancialDocument.create).not.toHaveBeenCalled();
+    expect('accountingJournalEntry' in tx).toBe(false);
+  });
+
   it('persists the configured financial-history start without inventing a Store DB relation', async () => {
     const tx = makeTx();
     tx.accountingProviderFinancialCoverage.upsert.mockResolvedValue({

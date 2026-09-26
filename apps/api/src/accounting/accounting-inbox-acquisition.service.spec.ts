@@ -45,6 +45,7 @@ import * as path from 'node:path';
 import sharp from 'sharp';
 import {
   AccountingArtifactKind,
+  AccountingFinancialDocumentType,
   AccountingFinancialProvider,
   AccountingInboxClassification,
   AccountingInboxStatus,
@@ -1340,6 +1341,54 @@ describe('AccountingInboxAcquisitionService', () => {
     const inboxDir = path.join(uploadRoot, 'accounting', 'inbox');
     expect(fs.existsSync(inboxDir) ? fs.readdirSync(inboxDir) : []).toEqual([]);
     expect(operations.recordInboxParseRun).toHaveBeenCalled();
+  });
+
+  it('durably materializes a trusted Clover Closeout email body through the existing provider-financial path', async () => {
+    const { service, providerFinancial } = makeService();
+    providerFinancial.parseAndMaterialize.mockResolvedValue({
+      matched: true,
+      materialized: true,
+      documentStableId: 'acctfindoc_closeout',
+    });
+
+    await service.acquireEmailBody(
+      {
+        messageId: 'gmail-clover-closeout',
+        senderEmail: 'app@clover.com',
+        subject: 'MID 29351880018 Closeout Report for May 29, 2026',
+        receivedAt: '2026-05-30T05:00:00.000Z',
+      },
+      'Batch ID: 097NYJ27P2HZM\nBatch Totals\nSales 5 $57.21',
+      AccountingInboxTrustDecision.TRUSTED,
+    );
+
+    expect(providerFinancial.parseAndMaterialize).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerHint: AccountingFinancialProvider.CLOVER,
+        documentTypeHint: AccountingFinancialDocumentType.BATCH_CONTROL,
+        emailSubject:
+          'MID 29351880018 Closeout Report for May 29, 2026',
+      }),
+    );
+    expect(providerFinancial.parseForInboxSuggestion).not.toHaveBeenCalled();
+  });
+
+  it('does not auto-materialize a generic app@clover.com email without the Closeout subject contract', async () => {
+    const { service, providerFinancial } = makeService();
+
+    await service.acquireEmailBody(
+      {
+        messageId: 'gmail-clover-generic',
+        senderEmail: 'app@clover.com',
+        subject: 'Merchant account notification',
+        receivedAt: '2026-09-25T12:00:00.000Z',
+      },
+      'Merchant account notification',
+      AccountingInboxTrustDecision.TRUSTED,
+    );
+
+    expect(providerFinancial.parseAndMaterialize).not.toHaveBeenCalled();
+    expect(providerFinancial.parseForInboxSuggestion).toHaveBeenCalled();
   });
 
   it('stores likely-bill recognition as an editable expense classification suggestion', async () => {

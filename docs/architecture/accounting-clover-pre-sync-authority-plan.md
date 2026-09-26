@@ -215,6 +215,10 @@ expose explicit surcharge evidence; legacy statements may not.
 
 ### Slice A — Pre-Sync Authority Contract + Shadow Coverage
 
+**Implementation state (2026-09-25): LOCAL SOURCE READY FOR REVIEW.** No local
+lint/build/test has been run; remote CI remains the post-review validation gate. The implementation
+adds no Prisma migration, cutover timestamp, historical correction or Journal mutation.
+
 No Journal mutation.
 
 - recognize/materialize Gmail Clover Closeout Reports durably;
@@ -225,7 +229,22 @@ No Journal mutation.
 - compare Order CARD facts only as diagnostics;
 - prove June and July end-to-end from 2026-06-01 coverage.
 
-Exit gate: June and July provider principal must close exactly with no inferred surcharge.
+The implementation keeps the existing Human Review effective snapshot/correction semantics for
+statement evidence and requires exact Clover sender + Closeout subject + complete Batch Totals
+controls before automatic Closeout materialization. Coverage candidates must share the statement's existing
+Clover merchant reference and overlap its provider period, but are not forced into calendar-month
+boundaries.
+
+Local characterization source now pins the confirmed June
+`2026-05-29..2026-06-28 / 180 / 336210c / Tips 9896c / Refund 0 / surcharge UNKNOWN`
+and July
+`2026-06-30..2026-07-30 / 230 / 350132c / Tips 7207c / Refund 0 / explicit surcharge 5551c`
+structures, plus fail-closed gap, duplicate-Batch and count-control cases. The shadow endpoint is
+`GET /accounting/report/clover-pre-sync-authority-shadow?storeStableId=...`; Order CARD
+comparison is returned under an explicit `NON_AUTHORITATIVE` diagnostic contract.
+
+Exit gate remains: June and July provider principal must close exactly with no inferred surcharge;
+that gate is not marked CI-verified until the reviewed source is submitted and remote CI passes.
 
 ### Slice B — Durable Clover payment-fact cutover contract
 

@@ -322,6 +322,66 @@ Net Total
     expect(operations.recordProviderFinancialDocument).not.toHaveBeenCalled();
   });
 
+  it('materializes the bounded May-end Clover Closeout needed by June authority coverage', async () => {
+    const operations = {
+      recordInboxParseRun: jest.fn().mockResolvedValue({}),
+      recordProviderFinancialDocument: jest.fn().mockResolvedValue({
+        documentStableId: 'acctfindoc_may29_closeout',
+        revision: 1,
+        replayed: false,
+      }),
+      ensureProviderFinancialCoverage: jest.fn().mockResolvedValue({}),
+    };
+    const storeConfig = {
+      getConfiguredStoreSnapshot: jest.fn().mockResolvedValue({
+        storeStableId: '4750_Yonge_Street',
+      }),
+    };
+    const service = new AccountingProviderFinancialService(
+      operations as never,
+      storeConfig as never,
+      {} as never,
+    );
+
+    await expect(
+      service.parseAndMaterialize({
+        artifactStableId: 'acctart_may29_closeout',
+        providerHint: AccountingFinancialProvider.CLOVER,
+        documentTypeHint: AccountingFinancialDocumentType.BATCH_CONTROL,
+        emailSubject:
+          'MID 29351880018 Closeout Report for May 29, 2026',
+        text: `
+Closeout Batch Report
+Batch ID:
+097NYJ27P2HZM
+Batch Totals
+Type Count Total
+Sales 5 $57.21
+Refunds 0 $0.00
+Net 5 $57.21
+Tax 0 $0.00
+Tips 4 $3.84
+Card Type Totals
+`,
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        matched: true,
+        materialized: true,
+        documentStableId: 'acctfindoc_may29_closeout',
+      }),
+    );
+    expect(operations.recordProviderFinancialDocument).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: AccountingFinancialProvider.CLOVER,
+        documentType: AccountingFinancialDocumentType.BATCH_CONTROL,
+        businessIdentityKey: 'clover:batch:097NYJ27P2HZM',
+        periodStart: '2026-05-29',
+        periodEnd: '2026-05-29',
+      }),
+    );
+  });
+
   it('records provider parser ERROR and preserves provider identity when materialization fails', async () => {
     const operations = {
       recordInboxParseRun: jest.fn().mockResolvedValue({}),
@@ -623,7 +683,7 @@ Net Total $1,431.94*
       expect.objectContaining({
         provider: AccountingFinancialProvider.UBER_EATS,
         providerDocumentRef: 'B4842290',
-        parserVersion: '8',
+        parserVersion: '9',
         lines: expect.arrayContaining([
           expect.objectContaining({
             rawName: 'Sales',
@@ -863,7 +923,7 @@ Total transfer amount $3813.11
         periodStart: '2026-08-01',
         periodEnd: '2026-08-31',
         parserName: 'accounting-provider-financial',
-        parserVersion: '8',
+        parserVersion: '9',
       }),
     );
     expect(operations.ensureProviderFinancialCoverage).toHaveBeenCalledWith(

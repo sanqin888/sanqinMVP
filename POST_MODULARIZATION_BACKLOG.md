@@ -420,8 +420,8 @@ unconditional Replay blocker, and adds a July-shaped Clover regression while pre
 existing Uber replacement-group coverage. Backend settlement authority/execution, parser, schema
 and dependencies are unchanged.
 
-**2026-09-25 Clover pre-sync financial authority plan — DESIGN FROZEN / READY FOR READ-ONLY
-SLICE A:** real Gmail Closeout Reports now prove that historical POS `CARD` tender attribution
+**2026-09-25 Clover pre-sync financial authority Slice A — LOCAL SOURCE READY FOR REVIEW /
+READ-ONLY SHADOW / NO PRISMA / NO JOURNAL MUTATION:** real Gmail Closeout Reports now prove that historical POS `CARD` tender attribution
 cannot own Clover receivable/Pending before production Terminal synchronization. June Closeouts
 2026-05-29..2026-06-28 reconcile exactly to the legacy June statement Amount Submitted
 336,210c (180 sales, 9,896c Tips); July Closeouts 2026-06-30..2026-07-30 reconcile exactly to
@@ -431,9 +431,21 @@ customer surcharge substitute. From Accounting start 2026-06-01 to the future du
 Payments-fact cutover, Daily Closeout + Monthly Statement is Clover receivable authority,
 CIBC remains cash-settlement authority, and Order CARD attribution is diagnostic-only while
 Order sales/HST/discount economics stay authoritative. The current POS rollout flag remains
-temporary runtime routing and must not dynamically reinterpret financial history. Detailed plan:
-`docs/architecture/accounting-clover-pre-sync-authority-plan.md`. No historical Journal mutation
-is authorized yet.
+temporary runtime routing and must not dynamically reinterpret financial history. Slice A implementation reuses the existing Accounting Gmail Inbox and provider-financial
+materialization path for the exact `app@clover.com` + Closeout-subject contract, includes a
+bounded pre-start provider-evidence lookback for the June boundary, requires the complete Closeout
+Batch Totals control set, persists Closeout counts, rejects conflicting reuse of a Batch ID, and
+adds a read-only report projection that discovers a contiguous Closeout
+sequence from matching Clover merchant identity, provider controls and period overlap rather than
+assigning calendar-month batches. Modern statement
+layout evidence exposes Amount Submitted transaction/refund controls and explicit
+`Surcharge Collected`, while confirmed Human Review effective snapshots remain authoritative;
+June remains `UNKNOWN`. Order `CARD` comparison is explicitly
+`NON_AUTHORITATIVE`. June/July characterization source fixes the confirmed ranges/totals and
+fail-closed gap/duplicate/count behavior. Detailed plan:
+`docs/architecture/accounting-clover-pre-sync-authority-plan.md`. Slice A contains zero Journal
+mutation, historical correction, cutover timestamp, Prisma migration, dependency or local
+lint/build/test execution.
 
 **Existing-materialized parser re-evaluation / Human Review effective snapshot — LOCAL SOURCE
 READY FOR REVIEW:** `accounting/provider-parser-reevaluation-review` adds the previously planned

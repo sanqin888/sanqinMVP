@@ -23,6 +23,9 @@ import { AccountingTrialBalanceService } from './accounting-trial-balance.servic
 import type { AccountingStatementDrillThroughPhaseV1 } from './accounting-statement-drill-through.contract';
 import { AccountingStatementDrillThroughService } from './accounting-statement-drill-through.service';
 import { AccountingStatementExportService } from './accounting-statement-export.service';
+import {
+  AccountingCloverPreSyncAuthorityService,
+} from './accounting-clover-pre-sync-authority.service';
 
 @Controller('accounting')
 @UseGuards(SessionAuthGuard, RolesGuard)
@@ -35,6 +38,7 @@ export class AccountingReportsController {
     private readonly trialBalance: AccountingTrialBalanceService,
     private readonly statementDrillThrough: AccountingStatementDrillThroughService,
     private readonly statementExport: AccountingStatementExportService,
+    private readonly cloverPreSyncAuthority: AccountingCloverPreSyncAuthorityService,
   ) {}
 
   @Get('dashboard')
@@ -59,6 +63,19 @@ export class AccountingReportsController {
   @Get('report/sales')
   async salesReport(@Query('from') from?: string, @Query('to') to?: string) {
     return this.salesAnalytics.report({ from, to });
+  }
+
+  @Get('report/clover-pre-sync-authority-shadow')
+  cloverPreSyncAuthorityShadow(
+    @Query('storeStableId') storeStableId?: string,
+    @Query('statementDocumentStableId') statementDocumentStableId?: string,
+  ) {
+    return this.cloverPreSyncAuthority.shadow({
+      storeStableId: storeStableId ?? '',
+      ...(statementDocumentStableId
+        ? { statementDocumentStableId }
+        : {}),
+    });
   }
 
   @Get('report/trial-balance')

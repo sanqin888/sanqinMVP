@@ -146,6 +146,13 @@ const makeController = () => {
       .fn()
       .mockResolvedValue(Buffer.from('%PDF-balance')),
   };
+  const cloverPreSyncAuthority = {
+    shadow: jest.fn().mockResolvedValue({
+      version: 1,
+      mutationMode: 'READ_ONLY_SHADOW',
+      projections: [],
+    }),
+  };
 
   return {
     controller: new AccountingReportsController(
@@ -155,13 +162,31 @@ const makeController = () => {
       trialBalance as never,
       statementDrillThrough as never,
       statementExport as never,
+      cloverPreSyncAuthority as never,
     ),
     balanceMovement,
     trialBalance,
     statementDrillThrough,
     statementExport,
+    cloverPreSyncAuthority,
   };
 };
+
+describe('AccountingReportsController Clover pre-sync authority shadow transport', () => {
+  it('passes store and optional statement identity to the read-only shadow service', async () => {
+    const { controller, cloverPreSyncAuthority } = makeController();
+
+    await controller.cloverPreSyncAuthorityShadow(
+      '4750_Yonge_Street',
+      'acctfindoc_july',
+    );
+
+    expect(cloverPreSyncAuthority.shadow).toHaveBeenCalledWith({
+      storeStableId: '4750_Yonge_Street',
+      statementDocumentStableId: 'acctfindoc_july',
+    });
+  });
+});
 
 describe('AccountingReportsController Trial Balance transport', () => {
   it('passes date and currency query values unchanged to the canonical projection', async () => {
