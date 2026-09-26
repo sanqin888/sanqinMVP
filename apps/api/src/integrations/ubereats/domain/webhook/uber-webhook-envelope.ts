@@ -25,12 +25,15 @@ export function parseUberWebhookEnvelopeV1(
   const resourceHref = text(root?.resource_href);
   if (!eventType) return null;
   const isStoreEvent = eventType.startsWith('store.');
+  const isStoreStatusChanged = eventType === 'store.status.changed';
   const isReportEvent = eventType === 'eats.report.success';
-  const resourceId = isStoreEvent
-    ? text(root?.store_id, meta?.resource_id)
-    : isReportEvent
-      ? text(root?.job_id)
-      : text(meta?.resource_id);
+  const resourceId = isStoreStatusChanged
+    ? text(root?.store_id, meta?.resource_id, meta?.user_id)
+    : isStoreEvent
+      ? text(root?.store_id, meta?.resource_id)
+      : isReportEvent
+        ? text(root?.job_id)
+        : text(meta?.resource_id);
   const userId = text(meta?.user_id);
   if (
     !resourceId ||
