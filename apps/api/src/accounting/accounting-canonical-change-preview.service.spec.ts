@@ -132,6 +132,7 @@ const cardSalePaymentFact = (): PaymentFinancialFactV1 => ({
   paymentMethod: 'CARD',
   operation: 'SALE',
   amountCents: 1130,
+  tipCents: 0,
   surchargeCents: 0,
   chargedTotalCents: 1130,
   refundedAmountCents: 0,

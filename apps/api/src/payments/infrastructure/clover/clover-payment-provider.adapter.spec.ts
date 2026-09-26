@@ -982,6 +982,7 @@ describe('Clover Platform Payments Gateway', () => {
     id: 'clover-payment-1',
     externalPaymentId: 'external-1',
     amount: 2000,
+    tipAmount: 0,
     result: 'success',
     order: { id: 'clover-order-1', currency: 'CAD' },
     cardTransaction: { cardType: 'VISA', last4: '4242' },
@@ -1050,6 +1051,7 @@ describe('Clover Platform Payments Gateway', () => {
       providerPaymentId: 'clover-payment-1',
       amountCents: 2000,
       currency: 'CAD',
+      tipCents: 0,
       surchargeCents: 48,
       chargedTotalCents: 2048,
       cardBrand: 'VISA',
@@ -1127,14 +1129,15 @@ describe('Clover Platform Payments Gateway', () => {
     });
   });
 
-  it('maps CREDIT_SURCHARGE separately while charged total includes all additional charges', async () => {
+  it('maps provider tip separately and includes tip plus all additional charges in charged total', async () => {
     jest.spyOn(global, 'fetch').mockResolvedValue(
       new Response(
         JSON.stringify(
           platformPayment({
+            tipAmount: 400,
             additionalCharges: {
               elements: [
-                { type: 'CREDIT_SURCHARGE', amount: 48 },
+                { type: 'CREDIT_SURCHARGE', amount: 58 },
                 { type: 'OTHER', amount: 15 },
               ],
             },
@@ -1149,8 +1152,28 @@ describe('Clover Platform Payments Gateway', () => {
       gateway.getCanonicalPayment(platformRequest),
     ).resolves.toMatchObject({
       status: 'SUCCEEDED',
-      surchargeCents: 48,
-      chargedTotalCents: 2063,
+      tipCents: 400,
+      surchargeCents: 58,
+      chargedTotalCents: 2473,
+    });
+  });
+
+  it('fails closed when Platform omits provider tip authority', async () => {
+    jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify(platformPayment({ tipAmount: undefined })),
+          { status: 200 },
+        ),
+      );
+    const gateway = createPlatformGateway();
+
+    await expect(
+      gateway.getCanonicalPayment(platformRequest),
+    ).resolves.toMatchObject({
+      status: 'UNKNOWN',
+      failureCode: 'CLOVER_PLATFORM_TIP_AMOUNT_MISSING_OR_INVALID',
     });
   });
 

@@ -14,6 +14,7 @@ const persistedRow = {
   paymentMethod: 'CARD',
   operation: 'SALE' as const,
   amountCents: 1299,
+  tipCents: null,
   surchargeCents: null,
   chargedTotalCents: null,
   refundedAmountCents: 0,
@@ -72,6 +73,7 @@ describe('PrismaPaymentTransactionRepository', () => {
       operation: 'SALE',
       status: 'CREATED',
       amountCents: 1299,
+      tipCents: null,
       surchargeCents: null,
       chargedTotalCents: null,
     });

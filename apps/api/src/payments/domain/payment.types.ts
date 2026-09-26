@@ -62,6 +62,7 @@ export type PaymentProviderOutcome = PaymentProviderIdentifiers &
     amountCents?: number;
     currency?: string;
     chargedTotalCents?: number;
+    tipCents?: number;
     surchargeCents?: number;
     refundedAmountCents?: number;
     resultCode?: string | null;

@@ -35,6 +35,7 @@ export type PaymentFinancialFactV1 = {
   paymentMethod: PaymentFinancialMethodV1;
   operation: PaymentFinancialOperationV1;
   amountCents: number;
+  tipCents: number | null;
   surchargeCents: number | null;
   chargedTotalCents: number | null;
   refundedAmountCents: number;

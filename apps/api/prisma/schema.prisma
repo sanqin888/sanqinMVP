@@ -1268,6 +1268,7 @@ model PaymentTransaction {
   paymentMethod         PaymentTransactionMethod
   operation             PaymentOperation
   amountCents           Int
+  tipCents              Int?
   surchargeCents        Int?
   chargedTotalCents     Int?
   refundedAmountCents   Int                      @default(0)

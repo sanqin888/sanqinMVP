@@ -459,8 +459,8 @@ review found one nullable `TIMESTAMP(3)` column only, no default/backfill/drop/d
 #6431/#6432 are green. The durable cutover remains unset and Slice E provider-tip completeness is
 still a hard production-cutover gate.
 
-Slice C is **LOCAL READ-ONLY PREVIEW READY FOR REVIEW** on
-`feat/accounting-clover-authority-replacement-preview-v2`. It reuses Slice A Closeout/Statement
+Slice C is **MERGED / CI GREEN / READ-ONLY** through PR #2554 / squash
+`00472a34` / CI #6439. It reuses Slice A Closeout/Statement
 authority, anchors actual historical Order-derived Clover Pending Journals, truncates remediation at
 the Accounting start boundary, emits a deterministic plan hash and balanced draft only when every
 classification component has provider authority, and never posts. Production evidence confirms the
@@ -468,6 +468,15 @@ excluded 2026-06-01 bank deposit 47,922c is exactly the 2026-05-29/30/31 pre-sta
 must remain outside remediation. June requires +12,863c Pending but is blocked because surcharge is
 UNKNOWN; July produces a fully evidenced +31,325c Pending / -18,567c Store Cash / +7,207c Tips /
 +5,551c surcharge draft. Slice D remains blocked.
+
+Slice E1 **sale fact completeness** is now **LOCAL SOURCE READY FOR REVIEW / ADDITIVE SCHEMA /
+MIGRATION REQUIRED / NO CUTOVER**. Latest-code and production-evidence audit confirms June has no
+explicit provider surcharge field to recover safely, while Platform v3 post-cutover payment truth
+does expose independent `tipAmount`. E1 keeps the fix inside Payments ownership: persist nullable
+`PaymentTransaction.tipCents`, publish `PaymentFinancialFactV1.tipCents`, include provider tip in
+charged total, and fail closed before Clover POS success when canonical tip/surcharge/charged-total
+facts are incomplete. Web Ecommerce remains guarded and unchanged. E2 reversal/refund tip authority
+remains pending.
 
 **Existing-materialized parser re-evaluation / Human Review effective snapshot — LOCAL SOURCE
 READY FOR REVIEW:** `accounting/provider-parser-reevaluation-review` adds the previously planned
