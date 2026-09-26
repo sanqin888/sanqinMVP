@@ -167,9 +167,9 @@ export function projectCloverPreSyncAuthorityCoverage(params: {
     const selected: CloverPreSyncCloseoutBatchEvidenceV1[] = [];
     let salesCents = 0;
     for (let index = start; index < candidates.length; index += 1) {
-      const batch = candidates[index]!;
+      const batch = candidates[index];
       if (selected.length > 0) {
-        const previous = selected[selected.length - 1]!;
+        const previous = selected[selected.length - 1];
         const previousDay = dateKeyToEpochDay(previous.businessDate);
         const currentDay = dateKeyToEpochDay(batch.businessDate);
         if (
@@ -184,9 +184,9 @@ export function projectCloverPreSyncAuthorityCoverage(params: {
       selected.push(batch);
       salesCents += batch.salesCents;
       if (salesCents === params.statement.principalCents) {
-        const selectedStartDay = dateKeyToEpochDay(selected[0]!.businessDate);
+        const selectedStartDay = dateKeyToEpochDay(selected[0].businessDate);
         const selectedEndDay = dateKeyToEpochDay(
-          selected[selected.length - 1]!.businessDate,
+          selected[selected.length - 1].businessDate,
         );
         const overlapsStatementPeriod =
           statementStartDay != null &&
@@ -221,7 +221,7 @@ export function projectCloverPreSyncAuthorityCoverage(params: {
     };
   }
 
-  let selected = exactCandidates[0]!;
+  let selected = exactCandidates[0];
   if (exactCandidates.length > 1) {
     const controlCompatible = exactCandidates.filter((candidate) => {
       const totals = aggregate(candidate);
@@ -246,7 +246,7 @@ export function projectCloverPreSyncAuthorityCoverage(params: {
         controls: deltasFor(params.statement, null),
       };
     }
-    selected = controlCompatible[0]!;
+    selected = controlCompatible[0];
   }
   const totals = aggregate(selected);
   const issues: CloverPreSyncCoverageIssueV1[] = [];
@@ -281,8 +281,8 @@ export function projectCloverPreSyncAuthorityCoverage(params: {
     issues,
     statementPrincipalCents: params.statement.principalCents,
     coveredCloseoutRange: {
-      from: selected[0]!.businessDate,
-      to: selected[selected.length - 1]!.businessDate,
+      from: selected[0].businessDate,
+      to: selected[selected.length - 1].businessDate,
       batchCount: selected.length,
     },
     batches: selected.map((batch) => ({

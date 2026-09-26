@@ -20,23 +20,15 @@ import {
   type CloverPreSyncCloseoutBatchEvidenceV1,
   type CloverPreSyncStatementEvidenceV1,
 } from './accounting-clover-pre-sync-authority.policy';
-import {
-  CLOVER_STATEMENT_RAW_CODES,
-} from './accounting-clover-statement.contract';
-import {
-  parseAccountingDocumentExtraction,
-} from './accounting-document-extraction';
+import { CLOVER_STATEMENT_RAW_CODES } from './accounting-clover-statement.contract';
+import { parseAccountingDocumentExtraction } from './accounting-document-extraction';
 import {
   ACCOUNTING_PROVIDER_FINANCIAL_PARSER_NAME,
   extractCloverModernStatementAuthorityControls,
   type CloverModernStatementAuthorityControls,
 } from './accounting-provider-financial.parser';
-import {
-  applyProviderFinancialReviewCorrections,
-} from './accounting-provider-financial-review.policy';
-import {
-  PROVIDER_FINANCIAL_HISTORY_START_DATE,
-} from './accounting-inbox-core.policy';
+import { applyProviderFinancialReviewCorrections } from './accounting-provider-financial-review.policy';
+import { PROVIDER_FINANCIAL_HISTORY_START_DATE } from './accounting-inbox-core.policy';
 import { AccountingPeriodService } from './accounting-period.service';
 
 type FinancialDocumentRow = Awaited<
@@ -52,9 +44,7 @@ const jsonRecord = (value: unknown): Record<string, unknown> =>
     : {};
 
 const nonNegativeInteger = (value: unknown): number | null =>
-  typeof value === 'number' &&
-  Number.isSafeInteger(value) &&
-  value >= 0
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
     ? value
     : null;
 
@@ -130,11 +120,10 @@ export class AccountingCloverPreSyncAuthorityService {
         statement,
         closeouts,
       });
-      const diagnosticRange =
-        coverage.coveredCloseoutRange ?? {
-          from: statement.periodStart,
-          to: statement.periodEnd,
-        };
+      const diagnosticRange = coverage.coveredCloseoutRange ?? {
+        from: statement.periodStart,
+        to: statement.periodEnd,
+      };
       const fromInclusive = DateTime.fromISO(diagnosticRange.from, {
         zone: timezone,
       }).startOf('day');
@@ -227,15 +216,12 @@ export class AccountingCloverPreSyncAuthorityService {
     const principalLine = lines.find(
       (line) =>
         line.rawCode === CLOVER_STATEMENT_RAW_CODES.ACCOUNT_AMOUNT_SUBMITTED ||
-        /^Total Amount Submitted$|^Amount Submitted$/i.test(
-          line.rawName ?? '',
-        ),
+        /^Total Amount Submitted$|^Amount Submitted$/i.test(line.rawName ?? ''),
     );
     if (!principalLine) return null;
     const controls = this.statementAuthorityControls(row);
     const surchargeLine = lines.find(
-      (line) =>
-        line.rawCode === CLOVER_STATEMENT_RAW_CODES.SURCHARGE_COLLECTED,
+      (line) => line.rawCode === CLOVER_STATEMENT_RAW_CODES.SURCHARGE_COLLECTED,
     );
     return {
       documentStableId: row.documentStableId,
@@ -374,10 +360,7 @@ export class AccountingCloverPreSyncAuthorityService {
     };
   }
 
-  readDocuments(
-    storeStableId: string,
-    statementDocumentStableId?: string,
-  ) {
+  readDocuments(storeStableId: string, statementDocumentStableId?: string) {
     return this.prisma.accountingProviderFinancialDocument.findMany({
       where: {
         provider: AccountingFinancialProvider.CLOVER,

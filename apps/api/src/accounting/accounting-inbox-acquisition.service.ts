@@ -57,9 +57,7 @@ import {
   parseAccountingStructuredExpenseCsv,
 } from './accounting-structured-expense-csv';
 import { normalizeAccountingManualUploadFilename } from './accounting-upload-filename';
-import {
-  isCloverCloseoutEmailEvidence,
-} from './accounting-clover-closeout.contract';
+import { isCloverCloseoutEmailEvidence } from './accounting-clover-closeout.contract';
 
 export const ACCOUNTING_INBOX_FILE_MAX_BYTES = 25 * 1024 * 1024;
 const GENERIC_PARSER_NAME = 'accounting-generic-document-review';

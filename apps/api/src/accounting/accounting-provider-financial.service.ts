@@ -52,9 +52,7 @@ import type { AccountingScannedPdfOcrEvidence } from './accounting-scanned-pdf-r
 import { AccountingProviderFinancialReviewService } from './accounting-provider-financial-review.service';
 import type { ProviderFinancialReviewDraftInput } from './accounting-provider-financial-review.policy';
 import { getAccountingUploadsDir } from './accounting-storage-path';
-import {
-  CLOVER_CLOSEOUT_BOUNDARY_EVIDENCE_START_DATE,
-} from './accounting-clover-closeout.contract';
+import { CLOVER_CLOSEOUT_BOUNDARY_EVIDENCE_START_DATE } from './accounting-clover-closeout.contract';
 
 export type AccountingProviderFinancialParseContext = Omit<
   ProviderFinancialParseInput,
@@ -74,12 +72,12 @@ const isExcludedBeforeFinancialHistory = (
 ): boolean =>
   Boolean(
     parsed.periodEnd &&
-      parsed.periodEnd < PROVIDER_FINANCIAL_HISTORY_START_DATE &&
-      !(
-        parsed.provider === AccountingFinancialProvider.CLOVER &&
-        parsed.documentType === AccountingFinancialDocumentType.BATCH_CONTROL &&
-        parsed.periodEnd >= CLOVER_CLOSEOUT_BOUNDARY_EVIDENCE_START_DATE
-      ),
+    parsed.periodEnd < PROVIDER_FINANCIAL_HISTORY_START_DATE &&
+    !(
+      parsed.provider === AccountingFinancialProvider.CLOVER &&
+      parsed.documentType === AccountingFinancialDocumentType.BATCH_CONTROL &&
+      parsed.periodEnd >= CLOVER_CLOSEOUT_BOUNDARY_EVIDENCE_START_DATE
+    ),
   );
 
 const XLSX_MIME =

@@ -87,9 +87,12 @@ describe('Clover pre-sync authority coverage policy', () => {
           tipsCents: 9896,
         },
         surcharge: { status: 'UNKNOWN', amountCents: null },
-        controls: expect.objectContaining({
+        controls: {
           principalDeltaCents: 0,
-        }),
+          transactionCountDelta: null,
+          refundCountDelta: null,
+          refundAmountDeltaCents: null,
+        },
       }),
     );
   });
@@ -214,7 +217,7 @@ describe('Clover pre-sync authority coverage policy', () => {
       tipsCents: 9896,
       tipsCount: 47,
     });
-    batches.push({ ...batches[0]!, documentStableId: 'acctfindoc_conflict' });
+    batches.push({ ...batches[0], documentStableId: 'acctfindoc_conflict' });
 
     const result = projectCloverPreSyncAuthorityCoverage({
       statement: statement({}),

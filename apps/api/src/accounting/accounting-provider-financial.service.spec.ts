@@ -348,8 +348,7 @@ Net Total
         artifactStableId: 'acctart_may29_closeout',
         providerHint: AccountingFinancialProvider.CLOVER,
         documentTypeHint: AccountingFinancialDocumentType.BATCH_CONTROL,
-        emailSubject:
-          'MID 29351880018 Closeout Report for May 29, 2026',
+        emailSubject: 'MID 29351880018 Closeout Report for May 29, 2026',
         text: `
 Closeout Batch Report
 Batch ID:

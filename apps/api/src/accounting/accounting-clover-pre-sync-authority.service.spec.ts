@@ -317,82 +317,78 @@ describe('AccountingCloverPreSyncAuthorityService', () => {
     expect(result.mutationMode).toBe('READ_ONLY_SHADOW');
     expect(result.projections).toHaveLength(2);
 
-    expect(result.projections[0]).toEqual(
-      expect.objectContaining({
-        statementDocumentStableId: 'acctfindoc_june',
-        statementPrincipalCents: 336210,
-        coverage: expect.objectContaining({
-          status: 'CLOSED',
-          coveredCloseoutRange: {
-            from: '2026-05-29',
-            to: '2026-06-28',
-            batchCount: 31,
-          },
-          closeout: expect.objectContaining({
-            salesCount: 180,
-            salesCents: 336210,
-            refundCount: 0,
-            refundCents: 0,
-            tipsCents: 9896,
-          }),
-          surcharge: { status: 'UNKNOWN', amountCents: null },
-        }),
-        composition: {
-          rule: 'SUBMITTED_INCLUDES_TIPS_AND_SURCHARGE',
-          tipsAuthority: 'CLOVER_CLOSEOUT_PROVIDER_EVIDENCE',
-          surchargeAuthority: 'UNKNOWN',
+    expect(result.projections[0]).toMatchObject({
+      statementDocumentStableId: 'acctfindoc_june',
+      statementPrincipalCents: 336210,
+      coverage: {
+        status: 'CLOSED',
+        coveredCloseoutRange: {
+          from: '2026-05-29',
+          to: '2026-06-28',
+          batchCount: 31,
         },
-        orderCardDiagnostic: expect.objectContaining({
-          authority: 'NON_AUTHORITATIVE',
-          count: 1,
-          amountCents: 300000,
-          deltaToStatementPrincipalCents: -36210,
-        }),
-      }),
-    );
+        closeout: {
+          salesCount: 180,
+          salesCents: 336210,
+          refundCount: 0,
+          refundCents: 0,
+          tipsCents: 9896,
+        },
+        surcharge: { status: 'UNKNOWN', amountCents: null },
+      },
+      composition: {
+        rule: 'SUBMITTED_INCLUDES_TIPS_AND_SURCHARGE',
+        tipsAuthority: 'CLOVER_CLOSEOUT_PROVIDER_EVIDENCE',
+        surchargeAuthority: 'UNKNOWN',
+      },
+      orderCardDiagnostic: {
+        authority: 'NON_AUTHORITATIVE',
+        count: 1,
+        amountCents: 300000,
+        deltaToStatementPrincipalCents: -36210,
+      },
+    });
 
-    expect(result.projections[1]).toEqual(
-      expect.objectContaining({
-        statementDocumentStableId: 'acctfindoc_july',
-        statementPrincipalCents: 350132,
-        coverage: expect.objectContaining({
-          status: 'CLOSED',
-          coveredCloseoutRange: {
-            from: '2026-06-30',
-            to: '2026-07-30',
-            batchCount: 31,
-          },
-          closeout: expect.objectContaining({
-            salesCount: 230,
-            salesCents: 350132,
-            refundCount: 0,
-            refundCents: 0,
-            tipsCents: 7207,
-          }),
-          surcharge: {
-            status: 'EXPLICIT_PROVIDER_EVIDENCE',
-            amountCents: 5551,
-          },
-          controls: {
-            principalDeltaCents: 0,
-            transactionCountDelta: 0,
-            refundCountDelta: 0,
-            refundAmountDeltaCents: 0,
-          },
-        }),
-        composition: {
-          rule: 'SUBMITTED_INCLUDES_TIPS_AND_SURCHARGE',
-          tipsAuthority: 'CLOVER_CLOSEOUT_PROVIDER_EVIDENCE',
-          surchargeAuthority: 'CLOVER_STATEMENT_EXPLICIT_PROVIDER_EVIDENCE',
+    expect(result.projections[1]).toMatchObject({
+      statementDocumentStableId: 'acctfindoc_july',
+      statementPrincipalCents: 350132,
+      coverage: {
+        status: 'CLOSED',
+        coveredCloseoutRange: {
+          from: '2026-06-30',
+          to: '2026-07-30',
+          batchCount: 31,
         },
-        orderCardDiagnostic: expect.objectContaining({
-          authority: 'NON_AUTHORITATIVE',
-          count: 1,
-          amountCents: 349000,
-          deltaToStatementPrincipalCents: -1132,
-        }),
-      }),
-    );
+        closeout: {
+          salesCount: 230,
+          salesCents: 350132,
+          refundCount: 0,
+          refundCents: 0,
+          tipsCents: 7207,
+        },
+        surcharge: {
+          status: 'EXPLICIT_PROVIDER_EVIDENCE',
+          amountCents: 5551,
+        },
+        controls: {
+          principalDeltaCents: 0,
+          transactionCountDelta: 0,
+          refundCountDelta: 0,
+          refundAmountDeltaCents: 0,
+        },
+      },
+      composition: {
+        rule: 'SUBMITTED_INCLUDES_TIPS_AND_SURCHARGE',
+        tipsAuthority: 'CLOVER_CLOSEOUT_PROVIDER_EVIDENCE',
+        surchargeAuthority: 'CLOVER_STATEMENT_EXPLICIT_PROVIDER_EVIDENCE',
+      },
+      orderCardDiagnostic: {
+        authority: 'NON_AUTHORITATIVE',
+        count: 1,
+        amountCents: 349000,
+        deltaToStatementPrincipalCents: -1132,
+      },
+    });
     expect(result.projections.every((projection) => projection.authority)).toBe(
       true,
     );

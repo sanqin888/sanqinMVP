@@ -15,8 +15,6 @@ export function isCloverCloseoutEmailEvidence(
 ): boolean {
   return (
     senderEmail?.trim().toLowerCase() === CLOVER_CLOSEOUT_EMAIL_SENDER &&
-    /Closeout Report for\s+[A-Za-z]{3}\s+\d{1,2},\s+\d{4}/i.test(
-      subject ?? '',
-    )
+    /Closeout Report for\s+[A-Za-z]{3}\s+\d{1,2},\s+\d{4}/i.test(subject ?? '')
   );
 }

@@ -343,9 +343,7 @@ function parseCloverStatement(
       documentExtractionEngine: extraction.engine,
       layoutAwareExtraction: true,
       amountsFundedExcludedFromNormalizedLines: true,
-      ...(authorityControls
-        ? { authorityControls }
-        : {}),
+      ...(authorityControls ? { authorityControls } : {}),
     },
     lines,
   };
@@ -1034,8 +1032,7 @@ export function extractCloverModernStatementAuthorityControls(
         line.geometry.top - processingHeading.geometry!.top < 0.15,
     )
     .sort(
-      (left, right) =>
-        (left.geometry?.left ?? 0) - (right.geometry?.left ?? 0),
+      (left, right) => (left.geometry?.left ?? 0) - (right.geometry?.left ?? 0),
     );
   const amountHeaders = exactLayoutLines(extraction, 'Amount')
     .filter(
@@ -1046,8 +1043,7 @@ export function extractCloverModernStatementAuthorityControls(
         line.geometry.top - processingHeading.geometry!.top < 0.15,
     )
     .sort(
-      (left, right) =>
-        (left.geometry?.left ?? 0) - (right.geometry?.left ?? 0),
+      (left, right) => (left.geometry?.left ?? 0) - (right.geometry?.left ?? 0),
     );
   if (itemHeaders.length < 2 || amountHeaders.length < 2) return null;
 
@@ -1057,37 +1053,36 @@ export function extractCloverModernStatementAuthorityControls(
         line.page === page &&
         line.geometry &&
         line.geometry.left < 0.2 &&
-        line.geometry.top > itemHeaders[0]!.geometry!.top &&
-        line.geometry.top - itemHeaders[0]!.geometry!.top < 0.2,
+        line.geometry.top > itemHeaders[0].geometry.top &&
+        line.geometry.top - itemHeaders[0].geometry.top < 0.2,
     )
     .sort(
-      (left, right) =>
-        (left.geometry?.top ?? 0) - (right.geometry?.top ?? 0),
+      (left, right) => (left.geometry?.top ?? 0) - (right.geometry?.top ?? 0),
     )[0];
   if (!processingTotalRow) return null;
 
   const transactionCount = rowValueNearestHeader({
     extraction,
     row: processingTotalRow,
-    header: itemHeaders[0]!,
+    header: itemHeaders[0],
     parse: parseNonNegativeIntegerToken,
   });
   const amountSubmittedCents = rowValueNearestHeader({
     extraction,
     row: processingTotalRow,
-    header: amountHeaders[0]!,
+    header: amountHeaders[0],
     parse: parseMoneyCents,
   });
   const refundCount = rowValueNearestHeader({
     extraction,
     row: processingTotalRow,
-    header: itemHeaders[1]!,
+    header: itemHeaders[1],
     parse: parseNonNegativeIntegerToken,
   });
   const refundAmountCents = rowValueNearestHeader({
     extraction,
     row: processingTotalRow,
-    header: amountHeaders[1]!,
+    header: amountHeaders[1],
     parse: parseMoneyCents,
   });
   if (
@@ -1120,16 +1115,12 @@ export function extractCloverModernStatementAuthorityControls(
           line.page === cardTypeHeader.page &&
           line.geometry &&
           line.geometry.left > 0.7 &&
-          Math.abs(line.geometry.top - cardTypeHeader.geometry!.top) < 0.03,
+          Math.abs(line.geometry.top - cardTypeHeader.geometry.top) < 0.03,
       )
       .sort(
         (left, right) =>
-          Math.abs(
-            (left.geometry?.top ?? 0) - cardTypeHeader.geometry!.top,
-          ) -
-          Math.abs(
-            (right.geometry?.top ?? 0) - cardTypeHeader.geometry!.top,
-          ),
+          Math.abs((left.geometry?.top ?? 0) - cardTypeHeader.geometry.top) -
+          Math.abs((right.geometry?.top ?? 0) - cardTypeHeader.geometry.top),
       )[0];
     const cardTypeTotalRow = exactLayoutLines(extraction, 'Total')
       .filter(
@@ -1137,12 +1128,11 @@ export function extractCloverModernStatementAuthorityControls(
           line.page === cardTypeHeader.page &&
           line.geometry &&
           line.geometry.left < 0.2 &&
-          line.geometry.top > cardTypeHeader.geometry!.top &&
-          line.geometry.top - cardTypeHeader.geometry!.top < 0.25,
+          line.geometry.top > cardTypeHeader.geometry.top &&
+          line.geometry.top - cardTypeHeader.geometry.top < 0.25,
       )
       .sort(
-        (left, right) =>
-          (left.geometry?.top ?? 0) - (right.geometry?.top ?? 0),
+        (left, right) => (left.geometry?.top ?? 0) - (right.geometry?.top ?? 0),
       )[0];
     if (surchargeHeader?.geometry && cardTypeTotalRow) {
       surchargeCollectedCents = rowValueNearestHeader({

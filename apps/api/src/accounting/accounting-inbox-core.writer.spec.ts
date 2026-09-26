@@ -653,7 +653,9 @@ describe('Accounting Inbox core persistence writer', () => {
         }),
       ),
     ).rejects.toThrow(AccountingInboxWriterConflictError);
-    expect(tx.accountingProviderFinancialDocument.create).not.toHaveBeenCalled();
+    expect(
+      tx.accountingProviderFinancialDocument.create,
+    ).not.toHaveBeenCalled();
     expect('accountingJournalEntry' in tx).toBe(false);
   });
 

@@ -10,9 +10,7 @@ import {
   CLOVER_CLOSEOUT_BOUNDARY_EVIDENCE_START_DATE,
   isCloverCloseoutEmailEvidence,
 } from './accounting-clover-closeout.contract';
-import {
-  PROVIDER_FINANCIAL_HISTORY_START_DATE,
-} from './accounting-inbox-core.policy';
+import { PROVIDER_FINANCIAL_HISTORY_START_DATE } from './accounting-inbox-core.policy';
 
 const GMAIL_BILLS_LABEL = 'SanQ-Bills';
 
@@ -160,10 +158,7 @@ export class AccountingGmailIngestService {
       };
     }
 
-    const trustDecision = isCloverCloseoutEmailEvidence(
-      senderEmail,
-      subject,
-    )
+    const trustDecision = isCloverCloseoutEmailEvidence(senderEmail, subject)
       ? AccountingInboxTrustDecision.TRUSTED
       : senderEmail
         ? await this.inbox.senderTrustDecision(senderEmail)
@@ -302,8 +297,8 @@ export class AccountingGmailIngestService {
     const receivedDateKey = receivedDate.toISODate();
     return Boolean(
       receivedDateKey &&
-        receivedDateKey >= CLOVER_CLOSEOUT_BOUNDARY_EVIDENCE_START_DATE &&
-        receivedDate.toMillis() < accountingStart.toMillis(),
+      receivedDateKey >= CLOVER_CLOSEOUT_BOUNDARY_EVIDENCE_START_DATE &&
+      receivedDate.toMillis() < accountingStart.toMillis(),
     );
   }
 

@@ -74,9 +74,7 @@ import {
   OrderSalesAttributionModule,
 } from '../orders/public-api';
 import { PaymentFinancialFactsModule } from '../payments/public-api';
-import {
-  AccountingCloverPreSyncAuthorityService,
-} from './accounting-clover-pre-sync-authority.service';
+import { AccountingCloverPreSyncAuthorityService } from './accounting-clover-pre-sync-authority.service';
 
 @Module({
   imports: [
