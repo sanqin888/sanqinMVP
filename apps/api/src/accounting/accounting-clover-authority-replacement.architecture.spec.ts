@@ -9,7 +9,10 @@ const POLICY = resolve(
   __dirname,
   'accounting-clover-authority-replacement.policy.ts',
 );
-const REPORTS_CONTROLLER = resolve(__dirname, 'accounting-reports.controller.ts');
+const REPORTS_CONTROLLER = resolve(
+  __dirname,
+  'accounting-reports.controller.ts',
+);
 const SETTLEMENT_CONTROLLER = resolve(
   __dirname,
   'accounting-provider-settlement.controller.ts',
