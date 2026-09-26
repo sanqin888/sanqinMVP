@@ -104,7 +104,10 @@ export class AccountingCloverPreSyncAuthorityService {
         return evidence ? [evidence] : [];
       });
 
-    const projections = [];
+    const projections: Array<{
+      statementDocumentStableId: string;
+      [key: string]: unknown;
+    }> = [];
     for (const row of statements) {
       const statement = this.statementEvidence(row);
       if (!statement) {

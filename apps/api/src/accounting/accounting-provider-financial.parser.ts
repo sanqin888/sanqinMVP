@@ -1046,6 +1046,18 @@ export function extractCloverModernStatementAuthorityControls(
       (left, right) => (left.geometry?.left ?? 0) - (right.geometry?.left ?? 0),
     );
   if (itemHeaders.length < 2 || amountHeaders.length < 2) return null;
+  const submittedItemHeader = itemHeaders[0];
+  const refundItemHeader = itemHeaders[1];
+  const submittedAmountHeader = amountHeaders[0];
+  const refundAmountHeader = amountHeaders[1];
+  if (
+    !submittedItemHeader.geometry ||
+    !refundItemHeader.geometry ||
+    !submittedAmountHeader.geometry ||
+    !refundAmountHeader.geometry
+  ) {
+    return null;
+  }
 
   const processingTotalRow = exactLayoutLines(extraction, 'Total')
     .filter(
@@ -1053,8 +1065,8 @@ export function extractCloverModernStatementAuthorityControls(
         line.page === page &&
         line.geometry &&
         line.geometry.left < 0.2 &&
-        line.geometry.top > itemHeaders[0].geometry.top &&
-        line.geometry.top - itemHeaders[0].geometry.top < 0.2,
+        line.geometry.top > submittedItemHeader.geometry.top &&
+        line.geometry.top - submittedItemHeader.geometry.top < 0.2,
     )
     .sort(
       (left, right) => (left.geometry?.top ?? 0) - (right.geometry?.top ?? 0),
@@ -1064,25 +1076,25 @@ export function extractCloverModernStatementAuthorityControls(
   const transactionCount = rowValueNearestHeader({
     extraction,
     row: processingTotalRow,
-    header: itemHeaders[0],
+    header: submittedItemHeader,
     parse: parseNonNegativeIntegerToken,
   });
   const amountSubmittedCents = rowValueNearestHeader({
     extraction,
     row: processingTotalRow,
-    header: amountHeaders[0],
+    header: submittedAmountHeader,
     parse: parseMoneyCents,
   });
   const refundCount = rowValueNearestHeader({
     extraction,
     row: processingTotalRow,
-    header: itemHeaders[1],
+    header: refundItemHeader,
     parse: parseNonNegativeIntegerToken,
   });
   const refundAmountCents = rowValueNearestHeader({
     extraction,
     row: processingTotalRow,
-    header: amountHeaders[1],
+    header: refundAmountHeader,
     parse: parseMoneyCents,
   });
   if (
@@ -1109,18 +1121,19 @@ export function extractCloverModernStatementAuthorityControls(
       ),
     );
   if (cardTypeHeader?.geometry) {
+    const cardTypeHeaderGeometry = cardTypeHeader.geometry;
     const surchargeHeader = surchargeLines
       .filter(
         (line) =>
           line.page === cardTypeHeader.page &&
           line.geometry &&
           line.geometry.left > 0.7 &&
-          Math.abs(line.geometry.top - cardTypeHeader.geometry.top) < 0.03,
+          Math.abs(line.geometry.top - cardTypeHeaderGeometry.top) < 0.03,
       )
       .sort(
         (left, right) =>
-          Math.abs((left.geometry?.top ?? 0) - cardTypeHeader.geometry.top) -
-          Math.abs((right.geometry?.top ?? 0) - cardTypeHeader.geometry.top),
+          Math.abs((left.geometry?.top ?? 0) - cardTypeHeaderGeometry.top) -
+          Math.abs((right.geometry?.top ?? 0) - cardTypeHeaderGeometry.top),
       )[0];
     const cardTypeTotalRow = exactLayoutLines(extraction, 'Total')
       .filter(
@@ -1128,8 +1141,8 @@ export function extractCloverModernStatementAuthorityControls(
           line.page === cardTypeHeader.page &&
           line.geometry &&
           line.geometry.left < 0.2 &&
-          line.geometry.top > cardTypeHeader.geometry.top &&
-          line.geometry.top - cardTypeHeader.geometry.top < 0.25,
+          line.geometry.top > cardTypeHeaderGeometry.top &&
+          line.geometry.top - cardTypeHeaderGeometry.top < 0.25,
       )
       .sort(
         (left, right) => (left.geometry?.top ?? 0) - (right.geometry?.top ?? 0),
