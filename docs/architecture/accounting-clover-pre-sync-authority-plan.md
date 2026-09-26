@@ -267,8 +267,8 @@ Slice A is therefore **PRODUCTION VERIFIED / CLOSED**.
 
 ### Slice B — Durable Clover payment-fact cutover contract
 
-**Implementation state (2026-09-26): LOCAL SOURCE READY FOR REVIEW / MIGRATION REQUIRED /
-CUTOVER NOT SET.**
+**Implementation state (2026-09-26): SOURCE + USER-GENERATED ADDITIVE MIGRATION MERGED TO DEV /
+CI GREEN / CUTOVER NOT SET.**
 
 The source change is deliberately contract-only:
 
@@ -294,9 +294,12 @@ timestamp merely by being deployed and does not perturb current settlement repla
 actual go-live procedure remains a later explicitly controlled operation after the companion
 additive migration and Slice E readiness gates are satisfied.
 
-The schema change requires a user-generated additive Prisma migration under the repository migration
-gate. No migration file is generated or edited by MCP. Production promotion is blocked until that
-migration has been generated locally, reviewed, committed and merged back into `dev`.
+The schema change is now paired with user-generated migration
+`20260926064114_accounting_clover_payment_fact_cutover_contract` on `dev@459034c2`. Review
+confirmed the SQL is additive-only: one nullable `TIMESTAMP(3)` column, with no default, backfill,
+DROP, constraint tightening or data rewrite. CI #6431 and #6432 are green. The migration contract is
+therefore ready for normal future promotion, but the production cutover timestamp itself remains
+unset and Slice E remains a hard go-live gate.
 
 Readiness remains intentionally incomplete for real cutover: `PaymentFinancialFactV1` and
 `PaymentTransaction` still have no independent provider-proven `tipCents`, and the 2026-09-26
@@ -305,13 +308,52 @@ pre-cutover gate; Slice B does not switch settlement/posting authority by itself
 
 ### Slice C — Historical authority-replacement preview
 
-No posting initially.
+**Implementation state (2026-09-26): LOCAL SOURCE READY FOR REVIEW / READ-ONLY / NO POSTING /
+NO SCHEMA OR MIGRATION CHANGE.**
 
-- enumerate pre-sync Order-derived Clover Pending movement from 2026-06-01;
-- generate deterministic proposed compensating adjustments;
-- show resulting Closeout/statement-authoritative Pending roll-forward;
-- require human review and plan hash;
-- fail closed on missing Closeout coverage or ambiguous provider periods.
+The preview reuses the closed Slice A authority projection rather than reopening parser ownership.
+For each closed statement-controlled provider batch sequence it:
+
+- truncates provider evidence at the Accounting start boundary before any remediation math;
+- anchors historical Order-derived Clover Pending to the immutable Journal entries that actually
+  moved `account_clover_pending`;
+- compares the provider-authoritative principal with the net Order-derived Pending movement;
+- separately recognizes provider-proven Tips and explicit statement surcharge that are absent from
+  Order economics;
+- derives only the aggregate Store Cash ↔ Clover Pending tender reclassification needed to balance
+  the provider authority replacement, without transaction-by-transaction matching;
+- emits a deterministic balanced draft Journal only when every required component has authority;
+- projects the resulting Clover Pending roll-forward without writing any Journal;
+- hashes the complete evidence/proposal report for human review.
+
+Production read-only readiness established an important start-boundary fact: the 2026-06-01 CIBC
+Clover deposit is 47,922c and is deliberately `EXCLUDED` from canonical payout posting. It equals
+the 2026-05-29/30/31 Closeout Sales exactly
+(`20,098 + 11,404 + 16,420 = 47,922`). Those provider batches predate the 2026-06-01 Accounting
+start, so neither that deposit nor those batches belong in historical remediation.
+
+The current production-shaped preview math is:
+
+- June in-scope provider batches are 2026-06-02..2026-06-28: provider principal 288,288c,
+  provider-proven Tips 8,343c, net Order-derived Clover Pending 275,425c, therefore Pending authority
+  delta +12,863c. June statement surcharge is still UNKNOWN; 4,520c remains unclassified between
+  surcharge and aggregate tender attribution, so June must remain `BLOCKED` and no draft Journal
+  is produced.
+- July provider batches are 2026-06-30..2026-07-30: provider principal 350,132c, Tips 7,207c,
+  explicit surcharge 5,551c and net Order-derived Clover Pending 318,807c. The deterministic
+  balanced preview is +31,325c Clover Pending, -18,567c Store Cash, +7,207c Tip revenue and +5,551c
+  card-surcharge revenue. This period can be `READY` for human review while June remains blocked.
+- The Pending roll-forward independently closes: June's actual 6/28 closing is +30,596c; after the
+  proposed +12,863c authority adjustment it becomes +43,459c, exactly cleared by the canonical
+  2026-06-29 Clover payout of 43,459c. July therefore opens at provider-authoritative 0c. July's
+  actual period movement is -27,793c; adding the +31,325c proposal leaves +3,532c at 2026-07-30,
+  exactly matching the next canonical 2026-07-31 Clover payout of 3,532c.
+
+The route is `GET /accounting/report/clover-authority-replacement-preview?storeStableId=...`.
+Architecture coverage explicitly keeps Slice C read-only: no Journal create/update/delete path,
+no cutover writer and no settlement execution call is available from this preview. Slice D remains
+blocked until the Slice C plan is reviewed and the June UNKNOWN-surcharge classification problem is
+resolved without guessing.
 
 ### Slice D — Historical correction posting + reconciliation UI
 
@@ -351,5 +393,6 @@ State:
 
 **SLICE A PRODUCTION VERIFIED / CLOSED**  
 **NOT READY FOR HISTORICAL JOURNAL CORRECTION**  
-**SLICE B LOCAL SOURCE READY FOR REVIEW / MIGRATION REQUIRED / PRODUCTION CUTOVER NOT SET**  
+**SLICE B SOURCE + ADDITIVE MIGRATION MERGED TO DEV / CI GREEN / PRODUCTION CUTOVER NOT SET**  
+**SLICE C LOCAL READ-ONLY PREVIEW READY FOR REVIEW / JUNE BLOCKED ON UNKNOWN SURCHARGE / JULY DRAFT READY**  
 **SLICE E PAYMENT-FACT COMPLETENESS REMAINS A HARD PRE-CUTOVER GATE**

@@ -510,11 +510,15 @@ Accounting authority contract 见
 2026-09-26 在 production `main@b7a01075` 完成验证并 CLOSED：June/July provider coverage 均唯一闭合，
 authenticated shadow GET 返回 200，且验证未产生任何 Journal 写入。这一 closeout **不代表** POS-Clover
 production payment cutover 已发生，也不设置 `providerPaymentFactCutoverAt`。Accounting Slice B
-现已在本地 source review gate 建立独立 nullable persisted contract、只允许 Clover `null -> timestamp`
-的一次性 audited writer、独立读取语义以及 post-cutover 缺 Payments canonical fact 时的 fail-closed
-policy；它没有 controller/flag listener/go-live caller，因此部署 source 本身不会设置 production
-timestamp。对应 Prisma migration 仍必须由用户本地生成、单独审阅并合回 `dev` 后才可 promotion。
-另外 `PaymentFinancialFactV1` / `PaymentTransaction` 仍缺 provider-proven `tipCents`，所以 Slice E
+source 已通过 PR #2552 合入，user-generated migration
+`20260926064114_accounting_clover_payment_fact_cutover_contract` 也已进入 `dev@459034c2`；SQL
+审阅确认只是一个 nullable `TIMESTAMP(3)` column，无 default/backfill/drop/data rewrite，CI
+#6431/#6432 全绿。writer 仍只有 Clover `null -> timestamp` 的 audited one-way 语义，并且没有
+controller/flag listener/go-live caller，所以 production cutover timestamp 仍未设置。Accounting
+Slice C 现进入 read-only historical authority replacement preview：6/1 的 47,922c bank deposit
+精确对应 5/29-5/31 pre-start Closeout，因此保持 excluded；June 因 surcharge UNKNOWN 继续
+fail-closed，July 可以形成完整 provider-authoritative draft。另
+`PaymentFinancialFactV1` / `PaymentTransaction` 仍缺 provider-proven `tipCents`，所以 Slice E
 payment-fact completeness 继续作为真实 production cutover 的硬 gate。
 
 ## 新主链路
