@@ -327,8 +327,10 @@ Therefore PAYOUT-C is **PRODUCTION VERIFIED**.
 
 PAYOUT-D is intentionally a read-only Accounting report. It does not attempt a one-to-one match between monthly statement payout totals and bank deposits.
 
-> **2026-09-25 Clover authority correction:** the bullets below describe the Journal composition
-> that PAYOUT-D was built to project, not the final economic authority for pre-sync Clover CARD.
+> **2026-09-26 Clover authority correction — Slice A PRODUCTION VERIFIED / CLOSED:** the bullets
+> below describe the Journal composition that PAYOUT-D was built to project, not the final economic
+> authority for pre-sync Clover CARD. PR #2547 plus the zero-activity correction PR #2549 /
+> `b7a01075` established and production-verified the read-only provider authority shadow.
 > Real June/July Closeout + monthly-statement evidence subsequently proved that, from Accounting
 > start 2026-06-01 until production POS-Clover payment cutover, Clover receivable/Pending authority
 > must come from Clover Daily Closeout + Monthly Statement rather than

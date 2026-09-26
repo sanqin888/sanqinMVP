@@ -1,7 +1,7 @@
 # Accounting Clover Pre-Sync Financial Authority Plan
 
-Status: **DESIGN FROZEN FOR READINESS / NO JOURNAL MUTATION YET**  
-Date: 2026-09-25  
+Status: **SLICE A PRODUCTION VERIFIED / CLOSED / READ-ONLY AUTHORITY SHADOW**  
+Date: 2026-09-26  
 Scope: SanQ Accounting start **2026-06-01** through the future production POS-Clover Unified Payment cutover.
 
 ## 1. Why this plan exists
@@ -220,12 +220,15 @@ expose explicit surcharge evidence; legacy statements may not.
 
 ### Slice A — Pre-Sync Authority Contract + Shadow Coverage
 
-**Implementation state (2026-09-26): Slice A MERGED / CI GREEN through PR #2547 / squash
-`d68cc317`; production Gmail acquisition is verified. A follow-up source correction on
-`fix/accounting-clover-zero-activity-batch-gaps` removes the invalid calendar-day continuity
-assumption exposed by the real June batches; remote CI for that correction is pending.** Per
-`AGENTS.md`, no local lint/build/test is run before remote validation. Neither Slice A nor this
-follow-up adds a Prisma migration, cutover timestamp, historical correction or Journal mutation.
+**Implementation state (2026-09-26): PRODUCTION VERIFIED / CLOSED.** Slice A merged through
+PR #2547 / squash `d68cc317`; the zero-activity batch-gap correction merged through PR #2549 /
+squash `b7a01075`, with CI #6419 green. Production runs `main@b7a01075`. Gmail acquisition
+materialized 113 unique Clover `BATCH_CONTROL` documents, all parser v9 `SUCCESS`, with zero
+conflicting Batch IDs. The authenticated production shadow route returned HTTP 200, and read-only
+production re-evaluation found exactly one principal-closing provider-batch sequence for June and
+exactly one for July. No Journal entry was created by deployment or shadow verification. Neither
+Slice A nor its follow-up adds a Prisma migration, cutover timestamp, historical correction or
+Journal mutation.
 
 No Journal mutation.
 
@@ -254,10 +257,13 @@ on duplicate Batch IDs, ambiguity and statement count/refund mismatches. The sha
 `GET /accounting/report/clover-pre-sync-authority-shadow?storeStableId=...`; Order CARD
 comparison is returned under an explicit `NON_AUTHORITATIVE` diagnostic contract.
 
-Exit gate remains: June and July provider principal must close exactly with no inferred surcharge.
-Production Gmail ingestion has now supplied the real Closeout evidence and the raw totals close
-exactly; Slice A is not marked production-verified/closed until the zero-activity-date follow-up
-passes remote CI, is deployed, and the live shadow reports June and July as `CLOSED`.
+Exit gate is satisfied. Production June closes uniquely over 27 observed batches spanning
+2026-05-29..2026-06-28 to 336,210c / 180 sales / 9,896c Tips / 0 refunds with surcharge remaining
+`UNKNOWN`; production July closes uniquely over 31 observed batches spanning
+2026-06-30..2026-07-30 to 350,132c / 230 sales / 7,207c Tips / 0 refunds with explicit surcharge
+5,551c. The authenticated production shadow route returned HTTP 200 after deployment of
+`b7a01075`, and zero new Accounting Journal entries were observed after the verification request.
+Slice A is therefore **PRODUCTION VERIFIED / CLOSED**.
 
 ### Slice B — Durable Clover payment-fact cutover contract
 
@@ -315,6 +321,6 @@ This plan does not:
 
 State:
 
-**SLICE A MERGED / CI GREEN; PRODUCTION EVIDENCE ACQUIRED; ZERO-ACTIVITY COVERAGE FOLLOW-UP PENDING REMOTE CI + LIVE SHADOW RE-VERIFICATION**  
+**SLICE A PRODUCTION VERIFIED / CLOSED**  
 **NOT READY FOR HISTORICAL JOURNAL CORRECTION**  
-**SLICE B WILL REQUIRE SCHEMA/MIGRATION AUTHORIZATION AT IMPLEMENTATION TIME**
+**SLICE B REMAINS SEPARATE AND WILL REQUIRE EXPLICIT SCHEMA/MIGRATION AUTHORIZATION AT IMPLEMENTATION TIME**
