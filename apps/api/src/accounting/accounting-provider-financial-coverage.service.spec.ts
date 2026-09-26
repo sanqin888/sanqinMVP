@@ -175,9 +175,7 @@ describe('AccountingProviderFinancialCoverageService', () => {
       await expect(
         service.recordProviderPaymentFactCutover({
           ...cutoverInput,
-          providerPaymentFactCutoverAt: new Date(
-            '2026-10-01T15:00:00.000Z',
-          ),
+          providerPaymentFactCutoverAt: new Date('2026-10-01T15:00:00.000Z'),
         }),
       ).rejects.toThrow(
         'provider payment-fact cutover is immutable once recorded',
