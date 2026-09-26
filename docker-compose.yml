@@ -1,7 +1,7 @@
 x-ubereats-runtime: &ubereats-runtime
   UBER_EATS_RATE_LIMITER_MODE: "database"
   UBER_EATS_WORKER_WAKE_URL: "http://ubereats-worker:4001"
-  UBER_EATS_APP_SCOPES: "eats.store eats.order eats.store.status.write"
+  UBER_EATS_APP_SCOPES: "eats.store eats.order eats.store.status.write eats.report"
   UBER_EATS_USER_AUTH_SCOPES: "eats.pos_provisioning"
   # These values are populated from the deployment VM's environment/.env file.
   UBER_CREDENTIAL_ENCRYPTION_KEYS: ${UBER_CREDENTIAL_ENCRYPTION_KEYS}
