@@ -1,6 +1,8 @@
 import {
+  matchCloverSalesReportToCloseouts,
   projectCloverPreSyncAuthorityCoverage,
   type CloverPreSyncCloseoutBatchEvidenceV1,
+  type CloverPreSyncSalesReportEvidenceV1,
   type CloverPreSyncStatementEvidenceV1,
 } from './accounting-clover-pre-sync-authority.policy';
 
@@ -256,6 +258,78 @@ describe('Clover pre-sync authority coverage policy', () => {
     expect(result.status).toBe('FAIL_CLOSED');
     expect(result.issues).toContain('STATEMENT_TRANSACTION_COUNT_MISMATCH');
     expect(result.controls.transactionCountDelta).toBe(1);
+  });
+
+  it('accepts one Sales Report only when its controls and daily Amount Collected exactly match the selected Closeouts', () => {
+    const selected = [
+      {
+        documentStableId: 'batch_1',
+        batchId: 'B1',
+        providerMerchantRef: 'merchant_1',
+        businessDate: '2026-06-02',
+        salesCount: 12,
+        salesCents: 22_458,
+        refundCount: 0,
+        refundCents: 0,
+        tipsCount: 4,
+        tipsCents: 657,
+      },
+      {
+        documentStableId: 'batch_2',
+        batchId: 'B2',
+        providerMerchantRef: 'merchant_1',
+        businessDate: '2026-06-03',
+        salesCount: 8,
+        salesCents: 15_346,
+        refundCount: 0,
+        refundCents: 0,
+        tipsCount: 2,
+        tipsCents: 265,
+      },
+    ];
+    const report: CloverPreSyncSalesReportEvidenceV1 = {
+      documentStableId: 'sales_report_june',
+      businessIdentityKey: 'clover:sales-report:2026-06-01:2026-06-29',
+      revision: 1,
+      periodStart: '2026-06-01',
+      periodEnd: '2026-06-29',
+      transactionCount: 20,
+      grossSalesCents: 36_182,
+      refundCents: 0,
+      taxesCents: 0,
+      tipsCents: 922,
+      surchargeCents: 700,
+      amountCollectedCents: 37_804,
+      dailyAmountCollected: [
+        { date: '2026-06-01', amountCents: 0 },
+        { date: '2026-06-02', amountCents: 22_458 },
+        { date: '2026-06-03', amountCents: 15_346 },
+        { date: '2026-06-29', amountCents: 0 },
+      ],
+    };
+
+    expect(
+      matchCloverSalesReportToCloseouts({
+        reports: [report],
+        closeouts: selected,
+      }),
+    ).toEqual({ status: 'MATCHED', report });
+
+    expect(
+      matchCloverSalesReportToCloseouts({
+        reports: [
+          {
+            ...report,
+            dailyAmountCollected: report.dailyAmountCollected.map((item) =>
+              item.date === '2026-06-03'
+                ? { ...item, amountCents: item.amountCents + 1 }
+                : item,
+            ),
+          },
+        ],
+        closeouts: selected,
+      }),
+    ).toEqual({ status: 'MISMATCH', report: null });
   });
 
   it('never infers surcharge when the statement has no explicit surcharge evidence', () => {

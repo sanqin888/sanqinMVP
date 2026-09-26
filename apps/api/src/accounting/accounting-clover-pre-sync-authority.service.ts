@@ -18,8 +18,13 @@ import {
 import {
   projectCloverPreSyncAuthorityCoverage,
   type CloverPreSyncCloseoutBatchEvidenceV1,
+  type CloverPreSyncSalesReportEvidenceV1,
   type CloverPreSyncStatementEvidenceV1,
 } from './accounting-clover-pre-sync-authority.policy';
+import {
+  CLOVER_SALES_REPORT_EVIDENCE_KIND,
+  CLOVER_SALES_REPORT_RAW_CODES,
+} from './accounting-clover-sales-report.contract';
 import { CLOVER_STATEMENT_RAW_CODES } from './accounting-clover-statement.contract';
 import { parseAccountingDocumentExtraction } from './accounting-document-extraction';
 import {
@@ -41,6 +46,7 @@ export type CloverPreSyncAuthorityPeriodV1 =
       statement: CloverPreSyncStatementEvidenceV1;
       coverage: ReturnType<typeof projectCloverPreSyncAuthorityCoverage>;
       selectedCloseoutBatches: CloverPreSyncCloseoutBatchEvidenceV1[];
+      supplementalSalesReports: CloverPreSyncSalesReportEvidenceV1[];
     }
   | {
       status: 'FAIL_CLOSED';
@@ -68,6 +74,24 @@ const integer = (value: unknown): number | null =>
 const rawTransactionCount = (value: unknown): number | null =>
   nonNegativeInteger(jsonRecord(value).transactionCount);
 
+const rawDailyAmounts = (
+  value: unknown,
+): Array<{ date: string; amountCents: number }> | null => {
+  const daily = jsonRecord(value).daily;
+  if (!Array.isArray(daily)) return null;
+  const normalized = daily.map((item) => {
+    const row = jsonRecord(item);
+    const date = typeof row.date === 'string' ? row.date.trim() : '';
+    const amountCents = integer(row.amountCents);
+    return /^\d{4}-\d{2}-\d{2}$/.test(date) && amountCents != null
+      ? { date, amountCents }
+      : null;
+  });
+  return normalized.some((item) => item == null)
+    ? null
+    : (normalized as Array<{ date: string; amountCents: number }>);
+};
+
 @Injectable()
 export class AccountingCloverPreSyncAuthorityService {
   constructor(
@@ -87,18 +111,43 @@ export class AccountingCloverPreSyncAuthorityService {
 
     const rows = await this.readDocuments(storeStableId);
     const latestStatementRevision = new Map<string, number>();
+    const latestSalesReportRevision = new Map<string, number>();
     for (const row of rows) {
-      if (row.documentType !== AccountingFinancialDocumentType.STATEMENT) {
+      if (row.documentType === AccountingFinancialDocumentType.STATEMENT) {
+        latestStatementRevision.set(
+          row.businessIdentityKey,
+          Math.max(
+            latestStatementRevision.get(row.businessIdentityKey) ?? 0,
+            row.revision,
+          ),
+        );
         continue;
       }
-      latestStatementRevision.set(
-        row.businessIdentityKey,
-        Math.max(
-          latestStatementRevision.get(row.businessIdentityKey) ?? 0,
-          row.revision,
-        ),
-      );
+      if (
+        row.documentType === AccountingFinancialDocumentType.OTHER &&
+        jsonRecord(row.rawMetadata).evidenceKind ===
+          CLOVER_SALES_REPORT_EVIDENCE_KIND
+      ) {
+        latestSalesReportRevision.set(
+          row.businessIdentityKey,
+          Math.max(
+            latestSalesReportRevision.get(row.businessIdentityKey) ?? 0,
+            row.revision,
+          ),
+        );
+      }
     }
+
+    const salesReports = rows
+      .filter(
+        (row) =>
+          row.documentType === AccountingFinancialDocumentType.OTHER &&
+          row.revision === latestSalesReportRevision.get(row.businessIdentityKey),
+      )
+      .flatMap((row) => {
+        const evidence = this.salesReportEvidence(row);
+        return evidence ? [evidence] : [];
+      });
 
     const closeouts = rows
       .filter(
@@ -156,12 +205,18 @@ export class AccountingCloverPreSyncAuthorityService {
           }
           return evidence;
         });
+        const supplementalSalesReports = salesReports.filter(
+          (report) =>
+            report.periodStart <= statement.periodEnd &&
+            report.periodEnd >= statement.periodStart,
+        );
 
         return {
           status: 'CLOSED',
           statement,
           coverage,
           selectedCloseoutBatches,
+          supplementalSalesReports,
         };
       });
   }
@@ -428,6 +483,62 @@ export class AccountingCloverPreSyncAuthorityService {
     return null;
   }
 
+  private salesReportEvidence(
+    row: FinancialDocumentRow,
+  ): CloverPreSyncSalesReportEvidenceV1 | null {
+    if (
+      row.documentType !== AccountingFinancialDocumentType.OTHER ||
+      jsonRecord(row.rawMetadata).evidenceKind !==
+        CLOVER_SALES_REPORT_EVIDENCE_KIND
+    ) {
+      return null;
+    }
+    const periodStart = dateOnly(row.periodStart);
+    const periodEnd = dateOnly(row.periodEnd);
+    if (!periodStart || !periodEnd) return null;
+
+    const byRawCode = (rawCode: string) =>
+      row.lines.find((line) => line.rawCode === rawCode);
+    const grossSales = byRawCode(CLOVER_SALES_REPORT_RAW_CODES.GROSS_SALES);
+    const refunds = byRawCode(CLOVER_SALES_REPORT_RAW_CODES.REFUNDS);
+    const taxes = byRawCode(CLOVER_SALES_REPORT_RAW_CODES.TAXES);
+    const tips = byRawCode(CLOVER_SALES_REPORT_RAW_CODES.TIPS);
+    const surcharges = byRawCode(CLOVER_SALES_REPORT_RAW_CODES.SURCHARGES);
+    const amountCollected = byRawCode(
+      CLOVER_SALES_REPORT_RAW_CODES.AMOUNT_COLLECTED,
+    );
+    if (
+      !grossSales ||
+      !refunds ||
+      !taxes ||
+      !tips ||
+      !surcharges ||
+      !amountCollected
+    ) {
+      return null;
+    }
+
+    const transactionCount = rawTransactionCount(grossSales.rawPayload);
+    const dailyAmountCollected = rawDailyAmounts(amountCollected.rawPayload);
+    if (transactionCount == null || !dailyAmountCollected) return null;
+
+    return {
+      documentStableId: row.documentStableId,
+      businessIdentityKey: row.businessIdentityKey,
+      revision: row.revision,
+      periodStart,
+      periodEnd,
+      transactionCount,
+      grossSalesCents: grossSales.amountCents,
+      refundCents: refunds.amountCents,
+      taxesCents: taxes.amountCents,
+      tipsCents: tips.amountCents,
+      surchargeCents: surcharges.amountCents,
+      amountCollectedCents: amountCollected.amountCents,
+      dailyAmountCollected,
+    };
+  }
+
   private closeoutEvidence(
     row: FinancialDocumentRow,
   ): CloverPreSyncCloseoutBatchEvidenceV1 | null {
@@ -475,6 +586,7 @@ export class AccountingCloverPreSyncAuthorityService {
           in: [
             AccountingFinancialDocumentType.STATEMENT,
             AccountingFinancialDocumentType.BATCH_CONTROL,
+            AccountingFinancialDocumentType.OTHER,
           ],
         },
         OR: [
@@ -494,6 +606,14 @@ export class AccountingCloverPreSyncAuthorityService {
             periodStart: {
               gte: new Date(
                 `${CLOVER_CLOSEOUT_BOUNDARY_EVIDENCE_START_DATE}T00:00:00.000Z`,
+              ),
+            },
+          },
+          {
+            documentType: AccountingFinancialDocumentType.OTHER,
+            periodStart: {
+              gte: new Date(
+                `${PROVIDER_FINANCIAL_HISTORY_START_DATE}T00:00:00.000Z`,
               ),
             },
           },

@@ -10,12 +10,17 @@ import {
   type AccountingDocumentExtraction,
   type AccountingDocumentExtractionLine,
 } from './accounting-document-extraction';
+import { parseAccountingCsvTable } from './accounting-csv';
 import { CLOVER_CLOSEOUT_RAW_CODES } from './accounting-clover-closeout.contract';
+import {
+  CLOVER_SALES_REPORT_EVIDENCE_KIND,
+  CLOVER_SALES_REPORT_RAW_CODES,
+} from './accounting-clover-sales-report.contract';
 import { CLOVER_STATEMENT_RAW_CODES } from './accounting-clover-statement.contract';
 
 export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_NAME =
   'accounting-provider-financial';
-export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION = '9';
+export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION = '10';
 
 export type ProviderFinancialParseInput = {
   text: string;
@@ -73,9 +78,14 @@ export function parseProviderFinancialEvidence(
       ) {
         return parseCloverStatement(text, input);
       }
+      if (input.documentTypeHint === AccountingFinancialDocumentType.OTHER) {
+        return parseCloverSalesReport(text, input);
+      }
       if (input.documentTypeHint) return null;
       return (
-        parseCloverCloseout(text, input) ?? parseCloverStatement(text, input)
+        parseCloverCloseout(text, input) ??
+        parseCloverStatement(text, input) ??
+        parseCloverSalesReport(text, input)
       );
     case AccountingFinancialProvider.UBER_EATS:
       if (
@@ -95,6 +105,259 @@ export function parseProviderFinancialEvidence(
       return parseFantuanStatement(text);
   }
   return null;
+}
+
+function parseCloverSalesReport(
+  text: string,
+  input: ProviderFinancialParseInput,
+): ParsedProviderFinancialDocument | null {
+  if (
+    !/^\uFEFF?Sales Report\b/im.test(input.text) ||
+    !/Amount Collected/i.test(text) ||
+    !/Surcharges/i.test(text) ||
+    !/Tender types/i.test(text)
+  ) {
+    return null;
+  }
+
+  const rows = parseAccountingCsvTable(input.text);
+  if (!rows) return null;
+
+  const reportWindow = rows.find(
+    (row) =>
+      row.length === 1 &&
+      /\b[A-Z][a-z]{2},\s+[A-Z][a-z]{2}\s+\d{1,2},\s+\d{4},/i.test(
+        row[0] ?? '',
+      ) &&
+      /\s-\s/.test(row[0] ?? ''),
+  )?.[0];
+  const windowMatch = reportWindow
+    ? /^\s*[A-Z][a-z]{2},\s+([A-Z][a-z]{2}\s+\d{1,2},\s+\d{4}),\s+(.+?)\s+-\s+[A-Z][a-z]{2},\s+([A-Z][a-z]{2}\s+\d{1,2},\s+\d{4}),\s+(.+?)\s*$/i.exec(
+        reportWindow,
+      )
+    : null;
+  if (!windowMatch) return null;
+
+  const periodStart = parseEnglishDate(windowMatch[1]);
+  const reportEndDate = parseEnglishDate(windowMatch[3]);
+  if (!periodStart || !reportEndDate) return null;
+
+  const summaryNetSales = rows.find(
+    (row) => row[0]?.trim().toLowerCase() === 'net sales' && row.length >= 3,
+  );
+  const transactionCountRaw = summaryNetSales?.find((cell) =>
+    /from\s+\d+\s+transactions?/i.test(cell),
+  );
+  const transactionCountMatch = transactionCountRaw
+    ? /from\s+(\d+)\s+transactions?/i.exec(transactionCountRaw)
+    : null;
+  const transactionCount = transactionCountMatch
+    ? Number.parseInt(transactionCountMatch[1], 10)
+    : null;
+  if (
+    transactionCount == null ||
+    !Number.isSafeInteger(transactionCount) ||
+    transactionCount < 0
+  ) {
+    return null;
+  }
+
+  const salesHeaderIndex = rows.findIndex(
+    (row) => row[0]?.trim() === '' && row[1]?.trim() === 'Total',
+  );
+  if (salesHeaderIndex < 0) return null;
+  const header = rows[salesHeaderIndex];
+  const dateHeaders = header.slice(2).map((value) => value.trim());
+  if (!dateHeaders.length) return null;
+
+  const startYear = Number.parseInt(periodStart.slice(0, 4), 10);
+  const dailyDates = dateHeaders.map((headerValue) => {
+    const match = /^([A-Z][a-z]{2})\s+(\d{1,2})$/i.exec(headerValue);
+    if (!match) return null;
+    return parseEnglishDate(`${match[1]} ${match[2]}, ${startYear}`);
+  });
+  if (dailyDates.some((value) => value == null)) return null;
+  const normalizedDailyDates = dailyDates as string[];
+  const periodEnd = normalizedDailyDates[normalizedDailyDates.length - 1];
+  if (reportEndDate < periodEnd) return null;
+
+  const rowByLabel = (label: string) =>
+    rows
+      .slice(salesHeaderIndex + 1)
+      .find((row) => row[0]?.trim().toLowerCase() === label.toLowerCase());
+  const parseReportRow = (
+    label: string,
+  ): { totalCents: number; daily: Array<{ date: string; amountCents: number }> } | null => {
+    const row = rowByLabel(label);
+    if (!row || row.length < 2 + normalizedDailyDates.length) return null;
+    const totalCents = parseMoneyCents(row[1] ?? '');
+    if (totalCents == null) return null;
+    const daily = normalizedDailyDates.map((date, index) => {
+      const amountCents = parseMoneyCents(row[index + 2] ?? '');
+      return amountCents == null ? null : { date, amountCents };
+    });
+    if (daily.some((value) => value == null)) return null;
+    const normalizedDaily = daily as Array<{
+      date: string;
+      amountCents: number;
+    }>;
+    const dailyTotal = normalizedDaily.reduce(
+      (sum, item) => sum + item.amountCents,
+      0,
+    );
+    if (dailyTotal !== totalCents) return null;
+    return { totalCents, daily: normalizedDaily };
+  };
+
+  const grossSales = parseReportRow('Gross sales');
+  const refunds = parseReportRow('Refunds');
+  const netSales = parseReportRow('Net sales');
+  const taxes = parseReportRow('Taxes');
+  const tips = parseReportRow('Tips');
+  const surcharges = parseReportRow('Surcharges');
+  const amountCollected = parseReportRow('Amount collected');
+  if (
+    !grossSales ||
+    !refunds ||
+    !netSales ||
+    !taxes ||
+    !tips ||
+    !surcharges ||
+    !amountCollected
+  ) {
+    return null;
+  }
+  if (
+    grossSales.totalCents - refunds.totalCents !== netSales.totalCents ||
+    netSales.totalCents +
+      taxes.totalCents +
+      tips.totalCents +
+      surcharges.totalCents !==
+      amountCollected.totalCents
+  ) {
+    return null;
+  }
+
+  const summaryAmountCollected = rows.find(
+    (row) =>
+      row[0]?.trim().toLowerCase() === 'amount collected' && row.length === 2,
+  );
+  const summaryAmountCollectedCents = summaryAmountCollected
+    ? parseMoneyCents(summaryAmountCollected[1] ?? '')
+    : null;
+  if (
+    summaryAmountCollectedCents == null ||
+    summaryAmountCollectedCents !== amountCollected.totalCents
+  ) {
+    return null;
+  }
+
+  const tenderCreditDebit = rows.find(
+    (row) => row[0]?.trim().toLowerCase() === 'credit and debit cards',
+  );
+  const tenderAmountCents = tenderCreditDebit
+    ? parseMoneyCents(tenderCreditDebit[1] ?? '')
+    : null;
+  if (
+    tenderAmountCents == null ||
+    tenderAmountCents !== amountCollected.totalCents
+  ) {
+    return null;
+  }
+
+  const dailyPayload = (
+    value: Array<{ date: string; amountCents: number }>,
+  ): Record<string, unknown> => ({ daily: value });
+
+  const lines: ParsedLine[] = [
+    {
+      rawCode: CLOVER_SALES_REPORT_RAW_CODES.GROSS_SALES,
+      rawName: 'Gross sales',
+      component: AccountingFinancialComponent.SALES,
+      postingTreatment: AccountingFinancialPostingTreatment.RECONCILIATION_ONLY,
+      taxRole: AccountingFinancialTaxRole.NONE,
+      amountCents: grossSales.totalCents,
+      rawPayload: {
+        transactionCount,
+        ...dailyPayload(grossSales.daily),
+      },
+    },
+    {
+      rawCode: CLOVER_SALES_REPORT_RAW_CODES.REFUNDS,
+      rawName: 'Refunds',
+      component: AccountingFinancialComponent.REFUND,
+      postingTreatment: AccountingFinancialPostingTreatment.RECONCILIATION_ONLY,
+      taxRole: AccountingFinancialTaxRole.NONE,
+      amountCents: refunds.totalCents,
+      rawPayload: dailyPayload(refunds.daily),
+    },
+    {
+      rawCode: CLOVER_SALES_REPORT_RAW_CODES.NET_SALES,
+      rawName: 'Net sales',
+      component: AccountingFinancialComponent.SALES,
+      postingTreatment: AccountingFinancialPostingTreatment.RECONCILIATION_ONLY,
+      taxRole: AccountingFinancialTaxRole.NONE,
+      amountCents: netSales.totalCents,
+      rawPayload: dailyPayload(netSales.daily),
+    },
+    {
+      rawCode: CLOVER_SALES_REPORT_RAW_CODES.TAXES,
+      rawName: 'Taxes',
+      component: AccountingFinancialComponent.SALES_TAX,
+      postingTreatment: AccountingFinancialPostingTreatment.RECONCILIATION_ONLY,
+      taxRole: AccountingFinancialTaxRole.SALES_TAX,
+      amountCents: taxes.totalCents,
+      rawPayload: dailyPayload(taxes.daily),
+    },
+    {
+      rawCode: CLOVER_SALES_REPORT_RAW_CODES.TIPS,
+      rawName: 'Tips',
+      component: AccountingFinancialComponent.TIP,
+      postingTreatment: AccountingFinancialPostingTreatment.RECONCILIATION_ONLY,
+      taxRole: AccountingFinancialTaxRole.NONE,
+      amountCents: tips.totalCents,
+      rawPayload: dailyPayload(tips.daily),
+    },
+    {
+      rawCode: CLOVER_SALES_REPORT_RAW_CODES.SURCHARGES,
+      rawName: 'Surcharges',
+      component: AccountingFinancialComponent.OTHER,
+      postingTreatment: AccountingFinancialPostingTreatment.RECONCILIATION_ONLY,
+      taxRole: AccountingFinancialTaxRole.NONE,
+      amountCents: surcharges.totalCents,
+      rawPayload: dailyPayload(surcharges.daily),
+    },
+    {
+      rawCode: CLOVER_SALES_REPORT_RAW_CODES.AMOUNT_COLLECTED,
+      rawName: 'Amount collected',
+      component: AccountingFinancialComponent.CONTROL_TOTAL,
+      postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+      taxRole: AccountingFinancialTaxRole.NONE,
+      amountCents: amountCollected.totalCents,
+      rawPayload: dailyPayload(amountCollected.daily),
+    },
+  ];
+
+  return {
+    provider: AccountingFinancialProvider.CLOVER,
+    documentType: AccountingFinancialDocumentType.OTHER,
+    businessIdentityKey: `clover:sales-report:${periodStart}:${periodEnd}`,
+    providerMerchantRef: null,
+    providerDocumentRef: `sales-report:${periodStart}:${periodEnd}`,
+    periodStart,
+    periodEnd,
+    currency: 'CAD',
+    rawMetadata: {
+      evidenceKind: CLOVER_SALES_REPORT_EVIDENCE_KIND,
+      reportWindow,
+      reportEndDate,
+      requestedAt:
+        rows.find((row) => /^Requested on:/i.test(row[0] ?? ''))?.[0] ?? null,
+      transactionCount,
+      tender: 'CREDIT_AND_DEBIT_CARDS',
+    },
+    lines,
+  };
 }
 
 function parseCloverCloseout(

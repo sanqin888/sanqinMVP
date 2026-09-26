@@ -16,12 +16,15 @@ import {
 } from './accounting-clover-pre-sync-authority.service';
 import {
   buildCloverAuthorityReplacementPreview,
+  CLOVER_PRE_SYNC_AUTHORITY_ADJUSTMENT_SOURCE_FACT_TYPE,
   type CloverAuthorityReplacementBlockReason,
 } from './accounting-clover-authority-replacement.policy';
+import { matchCloverSalesReportToCloseouts } from './accounting-clover-pre-sync-authority.policy';
 import { hashAccountingJson } from './accounting-inbox-core.policy';
 import { AccountingPeriodService } from './accounting-period.service';
 import { AccountingProviderPendingReconciliationService } from './accounting-provider-pending-reconciliation.service';
 import { AccountingProviderSettlementQueryService } from './accounting-provider-settlement-query.service';
+import { AccountingJournalService } from './accounting-journal.service';
 
 const EXPECTED_ORDER_PENDING_SOURCE_FACT_TYPES = new Set([
   'order.financial_sale.v1',
@@ -65,6 +68,8 @@ export type CloverAuthorityReplacementPreviewPeriodV1 = {
     surchargeAuthority:
       | 'EXPLICIT_PROVIDER_EVIDENCE'
       | 'UNKNOWN_OR_PARTIAL_STATEMENT';
+    surchargeSource: 'STATEMENT' | 'SALES_REPORT' | null;
+    surchargeSourceDocumentStableId: string | null;
     refundCount: number;
     refundCents: number;
     batchDocumentStableIds: string[];
@@ -78,12 +83,13 @@ export type CloverAuthorityReplacementPreviewPeriodV1 = {
     unexpectedPendingSourceFactTypes: string[];
   };
   proposal: {
-    status: 'READY' | 'BLOCKED';
+    status: 'READY' | 'BLOCKED' | 'ALREADY_POSTED';
     blockReasons: CloverAuthorityReplacementBlockReason[];
     pendingAuthorityDeltaCents: number;
     missingTipRevenueCents: number | null;
     missingSurchargeRevenueCents: number | null;
     storeCashReclassificationCents: number | null;
+    existingJournalEntryStableId: string | null;
     draftJournal: ReturnType<
       typeof buildCloverAuthorityReplacementPreview
     >['draftJournal'];
@@ -101,7 +107,7 @@ export type CloverAuthorityReplacementPreviewPeriodV1 = {
 export type CloverAuthorityReplacementPreviewReportV1 = {
   version: 1;
   mode: 'READ_ONLY_PREVIEW';
-  status: 'READY_FOR_HUMAN_REVIEW' | 'BLOCKED';
+  status: 'READY_FOR_HUMAN_REVIEW' | 'BLOCKED' | 'ALREADY_POSTED';
   provider: 'CLOVER';
   storeStableId: string;
   accountingStartDate: string;
@@ -117,6 +123,7 @@ export type CloverAuthorityReplacementPreviewReportV1 = {
     providerExplicitSurchargeCents: number;
     readyPeriods: number;
     blockedPeriods: number;
+    alreadyPostedPeriods: number;
   };
 };
 
@@ -142,6 +149,7 @@ export class AccountingCloverAuthorityReplacementService {
     private readonly preSyncAuthority: AccountingCloverPreSyncAuthorityService,
     private readonly pendingReconciliation: AccountingProviderPendingReconciliationService,
     private readonly settlementQuery: AccountingProviderSettlementQueryService,
+    private readonly journal: AccountingJournalService,
   ) {}
 
   async preview(input: {
@@ -296,11 +304,37 @@ export class AccountingCloverAuthorityReplacementService {
       );
       const usesWholeStatementCoverage =
         inScopeBatches.length === authority.selectedCloseoutBatches.length;
-      const providerSurchargeCents =
+      const salesReportMatch = matchCloverSalesReportToCloseouts({
+        reports: authority.supplementalSalesReports,
+        closeouts: inScopeBatches,
+      });
+      const statementSurchargeCents =
         usesWholeStatementCoverage &&
         authority.coverage.surcharge.status === 'EXPLICIT_PROVIDER_EVIDENCE'
           ? authority.coverage.surcharge.amountCents
           : null;
+      const salesReportSurchargeCents =
+        salesReportMatch.status === 'MATCHED'
+          ? salesReportMatch.report.surchargeCents
+          : null;
+      const providerSurchargeCents =
+        statementSurchargeCents ?? salesReportSurchargeCents;
+      const providerSurchargeAuthority =
+        providerSurchargeCents === null
+          ? ('UNKNOWN_OR_PARTIAL_STATEMENT' as const)
+          : ('EXPLICIT_PROVIDER_EVIDENCE' as const);
+      const surchargeSource =
+        statementSurchargeCents !== null
+          ? ('STATEMENT' as const)
+          : salesReportMatch.status === 'MATCHED'
+            ? ('SALES_REPORT' as const)
+            : null;
+      const surchargeSourceDocumentStableId =
+        statementSurchargeCents !== null
+          ? authority.statement.documentStableId
+          : salesReportMatch.status === 'MATCHED'
+            ? salesReportMatch.report.documentStableId
+            : null;
 
       const policy = buildCloverAuthorityReplacementPreview({
         statementDocumentStableId: authority.statement.documentStableId,
@@ -322,13 +356,32 @@ export class AccountingCloverAuthorityReplacementService {
           orderEvidence.unexpectedPendingSourceFactTypes,
       });
 
+      const existingAuthorityAdjustment =
+        policy.draftJournal?.sourceFactStableId
+          ? await this.prisma.accountingJournalEntry.findFirst({
+              where: {
+                deletedAt: null,
+                sourceFactType:
+                  CLOVER_PRE_SYNC_AUTHORITY_ADJUSTMENT_SOURCE_FACT_TYPE,
+                sourceFactStableId: policy.draftJournal.sourceFactStableId,
+                storeStableId,
+              },
+              select: { entryStableId: true },
+              orderBy: { createdAt: 'asc' },
+            })
+          : null;
+      const proposalStatus =
+        existingAuthorityAdjustment !== null ? 'ALREADY_POSTED' : policy.status;
+      const proposedPendingAdjustmentCents =
+        proposalStatus === 'READY' ? policy.pendingAuthorityDeltaCents : 0;
+
       const simulatedOpeningAfterPriorAuthorityAdjustmentsCents =
         reconciliationRow.openingBalanceCents +
         cumulativeProposedPendingAdjustmentCents;
       const simulatedProviderAuthorityClosingCents =
         simulatedOpeningAfterPriorAuthorityAdjustmentsCents +
         reconciliationRow.periodNetMovementCents +
-        policy.pendingAuthorityDeltaCents;
+        proposedPendingAdjustmentCents;
 
       periods.push({
         statementDocumentStableId: authority.statement.documentStableId,
@@ -347,10 +400,9 @@ export class AccountingCloverAuthorityReplacementService {
           principalCents: providerPrincipalCents,
           tipsCents: providerTipsCents,
           surchargeCents: providerSurchargeCents,
-          surchargeAuthority:
-            providerSurchargeCents === null
-              ? 'UNKNOWN_OR_PARTIAL_STATEMENT'
-              : 'EXPLICIT_PROVIDER_EVIDENCE',
+          surchargeAuthority: providerSurchargeAuthority,
+          surchargeSource,
+          surchargeSourceDocumentStableId,
           refundCount: providerRefundCount,
           refundCents: providerRefundCents,
           batchDocumentStableIds: inScopeBatches.map(
@@ -367,26 +419,30 @@ export class AccountingCloverAuthorityReplacementService {
             orderEvidence.unexpectedPendingSourceFactTypes,
         },
         proposal: {
-          status: policy.status,
-          blockReasons: policy.blockReasons,
+          status: proposalStatus,
+          blockReasons:
+            proposalStatus === 'ALREADY_POSTED' ? [] : policy.blockReasons,
           pendingAuthorityDeltaCents: policy.pendingAuthorityDeltaCents,
           missingTipRevenueCents: policy.missingTipRevenueCents,
           missingSurchargeRevenueCents: policy.missingSurchargeRevenueCents,
           storeCashReclassificationCents: policy.storeCashReclassificationCents,
-          draftJournal: policy.draftJournal,
+          existingJournalEntryStableId:
+            existingAuthorityAdjustment?.entryStableId ?? null,
+          draftJournal:
+            proposalStatus === 'ALREADY_POSTED' ? null : policy.draftJournal,
         },
         pendingRollForward: {
           actualOpeningCents: reconciliationRow.openingBalanceCents,
           actualPeriodMovementCents: reconciliationRow.periodNetMovementCents,
           actualClosingCents: reconciliationRow.closingBalanceCents,
           simulatedOpeningAfterPriorAuthorityAdjustmentsCents,
-          proposedAuthorityAdjustmentCents: policy.pendingAuthorityDeltaCents,
+          proposedAuthorityAdjustmentCents,
           simulatedProviderAuthorityClosingCents,
         },
       });
 
       cumulativeProposedPendingAdjustmentCents +=
-        policy.pendingAuthorityDeltaCents;
+        proposedPendingAdjustmentCents;
       if (!Number.isSafeInteger(cumulativeProposedPendingAdjustmentCents)) {
         throw new ConflictException(
           'Clover proposed Pending authority adjustment exceeds safe integer range',
@@ -414,7 +470,9 @@ export class AccountingCloverAuthorityReplacementService {
           'Clover preview Order Pending total',
         ),
         proposedPendingAuthorityAdjustmentCents: safeSum(
-          periods.map((item) => item.proposal.pendingAuthorityDeltaCents),
+          periods.map(
+            (item) => item.pendingRollForward.proposedAuthorityAdjustmentCents,
+          ),
           'Clover preview Pending adjustment total',
         ),
         providerTipsCents: safeSum(
@@ -430,19 +488,90 @@ export class AccountingCloverAuthorityReplacementService {
         blockedPeriods: periods.filter(
           (item) => item.proposal.status === 'BLOCKED',
         ).length,
+        alreadyPostedPeriods: periods.filter(
+          (item) => item.proposal.status === 'ALREADY_POSTED',
+        ).length,
       },
     };
     const status =
-      material.globalIssues.length === 0 &&
-      material.periods.length > 0 &&
-      material.totals.blockedPeriods === 0
-        ? ('READY_FOR_HUMAN_REVIEW' as const)
-        : ('BLOCKED' as const);
+      material.globalIssues.length > 0 ||
+      material.periods.length === 0 ||
+      material.totals.blockedPeriods > 0
+        ? ('BLOCKED' as const)
+        : material.totals.readyPeriods === 0 &&
+            material.totals.alreadyPostedPeriods === material.periods.length
+          ? ('ALREADY_POSTED' as const)
+          : ('READY_FOR_HUMAN_REVIEW' as const);
 
     return {
       ...material,
       status,
       planHash: hashAccountingJson({ ...material, status }),
+    };
+  }
+
+  async execute(input: {
+    storeStableId: string;
+    expectedPlanHash: string;
+    operatorActorRef: string;
+  }) {
+    const expectedPlanHash = input.expectedPlanHash.trim().toLowerCase();
+    if (!/^[a-f0-9]{64}$/.test(expectedPlanHash)) {
+      throw new BadRequestException(
+        'expectedPlanHash must be a lowercase SHA-256 hex digest',
+      );
+    }
+    const operatorActorRef = input.operatorActorRef.trim();
+    if (!operatorActorRef) {
+      throw new BadRequestException('operatorActorRef is required');
+    }
+
+    const preview = await this.preview({ storeStableId: input.storeStableId });
+    if (preview.planHash !== expectedPlanHash) {
+      throw new ConflictException(
+        'Clover authority replacement plan changed after preview',
+      );
+    }
+    if (preview.status === 'ALREADY_POSTED') {
+      return {
+        ...preview,
+        execution: {
+          journalEntriesPostedOrReplayed: 0,
+          alreadyPostedPeriods: preview.totals.alreadyPostedPeriods,
+        },
+      };
+    }
+    if (preview.status !== 'READY_FOR_HUMAN_REVIEW') {
+      throw new ConflictException(
+        `Clover authority replacement is not READY: ${preview.globalIssues.join(',') || 'period blocked'}`,
+      );
+    }
+
+    let journalEntriesPostedOrReplayed = 0;
+    for (const period of preview.periods) {
+      if (period.proposal.status !== 'READY') continue;
+      const journal = period.proposal.draftJournal;
+      if (!journal) {
+        throw new ConflictException(
+          `Clover authority replacement READY period is missing draft Journal: ${period.statementDocumentStableId}`,
+        );
+      }
+      await this.journal.createJournalEntry(journal, operatorActorRef);
+      journalEntriesPostedOrReplayed += 1;
+    }
+
+    const fresh = await this.preview({ storeStableId: input.storeStableId });
+    if (fresh.status !== 'ALREADY_POSTED') {
+      throw new ConflictException(
+        'Clover authority replacement Journal write did not reconcile to ALREADY_POSTED',
+      );
+    }
+    return {
+      ...fresh,
+      execution: {
+        journalEntriesPostedOrReplayed,
+        alreadyPostedPeriods: fresh.totals.alreadyPostedPeriods,
+      },
     };
   }
 

@@ -1,5 +1,82 @@
 import type { AccountingFinancialProvider } from './core';
 
+export type CloverAuthorityReplacementPreview = {
+  version: 1;
+  mode: 'READ_ONLY_PREVIEW';
+  status: 'READY_FOR_HUMAN_REVIEW' | 'BLOCKED' | 'ALREADY_POSTED';
+  provider: 'CLOVER';
+  storeStableId: string;
+  accountingStartDate: string;
+  providerPaymentFactCutoverAt: string | null;
+  planHash: string;
+  globalIssues: string[];
+  periods: Array<{
+    statementDocumentStableId: string;
+    statementPeriod: { from: string; to: string };
+    authorityWindow: {
+      from: string;
+      to: string;
+      truncatedAtAccountingStart: boolean;
+      batchCount: number;
+    };
+    providerEvidence: {
+      principalCents: number;
+      tipsCents: number;
+      surchargeCents: number | null;
+      surchargeAuthority:
+        | 'EXPLICIT_PROVIDER_EVIDENCE'
+        | 'UNKNOWN_OR_PARTIAL_STATEMENT';
+      surchargeSource: 'STATEMENT' | 'SALES_REPORT' | null;
+      surchargeSourceDocumentStableId: string | null;
+      refundCount: number;
+      refundCents: number;
+    };
+    proposal: {
+      status: 'READY' | 'BLOCKED' | 'ALREADY_POSTED';
+      blockReasons: string[];
+      pendingAuthorityDeltaCents: number;
+      missingTipRevenueCents: number | null;
+      missingSurchargeRevenueCents: number | null;
+      storeCashReclassificationCents: number | null;
+      existingJournalEntryStableId: string | null;
+      draftJournal: {
+        lines: Array<{
+          accountStableId: string;
+          debitCents?: number;
+          creditCents?: number;
+          memo?: string | null;
+        }>;
+      } | null;
+    };
+    pendingRollForward: {
+      actualOpeningCents: number;
+      actualPeriodMovementCents: number;
+      actualClosingCents: number;
+      simulatedOpeningAfterPriorAuthorityAdjustmentsCents: number;
+      proposedAuthorityAdjustmentCents: number;
+      simulatedProviderAuthorityClosingCents: number;
+    };
+  }>;
+  totals: {
+    providerPrincipalCents: number;
+    orderPendingMovementCents: number;
+    proposedPendingAuthorityAdjustmentCents: number;
+    providerTipsCents: number;
+    providerExplicitSurchargeCents: number;
+    readyPeriods: number;
+    blockedPeriods: number;
+    alreadyPostedPeriods: number;
+  };
+};
+
+export type CloverAuthorityReplacementExecution =
+  CloverAuthorityReplacementPreview & {
+    execution: {
+      journalEntriesPostedOrReplayed: number;
+      alreadyPostedPeriods: number;
+    };
+  };
+
 export type CloverFeeReclassificationPreview = {
   documentStableId: string;
   revision: number;
