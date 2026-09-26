@@ -2,6 +2,7 @@ import { createId } from '@paralleldrive/cuid2';
 import {
   AccountingArtifactAcquisitionMode,
   AccountingArtifactKind,
+  AccountingFinancialDocumentType,
   AccountingFinancialProvider,
   AccountingInboxClassification,
   AccountingInboxMaterializedEntityType,
@@ -357,6 +358,15 @@ export async function recordProviderFinancialDocumentInTx(
       revision: latest.revision,
       replayed: true,
     };
+  }
+  if (
+    latest &&
+    normalized.provider === AccountingFinancialProvider.CLOVER &&
+    normalized.documentType === AccountingFinancialDocumentType.BATCH_CONTROL
+  ) {
+    throw new AccountingInboxWriterConflictError(
+      'provider batch identity was reused with different content',
+    );
   }
 
   const revision = (latest?.revision ?? 0) + 1;

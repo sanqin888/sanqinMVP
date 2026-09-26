@@ -5,8 +5,12 @@ import {
   AccountingFinancialProvider,
   AccountingFinancialTaxRole,
 } from '@prisma/client';
+import { CLOVER_CLOSEOUT_RAW_CODES } from './accounting-clover-closeout.contract';
 import { CLOVER_STATEMENT_RAW_CODES } from './accounting-clover-statement.contract';
-import { parseProviderFinancialEvidence } from './accounting-provider-financial.parser';
+import {
+  extractCloverModernStatementAuthorityControls,
+  parseProviderFinancialEvidence,
+} from './accounting-provider-financial.parser';
 
 function lineByName(
   parsed: NonNullable<ReturnType<typeof parseProviderFinancialEvidence>>,
@@ -67,7 +71,9 @@ Tips 4 $3.84
     expect(parsed?.lines).toHaveLength(5);
     expect(lineByName(parsed!, 'Sales')).toEqual(
       expect.objectContaining({
+        rawCode: CLOVER_CLOSEOUT_RAW_CODES.SALES,
         amountCents: 5721,
+        rawPayload: { transactionCount: 5 },
         postingTreatment:
           AccountingFinancialPostingTreatment.RECONCILIATION_ONLY,
       }),
@@ -79,6 +85,96 @@ Tips 4 $3.84
         postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
       }),
     );
+  });
+
+  it('fails closed instead of materializing a partial Clover Closeout control set', () => {
+    const parsed = parseProviderFinancialEvidence({
+      providerHint: AccountingFinancialProvider.CLOVER,
+      documentTypeHint: AccountingFinancialDocumentType.BATCH_CONTROL,
+      emailSubject: 'MID 29351880018 Closeout Report for Sep 6, 2026',
+      text: `
+Closeout Batch Report
+Created:
+Sep 7, 2026 01:30 AM
+Batch ID:
+097NYJ27P2HZM
+Batch Totals
+Type Count Total
+Sales 5 $57.21
+Refunds 0 $0.00
+Net 5 $57.21
+Tax 0 $0.00
+Card Type Totals
+`,
+    });
+
+    expect(parsed).toBeNull();
+  });
+
+  it('extracts modern Clover statement activity controls and explicit surcharge from layout evidence', () => {
+    let lineNo = 0;
+    const line = (
+      page: number,
+      text: string,
+      left: number,
+      top: number,
+      width = 0.06,
+    ) => ({
+      lineId: `authority-p${page}-l${++lineNo}`,
+      page,
+      text,
+      confidence: null,
+      geometry: { left, top, width, height: 0.012 },
+    });
+    const extraction = {
+      version: 1 as const,
+      inputKind: 'PDF' as const,
+      engine: 'POPPLER' as const,
+      layoutMode: 'GEOMETRY' as const,
+      truncated: false,
+      lines: [
+        line(2, 'Card Processing and Fee Summary', 0.05, 0.1, 0.3),
+        line(2, 'Items', 0.34, 0.18),
+        line(2, 'Amount', 0.39, 0.18),
+        line(2, 'Items', 0.46, 0.18),
+        line(2, 'Amount', 0.51, 0.18),
+        line(2, 'Total', 0.06, 0.3),
+        line(2, '230', 0.35, 0.3),
+        line(2, '$3,501.32', 0.39, 0.3, 0.09),
+        line(2, '0', 0.47, 0.3),
+        line(2, '$0.00', 0.51, 0.3),
+        line(3, 'Card Type', 0.06, 0.4),
+        line(3, 'Surcharge Collected', 0.79, 0.4, 0.12),
+        line(3, 'Total', 0.06, 0.54),
+        line(3, '$55.51', 0.9, 0.54),
+      ],
+    };
+
+    expect(extractCloverModernStatementAuthorityControls(extraction)).toEqual({
+      transactionCount: 230,
+      amountSubmittedCents: 350132,
+      refundCount: 0,
+      refundAmountCents: 0,
+      surchargeCollectedCents: 5551,
+    });
+
+    expect(
+      extractCloverModernStatementAuthorityControls({
+        ...extraction,
+        lines: extraction.lines.filter(
+          (candidate) =>
+            candidate.text !== 'Surcharge Collected' &&
+            candidate.text !== '$55.51' &&
+            candidate.text !== 'Card Type',
+        ),
+      }),
+    ).toEqual({
+      transactionCount: 230,
+      amountSubmittedCents: 350132,
+      refundCount: 0,
+      refundAmountCents: 0,
+      surchargeCollectedCents: null,
+    });
   });
 
   const modernCloverExtraction = (params: {

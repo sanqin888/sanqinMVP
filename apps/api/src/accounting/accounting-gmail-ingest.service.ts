@@ -6,6 +6,11 @@ import {
   extractMailboxAddress,
 } from './accounting-inbox-acquisition.service';
 import { AccountingInboxService } from './accounting-inbox.service';
+import {
+  CLOVER_CLOSEOUT_BOUNDARY_EVIDENCE_START_DATE,
+  isCloverCloseoutEmailEvidence,
+} from './accounting-clover-closeout.contract';
+import { PROVIDER_FINANCIAL_HISTORY_START_DATE } from './accounting-inbox-core.policy';
 
 const GMAIL_BILLS_LABEL = 'SanQ-Bills';
 
@@ -132,7 +137,19 @@ export class AccountingGmailIngestService {
       accessToken,
       `/gmail/v1/users/me/messages/${encodeURIComponent(messageId)}?format=full`,
     );
-    if (!this.receivedOnOrAfterStartDate(message, options)) {
+    const subject = this.header(message.payload?.headers, 'subject');
+    const senderEmail = extractMailboxAddress(
+      this.header(message.payload?.headers, 'from'),
+    );
+    if (
+      !this.receivedOnOrAfterStartDate(message, options) &&
+      !this.isCloverCloseoutBoundaryEvidence(
+        message,
+        options,
+        senderEmail,
+        subject,
+      )
+    ) {
       return {
         imported: 0,
         duplicates: 0,
@@ -141,13 +158,11 @@ export class AccountingGmailIngestService {
       };
     }
 
-    const subject = this.header(message.payload?.headers, 'subject');
-    const senderEmail = extractMailboxAddress(
-      this.header(message.payload?.headers, 'from'),
-    );
-    const trustDecision = senderEmail
-      ? await this.inbox.senderTrustDecision(senderEmail)
-      : AccountingInboxTrustDecision.UNTRUSTED;
+    const trustDecision = isCloverCloseoutEmailEvidence(senderEmail, subject)
+      ? AccountingInboxTrustDecision.TRUSTED
+      : senderEmail
+        ? await this.inbox.senderTrustDecision(senderEmail)
+        : AccountingInboxTrustDecision.UNTRUSTED;
     const context = {
       messageId,
       senderEmail,
@@ -247,10 +262,44 @@ export class AccountingGmailIngestService {
 
   private gmailDateClause(accountingStartDate: string | null): string {
     if (!accountingStartDate) return 'newer_than:30d';
-    const previousDay = DateTime.fromISO(accountingStartDate, {
+    const baseDate =
+      accountingStartDate === PROVIDER_FINANCIAL_HISTORY_START_DATE
+        ? CLOVER_CLOSEOUT_BOUNDARY_EVIDENCE_START_DATE
+        : accountingStartDate;
+    const queryFloor = DateTime.fromISO(baseDate, {
       zone: 'utc',
     }).minus({ days: 1 });
-    return `after:${previousDay.toFormat('yyyy/MM/dd')}`;
+    return `after:${queryFloor.toFormat('yyyy/MM/dd')}`;
+  }
+
+  private isCloverCloseoutBoundaryEvidence(
+    message: GmailMessage,
+    options: GmailIngestOptions,
+    senderEmail: string | null,
+    subject: string | null,
+  ): boolean {
+    if (
+      !options.accountingStartDate ||
+      !isCloverCloseoutEmailEvidence(senderEmail, subject) ||
+      !message.internalDate
+    ) {
+      return false;
+    }
+    const millis = Number(message.internalDate);
+    if (!Number.isFinite(millis)) return false;
+    const receivedDate = DateTime.fromMillis(millis, {
+      zone: options.timezone,
+    }).startOf('day');
+    const accountingStart = DateTime.fromISO(options.accountingStartDate, {
+      zone: options.timezone,
+    }).startOf('day');
+    if (!receivedDate.isValid || !accountingStart.isValid) return false;
+    const receivedDateKey = receivedDate.toISODate();
+    return Boolean(
+      receivedDateKey &&
+      receivedDateKey >= CLOVER_CLOSEOUT_BOUNDARY_EVIDENCE_START_DATE &&
+      receivedDate.toMillis() < accountingStart.toMillis(),
+    );
   }
 
   private receivedOnOrAfterStartDate(

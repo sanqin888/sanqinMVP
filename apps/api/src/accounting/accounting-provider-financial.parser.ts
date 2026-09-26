@@ -10,11 +10,12 @@ import {
   type AccountingDocumentExtraction,
   type AccountingDocumentExtractionLine,
 } from './accounting-document-extraction';
+import { CLOVER_CLOSEOUT_RAW_CODES } from './accounting-clover-closeout.contract';
 import { CLOVER_STATEMENT_RAW_CODES } from './accounting-clover-statement.contract';
 
 export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_NAME =
   'accounting-provider-financial';
-export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION = '8';
+export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION = '9';
 
 export type ProviderFinancialParseInput = {
   text: string;
@@ -100,6 +101,13 @@ function parseCloverCloseout(
   text: string,
   input: ProviderFinancialParseInput,
 ): ParsedProviderFinancialDocument | null {
+  if (
+    !/Closeout Batch Report/i.test(text) ||
+    !/Batch Totals/i.test(text) ||
+    !/Batch ID:/i.test(text)
+  ) {
+    return null;
+  }
   const batchId = capture(text, /Batch ID:\s*\n?\s*([A-Z0-9_-]+)/i);
   if (!batchId) return null;
   const subjectDate = capture(
@@ -117,43 +125,56 @@ function parseCloverCloseout(
       : null;
   const block = between(text, 'Batch Totals', 'Card Type Totals') ?? text;
   const lines: ParsedLine[] = [];
-  pushLabelAmount(
+  pushLabelCountAmount(
     lines,
     block,
+    CLOVER_CLOSEOUT_RAW_CODES.SALES,
     'Sales',
     AccountingFinancialComponent.SALES,
     AccountingFinancialPostingTreatment.RECONCILIATION_ONLY,
   );
-  pushLabelAmount(
+  pushLabelCountAmount(
     lines,
     block,
+    CLOVER_CLOSEOUT_RAW_CODES.REFUNDS,
     'Refunds',
     AccountingFinancialComponent.REFUND,
     AccountingFinancialPostingTreatment.RECONCILIATION_ONLY,
   );
-  pushLabelAmount(
+  pushLabelCountAmount(
     lines,
     block,
+    CLOVER_CLOSEOUT_RAW_CODES.NET,
     'Net',
     AccountingFinancialComponent.CONTROL_TOTAL,
     AccountingFinancialPostingTreatment.CONTROL_TOTAL,
   );
-  pushLabelAmount(
+  pushLabelCountAmount(
     lines,
     block,
+    CLOVER_CLOSEOUT_RAW_CODES.TAX,
     'Tax',
     AccountingFinancialComponent.SALES_TAX,
     AccountingFinancialPostingTreatment.RECONCILIATION_ONLY,
     AccountingFinancialTaxRole.SALES_TAX,
   );
-  pushLabelAmount(
+  pushLabelCountAmount(
     lines,
     block,
+    CLOVER_CLOSEOUT_RAW_CODES.TIPS,
     'Tips',
     AccountingFinancialComponent.TIP,
     AccountingFinancialPostingTreatment.RECONCILIATION_ONLY,
   );
-  if (!lines.length) return null;
+  const requiredRawCodes = Object.values(CLOVER_CLOSEOUT_RAW_CODES);
+  if (
+    !businessDate ||
+    requiredRawCodes.some(
+      (rawCode) => !lines.some((line) => line.rawCode === rawCode),
+    )
+  ) {
+    return null;
+  }
   return {
     provider: AccountingFinancialProvider.CLOVER,
     documentType: AccountingFinancialDocumentType.BATCH_CONTROL,
@@ -199,6 +220,8 @@ function parseCloverStatement(
   const feeSummary = cloverModernFeeSummaryFromLayout(extraction);
   const cardProcessingTotalFees =
     cloverModernCardProcessingTotalFeesFromLayout(extraction);
+  const authorityControls =
+    extractCloverModernStatementAuthorityControls(extraction);
   if (!accountSummary || !feeSummary || !cardProcessingTotalFees) return null;
 
   const lines: ParsedLine[] = [];
@@ -256,6 +279,19 @@ function parseCloverStatement(
     AccountingFinancialComponent.CONTROL_TOTAL,
     accountSummary.amountProcessed,
   );
+  if (authorityControls?.surchargeCollectedCents != null) {
+    lines.push({
+      rawCode: CLOVER_STATEMENT_RAW_CODES.SURCHARGE_COLLECTED,
+      rawName: 'Surcharge Collected',
+      component: AccountingFinancialComponent.OTHER,
+      postingTreatment: AccountingFinancialPostingTreatment.RECONCILIATION_ONLY,
+      taxRole: AccountingFinancialTaxRole.NONE,
+      amountCents: authorityControls.surchargeCollectedCents,
+      rawPayload: {
+        evidenceRole: 'EXPLICIT_PROVIDER_SURCHARGE',
+      },
+    });
+  }
 
   pushControl(
     CLOVER_STATEMENT_RAW_CODES.FEE_SUMMARY_FEES,
@@ -307,6 +343,7 @@ function parseCloverStatement(
       documentExtractionEngine: extraction.engine,
       layoutAwareExtraction: true,
       amountsFundedExcludedFromNormalizedLines: true,
+      ...(authorityControls ? { authorityControls } : {}),
     },
     lines,
   };
@@ -639,27 +676,38 @@ function pushNamedSummary(
   });
 }
 
-function pushLabelAmount(
+function pushLabelCountAmount(
   lines: ParsedLine[],
   text: string,
+  rawCode: string,
   label: string,
   component: AccountingFinancialComponent,
   treatment: AccountingFinancialPostingTreatment,
   taxRole: AccountingFinancialTaxRole = AccountingFinancialTaxRole.NONE,
 ) {
   const regex = new RegExp(
-    `(?:^|\\n)${escapeRegex(label)}\\s+\\d+\\s+([^\\s]+)`,
+    `(?:^|\\n)${escapeRegex(label)}\\s+(\\d+)\\s+([^\\s]+)`,
     'i',
   );
-  const raw = regex.exec(text)?.[1];
-  const amount = raw ? parseMoneyCents(raw) : null;
-  if (amount == null) return;
+  const match = regex.exec(text);
+  const transactionCount = match ? Number(match[1]) : null;
+  const amount = match?.[2] ? parseMoneyCents(match[2]) : null;
+  if (
+    amount == null ||
+    transactionCount == null ||
+    !Number.isSafeInteger(transactionCount) ||
+    transactionCount < 0
+  ) {
+    return;
+  }
   lines.push({
+    rawCode,
     rawName: label,
     component,
     postingTreatment: treatment,
     taxRole,
     amountCents: amount,
+    rawPayload: { transactionCount },
   });
 }
 
@@ -676,6 +724,14 @@ type CloverModernFeeSummary = {
   fees: NamedAmountResolution;
   icpf: NamedAmountResolution;
   serviceCharges: NamedAmountResolution;
+};
+
+export type CloverModernStatementAuthorityControls = {
+  transactionCount: number;
+  amountSubmittedCents: number;
+  refundCount: number;
+  refundAmountCents: number;
+  surchargeCollectedCents: number | null;
 };
 
 type CloverModernFeeDetailRow = {
@@ -918,6 +974,199 @@ function cloverModernCardProcessingTotalFeesFromLayout(
         amountLine: documentLineEvidence(value.line),
       },
     },
+  };
+}
+
+function rowValueNearestHeader(params: {
+  extraction: AccountingDocumentExtraction;
+  row: AccountingDocumentExtractionLine;
+  header: AccountingDocumentExtractionLine;
+  parse: (value: string) => number | null;
+}): number | null {
+  if (!params.row.geometry || !params.header.geometry) return null;
+  const headerCenter =
+    params.header.geometry.left + params.header.geometry.width / 2;
+  const candidate = params.extraction.lines
+    .flatMap((line) => {
+      if (
+        line.page !== params.row.page ||
+        !line.geometry ||
+        verticalOverlapRatio(params.row, line) < 0.35
+      ) {
+        return [];
+      }
+      const value = params.parse(line.text);
+      if (value == null) return [];
+      const center = line.geometry.left + line.geometry.width / 2;
+      const centerDelta = Math.abs(center - headerCenter);
+      return centerDelta <= 0.09 ? [{ value, centerDelta }] : [];
+    })
+    .sort((left, right) => left.centerDelta - right.centerDelta)[0];
+  return candidate?.value ?? null;
+}
+
+const parseNonNegativeIntegerToken = (value: string): number | null => {
+  const trimmed = value.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const parsed = Number(trimmed);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
+};
+
+export function extractCloverModernStatementAuthorityControls(
+  extraction: AccountingDocumentExtraction | undefined,
+): CloverModernStatementAuthorityControls | null {
+  if (!extraction || extraction.layoutMode !== 'GEOMETRY') return null;
+
+  const processingHeading = exactLayoutLines(
+    extraction,
+    'Card Processing and Fee Summary',
+  )[0];
+  if (!processingHeading?.geometry) return null;
+  const page = processingHeading.page;
+  const itemHeaders = exactLayoutLines(extraction, 'Items')
+    .filter(
+      (line) =>
+        line.page === page &&
+        line.geometry &&
+        line.geometry.top > processingHeading.geometry!.top &&
+        line.geometry.top - processingHeading.geometry!.top < 0.15,
+    )
+    .sort(
+      (left, right) => (left.geometry?.left ?? 0) - (right.geometry?.left ?? 0),
+    );
+  const amountHeaders = exactLayoutLines(extraction, 'Amount')
+    .filter(
+      (line) =>
+        line.page === page &&
+        line.geometry &&
+        line.geometry.top > processingHeading.geometry!.top &&
+        line.geometry.top - processingHeading.geometry!.top < 0.15,
+    )
+    .sort(
+      (left, right) => (left.geometry?.left ?? 0) - (right.geometry?.left ?? 0),
+    );
+  if (itemHeaders.length < 2 || amountHeaders.length < 2) return null;
+  const submittedItemHeader = itemHeaders[0];
+  const refundItemHeader = itemHeaders[1];
+  const submittedAmountHeader = amountHeaders[0];
+  const refundAmountHeader = amountHeaders[1];
+  const submittedItemHeaderGeometry = submittedItemHeader.geometry;
+  const refundItemHeaderGeometry = refundItemHeader.geometry;
+  const submittedAmountHeaderGeometry = submittedAmountHeader.geometry;
+  const refundAmountHeaderGeometry = refundAmountHeader.geometry;
+  if (
+    !submittedItemHeaderGeometry ||
+    !refundItemHeaderGeometry ||
+    !submittedAmountHeaderGeometry ||
+    !refundAmountHeaderGeometry
+  ) {
+    return null;
+  }
+
+  const processingTotalRow = exactLayoutLines(extraction, 'Total')
+    .filter(
+      (line) =>
+        line.page === page &&
+        line.geometry &&
+        line.geometry.left < 0.2 &&
+        line.geometry.top > submittedItemHeaderGeometry.top &&
+        line.geometry.top - submittedItemHeaderGeometry.top < 0.2,
+    )
+    .sort(
+      (left, right) => (left.geometry?.top ?? 0) - (right.geometry?.top ?? 0),
+    )[0];
+  if (!processingTotalRow) return null;
+
+  const transactionCount = rowValueNearestHeader({
+    extraction,
+    row: processingTotalRow,
+    header: submittedItemHeader,
+    parse: parseNonNegativeIntegerToken,
+  });
+  const amountSubmittedCents = rowValueNearestHeader({
+    extraction,
+    row: processingTotalRow,
+    header: submittedAmountHeader,
+    parse: parseMoneyCents,
+  });
+  const refundCount = rowValueNearestHeader({
+    extraction,
+    row: processingTotalRow,
+    header: refundItemHeader,
+    parse: parseNonNegativeIntegerToken,
+  });
+  const refundAmountCents = rowValueNearestHeader({
+    extraction,
+    row: processingTotalRow,
+    header: refundAmountHeader,
+    parse: parseMoneyCents,
+  });
+  if (
+    transactionCount == null ||
+    amountSubmittedCents == null ||
+    refundCount == null ||
+    refundAmountCents == null
+  ) {
+    return null;
+  }
+
+  let surchargeCollectedCents: number | null = null;
+  const surchargeLines = exactLayoutLines(extraction, 'Surcharge Collected');
+  const cardTypeHeader = exactLayoutLines(extraction, 'Card Type')
+    .filter((line) => line.geometry)
+    .find((line) =>
+      surchargeLines.some(
+        (surcharge) =>
+          surcharge.page === line.page &&
+          surcharge.geometry &&
+          line.geometry &&
+          Math.abs(surcharge.geometry.top - line.geometry.top) < 0.03 &&
+          surcharge.geometry.left > 0.7,
+      ),
+    );
+  if (cardTypeHeader?.geometry) {
+    const cardTypeHeaderGeometry = cardTypeHeader.geometry;
+    const surchargeHeader = surchargeLines
+      .filter(
+        (line) =>
+          line.page === cardTypeHeader.page &&
+          line.geometry &&
+          line.geometry.left > 0.7 &&
+          Math.abs(line.geometry.top - cardTypeHeaderGeometry.top) < 0.03,
+      )
+      .sort(
+        (left, right) =>
+          Math.abs((left.geometry?.top ?? 0) - cardTypeHeaderGeometry.top) -
+          Math.abs((right.geometry?.top ?? 0) - cardTypeHeaderGeometry.top),
+      )[0];
+    const cardTypeTotalRow = exactLayoutLines(extraction, 'Total')
+      .filter(
+        (line) =>
+          line.page === cardTypeHeader.page &&
+          line.geometry &&
+          line.geometry.left < 0.2 &&
+          line.geometry.top > cardTypeHeaderGeometry.top &&
+          line.geometry.top - cardTypeHeaderGeometry.top < 0.25,
+      )
+      .sort(
+        (left, right) => (left.geometry?.top ?? 0) - (right.geometry?.top ?? 0),
+      )[0];
+    if (surchargeHeader?.geometry && cardTypeTotalRow) {
+      surchargeCollectedCents = rowValueNearestHeader({
+        extraction,
+        row: cardTypeTotalRow,
+        header: surchargeHeader,
+        parse: parseMoneyCents,
+      });
+    }
+  }
+
+  return {
+    transactionCount,
+    amountSubmittedCents,
+    refundCount,
+    refundAmountCents,
+    surchargeCollectedCents,
   };
 }
 

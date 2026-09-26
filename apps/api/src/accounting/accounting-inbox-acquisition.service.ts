@@ -6,6 +6,7 @@ import { createId } from '@paralleldrive/cuid2';
 import {
   AccountingArtifactAcquisitionMode,
   AccountingArtifactKind,
+  AccountingFinancialDocumentType,
   AccountingFinancialProvider,
   AccountingInboxClassification,
   AccountingInboxStatus,
@@ -56,6 +57,7 @@ import {
   parseAccountingStructuredExpenseCsv,
 } from './accounting-structured-expense-csv';
 import { normalizeAccountingManualUploadFilename } from './accounting-upload-filename';
+import { isCloverCloseoutEmailEvidence } from './accounting-clover-closeout.contract';
 
 export const ACCOUNTING_INBOX_FILE_MAX_BYTES = 25 * 1024 * 1024;
 const GENERIC_PARSER_NAME = 'accounting-generic-document-review';
@@ -229,6 +231,10 @@ export class AccountingInboxAcquisitionService {
     try {
       await this.parseTextIfEligible(artifact, normalizedText, 'EMAIL_BODY', {
         emailSubject: context.subject,
+        autoMaterializeCloverCloseout: isCloverCloseoutEmailEvidence(
+          context.senderEmail,
+          context.subject,
+        ),
       });
     } catch (error) {
       if (!(error instanceof AccountingProviderFinancialProcessingError)) {
@@ -711,10 +717,21 @@ export class AccountingInboxAcquisitionService {
     inputKind: 'EMAIL_BODY',
     providerContext: {
       emailSubject?: string | null;
+      autoMaterializeCloverCloseout?: boolean;
     },
   ) {
     if (artifact.inboxItem?.status !== AccountingInboxStatus.PENDING_REVIEW) {
       return;
+    }
+    if (providerContext.autoMaterializeCloverCloseout) {
+      const materialized = await this.providerFinancial.parseAndMaterialize({
+        artifactStableId: artifact.artifactStableId,
+        text,
+        emailSubject: providerContext.emailSubject,
+        providerHint: AccountingFinancialProvider.CLOVER,
+        documentTypeHint: AccountingFinancialDocumentType.BATCH_CONTROL,
+      });
+      if (materialized.matched) return;
     }
     const provider = await this.providerFinancial.parseForInboxSuggestion({
       artifactStableId: artifact.artifactStableId,
