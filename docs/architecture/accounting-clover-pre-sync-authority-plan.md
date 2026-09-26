@@ -376,8 +376,13 @@ Before production POS-Clover Sync becomes permanent:
 
 #### Slice E1 — Sale fact completeness
 
-**Implementation state (2026-09-26): LOCAL SOURCE READY FOR REVIEW / ADDITIVE SCHEMA /
-MIGRATION REQUIRED / NO CUTOVER / WEB ECOMMERCE UNCHANGED.**
+**Implementation state (2026-09-26): SOURCE + USER-GENERATED ADDITIVE MIGRATION ON DEV /
+CI GREEN / NO CUTOVER / WEB ECOMMERCE UNCHANGED.**
+
+Source merged through PR #2556 / squash `ae6420fc`; user-generated migration
+`20260926132951_add_payment_transaction_tip_cents` is on `dev@656265d0`. Migration review confirms
+one nullable `INTEGER` column only, with no default/backfill/NOT NULL/DROP/constraint tightening/data
+rewrite. CI #6448 passed Architecture, API, Web, printer-agent and Windows workstation.
 
 Readiness audit against the latest `dev` and production evidence confirmed this is a Payments-owned
 fact-loss problem rather than an Accounting parser problem. The June 2026 six-page Clover statement
@@ -399,16 +404,40 @@ base payment `amount` and `additionalCharges`. E1 therefore:
 - leaves production Web Clover Ecommerce behavior unchanged;
 - does not set `providerPaymentFactCutoverAt`, post Journals, or alter Accounting authority.
 
-The schema change is additive-only in source. Per repository policy MCP does not create/edit Prisma
-migration files. A user-generated nullable-column migration is required before this source may be
-promoted. Existing rows remain representable as `tipCents = null`; no backfill or guessed historical
-tip is permitted.
+Existing rows remain representable as `tipCents = null`; no backfill or guessed historical tip is
+permitted.
 
 #### Slice E2 — Reversal fact completeness
 
-Still pending after E1. Managed refund/void and external reversal evidence must explicitly preserve
-provider-proven refunded tip/additional-charge/customer-total authority. E1 intentionally does not
-guess refunded tip from the original sale and does not claim this gate complete.
+**Implementation state (2026-09-26): LOCAL SOURCE READY FOR REVIEW / NO NEW SCHEMA / NO MIGRATION /
+NO CUTOVER / WEB ECOMMERCE UNCHANGED.**
+
+E2 stays inside the existing Payments owner and POS payment orchestration boundary. Readiness audit
+found one direct E1 follow-up bug: the POS full-refund coordinator still calculated
+`chargedTotalCents - amountCents` as additional charges, but after E1 that delta contains both tip and
+additional charges. A tipped refund would therefore misclassify tip as surcharge/additional charge and
+fail canonical reconciliation.
+
+E2 contracts the reversal facts explicitly:
+
+- full managed POS reversal requires the original canonical sale to have provider-proven `tipCents`;
+- expected tip refund is the immutable original canonical provider tip, not a rate/residual inference;
+- expected additional-charge refund is `chargedTotal - base - tip`;
+- Platform v3 refund reconciliation reads provider `refund.tipAmount` and fails closed on missing or
+  mismatched tip;
+- Platform v3 void reconciliation reads the canonical payment `tipAmount` and applies the same strict
+  match;
+- managed reversal `PaymentTransaction.tipCents` stores the provider-proven refunded tip, reusing the
+  E1 column with no new schema;
+- `PaymentReversalFinancialFactV1` exposes nullable `tipRefundCents` independently from
+  `additionalChargeRefundCents` and customer refund total;
+- external provider-webhook reverse-sync keeps `tipRefundCents = null` when the webhook does not prove
+  tip, so Accounting continues to fail closed instead of copying the original sale tip;
+- Accounting read-only canonical-change preview includes the new tip-refund evidence, but Journal
+  posting policy is not redesigned in E2.
+
+The current managed caller remains the POS full-order refund/void path. E2 does not introduce partial
+refund tip allocation rules and does not change production Web Clover Ecommerce refund behavior.
 
 ## 9. Safety / non-goals
 
@@ -431,5 +460,5 @@ State:
 **NOT READY FOR HISTORICAL JOURNAL CORRECTION**  
 **SLICE B SOURCE + ADDITIVE MIGRATION MERGED TO DEV / CI GREEN / PRODUCTION CUTOVER NOT SET**  
 **SLICE C MERGED TO DEV / CI #6439 GREEN / READ-ONLY / JUNE BLOCKED ON UNKNOWN SURCHARGE / JULY DRAFT READY**  
-**SLICE E1 LOCAL SOURCE READY FOR REVIEW / MIGRATION REQUIRED / NO CUTOVER**  
-**SLICE E2 REVERSAL COMPLETENESS REMAINS A HARD PRE-CUTOVER GATE**
+**SLICE E1 SOURCE + USER-GENERATED ADDITIVE MIGRATION ON DEV / CI #6448 GREEN / NO CUTOVER**  
+**SLICE E2 LOCAL SOURCE READY FOR REVIEW / NO NEW MIGRATION / NO CUTOVER**

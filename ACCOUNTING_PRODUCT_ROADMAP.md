@@ -164,14 +164,19 @@ also closes against real payouts: June adjusted closing 43,459c equals the canon
 and July adjusted 7/30 closing 3,532c equals the canonical 7/31 payout. Slice D posting remains
 blocked pending review and resolution of June's unknown surcharge.
 
-Slice E has now started as **E1 sale fact completeness / LOCAL SOURCE READY FOR REVIEW /
-MIGRATION REQUIRED**. The audit found no provider surcharge field in the persisted June statement
-geometry or June Closeouts, so Accounting will not manufacture the missing historical value.
-Instead, Payments now preserves Platform v3 provider `tipAmount`, exposes it as
-`PaymentFinancialFactV1.tipCents`, includes tip in canonical charged total, and fails closed for
-Clover POS success when canonical tip/surcharge/charged-total authority is incomplete. Web Ecommerce
-is unchanged and the durable payment-fact cutover remains unset. E2 refund/reversal completeness is
-still required before production cutover.
+Slice E1 sale fact completeness is **SOURCE + USER-GENERATED ADDITIVE MIGRATION ON DEV / CI #6448
+GREEN / NO CUTOVER**. Source merged through PR #2556 / squash `ae6420fc`; migration
+`20260926132951_add_payment_transaction_tip_cents` is on `dev@656265d0` and was reviewed as one
+nullable `INTEGER` with no default/backfill/NOT NULL/DROP/data rewrite. Payments preserves Platform
+v3 provider `tipAmount`, exposes `PaymentFinancialFactV1.tipCents`, includes tip in canonical charged
+total, and fails closed for incomplete POS provider facts. Web Ecommerce remains unchanged.
+
+Slice E2 reversal completeness is now **LOCAL SOURCE READY FOR REVIEW / NO NEW MIGRATION / NO
+CUTOVER**. It separates full-refund tip from additional charges, requires Platform refund/void tip
+authority, persists managed refunded tip in the existing E1 `tipCents` column, publishes nullable
+`PaymentReversalFinancialFactV1.tipRefundCents`, and keeps webhook-only tip evidence null/fail-closed.
+Accounting only surfaces the new fact in read-only canonical-change preview; Journal posting policy
+is not redesigned. The durable payment-fact cutover remains unset.
 
 The existing-materialized remediation is **MERGED / CI GREEN** through PR #2517
 (`a7a872bc`) with the user-generated additive migration committed to `dev` as `5e14e8db`.

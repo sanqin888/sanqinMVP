@@ -29,6 +29,7 @@ export type GetPaymentStatusRequest = {
   providerRefundId?: string | null;
   amountCents?: number;
   currency?: string;
+  expectedTipRefundCents?: number;
   expectedAdditionalChargeRefundCents?: number;
 };
 

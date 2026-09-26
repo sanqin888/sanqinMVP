@@ -21,6 +21,7 @@ export type StartOrRecoverRefundInput = {
   amountCents: number;
   currency: string;
   originalProviderPaymentId: string;
+  expectedTipRefundCents: number;
   expectedAdditionalChargeRefundCents: number;
 };
 
@@ -162,6 +163,7 @@ export class RefundPaymentService {
         providerRefundId: snapshot.providerRefundId,
         amountCents: snapshot.amountCents,
         currency: snapshot.currency,
+        expectedTipRefundCents: input.expectedTipRefundCents,
         expectedAdditionalChargeRefundCents:
           input.expectedAdditionalChargeRefundCents,
       });
@@ -201,6 +203,7 @@ export class RefundPaymentService {
       providerRefundId: snapshot.providerRefundId,
       amountCents: snapshot.amountCents,
       currency: snapshot.currency,
+      expectedTipRefundCents: input.expectedTipRefundCents,
       expectedAdditionalChargeRefundCents:
         input.expectedAdditionalChargeRefundCents,
     };
@@ -359,8 +362,13 @@ export class RefundPaymentService {
       if (outcome.refundedAmountCents !== snapshot.amountCents) {
         problems.push('canonical refunded amount missing or mismatched');
       }
+      if (outcome.tipCents !== input.expectedTipRefundCents) {
+        problems.push('canonical refunded tip missing or mismatched');
+      }
       const expectedCustomerRefundTotal =
-        snapshot.amountCents + input.expectedAdditionalChargeRefundCents;
+        snapshot.amountCents +
+        input.expectedTipRefundCents +
+        input.expectedAdditionalChargeRefundCents;
       if (outcome.chargedTotalCents !== expectedCustomerRefundTotal) {
         problems.push('canonical customer refund total missing or mismatched');
       }
@@ -415,6 +423,12 @@ export class RefundPaymentService {
     }
     if (outcome.amountCents !== snapshot.amountCents) {
       problems.push('amount mismatch');
+    }
+    if (outcome.tipCents !== snapshot.tipCents) {
+      problems.push('tip amount mismatch');
+    }
+    if (outcome.chargedTotalCents !== snapshot.chargedTotalCents) {
+      problems.push('charged total mismatch');
     }
     if (outcome.currency?.toUpperCase() !== snapshot.currency) {
       problems.push('currency mismatch');
@@ -474,6 +488,11 @@ export class RefundPaymentService {
       snapshot.status !== 'SUCCEEDED' ||
       snapshot.providerPaymentId !== input.originalProviderPaymentId ||
       snapshot.amountCents !== input.amountCents ||
+      snapshot.tipCents !== input.expectedTipRefundCents ||
+      snapshot.chargedTotalCents !==
+        input.amountCents +
+          input.expectedTipRefundCents +
+          input.expectedAdditionalChargeRefundCents ||
       snapshot.currency !== input.currency
     ) {
       throw new InvalidPaymentReversalError(

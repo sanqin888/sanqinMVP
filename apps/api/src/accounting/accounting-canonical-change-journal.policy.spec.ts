@@ -111,6 +111,7 @@ const reversal = (
   originalSaleBaseAmountCents: 1130,
   originalSaleCustomerTotalCents: 1157,
   baseRefundCents: 1130,
+  tipRefundCents: 0,
   additionalChargeRefundCents: 27,
   customerRefundTotalCents: 1157,
   currency: 'CAD',

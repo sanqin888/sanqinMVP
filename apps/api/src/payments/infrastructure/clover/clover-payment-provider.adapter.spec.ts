@@ -297,6 +297,7 @@ describe('CloverPaymentProviderAdapter', () => {
         amountCents: 2000,
         currency: 'CAD',
         refundedAmountCents: 2000,
+        tipCents: 0,
         surchargeCents: 48,
         chargedTotalCents: 2048,
       });
@@ -311,6 +312,7 @@ describe('CloverPaymentProviderAdapter', () => {
         providerPaymentId: 'terminal-payment-1',
         amountCents: 2000,
         currency: 'CAD',
+        expectedTipRefundCents: 0,
         expectedAdditionalChargeRefundCents: 48,
       }),
     ).resolves.toMatchObject({
@@ -326,6 +328,7 @@ describe('CloverPaymentProviderAdapter', () => {
         operation: 'REFUND',
         providerPaymentId: 'terminal-payment-1',
         providerRefundId: 'terminal-refund-1',
+        expectedTipRefundCents: 0,
         expectedAdditionalChargeRefundCents: 48,
       }),
     );
@@ -363,6 +366,7 @@ describe('CloverPaymentProviderAdapter', () => {
         providerPaymentId: 'interac-payment-1',
         amountCents: 2000,
         currency: 'CAD',
+        expectedTipRefundCents: 0,
         expectedAdditionalChargeRefundCents: 0,
       }),
     ).resolves.toMatchObject({
@@ -391,6 +395,7 @@ describe('CloverPaymentProviderAdapter', () => {
         amountCents: 2000,
         currency: 'CAD',
         refundedAmountCents: 2000,
+        tipCents: 0,
         chargedTotalCents: 2048,
       });
 
@@ -405,6 +410,7 @@ describe('CloverPaymentProviderAdapter', () => {
         providerRefundId: 'terminal-refund-1',
         amountCents: 2000,
         currency: 'CAD',
+        expectedTipRefundCents: 0,
         expectedAdditionalChargeRefundCents: 48,
       }),
     ).resolves.toMatchObject({ status: 'SUCCEEDED', evidence: 'CANONICAL' });
@@ -1183,9 +1189,10 @@ describe('Clover Platform Payments Gateway', () => {
         JSON.stringify({
           id: 'clover-refund-1',
           amount: 2000,
+          tipAmount: 400,
           payment: { id: 'clover-payment-1' },
           additionalCharges: {
-            elements: [{ type: 'CREDIT_SURCHARGE', amount: 48 }],
+            elements: [{ type: 'CREDIT_SURCHARGE', amount: 58 }],
           },
         }),
         { status: 200 },
@@ -1198,7 +1205,8 @@ describe('Clover Platform Payments Gateway', () => {
         ...platformRequest,
         operation: 'REFUND',
         providerRefundId: 'clover-refund-1',
-        expectedAdditionalChargeRefundCents: 48,
+        expectedTipRefundCents: 400,
+        expectedAdditionalChargeRefundCents: 58,
       }),
     ).resolves.toMatchObject({
       status: 'SUCCEEDED',
@@ -1206,8 +1214,9 @@ describe('Clover Platform Payments Gateway', () => {
       providerPaymentId: 'clover-payment-1',
       providerRefundId: 'clover-refund-1',
       refundedAmountCents: 2000,
-      surchargeCents: 48,
-      chargedTotalCents: 2048,
+      tipCents: 400,
+      surchargeCents: 58,
+      chargedTotalCents: 2458,
       resultCode: 'CLOVER_REFUND_CONFIRMED',
     });
     const url = fetchSpy.mock.calls[0]?.[0];
@@ -1216,6 +1225,37 @@ describe('Clover Platform Payments Gateway', () => {
     }
     expect(url).toContain('/v3/merchants/merchant-1/refunds/clover-refund-1');
     expect(url).toContain('expand=');
+  });
+
+  it('keeps canonical refund UNKNOWN when provider tip does not match the original sale', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: 'clover-refund-1',
+          amount: 2000,
+          tipAmount: 0,
+          payment: { id: 'clover-payment-1' },
+          additionalCharges: {
+            elements: [{ type: 'CREDIT_SURCHARGE', amount: 58 }],
+          },
+        }),
+        { status: 200 },
+      ),
+    );
+    const gateway = createPlatformGateway();
+
+    await expect(
+      gateway.getCanonicalReversal({
+        ...platformRequest,
+        operation: 'REFUND',
+        providerRefundId: 'clover-refund-1',
+        expectedTipRefundCents: 400,
+        expectedAdditionalChargeRefundCents: 58,
+      }),
+    ).resolves.toMatchObject({
+      status: 'UNKNOWN',
+      failureCode: 'CLOVER_PLATFORM_REFUND_TIP_MISMATCH',
+    });
   });
 
   it('confirms a canonical void from the payment result without requiring a refund row', async () => {
@@ -1230,6 +1270,7 @@ describe('Clover Platform Payments Gateway', () => {
       gateway.getCanonicalReversal({
         ...platformRequest,
         operation: 'VOID',
+        expectedTipRefundCents: 0,
         expectedAdditionalChargeRefundCents: 48,
       }),
     ).resolves.toMatchObject({
@@ -1237,6 +1278,7 @@ describe('Clover Platform Payments Gateway', () => {
       evidence: 'CANONICAL',
       providerPaymentId: 'clover-payment-1',
       refundedAmountCents: 2000,
+      tipCents: 0,
       surchargeCents: 48,
       chargedTotalCents: 2048,
       resultCode: 'CLOVER_VOID_CONFIRMED',
@@ -1261,9 +1303,10 @@ describe('Clover Platform Payments Gateway', () => {
           JSON.stringify({
             id: 'clover-refund-1',
             amount: 2000,
+            tipAmount: 400,
             payment: { id: 'clover-payment-1' },
             additionalCharges: {
-              elements: [{ type: 'CREDIT_SURCHARGE', amount: 48 }],
+              elements: [{ type: 'CREDIT_SURCHARGE', amount: 58 }],
             },
           }),
           { status: 200 },
@@ -1275,13 +1318,15 @@ describe('Clover Platform Payments Gateway', () => {
       gateway.getCanonicalReversal({
         ...platformRequest,
         operation: 'VOID',
-        expectedAdditionalChargeRefundCents: 48,
+        expectedTipRefundCents: 400,
+        expectedAdditionalChargeRefundCents: 58,
       }),
     ).resolves.toMatchObject({
       status: 'SUCCEEDED',
       providerRefundId: 'clover-refund-1',
       refundedAmountCents: 2000,
-      chargedTotalCents: 2048,
+      tipCents: 400,
+      chargedTotalCents: 2458,
       resultCode: 'CLOVER_VOID_CONVERTED_TO_REFUND',
     });
     expect(fetchSpy).toHaveBeenCalledTimes(2);
@@ -1306,6 +1351,7 @@ describe('Clover Platform Payments Gateway', () => {
       gateway.getCanonicalReversal({
         ...platformRequest,
         operation: 'REFUND',
+        expectedTipRefundCents: 0,
         expectedAdditionalChargeRefundCents: 48,
       }),
     ).resolves.toMatchObject({

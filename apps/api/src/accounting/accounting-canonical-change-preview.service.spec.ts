@@ -111,6 +111,7 @@ const cardReversal = (): PaymentReversalFinancialFactV1 => ({
   originalSaleBaseAmountCents: 1130,
   originalSaleCustomerTotalCents: 1130,
   baseRefundCents: 565,
+  tipRefundCents: 0,
   additionalChargeRefundCents: 0,
   customerRefundTotalCents: 565,
   currency: 'CAD',
