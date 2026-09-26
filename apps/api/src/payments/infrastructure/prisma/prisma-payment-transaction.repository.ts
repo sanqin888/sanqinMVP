@@ -882,6 +882,8 @@ export class PrismaPaymentTransactionRepository
         row.amountCents !== originalSale.amountCents) ||
       row.chargedTotalCents === null ||
       row.chargedTotalCents < row.refundedAmountCents ||
+      (row.tipCents !== null &&
+        row.chargedTotalCents < row.refundedAmountCents + row.tipCents) ||
       (originalSale.chargedTotalCents !== null &&
         row.chargedTotalCents > originalSale.chargedTotalCents) ||
       !identity
@@ -913,8 +915,11 @@ export class PrismaPaymentTransactionRepository
       originalSaleBaseAmountCents: originalSale.amountCents,
       originalSaleCustomerTotalCents: originalSale.chargedTotalCents,
       baseRefundCents: row.refundedAmountCents,
+      tipRefundCents: row.tipCents,
       additionalChargeRefundCents:
-        row.chargedTotalCents - row.refundedAmountCents,
+        row.tipCents === null
+          ? null
+          : row.chargedTotalCents - row.refundedAmountCents - row.tipCents,
       customerRefundTotalCents: row.chargedTotalCents,
       currency: row.currency,
       externalPaymentId: originalSale.externalPaymentId,
@@ -999,6 +1004,7 @@ export class PrismaPaymentTransactionRepository
       originalSaleBaseAmountCents: originalSale.amountCents,
       originalSaleCustomerTotalCents: originalSale.chargedTotalCents,
       baseRefundCents: payload.refundedDeltaCents,
+      tipRefundCents: null,
       additionalChargeRefundCents: null,
       customerRefundTotalCents: null,
       currency: payload.currency,

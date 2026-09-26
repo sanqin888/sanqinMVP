@@ -25,6 +25,7 @@ type CloverPlatformCanonicalReversalRequest =
   CloverPlatformCanonicalPaymentRequest & {
     operation: 'REFUND' | 'VOID';
     providerRefundId?: string | null;
+    expectedTipRefundCents: number;
     expectedAdditionalChargeRefundCents: number;
   };
 
@@ -404,6 +405,7 @@ const mapPlatformRefund = (
 
   const providerRefundId = stringValue(refund, 'id');
   const amountCents = integerValue(refund, 'amount');
+  const tipCents = integerValue(refund, 'tipAmount');
   const payment = asRecord(refund.payment);
   const providerPaymentId = stringValue(payment, 'id');
   if (!providerRefundId) {
@@ -437,6 +439,18 @@ const mapPlatformRefund = (
       request,
       'CLOVER_PLATFORM_REFUND_AMOUNT_MISMATCH',
       'Clover Platform refund amount does not match the requested full refund',
+      providerRefundId,
+    );
+  }
+  if (
+    tipCents === undefined ||
+    tipCents < 0 ||
+    tipCents !== request.expectedTipRefundCents
+  ) {
+    return reversalUnknown(
+      request,
+      'CLOVER_PLATFORM_REFUND_TIP_MISMATCH',
+      'Clover Platform refunded tip does not match the original canonical tip facts',
       providerRefundId,
     );
   }
@@ -475,7 +489,8 @@ const mapPlatformRefund = (
       providerRefundId,
     );
   }
-  const refundedCustomerTotalCents = amountCents + additionalChargeRefundCents;
+  const refundedCustomerTotalCents =
+    amountCents + tipCents + additionalChargeRefundCents;
   if (!Number.isSafeInteger(refundedCustomerTotalCents)) {
     return reversalUnknown(
       request,
@@ -492,6 +507,7 @@ const mapPlatformRefund = (
     providerRefundId,
     amountCents,
     currency: request.currency,
+    tipCents,
     surchargeCents,
     chargedTotalCents: refundedCustomerTotalCents,
     refundedAmountCents: amountCents,
@@ -660,6 +676,18 @@ export class CloverPlatformPaymentsGateway {
     const resultCode = stringValue(payment, 'result');
     const normalizedResult = normalizePlatformResult(resultCode);
     if (request.operation === 'VOID' && normalizedResult === 'CANCELLED') {
+      const tipCents = integerValue(payment, 'tipAmount');
+      if (
+        tipCents === undefined ||
+        tipCents < 0 ||
+        tipCents !== request.expectedTipRefundCents
+      ) {
+        return reversalUnknown(
+          request,
+          'CLOVER_PLATFORM_VOID_TIP_MISMATCH',
+          'Clover Platform void tip does not match the original canonical tip facts',
+        );
+      }
       const additionalCharges = elementRecords(payment, 'additionalCharges');
       if (!additionalCharges) {
         return reversalUnknown(
@@ -699,8 +727,10 @@ export class CloverPlatformPaymentsGateway {
         amountCents: request.amountCents,
         currency: request.currency,
         refundedAmountCents: request.amountCents,
+        tipCents,
         surchargeCents,
-        chargedTotalCents: request.amountCents + additionalChargeCents,
+        chargedTotalCents:
+          request.amountCents + tipCents + additionalChargeCents,
         resultCode: 'CLOVER_VOID_CONFIRMED',
         failureCode: null,
         failureMessage: null,

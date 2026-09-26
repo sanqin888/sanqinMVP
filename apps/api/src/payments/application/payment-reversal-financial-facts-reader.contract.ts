@@ -27,10 +27,11 @@ export type PaymentReversalFinancialKindV1 =
  * Canonical Payments-owned reversal money fact.
  *
  * `baseRefundCents` is always proven provider/base-tender money movement for
- * this one reversal fact. Additional-charge/customer-total refund fields stay
- * nullable when provider evidence cannot prove them (notably external webhook
- * reverse-sync observations). Accounting must fail closed rather than infer a
- * surcharge refund from the original charge.
+ * this one reversal fact. `tipRefundCents` is separately provider-proven when
+ * canonical reversal evidence exposes it. Tip/additional-charge/customer-total
+ * refund fields stay nullable when provider evidence cannot prove them (notably
+ * external webhook reverse-sync observations). Accounting must fail closed
+ * rather than infer tip or surcharge refund from the original charge.
  */
 export type PaymentReversalFinancialFactV1 = {
   version: 1;
@@ -49,6 +50,7 @@ export type PaymentReversalFinancialFactV1 = {
   originalSaleBaseAmountCents: number;
   originalSaleCustomerTotalCents: number | null;
   baseRefundCents: number;
+  tipRefundCents: number | null;
   additionalChargeRefundCents: number | null;
   customerRefundTotalCents: number | null;
   currency: string;

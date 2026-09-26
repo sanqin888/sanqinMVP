@@ -469,14 +469,19 @@ must remain outside remediation. June requires +12,863c Pending but is blocked b
 UNKNOWN; July produces a fully evidenced +31,325c Pending / -18,567c Store Cash / +7,207c Tips /
 +5,551c surcharge draft. Slice D remains blocked.
 
-Slice E1 **sale fact completeness** is now **LOCAL SOURCE READY FOR REVIEW / ADDITIVE SCHEMA /
-MIGRATION REQUIRED / NO CUTOVER**. Latest-code and production-evidence audit confirms June has no
-explicit provider surcharge field to recover safely, while Platform v3 post-cutover payment truth
-does expose independent `tipAmount`. E1 keeps the fix inside Payments ownership: persist nullable
-`PaymentTransaction.tipCents`, publish `PaymentFinancialFactV1.tipCents`, include provider tip in
-charged total, and fail closed before Clover POS success when canonical tip/surcharge/charged-total
-facts are incomplete. Web Ecommerce remains guarded and unchanged. E2 reversal/refund tip authority
-remains pending.
+Slice E1 **sale fact completeness** is **SOURCE + USER-GENERATED ADDITIVE MIGRATION ON DEV / CI
+#6448 GREEN / NO CUTOVER** through PR #2556 / squash `ae6420fc` plus migration
+`20260926132951_add_payment_transaction_tip_cents` on `dev@656265d0`. The migration is one nullable
+`INTEGER` only with no backfill/default/destructive operation. Web Ecommerce remains guarded and
+unchanged.
+
+Slice E2 **reversal fact completeness** is **LOCAL SOURCE READY FOR REVIEW / NO NEW SCHEMA / NO
+MIGRATION / NO CUTOVER**. The audit caught the E1 follow-up where `chargedTotal - amount` still mixed
+tip into additional charges during POS full refund. E2 splits expected refunded tip from true
+additional charges, requires canonical Platform refund/void tip evidence, reuses PaymentTransaction
+`tipCents` for managed reversal persistence, publishes nullable `tipRefundCents`, and leaves webhook
+facts null when tip is not provider-proven. No production Web Clover or Accounting posting behavior
+is changed.
 
 **Existing-materialized parser re-evaluation / Human Review effective snapshot — LOCAL SOURCE
 READY FOR REVIEW:** `accounting/provider-parser-reevaluation-review` adds the previously planned

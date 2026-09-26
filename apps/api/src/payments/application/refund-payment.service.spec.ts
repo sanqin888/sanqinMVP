@@ -90,8 +90,9 @@ const createSuccessfulSale = (): PaymentTransaction =>
     .applyProviderOutcome({
       status: 'SUCCEEDED',
       providerPaymentId: 'CLOVERPAY001',
-      surchargeCents: 48,
-      chargedTotalCents: 2048,
+      tipCents: 400,
+      surchargeCents: 58,
+      chargedTotalCents: 2458,
       refundedAmountCents: 0,
     });
 
@@ -110,8 +111,9 @@ const saleCanonical = (
     providerPaymentId: snapshot.providerPaymentId,
     amountCents: snapshot.amountCents,
     currency: snapshot.currency,
-    surchargeCents: 48,
-    chargedTotalCents: 2048,
+    tipCents: 400,
+    surchargeCents: 58,
+    chargedTotalCents: 2458,
     refundedAmountCents: 0,
     ...overrides,
   };
@@ -131,8 +133,12 @@ const reversalCanonical = (
   amountCents: request.amountCents,
   currency: request.currency,
   refundedAmountCents: request.amountCents,
-  surchargeCents: 48,
-  chargedTotalCents: 2048,
+  tipCents: request.expectedTipRefundCents,
+  surchargeCents: request.expectedAdditionalChargeRefundCents,
+  chargedTotalCents:
+    request.amountCents +
+    request.expectedTipRefundCents +
+    request.expectedAdditionalChargeRefundCents,
   resultCode: 'CLOVER_VOID_CONFIRMED',
 });
 
@@ -160,7 +166,8 @@ const createHarness = async () => {
     amountCents: 2000,
     currency: 'CAD',
     originalProviderPaymentId: 'CLOVERPAY001',
-    expectedAdditionalChargeRefundCents: 48,
+    expectedTipRefundCents: 400,
+    expectedAdditionalChargeRefundCents: 58,
   };
   return { transactions, sale, provider, service, input };
 };
@@ -183,7 +190,8 @@ describe('RefundPaymentService', () => {
       providerPaymentId: 'CLOVERPAY001',
       providerRefundId: 'CLOVERREF001',
       refundedAmountCents: 2000,
-      chargedTotalCents: 2048,
+      tipCents: 400,
+      chargedTotalCents: 2458,
     });
     expect(provider.voidPayment.mock.calls).toHaveLength(1);
     expect(provider.refundPayment.mock.calls).toHaveLength(0);
@@ -232,6 +240,41 @@ describe('RefundPaymentService', () => {
     expect(provider.refundPayment.mock.calls).toHaveLength(0);
   });
 
+  it('fails closed before reversal when refreshed canonical tip differs from the persisted sale', async () => {
+    const { sale, provider, service, input } = await createHarness();
+    provider.getPaymentStatus.mockResolvedValue(
+      saleCanonical(sale, { tipCents: 0 }),
+    );
+
+    await expect(service.startOrRecover(input)).rejects.toMatchObject({
+      name: 'PaymentReversalPreflightError',
+      failureCode: 'PAYMENT_REVERSAL_PREFLIGHT_UNCERTAIN',
+    } satisfies Partial<PaymentReversalPreflightError>);
+    expect(provider.voidPayment.mock.calls).toHaveLength(0);
+    expect(provider.refundPayment.mock.calls).toHaveLength(0);
+  });
+
+  it('fails closed when canonical reversal tip does not match the original provider tip', async () => {
+    const { sale, provider, service, input } = await createHarness();
+    provider.getPaymentStatus.mockResolvedValue(saleCanonical(sale));
+    provider.voidPayment.mockImplementation((request) =>
+      Promise.resolve({
+        ...reversalCanonical(input, request.paymentId),
+        tipCents: 0,
+      }),
+    );
+
+    const reversal = await service.startOrRecover(input);
+
+    expect(reversal.status).toBe('UNKNOWN');
+    expect(reversal.toSnapshot().failureCode).toBe(
+      'PAYMENT_REVERSAL_PROVIDER_CORRELATION_MISMATCH',
+    );
+    expect(reversal.toSnapshot().failureMessage).toContain(
+      'canonical refunded tip missing or mismatched',
+    );
+  });
+
   it('does not accept an execution-only success as final reversal truth', async () => {
     const { sale, provider, service, input } = await createHarness();
     provider.getPaymentStatus.mockResolvedValue(saleCanonical(sale));
@@ -240,7 +283,8 @@ describe('RefundPaymentService', () => {
       evidence: 'EXECUTION',
       providerPaymentId: 'CLOVERPAY001',
       refundedAmountCents: 2000,
-      chargedTotalCents: 2048,
+      tipCents: 400,
+      chargedTotalCents: 2458,
     });
 
     const reversal = await service.startOrRecover(input);

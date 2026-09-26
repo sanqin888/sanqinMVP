@@ -68,6 +68,7 @@ type PaymentReversalRef = {
   occurredAt: string;
   evidence: PaymentReversalFinancialFactV1['evidence'];
   baseRefundCents: number;
+  tipRefundCents: number | null;
   additionalChargeRefundCents: number | null;
   customerRefundTotalCents: number | null;
 };
@@ -149,6 +150,7 @@ export type CanonicalChangeShadowPreviewReport = {
     occurredAt: string;
     classification: 'WAITING_FOR_ORDER_EVIDENCE' | 'UNMATCHED_PAYMENT_REVERSAL';
     baseRefundCents: number;
+    tipRefundCents: number | null;
     additionalChargeRefundCents: number | null;
     customerRefundTotalCents: number | null;
   }>;
@@ -476,6 +478,7 @@ export class AccountingCanonicalChangePreviewService {
           occurredAt: fact.occurredAt.toISOString(),
           evidence: fact.evidence,
           baseRefundCents: fact.baseRefundCents,
+          tipRefundCents: fact.tipRefundCents,
           additionalChargeRefundCents: fact.additionalChargeRefundCents,
           customerRefundTotalCents: fact.customerRefundTotalCents,
         })),
@@ -531,6 +534,7 @@ export class AccountingCanonicalChangePreviewService {
             ? ('WAITING_FOR_ORDER_EVIDENCE' as const)
             : ('UNMATCHED_PAYMENT_REVERSAL' as const),
         baseRefundCents: fact.baseRefundCents,
+        tipRefundCents: fact.tipRefundCents,
         additionalChargeRefundCents: fact.additionalChargeRefundCents,
         customerRefundTotalCents: fact.customerRefundTotalCents,
       }));

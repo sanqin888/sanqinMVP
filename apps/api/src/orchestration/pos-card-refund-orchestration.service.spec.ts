@@ -77,8 +77,9 @@ const successfulSale = (): PaymentTransaction =>
     .applyProviderOutcome({
       status: 'SUCCEEDED',
       providerPaymentId: 'clover-payment-1',
+      tipCents: 300,
       surchargeCents: 36,
-      chargedTotalCents: 1536,
+      chargedTotalCents: 1836,
       refundedAmountCents: 0,
     });
 
@@ -101,8 +102,9 @@ const reversal = (status: 'SUCCEEDED' | 'UNKNOWN'): PaymentTransaction => {
           providerPaymentId: 'clover-payment-1',
           providerRefundId: 'clover-refund-1',
           refundedAmountCents: 1500,
+          tipCents: 300,
           surchargeCents: 36,
-          chargedTotalCents: 1536,
+          chargedTotalCents: 1836,
         }
       : {
           status: 'UNKNOWN',
@@ -188,13 +190,15 @@ describe('PosCardRefundOrchestrationService', () => {
       operation: 'VOID',
       order: { status: 'refunded' },
       refundedCardBaseCents: 1500,
+      refundedTipCents: 300,
       refundedAdditionalChargeCents: 36,
-      refundedCustomerTotalCents: 1536,
+      refundedCustomerTotalCents: 1836,
     });
 
     expect(harness.refunds.startOrRecover).toHaveBeenCalledWith(
       expect.objectContaining({
         amountCents: 1500,
+        expectedTipRefundCents: 300,
         expectedAdditionalChargeRefundCents: 36,
         originalProviderPaymentId: 'clover-payment-1',
       }),

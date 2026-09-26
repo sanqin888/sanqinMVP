@@ -518,7 +518,7 @@ controller/flag listener/go-live caller，所以 production cutover timestamp �
 Slice C 现进入 read-only historical authority replacement preview：6/1 的 47,922c bank deposit
 精确对应 5/29-5/31 pre-start Closeout，因此保持 excluded；June 因 surcharge UNKNOWN 继续
 fail-closed，July 可以形成完整 provider-authoritative draft。
-Slice E readiness audit 已确认缺口属于 Payments owner：Platform v3 的 `tipAmount` 是独立 provider fact，现有 mapper 之前未持久化它，而且 `chargedTotalCents` 只计算 base + additional charges，会遗漏 tip。E1 当前本地 source 已增加 nullable `PaymentTransaction.tipCents`、`PaymentFinancialFactV1.tipCents`、Platform v3 tip 读取与 `amount + tip + additionalCharges` charged-total，并要求 Clover POS canonical success 对 tip/surcharge/charged-total fail closed。该 schema 改动 **MIGRATION REQUIRED**，MCP 不生成 migration；production Web Clover Ecommerce 未修改，`providerPaymentFactCutoverAt` 仍未设置。E2 refund/reversal tip authority 仍是 production cutover 的硬 gate。
+Slice E1 已完成 source + migration dev gate：PR #2556 / squash `ae6420fc`，user-generated migration `20260926132951_add_payment_transaction_tip_cents` 已进入 `dev@656265d0`；SQL 只有 nullable `PaymentTransaction.tipCents INTEGER`，无 default/backfill/NOT NULL/drop/data rewrite，CI #6448 全绿。production Web Clover Ecommerce 未修改，`providerPaymentFactCutoverAt` 仍未设置。E2 当前本地 source 已补 refund/reversal authority：POS full refund 将 tip 与 additional charges 分离，Platform v3 refund/void 必须返回与 original canonical sale 一致的 provider tip，managed reversal 复用 `tipCents` 持久化 refunded tip，`PaymentReversalFinancialFactV1` 新增 nullable `tipRefundCents`；webhook 无法证明 tip 时继续 null/fail-closed。E2 无新 schema/migration。
 
 ## 新主链路
 

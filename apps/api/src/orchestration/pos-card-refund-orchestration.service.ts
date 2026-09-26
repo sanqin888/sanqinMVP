@@ -45,6 +45,7 @@ export type PosManagedCardRefundView = {
   operation: Extract<PaymentOperation, 'REFUND' | 'VOID'> | null;
   order: PosOrderDto;
   refundedCardBaseCents: number | null;
+  refundedTipCents: number | null;
   refundedAdditionalChargeCents: number | null;
   refundedCustomerTotalCents: number | null;
   failureCode: string | null;
@@ -131,6 +132,7 @@ export class PosCardRefundOrchestrationService {
         operation: null,
         order,
         refundedCardBaseCents: null,
+        refundedTipCents: null,
         refundedAdditionalChargeCents: null,
         refundedCustomerTotalCents: null,
         failureCode: 'POS_MANAGED_CARD_REFUND_REQUIRES_CARD',
@@ -159,6 +161,7 @@ export class PosCardRefundOrchestrationService {
         operation: null,
         order: finalized,
         refundedCardBaseCents: 0,
+        refundedTipCents: 0,
         refundedAdditionalChargeCents: 0,
         refundedCustomerTotalCents: 0,
         failureCode: null,
@@ -191,8 +194,10 @@ export class PosCardRefundOrchestrationService {
       originalSnapshot.status !== 'SUCCEEDED' ||
       originalSnapshot.amountCents !== checkout.externalAmountCents ||
       !originalSnapshot.providerPaymentId ||
+      originalSnapshot.tipCents === null ||
       originalSnapshot.chargedTotalCents === null ||
-      originalSnapshot.chargedTotalCents < originalSnapshot.amountCents
+      originalSnapshot.chargedTotalCents <
+        originalSnapshot.amountCents + originalSnapshot.tipCents
     ) {
       throw new ConflictException({
         code: 'POS_MANAGED_CARD_PAYMENT_FACTS_INVALID',
@@ -206,8 +211,11 @@ export class PosCardRefundOrchestrationService {
     const operation = existing
       ? this.requireExistingOperation(existing.toSnapshot().operation)
       : this.chooseOperation(originalSnapshot.completedAt);
+    const expectedTipRefundCents = originalSnapshot.tipCents;
     const expectedAdditionalChargeRefundCents =
-      originalSnapshot.chargedTotalCents - originalSnapshot.amountCents;
+      originalSnapshot.chargedTotalCents -
+      originalSnapshot.amountCents -
+      expectedTipRefundCents;
 
     let reversal: PaymentTransaction;
     try {
@@ -219,6 +227,7 @@ export class PosCardRefundOrchestrationService {
         amountCents: originalSnapshot.amountCents,
         currency: originalSnapshot.currency,
         originalProviderPaymentId: originalSnapshot.providerPaymentId,
+        expectedTipRefundCents,
         expectedAdditionalChargeRefundCents,
       });
     } catch (error) {
@@ -229,6 +238,7 @@ export class PosCardRefundOrchestrationService {
           operation,
           order,
           refundedCardBaseCents: null,
+          refundedTipCents: null,
           refundedAdditionalChargeCents: null,
           refundedCustomerTotalCents: null,
           failureCode: error.failureCode,
@@ -246,13 +256,16 @@ export class PosCardRefundOrchestrationService {
         operation,
         order,
         refundedCardBaseCents: reversalSnapshot.refundedAmountCents || null,
+        refundedTipCents: reversalSnapshot.tipCents,
         refundedAdditionalChargeCents:
-          reversalSnapshot.chargedTotalCents === null
+          reversalSnapshot.chargedTotalCents === null ||
+          reversalSnapshot.tipCents === null
             ? null
             : Math.max(
                 0,
                 reversalSnapshot.chargedTotalCents -
-                  reversalSnapshot.refundedAmountCents,
+                  reversalSnapshot.refundedAmountCents -
+                  reversalSnapshot.tipCents,
               ),
         refundedCustomerTotalCents: reversalSnapshot.chargedTotalCents,
         failureCode: reversalSnapshot.failureCode,
@@ -272,6 +285,7 @@ export class PosCardRefundOrchestrationService {
       operation,
       order: finalized,
       refundedCardBaseCents: reversalSnapshot.refundedAmountCents,
+      refundedTipCents: expectedTipRefundCents,
       refundedAdditionalChargeCents: expectedAdditionalChargeRefundCents,
       refundedCustomerTotalCents: reversalSnapshot.chargedTotalCents,
       failureCode: null,
@@ -318,6 +332,7 @@ export class PosCardRefundOrchestrationService {
       operation: null,
       order,
       refundedCardBaseCents: null,
+      refundedTipCents: null,
       refundedAdditionalChargeCents: null,
       refundedCustomerTotalCents: null,
       failureCode,
@@ -332,6 +347,7 @@ export class PosCardRefundOrchestrationService {
       operation: null,
       order,
       refundedCardBaseCents: null,
+      refundedTipCents: null,
       refundedAdditionalChargeCents: null,
       refundedCustomerTotalCents: null,
       failureCode: null,
