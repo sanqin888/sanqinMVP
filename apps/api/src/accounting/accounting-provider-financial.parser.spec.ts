@@ -135,8 +135,7 @@ Amount Collected,"$2,882.88"
     expect(grossSalesLine).toMatchObject({
       rawCode: CLOVER_SALES_REPORT_RAW_CODES.GROSS_SALES,
       amountCents: 275_027,
-      postingTreatment:
-        AccountingFinancialPostingTreatment.RECONCILIATION_ONLY,
+      postingTreatment: AccountingFinancialPostingTreatment.RECONCILIATION_ONLY,
     });
     expect(grossSalesLine?.rawPayload).toMatchObject({
       transactionCount: 157,
