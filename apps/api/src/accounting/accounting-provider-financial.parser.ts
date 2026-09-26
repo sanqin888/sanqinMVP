@@ -1050,11 +1050,15 @@ export function extractCloverModernStatementAuthorityControls(
   const refundItemHeader = itemHeaders[1];
   const submittedAmountHeader = amountHeaders[0];
   const refundAmountHeader = amountHeaders[1];
+  const submittedItemHeaderGeometry = submittedItemHeader.geometry;
+  const refundItemHeaderGeometry = refundItemHeader.geometry;
+  const submittedAmountHeaderGeometry = submittedAmountHeader.geometry;
+  const refundAmountHeaderGeometry = refundAmountHeader.geometry;
   if (
-    !submittedItemHeader.geometry ||
-    !refundItemHeader.geometry ||
-    !submittedAmountHeader.geometry ||
-    !refundAmountHeader.geometry
+    !submittedItemHeaderGeometry ||
+    !refundItemHeaderGeometry ||
+    !submittedAmountHeaderGeometry ||
+    !refundAmountHeaderGeometry
   ) {
     return null;
   }
@@ -1065,8 +1069,8 @@ export function extractCloverModernStatementAuthorityControls(
         line.page === page &&
         line.geometry &&
         line.geometry.left < 0.2 &&
-        line.geometry.top > submittedItemHeader.geometry.top &&
-        line.geometry.top - submittedItemHeader.geometry.top < 0.2,
+        line.geometry.top > submittedItemHeaderGeometry.top &&
+        line.geometry.top - submittedItemHeaderGeometry.top < 0.2,
     )
     .sort(
       (left, right) => (left.geometry?.top ?? 0) - (right.geometry?.top ?? 0),
