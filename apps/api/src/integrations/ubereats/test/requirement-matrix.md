@@ -84,7 +84,7 @@ Order Fulfillment 1.0.0 的 `orders.notification`、`orders.scheduled.notificati
 SanQ 将 Uber OAuth scope 按 grant type 分离维护。`UBER_EATS_APP_SCOPES` 只声明当前部署预期已获批的
 `client_credentials` 权限，不再作为业务请求漏写 scope 时的默认 token scope。当前订单/门店运行时硬依赖
 `eats.store`、`eats.order`、`eats.store.status.write`；`eats.store.orders.read` 仍为可选 app scope。
-财务 Reporting capability 已实现 `eats.report`：Accounting 夜间任务只提交业务日期范围与
+财务 Reporting capability 已实现 `eats.report`；Uber 已确认 Test Application entitlement，当前部署的 `UBER_EATS_APP_SCOPES` 也显式声明该 scope：Accounting 夜间任务只提交业务日期范围与
 **Payment Details (`PAYMENT_DETAILS_REPORT`) + Finance Summary (`FINANCE_SUMMARY_REPORT`) 两类财务报告**；
 是否具备 `eats.report` entitlement、哪些 `UberStoreMapping` 已 provisioned，以及最终 provider `store_uuids`
 都由 External Channels reporting boundary 自己解析。`Orders & Items` (`ORDERS_AND_ITEMS_REPORT`) 不再属于
