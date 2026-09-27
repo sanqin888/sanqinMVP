@@ -26,7 +26,7 @@ describe('Uber accounting Reporting parser', () => {
   it('parses Payment Details after the provider description row as API_REPORT reconciliation evidence', () => {
     const descriptionRow = [
       ...UBER_PAYMENT_DETAILS_DESCRIPTION_HEADER_SENTINEL,
-      ...Array(
+      ...new Array<string>(
         UBER_PAYMENT_DETAILS_HEADERS.length -
           UBER_PAYMENT_DETAILS_DESCRIPTION_HEADER_SENTINEL.length,
       ).fill('provider description'),
@@ -243,10 +243,9 @@ describe('Uber accounting Reporting parser', () => {
     malformed[salesIndex] = 'not-money';
     expect(
       parseUberAccountingApiReport({
-        text: [
-          csvRow(UBER_PAYOUT_SUMMARY_HEADERS),
-          csvRow(malformed),
-        ].join('\n'),
+        text: [csvRow(UBER_PAYOUT_SUMMARY_HEADERS), csvRow(malformed)].join(
+          '\n',
+        ),
         requestedReportType: 'FINANCE_SUMMARY_REPORT',
         providerReportType: 'PAYOUT_SUMMARY_REPORT',
         periodStart: '2026-09-01',

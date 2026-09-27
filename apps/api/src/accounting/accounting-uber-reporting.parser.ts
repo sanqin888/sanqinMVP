@@ -66,7 +66,10 @@ const LINE_MAPPINGS: Array<{
   taxRole?: AccountingFinancialTaxRole;
   control?: boolean;
 }> = [
-  { header: 'Sales (excl. tax)', component: AccountingFinancialComponent.SALES },
+  {
+    header: 'Sales (excl. tax)',
+    component: AccountingFinancialComponent.SALES,
+  },
   {
     header: 'Tax on Sales',
     component: AccountingFinancialComponent.SALES_TAX,
@@ -129,7 +132,9 @@ const normalized = (value: string) => value.trim();
 function isDateOnly(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const date = new Date(`${value}T00:00:00.000Z`);
-  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+  return (
+    !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
+  );
 }
 
 function parseMoneyCents(raw: string): number | null {
@@ -144,7 +149,9 @@ function parseMoneyCents(raw: string): number | null {
   return negativeByParens ? -Math.abs(cents) : cents;
 }
 
-function expectedHeaders(kind: UberAccountingReportEvidenceKind): readonly string[] {
+function expectedHeaders(
+  kind: UberAccountingReportEvidenceKind,
+): readonly string[] {
   return kind === UBER_ACCOUNTING_REPORT_EVIDENCE_KIND.PAYMENT_DETAILS
     ? UBER_PAYMENT_DETAILS_HEADERS
     : UBER_PAYOUT_SUMMARY_HEADERS;
@@ -158,7 +165,10 @@ function sameHeader(row: string[], expected: readonly string[]): boolean {
 }
 
 function rawCode(header: string): string {
-  return `UBER_REPORT_${header.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '')}`;
+  return `UBER_REPORT_${header
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_|_$/g, '')}`;
 }
 
 export function parseUberAccountingApiReport(input: UberReportParseInput) {
@@ -189,11 +199,16 @@ export function parseUberAccountingApiReport(input: UberReportParseInput) {
   const dataRows = rows
     .slice(headerIndex + 1)
     .filter((row) => row.some((cell) => cell.trim()));
-  if (!dataRows.length || dataRows.some((row) => row.length !== headers.length)) {
+  if (
+    !dataRows.length ||
+    dataRows.some((row) => row.length !== headers.length)
+  ) {
     return null;
   }
 
-  const indexByHeader = new Map(headers.map((header, index) => [header, index]));
+  const indexByHeader = new Map(
+    headers.map((header, index) => [header, index]),
+  );
   const storeIndex = indexByHeader.get('Store UUID');
   const currencyIndex = indexByHeader.get('Currency Code');
   const payoutRefIndex = indexByHeader.get('Payout reference ID');
@@ -207,7 +222,9 @@ export function parseUberAccountingApiReport(input: UberReportParseInput) {
   const otherPaymentDescriptions = new Set<string>();
   const columnTotalsCents: Record<string, number> = {};
 
-  const amountHeaders = headers.filter((header) => !NON_AMOUNT_HEADERS.has(header));
+  const amountHeaders = headers.filter(
+    (header) => !NON_AMOUNT_HEADERS.has(header),
+  );
   for (const header of amountHeaders) columnTotalsCents[header] = 0;
 
   for (const row of dataRows) {
@@ -230,8 +247,7 @@ export function parseUberAccountingApiReport(input: UberReportParseInput) {
       if (index == null) return null;
       const cents = parseMoneyCents(row[index] ?? '');
       if (cents == null) return null;
-      columnTotalsCents[header] =
-        (columnTotalsCents[header] ?? 0) + cents;
+      columnTotalsCents[header] = (columnTotalsCents[header] ?? 0) + cents;
     }
   }
 
@@ -272,7 +288,9 @@ export function parseUberAccountingApiReport(input: UberReportParseInput) {
       payoutReferenceCount: payoutReferences.size,
       payoutReferences: [...payoutReferences].sort(),
       columnTotalsCents,
-      otherPaymentDescriptions: [...otherPaymentDescriptions].sort().slice(0, 100),
+      otherPaymentDescriptions: [...otherPaymentDescriptions]
+        .sort()
+        .slice(0, 100),
       otherPaymentDescriptionsTruncated: otherPaymentDescriptions.size > 100,
       allPostingEvidenceReconciliationOnly: true,
     },
