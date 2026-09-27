@@ -33,6 +33,7 @@ export class UberApiConfigService {
   readonly expectedAppScopes: string;
   /** authorization_code scopes requested during merchant provisioning OAuth. */
   readonly merchantAuthorizationScopes: string;
+  readonly financialAuthorityEnabled: boolean;
   readonly menuNotificationsEnabled: boolean;
   readonly menuConfirmTimeoutMs: number;
   readonly menuConfirmInitialDelayMs: number;
@@ -66,6 +67,9 @@ export class UberApiConfigService {
     this.merchantAuthorizationScopes = this.merchantAuthorizationScopeList(
       read('UBER_EATS_USER_AUTH_SCOPES') ||
         UBER_MERCHANT_AUTHORIZATION_SCOPES.POS_PROVISIONING,
+    );
+    this.financialAuthorityEnabled = /^(1|true|yes)$/i.test(
+      read('UBER_EATS_FINANCIAL_AUTHORITY_ENABLED'),
     );
     this.menuNotificationsEnabled = /^(1|true|yes)$/i.test(
       read('UBER_EATS_MENU_NOTIFICATIONS_ENABLED'),

@@ -99,6 +99,7 @@ describe('HandleUberFinancialReportSuccessUseCase replay safety', () => {
 describe('UberFinancialReportingUseCase request ownership', () => {
   function makeRequestUseCase(input?: {
     reportingEnabled?: boolean;
+    financialAuthorityEnabled?: boolean;
     mappings?: Array<{ uberStoreId: string; isProvisioned: boolean }>;
   }) {
     const api = {
@@ -123,12 +124,25 @@ describe('UberFinancialReportingUseCase request ownership', () => {
         artifacts as never,
         storeMappings as never,
         input?.reportingEnabled ?? true,
+        input?.financialAuthorityEnabled ?? false,
       ),
       api,
       reports,
       storeMappings,
     };
   }
+
+  it('keeps financial authority disabled by default while reporting remains testable', () => {
+    const { useCase } = makeRequestUseCase();
+    expect(useCase.isFinancialAuthorityEnabled()).toBe(false);
+  });
+
+  it('exposes the explicit financial authority promotion gate', () => {
+    const { useCase } = makeRequestUseCase({
+      financialAuthorityEnabled: true,
+    });
+    expect(useCase.isFinancialAuthorityEnabled()).toBe(true);
+  });
 
   it('keeps the eats.report capability gate inside External Channels', async () => {
     const { useCase, api, reports, storeMappings } = makeRequestUseCase({
@@ -238,6 +252,7 @@ describe('UberFinancialReportingUseCase accounting artifact boundary', () => {
         artifacts as never,
         storeMappings as never,
         true,
+        false,
       ),
       reports,
       artifacts,

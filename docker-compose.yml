@@ -3,6 +3,7 @@ x-ubereats-runtime: &ubereats-runtime
   UBER_EATS_WORKER_WAKE_URL: "http://ubereats-worker:4001"
   UBER_EATS_APP_SCOPES: "eats.store eats.order eats.store.status.write eats.report"
   UBER_EATS_USER_AUTH_SCOPES: "eats.pos_provisioning"
+  UBER_EATS_FINANCIAL_AUTHORITY_ENABLED: "${UBER_EATS_FINANCIAL_AUTHORITY_ENABLED:-false}"
   # These values are populated from the deployment VM's environment/.env file.
   UBER_CREDENTIAL_ENCRYPTION_KEYS: ${UBER_CREDENTIAL_ENCRYPTION_KEYS}
   UBER_CREDENTIAL_ACTIVE_KEY_VERSION: ${UBER_CREDENTIAL_ACTIVE_KEY_VERSION}
@@ -129,6 +130,7 @@ services:
       <<: *ubereats-runtime
       NODE_ENV: "production"
       DATABASE_URL: "postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/sanqin_db"
+      UPLOAD_ROOT: "/app/uploads"
       TZ: "America/Toronto"
       WEB_BASE_URL: "https://sanq.ca"
       PUBLIC_BASE_URL: "https://sanq.ca"
@@ -148,6 +150,8 @@ services:
       - "127.0.0.1:4001:4001"
     depends_on:
       - db
+    volumes:
+      - ./uploads:/app/uploads
   web:
     build:
       context: .

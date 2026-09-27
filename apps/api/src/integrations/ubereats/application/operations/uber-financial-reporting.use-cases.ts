@@ -24,7 +24,12 @@ export class UberFinancialReportingUseCase implements UberEatsReportingPort {
     private readonly artifacts: UberFinancialReportArtifactStorePort,
     private readonly storeMappings: UberStoreMappingRepositoryPort,
     private readonly reportingEnabled: boolean,
+    private readonly financialAuthorityEnabled: boolean,
   ) {}
+
+  isFinancialAuthorityEnabled(): boolean {
+    return this.financialAuthorityEnabled;
+  }
 
   async requestFinancialReports(input: {
     startDate: string;

@@ -30,8 +30,15 @@ describe('Uber Eats startup configuration', () => {
 
     expect(api).toContain('<<: *ubereats-runtime');
     expect(worker).toContain('<<: *ubereats-runtime');
+    expect(api).toContain('UPLOAD_ROOT: "/app/uploads"');
+    expect(worker).toContain('UPLOAD_ROOT: "/app/uploads"');
+    expect(api).toContain('- ./uploads:/app/uploads');
+    expect(worker).toContain('- ./uploads:/app/uploads');
     expect(db).not.toContain('<<: *ubereats-runtime');
     expect(compose).toContain('UBER_CREDENTIAL_KEYS_SOURCE: "env"');
+    expect(compose).toContain(
+      'UBER_EATS_FINANCIAL_AUTHORITY_ENABLED: "${UBER_EATS_FINANCIAL_AUTHORITY_ENABLED:-false}"',
+    );
     expect(compose).not.toMatch(/UBER_CREDENTIAL_ENCRYPTION_KEYS:\s*["'{]/);
   });
 

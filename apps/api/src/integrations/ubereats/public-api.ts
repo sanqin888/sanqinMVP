@@ -90,6 +90,7 @@ export type UberEatsFinancialReportType =
   | 'ORDERS_AND_ITEMS_REPORT';
 
 export interface UberEatsReportingPort {
+  isFinancialAuthorityEnabled(): boolean;
   requestFinancialReports(input: {
     startDate: string;
     endDate: string;
