@@ -234,6 +234,24 @@ describe('UberFinancialReportingUseCase accounting artifact boundary', () => {
         status,
         artifactUrls: [artifactUrl],
       }),
+      list: jest.fn().mockResolvedValue([
+        {
+          reportStableId: 'uberreport_1',
+          workflowId: 'workflow-1',
+          reportType: 'FINANCE_SUMMARY_REPORT',
+          storeUuids: ['provider-store-a'],
+          startDate: '2026-09-01',
+          endDate: '2026-09-25',
+          status,
+          downloadUrls: [],
+          artifactUrls: [artifactUrl],
+          requestedAt: new Date('2026-09-26T00:00:00.000Z'),
+          completedAt: new Date('2026-09-26T00:01:00.000Z'),
+          importedAt: null,
+          errorMessage: null,
+          rawMetadata: { report_type: 'PAYOUT_SUMMARY_REPORT' },
+        },
+      ]),
       markImported: jest.fn().mockResolvedValue({}),
     };
     const artifacts = {
@@ -258,6 +276,17 @@ describe('UberFinancialReportingUseCase accounting artifact boundary', () => {
       artifacts,
     };
   }
+
+  it('exposes provider completion report type without leaking raw metadata', async () => {
+    const { useCase } = makeUseCase();
+
+    await expect(useCase.listFinancialReports()).resolves.toEqual([
+      expect.objectContaining({
+        reportType: 'FINANCE_SUMMARY_REPORT',
+        providerReportType: 'PAYOUT_SUMMARY_REPORT',
+      }),
+    ]);
+  });
 
   it('reads only an artifact owned by a READY report', async () => {
     const { useCase, artifacts } = makeUseCase();

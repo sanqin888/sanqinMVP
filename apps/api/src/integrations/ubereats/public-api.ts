@@ -111,6 +111,7 @@ export interface UberEatsReportingPort {
       reportStableId: string;
       workflowId: string;
       reportType: string;
+      providerReportType: string | null;
       startDate: string;
       endDate: string;
       status: 'REQUESTED' | 'READY' | 'IMPORTED' | 'ERROR';

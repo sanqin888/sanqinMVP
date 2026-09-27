@@ -170,6 +170,7 @@ export class AccountingInboxAcquisitionService {
     content: string;
     provider: AccountingFinancialProvider;
     reportType: string;
+    providerReportType?: string | null;
     periodStart: string;
     periodEnd: string;
     providerDocumentRef: string;
@@ -188,6 +189,7 @@ export class AccountingInboxAcquisitionService {
         acquisition: 'PROVIDER_API',
         provider: input.provider,
         reportType: input.reportType,
+        providerReportType: input.providerReportType ?? null,
         periodStart: input.periodStart,
         periodEnd: input.periodEnd,
         providerDocumentRef: input.providerDocumentRef,
@@ -196,6 +198,7 @@ export class AccountingInboxAcquisitionService {
       providerFinancialHint: {
         providerHint: input.provider,
         reportTypeHint: input.reportType,
+        providerReportTypeHint: input.providerReportType ?? null,
         periodStartHint: input.periodStart,
         periodEndHint: input.periodEnd,
         providerDocumentRefHint: input.providerDocumentRef,
@@ -361,6 +364,7 @@ export class AccountingInboxAcquisitionService {
       emailSubject?: string | null;
       providerHint?: AccountingFinancialProvider | null;
       reportTypeHint?: string | null;
+      providerReportTypeHint?: string | null;
       periodStartHint?: string | null;
       periodEndHint?: string | null;
       providerDocumentRefHint?: string | null;

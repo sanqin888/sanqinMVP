@@ -40,6 +40,7 @@ describe('AccountingProviderFinancialHistoryService', () => {
           reportStableId: 'finance-1',
           workflowId: 'workflow-finance',
           reportType: 'FINANCE_SUMMARY_REPORT',
+          providerReportType: 'PAYOUT_SUMMARY_REPORT',
           startDate: '2026-05-28',
           endDate: '2026-06-03',
           status: 'READY',
@@ -80,6 +81,7 @@ describe('AccountingProviderFinancialHistoryService', () => {
       expect.objectContaining({
         provider: AccountingFinancialProvider.UBER_EATS,
         reportType: 'FINANCE_SUMMARY_REPORT',
+        providerReportType: 'PAYOUT_SUMMARY_REPORT',
         periodStart: '2026-05-28',
         periodEnd: '2026-06-03',
         providerDocumentRef: 'finance-1:1',
@@ -108,6 +110,7 @@ describe('AccountingProviderFinancialHistoryService', () => {
           reportStableId: 'finance-2',
           workflowId: 'workflow-finance-2',
           reportType: 'PAYMENT_DETAILS_REPORT',
+          providerReportType: 'PAYMENT_DETAILS_REPORT',
           startDate: '2026-08-01',
           endDate: '2026-08-31',
           status: 'READY',

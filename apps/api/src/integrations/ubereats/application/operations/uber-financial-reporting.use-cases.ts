@@ -17,6 +17,18 @@ const DEFAULT_REPORT_TYPES: UberEatsFinancialReportType[] = [
   'ORDERS_AND_ITEMS_REPORT',
 ];
 
+function providerReportType(rawMetadata: unknown): string | null {
+  if (
+    !rawMetadata ||
+    typeof rawMetadata !== 'object' ||
+    Array.isArray(rawMetadata)
+  ) {
+    return null;
+  }
+  const value = (rawMetadata as Record<string, unknown>).report_type;
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
 export class UberFinancialReportingUseCase implements UberEatsReportingPort {
   constructor(
     private readonly api: UberFinancialReportApiPort,
@@ -111,6 +123,7 @@ export class UberFinancialReportingUseCase implements UberEatsReportingPort {
       reportStableId: row.reportStableId,
       workflowId: row.workflowId,
       reportType: row.reportType,
+      providerReportType: providerReportType(row.rawMetadata),
       startDate: row.startDate,
       endDate: row.endDate,
       status: row.status,

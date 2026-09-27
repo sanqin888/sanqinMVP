@@ -440,6 +440,7 @@ export class UberFinancialReportPrismaRepository implements UberFinancialReportR
     completedAt: Date | null;
     importedAt: Date | null;
     errorMessage: string | null;
+    rawMetadata: unknown;
   }): UberFinancialReportRecord {
     return {
       reportStableId: row.reportStableId,
@@ -455,6 +456,7 @@ export class UberFinancialReportPrismaRepository implements UberFinancialReportR
       completedAt: row.completedAt,
       importedAt: row.importedAt,
       errorMessage: row.errorMessage,
+      rawMetadata: row.rawMetadata,
     };
   }
 }
