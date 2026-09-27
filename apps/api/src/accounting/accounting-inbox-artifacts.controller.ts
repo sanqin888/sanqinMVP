@@ -237,6 +237,12 @@ export class AccountingInboxArtifactsController {
       throw new NotFoundException('accounting file not found');
     }
     res.setHeader('Content-Type', contentType);
+    if (kind === 'uber-reports') {
+      res.setHeader(
+        'Content-Disposition',
+        accountingArtifactContentDisposition('attachment', safeName),
+      );
+    }
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Cache-Control', 'private, no-store');
     return res.sendFile(filePath);

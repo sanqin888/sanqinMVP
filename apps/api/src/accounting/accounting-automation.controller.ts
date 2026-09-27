@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Inject,
+  Param,
   Post,
   Put,
   Query,
@@ -18,6 +19,7 @@ import {
 } from '../integrations/ubereats/public-api';
 import { AccountingAutomationScheduler } from './accounting-automation.scheduler';
 import { parseNonNegativeAccountingNumber } from './accounting-controller-support';
+import { AccountingTabularPreviewService } from './accounting-tabular-preview.service';
 
 @Controller('accounting')
 @UseGuards(SessionAuthGuard, RolesGuard)
@@ -27,6 +29,7 @@ export class AccountingAutomationController {
     private readonly automation: AccountingAutomationScheduler,
     @Inject(UBER_EATS_REPORTING)
     private readonly uberReporting: UberEatsReportingPort,
+    private readonly tabularPreview: AccountingTabularPreviewService,
   ) {}
 
   @Post('automation/run')
@@ -103,6 +106,22 @@ export class AccountingAutomationController {
       limit: parseNonNegativeAccountingNumber(limit, 'limit'),
       status,
     });
+  }
+
+  @Get('automation/uber-reports/:reportStableId/tabular-preview')
+  async previewUberReport(
+    @Param('reportStableId') reportStableId: string,
+    @Query('artifactUrl') artifactUrl?: string,
+  ) {
+    const normalizedArtifactUrl = artifactUrl?.trim() ?? '';
+    if (!normalizedArtifactUrl) {
+      throw new BadRequestException('artifactUrl is required');
+    }
+    const artifact = await this.uberReporting.readFinancialReportArtifact({
+      reportStableId,
+      artifactUrl: normalizedArtifactUrl,
+    });
+    return this.tabularPreview.previewUberReportCsv(artifact);
   }
 
   private requireBusinessDate(
