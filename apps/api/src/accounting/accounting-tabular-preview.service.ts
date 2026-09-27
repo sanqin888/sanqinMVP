@@ -250,23 +250,19 @@ export function normalizeAccountingPreviewRows(
   let truncatedColumns = false;
   let truncatedCells = false;
 
-  const previewRows = rows
-    .slice(0, limits.maxRows)
-    .map((row) => {
-      if (row.length > limits.maxColumns) {
-        truncatedColumns = true;
+  const previewRows = rows.slice(0, limits.maxRows).map((row) => {
+    if (row.length > limits.maxColumns) {
+      truncatedColumns = true;
+    }
+    return row.slice(0, limits.maxColumns).map((cell) => {
+      const normalized = accountingPreviewCellText(cell);
+      if (normalized.length > limits.maxCellCharacters) {
+        truncatedCells = true;
+        return normalized.slice(0, limits.maxCellCharacters);
       }
-      return row
-        .slice(0, limits.maxColumns)
-        .map((cell) => {
-          const normalized = accountingPreviewCellText(cell);
-          if (normalized.length > limits.maxCellCharacters) {
-            truncatedCells = true;
-            return normalized.slice(0, limits.maxCellCharacters);
-          }
-          return normalized;
-        });
+      return normalized;
     });
+  });
 
   return {
     rows: previewRows,
