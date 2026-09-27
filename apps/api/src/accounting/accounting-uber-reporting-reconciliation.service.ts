@@ -103,8 +103,8 @@ export class AccountingUberReportingReconciliationService {
   ): Promise<UberReportingReconciliationEvidence[]> {
     const stableId = reportStableId.trim();
     if (!stableId) return [];
-    const rows =
-      await this.prisma.accountingProviderFinancialDocument.findMany({
+    const rows = await this.prisma.accountingProviderFinancialDocument.findMany(
+      {
         where: {
           provider: AccountingFinancialProvider.UBER_EATS,
           documentType: AccountingFinancialDocumentType.API_REPORT,
@@ -134,7 +134,8 @@ export class AccountingUberReportingReconciliationService {
           },
         },
         orderBy: { providerDocumentRef: 'asc' },
-      });
+      },
+    );
 
     return rows.map((row) => {
       const currentParseResult = jsonRecord(
@@ -167,8 +168,7 @@ export class AccountingUberReportingReconciliationService {
         currency: row.currency,
         reportTotalPayoutCents: reportTotalPayoutCents ?? Number.NaN,
         payoutControls: controls ?? [],
-        unreferencedPayoutRowCount:
-          unreferencedPayoutRowCount ?? Number.NaN,
+        unreferencedPayoutRowCount: unreferencedPayoutRowCount ?? Number.NaN,
         unreferencedTotalPayoutCents:
           unreferencedTotalPayoutCents ?? Number.NaN,
         evidenceKind: kind ?? 'INVALID_EVIDENCE_KIND',

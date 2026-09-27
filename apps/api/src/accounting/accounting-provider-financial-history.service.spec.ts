@@ -18,9 +18,11 @@ const matchedReconciliation = {
 };
 
 const listReports = (ready: ReportRow[], imported: ReportRow[] = []) =>
-  jest.fn().mockImplementation((input: { status?: string }) =>
-    Promise.resolve(input.status === 'IMPORTED' ? imported : ready),
-  );
+  jest
+    .fn()
+    .mockImplementation((input: { status?: string }) =>
+      Promise.resolve(input.status === 'IMPORTED' ? imported : ready),
+    );
 
 describe('AccountingProviderFinancialHistoryService', () => {
   it('does not scan or import Uber reports before financial authority is promoted', async () => {

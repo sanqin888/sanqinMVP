@@ -44,7 +44,11 @@ describe('Uber Reporting cross-report reconciliation policy', () => {
           kind: UBER_ACCOUNTING_REPORT_EVIDENCE_KIND.PAYMENT_DETAILS,
           reportTotalPayoutCents: 3000,
           payoutControls: [
-            { payoutReferenceId: 'payout-a', totalPayoutCents: 1000, rowCount: 2 },
+            {
+              payoutReferenceId: 'payout-a',
+              totalPayoutCents: 1000,
+              rowCount: 2,
+            },
             { payoutReferenceId: 'payout-b', totalPayoutCents: 2000 },
           ],
         }),

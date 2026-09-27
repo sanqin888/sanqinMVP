@@ -173,10 +173,9 @@ export function reconcileUberReportingEvidence(input: {
   ) {
     issues.push('PAYOUT_REFERENCE_CONTROLS_MISSING');
   }
-  const payoutReferences = [...new Set([
-    ...paymentControls.keys(),
-    ...summaryControls.keys(),
-  ])].sort();
+  const payoutReferences = [
+    ...new Set([...paymentControls.keys(), ...summaryControls.keys()]),
+  ].sort();
 
   const payoutReferenceChecks = payoutReferences.map((payoutReferenceId) => {
     const payment = paymentControls.get(payoutReferenceId);
@@ -279,11 +278,7 @@ export function reconcileUberReportingEvidence(input: {
 
   const period = all[0] ?? null;
   return {
-    status: hasIncomplete
-      ? 'INCOMPLETE'
-      : hasMismatch
-        ? 'MISMATCH'
-        : 'MATCHED',
+    status: hasIncomplete ? 'INCOMPLETE' : hasMismatch ? 'MISMATCH' : 'MATCHED',
     periodStart: periods.size === 1 && period ? period.periodStart : null,
     periodEnd: periods.size === 1 && period ? period.periodEnd : null,
     currency: currencies.size === 1 ? ([...currencies][0] ?? null) : null,
