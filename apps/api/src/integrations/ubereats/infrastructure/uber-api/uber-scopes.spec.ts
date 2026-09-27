@@ -32,6 +32,7 @@ describe('Uber OAuth scope registry', () => {
       config.hasExpectedAppScope(UBER_CLIENT_CREDENTIAL_SCOPES.REPORT),
     ).toBe(false);
     expect(config.merchantAuthorizationScopes).toBe('eats.pos_provisioning');
+    expect(config.financialAuthorityEnabled).toBe(false);
   });
 
   it('allows known extra scopes without making them runtime requirements', () => {
@@ -51,6 +52,15 @@ describe('Uber OAuth scope registry', () => {
     expect(config.merchantAuthorizationScopes).toBe(
       'eats.pos_provisioning offline_access',
     );
+    expect(config.financialAuthorityEnabled).toBe(false);
+  });
+
+  it('requires an explicit deployment opt-in before Uber reports become accounting authority', () => {
+    const config = new UberApiConfigService({
+      UBER_EATS_FINANCIAL_AUTHORITY_ENABLED: 'true',
+    });
+
+    expect(config.financialAuthorityEnabled).toBe(true);
   });
 
   it('rejects a deployment declaration missing a required app scope', () => {

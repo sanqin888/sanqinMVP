@@ -2,6 +2,31 @@ import { AccountingFinancialProvider } from '@prisma/client';
 import { AccountingProviderFinancialHistoryService } from './accounting-provider-financial-history.service';
 
 describe('AccountingProviderFinancialHistoryService', () => {
+  it('does not scan or import Uber reports before financial authority is promoted', async () => {
+    const acquisition = { acquireProviderApiCsv: jest.fn() };
+    const uberReporting = {
+      isFinancialAuthorityEnabled: jest.fn().mockReturnValue(false),
+      listFinancialReports: jest.fn(),
+      readFinancialReportArtifact: jest.fn(),
+      markFinancialReportImported: jest.fn(),
+    };
+    const service = new AccountingProviderFinancialHistoryService(
+      acquisition as never,
+      uberReporting as never,
+    );
+
+    await expect(service.syncReadyUberReports('2026-06-01')).resolves.toEqual({
+      scannedReports: 0,
+      importedReports: 0,
+      importedArtifacts: 0,
+      deferredArtifacts: 0,
+      skippedBeforeStartDate: 0,
+      skippedOrderDetailReports: 0,
+    });
+    expect(uberReporting.listFinancialReports).not.toHaveBeenCalled();
+    expect(acquisition.acquireProviderApiCsv).not.toHaveBeenCalled();
+  });
+
   it('imports READY financial artifacts from the configured start and skips order-detail history', async () => {
     const acquisition = {
       acquireProviderApiCsv: jest.fn().mockResolvedValue({
@@ -9,6 +34,7 @@ describe('AccountingProviderFinancialHistoryService', () => {
       }),
     };
     const uberReporting = {
+      isFinancialAuthorityEnabled: jest.fn().mockReturnValue(true),
       listFinancialReports: jest.fn().mockResolvedValue([
         {
           reportStableId: 'finance-1',
@@ -76,6 +102,7 @@ describe('AccountingProviderFinancialHistoryService', () => {
       }),
     };
     const uberReporting = {
+      isFinancialAuthorityEnabled: jest.fn().mockReturnValue(true),
       listFinancialReports: jest.fn().mockResolvedValue([
         {
           reportStableId: 'finance-2',
@@ -112,6 +139,7 @@ describe('AccountingProviderFinancialHistoryService', () => {
   it('uses 2026-06-01 as the hard historical floor even if UI start is earlier', async () => {
     const acquisition = { acquireProviderApiCsv: jest.fn() };
     const uberReporting = {
+      isFinancialAuthorityEnabled: jest.fn().mockReturnValue(true),
       listFinancialReports: jest.fn().mockResolvedValue([
         {
           reportStableId: 'may-1',

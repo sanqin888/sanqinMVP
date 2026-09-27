@@ -72,6 +72,14 @@
   provisioned `UberStoreMapping` 查询、`uberStoreId` 去重/排序与 provider `store_uuids` wire 字段都必须
   在 Uber bounded context 内解析。Accounting 不得读取 `UBER_EATS_APP_SCOPES`、`UberStoreMapping`
   或把 provider UUID 作为 reporting public contract 参数。
+- `eats.report` provider capability 与“可作为 Accounting 财务权威”是两个独立 gate。Test/validation
+  deployment 可以启用 Reporting request/webhook/artifact 流程，但 `UBER_EATS_FINANCIAL_AUTHORITY_ENABLED`
+  默认必须为 false；只有 Production Uber financial authority 完成独立验证后才允许显式晋升。Accounting
+  只能经 `UberEatsReportingPort.isFinancialAuthorityEnabled()` 读取这个 owner-owned 决策；gate 为 false
+  时不得扫描、读取、materialize 或标记任何 Uber report 为 imported。
+- Reporting artifact 是 API 与 dedicated worker 共同消费的持久 evidence。两个进程必须配置同一个
+  `UPLOAD_ROOT` 并挂载同一个持久 uploads volume；worker 不得把 `READY` report 的 CSV 只写进自己的
+  container writable layer，否则数据库状态与 Accounting 下载面会分裂。
 
 边界外调用者只能使用 `public-api.ts`、`ubereats.module.ts` 或 `worker.ts`；其中业务能力
 一律经 `public-api.ts` 使用。禁止外部深层导入 `api/`、`application/`、`domain/`、

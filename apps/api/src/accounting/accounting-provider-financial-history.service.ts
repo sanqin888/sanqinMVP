@@ -20,14 +20,6 @@ export class AccountingProviderFinancialHistoryService {
   ) {}
 
   async syncReadyUberReports(accountingStartDate: string | null) {
-    const effectiveStartDate = laterDate(
-      accountingStartDate,
-      PROVIDER_FINANCIAL_HISTORY_START_DATE,
-    );
-    const reports = await this.uberReporting.listFinancialReports({
-      status: 'READY',
-      limit: 200,
-    });
     const result = {
       scannedReports: 0,
       importedReports: 0,
@@ -36,7 +28,16 @@ export class AccountingProviderFinancialHistoryService {
       skippedBeforeStartDate: 0,
       skippedOrderDetailReports: 0,
     };
+    if (!this.uberReporting.isFinancialAuthorityEnabled()) return result;
 
+    const effectiveStartDate = laterDate(
+      accountingStartDate,
+      PROVIDER_FINANCIAL_HISTORY_START_DATE,
+    );
+    const reports = await this.uberReporting.listFinancialReports({
+      status: 'READY',
+      limit: 200,
+    });
     for (const report of reports) {
       if (report.reportType === 'ORDERS_AND_ITEMS_REPORT') {
         result.skippedOrderDetailReports += 1;

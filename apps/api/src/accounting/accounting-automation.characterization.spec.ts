@@ -5,7 +5,10 @@ describe('AccountingAutomationScheduler financial-report characterization', () =
     jest.useRealTimers();
   });
 
-  const makeScheduler = (accountingStartDate: Date | null = null) => {
+  const makeScheduler = (
+    accountingStartDate: Date | null = null,
+    financialAuthorityEnabled = true,
+  ) => {
     const gmail = {
       ingestBillsMailbox: jest.fn().mockResolvedValue({
         configured: true,
@@ -29,6 +32,9 @@ describe('AccountingAutomationScheduler financial-report characterization', () =
       },
     };
     const uberReporting = {
+      isFinancialAuthorityEnabled: jest
+        .fn()
+        .mockReturnValue(financialAuthorityEnabled),
       requestFinancialReports: jest
         .fn()
         .mockResolvedValue([{ workflowId: 'workflow-1' }]),
@@ -57,6 +63,26 @@ describe('AccountingAutomationScheduler financial-report characterization', () =
       providerFinancialHistory,
     };
   };
+
+  it('does not auto-request or import Uber reports before financial authority promotion', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-11T15:00:00.000Z'));
+    const { scheduler, uberReporting, providerFinancialHistory } =
+      makeScheduler(null, false);
+
+    await expect(scheduler.runNow()).resolves.toEqual(
+      expect.objectContaining({
+        uber: [],
+        uberFinancialHistory: expect.objectContaining({
+          importedReports: 0,
+        }) as unknown,
+      }) as unknown,
+    );
+
+    expect(uberReporting.requestFinancialReports).not.toHaveBeenCalled();
+    expect(
+      providerFinancialHistory.syncReadyUberReports,
+    ).not.toHaveBeenCalled();
+  });
 
   it('delegates provider capability and provisioned-store resolution to the External reporting boundary', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-09-11T15:00:00.000Z'));
