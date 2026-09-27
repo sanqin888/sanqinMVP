@@ -3424,6 +3424,16 @@ is claimed per repository workflow.
 
 **Details:** `apps/api/src/accounting/{accounting-automation.controller.ts,accounting-automation.controller.spec.ts,accounting-controller-vertical-boundary.architecture.spec.ts}`, `apps/web/src/app/[locale]/(site)/accounting/{reconciliation/page.tsx,contracts/{automation-period.ts,slice8b-e-web-contract-architecture.test.ts}}`, Uber requirement matrix and this worklog.
 
+### 2026-09-26 — Uber Reporting artifact persistence + financial-authority safety follow-up
+
+**State:** **LOCAL SOURCE READY FOR REVIEW / NO MIGRATION / NO NEW DEPENDENCY / NO GRAPH CHANGE** on `fix/uber-report-artifact-persistence-authority`. A real Test Application request for `PAYMENT_DETAILS_REPORT` and `FINANCE_SUMMARY_REPORT` completed through `eats.report.success` and persisted two `UberFinancialReport` rows as `READY`, but Accounting download returned HTTP 404 for both CSV artifacts. Read-only production evidence showed the files were produced by the dedicated Uber worker while only the API service mounted `./uploads:/app/uploads`; the worker therefore wrote artifacts into its container-local writable layer, leaving the API-visible persistent directory empty.
+
+**Source fix:** the dedicated worker now uses the same `UPLOAD_ROOT=/app/uploads` and `./uploads:/app/uploads` bind mount as the API, with compose characterization pinning both sides. Reporting capability remains usable for manual Test validation, but a new External-Channels-owned `UBER_EATS_FINANCIAL_AUTHORITY_ENABLED` gate defaults false and is exposed only through the existing `UBER_EATS_REPORTING` public port. Accounting automation now performs neither scheduled report requests nor provider-financial sync while that authority gate is false, and the provider-financial importer independently fails closed before listing/reading artifacts. Only an explicit post-Production-validation promotion enables scheduled financial reporting/import.
+
+**Safety/cleanup:** no Prisma/schema/migration, parser, Journal, provider wire, request date/type contract or dependency change. The two current Test report rows were never imported into `AccountingProviderFinancialDocument` and remain disposable validation data. Container-local CSV files are not migrated into the persistent volume by this source change; replacing/recreating the old worker discards its unmounted writable layer, while a plain container restart alone does not. Test-report database cleanup is a separate manual destructive action reviewed by the user.
+
+**Details:** `docker-compose.yml`, `apps/api/src/integrations/ubereats/{public-api.ts,ARCHITECTURE.md,application/operations/uber-financial-reporting.use-cases.ts,infrastructure/{nest/operations.wiring.ts,uber-api/uber-api-config.service.ts}}`, `apps/api/src/accounting/accounting-provider-financial-history.service.ts`, focused characterization specs, this worklog.
+
 ## Rule for future entries
 
 For each modularization code batch, append exactly one chronological entry before

@@ -95,6 +95,7 @@ export function createOperationsWiring(): Provider[] {
           artifacts,
           storeMappings,
           config.hasExpectedAppScope(UBER_CLIENT_CREDENTIAL_SCOPES.REPORT),
+          config.financialAuthorityEnabled,
         ),
     },
     {

@@ -223,13 +223,16 @@ export class AccountingAutomationScheduler
           failedDocuments: 0,
           skippedBeforeStartDate: 0,
         };
-    const uber = settings.uberReportsEnabled
+    const uberFinancialAuthorityEnabled =
+      settings.uberReportsEnabled &&
+      this.uberReporting.isFinancialAuthorityEnabled();
+    const uber = uberFinancialAuthorityEnabled
       ? await this.requestUberReports(
           settings.timezone,
           settings.accountingStartDate,
         )
       : [];
-    const uberFinancialHistory = settings.uberReportsEnabled
+    const uberFinancialHistory = uberFinancialAuthorityEnabled
       ? await this.providerFinancialHistory.syncReadyUberReports(
           settings.accountingStartDate,
         )
