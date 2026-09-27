@@ -13,13 +13,28 @@ describe('AccountingAutomationController Uber report validation', () => {
         },
       ]),
       listFinancialReports: jest.fn(),
+      readFinancialReportArtifact: jest.fn().mockResolvedValue({
+        content: 'Store Name,Total payout\nSanQ,12.34\n',
+        contentHash: 'a'.repeat(64),
+        byteSize: 38,
+        fileName: 'payment-details.csv',
+      }),
+    };
+    const tabularPreview = {
+      previewUberReportCsv: jest.fn().mockReturnValue({
+        format: 'CSV',
+        filename: 'payment-details.csv',
+        rows: [['Store Name', 'Total payout']],
+      }),
     };
     return {
       controller: new AccountingAutomationController(
         automation as never,
         uberReporting as never,
+        tabularPreview as never,
       ),
       uberReporting,
+      tabularPreview,
     };
   }
 
@@ -56,6 +71,41 @@ describe('AccountingAutomationController Uber report validation', () => {
       endDate: '2026-09-02',
       reportTypes: ['FINANCE_SUMMARY_REPORT'],
     });
+  });
+
+  it('previews only an artifact validated by the Uber reporting public port', async () => {
+    const { controller, uberReporting, tabularPreview } = makeController();
+    const artifactUrl =
+      '/api/v1/accounting/files/uber-reports/payment-details.csv';
+
+    await expect(
+      controller.previewUberReport('uberreport_1', artifactUrl),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        format: 'CSV',
+        filename: 'payment-details.csv',
+      }),
+    );
+
+    expect(uberReporting.readFinancialReportArtifact).toHaveBeenCalledWith({
+      reportStableId: 'uberreport_1',
+      artifactUrl,
+    });
+    expect(tabularPreview.previewUberReportCsv).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fileName: 'payment-details.csv',
+      }),
+    );
+  });
+
+  it('rejects a preview request without an artifact URL', async () => {
+    const { controller, uberReporting, tabularPreview } = makeController();
+
+    await expect(
+      controller.previewUberReport('uberreport_1', '   '),
+    ).rejects.toThrow('artifactUrl is required');
+    expect(uberReporting.readFinancialReportArtifact).not.toHaveBeenCalled();
+    expect(tabularPreview.previewUberReportCsv).not.toHaveBeenCalled();
   });
 
   it.each([

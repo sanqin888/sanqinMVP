@@ -1,7 +1,16 @@
 import type {
   AccountingInboxItem,
   AccountingInboxParseResult,
+  AccountingInboxParsedFinancialLine,
 } from '../contracts/inbox';
+import type {
+  AccountingFinancialDocumentType,
+  AccountingProviderFinancialLine,
+} from '../contracts/provider-financial';
+import {
+  isProviderSupportingFinancialDocumentType,
+  selectProviderFinancialSummaryLines,
+} from '../provider-financial-summary';
 
 export type AccountingExpenseReviewRow = {
   key: string;
@@ -68,8 +77,41 @@ export const toDollars = (cents: number | null | undefined) =>
 export const makeReviewKey = () =>
   `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
+export type AccountingProviderEvidenceSummaryLine =
+  | AccountingProviderFinancialLine
+  | AccountingInboxParsedFinancialLine;
+
 export function latestParse(
   item: AccountingInboxItem,
 ): AccountingInboxParseResult {
   return item.artifact.parseRuns[0]?.resultJson ?? {};
+}
+
+export function validatedProviderFinancialDocumentType(
+  item: AccountingInboxItem,
+  parse: AccountingInboxParseResult,
+): AccountingFinancialDocumentType | null {
+  return (
+    item.artifact.financialDocument?.documentType ??
+    (parse.providerFinancial === true && parse.documentType
+      ? parse.documentType
+      : null)
+  );
+}
+
+export function isProviderSupportingEvidence(
+  documentType: AccountingFinancialDocumentType | null | undefined,
+): boolean {
+  return isProviderSupportingFinancialDocumentType(documentType);
+}
+
+export function providerEvidenceSummaryLines(
+  item: AccountingInboxItem,
+  parse: AccountingInboxParseResult,
+  limit = 6,
+): AccountingProviderEvidenceSummaryLine[] {
+  const lines: AccountingProviderEvidenceSummaryLine[] =
+    item.artifact.financialDocument?.lines ??
+    (parse.providerFinancial === true ? (parse.lines ?? []) : []);
+  return selectProviderFinancialSummaryLines(lines, limit);
 }

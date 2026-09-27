@@ -5,7 +5,10 @@ const ACCOUNTING_ROOT = resolve(__dirname);
 
 const EXPECTED_CONTROLLER_CAPABILITIES = {
   'accounting-audit.controller.ts': ['AccountingService'],
-  'accounting-automation.controller.ts': ['AccountingAutomationScheduler'],
+  'accounting-automation.controller.ts': [
+    'AccountingAutomationScheduler',
+    'AccountingTabularPreviewService',
+  ],
   'accounting-canonical-change.controller.ts': [
     'AccountingCanonicalChangeExecutionService',
     'AccountingCanonicalChangePreviewService',
@@ -119,6 +122,7 @@ const EXPECTED_ROUTES = [
   'PUT automation/settings',
   'POST automation/uber-reports/request',
   'GET automation/uber-reports',
+  'GET automation/uber-reports/:reportStableId/tabular-preview',
   'POST period-close/month/:periodKey',
   'DELETE period-close/month/:periodKey',
   'GET period-close/month',
@@ -259,6 +263,15 @@ describe('Phase 9 Accounting controller vertical boundary', () => {
 
     expect(actualRoutes).toEqual(EXPECTED_ROUTES);
     expect(new Set(actualRoutes).size).toBe(actualRoutes.length);
+  });
+
+  it('forces direct Uber report CSV delivery to use attachment disposition', () => {
+    const source = read('accounting-inbox-artifacts.controller.ts');
+
+    expect(source).toContain("if (kind === 'uber-reports')");
+    expect(source).toContain(
+      "accountingArtifactContentDisposition('attachment', safeName)",
+    );
   });
 
   it('keeps one AccountingModule composition root without reintroducing a broad controller facade', () => {

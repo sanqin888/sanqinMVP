@@ -243,6 +243,8 @@ export class AccountingAutomationScheduler
           deferredArtifacts: 0,
           skippedBeforeStartDate: 0,
           skippedOrderDetailReports: 0,
+          reconciledReportPairs: 0,
+          deferredReconciliationGroups: 0,
         };
     this.logger.log(
       `Accounting automation completed: gmailImported=${gmail.importedDocuments} gmailDuplicates=${gmail.duplicateDocuments} uberRequested=${uber.length} uberImported=${uberFinancialHistory.importedReports}`,

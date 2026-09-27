@@ -111,6 +111,7 @@ export class UberFinancialReportingUseCase implements UberEatsReportingPort {
       reportStableId: row.reportStableId,
       workflowId: row.workflowId,
       reportType: row.reportType,
+      providerReportType: row.providerReportType,
       startDate: row.startDate,
       endDate: row.endDate,
       status: row.status,

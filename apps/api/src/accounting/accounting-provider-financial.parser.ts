@@ -17,10 +17,11 @@ import {
   CLOVER_SALES_REPORT_RAW_CODES,
 } from './accounting-clover-sales-report.contract';
 import { CLOVER_STATEMENT_RAW_CODES } from './accounting-clover-statement.contract';
+import { parseUberAccountingApiReport } from './accounting-uber-reporting.parser';
 
 export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_NAME =
   'accounting-provider-financial';
-export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION = '11';
+export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION = '13';
 
 export type ProviderFinancialParseInput = {
   text: string;
@@ -30,6 +31,7 @@ export type ProviderFinancialParseInput = {
   providerHint?: AccountingFinancialProvider | null;
   documentTypeHint?: AccountingFinancialDocumentType | null;
   reportTypeHint?: string | null;
+  providerReportTypeHint?: string | null;
   periodStartHint?: string | null;
   periodEndHint?: string | null;
   providerDocumentRefHint?: string | null;
@@ -88,6 +90,26 @@ export function parseProviderFinancialEvidence(
         parseCloverSalesReport(text, input)
       );
     case AccountingFinancialProvider.UBER_EATS:
+      if (
+        input.reportTypeHint ||
+        input.providerReportTypeHint ||
+        input.documentTypeHint === AccountingFinancialDocumentType.API_REPORT
+      ) {
+        if (
+          input.documentTypeHint &&
+          input.documentTypeHint !== AccountingFinancialDocumentType.API_REPORT
+        ) {
+          return null;
+        }
+        return parseUberAccountingApiReport({
+          text: input.text,
+          requestedReportType: input.reportTypeHint,
+          providerReportType: input.providerReportTypeHint,
+          periodStart: input.periodStartHint,
+          periodEnd: input.periodEndHint,
+          providerDocumentRef: input.providerDocumentRefHint,
+        });
+      }
       if (
         input.documentTypeHint &&
         input.documentTypeHint !== AccountingFinancialDocumentType.STATEMENT

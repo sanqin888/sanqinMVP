@@ -7,6 +7,7 @@ import {
   AccountingParseStatus,
 } from '@prisma/client';
 import { AccountingProviderFinancialService } from './accounting-provider-financial.service';
+import { ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION } from './accounting-provider-financial.parser';
 import { DEFAULT_ACCOUNTING_PROVIDER_RECOGNITION_RULES } from './accounting-provider-recognition.policy';
 
 describe('AccountingProviderFinancialService', () => {
@@ -682,7 +683,7 @@ Net Total $1,431.94*
       expect.objectContaining({
         provider: AccountingFinancialProvider.UBER_EATS,
         providerDocumentRef: 'B4842290',
-        parserVersion: '11',
+        parserVersion: ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION,
         lines: expect.arrayContaining([
           expect.objectContaining({
             rawName: 'Sales',
@@ -922,7 +923,7 @@ Total transfer amount $3813.11
         periodStart: '2026-08-01',
         periodEnd: '2026-08-31',
         parserName: 'accounting-provider-financial',
-        parserVersion: '11',
+        parserVersion: ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION,
       }),
     );
     expect(operations.ensureProviderFinancialCoverage).toHaveBeenCalledWith(

@@ -1088,12 +1088,21 @@ describe('AccountingInboxAcquisitionService', () => {
       content: 'Metric,Amount\nSales,12.34\n',
       provider: AccountingFinancialProvider.UBER_EATS,
       reportType: 'FINANCE_SUMMARY_REPORT',
+      providerReportType: 'PAYOUT_SUMMARY_REPORT',
       periodStart: '2026-08-01',
       periodEnd: '2026-08-31',
       providerDocumentRef: 'report_1:1',
     });
 
-    expect(providerFinancial.parseAndMaterialize).toHaveBeenCalled();
+    expect(providerFinancial.parseAndMaterialize).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reportTypeHint: 'FINANCE_SUMMARY_REPORT',
+        providerReportTypeHint: 'PAYOUT_SUMMARY_REPORT',
+        periodStartHint: '2026-08-01',
+        periodEndHint: '2026-08-31',
+        providerDocumentRefHint: 'report_1:1',
+      }),
+    );
     expect(providerFinancial.parseForInboxSuggestion).not.toHaveBeenCalled();
     expect(scannedPdfRecognition).not.toHaveBeenCalled();
   });
