@@ -21,7 +21,7 @@ import { parseUberAccountingApiReport } from './accounting-uber-reporting.parser
 
 export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_NAME =
   'accounting-provider-financial';
-export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION = '12';
+export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION = '13';
 
 export type ProviderFinancialParseInput = {
   text: string;

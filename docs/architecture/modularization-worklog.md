@@ -3460,7 +3460,7 @@ is claimed per repository workflow.
 
 ### 2026-09-26 — U-FR1B Uber Reporting fail-closed API_REPORT parser/materialization
 
-**State:** **LOCAL SOURCE READY FOR REVIEW / NO MIGRATION / NO NEW DEPENDENCY / NO JOURNAL CHANGE** on `feat/uber-financial-reporting-u-fr1b`. This batch activates parsing only after U-FR1D's authority guard is merged. It keeps all Uber Reporting materialization as `API_REPORT` evidence whose mapped financial lines are `RECONCILIATION_ONLY`, with `Total payout` represented only as a `CONTROL_TOTAL`.
+**State:** **MERGED / CI GREEN / NO MIGRATION / NO NEW DEPENDENCY / NO JOURNAL CHANGE**. PR #2572 merged to `dev` as squash `7af6b717` after authoritative CI #6502 passed. This batch activates parsing only after U-FR1D's authority guard is merged. It keeps all Uber Reporting materialization as `API_REPORT` evidence whose mapped financial lines are `RECONCILIATION_ONLY`, with `Total payout` represented only as a `CONTROL_TOTAL`.
 
 **External Channels boundary:** the public Reporting view now exposes one additional normalized field, `providerReportType`, derived inside External Channels from the persisted completion metadata. Accounting still does not read Uber persistence or raw webhook metadata. The observed request/completion pair is therefore available to the U-FR1A normalization contract without leaking the full provider payload across the bounded-context boundary.
 
@@ -3471,6 +3471,20 @@ is claimed per repository workflow.
 **Deferred:** U-FR1C still owns cross-report `Payout reference ID` reconciliation between Payment Details and Payout Summary. U-FR2 still owns any revenue/fee authority promotion, Monthly Statement replacement, provider payout posting or Journal changes.
 
 **Details:** `apps/api/src/accounting/{accounting-uber-reporting.parser.ts,accounting-uber-reporting.parser.spec.ts,accounting-provider-financial.parser.ts,accounting-inbox-acquisition.service.ts,accounting-provider-financial-history.service.ts}`, External Channels Reporting public/application/persistence mapping, focused tests, and this worklog.
+
+### 2026-09-26 — U-FR1C Uber Payment Details ↔ Payout Summary control reconciliation
+
+**State:** **LOCAL SOURCE READY FOR REVIEW / NO MIGRATION / NO NEW DEPENDENCY / NO JOURNAL CHANGE** on `feat/uber-financial-reporting-u-fr1c`. U-FR1C adds the cross-report control gate required before a READY Reporting artifact pair may advance to `IMPORTED`.
+
+**Evidence projection:** provider-financial parser version advances from `12 -> 13` because the persisted parser output shape changes. The Uber Reporting parser now retains deterministic per-`Payout reference ID` controls in document `rawMetadata`: grouped `Total payout`, contributing row count, and unreferenced payout-row/amount controls. Existing v12 Provider API documents remain immutable: when the same artifact is replayed under v13, reconciliation reads the current successful v13 `AccountingParseRun.resultJson.rawMetadata`; document `rawMetadata` is used directly only when that document was itself materialized by v13. Missing current parser evidence therefore fails closed instead of mutating a v12 document in place.
+
+**Reconciliation policy:** Accounting compares Payment Details and normalized Payout Summary only for the same requested period. It aggregates multi-section documents, requires compatible evidence kinds/period/currency, verifies each document's internal payout-control sum, requires the payout-reference control spine, compares the reference sets, compares grouped `Total payout` for every reference, and compares report-level `Total payout`. Non-zero unreferenced payout amounts, missing/invalid metadata, period/currency mismatch, missing report partner, reference-set mismatch, grouped-total mismatch, or report-total mismatch all fail closed.
+
+**Import gate:** `AccountingProviderFinancialHistoryService` now materializes all eligible READY artifacts first, groups financial reports by exact requested date range, and marks the Payment Details + Finance/Payout Summary pair `IMPORTED` only after U-FR1C returns `MATCHED`. Pairing reads both READY and already-IMPORTED reports so a partial two-report status update can recover on the next run; only the member still in READY is marked again, while fully imported historical pairs are skipped. A lone report, parse/materialization failure, ambiguous same-period pair, or reconciliation mismatch remains `READY` and retryable. Mismatch does not mutate source evidence and does not auto-correct provider values.
+
+**Deferred:** U-FR1C does not make API reports `POSTABLE`, generate Journal entries, replace Monthly Statement authority, or authorize provider payout posting. U-FR2 still owns those authority/cutover decisions after production evidence and closeout verification.
+
+**Details:** `apps/api/src/accounting/{accounting-uber-reporting.parser.ts,accounting-uber-reporting-reconciliation.policy.ts,accounting-uber-reporting-reconciliation.service.ts,accounting-provider-financial-history.service.ts,accounting.module.ts}`, focused specs, and this worklog.
 
 ## Rule for future entries
 

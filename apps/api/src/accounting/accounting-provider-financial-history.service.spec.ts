@@ -1,6 +1,27 @@
 import { AccountingFinancialProvider } from '@prisma/client';
 import { AccountingProviderFinancialHistoryService } from './accounting-provider-financial-history.service';
 
+type ReportRow = {
+  reportStableId: string;
+  workflowId: string;
+  reportType: string;
+  providerReportType: string | null;
+  startDate: string;
+  endDate: string;
+  status: 'READY' | 'IMPORTED';
+  artifactUrls: string[];
+};
+
+const matchedReconciliation = {
+  status: 'MATCHED' as const,
+  issues: [],
+};
+
+const listReports = (ready: ReportRow[], imported: ReportRow[] = []) =>
+  jest.fn().mockImplementation((input: { status?: string }) =>
+    Promise.resolve(input.status === 'IMPORTED' ? imported : ready),
+  );
+
 describe('AccountingProviderFinancialHistoryService', () => {
   it('does not scan or import Uber reports before financial authority is promoted', async () => {
     const acquisition = { acquireProviderApiCsv: jest.fn() };
@@ -10,9 +31,11 @@ describe('AccountingProviderFinancialHistoryService', () => {
       readFinancialReportArtifact: jest.fn(),
       markFinancialReportImported: jest.fn(),
     };
+    const reconciliation = { reconcileReportPair: jest.fn() };
     const service = new AccountingProviderFinancialHistoryService(
       acquisition as never,
       uberReporting as never,
+      reconciliation as never,
     );
 
     await expect(service.syncReadyUberReports('2026-06-01')).resolves.toEqual({
@@ -22,12 +45,47 @@ describe('AccountingProviderFinancialHistoryService', () => {
       deferredArtifacts: 0,
       skippedBeforeStartDate: 0,
       skippedOrderDetailReports: 0,
+      reconciledReportPairs: 0,
+      deferredReconciliationGroups: 0,
     });
     expect(uberReporting.listFinancialReports).not.toHaveBeenCalled();
     expect(acquisition.acquireProviderApiCsv).not.toHaveBeenCalled();
+    expect(reconciliation.reconcileReportPair).not.toHaveBeenCalled();
   });
 
-  it('imports READY financial artifacts from the configured start and skips order-detail history', async () => {
+  it('imports a READY Payment Details / Payout Summary pair only after controls reconcile', async () => {
+    const ready: ReportRow[] = [
+      {
+        reportStableId: 'payment-1',
+        workflowId: 'workflow-payment',
+        reportType: 'PAYMENT_DETAILS_REPORT',
+        providerReportType: 'PAYMENT_DETAILS_REPORT',
+        startDate: '2026-05-28',
+        endDate: '2026-06-03',
+        status: 'READY',
+        artifactUrls: ['/api/v1/accounting/files/uber-reports/payment.csv'],
+      },
+      {
+        reportStableId: 'finance-1',
+        workflowId: 'workflow-finance',
+        reportType: 'FINANCE_SUMMARY_REPORT',
+        providerReportType: 'PAYOUT_SUMMARY_REPORT',
+        startDate: '2026-05-28',
+        endDate: '2026-06-03',
+        status: 'READY',
+        artifactUrls: ['/api/v1/accounting/files/uber-reports/finance.csv'],
+      },
+      {
+        reportStableId: 'orders-1',
+        workflowId: 'workflow-orders',
+        reportType: 'ORDERS_AND_ITEMS_REPORT',
+        providerReportType: null,
+        startDate: '2026-06-01',
+        endDate: '2026-06-03',
+        status: 'READY',
+        artifactUrls: ['/api/v1/accounting/files/uber-reports/orders.csv'],
+      },
+    ];
     const acquisition = {
       acquireProviderApiCsv: jest.fn().mockResolvedValue({
         providerFinancialMatched: true,
@@ -35,48 +93,42 @@ describe('AccountingProviderFinancialHistoryService', () => {
     };
     const uberReporting = {
       isFinancialAuthorityEnabled: jest.fn().mockReturnValue(true),
-      listFinancialReports: jest.fn().mockResolvedValue([
-        {
-          reportStableId: 'finance-1',
-          workflowId: 'workflow-finance',
-          reportType: 'FINANCE_SUMMARY_REPORT',
-          providerReportType: 'PAYOUT_SUMMARY_REPORT',
-          startDate: '2026-05-28',
-          endDate: '2026-06-03',
-          status: 'READY',
-          artifactUrls: ['/api/v1/accounting/files/uber-reports/finance.csv'],
-        },
-        {
-          reportStableId: 'orders-1',
-          workflowId: 'workflow-orders',
-          reportType: 'ORDERS_AND_ITEMS_REPORT',
-          startDate: '2026-06-01',
-          endDate: '2026-06-03',
-          status: 'READY',
-          artifactUrls: ['/api/v1/accounting/files/uber-reports/orders.csv'],
-        },
-      ]),
-      readFinancialReportArtifact: jest.fn().mockResolvedValue({
-        content: 'Metric,Amount\nMarketplace Fees,-12.34',
-        contentHash: 'a'.repeat(64),
-        byteSize: 36,
-        fileName: 'finance.csv',
-      }),
+      listFinancialReports: listReports(ready),
+      readFinancialReportArtifact: jest
+        .fn()
+        .mockImplementation((input: { reportStableId: string }) =>
+          Promise.resolve({
+            content: 'provider csv',
+            contentHash: 'a'.repeat(64),
+            byteSize: 12,
+            fileName:
+              input.reportStableId === 'payment-1'
+                ? 'payment.csv'
+                : 'finance.csv',
+          }),
+        ),
       markFinancialReportImported: jest.fn().mockResolvedValue(undefined),
+    };
+    const reconciliation = {
+      reconcileReportPair: jest.fn().mockResolvedValue(matchedReconciliation),
     };
     const service = new AccountingProviderFinancialHistoryService(
       acquisition as never,
       uberReporting as never,
+      reconciliation as never,
     );
 
     await expect(service.syncReadyUberReports('2026-06-01')).resolves.toEqual({
-      scannedReports: 1,
-      importedReports: 1,
-      importedArtifacts: 1,
+      scannedReports: 2,
+      importedReports: 2,
+      importedArtifacts: 2,
       deferredArtifacts: 0,
       skippedBeforeStartDate: 0,
       skippedOrderDetailReports: 1,
+      reconciledReportPairs: 1,
+      deferredReconciliationGroups: 0,
     });
+
     expect(acquisition.acquireProviderApiCsv).toHaveBeenCalledWith(
       expect.objectContaining({
         provider: AccountingFinancialProvider.UBER_EATS,
@@ -91,13 +143,162 @@ describe('AccountingProviderFinancialHistoryService', () => {
         }) as unknown,
       }),
     );
-    expect(uberReporting.readFinancialReportArtifact).toHaveBeenCalledTimes(1);
+    expect(reconciliation.reconcileReportPair).toHaveBeenCalledWith({
+      paymentDetailsReportStableId: 'payment-1',
+      payoutSummaryReportStableId: 'finance-1',
+      periodStart: '2026-05-28',
+      periodEnd: '2026-06-03',
+    });
+    expect(uberReporting.readFinancialReportArtifact).toHaveBeenCalledTimes(2);
+    expect(uberReporting.markFinancialReportImported).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps both reports READY when cross-report payout controls do not reconcile', async () => {
+    const ready: ReportRow[] = [
+      {
+        reportStableId: 'payment-2',
+        workflowId: 'workflow-payment-2',
+        reportType: 'PAYMENT_DETAILS_REPORT',
+        providerReportType: 'PAYMENT_DETAILS_REPORT',
+        startDate: '2026-08-01',
+        endDate: '2026-08-31',
+        status: 'READY',
+        artifactUrls: ['/api/v1/accounting/files/uber-reports/payment.csv'],
+      },
+      {
+        reportStableId: 'finance-2',
+        workflowId: 'workflow-finance-2',
+        reportType: 'FINANCE_SUMMARY_REPORT',
+        providerReportType: 'PAYOUT_SUMMARY_REPORT',
+        startDate: '2026-08-01',
+        endDate: '2026-08-31',
+        status: 'READY',
+        artifactUrls: ['/api/v1/accounting/files/uber-reports/finance.csv'],
+      },
+    ];
+    const acquisition = {
+      acquireProviderApiCsv: jest.fn().mockResolvedValue({
+        providerFinancialMatched: true,
+      }),
+    };
+    const uberReporting = {
+      isFinancialAuthorityEnabled: jest.fn().mockReturnValue(true),
+      listFinancialReports: listReports(ready),
+      readFinancialReportArtifact: jest.fn().mockResolvedValue({
+        content: 'provider csv',
+        contentHash: 'b'.repeat(64),
+        byteSize: 12,
+        fileName: 'report.csv',
+      }),
+      markFinancialReportImported: jest.fn(),
+    };
+    const reconciliation = {
+      reconcileReportPair: jest.fn().mockResolvedValue({
+        status: 'MISMATCH',
+        issues: ['REPORT_TOTAL_PAYOUT_MISMATCH'],
+      }),
+    };
+    const service = new AccountingProviderFinancialHistoryService(
+      acquisition as never,
+      uberReporting as never,
+      reconciliation as never,
+    );
+
+    await expect(service.syncReadyUberReports('2026-06-01')).resolves.toEqual(
+      expect.objectContaining({
+        importedReports: 0,
+        importedArtifacts: 2,
+        reconciledReportPairs: 0,
+        deferredReconciliationGroups: 1,
+      }) as unknown,
+    );
+    expect(uberReporting.markFinancialReportImported).not.toHaveBeenCalled();
+  });
+
+  it('recovers a partially imported pair by using the IMPORTED partner as reconciliation evidence', async () => {
+    const ready: ReportRow[] = [
+      {
+        reportStableId: 'payment-retry',
+        workflowId: 'workflow-payment-retry',
+        reportType: 'PAYMENT_DETAILS_REPORT',
+        providerReportType: 'PAYMENT_DETAILS_REPORT',
+        startDate: '2026-09-01',
+        endDate: '2026-09-25',
+        status: 'READY',
+        artifactUrls: ['/api/v1/accounting/files/uber-reports/payment.csv'],
+      },
+    ];
+    const imported: ReportRow[] = [
+      {
+        reportStableId: 'finance-imported',
+        workflowId: 'workflow-finance-imported',
+        reportType: 'FINANCE_SUMMARY_REPORT',
+        providerReportType: 'PAYOUT_SUMMARY_REPORT',
+        startDate: '2026-09-01',
+        endDate: '2026-09-25',
+        status: 'IMPORTED',
+        artifactUrls: ['/api/v1/accounting/files/uber-reports/finance.csv'],
+      },
+    ];
+    const acquisition = {
+      acquireProviderApiCsv: jest.fn().mockResolvedValue({
+        providerFinancialMatched: true,
+      }),
+    };
+    const uberReporting = {
+      isFinancialAuthorityEnabled: jest.fn().mockReturnValue(true),
+      listFinancialReports: listReports(ready, imported),
+      readFinancialReportArtifact: jest.fn().mockResolvedValue({
+        content: 'provider csv',
+        contentHash: 'c'.repeat(64),
+        byteSize: 12,
+        fileName: 'payment.csv',
+      }),
+      markFinancialReportImported: jest.fn().mockResolvedValue(undefined),
+    };
+    const reconciliation = {
+      reconcileReportPair: jest.fn().mockResolvedValue(matchedReconciliation),
+    };
+    const service = new AccountingProviderFinancialHistoryService(
+      acquisition as never,
+      uberReporting as never,
+      reconciliation as never,
+    );
+
+    await expect(service.syncReadyUberReports('2026-06-01')).resolves.toEqual(
+      expect.objectContaining({
+        scannedReports: 1,
+        importedArtifacts: 1,
+        importedReports: 1,
+        reconciledReportPairs: 1,
+        deferredReconciliationGroups: 0,
+      }) as unknown,
+    );
+    expect(reconciliation.reconcileReportPair).toHaveBeenCalledWith({
+      paymentDetailsReportStableId: 'payment-retry',
+      payoutSummaryReportStableId: 'finance-imported',
+      periodStart: '2026-09-01',
+      periodEnd: '2026-09-25',
+    });
+    expect(uberReporting.markFinancialReportImported).toHaveBeenCalledTimes(1);
     expect(uberReporting.markFinancialReportImported).toHaveBeenCalledWith(
-      'finance-1',
+      'payment-retry',
     );
   });
 
   it('keeps a READY report retryable when a provider artifact cannot yet be normalized', async () => {
+    const ready: ReportRow[] = [
+      {
+        reportStableId: 'payment-3',
+        workflowId: 'workflow-payment-3',
+        reportType: 'PAYMENT_DETAILS_REPORT',
+        providerReportType: 'PAYMENT_DETAILS_REPORT',
+        startDate: '2026-08-01',
+        endDate: '2026-08-31',
+        status: 'READY',
+        artifactUrls: ['/api/v1/accounting/files/uber-reports/payment.csv'],
+      },
+    ];
     const acquisition = {
       acquireProviderApiCsv: jest.fn().mockResolvedValue({
         providerFinancialMatched: false,
@@ -105,64 +306,114 @@ describe('AccountingProviderFinancialHistoryService', () => {
     };
     const uberReporting = {
       isFinancialAuthorityEnabled: jest.fn().mockReturnValue(true),
-      listFinancialReports: jest.fn().mockResolvedValue([
-        {
-          reportStableId: 'finance-2',
-          workflowId: 'workflow-finance-2',
-          reportType: 'PAYMENT_DETAILS_REPORT',
-          providerReportType: 'PAYMENT_DETAILS_REPORT',
-          startDate: '2026-08-01',
-          endDate: '2026-08-31',
-          status: 'READY',
-          artifactUrls: ['/api/v1/accounting/files/uber-reports/payment.csv'],
-        },
-      ]),
+      listFinancialReports: listReports(ready),
       readFinancialReportArtifact: jest.fn().mockResolvedValue({
         content: 'Unknown,Amount\nSomething,1.00',
-        contentHash: 'b'.repeat(64),
+        contentHash: 'd'.repeat(64),
         byteSize: 29,
         fileName: 'payment.csv',
       }),
       markFinancialReportImported: jest.fn(),
     };
+    const reconciliation = { reconcileReportPair: jest.fn() };
     const service = new AccountingProviderFinancialHistoryService(
       acquisition as never,
       uberReporting as never,
+      reconciliation as never,
     );
 
     await expect(service.syncReadyUberReports('2026-06-01')).resolves.toEqual(
       expect.objectContaining({
         importedReports: 0,
         deferredArtifacts: 1,
+        deferredReconciliationGroups: 1,
       }) as unknown,
     );
+    expect(reconciliation.reconcileReportPair).not.toHaveBeenCalled();
+    expect(uberReporting.markFinancialReportImported).not.toHaveBeenCalled();
+  });
+
+  it('keeps a lone financial report READY until its reconciliation partner exists', async () => {
+    const ready: ReportRow[] = [
+      {
+        reportStableId: 'payment-only',
+        workflowId: 'workflow-payment-only',
+        reportType: 'PAYMENT_DETAILS_REPORT',
+        providerReportType: 'PAYMENT_DETAILS_REPORT',
+        startDate: '2026-09-01',
+        endDate: '2026-09-25',
+        status: 'READY',
+        artifactUrls: ['/api/v1/accounting/files/uber-reports/payment.csv'],
+      },
+    ];
+    const acquisition = {
+      acquireProviderApiCsv: jest.fn().mockResolvedValue({
+        providerFinancialMatched: true,
+      }),
+    };
+    const uberReporting = {
+      isFinancialAuthorityEnabled: jest.fn().mockReturnValue(true),
+      listFinancialReports: listReports(ready),
+      readFinancialReportArtifact: jest.fn().mockResolvedValue({
+        content: 'provider csv',
+        contentHash: 'e'.repeat(64),
+        byteSize: 12,
+        fileName: 'payment.csv',
+      }),
+      markFinancialReportImported: jest.fn(),
+    };
+    const reconciliation = { reconcileReportPair: jest.fn() };
+    const service = new AccountingProviderFinancialHistoryService(
+      acquisition as never,
+      uberReporting as never,
+      reconciliation as never,
+    );
+
+    await expect(service.syncReadyUberReports('2026-06-01')).resolves.toEqual(
+      expect.objectContaining({
+        importedReports: 0,
+        importedArtifacts: 1,
+        deferredReconciliationGroups: 1,
+      }) as unknown,
+    );
+    expect(reconciliation.reconcileReportPair).not.toHaveBeenCalled();
     expect(uberReporting.markFinancialReportImported).not.toHaveBeenCalled();
   });
 
   it('uses 2026-06-01 as the hard historical floor even if UI start is earlier', async () => {
+    const ready: ReportRow[] = [
+      {
+        reportStableId: 'may-1',
+        workflowId: 'may-workflow',
+        reportType: 'FINANCE_SUMMARY_REPORT',
+        providerReportType: 'PAYOUT_SUMMARY_REPORT',
+        startDate: '2026-05-01',
+        endDate: '2026-05-31',
+        status: 'READY',
+        artifactUrls: ['/api/v1/accounting/files/uber-reports/may.csv'],
+      },
+    ];
     const acquisition = { acquireProviderApiCsv: jest.fn() };
     const uberReporting = {
       isFinancialAuthorityEnabled: jest.fn().mockReturnValue(true),
-      listFinancialReports: jest.fn().mockResolvedValue([
-        {
-          reportStableId: 'may-1',
-          workflowId: 'may-workflow',
-          reportType: 'FINANCE_SUMMARY_REPORT',
-          startDate: '2026-05-01',
-          endDate: '2026-05-31',
-          status: 'READY',
-          artifactUrls: ['/api/v1/accounting/files/uber-reports/may.csv'],
-        },
-      ]),
+      listFinancialReports: listReports(ready),
+      readFinancialReportArtifact: jest.fn(),
+      markFinancialReportImported: jest.fn(),
     };
+    const reconciliation = { reconcileReportPair: jest.fn() };
     const service = new AccountingProviderFinancialHistoryService(
       acquisition as never,
       uberReporting as never,
+      reconciliation as never,
     );
 
     await expect(service.syncReadyUberReports('2026-01-01')).resolves.toEqual(
-      expect.objectContaining({ skippedBeforeStartDate: 1 }) as unknown,
+      expect.objectContaining({
+        skippedBeforeStartDate: 1,
+        deferredReconciliationGroups: 0,
+      }) as unknown,
     );
     expect(acquisition.acquireProviderApiCsv).not.toHaveBeenCalled();
+    expect(reconciliation.reconcileReportPair).not.toHaveBeenCalled();
   });
 });
