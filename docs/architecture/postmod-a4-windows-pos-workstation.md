@@ -2,9 +2,9 @@
 
 ## Status
 
-2026-09-27: **A4-A + A4-B + A4-C1 + A4-C2 MERGED / CI GREEN / A4-C2 FULLSCREEN HOTFIX LOCAL READY FOR REVIEW / SAME AUTHORIZED OPERATIONAL BOUNDARY / NO MIGRATION / NO NEW DEPENDENCY / NO GRAPH CHANGE**
+2026-09-27: **A4-A + A4-B + A4-C1 + A4-C2 + FULLSCREEN HOTFIX MERGED / CI GREEN / POWERSHELL 5.1 CONFIG-PATH HOTFIX CI GREEN IN PR #2578 / SAME AUTHORIZED OPERATIONAL BOUNDARY / NO MIGRATION / NO NEW DEPENDENCY / NO GRAPH CHANGE**
 
-A4-A merged through PR #2537 / squash `6f77d5cc` with CI #6381. A4-B merged through PR #2538 / squash `2d0d1a58` with CI #6383. A4-C1 merged through PR #2543 / squash `06afc5b5` with CI #6397. A4-C2 merged through PR #2545 / squash `8b1cac46` with final CI #6404 all green. Store verification on 2026-09-27 confirms logon startup and periodic POS/Display recovery; the only active hotfix scope is browser-native fullscreen.
+A4-A merged through PR #2537 / squash `6f77d5cc` with CI #6381. A4-B merged through PR #2538 / squash `2d0d1a58` with CI #6383. A4-C1 merged through PR #2543 / squash `06afc5b5` with CI #6397. A4-C2 merged through PR #2545 / squash `8b1cac46` with CI #6404. The Chromium-native fullscreen hotfix merged through PR #2577 / squash `6fbac600` with CI #6518. Store verification confirms logon startup and periodic POS/Display recovery. PR #2578 now fixes the separately reproduced Windows PowerShell 5.1 implicit `ConfigPath` binding defect; source CI #6520 is green and the documentation-sync commit requires the final CI pass before merge.
 
 A4 is a workstation project layered on the existing Store Operations / POS / Print boundaries. It does not move authentication, device enrollment, order, payment, customer-display synchronization, or printer ownership.
 
@@ -102,7 +102,7 @@ C2 extends the same launcher with two explicit modes. `Launch` places/reuses POS
 
 Startup/recovery uses one current-user interactive Scheduled Task rather than independent overlapping timers. At Windows logon the task starts `supervise-workstation.ps1` hidden. The supervisor executes one `Launch`, then serial `Ensure` passes at `EnsureIntervalSeconds` (example/default 60 seconds). Task settings use interactive current-user logon, limited run level, `MultipleInstances=IgnoreNew`, restart-on-supervisor-failure and no execution time limit; the supervisor also holds a per-user local mutex. This prevents concurrent recovery loops while keeping GUI automation inside the logged-in desktop session.
 
-`install-startup-task.ps1` and `uninstall-startup-task.ps1` are deliberate workstation mutation tools only. They are committed as source but are not executed by CI or repository tooling. The installer does not start the task immediately; operational installation/test remains an A4-D store-workstation action after merge. Uninstall removes/stops only the Scheduled Task and leaves current POS/Display/printer processes untouched.
+`install-startup-task.ps1` and `uninstall-startup-task.ps1` are deliberate workstation mutation tools only. The installer does not start the task immediately; operational installation/test remains an A4-D store-workstation action after merge. A store run on Windows PowerShell 5.1 reproduced that evaluating `Join-Path $PSScriptRoot ...` inside the `param()` default for `ConfigPath` can fail before the script body begins. PR #2578 moves that default resolution into the script body for launcher, supervisor, and installer; the Windows CI gate now invokes all three without `-ConfigPath` and requires them to reach the normal missing-local-config check without registering a Scheduled Task or launching browser/printer runtime. Uninstall removes/stops only the Scheduled Task and leaves current POS/Display/printer processes untouched.
 
 C2 still does not own POS session renewal, 401/login recovery, PWA/service-worker reload policy, Customer Display storage/channel semantics or printer-agent reconnect/ACK/dedupe. It contains no browser/session/device credential and adds no dependency or schema change.
 
