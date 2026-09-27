@@ -254,7 +254,10 @@ export function resolveProviderSalesAuthority(params: {
   liveOrderFactCutoverAt: Date | null;
   timezone: string;
 }): ProviderSalesAuthority {
-  if (params.provider === AccountingFinancialProvider.CLOVER) {
+  if (
+    params.provider === AccountingFinancialProvider.CLOVER ||
+    params.documentType !== AccountingFinancialDocumentType.STATEMENT
+  ) {
     return 'RECONCILIATION_ONLY';
   }
   if (!params.liveOrderFactCutoverAt) {

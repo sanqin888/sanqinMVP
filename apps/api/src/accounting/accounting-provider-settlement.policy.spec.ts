@@ -309,6 +309,41 @@ const observedJulyUberLayoutLossLines = (): SettlementTestLine[] => {
 };
 
 describe('Accounting provider settlement shadow policy', () => {
+  it('keeps non-statement provider documents reconciliation-only regardless of live-order cutover', () => {
+    expect(
+      resolveProviderSalesAuthority({
+        provider: AccountingFinancialProvider.UBER_EATS,
+        documentType: AccountingFinancialDocumentType.API_REPORT,
+        periodStart: '2026-09-01',
+        periodEnd: '2026-09-25',
+        liveOrderFactCutoverAt: null,
+        timezone: 'America/Toronto',
+      }),
+    ).toBe('RECONCILIATION_ONLY');
+
+    expect(
+      resolveProviderSalesAuthority({
+        provider: AccountingFinancialProvider.UBER_EATS,
+        documentType: AccountingFinancialDocumentType.OTHER,
+        periodStart: '2026-09-01',
+        periodEnd: '2026-09-25',
+        liveOrderFactCutoverAt: new Date('2026-09-10T04:00:00.000Z'),
+        timezone: 'America/Toronto',
+      }),
+    ).toBe('RECONCILIATION_ONLY');
+
+    expect(
+      resolveProviderSalesAuthority({
+        provider: AccountingFinancialProvider.FANTUAN,
+        documentType: AccountingFinancialDocumentType.OTHER,
+        periodStart: '2026-08-01',
+        periodEnd: '2026-08-31',
+        liveOrderFactCutoverAt: null,
+        timezone: 'America/Toronto',
+      }),
+    ).toBe('RECONCILIATION_ONLY');
+  });
+
   it('uses statement authority before live Uber Order cutover and maps tip as non-taxable store revenue', () => {
     const authority = resolveProviderSalesAuthority({
       provider: AccountingFinancialProvider.UBER_EATS,
