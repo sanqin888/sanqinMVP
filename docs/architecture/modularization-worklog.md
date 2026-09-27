@@ -3448,15 +3448,29 @@ is claimed per repository workflow.
 
 ### 2026-09-26 — U-FR1D + U-FR1A authority guard and real CSV contract freeze
 
-**State:** **LOCAL SOURCE READY FOR REVIEW / NO MIGRATION / NO NEW DEPENDENCY / NO GRAPH CHANGE** on `feat/uber-financial-reporting-u-fr1a`. This first implementation batch installs the settlement authority safety guard before any Uber API-report parser is allowed to materialize evidence, then freezes the observed Reporting CSV contract without enabling parsing or posting.
+**State:** **MERGED / CI GREEN / NO MIGRATION / NO NEW DEPENDENCY / NO GRAPH CHANGE**. PR #2571 merged to `dev` as squash `0efeafed` after authoritative CI #6497 passed. This first implementation batch installs the settlement authority safety guard before any Uber API-report parser is allowed to materialize evidence, then freezes the observed Reporting CSV contract without enabling parsing or posting.
 
 **U-FR1D safety guard:** `resolveProviderSalesAuthority()` now treats every non-`STATEMENT` provider financial document as `RECONCILIATION_ONLY` before applying Uber/Fantuan live-order cutover rules. Existing Clover behavior remains reconciliation-only. Focused policy characterization covers Uber `API_REPORT`, Uber supplemental `OTHER`, and Fantuan supplemental `OTHER`; therefore a future Reporting parser cannot accidentally promote `API_REPORT` to `STATEMENT_AUTHORITATIVE` merely because no live-order cutover exists.
 
 **U-FR1A contract freeze:** Accounting now owns a dedicated Uber Reporting contract for the two observed evidence kinds: `UBER_PAYMENT_DETAILS_REPORT` and normalized `UBER_PAYOUT_SUMMARY_REPORT`. It preserves the provider-observed request/completion mapping `FINANCE_SUMMARY_REPORT -> PAYOUT_SUMMARY_REPORT`, fails closed on unknown/mismatched pairs, freezes the observed canonical machine headers for both CSVs, records the Payment Details description-row sentinel separately, and identifies the order/workflow/payout identity plus payout-control columns. No parser imports this contract yet.
 
-**Deferred:** U-FR1B parser/materialization, U-FR1C cross-report `Payout reference ID` control reconciliation, any `POSTABLE` treatment, Journal generation, historical Monthly Statement replacement, provider payout posting, and U-FR2 authority/cutover decisions remain explicitly out of scope.
+**Deferred at this merge:** U-FR1B parser/materialization, U-FR1C cross-report `Payout reference ID` control reconciliation, any `POSTABLE` treatment, Journal generation, historical Monthly Statement replacement, provider payout posting, and U-FR2 authority/cutover decisions remained explicitly out of scope.
 
 **Details:** `apps/api/src/accounting/{accounting-provider-settlement.policy.ts,accounting-provider-settlement.policy.spec.ts,accounting-uber-reporting.contract.ts,accounting-uber-reporting.contract.spec.ts}`, `apps/api/src/integrations/ubereats/ARCHITECTURE.md`, and this worklog.
+
+### 2026-09-26 — U-FR1B Uber Reporting fail-closed API_REPORT parser/materialization
+
+**State:** **LOCAL SOURCE READY FOR REVIEW / NO MIGRATION / NO NEW DEPENDENCY / NO JOURNAL CHANGE** on `feat/uber-financial-reporting-u-fr1b`. This batch activates parsing only after U-FR1D's authority guard is merged. It keeps all Uber Reporting materialization as `API_REPORT` evidence whose mapped financial lines are `RECONCILIATION_ONLY`, with `Total payout` represented only as a `CONTROL_TOTAL`.
+
+**External Channels boundary:** the public Reporting view now exposes one additional normalized field, `providerReportType`, derived inside External Channels from the persisted completion metadata. Accounting still does not read Uber persistence or raw webhook metadata. The observed request/completion pair is therefore available to the U-FR1A normalization contract without leaking the full provider payload across the bounded-context boundary.
+
+**Parser/materialization:** Provider API acquisition passes requested report type, provider completion type, requested date range and durable provider-document reference into the provider-financial parser. The new Uber Reporting parser requires the U-FR1A type pair plus the exact normalized machine header, accepts the Payment Details description row only as pre-header provider material, rejects altered headers/row widths/mixed currencies/malformed nonblank money/invalid periods, and materializes one immutable `API_REPORT` document per source artifact. The original CSV remains the authoritative source artifact. Complete known monetary-column aggregates are retained in `rawMetadata.columnTotalsCents`; payout references, Store UUIDs and bounded other-payment descriptions remain evidence metadata for later reconciliation.
+
+**Financial semantics:** only semantically stable columns are projected into provider-financial lines (sales/tax, chargeback, adjustment, promotion, marketplace fee/discount/tax, tips, other payments, marketplace-facilitator tax, garnishment and total payout). No line is `POSTABLE`; `Total payout` is a provider control total. Unknown/unsupported request-provider pairs remain parser-pending and the durable Uber report stays `READY` for retry rather than being partially imported.
+
+**Deferred:** U-FR1C still owns cross-report `Payout reference ID` reconciliation between Payment Details and Payout Summary. U-FR2 still owns any revenue/fee authority promotion, Monthly Statement replacement, provider payout posting or Journal changes.
+
+**Details:** `apps/api/src/accounting/{accounting-uber-reporting.parser.ts,accounting-uber-reporting.parser.spec.ts,accounting-provider-financial.parser.ts,accounting-inbox-acquisition.service.ts,accounting-provider-financial-history.service.ts}`, External Channels Reporting public/application/persistence mapping, focused tests, and this worklog.
 
 ## Rule for future entries
 

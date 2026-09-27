@@ -83,7 +83,9 @@
 - Reporting request type 与 provider completion type 不是同一个契约字段。真实 Test Application evidence
   已观察到请求 `FINANCE_SUMMARY_REPORT` 而 `eats.report.success` 返回 `PAYOUT_SUMMARY_REPORT`；
   External Channels 必须同时保留 request type 与 provider-returned type，Accounting 只能通过显式
-  normalization contract 判断 artifact kind，禁止按字符串相等推断或静默接受未知组合。
+  normalization contract 判断 artifact kind，禁止按字符串相等推断或静默接受未知组合。跨 bounded-context
+  的 Reporting view 只暴露 normalized `providerReportType`；完整 webhook/report `rawMetadata` 继续留在
+  External Channels persistence/application 边界内，不作为 Accounting public contract。
 
 边界外调用者只能使用 `public-api.ts`、`ubereats.module.ts` 或 `worker.ts`；其中业务能力
 一律经 `public-api.ts` 使用。禁止外部深层导入 `api/`、`application/`、`domain/`、

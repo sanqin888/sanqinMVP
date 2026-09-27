@@ -28,6 +28,7 @@ export type UberFinancialReportRecord = {
   completedAt: Date | null;
   importedAt: Date | null;
   errorMessage: string | null;
+  providerReportType: string | null;
 };
 
 export interface UberFinancialReportApiPort {
