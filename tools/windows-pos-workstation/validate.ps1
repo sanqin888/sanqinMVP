@@ -77,7 +77,9 @@ $launcherSource = Get-Content -LiteralPath (Join-Path $scriptDir "launch-worksta
 foreach ($requiredSnippet in @(
   '[ValidateSet("Launch", "Ensure")]',
   "Enter-WindowFullscreen",
-  "SetWindowLong",
+  "SetForegroundWindow",
+  "GetForegroundWindow",
+  '[System.Windows.Forms.SendKeys]::SendWait("{F11}")',
   "SetWindowPos"
 )) {
   if (-not $launcherSource.Contains($requiredSnippet)) {
