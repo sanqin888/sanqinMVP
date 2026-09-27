@@ -3500,6 +3500,18 @@ is claimed per repository workflow.
 
 **Details:** `apps/api/src/accounting/{accounting-automation.controller.ts,accounting-inbox-artifacts.controller.ts,accounting-tabular-preview.service.ts}`, `apps/web/src/app/[locale]/(site)/accounting/reconciliation/{page.tsx,uber-report-table-preview.tsx}`, focused specs, and this worklog.
 
+### 2026-09-27 — Accounting supporting/control-evidence Inbox + file-manager UX
+
+**State:** **LOCAL SOURCE READY FOR REVIEW / WEB-ONLY / NO MIGRATION / NO NEW DEPENDENCY / NO AUTHORITY OR GRAPH CHANGE** on `feat/accounting-supporting-evidence-inbox-ux` from current `origin/dev`. This batch addresses operator ambiguity exposed by confirming a Clover Daily Closeout: the evidence was correctly materialized as `BATCH_CONTROL`, but the Inbox copy implied every provider document should continue into an actionable settlement flow.
+
+**Supporting-evidence UX:** the Web adapter now derives its distinction from the existing frozen contract rather than provider-specific guesses: validated non-`STATEMENT` provider documents (`BATCH_CONTROL`, `API_REPORT`, `OTHER`) are supporting/control evidence, while `STATEMENT` remains the only independent settlement work item. Inbox cards show provider/type, period, provider reference and compact prioritized financial/control lines; supporting confirmation says the evidence is archived/protected for reconciliation and deliberately removes the “continue to Provider settlements” action. Clover Closeout, Clover Sales Report, Uber API reports and Fantuan adjustment detail therefore share one no-further-action presentation without changing their parser semantics.
+
+**Settlement archive + file manager:** the Provider settlements supporting archive labels Clover `BATCH_CONTROL` as Daily Closeout/reconciliation control evidence, surfaces key control/economic amounts and replaces the misleading empty “Machine net payout” presentation with an explicit control/summary amount plus no-Replay/no-posting guidance. Evidence File Manager adds a Preview button to every file row and reuses the existing protected PDF/image/tabular preview surface, including the same artifact content/download routes, so preview does not alter folder assignment or source evidence.
+
+**Safety/architecture:** no API route, Prisma/schema/migration, package/lockfile, provider parser/materialization, Human Review authority, settlement policy, Journal writer, payout authority, evidence persistence/delivery or file-move contract changes. Existing `STATEMENT` Shadow Preview/replay behavior is intentionally unchanged; current context directions, scanner baseline and SCCs are unchanged. Per `AGENTS.md`, no local lint/build/test is run before user review; GitHub Actions remains the validation gate after remote authorization.
+
+**Details:** `ACCOUNTING_PRODUCT_ROADMAP.md`, `docs/architecture/current-dependency-graph.md`, `apps/web/src/app/[locale]/(site)/accounting/{provider-financial-summary.ts,accounting-evidence-preview-surface.tsx,accounting-evidence-file-manager.tsx,accounting-evidence-viewer.tsx,inbox/**,settlements/page.tsx}`, focused Web tests, and this worklog.
+
 ## Rule for future entries
 
 For each modularization code batch, append exactly one chronological entry before

@@ -2,6 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '@/lib/api/client';
+import {
+  AccountingEvidencePreviewSurface,
+  accountingEvidenceDownloadUrl,
+} from './accounting-evidence-preview-surface';
 import type {
   AccountingEvidenceFileManagerState,
   AccountingEvidenceFolder,
@@ -30,6 +34,8 @@ export function AccountingEvidenceFileManager({ isZh, onClose }: Props) {
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [moving, setMoving] = useState(false);
   const [showMoveTargets, setShowMoveTargets] = useState(false);
+  const [previewingFile, setPreviewingFile] =
+    useState<AccountingManagedEvidenceFile | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -368,12 +374,21 @@ export function AccountingEvidenceFileManager({ isZh, onClose }: Props) {
                   isZh={isZh}
                   checked={selectedIds.has(file.artifactStableId)}
                   onToggle={() => toggleSelected(file.artifactStableId)}
+                  onPreview={() => setPreviewingFile(file)}
                 />
               ))}
             </div>
           </div>
         </div>
       </section>
+
+      {previewingFile ? (
+        <ManagedFilePreviewDialog
+          file={previewingFile}
+          isZh={isZh}
+          onClose={() => setPreviewingFile(null)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -411,38 +426,110 @@ function ManagedFileRow({
   isZh,
   checked,
   onToggle,
+  onPreview,
 }: {
   file: AccountingManagedEvidenceFile;
   isZh: boolean;
   checked: boolean;
   onToggle: () => void;
+  onPreview: () => void;
 }) {
+  const filename = accountingManagedEvidenceDisplayFilename(file);
+
   return (
-    <label className="flex cursor-pointer items-start gap-3 py-3">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={onToggle}
-        className="mt-1"
-      />
-      <div className="min-w-0 flex-1">
-        <p className="truncate font-medium text-slate-900">
-          {accountingManagedEvidenceDisplayFilename(file)}
-        </p>
-        <p className="mt-1 text-xs text-slate-500">
-          {file.kind} · {file.acquisitionMode} ·{' '}
-          {formatAccountingEvidenceFileBytes(
-            accountingManagedEvidenceDisplayByteSize(file),
-            isZh,
-          )}{' '}
-          · {new Date(file.createdAt).toLocaleString()}
-        </p>
-        <p className="mt-1 text-xs text-slate-500">
-          {isZh ? '位置' : 'Location'}:{' '}
-          {file.folder?.name ?? (isZh ? '未归档' : 'Unfiled')}
-        </p>
-      </div>
-    </label>
+    <div className="flex items-start gap-3 py-3">
+      <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-3">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={onToggle}
+          className="mt-1"
+        />
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-medium text-slate-900">{filename}</p>
+          <p className="mt-1 text-xs text-slate-500">
+            {file.kind} · {file.acquisitionMode} ·{' '}
+            {formatAccountingEvidenceFileBytes(
+              accountingManagedEvidenceDisplayByteSize(file),
+              isZh,
+            )}{' '}
+            · {new Date(file.createdAt).toLocaleString()}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            {isZh ? '位置' : 'Location'}:{' '}
+            {file.folder?.name ?? (isZh ? '未归档' : 'Unfiled')}
+          </p>
+        </div>
+      </label>
+      <button
+        type="button"
+        onClick={onPreview}
+        className="shrink-0 rounded border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-50"
+        aria-label={
+          isZh ? `预览 ${filename}` : `Preview ${filename}`
+        }
+      >
+        {isZh ? '预览' : 'Preview'}
+      </button>
+    </div>
+  );
+}
+
+function ManagedFilePreviewDialog({
+  file,
+  isZh,
+  onClose,
+}: {
+  file: AccountingManagedEvidenceFile;
+  isZh: boolean;
+  onClose: () => void;
+}) {
+  const filename = accountingManagedEvidenceDisplayFilename(file);
+  const evidence = {
+    artifactStableId: file.artifactStableId,
+    filename,
+    kind: file.kind,
+  };
+
+  return (
+    <div className="fixed inset-0 z-[90] overflow-y-auto bg-slate-950/70 p-2 backdrop-blur-sm sm:p-5">
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="accounting-file-manager-preview-title"
+        className="mx-auto flex min-h-[calc(100vh-1rem)] max-w-6xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:min-h-[calc(100vh-2.5rem)]"
+      >
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-5">
+          <div className="min-w-0">
+            <h3
+              id="accounting-file-manager-preview-title"
+              className="truncate font-semibold text-slate-900"
+            >
+              {filename}
+            </h3>
+            <p className="mt-0.5 text-xs text-slate-500">
+              {isZh ? '文件管理器预览' : 'File manager preview'} · {file.kind}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <a
+              href={accountingEvidenceDownloadUrl(file.artifactStableId)}
+              className="rounded border border-blue-300 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-800 hover:bg-blue-100"
+            >
+              {isZh ? '下载文件' : 'Download'}
+            </a>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+            >
+              {isZh ? '关闭预览' : 'Close preview'}
+            </button>
+          </div>
+        </header>
+        <AccountingEvidencePreviewSurface evidence={evidence} isZh={isZh} />
+      </section>
+    </div>
   );
 }
 

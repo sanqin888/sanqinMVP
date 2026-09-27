@@ -11,6 +11,10 @@ import type {
   ProviderSettlementShadowPreview,
 } from '../contracts/settlements';
 import { ProviderFinancialReviewPanel } from '../provider-financial-review-panel';
+import {
+  findProviderSupportingHeadlineLine,
+  selectProviderFinancialSummaryLines,
+} from '../provider-financial-summary';
 import { CloverFeeReclassificationPanel } from './clover-fee-reclassification-panel';
 import { CloverAuthorityReplacementPanel } from './clover-authority-replacement-panel';
 import { ProviderPendingReconciliationPanel } from './provider-pending-reconciliation-panel';
@@ -153,7 +157,21 @@ function ReadOnlyFinancialDocumentCard({
   postingState?: ProviderSettlementPostingState;
 }) {
   const evidence = evidenceFor(item);
-  const netPayout = findSettlementNetLine(document.lines);
+  const supportingEvidence = document.documentType !== 'STATEMENT';
+  const headlineLine = supportingEvidence
+    ? findProviderSupportingHeadlineLine(document.lines)
+    : findSettlementNetLine(document.lines);
+  const supportingSummaryLines = supportingEvidence
+    ? selectProviderFinancialSummaryLines(document.lines)
+    : [];
+  const supportingEvidenceLabel =
+    document.provider === 'CLOVER' && document.documentType === 'BATCH_CONTROL'
+      ? isZh
+        ? '每日 Closeout / 对账控制证据'
+        : 'Daily Closeout / reconciliation control evidence'
+      : isZh
+        ? '辅助 / 控制证据'
+        : 'Supporting / control evidence';
 
   return (
     <section
@@ -223,15 +241,72 @@ function ReadOnlyFinancialDocumentCard({
               : document.lines.length}
           </p>
         </div>
-        <div className="rounded-xl bg-emerald-50 p-3 text-sm">
-          <p className="text-xs text-emerald-700">
-            {isZh ? '机器净结算' : 'Machine net payout'}
+        <div
+          className={
+            supportingEvidence
+              ? 'rounded-xl bg-cyan-50 p-3 text-sm'
+              : 'rounded-xl bg-emerald-50 p-3 text-sm'
+          }
+        >
+          <p
+            className={
+              supportingEvidence
+                ? 'text-xs text-cyan-700'
+                : 'text-xs text-emerald-700'
+            }
+          >
+            {supportingEvidence
+              ? isZh
+                ? '控制 / 汇总金额'
+                : 'Control / summary amount'
+              : isZh
+                ? '机器净结算'
+                : 'Machine net payout'}
           </p>
-          <p className="mt-1 text-lg font-semibold text-emerald-900">
-            {netPayout ? money(netPayout.amountCents) : '—'}
+          <p
+            className={
+              supportingEvidence
+                ? 'mt-1 text-lg font-semibold text-cyan-950'
+                : 'mt-1 text-lg font-semibold text-emerald-900'
+            }
+          >
+            {headlineLine ? money(headlineLine.amountCents) : '—'}
           </p>
+          {supportingEvidence && headlineLine ? (
+            <p className="mt-0.5 text-xs text-cyan-700">
+              {headlineLine.rawName ?? headlineLine.component}
+            </p>
+          ) : null}
         </div>
       </div>
+
+      {supportingEvidence ? (
+        <div className="rounded-xl border border-cyan-200 bg-cyan-50/60 p-4">
+          <p className="font-semibold text-cyan-950">{supportingEvidenceLabel}</p>
+          <p className="mt-1 text-xs leading-5 text-cyan-900">
+            {isZh
+              ? '这份已确认文件只用于月结、到账或平台数据核对，不是独立结算工作项；无需 Shadow Preview、Replay 或再次入账操作。'
+              : 'This confirmed file supports statement, payout, or provider-data reconciliation and is not an independent settlement work item. No Shadow Preview, replay, or additional posting is required.'}
+          </p>
+          {supportingSummaryLines.length ? (
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              {supportingSummaryLines.map((line) => (
+                <div
+                  key={line.lineStableId}
+                  className="rounded border border-cyan-100 bg-white px-3 py-2 text-xs"
+                >
+                  <p className="text-slate-500">
+                    {line.rawName ?? line.component}
+                  </p>
+                  <p className="mt-0.5 font-semibold text-slate-900">
+                    {money(line.amountCents)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       <StatementLines document={document} isZh={isZh} />
 

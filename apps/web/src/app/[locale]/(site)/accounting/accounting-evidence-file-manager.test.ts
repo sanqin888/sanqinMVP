@@ -1,9 +1,16 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   accountingManagedEvidenceDisplayByteSize,
   accountingManagedEvidenceDisplayFilename,
   filterAccountingEvidenceFiles,
 } from './accounting-evidence-file-manager';
 import type { AccountingManagedEvidenceFile } from './contracts/evidence-file-manager';
+
+const fileManagerSource = readFileSync(
+  resolve(__dirname, 'accounting-evidence-file-manager.tsx'),
+  'utf8',
+);
 
 const files: AccountingManagedEvidenceFile[] = [
   {
@@ -35,6 +42,13 @@ const files: AccountingManagedEvidenceFile[] = [
 ];
 
 describe('AccountingEvidenceFileManager filtering', () => {
+  it('provides an inline preview action for every managed file row', () => {
+    expect(fileManagerSource).toContain("onPreview={() => setPreviewingFile(file)}");
+    expect(fileManagerSource).toContain("AccountingEvidencePreviewSurface");
+    expect(fileManagerSource).toContain("文件管理器预览");
+    expect(fileManagerSource).toContain("{isZh ? '预览' : 'Preview'}");
+  });
+
   it('uses the retained-file projection for operator-visible filename and size', () => {
     const retainedFile: AccountingManagedEvidenceFile = {
       ...files[0],
