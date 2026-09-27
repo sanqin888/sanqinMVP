@@ -13,6 +13,10 @@ const viewerSource = readFileSync(
   resolve(__dirname, 'accounting-evidence-viewer.tsx'),
   'utf8',
 );
+const previewSurfaceSource = readFileSync(
+  resolve(__dirname, 'accounting-evidence-preview-surface.tsx'),
+  'utf8',
+);
 
 const baseEvidence: AccountingEvidenceSource = {
   artifactStableId: 'acctart_1',
@@ -27,12 +31,13 @@ describe('AccountingEvidenceViewer capability helpers', () => {
     expect(accountingEvidenceBrowserPreviewMode('CSV')).toBeNull();
   });
 
-  it('renders protected images directly through the stable same-origin content route', () => {
-    expect(viewerSource).toContain('src={url}');
-    expect(viewerSource).toContain('onError={() => setFailed(true)}');
-    expect(viewerSource).not.toContain('URL.createObjectURL');
-    expect(viewerSource).not.toContain('response.blob()');
-    expect(viewerSource).not.toContain("from 'next/image'");
+  it('reuses the shared preview surface and renders protected images through the stable same-origin route', () => {
+    expect(viewerSource).toContain('AccountingEvidencePreviewSurface');
+    expect(previewSurfaceSource).toContain('src={url}');
+    expect(previewSurfaceSource).toContain('onError={() => setFailed(true)}');
+    expect(previewSurfaceSource).not.toContain('URL.createObjectURL');
+    expect(previewSurfaceSource).not.toContain('response.blob()');
+    expect(previewSurfaceSource).not.toContain("from 'next/image'");
   });
 
   it('keeps delete disabled without an explicit permanent-delete capability', () => {

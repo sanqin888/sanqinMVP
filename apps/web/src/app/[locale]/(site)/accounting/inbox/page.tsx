@@ -261,11 +261,22 @@ export default function AccountingInboxPage() {
           `/accounting/inbox/${item.inboxItemStableId}/provider-financial/confirm`,
           { method: 'POST' },
         );
-      setConfirmedProviderDocumentStableId(result.documentStableId);
+      const confirmedDocumentType =
+        result.documentType ?? item.artifact.financialDocument?.documentType;
+      const supportingEvidence =
+        confirmedDocumentType !== undefined &&
+        confirmedDocumentType !== 'STATEMENT';
+      setConfirmedProviderDocumentStableId(
+        supportingEvidence ? null : result.documentStableId,
+      );
       setMessage(
-        isZh
-          ? '平台财务资料已确认并移至“平台结算”；当前不会因此自动生成会计分录。'
-          : 'Provider financial evidence confirmed and moved to Provider settlements; this does not post a journal entry.',
+        supportingEvidence
+          ? isZh
+            ? '辅助 / 控制证据已确认并直接入库；关键数据会保留用于后续核对，不进入独立结算流程，无需进一步操作。'
+            : 'Supporting / control evidence confirmed and archived. Key data remains available for reconciliation; it does not enter an independent settlement flow and requires no further action.'
+          : isZh
+            ? '平台财务资料已确认并移至“平台结算”；当前不会因此自动生成会计分录。'
+            : 'Provider financial evidence confirmed and moved to Provider settlements; this does not post a journal entry.',
       );
       await load();
     } catch (cause) {

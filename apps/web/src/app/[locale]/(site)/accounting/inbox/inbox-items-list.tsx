@@ -8,7 +8,13 @@ import type {
   AccountingManualUploadPermanentDeleteResult,
 } from '../contracts/inbox';
 import { ProviderFinancialReviewPanel } from '../provider-financial-review-panel';
-import { latestParse, money } from './inbox-model';
+import {
+  isProviderSupportingEvidence,
+  latestParse,
+  money,
+  providerEvidenceSummaryLines,
+  validatedProviderFinancialDocumentType,
+} from './inbox-model';
 
 type Props = {
   items: AccountingInboxItem[];
@@ -111,11 +117,24 @@ export function AccountingInboxItemsList({
             item.materializedEntityType !== null ||
             item.artifact.acquisitionMode === 'PROVIDER_API';
           const classifying = classifyingId === item.inboxItemStableId;
-          const providerSupplementaryEvidence =
-            parse.providerFinancial === true && parse.documentType === 'OTHER';
+          const providerDocumentType = validatedProviderFinancialDocumentType(
+            item,
+            parse,
+          );
+          const providerSupportingEvidence =
+            isProviderSupportingEvidence(providerDocumentType);
           const providerFinancialSuggestionOverridden =
-            providerSupplementaryEvidence &&
+            parse.providerFinancial === true &&
+            isProviderSupportingEvidence(parse.documentType) &&
             item.classification === 'OTHER_DOCUMENT';
+          const providerSummaryLines = providerEvidenceSummaryLines(item, parse);
+          const providerLabel =
+            financial?.provider ?? parse.provider ?? item.selectedProvider ?? '—';
+          const providerPeriodStart =
+            financial?.periodStart ?? parse.periodStart ?? null;
+          const providerPeriodEnd = financial?.periodEnd ?? parse.periodEnd ?? null;
+          const providerDocumentRef =
+            financial?.providerDocumentRef ?? parse.providerDocumentRef ?? null;
           const expenseRecognitionConsistency =
             parse.textractEvidence?.financialConsistency === 'MISMATCH'
               ? 'MISMATCH'
@@ -272,10 +291,10 @@ export function AccountingInboxItemsList({
                   <p className="mt-2 text-xs text-blue-700">
                     {isZh ? '系统建议' : 'System suggestion'}:{' '}
                     {parse.provider ?? '—'} · {parse.documentType ?? '—'}
-                    {providerSupplementaryEvidence
+                    {providerSupportingEvidence
                       ? isZh
-                        ? ' · 补充证据（不单独入账）'
-                        : ' · supporting evidence (not posted independently)'
+                        ? ' · 辅助 / 控制证据（确认后直接归档）'
+                        : ' · supporting / control evidence (archived after confirmation)'
                       : ''}
                     {parse.periodStart || parse.periodEnd
                       ? ` · ${parse.periodStart ?? '—'} → ${parse.periodEnd ?? '—'}`
@@ -296,14 +315,69 @@ export function AccountingInboxItemsList({
                 {providerFinancialSuggestionOverridden ? (
                   <p className="mt-2 text-xs text-amber-700">
                     {isZh
-                      ? '系统已识别这是一份平台财务补充证据。若保持“其他”，只会作为普通其他资料审核，不会参与平台结算匹配；如需用于 Fantuan 月结，请改回“平台财务资料”并选择 Fantuan。'
-                      : 'The system identified this as supporting provider financial evidence. Keeping it as Other only reviews it as generic evidence and excludes it from provider-settlement matching; for Fantuan settlement use, switch back to Provider financial evidence and select Fantuan.'}
+                      ? '系统已验证这是一份平台辅助 / 控制证据。若保持“其他”，只会作为普通资料审核，不会参与对应平台的财务核对；如需保留其平台核对语义，请改回“平台财务资料”并选择正确平台。'
+                      : 'The system validated this as supporting / control provider evidence. Keeping it as Other treats it as generic evidence and excludes it from provider reconciliation; to preserve its provider-reconciliation role, switch back to Provider financial evidence and select the correct provider.'}
                   </p>
                 ) : null}
               </div>
 
               <div className="text-sm text-slate-600">
-                {financial ? (
+                {providerSupportingEvidence ? (
+                  <div className="mb-2 rounded-lg border border-cyan-200 bg-cyan-50/60 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="font-semibold text-cyan-950">
+                        {isZh
+                          ? '辅助 / 控制证据 · 确认后直接归档'
+                          : 'Supporting / control evidence · archive after confirmation'}
+                      </p>
+                      <span className="rounded-full bg-white px-2 py-0.5 text-xs font-medium text-cyan-800">
+                        {providerLabel} · {providerDocumentType}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-700">
+                      {providerPeriodStart || providerPeriodEnd ? (
+                        <span>
+                          {isZh ? '期间' : 'Period'}:{' '}
+                          <strong>
+                            {providerPeriodStart ?? '—'} → {providerPeriodEnd ?? '—'}
+                          </strong>
+                        </span>
+                      ) : null}
+                      {providerDocumentRef ? (
+                        <span>
+                          {isZh ? '平台参考号' : 'Provider ref'}:{' '}
+                          <strong className="font-mono">{providerDocumentRef}</strong>
+                        </span>
+                      ) : null}
+                    </div>
+                    {providerSummaryLines.length ? (
+                      <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                        {providerSummaryLines.map((line, index) => (
+                          <div
+                            key={
+                              'lineStableId' in line
+                                ? line.lineStableId
+                                : `${line.rawName ?? line.component}-${index}`
+                            }
+                            className="rounded border border-cyan-100 bg-white px-2.5 py-2 text-xs"
+                          >
+                            <p className="text-slate-500">
+                              {line.rawName ?? line.component}
+                            </p>
+                            <p className="mt-0.5 font-semibold text-slate-900">
+                              {money(line.amountCents)}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                    <p className="mt-2 text-xs leading-5 text-cyan-900">
+                      {isZh
+                        ? '这份文件只用于月结、到账或平台数据核对，不作为独立结算工作项。确认后会直接作为受保护的辅助证据入库，无需再到“平台结算”进行后续操作。'
+                        : 'This file supports statement, payout, or provider-data reconciliation and is not an independent settlement work item. After confirmation it is archived as protected supporting evidence; no further action is required in Provider settlements.'}
+                    </p>
+                  </div>
+                ) : financial ? (
                   <div className="mb-2 space-y-1">
                     <p className="font-medium text-slate-800">
                       {financial.provider} · {financial.documentType} · v
@@ -483,14 +557,22 @@ export function AccountingInboxItemsList({
                         ? isZh
                           ? '确认中…'
                           : 'Confirming…'
-                        : isZh
-                          ? '确认平台财务资料'
-                          : 'Confirm provider financial evidence'}
+                        : providerSupportingEvidence
+                          ? isZh
+                            ? '确认并归档辅助证据'
+                            : 'Confirm & archive supporting evidence'
+                          : isZh
+                            ? '确认平台财务资料'
+                            : 'Confirm provider financial evidence'}
                     </button>
                     <p className="mt-1 text-xs text-slate-500">
-                      {isZh
-                        ? '确认后会转入“平台结算”，原始证据将受保护；此动作本身不会生成会计分录。'
-                        : 'Confirmation moves this evidence to Provider settlements and protects the source evidence; this action itself does not post a journal entry.'}
+                      {providerSupportingEvidence
+                        ? isZh
+                          ? '确认后直接入库为受保护的辅助 / 控制证据，用于后续核对；不进入独立结算流程，无需进一步操作。'
+                          : 'Confirmation archives this as protected supporting / control evidence for reconciliation. It does not enter an independent settlement flow, so no further action is required.'
+                        : isZh
+                          ? '确认后会转入“平台结算”，原始证据将受保护；此动作本身不会生成会计分录。'
+                          : 'Confirmation moves this evidence to Provider settlements and protects the source evidence; this action itself does not post a journal entry.'}
                     </p>
                   </div>
                 ) : null}

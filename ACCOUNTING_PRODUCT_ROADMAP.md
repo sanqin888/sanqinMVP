@@ -1,7 +1,7 @@
 # Post-Modularization Accounting Product Roadmap
 
 Status: **CLOVER FEE BANK CLEARING PRODUCTION VERIFIED; PAYOUT-E-B1 PRODUCTION VERIFIED / MIGRATION APPLIED; PAYOUT-E-B2 PRODUCTION VERIFIED / NO MIGRATION; PAYOUT-E-A + INBOX-ONLY + SETTLEMENT ROW-DECISION FOLLOW-UPS DEPLOYED — PAYOUT-D DEPLOYED / BACKEND DATA-PATH VERIFIED / UI SPOT-CHECK PENDING — PAYOUT-C PRODUCTION VERIFIED — PAYOUT-B MIGRATION APPLIED — PAYOUT-A MERGED / CI GREEN — B4-B MERGED / CI GREEN — B4-A MERGED / CI GREEN — B3 PRODUCTION VERIFIED / CLOSED — EFA PRODUCTION VERIFIED / CLOSED — B2 PRODUCTION VERIFIED / CLOSED — B1 CLOSED / B0 3V-B PRODUCTION VERIFICATION STILL PENDING — DO NOT REOPEN PHASE 9**  
-Planning date: 2026-09-20; updated: 2026-09-25  
+Planning date: 2026-09-20; updated: 2026-09-27  
 Baseline: Phase 9 **PRODUCTION VERIFIED / CLOSED** at production `main@dbea68f3`  
 Document-recognition audit baseline: `origin/dev@1ede0599`; Slice 3 merged as `caabf1c1`; Evidence Viewer Slice 1 merged as `0371a155`; Slice 1B merged as `9ae4d85d`; additive folder migration committed as `cc4c8016`; Evidence Viewer Slice 2 merged in PR #2438 as `4d68379e`; Slice 3V-A merged in PR #2439 as `0d6909bb` with PR CI #6054 and merged-head CI #6055 green; Slice 3V-B merged in PR #2440 as `0ac9117f` after final head `3c5c0400`, PR CI #6057 and merged-head CI #6058 green  
 B3 closeout baseline: latest `origin/dev@e29621bc`; B3-A merged through PR #2475 / squash `9c92eeda`, B3-B through PR #2476 / squash `ec2cff0f`, B3-C through PR #2478 / final head `12597b96` / squash `dcf12666`, and merge-evidence docs through PR #2479 / squash `b5d64e0e`. B3-D production reconciliation passed on 2026-09-23 against live authenticated API output and read-only canonical Journal/CoA data. Detailed readiness, implementation and closeout evidence: `docs/architecture/accounting-b3-trial-balance-readiness.md`.
@@ -188,6 +188,22 @@ canonical-fact acceptance evidence at/before the proposed provider-wide timestam
 evidence in the audit log, and still has zero production callers across the API source tree. No
 source-scoped persisted cutover mechanism is added. The next gate is external POS Terminal real-device
 acceptance/operational go-live; there is no Accounting E4 source slice to implement before that evidence.
+
+2026-09-27 supporting/control-evidence Inbox + file-manager UX is **LOCAL SOURCE READY FOR REVIEW /
+NO AUTHORITY CHANGE / NO MIGRATION / NO DEPENDENCY** on
+`feat/accounting-supporting-evidence-inbox-ux`. The Web adapter now follows the already-frozen
+settlement contract directly: validated non-`STATEMENT` provider documents
+(`BATCH_CONTROL`, `API_REPORT`, `OTHER`) are presented as supporting/control evidence with
+provider/type/period/reference plus compact key amounts, and confirmation explicitly archives them
+as protected reconciliation evidence with no independent Provider-settlement action. `STATEMENT`
+documents retain the existing Provider settlements / Shadow Preview / guarded replay path.
+The Provider settlements archive uses the same distinction, labels Clover `BATCH_CONTROL` as Daily
+Closeout control evidence, exposes useful control/economic amounts instead of a misleading empty
+net-payout summary, and states that no replay/posting action is required. The Evidence File Manager
+also reuses the existing protected PDF/image/CSV/XLSX preview surface from a per-row Preview button,
+so operators can inspect a file before choosing its logical folder. Accounting ownership, parser
+authority, Journal/settlement policy, persistence, evidence delivery and file-move semantics are
+unchanged.
 
 The existing-materialized remediation is **MERGED / CI GREEN** through PR #2517
 (`a7a872bc`) with the user-generated additive migration committed to `dev` as `5e14e8db`.
