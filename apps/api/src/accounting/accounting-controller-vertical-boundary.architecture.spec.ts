@@ -5,7 +5,10 @@ const ACCOUNTING_ROOT = resolve(__dirname);
 
 const EXPECTED_CONTROLLER_CAPABILITIES = {
   'accounting-audit.controller.ts': ['AccountingService'],
-  'accounting-automation.controller.ts': ['AccountingAutomationScheduler'],
+  'accounting-automation.controller.ts': [
+    'AccountingAutomationScheduler',
+    'AccountingTabularPreviewService',
+  ],
   'accounting-canonical-change.controller.ts': [
     'AccountingCanonicalChangeExecutionService',
     'AccountingCanonicalChangePreviewService',
@@ -119,6 +122,7 @@ const EXPECTED_ROUTES = [
   'PUT automation/settings',
   'POST automation/uber-reports/request',
   'GET automation/uber-reports',
+  'GET automation/uber-reports/:reportStableId/tabular-preview',
   'POST period-close/month/:periodKey',
   'DELETE period-close/month/:periodKey',
   'GET period-close/month',

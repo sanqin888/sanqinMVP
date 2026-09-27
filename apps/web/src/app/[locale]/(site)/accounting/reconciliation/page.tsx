@@ -9,6 +9,7 @@ import type {
   AccountingUberFinancialReportRequestResult,
   AccountingUberFinancialReportType,
 } from '../contracts/automation-period';
+import { UberReportTablePreview } from './uber-report-table-preview';
 
 const FINANCIAL_REPORT_TYPES: AccountingUberFinancialReportType[] = [
   'PAYMENT_DETAILS_REPORT',
@@ -232,15 +233,29 @@ export default function AccountingReconciliationPage() {
                   <td className="px-2 py-2">
                     {report.artifactUrls.length
                       ? report.artifactUrls.map((url, index) => (
-                          <a
+                          <span
                             key={url}
-                            className="mr-2 text-blue-600 hover:underline"
-                            href={url}
-                            target="_blank"
-                            rel="noreferrer"
+                            className="mr-3 inline-flex items-center gap-2"
                           >
-                            CSV {index + 1}
-                          </a>
+                            <a
+                              className="font-medium text-blue-700 hover:underline"
+                              href={url}
+                              download
+                            >
+                              {isZh
+                                ? `下载 CSV ${index + 1}`
+                                : `Download CSV ${index + 1}`}
+                            </a>
+                            <UberReportTablePreview
+                              reportStableId={report.reportStableId}
+                              reportType={report.reportType}
+                              startDate={report.startDate}
+                              endDate={report.endDate}
+                              artifactUrl={url}
+                              artifactIndex={index}
+                              isZh={isZh}
+                            />
+                          </span>
                         ))
                       : '-'}
                   </td>

@@ -3474,7 +3474,7 @@ is claimed per repository workflow.
 
 ### 2026-09-26 — U-FR1C Uber Payment Details ↔ Payout Summary control reconciliation
 
-**State:** **LOCAL SOURCE READY FOR REVIEW / NO MIGRATION / NO NEW DEPENDENCY / NO JOURNAL CHANGE** on `feat/uber-financial-reporting-u-fr1c`. U-FR1C adds the cross-report control gate required before a READY Reporting artifact pair may advance to `IMPORTED`.
+**State:** **MERGED / CI GREEN / NO MIGRATION / NO NEW DEPENDENCY / NO JOURNAL CHANGE**. PR #2573 merged to `dev` as squash `88721523` after authoritative CI #6505 passed. U-FR1C adds the cross-report control gate required before a READY Reporting artifact pair may advance to `IMPORTED`.
 
 **Evidence projection:** provider-financial parser version advances from `12 -> 13` because the persisted parser output shape changes. The Uber Reporting parser now retains deterministic per-`Payout reference ID` controls in document `rawMetadata`: grouped `Total payout`, contributing row count, and unreferenced payout-row/amount controls. Existing v12 Provider API documents remain immutable: when the same artifact is replayed under v13, reconciliation reads the current successful v13 `AccountingParseRun.resultJson.rawMetadata`; document `rawMetadata` is used directly only when that document was itself materialized by v13. Missing current parser evidence therefore fails closed instead of mutating a v12 document in place.
 
@@ -3485,6 +3485,20 @@ is claimed per repository workflow.
 **Deferred:** U-FR1C does not make API reports `POSTABLE`, generate Journal entries, replace Monthly Statement authority, or authorize provider payout posting. U-FR2 still owns those authority/cutover decisions after production evidence and closeout verification.
 
 **Details:** `apps/api/src/accounting/{accounting-uber-reporting.parser.ts,accounting-uber-reporting-reconciliation.policy.ts,accounting-uber-reporting-reconciliation.service.ts,accounting-provider-financial-history.service.ts,accounting.module.ts}`, focused specs, and this worklog.
+
+### 2026-09-27 — U-FR1E Uber Report download + safe table preview
+
+**State:** **LOCAL SOURCE READY FOR REVIEW / NO MIGRATION / NO NEW DEPENDENCY / NO JOURNAL OR AUTHORITY CHANGE** on `feat/uber-report-table-preview`. This UI/read-only slice keeps the existing Uber Reporting request/list contract and adds human-friendly access to the already persisted CSV artifacts.
+
+**Download behavior:** the existing authenticated `/accounting/files/uber-reports/:fileName` delivery route now sends Uber Report CSVs with attachment disposition. The Reconciliation page therefore treats each raw CSV link as an explicit download rather than opening provider CSV text in a new browser tab. Other Accounting evidence content/download routes retain their existing behavior.
+
+**Preview behavior:** Accounting adds a read-only `GET /accounting/automation/uber-reports/:reportStableId/tabular-preview` endpoint. It accepts the selected artifact URL, delegates ownership/status validation to the existing External Channels `UBER_EATS_REPORTING.readFinancialReportArtifact()` public port, and then feeds the returned CSV bytes into the existing safe Accounting CSV-preview parser. The browser renders plain-text cells in a horizontally scrollable modal with a sticky header and keeps a source-CSV download action available.
+
+**Safety/limits:** the generic Accounting evidence preview remains capped at 40 columns. Uber financial reports use the same 8 MiB / 200-row / 500-character cell safety limits but a dedicated 120-column cap so the observed wide Payment Details schema can be viewed without silently dropping most financial columns. No formulas, links or provider content are executed; the source CSV is not modified.
+
+**Architecture effect:** no new bounded-context direction or Uber public capability is introduced. Accounting continues to access report bytes only through `UBER_EATS_REPORTING`; no Uber persistence/internal import is added. No Prisma/schema/migration, package/lockfile, parser authority, reconciliation semantics, Journal posting, Web Clover, webhook, order, menu or Store-status behavior changes.
+
+**Details:** `apps/api/src/accounting/{accounting-automation.controller.ts,accounting-inbox-artifacts.controller.ts,accounting-tabular-preview.service.ts}`, `apps/web/src/app/[locale]/(site)/accounting/reconciliation/{page.tsx,uber-report-table-preview.tsx}`, focused specs, and this worklog.
 
 ## Rule for future entries
 

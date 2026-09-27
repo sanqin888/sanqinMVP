@@ -10,13 +10,27 @@ import * as path from 'node:path';
 import { AccountingArtifactDeliveryService } from './accounting-artifact-delivery.service';
 import { parseAccountingCsvPreviewTable } from './accounting-csv';
 
+export type AccountingTabularPreviewLimits = {
+  maxFileBytes: number;
+  maxRows: number;
+  maxColumns: number;
+  maxCellCharacters: number;
+  maxSheets: number;
+};
+
 export const ACCOUNTING_TABULAR_PREVIEW_LIMITS = {
   maxFileBytes: 8 * 1024 * 1024,
   maxRows: 200,
   maxColumns: 40,
   maxCellCharacters: 500,
   maxSheets: 20,
-} as const;
+} as const satisfies AccountingTabularPreviewLimits;
+
+export const ACCOUNTING_UBER_REPORT_TABULAR_PREVIEW_LIMITS = {
+  ...ACCOUNTING_TABULAR_PREVIEW_LIMITS,
+  maxColumns: 120,
+  maxSheets: 1,
+} as const satisfies AccountingTabularPreviewLimits;
 
 export type AccountingTabularPreview = {
   format: 'CSV' | 'XLSX';
@@ -31,7 +45,7 @@ export type AccountingTabularPreview = {
   truncatedRows: boolean;
   truncatedColumns: boolean;
   truncatedCells: boolean;
-  limits: typeof ACCOUNTING_TABULAR_PREVIEW_LIMITS;
+  limits: AccountingTabularPreviewLimits;
 };
 
 @Injectable()
@@ -77,6 +91,26 @@ export class AccountingTabularPreviewService {
       normalizeAccountingPreviewSheetIndex(rawSheetIndex),
     );
   }
+
+  previewUberReportCsv(input: {
+    content: string;
+    byteSize: number;
+    fileName: string;
+  }): AccountingTabularPreview {
+    if (
+      input.byteSize >
+      ACCOUNTING_UBER_REPORT_TABULAR_PREVIEW_LIMITS.maxFileBytes
+    ) {
+      throw new PayloadTooLargeException(
+        'Uber report is too large for structured preview',
+      );
+    }
+    return previewAccountingCsv(
+      input.content,
+      input.fileName,
+      ACCOUNTING_UBER_REPORT_TABULAR_PREVIEW_LIMITS,
+    );
+  }
 }
 
 export function accountingTabularPreviewFormat(
@@ -105,18 +139,19 @@ export function accountingTabularPreviewFormat(
 export function previewAccountingCsv(
   text: string,
   filename: string,
+  limits: AccountingTabularPreviewLimits = ACCOUNTING_TABULAR_PREVIEW_LIMITS,
 ): AccountingTabularPreview {
   const table = parseAccountingCsvPreviewTable(text, {
-    maxRows: ACCOUNTING_TABULAR_PREVIEW_LIMITS.maxRows,
-    maxColumns: ACCOUNTING_TABULAR_PREVIEW_LIMITS.maxColumns,
-    maxCellCharacters: ACCOUNTING_TABULAR_PREVIEW_LIMITS.maxCellCharacters,
+    maxRows: limits.maxRows,
+    maxColumns: limits.maxColumns,
+    maxCellCharacters: limits.maxCellCharacters,
   });
   if (!table) {
     throw new UnprocessableEntityException(
       'CSV evidence could not be parsed safely for preview',
     );
   }
-  const normalized = normalizeAccountingPreviewRows(table.rows);
+  const normalized = normalizeAccountingPreviewRows(table.rows, limits);
   return {
     format: 'CSV',
     filename,
@@ -128,7 +163,7 @@ export function previewAccountingCsv(
     truncatedRows: table.truncatedRows || normalized.truncatedRows,
     truncatedColumns: table.truncatedColumns || normalized.truncatedColumns,
     truncatedCells: table.truncatedCells || normalized.truncatedCells,
-    limits: ACCOUNTING_TABULAR_PREVIEW_LIMITS,
+    limits,
   };
 }
 
@@ -200,7 +235,10 @@ export function previewAccountingXlsx(
   };
 }
 
-export function normalizeAccountingPreviewRows(rows: unknown[][]): {
+export function normalizeAccountingPreviewRows(
+  rows: unknown[][],
+  limits: AccountingTabularPreviewLimits = ACCOUNTING_TABULAR_PREVIEW_LIMITS,
+): {
   rows: string[][];
   previewRowCount: number;
   previewColumnCount: number;
@@ -208,29 +246,23 @@ export function normalizeAccountingPreviewRows(rows: unknown[][]): {
   truncatedColumns: boolean;
   truncatedCells: boolean;
 } {
-  const truncatedRows = rows.length > ACCOUNTING_TABULAR_PREVIEW_LIMITS.maxRows;
+  const truncatedRows = rows.length > limits.maxRows;
   let truncatedColumns = false;
   let truncatedCells = false;
 
   const previewRows = rows
-    .slice(0, ACCOUNTING_TABULAR_PREVIEW_LIMITS.maxRows)
+    .slice(0, limits.maxRows)
     .map((row) => {
-      if (row.length > ACCOUNTING_TABULAR_PREVIEW_LIMITS.maxColumns) {
+      if (row.length > limits.maxColumns) {
         truncatedColumns = true;
       }
       return row
-        .slice(0, ACCOUNTING_TABULAR_PREVIEW_LIMITS.maxColumns)
+        .slice(0, limits.maxColumns)
         .map((cell) => {
           const normalized = accountingPreviewCellText(cell);
-          if (
-            normalized.length >
-            ACCOUNTING_TABULAR_PREVIEW_LIMITS.maxCellCharacters
-          ) {
+          if (normalized.length > limits.maxCellCharacters) {
             truncatedCells = true;
-            return normalized.slice(
-              0,
-              ACCOUNTING_TABULAR_PREVIEW_LIMITS.maxCellCharacters,
-            );
+            return normalized.slice(0, limits.maxCellCharacters);
           }
           return normalized;
         });

@@ -3,6 +3,7 @@ import * as XLSX from '@keep-lts/xlsx';
 import * as fs from 'node:fs';
 import {
   ACCOUNTING_TABULAR_PREVIEW_LIMITS,
+  ACCOUNTING_UBER_REPORT_TABULAR_PREVIEW_LIMITS,
   AccountingTabularPreviewService,
   accountingTabularPreviewFormat,
   normalizeAccountingPreviewRows,
@@ -63,6 +64,32 @@ describe('AccountingTabularPreviewService', () => {
     expect(preview.activeSheetName).toBe('Summary');
     expect(preview.rows[1]).toEqual(['cached formula', '2']);
     expect(JSON.stringify(preview)).not.toContain('1+1');
+  });
+
+  it('allows Uber report previews to retain wide financial report columns', () => {
+    const csv = [
+      Array.from(
+        { length: ACCOUNTING_UBER_REPORT_TABULAR_PREVIEW_LIMITS.maxColumns },
+        (_, index) => `column-${index + 1}`,
+      ).join(','),
+      Array.from(
+        { length: ACCOUNTING_UBER_REPORT_TABULAR_PREVIEW_LIMITS.maxColumns },
+        (_, index) => String(index + 1),
+      ).join(','),
+    ].join('\n');
+    const service = new AccountingTabularPreviewService({} as never);
+
+    const preview = service.previewUberReportCsv({
+      content: csv,
+      byteSize: Buffer.byteLength(csv, 'utf8'),
+      fileName: 'payment-details.csv',
+    });
+
+    expect(preview.previewColumnCount).toBe(
+      ACCOUNTING_UBER_REPORT_TABULAR_PREVIEW_LIMITS.maxColumns,
+    );
+    expect(preview.truncatedColumns).toBe(false);
+    expect(preview.limits.maxColumns).toBe(120);
   });
 
   it('bounds CSV rows and columns during tokenization', () => {
