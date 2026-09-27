@@ -493,7 +493,7 @@ describe('Phase 9 canonical financial facts boundary', () => {
       'accounting/accounting-provider-settlement-execution.service.ts',
     ]);
 
-    const providerPaymentFactCutoverCallers = scanTypeScript(ACCOUNTING_ROOT, {
+    const providerPaymentFactCutoverCallers = scanTypeScript(API_SRC_ROOT, {
       productionOnly: true,
     })
       .filter(

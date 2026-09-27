@@ -113,6 +113,12 @@ describe('AccountingProviderFinancialCoverageService', () => {
       provider: AccountingFinancialProvider.CLOVER,
       storeStableId: '4750_Yonge_Street',
       providerPaymentFactCutoverAt: cutover,
+      providerWideAcceptance: {
+        posTerminalCanonicalFactsAcceptedAt: new Date(
+          '2026-09-30T14:30:00.000Z',
+        ),
+        webEcommerceCanonicalFactsAcceptedAt: cutover,
+      },
       operatorActorRef: 'user:admin_1',
       operatorUserStableId: 'user_admin_1',
     };
@@ -124,6 +130,7 @@ describe('AccountingProviderFinancialCoverageService', () => {
         service.recordProviderPaymentFactCutover(cutoverInput),
       ).resolves.toEqual({
         status: 'RECORDED',
+        scope: 'PROVIDER_WIDE',
         provider: AccountingFinancialProvider.CLOVER,
         storeStableId: '4750_Yonge_Street',
         providerPaymentFactCutoverAt: cutover.toISOString(),
@@ -143,6 +150,23 @@ describe('AccountingProviderFinancialCoverageService', () => {
           entityType: 'ACCOUNTING_PROVIDER_FINANCIAL_COVERAGE',
           entityId: 'coverage_uber',
           operatorActorRef: 'user:admin_1',
+          beforeJson: {
+            scope: 'PROVIDER_WIDE',
+            provider: AccountingFinancialProvider.CLOVER,
+            storeStableId: '4750_Yonge_Street',
+            providerPaymentFactCutoverAt: null,
+          },
+          afterJson: {
+            scope: 'PROVIDER_WIDE',
+            provider: AccountingFinancialProvider.CLOVER,
+            storeStableId: '4750_Yonge_Street',
+            providerPaymentFactCutoverAt: cutover.toISOString(),
+            providerWideAcceptance: {
+              posTerminalCanonicalFactsAcceptedAt:
+                '2026-09-30T14:30:00.000Z',
+              webEcommerceCanonicalFactsAcceptedAt: cutover.toISOString(),
+            },
+          },
         }) as unknown,
       });
     });
@@ -156,6 +180,7 @@ describe('AccountingProviderFinancialCoverageService', () => {
         service.recordProviderPaymentFactCutover(cutoverInput),
       ).resolves.toEqual({
         status: 'UNCHANGED',
+        scope: 'PROVIDER_WIDE',
         provider: AccountingFinancialProvider.CLOVER,
         storeStableId: '4750_Yonge_Street',
         providerPaymentFactCutoverAt: cutover.toISOString(),
@@ -164,6 +189,44 @@ describe('AccountingProviderFinancialCoverageService', () => {
         tx.accountingProviderFinancialCoverage.update,
       ).not.toHaveBeenCalled();
       expect(tx.accountingAuditLog.create).not.toHaveBeenCalled();
+    });
+
+    it('blocks provider-wide cutover when POS Terminal canonical facts are not accepted by the cutover timestamp', async () => {
+      const { service, prisma } = makeService();
+
+      await expect(
+        service.recordProviderPaymentFactCutover({
+          ...cutoverInput,
+          providerWideAcceptance: {
+            ...cutoverInput.providerWideAcceptance,
+            posTerminalCanonicalFactsAcceptedAt: new Date(
+              '2026-10-01T14:30:00.001Z',
+            ),
+          },
+        }),
+      ).rejects.toThrow(
+        'provider-wide payment-fact cutover requires POS Terminal canonical-fact acceptance at or before the cutover',
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('blocks provider-wide cutover while Web Ecommerce is not yet accepted onto canonical Payments facts', async () => {
+      const { service, prisma } = makeService();
+
+      await expect(
+        service.recordProviderPaymentFactCutover({
+          ...cutoverInput,
+          providerWideAcceptance: {
+            ...cutoverInput.providerWideAcceptance,
+            webEcommerceCanonicalFactsAcceptedAt: new Date(
+              '2026-10-01T14:30:00.001Z',
+            ),
+          },
+        }),
+      ).rejects.toThrow(
+        'provider-wide payment-fact cutover requires Web Ecommerce canonical-fact acceptance at or before the cutover',
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
     });
 
     it('rejects moving or rewriting an already-recorded cutover', async () => {

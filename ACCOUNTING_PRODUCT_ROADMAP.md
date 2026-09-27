@@ -179,10 +179,13 @@ existing E1 `tipCents` column, publishes nullable `PaymentReversalFinancialFactV
 keeps webhook-only tip evidence null/fail-closed. Accounting only surfaces the new fact in read-only
 canonical-change preview; Journal posting policy is not redesigned.
 
-Post-E2 Slice E3 is **OPTION A SELECTED / PROVIDER-WIDE CUTOVER RETAINED / TIMESTAMP UNSET**. The
-current `providerPaymentFactCutoverAt` remains provider+store scoped. POS may go live operationally
-first, but Accounting must not record the durable cutover until production Web Clover has also migrated
-onto Unified Payments canonical facts. No source-scoped persisted cutover mechanism will be added.
+Post-E2 Slice E3 is **OPTION A LOCAL SOURCE READY FOR REVIEW / PROVIDER-WIDE CUTOVER RETAINED /
+TIMESTAMP UNSET**. The current `providerPaymentFactCutoverAt` remains provider+store scoped. POS may
+go live operationally first, but Accounting must not record the durable cutover until production Web
+Clover has also migrated onto Unified Payments canonical facts. The existing writer now requires
+explicit POS Terminal + Web Ecommerce canonical-fact acceptance evidence at/before the proposed
+provider-wide timestamp, records that evidence in the audit log, and still has zero production callers
+across the API source tree. No source-scoped persisted cutover mechanism is added.
 
 The existing-materialized remediation is **MERGED / CI GREEN** through PR #2517
 (`a7a872bc`) with the user-generated additive migration committed to `dev` as `5e14e8db`.
