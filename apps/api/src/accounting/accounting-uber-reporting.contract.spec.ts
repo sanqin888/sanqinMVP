@@ -26,8 +26,7 @@ describe('Uber financial Reporting CSV contract', () => {
       normalizeUberAccountingReportEvidenceKind({
         requestedReportType:
           UBER_ACCOUNTING_REPORT_REQUEST_TYPE.FINANCE_SUMMARY,
-        providerReportType:
-          UBER_ACCOUNTING_REPORT_PROVIDER_TYPE.PAYOUT_SUMMARY,
+        providerReportType: UBER_ACCOUNTING_REPORT_PROVIDER_TYPE.PAYOUT_SUMMARY,
       }),
     ).toBe(UBER_ACCOUNTING_REPORT_EVIDENCE_KIND.PAYOUT_SUMMARY);
 
