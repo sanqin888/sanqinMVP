@@ -66,11 +66,8 @@ describe('AccountingAutomationScheduler financial-report characterization', () =
 
   it('does not auto-request or import Uber reports before financial authority promotion', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-09-11T15:00:00.000Z'));
-    const {
-      scheduler,
-      uberReporting,
-      providerFinancialHistory,
-    } = makeScheduler(null, false);
+    const { scheduler, uberReporting, providerFinancialHistory } =
+      makeScheduler(null, false);
 
     await expect(scheduler.runNow()).resolves.toEqual(
       expect.objectContaining({
