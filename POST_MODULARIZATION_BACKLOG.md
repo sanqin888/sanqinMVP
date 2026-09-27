@@ -486,10 +486,13 @@ true additional charges, requires canonical Platform refund/void tip evidence, r
 `tipRefundCents`, and leaves webhook facts null when tip is not provider-proven. No production Web
 Clover or Accounting posting behavior is changed.
 
-Slice E3 **durable cutover scope readiness** is **OPTION A SELECTED / PROVIDER-WIDE CUTOVER RETAINED /
-TIMESTAMP UNSET**. POS may go live operationally before Web migration, but Accounting keeps provider-
-document authority and does not record `providerPaymentFactCutoverAt` until Web Clover also produces
-Unified Payments canonical facts. No source-scoped persisted cutover contract will be introduced.
+Slice E3 **durable cutover scope readiness** is **OPTION A LOCAL SOURCE READY FOR REVIEW /
+PROVIDER-WIDE CUTOVER RETAINED / TIMESTAMP UNSET**. POS may go live operationally before Web migration,
+but Accounting keeps provider-document authority and does not record `providerPaymentFactCutoverAt`
+until Web Clover also produces Unified Payments canonical facts. The existing writer now requires
+explicit POS Terminal + Web Ecommerce acceptance evidence at/before the provider-wide timestamp, keeps
+that evidence in the Accounting audit record, and remains unreachable from production callers. No
+source-scoped persisted cutover contract is introduced.
 
 **Existing-materialized parser re-evaluation / Human Review effective snapshot — LOCAL SOURCE
 READY FOR REVIEW:** `accounting/provider-parser-reevaluation-review` adds the previously planned

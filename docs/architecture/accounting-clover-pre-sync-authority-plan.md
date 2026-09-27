@@ -465,8 +465,8 @@ refund tip allocation rules and does not change production Web Clover Ecommerce 
 
 #### Slice E3 — Durable cutover scope readiness audit
 
-**Implementation state (2026-09-26): OPTION A SELECTED / PROVIDER-WIDE CUTOVER RETAINED /
-DOCS ONLY / NO SOURCE CHANGE / NO CUTOVER.**
+**Implementation state (2026-09-26): OPTION A IMPLEMENTED LOCALLY / PROVIDER-WIDE CUTOVER
+RETAINED / SOURCE HARDENING READY FOR REVIEW / TIMESTAMP UNSET / NO CUTOVER.**
 
 The post-E2 audit found a contract-scope mismatch that must be resolved before adding a readiness
 endpoint or any production caller for `recordProviderPaymentFactCutover()`:
@@ -486,8 +486,17 @@ record it until Web Ecommerce is also migrated/accepted onto canonical Unified P
 go live operationally first, but Accounting continues provider-document authority until that later
 provider-wide financial cutover. No source-scoped persisted cutover mechanism will be introduced.
 
-No readiness route, writer caller, feature-flag listener or cutover mutation is added by this audit;
-the timestamp remains unset.
+The local E3 source hardening now makes that provider-wide requirement explicit in the existing
+Accounting writer contract. Any future `recordProviderPaymentFactCutover()` caller must provide both
+`posTerminalCanonicalFactsAcceptedAt` and `webEcommerceCanonicalFactsAcceptedAt`; both acceptance
+timestamps must be valid and at or before the requested durable cutover. The resulting audit record
+labels the scope as `PROVIDER_WIDE` and preserves both acceptance timestamps as evidence. The
+architecture gate scans the entire API source tree and still requires zero production callers, so a
+POS-only go-live cannot silently acquire a cutover caller inside another context.
+
+No readiness route, feature-flag listener or cutover mutation is added by E3; the timestamp remains
+unset. Future Web migration may add a deliberate caller only after both channels have accepted
+canonical Payments facts and the architecture expectation is reviewed explicitly.
 
 ## 9. Safety / non-goals
 
@@ -507,10 +516,10 @@ This plan does not:
 State:
 
 **SLICE A PRODUCTION VERIFIED / CLOSED**  
-**HISTORICAL JOURNAL CORRECTION LOCAL SOURCE READY FOR REVIEW / NO PRODUCTION WRITE**  
+**HISTORICAL JOURNAL CORRECTION PRODUCTION VERIFIED / CLOSED**  
 **SLICE B SOURCE + ADDITIVE MIGRATION MERGED TO DEV / CI GREEN / PRODUCTION CUTOVER NOT SET**  
 **SLICE C MERGED TO DEV / CI #6439 GREEN / READ-ONLY BASELINE**  
-**SLICE D LOCAL SOURCE READY FOR REVIEW / JUNE SALES REPORT SURCHARGE AUTHORITY / NO MIGRATION / NO PRODUCTION WRITE**  
+**SLICE D PRODUCTION VERIFIED / CLOSED / PR #2558 + PARSER HOTFIX #2562 / NO MIGRATION**  
 **SLICE E1 SOURCE + USER-GENERATED ADDITIVE MIGRATION ON DEV / CI #6448 GREEN / NO CUTOVER**  
 **SLICE E2 MERGED TO DEV / CI #6449 GREEN / NO NEW MIGRATION / NO CUTOVER**  
-**SLICE E3 OPTION A SELECTED / PROVIDER-WIDE CUTOVER RETAINED / TIMESTAMP UNSET**
+**SLICE E3 OPTION A LOCAL SOURCE READY FOR REVIEW / PROVIDER-WIDE CUTOVER RETAINED / TIMESTAMP UNSET**

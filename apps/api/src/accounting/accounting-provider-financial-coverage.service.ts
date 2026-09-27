@@ -32,8 +32,14 @@ export type ProviderFinancialCoverageReconciliationResult = {
   evidenceDocumentStableIds: string[];
 };
 
+export type ProviderWidePaymentFactCutoverAcceptanceEvidence = {
+  posTerminalCanonicalFactsAcceptedAt: Date;
+  webEcommerceCanonicalFactsAcceptedAt: Date;
+};
+
 export type ProviderPaymentFactCutoverRecordResult = {
   status: 'RECORDED' | 'UNCHANGED';
+  scope: 'PROVIDER_WIDE';
   provider: AccountingFinancialProvider;
   storeStableId: string;
   providerPaymentFactCutoverAt: string;
@@ -50,6 +56,7 @@ export class AccountingProviderFinancialCoverageService {
     provider: AccountingFinancialProvider;
     storeStableId: string;
     providerPaymentFactCutoverAt: Date;
+    providerWideAcceptance: ProviderWidePaymentFactCutoverAcceptanceEvidence;
     operatorActorRef: string;
     operatorUserStableId: string | null;
   }): Promise<ProviderPaymentFactCutoverRecordResult> {
@@ -75,6 +82,32 @@ export class AccountingProviderFinancialCoverageService {
     }
     if (!Number.isFinite(cutoverMillis)) {
       throw new Error('providerPaymentFactCutoverAt must be a valid Date');
+    }
+
+    const {
+      posTerminalCanonicalFactsAcceptedAt,
+      webEcommerceCanonicalFactsAcceptedAt,
+    } = params.providerWideAcceptance;
+    const posTerminalAcceptedMillis =
+      posTerminalCanonicalFactsAcceptedAt.getTime();
+    const webEcommerceAcceptedMillis =
+      webEcommerceCanonicalFactsAcceptedAt.getTime();
+
+    if (
+      !Number.isFinite(posTerminalAcceptedMillis) ||
+      posTerminalAcceptedMillis > cutoverMillis
+    ) {
+      throw new ConflictException(
+        'provider-wide payment-fact cutover requires POS Terminal canonical-fact acceptance at or before the cutover',
+      );
+    }
+    if (
+      !Number.isFinite(webEcommerceAcceptedMillis) ||
+      webEcommerceAcceptedMillis > cutoverMillis
+    ) {
+      throw new ConflictException(
+        'provider-wide payment-fact cutover requires Web Ecommerce canonical-fact acceptance at or before the cutover',
+      );
     }
 
     return runSerializableAccountingWrite(this.prisma, async (tx) => {
@@ -115,6 +148,7 @@ export class AccountingProviderFinancialCoverageService {
         }
         return {
           status: 'UNCHANGED',
+          scope: 'PROVIDER_WIDE',
           provider: params.provider,
           storeStableId,
           providerPaymentFactCutoverAt: existing.toISOString(),
@@ -133,20 +167,29 @@ export class AccountingProviderFinancialCoverageService {
         entityId: coverage.coverageStableId,
         operatorActorRef,
         beforeJson: {
+          scope: 'PROVIDER_WIDE',
           provider: params.provider,
           storeStableId,
           providerPaymentFactCutoverAt: null,
         },
         afterJson: {
+          scope: 'PROVIDER_WIDE',
           provider: params.provider,
           storeStableId,
           providerPaymentFactCutoverAt:
             params.providerPaymentFactCutoverAt.toISOString(),
+          providerWideAcceptance: {
+            posTerminalCanonicalFactsAcceptedAt:
+              posTerminalCanonicalFactsAcceptedAt.toISOString(),
+            webEcommerceCanonicalFactsAcceptedAt:
+              webEcommerceCanonicalFactsAcceptedAt.toISOString(),
+          },
         },
       });
 
       return {
         status: 'RECORDED',
+        scope: 'PROVIDER_WIDE',
         provider: params.provider,
         storeStableId,
         providerPaymentFactCutoverAt:
