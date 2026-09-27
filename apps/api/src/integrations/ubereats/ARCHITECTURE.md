@@ -86,6 +86,12 @@
   normalization contract 判断 artifact kind，禁止按字符串相等推断或静默接受未知组合。跨 bounded-context
   的 Reporting view 只暴露 normalized `providerReportType`；完整 webhook/report `rawMetadata` 继续留在
   External Channels persistence/application 边界内，不作为 Accounting public contract。
+- Accounting financial import 必须把同一请求周期的 `PAYMENT_DETAILS_REPORT` 与
+  `FINANCE_SUMMARY_REPORT -> PAYOUT_SUMMARY_REPORT` 作为一个 reconciliation pair；只有双方 Provider API
+  artifacts 均已 materialize，且 `Payout reference ID` 集合、逐 reference `Total payout` 与 report-level
+  `Total payout` 全部匹配时，才允许调用 External Channels public port 标记两份 report 为 `IMPORTED`。
+  缺 partner、metadata 不完整、控制总额不一致或 reference mismatch 时必须保持 `READY` 可重试，不得让
+  Accounting 通过深层 Uber persistence 读取或修写 provider evidence 来绕过该 gate。
 
 边界外调用者只能使用 `public-api.ts`、`ubereats.module.ts` 或 `worker.ts`；其中业务能力
 一律经 `public-api.ts` 使用。禁止外部深层导入 `api/`、`application/`、`domain/`、

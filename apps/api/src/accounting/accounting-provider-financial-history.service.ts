@@ -6,6 +6,7 @@ import {
 } from '../integrations/ubereats/public-api';
 import { PROVIDER_FINANCIAL_HISTORY_START_DATE } from './accounting-inbox-core.policy';
 import { AccountingInboxAcquisitionService } from './accounting-inbox-acquisition.service';
+import { AccountingUberReportingReconciliationService } from './accounting-uber-reporting-reconciliation.service';
 
 @Injectable()
 export class AccountingProviderFinancialHistoryService {
@@ -17,6 +18,7 @@ export class AccountingProviderFinancialHistoryService {
     private readonly acquisition: AccountingInboxAcquisitionService,
     @Inject(UBER_EATS_REPORTING)
     private readonly uberReporting: UberEatsReportingPort,
+    private readonly uberReconciliation: AccountingUberReportingReconciliationService,
   ) {}
 
   async syncReadyUberReports(accountingStartDate: string | null) {
@@ -27,6 +29,8 @@ export class AccountingProviderFinancialHistoryService {
       deferredArtifacts: 0,
       skippedBeforeStartDate: 0,
       skippedOrderDetailReports: 0,
+      reconciledReportPairs: 0,
+      deferredReconciliationGroups: 0,
     };
     if (!this.uberReporting.isFinancialAuthorityEnabled()) return result;
 
@@ -34,11 +38,22 @@ export class AccountingProviderFinancialHistoryService {
       accountingStartDate,
       PROVIDER_FINANCIAL_HISTORY_START_DATE,
     );
-    const reports = await this.uberReporting.listFinancialReports({
-      status: 'READY',
-      limit: 200,
-    });
-    for (const report of reports) {
+    const [readyReports, importedReports] = await Promise.all([
+      this.uberReporting.listFinancialReports({
+        status: 'READY',
+        limit: 200,
+      }),
+      this.uberReporting.listFinancialReports({
+        status: 'IMPORTED',
+        limit: 200,
+      }),
+    ]);
+    const pairingReports: typeof readyReports = [];
+    const materializedReportStableIds = new Set(
+      importedReports.map((report) => report.reportStableId),
+    );
+
+    for (const report of readyReports) {
       if (report.reportType === 'ORDERS_AND_ITEMS_REPORT') {
         result.skippedOrderDetailReports += 1;
         continue;
@@ -47,6 +62,7 @@ export class AccountingProviderFinancialHistoryService {
         result.skippedBeforeStartDate += 1;
         continue;
       }
+      pairingReports.push(report);
       if (!report.artifactUrls.length) continue;
       result.scannedReports += 1;
 
@@ -101,6 +117,69 @@ export class AccountingProviderFinancialHistoryService {
       }
 
       if (allMaterialized) {
+        materializedReportStableIds.add(report.reportStableId);
+      }
+    }
+
+    for (const report of importedReports) {
+      if (
+        report.reportType !== 'ORDERS_AND_ITEMS_REPORT' &&
+        report.endDate >= effectiveStartDate
+      ) {
+        pairingReports.push(report);
+      }
+    }
+
+    const reportGroups = new Map<string, typeof pairingReports>();
+    for (const report of pairingReports) {
+      const key = `${report.startDate}|${report.endDate}`;
+      const group = reportGroups.get(key) ?? [];
+      group.push(report);
+      reportGroups.set(key, group);
+    }
+
+    for (const group of reportGroups.values()) {
+      if (!group.some((report) => report.status === 'READY')) continue;
+      const paymentDetails = group.filter(
+        (report) => report.reportType === 'PAYMENT_DETAILS_REPORT',
+      );
+      const payoutSummaries = group.filter(
+        (report) => report.reportType === 'FINANCE_SUMMARY_REPORT',
+      );
+      if (paymentDetails.length !== 1 || payoutSummaries.length !== 1) {
+        result.deferredReconciliationGroups += 1;
+        continue;
+      }
+
+      const payment = paymentDetails[0];
+      const payout = payoutSummaries[0];
+      if (
+        !materializedReportStableIds.has(payment.reportStableId) ||
+        !materializedReportStableIds.has(payout.reportStableId)
+      ) {
+        result.deferredReconciliationGroups += 1;
+        continue;
+      }
+
+      const reconciliation = await this.uberReconciliation.reconcileReportPair({
+        paymentDetailsReportStableId: payment.reportStableId,
+        payoutSummaryReportStableId: payout.reportStableId,
+        periodStart: payment.startDate,
+        periodEnd: payment.endDate,
+      });
+      if (reconciliation.status !== 'MATCHED') {
+        result.deferredReconciliationGroups += 1;
+        this.logger.warn(
+          `Uber financial report reconciliation deferred for ${payment.startDate}..${payment.endDate}: ${reconciliation.issues.join(
+            ',',
+          )}`,
+        );
+        continue;
+      }
+
+      result.reconciledReportPairs += 1;
+      for (const report of [payment, payout]) {
+        if (report.status !== 'READY') continue;
         await this.uberReporting.markFinancialReportImported(
           report.reportStableId,
         );

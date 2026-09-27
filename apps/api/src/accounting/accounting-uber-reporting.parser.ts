@@ -219,6 +219,12 @@ export function parseUberAccountingApiReport(input: UberReportParseInput) {
   const storeUuids = new Set<string>();
   const currencies = new Set<string>();
   const payoutReferences = new Set<string>();
+  const payoutControls = new Map<
+    string,
+    { payoutReferenceId: string; totalPayoutCents: number; rowCount: number }
+  >();
+  let unreferencedPayoutRowCount = 0;
+  let unreferencedTotalPayoutCents = 0;
   const otherPaymentDescriptions = new Set<string>();
   const columnTotalsCents: Record<string, number> = {};
 
@@ -242,12 +248,28 @@ export function parseUberAccountingApiReport(input: UberReportParseInput) {
       descriptionIndex == null ? '' : normalized(row[descriptionIndex] ?? '');
     if (description) otherPaymentDescriptions.add(description);
 
+    const rowAmountsCents: Record<string, number> = {};
     for (const header of amountHeaders) {
       const index = indexByHeader.get(header);
       if (index == null) return null;
       const cents = parseMoneyCents(row[index] ?? '');
       if (cents == null) return null;
+      rowAmountsCents[header] = cents;
       columnTotalsCents[header] = (columnTotalsCents[header] ?? 0) + cents;
+    }
+
+    const totalPayoutCents = rowAmountsCents['Total payout'];
+    if (totalPayoutCents == null) return null;
+    if (payoutReference) {
+      const current = payoutControls.get(payoutReference);
+      payoutControls.set(payoutReference, {
+        payoutReferenceId: payoutReference,
+        totalPayoutCents: (current?.totalPayoutCents ?? 0) + totalPayoutCents,
+        rowCount: (current?.rowCount ?? 0) + 1,
+      });
+    } else {
+      unreferencedPayoutRowCount += 1;
+      unreferencedTotalPayoutCents += totalPayoutCents;
     }
   }
 
@@ -287,6 +309,11 @@ export function parseUberAccountingApiReport(input: UberReportParseInput) {
       storeUuids: [...storeUuids].sort(),
       payoutReferenceCount: payoutReferences.size,
       payoutReferences: [...payoutReferences].sort(),
+      payoutControls: [...payoutControls.values()].sort((left, right) =>
+        left.payoutReferenceId.localeCompare(right.payoutReferenceId),
+      ),
+      unreferencedPayoutRowCount,
+      unreferencedTotalPayoutCents,
       columnTotalsCents,
       otherPaymentDescriptions: [...otherPaymentDescriptions]
         .sort()

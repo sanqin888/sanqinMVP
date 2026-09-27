@@ -30,6 +30,7 @@ import { AccountingTabularPreviewService } from './accounting-tabular-preview.se
 import { AccountingProviderFinancialService } from './accounting-provider-financial.service';
 import { AccountingProviderFinancialReviewService } from './accounting-provider-financial-review.service';
 import { AccountingProviderFinancialHistoryService } from './accounting-provider-financial-history.service';
+import { AccountingUberReportingReconciliationService } from './accounting-uber-reporting-reconciliation.service';
 import { AccountingChartService } from './accounting-chart.service';
 import { AccountingExpenseJournalPostingService } from './accounting-expense-journal-posting.service';
 import { AccountingExpenseService } from './accounting-expense.service';
@@ -145,6 +146,7 @@ import { AccountingCloverPreSyncAuthorityService } from './accounting-clover-pre
     AccountingImageRetentionService,
     AccountingTabularPreviewService,
     AccountingProviderFinancialHistoryService,
+    AccountingUberReportingReconciliationService,
     AccountingGmailIngestService,
     AccountingAutomationScheduler,
     AccountingPayrollConfigService,

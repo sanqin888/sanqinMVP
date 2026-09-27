@@ -47,6 +47,8 @@ describe('AccountingAutomationScheduler financial-report characterization', () =
         deferredArtifacts: 0,
         skippedBeforeStartDate: 0,
         skippedOrderDetailReports: 0,
+        reconciledReportPairs: 0,
+        deferredReconciliationGroups: 0,
       }),
     };
     const scheduler = new AccountingAutomationScheduler(

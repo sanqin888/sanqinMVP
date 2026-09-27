@@ -105,6 +105,15 @@ describe('Uber accounting Reporting parser', () => {
         rowCount: 2,
         payoutReferenceCount: 1,
         payoutReferences: ['payout-1'],
+        payoutControls: [
+          {
+            payoutReferenceId: 'payout-1',
+            totalPayoutCents: 2623,
+            rowCount: 2,
+          },
+        ],
+        unreferencedPayoutRowCount: 0,
+        unreferencedTotalPayoutCents: 0,
         otherPaymentDescriptions: ['manual adjustment'],
       }) as unknown,
     });
@@ -179,6 +188,15 @@ describe('Uber accounting Reporting parser', () => {
         evidenceKind: 'UBER_PAYOUT_SUMMARY_REPORT',
         rowCount: 1,
         payoutReferences: ['payout-1'],
+        payoutControls: [
+          {
+            payoutReferenceId: 'payout-1',
+            totalPayoutCents: 2623,
+            rowCount: 1,
+          },
+        ],
+        unreferencedPayoutRowCount: 0,
+        unreferencedTotalPayoutCents: 0,
       }) as unknown,
     });
     expect(
