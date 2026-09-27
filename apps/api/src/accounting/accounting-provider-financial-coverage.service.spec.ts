@@ -162,8 +162,7 @@ describe('AccountingProviderFinancialCoverageService', () => {
             storeStableId: '4750_Yonge_Street',
             providerPaymentFactCutoverAt: cutover.toISOString(),
             providerWideAcceptance: {
-              posTerminalCanonicalFactsAcceptedAt:
-                '2026-09-30T14:30:00.000Z',
+              posTerminalCanonicalFactsAcceptedAt: '2026-09-30T14:30:00.000Z',
               webEcommerceCanonicalFactsAcceptedAt: cutover.toISOString(),
             },
           },
