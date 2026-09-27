@@ -9,6 +9,7 @@ import {
   AccountingProviderFinancialReviewStatus,
 } from './accounting-contracts';
 import { AccountingProviderFinancialReviewService } from './accounting-provider-financial-review.service';
+import { ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION } from './accounting-provider-financial.parser';
 
 const sourceDocument = {
   id: 'document-db-id',
@@ -346,7 +347,8 @@ Net Total $2,862.17
         revision: 1,
         status: AccountingProviderFinancialReviewStatus.DRAFT,
         effectiveSnapshotParserName: 'accounting-provider-financial',
-        effectiveSnapshotParserVersion: '11',
+        effectiveSnapshotParserVersion:
+          ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION,
         effectiveSnapshotParseRunStableId: 'acctparserun_uber_v8',
         effectiveSnapshotSourceParseRunStableId:
           'acctparserun_uber_recognition',
@@ -379,7 +381,8 @@ Net Total $2,862.17
         data: expect.objectContaining({
           documentId: document.id,
           effectiveSnapshotParserName: 'accounting-provider-financial',
-          effectiveSnapshotParserVersion: '11',
+          effectiveSnapshotParserVersion:
+            ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION,
           effectiveSnapshotParseRunId: 'parse-run-v8-db-id',
           effectiveSnapshotSourceParseRunId: 'parse-run-db-id',
           effectiveLines: expect.objectContaining({

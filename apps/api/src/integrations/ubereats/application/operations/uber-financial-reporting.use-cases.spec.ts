@@ -249,7 +249,7 @@ describe('UberFinancialReportingUseCase accounting artifact boundary', () => {
           completedAt: new Date('2026-09-26T00:01:00.000Z'),
           importedAt: null,
           errorMessage: null,
-          rawMetadata: { report_type: 'PAYOUT_SUMMARY_REPORT' },
+          providerReportType: 'PAYOUT_SUMMARY_REPORT',
         },
       ]),
       markImported: jest.fn().mockResolvedValue({}),

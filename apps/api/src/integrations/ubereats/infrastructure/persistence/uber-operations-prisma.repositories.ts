@@ -36,6 +36,18 @@ import {
   toPrismaTicketType,
 } from './uber-operations-enum.mapper';
 
+function financialReportProviderType(rawMetadata: unknown): string | null {
+  if (
+    !rawMetadata ||
+    typeof rawMetadata !== 'object' ||
+    Array.isArray(rawMetadata)
+  ) {
+    return null;
+  }
+  const value = (rawMetadata as Record<string, unknown>).report_type;
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
 const reconciliationSelect = {
   reportStableId: true,
   rangeStart: true,
@@ -456,7 +468,7 @@ export class UberFinancialReportPrismaRepository implements UberFinancialReportR
       completedAt: row.completedAt,
       importedAt: row.importedAt,
       errorMessage: row.errorMessage,
-      rawMetadata: row.rawMetadata,
+      providerReportType: financialReportProviderType(row.rawMetadata),
     };
   }
 }
