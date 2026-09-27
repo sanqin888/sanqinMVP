@@ -265,6 +265,15 @@ describe('Phase 9 Accounting controller vertical boundary', () => {
     expect(new Set(actualRoutes).size).toBe(actualRoutes.length);
   });
 
+  it('forces direct Uber report CSV delivery to use attachment disposition', () => {
+    const source = read('accounting-inbox-artifacts.controller.ts');
+
+    expect(source).toContain("if (kind === 'uber-reports')");
+    expect(source).toContain(
+      "accountingArtifactContentDisposition('attachment', safeName)",
+    );
+  });
+
   it('keeps one AccountingModule composition root without reintroducing a broad controller facade', () => {
     const module = read('accounting.module.ts');
 
