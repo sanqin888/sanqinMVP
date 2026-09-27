@@ -89,6 +89,7 @@ type FileAcquisitionInput = {
   providerFinancialHint?: {
     providerHint?: AccountingFinancialProvider | null;
     reportTypeHint?: string | null;
+    providerReportTypeHint?: string | null;
     periodStartHint?: string | null;
     periodEndHint?: string | null;
     providerDocumentRefHint?: string | null;
