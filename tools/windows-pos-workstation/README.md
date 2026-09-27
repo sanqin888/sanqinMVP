@@ -44,7 +44,7 @@ No administrator privileges should be required for the normal launcher when the 
 
 ## Configuration
 
-`workstation.config.json` is local workstation configuration and should not be committed.
+`workstation.config.json` is local workstation configuration and should not be committed. On Windows PowerShell 5.1, `launch-workstation.ps1`, `supervise-workstation.ps1`, and `install-startup-task.ps1` resolve the default config path inside the script body rather than inside `param()`, so the documented commands work without an explicit `-ConfigPath` when the config is beside the scripts.
 
 - `PosPwaShortcutPath`: optional explicit path to the installed SanQ POS PWA shortcut. Empty means auto-discover `SanQ POS.lnk`.
 - `PosWindowTitleContains`: substring used to identify the already-running POS window.
