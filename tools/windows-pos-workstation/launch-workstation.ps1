@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory = $false)]
-  [string]$ConfigPath = (Join-Path $PSScriptRoot "workstation.config.json"),
+  [string]$ConfigPath = "",
 
   [Parameter(Mandatory = $false)]
   [ValidateSet("Launch", "Ensure")]
@@ -9,6 +9,10 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+if ([string]::IsNullOrWhiteSpace($ConfigPath)) {
+  $ConfigPath = Join-Path $PSScriptRoot "workstation.config.json"
+}
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type @"
