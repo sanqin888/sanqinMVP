@@ -770,18 +770,23 @@ This can proceed in parallel with Lane A or Lane B when product priority warrant
 Priority: **P1 PWA RUNTIME FOLLOW-UP**  
 Complexity: **M**  
 External gate: **none**  
-Authorization note: **do not change the production Web bundler or PWA dependency/runtime without a dedicated readiness decision and explicit user approval.**
+State: **OPTION C SELECTED / LOCAL SOURCE READY FOR REVIEW / MANIFEST + STANDALONE ONLY / NO PRODUCTION BUNDLER CHANGE / NO MIGRATION / NO GRAPH CHANGE**  
+Authorization note: **the user selected Option C on 2026-09-28: keep production Turbopack and formalize the current manifest/standalone contract without enabling a service-worker/offline runtime.**
 
-A5-D3 CI #6551 found that the production-style Browser E2E build (`next build --turbopack`) did not expose a ready service-worker registration. The real Docker Web build calls the same `pnpm --filter web build` script, which currently resolves to `next build --turbopack`. The configured `next-pwa@5.6.0` path is therefore not proven to generate/register the intended production worker under the actual build path.
+A5-D3 CI #6551 proved that the production-style Browser E2E build (`next build --turbopack`) does not expose a ready service-worker registration. The readiness audit confirmed the root cause: `next-pwa@5.6.0` installs its Workbox generation/registration through a Webpack hook, while SanQ's canonical Docker and Browser E2E production builds use Turbopack. The repository `public/sw.js` was only a placeholder awaiting that hook and was not a functional worker.
 
-Keep this separate from A5, which is closed. Before changing runtime behavior:
+Option C keeps the capability contract intentionally narrow:
 
-- confirm the built/deployed production artifact and browser registration state rather than inferring from the source placeholder `public/sw.js`;
-- compare a production Webpack build that preserves the existing `next-pwa` contract with a Turbopack-compatible PWA implementation;
-- preserve the existing Customer/Admin/Accounting/POS manifest identities and launch URLs;
-- define whether offline caching is actually required for each surface before enabling broader cache semantics;
-- add a production-build browser assertion only after the intended worker contract is explicit;
-- do not combine this with Next/Prisma/package upgrades or workstation recovery work.
+- Customer/Admin/Accounting/POS retain their existing manifest identities, language-neutral launch URLs where applicable, icons and `display=standalone`;
+- Customer Display remains non-installable/read-only and keeps `manifest: null`;
+- no service worker, offline shell, background sync or runtime API/data caching is claimed;
+- Orders, Payments, Benefits/member state, Staff session, POS device/store authority and other dynamic business state remain network-authoritative;
+- offline ordering/payment/POS operation is explicitly not introduced;
+- production and CI continue using Turbopack; no Webpack fallback is added and no Web Clover production logic changes.
+
+Local source removes the inactive `next-pwa` wrapper from `next.config.ts`, removes the placeholder `public/sw.js`, locks the manifest-only runtime contract in Web tests, and makes the production-build POS Browser E2E assert that the fresh CI browser has no service-worker registrations. The now-unused `next-pwa` package declaration is not removed in this MCP workspace because the available tool surface cannot run pnpm and repository policy forbids hand-editing the generated lockfile; physical dependency/lockfile cleanup remains a narrow follow-up using the pinned package manager rather than a reason to leave runtime wiring active.
+
+Keep A5 closed. Do not combine this follow-up with Next/Prisma upgrades, cache-policy expansion, workstation recovery or provider/payment work.
 
 ### 7.1 Runtime readiness / health semantics
 

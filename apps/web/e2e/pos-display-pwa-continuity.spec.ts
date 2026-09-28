@@ -168,6 +168,13 @@ test.describe("A5-D3 POS display and PWA continuity", () => {
         display: "standalone",
       });
 
+      const serviceWorkerRegistrations = await posPage.evaluate(async () => {
+        if (!("serviceWorker" in navigator)) return [];
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        return registrations.map((registration) => registration.scope);
+      });
+      expect(serviceWorkerRegistrations).toEqual([]);
+
       const menuItem = posPage
         .getByRole("button")
         .filter({ hasText: "E2E Item" })
