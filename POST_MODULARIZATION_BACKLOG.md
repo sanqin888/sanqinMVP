@@ -193,9 +193,10 @@ Approved migration sequence:
 
 Priority: **P0 TOOLING HARDENING**  
 Complexity: **M**  
-External gate: **none**
+External gate: **none**  
+State: **LOCAL SOURCE READY FOR REVIEW / NO NEW DEPENDENCY / NO MCP RUNTIME CONTRACT CHANGE**
 
-CI currently performs only `python3 -m py_compile ops/sanq-mcp/server.py`.
+CI currently performs only `python3 -m py_compile ops/sanq-mcp/server.py`; this local slice adds a standard-library `unittest` behavior gate without requiring the Python MCP runtime package in CI.
 
 Add focused behavior tests for safety-critical contracts such as:
 
@@ -331,7 +332,7 @@ This should be a dedicated workstation project, not a small PWA-manifest patch.
 
 Priority: **P1 QUALITY GATE**  
 Complexity: **H**  
-State: **A5-A READINESS AUDIT COMPLETE / A5-B1 MERGED + CI GREEN (#2580 / `e7477ef2` / CI #6529) / A5-B2-A MERGED + CI GREEN (#2581 / `0627931b` / CI #6533) / A5-B2-B MERGED + CI GREEN (#2582 / `c8775b1c` / CI #6535) / A5-C1 MERGED + CI GREEN (#2583 / `8226f627` / CI #6539) / A5-C2 MERGED + CI GREEN (#2584 / `f5133dde` / CI #6543) / A5-D1 MERGED + CI GREEN (#2585 / `b3552526` / CI #6545) / A5-D2 MERGED + CI GREEN (#2586 / `89acbcde` / CI #6548) / A5-D3 LOCAL SOURCE READY FOR REVIEW**  
+State: **CLOSED / A5-A READINESS AUDIT COMPLETE / A5-B1 MERGED + CI GREEN (#2580 / `e7477ef2` / CI #6529) / A5-B2-A MERGED + CI GREEN (#2581 / `0627931b` / CI #6533) / A5-B2-B MERGED + CI GREEN (#2582 / `c8775b1c` / CI #6535) / A5-C1 MERGED + CI GREEN (#2583 / `8226f627` / CI #6539) / A5-C2 MERGED + CI GREEN (#2584 / `f5133dde` / CI #6543) / A5-D1 MERGED + CI GREEN (#2585 / `b3552526` / CI #6545) / A5-D2 MERGED + CI GREEN (#2586 / `89acbcde` / CI #6548) / A5-D3 MERGED + CI GREEN (#2587 / `82d10dc1` / CI #6552)**  
 Dependency authorization: **GRANTED 2026-09-28 for `@playwright/test`.**  
 Detailed plan/audit: `docs/architecture/postmod-a5-browser-e2e.md`
 
@@ -763,6 +764,24 @@ Target a useful **营销总览 / Marketing Overview** while preserving establish
 This can proceed in parallel with Lane A or Lane B when product priority warrants; it should not be bundled with either foundation.
 
 ## 7. Later internal hardening
+
+### 7.1A PWA service-worker production-build compatibility
+
+Priority: **P1 PWA RUNTIME FOLLOW-UP**  
+Complexity: **M**  
+External gate: **none**  
+Authorization note: **do not change the production Web bundler or PWA dependency/runtime without a dedicated readiness decision and explicit user approval.**
+
+A5-D3 CI #6551 found that the production-style Browser E2E build (`next build --turbopack`) did not expose a ready service-worker registration. The real Docker Web build calls the same `pnpm --filter web build` script, which currently resolves to `next build --turbopack`. The configured `next-pwa@5.6.0` path is therefore not proven to generate/register the intended production worker under the actual build path.
+
+Keep this separate from A5, which is closed. Before changing runtime behavior:
+
+- confirm the built/deployed production artifact and browser registration state rather than inferring from the source placeholder `public/sw.js`;
+- compare a production Webpack build that preserves the existing `next-pwa` contract with a Turbopack-compatible PWA implementation;
+- preserve the existing Customer/Admin/Accounting/POS manifest identities and launch URLs;
+- define whether offline caching is actually required for each surface before enabling broader cache semantics;
+- add a production-build browser assertion only after the intended worker contract is explicit;
+- do not combine this with Next/Prisma/package upgrades or workstation recovery work.
 
 ### 7.1 Runtime readiness / health semantics
 
