@@ -3,9 +3,14 @@ import argon2, { argon2id } from 'argon2';
 import {
   AuthChallengeStatus,
   AuthChallengeType,
+  Channel,
+  FulfillmentType,
   LoyaltyTier,
   MenuItemVisibility,
   MessagingChannel,
+  OrderFulfillmentTiming,
+  OrderStatus,
+  PaymentMethod,
   PosDeviceStatus,
   PrismaClient,
   TwoFactorMethod,
@@ -19,6 +24,10 @@ const E2E_STORE_STABLE_ID = 'e2e_store';
 const E2E_MENU_CATEGORY_STABLE_ID = 'c000000000000000000000001';
 const E2E_MENU_ITEM_STABLE_ID = 'c000000000000000000000002';
 const E2E_POS_DEVICE_STABLE_ID = 'c000000000000000000000003';
+const E2E_D2_POS_DEVICE_STABLE_ID = 'c000000000000000000000014';
+const E2E_D2_ORDER_STABLE_ID = 'c000000000000000000000015';
+const E2E_D2_ORDER_DB_ID = '00000000-0000-4000-8000-000000000015';
+const E2E_D2_ORDER_ITEM_DB_ID = '00000000-0000-4000-8000-000000000016';
 const E2E_CUSTOMER_STABLE_ID = 'c000000000000000000000007';
 const E2E_CUSTOMER_PHONE = '14165550111';
 const E2E_CUSTOMER_PHONE_ADDRESS = '+14165550111';
@@ -124,6 +133,9 @@ async function main(): Promise<void> {
 
   const staffPassword = requireFixtureSecret('SANQ_E2E_STAFF_PASSWORD');
   const enrollmentCode = requireFixtureSecret('SANQ_E2E_POS_ENROLLMENT_CODE');
+  const d2EnrollmentCode = requireFixtureSecret(
+    'SANQ_E2E_D2_POS_ENROLLMENT_CODE',
+  );
   const otpSecret = requireFixtureSecret('OTP_SECRET');
   const passwordHash = await argon2.hash(staffPassword, { type: argon2id });
 
@@ -550,6 +562,99 @@ async function main(): Promise<void> {
       source: 'A5_BROWSER_E2E',
       isFrozen: false,
       isActive: true,
+    },
+  });
+
+  const d2OrderNow = new Date();
+  const d2Order = await prisma.order.upsert({
+    where: { orderStableId: E2E_D2_ORDER_STABLE_ID },
+    update: {
+      channel: Channel.web,
+      fulfillmentType: FulfillmentType.pickup,
+      fulfillmentTiming: OrderFulfillmentTiming.IMMEDIATE,
+      status: OrderStatus.paid,
+      createdAt: d2OrderNow,
+      subtotalCents: 500,
+      subtotalAfterDiscountCents: 500,
+      taxCents: 65,
+      totalCents: 565,
+      paymentTotalCents: 565,
+      paidAt: d2OrderNow,
+      paymentMethod: PaymentMethod.CARD,
+      pickupCode: 'D2E2E',
+      contactName: 'A5 D2 Customer',
+      contactPhone: '14165550113',
+      externalDisplayId: 'A5-D2-E2E',
+      storeId: E2E_STORE_STABLE_ID,
+    },
+    create: {
+      id: E2E_D2_ORDER_DB_ID,
+      orderStableId: E2E_D2_ORDER_STABLE_ID,
+      channel: Channel.web,
+      fulfillmentType: FulfillmentType.pickup,
+      fulfillmentTiming: OrderFulfillmentTiming.IMMEDIATE,
+      status: OrderStatus.paid,
+      createdAt: d2OrderNow,
+      subtotalCents: 500,
+      subtotalAfterDiscountCents: 500,
+      taxCents: 65,
+      totalCents: 565,
+      paymentTotalCents: 565,
+      paidAt: d2OrderNow,
+      paymentMethod: PaymentMethod.CARD,
+      pickupCode: 'D2E2E',
+      contactName: 'A5 D2 Customer',
+      contactPhone: '14165550113',
+      externalDisplayId: 'A5-D2-E2E',
+      storeId: E2E_STORE_STABLE_ID,
+    },
+  });
+
+  await prisma.orderItem.upsert({
+    where: { id: E2E_D2_ORDER_ITEM_DB_ID },
+    update: {
+      orderId: d2Order.id,
+      qty: 1,
+      unitPriceCents: 500,
+      baseUnitPriceCents: 500,
+      optionsUnitPriceCents: 0,
+      productStableId: E2E_MENU_ITEM_STABLE_ID,
+      displayName: 'E2E Item',
+      nameEn: 'E2E Item',
+      nameZh: 'E2E 测试商品',
+    },
+    create: {
+      id: E2E_D2_ORDER_ITEM_DB_ID,
+      orderId: d2Order.id,
+      qty: 1,
+      unitPriceCents: 500,
+      baseUnitPriceCents: 500,
+      optionsUnitPriceCents: 0,
+      productStableId: E2E_MENU_ITEM_STABLE_ID,
+      displayName: 'E2E Item',
+      nameEn: 'E2E Item',
+      nameZh: 'E2E 测试商品',
+    },
+  });
+
+  await prisma.posDevice.upsert({
+    where: { deviceStableId: E2E_D2_POS_DEVICE_STABLE_ID },
+    update: {
+      storeId: store.id,
+      name: 'A5 D2 E2E POS',
+      status: PosDeviceStatus.ACTIVE,
+      enrollmentKeyHash: sha256(d2EnrollmentCode),
+      deviceKeyHash: sha256('not-yet-claimed-a5-d2-device-key'),
+      meta: { source: 'A5_BROWSER_E2E_D2' },
+    },
+    create: {
+      deviceStableId: E2E_D2_POS_DEVICE_STABLE_ID,
+      storeId: store.id,
+      name: 'A5 D2 E2E POS',
+      status: PosDeviceStatus.ACTIVE,
+      enrollmentKeyHash: sha256(d2EnrollmentCode),
+      deviceKeyHash: sha256('not-yet-claimed-a5-d2-device-key'),
+      meta: { source: 'A5_BROWSER_E2E_D2' },
     },
   });
 
