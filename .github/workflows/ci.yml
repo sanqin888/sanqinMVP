@@ -142,6 +142,7 @@ jobs:
       OTP_SECRET: a5-e2e-otp-secret
       PHONE_VERIFICATION_SECRET: a5-e2e-phone-verification-secret
       MEMBER_RECHARGE_OTP_SECRET: a5-e2e-member-recharge-secret
+      CLOVER_PRICING_TOKEN_SECRET: a5-e2e-pricing-token-secret
       SMS_PROVIDER: log
       EMAIL_PROVIDER: log
       GOOGLE_CLIENT_ID: a5-e2e-google-client-id
