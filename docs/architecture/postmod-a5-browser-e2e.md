@@ -2,7 +2,7 @@
 
 ## Status
 
-2026-09-28: **A5-A READINESS AUDIT COMPLETE / A5-B1 MERGED + CI GREEN (#2580 / `e7477ef2` / CI #6529) / A5-B2-A MERGED + CI GREEN (#2581 / `0627931b` / CI #6533) / A5-B2-B MERGED + CI GREEN (#2582 / `c8775b1c` / CI #6535) / A5-C1 MERGED + CI GREEN (#2583 / `8226f627` / CI #6539) / A5-C2 LOCAL SOURCE READY FOR REVIEW / NO MIGRATION / NO GRAPH DIRECTION CHANGE**
+2026-09-28: **A5-A READINESS AUDIT COMPLETE / A5-B1 MERGED + CI GREEN (#2580 / `e7477ef2` / CI #6529) / A5-B2-A MERGED + CI GREEN (#2581 / `0627931b` / CI #6533) / A5-B2-B MERGED + CI GREEN (#2582 / `c8775b1c` / CI #6535) / A5-C1 MERGED + CI GREEN (#2583 / `8226f627` / CI #6539) / A5-C2 MERGED + CI GREEN (#2584 / `f5133dde` / CI #6543) / A5-D1 LOCAL SOURCE READY FOR REVIEW / NO MIGRATION / NO GRAPH DIRECTION CHANGE**
 
 Audit baseline: `origin/dev@74b8fb19` after A4-D store-installation closeout.  
 Owner: **Quality gate / Web browser integration**, consuming existing Identity, Store Operations/POS, Orders, Benefits, Accounting and Print contracts without taking ownership of them.
@@ -130,22 +130,28 @@ Browser coverage is intentionally two-part. The membership login UI proves `Send
 
 #### A5-C2 — Benefit application + controlled checkout
 
-Current local C2 source reuses the same deterministic Menu shape but gives the state-mutating checkout journey its own disposable CUSTOMER, LoyaltyAccount, active $1 Coupon and pending membership-login AuthChallenge. This prevents C2's real points/balance/coupon mutations from making C1 execution-order dependent while both journeys still consume the unchanged verification endpoint without fabricating session cookies. Chromium then seeds the real persistent cart with the $5 E2E item, opens the production checkout UI, applies the $1 member Coupon and 1 point, and requires the canonical `/orders/pricing/quote` request to carry the authenticated `userStableId`, `couponStableId`, `redeemValueCents=100` and menu item. The server response is locked to 500c subtotal / 100c coupon / 100c points / 39c tax / 339c total.
+C2 merged through PR #2584 / `f5133dde`; authoritative CI #6543 is green. It uses the same deterministic Menu shape but gives the state-mutating checkout journey its own disposable CUSTOMER, LoyaltyAccount, active $1 Coupon and pending membership-login AuthChallenge. This prevents C2's real points/balance/coupon mutations from making C1 execution-order dependent while both journeys still consume the unchanged verification endpoint without fabricating session cookies. Chromium seeds the real persistent cart with the $5 E2E item, opens the production checkout UI, applies the $1 member Coupon and 1 point, and requires the canonical `/orders/pricing/quote` request to carry the authenticated `userStableId`, `couponStableId`, `redeemValueCents=100` and menu item. The server response is locked to 500c subtotal / 100c coupon / 100c points / 39c tax / 339c total. CI #6541 found only two Prettier formatting violations in the seed; CI #6542 then exposed the browser runtime's missing CI-local `CLOVER_PRICING_TOKEN_SECRET`, which is required because PricingTokenService signs before the zero-external short-circuit. Adding that non-provider test secret closed the runtime gap without changing production Clover behavior.
 
 The same journey enters $3.39 stored balance, requires the UI's remaining external amount to become $0.00, and clicks the ordinary balance-payment action. The existing `/clover/pay/online/session` transport must return `externalPaymentCents=0` plus `completedOrderStableId`; the browser must navigate directly to `/thank-you/<orderStableId>` rather than any `/wallet/*` route. An authenticated read of that Order must prove `paid`, `STORE_BALANCE`, the same 500/100/100/39/339 pricing facts, 339c balance paid and zero external paid. This is evidence of the existing zero-external controller branch, which returns before `CheckoutIntent` persistence / Clover external-charge handling. Real Clover charges, Apple Pay and Google Pay remain forbidden in browser CI.
 
 ### A5-D — POS / Print / Display / PWA
 
-Then cover:
+A5-D is split to keep device identity, durable print handoff and browser-local display/PWA behavior independently attributable.
 
-- POS device claim + Staff POS admission;
-- acceptance of a controlled Web order;
-- durable PrintJob handoff;
-- POS/Customer Display same-profile projection;
-- production PWA launch/reload/service-worker behavior.
+#### A5-D1 — POS device claim + Staff admission
 
-Physical printer output, real Clover hardware and Windows display/fullscreen remain separate operational evidence.
+Current local D1 source reuses the ACTIVE seeded POS device and the existing `SANQ_E2E_POS_ENROLLMENT_CODE`; no new database fixture is required. Chromium starts at `/store/pos`, follows the real middleware redirect to unified Staff login, enters the one-time enrollment code, and requires `/pos/devices/claim` to succeed. The production claim contract rotates the device key, writes httpOnly `posDeviceId` + `posDeviceKey`, and invalidates the enrollment code. The journey then performs the real STAFF password login with `purpose=pos`, requires admission to `/store/pos`, checks the ordinary signed `session_id` alongside both device cookies, and proves `/auth/me` returns STAFF while guarded `/pos/store-context` resolves `e2e_store / SanQ E2E Store / America/Toronto` from the authenticated device owner.
+
+The test disables automatic retry because enrollment claim is intentionally one-time. There is no direct cookie fabrication, device-guard bypass, seeded plaintext device key, Auth/POS source change or provider call.
+
+#### A5-D2 — Controlled order acceptance -> durable PrintJob
+
+Next audit/implementation should use a separate deterministic POS device/order fixture so D1's one-time claim cannot create execution-order coupling. Cover a controlled Web order becoming visible to the admitted POS, acceptance through the existing Store Operations/Orders transition contract, and durable initial PrintJob persistence/handoff. Browser CI should prove persistence and transport handoff only; it must not require a physical printer.
+
+#### A5-D3 — POS/Customer Display/PWA reload
+
+Then cover the existing same-browser-profile POS display snapshot projection, POS PWA route launch/reload and the bounded reload/session continuity that is actually browser-observable. Physical printer output, real Clover hardware, Windows fullscreen/window recovery and real service-worker update/cache recovery remain separate operational evidence where Chromium CI cannot faithfully reproduce the workstation environment.
 
 ## Architecture effect
 
-A5-B1 adds a **test/CI dependency only** and a disposable CI database/runtime. A5-B2-A adds browser assertions only and consumes the existing Staff/Auth, Accounting and POS device-admission contracts. A5-B2-B adds deterministic disposable fixtures, a CI-local log observation path, and browser assertions around the existing action-MFA contract. A5-C1 adds only disposable Customer/Loyalty/Coupon/AuthChallenge fixtures plus browser assertions against existing Identity/Membership contracts. A5-C2 adds an isolated disposable checkout Customer/Loyalty/Coupon/challenge fixture set plus browser assertions across existing Cart, Orders pricing, Benefits and zero-external Web checkout contracts; it does not change the production payment path. None of these slices introduces a new production bounded context, context direction, scanner allowance, SCC, public HTTP contract, persistence model/schema/migration, payment/provider runtime, authentication authority, POS device authority, Order ownership, Print ownership or Customer Display ownership.
+A5-B1 adds a **test/CI dependency only** and a disposable CI database/runtime. A5-B2-A adds browser assertions only and consumes the existing Staff/Auth, Accounting and POS device-admission contracts. A5-B2-B adds deterministic disposable fixtures, a CI-local log observation path, and browser assertions around the existing action-MFA contract. A5-C1 adds only disposable Customer/Loyalty/Coupon/AuthChallenge fixtures plus browser assertions against existing Identity/Membership contracts. A5-C2 adds an isolated disposable checkout Customer/Loyalty/Coupon/challenge fixture set plus browser assertions across existing Cart, Orders pricing, Benefits and zero-external Web checkout contracts; it does not change the production payment path. A5-D1 adds browser assertions only around the existing POS device claim, device cookies, STAFF `purpose=pos` session and guarded store-context contracts. None of these slices introduces a new production bounded context, context direction, scanner allowance, SCC, public HTTP contract, persistence model/schema/migration, payment/provider runtime, authentication authority, POS device authority, Order ownership, Print ownership or Customer Display ownership.
