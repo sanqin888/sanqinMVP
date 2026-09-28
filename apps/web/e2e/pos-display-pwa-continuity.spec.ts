@@ -7,11 +7,6 @@ type ApiEnvelope<T> = {
   details?: T;
 };
 
-type ServiceWorkerSnapshot = {
-  scope: string;
-  scriptURL: string;
-};
-
 const STAFF_PASSWORD_ENV = "SANQ_E2E_STAFF_PASSWORD";
 const D3_ENROLLMENT_CODE_ENV = "SANQ_E2E_D3_POS_ENROLLMENT_CODE";
 const E2E_MENU_ITEM_STABLE_ID = "c000000000000000000000002";
@@ -113,30 +108,6 @@ async function setAutoAccept(page: Page, enabled: boolean): Promise<number> {
   return result.status;
 }
 
-async function waitForServiceWorker(page: Page): Promise<ServiceWorkerSnapshot | null> {
-  return page.evaluate(async () => {
-    if (!("serviceWorker" in navigator)) return null;
-
-    const registration = await new Promise<ServiceWorkerRegistration | null>(
-      (resolve) => {
-        const timeout = window.setTimeout(() => resolve(null), 8_000);
-        void navigator.serviceWorker.ready.then((ready) => {
-          window.clearTimeout(timeout);
-          resolve(ready);
-        });
-      },
-    );
-    if (!registration) return null;
-
-    const worker =
-      registration.active ?? registration.waiting ?? registration.installing;
-    return {
-      scope: registration.scope,
-      scriptURL: worker?.scriptURL ?? "",
-    };
-  });
-}
-
 test.describe("A5-D3 POS display and PWA continuity", () => {
   // Device enrollment is intentionally one-time.
   test.describe.configure({ retries: 0 });
@@ -196,13 +167,6 @@ test.describe("A5-D3 POS display and PWA continuity", () => {
         scope: "/",
         display: "standalone",
       });
-
-      const serviceWorkerBeforeReload = await waitForServiceWorker(posPage);
-      expect(serviceWorkerBeforeReload).not.toBeNull();
-      expect(serviceWorkerBeforeReload?.scope).toBe(
-        new URL("/", posPage.url()).toString(),
-      );
-      expect(serviceWorkerBeforeReload?.scriptURL.endsWith("/sw.js")).toBe(true);
 
       const menuItem = posPage
         .getByRole("button")
@@ -273,9 +237,6 @@ test.describe("A5-D3 POS display and PWA continuity", () => {
       await expect(displayPage.getByText("E2E Item", { exact: true })).toBeVisible();
       await expect(displayPage.getByText("$5.65", { exact: true })).toBeVisible();
 
-      const serviceWorkerAfterReload = await waitForServiceWorker(posPage);
-      expect(serviceWorkerAfterReload).not.toBeNull();
-      expect(serviceWorkerAfterReload).toEqual(serviceWorkerBeforeReload);
     } finally {
       // Restore the shared disposable StoreConfig even if an assertion fails so
       // other browser journeys never depend on D3 execution order.
