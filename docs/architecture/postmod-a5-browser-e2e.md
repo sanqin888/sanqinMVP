@@ -2,7 +2,7 @@
 
 ## Status
 
-2026-09-28: **A5-A READINESS AUDIT COMPLETE / A5-B1 MERGED + CI GREEN (#2580 / `e7477ef2` / CI #6529) / A5-B2-A MERGED + CI GREEN (#2581 / `0627931b` / CI #6533) / A5-B2-B LOCAL SOURCE READY FOR REVIEW / NO MIGRATION / NO GRAPH DIRECTION CHANGE**
+2026-09-28: **A5-A READINESS AUDIT COMPLETE / A5-B1 MERGED + CI GREEN (#2580 / `e7477ef2` / CI #6529) / A5-B2-A MERGED + CI GREEN (#2581 / `0627931b` / CI #6533) / A5-B2-B MERGED + CI GREEN (#2582 / `c8775b1c` / CI #6535) / A5-C1 LOCAL SOURCE READY FOR REVIEW / NO MIGRATION / NO GRAPH DIRECTION CHANGE**
 
 Audit baseline: `origin/dev@74b8fb19` after A4-D store-installation closeout.  
 Owner: **Quality gate / Web browser integration**, consuming existing Identity, Store Operations/POS, Orders, Benefits, Accounting and Print contracts without taking ownership of them.
@@ -120,14 +120,25 @@ The earlier "session refresh" wording is narrowed to session continuity/expiry/l
 
 ### A5-C — Customer / benefits / controlled checkout
 
-Add deterministic Customer/Loyalty/Coupon fixtures and cover:
+A5-C is split to keep identity/benefit coverage independent from state-mutating checkout coverage.
 
-- member login/session;
-- points/balance/coupon read/application;
-- menu/cart/quote;
+#### A5-C1 — Customer identity + benefits read
+
+Current local source adds deterministic disposable fixtures for one CUSTOMER with a verified Canadian phone, Silver LoyaltyAccount (10 points / $20 stored balance), one active $1 Coupon, and one pending membership-login AuthChallenge whose code hash is derived from the CI-only `OTP_SECRET`. The challenge is fixture data only; no production OTP generator or verification rule changes.
+
+Browser coverage is intentionally two-part. The membership login UI first proves `Send code` reaches the real `/auth/login/phone/request` path and LogSmsProvider, but does not scrape or export the generated OTP from logs. A separate deterministic session journey consumes the pre-seeded challenge through the unchanged `/auth/login/phone/verify` endpoint, receives the normal signed `session_id`, enters Member Center, and proves the canonical Membership summary/coupon contracts expose CUSTOMER identity, Silver tier, 10 points, $20 balance, $10 redeemable value and the active E2E coupon. Because both OTP send cooldown and challenge consumption are one-shot semantics, this C1 describe block disables automatic retry rather than weakening assertions.
+
+#### A5-C2 — Benefit application + controlled checkout
+
+Next, reuse the same deterministic Customer/Menu fixtures to cover:
+
+- cart -> server-authoritative `/orders/pricing/quote`;
+- coupon + points application against the canonical member identity;
 - stored-balance full tender;
-- server-authoritative paid Order creation with `externalCents=0`;
-- explicit assertion that no external Clover charge path is required.
+- server-authoritative paid Order creation with `externalPaymentCents=0`;
+- explicit evidence that the zero-external branch returns `completedOrderStableId` before `CheckoutIntent` / Clover external charge handling is required.
+
+Real Clover charges, Apple Pay and Google Pay remain forbidden in browser CI.
 
 ### A5-D — POS / Print / Display / PWA
 
@@ -143,4 +154,4 @@ Physical printer output, real Clover hardware and Windows display/fullscreen rem
 
 ## Architecture effect
 
-A5-B1 adds a **test/CI dependency only** and a disposable CI database/runtime. A5-B2-A adds browser assertions only and consumes the existing Staff/Auth, Accounting and POS device-admission contracts. A5-B2-B adds deterministic disposable fixtures, a CI-local log observation path, and browser assertions around the existing action-MFA contract. None of these slices introduces a new production bounded context, context direction, scanner allowance, SCC, public HTTP contract, persistence model/schema/migration, payment/provider runtime, authentication authority, POS device authority, Order ownership, Print ownership or Customer Display ownership.
+A5-B1 adds a **test/CI dependency only** and a disposable CI database/runtime. A5-B2-A adds browser assertions only and consumes the existing Staff/Auth, Accounting and POS device-admission contracts. A5-B2-B adds deterministic disposable fixtures, a CI-local log observation path, and browser assertions around the existing action-MFA contract. A5-C1 adds only disposable Customer/Loyalty/Coupon/AuthChallenge fixtures plus browser assertions against existing Identity/Membership contracts. None of these slices introduces a new production bounded context, context direction, scanner allowance, SCC, public HTTP contract, persistence model/schema/migration, payment/provider runtime, authentication authority, POS device authority, Order ownership, Print ownership or Customer Display ownership.

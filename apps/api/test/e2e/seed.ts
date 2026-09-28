@@ -1,7 +1,11 @@
-import { createHash } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 import argon2, { argon2id } from 'argon2';
 import {
+  AuthChallengeStatus,
+  AuthChallengeType,
+  LoyaltyTier,
   MenuItemVisibility,
+  MessagingChannel,
   PosDeviceStatus,
   PrismaClient,
   TwoFactorMethod,
@@ -15,6 +19,12 @@ const E2E_STORE_STABLE_ID = 'e2e_store';
 const E2E_MENU_CATEGORY_STABLE_ID = 'c000000000000000000000001';
 const E2E_MENU_ITEM_STABLE_ID = 'c000000000000000000000002';
 const E2E_POS_DEVICE_STABLE_ID = 'c000000000000000000000003';
+const E2E_CUSTOMER_STABLE_ID = 'c000000000000000000000007';
+const E2E_CUSTOMER_PHONE = '14165550111';
+const E2E_CUSTOMER_PHONE_ADDRESS = '+14165550111';
+const E2E_COUPON_STABLE_ID = 'c000000000000000000000008';
+const E2E_CUSTOMER_LOGIN_CHALLENGE_ID = '00000000-0000-4000-8000-000000000009';
+const E2E_CUSTOMER_LOGIN_CODE = '654321';
 
 const prisma = new PrismaClient();
 
@@ -108,6 +118,7 @@ async function main(): Promise<void> {
 
   const staffPassword = requireFixtureSecret('SANQ_E2E_STAFF_PASSWORD');
   const enrollmentCode = requireFixtureSecret('SANQ_E2E_POS_ENROLLMENT_CODE');
+  const otpSecret = requireFixtureSecret('OTP_SECRET');
   const passwordHash = await argon2.hash(staffPassword, { type: argon2id });
 
   await prisma.brandConfig.upsert({
@@ -277,6 +288,135 @@ async function main(): Promise<void> {
     userStableId: 'c000000000000000000000006',
     role: UserRole.STAFF,
     passwordHash,
+  });
+
+  const customerVerifiedAt = new Date('2026-01-01T00:00:00.000Z');
+  const customer = await prisma.user.upsert({
+    where: { phone: E2E_CUSTOMER_PHONE },
+    update: {
+      userStableId: E2E_CUSTOMER_STABLE_ID,
+      email: 'e2e-customer@example.invalid',
+      emailVerifiedAt: customerVerifiedAt,
+      phoneVerifiedAt: customerVerifiedAt,
+      firstName: 'E2E',
+      lastName: 'Customer',
+      role: UserRole.CUSTOMER,
+      status: UserStatus.ACTIVE,
+      twoFactorEnabledAt: customerVerifiedAt,
+      twoFactorMethod: TwoFactorMethod.SMS,
+      language: UserLanguage.EN,
+      birthdayYear: 1990,
+      birthdayMonth: 1,
+    },
+    create: {
+      userStableId: E2E_CUSTOMER_STABLE_ID,
+      email: 'e2e-customer@example.invalid',
+      emailVerifiedAt: customerVerifiedAt,
+      phone: E2E_CUSTOMER_PHONE,
+      phoneVerifiedAt: customerVerifiedAt,
+      firstName: 'E2E',
+      lastName: 'Customer',
+      role: UserRole.CUSTOMER,
+      status: UserStatus.ACTIVE,
+      twoFactorEnabledAt: customerVerifiedAt,
+      twoFactorMethod: TwoFactorMethod.SMS,
+      language: UserLanguage.EN,
+      birthdayYear: 1990,
+      birthdayMonth: 1,
+    },
+  });
+
+  await prisma.loyaltyAccount.upsert({
+    where: { userId: customer.id },
+    update: {
+      pointsMicro: 10_000_000n,
+      balanceMicro: 20_000_000n,
+      tier: LoyaltyTier.SILVER,
+      lifetimeSpendCents: 12_500,
+    },
+    create: {
+      userId: customer.id,
+      pointsMicro: 10_000_000n,
+      balanceMicro: 20_000_000n,
+      tier: LoyaltyTier.SILVER,
+      lifetimeSpendCents: 12_500,
+    },
+  });
+
+  await prisma.authChallenge.upsert({
+    where: { id: E2E_CUSTOMER_LOGIN_CHALLENGE_ID },
+    update: {
+      userId: null,
+      type: AuthChallengeType.PHONE_VERIFY,
+      status: AuthChallengeStatus.PENDING,
+      channel: MessagingChannel.SMS,
+      addressNorm: E2E_CUSTOMER_PHONE_ADDRESS,
+      addressRaw: E2E_CUSTOMER_PHONE_ADDRESS,
+      codeHash: createHmac('sha256', otpSecret)
+        .update(E2E_CUSTOMER_LOGIN_CODE)
+        .digest('hex'),
+      tokenHash: null,
+      purpose: 'membership-login',
+      expiresAt: new Date('2030-01-01T00:00:00.000Z'),
+      consumedAt: null,
+      attempts: 0,
+      maxAttempts: 5,
+      ip: null,
+      userAgent: null,
+      messagingSendId: null,
+    },
+    create: {
+      id: E2E_CUSTOMER_LOGIN_CHALLENGE_ID,
+      userId: null,
+      type: AuthChallengeType.PHONE_VERIFY,
+      status: AuthChallengeStatus.PENDING,
+      channel: MessagingChannel.SMS,
+      addressNorm: E2E_CUSTOMER_PHONE_ADDRESS,
+      addressRaw: E2E_CUSTOMER_PHONE_ADDRESS,
+      codeHash: createHmac('sha256', otpSecret)
+        .update(E2E_CUSTOMER_LOGIN_CODE)
+        .digest('hex'),
+      purpose: 'membership-login',
+      expiresAt: new Date('2030-01-01T00:00:00.000Z'),
+      attempts: 0,
+      maxAttempts: 5,
+    },
+  });
+
+  await prisma.coupon.upsert({
+    where: { couponStableId: E2E_COUPON_STABLE_ID },
+    update: {
+      userId: customer.id,
+      code: 'A5E2E100',
+      title: 'A5 E2E $1 Coupon',
+      discountCents: 100,
+      discountPercent: null,
+      minSpendCents: 500,
+      expiresAt: new Date('2030-01-01T00:00:00.000Z'),
+      usedAt: null,
+      reservedAt: null,
+      reservationAttemptId: null,
+      reservationExpiresAt: null,
+      orderId: null,
+      source: 'A5_BROWSER_E2E',
+      campaign: null,
+      isFrozen: false,
+      isActive: true,
+      startsAt: null,
+      endsAt: null,
+    },
+    create: {
+      couponStableId: E2E_COUPON_STABLE_ID,
+      userId: customer.id,
+      code: 'A5E2E100',
+      title: 'A5 E2E $1 Coupon',
+      discountCents: 100,
+      minSpendCents: 500,
+      expiresAt: new Date('2030-01-01T00:00:00.000Z'),
+      source: 'A5_BROWSER_E2E',
+      isFrozen: false,
+      isActive: true,
+    },
   });
 
   await prisma.posDevice.upsert({
