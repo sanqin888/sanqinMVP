@@ -331,9 +331,11 @@ This should be a dedicated workstation project, not a small PWA-manifest patch.
 
 Priority: **P1 QUALITY GATE**  
 Complexity: **H**  
-Dependency authorization: **required if Playwright or another browser-test package is added.**
+State: **A5-A READINESS AUDIT COMPLETE / A5-B1 LOCAL SOURCE READY FOR REVIEW / USER-GENERATED LOCKFILE IMPORTED + REVIEWED / NOT PUSHED**  
+Dependency authorization: **GRANTED 2026-09-28 for `@playwright/test`.**  
+Detailed plan/audit: `docs/architecture/postmod-a5-browser-e2e.md`
 
-Current Web has Jest tests but no configured browser E2E runner, no `test:e2e` script and no Playwright/Cypress project configuration. The `@playwright/test` lockfile occurrence is only Next's optional peer declaration, not an installed SanQ E2E stack.
+A5-A confirmed that the current Web has Jest tests but no configured browser E2E runner, no `test:e2e` script and no Playwright/Cypress project configuration; API Supertest coverage is process-local and CI has no disposable PostgreSQL + real Web/API browser stack. The existing Next lockfile mention for `@playwright/test` was only Next's optional peer declaration. A5-B1 now locally adds Playwright/Chromium, fail-closed `sanq_e2e` fixtures and a dedicated PostgreSQL-backed `browser-e2e` CI job. The user-generated pnpm 9.0.0 lockfile has been imported and reviewed: it resolves `@playwright/test ^1.51.1` to 1.63.0 and introduces only Playwright plus the expected Next/next-auth/next-pwa optional-peer resolution-key changes, with no unrelated package-header churn.
 
 Avoid writing exhaustive UI automation. Build a small stable regression suite in two stages.
 

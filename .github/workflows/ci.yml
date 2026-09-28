@@ -113,6 +113,146 @@ jobs:
         if: matrix.app == 'web'
         run: pnpm --filter web test
 
+  browser-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: sanq_e2e
+          POSTGRES_PASSWORD: sanq_e2e
+          POSTGRES_DB: sanq_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sanq_e2e -d sanq_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://sanq_e2e:sanq_e2e@127.0.0.1:5432/sanq_e2e
+      SANQ_E2E: "1"
+      SANQ_E2E_STAFF_PASSWORD: a5-e2e-staff-password
+      SANQ_E2E_POS_ENROLLMENT_CODE: a5-e2e-pos-enrollment
+      COOKIE_SIGNING_SECRET: a5-e2e-cookie-signing-secret
+      OTP_SECRET: a5-e2e-otp-secret
+      PHONE_VERIFICATION_SECRET: a5-e2e-phone-verification-secret
+      MEMBER_RECHARGE_OTP_SECRET: a5-e2e-member-recharge-secret
+      SMS_PROVIDER: log
+      EMAIL_PROVIDER: log
+      GOOGLE_CLIENT_ID: a5-e2e-google-client-id
+      GOOGLE_CLIENT_SECRET: a5-e2e-google-client-secret
+      GOOGLE_OAUTH_CALLBACK_URL: http://127.0.0.1:8080/api/v1/auth/oauth/google/callback
+      API_UPSTREAM: http://127.0.0.1:4000
+      SANQ_E2E_BASE_URL: http://127.0.0.1:8080
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+        with:
+          version: 9.0.0
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: "pnpm"
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --prefer-offline
+
+      - name: Build shared libraries
+        run: |
+          pnpm --filter @shared/foundation build &
+          foundation_pid=$!
+          pnpm --filter @shared/menu build &
+          menu_pid=$!
+          pnpm --filter @shared/order build &
+          order_pid=$!
+
+          status=0
+          wait "$foundation_pid" || status=1
+          wait "$menu_pid" || status=1
+          wait "$order_pid" || status=1
+          exit "$status"
+
+      - name: Install Playwright Chromium
+        run: pnpm --filter web exec playwright install --with-deps chromium
+
+      - name: Generate Prisma Client
+        run: pnpm --filter api prisma:generate
+
+      - name: Replay committed migrations into disposable E2E database
+        run: pnpm --filter api exec prisma migrate deploy
+
+      - name: Seed deterministic E2E fixtures
+        env:
+          NODE_ENV: test
+        run: pnpm --filter api e2e:seed
+
+      - name: Build API
+        run: pnpm --filter api exec nest build
+
+      - name: Start API
+        env:
+          NODE_ENV: test
+          PORT: "4000"
+          UPLOAD_ROOT: ${{ runner.temp }}/sanq-e2e-uploads
+        run: |
+          nohup pnpm --filter api exec node --enable-source-maps dist/main.js > "${RUNNER_TEMP}/sanq-api.log" 2>&1 &
+          for attempt in {1..30}; do
+            if curl --fail --silent --show-error http://127.0.0.1:4000/api/v1/health >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat "${RUNNER_TEMP}/sanq-api.log"
+          exit 1
+
+      - name: Build production Web
+        env:
+          NODE_ENV: production
+          SANQ_CI_EXTERNAL_STATIC_CHECKS: "1"
+        run: pnpm --filter web exec next build --turbopack
+
+      - name: Start production Web
+        env:
+          NODE_ENV: production
+        run: |
+          nohup pnpm --filter web exec next start -p 8080 -H 127.0.0.1 > "${RUNNER_TEMP}/sanq-web.log" 2>&1 &
+          for attempt in {1..30}; do
+            if curl --fail --silent --show-error http://127.0.0.1:8080/api/v1/health >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat "${RUNNER_TEMP}/sanq-web.log"
+          cat "${RUNNER_TEMP}/sanq-api.log"
+          exit 1
+
+      - name: Browser E2E
+        run: pnpm --filter web test:e2e
+
+      - name: Upload browser E2E diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-e2e-diagnostics
+          if-no-files-found: ignore
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+            ${{ runner.temp }}/sanq-api.log
+            ${{ runner.temp }}/sanq-web.log
+
   printer-agent:
     runs-on: ubuntu-latest
 
