@@ -23,7 +23,9 @@ function assertDisposableDatabase(): void {
     throw new Error('SANQ_E2E=1 is required before seeding browser E2E data');
   }
   if (process.env.NODE_ENV !== 'test') {
-    throw new Error('NODE_ENV=test is required before seeding browser E2E data');
+    throw new Error(
+      'NODE_ENV=test is required before seeding browser E2E data',
+    );
   }
 
   const databaseUrl = process.env.DATABASE_URL?.trim();
@@ -105,9 +107,7 @@ async function main(): Promise<void> {
   assertDisposableDatabase();
 
   const staffPassword = requireFixtureSecret('SANQ_E2E_STAFF_PASSWORD');
-  const enrollmentCode = requireFixtureSecret(
-    'SANQ_E2E_POS_ENROLLMENT_CODE',
-  );
+  const enrollmentCode = requireFixtureSecret('SANQ_E2E_POS_ENROLLMENT_CODE');
   const passwordHash = await argon2.hash(staffPassword, { type: argon2id });
 
   const store = await prisma.store.upsert({
@@ -247,7 +247,6 @@ async function main(): Promise<void> {
   });
 }
 
-void main()
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+void main().finally(async () => {
+  await prisma.$disconnect();
+});
