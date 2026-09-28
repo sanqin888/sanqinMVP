@@ -44,11 +44,11 @@ async function fetchAuthMe(page: Page): Promise<{
   });
 }
 
-function expectPosDeviceAdmissionBoundary(page: Page): void {
+function expectUnauthenticatedPosEntry(page: Page): void {
   const url = new URL(page.url());
   expect(url.pathname).toBe("/en/staff/login");
   expect(url.searchParams.get("next")).toBe("/en/store/pos");
-  expect(url.searchParams.get("needDevice")).toBe("1");
+  expect(url.searchParams.has("needDevice")).toBe(false);
 }
 
 test.describe("A5-B2-A Staff identity and surface routing", () => {
@@ -90,9 +90,10 @@ test.describe("A5-B2-A Staff identity and surface routing", () => {
       await page.waitForURL(
         (url) =>
           url.pathname === "/en/staff/login" &&
-          url.searchParams.get("needDevice") === "1",
+          url.searchParams.get("next") === "/en/store/pos",
       );
-      expectPosDeviceAdmissionBoundary(page);
+      expectUnauthenticatedPosEntry(page);
+      await expect(page.getByText("POS 设备绑定")).toBeVisible();
 
       await page
         .locator('input[type="email"]')
@@ -108,7 +109,8 @@ test.describe("A5-B2-A Staff identity and surface routing", () => {
       const loginResponse = await loginResponsePromise;
 
       expect(loginResponse.status()).toBe(403);
-      expectPosDeviceAdmissionBoundary(page);
+      expectUnauthenticatedPosEntry(page);
+      await expect(page.getByText("POS 设备绑定")).toBeVisible();
 
       const me = await fetchAuthMe(page);
       expect(me.status).toBe(401);

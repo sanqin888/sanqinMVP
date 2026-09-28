@@ -97,7 +97,7 @@ Current local source adds real Chromium journeys for:
 - ACCOUNTANT password login -> `/accounting/dashboard`;
 - `/accounting` -> canonical `/accounting/dashboard`;
 - ACCOUNTANT denied Admin entry -> canonical Accounting landing;
-- unauthenticated STAFF/POS entry -> unified Staff login with `next=/store/pos&needDevice=1`;
+- unauthenticated STAFF/POS entry -> unified Staff login with `next=/store/pos`; the login page derives the POS device-binding UI from that target without needing the separate `needDevice=1` hint;
 - STAFF password submission for the POS target without device credentials -> HTTP 403, no `session_id`, and continued stay at the device-admission boundary;
 - Admin UI sign-out -> server-side session revocation, session-cookie removal and return to unified Staff login.
 
