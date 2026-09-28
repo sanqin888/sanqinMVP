@@ -137,6 +137,7 @@ jobs:
       SANQ_E2E: "1"
       SANQ_E2E_STAFF_PASSWORD: a5-e2e-staff-password
       SANQ_E2E_POS_ENROLLMENT_CODE: a5-e2e-pos-enrollment
+      SANQ_E2E_D2_POS_ENROLLMENT_CODE: a5-d2-e2e-pos-enrollment
       STORE_ID: e2e_store
       COOKIE_SIGNING_SECRET: a5-e2e-cookie-signing-secret
       OTP_SECRET: a5-e2e-otp-secret
