@@ -2,7 +2,7 @@
 
 ## Status
 
-2026-09-28: **A5-A READINESS AUDIT COMPLETE / A5-B1 LOCAL SOURCE READY FOR REVIEW / USER-GENERATED PNPM LOCKFILE IMPORTED + REVIEWED / NOT PUSHED / NO PR / NO MIGRATION / NO GRAPH DIRECTION CHANGE**
+2026-09-28: **A5-A READINESS AUDIT COMPLETE / A5-B1 MERGED + CI GREEN (#2580 / `e7477ef2` / CI #6529) / A5-B2-A LOCAL SOURCE READY FOR REVIEW / NO MIGRATION / NO GRAPH DIRECTION CHANGE**
 
 Audit baseline: `origin/dev@74b8fb19` after A4-D store-installation closeout.  
 Owner: **Quality gate / Web browser integration**, consuming existing Identity, Store Operations/POS, Orders, Benefits, Accounting and Print contracts without taking ownership of them.
@@ -52,7 +52,7 @@ Physical workstation/device acceptance remains under A4 operational verification
 
 ### A5-B1 — Browser E2E foundation
 
-Current local implementation establishes:
+Merged implementation establishes:
 
 1. `@playwright/test` as a Web dev dependency and `pnpm --filter web test:e2e`.
 2. Chromium-only Playwright configuration with one worker, CI retries, trace/screenshot/video retention on failure and HTML diagnostics.
@@ -75,7 +75,7 @@ Current local implementation establishes:
    - browser request -> Web BFF -> real API health;
    - browser request -> Web BFF -> API -> PostgreSQL returns the seeded public-menu fact.
 
-This slice deliberately does **not** add Staff/MFA/Accounting journey assertions yet. It first proves the runner, disposable DB, real processes and transport path are deterministic.
+This slice deliberately does **not** add Staff/MFA/Accounting journey assertions. It first proves the runner, disposable DB, real processes and transport path are deterministic. PR #2580 merged as `e7477ef2`; authoritative CI #6529 passed the new browser-e2e job plus the existing API/Web/printer-agent/Windows gates.
 
 ### Lockfile gate — complete
 
@@ -83,17 +83,31 @@ The repository requires dependency manifest and `pnpm-lock.yaml` to move togethe
 
 The returned lockfile was imported byte-for-byte. The Web importer retains `@playwright/test` specifier `^1.51.1` and resolves it to 1.63.0. Comparison against the current `dev` lockfile found exactly three new Playwright package headers (`@playwright/test`, `playwright`, `playwright-core`) plus the expected replacement of the existing Next, next-auth and next-pwa resolution keys so Next's optional Playwright peer is bound. No unrelated package-header additions or removals were found.
 
-The dependency/lockfile gate is therefore satisfied. Remote delivery remains blocked only by the normal user source-review gate.
+The dependency/lockfile gate is therefore satisfied and was validated in the merged B1 CI.
 
 ### A5-B2 — Staff / Accounting / MFA journeys
 
-After B1 is CI-green:
+B2 is split so stable identity/routing coverage does not depend on the OTP harness.
 
-- ADMIN / ACCOUNTANT / STAFF staff-login role landing;
-- denied cross-surface entry;
-- Accounting stale/root launch -> canonical dashboard;
-- Admin action-MFA browser flow;
-- session refresh/logout behavior.
+#### A5-B2-A — Staff identity / routing / Accounting / logout
+
+Current local source adds real Chromium journeys for:
+
+- ADMIN password login -> canonical Admin surface with the signed browser session intact;
+- ACCOUNTANT password login -> `/accounting/dashboard`;
+- `/accounting` -> canonical `/accounting/dashboard`;
+- ACCOUNTANT denied Admin entry -> canonical Accounting landing;
+- STAFF identity established through the unified login, then routed to the existing POS device-admission boundary rather than bypassing device ownership;
+- STAFF denied Admin/Accounting entry and returned to that same POS device-admission boundary;
+- Admin UI sign-out -> server-side session revocation, session-cookie removal and return to unified Staff login.
+
+B2-A deliberately does **not** claim POS admission. `/store/pos` still requires the existing `posDeviceId` + `posDeviceKey` cookies; device claim and admitted POS behavior remain A5-D.
+
+#### A5-B2-B — Admin action-MFA
+
+After B2-A is reviewed/CI-green, add the action-MFA journey separately: ordinary Admin GET browsing remains allowed with `mfaVerifiedAt = null`, while an `AdminMfaGuard`-protected write must redirect the browser to `/admin/2fa`, complete the real email challenge through the log provider, verify the OTP and then prove the same protected action is admitted. No test-only auth or OTP endpoint should be added.
+
+The earlier "session refresh" wording is narrowed to session continuity/expiry/logout for B2. The only current active keepalive implementation is POS-specific `PosSessionKeepAlive`, so renewal/resilience belongs to A5-D rather than creating a new generic Staff refresh contract.
 
 ### A5-C — Customer / benefits / controlled checkout
 
@@ -120,4 +134,4 @@ Physical printer output, real Clover hardware and Windows display/fullscreen rem
 
 ## Architecture effect
 
-A5-B1 adds a **test/CI dependency only** and a disposable CI database/runtime. It does not introduce a new production bounded context, context direction, scanner allowance, SCC, public HTTP contract, persistence model, Prisma schema/migration, payment/provider runtime, authentication authority, POS device authority, Order ownership, Print ownership or Customer Display ownership.
+A5-B1 adds a **test/CI dependency only** and a disposable CI database/runtime. A5-B2-A adds browser assertions only and consumes the existing Staff/Auth, Accounting and POS device-admission contracts. Neither slice introduces a new production bounded context, context direction, scanner allowance, SCC, public HTTP contract, persistence model, Prisma schema/migration, payment/provider runtime, authentication authority, POS device authority, Order ownership, Print ownership or Customer Display ownership.
