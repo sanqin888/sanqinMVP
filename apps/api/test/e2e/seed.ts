@@ -20,7 +20,8 @@ const E2E_MENU_CATEGORY_STABLE_ID = 'c000000000000000000000001';
 const E2E_MENU_ITEM_STABLE_ID = 'c000000000000000000000002';
 const E2E_POS_DEVICE_STABLE_ID = 'c000000000000000000000003';
 const E2E_CUSTOMER_STABLE_ID = 'c000000000000000000000007';
-const E2E_CUSTOMER_PHONE = '+14165550111';
+const E2E_CUSTOMER_PHONE = '14165550111';
+const E2E_CUSTOMER_PHONE_ADDRESS = '+14165550111';
 const E2E_COUPON_STABLE_ID = 'c000000000000000000000008';
 const E2E_CUSTOMER_LOGIN_CHALLENGE_ID = '00000000-0000-4000-8000-000000000009';
 const E2E_CUSTOMER_LOGIN_CODE = '654321';
@@ -349,8 +350,8 @@ async function main(): Promise<void> {
       type: AuthChallengeType.PHONE_VERIFY,
       status: AuthChallengeStatus.PENDING,
       channel: MessagingChannel.SMS,
-      addressNorm: E2E_CUSTOMER_PHONE,
-      addressRaw: E2E_CUSTOMER_PHONE,
+      addressNorm: E2E_CUSTOMER_PHONE_ADDRESS,
+      addressRaw: E2E_CUSTOMER_PHONE_ADDRESS,
       codeHash: createHmac('sha256', otpSecret)
         .update(E2E_CUSTOMER_LOGIN_CODE)
         .digest('hex'),
@@ -370,8 +371,8 @@ async function main(): Promise<void> {
       type: AuthChallengeType.PHONE_VERIFY,
       status: AuthChallengeStatus.PENDING,
       channel: MessagingChannel.SMS,
-      addressNorm: E2E_CUSTOMER_PHONE,
-      addressRaw: E2E_CUSTOMER_PHONE,
+      addressNorm: E2E_CUSTOMER_PHONE_ADDRESS,
+      addressRaw: E2E_CUSTOMER_PHONE_ADDRESS,
       codeHash: createHmac('sha256', otpSecret)
         .update(E2E_CUSTOMER_LOGIN_CODE)
         .digest('hex'),

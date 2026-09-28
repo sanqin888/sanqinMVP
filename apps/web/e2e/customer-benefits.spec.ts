@@ -78,7 +78,7 @@ test.describe("A5-C1 Customer identity and benefits", () => {
 
     expect(requestCodeResponse.ok()).toBe(true);
     await expect(
-      page.getByText("Code sent to (416) 555-0199"),
+      page.getByText("Code sent to +1 4165550199"),
     ).toBeVisible();
     await expect(page.getByPlaceholder("Enter 6-digit code")).toBeVisible();
   });
