@@ -84,35 +84,34 @@ test.describe("A5-B2-A Staff identity and surface routing", () => {
   );
 
   test(
-    "STAFF is routed to the existing POS device-admission boundary and denied Admin/Accounting",
+    "STAFF POS admission fails closed until the browser has device credentials",
     async ({ page }) => {
-      await submitStaffLogin(page, "e2e-staff@example.invalid");
+      await page.goto("/en/store/pos");
       await page.waitForURL(
         (url) =>
           url.pathname === "/en/staff/login" &&
           url.searchParams.get("needDevice") === "1",
       );
+      expectPosDeviceAdmissionBoundary(page);
+
+      await page
+        .locator('input[type="email"]')
+        .fill("e2e-staff@example.invalid");
+      await page.locator('input[type="password"]').fill(staffPassword());
+
+      const loginResponsePromise = page.waitForResponse(
+        (response) =>
+          response.url().endsWith("/api/v1/auth/login") &&
+          response.request().method() === "POST",
+      );
+      await page.locator('form button[type="submit"]').click();
+      const loginResponse = await loginResponsePromise;
+
+      expect(loginResponse.status()).toBe(403);
       expectPosDeviceAdmissionBoundary(page);
 
       const me = await fetchAuthMe(page);
-      expect(me.status).toBe(200);
-      expect(me.payload.details?.role).toBe("STAFF");
-
-      await page.goto("/en/admin");
-      await page.waitForURL(
-        (url) =>
-          url.pathname === "/en/staff/login" &&
-          url.searchParams.get("needDevice") === "1",
-      );
-      expectPosDeviceAdmissionBoundary(page);
-
-      await page.goto("/en/accounting");
-      await page.waitForURL(
-        (url) =>
-          url.pathname === "/en/staff/login" &&
-          url.searchParams.get("needDevice") === "1",
-      );
-      expectPosDeviceAdmissionBoundary(page);
+      expect(me.status).toBe(401);
     },
   );
 

@@ -97,11 +97,11 @@ Current local source adds real Chromium journeys for:
 - ACCOUNTANT password login -> `/accounting/dashboard`;
 - `/accounting` -> canonical `/accounting/dashboard`;
 - ACCOUNTANT denied Admin entry -> canonical Accounting landing;
-- STAFF identity established through the unified login, then routed to the existing POS device-admission boundary rather than bypassing device ownership;
-- STAFF denied Admin/Accounting entry and returned to that same POS device-admission boundary;
+- unauthenticated STAFF/POS entry -> unified Staff login with `next=/store/pos&needDevice=1`;
+- STAFF password submission for the POS target without device credentials -> HTTP 403, no `session_id`, and continued stay at the device-admission boundary;
 - Admin UI sign-out -> server-side session revocation, session-cookie removal and return to unified Staff login.
 
-B2-A deliberately does **not** claim POS admission. `/store/pos` still requires the existing `posDeviceId` + `posDeviceKey` cookies; device claim and admitted POS behavior remain A5-D.
+B2-A deliberately does **not** claim POS admission or an authenticated STAFF session. `/store/pos` requires the existing `posDeviceId` + `posDeviceKey` credentials before a `purpose=pos` password login can create the Staff session. Device claim, admitted STAFF session, and authenticated STAFF denial from Admin/Accounting therefore remain A5-D.
 
 #### A5-B2-B — Admin action-MFA
 
