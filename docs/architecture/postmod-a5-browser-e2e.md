@@ -2,7 +2,7 @@
 
 ## Status
 
-2026-09-28: **A5-A READINESS AUDIT COMPLETE / A5-B1 MERGED + CI GREEN (#2580 / `e7477ef2` / CI #6529) / A5-B2-A LOCAL SOURCE READY FOR REVIEW / NO MIGRATION / NO GRAPH DIRECTION CHANGE**
+2026-09-28: **A5-A READINESS AUDIT COMPLETE / A5-B1 MERGED + CI GREEN (#2580 / `e7477ef2` / CI #6529) / A5-B2-A MERGED + CI GREEN (#2581 / `0627931b` / CI #6533) / A5-B2-B LOCAL SOURCE READY FOR REVIEW / NO MIGRATION / NO GRAPH DIRECTION CHANGE**
 
 Audit baseline: `origin/dev@74b8fb19` after A4-D store-installation closeout.  
 Owner: **Quality gate / Web browser integration**, consuming existing Identity, Store Operations/POS, Orders, Benefits, Accounting and Print contracts without taking ownership of them.
@@ -91,7 +91,7 @@ B2 is split so stable identity/routing coverage does not depend on the OTP harne
 
 #### A5-B2-A — Staff identity / routing / Accounting / logout
 
-Current local source adds real Chromium journeys for:
+Merged B2-A source adds real Chromium journeys for:
 
 - ADMIN password login -> canonical Admin surface with the signed browser session intact;
 - ACCOUNTANT password login -> `/accounting/dashboard`;
@@ -101,11 +101,20 @@ Current local source adds real Chromium journeys for:
 - STAFF password submission for the POS target without device credentials -> HTTP 403, no `session_id`, and continued stay at the device-admission boundary;
 - Admin UI sign-out -> server-side session revocation, session-cookie removal and return to unified Staff login.
 
-B2-A deliberately does **not** claim POS admission or an authenticated STAFF session. `/store/pos` requires the existing `posDeviceId` + `posDeviceKey` credentials before a `purpose=pos` password login can create the Staff session. Device claim, admitted STAFF session, and authenticated STAFF denial from Admin/Accounting therefore remain A5-D.
+B2-A deliberately does **not** claim POS admission or an authenticated STAFF session. `/store/pos` requires the existing `posDeviceId` + `posDeviceKey` credentials before a `purpose=pos` password login can create the Staff session. Device claim, admitted STAFF session, and authenticated STAFF denial from Admin/Accounting therefore remain A5-D. PR #2581 merged as `0627931b`; authoritative CI #6533 passed all API/Web/browser/printer/Windows gates after CI #6531/#6532 corrected two test assumptions and locked the actual fail-closed middleware/login contract.
 
 #### A5-B2-B — Admin action-MFA
 
-After B2-A is reviewed/CI-green, add the action-MFA journey separately: ordinary Admin GET browsing remains allowed with `mfaVerifiedAt = null`, while an `AdminMfaGuard`-protected write must redirect the browser to `/admin/2fa`, complete the real email challenge through the log provider, verify the OTP and then prove the same protected action is admitted. No test-only auth or OTP endpoint should be added.
+B2-B readiness audit confirms the action-MFA journey can use only existing production contracts plus the established disposable CI boundary. Ordinary Admin GET browsing remains allowed with `mfaVerifiedAt = null`. The Member Management Loyalty rules save is selected as the deterministic protected action: its PATCH is guarded by `AdminMfaGuard`, so the pre-MFA attempt must stop at 401 before the writer executes; after verification, resubmitting the unchanged currently loaded policy is a bounded disposable-DB write with no external side effect.
+
+Current local B2-B source adds:
+
+- deterministic E2E BrandConfig and LoyaltyProgramPolicy singleton fixtures required by the existing Messaging/Loyalty paths;
+- `STORE_ID=e2e_store` for the browser API runtime so canonical Brand/Store reads target the disposable store;
+- a Browser-E2E-only `SANQ_E2E_API_LOG` path pointing at the already existing `${RUNNER_TEMP}/sanq-api.log` file;
+- a Chromium journey that logs in as ADMIN, proves `mfaVerifiedAt = null` / `requiresTwoFactor = true`, loads `/admin/members`, attempts `Save rules`, requires the protected PATCH to return 401 and the shared API client to redirect to `/admin/2fa`, requests the real email challenge, reads the six-digit code emitted by the existing LogEmailProvider from only the newly appended ephemeral log text, submits `/auth/2fa/email/verify`, proves the same session now has `mfaVerifiedAt` and no longer requires MFA, then returns to Member Management and requires the same Loyalty policy PATCH to succeed.
+
+No test-only HTTP route, deterministic production OTP generator, Auth guard bypass, provider mock endpoint, real email/SMS provider or production persistence contract is added. The MFA browser test disables its own automatic retry because the real OTP send cooldown makes a retry semantically different; all assertions remain strict.
 
 The earlier "session refresh" wording is narrowed to session continuity/expiry/logout for B2. The only current active keepalive implementation is POS-specific `PosSessionKeepAlive`, so renewal/resilience belongs to A5-D rather than creating a new generic Staff refresh contract.
 
@@ -134,4 +143,4 @@ Physical printer output, real Clover hardware and Windows display/fullscreen rem
 
 ## Architecture effect
 
-A5-B1 adds a **test/CI dependency only** and a disposable CI database/runtime. A5-B2-A adds browser assertions only and consumes the existing Staff/Auth, Accounting and POS device-admission contracts. Neither slice introduces a new production bounded context, context direction, scanner allowance, SCC, public HTTP contract, persistence model, Prisma schema/migration, payment/provider runtime, authentication authority, POS device authority, Order ownership, Print ownership or Customer Display ownership.
+A5-B1 adds a **test/CI dependency only** and a disposable CI database/runtime. A5-B2-A adds browser assertions only and consumes the existing Staff/Auth, Accounting and POS device-admission contracts. A5-B2-B adds deterministic disposable fixtures, a CI-local log observation path, and browser assertions around the existing action-MFA contract. None of these slices introduces a new production bounded context, context direction, scanner allowance, SCC, public HTTP contract, persistence model/schema/migration, payment/provider runtime, authentication authority, POS device authority, Order ownership, Print ownership or Customer Display ownership.
