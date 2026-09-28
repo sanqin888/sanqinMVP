@@ -45,13 +45,22 @@ async function fetchEnvelope<T>(
   );
 }
 
-async function establishD3PosSession(page: Page): Promise<void> {
+async function establishD3PosSession(page: Page): Promise<string> {
   await page.setExtraHTTPHeaders({
     "Accept-Language": "en-CA,en;q=0.9",
   });
-  await page.goto("/en/staff/login?next=%2Fen%2Fstore%2Fpos", {
+  // Start from the manifest URL itself. In CI the middleware redirect also
+  // establishes the canonical browser origin used for host-only auth/device
+  // cookies, so all subsequent workstation pages must stay on that origin.
+  await page.goto("/store/pos", {
     waitUntil: "domcontentloaded",
   });
+  await page.waitForURL(
+    (url) =>
+      url.pathname === "/en/staff/login" &&
+      url.searchParams.get("next") === "/en/store/pos",
+  );
+  const workstationOrigin = new URL(page.url()).origin;
 
   const claim = await fetchEnvelope<{ success?: boolean }>(
     page,
@@ -88,6 +97,7 @@ async function establishD3PosSession(page: Page): Promise<void> {
   );
   expect(login.status).toBe(201);
   expect(login.payload.details?.role).toBe("STAFF");
+  return workstationOrigin;
 }
 
 async function setAutoAccept(page: Page, enabled: boolean): Promise<number> {
@@ -135,7 +145,7 @@ test.describe("A5-D3 POS display and PWA continuity", () => {
     page: posPage,
     context,
   }) => {
-    await establishD3PosSession(posPage);
+    const workstationOrigin = await establishD3PosSession(posPage);
 
     // The disposable store normally exercises auto-accept. Disable it only while
     // this full POS page is mounted so D3 cannot consume D2's seeded paid Web order.
@@ -143,14 +153,20 @@ test.describe("A5-D3 POS display and PWA continuity", () => {
 
     try {
       const displayPage = await context.newPage();
-      await displayPage.goto("/en/store/display", {
-        waitUntil: "domcontentloaded",
-      });
+      await displayPage.goto(
+        new URL("/en/store/display", workstationOrigin).toString(),
+        {
+          waitUntil: "domcontentloaded",
+        },
+      );
       await expect(displayPage.getByText("Welcome", { exact: true })).toBeVisible();
 
-      await posPage.goto("/store/pos", {
-        waitUntil: "domcontentloaded",
-      });
+      await posPage.goto(
+        new URL("/store/pos", workstationOrigin).toString(),
+        {
+          waitUntil: "domcontentloaded",
+        },
+      );
       await posPage.waitForURL(
         (url) => url.pathname === "/en/store/pos",
       );
