@@ -23,8 +23,16 @@ const E2E_CUSTOMER_STABLE_ID = 'c000000000000000000000007';
 const E2E_CUSTOMER_PHONE = '14165550111';
 const E2E_CUSTOMER_PHONE_ADDRESS = '+14165550111';
 const E2E_COUPON_STABLE_ID = 'c000000000000000000000008';
-const E2E_CUSTOMER_LOGIN_CHALLENGE_ID = '00000000-0000-4000-8000-000000000009';
+const E2E_CUSTOMER_LOGIN_CHALLENGE_ID =
+  '00000000-0000-4000-8000-000000000009';
 const E2E_CUSTOMER_LOGIN_CODE = '654321';
+const E2E_CHECKOUT_CUSTOMER_STABLE_ID = 'c000000000000000000000010';
+const E2E_CHECKOUT_CUSTOMER_PHONE = '14165550112';
+const E2E_CHECKOUT_CUSTOMER_PHONE_ADDRESS = '+14165550112';
+const E2E_CHECKOUT_COUPON_STABLE_ID = 'c000000000000000000000011';
+const E2E_CHECKOUT_LOGIN_CHALLENGE_ID =
+  '00000000-0000-4000-8000-000000000012';
+const E2E_CHECKOUT_LOGIN_CODE = '654322';
 
 const prisma = new PrismaClient();
 
@@ -410,6 +418,134 @@ async function main(): Promise<void> {
       userId: customer.id,
       code: 'A5E2E100',
       title: 'A5 E2E $1 Coupon',
+      discountCents: 100,
+      minSpendCents: 500,
+      expiresAt: new Date('2030-01-01T00:00:00.000Z'),
+      source: 'A5_BROWSER_E2E',
+      isFrozen: false,
+      isActive: true,
+    },
+  });
+
+  const checkoutCustomer = await prisma.user.upsert({
+    where: { phone: E2E_CHECKOUT_CUSTOMER_PHONE },
+    update: {
+      userStableId: E2E_CHECKOUT_CUSTOMER_STABLE_ID,
+      email: 'e2e-checkout-customer@example.invalid',
+      emailVerifiedAt: customerVerifiedAt,
+      phoneVerifiedAt: customerVerifiedAt,
+      firstName: 'Checkout',
+      lastName: 'Customer',
+      role: UserRole.CUSTOMER,
+      status: UserStatus.ACTIVE,
+      twoFactorEnabledAt: customerVerifiedAt,
+      twoFactorMethod: TwoFactorMethod.SMS,
+      language: UserLanguage.EN,
+      birthdayYear: 1990,
+      birthdayMonth: 1,
+    },
+    create: {
+      userStableId: E2E_CHECKOUT_CUSTOMER_STABLE_ID,
+      email: 'e2e-checkout-customer@example.invalid',
+      emailVerifiedAt: customerVerifiedAt,
+      phone: E2E_CHECKOUT_CUSTOMER_PHONE,
+      phoneVerifiedAt: customerVerifiedAt,
+      firstName: 'Checkout',
+      lastName: 'Customer',
+      role: UserRole.CUSTOMER,
+      status: UserStatus.ACTIVE,
+      twoFactorEnabledAt: customerVerifiedAt,
+      twoFactorMethod: TwoFactorMethod.SMS,
+      language: UserLanguage.EN,
+      birthdayYear: 1990,
+      birthdayMonth: 1,
+    },
+  });
+
+  await prisma.loyaltyAccount.upsert({
+    where: { userId: checkoutCustomer.id },
+    update: {
+      pointsMicro: 10_000_000n,
+      balanceMicro: 20_000_000n,
+      tier: LoyaltyTier.SILVER,
+      lifetimeSpendCents: 12_500,
+    },
+    create: {
+      userId: checkoutCustomer.id,
+      pointsMicro: 10_000_000n,
+      balanceMicro: 20_000_000n,
+      tier: LoyaltyTier.SILVER,
+      lifetimeSpendCents: 12_500,
+    },
+  });
+
+  await prisma.authChallenge.upsert({
+    where: { id: E2E_CHECKOUT_LOGIN_CHALLENGE_ID },
+    update: {
+      userId: null,
+      type: AuthChallengeType.PHONE_VERIFY,
+      status: AuthChallengeStatus.PENDING,
+      channel: MessagingChannel.SMS,
+      addressNorm: E2E_CHECKOUT_CUSTOMER_PHONE_ADDRESS,
+      addressRaw: E2E_CHECKOUT_CUSTOMER_PHONE_ADDRESS,
+      codeHash: createHmac('sha256', otpSecret)
+        .update(E2E_CHECKOUT_LOGIN_CODE)
+        .digest('hex'),
+      tokenHash: null,
+      purpose: 'membership-login',
+      expiresAt: new Date('2030-01-01T00:00:00.000Z'),
+      consumedAt: null,
+      attempts: 0,
+      maxAttempts: 5,
+      ip: null,
+      userAgent: null,
+      messagingSendId: null,
+    },
+    create: {
+      id: E2E_CHECKOUT_LOGIN_CHALLENGE_ID,
+      userId: null,
+      type: AuthChallengeType.PHONE_VERIFY,
+      status: AuthChallengeStatus.PENDING,
+      channel: MessagingChannel.SMS,
+      addressNorm: E2E_CHECKOUT_CUSTOMER_PHONE_ADDRESS,
+      addressRaw: E2E_CHECKOUT_CUSTOMER_PHONE_ADDRESS,
+      codeHash: createHmac('sha256', otpSecret)
+        .update(E2E_CHECKOUT_LOGIN_CODE)
+        .digest('hex'),
+      purpose: 'membership-login',
+      expiresAt: new Date('2030-01-01T00:00:00.000Z'),
+      attempts: 0,
+      maxAttempts: 5,
+    },
+  });
+
+  await prisma.coupon.upsert({
+    where: { couponStableId: E2E_CHECKOUT_COUPON_STABLE_ID },
+    update: {
+      userId: checkoutCustomer.id,
+      code: 'A5C2E2E100',
+      title: 'A5 C2 E2E $1 Coupon',
+      discountCents: 100,
+      discountPercent: null,
+      minSpendCents: 500,
+      expiresAt: new Date('2030-01-01T00:00:00.000Z'),
+      usedAt: null,
+      reservedAt: null,
+      reservationAttemptId: null,
+      reservationExpiresAt: null,
+      orderId: null,
+      source: 'A5_BROWSER_E2E',
+      campaign: null,
+      isFrozen: false,
+      isActive: true,
+      startsAt: null,
+      endsAt: null,
+    },
+    create: {
+      couponStableId: E2E_CHECKOUT_COUPON_STABLE_ID,
+      userId: checkoutCustomer.id,
+      code: 'A5C2E2E100',
+      title: 'A5 C2 E2E $1 Coupon',
       discountCents: 100,
       minSpendCents: 500,
       expiresAt: new Date('2030-01-01T00:00:00.000Z'),
