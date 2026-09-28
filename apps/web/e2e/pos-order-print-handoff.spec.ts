@@ -118,7 +118,12 @@ async function waitForDurablePrintJob(page: Page): Promise<PrintJobStatus> {
     expect(result.status).toBe(200);
 
     const job = result.payload.details;
-    if (job && job.kind === "AUTO") {
+    if (
+      job &&
+      job.kind === "AUTO" &&
+      job.customerFailureReason === "CLIENT_OFFLINE" &&
+      job.kitchenFailureReason === "CLIENT_OFFLINE"
+    ) {
       return job;
     }
     await page.waitForTimeout(100);
