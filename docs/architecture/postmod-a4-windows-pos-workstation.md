@@ -2,9 +2,9 @@
 
 ## Status
 
-2026-09-27: **A4-A + A4-B + A4-C1 + A4-C2 + FULLSCREEN HOTFIX MERGED / CI GREEN / POWERSHELL 5.1 CONFIG-PATH HOTFIX CI GREEN IN PR #2578 / SAME AUTHORIZED OPERATIONAL BOUNDARY / NO MIGRATION / NO NEW DEPENDENCY / NO GRAPH CHANGE**
+2026-09-28: **A4 SOURCE/CUTOVER COMPLETE / A4-D STORE INSTALLATION VERIFIED / ALL A4 SOURCE PRS MERGED + CI GREEN / SAME AUTHORIZED OPERATIONAL BOUNDARY / NO MIGRATION / NO NEW DEPENDENCY / NO GRAPH CHANGE / A5-A NEXT**
 
-A4-A merged through PR #2537 / squash `6f77d5cc` with CI #6381. A4-B merged through PR #2538 / squash `2d0d1a58` with CI #6383. A4-C1 merged through PR #2543 / squash `06afc5b5` with CI #6397. A4-C2 merged through PR #2545 / squash `8b1cac46` with CI #6404. The Chromium-native fullscreen hotfix merged through PR #2577 / squash `6fbac600` with CI #6518. Store verification confirms logon startup and periodic POS/Display recovery. PR #2578 now fixes the separately reproduced Windows PowerShell 5.1 implicit `ConfigPath` binding defect; source CI #6520 is green and the documentation-sync commit requires the final CI pass before merge.
+A4-A merged through PR #2537 / squash `6f77d5cc` with CI #6381. A4-B merged through PR #2538 / squash `2d0d1a58` with CI #6383. A4-C1 merged through PR #2543 / squash `06afc5b5` with CI #6397. A4-C2 merged through PR #2545 / squash `8b1cac46` with CI #6404. The Chromium-native fullscreen hotfix merged through PR #2577 / squash `6fbac600` with CI #6518. PR #2578 merged as `29d1ab2c`; merged-head CI #6522 passed API, Web, printer-agent and Windows-workstation jobs after fixing the separately reproduced Windows PowerShell 5.1 implicit `ConfigPath` binding defect. Store evidence already confirms logon startup and periodic POS/Display recovery, and on 2026-09-28 the operator confirmed successful real-store A4-D installation on the corrected source. This closes A4 as a source/cutover work package and hands the quality-gate lane to A5-A. Resilience scenarios that require future real operational conditions remain runbook observations, not an open source-implementation slice.
 
 A4 is a workstation project layered on the existing Store Operations / POS / Print boundaries. It does not move authentication, device enrollment, order, payment, customer-display synchronization, or printer ownership.
 
@@ -108,4 +108,6 @@ C2 still does not own POS session renewal, 401/login recovery, PWA/service-worke
 
 ### A4-D — Operational verification / runbook
 
-Document and actively verify cold boot, browser/app restart, network loss/recovery, session expiry, device re-enrollment, PWA update/cache recovery, second-display recovery, printer-agent reconnect, and manual launch fallback.
+**2026-09-28 state: STORE INSTALLATION VERIFIED / A4 SOURCE-CUTOVER HANDOFF COMPLETE.** The operator completed the real-store installation after PR #2578. Combined with the previously recorded Task Scheduler logon-start evidence, repeated POS-only / Display-only / simultaneous-window recovery, and Chromium-native fullscreen verification, the workstation installation/cutover gate no longer blocks A5-A.
+
+Keep the following as living operational/runbook observations when the corresponding real condition occurs: cold boot, browser/app restart, network loss/recovery, session expiry, device re-enrollment, PWA update/cache recovery, second-display recovery, printer-agent reconnect, and manual launch fallback. Do not represent an unobserved scenario as production-verified merely to keep A4 closed; reopen source work only if one of those observations exposes a reproducible defect.
