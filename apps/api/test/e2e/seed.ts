@@ -110,6 +110,60 @@ async function main(): Promise<void> {
   const enrollmentCode = requireFixtureSecret('SANQ_E2E_POS_ENROLLMENT_CODE');
   const passwordHash = await argon2.hash(staffPassword, { type: argon2id });
 
+  await prisma.brandConfig.upsert({
+    where: { id: 1 },
+    update: {
+      brandNameEn: 'SanQ E2E',
+      brandNameZh: 'SanQ E2E',
+      siteUrl: 'https://e2e.invalid',
+      emailFromNameEn: 'SanQ E2E',
+      emailFromNameZh: 'SanQ E2E',
+      emailFromAddress: 'no-reply@e2e.invalid',
+      supportEmail: 'support@e2e.invalid',
+      smsSignature: '[SanQ E2E]',
+    },
+    create: {
+      id: 1,
+      brandNameEn: 'SanQ E2E',
+      brandNameZh: 'SanQ E2E',
+      siteUrl: 'https://e2e.invalid',
+      emailFromNameEn: 'SanQ E2E',
+      emailFromNameZh: 'SanQ E2E',
+      emailFromAddress: 'no-reply@e2e.invalid',
+      supportEmail: 'support@e2e.invalid',
+      smsSignature: '[SanQ E2E]',
+    },
+  });
+
+  await prisma.loyaltyProgramPolicy.upsert({
+    where: { id: 1 },
+    update: {
+      earnPtPerDollar: 0.01,
+      redeemDollarPerPoint: 1,
+      referralPtPerDollar: 0.01,
+      tierMultiplierBronze: 1,
+      tierMultiplierSilver: 2,
+      tierMultiplierGold: 3,
+      tierMultiplierPlatinum: 5,
+      tierThresholdSilver: 100000,
+      tierThresholdGold: 1000000,
+      tierThresholdPlatinum: 3000000,
+    },
+    create: {
+      id: 1,
+      earnPtPerDollar: 0.01,
+      redeemDollarPerPoint: 1,
+      referralPtPerDollar: 0.01,
+      tierMultiplierBronze: 1,
+      tierMultiplierSilver: 2,
+      tierMultiplierGold: 3,
+      tierMultiplierPlatinum: 5,
+      tierThresholdSilver: 100000,
+      tierThresholdGold: 1000000,
+      tierThresholdPlatinum: 3000000,
+    },
+  });
+
   const store = await prisma.store.upsert({
     where: { storeStableId: E2E_STORE_STABLE_ID },
     update: {
