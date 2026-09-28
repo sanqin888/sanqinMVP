@@ -25,6 +25,7 @@ const E2E_MENU_CATEGORY_STABLE_ID = 'c000000000000000000000001';
 const E2E_MENU_ITEM_STABLE_ID = 'c000000000000000000000002';
 const E2E_POS_DEVICE_STABLE_ID = 'c000000000000000000000003';
 const E2E_D2_POS_DEVICE_STABLE_ID = 'c000000000000000000000014';
+const E2E_D3_POS_DEVICE_STABLE_ID = 'c000000000000000000000017';
 const E2E_D2_ORDER_STABLE_ID = 'c000000000000000000000015';
 const E2E_D2_ORDER_DB_ID = '00000000-0000-4000-8000-000000000015';
 const E2E_D2_ORDER_ITEM_DB_ID = '00000000-0000-4000-8000-000000000016';
@@ -135,6 +136,9 @@ async function main(): Promise<void> {
   const enrollmentCode = requireFixtureSecret('SANQ_E2E_POS_ENROLLMENT_CODE');
   const d2EnrollmentCode = requireFixtureSecret(
     'SANQ_E2E_D2_POS_ENROLLMENT_CODE',
+  );
+  const d3EnrollmentCode = requireFixtureSecret(
+    'SANQ_E2E_D3_POS_ENROLLMENT_CODE',
   );
   const otpSecret = requireFixtureSecret('OTP_SECRET');
   const passwordHash = await argon2.hash(staffPassword, { type: argon2id });
@@ -655,6 +659,27 @@ async function main(): Promise<void> {
       enrollmentKeyHash: sha256(d2EnrollmentCode),
       deviceKeyHash: sha256('not-yet-claimed-a5-d2-device-key'),
       meta: { source: 'A5_BROWSER_E2E_D2' },
+    },
+  });
+
+  await prisma.posDevice.upsert({
+    where: { deviceStableId: E2E_D3_POS_DEVICE_STABLE_ID },
+    update: {
+      storeId: store.id,
+      name: 'A5 D3 E2E POS',
+      status: PosDeviceStatus.ACTIVE,
+      enrollmentKeyHash: sha256(d3EnrollmentCode),
+      deviceKeyHash: sha256('not-yet-claimed-a5-d3-device-key'),
+      meta: { source: 'A5_BROWSER_E2E_D3' },
+    },
+    create: {
+      deviceStableId: E2E_D3_POS_DEVICE_STABLE_ID,
+      storeId: store.id,
+      name: 'A5 D3 E2E POS',
+      status: PosDeviceStatus.ACTIVE,
+      enrollmentKeyHash: sha256(d3EnrollmentCode),
+      deviceKeyHash: sha256('not-yet-claimed-a5-d3-device-key'),
+      meta: { source: 'A5_BROWSER_E2E_D3' },
     },
   });
 
