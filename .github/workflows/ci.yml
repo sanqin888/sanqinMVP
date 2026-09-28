@@ -146,6 +146,7 @@ jobs:
       GOOGLE_CLIENT_ID: a5-e2e-google-client-id
       GOOGLE_CLIENT_SECRET: a5-e2e-google-client-secret
       GOOGLE_OAUTH_CALLBACK_URL: http://127.0.0.1:8080/api/v1/auth/oauth/google/callback
+      PUBLIC_BASE_URL: https://e2e.invalid
       UBER_EATS_RATE_LIMITER_MODE: database
       UBER_CREDENTIAL_KEYS_SOURCE: env
       UBER_CREDENTIAL_ACTIVE_KEY_VERSION: "1"
