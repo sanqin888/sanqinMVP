@@ -19,6 +19,21 @@ type GmailMessageList = {
   nextPageToken?: string;
 };
 
+type GmailProfile = { historyId?: string };
+
+type GmailLabelList = {
+  labels?: Array<{ id?: string; name?: string }>;
+};
+
+type GmailHistoryList = {
+  history?: Array<{
+    messagesAdded?: Array<{ message?: { id?: string } }>;
+    labelsAdded?: Array<{ message?: { id?: string } }>;
+  }>;
+  nextPageToken?: string;
+  historyId?: string;
+};
+
 type GmailHeader = { name?: string; value?: string };
 type GmailPart = {
   partId?: string;
@@ -31,6 +46,7 @@ type GmailPart = {
 type GmailMessage = {
   id?: string;
   internalDate?: string;
+  labelIds?: string[];
   payload?: GmailPart;
 };
 type GmailAttachment = { data?: string; size?: number };
@@ -44,6 +60,7 @@ type GoogleTokenResponse = {
 type GmailIngestOptions = {
   accountingStartDate: string | null;
   timezone: string;
+  historyId?: string | null;
 };
 
 type MessageIngestResult = {
@@ -54,6 +71,18 @@ type MessageIngestResult = {
 };
 
 type GmailAccountingAttachmentKind = 'PDF' | 'IMAGE' | 'CSV';
+type GmailSyncMode = 'BOOTSTRAP' | 'INCREMENTAL';
+
+const MAX_GMAIL_SYNC_MESSAGES = 5_000;
+
+class GmailApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
 
 @Injectable()
 export class AccountingGmailIngestService {
@@ -79,6 +108,8 @@ export class AccountingGmailIngestService {
     duplicateDocuments: number;
     failedDocuments: number;
     skippedBeforeStartDate: number;
+    syncMode: GmailSyncMode | null;
+    nextHistoryId: string | null;
   }> {
     if (!this.isConfigured()) {
       return {
@@ -88,23 +119,30 @@ export class AccountingGmailIngestService {
         duplicateDocuments: 0,
         failedDocuments: 0,
         skippedBeforeStartDate: 0,
+        syncMode: null,
+        nextHistoryId: null,
       };
     }
 
     const token = await this.getAccessToken();
     const mailbox =
       process.env.ACCOUNTING_GMAIL_ADDRESS?.trim() || 'bills@sanq.ca';
-    const dateClause = this.gmailDateClause(options.accountingStartDate);
-    const query = `{to:${mailbox} label:${GMAIL_BILLS_LABEL}} ${dateClause} -in:trash -in:spam`;
-    const messageIds = await this.listMessageIds(token, query);
+    const syncBatch = await this.resolveSyncBatch(token, mailbox, options);
     let importedDocuments = 0;
     let duplicateDocuments = 0;
     let failedDocuments = 0;
     let skippedBeforeStartDate = 0;
 
-    for (const messageId of messageIds) {
+    for (const messageId of syncBatch.messageIds) {
       try {
-        const result = await this.ingestMessage(token, messageId, options);
+        const result = await this.ingestMessage(
+          token,
+          messageId,
+          options,
+          mailbox,
+          syncBatch.syncMode === 'INCREMENTAL',
+          syncBatch.labelId,
+        );
         importedDocuments += result.imported;
         duplicateDocuments += result.duplicates;
         failedDocuments += result.failed;
@@ -120,11 +158,14 @@ export class AccountingGmailIngestService {
 
     return {
       configured: true,
-      scannedMessages: messageIds.length,
+      scannedMessages: syncBatch.messageIds.length,
       importedDocuments,
       duplicateDocuments,
       failedDocuments,
       skippedBeforeStartDate,
+      syncMode: syncBatch.syncMode,
+      nextHistoryId:
+        failedDocuments === 0 ? syncBatch.candidateHistoryId : null,
     };
   }
 
@@ -132,11 +173,42 @@ export class AccountingGmailIngestService {
     accessToken: string,
     messageId: string,
     options: GmailIngestOptions,
+    mailbox: string,
+    requireIncrementalScopeMatch: boolean,
+    billsLabelId: string | null,
   ): Promise<MessageIngestResult> {
     const message = await this.gmailJson<GmailMessage>(
       accessToken,
       `/gmail/v1/users/me/messages/${encodeURIComponent(messageId)}?format=full`,
     );
+    const normalizedMailbox = mailbox.toLowerCase();
+    const recipientMatches = [
+      'to',
+      'cc',
+      'bcc',
+      'delivered-to',
+      'x-original-to',
+    ].some((headerName) =>
+      (this.header(message.payload?.headers, headerName) ?? '')
+        .toLowerCase()
+        .includes(normalizedMailbox),
+    );
+    const hasBillsLabel = Boolean(
+      billsLabelId && message.labelIds?.includes(billsLabelId),
+    );
+    const excludedBySystemLabel = message.labelIds?.some(
+      (labelId) => labelId === 'TRASH' || labelId === 'SPAM',
+    );
+    const inBillsScope =
+      !excludedBySystemLabel && (recipientMatches || hasBillsLabel);
+    if (requireIncrementalScopeMatch && !inBillsScope) {
+      return {
+        imported: 0,
+        duplicates: 0,
+        failed: 0,
+        skippedBeforeStartDate: 0,
+      };
+    }
     const subject = this.header(message.payload?.headers, 'subject');
     const senderEmail = extractMailboxAddress(
       this.header(message.payload?.headers, 'from'),
@@ -259,6 +331,107 @@ export class AccountingGmailIngestService {
     } else {
       result.imported += 1;
     }
+  }
+
+  private async resolveSyncBatch(
+    accessToken: string,
+    mailbox: string,
+    options: GmailIngestOptions,
+  ): Promise<{
+    messageIds: string[];
+    candidateHistoryId: string | null;
+    syncMode: GmailSyncMode;
+    labelId: string | null;
+  }> {
+    const historyId = options.historyId?.trim() || null;
+    if (historyId) {
+      try {
+        const incremental = await this.listHistoryMessageIds(
+          accessToken,
+          historyId,
+        );
+        return {
+          messageIds: incremental.messageIds,
+          candidateHistoryId: incremental.historyId,
+          syncMode: 'INCREMENTAL',
+          labelId: incremental.labelId,
+        };
+      } catch (error) {
+        if (!(error instanceof GmailApiError) || error.status !== 404) {
+          throw error;
+        }
+        this.logger.warn(
+          `Gmail history cursor expired; falling back to bounded bootstrap | historyId=${historyId}`,
+        );
+      }
+    }
+
+    const profile = await this.gmailJson<GmailProfile>(
+      accessToken,
+      '/gmail/v1/users/me/profile',
+    );
+    const dateClause = this.gmailDateClause(options.accountingStartDate);
+    const query = `{to:${mailbox} label:${GMAIL_BILLS_LABEL}} ${dateClause} -in:trash -in:spam`;
+    const messageIds = await this.listMessageIds(accessToken, query);
+    return {
+      messageIds,
+      candidateHistoryId: profile.historyId?.trim() || null,
+      syncMode: 'BOOTSTRAP',
+      labelId: null,
+    };
+  }
+
+  private async listHistoryMessageIds(
+    accessToken: string,
+    startHistoryId: string,
+  ): Promise<{
+    messageIds: string[];
+    historyId: string;
+    labelId: string | null;
+  }> {
+    const labels = await this.gmailJson<GmailLabelList>(
+      accessToken,
+      '/gmail/v1/users/me/labels',
+    );
+    const labelId =
+      labels.labels?.find((label) => label.name === GMAIL_BILLS_LABEL)?.id ??
+      null;
+
+    const messageIds = new Set<string>();
+    let pageToken: string | undefined;
+    let latestHistoryId = startHistoryId;
+    do {
+      const params = new URLSearchParams({
+        startHistoryId,
+        maxResults: '100',
+      });
+      if (pageToken) params.set('pageToken', pageToken);
+      const page = await this.gmailJson<GmailHistoryList>(
+        accessToken,
+        `/gmail/v1/users/me/history?${params.toString()}`,
+      );
+      latestHistoryId = page.historyId?.trim() || latestHistoryId;
+      for (const history of page.history ?? []) {
+        for (const added of history.messagesAdded ?? []) {
+          if (added.message?.id) messageIds.add(added.message.id);
+        }
+        for (const labeled of history.labelsAdded ?? []) {
+          if (labeled.message?.id) messageIds.add(labeled.message.id);
+        }
+      }
+      if (messageIds.size > MAX_GMAIL_SYNC_MESSAGES) {
+        throw new Error(
+          `Gmail incremental sync exceeds ${MAX_GMAIL_SYNC_MESSAGES} messages; cursor not advanced`,
+        );
+      }
+      pageToken = page.nextPageToken;
+    } while (pageToken);
+
+    return {
+      messageIds: Array.from(messageIds),
+      historyId: latestHistoryId,
+      labelId,
+    };
   }
 
   private gmailDateClause(accountingStartDate: string | null): string {
@@ -434,9 +607,14 @@ export class AccountingGmailIngestService {
       for (const message of page.messages ?? []) {
         if (message.id) result.push(message.id);
       }
+      if (result.length > MAX_GMAIL_SYNC_MESSAGES) {
+        throw new Error(
+          `Gmail bootstrap exceeds ${MAX_GMAIL_SYNC_MESSAGES} messages; history cursor not initialized`,
+        );
+      }
       pageToken = page.nextPageToken;
-    } while (pageToken && result.length < 500);
-    return result.slice(0, 500);
+    } while (pageToken);
+    return result;
   }
 
   private async gmailJson<T>(
@@ -451,7 +629,10 @@ export class AccountingGmailIngestService {
     );
     if (!response.ok) {
       const detail = await response.text().catch(() => '');
-      throw new Error(`Gmail API ${response.status}: ${detail.slice(0, 500)}`);
+      throw new GmailApiError(
+        response.status,
+        `Gmail API ${response.status}: ${detail.slice(0, 500)}`,
+      );
     }
     return (await response.json()) as T;
   }

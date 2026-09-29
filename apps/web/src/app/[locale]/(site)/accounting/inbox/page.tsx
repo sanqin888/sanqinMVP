@@ -153,15 +153,15 @@ export default function AccountingInboxPage() {
           body: formData,
         },
       );
-      if (result.inboxItem?.status === 'DUPLICATE') {
+      if (result.duplicateOfArtifactStableId) {
         setMessage(
           result.duplicateStorageCleanupComplete === false
             ? isZh
-              ? '检测到重复文件，未加入待处理队列；但本次冗余物理文件清理失败，服务器日志已记录待清理路径。重复记录仍可在“上传文件库”中永久删除。'
-              : 'Duplicate file detected and excluded from the review queue, but redundant binary cleanup failed. The server log records the cleanup path; the duplicate record can still be permanently deleted from Upload library.'
+              ? '检测到重复文件，未创建新的财务证据记录；但本次临时物理文件清理失败，服务器日志已记录待清理路径。'
+              : 'Duplicate file detected and no new evidence record was created, but temporary binary cleanup failed. The server log records the cleanup path.'
             : isZh
-              ? '检测到重复文件，未加入待处理队列；本次重复上传不会保留第二份物理文件，可在“上传文件库”中查看或永久删除重复记录。'
-              : 'Duplicate file detected. It was not added to the review queue, and no second binary copy is retained. You can review or permanently delete the duplicate record in Upload library.',
+              ? '检测到重复文件：未创建新的财务证据记录，也不会保留第二份物理文件。'
+              : 'Duplicate file detected. No new evidence record or second binary copy was retained.',
         );
       } else {
         setMessage(

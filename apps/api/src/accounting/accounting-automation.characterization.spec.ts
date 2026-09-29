@@ -17,6 +17,8 @@ describe('AccountingAutomationScheduler financial-report characterization', () =
         duplicateDocuments: 0,
         failedDocuments: 0,
         skippedBeforeStartDate: 0,
+        syncMode: 'INCREMENTAL',
+        nextHistoryId: null,
       }),
     };
     const prisma = {
@@ -26,9 +28,11 @@ describe('AccountingAutomationScheduler financial-report characterization', () =
           runHour: 7,
           runMinute: 0,
           gmailEnabled: true,
+          gmailHistoryId: null,
           uberReportsEnabled: true,
           accountingStartDate,
         }),
+        update: jest.fn().mockResolvedValue({}),
       },
     };
     const uberReporting = {
@@ -121,6 +125,7 @@ describe('AccountingAutomationScheduler financial-report characterization', () =
     expect(gmail.ingestBillsMailbox).toHaveBeenCalledWith({
       accountingStartDate: '2026-09-09',
       timezone: 'America/Toronto',
+      historyId: null,
     });
     expect(uberReporting.requestFinancialReports).toHaveBeenCalledWith({
       startDate: '2026-09-09',
@@ -130,6 +135,29 @@ describe('AccountingAutomationScheduler financial-report characterization', () =
     expect(providerFinancialHistory.syncReadyUberReports).toHaveBeenCalledWith(
       '2026-09-09',
     );
+  });
+
+  it('persists the Gmail history cursor only after a successful Gmail sync', async () => {
+    const { scheduler, gmail, prisma } = makeScheduler(
+      new Date('2026-06-01T00:00:00.000Z'),
+    );
+    gmail.ingestBillsMailbox.mockResolvedValueOnce({
+      configured: true,
+      scannedMessages: 1,
+      importedDocuments: 1,
+      duplicateDocuments: 0,
+      failedDocuments: 0,
+      skippedBeforeStartDate: 0,
+      syncMode: 'INCREMENTAL',
+      nextHistoryId: 'history-101',
+    });
+
+    await scheduler.runNow();
+
+    expect(prisma.accountingAutomationConfig.update).toHaveBeenCalledWith({
+      where: { id: 1 },
+      data: { gmailHistoryId: 'history-101' },
+    });
   });
 
   it('does not request a report when accountingStartDate is later than the latest completed business day', async () => {

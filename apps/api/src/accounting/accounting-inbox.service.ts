@@ -35,7 +35,7 @@ import {
 import {
   AccountingInboxWriterConflictError,
   AccountingInboxWriterNotFoundError,
-  releaseDuplicateEmailArtifactBinariesInTx,
+  purgeDuplicateEmailArtifactsInTx,
 } from './accounting-inbox-core.writer';
 import {
   beginAccountingImageOriginalPurgeInTx,
@@ -124,10 +124,10 @@ export class AccountingInboxService {
     );
   }
 
-  async releaseDuplicateEmailArtifactBinaries(contentHash: string) {
+  async purgeDuplicateEmailArtifacts(contentHash: string) {
     return this.runInboxCore(() =>
       runSerializableAccountingWrite(this.prisma, (tx) =>
-        releaseDuplicateEmailArtifactBinariesInTx(tx, contentHash),
+        purgeDuplicateEmailArtifactsInTx(tx, contentHash),
       ),
     );
   }

@@ -24,6 +24,10 @@ type AutomationSettings = {
   accountingStartDate: string | null;
 };
 
+type AutomationRuntimeSettings = AutomationSettings & {
+  gmailHistoryId: string | null;
+};
+
 @Injectable()
 export class AccountingAutomationScheduler
   implements OnModuleInit, OnModuleDestroy
@@ -53,7 +57,12 @@ export class AccountingAutomationScheduler
   > {
     const settings = await this.loadSettings();
     return {
-      ...settings,
+      timezone: settings.timezone,
+      runHour: settings.runHour,
+      runMinute: settings.runMinute,
+      gmailEnabled: settings.gmailEnabled,
+      uberReportsEnabled: settings.uberReportsEnabled,
+      accountingStartDate: settings.accountingStartDate,
       nextRunAt: this.nextRun(settings)?.toISO() ?? null,
     };
   }
@@ -71,6 +80,9 @@ export class AccountingAutomationScheduler
       input.accountingStartDate === undefined
         ? current.accountingStartDate
         : input.accountingStartDate?.trim() || null;
+    const accountingStartDateChanged =
+      input.accountingStartDate !== undefined &&
+      accountingStartDate !== current.accountingStartDate;
     if (
       accountingStartDate &&
       (!/^\d{4}-\d{2}-\d{2}$/.test(accountingStartDate) ||
@@ -97,6 +109,7 @@ export class AccountingAutomationScheduler
         runHour,
         runMinute,
         gmailEnabled: input.gmailEnabled ?? current.gmailEnabled,
+        gmailHistoryId: null,
         uberReportsEnabled:
           input.uberReportsEnabled ?? current.uberReportsEnabled,
         accountingStartDate: accountingStartDate
@@ -118,6 +131,7 @@ export class AccountingAutomationScheduler
               accountingStartDate: accountingStartDate
                 ? new Date(`${accountingStartDate}T00:00:00.000Z`)
                 : null,
+              ...(accountingStartDateChanged ? { gmailHistoryId: null } : {}),
             }
           : {}),
       },
@@ -135,7 +149,7 @@ export class AccountingAutomationScheduler
     return this.running;
   }
 
-  private async loadSettings(): Promise<AutomationSettings> {
+  private async loadSettings(): Promise<AutomationRuntimeSettings> {
     const row = await this.prisma.accountingAutomationConfig.upsert({
       where: { id: 1 },
       create: {
@@ -144,6 +158,7 @@ export class AccountingAutomationScheduler
         runHour: 2,
         runMinute: 15,
         gmailEnabled: true,
+        gmailHistoryId: null,
         uberReportsEnabled: true,
         accountingStartDate: null,
       },
@@ -153,6 +168,7 @@ export class AccountingAutomationScheduler
         runHour: true,
         runMinute: true,
         gmailEnabled: true,
+        gmailHistoryId: true,
         uberReportsEnabled: true,
         accountingStartDate: true,
       },
@@ -208,11 +224,12 @@ export class AccountingAutomationScheduler
     );
   }
 
-  private async runDailyJobs(settings: AutomationSettings) {
+  private async runDailyJobs(settings: AutomationRuntimeSettings) {
     const gmail = settings.gmailEnabled
       ? await this.gmail.ingestBillsMailbox({
           accountingStartDate: settings.accountingStartDate,
           timezone: settings.timezone,
+          historyId: settings.gmailHistoryId,
         })
       : {
           configured: true,
@@ -222,7 +239,20 @@ export class AccountingAutomationScheduler
           duplicateDocuments: 0,
           failedDocuments: 0,
           skippedBeforeStartDate: 0,
+          syncMode: null,
+          nextHistoryId: null,
         };
+    if (
+      settings.gmailEnabled &&
+      gmail.nextHistoryId &&
+      gmail.nextHistoryId !== settings.gmailHistoryId
+    ) {
+      await this.prisma.accountingAutomationConfig.update({
+        where: { id: 1 },
+        data: { gmailHistoryId: gmail.nextHistoryId },
+      });
+    }
+
     const uberFinancialAuthorityEnabled =
       settings.uberReportsEnabled &&
       this.uberReporting.isFinancialAuthorityEnabled();
@@ -247,7 +277,7 @@ export class AccountingAutomationScheduler
           deferredReconciliationGroups: 0,
         };
     this.logger.log(
-      `Accounting automation completed: gmailImported=${gmail.importedDocuments} gmailDuplicates=${gmail.duplicateDocuments} uberRequested=${uber.length} uberImported=${uberFinancialHistory.importedReports}`,
+      `Accounting automation completed: gmailMode=${gmail.syncMode ?? 'DISABLED'} gmailImported=${gmail.importedDocuments} gmailDuplicates=${gmail.duplicateDocuments} gmailFailed=${gmail.failedDocuments} uberRequested=${uber.length} uberImported=${uberFinancialHistory.importedReports}`,
     );
     return { gmail, uber, uberFinancialHistory };
   }
