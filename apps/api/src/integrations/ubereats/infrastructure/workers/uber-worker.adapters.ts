@@ -16,6 +16,7 @@ export interface UberWorkerMetrics {
   readonly lastSuccessfulAt: Date | null;
   readonly lastAttemptAt: Date | null;
   readonly lastFailureAt: Date | null;
+  readonly inFlightStartedAt: Date | null;
   readonly consecutiveFailures: number;
   readonly claimed: number;
   readonly failures: number;
@@ -49,6 +50,7 @@ abstract class UberPollingWorkerAdapter
     lastSuccessfulAt: null,
     lastAttemptAt: null,
     lastFailureAt: null,
+    inFlightStartedAt: null,
     consecutiveFailures: 0,
     claimed: 0,
     failures: 0,
@@ -117,6 +119,11 @@ abstract class UberPollingWorkerAdapter
 
   private async executePoll(): Promise<boolean> {
     const attemptedAt = new Date();
+    this.metrics = {
+      ...this.metrics,
+      lastAttemptAt: attemptedAt,
+      inFlightStartedAt: attemptedAt,
+    };
     try {
       const policy = this.config.workerPolicies[this.kind];
       const laneSize = Math.ceil(
@@ -156,6 +163,7 @@ abstract class UberPollingWorkerAdapter
         lastSuccessfulAt: new Date(),
         lastAttemptAt: attemptedAt,
         lastFailureAt: this.metrics.lastFailureAt,
+        inFlightStartedAt: null,
         consecutiveFailures: 0,
         claimed: this.metrics.claimed + poll.claimed,
         failures: this.metrics.failures,
@@ -169,6 +177,7 @@ abstract class UberPollingWorkerAdapter
         ...this.metrics,
         lastAttemptAt: attemptedAt,
         lastFailureAt: failedAt,
+        inFlightStartedAt: null,
         consecutiveFailures: this.metrics.consecutiveFailures + 1,
         failures: this.metrics.failures + 1,
       };

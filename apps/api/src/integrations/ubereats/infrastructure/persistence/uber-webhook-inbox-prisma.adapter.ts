@@ -12,9 +12,12 @@ import { UberWorkerConfigService } from '../workers/uber-worker-config.service';
 import { UberTelemetryService } from './uber-telemetry.service';
 import { UberApplicationError } from '../../application/shared/uber-application.error';
 import type { UberJsonValue } from '../../application/shared/uber-json-value';
+import type { UberWorkerRuntimeReadinessPort } from '../../application/shared/uber-worker-runtime-readiness.port';
 
 @Injectable()
-export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
+export class UberWebhookInboxPrismaAdapter
+  implements UberWebhookInboxPort, UberWorkerRuntimeReadinessPort
+{
   private static readonly MAX_ATTEMPTS = 8;
   private readonly telemetry: UberTelemetryService;
 
@@ -25,6 +28,53 @@ export class UberWebhookInboxPrismaAdapter implements UberWebhookInboxPort {
   ) {
     this.telemetry = telemetry ?? new UberTelemetryService(prisma);
   }
+
+  async probeDatabase(): Promise<boolean> {
+    try {
+      const rows = await this.prisma.$queryRaw<Array<{ inRecovery: boolean }>>`
+        SELECT pg_is_in_recovery() AS "inRecovery"
+      `;
+      return rows[0]?.inRecovery === false;
+    } catch {
+      return false;
+    }
+  }
+
+  async readDurableFailures(): Promise<{
+    webhookInbox: number;
+    orderAction: number;
+  }> {
+    try {
+      const rows = await this.prisma.$queryRaw<
+        Array<{
+          webhookFailures: number;
+          orderActionFailures: number;
+        }>
+      >`
+        SELECT
+          (
+            SELECT COUNT(*)::int
+            FROM "UberWebhookInbox"
+            WHERE status = 'FAILED'
+          ) AS "webhookFailures",
+          (
+            SELECT COUNT(*)::int
+            FROM "UberOrderAction"
+            WHERE status = 'FAILED'
+          ) AS "orderActionFailures"
+      `;
+      return {
+        webhookInbox: rows[0]?.webhookFailures ?? 0,
+        orderAction: rows[0]?.orderActionFailures ?? 0,
+      };
+    } catch {
+      return {
+        webhookInbox: 0,
+        orderAction: 0,
+      };
+    }
+  }
+
   async enqueue(input: {
     eventId: string;
     eventType: string;

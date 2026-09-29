@@ -112,6 +112,11 @@
   `persistence/scripts/`，写数据库的 telemetry sink 也归入该目录。
 - `crypto/`、`uber-api/`、`workers/`：分别承载密码学、Uber 传输和进程调度适配器；
   它们通过 application port 或具有业务语义的 repository 协作，不接触 Prisma。
+- dedicated worker 的 `/live` 仅代表进程/health HTTP event loop 存活；`/ready` 只依赖本地
+  PostgreSQL primary 可用性与 scheduler heartbeat/stuck 状态；Uber provider 错误、durable
+  FAILED work 或 backlog 只进入 `/health` degraded telemetry，不得仅因 provider failure
+  将 runtime 判为 not-ready。DB/readiness 查询必须经 application port 进入 `persistence/`，
+  `workers/` 不得因此直接导入 Prisma。
 
 持久化 adapter/repository 必须在边界内把数据库字段映射成 application/domain 类型。
 任何代码都不得透传或共享 delegate；repository 必须提供诸如

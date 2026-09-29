@@ -76,6 +76,27 @@ describe('Uber durable worker adapters', () => {
     await adapter.onModuleDestroy();
   });
 
+  it('publishes in-flight heartbeat before a slow first poll completes', async () => {
+    let release!: (value: number) => void;
+    const execute = jest.fn(
+      () => new Promise<number>((resolve) => (release = resolve)),
+    );
+    const adapter = new UberWebhookInboxWorkerAdapter(
+      { execute } as never,
+      config(),
+    );
+
+    const poll = adapter.runOnce();
+    const inFlight = adapter.getMetrics();
+    expect(inFlight.lastAttemptAt).toBeInstanceOf(Date);
+    expect(inFlight.inFlightStartedAt).toEqual(inFlight.lastAttemptAt);
+    expect(inFlight.lastSuccessfulAt).toBeNull();
+
+    release(0);
+    await expect(poll).resolves.toBe(true);
+    expect(adapter.getMetrics().inFlightStartedAt).toBeNull();
+  });
+
   it('coalesces a wake received while a claim is already in flight', async () => {
     jest.useFakeTimers();
     let release!: (value: number) => void;

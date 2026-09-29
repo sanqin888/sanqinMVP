@@ -34,6 +34,8 @@ import { CloverWebCheckoutOrchestrationModule } from './orchestration/clover-web
 import { PosCardPaymentOrchestrationModule } from './orchestration/pos-card-payment-orchestration.module';
 import { PaymentsModule } from './payments/payments.module';
 import { HomepageContentModule } from './homepage/homepage-content.module';
+import { RuntimeHealthController } from './runtime/runtime-health.controller';
+import { RuntimeReadinessService } from './runtime/runtime-readiness.service';
 
 const configModuleFactory: {
   forRoot(options: ConfigModuleOptions): DynamicModule;
@@ -77,9 +79,10 @@ const envConfigModule = configModuleFactory.forRoot({
     CloverWebCheckoutOrchestrationModule,
     PosCardPaymentOrchestrationModule,
   ],
-  controllers: [AppController],
+  controllers: [AppController, RuntimeHealthController],
   providers: [
     AppService,
+    RuntimeReadinessService,
     // ✅ 挂上全局拦截器
     {
       provide: APP_INTERCEPTOR,

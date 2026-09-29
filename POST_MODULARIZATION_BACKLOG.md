@@ -792,20 +792,26 @@ Keep A5 closed. Do not combine this follow-up with Next/Prisma upgrades, cache-p
 
 Priority: **P2**  
 Complexity: **M**  
-Recommended after: §3.3 pnpm pin
+Recommended after: §3.3 pnpm pin  
+State: **R1 MERGED + CI GREEN (#2592 / `c6b14c34` / CI #6565) / R2 MERGED + CI GREEN (#2593 / `85d8d492` / CI #6569) / R3 MERGED + CI GREEN (#2594 / `5cd67edf` / CI #6572) / R4 LOCAL SOURCE READY FOR REVIEW / R5 NOT STARTED / NO MIGRATION / NO DEPENDENCY / NO PROVIDER CUTOVER**
 
-Compose currently relies on process/container start plus basic `depends_on`; there is no repository-wide application readiness contract.
+The read-only Post-A5 audit confirmed that Compose still relies on process/container start plus basic `depends_on`; there is no repository-wide application readiness contract. R1 establishes the first canonical API contract before any Docker/Compose traffic gate is added:
 
-Design meaningful readiness before adding YAML-only healthchecks:
+- `GET /api/v1/live` is process/HTTP liveness only and deliberately performs no DB, filesystem or provider probe;
+- `GET /api/v1/ready` is API application readiness and requires an authenticated PostgreSQL query while the database is not in recovery plus readable/writable local `UPLOAD_ROOT`;
+- the existing `GET /api/v1/health` remains a backward-compatible readiness alias until R4 moves CI/browser/deploy consumers explicitly;
+- Clover, Uber, SendGrid/Twilio, AWS, Google and Gmail are explicitly excluded from whole-API readiness so provider outages remain capability-level degradation rather than traffic-ejection triggers;
+- migration execution/status reconciliation remains a deploy gate, not an HTTP health side effect.
 
-- database readiness;
-- API readiness including critical dependency policy;
-- Web readiness;
-- Uber worker health semantics;
-- Compose startup dependency behavior;
-- deploy verification aligned with the same contract.
+The new source owner is the existing `runtime-data-ci-ops` context under `apps/api/src/runtime`. The architecture context registry only adds that path to the existing context; no new context, dependency direction, direct-import allowance or SCC is introduced.
 
-Do not equate “process exists” with “ready to receive traffic”.
+R2 now separates the dedicated Uber worker semantics without changing Compose: `/live` remains process-only; `/ready` requires PostgreSQL primary availability plus both durable schedulers having entered polling and not being stuck; `/health` keeps rich `starting | ok | degraded | unhealthy` telemetry. Adapter poll failures, durable FAILED webhook/action work and backlog are degradation signals only and no longer make runtime readiness fail by failure-count or stale-success heuristics. A new in-flight heartbeat plus bounded max-poll duration detects a first poll that hangs before any success, while scheduler-silence detection tolerates the longest configured retry/backoff window. Durable degradation is read from PostgreSQL; the worker continues to call no Uber provider from its health routes.
+
+R3 adds Compose-native runtime health without changing CI/deploy admission yet: PostgreSQL uses `pg_isready`; API health calls canonical `/api/v1/ready`; the dedicated Uber worker calls canonical `/ready`; API and worker startup now wait for PostgreSQL `service_healthy`. Web intentionally remains `service_started`-coupled to API and has no R3 healthcheck because R4 still owns the Web-local health contract and CI/deploy consumer cutover. Compose health status is observational after startup: `restart: always` reacts to process exit, not to `unhealthy` status by itself, and `depends_on.condition: service_healthy` is an initial startup gate rather than continuous dependency supervision.
+
+R4 aligns CI and deployment verification around the established contracts. Web now has a dedicated `GET /health` route that is independent of API/BFF/provider reachability and bypasses locale middleware. Compose can therefore healthcheck Web locally without changing its `service_started` relationship to API. Browser E2E startup waits for API `/api/v1/ready` and Web `/health` separately, then performs a distinct Web BFF -> API `/api/v1/ready` smoke before Playwright. The production verification helper runs read-only `prisma migrate status` plus local API/worker/Web checks and public Web/BFF/menu smoke; migration execution itself remains an explicitly authorized deployment action.
+
+R5 owns production restart/failure-mode verification and documentation closeout. Do not equate “process exists” with “ready to receive traffic”.
 
 ### 7.2 Admin Members STAFF/ADMIN test-overlap cleanup
 
