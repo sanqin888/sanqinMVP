@@ -815,19 +815,23 @@ R5 owns production restart/failure-mode verification and documentation closeout.
 
 ### 7.2 Admin Members STAFF/ADMIN test-overlap cleanup
 
-Priority: **P2 DEFERRED CONTRACT CLEANUP**  
+Priority: **P2 CONTRACT CLEANUP**  
 Complexity: **M**  
-Depends on: replacement membership/browser test strategy.
+Depends on: replacement membership/browser test strategy — **satisfied by A5-C1/C2 CUSTOMER fixtures and browser journeys**.  
+State: **LOCAL SOURCE READY FOR REVIEW / CUSTOMER TARGET BOUNDARY CONTRACTION / NO MIGRATION / NO DEPENDENCY / NO GRAPH CHANGE** on `refactor/postmod-7-2-customer-membership-boundary` from `origin/dev@2860c8ac`.
 
-The membership Admin surface currently allows STAFF/ADMIN identities as an explicit development/test compatibility. It is not the canonical Staff-administration path.
+The historical overlap was broader than presentation: `/admin/members` listed any `User`, member detail could materialize Loyalty state for STAFF/ADMIN/ACCOUNTANT, `CustomerExistenceReader` meant generic User existence, authenticated `/membership/*` had no CUSTOMER role gate, and Loyalty/Coupon stable-identity resolution could accept non-customer Users. A5 now supplies real CUSTOMER fixtures, so those test-only semantics are no longer required.
 
-A1 must enforce the actual application-surface role matrix, but the deeper member-test cleanup may wait until test identities no longer require STAFF/ADMIN.
+The local contraction makes CUSTOMER identity explicit at each existing owner boundary:
 
-Then:
+- authenticated `/membership/*` is CUSTOMER-only;
+- Membership/Customer public readers and Loyalty stable-ID resolution reject STAFF/ADMIN/ACCOUNTANT as member targets;
+- `/admin/members` lists and mutates CUSTOMER targets only, while **STAFF remains an authorized POS operator** of that surface;
+- Orders continues consuming the existing Customer public contracts; no new context edge is introduced;
+- Staff role/status administration remains owned by Identity through `/admin/staff`;
+- historical zero-valued LoyaltyAccount rows on non-customer identities are retained rather than destructively cleaned up.
 
-- restrict member list/account-status mutation to customer/member identities;
-- retire the development/test overlap;
-- retain Staff role/status administration under Identity.
+No Prisma/schema/migration, package/lockfile, provider/payment behavior, context direction, scanner allowance or SCC change is included.
 
 ### 7.3 API TypeScript strictness
 

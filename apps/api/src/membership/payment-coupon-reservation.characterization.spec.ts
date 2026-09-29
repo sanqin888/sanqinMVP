@@ -8,7 +8,10 @@ describe('MembershipService payment coupon reservation characterization', () => 
   const userCouponDbId = '33333333-3333-4333-8333-333333333333';
 
   function createHarness() {
-    const userFindUnique = jest.fn().mockResolvedValue({ id: userDbId });
+    const userFindUnique = jest.fn().mockResolvedValue({
+      id: userDbId,
+      role: 'CUSTOMER',
+    });
     const couponFindUnique = jest.fn().mockResolvedValue({
       id: couponDbId,
       couponStableId,
@@ -97,7 +100,7 @@ describe('MembershipService payment coupon reservation characterization', () => 
 
     expect(harness.userFindUnique).toHaveBeenCalledWith({
       where: { userStableId },
-      select: { id: true },
+      select: { id: true, role: true },
     });
     expect(harness.couponFindUnique).toHaveBeenCalledWith({
       where: { couponStableId },
@@ -140,6 +143,27 @@ describe('MembershipService payment coupon reservation characterization', () => 
 
     expect(harness.couponUpdateMany).toHaveBeenCalledTimes(1);
     expect(harness.userCouponFindUnique).not.toHaveBeenCalled();
+    expect(harness.userCouponUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects a non-customer stable identity before reserving coupon state', async () => {
+    const harness = createHarness();
+    harness.userFindUnique.mockResolvedValueOnce({
+      id: userDbId,
+      role: 'STAFF',
+    });
+
+    await expect(
+      harness.service.holdPaymentCoupons({
+        attemptId: 'attempt-staff',
+        userStableId,
+        couponStableId,
+        reserveAssignedCoupon: true,
+        expiresAt: new Date('2026-09-07T20:20:00.000Z'),
+      }),
+    ).rejects.toThrow('coupon not found for user');
+
+    expect(harness.couponUpdateMany).not.toHaveBeenCalled();
     expect(harness.userCouponUpdateMany).not.toHaveBeenCalled();
   });
 });

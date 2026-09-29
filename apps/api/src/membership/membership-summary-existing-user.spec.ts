@@ -23,4 +23,29 @@ describe('MembershipService existing-user read boundary', () => {
     expect(create).not.toHaveBeenCalled();
     expect(update).not.toHaveBeenCalled();
   });
+
+  it.each(['STAFF', 'ADMIN', 'ACCOUNTANT'])(
+    'does not materialize membership state for a %s identity',
+    async (role) => {
+      const ensureAccount = jest.fn();
+      const service = new MembershipService(
+        {
+          user: {
+            findUnique: jest.fn().mockResolvedValue({
+              id: 'non-customer-db-id',
+              userStableId: 'non-customer-stable-id',
+              role,
+            }),
+          },
+        } as never,
+        { ensureAccount } as never,
+        {} as never,
+      );
+
+      await expect(
+        service.getMemberSummary({ userStableId: 'non-customer-stable-id' }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(ensureAccount).not.toHaveBeenCalled();
+    },
+  );
 });

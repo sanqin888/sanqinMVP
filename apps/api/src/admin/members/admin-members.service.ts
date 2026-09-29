@@ -200,7 +200,7 @@ export class AdminMembersService {
     const user = await this.prisma.user.findUnique({
       where: { userStableId: stable },
     });
-    if (!user) {
+    if (!user || user.role !== 'CUSTOMER') {
       throw new NotFoundException('member not found');
     }
     return user;
@@ -284,7 +284,7 @@ export class AdminMembersService {
     const tier = this.parseTier(params.tier);
     const status = this.parseStatus(params.status);
 
-    const where: Prisma.UserWhereInput = {};
+    const where: Prisma.UserWhereInput = { role: 'CUSTOMER' };
 
     if (status) {
       where.status = status;
@@ -512,15 +512,17 @@ export class AdminMembersService {
   }
 
   async listAddresses(userStableId: string) {
+    const customer = await this.getUserByStableId(userStableId);
     return this.customerAdministration.listAddressesAsAdmin({
-      userStableId: this.requireUserStableId(userStableId),
+      userStableId: customer.userStableId,
     });
   }
 
   async getDeviceManagement(userStableId: string) {
+    const customer = await this.getUserByStableId(userStableId);
     try {
       return await this.accountSecurityAdministration.getDeviceManagement(
-        this.requireUserStableId(userStableId),
+        customer.userStableId,
       );
     } catch (error) {
       this.rethrowAccountSecurityError(error);
@@ -528,9 +530,10 @@ export class AdminMembersService {
   }
 
   async revokeSession(userStableId: string, sessionId: string) {
+    const customer = await this.getUserByStableId(userStableId);
     try {
       await this.accountSecurityAdministration.revokeSession(
-        this.requireUserStableId(userStableId),
+        customer.userStableId,
         sessionId,
       );
     } catch (error) {
@@ -542,9 +545,10 @@ export class AdminMembersService {
     userStableId: string,
     trustedDeviceStableId: string,
   ) {
+    const customer = await this.getUserByStableId(userStableId);
     try {
       await this.accountSecurityAdministration.revokeTrustedDevice(
-        this.requireUserStableId(userStableId),
+        customer.userStableId,
         trustedDeviceStableId,
       );
     } catch (error) {
@@ -563,8 +567,9 @@ export class AdminMembersService {
       birthdayMonth?: number | null;
     },
   ) {
+    const customer = await this.getUserByStableId(userStableId);
     return this.customerAdministration.updateProfileAsAdmin({
-      userStableId: this.requireUserStableId(userStableId),
+      userStableId: customer.userStableId,
       ...body,
     });
   }
@@ -577,13 +582,14 @@ export class AdminMembersService {
       note?: string;
     },
   ) {
+    const customer = await this.getUserByStableId(userStableId);
     const idempotencyKey =
       typeof body.idempotencyKey === 'string' && body.idempotencyKey.trim()
         ? body.idempotencyKey.trim()
         : generateStableId();
 
     return this.loyalty.adjustPointsManual({
-      userStableId,
+      userStableId: customer.userStableId,
       deltaPoints: body.deltaPoints ?? NaN,
       idempotencyKey,
       note: body.note,
@@ -591,9 +597,10 @@ export class AdminMembersService {
   }
 
   async setMemberStatus(userStableId: string, disabled: boolean) {
+    const customer = await this.getUserByStableId(userStableId);
     try {
       return await this.accountSecurityAdministration.setAccountStatus(
-        this.requireUserStableId(userStableId),
+        customer.userStableId,
         disabled,
       );
     } catch (error) {
@@ -609,9 +616,10 @@ export class AdminMembersService {
       locale?: string;
     },
   ) {
+    const customer = await this.getUserByStableId(userStableId);
     try {
       return await this.memberRechargeVerification.sendCode({
-        userStableId,
+        userStableId: customer.userStableId,
         email: body.email,
         phone: body.phone,
         locale: body.locale,
@@ -629,9 +637,10 @@ export class AdminMembersService {
       code?: string;
     },
   ) {
+    const customer = await this.getUserByStableId(userStableId);
     try {
       return await this.memberRechargeVerification.verifyCode({
-        userStableId,
+        userStableId: customer.userStableId,
         email: body.email,
         phone: body.phone,
         code: body.code,
@@ -664,9 +673,10 @@ export class AdminMembersService {
       throw new BadRequestException('verificationToken is required');
     }
 
+    const customer = await this.getUserByStableId(userStableId);
     try {
       await this.memberRechargeVerification.consumeVerificationToken({
-        userStableId,
+        userStableId: customer.userStableId,
         verificationToken,
       });
     } catch (error) {
@@ -679,13 +689,13 @@ export class AdminMembersService {
         : generateStableId();
 
     const result = await this.loyalty.applyTopup({
-      userStableId,
+      userStableId: customer.userStableId,
       amountCents,
       bonusPoints: body.bonusPoints,
       idempotencyKey,
     });
 
-    return { userStableId, ...result };
+    return { userStableId: customer.userStableId, ...result };
   }
 
   async issueCoupon(

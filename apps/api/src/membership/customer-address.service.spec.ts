@@ -62,7 +62,9 @@ describe('CustomerService addresses', () => {
     const tx = { userAddress: { updateMany, create } };
     const prisma = {
       user: {
-        findUnique: jest.fn().mockResolvedValue({ id: 'user-db-id' }),
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ id: 'user-db-id', role: 'CUSTOMER' }),
       },
       userAddress: {
         count: jest.fn().mockResolvedValue(0),
@@ -98,7 +100,9 @@ describe('CustomerService addresses', () => {
     const transaction = jest.fn();
     const service = createService({
       user: {
-        findUnique: jest.fn().mockResolvedValue({ id: 'user-db-id' }),
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ id: 'user-db-id', role: 'CUSTOMER' }),
       },
       userAddress: {
         findFirst: jest.fn().mockResolvedValue(null),
@@ -119,7 +123,9 @@ describe('CustomerService addresses', () => {
     const update = jest.fn().mockResolvedValue(undefined);
     const service = createService({
       user: {
-        findUnique: jest.fn().mockResolvedValue({ id: 'user-db-id' }),
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ id: 'user-db-id', role: 'CUSTOMER' }),
       },
       userAddress: {
         findFirst: jest
