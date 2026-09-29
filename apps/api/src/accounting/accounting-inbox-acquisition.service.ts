@@ -81,6 +81,7 @@ type EmailEvidenceContext = {
 type FileAcquisitionInput = {
   acquisitionMode: AccountingArtifactAcquisitionMode;
   transportIdentity: string;
+  contentHash?: string;
   file: AccountingInboxFile;
   trustDecision: AccountingInboxTrustDecision;
   senderEmail?: string | null;
@@ -253,10 +254,16 @@ export class AccountingInboxAcquisitionService {
     attachmentId: string,
     file: AccountingInboxFile,
     trustDecision: AccountingInboxTrustDecision,
+    partId?: string | null,
   ) {
+    const contentHash = sha256(file.buffer);
+    const stablePartId = partId?.trim() || null;
     return this.acquireFile({
       acquisitionMode: AccountingArtifactAcquisitionMode.EMAIL,
-      transportIdentity: `gmail:${context.messageId}:attachment:${attachmentId}`,
+      transportIdentity: stablePartId
+        ? `gmail:${context.messageId}:attachment-part:${stablePartId}`
+        : `gmail:${context.messageId}:attachment-content:${contentHash}`,
+      contentHash,
       file,
       trustDecision,
       senderEmail: context.senderEmail,
@@ -264,6 +271,7 @@ export class AccountingInboxAcquisitionService {
       metadataJson: {
         gmailMessageId: context.messageId,
         gmailAttachmentId: attachmentId,
+        gmailPartId: stablePartId,
         receivedAt: context.receivedAt,
       },
     });
@@ -285,6 +293,7 @@ export class AccountingInboxAcquisitionService {
       throw new BadRequestException('Accounting image exceeds 20 MB');
     }
 
+    const contentHash = input.contentHash ?? sha256(input.file.buffer);
     const storedUrl = await this.storeRawFile(
       input.file.buffer,
       input.file.originalname,
@@ -298,7 +307,7 @@ export class AccountingInboxAcquisitionService {
         acquisitionMode: input.acquisitionMode,
         kind: detected.kind,
         transportIdentity: input.transportIdentity,
-        contentHash: sha256(input.file.buffer),
+        contentHash,
         mimeType: detected.mimeType,
         originalFilename: path.basename(
           input.file.originalname || `evidence${detected.extension}`,
@@ -317,15 +326,60 @@ export class AccountingInboxAcquisitionService {
 
     let effectiveStoredUrl = artifact.replayed ? artifact.storedUrl : storedUrl;
     let duplicateStorageCleanupComplete: boolean | null = null;
+    const duplicateLocalBinary =
+      artifact.inboxItem?.status === AccountingInboxStatus.DUPLICATE &&
+      (input.acquisitionMode ===
+        AccountingArtifactAcquisitionMode.MANUAL_UPLOAD ||
+        input.acquisitionMode === AccountingArtifactAcquisitionMode.EMAIL);
     if (artifact.replayed) {
-      await this.removeStoredFile(storedUrl);
-    } else if (
-      input.acquisitionMode ===
-        AccountingArtifactAcquisitionMode.MANUAL_UPLOAD &&
-      artifact.inboxItem?.status === AccountingInboxStatus.DUPLICATE
-    ) {
+      const replayCleanupComplete = await this.removeStoredFile(storedUrl);
+      if (duplicateLocalBinary) {
+        duplicateStorageCleanupComplete = replayCleanupComplete;
+      }
+    } else if (duplicateLocalBinary) {
       duplicateStorageCleanupComplete = await this.removeStoredFile(storedUrl);
       effectiveStoredUrl = null;
+    }
+
+    if (
+      input.acquisitionMode === AccountingArtifactAcquisitionMode.EMAIL &&
+      artifact.inboxItem?.status === AccountingInboxStatus.DUPLICATE
+    ) {
+      try {
+        const historicalCleanup =
+          await this.inbox.releaseDuplicateEmailArtifactBinaries(contentHash);
+        let historicalStorageCleanupComplete = true;
+        for (const historicalStoredUrl of historicalCleanup.storedUrls) {
+          if (!(await this.removeStoredFile(historicalStoredUrl))) {
+            historicalStorageCleanupComplete = false;
+          }
+        }
+        if (historicalCleanup.skippedProtectedArtifactStableIds.length) {
+          this.logger.warn(
+            `Accounting Gmail duplicate cleanup skipped protected artifacts | contentHash=${contentHash} | artifacts=${historicalCleanup.skippedProtectedArtifactStableIds.join(',')}`,
+          );
+        }
+        if (historicalCleanup.truncated) {
+          this.logger.warn(
+            `Accounting Gmail duplicate cleanup hit batch limit | contentHash=${contentHash}`,
+          );
+        }
+        if (
+          historicalCleanup.releasedArtifactStableIds.includes(
+            artifact.artifactStableId,
+          )
+        ) {
+          effectiveStoredUrl = null;
+        }
+        duplicateStorageCleanupComplete =
+          (duplicateStorageCleanupComplete ?? true) &&
+          historicalStorageCleanupComplete;
+      } catch (error) {
+        duplicateStorageCleanupComplete = false;
+        this.logger.warn(
+          `Accounting Gmail duplicate cleanup failed | contentHash=${contentHash} | ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
     }
     let providerFinancialMatched = false;
     try {

@@ -1,7 +1,7 @@
 # Accounting Document Recognition & Human Review Plan
 
-Status: **SLICE 0-3 + 3V-A + 3V-B DEV MERGED / CI GREEN / 3V-B PRODUCTION VERIFICATION PENDING / EVIDENCE VIEWER SLICE 1 + 1B + 2 MERGED / RELIABILITY SLICE A + B MERGED / EXPENSE REVIEW HARDENING MERGED / ORIGINAL SLICE C UX CLOSEOUT MERGED (#2445 / `da77b9a5`, CI #6074 GREEN) — NO MIGRATION — DO NOT REOPEN PHASE 9**  
-Planning date: 2026-09-20; updated: 2026-09-21  
+Status: **SLICE 0-3 + 3V-A + 3V-B DEV MERGED / CI GREEN / 3V-B PRODUCTION VERIFICATION PENDING / EVIDENCE VIEWER SLICE 1 + 1B + 2 MERGED / RELIABILITY SLICE A + B MERGED / EXPENSE REVIEW HARDENING MERGED / ORIGINAL SLICE C UX CLOSEOUT MERGED (#2445 / `da77b9a5`, CI #6074 GREEN) / GMAIL DUPLICATE BINARY RETENTION HARDENING LOCAL SOURCE + REVIEW PENDING — NO MIGRATION — DO NOT REOPEN PHASE 9**  
+Planning date: 2026-09-20; updated: 2026-09-29  
 Audit baseline: `origin/dev@1ede0599`; Slice 3 merged in PR #2432 as `caabf1c1`; Slice 3V-A merged in PR #2439 as `0d6909bb` after PR CI #6054 and merged-head CI #6055 passed; Slice 3V-B merged in PR #2440 as `0ac9117f` after final head `3c5c0400`, PR CI #6057 and merged-head CI #6058 green  
 Owner: **Accounting / Reporting / Analytics**  
 Phase 9 status: **remains PRODUCTION VERIFIED / CLOSED — do not reopen Phase 9**
@@ -1205,6 +1205,47 @@ plus the new reviewed-line table and approved indexes/FKs described in §12.3.
 
 No recognition or delivery change should rewrite historical machine extraction or posted
 financial facts. Retain source/review evidence.
+
+### 14.1 2026-09-29 Gmail duplicate binary retention / transport-id hardening
+
+**State:** local source on `fix/accounting-email-duplicate-binary-retention` from
+`origin/dev@6a48bf24`; user review pending. Per `AGENTS.md`, focused specs were added but no
+local lint/build/Jest/scanner command is claimed before review.
+
+Read-only production evidence showed a concrete retention/idempotency defect in the common
+Accounting Inbox: byte-identical SendGrid invoice PDFs already confirmed through manual upload
+were re-acquired from the same Gmail messages on later intake runs. Content SHA correctly marked
+the Gmail copies `DUPLICATE`, but the Gmail `attachmentId` changed between pulls, so the old
+transport identity created another SourceArtifact and each duplicate retained its own
+`storedUrl` binary. The canonical manual Expense/Journal evidence itself was not duplicated.
+
+The source hardening keeps the existing three-identity model and Accounting L3 ownership:
+
+- Gmail attachment transport identity is now `messageId + MIME partId` when Gmail supplies a
+  stable part ID; raw content SHA remains the separate content identity. A content-derived
+  transport fallback is used only when Gmail omits `partId`.
+- A newly registered EMAIL file whose content already exists remains an explicit
+  `AccountingInboxStatus.DUPLICATE` SourceArtifact/Inbox audit record, but the redundant local
+  binary is released immediately and the duplicate artifact persists with `storedUrl = null`.
+  This extends the already-established manual-upload duplicate retention rule to Gmail files;
+  EMAIL_BODY evidence is unchanged because it has no stored binary.
+- When a duplicate Gmail attachment is encountered, Accounting also contracts historical
+  same-content EMAIL duplicate binaries. Cleanup is fail-closed to unmaterialized DUPLICATE rows
+  with no ParseRun, Evidence-folder assignment, provider-financial document, bank-row decision,
+  retained/candidate image derivative or other protected materialization. The canonical/original
+  artifact and duplicate audit metadata remain intact, and each released binary is audited under
+  `system:accounting-gmail-duplicate-cleanup`.
+- Physical-file deletion remains in the existing Accounting acquisition/storage boundary; the
+  existing Inbox core writer only clears safe duplicate `storedUrl` references and returns the exact
+  retained paths for bounded cleanup. No Gmail hard-delete UI is added because Gmail transport/audit
+  evidence remains system-owned rather than operator-deletable temporary evidence.
+
+No Prisma/schema/migration, package/lockfile, Journal, Expense posting, provider parser, trusted
+sender policy, public HTTP route, context edge, scanner allowance or Phase 9 status changes. After
+deployment, one enabled Gmail intake run is sufficient to exercise the historical cleanup for
+re-acquired duplicate content; production verification should confirm the duplicate Gmail rows
+remain traceable with null `storedUrl`, their redundant files are absent, and the confirmed
+canonical Expense evidence remains unchanged.
 
 ## 15. Decisions intentionally left open
 
