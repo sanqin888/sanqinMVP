@@ -770,7 +770,7 @@ This can proceed in parallel with Lane A or Lane B when product priority warrant
 Priority: **P1 PWA RUNTIME FOLLOW-UP**  
 Complexity: **M**  
 External gate: **none**  
-State: **OPTION C SELECTED / LOCAL SOURCE READY FOR REVIEW / MANIFEST + STANDALONE ONLY / NO PRODUCTION BUNDLER CHANGE / NO MIGRATION / NO GRAPH CHANGE**  
+State: **OPTION C MERGED + CI GREEN / MANIFEST + STANDALONE ONLY / PR #2589 / `bd884cc9` / CI #6556 / next-pwa DEPENDENCY CLEANUP MERGED + CI GREEN / PR #2590 / `bf85c79f` / CI #6558 / NO PRODUCTION BUNDLER CHANGE / NO MIGRATION / NO GRAPH CHANGE**  
 Authorization note: **the user selected Option C on 2026-09-28: keep production Turbopack and formalize the current manifest/standalone contract without enabling a service-worker/offline runtime.**
 
 A5-D3 CI #6551 proved that the production-style Browser E2E build (`next build --turbopack`) does not expose a ready service-worker registration. The readiness audit confirmed the root cause: `next-pwa@5.6.0` installs its Workbox generation/registration through a Webpack hook, while SanQ's canonical Docker and Browser E2E production builds use Turbopack. The repository `public/sw.js` was only a placeholder awaiting that hook and was not a functional worker.
@@ -784,7 +784,7 @@ Option C keeps the capability contract intentionally narrow:
 - offline ordering/payment/POS operation is explicitly not introduced;
 - production and CI continue using Turbopack; no Webpack fallback is added and no Web Clover production logic changes.
 
-Local source removes the inactive `next-pwa` wrapper from `next.config.ts`, removes the placeholder `public/sw.js`, locks the manifest-only runtime contract in Web tests, and makes the production-build POS Browser E2E assert that the fresh CI browser has no service-worker registrations. The now-unused `next-pwa` package declaration is not removed in this MCP workspace because the available tool surface cannot run pnpm and repository policy forbids hand-editing the generated lockfile; physical dependency/lockfile cleanup remains a narrow follow-up using the pinned package manager rather than a reason to leave runtime wiring active.
+PR #2589 removed the inactive `next-pwa` wrapper from `next.config.ts`, removed the placeholder `public/sw.js`, locked the manifest-only runtime contract in Web tests, and made the production-build POS Browser E2E assert that the fresh CI browser has no service-worker registrations. The follow-up PR #2590 then removed the unused `next-pwa` manifest/lockfile dependency with pinned pnpm 9.0.0; current `package.json`, `apps/web/package.json`, and `pnpm-lock.yaml` contain no `next-pwa` reference.
 
 Keep A5 closed. Do not combine this follow-up with Next/Prisma upgrades, cache-policy expansion, workstation recovery or provider/payment work.
 
@@ -793,7 +793,7 @@ Keep A5 closed. Do not combine this follow-up with Next/Prisma upgrades, cache-p
 Priority: **P2**  
 Complexity: **M**  
 Recommended after: §3.3 pnpm pin  
-State: **R1 MERGED + CI GREEN (#2592 / `c6b14c34` / CI #6565) / R2 MERGED + CI GREEN (#2593 / `85d8d492` / CI #6569) / R3 MERGED + CI GREEN (#2594 / `5cd67edf` / CI #6572) / R4 LOCAL SOURCE READY FOR REVIEW / R5 NOT STARTED / NO MIGRATION / NO DEPENDENCY / NO PROVIDER CUTOVER**
+State: **R1 MERGED + CI GREEN (#2592 / `c6b14c34` / CI #6565) / R2 MERGED + CI GREEN (#2593 / `85d8d492` / CI #6569) / R3 MERGED + CI GREEN (#2594 / `5cd67edf` / CI #6572) / R4 MERGED + CI GREEN (#2595 / `c05f8de7` / CI #6574) / R5 PRODUCTION DEPLOYED + PASSIVE VERIFICATION PASSED / ACTIVE RESTART-FAILURE MATRIX + INDEPENDENT PUBLIC EDGE SMOKE STILL OPEN / NO MIGRATION / NO DEPENDENCY / NO PROVIDER CUTOVER**
 
 The read-only Post-A5 audit confirmed that Compose still relies on process/container start plus basic `depends_on`; there is no repository-wide application readiness contract. R1 establishes the first canonical API contract before any Docker/Compose traffic gate is added:
 
@@ -811,7 +811,7 @@ R3 adds Compose-native runtime health without changing CI/deploy admission yet: 
 
 R4 aligns CI and deployment verification around the established contracts. Web now has a dedicated `GET /health` route that is independent of API/BFF/provider reachability and bypasses locale middleware. Compose can therefore healthcheck Web locally without changing its `service_started` relationship to API. Browser E2E startup waits for API `/api/v1/ready` and Web `/health` separately, then performs a distinct Web BFF -> API `/api/v1/ready` smoke before Playwright. The production verification helper runs read-only `prisma migrate status` plus local API/worker/Web checks and public Web/BFF/menu smoke; migration execution itself remains an explicitly authorized deployment action.
 
-R5 owns production restart/failure-mode verification and documentation closeout. Do not equate “process exists” with “ready to receive traffic”.
+R5 owns production restart/failure-mode verification and documentation closeout. The R5 production matrix is documented in `docs/runbooks/runtime-readiness-production-verification.md`. Production now runs `main@c05f8de7` with R1-R4 deployed. Read-only evidence on 2026-09-29 showed db/api/ubereats-worker/web all `healthy`, the deployment recreated all four containers successfully, PostgreSQL returned to accepting connections, API mapped `/live`/`/ready`/`/health` and has returned repeated `/api/v1/ready = 200`, worker health listens on :4001, Web reached Ready, and Prisma migration history has 0 unresolved rows (plus 1 historical rolled-back row). No fatal/error/restart-loop evidence was found in the bounded startup logs. Independent public-edge smoke could not be observed from the available external fetch surface, and no additional production restart/fault injection was authorized, so final `PRODUCTION VERIFIED / CLOSED` remains open pending those R5 evidence items. Do not equate “process exists” with “ready to receive traffic”.
 
 ### 7.2 Admin Members STAFF/ADMIN test-overlap cleanup
 
