@@ -723,9 +723,7 @@ describe('AccountingInboxAcquisitionService', () => {
     );
     operations.releaseDuplicateEmailArtifactBinaries.mockResolvedValueOnce({
       releasedArtifactStableIds: ['acctart_old_duplicate'],
-      storedUrls: [
-        `/api/v1/accounting/files/inbox/${historicalFileName}`,
-      ],
+      storedUrls: [`/api/v1/accounting/files/inbox/${historicalFileName}`],
       skippedProtectedArtifactStableIds: [],
       truncated: false,
     });
@@ -780,9 +778,9 @@ describe('AccountingInboxAcquisitionService', () => {
     expect(registeredInputs[0]?.metadataJson?.gmailPartId).toBe(
       'attachment-part-1',
     );
-    expect(operations.releaseDuplicateEmailArtifactBinaries).toHaveBeenCalledWith(
-      registeredInputs[0]?.contentHash,
-    );
+    expect(
+      operations.releaseDuplicateEmailArtifactBinaries,
+    ).toHaveBeenCalledWith(registeredInputs[0]?.contentHash);
     expect(fs.existsSync(historicalFilePath)).toBe(false);
     expect(providerFinancial.parseForInboxSuggestion).not.toHaveBeenCalled();
     expect(operations.recordInboxParseRun).not.toHaveBeenCalled();
@@ -793,8 +791,7 @@ describe('AccountingInboxAcquisitionService', () => {
     const inboxDir = path.join(uploadRoot, 'accounting', 'inbox');
     fs.mkdirSync(inboxDir, { recursive: true });
     const historicalFileName = 'old-replayed-gmail-duplicate.pdf';
-    const historicalStoredUrl =
-      `/api/v1/accounting/files/inbox/${historicalFileName}`;
+    const historicalStoredUrl = `/api/v1/accounting/files/inbox/${historicalFileName}`;
     const historicalFilePath = path.join(inboxDir, historicalFileName);
     fs.writeFileSync(historicalFilePath, 'old-duplicate');
 
