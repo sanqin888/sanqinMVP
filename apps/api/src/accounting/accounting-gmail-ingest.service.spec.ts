@@ -181,6 +181,7 @@ describe('AccountingGmailIngestService unified Inbox cutover', () => {
         mimetype: 'application/pdf',
       }),
       AccountingInboxTrustDecision.TRUSTED,
+      'attachment',
     );
   });
 

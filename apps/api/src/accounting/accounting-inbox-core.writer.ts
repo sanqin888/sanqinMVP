@@ -87,10 +87,12 @@ export async function registerInboxArtifactInTx(
     orderBy: { createdAt: 'asc' },
     select: { id: true, artifactStableId: true },
   });
-  const releaseDuplicateManualBinary = Boolean(
+  const releaseDuplicateLocalBinary = Boolean(
     duplicate &&
-    normalized.acquisitionMode ===
-      AccountingArtifactAcquisitionMode.MANUAL_UPLOAD,
+    normalized.storedUrl &&
+    (normalized.acquisitionMode ===
+      AccountingArtifactAcquisitionMode.MANUAL_UPLOAD ||
+      normalized.acquisitionMode === AccountingArtifactAcquisitionMode.EMAIL),
   );
   const artifact = await tx.accountingSourceArtifact.create({
     data: {
@@ -102,7 +104,7 @@ export async function registerInboxArtifactInTx(
       mimeType: normalized.mimeType,
       originalFilename: normalized.originalFilename,
       byteSize: normalized.byteSize,
-      storedUrl: releaseDuplicateManualBinary ? null : normalized.storedUrl,
+      storedUrl: releaseDuplicateLocalBinary ? null : normalized.storedUrl,
       bodyText: normalized.bodyText,
       senderEmail: normalized.senderEmail,
       emailSubject: normalized.emailSubject,
@@ -110,7 +112,7 @@ export async function registerInboxArtifactInTx(
         ? {}
         : { metadataJson: normalized.metadataJson as Prisma.InputJsonValue }),
       ...(normalized.kind === AccountingArtifactKind.IMAGE &&
-      !releaseDuplicateManualBinary
+      !releaseDuplicateLocalBinary
         ? { binaryRetention: { create: {} } }
         : {}),
     },
@@ -145,10 +147,115 @@ export async function registerInboxArtifactInTx(
     artifactStableId: artifact.artifactStableId,
     contentHash: normalized.contentHash,
     kind: normalized.kind,
-    storedUrl: releaseDuplicateManualBinary ? null : normalized.storedUrl,
+    storedUrl: releaseDuplicateLocalBinary ? null : normalized.storedUrl,
     inboxItem,
     duplicateOfArtifactStableId: duplicate?.artifactStableId ?? null,
     replayed: false,
+  };
+}
+
+export const ACCOUNTING_EMAIL_DUPLICATE_BINARY_CLEANUP_ACTOR =
+  'system:accounting-gmail-duplicate-cleanup';
+
+const ACCOUNTING_EMAIL_DUPLICATE_CLEANUP_LIMIT = 500;
+
+export async function releaseDuplicateEmailArtifactBinariesInTx(
+  tx: AccountingTx,
+  contentHash: string,
+) {
+  const duplicateItems = await tx.accountingInboxItem.findMany({
+    where: {
+      status: AccountingInboxStatus.DUPLICATE,
+      duplicateOfArtifactId: { not: null },
+      materializedEntityType: null,
+      materializedEntityStableId: null,
+      artifact: {
+        is: {
+          acquisitionMode: AccountingArtifactAcquisitionMode.EMAIL,
+          contentHash,
+          storedUrl: { not: null },
+          financialDocument: { is: null },
+        },
+      },
+    },
+    select: {
+      artifact: {
+        select: {
+          id: true,
+          artifactStableId: true,
+          storedUrl: true,
+          binaryRetention: {
+            select: {
+              id: true,
+              candidateStoredUrl: true,
+              retainedStoredUrl: true,
+            },
+          },
+          evidenceFolderAssignment: { select: { artifactId: true } },
+          _count: {
+            select: {
+              parseRuns: true,
+              providerPayoutBankRowDecisions: true,
+              providerFeeBankRowDecisions: true,
+            },
+          },
+        },
+      },
+    },
+    orderBy: { createdAt: 'asc' },
+    take: ACCOUNTING_EMAIL_DUPLICATE_CLEANUP_LIMIT,
+  });
+
+  const releasedArtifactStableIds: string[] = [];
+  const storedUrls: string[] = [];
+  const skippedProtectedArtifactStableIds: string[] = [];
+
+  for (const item of duplicateItems) {
+    const artifact = item.artifact;
+    const storedUrl = artifact.storedUrl;
+    const protectedReference =
+      Boolean(artifact.evidenceFolderAssignment) ||
+      artifact._count.parseRuns > 0 ||
+      artifact._count.providerPayoutBankRowDecisions > 0 ||
+      artifact._count.providerFeeBankRowDecisions > 0 ||
+      Boolean(artifact.binaryRetention?.candidateStoredUrl) ||
+      Boolean(artifact.binaryRetention?.retainedStoredUrl);
+
+    if (protectedReference || !storedUrl) {
+      skippedProtectedArtifactStableIds.push(artifact.artifactStableId);
+      continue;
+    }
+
+    if (artifact.binaryRetention) {
+      await tx.accountingArtifactBinaryRetention.delete({
+        where: { artifactId: artifact.id },
+      });
+    }
+    await tx.accountingSourceArtifact.update({
+      where: { id: artifact.id },
+      data: { storedUrl: null },
+    });
+    await tx.accountingAuditLog.create({
+      data: {
+        action: 'RELEASE_DUPLICATE_EMAIL_BINARY',
+        entityType: 'ACCOUNTING_SOURCE_ARTIFACT',
+        entityId: artifact.artifactStableId,
+        operatorActorRef: ACCOUNTING_EMAIL_DUPLICATE_BINARY_CLEANUP_ACTOR,
+        beforeJson: { storedUrl },
+        afterJson: { storedUrl: null },
+      },
+    });
+
+    releasedArtifactStableIds.push(artifact.artifactStableId);
+    storedUrls.push(storedUrl);
+  }
+
+  return {
+    releasedArtifactStableIds,
+    storedUrls,
+    skippedProtectedArtifactStableIds,
+    truncated:
+      duplicateItems.length === ACCOUNTING_EMAIL_DUPLICATE_CLEANUP_LIMIT,
   };
 }
 

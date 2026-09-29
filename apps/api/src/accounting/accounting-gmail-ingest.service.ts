@@ -226,6 +226,7 @@ export class AccountingGmailIngestService {
             buffer,
           },
           trustDecision,
+          part.partId ?? null,
         );
         this.countAcquisition(acquired, result);
       } catch (error) {

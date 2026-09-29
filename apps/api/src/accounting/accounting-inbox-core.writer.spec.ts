@@ -21,11 +21,13 @@ import {
   normalizeProviderFinancialDocument,
 } from './accounting-inbox-core.policy';
 import {
+  ACCOUNTING_EMAIL_DUPLICATE_BINARY_CLEANUP_ACTOR,
   AccountingInboxWriterConflictError,
   ensureProviderFinancialCoverageInTx,
   recordParseRunInTx,
   recordProviderFinancialDocumentInTx,
   registerInboxArtifactInTx,
+  releaseDuplicateEmailArtifactBinariesInTx,
   upsertTrustedSenderInTx,
 } from './accounting-inbox-core.writer';
 import {
@@ -42,11 +44,16 @@ describe('Accounting Inbox core persistence writer', () => {
       findUnique: jest.fn(),
       findFirst: jest.fn(),
       create: jest.fn(),
+      update: jest.fn(),
     },
     accountingInboxItem: {
       findUnique: jest.fn(),
+      findMany: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
+    },
+    accountingArtifactBinaryRetention: {
+      delete: jest.fn(),
     },
     accountingExpenseDocument: {
       findUnique: jest.fn(),
@@ -171,6 +178,142 @@ describe('Accounting Inbox core persistence writer', () => {
         }) as unknown,
       }) as unknown,
     );
+  });
+
+  it('preserves duplicate Gmail attachment metadata without retaining a second binary', async () => {
+    const tx = makeTx();
+    tx.accountingSourceArtifact.findUnique.mockResolvedValue(null);
+    tx.accountingSourceArtifact.findFirst.mockResolvedValue({
+      id: 'original-email-db-id',
+      artifactStableId: 'acctart_original_email',
+    });
+    tx.accountingSourceArtifact.create.mockResolvedValue({
+      id: 'duplicate-email-db-id',
+      artifactStableId: 'acctart_duplicate_email',
+    });
+    tx.accountingInboxItem.create.mockResolvedValue({
+      inboxItemStableId: 'acctinbox_duplicate_email',
+      status: AccountingInboxStatus.DUPLICATE,
+      classification: AccountingInboxClassification.UNKNOWN,
+      duplicateOfArtifact: { artifactStableId: 'acctart_original_email' },
+    });
+
+    const result = await registerInboxArtifactInTx(
+      tx as never,
+      normalizeAccountingInboxArtifact({
+        acquisitionMode: AccountingArtifactAcquisitionMode.EMAIL,
+        kind: AccountingArtifactKind.PDF,
+        transportIdentity: `gmail:message-1:attachment-content:${SHA_A}`,
+        contentHash: SHA_A,
+        storedUrl: '/api/v1/accounting/files/inbox/sendgrid.pdf',
+        senderEmail: 'noreply@sendgrid.com',
+        trustDecision: AccountingInboxTrustDecision.UNTRUSTED,
+      }),
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        storedUrl: null,
+        duplicateOfArtifactStableId: 'acctart_original_email',
+        replayed: false,
+      }),
+    );
+    expect(tx.accountingSourceArtifact.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          storedUrl: null,
+          senderEmail: 'noreply@sendgrid.com',
+        }) as unknown,
+      }) as unknown,
+    );
+  });
+
+  it('releases only safe historical duplicate Gmail binaries while retaining evidence rows', async () => {
+    const tx = makeTx();
+    tx.accountingInboxItem.findMany.mockResolvedValue([
+      {
+        artifact: {
+          id: 'artifact-safe-db-id',
+          artifactStableId: 'acctart_safe_duplicate',
+          storedUrl: '/api/v1/accounting/files/inbox/sendgrid-safe.pdf',
+          binaryRetention: {
+            id: 'retention-safe-db-id',
+            candidateStoredUrl: null,
+            retainedStoredUrl: null,
+          },
+          evidenceFolderAssignment: null,
+          _count: {
+            parseRuns: 0,
+            providerPayoutBankRowDecisions: 0,
+            providerFeeBankRowDecisions: 0,
+          },
+        },
+      },
+      {
+        artifact: {
+          id: 'artifact-protected-db-id',
+          artifactStableId: 'acctart_protected_duplicate',
+          storedUrl: '/api/v1/accounting/files/inbox/sendgrid-protected.pdf',
+          binaryRetention: null,
+          evidenceFolderAssignment: null,
+          _count: {
+            parseRuns: 1,
+            providerPayoutBankRowDecisions: 0,
+            providerFeeBankRowDecisions: 0,
+          },
+        },
+      },
+    ]);
+
+    const result = await releaseDuplicateEmailArtifactBinariesInTx(
+      tx as never,
+      SHA_A,
+    );
+
+    expect(tx.accountingInboxItem.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: AccountingInboxStatus.DUPLICATE,
+          duplicateOfArtifactId: { not: null },
+          materializedEntityType: null,
+          materializedEntityStableId: null,
+          artifact: {
+            is: expect.objectContaining({
+              acquisitionMode: AccountingArtifactAcquisitionMode.EMAIL,
+              contentHash: SHA_A,
+              storedUrl: { not: null },
+              financialDocument: { is: null },
+            }) as unknown,
+          },
+        }) as unknown,
+      }) as unknown,
+    );
+    expect(tx.accountingArtifactBinaryRetention.delete).toHaveBeenCalledWith({
+      where: { artifactId: 'artifact-safe-db-id' },
+    });
+    expect(tx.accountingSourceArtifact.update).toHaveBeenCalledTimes(1);
+    expect(tx.accountingSourceArtifact.update).toHaveBeenCalledWith({
+      where: { id: 'artifact-safe-db-id' },
+      data: { storedUrl: null },
+    });
+    expect(tx.accountingAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'RELEASE_DUPLICATE_EMAIL_BINARY',
+        entityType: 'ACCOUNTING_SOURCE_ARTIFACT',
+        entityId: 'acctart_safe_duplicate',
+        operatorActorRef: ACCOUNTING_EMAIL_DUPLICATE_BINARY_CLEANUP_ACTOR,
+        beforeJson: {
+          storedUrl: '/api/v1/accounting/files/inbox/sendgrid-safe.pdf',
+        },
+        afterJson: { storedUrl: null },
+      }) as unknown,
+    });
+    expect(result).toEqual({
+      releasedArtifactStableIds: ['acctart_safe_duplicate'],
+      storedUrls: ['/api/v1/accounting/files/inbox/sendgrid-safe.pdf'],
+      skippedProtectedArtifactStableIds: ['acctart_protected_duplicate'],
+      truncated: false,
+    });
   });
 
   it('does not create image retention storage state for a duplicate manual image', async () => {
