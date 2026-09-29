@@ -1,9 +1,4 @@
-import {
-  Controller,
-  Get,
-  HttpStatus,
-  Res,
-} from '@nestjs/common';
+import { Controller, Get, HttpStatus, Res } from '@nestjs/common';
 import type { Response } from 'express';
 
 import { RuntimeReadinessService } from './runtime-readiness.service';
@@ -46,9 +41,7 @@ export class RuntimeHealthController {
   private async respondWithReadiness(response: Response) {
     const snapshot = await this.readiness.readiness();
     response.status(
-      snapshot.status === 'ok'
-        ? HttpStatus.OK
-        : HttpStatus.SERVICE_UNAVAILABLE,
+      snapshot.status === 'ok' ? HttpStatus.OK : HttpStatus.SERVICE_UNAVAILABLE,
     );
     return snapshot;
   }

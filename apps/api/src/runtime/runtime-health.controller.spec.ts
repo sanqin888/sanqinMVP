@@ -10,12 +10,14 @@ describe('RuntimeHealthController', () => {
     }) as unknown as Response;
 
   it('GET /api/v1/live returns process liveness without readiness probes', () => {
+    const liveness = jest.fn(() => ({
+      status: 'ok' as const,
+      timestamp: '2026-09-28T00:00:00.000Z',
+    }));
+    const readinessProbe = jest.fn();
     const readiness = {
-      liveness: jest.fn(() => ({
-        status: 'ok' as const,
-        timestamp: '2026-09-28T00:00:00.000Z',
-      })),
-      readiness: jest.fn(),
+      liveness,
+      readiness: readinessProbe,
     } as unknown as RuntimeReadinessService;
     const controller = new RuntimeHealthController(readiness);
 
@@ -23,8 +25,8 @@ describe('RuntimeHealthController', () => {
       status: 'ok',
       timestamp: '2026-09-28T00:00:00.000Z',
     });
-    expect(readiness.liveness).toHaveBeenCalledTimes(1);
-    expect(readiness.readiness).not.toHaveBeenCalled();
+    expect(liveness).toHaveBeenCalledTimes(1);
+    expect(readinessProbe).not.toHaveBeenCalled();
   });
 
   it.each(['ready', 'health'] as const)(
@@ -41,9 +43,10 @@ describe('RuntimeHealthController', () => {
       } as unknown as RuntimeReadinessService;
       const controller = new RuntimeHealthController(readiness);
       const res = response();
+      const status = jest.spyOn(res, 'status');
 
       await expect(controller[method](res)).resolves.toEqual(snapshot);
-      expect(res.status).toHaveBeenCalledWith(200);
+      expect(status).toHaveBeenCalledWith(200);
     },
   );
 
@@ -61,9 +64,10 @@ describe('RuntimeHealthController', () => {
       } as unknown as RuntimeReadinessService;
       const controller = new RuntimeHealthController(readiness);
       const res = response();
+      const status = jest.spyOn(res, 'status');
 
       await expect(controller[method](res)).resolves.toEqual(snapshot);
-      expect(res.status).toHaveBeenCalledWith(503);
+      expect(status).toHaveBeenCalledWith(503);
     },
   );
 });
