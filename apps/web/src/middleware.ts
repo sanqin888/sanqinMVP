@@ -62,6 +62,7 @@ export async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
   if (
     pathname.startsWith("/_next") ||
+    pathname === "/health" ||
     pathname.startsWith("/api") ||
     pathname.startsWith("/clover/oauth/") ||
     pathname.startsWith("/favicon") ||

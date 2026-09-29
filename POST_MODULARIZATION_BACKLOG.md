@@ -793,7 +793,7 @@ Keep A5 closed. Do not combine this follow-up with Next/Prisma upgrades, cache-p
 Priority: **P2**  
 Complexity: **M**  
 Recommended after: §3.3 pnpm pin  
-State: **R1 MERGED + CI GREEN (#2592 / `c6b14c34` / CI #6565) / R2 MERGED + CI GREEN (#2593 / `85d8d492` / CI #6569) / R3 LOCAL SOURCE READY FOR REVIEW / R4-R5 NOT STARTED / NO MIGRATION / NO DEPENDENCY / NO PROVIDER CUTOVER**
+State: **R1 MERGED + CI GREEN (#2592 / `c6b14c34` / CI #6565) / R2 MERGED + CI GREEN (#2593 / `85d8d492` / CI #6569) / R3 MERGED + CI GREEN (#2594 / `5cd67edf` / CI #6572) / R4 LOCAL SOURCE READY FOR REVIEW / R5 NOT STARTED / NO MIGRATION / NO DEPENDENCY / NO PROVIDER CUTOVER**
 
 The read-only Post-A5 audit confirmed that Compose still relies on process/container start plus basic `depends_on`; there is no repository-wide application readiness contract. R1 establishes the first canonical API contract before any Docker/Compose traffic gate is added:
 
@@ -809,7 +809,9 @@ R2 now separates the dedicated Uber worker semantics without changing Compose: `
 
 R3 adds Compose-native runtime health without changing CI/deploy admission yet: PostgreSQL uses `pg_isready`; API health calls canonical `/api/v1/ready`; the dedicated Uber worker calls canonical `/ready`; API and worker startup now wait for PostgreSQL `service_healthy`. Web intentionally remains `service_started`-coupled to API and has no R3 healthcheck because R4 still owns the Web-local health contract and CI/deploy consumer cutover. Compose health status is observational after startup: `restart: always` reacts to process exit, not to `unhealthy` status by itself, and `depends_on.condition: service_healthy` is an initial startup gate rather than continuous dependency supervision.
 
-R4 owns CI/deploy verification alignment; R5 owns production restart/failure-mode verification and documentation closeout. Do not equate “process exists” with “ready to receive traffic”.
+R4 aligns CI and deployment verification around the established contracts. Web now has a dedicated `GET /health` route that is independent of API/BFF/provider reachability and bypasses locale middleware. Compose can therefore healthcheck Web locally without changing its `service_started` relationship to API. Browser E2E startup waits for API `/api/v1/ready` and Web `/health` separately, then performs a distinct Web BFF -> API `/api/v1/ready` smoke before Playwright. The production verification helper runs read-only `prisma migrate status` plus local API/worker/Web checks and public Web/BFF/menu smoke; migration execution itself remains an explicitly authorized deployment action.
+
+R5 owns production restart/failure-mode verification and documentation closeout. Do not equate “process exists” with “ready to receive traffic”.
 
 ### 7.2 Admin Members STAFF/ADMIN test-overlap cleanup
 

@@ -224,7 +224,7 @@ jobs:
         run: |
           nohup pnpm --filter api exec node --enable-source-maps dist/main.js > "${RUNNER_TEMP}/sanq-api.log" 2>&1 &
           for attempt in {1..30}; do
-            if curl --fail --silent --show-error http://127.0.0.1:4000/api/v1/health >/dev/null; then
+            if curl --fail --silent --show-error http://127.0.0.1:4000/api/v1/ready >/dev/null; then
               exit 0
             fi
             sleep 1
@@ -244,14 +244,16 @@ jobs:
         run: |
           nohup pnpm --filter web exec next start -p 8080 -H 127.0.0.1 > "${RUNNER_TEMP}/sanq-web.log" 2>&1 &
           for attempt in {1..30}; do
-            if curl --fail --silent --show-error http://127.0.0.1:8080/api/v1/health >/dev/null; then
+            if curl --fail --silent --show-error http://127.0.0.1:8080/health >/dev/null; then
               exit 0
             fi
             sleep 1
           done
           cat "${RUNNER_TEMP}/sanq-web.log"
-          cat "${RUNNER_TEMP}/sanq-api.log"
           exit 1
+
+      - name: Verify Web BFF reaches API readiness
+        run: curl --fail --silent --show-error http://127.0.0.1:8080/api/v1/ready >/dev/null
 
       - name: Browser E2E
         env:

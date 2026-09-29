@@ -50,6 +50,21 @@ On VM you likely use something like:
 bash
 复制代码
 docker compose --env-file /etc/sanqin/sanqin.env up -d --build
+
+Do not treat container start alone as deployment success. Apply any explicitly
+authorized production Prisma migrations through the normal controlled migration
+gate, then verify migration parity plus local/public runtime readiness:
+
+bash
+复制代码
+bash ops/verify-runtime-readiness.sh /etc/sanqin/sanqin.env https://sanq.ca
+
+The verification script is read-only with respect to Prisma: it runs
+`prisma migrate status`, then checks API readiness, Uber worker readiness,
+Web-local health, public Web reachability, Web BFF -> API readiness, and the
+public menu smoke path. A pending/failed migration or failed readiness/smoke
+check must block deployment completion.
+
 Services:
 
 web : port 3000
