@@ -818,11 +818,11 @@ R5 owns production restart/failure-mode verification and documentation closeout.
 Priority: **P2 CONTRACT CLEANUP**  
 Complexity: **M**  
 Depends on: replacement membership/browser test strategy — **satisfied by A5-C1/C2 CUSTOMER fixtures and browser journeys**.  
-State: **LOCAL SOURCE READY FOR REVIEW / CUSTOMER TARGET BOUNDARY CONTRACTION / NO MIGRATION / NO DEPENDENCY / NO GRAPH CHANGE** on `refactor/postmod-7-2-customer-membership-boundary` from `origin/dev@2860c8ac`.
+State: **CLOSED / MERGED + CI GREEN / PR #2598 / MERGE `265c9d88` / FINAL HEAD `d8f56419` / CI #6584 / CUSTOMER TARGET BOUNDARY CONTRACTED / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**.
 
 The historical overlap was broader than presentation: `/admin/members` listed any `User`, member detail could materialize Loyalty state for STAFF/ADMIN/ACCOUNTANT, `CustomerExistenceReader` meant generic User existence, authenticated `/membership/*` had no CUSTOMER role gate, and Loyalty/Coupon stable-identity resolution could accept non-customer Users. A5 now supplies real CUSTOMER fixtures, so those test-only semantics are no longer required.
 
-The local contraction makes CUSTOMER identity explicit at each existing owner boundary:
+The merged contraction makes CUSTOMER identity explicit at each existing owner boundary:
 
 - authenticated `/membership/*` is CUSTOMER-only;
 - Membership/Customer public readers and Loyalty stable-ID resolution reject STAFF/ADMIN/ACCOUNTANT as member targets;
