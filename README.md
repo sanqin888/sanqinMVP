@@ -41,23 +41,26 @@ bash
 pnpm --filter api dev
 pnpm --filter web dev
 Production Deployment (VM)
-1) Prepare env file
-On VM you likely use something like:
+1) Use the production VM's existing Compose environment source.
 
-/etc/sanqin/sanqin.env
+Do not assume a fixed path such as `/etc/sanqin/sanqin.env`. The active
+production VM verified on 2026-09-29 does not have that path; its existing
+Compose environment resolves correctly when `docker compose` is run from the
+production repository directory.
 
 2) Build and run
-bash
-复制代码
-docker compose --env-file /etc/sanqin/sanqin.env up -d --build
+
+```bash
+docker compose up -d --build
+```
 
 Do not treat container start alone as deployment success. Apply any explicitly
 authorized production Prisma migrations through the normal controlled migration
-gate, then verify migration parity plus local/public runtime readiness:
+gate, then verify migration parity plus local/public runtime readiness.
 
-bash
-复制代码
-bash ops/verify-runtime-readiness.sh /etc/sanqin/sanqin.env https://sanq.ca
+`ops/verify-runtime-readiness.sh` currently accepts an explicit env-file path
+as its first argument. Supply the actual production env-file path when one is
+used; do not substitute the stale `/etc/sanqin/sanqin.env` example.
 
 The verification script is read-only with respect to Prisma: it runs
 `prisma migrate status`, then checks API readiness, Uber worker readiness,
