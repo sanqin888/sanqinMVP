@@ -2586,6 +2586,7 @@ model AccountingAutomationConfig {
   runHour              Int       @default(2)
   runMinute            Int       @default(15)
   gmailEnabled         Boolean   @default(true)
+  gmailHistoryId       String?
   uberReportsEnabled   Boolean   @default(true)
   accountingStartDate  DateTime? @db.Date
   createdAt            DateTime  @default(now())

@@ -87,13 +87,42 @@ export async function registerInboxArtifactInTx(
     orderBy: { createdAt: 'asc' },
     select: { id: true, artifactStableId: true },
   });
-  const releaseDuplicateLocalBinary = Boolean(
+  const skipDuplicateFileArtifact = Boolean(
     duplicate &&
     normalized.storedUrl &&
     (normalized.acquisitionMode ===
       AccountingArtifactAcquisitionMode.MANUAL_UPLOAD ||
       normalized.acquisitionMode === AccountingArtifactAcquisitionMode.EMAIL),
   );
+  if (duplicate && skipDuplicateFileArtifact) {
+    await tx.accountingAuditLog.create({
+      data: {
+        action: 'SKIP_DUPLICATE_FILE_ARTIFACT',
+        entityType: 'ACCOUNTING_SOURCE_ARTIFACT',
+        entityId: duplicate.artifactStableId,
+        operatorActorRef: 'system:accounting-inbox-duplicate-detection',
+        afterJson: {
+          acquisitionMode: normalized.acquisitionMode,
+          transportIdentity: normalized.transportIdentity,
+          contentHash: normalized.contentHash,
+          kind: normalized.kind,
+          originalFilename: normalized.originalFilename,
+          senderEmail: normalized.senderEmail,
+          emailSubject: normalized.emailSubject,
+          metadataJson: normalized.metadataJson ?? null,
+        },
+      },
+    });
+    return {
+      artifactStableId: duplicate.artifactStableId,
+      contentHash: normalized.contentHash,
+      kind: normalized.kind,
+      storedUrl: null,
+      inboxItem: null,
+      duplicateOfArtifactStableId: duplicate.artifactStableId,
+      replayed: false,
+    };
+  }
   const artifact = await tx.accountingSourceArtifact.create({
     data: {
       artifactStableId: `acctart_${createId()}`,
@@ -104,15 +133,14 @@ export async function registerInboxArtifactInTx(
       mimeType: normalized.mimeType,
       originalFilename: normalized.originalFilename,
       byteSize: normalized.byteSize,
-      storedUrl: releaseDuplicateLocalBinary ? null : normalized.storedUrl,
+      storedUrl: normalized.storedUrl,
       bodyText: normalized.bodyText,
       senderEmail: normalized.senderEmail,
       emailSubject: normalized.emailSubject,
       ...(normalized.metadataJson === undefined
         ? {}
         : { metadataJson: normalized.metadataJson as Prisma.InputJsonValue }),
-      ...(normalized.kind === AccountingArtifactKind.IMAGE &&
-      !releaseDuplicateLocalBinary
+      ...(normalized.kind === AccountingArtifactKind.IMAGE
         ? { binaryRetention: { create: {} } }
         : {}),
     },
@@ -147,19 +175,19 @@ export async function registerInboxArtifactInTx(
     artifactStableId: artifact.artifactStableId,
     contentHash: normalized.contentHash,
     kind: normalized.kind,
-    storedUrl: releaseDuplicateLocalBinary ? null : normalized.storedUrl,
+    storedUrl: normalized.storedUrl,
     inboxItem,
     duplicateOfArtifactStableId: duplicate?.artifactStableId ?? null,
     replayed: false,
   };
 }
 
-export const ACCOUNTING_EMAIL_DUPLICATE_BINARY_CLEANUP_ACTOR =
+export const ACCOUNTING_EMAIL_DUPLICATE_ARTIFACT_CLEANUP_ACTOR =
   'system:accounting-gmail-duplicate-cleanup';
 
 const ACCOUNTING_EMAIL_DUPLICATE_CLEANUP_LIMIT = 500;
 
-export async function releaseDuplicateEmailArtifactBinariesInTx(
+export async function purgeDuplicateEmailArtifactsInTx(
   tx: AccountingTx,
   contentHash: string,
 ) {
@@ -179,10 +207,19 @@ export async function releaseDuplicateEmailArtifactBinariesInTx(
       },
     },
     select: {
+      id: true,
+      inboxItemStableId: true,
+      duplicateOfArtifact: { select: { artifactStableId: true } },
       artifact: {
         select: {
           id: true,
           artifactStableId: true,
+          transportIdentity: true,
+          contentHash: true,
+          originalFilename: true,
+          senderEmail: true,
+          emailSubject: true,
+          metadataJson: true,
           storedUrl: true,
           binaryRetention: {
             select: {
@@ -195,6 +232,7 @@ export async function releaseDuplicateEmailArtifactBinariesInTx(
           _count: {
             select: {
               parseRuns: true,
+              duplicateInboxItems: true,
               providerPayoutBankRowDecisions: true,
               providerFeeBankRowDecisions: true,
             },
@@ -206,7 +244,7 @@ export async function releaseDuplicateEmailArtifactBinariesInTx(
     take: ACCOUNTING_EMAIL_DUPLICATE_CLEANUP_LIMIT,
   });
 
-  const releasedArtifactStableIds: string[] = [];
+  const purgedArtifactStableIds: string[] = [];
   const storedUrls: string[] = [];
   const skippedProtectedArtifactStableIds: string[] = [];
 
@@ -216,6 +254,7 @@ export async function releaseDuplicateEmailArtifactBinariesInTx(
     const protectedReference =
       Boolean(artifact.evidenceFolderAssignment) ||
       artifact._count.parseRuns > 0 ||
+      artifact._count.duplicateInboxItems > 0 ||
       artifact._count.providerPayoutBankRowDecisions > 0 ||
       artifact._count.providerFeeBankRowDecisions > 0 ||
       Boolean(artifact.binaryRetention?.candidateStoredUrl) ||
@@ -231,27 +270,36 @@ export async function releaseDuplicateEmailArtifactBinariesInTx(
         where: { artifactId: artifact.id },
       });
     }
-    await tx.accountingSourceArtifact.update({
-      where: { id: artifact.id },
-      data: { storedUrl: null },
-    });
     await tx.accountingAuditLog.create({
       data: {
-        action: 'RELEASE_DUPLICATE_EMAIL_BINARY',
+        action: 'PURGE_DUPLICATE_EMAIL_ARTIFACT',
         entityType: 'ACCOUNTING_SOURCE_ARTIFACT',
         entityId: artifact.artifactStableId,
-        operatorActorRef: ACCOUNTING_EMAIL_DUPLICATE_BINARY_CLEANUP_ACTOR,
-        beforeJson: { storedUrl },
-        afterJson: { storedUrl: null },
+        operatorActorRef: ACCOUNTING_EMAIL_DUPLICATE_ARTIFACT_CLEANUP_ACTOR,
+        beforeJson: {
+          inboxItemStableId: item.inboxItemStableId,
+          transportIdentity: artifact.transportIdentity,
+          contentHash: artifact.contentHash,
+          originalFilename: artifact.originalFilename,
+          senderEmail: artifact.senderEmail,
+          emailSubject: artifact.emailSubject,
+          metadataJson: artifact.metadataJson,
+          storedUrl,
+          duplicateOfArtifactStableId:
+            item.duplicateOfArtifact?.artifactStableId ?? null,
+        },
+        afterJson: { purged: true },
       },
     });
+    await tx.accountingInboxItem.delete({ where: { id: item.id } });
+    await tx.accountingSourceArtifact.delete({ where: { id: artifact.id } });
 
-    releasedArtifactStableIds.push(artifact.artifactStableId);
+    purgedArtifactStableIds.push(artifact.artifactStableId);
     storedUrls.push(storedUrl);
   }
 
   return {
-    releasedArtifactStableIds,
+    purgedArtifactStableIds,
     storedUrls,
     skippedProtectedArtifactStableIds,
     truncated:

@@ -191,8 +191,8 @@ describe('AccountingInboxAcquisitionService', () => {
       recordInboxParseRun: jest.fn().mockResolvedValue({}),
       suggestUnifiedInboxClassification: jest.fn().mockResolvedValue({}),
       permanentlyDeleteManualUpload: jest.fn(),
-      releaseDuplicateEmailArtifactBinaries: jest.fn().mockResolvedValue({
-        releasedArtifactStableIds: [],
+      purgeDuplicateEmailArtifacts: jest.fn().mockResolvedValue({
+        purgedArtifactStableIds: [],
         storedUrls: [],
         skippedProtectedArtifactStableIds: [],
         truncated: false,
@@ -655,12 +655,9 @@ describe('AccountingInboxAcquisitionService', () => {
         duplicateStoredUrl = input.storedUrl;
         return Promise.resolve({
           ...registeredArtifact(input.kind, input.contentHash),
+          artifactStableId: 'acctart_original',
           storedUrl: null,
-          inboxItem: {
-            ...registeredArtifact(input.kind, input.contentHash).inboxItem,
-            status: AccountingInboxStatus.DUPLICATE,
-            duplicateOfArtifact: { artifactStableId: 'acctart_original' },
-          },
+          inboxItem: null,
           duplicateOfArtifactStableId: 'acctart_original',
         });
       },
@@ -671,7 +668,8 @@ describe('AccountingInboxAcquisitionService', () => {
       buffer: Buffer.from('%PDF-1.4\n%%EOF', 'ascii'),
     });
 
-    expect(result.inboxItem?.status).toBe(AccountingInboxStatus.DUPLICATE);
+    expect(result.inboxItem).toBeNull();
+    expect(result.duplicateOfArtifactStableId).toBe('acctart_original');
     expect(result.storedUrl).toBeNull();
     expect(result.duplicateStorageCleanupComplete).toBe(true);
     const duplicateFile = path.join(
@@ -711,18 +709,15 @@ describe('AccountingInboxAcquisitionService', () => {
         const base = registeredArtifact(input.kind, input.contentHash);
         return Promise.resolve({
           ...base,
+          artifactStableId: 'acctart_original',
           storedUrl: null,
-          inboxItem: {
-            ...base.inboxItem,
-            status: AccountingInboxStatus.DUPLICATE,
-            duplicateOfArtifact: { artifactStableId: 'acctart_original' },
-          },
+          inboxItem: null,
           duplicateOfArtifactStableId: 'acctart_original',
         });
       },
     );
-    operations.releaseDuplicateEmailArtifactBinaries.mockResolvedValueOnce({
-      releasedArtifactStableIds: ['acctart_old_duplicate'],
+    operations.purgeDuplicateEmailArtifacts.mockResolvedValueOnce({
+      purgedArtifactStableIds: ['acctart_old_duplicate'],
       storedUrls: [`/api/v1/accounting/files/inbox/${historicalFileName}`],
       skippedProtectedArtifactStableIds: [],
       truncated: false,
@@ -755,7 +750,8 @@ describe('AccountingInboxAcquisitionService', () => {
       'attachment-part-1',
     );
 
-    expect(first.inboxItem?.status).toBe(AccountingInboxStatus.DUPLICATE);
+    expect(first.inboxItem).toBeNull();
+    expect(first.duplicateOfArtifactStableId).toBe('acctart_original');
     expect(first.storedUrl).toBeNull();
     expect(first.duplicateStorageCleanupComplete).toBe(true);
     expect(second.duplicateStorageCleanupComplete).toBe(true);
@@ -779,7 +775,7 @@ describe('AccountingInboxAcquisitionService', () => {
       'attachment-part-1',
     );
     expect(
-      operations.releaseDuplicateEmailArtifactBinaries,
+      operations.purgeDuplicateEmailArtifacts,
     ).toHaveBeenCalledWith(registeredInputs[0]?.contentHash);
     expect(fs.existsSync(historicalFilePath)).toBe(false);
     expect(providerFinancial.parseForInboxSuggestion).not.toHaveBeenCalled();
@@ -810,8 +806,8 @@ describe('AccountingInboxAcquisitionService', () => {
           replayed: true,
         }),
     );
-    operations.releaseDuplicateEmailArtifactBinaries.mockResolvedValueOnce({
-      releasedArtifactStableIds: ['acctart_old_duplicate'],
+    operations.purgeDuplicateEmailArtifacts.mockResolvedValueOnce({
+      purgedArtifactStableIds: ['acctart_old_duplicate'],
       storedUrls: [historicalStoredUrl],
       skippedProtectedArtifactStableIds: [],
       truncated: false,
