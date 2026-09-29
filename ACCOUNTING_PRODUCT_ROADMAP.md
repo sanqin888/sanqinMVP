@@ -189,9 +189,9 @@ evidence in the audit log, and still has zero production callers across the API 
 source-scoped persisted cutover mechanism is added. The next gate is external POS Terminal real-device
 acceptance/operational go-live; there is no Accounting E4 source slice to implement before that evidence.
 
-2026-09-27 supporting/control-evidence Inbox + file-manager UX is **LOCAL SOURCE READY FOR REVIEW /
-NO AUTHORITY CHANGE / NO MIGRATION / NO DEPENDENCY** on
-`feat/accounting-supporting-evidence-inbox-ux`. The Web adapter now follows the already-frozen
+2026-09-27 supporting/control-evidence Inbox + file-manager UX is **MERGED / CI GREEN /
+PR #2575 / MERGE `10772af5` / FINAL HEAD `5a6f8eb7` / CI #6512 /
+NO AUTHORITY CHANGE / NO MIGRATION / NO DEPENDENCY**. The Web adapter now follows the already-frozen
 settlement contract directly: validated non-`STATEMENT` provider documents
 (`BATCH_CONTROL`, `API_REPORT`, `OTHER`) are presented as supporting/control evidence with
 provider/type/period/reference plus compact key amounts, and confirmation explicitly archives them
