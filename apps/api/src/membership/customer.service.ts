@@ -254,7 +254,9 @@ export class CustomerService
     const user = await this.prisma.user.findUnique({
       where: { userStableId: input.userStableId },
     });
-    if (!user) throw new NotFoundException('member not found');
+    if (!user || user.role !== 'CUSTOMER') {
+      throw new NotFoundException('member not found');
+    }
 
     const updateData: {
       firstName?: string | null;
@@ -424,6 +426,7 @@ export class CustomerService
       where: { userStableId },
       select: {
         userStableId: true,
+        role: true,
         email: true,
         emailVerifiedAt: true,
         phone: true,
@@ -431,7 +434,7 @@ export class CustomerService
         language: true,
       },
     });
-    if (!user) return null;
+    if (!user || user.role !== 'CUSTOMER') return null;
 
     return {
       userStableId: user.userStableId,
@@ -448,9 +451,9 @@ export class CustomerService
   }) {
     const user = await this.prisma.user.findUnique({
       where: { userStableId: input.userStableId },
-      select: { id: true },
+      select: { id: true, role: true },
     });
-    if (!user) return null;
+    if (!user || user.role !== 'CUSTOMER') return null;
 
     const address = await this.prisma.userAddress.findFirst({
       where: {
@@ -655,9 +658,11 @@ export class CustomerService
   private async requireUserDbId(userStableId: string): Promise<string> {
     const user = await this.prisma.user.findUnique({
       where: { userStableId },
-      select: { id: true },
+      select: { id: true, role: true },
     });
-    if (!user) throw new NotFoundException('user not found');
+    if (!user || user.role !== 'CUSTOMER') {
+      throw new NotFoundException('user not found');
+    }
     return user.id;
   }
 

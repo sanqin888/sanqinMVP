@@ -191,6 +191,12 @@ describe('AccountingInboxAcquisitionService', () => {
       recordInboxParseRun: jest.fn().mockResolvedValue({}),
       suggestUnifiedInboxClassification: jest.fn().mockResolvedValue({}),
       permanentlyDeleteManualUpload: jest.fn(),
+      releaseDuplicateEmailArtifactBinaries: jest.fn().mockResolvedValue({
+        releasedArtifactStableIds: [],
+        storedUrls: [],
+        skippedProtectedArtifactStableIds: [],
+        truncated: false,
+      }),
     };
     const providerFinancial = {
       parseAndMaterialize: jest.fn().mockResolvedValue({ matched: false }),
@@ -675,6 +681,163 @@ describe('AccountingInboxAcquisitionService', () => {
       path.basename(duplicateStoredUrl),
     );
     expect(fs.existsSync(duplicateFile)).toBe(false);
+    expect(operations.recordInboxParseRun).not.toHaveBeenCalled();
+  });
+
+  it('uses content-stable Gmail attachment identity and removes current plus historical duplicate binaries', async () => {
+    const { service, operations, providerFinancial } = makeService();
+    const inboxDir = path.join(uploadRoot, 'accounting', 'inbox');
+    fs.mkdirSync(inboxDir, { recursive: true });
+    const historicalFileName = 'historical-sendgrid-duplicate.pdf';
+    const historicalFilePath = path.join(inboxDir, historicalFileName);
+    fs.writeFileSync(historicalFilePath, 'historical-duplicate');
+
+    const registeredInputs: Array<{
+      transportIdentity: string;
+      contentHash: string;
+      storedUrl: string;
+      metadataJson?: Record<string, unknown>;
+      kind: AccountingArtifactKind;
+    }> = [];
+    operations.registerInboxArtifact.mockImplementation(
+      (input: {
+        transportIdentity: string;
+        contentHash: string;
+        storedUrl: string;
+        metadataJson?: Record<string, unknown>;
+        kind: AccountingArtifactKind;
+      }) => {
+        registeredInputs.push(input);
+        const base = registeredArtifact(input.kind, input.contentHash);
+        return Promise.resolve({
+          ...base,
+          storedUrl: null,
+          inboxItem: {
+            ...base.inboxItem,
+            status: AccountingInboxStatus.DUPLICATE,
+            duplicateOfArtifact: { artifactStableId: 'acctart_original' },
+          },
+          duplicateOfArtifactStableId: 'acctart_original',
+        });
+      },
+    );
+    operations.releaseDuplicateEmailArtifactBinaries.mockResolvedValueOnce({
+      releasedArtifactStableIds: ['acctart_old_duplicate'],
+      storedUrls: [`/api/v1/accounting/files/inbox/${historicalFileName}`],
+      skippedProtectedArtifactStableIds: [],
+      truncated: false,
+    });
+
+    const context = {
+      messageId: 'gmail-message-1',
+      senderEmail: 'noreply@sendgrid.com',
+      subject: 'You have a new invoice from SendGrid',
+      receivedAt: '2026-09-04T08:21:03.000Z',
+    };
+    const file = {
+      originalname: 'INV19802713_59572398_09012026.pdf',
+      mimetype: 'application/pdf',
+      buffer: Buffer.from('%PDF-1.4\nSendGrid invoice\n%%EOF', 'ascii'),
+    };
+
+    const first = await service.acquireEmailAttachment(
+      context,
+      'gmail-attachment-id-first',
+      file,
+      AccountingInboxTrustDecision.UNTRUSTED,
+      'attachment-part-1',
+    );
+    const second = await service.acquireEmailAttachment(
+      context,
+      'gmail-attachment-id-changed',
+      file,
+      AccountingInboxTrustDecision.UNTRUSTED,
+      'attachment-part-1',
+    );
+
+    expect(first.inboxItem?.status).toBe(AccountingInboxStatus.DUPLICATE);
+    expect(first.storedUrl).toBeNull();
+    expect(first.duplicateStorageCleanupComplete).toBe(true);
+    expect(second.duplicateStorageCleanupComplete).toBe(true);
+    expect(registeredInputs).toHaveLength(2);
+    expect(registeredInputs[0]?.transportIdentity).toBe(
+      registeredInputs[1]?.transportIdentity,
+    );
+    expect(registeredInputs[0]?.transportIdentity).toBe(
+      'gmail:gmail-message-1:attachment-part:attachment-part-1',
+    );
+    expect(registeredInputs[0]?.transportIdentity).not.toContain(
+      'gmail-attachment-id-first',
+    );
+    expect(registeredInputs[0]?.metadataJson?.gmailAttachmentId).toBe(
+      'gmail-attachment-id-first',
+    );
+    expect(registeredInputs[1]?.metadataJson?.gmailAttachmentId).toBe(
+      'gmail-attachment-id-changed',
+    );
+    expect(registeredInputs[0]?.metadataJson?.gmailPartId).toBe(
+      'attachment-part-1',
+    );
+    expect(
+      operations.releaseDuplicateEmailArtifactBinaries,
+    ).toHaveBeenCalledWith(registeredInputs[0]?.contentHash);
+    expect(fs.existsSync(historicalFilePath)).toBe(false);
+    expect(providerFinancial.parseForInboxSuggestion).not.toHaveBeenCalled();
+    expect(operations.recordInboxParseRun).not.toHaveBeenCalled();
+  });
+
+  it('returns null storedUrl when replay cleanup releases an old Gmail duplicate binary', async () => {
+    const { service, operations } = makeService();
+    const inboxDir = path.join(uploadRoot, 'accounting', 'inbox');
+    fs.mkdirSync(inboxDir, { recursive: true });
+    const historicalFileName = 'old-replayed-gmail-duplicate.pdf';
+    const historicalStoredUrl = `/api/v1/accounting/files/inbox/${historicalFileName}`;
+    const historicalFilePath = path.join(inboxDir, historicalFileName);
+    fs.writeFileSync(historicalFilePath, 'old-duplicate');
+
+    operations.registerInboxArtifact.mockImplementationOnce(
+      (input: { kind: AccountingArtifactKind; contentHash: string }) =>
+        Promise.resolve({
+          ...registeredArtifact(input.kind, input.contentHash),
+          artifactStableId: 'acctart_old_duplicate',
+          storedUrl: historicalStoredUrl,
+          inboxItem: {
+            ...registeredArtifact(input.kind, input.contentHash).inboxItem,
+            status: AccountingInboxStatus.DUPLICATE,
+            duplicateOfArtifact: { artifactStableId: 'acctart_original' },
+          },
+          duplicateOfArtifactStableId: 'acctart_original',
+          replayed: true,
+        }),
+    );
+    operations.releaseDuplicateEmailArtifactBinaries.mockResolvedValueOnce({
+      releasedArtifactStableIds: ['acctart_old_duplicate'],
+      storedUrls: [historicalStoredUrl],
+      skippedProtectedArtifactStableIds: [],
+      truncated: false,
+    });
+
+    const result = await service.acquireEmailAttachment(
+      {
+        messageId: 'gmail-message-replay',
+        senderEmail: 'noreply@sendgrid.com',
+        subject: 'Invoice copy',
+        receivedAt: '2026-09-04T08:21:03.000Z',
+      },
+      'volatile-attachment-id',
+      {
+        originalname: 'invoice.pdf',
+        mimetype: 'application/pdf',
+        buffer: Buffer.from('%PDF-1.4\nReplay invoice\n%%EOF', 'ascii'),
+      },
+      AccountingInboxTrustDecision.UNTRUSTED,
+      'attachment-part-1',
+    );
+
+    expect(result.replayed).toBe(true);
+    expect(result.storedUrl).toBeNull();
+    expect(result.duplicateStorageCleanupComplete).toBe(true);
+    expect(fs.existsSync(historicalFilePath)).toBe(false);
     expect(operations.recordInboxParseRun).not.toHaveBeenCalled();
   });
 

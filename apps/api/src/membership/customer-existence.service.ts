@@ -9,8 +9,8 @@ export class CustomerExistenceService implements CustomerExistenceReaderPort {
   async customerExists(userStableId: string): Promise<boolean> {
     const user = await this.prisma.user.findUnique({
       where: { userStableId },
-      select: { userStableId: true },
+      select: { role: true },
     });
-    return Boolean(user);
+    return user?.role === 'CUSTOMER';
   }
 }
