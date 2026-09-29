@@ -21,8 +21,10 @@ Record all of the following before changing production state:
 - the intended `main` commit contains R1-R4;
 - required production migrations, if any, were separately authorized/applied;
 - a recent database backup exists under the normal production backup policy;
-- `bash ops/verify-runtime-readiness.sh /etc/sanqin/sanqin.env https://sanq.ca`
-  passes before fault/restart tests;
+- the R4 verification helper is run with the production VM's actual Compose
+  env-file when one is used; do not assume `/etc/sanqin/sanqin.env` because
+  that path was confirmed absent on the active VM during the 2026-09-29 R5
+  verification;
 - no unrelated deployment/provider/payment incident is active.
 
 R1-R4 themselves add no Prisma schema/migration and no Clover/Uber provider
@@ -33,7 +35,9 @@ cutover.
 Capture:
 
 - `git rev-parse HEAD`;
-- `docker compose --env-file /etc/sanqin/sanqin.env ps`;
+- `docker compose ps` using the production VM's existing Compose environment
+  resolution, or the same command with the actual env-file path when one is
+  explicitly required;
 - health state for db/api/ubereats-worker/web;
 - `prisma migrate status` through the R4 verification helper;
 - API `/api/v1/ready`;
@@ -168,30 +172,81 @@ Record:
 Only after every required item is supported by production evidence may the
 Post-A5 Runtime Readiness work be marked `PRODUCTION VERIFIED / CLOSED`.
 
-## 2026-09-29 deployment evidence
+## 2026-09-29 production evidence
 
-Passive production verification after deploying `main@c05f8de7`:
+Production deployment baseline for `main@c05f8de7`:
 
-- production repository: clean `main@c05f8de7`;
+- production repository was clean on `main@c05f8de7`;
 - db/api/ubereats-worker/web were recreated by the deployment and all reached
   Compose `healthy`;
 - PostgreSQL returned to `ready to accept connections`;
 - API registered `/api/v1/live`, `/api/v1/ready`, and
   `/api/v1/health`, then returned repeated `GET /api/v1/ready = 200`;
-- Uber worker health server is listening on `:4001`;
+- Uber worker health server listened on `:4001`;
 - Web reached `Ready`;
-- Prisma history contains 0 unresolved rows
+- Prisma history contained 0 unresolved rows
   (`finished_at IS NULL AND rolled_back_at IS NULL`) and 1 historical
   rolled-back row;
-- bounded startup-log review found no fatal/error/restart-loop evidence.
+- bounded startup-log review found no restart loop.
+
+Active production verification was then performed under explicit user
+authorization:
+
+- **V2 API restart — PASSED.** Restarting only `api` moved it through
+  `health: starting` and back to Compose `healthy`. Nest restarted at
+  14:12:27Z, listened again at 14:12:29Z, and `/api/v1/ready` returned 200
+  afterward. DB, worker, and Web uptimes were unchanged.
+- **V3 Uber worker restart — PASSED.** Restarting only `ubereats-worker`
+  restarted its Nest runtime at 14:14:40Z and restored the health listener at
+  14:14:41Z. `/ready` returned `status=ok` with DB and scheduler checks
+  healthy. `/health` returned `status=degraded`, `readiness=ok` because
+  of 3 pre-existing durable `orderAction` failures; API, DB, and Web uptimes
+  were unchanged.
+- **V4 Web restart — PASSED.** Restarting only Web moved it through
+  `health: starting`; Next started at 14:16:40Z and reported Ready in 332 ms.
+  Local `/health` returned `{"status":"ok","component":"web"}`. API, worker,
+  and DB uptimes were unchanged.
+- **V5 PostgreSQL dependency recovery — PASSED.** PostgreSQL was intentionally
+  stopped at 14:18:46Z and shut down cleanly at 14:18:47Z. API and worker
+  readiness both returned HTTP 503 while the API/worker/Web processes remained
+  running. PostgreSQL was started again at 14:19:12Z and reported
+  `ready to accept connections` at 14:19:12Z. API readiness recovered to 200
+  by 14:19:18Z and worker readiness recovered without restarting either
+  process. Web-local health remained healthy.
+- **V6 degradation semantics — PASSED from live worker evidence.** The 3
+  pre-existing durable `orderAction` failures kept worker operational health
+  at `degraded` while runtime readiness stayed `ok`; no restart loop was
+  triggered.
+- **V7 recreate recovery — SATISFIED by deployment evidence.** The production
+  deployment recreated the application containers and each returned through its
+  own Compose health contract. A second rebuild was not performed solely to
+  duplicate that evidence.
+
+Expected database-dependent processor/API errors were emitted while PostgreSQL
+was deliberately unavailable. They stopped being dependency-outage evidence
+after DB recovery and did not cause process restart loops. One PostgreSQL
+`operator does not exist: uuid = text` ERROR at 14:12:22Z predates V5 and is
+recorded as an unrelated existing anomaly rather than an R5 readiness failure.
+
+Environment-documentation finding:
+
+- the previously documented `/etc/sanqin/sanqin.env` file does not exist on
+  the active production VM;
+- production `docker compose` commands successfully resolved the existing
+  environment when run from the production repository without that explicit
+  path;
+- the R4 helper itself still requires an explicit valid env-file argument, so
+  it was not rerun with the stale path.
 
 Evidence still open:
 
 - independent public `/health`, public BFF -> API readiness, and public menu
   smoke were not independently observable from the available external fetch
   surface;
-- no extra API/worker/Web/DB restart or fault injection was performed because
-  explicit production restart authorization was not given.
+- a final helper-equivalent run using the production VM's actual Compose
+  environment source remains to be recorded.
 
-This evidence is therefore `PRODUCTION DEPLOYED + PASSIVE VERIFIED`, not final
-`PRODUCTION VERIFIED / CLOSED`.
+Current state is therefore
+`PRODUCTION DEPLOYED + ACTIVE RESTART/DEPENDENCY MATRIX VERIFIED`, with final
+`PRODUCTION VERIFIED / CLOSED` intentionally withheld only for the remaining
+public-edge/final-helper evidence.
