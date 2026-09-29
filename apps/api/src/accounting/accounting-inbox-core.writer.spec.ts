@@ -265,10 +265,7 @@ describe('Accounting Inbox core persistence writer', () => {
       },
     ]);
 
-    const result = await purgeDuplicateEmailArtifactsInTx(
-      tx as never,
-      SHA_A,
-    );
+    const result = await purgeDuplicateEmailArtifactsInTx(tx as never, SHA_A);
 
     expect(tx.accountingInboxItem.findMany).toHaveBeenCalledWith(
       expect.objectContaining({

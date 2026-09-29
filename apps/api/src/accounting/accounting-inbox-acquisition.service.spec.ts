@@ -774,9 +774,9 @@ describe('AccountingInboxAcquisitionService', () => {
     expect(registeredInputs[0]?.metadataJson?.gmailPartId).toBe(
       'attachment-part-1',
     );
-    expect(
-      operations.purgeDuplicateEmailArtifacts,
-    ).toHaveBeenCalledWith(registeredInputs[0]?.contentHash);
+    expect(operations.purgeDuplicateEmailArtifacts).toHaveBeenCalledWith(
+      registeredInputs[0]?.contentHash,
+    );
     expect(fs.existsSync(historicalFilePath)).toBe(false);
     expect(providerFinancial.parseForInboxSuggestion).not.toHaveBeenCalled();
     expect(operations.recordInboxParseRun).not.toHaveBeenCalled();

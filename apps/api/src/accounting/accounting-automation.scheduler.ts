@@ -224,7 +224,7 @@ export class AccountingAutomationScheduler
     );
   }
 
-  private async runDailyJobs(settings: AutomationSettings) {
+  private async runDailyJobs(settings: AutomationRuntimeSettings) {
     const gmail = settings.gmailEnabled
       ? await this.gmail.ingestBillsMailbox({
           accountingStartDate: settings.accountingStartDate,

@@ -189,8 +189,7 @@ export class AccountingGmailIngestService {
       'delivered-to',
       'x-original-to',
     ].some((headerName) =>
-      this
-        .header(message.payload?.headers, headerName)
+      (this.header(message.payload?.headers, headerName) ?? '')
         .toLowerCase()
         .includes(normalizedMailbox),
     );

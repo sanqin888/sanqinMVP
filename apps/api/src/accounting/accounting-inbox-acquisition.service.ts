@@ -328,9 +328,9 @@ export class AccountingInboxAcquisitionService {
     let duplicateStorageCleanupComplete: boolean | null = null;
     const duplicateLocalFile = Boolean(
       artifact.duplicateOfArtifactStableId &&
-        (input.acquisitionMode ===
-          AccountingArtifactAcquisitionMode.MANUAL_UPLOAD ||
-          input.acquisitionMode === AccountingArtifactAcquisitionMode.EMAIL),
+      (input.acquisitionMode ===
+        AccountingArtifactAcquisitionMode.MANUAL_UPLOAD ||
+        input.acquisitionMode === AccountingArtifactAcquisitionMode.EMAIL),
     );
     if (artifact.replayed || duplicateLocalFile) {
       duplicateStorageCleanupComplete = await this.removeStoredFile(storedUrl);
