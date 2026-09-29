@@ -831,7 +831,7 @@ The local contraction makes CUSTOMER identity explicit at each existing owner bo
 - Staff role/status administration remains owned by Identity through `/admin/staff`;
 - historical zero-valued LoyaltyAccount rows on non-customer identities are retained rather than destructively cleaned up.
 
-No Prisma/schema/migration, package/lockfile, provider/payment behavior, context direction, scanner allowance or SCC change is included.
+No Prisma/schema/migration, package/lockfile, provider/payment behavior, context direction, scanner allowance/baseline or SCC change is included. The existing Customer-existence scanner owner assertion is updated only to enforce the new role-aware canonical source shape.
 
 ### 7.3 API TypeScript strictness
 
