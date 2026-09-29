@@ -10,6 +10,15 @@ CREATE INDEX "MenuCategory_storeStableId_deletedAt_sortOrder_idx" ON "MenuCatego
 -- CreateIndex
 CREATE INDEX "MenuOptionGroupTemplate_storeStableId_deletedAt_sortOrder_idx" ON "MenuOptionGroupTemplate"("storeStableId", "deletedAt", "sortOrder");
 
+-- Backfill existing brand-level Catalog roots to the current canonical Store.
+UPDATE "MenuCategory"
+SET "storeStableId" = '4750_Yonge_Street'
+WHERE "storeStableId" IS NULL;
+
+UPDATE "MenuOptionGroupTemplate"
+SET "storeStableId" = '4750_Yonge_Street'
+WHERE "storeStableId" IS NULL;
+
 -- AddForeignKey
 ALTER TABLE "MenuCategory" ADD CONSTRAINT "MenuCategory_storeStableId_fkey" FOREIGN KEY ("storeStableId") REFERENCES "Store"("storeStableId") ON DELETE RESTRICT ON UPDATE CASCADE;
 
