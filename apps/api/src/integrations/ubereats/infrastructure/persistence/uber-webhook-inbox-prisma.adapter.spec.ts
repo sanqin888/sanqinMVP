@@ -33,16 +33,13 @@ describe('UberWebhookInboxPrismaAdapter runtime readiness', () => {
     });
   });
 
-  it(
-    'fails DB readiness closed for recovery mode or a database error',
-    async () => {
-      const recovery = jest.fn().mockResolvedValue([{ inRecovery: true }]);
-      const failed = jest.fn().mockRejectedValue(new Error('credential detail'));
+  it('fails DB readiness closed for recovery mode or a database error', async () => {
+    const recovery = jest.fn().mockResolvedValue([{ inRecovery: true }]);
+    const failed = jest.fn().mockRejectedValue(new Error('credential detail'));
 
-      await expect(adapter(recovery).probeDatabase()).resolves.toBe(false);
-      await expect(adapter(failed).probeDatabase()).resolves.toBe(false);
-    },
-  );
+    await expect(adapter(recovery).probeDatabase()).resolves.toBe(false);
+    await expect(adapter(failed).probeDatabase()).resolves.toBe(false);
+  });
 
   it('fails durable degradation telemetry closed to zero counts', async () => {
     const failed = jest.fn().mockRejectedValue(new Error('query detail'));

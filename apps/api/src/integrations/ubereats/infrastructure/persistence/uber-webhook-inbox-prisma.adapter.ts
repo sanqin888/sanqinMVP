@@ -12,9 +12,7 @@ import { UberWorkerConfigService } from '../workers/uber-worker-config.service';
 import { UberTelemetryService } from './uber-telemetry.service';
 import { UberApplicationError } from '../../application/shared/uber-application.error';
 import type { UberJsonValue } from '../../application/shared/uber-json-value';
-import type {
-  UberWorkerRuntimeReadinessPort,
-} from '../../application/shared/uber-worker-runtime-readiness.port';
+import type { UberWorkerRuntimeReadinessPort } from '../../application/shared/uber-worker-runtime-readiness.port';
 
 @Injectable()
 export class UberWebhookInboxPrismaAdapter

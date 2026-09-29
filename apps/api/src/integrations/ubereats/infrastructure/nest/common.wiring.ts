@@ -16,9 +16,7 @@ import { UberApiConfigService } from '../../infrastructure/uber-api/uber-api-con
 import { UberWorkerConfigService } from '../../infrastructure/workers/uber-worker-config.service';
 import { UberWorkerWakeHttpAdapter } from '../../infrastructure/workers/uber-worker-wake-http.adapter';
 import { UBER_WORKER_WAKE_PORT } from '../../application/shared/uber-worker-wake.port';
-import {
-  UBER_WORKER_RUNTIME_READINESS_PORT,
-} from '../../application/shared/uber-worker-runtime-readiness.port';
+import { UBER_WORKER_RUNTIME_READINESS_PORT } from '../../application/shared/uber-worker-runtime-readiness.port';
 import { UberCredentialVaultService } from '../../infrastructure/crypto/uber-credential-vault.service';
 import {
   HmacUberWebhookSignatureVerifier,

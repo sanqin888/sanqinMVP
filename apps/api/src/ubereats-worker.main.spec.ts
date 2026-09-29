@@ -65,34 +65,31 @@ describe('Uber Eats worker health HTTP semantics', () => {
     expect(snapshot).not.toHaveBeenCalled();
   });
 
-  it(
-    'serves degraded provider telemetry as healthy HTTP while runtime remains ready',
-    async () => {
-      const snapshot = jest.fn().mockResolvedValue({
-        status: 'degraded',
-        readiness: 'ok',
-        checks: { database: 'ok', scheduler: 'ok' },
-        thresholds: { maxPollSilenceMs: 3000, maxInFlightAgeMs: 5000 },
-        degradation: {
-          durableFailures: { webhookInbox: 0, orderAction: 1 },
-        },
-        adapters: {},
-      });
-      const health = {
-        readiness: jest.fn(),
-        snapshot,
-      } as unknown as UberWorkerHealthService;
-      const wake = { wake: jest.fn() } as unknown as UberWorkerWakeService;
-      const { res, writeHead } = response();
+  it('serves degraded provider telemetry as healthy HTTP while runtime remains ready', async () => {
+    const snapshot = jest.fn().mockResolvedValue({
+      status: 'degraded',
+      readiness: 'ok',
+      checks: { database: 'ok', scheduler: 'ok' },
+      thresholds: { maxPollSilenceMs: 3000, maxInFlightAgeMs: 5000 },
+      degradation: {
+        durableFailures: { webhookInbox: 0, orderAction: 1 },
+      },
+      adapters: {},
+    });
+    const health = {
+      readiness: jest.fn(),
+      snapshot,
+    } as unknown as UberWorkerHealthService;
+    const wake = { wake: jest.fn() } as unknown as UberWorkerWakeService;
+    const { res, writeHead } = response();
 
-      await handleWorkerHealthRequest(request('/health'), res, health, wake);
+    await handleWorkerHealthRequest(request('/health'), res, health, wake);
 
-      expect(writeHead).toHaveBeenCalledWith(200, {
-        'content-type': 'application/json; charset=utf-8',
-      });
-      expect(snapshot).toHaveBeenCalledTimes(1);
-    },
-  );
+    expect(writeHead).toHaveBeenCalledWith(200, {
+      'content-type': 'application/json; charset=utf-8',
+    });
+    expect(snapshot).toHaveBeenCalledTimes(1);
+  });
 
   it('returns 503 from /health for a local runtime failure', async () => {
     const snapshot = jest.fn().mockResolvedValue({

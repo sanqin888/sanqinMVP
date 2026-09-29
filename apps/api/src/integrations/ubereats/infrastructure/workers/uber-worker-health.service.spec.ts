@@ -1,6 +1,4 @@
-import type {
-  UberWorkerRuntimeReadinessPort,
-} from '../../application/shared/uber-worker-runtime-readiness.port';
+import type { UberWorkerRuntimeReadinessPort } from '../../application/shared/uber-worker-runtime-readiness.port';
 import type { UberWorkerMetrics } from './uber-worker.adapters';
 import { UberWorkerConfigService } from './uber-worker-config.service';
 import { UberWorkerHealthService } from './uber-worker-health.service';
@@ -51,87 +49,78 @@ describe('UberWorkerHealthService', () => {
   beforeEach(() => jest.useFakeTimers().setSystemTime(now));
   afterEach(() => jest.useRealTimers());
 
-  it(
-    'is starting and not ready until every adapter has entered polling',
-    async () => {
-      const health = createHealth([
-        metrics(),
-        metrics({ lastAttemptAt: now, lastSuccessfulAt: now }),
-      ]);
+  it('is starting and not ready until every adapter has entered polling', async () => {
+    const health = createHealth([
+      metrics(),
+      metrics({ lastAttemptAt: now, lastSuccessfulAt: now }),
+    ]);
 
-      await expect(health.snapshot()).resolves.toMatchObject({
-        status: 'starting',
-        checks: { database: 'ok', scheduler: 'starting' },
-      });
-      await expect(health.readiness()).resolves.toMatchObject({
-        status: 'not_ready',
-        checks: { database: 'ok', scheduler: 'starting' },
-      });
-    },
-  );
+    await expect(health.snapshot()).resolves.toMatchObject({
+      status: 'starting',
+      checks: { database: 'ok', scheduler: 'starting' },
+    });
+    await expect(health.readiness()).resolves.toMatchObject({
+      status: 'not_ready',
+      checks: { database: 'ok', scheduler: 'starting' },
+    });
+  });
 
-  it(
-    'is ready and healthy after successful polls on every adapter',
-    async () => {
-      const healthy = metrics({ lastAttemptAt: now, lastSuccessfulAt: now });
+  it('is ready and healthy after successful polls on every adapter', async () => {
+    const healthy = metrics({ lastAttemptAt: now, lastSuccessfulAt: now });
 
-      await expect(
-        createHealth([healthy, healthy]).snapshot(),
-      ).resolves.toMatchObject({
-        status: 'ok',
-        checks: { database: 'ok', scheduler: 'ok' },
-        thresholds: {
-          maxPollSilenceMs: 3000,
-          maxInFlightAgeMs: 5000,
-        },
-      });
-    },
-  );
+    await expect(
+      createHealth([healthy, healthy]).snapshot(),
+    ).resolves.toMatchObject({
+      status: 'ok',
+      checks: { database: 'ok', scheduler: 'ok' },
+      thresholds: {
+        maxPollSilenceMs: 3000,
+        maxInFlightAgeMs: 5000,
+      },
+    });
+  });
 
-  it(
-    'keeps provider failures and business backlog degraded but runtime-ready',
-    async () => {
-      const healthy = metrics({ lastAttemptAt: now, lastSuccessfulAt: now });
-      const providerFailure = metrics({
-        lastAttemptAt: now,
-        lastSuccessfulAt: now,
-        lastFailureAt: now,
-        consecutiveFailures: 10,
-        failures: 10,
-      });
-      const health = createHealth([healthy, providerFailure]);
+  it('keeps provider failures and business backlog degraded but runtime-ready', async () => {
+    const healthy = metrics({ lastAttemptAt: now, lastSuccessfulAt: now });
+    const providerFailure = metrics({
+      lastAttemptAt: now,
+      lastSuccessfulAt: now,
+      lastFailureAt: now,
+      consecutiveFailures: 10,
+      failures: 10,
+    });
+    const health = createHealth([healthy, providerFailure]);
 
-      await expect(health.snapshot()).resolves.toMatchObject({
-        status: 'degraded',
-        checks: { database: 'ok', scheduler: 'ok' },
-      });
-      await expect(health.readiness()).resolves.toMatchObject({
-        status: 'ok',
-      });
+    await expect(health.snapshot()).resolves.toMatchObject({
+      status: 'degraded',
+      checks: { database: 'ok', scheduler: 'ok' },
+    });
+    await expect(health.readiness()).resolves.toMatchObject({
+      status: 'ok',
+    });
 
-      await expect(
-        createHealth([healthy, { ...healthy, backlog: 5 }]).snapshot(),
-      ).resolves.toMatchObject({
-        status: 'degraded',
-        checks: { database: 'ok', scheduler: 'ok' },
-      });
+    await expect(
+      createHealth([healthy, { ...healthy, backlog: 5 }]).snapshot(),
+    ).resolves.toMatchObject({
+      status: 'degraded',
+      checks: { database: 'ok', scheduler: 'ok' },
+    });
 
-      await expect(
-        createHealth(
-          [healthy, healthy],
-          true,
-          {},
-          { webhookInbox: 0, orderAction: 2 },
-        ).snapshot(),
-      ).resolves.toMatchObject({
-        status: 'degraded',
-        readiness: 'ok',
-        degradation: {
-          durableFailures: { webhookInbox: 0, orderAction: 2 },
-        },
-      });
-    },
-  );
+    await expect(
+      createHealth(
+        [healthy, healthy],
+        true,
+        {},
+        { webhookInbox: 0, orderAction: 2 },
+      ).snapshot(),
+    ).resolves.toMatchObject({
+      status: 'degraded',
+      readiness: 'ok',
+      degradation: {
+        durableFailures: { webhookInbox: 0, orderAction: 2 },
+      },
+    });
+  });
 
   it('fails readiness when PostgreSQL is unavailable', async () => {
     const healthy = metrics({ lastAttemptAt: now, lastSuccessfulAt: now });
@@ -146,39 +135,33 @@ describe('UberWorkerHealthService', () => {
     });
   });
 
-  it(
-    'detects a poll that remains in flight beyond the configured threshold',
-    async () => {
-      const stuck = metrics({
-        lastAttemptAt: new Date(now.getTime() - 5001),
-        inFlightStartedAt: new Date(now.getTime() - 5001),
-      });
+  it('detects a poll that remains in flight beyond the configured threshold', async () => {
+    const stuck = metrics({
+      lastAttemptAt: new Date(now.getTime() - 5001),
+      inFlightStartedAt: new Date(now.getTime() - 5001),
+    });
 
-      await expect(
-        createHealth([stuck, stuck]).snapshot(),
-      ).resolves.toMatchObject({
-        status: 'unhealthy',
-        checks: { database: 'ok', scheduler: 'stuck' },
-      });
-    },
-  );
+    await expect(
+      createHealth([stuck, stuck]).snapshot(),
+    ).resolves.toMatchObject({
+      status: 'unhealthy',
+      checks: { database: 'ok', scheduler: 'stuck' },
+    });
+  });
 
-  it(
-    'detects scheduler silence beyond the longest legitimate retry window',
-    async () => {
-      const stale = metrics({
-        lastAttemptAt: new Date(now.getTime() - 3001),
-        lastSuccessfulAt: new Date(now.getTime() - 3001),
-      });
+  it('detects scheduler silence beyond the longest legitimate retry window', async () => {
+    const stale = metrics({
+      lastAttemptAt: new Date(now.getTime() - 3001),
+      lastSuccessfulAt: new Date(now.getTime() - 3001),
+    });
 
-      await expect(
-        createHealth([stale, stale]).snapshot(),
-      ).resolves.toMatchObject({
-        status: 'unhealthy',
-        checks: { database: 'ok', scheduler: 'stuck' },
-      });
-    },
-  );
+    await expect(
+      createHealth([stale, stale]).snapshot(),
+    ).resolves.toMatchObject({
+      status: 'unhealthy',
+      checks: { database: 'ok', scheduler: 'stuck' },
+    });
+  });
 
   it('returns to ok after provider recovery', async () => {
     const recovered = metrics({

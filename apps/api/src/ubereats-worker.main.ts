@@ -81,16 +81,18 @@ export function createHealthServer(
   wake: UberWorkerWakeService,
 ): Server {
   return createServer((request, response) => {
-    void handleWorkerHealthRequest(request, response, health, wake).catch(() => {
-      if (response.headersSent) {
-        response.end();
-        return;
-      }
-      response.writeHead(503, {
-        'content-type': 'application/json; charset=utf-8',
-      });
-      response.end(JSON.stringify({ status: 'unhealthy' }));
-    });
+    void handleWorkerHealthRequest(request, response, health, wake).catch(
+      () => {
+        if (response.headersSent) {
+          response.end();
+          return;
+        }
+        response.writeHead(503, {
+          'content-type': 'application/json; charset=utf-8',
+        });
+        response.end(JSON.stringify({ status: 'unhealthy' }));
+      },
+    );
   });
 }
 

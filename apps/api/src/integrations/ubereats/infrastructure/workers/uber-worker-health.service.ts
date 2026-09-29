@@ -35,8 +35,7 @@ export interface UberWorkerReadiness {
   }>;
 }
 
-export interface UberWorkerHealth
-  extends Omit<UberWorkerReadiness, 'status'> {
+export interface UberWorkerHealth extends Omit<UberWorkerReadiness, 'status'> {
   readonly status: UberWorkerHealthStatus;
   readonly readiness: UberWorkerReadiness['status'];
   readonly degradation: Readonly<{
