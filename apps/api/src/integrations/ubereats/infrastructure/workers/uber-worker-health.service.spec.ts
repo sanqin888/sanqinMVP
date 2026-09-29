@@ -1,4 +1,3 @@
-import type { UberWorkerRuntimeReadinessPort } from '../../application/shared/uber-worker-runtime-readiness.port';
 import type { UberWorkerMetrics } from './uber-worker.adapters';
 import { UberWorkerConfigService } from './uber-worker-config.service';
 import { UberWorkerHealthService } from './uber-worker-health.service';
@@ -43,7 +42,7 @@ describe('UberWorkerHealthService', () => {
       {
         probeDatabase: jest.fn().mockResolvedValue(databaseReady),
         readDurableFailures: jest.fn().mockResolvedValue(durableFailures),
-      } satisfies UberWorkerRuntimeReadinessPort,
+      } as never,
     );
 
   beforeEach(() => jest.useFakeTimers().setSystemTime(now));
