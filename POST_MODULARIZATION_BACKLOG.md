@@ -792,20 +792,20 @@ Keep A5 closed. Do not combine this follow-up with Next/Prisma upgrades, cache-p
 
 Priority: **P2**  
 Complexity: **M**  
-Recommended after: §3.3 pnpm pin
+Recommended after: §3.3 pnpm pin  
+State: **R1 LOCAL SOURCE READY FOR REVIEW / R2-R5 NOT STARTED / NO MIGRATION / NO DEPENDENCY / NO PROVIDER CUTOVER**
 
-Compose currently relies on process/container start plus basic `depends_on`; there is no repository-wide application readiness contract.
+The read-only Post-A5 audit confirmed that Compose still relies on process/container start plus basic `depends_on`; there is no repository-wide application readiness contract. R1 establishes the first canonical API contract before any Docker/Compose traffic gate is added:
 
-Design meaningful readiness before adding YAML-only healthchecks:
+- `GET /api/v1/live` is process/HTTP liveness only and deliberately performs no DB, filesystem or provider probe;
+- `GET /api/v1/ready` is API application readiness and requires an authenticated PostgreSQL query while the database is not in recovery plus readable/writable local `UPLOAD_ROOT`;
+- the existing `GET /api/v1/health` remains a backward-compatible readiness alias until R4 moves CI/browser/deploy consumers explicitly;
+- Clover, Uber, SendGrid/Twilio, AWS, Google and Gmail are explicitly excluded from whole-API readiness so provider outages remain capability-level degradation rather than traffic-ejection triggers;
+- migration execution/status reconciliation remains a deploy gate, not an HTTP health side effect.
 
-- database readiness;
-- API readiness including critical dependency policy;
-- Web readiness;
-- Uber worker health semantics;
-- Compose startup dependency behavior;
-- deploy verification aligned with the same contract.
+The new source owner is the existing `runtime-data-ci-ops` context under `apps/api/src/runtime`. The architecture context registry only adds that path to the existing context; no new context, dependency direction, direct-import allowance or SCC is introduced.
 
-Do not equate “process exists” with “ready to receive traffic”.
+R2 still owns worker live/ready/degraded semantics; R3 owns Docker/Compose health and startup gating; R4 owns CI/deploy verification alignment; R5 owns production restart/failure-mode verification and documentation closeout. Do not equate “process exists” with “ready to receive traffic”.
 
 ### 7.2 Admin Members STAFF/ADMIN test-overlap cleanup
 

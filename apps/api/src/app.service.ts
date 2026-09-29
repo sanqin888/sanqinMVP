@@ -10,11 +10,4 @@ export class AppService {
       version: getApiPrefix(),
     };
   }
-
-  health() {
-    return {
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-    };
-  }
 }

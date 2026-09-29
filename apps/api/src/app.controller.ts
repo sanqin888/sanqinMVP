@@ -10,10 +10,4 @@ export class AppController {
   root() {
     return this.appService.root();
   }
-
-  /** GET /api/v1/health */
-  @Get('health')
-  health() {
-    return this.appService.health();
-  }
 }
