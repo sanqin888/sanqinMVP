@@ -1,6 +1,6 @@
 # Accounting Document Recognition & Human Review Plan
 
-Status: **SLICE 0-3 + 3V-A + 3V-B DEV MERGED / CI GREEN / 3V-B PRODUCTION VERIFICATION PENDING / EVIDENCE VIEWER SLICE 1 + 1B + 2 MERGED / RELIABILITY SLICE A + B MERGED / EXPENSE REVIEW HARDENING MERGED / ORIGINAL SLICE C UX CLOSEOUT MERGED (#2445 / `da77b9a5`, CI #6074 GREEN) / GMAIL DUPLICATE BINARY RETENTION HARDENING LOCAL SOURCE + REVIEW PENDING — NO MIGRATION — DO NOT REOPEN PHASE 9**  
+Status: **SLICE 0-3 + 3V-A + 3V-B DEV MERGED / CI GREEN / 3V-B PRODUCTION VERIFICATION PENDING / EVIDENCE VIEWER SLICE 1 + 1B + 2 MERGED / RELIABILITY SLICE A + B MERGED / EXPENSE REVIEW HARDENING MERGED / ORIGINAL SLICE C UX CLOSEOUT MERGED (#2445 / `da77b9a5`, CI #6074 GREEN) / GMAIL DUPLICATE BINARY RETENTION HARDENING PR #2603 / CI PENDING — NO MIGRATION — DO NOT REOPEN PHASE 9**  
 Planning date: 2026-09-20; updated: 2026-09-29  
 Audit baseline: `origin/dev@1ede0599`; Slice 3 merged in PR #2432 as `caabf1c1`; Slice 3V-A merged in PR #2439 as `0d6909bb` after PR CI #6054 and merged-head CI #6055 passed; Slice 3V-B merged in PR #2440 as `0ac9117f` after final head `3c5c0400`, PR CI #6057 and merged-head CI #6058 green  
 Owner: **Accounting / Reporting / Analytics**  
@@ -1208,9 +1208,9 @@ financial facts. Retain source/review evidence.
 
 ### 14.1 2026-09-29 Gmail duplicate binary retention / transport-id hardening
 
-**State:** local source on `fix/accounting-email-duplicate-binary-retention` from
-`origin/dev@6a48bf24`; user review pending. Per `AGENTS.md`, focused specs were added but no
-local lint/build/Jest/scanner command is claimed before review.
+**State:** PR #2603 opened from `fix/accounting-email-duplicate-binary-retention`; final head pending CI. Baseline is
+`origin/dev@6a48bf24`. Per `AGENTS.md`, focused specs were added but no local
+lint/build/Jest/scanner command is claimed before review.
 
 Read-only production evidence showed a concrete retention/idempotency defect in the common
 Accounting Inbox: byte-identical SendGrid invoice PDFs already confirmed through manual upload
