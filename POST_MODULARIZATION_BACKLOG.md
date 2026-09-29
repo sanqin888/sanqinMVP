@@ -793,7 +793,7 @@ Keep A5 closed. Do not combine this follow-up with Next/Prisma upgrades, cache-p
 Priority: **P2**  
 Complexity: **M**  
 Recommended after: §3.3 pnpm pin  
-State: **R1 LOCAL SOURCE READY FOR REVIEW / R2-R5 NOT STARTED / NO MIGRATION / NO DEPENDENCY / NO PROVIDER CUTOVER**
+State: **R1 MERGED + CI GREEN (#2592 / `c6b14c34` / CI #6565) / R2 LOCAL SOURCE READY FOR REVIEW / R3-R5 NOT STARTED / NO MIGRATION / NO DEPENDENCY / NO PROVIDER CUTOVER**
 
 The read-only Post-A5 audit confirmed that Compose still relies on process/container start plus basic `depends_on`; there is no repository-wide application readiness contract. R1 establishes the first canonical API contract before any Docker/Compose traffic gate is added:
 
@@ -805,7 +805,9 @@ The read-only Post-A5 audit confirmed that Compose still relies on process/conta
 
 The new source owner is the existing `runtime-data-ci-ops` context under `apps/api/src/runtime`. The architecture context registry only adds that path to the existing context; no new context, dependency direction, direct-import allowance or SCC is introduced.
 
-R2 still owns worker live/ready/degraded semantics; R3 owns Docker/Compose health and startup gating; R4 owns CI/deploy verification alignment; R5 owns production restart/failure-mode verification and documentation closeout. Do not equate “process exists” with “ready to receive traffic”.
+R2 now separates the dedicated Uber worker semantics without changing Compose: `/live` remains process-only; `/ready` requires PostgreSQL primary availability plus both durable schedulers having entered polling and not being stuck; `/health` keeps rich `starting | ok | degraded | unhealthy` telemetry. Adapter poll failures, durable FAILED webhook/action work and backlog are degradation signals only and no longer make runtime readiness fail by failure-count or stale-success heuristics. A new in-flight heartbeat plus bounded max-poll duration detects a first poll that hangs before any success, while scheduler-silence detection tolerates the longest configured retry/backoff window. Durable degradation is read from PostgreSQL; the worker continues to call no Uber provider from its health routes.
+
+R3 owns Docker/Compose health and startup gating; R4 owns CI/deploy verification alignment; R5 owns production restart/failure-mode verification and documentation closeout. Do not equate “process exists” with “ready to receive traffic”.
 
 ### 7.2 Admin Members STAFF/ADMIN test-overlap cleanup
 

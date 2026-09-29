@@ -401,6 +401,17 @@ describe('Uber Eats bounded-context architecture', () => {
     ]);
   });
 
+  it('keeps worker health local and provider-independent', () => {
+    const file = boundedContextFiles.find(({ path }) =>
+      path.endsWith('infrastructure/workers/uber-worker-health.service.ts'),
+    );
+    expect(file).toBeDefined();
+    expect(file!.source).toContain('UBER_WORKER_RUNTIME_READINESS_PORT');
+    expect(file!.source).not.toMatch(
+      /UberHttpClient|UberApiGateway|infrastructure\/persistence|\bfetch\s*\(/,
+    );
+  });
+
   it('keeps capability ports vertical and forbids aggregate port facades', () => {
     expect(existsSync(join(BOUNDED_CONTEXT_ROOT, 'application', 'ports'))).toBe(
       false,
