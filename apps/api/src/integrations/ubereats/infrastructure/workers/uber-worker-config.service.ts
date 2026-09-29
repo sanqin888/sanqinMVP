@@ -19,6 +19,8 @@ export class UberWorkerConfigService {
   readonly workerLeaseDurationMs: number;
   readonly workerShutdownTimeoutMs: number;
   readonly workerUnhealthyFailureThreshold: number;
+  readonly workerSchedulerSilenceMultiplier: number;
+  readonly workerMaxPollDurationMs: number;
   readonly workerPolicies: Readonly<Record<UberWorkerKind, UberWorkerPolicy>>;
 
   constructor(env: Record<string, string | undefined> = process.env) {
@@ -64,9 +66,18 @@ export class UberWorkerConfigService {
       100,
       600_000,
     );
+    // Retained for runtime-config compatibility. R2 no longer treats
+    // provider/poll failure counts as worker readiness failures.
     this.workerUnhealthyFailureThreshold = this.integer(
       env,
       'UBER_EATS_WORKER_UNHEALTHY_FAILURE_THRESHOLD',
+      3,
+      1,
+      100,
+    );
+    this.workerSchedulerSilenceMultiplier = this.integer(
+      env,
+      'UBER_EATS_WORKER_SCHEDULER_SILENCE_MULTIPLIER',
       3,
       1,
       100,
@@ -75,6 +86,18 @@ export class UberWorkerConfigService {
       webhookInbox: this.policy(env, 'WEBHOOK_INBOX'),
       orderAction: this.policy(env, 'ORDER_ACTION'),
     });
+    const longestLaneSize = Math.max(
+      ...Object.values(this.workerPolicies).map((policy) =>
+        Math.ceil(this.workerBatchSize / policy.concurrency),
+      ),
+    );
+    this.workerMaxPollDurationMs = this.milliseconds(
+      env,
+      'UBER_EATS_WORKER_MAX_POLL_DURATION_MS',
+      this.workerLeaseDurationMs * longestLaneSize,
+      1_000,
+      Number.MAX_SAFE_INTEGER,
+    );
     this.validateLeaseBudget(env);
   }
 

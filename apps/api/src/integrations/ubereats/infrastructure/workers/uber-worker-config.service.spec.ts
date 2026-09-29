@@ -6,6 +6,12 @@ describe('UberWorkerConfigService lease budget', () => {
     expect(config.workerWakeFallbackPollIntervalMs).toBe(30_000);
   });
 
+  it('derives conservative scheduler stuck thresholds by default', () => {
+    const config = new UberWorkerConfigService({});
+    expect(config.workerSchedulerSilenceMultiplier).toBe(3);
+    expect(config.workerMaxPollDurationMs).toBe(3_000_000);
+  });
+
   it('normalizes the optional worker wake URL', () => {
     const config = new UberWorkerConfigService({
       UBER_EATS_WORKER_WAKE_URL: 'http://ubereats-worker:4001/',

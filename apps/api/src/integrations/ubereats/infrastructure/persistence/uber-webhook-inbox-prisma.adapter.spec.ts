@@ -5,6 +5,55 @@ jest.mock('@prisma/client', () => ({
 
 import { UberWebhookInboxPrismaAdapter } from './uber-webhook-inbox-prisma.adapter';
 
+describe('UberWebhookInboxPrismaAdapter runtime readiness', () => {
+  const adapter = (queryRaw: jest.Mock) =>
+    new UberWebhookInboxPrismaAdapter(
+      { $queryRaw: queryRaw } as never,
+      { workerLeaseDurationMs: 30_000 } as never,
+    );
+
+  it('keeps DB readiness lightweight and primary-only', async () => {
+    const queryRaw = jest.fn().mockResolvedValue([{ inRecovery: false }]);
+
+    await expect(adapter(queryRaw).probeDatabase()).resolves.toBe(true);
+    expect(queryRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads durable failure counts only for health degradation', async () => {
+    const queryRaw = jest.fn().mockResolvedValue([
+      {
+        webhookFailures: 2,
+        orderActionFailures: 3,
+      },
+    ]);
+
+    await expect(adapter(queryRaw).readDurableFailures()).resolves.toEqual({
+      webhookInbox: 2,
+      orderAction: 3,
+    });
+  });
+
+  it(
+    'fails DB readiness closed for recovery mode or a database error',
+    async () => {
+      const recovery = jest.fn().mockResolvedValue([{ inRecovery: true }]);
+      const failed = jest.fn().mockRejectedValue(new Error('credential detail'));
+
+      await expect(adapter(recovery).probeDatabase()).resolves.toBe(false);
+      await expect(adapter(failed).probeDatabase()).resolves.toBe(false);
+    },
+  );
+
+  it('fails durable degradation telemetry closed to zero counts', async () => {
+    const failed = jest.fn().mockRejectedValue(new Error('query detail'));
+
+    await expect(adapter(failed).readDurableFailures()).resolves.toEqual({
+      webhookInbox: 0,
+      orderAction: 0,
+    });
+  });
+});
+
 describe('UberWebhookInboxPrismaAdapter claim concurrency', () => {
   it('keeps same-order events ordered while allowing other resources', async () => {
     let sql = '';
