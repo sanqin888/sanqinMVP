@@ -3611,6 +3611,15 @@ is claimed per repository workflow.
 
 **Details:** `ACCOUNTING_PRODUCT_ROADMAP.md`, `docs/architecture/current-dependency-graph.md`, `apps/web/src/app/[locale]/(site)/accounting/{provider-financial-summary.ts,accounting-evidence-preview-surface.tsx,accounting-evidence-file-manager.tsx,accounting-evidence-viewer.tsx,inbox/**,settlements/page.tsx}`, focused Web tests, and this worklog.
 
+### 2026-09-28 — Post-A5 Runtime Readiness R1 canonical API health semantics
+
+**State:** **LOCAL SOURCE READY FOR REVIEW / R1 ONLY / R2-R5 NOT STARTED / NO MIGRATION / NO DEPENDENCY / NO PROVIDER CUTOVER** on `feat/post-a5-runtime-readiness-r1` from `origin/dev@bf85c79f`. Phase 9 remains CLOSED and A5 remains CLOSED.  
+**Readiness contract:** Runtime/Data/CI/Ops now owns `GET /api/v1/live`, `GET /api/v1/ready` and the existing `GET /api/v1/health` compatibility alias. Liveness is dependency-free. Readiness returns HTTP 200 only when an authenticated PostgreSQL probe succeeds while `pg_is_in_recovery() = false` and the configured `UPLOAD_ROOT` is readable/writable; otherwise it returns HTTP 503 through the normal API response envelope. Probe output exposes only `ok/failed` dependency state, never DB credentials/errors or filesystem paths.  
+**Critical-dependency policy:** external Clover, Uber, SendGrid/Twilio, AWS, Google and Gmail reachability is deliberately absent from API readiness. Provider outages remain capability-level degraded telemetry and must not eject the entire SanQ API. Migration execution/parity is also not performed by the HTTP probe; unresolved/pending migration safety remains a deployment verification gate for R4 rather than a request-time Prisma CLI side effect.  
+**Compatibility/CI:** current CI and A5 browser startup still call `/api/v1/health`; R1 keeps that route as an alias of canonical readiness so no workflow edit is bundled here. R4 will later move API startup to `/ready`, give Web its own health contract and separate Web→BFF→API system smoke from process admission. Compose `depends_on`, Docker healthchecks, worker semantics and nginx are unchanged.  
+**Architecture/tests:** add focused runtime controller/service tests plus an architecture guard preventing external-provider or migration-command coupling. `apps/api/src/runtime` is registered under the already-existing `runtime-data-ci-ops` scanner context; this is classification of the authorized Runtime owner, not a new context or direct-import allowance. No SCC/context direction, Prisma schema/migration, package/lockfile, PWA, Web Clover, Orders/Payments/Auth/POS ownership or provider runtime change. Per `AGENTS.md`, no local lint/build/test is run before user review; GitHub Actions remains the authoritative validation gate after remote authorization.  
+**Details:** `apps/api/src/runtime/**`, `apps/api/src/app.module.ts`, `tools/architecture/context-baseline.json`, `POST_MODULARIZATION_BACKLOG.md`, `docs/architecture/current-dependency-graph.md`, this worklog.
+
 ## Rule for future entries
 
 For each modularization code batch, append exactly one chronological entry before
