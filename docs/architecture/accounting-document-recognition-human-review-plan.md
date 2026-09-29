@@ -1,6 +1,6 @@
 # Accounting Document Recognition & Human Review Plan
 
-Status: **SLICE 0-3 + 3V-A + 3V-B DEV MERGED / CI GREEN / 3V-B PRODUCTION VERIFICATION PENDING / EVIDENCE VIEWER SLICE 1 + 1B + 2 MERGED / RELIABILITY SLICE A + B MERGED / EXPENSE REVIEW HARDENING MERGED / ORIGINAL SLICE C UX CLOSEOUT MERGED (#2445 / `da77b9a5`, CI #6074 GREEN) / GMAIL DUPLICATE BINARY RETENTION HARDENING PR #2603 / CI PENDING — NO MIGRATION — DO NOT REOPEN PHASE 9**  
+Status: **SLICE 0-3 + 3V-A + 3V-B DEV MERGED / CI GREEN / 3V-B PRODUCTION VERIFICATION PENDING / EVIDENCE VIEWER SLICE 1 + 1B + 2 MERGED / RELIABILITY SLICE A + B MERGED / EXPENSE REVIEW HARDENING MERGED / ORIGINAL SLICE C UX CLOSEOUT MERGED (#2445 / `da77b9a5`, CI #6074 GREEN) / GMAIL INCREMENTAL + DUPLICATE FILE ARTIFACT FOLLOW-UP LOCAL / MIGRATION REQUIRED — DO NOT REOPEN PHASE 9**  
 Planning date: 2026-09-20; updated: 2026-09-29  
 Audit baseline: `origin/dev@1ede0599`; Slice 3 merged in PR #2432 as `caabf1c1`; Slice 3V-A merged in PR #2439 as `0d6909bb` after PR CI #6054 and merged-head CI #6055 passed; Slice 3V-B merged in PR #2440 as `0ac9117f` after final head `3c5c0400`, PR CI #6057 and merged-head CI #6058 green  
 Owner: **Accounting / Reporting / Analytics**  
@@ -1208,44 +1208,39 @@ financial facts. Retain source/review evidence.
 
 ### 14.1 2026-09-29 Gmail duplicate binary retention / transport-id hardening
 
-**State:** PR #2603 opened from `fix/accounting-email-duplicate-binary-retention`; final head pending CI. Baseline is
-`origin/dev@6a48bf24`. Per `AGENTS.md`, focused specs were added but no local
-lint/build/Jest/scanner command is claimed before review.
+**State:** PR #2603 merged as `bce195de` after CI #6596 passed and was deployed. Production
+verification then exposed a persisted invariant mismatch: `AccountingSourceArtifact_storage_check`
+requires PDF/IMAGE/CSV artifacts to retain a non-empty `storedUrl`, so the PR #2603 strategy of
+persisting a duplicate file artifact with `storedUrl = null` fails closed at the database. The
+current follow-up is LOCAL on `fix/accounting-gmail-incremental-dedupe`; per `AGENTS.md`, no
+local lint/build/Jest/scanner command is claimed before review.
 
-Read-only production evidence showed a concrete retention/idempotency defect in the common
-Accounting Inbox: byte-identical SendGrid invoice PDFs already confirmed through manual upload
-were re-acquired from the same Gmail messages on later intake runs. Content SHA correctly marked
-the Gmail copies `DUPLICATE`, but the Gmail `attachmentId` changed between pulls, so the old
-transport identity created another SourceArtifact and each duplicate retained its own
-`storedUrl` binary. The canonical manual Expense/Journal evidence itself was not duplicated.
+The follow-up preserves the existing Accounting L3 ownership while changing duplicate-file
+retention semantics and Gmail polling:
 
-The source hardening keeps the existing three-identity model and Accounting L3 ownership:
+- Content SHA remains the duplicate identity. For MANUAL_UPLOAD or EMAIL file evidence whose bytes
+  already match an existing SourceArtifact, Accounting does **not** create another PDF/IMAGE/CSV
+  SourceArtifact or InboxItem. The just-stored temporary file is deleted, the canonical artifact is
+  returned as the duplicate target, and `SKIP_DUPLICATE_FILE_ARTIFACT` audit metadata preserves
+  transport identity, filename, sender/subject and Gmail message/part metadata.
+- Existing historical Gmail `DUPLICATE` file artifacts are purged only when unmaterialized and
+  free of ParseRun, evidence-folder, provider-financial, provider bank-row, derivative-retention or
+  reverse duplicate references. Purge writes `PURGE_DUPLICATE_EMAIL_ARTIFACT` audit evidence,
+  then removes the duplicate InboxItem/SourceArtifact and its exact redundant physical file.
+  Protected rows and the canonical/original artifact remain untouched.
+- Gmail attachment transport identity still prefers `messageId + MIME partId`, with content hash
+  fallback when Gmail omits `partId`.
+- Gmail polling becomes incremental. A nullable `AccountingAutomationConfig.gmailHistoryId`
+  stores the Gmail history watermark. With no cursor, Accounting performs the existing
+  `accountingStartDate` bootstrap and captures a history watermark; later runs request only
+  history changes for the `SanQ-Bills` label. Any ingestion failure prevents cursor advancement.
+  A Gmail-expired history cursor fails safe to bounded bootstrap. Changing the accounting start
+  date resets the cursor so the new boundary is bootstrapped deliberately.
 
-- Gmail attachment transport identity is now `messageId + MIME partId` when Gmail supplies a
-  stable part ID; raw content SHA remains the separate content identity. A content-derived
-  transport fallback is used only when Gmail omits `partId`.
-- A newly registered EMAIL file whose content already exists remains an explicit
-  `AccountingInboxStatus.DUPLICATE` SourceArtifact/Inbox audit record, but the redundant local
-  binary is released immediately and the duplicate artifact persists with `storedUrl = null`.
-  This extends the already-established manual-upload duplicate retention rule to Gmail files;
-  EMAIL_BODY evidence is unchanged because it has no stored binary.
-- When a duplicate Gmail attachment is encountered, Accounting also contracts historical
-  same-content EMAIL duplicate binaries. Cleanup is fail-closed to unmaterialized DUPLICATE rows
-  with no ParseRun, Evidence-folder assignment, provider-financial document, bank-row decision,
-  retained/candidate image derivative or other protected materialization. The canonical/original
-  artifact and duplicate audit metadata remain intact, and each released binary is audited under
-  `system:accounting-gmail-duplicate-cleanup`.
-- Physical-file deletion remains in the existing Accounting acquisition/storage boundary; the
-  existing Inbox core writer only clears safe duplicate `storedUrl` references and returns the exact
-  retained paths for bounded cleanup. No Gmail hard-delete UI is added because Gmail transport/audit
-  evidence remains system-owned rather than operator-deletable temporary evidence.
-
-No Prisma/schema/migration, package/lockfile, Journal, Expense posting, provider parser, trusted
-sender policy, public HTTP route, context edge, scanner allowance or Phase 9 status changes. After
-deployment, one enabled Gmail intake run is sufficient to exercise the historical cleanup for
-re-acquired duplicate content; production verification should confirm the duplicate Gmail rows
-remain traceable with null `storedUrl`, their redundant files are absent, and the confirmed
-canonical Expense evidence remains unchanged.
+The SourceArtifact storage invariant is **not** relaxed. The only Prisma change is the additive
+nullable Gmail history cursor, so a user-generated migration is required before production
+promotion. No package/lockfile, Journal/Expense authority, provider parser, trusted-sender policy,
+public HTTP route, context edge, scanner allowance or Phase 9 status changes.
 
 ## 15. Decisions intentionally left open
 

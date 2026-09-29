@@ -119,6 +119,13 @@ describe('AccountingGmailIngestService unified Inbox cutover', () => {
           }),
         );
       }
+      if (url.endsWith('/gmail/v1/users/me/profile')) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ historyId: 'history-bootstrap-1' }), {
+            status: 200,
+          }),
+        );
+      }
       if (url.includes('/gmail/v1/users/me/messages?')) {
         return Promise.resolve(
           new Response(JSON.stringify({ messages: [{ id: 'message-1' }] }), {
@@ -159,6 +166,8 @@ describe('AccountingGmailIngestService unified Inbox cutover', () => {
         importedDocuments: 2,
         duplicateDocuments: 0,
         failedDocuments: 0,
+        syncMode: 'BOOTSTRAP',
+        nextHistoryId: 'history-bootstrap-1',
       }),
     );
     expect(operations.senderTrustDecision).toHaveBeenCalledWith(
@@ -240,6 +249,13 @@ describe('AccountingGmailIngestService unified Inbox cutover', () => {
           }),
         );
       }
+      if (url.endsWith('/gmail/v1/users/me/profile')) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ historyId: 'history-bootstrap-1' }), {
+            status: 200,
+          }),
+        );
+      }
       if (url.includes('/gmail/v1/users/me/messages?')) {
         listUrl = url;
         return Promise.resolve(
@@ -272,6 +288,8 @@ describe('AccountingGmailIngestService unified Inbox cutover', () => {
         scannedMessages: 1,
         importedDocuments: 1,
         skippedBeforeStartDate: 0,
+        syncMode: 'BOOTSTRAP',
+        nextHistoryId: 'history-bootstrap-1',
       }),
     );
     expect(operations.senderTrustDecision).not.toHaveBeenCalled();
@@ -282,6 +300,214 @@ describe('AccountingGmailIngestService unified Inbox cutover', () => {
       }),
       expect.stringContaining('097NYJ27P2HZM'),
       AccountingInboxTrustDecision.TRUSTED,
+    );
+  });
+
+  it('uses Gmail historyId for incremental sync and advances only to the returned history watermark', async () => {
+    const acquisition = {
+      acquireEmailBody: jest
+        .fn()
+        .mockResolvedValue(
+          artifactResult(
+            'acctart_incremental',
+            AccountingArtifactKind.EMAIL_BODY,
+          ),
+        ),
+      acquireEmailAttachment: jest.fn(),
+    };
+    const operations = {
+      senderTrustDecision: jest
+        .fn()
+        .mockResolvedValue(AccountingInboxTrustDecision.TRUSTED),
+    };
+    const message = {
+      id: 'message-incremental',
+      internalDate: String(new Date('2026-09-29T15:00:00.000Z').getTime()),
+      payload: {
+        headers: [
+          { name: 'To', value: 'SanQ Bills <bills@sanq.ca>' },
+          { name: 'From', value: 'Vendor <vendor@example.com>' },
+          { name: 'Subject', value: 'New invoice' },
+        ],
+        parts: [
+          {
+            partId: 'body',
+            mimeType: 'text/plain',
+            filename: '',
+            body: { data: toBase64Url('Invoice total $12.34') },
+          },
+        ],
+      },
+    };
+    const labeledMessage = {
+      ...message,
+      id: 'message-labeled',
+      labelIds: ['Label_123'],
+      payload: {
+        ...message.payload,
+        headers: [
+          { name: 'To', value: 'owner@example.com' },
+          { name: 'From', value: 'Vendor <vendor@example.com>' },
+          { name: 'Subject', value: 'Labeled invoice' },
+        ],
+      },
+    };
+    let historyUrl = '';
+
+    jest.spyOn(global, 'fetch').mockImplementation((input) => {
+      const url =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+      if (url === 'https://oauth2.googleapis.com/token') {
+        return Promise.resolve(
+          new Response(JSON.stringify({ access_token: 'test-access-token' }), {
+            status: 200,
+          }),
+        );
+      }
+      if (url.endsWith('/gmail/v1/users/me/labels')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              labels: [{ id: 'Label_123', name: 'SanQ-Bills' }],
+            }),
+            { status: 200 },
+          ),
+        );
+      }
+      if (url.includes('/gmail/v1/users/me/history?')) {
+        historyUrl = url;
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              history: [
+                {
+                  messagesAdded: [
+                    { message: { id: 'message-incremental' } },
+                    { message: { id: 'message-labeled' } },
+                  ],
+                },
+              ],
+              historyId: 'history-101',
+            }),
+            { status: 200 },
+          ),
+        );
+      }
+      if (url.includes('/messages/message-incremental?format=full')) {
+        return Promise.resolve(
+          new Response(JSON.stringify(message), { status: 200 }),
+        );
+      }
+      if (url.includes('/messages/message-labeled?format=full')) {
+        return Promise.resolve(
+          new Response(JSON.stringify(labeledMessage), { status: 200 }),
+        );
+      }
+      return Promise.resolve(new Response('not found', { status: 404 }));
+    });
+
+    const service = new AccountingGmailIngestService(
+      acquisition as never,
+      operations as never,
+    );
+    const result = await service.ingestBillsMailbox({
+      accountingStartDate: '2026-06-01',
+      timezone: 'America/Toronto',
+      historyId: 'history-100',
+    });
+
+    expect(decodeURIComponent(historyUrl)).toContain(
+      'startHistoryId=history-100',
+    );
+    expect(decodeURIComponent(historyUrl)).not.toContain('labelId=');
+    expect(result).toEqual(
+      expect.objectContaining({
+        syncMode: 'INCREMENTAL',
+        scannedMessages: 2,
+        importedDocuments: 2,
+        failedDocuments: 0,
+        nextHistoryId: 'history-101',
+      }),
+    );
+  });
+
+  it('falls back to bounded bootstrap when Gmail rejects an expired history cursor', async () => {
+    const acquisition = {
+      acquireEmailBody: jest.fn(),
+      acquireEmailAttachment: jest.fn(),
+    };
+    const operations = {
+      senderTrustDecision: jest.fn(),
+    };
+    let bootstrapListCalled = false;
+
+    jest.spyOn(global, 'fetch').mockImplementation((input) => {
+      const url =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+      if (url === 'https://oauth2.googleapis.com/token') {
+        return Promise.resolve(
+          new Response(JSON.stringify({ access_token: 'test-access-token' }), {
+            status: 200,
+          }),
+        );
+      }
+      if (url.endsWith('/gmail/v1/users/me/labels')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              labels: [{ id: 'Label_123', name: 'SanQ-Bills' }],
+            }),
+            { status: 200 },
+          ),
+        );
+      }
+      if (url.includes('/gmail/v1/users/me/history?')) {
+        return Promise.resolve(
+          new Response('expired historyId', { status: 404 }),
+        );
+      }
+      if (url.endsWith('/gmail/v1/users/me/profile')) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ historyId: 'history-reset' }), {
+            status: 200,
+          }),
+        );
+      }
+      if (url.includes('/gmail/v1/users/me/messages?')) {
+        bootstrapListCalled = true;
+        return Promise.resolve(
+          new Response(JSON.stringify({ messages: [] }), { status: 200 }),
+        );
+      }
+      return Promise.resolve(new Response('not found', { status: 404 }));
+    });
+
+    const service = new AccountingGmailIngestService(
+      acquisition as never,
+      operations as never,
+    );
+    const result = await service.ingestBillsMailbox({
+      accountingStartDate: '2026-06-01',
+      timezone: 'America/Toronto',
+      historyId: 'history-expired',
+    });
+
+    expect(bootstrapListCalled).toBe(true);
+    expect(result).toEqual(
+      expect.objectContaining({
+        syncMode: 'BOOTSTRAP',
+        scannedMessages: 0,
+        failedDocuments: 0,
+        nextHistoryId: 'history-reset',
+      }),
     );
   });
 });

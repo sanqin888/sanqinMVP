@@ -326,28 +326,24 @@ export class AccountingInboxAcquisitionService {
 
     let effectiveStoredUrl = artifact.replayed ? artifact.storedUrl : storedUrl;
     let duplicateStorageCleanupComplete: boolean | null = null;
-    const duplicateLocalBinary =
-      artifact.inboxItem?.status === AccountingInboxStatus.DUPLICATE &&
+    const duplicateLocalFile = Boolean(
+      artifact.duplicateOfArtifactStableId &&
       (input.acquisitionMode ===
         AccountingArtifactAcquisitionMode.MANUAL_UPLOAD ||
-        input.acquisitionMode === AccountingArtifactAcquisitionMode.EMAIL);
-    if (artifact.replayed) {
-      const replayCleanupComplete = await this.removeStoredFile(storedUrl);
-      if (duplicateLocalBinary) {
-        duplicateStorageCleanupComplete = replayCleanupComplete;
-      }
-    } else if (duplicateLocalBinary) {
+        input.acquisitionMode === AccountingArtifactAcquisitionMode.EMAIL),
+    );
+    if (artifact.replayed || duplicateLocalFile) {
       duplicateStorageCleanupComplete = await this.removeStoredFile(storedUrl);
-      effectiveStoredUrl = null;
+      if (duplicateLocalFile) effectiveStoredUrl = null;
     }
 
     if (
       input.acquisitionMode === AccountingArtifactAcquisitionMode.EMAIL &&
-      artifact.inboxItem?.status === AccountingInboxStatus.DUPLICATE
+      artifact.duplicateOfArtifactStableId
     ) {
       try {
         const historicalCleanup =
-          await this.inbox.releaseDuplicateEmailArtifactBinaries(contentHash);
+          await this.inbox.purgeDuplicateEmailArtifacts(contentHash);
         let historicalStorageCleanupComplete = true;
         for (const historicalStoredUrl of historicalCleanup.storedUrls) {
           if (!(await this.removeStoredFile(historicalStoredUrl))) {
@@ -365,7 +361,7 @@ export class AccountingInboxAcquisitionService {
           );
         }
         if (
-          historicalCleanup.releasedArtifactStableIds.includes(
+          historicalCleanup.purgedArtifactStableIds.includes(
             artifact.artifactStableId,
           )
         ) {
