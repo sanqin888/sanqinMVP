@@ -46,11 +46,12 @@ describe('Runtime readiness architecture', () => {
     expect(worker).toContain('condition: service_healthy');
   });
 
-  it('does not promote Web/API coupling into a readiness dependency before R4', () => {
+  it('keeps Web health local while avoiding Web/API readiness coupling', () => {
     const web = composeSource.slice(composeSource.indexOf('  web:'));
 
+    expect(web).toContain("fetch('http://127.0.0.1:3000/health')");
     expect(web).toContain('condition: service_started');
     expect(web).not.toContain('condition: service_healthy');
-    expect(web).not.toContain('healthcheck:');
+    expect(web).not.toContain('/api/v1/ready');
   });
 });
