@@ -363,7 +363,7 @@ describe('AccountingGmailIngestService unified Inbox cutover', () => {
             : input.url;
       if (url === 'https://oauth2.googleapis.com/token') {
         return Promise.resolve(
-          new Response(JSON.stringify({ access_token: [REDACTED] }), {
+          new Response(JSON.stringify({ access_token: 'test-access-token' }), {
             status: 200,
           }),
         );
@@ -454,7 +454,7 @@ describe('AccountingGmailIngestService unified Inbox cutover', () => {
             : input.url;
       if (url === 'https://oauth2.googleapis.com/token') {
         return Promise.resolve(
-          new Response(JSON.stringify({ access_token: [REDACTED] }), {
+          new Response(JSON.stringify({ access_token: 'test-access-token' }), {
             status: 200,
           }),
         );
