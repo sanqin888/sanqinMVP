@@ -22,9 +22,9 @@ describe('CustomerExistenceService', () => {
         user: { findUnique: userFindUnique },
       } as never);
 
-      await expect(
-        service.customerExists('staff-stable-id'),
-      ).resolves.toBe(false);
+      await expect(service.customerExists('staff-stable-id')).resolves.toBe(
+        false,
+      );
     },
   );
 
