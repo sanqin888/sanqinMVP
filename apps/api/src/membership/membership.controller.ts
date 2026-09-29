@@ -20,6 +20,8 @@ import { MembershipService } from './membership.service';
 import { CustomerService } from './customer.service';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 import { MfaGuard } from '../auth/mfa.guard';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
 import { AuthService } from '../auth/auth.service';
 import { TRUSTED_DEVICE_COOKIE } from '../auth/trusted-device.constants';
 import { LoyaltyService } from '../loyalty/loyalty.service';
@@ -50,7 +52,8 @@ function maskEmail(value?: string | null): string | null {
   return `${visible}${'*'.repeat(Math.max(3, local.length - visible.length))}@${domain}`;
 }
 
-@UseGuards(SessionAuthGuard, MfaGuard)
+@UseGuards(SessionAuthGuard, MfaGuard, RolesGuard)
+@Roles('CUSTOMER')
 @Controller('membership')
 export class MembershipController {
   constructor(

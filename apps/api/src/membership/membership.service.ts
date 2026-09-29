@@ -173,7 +173,7 @@ export class MembershipService implements PaymentCouponReservationPort {
     const user = await this.prisma.user.findUnique({
       where: { userStableId },
     });
-    if (!user) {
+    if (!user || user.role !== 'CUSTOMER') {
       throw new NotFoundException('user not found');
     }
     return user;
@@ -525,12 +525,17 @@ export class MembershipService implements PaymentCouponReservationPort {
     return this.prisma.$transaction(async (tx) => {
       const user = await tx.user.findUnique({
         where: { userStableId },
-        select: { id: true },
+        select: { id: true, role: true },
       });
       const coupon = await tx.coupon.findUnique({
         where: { couponStableId },
       });
-      if (!user || !coupon || coupon.userId !== user.id) {
+      if (
+        !user ||
+        user.role !== 'CUSTOMER' ||
+        !coupon ||
+        coupon.userId !== user.id
+      ) {
         throw new BadRequestException('coupon not found for user');
       }
       const status = this.couponStatus({

@@ -26,6 +26,7 @@ const existingUser = {
   birthdayYear: 1990,
   birthdayMonth: 1,
   language: UserLanguage.EN,
+  role: 'CUSTOMER',
 };
 
 describe('CustomerService admin profile administration', () => {
@@ -135,12 +136,40 @@ describe('CustomerService admin profile administration', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it('rejects a non-customer target before admin profile mutation', async () => {
+    const { service, findUnique, update } = createService();
+    findUnique.mockResolvedValueOnce({
+      ...existingUser,
+      role: 'STAFF',
+    });
+
+    await expect(
+      service.updateProfileAsAdmin({
+        userStableId: existingUser.userStableId,
+        firstName: 'Should Not Change',
+      }),
+    ).rejects.toMatchObject({ message: 'member not found' });
+    expect(update).not.toHaveBeenCalled();
+  });
+
   it('preserves the Admin address missing-member error message', async () => {
     const { service, findUnique } = createService();
     findUnique.mockResolvedValueOnce(null);
 
     await expect(
       service.listAddressesAsAdmin({ userStableId: 'missing-user' }),
+    ).rejects.toMatchObject({ message: 'member not found' });
+  });
+
+  it('treats a non-customer identity as a missing member for Admin addresses', async () => {
+    const { service, findUnique } = createService();
+    findUnique.mockResolvedValueOnce({
+      id: 'staff-db-id',
+      role: 'STAFF',
+    });
+
+    await expect(
+      service.listAddressesAsAdmin({ userStableId: 'staff-stable-id' }),
     ).rejects.toMatchObject({ message: 'member not found' });
   });
 });

@@ -2941,7 +2941,8 @@ if (adminMemberOrdersReadBoundary) {
       'implements CustomerExistenceReaderPort',
       "from './membership-prisma'",
       'where: { userStableId }',
-      'select: { userStableId: true }',
+      'select: { role: true }',
+      "return user?.role === 'CUSTOMER';",
     ]) {
       if (!source.includes(requiredSymbol)) {
         failures.push(

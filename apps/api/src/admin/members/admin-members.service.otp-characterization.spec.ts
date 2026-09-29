@@ -5,7 +5,14 @@ import { AdminMembersService } from './admin-members.service';
 
 describe('AdminMembersService recharge verification adapter', () => {
   const createService = () => {
-    const prisma = {};
+    const prisma = {
+      user: {
+        findUnique: jest.fn().mockResolvedValue({
+          userStableId: 'member-stable-id',
+          role: 'CUSTOMER',
+        }),
+      },
+    };
     const loyalty = {
       applyTopup: jest.fn(),
     };

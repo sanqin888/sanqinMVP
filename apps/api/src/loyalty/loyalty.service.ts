@@ -236,10 +236,10 @@ export class LoyaltyService
 
     const user = await this.prisma.user.findUnique({
       where: { userStableId: stable },
-      select: { id: true },
+      select: { id: true, role: true },
     });
 
-    if (!user) {
+    if (!user || user.role !== 'CUSTOMER') {
       throw new BadRequestException('member not found');
     }
 
@@ -255,10 +255,12 @@ export class LoyaltyService
 
     const user = await tx.user.findUnique({
       where: { userStableId: stable },
-      select: { id: true },
+      select: { id: true, role: true },
     });
 
-    if (!user) throw new BadRequestException('member not found');
+    if (!user || user.role !== 'CUSTOMER') {
+      throw new BadRequestException('member not found');
+    }
     return user.id;
   }
 

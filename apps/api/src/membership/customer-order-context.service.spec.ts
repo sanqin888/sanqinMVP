@@ -23,6 +23,7 @@ describe('CustomerService order runtime context', () => {
     const { service, prisma } = createService();
     prisma.user.findUnique.mockResolvedValue({
       userStableId: 'c1234567890abcdefghijklmn',
+      role: 'CUSTOMER',
       email: ' MEMBER@EXAMPLE.COM ',
       emailVerifiedAt: new Date('2026-09-01T00:00:00.000Z'),
       phone: ' +1 416 555 0188 ',
@@ -42,6 +43,7 @@ describe('CustomerService order runtime context', () => {
       where: { userStableId: 'c1234567890abcdefghijklmn' },
       select: {
         userStableId: true,
+        role: true,
         email: true,
         emailVerifiedAt: true,
         phone: true,
@@ -55,6 +57,7 @@ describe('CustomerService order runtime context', () => {
     const { service, prisma } = createService();
     prisma.user.findUnique.mockResolvedValue({
       userStableId: 'c1234567890abcdefghijklmn',
+      role: 'CUSTOMER',
       email: 'member@example.com',
       emailVerifiedAt: null,
       phone: '+14165550188',
@@ -76,6 +79,7 @@ describe('CustomerService order runtime context', () => {
     const { service, prisma } = createService();
     prisma.user.findUnique.mockResolvedValue({
       id: '8a3d4c0e-4750-4f6a-9138-000000000001',
+      role: 'CUSTOMER',
     });
     prisma.userAddress.findFirst.mockResolvedValue({
       addressStableId: 'c0987654321abcdefghijklmn',
@@ -105,6 +109,10 @@ describe('CustomerService order runtime context', () => {
       latitude: 43.7601,
       longitude: -79.4118,
     });
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({
+      where: { userStableId: 'c1234567890abcdefghijklmn' },
+      select: { id: true, role: true },
+    });
     expect(prisma.userAddress.findFirst).toHaveBeenCalledWith({
       where: {
         userId: '8a3d4c0e-4750-4f6a-9138-000000000001',
@@ -122,5 +130,25 @@ describe('CustomerService order runtime context', () => {
         longitude: true,
       },
     });
+  });
+
+  it('does not expose order contact or saved addresses for a non-customer identity', async () => {
+    const { service, prisma } = createService();
+    prisma.user.findUnique.mockResolvedValue({
+      id: 'staff-db-id',
+      userStableId: 'staff-stable-id',
+      role: 'STAFF',
+    });
+
+    await expect(
+      service.getOrderCustomerContext('staff-stable-id'),
+    ).resolves.toBeNull();
+    await expect(
+      service.getSavedDeliveryAddress({
+        userStableId: 'staff-stable-id',
+        addressStableId: 'address-stable-id',
+      }),
+    ).resolves.toBeNull();
+    expect(prisma.userAddress.findFirst).not.toHaveBeenCalled();
   });
 });
