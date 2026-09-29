@@ -10,7 +10,7 @@ The workstation tools coordinate three already-existing runtime components:
 2. the read-only **Customer Display** on a non-primary monitor;
 3. the existing printer agent at `C:\pos-printer-server`.
 
-C1 established the manual launcher. C2 adds true borderless fullscreen plus optional current-user Task Scheduler startup/recovery around that same launcher. C2 does not add another POS/session/network/printer implementation.
+C1 established the manual launcher. C2 adds browser-native fullscreen plus optional current-user Task Scheduler startup/recovery around that same launcher. C2 does not add another POS/session/network/printer implementation.
 
 ## Why the installed POS shortcut is authoritative
 
@@ -44,7 +44,7 @@ No administrator privileges should be required for the normal launcher when the 
 
 ## Configuration
 
-`workstation.config.json` is local workstation configuration and should not be committed.
+`workstation.config.json` is local workstation configuration and should not be committed. On Windows PowerShell 5.1, `launch-workstation.ps1`, `supervise-workstation.ps1`, and `install-startup-task.ps1` resolve the default config path inside the script body rather than inside `param()`, so the documented commands work without an explicit `-ConfigPath` when the config is beside the scripts.
 
 - `PosPwaShortcutPath`: optional explicit path to the installed SanQ POS PWA shortcut. Empty means auto-discover `SanQ POS.lnk`.
 - `PosWindowTitleContains`: substring used to identify the already-running POS window.
@@ -69,7 +69,7 @@ The launcher is intentionally idempotent. It keeps a non-secret `workstation-sta
 - if printer-agent health fails, the launcher starts the existing VBS wrapper and waits for health;
 - if a saved POS window handle is still valid, it is reused even if the current page title changed; otherwise the launcher falls back to title/new-window detection;
 - if a saved Customer Display window is still valid, it is reused;
-- Launch mode places POS on the Windows primary display and Customer Display on the selected non-primary display in borderless fullscreen, removing the normal Chromium/PWA caption controls and covering the taskbar area;
+- Launch mode places POS on the Windows primary display and Customer Display on the selected non-primary display, then enters Chromium's native F11 fullscreen for windows that are not already fullscreen; this hides the browser/PWA top chrome instead of trying to emulate fullscreen by rewriting Win32 window styles;
 - Ensure mode leaves healthy existing windows untouched so the periodic supervisor does not steal focus or repeatedly rearrange the workstation;
 - if POS or Customer Display is missing during Ensure, only that missing window is relaunched and placed in fullscreen;
 - no browser process is killed or forcibly reloaded.

@@ -1,10 +1,14 @@
 param(
   [Parameter(Mandatory = $false)]
-  [string]$ConfigPath = (Join-Path $PSScriptRoot "workstation.config.json")
+  [string]$ConfigPath = ""
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+if ([string]::IsNullOrWhiteSpace($ConfigPath)) {
+  $ConfigPath = Join-Path $PSScriptRoot "workstation.config.json"
+}
 
 $launcherPath = Join-Path $PSScriptRoot "launch-workstation.ps1"
 if (-not (Test-Path -LiteralPath $launcherPath -PathType Leaf)) {

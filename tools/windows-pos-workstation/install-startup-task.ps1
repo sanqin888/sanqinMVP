@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory = $false)]
-  [string]$ConfigPath = (Join-Path $PSScriptRoot "workstation.config.json"),
+  [string]$ConfigPath = "",
 
   [Parameter(Mandatory = $false)]
   [string]$TaskName = "SanQ POS Workstation"
@@ -8,6 +8,10 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+if ([string]::IsNullOrWhiteSpace($ConfigPath)) {
+  $ConfigPath = Join-Path $PSScriptRoot "workstation.config.json"
+}
 
 if (-not (Get-Command Register-ScheduledTask -ErrorAction SilentlyContinue)) {
   throw "Windows ScheduledTasks module is unavailable."

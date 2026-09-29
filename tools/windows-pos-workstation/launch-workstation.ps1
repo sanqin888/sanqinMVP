@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory = $false)]
-  [string]$ConfigPath = (Join-Path $PSScriptRoot "workstation.config.json"),
+  [string]$ConfigPath = "",
 
   [Parameter(Mandatory = $false)]
   [ValidateSet("Launch", "Ensure")]
@@ -9,6 +9,10 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+if ([string]::IsNullOrWhiteSpace($ConfigPath)) {
+  $ConfigPath = Join-Path $PSScriptRoot "workstation.config.json"
+}
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type @"
@@ -44,6 +48,12 @@ public static class SanQWindowNative {
     [DllImport("user32.dll")]
     public static extern bool IsWindowVisible(IntPtr hWnd);
 
+    [DllImport("user32.dll")]
+    public static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetForegroundWindow();
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
 
@@ -52,9 +62,6 @@ public static class SanQWindowNative {
 
     [DllImport("user32.dll", SetLastError = true)]
     public static extern int GetWindowLong(IntPtr hWnd, int nIndex);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    public static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
 
     [DllImport("user32.dll", SetLastError = true)]
     public static extern bool SetWindowPos(
@@ -423,18 +430,43 @@ function Enter-WindowFullscreen {
   $wsMinimizeBox = 0x00020000
   $wsMaximizeBox = 0x00010000
   $wsSysMenu = 0x00080000
-  $wsPopup = -2147483648
-  $swpFrameChanged = 0x0020
   $swpShowWindow = 0x0040
 
   $style = [SanQWindowNative]::GetWindowLong($handle, $gwlStyle)
   $chromeMask = $wsCaption -bor $wsThickFrame -bor $wsMinimizeBox -bor $wsMaximizeBox -bor $wsSysMenu
-  $fullscreenStyle = ($style -band (-bnot $chromeMask)) -bor $wsPopup
-
-  [void][SanQWindowNative]::ShowWindow($handle, 9)
-  [void][SanQWindowNative]::SetWindowLong($handle, $gwlStyle, $fullscreenStyle)
+  $looksFullscreen = (($style -band $chromeMask) -eq 0)
 
   $bounds = $Screen.Bounds
+
+  if (-not $looksFullscreen) {
+    [void][SanQWindowNative]::ShowWindow($handle, 9)
+
+    $positioned = [SanQWindowNative]::SetWindowPos(
+      $handle,
+      [IntPtr]::Zero,
+      $bounds.X,
+      $bounds.Y,
+      $bounds.Width,
+      $bounds.Height,
+      $swpShowWindow
+    )
+    if (-not $positioned) {
+      throw "Failed to place $Label on $($Screen.DeviceName) before browser fullscreen."
+    }
+
+    if (-not [SanQWindowNative]::SetForegroundWindow($handle)) {
+      throw "Failed to focus $Label before entering browser fullscreen."
+    }
+
+    Start-Sleep -Milliseconds 150
+    if ([SanQWindowNative]::GetForegroundWindow() -ne $handle) {
+      throw "$Label did not become the foreground window; refusing to send F11 to the wrong window."
+    }
+
+    [System.Windows.Forms.SendKeys]::SendWait("{F11}")
+    Start-Sleep -Milliseconds 300
+  }
+
   $moved = [SanQWindowNative]::SetWindowPos(
     $handle,
     [IntPtr]::Zero,
@@ -442,14 +474,14 @@ function Enter-WindowFullscreen {
     $bounds.Y,
     $bounds.Width,
     $bounds.Height,
-    ($swpFrameChanged -bor $swpShowWindow)
+    $swpShowWindow
   )
 
   if (-not $moved) {
-    throw "Failed to place $Label in fullscreen on $($Screen.DeviceName)."
+    throw "Failed to place $Label in browser fullscreen on $($Screen.DeviceName)."
   }
 
-  Write-WorkstationLog "INFO" "$Label window placed on $($Screen.DeviceName) in borderless fullscreen."
+  Write-WorkstationLog "INFO" "$Label window placed on $($Screen.DeviceName) in browser-native fullscreen."
 }
 
 function Resolve-CustomerDisplayScreen {

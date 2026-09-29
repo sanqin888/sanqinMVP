@@ -77,7 +77,9 @@ $launcherSource = Get-Content -LiteralPath (Join-Path $scriptDir "launch-worksta
 foreach ($requiredSnippet in @(
   '[ValidateSet("Launch", "Ensure")]',
   "Enter-WindowFullscreen",
-  "SetWindowLong",
+  "SetForegroundWindow",
+  "GetForegroundWindow",
+  '[System.Windows.Forms.SendKeys]::SendWait("{F11}")',
   "SetWindowPos"
 )) {
   if (-not $launcherSource.Contains($requiredSnippet)) {
@@ -100,5 +102,53 @@ foreach ($requiredSnippet in @(
     throw "Scheduled-task safety contract missing: $requiredSnippet"
   }
 }
+
+foreach ($scriptPath in @(
+  (Join-Path $scriptDir "launch-workstation.ps1"),
+  (Join-Path $scriptDir "supervise-workstation.ps1"),
+  (Join-Path $scriptDir "install-startup-task.ps1")
+)) {
+  $source = Get-Content -LiteralPath $scriptPath -Raw
+  if ($source.Contains('[string]$ConfigPath = (Join-Path $PSScriptRoot')) {
+    throw "PowerShell 5.1 compatibility regression: ConfigPath must not evaluate PSScriptRoot inside param() in $scriptPath"
+  }
+}
+
+function Assert-DefaultConfigPathResolution {
+  param(
+    [Parameter(Mandatory = $true)][string]$ScriptPath,
+    [Parameter(Mandatory = $true)][string]$ExpectedErrorFragment
+  )
+
+  $stdoutPath = Join-Path $env:TEMP ("sanq-workstation-stdout-{0}.txt" -f [Guid]::NewGuid())
+  $stderrPath = Join-Path $env:TEMP ("sanq-workstation-stderr-{0}.txt" -f [Guid]::NewGuid())
+
+  try {
+    $argumentList = @("-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ('"' + $ScriptPath + '"'))
+    $process = Start-Process -FilePath "powershell.exe" -ArgumentList $argumentList -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath -Wait -PassThru
+
+    if ($process.ExitCode -eq 0) {
+      throw "Expected default ConfigPath probe to fail before runtime mutation: $ScriptPath"
+    }
+
+    $output = ""
+    if (Test-Path -LiteralPath $stdoutPath) {
+      $output += Get-Content -LiteralPath $stdoutPath -Raw
+    }
+    if (Test-Path -LiteralPath $stderrPath) {
+      $output += Get-Content -LiteralPath $stderrPath -Raw
+    }
+
+    if ($output.IndexOf($ExpectedErrorFragment, [StringComparison]::OrdinalIgnoreCase) -lt 0) {
+      throw "Default ConfigPath probe did not reach the expected post-param file check for ${ScriptPath}: $output"
+    }
+  } finally {
+    Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
+  }
+}
+
+Assert-DefaultConfigPathResolution (Join-Path $scriptDir "launch-workstation.ps1") "Workstation config not found"
+Assert-DefaultConfigPathResolution (Join-Path $scriptDir "supervise-workstation.ps1") "Workstation config not found"
+Assert-DefaultConfigPathResolution (Join-Path $scriptDir "install-startup-task.ps1") "Required workstation file is missing"
 
 Write-Host "Windows workstation launcher/startup recovery validation passed."

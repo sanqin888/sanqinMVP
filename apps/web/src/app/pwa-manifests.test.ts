@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import customerManifest from './manifest';
 
@@ -108,6 +108,16 @@ describe('PWA manifests', () => {
     const layout = readFileSync(filePath, 'utf8');
 
     expect(layout).toContain('manifest: "/pos.webmanifest"');
+  });
+
+  it('keeps the PWA runtime manifest-only with no generated service-worker contract', () => {
+    const nextConfigPath = path.join(process.cwd(), 'next.config.ts');
+    const nextConfig = readFileSync(nextConfigPath, 'utf8');
+    const serviceWorkerPath = path.join(process.cwd(), 'public', 'sw.js');
+
+    expect(nextConfig).not.toContain('next-pwa');
+    expect(nextConfig).not.toContain('withPWA');
+    expect(existsSync(serviceWorkerPath)).toBe(false);
   });
 });
 

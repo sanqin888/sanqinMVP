@@ -193,9 +193,10 @@ Approved migration sequence:
 
 Priority: **P0 TOOLING HARDENING**  
 Complexity: **M**  
-External gate: **none**
+External gate: **none**  
+State: **LOCAL SOURCE READY FOR REVIEW / NO NEW DEPENDENCY / NO MCP RUNTIME CONTRACT CHANGE**
 
-CI currently performs only `python3 -m py_compile ops/sanq-mcp/server.py`.
+CI currently performs only `python3 -m py_compile ops/sanq-mcp/server.py`; this local slice adds a standard-library `unittest` behavior gate without requiring the Python MCP runtime package in CI.
 
 Add focused behavior tests for safety-critical contracts such as:
 
@@ -325,15 +326,17 @@ This should be a dedicated workstation project, not a small PWA-manifest patch.
 
 2026-09-25 A4-C1 is MERGED / CI GREEN through PR #2543 / squash `06afc5b5`; CI #6397 passed Web/API/printer-agent plus the new Windows workstation PowerShell gate. The repository now owns the bounded Windows workstation launcher under `tools/windows-pos-workstation`, preserving the installed POS PWA/browser-profile authority, Customer Display local-sync contract and existing printer-agent runtime.
 
-2026-09-25 A4-C2 local implementation extends that same operational boundary with borderless fullscreen and current-user startup/recovery. `Launch` places POS and Customer Display in monitor-sized borderless fullscreen so Chromium/PWA title controls and the Windows taskbar area are not shown; periodic `Ensure` leaves healthy windows untouched and only recovers missing POS/Display/printer-agent components. One interactive current-user Scheduled Task starts a hidden supervisor at logon; the supervisor runs one Launch and then serial Ensure passes at the configured interval, with duplicate supervisor protection and no browser kill/reload/session/device mutation. Installer/uninstaller scripts are source-only in this Slice; no Task Scheduler mutation is executed by repository tooling or CI. Detailed work-package state: `docs/architecture/postmod-a4-windows-pos-workstation.md`.
+2026-09-28 A4-C2 plus both store-found hardening fixes are MERGED / CI GREEN and the A4-D store installation gate is VERIFIED. PR #2545 / squash `8b1cac46` (CI #6404) added startup/recovery, PR #2577 / squash `6fbac600` (CI #6518) moved fullscreen to targeted Chromium-native F11, and PR #2578 / squash `29d1ab2c` passed merged-head CI #6522 after fixing Windows PowerShell 5.1 implicit `ConfigPath` resolution. Store verification already proved Task Scheduler logon launch plus periodic recovery for POS-only, Display-only and both-window closure; the operator has now also completed the real-store A4-D installation successfully on the corrected source. A4 source/cutover work is therefore handed off to A5-A. The remaining network/session/device/PWA-cache/printer resilience scenarios stay as operational runbook observations rather than unfinished A4 source work. Recovery/fullscreen/auth/device/display-sync/print ownership semantics are unchanged. Detailed work-package state: `docs/architecture/postmod-a4-windows-pos-workstation.md`.
 
 ### 4.5 A5 — Critical browser E2E, staged
 
 Priority: **P1 QUALITY GATE**  
 Complexity: **H**  
-Dependency authorization: **required if Playwright or another browser-test package is added.**
+State: **CLOSED / A5-A READINESS AUDIT COMPLETE / A5-B1 MERGED + CI GREEN (#2580 / `e7477ef2` / CI #6529) / A5-B2-A MERGED + CI GREEN (#2581 / `0627931b` / CI #6533) / A5-B2-B MERGED + CI GREEN (#2582 / `c8775b1c` / CI #6535) / A5-C1 MERGED + CI GREEN (#2583 / `8226f627` / CI #6539) / A5-C2 MERGED + CI GREEN (#2584 / `f5133dde` / CI #6543) / A5-D1 MERGED + CI GREEN (#2585 / `b3552526` / CI #6545) / A5-D2 MERGED + CI GREEN (#2586 / `89acbcde` / CI #6548) / A5-D3 MERGED + CI GREEN (#2587 / `82d10dc1` / CI #6552)**  
+Dependency authorization: **GRANTED 2026-09-28 for `@playwright/test`.**  
+Detailed plan/audit: `docs/architecture/postmod-a5-browser-e2e.md`
 
-Current Web has Jest tests but no configured browser E2E runner, no `test:e2e` script and no Playwright/Cypress project configuration. The `@playwright/test` lockfile occurrence is only Next's optional peer declaration, not an installed SanQ E2E stack.
+A5-A confirmed that the current Web had Jest tests but no configured browser E2E runner, no `test:e2e` script and no Playwright/Cypress project configuration; API Supertest coverage was process-local and CI had no disposable PostgreSQL + real Web/API browser stack. A5-B1 is now merged through PR #2580 / `e7477ef2`; authoritative CI #6529 passed the PostgreSQL-backed `browser-e2e` job with committed migration replay, fail-closed `sanq_e2e` fixtures, real API, production Web/BFF and Chromium assertions. The user-generated pnpm 9.0.0 lockfile was reviewed and merged with only the expected Playwright and Next optional-peer resolution changes. A5-B2-A now locally adds stable Staff identity/routing journeys: ADMIN and ACCOUNTANT canonical landing, Accounting root canonicalization, ACCOUNTANT denied Admin routing, STAFF POS admission failing closed without device credentials, and Admin logout/session revocation. CI #6531 exposed and corrected an initial test assumption that a STAFF session should exist before device admission: the canonical `purpose=pos` login must reject missing `posDeviceId`/`posDeviceKey` with 403 and create no session. CI #6532 then clarified the middleware split: a completely unauthenticated `/store/pos` request redirects with `next=/store/pos` only, while the login page infers the POS device-binding UI from that target; `needDevice=1` is reserved for the separate existing-session/missing-device branch. Device claim, admitted STAFF session and authenticated STAFF cross-surface denial remain Stage 2/A5-D. B2-A merged through PR #2581 / `0627931b`; authoritative CI #6533 passed after the browser suite proved the exact fail-closed POS admission semantics. B2-B merged through PR #2582 / `c8775b1c`; authoritative CI #6535 passed the real Admin action-MFA browser journey with LogEmailProvider, OTP verification and the guarded Loyalty rules write. A5-C is split into C1 Customer identity/benefits and C2 controlled quote/checkout. C1 merged through PR #2583 / `8226f627`; authoritative CI #6539 passed after CI #6537 corrected the E2E fixture to the production digits-only persisted phone normalization / actual `+1 416...` display shape and CI #6538 narrowed a duplicate `$20.00` UI locator without weakening business assertions. C2 merged through PR #2584 / `f5133dde`; authoritative CI #6543 passed the isolated Customer/Coupon/points/stored-balance journey after CI #6541 corrected two Prettier-only seed formatting failures and CI #6542 exposed the browser runtime's missing CI-local `CLOVER_PRICING_TOKEN_SECRET`. The final journey proves the canonical `$5 item - $1 coupon - $1 point + $0.39 HST = $3.39` server quote, full stored-balance `externalPaymentCents=0`, direct thank-you navigation and a persisted authenticated `paid` / `STORE_BALANCE` Order without a wallet or real Clover/Apple Pay/Google Pay provider call. A5-D is split into D1 POS device claim/Staff admission, D2 controlled order acceptance -> durable PrintJob, and D3 POS/Customer Display/PWA reload behavior. D1 merged through PR #2585 / `b3552526`; authoritative CI #6545 passed the existing ACTIVE-device claim, real httpOnly device cookies, STAFF `purpose=pos` session and guarded `e2e_store` context journey. D2 merged through PR #2586 / `89acbcde`; authoritative CI #6548 is green. CI #6547 confirmed the AUTO PrintJob was already durable but exposed an expected observation race between customer and kitchen offline dispatch writes; the final journey waits until both requested targets settle at `PENDING + CLIENT_OFFLINE` and then passes without production changes. D3 local source adds a third isolated POS device and browser coverage for the actual workstation/browser boundary: language-neutral `/store/pos` resolves into the localized authenticated POS surface, `/pos.webmanifest` retains the independent POS identity/start URL, the real POS menu UI writes the cart snapshot, a second same-context `/store/display` page projects that snapshot read-only, and a POS reload preserves signed Staff/device cookies plus the cart/display state. CI #6550 calibrated the loopback canonical origin so host-only cookies are created after the real `/store/pos` middleware redirect. CI #6551 then established that the current production-style Turbopack browser job has no observable `navigator.serviceWorker.ready` registration; D3 therefore does not claim service-worker registration/update/cache semantics or silently change the PWA runtime. That finding is a separate PWA-runtime follow-up candidate. D3 temporarily disables the disposable store's auto-accept through the existing guarded setting while the full POS page is mounted, then restores it, preventing D2 order consumption without changing production defaults. Offline-cache/update recovery and Windows dual-screen/window recovery remain operational evidence rather than browser-CI claims.
 
 Avoid writing exhaustive UI automation. Build a small stable regression suite in two stages.
 
@@ -761,6 +764,29 @@ Target a useful **营销总览 / Marketing Overview** while preserving establish
 This can proceed in parallel with Lane A or Lane B when product priority warrants; it should not be bundled with either foundation.
 
 ## 7. Later internal hardening
+
+### 7.1A PWA service-worker production-build compatibility
+
+Priority: **P1 PWA RUNTIME FOLLOW-UP**  
+Complexity: **M**  
+External gate: **none**  
+State: **OPTION C SELECTED / LOCAL SOURCE READY FOR REVIEW / MANIFEST + STANDALONE ONLY / NO PRODUCTION BUNDLER CHANGE / NO MIGRATION / NO GRAPH CHANGE**  
+Authorization note: **the user selected Option C on 2026-09-28: keep production Turbopack and formalize the current manifest/standalone contract without enabling a service-worker/offline runtime.**
+
+A5-D3 CI #6551 proved that the production-style Browser E2E build (`next build --turbopack`) does not expose a ready service-worker registration. The readiness audit confirmed the root cause: `next-pwa@5.6.0` installs its Workbox generation/registration through a Webpack hook, while SanQ's canonical Docker and Browser E2E production builds use Turbopack. The repository `public/sw.js` was only a placeholder awaiting that hook and was not a functional worker.
+
+Option C keeps the capability contract intentionally narrow:
+
+- Customer/Admin/Accounting/POS retain their existing manifest identities, language-neutral launch URLs where applicable, icons and `display=standalone`;
+- Customer Display remains non-installable/read-only and keeps `manifest: null`;
+- no service worker, offline shell, background sync or runtime API/data caching is claimed;
+- Orders, Payments, Benefits/member state, Staff session, POS device/store authority and other dynamic business state remain network-authoritative;
+- offline ordering/payment/POS operation is explicitly not introduced;
+- production and CI continue using Turbopack; no Webpack fallback is added and no Web Clover production logic changes.
+
+Local source removes the inactive `next-pwa` wrapper from `next.config.ts`, removes the placeholder `public/sw.js`, locks the manifest-only runtime contract in Web tests, and makes the production-build POS Browser E2E assert that the fresh CI browser has no service-worker registrations. The now-unused `next-pwa` package declaration is not removed in this MCP workspace because the available tool surface cannot run pnpm and repository policy forbids hand-editing the generated lockfile; physical dependency/lockfile cleanup remains a narrow follow-up using the pinned package manager rather than a reason to leave runtime wiring active.
+
+Keep A5 closed. Do not combine this follow-up with Next/Prisma upgrades, cache-policy expansion, workstation recovery or provider/payment work.
 
 ### 7.1 Runtime readiness / health semantics
 
