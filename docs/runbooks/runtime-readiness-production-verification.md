@@ -238,15 +238,21 @@ Environment-documentation finding:
 - the R4 helper itself still requires an explicit valid env-file argument, so
   it was not rerun with the stale path.
 
-Evidence still open:
+Final closeout evidence:
 
-- independent public `/health`, public BFF -> API readiness, and public menu
-  smoke were not independently observable from the available external fetch
-  surface;
-- a final helper-equivalent run using the production VM's actual Compose
-  environment source remains to be recorded.
+- public `https://sanq.ca/health` returned HTTP 200 and Web `status=ok`;
+- public BFF `https://sanq.ca/api/v1/ready` returned HTTP 200 with API
+  `status=ok`, `database=ok`, and `uploads=ok`;
+- public `https://sanq.ca/api/v1/menu/public` returned HTTP 200;
+- `docker compose ps` showed api/db/ubereats-worker/web all `healthy`;
+- `prisma migrate status` found 191 migrations and reported
+  `Database schema is up to date!`;
+- local API readiness returned `status=ok` with DB/uploads checks;
+- local worker readiness returned `status=ok` with DB/scheduler checks;
+- local Web health returned `status=ok`.
 
-Current state is therefore
-`PRODUCTION DEPLOYED + ACTIVE RESTART/DEPENDENCY MATRIX VERIFIED`, with final
-`PRODUCTION VERIFIED / CLOSED` intentionally withheld only for the remaining
-public-edge/final-helper evidence.
+This constitutes the final helper-equivalent verification using the production
+VM's actual Compose environment resolution. Together with V2-V7, all required
+R5 production evidence is now complete.
+
+Current state: `PRODUCTION VERIFIED / CLOSED`.
