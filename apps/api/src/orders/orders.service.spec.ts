@@ -134,6 +134,7 @@ describe('OrdersService', () => {
   };
   let brandStoreConfigReader: {
     getConfiguredStoreSnapshot: jest.Mock;
+    getStoreSnapshot: jest.Mock;
   };
   let loyalty: {
     peekBalanceMicro: jest.Mock;

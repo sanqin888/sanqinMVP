@@ -87,7 +87,9 @@ export type CatalogExternalOrderModifierSnapshotSourceFact = {
 };
 
 export interface CatalogExternalMenuFactsReaderPort {
-  readMenuSource(storeStableId: string): Promise<CatalogExternalMenuSourceFacts>;
+  readMenuSource(
+    storeStableId: string,
+  ): Promise<CatalogExternalMenuSourceFacts>;
   getMenuItemSource(
     storeStableId: string,
     stableId: string,

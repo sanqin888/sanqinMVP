@@ -613,7 +613,9 @@ export class CatalogAdminService
       },
       select: { id: true },
     });
-    if (!existingCategory) throw new NotFoundException('Menu category not found');
+    if (!existingCategory) {
+      throw new NotFoundException('Menu category not found');
+    }
 
     const data: Prisma.MenuCategoryUpdateInput = {};
 
@@ -850,12 +852,15 @@ export class CatalogAdminService
     }));
   }
 
-  async createCategory(storeStableId: string, body: {
-    nameEn: string;
-    nameZh?: string;
-    sortOrder?: number;
-    isActive?: boolean;
-  }) {
+  async createCategory(
+    storeStableId: string,
+    body: {
+      nameEn: string;
+      nameZh?: string;
+      sortOrder?: number;
+      isActive?: boolean;
+    },
+  ) {
     const storeId = requireStoreStableId(storeStableId);
     const nameEn = (body.nameEn ?? '').trim();
     if (!nameEn) throw new BadRequestException('nameEn is required');
@@ -930,25 +935,28 @@ export class CatalogAdminService
     return { ok: true };
   }
 
-  async createItem(storeStableId: string, body: {
-    categoryStableId: string;
-    stableId?: string;
-    nameEn: string;
-    nameZh?: string;
-    basePriceCents: number;
-    sortOrder?: number;
-    imageUrl?: string;
-    ingredientsEn?: string;
-    ingredientsZh?: string;
-    isAvailable?: boolean;
-    visibility?: 'PUBLIC' | 'HIDDEN';
-    isVisibleOnMainMenu?: boolean;
-    publishToUberEats?: boolean;
-    labelStrategy?: 'AUTO' | 'ALWAYS' | 'NEVER';
-    itemKind?: 'FOOD' | 'BEVERAGE';
-    packagingTypeStableIds?: string[];
-    tempUnavailableUntil?: string | null;
-  }) {
+  async createItem(
+    storeStableId: string,
+    body: {
+      categoryStableId: string;
+      stableId?: string;
+      nameEn: string;
+      nameZh?: string;
+      basePriceCents: number;
+      sortOrder?: number;
+      imageUrl?: string;
+      ingredientsEn?: string;
+      ingredientsZh?: string;
+      isAvailable?: boolean;
+      visibility?: 'PUBLIC' | 'HIDDEN';
+      isVisibleOnMainMenu?: boolean;
+      publishToUberEats?: boolean;
+      labelStrategy?: 'AUTO' | 'ALWAYS' | 'NEVER';
+      itemKind?: 'FOOD' | 'BEVERAGE';
+      packagingTypeStableIds?: string[];
+      tempUnavailableUntil?: string | null;
+    },
+  ) {
     const storeId = requireStoreStableId(storeStableId);
     const categoryStableId = (body.categoryStableId ?? '').trim();
     if (!categoryStableId) {
@@ -1383,13 +1391,16 @@ export class CatalogAdminService
     });
   }
 
-  async createOptionGroupTemplate(storeStableId: string, body: {
-    nameEn: string;
-    nameZh?: string;
-    sortOrder?: number;
-    defaultMinSelect?: number;
-    defaultMaxSelect?: number | null;
-  }) {
+  async createOptionGroupTemplate(
+    storeStableId: string,
+    body: {
+      nameEn: string;
+      nameZh?: string;
+      sortOrder?: number;
+      defaultMinSelect?: number;
+      defaultMaxSelect?: number | null;
+    },
+  ) {
     const storeId = requireStoreStableId(storeStableId);
     const nameEn = (body.nameEn ?? '').trim();
     if (!nameEn) throw new BadRequestException('nameEn is required');

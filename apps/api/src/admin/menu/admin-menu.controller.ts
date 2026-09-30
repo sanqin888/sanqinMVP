@@ -28,7 +28,9 @@ import { RolesGuard } from '../../auth/roles.guard';
 
 function requireStoreStableId(value?: string): string {
   const storeStableId = value?.trim();
-  if (!storeStableId) throw new BadRequestException('storeStableId is required');
+  if (!storeStableId) {
+    throw new BadRequestException('storeStableId is required');
+  }
   return storeStableId;
 }
 
@@ -101,7 +103,10 @@ export class AdminMenuController {
       isActive?: boolean;
     },
   ) {
-    return this.catalog.createCategory(requireStoreStableId(storeStableId), body);
+    return this.catalog.createCategory(
+      requireStoreStableId(storeStableId),
+      body,
+    );
   }
 
   @Put('categories/:categoryStableId')

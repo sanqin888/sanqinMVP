@@ -38,7 +38,8 @@ export class UberMenuSupportingQueriesPrismaAdapter
     stableId: string,
   ): Promise<boolean> {
     return (
-      (await this.catalogFacts.getOptionSource(storeStableId, stableId)) !== null
+      (await this.catalogFacts.getOptionSource(storeStableId, stableId)) !==
+      null
     );
   }
 

@@ -289,8 +289,9 @@ export class OrderFinancialFactsReaderService implements OrderFinancialFactsRead
     }
     const catalogFacts = (
       await Promise.all(
-        [...catalogStableIdsByStore.entries()].map(([storeStableId, stableIds]) =>
-          this.readActiveCatalogFacts(storeStableId, [...stableIds]),
+        [...catalogStableIdsByStore.entries()].map(
+          ([storeStableId, stableIds]) =>
+            this.readActiveCatalogFacts(storeStableId, [...stableIds]),
         ),
       )
     ).flat();

@@ -23,7 +23,9 @@ describe('Catalog Store-scoped runtime contracts', () => {
     expect(admin).toContain("@Query('storeStableId')");
     expect(admin).toContain('requireStoreStableId(storeStableId)');
     expect(publicMenu).toContain('getConfiguredStoreSnapshot()');
-    expect(publicMenu).toContain('this.service.getPublicMenu(store.storeStableId)');
+    expect(publicMenu).toContain(
+      'this.service.getPublicMenu(store.storeStableId)',
+    );
   });
 
   it('threads authenticated Store identity through POS pricing and Uber Catalog reads', () => {

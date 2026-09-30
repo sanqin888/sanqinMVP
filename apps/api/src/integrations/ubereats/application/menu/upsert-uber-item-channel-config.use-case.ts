@@ -17,11 +17,7 @@ export class UpsertUberItemChannelConfigUseCase {
 
   async execute(input: UpsertPriceBookItemInput) {
     const storeId = requireUberStoreId(input.storeId);
-    await ensureMenuItemExists(
-      this.menuItems,
-      storeId,
-      input.menuItemStableId,
-    );
+    await ensureMenuItemExists(this.menuItems, storeId, input.menuItemStableId);
     return this.transaction.execute((commands) =>
       commands.upsertUberItemChannelConfig({
         resourceKey: { storeId, menuItemStableId: input.menuItemStableId },

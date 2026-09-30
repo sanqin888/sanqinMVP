@@ -24,9 +24,7 @@ describe('CatalogUberAvailabilityOrchestrationService', () => {
               visibility: 'PUBLIC',
               isVisibleOnMainMenu: true,
               tempUnavailableUntil:
-                mode === 'TEMP_TODAY_OFF'
-                  ? '2099-01-01T00:00:00.000Z'
-                  : null,
+                mode === 'TEMP_TODAY_OFF' ? '2099-01-01T00:00:00.000Z' : null,
               effectiveAvailability: mode === 'ON',
             }),
         ),
@@ -79,7 +77,11 @@ describe('CatalogUberAvailabilityOrchestrationService', () => {
     '%s returns structured SYNCED status',
     async (mode, available) => {
       const { service, syncMenuItemAvailability } = build();
-      const result = await service.setItemAvailability('store-1', 'dish-1', mode);
+      const result = await service.setItemAvailability(
+        'store-1',
+        'dish-1',
+        mode,
+      );
       expect(result.uberSync.status).toBe('SYNCED');
       expect(syncMenuItemAvailability).toHaveBeenCalledWith({
         storeStableId: 'store-1',
@@ -109,7 +111,11 @@ describe('CatalogUberAvailabilityOrchestrationService', () => {
     const { service, syncMenuItemAvailability } = build();
     syncMenuItemAvailability.mockRejectedValue(new Error('upstream'));
 
-    const result = await service.setItemAvailability('store-1', 'dish-1', 'PERMANENT_OFF');
+    const result = await service.setItemAvailability(
+      'store-1',
+      'dish-1',
+      'PERMANENT_OFF',
+    );
 
     expect(result.uberSync).toEqual(
       expect.objectContaining({ status: 'FAILED' }),
@@ -122,11 +128,9 @@ describe('CatalogUberAvailabilityOrchestrationService', () => {
     await expect(
       service.updateItem('store-1', 'dish-1', { isAvailable: true }),
     ).resolves.toEqual({ ok: true });
-    expect(catalog.updateItem).toHaveBeenCalledWith(
-      'store-1',
-      'dish-1',
-      { isAvailable: true },
-    );
+    expect(catalog.updateItem).toHaveBeenCalledWith('store-1', 'dish-1', {
+      isAvailable: true,
+    });
     expect(syncMenuItemAvailability).toHaveBeenCalledWith({
       storeStableId: 'store-1',
       menuItemStableId: 'dish-1',
@@ -219,10 +223,8 @@ describe('CatalogUberAvailabilityOrchestrationService', () => {
     await expect(
       service.updateItem('store-1', 'combo-1', { fixedComponents: [] }),
     ).resolves.toEqual({ ok: true });
-    expect(catalog.updateItem).toHaveBeenCalledWith(
-      'store-1',
-      'combo-1',
-      { fixedComponents: [] },
-    );
+    expect(catalog.updateItem).toHaveBeenCalledWith('store-1', 'combo-1', {
+      fixedComponents: [],
+    });
   });
 });

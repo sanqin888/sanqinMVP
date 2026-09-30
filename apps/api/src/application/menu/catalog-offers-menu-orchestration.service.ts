@@ -23,11 +23,10 @@ export class CatalogOffersMenuOrchestrationService {
         basePriceCents: item.basePriceCents,
       })),
     );
-    const { specials } =
-      await this.dailySpecialOffers.getActiveDailySpecials(
-        storeStableId,
-        catalogItems,
-      );
+    const { specials } = await this.dailySpecialOffers.getActiveDailySpecials(
+      storeStableId,
+      catalogItems,
+    );
     const firstSpecialByItemStableId = new Map<string, DailySpecialDto>();
     for (const special of specials) {
       if (!firstSpecialByItemStableId.has(special.itemStableId)) {

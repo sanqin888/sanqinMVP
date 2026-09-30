@@ -2534,7 +2534,10 @@ export class OrdersService
       throw new BadRequestException('items are required');
     }
 
-    const { calculatedSubtotal } = await this.calculateLineItems(items);
+    const { calculatedSubtotal } = await this.calculateLineItems(
+      resolveConfiguredStoreStableId(),
+      items,
+    );
 
     const maxRedeemableCents =
       await this.orderBenefitsReader.getLoyaltyOnlyRedeemCapacityCents(

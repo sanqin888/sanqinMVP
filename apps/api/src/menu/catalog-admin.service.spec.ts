@@ -270,7 +270,9 @@ describe('CatalogAdminService order facts reader', () => {
       menuItem: { findMany },
     } as never);
 
-    await expect(service.getOrderLabelConfigs('store-1', [' item-1 '])).resolves.toEqual([
+    await expect(
+      service.getOrderLabelConfigs('store-1', [' item-1 ']),
+    ).resolves.toEqual([
       {
         stableId: 'item-1',
         nameEn: 'Soup',
@@ -318,9 +320,9 @@ describe('CatalogAdminService pricing snapshots', () => {
       menuItem: { findMany },
     } as never);
 
-    await expect(service.getMenuItemPricingSnapshots('store-1')).resolves.toEqual([
-      { itemStableId: 'item-1', basePriceCents: 1299 },
-    ]);
+    await expect(
+      service.getMenuItemPricingSnapshots('store-1'),
+    ).resolves.toEqual([{ itemStableId: 'item-1', basePriceCents: 1299 }]);
     expect(findMany).toHaveBeenCalledWith({
       where: {
         deletedAt: null,
