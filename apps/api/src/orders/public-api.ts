@@ -96,6 +96,16 @@ export {
 } from './order-reporting-facts-reader.contract';
 export { OrderReportingFactsModule } from './order-reporting-facts.module';
 export {
+  ORDER_MARKETING_USAGE_FACTS_READER,
+  type OrderMarketingActivitySourceV1,
+  type OrderMarketingAssociatedSalesEvidenceV1,
+  type OrderMarketingMetricEvidenceV1,
+  type OrderMarketingUsageFactV1,
+  type OrderMarketingUsageFactsReaderPort,
+  type OrderMarketingUsageRangeV1,
+} from './order-marketing-usage-facts-reader.contract';
+export { OrderMarketingUsageFactsModule } from './order-marketing-usage-facts.module';
+export {
   ORDER_SALES_ATTRIBUTION_READER,
   type OrderSalesAttributionChannelV1,
   type OrderSalesAttributionPrimaryPaymentMethodV1,

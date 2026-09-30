@@ -28,6 +28,11 @@ import type {
   PromotionRuleType,
   PromotionRuleWriteModel,
 } from './promotion-rule-management.contract';
+import type {
+  MarketingCampaignFactV1,
+  MarketingCampaignFactsReaderPort,
+  MarketingCouponProgramAttributionV1,
+} from './marketing-campaign-facts-reader.contract';
 
 const SPECIAL_PRICING_MODES: readonly SpecialPricingMode[] = [
   'OVERRIDE_PRICE',
@@ -118,7 +123,10 @@ function toPromotionRuleManagementDto(
 
 @Injectable()
 export class PromotionsService
-  implements PromotionContextReaderPort, DailySpecialOffersPort
+  implements
+    PromotionContextReaderPort,
+    DailySpecialOffersPort,
+    MarketingCampaignFactsReaderPort
 {
   constructor(
     private readonly prisma: PrismaService,
@@ -227,6 +235,154 @@ export class PromotionsService
       data: { deletedAt: new Date(), status: 'ENDED' },
     });
     return toPromotionRuleManagementDto(rule);
+  }
+
+  async readCampaigns(query?: {
+    storeStableId?: string;
+  }): Promise<MarketingCampaignFactV1[]> {
+    const storeStableId = query?.storeStableId?.trim() || undefined;
+    const [dailySpecials, rules, programs] = await Promise.all([
+      this.prisma.menuDailySpecial.findMany({
+        where: {
+          deletedAt: null,
+          ...(storeStableId
+            ? {
+                item: {
+                  category: {
+                    storeStableId,
+                    deletedAt: null,
+                  },
+                  deletedAt: null,
+                },
+              }
+            : {}),
+        },
+        select: {
+          stableId: true,
+          weekday: true,
+          pricingMode: true,
+          startDate: true,
+          endDate: true,
+          startMinutes: true,
+          endMinutes: true,
+          isEnabled: true,
+          item: {
+            select: {
+              nameEn: true,
+              nameZh: true,
+              category: {
+                select: {
+                  storeStableId: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: [{ weekday: 'asc' }, { sortOrder: 'asc' }, { createdAt: 'asc' }],
+      }),
+      this.prisma.promotionRule.findMany({
+        where: { deletedAt: null },
+        orderBy: [{ status: 'asc' }, { priority: 'asc' }, { createdAt: 'desc' }],
+      }),
+      this.prisma.couponProgram.findMany({
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+
+    const facts: MarketingCampaignFactV1[] = [
+      ...dailySpecials.map(
+        (special): MarketingCampaignFactV1 => ({
+          version: 1,
+          activityStableId: special.stableId,
+          kind: 'DAILY_SPECIAL',
+          scope: 'STORE',
+          storeStableId: special.item.category.storeStableId,
+          titleZh: special.item.nameZh ?? special.item.nameEn,
+          titleEn: special.item.nameEn,
+          subtype: special.pricingMode,
+          lifecycleStatus: special.isEnabled ? 'ACTIVE' : 'PAUSED',
+          validFrom: special.startDate,
+          validTo: special.endDate,
+          weekdays: [special.weekday],
+          startMinutes: special.startMinutes,
+          endMinutes: special.endMinutes,
+        }),
+      ),
+      ...rules.map(
+        (rule): MarketingCampaignFactV1 => ({
+          version: 1,
+          activityStableId: rule.stableId,
+          kind: 'PROMOTION_RULE',
+          scope: 'BRAND',
+          storeStableId: null,
+          titleZh: rule.titleZh,
+          titleEn: rule.titleEn,
+          subtype: rule.type,
+          lifecycleStatus: rule.status,
+          validFrom: rule.validFrom,
+          validTo: rule.validTo,
+          weekdays: [...rule.weekdays],
+          startMinutes: rule.startMinutes,
+          endMinutes: rule.endMinutes,
+        }),
+      ),
+      ...programs.map(
+        (program): MarketingCampaignFactV1 => ({
+          version: 1,
+          activityStableId: program.programStableId,
+          kind: 'COUPON_PROGRAM',
+          scope: 'BRAND',
+          storeStableId: null,
+          titleZh: program.tittleCh,
+          titleEn: program.tittleEn,
+          subtype: program.distributionType,
+          lifecycleStatus: program.status,
+          validFrom: program.validFrom,
+          validTo: program.validTo,
+          weekdays: [],
+          startMinutes: null,
+          endMinutes: null,
+        }),
+      ),
+    ];
+
+    return facts.sort((left, right) => {
+      const kindDelta = left.kind.localeCompare(right.kind);
+      if (kindDelta !== 0) return kindDelta;
+      return left.activityStableId.localeCompare(right.activityStableId);
+    });
+  }
+
+  async readCouponProgramAttributions(
+    couponStableIds: readonly string[],
+  ): Promise<MarketingCouponProgramAttributionV1[]> {
+    const normalized = Array.from(
+      new Set(couponStableIds.map((value) => value.trim()).filter(Boolean)),
+    );
+    if (normalized.length === 0) return [];
+
+    const coupons = await this.prisma.coupon.findMany({
+      where: {
+        couponStableId: { in: normalized },
+        campaign: { not: null },
+      },
+      select: {
+        couponStableId: true,
+        campaign: true,
+      },
+      orderBy: { couponStableId: 'asc' },
+    });
+
+    return coupons.flatMap((coupon) =>
+      coupon.campaign
+        ? [
+            {
+              couponStableId: coupon.couponStableId,
+              programStableId: coupon.campaign,
+            },
+          ]
+        : [],
+    );
   }
 
   async getDailySpecials(
