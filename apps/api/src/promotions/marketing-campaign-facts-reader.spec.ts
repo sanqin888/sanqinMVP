@@ -14,11 +14,7 @@ describe('Marketing campaign facts', () => {
             startMinutes: 660,
             endMinutes: 900,
             isEnabled: true,
-            item: {
-              nameEn: 'Pork Roujiamo',
-              nameZh: '腊汁肉夹馍',
-              category: { storeStableId: 'store-1' },
-            },
+            itemStableId: 'item-1',
           },
         ]),
       },
@@ -60,7 +56,20 @@ describe('Marketing campaign facts', () => {
         ]),
       },
     };
-    const service = new PromotionsService(prisma as never, {} as never);
+    const service = new PromotionsService(
+      prisma as never,
+      {} as never,
+      {
+        readItemSubjects: jest.fn().mockResolvedValue([
+          {
+            itemStableId: 'item-1',
+            storeStableId: 'store-1',
+            nameEn: 'Pork Roujiamo',
+            nameZh: '腊汁肉夹馍',
+          },
+        ]),
+      } as never,
+    );
 
     await expect(
       service.readCampaigns({ storeStableId: 'store-1' }),

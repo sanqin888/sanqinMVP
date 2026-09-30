@@ -17,6 +17,7 @@ describe('PromotionsService canonical store timezone', () => {
       const service = new PromotionsService(
         prisma as never,
         brandStoreConfigReader as never,
+        { readItemSubjects: jest.fn().mockResolvedValue([]) } as never,
       );
 
       const result = await service.getOrderPromotionContext(channel);
@@ -73,7 +74,11 @@ describe('PromotionsService PromotionRule management persistence', () => {
     const prisma = {
       promotionRule: { create },
     };
-    const service = new PromotionsService(prisma as never, {} as never);
+    const service = new PromotionsService(
+      prisma as never,
+      {} as never,
+      { readItemSubjects: jest.fn().mockResolvedValue([]) } as never,
+    );
     const data: PromotionRuleWriteModel = {
       titleZh: persistedRule.titleZh,
       titleEn: persistedRule.titleEn,
@@ -170,6 +175,7 @@ describe('PromotionsService PromotionRule management persistence', () => {
         promotionRule: { findMany, findFirst, update },
       } as never,
       {} as never,
+      { readItemSubjects: jest.fn().mockResolvedValue([]) } as never,
     );
 
     await service.listPromotionRulesForManagement();

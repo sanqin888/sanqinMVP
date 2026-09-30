@@ -24,6 +24,7 @@ describe('PromotionsService Daily Special Offers ownership boundary', () => {
     const service = new PromotionsService(
       { menuDailySpecial: { findMany } } as never,
       {} as never,
+      { readItemSubjects: jest.fn().mockResolvedValue([]) } as never,
     );
 
     await expect(
@@ -56,6 +57,7 @@ describe('PromotionsService Daily Special Offers ownership boundary', () => {
     const service = new PromotionsService(
       { menuDailySpecial: { findMany } } as never,
       {} as never,
+      { readItemSubjects: jest.fn().mockResolvedValue([]) } as never,
     );
 
     await expect(
@@ -81,6 +83,7 @@ describe('PromotionsService Daily Special Offers ownership boundary', () => {
     const service = new PromotionsService(
       prisma as never,
       brandStoreConfigReader as never,
+      { readItemSubjects: jest.fn().mockResolvedValue([]) } as never,
     );
 
     try {
@@ -118,6 +121,7 @@ describe('PromotionsService Daily Special Offers ownership boundary', () => {
     const service = new PromotionsService(
       { $transaction: transaction } as never,
       {} as never,
+      { readItemSubjects: jest.fn().mockResolvedValue([]) } as never,
     );
 
     await expect(
@@ -189,6 +193,7 @@ describe('PromotionsService Daily Special Offers ownership boundary', () => {
     const service = new PromotionsService(
       { $transaction: transaction } as never,
       {} as never,
+      { readItemSubjects: jest.fn().mockResolvedValue([]) } as never,
     );
 
     await service.upsertDailySpecials(

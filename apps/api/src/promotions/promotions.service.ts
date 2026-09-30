@@ -3,6 +3,10 @@ import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import type { DailySpecialDto, SpecialPricingMode } from '@shared/menu';
 import { PrismaService } from '../prisma/prisma.service';
 import {
+  CATALOG_MARKETING_SUBJECT_READER,
+  type CatalogMarketingSubjectReaderPort,
+} from '../menu/public-api';
+import {
   isDailySpecialActiveNow,
   resolveEffectivePriceCents,
   resolveStoreNow,
@@ -132,6 +136,8 @@ export class PromotionsService
     private readonly prisma: PrismaService,
     @Inject(BRAND_STORE_CONFIG_READER)
     private readonly brandStoreConfigReader: BrandStoreConfigReaderPort,
+    @Inject(CATALOG_MARKETING_SUBJECT_READER)
+    private readonly catalogMarketingSubjects: CatalogMarketingSubjectReaderPort,
   ) {}
 
   async getOrderPromotionContext(
@@ -241,42 +247,20 @@ export class PromotionsService
     storeStableId?: string;
   }): Promise<MarketingCampaignFactV1[]> {
     const storeStableId = query?.storeStableId?.trim() || undefined;
-    const [dailySpecials, rules, programs] = await Promise.all([
+    const [catalogSubjects, dailySpecials, rules, programs] = await Promise.all([
+      this.catalogMarketingSubjects.readItemSubjects({ storeStableId }),
       this.prisma.menuDailySpecial.findMany({
-        where: {
-          deletedAt: null,
-          ...(storeStableId
-            ? {
-                item: {
-                  category: {
-                    storeStableId,
-                    deletedAt: null,
-                  },
-                  deletedAt: null,
-                },
-              }
-            : {}),
-        },
+        where: { deletedAt: null },
         select: {
           stableId: true,
           weekday: true,
+          itemStableId: true,
           pricingMode: true,
           startDate: true,
           endDate: true,
           startMinutes: true,
           endMinutes: true,
           isEnabled: true,
-          item: {
-            select: {
-              nameEn: true,
-              nameZh: true,
-              category: {
-                select: {
-                  storeStableId: true,
-                },
-              },
-            },
-          },
         },
         orderBy: [{ weekday: 'asc' }, { sortOrder: 'asc' }, { createdAt: 'asc' }],
       }),
@@ -289,16 +273,21 @@ export class PromotionsService
       }),
     ]);
 
-    const facts: MarketingCampaignFactV1[] = [
-      ...dailySpecials.map(
-        (special): MarketingCampaignFactV1 => ({
+    const catalogSubjectByItemStableId = new Map(
+      catalogSubjects.map((subject) => [subject.itemStableId, subject] as const),
+    );
+    const dailySpecialFacts = dailySpecials.flatMap((special) => {
+      const subject = catalogSubjectByItemStableId.get(special.itemStableId);
+      if (!subject) return [];
+      return [
+        {
           version: 1,
           activityStableId: special.stableId,
           kind: 'DAILY_SPECIAL',
           scope: 'STORE',
-          storeStableId: special.item.category.storeStableId,
-          titleZh: special.item.nameZh ?? special.item.nameEn,
-          titleEn: special.item.nameEn,
+          storeStableId: subject.storeStableId,
+          titleZh: subject.nameZh ?? subject.nameEn,
+          titleEn: subject.nameEn,
           subtype: special.pricingMode,
           lifecycleStatus: special.isEnabled ? 'ACTIVE' : 'PAUSED',
           validFrom: special.startDate,
@@ -306,8 +295,12 @@ export class PromotionsService
           weekdays: [special.weekday],
           startMinutes: special.startMinutes,
           endMinutes: special.endMinutes,
-        }),
-      ),
+        } satisfies MarketingCampaignFactV1,
+      ];
+    });
+
+    const facts: MarketingCampaignFactV1[] = [
+      ...dailySpecialFacts,
       ...rules.map(
         (rule): MarketingCampaignFactV1 => ({
           version: 1,

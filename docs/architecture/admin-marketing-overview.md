@@ -162,6 +162,11 @@ Catalog/Pricing/Offers exports a narrow campaign facts boundary:
 - Store-vs-brand scope;
 - stable Coupon-instance -> CouponProgram attribution.
 
+Daily Special Store/title enrichment must not read Catalog Prisma delegates from Offers.
+MKT-A therefore uses a narrow Catalog-owned marketing-subject reader inside the same
+catalog-pricing-offers context; Offers continues to read only Daily Special persistence
+directly and composes itemStableId with the Catalog subject fact.
+
 Orders exports a narrow marketing usage facts boundary:
 
 - one normalized fact per accepted `(activity, Order)`;
