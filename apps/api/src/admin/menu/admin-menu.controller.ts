@@ -19,6 +19,8 @@ import {
   AdminMenuFullResponse,
   DailySpecialDto,
   MenuCategoryBaseDto,
+  MenuItemWithBindingsDto,
+  MenuPackagingTypeDto,
   TemplateGroupFullDto,
 } from '@shared/menu';
 import { CatalogAdminService } from '../../menu/public-api';
@@ -142,6 +144,11 @@ export class AdminMenuController {
     );
   }
 
+  @Get('packaging-types')
+  async listPackagingTypes(): Promise<MenuPackagingTypeDto[]> {
+    return this.catalog.listPackagingTypes();
+  }
+
   @Post('packaging-types')
   async createPackagingType(
     @Body()
@@ -165,6 +172,13 @@ export class AdminMenuController {
     },
   ) {
     return this.catalog.updatePackagingType(packagingTypeStableId, body);
+  }
+
+  @Get('items')
+  async listItems(
+    @Query('storeStableId') storeStableId?: string,
+  ): Promise<MenuItemWithBindingsDto[]> {
+    return this.catalog.listItems(requireStoreStableId(storeStableId));
   }
 
   @Post('items')

@@ -694,6 +694,118 @@ export class CatalogAdminService
     }));
   }
 
+  async listItems(storeStableId: string): Promise<CatalogAdminMenuItemDto[]> {
+    const storeId = requireStoreStableId(storeStableId);
+    const items = await this.prisma.menuItem.findMany({
+      where: {
+        deletedAt: null,
+        category: { storeStableId: storeId, deletedAt: null },
+      },
+      orderBy: { sortOrder: 'asc' },
+      include: {
+        category: { select: { stableId: true } },
+        packagings: {
+          orderBy: { sortOrder: 'asc' },
+          include: { packagingType: true },
+        },
+        fixedComponents: {
+          orderBy: { sortOrder: 'asc' },
+        },
+        optionGroups: {
+          where: { templateGroup: { deletedAt: null } },
+          orderBy: { sortOrder: 'asc' },
+          include: {
+            templateGroup: {
+              select: {
+                stableId: true,
+                nameEn: true,
+                nameZh: true,
+                deletedAt: true,
+                defaultMinSelect: true,
+                defaultMaxSelect: true,
+                isAvailable: true,
+                tempUnavailableUntil: true,
+                sortOrder: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return items.map((item) => ({
+      stableId: item.stableId,
+      categoryStableId: item.category.stableId,
+      nameEn: item.nameEn,
+      nameZh: item.nameZh ?? null,
+      basePriceCents: item.basePriceCents,
+      isAvailable: item.isAvailable,
+      visibility: item.visibility,
+      isVisibleOnMainMenu: item.isVisibleOnMainMenu,
+      publishToUberEats: item.publishToUberEats,
+      labelStrategy: item.labelStrategy,
+      itemKind: item.itemKind,
+      packagings: item.packagings.map((packaging) => ({
+        sortOrder: packaging.sortOrder,
+        packagingType: {
+          stableId: packaging.packagingType.stableId,
+          name: packaging.packagingType.name,
+          isActive: packaging.packagingType.isActive,
+          sortOrder: packaging.packagingType.sortOrder,
+        },
+      })),
+      fixedComponents: item.fixedComponents.map((component) => ({
+        componentItemStableId: component.componentItemStableId,
+        quantity: component.quantity,
+        sortOrder: component.sortOrder,
+      })),
+      tempUnavailableUntil: toIso(item.tempUnavailableUntil),
+      sortOrder: item.sortOrder,
+      imageUrl: item.imageUrl ?? null,
+      ingredientsEn: item.ingredientsEn ?? null,
+      ingredientsZh: item.ingredientsZh ?? null,
+      optionGroups: (item.optionGroups ?? [])
+        .filter(
+          (link) => link.templateGroup && link.templateGroup.deletedAt == null,
+        )
+        .map((link) => ({
+          templateGroupStableId: link.templateGroup.stableId,
+          bindingStableId: null,
+          minSelect: link.minSelect,
+          maxSelect: link.maxSelect,
+          sortOrder: link.sortOrder,
+          isEnabled: link.isEnabled,
+          affectedPackagingTypeStableIds: link.affectedPackagingTypeStableIds,
+          template: {
+            templateGroupStableId: link.templateGroup.stableId,
+            nameEn: link.templateGroup.nameEn,
+            nameZh: link.templateGroup.nameZh ?? null,
+            defaultMinSelect: link.templateGroup.defaultMinSelect,
+            defaultMaxSelect: link.templateGroup.defaultMaxSelect ?? null,
+            isAvailable: link.templateGroup.isAvailable,
+            tempUnavailableUntil: toIso(
+              link.templateGroup.tempUnavailableUntil,
+            ),
+            sortOrder: link.templateGroup.sortOrder,
+          },
+        })),
+    }));
+  }
+
+  async listPackagingTypes(): Promise<MenuPackagingTypeDto[]> {
+    const packagingTypes = await this.prisma.menuPackagingType.findMany({
+      where: { deletedAt: null },
+      orderBy: { sortOrder: 'asc' },
+    });
+
+    return packagingTypes.map((type) => ({
+      stableId: type.stableId,
+      name: type.name,
+      isActive: type.isActive,
+      sortOrder: type.sortOrder,
+    }));
+  }
+
   async getFullMenu(storeStableId: string): Promise<CatalogAdminMenuSnapshot> {
     const storeId = requireStoreStableId(storeStableId);
     const [categories, templateGroups, packagingTypes] = await Promise.all([

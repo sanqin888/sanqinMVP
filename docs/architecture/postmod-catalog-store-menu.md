@@ -199,16 +199,21 @@ Local implementation scope:
 - keep the legacy combined `/admin/menu` workspace untouched as transition fallback;
 - add API query-shape and Web source-boundary regressions that prohibit `/admin/menu/full` on the Category workspace.
 
-State: **LOCAL / READY FOR REVIEW / NO PRISMA OR MIGRATION / NO DEPENDENCY OR GRAPH CHANGE**.
+State: **MERGED / PR #2619 / CI #6655 GREEN / MERGE `e92ab60c` / NO PRISMA OR MIGRATION / NO DEPENDENCY OR GRAPH CHANGE**.
 
 #### Slice 3B — Item workspace + Options full-menu read contraction
 
-Planned after 3A review/merge:
+Local implementation scope:
 
-- activate the existing `/admin/menu/items` workspace;
-- add the narrow Store-scoped Item/read-support contracts required by item editing;
-- move the Options workspace off `/admin/menu/full` while preserving its Store scope;
-- leave the old combined workspace and `/admin/menu/full` available until Slice 4.
+- activate `/admin/menu/items` as the independent Store-scoped Item maintenance workspace;
+- add Store-scoped `GET /admin/menu/items?storeStableId=...` for full Item-editing DTOs and brand-level `GET /admin/menu/packaging-types` for the reusable packaging dictionary;
+- compose Item support data from the already-narrow Category and Option Template reads instead of the combined snapshot;
+- preserve item create/edit, dedicated availability control, image/media selection, packaging assignment/creation, fixed-combo composition, Uber publication flag, label strategy and option-group bind/update/unbind behavior;
+- move the Options workspace target-item selector from `/admin/menu/full` to Store-scoped Category + Item reads;
+- add query-shape/source-boundary regressions that prohibit `/admin/menu/full` from both Item and Options workspaces;
+- leave the old combined workspace and `/admin/menu/full` available until Slice 4 because other consumers still exist.
+
+State: **LOCAL / READY FOR REVIEW / NO PRISMA OR MIGRATION / NO DEPENDENCY OR GRAPH CHANGE**.
 
 ### Slice 4 — Legacy combined menu contraction
 
