@@ -17,27 +17,24 @@ const matchedReconciliation = {
   issues: [],
 };
 
-const listReports = (ready: ReportRow[]) =>
-  jest.fn().mockResolvedValue(ready);
+const listReports = (ready: ReportRow[]) => jest.fn().mockResolvedValue(ready);
 
 const findCandidates = (ready: ReportRow[], imported: ReportRow[] = []) =>
-  jest
-    .fn()
-    .mockImplementation((input: { anchorReportStableId: string }) => {
-      const reports = [...ready, ...imported];
-      const anchor = reports.find(
-        (report) => report.reportStableId === input.anchorReportStableId,
-      );
-      if (!anchor) return Promise.resolve([]);
-      return Promise.resolve(
-        reports.filter(
-          (report) =>
-            report.startDate === anchor.startDate &&
-            report.endDate === anchor.endDate &&
-            report.reportType !== 'ORDERS_AND_ITEMS_REPORT',
-        ),
-      );
-    });
+  jest.fn().mockImplementation((input: { anchorReportStableId: string }) => {
+    const reports = [...ready, ...imported];
+    const anchor = reports.find(
+      (report) => report.reportStableId === input.anchorReportStableId,
+    );
+    if (!anchor) return Promise.resolve([]);
+    return Promise.resolve(
+      reports.filter(
+        (report) =>
+          report.startDate === anchor.startDate &&
+          report.endDate === anchor.endDate &&
+          report.reportType !== 'ORDERS_AND_ITEMS_REPORT',
+      ),
+    );
+  });
 
 describe('AccountingProviderFinancialHistoryService', () => {
   it('does not scan or import Uber reports before financial authority is promoted', async () => {

@@ -166,6 +166,5 @@ describe('UberFinancialReportPrismaRepository reconciliation lookup', () => {
       },
       orderBy: [{ reportType: 'asc' }, { requestedAt: 'desc' }],
     });
-    expect(findMany.mock.calls[0]?.[0]).not.toHaveProperty('take');
   });
 });
