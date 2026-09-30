@@ -751,10 +751,10 @@ This can proceed in parallel with Lane A or Lane B when product priority warrant
 Priority: **P1 PARALLEL PRODUCT / PERSISTENCE WORK**  
 Complexity: **H**  
 Hard dependency: none  
-State: **SLICE 1 MERGED + CI GREEN + PRODUCTION MIGRATION APPLIED (#2607 / `78f4e6d8` / CI #6613) / SLICE 2A + HOMEPAGE FOLLOW-UP PRODUCTION VERIFIED (#2608 / #2610) / SLICE 2B SOURCE LOCAL + EXPLICITLY AUTHORIZED / MIGRATION REQUIRED / NOT PUSHED**  
+State: **SLICE 1 PRODUCTION MIGRATION APPLIED / SLICE 2A + HOMEPAGE FOLLOW-UP PRODUCTION VERIFIED / SLICE 2B PRODUCTION VERIFIED + COMPATIBILITY RETIRED / READY FOR SLICE 3**  
 Detailed plan: `docs/architecture/postmod-catalog-store-menu.md`
 
-Slice 1 has established persisted Store ownership roots and its deterministic backfill migration is applied in production. Slice 2A and its Homepage Featured follow-up are production verified: Admin/Public/POS/Orders/Offers/Uber/Homepage menu reads are Store-scoped, all current roots belong to `4750_Yonge_Street`, and persisted-menu parity is intact. Slice 2B is now explicitly authorized and locally tightens the two Prisma root ownership fields/relations to required types. The physical database contraction remains blocked on the separately user-generated/reviewed NOT NULL migration. The Category/Item routes remain reserved placeholders until Slice 3.
+Slice 1 established persisted Store ownership roots and its deterministic backfill migration is applied in production. Slice 2A and Homepage Featured are production verified across Admin/Public/POS/Orders/Offers/Uber/Homepage Store-scoped reads. Slice 2B is also production verified: migration `20260930162009_post_mod_catalog_store_menu_not_null_contraction` is applied, both root ownership columns are physically NOT NULL, all 7 Category and 23 Option Group Template roots remain under `4750_Yonge_Street`, cross-Store bindings/components are zero, and post-deploy runtime logs are clean. `catalog.store-menu-ownership.v1` is retired. The Category/Item routes remain reserved placeholders until Slice 3.
 
 Approved sequence:
 
