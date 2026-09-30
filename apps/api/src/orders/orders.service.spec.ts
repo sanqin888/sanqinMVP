@@ -287,7 +287,7 @@ describe('OrdersService', () => {
       findHiddenMenuItemStableIds: jest.fn().mockResolvedValue([]),
       getOrderItemMaterializationFacts: jest
         .fn()
-        .mockImplementation((stableIds: string[]) =>
+        .mockImplementation((_storeStableId: string, stableIds: string[]) =>
           Promise.resolve(
             stableIds.map((stableId) => ({
               ...defaultCatalogOrderItemFact,

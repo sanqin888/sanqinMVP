@@ -10,8 +10,8 @@ describe('Catalog Store-scoped runtime contracts', () => {
     const availability = read('catalog-availability-reader.contract.ts');
 
     expect(orders).toContain('storeStableId: string');
-    expect(external).toContain(
-      'readMenuSource(storeStableId: string): Promise<CatalogExternalMenuSourceFacts>',
+    expect(external).toMatch(
+      /readMenuSource\(\s*storeStableId: string,\s*\): Promise<CatalogExternalMenuSourceFacts>/,
     );
     expect(availability).toContain('storeStableId: string');
   });
