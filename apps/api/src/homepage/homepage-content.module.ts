@@ -23,8 +23,8 @@ import {
       useFactory: (
         reporting: ReportingTopItemsQueryPort,
       ): HomepageSalesRankingQueryPort => ({
-        getTopItemsForRange: (startDate, endDate) =>
-          reporting.getTopItemsForRange(startDate, endDate),
+        getTopItemsForRange: (storeStableId, startDate, endDate) =>
+          reporting.getTopItemsForRange(storeStableId, startDate, endDate),
       }),
     },
     HomepageContentService,

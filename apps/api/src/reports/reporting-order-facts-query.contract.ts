@@ -19,7 +19,8 @@ export type ReportingOrderItemFactV1 = {
 };
 
 export interface ReportingOrderFactsQueryPort {
-  readItemsForRange(
+  readItemsForStoreRange(
+    storeStableId: string,
     startDate: Date,
     endDate: Date,
   ): Promise<ReportingOrderItemFactV1[]>;

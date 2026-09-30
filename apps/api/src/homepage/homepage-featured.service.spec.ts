@@ -34,29 +34,69 @@ function menuItem(
 }
 
 describe('HomepageFeaturedService', () => {
+  const originalStoreId = process.env.STORE_ID;
+
+  beforeEach(() => {
+    process.env.STORE_ID = '4750_Yonge_Street';
+  });
+
+  afterAll(() => {
+    if (originalStoreId === undefined) {
+      delete process.env.STORE_ID;
+      return;
+    }
+    process.env.STORE_ID = originalStoreId;
+  });
+
   it('reserves fixed positions and fills automatic positions from eligible sales ranking', async () => {
-    const prisma = {
-      menuItem: {
-        findMany: jest
-          .fn()
-          .mockResolvedValue([
-            menuItem('top-food'),
-            menuItem('drink', { itemKind: 'BEVERAGE' }),
-            menuItem('no-image', { imageUrl: null }),
-            menuItem('second-food'),
-            menuItem('third-food'),
-          ]),
+    let capturedCategory:
+      | {
+          storeStableId: string;
+          deletedAt: null;
+        }
+      | undefined;
+    const findMany = jest.fn(
+      (query: {
+        where: {
+          category: {
+            storeStableId: string;
+            deletedAt: null;
+          };
+        };
+      }) => {
+        capturedCategory = query.where.category;
+        return Promise.resolve([
+          menuItem('top-food'),
+          menuItem('drink', { itemKind: 'BEVERAGE' }),
+          menuItem('no-image', { imageUrl: null }),
+          menuItem('second-food'),
+          menuItem('third-food'),
+        ]);
       },
+    );
+    const prisma = {
+      menuItem: { findMany },
     } as unknown as PrismaService;
+
+    let capturedRankingStore: string | undefined;
+    let capturedRankingStart: Date | undefined;
+    let capturedRankingEnd: Date | undefined;
+    const getTopItemsForRange: HomepageSalesRankingQueryPort['getTopItemsForRange'] =
+      (storeStableId, startDate, endDate) => {
+        capturedRankingStore = storeStableId;
+        capturedRankingStart = startDate;
+        capturedRankingEnd = endDate;
+        return Promise.resolve([
+          { stableId: 'top-food', name: 'Top', quantity: 20 },
+          { stableId: 'drink', name: 'Drink', quantity: 18 },
+          { stableId: 'no-image', name: 'No image', quantity: 17 },
+          { stableId: 'second-food', name: 'Second', quantity: 16 },
+          { stableId: 'third-food', name: 'Third', quantity: 15 },
+        ]);
+      };
     const reportsService = {
-      getTopItemsForRange: jest.fn().mockResolvedValue([
-        { stableId: 'top-food', name: 'Top', quantity: 20 },
-        { stableId: 'drink', name: 'Drink', quantity: 18 },
-        { stableId: 'no-image', name: 'No image', quantity: 17 },
-        { stableId: 'second-food', name: 'Second', quantity: 16 },
-        { stableId: 'third-food', name: 'Third', quantity: 15 },
-      ]),
-    } as unknown as HomepageSalesRankingQueryPort;
+      getTopItemsForRange,
+    } as HomepageSalesRankingQueryPort;
     const contentService = {
       getFeaturedConfig: jest.fn().mockResolvedValue({
         slots: [
@@ -82,6 +122,80 @@ describe('HomepageFeaturedService', () => {
       { itemStableId: 'top-food', badge: '店主推荐' },
       { itemStableId: 'third-food', badge: null },
     ]);
+    expect(capturedRankingStore).toBe('4750_Yonge_Street');
+    expect(capturedRankingStart).toBeInstanceOf(Date);
+    expect(capturedRankingEnd).toBeInstanceOf(Date);
+    expect(capturedCategory).toEqual({
+      storeStableId: '4750_Yonge_Street',
+      deletedAt: null,
+    });
+  });
+
+  it('rejects a manual featured item that is not found under the configured Store root', async () => {
+    let capturedWhere:
+      | {
+          stableId: { in: string[] };
+          category: {
+            storeStableId: string;
+            deletedAt: null;
+          };
+        }
+      | undefined;
+    const findMany = jest.fn(
+      (query: {
+        where: {
+          stableId: { in: string[] };
+          category: {
+            storeStableId: string;
+            deletedAt: null;
+          };
+        };
+      }) => {
+        capturedWhere = query.where;
+        return Promise.resolve([]);
+      },
+    );
+    const prisma = {
+      menuItem: { findMany },
+    } as unknown as PrismaService;
+    const reportsService = {
+      getTopItemsForRange: jest.fn(),
+    } as unknown as HomepageSalesRankingQueryPort;
+    const updateFeaturedConfig = jest.fn();
+    const contentService = {
+      updateFeaturedConfig,
+    } as unknown as HomepageContentService;
+    const service = new HomepageFeaturedService(
+      prisma,
+      reportsService,
+      contentService,
+    );
+
+    await expect(
+      service.updateConfig({
+        slots: [
+          {
+            itemStableId: 'other-store-item',
+            badgeZh: null,
+            badgeEn: null,
+          },
+          { itemStableId: null, badgeZh: null, badgeEn: null },
+          { itemStableId: null, badgeZh: null, badgeEn: null },
+        ],
+      }),
+    ).rejects.toThrow(
+      'Featured item must be active, public, visible on the main menu, and have an image: other-store-item',
+    );
+
+    expect(capturedWhere).toEqual({
+      stableId: { in: ['other-store-item'] },
+      deletedAt: null,
+      category: {
+        storeStableId: '4750_Yonge_Street',
+        deletedAt: null,
+      },
+    });
+    expect(updateFeaturedConfig).not.toHaveBeenCalled();
   });
 
   it('automatically labels only the top eligible food as 周销量第一', async () => {

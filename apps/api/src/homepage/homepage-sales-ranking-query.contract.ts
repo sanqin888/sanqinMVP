@@ -10,6 +10,7 @@ export type HomepageSalesRankingItem = {
 
 export interface HomepageSalesRankingQueryPort {
   getTopItemsForRange(
+    storeStableId: string,
     startDate: Date,
     endDate: Date,
   ): Promise<HomepageSalesRankingItem[]>;

@@ -1,6 +1,7 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { DateTime } from 'luxon';
 import { PrismaService } from '../prisma/prisma.service';
+import { resolveConfiguredStoreStableId } from '../store/public-api';
 import { HomepageContentService } from './homepage-content.service';
 import {
   HOMEPAGE_SALES_RANKING_QUERY,
@@ -61,7 +62,8 @@ export class HomepageFeaturedService {
     );
 
     if (manualStableIds.length > 0) {
-      const items = await this.loadMenuItems(manualStableIds);
+      const storeStableId = resolveConfiguredStoreStableId();
+      const items = await this.loadMenuItems(storeStableId, manualStableIds);
       const eligibleStableIds = new Set(
         items
           .filter((item) => this.isStructurallyDisplayable(item))
@@ -86,7 +88,9 @@ export class HomepageFeaturedService {
     const zone = process.env.TZ || 'America/Toronto';
     const end = DateTime.now().setZone(zone);
     const start = end.minus({ days: 7 });
+    const storeStableId = resolveConfiguredStoreStableId();
     const ranking = await this.reportsService.getTopItemsForRange(
+      storeStableId,
       start.toJSDate(),
       end.toJSDate(),
     );
@@ -97,7 +101,10 @@ export class HomepageFeaturedService {
     const candidateStableIds = Array.from(
       new Set([...manualStableIds, ...ranking.map((item) => item.stableId)]),
     );
-    const menuItems = await this.loadMenuItems(candidateStableIds);
+    const menuItems = await this.loadMenuItems(
+      storeStableId,
+      candidateStableIds,
+    );
     const itemByStableId = new Map(
       menuItems.map((item) => [item.stableId, item]),
     );
@@ -158,6 +165,7 @@ export class HomepageFeaturedService {
   }
 
   private async loadMenuItems(
+    storeStableId: string,
     stableIds: string[],
   ): Promise<FeaturedMenuItem[]> {
     if (stableIds.length === 0) return [];
@@ -165,6 +173,10 @@ export class HomepageFeaturedService {
       where: {
         stableId: { in: stableIds },
         deletedAt: null,
+        category: {
+          storeStableId,
+          deletedAt: null,
+        },
       },
       select: {
         stableId: true,

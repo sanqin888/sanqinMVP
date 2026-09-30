@@ -68,10 +68,12 @@ export class ReportsService implements ReportingTopItemsQueryPort {
   }
 
   async getTopItemsForRange(
+    storeStableId: string,
     startDate: Date,
     endDate: Date,
   ): Promise<ReportingTopItemAggregate[]> {
-    const orderItems = await this.orderFacts.readItemsForRange(
+    const orderItems = await this.orderFacts.readItemsForStoreRange(
+      storeStableId,
       startDate,
       endDate,
     );

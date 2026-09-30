@@ -5,26 +5,28 @@ describe('ReportsService top-item ranking', () => {
   const START = new Date('2026-01-01T00:00:00.000Z');
   const END = new Date('2026-01-08T00:00:00.000Z');
 
+  const STORE_STABLE_ID = '4750_Yonge_Street';
+
   const createService = (
     orderItems: Awaited<
-      ReturnType<ReportingOrderFactsQueryPort['readItemsForRange']>
+      ReturnType<ReportingOrderFactsQueryPort['readItemsForStoreRange']>
     >,
   ) => {
-    const readItemsForRange = jest
-      .fn<ReportingOrderFactsQueryPort['readItemsForRange']>()
+    const readItemsForStoreRange = jest
+      .fn<ReportingOrderFactsQueryPort['readItemsForStoreRange']>()
       .mockResolvedValue(orderItems);
     const orderFacts: ReportingOrderFactsQueryPort = {
-      readItemsForRange,
+      readItemsForStoreRange,
     };
 
     return {
       service: new ReportsService(orderFacts),
-      readItemsForRange,
+      readItemsForStoreRange,
     };
   };
 
   it('counts a normal item under its own stable identity', async () => {
-    const { service, readItemsForRange } = createService([
+    const { service, readItemsForStoreRange } = createService([
       {
         qty: 3,
         productStableId: 'item_noodle',
@@ -35,10 +37,16 @@ describe('ReportsService top-item ranking', () => {
       },
     ]);
 
-    await expect(service.getTopItemsForRange(START, END)).resolves.toEqual([
+    await expect(
+      service.getTopItemsForRange(STORE_STABLE_ID, START, END),
+    ).resolves.toEqual([
       { stableId: 'item_noodle', name: 'Noodle', quantity: 3 },
     ]);
-    expect(readItemsForRange).toHaveBeenCalledWith(START, END);
+    expect(readItemsForStoreRange).toHaveBeenCalledWith(
+      STORE_STABLE_ID,
+      START,
+      END,
+    );
   });
 
   it('expands package snapshots and aggregates components by stable identity', async () => {
@@ -66,7 +74,9 @@ describe('ReportsService top-item ranking', () => {
       },
     ]);
 
-    await expect(service.getTopItemsForRange(START, END)).resolves.toEqual([
+    await expect(
+      service.getTopItemsForRange(STORE_STABLE_ID, START, END),
+    ).resolves.toEqual([
       { stableId: 'youtiao', name: '油条', quantity: 4 },
       { stableId: 'hulatang', name: '胡辣汤', quantity: 2 },
     ]);
@@ -91,7 +101,11 @@ describe('ReportsService top-item ranking', () => {
       },
     ]);
 
-    const ranking = await service.getTopItemsForRange(START, END);
+    const ranking = await service.getTopItemsForRange(
+      STORE_STABLE_ID,
+      START,
+      END,
+    );
 
     expect(ranking).toEqual([
       { stableId: 'item_chicken', name: '鸡肉', quantity: 2 },
@@ -115,7 +129,9 @@ describe('ReportsService top-item ranking', () => {
       },
     ]);
 
-    await expect(service.getTopItemsForRange(START, END)).resolves.toEqual([
+    await expect(
+      service.getTopItemsForRange(STORE_STABLE_ID, START, END),
+    ).resolves.toEqual([
       {
         stableId: 'combo_unknown',
         name: 'Unknown Combo',

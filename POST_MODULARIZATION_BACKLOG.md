@@ -751,10 +751,10 @@ This can proceed in parallel with Lane A or Lane B when product priority warrant
 Priority: **P1 PARALLEL PRODUCT / PERSISTENCE WORK**  
 Complexity: **H**  
 Hard dependency: none  
-State: **SLICE 1 MERGED + CI GREEN + MIGRATION MERGED (#2607 / `78f4e6d8` / CI #6613) / SLICE 2A SOURCE IMPLEMENTED + LOCAL REVIEW PENDING / NO NEW MIGRATION / SLICE 2B NOT NULL CONTRACTION REQUIRES EXPLICIT AUTHORIZATION**  
+State: **SLICE 1 MERGED + CI GREEN + PRODUCTION MIGRATION APPLIED (#2607 / `78f4e6d8` / CI #6613) / SLICE 2A MERGED + CI #6619 GREEN + DEPLOYED + CORE PARITY VERIFIED / HOMEPAGE FEATURED FOLLOW-UP LOCAL / NO NEW MIGRATION / SLICE 2B NOT NULL CONTRACTION BLOCKED UNTIL FOLLOW-UP VERIFICATION + EXPLICIT AUTHORIZATION**  
 Detailed plan: `docs/architecture/postmod-catalog-store-menu.md`
 
-Slice 1 has established persisted Store ownership roots and merged the deterministic backfill migration. Slice 2A source now makes the active combined Admin menu/Options workspace, Public Menu, POS/Orders pricing/materialization/labels, Daily Special Catalog subjects and Uber Catalog source/reference reads explicitly Store-scoped. The Category/Item routes remain reserved placeholders until Slice 3, and the root ownership fields remain nullable until the separately authorized Slice 2B constraint contraction.
+Slice 1 has established persisted Store ownership roots and its deterministic backfill migration is applied in production. Slice 2A makes the active combined Admin menu/Options workspace, Public Menu, POS/Orders pricing/materialization/labels, Daily Special Catalog subjects and Uber Catalog source/reference reads explicitly Store-scoped; production persisted-menu parity is verified. A post-deployment completeness audit found Homepage Featured still using a global stableId MenuItem lookup and Store-agnostic sales ranking. The current narrow follow-up scopes both reads to the configured Store. The Category/Item routes remain reserved placeholders until Slice 3, and the root ownership fields remain nullable until the follow-up is verified and the separately authorized Slice 2B constraint contraction is completed.
 
 Approved sequence:
 

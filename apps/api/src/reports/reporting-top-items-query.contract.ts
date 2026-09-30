@@ -8,6 +8,7 @@ export type ReportingTopItemAggregate = {
 
 export interface ReportingTopItemsQueryPort {
   getTopItemsForRange(
+    storeStableId: string,
     startDate: Date,
     endDate: Date,
   ): Promise<ReportingTopItemAggregate[]>;
