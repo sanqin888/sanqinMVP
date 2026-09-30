@@ -131,7 +131,7 @@ export function summarizeWebhookError(error: unknown): string {
     | undefined;
   const response =
     typeof getResponse === 'function'
-      ? (getResponse.call(error) as unknown)
+      ? getResponse.call(error)
       : null;
   const raw = response
     ? JSON.stringify(response)

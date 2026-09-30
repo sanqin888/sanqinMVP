@@ -3,7 +3,7 @@
 Date: 2026-09-30  
 Baseline: `origin/dev@b4829e90`  
 Branch: `postmod/api-strict-bind-call-apply`  
-State: **SLICE 1 LOCAL / REVIEW PENDING / CONFIG-ONLY / NO LOCAL CI REPRODUCTION / NO GRAPH OR BASELINE CHANGE**
+State: **SLICE 1 PR #2629 / CI RETRY PENDING / CONFIG + ONE REDUNDANT ASSERTION CLEANUP / NO GRAPH OR BASELINE CHANGE**
 
 ## Scope
 
@@ -32,27 +32,35 @@ The review was repeated from the fresh `origin/dev@b4829e90` branch before editi
   `Object.prototype.hasOwnProperty.call(...)` uses.
 - Search hits for `.apply(...)` are ordinary repository/use-case/service method
   names rather than `Function.prototype.apply`.
-- No production source edit, `any`, `@ts-ignore`, ESLint suppression or weakened
-  assertion is introduced by this slice.
+- The first PR CI run showed that stronger call typing makes the existing Uber
+  `getResponse.call(error) as unknown` assertion redundant; the slice removes only
+  that no-op assertion. No `any`, `@ts-ignore`, ESLint suppression or weakened
+  assertion is introduced.
 
 ## Source change
 
-`apps/api/tsconfig.json` changes only:
+`apps/api/tsconfig.json` changes only the compiler flag:
 
 ```text
 strictBindCallApply: false -> true
 ```
 
+The first PR CI run then exposed one type-aware lint consequence in the existing
+Uber error mapper: `getResponse.call(error)` already has type `unknown`, so the
+trailing `as unknown` assertion is redundant and is removed. Runtime behavior and
+provider protocol are unchanged.
+
 `strictNullChecks=true`, `noImplicitAny=false` and
 `noFallthroughCasesInSwitch=false` remain unchanged. The existing
 `apps/api/tsconfig.strict.json` continues to extend the API base config, so the
-GitHub Actions API strict declaration check will validate this flag on remote CI.
+GitHub Actions API strict declaration check validates this flag on remote CI.
 
 ## Verification and architecture status
 
 Per `AGENTS.md`, no local lint, build, test or TypeScript CI-reproduction command
-is run before user review. Current state is source-local only; no CI-green claim is
-made.
+was run before user review. PR #2629 CI #6686 is the authoritative remote gate; its
+first attempt exposed the redundant assertion above before the strict TypeScript step,
+and a focused follow-up commit is being validated.
 
 This compiler-option hardening changes no module ownership, public contract,
 cross-context direction, direct-import debt, architecture allowance, SCC or
