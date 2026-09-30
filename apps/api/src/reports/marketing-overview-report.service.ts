@@ -60,10 +60,7 @@ function isCurrentCampaign(
 ): boolean {
   if (campaign.lifecycleStatus !== 'ACTIVE') return false;
 
-  if (
-    campaign.kind === 'DAILY_SPECIAL' ||
-    campaign.kind === 'PROMOTION_RULE'
-  ) {
+  if (campaign.kind === 'DAILY_SPECIAL' || campaign.kind === 'PROMOTION_RULE') {
     const zoneName = now.zoneName ?? 'UTC';
     const startDate = campaign.validFrom
       ? resolveStoreCalendarDate(campaign.validFrom, zoneName).startOf('day')
@@ -91,9 +88,7 @@ function resolveWindows(
 ): Record<MarketingOverviewWindowKeyV1, ResolvedWindow> {
   const today = now.startOf('day');
   const quarterMonth = Math.floor((now.month - 1) / 3) * 3 + 1;
-  const quarterStart = now
-    .set({ month: quarterMonth, day: 1 })
-    .startOf('day');
+  const quarterStart = now.set({ month: quarterMonth, day: 1 }).startOf('day');
   return {
     today: { fromInclusive: today, toExclusive: now },
     last7Days: {
@@ -182,7 +177,7 @@ function normalizeUsage(
   }
 
   const usage = Array.from(grouped.values()).map((group) => {
-    const first = group[0]!;
+    const first = group[0];
     const quantity = mergeMetricEvidence(
       group,
       'affectedItemQuantity',
@@ -318,7 +313,9 @@ export class MarketingOverviewReportService {
     private readonly storeContext: ReportingStoreOperatingContextQueryPort,
   ) {}
 
-  async getReport(storeStableIdInput: string): Promise<MarketingOverviewReportV1> {
+  async getReport(
+    storeStableIdInput: string,
+  ): Promise<MarketingOverviewReportV1> {
     const storeStableId = storeStableIdInput.trim();
     if (!storeStableId) {
       throw new BadRequestException('storeStableId is required');
@@ -418,7 +415,7 @@ export class MarketingOverviewReportService {
       version: 1,
       storeStableId: store.storeStableId,
       timezone: store.timezone,
-      generatedAt: now.toUTC().toISO()!,
+      generatedAt: now.toUTC().toISO(),
       windows: Object.fromEntries(
         (
           Object.entries(windows) as Array<

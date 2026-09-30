@@ -14,9 +14,7 @@ export class ReportsController {
   ) {}
 
   @Get('marketing')
-  async getMarketingOverview(
-    @Query('storeStableId') storeStableId?: string,
-  ) {
+  async getMarketingOverview(@Query('storeStableId') storeStableId?: string) {
     return await this.marketingOverview.getReport(storeStableId ?? '');
   }
 

@@ -53,7 +53,10 @@ export type MarketingOverviewActivityV1 = {
   weekdays: number[];
   startMinutes: number | null;
   endMinutes: number | null;
-  metrics: Record<MarketingOverviewWindowKeyV1, MarketingOverviewWindowMetricsV1>;
+  metrics: Record<
+    MarketingOverviewWindowKeyV1,
+    MarketingOverviewWindowMetricsV1
+  >;
 };
 
 export type MarketingOverviewReportV1 = {

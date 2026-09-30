@@ -284,7 +284,9 @@ describe('MarketingOverviewReportService', () => {
         toExclusive: '2026-09-30T20:30:00.000Z',
       },
     });
-    expect(report.activities.map((activity) => activity.activityStableId)).toEqual(
+    expect(
+      report.activities.map((activity) => activity.activityStableId),
+    ).toEqual(
       expect.arrayContaining([
         'daily-monday',
         'auto-bogo',
@@ -293,9 +295,9 @@ describe('MarketingOverviewReportService', () => {
         'active-zero',
       ]),
     );
-    expect(report.activities.map((activity) => activity.activityStableId)).not.toEqual(
-      expect.arrayContaining(['paused-rule', 'future-rule']),
-    );
+    expect(
+      report.activities.map((activity) => activity.activityStableId),
+    ).not.toEqual(expect.arrayContaining(['paused-rule', 'future-rule']));
 
     const daily = report.activities.find(
       (activity) => activity.activityStableId === 'daily-monday',
