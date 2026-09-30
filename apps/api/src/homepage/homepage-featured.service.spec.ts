@@ -49,27 +49,27 @@ describe('HomepageFeaturedService', () => {
   });
 
   it('reserves fixed positions and fills automatic positions from eligible sales ranking', async () => {
+    const findMany = jest.fn().mockResolvedValue([
+      menuItem('top-food'),
+      menuItem('drink', { itemKind: 'BEVERAGE' }),
+      menuItem('no-image', { imageUrl: null }),
+      menuItem('second-food'),
+      menuItem('third-food'),
+    ]);
     const prisma = {
-      menuItem: {
-        findMany: jest
-          .fn()
-          .mockResolvedValue([
-            menuItem('top-food'),
-            menuItem('drink', { itemKind: 'BEVERAGE' }),
-            menuItem('no-image', { imageUrl: null }),
-            menuItem('second-food'),
-            menuItem('third-food'),
-          ]),
-      },
+      menuItem: { findMany },
     } as unknown as PrismaService;
-    const reportsService = {
-      getTopItemsForRange: jest.fn().mockResolvedValue([
+    const getTopItemsForRange = jest
+      .fn<HomepageSalesRankingQueryPort['getTopItemsForRange']>()
+      .mockResolvedValue([
         { stableId: 'top-food', name: 'Top', quantity: 20 },
         { stableId: 'drink', name: 'Drink', quantity: 18 },
         { stableId: 'no-image', name: 'No image', quantity: 17 },
         { stableId: 'second-food', name: 'Second', quantity: 16 },
         { stableId: 'third-food', name: 'Third', quantity: 15 },
-      ]),
+      ]);
+    const reportsService = {
+      getTopItemsForRange,
     } as unknown as HomepageSalesRankingQueryPort;
     const contentService = {
       getFeaturedConfig: jest.fn().mockResolvedValue({
@@ -96,34 +96,36 @@ describe('HomepageFeaturedService', () => {
       { itemStableId: 'top-food', badge: '店主推荐' },
       { itemStableId: 'third-food', badge: null },
     ]);
-    expect(reportsService.getTopItemsForRange).toHaveBeenCalledWith(
-      '4750_Yonge_Street',
-      expect.any(Date),
-      expect.any(Date),
-    );
-    expect(prisma.menuItem.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          category: {
-            storeStableId: '4750_Yonge_Street',
-            deletedAt: null,
-          },
-        }),
-      }),
-    );
+    const rankingCall = getTopItemsForRange.mock.calls[0];
+    expect(rankingCall?.[0]).toBe('4750_Yonge_Street');
+    expect(rankingCall?.[1]).toBeInstanceOf(Date);
+    expect(rankingCall?.[2]).toBeInstanceOf(Date);
+
+    const menuQuery = findMany.mock.calls[0]?.[0] as {
+      where: {
+        category: {
+          storeStableId: string;
+          deletedAt: null;
+        };
+      };
+    };
+    expect(menuQuery.where.category).toEqual({
+      storeStableId: '4750_Yonge_Street',
+      deletedAt: null,
+    });
   });
 
   it('rejects a manual featured item that is not found under the configured Store root', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
     const prisma = {
-      menuItem: {
-        findMany: jest.fn().mockResolvedValue([]),
-      },
+      menuItem: { findMany },
     } as unknown as PrismaService;
     const reportsService = {
       getTopItemsForRange: jest.fn(),
     } as unknown as HomepageSalesRankingQueryPort;
+    const updateFeaturedConfig = jest.fn();
     const contentService = {
-      updateFeaturedConfig: jest.fn(),
+      updateFeaturedConfig,
     } as unknown as HomepageContentService;
     const service = new HomepageFeaturedService(
       prisma,
@@ -147,18 +149,25 @@ describe('HomepageFeaturedService', () => {
       'Featured item must be active, public, visible on the main menu, and have an image: other-store-item',
     );
 
-    expect(prisma.menuItem.findMany).toHaveBeenCalledWith(
+    const menuQuery = findMany.mock.calls[0]?.[0] as {
+      where: {
+        stableId: { in: string[] };
+        category: {
+          storeStableId: string;
+          deletedAt: null;
+        };
+      };
+    };
+    expect(menuQuery.where).toEqual(
       expect.objectContaining({
-        where: expect.objectContaining({
-          stableId: { in: ['other-store-item'] },
-          category: {
-            storeStableId: '4750_Yonge_Street',
-            deletedAt: null,
-          },
-        }),
+        stableId: { in: ['other-store-item'] },
+        category: {
+          storeStableId: '4750_Yonge_Street',
+          deletedAt: null,
+        },
       }),
     );
-    expect(contentService.updateFeaturedConfig).not.toHaveBeenCalled();
+    expect(updateFeaturedConfig).not.toHaveBeenCalled();
   });
 
   it('automatically labels only the top eligible food as 周销量第一', async () => {
