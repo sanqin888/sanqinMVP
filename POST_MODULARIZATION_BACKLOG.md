@@ -751,10 +751,10 @@ This can proceed in parallel with Lane A or Lane B when product priority warrant
 Priority: **P1 PARALLEL PRODUCT / PERSISTENCE WORK**  
 Complexity: **H**  
 Hard dependency: none  
-State: **SLICE 1 MERGED + CI GREEN + PRODUCTION MIGRATION APPLIED (#2607 / `78f4e6d8` / CI #6613) / SLICE 2A MERGED + CI #6619 GREEN + DEPLOYED + CORE PARITY VERIFIED / HOMEPAGE FEATURED FOLLOW-UP LOCAL / NO NEW MIGRATION / SLICE 2B NOT NULL CONTRACTION BLOCKED UNTIL FOLLOW-UP VERIFICATION + EXPLICIT AUTHORIZATION**  
+State: **SLICE 1 MERGED + CI GREEN + PRODUCTION MIGRATION APPLIED (#2607 / `78f4e6d8` / CI #6613) / SLICE 2A + HOMEPAGE FOLLOW-UP PRODUCTION VERIFIED (#2608 / #2610) / SLICE 2B SOURCE LOCAL + EXPLICITLY AUTHORIZED / MIGRATION REQUIRED / NOT PUSHED**  
 Detailed plan: `docs/architecture/postmod-catalog-store-menu.md`
 
-Slice 1 has established persisted Store ownership roots and its deterministic backfill migration is applied in production. Slice 2A makes the active combined Admin menu/Options workspace, Public Menu, POS/Orders pricing/materialization/labels, Daily Special Catalog subjects and Uber Catalog source/reference reads explicitly Store-scoped; production persisted-menu parity is verified. A post-deployment completeness audit found Homepage Featured still using a global stableId MenuItem lookup and Store-agnostic sales ranking. The current narrow follow-up scopes both reads to the configured Store. The Category/Item routes remain reserved placeholders until Slice 3, and the root ownership fields remain nullable until the follow-up is verified and the separately authorized Slice 2B constraint contraction is completed.
+Slice 1 has established persisted Store ownership roots and its deterministic backfill migration is applied in production. Slice 2A and its Homepage Featured follow-up are production verified: Admin/Public/POS/Orders/Offers/Uber/Homepage menu reads are Store-scoped, all current roots belong to `4750_Yonge_Street`, and persisted-menu parity is intact. Slice 2B is now explicitly authorized and locally tightens the two Prisma root ownership fields/relations to required types. The physical database contraction remains blocked on the separately user-generated/reviewed NOT NULL migration. The Category/Item routes remain reserved placeholders until Slice 3.
 
 Approved sequence:
 
@@ -764,7 +764,7 @@ Approved sequence:
 4. **Slice 3 — Admin Category/Item cutover:** activate the reserved Store-scoped Category and Item workspaces and keep the Options workspace separate.
 5. **Slice 4 — legacy combined-menu contraction:** retire the old combined `/admin/menu` workspace and remove `/admin/menu/full` only after all Category/Item/Options consumers are gone.
 
-Slice 1's expand foundation and companion migration are merged. Slice 2A deliberately introduces no new schema/migration and keeps the nullable compatibility seam active. Do not create or enable a second production Store menu until current-store parity is verified and the separately authorized Slice 2B NOT NULL contraction is reviewed, merged and verified.
+Slice 1's expand foundation and companion migration are merged. Slice 2A and its Homepage follow-up are production verified. Slice 2B source now contracts the two Prisma ownership roots to required types, but the compatibility remains active until the user-generated NOT NULL migration is reviewed, merged, applied and production verified. Do not create or enable a second production Store menu before that closeout.
 
 ## 7. Later internal hardening
 
@@ -946,16 +946,24 @@ Payments       = permanent payment facts
 
 ### 8.4 UberEats Production cutover
 
-State: **PROVIDER-GATED**  
+State: **PROVIDER-GATED / INTERNAL PRODUCTION ACCESS APPROVAL PENDING AS OF 2026-09-30**  
 Complexity: **XL provider rollout**
+
+Current external gate:
+
+- on 2026-09-27, Uber GTS explicitly stated that SanQ's Production Access request had been **escalated to its internal team for approval of production access**;
+- after SanQ supplied `orders.notification` and `store.status.changed` HTTP-200 screenshots/log evidence the same day, GTS confirmed that the material had been shared with the internal team for **further review and Production Access approval**;
+- the 2026-09-30 Production App dashboard still shows the longstanding `Production Access Requested` / `Scopes Requested — Your scope request is being verified` state, with `Last Updated On 2026-08-03`. That dashboard view existed before the 2026-09-27 escalation and is **not** treated as evidence that internal approval has advanced or completed;
+- there is no repository-side action required while approval is pending. Await explicit Uber approval / granted Production scopes rather than opening a new architecture phase or fabricating provider evidence.
 
 When Uber enables the required production path:
 
 - finish Production Verification;
 - provision/activate the Production Store;
 - run focused production pilot verification;
-- exercise financial-report live replay when provider capability exists;
-- preserve the already-closed architecture boundaries;
+- exercise financial-report live replay only when real Production merchant activity yields non-empty Payment Details + Finance/Payout Summary report content; current Test/Sandbox report files do not contain sufficient real transaction rows to validate payout-reference reconciliation;
+- for the merged Uber financial-registry contraction (PR #2612 / CI #6637 / merge `271f4979`), verify real materialization -> U-FR1C MATCHED -> READY -> IMPORTED progression, and confirm natural READY/IMPORTED partial-pair recovery if such a state occurs, without re-materializing the IMPORTED partner;
+- preserve the already-closed architecture boundaries and keep Phase 9 CLOSED;
 - after Production Verification succeeds, inventory and remove Test Store/sandbox data through a separately reviewed cleanup.
 
 ### 8.5 Fantuan settlement Adjustment decomposition

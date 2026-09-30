@@ -6,6 +6,7 @@ import type {
 import type {
   UberFinancialReportApiPort,
   UberFinancialReportArtifactStorePort,
+  UberFinancialReportRecord,
   UberFinancialReportRepositoryPort,
   UberFinancialReportStatus,
 } from './uber-financial-reporting.ports';
@@ -107,19 +108,30 @@ export class UberFinancialReportingUseCase implements UberEatsReportingPort {
     status?: UberFinancialReportStatus;
   }) {
     const rows = await this.reports.list(input);
-    return rows.map((row) => ({
-      reportStableId: row.reportStableId,
-      workflowId: row.workflowId,
-      reportType: row.reportType,
-      providerReportType: row.providerReportType,
-      startDate: row.startDate,
-      endDate: row.endDate,
-      status: row.status,
-      artifactUrls: row.artifactUrls,
-      requestedAt: row.requestedAt.toISOString(),
-      completedAt: row.completedAt?.toISOString() ?? null,
-      errorMessage: row.errorMessage,
-    }));
+    return rows.map((row) => this.presentFinancialReport(row));
+  }
+
+  async findFinancialReportReconciliationCandidates(input: {
+    anchorReportStableId: string;
+  }) {
+    const anchor = await this.reports.findByReportStableId(
+      input.anchorReportStableId.trim(),
+    );
+    if (
+      !anchor ||
+      (anchor.reportType !== 'PAYMENT_DETAILS_REPORT' &&
+        anchor.reportType !== 'FINANCE_SUMMARY_REPORT') ||
+      (anchor.status !== 'READY' && anchor.status !== 'IMPORTED')
+    ) {
+      return [];
+    }
+
+    const rows = await this.reports.listReconciliationCandidates({
+      storeUuids: anchor.storeUuids,
+      startDate: anchor.startDate,
+      endDate: anchor.endDate,
+    });
+    return rows.map((row) => this.presentFinancialReport(row));
   }
 
   async readFinancialReportArtifact(input: {
@@ -155,6 +167,22 @@ export class UberFinancialReportingUseCase implements UberEatsReportingPort {
       );
     }
     await this.reports.markImported(report.reportStableId);
+  }
+
+  private presentFinancialReport(row: UberFinancialReportRecord) {
+    return {
+      reportStableId: row.reportStableId,
+      workflowId: row.workflowId,
+      reportType: row.reportType,
+      providerReportType: row.providerReportType,
+      startDate: row.startDate,
+      endDate: row.endDate,
+      status: row.status,
+      artifactUrls: row.artifactUrls,
+      requestedAt: row.requestedAt.toISOString(),
+      completedAt: row.completedAt?.toISOString() ?? null,
+      errorMessage: row.errorMessage,
+    };
   }
 
   private idempotencyKey(input: {

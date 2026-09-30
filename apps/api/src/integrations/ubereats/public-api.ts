@@ -89,6 +89,20 @@ export type UberEatsFinancialReportType =
   | 'FINANCE_SUMMARY_REPORT'
   | 'ORDERS_AND_ITEMS_REPORT';
 
+export type UberEatsFinancialReportView = {
+  reportStableId: string;
+  workflowId: string;
+  reportType: string;
+  providerReportType: string | null;
+  startDate: string;
+  endDate: string;
+  status: 'REQUESTED' | 'READY' | 'IMPORTED' | 'ERROR';
+  artifactUrls: string[];
+  requestedAt: string;
+  completedAt: string | null;
+  errorMessage: string | null;
+};
+
 export interface UberEatsReportingPort {
   isFinancialAuthorityEnabled(): boolean;
   requestFinancialReports(input: {
@@ -106,21 +120,10 @@ export interface UberEatsReportingPort {
   listFinancialReports(input?: {
     limit?: number;
     status?: 'REQUESTED' | 'READY' | 'IMPORTED' | 'ERROR';
-  }): Promise<
-    Array<{
-      reportStableId: string;
-      workflowId: string;
-      reportType: string;
-      providerReportType: string | null;
-      startDate: string;
-      endDate: string;
-      status: 'REQUESTED' | 'READY' | 'IMPORTED' | 'ERROR';
-      artifactUrls: string[];
-      requestedAt: string;
-      completedAt: string | null;
-      errorMessage: string | null;
-    }>
-  >;
+  }): Promise<UberEatsFinancialReportView[]>;
+  findFinancialReportReconciliationCandidates(input: {
+    anchorReportStableId: string;
+  }): Promise<UberEatsFinancialReportView[]>;
   readFinancialReportArtifact(input: {
     reportStableId: string;
     artifactUrl: string;

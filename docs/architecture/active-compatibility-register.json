@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "baselineCommit": "1b18fb00",
-  "updatedAt": "2026-09-29",
+  "updatedAt": "2026-09-30",
   "requiredFields": [
     "compat_id",
     "old_owner",
@@ -60,17 +60,17 @@
     },
     {
       "compat_id": "catalog.store-menu-ownership.v1",
-      "status": "active_expand_contract",
+      "status": "active_contraction_pending",
       "old_owner": "Catalog-owned MenuCategory/MenuOptionGroupTemplate and descendants are persisted and read as one brand-level shared menu with no Store identity",
       "new_owner": "Catalog remains the owner, but MenuCategory and MenuOptionGroupTemplate are explicit Store.storeStableId-scoped roots; MenuItem and MenuOptionTemplateChoice inherit Store ownership through those roots while MenuPackagingType remains a brand-level reusable dictionary",
       "dual_write_or_read": [
         "Slice 1 is merged through PR #2607 / merge 78f4e6d8 / CI #6613 with the user-generated migration 20260929235417_post_mod_catalog_store_menu_ownership_foundation; existing roots are deterministically backfilled to 4750_Yonge_Street while ownership remains nullable",
         "Slice 2A merged through PR #2608 / merge 9610fa0f / CI #6619 and is deployed; production Store-scoped category/item/template-choice/binding/fixed-component fingerprints match the pre-cutover single-store baseline and current root ownership is non-null/valid for 4750_Yonge_Street",
-        "The production verification audit found one omitted Homepage Featured consumer whose MenuItem candidate lookup and seven-day sales ranking were still global; a narrow 2A follow-up is local to make both reads explicitly configured-Store scoped",
-        "The nullable Store-root fields remain the intentional compatibility seam until the Homepage follow-up is merged/verified and separately authorized Slice 2B contracts them to NOT NULL"
+        "Homepage Featured completeness follow-up PR #2610 / merge 8c7de733 is deployed and production verified; candidate MenuItem reads use the Category Store root and seven-day sales ranking carries the configured Store through Reporting to Orders",
+        "Slice 2B was explicitly authorized on 2026-09-30; local source makes both Prisma root ownership fields/relations required, while the compatibility remains active until the separately user-generated NOT NULL migration is reviewed, merged, applied and production parity is re-verified"
       ],
       "parity_metric": "Before store-aware authority cutover, every historical MenuCategory and MenuOptionGroupTemplate row must map to exactly one valid Store, null ownership must be zero after backfill, and the 4750_Yonge_Street store-scoped projection must equal the current brand-level menu for categories/items/templates/options/prices/availability/bindings",
-      "rollback": "Until Slice 2A is accepted and verified, the nullable ownership foundation remains forward-fixable without rewriting historical stable IDs. After store-aware consumer authority and the later NOT NULL contraction, do not restore global shared-menu semantics; repair incorrect Store ownership explicitly.",
+      "rollback": "Slice 2A is accepted and production verified. Before the Slice 2B database migration is applied, the physical nullable columns remain forward-fixable; after NOT NULL is applied, do not restore global shared-menu semantics or nullable ownership as a rollback strategy—repair incorrect Store ownership explicitly.",
       "exit_criteria": "Companion migration is reviewed and applied with deterministic full-row backfill; all Catalog writes require explicit storeStableId; Admin/Public Menu/POS/Orders/Daily Special/Uber and Homepage Featured Catalog/ranking reads are store-scoped; active verification shows 4750_Yonge_Street parity; null ownership is zero; and the follow-up contraction makes root ownership non-null before a second production Store menu is created.",
       "remove_pr": "Catalog store-menu ownership contraction PR after Slice 2 store-aware consumer cutover and parity verification",
       "deadline": "Before enabling a second production Store menu; remove immediately after store-aware cutover and non-null ownership contraction",

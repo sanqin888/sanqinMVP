@@ -79,6 +79,14 @@ Order Fulfillment 1.0.0 的 `orders.notification`、`orders.scheduled.notificati
 `store.menu_refresh_request` 与 `store.status.changed` 都是正式支持事件，不得再进入 unsupported quarantine。
 `store.status.changed` 的实际投递仍依赖 Uber 对应用启用/whitelist 对应的 store status notification capability；代码支持不等于 Uber 侧订阅已开通。
 
+## Production Access approval status（2026-09-30）
+
+- 2026-09-27 Uber GTS 明确回复：SanQ 的 Production Access request 已 **escalated to the internal team for approval of production access**。
+- SanQ 同日补交 `orders.notification` 与 `store.status.changed` 的 HTTP 200 日志/截图后，GTS 再次确认这些 evidence 已交给内部团队做 **further review and Production Access approval**。
+- 2026-09-30 operator 截图中，Production App 仍显示此前长期存在的 `Production Access Requested` 与 `Scopes Requested — Your scope request is being verified`，且页面 `Last Updated On` 仍为 `2026-08-03`。因此该 Dashboard 状态**不能**作为 2026-09-27 内部审批已推进或已完成的证据。
+- 当前状态应记录为：**PROVIDER-GATED / INTERNAL PRODUCTION ACCESS APPROVAL PENDING**。等待 Uber 明确批准 / Production scopes granted；无需为推进状态而重复制造 Sandbox evidence，也不得把 Dashboard 原有 pending 文案误写为新的审批事件。
+- Accounting Reporting 的 production verification 同样保持 deferred：Test/Sandbox report 目前没有足够的真实交易行来验证 Payment Details ↔ Finance/Payout Summary payout-reference reconciliation。等 Production Access 批准且真实 merchant activity 生成非空报表后，再验证 materialization -> U-FR1C MATCHED -> READY -> IMPORTED，并在自然出现 partial pair 时验证 READY/IMPORTED exact recovery。
+
 ## OAuth scope contract
 
 SanQ 将 Uber OAuth scope 按 grant type 分离维护。`UBER_EATS_APP_SCOPES` 只声明当前部署预期已获批的
@@ -358,6 +366,7 @@ Tech Support verification 和 pilot-store production provisioning。
 - Structured allergy parser/policy 必须覆盖 item、nested modifier、`RELAY_ALL`、`DENY_LIST`、`DENY_ALL`、未知/损坏请求 fail-safe Deny，以及 POS/打印传递。
 - `orders.customer_order_edit` 不得进入普通新单 import；当前保持 unsupported quarantine，并记录 `CUSTOMER_ORDER_EDIT_RECONCILIATION_REQUIRED`。
 - `eats.report.success` 的 CSV artifact 必须对 durable inbox replay 幂等：同一 workflow / logical section / 相同 CSV 内容只能对应一个 artifact URL/文件；signed download URL 变化不得制造副本；内容变化应形成不同 artifact；deterministic path 已存在但内容不一致必须 fail closed；report 已为 `READY/IMPORTED` 且已有 artifact 时不得重新下载。
+- Accounting 的 Uber financial reconciliation 必须以 unresolved `READY` report 为 work seed，并通过 External Channels owner-side exact lookup 绑定同一规范化 Store UUID set + period；候选只允许 `PAYMENT_DETAILS_REPORT` / `FINANCE_SUMMARY_REPORT` 且状态为 `READY | IMPORTED`，不得依赖全局 `IMPORTED limit=200`、不得把 `storeUuids` 暴露给 Accounting、不得在 duplicate 时按 latest/状态优先猜测。
 - Uber architecture tests、API lint/build/strict declaration、shared strict checks、API test suite 和受影响 Web checks 必须全绿。
 
 ### Sandbox / Test Store PASS

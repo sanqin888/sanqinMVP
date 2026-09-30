@@ -32,6 +32,10 @@ describe('Uber Eats store identity architecture', () => {
     expect(publicApi).toBeDefined();
     expect(reporting).toBeDefined();
     expect(publicApi!.source).not.toContain('storeUuids');
+    expect(publicApi!.source).toContain(
+      'findFinancialReportReconciliationCandidates',
+    );
+    expect(reporting!.source).toContain('listReconciliationCandidates');
     expect(reporting!.source).toContain('mapping.isProvisioned');
     expect(reporting!.source).toContain('mapping.uberStoreId.trim()');
   });
