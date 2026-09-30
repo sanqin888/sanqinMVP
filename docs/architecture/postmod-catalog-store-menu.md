@@ -132,7 +132,7 @@ The Slice 1 schema intentionally remains nullable after this backfill. The user-
 
 ### Slice 2A — Store-aware Catalog contracts and consumers
 
-Status: **SOURCE IMPLEMENTED / LOCAL REVIEW PENDING / NO NEW MIGRATION / NOT PUSHED**.
+Status: **PR #2608 MERGED / CI #6619 GREEN / DEPLOYED / CORE PRODUCTION PARITY VERIFIED / HOMEPAGE FEATURED COMPLETENESS FOLLOW-UP LOCAL / NO NEW MIGRATION**.
 
 Implemented scope:
 
@@ -144,6 +144,8 @@ Implemented scope:
 - Offers remains the Daily Special owner; Daily Special list/active/write paths receive an explicit Store and constrain definitions to Store-scoped Catalog item subjects rather than reading Catalog persistence;
 - Uber keeps its existing adapter/application boundaries, but Catalog source/menu-item/option/template/modifier-snapshot reads now require the target SanQ Store; menu reference validation and availability sync carry the same Store identity;
 - the current combined Admin Menu and separate Options screens forward the existing shell `?store=` context to the Store-scoped API; Category/Item workspace split remains Slice 3;
+- production verification after deployment confirmed the Slice 1 ownership migration is applied, all 7 Category and 23 Option Group Template roots are non-null/valid and owned by `4750_Yonge_Street`, and the Store-scoped category/item/template-choice/binding/fixed-component fingerprints match the pre-cutover single-store baseline;
+- the verification audit found one omitted consumer: Homepage Featured still loaded candidate MenuItems by global stableId and its seven-day sales ranking had no Store input. The current 2A follow-up makes both candidate validation/projection and ranking explicitly use the configured Store without changing Homepage content ownership or Catalog persistence;
 - Packaging Type remains a brand-level reusable dictionary;
 - no Web Clover execution, Uber provider protocol/OAuth/webhook contract, stable-ID identity, dependency or Prisma schema change is included.
 
@@ -194,4 +196,4 @@ After remote authorization, the reviewed branch must pass the normal GitHub Acti
 - Web lint/build/strict/test;
 - Browser E2E and existing independent workstation/printer jobs where triggered.
 
-Slice 2A source does not yet claim production Store-isolation verification. The required current-Store parity/active verification remains a gate before the Slice 2B NOT NULL contraction and compatibility removal.
+Slice 2A core deployment has production Store-ownership/parity evidence, but the follow-up Homepage Featured consumer fix is still local and must pass review, CI and deployment verification before Slice 2A can be declared fully verified. Slice 2B remains blocked until that final consumer-completeness gate passes; the nullable compatibility seam stays active.

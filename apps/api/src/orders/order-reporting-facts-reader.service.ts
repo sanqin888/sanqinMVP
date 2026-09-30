@@ -41,9 +41,26 @@ export class OrderReportingFactsReaderService implements OrderReportingFactsRead
     startDate: Date,
     endDate: Date,
   ): Promise<OrderReportingItemFactV1[]> {
+    return this.readItems(startDate, endDate);
+  }
+
+  async readItemsForStoreRange(
+    storeStableId: string,
+    startDate: Date,
+    endDate: Date,
+  ): Promise<OrderReportingItemFactV1[]> {
+    return this.readItems(startDate, endDate, storeStableId);
+  }
+
+  private async readItems(
+    startDate: Date,
+    endDate: Date,
+    storeStableId?: string,
+  ): Promise<OrderReportingItemFactV1[]> {
     const orderItems = await this.prisma.orderItem.findMany({
       where: {
         order: {
+          ...(storeStableId ? { storeId: storeStableId } : {}),
           createdAt: { gte: startDate, lte: endDate },
           status: { in: REPORTABLE_ORDER_STATUSES },
         },

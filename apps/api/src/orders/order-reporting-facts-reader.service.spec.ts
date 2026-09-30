@@ -193,6 +193,52 @@ describe('OrderReportingFactsReaderService', () => {
     });
   });
 
+  it('scopes homepage-ranking item facts to the requested Store without changing the inclusive range contract', async () => {
+    const orderItemFindMany = jest.fn().mockResolvedValue([]);
+    const prisma = {
+      order: {
+        aggregate: jest.fn(),
+        groupBy: jest.fn(),
+        findMany: jest.fn(),
+      },
+      orderItem: { findMany: orderItemFindMany },
+    };
+    const service = new OrderReportingFactsReaderService(prisma as never);
+    const startDate = new Date('2026-09-02T04:00:00.000Z');
+    const endDate = new Date('2026-09-03T03:59:59.999Z');
+
+    await service.readItemsForStoreRange(
+      '4750_Yonge_Street',
+      startDate,
+      endDate,
+    );
+
+    expect(orderItemFindMany).toHaveBeenCalledWith({
+      where: {
+        order: {
+          storeId: '4750_Yonge_Street',
+          createdAt: { gte: startDate, lte: endDate },
+          status: {
+            in: [
+              OrderStatus.paid,
+              OrderStatus.making,
+              OrderStatus.ready,
+              OrderStatus.completed,
+            ],
+          },
+        },
+      },
+      select: {
+        qty: true,
+        productStableId: true,
+        displayName: true,
+        nameEn: true,
+        nameZh: true,
+        componentsJson: true,
+      },
+    });
+  });
+
   it('owns immutable component snapshot parsing before facts cross the Orders boundary', async () => {
     const orderItemFindMany = jest.fn().mockResolvedValue([
       {

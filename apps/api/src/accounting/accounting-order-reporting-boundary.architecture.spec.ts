@@ -36,7 +36,7 @@ describe('B2-E Accounting legacy Orders paid-total contraction', () => {
     expect(reportsModule).toContain('OrderReportingFactsModule');
     expect(reportsModule).toContain('ORDER_REPORTING_FACTS_READER');
     expect(reportsModule).not.toContain('readMetricsForRange');
-    expect(reportsModule).toContain('readItemsForRange');
+    expect(reportsModule).toContain('readItemsForStoreRange');
   });
 
   it('retires only the paid-total Orders reporting contract surface', () => {
