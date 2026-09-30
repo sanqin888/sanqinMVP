@@ -56,7 +56,7 @@ describe('HomepageFeaturedService', () => {
         }
       | undefined;
     const findMany = jest.fn(
-      async (query: {
+      (query: {
         where: {
           category: {
             storeStableId: string;
@@ -65,13 +65,13 @@ describe('HomepageFeaturedService', () => {
         };
       }) => {
         capturedCategory = query.where.category;
-        return [
+        return Promise.resolve([
           menuItem('top-food'),
           menuItem('drink', { itemKind: 'BEVERAGE' }),
           menuItem('no-image', { imageUrl: null }),
           menuItem('second-food'),
           menuItem('third-food'),
-        ];
+        ]);
       },
     );
     const prisma = {
@@ -82,17 +82,17 @@ describe('HomepageFeaturedService', () => {
     let capturedRankingStart: Date | undefined;
     let capturedRankingEnd: Date | undefined;
     const getTopItemsForRange: HomepageSalesRankingQueryPort['getTopItemsForRange'] =
-      async (storeStableId, startDate, endDate) => {
+      (storeStableId, startDate, endDate) => {
         capturedRankingStore = storeStableId;
         capturedRankingStart = startDate;
         capturedRankingEnd = endDate;
-        return [
+        return Promise.resolve([
           { stableId: 'top-food', name: 'Top', quantity: 20 },
           { stableId: 'drink', name: 'Drink', quantity: 18 },
           { stableId: 'no-image', name: 'No image', quantity: 17 },
           { stableId: 'second-food', name: 'Second', quantity: 16 },
           { stableId: 'third-food', name: 'Third', quantity: 15 },
-        ];
+        ]);
       };
     const reportsService = {
       getTopItemsForRange,
@@ -142,7 +142,7 @@ describe('HomepageFeaturedService', () => {
         }
       | undefined;
     const findMany = jest.fn(
-      async (query: {
+      (query: {
         where: {
           stableId: { in: string[] };
           category: {
@@ -152,7 +152,7 @@ describe('HomepageFeaturedService', () => {
         };
       }) => {
         capturedWhere = query.where;
-        return [];
+        return Promise.resolve([]);
       },
     );
     const prisma = {
