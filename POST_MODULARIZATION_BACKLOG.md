@@ -946,16 +946,24 @@ Payments       = permanent payment facts
 
 ### 8.4 UberEats Production cutover
 
-State: **PROVIDER-GATED**  
+State: **PROVIDER-GATED / INTERNAL PRODUCTION ACCESS APPROVAL PENDING AS OF 2026-09-30**  
 Complexity: **XL provider rollout**
+
+Current external gate:
+
+- on 2026-09-27, Uber GTS explicitly stated that SanQ's Production Access request had been **escalated to its internal team for approval of production access**;
+- after SanQ supplied `orders.notification` and `store.status.changed` HTTP-200 screenshots/log evidence the same day, GTS confirmed that the material had been shared with the internal team for **further review and Production Access approval**;
+- the 2026-09-30 Production App dashboard still shows the longstanding `Production Access Requested` / `Scopes Requested — Your scope request is being verified` state, with `Last Updated On 2026-08-03`. That dashboard view existed before the 2026-09-27 escalation and is **not** treated as evidence that internal approval has advanced or completed;
+- there is no repository-side action required while approval is pending. Await explicit Uber approval / granted Production scopes rather than opening a new architecture phase or fabricating provider evidence.
 
 When Uber enables the required production path:
 
 - finish Production Verification;
 - provision/activate the Production Store;
 - run focused production pilot verification;
-- exercise financial-report live replay when provider capability exists;
-- preserve the already-closed architecture boundaries;
+- exercise financial-report live replay only when real Production merchant activity yields non-empty Payment Details + Finance/Payout Summary report content; current Test/Sandbox report files do not contain sufficient real transaction rows to validate payout-reference reconciliation;
+- for the merged Uber financial-registry contraction (PR #2612 / CI #6637 / merge `271f4979`), verify real materialization -> U-FR1C MATCHED -> READY -> IMPORTED progression, and confirm natural READY/IMPORTED partial-pair recovery if such a state occurs, without re-materializing the IMPORTED partner;
+- preserve the already-closed architecture boundaries and keep Phase 9 CLOSED;
 - after Production Verification succeeds, inventory and remove Test Store/sandbox data through a separately reviewed cleanup.
 
 ### 8.5 Fantuan settlement Adjustment decomposition
