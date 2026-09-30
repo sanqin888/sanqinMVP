@@ -189,6 +189,7 @@ describe('HomepageFeaturedService', () => {
 
     expect(capturedWhere).toEqual({
       stableId: { in: ['other-store-item'] },
+      deletedAt: null,
       category: {
         storeStableId: '4750_Yonge_Street',
         deletedAt: null,
