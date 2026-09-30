@@ -5,11 +5,17 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api/client';
+import { fetchPosStoreContext } from '@/lib/api/pos-session';
 import type { Locale } from '@/lib/i18n/locales';
+import {
+  composeAdminMenuCategories,
+  withStoreStableId,
+} from '@/lib/menu/admin-menu-narrow';
 import { isAvailableNow } from '@shared/menu';
 import type {
   AdminMenuCategoryDto,
-  AdminMenuFullResponse,
+  MenuCategoryBaseDto,
+  MenuItemWithBindingsDto,
   OptionChoiceDto,
   TemplateGroupFullDto,
 } from '@shared/menu';
@@ -189,11 +195,25 @@ export default function PosMenuManagementPage() {
     setLoading(true);
     setError(null);
     try {
-      const [menuRes, templatesRes] = await Promise.all([
-        apiFetch<AdminMenuFullResponse>('/admin/menu/full'),
-        apiFetch<TemplateGroupFullDto[]>('/admin/menu/option-group-templates'),
+      const storeContext = await fetchPosStoreContext();
+      const [categoryData, itemData, templatesRes] = await Promise.all([
+        apiFetch<MenuCategoryBaseDto[]>(
+          withStoreStableId(
+            '/admin/menu/categories',
+            storeContext.storeStableId,
+          ),
+        ),
+        apiFetch<MenuItemWithBindingsDto[]>(
+          withStoreStableId('/admin/menu/items', storeContext.storeStableId),
+        ),
+        apiFetch<TemplateGroupFullDto[]>(
+          withStoreStableId(
+            '/admin/menu/option-group-templates',
+            storeContext.storeStableId,
+          ),
+        ),
       ]);
-      setCategories(menuRes.categories ?? []);
+      setCategories(composeAdminMenuCategories(categoryData, itemData));
       setTemplates(templatesRes ?? []);
     } catch (e) {
       setError(e instanceof Error ? e.message : copy.error);
@@ -206,29 +226,54 @@ export default function PosMenuManagementPage() {
     void load();
   }, [load]);
 
-  async function setItemAvailability(itemStableId: string, mode: AvailabilityMode) {
+  async function setItemAvailability(
+    itemStableId: string,
+    mode: AvailabilityMode,
+  ) {
     setSavingKey(`item-${itemStableId}`);
     try {
-      const result = await apiFetch<{ uberSync: { status: UberSyncStatus } }>(`/admin/menu/items/${encodeURIComponent(itemStableId)}/availability`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode }),
-      });
-      setUberSyncByItem((current) => ({ ...current, [itemStableId]: result.uberSync.status }));
+      const storeContext = await fetchPosStoreContext();
+      const result = await apiFetch<{
+        uberSync: { status: UberSyncStatus };
+      }>(
+        withStoreStableId(
+          `/admin/menu/items/${encodeURIComponent(itemStableId)}/availability`,
+          storeContext.storeStableId,
+        ),
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode }),
+        },
+      );
+      setUberSyncByItem((current) => ({
+        ...current,
+        [itemStableId]: result.uberSync.status,
+      }));
       await load();
     } finally {
       setSavingKey(null);
     }
   }
 
-  async function setOptionAvailability(optionStableId: string, mode: AvailabilityMode) {
+  async function setOptionAvailability(
+    optionStableId: string,
+    mode: AvailabilityMode,
+  ) {
     setSavingKey(`option-${optionStableId}`);
     try {
-      await apiFetch(`/admin/menu/options/${encodeURIComponent(optionStableId)}/availability`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode }),
-      });
+      const storeContext = await fetchPosStoreContext();
+      await apiFetch(
+        withStoreStableId(
+          `/admin/menu/options/${encodeURIComponent(optionStableId)}/availability`,
+          storeContext.storeStableId,
+        ),
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode }),
+        },
+      );
       await load();
     } finally {
       setSavingKey(null);

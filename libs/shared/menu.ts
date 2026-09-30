@@ -163,19 +163,10 @@ export type PublicMenuCategoryDto = MenuCategoryBaseDto & {
   items: MenuItemWithOptionsDto[];
 };
 
-export type AdminMenuFullResponse = {
-  categories: AdminMenuCategoryDto[];
-  templatesLite: TemplateGroupLiteDto[];
-  dailySpecials: DailySpecialDto[];
-  packagingTypes: MenuPackagingTypeDto[];
-};
-
 export type PublicMenuResponse = {
   categories: PublicMenuCategoryDto[];
   dailySpecials: DailySpecialDto[];
 };
-
-export type AdminMenuFull = AdminMenuFullResponse;
 
 // Shared availability helper (front/back use the same logic)
 export function isAvailableNow(

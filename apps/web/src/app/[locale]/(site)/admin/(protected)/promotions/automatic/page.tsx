@@ -1,10 +1,18 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import type { Locale } from '@/lib/i18n/locales';
 import { apiFetch } from '@/lib/api/client';
-import type { AdminMenuCategoryDto } from '@shared/menu';
+import {
+  composeAdminMenuCategories,
+  withStoreStableId,
+} from '@/lib/menu/admin-menu-narrow';
+import type {
+  AdminMenuCategoryDto,
+  MenuCategoryBaseDto,
+  MenuItemWithBindingsDto,
+} from '@shared/menu';
 
 type RuleType =
   | 'PERCENTAGE_OFF'
@@ -275,6 +283,8 @@ function ItemSelector({
 
 export default function AutomaticPromotionsPage() {
   const { locale } = useParams<{ locale: Locale }>();
+  const searchParams = useSearchParams();
+  const storeStableId = searchParams.get('store')?.trim() ?? '';
   const isZh = locale === 'zh';
   const [rules, setRules] = useState<RuleDto[]>([]);
   const [categories, setCategories] = useState<AdminMenuCategoryDto[]>([]);
@@ -296,12 +306,18 @@ export default function AutomaticPromotionsPage() {
   );
 
   async function reload() {
-    const [ruleList, menu] = await Promise.all([
+    if (!storeStableId) return;
+    const [ruleList, categoryData, itemData] = await Promise.all([
       apiFetch<RuleDto[]>('/admin/promotions/rules'),
-      apiFetch<{ categories: AdminMenuCategoryDto[] }>('/admin/menu/full'),
+      apiFetch<MenuCategoryBaseDto[]>(
+        withStoreStableId('/admin/menu/categories', storeStableId),
+      ),
+      apiFetch<MenuItemWithBindingsDto[]>(
+        withStoreStableId('/admin/menu/items', storeStableId),
+      ),
     ]);
     setRules(ruleList);
-    setCategories(menu.categories ?? []);
+    setCategories(composeAdminMenuCategories(categoryData, itemData));
   }
 
   useEffect(() => {
@@ -310,13 +326,19 @@ export default function AutomaticPromotionsPage() {
       setLoading(true);
       setError(null);
       try {
-        const [ruleList, menu] = await Promise.all([
+        if (!storeStableId) return;
+        const [ruleList, categoryData, itemData] = await Promise.all([
           apiFetch<RuleDto[]>('/admin/promotions/rules'),
-          apiFetch<{ categories: AdminMenuCategoryDto[] }>('/admin/menu/full'),
+          apiFetch<MenuCategoryBaseDto[]>(
+            withStoreStableId('/admin/menu/categories', storeStableId),
+          ),
+          apiFetch<MenuItemWithBindingsDto[]>(
+            withStoreStableId('/admin/menu/items', storeStableId),
+          ),
         ]);
         if (cancelled) return;
         setRules(ruleList);
-        setCategories(menu.categories ?? []);
+        setCategories(composeAdminMenuCategories(categoryData, itemData));
       } catch (err) {
         console.error(err);
         if (!cancelled) setError(isZh ? '加载促销活动失败。' : 'Failed to load promotions.');
@@ -328,7 +350,7 @@ export default function AutomaticPromotionsPage() {
     return () => {
       cancelled = true;
     };
-  }, [isZh]);
+  }, [isZh, storeStableId]);
 
   function patch(patchValue: Partial<Draft>) {
     setSaved(false);

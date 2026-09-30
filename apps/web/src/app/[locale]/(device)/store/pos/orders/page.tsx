@@ -6,13 +6,20 @@ import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import type { Locale } from "@/lib/i18n/locales";
 import type {
-  AdminMenuFull,
+  DailySpecialDto,
+  MenuCategoryBaseDto,
+  MenuItemWithBindingsDto,
   TemplateGroupFullDto as MenuTemplateFull,
 } from "@shared/menu";
 import {
   buildLocalizedMenuFromDb,
   type PublicMenuCategory,
 } from "@/lib/menu/menu-transformer";
+import {
+  applyActiveDailySpecials,
+  composeAdminMenuCategories,
+  withStoreStableId,
+} from "@/lib/menu/admin-menu-narrow";
 import {
   advanceOrder,
   retryUberOrderSync,
@@ -1365,14 +1372,41 @@ export default function PosOrdersPage() {
     let cancelled = false;
     async function loadMenu() {
       try {
-        const [menuResponse, templateGroups] = await Promise.all([
-          apiFetch<AdminMenuFull>("/admin/menu/full"),
-          apiFetch<MenuTemplateFull[]>("/admin/menu/option-group-templates"),
-        ]);
+        const storeContext = await fetchPosStoreContext();
+        const [categoryData, itemData, templateGroups, activeSpecials] =
+          await Promise.all([
+            apiFetch<MenuCategoryBaseDto[]>(
+              withStoreStableId(
+                "/admin/menu/categories",
+                storeContext.storeStableId,
+              ),
+            ),
+            apiFetch<MenuItemWithBindingsDto[]>(
+              withStoreStableId(
+                "/admin/menu/items",
+                storeContext.storeStableId,
+              ),
+            ),
+            apiFetch<MenuTemplateFull[]>(
+              withStoreStableId(
+                "/admin/menu/option-group-templates",
+                storeContext.storeStableId,
+              ),
+            ),
+            apiFetch<{ specials: DailySpecialDto[] }>(
+              withStoreStableId(
+                "/admin/menu/daily-specials/active",
+                storeContext.storeStableId,
+              ),
+            ),
+          ]);
         if (cancelled) return;
         setMenuCategories(
           buildLocalizedMenuFromDb(
-            menuResponse.categories ?? [],
+            applyActiveDailySpecials(
+              composeAdminMenuCategories(categoryData, itemData),
+              activeSpecials.specials ?? [],
+            ),
             locale,
             templateGroups ?? [],
           ),

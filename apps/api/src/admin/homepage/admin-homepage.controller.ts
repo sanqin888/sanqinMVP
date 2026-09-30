@@ -51,6 +51,16 @@ export class AdminHomepageController {
     return this.featuredService.getConfig();
   }
 
+  @Get('featured/candidates')
+  async listFeaturedCandidates(
+    @Query('locale') localeRaw?: string,
+  ): Promise<{ items: Array<{ stableId: string; label: string }> }> {
+    const locale = localeRaw ? this.parseLocale(localeRaw) : 'en';
+    return {
+      items: await this.featuredService.listAdminCandidates(locale),
+    };
+  }
+
   @Put('featured')
   async updateFeaturedConfig(
     @Body() body: HomepageFeaturedConfig,

@@ -16,7 +16,6 @@ import {
   CatalogUberAvailabilityOrchestrationService,
 } from '../../application/menu/public-api';
 import {
-  AdminMenuFullResponse,
   DailySpecialDto,
   MenuCategoryBaseDto,
   MenuItemWithBindingsDto,
@@ -47,11 +46,13 @@ export class AdminMenuController {
     private readonly availability: CatalogUberAvailabilityOrchestrationService,
   ) {}
 
-  @Get('full')
-  async getFullMenu(
+  @Get('daily-specials/active')
+  async getActiveDailySpecials(
     @Query('storeStableId') storeStableId?: string,
-  ): Promise<AdminMenuFullResponse> {
-    return this.menuOffers.getFullMenu(requireStoreStableId(storeStableId));
+  ): Promise<{ specials: DailySpecialDto[] }> {
+    return this.menuOffers.getActiveDailySpecials(
+      requireStoreStableId(storeStableId),
+    );
   }
 
   @Get('daily-specials')

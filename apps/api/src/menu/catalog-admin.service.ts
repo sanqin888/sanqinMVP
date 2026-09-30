@@ -5,13 +5,11 @@ import {
 } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import {
-  AdminMenuCategoryDto,
-  AdminMenuOptionGroupBindingDto,
   isAvailableNow,
   MenuCategoryBaseDto,
+  MenuItemWithBindingsDto,
   MenuPackagingTypeDto,
   TemplateGroupFullDto,
-  TemplateGroupLiteDto,
 } from '@shared/menu';
 
 import { PrismaService } from '../prisma/prisma.service';
@@ -85,23 +83,7 @@ type OrderItemMaterializationRow = Prisma.MenuItemGetPayload<{
   select: typeof orderItemMaterializationSelect;
 }>;
 
-export type CatalogAdminMenuItemDto = Omit<
-  AdminMenuCategoryDto['items'][number],
-  'effectivePriceCents' | 'activeSpecial'
->;
-
-export type CatalogAdminMenuCategoryDto = Omit<
-  AdminMenuCategoryDto,
-  'items'
-> & {
-  items: CatalogAdminMenuItemDto[];
-};
-
-export type CatalogAdminMenuSnapshot = {
-  categories: CatalogAdminMenuCategoryDto[];
-  templatesLite: TemplateGroupLiteDto[];
-  packagingTypes: MenuPackagingTypeDto[];
-};
+export type CatalogAdminMenuItemDto = MenuItemWithBindingsDto;
 
 function toIso(value: Date | null | undefined): string | null {
   return value ? value.toISOString() : null;
@@ -804,169 +786,6 @@ export class CatalogAdminService
       isActive: type.isActive,
       sortOrder: type.sortOrder,
     }));
-  }
-
-  async getFullMenu(storeStableId: string): Promise<CatalogAdminMenuSnapshot> {
-    const storeId = requireStoreStableId(storeStableId);
-    const [categories, templateGroups, packagingTypes] = await Promise.all([
-      this.prisma.menuCategory.findMany({
-        where: { storeStableId: storeId, deletedAt: null },
-        orderBy: { sortOrder: 'asc' },
-        include: {
-          items: {
-            where: { deletedAt: null },
-            orderBy: { sortOrder: 'asc' },
-            include: {
-              category: { select: { stableId: true } },
-              packagings: {
-                orderBy: { sortOrder: 'asc' },
-                include: { packagingType: true },
-              },
-              fixedComponents: {
-                orderBy: { sortOrder: 'asc' },
-              },
-              optionGroups: {
-                where: {
-                  templateGroup: { deletedAt: null },
-                },
-                orderBy: { sortOrder: 'asc' },
-                include: {
-                  templateGroup: {
-                    select: {
-                      stableId: true,
-                      nameEn: true,
-                      nameZh: true,
-                      deletedAt: true,
-                      defaultMinSelect: true,
-                      defaultMaxSelect: true,
-                      isAvailable: true,
-                      tempUnavailableUntil: true,
-                      sortOrder: true,
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      }),
-      this.prisma.menuOptionGroupTemplate.findMany({
-        where: { storeStableId: storeId, deletedAt: null },
-        orderBy: { sortOrder: 'asc' },
-      }),
-      this.prisma.menuPackagingType.findMany({
-        where: { deletedAt: null },
-        orderBy: { sortOrder: 'asc' },
-      }),
-    ]);
-
-    const templatesLite: TemplateGroupLiteDto[] = (templateGroups ?? []).map(
-      (group) => ({
-        templateGroupStableId: group.stableId,
-        nameEn: group.nameEn,
-        nameZh: group.nameZh ?? null,
-        defaultMinSelect: group.defaultMinSelect,
-        defaultMaxSelect: group.defaultMaxSelect ?? null,
-        isAvailable: group.isAvailable,
-        tempUnavailableUntil: toIso(group.tempUnavailableUntil),
-        sortOrder: group.sortOrder,
-      }),
-    );
-
-    const packagingTypeDtos = packagingTypes.map((type) => ({
-      stableId: type.stableId,
-      name: type.name,
-      isActive: type.isActive,
-      sortOrder: type.sortOrder,
-    }));
-    const categoryDtos: CatalogAdminMenuCategoryDto[] = (categories ?? []).map(
-      (category) => {
-        const categoryStableId = category.stableId;
-        const items = (category.items ?? []).map((item) => {
-          const optionGroups: AdminMenuOptionGroupBindingDto[] = (
-            item.optionGroups ?? []
-          )
-            .filter(
-              (link) =>
-                link.templateGroup && link.templateGroup.deletedAt == null,
-            )
-            .map((link) => {
-              const templateGroup = link.templateGroup;
-              const template: TemplateGroupLiteDto = {
-                templateGroupStableId: templateGroup.stableId,
-                nameEn: templateGroup.nameEn,
-                nameZh: templateGroup.nameZh ?? null,
-                defaultMinSelect: templateGroup.defaultMinSelect,
-                defaultMaxSelect: templateGroup.defaultMaxSelect ?? null,
-                isAvailable: templateGroup.isAvailable,
-                tempUnavailableUntil: toIso(templateGroup.tempUnavailableUntil),
-                sortOrder: templateGroup.sortOrder,
-              };
-
-              return {
-                templateGroupStableId: templateGroup.stableId,
-                bindingStableId: null,
-                minSelect: link.minSelect,
-                maxSelect: link.maxSelect,
-                sortOrder: link.sortOrder,
-                isEnabled: link.isEnabled,
-                affectedPackagingTypeStableIds:
-                  link.affectedPackagingTypeStableIds,
-                template,
-              };
-            });
-
-          return {
-            stableId: item.stableId,
-            categoryStableId,
-            nameEn: item.nameEn,
-            nameZh: item.nameZh ?? null,
-            basePriceCents: item.basePriceCents,
-            isAvailable: item.isAvailable,
-            visibility: item.visibility,
-            isVisibleOnMainMenu: item.isVisibleOnMainMenu,
-            publishToUberEats: item.publishToUberEats,
-            labelStrategy: item.labelStrategy,
-            itemKind: item.itemKind,
-            packagings: item.packagings.map((packaging) => ({
-              sortOrder: packaging.sortOrder,
-              packagingType: {
-                stableId: packaging.packagingType.stableId,
-                name: packaging.packagingType.name,
-                isActive: packaging.packagingType.isActive,
-                sortOrder: packaging.packagingType.sortOrder,
-              },
-            })),
-            fixedComponents: item.fixedComponents.map((component) => ({
-              componentItemStableId: component.componentItemStableId,
-              quantity: component.quantity,
-              sortOrder: component.sortOrder,
-            })),
-            tempUnavailableUntil: toIso(item.tempUnavailableUntil),
-            sortOrder: item.sortOrder,
-            imageUrl: item.imageUrl ?? null,
-            ingredientsEn: item.ingredientsEn ?? null,
-            ingredientsZh: item.ingredientsZh ?? null,
-            optionGroups,
-          };
-        });
-
-        return {
-          stableId: categoryStableId,
-          sortOrder: category.sortOrder,
-          nameEn: category.nameEn,
-          nameZh: category.nameZh ?? null,
-          isActive: category.isActive,
-          items,
-        };
-      },
-    );
-
-    return {
-      categories: categoryDtos,
-      templatesLite,
-      packagingTypes: packagingTypeDtos,
-    };
   }
 
   async getMenuItemPricingSnapshots(

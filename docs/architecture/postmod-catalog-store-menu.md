@@ -213,14 +213,21 @@ Local implementation scope:
 - add query-shape/source-boundary regressions that prohibit `/admin/menu/full` from both Item and Options workspaces;
 - leave the old combined workspace and `/admin/menu/full` available until Slice 4 because other consumers still exist.
 
-State: **LOCAL / READY FOR REVIEW / NO PRISMA OR MIGRATION / NO DEPENDENCY OR GRAPH CHANGE**.
+State: **MERGED / PR #2620 / CI #6658 GREEN / MERGE `c08f02c6` / NO PRISMA OR MIGRATION / NO DEPENDENCY OR GRAPH CHANGE**.
 
 ### Slice 4 — Legacy combined menu contraction
 
-Planned scope:
+Local implementation scope:
 
-- retire `/admin/menu` combined Category + Item maintenance;
-- remove `/admin/menu/full` only after Category, Item and Options consumers no longer depend on it.
+- audit every remaining runtime `/admin/menu/full` consumer after Slice 3B;
+- move Marketing target-item reads to Store-scoped Category + Item contracts while keeping Promotion/Coupon rule ownership brand-level and Daily Special Store context explicit;
+- move Homepage Featured candidate listing behind the existing Homepage owner so the Admin page no longer reads a Catalog combined snapshot;
+- move POS Orders/Menu consumers to the authenticated POS device Store context and narrow Catalog reads;
+- preserve the legacy full-menu Daily Special effective-price behavior for POS Orders through a narrow Store-scoped active-special projection;
+- retire the old combined `/admin/menu` page, `GET /admin/menu/full`, the Catalog full-snapshot builder, its Offers enrichment orchestration and the shared `AdminMenuFullResponse` aliases after runtime consumers reach zero;
+- keep Category / Item / Options workspaces, Daily Special read/write contracts, availability writes, packaging dictionary ownership and all provider boundaries unchanged.
+
+State: **LOCAL / READY FOR REVIEW / NO PRISMA OR MIGRATION / NO DEPENDENCY OR GRAPH CHANGE**.
 
 The Store-ownership compatibility seam was already retired in Slice 2B after production NOT NULL verification; Slice 4 does not own that compatibility cleanup.
 
@@ -242,4 +249,4 @@ After remote authorization, the reviewed branch must pass the normal GitHub Acti
 - Web lint/build/strict/test;
 - Browser E2E and existing independent workstation/printer jobs where triggered.
 
-Slice 2A is production verified, including the Homepage Featured follow-up merged in PR #2610 and deployed. Slice 2B source merged through PR #2616; user-generated migration `20260930162009_post_mod_catalog_store_menu_not_null_contraction` was reviewed on `dev@88dd319a`, passed CI #6647 including committed-migration replay, and is now applied in production. Both Store roots are physically NOT NULL, ownership/composition checks pass, and post-deploy runtime logs are clean. Slice 2B is therefore production verified and `catalog.store-menu-ownership.v1` is retired. Slice 3 is the next Catalog Store Menu work package.
+Slice 2A is production verified, including the Homepage Featured follow-up merged in PR #2610 and deployed. Slice 2B source merged through PR #2616; user-generated migration `20260930162009_post_mod_catalog_store_menu_not_null_contraction` was reviewed on `dev@88dd319a`, passed CI #6647 including committed-migration replay, and is now applied in production. Both Store roots are physically NOT NULL, ownership/composition checks pass, and post-deploy runtime logs are clean. Slice 2B is therefore production verified and `catalog.store-menu-ownership.v1` is retired. Slice 3A/3B are merged; Slice 4 is now locally implemented and awaiting review before remote CI.
