@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { CatalogAdminModule } from '../menu/public-api';
+import { CatalogAdminModule } from '../menu/catalog-admin.module';
 import { BrandStoreConfigModule } from '../store/public-api';
 import { DAILY_SPECIAL_OFFERS } from './daily-special-offers.contract';
 import { PROMOTION_CONTEXT_READER } from './promotion-context.contract';

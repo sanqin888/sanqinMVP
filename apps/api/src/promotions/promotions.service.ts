@@ -5,7 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
   CATALOG_MARKETING_SUBJECT_READER,
   type CatalogMarketingSubjectReaderPort,
-} from '../menu/public-api';
+} from '../menu/catalog-marketing-subject-reader.contract';
 import {
   isDailySpecialActiveNow,
   resolveEffectivePriceCents,
@@ -34,7 +34,6 @@ import type {
 } from './promotion-rule-management.contract';
 import type {
   MarketingCampaignFactV1,
-  MarketingCampaignFactsReaderPort,
   MarketingCouponProgramAttributionV1,
 } from './marketing-campaign-facts-reader.contract';
 
@@ -127,7 +126,7 @@ function toPromotionRuleManagementDto(
 
 @Injectable()
 export class PromotionsService
-  implements PromotionContextReaderPort, DailySpecialOffersPort, MarketingCampaignFactsReaderPort
+  implements PromotionContextReaderPort, DailySpecialOffersPort
 {
   constructor(
     private readonly prisma: PrismaService,
@@ -244,34 +243,45 @@ export class PromotionsService
     storeStableId?: string;
   }): Promise<MarketingCampaignFactV1[]> {
     const storeStableId = query?.storeStableId?.trim() || undefined;
-    const [catalogSubjects, dailySpecials, rules, programs] = await Promise.all([
-      this.catalogMarketingSubjects.readItemSubjects({ storeStableId }),
-      this.prisma.menuDailySpecial.findMany({
-        where: { deletedAt: null },
-        select: {
-          stableId: true,
-          weekday: true,
-          itemStableId: true,
-          pricingMode: true,
-          startDate: true,
-          endDate: true,
-          startMinutes: true,
-          endMinutes: true,
-          isEnabled: true,
-        },
-        orderBy: [{ weekday: 'asc' }, { sortOrder: 'asc' }, { createdAt: 'asc' }],
-      }),
-      this.prisma.promotionRule.findMany({
-        where: { deletedAt: null },
-        orderBy: [{ status: 'asc' }, { priority: 'asc' }, { createdAt: 'desc' }],
-      }),
-      this.prisma.couponProgram.findMany({
-        orderBy: { createdAt: 'desc' },
-      }),
-    ]);
+    const [catalogSubjects, dailySpecials, rules, programs] =
+      await Promise.all([
+        this.catalogMarketingSubjects.readItemSubjects({ storeStableId }),
+        this.prisma.menuDailySpecial.findMany({
+          where: { deletedAt: null },
+          select: {
+            stableId: true,
+            weekday: true,
+            itemStableId: true,
+            pricingMode: true,
+            startDate: true,
+            endDate: true,
+            startMinutes: true,
+            endMinutes: true,
+            isEnabled: true,
+          },
+          orderBy: [
+            { weekday: 'asc' },
+            { sortOrder: 'asc' },
+            { createdAt: 'asc' },
+          ],
+        }),
+        this.prisma.promotionRule.findMany({
+          where: { deletedAt: null },
+          orderBy: [
+            { status: 'asc' },
+            { priority: 'asc' },
+            { createdAt: 'desc' },
+          ],
+        }),
+        this.prisma.couponProgram.findMany({
+          orderBy: { createdAt: 'desc' },
+        }),
+      ]);
 
     const catalogSubjectByItemStableId = new Map(
-      catalogSubjects.map((subject) => [subject.itemStableId, subject] as const),
+      catalogSubjects.map(
+        (subject) => [subject.itemStableId, subject] as const,
+      ),
     );
     const dailySpecialFacts = dailySpecials.flatMap((special) => {
       const subject = catalogSubjectByItemStableId.get(special.itemStableId);

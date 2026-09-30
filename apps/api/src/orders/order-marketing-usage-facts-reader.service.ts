@@ -35,9 +35,7 @@ const asNonEmptyString = (value: unknown): string | null => {
 };
 
 const asNonNegativeInteger = (value: unknown): number | null =>
-  typeof value === 'number' &&
-  Number.isSafeInteger(value) &&
-  value >= 0
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
     ? value
     : null;
 
@@ -62,7 +60,8 @@ const parseTargetLineKeys = (value: unknown): string[] => {
 
 const parsePromotionSnapshot = (value: unknown): SnapshotAdjustment[] => {
   const snapshot = asRecord(value);
-  if (snapshot?.version !== 1 || !Array.isArray(snapshot.adjustments)) return [];
+  if (snapshot?.version !== 1 || !Array.isArray(snapshot.adjustments))
+    return [];
 
   return snapshot.adjustments.flatMap((rawAdjustment) => {
     const adjustment = asRecord(rawAdjustment);
@@ -74,7 +73,8 @@ const parsePromotionSnapshot = (value: unknown): SnapshotAdjustment[] => {
     if (
       !activityStableId ||
       discountCents === null ||
-      (adjustment.source === 'DAILY_SPECIAL' && metadata?.priceApplied === false)
+      (adjustment.source === 'DAILY_SPECIAL' &&
+        metadata?.priceApplied === false)
     ) {
       return [];
     }
@@ -174,7 +174,9 @@ function mergeQuantity(
 
 function buildOrderUsage(row: OrderUsageRow): UsageAccumulator[] {
   const accumulators = new Map<string, UsageAccumulator>();
-  const itemQuantityById = new Map(row.items.map((item) => [item.id, item.qty]));
+  const itemQuantityById = new Map(
+    row.items.map((item) => [item.id, item.qty]),
+  );
   const snapshotAdjustments = parsePromotionSnapshot(row.promotionSnapshot);
 
   for (const adjustment of snapshotAdjustments) {
@@ -226,9 +228,7 @@ function buildOrderUsage(row: OrderUsageRow): UsageAccumulator[] {
 }
 
 @Injectable()
-export class OrderMarketingUsageFactsReaderService
-  implements OrderMarketingUsageFactsReaderPort
-{
+export class OrderMarketingUsageFactsReaderService implements OrderMarketingUsageFactsReaderPort {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(ORDER_FINANCIAL_FACTS_READER)
@@ -287,8 +287,7 @@ export class OrderMarketingUsageFactsReaderService
             activityStableId: usage.activityStableId,
             source: usage.source,
             affectedItemQuantity: usage.affectedItemQuantity,
-            affectedItemQuantityEvidence:
-              usage.affectedItemQuantityEvidence,
+            affectedItemQuantityEvidence: usage.affectedItemQuantityEvidence,
             discountCents: usage.discountCents,
             discountEvidence: usage.discountEvidence,
             associatedSalesCents: financialFact.subtotalAfterDiscountCents,
@@ -297,9 +296,12 @@ export class OrderMarketingUsageFactsReaderService
         );
       })
       .sort((left, right) => {
-        const timeDelta = left.occurredAt.getTime() - right.occurredAt.getTime();
+        const timeDelta =
+          left.occurredAt.getTime() - right.occurredAt.getTime();
         if (timeDelta !== 0) return timeDelta;
-        const orderDelta = left.orderStableId.localeCompare(right.orderStableId);
+        const orderDelta = left.orderStableId.localeCompare(
+          right.orderStableId,
+        );
         if (orderDelta !== 0) return orderDelta;
         return usageKey(left.source, left.activityStableId).localeCompare(
           usageKey(right.source, right.activityStableId),
