@@ -333,6 +333,72 @@ describe('CatalogAdminService admin workspace reads', () => {
   });
 });
 
+describe('CatalogAdminService item workspace reads', () => {
+  it('lists only live items rooted in the requested Store', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const service = new CatalogAdminService({
+      menuItem: { findMany },
+    } as never);
+
+    await expect(service.listItems(' store-1 ')).resolves.toEqual([]);
+    expect(findMany).toHaveBeenCalledWith({
+      where: {
+        deletedAt: null,
+        category: { storeStableId: 'store-1', deletedAt: null },
+      },
+      orderBy: { sortOrder: 'asc' },
+      include: {
+        category: { select: { stableId: true } },
+        packagings: {
+          orderBy: { sortOrder: 'asc' },
+          include: { packagingType: true },
+        },
+        fixedComponents: {
+          orderBy: { sortOrder: 'asc' },
+        },
+        optionGroups: {
+          where: { templateGroup: { deletedAt: null } },
+          orderBy: { sortOrder: 'asc' },
+          include: {
+            templateGroup: {
+              select: {
+                stableId: true,
+                nameEn: true,
+                nameZh: true,
+                deletedAt: true,
+                defaultMinSelect: true,
+                defaultMaxSelect: true,
+                isAvailable: true,
+                tempUnavailableUntil: true,
+                sortOrder: true,
+              },
+            },
+          },
+        },
+      },
+    });
+  });
+
+  it('lists the live brand-level packaging dictionary without Store filtering', async () => {
+    const findMany = jest
+      .fn()
+      .mockResolvedValue([
+        { stableId: '16oz', name: '16oz', isActive: true, sortOrder: 1 },
+      ]);
+    const service = new CatalogAdminService({
+      menuPackagingType: { findMany },
+    } as never);
+
+    await expect(service.listPackagingTypes()).resolves.toEqual([
+      { stableId: '16oz', name: '16oz', isActive: true, sortOrder: 1 },
+    ]);
+    expect(findMany).toHaveBeenCalledWith({
+      where: { deletedAt: null },
+      orderBy: { sortOrder: 'asc' },
+    });
+  });
+});
+
 describe('CatalogAdminService pricing snapshots', () => {
   it('keeps the full Admin menu snapshot free of Offers-owned fields and persistence', async () => {
     const prisma = {
