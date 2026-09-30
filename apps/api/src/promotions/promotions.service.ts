@@ -243,8 +243,8 @@ export class PromotionsService
     storeStableId?: string;
   }): Promise<MarketingCampaignFactV1[]> {
     const storeStableId = query?.storeStableId?.trim() || undefined;
-    const [catalogSubjects, dailySpecials, rules, programs] =
-      await Promise.all([
+    const [catalogSubjects, dailySpecials, rules, programs] = await Promise.all(
+      [
         this.catalogMarketingSubjects.readItemSubjects({ storeStableId }),
         this.prisma.menuDailySpecial.findMany({
           where: { deletedAt: null },
@@ -276,7 +276,8 @@ export class PromotionsService
         this.prisma.couponProgram.findMany({
           orderBy: { createdAt: 'desc' },
         }),
-      ]);
+      ],
+    );
 
     const catalogSubjectByItemStableId = new Map(
       catalogSubjects.map(
