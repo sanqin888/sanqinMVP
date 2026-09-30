@@ -28,9 +28,9 @@ describe('Catalog store ownership persistence foundation', () => {
 
     for (const ownerRoot of [category, optionTemplate]) {
       expect(ownerRoot).toContain('@compat catalog.store-menu-ownership.v1');
-      expect(ownerRoot).toMatch(/storeStableId\s+String\?/);
+      expect(ownerRoot).toMatch(/storeStableId\s+String(?!\?)/);
       expect(ownerRoot).toMatch(
-        /store\s+Store\?\s+@relation\(fields: \[storeStableId\], references: \[storeStableId\], onDelete: Restrict\)/,
+        /store\s+Store\s+@relation\(fields: \[storeStableId\], references: \[storeStableId\], onDelete: Restrict\)/,
       );
       expect(ownerRoot).toMatch(
         /@@index\(\[storeStableId, deletedAt, sortOrder\]\)/,
