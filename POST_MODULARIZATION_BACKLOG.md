@@ -751,10 +751,10 @@ This can proceed in parallel with Lane A or Lane B when product priority warrant
 Priority: **P1 PARALLEL PRODUCT / PERSISTENCE WORK**  
 Complexity: **H**  
 Hard dependency: none  
-State: **SLICE 1 PRODUCTION MIGRATION APPLIED / SLICE 2A + HOMEPAGE FOLLOW-UP PRODUCTION VERIFIED / SLICE 2B PRODUCTION VERIFIED + COMPATIBILITY RETIRED / READY FOR SLICE 3**  
+State: **SLICE 1 PRODUCTION MIGRATION APPLIED / SLICE 2A + HOMEPAGE FOLLOW-UP PRODUCTION VERIFIED / SLICE 2B PRODUCTION VERIFIED + COMPATIBILITY RETIRED / SLICE 3A LOCAL + READY FOR REVIEW / NO MIGRATION**  
 Detailed plan: `docs/architecture/postmod-catalog-store-menu.md`
 
-Slice 1 established persisted Store ownership roots and its deterministic backfill migration is applied in production. Slice 2A and Homepage Featured are production verified across Admin/Public/POS/Orders/Offers/Uber/Homepage Store-scoped reads. Slice 2B is also production verified: migration `20260930162009_post_mod_catalog_store_menu_not_null_contraction` is applied, both root ownership columns are physically NOT NULL, all 7 Category and 23 Option Group Template roots remain under `4750_Yonge_Street`, cross-Store bindings/components are zero, and post-deploy runtime logs are clean. `catalog.store-menu-ownership.v1` is retired. The Category/Item routes remain reserved placeholders until Slice 3.
+Slice 1 established persisted Store ownership roots and its deterministic backfill migration is applied in production. Slice 2A and Homepage Featured are production verified across Admin/Public/POS/Orders/Offers/Uber/Homepage Store-scoped reads. Slice 2B is also production verified: migration `20260930162009_post_mod_catalog_store_menu_not_null_contraction` is applied, both root ownership columns are physically NOT NULL, all 7 Category and 23 Option Group Template roots remain under `4750_Yonge_Street`, cross-Store bindings/components are zero, and post-deploy runtime logs are clean. `catalog.store-menu-ownership.v1` is retired. Slice 3A now locally activates the Category workspace on a narrow Store-scoped Category GET while preserving the existing create/update routes and leaving the legacy combined workspace untouched. Item and Options read contraction remain Slice 3B; legacy combined-menu retirement remains Slice 4.
 
 Approved sequence:
 

@@ -295,6 +295,44 @@ describe('CatalogAdminService order facts reader', () => {
   });
 });
 
+describe('CatalogAdminService admin workspace reads', () => {
+  it('lists only live categories for the requested Store without loading items', async () => {
+    const findMany = jest.fn().mockResolvedValue([
+      {
+        stableId: 'drinks',
+        nameEn: 'Drinks',
+        nameZh: '饮品',
+        sortOrder: 20,
+        isActive: true,
+      },
+    ]);
+    const service = new CatalogAdminService({
+      menuCategory: { findMany },
+    } as never);
+
+    await expect(service.listCategories(' store-1 ')).resolves.toEqual([
+      {
+        stableId: 'drinks',
+        nameEn: 'Drinks',
+        nameZh: '饮品',
+        sortOrder: 20,
+        isActive: true,
+      },
+    ]);
+    expect(findMany).toHaveBeenCalledWith({
+      where: { storeStableId: 'store-1', deletedAt: null },
+      orderBy: { sortOrder: 'asc' },
+      select: {
+        stableId: true,
+        nameEn: true,
+        nameZh: true,
+        sortOrder: true,
+        isActive: true,
+      },
+    });
+  });
+});
+
 describe('CatalogAdminService pricing snapshots', () => {
   it('keeps the full Admin menu snapshot free of Offers-owned fields and persistence', async () => {
     const prisma = {

@@ -18,6 +18,7 @@ import {
 import {
   AdminMenuFullResponse,
   DailySpecialDto,
+  MenuCategoryBaseDto,
   TemplateGroupFullDto,
 } from '@shared/menu';
 import { CatalogAdminService } from '../../menu/public-api';
@@ -90,6 +91,13 @@ export class AdminMenuController {
       requireStoreStableId(storeStableId),
       body,
     );
+  }
+
+  @Get('categories')
+  async listCategories(
+    @Query('storeStableId') storeStableId?: string,
+  ): Promise<MenuCategoryBaseDto[]> {
+    return this.catalog.listCategories(requireStoreStableId(storeStableId));
   }
 
   @Post('categories')

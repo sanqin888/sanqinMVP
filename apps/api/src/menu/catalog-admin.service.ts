@@ -8,6 +8,7 @@ import {
   AdminMenuCategoryDto,
   AdminMenuOptionGroupBindingDto,
   isAvailableNow,
+  MenuCategoryBaseDto,
   MenuPackagingTypeDto,
   TemplateGroupFullDto,
   TemplateGroupLiteDto,
@@ -668,6 +669,29 @@ export class CatalogAdminService
     } catch {
       throw new NotFoundException('Menu category not found');
     }
+  }
+
+  async listCategories(storeStableId: string): Promise<MenuCategoryBaseDto[]> {
+    const storeId = requireStoreStableId(storeStableId);
+    const categories = await this.prisma.menuCategory.findMany({
+      where: { storeStableId: storeId, deletedAt: null },
+      orderBy: { sortOrder: 'asc' },
+      select: {
+        stableId: true,
+        nameEn: true,
+        nameZh: true,
+        sortOrder: true,
+        isActive: true,
+      },
+    });
+
+    return categories.map((category) => ({
+      stableId: category.stableId,
+      nameEn: category.nameEn,
+      nameZh: category.nameZh ?? null,
+      sortOrder: category.sortOrder,
+      isActive: category.isActive,
+    }));
   }
 
   async getFullMenu(storeStableId: string): Promise<CatalogAdminMenuSnapshot> {
