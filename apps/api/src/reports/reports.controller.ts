@@ -2,6 +2,7 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { Roles, RolesGuard, SessionAuthGuard } from '../auth/public-api';
 import { BusinessOperationsReportService } from './business-operations-report.service';
+import { MarketingOverviewReportService } from './marketing-overview-report.service';
 
 @Controller('reports')
 @UseGuards(SessionAuthGuard, RolesGuard)
@@ -9,7 +10,13 @@ import { BusinessOperationsReportService } from './business-operations-report.se
 export class ReportsController {
   constructor(
     private readonly businessOperations: BusinessOperationsReportService,
+    private readonly marketingOverview: MarketingOverviewReportService,
   ) {}
+
+  @Get('marketing')
+  async getMarketingOverview(@Query('storeStableId') storeStableId?: string) {
+    return await this.marketingOverview.getReport(storeStableId ?? '');
+  }
 
   @Get('business')
   async getBusinessReport(

@@ -1,8 +1,8 @@
 # Admin Marketing Overview — Readiness Audit and Delivery Plan
 
 Date: 2026-09-30  
-Baseline: `origin/dev@3ffe7228` after Catalog Store Menu production closeout  
-State: **MKT-A LOCAL / REVIEW PENDING / NO MIGRATION / NO DEPENDENCY / NO GRAPH CHANGE IN MKT-A**
+Baseline: `origin/dev@77f4515e` after MKT-A merge  
+State: **MKT-A MERGED / CI #6675 GREEN / PR #2624 / MERGE `77f4515e` / MKT-B LOCAL / REVIEW PENDING / NO MIGRATION / NO DEPENDENCY**
 
 ## 1. Product goal
 
@@ -175,11 +175,15 @@ Orders exports a narrow marketing usage facts boundary:
 - associated sales + sale-source evidence;
 - no raw `promotionSnapshot` crosses the boundary.
 
-MKT-A introduces no Reporting consumer and therefore no new context direction.
+MKT-A introduced no Reporting consumer and therefore no new context direction. It
+merged through PR #2624 / CI #6675 / `77f4515e`. CI exposed and the final source
+preserved two important architecture invariants: Offers does not read Catalog Prisma
+delegates directly, and the Catalog marketing-subject seam reuses the existing
+CatalogAdmin persistence owner rather than adding new Runtime debt.
 
 ### MKT-B — Reporting Marketing Overview projection
 
-Reporting will compose:
+MKT-B is now local on `marketing/overview-mkt-b`. Reporting composes:
 
 - Orders marketing usage facts;
 - Offers campaign facts;
@@ -190,8 +194,25 @@ This slice is authorized to add the narrow conceptual
 public contracts/composition-root wiring only. It must not import Offers internals or
 Prisma. Architecture scanner/SCC impact must be reviewed at implementation time.
 
-The projection will query at most the current quarter once and derive Today / 7d /
-Month / Quarter in memory.
+The projection queries the current quarter usage range once and derives Today / 7d /
+Month / Quarter in memory. It exposes additive `GET /reports/marketing?storeStableId=`
+and returns only campaigns whose lifecycle is ACTIVE and whose overall validity window
+contains the current Store-local instant. Recurring weekday/minute schedules remain
+metadata rather than causing an otherwise ongoing campaign to disappear between its
+scheduled selling periods.
+
+Coupon usage is normalized from Coupon instance stable IDs to CouponProgram stable IDs
+before aggregation. Multiple owner facts that map to the same campaign + Order still
+produce one use and one associated-sales amount. The response carries per-metric
+`COMPLETE / PARTIAL / UNAVAILABLE / NOT_APPLICABLE` coverage plus an explicit
+current-quarter count of unattributed Coupon uses.
+
+MKT-B activates the already authorized conceptual
+`accounting-reporting-analytics -> catalog-pricing-offers` read direction. Owner APIs
+appear only in the registered `ReportsModule` composition root; the report service
+depends only on Reporting-owned ports. The scanner direct-import baseline remains
+unchanged because that composition root is already registered/excluded, and no SCC
+allowance is added.
 
 ### MKT-C — Admin base cutover
 
@@ -224,3 +245,25 @@ New owner boundaries:
 The Orders boundary consumes the existing Orders-owned
 `ORDER_FINANCIAL_FACTS_READER` internally so Marketing-associated merchandise sales do
 not create a competing financial arithmetic definition.
+
+## 7. MKT-B implementation contract
+
+MKT-B remains additive and backend-only:
+
+- Reporting owns `REPORTING_MARKETING_CAMPAIGNS_QUERY` and
+  `REPORTING_MARKETING_USAGE_QUERY`; the projection service imports only those
+  Reporting contracts plus the existing Store operating-context port;
+- `ReportsModule` is the only composition point that knows the MKT-A Orders/Offers
+  public capabilities;
+- `MarketingCampaignFactsModule` is a narrow public module that re-exports the existing
+  PromotionsCore campaign-facts provider without moving persistence ownership;
+- `GET /reports/marketing?storeStableId=` is additive; existing Business Reports and
+  legacy report contracts are unchanged;
+- one current-quarter owner read feeds all four requested windows;
+- Daily Special / PromotionRule validity dates retain the existing Store-local business
+  calendar-date semantics, while CouponProgram validity retains its existing instant
+  semantics;
+- only overall ACTIVE/current-validity campaigns are returned; recurring weekday/minute
+  schedules do not make a campaign disappear between selling periods;
+- no Prisma/schema/migration, package/lockfile, Web UI, Accounting revenue/Journal,
+  refund-netting, payment or provider behavior changes in this slice.

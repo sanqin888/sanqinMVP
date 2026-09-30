@@ -1,6 +1,14 @@
 import { MODULE_METADATA } from '@nestjs/common/constants';
 
-import { ORDER_REPORTING_FACTS_READER } from '../orders/public-api';
+import {
+  ORDER_MARKETING_USAGE_FACTS_READER,
+  ORDER_REPORTING_FACTS_READER,
+  OrderMarketingUsageFactsModule,
+} from '../orders/public-api';
+import {
+  MARKETING_CAMPAIGN_FACTS_READER,
+  MarketingCampaignFactsModule,
+} from '../promotions/public-api';
 import {
   BRAND_STORE_CONFIG_READER,
   STORE_SCHEDULE_READER,
@@ -13,6 +21,14 @@ import {
   type ReportingBusinessOrderFactsQueryPort,
 } from './reporting-business-order-facts-query.contract';
 import {
+  REPORTING_MARKETING_CAMPAIGNS_QUERY,
+  type ReportingMarketingCampaignsQueryPort,
+} from './reporting-marketing-campaigns-query.contract';
+import {
+  REPORTING_MARKETING_USAGE_QUERY,
+  type ReportingMarketingUsageQueryPort,
+} from './reporting-marketing-usage-query.contract';
+import {
   REPORTING_STORE_OPERATING_CONTEXT_QUERY,
   type ReportingStoreOperatingContextQueryPort,
 } from './reporting-store-operating-context.contract';
@@ -22,7 +38,7 @@ function metadata<T>(target: object, key: string): T[] {
   return (Reflect.getMetadata(key, target) as T[] | undefined) ?? [];
 }
 
-describe('ReportsModule B5 composition', () => {
+describe('ReportsModule composition', () => {
   it('imports only Brand/Store public modules for the operating-context seam', () => {
     const imports = metadata<unknown>(ReportsModule, MODULE_METADATA.IMPORTS);
 
@@ -114,6 +130,125 @@ describe('ReportsModule B5 composition', () => {
     ]);
     expect(reader.readOperationalOrdersForRange).toHaveBeenCalledWith(range);
     expect(reader.readOperationalItemsForRange).toHaveBeenCalledWith(range);
+  });
+
+  it('imports the narrow Marketing owner modules at the Reporting composition root', () => {
+    const imports = metadata<unknown>(ReportsModule, MODULE_METADATA.IMPORTS);
+
+    expect(imports).toContain(OrderMarketingUsageFactsModule);
+    expect(imports).toContain(MarketingCampaignFactsModule);
+  });
+
+  it('maps Marketing owner facts into Reporting-owned ports', async () => {
+    const providers = metadata<unknown>(
+      ReportsModule,
+      MODULE_METADATA.PROVIDERS,
+    );
+    const campaignProvider = providers.find(
+      (candidate) =>
+        typeof candidate === 'object' &&
+        candidate !== null &&
+        'provide' in candidate &&
+        candidate.provide === REPORTING_MARKETING_CAMPAIGNS_QUERY,
+    ) as
+      | {
+          inject?: unknown[];
+          useFactory?: (reader: never) => ReportingMarketingCampaignsQueryPort;
+        }
+      | undefined;
+    const usageProvider = providers.find(
+      (candidate) =>
+        typeof candidate === 'object' &&
+        candidate !== null &&
+        'provide' in candidate &&
+        candidate.provide === REPORTING_MARKETING_USAGE_QUERY,
+    ) as
+      | {
+          inject?: unknown[];
+          useFactory?: (reader: never) => ReportingMarketingUsageQueryPort;
+        }
+      | undefined;
+
+    expect(campaignProvider?.inject).toEqual([MARKETING_CAMPAIGN_FACTS_READER]);
+    expect(usageProvider?.inject).toEqual([ORDER_MARKETING_USAGE_FACTS_READER]);
+
+    const campaigns = {
+      readCampaigns: jest.fn().mockResolvedValue([
+        {
+          version: 1,
+          activityStableId: 'rule-1',
+          kind: 'PROMOTION_RULE',
+          scope: 'BRAND',
+          storeStableId: null,
+          titleZh: '买一送一',
+          titleEn: 'BOGO',
+          subtype: 'BUY_X_GET_Y',
+          lifecycleStatus: 'ACTIVE',
+          validFrom: null,
+          validTo: null,
+          weekdays: [],
+          startMinutes: null,
+          endMinutes: null,
+        },
+      ]),
+      readCouponProgramAttributions: jest.fn().mockResolvedValue([
+        {
+          couponStableId: 'coupon-1',
+          programStableId: 'program-1',
+        },
+      ]),
+    };
+    const usage = {
+      readUsageFactsForRange: jest.fn().mockResolvedValue([
+        {
+          version: 1,
+          orderStableId: 'order-1',
+          storeStableId: 'store-1',
+          occurredAt: new Date('2026-09-30T16:00:00.000Z'),
+          activityStableId: 'rule-1',
+          source: 'AUTOMATIC_PROMOTION',
+          affectedItemQuantity: 2,
+          affectedItemQuantityEvidence: 'COMPLETE',
+          discountCents: 500,
+          discountEvidence: 'COMPLETE',
+          associatedSalesCents: 2000,
+          associatedSalesEvidence: 'IMMUTABLE_SALE_SNAPSHOT',
+        },
+      ]),
+    };
+
+    const campaignQuery = campaignProvider!.useFactory!(campaigns as never);
+    const usageQuery = usageProvider!.useFactory!(usage as never);
+    const range = {
+      storeStableId: 'store-1',
+      fromInclusive: new Date('2026-07-01T04:00:00.000Z'),
+      toExclusive: new Date('2026-10-01T04:00:00.000Z'),
+    };
+
+    await expect(
+      campaignQuery.readCampaigns({ storeStableId: 'store-1' }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        activityStableId: 'rule-1',
+        kind: 'PROMOTION_RULE',
+      }),
+    ]);
+    await expect(
+      campaignQuery.readCouponProgramAttributions(['coupon-1']),
+    ).resolves.toEqual([
+      {
+        couponStableId: 'coupon-1',
+        programStableId: 'program-1',
+      },
+    ]);
+    await expect(usageQuery.readUsageFactsForRange(range)).resolves.toEqual([
+      expect.objectContaining({
+        orderStableId: 'order-1',
+        activityStableId: 'rule-1',
+        associatedSalesCents: 2000,
+      }),
+    ]);
+    expect(usage.readUsageFactsForRange).toHaveBeenCalledWith(range);
   });
 
   it('maps Brand/Store public readers into a Reporting-owned current-configuration contract', async () => {

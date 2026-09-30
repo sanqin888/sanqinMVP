@@ -727,7 +727,7 @@ B2 comes first so Admin and Accounting can share stable vocabulary rather than i
 Priority: **P1 PARALLEL PRODUCT WORK**  
 Complexity: **M**  
 Hard dependency: none  
-State: **MKT-A LOCAL / REVIEW PENDING / NO MIGRATION / NO DEPENDENCY / NO GRAPH CHANGE IN MKT-A**  
+State: **MKT-A MERGED / CI #6675 GREEN / PR #2624 / MERGE `77f4515e` / MKT-B LOCAL / REVIEW PENDING / NO MIGRATION / NO DEPENDENCY**  
 Detailed plan: `docs/architecture/admin-marketing-overview.md`
 
 Current `/admin/promotions` is primarily a navigation landing page for Daily Special,
@@ -751,16 +751,20 @@ Overview**.
 
 Approved delivery order:
 
-1. **MKT-A owner facts foundation:** Offers exports stable campaign/CouponProgram
-   attribution facts; Orders exports normalized usage facts and reuses its financial sale
-   fact for associated-sales evidence. No Reporting consumer, HTTP/UI, schema or graph
-   change.
-2. **MKT-B Reporting projection:** compose current-quarter owner facts with the existing
-   Store-timezone seam and derive Today / 7d / Month / Quarter in memory. The user
-   authorized the narrow conceptual
+1. **MKT-A owner facts foundation:** **MERGED / CI GREEN** through PR #2624 /
+   CI #6675 / `77f4515e`. Offers exports stable campaign/CouponProgram attribution facts;
+   Orders exports normalized usage facts and reuses its financial sale fact for
+   associated-sales evidence. Final CI-preserving source keeps Offers off Catalog Prisma
+   delegates and reuses the existing CatalogAdmin persistence owner for Marketing item
+   subjects. No Reporting consumer, HTTP/UI, schema or graph change.
+2. **MKT-B Reporting projection:** **LOCAL / REVIEW PENDING** on
+   `marketing/overview-mkt-b`. Compose current-quarter owner facts with the existing
+   Store-timezone seam and derive Today / 7d / Month / Quarter in memory through additive
+   `GET /reports/marketing?storeStableId=`. The user authorized the narrow conceptual
    `accounting-reporting-analytics -> catalog-pricing-offers` public read direction;
-   implementation must remain composition-root/public-contract only and preserve an empty
-   public SCC.
+   implementation keeps owner APIs in the registered ReportsModule composition root,
+   keeps business logic on Reporting-owned ports, changes no scanner direct-import
+   baseline and adds no SCC allowance.
 3. **MKT-C Admin base cutover:** replace the navigation/migration-era landing page with
    activity monitoring; usage count may be the first emphasized UI metric.
 4. **MKT-D performance display:** expose affected-item quantity, actual discount and
