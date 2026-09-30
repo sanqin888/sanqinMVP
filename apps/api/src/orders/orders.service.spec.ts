@@ -546,11 +546,14 @@ describe('OrdersService', () => {
       productStableId,
     ]);
 
-    const quote = await service.quoteOrderPricing({
-      channel: 'in_store',
-      fulfillmentType: 'pickup',
-      items: [{ productStableId, qty: 1 }],
-    });
+    const quote = await service.quoteOrderPricing(
+      {
+        channel: 'in_store',
+        fulfillmentType: 'pickup',
+        items: [{ productStableId, qty: 1 }],
+      },
+      { storeStableId: '4750_Yonge_Street' },
+    );
 
     expect(quote.subtotalCents).toBe(1000);
     expect(quote.totalCents).toBe(1130);
@@ -566,11 +569,14 @@ describe('OrdersService', () => {
     expect(promotions.getOrderPromotionContext).toHaveBeenCalledWith('web');
 
     promotions.getOrderPromotionContext.mockClear();
-    const uberQuote = await service.quoteOrderPricing({
-      channel: 'ubereats',
-      fulfillmentType: 'pickup',
-      items: [{ productStableId: demoProductId, qty: 1 }],
-    });
+    const uberQuote = await service.quoteOrderPricing(
+      {
+        channel: 'ubereats',
+        fulfillmentType: 'pickup',
+        items: [{ productStableId: demoProductId, qty: 1 }],
+      },
+      { storeStableId: '4750_Yonge_Street' },
+    );
 
     expect(promotions.getOrderPromotionContext).not.toHaveBeenCalled();
     expect(uberQuote.automaticPromotionDiscountCents).toBe(0);
@@ -603,12 +609,15 @@ describe('OrdersService', () => {
       ],
     });
 
-    const quote = await service.quoteOrderPricing({
-      channel: 'in_store',
-      fulfillmentType: 'pickup',
-      discountCents: 50,
-      items: [{ productStableId: 'c1234567890abcdefghijklmn', qty: 1 }],
-    });
+    const quote = await service.quoteOrderPricing(
+      {
+        channel: 'in_store',
+        fulfillmentType: 'pickup',
+        discountCents: 50,
+        items: [{ productStableId: 'c1234567890abcdefghijklmn', qty: 1 }],
+      },
+      { storeStableId: '4750_Yonge_Street' },
+    );
 
     expect(quote.subtotalCents).toBe(1000);
     expect(quote.automaticPromotionDiscountCents).toBe(100);
@@ -672,7 +681,10 @@ describe('OrdersService', () => {
         discountCents: 100,
         items: [{ productStableId: demoProductId, qty: 2, unitPrice: 10 }],
       },
-      { allowCustomUnitPrice: true },
+      {
+        allowCustomUnitPrice: true,
+        storeStableId: '4750_Yonge_Street',
+      },
     );
 
     expect(quote.subtotalCents).toBe(2000);
