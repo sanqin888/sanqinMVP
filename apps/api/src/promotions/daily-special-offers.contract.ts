@@ -30,15 +30,18 @@ export type DailySpecialUpsertPayload = {
 
 export interface DailySpecialOffersPort {
   getDailySpecials(
+    storeStableId: string,
     weekday: number | undefined,
     catalogItems: readonly DailySpecialCatalogItemSnapshot[],
   ): Promise<{ specials: DailySpecialDto[] }>;
 
   getActiveDailySpecials(
+    storeStableId: string,
     catalogItems: readonly DailySpecialCatalogItemSnapshot[],
   ): Promise<{ specials: DailySpecialDto[] }>;
 
   upsertDailySpecials(
+    storeStableId: string,
     payload: DailySpecialUpsertPayload,
     catalogItems: readonly DailySpecialCatalogItemSnapshot[],
   ): Promise<void>;

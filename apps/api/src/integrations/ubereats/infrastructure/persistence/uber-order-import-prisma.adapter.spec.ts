@@ -151,10 +151,10 @@ describe('UberOrderImportPrismaAdapter inbox ownership', () => {
       {} as never,
     );
 
-    await expect(adapter.findModifierSnapshotSources()).resolves.toEqual(
-      sources,
-    );
-    expect(listOrderModifierSnapshotSources).toHaveBeenCalledTimes(1);
+    await expect(
+      adapter.findModifierSnapshotSources('store-1'),
+    ).resolves.toEqual(sources);
+    expect(listOrderModifierSnapshotSources).toHaveBeenCalledWith('store-1');
   });
 
   it('keeps Uber modifiers in canonical options without passing provider persistence through Orders ingestion', async () => {

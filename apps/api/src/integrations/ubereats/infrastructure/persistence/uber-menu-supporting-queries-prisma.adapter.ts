@@ -23,12 +23,24 @@ export class UberMenuSupportingQueriesPrismaAdapter
     private readonly catalogFacts: UberCatalogMenuFactsQueryPort,
   ) {}
 
-  async menuItemExists(stableId: string): Promise<boolean> {
-    return (await this.catalogFacts.getMenuItemSource(stableId)) !== null;
+  async menuItemExists(
+    storeStableId: string,
+    stableId: string,
+  ): Promise<boolean> {
+    return (
+      (await this.catalogFacts.getMenuItemSource(storeStableId, stableId)) !==
+      null
+    );
   }
 
-  async optionChoiceExists(stableId: string): Promise<boolean> {
-    return (await this.catalogFacts.getOptionSource(stableId)) !== null;
+  async optionChoiceExists(
+    storeStableId: string,
+    stableId: string,
+  ): Promise<boolean> {
+    return (
+      (await this.catalogFacts.getOptionSource(storeStableId, stableId)) !==
+      null
+    );
   }
 
   async resolveProvisionedUberStoreId(storeId: string) {

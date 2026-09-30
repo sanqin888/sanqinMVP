@@ -41,7 +41,10 @@ export class UberMenuDraftMutationPrismaAdapter
   async updateUberDraftItem(itemId: string, input: UpdateDraftItemInput) {
     const normalizedStoreId = await this.canonicalStoreId(input.storeId);
 
-    const menuItem = await this.catalogFacts.getMenuItemSource(itemId);
+    const menuItem = await this.catalogFacts.getMenuItemSource(
+      normalizedStoreId,
+      itemId,
+    );
     if (!menuItem) {
       throw uberMenuValidation(`菜单项 ${itemId} 不存在`);
     }
@@ -107,7 +110,10 @@ export class UberMenuDraftMutationPrismaAdapter
     const normalizedStoreId = await this.canonicalStoreId(
       command.resourceKey.storeId,
     );
-    const template = await this.catalogFacts.getModifierGroupSource(groupId);
+    const template = await this.catalogFacts.getModifierGroupSource(
+      normalizedStoreId,
+      groupId,
+    );
     if (!template) {
       throw uberMenuValidation(`选项模板组 ${groupId} 不存在`);
     }
@@ -178,7 +184,10 @@ export class UberMenuDraftMutationPrismaAdapter
     input: UpdateDraftOptionInput,
   ) {
     const normalizedStoreId = await this.canonicalStoreId(input.storeId);
-    const choice = await this.catalogFacts.getOptionSource(optionItemId);
+    const choice = await this.catalogFacts.getOptionSource(
+      normalizedStoreId,
+      optionItemId,
+    );
     if (!choice) {
       throw uberMenuValidation(`选项 ${optionItemId} 不存在`);
     }

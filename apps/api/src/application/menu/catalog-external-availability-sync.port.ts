@@ -21,6 +21,7 @@ export type CatalogExternalAvailabilitySyncResult = {
 
 export interface CatalogExternalAvailabilitySyncPort {
   syncMenuItemAvailability(input: {
+    storeStableId: string;
     menuItemStableId: string;
     isAvailable: boolean;
     publishable: boolean;
@@ -28,6 +29,7 @@ export interface CatalogExternalAvailabilitySyncPort {
   }): Promise<CatalogExternalAvailabilitySyncResult>;
 
   syncOptionAvailability(input: {
+    storeStableId: string;
     optionChoiceStableId: string;
     isAvailable: boolean;
     suspendUntil: string | null;

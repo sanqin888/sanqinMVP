@@ -166,8 +166,8 @@ const UBER_EATS_COMPOSITION_PROVIDERS: Provider[] = [
     useFactory: (
       reader: CatalogExternalMenuFactsReaderPort,
     ): UberCatalogMenuFactsQueryPort => ({
-      readMenuSource: async () => {
-        const source = await reader.readMenuSource();
+      readMenuSource: async (storeStableId) => {
+        const source = await reader.readMenuSource(storeStableId);
         return {
           categories: source.categories,
           menuItems: source.items.map((item) => ({
@@ -187,12 +187,14 @@ const UBER_EATS_COMPOSITION_PROVIDERS: Provider[] = [
           })),
         };
       },
-      getMenuItemSource: (stableId) => reader.getMenuItemSource(stableId),
-      getOptionSource: (stableId) => reader.getOptionSource(stableId),
-      getModifierGroupSource: (stableId) =>
-        reader.getModifierGroupSource(stableId),
-      listOrderModifierSnapshotSources: () =>
-        reader.listOrderModifierSnapshotSources(),
+      getMenuItemSource: (storeStableId, stableId) =>
+        reader.getMenuItemSource(storeStableId, stableId),
+      getOptionSource: (storeStableId, stableId) =>
+        reader.getOptionSource(storeStableId, stableId),
+      getModifierGroupSource: (storeStableId, stableId) =>
+        reader.getModifierGroupSource(storeStableId, stableId),
+      listOrderModifierSnapshotSources: (storeStableId) =>
+        reader.listOrderModifierSnapshotSources(storeStableId),
     }),
   },
   {

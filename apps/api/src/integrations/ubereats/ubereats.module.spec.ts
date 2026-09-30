@@ -339,7 +339,7 @@ describe('UberEats compositions', () => {
     };
     const query = provider!.useFactory!(reader as never);
 
-    await expect(query.readMenuSource()).resolves.toMatchObject({
+    await expect(query.readMenuSource('store-1')).resolves.toMatchObject({
       menuItems: [
         {
           stableId: 'item-1',

@@ -16,16 +16,17 @@ describe('CatalogUberAvailabilityOrchestrationService', () => {
       }),
       setItemAvailability: jest
         .fn()
-        .mockImplementation((_stableId: string, mode: string) =>
-          Promise.resolve({
-            stableId: 'dish-1',
-            isAvailable: mode !== 'PERMANENT_OFF',
-            visibility: 'PUBLIC',
-            isVisibleOnMainMenu: true,
-            tempUnavailableUntil:
-              mode === 'TEMP_TODAY_OFF' ? '2099-01-01T00:00:00.000Z' : null,
-            effectiveAvailability: mode === 'ON',
-          }),
+        .mockImplementation(
+          (_storeStableId: string, _stableId: string, mode: string) =>
+            Promise.resolve({
+              stableId: 'dish-1',
+              isAvailable: mode !== 'PERMANENT_OFF',
+              visibility: 'PUBLIC',
+              isVisibleOnMainMenu: true,
+              tempUnavailableUntil:
+                mode === 'TEMP_TODAY_OFF' ? '2099-01-01T00:00:00.000Z' : null,
+              effectiveAvailability: mode === 'ON',
+            }),
         ),
       setTemplateOptionAvailability: jest.fn().mockResolvedValue({
         ok: true,
@@ -76,9 +77,14 @@ describe('CatalogUberAvailabilityOrchestrationService', () => {
     '%s returns structured SYNCED status',
     async (mode, available) => {
       const { service, syncMenuItemAvailability } = build();
-      const result = await service.setItemAvailability('dish-1', mode);
+      const result = await service.setItemAvailability(
+        'store-1',
+        'dish-1',
+        mode,
+      );
       expect(result.uberSync.status).toBe('SYNCED');
       expect(syncMenuItemAvailability).toHaveBeenCalledWith({
+        storeStableId: 'store-1',
         menuItemStableId: 'dish-1',
         isAvailable: available,
         publishable: true,
@@ -94,7 +100,7 @@ describe('CatalogUberAvailabilityOrchestrationService', () => {
       stores: [{ storeStableId: '4750_Yonge_Street', status: 'SYNCED' }],
     });
 
-    const result = await service.setItemAvailability('dish-1', 'ON');
+    const result = await service.setItemAvailability('store-1', 'dish-1', 'ON');
 
     expect(result.uberSync.stores).toEqual([
       { storeId: '4750_Yonge_Street', status: 'SYNCED' },
@@ -105,7 +111,11 @@ describe('CatalogUberAvailabilityOrchestrationService', () => {
     const { service, syncMenuItemAvailability } = build();
     syncMenuItemAvailability.mockRejectedValue(new Error('upstream'));
 
-    const result = await service.setItemAvailability('dish-1', 'PERMANENT_OFF');
+    const result = await service.setItemAvailability(
+      'store-1',
+      'dish-1',
+      'PERMANENT_OFF',
+    );
 
     expect(result.uberSync).toEqual(
       expect.objectContaining({ status: 'FAILED' }),
@@ -116,12 +126,13 @@ describe('CatalogUberAvailabilityOrchestrationService', () => {
     const { service, catalog, syncMenuItemAvailability } = build();
 
     await expect(
-      service.updateItem('dish-1', { isAvailable: true }),
+      service.updateItem('store-1', 'dish-1', { isAvailable: true }),
     ).resolves.toEqual({ ok: true });
-    expect(catalog.updateItem).toHaveBeenCalledWith('dish-1', {
+    expect(catalog.updateItem).toHaveBeenCalledWith('store-1', 'dish-1', {
       isAvailable: true,
     });
     expect(syncMenuItemAvailability).toHaveBeenCalledWith({
+      storeStableId: 'store-1',
       menuItemStableId: 'dish-1',
       isAvailable: true,
       publishable: true,
@@ -129,7 +140,7 @@ describe('CatalogUberAvailabilityOrchestrationService', () => {
     });
 
     syncMenuItemAvailability.mockClear();
-    await service.updateItem('dish-1', { nameEn: 'Updated' });
+    await service.updateItem('store-1', 'dish-1', { nameEn: 'Updated' });
     expect(syncMenuItemAvailability).not.toHaveBeenCalled();
   });
 
@@ -137,9 +148,14 @@ describe('CatalogUberAvailabilityOrchestrationService', () => {
     const { service, syncOptionAvailability } = build();
 
     await expect(
-      service.setTemplateOptionAvailability('option-1', 'PERMANENT_OFF'),
+      service.setTemplateOptionAvailability(
+        'store-1',
+        'option-1',
+        'PERMANENT_OFF',
+      ),
     ).resolves.toEqual({ ok: true });
     expect(syncOptionAvailability).toHaveBeenCalledWith({
+      storeStableId: 'store-1',
       optionChoiceStableId: 'option-1',
       isAvailable: false,
       suspendUntil: null,
@@ -157,13 +173,14 @@ describe('CatalogUberAvailabilityOrchestrationService', () => {
     });
 
     await expect(
-      service.updateItem('combo-1', {
+      service.updateItem('store-1', 'combo-1', {
         fixedComponents: [
           { componentItemStableId: 'component-1', quantity: 1 },
         ],
       }),
     ).rejects.toThrow('Fixed combo items cannot be published to Uber Eats');
     expect(catalog.validateFixedComponentComposition).toHaveBeenCalledWith(
+      'store-1',
       'combo-1',
       [{ componentItemStableId: 'component-1', quantity: 1 }],
     );
@@ -184,7 +201,7 @@ describe('CatalogUberAvailabilityOrchestrationService', () => {
     );
 
     await expect(
-      service.updateItem('combo-1', {
+      service.updateItem('store-1', 'combo-1', {
         fixedComponents: [
           { componentItemStableId: 'component-1', quantity: 0 },
         ],
@@ -204,9 +221,9 @@ describe('CatalogUberAvailabilityOrchestrationService', () => {
     });
 
     await expect(
-      service.updateItem('combo-1', { fixedComponents: [] }),
+      service.updateItem('store-1', 'combo-1', { fixedComponents: [] }),
     ).resolves.toEqual({ ok: true });
-    expect(catalog.updateItem).toHaveBeenCalledWith('combo-1', {
+    expect(catalog.updateItem).toHaveBeenCalledWith('store-1', 'combo-1', {
       fixedComponents: [],
     });
   });

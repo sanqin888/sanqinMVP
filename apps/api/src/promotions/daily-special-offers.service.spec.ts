@@ -27,7 +27,7 @@ describe('PromotionsService Daily Special Offers ownership boundary', () => {
     );
 
     await expect(
-      service.getDailySpecials(undefined, [
+      service.getDailySpecials('store-1', undefined, [
         { itemStableId: 'item-1', basePriceCents: 1099 },
       ]),
     ).resolves.toEqual({
@@ -43,6 +43,7 @@ describe('PromotionsService Daily Special Offers ownership boundary', () => {
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
+          itemStableId: { in: ['item-1'] },
           deletedAt: null,
           weekday: { in: [1, 2, 3, 4, 5, 6, 7] },
         },
@@ -57,12 +58,12 @@ describe('PromotionsService Daily Special Offers ownership boundary', () => {
       {} as never,
     );
 
-    await expect(service.getDailySpecials(weekday, [])).resolves.toEqual({
+    await expect(
+      service.getDailySpecials('store-1', weekday, []),
+    ).resolves.toEqual({
       specials: [],
     });
-    expect(findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { deletedAt: null, weekday } }),
-    );
+    expect(findMany).not.toHaveBeenCalled();
   });
 
   it('owns store-time activation without reading Catalog persistence', async () => {
@@ -73,7 +74,7 @@ describe('PromotionsService Daily Special Offers ownership boundary', () => {
       .mockResolvedValue([{ ...baseSpecial, weekday: 7 }]);
     const prisma = { menuDailySpecial: { findMany } };
     const brandStoreConfigReader = {
-      getConfiguredStoreSnapshot: jest.fn().mockResolvedValue({
+      getStoreSnapshot: jest.fn().mockResolvedValue({
         timezone: 'Pacific/Honolulu',
       }),
     };
@@ -84,7 +85,7 @@ describe('PromotionsService Daily Special Offers ownership boundary', () => {
 
     try {
       await expect(
-        service.getActiveDailySpecials([
+        service.getActiveDailySpecials('store-1', [
           { itemStableId: 'item-1', basePriceCents: 1099 },
         ]),
       ).resolves.toEqual({
@@ -98,7 +99,12 @@ describe('PromotionsService Daily Special Offers ownership boundary', () => {
       });
       expect(findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { weekday: 7, isEnabled: true, deletedAt: null },
+          where: {
+            itemStableId: { in: ['item-1'] },
+            weekday: 7,
+            isEnabled: true,
+            deletedAt: null,
+          },
         }),
       );
       expect('menuItem' in prisma).toBe(false);
@@ -116,6 +122,7 @@ describe('PromotionsService Daily Special Offers ownership boundary', () => {
 
     await expect(
       service.upsertDailySpecials(
+        'store-1',
         {
           specials: [
             {
@@ -165,8 +172,9 @@ describe('PromotionsService Daily Special Offers ownership boundary', () => {
       menuDailySpecial: {
         findMany: jest
           .fn()
-          .mockResolvedValue([
-            { stableId: 'old-special', weekday: 1, itemStableId: 'item-old' },
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([
+            { stableId: 'old-special', weekday: 1, itemStableId: 'item-1' },
           ]),
         create,
         update,
@@ -184,6 +192,7 @@ describe('PromotionsService Daily Special Offers ownership boundary', () => {
     );
 
     await service.upsertDailySpecials(
+      'store-1',
       {
         specials: [
           {

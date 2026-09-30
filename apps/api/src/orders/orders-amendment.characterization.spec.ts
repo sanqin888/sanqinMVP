@@ -356,7 +356,7 @@ describe('OrdersService amendment characterization', () => {
       ],
     });
 
-    expect(buildMany).toHaveBeenCalledWith([
+    expect(buildMany).toHaveBeenCalledWith('4750_Yonge_Street', [
       expect.objectContaining({
         productStableId: replacementProductStableId,
         qty: 1,

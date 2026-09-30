@@ -69,11 +69,12 @@ describe('CatalogOffersMenuOrchestrationService', () => {
       dailySpecialOffers as never,
     );
 
-    const result = await service.getFullMenu();
+    const result = await service.getFullMenu('store-1');
 
-    expect(dailySpecialOffers.getActiveDailySpecials).toHaveBeenCalledWith([
-      { itemStableId: 'item-1', basePriceCents: 1099 },
-    ]);
+    expect(dailySpecialOffers.getActiveDailySpecials).toHaveBeenCalledWith(
+      'store-1',
+      [{ itemStableId: 'item-1', basePriceCents: 1099 }],
+    );
     expect(result.dailySpecials).toEqual([activeSpecial]);
     expect(result.categories[0]?.items[0]).toEqual(
       expect.objectContaining({
@@ -112,27 +113,37 @@ describe('CatalogOffersMenuOrchestrationService', () => {
       ],
     };
 
-    await service.getDailySpecials(5);
-    await service.upsertDailySpecials(payload);
+    await service.getDailySpecials('store-1', 5);
+    await service.upsertDailySpecials('store-1', payload);
 
-    expect(catalog.getMenuItemPricingSnapshots).toHaveBeenNthCalledWith(1, {
-      includeDeleted: true,
-    });
-    expect(catalog.getMenuItemPricingSnapshots).toHaveBeenNthCalledWith(2);
-    expect(catalog.getMenuItemPricingSnapshots).toHaveBeenNthCalledWith(3, {
-      includeDeleted: true,
-    });
+    expect(catalog.getMenuItemPricingSnapshots).toHaveBeenNthCalledWith(
+      1,
+      'store-1',
+      { includeDeleted: true },
+    );
+    expect(catalog.getMenuItemPricingSnapshots).toHaveBeenNthCalledWith(
+      2,
+      'store-1',
+    );
+    expect(catalog.getMenuItemPricingSnapshots).toHaveBeenNthCalledWith(
+      3,
+      'store-1',
+      { includeDeleted: true },
+    );
     expect(dailySpecialOffers.getDailySpecials).toHaveBeenNthCalledWith(
       1,
+      'store-1',
       5,
       snapshots,
     );
     expect(dailySpecialOffers.upsertDailySpecials).toHaveBeenCalledWith(
+      'store-1',
       payload,
       snapshots,
     );
     expect(dailySpecialOffers.getDailySpecials).toHaveBeenNthCalledWith(
       2,
+      'store-1',
       undefined,
       snapshots,
     );

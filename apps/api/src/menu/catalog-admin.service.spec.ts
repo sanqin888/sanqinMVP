@@ -48,7 +48,7 @@ describe('CatalogAdminService availability persistence', () => {
         },
       } as never);
 
-      await service.setItemAvailability('dish-1', mode);
+      await service.setItemAvailability('store-1', 'dish-1', mode);
 
       expect(capturedData?.isAvailable).toBe(isAvailable);
       if (temporary) {
@@ -74,7 +74,7 @@ describe('CatalogAdminService availability reader', () => {
     } as never);
 
     await expect(
-      service.getMenuItemAvailabilitySnapshot(' item-1 '),
+      service.getMenuItemAvailabilitySnapshot('store-1', ' item-1 '),
     ).resolves.toEqual({
       stableId: 'item-1',
       visibility: 'PUBLIC',
@@ -83,7 +83,11 @@ describe('CatalogAdminService availability reader', () => {
       hasFixedComponents: true,
     });
     expect(findFirst).toHaveBeenCalledWith({
-      where: { stableId: 'item-1', deletedAt: null },
+      where: {
+        stableId: 'item-1',
+        deletedAt: null,
+        category: { storeStableId: 'store-1', deletedAt: null },
+      },
       select: {
         stableId: true,
         visibility: true,
@@ -104,7 +108,7 @@ describe('CatalogAdminService availability reader', () => {
     } as never);
 
     await expect(
-      service.getOptionAvailabilitySnapshot('option-1'),
+      service.getOptionAvailabilitySnapshot('store-1', 'option-1'),
     ).resolves.toEqual({
       stableId: 'option-1',
       tempUnavailableUntil: '2090-01-02T03:04:05.000Z',
@@ -122,13 +126,14 @@ describe('CatalogAdminService order facts reader', () => {
     } as never);
 
     await expect(
-      service.findHiddenMenuItemStableIds([' hidden-item-1 ']),
+      service.findHiddenMenuItemStableIds('store-1', [' hidden-item-1 ']),
     ).resolves.toEqual(['hidden-item-1']);
     expect(findMany).toHaveBeenCalledWith({
       where: {
         stableId: { in: ['hidden-item-1'] },
         deletedAt: null,
         visibility: 'HIDDEN',
+        category: { storeStableId: 'store-1', deletedAt: null },
       },
       select: { stableId: true },
     });
@@ -185,7 +190,7 @@ describe('CatalogAdminService order facts reader', () => {
     } as never);
 
     await expect(
-      service.getOrderItemMaterializationFacts([' item-1 ']),
+      service.getOrderItemMaterializationFacts('store-1', [' item-1 ']),
     ).resolves.toEqual([
       {
         stableId: 'item-1',
@@ -231,7 +236,12 @@ describe('CatalogAdminService order facts reader', () => {
       },
     ]);
     expect(findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { stableId: { in: ['item-1'] } } }),
+      expect.objectContaining({
+        where: {
+          stableId: { in: ['item-1'] },
+          category: { storeStableId: 'store-1', deletedAt: null },
+        },
+      }),
     );
   });
 
@@ -260,7 +270,9 @@ describe('CatalogAdminService order facts reader', () => {
       menuItem: { findMany },
     } as never);
 
-    await expect(service.getOrderLabelConfigs([' item-1 '])).resolves.toEqual([
+    await expect(
+      service.getOrderLabelConfigs('store-1', [' item-1 ']),
+    ).resolves.toEqual([
       {
         stableId: 'item-1',
         nameEn: 'Soup',
@@ -292,7 +304,7 @@ describe('CatalogAdminService pricing snapshots', () => {
     };
     const service = new CatalogAdminService(prisma as never);
 
-    await expect(service.getFullMenu()).resolves.toEqual({
+    await expect(service.getFullMenu('store-1')).resolves.toEqual({
       categories: [],
       templatesLite: [],
       packagingTypes: [],
@@ -308,17 +320,22 @@ describe('CatalogAdminService pricing snapshots', () => {
       menuItem: { findMany },
     } as never);
 
-    await expect(service.getMenuItemPricingSnapshots()).resolves.toEqual([
-      { itemStableId: 'item-1', basePriceCents: 1299 },
-    ]);
+    await expect(
+      service.getMenuItemPricingSnapshots('store-1'),
+    ).resolves.toEqual([{ itemStableId: 'item-1', basePriceCents: 1299 }]);
     expect(findMany).toHaveBeenCalledWith({
-      where: { deletedAt: null },
+      where: {
+        deletedAt: null,
+        category: { storeStableId: 'store-1' },
+      },
       select: { stableId: true, basePriceCents: true },
     });
 
-    await service.getMenuItemPricingSnapshots({ includeDeleted: true });
+    await service.getMenuItemPricingSnapshots('store-1', {
+      includeDeleted: true,
+    });
     expect(findMany).toHaveBeenLastCalledWith({
-      where: {},
+      where: { category: { storeStableId: 'store-1' } },
       select: { stableId: true, basePriceCents: true },
     });
   });
@@ -347,7 +364,7 @@ describe('CatalogAdminService fixed combo composition', () => {
       menuItemComponent: { findMany: jest.fn().mockResolvedValue([]) },
     } as never);
 
-    await service.updateItem('breakfast-combo', {
+    await service.updateItem('store-1', 'breakfast-combo', {
       fixedComponents: [
         { componentItemStableId: 'hulatang', quantity: 1 },
         { componentItemStableId: 'youtiao', quantity: 2 },
@@ -391,7 +408,7 @@ describe('CatalogAdminService fixed combo composition', () => {
     } as never);
 
     await expect(
-      service.updateItem('breakfast-combo', {
+      service.updateItem('store-1', 'breakfast-combo', {
         fixedComponents: [
           { componentItemStableId: 'breakfast-combo', quantity: 1 },
         ],
@@ -417,7 +434,7 @@ describe('CatalogAdminService packaging option scope', () => {
       menuItemOptionGroup: { upsert },
     } as never);
 
-    await service.bindTemplateGroupToItem('item-1', {
+    await service.bindTemplateGroupToItem('store-1', 'item-1', {
       templateGroupStableId: 'spice',
       minSelect: 0,
       maxSelect: 1,
@@ -469,7 +486,7 @@ describe('CatalogAdminService packaging option scope', () => {
     } as never);
 
     await expect(
-      service.bindTemplateGroupToItem('item-1', {
+      service.bindTemplateGroupToItem('store-1', 'item-1', {
         templateGroupStableId: 'spice',
         minSelect: 0,
         maxSelect: 1,

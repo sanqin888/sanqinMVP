@@ -213,7 +213,7 @@ export class CreateUberOpsTicketUseCase {
       throw invalidOperationsInput(`Uber 订单 ${input.externalOrderId} 不存在`);
     if (
       input.menuItemStableId &&
-      !(await this.menuItems.exists(input.menuItemStableId))
+      !(await this.menuItems.exists(storeStableId, input.menuItemStableId))
     )
       throw invalidOperationsInput(`菜单项 ${input.menuItemStableId} 不存在`);
     const ticket = await this.tickets.create({

@@ -146,7 +146,10 @@ describe('UberMenuConfigImportPrismaAdapter release safety', () => {
   it('restores only the selected item price and records administrator intent', async () => {
     const x = setup();
     await x.adapter.restoreItemPrice('production', 'pork', 'admin-1');
-    expect(x.catalogFacts.getMenuItemSource).toHaveBeenCalledWith('pork');
+    expect(x.catalogFacts.getMenuItemSource).toHaveBeenCalledWith(
+      'production',
+      'pork',
+    );
     expect(x.itemDelegate.upsert).toHaveBeenCalledTimes(1);
     expect(x.itemDelegate.upsert).toHaveBeenCalledWith({
       where: {
@@ -190,7 +193,10 @@ describe('UberMenuConfigImportPrismaAdapter release safety', () => {
   it('restores only the selected option price', async () => {
     const x = setup();
     await x.adapter.restoreOptionPrice('production', 'extra', 'admin-1');
-    expect(x.catalogFacts.getOptionSource).toHaveBeenCalledWith('extra');
+    expect(x.catalogFacts.getOptionSource).toHaveBeenCalledWith(
+      'production',
+      'extra',
+    );
     expect(x.optionDelegate.upsert).toHaveBeenCalledTimes(1);
     expect(x.optionDelegate.upsert).toHaveBeenCalledWith({
       where: {

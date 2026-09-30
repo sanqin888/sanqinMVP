@@ -230,21 +230,29 @@ export class PromotionsService
   }
 
   async getDailySpecials(
+    storeStableId: string,
     weekday: number | undefined,
     catalogItems: readonly DailySpecialCatalogItemSnapshot[],
   ): Promise<{ specials: DailySpecialDto[] }> {
+    if (!storeStableId.trim()) {
+      throw new BadRequestException('storeStableId is required');
+    }
     if (weekday !== undefined && (weekday < 1 || weekday > 7)) {
       throw new BadRequestException('weekday must be between 1 and 7');
     }
 
+    const itemPriceMap = catalogItemPriceMap(catalogItems);
+    const catalogItemStableIds = [...itemPriceMap.keys()];
+    if (catalogItemStableIds.length === 0) return { specials: [] };
+
     const specials = await this.prisma.menuDailySpecial.findMany({
       where: {
+        itemStableId: { in: catalogItemStableIds },
         deletedAt: null,
         ...(weekday ? { weekday } : { weekday: { in: [1, 2, 3, 4, 5, 6, 7] } }),
       },
       orderBy: [{ weekday: 'asc' }, { sortOrder: 'asc' }, { createdAt: 'asc' }],
     });
-    const itemPriceMap = catalogItemPriceMap(catalogItems);
 
     return {
       specials: specials.map((special) => {
@@ -275,20 +283,25 @@ export class PromotionsService
   }
 
   async getActiveDailySpecials(
+    storeStableId: string,
     catalogItems: readonly DailySpecialCatalogItemSnapshot[],
   ): Promise<{ specials: DailySpecialDto[] }> {
     const { timezone } =
-      await this.brandStoreConfigReader.getConfiguredStoreSnapshot();
+      await this.brandStoreConfigReader.getStoreSnapshot(storeStableId);
     const now = resolveStoreNow(timezone || 'America/Toronto');
+    const itemPriceMap = catalogItemPriceMap(catalogItems);
+    const catalogItemStableIds = [...itemPriceMap.keys()];
+    if (catalogItemStableIds.length === 0) return { specials: [] };
+
     const rawDailySpecials = await this.prisma.menuDailySpecial.findMany({
       where: {
+        itemStableId: { in: catalogItemStableIds },
         weekday: now.weekday,
         isEnabled: true,
         deletedAt: null,
       },
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
     });
-    const itemPriceMap = catalogItemPriceMap(catalogItems);
     const specials: DailySpecialDto[] = [];
 
     for (const special of rawDailySpecials) {
@@ -324,6 +337,7 @@ export class PromotionsService
   }
 
   async upsertDailySpecials(
+    storeStableId: string,
     payload: DailySpecialUpsertPayload,
     catalogItems: readonly DailySpecialCatalogItemSnapshot[],
   ): Promise<void> {
@@ -399,6 +413,7 @@ export class PromotionsService
     }
 
     const itemPriceMap = catalogItemPriceMap(catalogItems);
+    const catalogItemStableIds = [...itemPriceMap.keys()];
     for (const special of normalized) {
       const basePriceCents = itemPriceMap.get(special.itemStableId);
       if (basePriceCents === undefined) {
@@ -458,19 +473,37 @@ export class PromotionsService
     );
 
     await this.prisma.$transaction(async (tx) => {
+      const incomingStableIds = normalized
+        .map((special) => special.stableId)
+        .filter((stableId): stableId is string => Boolean(stableId));
+      if (incomingStableIds.length > 0) {
+        const claimedSpecials = await tx.menuDailySpecial.findMany({
+          where: { stableId: { in: incomingStableIds }, deletedAt: null },
+          select: { stableId: true, itemStableId: true },
+        });
+        const crossStoreClaim = claimedSpecials.find(
+          (special) => !itemPriceMap.has(special.itemStableId),
+        );
+        if (crossStoreClaim) {
+          throw new BadRequestException(
+            `Daily special does not belong to Store ${storeStableId}: ${crossStoreClaim.stableId}`,
+          );
+        }
+      }
+
       const existing = await tx.menuDailySpecial.findMany({
-        where: { weekday: { in: weekdays }, deletedAt: null },
+        where: {
+          weekday: { in: weekdays },
+          itemStableId: { in: catalogItemStableIds },
+          deletedAt: null,
+        },
       });
       const existingByStableId = new Map(
         existing.map((special) => [special.stableId, special]),
       );
-      const incomingStableIds = new Set(
-        normalized
-          .map((special) => special.stableId)
-          .filter((stableId): stableId is string => Boolean(stableId)),
-      );
+      const incomingStableIdSet = new Set(incomingStableIds);
       const toSoftDelete = existing.filter(
-        (special) => !incomingStableIds.has(special.stableId),
+        (special) => !incomingStableIdSet.has(special.stableId),
       );
       if (toSoftDelete.length > 0) {
         await tx.menuDailySpecial.updateMany({

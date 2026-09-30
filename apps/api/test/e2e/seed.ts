@@ -251,6 +251,7 @@ async function main(): Promise<void> {
   const category = await prisma.menuCategory.upsert({
     where: { stableId: E2E_MENU_CATEGORY_STABLE_ID },
     update: {
+      storeStableId: E2E_STORE_STABLE_ID,
       nameEn: 'E2E Category',
       nameZh: 'E2E 分类',
       isActive: true,
@@ -259,6 +260,7 @@ async function main(): Promise<void> {
     },
     create: {
       stableId: E2E_MENU_CATEGORY_STABLE_ID,
+      storeStableId: E2E_STORE_STABLE_ID,
       nameEn: 'E2E Category',
       nameZh: 'E2E 分类',
       isActive: true,

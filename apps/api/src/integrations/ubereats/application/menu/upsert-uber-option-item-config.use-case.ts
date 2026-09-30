@@ -16,11 +16,12 @@ export class UpsertUberOptionItemConfigUseCase {
   ) {}
 
   async execute(input: UpsertOptionItemConfigInput) {
+    const storeId = requireUberStoreId(input.storeId);
     await ensureOptionChoiceExists(
       this.optionChoices,
+      storeId,
       input.optionChoiceStableId,
     );
-    const storeId = requireUberStoreId(input.storeId);
     return this.transaction.execute((commands) =>
       commands.upsertUberOptionItemConfig({
         resourceKey: {

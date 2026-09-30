@@ -57,13 +57,17 @@ describe('Uber menu command use cases', () => {
       new UpsertUberItemChannelConfigUseCase(
         transaction(upsertCommands),
         references,
-      ).execute({ menuItemStableId: 'missing', priceCents: 100 }),
+      ).execute({
+        storeId: 'store-1',
+        menuItemStableId: 'missing',
+        priceCents: 100,
+      }),
     ).rejects.toBe(missing);
     await expect(
       new UpdateUberDraftItemUseCase(
         transaction(updateCommands),
         references,
-      ).execute('missing', {}),
+      ).execute('missing', { storeId: 'store-1' }),
     ).rejects.toBe(missing);
     expect(upsert).not.toHaveBeenCalled();
     expect(update).not.toHaveBeenCalled();
@@ -88,13 +92,17 @@ describe('Uber menu command use cases', () => {
       new UpsertUberOptionItemConfigUseCase(
         transaction(upsertCommands),
         references,
-      ).execute({ optionChoiceStableId: 'missing', priceDeltaCents: 100 }),
+      ).execute({
+        storeId: 'store-1',
+        optionChoiceStableId: 'missing',
+        priceDeltaCents: 100,
+      }),
     ).rejects.toBe(missing);
     await expect(
       new UpdateUberDraftOptionUseCase(
         transaction(updateCommands),
         references,
-      ).execute('missing', {}),
+      ).execute('missing', { storeId: 'store-1' }),
     ).rejects.toBe(missing);
     expect(upsert).not.toHaveBeenCalled();
     expect(update).not.toHaveBeenCalled();

@@ -81,17 +81,20 @@ export type UberCatalogOrderModifierSnapshotSourceFact = {
 };
 
 export interface UberCatalogMenuFactsQueryPort {
-  readMenuSource(): Promise<UberCatalogMenuSourceFacts>;
+  readMenuSource(storeStableId: string): Promise<UberCatalogMenuSourceFacts>;
   getMenuItemSource(
+    storeStableId: string,
     stableId: string,
   ): Promise<UberCatalogMenuItemSourceFact | null>;
   getOptionSource(
+    storeStableId: string,
     stableId: string,
   ): Promise<UberCatalogMenuOptionSourceFact | null>;
   getModifierGroupSource(
+    storeStableId: string,
     stableId: string,
   ): Promise<UberCatalogModifierGroupSourceFact | null>;
-  listOrderModifierSnapshotSources(): Promise<
-    UberCatalogOrderModifierSnapshotSourceFact[]
-  >;
+  listOrderModifierSnapshotSources(
+    storeStableId: string,
+  ): Promise<UberCatalogOrderModifierSnapshotSourceFact[]>;
 }
