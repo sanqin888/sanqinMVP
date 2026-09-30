@@ -751,10 +751,10 @@ This can proceed in parallel with Lane A or Lane B when product priority warrant
 Priority: **P1 PARALLEL PRODUCT / PERSISTENCE WORK**  
 Complexity: **H**  
 Hard dependency: none  
-State: **SLICE 1 MERGED + CI GREEN + PRODUCTION MIGRATION APPLIED (#2607 / `78f4e6d8` / CI #6613) / SLICE 2A MERGED + CI #6619 GREEN + DEPLOYED + CORE PARITY VERIFIED / HOMEPAGE FEATURED FOLLOW-UP LOCAL / NO NEW MIGRATION / SLICE 2B NOT NULL CONTRACTION BLOCKED UNTIL FOLLOW-UP VERIFICATION + EXPLICIT AUTHORIZATION**  
+State: **SLICE 1 MERGED + CI GREEN + PRODUCTION MIGRATION APPLIED (#2607 / `78f4e6d8` / CI #6613) / SLICE 2A + HOMEPAGE FOLLOW-UP PRODUCTION VERIFIED (#2608 / #2610) / SLICE 2B SOURCE LOCAL + EXPLICITLY AUTHORIZED / MIGRATION REQUIRED / NOT PUSHED**  
 Detailed plan: `docs/architecture/postmod-catalog-store-menu.md`
 
-Slice 1 has established persisted Store ownership roots and its deterministic backfill migration is applied in production. Slice 2A makes the active combined Admin menu/Options workspace, Public Menu, POS/Orders pricing/materialization/labels, Daily Special Catalog subjects and Uber Catalog source/reference reads explicitly Store-scoped; production persisted-menu parity is verified. A post-deployment completeness audit found Homepage Featured still using a global stableId MenuItem lookup and Store-agnostic sales ranking. The current narrow follow-up scopes both reads to the configured Store. The Category/Item routes remain reserved placeholders until Slice 3, and the root ownership fields remain nullable until the follow-up is verified and the separately authorized Slice 2B constraint contraction is completed.
+Slice 1 has established persisted Store ownership roots and its deterministic backfill migration is applied in production. Slice 2A and its Homepage Featured follow-up are production verified: Admin/Public/POS/Orders/Offers/Uber/Homepage menu reads are Store-scoped, all current roots belong to `4750_Yonge_Street`, and persisted-menu parity is intact. Slice 2B is now explicitly authorized and locally tightens the two Prisma root ownership fields/relations to required types. The physical database contraction remains blocked on the separately user-generated/reviewed NOT NULL migration. The Category/Item routes remain reserved placeholders until Slice 3.
 
 Approved sequence:
 
@@ -764,7 +764,7 @@ Approved sequence:
 4. **Slice 3 — Admin Category/Item cutover:** activate the reserved Store-scoped Category and Item workspaces and keep the Options workspace separate.
 5. **Slice 4 — legacy combined-menu contraction:** retire the old combined `/admin/menu` workspace and remove `/admin/menu/full` only after all Category/Item/Options consumers are gone.
 
-Slice 1's expand foundation and companion migration are merged. Slice 2A deliberately introduces no new schema/migration and keeps the nullable compatibility seam active. Do not create or enable a second production Store menu until current-store parity is verified and the separately authorized Slice 2B NOT NULL contraction is reviewed, merged and verified.
+Slice 1's expand foundation and companion migration are merged. Slice 2A and its Homepage follow-up are production verified. Slice 2B source now contracts the two Prisma ownership roots to required types, but the compatibility remains active until the user-generated NOT NULL migration is reviewed, merged, applied and production verified. Do not create or enable a second production Store menu before that closeout.
 
 ## 7. Later internal hardening
 

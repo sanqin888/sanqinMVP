@@ -3,7 +3,7 @@
 Date: 2026-09-29  
 Slice 1 base: `origin/dev@bfbf8e2c`  
 Slice 2A base: `origin/dev@78f4e6d8` after Slice 1 merge  
-Current branch: `catalog/store-menu-store-aware-contracts`  
+Current branch: `catalog/store-menu-not-null-contraction`  
 Program status: repository-wide modularization remains **CLOSED**; this is post-modularization Catalog product/persistence work.
 
 ## 1. Goal
@@ -151,15 +151,24 @@ Implemented scope:
 
 ### Slice 2B — root ownership NOT NULL contraction
 
-Status: **NOT STARTED / EXPLICIT AUTHORIZATION REQUIRED / MIGRATION REQUIRED**.
+Status: **SOURCE IMPLEMENTED LOCALLY / EXPLICITLY AUTHORIZED / MIGRATION REQUIRED / NOT PUSHED**.
 
-The remaining `MenuCategory.storeStableId String?` and `MenuOptionGroupTemplate.storeStableId String?` compatibility fields are a deliberate staged seam. Tightening them to non-null is a constraint contraction under `AGENTS.md`; it must not be bundled into 2A. Before 2B:
+Before Slice 2B, `MenuCategory.storeStableId String?` and `MenuOptionGroupTemplate.storeStableId String?` were the deliberate staged compatibility seam. Production verification after PR #2610 confirmed the Homepage Featured follow-up is deployed, all current ownership roots are valid/non-null under `4750_Yonge_Street`, Store-scoped persisted-menu parity still holds, and production has zero null-`Order.storeId` rows. The user explicitly authorized 2B on 2026-09-30. The local source contraction now changes both Prisma ownership roots and their `Store` relations to required types while retaining the compatibility marker until the companion migration is reviewed, merged, deployed and verified.
 
-1. confirm all existing root ownership values are non-null and valid;
-2. verify the `4750_Yonge_Street` Store-scoped projection against the pre-cutover menu/operational paths;
-3. obtain explicit authorization for the NOT NULL schema contraction;
-4. generate the companion migration locally with `--create-only`, review the exact ALTER/constraint SQL, then merge it through the normal dev/CI gate;
-5. only after the contraction is verified may `catalog.store-menu-ownership.v1` be removed.
+Completed prerequisites:
+
+1. all existing root ownership values are non-null and valid;
+2. the `4750_Yonge_Street` Store-scoped projection matches the pre-cutover persisted-menu baseline;
+3. Homepage Featured candidate/ranking reads are deployed and Store-scoped;
+4. explicit authorization for the NOT NULL contraction has been given.
+
+Remaining gates:
+
+1. review and merge this schema-source contraction to `dev`;
+2. generate the companion migration locally with `--create-only` and review the exact SQL;
+3. merge the reviewed migration through the normal `dev`/CI gate before any production promotion;
+4. deploy/apply the migration and verify both columns are physically NOT NULL with parity intact;
+5. only then remove `catalog.store-menu-ownership.v1`.
 
 ### Slice 3 — Admin Category / Item workspace cutover
 
@@ -196,4 +205,4 @@ After remote authorization, the reviewed branch must pass the normal GitHub Acti
 - Web lint/build/strict/test;
 - Browser E2E and existing independent workstation/printer jobs where triggered.
 
-Slice 2A core deployment has production Store-ownership/parity evidence, but the follow-up Homepage Featured consumer fix is still local and must pass review, CI and deployment verification before Slice 2A can be declared fully verified. Slice 2B remains blocked until that final consumer-completeness gate passes; the nullable compatibility seam stays active.
+Slice 2A is production verified, including the Homepage Featured follow-up merged in PR #2610 and deployed. Slice 2B source is now locally implemented but remains **MIGRATION REQUIRED**. The compatibility seam stays active until the user-generated NOT NULL migration is reviewed, merged, applied in production and the post-migration parity/ownership verification passes.

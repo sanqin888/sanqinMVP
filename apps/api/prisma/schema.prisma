@@ -1527,10 +1527,10 @@ model MenuCategory {
   nameZh        String?
   isActive      Boolean    @default(true)
   stableId      String     @unique @default(cuid())
-  /// @compat catalog.store-menu-ownership.v1 Expand-contract ownership seam; nullable only until existing rows are backfilled and store-aware consumers cut over.
-  storeStableId String?
+  /// @compat catalog.store-menu-ownership.v1 Pending production migration/verification before compatibility closeout.
+  storeStableId String
   deletedAt     DateTime?
-  store         Store?     @relation(fields: [storeStableId], references: [storeStableId], onDelete: Restrict)
+  store         Store      @relation(fields: [storeStableId], references: [storeStableId], onDelete: Restrict)
   items         MenuItem[]
 
   @@index([sortOrder])
@@ -1643,10 +1643,10 @@ model MenuOptionGroupTemplate {
   tempUnavailableUntil DateTime?
   sortOrder            Int                        @default(0)
   stableId             String                     @unique @default(cuid())
-  /// @compat catalog.store-menu-ownership.v1 Expand-contract ownership seam; nullable only until existing rows are backfilled and store-aware consumers cut over.
-  storeStableId        String?
+  /// @compat catalog.store-menu-ownership.v1 Pending production migration/verification before compatibility closeout.
+  storeStableId        String
   deletedAt             DateTime?
-  store                Store?                     @relation(fields: [storeStableId], references: [storeStableId], onDelete: Restrict)
+  store                Store                      @relation(fields: [storeStableId], references: [storeStableId], onDelete: Restrict)
   itemLinks            MenuItemOptionGroup[]
   options              MenuOptionTemplateChoice[]
 
