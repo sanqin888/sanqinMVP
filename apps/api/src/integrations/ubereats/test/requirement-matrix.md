@@ -358,6 +358,7 @@ Tech Support verification 和 pilot-store production provisioning。
 - Structured allergy parser/policy 必须覆盖 item、nested modifier、`RELAY_ALL`、`DENY_LIST`、`DENY_ALL`、未知/损坏请求 fail-safe Deny，以及 POS/打印传递。
 - `orders.customer_order_edit` 不得进入普通新单 import；当前保持 unsupported quarantine，并记录 `CUSTOMER_ORDER_EDIT_RECONCILIATION_REQUIRED`。
 - `eats.report.success` 的 CSV artifact 必须对 durable inbox replay 幂等：同一 workflow / logical section / 相同 CSV 内容只能对应一个 artifact URL/文件；signed download URL 变化不得制造副本；内容变化应形成不同 artifact；deterministic path 已存在但内容不一致必须 fail closed；report 已为 `READY/IMPORTED` 且已有 artifact 时不得重新下载。
+- Accounting 的 Uber financial reconciliation 必须以 unresolved `READY` report 为 work seed，并通过 External Channels owner-side exact lookup 绑定同一规范化 Store UUID set + period；候选只允许 `PAYMENT_DETAILS_REPORT` / `FINANCE_SUMMARY_REPORT` 且状态为 `READY | IMPORTED`，不得依赖全局 `IMPORTED limit=200`、不得把 `storeUuids` 暴露给 Accounting、不得在 duplicate 时按 latest/状态优先猜测。
 - Uber architecture tests、API lint/build/strict declaration、shared strict checks、API test suite 和受影响 Web checks 必须全绿。
 
 ### Sandbox / Test Store PASS

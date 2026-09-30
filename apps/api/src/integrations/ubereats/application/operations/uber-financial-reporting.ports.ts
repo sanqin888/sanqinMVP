@@ -54,6 +54,11 @@ export interface UberFinancialReportRepositoryPort {
   findByReportStableId(
     reportStableId: string,
   ): Promise<UberFinancialReportRecord | null>;
+  listReconciliationCandidates(input: {
+    storeUuids: string[];
+    startDate: string;
+    endDate: string;
+  }): Promise<UberFinancialReportRecord[]>;
   saveRequested(input: {
     workflowId: string;
     reportType: UberEatsFinancialReportType;

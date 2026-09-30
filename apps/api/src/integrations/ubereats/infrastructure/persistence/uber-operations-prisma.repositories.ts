@@ -357,6 +357,28 @@ export class UberFinancialReportPrismaRepository implements UberFinancialReportR
     return row ? this.present(row) : null;
   }
 
+  async listReconciliationCandidates(input: {
+    storeUuids: string[];
+    startDate: string;
+    endDate: string;
+  }): Promise<UberFinancialReportRecord[]> {
+    const rows = await this.prisma.uberFinancialReport.findMany({
+      where: {
+        storeUuids: { equals: input.storeUuids },
+        startDate: input.startDate,
+        endDate: input.endDate,
+        reportType: {
+          in: ['PAYMENT_DETAILS_REPORT', 'FINANCE_SUMMARY_REPORT'],
+        },
+        status: {
+          in: [PrismaReportStatus.READY, PrismaReportStatus.IMPORTED],
+        },
+      },
+      orderBy: [{ reportType: 'asc' }, { requestedAt: 'desc' }],
+    });
+    return rows.map((row) => this.present(row));
+  }
+
   async saveRequested(input: {
     workflowId: string;
     reportType: UberEatsFinancialReportType;

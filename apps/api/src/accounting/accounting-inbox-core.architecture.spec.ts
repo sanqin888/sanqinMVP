@@ -247,6 +247,8 @@ describe('Accounting unified Inbox core ownership boundary', () => {
     const automation = read(ACCOUNTING_AUTOMATION);
     const uberPublicApi = read(UBER_PUBLIC_API);
     expect(history).toContain('../integrations/ubereats/public-api');
+    expect(history).toContain('findFinancialReportReconciliationCandidates');
+    expect(history).not.toContain("status: 'IMPORTED'");
     expect(history).not.toContain('../integrations/ubereats/application/');
     expect(history).not.toContain('../integrations/ubereats/infrastructure/');
     expect(automation).not.toContain('UBER_EATS_APP_SCOPES');

@@ -231,9 +231,32 @@ describe('UberFinancialReportingUseCase accounting artifact boundary', () => {
     const reports = {
       findByReportStableId: jest.fn().mockResolvedValue({
         reportStableId: 'uberreport_1',
+        workflowId: 'workflow-1',
+        reportType: 'FINANCE_SUMMARY_REPORT',
+        storeUuids: ['provider-store-a'],
+        startDate: '2026-09-01',
+        endDate: '2026-09-25',
         status,
         artifactUrls: [artifactUrl],
       }),
+      listReconciliationCandidates: jest.fn().mockResolvedValue([
+        {
+          reportStableId: 'uberreport_1',
+          workflowId: 'workflow-1',
+          reportType: 'FINANCE_SUMMARY_REPORT',
+          storeUuids: ['provider-store-a'],
+          startDate: '2026-09-01',
+          endDate: '2026-09-25',
+          status,
+          downloadUrls: [],
+          artifactUrls: [artifactUrl],
+          requestedAt: new Date('2026-09-26T00:00:00.000Z'),
+          completedAt: new Date('2026-09-26T00:01:00.000Z'),
+          importedAt: null,
+          errorMessage: null,
+          providerReportType: 'PAYOUT_SUMMARY_REPORT',
+        },
+      ]),
       list: jest.fn().mockResolvedValue([
         {
           reportStableId: 'uberreport_1',
@@ -286,6 +309,33 @@ describe('UberFinancialReportingUseCase accounting artifact boundary', () => {
         providerReportType: 'PAYOUT_SUMMARY_REPORT',
       }),
     ]);
+  });
+
+  it('resolves reconciliation candidates with owner-private store identity', async () => {
+    const { useCase, reports } = makeUseCase();
+
+    const result = await useCase.findFinancialReportReconciliationCandidates({
+      anchorReportStableId: 'uberreport_1',
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).not.toHaveProperty('storeUuids');
+    expect(reports.listReconciliationCandidates).toHaveBeenCalledWith({
+      storeUuids: ['provider-store-a'],
+      startDate: '2026-09-01',
+      endDate: '2026-09-25',
+    });
+  });
+
+  it('allows an IMPORTED anchor to resolve the same exact reconciliation candidates', async () => {
+    const { useCase, reports } = makeUseCase('IMPORTED');
+
+    await expect(
+      useCase.findFinancialReportReconciliationCandidates({
+        anchorReportStableId: 'uberreport_1',
+      }),
+    ).resolves.toHaveLength(1);
+    expect(reports.listReconciliationCandidates).toHaveBeenCalledTimes(1);
   });
 
   it('reads only an artifact owned by a READY report', async () => {
