@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "baselineCommit": "1b18fb00",
-  "updatedAt": "2026-09-21",
+  "updatedAt": "2026-09-29",
   "requiredFields": [
     "compat_id",
     "old_owner",
@@ -56,6 +56,27 @@
       "governance_note": "The 2026-09-09 operator decision explicitly freezes the production Web Clover path while Test App/device acceptance and production-merchant authorization are incomplete. Do not modify /v1/charges execution, CARD/Apple Pay/Google Pay tokenization, 3DS/session/pricing-token/contact-verification, Web paid-Order creation, Web external-payment refund, production webhook merchant scope or persisted Web payment/surcharge facts merely to advance modularization. Non-payment bounded-context work may proceed. Resume Web Unified Payment work only after the stated provider/merchant gate, beginning with a fresh read-only production-merchant readiness/correlation audit before any v3 shadow or traffic authority change.",
       "evidence": [
         "docs/payments/clover-pos-integration-charter.md sections 3.8, 9.1 and 12.5"
+      ]
+    },
+    {
+      "compat_id": "catalog.store-menu-ownership.v1",
+      "status": "active_expand_contract",
+      "old_owner": "Catalog-owned MenuCategory/MenuOptionGroupTemplate and descendants are persisted and read as one brand-level shared menu with no Store identity",
+      "new_owner": "Catalog remains the owner, but MenuCategory and MenuOptionGroupTemplate are explicit Store.storeStableId-scoped roots; MenuItem and MenuOptionTemplateChoice inherit Store ownership through those roots while MenuPackagingType remains a brand-level reusable dictionary",
+      "dual_write_or_read": [
+        "Slice 1 adds nullable Store ownership columns and relations without changing the existing global Admin/Public/POS/Orders/Uber reads",
+        "Existing production rows are backfilled to the only current Store, 4750_Yonge_Street, before any store-aware consumer becomes authoritative",
+        "Slice 2 will move Catalog owner contracts and every Admin/Public/POS/Orders/Offers/Uber consumer to explicit storeStableId-scoped reads/writes before nullability/global semantics are contracted"
+      ],
+      "parity_metric": "Before store-aware authority cutover, every historical MenuCategory and MenuOptionGroupTemplate row must map to exactly one valid Store, null ownership must be zero after backfill, and the 4750_Yonge_Street store-scoped projection must equal the current brand-level menu for categories/items/templates/options/prices/availability/bindings",
+      "rollback": "Before store-aware read authority, the additive nullable fields may be ignored while source is forward-fixed. After consumer cutover and ownership contraction, do not restore global shared-menu semantics; repair incorrect Store ownership explicitly.",
+      "exit_criteria": "Companion migration is reviewed and applied with deterministic full-row backfill; all Catalog writes require explicit storeStableId; Admin/Public Menu/POS/Orders/Daily Special/Uber catalog reads are store-scoped; active verification shows 4750_Yonge_Street parity; null ownership is zero; and the follow-up contraction makes root ownership non-null before a second production Store menu is created.",
+      "remove_pr": "Catalog store-menu ownership contraction PR after Slice 2 store-aware consumer cutover and parity verification",
+      "deadline": "Before enabling a second production Store menu; remove immediately after store-aware cutover and non-null ownership contraction",
+      "evidence": [
+        "docs/architecture/postmod-catalog-store-menu.md",
+        "apps/api/prisma/schema.prisma",
+        "apps/api/src/menu/catalog-store-ownership.architecture.spec.ts"
       ]
     }
   ],

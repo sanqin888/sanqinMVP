@@ -70,7 +70,8 @@ Core Lane B — Accounting / reporting
   B5 Admin “经营报表” redesign
 
 Parallel product lane
-  └─ Admin Marketing Overview
+  ├─ Admin Marketing Overview
+  └─ Catalog Store Menu ownership + Admin workspace split
 
 Later engineering hardening
   ├─ runtime readiness / health
@@ -744,6 +745,25 @@ Target a useful **营销总览 / Marketing Overview** while preserving establish
 - add an aggregate/read model only after owner/API/query-cost review.
 
 This can proceed in parallel with Lane A or Lane B when product priority warrants; it should not be bundled with either foundation.
+
+### 6.2 Catalog Store Menu ownership + Admin workspace split
+
+Priority: **P1 PARALLEL PRODUCT / PERSISTENCE WORK**  
+Complexity: **H**  
+Hard dependency: none  
+State: **SLICE 1 SOURCE IMPLEMENTED / LOCAL REVIEW PENDING / MIGRATION REQUIRED / NOT PUSHED**  
+Detailed plan: `docs/architecture/postmod-catalog-store-menu.md`
+
+The current Catalog is still one brand-level shared menu even though the Admin shell already preserves a Store context and the Category/Item routes are reserved. The active `/admin/menu` workspace still combines category and item maintenance, while Public Menu, POS/Orders and Uber Catalog source reads remain globally scoped.
+
+Approved sequence:
+
+1. **Slice 1 — Store ownership foundation:** add nullable `storeStableId` to MenuCategory and MenuOptionGroupTemplate, keep MenuItem/OptionChoice ownership inherited, keep MenuPackagingType brand-level, register `catalog.store-menu-ownership.v1`, and prepare a deterministic full-row backfill to the current sole Store `4750_Yonge_Street`.
+2. **Slice 2 — store-aware contracts/consumers:** require explicit Store context across Catalog Admin/Public Menu, authenticated POS/Orders Catalog reads, Daily Special Catalog subjects and Uber Catalog source reads; reject cross-Store composition; verify current-store parity; then contract nullable/global ownership.
+3. **Slice 3 — Admin Category/Item cutover:** activate the reserved Store-scoped Category and Item workspaces and keep the Options workspace separate.
+4. **Slice 4 — legacy combined-menu contraction:** retire the old combined `/admin/menu` workspace and remove `/admin/menu/full` only after all Category/Item/Options consumers are gone.
+
+Slice 1 is an expand-contract migration and does not itself change menu runtime behavior. Promotion to production is blocked until the user-generated companion migration is reviewed and merged. Do not create or enable a second production Store menu while the compatibility seam remains active.
 
 ## 7. Later internal hardening
 
