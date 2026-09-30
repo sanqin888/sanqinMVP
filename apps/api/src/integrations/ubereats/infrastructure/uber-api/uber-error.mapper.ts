@@ -130,9 +130,7 @@ export function summarizeWebhookError(error: unknown): string {
     | ((this: unknown) => unknown)
     | undefined;
   const response =
-    typeof getResponse === 'function'
-      ? getResponse.call(error)
-      : null;
+    typeof getResponse === 'function' ? getResponse.call(error) : null;
   const raw = response
     ? JSON.stringify(response)
     : error instanceof Error
