@@ -79,6 +79,14 @@ Order Fulfillment 1.0.0 的 `orders.notification`、`orders.scheduled.notificati
 `store.menu_refresh_request` 与 `store.status.changed` 都是正式支持事件，不得再进入 unsupported quarantine。
 `store.status.changed` 的实际投递仍依赖 Uber 对应用启用/whitelist 对应的 store status notification capability；代码支持不等于 Uber 侧订阅已开通。
 
+## Production Access approval status（2026-09-30）
+
+- 2026-09-27 Uber GTS 明确回复：SanQ 的 Production Access request 已 **escalated to the internal team for approval of production access**。
+- SanQ 同日补交 `orders.notification` 与 `store.status.changed` 的 HTTP 200 日志/截图后，GTS 再次确认这些 evidence 已交给内部团队做 **further review and Production Access approval**。
+- 2026-09-30 operator 截图中，Production App 仍显示此前长期存在的 `Production Access Requested` 与 `Scopes Requested — Your scope request is being verified`，且页面 `Last Updated On` 仍为 `2026-08-03`。因此该 Dashboard 状态**不能**作为 2026-09-27 内部审批已推进或已完成的证据。
+- 当前状态应记录为：**PROVIDER-GATED / INTERNAL PRODUCTION ACCESS APPROVAL PENDING**。等待 Uber 明确批准 / Production scopes granted；无需为推进状态而重复制造 Sandbox evidence，也不得把 Dashboard 原有 pending 文案误写为新的审批事件。
+- Accounting Reporting 的 production verification 同样保持 deferred：Test/Sandbox report 目前没有足够的真实交易行来验证 Payment Details ↔ Finance/Payout Summary payout-reference reconciliation。等 Production Access 批准且真实 merchant activity 生成非空报表后，再验证 materialization -> U-FR1C MATCHED -> READY -> IMPORTED，并在自然出现 partial pair 时验证 READY/IMPORTED exact recovery。
+
 ## OAuth scope contract
 
 SanQ 将 Uber OAuth scope 按 grant type 分离维护。`UBER_EATS_APP_SCOPES` 只声明当前部署预期已获批的

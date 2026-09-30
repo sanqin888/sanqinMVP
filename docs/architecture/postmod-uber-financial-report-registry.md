@@ -1,9 +1,9 @@
 # Post-Modularization Uber Financial Report Registry — State-Driven Reconciliation Contraction
 
 Date: 2026-09-30  
-Base: `origin/dev@a90e6191`  
-Branch: `fix/uber-financial-state-driven-reconciliation`  
-Status: **SOURCE IMPLEMENTED / LOCAL REVIEW PENDING / NO MIGRATION / NO NEW DEPENDENCY / NO GRAPH OR BASELINE CHANGE**  
+Implementation base: `origin/dev@a90e6191`  
+Delivery: **PR #2612 / FINAL HEAD `3036cee6` / CI #6637 GREEN / SQUASH MERGE `271f4979`**  
+Status: **MERGED / CI GREEN / PRODUCTION FINANCIAL VERIFICATION DEFERRED UNTIL UBER PRODUCTION ACCESS + REAL REPORT CONTENT / NO MIGRATION / NO NEW DEPENDENCY / NO GRAPH OR BASELINE CHANGE**  
 Program status: repository-wide modularization and Phase 9 remain **CLOSED**. This is a post-modularization Accounting / External Channels reliability contraction.
 
 ## 1. Goal
@@ -127,10 +127,14 @@ Focused source tests cover:
 - the public Reporting view still does not expose `storeUuids`;
 - Accounting keeps using only `integrations/ubereats/public-api.ts` and no global IMPORTED scan.
 
-Per `AGENTS.md`, no local lint/build/test/CI reproduction is run before user review. GitHub Actions remains the authoritative validation gate after explicit remote-delivery authorization.
+Per `AGENTS.md`, no local lint/build/test/CI reproduction was run before user review. PR #2612 was then delivered through the repository workflow; CI #6637 passed the API lint/build/strict declaration/test gates, Architecture baseline, Web lint/build/tests, Browser E2E, printer-agent and Windows-workstation jobs before squash merge `271f4979`.
 
-## 7. Architecture effect and next gate
+## 7. Architecture effect and production verification gate
 
 The existing Accounting -> External Channels public direction is reused and narrowed semantically around owner-side exact pairing. There is no new context direction, direct-import allowance, scanner ceiling, SCC, schema/migration, dependency or compatibility entry. `tools/architecture/context-baseline.json` remains unchanged.
 
-After local review approval, push the feature branch, open a PR to `dev`, and require the normal GitHub Actions architecture/API/Web gates to pass before merge. Production/provider active verification is not required to establish the code-level contraction, but the next Uber financial-authority verification should confirm a real READY/IMPORTED partial-pair recovery if such a state is naturally available.
+Code-level verification is complete. Production financial verification remains **event-triggered and deferred** because the Uber Test/Sandbox financial reports currently contain no real transaction rows suitable for validating payout-reference reconciliation. Do not fabricate production evidence from empty/synthetic provider reports merely to close the gate.
+
+As of 2026-09-27, Uber GTS explicitly confirmed that the Production Access request had been escalated to its internal team for approval, and later confirmed that the supplied `orders.notification` / `store.status.changed` HTTP-200 evidence had been shared for further review and Production Access approval. An operator screenshot on 2026-09-30 still showed the Production App's longstanding `Production Access Requested` / `Scopes Requested — Your scope request is being verified` state, with the dashboard `Last Updated On` value still at 2026-08-03. Therefore that dashboard screen is **not** treated as evidence that the 2026-09-27 internal approval review has advanced or completed.
+
+The next production evidence is required only after Uber grants Production Access and real merchant activity yields non-empty financial reports. At that point verify a real Payment Details + Finance/Payout Summary pair through materialization, U-FR1C MATCHED reconciliation and READY -> IMPORTED progression; if a natural partial pair exists, also confirm exact READY/IMPORTED recovery without re-materializing the IMPORTED partner. This deferred evidence does not reopen Phase 9 and does not block unrelated Accounting work.
