@@ -31,7 +31,7 @@ export default function AdminOptionLibraryPage() {
         </div>
 
         <Link
-          href={`/${safeLocale}/admin/menu?store=${encodeURIComponent(storeStableId)}`}
+          href={`/${safeLocale}/admin/menu/categories?store=${encodeURIComponent(storeStableId)}`}
           className="text-sm font-medium text-emerald-700 hover:text-emerald-600"
         >
           {isZh ? '返回菜单维护' : 'Back to menu'}

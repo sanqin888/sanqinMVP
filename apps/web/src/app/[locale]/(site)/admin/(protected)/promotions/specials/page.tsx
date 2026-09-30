@@ -1,12 +1,18 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import type { Locale } from '@/lib/i18n/locales';
 import { apiFetch } from '@/lib/api/client';
+import {
+  composeAdminMenuCategories,
+  withStoreStableId,
+} from '@/lib/menu/admin-menu-narrow';
 import type {
   AdminMenuCategoryDto,
   DailySpecialDto,
+  MenuCategoryBaseDto,
+  MenuItemWithBindingsDto,
   SpecialPricingMode,
 } from '@shared/menu';
 
@@ -143,6 +149,8 @@ function groupDrafts(specials: DailySpecialDto[]): Record<number, Draft[]> {
 
 export default function PromotionsSpecialsPage() {
   const { locale } = useParams<{ locale: Locale }>();
+  const searchParams = useSearchParams();
+  const storeStableId = searchParams.get('store')?.trim() ?? '';
   const isZh = locale === 'zh';
   const [categories, setCategories] = useState<AdminMenuCategoryDto[]>([]);
   const [drafts, setDrafts] = useState<Record<number, Draft[]>>(() =>
@@ -160,12 +168,20 @@ export default function PromotionsSpecialsPage() {
       setLoading(true);
       setError(null);
       try {
-        const [menu, specials] = await Promise.all([
-          apiFetch<{ categories: AdminMenuCategoryDto[] }>('/admin/menu/full'),
-          apiFetch<{ specials: DailySpecialDto[] }>('/admin/menu/daily-specials'),
+        if (!storeStableId) return;
+        const [categoryData, itemData, specials] = await Promise.all([
+          apiFetch<MenuCategoryBaseDto[]>(
+            withStoreStableId('/admin/menu/categories', storeStableId),
+          ),
+          apiFetch<MenuItemWithBindingsDto[]>(
+            withStoreStableId('/admin/menu/items', storeStableId),
+          ),
+          apiFetch<{ specials: DailySpecialDto[] }>(
+            withStoreStableId('/admin/menu/daily-specials', storeStableId),
+          ),
         ]);
         if (cancelled) return;
-        setCategories(menu.categories ?? []);
+        setCategories(composeAdminMenuCategories(categoryData, itemData));
         setDrafts(groupDrafts(specials.specials ?? []));
       } catch (err) {
         console.error(err);
@@ -182,7 +198,7 @@ export default function PromotionsSpecialsPage() {
     return () => {
       cancelled = true;
     };
-  }, [isZh]);
+  }, [isZh, storeStableId]);
 
   const choicesByCategory = useMemo(
     () =>
@@ -255,7 +271,7 @@ export default function PromotionsSpecialsPage() {
       );
 
       const response = await apiFetch<{ specials: DailySpecialDto[] }>(
-        '/admin/menu/daily-specials/bulk',
+        withStoreStableId('/admin/menu/daily-specials/bulk', storeStableId),
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },

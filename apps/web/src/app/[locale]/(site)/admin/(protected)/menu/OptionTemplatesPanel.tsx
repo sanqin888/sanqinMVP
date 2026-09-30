@@ -10,7 +10,8 @@ import {
 } from 'react';
 import { apiFetch } from '@/lib/api/client';
 import type {
-  AdminMenuFullResponse,
+  MenuCategoryBaseDto,
+  MenuItemWithBindingsDto,
   OptionChoiceDto,
   TemplateGroupFullDto,
 } from '@shared/menu';
@@ -47,33 +48,33 @@ function isEffectivelyAvailable(
   return Date.now() >= new Date(tempUnavailableUntil).getTime();
 }
 
-function buildMenuItems(data?: AdminMenuFullResponse | null): MenuItemOption[] {
-  const result: MenuItemOption[] = [];
-  const categories = (data?.categories ?? [])
-    .filter((category) => category.isActive)
-    .slice()
-    .sort((a, b) => a.sortOrder - b.sortOrder);
+function buildMenuItems(
+  categories: MenuCategoryBaseDto[],
+  items: MenuItemWithBindingsDto[],
+): MenuItemOption[] {
+  const categoryByStableId = new Map(
+    categories
+      .filter((category) => category.isActive)
+      .map((category) => [category.stableId, category]),
+  );
 
-  for (const category of categories) {
-    const items = (category.items ?? [])
-      .filter((item) => item.isAvailable)
-      .slice()
-      .sort((a, b) => a.sortOrder - b.sortOrder);
-
-    for (const item of items) {
-      result.push({
-        stableId: item.stableId,
-        nameEn: item.nameEn,
-        nameZh: item.nameZh ?? null,
-        categoryNameEn: category.nameEn,
-        categoryNameZh: category.nameZh ?? null,
-        sortOrder: item.sortOrder,
-        categorySortOrder: category.sortOrder,
-      });
-    }
-  }
-
-  return result;
+  return items
+    .filter((item) => item.isAvailable)
+    .flatMap((item) => {
+      const category = categoryByStableId.get(item.categoryStableId);
+      if (!category) return [];
+      return [
+        {
+          stableId: item.stableId,
+          nameEn: item.nameEn,
+          nameZh: item.nameZh ?? null,
+          categoryNameEn: category.nameEn,
+          categoryNameZh: category.nameZh ?? null,
+          sortOrder: item.sortOrder,
+          categorySortOrder: category.sortOrder,
+        },
+      ];
+    });
 }
 
 function SectionCard({
@@ -250,14 +251,19 @@ export function OptionTemplatesPanel({
     setLoading(true);
     setErr(null);
     try {
-      const [templatesRes, menuRes] = await Promise.all([
+      const [templatesRes, categoriesRes, itemsRes] = await Promise.all([
         apiFetch<TemplateGroupFullDto[]>(
           storeScopedPath('/admin/menu/option-group-templates'),
         ),
-        apiFetch<AdminMenuFullResponse>(storeScopedPath('/admin/menu/full')),
+        apiFetch<MenuCategoryBaseDto[]>(
+          storeScopedPath('/admin/menu/categories'),
+        ),
+        apiFetch<MenuItemWithBindingsDto[]>(
+          storeScopedPath('/admin/menu/items'),
+        ),
       ]);
       setTemplates(templatesRes ?? []);
-      setMenuItems(buildMenuItems(menuRes));
+      setMenuItems(buildMenuItems(categoriesRes ?? [], itemsRes ?? []));
     } catch (e) {
       console.error(e);
       setErr(isZh ? '加载选项库失败，请稍后重试。' : 'Failed to load option templates.');

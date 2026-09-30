@@ -1527,7 +1527,6 @@ model MenuCategory {
   nameZh        String?
   isActive      Boolean    @default(true)
   stableId      String     @unique @default(cuid())
-  /// @compat catalog.store-menu-ownership.v1 Pending production migration/verification before compatibility closeout.
   storeStableId String
   deletedAt     DateTime?
   store         Store      @relation(fields: [storeStableId], references: [storeStableId], onDelete: Restrict)
@@ -1643,7 +1642,6 @@ model MenuOptionGroupTemplate {
   tempUnavailableUntil DateTime?
   sortOrder            Int                        @default(0)
   stableId             String                     @unique @default(cuid())
-  /// @compat catalog.store-menu-ownership.v1 Pending production migration/verification before compatibility closeout.
   storeStableId        String
   deletedAt             DateTime?
   store                Store                      @relation(fields: [storeStableId], references: [storeStableId], onDelete: Restrict)

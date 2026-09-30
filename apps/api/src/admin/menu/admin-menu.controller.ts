@@ -16,8 +16,10 @@ import {
   CatalogUberAvailabilityOrchestrationService,
 } from '../../application/menu/public-api';
 import {
-  AdminMenuFullResponse,
   DailySpecialDto,
+  MenuCategoryBaseDto,
+  MenuItemWithBindingsDto,
+  MenuPackagingTypeDto,
   TemplateGroupFullDto,
 } from '@shared/menu';
 import { CatalogAdminService } from '../../menu/public-api';
@@ -44,11 +46,13 @@ export class AdminMenuController {
     private readonly availability: CatalogUberAvailabilityOrchestrationService,
   ) {}
 
-  @Get('full')
-  async getFullMenu(
+  @Get('daily-specials/active')
+  async getActiveDailySpecials(
     @Query('storeStableId') storeStableId?: string,
-  ): Promise<AdminMenuFullResponse> {
-    return this.menuOffers.getFullMenu(requireStoreStableId(storeStableId));
+  ): Promise<{ specials: DailySpecialDto[] }> {
+    return this.menuOffers.getActiveDailySpecials(
+      requireStoreStableId(storeStableId),
+    );
   }
 
   @Get('daily-specials')
@@ -90,6 +94,13 @@ export class AdminMenuController {
       requireStoreStableId(storeStableId),
       body,
     );
+  }
+
+  @Get('categories')
+  async listCategories(
+    @Query('storeStableId') storeStableId?: string,
+  ): Promise<MenuCategoryBaseDto[]> {
+    return this.catalog.listCategories(requireStoreStableId(storeStableId));
   }
 
   @Post('categories')
@@ -134,6 +145,11 @@ export class AdminMenuController {
     );
   }
 
+  @Get('packaging-types')
+  async listPackagingTypes(): Promise<MenuPackagingTypeDto[]> {
+    return this.catalog.listPackagingTypes();
+  }
+
   @Post('packaging-types')
   async createPackagingType(
     @Body()
@@ -157,6 +173,13 @@ export class AdminMenuController {
     },
   ) {
     return this.catalog.updatePackagingType(packagingTypeStableId, body);
+  }
+
+  @Get('items')
+  async listItems(
+    @Query('storeStableId') storeStableId?: string,
+  ): Promise<MenuItemWithBindingsDto[]> {
+    return this.catalog.listItems(requireStoreStableId(storeStableId));
   }
 
   @Post('items')

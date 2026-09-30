@@ -1,9 +1,18 @@
 // apps/web/src/app/[locale]/admin/(protected)/promotions/coupons/page.tsx
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api/client';
-import type { AdminMenuCategoryDto } from '@shared/menu';
+import {
+  composeAdminMenuCategories,
+  withStoreStableId,
+} from '@/lib/menu/admin-menu-narrow';
+import type {
+  AdminMenuCategoryDto,
+  MenuCategoryBaseDto,
+  MenuItemWithBindingsDto,
+} from '@shared/menu';
 
 type CouponTemplate = {
   couponStableId: string;
@@ -228,6 +237,8 @@ function parseTemplateFormFromRule(
 }
 
 export default function AdminCouponsPage() {
+  const searchParams = useSearchParams();
+  const storeStableId = searchParams.get('store')?.trim() ?? '';
   const [templates, setTemplates] = useState<CouponTemplate[]>([]);
   const [programs, setPrograms] = useState<CouponProgram[]>([]);
   const [menuCategories, setMenuCategories] = useState<AdminMenuCategoryDto[]>(
@@ -262,28 +273,35 @@ export default function AdminCouponsPage() {
     saving: false,
   });
 
-  async function fetchData() {
+  const fetchData = useCallback(async () => {
+    if (!storeStableId) return;
     setLoading(true);
     setLoadError(null);
     try {
-      const [templateData, programData, menuData] = await Promise.all([
-        apiFetch<CouponTemplate[]>('/admin/coupons/templates'),
-        apiFetch<CouponProgram[]>('/admin/coupons/programs'),
-        apiFetch<{ categories: AdminMenuCategoryDto[] }>('/admin/menu/full'),
-      ]);
+      const [templateData, programData, categoryData, itemData] =
+        await Promise.all([
+          apiFetch<CouponTemplate[]>('/admin/coupons/templates'),
+          apiFetch<CouponProgram[]>('/admin/coupons/programs'),
+          apiFetch<MenuCategoryBaseDto[]>(
+            withStoreStableId('/admin/menu/categories', storeStableId),
+          ),
+          apiFetch<MenuItemWithBindingsDto[]>(
+            withStoreStableId('/admin/menu/items', storeStableId),
+          ),
+        ]);
       setTemplates(templateData);
       setPrograms(programData);
-      setMenuCategories(menuData.categories ?? []);
+      setMenuCategories(composeAdminMenuCategories(categoryData, itemData));
     } catch (error) {
       setLoadError((error as Error).message);
     } finally {
       setLoading(false);
     }
-  }
+  }, [storeStableId]);
 
   useEffect(() => {
     void fetchData();
-  }, []);
+  }, [fetchData]);
 
   const templateCount = templates.length;
   const programCount = programs.length;

@@ -1,91 +1,26 @@
 import { CatalogOffersMenuOrchestrationService } from './catalog-offers-menu-orchestration.service';
 
 describe('CatalogOffersMenuOrchestrationService', () => {
-  it('enriches Catalog menu facts with Offers-owned active Daily Special pricing', async () => {
+  it('passes Store-scoped Catalog pricing snapshots to active Daily Special reads', async () => {
+    const snapshots = [{ itemStableId: 'item-1', basePriceCents: 1099 }];
     const catalog = {
-      getFullMenu: jest.fn().mockResolvedValue({
-        categories: [
-          {
-            stableId: 'category-1',
-            sortOrder: 0,
-            nameEn: 'Burgers',
-            nameZh: null,
-            isActive: true,
-            items: [
-              {
-                stableId: 'item-1',
-                categoryStableId: 'category-1',
-                nameEn: 'Pork Roujiamo',
-                nameZh: null,
-                basePriceCents: 1099,
-                isAvailable: true,
-                visibility: 'PUBLIC',
-                isVisibleOnMainMenu: true,
-                publishToUberEats: true,
-                labelStrategy: 'AUTO',
-                itemKind: 'FOOD',
-                packagings: [],
-                fixedComponents: [],
-                tempUnavailableUntil: null,
-                sortOrder: 0,
-                imageUrl: null,
-                ingredientsEn: null,
-                ingredientsZh: null,
-                optionGroups: [],
-              },
-            ],
-          },
-        ],
-        templatesLite: [],
-        packagingTypes: [],
-      }),
-      getMenuItemPricingSnapshots: jest.fn(),
-    };
-    const activeSpecial = {
-      stableId: 'special-1',
-      weekday: 5,
-      itemStableId: 'item-1',
-      pricingMode: 'OVERRIDE_PRICE',
-      overridePriceCents: 799,
-      discountDeltaCents: null,
-      discountPercent: null,
-      startDate: null,
-      endDate: null,
-      startMinutes: null,
-      endMinutes: null,
-      disallowCoupons: true,
-      isEnabled: true,
-      sortOrder: 0,
-      basePriceCents: 1099,
-      effectivePriceCents: 799,
+      getMenuItemPricingSnapshots: jest.fn().mockResolvedValue(snapshots),
     };
     const dailySpecialOffers = {
-      getActiveDailySpecials: jest
-        .fn()
-        .mockResolvedValue({ specials: [activeSpecial] }),
+      getActiveDailySpecials: jest.fn().mockResolvedValue({ specials: [] }),
     };
     const service = new CatalogOffersMenuOrchestrationService(
       catalog as never,
       dailySpecialOffers as never,
     );
 
-    const result = await service.getFullMenu('store-1');
-
+    await expect(service.getActiveDailySpecials('store-1')).resolves.toEqual({
+      specials: [],
+    });
+    expect(catalog.getMenuItemPricingSnapshots).toHaveBeenCalledWith('store-1');
     expect(dailySpecialOffers.getActiveDailySpecials).toHaveBeenCalledWith(
       'store-1',
-      [{ itemStableId: 'item-1', basePriceCents: 1099 }],
-    );
-    expect(result.dailySpecials).toEqual([activeSpecial]);
-    expect(result.categories[0]?.items[0]).toEqual(
-      expect.objectContaining({
-        effectivePriceCents: 799,
-        activeSpecial: {
-          stableId: 'special-1',
-          effectivePriceCents: 799,
-          pricingMode: 'OVERRIDE_PRICE',
-          disallowCoupons: true,
-        },
-      }),
+      snapshots,
     );
   });
 

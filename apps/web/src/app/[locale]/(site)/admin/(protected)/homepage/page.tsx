@@ -10,7 +10,6 @@ import {
   type HomepageContent,
   type HomepageFeaturedConfig,
 } from '@/lib/homepage-content';
-import type { AdminMenuFullResponse } from '@shared/menu';
 type EditingLocale = 'zh' | 'en';
 type ImageField = 'heroImageUrl' | 'heroMobileImageUrl' | 'membershipImageUrl';
 type TextField = Exclude<keyof HomepageContent, ImageField>;
@@ -117,7 +116,7 @@ export default function AdminHomepagePage() {
       setSavedFeaturedSnapshot(fallbackFeatured);
 
       try {
-        const [loaded, loadedFeatured, menu] = await Promise.all([
+        const [loaded, loadedFeatured, candidates] = await Promise.all([
           apiFetch<HomepageContent>(
             `/admin/homepage/content?locale=${editingLocale}`,
             { cache: 'no-store' },
@@ -125,35 +124,17 @@ export default function AdminHomepagePage() {
           apiFetch<HomepageFeaturedConfig>('/admin/homepage/featured', {
             cache: 'no-store',
           }),
-          apiFetch<AdminMenuFullResponse>('/admin/menu/full', {
-            cache: 'no-store',
-          }),
+          apiFetch<{ items: Array<{ stableId: string; label: string }> }>(
+            `/admin/homepage/featured/candidates?locale=${editingLocale}`,
+            { cache: 'no-store' },
+          ),
         ]);
         if (cancelled) return;
         setContent(cloneContent(loaded));
         setSavedSnapshot(cloneContent(loaded));
         setFeaturedConfig(cloneFeaturedConfig(loadedFeatured));
         setSavedFeaturedSnapshot(cloneFeaturedConfig(loadedFeatured));
-        setFeaturedMenuItems(
-          menu.categories
-            .filter((category) => category.isActive)
-            .flatMap((category) =>
-              category.items
-                .filter(
-                  (item) =>
-                    item.visibility === 'PUBLIC' &&
-                    item.isVisibleOnMainMenu &&
-                    Boolean(item.imageUrl),
-                )
-                .map((item) => ({
-                  stableId: item.stableId,
-                  label:
-                    editingLocale === 'zh'
-                      ? item.nameZh ?? item.nameEn
-                      : item.nameEn,
-                })),
-            ),
-        );
+        setFeaturedMenuItems(candidates.items ?? []);
       } catch (loadError) {
         if (cancelled) return;
         setError(loadError instanceof Error ? loadError.message : '首页内容加载失败');

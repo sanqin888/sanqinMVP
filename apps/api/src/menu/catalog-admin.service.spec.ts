@@ -295,23 +295,111 @@ describe('CatalogAdminService order facts reader', () => {
   });
 });
 
-describe('CatalogAdminService pricing snapshots', () => {
-  it('keeps the full Admin menu snapshot free of Offers-owned fields and persistence', async () => {
-    const prisma = {
-      menuCategory: { findMany: jest.fn().mockResolvedValue([]) },
-      menuOptionGroupTemplate: { findMany: jest.fn().mockResolvedValue([]) },
-      menuPackagingType: { findMany: jest.fn().mockResolvedValue([]) },
-    };
-    const service = new CatalogAdminService(prisma as never);
+describe('CatalogAdminService admin workspace reads', () => {
+  it('lists only live categories for the requested Store without loading items', async () => {
+    const findMany = jest.fn().mockResolvedValue([
+      {
+        stableId: 'drinks',
+        nameEn: 'Drinks',
+        nameZh: '饮品',
+        sortOrder: 20,
+        isActive: true,
+      },
+    ]);
+    const service = new CatalogAdminService({
+      menuCategory: { findMany },
+    } as never);
 
-    await expect(service.getFullMenu('store-1')).resolves.toEqual({
-      categories: [],
-      templatesLite: [],
-      packagingTypes: [],
+    await expect(service.listCategories(' store-1 ')).resolves.toEqual([
+      {
+        stableId: 'drinks',
+        nameEn: 'Drinks',
+        nameZh: '饮品',
+        sortOrder: 20,
+        isActive: true,
+      },
+    ]);
+    expect(findMany).toHaveBeenCalledWith({
+      where: { storeStableId: 'store-1', deletedAt: null },
+      orderBy: { sortOrder: 'asc' },
+      select: {
+        stableId: true,
+        nameEn: true,
+        nameZh: true,
+        sortOrder: true,
+        isActive: true,
+      },
     });
-    expect('menuDailySpecial' in prisma).toBe(false);
+  });
+});
+
+describe('CatalogAdminService item workspace reads', () => {
+  it('lists only live items rooted in the requested Store', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const service = new CatalogAdminService({
+      menuItem: { findMany },
+    } as never);
+
+    await expect(service.listItems(' store-1 ')).resolves.toEqual([]);
+    expect(findMany).toHaveBeenCalledWith({
+      where: {
+        deletedAt: null,
+        category: { storeStableId: 'store-1', deletedAt: null },
+      },
+      orderBy: { sortOrder: 'asc' },
+      include: {
+        category: { select: { stableId: true } },
+        packagings: {
+          orderBy: { sortOrder: 'asc' },
+          include: { packagingType: true },
+        },
+        fixedComponents: {
+          orderBy: { sortOrder: 'asc' },
+        },
+        optionGroups: {
+          where: { templateGroup: { deletedAt: null } },
+          orderBy: { sortOrder: 'asc' },
+          include: {
+            templateGroup: {
+              select: {
+                stableId: true,
+                nameEn: true,
+                nameZh: true,
+                deletedAt: true,
+                defaultMinSelect: true,
+                defaultMaxSelect: true,
+                isAvailable: true,
+                tempUnavailableUntil: true,
+                sortOrder: true,
+              },
+            },
+          },
+        },
+      },
+    });
   });
 
+  it('lists the live brand-level packaging dictionary without Store filtering', async () => {
+    const findMany = jest
+      .fn()
+      .mockResolvedValue([
+        { stableId: '16oz', name: '16oz', isActive: true, sortOrder: 1 },
+      ]);
+    const service = new CatalogAdminService({
+      menuPackagingType: { findMany },
+    } as never);
+
+    await expect(service.listPackagingTypes()).resolves.toEqual([
+      { stableId: '16oz', name: '16oz', isActive: true, sortOrder: 1 },
+    ]);
+    expect(findMany).toHaveBeenCalledWith({
+      where: { deletedAt: null },
+      orderBy: { sortOrder: 'asc' },
+    });
+  });
+});
+
+describe('CatalogAdminService pricing snapshots', () => {
   it('projects menu item stable ids and base prices without reading Offers persistence', async () => {
     const findMany = jest
       .fn()

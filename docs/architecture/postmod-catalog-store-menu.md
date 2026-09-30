@@ -73,11 +73,11 @@ Existing Catalog `stableId` values remain globally unique. This work does **not*
 
 This is **Class B — expand-contract**.
 
-Active compatibility ID:
+Compatibility ID (retired in Slice 2B):
 
 `catalog.store-menu-ownership.v1`
 
-Slice 1 intentionally adds nullable ownership fields. Existing global readers/writers remain unchanged until the persisted data is backfilled and every consumer can cut over together. The nullable state is temporary compatibility infrastructure, not the final Catalog contract.
+Slice 1 intentionally introduced nullable ownership as temporary compatibility infrastructure while consumers cut over. Slice 2B has now completed the production NOT NULL contraction and retired this compatibility; the final Catalog contract requires Store ownership on both roots.
 
 ## 5. Slice plan
 
@@ -151,9 +151,9 @@ Implemented scope:
 
 ### Slice 2B — root ownership NOT NULL contraction
 
-Status: **SOURCE IMPLEMENTED LOCALLY / EXPLICITLY AUTHORIZED / MIGRATION REQUIRED / NOT PUSHED**.
+Status: **PRODUCTION VERIFIED / SLICE 2B CLOSED / COMPATIBILITY RETIRED / READY FOR SLICE 3**.
 
-Before Slice 2B, `MenuCategory.storeStableId String?` and `MenuOptionGroupTemplate.storeStableId String?` were the deliberate staged compatibility seam. Production verification after PR #2610 confirmed the Homepage Featured follow-up is deployed, all current ownership roots are valid/non-null under `4750_Yonge_Street`, Store-scoped persisted-menu parity still holds, and production has zero null-`Order.storeId` rows. The user explicitly authorized 2B on 2026-09-30. The local source contraction now changes both Prisma ownership roots and their `Store` relations to required types while retaining the compatibility marker until the companion migration is reviewed, merged, deployed and verified.
+Before Slice 2B, `MenuCategory.storeStableId String?` and `MenuOptionGroupTemplate.storeStableId String?` were the deliberate staged compatibility seam. Production verification after PR #2610 confirmed the Homepage Featured follow-up is deployed, all current ownership roots are valid/non-null under `4750_Yonge_Street`, Store-scoped persisted-menu parity still holds, and production has zero null-`Order.storeId` rows. The user explicitly authorized 2B on 2026-09-30. PR #2616 now makes both Prisma ownership roots and their `Store` relations required while retaining the compatibility marker until the reviewed companion migration is applied and verified in production.
 
 Completed prerequisites:
 
@@ -162,30 +162,74 @@ Completed prerequisites:
 3. Homepage Featured candidate/ranking reads are deployed and Store-scoped;
 4. explicit authorization for the NOT NULL contraction has been given.
 
-Remaining gates:
+Completed additional gates:
 
-1. review and merge this schema-source contraction to `dev`;
-2. generate the companion migration locally with `--create-only` and review the exact SQL;
-3. merge the reviewed migration through the normal `dev`/CI gate before any production promotion;
-4. deploy/apply the migration and verify both columns are physically NOT NULL with parity intact;
-5. only then remove `catalog.store-menu-ownership.v1`.
+1. schema/source contraction merged through PR #2616 / merge `51f3749a` after CI #6645;
+2. user-generated migration `20260930162009_post_mod_catalog_store_menu_not_null_contraction` committed to `dev` as `88dd319a`;
+3. migration SQL review confirmed exactly two `SET NOT NULL` statements and no backfill, DROP, FK/index churn, table rebuild or unrelated DDL;
+4. production preflight re-confirmed zero NULL / other-Store ownership rows and confirmed the new migration is not yet present in production `_prisma_migrations`.
+
+Completed CI gate:
+
+1. GitHub Actions CI #6647 ran on `dev@88dd319a` and completed green;
+2. Browser E2E successfully replayed all committed migrations, including `20260930162009_post_mod_catalog_store_menu_not_null_contraction`, into a disposable PostgreSQL database before seed/API/Web/browser verification;
+3. API, Web, Browser E2E, printer-agent and Windows workstation jobs all passed.
+
+Production closeout completed:
+
+1. production deployed `main@88dd319a` and applied `20260930162009_post_mod_catalog_store_menu_not_null_contraction` at 2026-09-30 17:42:42 UTC;
+2. `information_schema.columns` reports `is_nullable=NO` for both `MenuCategory.storeStableId` and `MenuOptionGroupTemplate.storeStableId`;
+3. production ownership remains 7 MenuCategory roots and 23 MenuOptionGroupTemplate roots, with zero NULL or non-`4750_Yonge_Street` owners;
+4. current Store composition has zero cross-Store item↔option-group bindings and zero cross-Store fixed components, with 33 live MenuItems and 92 live MenuOptionTemplateChoices;
+5. API, Web and Uber worker logs showed no `error` matches in the post-deploy verification window;
+6. `catalog.store-menu-ownership.v1` is therefore retired and its temporary Prisma `@compat` markers are removed.
 
 ### Slice 3 — Admin Category / Item workspace cutover
 
-Planned scope:
+Slice 3 is split into independently reviewable UI/read-contract batches so the legacy combined workspace can remain intact until replacement surfaces are proven.
 
-- activate the existing `/admin/menu/categories` workspace;
-- activate the existing `/admin/menu/items` workspace;
-- use narrow Store-scoped APIs instead of loading the full combined menu for both screens;
-- preserve the separate Options workspace while making it Store-scoped.
+#### Slice 3A — Category workspace + narrow Category read
+
+Local implementation scope:
+
+- activate `/admin/menu/categories` as the Store-scoped Category maintenance workspace;
+- add `GET /admin/menu/categories?storeStableId=...` owned by Catalog Admin;
+- return only live Category fields required by that screen and do not load MenuItem/Options/Packaging data;
+- preserve existing Store-scoped Category create/update contracts;
+- keep the legacy combined `/admin/menu` workspace untouched as transition fallback;
+- add API query-shape and Web source-boundary regressions that prohibit `/admin/menu/full` on the Category workspace.
+
+State: **MERGED / PR #2619 / CI #6655 GREEN / MERGE `e92ab60c` / NO PRISMA OR MIGRATION / NO DEPENDENCY OR GRAPH CHANGE**.
+
+#### Slice 3B — Item workspace + Options full-menu read contraction
+
+Local implementation scope:
+
+- activate `/admin/menu/items` as the independent Store-scoped Item maintenance workspace;
+- add Store-scoped `GET /admin/menu/items?storeStableId=...` for full Item-editing DTOs and brand-level `GET /admin/menu/packaging-types` for the reusable packaging dictionary;
+- compose Item support data from the already-narrow Category and Option Template reads instead of the combined snapshot;
+- preserve item create/edit, dedicated availability control, image/media selection, packaging assignment/creation, fixed-combo composition, Uber publication flag, label strategy and option-group bind/update/unbind behavior;
+- move the Options workspace target-item selector from `/admin/menu/full` to Store-scoped Category + Item reads;
+- add query-shape/source-boundary regressions that prohibit `/admin/menu/full` from both Item and Options workspaces;
+- leave the old combined workspace and `/admin/menu/full` available until Slice 4 because other consumers still exist.
+
+State: **MERGED / PR #2620 / CI #6658 GREEN / MERGE `c08f02c6` / NO PRISMA OR MIGRATION / NO DEPENDENCY OR GRAPH CHANGE**.
 
 ### Slice 4 — Legacy combined menu contraction
 
-Planned scope:
+Local implementation scope:
 
-- retire `/admin/menu` combined Category + Item maintenance;
-- remove `/admin/menu/full` only after Category, Item and Options consumers no longer depend on it;
-- remove `catalog.store-menu-ownership.v1` after non-null Store ownership and active store-scoped verification are complete.
+- audit every remaining runtime `/admin/menu/full` consumer after Slice 3B;
+- move Marketing target-item reads to Store-scoped Category + Item contracts while keeping Promotion/Coupon rule ownership brand-level and Daily Special Store context explicit;
+- move Homepage Featured candidate listing behind the existing Homepage owner so the Admin page no longer reads a Catalog combined snapshot;
+- move POS Orders/Menu consumers to the authenticated POS device Store context and narrow Catalog reads;
+- preserve the legacy full-menu Daily Special effective-price behavior for POS Orders through a narrow Store-scoped active-special projection;
+- retire the old combined `/admin/menu` page, `GET /admin/menu/full`, the Catalog full-snapshot builder, its Offers enrichment orchestration and the shared `AdminMenuFullResponse` aliases after runtime consumers reach zero;
+- keep Category / Item / Options workspaces, Daily Special read/write contracts, availability writes, packaging dictionary ownership and all provider boundaries unchanged.
+
+State: **LOCAL / READY FOR REVIEW / NO PRISMA OR MIGRATION / NO DEPENDENCY OR GRAPH CHANGE**.
+
+The Store-ownership compatibility seam was already retired in Slice 2B after production NOT NULL verification; Slice 4 does not own that compatibility cleanup.
 
 ## 6. Architecture effect
 
@@ -205,4 +249,4 @@ After remote authorization, the reviewed branch must pass the normal GitHub Acti
 - Web lint/build/strict/test;
 - Browser E2E and existing independent workstation/printer jobs where triggered.
 
-Slice 2A is production verified, including the Homepage Featured follow-up merged in PR #2610 and deployed. Slice 2B source is now locally implemented but remains **MIGRATION REQUIRED**. The compatibility seam stays active until the user-generated NOT NULL migration is reviewed, merged, applied in production and the post-migration parity/ownership verification passes.
+Slice 2A is production verified, including the Homepage Featured follow-up merged in PR #2610 and deployed. Slice 2B source merged through PR #2616; user-generated migration `20260930162009_post_mod_catalog_store_menu_not_null_contraction` was reviewed on `dev@88dd319a`, passed CI #6647 including committed-migration replay, and is now applied in production. Both Store roots are physically NOT NULL, ownership/composition checks pass, and post-deploy runtime logs are clean. Slice 2B is therefore production verified and `catalog.store-menu-ownership.v1` is retired. Slice 3A/3B are merged; Slice 4 is now locally implemented and awaiting review before remote CI.
