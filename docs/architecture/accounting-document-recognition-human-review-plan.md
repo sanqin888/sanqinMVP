@@ -1,7 +1,7 @@
 # Accounting Document Recognition & Human Review Plan
 
-Status: **SLICE 0-3 + 3V-A + 3V-B DEV MERGED / CI GREEN / 3V-B PRODUCTION VERIFICATION PENDING / EVIDENCE VIEWER SLICE 1 + 1B + 2 MERGED / RELIABILITY SLICE A + B MERGED / EXPENSE REVIEW HARDENING MERGED / ORIGINAL SLICE C UX CLOSEOUT MERGED (#2445 / `da77b9a5`, CI #6074 GREEN) / GMAIL INCREMENTAL + DUPLICATE FILE ARTIFACT FOLLOW-UP LOCAL / MIGRATION REQUIRED — DO NOT REOPEN PHASE 9**  
-Planning date: 2026-09-20; updated: 2026-09-29  
+Status: **SLICE 0-3 + 3V-A + 3V-B DEV MERGED / CI GREEN / 3V-B PRODUCTION VERIFICATION PENDING / EVIDENCE VIEWER SLICE 1 + 1B + 2 MERGED / RELIABILITY SLICE A + B MERGED / EXPENSE REVIEW HARDENING MERGED / ORIGINAL SLICE C UX CLOSEOUT MERGED (#2445 / `da77b9a5`, CI #6074 GREEN) / GMAIL INCREMENTAL + DUPLICATE FILE ARTIFACT FOLLOW-UP PRODUCTION VERIFIED (#2605 / `bfbf8e2c`, CI #6605, MIGRATION APPLIED) — DO NOT REOPEN PHASE 9**  
+Planning date: 2026-09-20; updated: 2026-09-30  
 Audit baseline: `origin/dev@1ede0599`; Slice 3 merged in PR #2432 as `caabf1c1`; Slice 3V-A merged in PR #2439 as `0d6909bb` after PR CI #6054 and merged-head CI #6055 passed; Slice 3V-B merged in PR #2440 as `0ac9117f` after final head `3c5c0400`, PR CI #6057 and merged-head CI #6058 green  
 Owner: **Accounting / Reporting / Analytics**  
 Phase 9 status: **remains PRODUCTION VERIFIED / CLOSED — do not reopen Phase 9**
@@ -1211,9 +1211,11 @@ financial facts. Retain source/review evidence.
 **State:** PR #2603 merged as `bce195de` after CI #6596 passed and was deployed. Production
 verification then exposed a persisted invariant mismatch: `AccountingSourceArtifact_storage_check`
 requires PDF/IMAGE/CSV artifacts to retain a non-empty `storedUrl`, so the PR #2603 strategy of
-persisting a duplicate file artifact with `storedUrl = null` fails closed at the database. The
-current follow-up is LOCAL on `fix/accounting-gmail-incremental-dedupe`; per `AGENTS.md`, no
-local lint/build/Jest/scanner command is claimed before review.
+persisting a duplicate file artifact with `storedUrl = null` failed closed at the database. The
+follow-up merged through PR #2605 as `bfbf8e2c`; final head `e509d4f0` passed CI #6605. Its
+user-generated additive migration `20260929214605_accounting_gmail_history_cursor` is applied in
+production, and production verification confirms the incremental cursor plus duplicate skip/purge
+path are active.
 
 The follow-up preserves the existing Accounting L3 ownership while changing duplicate-file
 retention semantics and Gmail polling:
@@ -1238,9 +1240,13 @@ retention semantics and Gmail polling:
   date resets the cursor so the new boundary is bootstrapped deliberately.
 
 The SourceArtifact storage invariant is **not** relaxed. The only Prisma change is the additive
-nullable Gmail history cursor, so a user-generated migration is required before production
-promotion. No package/lockfile, Journal/Expense authority, provider parser, trusted-sender policy,
-public HTTP route, context edge, scanner allowance or Phase 9 status changes.
+nullable Gmail history cursor. Production `_prisma_migrations` records
+`20260929214605_accounting_gmail_history_cursor` applied at `2026-09-29T23:35:17.182925Z`; live
+`AccountingAutomationConfig.gmailHistoryId` is `562515`, Accounting audit records 7
+`SKIP_DUPLICATE_FILE_ARTIFACT` and 25 `PURGE_DUPLICATE_EMAIL_ARTIFACT` events, and post-follow-up
+API logs contain no `AccountingSourceArtifact_storage_check` matches. No package/lockfile,
+Journal/Expense authority, provider parser, trusted-sender policy, public HTTP route, context edge,
+scanner allowance or Phase 9 status changes.
 
 ## 15. Decisions intentionally left open
 

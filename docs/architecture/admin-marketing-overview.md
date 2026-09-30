@@ -1,8 +1,8 @@
 # Admin Marketing Overview — Readiness Audit and Delivery Plan
 
 Date: 2026-09-30  
-Baseline: `origin/dev@f06843b0` after MKT-C merge  
-State: **MKT-A/B/C MERGED / MKT-C PR #2626 / CI #6680 GREEN / MERGE `f06843b0` / MKT-D LOCAL / REVIEW PENDING / NO MIGRATION / NO DEPENDENCY**
+Baseline: `origin/dev@2d250360` after MKT-D merge  
+State: **SOURCE COMPLETE / MKT-A/B/C/D MERGED + CI GREEN / MKT-D PR #2627 / CI #6682 / MERGE `2d250360` / NO MIGRATION / NO DEPENDENCY / PRODUCTION UI VERIFICATION NOT YET CLAIMED**
 
 ## 1. Product goal
 
@@ -230,7 +230,7 @@ associated sales. Those remain MKT-D presentation work after production reconcil
 
 ### MKT-D — performance metric presentation
 
-MKT-D is now local on `marketing/overview-mkt-d`. A fresh read-only production
+MKT-D merged through PR #2627 / CI #6682 / `2d250360`. A fresh read-only production
 reconciliation on 2026-09-30 re-confirmed the current-quarter source evidence before UI
 exposure:
 

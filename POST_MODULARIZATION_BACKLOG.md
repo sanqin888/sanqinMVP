@@ -727,7 +727,7 @@ B2 comes first so Admin and Accounting can share stable vocabulary rather than i
 Priority: **P1 PARALLEL PRODUCT WORK**  
 Complexity: **M**  
 Hard dependency: none  
-State: **MKT-A/B/C MERGED / MKT-C PR #2626 / CI #6680 GREEN / MERGE `f06843b0` / MKT-D LOCAL / REVIEW PENDING / NO MIGRATION / NO DEPENDENCY**  
+State: **SOURCE COMPLETE / MKT-A/B/C/D MERGED + CI GREEN / MKT-D PR #2627 / CI #6682 / MERGE `2d250360` / NO MIGRATION / NO DEPENDENCY / PRODUCTION UI VERIFICATION NOT YET CLAIMED**  
 Detailed plan: `docs/architecture/admin-marketing-overview.md`
 
 Current `/admin/promotions` is primarily a navigation landing page for Daily Special,
@@ -766,13 +766,15 @@ Approved delivery order:
 3. **MKT-C Admin base cutover:** **MERGED / CI GREEN** through PR #2626 /
    CI #6680 / `f06843b0`. `/admin/promotions` is now the Store-scoped Marketing Overview,
    with usage-first monitoring and preserved lifecycle-management navigation.
-4. **MKT-D performance display:** **LOCAL / REVIEW PENDING** on
-   `marketing/overview-mkt-d`. Fresh read-only production reconciliation re-confirmed
+4. **MKT-D performance display:** **MERGED / CI GREEN** through PR #2627 /
+   CI #6682 / `2d250360`. Fresh read-only production reconciliation re-confirmed
    Automatic 5 uses / 5 units / $29.95 discount / $104.58 associated sales, Coupon
    3 / 4 / $11.00 / $35.65, and Daily Special 170 / 207 / $2,350.24 associated sales.
    Daily Special discount is only 1/170-use covered ($1.50), so UI exposes explicit
    COMPLETE/PARTIAL/UNAVAILABLE/NOT_APPLICABLE coverage and immutable-vs-legacy sales
-   evidence instead of treating unknown history as zero.
+   evidence instead of treating unknown history as zero. The planned MKT-A through MKT-D
+   source sequence is complete; a later production UI spot-check may add verification
+   evidence but is not a new source slice.
 
 Keep Daily Special, Coupon/Benefit and PromotionRule lifecycle/storage with their owners;
 do not reuse Accounting-only historical Daily Special overrides as generic Marketing
@@ -872,9 +874,10 @@ No Prisma/schema/migration, package/lockfile, provider/payment behavior, context
 
 Priority: **P3**  
 Complexity: **H / incremental**  
-External gate: none
+External gate: none  
+State: **READINESS AUDIT COMPLETE / FIRST NARROW SLICE RECOMMENDED: `strictBindCallApply=true` / SOURCE NOT YET CHANGED**
 
-The CI step named “Strict declaration check” extends API `tsconfig.json`, which still has `noImplicitAny=false`, `strictBindCallApply=false` and other relaxed flags.
+The CI step named “Strict declaration check” extends API `tsconfig.json`, which still has `noImplicitAny=false`, `strictBindCallApply=false` and other relaxed flags. The 2026-09-30 read-only readiness inventory found no production `.bind(...)` use under `apps/api/src`; the only function-level `.call(...)` sites in non-test source are the explicitly typed Uber error `getResponse.call(error)` boundary and the guarded `toJSON.call(obj)` serialization boundary. Method names such as repository/use-case `.apply(...)` are ordinary domain methods and are unrelated to `Function.prototype.apply`. This makes `strictBindCallApply` the smallest first compiler-hardening slice; `noImplicitAny` remains a separate broader inventory and must not be bundled with it.
 
 Treat this as incremental engineering hardening:
 
