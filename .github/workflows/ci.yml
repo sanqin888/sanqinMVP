@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     strategy:
       fail-fast: false
@@ -118,7 +118,7 @@ jobs:
         run: pnpm --filter web test
 
   browser-e2e:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
 
     services:
@@ -273,7 +273,7 @@ jobs:
             ${{ runner.temp }}/sanq-web.log
 
   printer-agent:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     steps:
       - name: Checkout
