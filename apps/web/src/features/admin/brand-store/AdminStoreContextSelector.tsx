@@ -18,7 +18,7 @@ export function AdminStoreContextSelector({
   canCreateStore,
 }: {
   locale: Locale;
-  context: 'store' | 'catalog' | 'operations';
+  context: 'store' | 'catalog' | 'marketing' | 'operations';
   canCreateStore: boolean;
 }) {
   const isZh = locale === 'zh';
@@ -223,6 +223,12 @@ export function AdminStoreContextSelector({
               {isZh
                 ? 'Catalog 菜单已按门店隔离；当前页面只读取和修改所选门店的菜单。'
                 : 'Catalog menus are store-scoped; this page only reads and modifies the selected store.'}
+            </p>
+          ) : context === 'marketing' ? (
+            <p className="max-w-xl text-xs leading-5 text-amber-700">
+              {isZh
+                ? '营销规则本身仍是品牌级；当前门店只决定商品候选与门店特价上下文。'
+                : 'Marketing rules remain brand-level; the selected store only scopes item targets and store specials.'}
             </p>
           ) : null}
         </div>

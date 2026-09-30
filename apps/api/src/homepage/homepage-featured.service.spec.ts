@@ -48,6 +48,63 @@ describe('HomepageFeaturedService', () => {
     process.env.STORE_ID = originalStoreId;
   });
 
+  it('lists structurally displayable admin candidates under the configured Store root', async () => {
+    const findMany = jest.fn().mockResolvedValue([
+      {
+        stableId: 'item-1',
+        nameEn: 'Pork Roujiamo',
+        nameZh: '腊汁肉夹馍',
+        imageUrl: '/images/item-1.webp',
+        sortOrder: 2,
+        category: { sortOrder: 1 },
+      },
+      {
+        stableId: 'item-no-image',
+        nameEn: 'No image',
+        nameZh: null,
+        imageUrl: '',
+        sortOrder: 1,
+        category: { sortOrder: 0 },
+      },
+    ]);
+    const service = new HomepageFeaturedService(
+      { menuItem: { findMany } } as unknown as PrismaService,
+      {
+        getTopItemsForRange: jest.fn(),
+      } as unknown as HomepageSalesRankingQueryPort,
+      {} as HomepageContentService,
+    );
+
+    await expect(service.listAdminCandidates('zh')).resolves.toEqual([
+      { stableId: 'item-1', label: '腊汁肉夹馍' },
+    ]);
+    expect(findMany).toHaveBeenCalledWith({
+      where: {
+        deletedAt: null,
+        visibility: 'PUBLIC',
+        isVisibleOnMainMenu: true,
+        category: {
+          storeStableId: '4750_Yonge_Street',
+          deletedAt: null,
+          isActive: true,
+        },
+      },
+      orderBy: { sortOrder: 'asc' },
+      select: {
+        stableId: true,
+        nameEn: true,
+        nameZh: true,
+        imageUrl: true,
+        sortOrder: true,
+        category: {
+          select: {
+            sortOrder: true,
+          },
+        },
+      },
+    });
+  });
+
   it('reserves fixed positions and fills automatic positions from eligible sales ranking', async () => {
     let capturedCategory:
       | {

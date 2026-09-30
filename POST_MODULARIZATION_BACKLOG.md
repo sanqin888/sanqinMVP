@@ -751,10 +751,10 @@ This can proceed in parallel with Lane A or Lane B when product priority warrant
 Priority: **P1 PARALLEL PRODUCT / PERSISTENCE WORK**  
 Complexity: **H**  
 Hard dependency: none  
-State: **SLICE 1 PRODUCTION MIGRATION APPLIED / SLICE 2A + HOMEPAGE FOLLOW-UP PRODUCTION VERIFIED / SLICE 2B PRODUCTION VERIFIED + COMPATIBILITY RETIRED / SLICE 3A MERGED (#2619 / CI #6655 / `e92ab60c`) / SLICE 3B LOCAL + READY FOR REVIEW / NO MIGRATION**  
+State: **SLICE 1 PRODUCTION MIGRATION APPLIED / SLICE 2A + HOMEPAGE FOLLOW-UP PRODUCTION VERIFIED / SLICE 2B PRODUCTION VERIFIED + COMPATIBILITY RETIRED / SLICE 3A MERGED (#2619 / CI #6655 / `e92ab60c`) / SLICE 3B MERGED (#2620 / CI #6658 / `c08f02c6`) / SLICE 4 LOCAL + READY FOR REVIEW / NO MIGRATION**  
 Detailed plan: `docs/architecture/postmod-catalog-store-menu.md`
 
-Slice 1 established persisted Store ownership roots and its deterministic backfill migration is applied in production. Slice 2A and Homepage Featured are production verified across Admin/Public/POS/Orders/Offers/Uber/Homepage Store-scoped reads. Slice 2B is also production verified and `catalog.store-menu-ownership.v1` is retired. Slice 3A merged through PR #2619 / CI #6655 / `e92ab60c`, activating the independent Store-scoped Category workspace. Slice 3B is now local: Item management reads narrow Store-scoped Item/Category/Option contracts plus the brand-level Packaging dictionary, Options no longer reads `/admin/menu/full`, and the old combined workspace remains available for transition. Legacy combined-menu/API contraction remains Slice 4.
+Slice 1 established persisted Store ownership roots and its deterministic backfill migration is applied in production. Slice 2A and Homepage Featured are production verified across Admin/Public/POS/Orders/Offers/Uber/Homepage Store-scoped reads. Slice 2B is also production verified and `catalog.store-menu-ownership.v1` is retired. Slice 3A merged through PR #2619 / CI #6655 / `e92ab60c`; Slice 3B merged through PR #2620 / CI #6658 / `c08f02c6`, activating independent Store-scoped Category/Item workspaces and contracting Options away from the combined snapshot. Slice 4 is now local: all remaining Marketing/Homepage/POS runtime consumers have been moved off `/admin/menu/full`, POS retains active Daily Special effective-price behavior through a narrow Store-scoped projection, and the legacy combined page/API/full-snapshot types and owner composition are removed. No Prisma/schema/migration or graph change is involved.
 
 Approved sequence:
 
@@ -764,7 +764,7 @@ Approved sequence:
 4. **Slice 3 — Admin Category/Item cutover:** activate the reserved Store-scoped Category and Item workspaces and keep the Options workspace separate.
 5. **Slice 4 — legacy combined-menu contraction:** retire the old combined `/admin/menu` workspace and remove `/admin/menu/full` only after all Category/Item/Options consumers are gone.
 
-Slice 1's expand foundation and companion migration are merged. Slice 2A and its Homepage follow-up are production verified. Slice 2B source now contracts the two Prisma ownership roots to required types, but the compatibility remains active until the user-generated NOT NULL migration is reviewed, merged, applied and production verified. Do not create or enable a second production Store menu before that closeout.
+Slice 1's expand foundation and companion migration are merged. Slice 2A and its Homepage follow-up are production verified. Slice 2B is production verified, both Catalog Store roots are physically NOT NULL, and the ownership compatibility is retired. Slice 3A/3B are merged. Slice 4 is the current local contraction gate; do not restore the combined Admin menu snapshot as a compatibility path.
 
 ## 7. Later internal hardening
 

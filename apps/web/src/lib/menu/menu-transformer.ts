@@ -42,7 +42,7 @@ export type LocalizedCategory = {
   items: LocalizedMenuItem[];
 };
 
-/** ===== API 菜单类型（对齐 /admin/menu/full 与 /menu/public） ===== */
+/** ===== API 菜单类型（对齐 Admin narrow menu reads 与 /menu/public） ===== */
 type DbMenuCategory = AdminMenuCategoryDto;
 type DbPublicMenuCategory = PublicMenuCategoryDto;
 
@@ -64,7 +64,7 @@ export type LocalizedDailySpecial = {
 export type PublicMenuCategory = LocalizedCategory;
 
 /**
- * ⭐ 从「数据库菜单（/admin/menu/full 或 /menu/public 返回的结构）」构建前台本地化菜单。
+ * ⭐ 从「数据库菜单（Admin narrow reads 合成结构或 /menu/public 返回结构）」构建前台本地化菜单。
  *
  * - 分类名称用 DB 的 nameEn/nameZh；
  * - 菜品名称/价格/图片/配料/中英文，全部用 DB；

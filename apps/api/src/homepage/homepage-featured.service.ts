@@ -40,6 +40,49 @@ export class HomepageFeaturedService {
     return this.contentService.getFeaturedConfig();
   }
 
+  async listAdminCandidates(
+    locale: HomepageLocale,
+  ): Promise<Array<{ stableId: string; label: string }>> {
+    const storeStableId = resolveConfiguredStoreStableId();
+    const items = await this.prisma.menuItem.findMany({
+      where: {
+        deletedAt: null,
+        visibility: 'PUBLIC',
+        isVisibleOnMainMenu: true,
+        category: {
+          storeStableId,
+          deletedAt: null,
+          isActive: true,
+        },
+      },
+      orderBy: { sortOrder: 'asc' },
+      select: {
+        stableId: true,
+        nameEn: true,
+        nameZh: true,
+        imageUrl: true,
+        sortOrder: true,
+        category: {
+          select: {
+            sortOrder: true,
+          },
+        },
+      },
+    });
+
+    return items
+      .filter((item) => Boolean(item.imageUrl))
+      .sort(
+        (left, right) =>
+          left.category.sortOrder - right.category.sortOrder ||
+          left.sortOrder - right.sortOrder,
+      )
+      .map((item) => ({
+        stableId: item.stableId,
+        label: locale === 'zh' ? item.nameZh ?? item.nameEn : item.nameEn,
+      }));
+  }
+
   async updateConfig(
     input: HomepageFeaturedConfig,
   ): Promise<HomepageFeaturedConfig> {

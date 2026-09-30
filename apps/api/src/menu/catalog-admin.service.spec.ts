@@ -400,22 +400,6 @@ describe('CatalogAdminService item workspace reads', () => {
 });
 
 describe('CatalogAdminService pricing snapshots', () => {
-  it('keeps the full Admin menu snapshot free of Offers-owned fields and persistence', async () => {
-    const prisma = {
-      menuCategory: { findMany: jest.fn().mockResolvedValue([]) },
-      menuOptionGroupTemplate: { findMany: jest.fn().mockResolvedValue([]) },
-      menuPackagingType: { findMany: jest.fn().mockResolvedValue([]) },
-    };
-    const service = new CatalogAdminService(prisma as never);
-
-    await expect(service.getFullMenu('store-1')).resolves.toEqual({
-      categories: [],
-      templatesLite: [],
-      packagingTypes: [],
-    });
-    expect('menuDailySpecial' in prisma).toBe(false);
-  });
-
   it('projects menu item stable ids and base prices without reading Offers persistence', async () => {
     const findMany = jest
       .fn()

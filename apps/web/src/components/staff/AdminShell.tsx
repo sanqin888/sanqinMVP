@@ -351,7 +351,9 @@ function ContextNavigation({
             const Icon = item.icon;
             const preserveStoreContext =
               Boolean(storeStableId) &&
-              (category.id === 'store' || category.id === 'catalog');
+              (category.id === 'store' ||
+                category.id === 'catalog' ||
+                category.id === 'marketing');
             const itemHref = preserveStoreContext
               ? `${item.href}?store=${encodeURIComponent(storeStableId ?? '')}`
               : item.href;
@@ -387,7 +389,9 @@ function buildStoreAwareHref(
 ): string {
   if (
     !storeStableId ||
-    (categoryId !== 'store' && categoryId !== 'catalog')
+    (categoryId !== 'store' &&
+      categoryId !== 'catalog' &&
+      categoryId !== 'marketing')
   ) {
     return href;
   }
@@ -478,15 +482,18 @@ export function AdminShell({ children, locale, role, onLogout }: AdminShellProps
   const showStoreContext =
     role !== 'ACCOUNTANT' &&
     (activeCategory.id === 'catalog' ||
+      activeCategory.id === 'marketing' ||
       isBusinessReportsPage ||
       (activeCategory.id === 'store' &&
         (pathname.endsWith('/setting') || isPosDevicesPage)));
   const storeContext =
     activeCategory.id === 'catalog'
       ? 'catalog'
-      : isPosDevicesPage || isBusinessReportsPage
-        ? 'operations'
-        : 'store';
+      : activeCategory.id === 'marketing'
+        ? 'marketing'
+        : isPosDevicesPage || isBusinessReportsPage
+          ? 'operations'
+          : 'store';
 
   return (
     <div data-staff-shell="admin" className="min-h-screen bg-slate-50 text-slate-950">

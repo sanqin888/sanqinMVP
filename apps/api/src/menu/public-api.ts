@@ -34,8 +34,6 @@ export {
 } from './catalog-order-facts-reader.contract';
 export {
   CatalogAdminService,
-  type CatalogAdminMenuCategoryDto,
   type CatalogAdminMenuItemDto,
-  type CatalogAdminMenuSnapshot,
   type CatalogAvailabilityMode,
 } from './catalog-admin.service';

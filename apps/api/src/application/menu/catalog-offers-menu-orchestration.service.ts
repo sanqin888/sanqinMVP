@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { AdminMenuFullResponse, DailySpecialDto } from '@shared/menu';
+import type { DailySpecialDto } from '@shared/menu';
 import { CatalogAdminService } from '../../menu/public-api';
 import {
   DAILY_SPECIAL_OFFERS,
@@ -15,48 +15,15 @@ export class CatalogOffersMenuOrchestrationService {
     private readonly dailySpecialOffers: DailySpecialOffersPort,
   ) {}
 
-  async getFullMenu(storeStableId: string): Promise<AdminMenuFullResponse> {
-    const catalogMenu = await this.catalog.getFullMenu(storeStableId);
-    const catalogItems = catalogMenu.categories.flatMap((category) =>
-      category.items.map((item) => ({
-        itemStableId: item.stableId,
-        basePriceCents: item.basePriceCents,
-      })),
-    );
-    const { specials } = await this.dailySpecialOffers.getActiveDailySpecials(
+  async getActiveDailySpecials(
+    storeStableId: string,
+  ): Promise<{ specials: DailySpecialDto[] }> {
+    const catalogItems =
+      await this.catalog.getMenuItemPricingSnapshots(storeStableId);
+    return this.dailySpecialOffers.getActiveDailySpecials(
       storeStableId,
       catalogItems,
     );
-    const firstSpecialByItemStableId = new Map<string, DailySpecialDto>();
-    for (const special of specials) {
-      if (!firstSpecialByItemStableId.has(special.itemStableId)) {
-        firstSpecialByItemStableId.set(special.itemStableId, special);
-      }
-    }
-
-    return {
-      ...catalogMenu,
-      categories: catalogMenu.categories.map((category) => ({
-        ...category,
-        items: category.items.map((item) => {
-          const activeSpecial =
-            firstSpecialByItemStableId.get(item.stableId) ?? null;
-          return {
-            ...item,
-            effectivePriceCents: activeSpecial?.effectivePriceCents,
-            activeSpecial: activeSpecial
-              ? {
-                  stableId: activeSpecial.stableId,
-                  effectivePriceCents: activeSpecial.effectivePriceCents,
-                  pricingMode: activeSpecial.pricingMode,
-                  disallowCoupons: activeSpecial.disallowCoupons,
-                }
-              : null,
-          };
-        }),
-      })),
-      dailySpecials: specials,
-    };
   }
 
   async getDailySpecials(
