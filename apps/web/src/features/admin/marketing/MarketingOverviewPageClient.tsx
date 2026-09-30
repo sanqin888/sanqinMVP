@@ -29,8 +29,30 @@ type WindowKey = 'today' | 'last7Days' | 'month' | 'quarter';
 type CampaignKind = 'DAILY_SPECIAL' | 'PROMOTION_RULE' | 'COUPON_PROGRAM';
 type CampaignScope = 'STORE' | 'BRAND';
 
+type MetricCoverage =
+  | 'COMPLETE'
+  | 'PARTIAL'
+  | 'UNAVAILABLE'
+  | 'NOT_APPLICABLE';
+
+type PerformanceMetric = {
+  value: number | null;
+  coverage: MetricCoverage;
+  coveredUses: number;
+  totalUses: number;
+};
+
+type AssociatedSalesEvidence =
+  | 'NO_USAGE'
+  | 'IMMUTABLE_ONLY'
+  | 'INCLUDES_LEGACY_CURRENT_ORDER';
+
 type WindowMetrics = {
   uses: number;
+  affectedItemQuantity: PerformanceMetric;
+  discountCents: PerformanceMetric;
+  associatedSalesCents: number;
+  associatedSalesEvidence: AssociatedSalesEvidence;
 };
 
 type MarketingActivity = {
@@ -131,6 +153,153 @@ function formatGeneratedAt(value: string, locale: Locale): string {
   }).format(date);
 }
 
+function formatCadCents(value: number, locale: Locale): string {
+  return new Intl.NumberFormat(locale === 'zh' ? 'zh-CN' : 'en-CA', {
+    style: 'currency',
+    currency: 'CAD',
+  }).format(value / 100);
+}
+
+function metricCoverageLabel(
+  metric: PerformanceMetric,
+  isZh: boolean,
+): string | null {
+  if (metric.coverage === 'COMPLETE') return null;
+  if (metric.coverage === 'PARTIAL') {
+    return isZh
+      ? `部分覆盖 ${metric.coveredUses}/${metric.totalUses} 次`
+      : `Partial ${metric.coveredUses}/${metric.totalUses} uses`;
+  }
+  if (metric.coverage === 'UNAVAILABLE') {
+    return isZh ? '暂无可靠数据' : 'Unavailable';
+  }
+  return isZh ? '不适用' : 'N/A';
+}
+
+function associatedSalesEvidenceLabel(
+  evidence: AssociatedSalesEvidence,
+  isZh: boolean,
+): string | null {
+  if (evidence === 'NO_USAGE') return null;
+  if (evidence === 'IMMUTABLE_ONLY') {
+    return isZh ? '不可变销售快照' : 'Immutable sale facts';
+  }
+  return isZh
+    ? '包含历史 current-order 证据'
+    : 'Includes legacy current-order evidence';
+}
+
+function PerformanceMetricValue({
+  metric,
+  locale,
+  isCurrency = false,
+}: {
+  metric: PerformanceMetric;
+  locale: Locale;
+  isCurrency?: boolean;
+}) {
+  const isZh = locale === 'zh';
+  const coverageLabel = metricCoverageLabel(metric, isZh);
+  const value =
+    metric.value === null
+      ? '—'
+      : isCurrency
+        ? formatCadCents(metric.value, locale)
+        : metric.value.toLocaleString(locale === 'zh' ? 'zh-CN' : 'en-CA');
+
+  return (
+    <div>
+      <span className="font-semibold text-slate-900">{value}</span>
+      {coverageLabel ? (
+        <span
+          className={
+            metric.coverage === 'PARTIAL'
+              ? 'ml-1.5 text-[11px] font-medium text-amber-700'
+              : 'ml-1.5 text-[11px] text-slate-500'
+          }
+        >
+          {coverageLabel}
+        </span>
+      ) : null}
+      {metric.coverage === 'PARTIAL' ? (
+        <div className="mt-0.5 text-[10px] text-amber-700">
+          {isZh ? '已覆盖小计，不是完整总额' : 'Covered subtotal, not full total'}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function WindowPerformanceCell({
+  metrics,
+  locale,
+}: {
+  metrics: WindowMetrics;
+  locale: Locale;
+}) {
+  const isZh = locale === 'zh';
+  const salesEvidence = associatedSalesEvidenceLabel(
+    metrics.associatedSalesEvidence,
+    isZh,
+  );
+
+  return (
+    <div className="min-w-40 space-y-2 text-xs">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-slate-500">{isZh ? '使用' : 'Uses'}</span>
+        <span className="font-semibold text-slate-950">
+          {metrics.uses.toLocaleString(locale === 'zh' ? 'zh-CN' : 'en-CA')}
+        </span>
+      </div>
+      <div className="flex items-start justify-between gap-3">
+        <span className="shrink-0 text-slate-500">
+          {isZh ? '关联件数' : 'Items'}
+        </span>
+        <div className="text-right">
+          <PerformanceMetricValue
+            metric={metrics.affectedItemQuantity}
+            locale={locale}
+          />
+        </div>
+      </div>
+      <div className="flex items-start justify-between gap-3">
+        <span className="shrink-0 text-slate-500">
+          {isZh ? '实际优惠' : 'Discount'}
+        </span>
+        <div className="text-right">
+          <PerformanceMetricValue
+            metric={metrics.discountCents}
+            locale={locale}
+            isCurrency
+          />
+        </div>
+      </div>
+      <div className="flex items-start justify-between gap-3">
+        <span className="shrink-0 text-slate-500">
+          {isZh ? '关联销售' : 'Assoc. sales'}
+        </span>
+        <div className="text-right">
+          <div className="font-semibold text-slate-900">
+            {formatCadCents(metrics.associatedSalesCents, locale)}
+          </div>
+          {salesEvidence ? (
+            <div
+              className={
+                metrics.associatedSalesEvidence ===
+                'INCLUDES_LEGACY_CURRENT_ORDER'
+                  ? 'mt-0.5 text-[10px] text-amber-700'
+                  : 'mt-0.5 text-[10px] text-slate-500'
+              }
+            >
+              {salesEvidence}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function MarketingOverviewPageClient() {
   const { locale } = useParams<{ locale: Locale }>();
   const searchParams = useSearchParams();
@@ -203,8 +372,8 @@ export function MarketingOverviewPageClient() {
         title={isZh ? '营销总览' : 'Marketing overview'}
         description={
           isZh
-            ? '按当前门店查看正在进行的商品特价、优惠券礼包和自动 / 积分活动。第一版先突出活动使用次数，金额与商品件数指标将在完成生产对账后展示。'
-            : 'Monitor ongoing item specials, coupon programs, and automatic or loyalty campaigns for the current store. This first view emphasizes campaign uses; monetary and item-quantity metrics remain hidden until production reconciliation is complete.'
+            ? '按当前门店查看正在进行的商品特价、优惠券礼包和自动 / 积分活动，并同时查看使用次数、关联件数、实际优惠与关联销售。历史证据不完整时会明确显示覆盖状态。'
+            : 'Monitor ongoing item specials, coupon programs, and automatic or loyalty campaigns for the current store, including uses, associated item quantity, actual discount, and associated sales. Historical evidence gaps are shown explicitly.'
         }
         actions={
           <button
@@ -263,6 +432,12 @@ export function MarketingOverviewPageClient() {
             ))}
           </div>
 
+          <StaffFeedback tone="neutral">
+            {isZh
+              ? '口径提示：关联销售是“使用该活动的订单商品销售额”，不是活动带来的增量收入；同一订单可能关联多个活动，因此不能跨活动相加得到营业额。PARTIAL 表示只展示有可靠证据部分的小计，UNAVAILABLE 不会被当作 0。'
+              : 'Metric note: associated sales are merchandise sales on orders that used the campaign, not incremental revenue. One order may be associated with multiple campaigns, so values must not be summed across campaigns as business sales. PARTIAL shows only the evidence-covered subtotal; UNAVAILABLE is never treated as zero.'}
+          </StaffFeedback>
+
           <StaffPanel className="p-4 sm:p-5">
             <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -303,7 +478,7 @@ export function MarketingOverviewPageClient() {
               </div>
             ) : (
               <div className="mt-4 overflow-x-auto">
-                <table className="w-full min-w-[760px] border-separate border-spacing-0 text-left text-sm">
+                <table className="w-full min-w-[1180px] border-separate border-spacing-0 text-left text-sm">
                   <thead>
                     <tr className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
                       <th className="border-b border-slate-200 px-3 py-3">
@@ -350,9 +525,12 @@ export function MarketingOverviewPageClient() {
                           {WINDOW_KEYS.map((key) => (
                             <td
                               key={key}
-                              className="border-b border-slate-100 px-3 py-4 text-right font-mono text-base font-semibold text-slate-900"
+                              className="border-b border-slate-100 px-3 py-4 align-top"
                             >
-                              {activity.metrics[key].uses.toLocaleString()}
+                              <WindowPerformanceCell
+                                metrics={activity.metrics[key]}
+                                locale={safeLocale}
+                              />
                             </td>
                           ))}
                           <td className="border-b border-slate-100 px-3 py-4 text-right">

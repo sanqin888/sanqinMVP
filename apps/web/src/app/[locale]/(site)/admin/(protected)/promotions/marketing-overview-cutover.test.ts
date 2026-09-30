@@ -10,7 +10,7 @@ const clientSource = readFileSync(
   'utf8',
 );
 
-describe('Admin Marketing Overview MKT-C cutover', () => {
+describe('Admin Marketing Overview cutover and performance display', () => {
   it('replaces the old navigation landing page with the Marketing Overview client', () => {
     expect(pageSource).toContain('MarketingOverviewPageClient');
     expect(pageSource).not.toContain('Promotion Engine');
@@ -33,11 +33,22 @@ describe('Admin Marketing Overview MKT-C cutover', () => {
     expect(clientSource).toContain('?store=${encodeURIComponent(storeStableId)}');
   });
 
-  it('keeps MKT-C presentation usage-first and defers performance metric display to MKT-D', () => {
-    expect(clientSource).toContain('activity.metrics[key].uses');
-    expect(clientSource).toContain('Campaign uses');
-    expect(clientSource).not.toContain('discountCents');
-    expect(clientSource).not.toContain('associatedSalesCents');
-    expect(clientSource).not.toContain('affectedItemQuantity');
+  it('renders MKT-D performance metrics without collapsing evidence gaps into zero', () => {
+    expect(clientSource).toContain('affectedItemQuantity');
+    expect(clientSource).toContain('discountCents');
+    expect(clientSource).toContain('associatedSalesCents');
+    expect(clientSource).toContain("metric.coverage === 'PARTIAL'");
+    expect(clientSource).toContain('coveredUses');
+    expect(clientSource).toContain('totalUses');
+    expect(clientSource).toContain('Covered subtotal, not full total');
+    expect(clientSource).toContain('UNAVAILABLE is never treated as zero');
+  });
+
+  it('keeps associated sales explicitly non-additive and surfaces legacy evidence', () => {
+    expect(clientSource).toContain(
+      'must not be summed across campaigns as business sales',
+    );
+    expect(clientSource).toContain('INCLUDES_LEGACY_CURRENT_ORDER');
+    expect(clientSource).toContain('Includes legacy current-order evidence');
   });
 });

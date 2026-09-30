@@ -1,8 +1,8 @@
 # Admin Marketing Overview — Readiness Audit and Delivery Plan
 
 Date: 2026-09-30  
-Baseline: `origin/dev@5edbb9d2` after MKT-B merge  
-State: **MKT-A MERGED / MKT-B MERGED / CI #6678 GREEN / PR #2625 / MERGE `5edbb9d2` / MKT-C LOCAL / REVIEW PENDING / NO MIGRATION / NO DEPENDENCY**
+Baseline: `origin/dev@f06843b0` after MKT-C merge  
+State: **MKT-A/B/C MERGED / MKT-C PR #2626 / CI #6680 GREEN / MERGE `f06843b0` / MKT-D LOCAL / REVIEW PENDING / NO MIGRATION / NO DEPENDENCY**
 
 ## 1. Product goal
 
@@ -216,9 +216,9 @@ allowance is added.
 
 ### MKT-C — Admin base cutover
 
-MKT-C is now local on `marketing/overview-mkt-c`. `/admin/promotions` is cut over from
-the redundant navigation/migration-era landing page to a Store-scoped Marketing Overview
-client that consumes the MKT-B Reporting endpoint. Existing secondary navigation remains
+MKT-C merged through PR #2626 / CI #6680 / `f06843b0`. `/admin/promotions` is cut over
+from the redundant navigation/migration-era landing page to a Store-scoped Marketing
+Overview client that consumes the MKT-B Reporting endpoint. Existing secondary navigation remains
 the lifecycle-management surface for Item Specials, Coupons & Bundles and Automatic /
 Loyalty campaigns.
 
@@ -230,9 +230,25 @@ associated sales. Those remain MKT-D presentation work after production reconcil
 
 ### MKT-D — performance metric presentation
 
-Expose affected item quantity, actual discount and associated sales after production
-reconciliation. UI must show `COMPLETE / PARTIAL / UNAVAILABLE / NOT_APPLICABLE`
-semantics instead of rendering unknown values as zero.
+MKT-D is now local on `marketing/overview-mkt-d`. A fresh read-only production
+reconciliation on 2026-09-30 re-confirmed the current-quarter source evidence before UI
+exposure:
+
+- Automatic Promotion: 5 uses / 5 affected units / $29.95 actual discount / $104.58
+  associated sales;
+- Coupon: 3 uses / 4 affected units / $11.00 actual discount / $35.65 associated sales;
+- Daily Special: 170 uses / 207 affected units / $2,350.24 associated sales;
+- Daily Special discount evidence covers only 1/170 uses and $1.50, so that amount is a
+  covered subtotal, not a campaign-quarter discount total;
+- Daily Special associated-sales evidence contains 40 immutable facts and 130 legacy
+  current-order facts.
+
+The UI therefore exposes affected item quantity, actual discount and associated sales
+without changing the MKT-B contract. `COMPLETE / PARTIAL / UNAVAILABLE / NOT_APPLICABLE`
+remain first-class display semantics: PARTIAL values explicitly state covered uses and
+that the value is only a covered subtotal; UNAVAILABLE/NOT_APPLICABLE render as an em dash
+with evidence text rather than zero. Associated sales carry immutable-vs-legacy evidence
+and remain explicitly non-additive across campaigns.
 
 ## 6. MKT-A implementation contract
 
@@ -289,7 +305,7 @@ MKT-C is Web-only and keeps the backend/ownership model fixed:
   caveat that one Order may be associated with more than one campaign;
 - campaign lifecycle editing remains on the existing `/specials`, `/coupons` and
   `/automatic` pages, with Store context preserved on every management link;
-- MKT-D performance metrics stay hidden even though the backend payload already carries
-  them, preventing partial historical evidence from being presented before reconciliation;
+- MKT-C initially kept MKT-D performance metrics hidden even though the backend payload
+  already carried them; MKT-D exposes them only after the production reconciliation above;
 - no new package, API, Prisma/schema/migration, context direction, scanner baseline,
   Accounting, payment, print or provider behavior is introduced.

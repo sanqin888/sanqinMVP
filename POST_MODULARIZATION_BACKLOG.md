@@ -727,7 +727,7 @@ B2 comes first so Admin and Accounting can share stable vocabulary rather than i
 Priority: **P1 PARALLEL PRODUCT WORK**  
 Complexity: **M**  
 Hard dependency: none  
-State: **MKT-A MERGED / MKT-B MERGED / CI #6678 GREEN / PR #2625 / MERGE `5edbb9d2` / MKT-C LOCAL / REVIEW PENDING / NO MIGRATION / NO DEPENDENCY**  
+State: **MKT-A/B/C MERGED / MKT-C PR #2626 / CI #6680 GREEN / MERGE `f06843b0` / MKT-D LOCAL / REVIEW PENDING / NO MIGRATION / NO DEPENDENCY**  
 Detailed plan: `docs/architecture/admin-marketing-overview.md`
 
 Current `/admin/promotions` is primarily a navigation landing page for Daily Special,
@@ -763,13 +763,16 @@ Approved delivery order:
    additive `GET /reports/marketing?storeStableId=`. The authorized conceptual
    `accounting-reporting-analytics -> catalog-pricing-offers` public read direction stays
    composition-root/public-contract only with no scanner baseline or SCC allowance change.
-3. **MKT-C Admin base cutover:** **LOCAL / REVIEW PENDING** on
-   `marketing/overview-mkt-c`. Replace the navigation/migration-era landing page with a
-   Store-scoped Marketing Overview consuming MKT-B. Emphasize usage count only, preserve
-   management navigation + Store context, and keep quantity/discount/associated-sales
-   presentation deferred to MKT-D.
-4. **MKT-D performance display:** expose affected-item quantity, actual discount and
-   associated sales with explicit metric coverage/evidence.
+3. **MKT-C Admin base cutover:** **MERGED / CI GREEN** through PR #2626 /
+   CI #6680 / `f06843b0`. `/admin/promotions` is now the Store-scoped Marketing Overview,
+   with usage-first monitoring and preserved lifecycle-management navigation.
+4. **MKT-D performance display:** **LOCAL / REVIEW PENDING** on
+   `marketing/overview-mkt-d`. Fresh read-only production reconciliation re-confirmed
+   Automatic 5 uses / 5 units / $29.95 discount / $104.58 associated sales, Coupon
+   3 / 4 / $11.00 / $35.65, and Daily Special 170 / 207 / $2,350.24 associated sales.
+   Daily Special discount is only 1/170-use covered ($1.50), so UI exposes explicit
+   COMPLETE/PARTIAL/UNAVAILABLE/NOT_APPLICABLE coverage and immutable-vs-legacy sales
+   evidence instead of treating unknown history as zero.
 
 Keep Daily Special, Coupon/Benefit and PromotionRule lifecycle/storage with their owners;
 do not reuse Accounting-only historical Daily Special overrides as generic Marketing
