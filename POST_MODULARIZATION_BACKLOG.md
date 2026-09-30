@@ -875,9 +875,9 @@ No Prisma/schema/migration, package/lockfile, provider/payment behavior, context
 Priority: **P3**  
 Complexity: **H / incremental**  
 External gate: none  
-State: **READINESS AUDIT COMPLETE / FIRST NARROW SLICE RECOMMENDED: `strictBindCallApply=true` / SOURCE NOT YET CHANGED**
+State: **SLICE 1 LOCAL / REVIEW PENDING / `strictBindCallApply=true` ENABLED / CONFIG-ONLY / NO SOURCE TYPE WORKAROUND / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**
 
-The CI step named “Strict declaration check” extends API `tsconfig.json`, which still has `noImplicitAny=false`, `strictBindCallApply=false` and other relaxed flags. The 2026-09-30 read-only readiness inventory found no production `.bind(...)` use under `apps/api/src`; the only function-level `.call(...)` sites in non-test source are the explicitly typed Uber error `getResponse.call(error)` boundary and the guarded `toJSON.call(obj)` serialization boundary. Method names such as repository/use-case `.apply(...)` are ordinary domain methods and are unrelated to `Function.prototype.apply`. This makes `strictBindCallApply` the smallest first compiler-hardening slice; `noImplicitAny` remains a separate broader inventory and must not be bundled with it.
+The CI step named “Strict declaration check” extends API `tsconfig.json`. Slice 1 enables only `strictBindCallApply=true`; `noImplicitAny=false` and the other relaxed flags remain unchanged for later independent inventory. The 2026-09-30 implementation-time read-only review re-confirmed no production `.bind(...)` use under `apps/api/src`; the function-level `.call(...)` sites remain the explicitly typed Uber error `getResponse.call(error)` boundary, the guarded `toJSON.call(obj)` serialization boundary, and standard `Object.prototype.hasOwnProperty.call(...)` uses. Method names such as repository/use-case `.apply(...)` are ordinary domain methods and are unrelated to `Function.prototype.apply`. No production TypeScript source change or safety workaround is included in Slice 1. Per `AGENTS.md`, local lint/build/test/tsc reproduction is intentionally not run before user review; GitHub Actions remains the authoritative validation gate after remote authorization.
 
 Treat this as incremental engineering hardening:
 

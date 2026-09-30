@@ -3781,6 +3781,14 @@ is claimed per repository workflow.
 **Architecture / validation:** Web consumes the unchanged Reporting contract; there is no API, persistence, package, cross-context, scanner, Accounting, payment, print or provider change. The existing source-contract test protects the MKT-D coverage/non-additivity semantics. CI #6682 passed Architecture, API/Web lint/build/strict/tests, Browser E2E, printer-agent and Windows-workstation. MKT-A through MKT-D source scope is complete; production UI verification is not claimed by this merge.  
 **Details:** `apps/web/src/features/admin/marketing/MarketingOverviewPageClient.tsx`, `apps/web/src/app/[locale]/(site)/admin/(protected)/promotions/marketing-overview-cutover.test.ts`, `docs/architecture/admin-marketing-overview.md`, `POST_MODULARIZATION_BACKLOG.md`, `docs/architecture/current-dependency-graph.md`, this worklog.
 
+### 2026-09-30 — Post-Modularization §7.3 API TypeScript strictness Slice 1
+
+**State:** **LOCAL / REVIEW PENDING / `strictBindCallApply=true` / CONFIG-ONLY / NO LOCAL CI REPRODUCTION / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE** on `postmod/api-strict-bind-call-apply`. Repository-wide modularization and Phase 9 remain CLOSED.  
+**Read-only review:** branch creation refreshed `origin/dev` to `b4829e90` before editing. Production `apps/api/src` still has no `.bind(...)`; function-level `.call(...)` is confined to the explicitly typed Uber `getResponse.call(error)`, guarded `toJSON.call(obj)` serialization and standard `Object.prototype.hasOwnProperty.call(...)` usage. Search hits for `.apply(...)` are ordinary repository/use-case/service methods, not `Function.prototype.apply`.  
+**Implementation:** only `apps/api/tsconfig.json` changes `strictBindCallApply: false -> true`. `strictNullChecks=true`, `noImplicitAny=false`, `noFallthroughCasesInSwitch=false` and all other compiler settings remain unchanged. No production TypeScript source, `any`, ignore/suppression, dependency/lockfile, Prisma/schema/migration or provider/payment/Accounting semantic change is included.  
+**Architecture / verification:** the API strict declaration CI already extends the base API tsconfig, so GitHub Actions will be the authoritative validation gate after user authorization. Per `AGENTS.md`, no local lint/build/test/tsc reproduction is run before review. No context direction, public contract, direct-import debt, scanner allowance, SCC or architecture baseline changes; `tools/architecture/context-baseline.json` is untouched.  
+**Details:** `docs/architecture/postmod-api-typescript-strictness.md`, `POST_MODULARIZATION_BACKLOG.md`, `apps/api/tsconfig.json`, `docs/architecture/current-dependency-graph.md`, this worklog.
+
 ## Rule for future entries
 
 For each modularization code batch, append exactly one chronological entry before
