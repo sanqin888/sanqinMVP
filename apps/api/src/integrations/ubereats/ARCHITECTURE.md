@@ -86,12 +86,17 @@
   normalization contract 判断 artifact kind，禁止按字符串相等推断或静默接受未知组合。跨 bounded-context
   的 Reporting view 只暴露 normalized `providerReportType`；完整 webhook/report `rawMetadata` 继续留在
   External Channels persistence/application 边界内，不作为 Accounting public contract。
-- Accounting financial import 必须把同一请求周期的 `PAYMENT_DETAILS_REPORT` 与
-  `FINANCE_SUMMARY_REPORT -> PAYOUT_SUMMARY_REPORT` 作为一个 reconciliation pair；只有双方 Provider API
-  artifacts 均已 materialize，且 `Payout reference ID` 集合、逐 reference `Total payout` 与 report-level
-  `Total payout` 全部匹配时，才允许调用 External Channels public port 标记两份 report 为 `IMPORTED`。
-  缺 partner、metadata 不完整、控制总额不一致或 reference mismatch 时必须保持 `READY` 可重试，不得让
-  Accounting 通过深层 Uber persistence 读取或修写 provider evidence 来绕过该 gate。
+- Accounting financial import 必须把同一逻辑请求身份下的 `PAYMENT_DETAILS_REPORT` 与
+  `FINANCE_SUMMARY_REPORT -> PAYOUT_SUMMARY_REPORT` 作为一个 reconciliation pair。Accounting 只枚举仍需
+  处理的 `READY` report，并以 `reportStableId` 作为 anchor 请求 External Channels public capability；
+  External Channels 在 owner 内部读取 anchor 的规范化 `storeUuids + startDate + endDate`，只查询同一
+  Store set / period 下状态为 `READY | IMPORTED` 的两个财务 report type，不得要求 Accounting 扫描全局
+  `IMPORTED` registry，也不得把 provider Store UUID 暴露回 public contract。候选 Payment / Summary 必须
+  各恰好一条；零条或多条都保持 `READY` fail closed，不允许按 latest、READY-first 或 IMPORTED-first
+  猜测。只有双方 Provider API artifacts 均已 materialize，且 `Payout reference ID` 集合、逐 reference
+  `Total payout` 与 report-level `Total payout` 全部匹配时，才允许标记仍为 `READY` 的成员为
+  `IMPORTED`。已 `IMPORTED` 的 partner 只作为精确 reconciliation evidence，不进入常规全局扫描池；
+  Accounting 仍不得通过深层 Uber persistence 读取或修写 provider evidence 来绕过该 gate。
 
 边界外调用者只能使用 `public-api.ts`、`ubereats.module.ts` 或 `worker.ts`；其中业务能力
 一律经 `public-api.ts` 使用。禁止外部深层导入 `api/`、`application/`、`domain/`、
