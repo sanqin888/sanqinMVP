@@ -79,8 +79,7 @@ export class HomepageFeaturedService {
       )
       .map((item) => ({
         stableId: item.stableId,
-        label:
-          locale === 'zh' ? (item.nameZh ?? item.nameEn) : item.nameEn,
+        label: locale === 'zh' ? (item.nameZh ?? item.nameEn) : item.nameEn,
       }));
   }
 
