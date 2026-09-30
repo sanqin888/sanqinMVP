@@ -751,10 +751,10 @@ This can proceed in parallel with Lane A or Lane B when product priority warrant
 Priority: **P1 PARALLEL PRODUCT / PERSISTENCE WORK**  
 Complexity: **H**  
 Hard dependency: none  
-State: **SLICE 1 PRODUCTION MIGRATION APPLIED / SLICE 2A + HOMEPAGE FOLLOW-UP PRODUCTION VERIFIED / SLICE 2B PRODUCTION VERIFIED + COMPATIBILITY RETIRED / SLICE 3A MERGED (#2619 / CI #6655 / `e92ab60c`) / SLICE 3B MERGED (#2620 / CI #6658 / `c08f02c6`) / SLICE 4 LOCAL + READY FOR REVIEW / NO MIGRATION**  
+State: **PRODUCTION VERIFIED / CLOSED / SLICE 1-2B PRODUCTION VERIFIED / SLICE 3A MERGED (#2619 / CI #6655 / `e92ab60c`) / SLICE 3B MERGED (#2620 / CI #6658 / `c08f02c6`) / SLICE 4 MERGED (#2621 / CI #6663 / `94fc6564`) / PRODUCTION `main@94fc6564` VERIFIED / NO MIGRATION**  
 Detailed plan: `docs/architecture/postmod-catalog-store-menu.md`
 
-Slice 1 established persisted Store ownership roots and its deterministic backfill migration is applied in production. Slice 2A and Homepage Featured are production verified across Admin/Public/POS/Orders/Offers/Uber/Homepage Store-scoped reads. Slice 2B is also production verified and `catalog.store-menu-ownership.v1` is retired. Slice 3A merged through PR #2619 / CI #6655 / `e92ab60c`; Slice 3B merged through PR #2620 / CI #6658 / `c08f02c6`, activating independent Store-scoped Category/Item workspaces and contracting Options away from the combined snapshot. Slice 4 is now local: all remaining Marketing/Homepage/POS runtime consumers have been moved off `/admin/menu/full`, POS retains active Daily Special effective-price behavior through a narrow Store-scoped projection, and the legacy combined page/API/full-snapshot types and owner composition are removed. No Prisma/schema/migration or graph change is involved.
+Slice 1 established persisted Store ownership roots and its deterministic backfill migration is applied in production. Slice 2A and Homepage Featured are production verified across Admin/Public/POS/Orders/Offers/Uber/Homepage Store-scoped reads. Slice 2B is also production verified and `catalog.store-menu-ownership.v1` is retired. Slice 3A merged through PR #2619 / CI #6655 / `e92ab60c`; Slice 3B merged through PR #2620 / CI #6658 / `c08f02c6`; Slice 4 merged through PR #2621 / CI #6663 / `94fc6564`. Production now runs `main@94fc6564`: API/Web/Uber worker are healthy with no post-deploy error matches; the deployed API has no legacy full route and no API/Web log evidence of `/admin/menu/full` requests; Catalog ownership remains 7 live Categories / 23 live Option Group Templates / 33 live Items with zero NULL or foreign Store owners, physical NOT NULL intact and cross-Store option bindings/components at 0/0. The split Admin workspaces and narrow Marketing/Homepage/POS contracts are therefore accepted as production cutover, and this workstream is closed.
 
 Approved sequence:
 
@@ -764,7 +764,7 @@ Approved sequence:
 4. **Slice 3 — Admin Category/Item cutover:** activate the reserved Store-scoped Category and Item workspaces and keep the Options workspace separate.
 5. **Slice 4 — legacy combined-menu contraction:** retire the old combined `/admin/menu` workspace and remove `/admin/menu/full` only after all Category/Item/Options consumers are gone.
 
-Slice 1's expand foundation and companion migration are merged. Slice 2A and its Homepage follow-up are production verified. Slice 2B is production verified, both Catalog Store roots are physically NOT NULL, and the ownership compatibility is retired. Slice 3A/3B are merged. Slice 4 is the current local contraction gate; do not restore the combined Admin menu snapshot as a compatibility path.
+Slice 1's expand foundation and companion migration are merged. Slice 2A and its Homepage follow-up are production verified. Slice 2B is production verified, both Catalog Store roots are physically NOT NULL, and the ownership compatibility is retired. Slice 3A/3B/4 are merged and production verified on `main@94fc6564`. Do not restore the combined Admin menu snapshot as a compatibility path. No further Catalog Store Menu slice is planned; future work should start only from a new product requirement or a separately evidenced regression.
 
 ## 7. Later internal hardening
 
