@@ -186,12 +186,29 @@ Production closeout completed:
 
 ### Slice 3 — Admin Category / Item workspace cutover
 
-Planned scope:
+Slice 3 is split into independently reviewable UI/read-contract batches so the legacy combined workspace can remain intact until replacement surfaces are proven.
 
-- activate the existing `/admin/menu/categories` workspace;
+#### Slice 3A — Category workspace + narrow Category read
+
+Local implementation scope:
+
+- activate `/admin/menu/categories` as the Store-scoped Category maintenance workspace;
+- add `GET /admin/menu/categories?storeStableId=...` owned by Catalog Admin;
+- return only live Category fields required by that screen and do not load MenuItem/Options/Packaging data;
+- preserve existing Store-scoped Category create/update contracts;
+- keep the legacy combined `/admin/menu` workspace untouched as transition fallback;
+- add API query-shape and Web source-boundary regressions that prohibit `/admin/menu/full` on the Category workspace.
+
+State: **LOCAL / READY FOR REVIEW / NO PRISMA OR MIGRATION / NO DEPENDENCY OR GRAPH CHANGE**.
+
+#### Slice 3B — Item workspace + Options full-menu read contraction
+
+Planned after 3A review/merge:
+
 - activate the existing `/admin/menu/items` workspace;
-- use narrow Store-scoped APIs instead of loading the full combined menu for both screens;
-- preserve the separate Options workspace while making it Store-scoped.
+- add the narrow Store-scoped Item/read-support contracts required by item editing;
+- move the Options workspace off `/admin/menu/full` while preserving its Store scope;
+- leave the old combined workspace and `/admin/menu/full` available until Slice 4.
 
 ### Slice 4 — Legacy combined menu contraction
 
