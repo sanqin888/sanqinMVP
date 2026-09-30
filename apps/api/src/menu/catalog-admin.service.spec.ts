@@ -347,19 +347,44 @@ describe('CatalogAdminService item workspace reads', () => {
         category: { storeStableId: 'store-1', deletedAt: null },
       },
       orderBy: { sortOrder: 'asc' },
-      include: expect.objectContaining({
+      include: {
         category: { select: { stableId: true } },
-        packagings: expect.any(Object),
-        fixedComponents: expect.any(Object),
-        optionGroups: expect.any(Object),
-      }),
+        packagings: {
+          orderBy: { sortOrder: 'asc' },
+          include: { packagingType: true },
+        },
+        fixedComponents: {
+          orderBy: { sortOrder: 'asc' },
+        },
+        optionGroups: {
+          where: { templateGroup: { deletedAt: null } },
+          orderBy: { sortOrder: 'asc' },
+          include: {
+            templateGroup: {
+              select: {
+                stableId: true,
+                nameEn: true,
+                nameZh: true,
+                deletedAt: true,
+                defaultMinSelect: true,
+                defaultMaxSelect: true,
+                isAvailable: true,
+                tempUnavailableUntil: true,
+                sortOrder: true,
+              },
+            },
+          },
+        },
+      },
     });
   });
 
   it('lists the live brand-level packaging dictionary without Store filtering', async () => {
-    const findMany = jest.fn().mockResolvedValue([
-      { stableId: '16oz', name: '16oz', isActive: true, sortOrder: 1 },
-    ]);
+    const findMany = jest
+      .fn()
+      .mockResolvedValue([
+        { stableId: '16oz', name: '16oz', isActive: true, sortOrder: 1 },
+      ]);
     const service = new CatalogAdminService({
       menuPackagingType: { findMany },
     } as never);
