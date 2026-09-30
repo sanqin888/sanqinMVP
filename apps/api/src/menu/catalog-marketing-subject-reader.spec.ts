@@ -1,6 +1,6 @@
-import { CatalogMarketingSubjectReaderService } from './catalog-marketing-subject-reader.service';
+import { CatalogAdminService } from './catalog-admin.service';
 
-describe('CatalogMarketingSubjectReaderService', () => {
+describe('CatalogAdminService marketing subject reader', () => {
   it('returns stable Store-scoped item identity for Marketing composition', async () => {
     const findMany = jest.fn().mockResolvedValue([
       {
@@ -10,7 +10,7 @@ describe('CatalogMarketingSubjectReaderService', () => {
         category: { storeStableId: 'store-1' },
       },
     ]);
-    const service = new CatalogMarketingSubjectReaderService({
+    const service = new CatalogAdminService({
       menuItem: { findMany },
     } as never);
 

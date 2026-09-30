@@ -1,7 +1,5 @@
 import { Module } from '@nestjs/common';
-import {
-  CatalogMarketingSubjectModule,
-} from '../menu/public-api';
+import { CatalogAdminModule } from '../menu/public-api';
 import { BrandStoreConfigModule } from '../store/public-api';
 import { DAILY_SPECIAL_OFFERS } from './daily-special-offers.contract';
 import { PROMOTION_CONTEXT_READER } from './promotion-context.contract';
@@ -11,7 +9,7 @@ import { PromotionRuleManagementService } from './promotion-rule-management.serv
 import { PromotionsService } from './promotions.service';
 
 @Module({
-  imports: [BrandStoreConfigModule, CatalogMarketingSubjectModule],
+  imports: [BrandStoreConfigModule, CatalogAdminModule],
   providers: [
     PromotionsService,
     PromotionRuleManagementService,

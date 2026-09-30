@@ -127,10 +127,7 @@ function toPromotionRuleManagementDto(
 
 @Injectable()
 export class PromotionsService
-  implements
-    PromotionContextReaderPort,
-    DailySpecialOffersPort,
-    MarketingCampaignFactsReaderPort
+  implements PromotionContextReaderPort, DailySpecialOffersPort, MarketingCampaignFactsReaderPort
 {
   constructor(
     private readonly prisma: PrismaService,
