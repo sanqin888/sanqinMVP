@@ -22,6 +22,11 @@ export {
 } from './catalog-external-menu-facts-reader.contract';
 export { CatalogOrderFactsModule } from './catalog-order-facts.module';
 export {
+  CATALOG_MARKETING_SUBJECT_READER,
+  type CatalogMarketingItemSubjectV1,
+  type CatalogMarketingSubjectReaderPort,
+} from './catalog-marketing-subject-reader.contract';
+export {
   CATALOG_ORDER_FACTS_READER,
   type CatalogOrderFactsReaderPort,
   type CatalogOrderFixedComponentFact,
