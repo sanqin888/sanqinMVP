@@ -15,7 +15,7 @@ export class UpdateUberDraftItemUseCase {
   async execute(
     ...args: Parameters<UberDraftItemCommandPort['updateUberDraftItem']>
   ) {
-    await ensureMenuItemExists(this.menuItems, args[0]);
+    await ensureMenuItemExists(this.menuItems, args[1].storeId, args[0]);
     return this.transaction.execute((commands) =>
       commands.updateUberDraftItem(...args),
     );

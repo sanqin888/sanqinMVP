@@ -22,7 +22,7 @@ export interface UberOrderOperationsRepositoryPort {
   exists(externalOrderId: string): Promise<boolean>;
 }
 export interface UberMenuItemOperationsRepositoryPort {
-  exists(stableId: string): Promise<boolean>;
+  exists(storeStableId: string, stableId: string): Promise<boolean>;
 }
 export interface UberReconciliationRepositoryPort {
   countFailedSyncEvents(rangeStart: Date, rangeEnd: Date): Promise<number>;

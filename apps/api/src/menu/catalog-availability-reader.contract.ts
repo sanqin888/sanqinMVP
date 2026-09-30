@@ -17,10 +17,12 @@ export type CatalogOptionAvailabilitySnapshot = {
 
 export interface CatalogAvailabilityReaderPort {
   getMenuItemAvailabilitySnapshot(
+    storeStableId: string,
     menuItemStableId: string,
   ): Promise<CatalogMenuItemAvailabilitySnapshot | null>;
 
   getOptionAvailabilitySnapshot(
+    storeStableId: string,
     optionChoiceStableId: string,
   ): Promise<CatalogOptionAvailabilitySnapshot | null>;
 }

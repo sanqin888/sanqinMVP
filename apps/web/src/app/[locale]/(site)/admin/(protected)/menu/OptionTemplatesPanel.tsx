@@ -128,11 +128,26 @@ function Badge({
   );
 }
 
-export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
+export function OptionTemplatesPanel({
+  isZh,
+  storeStableId,
+}: {
+  isZh: boolean;
+  storeStableId: string;
+}) {
   const [templates, setTemplates] = useState<TemplateGroupFullDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [menuItems, setMenuItems] = useState<MenuItemOption[]>([]);
+
+  const storeScopedPath = useCallback(
+    (path: string) => {
+      if (!storeStableId) return path;
+      const separator = path.includes('?') ? '&' : '?';
+      return `${path}${separator}storeStableId=${encodeURIComponent(storeStableId)}`;
+    },
+    [storeStableId],
+  );
 
   // ---- Create Template Group ----
   const [newGroupNameEn, setNewGroupNameEn] = useState('');
@@ -227,12 +242,19 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
   }, [isZh, menuItems]);
 
   const loadTemplates = useCallback(async (): Promise<void> => {
+    if (!storeStableId) {
+      setLoading(true);
+      setErr(null);
+      return;
+    }
     setLoading(true);
     setErr(null);
     try {
       const [templatesRes, menuRes] = await Promise.all([
-        apiFetch<TemplateGroupFullDto[]>('/admin/menu/option-group-templates'),
-        apiFetch<AdminMenuFullResponse>('/admin/menu/full'),
+        apiFetch<TemplateGroupFullDto[]>(
+          storeScopedPath('/admin/menu/option-group-templates'),
+        ),
+        apiFetch<AdminMenuFullResponse>(storeScopedPath('/admin/menu/full')),
       ]);
       setTemplates(templatesRes ?? []);
       setMenuItems(buildMenuItems(menuRes));
@@ -242,7 +264,7 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
     } finally {
       setLoading(false);
     }
-  }, [isZh]);
+  }, [isZh, storeScopedPath, storeStableId]);
 
   useEffect(() => {
     void loadTemplates();
@@ -273,7 +295,7 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
     if (!nameEn) return;
 
     try {
-      await apiFetch('/admin/menu/option-group-templates', {
+      await apiFetch(storeScopedPath('/admin/menu/option-group-templates'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -335,17 +357,24 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
     const sortOrder = Math.floor(Number(draft.sortOrder || '0'));
 
     try {
-      await apiFetch(`/admin/menu/option-group-templates/${templateGroupStableId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nameEn,
-          nameZh: draft.nameZh.trim() || undefined,
-          defaultMinSelect: Number.isFinite(defaultMinSelect) ? defaultMinSelect : 0,
-          defaultMaxSelect,
-          sortOrder: Number.isFinite(sortOrder) ? sortOrder : 0,
-        }),
-      });
+      await apiFetch(
+        storeScopedPath(
+          `/admin/menu/option-group-templates/${templateGroupStableId}`,
+        ),
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nameEn,
+            nameZh: draft.nameZh.trim() || undefined,
+            defaultMinSelect: Number.isFinite(defaultMinSelect)
+              ? defaultMinSelect
+              : 0,
+            defaultMaxSelect,
+            sortOrder: Number.isFinite(sortOrder) ? sortOrder : 0,
+          }),
+        },
+      );
       setEditingGroupStableId(null);
       await loadTemplates();
     } catch (e) {
@@ -381,7 +410,9 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
 
     try {
       await apiFetch(
-        `/admin/menu/option-group-templates/${templateGroupStableId}/options`,
+        storeScopedPath(
+          `/admin/menu/option-group-templates/${templateGroupStableId}/options`,
+        ),
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -440,18 +471,23 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
     const sortOrder = Math.floor(Number(draft.sortOrder || '0'));
 
     try {
-      await apiFetch(`/admin/menu/options/${optionStableId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nameEn,
-          nameZh: draft.nameZh.trim() || undefined,
-          priceDeltaCents: Number.isFinite(priceDeltaCents) ? priceDeltaCents : 0,
-          sortOrder: Number.isFinite(sortOrder) ? sortOrder : 0,
-          childOptionStableIds: draft.childOptionStableIds,
-          targetItemStableId: draft.targetItemStableId.trim() || null,
-        }),
-      });
+      await apiFetch(
+        storeScopedPath(`/admin/menu/options/${optionStableId}`),
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nameEn,
+            nameZh: draft.nameZh.trim() || undefined,
+            priceDeltaCents: Number.isFinite(priceDeltaCents)
+              ? priceDeltaCents
+              : 0,
+            sortOrder: Number.isFinite(sortOrder) ? sortOrder : 0,
+            childOptionStableIds: draft.childOptionStableIds,
+            targetItemStableId: draft.targetItemStableId.trim() || null,
+          }),
+        },
+      );
 
       setEditingOptionStableId(null);
       await loadTemplates();
@@ -465,11 +501,14 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
     mode: AvailabilityMode,
   ): Promise<void> {
     try {
-      await apiFetch(`/admin/menu/options/${optionStableId}/availability`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode }),
-      });
+      await apiFetch(
+        storeScopedPath(`/admin/menu/options/${optionStableId}/availability`),
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode }),
+        },
+      );
       await loadTemplates();
     } catch (e) {
       console.error(e);
@@ -478,7 +517,9 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
 
   async function deleteOption(optionStableId: string): Promise<void> {
     try {
-      await apiFetch(`/admin/menu/options/${optionStableId}`, { method: 'DELETE' });
+      await apiFetch(storeScopedPath(`/admin/menu/options/${optionStableId}`), {
+        method: 'DELETE',
+      });
       await loadTemplates();
     } catch (e) {
       console.error(e);
@@ -488,11 +529,11 @@ export function OptionTemplatesPanel({ isZh }: { isZh: boolean }) {
   return (
     <SectionCard
       sectionId="option-templates"
-      title={isZh ? '选项库（全局）' : 'Option Library (Global)'}
+      title={isZh ? '门店选项库' : 'Store Option Library'}
       subtitle={
         isZh
-          ? '这里维护全局复用的选项组与选项（如：香菜、辣度、加蛋），价格及选项上下架对所有绑定菜品全局生效。'
-          : 'Manage reusable option groups/choices (e.g., cilantro, spiciness, add egg). Price and choice availability changes apply globally.'
+          ? '这里维护当前门店复用的选项组与选项（如：香菜、辣度、加蛋），价格及上下架仅作用于当前门店的绑定菜品。'
+          : 'Manage reusable option groups/choices for the selected store. Price and availability changes apply only to bindings in that store.'
       }
       actions={
         <button

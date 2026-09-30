@@ -134,6 +134,7 @@ describe('OrdersService', () => {
   };
   let brandStoreConfigReader: {
     getConfiguredStoreSnapshot: jest.Mock;
+    getStoreSnapshot: jest.Mock;
   };
   let loyalty: {
     peekBalanceMicro: jest.Mock;
@@ -210,6 +211,7 @@ describe('OrdersService', () => {
       getConfiguredStoreSnapshot: jest
         .fn()
         .mockResolvedValue(defaultStoreConfigSnapshot),
+      getStoreSnapshot: jest.fn().mockResolvedValue(defaultStoreConfigSnapshot),
     };
 
     loyalty = {
@@ -285,7 +287,7 @@ describe('OrdersService', () => {
       findHiddenMenuItemStableIds: jest.fn().mockResolvedValue([]),
       getOrderItemMaterializationFacts: jest
         .fn()
-        .mockImplementation((stableIds: string[]) =>
+        .mockImplementation((_storeStableId: string, stableIds: string[]) =>
           Promise.resolve(
             stableIds.map((stableId) => ({
               ...defaultCatalogOrderItemFact,
@@ -346,7 +348,7 @@ describe('OrdersService', () => {
   });
 
   it('reads delivery and tax pricing through the Brand/Store config boundary', async () => {
-    brandStoreConfigReader.getConfiguredStoreSnapshot.mockResolvedValue({
+    brandStoreConfigReader.getStoreSnapshot.mockResolvedValue({
       ...defaultStoreConfigSnapshot,
       deliveryBaseFeeCents: 725,
       priorityPerKmCents: 135,
@@ -358,7 +360,7 @@ describe('OrdersService', () => {
       enableUberDirect: false,
     });
     const internalService = service as unknown as {
-      getStorePricingConfig: () => Promise<{
+      getStorePricingConfig: (storeStableId: string) => Promise<{
         deliveryBaseFeeCents: number;
         priorityPerKmCents: number;
         salesTaxRate: number;
@@ -370,7 +372,9 @@ describe('OrdersService', () => {
       }>;
     };
 
-    await expect(internalService.getStorePricingConfig()).resolves.toEqual({
+    await expect(
+      internalService.getStorePricingConfig('4750_Yonge_Street'),
+    ).resolves.toEqual({
       deliveryBaseFeeCents: 725,
       priorityPerKmCents: 135,
       salesTaxRate: 0.15,
@@ -380,25 +384,27 @@ describe('OrdersService', () => {
       storeLongitude: -79.4,
       enableUberDirect: false,
     });
-    expect(
-      brandStoreConfigReader.getConfiguredStoreSnapshot,
-    ).toHaveBeenCalledTimes(1);
+    expect(brandStoreConfigReader.getStoreSnapshot).toHaveBeenCalledWith(
+      '4750_Yonge_Street',
+    );
   });
 
   it('reads daily-special pricing through the Offers capability', async () => {
     const internalService = service as unknown as {
       calculateLineItems: (
+        storeStableId: string,
         items: Array<{ productId: string; qty: number }>,
       ) => Promise<unknown>;
     };
 
-    await internalService.calculateLineItems([
+    await internalService.calculateLineItems('4750_Yonge_Street', [
       { productId: demoProductId, qty: 1 },
     ]);
 
-    expect(dailySpecialOffers.getActiveDailySpecials).toHaveBeenCalledWith([
-      { itemStableId: demoProductId, basePriceCents: 1000 },
-    ]);
+    expect(dailySpecialOffers.getActiveDailySpecials).toHaveBeenCalledWith(
+      '4750_Yonge_Street',
+      [{ itemStableId: demoProductId, basePriceCents: 1000 }],
+    );
     expect('menuDailySpecial' in prisma).toBe(false);
   });
 
@@ -540,11 +546,14 @@ describe('OrdersService', () => {
       productStableId,
     ]);
 
-    const quote = await service.quoteOrderPricing({
-      channel: 'in_store',
-      fulfillmentType: 'pickup',
-      items: [{ productStableId, qty: 1 }],
-    });
+    const quote = await service.quoteOrderPricing(
+      {
+        channel: 'in_store',
+        fulfillmentType: 'pickup',
+        items: [{ productStableId, qty: 1 }],
+      },
+      { storeStableId: '4750_Yonge_Street' },
+    );
 
     expect(quote.subtotalCents).toBe(1000);
     expect(quote.totalCents).toBe(1130);
@@ -560,11 +569,14 @@ describe('OrdersService', () => {
     expect(promotions.getOrderPromotionContext).toHaveBeenCalledWith('web');
 
     promotions.getOrderPromotionContext.mockClear();
-    const uberQuote = await service.quoteOrderPricing({
-      channel: 'ubereats',
-      fulfillmentType: 'pickup',
-      items: [{ productStableId: demoProductId, qty: 1 }],
-    });
+    const uberQuote = await service.quoteOrderPricing(
+      {
+        channel: 'ubereats',
+        fulfillmentType: 'pickup',
+        items: [{ productStableId: demoProductId, qty: 1 }],
+      },
+      { storeStableId: '4750_Yonge_Street' },
+    );
 
     expect(promotions.getOrderPromotionContext).not.toHaveBeenCalled();
     expect(uberQuote.automaticPromotionDiscountCents).toBe(0);
@@ -597,12 +609,15 @@ describe('OrdersService', () => {
       ],
     });
 
-    const quote = await service.quoteOrderPricing({
-      channel: 'in_store',
-      fulfillmentType: 'pickup',
-      discountCents: 50,
-      items: [{ productStableId: 'c1234567890abcdefghijklmn', qty: 1 }],
-    });
+    const quote = await service.quoteOrderPricing(
+      {
+        channel: 'in_store',
+        fulfillmentType: 'pickup',
+        discountCents: 50,
+        items: [{ productStableId: 'c1234567890abcdefghijklmn', qty: 1 }],
+      },
+      { storeStableId: '4750_Yonge_Street' },
+    );
 
     expect(quote.subtotalCents).toBe(1000);
     expect(quote.automaticPromotionDiscountCents).toBe(100);
@@ -666,7 +681,10 @@ describe('OrdersService', () => {
         discountCents: 100,
         items: [{ productStableId: demoProductId, qty: 2, unitPrice: 10 }],
       },
-      { allowCustomUnitPrice: true },
+      {
+        allowCustomUnitPrice: true,
+        storeStableId: '4750_Yonge_Street',
+      },
     );
 
     expect(quote.subtotalCents).toBe(2000);

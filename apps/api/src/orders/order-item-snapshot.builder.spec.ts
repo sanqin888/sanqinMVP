@@ -86,7 +86,9 @@ describe('OrderItemSnapshotBuilder', () => {
     const builder = new OrderItemSnapshotBuilder(catalogOrderFacts);
 
     await expect(
-      builder.buildMany([{ productStableId: parentStableId, qty: 1 }]),
+      builder.buildMany('store-1', [
+        { productStableId: parentStableId, qty: 1 },
+      ]),
     ).resolves.toEqual([
       expect.objectContaining({
         productStableId: parentStableId,
@@ -142,7 +144,7 @@ describe('OrderItemSnapshotBuilder', () => {
       reader({ initial: [parent], linked: child }),
     );
 
-    const [snapshot] = await builder.buildMany([
+    const [snapshot] = await builder.buildMany('store-1', [
       {
         productStableId: parentStableId,
         qty: 1,

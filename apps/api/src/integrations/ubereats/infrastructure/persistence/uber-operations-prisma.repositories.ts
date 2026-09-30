@@ -124,8 +124,11 @@ export class UberMenuItemOperationsPrismaRepository implements UberMenuItemOpera
     @Inject(UBER_CATALOG_MENU_FACTS_QUERY)
     private readonly catalogFacts: UberCatalogMenuFactsQueryPort,
   ) {}
-  async exists(stableId: string) {
-    return (await this.catalogFacts.getMenuItemSource(stableId)) !== null;
+  async exists(storeStableId: string, stableId: string) {
+    return (
+      (await this.catalogFacts.getMenuItemSource(storeStableId, stableId)) !==
+      null
+    );
   }
 }
 

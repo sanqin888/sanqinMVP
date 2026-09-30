@@ -566,6 +566,7 @@ describe('OrderFinancialFactsReaderService', () => {
     expect(candidate?.resolvedFact?.discounts.dailySpecialCents).toBe(150);
     expect(candidate?.resolvedFact?.discounts.totalCents).toBe(150);
     expect(catalog.getActiveOrderItemMaterializationFact).toHaveBeenCalledWith(
+      '4750_Yonge_Street',
       'item-1',
     );
   });

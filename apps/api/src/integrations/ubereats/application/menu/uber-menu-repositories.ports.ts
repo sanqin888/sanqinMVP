@@ -45,7 +45,7 @@ export type MenuStoreMapping = {
 };
 
 export interface MenuSnapshotRepository {
-  load(): Promise<MenuSnapshot>;
+  load(storeStableId: string): Promise<MenuSnapshot>;
 }
 export interface ItemChannelConfigRepository {
   list(storeId: string): Promise<ItemChannelConfig[]>;

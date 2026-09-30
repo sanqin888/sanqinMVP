@@ -41,7 +41,7 @@ export class UberMenuDraftSourcePrismaRepository {
       rawModifierConfigs,
       rawCategoryConfigs,
     ] = await Promise.all([
-      this.catalogFacts.readMenuSource(),
+      this.catalogFacts.readMenuSource(storeStableId),
       this.db.uberItemChannelConfig.findMany({
         where: { storeId: storeStableId },
         select: {
@@ -196,8 +196,8 @@ export const readStoreTimezone = (raw: unknown): string | null => {
 
 export class UberMenuSnapshotPrismaRepository implements MenuSnapshotRepository {
   constructor(private readonly catalogFacts: UberCatalogMenuFactsQueryPort) {}
-  async load() {
-    const source = await this.catalogFacts.readMenuSource();
+  async load(storeStableId: string) {
+    const source = await this.catalogFacts.readMenuSource(storeStableId);
     return {
       categories: source.categories.map((row) => ({
         stableId: row.stableId,

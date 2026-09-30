@@ -93,6 +93,7 @@ export class FulfillmentProcessor {
     try {
       labelPlan = await this.orderLabelPlanService.getByStableId(
         order.orderStableId,
+        storeId,
       );
     } catch (error) {
       // Label planning is supplemental. Never block the established receipt and
@@ -181,6 +182,7 @@ export class FulfillmentProcessor {
       try {
         labelPlan = await this.orderLabelPlanService.getByStableId(
           payload.orderStableId,
+          storeId,
         );
         targets = { ...targets, label: labelPlan.labels.length > 0 };
       } catch (error) {
@@ -459,6 +461,7 @@ export class FulfillmentProcessor {
             const afterLabelPlan =
               await this.orderLabelPlanService.getByStableId(
                 payload.orderStableId,
+                storeId,
               );
             labelPlan = this.diffLabelPlans(
               payload.beforeLabelPlan,

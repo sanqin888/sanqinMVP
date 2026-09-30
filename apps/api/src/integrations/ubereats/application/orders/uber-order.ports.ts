@@ -65,7 +65,9 @@ export interface UberOrderImportRepositoryPort {
     uberStoreId: string,
     externalItemIds: string[],
   ): Promise<UberOrderMenuMapping[]>;
-  findModifierSnapshotSources?(): Promise<UberOrderModifierSnapshotSource[]>;
+  findModifierSnapshotSources?(
+    storeStableId: string,
+  ): Promise<UberOrderModifierSnapshotSource[]>;
   findByExternalOrderId(externalOrderId: string): Promise<{
     orderStableId: string;
     status: UberOrderStatus;

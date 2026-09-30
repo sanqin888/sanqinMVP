@@ -13,6 +13,7 @@ import type {
   OrderItemOptionsSnapshot,
 } from './order-item-options';
 import { readOrderItemComponentsSnapshot } from './order-item-components';
+import { resolveConfiguredStoreStableId } from '../store/public-api';
 
 type LabelStrategy = CatalogOrderLabelStrategy;
 
@@ -97,12 +98,16 @@ export class OrderLabelPlanService {
     private readonly catalogOrderFacts: CatalogOrderFactsReaderPort,
   ) {}
 
-  async getByStableId(orderStableId: string): Promise<OrderLabelPlanDto> {
+  async getByStableId(
+    orderStableId: string,
+    trustedStoreStableId?: string,
+  ): Promise<OrderLabelPlanDto> {
     const stableId = orderStableId.trim();
     const order = await this.prisma.order.findUnique({
       where: { orderStableId: stableId },
       select: {
         fulfillmentType: true,
+        storeId: true,
         items: {
           select: {
             productStableId: true,
@@ -124,11 +129,17 @@ export class OrderLabelPlanService {
     const resolved = this.resolveFulfillmentSeeds(order.items);
     if (resolved.length === 0) return EMPTY_PLAN;
 
+    const storeStableId =
+      trustedStoreStableId?.trim() ||
+      order.storeId?.trim() ||
+      resolveConfiguredStoreStableId();
     const productStableIds = [
       ...new Set(resolved.map((item) => item.productStableId)),
     ];
-    const configs =
-      await this.catalogOrderFacts.getOrderLabelConfigs(productStableIds);
+    const configs = await this.catalogOrderFacts.getOrderLabelConfigs(
+      storeStableId,
+      productStableIds,
+    );
     const configByStableId = new Map(
       configs.map((config) => [config.stableId, config]),
     );

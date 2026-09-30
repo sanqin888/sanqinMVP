@@ -221,8 +221,8 @@ export function AdminStoreContextSelector({
           {context === 'catalog' ? (
             <p className="max-w-xl text-xs leading-5 text-amber-700">
               {isZh
-                ? '当前 Catalog 仍为品牌级共享菜单。门店选择器已预留多门店上下文，但本轮不会伪装成门店独立菜单。'
-                : 'Catalog is still shared at brand level. The store selector reserves multi-store context without pretending menu data is store-specific yet.'}
+                ? 'Catalog 菜单已按门店隔离；当前页面只读取和修改所选门店的菜单。'
+                : 'Catalog menus are store-scoped; this page only reads and modifies the selected store.'}
             </p>
           ) : null}
         </div>

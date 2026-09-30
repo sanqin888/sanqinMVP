@@ -4,7 +4,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api/client';
 import { ImageLibraryModal } from '@/components/admin/ImageLibraryModal';
 import type { Locale } from '@/lib/i18n/locales';
@@ -128,7 +128,15 @@ function itemStatusLabel(isZh: boolean, isAvailable: boolean, tempUntil: string 
 
 export default function AdminMenuPage() {
   const { locale } = useParams<{ locale: Locale }>();
+  const searchParams = useSearchParams();
+  const storeStableId = searchParams.get('store')?.trim() ?? '';
   const isZh = locale === 'zh';
+
+  const storeScopedPath = (path: string) => {
+    if (!storeStableId) return path;
+    const separator = path.includes('?') ? '&' : '?';
+    return `${path}${separator}storeStableId=${encodeURIComponent(storeStableId)}`;
+  };
 
   const [loading, setLoading] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -322,15 +330,20 @@ export default function AdminMenuPage() {
         nameZh: string | null;
         sortOrder: number;
         isActive: boolean;
-      }>(`/admin/menu/categories/${encodeURIComponent(categoryStableId)}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nameEn,
-          nameZh: nameZh ? nameZh : null,
-          sortOrder: toIntOrZero(draft.sortOrder),
-        }),
-      });
+      }>(
+        storeScopedPath(
+          `/admin/menu/categories/${encodeURIComponent(categoryStableId)}`,
+        ),
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nameEn,
+            nameZh: nameZh ? nameZh : null,
+            sortOrder: toIntOrZero(draft.sortOrder),
+          }),
+        },
+      );
 
       setCategories((prev) =>
         prev.map((cat) =>
@@ -354,10 +367,17 @@ export default function AdminMenuPage() {
   }
 
   async function load(): Promise<void> {
+    if (!storeStableId) {
+      setLoading(true);
+      setLoadError(null);
+      return;
+    }
     setLoading(true);
     setLoadError(null);
     try {
-      const data = await apiFetch<AdminMenuFullResponse>('/admin/menu/full');
+      const data = await apiFetch<AdminMenuFullResponse>(
+        storeScopedPath('/admin/menu/full'),
+      );
       setCategories(data.categories ?? []);
       setTemplates(data.templatesLite ?? []);
       setPackagingTypes(data.packagingTypes ?? []);
@@ -370,7 +390,7 @@ export default function AdminMenuPage() {
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [storeStableId]);
 
   async function handleCreateCategory(): Promise<void> {
     setCreateCategoryError(null);
@@ -391,7 +411,7 @@ export default function AdminMenuPage() {
 
     setCreatingCategory(true);
     try {
-      await apiFetch('/admin/menu/categories', {
+      await apiFetch(storeScopedPath('/admin/menu/categories'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -445,7 +465,7 @@ export default function AdminMenuPage() {
     };
 
     try {
-      await apiFetch('/admin/menu/items', {
+      await apiFetch(storeScopedPath('/admin/menu/items'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -491,11 +511,14 @@ export default function AdminMenuPage() {
         ingredientsZh: item.ingredientsZh ?? undefined,
       };
 
-      await apiFetch(`/admin/menu/items/${encodeURIComponent(itemStableId)}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
+      await apiFetch(
+        storeScopedPath(`/admin/menu/items/${encodeURIComponent(itemStableId)}`),
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        },
+      );
 
       setSaving({ itemStableId: null, error: null });
       await load();
@@ -512,12 +535,20 @@ export default function AdminMenuPage() {
     mode: 'ON' | 'TEMP_TODAY_OFF' | 'PERMANENT_OFF',
   ): Promise<void> {
     try {
-      const result = await apiFetch<{ uberSync: { status: UberSyncStatus } }>(`/admin/menu/items/${encodeURIComponent(itemStableId)}/availability`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode }),
-      });
-      setUberSyncByItem((current) => ({ ...current, [itemStableId]: result.uberSync.status }));
+      const result = await apiFetch<{ uberSync: { status: UberSyncStatus } }>(
+        storeScopedPath(
+          `/admin/menu/items/${encodeURIComponent(itemStableId)}/availability`,
+        ),
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode }),
+        },
+      );
+      setUberSyncByItem((current) => ({
+        ...current,
+        [itemStableId]: result.uberSync.status,
+      }));
       await load();
     } catch (e) {
       alert(e instanceof Error ? e.message : String(e));
@@ -567,7 +598,7 @@ export default function AdminMenuPage() {
 
     setBindingItemId(itemStableId);
     try {
-      await apiFetch(BIND_ENDPOINT(itemStableId), {
+      await apiFetch(storeScopedPath(BIND_ENDPOINT(itemStableId)), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -607,7 +638,7 @@ export default function AdminMenuPage() {
 
     setBindingUpdateId(bindingKey);
     try {
-      await apiFetch(BIND_ENDPOINT(itemStableId), {
+      await apiFetch(storeScopedPath(BIND_ENDPOINT(itemStableId)), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -645,7 +676,9 @@ export default function AdminMenuPage() {
   ): Promise<void> {
     setUnbindingId(templateGroupStableId);
     try {
-      await apiFetch(UNBIND_ENDPOINT(itemStableId, templateGroupStableId), {
+      await apiFetch(
+        storeScopedPath(UNBIND_ENDPOINT(itemStableId, templateGroupStableId)),
+        {
         method: 'DELETE',
       });
       await load();
@@ -1679,7 +1712,7 @@ export default function AdminMenuPage() {
                             </div>
 
                             <Link
-                              href={`/${locale}/admin/menu/options`}
+                              href={`/${locale}/admin/menu/options?store=${encodeURIComponent(storeStableId)}`}
                               className="text-sm text-slate-700 underline hover:text-slate-900"
                             >
                               {isZh ? '管理选项组模板' : 'Manage templates'}
@@ -1841,7 +1874,7 @@ export default function AdminMenuPage() {
 
                                       <div className="flex shrink-0 items-center gap-2">
                                         <Link
-                                          href={`/${locale}/admin/menu/options#group-${tplStableId}`}
+                                          href={`/${locale}/admin/menu/options?store=${encodeURIComponent(storeStableId)}#group-${tplStableId}`}
                                           className="rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50"
                                         >
                                           {isZh ? '查看模板' : 'View'}
