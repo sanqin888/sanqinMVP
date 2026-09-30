@@ -15,7 +15,11 @@ export class UpdateUberDraftOptionUseCase {
   async execute(
     ...args: Parameters<UberDraftOptionCommandPort['updateUberDraftOption']>
   ) {
-    await ensureOptionChoiceExists(this.optionChoices, args[0]);
+    await ensureOptionChoiceExists(
+      this.optionChoices,
+      args[1].storeId,
+      args[0],
+    );
     return this.transaction.execute((commands) =>
       commands.updateUberDraftOption(...args),
     );

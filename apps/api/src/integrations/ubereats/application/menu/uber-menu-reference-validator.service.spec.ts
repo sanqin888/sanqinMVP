@@ -14,7 +14,7 @@ describe('Uber menu reference validation', () => {
     };
 
     await expect(
-      ensureMenuItemExists(menuItems, 'missing-item'),
+      ensureMenuItemExists(menuItems, 'store-1', 'missing-item'),
     ).rejects.toMatchObject({ code: 'UBER_MENU_INPUT_INVALID' });
   });
 
@@ -24,7 +24,7 @@ describe('Uber menu reference validation', () => {
     };
 
     await expect(
-      ensureOptionChoiceExists(optionChoices, 'missing-option'),
+      ensureOptionChoiceExists(optionChoices, 'store-1', 'missing-option'),
     ).rejects.toMatchObject({ code: 'UBER_MENU_INPUT_INVALID' });
   });
 });

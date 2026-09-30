@@ -15,8 +15,8 @@ export class CatalogOffersMenuOrchestrationService {
     private readonly dailySpecialOffers: DailySpecialOffersPort,
   ) {}
 
-  async getFullMenu(): Promise<AdminMenuFullResponse> {
-    const catalogMenu = await this.catalog.getFullMenu();
+  async getFullMenu(storeStableId: string): Promise<AdminMenuFullResponse> {
+    const catalogMenu = await this.catalog.getFullMenu(storeStableId);
     const catalogItems = catalogMenu.categories.flatMap((category) =>
       category.items.map((item) => ({
         itemStableId: item.stableId,
@@ -24,7 +24,10 @@ export class CatalogOffersMenuOrchestrationService {
       })),
     );
     const { specials } =
-      await this.dailySpecialOffers.getActiveDailySpecials(catalogItems);
+      await this.dailySpecialOffers.getActiveDailySpecials(
+        storeStableId,
+        catalogItems,
+      );
     const firstSpecialByItemStableId = new Map<string, DailySpecialDto>();
     for (const special of specials) {
       if (!firstSpecialByItemStableId.has(special.itemStableId)) {
@@ -58,29 +61,37 @@ export class CatalogOffersMenuOrchestrationService {
   }
 
   async getDailySpecials(
+    storeStableId: string,
     weekday?: number,
   ): Promise<{ specials: DailySpecialDto[] }> {
-    const catalogItems = await this.catalog.getMenuItemPricingSnapshots({
-      includeDeleted: true,
-    });
-    return this.dailySpecialOffers.getDailySpecials(weekday, catalogItems);
+    const catalogItems = await this.catalog.getMenuItemPricingSnapshots(
+      storeStableId,
+      { includeDeleted: true },
+    );
+    return this.dailySpecialOffers.getDailySpecials(
+      storeStableId,
+      weekday,
+      catalogItems,
+    );
   }
 
   async upsertDailySpecials(
+    storeStableId: string,
     payload: DailySpecialUpsertPayload,
   ): Promise<{ specials: DailySpecialDto[] }> {
     const writableCatalogItems =
-      await this.catalog.getMenuItemPricingSnapshots();
+      await this.catalog.getMenuItemPricingSnapshots(storeStableId);
     await this.dailySpecialOffers.upsertDailySpecials(
+      storeStableId,
       payload,
       writableCatalogItems,
     );
     const readableCatalogItems = await this.catalog.getMenuItemPricingSnapshots(
-      {
-        includeDeleted: true,
-      },
+      storeStableId,
+      { includeDeleted: true },
     );
     return this.dailySpecialOffers.getDailySpecials(
+      storeStableId,
       undefined,
       readableCatalogItems,
     );

@@ -140,6 +140,12 @@ function nextMidnightLocal(): Date {
   return value;
 }
 
+function requireStoreStableId(storeStableId: string): string {
+  const normalized = storeStableId?.trim();
+  if (!normalized) throw new BadRequestException('storeStableId is required');
+  return normalized;
+}
+
 @Injectable()
 export class CatalogAdminService
   implements
@@ -150,13 +156,19 @@ export class CatalogAdminService
   constructor(private readonly prisma: PrismaService) {}
 
   async getMenuItemAvailabilitySnapshot(
+    storeStableId: string,
     menuItemStableId: string,
   ): Promise<CatalogMenuItemAvailabilitySnapshot | null> {
+    const storeId = requireStoreStableId(storeStableId);
     const stableId = menuItemStableId.trim();
     if (!stableId) return null;
 
     const item = await this.prisma.menuItem.findFirst({
-      where: { stableId, deletedAt: null },
+      where: {
+        stableId,
+        deletedAt: null,
+        category: { storeStableId: storeId, deletedAt: null },
+      },
       select: {
         stableId: true,
         visibility: true,
@@ -177,13 +189,19 @@ export class CatalogAdminService
   }
 
   async getOptionAvailabilitySnapshot(
+    storeStableId: string,
     optionChoiceStableId: string,
   ): Promise<CatalogOptionAvailabilitySnapshot | null> {
+    const storeId = requireStoreStableId(storeStableId);
     const stableId = optionChoiceStableId.trim();
     if (!stableId) return null;
 
     const option = await this.prisma.menuOptionTemplateChoice.findFirst({
-      where: { stableId, deletedAt: null },
+      where: {
+        stableId,
+        deletedAt: null,
+        templateGroup: { storeStableId: storeId, deletedAt: null },
+      },
       select: { stableId: true, tempUnavailableUntil: true },
     });
     if (!option) return null;
@@ -194,10 +212,13 @@ export class CatalogAdminService
     };
   }
 
-  async readMenuSource(): Promise<CatalogExternalMenuSourceFacts> {
+  async readMenuSource(
+    storeStableId: string,
+  ): Promise<CatalogExternalMenuSourceFacts> {
+    const storeId = requireStoreStableId(storeStableId);
     const [categories, items, modifierGroups] = await Promise.all([
       this.prisma.menuCategory.findMany({
-        where: { deletedAt: null },
+        where: { storeStableId: storeId, deletedAt: null },
         orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
         select: {
           stableId: true,
@@ -208,7 +229,10 @@ export class CatalogAdminService
         },
       }),
       this.prisma.menuItem.findMany({
-        where: { deletedAt: null },
+        where: {
+          deletedAt: null,
+          category: { storeStableId: storeId, deletedAt: null },
+        },
         orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
         select: {
           stableId: true,
@@ -234,7 +258,7 @@ export class CatalogAdminService
         },
       }),
       this.prisma.menuOptionGroupTemplate.findMany({
-        where: { deletedAt: null },
+        where: { storeStableId: storeId, deletedAt: null },
         orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
         select: {
           stableId: true,
@@ -323,29 +347,38 @@ export class CatalogAdminService
     };
   }
 
-  async getMenuItemSource(stableId: string) {
+  async getMenuItemSource(storeStableId: string, stableId: string) {
+    const storeId = requireStoreStableId(storeStableId);
     const normalized = stableId.trim();
     if (!normalized) return null;
-    return this.prisma.menuItem.findUnique({
-      where: { stableId: normalized },
+    return this.prisma.menuItem.findFirst({
+      where: {
+        stableId: normalized,
+        category: { storeStableId: storeId, deletedAt: null },
+      },
       select: { stableId: true, basePriceCents: true, isAvailable: true },
     });
   }
 
-  async getOptionSource(stableId: string) {
+  async getOptionSource(storeStableId: string, stableId: string) {
+    const storeId = requireStoreStableId(storeStableId);
     const normalized = stableId.trim();
     if (!normalized) return null;
-    return this.prisma.menuOptionTemplateChoice.findUnique({
-      where: { stableId: normalized },
+    return this.prisma.menuOptionTemplateChoice.findFirst({
+      where: {
+        stableId: normalized,
+        templateGroup: { storeStableId: storeId, deletedAt: null },
+      },
       select: { stableId: true, priceDeltaCents: true, isAvailable: true },
     });
   }
 
-  async getModifierGroupSource(stableId: string) {
+  async getModifierGroupSource(storeStableId: string, stableId: string) {
+    const storeId = requireStoreStableId(storeStableId);
     const normalized = stableId.trim();
     if (!normalized) return null;
-    return this.prisma.menuOptionGroupTemplate.findUnique({
-      where: { stableId: normalized },
+    return this.prisma.menuOptionGroupTemplate.findFirst({
+      where: { stableId: normalized, storeStableId: storeId },
       select: {
         stableId: true,
         nameEn: true,
@@ -355,11 +388,12 @@ export class CatalogAdminService
     });
   }
 
-  async listOrderModifierSnapshotSources() {
+  async listOrderModifierSnapshotSources(storeStableId: string) {
+    const storeId = requireStoreStableId(storeStableId);
     const rows = await this.prisma.menuOptionTemplateChoice.findMany({
       where: {
         deletedAt: null,
-        templateGroup: { deletedAt: null },
+        templateGroup: { storeStableId: storeId, deletedAt: null },
       },
       select: {
         stableId: true,
@@ -388,8 +422,10 @@ export class CatalogAdminService
   }
 
   async findHiddenMenuItemStableIds(
+    storeStableId: string,
     menuItemStableIds: string[],
   ): Promise<string[]> {
+    const storeId = requireStoreStableId(storeStableId);
     const stableIds = menuItemStableIds
       .map((value) => value.trim())
       .filter(Boolean);
@@ -400,6 +436,7 @@ export class CatalogAdminService
         stableId: { in: stableIds },
         deletedAt: null,
         visibility: 'HIDDEN',
+        category: { storeStableId: storeId, deletedAt: null },
       },
       select: { stableId: true },
     });
@@ -407,36 +444,49 @@ export class CatalogAdminService
   }
 
   async getOrderItemMaterializationFacts(
+    storeStableId: string,
     menuItemStableIds: string[],
   ): Promise<CatalogOrderItemMaterializationFact[]> {
+    const storeId = requireStoreStableId(storeStableId);
     const stableIds = menuItemStableIds
       .map((value) => value.trim())
       .filter(Boolean);
     if (stableIds.length === 0) return [];
 
     const items = await this.prisma.menuItem.findMany({
-      where: { stableId: { in: stableIds } },
+      where: {
+        stableId: { in: stableIds },
+        category: { storeStableId: storeId, deletedAt: null },
+      },
       select: orderItemMaterializationSelect,
     });
     return items.map((item) => this.toOrderItemMaterializationFact(item));
   }
 
   async getActiveOrderItemMaterializationFact(
+    storeStableId: string,
     menuItemStableId: string,
   ): Promise<CatalogOrderItemMaterializationFact | null> {
+    const storeId = requireStoreStableId(storeStableId);
     const stableId = menuItemStableId.trim();
     if (!stableId) return null;
 
     const item = await this.prisma.menuItem.findFirst({
-      where: { stableId, deletedAt: null },
+      where: {
+        stableId,
+        deletedAt: null,
+        category: { storeStableId: storeId, deletedAt: null },
+      },
       select: orderItemMaterializationSelect,
     });
     return item ? this.toOrderItemMaterializationFact(item) : null;
   }
 
   async getOrderLabelConfigs(
+    storeStableId: string,
     menuItemStableIds: string[],
   ): Promise<CatalogOrderLabelConfigFact[]> {
+    const storeId = requireStoreStableId(storeStableId);
     const stableIds = menuItemStableIds
       .map((value) => value.trim())
       .filter(Boolean);
@@ -446,6 +496,7 @@ export class CatalogAdminService
       where: {
         stableId: { in: stableIds },
         deletedAt: null,
+        category: { storeStableId: storeId, deletedAt: null },
       },
       select: {
         stableId: true,
@@ -538,6 +589,7 @@ export class CatalogAdminService
   }
 
   async updateCategory(
+    storeStableId: string,
     categoryStableId: string,
     body: {
       nameEn?: string;
@@ -552,6 +604,17 @@ export class CatalogAdminService
     sortOrder: number;
     isActive: boolean;
   }> {
+    const storeId = requireStoreStableId(storeStableId);
+    const existingCategory = await this.prisma.menuCategory.findFirst({
+      where: {
+        stableId: categoryStableId.trim(),
+        storeStableId: storeId,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    if (!existingCategory) throw new NotFoundException('Menu category not found');
+
     const data: Prisma.MenuCategoryUpdateInput = {};
 
     if (typeof body.nameEn === 'string') {
@@ -582,7 +645,7 @@ export class CatalogAdminService
 
     try {
       const updated = await this.prisma.menuCategory.update({
-        where: { stableId: categoryStableId },
+        where: { id: existingCategory.id },
         data,
         select: {
           stableId: true,
@@ -605,10 +668,11 @@ export class CatalogAdminService
     }
   }
 
-  async getFullMenu(): Promise<CatalogAdminMenuSnapshot> {
+  async getFullMenu(storeStableId: string): Promise<CatalogAdminMenuSnapshot> {
+    const storeId = requireStoreStableId(storeStableId);
     const [categories, templateGroups, packagingTypes] = await Promise.all([
       this.prisma.menuCategory.findMany({
-        where: { deletedAt: null },
+        where: { storeStableId: storeId, deletedAt: null },
         orderBy: { sortOrder: 'asc' },
         include: {
           items: {
@@ -649,7 +713,7 @@ export class CatalogAdminService
         },
       }),
       this.prisma.menuOptionGroupTemplate.findMany({
-        where: { deletedAt: null },
+        where: { storeStableId: storeId, deletedAt: null },
         orderBy: { sortOrder: 'asc' },
       }),
       this.prisma.menuPackagingType.findMany({
@@ -767,11 +831,16 @@ export class CatalogAdminService
     };
   }
 
-  async getMenuItemPricingSnapshots(options?: {
-    includeDeleted?: boolean;
-  }): Promise<Array<{ itemStableId: string; basePriceCents: number }>> {
+  async getMenuItemPricingSnapshots(
+    storeStableId: string,
+    options?: { includeDeleted?: boolean },
+  ): Promise<Array<{ itemStableId: string; basePriceCents: number }>> {
+    const storeId = requireStoreStableId(storeStableId);
     const items = await this.prisma.menuItem.findMany({
-      where: options?.includeDeleted ? {} : { deletedAt: null },
+      where: {
+        ...(options?.includeDeleted ? {} : { deletedAt: null }),
+        category: { storeStableId: storeId },
+      },
       select: { stableId: true, basePriceCents: true },
     });
 
@@ -781,17 +850,19 @@ export class CatalogAdminService
     }));
   }
 
-  async createCategory(body: {
+  async createCategory(storeStableId: string, body: {
     nameEn: string;
     nameZh?: string;
     sortOrder?: number;
     isActive?: boolean;
   }) {
+    const storeId = requireStoreStableId(storeStableId);
     const nameEn = (body.nameEn ?? '').trim();
     if (!nameEn) throw new BadRequestException('nameEn is required');
 
     const created = await this.prisma.menuCategory.create({
       data: {
+        storeStableId: storeId,
         nameEn,
         nameZh: body.nameZh?.trim() || null,
         sortOrder: Number.isFinite(body.sortOrder)
@@ -859,7 +930,7 @@ export class CatalogAdminService
     return { ok: true };
   }
 
-  async createItem(body: {
+  async createItem(storeStableId: string, body: {
     categoryStableId: string;
     stableId?: string;
     nameEn: string;
@@ -878,13 +949,18 @@ export class CatalogAdminService
     packagingTypeStableIds?: string[];
     tempUnavailableUntil?: string | null;
   }) {
+    const storeId = requireStoreStableId(storeStableId);
     const categoryStableId = (body.categoryStableId ?? '').trim();
     if (!categoryStableId) {
       throw new BadRequestException('categoryStableId is required');
     }
 
     const category = await this.prisma.menuCategory.findFirst({
-      where: { stableId: categoryStableId, deletedAt: null },
+      where: {
+        stableId: categoryStableId,
+        storeStableId: storeId,
+        deletedAt: null,
+      },
       select: { id: true },
     });
     if (!category) {
@@ -945,6 +1021,7 @@ export class CatalogAdminService
   }
 
   async validateFixedComponentComposition(
+    storeStableId: string,
     itemStableId: string,
     fixedComponents: Array<{
       componentItemStableId: string;
@@ -954,10 +1031,11 @@ export class CatalogAdminService
   ): Promise<void> {
     const stableId = (itemStableId ?? '').trim();
     if (!stableId) throw new BadRequestException('itemStableId is required');
-    await this.resolveFixedComponents(stableId, fixedComponents);
+    await this.resolveFixedComponents(storeStableId, stableId, fixedComponents);
   }
 
   async updateItem(
+    storeStableId: string,
     itemStableId: string,
     body: {
       categoryStableId?: string;
@@ -991,11 +1069,16 @@ export class CatalogAdminService
       effectiveAvailability: boolean;
     };
   }> {
+    const storeId = requireStoreStableId(storeStableId);
     const stableId = (itemStableId ?? '').trim();
     if (!stableId) throw new BadRequestException('itemStableId is required');
 
     const existing = await this.prisma.menuItem.findFirst({
-      where: { stableId, deletedAt: null },
+      where: {
+        stableId,
+        deletedAt: null,
+        category: { storeStableId: storeId, deletedAt: null },
+      },
       select: {
         id: true,
         optionGroups: {
@@ -1008,7 +1091,11 @@ export class CatalogAdminService
     let categoryId: string | undefined;
     if (body.categoryStableId) {
       const category = await this.prisma.menuCategory.findFirst({
-        where: { stableId: body.categoryStableId.trim(), deletedAt: null },
+        where: {
+          stableId: body.categoryStableId.trim(),
+          storeStableId: storeId,
+          deletedAt: null,
+        },
         select: { id: true },
       });
       if (!category) {
@@ -1051,7 +1138,11 @@ export class CatalogAdminService
     const fixedComponentsForUpdate =
       body.fixedComponents === undefined
         ? undefined
-        : await this.resolveFixedComponents(stableId, body.fixedComponents);
+        : await this.resolveFixedComponents(
+            storeId,
+            stableId,
+            body.fixedComponents,
+          );
 
     const updated = await this.prisma.menuItem.update({
       where: { stableId },
@@ -1141,14 +1232,20 @@ export class CatalogAdminService
   }
 
   async setItemAvailability(
+    storeStableId: string,
     itemStableId: string,
     mode: CatalogAvailabilityMode,
   ) {
+    const storeId = requireStoreStableId(storeStableId);
     const stableId = itemStableId.trim();
     if (!stableId) throw new BadRequestException('itemStableId is required');
 
     const exists = await this.prisma.menuItem.findFirst({
-      where: { stableId, deletedAt: null },
+      where: {
+        stableId,
+        deletedAt: null,
+        category: { storeStableId: storeId, deletedAt: null },
+      },
       select: { id: true },
     });
     if (!exists) throw new NotFoundException(`Item not found: ${stableId}`);
@@ -1184,9 +1281,12 @@ export class CatalogAdminService
     };
   }
 
-  async listOptionGroupTemplates(): Promise<TemplateGroupFullDto[]> {
+  async listOptionGroupTemplates(
+    storeStableId: string,
+  ): Promise<TemplateGroupFullDto[]> {
+    const storeId = requireStoreStableId(storeStableId);
     const groups = await this.prisma.menuOptionGroupTemplate.findMany({
-      where: { deletedAt: null },
+      where: { storeStableId: storeId, deletedAt: null },
       orderBy: { sortOrder: 'asc' },
       include: {
         options: {
@@ -1223,6 +1323,7 @@ export class CatalogAdminService
             where: {
               stableId: { in: targetItemStableIds },
               deletedAt: null,
+              category: { storeStableId: storeId, deletedAt: null },
             },
             select: {
               stableId: true,
@@ -1282,18 +1383,20 @@ export class CatalogAdminService
     });
   }
 
-  async createOptionGroupTemplate(body: {
+  async createOptionGroupTemplate(storeStableId: string, body: {
     nameEn: string;
     nameZh?: string;
     sortOrder?: number;
     defaultMinSelect?: number;
     defaultMaxSelect?: number | null;
   }) {
+    const storeId = requireStoreStableId(storeStableId);
     const nameEn = (body.nameEn ?? '').trim();
     if (!nameEn) throw new BadRequestException('nameEn is required');
 
     const created = await this.prisma.menuOptionGroupTemplate.create({
       data: {
+        storeStableId: storeId,
         nameEn,
         nameZh: body.nameZh?.trim() || null,
         sortOrder: Number.isFinite(body.sortOrder)
@@ -1317,6 +1420,7 @@ export class CatalogAdminService
   }
 
   async updateOptionGroupTemplate(
+    storeStableId: string,
     templateGroupStableId: string,
     body: {
       nameEn?: string;
@@ -1326,9 +1430,10 @@ export class CatalogAdminService
       defaultMaxSelect?: number | null;
     },
   ) {
+    const storeId = requireStoreStableId(storeStableId);
     const stableId = templateGroupStableId.trim();
     const exists = await this.prisma.menuOptionGroupTemplate.findFirst({
-      where: { stableId, deletedAt: null },
+      where: { stableId, storeStableId: storeId, deletedAt: null },
       select: { id: true },
     });
     if (!exists) {
@@ -1374,6 +1479,7 @@ export class CatalogAdminService
   }
 
   async createTemplateOption(
+    storeStableId: string,
     templateGroupStableId: string,
     body: {
       nameEn: string;
@@ -1383,9 +1489,14 @@ export class CatalogAdminService
       targetItemStableId?: string | null;
     },
   ) {
+    const storeId = requireStoreStableId(storeStableId);
     const groupStableId = templateGroupStableId.trim();
     const group = await this.prisma.menuOptionGroupTemplate.findFirst({
-      where: { stableId: groupStableId, deletedAt: null },
+      where: {
+        stableId: groupStableId,
+        storeStableId: storeId,
+        deletedAt: null,
+      },
       select: { id: true, stableId: true },
     });
     if (!group) {
@@ -1398,7 +1509,11 @@ export class CatalogAdminService
     const targetItemStableId = (body.targetItemStableId ?? '').trim();
     if (targetItemStableId) {
       const exists = await this.prisma.menuItem.findFirst({
-        where: { stableId: targetItemStableId, deletedAt: null },
+        where: {
+          stableId: targetItemStableId,
+          deletedAt: null,
+          category: { storeStableId: storeId, deletedAt: null },
+        },
         select: { id: true },
       });
       if (!exists) {
@@ -1429,6 +1544,7 @@ export class CatalogAdminService
   }
 
   async updateTemplateOption(
+    storeStableId: string,
     optionStableId: string,
     body: {
       nameEn?: string;
@@ -1439,9 +1555,14 @@ export class CatalogAdminService
       targetItemStableId?: string | null;
     },
   ) {
+    const storeId = requireStoreStableId(storeStableId);
     const stableId = optionStableId.trim();
     const exists = await this.prisma.menuOptionTemplateChoice.findFirst({
-      where: { stableId, deletedAt: null },
+      where: {
+        stableId,
+        deletedAt: null,
+        templateGroup: { storeStableId: storeId, deletedAt: null },
+      },
       select: { id: true, templateGroupId: true },
     });
     if (!exists) throw new NotFoundException(`Option not found: ${stableId}`);
@@ -1452,7 +1573,11 @@ export class CatalogAdminService
       targetItemStableId = trimmed || null;
       if (targetItemStableId) {
         const targetItem = await this.prisma.menuItem.findFirst({
-          where: { stableId: targetItemStableId, deletedAt: null },
+          where: {
+            stableId: targetItemStableId,
+            deletedAt: null,
+            category: { storeStableId: storeId, deletedAt: null },
+          },
           select: { id: true },
         });
         if (!targetItem) {
@@ -1544,6 +1669,7 @@ export class CatalogAdminService
   }
 
   async setTemplateOptionAvailability(
+    storeStableId: string,
     optionStableId: string,
     mode: CatalogAvailabilityMode,
   ): Promise<{
@@ -1555,9 +1681,14 @@ export class CatalogAdminService
       effectiveAvailability: boolean;
     };
   }> {
+    const storeId = requireStoreStableId(storeStableId);
     const stableId = optionStableId.trim();
     const exists = await this.prisma.menuOptionTemplateChoice.findFirst({
-      where: { stableId, deletedAt: null },
+      where: {
+        stableId,
+        deletedAt: null,
+        templateGroup: { storeStableId: storeId, deletedAt: null },
+      },
       select: { id: true },
     });
     if (!exists) throw new NotFoundException(`Option not found: ${stableId}`);
@@ -1592,10 +1723,15 @@ export class CatalogAdminService
     };
   }
 
-  async deleteTemplateOption(optionStableId: string) {
+  async deleteTemplateOption(storeStableId: string, optionStableId: string) {
+    const storeId = requireStoreStableId(storeStableId);
     const stableId = optionStableId.trim();
     const existing = await this.prisma.menuOptionTemplateChoice.findFirst({
-      where: { stableId, deletedAt: null },
+      where: {
+        stableId,
+        deletedAt: null,
+        templateGroup: { storeStableId: storeId, deletedAt: null },
+      },
       select: { id: true },
     });
     if (!existing) throw new NotFoundException(`Option not found: ${stableId}`);
@@ -1616,6 +1752,7 @@ export class CatalogAdminService
   }
 
   async bindTemplateGroupToItem(
+    storeStableId: string,
     itemStableId: string,
     body: {
       templateGroupStableId: string;
@@ -1626,8 +1763,13 @@ export class CatalogAdminService
       affectedPackagingTypeStableIds?: string[];
     },
   ) {
+    const storeId = requireStoreStableId(storeStableId);
     const item = await this.prisma.menuItem.findFirst({
-      where: { stableId: itemStableId.trim(), deletedAt: null },
+      where: {
+        stableId: itemStableId.trim(),
+        deletedAt: null,
+        category: { storeStableId: storeId, deletedAt: null },
+      },
       select: {
         id: true,
         packagings: {
@@ -1662,7 +1804,11 @@ export class CatalogAdminService
     }
 
     const templateGroup = await this.prisma.menuOptionGroupTemplate.findFirst({
-      where: { stableId: body.templateGroupStableId.trim(), deletedAt: null },
+      where: {
+        stableId: body.templateGroupStableId.trim(),
+        storeStableId: storeId,
+        deletedAt: null,
+      },
       select: { id: true },
     });
     if (!templateGroup) {
@@ -1710,17 +1856,27 @@ export class CatalogAdminService
   }
 
   async unbindTemplateGroupFromItem(
+    storeStableId: string,
     itemStableId: string,
     templateGroupStableId: string,
   ) {
+    const storeId = requireStoreStableId(storeStableId);
     const item = await this.prisma.menuItem.findFirst({
-      where: { stableId: itemStableId.trim(), deletedAt: null },
+      where: {
+        stableId: itemStableId.trim(),
+        deletedAt: null,
+        category: { storeStableId: storeId, deletedAt: null },
+      },
       select: { id: true },
     });
     if (!item) throw new NotFoundException(`Item not found: ${itemStableId}`);
 
     const templateGroup = await this.prisma.menuOptionGroupTemplate.findFirst({
-      where: { stableId: templateGroupStableId.trim(), deletedAt: null },
+      where: {
+        stableId: templateGroupStableId.trim(),
+        storeStableId: storeId,
+        deletedAt: null,
+      },
       select: { id: true },
     });
     if (!templateGroup) {
@@ -1742,6 +1898,7 @@ export class CatalogAdminService
   }
 
   private async resolveFixedComponents(
+    storeStableId: string,
     parentItemStableId: string,
     input: Array<{
       componentItemStableId: string;
@@ -1755,6 +1912,7 @@ export class CatalogAdminService
       sortOrder: number;
     }>
   > {
+    const storeId = requireStoreStableId(storeStableId);
     if (!Array.isArray(input)) {
       throw new BadRequestException('fixedComponents must be an array');
     }
@@ -1794,7 +1952,11 @@ export class CatalogAdminService
     if (stableIds.length === 0) return [];
 
     const targets = await this.prisma.menuItem.findMany({
-      where: { stableId: { in: stableIds }, deletedAt: null },
+      where: {
+        stableId: { in: stableIds },
+        deletedAt: null,
+        category: { storeStableId: storeId, deletedAt: null },
+      },
       select: { stableId: true },
     });
     const found = new Set(targets.map((target) => target.stableId));
@@ -1806,6 +1968,11 @@ export class CatalogAdminService
     }
 
     const existingEdges = await this.prisma.menuItemComponent.findMany({
+      where: {
+        parentItem: {
+          category: { storeStableId: storeId, deletedAt: null },
+        },
+      },
       select: {
         componentItemStableId: true,
         parentItem: { select: { stableId: true } },

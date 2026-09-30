@@ -26,7 +26,7 @@ describe('split Uber menu repositories field mapping', () => {
         modifierTemplates: [],
       }),
     } as never);
-    expect(await repository.load()).toEqual({
+    expect(await repository.load('store-1')).toEqual({
       categories: [{ stableId: 'c', name: 'Food', sortOrder: 1 }],
       items: [
         {

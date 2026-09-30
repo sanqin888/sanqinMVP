@@ -82,6 +82,7 @@ export class OrderItemSnapshotBuilder {
   ) {}
 
   async buildMany(
+    storeStableId: string,
     inputs: OrderItemSnapshotBuildInput[],
   ): Promise<CanonicalOrderItemConfigurationSnapshot[]> {
     const normalizedItems = inputs.map((item) => {
@@ -109,6 +110,7 @@ export class OrderItemSnapshotBuilder {
     );
     const catalogProducts =
       await this.catalogOrderFacts.getOrderItemMaterializationFacts(
+        storeStableId,
         productStableIds,
       );
 
@@ -185,6 +187,7 @@ export class OrderItemSnapshotBuilder {
       }
       const linkedProduct =
         await this.catalogOrderFacts.getActiveOrderItemMaterializationFact(
+          storeStableId,
           stableId,
         );
       linkedProductByStableId.set(stableId, linkedProduct);

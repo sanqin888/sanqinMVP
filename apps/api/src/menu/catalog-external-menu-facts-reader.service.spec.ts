@@ -81,7 +81,7 @@ describe('Catalog external-menu facts reader contract', () => {
     };
     const service = new CatalogAdminService(prisma as never);
 
-    await expect(service.readMenuSource()).resolves.toEqual({
+    await expect(service.readMenuSource('store-1')).resolves.toEqual({
       categories: [
         {
           stableId: 'category-1',
@@ -156,7 +156,7 @@ describe('Catalog external-menu facts reader contract', () => {
       menuCategory: { findMany: jest.fn() },
       menuItem: {
         findMany: jest.fn(),
-        findUnique: jest.fn().mockResolvedValue({
+        findFirst: jest.fn().mockResolvedValue({
           stableId: 'item-1',
           basePriceCents: 1099,
           isAvailable: true,
@@ -164,7 +164,7 @@ describe('Catalog external-menu facts reader contract', () => {
       },
       menuOptionGroupTemplate: {
         findMany: jest.fn(),
-        findUnique: jest.fn().mockResolvedValue({
+        findFirst: jest.fn().mockResolvedValue({
           stableId: 'group-1',
           nameEn: 'Size',
           defaultMinSelect: 0,
@@ -172,7 +172,7 @@ describe('Catalog external-menu facts reader contract', () => {
         }),
       },
       menuOptionTemplateChoice: {
-        findUnique: jest.fn().mockResolvedValue({
+        findFirst: jest.fn().mockResolvedValue({
           stableId: 'option-1',
           priceDeltaCents: 200,
           isAvailable: true,
@@ -194,18 +194,24 @@ describe('Catalog external-menu facts reader contract', () => {
     };
     const service = new CatalogAdminService(prisma as never);
 
-    await expect(service.getMenuItemSource(' item-1 ')).resolves.toMatchObject({
+    await expect(
+      service.getMenuItemSource('store-1', ' item-1 '),
+    ).resolves.toMatchObject({
       stableId: 'item-1',
       basePriceCents: 1099,
     });
-    await expect(service.getOptionSource(' option-1 ')).resolves.toMatchObject({
+    await expect(
+      service.getOptionSource('store-1', ' option-1 '),
+    ).resolves.toMatchObject({
       stableId: 'option-1',
       priceDeltaCents: 200,
     });
     await expect(
-      service.getModifierGroupSource(' group-1 '),
+      service.getModifierGroupSource('store-1', ' group-1 '),
     ).resolves.toMatchObject({ stableId: 'group-1', nameEn: 'Size' });
-    await expect(service.listOrderModifierSnapshotSources()).resolves.toEqual([
+    await expect(
+      service.listOrderModifierSnapshotSources('store-1'),
+    ).resolves.toEqual([
       {
         stableId: 'option-1',
         templateGroupStableId: 'group-1',

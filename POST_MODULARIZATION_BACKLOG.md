@@ -751,19 +751,20 @@ This can proceed in parallel with Lane A or Lane B when product priority warrant
 Priority: **P1 PARALLEL PRODUCT / PERSISTENCE WORK**  
 Complexity: **H**  
 Hard dependency: none  
-State: **SLICE 1 SOURCE IMPLEMENTED / LOCAL REVIEW PENDING / MIGRATION REQUIRED / NOT PUSHED**  
+State: **SLICE 1 MERGED + CI GREEN + MIGRATION MERGED (#2607 / `78f4e6d8` / CI #6613) / SLICE 2A SOURCE IMPLEMENTED + LOCAL REVIEW PENDING / NO NEW MIGRATION / SLICE 2B NOT NULL CONTRACTION REQUIRES EXPLICIT AUTHORIZATION**  
 Detailed plan: `docs/architecture/postmod-catalog-store-menu.md`
 
-The current Catalog is still one brand-level shared menu even though the Admin shell already preserves a Store context and the Category/Item routes are reserved. The active `/admin/menu` workspace still combines category and item maintenance, while Public Menu, POS/Orders and Uber Catalog source reads remain globally scoped.
+Slice 1 has established persisted Store ownership roots and merged the deterministic backfill migration. Slice 2A source now makes the active combined Admin menu/Options workspace, Public Menu, POS/Orders pricing/materialization/labels, Daily Special Catalog subjects and Uber Catalog source/reference reads explicitly Store-scoped. The Category/Item routes remain reserved placeholders until Slice 3, and the root ownership fields remain nullable until the separately authorized Slice 2B constraint contraction.
 
 Approved sequence:
 
 1. **Slice 1 — Store ownership foundation:** add nullable `storeStableId` to MenuCategory and MenuOptionGroupTemplate, keep MenuItem/OptionChoice ownership inherited, keep MenuPackagingType brand-level, register `catalog.store-menu-ownership.v1`, and prepare a deterministic full-row backfill to the current sole Store `4750_Yonge_Street`.
-2. **Slice 2 — store-aware contracts/consumers:** require explicit Store context across Catalog Admin/Public Menu, authenticated POS/Orders Catalog reads, Daily Special Catalog subjects and Uber Catalog source reads; reject cross-Store composition; verify current-store parity; then contract nullable/global ownership.
-3. **Slice 3 — Admin Category/Item cutover:** activate the reserved Store-scoped Category and Item workspaces and keep the Options workspace separate.
-4. **Slice 4 — legacy combined-menu contraction:** retire the old combined `/admin/menu` workspace and remove `/admin/menu/full` only after all Category/Item/Options consumers are gone.
+2. **Slice 2A — store-aware contracts/consumers:** require explicit Store context across Catalog Admin/Public Menu, authenticated POS/Orders Catalog reads, Daily Special Catalog subjects and Uber Catalog source reads; reject cross-Store composition; preserve trusted legacy fallback only for historical Order rows without Store ownership; verify current-store parity.
+3. **Slice 2B — ownership constraint contraction:** after 2A parity/CI and explicit authorization, make the two root ownership columns NOT NULL through a separately reviewed user-generated migration and only then close `catalog.store-menu-ownership.v1`.
+4. **Slice 3 — Admin Category/Item cutover:** activate the reserved Store-scoped Category and Item workspaces and keep the Options workspace separate.
+5. **Slice 4 — legacy combined-menu contraction:** retire the old combined `/admin/menu` workspace and remove `/admin/menu/full` only after all Category/Item/Options consumers are gone.
 
-Slice 1 is an expand-contract migration and does not itself change menu runtime behavior. Promotion to production is blocked until the user-generated companion migration is reviewed and merged. Do not create or enable a second production Store menu while the compatibility seam remains active.
+Slice 1's expand foundation and companion migration are merged. Slice 2A deliberately introduces no new schema/migration and keeps the nullable compatibility seam active. Do not create or enable a second production Store menu until current-store parity is verified and the separately authorized Slice 2B NOT NULL contraction is reviewed, merged and verified.
 
 ## 7. Later internal hardening
 

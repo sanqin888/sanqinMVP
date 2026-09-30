@@ -210,7 +210,7 @@ export class ImportUberOrderUseCase {
   ): Promise<UberOrderModifierSnapshotMapping[]> {
     if (!order.items.some((item) => item.modifiers.length > 0)) return [];
     const sources = this.repository.findModifierSnapshotSources
-      ? await this.repository.findModifierSnapshotSources()
+      ? await this.repository.findModifierSnapshotSources(storeStableId)
       : [];
     return sources.map((source) => ({
       ...source,

@@ -309,10 +309,10 @@ export class UberOrderImportPrismaAdapter
     return (status && map[status]) || OrderStatus.pending;
   }
 
-  async findModifierSnapshotSources(): Promise<
-    UberOrderModifierSnapshotSource[]
-  > {
-    return this.catalogFacts.listOrderModifierSnapshotSources();
+  async findModifierSnapshotSources(
+    storeStableId: string,
+  ): Promise<UberOrderModifierSnapshotSource[]> {
+    return this.catalogFacts.listOrderModifierSnapshotSources(storeStableId);
   }
 
   private modifierSnapshots(

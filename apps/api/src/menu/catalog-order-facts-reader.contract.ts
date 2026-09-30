@@ -66,17 +66,23 @@ export type CatalogOrderLabelConfigFact = {
 };
 
 export interface CatalogOrderFactsReaderPort {
-  findHiddenMenuItemStableIds(menuItemStableIds: string[]): Promise<string[]>;
+  findHiddenMenuItemStableIds(
+    storeStableId: string,
+    menuItemStableIds: string[],
+  ): Promise<string[]>;
 
   getOrderItemMaterializationFacts(
+    storeStableId: string,
     menuItemStableIds: string[],
   ): Promise<CatalogOrderItemMaterializationFact[]>;
 
   getActiveOrderItemMaterializationFact(
+    storeStableId: string,
     menuItemStableId: string,
   ): Promise<CatalogOrderItemMaterializationFact | null>;
 
   getOrderLabelConfigs(
+    storeStableId: string,
     menuItemStableIds: string[],
   ): Promise<CatalogOrderLabelConfigFact[]>;
 }

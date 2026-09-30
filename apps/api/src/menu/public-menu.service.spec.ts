@@ -14,13 +14,16 @@ describe('PublicMenuService daily-special boundary', () => {
       dailySpecialOffers as never,
     );
 
-    await expect(service.getPublicMenu()).resolves.toEqual({
+    await expect(service.getPublicMenu('store-1')).resolves.toEqual({
       categories: [],
       dailySpecials: [],
     });
 
     expect(categoryFindMany).toHaveBeenCalledTimes(1);
-    expect(dailySpecialOffers.getActiveDailySpecials).toHaveBeenCalledWith([]);
+    expect(dailySpecialOffers.getActiveDailySpecials).toHaveBeenCalledWith(
+      'store-1',
+      [],
+    );
     expect('menuDailySpecial' in prisma).toBe(false);
   });
 });

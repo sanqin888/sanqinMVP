@@ -1,8 +1,9 @@
 # Post-Modularization Catalog Store Menu
 
 Date: 2026-09-29  
-Baseline: `origin/dev@bfbf8e2c` at Slice 1 branch creation  
-Branch: `catalog/store-menu-ownership-foundation`  
+Slice 1 base: `origin/dev@bfbf8e2c`  
+Slice 2A base: `origin/dev@78f4e6d8` after Slice 1 merge  
+Current branch: `catalog/store-menu-store-aware-contracts`  
 Program status: repository-wide modularization remains **CLOSED**; this is post-modularization Catalog product/persistence work.
 
 ## 1. Goal
@@ -82,7 +83,7 @@ Slice 1 intentionally adds nullable ownership fields. Existing global readers/wr
 
 ### Slice 1 — Catalog Store Ownership Foundation
 
-Status: **SOURCE IMPLEMENTED / LOCAL REVIEW PENDING / MIGRATION REQUIRED / NOT PUSHED**.
+Status: **MERGED / CI GREEN / COMPANION MIGRATION MERGED — PR #2607 / FINAL HEAD `c69ce30b` / MERGE `78f4e6d8` / CI #6613**.
 
 Scope:
 
@@ -127,22 +128,36 @@ The generated SQL must be reviewed and augmented by the operator as needed so it
 5. backfill **all** MenuCategory rows and **all** MenuOptionGroupTemplate rows, including soft-deleted rows, to `4750_Yonge_Street`;
 6. verify pre/post row counts and verify zero unexpected ownership values.
 
-The Slice 1 schema intentionally remains nullable after this backfill. Nullability is contracted only after Slice 2 makes all writes/read contracts explicit and store-aware.
+The Slice 1 schema intentionally remains nullable after this backfill. The user-generated migration `20260929235417_post_mod_catalog_store_menu_ownership_foundation` was reviewed with the backfill before FK enforcement and merged with Slice 1. Empty migration replay remains safe, while existing production rows deterministically map to `4750_Yonge_Street`.
 
-Promotion to `main` / production remains blocked until the companion migration is generated locally, reviewed, committed, and merged back into `dev`.
+### Slice 2A — Store-aware Catalog contracts and consumers
 
-### Slice 2 — Store-aware Catalog contracts and consumers
+Status: **SOURCE IMPLEMENTED / LOCAL REVIEW PENDING / NO NEW MIGRATION / NOT PUSHED**.
 
-Planned scope:
+Implemented scope:
 
-- make Catalog Admin/category/item/template reads and writes require explicit `storeStableId`;
-- scope Public Menu to a Store while retaining the current configured Store as the single-store Web entry until a separate customer Store-selection product requirement exists;
-- thread authenticated Store identity through POS/Orders Catalog pricing/materialization/label reads;
-- scope Offers/Daily Special Catalog subjects and Store-time policy correctly;
-- change the Uber Catalog reader to `readMenuSource(storeStableId)` and scope item/option lookups consistently;
-- reject cross-Store category moves, fixed components, option-template bindings, target-item references and child-option links;
-- verify `4750_Yonge_Street` store-scoped projection parity against the pre-cutover global menu;
-- contract nullable ownership after all writers/readers are explicit.
+- Catalog Admin/category/item/template/option reads and writes require explicit `storeStableId`; new Category and Option Group Template rows persist that owner;
+- Category moves, fixed components, target-item references and item↔template bindings fail closed when the referenced Catalog root is outside the selected Store; child-option links remain even stricter because the existing rule only permits links inside the same template group, whose root is already Store-validated;
+- `GET /menu/public` preserves its public route but resolves the server-configured Store and only projects that Store's Catalog/Offers facts;
+- POS pricing now preserves the authenticated Store all the way through Orders pricing/materialization instead of dropping it; Orders item snapshots, hidden-item checks, Daily Special pricing, delivery pricing and label-plan Catalog reads are Store-scoped;
+- legacy amendment and financial-replay Catalog lookups derive Store from persisted Order/financial facts, with the configured Store retained only as compatibility fallback for historical rows whose old `Order.storeId` is null;
+- Offers remains the Daily Special owner; Daily Special list/active/write paths receive an explicit Store and constrain definitions to Store-scoped Catalog item subjects rather than reading Catalog persistence;
+- Uber keeps its existing adapter/application boundaries, but Catalog source/menu-item/option/template/modifier-snapshot reads now require the target SanQ Store; menu reference validation and availability sync carry the same Store identity;
+- the current combined Admin Menu and separate Options screens forward the existing shell `?store=` context to the Store-scoped API; Category/Item workspace split remains Slice 3;
+- Packaging Type remains a brand-level reusable dictionary;
+- no Web Clover execution, Uber provider protocol/OAuth/webhook contract, stable-ID identity, dependency or Prisma schema change is included.
+
+### Slice 2B — root ownership NOT NULL contraction
+
+Status: **NOT STARTED / EXPLICIT AUTHORIZATION REQUIRED / MIGRATION REQUIRED**.
+
+The remaining `MenuCategory.storeStableId String?` and `MenuOptionGroupTemplate.storeStableId String?` compatibility fields are a deliberate staged seam. Tightening them to non-null is a constraint contraction under `AGENTS.md`; it must not be bundled into 2A. Before 2B:
+
+1. confirm all existing root ownership values are non-null and valid;
+2. verify the `4750_Yonge_Street` Store-scoped projection against the pre-cutover menu/operational paths;
+3. obtain explicit authorization for the NOT NULL schema contraction;
+4. generate the companion migration locally with `--create-only`, review the exact ALTER/constraint SQL, then merge it through the normal dev/CI gate;
+5. only after the contraction is verified may `catalog.store-menu-ownership.v1` be removed.
 
 ### Slice 3 — Admin Category / Item workspace cutover
 
@@ -163,9 +178,9 @@ Planned scope:
 
 ## 6. Architecture effect
 
-Slice 1 changes persisted ownership semantics but does not move business ownership between bounded contexts. Catalog remains the owner and only references the canonical Store stable identity in Prisma.
+Neither Slice 1 nor Slice 2A moves business ownership between bounded contexts. Catalog remains the menu owner, Brand/Store remains the canonical Store-identity/config owner, Orders consumes Catalog facts through Catalog public ports, Offers remains policy/persistence owner for Daily Special, and Uber remains an external-channel adapter.
 
-There is no new TypeScript direct-import edge, public capability direction, architecture allowance, or public SCC in Slice 1. `tools/architecture/context-baseline.json` therefore does not change.
+Slice 2A uses already-established public capability directions. It does not add a direct implementation import allowance, scanner ceiling change, public SCC or context-baseline change; `tools/architecture/context-baseline.json` therefore remains unchanged.
 
 ## 7. Verification state
 
@@ -179,4 +194,4 @@ After remote authorization, the reviewed branch must pass the normal GitHub Acti
 - Web lint/build/strict/test;
 - Browser E2E and existing independent workstation/printer jobs where triggered.
 
-Slice 1 alone does not claim production store-aware menu behavior. That behavior belongs to the later cutover/verification slices.
+Slice 2A source does not yet claim production Store-isolation verification. The required current-Store parity/active verification remains a gate before the Slice 2B NOT NULL contraction and compatibility removal.

@@ -38,9 +38,11 @@ export class PublicMenuService {
     private readonly dailySpecialOffers: DailySpecialOffersPort,
   ) {}
 
-  async getPublicMenu(): Promise<PublicMenuResponse> {
+  async getPublicMenu(storeStableId: string): Promise<PublicMenuResponse> {
+    const storeId = storeStableId.trim();
     const categories = await this.prisma.menuCategory.findMany({
       where: {
+        storeStableId: storeId,
         deletedAt: null,
         isActive: true,
       },
@@ -60,6 +62,7 @@ export class PublicMenuService {
               where: {
                 isEnabled: true,
                 templateGroup: {
+                  storeStableId: storeId,
                   deletedAt: null,
                 },
               },
@@ -99,7 +102,10 @@ export class PublicMenuService {
       })),
     );
     const { specials: activeDailySpecials } =
-      await this.dailySpecialOffers.getActiveDailySpecials(catalogItems);
+      await this.dailySpecialOffers.getActiveDailySpecials(
+        storeId,
+        catalogItems,
+      );
     const specialsByItemStableId = new Map<
       string,
       (typeof activeDailySpecials)[number]

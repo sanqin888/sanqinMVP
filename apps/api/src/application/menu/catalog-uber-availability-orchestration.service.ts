@@ -31,16 +31,26 @@ export class CatalogUberAvailabilityOrchestrationService {
   ) {}
 
   async updateItem(
+    storeStableId: string,
     itemStableId: string,
-    body: Parameters<CatalogAdminService['updateItem']>[1],
+    body: Parameters<CatalogAdminService['updateItem']>[2],
   ) {
-    await this.assertUberFixedComponentCompatibility(itemStableId, body);
-    const result = await this.catalog.updateItem(itemStableId, body);
+    await this.assertUberFixedComponentCompatibility(
+      storeStableId,
+      itemStableId,
+      body,
+    );
+    const result = await this.catalog.updateItem(
+      storeStableId,
+      itemStableId,
+      body,
+    );
     if (
       body.isAvailable !== undefined ||
       body.tempUnavailableUntil !== undefined
     ) {
       await this.syncUberMenuItemAvailabilitySafely(
+        storeStableId,
         result.availability.stableId,
         result.availability.effectiveAvailability,
         result.availability.tempUnavailableUntil,
@@ -50,11 +60,17 @@ export class CatalogUberAvailabilityOrchestrationService {
   }
 
   async setItemAvailability(
+    storeStableId: string,
     itemStableId: string,
     mode: CatalogAvailabilityMode,
   ) {
-    const updated = await this.catalog.setItemAvailability(itemStableId, mode);
+    const updated = await this.catalog.setItemAvailability(
+      storeStableId,
+      itemStableId,
+      mode,
+    );
     const uberSync = await this.syncUberMenuItemAvailabilitySafely(
+      storeStableId,
       updated.stableId,
       updated.effectiveAvailability,
       updated.tempUnavailableUntil,
@@ -71,14 +87,17 @@ export class CatalogUberAvailabilityOrchestrationService {
   }
 
   async setTemplateOptionAvailability(
+    storeStableId: string,
     optionStableId: string,
     mode: CatalogAvailabilityMode,
   ) {
     const result = await this.catalog.setTemplateOptionAvailability(
+      storeStableId,
       optionStableId,
       mode,
     );
     await this.syncUberOptionAvailabilitySafely(
+      storeStableId,
       result.availability.stableId,
       result.availability.effectiveAvailability,
       result.availability.tempUnavailableUntil,
@@ -87,8 +106,9 @@ export class CatalogUberAvailabilityOrchestrationService {
   }
 
   private async assertUberFixedComponentCompatibility(
+    storeStableId: string,
     itemStableId: string,
-    body: Parameters<CatalogAdminService['updateItem']>[1],
+    body: Parameters<CatalogAdminService['updateItem']>[2],
   ) {
     if (
       body.publishToUberEats === undefined &&
@@ -99,6 +119,7 @@ export class CatalogUberAvailabilityOrchestrationService {
 
     const current =
       await this.catalogAvailability.getMenuItemAvailabilitySnapshot(
+        storeStableId,
         itemStableId,
       );
     if (!current) return;
@@ -109,6 +130,7 @@ export class CatalogUberAvailabilityOrchestrationService {
 
     if (body.fixedComponents !== undefined) {
       await this.catalog.validateFixedComponentComposition(
+        storeStableId,
         itemStableId,
         body.fixedComponents,
       );
@@ -139,6 +161,7 @@ export class CatalogUberAvailabilityOrchestrationService {
   }
 
   private async syncUberMenuItemAvailabilitySafely(
+    storeStableId: string,
     menuItemStableId: string,
     isAvailable: boolean,
     suspendUntil: string | null,
@@ -146,9 +169,11 @@ export class CatalogUberAvailabilityOrchestrationService {
     try {
       const snapshot =
         await this.catalogAvailability.getMenuItemAvailabilitySnapshot(
+          storeStableId,
           menuItemStableId,
         );
       return await this.externalAvailability.syncMenuItemAvailability({
+        storeStableId,
         menuItemStableId,
         isAvailable,
         publishable: Boolean(
@@ -177,12 +202,14 @@ export class CatalogUberAvailabilityOrchestrationService {
   }
 
   private async syncUberOptionAvailabilitySafely(
+    storeStableId: string,
     optionChoiceStableId: string,
     isAvailable: boolean,
     suspendUntil: string | null,
   ) {
     try {
       await this.externalAvailability.syncOptionAvailability({
+        storeStableId,
         optionChoiceStableId,
         isAvailable,
         suspendUntil,

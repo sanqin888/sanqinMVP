@@ -87,17 +87,20 @@ export type CatalogExternalOrderModifierSnapshotSourceFact = {
 };
 
 export interface CatalogExternalMenuFactsReaderPort {
-  readMenuSource(): Promise<CatalogExternalMenuSourceFacts>;
+  readMenuSource(storeStableId: string): Promise<CatalogExternalMenuSourceFacts>;
   getMenuItemSource(
+    storeStableId: string,
     stableId: string,
   ): Promise<CatalogExternalMenuItemSourceFact | null>;
   getOptionSource(
+    storeStableId: string,
     stableId: string,
   ): Promise<CatalogExternalMenuOptionSourceFact | null>;
   getModifierGroupSource(
+    storeStableId: string,
     stableId: string,
   ): Promise<CatalogExternalMenuModifierGroupSourceFact | null>;
-  listOrderModifierSnapshotSources(): Promise<
-    CatalogExternalOrderModifierSnapshotSourceFact[]
-  >;
+  listOrderModifierSnapshotSources(
+    storeStableId: string,
+  ): Promise<CatalogExternalOrderModifierSnapshotSourceFact[]>;
 }

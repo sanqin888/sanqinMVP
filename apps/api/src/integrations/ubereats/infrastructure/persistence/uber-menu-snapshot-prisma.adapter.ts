@@ -54,7 +54,7 @@ export class UberMenuSnapshotPrismaAdapter implements UberMenuSnapshotRepository
         select: { uberStoreId: true },
       }),
       this.businessSchedule.readBusinessSchedule(storeStableId),
-      this.catalogFacts.readMenuSource(),
+      this.catalogFacts.readMenuSource(storeStableId),
       this.prisma.uberItemChannelConfig.findMany({
         where: { storeId: storeStableId },
         select: {

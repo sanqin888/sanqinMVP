@@ -9,7 +9,7 @@ export class LoadUberMenuWorkflowUseCase {
     return this.unitOfWork.execute(async (repositories) => {
       const [snapshot, itemConfigs, modifiers, schedule, storeMapping] =
         await Promise.all([
-          repositories.snapshots.load(),
+          repositories.snapshots.load(storeId),
           repositories.itemChannels.list(storeId),
           repositories.modifiers.list(storeId),
           repositories.schedules.get(storeId),

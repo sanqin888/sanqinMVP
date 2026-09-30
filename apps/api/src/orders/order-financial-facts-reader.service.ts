@@ -29,6 +29,7 @@ import {
   resolveOrderFinancialEffectiveBaseUnitCents,
 } from './order-financial-sale-fact';
 import { PrismaService } from './orders-prisma';
+import { resolveConfiguredStoreStableId } from '../store/public-api';
 
 const FINANCIAL_ORDER_STATUSES: OrderStatus[] = [
   OrderStatus.paid,
@@ -267,22 +268,32 @@ export class OrderFinancialFactsReaderService implements OrderFinancialFactsRead
       legacyRecords.map((record) => record.row.id),
     );
 
-    const catalogStableIds = [
-      ...new Set(
-        legacyRecords.flatMap((record) =>
-          mutatedOrderDbIds.has(record.row.id) ||
-          record.fact.pricingEvidence === 'COMPLETE'
-            ? []
-            : record.row.items
-                .filter(
-                  (item) =>
-                    item.isDailySpecialApplied && item.dailySpecialStableId,
-                )
-                .map((item) => item.productStableId),
+    const catalogStableIdsByStore = new Map<string, Set<string>>();
+    for (const record of legacyRecords) {
+      if (
+        mutatedOrderDbIds.has(record.row.id) ||
+        record.fact.pricingEvidence === 'COMPLETE'
+      ) {
+        continue;
+      }
+      const recordStoreStableId =
+        record.fact.storeStableId?.trim() || resolveConfiguredStoreStableId();
+      const stableIds =
+        catalogStableIdsByStore.get(recordStoreStableId) ?? new Set<string>();
+      for (const item of record.row.items) {
+        if (item.isDailySpecialApplied && item.dailySpecialStableId) {
+          stableIds.add(item.productStableId);
+        }
+      }
+      catalogStableIdsByStore.set(recordStoreStableId, stableIds);
+    }
+    const catalogFacts = (
+      await Promise.all(
+        [...catalogStableIdsByStore.entries()].map(([storeStableId, stableIds]) =>
+          this.readActiveCatalogFacts(storeStableId, [...stableIds]),
         ),
-      ),
-    ];
-    const catalogFacts = await this.readActiveCatalogFacts(catalogStableIds);
+      )
+    ).flat();
     const catalogPriceUnstableProductStableIds =
       await this.findCatalogPriceUnstableProductStableIds(catalogFacts);
 
@@ -431,12 +442,16 @@ export class OrderFinancialFactsReaderService implements OrderFinancialFactsRead
   }
 
   private async readActiveCatalogFacts(
+    storeStableId: string,
     stableIds: string[],
   ): Promise<CatalogOrderItemMaterializationFact[]> {
     if (stableIds.length === 0) return [];
     const facts = await Promise.all(
       stableIds.map((stableId) =>
-        this.catalogOrderFacts.getActiveOrderItemMaterializationFact(stableId),
+        this.catalogOrderFacts.getActiveOrderItemMaterializationFact(
+          storeStableId,
+          stableId,
+        ),
       ),
     );
     return facts.filter(

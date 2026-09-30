@@ -39,7 +39,10 @@ export class PosOrderOperationsService implements PosOrderOperationsPort {
     if (!storeStableId.trim()) {
       throw new BadRequestException('storeStableId is required');
     }
-    return this.orders.quoteOrderPricing(dto, { allowCustomUnitPrice: true });
+    return this.orders.quoteOrderPricing(dto, {
+      allowCustomUnitPrice: true,
+      storeStableId,
+    });
   }
 
   recent(storeStableId: string, limit?: number) {
@@ -110,7 +113,7 @@ export class PosOrderOperationsService implements PosOrderOperationsPort {
 
   async getLabelPlanForStore(orderStableId: string, storeStableId: string) {
     await this.orders.getByStableIdForStore(orderStableId, storeStableId);
-    return this.labelPlan.getByStableId(orderStableId);
+    return this.labelPlan.getByStableId(orderStableId, storeStableId);
   }
 
   createAmendment(input: PosOrderAmendmentInput) {

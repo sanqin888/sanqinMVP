@@ -331,8 +331,14 @@ export class OrdersService
 
   async quoteOrderPricing(
     dto: CreateOrderInput,
-    options?: { allowCustomUnitPrice?: boolean },
+    options?: { allowCustomUnitPrice?: boolean; storeStableId?: string },
   ): Promise<OrderPricingQuote> {
+    const storeStableId =
+      options?.storeStableId?.trim() ||
+      (dto.channel === Channel.web ? resolveConfiguredStoreStableId() : '');
+    if (!storeStableId) {
+      throw new BadRequestException('storeStableId is required');
+    }
     const rawUserStableId =
       typeof dto.userStableId === 'string' ? dto.userStableId.trim() : '';
     const normalizedUserStableId = rawUserStableId
@@ -361,7 +367,7 @@ export class OrdersService
 
     const items = dto.items ?? [];
     const { calculatedItems, calculatedSubtotal, promotionLines } =
-      await this.calculateLineItems(items, {
+      await this.calculateLineItems(storeStableId, items, {
         allowCustomUnitPrice: options?.allowCustomUnitPrice === true,
       });
 
@@ -370,7 +376,7 @@ export class OrdersService
     );
 
     const subtotalCents = calculatedSubtotal;
-    const pricingConfig = await this.getStorePricingConfig();
+    const pricingConfig = await this.getStorePricingConfig(storeStableId);
     const deliveryRulesFallback = this.buildDeliveryFallback(pricingConfig);
     const hasLoyaltyRedemptionInput =
       isMember &&
@@ -451,6 +457,7 @@ export class OrdersService
 
     const hiddenItemStableIds =
       await this.catalogOrderFacts.findHiddenMenuItemStableIds(
+        storeStableId,
         productStableIds,
       );
     if (dto.channel === Channel.web && hiddenItemStableIds.length > 0) {
@@ -767,6 +774,7 @@ export class OrdersService
     id: string;
     orderStableId: string;
     clientRequestId: string | null;
+    storeId: string | null;
   }> {
     const value = (orderStableId ?? '').trim();
     if (!value) throw new NotFoundException('order not found');
@@ -774,7 +782,12 @@ export class OrdersService
 
     const found = await client.order.findUnique({
       where: { orderStableId: value },
-      select: { id: true, orderStableId: true, clientRequestId: true },
+      select: {
+        id: true,
+        orderStableId: true,
+        clientRequestId: true,
+        storeId: true,
+      },
     });
     if (!found) throw new NotFoundException('order not found');
     return found;
@@ -990,9 +1003,11 @@ export class OrdersService
     } as Prisma.InputJsonValue;
   }
 
-  private async getStorePricingConfig(): Promise<DeliveryPricingConfig> {
+  private async getStorePricingConfig(
+    storeStableId: string,
+  ): Promise<DeliveryPricingConfig> {
     const existing =
-      await this.brandStoreConfigReader.getConfiguredStoreSnapshot();
+      await this.brandStoreConfigReader.getStoreSnapshot(storeStableId);
 
     const deliveryBaseFeeCents = Number.isFinite(existing.deliveryBaseFeeCents)
       ? Math.max(0, Math.round(existing.deliveryBaseFeeCents))
@@ -1249,6 +1264,7 @@ export class OrdersService
    * 🛡️ 安全核心：服务端重算商品价格
    */
   private async calculateLineItems(
+    storeStableId: string,
     itemsDto: OrderItemInput[],
     options?: { allowCustomUnitPrice?: boolean },
   ): Promise<{
@@ -1258,6 +1274,7 @@ export class OrdersService
   }> {
     const allowCustomUnitPrice = options?.allowCustomUnitPrice === true;
     const itemSnapshots = await this.orderItemSnapshotBuilder.buildMany(
+      storeStableId,
       itemsDto.map((item) => ({
         productStableId:
           normalizeStableId(item.productId ?? item.productStableId) ?? '',
@@ -1280,6 +1297,7 @@ export class OrdersService
     );
     const { specials: activeDailySpecials } =
       await this.dailySpecialOffers.getActiveDailySpecials(
+        storeStableId,
         dailySpecialSubjects,
       );
     const activeSpecialsByItemStableId = new Map<
@@ -1376,8 +1394,10 @@ export class OrdersService
 
     const pricing = await this.quoteOrderPricing(dto, {
       allowCustomUnitPrice: true,
+      storeStableId,
     });
     const { calculatedItems, promotionLines } = await this.calculateLineItems(
+      storeStableId,
       dto.items ?? [],
       { allowCustomUnitPrice: true },
     );
@@ -1966,6 +1986,8 @@ export class OrdersService
       dto.channel === Channel.web
         ? (verifiedCheckoutIntent?.storeId ?? resolveConfiguredStoreStableId())
         : authenticatedStoreStableId?.trim() || undefined;
+    if (!storeId) throw new BadRequestException('storeStableId is required');
+    const storeStableId = storeId;
 
     if (
       dto.deliveryType === DeliveryType.PRIORITY &&
@@ -2040,7 +2062,7 @@ export class OrdersService
     // —— Step 1: 服务端重算商品小计 (Security)
     const items = dto.items ?? [];
     const { calculatedItems, calculatedSubtotal, promotionLines } =
-      await this.calculateLineItems(items, {
+      await this.calculateLineItems(storeStableId, items, {
         allowCustomUnitPrice:
           dto.channel === Channel.in_store || dto.channel === Channel.ubereats,
       });
@@ -2049,6 +2071,7 @@ export class OrdersService
     );
     const hiddenItemStableIds =
       await this.catalogOrderFacts.findHiddenMenuItemStableIds(
+        storeStableId,
         productStableIds,
       );
     if (dto.channel === Channel.web && hiddenItemStableIds.length > 0) {
@@ -2058,7 +2081,7 @@ export class OrdersService
     }
 
     const subtotalCents = calculatedSubtotal;
-    const pricingConfig = await this.getStorePricingConfig();
+    const pricingConfig = await this.getStorePricingConfig(storeStableId);
     const deliveryRulesFallback = this.buildDeliveryFallback(pricingConfig);
     const hasLoyaltyRedemptionInput =
       Boolean(userId) &&
@@ -3008,12 +3031,18 @@ export class OrdersService
       }
     }
 
+    const amendmentOrder =
+      await this.resolveInternalOrderIdByStableIdOrThrow(orderStableId);
+    const amendmentStoreStableId =
+      amendmentOrder.storeId?.trim() || resolveConfiguredStoreStableId();
+
     const addItems = items.filter(
       (item) => item.action === OrderAmendmentItemAction.ADD,
     );
     const canonicalAddItemSnapshots =
       addItems.length > 0
         ? await this.orderItemSnapshotBuilder.buildMany(
+            amendmentStoreStableId,
             addItems.map((item) => ({
               productStableId: normalizeStableId(item.productStableId) ?? '',
               qty: Math.round(item.qty),
@@ -3066,11 +3095,7 @@ export class OrdersService
 
     const updatedOrder = await this.prisma.$transaction(async (tx) => {
       // ✅ 外部 orderId 允许 stableId/uuid；这里统一 resolve 成内部 UUID
-      const resolved = await this.resolveInternalOrderIdByStableIdOrThrow(
-        orderStableId,
-        tx,
-      );
-      const internalOrderId = resolved.id;
+      const internalOrderId = amendmentOrder.id;
 
       const order = await tx.order.findUnique({
         where: { id: internalOrderId },

@@ -210,6 +210,7 @@ describe('OrdersService', () => {
       getConfiguredStoreSnapshot: jest
         .fn()
         .mockResolvedValue(defaultStoreConfigSnapshot),
+      getStoreSnapshot: jest.fn().mockResolvedValue(defaultStoreConfigSnapshot),
     };
 
     loyalty = {
@@ -346,7 +347,7 @@ describe('OrdersService', () => {
   });
 
   it('reads delivery and tax pricing through the Brand/Store config boundary', async () => {
-    brandStoreConfigReader.getConfiguredStoreSnapshot.mockResolvedValue({
+    brandStoreConfigReader.getStoreSnapshot.mockResolvedValue({
       ...defaultStoreConfigSnapshot,
       deliveryBaseFeeCents: 725,
       priorityPerKmCents: 135,
@@ -358,7 +359,7 @@ describe('OrdersService', () => {
       enableUberDirect: false,
     });
     const internalService = service as unknown as {
-      getStorePricingConfig: () => Promise<{
+      getStorePricingConfig: (storeStableId: string) => Promise<{
         deliveryBaseFeeCents: number;
         priorityPerKmCents: number;
         salesTaxRate: number;
@@ -370,7 +371,9 @@ describe('OrdersService', () => {
       }>;
     };
 
-    await expect(internalService.getStorePricingConfig()).resolves.toEqual({
+    await expect(
+      internalService.getStorePricingConfig('4750_Yonge_Street'),
+    ).resolves.toEqual({
       deliveryBaseFeeCents: 725,
       priorityPerKmCents: 135,
       salesTaxRate: 0.15,
@@ -380,25 +383,27 @@ describe('OrdersService', () => {
       storeLongitude: -79.4,
       enableUberDirect: false,
     });
-    expect(
-      brandStoreConfigReader.getConfiguredStoreSnapshot,
-    ).toHaveBeenCalledTimes(1);
+    expect(brandStoreConfigReader.getStoreSnapshot).toHaveBeenCalledWith(
+      '4750_Yonge_Street',
+    );
   });
 
   it('reads daily-special pricing through the Offers capability', async () => {
     const internalService = service as unknown as {
       calculateLineItems: (
+        storeStableId: string,
         items: Array<{ productId: string; qty: number }>,
       ) => Promise<unknown>;
     };
 
-    await internalService.calculateLineItems([
+    await internalService.calculateLineItems('4750_Yonge_Street', [
       { productId: demoProductId, qty: 1 },
     ]);
 
-    expect(dailySpecialOffers.getActiveDailySpecials).toHaveBeenCalledWith([
-      { itemStableId: demoProductId, basePriceCents: 1000 },
-    ]);
+    expect(dailySpecialOffers.getActiveDailySpecials).toHaveBeenCalledWith(
+      '4750_Yonge_Street',
+      [{ itemStableId: demoProductId, basePriceCents: 1000 }],
+    );
     expect('menuDailySpecial' in prisma).toBe(false);
   });
 

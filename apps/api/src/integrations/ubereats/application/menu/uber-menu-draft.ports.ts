@@ -68,10 +68,10 @@ export type UberBusinessScheduleRecord = {
 };
 
 export interface MenuItemExistenceQueryPort {
-  menuItemExists(stableId: string): Promise<boolean>;
+  menuItemExists(storeStableId: string, stableId: string): Promise<boolean>;
 }
 export interface OptionChoiceExistenceQueryPort {
-  optionChoiceExists(stableId: string): Promise<boolean>;
+  optionChoiceExists(storeStableId: string, stableId: string): Promise<boolean>;
 }
 export interface ProvisionedUberStoreQueryPort {
   /**

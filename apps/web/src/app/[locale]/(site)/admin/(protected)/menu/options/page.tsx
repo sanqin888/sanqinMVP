@@ -2,12 +2,14 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import type { Locale } from '@/lib/i18n/locales';
 import { OptionTemplatesPanel } from '../OptionTemplatesPanel';
 
 export default function AdminOptionLibraryPage() {
   const { locale } = useParams<{ locale: Locale }>();
+  const searchParams = useSearchParams();
+  const storeStableId = searchParams.get('store')?.trim() ?? '';
   const safeLocale: Locale = locale === 'zh' ? 'zh' : 'en';
   const isZh = safeLocale === 'zh';
 
@@ -19,7 +21,7 @@ export default function AdminOptionLibraryPage() {
             Admin
           </p>
           <h1 className="mt-2 text-3xl font-semibold text-slate-900">
-            {isZh ? '选项库（全局）' : 'Option Library (Global)'}
+            {isZh ? '门店选项库' : 'Store Option Library'}
           </h1>
           <p className="mt-2 max-w-3xl text-sm text-slate-600">
             {isZh
@@ -29,14 +31,14 @@ export default function AdminOptionLibraryPage() {
         </div>
 
         <Link
-          href={`/${safeLocale}/admin/menu`}
+          href={`/${safeLocale}/admin/menu?store=${encodeURIComponent(storeStableId)}`}
           className="text-sm font-medium text-emerald-700 hover:text-emerald-600"
         >
           {isZh ? '返回菜单维护' : 'Back to menu'}
         </Link>
       </div>
 
-      <OptionTemplatesPanel isZh={isZh} />
+      <OptionTemplatesPanel isZh={isZh} storeStableId={storeStableId} />
     </div>
   );
 }
