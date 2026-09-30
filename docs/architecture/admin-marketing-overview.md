@@ -1,8 +1,8 @@
 # Admin Marketing Overview — Readiness Audit and Delivery Plan
 
 Date: 2026-09-30  
-Baseline: `origin/dev@77f4515e` after MKT-A merge  
-State: **MKT-A MERGED / CI #6675 GREEN / PR #2624 / MERGE `77f4515e` / MKT-B LOCAL / REVIEW PENDING / NO MIGRATION / NO DEPENDENCY**
+Baseline: `origin/dev@5edbb9d2` after MKT-B merge  
+State: **MKT-A MERGED / MKT-B MERGED / CI #6678 GREEN / PR #2625 / MERGE `5edbb9d2` / MKT-C LOCAL / REVIEW PENDING / NO MIGRATION / NO DEPENDENCY**
 
 ## 1. Product goal
 
@@ -183,7 +183,7 @@ CatalogAdmin persistence owner rather than adding new Runtime debt.
 
 ### MKT-B — Reporting Marketing Overview projection
 
-MKT-B is now local on `marketing/overview-mkt-b`. Reporting composes:
+MKT-B merged through PR #2625 / CI #6678 / `5edbb9d2`. Reporting composes:
 
 - Orders marketing usage facts;
 - Offers campaign facts;
@@ -216,8 +216,17 @@ allowance is added.
 
 ### MKT-C — Admin base cutover
 
-Replace the navigation-only root page with the activity monitoring view. Initial UI may
-emphasize usage count while the full metric payload remains available for reconciliation.
+MKT-C is now local on `marketing/overview-mkt-c`. `/admin/promotions` is cut over from
+the redundant navigation/migration-era landing page to a Store-scoped Marketing Overview
+client that consumes the MKT-B Reporting endpoint. Existing secondary navigation remains
+the lifecycle-management surface for Item Specials, Coupons & Bundles and Automatic /
+Loyalty campaigns.
+
+The first UI deliberately emphasizes usage count only. It shows current campaigns and
+Today / trailing 7 local days / current month / current quarter use counts, preserves
+selected Store context on management links, exposes loading/error/empty/unattributed-
+Coupon states, and does not yet render affected-item quantity, actual discount or
+associated sales. Those remain MKT-D presentation work after production reconciliation.
 
 ### MKT-D — performance metric presentation
 
@@ -265,5 +274,22 @@ MKT-B remains additive and backend-only:
   semantics;
 - only overall ACTIVE/current-validity campaigns are returned; recurring weekday/minute
   schedules do not make a campaign disappear between selling periods;
-- no Prisma/schema/migration, package/lockfile, Web UI, Accounting revenue/Journal,
+- no Prisma/schema/migration, package/lockfile, Accounting revenue/Journal,
   refund-netting, payment or provider behavior changes in this slice.
+
+## 8. MKT-C implementation contract
+
+MKT-C is Web-only and keeps the backend/ownership model fixed:
+
+- `/admin/promotions` delegates to a client Marketing Overview instead of duplicating the
+  three existing management links;
+- selected Store remains explicit through the AdminShell `?store=` context and the client
+  passes only `storeStableId` to `/reports/marketing`;
+- the overview renders use counts for the four MKT-B windows and keeps the Reporting
+  caveat that one Order may be associated with more than one campaign;
+- campaign lifecycle editing remains on the existing `/specials`, `/coupons` and
+  `/automatic` pages, with Store context preserved on every management link;
+- MKT-D performance metrics stay hidden even though the backend payload already carries
+  them, preventing partial historical evidence from being presented before reconciliation;
+- no new package, API, Prisma/schema/migration, context direction, scanner baseline,
+  Accounting, payment, print or provider behavior is introduced.

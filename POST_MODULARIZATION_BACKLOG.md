@@ -727,7 +727,7 @@ B2 comes first so Admin and Accounting can share stable vocabulary rather than i
 Priority: **P1 PARALLEL PRODUCT WORK**  
 Complexity: **M**  
 Hard dependency: none  
-State: **MKT-A MERGED / CI #6675 GREEN / PR #2624 / MERGE `77f4515e` / MKT-B LOCAL / REVIEW PENDING / NO MIGRATION / NO DEPENDENCY**  
+State: **MKT-A MERGED / MKT-B MERGED / CI #6678 GREEN / PR #2625 / MERGE `5edbb9d2` / MKT-C LOCAL / REVIEW PENDING / NO MIGRATION / NO DEPENDENCY**  
 Detailed plan: `docs/architecture/admin-marketing-overview.md`
 
 Current `/admin/promotions` is primarily a navigation landing page for Daily Special,
@@ -757,16 +757,17 @@ Approved delivery order:
    associated-sales evidence. Final CI-preserving source keeps Offers off Catalog Prisma
    delegates and reuses the existing CatalogAdmin persistence owner for Marketing item
    subjects. No Reporting consumer, HTTP/UI, schema or graph change.
-2. **MKT-B Reporting projection:** **LOCAL / REVIEW PENDING** on
-   `marketing/overview-mkt-b`. Compose current-quarter owner facts with the existing
-   Store-timezone seam and derive Today / 7d / Month / Quarter in memory through additive
-   `GET /reports/marketing?storeStableId=`. The user authorized the narrow conceptual
-   `accounting-reporting-analytics -> catalog-pricing-offers` public read direction;
-   implementation keeps owner APIs in the registered ReportsModule composition root,
-   keeps business logic on Reporting-owned ports, changes no scanner direct-import
-   baseline and adds no SCC allowance.
-3. **MKT-C Admin base cutover:** replace the navigation/migration-era landing page with
-   activity monitoring; usage count may be the first emphasized UI metric.
+2. **MKT-B Reporting projection:** **MERGED / CI GREEN** through PR #2625 /
+   CI #6678 / `5edbb9d2`. Current-quarter owner facts are composed with the existing
+   Store-timezone seam and Today / 7d / Month / Quarter are derived in memory through
+   additive `GET /reports/marketing?storeStableId=`. The authorized conceptual
+   `accounting-reporting-analytics -> catalog-pricing-offers` public read direction stays
+   composition-root/public-contract only with no scanner baseline or SCC allowance change.
+3. **MKT-C Admin base cutover:** **LOCAL / REVIEW PENDING** on
+   `marketing/overview-mkt-c`. Replace the navigation/migration-era landing page with a
+   Store-scoped Marketing Overview consuming MKT-B. Emphasize usage count only, preserve
+   management navigation + Store context, and keep quantity/discount/associated-sales
+   presentation deferred to MKT-D.
 4. **MKT-D performance display:** expose affected-item quantity, actual discount and
    associated sales with explicit metric coverage/evidence.
 
