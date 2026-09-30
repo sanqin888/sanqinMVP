@@ -28,6 +28,18 @@ describe('Catalog Store-scoped runtime contracts', () => {
     );
   });
 
+  it('keeps Homepage Featured candidate and sales-ranking reads Store-scoped', () => {
+    const homepage = read('../homepage/homepage-featured.service.ts');
+    const homepageRanking = read(
+      '../homepage/homepage-sales-ranking-query.contract.ts',
+    );
+
+    expect(homepage).toContain('resolveConfiguredStoreStableId()');
+    expect(homepage).toContain('category: {');
+    expect(homepage).toContain('storeStableId,');
+    expect(homepageRanking).toContain('storeStableId: string');
+  });
+
   it('threads authenticated Store identity through POS pricing and Uber Catalog reads', () => {
     const pos = read('../orders/pos-order-operations.service.ts');
     const uberPort = read(

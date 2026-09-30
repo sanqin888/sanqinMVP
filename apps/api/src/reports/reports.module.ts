@@ -46,8 +46,8 @@ import { ReportsService } from './reports.service';
       useFactory: (
         orders: OrderReportingFactsReaderPort,
       ): ReportingOrderFactsQueryPort => ({
-        readItemsForRange: (startDate, endDate) =>
-          orders.readItemsForRange(startDate, endDate),
+        readItemsForStoreRange: (storeStableId, startDate, endDate) =>
+          orders.readItemsForStoreRange(storeStableId, startDate, endDate),
       }),
     },
     {

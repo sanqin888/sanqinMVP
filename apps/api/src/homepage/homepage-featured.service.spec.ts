@@ -34,6 +34,20 @@ function menuItem(
 }
 
 describe('HomepageFeaturedService', () => {
+  const originalStoreId = process.env.STORE_ID;
+
+  beforeEach(() => {
+    process.env.STORE_ID = '4750_Yonge_Street';
+  });
+
+  afterAll(() => {
+    if (originalStoreId === undefined) {
+      delete process.env.STORE_ID;
+      return;
+    }
+    process.env.STORE_ID = originalStoreId;
+  });
+
   it('reserves fixed positions and fills automatic positions from eligible sales ranking', async () => {
     const prisma = {
       menuItem: {
@@ -82,6 +96,69 @@ describe('HomepageFeaturedService', () => {
       { itemStableId: 'top-food', badge: '店主推荐' },
       { itemStableId: 'third-food', badge: null },
     ]);
+    expect(reportsService.getTopItemsForRange).toHaveBeenCalledWith(
+      '4750_Yonge_Street',
+      expect.any(Date),
+      expect.any(Date),
+    );
+    expect(prisma.menuItem.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          category: {
+            storeStableId: '4750_Yonge_Street',
+            deletedAt: null,
+          },
+        }),
+      }),
+    );
+  });
+
+  it('rejects a manual featured item that is not found under the configured Store root', async () => {
+    const prisma = {
+      menuItem: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+    } as unknown as PrismaService;
+    const reportsService = {
+      getTopItemsForRange: jest.fn(),
+    } as unknown as HomepageSalesRankingQueryPort;
+    const contentService = {
+      updateFeaturedConfig: jest.fn(),
+    } as unknown as HomepageContentService;
+    const service = new HomepageFeaturedService(
+      prisma,
+      reportsService,
+      contentService,
+    );
+
+    await expect(
+      service.updateConfig({
+        slots: [
+          {
+            itemStableId: 'other-store-item',
+            badgeZh: null,
+            badgeEn: null,
+          },
+          { itemStableId: null, badgeZh: null, badgeEn: null },
+          { itemStableId: null, badgeZh: null, badgeEn: null },
+        ],
+      }),
+    ).rejects.toThrow(
+      'Featured item must be active, public, visible on the main menu, and have an image: other-store-item',
+    );
+
+    expect(prisma.menuItem.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          stableId: { in: ['other-store-item'] },
+          category: {
+            storeStableId: '4750_Yonge_Street',
+            deletedAt: null,
+          },
+        }),
+      }),
+    );
+    expect(contentService.updateFeaturedConfig).not.toHaveBeenCalled();
   });
 
   it('automatically labels only the top eligible food as 周销量第一', async () => {

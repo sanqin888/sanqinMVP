@@ -82,6 +82,11 @@ export interface OrderReportingFactsReaderPort {
     startDate: Date,
     endDate: Date,
   ): Promise<OrderReportingItemFactV1[]>;
+  readItemsForStoreRange(
+    storeStableId: string,
+    startDate: Date,
+    endDate: Date,
+  ): Promise<OrderReportingItemFactV1[]>;
   readOperationalOrdersForRange(
     query: OrderReportingOperationalRangeV1,
   ): Promise<OrderReportingOperationalOrderFactV1[]>;
