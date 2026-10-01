@@ -1,9 +1,9 @@
 # Post-Modularization API TypeScript Strictness
 
-Date: 2026-09-30  
-Baseline: `origin/dev@3aa51dd0`  
-Branch: `postmod/api-strict-builtin-iterator-return`  
-State: **SLICE 1 MERGED / CI #6688 GREEN / SLICE 2 MERGED / CI #6690 GREEN / SLICE 3 MERGED / CI #6694 GREEN / SLICE 4 MERGED / CI #6698 GREEN / SLICE 5 MERGED / CI #6701 GREEN / SLICE 6 MERGED / CI #6704 GREEN / SLICE 7 PR #2635 / CI #6706 GREEN / `strictBuiltinIteratorReturn=true` / CONFIG-ONLY / NO SOURCE WORKAROUND / NO GRAPH OR BASELINE CHANGE**
+Date: 2026-10-01  
+Baseline: `origin/dev@e4b01345`  
+Branch: `postmod/api-strict-property-initialization`  
+State: **SLICE 1 MERGED / CI #6688 GREEN / SLICE 2 MERGED / CI #6690 GREEN / SLICE 3 MERGED / CI #6694 GREEN / SLICE 4 MERGED / CI #6698 GREEN / SLICE 5 MERGED / CI #6701 GREEN / SLICE 6 MERGED / CI #6704 GREEN / SLICE 7 MERGED / CI #6707 GREEN / SLICE 8 LOCAL / REVIEWED / `strictPropertyInitialization=true` / CONFIG-ONLY / NO GRAPH OR BASELINE CHANGE**
 
 ## Scope
 
@@ -15,12 +15,13 @@ This work package applies §7.3 incrementally, one compiler-hardening flag at a 
 - Slice 4: `useUnknownInCatchVariables=true` — merged through PR #2632 / CI #6698 / merge `b86e4354`; five unknown stringification boundaries were narrowly fixed after CI #6696.
 - Slice 5: `noImplicitThis=true` — merged through PR #2633 / CI #6701 / merge `31093556` without a production source workaround.
 - Slice 6: `alwaysStrict=true` — merged through PR #2634 / CI #6704 / merge `3aa51dd0` without a production source workaround.
-- Slice 7: `strictBuiltinIteratorReturn=true` — current local branch.
+- Slice 7: `strictBuiltinIteratorReturn=true` — merged through PR #2635 / CI #6707 / merge `e4b01345` without a production source workaround.
+- Slice 8: `strictPropertyInitialization=true` — current local branch.
 
-Explicitly out of Slice 7 scope:
+Explicitly out of Slice 8 scope:
 
 - cleanup of existing explicit `any`;
-- `strictFunctionTypes`, `strictPropertyInitialization` or `strict:true`;
+- `strictFunctionTypes` or `strict:true`;
 - repository-wide strictness flag-day work;
 - dependency or lockfile changes;
 - Prisma/schema/migration changes;
@@ -195,15 +196,48 @@ alwaysStrict: true
 noFallthroughCasesInSwitch: true
 ```
 
-No production TypeScript source workaround was required. CI #6706 passed all required jobs, including API lint, API strict declaration, API/Web tests, Browser E2E, printer-agent and Windows-workstation.
+No production TypeScript source workaround was required. CI #6706 passed all required jobs, including API lint, API strict declaration, API/Web tests, Browser E2E, printer-agent and Windows-workstation; the final documentation head passed CI #6707 and PR #2635 merged as `e4b01345`.
+
+## Slice 8 implementation-time read-only review
+
+The review was repeated from fresh merged `origin/dev@e4b01345` before editing.
+
+- Production class fields without declaration initializers were inventoried, with representative candidates reviewed in Uber order admission, API config, crypto config/credential vault, webhook verifier/persistence, Messaging template rendering, Uber Direct, and Clover credential vault.
+- The reviewed matched fields are assigned on constructor paths; no field was found intentionally left uninitialized for later mutation as part of its public/runtime contract.
+- DTO and response classes already follow the repository pattern of definite-assignment `!` for framework-populated required fields and `?` for optional fields.
+- Constructor parameter properties and declaration initializers already satisfy the flag by construction.
+- No dependency, provider protocol, payment behavior, Accounting authority, public contract, or architecture boundary change is required.
+
+## Slice 8 source change
+
+`apps/api/tsconfig.json` changes only:
+
+```text
+strictPropertyInitialization: <implicit false> -> true
+```
+
+The existing settings remain:
+
+```text
+strictNullChecks: true
+noImplicitAny: true
+strictBindCallApply: true
+useUnknownInCatchVariables: true
+noImplicitThis: true
+alwaysStrict: true
+strictBuiltinIteratorReturn: true
+noFallthroughCasesInSwitch: true
+```
+
+No production TypeScript source workaround is included in the local review state.
 
 ## Verification and architecture status
 
 Per `AGENTS.md`, no local lint, build, test or TypeScript CI-reproduction command is run
 during this local review phase. After user approval, GitHub Actions is the authoritative
-validation gate. If CI exposes a true builtin-iterator return diagnostic, fix only the
-narrow iterator-result typing root cause; do not add `any`, `@ts-ignore`, broad assertions,
-lint suppression, or disable the flag.
+validation gate. If CI exposes a true property-initialization diagnostic, fix only the
+narrow constructor-initialization root cause; do not add broad `!` assertions, `any`,
+`@ts-ignore`, lint suppression, or disable the flag.
 
 This compiler-option hardening changes no module ownership, public contract,
 cross-context direction, direct-import debt, architecture allowance, SCC or

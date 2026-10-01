@@ -26,6 +26,7 @@
     "noImplicitThis": true,
     "alwaysStrict": true,
     "strictBuiltinIteratorReturn": true,
+    "strictPropertyInitialization": true,
     "noFallthroughCasesInSwitch": true
   },
   "include": ["src/**/*.ts"],
