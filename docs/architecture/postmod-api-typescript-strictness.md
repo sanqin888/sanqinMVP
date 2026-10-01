@@ -3,7 +3,7 @@
 Date: 2026-10-01  
 Baseline: `origin/dev@e4b01345`  
 Branch: `postmod/api-strict-property-initialization`  
-State: **SLICE 1 MERGED / CI #6688 GREEN / SLICE 2 MERGED / CI #6690 GREEN / SLICE 3 MERGED / CI #6694 GREEN / SLICE 4 MERGED / CI #6698 GREEN / SLICE 5 MERGED / CI #6701 GREEN / SLICE 6 MERGED / CI #6704 GREEN / SLICE 7 MERGED / CI #6707 GREEN / SLICE 8 LOCAL / REVIEWED / `strictPropertyInitialization=true` / CONFIG-ONLY / NO GRAPH OR BASELINE CHANGE**
+State: **SLICE 1 MERGED / CI #6688 GREEN / SLICE 2 MERGED / CI #6690 GREEN / SLICE 3 MERGED / CI #6694 GREEN / SLICE 4 MERGED / CI #6698 GREEN / SLICE 5 MERGED / CI #6701 GREEN / SLICE 6 MERGED / CI #6704 GREEN / SLICE 7 MERGED / CI #6707 GREEN / SLICE 8 PR #2636 / CI #6711 GREEN / `strictPropertyInitialization=true` / FOUR NARROW DEFINITE-ASSIGNMENT FIXES / SCANNER SYNTAX FIX / NO GRAPH OR BASELINE CHANGE**
 
 ## Scope
 
@@ -235,7 +235,7 @@ Initial CI #6709 reached API build and exposed four TS2564 framework-populated d
 
 Per `AGENTS.md`, no local lint, build, test or TypeScript CI-reproduction command is run
 during this local review phase. After user approval, GitHub Actions is the authoritative
-validation gate. CI #6709 exposed exactly four framework-populated declaration gaps; the narrow `!` annotations above address those sites only. CI #6710 exposed only the scanner's literal-source matching gap, now corrected without relaxing the stable-ID rule. Do not broaden the assertion surface, add `any` / `@ts-ignore`, suppress lint, disable the flag, or update the architecture baseline.
+validation gate. CI #6709 exposed exactly four framework-populated declaration gaps; the narrow `!` annotations above address those sites only. CI #6710 exposed only the scanner's literal-source matching gap, now corrected without relaxing the stable-ID rule. CI #6711 then passed the corrected architecture gate and all required jobs, including API build, API strict declaration, API tests and Browser E2E. No broader assertion surface, `any`, `@ts-ignore`, lint suppression, flag weakening, or architecture baseline update was required.
 
 This compiler-option hardening changes no module ownership, public contract,
 cross-context direction, direct-import debt, architecture allowance, SCC or
