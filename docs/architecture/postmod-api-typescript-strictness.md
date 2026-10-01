@@ -229,15 +229,13 @@ strictBuiltinIteratorReturn: true
 noFallthroughCasesInSwitch: true
 ```
 
-No production TypeScript source workaround is included in the local review state.
+Initial CI #6709 reached API build and exposed four TS2564 framework-populated declaration gaps: `CreatePosDeviceDto.name`, `CreatePosDeviceDto.storeStableId`, `UpdatePosDeviceStatusDto.status`, and Nest-injected `PosGateway.server`. The narrow fix adds definite-assignment `!` only to these four fields, matching existing repository DTO/response conventions. No constructor logic, runtime validation, WebSocket injection behavior, provider/payment/Accounting semantics, dependency, Prisma, or architecture boundary changes are introduced.
 
 ## Verification and architecture status
 
 Per `AGENTS.md`, no local lint, build, test or TypeScript CI-reproduction command is run
 during this local review phase. After user approval, GitHub Actions is the authoritative
-validation gate. If CI exposes a true property-initialization diagnostic, fix only the
-narrow constructor-initialization root cause; do not add broad `!` assertions, `any`,
-`@ts-ignore`, lint suppression, or disable the flag.
+validation gate. CI #6709 exposed exactly four framework-populated declaration gaps; the narrow `!` annotations above address those sites only. Do not broaden the assertion surface, add `any` / `@ts-ignore`, suppress lint, or disable the flag.
 
 This compiler-option hardening changes no module ownership, public contract,
 cross-context direction, direct-import debt, architecture allowance, SCC or
