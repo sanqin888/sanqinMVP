@@ -4,5 +4,5 @@ import type { PosDeviceManagementStatus } from '../../../pos/public-api';
 
 export class UpdatePosDeviceStatusDto {
   @IsIn(['ACTIVE', 'DISABLED'])
-  status: PosDeviceManagementStatus;
+  status!: PosDeviceManagementStatus;
 }

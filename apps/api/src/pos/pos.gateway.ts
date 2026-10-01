@@ -77,7 +77,7 @@ export class PosGateway
     PosPaymentRealtimePort
 {
   @WebSocketServer()
-  server: Server;
+  server!: Server;
 
   private readonly logger = new Logger(PosGateway.name);
   private readonly ackTimeoutMs = Number(
