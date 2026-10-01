@@ -16,6 +16,16 @@ export {
   type OrderPromotionContext,
   type PromotionContextReaderPort,
 } from './promotion-context.contract';
+export { MarketingCampaignFactsModule } from './marketing-campaign-facts.module';
+export {
+  MARKETING_CAMPAIGN_FACTS_READER,
+  type MarketingCampaignFactV1,
+  type MarketingCampaignFactsReaderPort,
+  type MarketingCampaignKindV1,
+  type MarketingCampaignLifecycleStatusV1,
+  type MarketingCampaignScopeV1,
+  type MarketingCouponProgramAttributionV1,
+} from './marketing-campaign-facts-reader.contract';
 export {
   PROMOTION_RULE_MANAGEMENT,
   type PromotionRuleChannel,

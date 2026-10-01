@@ -18,11 +18,18 @@
 
     "incremental": true,
     "skipLibCheck": true,
+    "strict": true,
     "strictNullChecks": true,
     "forceConsistentCasingInFileNames": true,
-    "noImplicitAny": false,
-    "strictBindCallApply": false,
-    "noFallthroughCasesInSwitch": false
+    "noImplicitAny": true,
+    "strictBindCallApply": true,
+    "useUnknownInCatchVariables": true,
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+    "strictBuiltinIteratorReturn": true,
+    "strictPropertyInitialization": true,
+    "strictFunctionTypes": true,
+    "noFallthroughCasesInSwitch": true
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist", "test", "**/*.spec.ts", "**/*.test.ts"]

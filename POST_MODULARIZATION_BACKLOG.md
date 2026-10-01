@@ -726,35 +726,69 @@ B2 comes first so Admin and Accounting can share stable vocabulary rather than i
 
 Priority: **P1 PARALLEL PRODUCT WORK**  
 Complexity: **M**  
-Hard dependency: none
+Hard dependency: none  
+State: **SOURCE COMPLETE / MKT-A/B/C/D MERGED + CI GREEN / MKT-D PR #2627 / CI #6682 / MERGE `2d250360` / NO MIGRATION / NO DEPENDENCY / PRODUCTION UI VERIFICATION NOT YET CLAIMED**  
+Detailed plan: `docs/architecture/admin-marketing-overview.md`
 
-Current `/admin/promotions` is primarily a navigation landing page for:
+Current `/admin/promotions` is primarily a navigation landing page for Daily Special,
+coupons/bundles and automatic/loyalty promotions, while Admin secondary navigation
+already owns those destinations. The replacement is a real **营销总览 / Marketing
+Overview**.
 
-- Daily Special;
-- coupons/bundles;
-- automatic/loyalty promotions.
+2026-09-30 readiness audit and production read-only evidence established:
 
-It still contains migration-era/“第一阶段” wording.
+- usage count is one distinct `(activity, Order)` pair;
+- the first backend contract also carries affected-item quantity, actual discount and
+  associated merchandise sales so the UI does not require a second data-model redesign;
+- associated sales means sale-time merchandise subtotal after discounts/points and before
+  tax/customer-delivery-fee/card-surcharge; it is association, not causal increment, and
+  must not be summed across campaigns;
+- Daily Special use count/quantity/associated sales have historical OrderItem fallback;
+  exact historical discount may be unavailable and must expose coverage rather than zero;
+- current-quarter Coupon redemptions have matching Promotion Snapshot evidence, while
+  `CouponProgram.usedCount` is not authoritative and must not be used;
+- Daily Special remains Store scoped; PromotionRule and CouponProgram remain brand scoped.
 
-Target a useful **营销总览 / Marketing Overview** while preserving established owners:
+Approved delivery order:
 
-- show useful active/upcoming/paused/ended campaign state;
-- surface existing usage/performance facts only where authoritative owner APIs already exist;
-- distinguish overview/monitoring from editing;
-- keep Daily Special, Coupon/Benefit and PromotionRule lifecycle/storage with their owners;
-- add an aggregate/read model only after owner/API/query-cost review.
+1. **MKT-A owner facts foundation:** **MERGED / CI GREEN** through PR #2624 /
+   CI #6675 / `77f4515e`. Offers exports stable campaign/CouponProgram attribution facts;
+   Orders exports normalized usage facts and reuses its financial sale fact for
+   associated-sales evidence. Final CI-preserving source keeps Offers off Catalog Prisma
+   delegates and reuses the existing CatalogAdmin persistence owner for Marketing item
+   subjects. No Reporting consumer, HTTP/UI, schema or graph change.
+2. **MKT-B Reporting projection:** **MERGED / CI GREEN** through PR #2625 /
+   CI #6678 / `5edbb9d2`. Current-quarter owner facts are composed with the existing
+   Store-timezone seam and Today / 7d / Month / Quarter are derived in memory through
+   additive `GET /reports/marketing?storeStableId=`. The authorized conceptual
+   `accounting-reporting-analytics -> catalog-pricing-offers` public read direction stays
+   composition-root/public-contract only with no scanner baseline or SCC allowance change.
+3. **MKT-C Admin base cutover:** **MERGED / CI GREEN** through PR #2626 /
+   CI #6680 / `f06843b0`. `/admin/promotions` is now the Store-scoped Marketing Overview,
+   with usage-first monitoring and preserved lifecycle-management navigation.
+4. **MKT-D performance display:** **MERGED / CI GREEN** through PR #2627 /
+   CI #6682 / `2d250360`. Fresh read-only production reconciliation re-confirmed
+   Automatic 5 uses / 5 units / $29.95 discount / $104.58 associated sales, Coupon
+   3 / 4 / $11.00 / $35.65, and Daily Special 170 / 207 / $2,350.24 associated sales.
+   Daily Special discount is only 1/170-use covered ($1.50), so UI exposes explicit
+   COMPLETE/PARTIAL/UNAVAILABLE/NOT_APPLICABLE coverage and immutable-vs-legacy sales
+   evidence instead of treating unknown history as zero. The planned MKT-A through MKT-D
+   source sequence is complete; a later production UI spot-check may add verification
+   evidence but is not a new source slice.
 
-This can proceed in parallel with Lane A or Lane B when product priority warrants; it should not be bundled with either foundation.
+Keep Daily Special, Coupon/Benefit and PromotionRule lifecycle/storage with their owners;
+do not reuse Accounting-only historical Daily Special overrides as generic Marketing
+truth, and do not duplicate Accounting revenue/refund logic.
 
 ### 6.2 Catalog Store Menu ownership + Admin workspace split
 
 Priority: **P1 PARALLEL PRODUCT / PERSISTENCE WORK**  
 Complexity: **H**  
 Hard dependency: none  
-State: **SLICE 1 PRODUCTION MIGRATION APPLIED / SLICE 2A + HOMEPAGE FOLLOW-UP PRODUCTION VERIFIED / SLICE 2B PRODUCTION VERIFIED + COMPATIBILITY RETIRED / SLICE 3A MERGED (#2619 / CI #6655 / `e92ab60c`) / SLICE 3B MERGED (#2620 / CI #6658 / `c08f02c6`) / SLICE 4 LOCAL + READY FOR REVIEW / NO MIGRATION**  
+State: **PRODUCTION VERIFIED / CLOSED / SLICE 1-2B PRODUCTION VERIFIED / SLICE 3A MERGED (#2619 / CI #6655 / `e92ab60c`) / SLICE 3B MERGED (#2620 / CI #6658 / `c08f02c6`) / SLICE 4 MERGED (#2621 / CI #6663 / `94fc6564`) / PRODUCTION `main@94fc6564` VERIFIED / NO MIGRATION**  
 Detailed plan: `docs/architecture/postmod-catalog-store-menu.md`
 
-Slice 1 established persisted Store ownership roots and its deterministic backfill migration is applied in production. Slice 2A and Homepage Featured are production verified across Admin/Public/POS/Orders/Offers/Uber/Homepage Store-scoped reads. Slice 2B is also production verified and `catalog.store-menu-ownership.v1` is retired. Slice 3A merged through PR #2619 / CI #6655 / `e92ab60c`; Slice 3B merged through PR #2620 / CI #6658 / `c08f02c6`, activating independent Store-scoped Category/Item workspaces and contracting Options away from the combined snapshot. Slice 4 is now local: all remaining Marketing/Homepage/POS runtime consumers have been moved off `/admin/menu/full`, POS retains active Daily Special effective-price behavior through a narrow Store-scoped projection, and the legacy combined page/API/full-snapshot types and owner composition are removed. No Prisma/schema/migration or graph change is involved.
+Slice 1 established persisted Store ownership roots and its deterministic backfill migration is applied in production. Slice 2A and Homepage Featured are production verified across Admin/Public/POS/Orders/Offers/Uber/Homepage Store-scoped reads. Slice 2B is also production verified and `catalog.store-menu-ownership.v1` is retired. Slice 3A merged through PR #2619 / CI #6655 / `e92ab60c`; Slice 3B merged through PR #2620 / CI #6658 / `c08f02c6`; Slice 4 merged through PR #2621 / CI #6663 / `94fc6564`. Production now runs `main@94fc6564`: API/Web/Uber worker are healthy with no post-deploy error matches; the deployed API has no legacy full route and no API/Web log evidence of `/admin/menu/full` requests; Catalog ownership remains 7 live Categories / 23 live Option Group Templates / 33 live Items with zero NULL or foreign Store owners, physical NOT NULL intact and cross-Store option bindings/components at 0/0. The split Admin workspaces and narrow Marketing/Homepage/POS contracts are therefore accepted as production cutover, and this workstream is closed.
 
 Approved sequence:
 
@@ -764,7 +798,7 @@ Approved sequence:
 4. **Slice 3 — Admin Category/Item cutover:** activate the reserved Store-scoped Category and Item workspaces and keep the Options workspace separate.
 5. **Slice 4 — legacy combined-menu contraction:** retire the old combined `/admin/menu` workspace and remove `/admin/menu/full` only after all Category/Item/Options consumers are gone.
 
-Slice 1's expand foundation and companion migration are merged. Slice 2A and its Homepage follow-up are production verified. Slice 2B is production verified, both Catalog Store roots are physically NOT NULL, and the ownership compatibility is retired. Slice 3A/3B are merged. Slice 4 is the current local contraction gate; do not restore the combined Admin menu snapshot as a compatibility path.
+Slice 1's expand foundation and companion migration are merged. Slice 2A and its Homepage follow-up are production verified. Slice 2B is production verified, both Catalog Store roots are physically NOT NULL, and the ownership compatibility is retired. Slice 3A/3B/4 are merged and production verified on `main@94fc6564`. Do not restore the combined Admin menu snapshot as a compatibility path. No further Catalog Store Menu slice is planned; future work should start only from a new product requirement or a separately evidenced regression.
 
 ## 7. Later internal hardening
 
@@ -840,9 +874,10 @@ No Prisma/schema/migration, package/lockfile, provider/payment behavior, context
 
 Priority: **P3**  
 Complexity: **H / incremental**  
-External gate: none
+External gate: none  
+State: **CLOSED / SLICE 1-10 MERGED / FINAL PR #2638 / FINAL CI #6718 GREEN / FINAL MERGE `63e32160` / API FULL STRICT / CURRENT-SEMANTICS UMBRELLA CLOSURE / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**
 
-The CI step named “Strict declaration check” extends API `tsconfig.json`, which still has `noImplicitAny=false`, `strictBindCallApply=false` and other relaxed flags.
+The CI step named “Strict declaration check” extends API `tsconfig.json`. Slice 1 enabled only `strictBindCallApply=true` and merged through PR #2629 / CI #6688 / `cf39b5ce`. Slice 2 enabled only `noFallthroughCasesInSwitch=true` and merged through PR #2630 / CI #6690 / `97277b6e` without production source workaround. Slice 3 enabled only `noImplicitAny=true`; initial CI #6692 exposed the third-party `engine.io -> ws` declaration gap, the user explicitly authorized API `@types/ws:^8.18.2`, final CI #6694 passed, and PR #2631 merged as `8fd2d8bf`. Slice 4 now enables only `useUnknownInCatchVariables=true`. A fresh review from merged `origin/dev@8fd2d8bf` found no `catch (...: any)` in production source, several existing explicit `catch (...: unknown)` sites, and representative catch-variable property access already narrowed with `instanceof Error`, domain guards, `'code' in error`, or helper functions. Initial CI #6696 stopped at type-aware API lint and exposed five direct template-string interpolations of catch values now typed `unknown` (Admin Business 1, Catalog/Uber availability 2, Orders geocoding 1, POS Store Status 1). Slice 4 fixes only those stringification boundaries with `String(error)` / `Error.message` narrowing; no exception control-flow or business semantics change is introduced. CI #6697 then passed API/Web lint/build/strict/tests, Browser E2E, printer-agent and Windows-workstation, including API strict declaration with `useUnknownInCatchVariables=true`; final documentation head passed CI #6698 and PR #2632 merged as `b86e4354`. Slice 5 now enables only `noImplicitThis=true`. Fresh review from merged `origin/dev@b86e4354` found no ordinary production function body relying on implicit `this`, no `.bind(this)` / `.call(this)` / `.apply(this)` sites, and the sole explicit `this:` annotation is the Uber error mapper's `(this: unknown) => unknown`, which is already correctly typed. No production source workaround was required; CI #6700 passed API/Web lint/build/strict/tests, Browser E2E, printer-agent and Windows-workstation, including API strict declaration with `noImplicitThis=true`; final documentation head passed CI #6701 and PR #2633 merged as `31093556`. Slice 6 now enables only `alwaysStrict=true`. Fresh review from merged `origin/dev@31093556` found API runtime code already module-oriented under `module:nodenext` / `target:ES2023`, no `with (...)` or other sloppy-mode dependency, and only declaration-only ambient module stubs in `src/types/optional-modules.d.ts`. No runtime, provider, Accounting or architecture change is intended. CI #6703 passed API/Web lint/build/strict/tests, Browser E2E, printer-agent and Windows-workstation, including API strict declaration with `alwaysStrict=true`; no production source workaround was required. Final documentation head passed CI #6704 and PR #2634 merged as `3aa51dd0`. Slice 7 now enables only `strictBuiltinIteratorReturn=true`. Fresh review from merged `origin/dev@3aa51dd0` found no production `.next()` calls, no `.values().next()` / `.keys().next()` / `.entries().next()` chains, and no `Symbol.iterator`, `IteratorResult`, `IterableIterator`, or explicit `Iterator<...>` usage. No runtime, provider, Accounting or architecture change is intended. CI #6706 passed API/Web lint/build/strict/tests, Browser E2E, printer-agent and Windows-workstation, including API strict declaration with `strictBuiltinIteratorReturn=true`; no production source workaround was required. Final documentation head passed CI #6707 and PR #2635 merged as `e4b01345`. Slice 8 now enables only `strictPropertyInitialization=true`. Fresh review from merged `origin/dev@e4b01345` found constructor-assigned instance fields for the production candidates without initializers, while DTO/response contract classes already use definite-assignment `!` or optional `?` where appropriate. No provider/payment/Accounting or architecture change is intended. Initial CI #6709 reached API build and exposed four TS2564 declaration gaps: `CreatePosDeviceDto.name`, `CreatePosDeviceDto.storeStableId`, `UpdatePosDeviceStatusDto.status`, and Nest-injected `PosGateway.server`. The narrow fix applies the repository's existing definite-assignment `!` pattern only to those framework-populated fields; runtime initialization/validation behavior is unchanged. Follow-up CI #6710 then failed at the architecture baseline gate because the closed `pos-device.admin-db-id.v1` guard matched the exact source text `storeStableId: string` and therefore rejected the equivalent strict form `storeStableId!: string`. The guard is narrowed to accept optional definite-assignment `!` while still rejecting internal `storeId` and `IsUUID`; the identity rule itself and architecture baseline remain unchanged. CI #6711 then passed the architecture gate, API/Web lint/build/strict/tests, Browser E2E, printer-agent and Windows-workstation, including API strict declaration with `strictPropertyInitialization=true`; final documentation head passed CI #6712 and PR #2636 merged as `fe08093a`. Slice 9 now enables only `strictFunctionTypes=true`. Fresh review from merged `origin/dev@fe08093a` identified the highest-risk surface as third-party/function-valued callbacks rather than method-style ports: notably `express.static(..., { setHeaders })`, Node/PDF/child-process stream listeners, provider SDK wrappers, transaction runners and Nest factories. No source workaround was required. CI #6714 passed the architecture gate, API/Web lint/build/strict/tests, Browser E2E, printer-agent and Windows-workstation, including API strict declaration with `strictFunctionTypes=true`; the reviewed Express/stream/provider callback surfaces required no compatibility edit. Final documentation head passed CI #6715 and PR #2637 merged as `b93f2ffd`. Slice 10 now adds `strict=true` while intentionally retaining every explicitly audited strict-family flag. Under the repository's current TypeScript 5.9.3, those constituent checks are already individually enabled, so this is a current-semantics umbrella closure rather than a new source-type rule. The explicit constituent flags are retained both as audit evidence and to make the current strict surface visible; future TypeScript upgrades may add new checks under the `strict` umbrella and must treat those diagnostics as upgrade-time work. CI #6717 passed the architecture gate, API/Web lint/build/strict/tests, Browser E2E, printer-agent and Windows-workstation with `strict=true`; no production source workaround was required. The final documentation head then passed CI #6718 and PR #2638 squash-merged to `dev` as `63e32160`. §7.3 is therefore closed: the API is full strict under TypeScript 5.9.3, all current strict-family constituents remain explicitly documented, and no further source slice is planned. Future TypeScript upgrades may add new checks under `strict`; any resulting diagnostics belong to the upgrade change rather than reopening §7.3.
 
 Treat this as incremental engineering hardening:
 

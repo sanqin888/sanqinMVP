@@ -4,9 +4,9 @@ import { IsNotEmpty, IsString } from 'class-validator';
 export class CreatePosDeviceDto {
   @IsString()
   @IsNotEmpty()
-  name: string;
+  name!: string;
 
   @IsString()
   @IsNotEmpty()
-  storeStableId: string;
+  storeStableId!: string;
 }

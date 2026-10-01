@@ -227,7 +227,7 @@ Local implementation scope:
 - retire the old combined `/admin/menu` page, `GET /admin/menu/full`, the Catalog full-snapshot builder, its Offers enrichment orchestration and the shared `AdminMenuFullResponse` aliases after runtime consumers reach zero;
 - keep Category / Item / Options workspaces, Daily Special read/write contracts, availability writes, packaging dictionary ownership and all provider boundaries unchanged.
 
-State: **LOCAL / READY FOR REVIEW / NO PRISMA OR MIGRATION / NO DEPENDENCY OR GRAPH CHANGE**.
+State: **MERGED / PR #2621 / CI #6663 GREEN / MERGE `94fc6564` / NO PRISMA OR MIGRATION / NO DEPENDENCY OR GRAPH CHANGE**.
 
 The Store-ownership compatibility seam was already retired in Slice 2B after production NOT NULL verification; Slice 4 does not own that compatibility cleanup.
 
@@ -249,4 +249,4 @@ After remote authorization, the reviewed branch must pass the normal GitHub Acti
 - Web lint/build/strict/test;
 - Browser E2E and existing independent workstation/printer jobs where triggered.
 
-Slice 2A is production verified, including the Homepage Featured follow-up merged in PR #2610 and deployed. Slice 2B source merged through PR #2616; user-generated migration `20260930162009_post_mod_catalog_store_menu_not_null_contraction` was reviewed on `dev@88dd319a`, passed CI #6647 including committed-migration replay, and is now applied in production. Both Store roots are physically NOT NULL, ownership/composition checks pass, and post-deploy runtime logs are clean. Slice 2B is therefore production verified and `catalog.store-menu-ownership.v1` is retired. Slice 3A/3B are merged; Slice 4 is now locally implemented and awaiting review before remote CI.
+Slice 2A is production verified, including the Homepage Featured follow-up merged in PR #2610 and deployed. Slice 2B source merged through PR #2616; user-generated migration `20260930162009_post_mod_catalog_store_menu_not_null_contraction` was reviewed on `dev@88dd319a`, passed CI #6647 including committed-migration replay, and is applied in production. Both Store roots are physically NOT NULL and `catalog.store-menu-ownership.v1` is retired. Slice 3A merged through PR #2619 / CI #6655 / `e92ab60c`; Slice 3B merged through PR #2620 / CI #6658 / `c08f02c6`; Slice 4 merged through PR #2621 / CI #6663 / `94fc6564`. Production now runs `main@94fc6564`: API/Web/Uber worker containers are healthy, post-deploy logs contain no `error` matches, the deployed API has no `GET /admin/menu/full` route, deployed Web runtime consumers do not reference that endpoint, Store roots remain 7 Categories / 23 Option Group Templates with zero NULL or foreign owners, 33 live MenuItems remain, both Store ownership columns remain physically NOT NULL, and cross-Store option bindings / fixed components remain 0 / 0. No post-deploy `/admin/menu/full` requests were observed in API or Web logs. The Catalog Store Menu workstream is therefore **PRODUCTION VERIFIED / CLOSED**.

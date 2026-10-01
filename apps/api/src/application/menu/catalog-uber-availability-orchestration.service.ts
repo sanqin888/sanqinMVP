@@ -184,7 +184,7 @@ export class CatalogUberAvailabilityOrchestrationService {
         suspendUntil,
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : `${error}`;
+      const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(
         `Failed to sync Uber menu item availability: item=${menuItemStableId}, isAvailable=${isAvailable}, error=${message}`,
       );
@@ -215,7 +215,7 @@ export class CatalogUberAvailabilityOrchestrationService {
         suspendUntil,
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : `${error}`;
+      const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(
         `Failed to sync Uber option availability: option=${optionChoiceStableId}, isAvailable=${isAvailable}, error=${message}`,
       );
