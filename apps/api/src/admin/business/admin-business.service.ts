@@ -606,7 +606,7 @@ export class AdminBusinessService {
     try {
       await this.uberEatsService.syncStoreStatusToUber();
     } catch (error) {
-      const message = error instanceof Error ? error.message : `${error}`;
+      const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(
         `Failed to sync Uber store status after ${source}: ${message}`,
       );

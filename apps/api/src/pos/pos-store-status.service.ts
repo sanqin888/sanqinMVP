@@ -190,7 +190,7 @@ export class PosStoreStatusService {
       await this.uberEatsService.syncStoreStatusToUber();
     } catch (error) {
       // Uber 同步失败不应阻塞 POS 端状态更新
-      const message = error instanceof Error ? error.message : `${error}`;
+      const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(
         `Failed to sync Uber store status after ${source}: ${message}`,
       );

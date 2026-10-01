@@ -92,7 +92,14 @@ strictBindCallApply: true
 noFallthroughCasesInSwitch: true
 ```
 
-No production TypeScript source workaround is included in the local review state.
+Initial remote CI #6696 reached type-aware API lint before strict declaration and exposed five direct template-string uses of caught values now typed as `unknown`:
+
+- Admin Business Uber store-status warning: 1;
+- Catalog/Uber availability warning/result message: 2;
+- Orders geocoding error log: 1;
+- POS Store Status Uber sync warning: 1.
+
+The narrow fix uses existing repository-safe patterns: `String(error)` for non-`Error` fallback and `error instanceof Error ? error.message : String(error)` where a readable message is desired. No catch control flow, return value, retry behavior, provider protocol or business semantics change.
 
 ## Verification and architecture status
 
