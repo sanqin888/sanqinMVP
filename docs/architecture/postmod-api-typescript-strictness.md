@@ -99,7 +99,7 @@ Initial remote CI #6696 reached type-aware API lint before strict declaration an
 - Orders geocoding error log: 1;
 - POS Store Status Uber sync warning: 1.
 
-The narrow fix uses existing repository-safe patterns: `String(error)` for non-`Error` fallback and `error instanceof Error ? error.message : String(error)` where a readable message is desired. No catch control flow, return value, retry behavior, provider protocol or business semantics change.
+The narrow fix uses existing repository-safe patterns: `String(error)` for non-`Error` fallback and `error instanceof Error ? error.message : String(error)` where a readable message is desired. No catch control flow, return value, retry behavior, provider protocol or business semantics change. CI #6697 passed all required jobs, including API lint, API strict declaration, API/Web tests, Browser E2E, printer-agent and Windows-workstation.
 
 ## Verification and architecture status
 
