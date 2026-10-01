@@ -1,9 +1,9 @@
 # Post-Modularization API TypeScript Strictness
 
 Date: 2026-09-30  
-Baseline: `origin/dev@8fd2d8bf`  
-Branch: `postmod/api-unknown-catch-variables`  
-State: **SLICE 1 MERGED / CI #6688 GREEN / SLICE 2 MERGED / CI #6690 GREEN / SLICE 3 MERGED / CI #6694 GREEN / SLICE 4 LOCAL / REVIEWED / `useUnknownInCatchVariables=true` / NO GRAPH OR BASELINE CHANGE**
+Baseline: `origin/dev@b86e4354`  
+Branch: `postmod/api-no-implicit-this`  
+State: **SLICE 1 MERGED / CI #6688 GREEN / SLICE 2 MERGED / CI #6690 GREEN / SLICE 3 MERGED / CI #6694 GREEN / SLICE 4 MERGED / CI #6698 GREEN / SLICE 5 PR #2633 / CI #6700 GREEN / `noImplicitThis=true` / NO SOURCE WORKAROUND / NO GRAPH OR BASELINE CHANGE**
 
 ## Scope
 
@@ -12,12 +12,13 @@ This work package applies §7.3 incrementally, one compiler-hardening flag at a 
 - Slice 1: `strictBindCallApply=true` — merged through PR #2629 / CI #6688 / merge `cf39b5ce`.
 - Slice 2: `noFallthroughCasesInSwitch=true` — merged through PR #2630 / CI #6690 / merge `97277b6e`.
 - Slice 3: `noImplicitAny=true` — merged through PR #2631 / CI #6694 / merge `8fd2d8bf`; API `@types/ws:^8.18.2` was explicitly authorized to close the third-party `engine.io -> ws` declaration gap.
-- Slice 4: `useUnknownInCatchVariables=true` — current local branch.
+- Slice 4: `useUnknownInCatchVariables=true` — merged through PR #2632 / CI #6698 / merge `b86e4354`; five unknown stringification boundaries were narrowly fixed after CI #6696.
+- Slice 5: `noImplicitThis=true` — current local branch.
 
-Explicitly out of Slice 4 scope:
+Explicitly out of Slice 5 scope:
 
 - cleanup of existing explicit `any`;
-- `strictFunctionTypes`, `strictPropertyInitialization`, `noImplicitThis` or `strict:true`;
+- `strictFunctionTypes`, `strictPropertyInitialization` or `strict:true`;
 - repository-wide strictness flag-day work;
 - dependency or lockfile changes;
 - Prisma/schema/migration changes;
@@ -99,15 +100,45 @@ Initial remote CI #6696 reached type-aware API lint before strict declaration an
 - Orders geocoding error log: 1;
 - POS Store Status Uber sync warning: 1.
 
-The narrow fix uses existing repository-safe patterns: `String(error)` for non-`Error` fallback and `error instanceof Error ? error.message : String(error)` where a readable message is desired. No catch control flow, return value, retry behavior, provider protocol or business semantics change. CI #6697 passed all required jobs, including API lint, API strict declaration, API/Web tests, Browser E2E, printer-agent and Windows-workstation.
+The narrow fix uses existing repository-safe patterns: `String(error)` for non-`Error` fallback and `error instanceof Error ? error.message : String(error)` where a readable message is desired. No catch control flow, return value, retry behavior, provider protocol or business semantics change. CI #6697 passed all required jobs, including API lint, API strict declaration, API/Web tests, Browser E2E, printer-agent and Windows-workstation; the final documentation head passed CI #6698 and PR #2632 merged as `b86e4354`.
+
+## Slice 5 implementation-time read-only review
+
+The review was repeated from fresh merged `origin/dev@b86e4354` before editing.
+
+- No ordinary production `function (...) { ... }` or named function body was found relying on implicit `this`.
+- No `.bind(this)`, `.call(this)` or `.apply(this)` usage was found in production source.
+- The only explicit `this:` annotation found is the Uber error mapper's `(this: unknown) => unknown`, which is already deliberately typed for `getResponse.call(error)`.
+- Class methods and arrow functions use lexical/class `this` and are not evidence of an implicit-`this` gap.
+- No architecture boundary, provider protocol, payment behavior or Accounting authority change is indicated by the inventory.
+
+## Slice 5 source change
+
+`apps/api/tsconfig.json` changes only:
+
+```text
+noImplicitThis: <implicit false> -> true
+```
+
+The existing settings remain:
+
+```text
+strictNullChecks: true
+noImplicitAny: true
+strictBindCallApply: true
+useUnknownInCatchVariables: true
+noFallthroughCasesInSwitch: true
+```
+
+No production TypeScript source workaround was required. CI #6700 passed all required jobs, including API lint, API strict declaration, API/Web tests, Browser E2E, printer-agent and Windows-workstation.
 
 ## Verification and architecture status
 
 Per `AGENTS.md`, no local lint, build, test or TypeScript CI-reproduction command is run
 during this local review phase. After user approval, GitHub Actions is the authoritative
-validation gate. If CI exposes a true catch-variable typing error, fix only the narrow
-root type guard/helper usage; do not add `any`, `@ts-ignore`, broad assertions, lint
-suppression, or disable the flag.
+validation gate. If CI exposes a true implicit-`this` diagnostic, fix only the narrow
+root typing issue; do not add `any`, `@ts-ignore`, broad assertions, lint suppression,
+or disable the flag.
 
 This compiler-option hardening changes no module ownership, public contract,
 cross-context direction, direct-import debt, architecture allowance, SCC or
