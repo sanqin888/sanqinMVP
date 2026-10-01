@@ -6,8 +6,8 @@ import type {
 export type MarketingOverviewWindowKeyV1 =
   | 'today'
   | 'last7Days'
-  | 'month'
-  | 'quarter';
+  | 'last30Days'
+  | 'last90Days';
 
 export type MarketingOverviewMetricCoverageV1 =
   | 'COMPLETE'
@@ -67,6 +67,6 @@ export type MarketingOverviewReportV1 = {
   windows: Record<MarketingOverviewWindowKeyV1, MarketingOverviewWindowV1>;
   activities: MarketingOverviewActivityV1[];
   coverage: {
-    unattributedCouponUsesInQuarter: number;
+    unattributedCouponUsesInLast90Days: number;
   };
 };

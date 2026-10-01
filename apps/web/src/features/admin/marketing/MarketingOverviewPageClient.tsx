@@ -25,7 +25,7 @@ import {
 import { apiFetch } from '@/lib/api/client';
 import type { Locale } from '@/lib/i18n/locales';
 
-type WindowKey = 'today' | 'last7Days' | 'month' | 'quarter';
+type WindowKey = 'today' | 'last7Days' | 'last30Days' | 'last90Days';
 type CampaignKind = 'DAILY_SPECIAL' | 'PROMOTION_RULE' | 'COUPON_PROGRAM';
 type CampaignScope = 'STORE' | 'BRAND';
 
@@ -85,17 +85,22 @@ type MarketingOverviewReport = {
   >;
   activities: MarketingActivity[];
   coverage: {
-    unattributedCouponUsesInQuarter: number;
+    unattributedCouponUsesInLast90Days: number;
   };
 };
 
-const WINDOW_KEYS: WindowKey[] = ['today', 'last7Days', 'month', 'quarter'];
+const WINDOW_KEYS: WindowKey[] = [
+  'today',
+  'last7Days',
+  'last30Days',
+  'last90Days',
+];
 
 function windowLabel(key: WindowKey, isZh: boolean): string {
   if (key === 'today') return isZh ? '今天' : 'Today';
   if (key === 'last7Days') return isZh ? '近 7 天' : 'Last 7 days';
-  if (key === 'month') return isZh ? '本月' : 'This month';
-  return isZh ? '本季度' : 'This quarter';
+  if (key === 'last30Days') return isZh ? '近 30 天' : 'Last 30 days';
+  return isZh ? '近 90 天' : 'Last 90 days';
 }
 
 function kindLabel(kind: CampaignKind, isZh: boolean): string {
@@ -137,11 +142,48 @@ function managementHref(
   return `${path}?store=${encodeURIComponent(storeStableId)}`;
 }
 
+function dailySpecialWeekdayLabel(
+  weekdays: number[],
+  isZh: boolean,
+): string | null {
+  const weekday = weekdays[0];
+  const labels: Record<number, { zh: string; en: string }> = {
+    1: { zh: '周一', en: 'Monday' },
+    2: { zh: '周二', en: 'Tuesday' },
+    3: { zh: '周三', en: 'Wednesday' },
+    4: { zh: '周四', en: 'Thursday' },
+    5: { zh: '周五', en: 'Friday' },
+    6: { zh: '周六', en: 'Saturday' },
+    7: { zh: '周日', en: 'Sunday' },
+  };
+  const label = labels[weekday];
+  return label ? (isZh ? label.zh : label.en) : null;
+}
+
 function activityTitle(activity: MarketingActivity, isZh: boolean): string {
+  if (activity.kind === 'DAILY_SPECIAL') {
+    const weekday = dailySpecialWeekdayLabel(activity.weekdays, isZh);
+    if (weekday) {
+      return isZh ? `${weekday}特价` : `${weekday} Daily Special`;
+    }
+    return isZh ? '每日特价' : 'Daily Special';
+  }
   if (isZh) {
     return activity.titleZh || activity.titleEn || activity.activityStableId;
   }
   return activity.titleEn || activity.titleZh || activity.activityStableId;
+}
+
+function activitySubjectLabel(
+  activity: MarketingActivity,
+  isZh: boolean,
+): string | null {
+  if (activity.kind !== 'DAILY_SPECIAL') return null;
+  const subject = isZh
+    ? activity.titleZh || activity.titleEn
+    : activity.titleEn || activity.titleZh;
+  if (!subject) return null;
+  return isZh ? `当前菜品：${subject}` : `Current item: ${subject}`;
 }
 
 function formatGeneratedAt(value: string, locale: Locale): string {
@@ -360,8 +402,8 @@ export function MarketingOverviewPageClient() {
     return {
       today: totalFor('today'),
       last7Days: totalFor('last7Days'),
-      month: totalFor('month'),
-      quarter: totalFor('quarter'),
+      last30Days: totalFor('last30Days'),
+      last90Days: totalFor('last90Days'),
     };
   }, [report]);
 
@@ -462,11 +504,11 @@ export function MarketingOverviewPageClient() {
               </p>
             </div>
 
-            {report.coverage.unattributedCouponUsesInQuarter > 0 ? (
+            {report.coverage.unattributedCouponUsesInLast90Days > 0 ? (
               <StaffFeedback tone="warning" className="mt-4">
                 {isZh
-                  ? `本季度有 ${report.coverage.unattributedCouponUsesInQuarter} 次优惠券使用暂时无法稳定归因到礼包 / 活动，已从活动行统计中排除。`
-                  : `${report.coverage.unattributedCouponUsesInQuarter} coupon uses in the current quarter cannot yet be stably attributed to a program and are excluded from campaign rows.`}
+                  ? `近 90 天有 ${report.coverage.unattributedCouponUsesInLast90Days} 次优惠券使用暂时无法稳定归因到礼包 / 活动，已从活动行统计中排除。`
+                  : `${report.coverage.unattributedCouponUsesInLast90Days} coupon uses in the last 90 days cannot yet be stably attributed to a program and are excluded from campaign rows.`}
               </StaffFeedback>
             ) : null}
 
@@ -511,6 +553,11 @@ export function MarketingOverviewPageClient() {
                                 <p className="font-semibold text-slate-950">
                                   {activityTitle(activity, isZh)}
                                 </p>
+                                {activitySubjectLabel(activity, isZh) ? (
+                                  <p className="mt-0.5 text-xs text-slate-500">
+                                    {activitySubjectLabel(activity, isZh)}
+                                  </p>
+                                ) : null}
                                 <div className="mt-1 flex flex-wrap gap-1.5">
                                   <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
                                     {kindLabel(activity.kind, isZh)}
