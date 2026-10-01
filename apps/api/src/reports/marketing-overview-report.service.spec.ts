@@ -10,7 +10,7 @@ describe('MarketingOverviewReportService', () => {
     jest.useRealTimers();
   });
 
-  it('projects active campaigns into Store-local Today/7d/month/quarter metrics with evidence', async () => {
+  it('projects active campaigns into Store-local Today/7d/30d/90d metrics with evidence', async () => {
     const campaigns = {
       readCampaigns: jest.fn().mockResolvedValue([
         {
@@ -263,7 +263,7 @@ describe('MarketingOverviewReportService', () => {
 
     expect(usage.readUsageFactsForRange).toHaveBeenCalledWith({
       storeStableId: 'store-1',
-      fromInclusive: new Date('2026-07-01T04:00:00.000Z'),
+      fromInclusive: new Date('2026-07-03T04:00:00.000Z'),
       toExclusive: new Date('2026-09-30T20:30:00.000Z'),
     });
     expect(report.windows).toEqual({
@@ -275,12 +275,12 @@ describe('MarketingOverviewReportService', () => {
         fromInclusive: '2026-09-24T04:00:00.000Z',
         toExclusive: '2026-09-30T20:30:00.000Z',
       },
-      month: {
+      last30Days: {
         fromInclusive: '2026-09-01T04:00:00.000Z',
         toExclusive: '2026-09-30T20:30:00.000Z',
       },
-      quarter: {
-        fromInclusive: '2026-07-01T04:00:00.000Z',
+      last90Days: {
+        fromInclusive: '2026-07-03T04:00:00.000Z',
         toExclusive: '2026-09-30T20:30:00.000Z',
       },
     });
@@ -303,7 +303,7 @@ describe('MarketingOverviewReportService', () => {
       (activity) => activity.activityStableId === 'daily-monday',
     )!;
     expect(daily.metrics.today.uses).toBe(1);
-    expect(daily.metrics.quarter).toEqual(
+    expect(daily.metrics.last90Days).toEqual(
       expect.objectContaining({
         uses: 2,
         affectedItemQuantity: {
@@ -327,8 +327,8 @@ describe('MarketingOverviewReportService', () => {
       (activity) => activity.activityStableId === 'auto-bogo',
     )!;
     expect(automatic.metrics.last7Days.uses).toBe(1);
-    expect(automatic.metrics.month.uses).toBe(2);
-    expect(automatic.metrics.month.associatedSalesCents).toBe(3000);
+    expect(automatic.metrics.last30Days.uses).toBe(2);
+    expect(automatic.metrics.last30Days.associatedSalesCents).toBe(3000);
 
     const coupon = report.activities.find(
       (activity) => activity.activityStableId === 'welcome-program',
@@ -370,7 +370,53 @@ describe('MarketingOverviewReportService', () => {
     );
 
     expect(zeroUse.metrics.today.associatedSalesEvidence).toBe('NO_USAGE');
-    expect(report.coverage.unattributedCouponUsesInQuarter).toBe(1);
+    expect(report.coverage.unattributedCouponUsesInLast90Days).toBe(1);
+  });
+
+  it('reads far enough back for trailing windows when a new quarter starts', async () => {
+    jest.setSystemTime(new Date('2026-10-01T20:30:00.000Z'));
+
+    const campaigns = {
+      readCampaigns: jest.fn().mockResolvedValue([]),
+      readCouponProgramAttributions: jest.fn().mockResolvedValue([]),
+    };
+    const usage = {
+      readUsageFactsForRange: jest.fn().mockResolvedValue([]),
+    };
+    const storeContext = {
+      getStoreOperatingContext: jest.fn().mockResolvedValue({
+        storeStableId: 'store-1',
+        timezone: 'America/Toronto',
+        isActive: true,
+        historyCoverage: 'CURRENT_CONFIGURATION_ONLY',
+        businessHours: [],
+        holidays: [],
+        currentStatus: {
+          isOpenBySchedule: true,
+          isTemporarilyClosed: false,
+          today: { date: '2026-10-01', closeMinutes: 1260 },
+        },
+      }),
+    };
+
+    const service = new MarketingOverviewReportService(
+      campaigns as never,
+      usage as never,
+      storeContext as never,
+    );
+    const report = await service.getReport('store-1');
+
+    expect(usage.readUsageFactsForRange).toHaveBeenCalledWith({
+      storeStableId: 'store-1',
+      fromInclusive: new Date('2026-07-04T04:00:00.000Z'),
+      toExclusive: new Date('2026-10-01T20:30:00.000Z'),
+    });
+    expect(report.windows.last30Days.fromInclusive).toBe(
+      '2026-09-02T04:00:00.000Z',
+    );
+    expect(report.windows.last90Days.fromInclusive).toBe(
+      '2026-07-04T04:00:00.000Z',
+    );
   });
 
   it('rejects a missing Store context', async () => {

@@ -33,7 +33,13 @@ describe('Admin Marketing Overview cutover and performance display', () => {
     expect(clientSource).toContain('?store=${encodeURIComponent(storeStableId)}');
   });
 
-  it('renders MKT-D performance metrics without collapsing evidence gaps into zero', () => {
+  it('renders trailing Today/7d/30d/90d windows and performance metrics without collapsing evidence gaps into zero', () => {
+    expect(clientSource).toContain("'last30Days'");
+    expect(clientSource).toContain("'last90Days'");
+    expect(clientSource).toContain("'近 30 天'");
+    expect(clientSource).toContain("'近 90 天'");
+    expect(clientSource).not.toContain("'本月'");
+    expect(clientSource).not.toContain("'本季度'");
     expect(clientSource).toContain('affectedItemQuantity');
     expect(clientSource).toContain('discountCents');
     expect(clientSource).toContain('associatedSalesCents');
@@ -42,6 +48,13 @@ describe('Admin Marketing Overview cutover and performance display', () => {
     expect(clientSource).toContain('totalUses');
     expect(clientSource).toContain('Covered subtotal, not full total');
     expect(clientSource).toContain('UNAVAILABLE is never treated as zero');
+  });
+
+  it('labels Daily Specials by stable weekday slot while showing the current configured item separately', () => {
+    expect(clientSource).toContain("activity.kind === 'DAILY_SPECIAL'");
+    expect(clientSource).toContain('dailySpecialWeekdayLabel');
+    expect(clientSource).toContain('Current item:');
+    expect(clientSource).toContain('当前菜品：');
   });
 
   it('keeps associated sales explicitly non-additive and surfaces legacy evidence', () => {
