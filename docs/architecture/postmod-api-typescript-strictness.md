@@ -1,9 +1,9 @@
 # Post-Modularization API TypeScript Strictness
 
 Date: 2026-10-01  
-Baseline: `origin/dev@b93f2ffd`  
-Branch: `postmod/api-strict-umbrella-closure`  
-State: **SLICE 1 MERGED / CI #6688 GREEN / SLICE 2 MERGED / CI #6690 GREEN / SLICE 3 MERGED / CI #6694 GREEN / SLICE 4 MERGED / CI #6698 GREEN / SLICE 5 MERGED / CI #6701 GREEN / SLICE 6 MERGED / CI #6704 GREEN / SLICE 7 MERGED / CI #6707 GREEN / SLICE 8 MERGED / CI #6712 GREEN / SLICE 9 MERGED / CI #6715 GREEN / SLICE 10 PR #2638 / CI #6717 GREEN / `strict=true` / CURRENT-SEMANTICS UMBRELLA CLOSURE / CONFIG-ONLY / NO SOURCE WORKAROUND / NO GRAPH OR BASELINE CHANGE**
+Baseline: `origin/dev@63e32160`  
+Branch: `merged`  
+State: **CLOSED / SLICE 1-10 MERGED / FINAL PR #2638 / FINAL CI #6718 GREEN / FINAL MERGE `63e32160` / API FULL STRICT / CURRENT-SEMANTICS UMBRELLA CLOSURE / NO GRAPH OR BASELINE CHANGE**
 
 ## Scope
 
@@ -18,7 +18,7 @@ This work package applies §7.3 incrementally, one compiler-hardening flag at a 
 - Slice 7: `strictBuiltinIteratorReturn=true` — merged through PR #2635 / CI #6707 / merge `e4b01345` without a production source workaround.
 - Slice 8: `strictPropertyInitialization=true` — merged through PR #2636 / CI #6712 / merge `fe08093a` with four narrow definite-assignment fixes and one scanner syntax-compatibility correction.
 - Slice 9: `strictFunctionTypes=true` — merged through PR #2637 / CI #6715 / merge `b93f2ffd` without a production source workaround.
-- Slice 10: `strict=true` — current local umbrella-closure branch.
+- Slice 10: `strict=true` — merged through PR #2638 / final CI #6718 / merge `63e32160` without a production source workaround; this closes §7.3.
 
 Explicitly out of Slice 10 scope:
 
@@ -301,6 +301,10 @@ No production TypeScript source workaround was required. CI #6717 passed all req
 
 ## Slice 10 verification and architecture status
 
-Per `AGENTS.md`, no local lint, build, test or TypeScript CI-reproduction command is run during this local review phase. After user approval, GitHub Actions is the authoritative validation gate. If the current TypeScript/compiler state unexpectedly produces a diagnostic, investigate the exact compiler-option relationship or source root cause; do not remove constituent flags, add `any` / `@ts-ignore`, suppress lint, or weaken `strict=true` merely to make CI green.
+CI #6717 passed the architecture gate, API/Web lint/build/strict/tests, Browser E2E, printer-agent and Windows-workstation with `strict=true`. The final documentation head then passed CI #6718, and PR #2638 squash-merged to `dev` as `63e32160`. No production source workaround, dependency/lockfile, Prisma/schema/migration, provider/payment/Accounting semantic, public-contract, context-direction, scanner allowance, SCC, graph or architecture-baseline change was required.
+
+## Final closure
+
+§7.3 is **CLOSED**. The API is full strict under TypeScript 5.9.3, and every current strict-family constituent remains explicitly enabled alongside `strict=true` as audit evidence. No further source slice is planned for this work package. Future TypeScript upgrades may add new checks under the `strict` umbrella; any resulting diagnostics are upgrade-time compatibility work and must not be treated as reopening §7.3.
 
 This umbrella closure changes no module ownership, public contract, cross-context direction, direct-import debt, architecture allowance, SCC or `tools/architecture/context-baseline.json` content: **NO GRAPH/BASELINE CHANGE**.
