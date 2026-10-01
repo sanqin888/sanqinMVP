@@ -3815,10 +3815,18 @@ is claimed per repository workflow.
 
 ### 2026-09-30 — Post-Modularization §7.3 API TypeScript strictness Slice 5
 
-**State:** **PR #2633 / CI #6700 GREEN / `noImplicitThis=true` / NO SOURCE WORKAROUND / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE** on `postmod/api-no-implicit-this`. Repository-wide modularization and Phase 9 remain CLOSED.  
+**State:** **MERGED / CI #6701 GREEN / PR #2633 / MERGE `31093556` / `noImplicitThis=true` / NO SOURCE WORKAROUND / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**. Repository-wide modularization and Phase 9 remain CLOSED.  
 **Read-only review:** refreshed merged `origin/dev@b86e4354` before editing. Search found no ordinary production function body relying on implicit `this`, no `.bind(this)` / `.call(this)` / `.apply(this)` usage, and only one explicit `this:` annotation: the Uber error mapper's `(this: unknown) => unknown`, which is already intentionally typed. Static review found no need for business, provider, payment, Accounting or architecture changes.  
 **Implementation:** only `apps/api/tsconfig.json` explicitly enables `noImplicitThis=true`. Existing `strictNullChecks=true`, `noImplicitAny=true`, `strictBindCallApply=true`, `useUnknownInCatchVariables=true` and `noFallthroughCasesInSwitch=true` remain unchanged. No production TypeScript workaround, dependency/lockfile, Prisma/schema/migration or runtime behavior change is included in the local review state.  
 **Architecture / verification:** CI #6700 passed API/Web lint/build/strict/tests, Browser E2E, printer-agent and Windows-workstation; API strict declaration explicitly passed with `noImplicitThis=true`. No context direction, public contract, direct-import debt, scanner allowance, SCC or architecture baseline change; `tools/architecture/context-baseline.json` is untouched.  
+**Details:** `docs/architecture/postmod-api-typescript-strictness.md`, `POST_MODULARIZATION_BACKLOG.md`, `apps/api/tsconfig.json`, `docs/architecture/current-dependency-graph.md`, this worklog.
+
+### 2026-09-30 — Post-Modularization §7.3 API TypeScript strictness Slice 6
+
+**State:** **PR #2634 / CI #6703 GREEN / `alwaysStrict=true` / CONFIG-ONLY / NO SOURCE WORKAROUND / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE** on `postmod/api-always-strict`. Repository-wide modularization and Phase 9 remain CLOSED.  
+**Read-only review:** refreshed merged `origin/dev@31093556` before editing. API uses `module:nodenext` / `target:ES2023`; runtime source is module-oriented, no `with (...)` or other sloppy-mode dependency was found, and `src/types/optional-modules.d.ts` contains only ambient declarations that emit no runtime code. Static review found no need for runtime, provider, payment, Accounting or architecture changes.  
+**Implementation:** only `apps/api/tsconfig.json` explicitly enables `alwaysStrict=true`. Existing `strictNullChecks=true`, `noImplicitAny=true`, `strictBindCallApply=true`, `useUnknownInCatchVariables=true`, `noImplicitThis=true` and `noFallthroughCasesInSwitch=true` remain unchanged. No production TypeScript workaround, dependency/lockfile, Prisma/schema/migration or runtime behavior change is included in the local review state.  
+**Architecture / verification:** CI #6703 passed API/Web lint/build/strict/tests, Browser E2E, printer-agent and Windows-workstation; API strict declaration explicitly passed with `alwaysStrict=true`. No context direction, public contract, direct-import debt, scanner allowance, SCC or architecture baseline change; `tools/architecture/context-baseline.json` is untouched.  
 **Details:** `docs/architecture/postmod-api-typescript-strictness.md`, `POST_MODULARIZATION_BACKLOG.md`, `apps/api/tsconfig.json`, `docs/architecture/current-dependency-graph.md`, this worklog.
 
 ## Rule for future entries

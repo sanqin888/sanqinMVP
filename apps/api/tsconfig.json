@@ -24,6 +24,7 @@
     "strictBindCallApply": true,
     "useUnknownInCatchVariables": true,
     "noImplicitThis": true,
+    "alwaysStrict": true,
     "noFallthroughCasesInSwitch": true
   },
   "include": ["src/**/*.ts"],

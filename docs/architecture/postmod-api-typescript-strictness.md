@@ -1,9 +1,9 @@
 # Post-Modularization API TypeScript Strictness
 
 Date: 2026-09-30  
-Baseline: `origin/dev@b86e4354`  
-Branch: `postmod/api-no-implicit-this`  
-State: **SLICE 1 MERGED / CI #6688 GREEN / SLICE 2 MERGED / CI #6690 GREEN / SLICE 3 MERGED / CI #6694 GREEN / SLICE 4 MERGED / CI #6698 GREEN / SLICE 5 PR #2633 / CI #6700 GREEN / `noImplicitThis=true` / NO SOURCE WORKAROUND / NO GRAPH OR BASELINE CHANGE**
+Baseline: `origin/dev@31093556`  
+Branch: `postmod/api-always-strict`  
+State: **SLICE 1 MERGED / CI #6688 GREEN / SLICE 2 MERGED / CI #6690 GREEN / SLICE 3 MERGED / CI #6694 GREEN / SLICE 4 MERGED / CI #6698 GREEN / SLICE 5 MERGED / CI #6701 GREEN / SLICE 6 PR #2634 / CI #6703 GREEN / `alwaysStrict=true` / CONFIG-ONLY / NO SOURCE WORKAROUND / NO GRAPH OR BASELINE CHANGE**
 
 ## Scope
 
@@ -13,9 +13,10 @@ This work package applies §7.3 incrementally, one compiler-hardening flag at a 
 - Slice 2: `noFallthroughCasesInSwitch=true` — merged through PR #2630 / CI #6690 / merge `97277b6e`.
 - Slice 3: `noImplicitAny=true` — merged through PR #2631 / CI #6694 / merge `8fd2d8bf`; API `@types/ws:^8.18.2` was explicitly authorized to close the third-party `engine.io -> ws` declaration gap.
 - Slice 4: `useUnknownInCatchVariables=true` — merged through PR #2632 / CI #6698 / merge `b86e4354`; five unknown stringification boundaries were narrowly fixed after CI #6696.
-- Slice 5: `noImplicitThis=true` — current local branch.
+- Slice 5: `noImplicitThis=true` — merged through PR #2633 / CI #6701 / merge `31093556` without a production source workaround.
+- Slice 6: `alwaysStrict=true` — current local branch.
 
-Explicitly out of Slice 5 scope:
+Explicitly out of Slice 6 scope:
 
 - cleanup of existing explicit `any`;
 - `strictFunctionTypes`, `strictPropertyInitialization` or `strict:true`;
@@ -130,7 +131,38 @@ useUnknownInCatchVariables: true
 noFallthroughCasesInSwitch: true
 ```
 
-No production TypeScript source workaround was required. CI #6700 passed all required jobs, including API lint, API strict declaration, API/Web tests, Browser E2E, printer-agent and Windows-workstation.
+No production TypeScript source workaround was required. CI #6700 passed all required jobs, including API lint, API strict declaration, API/Web tests, Browser E2E, printer-agent and Windows-workstation; the final documentation head passed CI #6701 and PR #2633 merged as `31093556`.
+
+## Slice 6 implementation-time read-only review
+
+The review was repeated from fresh merged `origin/dev@31093556` before editing.
+
+- API compilation uses `module:nodenext` and `target:ES2023`; runtime source is already module-oriented.
+- No `with (...)` statement or other obvious sloppy-mode dependency was found in production source.
+- `apps/api/src/types/optional-modules.d.ts` contains ambient `declare module` stubs only and emits no runtime JavaScript.
+- No package-level module-mode change, dependency change, provider protocol change, payment behavior change or Accounting authority change is required.
+- Static review therefore supports a config-only slice, with GitHub Actions remaining authoritative for emitted-code/build compatibility.
+
+## Slice 6 source change
+
+`apps/api/tsconfig.json` changes only:
+
+```text
+alwaysStrict: <implicit false> -> true
+```
+
+The existing settings remain:
+
+```text
+strictNullChecks: true
+noImplicitAny: true
+strictBindCallApply: true
+useUnknownInCatchVariables: true
+noImplicitThis: true
+noFallthroughCasesInSwitch: true
+```
+
+No production TypeScript source workaround was required. CI #6703 passed all required jobs, including API lint, API strict declaration, API/Web tests, Browser E2E, printer-agent and Windows-workstation.
 
 ## Verification and architecture status
 
