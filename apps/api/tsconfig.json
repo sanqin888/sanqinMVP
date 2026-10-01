@@ -25,6 +25,7 @@
     "useUnknownInCatchVariables": true,
     "noImplicitThis": true,
     "alwaysStrict": true,
+    "strictBuiltinIteratorReturn": true,
     "noFallthroughCasesInSwitch": true
   },
   "include": ["src/**/*.ts"],

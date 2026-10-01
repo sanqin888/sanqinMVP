@@ -1,9 +1,9 @@
 # Post-Modularization API TypeScript Strictness
 
 Date: 2026-09-30  
-Baseline: `origin/dev@31093556`  
-Branch: `postmod/api-always-strict`  
-State: **SLICE 1 MERGED / CI #6688 GREEN / SLICE 2 MERGED / CI #6690 GREEN / SLICE 3 MERGED / CI #6694 GREEN / SLICE 4 MERGED / CI #6698 GREEN / SLICE 5 MERGED / CI #6701 GREEN / SLICE 6 PR #2634 / CI #6703 GREEN / `alwaysStrict=true` / CONFIG-ONLY / NO SOURCE WORKAROUND / NO GRAPH OR BASELINE CHANGE**
+Baseline: `origin/dev@3aa51dd0`  
+Branch: `postmod/api-strict-builtin-iterator-return`  
+State: **SLICE 1 MERGED / CI #6688 GREEN / SLICE 2 MERGED / CI #6690 GREEN / SLICE 3 MERGED / CI #6694 GREEN / SLICE 4 MERGED / CI #6698 GREEN / SLICE 5 MERGED / CI #6701 GREEN / SLICE 6 MERGED / CI #6704 GREEN / SLICE 7 LOCAL / REVIEWED / `strictBuiltinIteratorReturn=true` / CONFIG-ONLY / NO GRAPH OR BASELINE CHANGE**
 
 ## Scope
 
@@ -14,9 +14,10 @@ This work package applies §7.3 incrementally, one compiler-hardening flag at a 
 - Slice 3: `noImplicitAny=true` — merged through PR #2631 / CI #6694 / merge `8fd2d8bf`; API `@types/ws:^8.18.2` was explicitly authorized to close the third-party `engine.io -> ws` declaration gap.
 - Slice 4: `useUnknownInCatchVariables=true` — merged through PR #2632 / CI #6698 / merge `b86e4354`; five unknown stringification boundaries were narrowly fixed after CI #6696.
 - Slice 5: `noImplicitThis=true` — merged through PR #2633 / CI #6701 / merge `31093556` without a production source workaround.
-- Slice 6: `alwaysStrict=true` — current local branch.
+- Slice 6: `alwaysStrict=true` — merged through PR #2634 / CI #6704 / merge `3aa51dd0` without a production source workaround.
+- Slice 7: `strictBuiltinIteratorReturn=true` — current local branch.
 
-Explicitly out of Slice 6 scope:
+Explicitly out of Slice 7 scope:
 
 - cleanup of existing explicit `any`;
 - `strictFunctionTypes`, `strictPropertyInitialization` or `strict:true`;
@@ -162,15 +163,47 @@ noImplicitThis: true
 noFallthroughCasesInSwitch: true
 ```
 
-No production TypeScript source workaround was required. CI #6703 passed all required jobs, including API lint, API strict declaration, API/Web tests, Browser E2E, printer-agent and Windows-workstation.
+No production TypeScript source workaround was required. CI #6703 passed all required jobs, including API lint, API strict declaration, API/Web tests, Browser E2E, printer-agent and Windows-workstation; the final documentation head passed CI #6704 and PR #2634 merged as `3aa51dd0`.
+
+## Slice 7 implementation-time read-only review
+
+The review was repeated from fresh merged `origin/dev@3aa51dd0` before editing.
+
+- No production `.next()` calls were found.
+- No `.values().next()`, `.keys().next()` or `.entries().next()` chains were found.
+- No `Symbol.iterator`, `IteratorResult`, `IterableIterator` or explicit `Iterator<...>` usage was found.
+- Static review therefore found no application-level consumer depending on the historical broad builtin iterator return type.
+- No dependency, provider protocol, payment behavior, Accounting authority or architecture change is required.
+
+## Slice 7 source change
+
+`apps/api/tsconfig.json` changes only:
+
+```text
+strictBuiltinIteratorReturn: <implicit false> -> true
+```
+
+The existing settings remain:
+
+```text
+strictNullChecks: true
+noImplicitAny: true
+strictBindCallApply: true
+useUnknownInCatchVariables: true
+noImplicitThis: true
+alwaysStrict: true
+noFallthroughCasesInSwitch: true
+```
+
+No production TypeScript source workaround is included in the local review state.
 
 ## Verification and architecture status
 
 Per `AGENTS.md`, no local lint, build, test or TypeScript CI-reproduction command is run
 during this local review phase. After user approval, GitHub Actions is the authoritative
-validation gate. If CI exposes a true implicit-`this` diagnostic, fix only the narrow
-root typing issue; do not add `any`, `@ts-ignore`, broad assertions, lint suppression,
-or disable the flag.
+validation gate. If CI exposes a true builtin-iterator return diagnostic, fix only the
+narrow iterator-result typing root cause; do not add `any`, `@ts-ignore`, broad assertions,
+lint suppression, or disable the flag.
 
 This compiler-option hardening changes no module ownership, public contract,
 cross-context direction, direct-import debt, architecture allowance, SCC or
