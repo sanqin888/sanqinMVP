@@ -229,13 +229,13 @@ strictBuiltinIteratorReturn: true
 noFallthroughCasesInSwitch: true
 ```
 
-Initial CI #6709 reached API build and exposed four TS2564 framework-populated declaration gaps: `CreatePosDeviceDto.name`, `CreatePosDeviceDto.storeStableId`, `UpdatePosDeviceStatusDto.status`, and Nest-injected `PosGateway.server`. The narrow fix adds definite-assignment `!` only to these four fields, matching existing repository DTO/response conventions. No constructor logic, runtime validation, WebSocket injection behavior, provider/payment/Accounting semantics, dependency, Prisma, or architecture boundary changes are introduced.
+Initial CI #6709 reached API build and exposed four TS2564 framework-populated declaration gaps: `CreatePosDeviceDto.name`, `CreatePosDeviceDto.storeStableId`, `UpdatePosDeviceStatusDto.status`, and Nest-injected `PosGateway.server`. The narrow fix adds definite-assignment `!` only to these four fields, matching existing repository DTO/response conventions. No constructor logic, runtime validation, WebSocket injection behavior, provider/payment/Accounting semantics, dependency, Prisma, or architecture boundary changes are introduced. Follow-up CI #6710 then failed at the architecture gate because the closed `pos-device.admin-db-id.v1` source guard required literal `storeStableId: string`. The scanner check is corrected to accept both `storeStableId: string` and `storeStableId!: string` while still rejecting `storeId` and `IsUUID`; the stable-business-ID rule and architecture baseline are unchanged.
 
 ## Verification and architecture status
 
 Per `AGENTS.md`, no local lint, build, test or TypeScript CI-reproduction command is run
 during this local review phase. After user approval, GitHub Actions is the authoritative
-validation gate. CI #6709 exposed exactly four framework-populated declaration gaps; the narrow `!` annotations above address those sites only. Do not broaden the assertion surface, add `any` / `@ts-ignore`, suppress lint, or disable the flag.
+validation gate. CI #6709 exposed exactly four framework-populated declaration gaps; the narrow `!` annotations above address those sites only. CI #6710 exposed only the scanner's literal-source matching gap, now corrected without relaxing the stable-ID rule. Do not broaden the assertion surface, add `any` / `@ts-ignore`, suppress lint, disable the flag, or update the architecture baseline.
 
 This compiler-option hardening changes no module ownership, public contract,
 cross-context direction, direct-import debt, architecture allowance, SCC or

@@ -7904,7 +7904,7 @@ if (requireClosedCompatibility('pos-device.admin-db-id.v1')) {
 
   if (
     createDto &&
-    (!createDto.includes('storeStableId: string') ||
+    (!/\bstoreStableId!?\s*:\s*string\b/.test(createDto) ||
       /\bstoreId\??\s*:/.test(createDto) ||
       createDto.includes('IsUUID'))
   ) {
