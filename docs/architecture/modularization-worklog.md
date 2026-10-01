@@ -3815,10 +3815,10 @@ is claimed per repository workflow.
 
 ### 2026-09-30 — Post-Modularization §7.3 API TypeScript strictness Slice 5
 
-**State:** **LOCAL / REVIEWED / `noImplicitThis=true` / NO SOURCE WORKAROUND / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE** on `postmod/api-no-implicit-this`. Repository-wide modularization and Phase 9 remain CLOSED.  
+**State:** **PR #2633 / CI #6700 GREEN / `noImplicitThis=true` / NO SOURCE WORKAROUND / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE** on `postmod/api-no-implicit-this`. Repository-wide modularization and Phase 9 remain CLOSED.  
 **Read-only review:** refreshed merged `origin/dev@b86e4354` before editing. Search found no ordinary production function body relying on implicit `this`, no `.bind(this)` / `.call(this)` / `.apply(this)` usage, and only one explicit `this:` annotation: the Uber error mapper's `(this: unknown) => unknown`, which is already intentionally typed. Static review found no need for business, provider, payment, Accounting or architecture changes.  
 **Implementation:** only `apps/api/tsconfig.json` explicitly enables `noImplicitThis=true`. Existing `strictNullChecks=true`, `noImplicitAny=true`, `strictBindCallApply=true`, `useUnknownInCatchVariables=true` and `noFallthroughCasesInSwitch=true` remain unchanged. No production TypeScript workaround, dependency/lockfile, Prisma/schema/migration or runtime behavior change is included in the local review state.  
-**Architecture / verification:** per `AGENTS.md`, no local lint/build/test/tsc reproduction is run before review. GitHub Actions' API strict declaration check is the authoritative remote gate. If hidden diagnostics appear, fix only the actual `this` typing root cause rather than weakening the flag or adding `any`/ignore/suppression. No context direction, public contract, direct-import debt, scanner allowance, SCC or architecture baseline change; `tools/architecture/context-baseline.json` is untouched.  
+**Architecture / verification:** CI #6700 passed API/Web lint/build/strict/tests, Browser E2E, printer-agent and Windows-workstation; API strict declaration explicitly passed with `noImplicitThis=true`. No context direction, public contract, direct-import debt, scanner allowance, SCC or architecture baseline change; `tools/architecture/context-baseline.json` is untouched.  
 **Details:** `docs/architecture/postmod-api-typescript-strictness.md`, `POST_MODULARIZATION_BACKLOG.md`, `apps/api/tsconfig.json`, `docs/architecture/current-dependency-graph.md`, this worklog.
 
 ## Rule for future entries
