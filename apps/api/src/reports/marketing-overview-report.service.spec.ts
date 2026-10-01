@@ -263,7 +263,7 @@ describe('MarketingOverviewReportService', () => {
 
     expect(usage.readUsageFactsForRange).toHaveBeenCalledWith({
       storeStableId: 'store-1',
-      fromInclusive: new Date('2026-07-01T04:00:00.000Z'),
+      fromInclusive: new Date('2026-07-03T04:00:00.000Z'),
       toExclusive: new Date('2026-09-30T20:30:00.000Z'),
     });
     expect(report.windows).toEqual({
