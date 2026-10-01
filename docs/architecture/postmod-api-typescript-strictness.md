@@ -1,9 +1,9 @@
 # Post-Modularization API TypeScript Strictness
 
 Date: 2026-10-01  
-Baseline: `origin/dev@e4b01345`  
-Branch: `postmod/api-strict-property-initialization`  
-State: **SLICE 1 MERGED / CI #6688 GREEN / SLICE 2 MERGED / CI #6690 GREEN / SLICE 3 MERGED / CI #6694 GREEN / SLICE 4 MERGED / CI #6698 GREEN / SLICE 5 MERGED / CI #6701 GREEN / SLICE 6 MERGED / CI #6704 GREEN / SLICE 7 MERGED / CI #6707 GREEN / SLICE 8 PR #2636 / CI #6711 GREEN / `strictPropertyInitialization=true` / FOUR NARROW DEFINITE-ASSIGNMENT FIXES / SCANNER SYNTAX FIX / NO GRAPH OR BASELINE CHANGE**
+Baseline: `origin/dev@fe08093a`  
+Branch: `postmod/api-strict-function-types`  
+State: **SLICE 1 MERGED / CI #6688 GREEN / SLICE 2 MERGED / CI #6690 GREEN / SLICE 3 MERGED / CI #6694 GREEN / SLICE 4 MERGED / CI #6698 GREEN / SLICE 5 MERGED / CI #6701 GREEN / SLICE 6 MERGED / CI #6704 GREEN / SLICE 7 MERGED / CI #6707 GREEN / SLICE 8 MERGED / CI #6712 GREEN / SLICE 9 PR #2637 / CI #6714 GREEN / `strictFunctionTypes=true` / CONFIG-ONLY / NO SOURCE WORKAROUND / NO GRAPH OR BASELINE CHANGE**
 
 ## Scope
 
@@ -16,12 +16,13 @@ This work package applies §7.3 incrementally, one compiler-hardening flag at a 
 - Slice 5: `noImplicitThis=true` — merged through PR #2633 / CI #6701 / merge `31093556` without a production source workaround.
 - Slice 6: `alwaysStrict=true` — merged through PR #2634 / CI #6704 / merge `3aa51dd0` without a production source workaround.
 - Slice 7: `strictBuiltinIteratorReturn=true` — merged through PR #2635 / CI #6707 / merge `e4b01345` without a production source workaround.
-- Slice 8: `strictPropertyInitialization=true` — current local branch.
+- Slice 8: `strictPropertyInitialization=true` — merged through PR #2636 / CI #6712 / merge `fe08093a` with four narrow definite-assignment fixes and one scanner syntax-compatibility correction.
+- Slice 9: `strictFunctionTypes=true` — current local branch.
 
-Explicitly out of Slice 8 scope:
+Explicitly out of Slice 9 scope:
 
 - cleanup of existing explicit `any`;
-- `strictFunctionTypes` or `strict:true`;
+- `strict:true`;
 - repository-wide strictness flag-day work;
 - dependency or lockfile changes;
 - Prisma/schema/migration changes;
@@ -233,10 +234,46 @@ Initial CI #6709 reached API build and exposed four TS2564 framework-populated d
 
 ## Verification and architecture status
 
-Per `AGENTS.md`, no local lint, build, test or TypeScript CI-reproduction command is run
-during this local review phase. After user approval, GitHub Actions is the authoritative
-validation gate. CI #6709 exposed exactly four framework-populated declaration gaps; the narrow `!` annotations above address those sites only. CI #6710 exposed only the scanner's literal-source matching gap, now corrected without relaxing the stable-ID rule. CI #6711 then passed the corrected architecture gate and all required jobs, including API build, API strict declaration, API tests and Browser E2E. No broader assertion surface, `any`, `@ts-ignore`, lint suppression, flag weakening, or architecture baseline update was required.
+CI #6709 exposed exactly four framework-populated declaration gaps; the narrow `!` annotations above address those sites only. CI #6710 exposed only the scanner's literal-source matching gap, corrected without relaxing the stable-ID rule. CI #6711 then passed the corrected architecture gate and all required jobs, including API build, API strict declaration, API tests and Browser E2E. The final documentation head passed CI #6712 and PR #2636 merged as `fe08093a`. No broader assertion surface, `any`, `@ts-ignore`, lint suppression, flag weakening, or architecture baseline update was required.
 
-This compiler-option hardening changes no module ownership, public contract,
-cross-context direction, direct-import debt, architecture allowance, SCC or
-`tools/architecture/context-baseline.json` content: **NO GRAPH/BASELINE CHANGE**.
+## Slice 9 implementation-time read-only review
+
+The review was repeated from fresh merged `origin/dev@fe08093a` before editing.
+
+- `strictFunctionTypes` risk is concentrated in function-valued properties/callbacks; method-style interface members such as Uber transaction/unit-of-work methods are not treated as equivalent variance evidence.
+- Representative third-party callback surfaces reviewed include Express static `setHeaders`, Node/PDF/child-process stream listeners, Accounting OCR/PDF runner functions, provider SDK wrapper functions, Prisma/transaction callbacks and Nest `useFactory` providers.
+- `apps/api/src/main.ts` currently annotates `express.static(...).setHeaders` as `(res: express.Response) => ...`; because the third-party callback contract may be broader than Express `Response`, this is a plausible narrow-parameter incompatibility under contravariant checking.
+- Node/PDF/child-process stream listeners also contain explicit `Buffer` / `Error` parameter annotations and remain part of the remote compiler verification surface.
+- Accounting runner aliases inspected so far use matching `Buffer` inputs and do not show an obvious local variance mismatch.
+- SendGrid/Twilio wrappers are explicit SDK adapter/assertion boundaries; no dependency or protocol change is indicated by the flag.
+- No evidence requires changing module ownership, provider/payment behavior, Accounting authority or a public contract.
+
+## Slice 9 source change
+
+`apps/api/tsconfig.json` changes only:
+
+```text
+strictFunctionTypes: <implicit false> -> true
+```
+
+The existing settings remain:
+
+```text
+strictNullChecks: true
+noImplicitAny: true
+strictBindCallApply: true
+useUnknownInCatchVariables: true
+noImplicitThis: true
+alwaysStrict: true
+strictBuiltinIteratorReturn: true
+strictPropertyInitialization: true
+noFallthroughCasesInSwitch: true
+```
+
+No production TypeScript source workaround was required. CI #6714 passed all required jobs, including the architecture gate, API build, API strict declaration, API/Web tests, Browser E2E, printer-agent and Windows-workstation. The reviewed Express `setHeaders`, stream-listener, Accounting runner, provider-wrapper, transaction-callback and Nest-factory surfaces required no compatibility edit.
+
+## Slice 9 verification and architecture status
+
+Per `AGENTS.md`, no local lint, build, test or TypeScript CI-reproduction command is run during this local review phase. After user approval, GitHub Actions is the authoritative validation gate. If CI exposes a function-variance diagnostic, fix only the exact callback/contract or contextual-typing root cause; do not add `any`, `@ts-ignore`, callback casts, broad assertions, lint suppression, or disable the flag.
+
+This compiler-option hardening changes no module ownership, public contract, cross-context direction, direct-import debt, architecture allowance, SCC or `tools/architecture/context-baseline.json` content: **NO GRAPH/BASELINE CHANGE**.

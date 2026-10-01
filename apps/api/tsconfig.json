@@ -27,6 +27,7 @@
     "alwaysStrict": true,
     "strictBuiltinIteratorReturn": true,
     "strictPropertyInitialization": true,
+    "strictFunctionTypes": true,
     "noFallthroughCasesInSwitch": true
   },
   "include": ["src/**/*.ts"],
