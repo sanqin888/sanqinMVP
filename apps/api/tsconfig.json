@@ -22,6 +22,7 @@
     "forceConsistentCasingInFileNames": true,
     "noImplicitAny": true,
     "strictBindCallApply": true,
+    "useUnknownInCatchVariables": true,
     "noFallthroughCasesInSwitch": true
   },
   "include": ["src/**/*.ts"],

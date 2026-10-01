@@ -2141,7 +2141,9 @@ export class OrdersService
             this.logger.warn('❌ Geocoding failed, Uber call might fail.');
           }
         } catch (err) {
-          this.logger.error(`Geocoding error: ${err}`);
+          this.logger.error(
+            `Geocoding error: ${err instanceof Error ? err.message : String(err)}`,
+          );
         }
       }
     }
