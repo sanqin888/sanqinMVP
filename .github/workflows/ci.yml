@@ -30,6 +30,13 @@ jobs:
         if: matrix.app == 'api'
         run: python3 -m unittest discover -s ops/sanq-mcp/tests -p 'test_*.py'
 
+      - name: Test backup operations safety behavior
+        if: matrix.app == 'api'
+        run: |
+          bash -n ops/backup/backup-db.sh
+          bash -n ops/backup/sanq-backup-protected-nginx
+          python3 -m unittest discover -s ops/backup/tests -p 'test_*.py'
+
       # 先安装 pnpm。固定到仓库当前使用的 pnpm 9.0.0，避免 action-setup v6
       # 在 GitHub-hosted runner 上先 bootstrap 新版 pnpm 再降级所产生的分钟级波动。
       - name: Setup pnpm

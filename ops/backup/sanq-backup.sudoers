@@ -1,0 +1,4 @@
+# Allow only the fixed protected-Nginx backup helper to cross the root boundary.
+# The helper itself accepts exactly one strictly validated archive filename and
+# has fixed source paths, local backup directory, rclone config, and remote.
+ubuntu ALL=(root) NOPASSWD: /usr/local/sbin/sanq-backup-protected-nginx sanqin_nginx_*.tar.gz
