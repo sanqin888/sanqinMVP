@@ -1,9 +1,9 @@
 # Post-Modularization API TypeScript Strictness
 
 Date: 2026-10-01  
-Baseline: `origin/dev@fe08093a`  
-Branch: `postmod/api-strict-function-types`  
-State: **SLICE 1 MERGED / CI #6688 GREEN / SLICE 2 MERGED / CI #6690 GREEN / SLICE 3 MERGED / CI #6694 GREEN / SLICE 4 MERGED / CI #6698 GREEN / SLICE 5 MERGED / CI #6701 GREEN / SLICE 6 MERGED / CI #6704 GREEN / SLICE 7 MERGED / CI #6707 GREEN / SLICE 8 MERGED / CI #6712 GREEN / SLICE 9 PR #2637 / CI #6714 GREEN / `strictFunctionTypes=true` / CONFIG-ONLY / NO SOURCE WORKAROUND / NO GRAPH OR BASELINE CHANGE**
+Baseline: `origin/dev@b93f2ffd`  
+Branch: `postmod/api-strict-umbrella-closure`  
+State: **SLICE 1 MERGED / CI #6688 GREEN / SLICE 2 MERGED / CI #6690 GREEN / SLICE 3 MERGED / CI #6694 GREEN / SLICE 4 MERGED / CI #6698 GREEN / SLICE 5 MERGED / CI #6701 GREEN / SLICE 6 MERGED / CI #6704 GREEN / SLICE 7 MERGED / CI #6707 GREEN / SLICE 8 MERGED / CI #6712 GREEN / SLICE 9 MERGED / CI #6715 GREEN / SLICE 10 LOCAL / REVIEWED / `strict=true` / CURRENT-SEMANTICS UMBRELLA CLOSURE / NO GRAPH OR BASELINE CHANGE**
 
 ## Scope
 
@@ -17,12 +17,12 @@ This work package applies §7.3 incrementally, one compiler-hardening flag at a 
 - Slice 6: `alwaysStrict=true` — merged through PR #2634 / CI #6704 / merge `3aa51dd0` without a production source workaround.
 - Slice 7: `strictBuiltinIteratorReturn=true` — merged through PR #2635 / CI #6707 / merge `e4b01345` without a production source workaround.
 - Slice 8: `strictPropertyInitialization=true` — merged through PR #2636 / CI #6712 / merge `fe08093a` with four narrow definite-assignment fixes and one scanner syntax-compatibility correction.
-- Slice 9: `strictFunctionTypes=true` — current local branch.
+- Slice 9: `strictFunctionTypes=true` — merged through PR #2637 / CI #6715 / merge `b93f2ffd` without a production source workaround.
+- Slice 10: `strict=true` — current local umbrella-closure branch.
 
-Explicitly out of Slice 9 scope:
+Explicitly out of Slice 10 scope:
 
 - cleanup of existing explicit `any`;
-- `strict:true`;
 - repository-wide strictness flag-day work;
 - dependency or lockfile changes;
 - Prisma/schema/migration changes;
@@ -274,6 +274,33 @@ No production TypeScript source workaround was required. CI #6714 passed all req
 
 ## Slice 9 verification and architecture status
 
-Per `AGENTS.md`, no local lint, build, test or TypeScript CI-reproduction command is run during this local review phase. After user approval, GitHub Actions is the authoritative validation gate. If CI exposes a function-variance diagnostic, fix only the exact callback/contract or contextual-typing root cause; do not add `any`, `@ts-ignore`, callback casts, broad assertions, lint suppression, or disable the flag.
+CI #6714 passed all required jobs with `strictFunctionTypes=true`, and the final documentation head passed CI #6715 before PR #2637 merged as `b93f2ffd`. No source workaround or architecture change was required.
 
-This compiler-option hardening changes no module ownership, public contract, cross-context direction, direct-import debt, architecture allowance, SCC or `tools/architecture/context-baseline.json` content: **NO GRAPH/BASELINE CHANGE**.
+## Slice 10 implementation-time read-only review
+
+The review was repeated from fresh merged `origin/dev@b93f2ffd` before editing.
+
+- The API currently uses TypeScript 5.9.3.
+- `apps/api/tsconfig.json` already explicitly enables every current strict-family constituent audited through Slices 1–9: `strictNullChecks`, `noImplicitAny`, `strictBindCallApply`, `useUnknownInCatchVariables`, `noImplicitThis`, `alwaysStrict`, `strictBuiltinIteratorReturn`, `strictPropertyInitialization`, and `strictFunctionTypes`.
+- `apps/api/tsconfig.strict.json` extends the base configuration and does not override or disable `strict` behavior.
+- Slice 10 therefore adds the umbrella declaration without removing the explicit flags, preserving both the historical audit trail and the visible current strict surface.
+- Under TypeScript 5.9.3 this is intended to be a current-semantics closure. The meaningful future delta is versioned: a later TypeScript release may add new checks to the `strict` umbrella, and any resulting diagnostics must be handled as part of that upgrade rather than suppressed.
+- No dependency, Prisma/schema/migration, provider/payment/Accounting semantic, runtime, public-contract or architecture-boundary change is required.
+
+## Slice 10 source change
+
+`apps/api/tsconfig.json` adds only:
+
+```text
+strict: true
+```
+
+The individually audited strict-family flags remain explicit and unchanged.
+
+No production TypeScript source workaround is included in the local review state.
+
+## Slice 10 verification and architecture status
+
+Per `AGENTS.md`, no local lint, build, test or TypeScript CI-reproduction command is run during this local review phase. After user approval, GitHub Actions is the authoritative validation gate. If the current TypeScript/compiler state unexpectedly produces a diagnostic, investigate the exact compiler-option relationship or source root cause; do not remove constituent flags, add `any` / `@ts-ignore`, suppress lint, or weaken `strict=true` merely to make CI green.
+
+This umbrella closure changes no module ownership, public contract, cross-context direction, direct-import debt, architecture allowance, SCC or `tools/architecture/context-baseline.json` content: **NO GRAPH/BASELINE CHANGE**.
