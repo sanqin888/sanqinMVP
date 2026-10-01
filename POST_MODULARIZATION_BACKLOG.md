@@ -125,7 +125,8 @@ The later CheckoutIntent contraction (§8.3) will move permanent destination/pre
 
 Priority: **P0 OPS EVIDENCE**  
 Complexity: **M operational / low source coupling**  
-External gate: **none**
+External gate: **none**  
+State: **RECOVERY DRILL PARTIAL PASS / SOURCE REMEDIATION IN LOCAL REVIEW / PRODUCTION FIX NOT DEPLOYED**
 
 Backups are useful only if restoration is proven.
 
@@ -137,7 +138,27 @@ Record a current recovery drill that verifies:
 - expected ordering between DB/files/config;
 - recovery integrity checks and operator runbook.
 
-This is evidence work, not a reason to rewrite the backup system.
+2026-10-01 recovery evidence passed isolated PostgreSQL logical restore plus
+migration/count/Journal checks, uploads-current DB/file/hash integrity,
+uploads-history retrieval, encrypted remote retrieval, cross-host rclone crypt
+decryption, and protected config archive restore. The drill found one real
+protected-config blocker: production Nginx requires
+`/etc/nginx/certs/cf-origin.key`, but the legacy archive omitted that
+`root:root 0600` file because `sanq-backup.service` runs as `ubuntu` and
+the legacy tar command silently tolerated unreadable files. The same script
+could also return systemd success after individual backup/upload failures.
+
+The authorized remediation keeps the main service unprivileged, moves only the
+Nginx/SSL archive into a fixed root helper with mandatory member validation,
+propagates backup failures to the final service exit status, and records the
+operator procedure in `docs/runbooks/backup-recovery.md`. Existing
+daily/monthly/uploads retention semantics remain unchanged. §3.2 stays open
+until the reviewed source is merged/deployed, a post-fix secure archive is
+independently recovered with the private-key member present, and rclone crypt
+credentials have a durable off-VM escrow.
+
+This is evidence work plus the smallest remediation required by the observed
+drill failure, not a rewrite of the backup system.
 
 ### 3.3 Docker pnpm reproducibility pin
 
