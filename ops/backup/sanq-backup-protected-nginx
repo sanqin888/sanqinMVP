@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+umask 077
+
+BACKUP_DIR="/home/ubuntu/sanq-app/backups"
+RCLONE_CONFIG="/home/ubuntu/.config/rclone/rclone.conf"
+REMOTE_DIR="gdrive_secure:nginx"
+
+fail() {
+    echo "❌ Protected Nginx backup: $*" >&2
+    exit 1
+}
+
+if [ "$EUID" -ne 0 ]; then
+    fail "must run as root"
+fi
+
+if [ "$#" -ne 1 ]; then
+    fail "expected exactly one archive filename"
+fi
+
+filename="$1"
+
+if [[ ! "$filename" =~ ^sanqin_nginx_[0-9]{8}_[0-9]{6}\.tar\.gz$ ]]; then
+    fail "invalid archive filename"
+fi
+
+if [ ! -d "$BACKUP_DIR" ] || [ -L "$BACKUP_DIR" ]; then
+    fail "backup directory is missing or unsafe"
+fi
+
+if [ ! -r "$RCLONE_CONFIG" ]; then
+    fail "rclone configuration is not readable"
+fi
+
+for command_name in tar gzip rclone mktemp mv chmod chown rm cp; do
+    command -v "$command_name" >/dev/null 2>&1 ||
+        fail "required command is missing: $command_name"
+done
+
+required_sources=(
+    "/etc/nginx/nginx.conf"
+    "/etc/nginx/sites-available/sanq-api.conf"
+    "/etc/nginx/sites-available/sanq-web.conf"
+    "/etc/nginx/certs/cf-origin.pem"
+    "/etc/nginx/certs/cf-origin.key"
+)
+
+for source_path in "${required_sources[@]}"; do
+    if [ ! -f "$source_path" ] || [ ! -s "$source_path" ] || [ ! -r "$source_path" ]; then
+        fail "required recovery source is missing, empty, or unreadable: $source_path"
+    fi
+done
+
+tmp_archive="$(mktemp "$BACKUP_DIR/.sanq-nginx.XXXXXX.tar.gz")"
+tmp_rclone_config="$(mktemp /tmp/sanq-rclone.XXXXXX.conf)"
+archive_path="$BACKUP_DIR/$filename"
+
+cleanup_tmp() {
+    if [ -n "${tmp_archive:-}" ] && [ -e "$tmp_archive" ]; then
+        rm -f -- "$tmp_archive"
+    fi
+    if [ -n "${tmp_rclone_config:-}" ] && [ -e "$tmp_rclone_config" ]; then
+        rm -f -- "$tmp_rclone_config"
+    fi
+}
+trap cleanup_tmp EXIT
+
+# Use a root-owned temporary copy so rclone token refresh cannot rewrite or
+# change ownership of ubuntu's live rclone.conf.
+cp -- "$RCLONE_CONFIG" "$tmp_rclone_config"
+chmod 600 "$tmp_rclone_config"
+
+tar -czf "$tmp_archive" -C /etc nginx ssl
+gzip -t "$tmp_archive"
+
+required_members=(
+    "nginx/nginx.conf"
+    "nginx/sites-available/sanq-api.conf"
+    "nginx/sites-available/sanq-web.conf"
+    "nginx/certs/cf-origin.pem"
+    "nginx/certs/cf-origin.key"
+)
+
+tar -tzf "$tmp_archive" "${required_members[@]}" >/dev/null
+
+# Replace the final path by rename rather than writing through a potentially
+# pre-existing user-controlled symlink in BACKUP_DIR.
+if [ -e "$archive_path" ] || [ -L "$archive_path" ]; then
+    rm -f -- "$archive_path"
+fi
+
+mv -- "$tmp_archive" "$archive_path"
+tmp_archive=""
+chown root:root "$archive_path"
+chmod 600 "$archive_path"
+
+if ! rclone \
+    --config "$tmp_rclone_config" \
+    copyto \
+    "$archive_path" \
+    "$REMOTE_DIR/$filename"
+then
+    fail "encrypted remote upload failed; validated local archive retained at $archive_path"
+fi
+
+echo "✅ Protected Nginx backup validated and uploaded: $filename"
