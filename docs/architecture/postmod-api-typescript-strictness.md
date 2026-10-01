@@ -3,7 +3,7 @@
 Date: 2026-10-01  
 Baseline: `origin/dev@fe08093a`  
 Branch: `postmod/api-strict-function-types`  
-State: **SLICE 1 MERGED / CI #6688 GREEN / SLICE 2 MERGED / CI #6690 GREEN / SLICE 3 MERGED / CI #6694 GREEN / SLICE 4 MERGED / CI #6698 GREEN / SLICE 5 MERGED / CI #6701 GREEN / SLICE 6 MERGED / CI #6704 GREEN / SLICE 7 MERGED / CI #6707 GREEN / SLICE 8 MERGED / CI #6712 GREEN / SLICE 9 LOCAL / REVIEWED / `strictFunctionTypes=true` / NO GRAPH OR BASELINE CHANGE**
+State: **SLICE 1 MERGED / CI #6688 GREEN / SLICE 2 MERGED / CI #6690 GREEN / SLICE 3 MERGED / CI #6694 GREEN / SLICE 4 MERGED / CI #6698 GREEN / SLICE 5 MERGED / CI #6701 GREEN / SLICE 6 MERGED / CI #6704 GREEN / SLICE 7 MERGED / CI #6707 GREEN / SLICE 8 MERGED / CI #6712 GREEN / SLICE 9 PR #2637 / CI #6714 GREEN / `strictFunctionTypes=true` / CONFIG-ONLY / NO SOURCE WORKAROUND / NO GRAPH OR BASELINE CHANGE**
 
 ## Scope
 
@@ -270,7 +270,7 @@ strictPropertyInitialization: true
 noFallthroughCasesInSwitch: true
 ```
 
-No production TypeScript source workaround is included in the local review state. In particular, the plausible Express callback narrowing is intentionally not changed speculatively before compiler evidence.
+No production TypeScript source workaround was required. CI #6714 passed all required jobs, including the architecture gate, API build, API strict declaration, API/Web tests, Browser E2E, printer-agent and Windows-workstation. The reviewed Express `setHeaders`, stream-listener, Accounting runner, provider-wrapper, transaction-callback and Nest-factory surfaces required no compatibility edit.
 
 ## Slice 9 verification and architecture status
 
