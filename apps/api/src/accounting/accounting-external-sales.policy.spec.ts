@@ -319,8 +319,7 @@ describe('Accounting External Sales Slice A policy', () => {
 
     expect(fact).toMatchObject({
       version: 1,
-      settlementStableId:
-        'extsettlement_22222222222242228222222222222222',
+      settlementStableId: 'extsettlement_22222222222242228222222222222222',
       settlementOn: '2026-06-20',
       counterpartyName: 'Supermarket A',
     });
@@ -366,9 +365,9 @@ describe('Accounting External Sales Slice A policy', () => {
       }),
     );
 
-    expect(fact.components.map((component) => component.accountStableId)).toEqual(
-      ['account_primary_bank', 'account_general_operating_expense'],
-    );
+    expect(
+      fact.components.map((component) => component.accountStableId),
+    ).toEqual(['account_primary_bank', 'account_general_operating_expense']);
   });
 
   it('rejects settlement compositions that do not reconcile to receivable allocations', () => {
@@ -414,17 +413,14 @@ describe('Accounting External Sales Slice A policy', () => {
         settlementInput({
           components: [
             {
-              accountStableId:
-                ACCOUNTING_EXTERNAL_SALE_AR_ACCOUNT_STABLE_ID,
+              accountStableId: ACCOUNTING_EXTERNAL_SALE_AR_ACCOUNT_STABLE_ID,
               amountCents: 10_000,
               label: 'Invalid self-clear',
             },
           ],
         }),
       ),
-    ).toThrow(
-      'settlement component cannot post back into Accounts Receivable',
-    );
+    ).toThrow('settlement component cannot post back into Accounts Receivable');
   });
 
   it('uses stable normalized facts for deterministic idempotency hashes', () => {
@@ -436,9 +432,8 @@ describe('Accounting External Sales Slice A policy', () => {
       hashAccountingExternalSaleFact(saleB),
     );
 
-    const settlementA = normalizeAccountingExternalSaleSettlement(
-      settlementInput(),
-    );
+    const settlementA =
+      normalizeAccountingExternalSaleSettlement(settlementInput());
     const settlementB = normalizeAccountingExternalSaleSettlement(
       settlementInput({ currency: 'cad' }),
     );

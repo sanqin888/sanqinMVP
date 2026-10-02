@@ -1,7 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { importSpecifiers, scanTypeScript } from '../test/architecture-test.utils';
+import {
+  importSpecifiers,
+  scanTypeScript,
+} from '../test/architecture-test.utils';
 
 const API_SRC_ROOT = resolve(__dirname, '..');
 const ACCOUNTING_ROOT = resolve(API_SRC_ROOT, 'accounting');
@@ -62,8 +65,7 @@ describe('Post-modularization External Sales Slice A boundary', () => {
         ?.source ?? '';
     const salesPolicy =
       file('accounting-sales-analytics.policy.ts')?.source ?? '';
-    const accountingContracts =
-      file('accounting-contracts.ts')?.source ?? '';
+    const accountingContracts = file('accounting-contracts.ts')?.source ?? '';
 
     expect(schema).not.toContain('model AccountingExternalSale');
     expect(schema).not.toContain('EXTERNAL_SALE');

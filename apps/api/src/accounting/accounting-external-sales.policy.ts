@@ -121,11 +121,7 @@ const requirePositiveMoney = (raw: unknown, field: string): number => {
 };
 
 const requireSignedMoney = (raw: unknown, field: string): number => {
-  if (
-    typeof raw !== 'number' ||
-    !Number.isSafeInteger(raw) ||
-    raw === 0
-  ) {
+  if (typeof raw !== 'number' || !Number.isSafeInteger(raw) || raw === 0) {
     throw new AccountingJournalPolicyError(
       `${field} must be a non-zero safe integer`,
     );
@@ -152,8 +148,7 @@ const normalizeQuantity = (raw: unknown, field: string): string => {
   }
   const [whole, fraction = ''] = value.split('.');
   const scaled =
-    BigInt(whole) * QUANTITY_SCALE +
-    BigInt((fraction + '0000').slice(0, 4));
+    BigInt(whole) * QUANTITY_SCALE + BigInt((fraction + '0000').slice(0, 4));
   if (scaled <= 0n) {
     throw new AccountingJournalPolicyError(
       `${field} must be greater than zero`,
@@ -167,8 +162,7 @@ const normalizeQuantity = (raw: unknown, field: string): string => {
 const quantityScaled = (quantity: string): bigint => {
   const [whole, fraction = ''] = quantity.split('.');
   return (
-    BigInt(whole) * QUANTITY_SCALE +
-    BigInt((fraction + '0000').slice(0, 4))
+    BigInt(whole) * QUANTITY_SCALE + BigInt((fraction + '0000').slice(0, 4))
   );
 };
 
@@ -305,11 +299,7 @@ const normalizeAdjustments = (
 ): AccountingExternalSaleAdjustmentFactV1[] =>
   (adjustments ?? []).map((adjustment, index) => ({
     adjustmentStableId: `${parentStableId}_adjustment_${index + 1}`,
-    label: requireValue(
-      adjustment.label,
-      `adjustments[${index}].label`,
-      200,
-    ),
+    label: requireValue(adjustment.label, `adjustments[${index}].label`, 200),
     amountCents: requireSignedMoney(
       adjustment.amountCents,
       `adjustments[${index}].amountCents`,
@@ -427,10 +417,7 @@ export const normalizeAccountingExternalSale = (
       200,
     ),
     lines: normalizeSaleLines(externalSaleStableId, input.lines),
-    adjustments: normalizeAdjustments(
-      externalSaleStableId,
-      input.adjustments,
-    ),
+    adjustments: normalizeAdjustments(externalSaleStableId, input.adjustments),
     taxes: normalizeTaxes(externalSaleStableId, input.taxes),
     note: optionalValue(input.note, 'note'),
   };
@@ -499,11 +486,7 @@ const normalizeComponents = (
         component.amountCents,
         `components[${index}].amountCents`,
       ),
-      label: requireValue(
-        component.label,
-        `components[${index}].label`,
-        200,
-      ),
+      label: requireValue(component.label, `components[${index}].label`, 200),
       sortOrder: index,
     };
   });
@@ -536,10 +519,7 @@ export const normalizeAccountingExternalSaleSettlement = (
     settlementStableId,
     input.allocations,
   );
-  const components = normalizeComponents(
-    settlementStableId,
-    input.components,
-  );
+  const components = normalizeComponents(settlementStableId, input.components);
   const allocationTotal = sumSettlementAllocations(allocations);
   const componentTotal = sumSettlementComponents(components);
   if (allocationTotal !== componentTotal) {
@@ -573,13 +553,11 @@ export const normalizeAccountingExternalSaleSettlement = (
 
 export const hashAccountingExternalSaleFact = (
   fact: AccountingExternalSaleFactV1,
-): string =>
-  createHash('sha256').update(JSON.stringify(fact)).digest('hex');
+): string => createHash('sha256').update(JSON.stringify(fact)).digest('hex');
 
 export const hashAccountingExternalSaleSettlementFact = (
   fact: AccountingExternalSaleSettlementFactV1,
-): string =>
-  createHash('sha256').update(JSON.stringify(fact)).digest('hex');
+): string => createHash('sha256').update(JSON.stringify(fact)).digest('hex');
 
 export const buildAccountingExternalSalePostingDraft = (
   fact: AccountingExternalSaleFactV1,
