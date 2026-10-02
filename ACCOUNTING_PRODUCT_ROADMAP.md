@@ -121,6 +121,22 @@ required” state, while June's actual compensating correction remains `ALREADY_
 No Journal write, schema/migration, parser, settlement authority, dependency or graph change is
 introduced.
 
+2026-10-02 External Sales **Slice A Authority / Contracts / invariants** is **LOCAL IMPLEMENTED /
+USER REVIEW PENDING / CI NOT RUN / NO PRISMA / NO MIGRATION / NO RUNTIME CUTOVER** on
+`feat/accounting-external-sales-slice-a` from latest fetched `origin/dev@e6bd1952`. Accounting
+reserves `accounting.external_sale.v1` and `accounting.external_sale_settlement.v1` as
+Accounting-owned non-Order authorities and freezes a generic commercial model: data-driven
+classification, exact decimal quantity, negotiated unit price, frozen line amount, generic signed
+revenue adjustments, explicit tax lines, receivable-first recognition and separately composed
+settlements. External Sales does not read Catalog/POS retail price or create synthetic Orders.
+Commission is not a Sale field; later settlement components may debit a generalized
+`account_commission_expense`. The existing `account_platform_commission_expense` remains
+untouched in Slice A and requires a later data-preserving CoA normalization audit. The future
+`EXTERNAL_SALE` Journal source remains draft-only until the persistence slice; no Accounting
+module/controller, Sales Analytics whitelist, schema, migration, dependency direction, scanner
+allowance or runtime behavior changes. Detailed contract and staged implementation plan:
+`docs/architecture/accounting-external-sales-plan.md`.
+
 2026-09-26 pre-sync Clover authority Slice A is **PRODUCTION VERIFIED / CLOSED / READ-ONLY SHADOW / NO PRISMA / NO JOURNAL MUTATION**. Slice A merged via PR #2547 / `d68cc317`; the zero-activity coverage correction merged via PR #2549 / `b7a01075`, with CI #6419 green and production running `main@b7a01075`.
 Real Gmail Closeout Reports prove that pre-sync Clover tender truth cannot be anchored to
 `Order.paymentMethod=CARD`: June Closeouts for 2026-05-29..2026-06-28 close exactly to the legacy
