@@ -1305,7 +1305,7 @@ Future Accounting product work is intentionally outside Phase 9. The approved Sa
 
 ### 18.67 Post-close Accounting Funds / explicit money-account selection
 
-**Local state (2026-10-01): `LOCAL IMPLEMENTED / USER REVIEW PENDING / CI NOT RUN / NO MIGRATION / NO GRAPH CHANGE`.** This is post-Phase-9 product/correctness work and does not reopen Phase 9.
+**Delivery state (2026-10-02): `PR #2647 / CI #6749 GREEN / MERGE PENDING / NO MIGRATION / NO GRAPH CHANGE`.** Initial CI #6748 stopped only on new API lint/Prettier findings; follow-up head `52a7efa9` corrected them and CI #6749 passed all required Architecture, API/Web, Browser E2E, printer-agent and Windows-workstation gates. This is post-Phase-9 product/correctness work and does not reopen Phase 9.
 
 The trigger was an operator-visible account-attribution error mode: several money-moving Accounting forms selected the first eligible CAD BANK account from `/accounting/accounts`. With multiple bank accounts present, presentation sort order could therefore become an unintended financial input. The audited affected surfaces are Inbox bank-CSV payout review, Provider Payout, reviewed-bank-CSV payout posting, Clover fee bank-withdrawal clearing, Payroll employee net-pay settlement and CRA remittance. Expense funding/payment editors were also inspected and already begin unassigned (or preserve an explicitly persisted assignment), so they require no default-removal change.
 
