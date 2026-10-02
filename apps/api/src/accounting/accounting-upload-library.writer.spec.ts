@@ -105,6 +105,36 @@ describe('Accounting upload library writer', () => {
     });
   });
 
+  it('rejects permanent deletion while a manual upload is linked as supplemental expense evidence', async () => {
+    const tx = makeTx();
+    tx.accountingInboxItem.findUnique.mockResolvedValue({
+      id: 'inbox-db-linked',
+      inboxItemStableId: 'acctinbox_linked',
+      status: AccountingInboxStatus.PENDING_REVIEW,
+      materializedEntityType: null,
+      materializedEntityStableId: null,
+      expenseEvidenceSourceLink: { linkStableId: 'acctexplink_1' },
+      artifact: {
+        id: 'artifact-db-linked',
+        artifactStableId: 'acctart_linked',
+        acquisitionMode: AccountingArtifactAcquisitionMode.MANUAL_UPLOAD,
+        contentHash: 'b'.repeat(64),
+        storedUrl: '/api/v1/accounting/files/inbox/linked.pdf',
+        financialDocument: null,
+        binaryRetention: null,
+        duplicateInboxItems: [],
+      },
+    });
+
+    await expect(
+      permanentlyDeleteManualUploadInTx(tx as never, 'acctinbox_linked'),
+    ).rejects.toThrow(
+      'linked expense source evidence cannot be permanently deleted',
+    );
+    expect(tx.accountingInboxItem.delete).not.toHaveBeenCalled();
+    expect(tx.accountingSourceArtifact.deleteMany).not.toHaveBeenCalled();
+  });
+
   it('rejects permanent deletion once the manual upload is confirmed', async () => {
     const tx = makeTx();
     tx.accountingInboxItem.findUnique.mockResolvedValue({

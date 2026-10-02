@@ -65,6 +65,28 @@ export class AccountingInboxArtifactsController {
     return this.acquisition.acquireManualFile(file);
   }
 
+  @Post('inbox/:inboxItemStableId/expense-evidence')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: ACCOUNTING_INBOX_FILE_MAX_BYTES },
+    }),
+  )
+  async uploadExpenseEvidenceForNotification(
+    @Param('inboxItemStableId') inboxItemStableId: string,
+    @UploadedFile()
+    file:
+      | { originalname: string; mimetype?: string; buffer: Buffer }
+      | undefined,
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    if (!file) throw new BadRequestException('file is required');
+    return this.acquisition.acquireExpenseEvidenceForNotification(
+      inboxItemStableId,
+      file,
+      requireAccountingOperatorUserId(req),
+    );
+  }
+
   @Post('inbox/:inboxItemStableId/image-retention/candidate')
   createImageRetentionCandidate(
     @Param('inboxItemStableId') inboxItemStableId: string,

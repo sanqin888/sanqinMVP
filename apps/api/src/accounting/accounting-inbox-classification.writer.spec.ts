@@ -153,6 +153,37 @@ describe('Accounting Inbox classification writer', () => {
     });
   });
 
+  it('does not allow linked expense notification/source evidence to be reclassified independently', async () => {
+    const tx = makeTx();
+    tx.accountingInboxItem.findUnique.mockResolvedValue({
+      id: 'inbox-db-id',
+      status: AccountingInboxStatus.PENDING_REVIEW,
+      classification: AccountingInboxClassification.EXPENSE_DOCUMENT,
+      selectedProvider: null,
+      materializedEntityType: null,
+      materializedEntityStableId: null,
+      expenseEvidenceNotificationLink: { linkStableId: 'acctexplink_1' },
+      expenseEvidenceSourceLink: null,
+      artifact: {
+        acquisitionMode: AccountingArtifactAcquisitionMode.EMAIL,
+      },
+    });
+
+    await expect(
+      setInboxClassificationInTx(
+        tx as never,
+        'acctinbox_notification',
+        normalizeAccountingInboxClassificationSelection({
+          classification: AccountingInboxClassification.OTHER_DOCUMENT,
+        }),
+        'user_operator_1',
+      ),
+    ).rejects.toThrow(
+      'linked expense evidence cannot be reclassified independently',
+    );
+    expect(tx.accountingInboxItem.update).not.toHaveBeenCalled();
+  });
+
   it('does not allow operator reclassification after evidence is materialized', async () => {
     const tx = makeTx();
     tx.accountingInboxItem.findUnique.mockResolvedValue({
@@ -178,6 +209,30 @@ describe('Accounting Inbox classification writer', () => {
         'user_operator_1',
       ),
     ).rejects.toThrow('materialized inbox evidence cannot be reclassified');
+    expect(tx.accountingInboxItem.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects independent other-document confirmation for linked expense evidence', async () => {
+    const tx = makeTx();
+    tx.accountingInboxItem.findUnique.mockResolvedValue({
+      id: 'inbox-db-id',
+      status: AccountingInboxStatus.PENDING_REVIEW,
+      classification: AccountingInboxClassification.OTHER_DOCUMENT,
+      selectedProvider: null,
+      materializedEntityType: null,
+      materializedEntityStableId: null,
+      expenseEvidenceNotificationLink: null,
+      expenseEvidenceSourceLink: { linkStableId: 'acctexplink_1' },
+      artifact: {
+        acquisitionMode: AccountingArtifactAcquisitionMode.MANUAL_UPLOAD,
+      },
+    });
+
+    await expect(
+      confirmOtherInboxItemInTx(tx as never, 'acctinbox_1', 'user_operator_1'),
+    ).rejects.toThrow(
+      'linked expense evidence cannot be confirmed independently',
+    );
     expect(tx.accountingInboxItem.update).not.toHaveBeenCalled();
   });
 

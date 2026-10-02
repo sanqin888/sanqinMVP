@@ -16,6 +16,8 @@ function providerItem(
     trustDecision: 'TRUSTED',
     materializedEntityType: 'PROVIDER_FINANCIAL_DOCUMENT',
     materializedEntityStableId: 'acctfindoc_provider',
+    expenseEvidenceReadiness: { status: 'READY', reason: 'FILE_SOURCE' },
+    expenseEvidenceSource: null,
     createdAt: '2026-09-27T04:00:00.000Z',
     artifact: {
       artifactStableId: 'acctart_provider',
