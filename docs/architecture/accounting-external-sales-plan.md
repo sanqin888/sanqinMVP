@@ -1,8 +1,8 @@
 # Accounting External Sales Plan
 
-Status: **SLICE A REBASED REMOTE DELIVERY PENDING / NO PRISMA / NO MIGRATION / NO RUNTIME CUTOVER**  
+Status: **SLICE A MERGED / CI #6771 GREEN / PR #2654 / MERGE `26e9b15a`; SLICE B1 LOCAL IMPLEMENTED / MIGRATION REQUIRED / USER REVIEW PENDING**  
 Date: 2026-10-02  
-Implementation base: latest `origin/dev@ba774b75`  
+Slice B1 implementation base: `origin/dev@26e9b15a`  
 Owner: **Accounting / Reporting / Analytics**
 
 ## 1. Purpose
@@ -203,20 +203,69 @@ SCC is introduced.
 
 ## 10. Next slices
 
-### Slice B — persistence / CoA foundation
+### Slice B1 — persistence foundation
 
-Requires a separately reviewed Prisma/schema change. Expected scope:
+State: **LOCAL IMPLEMENTED / USER REVIEW PENDING / MIGRATION REQUIRED**.
 
-- durable External Sale / line / adjustment / tax models;
-- durable Settlement / allocation / component models;
-- data-driven classification persistence;
-- Accounts Receivable provisioning;
-- commission-account semantic normalization plan;
-- dedicated `AccountingJournalSource.EXTERNAL_SALE`;
-- source-fact hash / Journal-anchor fields.
+Fresh readiness against `origin/dev@26e9b15a` found an existing architecture
+guard that requires every `DEFAULT_ACCOUNTING_ACCOUNTS` stable ID to be present
+in committed migration seed history. B therefore splits at the migration gate
+instead of weakening that guard.
 
-Per `AGENTS.md`, MCP may modify `schema.prisma` only after the user authorizes
-that slice, but must not create or edit Prisma migration files.
+B1 adds only the additive persisted fact foundation:
+
+- `AccountingJournalSource.EXTERNAL_SALE`;
+- persisted `TRANSACTION | DAILY_SUMMARY | PERIOD_SUMMARY` evidence granularity;
+- durable External Sale parent + line + generic adjustment + explicit tax facts;
+- durable Settlement parent + receivable allocations + generic account
+  components;
+- exact quantity storage as `Decimal(18,4)` while public contracts remain
+  decimal strings;
+- internal AccountingAccount UUID relations for revenue/tax/settlement accounts;
+- source-fact idempotency key, fact hash and Journal anchor fields;
+- reversal identity/hash/Journal-anchor fields plus reversal actor/time;
+- one-to-one replacement lineage for sale and settlement corrections;
+- optional sale/settlement evidence links to existing
+  `AccountingSourceArtifact`.
+
+B1 does **not** register runtime routes/services, add Sales Analytics sources or
+change CoA stable IDs. It creates no migration file in MCP.
+
+### Slice B2 — CoA foundation / commission normalization
+
+B2 begins only after the user-generated B1 migration SQL is returned and
+reviewed.
+
+Production read-only evidence at B1 readiness shows the existing
+`account_platform_commission_expense` has one AccountingAccount row and six
+historical JournalLines totaling 703,084 cents of debit. JournalLine references
+the account by internal UUID, not by stable ID. Therefore the target commission
+normalization can preserve the same account row/UUID while changing its stable
+business ID/name to:
+
+```text
+account_commission_expense
+Commission Expense / 佣金费用
+```
+
+No historical JournalLine rewrite is required. B2 must update every current
+provider/reporting/Sales Analytics reference atomically and retain regression
+coverage proving historical provider commission remains visible.
+
+B2 also provisions `account_accounts_receivable` as an active CAD ASSET
+account with `type=null`. It must not add a new `AccountingAccountType`.
+
+The B1 migration should be generated locally with:
+
+```bash
+pnpm --filter api exec prisma migrate dev --create-only --name accounting_external_sales_b1_persistence_foundation
+```
+
+The generated SQL must be reviewed before application. Expected B1 SQL is
+additive: one `AccountingJournalSource` enum value, one External Sale
+granularity enum, new External Sale/Settlement/evidence tables, indexes,
+uniques and foreign keys. It must not rename/drop the commission account,
+create AR yet, rewrite Journal rows or backfill historical sales.
 
 ### Slice C — write authority
 

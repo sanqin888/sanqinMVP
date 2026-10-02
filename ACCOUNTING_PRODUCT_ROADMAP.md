@@ -121,20 +121,31 @@ required” state, while June's actual compensating correction remains `ALREADY_
 No Journal write, schema/migration, parser, settlement authority, dependency or graph change is
 introduced.
 
-2026-10-02 External Sales **Slice A Authority / Contracts / invariants** is **REBASED SOURCE READY /
-REMOTE DELIVERY PENDING / NO PRISMA / NO MIGRATION / NO RUNTIME CUTOVER** on
-`feat/accounting-external-sales-slice-a-v2` from latest `origin/dev@ba774b75`. Accounting
-reserves `accounting.external_sale.v1` and `accounting.external_sale_settlement.v1` as
-Accounting-owned non-Order authorities and freezes a generic commercial model: data-driven
-classification, exact decimal quantity, negotiated unit price, frozen line amount, generic signed
-revenue adjustments, explicit tax lines, receivable-first recognition and separately composed
-settlements. External Sales does not read Catalog/POS retail price or create synthetic Orders.
-Commission is not a Sale field; later settlement components may debit a generalized
-`account_commission_expense`. The existing `account_platform_commission_expense` remains
-untouched in Slice A and requires a later data-preserving CoA normalization audit. The future
-`EXTERNAL_SALE` Journal source remains draft-only until the persistence slice; no Accounting
-module/controller, Sales Analytics whitelist, schema, migration, dependency direction, scanner
-allowance or runtime behavior changes. Detailed contract and staged implementation plan:
+2026-10-02 External Sales **Slice A Authority / Contracts / invariants** is **MERGED / CI #6771
+GREEN / PR #2654 / MERGE `26e9b15a` / NO PRISMA / NO MIGRATION / NO RUNTIME CUTOVER**.
+Accounting reserves `accounting.external_sale.v1` and
+`accounting.external_sale_settlement.v1` as Accounting-owned non-Order authorities and freezes
+the generic commercial model: data-driven classification, exact decimal quantity, negotiated unit
+price, frozen line amount, generic signed revenue adjustments, explicit tax lines, receivable-first
+recognition and separately composed settlements. External Sales does not read Catalog/POS retail
+price or create synthetic Orders. The initial PR #2653 was superseded after #2652 advanced
+`dev`; clean replacement PR #2654 was recreated from current `origin/dev`, with final formatting
+head `1e390a8e` passing all CI jobs before squash merge. Phase 9 remains CLOSED.
+
+2026-10-02 External Sales **Slice B1 Persistence Foundation** is **LOCAL IMPLEMENTED / USER
+REVIEW PENDING / MIGRATION REQUIRED / NO RUNTIME CUTOVER / NO GRAPH OR BASELINE CHANGE**
+on `feat/accounting-external-sales-slice-b-foundation` from `origin/dev@26e9b15a`. B1 adds
+the additive Prisma persistence shape for External Sale lines/adjustments/taxes, Settlement
+allocations/components, evidence links, reversal/replacement anchors, exact Decimal(18,4)
+quantity storage, and the dedicated `AccountingJournalSource.EXTERNAL_SALE` enum value.
+Fresh readiness found the existing CoA architecture guard requires every default account stable ID
+to exist in committed migration seed history, so B deliberately splits before CoA mutation rather
+than weakening that guard. B1 does not add Accounts Receivable, does not rename
+`account_platform_commission_expense`, does not register routes/services or Sales Analytics
+sources, and does not create a migration file in MCP. Production read-only evidence shows the
+legacy commission account has 6 JournalLines / 703,084c debit and JournalLine references its
+internal account UUID, so B2 can later preserve all history while normalizing the stable ID/name to
+`account_commission_expense`. Detailed contract and migration gate:
 `docs/architecture/accounting-external-sales-plan.md`.
 
 2026-09-26 pre-sync Clover authority Slice A is **PRODUCTION VERIFIED / CLOSED / READ-ONLY SHADOW / NO PRISMA / NO JOURNAL MUTATION**. Slice A merged via PR #2547 / `d68cc317`; the zero-activity coverage correction merged via PR #2549 / `b7a01075`, with CI #6419 green and production running `main@b7a01075`.

@@ -197,7 +197,14 @@ enum AccountingJournalSource {
   PAYMENT
   PLATFORM_STATEMENT
   PAYROLL
+  EXTERNAL_SALE
   SYSTEM
+}
+
+enum AccountingExternalSaleGranularity {
+  TRANSACTION
+  DAILY_SUMMARY
+  PERIOD_SUMMARY
 }
 
 enum PayrollRunStatus {
@@ -1740,6 +1747,10 @@ model AccountingAccount {
   expensePaymentAllocations AccountingExpensePaymentAllocation[]
   fundedExpenseSplits       AccountingExpenseSplit[] @relation("AccountingExpenseFundingAccount")
   journalLines              AccountingJournalLine[]
+  externalSaleLines         AccountingExternalSaleLine[] @relation("AccountingExternalSaleRevenueAccount")
+  externalSaleAdjustments   AccountingExternalSaleAdjustment[] @relation("AccountingExternalSaleAdjustmentRevenueAccount")
+  externalSaleTaxes         AccountingExternalSaleTax[] @relation("AccountingExternalSaleTaxLiabilityAccount")
+  externalSaleSettlementComponents AccountingExternalSaleSettlementComponent[] @relation("AccountingExternalSaleSettlementComponentAccount")
 
   @@unique([name, type])
   @@index([type, isActive])
@@ -1814,6 +1825,196 @@ model AccountingProviderPayout {
   @@index([storeStableId, payoutDate])
   @@index([destinationBankAccountStableId, payoutDate])
   @@index([provider, providerReference])
+}
+
+model AccountingExternalSale {
+  id                              String                            @id @default(uuid()) @db.Uuid
+  externalSaleStableId            String                            @unique
+  idempotencyKey                  String                            @unique
+  storeStableId                   String
+  classificationStableId          String
+  granularity                     AccountingExternalSaleGranularity
+  occurredOn                      DateTime                          @db.Date
+  periodStartOn                   DateTime?                         @db.Date
+  periodEndOn                     DateTime?                         @db.Date
+  counterpartyName                String
+  reference                       String?
+  currency                        String                            @default("CAD")
+  factHash                        String
+  journalEntryStableId            String?                           @unique
+  reversalStableId                String?                           @unique
+  reversalFactHash                String?
+  reversalJournalEntryStableId    String?                           @unique
+  reversedAt                      DateTime?
+  reversedByActorRef              String?
+  replacementForExternalSaleId    String?                           @unique @db.Uuid
+  note                            String?
+  createdByActorRef               String
+  createdAt                       DateTime                          @default(now())
+  updatedAt                       DateTime                          @updatedAt
+  replacementForExternalSale      AccountingExternalSale?           @relation("AccountingExternalSaleReplacement", fields: [replacementForExternalSaleId], references: [id], onDelete: Restrict)
+  replacedByExternalSale          AccountingExternalSale?           @relation("AccountingExternalSaleReplacement")
+  lines                           AccountingExternalSaleLine[]
+  adjustments                     AccountingExternalSaleAdjustment[]
+  taxes                           AccountingExternalSaleTax[]
+  settlementAllocations           AccountingExternalSaleSettlementAllocation[]
+  evidence                        AccountingExternalSaleEvidence[]
+
+  @@index([storeStableId, occurredOn])
+  @@index([classificationStableId, occurredOn])
+  @@index([counterpartyName, occurredOn])
+  @@index([factHash])
+  @@index([replacementForExternalSaleId])
+}
+
+model AccountingExternalSaleLine {
+  id                       String                 @id @default(uuid()) @db.Uuid
+  lineStableId             String                 @unique
+  externalSaleId           String                 @db.Uuid
+  description              String
+  productReference         String?
+  quantity                 Decimal                @db.Decimal(18, 4)
+  unit                     String
+  unitPriceCents           Int
+  lineAmountCents          Int
+  revenueAccountId         String                 @db.Uuid
+  sortOrder                Int                    @default(0)
+  createdAt                DateTime               @default(now())
+  externalSale             AccountingExternalSale @relation(fields: [externalSaleId], references: [id], onDelete: Cascade)
+  revenueAccount           AccountingAccount      @relation("AccountingExternalSaleRevenueAccount", fields: [revenueAccountId], references: [id], onDelete: Restrict)
+
+  @@unique([externalSaleId, sortOrder])
+  @@index([externalSaleId])
+  @@index([revenueAccountId])
+}
+
+model AccountingExternalSaleAdjustment {
+  id                       String                 @id @default(uuid()) @db.Uuid
+  adjustmentStableId       String                 @unique
+  externalSaleId           String                 @db.Uuid
+  label                    String
+  amountCents              Int
+  revenueAccountId         String                 @db.Uuid
+  sortOrder                Int                    @default(0)
+  createdAt                DateTime               @default(now())
+  externalSale             AccountingExternalSale @relation(fields: [externalSaleId], references: [id], onDelete: Cascade)
+  revenueAccount           AccountingAccount      @relation("AccountingExternalSaleAdjustmentRevenueAccount", fields: [revenueAccountId], references: [id], onDelete: Restrict)
+
+  @@unique([externalSaleId, sortOrder])
+  @@index([externalSaleId])
+  @@index([revenueAccountId])
+}
+
+model AccountingExternalSaleTax {
+  id                       String                 @id @default(uuid()) @db.Uuid
+  taxStableId              String                 @unique
+  externalSaleId           String                 @db.Uuid
+  taxCode                  String
+  label                    String
+  rateBasisPoints          Int?
+  amountCents              Int
+  liabilityAccountId       String                 @db.Uuid
+  sortOrder                Int                    @default(0)
+  createdAt                DateTime               @default(now())
+  externalSale             AccountingExternalSale @relation(fields: [externalSaleId], references: [id], onDelete: Cascade)
+  liabilityAccount         AccountingAccount      @relation("AccountingExternalSaleTaxLiabilityAccount", fields: [liabilityAccountId], references: [id], onDelete: Restrict)
+
+  @@unique([externalSaleId, sortOrder])
+  @@index([externalSaleId])
+  @@index([liabilityAccountId])
+}
+
+model AccountingExternalSaleSettlement {
+  id                                  String                                      @id @default(uuid()) @db.Uuid
+  settlementStableId                  String                                      @unique
+  idempotencyKey                      String                                      @unique
+  storeStableId                       String
+  settlementOn                        DateTime                                    @db.Date
+  counterpartyName                    String
+  reference                           String?
+  currency                            String                                      @default("CAD")
+  factHash                            String
+  journalEntryStableId                String?                                     @unique
+  reversalStableId                    String?                                     @unique
+  reversalFactHash                    String?
+  reversalJournalEntryStableId        String?                                     @unique
+  reversedAt                          DateTime?
+  reversedByActorRef                  String?
+  replacementForSettlementId          String?                                     @unique @db.Uuid
+  note                                String?
+  createdByActorRef                   String
+  createdAt                           DateTime                                    @default(now())
+  updatedAt                           DateTime                                    @updatedAt
+  replacementForSettlement            AccountingExternalSaleSettlement?           @relation("AccountingExternalSaleSettlementReplacement", fields: [replacementForSettlementId], references: [id], onDelete: Restrict)
+  replacedBySettlement                AccountingExternalSaleSettlement?           @relation("AccountingExternalSaleSettlementReplacement")
+  allocations                         AccountingExternalSaleSettlementAllocation[]
+  components                          AccountingExternalSaleSettlementComponent[]
+  evidence                            AccountingExternalSaleSettlementEvidence[]
+
+  @@index([storeStableId, settlementOn])
+  @@index([counterpartyName, settlementOn])
+  @@index([factHash])
+  @@index([replacementForSettlementId])
+}
+
+model AccountingExternalSaleSettlementAllocation {
+  id                    String                           @id @default(uuid()) @db.Uuid
+  allocationStableId    String                           @unique
+  settlementId          String                           @db.Uuid
+  externalSaleId        String                           @db.Uuid
+  amountCents           Int
+  sortOrder             Int                              @default(0)
+  createdAt             DateTime                         @default(now())
+  settlement            AccountingExternalSaleSettlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+  externalSale          AccountingExternalSale           @relation(fields: [externalSaleId], references: [id], onDelete: Restrict)
+
+  @@unique([settlementId, externalSaleId])
+  @@unique([settlementId, sortOrder])
+  @@index([externalSaleId])
+}
+
+model AccountingExternalSaleSettlementComponent {
+  id                    String                           @id @default(uuid()) @db.Uuid
+  componentStableId     String                           @unique
+  settlementId          String                           @db.Uuid
+  accountId             String                           @db.Uuid
+  amountCents           Int
+  label                 String
+  sortOrder             Int                              @default(0)
+  createdAt             DateTime                         @default(now())
+  settlement            AccountingExternalSaleSettlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+  account               AccountingAccount                @relation("AccountingExternalSaleSettlementComponentAccount", fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@unique([settlementId, sortOrder])
+  @@index([accountId])
+}
+
+model AccountingExternalSaleEvidence {
+  id                    String                   @id @default(uuid()) @db.Uuid
+  evidenceStableId      String                   @unique @default(cuid())
+  externalSaleId        String                   @db.Uuid
+  artifactId            String                   @db.Uuid
+  linkedByActorRef      String
+  linkedAt              DateTime                 @default(now())
+  externalSale          AccountingExternalSale   @relation(fields: [externalSaleId], references: [id], onDelete: Cascade)
+  artifact              AccountingSourceArtifact @relation(fields: [artifactId], references: [id], onDelete: Restrict)
+
+  @@unique([externalSaleId, artifactId])
+  @@index([artifactId])
+}
+
+model AccountingExternalSaleSettlementEvidence {
+  id                    String                           @id @default(uuid()) @db.Uuid
+  evidenceStableId      String                           @unique @default(cuid())
+  settlementId          String                           @db.Uuid
+  artifactId            String                           @db.Uuid
+  linkedByActorRef      String
+  linkedAt              DateTime                         @default(now())
+  settlement            AccountingExternalSaleSettlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+  artifact              AccountingSourceArtifact         @relation(fields: [artifactId], references: [id], onDelete: Restrict)
+
+  @@unique([settlementId, artifactId])
+  @@index([artifactId])
 }
 
 model AccountingProviderPayoutBankRowDecision {
@@ -2254,6 +2455,8 @@ model AccountingSourceArtifact {
   evidenceFolderAssignment AccountingEvidenceFolderAssignment?
   providerPayoutBankRowDecisions AccountingProviderPayoutBankRowDecision[]
   providerFeeBankRowDecisions   AccountingProviderFeeBankRowDecision[]
+  externalSaleEvidence          AccountingExternalSaleEvidence[]
+  externalSaleSettlementEvidence AccountingExternalSaleSettlementEvidence[]
 
   @@unique([acquisitionMode, transportIdentity])
   @@index([contentHash, createdAt])
