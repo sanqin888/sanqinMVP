@@ -298,3 +298,13 @@ export type AccountingSenderPolicy = {
   label: string | null;
   decision: AccountingSenderPolicyDecision;
 };
+
+export type AccountingApplySenderPolicyResult = {
+  policy: AccountingSenderPolicy;
+  quarantine: {
+    promotedInboxItemStableIds: string[];
+    discardedInboxItemStableIds: string[];
+  };
+  reprocessedArtifacts: number;
+  reprocessFailures: number;
+};

@@ -243,16 +243,22 @@ describe('AccountingGmailIngestService unified Inbox cutover', () => {
       }
       if (url.endsWith('/gmail/v1/users/me/profile')) {
         return Promise.resolve(
-          new Response(JSON.stringify({ historyId: 'history-bootstrap-ignored' }), {
-            status: 200,
-          }),
+          new Response(
+            JSON.stringify({ historyId: 'history-bootstrap-ignored' }),
+            {
+              status: 200,
+            },
+          ),
         );
       }
       if (url.includes('/gmail/v1/users/me/messages?')) {
         return Promise.resolve(
-          new Response(JSON.stringify({ messages: [{ id: 'message-ignored' }] }), {
-            status: 200,
-          }),
+          new Response(
+            JSON.stringify({ messages: [{ id: 'message-ignored' }] }),
+            {
+              status: 200,
+            },
+          ),
         );
       }
       if (url.includes('/messages/message-ignored?format=full')) {

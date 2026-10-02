@@ -19,6 +19,7 @@ import {
 import type { AccountingAccount, AccountingCategory } from '../contracts/chart';
 import type { AccountingFinancialProvider } from '../contracts/core';
 import type {
+  AccountingApplySenderPolicyResult,
   AccountingImageRetentionAccepted,
   AccountingImageRetentionQueueItem,
   AccountingInboxClassification,
@@ -211,23 +212,18 @@ export default function AccountingInboxPage() {
     setMessage(null);
     setConfirmedProviderDocumentStableId(null);
     try {
-      const result = await apiFetch<{
-        policy: AccountingSenderPolicy;
-        quarantine: {
-          promotedInboxItemStableIds: string[];
-          discardedInboxItemStableIds: string[];
-        };
-        reprocessedArtifacts: number;
-        reprocessFailures: number;
-      }>('/accounting/inbox/sender-policies', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: email.trim(),
-          label: label.trim() || null,
-          decision,
-        }),
-      });
+      const result = await apiFetch<AccountingApplySenderPolicyResult>(
+        '/accounting/inbox/sender-policies',
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: email.trim(),
+            label: label.trim() || null,
+            decision,
+          }),
+        },
+      );
       setSenderEmail('');
       setSenderLabel('');
       setSenderDecision('TRUSTED');
