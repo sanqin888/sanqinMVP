@@ -87,6 +87,15 @@ export function latestParse(
   return item.artifact.parseRuns[0]?.resultJson ?? {};
 }
 
+export function expenseReviewParse(
+  item: AccountingInboxItem,
+): AccountingInboxParseResult {
+  return (
+    item.expenseEvidenceSource?.artifact.parseRuns[0]?.resultJson ??
+    latestParse(item)
+  );
+}
+
 export function validatedProviderFinancialDocumentType(
   item: AccountingInboxItem,
   parse: AccountingInboxParseResult,

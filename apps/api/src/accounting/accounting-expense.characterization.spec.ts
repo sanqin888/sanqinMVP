@@ -669,6 +669,219 @@ describe('AccountingExpenseService expense-write characterization', () => {
     expect(result.documentStableId).toBe(createdDocumentStableId);
   });
 
+
+  it('uses the linked formal bill as the canonical Expense source when confirming from a notification card', async () => {
+    let createdDocumentStableId = '';
+    const createDocument = jest.fn(
+      (args: {
+        data: {
+          documentStableId: string;
+          fileHash: string;
+          attachmentUrls: string[];
+          extractionJson: Record<string, unknown>;
+        };
+      }) => {
+        createdDocumentStableId = args.data.documentStableId;
+        return Promise.resolve({ id: 'expense-document-db-id' });
+      },
+    );
+    const updateInbox = jest
+      .fn()
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 1 });
+    const findInbox = jest
+      .fn()
+      .mockResolvedValueOnce({
+        status: AccountingInboxStatus.PENDING_REVIEW,
+        classification: AccountingInboxClassification.EXPENSE_DOCUMENT,
+        selectedProvider: null,
+        materializedEntityType: null,
+        materializedEntityStableId: null,
+        expenseEvidenceNotificationLink: {
+          linkStableId: 'acctexplink_1',
+          sourceInboxItem: {
+            inboxItemStableId: 'acctinbox_metergy_pdf',
+            status: AccountingInboxStatus.PENDING_REVIEW,
+            classification: AccountingInboxClassification.EXPENSE_DOCUMENT,
+            selectedProvider: null,
+            materializedEntityType: null,
+            materializedEntityStableId: null,
+            artifact: {
+              artifactStableId: 'acctart_metergy_pdf',
+              acquisitionMode: 'MANUAL_UPLOAD',
+              kind: AccountingArtifactKind.PDF,
+              contentHash: 'formal-bill-hash',
+              storedUrl: '/api/v1/accounting/files/inbox/metergy.pdf',
+              bodyText: null,
+              emailSubject: null,
+              metadataJson: { acquisition: 'MANUAL_UPLOAD' },
+              parseRuns: [
+                {
+                  resultJson: {
+                    date: '2026-09-24',
+                    subtotalCents: 21909,
+                    taxCents: 2848,
+                    totalCents: 24757,
+                    financialConsistency: 'MATCHED',
+                    reviewDisposition: 'LIKELY_BILL',
+                    extractedText: 'Metergy formal bill',
+                  },
+                },
+              ],
+            },
+          },
+        },
+        artifact: {
+          artifactStableId: 'acctart_metergy_notification',
+          acquisitionMode: 'EMAIL',
+          kind: AccountingArtifactKind.EMAIL_BODY,
+          contentHash: 'notification-hash',
+          storedUrl: null,
+          bodyText: 'Your monthly bill is now ready to view.',
+          emailSubject: 'Metergy Solutions - Your e-bill is ready',
+          metadataJson: { gmailMessageId: 'gmail-metergy' },
+          parseRuns: [
+            {
+              resultJson: {
+                totalCents: 24757,
+                financialConsistency: 'INSUFFICIENT',
+                reviewDisposition: 'LIKELY_BILL',
+              },
+            },
+          ],
+        },
+      })
+      .mockResolvedValueOnce({
+        id: 'notification-db-id',
+        status: AccountingInboxStatus.PENDING_REVIEW,
+        classification: AccountingInboxClassification.EXPENSE_DOCUMENT,
+        selectedProvider: null,
+        materializedEntityType: null,
+        materializedEntityStableId: null,
+        expenseEvidenceNotificationLink: {
+          linkStableId: 'acctexplink_1',
+          sourceInboxItem: {
+            id: 'source-inbox-db-id',
+            inboxItemStableId: 'acctinbox_metergy_pdf',
+          },
+        },
+      });
+    const tx = {
+      accountingInboxItem: {
+        findUnique: findInbox,
+        updateMany: updateInbox,
+      },
+      accountingCategory: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'category-utilities-db-id',
+            categoryStableId: 'expense_utilities',
+          },
+        ]),
+      },
+      accountingAccount: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'bank-db-id',
+            accountStableId: 'account_primary_bank',
+            accountClass: 'ASSET',
+            type: 'BANK',
+            currency: 'CAD',
+            isActive: true,
+          },
+        ]),
+      },
+      accountingExpenseDocument: { create: createDocument },
+      accountingExpenseSplit: {
+        createMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      accountingExpensePaymentAllocation: {
+        createMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      accountingAuditLog: {
+        createMany: jest.fn().mockResolvedValue({ count: 2 }),
+        create: jest.fn().mockResolvedValue({}),
+      },
+    };
+    const prisma = {
+      accountingExpenseDocument: {
+        findUnique: jest.fn((args: { where: { documentStableId: string } }) =>
+          Promise.resolve({
+            ...documentRow(args.where.documentStableId),
+            totalCents: 24757,
+            subtotalCents: 21909,
+            taxCents: 2848,
+          }),
+        ),
+      },
+      accountingInboxItem: { findMany: jest.fn().mockResolvedValue([]) },
+      $transaction: jest.fn(
+        (callback: (transactionClient: typeof tx) => Promise<unknown>) =>
+          callback(tx),
+      ),
+    };
+    const service = new AccountingExpenseService(
+      prisma as never,
+      accounting as never,
+      expenseJournalPosting as never,
+    );
+
+    const result = await service.confirmUnifiedInboxExpense(
+      'acctinbox_metergy_notification',
+      {
+        occurredAt: '2026-09-24',
+        totalCents: 24757,
+        splits: [
+          {
+            categoryStableId: 'expense_utilities',
+            amountCents: 21909,
+            taxCents: 2848,
+            paidFromAccountStableId: 'account_primary_bank',
+          },
+        ],
+      },
+      'user_operator',
+    );
+
+    expect(createDocument).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        documentStableId: createdDocumentStableId,
+        source: AccountingDocumentSource.MANUAL,
+        fileHash: 'formal-bill-hash',
+        attachmentUrls: ['/api/v1/accounting/files/inbox/metergy.pdf'],
+        extractedText: 'Metergy formal bill',
+        extractionJson: expect.objectContaining({
+          totalCents: 24757,
+          financialConsistency: 'MATCHED',
+        }) as unknown,
+      }) as unknown,
+      select: { id: true },
+    });
+    expect(updateInbox).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: expect.objectContaining({ id: 'source-inbox-db-id' }) as unknown,
+        data: expect.objectContaining({
+          status: AccountingInboxStatus.CONFIRMED,
+          materializedEntityType:
+            AccountingInboxMaterializedEntityType.EXPENSE_DOCUMENT,
+          materializedEntityStableId: createdDocumentStableId,
+        }) as unknown,
+      }),
+    );
+    expect(updateInbox).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: expect.objectContaining({ id: 'notification-db-id' }) as unknown,
+        data: expect.objectContaining({
+          status: AccountingInboxStatus.CONFIRMED,
+          classification: AccountingInboxClassification.OTHER_DOCUMENT,
+        }) as unknown,
+      }),
+    );
+    expect(result.documentStableId).toBe(createdDocumentStableId);
+  });
+
   it('confirms an inbox document by replacing active splits inside the same transaction and preserving existing attachments', async () => {
     const replacedRows = jest.fn().mockResolvedValue([
       {

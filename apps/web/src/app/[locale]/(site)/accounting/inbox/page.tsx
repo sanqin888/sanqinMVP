@@ -18,6 +18,7 @@ import {
 } from './reviewing-inbox-item';
 import type { AccountingAccount, AccountingCategory } from '../contracts/chart';
 import type { AccountingFinancialProvider } from '../contracts/core';
+import type { AccountingExpenseDocument } from '../contracts/expenses';
 import type {
   AccountingApplySenderPolicyResult,
   AccountingImageRetentionAccepted,
@@ -36,6 +37,11 @@ export default function AccountingInboxPage() {
   const locale = params?.locale ?? 'en';
   const isZh = locale === 'zh';
   const [items, setItems] = useState<AccountingInboxItem[]>([]);
+  const [expenseReviews, setExpenseReviews] = useState<AccountingExpenseDocument[]>(
+    [],
+  );
+  const [reviewingMaterializedItem, setReviewingMaterializedItem] =
+    useState<AccountingInboxItem | null>(null);
   const [manualUploads, setManualUploads] = useState<
     AccountingManualUploadLibraryItem[]
   >([]);
@@ -62,10 +68,9 @@ export default function AccountingInboxPage() {
   >(null);
   const [reviewingBankCsvInboxItemStableId, setReviewingBankCsvInboxItemStableId] =
     useState<string | null>(null);
-  const reviewing = findAccountingInboxItemByStableId(
-    items,
-    reviewingInboxItemStableId,
-  );
+  const reviewing =
+    reviewingMaterializedItem ??
+    findAccountingInboxItemByStableId(items, reviewingInboxItemStableId);
   const reviewingBankCsv = findAccountingInboxItemByStableId(
     items,
     reviewingBankCsvInboxItemStableId,
@@ -90,6 +95,12 @@ export default function AccountingInboxPage() {
     useState<AccountingSenderPolicyDecision>('TRUSTED');
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [uploadingExpenseEvidenceId, setUploadingExpenseEvidenceId] =
+    useState<string | null>(null);
+  const [removingExpenseEvidenceId, setRemovingExpenseEvidenceId] =
+    useState<string | null>(null);
+  const [beginningExpenseReviewId, setBeginningExpenseReviewId] =
+    useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [busySender, setBusySender] = useState(false);
   const [classifyingId, setClassifyingId] = useState<string | null>(null);
@@ -110,22 +121,33 @@ export default function AccountingInboxPage() {
     setLoading(true);
     setError(null);
     try {
-      const [inbox, uploads, cats, accts, senders, retentionQueue] =
-        await Promise.all([
-          apiFetch<AccountingInboxItem[]>('/accounting/inbox?limit=100'),
-          apiFetch<AccountingManualUploadLibraryItem[]>(
-            '/accounting/inbox/manual-uploads?limit=200',
-          ),
-          apiFetch<AccountingCategory[]>('/accounting/categories'),
-          apiFetch<AccountingAccount[]>('/accounting/accounts'),
-          apiFetch<AccountingSenderPolicy[]>(
-            '/accounting/inbox/sender-policies',
-          ),
-          apiFetch<AccountingImageRetentionQueueItem[]>(
-            '/accounting/inbox/image-retention/pending?limit=100',
-          ),
-        ]);
+      const [
+        inbox,
+        reviews,
+        uploads,
+        cats,
+        accts,
+        senders,
+        retentionQueue,
+      ] = await Promise.all([
+        apiFetch<AccountingInboxItem[]>('/accounting/inbox?limit=100'),
+        apiFetch<AccountingExpenseDocument[]>(
+          '/accounting/expenses?status=PENDING_REVIEW&limit=100',
+        ),
+        apiFetch<AccountingManualUploadLibraryItem[]>(
+          '/accounting/inbox/manual-uploads?limit=200',
+        ),
+        apiFetch<AccountingCategory[]>('/accounting/categories'),
+        apiFetch<AccountingAccount[]>('/accounting/accounts'),
+        apiFetch<AccountingSenderPolicy[]>(
+          '/accounting/inbox/sender-policies',
+        ),
+        apiFetch<AccountingImageRetentionQueueItem[]>(
+          '/accounting/inbox/image-retention/pending?limit=100',
+        ),
+      ]);
       setItems(inbox);
+      setExpenseReviews(reviews);
       setReviewingInboxItemStableId((currentStableId) =>
         retainReviewingInboxItemStableId(inbox, currentStableId),
       );
@@ -181,6 +203,124 @@ export default function AccountingInboxPage() {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function uploadExpenseEvidence(
+    item: AccountingInboxItem,
+    file: File,
+  ) {
+    setUploadingExpenseEvidenceId(item.inboxItemStableId);
+    setError(null);
+    setMessage(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      await apiFetch(
+        `/accounting/inbox/${item.inboxItemStableId}/expense-evidence`,
+        {
+          method: 'POST',
+          body: formData,
+        },
+      );
+      setMessage(
+        isZh
+          ? '正式账单已补充并关联到原通知邮件，可以继续费用审核。'
+          : 'The formal source document is linked to the notification and is ready for expense review.',
+      );
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+      await load();
+    } finally {
+      setUploadingExpenseEvidenceId(null);
+    }
+  }
+
+  async function removeExpenseEvidence(item: AccountingInboxItem) {
+    if (!item.expenseEvidenceSource) return;
+    const confirmed = window.confirm(
+      isZh
+        ? '移除后，这份补充账单会退出当前通知邮件并标记为已放弃；你可以重新上传正确账单。确定继续？'
+        : 'Removing this source bill will detach it from the notification and mark the manual upload as abandoned. You can then upload the correct bill. Continue?',
+    );
+    if (!confirmed) return;
+
+    setRemovingExpenseEvidenceId(item.inboxItemStableId);
+    setError(null);
+    setMessage(null);
+    try {
+      await apiFetch(
+        `/accounting/inbox/${item.inboxItemStableId}/expense-evidence`,
+        { method: 'DELETE' },
+      );
+      setReviewingInboxItemStableId(null);
+      setMessage(
+        isZh
+          ? '已移除补充账单，可以重新上传正式账单。'
+          : 'The supplemental bill was removed. You can upload the correct source document.',
+      );
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setRemovingExpenseEvidenceId(null);
+    }
+  }
+
+  async function openMaterializedExpenseReview(
+    documentStableId: string,
+  ) {
+    let rows = await apiFetch<AccountingInboxItem[]>(
+      `/accounting/inbox?status=CONFIRMED&classification=EXPENSE_DOCUMENT&materializedEntityStableId=${encodeURIComponent(documentStableId)}&limit=1`,
+    );
+    if (!rows.length) {
+      rows = await apiFetch<AccountingInboxItem[]>(
+        `/accounting/inbox?status=PENDING_REVIEW&classification=EXPENSE_DOCUMENT&materializedEntityStableId=${encodeURIComponent(documentStableId)}&limit=1`,
+      );
+    }
+    const sourceItem = rows[0] ?? null;
+    if (!sourceItem) {
+      throw new Error(
+        isZh
+          ? '找不到这笔待审核费用的原始凭证。'
+          : 'The source evidence for this pending expense could not be found.',
+      );
+    }
+    setReviewingMaterializedItem(sourceItem);
+    setReviewingInboxItemStableId(sourceItem.inboxItemStableId);
+  }
+
+  async function resumeExpenseReview(documentStableId: string) {
+    setError(null);
+    try {
+      await openMaterializedExpenseReview(documentStableId);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  }
+
+  async function beginExpenseReview(item: AccountingInboxItem) {
+    setBeginningExpenseReviewId(item.inboxItemStableId);
+    setError(null);
+    setMessage(null);
+    try {
+      const document = await apiFetch<AccountingExpenseDocument>(
+        `/accounting/inbox/${item.inboxItemStableId}/expense/review`,
+        { method: 'POST' },
+      );
+      await load();
+      await openMaterializedExpenseReview(document.documentStableId);
+      setMessage(
+        isZh
+          ? '已从待处理移入费用审核。'
+          : 'Moved from pending Inbox into expense review.',
+      );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+      await load();
+    } finally {
+      setBeginningExpenseReviewId(null);
     }
   }
 
@@ -438,10 +578,14 @@ export default function AccountingInboxPage() {
 
   async function handleExpenseConfirmed(item: AccountingInboxItem) {
     setReviewingInboxItemStableId(null);
+    setReviewingMaterializedItem(null);
     const loaded = await load();
-    if (item.artifact.kind === 'IMAGE') {
+    const confirmedExpenseArtifact =
+      item.expenseEvidenceSource?.artifact ?? item.artifact;
+    if (confirmedExpenseArtifact.kind === 'IMAGE') {
       const retentionItem = loaded?.retentionQueue.find(
-        (row) => row.artifactStableId === item.artifact.artifactStableId,
+        (row) =>
+          row.artifactStableId === confirmedExpenseArtifact.artifactStableId,
       );
       if (retentionItem) setOptimizingImage(retentionItem);
       setMessage(
@@ -642,6 +786,60 @@ export default function AccountingInboxPage() {
         </div>
       </section>
 
+      {expenseReviews.length ? (
+        <section className="rounded-xl border bg-white p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="font-semibold">
+                {isZh ? '费用审核区' : 'Expense review'}
+              </h2>
+              <p className="mt-1 text-xs text-slate-500">
+                {isZh
+                  ? '这里的项目已经退出待处理区，但尚未正式入账。'
+                  : 'These items have left Pending but have not been finally booked.'}
+              </p>
+            </div>
+            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs text-blue-700">
+              {expenseReviews.length}
+            </span>
+          </div>
+          <div className="mt-3 space-y-2">
+            {expenseReviews.map((document) => (
+              <div
+                key={document.documentStableId}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm"
+              >
+                <div>
+                  <div className="font-medium">
+                    {document.emailSubject ??
+                      document.sourceEvidence?.originalFilename ??
+                      document.documentStableId}
+                  </div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    {document.totalCents == null
+                      ? isZh
+                        ? '金额待审核'
+                        : 'Amount pending review'
+                      : new Intl.NumberFormat(isZh ? 'zh-CA' : 'en-CA', {
+                          style: 'currency',
+                          currency: 'CAD',
+                        }).format(document.totalCents / 100)}
+                  </div>
+                </div>
+                <button
+                  onClick={() =>
+                    void resumeExpenseReview(document.documentStableId)
+                  }
+                  className="rounded border px-3 py-1.5 text-sm text-blue-700"
+                >
+                  {isZh ? '继续审核' : 'Continue review'}
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       <AccountingInboxItemsList
         items={items}
         loading={loading}
@@ -651,6 +849,9 @@ export default function AccountingInboxPage() {
         discardingId={discardingId}
         confirmingProviderId={confirmingProviderId}
         confirmingOtherId={confirmingOtherId}
+        uploadingExpenseEvidenceId={uploadingExpenseEvidenceId}
+        removingExpenseEvidenceId={removingExpenseEvidenceId}
+        beginningExpenseReviewId={beginningExpenseReviewId}
         onTrustSender={(email) =>
           saveSenderPolicy(email, existingSenderPolicyLabel(email), 'TRUSTED')
         }
@@ -658,9 +859,9 @@ export default function AccountingInboxPage() {
           saveSenderPolicy(email, existingSenderPolicyLabel(email), 'IGNORED')
         }
         onClassificationChange={updateClassification}
-        onReviewExpense={(item) =>
-          setReviewingInboxItemStableId(item.inboxItemStableId)
-        }
+        onUploadExpenseEvidence={uploadExpenseEvidence}
+        onRemoveExpenseEvidence={removeExpenseEvidence}
+        onReviewExpense={beginExpenseReview}
         onReviewBankCsv={(item) =>
           setReviewingBankCsvInboxItemStableId(item.inboxItemStableId)
         }
@@ -677,7 +878,10 @@ export default function AccountingInboxPage() {
           categories={categories}
           accounts={accounts}
           isZh={isZh}
-          onClose={() => setReviewingInboxItemStableId(null)}
+          onClose={() => {
+            setReviewingInboxItemStableId(null);
+            setReviewingMaterializedItem(null);
+          }}
           onConfirmed={handleExpenseConfirmed}
           canPermanentDelete={
             permanentDeleteCapabilities.get(reviewing.inboxItemStableId) ?? false

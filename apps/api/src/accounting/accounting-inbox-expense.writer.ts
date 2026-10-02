@@ -174,6 +174,76 @@ export async function readInboxExpenseMaterializationReplay(
   };
 }
 
+export async function markInboxExpenseReviewStartedInTx(
+  tx: AccountingTx,
+  inboxItemStableId: string,
+  documentStableId: string,
+  operatorUserStableId: string,
+) {
+  const item = await tx.accountingInboxItem.findUnique({
+    where: { inboxItemStableId },
+    select: {
+      id: true,
+      status: true,
+      classification: true,
+      selectedProvider: true,
+      materializedEntityType: true,
+      materializedEntityStableId: true,
+    },
+  });
+  if (!item) {
+    throw new AccountingInboxWriterNotFoundError(
+      'accounting inbox item not found',
+    );
+  }
+  if (
+    item.materializedEntityType !==
+      AccountingInboxMaterializedEntityType.EXPENSE_DOCUMENT ||
+    item.materializedEntityStableId !== documentStableId
+  ) {
+    throw new AccountingInboxWriterConflictError(
+      'inbox item is not linked to the pending expense review',
+    );
+  }
+  if (
+    item.classification !== AccountingInboxClassification.EXPENSE_DOCUMENT ||
+    item.selectedProvider
+  ) {
+    throw new AccountingInboxWriterConflictError(
+      'inbox item is not eligible to enter expense review',
+    );
+  }
+  if (item.status === AccountingInboxStatus.CONFIRMED) return;
+  if (item.status !== AccountingInboxStatus.PENDING_REVIEW) {
+    throw new AccountingInboxWriterConflictError(
+      'only pending inbox items can enter expense review',
+    );
+  }
+
+  const reviewedAt = new Date();
+  await tx.accountingInboxItem.update({
+    where: { id: item.id },
+    data: {
+      status: AccountingInboxStatus.CONFIRMED,
+      reviewedAt,
+      reviewedByUserStableId: operatorUserStableId,
+      version: { increment: 1 },
+    },
+  });
+  await tx.accountingAuditLog.create({
+    data: {
+      action: 'BEGIN_EXPENSE_REVIEW',
+      entityType: 'ACCOUNTING_INBOX_ITEM',
+      entityId: inboxItemStableId,
+      operatorActorRef: operatorUserStableId,
+      afterJson: {
+        documentStableId,
+        reviewedAt: reviewedAt.toISOString(),
+      } as Prisma.InputJsonValue,
+    },
+  });
+}
+
 export async function markInboxExpenseConfirmedInTx(
   tx: AccountingTx,
   inboxItemStableId: string,
@@ -232,6 +302,8 @@ export async function discardInboxItemInTx(
       status: true,
       materializedEntityType: true,
       materializedEntityStableId: true,
+      expenseEvidenceNotificationLink: { select: { linkStableId: true } },
+      expenseEvidenceSourceLink: { select: { linkStableId: true } },
       artifact: { select: { acquisitionMode: true } },
     },
   });
@@ -242,6 +314,14 @@ export async function discardInboxItemInTx(
   }
   if (item.status === AccountingInboxStatus.DISCARDED) {
     return { inboxItemStableId, discarded: true, replayed: true };
+  }
+  if (
+    item.expenseEvidenceNotificationLink ||
+    item.expenseEvidenceSourceLink
+  ) {
+    throw new AccountingInboxWriterConflictError(
+      'linked expense evidence cannot be discarded independently',
+    );
   }
   const isManualUploadError =
     item.status === AccountingInboxStatus.ERROR &&

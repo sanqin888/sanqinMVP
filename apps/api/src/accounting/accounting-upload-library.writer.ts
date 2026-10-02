@@ -24,6 +24,7 @@ export async function permanentlyDeleteManualUploadInTx(
       status: true,
       materializedEntityType: true,
       materializedEntityStableId: true,
+      expenseEvidenceSourceLink: { select: { linkStableId: true } },
       artifact: {
         select: {
           id: true,
@@ -85,6 +86,11 @@ export async function permanentlyDeleteManualUploadInTx(
   if (item.status === AccountingInboxStatus.CONFIRMED) {
     throw new AccountingInboxWriterConflictError(
       'confirmed accounting evidence cannot be permanently deleted',
+    );
+  }
+  if (item.expenseEvidenceSourceLink) {
+    throw new AccountingInboxWriterConflictError(
+      'linked expense source evidence cannot be permanently deleted',
     );
   }
   if (

@@ -16,7 +16,7 @@ import type {
 } from '../contracts/inbox';
 import {
   type AccountingExpenseReviewRow,
-  latestParse,
+  expenseReviewParse,
   makeReviewKey,
   money,
   reconciledTextractLineItemHints,
@@ -51,7 +51,7 @@ type QuickRow = {
 };
 
 function recognizedForeignCurrencyCode(
-  extraction: ReturnType<typeof latestParse>,
+  extraction: ReturnType<typeof expenseReviewParse>,
 ): string | null {
   const candidates = [
     extraction.sourceCurrency?.toUpperCase() ?? null,
@@ -72,7 +72,7 @@ function reviewTaxMode(
 }
 
 function hasUnsafeCurrencyEvidence(
-  extraction: ReturnType<typeof latestParse>,
+  extraction: ReturnType<typeof expenseReviewParse>,
 ): boolean {
   return (
     extraction.sourceCurrencyEvidence === 'AMBIGUOUS' ||
@@ -142,7 +142,7 @@ export function AccountingInboxExpenseReviewPanel({
     [categories],
   );
   useEffect(() => {
-    const extraction = latestParse(item);
+    const extraction = expenseReviewParse(item);
     const suggested = extraction.suggestedCategoryStableId;
     const defaultCategory =
       (suggested &&
@@ -218,7 +218,7 @@ export function AccountingInboxExpenseReviewPanel({
       differenceCents: totalCents - subtotalCents - taxCents,
     };
   }, [rows, total]);
-  const extraction = latestParse(item);
+  const extraction = expenseReviewParse(item);
   const recognitionConsistency =
     extraction.textractEvidence?.financialConsistency === 'MISMATCH'
       ? 'MISMATCH'
@@ -418,8 +418,15 @@ export function AccountingInboxExpenseReviewPanel({
     setSaving(true);
     setError(null);
     try {
+      if (!item.materializedEntityStableId) {
+        throw new Error(
+          isZh
+            ? '该费用尚未正式进入审核阶段，请返回待处理区点击“确认并审核”。'
+            : 'This expense has not entered the review stage. Return to Pending and choose Confirm & review.',
+        );
+      }
       await apiFetch(
-        `/accounting/inbox/${item.inboxItemStableId}/expense/confirm`,
+        `/accounting/expenses/${item.materializedEntityStableId}/confirm`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -478,13 +485,16 @@ export function AccountingInboxExpenseReviewPanel({
       : null);
   const showCurrencyWarning =
     ambiguousCurrencyEvidence || foreignCurrencyWarning !== null;
-  const evidence = item.artifact.storedUrl
+  const expenseArtifact =
+    item.expenseEvidenceSource?.artifact ?? item.artifact;
+  const evidence = expenseArtifact.storedUrl
     ? {
-        artifactStableId: item.artifact.artifactStableId,
-        filename: item.artifact.originalFilename,
-        kind: item.artifact.kind,
+        artifactStableId: expenseArtifact.artifactStableId,
+        filename: expenseArtifact.originalFilename,
+        kind: expenseArtifact.kind,
         deletion:
-          item.artifact.acquisitionMode === 'MANUAL_UPLOAD'
+          item.expenseEvidenceSource === null &&
+          expenseArtifact.acquisitionMode === 'MANUAL_UPLOAD'
             ? {
                 inboxItemStableId: item.inboxItemStableId,
                 canPermanentDelete,
@@ -515,13 +525,13 @@ export function AccountingInboxExpenseReviewPanel({
           ? '只有确认这是普通费用凭证时才继续。Clover / Uber Eats / Fantuan 对账单、Closeout 或平台财务文件请留在收件箱，等待平台财务解析。'
           : 'Continue only for ordinary expense evidence. Leave Clover / Uber Eats / Fantuan statements, closeouts, and platform financial files in Inbox for provider parsing.'}
       </p>
-      {extraction.extractedText || item.artifact.bodyText ? (
+      {extraction.extractedText || expenseArtifact.bodyText ? (
         <details className="mt-4 rounded-lg border bg-white p-3 text-sm">
           <summary className="cursor-pointer font-medium">
             {isZh ? '查看识别原文' : 'View extracted text'}
           </summary>
           <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-words font-sans text-xs text-slate-600">
-            {extraction.extractedText ?? item.artifact.bodyText}
+            {extraction.extractedText ?? expenseArtifact.bodyText}
           </pre>
         </details>
       ) : null}

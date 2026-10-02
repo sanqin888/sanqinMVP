@@ -127,6 +127,17 @@ export class AccountingInboxController {
     );
   }
 
+  @Delete('inbox/:inboxItemStableId/expense-evidence')
+  unlinkExpenseEvidence(
+    @Param('inboxItemStableId') inboxItemStableId: string,
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.inbox.unlinkExpenseEvidenceSource(
+      inboxItemStableId,
+      requireAccountingOperatorUserId(req),
+    );
+  }
+
   @Post('inbox/:inboxItemStableId/other/confirm')
   confirmInboxOther(
     @Param('inboxItemStableId') inboxItemStableId: string,

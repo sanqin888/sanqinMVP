@@ -213,6 +213,46 @@ export type AccountingInboxItem = {
     | 'PROVIDER_FINANCIAL_DOCUMENT'
     | null;
   materializedEntityStableId: string | null;
+  expenseEvidenceReadiness: {
+    status: 'READY' | 'SUPPLEMENT_REQUIRED';
+    reason:
+      | 'FILE_SOURCE'
+      | 'STANDALONE_EMAIL_DOCUMENT'
+      | 'LINKED_SOURCE_DOCUMENT'
+      | 'EMAIL_BILL_NOTIFICATION_ONLY'
+      | 'EMAIL_BODY_INSUFFICIENT'
+      | 'LINKED_SOURCE_UNAVAILABLE';
+  };
+  expenseEvidenceSource: {
+    linkStableId: string;
+    linkedAt: string;
+    inboxItemStableId: string;
+    status: AccountingInboxStatus;
+    classification: AccountingInboxClassification;
+    selectedProvider: AccountingFinancialProvider | null;
+    materializedEntityType:
+      | 'EXPENSE_DOCUMENT'
+      | 'PROVIDER_FINANCIAL_DOCUMENT'
+      | null;
+    materializedEntityStableId: string | null;
+    createdAt: string;
+    artifact: {
+      artifactStableId: string;
+      acquisitionMode: 'EMAIL' | 'MANUAL_UPLOAD' | 'PROVIDER_API';
+      kind: 'EMAIL_BODY' | 'PDF' | 'IMAGE' | 'CSV' | 'TEXT' | 'OTHER';
+      originalFilename: string | null;
+      storedUrl: string | null;
+      bodyText: string | null;
+      senderEmail: string | null;
+      emailSubject: string | null;
+      parseRuns: Array<{
+        parseRunStableId: string;
+        status: 'PENDING' | 'SUCCESS' | 'ERROR' | 'SKIPPED';
+        resultJson: AccountingInboxParseResult | null;
+        errorMessage: string | null;
+      }>;
+    };
+  } | null;
   createdAt: string;
   artifact: {
     artifactStableId: string;
@@ -279,6 +319,11 @@ export type AccountingManualUploadLibraryItem = {
     artifactStableId: string;
     originalFilename: string | null;
     status: AccountingInboxStatus | null;
+  } | null;
+  expenseEvidenceLink: {
+    linkStableId: string;
+    notificationInboxItemStableId: string;
+    notificationStatus: AccountingInboxStatus;
   } | null;
   canDiscard: boolean;
   canPermanentDelete: boolean;

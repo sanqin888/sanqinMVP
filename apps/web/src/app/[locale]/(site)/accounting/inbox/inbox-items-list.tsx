@@ -25,6 +25,9 @@ type Props = {
   discardingId: string | null;
   confirmingProviderId: string | null;
   confirmingOtherId: string | null;
+  uploadingExpenseEvidenceId: string | null;
+  removingExpenseEvidenceId: string | null;
+  beginningExpenseReviewId: string | null;
   onTrustSender: (email: string) => Promise<void>;
   onIgnoreSender: (email: string) => Promise<void>;
   onClassificationChange: (
@@ -32,7 +35,12 @@ type Props = {
     classification: AccountingInboxClassification,
     selectedProvider: AccountingFinancialProvider | null,
   ) => Promise<void>;
-  onReviewExpense: (item: AccountingInboxItem) => void;
+  onUploadExpenseEvidence: (
+    item: AccountingInboxItem,
+    file: File,
+  ) => Promise<void>;
+  onRemoveExpenseEvidence: (item: AccountingInboxItem) => Promise<void>;
+  onReviewExpense: (item: AccountingInboxItem) => Promise<void>;
   onReviewBankCsv: (item: AccountingInboxItem) => void;
   onConfirmProviderFinancial: (item: AccountingInboxItem) => Promise<void>;
   onConfirmOther: (item: AccountingInboxItem) => Promise<void>;
@@ -61,9 +69,14 @@ export function AccountingInboxItemsList({
   discardingId,
   confirmingProviderId,
   confirmingOtherId,
+  uploadingExpenseEvidenceId,
+  removingExpenseEvidenceId,
+  beginningExpenseReviewId,
   onTrustSender,
   onIgnoreSender,
   onClassificationChange,
+  onUploadExpenseEvidence,
+  onRemoveExpenseEvidence,
   onReviewExpense,
   onReviewBankCsv,
   onConfirmProviderFinancial,
@@ -90,6 +103,9 @@ export function AccountingInboxItemsList({
       <div className="mt-3 divide-y">
         {items.map((item) => {
           const parse = latestParse(item);
+          const expenseSource = item.expenseEvidenceSource;
+          const expenseParse =
+            expenseSource?.artifact.parseRuns[0]?.resultJson ?? parse;
           const financial = item.artifact.financialDocument;
           const title =
             item.artifact.emailSubject ||
@@ -113,10 +129,19 @@ export function AccountingInboxItemsList({
                       },
               }
             : null;
+          const expenseSourceEvidence = expenseSource?.artifact.storedUrl
+            ? {
+                artifactStableId: expenseSource.artifact.artifactStableId,
+                filename: expenseSource.artifact.originalFilename,
+                kind: expenseSource.artifact.kind,
+                deletion: null,
+              }
+            : null;
           const classificationLocked =
             quarantined ||
             item.status !== 'PENDING_REVIEW' ||
             item.materializedEntityType !== null ||
+            expenseSource !== null ||
             item.artifact.acquisitionMode === 'PROVIDER_API';
           const classifying = classifyingId === item.inboxItemStableId;
           const providerDocumentType = validatedProviderFinancialDocumentType(
@@ -138,10 +163,10 @@ export function AccountingInboxItemsList({
           const providerDocumentRef =
             financial?.providerDocumentRef ?? parse.providerDocumentRef ?? null;
           const expenseRecognitionConsistency =
-            parse.textractEvidence?.financialConsistency === 'MISMATCH'
+            expenseParse.textractEvidence?.financialConsistency === 'MISMATCH'
               ? 'MISMATCH'
-              : (parse.financialConsistency ??
-                parse.textractEvidence?.financialConsistency ??
+              : (expenseParse.financialConsistency ??
+                expenseParse.textractEvidence?.financialConsistency ??
                 'INSUFFICIENT');
           return (
             <div
@@ -246,6 +271,45 @@ export function AccountingInboxItemsList({
                         {isZh ? '保存中…' : 'Saving…'}
                       </span>
                     ) : null}
+                  </div>
+                ) : null}
+
+                {item.classification === 'EXPENSE_DOCUMENT' &&
+                item.expenseEvidenceReadiness.status ===
+                  'SUPPLEMENT_REQUIRED' ? (
+                  <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                    <strong>
+                      {isZh ? '缺少正式会计凭证' : 'Formal source document required'}
+                    </strong>
+                    <p className="mt-1 leading-5">
+                      {item.expenseEvidenceReadiness.reason ===
+                      'EMAIL_BILL_NOTIFICATION_ONLY'
+                        ? isZh
+                          ? '系统识别到这是一封账单通知邮件，而不是完整账单。当前不能进入费用审核或最终入账，请先上传正式账单文件。'
+                          : 'This is a bill notification rather than the complete bill. Expense review and confirmation are blocked until the formal source document is uploaded.'
+                        : item.expenseEvidenceReadiness.reason ===
+                            'EMAIL_BODY_INSUFFICIENT'
+                          ? isZh
+                            ? '邮件正文不足以独立支持正式费用确认。请补充 PDF、账单图片或其他正式账单文件后再审核。'
+                            : 'The email body does not contain enough standalone source evidence. Upload the formal PDF, bill image, or other source document before review.'
+                          : isZh
+                            ? '已关联的账单文件当前不可作为费用原始凭证，请检查并补充有效账单。'
+                            : 'The linked source file is not currently eligible as expense evidence. Review the source and provide a valid bill.'}
+                    </p>
+                  </div>
+                ) : null}
+
+                {item.classification === 'EXPENSE_DOCUMENT' &&
+                item.expenseEvidenceReadiness.status === 'READY' &&
+                expenseSource ? (
+                  <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-2 text-xs text-emerald-900">
+                    <strong>
+                      {isZh ? '正式账单已补齐' : 'Formal source document linked'}
+                    </strong>
+                    <p className="mt-1">
+                      {expenseSource.artifact.originalFilename ??
+                        expenseSource.artifact.artifactStableId}
+                    </p>
                   </div>
                 ) : null}
 
@@ -436,10 +500,10 @@ export function AccountingInboxItemsList({
                       ) : null}
                     </div>
                   </div>
-                ) : parse.date ||
-                  parse.subtotalCents != null ||
-                  parse.taxCents != null ||
-                  parse.totalCents != null ? (
+                ) : expenseParse.date ||
+                  expenseParse.subtotalCents != null ||
+                  expenseParse.taxCents != null ||
+                  expenseParse.totalCents != null ? (
                   <div
                     className={`rounded-lg border p-3 text-xs ${
                       expenseRecognitionConsistency === 'MISMATCH'
@@ -467,41 +531,41 @@ export function AccountingInboxItemsList({
                     </div>
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
                       <span>
-                        {isZh ? '日期' : 'Date'}: <strong>{parse.date ?? '—'}</strong>
+                        {isZh ? '日期' : 'Date'}: <strong>{expenseParse.date ?? '—'}</strong>
                       </span>
                       <span>
                         {isZh ? '分类' : 'Category'}:{' '}
-                        <strong>{parse.suggestedCategoryName ?? '—'}</strong>
+                        <strong>{expenseParse.suggestedCategoryName ?? '—'}</strong>
                       </span>
                       <span>
                         {isZh ? '税前' : 'Subtotal'}:{' '}
                         <strong>
-                          {parse.subtotalCents == null
+                          {expenseParse.subtotalCents == null
                             ? '—'
-                            : money(parse.subtotalCents)}
+                            : money(expenseParse.subtotalCents)}
                         </strong>
                       </span>
                       <span>
                         {isZh ? '税' : 'Tax'}:{' '}
                         <strong>
-                          {parse.taxCents == null ? '—' : money(parse.taxCents)}
+                          {expenseParse.taxCents == null ? '—' : money(expenseParse.taxCents)}
                         </strong>
                       </span>
                       <span>
                         {isZh ? '总额' : 'Total'}:{' '}
                         <strong>
-                          {parse.totalCents == null ? '—' : money(parse.totalCents)}
+                          {expenseParse.totalCents == null ? '—' : money(expenseParse.totalCents)}
                         </strong>
                       </span>
                       <span>
                         {isZh ? '引擎' : 'Engine'}:{' '}
                         <strong>
-                          {parse.textRecognitionEngine ?? parse.ocrEngine ?? '—'}
+                          {expenseParse.textRecognitionEngine ?? expenseParse.ocrEngine ?? '—'}
                         </strong>
                       </span>
                       <span>
                         {isZh ? '识别置信度' : 'Recognition confidence'}:{' '}
-                        <strong>{parse.confidence ?? '—'}</strong>
+                        <strong>{expenseParse.confidence ?? '—'}</strong>
                       </span>
                     </div>
                     {expenseRecognitionConsistency === 'MISMATCH' ? (
@@ -511,6 +575,17 @@ export function AccountingInboxItemsList({
                           : 'Recognized subtotal + tax does not equal total. Open expense review and correct the Final booking values directly from source evidence.'}
                       </p>
                     ) : null}
+                  </div>
+                ) : null}
+                {expenseSourceEvidence ? (
+                  <div className="mb-2">
+                    <AccountingEvidenceViewer
+                      evidence={expenseSourceEvidence}
+                      isZh={isZh}
+                      onDeleted={onEvidenceDeleted}
+                      label={isZh ? '查看正式账单' : 'Open formal source document'}
+                      className="font-medium text-emerald-700 hover:underline"
+                    />
                   </div>
                 ) : null}
                 {evidence ? (
@@ -592,18 +667,113 @@ export function AccountingInboxItemsList({
                 {!quarantined &&
                 item.status === 'PENDING_REVIEW' &&
                 item.classification === 'EXPENSE_DOCUMENT' &&
-                parse.requiresBatchExpenseImport !== true ? (
+                item.expenseEvidenceReadiness.status ===
+                  'SUPPLEMENT_REQUIRED' &&
+                item.artifact.kind === 'EMAIL_BODY' ? (
                   <div className="max-w-sm text-right">
-                    <button
-                      onClick={() => onReviewExpense(item)}
-                      className="rounded border px-3 py-1.5 text-sm text-blue-700"
-                    >
-                      {isZh ? '查看并审核费用' : 'Open expense review'}
-                    </button>
+                    <div className="mb-2 flex flex-wrap justify-end gap-2">
+                      <button
+                        disabled
+                        className="cursor-not-allowed rounded border px-3 py-1.5 text-sm text-slate-400 opacity-70"
+                      >
+                        {isZh ? '确认并审核' : 'Confirm & review'}
+                      </button>
+                    </div>
+                    {expenseSource ? (
+                      <button
+                        disabled={
+                          removingExpenseEvidenceId === item.inboxItemStableId
+                        }
+                        onClick={() => void onRemoveExpenseEvidence(item)}
+                        className="rounded border px-3 py-1.5 text-sm text-amber-800 disabled:opacity-50"
+                      >
+                        {removingExpenseEvidenceId === item.inboxItemStableId
+                          ? isZh
+                            ? '移除中…'
+                            : 'Removing…'
+                          : isZh
+                            ? '移除无效账单并重新上传'
+                            : 'Remove invalid source and upload again'}
+                      </button>
+                    ) : (
+                      <label className="inline-flex cursor-pointer rounded border px-3 py-1.5 text-sm text-amber-800">
+                        {uploadingExpenseEvidenceId === item.inboxItemStableId
+                          ? isZh
+                            ? '上传处理中…'
+                            : 'Uploading…'
+                          : isZh
+                            ? '上传正式账单'
+                            : 'Upload formal bill'}
+                        <input
+                          type="file"
+                          className="hidden"
+                          accept=".pdf,.csv,.xlsx,image/jpeg,image/png,image/webp"
+                          disabled={
+                            uploadingExpenseEvidenceId === item.inboxItemStableId
+                          }
+                          onChange={(event) => {
+                            const file = event.currentTarget.files?.[0];
+                            event.currentTarget.value = '';
+                            if (file) void onUploadExpenseEvidence(item, file);
+                          }}
+                        />
+                      </label>
+                    )}
+                    <p className="mt-1 text-xs text-slate-500">
+                      {expenseSource
+                        ? isZh
+                          ? '当前关联文件不可用于最终费用确认。请先移除，再上传正确的正式账单。'
+                          : 'The linked source is not eligible for final expense confirmation. Remove it before uploading the correct bill.'
+                        : isZh
+                          ? '上传后文件会与这封通知邮件关联；凭证补齐前不能进入费用审核。'
+                          : 'The uploaded file is linked to this notification. Expense review stays blocked until source evidence is present.'}
+                    </p>
+                  </div>
+                ) : null}
+                {!quarantined &&
+                item.status === 'PENDING_REVIEW' &&
+                item.classification === 'EXPENSE_DOCUMENT' &&
+                item.expenseEvidenceReadiness.status === 'READY' &&
+                expenseParse.requiresBatchExpenseImport !== true ? (
+                  <div className="max-w-sm text-right">
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <button
+                        disabled={
+                          beginningExpenseReviewId === item.inboxItemStableId
+                        }
+                        onClick={() => void onReviewExpense(item)}
+                        className="rounded border px-3 py-1.5 text-sm text-blue-700 disabled:opacity-50"
+                      >
+                        {beginningExpenseReviewId === item.inboxItemStableId
+                          ? isZh
+                            ? '移入审核中…'
+                            : 'Starting review…'
+                          : isZh
+                            ? '确认并审核'
+                            : 'Confirm & review'}
+                      </button>
+                      {expenseSource ? (
+                        <button
+                          disabled={
+                            removingExpenseEvidenceId === item.inboxItemStableId
+                          }
+                          onClick={() => void onRemoveExpenseEvidence(item)}
+                          className="rounded border px-3 py-1.5 text-sm text-amber-700 disabled:opacity-50"
+                        >
+                          {removingExpenseEvidenceId === item.inboxItemStableId
+                            ? isZh
+                              ? '移除中…'
+                              : 'Removing…'
+                            : isZh
+                              ? '更换正式账单'
+                              : 'Replace source bill'}
+                        </button>
+                      ) : null}
+                    </div>
                     <p className="mt-1 text-xs text-slate-500">
                       {isZh
-                        ? '打开审核页不会入账；只有在审核页确认创建费用后才会生成正式费用记录。'
-                        : 'Opening review does not post anything; a formal expense is created only after confirmation in the review panel.'}
+                        ? '点击后会从待处理移入费用审核，但不会记账；只有在审核区最终确认后才会正式入账。'
+                        : 'This moves the item out of Pending and into expense review without posting; final booking happens only after review confirmation.'}
                     </p>
                   </div>
                 ) : null}
@@ -636,7 +806,8 @@ export function AccountingInboxItemsList({
                         : 'Mark reviewed'}
                   </button>
                 ) : null}
-                {item.materializedEntityType !== 'PROVIDER_FINANCIAL_DOCUMENT' ? (
+                {item.materializedEntityType !== 'PROVIDER_FINANCIAL_DOCUMENT' &&
+                !expenseSource ? (
                   <button
                     disabled={discardingId === item.inboxItemStableId}
                     onClick={() => void onDiscard(item)}
