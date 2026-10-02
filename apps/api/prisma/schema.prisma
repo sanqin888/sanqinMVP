@@ -303,6 +303,12 @@ enum AccountingInboxTrustDecision {
   NOT_APPLICABLE
 }
 
+enum AccountingSenderPolicyDecision {
+  TRUSTED
+  UNRECOGNIZED
+  IGNORED
+}
+
 enum AccountingParseStatus {
   PENDING
   SUCCESS
@@ -2360,18 +2366,18 @@ model AccountingInboxItem {
   @@index([materializedEntityType, materializedEntityStableId], map: "AcctInbox_materialized_idx")
 }
 
-model AccountingTrustedSender {
-  id                      String   @id @default(uuid()) @db.Uuid
-  trustedSenderStableId   String   @unique @default(cuid())
-  email                   String   @unique
-  label                   String?
-  isActive                Boolean  @default(true)
-  createdByUserStableId   String
-  updatedByUserStableId   String
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
+model AccountingSenderPolicy {
+  id                       String                           @id @default(uuid()) @db.Uuid
+  senderPolicyStableId     String                           @unique @default(cuid())
+  email                    String                           @unique
+  label                    String?
+  decision                 AccountingSenderPolicyDecision
+  createdByUserStableId    String
+  updatedByUserStableId    String
+  createdAt                DateTime                         @default(now())
+  updatedAt                DateTime                         @updatedAt
 
-  @@index([isActive, email])
+  @@index([decision, email])
 }
 
 model AccountingProviderRecognitionRule {

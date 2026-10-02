@@ -2,6 +2,7 @@ import {
   AccountingArtifactKind,
   AccountingInboxStatus,
   AccountingInboxTrustDecision,
+  AccountingSenderPolicyDecision,
 } from '@prisma/client';
 import { AccountingGmailIngestService } from './accounting-gmail-ingest.service';
 
@@ -76,9 +77,9 @@ describe('AccountingGmailIngestService unified Inbox cutover', () => {
         ),
     };
     const operations = {
-      senderTrustDecision: jest
+      senderPolicyDecision: jest
         .fn()
-        .mockResolvedValue(AccountingInboxTrustDecision.TRUSTED),
+        .mockResolvedValue(AccountingSenderPolicyDecision.TRUSTED),
     };
     const message = {
       id: 'message-1',
@@ -170,7 +171,7 @@ describe('AccountingGmailIngestService unified Inbox cutover', () => {
         nextHistoryId: 'history-bootstrap-1',
       }),
     );
-    expect(operations.senderTrustDecision).toHaveBeenCalledWith(
+    expect(operations.senderPolicyDecision).toHaveBeenCalledWith(
       'reports@example.com',
     );
     expect(acquisition.acquireEmailBody).toHaveBeenCalledWith(
@@ -194,6 +195,97 @@ describe('AccountingGmailIngestService unified Inbox cutover', () => {
     );
   });
 
+  it('lets explicit ignore override provider auto-trust before Accounting acquisition', async () => {
+    const acquisition = {
+      acquireEmailBody: jest.fn(),
+      acquireEmailAttachment: jest.fn(),
+    };
+    const operations = {
+      senderPolicyDecision: jest
+        .fn()
+        .mockResolvedValue(AccountingSenderPolicyDecision.IGNORED),
+    };
+    const message = {
+      id: 'message-ignored',
+      internalDate: String(new Date('2026-09-16T10:02:04.000Z').getTime()),
+      payload: {
+        headers: [
+          { name: 'From', value: 'Clover <app@clover.com>' },
+          {
+            name: 'Subject',
+            value: 'MID 29351880018 Closeout Report for Sep 15, 2026',
+          },
+        ],
+        parts: [
+          {
+            partId: 'body',
+            mimeType: 'text/plain',
+            filename: '',
+            body: { data: toBase64Url('Batch ID 123\nBatch Totals') },
+          },
+        ],
+      },
+    };
+
+    jest.spyOn(global, 'fetch').mockImplementation((input) => {
+      const url =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+      if (url === 'https://oauth2.googleapis.com/token') {
+        return Promise.resolve(
+          new Response(JSON.stringify({ access_token: [REDACTED] }), {
+            status: 200,
+          }),
+        );
+      }
+      if (url.endsWith('/gmail/v1/users/me/profile')) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ historyId: 'history-bootstrap-ignored' }), {
+            status: 200,
+          }),
+        );
+      }
+      if (url.includes('/gmail/v1/users/me/messages?')) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ messages: [{ id: 'message-ignored' }] }), {
+            status: 200,
+          }),
+        );
+      }
+      if (url.includes('/messages/message-ignored?format=full')) {
+        return Promise.resolve(
+          new Response(JSON.stringify(message), { status: 200 }),
+        );
+      }
+      return Promise.resolve(new Response('not found', { status: 404 }));
+    });
+
+    const service = new AccountingGmailIngestService(
+      acquisition as never,
+      operations as never,
+    );
+    const result = await service.ingestBillsMailbox({
+      accountingStartDate: null,
+      timezone: 'America/Toronto',
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        scannedMessages: 1,
+        importedDocuments: 0,
+        failedDocuments: 0,
+      }),
+    );
+    expect(operations.senderPolicyDecision).toHaveBeenCalledWith(
+      'app@clover.com',
+    );
+    expect(acquisition.acquireEmailBody).not.toHaveBeenCalled();
+    expect(acquisition.acquireEmailAttachment).not.toHaveBeenCalled();
+  });
+
   it('retains the bounded pre-start Clover Closeout window and trusts only the exact provider Closeout shape', async () => {
     const acquisition = {
       acquireEmailBody: jest
@@ -204,9 +296,9 @@ describe('AccountingGmailIngestService unified Inbox cutover', () => {
       acquireEmailAttachment: jest.fn(),
     };
     const operations = {
-      senderTrustDecision: jest
+      senderPolicyDecision: jest
         .fn()
-        .mockResolvedValue(AccountingInboxTrustDecision.UNTRUSTED),
+        .mockResolvedValue(AccountingSenderPolicyDecision.UNRECOGNIZED),
     };
     const message = {
       id: 'message-closeout',
@@ -292,7 +384,9 @@ describe('AccountingGmailIngestService unified Inbox cutover', () => {
         nextHistoryId: 'history-bootstrap-1',
       }),
     );
-    expect(operations.senderTrustDecision).not.toHaveBeenCalled();
+    expect(operations.senderPolicyDecision).toHaveBeenCalledWith(
+      'app@clover.com',
+    );
     expect(acquisition.acquireEmailBody).toHaveBeenCalledWith(
       expect.objectContaining({
         senderEmail: 'app@clover.com',
@@ -316,9 +410,9 @@ describe('AccountingGmailIngestService unified Inbox cutover', () => {
       acquireEmailAttachment: jest.fn(),
     };
     const operations = {
-      senderTrustDecision: jest
+      senderPolicyDecision: jest
         .fn()
-        .mockResolvedValue(AccountingInboxTrustDecision.TRUSTED),
+        .mockResolvedValue(AccountingSenderPolicyDecision.TRUSTED),
     };
     const message = {
       id: 'message-incremental',
@@ -441,7 +535,7 @@ describe('AccountingGmailIngestService unified Inbox cutover', () => {
       acquireEmailAttachment: jest.fn(),
     };
     const operations = {
-      senderTrustDecision: jest.fn(),
+      senderPolicyDecision: jest.fn(),
     };
     let bootstrapListCalled = false;
 

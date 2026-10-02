@@ -287,9 +287,14 @@ export type AccountingManualUploadLibraryItem = {
   reviewedAt: string | null;
 };
 
-export type AccountingTrustedSender = {
-  trustedSenderStableId: string;
+export type AccountingSenderPolicyDecision =
+  | 'TRUSTED'
+  | 'UNRECOGNIZED'
+  | 'IGNORED';
+
+export type AccountingSenderPolicy = {
+  senderPolicyStableId: string;
   email: string;
   label: string | null;
-  isActive: boolean;
+  decision: AccountingSenderPolicyDecision;
 };

@@ -26,6 +26,7 @@ type Props = {
   confirmingProviderId: string | null;
   confirmingOtherId: string | null;
   onTrustSender: (email: string) => Promise<void>;
+  onIgnoreSender: (email: string) => Promise<void>;
   onClassificationChange: (
     item: AccountingInboxItem,
     classification: AccountingInboxClassification,
@@ -61,6 +62,7 @@ export function AccountingInboxItemsList({
   confirmingProviderId,
   confirmingOtherId,
   onTrustSender,
+  onIgnoreSender,
   onClassificationChange,
   onReviewExpense,
   onReviewBankCsv,
@@ -533,15 +535,26 @@ export function AccountingInboxItemsList({
 
               <div className="flex flex-wrap gap-2 lg:justify-end">
                 {quarantined && item.artifact.senderEmail ? (
-                  <button
-                    disabled={busySender}
-                    onClick={() =>
-                      void onTrustSender(item.artifact.senderEmail ?? '')
-                    }
-                    className="rounded border px-3 py-1.5 text-sm text-emerald-700 disabled:opacity-50"
-                  >
-                    {isZh ? '信任此发件人' : 'Trust sender'}
-                  </button>
+                  <>
+                    <button
+                      disabled={busySender}
+                      onClick={() =>
+                        void onTrustSender(item.artifact.senderEmail ?? '')
+                      }
+                      className="rounded border px-3 py-1.5 text-sm text-emerald-700 disabled:opacity-50"
+                    >
+                      {isZh ? '信任此发件人' : 'Trust sender'}
+                    </button>
+                    <button
+                      disabled={busySender}
+                      onClick={() =>
+                        void onIgnoreSender(item.artifact.senderEmail ?? '')
+                      }
+                      className="rounded border px-3 py-1.5 text-sm text-amber-700 disabled:opacity-50"
+                    >
+                      {isZh ? '忽略此发件人' : 'Ignore sender'}
+                    </button>
+                  </>
                 ) : null}
                 {!quarantined &&
                 item.status === 'PENDING_REVIEW' &&

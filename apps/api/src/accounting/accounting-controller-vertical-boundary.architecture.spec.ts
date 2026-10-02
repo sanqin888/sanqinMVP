@@ -25,7 +25,10 @@ const EXPECTED_CONTROLLER_CAPABILITIES = {
     'AccountingInboxAcquisitionService',
     'AccountingTabularPreviewService',
   ],
-  'accounting-inbox.controller.ts': ['AccountingInboxService'],
+  'accounting-inbox.controller.ts': [
+    'AccountingInboxAcquisitionService',
+    'AccountingInboxService',
+  ],
   'accounting-period.controller.ts': ['AccountingPeriodService'],
   'payroll/accounting-payroll.controller.ts': [
     'AccountingPayrollConfigService',
@@ -87,8 +90,8 @@ const EXPECTED_ROUTES = [
   'POST evidence-files/move',
   'GET inbox/provider-recognition-rules',
   'PUT inbox/provider-recognition-rules/:ruleStableId',
-  'GET inbox/trusted-senders',
-  'PUT inbox/trusted-senders',
+  'GET inbox/sender-policies',
+  'PUT inbox/sender-policies',
   'PUT inbox/:inboxItemStableId/classification',
   'POST inbox/:inboxItemStableId/other/confirm',
   'POST inbox/:inboxItemStableId/expense/confirm',
