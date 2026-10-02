@@ -2359,11 +2359,26 @@ model AccountingInboxItem {
   version                  Int                           @default(1)
   artifact                 AccountingSourceArtifact      @relation("AccountingInboxArtifact", fields: [artifactId], references: [id], onDelete: Restrict)
   duplicateOfArtifact      AccountingSourceArtifact?     @relation("AccountingInboxDuplicateArtifact", fields: [duplicateOfArtifactId], references: [id], onDelete: Restrict)
+  expenseEvidenceNotificationLink AccountingExpenseEvidenceLink? @relation("AccountingExpenseEvidenceNotification")
+  expenseEvidenceSourceLink       AccountingExpenseEvidenceLink? @relation("AccountingExpenseEvidenceSource")
 
   @@index([status, createdAt])
   @@index([classification, status, createdAt])
   @@index([duplicateOfArtifactId])
   @@index([materializedEntityType, materializedEntityStableId], map: "AcctInbox_materialized_idx")
+}
+
+model AccountingExpenseEvidenceLink {
+  id                       String                @id @default(uuid()) @db.Uuid
+  linkStableId             String                @unique @default(cuid())
+  notificationInboxItemId  String                @unique @db.Uuid
+  sourceInboxItemId        String                @unique @db.Uuid
+  linkedByUserStableId     String
+  linkedAt                 DateTime              @default(now())
+  notificationInboxItem    AccountingInboxItem   @relation("AccountingExpenseEvidenceNotification", fields: [notificationInboxItemId], references: [id], onDelete: Restrict)
+  sourceInboxItem          AccountingInboxItem   @relation("AccountingExpenseEvidenceSource", fields: [sourceInboxItemId], references: [id], onDelete: Restrict)
+
+  @@index([linkedAt])
 }
 
 model AccountingSenderPolicy {

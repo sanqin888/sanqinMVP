@@ -114,6 +114,30 @@ export class AccountingExpenseController {
     );
   }
 
+  @Post('inbox/:inboxItemStableId/expense/review')
+  beginInboxExpenseReview(
+    @Param('inboxItemStableId') inboxItemStableId: string,
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.expense.beginUnifiedInboxExpenseReview(
+      inboxItemStableId,
+      requireAccountingOperatorUserId(req),
+    );
+  }
+
+  @Post('expenses/:documentStableId/confirm')
+  confirmPendingExpense(
+    @Param('documentStableId') documentStableId: string,
+    @Body() body: AccountingExpenseInput,
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.expense.confirmInboxDocument(
+      documentStableId,
+      body,
+      requireAccountingOperatorUserId(req),
+    );
+  }
+
   @Post('inbox/:inboxItemStableId/expense/confirm')
   confirmInboxExpense(
     @Param('inboxItemStableId') inboxItemStableId: string,

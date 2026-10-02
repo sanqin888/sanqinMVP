@@ -17,6 +17,8 @@ function makeInboxItem(
     trustDecision: 'NOT_APPLICABLE',
     materializedEntityType: null,
     materializedEntityStableId: null,
+    expenseEvidenceReadiness: { status: 'READY', reason: 'FILE_SOURCE' },
+    expenseEvidenceSource: null,
     createdAt: '2026-09-17T00:00:00.000Z',
     artifact: {
       artifactStableId: `artifact_${inboxItemStableId}`,

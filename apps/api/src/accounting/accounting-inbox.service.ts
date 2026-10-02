@@ -38,6 +38,10 @@ import {
   purgeDuplicateEmailArtifactsInTx,
 } from './accounting-inbox-core.writer';
 import {
+  linkExpenseEvidenceSourceInTx,
+  unlinkExpenseEvidenceSourceInTx,
+} from './accounting-expense-evidence.writer';
+import {
   beginAccountingImageOriginalPurgeInTx,
   discardAccountingImageRetentionCandidateInTx,
   finalizeAccountingImageOriginalPurgeInTx,
@@ -114,6 +118,38 @@ export class AccountingInboxService {
 
   listManualUploadLibrary(limit?: number) {
     return listAccountingManualUploadLibrary(this.prisma, limit);
+  }
+
+  async linkExpenseEvidenceSource(
+    notificationInboxItemStableId: string,
+    sourceArtifactStableId: string,
+    operatorUserStableId: string,
+  ) {
+    return this.runInboxCore(() =>
+      runSerializableAccountingWrite(this.prisma, (tx) =>
+        linkExpenseEvidenceSourceInTx(
+          tx,
+          notificationInboxItemStableId,
+          sourceArtifactStableId,
+          operatorUserStableId,
+        ),
+      ),
+    );
+  }
+
+  async unlinkExpenseEvidenceSource(
+    notificationInboxItemStableId: string,
+    operatorUserStableId: string,
+  ) {
+    return this.runInboxCore(() =>
+      runSerializableAccountingWrite(this.prisma, (tx) =>
+        unlinkExpenseEvidenceSourceInTx(
+          tx,
+          notificationInboxItemStableId,
+          operatorUserStableId,
+        ),
+      ),
+    );
   }
 
   async permanentlyDeleteManualUpload(inboxItemStableId: string) {

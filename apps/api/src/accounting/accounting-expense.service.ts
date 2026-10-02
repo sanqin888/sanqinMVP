@@ -26,7 +26,15 @@ import { ACCOUNTING_DB, type AccountingDb } from './accounting-db';
 import {
   linkAndConfirmInboxExpenseInTx,
   markInboxExpenseConfirmedInTx,
+  markInboxExpenseReviewStartedInTx,
+  materializeInboxExpenseInTx,
 } from './accounting-inbox-expense.writer';
+import { assessAccountingExpenseEvidenceReadiness } from './accounting-expense-evidence.policy';
+import {
+  closeExpenseNotificationForReviewInTx,
+  resolveLinkedExpenseEvidenceInTx,
+} from './accounting-expense-evidence.writer';
+import { normalizeAccountingInboxExpenseMaterialization } from './accounting-inbox-core.policy';
 import {
   accountingJsonRecord,
   accountingOptionalString,
@@ -197,6 +205,160 @@ export class AccountingExpenseService {
     private readonly expenseJournalPosting: AccountingExpenseJournalPostingService,
   ) {}
 
+  async beginUnifiedInboxExpenseReview(
+    inboxItemStableId: string,
+    operatorUserStableId: string,
+  ) {
+    const materialized = await runSerializableAccountingWrite(
+      this.prisma,
+      async (tx) => {
+        const inbox = await readAccountingInboxExpenseContext(
+          tx,
+          inboxItemStableId,
+        );
+        if (!inbox) {
+          throw new NotFoundException('accounting inbox item not found');
+        }
+        if (inbox.status !== AccountingInboxStatus.PENDING_REVIEW) {
+          throw new ConflictException(
+            'only pending inbox expenses can enter review',
+          );
+        }
+        if (
+          inbox.classification !==
+            AccountingInboxClassification.EXPENSE_DOCUMENT ||
+          inbox.selectedProvider
+        ) {
+          throw new ConflictException(
+            'inbox item must be classified as an ordinary expense before review',
+          );
+        }
+        if (inbox.materializedEntityType || inbox.materializedEntityStableId) {
+          throw new ConflictException('inbox expense is already in review');
+        }
+        if (inbox.expenseEvidenceSourceLink) {
+          throw new ConflictException(
+            'linked expense source evidence must enter review through its notification inbox item',
+          );
+        }
+
+        const linkedSource =
+          inbox.expenseEvidenceNotificationLink?.sourceInboxItem ?? null;
+        const notificationExtraction = accountingJsonRecord(
+          inbox.artifact.parseRuns[0]?.resultJson,
+        );
+        const linkedExtraction = linkedSource
+          ? accountingJsonRecord(linkedSource.artifact.parseRuns[0]?.resultJson)
+          : null;
+        const evidenceReadiness = assessAccountingExpenseEvidenceReadiness({
+          artifact: inbox.artifact,
+          extraction: notificationExtraction,
+          linkedSource: linkedSource
+            ? {
+                status: linkedSource.status,
+                classification: linkedSource.classification,
+                selectedProvider: linkedSource.selectedProvider,
+                materializedEntityType: linkedSource.materializedEntityType,
+                materializedEntityStableId:
+                  linkedSource.materializedEntityStableId,
+                artifact: linkedSource.artifact,
+                extraction: linkedExtraction,
+              }
+            : null,
+        });
+        if (evidenceReadiness.status !== 'READY') {
+          throw new ConflictException(
+            'formal expense source evidence is required before review',
+          );
+        }
+
+        const effectiveInbox = linkedSource ?? inbox;
+        const effectiveArtifact = effectiveInbox.artifact;
+        const extraction = linkedSource
+          ? (linkedExtraction ?? {})
+          : notificationExtraction;
+        if (effectiveArtifact.acquisitionMode === 'PROVIDER_API') {
+          throw new ConflictException(
+            'provider API evidence cannot enter ordinary expense review',
+          );
+        }
+        if (extraction.requiresBatchExpenseImport === true) {
+          throw new ConflictException(
+            'structured expense CSV batch cannot enter single-expense review',
+          );
+        }
+
+        const metadata = accountingJsonRecord(effectiveArtifact.metadataJson);
+        const artifactUrl = effectiveArtifact.storedUrl
+          ? effectiveArtifact.kind === AccountingArtifactKind.IMAGE
+            ? `/api/v1/accounting/inbox/artifacts/${encodeURIComponent(effectiveArtifact.artifactStableId)}/content`
+            : effectiveArtifact.storedUrl
+          : null;
+        let subtotalCents = optionalMachineInteger(extraction, 'subtotalCents');
+        let taxCents = optionalMachineInteger(extraction, 'taxCents');
+        const totalCents = optionalMachineInteger(extraction, 'totalCents');
+        if (
+          subtotalCents !== null &&
+          taxCents !== null &&
+          totalCents !== null &&
+          subtotalCents + taxCents !== totalCents
+        ) {
+          subtotalCents = null;
+          taxCents = null;
+        }
+        const extractedDate = accountingOptionalString(extraction.date);
+        const occurredAt =
+          extractedDate && /^\d{4}-\d{2}-\d{2}(?:$|T)/.test(extractedDate)
+            ? extractedDate
+            : null;
+        const normalized = normalizeAccountingInboxExpenseMaterialization({
+          artifactStableId: effectiveArtifact.artifactStableId,
+          source:
+            effectiveArtifact.acquisitionMode === 'EMAIL'
+              ? AccountingDocumentSource.GMAIL
+              : AccountingDocumentSource.MANUAL,
+          occurredAt,
+          subtotalCents,
+          taxCents,
+          totalCents,
+          currency: 'CAD',
+          gmailMessageId: accountingOptionalString(metadata.gmailMessageId),
+          gmailAttachmentId: accountingOptionalString(
+            metadata.gmailAttachmentId,
+          ),
+          emailSubject: effectiveArtifact.emailSubject,
+          attachmentUrls: artifactUrl ? [artifactUrl] : [],
+          extractedText:
+            accountingOptionalString(extraction.extractedText) ??
+            effectiveArtifact.bodyText,
+          extractionJson: extraction,
+        });
+        const result = await materializeInboxExpenseInTx(tx, normalized);
+        const sourceInboxItemStableId = linkedSource
+          ? linkedSource.inboxItemStableId
+          : inboxItemStableId;
+        await markInboxExpenseReviewStartedInTx(
+          tx,
+          sourceInboxItemStableId,
+          result.documentStableId,
+          operatorUserStableId,
+        );
+
+        if (linkedSource) {
+          await closeExpenseNotificationForReviewInTx(tx, {
+            notificationInboxItemStableId: inboxItemStableId,
+            sourceInboxItemStableId: linkedSource.inboxItemStableId,
+            documentStableId: result.documentStableId,
+            operatorUserStableId,
+          });
+        }
+        return result;
+      },
+    );
+
+    return this.getExpenseDocument(materialized.documentStableId);
+  }
+
   async confirmUnifiedInboxExpense(
     inboxItemStableId: string,
     input: AccountingExpenseInput,
@@ -267,14 +429,53 @@ export class AccountingExpenseService {
           'pending inbox expenses must not already be materialized',
         );
       }
-      if (inbox.artifact.acquisitionMode === 'PROVIDER_API') {
+      if (inbox.expenseEvidenceSourceLink) {
+        throw new ConflictException(
+          'linked expense source evidence must be confirmed through its notification inbox item',
+        );
+      }
+      const linkedSource =
+        inbox.expenseEvidenceNotificationLink?.sourceInboxItem ?? null;
+      const notificationExtraction = accountingJsonRecord(
+        inbox.artifact.parseRuns[0]?.resultJson,
+      );
+      const linkedExtraction = linkedSource
+        ? accountingJsonRecord(linkedSource.artifact.parseRuns[0]?.resultJson)
+        : null;
+      const evidenceReadiness = assessAccountingExpenseEvidenceReadiness({
+        artifact: inbox.artifact,
+        extraction: notificationExtraction,
+        linkedSource: linkedSource
+          ? {
+              status: linkedSource.status,
+              classification: linkedSource.classification,
+              selectedProvider: linkedSource.selectedProvider,
+              materializedEntityType: linkedSource.materializedEntityType,
+              materializedEntityStableId:
+                linkedSource.materializedEntityStableId,
+              artifact: linkedSource.artifact,
+              extraction: linkedExtraction,
+            }
+          : null,
+      });
+      if (evidenceReadiness.status !== 'READY') {
+        throw new ConflictException(
+          evidenceReadiness.reason === 'EMAIL_BILL_NOTIFICATION_ONLY'
+            ? 'formal expense source document is required before confirmation'
+            : 'expense source evidence is not ready for confirmation',
+        );
+      }
+
+      const effectiveInbox = linkedSource ?? inbox;
+      const effectiveArtifact = effectiveInbox.artifact;
+      const extraction = linkedSource
+        ? (linkedExtraction ?? {})
+        : notificationExtraction;
+      if (effectiveArtifact.acquisitionMode === 'PROVIDER_API') {
         throw new ConflictException(
           'provider API evidence cannot be confirmed as an expense',
         );
       }
-      const extraction = accountingJsonRecord(
-        inbox.artifact.parseRuns[0]?.resultJson,
-      );
       if (extraction.requiresBatchExpenseImport === true) {
         throw new ConflictException(
           'structured expense CSV batch cannot be confirmed as a single expense',
@@ -316,7 +517,7 @@ export class AccountingExpenseService {
         normalizedSplits,
       );
 
-      const metadata = accountingJsonRecord(inbox.artifact.metadataJson);
+      const metadata = accountingJsonRecord(effectiveArtifact.metadataJson);
       const extractedSourceCurrency = accountingOptionalString(
         extraction.sourceCurrency,
       )?.toUpperCase();
@@ -342,10 +543,10 @@ export class AccountingExpenseService {
         confirmedAt,
       });
 
-      const artifactUrl = inbox.artifact.storedUrl
-        ? inbox.artifact.kind === AccountingArtifactKind.IMAGE
-          ? `/api/v1/accounting/inbox/artifacts/${encodeURIComponent(inbox.artifact.artifactStableId)}/content`
-          : inbox.artifact.storedUrl
+      const artifactUrl = effectiveArtifact.storedUrl
+        ? effectiveArtifact.kind === AccountingArtifactKind.IMAGE
+          ? `/api/v1/accounting/inbox/artifacts/${encodeURIComponent(effectiveArtifact.artifactStableId)}/content`
+          : effectiveArtifact.storedUrl
         : null;
       const attachmentUrls = Array.from(
         new Set(
@@ -369,7 +570,7 @@ export class AccountingExpenseService {
         data: {
           documentStableId,
           source:
-            inbox.artifact.acquisitionMode === 'EMAIL'
+            effectiveArtifact.acquisitionMode === 'EMAIL'
               ? AccountingDocumentSource.GMAIL
               : AccountingDocumentSource.MANUAL,
           status: AccountingDocumentStatus.CONFIRMED,
@@ -383,12 +584,12 @@ export class AccountingExpenseService {
           gmailAttachmentId: accountingOptionalString(
             metadata.gmailAttachmentId,
           ),
-          fileHash: inbox.artifact.contentHash,
-          emailSubject: inbox.artifact.emailSubject,
+          fileHash: effectiveArtifact.contentHash,
+          emailSubject: effectiveArtifact.emailSubject,
           attachmentUrls,
           extractedText:
             accountingOptionalString(extraction.extractedText) ??
-            inbox.artifact.bodyText,
+            effectiveArtifact.bodyText,
           extractionJson: extractionJson as Prisma.InputJsonValue,
           memo: input.memo?.trim() || null,
           confirmedAt,
@@ -436,12 +637,21 @@ export class AccountingExpenseService {
           })),
         ],
       });
-      await linkAndConfirmInboxExpenseInTx(
-        tx,
-        inboxItemStableId,
-        documentStableId,
-        operatorUserStableId,
-      );
+      if (linkedSource) {
+        await resolveLinkedExpenseEvidenceInTx(tx, {
+          notificationInboxItemStableId: inboxItemStableId,
+          sourceInboxItemStableId: linkedSource.inboxItemStableId,
+          documentStableId,
+          operatorUserStableId,
+        });
+      } else {
+        await linkAndConfirmInboxExpenseInTx(
+          tx,
+          inboxItemStableId,
+          documentStableId,
+          operatorUserStableId,
+        );
+      }
       await this.expenseJournalPosting.postConfirmedExpenseIfReadyInTx(
         tx,
         documentStableId,

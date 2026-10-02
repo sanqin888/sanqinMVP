@@ -122,6 +122,8 @@ export async function setInboxClassificationInTx(
       selectedProvider: true,
       materializedEntityType: true,
       materializedEntityStableId: true,
+      expenseEvidenceNotificationLink: { select: { linkStableId: true } },
+      expenseEvidenceSourceLink: { select: { linkStableId: true } },
       artifact: { select: { acquisitionMode: true } },
     },
   });
@@ -146,6 +148,11 @@ export async function setInboxClassificationInTx(
   if (item.materializedEntityType || item.materializedEntityStableId) {
     throw new AccountingInboxWriterConflictError(
       'materialized inbox evidence cannot be reclassified',
+    );
+  }
+  if (item.expenseEvidenceNotificationLink || item.expenseEvidenceSourceLink) {
+    throw new AccountingInboxWriterConflictError(
+      'linked expense evidence cannot be reclassified independently',
     );
   }
   if (
@@ -206,6 +213,8 @@ export async function confirmOtherInboxItemInTx(
       selectedProvider: true,
       materializedEntityType: true,
       materializedEntityStableId: true,
+      expenseEvidenceNotificationLink: { select: { linkStableId: true } },
+      expenseEvidenceSourceLink: { select: { linkStableId: true } },
       artifact: { select: { acquisitionMode: true } },
     },
   });
@@ -230,6 +239,11 @@ export async function confirmOtherInboxItemInTx(
   if (item.status !== AccountingInboxStatus.PENDING_REVIEW) {
     throw new AccountingInboxWriterConflictError(
       'only pending inbox items can be confirmed',
+    );
+  }
+  if (item.expenseEvidenceNotificationLink || item.expenseEvidenceSourceLink) {
+    throw new AccountingInboxWriterConflictError(
+      'linked expense evidence cannot be confirmed independently',
     );
   }
   if (

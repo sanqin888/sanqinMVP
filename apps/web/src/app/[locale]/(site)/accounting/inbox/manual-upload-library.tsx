@@ -110,7 +110,13 @@ export function AccountingManualUploadLibrary({
                     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
                       {statusLabel(item.status, isZh)}
                     </span>
-                    {item.canPermanentDelete ? (
+                    {item.expenseEvidenceLink ? (
+                      <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
+                        {isZh
+                          ? '已关联通知邮件 · 受保护'
+                          : 'Linked to notification · protected'}
+                      </span>
+                    ) : item.canPermanentDelete ? (
                       <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
                         {isZh
                           ? '未确认 · 可永久删除'

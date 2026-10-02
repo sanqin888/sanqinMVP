@@ -13,6 +13,7 @@ import {
   accountingRetainedImageDisplayFilename,
   accountingRetainedImageVendorFromFilename,
 } from './accounting-image-retention-filename';
+import { assessAccountingExpenseEvidenceReadiness } from './accounting-expense-evidence.policy';
 
 export type AccountingInboxReadClient = Pick<
   Prisma.TransactionClient,
@@ -67,6 +68,15 @@ export async function listAccountingUnifiedInboxItems(
   const rows = await client.accountingInboxItem.findMany({
     where: {
       status: { in: statuses },
+      ...(params.materializedEntityStableId
+        ? {}
+        : {
+            expenseEvidenceSourceLink: { is: null },
+            NOT: {
+              materializedEntityType:
+                AccountingInboxMaterializedEntityType.EXPENSE_DOCUMENT,
+            },
+          }),
       ...(params.classification
         ? { classification: params.classification }
         : {}),
@@ -85,6 +95,48 @@ export async function listAccountingUnifiedInboxItems(
       createdAt: true,
       updatedAt: true,
       version: true,
+      expenseEvidenceNotificationLink: {
+        select: {
+          linkStableId: true,
+          linkedAt: true,
+          sourceInboxItem: {
+            select: {
+              inboxItemStableId: true,
+              status: true,
+              classification: true,
+              selectedProvider: true,
+              materializedEntityType: true,
+              materializedEntityStableId: true,
+              createdAt: true,
+              artifact: {
+                select: {
+                  artifactStableId: true,
+                  acquisitionMode: true,
+                  kind: true,
+                  originalFilename: true,
+                  storedUrl: true,
+                  bodyText: true,
+                  senderEmail: true,
+                  emailSubject: true,
+                  parseRuns: {
+                    orderBy: { createdAt: 'desc' },
+                    take: 1,
+                    select: {
+                      parseRunStableId: true,
+                      parserName: true,
+                      parserVersion: true,
+                      status: true,
+                      resultJson: true,
+                      errorMessage: true,
+                      completedAt: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
       artifact: {
         select: {
           artifactStableId: true,
@@ -146,40 +198,87 @@ export async function listAccountingUnifiedInboxItems(
     orderBy: { createdAt: 'desc' },
     take,
   });
-  return rows.map((row) => ({
-    ...row,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
-    artifact: {
-      ...row.artifact,
-      storedUrl:
-        row.artifact.kind === AccountingArtifactKind.IMAGE
-          ? `/api/v1/accounting/inbox/artifacts/${encodeURIComponent(row.artifact.artifactStableId)}/content`
-          : row.artifact.storedUrl,
-      bodyText: row.artifact.bodyText?.slice(0, 20_000) ?? null,
-      financialDocument: row.artifact.financialDocument
+  return rows.map((row) => {
+    const link = row.expenseEvidenceNotificationLink;
+    const linkedSource = link?.sourceInboxItem ?? null;
+    const linkedExtraction = linkedSource
+      ? accountingJsonRecord(linkedSource.artifact.parseRuns[0]?.resultJson)
+      : null;
+    const expenseEvidenceReadiness = assessAccountingExpenseEvidenceReadiness({
+      artifact: row.artifact,
+      extraction: accountingJsonRecord(row.artifact.parseRuns[0]?.resultJson),
+      linkedSource: linkedSource
         ? {
-            ...row.artifact.financialDocument,
-            periodStart:
-              row.artifact.financialDocument.periodStart
-                ?.toISOString()
-                .slice(0, 10) ?? null,
-            periodEnd:
-              row.artifact.financialDocument.periodEnd
-                ?.toISOString()
-                .slice(0, 10) ?? null,
-            settledAt:
-              row.artifact.financialDocument.settledAt?.toISOString() ?? null,
-            payoutAt:
-              row.artifact.financialDocument.payoutAt?.toISOString() ?? null,
-            lines: row.artifact.financialDocument.lines.map((line) => ({
-              ...line,
-              occurredAt: line.occurredAt?.toISOString().slice(0, 10) ?? null,
-            })),
+            status: linkedSource.status,
+            classification: linkedSource.classification,
+            selectedProvider: linkedSource.selectedProvider,
+            materializedEntityType: linkedSource.materializedEntityType,
+            materializedEntityStableId: linkedSource.materializedEntityStableId,
+            artifact: linkedSource.artifact,
+            extraction: linkedExtraction,
           }
         : null,
-    },
-  }));
+    });
+    const { expenseEvidenceNotificationLink: _link, ...baseRow } = row;
+    void _link;
+    return {
+      ...baseRow,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+      expenseEvidenceReadiness,
+      expenseEvidenceSource: linkedSource
+        ? {
+            linkStableId: link!.linkStableId,
+            linkedAt: link!.linkedAt.toISOString(),
+            inboxItemStableId: linkedSource.inboxItemStableId,
+            status: linkedSource.status,
+            classification: linkedSource.classification,
+            selectedProvider: linkedSource.selectedProvider,
+            materializedEntityType: linkedSource.materializedEntityType,
+            materializedEntityStableId: linkedSource.materializedEntityStableId,
+            createdAt: linkedSource.createdAt.toISOString(),
+            artifact: {
+              ...linkedSource.artifact,
+              storedUrl:
+                linkedSource.artifact.kind === AccountingArtifactKind.IMAGE
+                  ? `/api/v1/accounting/inbox/artifacts/${encodeURIComponent(linkedSource.artifact.artifactStableId)}/content`
+                  : linkedSource.artifact.storedUrl,
+              bodyText:
+                linkedSource.artifact.bodyText?.slice(0, 20_000) ?? null,
+            },
+          }
+        : null,
+      artifact: {
+        ...row.artifact,
+        storedUrl:
+          row.artifact.kind === AccountingArtifactKind.IMAGE
+            ? `/api/v1/accounting/inbox/artifacts/${encodeURIComponent(row.artifact.artifactStableId)}/content`
+            : row.artifact.storedUrl,
+        bodyText: row.artifact.bodyText?.slice(0, 20_000) ?? null,
+        financialDocument: row.artifact.financialDocument
+          ? {
+              ...row.artifact.financialDocument,
+              periodStart:
+                row.artifact.financialDocument.periodStart
+                  ?.toISOString()
+                  .slice(0, 10) ?? null,
+              periodEnd:
+                row.artifact.financialDocument.periodEnd
+                  ?.toISOString()
+                  .slice(0, 10) ?? null,
+              settledAt:
+                row.artifact.financialDocument.settledAt?.toISOString() ?? null,
+              payoutAt:
+                row.artifact.financialDocument.payoutAt?.toISOString() ?? null,
+              lines: row.artifact.financialDocument.lines.map((line) => ({
+                ...line,
+                occurredAt: line.occurredAt?.toISOString().slice(0, 10) ?? null,
+              })),
+            }
+          : null,
+      },
+    };
+  });
 }
 
 export async function listAccountingManualUploadLibrary(
@@ -202,6 +301,14 @@ export async function listAccountingManualUploadLibrary(
       selectedProvider: true,
       materializedEntityType: true,
       materializedEntityStableId: true,
+      expenseEvidenceSourceLink: {
+        select: {
+          linkStableId: true,
+          notificationInboxItem: {
+            select: { inboxItemStableId: true, status: true },
+          },
+        },
+      },
       reviewedAt: true,
       createdAt: true,
       updatedAt: true,
@@ -274,8 +381,10 @@ export async function listAccountingManualUploadLibrary(
       row.materializedEntityType ===
         AccountingInboxMaterializedEntityType.PROVIDER_FINANCIAL_DOCUMENT ||
       Boolean(row.artifact.financialDocument);
+    const protectedExpenseEvidenceLink = Boolean(row.expenseEvidenceSourceLink);
     const canDiscard =
       !protectedFinancialEvidence &&
+      !protectedExpenseEvidenceLink &&
       (row.status === AccountingInboxStatus.PENDING_REVIEW ||
         row.status === AccountingInboxStatus.QUARANTINED ||
         row.status === AccountingInboxStatus.ERROR);
@@ -317,9 +426,21 @@ export async function listAccountingManualUploadLibrary(
             status: row.duplicateOfArtifact.inboxItem?.status ?? null,
           }
         : null,
+      expenseEvidenceLink: row.expenseEvidenceSourceLink
+        ? {
+            linkStableId: row.expenseEvidenceSourceLink.linkStableId,
+            notificationInboxItemStableId:
+              row.expenseEvidenceSourceLink.notificationInboxItem
+                .inboxItemStableId,
+            notificationStatus:
+              row.expenseEvidenceSourceLink.notificationInboxItem.status,
+          }
+        : null,
       canDiscard,
       canPermanentDelete:
-        !protectedFinancialEvidence && !protectedDuplicateReference,
+        !protectedFinancialEvidence &&
+        !protectedDuplicateReference &&
+        !protectedExpenseEvidenceLink,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
       reviewedAt: row.reviewedAt?.toISOString() ?? null,
@@ -513,6 +634,11 @@ export async function countAccountingInboxReviewItems(
           AccountingInboxStatus.QUARANTINED,
         ],
       },
+      expenseEvidenceSourceLink: { is: null },
+      NOT: {
+        materializedEntityType:
+          AccountingInboxMaterializedEntityType.EXPENSE_DOCUMENT,
+      },
     },
   });
 }
@@ -529,6 +655,46 @@ export async function readAccountingInboxExpenseContext(
       selectedProvider: true,
       materializedEntityType: true,
       materializedEntityStableId: true,
+      expenseEvidenceSourceLink: {
+        select: {
+          linkStableId: true,
+          notificationInboxItem: {
+            select: { inboxItemStableId: true },
+          },
+        },
+      },
+      expenseEvidenceNotificationLink: {
+        select: {
+          linkStableId: true,
+          sourceInboxItem: {
+            select: {
+              inboxItemStableId: true,
+              status: true,
+              classification: true,
+              selectedProvider: true,
+              materializedEntityType: true,
+              materializedEntityStableId: true,
+              artifact: {
+                select: {
+                  artifactStableId: true,
+                  acquisitionMode: true,
+                  kind: true,
+                  contentHash: true,
+                  storedUrl: true,
+                  bodyText: true,
+                  emailSubject: true,
+                  metadataJson: true,
+                  parseRuns: {
+                    orderBy: { createdAt: 'desc' },
+                    take: 1,
+                    select: { resultJson: true },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
       artifact: {
         select: {
           artifactStableId: true,

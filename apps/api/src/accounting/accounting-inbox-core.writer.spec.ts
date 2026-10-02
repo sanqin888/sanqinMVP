@@ -528,6 +528,32 @@ describe('Accounting Inbox core persistence writer', () => {
     });
   });
 
+  it('does not allow linked supplemental expense evidence to be abandoned independently', async () => {
+    const tx = makeTx();
+    tx.accountingInboxItem.findUnique.mockResolvedValue({
+      id: 'inbox-linked-source',
+      status: AccountingInboxStatus.PENDING_REVIEW,
+      materializedEntityType: null,
+      materializedEntityStableId: null,
+      expenseEvidenceNotificationLink: null,
+      expenseEvidenceSourceLink: { linkStableId: 'acctexplink_1' },
+      artifact: {
+        acquisitionMode: AccountingArtifactAcquisitionMode.MANUAL_UPLOAD,
+      },
+    });
+
+    await expect(
+      discardInboxItemInTx(
+        tx as never,
+        'acctinbox_linked_source',
+        'user_stable_1',
+      ),
+    ).rejects.toThrow(
+      'linked expense evidence cannot be discarded independently',
+    );
+    expect(tx.accountingInboxItem.update).not.toHaveBeenCalled();
+  });
+
   it('allows abandoning a manual-upload error but keeps non-manual error behavior unchanged', async () => {
     const manualTx = makeTx();
     manualTx.accountingInboxItem.findUnique.mockResolvedValue({

@@ -253,6 +253,23 @@ export class AccountingInboxAcquisitionService {
     });
   }
 
+  async acquireExpenseEvidenceForNotification(
+    notificationInboxItemStableId: string,
+    file: AccountingInboxFile,
+    operatorUserStableId: string,
+  ) {
+    const acquired = await this.acquireManualFile(file);
+    const link = await this.inbox.linkExpenseEvidenceSource(
+      notificationInboxItemStableId,
+      acquired.artifactStableId,
+      operatorUserStableId,
+    );
+    return {
+      ...acquired,
+      expenseEvidenceLink: link,
+    };
+  }
+
   async permanentlyDeleteManualUpload(
     inboxItemStableId: string,
     operatorUserStableId: string,
