@@ -12,6 +12,7 @@ import {
   AccountingInboxStatus,
   AccountingInboxTrustDecision,
   AccountingParseStatus,
+  AccountingSenderPolicyDecision,
 } from './accounting-contracts';
 import { getAccountingUploadsDir } from './accounting-storage-path';
 import {
@@ -78,6 +79,11 @@ type EmailEvidenceContext = {
   receivedAt: string | null;
 };
 
+type ParsableInboxArtifact = {
+  artifactStableId: string;
+  inboxItem: { status: AccountingInboxStatus } | null;
+};
+
 type FileAcquisitionInput = {
   acquisitionMode: AccountingArtifactAcquisitionMode;
   transportIdentity: string;
@@ -126,6 +132,111 @@ export class AccountingInboxAcquisitionService {
     private readonly inbox: AccountingInboxService,
     private readonly providerFinancial: AccountingProviderFinancialService,
   ) {}
+
+  async applyEmailSenderPolicy(
+    input: {
+      email: string;
+      label?: string | null;
+      decision: AccountingSenderPolicyDecision;
+    },
+    operatorUserStableId: string,
+  ) {
+    const applied = await this.inbox.applySenderPolicy(
+      input,
+      operatorUserStableId,
+    );
+    if (input.decision !== AccountingSenderPolicyDecision.TRUSTED) {
+      return {
+        ...applied,
+        reprocessedArtifacts: 0,
+        reprocessFailures: 0,
+      };
+    }
+
+    let reprocessedArtifacts = 0;
+    let reprocessFailures = 0;
+    for (const inboxItemStableId of applied.quarantine
+      .promotedInboxItemStableIds) {
+      try {
+        const context =
+          await this.inbox.readUnifiedInboxProviderReviewContext(
+            inboxItemStableId,
+          );
+        if (
+          !context ||
+          context.status !== AccountingInboxStatus.PENDING_REVIEW ||
+          context.artifact.acquisitionMode !==
+            AccountingArtifactAcquisitionMode.EMAIL
+        ) {
+          continue;
+        }
+
+        const artifact: ParsableInboxArtifact = {
+          artifactStableId: context.artifact.artifactStableId,
+          inboxItem: { status: context.status },
+        };
+        try {
+          if (context.artifact.kind === AccountingArtifactKind.EMAIL_BODY) {
+            const bodyText = context.artifact.bodyText?.trim();
+            if (!bodyText) {
+              throw new Error('trusted email body artifact has no bodyText');
+            }
+            await this.parseTextIfEligible(artifact, bodyText, 'EMAIL_BODY', {
+              emailSubject: context.artifact.emailSubject,
+              autoMaterializeCloverCloseout: isCloverCloseoutEmailEvidence(
+                context.artifact.senderEmail,
+                context.artifact.emailSubject,
+              ),
+            });
+          } else {
+            const storedUrl = context.artifact.storedUrl;
+            if (!storedUrl) {
+              throw new Error('trusted email file artifact has no storedUrl');
+            }
+            const buffer = await this.readStoredInboxFile(storedUrl);
+            await this.parseFileIfEligible(
+              artifact,
+              AccountingArtifactAcquisitionMode.EMAIL,
+              context.artifact.kind,
+              buffer,
+              {
+                originalFilename: context.artifact.originalFilename,
+                emailSubject: context.artifact.emailSubject,
+              },
+            );
+          }
+        } catch (error) {
+          reprocessFailures += 1;
+          if (!(error instanceof AccountingProviderFinancialProcessingError)) {
+            try {
+              await this.recordParseFailureIfEligible(artifact, error);
+            } catch (recordError) {
+              this.logger.error(
+                `Failed to record Accounting Inbox reprocess error for ${inboxItemStableId}`,
+                recordError instanceof Error
+                  ? recordError.stack
+                  : String(recordError),
+              );
+            }
+          }
+          continue;
+        }
+        reprocessedArtifacts += 1;
+      } catch (error) {
+        reprocessFailures += 1;
+        this.logger.error(
+          `Failed to reprocess trusted Accounting Inbox item ${inboxItemStableId}`,
+          error instanceof Error ? error.stack : String(error),
+        );
+      }
+    }
+
+    return {
+      ...applied,
+      reprocessedArtifacts,
+      reprocessFailures,
+    };
+  }
 
   async acquireManualFile(file: AccountingInboxFile) {
     return this.acquireFile({
@@ -404,9 +515,7 @@ export class AccountingInboxAcquisitionService {
   }
 
   private async parseFileIfEligible(
-    artifact: Awaited<
-      ReturnType<AccountingInboxService['registerInboxArtifact']>
-    >,
+    artifact: ParsableInboxArtifact,
     acquisitionMode: AccountingArtifactAcquisitionMode,
     kind: AccountingArtifactKind,
     buffer: Buffer,
@@ -765,9 +874,7 @@ export class AccountingInboxAcquisitionService {
   }
 
   private async parseTextIfEligible(
-    artifact: Awaited<
-      ReturnType<AccountingInboxService['registerInboxArtifact']>
-    >,
+    artifact: ParsableInboxArtifact,
     text: string,
     inputKind: 'EMAIL_BODY',
     providerContext: {
@@ -863,9 +970,7 @@ export class AccountingInboxAcquisitionService {
   }
 
   private async recordParseFailureIfEligible(
-    artifact: Awaited<
-      ReturnType<AccountingInboxService['registerInboxArtifact']>
-    >,
+    artifact: ParsableInboxArtifact,
     error: unknown,
   ) {
     if (artifact.inboxItem?.status !== AccountingInboxStatus.PENDING_REVIEW) {
@@ -968,6 +1073,24 @@ export class AccountingInboxAcquisitionService {
       flag: 'wx',
     });
     return `/api/v1/accounting/files/inbox/${fileName}`;
+  }
+
+  private async readStoredInboxFile(storedUrl: string): Promise<Buffer> {
+    const prefix = '/api/v1/accounting/files/inbox/';
+    if (!storedUrl.startsWith(prefix)) {
+      throw new Error(
+        `Accounting Inbox reprocess refused unknown URL ${storedUrl}`,
+      );
+    }
+    const fileName = path.basename(storedUrl.slice(prefix.length));
+    if (!fileName || storedUrl !== `${prefix}${fileName}`) {
+      throw new Error(
+        `Accounting Inbox reprocess refused invalid URL ${storedUrl}`,
+      );
+    }
+    return fs.promises.readFile(
+      path.join(getAccountingUploadsDir(), 'inbox', fileName),
+    );
   }
 
   private async removeStoredFile(storedUrl: string): Promise<boolean> {

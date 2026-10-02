@@ -117,7 +117,7 @@ function productionTypescriptFiles(root: string): string[] {
 describe('Accounting unified Inbox core ownership boundary', () => {
   it('keeps Unified Inbox Prisma mutations inside the designated Accounting writers', () => {
     const delegate =
-      'accounting(?:SourceArtifact|ArtifactBinaryRetention|ParseRun|InboxItem|TrustedSender|ProviderRecognitionRule|ProviderFinancialDocument|ProviderFinancialLine|ProviderFinancialCoverage)';
+      'accounting(?:SourceArtifact|ArtifactBinaryRetention|ParseRun|InboxItem|SenderPolicy|ProviderRecognitionRule|ProviderFinancialDocument|ProviderFinancialLine|ProviderFinancialCoverage)';
     const mutationPattern = new RegExp(
       `\\.${delegate}\\.(?:create|createMany|update|updateMany|delete|deleteMany|upsert)\\s*\\(`,
     );

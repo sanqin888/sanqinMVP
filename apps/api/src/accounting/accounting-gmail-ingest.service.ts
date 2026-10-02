@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DateTime } from 'luxon';
-import { AccountingInboxTrustDecision } from './accounting-contracts';
+import {
+  AccountingInboxTrustDecision,
+  AccountingSenderPolicyDecision,
+} from './accounting-contracts';
 import {
   AccountingInboxAcquisitionService,
   extractMailboxAddress,
@@ -230,10 +233,21 @@ export class AccountingGmailIngestService {
       };
     }
 
+    const senderPolicy = senderEmail
+      ? await this.inbox.senderPolicyDecision(senderEmail)
+      : AccountingSenderPolicyDecision.UNRECOGNIZED;
+    if (senderPolicy === AccountingSenderPolicyDecision.IGNORED) {
+      return {
+        imported: 0,
+        duplicates: 0,
+        failed: 0,
+        skippedBeforeStartDate: 0,
+      };
+    }
     const trustDecision = isCloverCloseoutEmailEvidence(senderEmail, subject)
       ? AccountingInboxTrustDecision.TRUSTED
-      : senderEmail
-        ? await this.inbox.senderTrustDecision(senderEmail)
+      : senderPolicy === AccountingSenderPolicyDecision.TRUSTED
+        ? AccountingInboxTrustDecision.TRUSTED
         : AccountingInboxTrustDecision.UNTRUSTED;
     const context = {
       messageId,

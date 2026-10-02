@@ -12,23 +12,25 @@ import {
   AccountingInboxStatus,
   AccountingInboxTrustDecision,
   AccountingParseStatus,
+  AccountingSenderPolicyDecision,
 } from '@prisma/client';
 import {
   normalizeAccountingInboxArtifact,
   normalizeAccountingInboxExpenseMaterialization,
   normalizeAccountingParseRun,
-  normalizeAccountingTrustedSender,
+  normalizeAccountingSenderPolicy,
   normalizeProviderFinancialDocument,
 } from './accounting-inbox-core.policy';
 import {
   ACCOUNTING_EMAIL_DUPLICATE_ARTIFACT_CLEANUP_ACTOR,
   AccountingInboxWriterConflictError,
+  applySenderPolicyToQuarantinedInboxItemsInTx,
   ensureProviderFinancialCoverageInTx,
   recordParseRunInTx,
   recordProviderFinancialDocumentInTx,
   registerInboxArtifactInTx,
   purgeDuplicateEmailArtifactsInTx,
-  upsertTrustedSenderInTx,
+  upsertSenderPolicyInTx,
 } from './accounting-inbox-core.writer';
 import {
   discardInboxItemInTx,
@@ -66,7 +68,7 @@ describe('Accounting Inbox core persistence writer', () => {
       findUnique: jest.fn(),
       upsert: jest.fn(),
     },
-    accountingTrustedSender: {
+    accountingSenderPolicy: {
       findUnique: jest.fn(),
       upsert: jest.fn(),
     },
@@ -620,22 +622,23 @@ describe('Accounting Inbox core persistence writer', () => {
     expect(tx.accountingParseRun.upsert).not.toHaveBeenCalled();
   });
 
-  it('audits trusted-sender changes with stable user identity', async () => {
+  it('audits sender-policy changes with stable user identity', async () => {
     const tx = makeTx();
-    tx.accountingTrustedSender.findUnique.mockResolvedValue(null);
-    tx.accountingTrustedSender.upsert.mockResolvedValue({
-      trustedSenderStableId: 'acctsender_1',
+    tx.accountingSenderPolicy.findUnique.mockResolvedValue(null);
+    tx.accountingSenderPolicy.upsert.mockResolvedValue({
+      senderPolicyStableId: 'acctsender_1',
       email: 'owner@example.com',
       label: 'Owner',
-      isActive: true,
+      decision: AccountingSenderPolicyDecision.TRUSTED,
     });
     tx.accountingAuditLog.create.mockResolvedValue({});
 
-    await upsertTrustedSenderInTx(
+    await upsertSenderPolicyInTx(
       tx as never,
-      normalizeAccountingTrustedSender({
+      normalizeAccountingSenderPolicy({
         email: 'Owner@Example.com',
         label: 'Owner',
+        decision: AccountingSenderPolicyDecision.TRUSTED,
       }),
       'user_stable_1',
     );
@@ -643,16 +646,81 @@ describe('Accounting Inbox core persistence writer', () => {
     expect(tx.accountingAuditLog.create).toHaveBeenCalledWith({
       data: {
         action: 'CREATE',
-        entityType: 'ACCOUNTING_TRUSTED_SENDER',
+        entityType: 'ACCOUNTING_SENDER_POLICY',
         entityId: 'acctsender_1',
         operatorActorRef: 'user_stable_1',
         afterJson: {
-          trustedSenderStableId: 'acctsender_1',
+          senderPolicyStableId: 'acctsender_1',
           email: 'owner@example.com',
           label: 'Owner',
-          isActive: true,
+          decision: AccountingSenderPolicyDecision.TRUSTED,
         },
       },
+    });
+  });
+
+  it('promotes quarantined email evidence immediately when the sender becomes trusted', async () => {
+    const tx = makeTx();
+    tx.accountingInboxItem.findMany.mockResolvedValue([
+      {
+        id: 'inbox-db-1',
+        inboxItemStableId: 'acctinbox_1',
+        version: 3,
+        artifact: { artifactStableId: 'acctart_1' },
+      },
+    ]);
+    tx.accountingInboxItem.update.mockResolvedValue({});
+    tx.accountingAuditLog.create.mockResolvedValue({});
+
+    const result = await applySenderPolicyToQuarantinedInboxItemsInTx(
+      tx as never,
+      'owner@example.com',
+      AccountingSenderPolicyDecision.TRUSTED,
+      'user_stable_1',
+    );
+
+    expect(result).toEqual({
+      promotedInboxItemStableIds: ['acctinbox_1'],
+      discardedInboxItemStableIds: [],
+    });
+    expect(tx.accountingInboxItem.update).toHaveBeenCalledWith({
+      where: { id: 'inbox-db-1' },
+      data: {
+        status: AccountingInboxStatus.PENDING_REVIEW,
+        trustDecision: AccountingInboxTrustDecision.TRUSTED,
+        version: { increment: 1 },
+      },
+    });
+  });
+
+  it('discards current quarantined evidence when the sender becomes ignored', async () => {
+    const tx = makeTx();
+    tx.accountingInboxItem.findMany.mockResolvedValue([
+      {
+        id: 'inbox-db-2',
+        inboxItemStableId: 'acctinbox_2',
+        version: 1,
+        artifact: { artifactStableId: 'acctart_2' },
+      },
+    ]);
+    tx.accountingInboxItem.update.mockResolvedValue({});
+    tx.accountingAuditLog.create.mockResolvedValue({});
+
+    const result = await applySenderPolicyToQuarantinedInboxItemsInTx(
+      tx as never,
+      'payments@example.com',
+      AccountingSenderPolicyDecision.IGNORED,
+      'user_stable_1',
+    );
+
+    expect(result.discardedInboxItemStableIds).toEqual(['acctinbox_2']);
+    expect(tx.accountingInboxItem.update).toHaveBeenCalledWith({
+      where: { id: 'inbox-db-2' },
+      data: expect.objectContaining({
+        status: AccountingInboxStatus.DISCARDED,
+        reviewedByUserStableId: 'user_stable_1',
+        version: { increment: 1 },
+      }) as unknown,
     });
   });
 

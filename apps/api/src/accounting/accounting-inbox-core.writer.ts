@@ -9,12 +9,13 @@ import {
   AccountingInboxStatus,
   AccountingInboxTrustDecision,
   AccountingParseStatus,
+  AccountingSenderPolicyDecision,
   Prisma,
 } from '@prisma/client';
 import type {
   normalizeAccountingInboxArtifact,
   normalizeAccountingParseRun,
-  normalizeAccountingTrustedSender,
+  normalizeAccountingSenderPolicy,
   normalizeProviderFinancialDocument,
 } from './accounting-inbox-core.policy';
 
@@ -23,8 +24,8 @@ export class AccountingInboxWriterNotFoundError extends Error {}
 
 type NormalizedArtifact = ReturnType<typeof normalizeAccountingInboxArtifact>;
 type NormalizedParseRun = ReturnType<typeof normalizeAccountingParseRun>;
-type NormalizedTrustedSender = ReturnType<
-  typeof normalizeAccountingTrustedSender
+type NormalizedSenderPolicy = ReturnType<
+  typeof normalizeAccountingSenderPolicy
 >;
 type NormalizedFinancialDocument = ReturnType<
   typeof normalizeProviderFinancialDocument
@@ -410,47 +411,47 @@ export async function recordParseRunInTx(
   };
 }
 
-export async function upsertTrustedSenderInTx(
+export async function upsertSenderPolicyInTx(
   tx: AccountingTx,
-  normalized: NormalizedTrustedSender,
+  normalized: NormalizedSenderPolicy,
   operatorUserStableId: string,
 ) {
-  const existing = await tx.accountingTrustedSender.findUnique({
+  const existing = await tx.accountingSenderPolicy.findUnique({
     where: { email: normalized.email },
     select: {
-      trustedSenderStableId: true,
+      senderPolicyStableId: true,
       email: true,
       label: true,
-      isActive: true,
+      decision: true,
     },
   });
-  const row = await tx.accountingTrustedSender.upsert({
+  const row = await tx.accountingSenderPolicy.upsert({
     where: { email: normalized.email },
     create: {
-      trustedSenderStableId: `acctsender_${createId()}`,
+      senderPolicyStableId: `acctsender_${createId()}`,
       email: normalized.email,
       label: normalized.label,
-      isActive: normalized.isActive,
+      decision: normalized.decision,
       createdByUserStableId: operatorUserStableId,
       updatedByUserStableId: operatorUserStableId,
     },
     update: {
       label: normalized.label,
-      isActive: normalized.isActive,
+      decision: normalized.decision,
       updatedByUserStableId: operatorUserStableId,
     },
     select: {
-      trustedSenderStableId: true,
+      senderPolicyStableId: true,
       email: true,
       label: true,
-      isActive: true,
+      decision: true,
     },
   });
   await tx.accountingAuditLog.create({
     data: {
       action: existing ? 'UPDATE' : 'CREATE',
-      entityType: 'ACCOUNTING_TRUSTED_SENDER',
-      entityId: row.trustedSenderStableId,
+      entityType: 'ACCOUNTING_SENDER_POLICY',
+      entityId: row.senderPolicyStableId,
       operatorActorRef: operatorUserStableId,
       ...(existing
         ? { beforeJson: existing as unknown as Prisma.InputJsonValue }
@@ -459,6 +460,110 @@ export async function upsertTrustedSenderInTx(
     },
   });
   return row;
+}
+
+export async function applySenderPolicyToQuarantinedInboxItemsInTx(
+  tx: AccountingTx,
+  email: string,
+  decision: AccountingSenderPolicyDecision,
+  operatorUserStableId: string,
+) {
+  if (decision === AccountingSenderPolicyDecision.UNRECOGNIZED) {
+    return {
+      promotedInboxItemStableIds: [] as string[],
+      discardedInboxItemStableIds: [] as string[],
+    };
+  }
+
+  const items = await tx.accountingInboxItem.findMany({
+    where: {
+      status: AccountingInboxStatus.QUARANTINED,
+      trustDecision: AccountingInboxTrustDecision.UNTRUSTED,
+      materializedEntityType: null,
+      materializedEntityStableId: null,
+      artifact: {
+        is: {
+          acquisitionMode: AccountingArtifactAcquisitionMode.EMAIL,
+          senderEmail: email,
+        },
+      },
+    },
+    select: {
+      id: true,
+      inboxItemStableId: true,
+      version: true,
+    },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  const promotedInboxItemStableIds: string[] = [];
+  const discardedInboxItemStableIds: string[] = [];
+  for (const item of items) {
+    if (decision === AccountingSenderPolicyDecision.TRUSTED) {
+      await tx.accountingInboxItem.update({
+        where: { id: item.id },
+        data: {
+          status: AccountingInboxStatus.PENDING_REVIEW,
+          trustDecision: AccountingInboxTrustDecision.TRUSTED,
+          version: { increment: 1 },
+        },
+      });
+      promotedInboxItemStableIds.push(item.inboxItemStableId);
+      await tx.accountingAuditLog.create({
+        data: {
+          action: 'PROMOTE_SENDER_TRUST',
+          entityType: 'ACCOUNTING_INBOX_ITEM',
+          entityId: item.inboxItemStableId,
+          operatorActorRef: operatorUserStableId,
+          beforeJson: {
+            status: AccountingInboxStatus.QUARANTINED,
+            trustDecision: AccountingInboxTrustDecision.UNTRUSTED,
+            version: item.version,
+          },
+          afterJson: {
+            status: AccountingInboxStatus.PENDING_REVIEW,
+            trustDecision: AccountingInboxTrustDecision.TRUSTED,
+            version: item.version + 1,
+          },
+        },
+      });
+      continue;
+    }
+
+    await tx.accountingInboxItem.update({
+      where: { id: item.id },
+      data: {
+        status: AccountingInboxStatus.DISCARDED,
+        reviewedAt: new Date(),
+        reviewedByUserStableId: operatorUserStableId,
+        version: { increment: 1 },
+      },
+    });
+    discardedInboxItemStableIds.push(item.inboxItemStableId);
+    await tx.accountingAuditLog.create({
+      data: {
+        action: 'IGNORE_SENDER',
+        entityType: 'ACCOUNTING_INBOX_ITEM',
+        entityId: item.inboxItemStableId,
+        operatorActorRef: operatorUserStableId,
+        beforeJson: {
+          status: AccountingInboxStatus.QUARANTINED,
+          trustDecision: AccountingInboxTrustDecision.UNTRUSTED,
+          version: item.version,
+        },
+        afterJson: {
+          status: AccountingInboxStatus.DISCARDED,
+          trustDecision: AccountingInboxTrustDecision.UNTRUSTED,
+          version: item.version + 1,
+        },
+      },
+    });
+  }
+
+  return {
+    promotedInboxItemStableIds,
+    discardedInboxItemStableIds,
+  };
 }
 
 export async function recordProviderFinancialDocumentInTx(

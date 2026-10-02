@@ -16,19 +16,24 @@ import {
   AccountingInboxClassification,
   AccountingInboxStatus,
   AccountingProviderRecognitionMatchMode,
+  AccountingSenderPolicyDecision,
 } from './accounting-contracts';
 import {
   type AuthedAccountingRequest,
   parseNonNegativeAccountingNumber,
   requireAccountingOperatorUserId,
 } from './accounting-controller-support';
+import { AccountingInboxAcquisitionService } from './accounting-inbox-acquisition.service';
 import { AccountingInboxService } from './accounting-inbox.service';
 
 @Controller('accounting')
 @UseGuards(SessionAuthGuard, RolesGuard)
 @Roles('ADMIN', 'ACCOUNTANT')
 export class AccountingInboxController {
-  constructor(private readonly inbox: AccountingInboxService) {}
+  constructor(
+    private readonly inbox: AccountingInboxService,
+    private readonly acquisition: AccountingInboxAcquisitionService,
+  ) {}
 
   @Get('inbox')
   listInbox(
@@ -84,17 +89,22 @@ export class AccountingInboxController {
     );
   }
 
-  @Get('inbox/trusted-senders')
-  listTrustedSenders() {
-    return this.inbox.listTrustedSenders();
+  @Get('inbox/sender-policies')
+  listSenderPolicies() {
+    return this.inbox.listSenderPolicies();
   }
 
-  @Put('inbox/trusted-senders')
-  upsertTrustedSender(
-    @Body() body: { email: string; label?: string | null; isActive?: boolean },
+  @Put('inbox/sender-policies')
+  applySenderPolicy(
+    @Body()
+    body: {
+      email: string;
+      label?: string | null;
+      decision: AccountingSenderPolicyDecision;
+    },
     @Req() req: AuthedAccountingRequest,
   ) {
-    return this.inbox.upsertTrustedSender(
+    return this.acquisition.applyEmailSenderPolicy(
       body,
       requireAccountingOperatorUserId(req),
     );
