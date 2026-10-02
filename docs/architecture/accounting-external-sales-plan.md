@@ -1,8 +1,8 @@
 # Accounting External Sales Plan
 
-Status: **SLICE A LOCAL IMPLEMENTED / USER REVIEW PENDING / NO PRISMA / NO MIGRATION / NO RUNTIME CUTOVER**  
+Status: **SLICE A PR #2653 / REMOTE CI PENDING / NO PRISMA / NO MIGRATION / NO RUNTIME CUTOVER**  
 Date: 2026-10-02  
-Implementation base: latest fetched `origin/dev@e6bd1952`  
+Implementation base: `origin/dev@e6bd1952`; documentation conflict synchronized with `origin/dev@ba774b75`  
 Owner: **Accounting / Reporting / Analytics**
 
 ## 1. Purpose

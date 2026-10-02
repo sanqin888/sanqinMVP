@@ -121,9 +121,10 @@ required” state, while June's actual compensating correction remains `ALREADY_
 No Journal write, schema/migration, parser, settlement authority, dependency or graph change is
 introduced.
 
-2026-10-02 External Sales **Slice A Authority / Contracts / invariants** is **LOCAL IMPLEMENTED /
-USER REVIEW PENDING / CI NOT RUN / NO PRISMA / NO MIGRATION / NO RUNTIME CUTOVER** on
-`feat/accounting-external-sales-slice-a` from latest fetched `origin/dev@e6bd1952`. Accounting
+2026-10-02 External Sales **Slice A Authority / Contracts / invariants** is **PR #2653 /
+REMOTE CI PENDING / NO PRISMA / NO MIGRATION / NO RUNTIME CUTOVER** on
+`feat/accounting-external-sales-slice-a`; implementation started from `origin/dev@e6bd1952` and the
+final documentation head is synchronized with `origin/dev@ba774b75`. Accounting
 reserves `accounting.external_sale.v1` and `accounting.external_sale_settlement.v1` as
 Accounting-owned non-Order authorities and freezes a generic commercial model: data-driven
 classification, exact decimal quantity, negotiated unit price, frozen line amount, generic signed
