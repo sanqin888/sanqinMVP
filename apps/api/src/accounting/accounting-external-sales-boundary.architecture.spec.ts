@@ -13,7 +13,7 @@ const PRISMA_SCHEMA = resolve(API_SRC_ROOT, '..', 'prisma', 'schema.prisma');
 const file = (suffix: string) =>
   scanTypeScript(ACCOUNTING_ROOT).find(({ path }) => path.endsWith(suffix));
 
-describe('Post-modularization External Sales Slice A boundary', () => {
+describe('Post-modularization External Sales boundary', () => {
   it('keeps the source-fact contract Accounting-owned and persistence-neutral', () => {
     const contract =
       file('accounting-external-sales.contract.ts')?.source ?? '';
@@ -57,7 +57,7 @@ describe('Post-modularization External Sales Slice A boundary', () => {
     expect(policy).toContain('ACCOUNTING_EXTERNAL_SALE_AR_ACCOUNT_STABLE_ID');
   });
 
-  it('keeps Slice A contract-only with no Prisma or runtime route cutover', () => {
+  it('pins the Slice B1 persistence foundation without a runtime cutover', () => {
     const schema = readFileSync(PRISMA_SCHEMA, 'utf8');
     const module = file('accounting.module.ts')?.source ?? '';
     const controllerGuard =
@@ -66,12 +66,37 @@ describe('Post-modularization External Sales Slice A boundary', () => {
     const salesPolicy =
       file('accounting-sales-analytics.policy.ts')?.source ?? '';
     const accountingContracts = file('accounting-contracts.ts')?.source ?? '';
+    const chart = file('accounting-chart-of-accounts.ts')?.source ?? '';
 
-    expect(schema).not.toContain('model AccountingExternalSale');
-    expect(schema).not.toContain('EXTERNAL_SALE');
+    expect(schema).toContain('EXTERNAL_SALE');
+    expect(schema).toContain('enum AccountingExternalSaleGranularity');
+    expect(schema).toContain('model AccountingExternalSale {');
+    expect(schema).toContain('model AccountingExternalSaleLine {');
+    expect(schema).toContain('model AccountingExternalSaleAdjustment {');
+    expect(schema).toContain('model AccountingExternalSaleTax {');
+    expect(schema).toContain('model AccountingExternalSaleSettlement {');
+    expect(schema).toContain(
+      'model AccountingExternalSaleSettlementAllocation {',
+    );
+    expect(schema).toContain(
+      'model AccountingExternalSaleSettlementComponent {',
+    );
+    expect(schema).toContain('model AccountingExternalSaleEvidence {');
+    expect(schema).toContain(
+      'model AccountingExternalSaleSettlementEvidence {',
+    );
+    expect(schema).toContain('@db.Decimal(18, 4)');
+    expect(schema).toContain('replacementForExternalSaleId');
+    expect(schema).toContain('replacementForSettlementId');
+    expect(schema).toContain('reversalJournalEntryStableId');
+    expect(schema).toContain('externalSaleSettlementEvidence');
+    expect(accountingContracts).toContain("EXTERNAL_SALE: 'EXTERNAL_SALE'");
+
     expect(module).not.toContain('AccountingExternalSale');
     expect(controllerGuard).not.toContain('external-sales');
     expect(salesPolicy).not.toContain('accounting.external_sale.v1');
-    expect(accountingContracts).not.toContain("EXTERNAL_SALE: 'EXTERNAL_SALE'");
+    expect(chart).not.toContain('account_accounts_receivable');
+    expect(chart).not.toContain('account_commission_expense');
+    expect(chart).toContain('account_platform_commission_expense');
   });
 });
