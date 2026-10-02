@@ -75,7 +75,10 @@ export function assessAccountingExpenseEvidenceReadiness(input: {
     if (isReadyLinkedExpenseSource(linked)) {
       return { status: 'READY', reason: 'LINKED_SOURCE_DOCUMENT' };
     }
-    return { status: 'SUPPLEMENT_REQUIRED', reason: 'LINKED_SOURCE_UNAVAILABLE' };
+    return {
+      status: 'SUPPLEMENT_REQUIRED',
+      reason: 'LINKED_SOURCE_UNAVAILABLE',
+    };
   }
 
   if (
@@ -86,7 +89,10 @@ export function assessAccountingExpenseEvidenceReadiness(input: {
   }
 
   if (input.artifact.kind !== AccountingArtifactKind.EMAIL_BODY) {
-    return { status: 'SUPPLEMENT_REQUIRED', reason: 'LINKED_SOURCE_UNAVAILABLE' };
+    return {
+      status: 'SUPPLEMENT_REQUIRED',
+      reason: 'LINKED_SOURCE_UNAVAILABLE',
+    };
   }
 
   if (isStandaloneEmailExpenseDocument(input.extraction)) {
@@ -113,11 +119,11 @@ function isStandaloneEmailExpenseDocument(
 ): boolean {
   return Boolean(
     extraction?.reviewDisposition === 'LIKELY_BILL' &&
-      typeof extraction.date === 'string' &&
-      extraction.date.trim() &&
-      Number.isSafeInteger(extraction.totalCents) &&
-      Number(extraction.totalCents) > 0 &&
-      extraction.financialConsistency === 'MATCHED',
+    typeof extraction.date === 'string' &&
+    extraction.date.trim() &&
+    Number.isSafeInteger(extraction.totalCents) &&
+    Number(extraction.totalCents) > 0 &&
+    extraction.financialConsistency === 'MATCHED',
   );
 }
 
@@ -126,15 +132,15 @@ function isReadyLinkedExpenseSource(
 ): boolean {
   return Boolean(
     source.status === AccountingInboxStatus.PENDING_REVIEW &&
-      source.artifact.kind !== AccountingArtifactKind.EMAIL_BODY &&
-      source.artifact.acquisitionMode !==
-        AccountingArtifactAcquisitionMode.PROVIDER_API &&
-      source.artifact.storedUrl &&
-      source.classification !==
-        AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT &&
-      !source.selectedProvider &&
-      !source.materializedEntityType &&
-      !source.materializedEntityStableId &&
-      source.extraction?.requiresBatchExpenseImport !== true,
+    source.artifact.kind !== AccountingArtifactKind.EMAIL_BODY &&
+    source.artifact.acquisitionMode !==
+      AccountingArtifactAcquisitionMode.PROVIDER_API &&
+    source.artifact.storedUrl &&
+    source.classification !==
+      AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT &&
+    !source.selectedProvider &&
+    !source.materializedEntityType &&
+    !source.materializedEntityStableId &&
+    source.extraction?.requiresBatchExpenseImport !== true,
   );
 }

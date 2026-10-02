@@ -669,7 +669,6 @@ describe('AccountingExpenseService expense-write characterization', () => {
     expect(result.documentStableId).toBe(createdDocumentStableId);
   });
 
-
   it('uses the linked formal bill as the canonical Expense source when confirming from a notification card', async () => {
     let createdDocumentStableId = '';
     const createDocument = jest.fn(

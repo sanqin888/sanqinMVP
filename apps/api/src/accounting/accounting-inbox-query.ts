@@ -13,9 +13,7 @@ import {
   accountingRetainedImageDisplayFilename,
   accountingRetainedImageVendorFromFilename,
 } from './accounting-image-retention-filename';
-import {
-  assessAccountingExpenseEvidenceReadiness,
-} from './accounting-expense-evidence.policy';
+import { assessAccountingExpenseEvidenceReadiness } from './accounting-expense-evidence.policy';
 
 export type AccountingInboxReadClient = Pick<
   Prisma.TransactionClient,
@@ -206,23 +204,21 @@ export async function listAccountingUnifiedInboxItems(
     const linkedExtraction = linkedSource
       ? accountingJsonRecord(linkedSource.artifact.parseRuns[0]?.resultJson)
       : null;
-    const expenseEvidenceReadiness =
-      assessAccountingExpenseEvidenceReadiness({
-        artifact: row.artifact,
-        extraction: accountingJsonRecord(row.artifact.parseRuns[0]?.resultJson),
-        linkedSource: linkedSource
-          ? {
-              status: linkedSource.status,
-              classification: linkedSource.classification,
-              selectedProvider: linkedSource.selectedProvider,
-              materializedEntityType: linkedSource.materializedEntityType,
-              materializedEntityStableId:
-                linkedSource.materializedEntityStableId,
-              artifact: linkedSource.artifact,
-              extraction: linkedExtraction,
-            }
-          : null,
-      });
+    const expenseEvidenceReadiness = assessAccountingExpenseEvidenceReadiness({
+      artifact: row.artifact,
+      extraction: accountingJsonRecord(row.artifact.parseRuns[0]?.resultJson),
+      linkedSource: linkedSource
+        ? {
+            status: linkedSource.status,
+            classification: linkedSource.classification,
+            selectedProvider: linkedSource.selectedProvider,
+            materializedEntityType: linkedSource.materializedEntityType,
+            materializedEntityStableId: linkedSource.materializedEntityStableId,
+            artifact: linkedSource.artifact,
+            extraction: linkedExtraction,
+          }
+        : null,
+    });
     const { expenseEvidenceNotificationLink: _link, ...baseRow } = row;
     void _link;
     return {
@@ -276,8 +272,7 @@ export async function listAccountingUnifiedInboxItems(
                 row.artifact.financialDocument.payoutAt?.toISOString() ?? null,
               lines: row.artifact.financialDocument.lines.map((line) => ({
                 ...line,
-                occurredAt:
-                  line.occurredAt?.toISOString().slice(0, 10) ?? null,
+                occurredAt: line.occurredAt?.toISOString().slice(0, 10) ?? null,
               })),
             }
           : null,

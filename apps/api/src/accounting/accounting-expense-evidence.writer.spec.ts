@@ -180,7 +180,8 @@ describe('Accounting expense supplemental evidence writer', () => {
               materializedEntityType: null,
               materializedEntityStableId: null,
               artifact: {
-                acquisitionMode: AccountingArtifactAcquisitionMode.MANUAL_UPLOAD,
+                acquisitionMode:
+                  AccountingArtifactAcquisitionMode.MANUAL_UPLOAD,
               },
             },
           },

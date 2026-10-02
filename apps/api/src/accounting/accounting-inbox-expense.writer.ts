@@ -315,10 +315,7 @@ export async function discardInboxItemInTx(
   if (item.status === AccountingInboxStatus.DISCARDED) {
     return { inboxItemStableId, discarded: true, replayed: true };
   }
-  if (
-    item.expenseEvidenceNotificationLink ||
-    item.expenseEvidenceSourceLink
-  ) {
+  if (item.expenseEvidenceNotificationLink || item.expenseEvidenceSourceLink) {
     throw new AccountingInboxWriterConflictError(
       'linked expense evidence cannot be discarded independently',
     );

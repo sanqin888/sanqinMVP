@@ -150,10 +150,7 @@ export async function setInboxClassificationInTx(
       'materialized inbox evidence cannot be reclassified',
     );
   }
-  if (
-    item.expenseEvidenceNotificationLink ||
-    item.expenseEvidenceSourceLink
-  ) {
+  if (item.expenseEvidenceNotificationLink || item.expenseEvidenceSourceLink) {
     throw new AccountingInboxWriterConflictError(
       'linked expense evidence cannot be reclassified independently',
     );
@@ -244,10 +241,7 @@ export async function confirmOtherInboxItemInTx(
       'only pending inbox items can be confirmed',
     );
   }
-  if (
-    item.expenseEvidenceNotificationLink ||
-    item.expenseEvidenceSourceLink
-  ) {
+  if (item.expenseEvidenceNotificationLink || item.expenseEvidenceSourceLink) {
     throw new AccountingInboxWriterConflictError(
       'linked expense evidence cannot be confirmed independently',
     );

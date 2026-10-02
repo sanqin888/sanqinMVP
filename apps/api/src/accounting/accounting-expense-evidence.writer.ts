@@ -11,9 +11,7 @@ import {
   AccountingInboxWriterConflictError,
   AccountingInboxWriterNotFoundError,
 } from './accounting-inbox-core.writer';
-import {
-  assessAccountingExpenseEvidenceReadiness,
-} from './accounting-expense-evidence.policy';
+import { assessAccountingExpenseEvidenceReadiness } from './accounting-expense-evidence.policy';
 
 type AccountingTx = Prisma.TransactionClient;
 
@@ -92,8 +90,7 @@ export async function linkExpenseEvidenceSourceInTx(
         .artifactStableId === sourceArtifactStableId
     ) {
       return {
-        linkStableId:
-          notification.expenseEvidenceNotificationLink.linkStableId,
+        linkStableId: notification.expenseEvidenceNotificationLink.linkStableId,
         notificationInboxItemStableId,
         sourceInboxItemStableId:
           notification.expenseEvidenceNotificationLink.sourceInboxItem
@@ -197,7 +194,9 @@ export async function linkExpenseEvidenceSourceInTx(
     );
   }
 
-  if (source.classification !== AccountingInboxClassification.EXPENSE_DOCUMENT) {
+  if (
+    source.classification !== AccountingInboxClassification.EXPENSE_DOCUMENT
+  ) {
     await tx.accountingInboxItem.update({
       where: { id: source.id },
       data: {
@@ -537,8 +536,7 @@ export async function resolveLinkedExpenseEvidenceInTx(
       entityId: input.notificationInboxItemStableId,
       operatorActorRef: input.operatorUserStableId,
       afterJson: {
-        linkStableId:
-          notification.expenseEvidenceNotificationLink.linkStableId,
+        linkStableId: notification.expenseEvidenceNotificationLink.linkStableId,
         sourceInboxItemStableId: input.sourceInboxItemStableId,
         documentStableId: input.documentStableId,
         notificationClassification:

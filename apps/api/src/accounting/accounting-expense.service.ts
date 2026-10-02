@@ -29,16 +29,12 @@ import {
   markInboxExpenseReviewStartedInTx,
   materializeInboxExpenseInTx,
 } from './accounting-inbox-expense.writer';
-import {
-  assessAccountingExpenseEvidenceReadiness,
-} from './accounting-expense-evidence.policy';
+import { assessAccountingExpenseEvidenceReadiness } from './accounting-expense-evidence.policy';
 import {
   closeExpenseNotificationForReviewInTx,
   resolveLinkedExpenseEvidenceInTx,
 } from './accounting-expense-evidence.writer';
-import {
-  normalizeAccountingInboxExpenseMaterialization,
-} from './accounting-inbox-core.policy';
+import { normalizeAccountingInboxExpenseMaterialization } from './accounting-inbox-core.policy';
 import {
   accountingJsonRecord,
   accountingOptionalString,
@@ -229,7 +225,8 @@ export class AccountingExpenseService {
           );
         }
         if (
-          inbox.classification !== AccountingInboxClassification.EXPENSE_DOCUMENT ||
+          inbox.classification !==
+            AccountingInboxClassification.EXPENSE_DOCUMENT ||
           inbox.selectedProvider
         ) {
           throw new ConflictException(
@@ -314,29 +311,28 @@ export class AccountingExpenseService {
           extractedDate && /^\d{4}-\d{2}-\d{2}(?:$|T)/.test(extractedDate)
             ? extractedDate
             : null;
-        const normalized =
-          normalizeAccountingInboxExpenseMaterialization({
-            artifactStableId: effectiveArtifact.artifactStableId,
-            source:
-              effectiveArtifact.acquisitionMode === 'EMAIL'
-                ? AccountingDocumentSource.GMAIL
-                : AccountingDocumentSource.MANUAL,
-            occurredAt,
-            subtotalCents,
-            taxCents,
-            totalCents,
-            currency: 'CAD',
-            gmailMessageId: accountingOptionalString(metadata.gmailMessageId),
-            gmailAttachmentId: accountingOptionalString(
-              metadata.gmailAttachmentId,
-            ),
-            emailSubject: effectiveArtifact.emailSubject,
-            attachmentUrls: artifactUrl ? [artifactUrl] : [],
-            extractedText:
-              accountingOptionalString(extraction.extractedText) ??
-              effectiveArtifact.bodyText,
-            extractionJson: extraction,
-          });
+        const normalized = normalizeAccountingInboxExpenseMaterialization({
+          artifactStableId: effectiveArtifact.artifactStableId,
+          source:
+            effectiveArtifact.acquisitionMode === 'EMAIL'
+              ? AccountingDocumentSource.GMAIL
+              : AccountingDocumentSource.MANUAL,
+          occurredAt,
+          subtotalCents,
+          taxCents,
+          totalCents,
+          currency: 'CAD',
+          gmailMessageId: accountingOptionalString(metadata.gmailMessageId),
+          gmailAttachmentId: accountingOptionalString(
+            metadata.gmailAttachmentId,
+          ),
+          emailSubject: effectiveArtifact.emailSubject,
+          attachmentUrls: artifactUrl ? [artifactUrl] : [],
+          extractedText:
+            accountingOptionalString(extraction.extractedText) ??
+            effectiveArtifact.bodyText,
+          extractionJson: extraction,
+        });
         const result = await materializeInboxExpenseInTx(tx, normalized);
         const sourceInboxItemStableId = linkedSource
           ? linkedSource.inboxItemStableId
