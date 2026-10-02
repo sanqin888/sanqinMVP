@@ -110,8 +110,8 @@ removes only that unconditional UI blocker, and leaves backend settlement READY/
 plan-hash/balance/idempotency gates unchanged. No schema, parser, posting-policy or dependency
 change is introduced.
 
-2026-10-02 Clover historical fee-reclassification status follow-up is **PR #2651 OPEN /
-CI PENDING** on `fix/clover-reclassification-already-correct`. The
+2026-10-02 Clover historical fee-reclassification status follow-up is delivered through **PR #2651 /
+MERGE GATED BY GREEN CI** on `fix/clover-reclassification-already-correct`. The
 historical correction preview now recognizes the exact already-correct fee-only Journal shape
 (balanced known fee debits, no Clover Pending movement, credit only to the valid Clover fee-payable
 account, matching Store/currency) as `NOOP` instead of `BLOCKED`. Mixed or malformed credits,
