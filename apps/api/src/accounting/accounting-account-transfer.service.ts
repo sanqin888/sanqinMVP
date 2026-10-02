@@ -134,10 +134,7 @@ export class AccountingAccountTransferService {
     const accounts = await this.prisma.accountingAccount.findMany({
       where: {
         accountStableId: {
-          in: [
-            normalized.fromAccountStableId,
-            normalized.toAccountStableId,
-          ],
+          in: [normalized.fromAccountStableId, normalized.toAccountStableId],
         },
         isActive: true,
       },

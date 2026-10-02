@@ -144,7 +144,8 @@ export const normalizeAccountingAccountTransfer = (
   const purpose = normalizePurpose(input.purpose);
   const note = normalizeNote(input.note);
   if (
-    purpose === AccountingAccountTransferPurpose.ACCOUNT_ATTRIBUTION_CORRECTION &&
+    purpose ===
+      AccountingAccountTransferPurpose.ACCOUNT_ATTRIBUTION_CORRECTION &&
     !note
   ) {
     throw new AccountingJournalPolicyError(

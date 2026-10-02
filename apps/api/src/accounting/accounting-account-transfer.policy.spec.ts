@@ -38,8 +38,7 @@ describe('Accounting account transfer policy', () => {
         kind: AccountingJournalEntryKind.TRANSFER,
         source: AccountingJournalSource.MANUAL,
         sourceFactType: ACCOUNT_TRANSFER_SOURCE_FACT_TYPE,
-        sourceFactStableId:
-          'accttransfer_7f5720a6112d4b709e166e27db4f3554',
+        sourceFactStableId: 'accttransfer_7f5720a6112d4b709e166e27db4f3554',
         sourceFactVersion: 1,
         occurredAt: '2026-06-30T04:00:00.000Z',
         currency: 'CAD',

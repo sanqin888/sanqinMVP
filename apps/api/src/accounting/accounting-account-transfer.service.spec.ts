@@ -17,8 +17,7 @@ describe('AccountingAccountTransferService', () => {
     toAccountStableId: 'account_primary_bank',
     amountCents: 350_132,
     transferDate: '2026-07-31',
-    purpose:
-      AccountingAccountTransferPurpose.ACCOUNT_ATTRIBUTION_CORRECTION,
+    purpose: AccountingAccountTransferPurpose.ACCOUNT_ATTRIBUTION_CORRECTION,
     note: 'Correct July provider payout bank attribution',
   };
 
@@ -40,8 +39,7 @@ describe('AccountingAccountTransferService', () => {
   const createdJournal = {
     entryStableId: 'journal_transfer_1',
     sourceFactType: 'accounting.account_transfer.v1',
-    sourceFactStableId:
-      'accttransfer_7f5720a6112d4b709e166e27db4f3554',
+    sourceFactStableId: 'accttransfer_7f5720a6112d4b709e166e27db4f3554',
     occurredAt: new Date('2026-07-31T04:00:00.000Z'),
     currency: 'CAD',
     memo: baseInput.note,
@@ -104,18 +102,17 @@ describe('AccountingAccountTransferService', () => {
   it('posts a correction through the existing Journal writer', async () => {
     const { service, journal } = makeService();
 
-    await expect(
-      service.createTransfer(baseInput, 'user_accountant'),
-    ).resolves.toEqual(
+    const result = await service.createTransfer(baseInput, 'user_accountant');
+    expect(result).toEqual(
       expect.objectContaining({
         transferDate: '2026-07-31',
         purpose:
           AccountingAccountTransferPurpose.ACCOUNT_ATTRIBUTION_CORRECTION,
         amountCents: 350_132,
-        fromAccount: expect.objectContaining({ name: 'CIBC' }),
-        toAccount: expect.objectContaining({ name: '主要银行账户' }),
       }),
     );
+    expect(result.fromAccount.name).toBe('CIBC');
+    expect(result.toAccount.name).toBe('主要银行账户');
 
     expect(journal.createJournalEntry).toHaveBeenCalledWith(
       expect.objectContaining({
