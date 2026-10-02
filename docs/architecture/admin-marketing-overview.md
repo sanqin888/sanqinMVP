@@ -3,7 +3,7 @@
 Date: 2026-09-30  
 Original baseline: `origin/dev@2d250360` after MKT-D merge  
 MKT-E implementation baseline: `origin/dev@52dfced9`  
-State: **MKT-A/B/C/D MERGED + CI GREEN / MKT-E PR #2643 / FIRST CI #6732 FAILED ON STALE TEST EXPECTATION / FIX INCLUDED / FINAL CI PENDING / NO MIGRATION / NO DEPENDENCY / PRODUCTION UI VERIFICATION NOT YET CLAIMED**
+State: **MKT-A/B/C/D MERGED + CI GREEN / MKT-E MERGED + CI #6733 GREEN / PR #2643 / MERGE `3846fbd7` / MKT-F LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO DEPENDENCY / PRODUCTION UI VERIFICATION NOT YET CLAIMED**
 
 ## 1. Product goal
 
@@ -321,7 +321,7 @@ MKT-C is Web-only and keeps the backend/ownership model fixed:
 
 ## 9. MKT-E — trailing-window correction and Daily Special stable display identity
 
-State: **LOCAL IMPLEMENTED / USER REVIEW PENDING / CI NOT RUN**.
+State: **MERGED / CI #6733 GREEN / PR #2643 / MERGE `3846fbd7` / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**.
 
 Production read-only reconciliation on 2026-10-01 showed that historical Daily Special
 usage already exists back to 2026-02-18 and that all 361 observed Daily-Special OrderItem
@@ -354,3 +354,26 @@ This slice changes no Prisma schema, migration, dependency, owner boundary, Acco
 Journal logic, payment/provider flow, or architecture scanner allowance. Focused API
 coverage adds an October 1 quarter-rollover regression case, and Web source-contract
 coverage locks the 30/90-day labels plus weekday-slot Daily Special presentation.
+
+## 10. MKT-F — Daily Special parent campaign + weekday secondary statistics
+
+State: **LOCAL IMPLEMENTED / USER REVIEW PENDING / CI NOT RUN / WEB-ONLY / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**.
+
+MKT-F changes presentation only. The Reporting contract and each underlying
+`MenuDailySpecial.stableId` remain unchanged. Admin now treats Daily Special as one top-level
+campaign in the Marketing Overview and aggregates the returned weekday-slot metrics into a
+single parent row for Today / 7d / 30d / 90d. The parent row is collapsed by default; an
+explicit expand control reveals the original Monday-through-Sunday rows as second-level
+statistics, including each slot's current configured item and its own evidence coverage.
+
+The parent aggregation preserves the existing metric semantics: uses, affected-item quantity,
+discount covered subtotal, covered/total uses, associated sales, and legacy-sale evidence are
+combined across the weekday slots without rewriting owner facts. Other campaign rows remain
+unchanged and keep their existing lifecycle-management links. The visible ongoing-campaign
+count now counts Daily Special once at the top level rather than once per weekday slot.
+
+Because the existing client container was already above the repository's 500-line review
+threshold and this change adds a hierarchy/table responsibility, the table/metric rendering
+and grouping logic is extracted into `MarketingOverviewCampaignTable.tsx`; the page client
+returns to a smaller data-loading/composition role. No API, persistence, package, context
+boundary, scanner allowance, Accounting, payment, print, or provider behavior changes.
