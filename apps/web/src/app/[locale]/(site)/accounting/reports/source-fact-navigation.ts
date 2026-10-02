@@ -3,6 +3,7 @@ export type AccountingSourceFactDestination =
   | 'EXPENSE'
   | 'PROVIDER_STATEMENT'
   | 'PROVIDER_PAYOUT'
+  | 'ACCOUNT_TRANSFER'
   | 'PAYROLL_RUN';
 
 export type AccountingSourceFactNavigation = {
@@ -50,6 +51,13 @@ export function resolveAccountingSourceFactNavigation(input: {
     return {
       destination: 'PROVIDER_PAYOUT',
       href: `${accountingRoot}/settlements#payout-${stableId}`,
+    };
+  }
+
+  if (sourceFactType === 'accounting.account_transfer.v1') {
+    return {
+      destination: 'ACCOUNT_TRANSFER',
+      href: `${accountingRoot}/funds#transfer-${stableId}`,
     };
   }
 

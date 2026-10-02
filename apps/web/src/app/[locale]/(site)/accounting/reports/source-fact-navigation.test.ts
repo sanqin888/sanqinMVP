@@ -62,6 +62,19 @@ describe('B4-C2 source fact navigation mapping', () => {
     },
   );
 
+  it('maps account transfers to the Funds history row', () => {
+    expect(
+      resolveAccountingSourceFactNavigation({
+        locale: 'zh',
+        sourceFactType: 'accounting.account_transfer.v1',
+        sourceFactStableId: 'accttransfer_1',
+      }),
+    ).toEqual({
+      destination: 'ACCOUNT_TRANSFER',
+      href: '/zh/accounting/funds#transfer-accttransfer_1',
+    });
+  });
+
   it.each(['payroll.run.accrual.v1', 'payroll.run.reversal.v1'])(
     'maps %s to the Accounting Payroll run locator',
     (sourceFactType) => {

@@ -5,6 +5,7 @@ import { AccountingCanonicalChangeController } from './accounting-canonical-chan
 import { AccountingCanonicalSaleController } from './accounting-canonical-sale.controller';
 import { AccountingChartController } from './accounting-chart.controller';
 import { AccountingExpenseController } from './accounting-expense.controller';
+import { AccountingFundsController } from './accounting-funds.controller';
 import { AccountingInboxArtifactsController } from './accounting-inbox-artifacts.controller';
 import { AccountingInboxController } from './accounting-inbox.controller';
 import { AccountingPeriodController } from './accounting-period.controller';
@@ -35,6 +36,7 @@ import { AccountingChartService } from './accounting-chart.service';
 import { AccountingExpenseJournalPostingService } from './accounting-expense-journal-posting.service';
 import { AccountingExpenseService } from './accounting-expense.service';
 import { AccountingFinancialReportsService } from './accounting-financial-reports.service';
+import { AccountingAccountTransferService } from './accounting-account-transfer.service';
 import { AccountingInboxService } from './accounting-inbox.service';
 import { AccountingProviderSettlementQueryService } from './accounting-provider-settlement-query.service';
 import { AccountingSalesAnalyticsService } from './accounting-sales-analytics.service';
@@ -93,6 +95,7 @@ import { AccountingCloverPreSyncAuthorityService } from './accounting-clover-pre
   controllers: [
     AccountingChartController,
     AccountingExpenseController,
+    AccountingFundsController,
     AccountingInboxController,
     AccountingInboxArtifactsController,
     AccountingProviderFinancialController,
@@ -128,6 +131,7 @@ import { AccountingCloverPreSyncAuthorityService } from './accounting-clover-pre
     AccountingChartService,
     AccountingExpenseService,
     AccountingExpenseJournalPostingService,
+    AccountingAccountTransferService,
     AccountingFinancialReportsService,
     AccountingSalesAnalyticsService,
     AccountingCloverPreSyncAuthorityService,

@@ -18,6 +18,7 @@ const EXPECTED_CONTROLLER_CAPABILITIES = {
   ],
   'accounting-chart.controller.ts': ['AccountingChartService'],
   'accounting-expense.controller.ts': ['AccountingExpenseService'],
+  'accounting-funds.controller.ts': ['AccountingAccountTransferService'],
   'accounting-inbox-artifacts.controller.ts': [
     'AccountingArtifactDeliveryService',
     'AccountingEvidenceFileManagerService',
@@ -104,6 +105,7 @@ const EXPECTED_ROUTES = [
   'GET provider-financial/:documentStableId/review-revisions',
   'GET provider-pending-reconciliation',
   'GET provider-payouts',
+  'GET account-transfers',
   'GET provider-payouts/bank-match-preview',
   'GET provider-payouts/bank-row-decisions',
   'GET provider-fees/bank-withdrawal-preview',
@@ -111,6 +113,7 @@ const EXPECTED_ROUTES = [
   'POST provider-fees/bank-row-decisions/confirm',
   'POST provider-fees/from-bank-row-decision',
   'POST provider-payouts',
+  'POST account-transfers',
   'POST provider-payouts/from-bank-row-decision',
   'POST provider-payouts/bank-row-decisions/confirm',
   'POST provider-financial/:documentStableId/parser-reevaluation',
