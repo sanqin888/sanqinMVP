@@ -83,12 +83,12 @@ export function ProviderFeeBankWithdrawalPanel({
 
   useEffect(() => {
     if (
-      !bankAccountStableId ||
+      bankAccountStableId &&
       !eligibleBanks.some(
         (account) => account.accountStableId === bankAccountStableId,
       )
     ) {
-      setBankAccountStableId(eligibleBanks[0]?.accountStableId ?? '');
+      setBankAccountStableId('');
     }
   }, [bankAccountStableId, eligibleBanks]);
 
@@ -240,6 +240,7 @@ export function ProviderFeeBankWithdrawalPanel({
               value={artifactStableId}
               onChange={(event) => {
                 setArtifactStableId(event.target.value);
+                setBankAccountStableId('');
                 setPreview(null);
                 setScope(null);
                 setExcluded(new Set());

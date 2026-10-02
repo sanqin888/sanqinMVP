@@ -4,6 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
+  ArrowLeftRight,
   Banknote,
   BarChart3,
   BookOpenCheck,
@@ -82,6 +83,14 @@ function buildNavigation(locale: 'zh' | 'en'): AccountingNavigationItem[] {
       shortZh: '销售',
       shortEn: 'Sales',
       icon: WalletCards,
+    },
+    {
+      href: `${root}/funds`,
+      labelZh: '资金',
+      labelEn: 'Funds',
+      shortZh: '资金',
+      shortEn: 'Funds',
+      icon: ArrowLeftRight,
     },
     {
       href: `${root}/reconciliation`,
@@ -300,8 +309,8 @@ export function AccountingShell({ children, locale }: AccountingShellProps) {
                 </h2>
                 <p className="mt-1 text-xs text-slate-500">
                   {isZh
-                    ? '平台结算、销售、工资、报表和财务设置'
-                    : 'Provider settlements, sales, payroll, reports and accounting settings'}
+                    ? '平台结算、资金、销售、工资、报表和财务设置'
+                    : 'Provider settlements, funds, sales, payroll, reports and accounting settings'}
                 </p>
               </div>
               <button

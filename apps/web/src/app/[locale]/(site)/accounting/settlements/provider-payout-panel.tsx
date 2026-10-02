@@ -109,10 +109,7 @@ export function ProviderPayoutPanel({
             account.type === 'BANK',
         )
           ? current
-          : (nextAccounts.find(
-              (account) =>
-                account.currency === 'CAD' && account.type === 'BANK',
-            )?.accountStableId ?? ''),
+          : '',
       );
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -222,6 +219,7 @@ export function ProviderPayoutPanel({
       setAmount('');
       setProviderReference('');
       setPayoutStableId('');
+      setDestinationBankAccountStableId('');
       setConfirmed(false);
       await load();
     } catch (cause) {

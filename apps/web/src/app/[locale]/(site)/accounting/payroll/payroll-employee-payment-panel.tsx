@@ -76,8 +76,7 @@ export function PayrollEmployeePaymentPanel({
         setPaymentAccountStableId((current) =>
           eligible.some((account) => account.accountStableId === current)
             ? current
-            : (eligible.find((account) => account.type === 'BANK') ??
-                eligible[0])?.accountStableId ?? '',
+            : '',
         );
         setPaymentDate(
           run.payDate > payrollLocalDateToday()

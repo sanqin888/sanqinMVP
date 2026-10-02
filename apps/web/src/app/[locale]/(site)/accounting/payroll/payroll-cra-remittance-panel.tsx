@@ -83,14 +83,7 @@ export function PayrollCraRemittancePanel({
       setPreview(nextPreview);
       setRemittances(nextRemittances);
 
-      const banks = nextAccounts.filter(
-        (account) => account.currency === 'CAD' && account.type === 'BANK',
-      );
-      setPaymentAccountStableId((current) =>
-        banks.some((account) => account.accountStableId === current)
-          ? current
-          : banks[0]?.accountStableId ?? '',
-      );
+      setPaymentAccountStableId('');
       const latestPayDate = latestIncludedPayDate(nextPreview);
       const today = payrollLocalDateToday();
       setPaymentDate(latestPayDate > today ? latestPayDate : today);
@@ -105,6 +98,7 @@ export function PayrollCraRemittancePanel({
     setPreview(null);
     setRemittances([]);
     setReference('');
+    setPaymentAccountStableId('');
     setMessage(null);
     setError(null);
     void load();
@@ -161,6 +155,7 @@ export function PayrollCraRemittancePanel({
               (result.journalEntryStableId ?? '—'),
       );
       setReference('');
+      setPaymentAccountStableId('');
       await load();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
