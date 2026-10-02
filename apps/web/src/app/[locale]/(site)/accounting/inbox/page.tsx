@@ -19,6 +19,7 @@ import {
 import type { AccountingAccount, AccountingCategory } from '../contracts/chart';
 import type { AccountingFinancialProvider } from '../contracts/core';
 import type {
+  AccountingApplySenderPolicyResult,
   AccountingImageRetentionAccepted,
   AccountingImageRetentionQueueItem,
   AccountingInboxClassification,
@@ -26,7 +27,8 @@ import type {
   AccountingManualUploadLibraryItem,
   AccountingManualUploadPermanentDeleteResult,
   AccountingManualUploadResult,
-  AccountingTrustedSender,
+  AccountingSenderPolicy,
+  AccountingSenderPolicyDecision,
 } from '../contracts/inbox';
 
 export default function AccountingInboxPage() {
@@ -49,7 +51,9 @@ export default function AccountingInboxPage() {
   );
   const [categories, setCategories] = useState<AccountingCategory[]>([]);
   const [accounts, setAccounts] = useState<AccountingAccount[]>([]);
-  const [trustedSenders, setTrustedSenders] = useState<AccountingTrustedSender[]>([]);
+  const [senderPolicies, setSenderPolicies] = useState<
+    AccountingSenderPolicy[]
+  >([]);
   const [imageRetentionQueue, setImageRetentionQueue] = useState<
     AccountingImageRetentionQueueItem[]
   >([]);
@@ -82,6 +86,8 @@ export default function AccountingInboxPage() {
     useState<AccountingImageRetentionQueueItem | null>(null);
   const [senderEmail, setSenderEmail] = useState('');
   const [senderLabel, setSenderLabel] = useState('');
+  const [senderDecision, setSenderDecision] =
+    useState<AccountingSenderPolicyDecision>('TRUSTED');
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [running, setRunning] = useState(false);
@@ -112,7 +118,9 @@ export default function AccountingInboxPage() {
           ),
           apiFetch<AccountingCategory[]>('/accounting/categories'),
           apiFetch<AccountingAccount[]>('/accounting/accounts'),
-          apiFetch<AccountingTrustedSender[]>('/accounting/inbox/trusted-senders'),
+          apiFetch<AccountingSenderPolicy[]>(
+            '/accounting/inbox/sender-policies',
+          ),
           apiFetch<AccountingImageRetentionQueueItem[]>(
             '/accounting/inbox/image-retention/pending?limit=100',
           ),
@@ -124,7 +132,7 @@ export default function AccountingInboxPage() {
       setManualUploads(uploads);
       setCategories(cats);
       setAccounts(accts);
-      setTrustedSenders(senders);
+      setSenderPolicies(senders);
       setImageRetentionQueue(retentionQueue);
       return { retentionQueue };
     } catch (cause) {
@@ -176,33 +184,68 @@ export default function AccountingInboxPage() {
     }
   }
 
-  async function saveTrustedSender(
+  function existingSenderPolicyLabel(email: string) {
+    const normalized = email.trim().toLowerCase();
+    return (
+      senderPolicies.find((sender) => sender.email === normalized)?.label ?? ''
+    );
+  }
+
+  async function saveSenderPolicy(
     email = senderEmail,
     label = senderLabel,
-    isActive = true,
+    decision: AccountingSenderPolicyDecision = senderDecision,
   ) {
     if (!email.trim()) return;
+    if (
+      decision === 'IGNORED' &&
+      !window.confirm(
+        isZh
+          ? '忽略后，当前仍在隔离区的该发件人邮件会退出收件箱，今后的邮件也不会进入财务收件箱；以后恢复信任不会自动补拉忽略期间的旧邮件。确定继续吗？'
+          : 'Ignoring this sender removes its current quarantined mail from the active Inbox and skips future Accounting intake. Restoring trust later will not backfill mail skipped while ignored. Continue?',
+      )
+    ) {
+      return;
+    }
     setBusySender(true);
     setError(null);
     setMessage(null);
     setConfirmedProviderDocumentStableId(null);
     try {
-      await apiFetch('/accounting/inbox/trusted-senders', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: email.trim(),
-          label: label.trim() || null,
-          isActive,
-        }),
-      });
+      const result = await apiFetch<AccountingApplySenderPolicyResult>(
+        '/accounting/inbox/sender-policies',
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: email.trim(),
+            label: label.trim() || null,
+            decision,
+          }),
+        },
+      );
       setSenderEmail('');
       setSenderLabel('');
-      setMessage(
-        isZh
-          ? '可信发件人已保存。已隔离的旧邮件会在下次 Gmail 拉取时重新按可信规则处理。'
-          : 'Trusted sender saved. Existing quarantined mail will be reconsidered on the next Gmail intake run.',
-      );
+      setSenderDecision('TRUSTED');
+      if (decision === 'TRUSTED') {
+        setMessage(
+          isZh
+            ? `已信任此发件人；${result.reprocessedArtifacts} 条已隔离证据已立即重新识别${result.reprocessFailures ? `，${result.reprocessFailures} 条重识别失败，请查看服务器日志` : ''}。`
+            : `Sender trusted. ${result.reprocessedArtifacts} quarantined artifact(s) were reprocessed immediately${result.reprocessFailures ? `; ${result.reprocessFailures} failed and were logged` : ''}.`,
+        );
+      } else if (decision === 'IGNORED') {
+        setMessage(
+          isZh
+            ? `已忽略此发件人；${result.quarantine.discardedInboxItemStableIds.length} 条当前隔离记录已移出收件箱，今后的邮件不会进入财务收件箱。`
+            : `Sender ignored. ${result.quarantine.discardedInboxItemStableIds.length} quarantined item(s) were removed from the active Inbox and future mail will not enter Accounting Inbox.`,
+        );
+      } else {
+        setMessage(
+          isZh
+            ? '发件人已设为未识别；今后的邮件会进入隔离区等待人工决定。'
+            : 'Sender reset to unrecognized. Future mail will enter quarantine for manual review.',
+        );
+      }
       await load();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -517,14 +560,14 @@ export default function AccountingInboxPage() {
 
         <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="font-semibold">
-            {isZh ? '可信 Gmail 发件人' : 'Trusted Gmail senders'}
+            {isZh ? 'Gmail 发件人策略' : 'Gmail sender policies'}
           </h2>
           <p className="mt-1 text-sm text-slate-500">
             {isZh
-              ? '未知发件人的邮件只会隔离，不会自动解析。发件人仅决定 intake 信任，不决定凭证属于哪家平台，也不会自动入账。'
-              : 'Unknown senders are quarantined and not parsed automatically. Sender trust controls intake only; it does not classify or post evidence.'}
+              ? '可信发件人会正常解析；未识别发件人进入隔离区；忽略发件人的后续邮件不会进入财务收件箱，之后恢复信任也不会自动补拉忽略期间的旧邮件。发件人策略不决定凭证类型，也不会自动入账。'
+              : 'Trusted senders are parsed normally, unrecognized senders enter quarantine, and ignored senders do not enter Accounting Inbox. Restoring trust later does not backfill mail skipped while ignored. Sender policy does not classify or post evidence.'}
           </p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-[1.4fr_1fr_auto]">
+          <div className="mt-3 grid gap-2 sm:grid-cols-[1.4fr_1fr_1fr_auto]">
             <input
               className="rounded border px-3 py-2 text-sm"
               type="email"
@@ -538,19 +581,34 @@ export default function AccountingInboxPage() {
               value={senderLabel}
               onChange={(event) => setSenderLabel(event.target.value)}
             />
+            <select
+              className="rounded border px-3 py-2 text-sm"
+              value={senderDecision}
+              onChange={(event) =>
+                setSenderDecision(
+                  event.target.value as AccountingSenderPolicyDecision,
+                )
+              }
+            >
+              <option value="TRUSTED">{isZh ? '信任' : 'Trusted'}</option>
+              <option value="UNRECOGNIZED">
+                {isZh ? '未识别' : 'Unrecognized'}
+              </option>
+              <option value="IGNORED">{isZh ? '忽略' : 'Ignored'}</option>
+            </select>
             <button
               disabled={busySender || !senderEmail.trim()}
-              onClick={() => void saveTrustedSender()}
+              onClick={() => void saveSenderPolicy()}
               className="rounded bg-slate-900 px-3 py-2 text-sm text-white disabled:opacity-50"
             >
               {isZh ? '保存' : 'Save'}
             </button>
           </div>
-          {trustedSenders.length ? (
+          {senderPolicies.length ? (
             <div className="mt-3 space-y-2">
-              {trustedSenders.map((sender) => (
+              {senderPolicies.map((sender) => (
                 <div
-                  key={sender.trustedSenderStableId}
+                  key={sender.senderPolicyStableId}
                   className="flex flex-wrap items-center justify-between gap-2 rounded border px-3 py-2 text-sm"
                 >
                   <div>
@@ -559,27 +617,24 @@ export default function AccountingInboxPage() {
                       <span className="ml-2 text-slate-500">{sender.label}</span>
                     ) : null}
                   </div>
-                  <button
+                  <select
                     disabled={busySender}
-                    className={
-                      sender.isActive ? 'text-red-600' : 'text-emerald-600'
-                    }
-                    onClick={() =>
-                      void saveTrustedSender(
+                    className="rounded border px-2 py-1 text-sm"
+                    value={sender.decision}
+                    onChange={(event) =>
+                      void saveSenderPolicy(
                         sender.email,
                         sender.label ?? '',
-                        !sender.isActive,
+                        event.target.value as AccountingSenderPolicyDecision,
                       )
                     }
                   >
-                    {sender.isActive
-                      ? isZh
-                        ? '停用'
-                        : 'Disable'
-                      : isZh
-                        ? '启用'
-                        : 'Enable'}
-                  </button>
+                    <option value="TRUSTED">{isZh ? '信任' : 'Trusted'}</option>
+                    <option value="UNRECOGNIZED">
+                      {isZh ? '未识别' : 'Unrecognized'}
+                    </option>
+                    <option value="IGNORED">{isZh ? '忽略' : 'Ignored'}</option>
+                  </select>
                 </div>
               ))}
             </div>
@@ -596,7 +651,12 @@ export default function AccountingInboxPage() {
         discardingId={discardingId}
         confirmingProviderId={confirmingProviderId}
         confirmingOtherId={confirmingOtherId}
-        onTrustSender={(email) => saveTrustedSender(email)}
+        onTrustSender={(email) =>
+          saveSenderPolicy(email, existingSenderPolicyLabel(email), 'TRUSTED')
+        }
+        onIgnoreSender={(email) =>
+          saveSenderPolicy(email, existingSenderPolicyLabel(email), 'IGNORED')
+        }
         onClassificationChange={updateClassification}
         onReviewExpense={(item) =>
           setReviewingInboxItemStableId(item.inboxItemStableId)

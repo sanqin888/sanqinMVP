@@ -13,6 +13,7 @@ import type {
 import { runSerializableAccountingWrite } from './accounting-atomic-write';
 import { ACCOUNTING_DB, type AccountingDb } from './accounting-db';
 import {
+  applyAccountingSenderPolicy,
   confirmAccountingOtherInboxItem,
   confirmAccountingProviderFinancialInboxItem,
   discardAccountingInboxItem,
@@ -22,7 +23,6 @@ import {
   registerAccountingInboxArtifact,
   setAccountingInboxClassification,
   suggestAccountingInboxClassification,
-  upsertAccountingTrustedSender,
 } from './accounting-inbox-core.orchestrator';
 import {
   AccountingInboxPolicyError,
@@ -30,7 +30,7 @@ import {
   type AccountingInboxClassificationSelectionInput,
   type AccountingParseRunInput,
   type AccountingProviderFinancialDocumentInput,
-  type AccountingTrustedSenderInput,
+  type AccountingSenderPolicyInput,
 } from './accounting-inbox-core.policy';
 import {
   AccountingInboxWriterConflictError,
@@ -45,10 +45,10 @@ import {
   type AccountingImageRetentionCandidateInput,
 } from './accounting-image-retention.writer';
 import {
-  getAccountingSenderTrustDecision,
+  getAccountingSenderPolicyDecision,
   listAccountingImageRetentionQueue,
   listAccountingManualUploadLibrary,
-  listAccountingTrustedSenders,
+  listAccountingSenderPolicies,
   listAccountingUnifiedInboxItems,
   readAccountingArtifactContentContext,
   readAccountingImageRetentionContext,
@@ -72,12 +72,12 @@ export class AccountingInboxService {
     );
   }
 
-  senderTrustDecision(email: string) {
-    return getAccountingSenderTrustDecision(this.prisma, email);
+  senderPolicyDecision(email: string) {
+    return getAccountingSenderPolicyDecision(this.prisma, email);
   }
 
-  listTrustedSenders() {
-    return listAccountingTrustedSenders(this.prisma);
+  listSenderPolicies() {
+    return listAccountingSenderPolicies(this.prisma);
   }
 
   listProviderRecognitionRules() {
@@ -268,12 +268,12 @@ export class AccountingInboxService {
     );
   }
 
-  async upsertTrustedSender(
-    input: AccountingTrustedSenderInput,
+  async applySenderPolicy(
+    input: AccountingSenderPolicyInput,
     operatorUserStableId: string,
   ) {
     return this.runInboxCore(() =>
-      upsertAccountingTrustedSender(this.prisma, input, operatorUserStableId),
+      applyAccountingSenderPolicy(this.prisma, input, operatorUserStableId),
     );
   }
 

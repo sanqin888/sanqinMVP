@@ -11,6 +11,7 @@ import {
   AccountingInboxClassification,
   AccountingInboxTrustDecision,
   AccountingParseStatus,
+  AccountingSenderPolicyDecision,
 } from './accounting-contracts';
 
 export const PROVIDER_FINANCIAL_HISTORY_START_DATE = '2026-06-01';
@@ -41,10 +42,10 @@ export type AccountingParseRunInput = {
   errorMessage?: string | null;
 };
 
-export type AccountingTrustedSenderInput = {
+export type AccountingSenderPolicyInput = {
   email: string;
   label?: string | null;
-  isActive?: boolean;
+  decision: AccountingSenderPolicyDecision;
 };
 
 export type AccountingInboxClassificationSelectionInput = {
@@ -194,13 +195,16 @@ export function normalizeAccountingParseRun(input: AccountingParseRunInput) {
   };
 }
 
-export function normalizeAccountingTrustedSender(
-  input: AccountingTrustedSenderInput,
+export function normalizeAccountingSenderPolicy(
+  input: AccountingSenderPolicyInput,
 ) {
+  if (!Object.values(AccountingSenderPolicyDecision).includes(input.decision)) {
+    throw new AccountingInboxPolicyError('invalid sender policy decision');
+  }
   return {
     email: normalizeEmail(input.email),
     label: optionalText(input.label),
-    isActive: input.isActive ?? true,
+    decision: input.decision,
   };
 }
 

@@ -5,7 +5,7 @@ import {
   AccountingInboxClassification,
   AccountingInboxMaterializedEntityType,
   AccountingInboxStatus,
-  AccountingInboxTrustDecision,
+  AccountingSenderPolicyDecision,
   Prisma,
 } from '@prisma/client';
 import {
@@ -18,34 +18,32 @@ export type AccountingInboxReadClient = Pick<
   Prisma.TransactionClient,
   | 'accountingInboxItem'
   | 'accountingSourceArtifact'
-  | 'accountingTrustedSender'
+  | 'accountingSenderPolicy'
   | 'accountingExpenseDocument'
 >;
 
-export async function getAccountingSenderTrustDecision(
+export async function getAccountingSenderPolicyDecision(
   client: AccountingInboxReadClient,
   email: string,
 ) {
   const normalized = email.trim().toLowerCase();
-  if (!normalized) return AccountingInboxTrustDecision.UNTRUSTED;
-  const sender = await client.accountingTrustedSender.findUnique({
+  if (!normalized) return AccountingSenderPolicyDecision.UNRECOGNIZED;
+  const sender = await client.accountingSenderPolicy.findUnique({
     where: { email: normalized },
-    select: { isActive: true },
+    select: { decision: true },
   });
-  return sender?.isActive
-    ? AccountingInboxTrustDecision.TRUSTED
-    : AccountingInboxTrustDecision.UNTRUSTED;
+  return sender?.decision ?? AccountingSenderPolicyDecision.UNRECOGNIZED;
 }
 
-export async function listAccountingTrustedSenders(
+export async function listAccountingSenderPolicies(
   client: AccountingInboxReadClient,
 ) {
-  return client.accountingTrustedSender.findMany({
+  return client.accountingSenderPolicy.findMany({
     select: {
-      trustedSenderStableId: true,
+      senderPolicyStableId: true,
       email: true,
       label: true,
-      isActive: true,
+      decision: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -665,6 +663,7 @@ export async function readAccountingInboxProviderReviewContext(
           originalFilename: true,
           storedUrl: true,
           bodyText: true,
+          senderEmail: true,
           emailSubject: true,
           financialDocument: {
             select: {

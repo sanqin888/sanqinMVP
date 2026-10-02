@@ -119,6 +119,15 @@ export type AccountingInboxTrustDecision = ValueOf<
   typeof AccountingInboxTrustDecision
 >;
 
+export const AccountingSenderPolicyDecision = {
+  TRUSTED: 'TRUSTED',
+  UNRECOGNIZED: 'UNRECOGNIZED',
+  IGNORED: 'IGNORED',
+} as const;
+export type AccountingSenderPolicyDecision = ValueOf<
+  typeof AccountingSenderPolicyDecision
+>;
+
 export const AccountingParseStatus = {
   PENDING: 'PENDING',
   SUCCESS: 'SUCCESS',

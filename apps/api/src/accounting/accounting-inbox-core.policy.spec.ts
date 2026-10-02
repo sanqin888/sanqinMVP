@@ -8,6 +8,7 @@ import {
   AccountingInboxClassification,
   AccountingInboxTrustDecision,
   AccountingParseStatus,
+  AccountingSenderPolicyDecision,
 } from '@prisma/client';
 import {
   AccountingInboxPolicyError,
@@ -16,7 +17,7 @@ import {
   normalizeAccountingInboxArtifact,
   normalizeAccountingInboxClassificationSelection,
   normalizeAccountingParseRun,
-  normalizeAccountingTrustedSender,
+  normalizeAccountingSenderPolicy,
   normalizeProviderFinancialDocument,
 } from './accounting-inbox-core.policy';
 
@@ -83,17 +84,24 @@ describe('Accounting Inbox core policy', () => {
     ).toThrow('contentHash must be a SHA-256 hex digest');
   });
 
-  it('normalizes trusted sender identity without assigning provider semantics', () => {
+  it('normalizes explicit sender policy without assigning provider semantics', () => {
     expect(
-      normalizeAccountingTrustedSender({
+      normalizeAccountingSenderPolicy({
         email: ' Owner@Example.COM ',
         label: ' Owner upload ',
+        decision: AccountingSenderPolicyDecision.TRUSTED,
       }),
     ).toEqual({
       email: 'owner@example.com',
       label: 'Owner upload',
-      isActive: true,
+      decision: AccountingSenderPolicyDecision.TRUSTED,
     });
+    expect(() =>
+      normalizeAccountingSenderPolicy({
+        email: 'owner@example.com',
+        decision: 'INVALID' as AccountingSenderPolicyDecision,
+      }),
+    ).toThrow('invalid sender policy decision');
   });
 
   it('normalizes operator-selected inbox classification and limits provider ownership to statements', () => {

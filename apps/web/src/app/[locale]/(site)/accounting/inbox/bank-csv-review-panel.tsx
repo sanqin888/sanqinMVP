@@ -70,13 +70,19 @@ export function AccountingInboxBankCsvReviewPanel({
   }, [knownStoreStableIds, storeStableId]);
 
   useEffect(() => {
+    setBankAccountStableId('');
+    setPreview(null);
+    setError(null);
+  }, [item.artifact.artifactStableId]);
+
+  useEffect(() => {
     if (
-      !bankAccountStableId ||
+      bankAccountStableId &&
       !eligibleBanks.some(
         (account) => account.accountStableId === bankAccountStableId,
       )
     ) {
-      setBankAccountStableId(eligibleBanks[0]?.accountStableId ?? '');
+      setBankAccountStableId('');
     }
   }, [bankAccountStableId, eligibleBanks]);
 

@@ -51,6 +51,7 @@ import {
   AccountingInboxStatus,
   AccountingInboxTrustDecision,
   AccountingParseStatus,
+  AccountingSenderPolicyDecision,
 } from '@prisma/client';
 import { AccountingInboxAcquisitionService } from './accounting-inbox-acquisition.service';
 import { extractAccountingImageText } from './accounting-image-ocr';
@@ -1423,6 +1424,67 @@ describe('AccountingInboxAcquisitionService', () => {
     );
 
     expect(operations.recordInboxParseRun).not.toHaveBeenCalled();
+  });
+
+  it('reprocesses quarantined email body immediately after sender trust is granted', async () => {
+    const operations = {
+      applySenderPolicy: jest.fn().mockResolvedValue({
+        policy: {
+          senderPolicyStableId: 'acctsender_1',
+          email: 'billing@example.com',
+          label: null,
+          decision: AccountingSenderPolicyDecision.TRUSTED,
+        },
+        quarantine: {
+          promotedInboxItemStableIds: ['acctinbox_1'],
+          discardedInboxItemStableIds: [],
+        },
+      }),
+      readUnifiedInboxProviderReviewContext: jest.fn().mockResolvedValue({
+        status: AccountingInboxStatus.PENDING_REVIEW,
+        artifact: {
+          artifactStableId: 'acctart_1',
+          acquisitionMode: 'EMAIL',
+          kind: AccountingArtifactKind.EMAIL_BODY,
+          mimeType: 'text/plain; charset=utf-8',
+          originalFilename: null,
+          storedUrl: null,
+          bodyText: 'Invoice total $12.34',
+          senderEmail: 'billing@example.com',
+          emailSubject: 'Invoice',
+        },
+      }),
+      recordInboxParseRun: jest.fn().mockResolvedValue({}),
+      suggestUnifiedInboxClassification: jest.fn().mockResolvedValue({}),
+    };
+    const providerFinancial = {
+      parseAndMaterialize: jest.fn().mockResolvedValue({ matched: false }),
+      parseForInboxSuggestion: jest.fn().mockResolvedValue({ matched: false }),
+      recordUnsupportedUberApiParse: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new AccountingInboxAcquisitionService(
+      operations as never,
+      providerFinancial as never,
+    );
+
+    const result = await service.applyEmailSenderPolicy(
+      {
+        email: 'billing@example.com',
+        decision: AccountingSenderPolicyDecision.TRUSTED,
+      },
+      'user_stable_1',
+    );
+
+    expect(result.reprocessedArtifacts).toBe(1);
+    expect(result.reprocessFailures).toBe(0);
+    expect(providerFinancial.parseForInboxSuggestion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        artifactStableId: 'acctart_1',
+        text: 'Invoice total $12.34',
+        emailSubject: 'Invoice',
+      }),
+    );
+    expect(operations.recordInboxParseRun).toHaveBeenCalled();
   });
 
   it('quarantines untrusted email evidence without parsing it', async () => {

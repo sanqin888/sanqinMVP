@@ -7,24 +7,25 @@ import {
   normalizeAccountingInboxClassificationSelection,
   normalizeAccountingInboxExpenseMaterialization,
   normalizeAccountingParseRun,
-  normalizeAccountingTrustedSender,
+  normalizeAccountingSenderPolicy,
   normalizeProviderFinancialDocument,
   type AccountingInboxArtifactInput,
   type AccountingInboxClassificationSelectionInput,
   type AccountingInboxExpenseMaterializationInput,
   type AccountingParseRunInput,
   type AccountingProviderFinancialDocumentInput,
-  type AccountingTrustedSenderInput,
+  type AccountingSenderPolicyInput,
 } from './accounting-inbox-core.policy';
 import {
   AccountingInboxWriterConflictError,
+  applySenderPolicyToQuarantinedInboxItemsInTx,
   ensureProviderFinancialCoverageInTx,
   readInboxArtifactReplay,
   readProviderFinancialDocumentReplay,
   recordParseRunInTx,
   recordProviderFinancialDocumentInTx,
   registerInboxArtifactInTx,
-  upsertTrustedSenderInTx,
+  upsertSenderPolicyInTx,
 } from './accounting-inbox-core.writer';
 import {
   confirmOtherInboxItemInTx,
@@ -86,19 +87,26 @@ export async function recordAccountingInboxParseRun(
   );
 }
 
-export async function upsertAccountingTrustedSender(
+export async function applyAccountingSenderPolicy(
   prisma: AccountingTransactionRunner,
-  input: AccountingTrustedSenderInput,
+  input: AccountingSenderPolicyInput,
   operatorUserStableId: string,
 ) {
-  const normalized = normalizeAccountingTrustedSender(input);
+  const normalized = normalizeAccountingSenderPolicy(input);
   const operator = requireStableValue(
     operatorUserStableId,
     'operatorUserStableId',
   );
-  return runSerializableAccountingWrite(prisma, (tx) =>
-    upsertTrustedSenderInTx(tx, normalized, operator),
-  );
+  return runSerializableAccountingWrite(prisma, async (tx) => {
+    const policy = await upsertSenderPolicyInTx(tx, normalized, operator);
+    const quarantine = await applySenderPolicyToQuarantinedInboxItemsInTx(
+      tx,
+      normalized.email,
+      normalized.decision,
+      operator,
+    );
+    return { policy, quarantine };
+  });
 }
 
 export async function suggestAccountingInboxClassification(
