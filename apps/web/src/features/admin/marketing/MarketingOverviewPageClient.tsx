@@ -1,16 +1,6 @@
 'use client';
 
-import {
-  Activity,
-  CalendarDays,
-  ExternalLink,
-  Loader2,
-  RefreshCw,
-  Sparkles,
-  Tags,
-  TicketPercent,
-} from 'lucide-react';
-import Link from 'next/link';
+import { Activity, CalendarDays, Loader2, RefreshCw } from 'lucide-react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 
@@ -22,54 +12,15 @@ import {
   StaffPanel,
   StaffStat,
 } from '@/components/staff/StaffPrimitives';
+import {
+  MarketingOverviewCampaignTable,
+  WINDOW_KEYS,
+  windowLabel,
+  type MarketingActivity,
+  type WindowKey,
+} from '@/features/admin/marketing/MarketingOverviewCampaignTable';
 import { apiFetch } from '@/lib/api/client';
 import type { Locale } from '@/lib/i18n/locales';
-
-type WindowKey = 'today' | 'last7Days' | 'last30Days' | 'last90Days';
-type CampaignKind = 'DAILY_SPECIAL' | 'PROMOTION_RULE' | 'COUPON_PROGRAM';
-type CampaignScope = 'STORE' | 'BRAND';
-
-type MetricCoverage =
-  | 'COMPLETE'
-  | 'PARTIAL'
-  | 'UNAVAILABLE'
-  | 'NOT_APPLICABLE';
-
-type PerformanceMetric = {
-  value: number | null;
-  coverage: MetricCoverage;
-  coveredUses: number;
-  totalUses: number;
-};
-
-type AssociatedSalesEvidence =
-  | 'NO_USAGE'
-  | 'IMMUTABLE_ONLY'
-  | 'INCLUDES_LEGACY_CURRENT_ORDER';
-
-type WindowMetrics = {
-  uses: number;
-  affectedItemQuantity: PerformanceMetric;
-  discountCents: PerformanceMetric;
-  associatedSalesCents: number;
-  associatedSalesEvidence: AssociatedSalesEvidence;
-};
-
-type MarketingActivity = {
-  activityStableId: string;
-  kind: CampaignKind;
-  scope: CampaignScope;
-  storeStableId: string | null;
-  titleZh: string;
-  titleEn: string | null;
-  subtype: string;
-  validFrom: string | null;
-  validTo: string | null;
-  weekdays: number[];
-  startMinutes: number | null;
-  endMinutes: number | null;
-  metrics: Record<WindowKey, WindowMetrics>;
-};
 
 type MarketingOverviewReport = {
   version: 1;
@@ -89,103 +40,6 @@ type MarketingOverviewReport = {
   };
 };
 
-const WINDOW_KEYS: WindowKey[] = [
-  'today',
-  'last7Days',
-  'last30Days',
-  'last90Days',
-];
-
-function windowLabel(key: WindowKey, isZh: boolean): string {
-  if (key === 'today') return isZh ? '今天' : 'Today';
-  if (key === 'last7Days') return isZh ? '近 7 天' : 'Last 7 days';
-  if (key === 'last30Days') return isZh ? '近 30 天' : 'Last 30 days';
-  return isZh ? '近 90 天' : 'Last 90 days';
-}
-
-function kindLabel(kind: CampaignKind, isZh: boolean): string {
-  if (kind === 'DAILY_SPECIAL') return isZh ? '商品特价' : 'Item special';
-  if (kind === 'COUPON_PROGRAM') {
-    return isZh ? '优惠券 / 礼包' : 'Coupon / bundle';
-  }
-  return isZh ? '自动 / 积分活动' : 'Automatic / loyalty';
-}
-
-function scopeLabel(scope: CampaignScope, isZh: boolean): string {
-  return scope === 'STORE'
-    ? isZh
-      ? '门店'
-      : 'Store'
-    : isZh
-      ? '品牌'
-      : 'Brand';
-}
-
-function kindIcon(kind: CampaignKind) {
-  if (kind === 'DAILY_SPECIAL') return Sparkles;
-  if (kind === 'COUPON_PROGRAM') return TicketPercent;
-  return Tags;
-}
-
-function managementHref(
-  kind: CampaignKind,
-  locale: Locale,
-  storeStableId: string,
-): string {
-  const base = `/${locale}/admin/promotions`;
-  const path =
-    kind === 'DAILY_SPECIAL'
-      ? `${base}/specials`
-      : kind === 'COUPON_PROGRAM'
-        ? `${base}/coupons`
-        : `${base}/automatic`;
-  return `${path}?store=${encodeURIComponent(storeStableId)}`;
-}
-
-function dailySpecialWeekdayLabel(
-  weekdays: number[],
-  isZh: boolean,
-): string | null {
-  const weekday = weekdays[0];
-  const labels: Record<number, { zh: string; en: string }> = {
-    1: { zh: '周一', en: 'Monday' },
-    2: { zh: '周二', en: 'Tuesday' },
-    3: { zh: '周三', en: 'Wednesday' },
-    4: { zh: '周四', en: 'Thursday' },
-    5: { zh: '周五', en: 'Friday' },
-    6: { zh: '周六', en: 'Saturday' },
-    7: { zh: '周日', en: 'Sunday' },
-  };
-  const label = labels[weekday];
-  return label ? (isZh ? label.zh : label.en) : null;
-}
-
-function activityTitle(activity: MarketingActivity, isZh: boolean): string {
-  if (activity.kind === 'DAILY_SPECIAL') {
-    const weekday = dailySpecialWeekdayLabel(activity.weekdays, isZh);
-    if (weekday) {
-      return isZh ? `${weekday}特价` : `${weekday} Daily Special`;
-    }
-    return isZh ? '每日特价' : 'Daily Special';
-  }
-  if (isZh) {
-    return activity.titleZh || activity.titleEn || activity.activityStableId;
-  }
-  return activity.titleEn || activity.titleZh || activity.activityStableId;
-}
-
-function activitySubjectLabel(
-  activity: MarketingActivity,
-  isZh: boolean,
-): string | null {
-  if (activity.kind !== 'DAILY_SPECIAL') return null;
-  const subject = isZh
-    ? activity.titleZh || activity.titleEn
-    : activity.titleEn || activity.titleZh;
-  if (!subject) return null;
-  return isZh ? `当前菜品：${subject}` : `Current item: ${subject}`;
-}
-
 function formatGeneratedAt(value: string, locale: Locale): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
@@ -193,153 +47,6 @@ function formatGeneratedAt(value: string, locale: Locale): string {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(date);
-}
-
-function formatCadCents(value: number, locale: Locale): string {
-  return new Intl.NumberFormat(locale === 'zh' ? 'zh-CN' : 'en-CA', {
-    style: 'currency',
-    currency: 'CAD',
-  }).format(value / 100);
-}
-
-function metricCoverageLabel(
-  metric: PerformanceMetric,
-  isZh: boolean,
-): string | null {
-  if (metric.coverage === 'COMPLETE') return null;
-  if (metric.coverage === 'PARTIAL') {
-    return isZh
-      ? `部分覆盖 ${metric.coveredUses}/${metric.totalUses} 次`
-      : `Partial ${metric.coveredUses}/${metric.totalUses} uses`;
-  }
-  if (metric.coverage === 'UNAVAILABLE') {
-    return isZh ? '暂无可靠数据' : 'Unavailable';
-  }
-  return isZh ? '不适用' : 'N/A';
-}
-
-function associatedSalesEvidenceLabel(
-  evidence: AssociatedSalesEvidence,
-  isZh: boolean,
-): string | null {
-  if (evidence === 'NO_USAGE') return null;
-  if (evidence === 'IMMUTABLE_ONLY') {
-    return isZh ? '不可变销售快照' : 'Immutable sale facts';
-  }
-  return isZh
-    ? '包含历史 current-order 证据'
-    : 'Includes legacy current-order evidence';
-}
-
-function PerformanceMetricValue({
-  metric,
-  locale,
-  isCurrency = false,
-}: {
-  metric: PerformanceMetric;
-  locale: Locale;
-  isCurrency?: boolean;
-}) {
-  const isZh = locale === 'zh';
-  const coverageLabel = metricCoverageLabel(metric, isZh);
-  const value =
-    metric.value === null
-      ? '—'
-      : isCurrency
-        ? formatCadCents(metric.value, locale)
-        : metric.value.toLocaleString(locale === 'zh' ? 'zh-CN' : 'en-CA');
-
-  return (
-    <div>
-      <span className="font-semibold text-slate-900">{value}</span>
-      {coverageLabel ? (
-        <span
-          className={
-            metric.coverage === 'PARTIAL'
-              ? 'ml-1.5 text-[11px] font-medium text-amber-700'
-              : 'ml-1.5 text-[11px] text-slate-500'
-          }
-        >
-          {coverageLabel}
-        </span>
-      ) : null}
-      {metric.coverage === 'PARTIAL' ? (
-        <div className="mt-0.5 text-[10px] text-amber-700">
-          {isZh ? '已覆盖小计，不是完整总额' : 'Covered subtotal, not full total'}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function WindowPerformanceCell({
-  metrics,
-  locale,
-}: {
-  metrics: WindowMetrics;
-  locale: Locale;
-}) {
-  const isZh = locale === 'zh';
-  const salesEvidence = associatedSalesEvidenceLabel(
-    metrics.associatedSalesEvidence,
-    isZh,
-  );
-
-  return (
-    <div className="min-w-40 space-y-2 text-xs">
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="text-slate-500">{isZh ? '使用' : 'Uses'}</span>
-        <span className="font-semibold text-slate-950">
-          {metrics.uses.toLocaleString(locale === 'zh' ? 'zh-CN' : 'en-CA')}
-        </span>
-      </div>
-      <div className="flex items-start justify-between gap-3">
-        <span className="shrink-0 text-slate-500">
-          {isZh ? '关联件数' : 'Items'}
-        </span>
-        <div className="text-right">
-          <PerformanceMetricValue
-            metric={metrics.affectedItemQuantity}
-            locale={locale}
-          />
-        </div>
-      </div>
-      <div className="flex items-start justify-between gap-3">
-        <span className="shrink-0 text-slate-500">
-          {isZh ? '实际优惠' : 'Discount'}
-        </span>
-        <div className="text-right">
-          <PerformanceMetricValue
-            metric={metrics.discountCents}
-            locale={locale}
-            isCurrency
-          />
-        </div>
-      </div>
-      <div className="flex items-start justify-between gap-3">
-        <span className="shrink-0 text-slate-500">
-          {isZh ? '关联销售' : 'Assoc. sales'}
-        </span>
-        <div className="text-right">
-          <div className="font-semibold text-slate-900">
-            {formatCadCents(metrics.associatedSalesCents, locale)}
-          </div>
-          {salesEvidence ? (
-            <div
-              className={
-                metrics.associatedSalesEvidence ===
-                'INCLUDES_LEGACY_CURRENT_ORDER'
-                  ? 'mt-0.5 text-[10px] text-amber-700'
-                  : 'mt-0.5 text-[10px] text-slate-500'
-              }
-            >
-              {salesEvidence}
-            </div>
-          ) : null}
-        </div>
-      </div>
-    </div>
-  );
 }
 
 export function MarketingOverviewPageClient() {
@@ -405,6 +112,19 @@ export function MarketingOverviewPageClient() {
       last30Days: totalFor('last30Days'),
       last90Days: totalFor('last90Days'),
     };
+  }, [report]);
+
+  const topLevelCampaignCount = useMemo(() => {
+    if (!report) return 0;
+    const dailySpecialCount = report.activities.some(
+      (activity) => activity.kind === 'DAILY_SPECIAL',
+    )
+      ? 1
+      : 0;
+    return (
+      report.activities.filter((activity) => activity.kind !== 'DAILY_SPECIAL')
+        .length + dailySpecialCount
+    );
   }, [report]);
 
   return (
@@ -494,8 +214,8 @@ export function MarketingOverviewPageClient() {
                 </div>
                 <p className="mt-1 text-sm text-slate-600">
                   {isZh
-                    ? `共 ${report.activities.length} 个进行中活动 · ${report.timezone}`
-                    : `${report.activities.length} ongoing campaigns · ${report.timezone}`}
+                    ? `共 ${topLevelCampaignCount} 个进行中活动 · ${report.timezone}`
+                    : `${topLevelCampaignCount} ongoing campaigns · ${report.timezone}`}
                 </p>
               </div>
               <p className="text-xs text-slate-500">
@@ -519,89 +239,11 @@ export function MarketingOverviewPageClient() {
                   : 'There are no ongoing marketing campaigns.'}
               </div>
             ) : (
-              <div className="mt-4 overflow-x-auto">
-                <table className="w-full min-w-[1180px] border-separate border-spacing-0 text-left text-sm">
-                  <thead>
-                    <tr className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
-                      <th className="border-b border-slate-200 px-3 py-3">
-                        {isZh ? '活动' : 'Campaign'}
-                      </th>
-                      {WINDOW_KEYS.map((key) => (
-                        <th
-                          key={key}
-                          className="border-b border-slate-200 px-3 py-3 text-right"
-                        >
-                          {windowLabel(key, isZh)}
-                        </th>
-                      ))}
-                      <th className="border-b border-slate-200 px-3 py-3 text-right">
-                        {isZh ? '管理' : 'Manage'}
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {report.activities.map((activity) => {
-                      const Icon = kindIcon(activity.kind);
-                      return (
-                        <tr key={activity.activityStableId}>
-                          <td className="border-b border-slate-100 px-3 py-4">
-                            <div className="flex items-start gap-3">
-                              <div className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#87362E]/10 text-[#762f28]">
-                                <Icon className="size-4" aria-hidden="true" />
-                              </div>
-                              <div className="min-w-0">
-                                <p className="font-semibold text-slate-950">
-                                  {activityTitle(activity, isZh)}
-                                </p>
-                                {activitySubjectLabel(activity, isZh) ? (
-                                  <p className="mt-0.5 text-xs text-slate-500">
-                                    {activitySubjectLabel(activity, isZh)}
-                                  </p>
-                                ) : null}
-                                <div className="mt-1 flex flex-wrap gap-1.5">
-                                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-                                    {kindLabel(activity.kind, isZh)}
-                                  </span>
-                                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-                                    {scopeLabel(activity.scope, isZh)}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          </td>
-                          {WINDOW_KEYS.map((key) => (
-                            <td
-                              key={key}
-                              className="border-b border-slate-100 px-3 py-4 align-top"
-                            >
-                              <WindowPerformanceCell
-                                metrics={activity.metrics[key]}
-                                locale={safeLocale}
-                              />
-                            </td>
-                          ))}
-                          <td className="border-b border-slate-100 px-3 py-4 text-right">
-                            <Link
-                              href={managementHref(
-                                activity.kind,
-                                safeLocale,
-                                storeStableId,
-                              )}
-                              className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-semibold text-[#762f28] outline-none hover:bg-[#87362E]/10 focus-visible:ring-2 focus-visible:ring-[#87362E]/25"
-                            >
-                              {isZh ? '管理' : 'Manage'}
-                              <ExternalLink
-                                className="size-3.5"
-                                aria-hidden="true"
-                              />
-                            </Link>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              <MarketingOverviewCampaignTable
+                activities={report.activities}
+                locale={safeLocale}
+                storeStableId={storeStableId}
+              />
             )}
           </StaffPanel>
         </div>
