@@ -1,19 +1,20 @@
 # Admin Marketing Overview — Readiness Audit and Delivery Plan
 
 Date: 2026-09-30  
-Baseline: `origin/dev@2d250360` after MKT-D merge  
-State: **SOURCE COMPLETE / MKT-A/B/C/D MERGED + CI GREEN / MKT-D PR #2627 / CI #6682 / MERGE `2d250360` / NO MIGRATION / NO DEPENDENCY / PRODUCTION UI VERIFICATION NOT YET CLAIMED**
+Original baseline: `origin/dev@2d250360` after MKT-D merge  
+MKT-E implementation baseline: `origin/dev@52dfced9`  
+State: **MKT-A/B/C/D MERGED + CI GREEN / MKT-E MERGED + CI #6733 GREEN / PR #2643 / MERGE `3846fbd7` / MKT-F LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO DEPENDENCY / PRODUCTION UI VERIFICATION NOT YET CLAIMED**
 
 ## 1. Product goal
 
 Replace the current `/admin/promotions` navigation-only landing page with a useful
 Marketing Overview. The overview should list campaigns that are operationally relevant
-and summarize four store-local time windows:
+and summarize four store-local trailing time windows:
 
 - Today;
 - trailing 7 local calendar days, including Today;
-- current calendar month;
-- current calendar quarter.
+- trailing 30 local calendar days, including Today;
+- trailing 90 local calendar days, including Today.
 
 The required first metric is campaign usage count. The data model must also support,
 from the first backend slice:
@@ -140,12 +141,18 @@ Refund-adjusted/net associated sales are explicitly out of scope for V1.
 
 ## 4. Time semantics
 
-Reporting will own the four windows using the selected Store timezone:
+Reporting owns the displayed trailing windows using the selected Store timezone:
 
 - Today: local 00:00 -> now;
 - 7d: Today plus the prior six local calendar days;
-- Month: local first day of current month -> now;
-- Quarter: local first day of current quarter -> now.
+- 30d: Today plus the prior 29 local calendar days;
+- 90d: Today plus the prior 89 local calendar days.
+
+The V1 HTTP payload now exposes only these four trailing windows. The previous calendar
+`month` / `quarter` fields are removed as an explicitly authorized Admin contract cutover;
+already-open Admin/PWA bundles may require a page refresh after deployment. The owner read
+must start at the earliest boundary required by the returned windows rather than assuming a
+calendar boundary is always the longest range.
 
 Order activity time is the Orders sale occurrence time (`paidAt` / financial fact
 `occurredAt`), not browser time and not Order creation time.
@@ -194,8 +201,9 @@ This slice is authorized to add the narrow conceptual
 public contracts/composition-root wiring only. It must not import Offers internals or
 Prisma. Architecture scanner/SCC impact must be reviewed at implementation time.
 
-The projection queries the current quarter usage range once and derives Today / 7d /
-Month / Quarter in memory. It exposes additive `GET /reports/marketing?storeStableId=`
+The projection queries one owner-usage range beginning at the earliest required returned
+window and derives Today / 7d / 30d / 90d in memory. The prior Month / Quarter response
+fields are removed by the authorized contract cutover. It exposes `GET /reports/marketing?storeStableId=`
 and returns only campaigns whose lifecycle is ACTIVE and whose overall validity window
 contains the current Store-local instant. Recurring weekday/minute schedules remain
 metadata rather than causing an otherwise ongoing campaign to disappear between its
@@ -205,7 +213,7 @@ Coupon usage is normalized from Coupon instance stable IDs to CouponProgram stab
 before aggregation. Multiple owner facts that map to the same campaign + Order still
 produce one use and one associated-sales amount. The response carries per-metric
 `COMPLETE / PARTIAL / UNAVAILABLE / NOT_APPLICABLE` coverage plus an explicit
-current-quarter count of unattributed Coupon uses.
+90-day count of unattributed Coupon uses.
 
 MKT-B activates the already authorized conceptual
 `accounting-reporting-analytics -> catalog-pricing-offers` read direction. Owner APIs
@@ -223,7 +231,7 @@ the lifecycle-management surface for Item Specials, Coupons & Bundles and Automa
 Loyalty campaigns.
 
 The first UI deliberately emphasizes usage count only. It shows current campaigns and
-Today / trailing 7 local days / current month / current quarter use counts, preserves
+Today / trailing 7 / trailing 30 / trailing 90 local-day use counts, preserves
 selected Store context on management links, exposes loading/error/empty/unattributed-
 Coupon states, and does not yet render affected-item quantity, actual discount or
 associated sales. Those remain MKT-D presentation work after production reconciliation.
@@ -284,7 +292,8 @@ MKT-B remains additive and backend-only:
   PromotionsCore campaign-facts provider without moving persistence ownership;
 - `GET /reports/marketing?storeStableId=` is additive; existing Business Reports and
   legacy report contracts are unchanged;
-- one current-quarter owner read feeds all four requested windows;
+- one owner read begins at the earliest returned window boundary, preventing trailing
+  windows from being truncated at a month/quarter rollover;
 - Daily Special / PromotionRule validity dates retain the existing Store-local business
   calendar-date semantics, while CouponProgram validity retains its existing instant
   semantics;
@@ -309,3 +318,62 @@ MKT-C is Web-only and keeps the backend/ownership model fixed:
   already carried them; MKT-D exposes them only after the production reconciliation above;
 - no new package, API, Prisma/schema/migration, context direction, scanner baseline,
   Accounting, payment, print or provider behavior is introduced.
+
+## 9. MKT-E — trailing-window correction and Daily Special stable display identity
+
+State: **MERGED / CI #6733 GREEN / PR #2643 / MERGE `3846fbd7` / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**.
+
+Production read-only reconciliation on 2026-10-01 showed that historical Daily Special
+usage already exists back to 2026-02-18 and that all 361 observed Daily-Special OrderItem
+rows retain `dailySpecialStableId`. The apparent deployment-only coverage was instead a
+Reporting range defect: MKT-B always started the owner read at the current-quarter boundary.
+On 2026-10-01, the first day of Q4, that truncated the nominal trailing-7-day window to
+Today, causing Today / 7d / Month / Quarter to present the same current-day facts.
+
+MKT-E corrects that behavior without changing fact ownership:
+
+- the current Admin presentation is Today / trailing 7 / trailing 30 / trailing 90 local
+  calendar days;
+- Reporting computes the earliest boundary across every returned V1 window before reading
+  owner usage facts, so rollover boundaries cannot truncate a trailing window;
+- `last30Days` and `last90Days` replace the previous `month` and `quarter` response fields;
+  the old fields and their quarter-specific coverage field are deleted as an explicitly
+  authorized Admin HTTP contract contraction. An already-open stale Admin/PWA page may need
+  a refresh after deployment;
+- unattributed Coupon coverage is exposed only for the displayed trailing 90-day window;
+- a Daily Special row is presented by its stable weekday slot (for example, `周四特价` /
+  `Thursday Daily Special`) rather than using the currently selected dish as the activity
+  title. The current dish remains visible as secondary configuration text;
+- the underlying activity identity remains `MenuDailySpecial.stableId`. The existing Admin
+  specials editor preserves that stable ID when the selected item on an existing special is
+  changed, so historical usage stays attached to the same activity while the current dish
+  may change. Deleting and recreating a special intentionally creates a new activity
+  identity.
+
+This slice changes no Prisma schema, migration, dependency, owner boundary, Accounting
+Journal logic, payment/provider flow, or architecture scanner allowance. Focused API
+coverage adds an October 1 quarter-rollover regression case, and Web source-contract
+coverage locks the 30/90-day labels plus weekday-slot Daily Special presentation.
+
+## 10. MKT-F — Daily Special parent campaign + weekday secondary statistics
+
+State: **LOCAL IMPLEMENTED / USER REVIEW PENDING / CI NOT RUN / WEB-ONLY / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**.
+
+MKT-F changes presentation only. The Reporting contract and each underlying
+`MenuDailySpecial.stableId` remain unchanged. Admin now treats Daily Special as one top-level
+campaign in the Marketing Overview and aggregates the returned weekday-slot metrics into a
+single parent row for Today / 7d / 30d / 90d. The parent row is collapsed by default; an
+explicit expand control reveals the original Monday-through-Sunday rows as second-level
+statistics, including each slot's current configured item and its own evidence coverage.
+
+The parent aggregation preserves the existing metric semantics: uses, affected-item quantity,
+discount covered subtotal, covered/total uses, associated sales, and legacy-sale evidence are
+combined across the weekday slots without rewriting owner facts. Other campaign rows remain
+unchanged and keep their existing lifecycle-management links. The visible ongoing-campaign
+count now counts Daily Special once at the top level rather than once per weekday slot.
+
+Because the existing client container was already above the repository's 500-line review
+threshold and this change adds a hierarchy/table responsibility, the table/metric rendering
+and grouping logic is extracted into `MarketingOverviewCampaignTable.tsx`; the page client
+returns to a smaller data-loading/composition role. No API, persistence, package, context
+boundary, scanner allowance, Accounting, payment, print, or provider behavior changes.

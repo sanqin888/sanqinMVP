@@ -87,16 +87,20 @@ function resolveWindows(
   now: DateTime,
 ): Record<MarketingOverviewWindowKeyV1, ResolvedWindow> {
   const today = now.startOf('day');
-  const quarterMonth = Math.floor((now.month - 1) / 3) * 3 + 1;
-  const quarterStart = now.set({ month: quarterMonth, day: 1 }).startOf('day');
   return {
     today: { fromInclusive: today, toExclusive: now },
     last7Days: {
       fromInclusive: today.minus({ days: 6 }),
       toExclusive: now,
     },
-    month: { fromInclusive: now.startOf('month'), toExclusive: now },
-    quarter: { fromInclusive: quarterStart, toExclusive: now },
+    last30Days: {
+      fromInclusive: today.minus({ days: 29 }),
+      toExclusive: now,
+    },
+    last90Days: {
+      fromInclusive: today.minus({ days: 89 }),
+      toExclusive: now,
+    },
   };
 }
 
@@ -145,12 +149,12 @@ function normalizeUsage(
   couponProgramByCouponStableId: ReadonlyMap<string, string>,
 ): {
   usage: NormalizedCampaignUsage[];
-  unattributedCouponUses: number;
+  unattributedCouponUsageOccurredAt: Date[];
 } {
   const mapped: Array<
     ReportingMarketingUsageFactV1 & { campaignStableId: string }
   > = [];
-  let unattributedCouponUses = 0;
+  const unattributedCouponUsageOccurredAt: Date[] = [];
 
   for (const fact of facts) {
     if (fact.source !== 'COUPON') {
@@ -162,7 +166,7 @@ function normalizeUsage(
       fact.activityStableId,
     );
     if (!programStableId) {
-      unattributedCouponUses += 1;
+      unattributedCouponUsageOccurredAt.push(fact.occurredAt);
       continue;
     }
     mapped.push({ ...fact, campaignStableId: programStableId });
@@ -203,7 +207,7 @@ function normalizeUsage(
     } satisfies NormalizedCampaignUsage;
   });
 
-  return { usage, unattributedCouponUses };
+  return { usage, unattributedCouponUsageOccurredAt };
 }
 
 function summarizeMetric(
@@ -329,12 +333,19 @@ export class MarketingOverviewReportService {
     }
 
     const windows = resolveWindows(now);
+    const readFromInclusive = Object.values(windows).reduce(
+      (earliest, window) =>
+        window.fromInclusive.toMillis() < earliest.toMillis()
+          ? window.fromInclusive
+          : earliest,
+      windows.today.fromInclusive,
+    );
     const [campaigns, ownerUsage] = await Promise.all([
       this.campaigns.readCampaigns({ storeStableId }),
       this.usage.readUsageFactsForRange({
         storeStableId,
-        fromInclusive: windows.quarter.fromInclusive.toUTC().toJSDate(),
-        toExclusive: windows.quarter.toExclusive.toUTC().toJSDate(),
+        fromInclusive: readFromInclusive.toUTC().toJSDate(),
+        toExclusive: now.toUTC().toJSDate(),
       }),
     ]);
 
@@ -425,7 +436,10 @@ export class MarketingOverviewReportService {
       ) as Record<MarketingOverviewWindowKeyV1, MarketingOverviewWindowV1>,
       activities,
       coverage: {
-        unattributedCouponUsesInQuarter: normalized.unattributedCouponUses,
+        unattributedCouponUsesInLast90Days:
+          normalized.unattributedCouponUsageOccurredAt.filter((occurredAt) =>
+            withinWindow(occurredAt, windows.last90Days),
+          ).length,
       },
     };
   }
