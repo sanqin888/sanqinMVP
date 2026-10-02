@@ -209,7 +209,7 @@ describe('AccountingCloverFeeReclassificationService', () => {
     );
   });
 
-  it('does not reclassify a statement that already credits the fee payable account', async () => {
+  it('reports NOOP when the statement already uses the dedicated fee payable account', async () => {
     const { service, prisma } = makeService();
     prisma.accountingJournalEntry.findMany.mockResolvedValue([
       {
@@ -220,6 +220,43 @@ describe('AccountingCloverFeeReclassificationService', () => {
             creditCents: 9839,
             account: {
               accountStableId: CLOVER_FEE_PAYABLE_ACCOUNT_STABLE_ID,
+            },
+          },
+          ...originalJournal.lines.slice(1),
+        ],
+      },
+    ]);
+
+    const preview = await service.preview(document.documentStableId);
+    expect(preview).toEqual(
+      expect.objectContaining({
+        status: 'NOOP',
+        blockReasons: [],
+        originalJournalEntryStableId: originalJournal.entryStableId,
+        existingCorrectionJournalEntryStableId: null,
+        amountCents: 0,
+      }),
+    );
+  });
+
+  it('still fails closed when fee payable is mixed with another credit account', async () => {
+    const { service, prisma } = makeService();
+    prisma.accountingJournalEntry.findMany.mockResolvedValue([
+      {
+        ...originalJournal,
+        lines: [
+          {
+            debitCents: 0,
+            creditCents: 9000,
+            account: {
+              accountStableId: CLOVER_FEE_PAYABLE_ACCOUNT_STABLE_ID,
+            },
+          },
+          {
+            debitCents: 0,
+            creditCents: 839,
+            account: {
+              accountStableId: 'account_unexpected_liability',
             },
           },
           ...originalJournal.lines.slice(1),

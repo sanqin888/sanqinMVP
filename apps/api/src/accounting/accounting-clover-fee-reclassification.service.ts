@@ -234,6 +234,65 @@ export class AccountingCloverFeeReclassificationService {
     );
     const pending = accountByStableId.get(CLOVER_PENDING_ACCOUNT_STABLE_ID);
     const payable = accountByStableId.get(CLOVER_FEE_PAYABLE_ACCOUNT_STABLE_ID);
+    const pendingInvalid =
+      pending !== undefined &&
+      (pending.accountClass !== AccountingAccountClass.ASSET ||
+        pending.type !== AccountingAccountType.PLATFORM_WALLET ||
+        pending.currency !== 'CAD' ||
+        !pending.isActive);
+    const payableInvalid =
+      payable !== undefined &&
+      (payable.accountClass !== AccountingAccountClass.LIABILITY ||
+        payable.type !== null ||
+        payable.currency !== 'CAD' ||
+        !payable.isActive);
+    const pendingTouched = original.lines.some(
+      (line) =>
+        line.account.accountStableId === CLOVER_PENDING_ACCOUNT_STABLE_ID &&
+        (line.debitCents !== 0 || line.creditCents !== 0),
+    );
+    const feePayableCreditCents = original.lines
+      .filter(
+        (line) =>
+          line.account.accountStableId === CLOVER_FEE_PAYABLE_ACCOUNT_STABLE_ID,
+      )
+      .reduce((sum, line) => sum + line.creditCents, 0);
+    const feePayableDebitCents = original.lines
+      .filter(
+        (line) =>
+          line.account.accountStableId === CLOVER_FEE_PAYABLE_ACCOUNT_STABLE_ID,
+      )
+      .reduce((sum, line) => sum + line.debitCents, 0);
+    const creditsOnlyFeePayable = original.lines.every(
+      (line) =>
+        line.creditCents === 0 ||
+        line.account.accountStableId === CLOVER_FEE_PAYABLE_ACCOUNT_STABLE_ID,
+    );
+    const alreadyCorrectFeePayableJournal =
+      debitCents === creditCents &&
+      !pendingTouched &&
+      feePayableCreditCents > 0 &&
+      feePayableDebitCents === 0 &&
+      creditsOnlyFeePayable &&
+      !hasNonFeeDebit &&
+      pending !== undefined &&
+      !pendingInvalid &&
+      payable !== undefined &&
+      !payableInvalid &&
+      original.currency === document.currency &&
+      original.storeStableId === document.storeStableId;
+
+    if (alreadyCorrectFeePayableJournal) {
+      return this.previewResult({
+        ...base,
+        status: 'NOOP',
+        blockReasons: [],
+        originalJournalEntryStableId: original.entryStableId,
+        existingCorrectionJournalEntryStableId: null,
+        amountCents: 0,
+      });
+    }
+
     const blockReasons = [
       ...(debitCents !== creditCents ? ['ORIGINAL_JOURNAL_UNBALANCED'] : []),
       ...(amountCents <= 0 ? ['NO_LEGACY_PENDING_CREDIT_TO_RECLASSIFY'] : []),
@@ -245,21 +304,9 @@ export class AccountingCloverFeeReclassificationService {
         ? ['ORIGINAL_JOURNAL_ALREADY_USES_FEE_PAYABLE']
         : []),
       ...(!pending ? ['CLOVER_PENDING_ACCOUNT_NOT_PROVISIONED'] : []),
-      ...(pending &&
-      (pending.accountClass !== AccountingAccountClass.ASSET ||
-        pending.type !== AccountingAccountType.PLATFORM_WALLET ||
-        pending.currency !== 'CAD' ||
-        !pending.isActive)
-        ? ['CLOVER_PENDING_ACCOUNT_INVALID']
-        : []),
+      ...(pendingInvalid ? ['CLOVER_PENDING_ACCOUNT_INVALID'] : []),
       ...(!payable ? ['CLOVER_FEE_PAYABLE_ACCOUNT_NOT_PROVISIONED'] : []),
-      ...(payable &&
-      (payable.accountClass !== AccountingAccountClass.LIABILITY ||
-        payable.type !== null ||
-        payable.currency !== 'CAD' ||
-        !payable.isActive)
-        ? ['CLOVER_FEE_PAYABLE_ACCOUNT_INVALID']
-        : []),
+      ...(payableInvalid ? ['CLOVER_FEE_PAYABLE_ACCOUNT_INVALID'] : []),
       ...(original.currency !== document.currency
         ? ['ORIGINAL_JOURNAL_CURRENCY_MISMATCH']
         : []),
