@@ -27,6 +27,12 @@ describe('Clover fee payable correction runtime UI', () => {
     expect(panelSource).toContain('确认真实重分类');
   });
 
+  it('shows an already-correct state without presenting it as a blocked historical correction', () => {
+    expect(panelSource).toContain("preview.status === 'NOOP'");
+    expect(panelSource).toContain('Clover 费用已按新规则入账');
+    expect(panelSource).toContain('无需历史 Pending 修正');
+  });
+
   it('provisions the dedicated fee payable explicitly and describes the balance-sheet-only correction', () => {
     expect(panelSource).toContain('/accounting/setup/provider-fee-clearing');
     expect(panelSource).toContain('CLOVER_FEE_PAYABLE_ACCOUNT_NOT_PROVISIONED');
