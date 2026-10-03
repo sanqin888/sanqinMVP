@@ -118,9 +118,7 @@ describe('Accounting double-entry journal ownership boundary', () => {
   it('pins the External Sales B2 CoA migration to UUID-preserving, fail-closed semantics', () => {
     const migration = read(EXTERNAL_SALES_B2_COA_MIGRATION);
 
-    expect(migration).toContain(
-      "'account_platform_commission_expense'",
-    );
+    expect(migration).toContain("'account_platform_commission_expense'");
     expect(migration).toContain("'account_commission_expense'");
     expect(migration).toContain("'account_accounts_receivable'");
     expect(migration).toContain("'平台佣金'");
@@ -130,25 +128,15 @@ describe('Accounting double-entry journal ownership boundary', () => {
     expect(migration).toContain("'ASSET'");
     expect(migration).toContain('"currency" = \'CAD\'');
     expect(migration).toContain('"isActive" = true');
-    expect(migration).toContain(
-      'WHERE "id" = legacy_commission_id',
-    );
+    expect(migration).toContain('WHERE "id" = legacy_commission_id');
     expect(migration).toContain(
       'post_journal_line_count <> legacy_journal_line_count',
     );
     expect(migration).toContain('RAISE EXCEPTION');
-    expect(migration).not.toContain(
-      'UPDATE "AccountingJournalLine"',
-    );
-    expect(migration).not.toContain(
-      'UPDATE "AccountingJournalEntry"',
-    );
-    expect(migration).not.toContain(
-      'INSERT INTO "AccountingJournalEntry"',
-    );
-    expect(migration).not.toContain(
-      'INSERT INTO "AccountingJournalLine"',
-    );
+    expect(migration).not.toContain('UPDATE "AccountingJournalLine"');
+    expect(migration).not.toContain('UPDATE "AccountingJournalEntry"');
+    expect(migration).not.toContain('INSERT INTO "AccountingJournalEntry"');
+    expect(migration).not.toContain('INSERT INTO "AccountingJournalLine"');
     expect(migration).not.toContain('ON CONFLICT');
     expect(migration).not.toContain('DROP ');
   });
