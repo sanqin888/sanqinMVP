@@ -1,8 +1,8 @@
 # Accounting External Sales Plan
 
-Status: **SLICE A/B1/B2 MERGED; B2 PR #2656 / MERGE `4ce9c6aa` / CI #6777 GREEN; SLICE C1 SALE RECOGNITION LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION**  
+Status: **SLICE A/B1/B2/C1 MERGED; C1 PR #2657 / MERGE `d412f4be` / CI #6780 GREEN; SLICE C2 SETTLEMENT LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION**  
 Date: 2026-10-02  
-Slice C1 implementation base: `origin/dev@4ce9c6aa`  
+Slice C2 implementation base: `origin/dev@d412f4be`  
 Owner: **Accounting / Reporting / Analytics**
 
 ## 1. Purpose
@@ -315,9 +315,7 @@ purpose-specific authority and one reviewable atomic write path.
 
 #### Slice C1 — Sale Recognition
 
-State: **LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION** on
-`feat/accounting-external-sales-slice-c-write-authority` from
-`origin/dev@4ce9c6aa`.
+State: **MERGED / PR #2657 / FINAL HEAD `ebb13b22` / MERGE `d412f4be` / CI #6780 GREEN / NO MIGRATION**.
 
 C1 activates only `POST /accounting/external-sales` for ADMIN/ACCOUNTANT. It
 normalizes the frozen v1 commercial fact and writes, inside one Serializable
@@ -358,10 +356,73 @@ attachment UX or Web UI.
 
 #### Slice C2 — Settlement
 
-Add Serializable Settlement persistence + receivable allocation validation +
-purpose-specific Settlement Journal authority. Settlement components must use a
-policy-controlled active CAD account set; this is where bank/cash collection,
-commission expense and recoverable commission tax become runtime-active.
+State: **LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO SALES
+ANALYTICS CUTOVER** on `feat/accounting-external-sales-slice-c2-settlement`
+from `origin/dev@d412f4be`.
+
+C2 activates `POST /accounting/external-sales/settlements` for
+ADMIN/ACCOUNTANT and writes, inside one Serializable transaction:
+
+1. the durable Settlement plus Allocation/Component facts;
+2. frozen receivable prerequisites for every allocated External Sale;
+3. a purpose-specific `EXTERNAL_SALE_SETTLEMENT` Journal authority;
+4. the STANDARD canonical Journal that debits settlement components and credits
+   Accounts Receivable;
+5. the Settlement `journalEntryStableId` anchor; and
+6. an `EXTERNAL_SALE_SETTLEMENT_POST` Accounting audit record.
+
+The original receivable amount is **not** recomputed from mutable commercial
+source rows. C2 reads the already-recognized Sale canonical Journal and freezes
+the exact positive `account_accounts_receivable` debit as financial authority.
+The Sale Journal must be live, source=`EXTERNAL_SALE`,
+sourceFactType=`accounting.external_sale.v1`, and anchored to the allocated
+Sale. Existing live Settlement allocations are subtracted from that Journal
+receivable before the new allocation is accepted.
+
+The Settlement authority freezes, and the Journal writer rechecks inside the
+same transaction:
+
+- Sale stable ID, Store, counterparty, currency, occurred date, factHash and
+  original Sale Journal anchor;
+- total canonical receivable, already-settled amount and outstanding-before;
+- the exact allocation amount;
+- every selected component account's active CAD class/type shape.
+
+This makes partial and multi-sale settlements possible while preventing
+over-settlement. Concurrent writers reuse the existing Serializable/P2034 retry
+path; after a serialization retry the outstanding balance is recalculated from
+the newly committed allocations.
+
+Runtime component policy is fail-closed:
+
+- collection account: any active CAD ASSET with type BANK or CASH;
+- `account_hst_recoverable`: active CAD ASSET, `type=null`;
+- settlement expense allowlist:
+  `account_commission_expense`,
+  `account_general_operating_expense`,
+  `account_platform_promotion_expense`,
+  `account_advertising_expense`,
+  `account_payment_processing_fee_expense`, and
+  `account_chargeback_adjustment_expense`;
+- PLATFORM_WALLET, revenue, liability, equity, payroll expense and arbitrary
+  accounts are rejected;
+- recoverable HST requires an allowed settlement-expense component and cannot
+  exceed the settlement expense principal.
+
+Reversed allocations do not consume outstanding receivable. An unanchored prior
+Settlement fails closed, and an exact-id replay that finds a persisted Settlement
+without a Journal anchor also requires manual review rather than auto-repair.
+Settlement date cannot precede the Sale, and all
+allocations in v1 must match the Settlement Store/counterparty/CAD identity.
+Replacement input remains blocked until C3.
+
+Financial Reports are made source-aware at this runtime gate: provider statement
+commission keeps the existing `expense_platform_fee` fallback, while
+External-Sale-Settlement commission/payment-processing expense uses the existing
+`expense_other` fallback so it is not mislabeled as platform commission.
+Detailed account identity remains the generic commission/processing account.
+External Sale/Settlement remains outside the canonical Sales Analytics whitelist
+until Slice D.
 
 #### Slice C3 — Reversal / Correction
 
