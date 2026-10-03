@@ -370,7 +370,7 @@ describe('AccountingFinancialReportsService canonical fact characterization', ()
         ]),
       },
       accountingInboxItem: {
-        count: jest.fn().mockResolvedValue(0),
+        findMany: jest.fn().mockResolvedValue([]),
       },
       accountingPeriodClose: {
         findFirst: jest.fn().mockResolvedValue(null),

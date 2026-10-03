@@ -90,8 +90,17 @@ export function latestParse(
 export function expenseReviewParse(
   item: AccountingInboxItem,
 ): AccountingInboxParseResult {
+  const gmailPrimarySource =
+    item.gmailMessage?.primaryExpenseSourceInboxItemStableId == null
+      ? null
+      : item.gmailMessage.evidence.find(
+          (evidence) =>
+            evidence.inboxItemStableId ===
+            item.gmailMessage?.primaryExpenseSourceInboxItemStableId,
+        ) ?? null;
   return (
     item.expenseEvidenceSource?.artifact.parseRuns[0]?.resultJson ??
+    gmailPrimarySource?.artifact.parseRuns[0]?.resultJson ??
     latestParse(item)
   );
 }

@@ -199,6 +199,115 @@ export async function setInboxClassificationInTx(
   };
 }
 
+export async function confirmOtherGmailInboxItemsInTx(
+  tx: AccountingTx,
+  input: {
+    primaryInboxItemStableId: string;
+    inboxItemStableIds: string[];
+    operatorUserStableId: string;
+  },
+) {
+  const stableIds = [...new Set(input.inboxItemStableIds.filter(Boolean))];
+  if (!stableIds.length) {
+    throw new AccountingInboxWriterConflictError(
+      'gmail inbox group has no reviewable evidence',
+    );
+  }
+  const rows = await tx.accountingInboxItem.findMany({
+    where: { inboxItemStableId: { in: stableIds } },
+    select: {
+      id: true,
+      inboxItemStableId: true,
+      status: true,
+      classification: true,
+      selectedProvider: true,
+      materializedEntityType: true,
+      materializedEntityStableId: true,
+      expenseEvidenceNotificationLink: { select: { linkStableId: true } },
+      expenseEvidenceSourceLink: { select: { linkStableId: true } },
+      artifact: { select: { acquisitionMode: true } },
+    },
+  });
+  if (rows.length !== stableIds.length) {
+    throw new AccountingInboxWriterNotFoundError(
+      'gmail inbox group evidence not found',
+    );
+  }
+  const primary = rows.find(
+    (row) => row.inboxItemStableId === input.primaryInboxItemStableId,
+  );
+  if (!primary) {
+    throw new AccountingInboxWriterNotFoundError(
+      'gmail inbox group primary item not found',
+    );
+  }
+  if (primary.classification !== AccountingInboxClassification.OTHER_DOCUMENT) {
+    throw new AccountingInboxWriterConflictError(
+      'gmail inbox group primary item must be classified as other evidence',
+    );
+  }
+  for (const row of rows) {
+    if (
+      row.status !== AccountingInboxStatus.PENDING_REVIEW ||
+      row.selectedProvider ||
+      row.materializedEntityType ||
+      row.materializedEntityStableId ||
+      row.expenseEvidenceNotificationLink ||
+      row.expenseEvidenceSourceLink ||
+      row.artifact.acquisitionMode ===
+        AccountingArtifactAcquisitionMode.PROVIDER_API ||
+      row.classification ===
+        AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT
+    ) {
+      throw new AccountingInboxWriterConflictError(
+        'gmail inbox group cannot be confirmed as other evidence',
+      );
+    }
+  }
+
+  const reviewedAt = new Date();
+  const updated = await tx.accountingInboxItem.updateMany({
+    where: {
+      id: { in: rows.map((row) => row.id) },
+      status: AccountingInboxStatus.PENDING_REVIEW,
+      selectedProvider: null,
+      materializedEntityType: null,
+      materializedEntityStableId: null,
+    },
+    data: {
+      status: AccountingInboxStatus.CONFIRMED,
+      classification: AccountingInboxClassification.OTHER_DOCUMENT,
+      reviewedAt,
+      reviewedByUserStableId: input.operatorUserStableId,
+      version: { increment: 1 },
+    },
+  });
+  if (updated.count !== rows.length) {
+    throw new AccountingInboxWriterConflictError(
+      'gmail inbox group changed during other-document confirmation',
+    );
+  }
+  await tx.accountingAuditLog.create({
+    data: {
+      action: 'CONFIRM_GMAIL_OTHER_DOCUMENT',
+      entityType: 'ACCOUNTING_INBOX_ITEM',
+      entityId: input.primaryInboxItemStableId,
+      operatorActorRef: input.operatorUserStableId,
+      afterJson: {
+        inboxItemStableIds: rows.map((row) => row.inboxItemStableId),
+        classification: AccountingInboxClassification.OTHER_DOCUMENT,
+        reviewedAt: reviewedAt.toISOString(),
+      } as Prisma.InputJsonValue,
+    },
+  });
+  return {
+    inboxItemStableId: input.primaryInboxItemStableId,
+    confirmed: true,
+    replayed: false,
+    groupedInboxItemStableIds: rows.map((row) => row.inboxItemStableId),
+  };
+}
+
 export async function confirmOtherInboxItemInTx(
   tx: AccountingTx,
   inboxItemStableId: string,
