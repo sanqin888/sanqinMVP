@@ -160,7 +160,8 @@ const expectedAccounts = (
   for (const tax of fact.taxes) {
     if (
       !EXTERNAL_SALE_TAX_CODES.has(tax.taxCode) ||
-      tax.liabilityAccountStableId !== ACCOUNTING_EXTERNAL_SALE_TAX_ACCOUNT_STABLE_ID
+      tax.liabilityAccountStableId !==
+        ACCOUNTING_EXTERNAL_SALE_TAX_ACCOUNT_STABLE_ID
     ) {
       throw new AccountingJournalPolicyError(
         `External Sale tax mapping is not allowed: ${tax.taxCode} -> ${tax.liabilityAccountStableId}`,

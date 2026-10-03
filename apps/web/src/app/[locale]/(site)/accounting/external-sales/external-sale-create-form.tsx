@@ -264,7 +264,12 @@ export function ExternalSaleCreateForm({
       onSaved(created.externalSaleStableId);
       if (replacementForExternalSaleStableId) onCancelPrefill();
     } catch (error) {
-      setFeedback(getApiErrorMessage(error));
+      setFeedback(
+        getApiErrorMessage(
+          error,
+          isZh ? '外部销售入账失败。' : 'Failed to post external sale.',
+        ),
+      );
     } finally {
       setBusy(false);
     }

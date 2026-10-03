@@ -63,7 +63,12 @@ export default function ExternalSalesPage() {
       setSettlements(settlementList.settlements);
       setOptions(formOptions);
     } catch (error) {
-      setFeedback(getApiErrorMessage(error));
+      setFeedback(
+        getApiErrorMessage(
+          error,
+          isZh ? '加载外部销售失败。' : 'Failed to load external sales.',
+        ),
+      );
     } finally {
       setLoading(false);
     }
@@ -108,7 +113,12 @@ export default function ExternalSalesPage() {
         setAuditLogs(mergedAudit);
         setView('detail');
       } catch (error) {
-        setFeedback(getApiErrorMessage(error));
+        setFeedback(
+          getApiErrorMessage(
+            error,
+            isZh ? '加载销售详情失败。' : 'Failed to load sale detail.',
+          ),
+        );
       } finally {
         setDetailLoading(false);
       }

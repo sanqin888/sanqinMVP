@@ -83,14 +83,10 @@ describe('Post-modularization External Sales boundary', () => {
     expect(queryPolicy).toContain(
       'projectAccountingExternalSaleSettlementAppliedCents',
     );
-    expect(queryPolicy).toContain(
-      'resolveAccountingExternalSaleReversalState',
-    );
+    expect(queryPolicy).toContain('resolveAccountingExternalSaleReversalState');
 
     expect(queryPersistence).toContain("from '@prisma/client'");
-    expect(queryPersistence).toContain(
-      'ACCOUNTING_EXTERNAL_SALE_QUERY_SELECT',
-    );
+    expect(queryPersistence).toContain('ACCOUNTING_EXTERNAL_SALE_QUERY_SELECT');
     expect(queryPersistence).toContain(
       'ACCOUNTING_EXTERNAL_SALE_SETTLEMENT_QUERY_SELECT',
     );

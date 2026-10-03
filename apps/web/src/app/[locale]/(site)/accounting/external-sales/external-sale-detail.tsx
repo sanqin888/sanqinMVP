@@ -68,7 +68,12 @@ export function ExternalSaleDetail({
       await onRefresh();
       if (correct) onCorrectSale(detail);
     } catch (error) {
-      setFeedback(getApiErrorMessage(error));
+      setFeedback(
+        getApiErrorMessage(
+          error,
+          isZh ? '销售冲销失败。' : 'Failed to reverse external sale.',
+        ),
+      );
     } finally {
       setBusyKey(null);
     }
@@ -99,7 +104,12 @@ export function ExternalSaleDetail({
       await onRefresh();
       if (correct) onCorrectSettlement(settlement);
     } catch (error) {
-      setFeedback(getApiErrorMessage(error));
+      setFeedback(
+        getApiErrorMessage(
+          error,
+          isZh ? '结算冲销失败。' : 'Failed to reverse settlement.',
+        ),
+      );
     } finally {
       setBusyKey(null);
     }

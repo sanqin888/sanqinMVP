@@ -273,7 +273,12 @@ export function ExternalSaleSettlementForm({
       onSaved(created.settlementStableId);
       if (replacementForSettlementStableId) onCancelPrefill();
     } catch (error) {
-      setFeedback(getApiErrorMessage(error));
+      setFeedback(
+        getApiErrorMessage(
+          error,
+          isZh ? '结算入账失败。' : 'Failed to post settlement.',
+        ),
+      );
     } finally {
       setBusy(false);
     }

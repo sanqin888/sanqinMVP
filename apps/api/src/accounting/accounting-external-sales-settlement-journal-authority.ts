@@ -172,8 +172,10 @@ const accountRole = (
     return 'ACCOUNTS_RECEIVABLE';
   }
 
-  if (account.accountStableId ===
-    ACCOUNTING_EXTERNAL_SALE_SETTLEMENT_HST_RECOVERABLE_ACCOUNT_STABLE_ID) {
+  if (
+    account.accountStableId ===
+    ACCOUNTING_EXTERNAL_SALE_SETTLEMENT_HST_RECOVERABLE_ACCOUNT_STABLE_ID
+  ) {
     if (
       account.accountClass !== AccountingAccountClass.ASSET ||
       account.accountType !== null

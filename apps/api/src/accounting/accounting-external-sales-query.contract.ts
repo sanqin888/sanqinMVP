@@ -59,41 +59,42 @@ export type AccountingExternalSaleSettlementListItemV1 = {
   }>;
 };
 
-export type AccountingExternalSaleDetailV1 = AccountingExternalSaleListItemV1 & {
-  periodStartOn: string | null;
-  periodEndOn: string | null;
-  note: string | null;
-  createdByActorRef: string;
-  createdAt: string;
-  lines: Array<{
-    lineStableId: string;
-    description: string;
-    productReference: string | null;
-    quantity: string;
-    unit: string;
-    unitPriceCents: number;
-    lineAmountCents: number;
-    revenueAccountStableId: string;
-    sortOrder: number;
-  }>;
-  adjustments: Array<{
-    adjustmentStableId: string;
-    label: string;
-    amountCents: number;
-    revenueAccountStableId: string;
-    sortOrder: number;
-  }>;
-  taxes: Array<{
-    taxStableId: string;
-    taxCode: string;
-    label: string;
-    rateBasisPoints: number | null;
-    amountCents: number;
-    liabilityAccountStableId: string;
-    sortOrder: number;
-  }>;
-  settlements: AccountingExternalSaleSettlementListItemV1[];
-};
+export type AccountingExternalSaleDetailV1 =
+  AccountingExternalSaleListItemV1 & {
+    periodStartOn: string | null;
+    periodEndOn: string | null;
+    note: string | null;
+    createdByActorRef: string;
+    createdAt: string;
+    lines: Array<{
+      lineStableId: string;
+      description: string;
+      productReference: string | null;
+      quantity: string;
+      unit: string;
+      unitPriceCents: number;
+      lineAmountCents: number;
+      revenueAccountStableId: string;
+      sortOrder: number;
+    }>;
+    adjustments: Array<{
+      adjustmentStableId: string;
+      label: string;
+      amountCents: number;
+      revenueAccountStableId: string;
+      sortOrder: number;
+    }>;
+    taxes: Array<{
+      taxStableId: string;
+      taxCode: string;
+      label: string;
+      rateBasisPoints: number | null;
+      amountCents: number;
+      liabilityAccountStableId: string;
+      sortOrder: number;
+    }>;
+    settlements: AccountingExternalSaleSettlementListItemV1[];
+  };
 
 export type AccountingExternalSalesListV1 = {
   version: 1;

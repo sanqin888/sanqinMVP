@@ -119,7 +119,9 @@ export class AccountingExternalSalesQueryService {
     externalSaleStableIdRaw: string,
   ): Promise<AccountingExternalSaleDetailV1> {
     const externalSaleStableId = externalSaleStableIdRaw.trim();
-    if (!externalSaleStableId) throw new NotFoundException('External Sale not found');
+    if (!externalSaleStableId) {
+      throw new NotFoundException('External Sale not found');
+    }
     const store = await this.storeConfig.getConfiguredStoreSnapshot();
     const row = await this.prisma.accountingExternalSale.findUnique({
       where: { externalSaleStableId },
@@ -443,7 +445,10 @@ export class AccountingExternalSalesQueryService {
     row: SaleQueryRow,
     journal: SaleJournalRow | undefined,
     settlementJournalById: Map<string, SettlementJournalRow>,
-    reversalJournalById: Map<string, AccountingExternalSalesQueryJournalIdentityV1>,
+    reversalJournalById: Map<
+      string,
+      AccountingExternalSalesQueryJournalIdentityV1
+    >,
   ): AccountingExternalSaleListItemV1 {
     const totalReceivableCents = runQueryPolicy(() =>
       projectAccountingExternalSaleReceivableCents({
@@ -524,7 +529,8 @@ export class AccountingExternalSalesQueryService {
         );
       }
       const matchingAllocation = settlement.allocations.find(
-        (item) => item.externalSale.externalSaleStableId === row.externalSaleStableId,
+        (item) =>
+          item.externalSale.externalSaleStableId === row.externalSaleStableId,
       );
       if (!matchingAllocation) {
         throw new ConflictException(
@@ -562,7 +568,9 @@ export class AccountingExternalSalesQueryService {
       storeStableId: row.storeStableId,
       classificationStableId: row.classificationStableId,
       granularity: row.granularity,
-      occurredOn: accountingExternalSalesQueryDateOnly(row.occurredOn) as string,
+      occurredOn: accountingExternalSalesQueryDateOnly(
+        row.occurredOn,
+      ) as string,
       counterpartyName: row.counterpartyName,
       reference: row.reference,
       currency: 'CAD',
@@ -584,7 +592,10 @@ export class AccountingExternalSalesQueryService {
   private toSettlementListItem(
     row: SettlementQueryRow,
     journal: SettlementJournalRow | undefined,
-    reversalJournalById: Map<string, AccountingExternalSalesQueryJournalIdentityV1>,
+    reversalJournalById: Map<
+      string,
+      AccountingExternalSalesQueryJournalIdentityV1
+    >,
   ): AccountingExternalSaleSettlementListItemV1 {
     const appliedReceivableCents = runQueryPolicy(() =>
       projectAccountingExternalSaleSettlementAppliedCents({
@@ -619,7 +630,9 @@ export class AccountingExternalSalesQueryService {
     return {
       settlementStableId: row.settlementStableId,
       storeStableId: row.storeStableId,
-      settlementOn: accountingExternalSalesQueryDateOnly(row.settlementOn) as string,
+      settlementOn: accountingExternalSalesQueryDateOnly(
+        row.settlementOn,
+      ) as string,
       counterpartyName: row.counterpartyName,
       reference: row.reference,
       currency: 'CAD',

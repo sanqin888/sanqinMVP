@@ -20,9 +20,7 @@ const STORE = {
   timezone: 'America/Toronto',
 };
 
-const settlementRow = (
-  overrides: Record<string, unknown> = {},
-) => ({
+const settlementRow = (overrides: Record<string, unknown> = {}) => ({
   settlementStableId: 'extsettlement_live',
   storeStableId: STORE.storeStableId,
   settlementOn: new Date('2026-06-20T00:00:00.000Z'),
@@ -59,7 +57,9 @@ const settlementRow = (
 });
 
 const saleRow = (
-  settlementAllocations: Array<{ settlement: ReturnType<typeof settlementRow> }>,
+  settlementAllocations: Array<{
+    settlement: ReturnType<typeof settlementRow>;
+  }>,
   overrides: Record<string, unknown> = {},
 ) => ({
   externalSaleStableId: 'extsale_1',
@@ -180,29 +180,31 @@ function makeService(input: {
   settlementJournals?: unknown[];
   reversalJournals?: unknown[];
 }) {
-  const journalFindMany = jest.fn().mockImplementation(
-    (query: { where?: { entryStableId?: { in?: string[] } } }) => {
-      const ids = query.where?.entryStableId?.in ?? [];
-      if (ids.includes(saleJournal.entryStableId)) {
-        return Promise.resolve([saleJournal]);
-      }
-      return Promise.resolve(
-        [
-          ...(input.settlementJournals ?? []),
-          ...(input.reversalJournals ?? []),
-        ].filter((journal) => {
-          if (
-            typeof journal !== 'object' ||
-            journal === null ||
-            !('entryStableId' in journal)
-          ) {
-            return false;
-          }
-          return ids.includes(String(journal.entryStableId));
-        }),
-      );
-    },
-  );
+  const journalFindMany = jest
+    .fn()
+    .mockImplementation(
+      (query: { where?: { entryStableId?: { in?: string[] } } }) => {
+        const ids = query.where?.entryStableId?.in ?? [];
+        if (ids.includes(saleJournal.entryStableId)) {
+          return Promise.resolve([saleJournal]);
+        }
+        return Promise.resolve(
+          [
+            ...(input.settlementJournals ?? []),
+            ...(input.reversalJournals ?? []),
+          ].filter((journal) => {
+            if (
+              typeof journal !== 'object' ||
+              journal === null ||
+              !('entryStableId' in journal)
+            ) {
+              return false;
+            }
+            return ids.includes(String(journal.entryStableId));
+          }),
+        );
+      },
+    );
   const prisma = {
     accountingExternalSale: {
       findMany: jest.fn().mockResolvedValue(input.sales),
@@ -246,18 +248,16 @@ describe('AccountingExternalSalesQueryService', () => {
       ],
     });
     const { service } = makeService({
-      sales: [
-        saleRow([{ settlement: live }, { settlement: reversed }]),
-      ],
+      sales: [saleRow([{ settlement: live }, { settlement: reversed }])],
       settlementJournals: [
         settlementJournal(
           live.settlementStableId,
-          live.journalEntryStableId as string,
+          live.journalEntryStableId,
           500,
         ),
         settlementJournal(
-          reversed.settlementStableId as string,
-          reversed.journalEntryStableId as string,
+          reversed.settlementStableId,
+          reversed.journalEntryStableId,
           200,
         ),
       ],
@@ -290,7 +290,7 @@ describe('AccountingExternalSalesQueryService', () => {
       settlementJournals: [
         settlementJournal(
           settlement.settlementStableId,
-          settlement.journalEntryStableId as string,
+          settlement.journalEntryStableId,
           500,
         ),
       ],
@@ -322,7 +322,7 @@ describe('AccountingExternalSalesQueryService', () => {
       settlementJournals: [
         settlementJournal(
           settlement.settlementStableId,
-          settlement.journalEntryStableId as string,
+          settlement.journalEntryStableId,
           400,
         ),
       ],
@@ -508,18 +508,12 @@ describe('AccountingExternalSalesQueryService', () => {
     const options = await service.formOptions();
 
     expect(options.store).toEqual(STORE);
-    expect(options.classificationSuggestions).toEqual([
-      'external_wholesale',
-    ]);
-    expect(options.sale.lineRevenueAccounts.map((row) => row.accountStableId))
-      .toEqual([
-        'account_sales_revenue',
-        'account_other_operating_revenue',
-      ]);
+    expect(options.classificationSuggestions).toEqual(['external_wholesale']);
     expect(
-      options.settlement.collectionAccounts.map(
-        (row) => row.accountStableId,
-      ),
+      options.sale.lineRevenueAccounts.map((row) => row.accountStableId),
+    ).toEqual(['account_sales_revenue', 'account_other_operating_revenue']);
+    expect(
+      options.settlement.collectionAccounts.map((row) => row.accountStableId),
     ).toEqual(['account_bank', 'account_cash']);
     expect(
       options.settlement.collectionAccounts.some(
