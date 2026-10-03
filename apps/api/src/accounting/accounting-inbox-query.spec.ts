@@ -40,33 +40,68 @@ describe('Accounting Inbox exact materialized-entity filter', () => {
     );
   });
 
-  it('uses the same NULL-safe visibility filter for the pending review count', async () => {
-    const count = jest.fn().mockResolvedValue(0);
+  it('uses the same NULL-safe visibility filter and counts one Gmail message once', async () => {
+    const findMany = jest.fn().mockResolvedValue([
+      {
+        inboxItemStableId: 'acctinbox_body',
+        status: AccountingInboxStatus.PENDING_REVIEW,
+        classification: AccountingInboxClassification.UNKNOWN,
+        selectedProvider: null,
+        materializedEntityType: null,
+        materializedEntityStableId: null,
+        artifact: {
+          acquisitionMode: 'EMAIL',
+          kind: 'EMAIL_BODY',
+          storedUrl: null,
+          metadataJson: { gmailMessageId: 'gmail-1' },
+          parseRuns: [{ resultJson: {} }],
+        },
+      },
+      {
+        inboxItemStableId: 'acctinbox_pdf',
+        status: AccountingInboxStatus.PENDING_REVIEW,
+        classification: AccountingInboxClassification.UNKNOWN,
+        selectedProvider: null,
+        materializedEntityType: null,
+        materializedEntityStableId: null,
+        artifact: {
+          acquisitionMode: 'EMAIL',
+          kind: 'PDF',
+          storedUrl: '/api/v1/accounting/files/inbox/invoice.pdf',
+          metadataJson: { gmailMessageId: 'gmail-1' },
+          parseRuns: [{ resultJson: {} }],
+        },
+      },
+    ]);
     const client = {
-      accountingInboxItem: { count },
+      accountingInboxItem: { findMany },
     };
 
-    await countAccountingInboxReviewItems(client as never);
+    await expect(
+      countAccountingInboxReviewItems(client as never),
+    ).resolves.toBe(1);
 
-    expect(count).toHaveBeenCalledWith({
-      where: {
-        status: {
-          in: [
-            AccountingInboxStatus.PENDING_REVIEW,
-            AccountingInboxStatus.QUARANTINED,
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          status: {
+            in: [
+              AccountingInboxStatus.PENDING_REVIEW,
+              AccountingInboxStatus.QUARANTINED,
+            ],
+          },
+          expenseEvidenceSourceLink: { is: null },
+          OR: [
+            { materializedEntityType: null },
+            {
+              materializedEntityType: {
+                not: AccountingInboxMaterializedEntityType.EXPENSE_DOCUMENT,
+              },
+            },
           ],
         },
-        expenseEvidenceSourceLink: { is: null },
-        OR: [
-          { materializedEntityType: null },
-          {
-            materializedEntityType: {
-              not: AccountingInboxMaterializedEntityType.EXPENSE_DOCUMENT,
-            },
-          },
-        ],
-      },
-    });
+      }),
+    );
   });
 
   it('keeps a source-document deep-link independent of the bounded inbox window', async () => {

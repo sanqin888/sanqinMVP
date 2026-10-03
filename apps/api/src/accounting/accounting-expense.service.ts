@@ -24,10 +24,12 @@ import { runSerializableAccountingWrite } from './accounting-atomic-write';
 import { writeAccountingAuditLog } from './accounting-audit-writer';
 import { ACCOUNTING_DB, type AccountingDb } from './accounting-db';
 import {
+  closeGmailMessageSupportingEvidenceInTx,
   linkAndConfirmInboxExpenseInTx,
   markInboxExpenseConfirmedInTx,
   markInboxExpenseReviewStartedInTx,
   materializeInboxExpenseInTx,
+  prepareGmailExpenseSourceInTx,
 } from './accounting-inbox-expense.writer';
 import { assessAccountingExpenseEvidenceReadiness } from './accounting-expense-evidence.policy';
 import {
@@ -38,8 +40,13 @@ import { normalizeAccountingInboxExpenseMaterialization } from './accounting-inb
 import {
   accountingJsonRecord,
   accountingOptionalString,
+  readAccountingGmailMessageInboxMembers,
   readAccountingInboxExpenseContext,
 } from './accounting-inbox-query';
+import {
+  accountingGmailMessageId,
+  selectAccountingGmailPrimaryExpenseSource,
+} from './accounting-inbox-gmail-grouping.policy';
 import { AccountingPeriodService } from './accounting-period.service';
 import type {
   AccountingExpenseInput,
@@ -244,25 +251,46 @@ export class AccountingExpenseService {
 
         const linkedSource =
           inbox.expenseEvidenceNotificationLink?.sourceInboxItem ?? null;
+        const gmailMessageId = accountingGmailMessageId(
+          inbox.artifact.metadataJson,
+        );
+        const gmailMembers =
+          !linkedSource && gmailMessageId
+            ? await readAccountingGmailMessageInboxMembers(tx, gmailMessageId)
+            : [];
+        const gmailPrimarySelection =
+          !linkedSource && gmailMembers.length > 1
+            ? selectAccountingGmailPrimaryExpenseSource(gmailMembers)
+            : { source: null, ambiguous: false };
+        if (gmailPrimarySelection.ambiguous) {
+          throw new ConflictException(
+            'multiple Gmail attachments could be expense source evidence; review them separately',
+          );
+        }
+        const gmailPrimarySource = gmailPrimarySelection.source;
+        const effectiveEvidenceSource = linkedSource ?? gmailPrimarySource;
         const notificationExtraction = accountingJsonRecord(
           inbox.artifact.parseRuns[0]?.resultJson,
         );
-        const linkedExtraction = linkedSource
-          ? accountingJsonRecord(linkedSource.artifact.parseRuns[0]?.resultJson)
+        const effectiveEvidenceExtraction = effectiveEvidenceSource
+          ? accountingJsonRecord(
+              effectiveEvidenceSource.artifact.parseRuns[0]?.resultJson,
+            )
           : null;
         const evidenceReadiness = assessAccountingExpenseEvidenceReadiness({
           artifact: inbox.artifact,
           extraction: notificationExtraction,
-          linkedSource: linkedSource
+          linkedSource: effectiveEvidenceSource
             ? {
-                status: linkedSource.status,
-                classification: linkedSource.classification,
-                selectedProvider: linkedSource.selectedProvider,
-                materializedEntityType: linkedSource.materializedEntityType,
+                status: effectiveEvidenceSource.status,
+                classification: effectiveEvidenceSource.classification,
+                selectedProvider: effectiveEvidenceSource.selectedProvider,
+                materializedEntityType:
+                  effectiveEvidenceSource.materializedEntityType,
                 materializedEntityStableId:
-                  linkedSource.materializedEntityStableId,
-                artifact: linkedSource.artifact,
-                extraction: linkedExtraction,
+                  effectiveEvidenceSource.materializedEntityStableId,
+                artifact: effectiveEvidenceSource.artifact,
+                extraction: effectiveEvidenceExtraction,
               }
             : null,
         });
@@ -272,10 +300,10 @@ export class AccountingExpenseService {
           );
         }
 
-        const effectiveInbox = linkedSource ?? inbox;
+        const effectiveInbox = effectiveEvidenceSource ?? inbox;
         const effectiveArtifact = effectiveInbox.artifact;
-        const extraction = linkedSource
-          ? (linkedExtraction ?? {})
+        const extraction = effectiveEvidenceSource
+          ? (effectiveEvidenceExtraction ?? {})
           : notificationExtraction;
         if (effectiveArtifact.acquisitionMode === 'PROVIDER_API') {
           throw new ConflictException(
@@ -311,6 +339,16 @@ export class AccountingExpenseService {
           extractedDate && /^\d{4}-\d{2}-\d{2}(?:$|T)/.test(extractedDate)
             ? extractedDate
             : null;
+        if (
+          gmailPrimarySource &&
+          gmailPrimarySource.inboxItemStableId !== inboxItemStableId
+        ) {
+          await prepareGmailExpenseSourceInTx(
+            tx,
+            gmailPrimarySource.inboxItemStableId,
+          );
+        }
+
         const normalized = normalizeAccountingInboxExpenseMaterialization({
           artifactStableId: effectiveArtifact.artifactStableId,
           source:
@@ -334,8 +372,8 @@ export class AccountingExpenseService {
           extractionJson: extraction,
         });
         const result = await materializeInboxExpenseInTx(tx, normalized);
-        const sourceInboxItemStableId = linkedSource
-          ? linkedSource.inboxItemStableId
+        const sourceInboxItemStableId = effectiveEvidenceSource
+          ? effectiveEvidenceSource.inboxItemStableId
           : inboxItemStableId;
         await markInboxExpenseReviewStartedInTx(
           tx,
@@ -348,6 +386,25 @@ export class AccountingExpenseService {
           await closeExpenseNotificationForReviewInTx(tx, {
             notificationInboxItemStableId: inboxItemStableId,
             sourceInboxItemStableId: linkedSource.inboxItemStableId,
+            documentStableId: result.documentStableId,
+            operatorUserStableId,
+          });
+        } else if (gmailPrimarySource) {
+          const supportingInboxItemStableIds = gmailMembers
+            .filter(
+              (member) =>
+                member.inboxItemStableId !==
+                  gmailPrimarySource.inboxItemStableId &&
+                member.status === AccountingInboxStatus.PENDING_REVIEW &&
+                !member.selectedProvider &&
+                !member.materializedEntityType &&
+                !member.materializedEntityStableId &&
+                member.classification !==
+                  AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
+            )
+            .map((member) => member.inboxItemStableId);
+          await closeGmailMessageSupportingEvidenceInTx(tx, {
+            inboxItemStableIds: supportingInboxItemStableIds,
             documentStableId: result.documentStableId,
             operatorUserStableId,
           });
@@ -436,6 +493,20 @@ export class AccountingExpenseService {
       }
       const linkedSource =
         inbox.expenseEvidenceNotificationLink?.sourceInboxItem ?? null;
+      const directConfirmGmailMessageId = accountingGmailMessageId(
+        inbox.artifact.metadataJson,
+      );
+      if (!linkedSource && directConfirmGmailMessageId) {
+        const gmailMembers = await readAccountingGmailMessageInboxMembers(
+          tx,
+          directConfirmGmailMessageId,
+        );
+        if (gmailMembers.length > 1) {
+          throw new ConflictException(
+            'grouped Gmail expense evidence must enter review through the message-level review handoff',
+          );
+        }
+      }
       const notificationExtraction = accountingJsonRecord(
         inbox.artifact.parseRuns[0]?.resultJson,
       );

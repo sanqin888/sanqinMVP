@@ -193,6 +193,7 @@ describe('AccountingExpenseService provider-financial expense guard', () => {
   it('keeps a bill-notification email in Pending until formal source evidence is supplied', async () => {
     const prisma = withTransaction({
       accountingInboxItem: {
+        findMany: jest.fn().mockResolvedValue([]),
         findUnique: jest.fn().mockResolvedValue({
           status: AccountingInboxStatus.PENDING_REVIEW,
           classification: AccountingInboxClassification.EXPENSE_DOCUMENT,
@@ -249,6 +250,7 @@ describe('AccountingExpenseService provider-financial expense guard', () => {
   it('rejects a bill-notification email even when the operator supplies balanced booking values', async () => {
     const prisma = withTransaction({
       accountingInboxItem: {
+        findMany: jest.fn().mockResolvedValue([]),
         findUnique: jest.fn().mockResolvedValue({
           status: AccountingInboxStatus.PENDING_REVIEW,
           classification: AccountingInboxClassification.EXPENSE_DOCUMENT,

@@ -104,8 +104,19 @@ export function AccountingInboxItemsList({
         {items.map((item) => {
           const parse = latestParse(item);
           const expenseSource = item.expenseEvidenceSource;
+          const gmailMessage = item.gmailMessage;
+          const gmailPrimaryEvidence =
+            gmailMessage?.primaryExpenseSourceInboxItemStableId == null
+              ? null
+              : gmailMessage.evidence.find(
+                  (member) =>
+                    member.inboxItemStableId ===
+                    gmailMessage.primaryExpenseSourceInboxItemStableId,
+                ) ?? null;
           const expenseParse =
-            expenseSource?.artifact.parseRuns[0]?.resultJson ?? parse;
+            expenseSource?.artifact.parseRuns[0]?.resultJson ??
+            gmailPrimaryEvidence?.artifact.parseRuns[0]?.resultJson ??
+            parse;
           const financial = item.artifact.financialDocument;
           const title =
             item.artifact.emailSubject ||
@@ -188,6 +199,13 @@ export function AccountingInboxItemsList({
                   <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
                     {item.artifact.acquisitionMode} · {item.artifact.kind}
                   </span>
+                  {gmailMessage && gmailMessage.evidence.length > 1 ? (
+                    <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
+                      {isZh
+                        ? `同封邮件 · ${gmailMessage.evidence.length} 份证据`
+                        : `One email · ${gmailMessage.evidence.length} evidence items`}
+                    </span>
+                  ) : null}
                 </div>
                 <p className="mt-1 text-xs text-slate-500">
                   {item.artifact.senderEmail
@@ -577,6 +595,86 @@ export function AccountingInboxItemsList({
                     ) : null}
                   </div>
                 ) : null}
+                {gmailMessage && gmailMessage.evidence.length > 1 ? (
+                  <div className="mb-3 rounded-lg border border-blue-100 bg-blue-50/40 p-3">
+                    <p className="text-xs font-semibold text-blue-900">
+                      {isZh
+                        ? '同一封 Gmail · 正文与附件合并审核'
+                        : 'One Gmail message · body and attachments grouped'}
+                    </p>
+                    <div className="mt-2 space-y-2">
+                      {gmailMessage.evidence.map((member) => {
+                        const memberTitle =
+                          member.artifact.originalFilename ??
+                          (member.artifact.kind === 'EMAIL_BODY'
+                            ? isZh
+                              ? '邮件正文'
+                              : 'Email body'
+                            : member.artifact.kind);
+                        return (
+                          <div
+                            key={member.inboxItemStableId}
+                            className="rounded border border-blue-100 bg-white px-2.5 py-2 text-xs"
+                          >
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-medium text-slate-800">
+                                {memberTitle}
+                              </span>
+                              {member.isPrimaryExpenseSource ? (
+                                <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700">
+                                  {isZh
+                                    ? '费用主凭证'
+                                    : 'Primary expense source'}
+                                </span>
+                              ) : (
+                                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">
+                                  {isZh ? '辅助证据' : 'Supporting evidence'}
+                                </span>
+                              )}
+                            </div>
+                            {member.artifact.storedUrl ? (
+                              <div className="mt-1">
+                                <AccountingEvidenceViewer
+                                  evidence={{
+                                    artifactStableId:
+                                      member.artifact.artifactStableId,
+                                    filename:
+                                      member.artifact.originalFilename,
+                                    kind: member.artifact.kind,
+                                    deletion: null,
+                                  }}
+                                  isZh={isZh}
+                                  onDeleted={onEvidenceDeleted}
+                                  label={
+                                    member.isPrimaryExpenseSource
+                                      ? isZh
+                                        ? '查看正式账单'
+                                        : 'Open primary bill'
+                                      : isZh
+                                        ? '查看附件'
+                                        : 'Open attachment'
+                                  }
+                                  className="text-blue-600 hover:underline"
+                                />
+                              </div>
+                            ) : member.artifact.bodyText ? (
+                              <details className="mt-1">
+                                <summary className="cursor-pointer text-blue-600">
+                                  {isZh
+                                    ? '查看邮件正文'
+                                    : 'View email body'}
+                                </summary>
+                                <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-xs">
+                                  {member.artifact.bodyText}
+                                </pre>
+                              </details>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
                 {expenseSourceEvidence ? (
                   <div className="mb-2">
                     <AccountingEvidenceViewer
@@ -588,7 +686,7 @@ export function AccountingInboxItemsList({
                     />
                   </div>
                 ) : null}
-                {evidence ? (
+                {!gmailMessage && evidence ? (
                   <AccountingEvidenceViewer
                     evidence={evidence}
                     isZh={isZh}
@@ -596,7 +694,7 @@ export function AccountingInboxItemsList({
                     label={isZh ? '查看证据' : 'Open evidence'}
                     className="text-blue-600 hover:underline"
                   />
-                ) : item.artifact.bodyText ? (
+                ) : !gmailMessage && item.artifact.bodyText ? (
                   <details>
                     <summary className="cursor-pointer text-blue-600">
                       {isZh ? '查看邮件正文' : 'View email body'}

@@ -221,8 +221,44 @@ export type AccountingInboxItem = {
       | 'LINKED_SOURCE_DOCUMENT'
       | 'EMAIL_BILL_NOTIFICATION_ONLY'
       | 'EMAIL_BODY_INSUFFICIENT'
-      | 'LINKED_SOURCE_UNAVAILABLE';
+      | 'LINKED_SOURCE_UNAVAILABLE'
+      | 'GMAIL_ATTACHMENT_DOCUMENT';
   };
+  gmailMessage?: {
+    gmailMessageId: string;
+    primaryExpenseSourceInboxItemStableId: string | null;
+    primaryExpenseSourceAmbiguous: boolean;
+    evidence: Array<{
+      inboxItemStableId: string;
+      status: AccountingInboxStatus;
+      classification: AccountingInboxClassification;
+      selectedProvider: AccountingFinancialProvider | null;
+      materializedEntityType:
+        | 'EXPENSE_DOCUMENT'
+        | 'PROVIDER_FINANCIAL_DOCUMENT'
+        | null;
+      materializedEntityStableId: string | null;
+      isRepresentative: boolean;
+      isPrimaryExpenseSource: boolean;
+      createdAt: string;
+      artifact: {
+        artifactStableId: string;
+        acquisitionMode: 'EMAIL';
+        kind: 'EMAIL_BODY' | 'PDF' | 'IMAGE' | 'CSV' | 'TEXT' | 'OTHER';
+        originalFilename: string | null;
+        storedUrl: string | null;
+        bodyText: string | null;
+        senderEmail: string | null;
+        emailSubject: string | null;
+        parseRuns: Array<{
+          parseRunStableId: string;
+          status: 'PENDING' | 'SUCCESS' | 'ERROR' | 'SKIPPED';
+          resultJson: AccountingInboxParseResult | null;
+          errorMessage: string | null;
+        }>;
+      };
+    }>;
+  } | null;
   expenseEvidenceSource: {
     linkStableId: string;
     linkedAt: string;

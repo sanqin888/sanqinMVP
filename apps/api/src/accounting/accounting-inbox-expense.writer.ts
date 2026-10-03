@@ -174,6 +174,134 @@ export async function readInboxExpenseMaterializationReplay(
   };
 }
 
+export async function prepareGmailExpenseSourceInTx(
+  tx: AccountingTx,
+  inboxItemStableId: string,
+) {
+  const item = await tx.accountingInboxItem.findUnique({
+    where: { inboxItemStableId },
+    select: {
+      id: true,
+      status: true,
+      classification: true,
+      selectedProvider: true,
+      materializedEntityType: true,
+      materializedEntityStableId: true,
+    },
+  });
+  if (!item) {
+    throw new AccountingInboxWriterNotFoundError(
+      'gmail expense source inbox item not found',
+    );
+  }
+  if (
+    item.status !== AccountingInboxStatus.PENDING_REVIEW ||
+    item.selectedProvider ||
+    item.materializedEntityType ||
+    item.materializedEntityStableId ||
+    item.classification ===
+      AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT
+  ) {
+    throw new AccountingInboxWriterConflictError(
+      'gmail expense source is not eligible for expense review',
+    );
+  }
+  if (item.classification === AccountingInboxClassification.EXPENSE_DOCUMENT) {
+    return;
+  }
+  await tx.accountingInboxItem.update({
+    where: { id: item.id },
+    data: {
+      classification: AccountingInboxClassification.EXPENSE_DOCUMENT,
+      version: { increment: 1 },
+    },
+  });
+}
+
+export async function closeGmailMessageSupportingEvidenceInTx(
+  tx: AccountingTx,
+  input: {
+    inboxItemStableIds: string[];
+    documentStableId: string;
+    operatorUserStableId: string;
+  },
+) {
+  const stableIds = [...new Set(input.inboxItemStableIds.filter(Boolean))];
+  if (!stableIds.length) return;
+
+  const rows = await tx.accountingInboxItem.findMany({
+    where: { inboxItemStableId: { in: stableIds } },
+    select: {
+      id: true,
+      inboxItemStableId: true,
+      status: true,
+      classification: true,
+      selectedProvider: true,
+      materializedEntityType: true,
+      materializedEntityStableId: true,
+    },
+  });
+  if (rows.length !== stableIds.length) {
+    throw new AccountingInboxWriterNotFoundError(
+      'gmail supporting evidence inbox item not found',
+    );
+  }
+  for (const row of rows) {
+    if (
+      row.status !== AccountingInboxStatus.PENDING_REVIEW ||
+      row.selectedProvider ||
+      row.materializedEntityType ||
+      row.materializedEntityStableId ||
+      row.classification ===
+        AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT
+    ) {
+      throw new AccountingInboxWriterConflictError(
+        'gmail supporting evidence cannot be closed independently',
+      );
+    }
+  }
+
+  const reviewedAt = new Date();
+  const updated = await tx.accountingInboxItem.updateMany({
+    where: {
+      id: { in: rows.map((row) => row.id) },
+      status: AccountingInboxStatus.PENDING_REVIEW,
+      selectedProvider: null,
+      materializedEntityType: null,
+      materializedEntityStableId: null,
+      classification: {
+        not: AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
+      },
+    },
+    data: {
+      status: AccountingInboxStatus.CONFIRMED,
+      classification: AccountingInboxClassification.OTHER_DOCUMENT,
+      reviewedAt,
+      reviewedByUserStableId: input.operatorUserStableId,
+      version: { increment: 1 },
+    },
+  });
+  if (updated.count !== rows.length) {
+    throw new AccountingInboxWriterConflictError(
+      'gmail supporting evidence changed during expense review handoff',
+    );
+  }
+
+  await tx.accountingAuditLog.create({
+    data: {
+      action: 'BEGIN_GMAIL_EXPENSE_REVIEW',
+      entityType: 'ACCOUNTING_INBOX_ITEM',
+      entityId: rows[0].inboxItemStableId,
+      operatorActorRef: input.operatorUserStableId,
+      afterJson: {
+        documentStableId: input.documentStableId,
+        supportingInboxItemStableIds: rows.map((row) => row.inboxItemStableId),
+        reviewedAt: reviewedAt.toISOString(),
+      } as Prisma.InputJsonValue,
+    },
+  });
+}
+
 export async function markInboxExpenseReviewStartedInTx(
   tx: AccountingTx,
   inboxItemStableId: string,

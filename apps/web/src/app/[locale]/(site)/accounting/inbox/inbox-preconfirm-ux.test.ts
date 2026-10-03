@@ -37,6 +37,19 @@ describe('Accounting Inbox pre-confirm UX closeout', () => {
     expect(pageSource).toContain("method: 'DELETE'");
   });
 
+  it('groups same-message Gmail body and attachments into one review card', () => {
+    const source = readFileSync(
+      resolve(__dirname, 'inbox-items-list.tsx'),
+      'utf8',
+    );
+
+    expect(source).toContain('同一封 Gmail · 正文与附件合并审核');
+    expect(source).toContain('费用主凭证');
+    expect(source).toContain('辅助证据');
+    expect(source).toContain('gmailMessage.evidence.map');
+    expect(source).toContain('gmailPrimaryEvidence');
+  });
+
   it('distinguishes settlement statements from supporting/control evidence', () => {
     const source = readFileSync(
       resolve(__dirname, 'inbox-items-list.tsx'),
