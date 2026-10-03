@@ -116,10 +116,12 @@ const assertCanonicalJournalIdentity = <
   journal: T | undefined;
 }): T => {
   const journal = input.journal;
+  if (!journal) {
+    fail(input.errorMessage);
+  }
   if (
     input.currency !== 'CAD' ||
     !input.journalEntryStableId ||
-    !journal ||
     journal.deletedAt ||
     journal.source !== AccountingJournalSource.EXTERNAL_SALE ||
     journal.sourceFactType !== input.sourceFactType ||

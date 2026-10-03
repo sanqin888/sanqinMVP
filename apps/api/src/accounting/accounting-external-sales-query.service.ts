@@ -562,6 +562,11 @@ export class AccountingExternalSalesQueryService {
           : settledCents > 0
             ? 'PARTIALLY_SETTLED'
             : 'OPEN';
+    if (!journal) {
+      throw new ConflictException(
+        `External Sale canonical Journal anchor is invalid: ${row.externalSaleStableId}`,
+      );
+    }
 
     return {
       externalSaleStableId: row.externalSaleStableId,
@@ -574,7 +579,7 @@ export class AccountingExternalSalesQueryService {
       counterpartyName: row.counterpartyName,
       reference: row.reference,
       currency: 'CAD',
-      journalEntryStableId: row.journalEntryStableId,
+      journalEntryStableId: journal.entryStableId,
       replacementForExternalSaleStableId:
         row.replacementForExternalSale?.externalSaleStableId ?? null,
       replacedByExternalSaleStableId:
@@ -627,6 +632,11 @@ export class AccountingExternalSalesQueryService {
         ),
       }),
     );
+    if (!journal) {
+      throw new ConflictException(
+        `External Sale settlement Journal anchor is invalid: ${row.settlementStableId}`,
+      );
+    }
     return {
       settlementStableId: row.settlementStableId,
       storeStableId: row.storeStableId,
@@ -636,7 +646,7 @@ export class AccountingExternalSalesQueryService {
       counterpartyName: row.counterpartyName,
       reference: row.reference,
       currency: 'CAD',
-      journalEntryStableId: row.journalEntryStableId,
+      journalEntryStableId: journal.entryStableId,
       replacementForSettlementStableId:
         row.replacementForSettlement?.settlementStableId ?? null,
       replacedBySettlementStableId:
