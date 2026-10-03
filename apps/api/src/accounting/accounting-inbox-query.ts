@@ -14,6 +14,11 @@ import {
   accountingRetainedImageVendorFromFilename,
 } from './accounting-image-retention-filename';
 import { assessAccountingExpenseEvidenceReadiness } from './accounting-expense-evidence.policy';
+import {
+  accountingGmailGroupRequiresSeparateReview,
+  accountingGmailMessageId,
+  groupAccountingInboxByGmailMessage,
+} from './accounting-inbox-gmail-grouping.policy';
 
 export type AccountingInboxReadClient = Pick<
   Prisma.TransactionClient,
@@ -204,29 +209,66 @@ export async function listAccountingUnifiedInboxItems(
       },
     },
     orderBy: { createdAt: 'desc' },
-    take,
+    take: params.materializedEntityStableId ? take : Math.min(take * 4, 500),
   });
-  return rows.map((row) => {
+  const groupedRows = params.materializedEntityStableId
+    ? rows.map((row) => ({
+        gmailMessageId: null,
+        representative: row,
+        members: [row],
+        primaryExpenseSource: null,
+        primaryExpenseSourceAmbiguous: false,
+      }))
+    : groupAccountingInboxByGmailMessage(rows);
+  const groups = groupedRows.flatMap((group) =>
+    accountingGmailGroupRequiresSeparateReview(group)
+      ? group.members.map((row) => ({
+          gmailMessageId: null,
+          representative: row,
+          members: [row],
+          primaryExpenseSource: null,
+          primaryExpenseSourceAmbiguous: false,
+        }))
+      : [group],
+  );
+
+  return groups.slice(0, take).map((group) => {
+    const row = group.representative;
     const link = row.expenseEvidenceNotificationLink;
     const linkedSource = link?.sourceInboxItem ?? null;
-    const linkedExtraction = linkedSource
-      ? accountingJsonRecord(linkedSource.artifact.parseRuns[0]?.resultJson)
+    const gmailPrimarySource = linkedSource ? null : group.primaryExpenseSource;
+    const effectiveEvidenceSource = linkedSource ?? gmailPrimarySource;
+    const effectiveEvidenceExtraction = effectiveEvidenceSource
+      ? accountingJsonRecord(
+          effectiveEvidenceSource.artifact.parseRuns[0]?.resultJson,
+        )
       : null;
-    const expenseEvidenceReadiness = assessAccountingExpenseEvidenceReadiness({
+    let expenseEvidenceReadiness = assessAccountingExpenseEvidenceReadiness({
       artifact: row.artifact,
       extraction: accountingJsonRecord(row.artifact.parseRuns[0]?.resultJson),
-      linkedSource: linkedSource
+      linkedSource: effectiveEvidenceSource
         ? {
-            status: linkedSource.status,
-            classification: linkedSource.classification,
-            selectedProvider: linkedSource.selectedProvider,
-            materializedEntityType: linkedSource.materializedEntityType,
-            materializedEntityStableId: linkedSource.materializedEntityStableId,
-            artifact: linkedSource.artifact,
-            extraction: linkedExtraction,
+            status: effectiveEvidenceSource.status,
+            classification: effectiveEvidenceSource.classification,
+            selectedProvider: effectiveEvidenceSource.selectedProvider,
+            materializedEntityType:
+              effectiveEvidenceSource.materializedEntityType,
+            materializedEntityStableId:
+              effectiveEvidenceSource.materializedEntityStableId,
+            artifact: effectiveEvidenceSource.artifact,
+            extraction: effectiveEvidenceExtraction,
           }
         : null,
     });
+    if (
+      gmailPrimarySource &&
+      expenseEvidenceReadiness.status === 'READY'
+    ) {
+      expenseEvidenceReadiness = {
+        status: 'READY',
+        reason: 'GMAIL_ATTACHMENT_DOCUMENT' as const,
+      };
+    }
     const { expenseEvidenceNotificationLink: _link, ...baseRow } = row;
     void _link;
     return {
@@ -254,6 +296,46 @@ export async function listAccountingUnifiedInboxItems(
               bodyText:
                 linkedSource.artifact.bodyText?.slice(0, 20_000) ?? null,
             },
+          }
+        : null,
+      gmailMessage:
+        group.gmailMessageId && group.members.length > 1
+          ? {
+            gmailMessageId: group.gmailMessageId,
+            primaryExpenseSourceInboxItemStableId:
+              gmailPrimarySource?.inboxItemStableId ?? null,
+            primaryExpenseSourceAmbiguous:
+              group.primaryExpenseSourceAmbiguous,
+            evidence: group.members.map((member) => ({
+              inboxItemStableId: member.inboxItemStableId,
+              status: member.status,
+              classification: member.classification,
+              selectedProvider: member.selectedProvider,
+              materializedEntityType: member.materializedEntityType,
+              materializedEntityStableId: member.materializedEntityStableId,
+              isRepresentative:
+                member.inboxItemStableId === row.inboxItemStableId,
+              isPrimaryExpenseSource:
+                member.inboxItemStableId ===
+                gmailPrimarySource?.inboxItemStableId,
+              createdAt: member.createdAt.toISOString(),
+              artifact: {
+                artifactStableId: member.artifact.artifactStableId,
+                acquisitionMode: member.artifact.acquisitionMode,
+                kind: member.artifact.kind,
+                originalFilename: member.artifact.originalFilename,
+                storedUrl:
+                  member.artifact.kind === AccountingArtifactKind.IMAGE
+                    ? `/api/v1/accounting/inbox/artifacts/${encodeURIComponent(
+                        member.artifact.artifactStableId,
+                      )}/content`
+                    : member.artifact.storedUrl,
+                bodyText: member.artifact.bodyText?.slice(0, 20_000) ?? null,
+                senderEmail: member.artifact.senderEmail,
+                emailSubject: member.artifact.emailSubject,
+                parseRuns: member.artifact.parseRuns,
+              },
+            })),
           }
         : null,
       artifact: {
@@ -634,7 +716,7 @@ function accountingRetentionSavingsPercent(
 export async function countAccountingInboxReviewItems(
   client: AccountingInboxReadClient,
 ) {
-  return client.accountingInboxItem.count({
+  const rows = await client.accountingInboxItem.findMany({
     where: {
       status: {
         in: [
@@ -644,6 +726,80 @@ export async function countAccountingInboxReviewItems(
       },
       ...pendingInboxVisibilityFilter(),
     },
+    select: {
+      inboxItemStableId: true,
+      status: true,
+      classification: true,
+      selectedProvider: true,
+      materializedEntityType: true,
+      materializedEntityStableId: true,
+      artifact: {
+        select: {
+          acquisitionMode: true,
+          kind: true,
+          storedUrl: true,
+          metadataJson: true,
+          parseRuns: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            select: { resultJson: true },
+          },
+        },
+      },
+    },
+  });
+  return groupAccountingInboxByGmailMessage(rows).reduce(
+    (count, group) =>
+      count +
+      (accountingGmailGroupRequiresSeparateReview(group)
+        ? group.members.length
+        : 1),
+    0,
+  );
+}
+
+export async function readAccountingGmailMessageInboxMembers(
+  client: AccountingInboxReadClient,
+  gmailMessageId: string,
+) {
+  const normalized = gmailMessageId.trim();
+  if (!normalized) return [];
+  return client.accountingInboxItem.findMany({
+    where: {
+      artifact: {
+        is: {
+          acquisitionMode: AccountingArtifactAcquisitionMode.EMAIL,
+          transportIdentity: { startsWith: `gmail:${normalized}:` },
+        },
+      },
+      expenseEvidenceSourceLink: { is: null },
+    },
+    select: {
+      inboxItemStableId: true,
+      status: true,
+      classification: true,
+      selectedProvider: true,
+      materializedEntityType: true,
+      materializedEntityStableId: true,
+      artifact: {
+        select: {
+          artifactStableId: true,
+          acquisitionMode: true,
+          kind: true,
+          contentHash: true,
+          storedUrl: true,
+          bodyText: true,
+          emailSubject: true,
+          metadataJson: true,
+          parseRuns: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            select: { resultJson: true },
+          },
+        },
+      },
+    },
+    orderBy: { createdAt: 'asc' },
   });
 }
 

@@ -8,6 +8,7 @@ import {
 import { normalizeAccountingInboxClassificationSelection } from './accounting-inbox-core.policy';
 import {
   ACCOUNTING_INBOX_CLASSIFIER_ACTOR,
+  confirmOtherGmailInboxItemsInTx,
   confirmOtherInboxItemInTx,
   setInboxClassificationInTx,
   suggestInboxClassificationInTx,
@@ -19,8 +20,10 @@ describe('Accounting Inbox classification writer', () => {
       findUnique: jest.fn(),
     },
     accountingInboxItem: {
+      findMany: jest.fn(),
       findUnique: jest.fn(),
       update: jest.fn().mockResolvedValue({}),
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
     accountingAuditLog: {
       findFirst: jest.fn().mockResolvedValue(null),
@@ -234,6 +237,73 @@ describe('Accounting Inbox classification writer', () => {
       'linked expense evidence cannot be confirmed independently',
     );
     expect(tx.accountingInboxItem.update).not.toHaveBeenCalled();
+  });
+
+  it('confirms an ordinary same-message Gmail group as Other in one transaction', async () => {
+    const tx = makeTx();
+    tx.accountingInboxItem.findMany.mockResolvedValue([
+      {
+        id: 'body-db-id',
+        inboxItemStableId: 'acctinbox_body',
+        status: AccountingInboxStatus.PENDING_REVIEW,
+        classification: AccountingInboxClassification.OTHER_DOCUMENT,
+        selectedProvider: null,
+        materializedEntityType: null,
+        materializedEntityStableId: null,
+        expenseEvidenceNotificationLink: null,
+        expenseEvidenceSourceLink: null,
+        artifact: {
+          acquisitionMode: AccountingArtifactAcquisitionMode.EMAIL,
+        },
+      },
+      {
+        id: 'pdf-db-id',
+        inboxItemStableId: 'acctinbox_pdf',
+        status: AccountingInboxStatus.PENDING_REVIEW,
+        classification: AccountingInboxClassification.UNKNOWN,
+        selectedProvider: null,
+        materializedEntityType: null,
+        materializedEntityStableId: null,
+        expenseEvidenceNotificationLink: null,
+        expenseEvidenceSourceLink: null,
+        artifact: {
+          acquisitionMode: AccountingArtifactAcquisitionMode.EMAIL,
+        },
+      },
+    ]);
+    tx.accountingInboxItem.updateMany.mockResolvedValue({ count: 2 });
+
+    await expect(
+      confirmOtherGmailInboxItemsInTx(tx as never, {
+        primaryInboxItemStableId: 'acctinbox_body',
+        inboxItemStableIds: ['acctinbox_body', 'acctinbox_pdf'],
+        operatorUserStableId: 'user_operator_1',
+      }),
+    ).resolves.toEqual({
+      inboxItemStableId: 'acctinbox_body',
+      confirmed: true,
+      replayed: false,
+      groupedInboxItemStableIds: ['acctinbox_body', 'acctinbox_pdf'],
+    });
+    expect(tx.accountingInboxItem.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: ['body-db-id', 'pdf-db-id'] },
+        status: AccountingInboxStatus.PENDING_REVIEW,
+        selectedProvider: null,
+        materializedEntityType: null,
+        materializedEntityStableId: null,
+      },
+      data: expect.objectContaining({
+        status: AccountingInboxStatus.CONFIRMED,
+        classification: AccountingInboxClassification.OTHER_DOCUMENT,
+        reviewedByUserStableId: 'user_operator_1',
+      }) as unknown,
+    });
+    expect(tx.accountingAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'CONFIRM_GMAIL_OTHER_DOCUMENT',
+      }) as unknown,
+    });
   });
 
   it('can close explicitly reviewed other evidence without creating a materialized entity', async () => {
