@@ -116,8 +116,8 @@ const assertCanonicalJournalIdentity = <
   journal: T | undefined;
 }): T => {
   const journal = input.journal;
-  if (!journal) {
-    fail(input.errorMessage);
+  if (journal === undefined) {
+    throw new AccountingExternalSalesQueryPolicyError(input.errorMessage);
   }
   if (
     input.currency !== 'CAD' ||
