@@ -37,6 +37,7 @@ import { AccountingChartService } from './accounting-chart.service';
 import { AccountingExpenseJournalPostingService } from './accounting-expense-journal-posting.service';
 import { AccountingExpenseService } from './accounting-expense.service';
 import { AccountingExternalSaleSettlementService } from './accounting-external-sale-settlement.service';
+import { AccountingExternalSalesQueryService } from './accounting-external-sales-query.service';
 import { AccountingExternalSaleReversalService } from './accounting-external-sales-reversal.service';
 import { AccountingExternalSalesService } from './accounting-external-sales.service';
 import { AccountingFinancialReportsService } from './accounting-financial-reports.service';
@@ -138,6 +139,7 @@ import { AccountingCloverPreSyncAuthorityService } from './accounting-clover-pre
     AccountingExternalSalesService,
     AccountingExternalSaleSettlementService,
     AccountingExternalSaleReversalService,
+    AccountingExternalSalesQueryService,
     AccountingExpenseJournalPostingService,
     AccountingAccountTransferService,
     AccountingFinancialReportsService,

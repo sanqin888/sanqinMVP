@@ -57,6 +57,41 @@ describe('Post-modularization External Sales boundary', () => {
     expect(policy).toContain('ACCOUNTING_EXTERNAL_SALE_AR_ACCOUNT_STABLE_ID');
   });
 
+  it('keeps Slice E read authority inside Accounting with Store scope only', () => {
+    const queryService =
+      file('accounting-external-sales-query.service.ts')?.source ?? '';
+    const queryPolicy =
+      file('accounting-external-sales-query.policy.ts')?.source ?? '';
+    const queryPersistence =
+      file('accounting-external-sales-query.persistence.ts')?.source ?? '';
+
+    expect(importSpecifiers(queryService)).toContain('../store/public-api');
+    expect(queryService).not.toContain("from '../orders/");
+    expect(queryService).not.toContain("from '../payments/");
+    expect(queryService).not.toContain("from '../menu/");
+    expect(queryService).not.toContain("from '../pos/");
+    expect(queryService).not.toContain("from '../integrations/");
+    expect(queryService).not.toContain('@prisma/client');
+
+    expect(queryPolicy).not.toContain("from '../orders/");
+    expect(queryPolicy).not.toContain("from '../payments/");
+    expect(queryPolicy).not.toContain("from '../integrations/");
+    expect(queryPolicy).not.toContain('@prisma/client');
+    expect(queryPolicy).toContain(
+      'projectAccountingExternalSaleReceivableCents',
+    );
+    expect(queryPolicy).toContain(
+      'projectAccountingExternalSaleSettlementAppliedCents',
+    );
+    expect(queryPolicy).toContain('resolveAccountingExternalSaleReversalState');
+
+    expect(queryPersistence).toContain("from '@prisma/client'");
+    expect(queryPersistence).toContain('ACCOUNTING_EXTERNAL_SALE_QUERY_SELECT');
+    expect(queryPersistence).toContain(
+      'ACCOUNTING_EXTERNAL_SALE_SETTLEMENT_QUERY_SELECT',
+    );
+  });
+
   it('pins C1/C2/C3 write ownership with D sale-only analytics cutover', () => {
     const schema = readFileSync(PRISMA_SCHEMA, 'utf8');
     const module = file('accounting.module.ts')?.source ?? '';
@@ -94,8 +129,15 @@ describe('Post-modularization External Sales boundary', () => {
 
     expect(module).toContain('AccountingExternalSalesController');
     expect(module).toContain('AccountingExternalSalesService');
+    expect(module).toContain('AccountingExternalSalesQueryService');
     expect(module).toContain('AccountingExternalSaleSettlementService');
     expect(module).toContain('AccountingExternalSaleReversalService');
+    expect(controllerGuard).toContain("'GET external-sales'");
+    expect(controllerGuard).toContain("'GET external-sales/options'");
+    expect(controllerGuard).toContain("'GET external-sales/settlements'");
+    expect(controllerGuard).toContain(
+      "'GET external-sales/:externalSaleStableId'",
+    );
     expect(controllerGuard).toContain("'POST external-sales'");
     expect(controllerGuard).toContain(
       "'POST external-sales/:externalSaleStableId/reverse'",

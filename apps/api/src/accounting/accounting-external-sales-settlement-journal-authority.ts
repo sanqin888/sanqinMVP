@@ -25,16 +25,21 @@ import {
   type NormalizedJournalCreate,
 } from './accounting-journal-policy';
 
-const HST_RECOVERABLE_ACCOUNT_STABLE_ID = 'account_hst_recoverable';
+export const ACCOUNTING_EXTERNAL_SALE_SETTLEMENT_HST_RECOVERABLE_ACCOUNT_STABLE_ID =
+  'account_hst_recoverable';
 
-const SETTLEMENT_EXPENSE_ACCOUNT_STABLE_IDS = new Set([
+export const ACCOUNTING_EXTERNAL_SALE_SETTLEMENT_EXPENSE_ACCOUNT_STABLE_IDS = [
   'account_commission_expense',
   'account_general_operating_expense',
   'account_platform_promotion_expense',
   'account_advertising_expense',
   'account_payment_processing_fee_expense',
   'account_chargeback_adjustment_expense',
-]);
+] as const;
+
+const SETTLEMENT_EXPENSE_ACCOUNT_STABLE_IDS = new Set<string>(
+  ACCOUNTING_EXTERNAL_SALE_SETTLEMENT_EXPENSE_ACCOUNT_STABLE_IDS,
+);
 
 export type ExternalSaleSettlementAccountFactV1 = {
   accountStableId: string;
@@ -167,7 +172,10 @@ const accountRole = (
     return 'ACCOUNTS_RECEIVABLE';
   }
 
-  if (account.accountStableId === HST_RECOVERABLE_ACCOUNT_STABLE_ID) {
+  if (
+    account.accountStableId ===
+    ACCOUNTING_EXTERNAL_SALE_SETTLEMENT_HST_RECOVERABLE_ACCOUNT_STABLE_ID
+  ) {
     if (
       account.accountClass !== AccountingAccountClass.ASSET ||
       account.accountType !== null
@@ -425,6 +433,37 @@ export const calculateExternalSaleJournalReceivableCents = (
     );
   }
   return receivable.debitCents;
+};
+
+export const calculateExternalSaleSettlementJournalAppliedReceivableCents = (
+  lines: Array<{
+    accountStableId: string;
+    debitCents: number;
+    creditCents: number;
+  }>,
+): number => {
+  const receivableLines = lines.filter(
+    (line) =>
+      line.accountStableId === ACCOUNTING_EXTERNAL_SALE_AR_ACCOUNT_STABLE_ID,
+  );
+  if (receivableLines.length !== 1) {
+    throw new AccountingJournalPolicyError(
+      'External Sale Settlement canonical Journal must contain exactly one Accounts Receivable line',
+    );
+  }
+  const receivable = receivableLines[0];
+  if (
+    !receivable ||
+    !Number.isSafeInteger(receivable.debitCents) ||
+    !Number.isSafeInteger(receivable.creditCents) ||
+    receivable.debitCents !== 0 ||
+    receivable.creditCents <= 0
+  ) {
+    throw new AccountingJournalPolicyError(
+      'External Sale Settlement canonical Journal has an invalid Accounts Receivable credit',
+    );
+  }
+  return receivable.creditCents;
 };
 
 export const buildExternalSaleSettlementWritePlan = (input: {
