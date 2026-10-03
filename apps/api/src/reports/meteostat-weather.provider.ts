@@ -10,8 +10,7 @@ import type {
 } from './reporting-weather-provider.contract';
 
 const METEOSTAT_HOST = 'meteostat.p.rapidapi.com';
-const METEOSTAT_HOURLY_URL =
-  'https://meteostat.p.rapidapi.com/point/hourly';
+const METEOSTAT_HOURLY_URL = 'https://meteostat.p.rapidapi.com/point/hourly';
 const MAX_PROVIDER_RANGE_DAYS = 30;
 
 type MeteostatHourlyRow = {

@@ -10,7 +10,11 @@ describe('MeteostatWeatherProvider', () => {
 
   it('aggregates hourly point observations into one daily Reporting fact', async () => {
     process.env.METEOSTAT_RAPIDAPI_KEY = 'test-key';
-    const get = jest.fn().mockResolvedValue({
+    type HttpGet = (
+      url: string,
+      config: { timeout: number; headers: Record<string, string> },
+    ) => Promise<{ data: { data: Array<Record<string, unknown>> } }>;
+    const get = jest.fn<HttpGet>().mockResolvedValue({
       data: {
         data: [
           {
@@ -64,16 +68,16 @@ describe('MeteostatWeatherProvider', () => {
         significantCondition: 'RAIN',
       }),
     ]);
-    expect(get).toHaveBeenCalledWith(
-      expect.stringContaining('/point/hourly?'),
-      expect.objectContaining({
-        timeout: 10000,
-        headers: expect.objectContaining({
-          'X-RapidAPI-Key': 'test-key',
-        }),
-      }),
-    );
-    expect(get.mock.calls[0]?.[0]).toContain('tz=America%2FToronto');
+    expect(get).toHaveBeenCalledTimes(1);
+    const [requestUrl, requestConfig] = get.mock.calls[0]!;
+    expect(requestUrl).toContain('/point/hourly?');
+    expect(requestUrl).toContain('tz=America%2FToronto');
+    expect(requestConfig).toMatchObject({
+      timeout: 10000,
+      headers: {
+        'X-RapidAPI-Key': 'test-key',
+      },
+    });
   });
 
   it('chunks ranges longer than Meteostat hourly 30-day limit', async () => {

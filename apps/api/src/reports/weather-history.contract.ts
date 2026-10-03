@@ -56,10 +56,7 @@ export type WeatherHistoryReportV1 = {
     partialDays: number;
     unavailableDays: number;
     refresh: WeatherHistoryRefreshStatusV1;
-    limitation:
-      | null
-      | 'STORE_COORDINATES_MISSING'
-      | 'PROVIDER_UNAVAILABLE';
+    limitation: null | 'STORE_COORDINATES_MISSING' | 'PROVIDER_UNAVAILABLE';
   };
   days: WeatherHistoryDayV1[];
 };

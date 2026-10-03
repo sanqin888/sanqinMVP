@@ -54,12 +54,8 @@ import {
   REPORTING_WEATHER_DB,
   type ReportingWeatherDbPort,
 } from './reporting-weather-db.contract';
-import {
-  REPORTING_WEATHER_HISTORY_STORE,
-} from './reporting-weather-history-store.contract';
-import {
-  REPORTING_WEATHER_PROVIDER,
-} from './reporting-weather-provider.contract';
+import { REPORTING_WEATHER_HISTORY_STORE } from './reporting-weather-history-store.contract';
+import { REPORTING_WEATHER_PROVIDER } from './reporting-weather-provider.contract';
 import { BusinessOperationsReportService } from './business-operations-report.service';
 import { MarketingOverviewReportService } from './marketing-overview-report.service';
 import { MeteostatWeatherProvider } from './meteostat-weather.provider';

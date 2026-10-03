@@ -16,7 +16,9 @@ function setup(options?: {
   store?: ReportingStoreLocationContextV1;
 }) {
   const storeLocation = {
-    getStoreLocationContext: jest.fn().mockResolvedValue(options?.store ?? STORE),
+    getStoreLocationContext: jest
+      .fn()
+      .mockResolvedValue(options?.store ?? STORE),
   };
   const historyStore = {
     readRange: jest.fn().mockResolvedValue(options?.cached ?? []),

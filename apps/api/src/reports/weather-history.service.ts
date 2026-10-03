@@ -61,7 +61,9 @@ export class WeatherHistoryService {
     const explicitFrom = query.from
       ? this.parseLocalDate(query.from, timezone)
       : null;
-    const explicitTo = query.to ? this.parseLocalDate(query.to, timezone) : null;
+    const explicitTo = query.to
+      ? this.parseLocalDate(query.to, timezone)
+      : null;
     const fromDay = explicitFrom ?? explicitTo ?? today;
     const toDay = explicitTo ?? explicitFrom ?? today;
 

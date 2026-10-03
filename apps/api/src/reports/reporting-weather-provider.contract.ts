@@ -1,6 +1,4 @@
-export const REPORTING_WEATHER_PROVIDER = Symbol(
-  'REPORTING_WEATHER_PROVIDER',
-);
+export const REPORTING_WEATHER_PROVIDER = Symbol('REPORTING_WEATHER_PROVIDER');
 
 export type ReportingWeatherConditionV1 =
   | 'CLEAR'
