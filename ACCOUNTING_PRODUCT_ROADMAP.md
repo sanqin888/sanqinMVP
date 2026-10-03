@@ -155,18 +155,33 @@ shape conflicts, preserves the commission UUID and JournalLine ownership, insert
 Journal mutation/backfill/DROP, and is pinned in the explicit CoA migration guard. Detailed gate:
 `docs/architecture/accounting-external-sales-plan.md`.
 
-2026-10-02 External Sales **Slice C1 Sale Recognition** is **LOCAL IMPLEMENTED / USER REVIEW
-PENDING / NO MIGRATION / NO SALES ANALYTICS CUTOVER / NO GRAPH OR BASELINE CHANGE** on
-`feat/accounting-external-sales-slice-c-write-authority` from `origin/dev@4ce9c6aa`. C1 adds
-one ADMIN/ACCOUNTANT `POST /accounting/external-sales` transport and an Accounting-local
-Serializable write path that atomically persists the frozen External Sale fact, validates a
-purpose-specific `EXTERNAL_SALE_RECOGNITION` Journal authority, creates the STANDARD canonical
-Journal, anchors the source fact, and writes `EXTERNAL_SALE_POST` audit evidence. The Journal
-writer's existing Accounting start-date/month/year lock gates remain authoritative and generic
-Journal create/update/delete cannot forge or mutate External Sales canonical facts. Account policy
-is fail-closed: exact AR, limited sale/adjustment revenue accounts and exact HST liability mapping;
-commission remains settlement-side. Settlement, reversal/correction, Sales Analytics source
-whitelist, historical backfill and Web UI remain deferred to C2/C3/D/F/E respectively.
+2026-10-02 External Sales **Slice C1 Sale Recognition** is **MERGED / PR #2657 / FINAL HEAD
+`ebb13b22` / MERGE `d412f4be` / CI #6780 GREEN / NO MIGRATION / NO SALES ANALYTICS
+CUTOVER / NO GRAPH OR BASELINE CHANGE**. C1 activates the ADMIN/ACCOUNTANT
+`POST /accounting/external-sales` vertical and atomically persists the frozen Sale fact,
+purpose-specific `EXTERNAL_SALE_RECOGNITION` Journal authority, STANDARD Journal, source-fact
+anchor and `EXTERNAL_SALE_POST` audit under the existing Serializable/start-date/period-lock
+gates. Generic Journal routes cannot forge or mutate External Sales canonical facts. Account
+policy remains fail-closed: exact AR, limited sale/adjustment revenue accounts and exact HST
+liability mapping; commission remains settlement-side.
+
+2026-10-02 External Sales **Slice C2 Settlement** is **LOCAL IMPLEMENTED / USER REVIEW PENDING /
+NO MIGRATION / NO SALES ANALYTICS CUTOVER / NO GRAPH OR BASELINE CHANGE** on
+`feat/accounting-external-sales-slice-c2-settlement` from `origin/dev@d412f4be`. C2 adds
+ADMIN/ACCOUNTANT `POST /accounting/external-sales/settlements` and an Accounting-local
+Serializable write path for Settlement/Allocation/Component facts, frozen receivable/account
+prerequisites, purpose-specific `EXTERNAL_SALE_SETTLEMENT` Journal authority, STANDARD Journal,
+anchor and audit. Outstanding principal is sourced from the immutable recognized Sale Journal's
+exact Accounts Receivable debit rather than recomputed commercial rows; live prior allocations are
+subtracted and the Journal writer rechecks the same snapshot in-transaction, so partial/multi-sale
+settlement is supported and concurrent over-settlement is fail-closed through the existing
+Serializable/P2034 retry path. Components are limited to active CAD BANK/CASH collection assets,
+exact HST recoverable and an explicit settlement-expense allowlist; wallet/revenue/liability/equity/
+payroll/arbitrary accounts are rejected and recoverable HST requires expense principal. Financial
+Reports keep provider commission on `expense_platform_fee` but project External Settlement
+commission/payment-processing to existing `expense_other` so generic commission is not mislabeled
+as platform commission. C3 reversal/correction, D Sales Analytics, Web UI and historical backfill
+remain inactive.
 
 2026-09-26 pre-sync Clover authority Slice A is **PRODUCTION VERIFIED / CLOSED / READ-ONLY SHADOW / NO PRISMA / NO JOURNAL MUTATION**. Slice A merged via PR #2547 / `d68cc317`; the zero-activity coverage correction merged via PR #2549 / `b7a01075`, with CI #6419 green and production running `main@b7a01075`.
 Real Gmail Closeout Reports prove that pre-sync Clover tender truth cannot be anchored to

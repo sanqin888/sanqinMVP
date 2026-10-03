@@ -72,6 +72,13 @@ import {
   type ExternalSaleJournalWriteAuthorityV1,
 } from './accounting-external-sales-journal-authority';
 import {
+  assertExternalSaleSettlementJournalAuthority,
+  calculateExternalSaleJournalReceivableCents,
+  hashExternalSaleSettlementJournalWrite,
+  normalizeExternalSaleSettlementWriteAuthority,
+  type ExternalSaleSettlementJournalWriteAuthorityV1,
+} from './accounting-external-sales-settlement-journal-authority';
+import {
   ACCOUNTING_EXTERNAL_SALE_REVERSAL_SOURCE_FACT_TYPE,
   ACCOUNTING_EXTERNAL_SALE_SETTLEMENT_REVERSAL_SOURCE_FACT_TYPE,
   ACCOUNTING_EXTERNAL_SALE_SETTLEMENT_SOURCE_FACT_TYPE,
@@ -382,6 +389,54 @@ export class AccountingJournalService {
     if (journal.deletedAt) {
       throw new ConflictException(
         'External Sale Journal was deleted and cannot be replayed',
+      );
+    }
+    return journal;
+  }
+
+  async createExternalSaleSettlementJournalInTx(
+    input: AccountingJournalCreateInput,
+    operatorActorRef: string,
+    authority: ExternalSaleSettlementJournalWriteAuthorityV1,
+    tx: Prisma.TransactionClient,
+  ): Promise<AccountingJournalRow> {
+    const normalizedAuthority = this.applyJournalPolicy(() =>
+      normalizeExternalSaleSettlementWriteAuthority(authority),
+    );
+    const normalized = this.applyJournalPolicy(() =>
+      normalizeJournalCreate(input),
+    );
+    this.applyJournalPolicy(() =>
+      assertExternalSaleSettlementJournalAuthority(
+        normalized,
+        normalizedAuthority,
+      ),
+    );
+    await this.assertExternalSaleSettlementAuthorityInTx(
+      normalizedAuthority,
+      tx,
+    );
+
+    const operator = this.requireJournalValue(
+      operatorActorRef,
+      'operatorActorRef',
+    );
+    const journal = await this.createPreparedJournalEntryInTx(
+      {
+        normalized,
+        idempotencyHash: hashExternalSaleSettlementJournalWrite(
+          normalized,
+          normalizedAuthority,
+        ),
+        auditAuthority: normalizedAuthority as unknown as Prisma.InputJsonValue,
+      },
+      operator,
+      tx,
+      normalizedAuthority.businessTimezone,
+    );
+    if (journal.deletedAt) {
+      throw new ConflictException(
+        'External Sale settlement Journal was deleted and cannot be replayed',
       );
     }
     return journal;
@@ -1707,6 +1762,278 @@ export class AccountingJournalService {
       ) {
         throw new ConflictException(
           `Provider fee bank withdrawal account authority changed before posting: ${prerequisite.accountStableId}`,
+        );
+      }
+    }
+  }
+
+  private async assertExternalSaleSettlementAuthorityInTx(
+    authority: ExternalSaleSettlementJournalWriteAuthorityV1,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    const settlement = await tx.accountingExternalSaleSettlement.findUnique({
+      where: { settlementStableId: authority.fact.settlementStableId },
+      select: {
+        settlementStableId: true,
+        idempotencyKey: true,
+        storeStableId: true,
+        settlementOn: true,
+        counterpartyName: true,
+        reference: true,
+        currency: true,
+        factHash: true,
+        journalEntryStableId: true,
+        reversalStableId: true,
+        reversedAt: true,
+        note: true,
+        replacementForSettlement: {
+          select: { settlementStableId: true },
+        },
+        allocations: {
+          orderBy: { sortOrder: 'asc' },
+          select: {
+            allocationStableId: true,
+            amountCents: true,
+            sortOrder: true,
+            externalSale: {
+              select: { externalSaleStableId: true },
+            },
+          },
+        },
+        components: {
+          orderBy: { sortOrder: 'asc' },
+          select: {
+            componentStableId: true,
+            amountCents: true,
+            label: true,
+            sortOrder: true,
+            account: {
+              select: { accountStableId: true },
+            },
+          },
+        },
+      },
+    });
+
+    const persistedFact = settlement
+      ? {
+          version: 1 as const,
+          settlementStableId: settlement.settlementStableId,
+          storeStableId: settlement.storeStableId,
+          settlementOn: settlement.settlementOn.toISOString().slice(0, 10),
+          counterpartyName: settlement.counterpartyName,
+          reference: settlement.reference,
+          currency: 'CAD' as const,
+          replacementForSettlementStableId:
+            settlement.replacementForSettlement?.settlementStableId ?? null,
+          allocations: settlement.allocations.map((allocation) => ({
+            allocationStableId: allocation.allocationStableId,
+            externalSaleStableId: allocation.externalSale.externalSaleStableId,
+            amountCents: allocation.amountCents,
+            sortOrder: allocation.sortOrder,
+          })),
+          components: settlement.components.map((component) => ({
+            componentStableId: component.componentStableId,
+            accountStableId: component.account.accountStableId,
+            amountCents: component.amountCents,
+            label: component.label,
+            sortOrder: component.sortOrder,
+          })),
+          note: settlement.note,
+        }
+      : null;
+
+    if (
+      !settlement ||
+      !persistedFact ||
+      settlement.journalEntryStableId !== null ||
+      settlement.reversedAt !== null ||
+      settlement.reversalStableId !== null ||
+      settlement.currency !== 'CAD' ||
+      settlement.idempotencyKey !==
+        `external-sale-settlement:${authority.fact.settlementStableId}:v1` ||
+      settlement.factHash !== authority.factHash ||
+      JSON.stringify(persistedFact) !== JSON.stringify(authority.fact)
+    ) {
+      throw new ConflictException(
+        'External Sale settlement authority changed before Journal posting',
+      );
+    }
+
+    const currentAccounts = await tx.accountingAccount.findMany({
+      where: {
+        accountStableId: {
+          in: authority.accountPrerequisites.map(
+            (account) => account.accountStableId,
+          ),
+        },
+      },
+      select: {
+        accountStableId: true,
+        accountClass: true,
+        type: true,
+        currency: true,
+        isActive: true,
+      },
+    });
+    const currentAccountByStableId = new Map(
+      currentAccounts.map(
+        (account) => [account.accountStableId, account] as const,
+      ),
+    );
+    for (const prerequisite of authority.accountPrerequisites) {
+      const current = currentAccountByStableId.get(
+        prerequisite.accountStableId,
+      );
+      if (
+        !current ||
+        current.accountClass !== prerequisite.actual.accountClass ||
+        current.type !== prerequisite.actual.accountType ||
+        current.currency !== prerequisite.actual.currency ||
+        current.isActive !== prerequisite.actual.isActive
+      ) {
+        throw new ConflictException(
+          `External Sale settlement account authority changed before posting: ${prerequisite.accountStableId}`,
+        );
+      }
+    }
+
+    const saleStableIds = authority.receivablePrerequisites.map(
+      (item) => item.externalSaleStableId,
+    );
+    const sales = await tx.accountingExternalSale.findMany({
+      where: { externalSaleStableId: { in: saleStableIds } },
+      select: {
+        id: true,
+        externalSaleStableId: true,
+        storeStableId: true,
+        occurredOn: true,
+        counterpartyName: true,
+        currency: true,
+        factHash: true,
+        journalEntryStableId: true,
+        reversalStableId: true,
+        reversedAt: true,
+        settlementAllocations: {
+          select: {
+            amountCents: true,
+            settlement: {
+              select: {
+                settlementStableId: true,
+                journalEntryStableId: true,
+                reversalStableId: true,
+                reversedAt: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    const saleByStableId = new Map(
+      sales.map((sale) => [sale.externalSaleStableId, sale] as const),
+    );
+
+    const saleJournalStableIds = authority.receivablePrerequisites.map(
+      (item) => item.saleJournalEntryStableId,
+    );
+    const saleJournals = await tx.accountingJournalEntry.findMany({
+      where: { entryStableId: { in: saleJournalStableIds } },
+      select: {
+        entryStableId: true,
+        source: true,
+        sourceFactType: true,
+        sourceFactStableId: true,
+        deletedAt: true,
+        lines: {
+          orderBy: { lineNo: 'asc' },
+          select: {
+            debitCents: true,
+            creditCents: true,
+            account: {
+              select: { accountStableId: true },
+            },
+          },
+        },
+      },
+    });
+    const saleJournalByStableId = new Map(
+      saleJournals.map((journal) => [journal.entryStableId, journal] as const),
+    );
+
+    for (const prerequisite of authority.receivablePrerequisites) {
+      const sale = saleByStableId.get(prerequisite.externalSaleStableId);
+      const saleJournal = saleJournalByStableId.get(
+        prerequisite.saleJournalEntryStableId,
+      );
+      if (
+        !sale ||
+        sale.reversedAt !== null ||
+        sale.reversalStableId !== null ||
+        sale.storeStableId !== prerequisite.storeStableId ||
+        sale.counterpartyName !== prerequisite.counterpartyName ||
+        sale.currency !== prerequisite.currency ||
+        sale.factHash !== prerequisite.saleFactHash ||
+        sale.journalEntryStableId !== prerequisite.saleJournalEntryStableId ||
+        sale.occurredOn.toISOString().slice(0, 10) !==
+          prerequisite.saleOccurredOn ||
+        !saleJournal ||
+        saleJournal.deletedAt !== null ||
+        saleJournal.source !== AccountingJournalSource.EXTERNAL_SALE ||
+        saleJournal.sourceFactType !==
+          ACCOUNTING_EXTERNAL_SALE_SOURCE_FACT_TYPE ||
+        saleJournal.sourceFactStableId !== prerequisite.externalSaleStableId
+      ) {
+        throw new ConflictException(
+          `External Sale receivable authority changed before settlement posting: ${prerequisite.externalSaleStableId}`,
+        );
+      }
+
+      const totalReceivableCents = this.applyJournalPolicy(() =>
+        calculateExternalSaleJournalReceivableCents(
+          saleJournal.lines.map((line) => ({
+            accountStableId: line.account.accountStableId,
+            debitCents: line.debitCents,
+            creditCents: line.creditCents,
+          })),
+        ),
+      );
+
+      let settledBeforeCents = 0;
+      for (const allocation of sale.settlementAllocations) {
+        if (
+          allocation.settlement.settlementStableId ===
+          authority.fact.settlementStableId
+        ) {
+          continue;
+        }
+        if (
+          allocation.settlement.reversedAt !== null ||
+          allocation.settlement.reversalStableId !== null
+        ) {
+          continue;
+        }
+        if (!allocation.settlement.journalEntryStableId) {
+          throw new ConflictException(
+            `External Sale has an unanchored prior settlement: ${prerequisite.externalSaleStableId}`,
+          );
+        }
+        settledBeforeCents += allocation.amountCents;
+        if (!Number.isSafeInteger(settledBeforeCents)) {
+          throw new ConflictException(
+            'External Sale prior settlement total exceeds safe integer range',
+          );
+        }
+      }
+      const outstandingBeforeCents = totalReceivableCents - settledBeforeCents;
+
+      if (
+        totalReceivableCents !== prerequisite.totalReceivableCents ||
+        settledBeforeCents !== prerequisite.settledBeforeCents ||
+        outstandingBeforeCents !== prerequisite.outstandingBeforeCents ||
+        prerequisite.allocationCents > outstandingBeforeCents
+      ) {
+        throw new ConflictException(
+          `External Sale outstanding receivable changed before settlement posting: ${prerequisite.externalSaleStableId}`,
         );
       }
     }

@@ -287,6 +287,76 @@ describe('Accounting canonical financial report policy', () => {
     expect(projected.journalInputTaxCents).toBe(6);
   });
 
+  it('keeps External Sale settlement commissions out of provider-platform fallback reporting', () => {
+    const projected = projectAccountingJournalReportEntry(
+      entry({
+        source: AccountingJournalSource.EXTERNAL_SALE,
+        sourceFactType: 'accounting.external_sale_settlement.v1',
+        lines: [
+          {
+            lineNo: 1,
+            debitCents: 8200,
+            creditCents: 0,
+            memo: 'Bank receipt',
+            account: account(
+              'account_primary_bank',
+              '主要银行账户',
+              AccountingAccountClass.ASSET,
+              AccountingAccountType.BANK,
+            ),
+            category: null,
+          },
+          {
+            lineNo: 2,
+            debitCents: 1500,
+            creditCents: 0,
+            memo: 'Sales commission',
+            account: account(
+              'account_commission_expense',
+              '佣金费用',
+              AccountingAccountClass.EXPENSE,
+            ),
+            category: null,
+          },
+          {
+            lineNo: 3,
+            debitCents: 300,
+            creditCents: 0,
+            memo: 'Recoverable HST',
+            account: account(
+              'account_hst_recoverable',
+              'HST/GST 待抵扣',
+              AccountingAccountClass.ASSET,
+            ),
+            category: null,
+          },
+          {
+            lineNo: 4,
+            debitCents: 0,
+            creditCents: 10_000,
+            memo: 'Receivable settlement',
+            account: account(
+              'account_accounts_receivable',
+              '应收账款',
+              AccountingAccountClass.ASSET,
+            ),
+            category: null,
+          },
+        ],
+      }),
+    );
+
+    expect(projected.facts).toEqual([
+      expect.objectContaining({
+        type: AccountingTxType.EXPENSE,
+        amountCents: 1500,
+        categoryStableId: 'expense_other',
+        accountStableId: 'account_commission_expense',
+      }),
+    ]);
+    expect(projected.journalInputTaxCents).toBe(300);
+  });
+
   it('projects Expense Journals into P&L and recoverable input tax', () => {
     const projected = projectAccountingJournalReportEntry(
       entry({

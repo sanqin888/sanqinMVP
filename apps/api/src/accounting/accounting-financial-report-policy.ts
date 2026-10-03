@@ -5,6 +5,7 @@ import {
   AccountingJournalSource,
   AccountingTxType,
 } from './accounting-contracts';
+import { ACCOUNTING_EXTERNAL_SALE_SETTLEMENT_SOURCE_FACT_TYPE } from './accounting-external-sales.contract';
 
 export type AccountingFinancialReportCategory = {
   categoryStableId: string;
@@ -135,9 +136,19 @@ const ACCOUNT_CATEGORY: Record<string, AccountingFinancialReportCategory> = {
 };
 
 function categoryForLine(
+  entry: AccountingFinancialReportJournalEntry,
   line: AccountingFinancialReportJournalLine,
 ): AccountingFinancialReportCategory {
   if (line.category) return line.category;
+  if (
+    entry.source === AccountingJournalSource.EXTERNAL_SALE &&
+    entry.sourceFactType ===
+      ACCOUNTING_EXTERNAL_SALE_SETTLEMENT_SOURCE_FACT_TYPE &&
+    (line.account.accountStableId === 'account_commission_expense' ||
+      line.account.accountStableId === 'account_payment_processing_fee_expense')
+  ) {
+    return FALLBACK_CATEGORIES.expenseOther;
+  }
   const mapped = ACCOUNT_CATEGORY[line.account.accountStableId];
   if (mapped) return mapped;
   return line.account.accountClass === AccountingAccountClass.REVENUE
@@ -160,7 +171,7 @@ function factFromLine(params: {
   amountCents: number;
 }): AccountingFinancialReportFact {
   const { entry, line, type, amountCents } = params;
-  const category = categoryForLine(line);
+  const category = categoryForLine(entry, line);
   return {
     stableId: `journal:${entry.entryStableId}:${line.lineNo}`,
     type,
