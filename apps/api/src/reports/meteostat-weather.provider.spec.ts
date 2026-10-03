@@ -14,15 +14,17 @@ describe('MeteostatWeatherProvider', () => {
       url: string,
       config: { timeout: number; headers: Record<string, string> },
     ) => Promise<{ data: { data: Array<Record<string, unknown>> } }>;
+    let requestCount = 0;
     let requestedUrl = '';
     let requestedConfig: {
       timeout: number;
       headers: Record<string, string>;
     } | null = null;
-    const get = jest.fn<HttpGet>().mockImplementation(async (url, config) => {
+    const get: HttpGet = (url, config) => {
+      requestCount += 1;
       requestedUrl = url;
       requestedConfig = config;
-      return {
+      return Promise.resolve({
         data: {
           data: [
             {
@@ -47,8 +49,8 @@ describe('MeteostatWeatherProvider', () => {
             },
           ],
         },
-      };
-    });
+      });
+    };
     const provider = new MeteostatWeatherProvider({
       axiosRef: { get },
     } as never);
@@ -77,7 +79,7 @@ describe('MeteostatWeatherProvider', () => {
         significantCondition: 'RAIN',
       }),
     ]);
-    expect(get).toHaveBeenCalledTimes(1);
+    expect(requestCount).toBe(1);
     expect(requestedUrl).toContain('/point/hourly?');
     expect(requestedUrl).toContain('tz=America%2FToronto');
     expect(requestedConfig).toMatchObject({
