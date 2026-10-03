@@ -581,9 +581,7 @@ describe('AccountingSalesAnalyticsService', () => {
       },
     });
     expect(
-      report.byPrimaryPaymentMethod.find(
-        (row) => row.key === 'NOT_APPLICABLE',
-      ),
+      report.byPrimaryPaymentMethod.find((row) => row.key === 'NOT_APPLICABLE'),
     ).toMatchObject({
       journalEntryCount: 3,
       summary: {
