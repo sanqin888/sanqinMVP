@@ -401,7 +401,8 @@ export const calculateExternalSaleJournalReceivableCents = (
   }>,
 ): number => {
   const receivableLines = lines.filter(
-    (line) => line.accountStableId === ACCOUNTING_EXTERNAL_SALE_AR_ACCOUNT_STABLE_ID,
+    (line) =>
+      line.accountStableId === ACCOUNTING_EXTERNAL_SALE_AR_ACCOUNT_STABLE_ID,
   );
   if (receivableLines.length !== 1) {
     throw new AccountingJournalPolicyError(
