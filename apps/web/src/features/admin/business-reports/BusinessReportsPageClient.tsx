@@ -174,8 +174,8 @@ export function BusinessReportsPageClient() {
         setReport(null);
         setError(
           isZh
-            ? '经营报表加载失败。请确认门店与日期后重试。'
-            : 'Business Reports failed to load. Confirm the store and date range, then retry.',
+            ? '经营概览加载失败。请确认门店与日期后重试。'
+            : 'Business Overview failed to load. Confirm the store and date range, then retry.',
         );
       })
       .finally(() => {
@@ -212,7 +212,7 @@ export function BusinessReportsPageClient() {
             <div className="flex items-center gap-2">
               <BarChart3 className="size-6 text-[#87362E]" aria-hidden="true" />
               <h1 className="text-2xl font-bold tracking-tight text-slate-950">
-                {isZh ? '经营报表' : 'Business Reports'}
+                {isZh ? '经营概览' : 'Business Overview'}
               </h1>
             </div>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
@@ -318,8 +318,8 @@ export function BusinessReportsPageClient() {
       {!storeStableId ? (
         <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
           {isZh
-            ? '请先使用页面上方的“当前门店”选择器确定 storeStableId。经营报表不会使用隐式默认门店。'
-            : 'Choose a Current store above first. Business Reports will not use an implicit default store.'}
+            ? '请先使用页面上方的“当前门店”选择器确定 storeStableId。经营概览不会使用隐式默认门店。'
+            : 'Choose a Current store above first. Business Overview will not use an implicit default store.'}
         </section>
       ) : loading ? (
         <section className="flex min-h-72 items-center justify-center rounded-2xl border border-slate-200 bg-white">
@@ -339,7 +339,7 @@ export function BusinessReportsPageClient() {
         <section className="flex min-h-72 flex-col items-center justify-center rounded-2xl border border-red-200 bg-white p-6 text-center">
           <AlertCircle className="size-8 text-red-600" aria-hidden="true" />
           <h2 className="mt-3 text-lg font-semibold text-slate-950">
-            {isZh ? '无法加载经营报表' : 'Unable to load Business Reports'}
+            {isZh ? '无法加载经营概览' : 'Unable to load Business Overview'}
           </h2>
           <p className="mt-1 max-w-lg text-sm text-slate-600">{error}</p>
           <button

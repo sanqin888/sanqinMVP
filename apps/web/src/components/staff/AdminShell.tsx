@@ -18,6 +18,7 @@ import {
   Store,
   Tags,
   TicketPercent,
+  TrendingUp,
   Truck,
   UserCog,
   Users,
@@ -210,10 +211,17 @@ function buildCategories(
       items: [
         {
           href: `${adminRoot}/reports`,
-          labelZh: '经营报表',
-          labelEn: 'Business reports',
+          labelZh: '经营概览',
+          labelEn: 'Business overview',
           icon: BarChart3,
           match: 'exact',
+          preserveStoreContext: true,
+        },
+        {
+          href: `${adminRoot}/reports/sales`,
+          labelZh: '销售分析',
+          labelEn: 'Sales analytics',
+          icon: TrendingUp,
           preserveStoreContext: true,
         },
         {

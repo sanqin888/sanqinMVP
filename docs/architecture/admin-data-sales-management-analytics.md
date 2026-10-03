@@ -1,8 +1,8 @@
 # Admin Data — Sales Analytics / Management P&L migration
 
 Date: 2026-10-03  
-Baseline: `origin/dev@7934d875` after DATA-B1 migration merge  
-Current state: **DATA-A MERGED / CI #6817 GREEN; DATA-B1 SOURCE MERGED / PR #2668 / CI #6822 GREEN / MIGRATION `7934d875` REVIEWED ADDITIVE / DEV HISTORY ALIGNED / PRODUCTION APPLY PENDING; DATA-B2 LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**
+Baseline: `origin/dev@56f35b0c` after DATA-B2 merge  
+Current state: **DATA-A MERGED / CI #6817 GREEN; DATA-B1 SOURCE + MIGRATION ALIGNED ON DEV; DATA-B2 MERGED / PR #2669 / FINAL HEAD `3484dfe1` / CI #6826 GREEN / MERGE `56f35b0c`; DATA-C LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**
 
 ## Product goal
 
@@ -164,7 +164,7 @@ The user-generated migration `20261003185132_add_reporting_weather_daily_facts` 
 
 ### DATA-B2 — Calendar / Holiday Context foundation
 
-State: **LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE** on `feat/admin-data-calendar-context-foundation` from `origin/dev@7934d875`.
+State: **MERGED / PR #2669 / FINAL HEAD `3484dfe1` / CI #6826 GREEN / SQUASH `56f35b0c` / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**.
 
 Implementation:
 
@@ -183,13 +183,23 @@ Official rule authorities are recorded in-band in the response contract using On
 
 ### DATA-C — Admin Sales Analytics
 
-- `/admin/reports/sales`;
-- 7/30/90-day controls plus approved single-day selector;
-- canonical Accounting Sales + Business Operations + Weather + Calendar presentation join;
-- daily/table/chart context visibly marks holiday / long-weekend dates alongside weather;
-- explicit Store/range/timezone identity checks;
-- financial previous-period comparison remains distinct from B5 same-weekday operational
-  baseline.
+State: **LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE** on `feat/admin-data-sales-analytics` from `origin/dev@56f35b0c`.
+
+Implementation:
+
+- adds Store-scoped `/admin/reports/sales` and updates Admin Data navigation to `Business overview / Sales analytics / Behavior analytics`; the Sales item uses existing `preserveStoreContext` behavior and existing Store selector, while Data as a whole remains not implicitly Store-scoped;
+- extracts canonical Sales browser DTOs from the Accounting route subtree into shared Web contract `apps/web/src/lib/contracts/accounting-sales.ts`; existing Accounting consumers re-export the same types so the source-of-truth response shape is not duplicated between Admin and Accounting pages;
+- Admin performs a presentation-only parallel join of owner contracts: canonical `/accounting/report/sales`, Reporting `/reports/business`, Weather `/reports/weather-history` and Calendar `/reports/calendar-context`; there is no new backend aggregate service and no Admin recomputation of Journal money;
+- canonical Sales + Business Operations are required core evidence. Store, timezone and exact requested range are checked before joining; mismatch is fail-visible. Weather/Calendar provider/request failure is fail-soft and surfaces as unavailable context without invalidating canonical Sales;
+- date controls are exactly 7d / 30d / 90d plus the approved `< MM/DD/YYYY >` single-day selector. The initial date comes from Business Operations Store-local Today rather than browser time. `<` moves one local calendar day backward and is bounded by Accounting coverage;
+- `>` is disabled for future dates and otherwise performs an owner-backed probe of both canonical Sales Journal evidence and Business Orders evidence. It is enabled only when the next day has `journalEntryCount > 0` or `orderCount > 0`, which preserves External Sales-only dates while avoiding browser-clock/data-existence guesses;
+- management KPIs keep **Previous equal period** financial comparison separate from the B5 **Same-weekday operating baseline**. The main chart shows canonical current Net Sales Revenue, canonical previous-period Net Sales Revenue and average temperature; public-holiday markers are explanatory only;
+- daily explanatory context joins canonical Sales, Orders order count/AOV/operating expected Order total, Weather temperature/precipitation/snow and Calendar holiday/long-weekend labels. The UI explicitly states that operational Order totals are not Accounting revenue and contextual correlation is not proven causation;
+- channel table uses canonical Journal amounts with descriptive channel attribution; commercial-item quantities/penetration come from Orders Reporting and do not recalculate revenue;
+- coverage panel preserves provider financial coverage, Weather availability, Calendar availability, current-only Store operating-history limitation and Meteostat attribution/license;
+- existing Accounting Sales presentation is intentionally retained until DATA-E production verification and later DATA-F presentation contraction.
+
+Focused date/model/source-characterization regressions are included. Per `AGENTS.md`, local lint/build/test are not run before user review; GitHub Actions remains the validation gate after remote authorization.
 
 ### DATA-D — Admin Management P&L
 
@@ -225,6 +235,11 @@ DATA-B1 also introduces no new 12-context direction: Reporting reuses the alread
 Brand/Store public config seam and owns its own read-model persistence/provider adapters.
 It adds one Reporting-owned table and one additive authenticated Reporting HTTP read contract,
 but no package dependency, scanner allowance, SCC or architecture-baseline change.
+
+DATA-B2 and DATA-C introduce no new backend context direction. DATA-B2 stays inside Reporting
+over the existing Brand/Store jurisdiction seam. DATA-C is a Web/Admin adapter composition
+of existing authenticated owner APIs plus a shared browser DTO contract; it adds no Prisma
+model, migration, package dependency, scanner allowance, SCC or architecture-baseline change.
 
 B2 Canonical Sales Analytics and B5 Admin Business Reports remain closed; this work is a
 post-modularization product/UI ownership refinement and does not reopen their financial or
