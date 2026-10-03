@@ -29,6 +29,7 @@ function setup(options?: {
       options?.providerResult ?? {
         provider: 'METEOSTAT',
         status: 'COMPLETE',
+        cacheable: true,
         attemptedDates: ['2026-10-01', '2026-10-02', '2026-10-03'],
         days: [
           {
@@ -228,6 +229,7 @@ describe('WeatherHistoryService', () => {
       providerResult: {
         provider: 'METEOSTAT',
         status: 'COMPLETE',
+        cacheable: true,
         attemptedDates: ['2026-10-02'],
         days: [
           {
@@ -268,6 +270,7 @@ describe('WeatherHistoryService', () => {
       providerResult: {
         provider: 'METEOSTAT',
         status: 'UNAVAILABLE',
+        cacheable: true,
         attemptedDates: [],
         days: [],
       },
@@ -293,6 +296,36 @@ describe('WeatherHistoryService', () => {
     expect(report.days[0]).toMatchObject({
       date: '2026-10-02',
       status: 'UNAVAILABLE',
+    });
+  });
+
+  it('does not persist provider-unavailable rows when the failure is not cacheable', async () => {
+    const { service, historyStore } = setup({
+      providerResult: {
+        provider: 'METEOSTAT',
+        status: 'UNAVAILABLE',
+        cacheable: false,
+        attemptedDates: [],
+        days: [],
+      },
+    });
+
+    const report = await service.getReport({
+      storeStableId: STORE.storeStableId,
+      from: '2026-10-02',
+      to: '2026-10-02',
+    });
+
+    expect(historyStore.upsertDays).not.toHaveBeenCalled();
+    expect(report.coverage).toMatchObject({
+      status: 'UNAVAILABLE',
+      refresh: 'UNAVAILABLE',
+      limitation: 'PROVIDER_UNAVAILABLE',
+    });
+    expect(report.days[0]).toMatchObject({
+      date: '2026-10-02',
+      status: 'UNAVAILABLE',
+      refreshedAt: null,
     });
   });
 

@@ -101,6 +101,25 @@ describe('Admin DATA-C Sales Analytics UI contract', () => {
     expect(clientSource).toContain('do not prove causation');
   });
 
+  it('keeps evidence status prominent and makes chart/context details readable', () => {
+    const coverageStart = clientSource.indexOf(
+      '<CoveragePanel bundle={bundle} locale={locale} />',
+    );
+    const kpiStart = clientSource.indexOf(
+      '<section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">',
+    );
+
+    expect(coverageStart).toBeGreaterThan(-1);
+    expect(kpiStart).toBeGreaterThan(coverageStart);
+    expect(clientSource).toContain('SALES_CONTEXT_CHART_COLORS.currentSales');
+    expect(clientSource).toContain('SALES_CONTEXT_CHART_COLORS.previousSales');
+    expect(clientSource).toContain('SALES_CONTEXT_CHART_COLORS.temperature');
+    expect(clientSource).toContain('SALES_CONTEXT_CHART_COLORS.holiday');
+    expect(clientSource).toContain('value.toFixed(1)');
+    expect(modelSource).toContain('weekday: calendar?.weekday ?? null');
+    expect(clientSource).toContain('weekdayLabel(row.weekday, locale)');
+  });
+
   it('adds a Store-scoped Sales Analytics destination without making Data globally Store-scoped', () => {
     expect(adminShellSource).toContain('/reports/sales');
     expect(adminShellSource).toContain("labelZh: '销售分析'");

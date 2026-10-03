@@ -19,6 +19,7 @@ export type SalesAnalyticsDailyRow = {
   snowDepthMm: number | null;
   weatherCondition: SalesAnalyticsWeatherCondition | null;
   weatherStatus: 'HISTORICAL' | 'PROVISIONAL' | 'PARTIAL' | 'UNAVAILABLE';
+  weekday: SalesAnalyticsCalendarReport['days'][number]['weekday'] | null;
   holidayNameEn: string | null;
   holidayNameZh: string | null;
   isPublicHoliday: boolean | null;
@@ -126,6 +127,7 @@ export function buildDailyRows(input: {
         snowDepthMm: weather?.snowDepthMm ?? null,
         weatherCondition: weather?.significantCondition ?? null,
         weatherStatus: weather?.status ?? 'UNAVAILABLE',
+        weekday: calendar?.weekday ?? null,
         holidayNameEn: holiday?.nameEn ?? null,
         holidayNameZh: holiday?.nameZh ?? null,
         isPublicHoliday: calendar?.isPublicHoliday ?? null,

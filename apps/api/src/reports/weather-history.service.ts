@@ -124,6 +124,7 @@ export class WeatherHistoryService {
             to: range.to,
           });
           refreshResults.push(providerResult.status);
+          if (providerResult.cacheable === false) break;
 
           const providerByDate = new Map(
             providerResult.days.map((day) => [day.localDate, day] as const),
@@ -148,8 +149,10 @@ export class WeatherHistoryService {
         if (refresh !== 'COMPLETE') {
           limitation = 'PROVIDER_UNAVAILABLE';
         }
-        await this.historyStore.upsertDays(upserts);
-        for (const row of upserts) rowsByDate.set(row.localDate, row);
+        if (upserts.length > 0) {
+          await this.historyStore.upsertDays(upserts);
+          for (const row of upserts) rowsByDate.set(row.localDate, row);
+        }
       }
     }
 
