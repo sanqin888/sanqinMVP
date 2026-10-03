@@ -48,9 +48,8 @@ describe('Ontario public holiday calendar v1', () => {
   it('moves Canada Day to July 2 when July 1 falls on Sunday', () => {
     const holidays = getOntarioPublicHolidaysForYear(2018);
     expect(
-      holidays.find(
-        (holiday) => holiday.holidayStableId === 'ca-on-canada-day',
-      )?.date,
+      holidays.find((holiday) => holiday.holidayStableId === 'ca-on-canada-day')
+        ?.date,
     ).toBe('2018-07-02');
 
     expect(

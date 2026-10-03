@@ -133,9 +133,7 @@ export class CalendarContextService {
       coverage: {
         status: supportedJurisdiction ? 'COMPLETE' : 'UNAVAILABLE',
         jurisdiction,
-        limitation: supportedJurisdiction
-          ? null
-          : 'UNSUPPORTED_JURISDICTION',
+        limitation: supportedJurisdiction ? null : 'UNSUPPORTED_JURISDICTION',
       },
       days,
     };
@@ -151,9 +149,7 @@ export class CalendarContextService {
       string,
       ReturnType<typeof getOntarioPublicHolidaysForYear>
     >();
-    const longWeekends: ReturnType<
-      typeof getOntarioLongWeekendsForYear
-    > = [];
+    const longWeekends: ReturnType<typeof getOntarioLongWeekendsForYear> = [];
     for (let year = first.year - 1; year <= last.year + 1; year += 1) {
       longWeekends.push(...getOntarioLongWeekendsForYear(year));
     }
@@ -170,8 +166,7 @@ export class CalendarContextService {
       const parsed = DateTime.fromISO(date, { zone: timezone });
       const holidayRows = holidays.get(date) ?? [];
       const longWeekend = longWeekends.find(
-        (candidate) =>
-          date >= candidate.startDate && date <= candidate.endDate,
+        (candidate) => date >= candidate.startDate && date <= candidate.endDate,
       );
 
       return {

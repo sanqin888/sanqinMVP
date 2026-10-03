@@ -138,17 +138,11 @@ export const getOntarioPublicHolidaysForYear = (
 
   return [
     asHoliday(HOLIDAY_METADATA.newYearsDay, DateTime.utc(year, 1, 1)),
-    asHoliday(
-      HOLIDAY_METADATA.familyDay,
-      nthWeekdayOfMonth(year, 2, 1, 3),
-    ),
+    asHoliday(HOLIDAY_METADATA.familyDay, nthWeekdayOfMonth(year, 2, 1, 3)),
     asHoliday(HOLIDAY_METADATA.goodFriday, easter.minus({ days: 2 })),
     asHoliday(HOLIDAY_METADATA.victoriaDay, victoriaDay(year)),
     asHoliday(HOLIDAY_METADATA.canadaDay, canadaDay(year)),
-    asHoliday(
-      HOLIDAY_METADATA.labourDay,
-      nthWeekdayOfMonth(year, 9, 1, 1),
-    ),
+    asHoliday(HOLIDAY_METADATA.labourDay, nthWeekdayOfMonth(year, 9, 1, 1)),
     asHoliday(
       HOLIDAY_METADATA.thanksgivingDay,
       nthWeekdayOfMonth(year, 10, 1, 2),

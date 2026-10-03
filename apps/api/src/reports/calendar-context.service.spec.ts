@@ -49,41 +49,59 @@ describe('CalendarContextService', () => {
       limitation: null,
     });
     expect(report.days).toEqual([
-      expect.objectContaining({
+      {
         date: '2026-02-14',
         weekday: 'SATURDAY',
+        classificationStatus: 'SUPPORTED',
         isPublicHoliday: false,
-        longWeekend: expect.objectContaining({
+        holidays: [],
+        longWeekend: {
           holidayStableId: 'ca-on-family-day',
-          role: 'ADJACENT_WEEKEND',
+          nameEn: 'Family Day',
+          nameZh: '家庭日',
           startDate: '2026-02-14',
           endDate: '2026-02-16',
-        }),
-      }),
-      expect.objectContaining({
+          role: 'ADJACENT_WEEKEND',
+        },
+      },
+      {
         date: '2026-02-15',
         weekday: 'SUNDAY',
+        classificationStatus: 'SUPPORTED',
         isPublicHoliday: false,
-        longWeekend: expect.objectContaining({
+        holidays: [],
+        longWeekend: {
           holidayStableId: 'ca-on-family-day',
+          nameEn: 'Family Day',
+          nameZh: '家庭日',
+          startDate: '2026-02-14',
+          endDate: '2026-02-16',
           role: 'ADJACENT_WEEKEND',
-        }),
-      }),
-      expect.objectContaining({
+        },
+      },
+      {
         date: '2026-02-16',
         weekday: 'MONDAY',
+        classificationStatus: 'SUPPORTED',
         isPublicHoliday: true,
         holidays: [
-          expect.objectContaining({
+          {
             holidayStableId: 'ca-on-family-day',
+            nameEn: 'Family Day',
+            nameZh: '家庭日',
+            jurisdiction: 'CA-ON',
             category: 'ONTARIO_PUBLIC_HOLIDAY',
-          }),
+          },
         ],
-        longWeekend: expect.objectContaining({
+        longWeekend: {
           holidayStableId: 'ca-on-family-day',
+          nameEn: 'Family Day',
+          nameZh: '家庭日',
+          startDate: '2026-02-14',
+          endDate: '2026-02-16',
           role: 'HOLIDAY',
-        }),
-      }),
+        },
+      },
     ]);
     expect(report.source.rulesetVersion).toBe('2026-10-03-v1');
   });

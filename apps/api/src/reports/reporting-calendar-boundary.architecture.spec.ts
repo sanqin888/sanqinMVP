@@ -48,7 +48,9 @@ describe('DATA-B2 Reporting Calendar Context boundary', () => {
   });
 
   it('keeps unsupported jurisdictions explicit and excludes non-ESA observances from the v1 authority', () => {
-    const contract = read(resolve(REPORTS_ROOT, 'calendar-context.contract.ts'));
+    const contract = read(
+      resolve(REPORTS_ROOT, 'calendar-context.contract.ts'),
+    );
     const rules = read(
       resolve(REPORTS_ROOT, 'ontario-public-holiday-calendar.ts'),
     );
