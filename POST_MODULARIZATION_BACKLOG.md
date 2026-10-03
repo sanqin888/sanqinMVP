@@ -126,39 +126,59 @@ The later CheckoutIntent contraction (§8.3) will move permanent destination/pre
 Priority: **P0 OPS EVIDENCE**  
 Complexity: **M operational / low source coupling**  
 External gate: **none**  
-State: **RECOVERY DRILL PARTIAL PASS / SOURCE REMEDIATION IN LOCAL REVIEW / PRODUCTION FIX NOT DEPLOYED**
+State: **PRODUCTION VERIFIED / CLOSED — PR #2641 / MERGE `52dfced9` / CI #6726 GREEN / RECOVERY DRILL PASS / OFF-VM CRYPT ESCROW VERIFIED / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**
 
 Backups are useful only if restoration is proven.
 
-Record a current recovery drill that verifies:
+The 2026-10-01 isolated recovery drill verified PostgreSQL logical-backup
+retrieval and clean restore, migration/count/Journal integrity, uploads-current
+DB/file/hash parity, uploads-history retrieval, encrypted remote retrieval,
+cross-host rclone crypt decryption, and protected project-config recovery. The
+drill found one real blocker: production Nginx required
+`/etc/nginx/certs/cf-origin.key`, but the legacy Nginx archive omitted that
+`root:root 0600` file while the backup oneshot could still finish with status
+zero after partial failures.
 
-- PostgreSQL restore into a safe non-production target;
-- uploads-current / uploads-history recovery;
-- protected configuration recovery procedure;
-- expected ordering between DB/files/config;
-- recovery integrity checks and operator runbook.
+PR #2641 / merge `52dfced9` / CI #6726 hardened only the Runtime/Data/CI/Ops
+backup boundary: the main service remains `User=ubuntu`; one fixed root-only
+helper owns the protected Nginx/SSL archive; mandatory members including
+`cf-origin.key` are validated before encrypted upload; core task failures are
+aggregated into the final service exit status; and the repository now owns the
+backup source, sudoers contract, CI safety characterization and operator
+runbook. Existing daily/monthly DB retention, uploads-current sync,
+uploads-history `--backup-dir` semantics and Messaging archive purpose remain
+unchanged.
 
-2026-10-01 recovery evidence passed isolated PostgreSQL logical restore plus
-migration/count/Journal checks, uploads-current DB/file/hash integrity,
-uploads-history retrieval, encrypted remote retrieval, cross-host rclone crypt
-decryption, and protected config archive restore. The drill found one real
-protected-config blocker: production Nginx requires
-`/etc/nginx/certs/cf-origin.key`, but the legacy archive omitted that
-`root:root 0600` file because `sanq-backup.service` runs as `ubuntu` and
-the legacy tar command silently tolerated unreadable files. The same script
-could also return systemd success after individual backup/upload failures.
+Production verification closed the remaining gates:
 
-The authorized remediation keeps the main service unprivileged, moves only the
-Nginx/SSL archive into a fixed root helper with mandatory member validation,
-propagates backup failures to the final service exit status, and records the
-operator procedure in `docs/runbooks/backup-recovery.md`. Existing
-daily/monthly/uploads retention semantics remain unchanged. §3.2 stays open
-until the reviewed source is merged/deployed, a post-fix secure archive is
-independently recovered with the private-key member present, and rclone crypt
-credentials have a durable off-VM escrow.
+- the hardening was deployed with source parity for the main script and protected
+  helper, the sudoers file parsed successfully, and the systemd service remained
+  `User=ubuntu`;
+- manual protected archive
+  `sanqin_nginx_20261001_214230.tar.gz` was uploaded through the exact
+  unprivileged-to-root helper boundary, independently downloaded on the recovery
+  Mac, passed gzip integrity, and contained all five required members including
+  `nginx/certs/cf-origin.key`;
+- rclone crypt credentials were placed in an AES-256 encrypted off-VM recovery
+  escrow and a round-trip restore proved byte parity, both configured remotes,
+  and successful decryption of `gdrive_secure:`;
+- the normal timer run on 2026-10-02 started at 07:30:34 UTC and exited at
+  07:31:46 UTC with `Result=success`, `ExecMainStatus=0`, no failure marker,
+  and a new validated protected archive
+  `sanqin_nginx_20261002_073034.tar.gz`.
 
-This is evidence work plus the smallest remediation required by the observed
-drill failure, not a rewrite of the backup system.
+RPO/RTO are intentionally not overstated. The operational backup cadence is
+daily at 03:30 Toronto time; this is not an atomic whole-system snapshot and a
+failed/missed run can extend the age of the last good recovery point.
+`uploads-history` also cannot contain a file created and deleted entirely
+between scheduled syncs. A complete clean-host production recovery was not timed,
+so no end-to-end RTO SLO is claimed by this drill.
+
+English operator contract: `docs/runbooks/backup-recovery.md`. Chinese
+operator manual: `docs/runbooks/backup-recovery.zh-CN.md`.
+
+This remained evidence work plus the smallest remediation required by the
+observed drill failure, not a rewrite of the backup system.
 
 ### 3.3 Docker pnpm reproducibility pin
 

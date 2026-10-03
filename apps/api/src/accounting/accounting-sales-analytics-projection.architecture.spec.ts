@@ -22,12 +22,25 @@ describe('B2 canonical Journal Sales projection boundary', () => {
       "'accounting.uber_pre_cutover_order_reversal.v1'",
     );
     expect(service).toContain("'accounting.provider_financial_document.v1'");
+    expect(service).toContain('ACCOUNTING_EXTERNAL_SALE_SOURCE_FACT_TYPE');
+    expect(service).toContain(
+      'ACCOUNTING_EXTERNAL_SALE_REVERSAL_SOURCE_FACT_TYPE',
+    );
+    expect(service).toContain('accountingExternalSale.findMany');
+    expect(service).toContain("primaryPaymentMethod: 'NOT_APPLICABLE'");
+    expect(service).toContain('byExternalClassification');
 
     expect(service).not.toContain("from '../orders/order-");
     expect(service).not.toContain('ORDER_REPORTING_FACTS_READER');
     expect(service).not.toContain('readPaidTotalDimensionsForRange');
     expect(service).not.toContain('Order.totalCents');
     expect(service).not.toContain('paymentBreakdownJson');
+    expect(service).not.toContain(
+      "sourceFactType === 'accounting.external_sale_settlement.v1'",
+    );
+    expect(service).not.toContain(
+      "sourceFactType === 'accounting.external_sale_settlement_reversal.v1'",
+    );
   });
 
   it('keeps canonical Sales as the Accounting sales read path after legacy cleanup', () => {

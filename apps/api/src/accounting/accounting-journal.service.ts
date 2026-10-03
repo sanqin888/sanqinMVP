@@ -66,6 +66,31 @@ import {
   type ProviderPayoutJournalWriteAuthorityV1,
 } from './accounting-provider-payout-journal-authority';
 import {
+  assertExternalSaleJournalAuthority,
+  hashExternalSaleJournalWrite,
+  normalizeExternalSaleWriteAuthority,
+  type ExternalSaleJournalWriteAuthorityV1,
+} from './accounting-external-sales-journal-authority';
+import {
+  assertExternalSaleSettlementJournalAuthority,
+  calculateExternalSaleJournalReceivableCents,
+  hashExternalSaleSettlementJournalWrite,
+  normalizeExternalSaleSettlementWriteAuthority,
+  type ExternalSaleSettlementJournalWriteAuthorityV1,
+} from './accounting-external-sales-settlement-journal-authority';
+import {
+  assertAccountingExternalSaleReversalJournalAuthority,
+  hashAccountingExternalSaleReversalJournalWrite,
+  normalizeAccountingExternalSaleReversalWriteAuthority,
+  type AccountingExternalSaleReversalJournalWriteAuthorityV1,
+} from './accounting-external-sales-reversal-journal-authority';
+import {
+  ACCOUNTING_EXTERNAL_SALE_REVERSAL_SOURCE_FACT_TYPE,
+  ACCOUNTING_EXTERNAL_SALE_SETTLEMENT_REVERSAL_SOURCE_FACT_TYPE,
+  ACCOUNTING_EXTERNAL_SALE_SETTLEMENT_SOURCE_FACT_TYPE,
+  ACCOUNTING_EXTERNAL_SALE_SOURCE_FACT_TYPE,
+} from './accounting-external-sales.contract';
+import {
   assertProviderFeeBankWithdrawalJournalAuthority,
   hashProviderFeeBankWithdrawalJournalWrite,
   normalizeProviderFeeBankWithdrawalWriteAuthority,
@@ -165,10 +190,24 @@ type ResolvedJournalLine = NormalizedJournalLine & {
 
 type AccountingDbClient = AccountingDb | Prisma.TransactionClient;
 
+const EXTERNAL_SALE_CANONICAL_SOURCE_FACT_TYPES = new Set<string>([
+  ACCOUNTING_EXTERNAL_SALE_SOURCE_FACT_TYPE,
+  ACCOUNTING_EXTERNAL_SALE_SETTLEMENT_SOURCE_FACT_TYPE,
+  ACCOUNTING_EXTERNAL_SALE_REVERSAL_SOURCE_FACT_TYPE,
+  ACCOUNTING_EXTERNAL_SALE_SETTLEMENT_REVERSAL_SOURCE_FACT_TYPE,
+]);
+
+const isExternalSaleCanonicalSourceFactType = (
+  value: string | null | undefined,
+): boolean =>
+  typeof value === 'string' &&
+  EXTERNAL_SALE_CANONICAL_SOURCE_FACT_TYPES.has(value);
+
 type PreparedJournalWrite = {
   normalized: NormalizedJournalCreate;
   idempotencyHash: string;
   auditAuthority: Prisma.InputJsonValue | null;
+  allowInactiveReferencedDimensions?: boolean;
 };
 
 @Injectable()
@@ -251,6 +290,14 @@ export class AccountingJournalService {
         'provider fee bank withdrawal Journals require fee-clearing write authority',
       );
     }
+    if (
+      input.source === AccountingJournalSource.EXTERNAL_SALE ||
+      isExternalSaleCanonicalSourceFactType(input.sourceFactType)
+    ) {
+      throw new BadRequestException(
+        'External Sale canonical Journals require External-Sales-specific write authority',
+      );
+    }
     return this.createJournalEntryInternal(input, operatorActorRef, null);
   }
 
@@ -307,6 +354,143 @@ export class AccountingJournalService {
     if (journal.deletedAt) {
       throw new ConflictException(
         'canonical Expense Journal was deleted and cannot be replayed',
+      );
+    }
+    return journal;
+  }
+
+  async createExternalSaleJournalInTx(
+    input: AccountingJournalCreateInput,
+    operatorActorRef: string,
+    authority: ExternalSaleJournalWriteAuthorityV1,
+    tx: Prisma.TransactionClient,
+  ): Promise<AccountingJournalRow> {
+    const normalizedAuthority = this.applyJournalPolicy(() =>
+      normalizeExternalSaleWriteAuthority(authority),
+    );
+    const normalized = this.applyJournalPolicy(() =>
+      normalizeJournalCreate(input),
+    );
+    this.applyJournalPolicy(() =>
+      assertExternalSaleJournalAuthority(normalized, normalizedAuthority),
+    );
+    await this.assertExternalSaleAuthorityInTx(normalizedAuthority, tx);
+
+    const operator = this.requireJournalValue(
+      operatorActorRef,
+      'operatorActorRef',
+    );
+    const journal = await this.createPreparedJournalEntryInTx(
+      {
+        normalized,
+        idempotencyHash: hashExternalSaleJournalWrite(
+          normalized,
+          normalizedAuthority,
+        ),
+        auditAuthority: normalizedAuthority as unknown as Prisma.InputJsonValue,
+      },
+      operator,
+      tx,
+      normalizedAuthority.businessTimezone,
+    );
+    if (journal.deletedAt) {
+      throw new ConflictException(
+        'External Sale Journal was deleted and cannot be replayed',
+      );
+    }
+    return journal;
+  }
+
+  async createExternalSaleSettlementJournalInTx(
+    input: AccountingJournalCreateInput,
+    operatorActorRef: string,
+    authority: ExternalSaleSettlementJournalWriteAuthorityV1,
+    tx: Prisma.TransactionClient,
+  ): Promise<AccountingJournalRow> {
+    const normalizedAuthority = this.applyJournalPolicy(() =>
+      normalizeExternalSaleSettlementWriteAuthority(authority),
+    );
+    const normalized = this.applyJournalPolicy(() =>
+      normalizeJournalCreate(input),
+    );
+    this.applyJournalPolicy(() =>
+      assertExternalSaleSettlementJournalAuthority(
+        normalized,
+        normalizedAuthority,
+      ),
+    );
+    await this.assertExternalSaleSettlementAuthorityInTx(
+      normalizedAuthority,
+      tx,
+    );
+
+    const operator = this.requireJournalValue(
+      operatorActorRef,
+      'operatorActorRef',
+    );
+    const journal = await this.createPreparedJournalEntryInTx(
+      {
+        normalized,
+        idempotencyHash: hashExternalSaleSettlementJournalWrite(
+          normalized,
+          normalizedAuthority,
+        ),
+        auditAuthority: normalizedAuthority as unknown as Prisma.InputJsonValue,
+      },
+      operator,
+      tx,
+      normalizedAuthority.businessTimezone,
+    );
+    if (journal.deletedAt) {
+      throw new ConflictException(
+        'External Sale settlement Journal was deleted and cannot be replayed',
+      );
+    }
+    return journal;
+  }
+
+  async createExternalSaleReversalJournalInTx(
+    input: AccountingJournalCreateInput,
+    operatorActorRef: string,
+    authority: AccountingExternalSaleReversalJournalWriteAuthorityV1,
+    tx: Prisma.TransactionClient,
+  ): Promise<AccountingJournalRow> {
+    const normalizedAuthority = this.applyJournalPolicy(() =>
+      normalizeAccountingExternalSaleReversalWriteAuthority(authority),
+    );
+    const normalized = this.applyJournalPolicy(() =>
+      normalizeJournalCreate(input),
+    );
+    this.applyJournalPolicy(() =>
+      assertAccountingExternalSaleReversalJournalAuthority(
+        normalized,
+        normalizedAuthority,
+      ),
+    );
+    await this.assertExternalSaleReversalAuthorityInTx(normalizedAuthority, tx);
+
+    const operator = this.requireJournalValue(
+      operatorActorRef,
+      'operatorActorRef',
+    );
+    const timezone = await this.period.getBusinessTimezone();
+    const journal = await this.createPreparedJournalEntryInTx(
+      {
+        normalized,
+        idempotencyHash: hashAccountingExternalSaleReversalJournalWrite(
+          normalized,
+          normalizedAuthority,
+        ),
+        auditAuthority: normalizedAuthority as unknown as Prisma.InputJsonValue,
+        allowInactiveReferencedDimensions: true,
+      },
+      operator,
+      tx,
+      timezone,
+    );
+    if (journal.deletedAt) {
+      throw new ConflictException(
+        'External Sale reversal Journal was deleted and cannot be replayed',
       );
     }
     return journal;
@@ -708,7 +892,12 @@ export class AccountingJournalService {
     tx: Prisma.TransactionClient,
     timezone: string,
   ): Promise<AccountingJournalRow> {
-    const { normalized, idempotencyHash, auditAuthority } = prepared;
+    const {
+      normalized,
+      idempotencyHash,
+      auditAuthority,
+      allowInactiveReferencedDimensions = false,
+    } = prepared;
     const existing = await tx.accountingJournalEntry.findUnique({
       where: { idempotencyKey: normalized.idempotencyKey },
       select: ACCOUNTING_JOURNAL_INTERNAL_SELECT,
@@ -731,6 +920,7 @@ export class AccountingJournalService {
       tx,
       normalized.currency,
       normalized.lines,
+      allowInactiveReferencedDimensions,
     );
 
     const created = await tx.accountingJournalEntry.create({
@@ -809,6 +999,19 @@ export class AccountingJournalService {
       if (existing.source === AccountingJournalSource.EXPENSE_DOCUMENT) {
         throw new ConflictException(
           'canonical Expense Journals cannot be updated in place',
+        );
+      }
+      if (
+        existing.source === AccountingJournalSource.EXTERNAL_SALE ||
+        isExternalSaleCanonicalSourceFactType(existing.sourceFactType)
+      ) {
+        throw new ConflictException(
+          'External Sale canonical Journals cannot be updated in place',
+        );
+      }
+      if (isExternalSaleCanonicalSourceFactType(normalized.sourceFactType)) {
+        throw new ConflictException(
+          'generic Journal update cannot create External Sale canonical authority',
         );
       }
       if (existing.sourceFactType === PROVIDER_PAYOUT_SOURCE_FACT_TYPE) {
@@ -954,6 +1157,14 @@ export class AccountingJournalService {
           'canonical Expense Journals cannot be deleted in place',
         );
       }
+      if (
+        existing.source === AccountingJournalSource.EXTERNAL_SALE ||
+        isExternalSaleCanonicalSourceFactType(existing.sourceFactType)
+      ) {
+        throw new ConflictException(
+          'External Sale canonical Journals cannot be deleted in place',
+        );
+      }
       if (existing.sourceFactType === PROVIDER_PAYOUT_SOURCE_FACT_TYPE) {
         throw new ConflictException(
           'canonical provider payout Journals cannot be deleted in place',
@@ -1005,6 +1216,7 @@ export class AccountingJournalService {
     db: AccountingDbClient,
     currency: string,
     lines: NormalizedJournalLine[],
+    allowInactiveReferencedDimensions = false,
   ): Promise<ResolvedJournalLine[]> {
     const accountStableIds = [
       ...new Set(lines.map((line) => line.accountStableId)),
@@ -1019,7 +1231,7 @@ export class AccountingJournalService {
     const accounts = await db.accountingAccount.findMany({
       where: {
         accountStableId: { in: accountStableIds },
-        isActive: true,
+        ...(allowInactiveReferencedDimensions ? {} : { isActive: true }),
       },
       select: {
         id: true,
@@ -1031,7 +1243,7 @@ export class AccountingJournalService {
       ? await db.accountingCategory.findMany({
           where: {
             categoryStableId: { in: categoryStableIds },
-            isActive: true,
+            ...(allowInactiveReferencedDimensions ? {} : { isActive: true }),
           },
           select: { id: true, categoryStableId: true },
         })
@@ -1048,7 +1260,9 @@ export class AccountingJournalService {
       const account = accountByStableId.get(line.accountStableId);
       if (!account) {
         throw new BadRequestException(
-          `accountStableId is inactive or invalid: ${line.accountStableId}`,
+          allowInactiveReferencedDimensions
+            ? `accountStableId is invalid: ${line.accountStableId}`
+            : `accountStableId is inactive or invalid: ${line.accountStableId}`,
         );
       }
       if (account.currency !== currency) {
@@ -1061,7 +1275,9 @@ export class AccountingJournalService {
         : null;
       if (line.categoryStableId && !category) {
         throw new BadRequestException(
-          `categoryStableId is inactive or invalid: ${line.categoryStableId}`,
+          allowInactiveReferencedDimensions
+            ? `categoryStableId is invalid: ${line.categoryStableId}`
+            : `categoryStableId is inactive or invalid: ${line.categoryStableId}`,
         );
       }
       return {
@@ -1611,6 +1827,466 @@ export class AccountingJournalService {
       ) {
         throw new ConflictException(
           `Provider fee bank withdrawal account authority changed before posting: ${prerequisite.accountStableId}`,
+        );
+      }
+    }
+  }
+
+  private async assertExternalSaleReversalAuthorityInTx(
+    authority: AccountingExternalSaleReversalJournalWriteAuthorityV1,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    const fact = authority.fact;
+    if (fact.target === 'SALE') {
+      const sale = await tx.accountingExternalSale.findUnique({
+        where: { externalSaleStableId: fact.targetStableId },
+        select: {
+          factHash: true,
+          journalEntryStableId: true,
+          reversalStableId: true,
+          reversalFactHash: true,
+          reversalJournalEntryStableId: true,
+          reversedAt: true,
+          reversedByActorRef: true,
+        },
+      });
+      if (
+        !sale ||
+        sale.factHash !== fact.originalFactHash ||
+        sale.journalEntryStableId !== fact.originalJournalEntryStableId ||
+        sale.reversalStableId !== fact.reversalStableId ||
+        sale.reversalFactHash !== authority.reversalFactHash ||
+        !sale.reversedAt ||
+        !sale.reversedByActorRef
+      ) {
+        throw new ConflictException(
+          'External Sale reversal authority changed before Journal posting',
+        );
+      }
+    } else {
+      const settlement = await tx.accountingExternalSaleSettlement.findUnique({
+        where: { settlementStableId: fact.targetStableId },
+        select: {
+          factHash: true,
+          journalEntryStableId: true,
+          reversalStableId: true,
+          reversalFactHash: true,
+          reversalJournalEntryStableId: true,
+          reversedAt: true,
+          reversedByActorRef: true,
+        },
+      });
+      if (
+        !settlement ||
+        settlement.factHash !== fact.originalFactHash ||
+        settlement.journalEntryStableId !== fact.originalJournalEntryStableId ||
+        settlement.reversalStableId !== fact.reversalStableId ||
+        settlement.reversalFactHash !== authority.reversalFactHash ||
+        !settlement.reversedAt ||
+        !settlement.reversedByActorRef
+      ) {
+        throw new ConflictException(
+          'External Sale settlement reversal authority changed before Journal posting',
+        );
+      }
+    }
+
+    const original = await tx.accountingJournalEntry.findUnique({
+      where: { entryStableId: fact.originalJournalEntryStableId },
+      select: {
+        entryStableId: true,
+        source: true,
+        sourceFactType: true,
+        sourceFactStableId: true,
+        sourceFactVersion: true,
+        storeStableId: true,
+        occurredAt: true,
+        currency: true,
+        memo: true,
+        deletedAt: true,
+        lines: {
+          orderBy: { lineNo: 'asc' },
+          select: {
+            lineNo: true,
+            debitCents: true,
+            creditCents: true,
+            memo: true,
+            account: { select: { accountStableId: true } },
+            category: { select: { categoryStableId: true } },
+          },
+        },
+      },
+    });
+    if (!original || original.deletedAt) {
+      throw new ConflictException(
+        'External Sale reversal original Journal disappeared before posting',
+      );
+    }
+    const currentOriginal = {
+      entryStableId: original.entryStableId,
+      source: original.source,
+      sourceFactType: original.sourceFactType,
+      sourceFactStableId: original.sourceFactStableId,
+      sourceFactVersion: original.sourceFactVersion,
+      storeStableId: original.storeStableId,
+      occurredAt: original.occurredAt.toISOString(),
+      currency: original.currency,
+      memo: original.memo,
+      lines: original.lines.map((line) => ({
+        lineNo: line.lineNo,
+        accountStableId: line.account.accountStableId,
+        categoryStableId: line.category?.categoryStableId ?? null,
+        debitCents: line.debitCents,
+        creditCents: line.creditCents,
+        memo: line.memo,
+      })),
+    };
+    if (
+      JSON.stringify(currentOriginal) !==
+      JSON.stringify(authority.originalJournal)
+    ) {
+      throw new ConflictException(
+        'External Sale reversal original Journal changed before posting',
+      );
+    }
+  }
+
+  private async assertExternalSaleSettlementAuthorityInTx(
+    authority: ExternalSaleSettlementJournalWriteAuthorityV1,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    const settlement = await tx.accountingExternalSaleSettlement.findUnique({
+      where: { settlementStableId: authority.fact.settlementStableId },
+      select: {
+        settlementStableId: true,
+        idempotencyKey: true,
+        storeStableId: true,
+        settlementOn: true,
+        counterpartyName: true,
+        reference: true,
+        currency: true,
+        factHash: true,
+        journalEntryStableId: true,
+        reversalStableId: true,
+        reversedAt: true,
+        note: true,
+        replacementForSettlement: {
+          select: { settlementStableId: true },
+        },
+        allocations: {
+          orderBy: { sortOrder: 'asc' },
+          select: {
+            allocationStableId: true,
+            amountCents: true,
+            sortOrder: true,
+            externalSale: {
+              select: { externalSaleStableId: true },
+            },
+          },
+        },
+        components: {
+          orderBy: { sortOrder: 'asc' },
+          select: {
+            componentStableId: true,
+            amountCents: true,
+            label: true,
+            sortOrder: true,
+            account: {
+              select: { accountStableId: true },
+            },
+          },
+        },
+      },
+    });
+
+    const persistedFact = settlement
+      ? {
+          version: 1 as const,
+          settlementStableId: settlement.settlementStableId,
+          storeStableId: settlement.storeStableId,
+          settlementOn: settlement.settlementOn.toISOString().slice(0, 10),
+          counterpartyName: settlement.counterpartyName,
+          reference: settlement.reference,
+          currency: 'CAD' as const,
+          replacementForSettlementStableId:
+            settlement.replacementForSettlement?.settlementStableId ?? null,
+          allocations: settlement.allocations.map((allocation) => ({
+            allocationStableId: allocation.allocationStableId,
+            externalSaleStableId: allocation.externalSale.externalSaleStableId,
+            amountCents: allocation.amountCents,
+            sortOrder: allocation.sortOrder,
+          })),
+          components: settlement.components.map((component) => ({
+            componentStableId: component.componentStableId,
+            accountStableId: component.account.accountStableId,
+            amountCents: component.amountCents,
+            label: component.label,
+            sortOrder: component.sortOrder,
+          })),
+          note: settlement.note,
+        }
+      : null;
+
+    if (
+      !settlement ||
+      !persistedFact ||
+      settlement.journalEntryStableId !== null ||
+      settlement.reversedAt !== null ||
+      settlement.reversalStableId !== null ||
+      settlement.currency !== 'CAD' ||
+      settlement.idempotencyKey !==
+        `external-sale-settlement:${authority.fact.settlementStableId}:v1` ||
+      settlement.factHash !== authority.factHash ||
+      JSON.stringify(persistedFact) !== JSON.stringify(authority.fact)
+    ) {
+      throw new ConflictException(
+        'External Sale settlement authority changed before Journal posting',
+      );
+    }
+
+    const currentAccounts = await tx.accountingAccount.findMany({
+      where: {
+        accountStableId: {
+          in: authority.accountPrerequisites.map(
+            (account) => account.accountStableId,
+          ),
+        },
+      },
+      select: {
+        accountStableId: true,
+        accountClass: true,
+        type: true,
+        currency: true,
+        isActive: true,
+      },
+    });
+    const currentAccountByStableId = new Map(
+      currentAccounts.map(
+        (account) => [account.accountStableId, account] as const,
+      ),
+    );
+    for (const prerequisite of authority.accountPrerequisites) {
+      const current = currentAccountByStableId.get(
+        prerequisite.accountStableId,
+      );
+      if (
+        !current ||
+        current.accountClass !== prerequisite.actual.accountClass ||
+        current.type !== prerequisite.actual.accountType ||
+        current.currency !== prerequisite.actual.currency ||
+        current.isActive !== prerequisite.actual.isActive
+      ) {
+        throw new ConflictException(
+          `External Sale settlement account authority changed before posting: ${prerequisite.accountStableId}`,
+        );
+      }
+    }
+
+    const saleStableIds = authority.receivablePrerequisites.map(
+      (item) => item.externalSaleStableId,
+    );
+    const sales = await tx.accountingExternalSale.findMany({
+      where: { externalSaleStableId: { in: saleStableIds } },
+      select: {
+        id: true,
+        externalSaleStableId: true,
+        storeStableId: true,
+        occurredOn: true,
+        counterpartyName: true,
+        currency: true,
+        factHash: true,
+        journalEntryStableId: true,
+        reversalStableId: true,
+        reversedAt: true,
+        settlementAllocations: {
+          select: {
+            amountCents: true,
+            settlement: {
+              select: {
+                settlementStableId: true,
+                journalEntryStableId: true,
+                reversalStableId: true,
+                reversedAt: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    const saleByStableId = new Map(
+      sales.map((sale) => [sale.externalSaleStableId, sale] as const),
+    );
+
+    const saleJournalStableIds = authority.receivablePrerequisites.map(
+      (item) => item.saleJournalEntryStableId,
+    );
+    const saleJournals = await tx.accountingJournalEntry.findMany({
+      where: { entryStableId: { in: saleJournalStableIds } },
+      select: {
+        entryStableId: true,
+        source: true,
+        sourceFactType: true,
+        sourceFactStableId: true,
+        deletedAt: true,
+        lines: {
+          orderBy: { lineNo: 'asc' },
+          select: {
+            debitCents: true,
+            creditCents: true,
+            account: {
+              select: { accountStableId: true },
+            },
+          },
+        },
+      },
+    });
+    const saleJournalByStableId = new Map(
+      saleJournals.map((journal) => [journal.entryStableId, journal] as const),
+    );
+
+    for (const prerequisite of authority.receivablePrerequisites) {
+      const sale = saleByStableId.get(prerequisite.externalSaleStableId);
+      const saleJournal = saleJournalByStableId.get(
+        prerequisite.saleJournalEntryStableId,
+      );
+      if (
+        !sale ||
+        sale.reversedAt !== null ||
+        sale.reversalStableId !== null ||
+        sale.storeStableId !== prerequisite.storeStableId ||
+        sale.counterpartyName !== prerequisite.counterpartyName ||
+        sale.currency !== prerequisite.currency ||
+        sale.factHash !== prerequisite.saleFactHash ||
+        sale.journalEntryStableId !== prerequisite.saleJournalEntryStableId ||
+        sale.occurredOn.toISOString().slice(0, 10) !==
+          prerequisite.saleOccurredOn ||
+        !saleJournal ||
+        saleJournal.deletedAt !== null ||
+        saleJournal.source !== AccountingJournalSource.EXTERNAL_SALE ||
+        saleJournal.sourceFactType !==
+          ACCOUNTING_EXTERNAL_SALE_SOURCE_FACT_TYPE ||
+        saleJournal.sourceFactStableId !== prerequisite.externalSaleStableId
+      ) {
+        throw new ConflictException(
+          `External Sale receivable authority changed before settlement posting: ${prerequisite.externalSaleStableId}`,
+        );
+      }
+
+      const totalReceivableCents = this.applyJournalPolicy(() =>
+        calculateExternalSaleJournalReceivableCents(
+          saleJournal.lines.map((line) => ({
+            accountStableId: line.account.accountStableId,
+            debitCents: line.debitCents,
+            creditCents: line.creditCents,
+          })),
+        ),
+      );
+
+      let settledBeforeCents = 0;
+      for (const allocation of sale.settlementAllocations) {
+        if (
+          allocation.settlement.settlementStableId ===
+          authority.fact.settlementStableId
+        ) {
+          continue;
+        }
+        if (
+          allocation.settlement.reversedAt !== null ||
+          allocation.settlement.reversalStableId !== null
+        ) {
+          continue;
+        }
+        if (!allocation.settlement.journalEntryStableId) {
+          throw new ConflictException(
+            `External Sale has an unanchored prior settlement: ${prerequisite.externalSaleStableId}`,
+          );
+        }
+        settledBeforeCents += allocation.amountCents;
+        if (!Number.isSafeInteger(settledBeforeCents)) {
+          throw new ConflictException(
+            'External Sale prior settlement total exceeds safe integer range',
+          );
+        }
+      }
+      const outstandingBeforeCents = totalReceivableCents - settledBeforeCents;
+
+      if (
+        totalReceivableCents !== prerequisite.totalReceivableCents ||
+        settledBeforeCents !== prerequisite.settledBeforeCents ||
+        outstandingBeforeCents !== prerequisite.outstandingBeforeCents ||
+        prerequisite.allocationCents > outstandingBeforeCents
+      ) {
+        throw new ConflictException(
+          `External Sale outstanding receivable changed before settlement posting: ${prerequisite.externalSaleStableId}`,
+        );
+      }
+    }
+  }
+
+  private async assertExternalSaleAuthorityInTx(
+    authority: ExternalSaleJournalWriteAuthorityV1,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    const sale = await tx.accountingExternalSale.findUnique({
+      where: { externalSaleStableId: authority.fact.externalSaleStableId },
+      select: {
+        storeStableId: true,
+        currency: true,
+        idempotencyKey: true,
+        factHash: true,
+        journalEntryStableId: true,
+        reversedAt: true,
+        reversalStableId: true,
+      },
+    });
+    if (
+      !sale ||
+      sale.journalEntryStableId !== null ||
+      sale.reversedAt !== null ||
+      sale.reversalStableId !== null ||
+      sale.storeStableId !== authority.fact.storeStableId ||
+      sale.currency !== 'CAD' ||
+      sale.idempotencyKey !==
+        `external-sale:${authority.fact.externalSaleStableId}:v1` ||
+      sale.factHash !== authority.factHash
+    ) {
+      throw new ConflictException(
+        'External Sale authority changed before Journal posting',
+      );
+    }
+
+    const currentAccounts = await tx.accountingAccount.findMany({
+      where: {
+        accountStableId: {
+          in: authority.accountPrerequisites.map(
+            (account) => account.accountStableId,
+          ),
+        },
+      },
+      select: {
+        accountStableId: true,
+        accountClass: true,
+        type: true,
+        currency: true,
+        isActive: true,
+      },
+    });
+    const currentByStableId = new Map(
+      currentAccounts.map(
+        (account) => [account.accountStableId, account] as const,
+      ),
+    );
+    for (const prerequisite of authority.accountPrerequisites) {
+      const current = currentByStableId.get(prerequisite.accountStableId);
+      if (
+        !current ||
+        current.accountClass !== prerequisite.actual.accountClass ||
+        current.type !== prerequisite.actual.accountType ||
+        current.currency !== prerequisite.actual.currency ||
+        current.isActive !== prerequisite.actual.isActive
+      ) {
+        throw new ConflictException(
+          `External Sale account authority changed before posting: ${prerequisite.accountStableId}`,
         );
       }
     }

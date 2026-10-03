@@ -54,7 +54,7 @@ export const PROVIDER_SETTLEMENT_ACCOUNT_IDS = {
   salesRevenue: 'account_sales_revenue',
   tipRevenue: 'account_tip_revenue',
   otherOperatingRevenue: 'account_other_operating_revenue',
-  platformCommissionExpense: 'account_platform_commission_expense',
+  platformCommissionExpense: 'account_commission_expense',
   platformPromotionExpense: 'account_platform_promotion_expense',
   advertisingExpense: 'account_advertising_expense',
   generalOperatingExpense: 'account_general_operating_expense',

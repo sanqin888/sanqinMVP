@@ -91,7 +91,7 @@ describe('B2 canonical sales analytics boundary', () => {
       'account_hst_payable',
       'account_tip_revenue',
       'account_other_operating_revenue',
-      'account_platform_commission_expense',
+      'account_commission_expense',
       'account_payment_processing_fee_expense',
       'account_platform_promotion_expense',
       'account_advertising_expense',
@@ -106,6 +106,12 @@ describe('B2 canonical sales analytics boundary', () => {
     expect(policy).toContain("'order.financial_reversal.v1'");
     expect(policy).toContain("'accounting.provider_financial_document.v1'");
     expect(policy).toContain("'accounting.uber_pre_cutover_order_reversal.v1'");
+    expect(policy).toContain("'accounting.external_sale.v1'");
+    expect(policy).toContain("'accounting.external_sale_reversal.v1'");
+    expect(policy).not.toContain("'accounting.external_sale_settlement.v1'");
+    expect(policy).not.toContain(
+      "'accounting.external_sale_settlement_reversal.v1'",
+    );
     expect(policy).toContain("'STORE_CASH_EQUIVALENT'");
     expect(policy).toContain("'UNKNOWN'");
     expect(policy).toContain("'INCOMPLETE'");

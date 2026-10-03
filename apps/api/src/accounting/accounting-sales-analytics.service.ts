@@ -19,6 +19,10 @@ import {
   AccountingJournalSource,
 } from './accounting-contracts';
 import { ACCOUNTING_DB, type AccountingDb } from './accounting-db';
+import {
+  ACCOUNTING_EXTERNAL_SALE_REVERSAL_SOURCE_FACT_TYPE,
+  ACCOUNTING_EXTERNAL_SALE_SOURCE_FACT_TYPE,
+} from './accounting-external-sales.contract';
 import { AccountingPeriodService } from './accounting-period.service';
 import { AccountingProviderSettlementQueryService } from './accounting-provider-settlement-query.service';
 import type {
@@ -67,6 +71,16 @@ type JournalAttribution = {
   channel: AccountingSalesAnalyticsChannelV1;
   primaryPaymentMethod: AccountingSalesAnalyticsPrimaryPaymentMethodV1;
   quality: AccountingSalesAttributionQualityV1 | null;
+  externalClassificationStableId: string | null;
+};
+
+type ExternalSaleAttributionRow = {
+  externalSaleStableId: string;
+  storeStableId: string;
+  classificationStableId: string;
+  journalEntryStableId: string | null;
+  reversalStableId: string | null;
+  reversalJournalEntryStableId: string | null;
 };
 
 const expectedJournalSource = (sourceFactType: string): string | null => {
@@ -82,6 +96,12 @@ const expectedJournalSource = (sourceFactType: string): string | null => {
   }
   if (sourceFactType === 'accounting.uber_pre_cutover_order_reversal.v1') {
     return AccountingJournalSource.SYSTEM;
+  }
+  if (
+    sourceFactType === ACCOUNTING_EXTERNAL_SALE_SOURCE_FACT_TYPE ||
+    sourceFactType === ACCOUNTING_EXTERNAL_SALE_REVERSAL_SOURCE_FACT_TYPE
+  ) {
+    return AccountingJournalSource.EXTERNAL_SALE;
   }
   return null;
 };
@@ -99,6 +119,12 @@ const sourceBucket = (
   if (sourceFactType === 'accounting.provider_financial_document.v1') {
     return 'PROVIDER_STATEMENT';
   }
+  if (sourceFactType === ACCOUNTING_EXTERNAL_SALE_SOURCE_FACT_TYPE) {
+    return 'EXTERNAL_SALE';
+  }
+  if (sourceFactType === ACCOUNTING_EXTERNAL_SALE_REVERSAL_SOURCE_FACT_TYPE) {
+    return 'EXTERNAL_SALE_REVERSAL';
+  }
   return 'HISTORICAL_REPLACEMENT_REVERSAL';
 };
 
@@ -111,18 +137,21 @@ const providerAttribution = (
         channel: 'ubereats',
         primaryPaymentMethod: 'UBEREATS',
         quality: null,
+        externalClassificationStableId: null,
       };
     case AccountingFinancialProvider.FANTUAN:
       return {
         channel: 'fantuan',
         primaryPaymentMethod: 'FANTUAN',
         quality: null,
+        externalClassificationStableId: null,
       };
     case AccountingFinancialProvider.CLOVER:
       return {
         channel: 'UNATTRIBUTED_PROVIDER',
         primaryPaymentMethod: 'CARD',
         quality: null,
+        externalClassificationStableId: null,
       };
     default:
       throw new ConflictException(
@@ -253,6 +282,52 @@ export class AccountingSalesAnalyticsService {
       }
     }
 
+    const externalSaleSourceIds = journals.flatMap((journal) =>
+      journal.sourceFactType === ACCOUNTING_EXTERNAL_SALE_SOURCE_FACT_TYPE &&
+      journal.sourceFactStableId
+        ? [journal.sourceFactStableId]
+        : [],
+    );
+    const externalSaleReversalSourceIds = journals.flatMap((journal) =>
+      journal.sourceFactType ===
+        ACCOUNTING_EXTERNAL_SALE_REVERSAL_SOURCE_FACT_TYPE &&
+      journal.sourceFactStableId
+        ? [journal.sourceFactStableId]
+        : [],
+    );
+    const externalSales: ExternalSaleAttributionRow[] =
+      externalSaleSourceIds.length === 0 &&
+      externalSaleReversalSourceIds.length === 0
+        ? []
+        : await this.prisma.accountingExternalSale.findMany({
+            where: {
+              OR: [
+                { externalSaleStableId: { in: externalSaleSourceIds } },
+                { reversalStableId: { in: externalSaleReversalSourceIds } },
+              ],
+            },
+            select: {
+              externalSaleStableId: true,
+              storeStableId: true,
+              classificationStableId: true,
+              journalEntryStableId: true,
+              reversalStableId: true,
+              reversalJournalEntryStableId: true,
+            },
+          });
+    const externalSaleByStableId = new Map(
+      externalSales.map((sale) => [sale.externalSaleStableId, sale] as const),
+    );
+    const externalSaleByReversalStableId = new Map<
+      string,
+      ExternalSaleAttributionRow
+    >();
+    for (const sale of externalSales) {
+      if (sale.reversalStableId) {
+        externalSaleByReversalStableId.set(sale.reversalStableId, sale);
+      }
+    }
+
     const directOrderSourceIds = journals.flatMap((journal) =>
       journal.sourceFactType?.startsWith('order.financial_') &&
       journal.sourceFactStableId
@@ -296,6 +371,10 @@ export class AccountingSalesAnalyticsService {
       AccountingSalesAnalyticsSourceBucketV1,
       AccountingSalesAnalyticsDimensionRowV1<AccountingSalesAnalyticsSourceBucketV1>
     >();
+    const externalClassificationRows = new Map<
+      string,
+      AccountingSalesAnalyticsDimensionRowV1<string>
+    >();
     const dailyRows = new Map<
       string,
       {
@@ -325,6 +404,8 @@ export class AccountingSalesAnalyticsService {
         providerByDocument,
         originalJournalByEntry,
         attributionBySourceFactStableId,
+        externalSaleByStableId,
+        externalSaleByReversalStableId,
       });
       if (attribution.quality === 'IMMUTABLE') {
         immutableOrderAttributedJournalEntries += 1;
@@ -343,6 +424,13 @@ export class AccountingSalesAnalyticsService {
         summary,
       );
       this.addDimensionRow(sourceRows, sourceBucket(sourceFactType), summary);
+      if (attribution.externalClassificationStableId) {
+        this.addDimensionRow(
+          externalClassificationRows,
+          attribution.externalClassificationStableId,
+          summary,
+        );
+      }
 
       const localDate = DateTime.fromJSDate(journal.occurredAt, {
         zone: timezone,
@@ -409,6 +497,9 @@ export class AccountingSalesAnalyticsService {
       bySource: Array.from(sourceRows.values()).sort((a, b) =>
         a.key.localeCompare(b.key),
       ),
+      byExternalClassification: Array.from(
+        externalClassificationRows.values(),
+      ).sort((a, b) => a.key.localeCompare(b.key)),
       attribution: {
         immutableOrderAttributedJournalEntries,
         legacyOrderAttributedJournalEntries,
@@ -494,6 +585,8 @@ export class AccountingSalesAnalyticsService {
       }
     >;
     attributionBySourceFactStableId: Map<string, OrderSalesAttributionV1>;
+    externalSaleByStableId: Map<string, ExternalSaleAttributionRow>;
+    externalSaleByReversalStableId: Map<string, ExternalSaleAttributionRow>;
   }): JournalAttribution {
     const sourceFactType = params.journal.sourceFactType;
     const sourceFactStableId = params.journal.sourceFactStableId;
@@ -502,6 +595,40 @@ export class AccountingSalesAnalyticsService {
         channel: 'UNATTRIBUTED',
         primaryPaymentMethod: 'UNATTRIBUTED',
         quality: 'MISSING',
+        externalClassificationStableId: null,
+      };
+    }
+
+    if (
+      sourceFactType === ACCOUNTING_EXTERNAL_SALE_SOURCE_FACT_TYPE ||
+      sourceFactType === ACCOUNTING_EXTERNAL_SALE_REVERSAL_SOURCE_FACT_TYPE
+    ) {
+      const sale =
+        sourceFactType === ACCOUNTING_EXTERNAL_SALE_SOURCE_FACT_TYPE
+          ? params.externalSaleByStableId.get(sourceFactStableId)
+          : params.externalSaleByReversalStableId.get(sourceFactStableId);
+      if (!sale) {
+        throw new ConflictException(
+          `Canonical External Sale Journal references a missing source fact: ${params.journal.entryStableId}`,
+        );
+      }
+      const expectedJournalEntryStableId =
+        sourceFactType === ACCOUNTING_EXTERNAL_SALE_SOURCE_FACT_TYPE
+          ? sale.journalEntryStableId
+          : sale.reversalJournalEntryStableId;
+      if (
+        sale.storeStableId !== params.journal.storeStableId ||
+        expectedJournalEntryStableId !== params.journal.entryStableId
+      ) {
+        throw new ConflictException(
+          `Canonical External Sale Journal source-fact anchor mismatch: ${params.journal.entryStableId}`,
+        );
+      }
+      return {
+        channel: 'external',
+        primaryPaymentMethod: 'NOT_APPLICABLE',
+        quality: null,
+        externalClassificationStableId: sale.classificationStableId,
       };
     }
 
@@ -536,6 +663,7 @@ export class AccountingSalesAnalyticsService {
             ? 'UBEREATS'
             : 'UNATTRIBUTED',
         quality: 'MISSING',
+        externalClassificationStableId: null,
       };
     }
     return {
@@ -544,6 +672,7 @@ export class AccountingSalesAnalyticsService {
       quality: resolveAccountingSalesAttributionQuality(
         attribution.primaryPaymentMethodEvidence,
       ),
+      externalClassificationStableId: null,
     };
   }
 

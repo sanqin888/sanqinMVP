@@ -118,7 +118,7 @@ const uberProviderStatement = {
     {
       debitCents: 100,
       creditCents: 0,
-      account: { accountStableId: 'account_platform_commission_expense' },
+      account: { accountStableId: 'account_commission_expense' },
     },
     {
       debitCents: 0,
@@ -128,9 +128,105 @@ const uberProviderStatement = {
   ],
 };
 
+const externalSaleJournal = {
+  entryStableId: 'journal_external_sale',
+  source: 'EXTERNAL_SALE',
+  sourceFactType: 'accounting.external_sale.v1',
+  sourceFactStableId: 'extsale_original',
+  storeStableId: STORE.storeStableId,
+  occurredAt: new Date('2026-06-20T04:00:00.000Z'),
+  lines: [
+    {
+      debitCents: 1243,
+      creditCents: 0,
+      account: { accountStableId: 'account_accounts_receivable' },
+    },
+    {
+      debitCents: 100,
+      creditCents: 0,
+      account: { accountStableId: 'account_sales_discounts' },
+    },
+    {
+      debitCents: 0,
+      creditCents: 1000,
+      account: { accountStableId: 'account_sales_revenue' },
+    },
+    {
+      debitCents: 0,
+      creditCents: 200,
+      account: { accountStableId: 'account_delivery_revenue' },
+    },
+    {
+      debitCents: 0,
+      creditCents: 143,
+      account: { accountStableId: 'account_hst_payable' },
+    },
+  ],
+};
+
+const externalSaleReversalJournal = {
+  entryStableId: 'journal_external_sale_reversal',
+  source: 'EXTERNAL_SALE',
+  sourceFactType: 'accounting.external_sale_reversal.v1',
+  sourceFactStableId: 'extsalereversal_original',
+  storeStableId: STORE.storeStableId,
+  occurredAt: externalSaleJournal.occurredAt,
+  lines: externalSaleJournal.lines.map((line) => ({
+    debitCents: line.creditCents,
+    creditCents: line.debitCents,
+    account: line.account,
+  })),
+};
+
+const externalReplacementJournal = {
+  entryStableId: 'journal_external_replacement',
+  source: 'EXTERNAL_SALE',
+  sourceFactType: 'accounting.external_sale.v1',
+  sourceFactStableId: 'extsale_replacement',
+  storeStableId: STORE.storeStableId,
+  occurredAt: new Date('2026-06-21T04:00:00.000Z'),
+  lines: [
+    {
+      debitCents: 1356,
+      creditCents: 0,
+      account: { accountStableId: 'account_accounts_receivable' },
+    },
+    {
+      debitCents: 0,
+      creditCents: 1200,
+      account: { accountStableId: 'account_sales_revenue' },
+    },
+    {
+      debitCents: 0,
+      creditCents: 156,
+      account: { accountStableId: 'account_hst_payable' },
+    },
+  ],
+};
+
+const externalSaleRows = [
+  {
+    externalSaleStableId: 'extsale_original',
+    storeStableId: STORE.storeStableId,
+    classificationStableId: 'external_wholesale',
+    journalEntryStableId: externalSaleJournal.entryStableId,
+    reversalStableId: externalSaleReversalJournal.sourceFactStableId,
+    reversalJournalEntryStableId: externalSaleReversalJournal.entryStableId,
+  },
+  {
+    externalSaleStableId: 'extsale_replacement',
+    storeStableId: STORE.storeStableId,
+    classificationStableId: 'external_group_buy',
+    journalEntryStableId: externalReplacementJournal.entryStableId,
+    reversalStableId: null,
+    reversalJournalEntryStableId: null,
+  },
+];
+
 type JournalFindManyQueryCapture = {
   where?: {
     storeStableId?: string;
+    sourceFactType?: { in?: string[] };
     occurredAt?: {
       gte?: Date;
       lt?: Date;
@@ -142,6 +238,7 @@ function makeService(options?: {
   journals?: unknown[];
   originalJournals?: unknown[];
   providerDocuments?: unknown[];
+  externalSales?: unknown[];
   attributionRows?: unknown[];
   coverageRows?: unknown[];
 }) {
@@ -177,9 +274,13 @@ function makeService(options?: {
       },
     ],
   );
+  const externalSaleFindMany = jest
+    .fn()
+    .mockResolvedValue(options?.externalSales ?? []);
   const prisma = {
     accountingJournalEntry: { findMany: journalFindMany },
     accountingProviderFinancialDocument: { findMany: providerFindMany },
+    accountingExternalSale: { findMany: externalSaleFindMany },
   };
   const period = {
     requireCanonicalFinancialPostingStartAt: jest
@@ -256,6 +357,7 @@ function makeService(options?: {
     journalFindMany,
     journalQueries,
     providerFindMany,
+    externalSaleFindMany,
     settlementQuery,
     orderAttribution,
   };
@@ -360,6 +462,218 @@ describe('AccountingSalesAnalyticsService', () => {
     );
   });
 
+  it('projects ordinary External Sale money from Journal with explicit external attribution', async () => {
+    const { service, externalSaleFindMany, orderAttribution } = makeService({
+      journals: [externalSaleJournal],
+      originalJournals: [],
+      providerDocuments: [],
+      externalSales: [externalSaleRows[0]],
+      attributionRows: [],
+      coverageRows: [],
+    });
+
+    const report = await service.report({
+      from: '2026-06-01',
+      to: '2026-06-30',
+    });
+
+    expect(report.summary).toMatchObject({
+      grossSalesCents: 1000,
+      discountsCents: 100,
+      netFoodSalesCents: 900,
+      deliveryRevenueCents: 200,
+      netSalesRevenueCents: 1100,
+      outputTaxCents: 143,
+      platformCommissionCents: 0,
+      contributionCents: 1100,
+    });
+    const externalChannel = report.byChannel.find(
+      (row) => row.key === 'external',
+    );
+    expect(externalChannel).toMatchObject({
+      key: 'external',
+      journalEntryCount: 1,
+    });
+    expect(externalChannel?.summary).toMatchObject({ grossSalesCents: 1000 });
+
+    const notApplicablePayment = report.byPrimaryPaymentMethod.find(
+      (row) => row.key === 'NOT_APPLICABLE',
+    );
+    expect(notApplicablePayment).toMatchObject({
+      key: 'NOT_APPLICABLE',
+      journalEntryCount: 1,
+    });
+    expect(notApplicablePayment?.summary).toMatchObject({
+      grossSalesCents: 1000,
+    });
+
+    const wholesale = report.byExternalClassification.find(
+      (row) => row.key === 'external_wholesale',
+    );
+    expect(wholesale).toMatchObject({
+      key: 'external_wholesale',
+      journalEntryCount: 1,
+    });
+    expect(wholesale?.summary).toMatchObject({
+      grossSalesCents: 1000,
+      discountsCents: 100,
+      deliveryRevenueCents: 200,
+    });
+    expect(report.bySource).toEqual([
+      expect.objectContaining({ key: 'EXTERNAL_SALE', journalEntryCount: 1 }),
+    ]);
+    expect(report.tenderMix).toEqual([]);
+    expect(report.attribution).toEqual({
+      immutableOrderAttributedJournalEntries: 0,
+      legacyOrderAttributedJournalEntries: 0,
+      missingOrderAttributedJournalEntries: 0,
+      worstQuality: null,
+    });
+    expect(externalSaleFindMany).toHaveBeenCalledTimes(1);
+    expect(orderAttribution.readBySourceFactStableIds).toHaveBeenCalledWith([]);
+  });
+
+  it('nets External Sale reversal plus replacement and keeps provider commission provider-specific', async () => {
+    const { service } = makeService({
+      journals: [
+        externalSaleJournal,
+        externalSaleReversalJournal,
+        externalReplacementJournal,
+        uberProviderStatement,
+      ],
+      originalJournals: [],
+      externalSales: externalSaleRows,
+      attributionRows: [],
+    });
+
+    const report = await service.report({
+      from: '2026-06-01',
+      to: '2026-06-30',
+    });
+
+    expect(report.summary).toMatchObject({
+      grossSalesCents: 2200,
+      discountsCents: 0,
+      deliveryRevenueCents: 0,
+      netSalesRevenueCents: 2200,
+      outputTaxCents: 156,
+      platformCommissionCents: 100,
+      contributionCents: 2100,
+    });
+    expect(
+      report.byChannel.find((row) => row.key === 'external'),
+    ).toMatchObject({
+      journalEntryCount: 3,
+      summary: {
+        grossSalesCents: 1200,
+        platformCommissionCents: 0,
+        contributionCents: 1200,
+      },
+    });
+    expect(
+      report.byChannel.find((row) => row.key === 'ubereats'),
+    ).toMatchObject({
+      journalEntryCount: 1,
+      summary: {
+        grossSalesCents: 1000,
+        platformCommissionCents: 100,
+        contributionCents: 900,
+      },
+    });
+    expect(
+      report.byPrimaryPaymentMethod.find((row) => row.key === 'NOT_APPLICABLE'),
+    ).toMatchObject({
+      journalEntryCount: 3,
+      summary: {
+        grossSalesCents: 1200,
+        platformCommissionCents: 0,
+      },
+    });
+
+    const wholesale = report.byExternalClassification.find(
+      (row) => row.key === 'external_wholesale',
+    );
+    expect(wholesale).toMatchObject({
+      key: 'external_wholesale',
+      journalEntryCount: 2,
+    });
+    expect(wholesale?.summary).toMatchObject({
+      grossSalesCents: 0,
+      discountsCents: 0,
+      deliveryRevenueCents: 0,
+      outputTaxCents: 0,
+      contributionCents: 0,
+    });
+
+    const groupBuy = report.byExternalClassification.find(
+      (row) => row.key === 'external_group_buy',
+    );
+    expect(groupBuy).toMatchObject({
+      key: 'external_group_buy',
+      journalEntryCount: 1,
+    });
+    expect(groupBuy?.summary).toMatchObject({
+      grossSalesCents: 1200,
+      contributionCents: 1200,
+    });
+
+    expect(report.bySource).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: 'EXTERNAL_SALE', journalEntryCount: 2 }),
+        expect.objectContaining({
+          key: 'EXTERNAL_SALE_REVERSAL',
+          journalEntryCount: 1,
+        }),
+      ]),
+    );
+    const providerStatement = report.bySource.find(
+      (row) => row.key === 'PROVIDER_STATEMENT',
+    );
+    expect(providerStatement).toMatchObject({
+      key: 'PROVIDER_STATEMENT',
+      journalEntryCount: 1,
+    });
+    expect(providerStatement?.summary).toMatchObject({
+      platformCommissionCents: 100,
+    });
+    expect(report.tenderMix).toEqual([
+      { tender: 'UBER_EATS', amountCents: 900 },
+    ]);
+  });
+
+  it('fails closed when an External Sales Journal loses its source fact or Journal anchor', async () => {
+    const missing = makeService({
+      journals: [externalSaleJournal],
+      originalJournals: [],
+      providerDocuments: [],
+      externalSales: [],
+      attributionRows: [],
+    });
+    await expect(
+      missing.service.report({ from: '2026-06-01', to: '2026-06-30' }),
+    ).rejects.toThrow(
+      'Canonical External Sale Journal references a missing source fact',
+    );
+
+    const mismatched = makeService({
+      journals: [externalSaleJournal],
+      originalJournals: [],
+      providerDocuments: [],
+      externalSales: [
+        {
+          ...externalSaleRows[0],
+          journalEntryStableId: 'journal_wrong_anchor',
+        },
+      ],
+      attributionRows: [],
+    });
+    await expect(
+      mismatched.service.report({ from: '2026-06-01', to: '2026-06-30' }),
+    ).rejects.toThrow(
+      'Canonical External Sale Journal source-fact anchor mismatch',
+    );
+  });
+
   it('keeps canonical money visible in an UNATTRIBUTED bucket when Orders dimensions are missing', async () => {
     const { service } = makeService({
       journals: [saleJournal],
@@ -459,6 +773,18 @@ describe('AccountingSalesAnalyticsService', () => {
       gte: new Date('2026-06-01T04:00:00.000Z'),
       lt: new Date('2026-06-03T04:00:00.000Z'),
     });
+    expect(journalQueries[0]?.where?.sourceFactType?.in).toEqual(
+      expect.arrayContaining([
+        'accounting.external_sale.v1',
+        'accounting.external_sale_reversal.v1',
+      ]),
+    );
+    expect(journalQueries[0]?.where?.sourceFactType?.in).not.toContain(
+      'accounting.external_sale_settlement.v1',
+    );
+    expect(journalQueries[0]?.where?.sourceFactType?.in).not.toContain(
+      'accounting.external_sale_settlement_reversal.v1',
+    );
   });
 
   it('rejects reversed or excessively large date ranges', async () => {

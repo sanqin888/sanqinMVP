@@ -7,6 +7,9 @@ Recovery Drill. Runtime/Data/CI/Ops owns the backup/restore procedure. This
 work does not redesign business persistence, Accounting authority, provider
 protocols, or the existing daily/monthly/uploads retention model.
 
+§3.2 is production-verified and closed as of 2026-10-02. The Chinese operator
+manual is maintained at `docs/runbooks/backup-recovery.zh-CN.md`.
+
 The production backup job remains a User=ubuntu systemd oneshot. A single
 root-only helper is used only for the Nginx/SSL archive because the Cloudflare
 Origin private key is intentionally root:root 0600.
@@ -187,7 +190,7 @@ At minimum record:
 - secure-config archive gzip integrity and required archive members;
 - Nginx archive contains both cf-origin.pem and cf-origin.key.
 
-## 2026-10-01 drill evidence and open gate
+## 2026-10-01 to 2026-10-02 drill evidence and closeout
 
 The 2026-10-01 drill established, on an isolated Mac recovery host:
 
@@ -210,12 +213,47 @@ key is root:root 0600, and the legacy tar command used --ignore-failed-read plus
 discarded stderr. The partial archive was then uploaded and the job still exited
 zero.
 
-§3.2 must remain open until:
+The remediation merged through PR #2641 / merge `52dfced9`; CI #6726 passed
+the backup safety gate and all required repository checks. Production
+installation then preserved the unprivileged main service while installing the
+fixed privileged helper and narrow sudoers grant.
 
-- the reviewed hardening is merged and deployed;
-- a post-deployment secure archive is independently recovered and proves the
-  private key member is present;
-- rclone crypt recovery credentials have a durable off-VM escrow that does not
-  depend on the failed production VM itself;
-- the final evidence record includes recovery point/object timestamps and any
-  RPO/RTO limitations.
+Production verification on 2026-10-01 / 2026-10-02 closed every remaining gate:
+
+- installed `backup-db.sh` and the protected helper matched repository source;
+- `/etc/sudoers.d/sanq-backup` was `root:root 0440` and parsed successfully;
+- `sanq-backup.service` remained `User=ubuntu` with
+  `ExecStart=/home/ubuntu/backup-db.sh`;
+- manual archive `sanqin_nginx_20261001_214230.tar.gz` was produced through
+  the exact ubuntu -> narrow sudo helper boundary, uploaded to
+  `gdrive_secure:nginx`, independently recovered on the Mac, passed gzip
+  integrity, and contained all five mandatory Nginx/TLS members including
+  `nginx/certs/cf-origin.key`;
+- the recovery Mac stored the rclone crypt configuration in an AES-256 encrypted
+  off-VM DMG; a round-trip restore was byte-identical, exposed both
+  `gdrive_backup:` and `gdrive_secure:`, and successfully decrypted the
+  secure remote;
+- the normal scheduled job on 2026-10-02 ran from 07:30:34 UTC to 07:31:46 UTC
+  with `Result=success`, `ExecMainStatus=0`, no `❌` failure markers, and
+  created `sanqin_nginx_20261002_073034.tar.gz`.
+
+### Recovery-point and RPO/RTO limitations
+
+The current operational cadence is daily at 03:30 Toronto time. The 2026-10-02
+systemd trigger was observed at 07:30 UTC. The backup job is sequential rather
+than an atomic whole-system snapshot: the database dump, project config,
+protected Nginx archive and uploads sync are produced during one run but not at
+one transactionally identical instant. Restore the latest coherent successful
+run and re-run the integrity checks before reopening traffic.
+
+No formal end-to-end RPO SLO is claimed by this drill. A missed or failed
+scheduled run can extend the age of the last usable recovery point, and
+uploads-history cannot preserve a file created and deleted entirely between two
+scheduled uploads syncs.
+
+No formal end-to-end RTO SLO is claimed either. The isolated database restore,
+file/config retrieval and protected-config recovery were proven, but a complete
+clean-host production rebuild through traffic reopening was not timed.
+
+**Closeout:** Post-Modularization §3.2 Backup / Recovery Drill is
+**PRODUCTION VERIFIED / CLOSED**.

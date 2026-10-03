@@ -6,6 +6,8 @@ export const ACCOUNTING_SALES_SOURCE_FACT_TYPES = [
   'order.financial_reversal.v1',
   'accounting.provider_financial_document.v1',
   'accounting.uber_pre_cutover_order_reversal.v1',
+  'accounting.external_sale.v1',
+  'accounting.external_sale_reversal.v1',
 ] as const;
 
 export type AccountingSalesSourceFactTypeV1 =
@@ -45,7 +47,7 @@ export const ACCOUNTING_SALES_ACCOUNT_COMPONENT_POLICY = {
     component: 'OTHER_OPERATING_REVENUE',
     sign: 'CREDIT_MINUS_DEBIT',
   },
-  account_platform_commission_expense: {
+  account_commission_expense: {
     component: 'PLATFORM_COMMISSION',
     sign: 'DEBIT_MINUS_CREDIT',
   },

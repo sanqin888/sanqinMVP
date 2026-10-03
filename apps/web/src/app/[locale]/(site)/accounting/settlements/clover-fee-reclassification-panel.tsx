@@ -102,7 +102,24 @@ export function CloverFeeReclassificationPanel({
     );
   }
 
-  if (!preview || preview.status === 'NOOP') return null;
+  if (!preview) return null;
+
+  if (preview.status === 'NOOP') {
+    return (
+      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+        <p className="font-semibold">
+          {isZh
+            ? 'Clover 费用已按新规则入账'
+            : 'Clover fees already use the current posting rule'}
+        </p>
+        <p className="mt-1 text-xs">
+          {isZh
+            ? '费用已记入 Clover 费用应付，无需历史 Pending 修正。'
+            : 'Fees are already posted to Clover fee payable; no legacy Pending correction is required.'}
+        </p>
+      </div>
+    );
+  }
 
   if (preview.status === 'ALREADY_RECLASSIFIED') {
     return (

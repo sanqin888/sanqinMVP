@@ -117,6 +117,7 @@ export type AccountingSalesAnalyticsChannel =
   | 'in_store'
   | 'ubereats'
   | 'fantuan'
+  | 'external'
   | 'UNATTRIBUTED_PROVIDER'
   | 'UNATTRIBUTED';
 
@@ -127,6 +128,7 @@ export type AccountingSalesAnalyticsPrimaryPaymentMethod =
   | 'STORE_BALANCE'
   | 'UBEREATS'
   | 'FANTUAN'
+  | 'NOT_APPLICABLE'
   | 'UNATTRIBUTED';
 
 export type AccountingSalesTenderBucket =
@@ -140,7 +142,9 @@ export type AccountingSalesAnalyticsSourceBucket =
   | 'ORDER_SALE'
   | 'ORDER_CHANGE'
   | 'PROVIDER_STATEMENT'
-  | 'HISTORICAL_REPLACEMENT_REVERSAL';
+  | 'HISTORICAL_REPLACEMENT_REVERSAL'
+  | 'EXTERNAL_SALE'
+  | 'EXTERNAL_SALE_REVERSAL';
 
 export type AccountingSalesAttributionQuality =
   | 'IMMUTABLE'
@@ -185,6 +189,7 @@ export type AccountingSalesAnalyticsReport = {
   bySource: Array<
     AccountingSalesDimensionRow<AccountingSalesAnalyticsSourceBucket>
   >;
+  byExternalClassification: Array<AccountingSalesDimensionRow<string>>;
   attribution: {
     immutableOrderAttributedJournalEntries: number;
     legacyOrderAttributedJournalEntries: number;

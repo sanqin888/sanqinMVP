@@ -1,7 +1,7 @@
 # Post-Modularization Accounting Product Roadmap
 
 Status: **CLOVER FEE BANK CLEARING PRODUCTION VERIFIED; PAYOUT-E-B1 PRODUCTION VERIFIED / MIGRATION APPLIED; PAYOUT-E-B2 PRODUCTION VERIFIED / NO MIGRATION; PAYOUT-E-A + INBOX-ONLY + SETTLEMENT ROW-DECISION FOLLOW-UPS DEPLOYED — PAYOUT-D DEPLOYED / BACKEND DATA-PATH VERIFIED / UI SPOT-CHECK PENDING — PAYOUT-C PRODUCTION VERIFIED — PAYOUT-B MIGRATION APPLIED — PAYOUT-A MERGED / CI GREEN — B4-B MERGED / CI GREEN — B4-A MERGED / CI GREEN — B3 PRODUCTION VERIFIED / CLOSED — EFA PRODUCTION VERIFIED / CLOSED — B2 PRODUCTION VERIFIED / CLOSED — B1 CLOSED / B0 3V-B PRODUCTION VERIFICATION STILL PENDING — DO NOT REOPEN PHASE 9**  
-Planning date: 2026-09-20; updated: 2026-09-27  
+Planning date: 2026-09-20; updated: 2026-10-02  
 Baseline: Phase 9 **PRODUCTION VERIFIED / CLOSED** at production `main@dbea68f3`  
 Document-recognition audit baseline: `origin/dev@1ede0599`; Slice 3 merged as `caabf1c1`; Evidence Viewer Slice 1 merged as `0371a155`; Slice 1B merged as `9ae4d85d`; additive folder migration committed as `cc4c8016`; Evidence Viewer Slice 2 merged in PR #2438 as `4d68379e`; Slice 3V-A merged in PR #2439 as `0d6909bb` with PR CI #6054 and merged-head CI #6055 green; Slice 3V-B merged in PR #2440 as `0ac9117f` after final head `3c5c0400`, PR CI #6057 and merged-head CI #6058 green  
 B3 closeout baseline: latest `origin/dev@e29621bc`; B3-A merged through PR #2475 / squash `9c92eeda`, B3-B through PR #2476 / squash `ec2cff0f`, B3-C through PR #2478 / final head `12597b96` / squash `dcf12666`, and merge-evidence docs through PR #2479 / squash `b5d64e0e`. B3-D production reconciliation passed on 2026-09-23 against live authenticated API output and read-only canonical Journal/CoA data. Detailed readiness, implementation and closeout evidence: `docs/architecture/accounting-b3-trial-balance-readiness.md`.
@@ -109,6 +109,99 @@ to `account_clover_fee_payable`. The fix keeps provider-pending net nullable as 
 removes only that unconditional UI blocker, and leaves backend settlement READY/review/coverage/
 plan-hash/balance/idempotency gates unchanged. No schema, parser, posting-policy or dependency
 change is introduced.
+
+2026-10-02 Clover historical fee-reclassification status follow-up is delivered through **PR #2651 /
+MERGE GATED BY GREEN CI** on `fix/clover-reclassification-already-correct`. The
+historical correction preview now recognizes the exact already-correct fee-only Journal shape
+(balanced known fee debits, no Clover Pending movement, credit only to the valid Clover fee-payable
+account, matching Store/currency) as `NOOP` instead of `BLOCKED`. Mixed or malformed credits,
+invalid accounts and other existing fail-closed conditions remain `BLOCKED`. Provider Settlements
+renders `NOOP` as a green “already posted under the current rule / no legacy Pending correction
+required” state, while June's actual compensating correction remains `ALREADY_RECLASSIFIED`.
+No Journal write, schema/migration, parser, settlement authority, dependency or graph change is
+introduced.
+
+2026-10-02 External Sales **Slice A Authority / Contracts / invariants** is **MERGED / CI #6771
+GREEN / PR #2654 / MERGE `26e9b15a` / NO PRISMA / NO MIGRATION / NO RUNTIME CUTOVER**.
+Accounting reserves `accounting.external_sale.v1` and
+`accounting.external_sale_settlement.v1` as Accounting-owned non-Order authorities and freezes
+the generic commercial model: data-driven classification, exact decimal quantity, negotiated unit
+price, frozen line amount, generic signed revenue adjustments, explicit tax lines, receivable-first
+recognition and separately composed settlements. External Sales does not read Catalog/POS retail
+price or create synthetic Orders. The initial PR #2653 was superseded after #2652 advanced
+`dev`; clean replacement PR #2654 was recreated from current `origin/dev`, with final formatting
+head `1e390a8e` passing all CI jobs before squash merge. Phase 9 remains CLOSED.
+
+2026-10-02 External Sales **Slice B1 Persistence Foundation** is **MERGED / PR #2655 /
+MERGE `d3e86921` / SOURCE CI #6773 GREEN / MIGRATION `dc960d6d` REVIEWED / MIGRATION
+CI #6775 GREEN / NO RUNTIME CUTOVER / NO GRAPH OR BASELINE CHANGE**. The user-generated
+`20261002232836_accounting_external_sales_b1_persistence_foundation` migration exactly matches
+the reviewed schema change and is additive-only: enum extension/type + new External
+Sale/Settlement/evidence tables, indexes, uniques and FKs; no DROP/rename/CoA seed/Journal
+rewrite/backfill. Browser E2E fresh migration replay passed in CI #6775.
+
+2026-10-02 External Sales **Slice B2 CoA Foundation / Commission Normalization** is **MERGED /
+PR #2656 / FINAL HEAD `cf6e7cd5` / MERGE `4ce9c6aa` / CI #6777 GREEN / MIGRATION
+REPLAY VERIFIED / NO GRAPH OR BASELINE CHANGE**. B2 adds canonical AR
+(`account_accounts_receivable`, ASSET/null/CAD) and generalizes the existing commission
+account in place to `account_commission_expense / 佣金费用`. Provider Settlement, current
+provider Sales Analytics, financial reporting and Web replay fixtures move to the new stable ID;
+provider facts retain `PLATFORM_COMMISSION` semantics. Production evidence confirms the legacy
+account has 6 JournalLines / 703,084c debit, no target-ID/name conflict, and JournalLine points to
+the internal account UUID, so no Journal rewrite is needed. The user explicitly authorized one
+narrow exception to the normal migration-authoring rule; migration
+`20261003002800_accounting_external_sales_b2_coa_normalization` fails closed on legacy/target
+shape conflicts, preserves the commission UUID and JournalLine ownership, inserts AR, performs no
+Journal mutation/backfill/DROP, and is pinned in the explicit CoA migration guard. Detailed gate:
+`docs/architecture/accounting-external-sales-plan.md`.
+
+2026-10-02 External Sales **Slice C1 Sale Recognition** is **MERGED / PR #2657 / FINAL HEAD
+`ebb13b22` / MERGE `d412f4be` / CI #6780 GREEN / NO MIGRATION / NO SALES ANALYTICS
+CUTOVER / NO GRAPH OR BASELINE CHANGE**. C1 activates the ADMIN/ACCOUNTANT
+`POST /accounting/external-sales` vertical and atomically persists the frozen Sale fact,
+purpose-specific `EXTERNAL_SALE_RECOGNITION` Journal authority, STANDARD Journal, source-fact
+anchor and `EXTERNAL_SALE_POST` audit under the existing Serializable/start-date/period-lock
+gates. Generic Journal routes cannot forge or mutate External Sales canonical facts. Account
+policy remains fail-closed: exact AR, limited sale/adjustment revenue accounts and exact HST
+liability mapping; commission remains settlement-side.
+
+2026-10-02 External Sales **Slice C2 Settlement** is **MERGED / PR #2658 / FINAL HEAD
+`96179a8c` / MERGE `c81e13bb` / CI #6784 GREEN / NO MIGRATION / NO SALES ANALYTICS CUTOVER /
+NO GRAPH OR BASELINE CHANGE**. C2 activates ADMIN/ACCOUNTANT
+`POST /accounting/external-sales/settlements` and the Accounting-local Serializable
+Settlement/Allocation/Component + canonical Journal + anchor + audit path. The recognized Sale
+Journal's exact AR debit is receivable authority; live prior allocations are frozen/rechecked to
+prevent over-settlement. Active CAD BANK/CASH, exact HST recoverable and the explicit
+settlement-expense allowlist remain the only runtime component accounts. Financial Reports keep
+provider commission on `expense_platform_fee` and use `expense_other` for generic External
+Settlement commission/payment-processing.
+
+2026-10-02 External Sales **Slice C3 Reversal / Correction** is **MERGED / PR #2659 / HEAD
+`2b7ecef8` / MERGE `3a75c77a` / CI #6788 GREEN / NO MIGRATION / NO SALES ANALYTICS CUTOVER /
+NO GRAPH OR BASELINE CHANGE**.
+C3 adds ADMIN/ACCOUNTANT Sale and Settlement reversal endpoints plus a purpose-specific exact-inverse
+Journal authority. The authority freezes the original canonical Journal and swaps debit/credit
+without recomputing current commercial policy; accounts/categories/memos/Store/currency/original
+occurredAt are retained. The reversal-only Journal path may reuse original account/category
+dimensions even if they were later marked inactive; ordinary writes remain active-only. Reversal
+Journals are ADJUSTMENT, so the existing month-close adjustment
+allowance and year-close hard lock apply unchanged. Sale reversal requires all Settlement
+allocations to be fully reversed with live reversal Journal anchors first; Settlement reversal
+reopens AR by exact inverse. Reversal stable IDs are deterministic and the request reason is bound
+into reversalFactHash plus audit evidence. Correction is explicit reversal + replacement lineage:
+only a fully reversed predecessor with a live reversal Journal, matching Store/CAD and no existing
+replacement may be referenced. Replacement Sale/Settlement Journals are ADJUSTMENT while ordinary
+new facts remain STANDARD, allowing correction to complete in month-closed periods without
+weakening year-close. External Sales source types remain outside Sales Analytics until D.
+The executable External Sales plan now freezes the remaining sequence as
+**D Sales Analytics -> E Web -> F post-start reconstruction -> G pre-start
+opening-balance/cutover -> H closeout/production verification**, with per-Slice
+goals, execution steps, non-goals and completion gates in
+`docs/architecture/accounting-external-sales-plan.md`.
+
+2026-10-02 External Sales **Slice D Sales Analytics** is **MERGED / PR #2660 / FINAL HEAD `9df694f4` / MERGE `1198ed52` / CI #6792 GREEN / NO MIGRATION / NO GRAPH OR BASELINE CHANGE**. Journal remains the sole monetary authority. Sales adds only External Sale recognition/reversal source types; replacement remains a normal Sale fact; `channel=external`, `primaryPaymentMethod=NOT_APPLICABLE`, and persisted `classificationStableId` is the secondary `byExternalClassification` dimension. External Settlement/Settlement reversal remain outside Sales, leaving generic settlement costs in source-aware Financial Reports/P&L. The only D Web change was the authorized compatibility sync for type unions/report shape/labels; no External Sales operator UI was added in D.
+
+2026-10-03 External Sales **Slice E Web** is **LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO GRAPH OR BASELINE CHANGE** on `feat/accounting-external-sales-slice-e-web` from `origin/dev@1198ed52`. Accounting now exposes additive Store-scoped GET read models for Sale history/detail, Settlement history and canonical form options; Sale, Settlement and reversal Journal anchors are revalidated fail-closed, Settlement allocations reconcile to canonical Journal AR credit, and outstanding AR is derived only from canonical Sale Journal AR plus live Settlements. Web receives server-authorized account choices and never owns GL allowlists/default-bank policy. The new mobile-first External Sales workspace supports negotiated Sale entry, explicit receivable Settlement allocation, history/detail, canonical Journal/audit evidence, required-reason reversal and correction as reversal + prefilled replacement lineage. No schema, migration, context edge or architecture-baseline change is introduced.
 
 2026-09-26 pre-sync Clover authority Slice A is **PRODUCTION VERIFIED / CLOSED / READ-ONLY SHADOW / NO PRISMA / NO JOURNAL MUTATION**. Slice A merged via PR #2547 / `d68cc317`; the zero-activity coverage correction merged via PR #2549 / `b7a01075`, with CI #6419 green and production running `main@b7a01075`.
 Real Gmail Closeout Reports prove that pre-sync Clover tender truth cannot be anchored to

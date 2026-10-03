@@ -44,6 +44,7 @@ export const AccountingJournalSource = {
   PAYMENT: 'PAYMENT',
   PLATFORM_STATEMENT: 'PLATFORM_STATEMENT',
   PAYROLL: 'PAYROLL',
+  EXTERNAL_SALE: 'EXTERNAL_SALE',
   SYSTEM: 'SYSTEM',
 } as const;
 export type AccountingJournalSource = ValueOf<typeof AccountingJournalSource>;
