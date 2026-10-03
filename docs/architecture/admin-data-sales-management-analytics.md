@@ -1,8 +1,8 @@
 # Admin Data — Sales Analytics / Management P&L migration
 
 Date: 2026-10-03  
-Baseline: `origin/dev@ff1d7a41` after DATA-A merge  
-Current state: **DATA-A MERGED / CI #6817 GREEN / PR #2667 / MERGE `ff1d7a41`; DATA-B1 LOCAL IMPLEMENTED / USER REVIEW PENDING / MIGRATION REQUIRED / NO NEW DEPENDENCY / NO GRAPH OR BASELINE CHANGE**
+Baseline: `origin/dev@7934d875` after DATA-B1 migration merge  
+Current state: **DATA-A MERGED / CI #6817 GREEN; DATA-B1 SOURCE MERGED / PR #2668 / CI #6822 GREEN / MIGRATION `7934d875` REVIEWED ADDITIVE / DEV HISTORY ALIGNED / PRODUCTION APPLY PENDING; DATA-B2 LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**
 
 ## Product goal
 
@@ -139,7 +139,7 @@ evidence rather than infer data existence from the browser clock.
 
 ### DATA-B1 — Weather History foundation
 
-State: **LOCAL IMPLEMENTED / USER REVIEW PENDING / MIGRATION REQUIRED / NO NEW DEPENDENCY / NO GRAPH OR BASELINE CHANGE** on `feat/admin-data-weather-history-foundation` from `origin/dev@ff1d7a41`.
+State: **SOURCE MERGED / PR #2668 / SOURCE HEAD `6ef4d330` / SQUASH `37ac9c56` / CI #6822 GREEN / MIGRATION `7934d875` REVIEWED ADDITIVE / DEV HISTORY ALIGNED / PRODUCTION APPLY PENDING / NO NEW DEPENDENCY / NO GRAPH OR BASELINE CHANGE**.
 
 Implementation:
 
@@ -160,16 +160,26 @@ Persistence is additive but requires a user-generated migration. Suggested migra
 pnpm --filter api exec prisma migrate dev --create-only --name add_reporting_weather_daily_facts
 ```
 
-Expected SQL is create-table/index only. MCP must not generate or edit that migration. DATA-B1 cannot be promoted to `main` / production until the generated migration is reviewed, committed to `dev`, CI-green and applied through the normal deployment gate.
+The user-generated migration `20261003185132_add_reporting_weather_daily_facts` is now committed to `dev` as `7934d875` and has been reviewed as the expected additive-only CREATE TABLE + primary key + two indexes. It contains no DROP, ALTER, rename, backfill or existing-table mutation. The source/schema/history invariant is therefore restored on `dev`; production promotion/application remains gated on the normal deployment flow.
 
 ### DATA-B2 — Calendar / Holiday Context foundation
 
-- Reporting-owned historical calendar projection keyed by Store jurisdiction + local date;
-- versioned Canada/Ontario public/statutory-holiday rules plus long-weekend markers;
-- no reuse of mutable Store holiday-opening configuration as historical holiday authority;
-- no external browser API or provider secret;
-- explicit contract separation between calendar holidays and current Store schedule
-  exceptions.
+State: **LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE** on `feat/admin-data-calendar-context-foundation` from `origin/dev@7934d875`.
+
+Implementation:
+
+- Reporting adds deterministic authenticated `GET /reports/calendar-context?storeStableId=&from=&to=`, capped at the same 90 Store-local calendar days used by the Sales/Weather analysis surface;
+- the projection reuses the existing Reporting Store-location/jurisdiction port only; no Prisma, HTTP provider, browser secret, package dependency or Store-schedule implementation import is introduced;
+- v1 authority is explicitly **Ontario ESA public holidays**, versioned as `CA-ON-ESA-PUBLIC-HOLIDAYS / 2026-10-03-v1`, supported from `2008-01-01`;
+- the nine Ontario ESA public holidays are New Year's Day, Family Day, Good Friday, Victoria Day, Canada Day, Labour Day, Thanksgiving Day, Christmas Day and Boxing Day;
+- Civic Holiday, Easter Monday, National Day for Truth and Reconciliation and Remembrance Day are intentionally **not** classified as Ontario ESA public holidays in v1;
+- fixed and variable-date rules are deterministic, including Family Day = third Monday in February, Good Friday = Friday before Easter, Victoria Day = Monday preceding May 25, Canada Day = July 1 except July 2 when July 1 is Sunday, Labour Day = first Monday in September and Thanksgiving = second Monday in October;
+- long-weekend context is defined narrowly as a public holiday on Friday or Monday plus the adjacent Saturday/Sunday; all three dates receive the same long-weekend label and role, including cross-year spans such as a Monday New Year's Day;
+- substitute holidays are not inferred without historical Store/employment evidence, and Calendar Context never claims that the Store was closed merely because a date is an ESA public holiday;
+- unsupported Store jurisdictions return explicit `UNAVAILABLE / UNSUPPORTED_JURISDICTION` classification rather than silently treating unknown dates as non-holidays;
+- the API carries Store-local date, weekday, bilingual holiday labels, jurisdiction/category and long-weekend start/end/role while remaining fully separate from mutable `StoreHoliday` operating-schedule rows, which retain `CURRENT_CONFIGURATION_ONLY` history coverage.
+
+Official rule authorities are recorded in-band in the response contract using Ontario ESA public-holiday guidance, the Ontario Family Day proclamation and the Ontario ESA Policy and Interpretation Manual's public-holiday date rules. No persistence or migration is required.
 
 ### DATA-C — Admin Sales Analytics
 
