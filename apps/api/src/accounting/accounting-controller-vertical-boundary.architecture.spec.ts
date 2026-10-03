@@ -18,6 +18,7 @@ const EXPECTED_CONTROLLER_CAPABILITIES = {
   ],
   'accounting-chart.controller.ts': ['AccountingChartService'],
   'accounting-expense.controller.ts': ['AccountingExpenseService'],
+  'accounting-external-sales.controller.ts': ['AccountingExternalSalesService'],
   'accounting-funds.controller.ts': ['AccountingAccountTransferService'],
   'accounting-inbox-artifacts.controller.ts': [
     'AccountingArtifactDeliveryService',
@@ -80,6 +81,7 @@ const EXPECTED_ROUTES = [
   'POST expenses',
   'GET expenses',
   'GET expenses/records',
+  'POST external-sales',
   'POST expenses/:documentStableId/confirm',
   'PUT expenses/:documentStableId/payment-allocations',
   'PUT expenses/:documentStableId/split-funding',

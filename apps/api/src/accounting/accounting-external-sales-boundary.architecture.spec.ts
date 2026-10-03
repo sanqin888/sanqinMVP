@@ -57,7 +57,7 @@ describe('Post-modularization External Sales boundary', () => {
     expect(policy).toContain('ACCOUNTING_EXTERNAL_SALE_AR_ACCOUNT_STABLE_ID');
   });
 
-  it('pins persistence plus B2 CoA normalization without a runtime cutover', () => {
+  it('pins C1 Sale Recognition runtime ownership without settlement/analytics cutover', () => {
     const schema = readFileSync(PRISMA_SCHEMA, 'utf8');
     const module = file('accounting.module.ts')?.source ?? '';
     const controllerGuard =
@@ -92,11 +92,28 @@ describe('Post-modularization External Sales boundary', () => {
     expect(schema).toContain('externalSaleSettlementEvidence');
     expect(accountingContracts).toContain("EXTERNAL_SALE: 'EXTERNAL_SALE'");
 
-    expect(module).not.toContain('AccountingExternalSale');
-    expect(controllerGuard).not.toContain('external-sales');
+    expect(module).toContain('AccountingExternalSalesController');
+    expect(module).toContain('AccountingExternalSalesService');
+    expect(controllerGuard).toContain("'POST external-sales'");
     expect(salesPolicy).not.toContain('accounting.external_sale.v1');
+    expect(module).not.toContain('AccountingExternalSaleSettlementService');
     expect(chart).toContain('account_accounts_receivable');
     expect(chart).toContain('account_commission_expense');
     expect(chart).not.toContain('account_platform_commission_expense');
+
+    const authority =
+      file('accounting-external-sales-journal-authority.ts')?.source ?? '';
+    const journal = file('accounting-journal.service.ts')?.source ?? '';
+    expect(authority).toContain("'EXTERNAL_SALE_RECOGNITION'");
+    expect(authority).toContain("'account_hst_payable'");
+    expect(authority).toContain("'account_sales_discounts'");
+    expect(authority).not.toContain("'account_commission_expense'");
+    expect(journal).toContain('createExternalSaleJournalInTx');
+    expect(journal).toContain(
+      'External Sale canonical Journals cannot be updated in place',
+    );
+    expect(journal).toContain(
+      'External Sale canonical Journals cannot be deleted in place',
+    );
   });
 });

@@ -5,6 +5,7 @@ import { AccountingCanonicalChangeController } from './accounting-canonical-chan
 import { AccountingCanonicalSaleController } from './accounting-canonical-sale.controller';
 import { AccountingChartController } from './accounting-chart.controller';
 import { AccountingExpenseController } from './accounting-expense.controller';
+import { AccountingExternalSalesController } from './accounting-external-sales.controller';
 import { AccountingFundsController } from './accounting-funds.controller';
 import { AccountingInboxArtifactsController } from './accounting-inbox-artifacts.controller';
 import { AccountingInboxController } from './accounting-inbox.controller';
@@ -35,6 +36,7 @@ import { AccountingUberReportingReconciliationService } from './accounting-uber-
 import { AccountingChartService } from './accounting-chart.service';
 import { AccountingExpenseJournalPostingService } from './accounting-expense-journal-posting.service';
 import { AccountingExpenseService } from './accounting-expense.service';
+import { AccountingExternalSalesService } from './accounting-external-sales.service';
 import { AccountingFinancialReportsService } from './accounting-financial-reports.service';
 import { AccountingAccountTransferService } from './accounting-account-transfer.service';
 import { AccountingInboxService } from './accounting-inbox.service';
@@ -95,6 +97,7 @@ import { AccountingCloverPreSyncAuthorityService } from './accounting-clover-pre
   controllers: [
     AccountingChartController,
     AccountingExpenseController,
+    AccountingExternalSalesController,
     AccountingFundsController,
     AccountingInboxController,
     AccountingInboxArtifactsController,
@@ -130,6 +133,7 @@ import { AccountingCloverPreSyncAuthorityService } from './accounting-clover-pre
     AccountingProviderPendingReconciliationService,
     AccountingChartService,
     AccountingExpenseService,
+    AccountingExternalSalesService,
     AccountingExpenseJournalPostingService,
     AccountingAccountTransferService,
     AccountingFinancialReportsService,
