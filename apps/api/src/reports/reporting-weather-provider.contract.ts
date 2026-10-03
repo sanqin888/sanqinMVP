@@ -37,6 +37,7 @@ export type ReportingWeatherProviderFetchStatusV1 =
 export type ReportingWeatherProviderFetchResultV1 = {
   provider: 'METEOSTAT';
   status: ReportingWeatherProviderFetchStatusV1;
+  cacheable: boolean;
   attemptedDates: string[];
   days: ReportingWeatherProviderDayV1[];
 };

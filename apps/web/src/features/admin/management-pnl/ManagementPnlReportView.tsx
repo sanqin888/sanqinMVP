@@ -18,6 +18,12 @@ import type {
 const money = (cents: number) =>
   `${cents < 0 ? '-' : ''}$${(Math.abs(cents) / 100).toFixed(2)}`;
 
+const MANAGEMENT_PNL_CHART_COLORS = {
+  income: '#15803D',
+  expenses: '#DC2626',
+  netProfit: '#2563EB',
+} as const;
+
 function adjustmentLabel(
   sourceFactType: string | null,
   source: string,
@@ -193,9 +199,24 @@ export function ManagementPnlReportView({
               <YAxis />
               <Tooltip />
               <Legend />
-              <Line type="monotone" dataKey={isZh ? '收入' : 'Income'} />
-              <Line type="monotone" dataKey={isZh ? '支出' : 'Expenses'} />
-              <Line type="monotone" dataKey={isZh ? '净利润' : 'Net profit'} />
+              <Line
+                type="monotone"
+                dataKey={isZh ? '收入' : 'Income'}
+                stroke={MANAGEMENT_PNL_CHART_COLORS.income}
+                strokeWidth={2}
+              />
+              <Line
+                type="monotone"
+                dataKey={isZh ? '支出' : 'Expenses'}
+                stroke={MANAGEMENT_PNL_CHART_COLORS.expenses}
+                strokeWidth={2}
+              />
+              <Line
+                type="monotone"
+                dataKey={isZh ? '净利润' : 'Net profit'}
+                stroke={MANAGEMENT_PNL_CHART_COLORS.netProfit}
+                strokeWidth={2}
+              />
             </LineChart>
           </ResponsiveContainer>
         </div>

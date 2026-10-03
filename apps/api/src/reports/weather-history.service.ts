@@ -124,6 +124,7 @@ export class WeatherHistoryService {
             to: range.to,
           });
           refreshResults.push(providerResult.status);
+          if (providerResult.cacheable === false) break;
 
           const providerByDate = new Map(
             providerResult.days.map((day) => [day.localDate, day] as const),

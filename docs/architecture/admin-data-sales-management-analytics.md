@@ -1,8 +1,8 @@
 # Admin Data — Sales Analytics / Management P&L migration
 
 Date: 2026-10-03  
-Baseline: latest `origin/dev@a2fbda75` after DATA-D merge and main-history reconciliation  
-Current state: **DATA-A MERGED / CI #6817 GREEN; DATA-B1 SOURCE + MIGRATION ALIGNED ON DEV / PRODUCTION APPLY PENDING; DATA-B2 MERGED / PR #2669 / FINAL HEAD `3484dfe1` / CI #6826 GREEN / SQUASH `56f35b0c`; DATA-C MERGED / PR #2670 / FINAL HEAD `ebe02b93` / CI #6829 GREEN / SQUASH `d748327f`; DATA-D MERGED / PR #2671 / FINAL HEAD `8b9d23b0` / CI #6832 GREEN / SQUASH `b5acbf09`; DATA-E READINESS AUDIT COMPLETE / PROMOTION PR #2672 CI #6836 GREEN / MAIN MERGE + PRODUCTION DEPLOYMENT + WEATHER MIGRATION APPLY PENDING**
+Baseline: latest `origin/dev@6877ce25` after DATA-E readiness documentation merge  
+Current state: **DATA-A-D MERGED / CI GREEN; DATA-B1 WEATHER MIGRATION APPLIED IN PRODUCTION; DATA-E PRODUCTION DEPLOYED / PARTIAL VERIFICATION; WEATHER PROVIDER RECOVERED AFTER KEY CONFIGURATION; FOLLOW-UP FIX LOCAL / USER REVIEW PENDING; DATA-F BLOCKED**
 
 ## Product goal
 
@@ -149,8 +149,9 @@ Implementation:
 - DATA-B1 uses Meteostat **Hourly Point** and aggregates observations into Store-local daily facts so Store-local Today can be provisional rather than waiting for delayed Daily data;
 - provider requests are chunked to the provider's 30-day hourly limit, while the public Reporting range is capped at 90 local calendar days;
 - persisted `ReportingWeatherDailyFact` rows are keyed by `(storeStableId, localDate)` and snapshot timezone + coordinates used for that historical weather interpretation;
-- persisted status is explicit: `HISTORICAL | PROVISIONAL | PARTIAL | UNAVAILABLE`; stable historical rows are reused, current/provisional/degraded rows use bounded refresh intervals, sparse cache gaps are refreshed as contiguous groups, and provider failures are negatively cached instead of retried on every page view;
-- additive `GET /reports/weather-history?storeStableId=&from=&to=` returns every requested date plus coverage/refresh/limitation metadata; provider/key/coordinate failure is fail-soft and never becomes Accounting authority;
+- persisted status is explicit: `HISTORICAL | PROVISIONAL | PARTIAL | UNAVAILABLE`; stable historical rows are reused, current/provisional/degraded rows use bounded refresh intervals, sparse cache gaps are refreshed as contiguous groups, and actual attempted provider failures remain negatively cached instead of retried on every page view;
+- missing `METEOSTAT_RAPIDAPI_KEY` is treated as non-cacheable configuration unavailability: Reporting logs an explicit warning, returns fail-soft unavailable coverage, and does not persist synthetic `UNAVAILABLE` rows that would outlive a later configuration fix;
+- additive `GET /reports/weather-history?storeStableId=&from=&to=` returns every requested date plus coverage/refresh/limitation metadata; provider/configuration/coordinate failure is fail-soft and never becomes Accounting authority;
 - the response carries required source attribution: `Meteostat and its data providers`, `CC BY 4.0`, the CC BY 4.0 license URL and an explicit SanQ hourly-to-daily transformation note;
 - production Compose passes only the optional server-side `METEOSTAT_RAPIDAPI_KEY` reference. The secret itself is not committed.
 
@@ -258,6 +259,14 @@ Production product verification matrix:
 - **Runtime evidence:** record deployed commit, migration status, healthy Compose state, local/public readiness and bounded API/Web/worker logs with no migration/schema/restart-loop errors.
 
 DATA-F remains blocked until this matrix is completed against the deployed production version. No Accounting presentation is removed merely because DATA-D is merged.
+
+#### 2026-10-03 production follow-up — Weather recovery + Admin presentation polish
+
+Production now has the Weather migration applied and the Reporting table active. Initial page use occurred before `METEOSTAT_RAPIDAPI_KEY` was configured, creating 30 persisted `UNAVAILABLE / observationHours=0` rows for 2026-09-04 through 2026-10-03. After the server-side key was configured, a 90-day request proved the provider path healthy by materializing 60 `HISTORICAL` days through 2026-09-03. The 30 pre-configuration rows were then explicitly removed under production authorization; the next 30-day request repopulated them as **29 HISTORICAL + 1 PROVISIONAL (Store-local Today)**, confirming Meteostat recovery.
+
+The local follow-up branch `fix/admin-data-weather-chart-polish` prevents recurrence by marking missing provider configuration non-cacheable while preserving bounded negative caching for actual attempted provider failures. It also moves Evidence Coverage directly below the Sales Analytics header, assigns distinct colors to current Sales / previous Sales / temperature / holiday chart series, formats chart-tooltip temperature to one decimal, shows Calendar weekday names on non-holiday days (retaining long-weekend context after the weekday when present), and assigns distinct Income / Expenses / Net Profit colors to the Management P&L trend. This is a Reporting policy + Web presentation follow-up only: no Prisma/schema/migration, package, Accounting arithmetic, owner authority, context direction, scanner allowance, SCC or architecture-baseline change.
+
+DATA-E remains **PARTIALLY PRODUCTION VERIFIED** until the remaining Store scope, known-holiday/long-weekend, Management parity/export/disclaimer and compatibility/access checks are completed. DATA-F remains blocked.
 
 ### DATA-F — Accounting UI contraction
 
