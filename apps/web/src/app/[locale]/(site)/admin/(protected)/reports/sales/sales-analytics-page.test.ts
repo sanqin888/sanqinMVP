@@ -23,6 +23,13 @@ const dateRangeSource = readFileSync(
   ),
   'utf8',
 );
+const typesSource = readFileSync(
+  resolve(
+    __dirname,
+    '../../../../../../../features/admin/sales-analytics/types.ts',
+  ),
+  'utf8',
+);
 const adminShellSource = readFileSync(
   resolve(
     __dirname,
@@ -63,7 +70,7 @@ describe('Admin DATA-C Sales Analytics UI contract', () => {
 
   it('implements the approved 7/30/90 plus single-day arrow contract', () => {
     for (const token of ["'single'", "'7d'", "'30d'", "'90d'"]) {
-      expect(dateRangeSource).toContain(token);
+      expect(typesSource).toContain(token);
     }
     expect(dateRangeSource).toContain('formatMmDdYyyy');
     expect(clientSource).toContain('Previous day');
