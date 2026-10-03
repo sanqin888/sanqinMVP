@@ -1,5 +1,7 @@
+import { HttpModule } from '@nestjs/axios';
 import { Module } from '@nestjs/common';
 
+import { PrismaService } from '../prisma/prisma.service';
 import {
   ORDER_MARKETING_USAGE_FACTS_READER,
   ORDER_REPORTING_FACTS_READER,
@@ -40,17 +42,35 @@ import {
   type ReportingOrderFactsQueryPort,
 } from './reporting-order-facts-query.contract';
 import {
+  REPORTING_STORE_LOCATION_QUERY,
+  type ReportingStoreLocationQueryPort,
+} from './reporting-store-location-query.contract';
+import {
   REPORTING_STORE_OPERATING_CONTEXT_QUERY,
   type ReportingStoreOperatingContextQueryPort,
 } from './reporting-store-operating-context.contract';
 import { REPORTING_TOP_ITEMS_QUERY } from './reporting-top-items-query.contract';
+import {
+  REPORTING_WEATHER_DB,
+  type ReportingWeatherDbPort,
+} from './reporting-weather-db.contract';
+import {
+  REPORTING_WEATHER_HISTORY_STORE,
+} from './reporting-weather-history-store.contract';
+import {
+  REPORTING_WEATHER_PROVIDER,
+} from './reporting-weather-provider.contract';
 import { BusinessOperationsReportService } from './business-operations-report.service';
 import { MarketingOverviewReportService } from './marketing-overview-report.service';
+import { MeteostatWeatherProvider } from './meteostat-weather.provider';
 import { ReportsController } from './reports.controller';
 import { ReportsService } from './reports.service';
+import { WeatherHistoryService } from './weather-history.service';
+import { WeatherHistoryStore } from './weather-history.store';
 
 @Module({
   imports: [
+    HttpModule,
     OrderReportingFactsModule,
     OrderMarketingUsageFactsModule,
     MarketingCampaignFactsModule,
@@ -146,6 +166,25 @@ import { ReportsService } from './reports.service';
       }),
     },
     {
+      provide: REPORTING_STORE_LOCATION_QUERY,
+      inject: [BRAND_STORE_CONFIG_READER],
+      useFactory: (
+        config: BrandStoreConfigReaderPort,
+      ): ReportingStoreLocationQueryPort => ({
+        getStoreLocationContext: async (storeStableId) => {
+          const store = await config.getStoreSnapshot(storeStableId);
+          return {
+            storeStableId: store.storeStableId,
+            timezone: store.timezone,
+            latitude: store.latitude,
+            longitude: store.longitude,
+            countryCode: store.countryCode,
+            province: store.province,
+          };
+        },
+      }),
+    },
+    {
       provide: REPORTING_STORE_OPERATING_CONTEXT_QUERY,
       inject: [
         BRAND_STORE_CONFIG_READER,
@@ -185,9 +224,69 @@ import { ReportsService } from './reports.service';
         },
       }),
     },
+    {
+      provide: REPORTING_WEATHER_DB,
+      inject: [PrismaService],
+      useFactory: (prisma: PrismaService): ReportingWeatherDbPort => ({
+        readDailyFacts: async (query) =>
+          prisma.reportingWeatherDailyFact.findMany({
+            where: {
+              storeStableId: query.storeStableId,
+              localDate: { gte: query.from, lte: query.to },
+            },
+            orderBy: { localDate: 'asc' },
+          }),
+        upsertDailyFacts: async (rows) => {
+          if (rows.length === 0) return;
+          await prisma.$transaction(
+            rows.map((row) =>
+              prisma.reportingWeatherDailyFact.upsert({
+                where: {
+                  storeStableId_localDate: {
+                    storeStableId: row.storeStableId,
+                    localDate: row.localDate,
+                  },
+                },
+                create: { ...row },
+                update: {
+                  timezone: row.timezone,
+                  latitude: row.latitude,
+                  longitude: row.longitude,
+                  provider: row.provider,
+                  sourceMethod: row.sourceMethod,
+                  status: row.status,
+                  observationHours: row.observationHours,
+                  temperatureAvgC: row.temperatureAvgC,
+                  temperatureMinC: row.temperatureMinC,
+                  temperatureMaxC: row.temperatureMaxC,
+                  precipitationMm: row.precipitationMm,
+                  snowDepthMm: row.snowDepthMm,
+                  windSpeedKph: row.windSpeedKph,
+                  peakWindGustKph: row.peakWindGustKph,
+                  sunshineMinutes: row.sunshineMinutes,
+                  significantCondition: row.significantCondition,
+                  refreshedAt: row.refreshedAt,
+                },
+              }),
+            ),
+          );
+        },
+      }),
+    },
+    MeteostatWeatherProvider,
+    WeatherHistoryStore,
+    {
+      provide: REPORTING_WEATHER_PROVIDER,
+      useExisting: MeteostatWeatherProvider,
+    },
+    {
+      provide: REPORTING_WEATHER_HISTORY_STORE,
+      useExisting: WeatherHistoryStore,
+    },
     ReportsService,
     BusinessOperationsReportService,
     MarketingOverviewReportService,
+    WeatherHistoryService,
     {
       provide: REPORTING_TOP_ITEMS_QUERY,
       useExisting: ReportsService,
