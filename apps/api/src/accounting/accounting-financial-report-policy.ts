@@ -126,7 +126,7 @@ const ACCOUNT_CATEGORY: Record<string, AccountingFinancialReportCategory> = {
   account_card_surcharge_revenue: FALLBACK_CATEGORIES.incomeOther,
   account_tip_revenue: FALLBACK_CATEGORIES.incomeOther,
   account_other_operating_revenue: FALLBACK_CATEGORIES.incomeOther,
-  account_platform_commission_expense: FALLBACK_CATEGORIES.expensePlatform,
+  account_commission_expense: FALLBACK_CATEGORIES.expensePlatform,
   account_payment_processing_fee_expense: FALLBACK_CATEGORIES.expensePlatform,
   account_platform_promotion_expense: FALLBACK_CATEGORIES.expenseMarketing,
   account_advertising_expense: FALLBACK_CATEGORIES.expenseMarketing,

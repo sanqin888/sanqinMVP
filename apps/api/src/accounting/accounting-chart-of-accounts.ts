@@ -49,6 +49,12 @@ export const DEFAULT_ACCOUNTING_ACCOUNTS: readonly AccountingDefaultAccount[] =
       accountClass: AccountingAccountClass.ASSET,
     },
     {
+      accountStableId: 'account_accounts_receivable',
+      name: '应收账款',
+      type: null,
+      accountClass: AccountingAccountClass.ASSET,
+    },
+    {
       accountStableId: 'account_hst_payable',
       name: 'HST/GST 应缴',
       type: null,
@@ -151,8 +157,8 @@ export const DEFAULT_ACCOUNTING_ACCOUNTS: readonly AccountingDefaultAccount[] =
       accountClass: AccountingAccountClass.EXPENSE,
     },
     {
-      accountStableId: 'account_platform_commission_expense',
-      name: '平台佣金',
+      accountStableId: 'account_commission_expense',
+      name: '佣金费用',
       type: null,
       accountClass: AccountingAccountClass.EXPENSE,
     },

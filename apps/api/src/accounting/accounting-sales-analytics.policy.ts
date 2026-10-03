@@ -45,7 +45,7 @@ export const ACCOUNTING_SALES_ACCOUNT_COMPONENT_POLICY = {
     component: 'OTHER_OPERATING_REVENUE',
     sign: 'CREDIT_MINUS_DEBIT',
   },
-  account_platform_commission_expense: {
+  account_commission_expense: {
     component: 'PLATFORM_COMMISSION',
     sign: 'DEBIT_MINUS_CREDIT',
   },

@@ -132,20 +132,28 @@ price or create synthetic Orders. The initial PR #2653 was superseded after #265
 `dev`; clean replacement PR #2654 was recreated from current `origin/dev`, with final formatting
 head `1e390a8e` passing all CI jobs before squash merge. Phase 9 remains CLOSED.
 
-2026-10-02 External Sales **Slice B1 Persistence Foundation** is **LOCAL IMPLEMENTED / USER
-REVIEW PENDING / MIGRATION REQUIRED / NO RUNTIME CUTOVER / NO GRAPH OR BASELINE CHANGE**
-on `feat/accounting-external-sales-slice-b-foundation` from `origin/dev@26e9b15a`. B1 adds
-the additive Prisma persistence shape for External Sale lines/adjustments/taxes, Settlement
-allocations/components, evidence links, reversal/replacement anchors, exact Decimal(18,4)
-quantity storage, and the dedicated `AccountingJournalSource.EXTERNAL_SALE` enum value.
-Fresh readiness found the existing CoA architecture guard requires every default account stable ID
-to exist in committed migration seed history, so B deliberately splits before CoA mutation rather
-than weakening that guard. B1 does not add Accounts Receivable, does not rename
-`account_platform_commission_expense`, does not register routes/services or Sales Analytics
-sources, and does not create a migration file in MCP. Production read-only evidence shows the
-legacy commission account has 6 JournalLines / 703,084c debit and JournalLine references its
-internal account UUID, so B2 can later preserve all history while normalizing the stable ID/name to
-`account_commission_expense`. Detailed contract and migration gate:
+2026-10-02 External Sales **Slice B1 Persistence Foundation** is **MERGED / PR #2655 /
+MERGE `d3e86921` / SOURCE CI #6773 GREEN / MIGRATION `dc960d6d` REVIEWED / MIGRATION
+CI #6775 GREEN / NO RUNTIME CUTOVER / NO GRAPH OR BASELINE CHANGE**. The user-generated
+`20261002232836_accounting_external_sales_b1_persistence_foundation` migration exactly matches
+the reviewed schema change and is additive-only: enum extension/type + new External
+Sale/Settlement/evidence tables, indexes, uniques and FKs; no DROP/rename/CoA seed/Journal
+rewrite/backfill. Browser E2E fresh migration replay passed in CI #6775.
+
+2026-10-02 External Sales **Slice B2 CoA Foundation / Commission Normalization** is **LOCAL
+IMPLEMENTED / USER-AUTHORIZED DATA MIGRATION INCLUDED / REMOTE DELIVERY AUTHORIZED / CI
+PENDING / NO GRAPH OR BASELINE CHANGE** on `feat/accounting-external-sales-slice-b2-coa`
+from `origin/dev@dc960d6d`. B2 adds canonical AR
+(`account_accounts_receivable`, ASSET/null/CAD) and generalizes the existing commission
+account in place to `account_commission_expense / 佣金费用`. Provider Settlement, current
+provider Sales Analytics, financial reporting and Web replay fixtures move to the new stable ID;
+provider facts retain `PLATFORM_COMMISSION` semantics. Production evidence confirms the legacy
+account has 6 JournalLines / 703,084c debit, no target-ID/name conflict, and JournalLine points to
+the internal account UUID, so no Journal rewrite is needed. The user explicitly authorized one
+narrow exception to the normal migration-authoring rule; migration
+`20261003002800_accounting_external_sales_b2_coa_normalization` fails closed on legacy/target
+shape conflicts, preserves the commission UUID and JournalLine ownership, inserts AR, performs no
+Journal mutation/backfill/DROP, and is pinned in the explicit CoA migration guard. Detailed gate:
 `docs/architecture/accounting-external-sales-plan.md`.
 
 2026-09-26 pre-sync Clover authority Slice A is **PRODUCTION VERIFIED / CLOSED / READ-ONLY SHADOW / NO PRISMA / NO JOURNAL MUTATION**. Slice A merged via PR #2547 / `d68cc317`; the zero-activity coverage correction merged via PR #2549 / `b7a01075`, with CI #6419 green and production running `main@b7a01075`.

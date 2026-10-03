@@ -57,7 +57,7 @@ describe('Post-modularization External Sales boundary', () => {
     expect(policy).toContain('ACCOUNTING_EXTERNAL_SALE_AR_ACCOUNT_STABLE_ID');
   });
 
-  it('pins the Slice B1 persistence foundation without a runtime cutover', () => {
+  it('pins persistence plus B2 CoA normalization without a runtime cutover', () => {
     const schema = readFileSync(PRISMA_SCHEMA, 'utf8');
     const module = file('accounting.module.ts')?.source ?? '';
     const controllerGuard =
@@ -95,8 +95,8 @@ describe('Post-modularization External Sales boundary', () => {
     expect(module).not.toContain('AccountingExternalSale');
     expect(controllerGuard).not.toContain('external-sales');
     expect(salesPolicy).not.toContain('accounting.external_sale.v1');
-    expect(chart).not.toContain('account_accounts_receivable');
-    expect(chart).not.toContain('account_commission_expense');
-    expect(chart).toContain('account_platform_commission_expense');
+    expect(chart).toContain('account_accounts_receivable');
+    expect(chart).toContain('account_commission_expense');
+    expect(chart).not.toContain('account_platform_commission_expense');
   });
 });
