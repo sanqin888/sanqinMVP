@@ -24,22 +24,39 @@ import {
   type NormalizedJournalCreate,
 } from './accounting-journal-policy';
 
-const SALE_LINE_REVENUE_ACCOUNTS = new Set([
+export const ACCOUNTING_EXTERNAL_SALE_LINE_REVENUE_ACCOUNT_STABLE_IDS = [
   'account_sales_revenue',
   'account_other_operating_revenue',
-]);
+] as const;
 
-const POSITIVE_ADJUSTMENT_REVENUE_ACCOUNTS = new Set([
+export const ACCOUNTING_EXTERNAL_SALE_POSITIVE_ADJUSTMENT_ACCOUNT_STABLE_IDS = [
   'account_delivery_revenue',
   'account_other_operating_revenue',
-]);
+] as const;
 
-const NEGATIVE_ADJUSTMENT_REVENUE_ACCOUNTS = new Set([
+export const ACCOUNTING_EXTERNAL_SALE_NEGATIVE_ADJUSTMENT_ACCOUNT_STABLE_IDS = [
   'account_sales_discounts',
-]);
+] as const;
 
-const EXTERNAL_SALE_TAX_ACCOUNT_STABLE_ID = 'account_hst_payable';
-const EXTERNAL_SALE_TAX_CODES = new Set(['HST', 'ZERO_RATED']);
+export const ACCOUNTING_EXTERNAL_SALE_TAX_ACCOUNT_STABLE_ID =
+  'account_hst_payable';
+export const ACCOUNTING_EXTERNAL_SALE_TAX_CODES = [
+  'HST',
+  'ZERO_RATED',
+] as const;
+
+const SALE_LINE_REVENUE_ACCOUNTS = new Set<string>(
+  ACCOUNTING_EXTERNAL_SALE_LINE_REVENUE_ACCOUNT_STABLE_IDS,
+);
+const POSITIVE_ADJUSTMENT_REVENUE_ACCOUNTS = new Set<string>(
+  ACCOUNTING_EXTERNAL_SALE_POSITIVE_ADJUSTMENT_ACCOUNT_STABLE_IDS,
+);
+const NEGATIVE_ADJUSTMENT_REVENUE_ACCOUNTS = new Set<string>(
+  ACCOUNTING_EXTERNAL_SALE_NEGATIVE_ADJUSTMENT_ACCOUNT_STABLE_IDS,
+);
+const EXTERNAL_SALE_TAX_CODES = new Set<string>(
+  ACCOUNTING_EXTERNAL_SALE_TAX_CODES,
+);
 
 export type ExternalSaleAccountFactV1 = {
   accountStableId: string;
@@ -143,7 +160,7 @@ const expectedAccounts = (
   for (const tax of fact.taxes) {
     if (
       !EXTERNAL_SALE_TAX_CODES.has(tax.taxCode) ||
-      tax.liabilityAccountStableId !== EXTERNAL_SALE_TAX_ACCOUNT_STABLE_ID
+      tax.liabilityAccountStableId !== ACCOUNTING_EXTERNAL_SALE_TAX_ACCOUNT_STABLE_ID
     ) {
       throw new AccountingJournalPolicyError(
         `External Sale tax mapping is not allowed: ${tax.taxCode} -> ${tax.liabilityAccountStableId}`,

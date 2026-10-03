@@ -1,4 +1,13 @@
-import { Body, Controller, Param, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 
 import { Roles, RolesGuard, SessionAuthGuard } from '../auth/public-api';
 import {
@@ -11,6 +20,7 @@ import type {
   ReverseAccountingExternalSaleInputV1,
 } from './accounting-external-sales.contract';
 import { AccountingExternalSaleSettlementService } from './accounting-external-sale-settlement.service';
+import { AccountingExternalSalesQueryService } from './accounting-external-sales-query.service';
 import { AccountingExternalSaleReversalService } from './accounting-external-sales-reversal.service';
 import { AccountingExternalSalesService } from './accounting-external-sales.service';
 
@@ -22,7 +32,30 @@ export class AccountingExternalSalesController {
     private readonly externalSales: AccountingExternalSalesService,
     private readonly settlements: AccountingExternalSaleSettlementService,
     private readonly reversals: AccountingExternalSaleReversalService,
+    private readonly queries: AccountingExternalSalesQueryService,
   ) {}
+
+  @Get('external-sales')
+  listExternalSales(@Query('limit') limit?: string) {
+    return this.queries.listSales(limit);
+  }
+
+  @Get('external-sales/options')
+  externalSaleFormOptions() {
+    return this.queries.formOptions();
+  }
+
+  @Get('external-sales/settlements')
+  listExternalSaleSettlements(@Query('limit') limit?: string) {
+    return this.queries.listSettlements(limit);
+  }
+
+  @Get('external-sales/:externalSaleStableId')
+  externalSaleDetail(
+    @Param('externalSaleStableId') externalSaleStableId: string,
+  ) {
+    return this.queries.getSale(externalSaleStableId);
+  }
 
   @Post('external-sales')
   createExternalSale(

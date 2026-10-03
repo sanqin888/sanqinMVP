@@ -85,6 +85,14 @@ function buildNavigation(locale: 'zh' | 'en'): AccountingNavigationItem[] {
       icon: WalletCards,
     },
     {
+      href: `${root}/external-sales`,
+      labelZh: '外部销售',
+      labelEn: 'External sales',
+      shortZh: '外销',
+      shortEn: 'External',
+      icon: WalletCards,
+    },
+    {
       href: `${root}/funds`,
       labelZh: '资金',
       labelEn: 'Funds',
@@ -309,8 +317,8 @@ export function AccountingShell({ children, locale }: AccountingShellProps) {
                 </h2>
                 <p className="mt-1 text-xs text-slate-500">
                   {isZh
-                    ? '平台结算、资金、销售、工资、报表和财务设置'
-                    : 'Provider settlements, funds, sales, payroll, reports and accounting settings'}
+                    ? '平台结算、资金、销售、外部销售、工资、报表和财务设置'
+                    : 'Provider settlements, funds, sales, external sales, payroll, reports and accounting settings'}
                 </p>
               </div>
               <button

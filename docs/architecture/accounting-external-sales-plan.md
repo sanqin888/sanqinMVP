@@ -1,8 +1,8 @@
 # Accounting External Sales Plan
 
-Status: **SLICE A/B1/B2/C1/C2/C3 MERGED; C3 PR #2659 / HEAD `2b7ecef8` / MERGE `3a75c77a` / CI #6788 GREEN / NO MIGRATION; SLICE D0/D1 READINESS COMPLETE; D2/D4 LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION**  
-Date: 2026-10-02  
-Slice D0/D1 readiness base: `origin/dev@3a75c77a`  
+Status: **SLICE A/B1/B2/C1/C2/C3/D MERGED; D PR #2660 / HEAD `9df694f4` / MERGE `1198ed52` / CI #6792 GREEN / NO MIGRATION; SLICE E LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION**  
+Date: 2026-10-03  
+Slice E implementation base: `origin/dev@1198ed52`  
 Owner: **Accounting / Reporting / Analytics**
 
 ## 1. Purpose
@@ -653,7 +653,7 @@ State: **READINESS COMPLETE / D2+D4 LOCAL IMPLEMENTED / USER REVIEW PENDING / NO
 
 **D2/D4 local implementation — 2026-10-02**
 
-State: **LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**.
+State: **MERGED / PR #2660 / HEAD `9df694f4` / MERGE `1198ed52` / CI #6792 GREEN / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**.
 
 - Sales whitelist adds only `accounting.external_sale.v1` and
   `accounting.external_sale_reversal.v1`; Settlement and Settlement reversal stay
@@ -728,6 +728,47 @@ architecture guards, with no new cross-context amount authority.
 
 **Goal:** expose the already-established Accounting authority safely; the Web
 must orchestrate C1/C2/C3 APIs, not duplicate accounting calculations.
+
+**Slice E local implementation — 2026-10-03**
+
+State: **LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE** on `feat/accounting-external-sales-slice-e-web` from `origin/dev@1198ed52`.
+
+- Accounting adds additive ADMIN/ACCOUNTANT GET read models for External Sale
+  list, detail, Settlement history and form options. The read model is Store-scoped
+  through `BRAND_STORE_CONFIG_READER` and stays inside the existing Accounting
+  owner/context.
+- Outstanding receivable is projected only from the canonical Sale Journal AR
+  line plus live, non-reversed Settlement allocations. Settlement allocation
+  totals must reconcile exactly to the Settlement Journal AR credit. Sale,
+  Settlement and their reversal Journal source/type/stable-ID anchors are all
+  revalidated before the UI sees the facts; missing or drifted anchors fail
+  closed.
+- Form account options reuse the exact canonical Sale/Settlement Journal-policy
+  allowlist constants. Web receives only already-authorized account choices; it
+  contains no GL stable-ID allowlist, arbitrary account picker or default bank.
+  Collection remains an explicit active CAD BANK/CASH selection.
+- Accounting Web adds a mobile-first External Sales workspace with history/detail,
+  negotiated Sale entry, explicit receivable Settlement entry, canonical Journal
+  references, audit history, reversal reasons and correction as reversal followed
+  by a prefilled replacement carrying predecessor lineage. Posted facts have no
+  in-place edit path.
+- Classification remains data-driven free text with persisted suggestions rather
+  than a new enum/table. Evidence granularity remains explicit
+  `TRANSACTION | DAILY_SUMMARY | PERIOD_SUMMARY`; the browser does not fabricate
+  transaction detail from summary evidence.
+- The Accounting read path is decomposed into a query orchestration service,
+  a pure canonical projection/validation policy and Prisma select/type persistence
+  shapes. The service stays below the repository large-file threshold and Prisma
+  does not leak into the policy or controller.
+- New form/detail containers were decomposed into feature-owned editors/cards so
+  the implementation does not expand the existing large-page debt. Accounting
+  remains narrow-screen/mobile-first and the existing manifest-only staff PWA
+  runtime is unchanged.
+- Focused API regressions pin canonical AR/live-Settlement derivation,
+  Settlement allocation-to-Journal reconciliation, reversal-Journal integrity,
+  reversed Sale semantics, Sale/Settlement anchor failures and server-authorized
+  form options. A Web source-boundary test pins API orchestration, absence of browser
+  account allowlists/default-bank logic and External Sales navigation.
 
 **Execution steps:**
 
