@@ -9,9 +9,7 @@ import type {
   CreateAccountingExternalSaleInputV1,
   CreateAccountingExternalSaleSettlementInputV1,
 } from './accounting-external-sales.contract';
-import {
-  AccountingExternalSaleSettlementService,
-} from './accounting-external-sale-settlement.service';
+import { AccountingExternalSaleSettlementService } from './accounting-external-sale-settlement.service';
 import { AccountingExternalSalesService } from './accounting-external-sales.service';
 
 @Controller('accounting')

@@ -98,9 +98,7 @@ describe('Post-modularization External Sales boundary', () => {
     expect(controllerGuard).toContain("'POST external-sales'");
     expect(controllerGuard).toContain("'POST external-sales/settlements'");
     expect(salesPolicy).not.toContain('accounting.external_sale.v1');
-    expect(salesPolicy).not.toContain(
-      'accounting.external_sale_settlement.v1',
-    );
+    expect(salesPolicy).not.toContain('accounting.external_sale_settlement.v1');
     expect(module).not.toContain('AccountingExternalSaleReversalService');
     expect(chart).toContain('account_accounts_receivable');
     expect(chart).toContain('account_commission_expense');

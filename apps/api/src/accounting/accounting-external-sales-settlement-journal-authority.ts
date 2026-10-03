@@ -263,9 +263,7 @@ const assertSettlementComponentComposition = (
   prerequisites: ExternalSaleSettlementAccountPrerequisiteV1[],
 ): void => {
   const roleByAccountStableId = new Map(
-    prerequisites.map(
-      (item) => [item.accountStableId, item.role] as const,
-    ),
+    prerequisites.map((item) => [item.accountStableId, item.role] as const),
   );
   let expenseCents = 0;
   let recoverableTaxCents = 0;
@@ -335,10 +333,7 @@ const buildReceivablePrerequisites = (
       snapshot.outstandingBeforeCents,
       'outstandingBeforeCents',
     );
-    if (
-      settledBeforeCents + outstandingBeforeCents !==
-      totalReceivableCents
-    ) {
+    if (settledBeforeCents + outstandingBeforeCents !== totalReceivableCents) {
       throw new AccountingJournalPolicyError(
         `External Sale settlement receivable snapshot does not reconcile: ${allocation.externalSaleStableId}`,
       );
@@ -406,9 +401,7 @@ export const calculateExternalSaleJournalReceivableCents = (
   }>,
 ): number => {
   const receivableLines = lines.filter(
-    (line) =>
-      line.accountStableId ===
-      ACCOUNTING_EXTERNAL_SALE_AR_ACCOUNT_STABLE_ID,
+    (line) => line.accountStableId === ACCOUNTING_EXTERNAL_SALE_AR_ACCOUNT_STABLE_ID,
   );
   if (receivableLines.length !== 1) {
     throw new AccountingJournalPolicyError(
@@ -479,9 +472,7 @@ export const normalizeExternalSaleSettlementWriteAuthority = (
     );
   }
   const businessTimezone = normalizeTimezone(authority.businessTimezone);
-  const factHash = hashAccountingExternalSaleSettlementFact(
-    authority.fact,
-  );
+  const factHash = hashAccountingExternalSaleSettlementFact(authority.fact);
   if (factHash !== authority.factHash) {
     throw new AccountingJournalPolicyError(
       'External Sale settlement authority factHash does not match the frozen fact',
@@ -529,8 +520,7 @@ export const assertExternalSaleSettlementJournalAuthority = (
   journal: NormalizedJournalCreate,
   authorityRaw: ExternalSaleSettlementJournalWriteAuthorityV1,
 ): void => {
-  const authority =
-    normalizeExternalSaleSettlementWriteAuthority(authorityRaw);
+  const authority = normalizeExternalSaleSettlementWriteAuthority(authorityRaw);
   const expected = normalizeJournalCreate(
     buildJournalFromFact(authority.fact, authority.businessTimezone),
   );
@@ -547,8 +537,7 @@ export const hashExternalSaleSettlementJournalWrite = (
   journal: NormalizedJournalCreate,
   authorityRaw: ExternalSaleSettlementJournalWriteAuthorityV1,
 ): string => {
-  const authority =
-    normalizeExternalSaleSettlementWriteAuthority(authorityRaw);
+  const authority = normalizeExternalSaleSettlementWriteAuthority(authorityRaw);
   return createHash('sha256')
     .update(
       JSON.stringify({

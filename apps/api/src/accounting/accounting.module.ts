@@ -36,9 +36,7 @@ import { AccountingUberReportingReconciliationService } from './accounting-uber-
 import { AccountingChartService } from './accounting-chart.service';
 import { AccountingExpenseJournalPostingService } from './accounting-expense-journal-posting.service';
 import { AccountingExpenseService } from './accounting-expense.service';
-import {
-  AccountingExternalSaleSettlementService,
-} from './accounting-external-sale-settlement.service';
+import { AccountingExternalSaleSettlementService } from './accounting-external-sale-settlement.service';
 import { AccountingExternalSalesService } from './accounting-external-sales.service';
 import { AccountingFinancialReportsService } from './accounting-financial-reports.service';
 import { AccountingAccountTransferService } from './accounting-account-transfer.service';

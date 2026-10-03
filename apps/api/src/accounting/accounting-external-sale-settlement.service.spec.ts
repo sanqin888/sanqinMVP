@@ -1,16 +1,12 @@
 import { ConflictException } from '@nestjs/common';
 
 import type { AccountingDb } from './accounting-db';
-import type {
-  CreateAccountingExternalSaleSettlementInputV1,
-} from './accounting-external-sales.contract';
+import type { CreateAccountingExternalSaleSettlementInputV1 } from './accounting-external-sales.contract';
 import {
   hashAccountingExternalSaleSettlementFact,
   normalizeAccountingExternalSaleSettlement,
 } from './accounting-external-sales.policy';
-import {
-  AccountingExternalSaleSettlementService,
-} from './accounting-external-sale-settlement.service';
+import { AccountingExternalSaleSettlementService } from './accounting-external-sale-settlement.service';
 import type { AccountingJournalService } from './accounting-journal.service';
 import type { AccountingPeriodService } from './accounting-period.service';
 
@@ -38,8 +34,7 @@ const input = (
   ...overrides,
 });
 
-const settlementFact = () =>
-  normalizeAccountingExternalSaleSettlement(input());
+const settlementFact = () => normalizeAccountingExternalSaleSettlement(input());
 
 const settlementRow = (journalEntryStableId: string | null) => {
   const fact = settlementFact();
@@ -68,8 +63,7 @@ const settlementRow = (journalEntryStableId: string | null) => {
         amountCents: 10_000,
         sortOrder: 0,
         externalSale: {
-          externalSaleStableId:
-            'extsale_11111111111141118111111111111111',
+          externalSaleStableId: 'extsale_11111111111141118111111111111111',
         },
       },
     ],
@@ -208,8 +202,7 @@ describe('AccountingExternalSaleSettlementService C2', () => {
     const result = await service.createSettlement(input(), 'user_admin');
 
     expect(result).toMatchObject({
-      settlementStableId:
-        'extsettlement_22222222222242228222222222222222',
+      settlementStableId: 'extsettlement_22222222222242228222222222222222',
       journalEntryStableId: 'journal_settlement_1',
       appliedReceivableCents: 10_000,
     });
@@ -254,7 +247,9 @@ describe('AccountingExternalSaleSettlementService C2', () => {
       } as unknown as AccountingPeriodService,
     );
 
-    await expect(service.createSettlement(input(), 'user_admin')).rejects.toThrow(
+    await expect(
+      service.createSettlement(input(), 'user_admin'),
+    ).rejects.toThrow(
       'External Sale settlement exists without a canonical Journal anchor; review is required',
     );
   });
@@ -338,7 +333,9 @@ describe('AccountingExternalSaleSettlementService C2', () => {
       period,
     );
 
-    await expect(service.createSettlement(input(), 'user_admin')).rejects.toThrow(
+    await expect(
+      service.createSettlement(input(), 'user_admin'),
+    ).rejects.toThrow(
       new ConflictException(
         'External Sale settlement allocation exceeds outstanding receivable: extsale_11111111111141118111111111111111',
       ),
@@ -377,9 +374,9 @@ describe('AccountingExternalSaleSettlementService C2', () => {
       } as unknown as AccountingPeriodService,
     );
 
-    await expect(service.createSettlement(input(), 'user_admin')).rejects.toThrow(
-      'External Sale is not an active recognized receivable',
-    );
+    await expect(
+      service.createSettlement(input(), 'user_admin'),
+    ).rejects.toThrow('External Sale is not an active recognized receivable');
   });
 
   it('rejects replacement settlement input before opening a transaction', async () => {

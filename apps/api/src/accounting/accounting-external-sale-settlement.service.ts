@@ -77,10 +77,9 @@ const SETTLEMENT_VIEW_SELECT = {
   },
 } satisfies Prisma.AccountingExternalSaleSettlementSelect;
 
-type SettlementViewRow =
-  Prisma.AccountingExternalSaleSettlementGetPayload<{
-    select: typeof SETTLEMENT_VIEW_SELECT;
-  }>;
+type SettlementViewRow = Prisma.AccountingExternalSaleSettlementGetPayload<{
+  select: typeof SETTLEMENT_VIEW_SELECT;
+}>;
 
 const RECEIVABLE_SALE_SELECT = {
   id: true,
@@ -399,8 +398,7 @@ export class AccountingExternalSaleSettlementService {
         (await tx.accountingExternalSaleSettlement.create({
           data: {
             settlementStableId: fact.settlementStableId,
-            idempotencyKey:
-              `external-sale-settlement:${fact.settlementStableId}:v1`,
+            idempotencyKey: `external-sale-settlement:${fact.settlementStableId}:v1`,
             storeStableId: fact.storeStableId,
             settlementOn: dateForDb(fact.settlementOn),
             counterpartyName: fact.counterpartyName,
@@ -544,8 +542,7 @@ export class AccountingExternalSaleSettlementService {
         `External Sale settled amount exceeds its receivable: ${externalSaleStableId}`,
       );
     }
-    const outstandingBeforeCents =
-      totalReceivableCents - settledBeforeCents;
+    const outstandingBeforeCents = totalReceivableCents - settledBeforeCents;
     if (allocationCents > outstandingBeforeCents) {
       throw new ConflictException(
         `External Sale settlement allocation exceeds outstanding receivable: ${externalSaleStableId}`,

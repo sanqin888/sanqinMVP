@@ -1828,8 +1828,7 @@ export class AccountingJournalService {
             settlement.replacementForSettlement?.settlementStableId ?? null,
           allocations: settlement.allocations.map((allocation) => ({
             allocationStableId: allocation.allocationStableId,
-            externalSaleStableId:
-              allocation.externalSale.externalSaleStableId,
+            externalSaleStableId: allocation.externalSale.externalSaleStableId,
             amountCents: allocation.amountCents,
             sortOrder: allocation.sortOrder,
           })),
@@ -2025,8 +2024,7 @@ export class AccountingJournalService {
           );
         }
       }
-      const outstandingBeforeCents =
-        totalReceivableCents - settledBeforeCents;
+      const outstandingBeforeCents = totalReceivableCents - settledBeforeCents;
 
       if (
         totalReceivableCents !== prerequisite.totalReceivableCents ||

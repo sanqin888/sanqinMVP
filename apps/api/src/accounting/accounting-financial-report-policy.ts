@@ -5,9 +5,7 @@ import {
   AccountingJournalSource,
   AccountingTxType,
 } from './accounting-contracts';
-import {
-  ACCOUNTING_EXTERNAL_SALE_SETTLEMENT_SOURCE_FACT_TYPE,
-} from './accounting-external-sales.contract';
+import { ACCOUNTING_EXTERNAL_SALE_SETTLEMENT_SOURCE_FACT_TYPE } from './accounting-external-sales.contract';
 
 export type AccountingFinancialReportCategory = {
   categoryStableId: string;
@@ -147,8 +145,7 @@ function categoryForLine(
     entry.sourceFactType ===
       ACCOUNTING_EXTERNAL_SALE_SETTLEMENT_SOURCE_FACT_TYPE &&
     (line.account.accountStableId === 'account_commission_expense' ||
-      line.account.accountStableId ===
-        'account_payment_processing_fee_expense')
+      line.account.accountStableId === 'account_payment_processing_fee_expense')
   ) {
     return FALLBACK_CATEGORIES.expenseOther;
   }

@@ -16,9 +16,7 @@ import {
   type ExternalSaleSettlementAccountFactV1,
   type ExternalSaleSettlementReceivableSnapshotV1,
 } from './accounting-external-sales-settlement-journal-authority';
-import {
-  normalizeAccountingExternalSaleSettlement,
-} from './accounting-external-sales.policy';
+import { normalizeAccountingExternalSaleSettlement } from './accounting-external-sales.policy';
 import { normalizeJournalCreate } from './accounting-journal-policy';
 
 const settlementInput = (
@@ -160,8 +158,7 @@ describe('Accounting External Sale Settlement Journal authority', () => {
       kind: AccountingJournalEntryKind.STANDARD,
       source: AccountingJournalSource.EXTERNAL_SALE,
       sourceFactType: 'accounting.external_sale_settlement.v1',
-      sourceFactStableId:
-        'extsettlement_22222222222242228222222222222222',
+      sourceFactStableId: 'extsettlement_22222222222242228222222222222222',
       sourceFactVersion: 1,
       storeStableId: '4750_Yonge_Street',
       occurredAt: '2026-06-20T04:00:00.000Z',
@@ -444,10 +441,7 @@ describe('Accounting External Sale Settlement Journal authority', () => {
     const normalized = normalizeJournalCreate(plan.journal);
 
     expect(() =>
-      assertExternalSaleSettlementJournalAuthority(
-        normalized,
-        plan.authority,
-      ),
+      assertExternalSaleSettlementJournalAuthority(normalized, plan.authority),
     ).not.toThrow();
 
     const originalHash = hashExternalSaleSettlementJournalWrite(
@@ -459,10 +453,7 @@ describe('Accounting External Sale Settlement Journal authority', () => {
       memo: 'tampered settlement memo',
     });
     expect(() =>
-      assertExternalSaleSettlementJournalAuthority(
-        changed,
-        plan.authority,
-      ),
+      assertExternalSaleSettlementJournalAuthority(changed, plan.authority),
     ).toThrow(
       'External Sale settlement Journal does not match its frozen settlement authority',
     );
