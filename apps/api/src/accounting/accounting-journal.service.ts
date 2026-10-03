@@ -1879,8 +1879,7 @@ export class AccountingJournalService {
       if (
         !settlement ||
         settlement.factHash !== fact.originalFactHash ||
-        settlement.journalEntryStableId !==
-          fact.originalJournalEntryStableId ||
+        settlement.journalEntryStableId !== fact.originalJournalEntryStableId ||
         settlement.reversalStableId !== fact.reversalStableId ||
         settlement.reversalFactHash !== authority.reversalFactHash ||
         !settlement.reversedAt ||

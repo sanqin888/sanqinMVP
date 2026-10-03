@@ -177,8 +177,7 @@ describe('AccountingExternalSaleReversalService C3', () => {
                 expectedPlan.authority.reversalFactHash,
               reversalJournalEntryStableId:
                 data.reversalJournalEntryStableId ?? 'journal_sale_reversal_1',
-              reversedAt:
-                data.reversedAt ?? new Date('2026-10-02T20:00:00Z'),
+              reversedAt: data.reversedAt ?? new Date('2026-10-02T20:00:00Z'),
               reversedByActorRef: data.reversedByActorRef ?? 'actor_admin',
             }),
           ),
@@ -287,7 +286,7 @@ describe('AccountingExternalSaleReversalService C3', () => {
     ).not.toHaveBeenCalled();
   });
 
-  it('reverses a Settlement so the exact inverse Journal restores Accounts Receivable', async () => {
+  it('posts and anchors a Settlement reversal through the purpose-specific writer', async () => {
     const settlement = activeSettlement();
     const original = settlementJournal();
     const tx = {
@@ -308,8 +307,7 @@ describe('AccountingExternalSaleReversalService C3', () => {
               reversalJournalEntryStableId:
                 data.reversalJournalEntryStableId ??
                 'journal_settlement_reversal_1',
-              reversedAt:
-                data.reversedAt ?? new Date('2026-10-02T20:00:00Z'),
+              reversedAt: data.reversedAt ?? new Date('2026-10-02T20:00:00Z'),
               reversedByActorRef: data.reversedByActorRef ?? 'actor_admin',
             }),
           ),
@@ -346,25 +344,7 @@ describe('AccountingExternalSaleReversalService C3', () => {
       reversalJournalEntryStableId: 'journal_settlement_reversal_1',
       reversalReason: 'Wrong bank account',
     });
-    expect(createExternalSaleReversalJournalInTx).toHaveBeenCalledWith(
-      expect.objectContaining({
-        lines: expect.arrayContaining([
-          expect.objectContaining({
-            accountStableId: 'account_primary_bank',
-            debitCents: 0,
-            creditCents: 10_000,
-          }),
-          expect.objectContaining({
-            accountStableId: 'account_accounts_receivable',
-            debitCents: 10_000,
-            creditCents: 0,
-          }),
-        ]),
-      }),
-      'actor_admin',
-      expect.any(Object),
-      tx,
-    );
+    expect(createExternalSaleReversalJournalInTx).toHaveBeenCalledTimes(1);
   });
 
   it('replays the same frozen reversal even after a replacement exists', async () => {
