@@ -19,6 +19,7 @@ const EXPECTED_CONTROLLER_CAPABILITIES = {
   'accounting-chart.controller.ts': ['AccountingChartService'],
   'accounting-expense.controller.ts': ['AccountingExpenseService'],
   'accounting-external-sales.controller.ts': [
+    'AccountingExternalSaleReversalService',
     'AccountingExternalSaleSettlementService',
     'AccountingExternalSalesService',
   ],
@@ -85,7 +86,9 @@ const EXPECTED_ROUTES = [
   'GET expenses',
   'GET expenses/records',
   'POST external-sales',
+  'POST external-sales/:externalSaleStableId/reverse',
   'POST external-sales/settlements',
+  'POST external-sales/settlements/:settlementStableId/reverse',
   'POST expenses/:documentStableId/confirm',
   'PUT expenses/:documentStableId/payment-allocations',
   'PUT expenses/:documentStableId/split-funding',

@@ -216,7 +216,10 @@ const buildJournalFromFact = (
   const draft = buildAccountingExternalSalePostingDraft(fact);
   return {
     idempotencyKey: `external-sale:${fact.externalSaleStableId}:v1`,
-    kind: AccountingJournalEntryKind.STANDARD,
+    kind:
+      fact.replacementForExternalSaleStableId !== null
+        ? AccountingJournalEntryKind.ADJUSTMENT
+        : AccountingJournalEntryKind.STANDARD,
     source: AccountingJournalSource.EXTERNAL_SALE,
     sourceFactType: ACCOUNTING_EXTERNAL_SALE_SOURCE_FACT_TYPE,
     sourceFactStableId: fact.externalSaleStableId,
@@ -234,11 +237,6 @@ export const buildExternalSaleWritePlan = (input: {
   businessTimezone: string;
   accountFacts: ExternalSaleAccountFactV1[];
 }): ExternalSaleWritePlanV1 => {
-  if (input.fact.replacementForExternalSaleStableId !== null) {
-    throw new AccountingJournalPolicyError(
-      'External Sale replacement requires the C3 reversal/correction authority',
-    );
-  }
   const businessTimezone = normalizeTimezone(input.businessTimezone);
   const factHash = hashAccountingExternalSaleFact(input.fact);
   return {

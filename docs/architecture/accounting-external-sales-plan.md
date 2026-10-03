@@ -1,8 +1,8 @@
 # Accounting External Sales Plan
 
-Status: **SLICE A/B1/B2/C1 MERGED; C1 PR #2657 / MERGE `d412f4be` / CI #6780 GREEN; SLICE C2 SETTLEMENT LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION**  
+Status: **SLICE A/B1/B2/C1/C2 MERGED; C2 PR #2658 / MERGE `c81e13bb` / CI #6784 GREEN; SLICE C3 REVERSAL/CORRECTION LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION**  
 Date: 2026-10-02  
-Slice C2 implementation base: `origin/dev@d412f4be`  
+Slice C3 implementation base: `origin/dev@c81e13bb`  
 Owner: **Accounting / Reporting / Analytics**
 
 ## 1. Purpose
@@ -356,9 +356,8 @@ attachment UX or Web UI.
 
 #### Slice C2 — Settlement
 
-State: **LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO SALES
-ANALYTICS CUTOVER** on `feat/accounting-external-sales-slice-c2-settlement`
-from `origin/dev@d412f4be`.
+State: **MERGED / PR #2658 / FINAL HEAD `96179a8c` / MERGE `c81e13bb` /
+CI #6784 GREEN / NO MIGRATION / NO SALES ANALYTICS CUTOVER**.
 
 C2 activates `POST /accounting/external-sales/settlements` for
 ADMIN/ACCOUNTANT and writes, inside one Serializable transaction:
@@ -414,7 +413,8 @@ Settlement fails closed, and an exact-id replay that finds a persisted Settlemen
 without a Journal anchor also requires manual review rather than auto-repair.
 Settlement date cannot precede the Sale, and all
 allocations in v1 must match the Settlement Store/counterparty/CAD identity.
-Replacement input remains blocked until C3.
+Replacement lineage is activated by C3 only after the predecessor has a complete
+reversal fact and a live canonical reversal Journal anchor.
 
 Financial Reports are made source-aware at this runtime gate: provider statement
 commission keeps the existing `expense_platform_fee` fallback, while
@@ -426,23 +426,313 @@ until Slice D.
 
 #### Slice C3 — Reversal / Correction
 
-Add exact inverse reversal of the original Sale/Settlement Journals plus
-replacement lineage. Reversal must use the stored original Journal rather than
-recomputing current business policy. Closed-period behavior continues through
-the existing Accounting period policy.
+##### C3 task contract
+
+**Goal**
+
+Make already-posted External Sale and Settlement facts correctable without
+mutating historical canonical Journals, weakening period locks, or recomputing
+the reversal from today's commercial policy. C3 must leave an auditable chain:
+
+`original fact -> exact inverse reversal -> optional replacement fact`.
+
+**Execution steps**
+
+1. **Freeze reversal contracts and identities**
+   - accept a normalized human reversal reason;
+   - derive one deterministic reversal stable ID per Sale/Settlement target;
+   - bind target stable ID, original fact hash, original Journal anchor and reason
+     into a frozen reversal fact/hash.
+2. **Read the original financial authority**
+   - require the original source fact to have a live canonical Journal anchor;
+   - freeze the original Journal source identity, Store, currency, occurredAt and
+     complete ordered line snapshot;
+   - never rebuild reversal amounts from current Sale/Settlement posting policy.
+3. **Post exact inverse Journal authority**
+   - create an `ADJUSTMENT` Journal under the reserved Sale/Settlement reversal
+     source fact type;
+   - preserve original account/category/memo identity and swap every debit/credit;
+   - re-read source-fact reversal evidence and the original Journal inside the
+     same Serializable transaction before posting.
+4. **Enforce dependency-safe reversal order**
+   - Settlement may be reversed directly when its original Journal is intact;
+   - Sale reversal is blocked while any allocated Settlement is still live;
+   - previously reversed Settlements must have complete reversal evidence and a
+     live matching reversal Journal.
+5. **Anchor and audit**
+   - persist reversal stable ID/hash/actor/time before Journal write in the same
+     transaction;
+   - anchor the resulting reversal Journal;
+   - write JSON-safe Accounting audit evidence containing the readable reason and
+     final reversal identity.
+6. **Activate correction lineage**
+   - reuse the existing C1/C2 create paths for replacements;
+   - permit `replacementForExternalSaleStableId` /
+     `replacementForSettlementStableId` only after the predecessor is fully
+     reversed and its reversal Journal remains live;
+   - require matching Store/CAD and an unused one-to-one replacement relation.
+7. **Preserve period semantics**
+   - reversal Journals are `ADJUSTMENT`;
+   - replacement Journals are also `ADJUSTMENT`;
+   - ordinary new Sale/Settlement Journals remain `STANDARD`;
+   - month-close adjustment behavior and year-close hard lock remain owned by the
+     existing Accounting period policy.
+8. **Pin reporting and architecture regressions**
+   - verify inverse Sale revenue, Settlement expense/input-tax and BANK/CASH
+     effects through existing Financial Reports;
+   - keep all four External Sales canonical source fact types protected from
+     generic Journal update/delete;
+   - keep External Sales outside Sales Analytics until Slice D.
+
+**Boundary / non-goals**
+
+C3 must **not**:
+
+- modify `schema.prisma` or add a migration;
+- add a special period-lock bypass or reopen closed periods;
+- mutate/delete the original Sale, Settlement or Journal in place;
+- recalculate historical amounts from current catalog, tax, pricing or settlement
+  policies;
+- allow arbitrary account/category injection through the reversal path;
+- make inactive dimensions generally writable: only the purpose-specific
+  exact-inverse writer may reuse dimensions referenced by the original Journal;
+- introduce a third correction persistence model: correction remains reversal +
+  replacement lineage;
+- add External Sales to canonical Sales Analytics;
+- add Web UI, evidence UX or historical backfill;
+- add inventory/COGS authority or fabricate Order records;
+- introduce a cross-context import, new dependency direction, scanner allowance,
+  SCC, package dependency or architecture-baseline change.
+
+**Completion gate**
+
+C3 is source-complete only when focused regressions pin:
+
+- exact inverse line-by-line reversal;
+- deterministic idempotent replay and reason-hash conflict behavior;
+- Sale-with-live-Settlement rejection;
+- Settlement reversal reopening AR;
+- complete predecessor reversal requirements for replacement lineage;
+- replacement `ADJUSTMENT` vs ordinary `STANDARD` semantics;
+- Financial Report signed effects;
+- controller/module/architecture ownership and generic-Journal mutation guards.
+
+Repository workflow remains: local implementation -> user review -> PR -> CI
+green -> merge. Per `AGENTS.md`, CI is the validation gate; no local
+lint/build/test/formatter/scanner is run before review.
+
+State: **LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO SALES
+ANALYTICS CUTOVER / NO GRAPH OR BASELINE CHANGE** on
+`feat/accounting-external-sales-slice-c3-reversal-correction` from
+`origin/dev@c81e13bb`.
+
+C3 activates two ADMIN/ACCOUNTANT reversal transports:
+
+- `POST /accounting/external-sales/:externalSaleStableId/reverse`;
+- `POST /accounting/external-sales/settlements/:settlementStableId/reverse`.
+
+The reversal authority never reconstructs current commercial/pricing policy.
+It freezes the original canonical Journal's identity and complete ordered line
+snapshot, then creates the inverse by swapping debit/credit on every original
+line while preserving account stable ID, category stable ID, line memo,
+Store, currency and the original Journal `occurredAt`.
+
+Reversal Journals use `AccountingJournalEntryKind.ADJUSTMENT`. Therefore the
+existing period policy remains authoritative without a new exception:
+
+- an already month-closed period still accepts the correction adjustment;
+- a year-closed period remains a hard lock;
+- Accounting start-date protection still applies.
+
+Sale reversal is dependency-safe: any live Settlement allocation blocks the Sale
+reversal and must be reversed first. A Settlement with partial reversal evidence
+or a missing/inconsistent reversal Journal also blocks the Sale reversal.
+Settlement reversal is the exact inverse of its Settlement Journal, so bank/cash,
+commission/other settlement expense and recoverable HST are reversed and the
+original Accounts Receivable is reopened. The purpose-specific reversal writer
+may reference an original Journal account/category that has since been marked
+inactive; ordinary Journal writes still require active dimensions. This preserves
+historical exact-inverse capability without weakening the normal chart-of-accounts
+gate.
+
+Reversal identity is deterministic per target. The user-supplied reason is part
+of the frozen `reversalFactHash`; an identical reason may replay the same
+reversal Journal, while a different reason for the same target fails closed.
+The schema has no dedicated reversal-reason column, so the human-readable reason
+is retained in the Accounting audit evidence and is cryptographically bound by
+`reversalFactHash`; no schema/migration is introduced for C3.
+
+Correction is modeled as two explicit canonical actions rather than a new hidden
+mutation:
+
+1. exact-inverse reversal of the predecessor;
+2. creation through the existing Sale/Settlement create path with
+   `replacementForExternalSaleStableId` or
+   `replacementForSettlementStableId`.
+
+A replacement is accepted only when the predecessor is fully reversed, its
+reversal Journal anchor is live and consistent, Store/CAD identity is preserved,
+and the predecessor has no existing replacement. The one-to-one replacement
+relations already provisioned in B1 remain the durable lineage authority.
+Correction replacement Journals use `ADJUSTMENT` rather than `STANDARD`, so
+reversal + replacement can complete inside a month-closed period while year-close
+remains a hard lock. Ordinary non-replacement Sale/Settlement writes remain
+`STANDARD`.
+
+Financial Reports require no new runtime projector: Sale reversal/replacement
+ADJUSTMENT Journals contribute signed revenue adjustments; Settlement
+reversal/replacement Journals contribute signed settlement-expense adjustments,
+recoverable-HST reversal, and inverse BANK/CASH movement through the existing
+cashflow projection. External Sale canonical source types remain outside Sales
+Analytics until Slice D.
 
 ### Slice D — Sales Analytics
 
-Add the canonical source whitelist/projection while keeping generic Manual
-Journals excluded and keeping Orders attribution out of External Sales.
+**Goal:** project External Sales canonical financial facts into the existing
+Sales Analytics read model without changing Journal authority or turning generic
+Manual Journals into sales.
+
+**Execution steps:**
+
+1. audit the current Sales Analytics source whitelist, canonical fact projector,
+   channel/payment attribution contract and all External Sale/Settlement source
+   types after C3 merges;
+2. add only the External Sales canonical source types required for monetary
+   projection:
+   - sale recognition;
+   - sale reversal;
+   - corrected replacement Sale through its normal sale source type;
+   - settlement data only where a Sales Analytics metric explicitly needs it;
+3. make primary channel `external` and keep the persisted
+   `classificationStableId` as the secondary External-sales classification
+   dimension rather than creating one top-level channel per B2B mode;
+4. derive monetary sales values from canonical Journal lines, not
+   `AccountingExternalSale` commercial rows;
+5. use External Sale source facts only for non-monetary attribution that the
+   Journal does not contain, such as classification/counterparty/evidence
+   granularity;
+6. preserve signed reversal/replacement behavior so corrected history nets
+   correctly without deleting predecessor analytics facts;
+7. generalize commission reporting semantics where needed so
+   `account_commission_expense` does not imply provider/platform commission for
+   External Sales;
+8. add focused regressions for sale, reversal, replacement, partial settlement
+   and mixed provider/external history.
+
+**Boundary / non-goals:**
+
+- do not redesign Journal or revenue posting;
+- do not make Order rows the amount authority for External Sales;
+- do not include generic `MANUAL` revenue Journals;
+- do not classify later settlement method as the Sale's primary payment method;
+- do not change External Sale persistence or add a migration unless a readiness
+  audit proves a missing analytics dimension cannot be projected from existing
+  facts;
+- do not add Web UI or historical backfill in D;
+- do not change provider Uber/Fantuan/Clover canonical semantics merely to fit
+  External Sales.
+
+**Completion gate:** canonical Sales totals, tax/discount/adjustment signs,
+reversal/replacement netting, External classification and commission semantics
+must be covered by focused projection tests and the existing Sales Analytics
+architecture guards, with no new cross-context amount authority.
 
 ### Slice E — Web
 
-Add create/review/history/settlement/correction UX with explicit account
-selection.
+**Goal:** expose the already-established Accounting authority safely; the Web
+must orchestrate C1/C2/C3 APIs, not duplicate accounting calculations.
 
-### Slice F/G — historical reconstruction
+**Execution steps:**
 
-- on/after 2026-06-01: replay only at source-supported granularity;
-- before 2026-06-01: Opening Balance/cutover workflow only, never fabricated
-  June sales.
+1. add External Sales list/history/detail views;
+2. add Sale create form with explicit negotiated quantity/unit/unit price,
+   adjustments, taxes, classification and evidence granularity;
+3. add Settlement form with explicit receivable allocation and explicit
+   BANK/CASH/allowed-expense account selection;
+4. show outstanding AR from backend authority rather than browser-side
+   recomputation;
+5. add reversal flow with required reason and clear irreversible-history
+   messaging;
+6. add correction flow as reversal followed by prefilled replacement, preserving
+   predecessor lineage;
+7. expose audit/history/replacement chain and canonical Journal references where
+   appropriate;
+8. add focused narrow-screen/PWA coverage consistent with current Accounting UI
+   conventions.
+
+**Boundary / non-goals:**
+
+- no client-side ledger/account allowlist authority;
+- no implicit/default bank selection;
+- no arbitrary GL account picker;
+- no hidden in-place edit of posted financial facts;
+- no historical importer in the interactive create form;
+- no inventory/COGS behavior.
+
+### Slice F — Post-start historical reconstruction
+
+**Goal:** canonicalize supported External Sales evidence on/after the Accounting
+start date `2026-06-01` without fabricating transaction precision.
+
+**Execution steps:**
+
+1. inventory actual source evidence and its supported granularity;
+2. map each source record/batch to `TRANSACTION`, `DAILY_SUMMARY` or
+   `PERIOD_SUMMARY`;
+3. reconcile source control totals before posting;
+4. create External Sale facts through the same canonical write authority used by
+   live C1;
+5. create Settlement facts only when collection/withholding evidence exists;
+6. preserve evidence references and deterministic import idempotency;
+7. reconcile resulting Journal/Sales Analytics totals back to source documents.
+
+**Boundary / non-goals:**
+
+- never explode monthly/daily evidence into invented individual sales;
+- never infer taxes, commission, payment account or settlement date without
+  evidence;
+- never write directly to Journal tables as a shortcut;
+- no pre-2026-06-01 revenue posting in F.
+
+### Slice G — Pre-start opening balance / cutover
+
+**Goal:** represent External Sales economic positions that existed before
+`2026-06-01` without moving historical revenue into June.
+
+Examples:
+
+- unpaid pre-start receivable -> opening AR position;
+- already-collected pre-start cash/bank -> opening cash/bank position, not June
+  revenue;
+- no fabricated June External Sale simply to make balances appear.
+
+G requires a dedicated readiness audit of the existing Opening Balance support
+before implementation. If a general opening-balance writer is still absent, its
+design must be reviewed as Accounting-wide infrastructure rather than hidden
+inside External Sales.
+
+### Slice H — Closeout / production verification
+
+**Goal:** close the External Sales program only after source, reporting, UI and
+historical behavior are verified together.
+
+Closeout must include:
+
+1. architecture and source-authority re-audit;
+2. migration/persistence review status;
+3. production deployment gate;
+4. active verification of:
+   - new Sale;
+   - partial/full Settlement;
+   - Settlement reversal;
+   - Sale reversal after Settlement reversal;
+   - corrected replacement Sale/Settlement;
+   - month-close adjustment behavior where safely testable;
+   - Sales Analytics and Financial Report net effects;
+5. historical reconstruction reconciliation evidence;
+6. explicit remaining deferrals, especially inventory/COGS or pre-start opening
+   balances if not yet completed;
+7. final roadmap/worklog/dependency-document state.
+
+Until H is complete, the External Sales program may be `MERGED / CI GREEN` but
+must not be labeled `PRODUCTION VERIFIED / CLOSED`.

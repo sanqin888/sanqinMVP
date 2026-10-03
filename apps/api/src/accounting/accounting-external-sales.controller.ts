@@ -1,4 +1,4 @@
-import { Body, Controller, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Param, Post, Req, UseGuards } from '@nestjs/common';
 
 import { Roles, RolesGuard, SessionAuthGuard } from '../auth/public-api';
 import {
@@ -8,8 +8,10 @@ import {
 import type {
   CreateAccountingExternalSaleInputV1,
   CreateAccountingExternalSaleSettlementInputV1,
+  ReverseAccountingExternalSaleInputV1,
 } from './accounting-external-sales.contract';
 import { AccountingExternalSaleSettlementService } from './accounting-external-sale-settlement.service';
+import { AccountingExternalSaleReversalService } from './accounting-external-sales-reversal.service';
 import { AccountingExternalSalesService } from './accounting-external-sales.service';
 
 @Controller('accounting')
@@ -19,6 +21,7 @@ export class AccountingExternalSalesController {
   constructor(
     private readonly externalSales: AccountingExternalSalesService,
     private readonly settlements: AccountingExternalSaleSettlementService,
+    private readonly reversals: AccountingExternalSaleReversalService,
   ) {}
 
   @Post('external-sales')
@@ -32,12 +35,38 @@ export class AccountingExternalSalesController {
     );
   }
 
+  @Post('external-sales/:externalSaleStableId/reverse')
+  reverseExternalSale(
+    @Param('externalSaleStableId') externalSaleStableId: string,
+    @Body() body: ReverseAccountingExternalSaleInputV1,
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.reversals.reverseSale(
+      externalSaleStableId,
+      body,
+      requireAccountingOperatorUserId(req),
+    );
+  }
+
   @Post('external-sales/settlements')
   createExternalSaleSettlement(
     @Body() body: CreateAccountingExternalSaleSettlementInputV1,
     @Req() req: AuthedAccountingRequest,
   ) {
     return this.settlements.createSettlement(
+      body,
+      requireAccountingOperatorUserId(req),
+    );
+  }
+
+  @Post('external-sales/settlements/:settlementStableId/reverse')
+  reverseExternalSaleSettlement(
+    @Param('settlementStableId') settlementStableId: string,
+    @Body() body: ReverseAccountingExternalSaleInputV1,
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.reversals.reverseSettlement(
+      settlementStableId,
       body,
       requireAccountingOperatorUserId(req),
     );

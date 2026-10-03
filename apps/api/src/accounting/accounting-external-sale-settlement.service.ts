@@ -12,6 +12,7 @@ import { AccountingJournalSource } from './accounting-contracts';
 import { ACCOUNTING_DB, type AccountingDb } from './accounting-db';
 import {
   ACCOUNTING_EXTERNAL_SALE_AR_ACCOUNT_STABLE_ID,
+  ACCOUNTING_EXTERNAL_SALE_SETTLEMENT_REVERSAL_SOURCE_FACT_TYPE,
   ACCOUNTING_EXTERNAL_SALE_SETTLEMENT_SOURCE_FACT_TYPE,
   ACCOUNTING_EXTERNAL_SALE_SOURCE_FACT_TYPE,
   type AccountingExternalSaleSettlementFactV1,
@@ -202,12 +203,6 @@ export class AccountingExternalSaleSettlementService {
       }
       throw error;
     }
-    if (fact.replacementForSettlementStableId !== null) {
-      throw new ConflictException(
-        'External Sale settlement replacement is not enabled until C3 reversal/correction authority',
-      );
-    }
-
     let lastError: unknown;
     for (let attempt = 0; attempt < SETTLEMENT_ATTEMPTS; attempt += 1) {
       try {
@@ -268,6 +263,9 @@ export class AccountingExternalSaleSettlementService {
           'External Sale settlement exists without a canonical Journal anchor; review is required',
         );
       }
+
+      const replacementForSettlementDbId =
+        await this.resolveReplacementForSettlement(fact, tx);
 
       const allocationStableIds = fact.allocations.map(
         (allocation) => allocation.externalSaleStableId,
@@ -407,6 +405,13 @@ export class AccountingExternalSaleSettlementService {
             factHash,
             note: fact.note,
             createdByActorRef: actorRef,
+            ...(replacementForSettlementDbId
+              ? {
+                  replacementForSettlement: {
+                    connect: { id: replacementForSettlementDbId },
+                  },
+                }
+              : {}),
             allocations: {
               create: fact.allocations.map((allocation) => ({
                 allocationStableId: allocation.allocationStableId,
@@ -457,6 +462,89 @@ export class AccountingExternalSaleSettlementService {
       });
       return after;
     });
+  }
+
+  private async resolveReplacementForSettlement(
+    fact: AccountingExternalSaleSettlementFactV1,
+    tx: Prisma.TransactionClient,
+  ): Promise<string | null> {
+    if (!fact.replacementForSettlementStableId) return null;
+    if (fact.replacementForSettlementStableId === fact.settlementStableId) {
+      throw new ConflictException(
+        'External Sale settlement cannot replace itself',
+      );
+    }
+
+    const predecessor = await tx.accountingExternalSaleSettlement.findUnique({
+      where: {
+        settlementStableId: fact.replacementForSettlementStableId,
+      },
+      select: {
+        id: true,
+        storeStableId: true,
+        currency: true,
+        reversalStableId: true,
+        reversalFactHash: true,
+        reversalJournalEntryStableId: true,
+        reversedAt: true,
+        replacedBySettlement: {
+          select: { settlementStableId: true },
+        },
+      },
+    });
+    if (!predecessor) {
+      throw new ConflictException(
+        'External Sale settlement replacement predecessor does not exist',
+      );
+    }
+    if (
+      predecessor.storeStableId !== fact.storeStableId ||
+      predecessor.currency !== 'CAD'
+    ) {
+      throw new ConflictException(
+        'External Sale settlement replacement must preserve Store and CAD currency',
+      );
+    }
+    if (
+      !predecessor.reversalStableId ||
+      !predecessor.reversalFactHash ||
+      !predecessor.reversalJournalEntryStableId ||
+      !predecessor.reversedAt
+    ) {
+      throw new ConflictException(
+        'External Sale settlement replacement predecessor must be fully reversed first',
+      );
+    }
+    if (predecessor.replacedBySettlement) {
+      throw new ConflictException(
+        `External Sale settlement replacement predecessor is already replaced by ${predecessor.replacedBySettlement.settlementStableId}`,
+      );
+    }
+
+    const reversalJournal = await tx.accountingJournalEntry.findUnique({
+      where: {
+        entryStableId: predecessor.reversalJournalEntryStableId,
+      },
+      select: {
+        source: true,
+        sourceFactType: true,
+        sourceFactStableId: true,
+        deletedAt: true,
+      },
+    });
+    if (
+      !reversalJournal ||
+      reversalJournal.deletedAt ||
+      reversalJournal.source !== AccountingJournalSource.EXTERNAL_SALE ||
+      reversalJournal.sourceFactType !==
+        ACCOUNTING_EXTERNAL_SALE_SETTLEMENT_REVERSAL_SOURCE_FACT_TYPE ||
+      reversalJournal.sourceFactStableId !== predecessor.reversalStableId
+    ) {
+      throw new ConflictException(
+        'External Sale settlement replacement predecessor reversal Journal is missing or inconsistent',
+      );
+    }
+    return predecessor.id;
   }
 
   private buildReceivableSnapshot(

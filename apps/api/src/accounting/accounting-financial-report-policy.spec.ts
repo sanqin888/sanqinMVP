@@ -118,6 +118,146 @@ describe('Accounting canonical financial report policy', () => {
     expect(projected.journalInputTaxCents).toBe(0);
   });
 
+  it('projects External Sale reversal ADJUSTMENT as the negative original revenue effect', () => {
+    const projected = projectAccountingJournalReportEntry(
+      entry({
+        kind: AccountingJournalEntryKind.ADJUSTMENT,
+        source: AccountingJournalSource.EXTERNAL_SALE,
+        sourceFactType: 'accounting.external_sale_reversal.v1',
+        lines: [
+          {
+            lineNo: 1,
+            debitCents: 0,
+            creditCents: 1130,
+            memo: null,
+            account: account(
+              'account_accounts_receivable',
+              '应收账款',
+              AccountingAccountClass.ASSET,
+            ),
+            category: null,
+          },
+          {
+            lineNo: 2,
+            debitCents: 1000,
+            creditCents: 0,
+            memo: null,
+            account: account(
+              'account_sales_revenue',
+              '餐品销售收入',
+              AccountingAccountClass.REVENUE,
+            ),
+            category: null,
+          },
+          {
+            lineNo: 3,
+            debitCents: 130,
+            creditCents: 0,
+            memo: null,
+            account: account(
+              'account_hst_payable',
+              'HST/GST 应缴',
+              AccountingAccountClass.LIABILITY,
+            ),
+            category: null,
+          },
+        ],
+      }),
+    );
+
+    expect(projected.facts).toEqual([
+      expect.objectContaining({
+        type: AccountingTxType.ADJUSTMENT,
+        amountCents: -1000,
+      }),
+    ]);
+    expect(projected.adjustmentEffects).toEqual([
+      expect.objectContaining({
+        sourceFactType: 'accounting.external_sale_reversal.v1',
+        revenueNetCents: -1000,
+        expenseNetCents: 0,
+        netProfitEffectCents: -1000,
+      }),
+    ]);
+  });
+
+  it('projects External Settlement reversal ADJUSTMENT as reversed expense and input tax', () => {
+    const projected = projectAccountingJournalReportEntry(
+      entry({
+        kind: AccountingJournalEntryKind.ADJUSTMENT,
+        source: AccountingJournalSource.EXTERNAL_SALE,
+        sourceFactType: 'accounting.external_sale_settlement_reversal.v1',
+        lines: [
+          {
+            lineNo: 1,
+            debitCents: 0,
+            creditCents: 820,
+            memo: null,
+            account: account(
+              'account_primary_bank',
+              '主要银行账户',
+              AccountingAccountClass.ASSET,
+              AccountingAccountType.BANK,
+            ),
+            category: null,
+          },
+          {
+            lineNo: 2,
+            debitCents: 0,
+            creditCents: 150,
+            memo: null,
+            account: account(
+              'account_commission_expense',
+              '佣金费用',
+              AccountingAccountClass.EXPENSE,
+            ),
+            category: null,
+          },
+          {
+            lineNo: 3,
+            debitCents: 0,
+            creditCents: 30,
+            memo: null,
+            account: account(
+              'account_hst_recoverable',
+              'HST/GST 待抵扣',
+              AccountingAccountClass.ASSET,
+            ),
+            category: null,
+          },
+          {
+            lineNo: 4,
+            debitCents: 1000,
+            creditCents: 0,
+            memo: null,
+            account: account(
+              'account_accounts_receivable',
+              '应收账款',
+              AccountingAccountClass.ASSET,
+            ),
+            category: null,
+          },
+        ],
+      }),
+    );
+
+    expect(projected.facts).toEqual([
+      expect.objectContaining({
+        type: AccountingTxType.ADJUSTMENT,
+        amountCents: 150,
+      }),
+    ]);
+    expect(projected.adjustmentEffects).toEqual([
+      expect.objectContaining({
+        sourceFactType: 'accounting.external_sale_settlement_reversal.v1',
+        revenueNetCents: 0,
+        expenseNetCents: -150,
+        netProfitEffectCents: 150,
+      }),
+    ]);
+    expect(projected.journalInputTaxCents).toBe(-30);
+  });
+
   it('projects canonical ORDER adjustments as one signed P&L adjustment', () => {
     const projected = projectAccountingJournalReportEntry(
       entry({

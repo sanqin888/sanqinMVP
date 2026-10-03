@@ -379,14 +379,42 @@ describe('AccountingExternalSaleSettlementService C2', () => {
     ).rejects.toThrow('External Sale is not an active recognized receivable');
   });
 
-  it('rejects replacement settlement input before opening a transaction', async () => {
+  it('requires a replacement settlement predecessor to be fully reversed first', async () => {
+    const tx = {
+      accountingExternalSaleSettlement: {
+        findUnique: jest
+          .fn()
+          .mockImplementation(
+            ({ where }: { where: { settlementStableId: string } }) =>
+              Promise.resolve(
+                where.settlementStableId === 'extsettlement_original'
+                  ? {
+                      id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+                      storeStableId: '4750_Yonge_Street',
+                      currency: 'CAD',
+                      reversalStableId: null,
+                      reversalFactHash: null,
+                      reversalJournalEntryStableId: null,
+                      reversedAt: null,
+                      replacedBySettlement: null,
+                    }
+                  : null,
+              ),
+          ),
+      },
+    };
     const prisma = {
-      $transaction: jest.fn(),
+      $transaction: jest.fn((work: (client: typeof tx) => Promise<unknown>) =>
+        work(tx),
+      ),
     } as unknown as AccountingDb;
+    const period = {
+      getBusinessTimezone: jest.fn().mockResolvedValue('America/Toronto'),
+    } as unknown as AccountingPeriodService;
     const service = new AccountingExternalSaleSettlementService(
       prisma,
       {} as AccountingJournalService,
-      {} as AccountingPeriodService,
+      period,
     );
 
     await expect(
@@ -397,10 +425,7 @@ describe('AccountingExternalSaleSettlementService C2', () => {
         'user_admin',
       ),
     ).rejects.toThrow(
-      'External Sale settlement replacement is not enabled until C3 reversal/correction authority',
+      'External Sale settlement replacement predecessor must be fully reversed first',
     );
-    expect(
-      (prisma as unknown as { $transaction: jest.Mock }).$transaction,
-    ).not.toHaveBeenCalled();
   });
 });
