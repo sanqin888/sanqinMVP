@@ -487,31 +487,38 @@ describe('AccountingSalesAnalyticsService', () => {
       platformCommissionCents: 0,
       contributionCents: 1100,
     });
-    expect(report.byChannel).toEqual([
-      expect.objectContaining({
-        key: 'external',
-        journalEntryCount: 1,
-        summary: expect.objectContaining({ grossSalesCents: 1000 }),
-      }),
-    ]);
-    expect(report.byPrimaryPaymentMethod).toEqual([
-      expect.objectContaining({
-        key: 'NOT_APPLICABLE',
-        journalEntryCount: 1,
-        summary: expect.objectContaining({ grossSalesCents: 1000 }),
-      }),
-    ]);
-    expect(report.byExternalClassification).toEqual([
-      expect.objectContaining({
-        key: 'external_wholesale',
-        journalEntryCount: 1,
-        summary: expect.objectContaining({
-          grossSalesCents: 1000,
-          discountsCents: 100,
-          deliveryRevenueCents: 200,
-        }),
-      }),
-    ]);
+    const externalChannel = report.byChannel.find(
+      (row) => row.key === 'external',
+    );
+    expect(externalChannel).toMatchObject({
+      key: 'external',
+      journalEntryCount: 1,
+    });
+    expect(externalChannel?.summary).toMatchObject({ grossSalesCents: 1000 });
+
+    const notApplicablePayment = report.byPrimaryPaymentMethod.find(
+      (row) => row.key === 'NOT_APPLICABLE',
+    );
+    expect(notApplicablePayment).toMatchObject({
+      key: 'NOT_APPLICABLE',
+      journalEntryCount: 1,
+    });
+    expect(notApplicablePayment?.summary).toMatchObject({
+      grossSalesCents: 1000,
+    });
+
+    const wholesale = report.byExternalClassification.find(
+      (row) => row.key === 'external_wholesale',
+    );
+    expect(wholesale).toMatchObject({
+      key: 'external_wholesale',
+      journalEntryCount: 1,
+    });
+    expect(wholesale?.summary).toMatchObject({
+      grossSalesCents: 1000,
+      discountsCents: 100,
+      deliveryRevenueCents: 200,
+    });
     expect(report.bySource).toEqual([
       expect.objectContaining({ key: 'EXTERNAL_SALE', journalEntryCount: 1 }),
     ]);
@@ -584,29 +591,34 @@ describe('AccountingSalesAnalyticsService', () => {
         platformCommissionCents: 0,
       },
     });
-    expect(report.byExternalClassification).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          key: 'external_wholesale',
-          journalEntryCount: 2,
-          summary: expect.objectContaining({
-            grossSalesCents: 0,
-            discountsCents: 0,
-            deliveryRevenueCents: 0,
-            outputTaxCents: 0,
-            contributionCents: 0,
-          }),
-        }),
-        expect.objectContaining({
-          key: 'external_group_buy',
-          journalEntryCount: 1,
-          summary: expect.objectContaining({
-            grossSalesCents: 1200,
-            contributionCents: 1200,
-          }),
-        }),
-      ]),
+
+    const wholesale = report.byExternalClassification.find(
+      (row) => row.key === 'external_wholesale',
     );
+    expect(wholesale).toMatchObject({
+      key: 'external_wholesale',
+      journalEntryCount: 2,
+    });
+    expect(wholesale?.summary).toMatchObject({
+      grossSalesCents: 0,
+      discountsCents: 0,
+      deliveryRevenueCents: 0,
+      outputTaxCents: 0,
+      contributionCents: 0,
+    });
+
+    const groupBuy = report.byExternalClassification.find(
+      (row) => row.key === 'external_group_buy',
+    );
+    expect(groupBuy).toMatchObject({
+      key: 'external_group_buy',
+      journalEntryCount: 1,
+    });
+    expect(groupBuy?.summary).toMatchObject({
+      grossSalesCents: 1200,
+      contributionCents: 1200,
+    });
+
     expect(report.bySource).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ key: 'EXTERNAL_SALE', journalEntryCount: 2 }),
@@ -614,13 +626,18 @@ describe('AccountingSalesAnalyticsService', () => {
           key: 'EXTERNAL_SALE_REVERSAL',
           journalEntryCount: 1,
         }),
-        expect.objectContaining({
-          key: 'PROVIDER_STATEMENT',
-          journalEntryCount: 1,
-          summary: expect.objectContaining({ platformCommissionCents: 100 }),
-        }),
       ]),
     );
+    const providerStatement = report.bySource.find(
+      (row) => row.key === 'PROVIDER_STATEMENT',
+    );
+    expect(providerStatement).toMatchObject({
+      key: 'PROVIDER_STATEMENT',
+      journalEntryCount: 1,
+    });
+    expect(providerStatement?.summary).toMatchObject({
+      platformCommissionCents: 100,
+    });
     expect(report.tenderMix).toEqual([
       { tender: 'UBER_EATS', amountCents: 900 },
     ]);
