@@ -1,8 +1,8 @@
 # Admin Data — Sales Analytics / Management P&L migration
 
 Date: 2026-10-03  
-Baseline: `origin/dev@d748327f` after DATA-C merge  
-Current state: **DATA-A MERGED / CI #6817 GREEN; DATA-B1 SOURCE + MIGRATION ALIGNED ON DEV; DATA-B2 MERGED / PR #2669 / FINAL HEAD `3484dfe1` / CI #6826 GREEN / SQUASH `56f35b0c`; DATA-C MERGED / PR #2670 / FINAL HEAD `ebe02b93` / CI #6829 GREEN / SQUASH `d748327f`; DATA-D LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**
+Baseline: latest `origin/dev@6877ce25` after DATA-E readiness documentation merge  
+Current state: **DATA-A-D MERGED / CI GREEN; DATA-B1 WEATHER MIGRATION APPLIED IN PRODUCTION; DATA-E PRODUCTION DEPLOYED / PARTIAL VERIFICATION; WEATHER PROVIDER RECOVERED AFTER KEY CONFIGURATION; FOLLOW-UP FIX LOCAL / USER REVIEW PENDING; DATA-F BLOCKED**
 
 ## Product goal
 
@@ -149,8 +149,9 @@ Implementation:
 - DATA-B1 uses Meteostat **Hourly Point** and aggregates observations into Store-local daily facts so Store-local Today can be provisional rather than waiting for delayed Daily data;
 - provider requests are chunked to the provider's 30-day hourly limit, while the public Reporting range is capped at 90 local calendar days;
 - persisted `ReportingWeatherDailyFact` rows are keyed by `(storeStableId, localDate)` and snapshot timezone + coordinates used for that historical weather interpretation;
-- persisted status is explicit: `HISTORICAL | PROVISIONAL | PARTIAL | UNAVAILABLE`; stable historical rows are reused, current/provisional/degraded rows use bounded refresh intervals, sparse cache gaps are refreshed as contiguous groups, and provider failures are negatively cached instead of retried on every page view;
-- additive `GET /reports/weather-history?storeStableId=&from=&to=` returns every requested date plus coverage/refresh/limitation metadata; provider/key/coordinate failure is fail-soft and never becomes Accounting authority;
+- persisted status is explicit: `HISTORICAL | PROVISIONAL | PARTIAL | UNAVAILABLE`; stable historical rows are reused, current/provisional/degraded rows use bounded refresh intervals, sparse cache gaps are refreshed as contiguous groups, and actual attempted provider failures remain negatively cached instead of retried on every page view;
+- missing `METEOSTAT_RAPIDAPI_KEY` is treated as non-cacheable configuration unavailability: Reporting logs an explicit warning, returns fail-soft unavailable coverage, and does not persist synthetic `UNAVAILABLE` rows that would outlive a later configuration fix;
+- additive `GET /reports/weather-history?storeStableId=&from=&to=` returns every requested date plus coverage/refresh/limitation metadata; provider/configuration/coordinate failure is fail-soft and never becomes Accounting authority;
 - the response carries required source attribution: `Meteostat and its data providers`, `CC BY 4.0`, the CC BY 4.0 license URL and an explicit SanQ hourly-to-daily transformation note;
 - production Compose passes only the optional server-side `METEOSTAT_RAPIDAPI_KEY` reference. The secret itself is not committed.
 
@@ -203,7 +204,7 @@ Focused date/model/source-characterization regressions are included. Per `AGENTS
 
 ### DATA-D — Admin Management P&L
 
-State: **LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE** on `feat/admin-data-management-pnl` from `origin/dev@d748327f`.
+State: **MERGED / PR #2671 / FINAL HEAD `8b9d23b0` / CI #6832 GREEN / SQUASH `b5acbf09` / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**.
 
 Readiness confirmed that the existing Accounting owner contracts are sufficient: `GET /accounting/report/pnl?from=&to=&groupBy=` and `GET /accounting/report/cashflow?from=&to=` are already authenticated for `ADMIN | ACCOUNTANT`, have no Store parameter, and project whole-business / whole-ledger Journal authority. Management CSV/PDF already calls the same Accounting P&L service, so DATA-D does not need a new backend projection.
 
@@ -218,13 +219,54 @@ Implementation:
 - whole-business / whole-ledger scope is explicit in both page introduction and report disclosure. Cash Movement remains explicitly labeled **Journal-only management aid; not a formal Statement of Cash Flows**;
 - current Accounting Reports Management P&L, Trial Balance and Balance Movement remain present. Their removal/reframing stays deferred to DATA-F after DATA-E production verification.
 
-Focused source-characterization regressions pin owner endpoints only, no Store query/scope, non-Store-scoped navigation, shared-contract compatibility, absence of Admin financial arithmetic/persistence coupling, scope/disclaimer text, export reuse and retention of the current Accounting views. Per `AGENTS.md`, local lint/build/test are not run before user review; GitHub Actions remains the validation gate after remote authorization.
+Focused source-characterization regressions pin owner endpoints only, no Store query/scope, non-Store-scoped navigation, shared-contract compatibility, absence of Admin financial arithmetic/persistence coupling, scope/disclaimer text, export reuse and retention of the current Accounting views. Final head `8b9d23b0` passed CI #6832 across API/Web validation, Browser E2E, printer-agent and Windows workstation; an older Phase 9 source-characterization assertion was updated to follow the approved shared Management contract extraction rather than requiring those DTO fields to remain physically declared in the Accounting route subtree.
 
 ### DATA-E — Production verification
 
-Verify Store switching, canonical Sales parity, range/date controls, Weather degradation,
-historical holiday/long-weekend labeling, separation from current Store holiday schedule,
-Management whole-ledger scope and existing Accounting/Admin access behavior.
+State: **READINESS AUDIT COMPLETE / PROMOTION PR #2672 CI #6836 GREEN / MAIN MERGE + PRODUCTION DEPLOYMENT PENDING / DATA-B1 PRODUCTION MIGRATION APPLY PENDING / NO PRODUCTION MUTATION PERFORMED**. Local readiness branch `chore/admin-data-production-verification` was created from DATA-D squash `b5acbf09`; latest `origin/dev@a2fbda75` has no file-tree difference from `b5acbf09` and only reconciles current `main` history.
+
+Read-only production readiness evidence on 2026-10-03:
+
+- production repository is clean on local checkout `main@db239d70`; the GitHub `main` ref is `ca632b0c`, but `db239d70 -> ca632b0c` has zero changed files and is history-only reconciliation, so the deployed production tree is content-equivalent to current GitHub main before Admin Data promotion;
+- latest `origin/dev` is `a2fbda75`. The compare `b5acbf09 -> a2fbda75` also has zero changed files; `a2fbda75` is the merge-history reconciliation of current main into dev after DATA-D;
+- open promotion PR #2672 is `dev@a2fbda75 -> main@ca632b0c`, is mergeable, and CI #6836 is green. Its actual file delta is exactly DATA-A, DATA-B1 source + reviewed Weather migration, DATA-B2, DATA-C and DATA-D; no unrelated post-main application change is bundled;
+- current production Compose services `db / api / ubereats-worker / web` are all healthy;
+- production `_prisma_migrations` has no applied row for `20261003185132_add_reporting_weather_daily_facts`, and `ReportingWeatherDailyFact` does not yet exist;
+- the committed Weather migration was re-read and remains additive-only: one table, one composite primary key and two indexes, with no DROP, ALTER, rename or backfill;
+- Store `4750_Yonge_Street` has the required Reporting location/jurisdiction metadata: `America/Toronto`, `43.760288/-79.412167`, `CA / ON`;
+- DATA-D source is merged through PR #2671 / final head `8b9d23b0` / CI #6832 green / squash `b5acbf09`.
+
+These facts make DATA-E **ready for controlled promotion**, but they are not production verification. Production promotion/deployment and the production Prisma migration application remain separate operational gates. In particular, repository rules require explicit production authorization before `prisma migrate deploy` or any equivalent database mutation.
+
+Required rollout order:
+
+1. after explicit promotion authorization, merge the already-open, CI-green PR #2672 (`dev@a2fbda75 -> main@ca632b0c`), or re-audit if either ref moves before merge;
+2. before changing production state, reconfirm clean intended `main`, recent database backup, healthy baseline/runtime and absence of an unrelated deployment/provider/payment incident;
+3. under separate explicit authorization, apply the committed production migration `20261003185132_add_reporting_weather_daily_facts` through the normal controlled Prisma migration gate;
+4. deploy/rebuild the intended production `main` checkout using the established Compose deployment path;
+5. require migration parity plus API/worker/Web/public readiness after deployment; container start alone is not deployment success;
+6. execute the product verification matrix below and record evidence before DATA-E can be marked `PRODUCTION VERIFIED`.
+
+Production product verification matrix:
+
+- **Store scope / navigation:** Business overview and Sales Analytics preserve the selected Store; changing Store changes their Store-scoped requests. Management P&L shows no Store selector. A manually retained `?store=` on the Management route must not alter its values or Accounting requests.
+- **Canonical Sales parity:** for the same Store and date range, Admin Sales financial totals must reconcile to the canonical Accounting Sales owner response; Orders Business Operations remain explanatory/operational values rather than replacement revenue.
+- **Date controls:** verify 7/30/90-day ranges and the Store-local single-day selector. Previous-day navigation remains bounded by Accounting coverage; next-day navigation remains disabled for future/no-evidence dates and enabled only by canonical Journal or Orders owner evidence.
+- **Weather:** after the migration, Weather History can persist/read the Store-local daily projection when provider data is available, retains Meteostat/CC BY attribution, and does not change canonical Sales authority. Do not deliberately damage production credentials or provider configuration merely to manufacture an outage; any naturally unavailable/degraded provider state must remain fail-soft while Sales stays usable.
+- **Calendar:** verify a known Ontario ESA public-holiday/long-weekend range and confirm the historical calendar labels remain distinct from mutable Store holiday/opening exceptions and their `CURRENT_CONFIGURATION_ONLY` limitation.
+- **Management P&L:** Admin values must match the existing Accounting Management P&L for the same date/grouping; scope remains whole-business / whole-ledger regardless of Store context. Cash Movement must retain the Journal-only / non-formal Statement of Cash Flows disclosure, and Management PDF/CSV exports must remain usable.
+- **Compatibility/access:** existing Accounting Management P&L, Trial Balance and Balance Movement remain available during DATA-E. Existing ADMIN/ACCOUNTANT/Admin access boundaries must not be broadened by the new Admin presentation.
+- **Runtime evidence:** record deployed commit, migration status, healthy Compose state, local/public readiness and bounded API/Web/worker logs with no migration/schema/restart-loop errors.
+
+DATA-F remains blocked until this matrix is completed against the deployed production version. No Accounting presentation is removed merely because DATA-D is merged.
+
+#### 2026-10-03 production follow-up — Weather recovery + Admin presentation polish
+
+Production now has the Weather migration applied and the Reporting table active. Initial page use occurred before `METEOSTAT_RAPIDAPI_KEY` was configured, creating 30 persisted `UNAVAILABLE / observationHours=0` rows for 2026-09-04 through 2026-10-03. After the server-side key was configured, a 90-day request proved the provider path healthy by materializing 60 `HISTORICAL` days through 2026-09-03. The 30 pre-configuration rows were then explicitly removed under production authorization; the next 30-day request repopulated them as **29 HISTORICAL + 1 PROVISIONAL (Store-local Today)**, confirming Meteostat recovery.
+
+The local follow-up branch `fix/admin-data-weather-chart-polish` prevents recurrence by marking missing provider configuration non-cacheable while preserving bounded negative caching for actual attempted provider failures. It also moves Evidence Coverage directly below the Sales Analytics header, assigns distinct colors to current Sales / previous Sales / temperature / holiday chart series, formats chart-tooltip temperature to one decimal, shows Calendar weekday names on non-holiday days (retaining long-weekend context after the weekday when present), and assigns distinct Income / Expenses / Net Profit colors to the Management P&L trend. This is a Reporting policy + Web presentation follow-up only: no Prisma/schema/migration, package, Accounting arithmetic, owner authority, context direction, scanner allowance, SCC or architecture-baseline change.
+
+DATA-E remains **PARTIALLY PRODUCTION VERIFIED** until the remaining Store scope, known-holiday/long-weekend, Management parity/export/disclaimer and compatibility/access checks are completed. DATA-F remains blocked.
 
 ### DATA-F — Accounting UI contraction
 

@@ -64,6 +64,7 @@ describe('MeteostatWeatherProvider', () => {
     });
 
     expect(result.status).toBe('COMPLETE');
+    expect(result.cacheable).toBe(true);
     expect(result.attemptedDates).toEqual(['2026-10-02']);
     expect(result.days).toEqual([
       expect.objectContaining({
@@ -128,6 +129,7 @@ describe('MeteostatWeatherProvider', () => {
     ).resolves.toEqual({
       provider: 'METEOSTAT',
       status: 'UNAVAILABLE',
+      cacheable: false,
       attemptedDates: [],
       days: [],
     });

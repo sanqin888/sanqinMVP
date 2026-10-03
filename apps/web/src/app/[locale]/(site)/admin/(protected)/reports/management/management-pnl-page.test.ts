@@ -121,6 +121,12 @@ describe('Admin DATA-D Management P&L UI contract', () => {
     expect(clientSource).toContain('/api/v1/accounting/export/report.csv?');
   });
 
+  it('uses distinct presentation colors for P&L trend series', () => {
+    expect(reportViewSource).toContain('MANAGEMENT_PNL_CHART_COLORS.income');
+    expect(reportViewSource).toContain('MANAGEMENT_PNL_CHART_COLORS.expenses');
+    expect(reportViewSource).toContain('MANAGEMENT_PNL_CHART_COLORS.netProfit');
+  });
+
   it('preserves existing Management, Trial Balance and Balance Movement Accounting UI', () => {
     expect(accountingReportsPageSource).toContain('Management P&L');
     expect(accountingReportsPageSource).toContain('Trial Balance');

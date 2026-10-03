@@ -70,6 +70,13 @@ function number(value: number, locale: Locale): string {
   }).format(value);
 }
 
+const SALES_CONTEXT_CHART_COLORS = {
+  currentSales: '#87362E',
+  previousSales: '#64748B',
+  temperature: '#0284C7',
+  holiday: '#D97706',
+} as const;
+
 function percentage(value: number, locale: Locale): string {
   return new Intl.NumberFormat(locale === 'zh' ? 'zh-CN' : 'en-CA', {
     style: 'percent',
@@ -138,6 +145,23 @@ function coverageLabel(
     NOT_APPLICABLE: ['不适用', 'Not applicable'],
   };
   return labels[status][locale === 'zh' ? 0 : 1];
+}
+
+function weekdayLabel(
+  weekday: SalesAnalyticsCalendarReport['days'][number]['weekday'] | null,
+  locale: Locale,
+): string {
+  if (!weekday) return '—';
+  const labels = {
+    MONDAY: ['周一', 'Monday'],
+    TUESDAY: ['周二', 'Tuesday'],
+    WEDNESDAY: ['周三', 'Wednesday'],
+    THURSDAY: ['周四', 'Thursday'],
+    FRIDAY: ['周五', 'Friday'],
+    SATURDAY: ['周六', 'Saturday'],
+    SUNDAY: ['周日', 'Sunday'],
+  } as const;
+  return labels[weekday][locale === 'zh' ? 0 : 1];
 }
 
 function weatherConditionLabel(
@@ -462,7 +486,9 @@ export function SalesAnalyticsPageClient() {
         [isZh ? '等长前期净销售收入' : 'Previous-period net sales']:
           previousValue,
         [isZh ? '平均温度 °C' : 'Average temperature °C']:
-          row.temperatureAvgC,
+          row.temperatureAvgC === null
+            ? null
+            : Math.round(row.temperatureAvgC * 10) / 10,
       };
     });
   }, [bundle?.previousSales, dailyRows, isZh, previousRange]);
@@ -656,6 +682,8 @@ export function SalesAnalyticsPageClient() {
         </section>
       ) : bundle && summary && businessSummary && businessExpected ? (
         <>
+          <CoveragePanel bundle={bundle} locale={locale} />
+
           <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             <KpiCard
               label={isZh ? '净销售收入' : 'Net sales revenue'}
@@ -742,12 +770,24 @@ export function SalesAnalyticsPageClient() {
                   <XAxis dataKey="date" />
                   <YAxis yAxisId="sales" />
                   <YAxis yAxisId="temp" orientation="right" />
-                  <Tooltip />
+                  <Tooltip
+                    formatter={(value, name) => {
+                      const temperatureName = isZh
+                        ? '平均温度 °C'
+                        : 'Average temperature °C';
+                      if (name === temperatureName && typeof value === 'number') {
+                        return [`${value.toFixed(1)} °C`, name];
+                      }
+                      return [value, name];
+                    }}
+                  />
                   <Legend />
                   <Line
                     yAxisId="sales"
                     type="monotone"
                     dataKey={isZh ? '净销售收入' : 'Net sales revenue'}
+                    stroke={SALES_CONTEXT_CHART_COLORS.currentSales}
+                    strokeWidth={2}
                   />
                   <Line
                     yAxisId="sales"
@@ -757,11 +797,15 @@ export function SalesAnalyticsPageClient() {
                         ? '等长前期净销售收入'
                         : 'Previous-period net sales'
                     }
+                    stroke={SALES_CONTEXT_CHART_COLORS.previousSales}
+                    strokeWidth={2}
                   />
                   <Line
                     yAxisId="temp"
                     type="monotone"
                     dataKey={isZh ? '平均温度 °C' : 'Average temperature °C'}
+                    stroke={SALES_CONTEXT_CHART_COLORS.temperature}
+                    strokeWidth={2}
                   />
                   {dailyRows
                     .filter((row) => row.isPublicHoliday === true)
@@ -770,6 +814,7 @@ export function SalesAnalyticsPageClient() {
                         key={row.date}
                         yAxisId="sales"
                         x={row.date.slice(5)}
+                        stroke={SALES_CONTEXT_CHART_COLORS.holiday}
                         strokeDasharray="4 4"
                         label={
                           (isZh ? row.holidayNameZh : row.holidayNameEn) ??
@@ -788,8 +833,6 @@ export function SalesAnalyticsPageClient() {
             <ChannelTable report={bundle.sales} locale={locale} />
             <ItemTable report={bundle.business} locale={locale} />
           </section>
-
-          <CoveragePanel bundle={bundle} locale={locale} />
 
           <p className="pb-2 text-right text-[11px] text-slate-400">
             {isZh ? '运营报表生成时间' : 'Operating report generated'}:{' '}
@@ -909,6 +952,7 @@ function DailyContextTable({
               const longWeekendName = isZh
                 ? row.longWeekendNameZh
                 : row.longWeekendNameEn;
+              const weekday = weekdayLabel(row.weekday, locale);
               const context =
                 row.isPublicHoliday === null
                   ? isZh
@@ -916,8 +960,10 @@ function DailyContextTable({
                     : 'Calendar unavailable'
                   : holidayName ??
                     (longWeekendName
-                      ? `${longWeekendName} · ${isZh ? '长周末' : 'long weekend'}`
-                      : '—');
+                      ? `${weekday} · ${longWeekendName} · ${
+                          isZh ? '长周末' : 'long weekend'
+                        }`
+                      : weekday);
               return (
                 <tr key={row.date} className="border-b border-slate-100 last:border-0">
                   <td className="py-3 pr-4 font-medium text-slate-900">{row.date}</td>

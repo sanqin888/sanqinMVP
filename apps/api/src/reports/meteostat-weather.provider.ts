@@ -146,9 +146,13 @@ export class MeteostatWeatherProvider implements ReportingWeatherProviderPort {
   }): Promise<ReportingWeatherProviderFetchResultV1> {
     const apiKey = process.env.METEOSTAT_RAPIDAPI_KEY?.trim();
     if (!apiKey) {
+      this.logger.warn(
+        'Meteostat weather provider is not configured: METEOSTAT_RAPIDAPI_KEY is missing',
+      );
       return {
         provider: 'METEOSTAT',
         status: 'UNAVAILABLE',
+        cacheable: false,
         attemptedDates: [],
         days: [],
       };
@@ -220,6 +224,7 @@ export class MeteostatWeatherProvider implements ReportingWeatherProviderPort {
         : attemptedDates.length > 0
           ? 'PARTIAL'
           : 'UNAVAILABLE',
+      cacheable: true,
       attemptedDates,
       days: this.aggregateRows(rows),
     };
