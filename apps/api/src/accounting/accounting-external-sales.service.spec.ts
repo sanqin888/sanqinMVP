@@ -268,13 +268,41 @@ describe('AccountingExternalSalesService C1', () => {
     );
   });
 
-  it('rejects replacement input before any transaction is opened', async () => {
+  it('requires a replacement predecessor to be fully reversed first', async () => {
+    const tx = {
+      accountingExternalSale: {
+        findUnique: jest.fn().mockImplementation(
+          ({ where }: { where: { externalSaleStableId: string } }) =>
+            Promise.resolve(
+              where.externalSaleStableId === 'extsale_original'
+                ? {
+                    id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+                    storeStableId: '4750_Yonge_Street',
+                    currency: 'CAD',
+                    reversalStableId: null,
+                    reversalFactHash: null,
+                    reversalJournalEntryStableId: null,
+                    reversedAt: null,
+                    replacedByExternalSale: null,
+                  }
+                : null,
+            ),
+        ),
+      },
+    };
     const prisma = {
-      $transaction: jest.fn(),
+      $transaction: jest.fn(
+        (work: (client: typeof tx) => Promise<unknown>) => work(tx),
+      ),
     } as unknown as AccountingDb;
-    const journal = {} as AccountingJournalService;
-    const period = {} as AccountingPeriodService;
-    const service = new AccountingExternalSalesService(prisma, journal, period);
+    const period = {
+      getBusinessTimezone: jest.fn().mockResolvedValue('America/Toronto'),
+    } as unknown as AccountingPeriodService;
+    const service = new AccountingExternalSalesService(
+      prisma,
+      {} as AccountingJournalService,
+      period,
+    );
 
     await expect(
       service.createSale(
@@ -282,10 +310,7 @@ describe('AccountingExternalSalesService C1', () => {
         'user_admin',
       ),
     ).rejects.toThrow(
-      'External Sale replacement is not enabled until C3 reversal/correction authority',
+      'External Sale replacement predecessor must be fully reversed first',
     );
-    expect(
-      (prisma as unknown as { $transaction: jest.Mock }).$transaction,
-    ).not.toHaveBeenCalled();
   });
 });

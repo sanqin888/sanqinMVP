@@ -165,23 +165,39 @@ gates. Generic Journal routes cannot forge or mutate External Sales canonical fa
 policy remains fail-closed: exact AR, limited sale/adjustment revenue accounts and exact HST
 liability mapping; commission remains settlement-side.
 
-2026-10-02 External Sales **Slice C2 Settlement** is **LOCAL IMPLEMENTED / USER REVIEW PENDING /
-NO MIGRATION / NO SALES ANALYTICS CUTOVER / NO GRAPH OR BASELINE CHANGE** on
-`feat/accounting-external-sales-slice-c2-settlement` from `origin/dev@d412f4be`. C2 adds
-ADMIN/ACCOUNTANT `POST /accounting/external-sales/settlements` and an Accounting-local
-Serializable write path for Settlement/Allocation/Component facts, frozen receivable/account
-prerequisites, purpose-specific `EXTERNAL_SALE_SETTLEMENT` Journal authority, STANDARD Journal,
-anchor and audit. Outstanding principal is sourced from the immutable recognized Sale Journal's
-exact Accounts Receivable debit rather than recomputed commercial rows; live prior allocations are
-subtracted and the Journal writer rechecks the same snapshot in-transaction, so partial/multi-sale
-settlement is supported and concurrent over-settlement is fail-closed through the existing
-Serializable/P2034 retry path. Components are limited to active CAD BANK/CASH collection assets,
-exact HST recoverable and an explicit settlement-expense allowlist; wallet/revenue/liability/equity/
-payroll/arbitrary accounts are rejected and recoverable HST requires expense principal. Financial
-Reports keep provider commission on `expense_platform_fee` but project External Settlement
-commission/payment-processing to existing `expense_other` so generic commission is not mislabeled
-as platform commission. C3 reversal/correction, D Sales Analytics, Web UI and historical backfill
-remain inactive.
+2026-10-02 External Sales **Slice C2 Settlement** is **MERGED / PR #2658 / FINAL HEAD
+`96179a8c` / MERGE `c81e13bb` / CI #6784 GREEN / NO MIGRATION / NO SALES ANALYTICS CUTOVER /
+NO GRAPH OR BASELINE CHANGE**. C2 activates ADMIN/ACCOUNTANT
+`POST /accounting/external-sales/settlements` and the Accounting-local Serializable
+Settlement/Allocation/Component + canonical Journal + anchor + audit path. The recognized Sale
+Journal's exact AR debit is receivable authority; live prior allocations are frozen/rechecked to
+prevent over-settlement. Active CAD BANK/CASH, exact HST recoverable and the explicit
+settlement-expense allowlist remain the only runtime component accounts. Financial Reports keep
+provider commission on `expense_platform_fee` and use `expense_other` for generic External
+Settlement commission/payment-processing.
+
+2026-10-02 External Sales **Slice C3 Reversal / Correction** is **LOCAL IMPLEMENTED / USER REVIEW
+PENDING / NO MIGRATION / NO SALES ANALYTICS CUTOVER / NO GRAPH OR BASELINE CHANGE** on
+`feat/accounting-external-sales-slice-c3-reversal-correction` from `origin/dev@c81e13bb`.
+C3 adds ADMIN/ACCOUNTANT Sale and Settlement reversal endpoints plus a purpose-specific exact-inverse
+Journal authority. The authority freezes the original canonical Journal and swaps debit/credit
+without recomputing current commercial policy; accounts/categories/memos/Store/currency/original
+occurredAt are retained. The reversal-only Journal path may reuse original account/category
+dimensions even if they were later marked inactive; ordinary writes remain active-only. Reversal
+Journals are ADJUSTMENT, so the existing month-close adjustment
+allowance and year-close hard lock apply unchanged. Sale reversal requires all Settlement
+allocations to be fully reversed with live reversal Journal anchors first; Settlement reversal
+reopens AR by exact inverse. Reversal stable IDs are deterministic and the request reason is bound
+into reversalFactHash plus audit evidence. Correction is explicit reversal + replacement lineage:
+only a fully reversed predecessor with a live reversal Journal, matching Store/CAD and no existing
+replacement may be referenced. Replacement Sale/Settlement Journals are ADJUSTMENT while ordinary
+new facts remain STANDARD, allowing correction to complete in month-closed periods without
+weakening year-close. External Sales source types remain outside Sales Analytics until D.
+The executable External Sales plan now freezes the remaining sequence as
+**D Sales Analytics -> E Web -> F post-start reconstruction -> G pre-start
+opening-balance/cutover -> H closeout/production verification**, with per-Slice
+goals, execution steps, non-goals and completion gates in
+`docs/architecture/accounting-external-sales-plan.md`.
 
 2026-09-26 pre-sync Clover authority Slice A is **PRODUCTION VERIFIED / CLOSED / READ-ONLY SHADOW / NO PRISMA / NO JOURNAL MUTATION**. Slice A merged via PR #2547 / `d68cc317`; the zero-activity coverage correction merged via PR #2549 / `b7a01075`, with CI #6419 green and production running `main@b7a01075`.
 Real Gmail Closeout Reports prove that pre-sync Clover tender truth cannot be anchored to

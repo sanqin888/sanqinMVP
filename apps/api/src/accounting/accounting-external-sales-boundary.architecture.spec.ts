@@ -57,7 +57,7 @@ describe('Post-modularization External Sales boundary', () => {
     expect(policy).toContain('ACCOUNTING_EXTERNAL_SALE_AR_ACCOUNT_STABLE_ID');
   });
 
-  it('pins C1/C2 write ownership without reversal/analytics cutover', () => {
+  it('pins C1/C2/C3 write ownership without analytics cutover', () => {
     const schema = readFileSync(PRISMA_SCHEMA, 'utf8');
     const module = file('accounting.module.ts')?.source ?? '';
     const controllerGuard =
@@ -95,11 +95,17 @@ describe('Post-modularization External Sales boundary', () => {
     expect(module).toContain('AccountingExternalSalesController');
     expect(module).toContain('AccountingExternalSalesService');
     expect(module).toContain('AccountingExternalSaleSettlementService');
+    expect(module).toContain('AccountingExternalSaleReversalService');
     expect(controllerGuard).toContain("'POST external-sales'");
+    expect(controllerGuard).toContain(
+      "'POST external-sales/:externalSaleStableId/reverse'",
+    );
     expect(controllerGuard).toContain("'POST external-sales/settlements'");
+    expect(controllerGuard).toContain(
+      "'POST external-sales/settlements/:settlementStableId/reverse'",
+    );
     expect(salesPolicy).not.toContain('accounting.external_sale.v1');
     expect(salesPolicy).not.toContain('accounting.external_sale_settlement.v1');
-    expect(module).not.toContain('AccountingExternalSaleReversalService');
     expect(chart).toContain('account_accounts_receivable');
     expect(chart).toContain('account_commission_expense');
     expect(chart).not.toContain('account_platform_commission_expense');
@@ -109,6 +115,9 @@ describe('Post-modularization External Sales boundary', () => {
     const settlementAuthority =
       file('accounting-external-sales-settlement-journal-authority.ts')
         ?.source ?? '';
+    const reversalAuthority =
+      file('accounting-external-sales-reversal-journal-authority.ts')?.source ??
+      '';
     const journal = file('accounting-journal.service.ts')?.source ?? '';
     expect(authority).toContain("'EXTERNAL_SALE_RECOGNITION'");
     expect(authority).toContain("'account_hst_payable'");
@@ -122,8 +131,20 @@ describe('Post-modularization External Sales boundary', () => {
     expect(settlementAuthority).not.toContain(
       "'account_payroll_wages_expense'",
     );
+    expect(reversalAuthority).toContain('AccountingJournalEntryKind.ADJUSTMENT');
+    expect(reversalAuthority).toContain(
+      'ACCOUNTING_EXTERNAL_SALE_REVERSAL_SOURCE_FACT_TYPE',
+    );
+    expect(reversalAuthority).toContain(
+      'ACCOUNTING_EXTERNAL_SALE_SETTLEMENT_REVERSAL_SOURCE_FACT_TYPE',
+    );
+    expect(reversalAuthority).toContain('debitCents: line.creditCents');
+    expect(reversalAuthority).toContain('creditCents: line.debitCents');
     expect(journal).toContain('createExternalSaleJournalInTx');
     expect(journal).toContain('createExternalSaleSettlementJournalInTx');
+    expect(journal).toContain('createExternalSaleReversalJournalInTx');
+    expect(journal).toContain('allowInactiveReferencedDimensions: true');
+    expect(journal).toContain('allowInactiveReferencedDimensions = false');
     expect(journal).toContain(
       'External Sale canonical Journals cannot be updated in place',
     );

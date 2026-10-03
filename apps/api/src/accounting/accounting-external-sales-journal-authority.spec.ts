@@ -268,21 +268,21 @@ describe('Accounting External Sale Journal write authority', () => {
     ).toThrow('External Sale account is not an active CAD ASSET account');
   });
 
-  it('rejects replacement facts until C3 reversal/correction authority exists', () => {
+  it('keeps replacement lineage inside the frozen Sale fact', () => {
     const fact = normalizeAccountingExternalSale(
       saleInput({
         replacementForExternalSaleStableId: 'extsale_original',
       }),
     );
-    expect(() =>
-      buildExternalSaleWritePlan({
-        fact,
-        businessTimezone: 'America/Toronto',
-        accountFacts: baseAccounts(),
-      }),
-    ).toThrow(
-      'External Sale replacement requires the C3 reversal/correction authority',
+    const plan = buildExternalSaleWritePlan({
+      fact,
+      businessTimezone: 'America/Toronto',
+      accountFacts: baseAccounts(),
+    });
+    expect(plan.authority.fact.replacementForExternalSaleStableId).toBe(
+      'extsale_original',
     );
+    expect(plan.journal.kind).toBe(AccountingJournalEntryKind.ADJUSTMENT);
   });
 
   it('binds Journal content and account prerequisites into the authority hash', () => {

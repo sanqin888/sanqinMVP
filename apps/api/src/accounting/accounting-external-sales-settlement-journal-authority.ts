@@ -380,7 +380,10 @@ const buildJournalFromFact = (
   const draft = buildAccountingExternalSaleSettlementPostingDraft(fact);
   return {
     idempotencyKey: `external-sale-settlement:${fact.settlementStableId}:v1`,
-    kind: AccountingJournalEntryKind.STANDARD,
+    kind:
+      fact.replacementForSettlementStableId !== null
+        ? AccountingJournalEntryKind.ADJUSTMENT
+        : AccountingJournalEntryKind.STANDARD,
     source: AccountingJournalSource.EXTERNAL_SALE,
     sourceFactType: ACCOUNTING_EXTERNAL_SALE_SETTLEMENT_SOURCE_FACT_TYPE,
     sourceFactStableId: fact.settlementStableId,
@@ -430,11 +433,6 @@ export const buildExternalSaleSettlementWritePlan = (input: {
   accountFacts: ExternalSaleSettlementAccountFactV1[];
   receivableSnapshots: ExternalSaleSettlementReceivableSnapshotV1[];
 }): ExternalSaleSettlementWritePlanV1 => {
-  if (input.fact.replacementForSettlementStableId !== null) {
-    throw new AccountingJournalPolicyError(
-      'External Sale settlement replacement requires the C3 reversal/correction authority',
-    );
-  }
   const businessTimezone = normalizeTimezone(input.businessTimezone);
   const factHash = hashAccountingExternalSaleSettlementFact(input.fact);
   const accountPrerequisites = buildAccountPrerequisites(

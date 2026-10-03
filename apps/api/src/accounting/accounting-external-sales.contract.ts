@@ -199,6 +199,10 @@ export type AccountingExternalSaleSettlementFactV1 = {
   note: string | null;
 };
 
+export type ReverseAccountingExternalSaleInputV1 = {
+  reason: string;
+};
+
 export type AccountingExternalSalePostingLineV1 = {
   accountStableId: string;
   debitCents: number;

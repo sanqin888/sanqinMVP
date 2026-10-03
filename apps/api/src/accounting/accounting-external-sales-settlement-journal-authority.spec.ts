@@ -412,22 +412,22 @@ describe('Accounting External Sale Settlement Journal authority', () => {
     ).toThrow('External Sale settlement date precedes the sale');
   });
 
-  it('rejects replacement settlement facts until C3', () => {
+  it('keeps replacement lineage inside the frozen Settlement fact', () => {
     const fact = normalizeAccountingExternalSaleSettlement(
       settlementInput({
         replacementForSettlementStableId: 'extsettlement_original',
       }),
     );
-    expect(() =>
-      buildExternalSaleSettlementWritePlan({
-        fact,
-        businessTimezone: 'America/Toronto',
-        accountFacts: accountFacts(),
-        receivableSnapshots: [snapshot()],
-      }),
-    ).toThrow(
-      'External Sale settlement replacement requires the C3 reversal/correction authority',
+    const plan = buildExternalSaleSettlementWritePlan({
+      fact,
+      businessTimezone: 'America/Toronto',
+      accountFacts: accountFacts(),
+      receivableSnapshots: [snapshot()],
+    });
+    expect(plan.authority.fact.replacementForSettlementStableId).toBe(
+      'extsettlement_original',
     );
+    expect(plan.journal.kind).toBe(AccountingJournalEntryKind.ADJUSTMENT);
   });
 
   it('binds Journal content and frozen receivable/account prerequisites into its authority hash', () => {
