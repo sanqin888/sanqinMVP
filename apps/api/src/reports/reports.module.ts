@@ -57,6 +57,7 @@ import {
 import { REPORTING_WEATHER_HISTORY_STORE } from './reporting-weather-history-store.contract';
 import { REPORTING_WEATHER_PROVIDER } from './reporting-weather-provider.contract';
 import { BusinessOperationsReportService } from './business-operations-report.service';
+import { CalendarContextService } from './calendar-context.service';
 import { MarketingOverviewReportService } from './marketing-overview-report.service';
 import { MeteostatWeatherProvider } from './meteostat-weather.provider';
 import { ReportsController } from './reports.controller';
@@ -283,6 +284,7 @@ import { WeatherHistoryStore } from './weather-history.store';
     BusinessOperationsReportService,
     MarketingOverviewReportService,
     WeatherHistoryService,
+    CalendarContextService,
     {
       provide: REPORTING_TOP_ITEMS_QUERY,
       useExisting: ReportsService,

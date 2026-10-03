@@ -763,14 +763,14 @@ B2 comes first so Admin and Accounting can share stable vocabulary rather than i
 
 ### 5.1 Admin Data consolidation — Sales Analytics + Management P&L
 
-State: **DATA-A MERGED / CI #6817 GREEN / PR #2667 / MERGE `ff1d7a41`; DATA-B1 LOCAL IMPLEMENTED / USER REVIEW PENDING / MIGRATION REQUIRED / NO NEW DEPENDENCY / NO GRAPH OR BASELINE CHANGE**  
+State: **DATA-A MERGED / CI #6817 GREEN; DATA-B1 SOURCE MERGED / PR #2668 / CI #6822 GREEN / MIGRATION `7934d875` REVIEWED ADDITIVE / DEV HISTORY ALIGNED; DATA-B2 LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**  
 Detailed plan: `docs/architecture/admin-data-sales-management-analytics.md`
 
 The approved follow-on keeps Accounting as the money/projection owner while moving management-facing consumption toward Admin:
 
 - **DATA-A:** optional explicit `storeStableId` on canonical Sales plus explicit per-Admin-navigation Store-context metadata;
-- **DATA-B1:** Reporting-owned historical Weather facts/provider/cache foundation — locally implemented with Meteostat Hourly Point aggregation, explicit coverage/fail-soft behavior and additive `ReportingWeatherDailyFact`; source promotion is gated by user-generated migration `add_reporting_weather_daily_facts`;
-- **DATA-B2:** Reporting-owned historical Calendar context for Canada/Ontario public/statutory holidays and long weekends; existing mutable Store holiday-opening configuration remains `CURRENT_CONFIGURATION_ONLY` and is not reused as historical holiday authority;
+- **DATA-B1:** Reporting-owned historical Weather facts/provider/cache foundation — source merged through PR #2668 / squash `37ac9c56` with CI #6822 green; user-generated additive migration `20261003185132_add_reporting_weather_daily_facts` is reviewed and committed to `dev` as `7934d875`, restoring schema/history alignment;
+- **DATA-B2:** Reporting-owned historical Calendar context — locally implemented as deterministic Ontario ESA public-holiday rules + Friday/Monday long-weekend markers using the existing Reporting Store jurisdiction/timezone seam; unsupported jurisdictions are explicit, current mutable Store holiday-opening configuration remains `CURRENT_CONFIGURATION_ONLY`, and no persistence/migration/provider dependency is added;
 - **DATA-C:** Store-scoped Admin Sales Analytics using canonical Accounting Sales + Business Operations + Weather + Calendar context, with 7/30/90-day controls and a single-day `< MM/DD/YYYY >` selector defaulting to Store-local Today;
 - the single-day right arrow is disabled for future dates and when the next date has no relevant owner-backed Sales/Order evidence;
 - **DATA-D:** whole-business Management P&L / management Cash Movement presentation in Admin using existing Accounting-owned projections, explicitly without a Store-scope claim;
