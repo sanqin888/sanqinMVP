@@ -225,6 +225,12 @@ function buildCategories(
           preserveStoreContext: true,
         },
         {
+          href: `${adminRoot}/reports/management`,
+          labelZh: '管理损益',
+          labelEn: 'Management P&L',
+          icon: Calculator,
+        },
+        {
           href: `${adminRoot}/analytics`,
           labelZh: '行为 / 埋点分析',
           labelEn: 'Behavior analytics',

@@ -1,8 +1,8 @@
 # Admin Data — Sales Analytics / Management P&L migration
 
 Date: 2026-10-03  
-Baseline: `origin/dev@56f35b0c` after DATA-B2 merge  
-Current state: **DATA-A MERGED / CI #6817 GREEN; DATA-B1 SOURCE + MIGRATION ALIGNED ON DEV; DATA-B2 MERGED / PR #2669 / FINAL HEAD `3484dfe1` / CI #6826 GREEN / MERGE `56f35b0c`; DATA-C LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**
+Baseline: `origin/dev@d748327f` after DATA-C merge  
+Current state: **DATA-A MERGED / CI #6817 GREEN; DATA-B1 SOURCE + MIGRATION ALIGNED ON DEV; DATA-B2 MERGED / PR #2669 / FINAL HEAD `3484dfe1` / CI #6826 GREEN / SQUASH `56f35b0c`; DATA-C MERGED / PR #2670 / FINAL HEAD `ebe02b93` / CI #6829 GREEN / SQUASH `d748327f`; DATA-D LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**
 
 ## Product goal
 
@@ -183,7 +183,7 @@ Official rule authorities are recorded in-band in the response contract using On
 
 ### DATA-C — Admin Sales Analytics
 
-State: **LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE** on `feat/admin-data-sales-analytics` from `origin/dev@56f35b0c`.
+State: **MERGED / PR #2670 / FINAL HEAD `ebe02b93` / CI #6829 GREEN / SQUASH `d748327f` / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**.
 
 Implementation:
 
@@ -203,10 +203,22 @@ Focused date/model/source-characterization regressions are included. Per `AGENTS
 
 ### DATA-D — Admin Management P&L
 
-- primary Management P&L / management cash-movement UI moves to Admin;
-- consumes existing Accounting-owned P&L/Cash Movement contracts;
-- clearly marked whole-business scope;
-- no Store selector and no Store-P&L claim.
+State: **LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE** on `feat/admin-data-management-pnl` from `origin/dev@d748327f`.
+
+Readiness confirmed that the existing Accounting owner contracts are sufficient: `GET /accounting/report/pnl?from=&to=&groupBy=` and `GET /accounting/report/cashflow?from=&to=` are already authenticated for `ADMIN | ACCOUNTANT`, have no Store parameter, and project whole-business / whole-ledger Journal authority. Management CSV/PDF already calls the same Accounting P&L service, so DATA-D does not need a new backend projection.
+
+Implementation:
+
+- adds `/admin/reports/management` as the primary Admin Management P&L surface and inserts `Management P&L` into Data navigation between Sales Analytics and Behavior Analytics;
+- the navigation item deliberately has no `preserveStoreContext`; the existing AdminShell logic therefore hides the Store selector on this page. A residual/manual `?store=` is ignored because the page neither reads it nor sends `storeStableId`;
+- the Admin client calls only the existing Accounting P&L and Cash Movement endpoints. No Order, Expense, Journal persistence or duplicate financial projection is read or reconstructed in Admin;
+- Management P&L / Cash Movement browser DTOs move to shared Web contract `apps/web/src/lib/contracts/accounting-management.ts`; the existing Accounting reports contract re-exports them so current Accounting consumers stay source-compatible and the API response shape is unchanged;
+- the existing business-timezone-safe Accounting report date helper moves to `apps/web/src/lib/accounting-reporting-date.ts` with the old Accounting route helper retained as a re-export, allowing both surfaces to share This month / Last month / This quarter / This year semantics without Admin importing Accounting route implementation;
+- the Admin surface preserves custom from/to, month/quarter/year grouping, Income, Expenses, Net adjustment effect, Net profit, Adjustment effect breakdown, P&L trend, Cash Movement buckets, Category summary, Source summary and existing Management PDF/CSV exports;
+- whole-business / whole-ledger scope is explicit in both page introduction and report disclosure. Cash Movement remains explicitly labeled **Journal-only management aid; not a formal Statement of Cash Flows**;
+- current Accounting Reports Management P&L, Trial Balance and Balance Movement remain present. Their removal/reframing stays deferred to DATA-F after DATA-E production verification.
+
+Focused source-characterization regressions pin owner endpoints only, no Store query/scope, non-Store-scoped navigation, shared-contract compatibility, absence of Admin financial arithmetic/persistence coupling, scope/disclaimer text, export reuse and retention of the current Accounting views. Per `AGENTS.md`, local lint/build/test are not run before user review; GitHub Actions remains the validation gate after remote authorization.
 
 ### DATA-E — Production verification
 
@@ -236,10 +248,12 @@ Brand/Store public config seam and owns its own read-model persistence/provider 
 It adds one Reporting-owned table and one additive authenticated Reporting HTTP read contract,
 but no package dependency, scanner allowance, SCC or architecture-baseline change.
 
-DATA-B2 and DATA-C introduce no new backend context direction. DATA-B2 stays inside Reporting
-over the existing Brand/Store jurisdiction seam. DATA-C is a Web/Admin adapter composition
-of existing authenticated owner APIs plus a shared browser DTO contract; it adds no Prisma
-model, migration, package dependency, scanner allowance, SCC or architecture-baseline change.
+DATA-B2, DATA-C and DATA-D introduce no new backend context direction. DATA-B2 stays inside
+Reporting over the existing Brand/Store jurisdiction seam. DATA-C is a Web/Admin adapter
+composition of existing authenticated owner APIs plus a shared browser DTO contract. DATA-D
+is likewise a Web/Admin adapter over existing Accounting P&L/Cash Movement owner contracts,
+with shared browser DTO/date utilities only. None adds a Prisma model, migration, package
+dependency, scanner allowance, SCC or architecture-baseline change.
 
 B2 Canonical Sales Analytics and B5 Admin Business Reports remain closed; this work is a
 post-modularization product/UI ownership refinement and does not reopen their financial or
