@@ -91,7 +91,7 @@ describe('B2 canonical sales analytics boundary', () => {
       'account_hst_payable',
       'account_tip_revenue',
       'account_other_operating_revenue',
-      'account_platform_commission_expense',
+      'account_commission_expense',
       'account_payment_processing_fee_expense',
       'account_platform_promotion_expense',
       'account_advertising_expense',

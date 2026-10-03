@@ -25,11 +25,16 @@ const PAYROLL_COA_MIGRATION = resolve(
   API_ROOT,
   'prisma/migrations/20260918185000_phase9_slice8p_d0_payroll_coa/migration.sql',
 );
+const EXTERNAL_SALES_B2_COA_MIGRATION = resolve(
+  API_ROOT,
+  'prisma/migrations/20261003002800_accounting_external_sales_b2_coa_normalization/migration.sql',
+);
 const ACCOUNTING_COA_SEED_MIGRATIONS = [
   JOURNAL_MIGRATION,
   STORE_BALANCE_LIABILITY_MIGRATION,
   TIP_REVENUE_MIGRATION,
   PAYROLL_COA_MIGRATION,
+  EXTERNAL_SALES_B2_COA_MIGRATION,
 ];
 
 function read(path: string): string {
@@ -108,6 +113,60 @@ describe('Accounting double-entry journal ownership boundary', () => {
     for (const account of DEFAULT_ACCOUNTING_ACCOUNTS) {
       expect(migrationSeeds).toContain(`'${account.accountStableId}'`);
     }
+  });
+
+  it('pins the External Sales B2 CoA migration to UUID-preserving, fail-closed semantics', () => {
+    const migration = read(EXTERNAL_SALES_B2_COA_MIGRATION);
+
+    expect(migration).toContain("'account_platform_commission_expense'");
+    expect(migration).toContain("'account_commission_expense'");
+    expect(migration).toContain("'account_accounts_receivable'");
+    expect(migration).toContain("'平台佣金'");
+    expect(migration).toContain("'佣金费用'");
+    expect(migration).toContain("'应收账款'");
+    expect(migration).toContain('"accountClass" = \'EXPENSE\'');
+    expect(migration).toContain("'ASSET'");
+    expect(migration).toContain('"currency" = \'CAD\'');
+    expect(migration).toContain('"isActive" = true');
+    expect(migration).toContain('WHERE "id" = legacy_commission_id');
+    expect(migration).toContain(
+      'post_journal_line_count <> legacy_journal_line_count',
+    );
+    expect(migration).toContain('RAISE EXCEPTION');
+    expect(migration).not.toContain('UPDATE "AccountingJournalLine"');
+    expect(migration).not.toContain('UPDATE "AccountingJournalEntry"');
+    expect(migration).not.toContain('INSERT INTO "AccountingJournalEntry"');
+    expect(migration).not.toContain('INSERT INTO "AccountingJournalLine"');
+    expect(migration).not.toContain('ON CONFLICT');
+    expect(migration).not.toContain('DROP ');
+  });
+
+  it('pins External Sales control accounts to generic Accounting semantics', () => {
+    const receivable = DEFAULT_ACCOUNTING_ACCOUNTS.find(
+      ({ accountStableId }) =>
+        accountStableId === 'account_accounts_receivable',
+    );
+    const commission = DEFAULT_ACCOUNTING_ACCOUNTS.find(
+      ({ accountStableId }) => accountStableId === 'account_commission_expense',
+    );
+    const legacyCommission = DEFAULT_ACCOUNTING_ACCOUNTS.find(
+      ({ accountStableId }) =>
+        accountStableId === 'account_platform_commission_expense',
+    );
+
+    expect(receivable).toEqual({
+      accountStableId: 'account_accounts_receivable',
+      name: '应收账款',
+      type: null,
+      accountClass: 'ASSET',
+    });
+    expect(commission).toEqual({
+      accountStableId: 'account_commission_expense',
+      name: '佣金费用',
+      type: null,
+      accountClass: 'EXPENSE',
+    });
+    expect(legacyCommission).toBeUndefined();
   });
 
   it('pins Store Balance principal to an active CAD liability account without seeding an opening journal', () => {

@@ -118,7 +118,7 @@ const uberProviderStatement = {
     {
       debitCents: 100,
       creditCents: 0,
-      account: { accountStableId: 'account_platform_commission_expense' },
+      account: { accountStableId: 'account_commission_expense' },
     },
     {
       debitCents: 0,

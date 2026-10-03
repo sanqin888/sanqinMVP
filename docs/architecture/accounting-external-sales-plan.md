@@ -1,8 +1,8 @@
 # Accounting External Sales Plan
 
-Status: **SLICE A MERGED / CI #6771 GREEN / PR #2654 / MERGE `26e9b15a`; SLICE B1 LOCAL IMPLEMENTED / MIGRATION REQUIRED / USER REVIEW PENDING**  
+Status: **SLICE A MERGED; SLICE B1 MERGED + MIGRATION REVIEWED / CI #6775 GREEN; SLICE B2 LOCAL IMPLEMENTED / USER-AUTHORIZED DATA MIGRATION INCLUDED / REMOTE DELIVERY AUTHORIZED / CI PENDING**  
 Date: 2026-10-02  
-Slice B1 implementation base: `origin/dev@26e9b15a`  
+Slice B2 implementation base: `origin/dev@dc960d6d`  
 Owner: **Accounting / Reporting / Analytics**
 
 ## 1. Purpose
@@ -205,7 +205,7 @@ SCC is introduced.
 
 ### Slice B1 — persistence foundation
 
-State: **LOCAL IMPLEMENTED / USER REVIEW PENDING / MIGRATION REQUIRED**.
+State: **MERGED / PR #2655 / MERGE `d3e86921` / SOURCE CI #6773 GREEN / B1 MIGRATION `dc960d6d` REVIEWED / MIGRATION CI #6775 GREEN**.
 
 Fresh readiness against `origin/dev@26e9b15a` found an existing architecture
 guard that requires every `DEFAULT_ACCOUNTING_ACCOUNTS` stable ID to be present
@@ -229,43 +229,84 @@ B1 adds only the additive persisted fact foundation:
   `AccountingSourceArtifact`.
 
 B1 does **not** register runtime routes/services, add Sales Analytics sources or
-change CoA stable IDs. It creates no migration file in MCP.
+change CoA stable IDs. The user-generated migration
+`20261002232836_accounting_external_sales_b1_persistence_foundation` was
+reviewed as additive-only: enum extension/type + new External
+Sale/Settlement/evidence tables, indexes, uniques and foreign keys, with no
+DROP/rename/CoA seed/Journal rewrite/backfill. Commit `dc960d6d` passed CI
+#6775, including fresh committed-migration replay in Browser E2E.
 
 ### Slice B2 — CoA foundation / commission normalization
 
-B2 begins only after the user-generated B1 migration SQL is returned and
-reviewed.
+State: **LOCAL IMPLEMENTED / USER-AUTHORIZED DATA MIGRATION INCLUDED / REMOTE DELIVERY AUTHORIZED / CI PENDING**.
 
-Production read-only evidence at B1 readiness shows the existing
-`account_platform_commission_expense` has one AccountingAccount row and six
-historical JournalLines totaling 703,084 cents of debit. JournalLine references
-the account by internal UUID, not by stable ID. Therefore the target commission
-normalization can preserve the same account row/UUID while changing its stable
-business ID/name to:
+B2 source changes the canonical CoA semantics to:
 
 ```text
+account_accounts_receivable
+Accounts Receivable / 应收账款
+ASSET / type=null / CAD
+
 account_commission_expense
 Commission Expense / 佣金费用
+EXPENSE / type=null / CAD
 ```
 
-No historical JournalLine rewrite is required. B2 must update every current
-provider/reporting/Sales Analytics reference atomically and retain regression
-coverage proving historical provider commission remains visible.
+Production read-only evidence confirms the legacy
+`account_platform_commission_expense` is one active CAD EXPENSE account with
+six historical JournalLines totaling 703,084 cents of debit. JournalLine
+references the account by internal UUID. There is no existing row or name
+conflict for `account_commission_expense` or `account_accounts_receivable`.
+Therefore the required data migration must update that same commission account
+row in place; it must not create a second commission account or rewrite any
+JournalLine.
 
-B2 also provisions `account_accounts_receivable` as an active CAD ASSET
-account with `type=null`. It must not add a new `AccountingAccountType`.
+B2 updates all current runtime consumers of the commission stable ID:
 
-The B1 migration should be generated locally with:
+- Provider Settlement posts provider commission to the generic commission
+  account while retaining the provider-specific `PLATFORM_COMMISSION`
+  analytics meaning;
+- canonical Sales Analytics reads the new account stable ID for existing
+  provider statement facts;
+- financial reporting maps the new stable ID to the existing provider-platform
+  fallback category so historical report grouping does not change in B2;
+- provider-settlement Web replay fixtures and API/reporting regressions use the
+  new account ID;
+- architecture guards pin AR + generic commission in
+  `DEFAULT_ACCOUNTING_ACCOUNTS` and reject the legacy commission ID.
 
-```bash
-pnpm --filter api exec prisma migrate dev --create-only --name accounting_external_sales_b1_persistence_foundation
-```
+External Sales is still not added to the Sales Analytics source whitelist in
+B2. Before External Settlement commission becomes runtime-active, Slice C/D
+must give External Sales commission its own source-aware analytics/reporting
+presentation rather than treating every debit to the shared commission account
+as a platform commission.
 
-The generated SQL must be reviewed before application. Expected B1 SQL is
-additive: one `AccountingJournalSource` enum value, one External Sale
-granularity enum, new External Sale/Settlement/evidence tables, indexes,
-uniques and foreign keys. It must not rename/drop the commission account,
-create AR yet, rewrite Journal rows or backfill historical sales.
+Because B2 changes canonical seed data rather than `schema.prisma`, Prisma
+cannot auto-generate this migration from a schema diff. The user explicitly
+authorized one narrow exception to the repository's normal migration-authoring
+rule, so B2 includes the hand-written data-only migration
+`20261003002800_accounting_external_sales_b2_coa_normalization`. The exception
+is limited to this migration and does not change the repository's default
+migration workflow. The migration:
+
+1. fail closed if the target commission stable ID/name already conflicts;
+2. verify exactly one legacy commission account with the expected
+   EXPENSE/null/CAD/active shape;
+3. update that exact row in place from
+   `account_platform_commission_expense / 平台佣金` to
+   `account_commission_expense / 佣金费用`, preserving its UUID;
+4. insert `account_accounts_receivable / 应收账款` as active CAD ASSET with
+   `type=NULL`, with conflict checks rather than silently creating duplicates;
+5. perform no JournalEntry/JournalLine update, no historical posting, no
+   External Sale backfill and no destructive DROP;
+6. include both new canonical stable IDs in committed migration SQL so the
+   existing cumulative CoA seed architecture guard can include this migration
+   without being weakened.
+
+The migration is pinned by
+`accounting-journal-boundary.architecture.spec.ts` and its exact path is added
+to the existing explicit `ACCOUNTING_COA_SEED_MIGRATIONS` list. The guard is
+not weakened.
 
 ### Slice C — write authority
 

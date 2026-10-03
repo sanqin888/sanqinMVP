@@ -152,7 +152,7 @@ function makePreview(): ProviderSettlementShadowPreview {
               creditCents: 0,
             },
             {
-              accountStableId: 'account_platform_commission_expense',
+              accountStableId: 'account_commission_expense',
               debitCents: 61912,
               creditCents: 0,
             },

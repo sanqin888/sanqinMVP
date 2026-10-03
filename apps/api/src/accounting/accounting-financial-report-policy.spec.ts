@@ -248,8 +248,8 @@ describe('Accounting canonical financial report policy', () => {
             creditCents: 0,
             memo: null,
             account: account(
-              'account_platform_commission_expense',
-              '平台佣金',
+              'account_commission_expense',
+              '佣金费用',
               AccountingAccountClass.EXPENSE,
             ),
             category: null,
