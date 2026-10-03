@@ -23,6 +23,20 @@ export type AccountingInboxReadClient = Pick<
   | 'accountingExpenseDocument'
 >;
 
+function pendingInboxVisibilityFilter(): Prisma.AccountingInboxItemWhereInput {
+  return {
+    expenseEvidenceSourceLink: { is: null },
+    OR: [
+      { materializedEntityType: null },
+      {
+        materializedEntityType: {
+          not: AccountingInboxMaterializedEntityType.EXPENSE_DOCUMENT,
+        },
+      },
+    ],
+  };
+}
+
 export async function getAccountingSenderPolicyDecision(
   client: AccountingInboxReadClient,
   email: string,
@@ -70,13 +84,7 @@ export async function listAccountingUnifiedInboxItems(
       status: { in: statuses },
       ...(params.materializedEntityStableId
         ? {}
-        : {
-            expenseEvidenceSourceLink: { is: null },
-            NOT: {
-              materializedEntityType:
-                AccountingInboxMaterializedEntityType.EXPENSE_DOCUMENT,
-            },
-          }),
+        : pendingInboxVisibilityFilter()),
       ...(params.classification
         ? { classification: params.classification }
         : {}),
@@ -634,11 +642,7 @@ export async function countAccountingInboxReviewItems(
           AccountingInboxStatus.QUARANTINED,
         ],
       },
-      expenseEvidenceSourceLink: { is: null },
-      NOT: {
-        materializedEntityType:
-          AccountingInboxMaterializedEntityType.EXPENSE_DOCUMENT,
-      },
+      ...pendingInboxVisibilityFilter(),
     },
   });
 }
