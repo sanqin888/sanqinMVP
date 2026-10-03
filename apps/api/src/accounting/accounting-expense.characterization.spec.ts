@@ -467,6 +467,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
     const updateInbox = jest.fn().mockResolvedValue({ count: 1 });
     const tx = {
       accountingInboxItem: {
+        findMany: jest.fn().mockResolvedValue([]),
         findUnique: jest.fn().mockResolvedValue({
           status: AccountingInboxStatus.PENDING_REVIEW,
           classification: AccountingInboxClassification.EXPENSE_DOCUMENT,
