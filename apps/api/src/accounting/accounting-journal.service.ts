@@ -66,6 +66,18 @@ import {
   type ProviderPayoutJournalWriteAuthorityV1,
 } from './accounting-provider-payout-journal-authority';
 import {
+  assertExternalSaleJournalAuthority,
+  hashExternalSaleJournalWrite,
+  normalizeExternalSaleWriteAuthority,
+  type ExternalSaleJournalWriteAuthorityV1,
+} from './accounting-external-sales-journal-authority';
+import {
+  ACCOUNTING_EXTERNAL_SALE_REVERSAL_SOURCE_FACT_TYPE,
+  ACCOUNTING_EXTERNAL_SALE_SETTLEMENT_REVERSAL_SOURCE_FACT_TYPE,
+  ACCOUNTING_EXTERNAL_SALE_SETTLEMENT_SOURCE_FACT_TYPE,
+  ACCOUNTING_EXTERNAL_SALE_SOURCE_FACT_TYPE,
+} from './accounting-external-sales.contract';
+import {
   assertProviderFeeBankWithdrawalJournalAuthority,
   hashProviderFeeBankWithdrawalJournalWrite,
   normalizeProviderFeeBankWithdrawalWriteAuthority,
@@ -165,6 +177,19 @@ type ResolvedJournalLine = NormalizedJournalLine & {
 
 type AccountingDbClient = AccountingDb | Prisma.TransactionClient;
 
+const EXTERNAL_SALE_CANONICAL_SOURCE_FACT_TYPES = new Set<string>([
+  ACCOUNTING_EXTERNAL_SALE_SOURCE_FACT_TYPE,
+  ACCOUNTING_EXTERNAL_SALE_SETTLEMENT_SOURCE_FACT_TYPE,
+  ACCOUNTING_EXTERNAL_SALE_REVERSAL_SOURCE_FACT_TYPE,
+  ACCOUNTING_EXTERNAL_SALE_SETTLEMENT_REVERSAL_SOURCE_FACT_TYPE,
+]);
+
+const isExternalSaleCanonicalSourceFactType = (
+  value: string | null | undefined,
+): boolean =>
+  typeof value === 'string' &&
+  EXTERNAL_SALE_CANONICAL_SOURCE_FACT_TYPES.has(value);
+
 type PreparedJournalWrite = {
   normalized: NormalizedJournalCreate;
   idempotencyHash: string;
@@ -251,6 +276,14 @@ export class AccountingJournalService {
         'provider fee bank withdrawal Journals require fee-clearing write authority',
       );
     }
+    if (
+      input.source === AccountingJournalSource.EXTERNAL_SALE ||
+      isExternalSaleCanonicalSourceFactType(input.sourceFactType)
+    ) {
+      throw new BadRequestException(
+        'External Sale canonical Journals require External-Sales-specific write authority',
+      );
+    }
     return this.createJournalEntryInternal(input, operatorActorRef, null);
   }
 
@@ -307,6 +340,48 @@ export class AccountingJournalService {
     if (journal.deletedAt) {
       throw new ConflictException(
         'canonical Expense Journal was deleted and cannot be replayed',
+      );
+    }
+    return journal;
+  }
+
+  async createExternalSaleJournalInTx(
+    input: AccountingJournalCreateInput,
+    operatorActorRef: string,
+    authority: ExternalSaleJournalWriteAuthorityV1,
+    tx: Prisma.TransactionClient,
+  ): Promise<AccountingJournalRow> {
+    const normalizedAuthority = this.applyJournalPolicy(() =>
+      normalizeExternalSaleWriteAuthority(authority),
+    );
+    const normalized = this.applyJournalPolicy(() =>
+      normalizeJournalCreate(input),
+    );
+    this.applyJournalPolicy(() =>
+      assertExternalSaleJournalAuthority(normalized, normalizedAuthority),
+    );
+    await this.assertExternalSaleAuthorityInTx(normalizedAuthority, tx);
+
+    const operator = this.requireJournalValue(
+      operatorActorRef,
+      'operatorActorRef',
+    );
+    const journal = await this.createPreparedJournalEntryInTx(
+      {
+        normalized,
+        idempotencyHash: hashExternalSaleJournalWrite(
+          normalized,
+          normalizedAuthority,
+        ),
+        auditAuthority: normalizedAuthority as unknown as Prisma.InputJsonValue,
+      },
+      operator,
+      tx,
+      normalizedAuthority.businessTimezone,
+    );
+    if (journal.deletedAt) {
+      throw new ConflictException(
+        'External Sale Journal was deleted and cannot be replayed',
       );
     }
     return journal;
@@ -811,6 +886,19 @@ export class AccountingJournalService {
           'canonical Expense Journals cannot be updated in place',
         );
       }
+      if (
+        existing.source === AccountingJournalSource.EXTERNAL_SALE ||
+        isExternalSaleCanonicalSourceFactType(existing.sourceFactType)
+      ) {
+        throw new ConflictException(
+          'External Sale canonical Journals cannot be updated in place',
+        );
+      }
+      if (isExternalSaleCanonicalSourceFactType(normalized.sourceFactType)) {
+        throw new ConflictException(
+          'generic Journal update cannot create External Sale canonical authority',
+        );
+      }
       if (existing.sourceFactType === PROVIDER_PAYOUT_SOURCE_FACT_TYPE) {
         throw new ConflictException(
           'canonical provider payout Journals cannot be updated in place',
@@ -952,6 +1040,14 @@ export class AccountingJournalService {
       if (existing.source === AccountingJournalSource.EXPENSE_DOCUMENT) {
         throw new ConflictException(
           'canonical Expense Journals cannot be deleted in place',
+        );
+      }
+      if (
+        existing.source === AccountingJournalSource.EXTERNAL_SALE ||
+        isExternalSaleCanonicalSourceFactType(existing.sourceFactType)
+      ) {
+        throw new ConflictException(
+          'External Sale canonical Journals cannot be deleted in place',
         );
       }
       if (existing.sourceFactType === PROVIDER_PAYOUT_SOURCE_FACT_TYPE) {
@@ -1611,6 +1707,75 @@ export class AccountingJournalService {
       ) {
         throw new ConflictException(
           `Provider fee bank withdrawal account authority changed before posting: ${prerequisite.accountStableId}`,
+        );
+      }
+    }
+  }
+
+  private async assertExternalSaleAuthorityInTx(
+    authority: ExternalSaleJournalWriteAuthorityV1,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    const sale = await tx.accountingExternalSale.findUnique({
+      where: { externalSaleStableId: authority.fact.externalSaleStableId },
+      select: {
+        storeStableId: true,
+        currency: true,
+        idempotencyKey: true,
+        factHash: true,
+        journalEntryStableId: true,
+        reversedAt: true,
+        reversalStableId: true,
+      },
+    });
+    if (
+      !sale ||
+      sale.journalEntryStableId !== null ||
+      sale.reversedAt !== null ||
+      sale.reversalStableId !== null ||
+      sale.storeStableId !== authority.fact.storeStableId ||
+      sale.currency !== 'CAD' ||
+      sale.idempotencyKey !==
+        `external-sale:${authority.fact.externalSaleStableId}:v1` ||
+      sale.factHash !== authority.factHash
+    ) {
+      throw new ConflictException(
+        'External Sale authority changed before Journal posting',
+      );
+    }
+
+    const currentAccounts = await tx.accountingAccount.findMany({
+      where: {
+        accountStableId: {
+          in: authority.accountPrerequisites.map(
+            (account) => account.accountStableId,
+          ),
+        },
+      },
+      select: {
+        accountStableId: true,
+        accountClass: true,
+        type: true,
+        currency: true,
+        isActive: true,
+      },
+    });
+    const currentByStableId = new Map(
+      currentAccounts.map(
+        (account) => [account.accountStableId, account] as const,
+      ),
+    );
+    for (const prerequisite of authority.accountPrerequisites) {
+      const current = currentByStableId.get(prerequisite.accountStableId);
+      if (
+        !current ||
+        current.accountClass !== prerequisite.actual.accountClass ||
+        current.type !== prerequisite.actual.accountType ||
+        current.currency !== prerequisite.actual.currency ||
+        current.isActive !== prerequisite.actual.isActive
+      ) {
+        throw new ConflictException(
+          `External Sale account authority changed before posting: ${prerequisite.accountStableId}`,
         );
       }
     }

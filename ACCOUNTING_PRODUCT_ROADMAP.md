@@ -140,10 +140,9 @@ the reviewed schema change and is additive-only: enum extension/type + new Exter
 Sale/Settlement/evidence tables, indexes, uniques and FKs; no DROP/rename/CoA seed/Journal
 rewrite/backfill. Browser E2E fresh migration replay passed in CI #6775.
 
-2026-10-02 External Sales **Slice B2 CoA Foundation / Commission Normalization** is **LOCAL
-IMPLEMENTED / USER-AUTHORIZED DATA MIGRATION INCLUDED / REMOTE DELIVERY AUTHORIZED / CI
-PENDING / NO GRAPH OR BASELINE CHANGE** on `feat/accounting-external-sales-slice-b2-coa`
-from `origin/dev@dc960d6d`. B2 adds canonical AR
+2026-10-02 External Sales **Slice B2 CoA Foundation / Commission Normalization** is **MERGED /
+PR #2656 / FINAL HEAD `cf6e7cd5` / MERGE `4ce9c6aa` / CI #6777 GREEN / MIGRATION
+REPLAY VERIFIED / NO GRAPH OR BASELINE CHANGE**. B2 adds canonical AR
 (`account_accounts_receivable`, ASSET/null/CAD) and generalizes the existing commission
 account in place to `account_commission_expense / 佣金费用`. Provider Settlement, current
 provider Sales Analytics, financial reporting and Web replay fixtures move to the new stable ID;
@@ -155,6 +154,19 @@ narrow exception to the normal migration-authoring rule; migration
 shape conflicts, preserves the commission UUID and JournalLine ownership, inserts AR, performs no
 Journal mutation/backfill/DROP, and is pinned in the explicit CoA migration guard. Detailed gate:
 `docs/architecture/accounting-external-sales-plan.md`.
+
+2026-10-02 External Sales **Slice C1 Sale Recognition** is **LOCAL IMPLEMENTED / USER REVIEW
+PENDING / NO MIGRATION / NO SALES ANALYTICS CUTOVER / NO GRAPH OR BASELINE CHANGE** on
+`feat/accounting-external-sales-slice-c-write-authority` from `origin/dev@4ce9c6aa`. C1 adds
+one ADMIN/ACCOUNTANT `POST /accounting/external-sales` transport and an Accounting-local
+Serializable write path that atomically persists the frozen External Sale fact, validates a
+purpose-specific `EXTERNAL_SALE_RECOGNITION` Journal authority, creates the STANDARD canonical
+Journal, anchors the source fact, and writes `EXTERNAL_SALE_POST` audit evidence. The Journal
+writer's existing Accounting start-date/month/year lock gates remain authoritative and generic
+Journal create/update/delete cannot forge or mutate External Sales canonical facts. Account policy
+is fail-closed: exact AR, limited sale/adjustment revenue accounts and exact HST liability mapping;
+commission remains settlement-side. Settlement, reversal/correction, Sales Analytics source
+whitelist, historical backfill and Web UI remain deferred to C2/C3/D/F/E respectively.
 
 2026-09-26 pre-sync Clover authority Slice A is **PRODUCTION VERIFIED / CLOSED / READ-ONLY SHADOW / NO PRISMA / NO JOURNAL MUTATION**. Slice A merged via PR #2547 / `d68cc317`; the zero-activity coverage correction merged via PR #2549 / `b7a01075`, with CI #6419 green and production running `main@b7a01075`.
 Real Gmail Closeout Reports prove that pre-sync Clover tender truth cannot be anchored to

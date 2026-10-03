@@ -1,8 +1,8 @@
 # Accounting External Sales Plan
 
-Status: **SLICE A MERGED; SLICE B1 MERGED + MIGRATION REVIEWED / CI #6775 GREEN; SLICE B2 LOCAL IMPLEMENTED / USER-AUTHORIZED DATA MIGRATION INCLUDED / REMOTE DELIVERY AUTHORIZED / CI PENDING**  
+Status: **SLICE A/B1/B2 MERGED; B2 PR #2656 / MERGE `4ce9c6aa` / CI #6777 GREEN; SLICE C1 SALE RECOGNITION LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION**  
 Date: 2026-10-02  
-Slice B2 implementation base: `origin/dev@dc960d6d`  
+Slice C1 implementation base: `origin/dev@4ce9c6aa`  
 Owner: **Accounting / Reporting / Analytics**
 
 ## 1. Purpose
@@ -238,7 +238,7 @@ DROP/rename/CoA seed/Journal rewrite/backfill. Commit `dc960d6d` passed CI
 
 ### Slice B2 — CoA foundation / commission normalization
 
-State: **LOCAL IMPLEMENTED / USER-AUTHORIZED DATA MIGRATION INCLUDED / REMOTE DELIVERY AUTHORIZED / CI PENDING**.
+State: **MERGED / PR #2656 / MERGE `4ce9c6aa` / FINAL HEAD `cf6e7cd5` / CI #6777 GREEN / MIGRATION REPLAY VERIFIED**.
 
 B2 source changes the canonical CoA semantics to:
 
@@ -310,8 +310,65 @@ not weakened.
 
 ### Slice C — write authority
 
-Add Serializable source-fact persistence + purpose-specific Journal write
-authority + audit + period/start-date gates.
+Slice C is intentionally split so each canonical financial action has one
+purpose-specific authority and one reviewable atomic write path.
+
+#### Slice C1 — Sale Recognition
+
+State: **LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION** on
+`feat/accounting-external-sales-slice-c-write-authority` from
+`origin/dev@4ce9c6aa`.
+
+C1 activates only `POST /accounting/external-sales` for ADMIN/ACCOUNTANT. It
+normalizes the frozen v1 commercial fact and writes, inside one Serializable
+transaction:
+
+1. the durable `AccountingExternalSale` parent and line/adjustment/tax facts;
+2. a purpose-specific `EXTERNAL_SALE_RECOGNITION` Journal authority;
+3. the canonical STANDARD Journal;
+4. the source-fact `journalEntryStableId` anchor; and
+5. an `EXTERNAL_SALE_POST` Accounting audit record.
+
+The Journal path reuses the existing Accounting start-date and period-lock
+policy. Therefore pre-start sales and sales in a closed month/year fail inside
+the same transaction and leave no orphan source fact.
+
+C1 fails closed on account injection:
+
+- receivable is exactly `account_accounts_receivable`, active CAD ASSET,
+  `type=null`;
+- sale lines may use only `account_sales_revenue` or
+  `account_other_operating_revenue`;
+- negative adjustments may use only `account_sales_discounts`;
+- positive adjustments may use only `account_delivery_revenue` or
+  `account_other_operating_revenue`;
+- `HST` / `ZERO_RATED` tax facts must map to
+  `account_hst_payable`;
+- commission remains settlement-side and cannot be posted through Sale
+  Recognition.
+
+Stable-ID replay is idempotent only when the frozen fact hash is identical and
+the existing Journal anchor is live and consistent. Generic Journal
+create/update/delete routes cannot forge, mutate or delete External Sales
+canonical source types. Replacement input is rejected until C3.
+
+C1 deliberately does **not** activate Settlement, reversal/correction,
+External Sales in the Sales Analytics whitelist, historical backfill, evidence
+attachment UX or Web UI.
+
+#### Slice C2 — Settlement
+
+Add Serializable Settlement persistence + receivable allocation validation +
+purpose-specific Settlement Journal authority. Settlement components must use a
+policy-controlled active CAD account set; this is where bank/cash collection,
+commission expense and recoverable commission tax become runtime-active.
+
+#### Slice C3 — Reversal / Correction
+
+Add exact inverse reversal of the original Sale/Settlement Journals plus
+replacement lineage. Reversal must use the stored original Journal rather than
+recomputing current business policy. Closed-period behavior continues through
+the existing Accounting period policy.
 
 ### Slice D — Sales Analytics
 
