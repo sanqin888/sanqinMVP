@@ -14,31 +14,40 @@ describe('MeteostatWeatherProvider', () => {
       url: string,
       config: { timeout: number; headers: Record<string, string> },
     ) => Promise<{ data: { data: Array<Record<string, unknown>> } }>;
-    const get = jest.fn<HttpGet>().mockResolvedValue({
-      data: {
-        data: [
-          {
-            time: '2026-10-02 10:00:00',
-            temp: 10,
-            prcp: 0,
-            snow: 0,
-            wspd: 8,
-            wpgt: 15,
-            tsun: 20,
-            coco: 2,
-          },
-          {
-            time: '2026-10-02 11:00:00',
-            temp: 14,
-            prcp: 2.5,
-            snow: 0,
-            wspd: 12,
-            wpgt: 22,
-            tsun: 0,
-            coco: 8,
-          },
-        ],
-      },
+    let requestedUrl = '';
+    let requestedConfig: {
+      timeout: number;
+      headers: Record<string, string>;
+    } | null = null;
+    const get = jest.fn<HttpGet>().mockImplementation(async (url, config) => {
+      requestedUrl = url;
+      requestedConfig = config;
+      return {
+        data: {
+          data: [
+            {
+              time: '2026-10-02 10:00:00',
+              temp: 10,
+              prcp: 0,
+              snow: 0,
+              wspd: 8,
+              wpgt: 15,
+              tsun: 20,
+              coco: 2,
+            },
+            {
+              time: '2026-10-02 11:00:00',
+              temp: 14,
+              prcp: 2.5,
+              snow: 0,
+              wspd: 12,
+              wpgt: 22,
+              tsun: 0,
+              coco: 8,
+            },
+          ],
+        },
+      };
     });
     const provider = new MeteostatWeatherProvider({
       axiosRef: { get },
@@ -69,10 +78,9 @@ describe('MeteostatWeatherProvider', () => {
       }),
     ]);
     expect(get).toHaveBeenCalledTimes(1);
-    const [requestUrl, requestConfig] = get.mock.calls[0]!;
-    expect(requestUrl).toContain('/point/hourly?');
-    expect(requestUrl).toContain('tz=America%2FToronto');
-    expect(requestConfig).toMatchObject({
+    expect(requestedUrl).toContain('/point/hourly?');
+    expect(requestedUrl).toContain('tz=America%2FToronto');
+    expect(requestedConfig).toMatchObject({
       timeout: 10000,
       headers: {
         'X-RapidAPI-Key': 'test-key',
