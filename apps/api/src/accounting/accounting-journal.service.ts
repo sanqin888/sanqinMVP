@@ -467,10 +467,7 @@ export class AccountingJournalService {
         normalizedAuthority,
       ),
     );
-    await this.assertExternalSaleReversalAuthorityInTx(
-      normalizedAuthority,
-      tx,
-    );
+    await this.assertExternalSaleReversalAuthorityInTx(normalizedAuthority, tx);
 
     const operator = this.requireJournalValue(
       operatorActorRef,
@@ -1867,19 +1864,18 @@ export class AccountingJournalService {
         );
       }
     } else {
-      const settlement =
-        await tx.accountingExternalSaleSettlement.findUnique({
-          where: { settlementStableId: fact.targetStableId },
-          select: {
-            factHash: true,
-            journalEntryStableId: true,
-            reversalStableId: true,
-            reversalFactHash: true,
-            reversalJournalEntryStableId: true,
-            reversedAt: true,
-            reversedByActorRef: true,
-          },
-        });
+      const settlement = await tx.accountingExternalSaleSettlement.findUnique({
+        where: { settlementStableId: fact.targetStableId },
+        select: {
+          factHash: true,
+          journalEntryStableId: true,
+          reversalStableId: true,
+          reversalFactHash: true,
+          reversalJournalEntryStableId: true,
+          reversedAt: true,
+          reversedByActorRef: true,
+        },
+      });
       if (
         !settlement ||
         settlement.factHash !== fact.originalFactHash ||

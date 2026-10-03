@@ -168,21 +168,19 @@ describe('AccountingExternalSaleReversalService C3', () => {
         findUnique: jest.fn().mockResolvedValue(sale),
         update: jest
           .fn()
-          .mockImplementation(
-            ({ data }: { data: Record<string, unknown> }) =>
-              Promise.resolve({
-                externalSaleStableId: sale.externalSaleStableId,
-                reversalStableId:
-                  data.reversalStableId ?? reversalStableId,
-                reversalFactHash:
-                  data.reversalFactHash ??
-                  expectedPlan.authority.reversalFactHash,
-                reversalJournalEntryStableId:
-                  data.reversalJournalEntryStableId ??
-                  'journal_sale_reversal_1',
-                reversedAt: data.reversedAt ?? new Date('2026-10-02T20:00:00Z'),
-                reversedByActorRef: data.reversedByActorRef ?? 'actor_admin',
-              }),
+          .mockImplementation(({ data }: { data: Record<string, unknown> }) =>
+            Promise.resolve({
+              externalSaleStableId: sale.externalSaleStableId,
+              reversalStableId: data.reversalStableId ?? reversalStableId,
+              reversalFactHash:
+                data.reversalFactHash ??
+                expectedPlan.authority.reversalFactHash,
+              reversalJournalEntryStableId:
+                data.reversalJournalEntryStableId ?? 'journal_sale_reversal_1',
+              reversedAt:
+                data.reversedAt ?? new Date('2026-10-02T20:00:00Z'),
+              reversedByActorRef: data.reversedByActorRef ?? 'actor_admin',
+            }),
           ),
       },
       accountingJournalEntry: {
@@ -194,8 +192,8 @@ describe('AccountingExternalSaleReversalService C3', () => {
       },
     };
     const prisma = {
-      $transaction: jest.fn(
-        (work: (client: typeof tx) => Promise<unknown>) => work(tx),
+      $transaction: jest.fn((work: (client: typeof tx) => Promise<unknown>) =>
+        work(tx),
       ),
     } as unknown as AccountingDb;
     const journal = {
@@ -262,8 +260,8 @@ describe('AccountingExternalSaleReversalService C3', () => {
       },
     };
     const prisma = {
-      $transaction: jest.fn(
-        (work: (client: typeof tx) => Promise<unknown>) => work(tx),
+      $transaction: jest.fn((work: (client: typeof tx) => Promise<unknown>) =>
+        work(tx),
       ),
     } as unknown as AccountingDb;
     const journal = {
@@ -297,23 +295,23 @@ describe('AccountingExternalSaleReversalService C3', () => {
         findUnique: jest.fn().mockResolvedValue(settlement),
         update: jest
           .fn()
-          .mockImplementation(
-            ({ data }: { data: Record<string, unknown> }) =>
-              Promise.resolve({
-                settlementStableId: settlement.settlementStableId,
-                reversalStableId:
-                  data.reversalStableId ??
-                  buildAccountingExternalSaleReversalStableId(
-                    'SETTLEMENT',
-                    settlement.settlementStableId,
-                  ),
-                reversalFactHash: data.reversalFactHash ?? 'reversal_hash',
-                reversalJournalEntryStableId:
-                  data.reversalJournalEntryStableId ??
-                  'journal_settlement_reversal_1',
-                reversedAt: data.reversedAt ?? new Date('2026-10-02T20:00:00Z'),
-                reversedByActorRef: data.reversedByActorRef ?? 'actor_admin',
-              }),
+          .mockImplementation(({ data }: { data: Record<string, unknown> }) =>
+            Promise.resolve({
+              settlementStableId: settlement.settlementStableId,
+              reversalStableId:
+                data.reversalStableId ??
+                buildAccountingExternalSaleReversalStableId(
+                  'SETTLEMENT',
+                  settlement.settlementStableId,
+                ),
+              reversalFactHash: data.reversalFactHash ?? 'reversal_hash',
+              reversalJournalEntryStableId:
+                data.reversalJournalEntryStableId ??
+                'journal_settlement_reversal_1',
+              reversedAt:
+                data.reversedAt ?? new Date('2026-10-02T20:00:00Z'),
+              reversedByActorRef: data.reversedByActorRef ?? 'actor_admin',
+            }),
           ),
       },
       accountingJournalEntry: {
@@ -324,14 +322,15 @@ describe('AccountingExternalSaleReversalService C3', () => {
       },
     };
     const prisma = {
-      $transaction: jest.fn(
-        (work: (client: typeof tx) => Promise<unknown>) => work(tx),
+      $transaction: jest.fn((work: (client: typeof tx) => Promise<unknown>) =>
+        work(tx),
       ),
     } as unknown as AccountingDb;
+    const createExternalSaleReversalJournalInTx = jest.fn().mockResolvedValue({
+      entryStableId: 'journal_settlement_reversal_1',
+    });
     const journal = {
-      createExternalSaleReversalJournalInTx: jest.fn().mockResolvedValue({
-        entryStableId: 'journal_settlement_reversal_1',
-      }),
+      createExternalSaleReversalJournalInTx,
     } as unknown as AccountingJournalService;
     const service = new AccountingExternalSaleReversalService(prisma, journal);
 
@@ -347,24 +346,24 @@ describe('AccountingExternalSaleReversalService C3', () => {
       reversalJournalEntryStableId: 'journal_settlement_reversal_1',
       reversalReason: 'Wrong bank account',
     });
-    const call = (
-      journal as unknown as {
-        createExternalSaleReversalJournalInTx: jest.Mock;
-      }
-    ).createExternalSaleReversalJournalInTx.mock.calls[0];
-    expect(call?.[0]?.lines).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          accountStableId: 'account_primary_bank',
-          debitCents: 0,
-          creditCents: 10_000,
-        }),
-        expect.objectContaining({
-          accountStableId: 'account_accounts_receivable',
-          debitCents: 10_000,
-          creditCents: 0,
-        }),
-      ]),
+    expect(createExternalSaleReversalJournalInTx).toHaveBeenCalledWith(
+      expect.objectContaining({
+        lines: expect.arrayContaining([
+          expect.objectContaining({
+            accountStableId: 'account_primary_bank',
+            debitCents: 0,
+            creditCents: 10_000,
+          }),
+          expect.objectContaining({
+            accountStableId: 'account_accounts_receivable',
+            debitCents: 10_000,
+            creditCents: 0,
+          }),
+        ]),
+      }),
+      'actor_admin',
+      expect.any(Object),
+      tx,
     );
   });
 
@@ -405,8 +404,8 @@ describe('AccountingExternalSaleReversalService C3', () => {
       },
     };
     const prisma = {
-      $transaction: jest.fn(
-        (work: (client: typeof tx) => Promise<unknown>) => work(tx),
+      $transaction: jest.fn((work: (client: typeof tx) => Promise<unknown>) =>
+        work(tx),
       ),
     } as unknown as AccountingDb;
     const journal = {
@@ -422,9 +421,7 @@ describe('AccountingExternalSaleReversalService C3', () => {
       'actor_retry',
     );
 
-    expect(result.reversalJournalEntryStableId).toBe(
-      'journal_sale_reversal_1',
-    );
+    expect(result.reversalJournalEntryStableId).toBe('journal_sale_reversal_1');
     expect(result.reversedByActorRef).toBe('actor_original');
     expect(
       (
@@ -469,8 +466,8 @@ describe('AccountingExternalSaleReversalService C3', () => {
       },
     };
     const prisma = {
-      $transaction: jest.fn(
-        (work: (client: typeof tx) => Promise<unknown>) => work(tx),
+      $transaction: jest.fn((work: (client: typeof tx) => Promise<unknown>) =>
+        work(tx),
       ),
     } as unknown as AccountingDb;
     const journal = {

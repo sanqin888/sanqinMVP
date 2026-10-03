@@ -475,24 +475,23 @@ export class AccountingExternalSaleSettlementService {
       );
     }
 
-    const predecessor =
-      await tx.accountingExternalSaleSettlement.findUnique({
-        where: {
-          settlementStableId: fact.replacementForSettlementStableId,
+    const predecessor = await tx.accountingExternalSaleSettlement.findUnique({
+      where: {
+        settlementStableId: fact.replacementForSettlementStableId,
+      },
+      select: {
+        id: true,
+        storeStableId: true,
+        currency: true,
+        reversalStableId: true,
+        reversalFactHash: true,
+        reversalJournalEntryStableId: true,
+        reversedAt: true,
+        replacedBySettlement: {
+          select: { settlementStableId: true },
         },
-        select: {
-          id: true,
-          storeStableId: true,
-          currency: true,
-          reversalStableId: true,
-          reversalFactHash: true,
-          reversalJournalEntryStableId: true,
-          reversedAt: true,
-          replacedBySettlement: {
-            select: { settlementStableId: true },
-          },
-        },
-      });
+      },
+    });
     if (!predecessor) {
       throw new ConflictException(
         'External Sale settlement replacement predecessor does not exist',

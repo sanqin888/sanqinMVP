@@ -306,7 +306,7 @@ export class AccountingExternalSaleReversalService {
           reversalStableId: sale.reversalStableId,
           reversalFactHash: sale.reversalFactHash,
           reversalJournalEntryStableId: sale.reversalJournalEntryStableId,
-          reversedAt: sale.reversedAt?.toISOString() ?? null,
+          reversedAt: null,
           reversedByActorRef: sale.reversedByActorRef,
           replacedByExternalSaleStableId:
             sale.replacedByExternalSale?.externalSaleStableId ?? null,
@@ -479,9 +479,8 @@ export class AccountingExternalSaleReversalService {
           journalEntryStableId: settlement.journalEntryStableId,
           reversalStableId: settlement.reversalStableId,
           reversalFactHash: settlement.reversalFactHash,
-          reversalJournalEntryStableId:
-            settlement.reversalJournalEntryStableId,
-          reversedAt: settlement.reversedAt?.toISOString() ?? null,
+          reversalJournalEntryStableId: settlement.reversalJournalEntryStableId,
+          reversedAt: null,
           reversedByActorRef: settlement.reversedByActorRef,
           replacedBySettlementStableId:
             settlement.replacedBySettlement?.settlementStableId ?? null,
@@ -638,9 +637,7 @@ export class AccountingExternalSaleReversalService {
           `External Sale settlement ${settlement.settlementStableId} has partial reversal evidence`,
         );
       }
-      reversalJournalStableIds.push(
-        settlement.reversalJournalEntryStableId,
-      );
+      reversalJournalStableIds.push(settlement.reversalJournalEntryStableId);
     }
     if (reversalJournalStableIds.length === 0) return;
 
@@ -696,7 +693,9 @@ export class AccountingExternalSaleReversalService {
       !evidence.reversedAt ||
       !evidence.reversedByActorRef
     ) {
-      throw new ConflictException(`${label} contains partial reversal evidence`);
+      throw new ConflictException(
+        `${label} contains partial reversal evidence`,
+      );
     }
     if (
       evidence.reversalStableId !== expectedStableId ||

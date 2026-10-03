@@ -268,10 +268,7 @@ export class AccountingExternalSalesService {
       }
 
       const replacementForExternalSaleDbId =
-        await this.resolveReplacementForExternalSale(
-          fact,
-          tx,
-        );
+        await this.resolveReplacementForExternalSale(fact, tx);
 
       const accountRows = await tx.accountingAccount.findMany({
         where: {
@@ -430,12 +427,8 @@ export class AccountingExternalSalesService {
     tx: Prisma.TransactionClient,
   ): Promise<string | null> {
     if (!fact.replacementForExternalSaleStableId) return null;
-    if (
-      fact.replacementForExternalSaleStableId === fact.externalSaleStableId
-    ) {
-      throw new ConflictException(
-        'External Sale cannot replace itself',
-      );
+    if (fact.replacementForExternalSaleStableId === fact.externalSaleStableId) {
+      throw new ConflictException('External Sale cannot replace itself');
     }
 
     const predecessor = await tx.accountingExternalSale.findUnique({

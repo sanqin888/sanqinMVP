@@ -131,7 +131,9 @@ describe('Post-modularization External Sales boundary', () => {
     expect(settlementAuthority).not.toContain(
       "'account_payroll_wages_expense'",
     );
-    expect(reversalAuthority).toContain('AccountingJournalEntryKind.ADJUSTMENT');
+    expect(reversalAuthority).toContain(
+      'AccountingJournalEntryKind.ADJUSTMENT',
+    );
     expect(reversalAuthority).toContain(
       'ACCOUNTING_EXTERNAL_SALE_REVERSAL_SOURCE_FACT_TYPE',
     );

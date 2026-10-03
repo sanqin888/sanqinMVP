@@ -65,11 +65,7 @@ export type AccountingExternalSaleReversalWritePlanV1 = {
   authority: AccountingExternalSaleReversalJournalWriteAuthorityV1;
 };
 
-const requireValue = (
-  raw: unknown,
-  field: string,
-  maxLength = 500,
-): string => {
+const requireValue = (raw: unknown, field: string, maxLength = 500): string => {
   if (typeof raw !== 'string') {
     throw new AccountingJournalPolicyError(`${field} must be a string`);
   }
@@ -167,7 +163,9 @@ export const hashAccountingExternalSaleReversalFact = (
   factRaw: AccountingExternalSaleReversalFactV1,
 ): string =>
   createHash('sha256')
-    .update(JSON.stringify(normalizeAccountingExternalSaleReversalFact(factRaw)))
+    .update(
+      JSON.stringify(normalizeAccountingExternalSaleReversalFact(factRaw)),
+    )
     .digest('hex');
 
 const expectedOriginalSourceFactType = (
@@ -375,10 +373,7 @@ export const buildAccountingExternalSaleReversalWritePlan = (input: {
 export const normalizeAccountingExternalSaleReversalWriteAuthority = (
   authority: AccountingExternalSaleReversalJournalWriteAuthorityV1,
 ): AccountingExternalSaleReversalJournalWriteAuthorityV1 => {
-  if (
-    authority.version !== 1 ||
-    authority.role !== 'EXTERNAL_SALE_REVERSAL'
-  ) {
+  if (authority.version !== 1 || authority.role !== 'EXTERNAL_SALE_REVERSAL') {
     throw new AccountingJournalPolicyError(
       'External Sale reversal authority must be EXTERNAL_SALE_REVERSAL v1',
     );

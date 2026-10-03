@@ -271,28 +271,30 @@ describe('AccountingExternalSalesService C1', () => {
   it('requires a replacement predecessor to be fully reversed first', async () => {
     const tx = {
       accountingExternalSale: {
-        findUnique: jest.fn().mockImplementation(
-          ({ where }: { where: { externalSaleStableId: string } }) =>
-            Promise.resolve(
-              where.externalSaleStableId === 'extsale_original'
-                ? {
-                    id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-                    storeStableId: '4750_Yonge_Street',
-                    currency: 'CAD',
-                    reversalStableId: null,
-                    reversalFactHash: null,
-                    reversalJournalEntryStableId: null,
-                    reversedAt: null,
-                    replacedByExternalSale: null,
-                  }
-                : null,
-            ),
-        ),
+        findUnique: jest
+          .fn()
+          .mockImplementation(
+            ({ where }: { where: { externalSaleStableId: string } }) =>
+              Promise.resolve(
+                where.externalSaleStableId === 'extsale_original'
+                  ? {
+                      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+                      storeStableId: '4750_Yonge_Street',
+                      currency: 'CAD',
+                      reversalStableId: null,
+                      reversalFactHash: null,
+                      reversalJournalEntryStableId: null,
+                      reversedAt: null,
+                      replacedByExternalSale: null,
+                    }
+                  : null,
+              ),
+          ),
       },
     };
     const prisma = {
-      $transaction: jest.fn(
-        (work: (client: typeof tx) => Promise<unknown>) => work(tx),
+      $transaction: jest.fn((work: (client: typeof tx) => Promise<unknown>) =>
+        work(tx),
       ),
     } as unknown as AccountingDb;
     const period = {
