@@ -176,9 +176,9 @@ settlement-expense allowlist remain the only runtime component accounts. Financi
 provider commission on `expense_platform_fee` and use `expense_other` for generic External
 Settlement commission/payment-processing.
 
-2026-10-02 External Sales **Slice C3 Reversal / Correction** is **LOCAL IMPLEMENTED / USER REVIEW
-PENDING / NO MIGRATION / NO SALES ANALYTICS CUTOVER / NO GRAPH OR BASELINE CHANGE** on
-`feat/accounting-external-sales-slice-c3-reversal-correction` from `origin/dev@c81e13bb`.
+2026-10-02 External Sales **Slice C3 Reversal / Correction** is **MERGED / PR #2659 / HEAD
+`2b7ecef8` / MERGE `3a75c77a` / CI #6788 GREEN / NO MIGRATION / NO SALES ANALYTICS CUTOVER /
+NO GRAPH OR BASELINE CHANGE**.
 C3 adds ADMIN/ACCOUNTANT Sale and Settlement reversal endpoints plus a purpose-specific exact-inverse
 Journal authority. The authority freezes the original canonical Journal and swaps debit/credit
 without recomputing current commercial policy; accounts/categories/memos/Store/currency/original
@@ -198,6 +198,8 @@ The executable External Sales plan now freezes the remaining sequence as
 opening-balance/cutover -> H closeout/production verification**, with per-Slice
 goals, execution steps, non-goals and completion gates in
 `docs/architecture/accounting-external-sales-plan.md`.
+
+2026-10-02 External Sales **Slice D0/D1 Sales Analytics readiness audit** is **COMPLETE** and **D2/D4 is LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO GRAPH OR BASELINE CHANGE** at `origin/dev@3a75c77a`. Journal remains the sole monetary authority. Sales adds only External Sale recognition/reversal source types; replacement remains a normal Sale fact; `channel=external`, `primaryPaymentMethod=NOT_APPLICABLE`, and persisted `classificationStableId` becomes the secondary `byExternalClassification` dimension. Source-fact Store/Journal anchors are revalidated before attribution. External Settlement/Settlement reversal remain excluded, so generic commission/payment-processing stays in source-aware Financial Reports/P&L and `platformCommissionCents` remains provider-specific. The user explicitly authorized the minimum Web compatibility sync for type unions/report shape and labels only; no layout or External Sales UI is added. D4 regressions cover ordinary Sale, reversal+replacement netting, mixed provider/external periods, source-fact anchor failures, Settlement exclusion and existing MANUAL owner rejection.
 
 2026-09-26 pre-sync Clover authority Slice A is **PRODUCTION VERIFIED / CLOSED / READ-ONLY SHADOW / NO PRISMA / NO JOURNAL MUTATION**. Slice A merged via PR #2547 / `d68cc317`; the zero-activity coverage correction merged via PR #2549 / `b7a01075`, with CI #6419 green and production running `main@b7a01075`.
 Real Gmail Closeout Reports prove that pre-sync Clover tender truth cannot be anchored to

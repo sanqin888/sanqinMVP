@@ -57,7 +57,7 @@ describe('Post-modularization External Sales boundary', () => {
     expect(policy).toContain('ACCOUNTING_EXTERNAL_SALE_AR_ACCOUNT_STABLE_ID');
   });
 
-  it('pins C1/C2/C3 write ownership without analytics cutover', () => {
+  it('pins C1/C2/C3 write ownership with D sale-only analytics cutover', () => {
     const schema = readFileSync(PRISMA_SCHEMA, 'utf8');
     const module = file('accounting.module.ts')?.source ?? '';
     const controllerGuard =
@@ -104,8 +104,12 @@ describe('Post-modularization External Sales boundary', () => {
     expect(controllerGuard).toContain(
       "'POST external-sales/settlements/:settlementStableId/reverse'",
     );
-    expect(salesPolicy).not.toContain('accounting.external_sale.v1');
+    expect(salesPolicy).toContain('accounting.external_sale.v1');
+    expect(salesPolicy).toContain('accounting.external_sale_reversal.v1');
     expect(salesPolicy).not.toContain('accounting.external_sale_settlement.v1');
+    expect(salesPolicy).not.toContain(
+      'accounting.external_sale_settlement_reversal.v1',
+    );
     expect(chart).toContain('account_accounts_receivable');
     expect(chart).toContain('account_commission_expense');
     expect(chart).not.toContain('account_platform_commission_expense');

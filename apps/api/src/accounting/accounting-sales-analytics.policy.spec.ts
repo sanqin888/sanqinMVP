@@ -15,11 +15,21 @@ describe('Accounting sales analytics policy', () => {
       'order.financial_reversal.v1',
       'accounting.provider_financial_document.v1',
       'accounting.uber_pre_cutover_order_reversal.v1',
+      'accounting.external_sale.v1',
+      'accounting.external_sale_reversal.v1',
     ]) {
       expect(isAccountingSalesSourceFactType(sourceFactType)).toBe(true);
     }
     expect(
       isAccountingSalesSourceFactType('accounting.expense_document.v1'),
+    ).toBe(false);
+    expect(
+      isAccountingSalesSourceFactType('accounting.external_sale_settlement.v1'),
+    ).toBe(false);
+    expect(
+      isAccountingSalesSourceFactType(
+        'accounting.external_sale_settlement_reversal.v1',
+      ),
     ).toBe(false);
     expect(isAccountingSalesSourceFactType(null)).toBe(false);
   });
