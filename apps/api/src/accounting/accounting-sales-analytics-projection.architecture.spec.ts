@@ -45,10 +45,14 @@ describe('B2 canonical Journal Sales projection boundary', () => {
 
   it('keeps canonical Sales as the Accounting sales read path after legacy cleanup', () => {
     const controller = file('accounting-reports.controller.ts')?.source ?? '';
+    const service = file('accounting-sales-analytics.service.ts')?.source ?? '';
     const module = file('accounting.module.ts')?.source ?? '';
 
     expect(controller).toContain("@Get('report/sales')");
+    expect(controller).toContain("@Query('storeStableId')");
     expect(controller).toContain('this.salesAnalytics.report');
+    expect(service).toContain('getStoreSnapshot');
+    expect(service).toContain('getConfiguredStoreSnapshot');
     expect(controller).not.toContain("@Get('report/slice')");
     expect(controller).not.toContain('this.accountingService.dimensionSlice');
 

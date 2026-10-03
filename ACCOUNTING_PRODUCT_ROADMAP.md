@@ -538,6 +538,8 @@ Post-migration runtime evidence closes the final gate: Expense `expense_v618ly4f
 
 Accounting Journal/canonical financial facts continue to own every Accounting sales amount. **B2 is PRODUCTION VERIFIED / CLOSED.**
 
+**2026-10-03 Admin Data DATA-A follow-up:** canonical Sales authority is unchanged, but the v1 read path now accepts an optional explicit `storeStableId` for the upcoming Store-scoped Admin Sales Analytics consumer. Explicit Store requests resolve through the existing Brand/Store public reader; omitted/blank Store keeps the prior configured-Store behavior, so the current Accounting Sales/Dashboard consumers remain compatible. The approved Admin follow-on also separates explanatory context from Accounting authority: DATA-B1 adds historical Weather, DATA-B2 adds a versioned Canada/Ontario public/statutory-holiday + long-weekend calendar, and the existing mutable Store `Holiday` opening exceptions remain `CURRENT_CONFIGURATION_ONLY` rather than historical holiday authority. This does not reopen B2, change Journal money, provider coverage, attribution, schema, dependency direction or the v1 response shape. Detailed product migration plan: `docs/architecture/admin-data-sales-management-analytics.md`.
+
 ### Provider Financial Coverage Advancement — post-B2 correctness tail
 
 **2026-09-23 delivery:** **PR #2501 / NO MIGRATION / NO DEPENDENCY / NO GRAPH CHANGE** on `accounting/provider-financial-coverage-advancement` from `origin/dev@d0c10099`. This is a post-modularization Accounting evidence-completeness correction and does **not** reopen Phase 9 or B2.

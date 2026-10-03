@@ -61,8 +61,12 @@ export class AccountingReportsController {
   }
 
   @Get('report/sales')
-  async salesReport(@Query('from') from?: string, @Query('to') to?: string) {
-    return this.salesAnalytics.report({ from, to });
+  async salesReport(
+    @Query('storeStableId') storeStableId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.salesAnalytics.report({ storeStableId, from, to });
   }
 
   @Get('report/clover-pre-sync-authority-shadow')

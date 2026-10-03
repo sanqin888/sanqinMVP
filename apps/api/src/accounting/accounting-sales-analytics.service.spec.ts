@@ -344,6 +344,13 @@ function makeService(options?: {
   };
   const storeConfig = {
     getConfiguredStoreSnapshot: jest.fn().mockResolvedValue(STORE),
+    getStoreSnapshot: jest.fn().mockImplementation((storeStableId: string) =>
+      Promise.resolve({
+        ...STORE,
+        storeStableId,
+        storeName: storeStableId,
+      }),
+    ),
   };
 
   return {
@@ -360,10 +367,58 @@ function makeService(options?: {
     externalSaleFindMany,
     settlementQuery,
     orderAttribution,
+    storeConfig,
   };
 }
 
 describe('AccountingSalesAnalyticsService', () => {
+  it('uses an explicit storeStableId when supplied and preserves configured-store fallback', async () => {
+    const explicit = makeService({
+      journals: [],
+      originalJournals: [],
+      providerDocuments: [],
+      externalSales: [],
+      attributionRows: [],
+      coverageRows: [],
+    });
+
+    const report = await explicit.service.report({
+      storeStableId: 'store_second',
+      from: '2026-06-01',
+      to: '2026-06-30',
+    });
+
+    expect(explicit.storeConfig.getStoreSnapshot).toHaveBeenCalledWith(
+      'store_second',
+    );
+    expect(
+      explicit.storeConfig.getConfiguredStoreSnapshot,
+    ).not.toHaveBeenCalled();
+    expect(explicit.journalQueries[0]?.where?.storeStableId).toBe(
+      'store_second',
+    );
+    expect(report.storeStableId).toBe('store_second');
+
+    const fallback = makeService({
+      journals: [],
+      originalJournals: [],
+      providerDocuments: [],
+      externalSales: [],
+      attributionRows: [],
+      coverageRows: [],
+    });
+    await fallback.service.report({
+      storeStableId: '   ',
+      from: '2026-06-01',
+      to: '2026-06-30',
+    });
+
+    expect(
+      fallback.storeConfig.getConfiguredStoreSnapshot,
+    ).toHaveBeenCalledTimes(1);
+    expect(fallback.storeConfig.getStoreSnapshot).not.toHaveBeenCalled();
+  });
+
   it('projects canonical Journal amounts with owner attribution and historical Uber replacement', async () => {
     const { service, orderAttribution } = makeService();
 
