@@ -196,10 +196,14 @@ export class AccountingSalesAnalyticsService {
   ) {}
 
   async report(query: {
+    storeStableId?: string;
     from?: string;
     to?: string;
   }): Promise<AccountingSalesAnalyticsReportV1> {
-    const store = await this.storeConfig.getConfiguredStoreSnapshot();
+    const requestedStoreStableId = query.storeStableId?.trim();
+    const store = requestedStoreStableId
+      ? await this.storeConfig.getStoreSnapshot(requestedStoreStableId)
+      : await this.storeConfig.getConfiguredStoreSnapshot();
     const timezone = store.timezone.trim() || 'America/Toronto';
     const range = await this.resolveRange(query, timezone);
     const journals = await this.readSalesJournals({

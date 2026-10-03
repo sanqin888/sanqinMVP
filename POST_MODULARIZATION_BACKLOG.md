@@ -761,6 +761,24 @@ Implementation order: **B5-B1 Orders operational facts -> B5-B2 Store operating-
 
 B2 comes first so Admin and Accounting can share stable vocabulary rather than implementing two competing meanings of “sales/revenue”.
 
+### 5.1 Admin Data consolidation — Sales Analytics + Management P&L
+
+State: **DATA-A LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**  
+Detailed plan: `docs/architecture/admin-data-sales-management-analytics.md`
+
+The approved follow-on keeps Accounting as the money/projection owner while moving management-facing consumption toward Admin:
+
+- **DATA-A:** optional explicit `storeStableId` on canonical Sales plus explicit per-Admin-navigation Store-context metadata;
+- **DATA-B1:** Reporting-owned historical Weather facts/provider/cache foundation;
+- **DATA-B2:** Reporting-owned historical Calendar context for Canada/Ontario public/statutory holidays and long weekends; existing mutable Store holiday-opening configuration remains `CURRENT_CONFIGURATION_ONLY` and is not reused as historical holiday authority;
+- **DATA-C:** Store-scoped Admin Sales Analytics using canonical Accounting Sales + Business Operations + Weather + Calendar context, with 7/30/90-day controls and a single-day `< MM/DD/YYYY >` selector defaulting to Store-local Today;
+- the single-day right arrow is disabled for future dates and when the next date has no relevant owner-backed Sales/Order evidence;
+- **DATA-D:** whole-business Management P&L / management Cash Movement presentation in Admin using existing Accounting-owned projections, explicitly without a Store-scope claim;
+- **DATA-E:** production verification;
+- **DATA-F:** only after the Admin replacements are verified, contract the Accounting presentation to Sales Accounting plus formal/canonical Accounting statements.
+
+DATA-A does not add the new Sales page or change B5 report arithmetic. B2 canonical Sales and B5 Business Reports remain closed.
+
 ## 6. Parallel product lane — Admin Marketing Overview
 
 ### 6.1 Marketing overview redesign
