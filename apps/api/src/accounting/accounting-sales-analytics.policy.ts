@@ -6,6 +6,8 @@ export const ACCOUNTING_SALES_SOURCE_FACT_TYPES = [
   'order.financial_reversal.v1',
   'accounting.provider_financial_document.v1',
   'accounting.uber_pre_cutover_order_reversal.v1',
+  'accounting.external_sale.v1',
+  'accounting.external_sale_reversal.v1',
 ] as const;
 
 export type AccountingSalesSourceFactTypeV1 =

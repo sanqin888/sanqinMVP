@@ -1,8 +1,8 @@
 # Accounting External Sales Plan
 
-Status: **SLICE A/B1/B2/C1/C2 MERGED; C2 PR #2658 / MERGE `c81e13bb` / CI #6784 GREEN; SLICE C3 REVERSAL/CORRECTION LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION**  
+Status: **SLICE A/B1/B2/C1/C2/C3 MERGED; C3 PR #2659 / HEAD `2b7ecef8` / MERGE `3a75c77a` / CI #6788 GREEN / NO MIGRATION; SLICE D0/D1 READINESS COMPLETE; D2/D4 LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION**  
 Date: 2026-10-02  
-Slice C3 implementation base: `origin/dev@c81e13bb`  
+Slice D0/D1 readiness base: `origin/dev@3a75c77a`  
 Owner: **Accounting / Reporting / Analytics**
 
 ## 1. Purpose
@@ -521,10 +521,7 @@ Repository workflow remains: local implementation -> user review -> PR -> CI
 green -> merge. Per `AGENTS.md`, CI is the validation gate; no local
 lint/build/test/formatter/scanner is run before review.
 
-State: **LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO SALES
-ANALYTICS CUTOVER / NO GRAPH OR BASELINE CHANGE** on
-`feat/accounting-external-sales-slice-c3-reversal-correction` from
-`origin/dev@c81e13bb`.
+State: **MERGED / PR #2659 / HEAD `2b7ecef8` / MERGE `3a75c77a` / CI #6788 GREEN / NO MIGRATION / NO SALES ANALYTICS CUTOVER / NO GRAPH OR BASELINE CHANGE**.
 
 C3 activates two ADMIN/ACCOUNTANT reversal transports:
 
@@ -591,6 +588,96 @@ Analytics until Slice D.
 **Goal:** project External Sales canonical financial facts into the existing
 Sales Analytics read model without changing Journal authority or turning generic
 Manual Journals into sales.
+
+**D0/D1 readiness audit — 2026-10-02**
+
+State: **READINESS COMPLETE / D2+D4 LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO GRAPH OR BASELINE CHANGE** at `origin/dev@3a75c77a`.
+
+- D0 confirms C3 is merged through PR #2659, final head `2b7ecef8`,
+  squash merge `3a75c77a`, with CI #6788 green. C3 changed the human-readable
+  dependency-graph status only; it did not change
+  `tools/architecture/context-baseline.json`, any direct-import allowance,
+  scanner ceiling, SCC, package dependency or context direction.
+- At the D1 baseline, the Sales source whitelist contained only Order
+  sale/change/reversal, provider financial document and the historical Uber
+  replacement reversal.
+  `readSalesJournals()` filters by that whitelist and
+  `assertJournalAuthority()` pins each fact type to its expected Journal
+  source, so generic `MANUAL` revenue cannot leak into Sales merely by using a
+  revenue account.
+- Every Sales monetary field is projected from canonical Journal lines. Gross
+  Sales, discounts, delivery, surcharge, output tax, tips, other operating
+  revenue and the existing fee metrics are selected by account stable ID plus
+  accounting sign. Orders contributes only non-monetary channel/payment
+  attribution through its public reader.
+- External Sale recognition is already projection-compatible without a schema
+  change: revenue/discount/delivery/other-operating/HST lines use accounts that
+  the Sales policy already understands, while Accounts Receivable is ignored by
+  the component projector. The exact-inverse Sale reversal therefore nets the
+  same metrics naturally by sign. A corrected replacement Sale uses the normal
+  `accounting.external_sale.v1` source type and its own persisted lineage, so
+  no replacement-specific analytics source is required.
+- The existing `AccountingExternalSale` row already persists every required
+  non-monetary External attribution for D: `classificationStableId`,
+  granularity, counterparty, Store, occurred date, replacement lineage and
+  reversal stable ID. Recognition can resolve by `externalSaleStableId`;
+  reversal can resolve the same row by `reversalStableId`; a replacement
+  resolves as an ordinary new Sale. No Prisma/schema migration is required.
+- Primary channel should be `external`. A later Settlement collection account
+  is not the Sale's primary payment method; the D contract should represent the
+  External Sale payment dimension as explicitly not applicable rather than
+  borrowing BANK/CASH from Settlement or marking the owner fact as missing.
+  `classificationStableId` should be exposed as a secondary External-sales
+  dimension instead of creating top-level wholesale/consignment/group-buy
+  channels.
+- **D3 readiness recommendation:** keep
+  `accounting.external_sale_settlement.v1` and its reversal outside canonical
+  Sales Analytics in this Slice. The current `account_commission_expense`
+  mapping is globally hard-coded as `PLATFORM_COMMISSION`, while External
+  Settlement commission is intentionally generic; current Financial Reports
+  already solve this with source-aware semantics. In addition, one Settlement
+  may allocate multiple Sales/classifications while its expense components are
+  settlement-level, so classification-level commission allocation is not
+  losslessly derivable. For D, External commission/payment-processing and other
+  Settlement costs should remain in P&L/financial reporting. A later
+  source-aware sales-cost contract may add generic commission metrics only after
+  explicit allocation semantics are defined. Do not overload
+  `platformCommissionCents`.
+- **Web compatibility gate resolved:** the existing Accounting Sales Web consumer
+  uses exhaustive `Record` label maps for channel, primary payment method and
+  source bucket. The user explicitly authorized the narrow compatibility change:
+  synchronize only the existing Web contract unions plus labels for `external`,
+  `NOT_APPLICABLE`, `EXTERNAL_SALE` and `EXTERNAL_SALE_REVERSAL`; do not add
+  layout, widgets or External Sales UI. This keeps the existing v1 endpoint and
+  avoids a temporary versioned/dual contract.
+
+**D2/D4 local implementation — 2026-10-02**
+
+State: **LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**.
+
+- Sales whitelist adds only `accounting.external_sale.v1` and
+  `accounting.external_sale_reversal.v1`; Settlement and Settlement reversal stay
+  excluded.
+- Journal source authority pins both included External types to
+  `AccountingJournalSource.EXTERNAL_SALE`. Monetary projection continues through
+  the existing account/sign policy; AR remains non-Sales.
+- The projection joins `AccountingExternalSale` only for non-monetary attribution
+  and validates Store plus recognition/reversal Journal anchors before using the
+  classification. Primary channel is `external`, primary payment is
+  `NOT_APPLICABLE`, and `byExternalClassification` aggregates the persisted
+  `classificationStableId`.
+- Replacement Sales remain normal `accounting.external_sale.v1` facts. Original
+  Sale + exact reversal therefore net naturally, and the replacement contributes
+  under its own classification without a replacement-specific source type.
+- Existing `platformCommissionCents` remains provider-specific in D. External
+  Settlement commission/payment-processing stays outside Sales Analytics and
+  continues through source-aware Financial Reports/P&L.
+- D4 regressions cover ordinary External Sale, exact reversal + replacement,
+  provider/external mixed periods, classification netting, source-fact/Journal
+  anchor fail-closed behavior, Settlement source exclusion and existing MANUAL
+  source-owner rejection.
+- Web changes are compatibility-only: contract unions/report shape plus label
+  entries. No Sales-page layout, widget or External Sales UI is introduced.
 
 **Execution steps:**
 

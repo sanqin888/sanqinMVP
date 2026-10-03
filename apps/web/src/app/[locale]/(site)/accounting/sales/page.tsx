@@ -702,6 +702,7 @@ function channelLabel(key: AccountingSalesAnalyticsChannel, isZh: boolean) {
     in_store: ['门店', 'In-store'],
     ubereats: ['Uber Eats', 'Uber Eats'],
     fantuan: ['饭团', 'Fantuan'],
+    external: ['外部销售', 'External'],
     UNATTRIBUTED_PROVIDER: ['Provider 未归因', 'Unattributed provider'],
     UNATTRIBUTED: ['未归因', 'Unattributed'],
   };
@@ -722,6 +723,7 @@ function paymentLabel(
     STORE_BALANCE: ['会员余额', 'Store balance'],
     UBEREATS: ['Uber Eats', 'Uber Eats'],
     FANTUAN: ['饭团', 'Fantuan'],
+    NOT_APPLICABLE: ['不适用', 'Not applicable'],
     UNATTRIBUTED: ['未归因', 'Unattributed'],
   };
   return labels[key][isZh ? 0 : 1];
@@ -747,6 +749,8 @@ function sourceLabel(key: AccountingSalesAnalyticsSourceBucket, isZh: boolean) {
       '历史 Uber 替换 reversal',
       'Historical Uber replacement reversal',
     ],
+    EXTERNAL_SALE: ['外部销售', 'External sale'],
+    EXTERNAL_SALE_REVERSAL: ['外部销售冲销', 'External sale reversal'],
   };
   return labels[key][isZh ? 0 : 1];
 }

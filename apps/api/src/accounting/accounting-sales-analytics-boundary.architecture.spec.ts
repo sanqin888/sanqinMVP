@@ -106,6 +106,12 @@ describe('B2 canonical sales analytics boundary', () => {
     expect(policy).toContain("'order.financial_reversal.v1'");
     expect(policy).toContain("'accounting.provider_financial_document.v1'");
     expect(policy).toContain("'accounting.uber_pre_cutover_order_reversal.v1'");
+    expect(policy).toContain("'accounting.external_sale.v1'");
+    expect(policy).toContain("'accounting.external_sale_reversal.v1'");
+    expect(policy).not.toContain("'accounting.external_sale_settlement.v1'");
+    expect(policy).not.toContain(
+      "'accounting.external_sale_settlement_reversal.v1'",
+    );
     expect(policy).toContain("'STORE_CASH_EQUIVALENT'");
     expect(policy).toContain("'UNKNOWN'");
     expect(policy).toContain("'INCOMPLETE'");

@@ -11,6 +11,7 @@ export type AccountingSalesAnalyticsChannelV1 =
   | 'in_store'
   | 'ubereats'
   | 'fantuan'
+  | 'external'
   | 'UNATTRIBUTED_PROVIDER'
   | 'UNATTRIBUTED';
 
@@ -21,13 +22,16 @@ export type AccountingSalesAnalyticsPrimaryPaymentMethodV1 =
   | 'STORE_BALANCE'
   | 'UBEREATS'
   | 'FANTUAN'
+  | 'NOT_APPLICABLE'
   | 'UNATTRIBUTED';
 
 export type AccountingSalesAnalyticsSourceBucketV1 =
   | 'ORDER_SALE'
   | 'ORDER_CHANGE'
   | 'PROVIDER_STATEMENT'
-  | 'HISTORICAL_REPLACEMENT_REVERSAL';
+  | 'HISTORICAL_REPLACEMENT_REVERSAL'
+  | 'EXTERNAL_SALE'
+  | 'EXTERNAL_SALE_REVERSAL';
 
 export type AccountingSalesAnalyticsDimensionRowV1<T extends string> = {
   key: T;
@@ -69,6 +73,9 @@ export type AccountingSalesAnalyticsReportV1 = {
   tenderMix: AccountingSalesAnalyticsTenderRowV1[];
   bySource: Array<
     AccountingSalesAnalyticsDimensionRowV1<AccountingSalesAnalyticsSourceBucketV1>
+  >;
+  byExternalClassification: Array<
+    AccountingSalesAnalyticsDimensionRowV1<string>
   >;
   attribution: {
     immutableOrderAttributedJournalEntries: number;
