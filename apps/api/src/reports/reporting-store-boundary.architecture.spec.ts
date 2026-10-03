@@ -16,6 +16,9 @@ describe('Reporting / Brand-Store operating-context boundary', () => {
     const reportingContract = read(
       resolve(REPORTS_ROOT, 'reporting-store-operating-context.contract.ts'),
     );
+    const locationContract = read(
+      resolve(REPORTS_ROOT, 'reporting-store-location-query.contract.ts'),
+    );
     const baseline = read(
       resolve(REPOSITORY_ROOT, 'tools/architecture/context-baseline.json'),
     );
@@ -28,10 +31,32 @@ describe('Reporting / Brand-Store operating-context boundary', () => {
     expect(reportsService).not.toContain("from '../store/");
     expect(reportingContract).not.toContain("from '../store/");
     expect(reportingContract).not.toContain('@prisma/client');
+    expect(locationContract).not.toContain("from '../store/");
+    expect(locationContract).not.toContain('@prisma/client');
     expect(baseline).toContain('"apps/api/src/reports/reports.module.ts"');
     expect(baseline).not.toContain(
       '"accounting-reporting-analytics -> brand-store"',
     );
+  });
+
+  it('publishes only the Store location/jurisdiction facts needed by Reporting context projections', () => {
+    const locationContract = read(
+      resolve(REPORTS_ROOT, 'reporting-store-location-query.contract.ts'),
+    );
+
+    for (const token of [
+      'storeStableId',
+      'timezone',
+      'latitude',
+      'longitude',
+      'countryCode',
+      'province',
+    ]) {
+      expect(locationContract).toContain(token);
+    }
+    expect(locationContract).not.toContain('salesTaxRate');
+    expect(locationContract).not.toContain('contactName');
+    expect(locationContract).not.toContain('autoAcceptOnlineOrders');
   });
 
   it('publishes only the store operating context needed by Reporting', () => {

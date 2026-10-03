@@ -1,8 +1,8 @@
 # Admin Data — Sales Analytics / Management P&L migration
 
 Date: 2026-10-03  
-Baseline: `origin/dev@db239d70`  
-Current state: **DATA-A LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**
+Baseline: `origin/dev@ff1d7a41` after DATA-A merge  
+Current state: **DATA-A MERGED / CI #6817 GREEN / PR #2667 / MERGE `ff1d7a41`; DATA-B1 LOCAL IMPLEMENTED / USER REVIEW PENDING / MIGRATION REQUIRED / NO NEW DEPENDENCY / NO GRAPH OR BASELINE CHANGE**
 
 ## Product goal
 
@@ -87,7 +87,7 @@ classified as statutory/public holidays in this first calendar contract.
 
 ## DATA-A — Store scope and Admin Data foundation
 
-State: **LOCAL IMPLEMENTED / USER REVIEW PENDING**.
+State: **MERGED / CI #6817 GREEN / PR #2667 / MERGE `ff1d7a41`**.
 
 DATA-A is an additive compatibility-preserving source change:
 
@@ -139,11 +139,28 @@ evidence rather than infer data existence from the browser clock.
 
 ### DATA-B1 — Weather History foundation
 
-- Reporting-owned weather history port/provider adapter;
-- persisted daily weather facts and coverage;
-- Store coordinates/timezone from Brand/Store public contracts;
-- Weather HTTP read contract;
-- additive Prisma migration if persisted cache is implemented as planned.
+State: **LOCAL IMPLEMENTED / USER REVIEW PENDING / MIGRATION REQUIRED / NO NEW DEPENDENCY / NO GRAPH OR BASELINE CHANGE** on `feat/admin-data-weather-history-foundation` from `origin/dev@ff1d7a41`.
+
+Implementation:
+
+- Reporting owns the Weather History application contract and orchestration; `WeatherHistoryService` depends only on Reporting-owned Store-location, weather-provider and weather-persistence ports;
+- the existing Brand/Store public config reader is adapted at `ReportsModule` into a narrow Store location/jurisdiction context containing only `storeStableId`, timezone, latitude/longitude, country code and province;
+- Meteostat is isolated behind an infrastructure adapter using the existing `@nestjs/axios` dependency and server-only `METEOSTAT_RAPIDAPI_KEY`; Weather persistence maps through a Reporting-owned DB port while the actual `PrismaService` binding remains only in the scanner-excluded `ReportsModule` composition root; no provider secret enters Web or a URL returned to the browser;
+- DATA-B1 uses Meteostat **Hourly Point** and aggregates observations into Store-local daily facts so Store-local Today can be provisional rather than waiting for delayed Daily data;
+- provider requests are chunked to the provider's 30-day hourly limit, while the public Reporting range is capped at 90 local calendar days;
+- persisted `ReportingWeatherDailyFact` rows are keyed by `(storeStableId, localDate)` and snapshot timezone + coordinates used for that historical weather interpretation;
+- persisted status is explicit: `HISTORICAL | PROVISIONAL | PARTIAL | UNAVAILABLE`; stable historical rows are reused, current/provisional/degraded rows use bounded refresh intervals, sparse cache gaps are refreshed as contiguous groups, and provider failures are negatively cached instead of retried on every page view;
+- additive `GET /reports/weather-history?storeStableId=&from=&to=` returns every requested date plus coverage/refresh/limitation metadata; provider/key/coordinate failure is fail-soft and never becomes Accounting authority;
+- the response carries required source attribution: `Meteostat and its data providers`, `CC BY 4.0`, the CC BY 4.0 license URL and an explicit SanQ hourly-to-daily transformation note;
+- production Compose passes only the optional server-side `METEOSTAT_RAPIDAPI_KEY` reference. The secret itself is not committed.
+
+Persistence is additive but requires a user-generated migration. Suggested migration name:
+
+```bash
+pnpm --filter api exec prisma migrate dev --create-only --name add_reporting_weather_daily_facts
+```
+
+Expected SQL is create-table/index only. MCP must not generate or edit that migration. DATA-B1 cannot be promoted to `main` / production until the generated migration is reviewed, committed to `dev`, CI-green and applied through the normal deployment gate.
 
 ### DATA-B2 — Calendar / Holiday Context foundation
 
@@ -193,6 +210,11 @@ DATA-A introduces no new 12-context dependency direction, scanner allowance, SCC
 dependency package or persistence model. It reuses the existing Accounting -> Brand/Store
 public configuration seam and changes only an optional HTTP query plus Web/Admin navigation
 composition metadata.
+
+DATA-B1 also introduces no new 12-context direction: Reporting reuses the already-authorized
+Brand/Store public config seam and owns its own read-model persistence/provider adapters.
+It adds one Reporting-owned table and one additive authenticated Reporting HTTP read contract,
+but no package dependency, scanner allowance, SCC or architecture-baseline change.
 
 B2 Canonical Sales Analytics and B5 Admin Business Reports remain closed; this work is a
 post-modularization product/UI ownership refinement and does not reopen their financial or

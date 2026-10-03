@@ -2841,6 +2841,34 @@ model AnalyticsEvent {
   @@index([occurredAt])
 }
 
+model ReportingWeatherDailyFact {
+  storeStableId        String
+  localDate            String   @db.VarChar(10)
+  timezone             String
+  latitude             Float
+  longitude            Float
+  provider             String
+  sourceMethod         String
+  status               String
+  observationHours     Int
+  temperatureAvgC      Float?
+  temperatureMinC      Float?
+  temperatureMaxC      Float?
+  precipitationMm      Float?
+  snowDepthMm          Float?
+  windSpeedKph         Float?
+  peakWindGustKph      Float?
+  sunshineMinutes      Float?
+  significantCondition String?
+  refreshedAt          DateTime
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@id([storeStableId, localDate])
+  @@index([localDate])
+  @@index([status, refreshedAt])
+}
+
 model OpsEvent {
   id             String   @id @default(uuid()) @db.Uuid
   idempotencyKey String?  @unique
