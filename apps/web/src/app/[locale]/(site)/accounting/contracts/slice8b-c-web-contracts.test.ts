@@ -27,6 +27,13 @@ const reportsContractSource = readFileSync(
   resolve(__dirname, 'reports.ts'),
   'utf8',
 );
+const sharedManagementContractSource = readFileSync(
+  resolve(
+    ACCOUNTING_ROOT,
+    '../../../../lib/contracts/accounting-management.ts',
+  ),
+  'utf8',
+);
 const automationPeriodContractSource = readFileSync(
   resolve(__dirname, 'automation-period.ts'),
   'utf8',
@@ -50,8 +57,11 @@ describe('Phase 9 Slice 8B-C Accounting Web vertical contracts', () => {
     expect(salesPageSource).not.toContain('type Slice =');
     expect(salesPageSource).not.toContain('type Pnl =');
 
-    expect(reportsContractSource).toContain('transferCents: number');
-    expect(reportsContractSource).toContain('closeStatus:');
+    expect(reportsContractSource).toContain(
+      "from '@/lib/contracts/accounting-management'",
+    );
+    expect(sharedManagementContractSource).toContain('transferCents: number');
+    expect(sharedManagementContractSource).toContain('closeStatus:');
     expect(reportsContractSource).not.toContain(
       'export type AccountingOrderDimensionSlice',
     );

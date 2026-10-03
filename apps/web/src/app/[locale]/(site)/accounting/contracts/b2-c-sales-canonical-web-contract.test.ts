@@ -11,6 +11,13 @@ const reportsContractSource = readFileSync(
   resolve(__dirname, 'reports.ts'),
   'utf8',
 );
+const sharedSalesContractSource = readFileSync(
+  resolve(
+    __dirname,
+    '../../../../../lib/contracts/accounting-sales.ts',
+  ),
+  'utf8',
+);
 
 describe('B2-C canonical Sales Web cutover', () => {
   it('keeps the Sales page on the canonical Sales report', () => {
@@ -22,7 +29,10 @@ describe('B2-C canonical Sales Web cutover', () => {
     expect(salesPageSource).not.toContain('AccountingPnlReport');
   });
 
-  it('keeps canonical Sales dimensions, tender mix and provider coverage explicit in the Web contract', () => {
+  it('keeps canonical Sales dimensions, tender mix and provider coverage explicit in the shared Web contract', () => {
+    expect(reportsContractSource).toContain(
+      "from '@/lib/contracts/accounting-sales'",
+    );
     for (const token of [
       'export type AccountingSalesAnalyticsReport',
       'export type AccountingSalesSummary',
@@ -36,7 +46,7 @@ describe('B2-C canonical Sales Web cutover', () => {
       "'HISTORICAL_REPLACEMENT_REVERSAL'",
       "'UNATTRIBUTED'",
     ]) {
-      expect(reportsContractSource).toContain(token);
+      expect(sharedSalesContractSource).toContain(token);
     }
   });
 

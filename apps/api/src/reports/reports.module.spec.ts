@@ -29,6 +29,10 @@ import {
   type ReportingMarketingUsageQueryPort,
 } from './reporting-marketing-usage-query.contract';
 import {
+  REPORTING_STORE_LOCATION_QUERY,
+  type ReportingStoreLocationQueryPort,
+} from './reporting-store-location-query.contract';
+import {
   REPORTING_STORE_OPERATING_CONTEXT_QUERY,
   type ReportingStoreOperatingContextQueryPort,
 } from './reporting-store-operating-context.contract';
@@ -249,6 +253,52 @@ describe('ReportsModule composition', () => {
       }),
     ]);
     expect(usage.readUsageFactsForRange).toHaveBeenCalledWith(range);
+  });
+
+  it('maps Brand/Store public config into a narrow Reporting location context', async () => {
+    const providers = metadata<unknown>(
+      ReportsModule,
+      MODULE_METADATA.PROVIDERS,
+    );
+    const provider = providers.find(
+      (candidate) =>
+        typeof candidate === 'object' &&
+        candidate !== null &&
+        'provide' in candidate &&
+        candidate.provide === REPORTING_STORE_LOCATION_QUERY,
+    ) as
+      | {
+          inject?: unknown[];
+          useFactory?: (config: never) => ReportingStoreLocationQueryPort;
+        }
+      | undefined;
+
+    expect(provider?.inject).toEqual([BRAND_STORE_CONFIG_READER]);
+    expect(provider?.useFactory).toBeDefined();
+
+    const config = {
+      getStoreSnapshot: jest.fn().mockResolvedValue({
+        storeStableId: '4750_Yonge_Street',
+        timezone: 'America/Toronto',
+        latitude: 43.760288,
+        longitude: -79.412167,
+        countryCode: 'CA',
+        province: 'ON',
+      }),
+    };
+    const query = provider!.useFactory!(config as never);
+
+    await expect(
+      query.getStoreLocationContext('4750_Yonge_Street'),
+    ).resolves.toEqual({
+      storeStableId: '4750_Yonge_Street',
+      timezone: 'America/Toronto',
+      latitude: 43.760288,
+      longitude: -79.412167,
+      countryCode: 'CA',
+      province: 'ON',
+    });
+    expect(config.getStoreSnapshot).toHaveBeenCalledWith('4750_Yonge_Street');
   });
 
   it('maps Brand/Store public readers into a Reporting-owned current-configuration contract', async () => {

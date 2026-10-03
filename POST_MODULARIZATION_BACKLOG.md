@@ -761,6 +761,24 @@ Implementation order: **B5-B1 Orders operational facts -> B5-B2 Store operating-
 
 B2 comes first so Admin and Accounting can share stable vocabulary rather than implementing two competing meanings of “sales/revenue”.
 
+### 5.1 Admin Data consolidation — Sales Analytics + Management P&L
+
+State: **DATA-A MERGED / CI #6817 GREEN; DATA-B1 SOURCE + MIGRATION ALIGNED ON DEV; DATA-B2 MERGED / PR #2669 / CI #6826 GREEN / SQUASH `56f35b0c`; DATA-C MERGED / PR #2670 / FINAL HEAD `ebe02b93` / CI #6829 GREEN / SQUASH `d748327f`; DATA-D LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**  
+Detailed plan: `docs/architecture/admin-data-sales-management-analytics.md`
+
+The approved follow-on keeps Accounting as the money/projection owner while moving management-facing consumption toward Admin:
+
+- **DATA-A:** optional explicit `storeStableId` on canonical Sales plus explicit per-Admin-navigation Store-context metadata;
+- **DATA-B1:** Reporting-owned historical Weather facts/provider/cache foundation — source merged through PR #2668 / squash `37ac9c56` with CI #6822 green; user-generated additive migration `20261003185132_add_reporting_weather_daily_facts` is reviewed and committed to `dev` as `7934d875`, restoring schema/history alignment;
+- **DATA-B2:** Reporting-owned Calendar Context — merged through PR #2669 / squash `56f35b0c` with CI #6826 green; deterministic Ontario ESA public-holiday rules + Friday/Monday long-weekend markers reuse the existing Reporting Store jurisdiction/timezone seam without persistence/provider dependency;
+- **DATA-C:** Store-scoped Admin Sales Analytics — merged through PR #2670 / final head `ebe02b93` / CI #6829 green / squash `d748327f`; `/admin/reports/sales` remains a presentation-only join of canonical Accounting Sales + Business Operations + Weather + Calendar, with 7/30/90 plus `< MM/DD/YYYY >`, fail-visible core identity checks and fail-soft optional context;
+- the single-day right arrow is disabled for future dates and unless the next date has canonical Journal or Orders owner evidence; current/previous canonical Net Sales and B5 same-weekday operating baseline remain explicitly different comparison concepts;
+- **DATA-D:** locally implemented whole-business / whole-ledger `/admin/reports/management` over existing Accounting P&L/Cash Movement owner contracts only. It has no Store selector or `storeStableId`, ignores residual `?store=`, reuses shared Management browser DTO/date utilities and existing Management PDF/CSV export contracts, preserves the current Accounting Reports UI until DATA-F, and keeps Cash Movement explicitly Journal-only / non-formal;
+- **DATA-E:** production verification;
+- **DATA-F:** only after the Admin replacements are verified, contract the Accounting presentation to Sales Accounting plus formal/canonical Accounting statements.
+
+DATA-A does not add the new Sales page or change B5 report arithmetic. B2 canonical Sales and B5 Business Reports remain closed.
+
 ## 6. Parallel product lane — Admin Marketing Overview
 
 ### 6.1 Marketing overview redesign

@@ -18,6 +18,7 @@ import {
   Store,
   Tags,
   TicketPercent,
+  TrendingUp,
   Truck,
   UserCog,
   Users,
@@ -46,6 +47,7 @@ type AdminNavigationItem = {
   icon: LucideIcon;
   match?: StaffNavigationMatch;
   roles?: AdminShellProps['role'][];
+  preserveStoreContext?: boolean;
 };
 
 type AdminPageSection = {
@@ -205,12 +207,28 @@ function buildCategories(
       href: `${adminRoot}/reports`,
       labelZh: '数据',
       labelEn: 'Data',
+      matchPath: `${adminRoot}/reports`,
       items: [
         {
           href: `${adminRoot}/reports`,
-          labelZh: '经营报表',
-          labelEn: 'Business reports',
+          labelZh: '经营概览',
+          labelEn: 'Business overview',
           icon: BarChart3,
+          match: 'exact',
+          preserveStoreContext: true,
+        },
+        {
+          href: `${adminRoot}/reports/sales`,
+          labelZh: '销售分析',
+          labelEn: 'Sales analytics',
+          icon: TrendingUp,
+          preserveStoreContext: true,
+        },
+        {
+          href: `${adminRoot}/reports/management`,
+          labelZh: '管理损益',
+          labelEn: 'Management P&L',
+          icon: Calculator,
         },
         {
           href: `${adminRoot}/analytics`,
@@ -353,7 +371,8 @@ function ContextNavigation({
               Boolean(storeStableId) &&
               (category.id === 'store' ||
                 category.id === 'catalog' ||
-                category.id === 'marketing');
+                category.id === 'marketing' ||
+                item.preserveStoreContext === true);
             const itemHref = preserveStoreContext
               ? `${item.href}?store=${encodeURIComponent(storeStableId ?? '')}`
               : item.href;
@@ -385,13 +404,15 @@ function ContextNavigation({
 function buildStoreAwareHref(
   href: string,
   categoryId: string,
+  preserveStoreContext: boolean,
   storeStableId?: string,
 ): string {
   if (
     !storeStableId ||
     (categoryId !== 'store' &&
       categoryId !== 'catalog' &&
-      categoryId !== 'marketing')
+      categoryId !== 'marketing' &&
+      !preserveStoreContext)
   ) {
     return href;
   }
@@ -425,6 +446,7 @@ function MobileSecondaryNavigation({
           const itemHref = buildStoreAwareHref(
             item.href,
             category.id,
+            item.preserveStoreContext === true,
             storeStableId,
           );
 
@@ -476,14 +498,19 @@ export function AdminShell({ children, locale, role, onLogout }: AdminShellProps
   const isZh = locale === 'zh';
   const categories = buildCategories(locale, role);
   const activeCategory = resolveActiveCategory(pathname, categories);
+  const activeNavigationItem = activeCategory.items.find((item) =>
+    isStaffRouteActive(pathname, item.href, item.match),
+  );
   const selectedStoreStableId = searchParams.get('store')?.trim() ?? '';
   const isPosDevicesPage = pathname.endsWith('/pos-devices');
-  const isBusinessReportsPage = pathname.endsWith('/reports');
+  const isStoreScopedDataPage =
+    activeCategory.id === 'data' &&
+    activeNavigationItem?.preserveStoreContext === true;
   const showStoreContext =
     role !== 'ACCOUNTANT' &&
     (activeCategory.id === 'catalog' ||
       activeCategory.id === 'marketing' ||
-      isBusinessReportsPage ||
+      isStoreScopedDataPage ||
       (activeCategory.id === 'store' &&
         (pathname.endsWith('/setting') || isPosDevicesPage)));
   const storeContext =
@@ -491,7 +518,7 @@ export function AdminShell({ children, locale, role, onLogout }: AdminShellProps
       ? 'catalog'
       : activeCategory.id === 'marketing'
         ? 'marketing'
-        : isPosDevicesPage || isBusinessReportsPage
+        : isPosDevicesPage || isStoreScopedDataPage
           ? 'operations'
           : 'store';
 
@@ -540,10 +567,20 @@ export function AdminShell({ children, locale, role, onLogout }: AdminShellProps
           <div className="flex min-w-max gap-1 py-2">
             {categories.map((category) => {
               const active = category.id === activeCategory.id;
+              const categoryHref = buildStoreAwareHref(
+                category.href,
+                category.id,
+                category.items.some(
+                  (item) =>
+                    item.href === category.href &&
+                    item.preserveStoreContext === true,
+                ),
+                selectedStoreStableId || undefined,
+              );
               return (
                 <Link
                   key={category.id}
-                  href={category.href}
+                  href={categoryHref}
                   aria-current={active ? 'page' : undefined}
                   className={
                     active
@@ -630,6 +667,11 @@ export function AdminShell({ children, locale, role, onLogout }: AdminShellProps
                   const categoryHref = buildStoreAwareHref(
                     category.href,
                     category.id,
+                    category.items.some(
+                      (item) =>
+                        item.href === category.href &&
+                        item.preserveStoreContext === true,
+                    ),
                     selectedStoreStableId || undefined,
                   );
 

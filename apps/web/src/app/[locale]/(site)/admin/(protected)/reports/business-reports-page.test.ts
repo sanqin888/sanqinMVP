@@ -80,12 +80,14 @@ describe('Admin Business Reports C2 UI contract', () => {
     );
   });
 
-  it('reuses the Admin store selector as an operations context on Business Reports', () => {
+  it('keeps Store context explicit on Store-scoped Data pages without making the whole Data section Store-scoped', () => {
+    expect(adminShellSource).toContain('preserveStoreContext?: boolean');
+    expect(adminShellSource).toContain('preserveStoreContext: true');
+    expect(adminShellSource).toContain('matchPath: `${adminRoot}/reports`');
+    expect(adminShellSource).toContain("match: 'exact'");
+    expect(adminShellSource).toContain('const isStoreScopedDataPage =');
     expect(adminShellSource).toContain(
-      "const isBusinessReportsPage = pathname.endsWith('/reports');",
-    );
-    expect(adminShellSource).toContain(
-      'isPosDevicesPage || isBusinessReportsPage',
+      'activeNavigationItem?.preserveStoreContext === true',
     );
   });
 });
