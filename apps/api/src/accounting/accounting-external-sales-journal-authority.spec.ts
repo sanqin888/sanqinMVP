@@ -305,9 +305,7 @@ describe('Accounting External Sale Journal write authority', () => {
     });
     expect(() =>
       assertExternalSaleJournalAuthority(changed, plan.authority),
-    ).toThrow(
-      'External Sale Journal does not match its frozen sale authority',
-    );
+    ).toThrow('External Sale Journal does not match its frozen sale authority');
     expect(first).not.toBe(
       hashExternalSaleJournalWrite(changed, plan.authority),
     );

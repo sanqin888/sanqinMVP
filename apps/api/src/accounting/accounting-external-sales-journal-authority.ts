@@ -109,7 +109,10 @@ const expectedAccounts = (
   fact: AccountingExternalSaleFactV1,
 ): Map<string, string> => {
   const expected = new Map<string, string>([
-    [ACCOUNTING_EXTERNAL_SALE_AR_ACCOUNT_STABLE_ID, AccountingAccountClass.ASSET],
+    [
+      ACCOUNTING_EXTERNAL_SALE_AR_ACCOUNT_STABLE_ID,
+      AccountingAccountClass.ASSET,
+    ],
   ]);
 
   for (const line of fact.lines) {

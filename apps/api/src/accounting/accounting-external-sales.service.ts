@@ -165,8 +165,7 @@ const isUniqueConstraintError = (error: unknown): boolean =>
   'code' in error &&
   (error as { code?: unknown }).code === 'P2002';
 
-const dateForDb = (value: string): Date =>
-  new Date(`${value}T00:00:00.000Z`);
+const dateForDb = (value: string): Date => new Date(`${value}T00:00:00.000Z`);
 
 const dateOnly = (value: Date | null): string | null =>
   value?.toISOString().slice(0, 10) ?? null;
