@@ -291,13 +291,11 @@ export async function closeGmailMessageSupportingEvidenceInTx(
     data: {
       action: 'BEGIN_GMAIL_EXPENSE_REVIEW',
       entityType: 'ACCOUNTING_INBOX_ITEM',
-      entityId: rows[0]!.inboxItemStableId,
+      entityId: rows[0].inboxItemStableId,
       operatorActorRef: input.operatorUserStableId,
       afterJson: {
         documentStableId: input.documentStableId,
-        supportingInboxItemStableIds: rows.map(
-          (row) => row.inboxItemStableId,
-        ),
+        supportingInboxItemStableIds: rows.map((row) => row.inboxItemStableId),
         reviewedAt: reviewedAt.toISOString(),
       } as Prisma.InputJsonValue,
     },

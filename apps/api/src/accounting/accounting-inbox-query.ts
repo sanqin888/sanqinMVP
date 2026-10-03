@@ -16,7 +16,6 @@ import {
 import { assessAccountingExpenseEvidenceReadiness } from './accounting-expense-evidence.policy';
 import {
   accountingGmailGroupRequiresSeparateReview,
-  accountingGmailMessageId,
   groupAccountingInboxByGmailMessage,
 } from './accounting-inbox-gmail-grouping.policy';
 
@@ -260,10 +259,7 @@ export async function listAccountingUnifiedInboxItems(
           }
         : null,
     });
-    if (
-      gmailPrimarySource &&
-      expenseEvidenceReadiness.status === 'READY'
-    ) {
+    if (gmailPrimarySource && expenseEvidenceReadiness.status === 'READY') {
       expenseEvidenceReadiness = {
         status: 'READY',
         reason: 'GMAIL_ATTACHMENT_DOCUMENT' as const,
@@ -301,43 +297,43 @@ export async function listAccountingUnifiedInboxItems(
       gmailMessage:
         group.gmailMessageId && group.members.length > 1
           ? {
-            gmailMessageId: group.gmailMessageId,
-            primaryExpenseSourceInboxItemStableId:
-              gmailPrimarySource?.inboxItemStableId ?? null,
-            primaryExpenseSourceAmbiguous:
-              group.primaryExpenseSourceAmbiguous,
-            evidence: group.members.map((member) => ({
-              inboxItemStableId: member.inboxItemStableId,
-              status: member.status,
-              classification: member.classification,
-              selectedProvider: member.selectedProvider,
-              materializedEntityType: member.materializedEntityType,
-              materializedEntityStableId: member.materializedEntityStableId,
-              isRepresentative:
-                member.inboxItemStableId === row.inboxItemStableId,
-              isPrimaryExpenseSource:
-                member.inboxItemStableId ===
-                gmailPrimarySource?.inboxItemStableId,
-              createdAt: member.createdAt.toISOString(),
-              artifact: {
-                artifactStableId: member.artifact.artifactStableId,
-                acquisitionMode: member.artifact.acquisitionMode,
-                kind: member.artifact.kind,
-                originalFilename: member.artifact.originalFilename,
-                storedUrl:
-                  member.artifact.kind === AccountingArtifactKind.IMAGE
-                    ? `/api/v1/accounting/inbox/artifacts/${encodeURIComponent(
-                        member.artifact.artifactStableId,
-                      )}/content`
-                    : member.artifact.storedUrl,
-                bodyText: member.artifact.bodyText?.slice(0, 20_000) ?? null,
-                senderEmail: member.artifact.senderEmail,
-                emailSubject: member.artifact.emailSubject,
-                parseRuns: member.artifact.parseRuns,
-              },
-            })),
-          }
-        : null,
+              gmailMessageId: group.gmailMessageId,
+              primaryExpenseSourceInboxItemStableId:
+                gmailPrimarySource?.inboxItemStableId ?? null,
+              primaryExpenseSourceAmbiguous:
+                group.primaryExpenseSourceAmbiguous,
+              evidence: group.members.map((member) => ({
+                inboxItemStableId: member.inboxItemStableId,
+                status: member.status,
+                classification: member.classification,
+                selectedProvider: member.selectedProvider,
+                materializedEntityType: member.materializedEntityType,
+                materializedEntityStableId: member.materializedEntityStableId,
+                isRepresentative:
+                  member.inboxItemStableId === row.inboxItemStableId,
+                isPrimaryExpenseSource:
+                  member.inboxItemStableId ===
+                  gmailPrimarySource?.inboxItemStableId,
+                createdAt: member.createdAt.toISOString(),
+                artifact: {
+                  artifactStableId: member.artifact.artifactStableId,
+                  acquisitionMode: member.artifact.acquisitionMode,
+                  kind: member.artifact.kind,
+                  originalFilename: member.artifact.originalFilename,
+                  storedUrl:
+                    member.artifact.kind === AccountingArtifactKind.IMAGE
+                      ? `/api/v1/accounting/inbox/artifacts/${encodeURIComponent(
+                          member.artifact.artifactStableId,
+                        )}/content`
+                      : member.artifact.storedUrl,
+                  bodyText: member.artifact.bodyText?.slice(0, 20_000) ?? null,
+                  senderEmail: member.artifact.senderEmail,
+                  emailSubject: member.artifact.emailSubject,
+                  parseRuns: member.artifact.parseRuns,
+                },
+              })),
+            }
+          : null,
       artifact: {
         ...row.artifact,
         storedUrl:

@@ -256,10 +256,7 @@ export class AccountingExpenseService {
         );
         const gmailMembers =
           !linkedSource && gmailMessageId
-            ? await readAccountingGmailMessageInboxMembers(
-                tx,
-                gmailMessageId,
-              )
+            ? await readAccountingGmailMessageInboxMembers(tx, gmailMessageId)
             : [];
         const gmailPrimarySelection =
           !linkedSource && gmailMembers.length > 1

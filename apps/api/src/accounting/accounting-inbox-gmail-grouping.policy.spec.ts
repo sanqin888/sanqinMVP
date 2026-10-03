@@ -136,8 +136,7 @@ describe('Accounting Gmail Inbox grouping', () => {
       inboxItemStableId: 'acctinbox_provider_body',
       gmailMessageId: 'gmail-provider',
       kind: AccountingArtifactKind.EMAIL_BODY,
-      classification:
-        AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
+      classification: AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT,
     });
     const pdf = row({
       inboxItemStableId: 'acctinbox_provider_pdf',
@@ -148,7 +147,7 @@ describe('Accounting Gmail Inbox grouping', () => {
     const [group] = groupAccountingInboxByGmailMessage([body, pdf]);
 
     expect(group).toBeDefined();
-    expect(accountingGmailGroupRequiresSeparateReview(group!)).toBe(true);
+    expect(accountingGmailGroupRequiresSeparateReview(group)).toBe(true);
   });
 
   it('reads gmailMessageId only from object metadata', () => {

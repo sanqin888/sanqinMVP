@@ -77,9 +77,9 @@ describe('Accounting Inbox exact materialized-entity filter', () => {
       accountingInboxItem: { findMany },
     };
 
-    await expect(countAccountingInboxReviewItems(client as never)).resolves.toBe(
-      1,
-    );
+    await expect(
+      countAccountingInboxReviewItems(client as never),
+    ).resolves.toBe(1);
 
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({

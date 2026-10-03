@@ -90,9 +90,7 @@ export function accountingGmailGroupRequiresSeparateReview<
     group.primaryExpenseSourceAmbiguous ||
     statuses.size > 1 ||
     group.members.some((member) => {
-      const extraction = jsonRecord(
-        member.artifact.parseRuns?.[0]?.resultJson,
-      );
+      const extraction = jsonRecord(member.artifact.parseRuns?.[0]?.resultJson);
       return (
         member.classification ===
           AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT ||
@@ -114,7 +112,7 @@ export function selectAccountingGmailRepresentative<
     (left, right) =>
       accountingGmailRepresentativeScore(right) -
       accountingGmailRepresentativeScore(left),
-  )[0]!;
+  )[0];
 }
 
 export function selectAccountingGmailPrimaryExpenseSource<
@@ -123,14 +121,14 @@ export function selectAccountingGmailPrimaryExpenseSource<
   const candidates = members.filter(isEligibleGmailExpenseFile);
   if (candidates.length === 0) return { source: null, ambiguous: false };
   if (candidates.length === 1) {
-    return { source: candidates[0]!, ambiguous: false };
+    return { source: candidates[0], ambiguous: false };
   }
 
   const scored = candidates
     .map((row) => ({ row, score: accountingGmailExpenseSourceScore(row) }))
     .sort((left, right) => right.score - left.score);
-  if (scored[0]!.score > scored[1]!.score) {
-    return { source: scored[0]!.row, ambiguous: false };
+  if (scored[0].score > scored[1].score) {
+    return { source: scored[0].row, ambiguous: false };
   }
   return { source: null, ambiguous: true };
 }
@@ -160,17 +158,17 @@ function accountingGmailRepresentativeScore(
 
 function isEligibleGmailExpenseFile(row: GmailGroupingInboxItem): boolean {
   const extraction = jsonRecord(row.artifact.parseRuns?.[0]?.resultJson);
-  return Boolean(
+  return (
     row.status === AccountingInboxStatus.PENDING_REVIEW &&
-      row.artifact.acquisitionMode === AccountingArtifactAcquisitionMode.EMAIL &&
-      row.artifact.kind !== AccountingArtifactKind.EMAIL_BODY &&
-      row.artifact.storedUrl &&
-      row.classification !==
-        AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT &&
-      !row.selectedProvider &&
-      !row.materializedEntityType &&
-      !row.materializedEntityStableId &&
-      extraction.requiresBatchExpenseImport !== true,
+    row.artifact.acquisitionMode === AccountingArtifactAcquisitionMode.EMAIL &&
+    row.artifact.kind !== AccountingArtifactKind.EMAIL_BODY &&
+    Boolean(row.artifact.storedUrl) &&
+    row.classification !==
+      AccountingInboxClassification.PROVIDER_FINANCIAL_DOCUMENT &&
+    !row.selectedProvider &&
+    !row.materializedEntityType &&
+    !row.materializedEntityStableId &&
+    extraction.requiresBatchExpenseImport !== true
   );
 }
 

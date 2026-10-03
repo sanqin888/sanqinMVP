@@ -143,10 +143,7 @@ describe('Accounting Inbox Gmail expense handoff writers', () => {
     };
 
     await expect(
-      prepareGmailExpenseSourceInTx(
-        tx as never,
-        'acctinbox_gmail_attachment',
-      ),
+      prepareGmailExpenseSourceInTx(tx as never, 'acctinbox_gmail_attachment'),
     ).rejects.toThrow(
       'gmail expense source is not eligible for expense review',
     );
