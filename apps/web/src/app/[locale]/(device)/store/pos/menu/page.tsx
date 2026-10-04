@@ -108,16 +108,23 @@ function getLocalizedName(
   return locale === 'zh' ? nameZh ?? nameEn : nameEn;
 }
 
+function getAvailabilityMode(
+  isAvailable: boolean,
+  tempUnavailableUntil: string | null,
+): AvailabilityMode {
+  if (!isAvailable) return 'PERMANENT_OFF';
+  if (!isAvailableNow({ isAvailable, tempUnavailableUntil })) return 'TEMP_TODAY_OFF';
+  return 'ON';
+}
+
 function getAvailabilityLabel(
   isAvailable: boolean,
   tempUnavailableUntil: string | null,
   labels: StatusLabels,
 ) {
-  const isTempOff =
-    !!tempUnavailableUntil &&
-    !isAvailableNow({ isAvailable: true, tempUnavailableUntil });
-  if (isTempOff) return labels.offToday;
-  if (!isAvailable) return labels.offPermanent;
+  const mode = getAvailabilityMode(isAvailable, tempUnavailableUntil);
+  if (mode === 'TEMP_TODAY_OFF') return labels.offToday;
+  if (mode === 'PERMANENT_OFF') return labels.offPermanent;
   return labels.on;
 }
 
@@ -125,18 +132,27 @@ function AvailabilityActions({
   onSet,
   disabled,
   labels,
+  currentMode,
 }: {
   onSet: (mode: AvailabilityMode) => void;
   disabled?: boolean;
   labels: ActionLabels;
+  currentMode: AvailabilityMode;
 }) {
+  const onButtonClass =
+    currentMode === 'TEMP_TODAY_OFF'
+      ? 'rounded-full border border-amber-400/70 bg-amber-500/20 px-3 py-1 text-xs font-semibold text-amber-100 disabled:opacity-50'
+      : currentMode === 'PERMANENT_OFF'
+        ? 'rounded-full border border-red-400/70 bg-red-500/20 px-3 py-1 text-xs font-semibold text-red-100 disabled:opacity-50'
+        : 'rounded-full border border-emerald-400/60 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200 disabled:opacity-50';
+
   return (
     <div className="flex flex-wrap gap-2">
       <button
         type="button"
         onClick={() => onSet('ON')}
         disabled={disabled}
-        className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200 disabled:opacity-50"
+        className={onButtonClass}
       >
         {labels.on}
       </button>
@@ -444,6 +460,10 @@ export default function PosMenuManagementPage() {
                               .slice()
                               .sort((a, b) => a.sortOrder - b.sortOrder)
                               .map((item) => {
+                                const currentMode = getAvailabilityMode(
+                                  item.isAvailable,
+                                  item.tempUnavailableUntil,
+                                );
                                 const label = getAvailabilityLabel(
                                   item.isAvailable,
                                   item.tempUnavailableUntil,
@@ -478,6 +498,7 @@ export default function PosMenuManagementPage() {
                                     </div>
                                     <AvailabilityActions
                                       labels={copy.actions}
+                                      currentMode={currentMode}
                                       disabled={isSaving}
                                       onSet={(mode) =>
                                         void setItemAvailability(item.stableId, mode)
@@ -526,6 +547,10 @@ export default function PosMenuManagementPage() {
                           ) : (
                             <div className="space-y-3">
                               {group.options.map((option: OptionChoiceDto) => {
+                                const currentMode = getAvailabilityMode(
+                                  option.isAvailable,
+                                  option.tempUnavailableUntil,
+                                );
                                 const label = getAvailabilityLabel(
                                   option.isAvailable,
                                   option.tempUnavailableUntil,
@@ -552,6 +577,7 @@ export default function PosMenuManagementPage() {
                                     </div>
                                     <AvailabilityActions
                                       labels={copy.actions}
+                                      currentMode={currentMode}
                                       disabled={isSaving}
                                       onSet={(mode) =>
                                         void setOptionAvailability(option.optionStableId, mode)
@@ -583,6 +609,10 @@ export default function PosMenuManagementPage() {
                         </h3>
                         <div className="space-y-3">
                           {offItems.map(({ category, item }) => {
+                            const currentMode = getAvailabilityMode(
+                              item.isAvailable,
+                              item.tempUnavailableUntil,
+                            );
                             const label = getAvailabilityLabel(
                               item.isAvailable,
                               item.tempUnavailableUntil,
@@ -616,6 +646,7 @@ export default function PosMenuManagementPage() {
                                 </div>
                                 <AvailabilityActions
                                   labels={copy.actions}
+                                  currentMode={currentMode}
                                   disabled={isSaving}
                                   onSet={(mode) => void setItemAvailability(item.stableId, mode)}
                                 />
@@ -633,6 +664,10 @@ export default function PosMenuManagementPage() {
                         </h3>
                         <div className="space-y-3">
                           {offOptions.map(({ group, option }) => {
+                            const currentMode = getAvailabilityMode(
+                              option.isAvailable,
+                              option.tempUnavailableUntil,
+                            );
                             const label = getAvailabilityLabel(
                               option.isAvailable,
                               option.tempUnavailableUntil,
@@ -666,6 +701,7 @@ export default function PosMenuManagementPage() {
                                 </div>
                                 <AvailabilityActions
                                   labels={copy.actions}
+                                  currentMode={currentMode}
                                   disabled={isSaving}
                                   onSet={(mode) =>
                                     void setOptionAvailability(option.optionStableId, mode)
