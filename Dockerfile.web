@@ -15,17 +15,19 @@ COPY libs/shared/package.json ./libs/shared/
 # 2. 安装依赖
 RUN pnpm install --frozen-lockfile
 
-# 3. 只复制 Web 及其实际共享源码，避免纯 API 改动使 Web 构建缓存失效
-COPY apps/web ./apps/web
+# 3. 共享库先独立并行构建，纯 Web 源码改动复用这一层。
 COPY libs/foundation ./libs/foundation
 COPY libs/order ./libs/order
 COPY libs/shared ./libs/shared
+RUN pnpm --parallel --filter @shared/foundation --filter @shared/menu --filter @shared/order run build
 
-# 4. 构建 Web (Next.js Standalone)
+# 4. 最后复制 Web 源码并构建 Next.js Standalone。
+# 直接执行 Next，避免 prebuild 再次串行构建已经准备好的共享库。
 # 浏览器公开配置由 API 在运行时提供，Web 镜像不再烘焙环境专属 NEXT_PUBLIC_* 值。
-# 这一步会生成 .next/standalone 文件夹，里面包含了所有运行所需的代码和依赖
+# 保留 Next 默认 lint / type checks；这一步生成包含运行代码和依赖的 .next/standalone。
+COPY apps/web ./apps/web
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN pnpm --filter web build
+RUN pnpm --filter web exec next build --turbopack
 
 # --- 运行阶段 (Runner) ---
 FROM node:20-alpine AS runner

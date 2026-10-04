@@ -1,4 +1,4 @@
-# Post-Modularization CI Performance — Batches 1–4
+# Post-Modularization CI and Image Build Performance — Batches 1–5
 
 Date: 2026-10-04  
 Baseline: `origin/dev@6e7b4fbd2067892bf4cf990d2a193dd92e366957`  
@@ -11,7 +11,10 @@ Batch 3 branch: `ci/e2e-preparation-format-batch-3`
 Batch 3 state: **MERGED / PR #2696 / MERGE `936bf21a` / PR CI #6906 GREEN / DEV PUSH CI #6907 GREEN / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**  
 Batch 4 baseline: `origin/dev@936bf21a75ca79a5e1488a4d998d28869d7dc99a`  
 Batch 4 branch: `ci/lint-concurrency-batch-4`  
-Batch 4 state: **LOCAL IMPLEMENTED / USER REVIEW PENDING / CI NOT RUN / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**
+Batch 4 state: **MERGED / PR #2697 / MERGE `28d61eb6` / PR CI #6908 GREEN / DEV PUSH CI #6909 GREEN / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**  
+Batch 5 baseline: `origin/dev@28d61eb683f839d04dae00d9f7cb1f3a5e67469a`  
+Batch 5 branch: `ci/image-build-optimization-batch-5`  
+Batch 5 state: **LOCAL IMPLEMENTED / USER REVIEW PENDING / IMAGE CI NOT RUN / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**
 
 ## Evidence and goal
 
@@ -43,7 +46,7 @@ Batch 1 was reviewed and explicitly authorized for remote delivery. PR #2694 fin
 
 These two runs are approximately 28% and 25% shorter than baseline #6901 (206 seconds), but are not enough to claim a stable improvement across runner variation. PR #6902 had API static checks 140s, API tests 77s, Web 112s, E2E 126s and API aggregate 3s. Dev #6903 had API static checks 145s, API tests 101s, Web 79s, E2E 150s and API aggregate 2s. The critical job alternated between static checks and E2E.
 
-Batch 2 was reviewed and authorized for remote delivery. PR #2695 final head `3417ee56900bc9ee665c2e3316743648f7353bfb` passed all seven jobs in CI #6904 (171s) and squash-merged into dev as `ad17c92c239921a805e4dd6e34c3db08aa30bab1`. That exact dev push passed CI #6905 (145s). Lint timing, the top-20 suite summary and the 7-day JSON artifact were produced in both runs; full API discovery remained 486 passing suites / 2956 passing tests with the same two skips and all 13 E2E journeys passed. No local lint/build/test was run. Batch 3 was reviewed and authorized for remote delivery. PR #2696 head `02ae817854dff35626fcb36752b1117392ca2c53` passed CI #6906 (156s) and squash-merged as `936bf21a75ca79a5e1488a4d998d28869d7dc99a`; exact dev push CI #6907 passed in 154s. Both runs passed all seven jobs, full API discovery (486/2956 with the same two skips) and 13 browser journeys. Batch 4 remains at local source/diff/status review, uncommitted and unpushed.
+Batch 2 was reviewed and authorized for remote delivery. PR #2695 final head `3417ee56900bc9ee665c2e3316743648f7353bfb` passed all seven jobs in CI #6904 (171s) and squash-merged into dev as `ad17c92c239921a805e4dd6e34c3db08aa30bab1`. That exact dev push passed CI #6905 (145s). Lint timing, the top-20 suite summary and the 7-day JSON artifact were produced in both runs; full API discovery remained 486 passing suites / 2956 passing tests with the same two skips and all 13 E2E journeys passed. No local lint/build/test was run. Batch 3 was reviewed and authorized for remote delivery. PR #2696 head `02ae817854dff35626fcb36752b1117392ca2c53` passed CI #6906 (156s) and squash-merged as `936bf21a75ca79a5e1488a4d998d28869d7dc99a`; exact dev push CI #6907 passed in 154s. Both runs passed all seven jobs, full API discovery (486/2956 with the same two skips) and 13 browser journeys. Batch 4 was reviewed and authorized for remote delivery. PR #2697 head `8fc8edc9244b99f4c44692f92ab1f64b4c8934f2` passed normal CI #6908 (143s) and all three benchmark jobs, then squash-merged as `28d61eb683f839d04dae00d9f7cb1f3a5e67469a`. Exact dev push CI #6909 passed all seven jobs in 138s. Full API discovery and 13 browser journeys remained unchanged. Batch 5 is at local source/diff/status review, uncommitted and unpushed.
 
 Preserved remote acceptance criteria (first successful samples are recorded above; broader performance and negative-path evidence remain separate):
 
@@ -110,7 +113,7 @@ References: [Prettier direct execution](https://prettier.io/docs/integrating-wit
 
 **Owner / class:** Runtime / Data / CI / Ops; atomic internal CI execution/measurement change. No business, public, persistence, dependency, module-boundary or machine-baseline change.
 
-**State:** LOCAL IMPLEMENTED / USER REVIEW PENDING / CI NOT RUN, based on `origin/dev@936bf21a`.
+**State:** MERGED / PR #2697 / MERGE `28d61eb6` / PR CI #6908 GREEN / DEV PUSH CI #6909 GREEN, based on `origin/dev@936bf21a`.
 
 - Restore the API lint invocation from Batch 2: full glob, TIMING=1 and `--concurrency=auto`, with the existing ESLint Prettier rule active. Remove the separate direct format step and its CI-only rule override. Local ESLint config never changed; E2E overlap/logging, all seven normal jobs, static/architecture/safety/test gates and immutable-main publishing stay intact.
 - Add `.github/workflows/api-lint-benchmark.yml` as an independent experiment. It runs only for dev PRs changing that exact workflow path or a manual dispatch; there is no push, scheduled or ordinary source-PR trigger. Its three matrix jobs are not dependencies of `ci` and do not publish or deploy. Do not add path-filtered benchmark names as required checks for every PR. Manual UI dispatch availability depends on GitHub admitting the workflow on the repository's default branch; this PR can gather its initial measurements through its self-path trigger without a main promotion.
@@ -118,8 +121,67 @@ References: [Prettier direct execution](https://prettier.io/docs/integrating-wit
 - Each mode runs two fresh full ESLint processes. Native Node measures process wall time, preserves child status/signal and fails the job if either sample fails; setup and report upload are excluded from measured lint seconds. The second process still may benefit from OS/filesystem warm-up. Different matrix modes use separate hosted runners, so host variation remains a confounder and two samples cannot establish a stable winner.
 - Record mode, checkout SHA (PR merge SHA), PR head SHA, Node/runner-image/CPU metadata and each sample's wall seconds/exit code in logs, step summary and a per-mode JSON artifact retained for 7 days. A missing report is not a passed benchmark. Additional runner cost and possible queueing apply only when this experiment is triggered; no automatic concurrency tuning is performed.
 
-**Review / remote acceptance:** source/diff/status review only; no local lint/build/test or benchmark execution. After user review and remote-delivery authorization, require all seven normal CI jobs plus all three triggered benchmark jobs green on the reviewed head. Confirm the restored combined lint gate, unchanged full API discovery and 13 journeys; inspect two successful samples per mode with comparable runner metadata. Compare normal lint/static/E2E/whole-workflow wall time separately from the independent benchmark workflow's elapsed time.
+**Review / actual remote evidence:** user reviewed and authorized remote delivery; all seven normal jobs and three benchmark jobs passed on the reviewed head. PR/dev normal lint took 48.06/42.94s; full API discovery remained 486 suites / 2956 tests with the same two skips; all 13 journeys passed (13.9/10.0s). Normal CI took 143/138s; the independent benchmark took 152s. No local lint/build/test or benchmark execution was run. Benchmark off samples were 46.178/45.990s on AMD EPYC 9V45; mode 2 was 56.809/56.925s and auto 57.034/57.976s on AMD EPYC 7763. All had four logical/available CPUs, Node 20.20.2 and Ubuntu image 20260927.149.1. The different CPU model confounds the apparent off advantage; keep normal auto until a same-runner interleaved comparison supports a change.
 
 **Next decision:** keep `auto` in normal CI until measured evidence supports a mode. If one mode consistently improves lint wall time across repeat runs with the same rules and runner resources, make that setting change in a separately reviewed batch and confirm the whole workflow improves. If modes are similar, avoid extra permanent jobs/cache/dependency changes and reassess build/strict-check or Web-build work. The main-worklog append limitation remains pending; this supplement does not claim it is resolved.
 
 Reference: [ESLint concurrency option](https://eslint.org/docs/latest/use/command-line-interface#--concurrency).
+
+## Batch 5 — Cache image prerequisites and validate runtime packaging
+
+**Owner / class:** Runtime / Data / CI / Ops; atomic internal build/measurement change. Consumers are the main-validated immutable API/Web publisher, API and Uber worker using the same API artifact, Web standalone runtime, and developers building the same Dockerfiles.
+
+**State:** LOCAL IMPLEMENTED / USER REVIEW PENDING / IMAGE CI NOT RUN, based on `origin/dev@28d61eb6`. User requested image-build optimization and actual CI data. No local lint/build/test, image build, main promotion or production mutation has been performed.
+
+### Observed CI data
+
+Workflow seconds below are observed created-to-updated intervals for completed runs; job seconds are started-to-completed. Queue/setup/post-job work can contribute. These are same-day samples across different revisions/hosted runners, not controlled benchmarks.
+
+| Run | Tested revision | Workflow seconds | API static | API Jest | Web | E2E |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| [Baseline #6901](https://github.com/sanqin888/sanqinMVP/actions/runs/37229184282) | dev `6e7b4fbd` | 206 | 203 including Jest | included | 81 | 158 |
+| [Batch 1 dev #6903](https://github.com/sanqin888/sanqinMVP/actions/runs/37231670147) | `d1fdac78` | 154 | 145 | 101 | 79 | 150 |
+| [Batch 2 dev #6905](https://github.com/sanqin888/sanqinMVP/actions/runs/37232531191) | `ad17c92c` | 145 | 129 | 92 | 105 | 140 |
+| [Batch 3 dev #6907](https://github.com/sanqin888/sanqinMVP/actions/runs/37233684245) | `936bf21a` | 154 | 145 | 101 | 111 | 147 |
+| [Batch 4 PR #6908](https://github.com/sanqin888/sanqinMVP/actions/runs/37235053343) | PR head `8fc8edc9` | 143 | 133 | 117 | 76 | 137 |
+| [Batch 4 dev #6909](https://github.com/sanqin888/sanqinMVP/actions/runs/37235266638) | `28d61eb6` | 138 | 116 | 117 | 108 | 109 |
+
+Latest dev CI is 68s (~33%) shorter than the observed 206s baseline; no stable 33% speed guarantee is claimed. API static/Jest are now similarly long. Summed job elapsed time is 491s (8.18 raw job-minutes) versus baseline 472s (7.87); this excludes the separate benchmark and is not GitHub billed usage, which depends on rounding/platform pricing. Parallel jobs reduce elapsed time without necessarily reducing runner cost.
+
+### Image publication baseline
+
+[Publish-images #2](https://github.com/sanqin888/sanqinMVP/actions/runs/37199669414) for validated main `e411863a7e4c262a6ae125e39bd781dda63527d9` succeeded in 209s. API job [111428577214](https://github.com/sanqin888/sanqinMVP/actions/runs/37199669414/job/111428577214) took 207s; Web job [111428577042](https://github.com/sanqin888/sanqinMVP/actions/runs/37199669414/job/111428577042) took 19s with essentially all build layers cached. That Web number is not a cold-build measurement and does not show that Web compilation costs 19s.
+
+| API BuildKit operation | Observed seconds | Interpretation |
+| --- | ---: | --- |
+| Cached dependency layer materialization | 47.5 | Restore/extract a 431.09MB compressed layer; install was marked CACHED |
+| Explicit builder Prisma generation | 6.7 | Duplicated by existing API build script |
+| API build script | 42.4 | Serial shared libraries, another Prisma generation, then Nest |
+| pnpm deploy | 15.2 | Portable API workspace dependencies |
+| Prisma generation in deployed target | 4.0 | Required after dependency rearrangement |
+| Image export/push | 3.9 | Artifact publication |
+| GHA cache export | 56.6 | Preparation 29.2s and transfer 27.4s |
+
+BuildKit work can overlap; these step durations must not be added as a general critical-path model. API/Web contexts were only 9.82/7.61MB, so context pruning is not the principal observed bottleneck. Cache restore/export dominate much of the API job; prerequisite-layer reuse addresses compile invalidation but does not eliminate cache transfer. Retain mode=max and full frozen install in this batch: mode=min would discard intermediate builder caches, and selective install requires a separate dependency/hoisting audit.
+
+### Implementation and preserved behavior
+
+- Both Dockerfiles copy/build foundation, menu and order first, running the three independent existing build scripts in parallel. Their manifests have no mutual workspace dependencies, and each build config is self-contained. Copy application source afterward so ordinary API/Web edits can reuse library outputs. A library edit still invalidates its build layer.
+- API copies only schema before generating the builder Client, then copies all API source and directly invokes the same Nest compiler with the existing build-only 1536MiB heap limit. This avoids the second builder Client generation and repeat shared builds in the API script. Schema/manifest/lock changes invalidate the appropriate layers; all committed migrations are still included.
+- Retain API portable deploy without --prod, required Prisma regeneration inside that rearranged target, Prisma CLI/Studio engine warm-up, API/worker entry paths and all font/Poppler/Tesseract packages. No runtime dependency or diagnostic capability is intentionally removed.
+- Web directly invokes the existing Next build --turbopack after prerequisite libraries, avoiding serial prebuild repetition. Next's normal lint/type checks remain enabled; no external-checks bypass flag is injected. Preserve standalone/public/static layout, server-runtime config, entrypoint, port and host.
+- Add independent `.github/workflows/image-build-checks.yml`: dev PRs changing Dockerfiles, dockerignore, image workflows or dependency/workspace manifests, plus manual dispatch. Ordinary source-only PRs and dev/main pushes do not trigger it. Manual UI availability depends on the workflow reaching the default branch; the initial PR uses the self-path trigger. Do not make these path-filtered checks mandatory for unrelated PRs.
+- Each read-only job builds/loads the actual linux/amd64 image with Buildx, without GHCR login, push or deployment. It may import the release cache and separate validation cache, but exports only to `image-validation-sanq-api/web`, keeping the publisher's cache scope unchanged. GitHub branch-access rules still apply; an import declaration is not proof of a cache hit.
+- API smoke checks compiled API/worker entries, Prisma schema/migration packaging, shared/Nest/native module loading, generated Client construction, Prisma CLI, English/Chinese OCR data and Poppler. It does not start the API or connect to a database; runtime readiness/BFF/worker integration stays with the existing E2E and controlled rollout gates.
+- Web smoke checks standalone/static/public files, starts the actual image on loopback and requires the exact /health status/component, then removes the temporary container. Smoke failure remains job failure.
+- Log `IMAGE_BUILD_REPORT`, write a step summary and retain a 7-day JSON artifact containing exact checkout/PR head SHA, build outcome, build-action elapsed seconds, local uncompressed image bytes/platform/ID/digest and runner CPU/image metadata. Build elapsed includes cache transfer and image load but excludes setup/smoke/post-job work. Native Buildx summary/record/logs provide per-stage durations and cache utilization. A successful build report alone does not imply a passed smoke/job.
+- `ci.yml`, lint benchmark, publishing workflow, dependency manifests/lock, Prisma/schema/migrations, Compose, runtime source and architecture baseline are unchanged. Successful main-push ci -> checkout exact validated SHA -> immutable API/Web publishing and API/worker artifact identity remain intact.
+
+### Review and remote acceptance
+
+Local source/diff/status review only; new image speed, image size and packaging checks are **not yet measured or passed**. After user review and remote-delivery authorization, require all seven normal CI jobs and both image jobs green on the final PR head, inspect smoke output plus reports/cache records, and confirm full API discovery and 13 journeys. The self-path image workflow has no dev-push trigger, so merged-dev CI alone does not rerun it.
+
+Compare PR image build/load data with like-for-like builds; do not equate its local-load elapsed time with release push duration or cached Web with a cold compile. Collect multiple comparable image runs/cache states and image sizes before claiming a stable gain or changing cache backend/compression. Release-path validation of these Dockerfiles requires separately authorized main promotion; no production change is part of this batch. Documentation synchronization uses the existing supplement because the previously reported main-worklog MCP size limit remains unresolved.
+
+References: [Docker cache layer ordering](https://docs.docker.com/build/cache/optimize/), [GHA cache scopes and branch access](https://docs.docker.com/build/cache/backends/gha/), [Buildx summaries](https://docs.docker.com/build/ci/github-actions/build-summary/), [pnpm parallel scripts](https://pnpm.io/cli/run#--parallel).
+
