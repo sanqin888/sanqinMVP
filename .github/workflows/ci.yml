@@ -86,11 +86,18 @@ jobs:
         if: matrix.app == 'api'
         run: node tools/architecture/scan-architecture.mjs --check
 
+      # Check the same API glob without Prettier CLI's extra gitignore exclusions.
+      - name: Check formatting (api)
+        if: matrix.app == 'api'
+        run: pnpm --filter api exec prettier "{src,apps,libs,test}/**/*.ts" --check --ignore-path /dev/null
+
       - name: Lint (api)
         if: matrix.app == 'api'
         env:
           TIMING: "1"
-        run: pnpm --filter api exec eslint "{src,apps,libs,test}/**/*.ts" --concurrency=auto
+        # Formatting is required above; keep all other rules and local config.
+        run: >-
+          pnpm --filter api exec eslint "{src,apps,libs,test}/**/*.ts" --concurrency=auto --rule 'prettier/prettier: off'
 
       - name: Lint (web)
         if: matrix.app == 'web'
@@ -322,22 +329,39 @@ jobs:
           wait "$order_pid" || status=1
           exit "$status"
 
-      - name: Install Playwright Chromium headless shell
-        run: pnpm --filter web exec playwright install --with-deps --only-shell chromium
+      - name: Prepare browser and API in parallel
+        run: |
+          # Each branch stays in this step so both child exit codes are awaited.
+          (
+            set -e
+            echo "Install Playwright Chromium headless shell"
+            time pnpm --filter web exec playwright install --with-deps --only-shell chromium
+          ) > "${RUNNER_TEMP}/sanq-e2e-browser-prepare.log" 2>&1 &
+          browser_pid=$!
 
-      - name: Generate Prisma Client
-        run: pnpm --filter api prisma:generate
+          (
+            set -e
+            echo "Generate Prisma Client"
+            time pnpm --filter api prisma:generate
+            echo "Replay committed migrations into disposable E2E database"
+            time pnpm --filter api exec prisma migrate deploy
+            echo "Seed deterministic E2E fixtures"
+            time NODE_ENV=test pnpm --filter api e2e:seed
+            echo "Build API"
+            time pnpm --filter api exec nest build
+          ) > "${RUNNER_TEMP}/sanq-e2e-api-prepare.log" 2>&1 &
+          api_pid=$!
 
-      - name: Replay committed migrations into disposable E2E database
-        run: pnpm --filter api exec prisma migrate deploy
-
-      - name: Seed deterministic E2E fixtures
-        env:
-          NODE_ENV: test
-        run: pnpm --filter api e2e:seed
-
-      - name: Build API
-        run: pnpm --filter api exec nest build
+          status=0
+          wait "$browser_pid" || status=1
+          wait "$api_pid" || status=1
+          echo "::group::Browser preparation"
+          cat "${RUNNER_TEMP}/sanq-e2e-browser-prepare.log"
+          echo "::endgroup::"
+          echo "::group::API and database preparation"
+          cat "${RUNNER_TEMP}/sanq-e2e-api-prepare.log"
+          echo "::endgroup::"
+          exit "$status"
 
       - name: Start API
         env:
@@ -394,6 +418,8 @@ jobs:
             apps/web/test-results
             ${{ runner.temp }}/sanq-api.log
             ${{ runner.temp }}/sanq-web.log
+            ${{ runner.temp }}/sanq-e2e-browser-prepare.log
+            ${{ runner.temp }}/sanq-e2e-api-prepare.log
 
   printer-agent:
     runs-on: ubuntu-26.04
