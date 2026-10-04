@@ -14,22 +14,23 @@ COPY libs/shared/package.json ./libs/shared/
 # 2. 安装依赖
 RUN pnpm install --frozen-lockfile
 
-# 3. 只复制 API 及其共享库源码，避免纯 Web 改动使 API 构建缓存失效
-COPY apps/api ./apps/api
+# 3. 共享库先独立构建：纯 API 源码改动复用这一层，三个无互相依赖的库并行编译。
 COPY libs/foundation ./libs/foundation
 COPY libs/order ./libs/order
 COPY libs/shared ./libs/shared
+RUN pnpm --parallel --filter @shared/foundation --filter @shared/menu --filter @shared/order run build
 
-# 4. 生成 Prisma Client
-WORKDIR /app/apps/api
-RUN npx prisma generate
+# 4. Prisma 只依赖 schema；纯 API 源码改动不重复生成 builder 的 Client。
+COPY apps/api/prisma/schema.prisma ./apps/api/prisma/schema.prisma
+RUN pnpm --filter api run prisma:generate
 
-# 5. 构建 API。
+# 5. 最后复制 API 源码，直接执行 Nest；共享库和 Prisma 已由上面的必需步骤准备。
+# 不调用 api build 脚本，避免再次串行构建共享库和生成同一个 Prisma Client。
+COPY apps/api ./apps/api
 # Lightsail 生产 VM 只有约 2 GiB RAM；随着 API 源码增长，Node 20 在容器构建阶段
 # 会把默认 old-space 限制在约 1 GiB，Nest/TypeScript 编译可能在到达该限制前 OOM。
 # 仅放宽 builder 这一步的 heap；不会传入最终 runner，也不会改变线上 API 运行时内存策略。
-WORKDIR /app
-RUN NODE_OPTIONS=--max-old-space-size=1536 pnpm --filter api build
+RUN NODE_OPTIONS=--max-old-space-size=1536 pnpm --filter api exec nest build
 
 # 6. 生成仅包含 API workspace 依赖的便携运行目录。
 # 不使用 --prod，以保留 Prisma CLI / Studio 的现有运行时诊断能力。

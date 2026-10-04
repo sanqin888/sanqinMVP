@@ -9,8 +9,15 @@ on:
 permissions:
   contents: read
 
+# Replace stale PR runs only. Each dev/main push keeps its own validation run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build-test:
+    # Preserve the Web check name; the API check is aggregated below.
+    name: ${{ matrix.app == 'api' && 'api-checks' || 'build-test (web)' }}
     runs-on: ubuntu-26.04
 
     strategy:
@@ -81,6 +88,8 @@ jobs:
 
       - name: Lint (api)
         if: matrix.app == 'api'
+        env:
+          TIMING: "1"
         run: pnpm --filter api exec eslint "{src,apps,libs,test}/**/*.ts" --concurrency=auto
 
       - name: Lint (web)
@@ -116,13 +125,120 @@ jobs:
           wait "$order_pid" || status=1
           exit "$status"
 
-      - name: Test (api)
-        if: matrix.app == 'api'
-        run: pnpm --filter api exec jest
-
       - name: Test (web)
         if: matrix.app == 'web'
         run: pnpm --filter web test
+
+  api-tests:
+    runs-on: ubuntu-26.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+        with:
+          version: 9.0.0
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: "pnpm"
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --prefer-offline
+
+      - name: Build shared libraries
+        run: |
+          pnpm --filter @shared/foundation build &
+          foundation_pid=$!
+          pnpm --filter @shared/menu build &
+          menu_pid=$!
+          pnpm --filter @shared/order build &
+          order_pid=$!
+
+          status=0
+          wait "$foundation_pid" || status=1
+          wait "$menu_pid" || status=1
+          wait "$order_pid" || status=1
+          exit "$status"
+
+      - name: Generate Prisma Client
+        run: pnpm --filter api prisma:generate
+
+      - name: Test (api)
+        id: api_jest
+        run: pnpm --filter api exec jest --json --outputFile="${RUNNER_TEMP}/sanq-api-jest-results.json"
+
+      - name: Summarize API Jest suite timings
+        if: ${{ always() && !cancelled() && steps.api_jest.outcome != 'skipped' }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync, existsSync, readFileSync } from 'node:fs';
+          import { join, relative } from 'node:path';
+
+          const reportPath = join(process.env.RUNNER_TEMP, 'sanq-api-jest-results.json');
+          if (!existsSync(reportPath)) {
+            console.log('Jest did not produce a timing report; inspect the test step logs.');
+          } else {
+            const report = JSON.parse(readFileSync(reportPath, 'utf8'));
+            const suites = report.testResults
+              .map((suite) => ({
+                name: relative(process.cwd(), suite.name),
+                seconds: (suite.endTime - suite.startTime) / 1000,
+              }))
+              .filter((suite) => Number.isFinite(suite.seconds) && suite.seconds >= 0)
+              .sort((left, right) => right.seconds - left.seconds)
+              .slice(0, 20);
+            const lines = [
+              '### API Jest: 20 slowest suites',
+              '',
+              'Suite wall-clock durations include setup and transform work.',
+              '',
+              '| Suite | Seconds |',
+              '| --- | ---: |',
+              ...suites.map((suite) => '| ' + suite.name + ' | ' + suite.seconds.toFixed(3) + ' |'),
+              '',
+            ];
+            const summary = lines.join('\n');
+            console.log(summary);
+            if (process.env.GITHUB_STEP_SUMMARY) {
+              appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
+            }
+          }
+          NODE
+
+      - name: Upload API Jest timing report
+        if: ${{ always() && !cancelled() && steps.api_jest.outcome != 'skipped' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-jest-timings
+          path: ${{ runner.temp }}/sanq-api-jest-results.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+  api-validation:
+    # Keep the existing required API check tied to both parallel lanes.
+    name: build-test (api)
+    needs: [build-test, api-tests]
+    if: ${{ always() }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 3
+
+    steps:
+      - name: Require static checks and full API tests to succeed
+        env:
+          STATIC_CHECKS_RESULT: ${{ needs['build-test'].result }}
+          API_TESTS_RESULT: ${{ needs['api-tests'].result }}
+        run: |
+          if [[ "$STATIC_CHECKS_RESULT" != "success" || "$API_TESTS_RESULT" != "success" ]]; then
+            echo "Static checks: $STATIC_CHECKS_RESULT; API tests: $API_TESTS_RESULT"
+            exit 1
+          fi
 
   browser-e2e:
     runs-on: ubuntu-26.04
@@ -206,22 +322,39 @@ jobs:
           wait "$order_pid" || status=1
           exit "$status"
 
-      - name: Install Playwright Chromium
-        run: pnpm --filter web exec playwright install --with-deps chromium
+      - name: Prepare browser and API in parallel
+        run: |
+          # Each branch stays in this step so both child exit codes are awaited.
+          (
+            set -e
+            echo "Install Playwright Chromium headless shell"
+            time pnpm --filter web exec playwright install --with-deps --only-shell chromium
+          ) > "${RUNNER_TEMP}/sanq-e2e-browser-prepare.log" 2>&1 &
+          browser_pid=$!
 
-      - name: Generate Prisma Client
-        run: pnpm --filter api prisma:generate
+          (
+            set -e
+            echo "Generate Prisma Client"
+            time pnpm --filter api prisma:generate
+            echo "Replay committed migrations into disposable E2E database"
+            time pnpm --filter api exec prisma migrate deploy
+            echo "Seed deterministic E2E fixtures"
+            time NODE_ENV=test pnpm --filter api e2e:seed
+            echo "Build API"
+            time pnpm --filter api exec nest build
+          ) > "${RUNNER_TEMP}/sanq-e2e-api-prepare.log" 2>&1 &
+          api_pid=$!
 
-      - name: Replay committed migrations into disposable E2E database
-        run: pnpm --filter api exec prisma migrate deploy
-
-      - name: Seed deterministic E2E fixtures
-        env:
-          NODE_ENV: test
-        run: pnpm --filter api e2e:seed
-
-      - name: Build API
-        run: pnpm --filter api exec nest build
+          status=0
+          wait "$browser_pid" || status=1
+          wait "$api_pid" || status=1
+          echo "::group::Browser preparation"
+          cat "${RUNNER_TEMP}/sanq-e2e-browser-prepare.log"
+          echo "::endgroup::"
+          echo "::group::API and database preparation"
+          cat "${RUNNER_TEMP}/sanq-e2e-api-prepare.log"
+          echo "::endgroup::"
+          exit "$status"
 
       - name: Start API
         env:
@@ -278,6 +411,8 @@ jobs:
             apps/web/test-results
             ${{ runner.temp }}/sanq-api.log
             ${{ runner.temp }}/sanq-web.log
+            ${{ runner.temp }}/sanq-e2e-browser-prepare.log
+            ${{ runner.temp }}/sanq-e2e-api-prepare.log
 
   printer-agent:
     runs-on: ubuntu-26.04

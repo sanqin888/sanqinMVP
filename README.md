@@ -80,6 +80,8 @@ ghcr.io/sanqin888/sanq-web:<full-git-sha>
 
 The publishing workflow does not deploy to production, run Prisma migrations, or move a mutable `latest` / `main` tag. Production remains on the existing Compose rollout path until the separate pull-only cutover is reviewed. Before that cutover, verify the production VM architecture and the first-published GHCR package visibility/pull-auth policy.
 
+Docker/image-workflow and dependency-manifest changes targeting `dev` also run the independent `image-build-checks` workflow. It builds and loads API/Web images on hosted runners, checks API runtime packaging and Web standalone health, and records build duration, local uncompressed size and cache details. It does not publish or deploy and does not run for ordinary source-only PRs. Its build/load timing is separate from release build/push timing; API packaging smoke does not establish database-backed runtime readiness. See [CI and image-build performance](docs/architecture/postmod-ci-performance.md).
+
 `ops/verify-runtime-readiness.sh` currently accepts an explicit env-file path
 as its first argument. Supply the actual production env-file path when one is
 used; do not substitute the stale `/etc/sanqin/sanqin.env` example.

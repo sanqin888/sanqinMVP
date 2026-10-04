@@ -2,6 +2,13 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const pageSource = readFileSync(resolve(__dirname, 'page.tsx'), 'utf8');
+const posMenuPageSource = readFileSync(
+  resolve(
+    process.cwd(),
+    'src/app/[locale]/(device)/store/pos/menu/page.tsx',
+  ),
+  'utf8',
+);
 
 function sourceBetween(start: string, end: string): string {
   const startIndex = pageSource.indexOf(start);
@@ -37,5 +44,23 @@ describe('Admin item workspace boundary', () => {
     );
     expect(availabilityUpdate).toContain('/availability');
     expect(availabilityUpdate).toContain('body: JSON.stringify({ mode })');
+  });
+
+  it('distinguishes temporary and permanent off states on the turn-on button', () => {
+    expect(pageSource).toContain('const tempOff =');
+    expect(pageSource).toContain('const permanentOff = !item.isAvailable');
+    expect(pageSource).toContain('border-amber-500 bg-amber-400');
+    expect(pageSource).toContain('border-red-700 bg-red-600');
+    expect(pageSource).toContain('className={availabilityButtonClass}');
+  });
+
+  it('keeps POS restore actions color-coded by the current availability state', () => {
+    expect(posMenuPageSource).toContain('function getAvailabilityMode(');
+    expect(posMenuPageSource).toContain("if (!isAvailable) return 'PERMANENT_OFF'");
+    expect(posMenuPageSource).toContain("currentMode === 'TEMP_TODAY_OFF'");
+    expect(posMenuPageSource).toContain('border-amber-400/70 bg-amber-500/20');
+    expect(posMenuPageSource).toContain("currentMode === 'PERMANENT_OFF'");
+    expect(posMenuPageSource).toContain('border-red-400/70 bg-red-500/20');
+    expect(posMenuPageSource).toContain('className={onButtonClass}');
   });
 });

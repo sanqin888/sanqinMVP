@@ -1,0 +1,170 @@
+name: image-build-checks
+
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - 'Dockerfile.api'
+      - 'Dockerfile.web'
+      - '.dockerignore'
+      - '.github/workflows/image-build-checks.yml'
+      - '.github/workflows/publish-images.yml'
+      - 'pnpm-workspace.yaml'
+      - 'pnpm-lock.yaml'
+      - 'package.json'
+      - 'apps/api/package.json'
+      - 'apps/web/package.json'
+      - 'libs/*/package.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: image-build-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: image-build (${{ matrix.image }})
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: sanq-api
+            dockerfile: Dockerfile.api
+          - image: sanq-web
+            dockerfile: Dockerfile.web
+    env:
+      IMAGE: ${{ matrix.image }}:ci
+    steps:
+      - name: Checkout tested revision
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Record build start
+        id: clock
+        run: echo "started_ms=$(date +%s%3N)" >> "$GITHUB_OUTPUT"
+
+      - name: Build and load image
+        id: image_build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: ${{ env.IMAGE }}
+          cache-from: |
+            type=gha,scope=${{ matrix.image }}
+            type=gha,scope=image-validation-${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=image-validation-${{ matrix.image }}
+
+      - name: Record image build data
+        if: ${{ always() && !cancelled() && steps.clock.outcome == 'success' && steps.image_build.outcome != 'skipped' }}
+        env:
+          STARTED_MS: ${{ steps.clock.outputs.started_ms }}
+          BUILD_OUTCOME: ${{ steps.image_build.outcome }}
+          BUILD_DIGEST: ${{ steps.image_build.outputs.digest }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const os = require('node:os');
+          const { execFileSync } = require('node:child_process');
+          const endedMs = Date.now();
+          let image = null;
+          if (process.env.BUILD_OUTCOME === 'success') {
+            [image] = JSON.parse(execFileSync('docker', ['image', 'inspect', process.env.IMAGE], { encoding: 'utf8' }));
+          }
+          const report = {
+            image: process.env.IMAGE,
+            checkoutSha: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+            prHeadSha: process.env.PR_HEAD_SHA || null,
+            buildOutcome: process.env.BUILD_OUTCOME,
+            buildActionSeconds: (endedMs - Number(process.env.STARTED_MS)) / 1000,
+            digest: process.env.BUILD_DIGEST || null,
+            localImageId: image?.Id || null,
+            uncompressedImageBytes: image?.Size ?? null,
+            platform: image ? `${image.Os}/${image.Architecture}` : null,
+            runnerImage: process.env.ImageOS || null,
+            runnerImageVersion: process.env.ImageVersion || null,
+            cpuModel: os.cpus()[0]?.model || null,
+            logicalCpus: os.cpus().length,
+            cacheImportScopes: [process.env.IMAGE.split(':')[0], `image-validation-${process.env.IMAGE.split(':')[0]}`],
+            cacheExportScope: `image-validation-${process.env.IMAGE.split(':')[0]}`,
+          };
+          fs.writeFileSync(`${process.env.RUNNER_TEMP}/sanq-image-build.json`, JSON.stringify(report, null, 2) + '\n');
+          console.log('IMAGE_BUILD_REPORT ' + JSON.stringify(report));
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, [
+            `### ${report.image} build`,
+            `- Outcome: ${report.buildOutcome}; tested SHA: ${report.checkoutSha}; PR head: ${report.prHeadSha || 'n/a'}`,
+            `- Build action elapsed: ${report.buildActionSeconds.toFixed(2)}s (includes cache import/export and local image load; excludes setup and smoke checks).`,
+            `- Local uncompressed image bytes: ${report.uncompressedImageBytes ?? 'unavailable'}; platform: ${report.platform || 'unavailable'}.`,
+            '- Cache hits and per-stage durations: see the native Buildx summary/build record and job log. No cold/warm classification is inferred from total time.',
+            '',
+          ].join('\n'));
+          NODE
+
+      - name: Verify API runtime packaging
+        if: matrix.image == 'sanq-api'
+        run: |
+          docker run --rm --workdir /app/apps/api "$IMAGE" node -e '
+            const assert = require("node:assert/strict");
+            const fs = require("node:fs");
+            const { execFileSync } = require("node:child_process");
+            assert(fs.existsSync("dist/main.js"));
+            assert(fs.existsSync("dist/ubereats-worker.main.js"));
+            assert(fs.existsSync("prisma/schema.prisma"));
+            assert(fs.existsSync("prisma/migrations"));
+            for (const name of ["@shared/foundation", "@shared/menu", "@shared/order", "@nestjs/core", "argon2", "sharp"]) require(name);
+            const { PrismaClient } = require("@prisma/client");
+            const client = new PrismaClient();
+            client.$disconnect().catch(error => { console.error(error); process.exitCode = 1; });
+            execFileSync("./node_modules/.bin/prisma", ["--version"], { stdio: "inherit" });
+            const langs = execFileSync("tesseract", ["--list-langs"], { encoding: "utf8" });
+            for (const name of ["eng", "chi_sim"]) assert(langs.split(/\r?\n/).includes(name));
+            execFileSync("pdftotext", ["-v"], { stdio: "inherit" });
+          '
+
+      - name: Verify Web standalone health
+        if: matrix.image == 'sanq-web'
+        run: |
+          docker run --rm "$IMAGE" node -e '
+            const assert = require("node:assert/strict");
+            const fs = require("node:fs");
+            for (const path of ["apps/web/server.js", "apps/web/public", "apps/web/.next/static"]) assert(fs.existsSync(path), path);
+          '
+          container="sanq-web-image-check"
+          trap 'docker logs "$container"; docker rm -f "$container" >/dev/null' EXIT
+          docker run --detach --name "$container" --publish 127.0.0.1:3000:3000 "$IMAGE"
+          ready=0
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error --max-time 2 http://127.0.0.1:3000/health > "$RUNNER_TEMP/sanq-web-health.json"; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          test "$ready" -eq 1
+          node -e '
+            const assert = require("node:assert/strict");
+            const fs = require("node:fs");
+            const health = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/sanq-web-health.json", "utf8"));
+            assert.equal(health.status, "ok");
+            assert.equal(health.component, "web");
+          '
+
+      - name: Upload image build data
+        if: ${{ always() && !cancelled() && steps.clock.outcome == 'success' && steps.image_build.outcome != 'skipped' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-build-data-${{ matrix.image }}
+          path: ${{ runner.temp }}/sanq-image-build.json
+          if-no-files-found: error
+          retention-days: 7
