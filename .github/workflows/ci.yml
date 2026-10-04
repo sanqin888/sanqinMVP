@@ -86,18 +86,11 @@ jobs:
         if: matrix.app == 'api'
         run: node tools/architecture/scan-architecture.mjs --check
 
-      # Check the same API glob without Prettier CLI's extra gitignore exclusions.
-      - name: Check formatting (api)
-        if: matrix.app == 'api'
-        run: pnpm --filter api exec prettier "{src,apps,libs,test}/**/*.ts" --check --ignore-path /dev/null
-
       - name: Lint (api)
         if: matrix.app == 'api'
         env:
           TIMING: "1"
-        # Formatting is required above; keep all other rules and local config.
-        run: >-
-          pnpm --filter api exec eslint "{src,apps,libs,test}/**/*.ts" --concurrency=auto --rule 'prettier/prettier: off'
+        run: pnpm --filter api exec eslint "{src,apps,libs,test}/**/*.ts" --concurrency=auto
 
       - name: Lint (web)
         if: matrix.app == 'web'
