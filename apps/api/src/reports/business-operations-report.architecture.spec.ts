@@ -16,14 +16,19 @@ describe('B5-C1 Business Operations architecture', () => {
 
     expect(service).toContain('REPORTING_BUSINESS_ORDER_FACTS_QUERY');
     expect(service).toContain('REPORTING_STORE_OPERATING_CONTEXT_QUERY');
+    expect(service).toContain('REPORTING_CATALOG_ITEM_CLASSIFICATION_QUERY');
     expect(service).not.toContain("from '../orders/");
     expect(service).not.toContain("from '../store/");
+    expect(service).not.toContain("from '../menu/");
     expect(service).not.toContain("from '../prisma/");
     expect(service).not.toContain('@prisma/client');
 
     expect(module).toContain('REPORTING_BUSINESS_ORDER_FACTS_QUERY');
     expect(module).toContain('ORDER_REPORTING_FACTS_READER');
+    expect(module).toContain('REPORTING_CATALOG_ITEM_CLASSIFICATION_QUERY');
+    expect(module).toContain('CATALOG_REPORTING_ITEM_CLASSIFICATION_READER');
     expect(module).toContain("from '../orders/public-api'");
+    expect(module).toContain("from '../menu/public-api'");
   });
 
   it('contracts the legacy root report route while preserving the Business Operations projection', () => {

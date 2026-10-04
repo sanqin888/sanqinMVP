@@ -120,6 +120,14 @@ describe('Admin DATA-C Sales Analytics UI contract', () => {
     expect(clientSource).toContain('weekdayLabel(row.weekday, locale)');
   });
 
+  it('shows every non-zero non-beverage commercial item without a fixed row cap', () => {
+    expect(clientSource).toContain('row.quantity > 0');
+    expect(clientSource).toContain(
+      "row.currentCatalogItemKind !== 'BEVERAGE'",
+    );
+    expect(clientSource).not.toContain('report.commercialItems.slice(0, 8)');
+  });
+
   it('adds a Store-scoped Sales Analytics destination without making Data globally Store-scoped', () => {
     expect(adminShellSource).toContain('/reports/sales');
     expect(adminShellSource).toContain("labelZh: '销售分析'");
