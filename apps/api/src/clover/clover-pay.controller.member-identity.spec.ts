@@ -1,5 +1,6 @@
 import type { Request } from 'express';
 import { CloverPayController } from './clover-pay.controller';
+import { CloverWebClientConfigService } from './clover-web-client-config.service';
 import type { CloverService } from './clover.service';
 import type { CheckoutIntentsService } from './checkout-intents.service';
 import type { OrdersService } from '../orders/orders.service';
@@ -97,6 +98,7 @@ function createHarness() {
     {} as EmailService,
     {} as IdentityEmailVerificationPort,
     {} as PhoneVerificationService,
+    { getConfig: jest.fn() } as unknown as CloverWebClientConfigService,
   );
 
   return { controller, checkoutIntents, orders };

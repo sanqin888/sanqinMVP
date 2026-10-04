@@ -50,7 +50,7 @@ production repository directory.
 
 2) Build and run
 
-The production Compose environment must define `GOOGLE_MAPS_BROWSER_KEY` before this runtime-config slice is deployed. It is a browser-restricted Google Maps key and remains distinct from the server-side `GOOGLE_MAPS_API_KEY` used for geocoding.
+The production Compose environment must define `GOOGLE_MAPS_BROWSER_KEY`, `CLOVER_WEB_PUBLIC_TOKEN`, and `CLOVER_WEB_SDK_URL` before the runtime-config slices are deployed. `GOOGLE_MAPS_BROWSER_KEY` remains distinct from the server-side `GOOGLE_MAPS_API_KEY` used for geocoding; Clover Web Ecommerce browser configuration is supplied by the API at runtime while `CLOVER_MERCHANT_ID` remains the existing server-side merchant identity.
 
 ```bash
 docker compose up -d --build

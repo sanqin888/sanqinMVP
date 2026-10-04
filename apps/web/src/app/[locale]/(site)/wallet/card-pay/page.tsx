@@ -3,7 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ApiError, apiFetch } from "@/lib/api/client";
-import { build3dsBrowserInfo, DEFAULT_CLOVER_SDK_URL, loadScript } from "@/lib/clover";
+import {
+  build3dsBrowserInfo,
+  loadScript,
+  type CloverWebClientConfig,
+} from "@/lib/clover";
 import type { Locale } from "@/lib/i18n/locales";
 import { HOSTED_CHECKOUT_CURRENCY, type CardTokenPaymentResponse } from "@/lib/order/shared";
 
@@ -17,6 +21,7 @@ type PaymentCtx = {
   currency: string;
   totalCents: number;
   metadata: Record<string, unknown>;
+  cloverClientConfig: CloverWebClientConfig;
 };
 
 type PaymentSessionFetchResponse = {
@@ -29,6 +34,7 @@ type PaymentSessionFetchResponse = {
   quote: { totalCents: number };
   externalPaymentCents: number;
   metadata: Record<string, unknown>;
+  cloverClientConfig: CloverWebClientConfig;
 };
 
 type CloverElementInstance = { mount: (selector: string) => void; addEventListener: (event: string, handler: (payload: unknown) => void) => void; destroy?: () => void };
@@ -161,7 +167,7 @@ export default function CardPayWalletPage() {
       try {
         const data = await withTimeout(apiFetch<PaymentSessionFetchResponse>(`/clover/pay/online/session?sessionId=${encodeURIComponent(sessionId)}&paymentMethod=CARD`), 15000, "apiFetch /clover/pay/online/session");
         if (cancelled) return;
-        setCtx({ sessionId: data.sessionId, paymentMethod: (data.paymentMethod as PaymentCtx["paymentMethod"]) ?? "CARD", locale, checkoutIntentId: data.checkoutIntentId, pricingToken: data.pricingToken, pricingTokenExpiresAt: data.pricingTokenExpiresAt, currency: data.currency || HOSTED_CHECKOUT_CURRENCY, totalCents: data.externalPaymentCents, metadata: data.metadata });
+        setCtx({ sessionId: data.sessionId, paymentMethod: (data.paymentMethod as PaymentCtx["paymentMethod"]) ?? "CARD", locale, checkoutIntentId: data.checkoutIntentId, pricingToken: data.pricingToken, pricingTokenExpiresAt: data.pricingTokenExpiresAt, currency: data.currency || HOSTED_CHECKOUT_CURRENCY, totalCents: data.externalPaymentCents, metadata: data.metadata, cloverClientConfig: data.cloverClientConfig });
         setPostalCode("");
         setFieldErrors({});
         setCloverReady(false);
@@ -190,9 +196,7 @@ export default function CardPayWalletPage() {
 
   useEffect(() => {
     if (!ctx) return;
-    const publicKey = process.env.NEXT_PUBLIC_CLOVER_PUBLIC_TOKEN?.trim();
-    const merchantId = process.env.NEXT_PUBLIC_CLOVER_MERCHANT_ID?.trim();
-    const sdkUrl = process.env.NEXT_PUBLIC_CLOVER_SDK_URL?.trim() ?? DEFAULT_CLOVER_SDK_URL;
+    const { publicToken: publicKey, merchantId, sdkUrl } = ctx.cloverClientConfig;
     if (!publicKey || !merchantId) { setError(locale === "zh" ? "支付初始化失败：缺少 Clover 配置。" : "Payment init failed: missing Clover config."); return; }
 
     let cancelled = false;
