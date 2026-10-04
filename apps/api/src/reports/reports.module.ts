@@ -2,8 +2,11 @@ import { HttpModule } from '@nestjs/axios';
 import { Module } from '@nestjs/common';
 
 import {
+  CATALOG_AVAILABILITY_HISTORY_READER,
   CATALOG_REPORTING_ITEM_CLASSIFICATION_READER,
+  CatalogAvailabilityModule,
   CatalogReportingItemClassificationModule,
+  type CatalogAvailabilityHistoryReaderPort,
   type CatalogReportingItemClassificationReaderPort,
 } from '../menu/public-api';
 import {
@@ -22,11 +25,13 @@ import {
 } from '../promotions/public-api';
 import {
   BRAND_STORE_CONFIG_READER,
+  STORE_OPERATING_HISTORY_READER,
   STORE_SCHEDULE_READER,
   STORE_STATUS_READER,
   BrandStoreConfigModule,
   StoreStatusModule,
   type BrandStoreConfigReaderPort,
+  type StoreOperatingHistoryReaderPort,
   type StoreScheduleReaderPort,
   type StoreStatusReaderPort,
 } from '../store/public-api';
@@ -50,6 +55,12 @@ import {
   REPORTING_ORDER_FACTS_QUERY,
   type ReportingOrderFactsQueryPort,
 } from './reporting-order-facts-query.contract';
+import {
+  REPORTING_CATALOG_AVAILABILITY_HISTORY_QUERY,
+  REPORTING_STORE_OPERATING_HISTORY_QUERY,
+  type ReportingCatalogAvailabilityHistoryQueryPort,
+  type ReportingStoreOperatingHistoryQueryPort,
+} from './reporting-operating-history-query.contract';
 import {
   REPORTING_STORE_LOCATION_QUERY,
   type ReportingStoreLocationQueryPort,
@@ -80,6 +91,7 @@ import { WeatherHistoryStore } from './weather-history.store';
     OrderReportingFactsModule,
     OrderMarketingUsageFactsModule,
     CatalogReportingItemClassificationModule,
+    CatalogAvailabilityModule,
     MarketingCampaignFactsModule,
     BrandStoreConfigModule,
     StoreStatusModule,
@@ -184,6 +196,54 @@ import { WeatherHistoryStore } from './weather-history.store';
             associatedSalesCents: row.associatedSalesCents,
             associatedSalesEvidence: row.associatedSalesEvidence,
           }));
+        },
+      }),
+    },
+    {
+      provide: REPORTING_STORE_OPERATING_HISTORY_QUERY,
+      inject: [STORE_OPERATING_HISTORY_READER],
+      useFactory: (
+        history: StoreOperatingHistoryReaderPort,
+      ): ReportingStoreOperatingHistoryQueryPort => ({
+        readOperatingHistoryForRange: async (query) => {
+          const result = await history.readOperatingHistoryForRange(
+            query.storeStableId,
+            query.fromInclusive,
+            query.toExclusive,
+          );
+          if (!result) return null;
+          return {
+            storeStableId: result.storeStableId,
+            trackingStartedAt: result.coverage.trackingStartedAt,
+            scheduleVersions: result.scheduleVersions.map((version) => ({
+              revision: version.revision,
+              effectiveFrom: version.effectiveFrom,
+              timezone: version.timezone,
+              businessHours: version.businessHours.map((hour) => ({ ...hour })),
+              holidays: version.holidays.map((holiday) => ({ ...holiday })),
+            })),
+            temporaryClosures: result.temporaryClosures.map((interval) => ({
+              ...interval,
+            })),
+          };
+        },
+      }),
+    },
+    {
+      provide: REPORTING_CATALOG_AVAILABILITY_HISTORY_QUERY,
+      inject: [CATALOG_AVAILABILITY_HISTORY_READER],
+      useFactory: (
+        history: CatalogAvailabilityHistoryReaderPort,
+      ): ReportingCatalogAvailabilityHistoryQueryPort => ({
+        readItemUnavailableHistoryForRange: async (query) => {
+          const result =
+            await history.readItemUnavailableHistoryForRange(query);
+          if (!result) return null;
+          return {
+            storeStableId: result.storeStableId,
+            trackingStartedAt: result.trackingStartedAt,
+            intervals: result.intervals.map((interval) => ({ ...interval })),
+          };
         },
       }),
     },

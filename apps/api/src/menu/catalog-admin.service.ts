@@ -19,6 +19,10 @@ import type {
   CatalogOptionAvailabilitySnapshot,
 } from './catalog-availability-reader.contract';
 import type {
+  CatalogAvailabilityHistoryRange,
+  CatalogAvailabilityHistoryReaderPort,
+} from './catalog-availability-history-reader.contract';
+import type {
   CatalogExternalMenuFactsReaderPort,
   CatalogExternalMenuSourceFacts,
 } from './catalog-external-menu-facts-reader.contract';
@@ -132,7 +136,8 @@ export class CatalogAdminService
     CatalogExternalMenuFactsReaderPort,
     CatalogOrderFactsReaderPort,
     CatalogMarketingSubjectReaderPort,
-    CatalogReportingItemClassificationReaderPort
+    CatalogReportingItemClassificationReaderPort,
+    CatalogAvailabilityHistoryReaderPort
 {
   constructor(private readonly prisma: PrismaService) {}
 
@@ -1301,6 +1306,44 @@ export class CatalogAdminService
           availabilityFromDb(updated.isAvailable, updated.tempUnavailableUntil),
         ),
       },
+    };
+  }
+
+  async readItemUnavailableHistoryForRange(query: {
+    storeStableId: string;
+    fromInclusive: Date;
+    toExclusive: Date;
+  }): Promise<CatalogAvailabilityHistoryRange | null> {
+    const storeStableId = requireStoreStableId(query.storeStableId);
+    const coverage =
+      await this.prisma.catalogAvailabilityHistoryState.findUnique({
+        where: { storeStableId },
+        select: { trackingStartedAt: true },
+      });
+    if (!coverage) return null;
+
+    const intervals = await this.prisma.catalogItemUnavailableInterval.findMany(
+      {
+        where: {
+          storeStableId,
+          startedAt: { lt: query.toExclusive },
+          OR: [{ endedAt: null }, { endedAt: { gt: query.fromInclusive } }],
+        },
+        orderBy: [{ startedAt: 'asc' }, { menuItemStableId: 'asc' }],
+        select: {
+          menuItemStableId: true,
+          nameEnSnapshot: true,
+          nameZhSnapshot: true,
+          startedAt: true,
+          endedAt: true,
+        },
+      },
+    );
+
+    return {
+      storeStableId,
+      trackingStartedAt: coverage.trackingStartedAt,
+      intervals: intervals.map((interval) => ({ ...interval })),
     };
   }
 

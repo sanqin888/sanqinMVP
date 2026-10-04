@@ -1,8 +1,8 @@
 # Operating / Availability History
 
 Date: 2026-10-04  
-Implementation base: `origin/dev@534ae848`  
-State: **HIST-B LOCAL IMPLEMENTED / USER REVIEW PENDING / NO PRODUCTION DEPLOYMENT / NO LEGACY BACKFILL**
+Implementation base: `origin/dev@40fd2fd5`  
+State: **HIST-B MERGED / CI #6888 GREEN / HIST-C LOCAL IMPLEMENTED / USER REVIEW PENDING / NO PRODUCTION DEPLOYMENT / NO LEGACY BACKFILL**
 
 ## Goal
 
@@ -225,7 +225,7 @@ Promotion to `main` / production is blocked until the user-generated migration i
 
 ### HIST-B — owner atomic capture / cutover
 
-**Local implementation complete; user review pending. No remote submission or production deployment has been performed.**
+**Merged through PR #2689 / squash `40fd2fd5`; CI #6888 green. No production deployment has been performed.**
 
 Implemented owner invariants:
 
@@ -254,23 +254,48 @@ timezone versioning/no-op behavior, duplicate pause rejection, early resume, del
 TEMP today, TEMP -> PERMANENT continuity, repeated same-item outages, generic availability bypass rejection and
 current-state/history transaction failure propagation.
 
-The required modularization worklog update was attempted, but MCP rejected the write because the file would exceed
-its 1,000,000-character write limit. Per project instruction, HIST-B does not bypass or rewrite that file through
-another mechanism; this limitation is recorded here for later authorized maintenance.
-
-### HIST-C readiness
-
-HIST-C may begin after HIST-B user review and normal remote CI delivery. It should add owner historical readers
-over the now-captured Store/Catalog facts and compose them only in `ReportsModule`. It must not redesign the
-capture state machines, backfill pre-cutover history, change Accounting authority, or move interval arithmetic
-into the owners.
+The required modularization worklog updates for HIST-B and HIST-C were attempted, but MCP rejected the writes
+because the file would exceed its 1,000,000-character write limit. Per project instruction, these slices do not
+bypass or rewrite that file through another mechanism; this limitation is recorded here for later authorized
+maintenance.
 
 ### HIST-C — Reporting projection
 
-- narrow Store/Catalog historical readers;
-- Reporting-owned adapter ports in `ReportsModule`;
-- additive `/reports/business` operating-history projection;
-- Store-local interval arithmetic and explicit coverage.
+**Local implementation complete; user review pending. No remote submission or production deployment has been performed.**
+
+HIST-C adds only owner reads and Reporting projection:
+
+- Brand/Store implements the existing `STORE_OPERATING_HISTORY_READER` contract over
+  `StoreOperatingHistoryState`, `StoreScheduleVersion` and overlapping temporary-closure intervals;
+- Catalog implements the existing `CATALOG_AVAILABILITY_HISTORY_READER` contract over forward-only coverage
+  state and overlapping MenuItem unavailable intervals;
+- `ReportsModule` adapts both owner readers into Reporting-local ports. `BusinessOperationsReportService`
+  imports neither Store/Catalog implementations nor Prisma;
+- `GET /reports/business` gains an additive `operatingHistory` projection. The existing order baseline,
+  anomaly calculation and current `storeContext` semantics are unchanged;
+- each report day exposes explicit `AVAILABLE / PARTIAL / UNAVAILABLE` history coverage. A date without full
+  Store coverage returns null operating metrics rather than a manufactured zero; a date with Store coverage but
+  incomplete Catalog coverage may expose trustworthy Store operating minutes while item count/duration remain
+  null;
+- schedule versions are applied at their real `effectiveFrom`, including mid-day changes. Each version uses its
+  own historical timezone, BusinessHour snapshot and Holiday override;
+- actual operating intervals are scheduled intervals minus overlapping Store temporary closures. Closure minutes
+  outside scheduled time do not count;
+- MenuItem unavailable intervals are intersected only with actual operating intervals. Multiple intervals for
+  the same item are merged before duration is calculated, so overlapping/repeated evidence cannot double-count
+  minutes. The additive projection also exposes the effective Store-pause intervals and each item's effective
+  unavailable intervals so HIST-D can render concrete Store-local segments such as `13:00-18:00` and
+  `20:00-21:00` without reimplementing interval arithmetic in the browser;
+- item unavailability entirely outside actual operating time is excluded from the distinct unavailable-item count;
+- the forward-only cutover day remains PARTIAL unless both Store and Catalog capture began at/before that report
+  day boundary.
+
+Focused regression source covers owner overlap reads/null coverage, Reporting composition adapters, mid-day
+schedule changes, Store closure subtraction, Holiday override, unavailable-item intersection and cutover-day
+fail-closed coverage.
+
+HIST-C does **not** modify Admin Sales Analytics UI, duration formatting, Accounting authority, schema/migrations,
+capture state machines or production runtime. Those remain HIST-D/HIST-E work.
 
 ### HIST-D — Admin Sales Analytics UI
 

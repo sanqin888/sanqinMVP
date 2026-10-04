@@ -19,6 +19,9 @@ describe('Reporting / Brand-Store operating-context boundary', () => {
     const locationContract = read(
       resolve(REPORTS_ROOT, 'reporting-store-location-query.contract.ts'),
     );
+    const historyContract = read(
+      resolve(REPORTS_ROOT, 'reporting-operating-history-query.contract.ts'),
+    );
     const baseline = read(
       resolve(REPOSITORY_ROOT, 'tools/architecture/context-baseline.json'),
     );
@@ -27,12 +30,17 @@ describe('Reporting / Brand-Store operating-context boundary', () => {
     expect(reportsModule).toContain('BRAND_STORE_CONFIG_READER');
     expect(reportsModule).toContain('STORE_SCHEDULE_READER');
     expect(reportsModule).toContain('STORE_STATUS_READER');
+    expect(reportsModule).toContain('STORE_OPERATING_HISTORY_READER');
     expect(reportsModule).toContain('REPORTING_STORE_OPERATING_CONTEXT_QUERY');
+    expect(reportsModule).toContain('REPORTING_STORE_OPERATING_HISTORY_QUERY');
     expect(reportsService).not.toContain("from '../store/");
     expect(reportingContract).not.toContain("from '../store/");
     expect(reportingContract).not.toContain('@prisma/client');
     expect(locationContract).not.toContain("from '../store/");
     expect(locationContract).not.toContain('@prisma/client');
+    expect(historyContract).not.toContain("from '../store/");
+    expect(historyContract).not.toContain("from '../menu/");
+    expect(historyContract).not.toContain('@prisma/client');
     expect(baseline).toContain('"apps/api/src/reports/reports.module.ts"');
     expect(baseline).not.toContain(
       '"accounting-reporting-analytics -> brand-store"',
