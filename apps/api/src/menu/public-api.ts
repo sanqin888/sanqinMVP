@@ -6,6 +6,12 @@ export {
   type CatalogMenuItemAvailabilitySnapshot,
   type CatalogOptionAvailabilitySnapshot,
 } from './catalog-availability-reader.contract';
+export {
+  CATALOG_AVAILABILITY_HISTORY_READER,
+  type CatalogAvailabilityHistoryRange,
+  type CatalogAvailabilityHistoryReaderPort,
+  type CatalogItemUnavailableHistoryInterval,
+} from './catalog-availability-history-reader.contract';
 export { PublicMenuModule } from './public-menu.module';
 export { CatalogExternalMenuFactsModule } from './catalog-external-menu-facts.module';
 export {

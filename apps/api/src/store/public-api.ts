@@ -44,5 +44,13 @@ export {
   type StoreStatusReadSnapshot,
   type StoreStatusReaderPort,
 } from './store-status.contract';
+export {
+  STORE_OPERATING_HISTORY_READER,
+  type StoreOperatingHistoryCoverage,
+  type StoreOperatingHistoryRange,
+  type StoreOperatingHistoryReaderPort,
+  type StoreScheduleHistoryVersion,
+  type StoreTemporaryClosureHistoryInterval,
+} from './store-operating-history.contract';
 export { BrandStoreConfigModule } from './brand-store-config.module';
 export { StoreStatusModule } from './store-status.module';

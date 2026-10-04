@@ -71,7 +71,8 @@ Core Lane B — Accounting / reporting
 
 Parallel product lane
   ├─ Admin Marketing Overview
-  └─ Catalog Store Menu ownership + Admin workspace split
+  ├─ Catalog Store Menu ownership + Admin workspace split
+  └─ Operating / availability history for Sales explanatory context
 
 Later engineering hardening
   ├─ runtime readiness / health
@@ -781,6 +782,44 @@ The approved follow-on keeps Accounting as the money/projection owner while movi
 **Closeout:** this work package is **PRODUCTION VERIFIED / CLOSED**. Admin owns the primary management-analysis presentation for Sales Analytics and Management P&L while Accounting retains canonical financial authority plus Sales Accounting/formal statement surfaces. No DATA-G is planned; future changes require a new product requirement.
 
 DATA-A does not change B5 report arithmetic. B2 canonical Sales and B5 Business Reports remain closed.
+
+### 5.2 Operating / availability history for Sales explanatory context
+
+Priority: **P1 PRODUCT / REPORTING CORRECTNESS**  
+Complexity: **H**  
+State: **READINESS AUDIT COMPLETE / HIST-A LOCAL IMPLEMENTED / USER REVIEW PENDING / MIGRATION REQUIRED / NO LEGACY BACKFILL**  
+Audit base: `origin/dev@24545aba`  
+Detailed plan: `docs/architecture/operating-availability-history.md`
+
+The 2026-10-04 focused audit confirms that current Store schedule, temporary customer-ordering pause and
+MenuItem availability state are persisted, but historical schedule/pause/item-unavailability facts are not.
+The existing Sales Analytics operating-history limitation is therefore real and cannot be repaired from current
+configuration. The approved requirement is forward-only: facts before the new capture cutover remain unknown,
+with no log reconstruction, inference, compatibility backfill or zero-filling.
+
+The work package adds owner-backed Store schedule versions, Store temporary-closure intervals and Catalog
+MenuItem unavailable intervals, then extends the existing `GET /reports/business` projection. Admin Sales
+Analytics adds **营业时间** and **菜品下架** to the existing daily explanatory table. Item duration is the
+intersection of MenuItem unavailable time with actual operating intervals; Store-wide pause time is removed
+first so the same lost-sales minute is not double-attributed to both Store closure and item unavailability.
+
+No standalone Operational History page/card is planned. The existing Coverage card will instead expose
+forward-history coverage. B5 and DATA-A-F remain closed and Accounting financial authority is unchanged.
+
+Delivery order:
+
+1. **HIST-A:** additive schema + owner contract foundation and docs; migration generation is user-local per
+   `AGENTS.md`.
+2. **HIST-B:** atomic Store/Catalog capture, forward-only baseline, duplicate-pause backend guard, removal of
+   generic Item availability bypass and Store-timezone-aware `TEMP_TODAY_OFF`.
+3. **HIST-C:** owner historical readers + Reporting projection through existing composition/public boundaries.
+4. **HIST-D:** Admin Sales daily columns, inline item drill-down and hour/minute formatting.
+5. **HIST-E:** migration/deployment and active production verification.
+
+The approved timezone boundary adds one narrow conceptual read:
+Catalog availability orchestration -> Brand/Store timezone. Catalog persistence must not read Store persistence
+directly; the seam belongs at the existing composition root and must not require a scanner direct-import ceiling
+or SCC allowance.
 
 ## 6. Parallel product lane — Admin Marketing Overview
 
