@@ -187,12 +187,12 @@ describe('BusinessOperationsReportService', () => {
       getStoreOperatingContext: jest.fn().mockResolvedValue(storeContext()),
     };
     const readItemClassifications = jest.fn(
-      async (query: { storeStableId: string; itemStableIds: string[] }) => {
+      (query: { storeStableId: string; itemStableIds: string[] }) => {
         void query;
-        return [
+        return Promise.resolve([
           { itemStableId: 'combo_lunch', itemKind: 'FOOD' as const },
           { itemStableId: 'drink_plum', itemKind: 'BEVERAGE' as const },
-        ];
+        ]);
       },
     );
     const catalogItemClassifications = { readItemClassifications };
