@@ -80,11 +80,7 @@ describe('CatalogUberAvailabilityOrchestrationService', () => {
     try {
       const { service, catalog, storeTimezone } = build();
 
-      await service.setItemAvailability(
-        'store-1',
-        'dish-1',
-        'TEMP_TODAY_OFF',
-      );
+      await service.setItemAvailability('store-1', 'dish-1', 'TEMP_TODAY_OFF');
 
       expect(storeTimezone.getStoreTimezone).toHaveBeenCalledWith('store-1');
       expect(catalog.setItemAvailability).toHaveBeenCalledWith(

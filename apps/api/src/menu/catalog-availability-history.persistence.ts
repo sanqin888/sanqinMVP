@@ -11,7 +11,10 @@ type CatalogAvailabilityItemSnapshot = {
 };
 
 export function isCatalogItemUnavailableAt(
-  item: Pick<CatalogAvailabilityItemSnapshot, 'isAvailable' | 'tempUnavailableUntil'>,
+  item: Pick<
+    CatalogAvailabilityItemSnapshot,
+    'isAvailable' | 'tempUnavailableUntil'
+  >,
   at: Date,
 ): boolean {
   return (
@@ -84,7 +87,10 @@ export async function captureCatalogAvailabilityTransition(
   tx: CatalogHistoryTx,
   input: {
     storeStableId: string;
-    item: Pick<CatalogAvailabilityItemSnapshot, 'stableId' | 'nameEn' | 'nameZh'>;
+    item: Pick<
+      CatalogAvailabilityItemSnapshot,
+      'stableId' | 'nameEn' | 'nameZh'
+    >;
     wasUnavailable: boolean;
     isUnavailable: boolean;
     effectiveAt: Date;

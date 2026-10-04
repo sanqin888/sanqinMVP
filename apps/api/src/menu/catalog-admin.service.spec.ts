@@ -24,11 +24,7 @@ describe('CatalogAdminService availability persistence', () => {
     const service = new CatalogAdminService({} as never);
 
     await expect(
-      service.updateItem(
-        'store-1',
-        'dish-1',
-        { isAvailable: false } as never,
-      ),
+      service.updateItem('store-1', 'dish-1', { isAvailable: false } as never),
     ).rejects.toThrow('Use the dedicated item availability endpoint');
   });
 

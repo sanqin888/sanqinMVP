@@ -172,11 +172,7 @@ export async function startStoreTemporaryClosure(
   });
 }
 
-async function latestClosure(
-  tx: StoreHistoryTx,
-  storeDbId: string,
-  at: Date,
-) {
+async function latestClosure(tx: StoreHistoryTx, storeDbId: string, at: Date) {
   return tx.storeTemporaryClosureInterval.findFirst({
     where: { storeDbId, startedAt: { lte: at } },
     orderBy: [{ startedAt: 'desc' }, { createdAt: 'desc' }],
@@ -194,9 +190,7 @@ export async function finishStoreTemporaryClosure(
     throw new Error(`Tracked Store closure interval is missing: ${storeDbId}`);
   }
   const effectiveEnd =
-    interval.endedAt && interval.endedAt < endedAt
-      ? interval.endedAt
-      : endedAt;
+    interval.endedAt && interval.endedAt < endedAt ? interval.endedAt : endedAt;
   if (
     interval.endedAt &&
     interval.endedAt.getTime() === effectiveEnd.getTime()

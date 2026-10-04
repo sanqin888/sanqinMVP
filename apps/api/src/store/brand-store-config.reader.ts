@@ -248,7 +248,8 @@ export class PrismaBrandStoreConfigWriter
           ? previousReason
           : input.temporaryCloseReason;
       const timezoneChanged =
-        input.timezone !== undefined && input.timezone !== store.config.timezone;
+        input.timezone !== undefined &&
+        input.timezone !== store.config.timezone;
 
       await tx.storeConfig.update({
         where: { storeId: store.id },
@@ -261,12 +262,7 @@ export class PrismaBrandStoreConfigWriter
       }
 
       if (!previousClosed && nextClosed) {
-        await startStoreTemporaryClosure(
-          tx,
-          store.id,
-          effectiveAt,
-          nextReason,
-        );
+        await startStoreTemporaryClosure(tx, store.id, effectiveAt, nextReason);
       } else if (previousClosed && !nextClosed) {
         const previousAutoPause = parseAutoPauseReason(previousReason);
         const plannedEnd = previousAutoPause
@@ -508,10 +504,10 @@ export class PrismaBrandStoreConfigWriter
 }
 
 @Injectable()
-export class StoreOperatingHistoryBootstrapService
-  implements OnApplicationBootstrap
-{
-  private readonly logger = new Logger(StoreOperatingHistoryBootstrapService.name);
+export class StoreOperatingHistoryBootstrapService implements OnApplicationBootstrap {
+  private readonly logger = new Logger(
+    StoreOperatingHistoryBootstrapService.name,
+  );
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -679,9 +675,7 @@ export class PrismaStoreScheduleAdapter
           closeMinutes: true,
         },
       });
-      const next = [...holidays].sort((a, b) =>
-        a.date.localeCompare(b.date),
-      );
+      const next = [...holidays].sort((a, b) => a.date.localeCompare(b.date));
       const unchanged =
         current.length === next.length &&
         current.every(

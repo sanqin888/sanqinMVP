@@ -119,9 +119,10 @@ describe('PrismaStoreScheduleAdapter history versioning', () => {
       select: { scheduleRevision: true },
     });
     expect(scheduleCreate).toHaveBeenCalledWith({
-      data: expect.objectContaining({
+      data: {
         storeDbId: STORE_DB_ID,
         revision: 3,
+        effectiveFrom: expect.any(Date) as Date,
         timezone: 'America/Toronto',
         businessHoursSnapshot: [
           {
@@ -132,7 +133,7 @@ describe('PrismaStoreScheduleAdapter history versioning', () => {
           },
         ],
         holidaysSnapshot: [],
-      }),
+      },
     });
   });
 });

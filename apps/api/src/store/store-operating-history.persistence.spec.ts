@@ -62,7 +62,7 @@ describe('Store operating history persistence', () => {
 
     expect(storeFindUnique).toHaveBeenCalledTimes(1);
     expect(scheduleCreate).toHaveBeenCalledWith({
-      data: expect.objectContaining({
+      data: {
         storeDbId: 'store-db-1',
         revision: 1,
         effectiveFrom: trackingStartedAt,
@@ -84,7 +84,7 @@ describe('Store operating history persistence', () => {
             closeMinutes: null,
           },
         ],
-      }),
+      },
     });
     expect(closureCreate).toHaveBeenCalledWith({
       data: {
@@ -123,11 +123,7 @@ describe('Store operating history persistence', () => {
       storeScheduleVersion: { create: scheduleCreate },
     };
 
-    await appendStoreScheduleVersion(
-      tx as never,
-      'store-db-1',
-      effectiveFrom,
-    );
+    await appendStoreScheduleVersion(tx as never, 'store-db-1', effectiveFrom);
 
     expect(tx.storeOperatingHistoryState.update).toHaveBeenCalledWith({
       where: { storeDbId: 'store-db-1' },
@@ -135,7 +131,8 @@ describe('Store operating history persistence', () => {
       select: { scheduleRevision: true },
     });
     expect(scheduleCreate).toHaveBeenCalledWith({
-      data: expect.objectContaining({
+      data: {
+        storeDbId: 'store-db-1',
         revision: 4,
         effectiveFrom,
         timezone: 'America/Vancouver',
@@ -148,7 +145,7 @@ describe('Store operating history persistence', () => {
           },
         ],
         holidaysSnapshot: [],
-      }),
+      },
     });
   });
 
@@ -165,11 +162,7 @@ describe('Store operating history persistence', () => {
     };
     const actualResume = new Date('2026-10-04T15:15:00.000Z');
 
-    await finishStoreTemporaryClosure(
-      tx as never,
-      'store-db-1',
-      actualResume,
-    );
+    await finishStoreTemporaryClosure(tx as never, 'store-db-1', actualResume);
 
     expect(update).toHaveBeenCalledWith({
       where: { id: 'closure-1' },

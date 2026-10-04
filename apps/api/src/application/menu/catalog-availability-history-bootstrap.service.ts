@@ -11,9 +11,7 @@ import {
 } from './catalog-store-context.port';
 
 @Injectable()
-export class CatalogAvailabilityHistoryBootstrapService
-  implements OnApplicationBootstrap
-{
+export class CatalogAvailabilityHistoryBootstrapService implements OnApplicationBootstrap {
   private readonly logger = new Logger(
     CatalogAvailabilityHistoryBootstrapService.name,
   );
@@ -28,10 +26,11 @@ export class CatalogAvailabilityHistoryBootstrapService
     const storeStableIds = await this.stores.listStoreStableIds();
     for (const storeStableId of storeStableIds) {
       const trackingStartedAt = new Date();
-      const initialized = await this.catalog.initializeAvailabilityHistoryForStore(
-        storeStableId,
-        trackingStartedAt,
-      );
+      const initialized =
+        await this.catalog.initializeAvailabilityHistoryForStore(
+          storeStableId,
+          trackingStartedAt,
+        );
       if (initialized) {
         this.logger.log(
           `Started forward-only Catalog availability history: storeStableId=${storeStableId} trackingStartedAt=${trackingStartedAt.toISOString()}`,

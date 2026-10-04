@@ -89,9 +89,10 @@ describe('PrismaBrandStoreConfigWriter history invariants', () => {
       select: { scheduleRevision: true },
     });
     expect(scheduleCreate).toHaveBeenCalledWith({
-      data: expect.objectContaining({
+      data: {
         storeDbId: STORE_DB_ID,
         revision: 2,
+        effectiveFrom: expect.any(Date) as Date,
         timezone: 'America/Vancouver',
         businessHoursSnapshot: [
           {
@@ -102,7 +103,7 @@ describe('PrismaBrandStoreConfigWriter history invariants', () => {
           },
         ],
         holidaysSnapshot: [],
-      }),
+      },
     });
   });
 

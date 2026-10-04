@@ -56,10 +56,7 @@ export class CatalogUberAvailabilityOrchestrationService {
     itemStableId: string,
     mode: CatalogAvailabilityMode,
   ) {
-    const timing = await this.resolveAvailabilityTiming(
-      storeStableId,
-      mode,
-    );
+    const timing = await this.resolveAvailabilityTiming(storeStableId, mode);
     const updated = await this.catalog.setItemAvailability(
       storeStableId,
       itemStableId,
@@ -88,10 +85,7 @@ export class CatalogUberAvailabilityOrchestrationService {
     optionStableId: string,
     mode: CatalogAvailabilityMode,
   ) {
-    const timing = await this.resolveAvailabilityTiming(
-      storeStableId,
-      mode,
-    );
+    const timing = await this.resolveAvailabilityTiming(storeStableId, mode);
     const result = await this.catalog.setTemplateOptionAvailability(
       storeStableId,
       optionStableId,
@@ -115,8 +109,7 @@ export class CatalogUberAvailabilityOrchestrationService {
     if (mode !== 'TEMP_TODAY_OFF') {
       return { effectiveAt, tempUnavailableUntil: null };
     }
-    const timezone =
-      await this.storeTimezone.getStoreTimezone(storeStableId);
+    const timezone = await this.storeTimezone.getStoreTimezone(storeStableId);
     const storeNow = DateTime.fromJSDate(effectiveAt, { zone: timezone });
     const midnight = storeNow.plus({ days: 1 }).startOf('day').toUTC();
     if (!storeNow.isValid || !midnight.isValid) {
