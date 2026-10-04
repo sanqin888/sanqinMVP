@@ -16,22 +16,16 @@ describe('Public Web runtime config boundary', () => {
     'utf8',
   );
 
-  it(
-    'keeps browser Maps configuration distinct from server geocoding credentials',
-    () => {
-      expect(serviceSource).toContain('GOOGLE_MAPS_BROWSER_KEY');
-      expect(serviceSource).not.toContain('GOOGLE_MAPS_API_KEY');
-    },
-  );
+  it('keeps browser Maps configuration distinct from server geocoding credentials', () => {
+    expect(serviceSource).toContain('GOOGLE_MAPS_BROWSER_KEY');
+    expect(serviceSource).not.toContain('GOOGLE_MAPS_API_KEY');
+  });
 
-  it(
-    'removes build-time Maps and Store coordinate variables from Web runtime source',
-    () => {
-      const source = googleMapsSource + '\n' + locationSource;
-      expect(source).not.toMatch(
-        /NEXT_PUBLIC_(?:GOOGLE_MAPS|STORE_LATITUDE|STORE_LONGITUDE)/,
-      );
-      expect(googleMapsSource).toContain('getPublicWebConfig');
-    },
-  );
+  it('removes build-time Maps and Store coordinate variables from Web runtime source', () => {
+    const source = googleMapsSource + '\n' + locationSource;
+    expect(source).not.toMatch(
+      /NEXT_PUBLIC_(?:GOOGLE_MAPS|STORE_LATITUDE|STORE_LONGITUDE)/,
+    );
+    expect(googleMapsSource).toContain('getPublicWebConfig');
+  });
 });
