@@ -1,8 +1,8 @@
 # Admin Data — Sales Analytics / Management P&L migration
 
 Date: 2026-10-03  
-Baseline: latest `origin/dev@f91b4bce` after Admin Data production polish PR #2674  
-Current state: **DATA-A-D DEPLOYED; DATA-B1 WEATHER PRODUCTION VERIFIED; MANAGEMENT P&L PRODUCTION VERIFIED; DATA-E PARTIAL VERIFICATION; SALES ITEM-MIX FOLLOW-UP LOCAL / USER REVIEW PENDING; DATA-F BLOCKED**
+Baseline: latest `origin/dev@90308226` after Sales commercial-item mix follow-up PR #2676  
+Current state: **DATA-A-D DEPLOYED; DATA-B1 WEATHER PRODUCTION VERIFIED; MANAGEMENT P&L PRODUCTION VERIFIED; DATA-E PRODUCTION VERIFIED / CLOSED; SALES ITEM-MIX FOLLOW-UP MERGED / CI GREEN; DATA-F LOCAL IMPLEMENTED / USER REVIEW PENDING**
 
 ## Product goal
 
@@ -139,7 +139,7 @@ evidence rather than infer data existence from the browser clock.
 
 ### DATA-B1 — Weather History foundation
 
-State: **SOURCE MERGED / PR #2668 / SOURCE HEAD `6ef4d330` / SQUASH `37ac9c56` / CI #6822 GREEN / MIGRATION `7934d875` REVIEWED ADDITIVE / DEV HISTORY ALIGNED / PRODUCTION APPLY PENDING / NO NEW DEPENDENCY / NO GRAPH OR BASELINE CHANGE**.
+State: **MERGED / PR #2668 / SOURCE HEAD `6ef4d330` / SQUASH `37ac9c56` / CI #6822 GREEN / MIGRATION `7934d875` REVIEWED + APPLIED / PRODUCTION VERIFIED / NO NEW DEPENDENCY / NO GRAPH OR BASELINE CHANGE**.
 
 Implementation:
 
@@ -161,7 +161,7 @@ Persistence is additive but requires a user-generated migration. Suggested migra
 pnpm --filter api exec prisma migrate dev --create-only --name add_reporting_weather_daily_facts
 ```
 
-The user-generated migration `20261003185132_add_reporting_weather_daily_facts` is now committed to `dev` as `7934d875` and has been reviewed as the expected additive-only CREATE TABLE + primary key + two indexes. It contains no DROP, ALTER, rename, backfill or existing-table mutation. The source/schema/history invariant is therefore restored on `dev`; production promotion/application remains gated on the normal deployment flow.
+The user-generated migration `20261003185132_add_reporting_weather_daily_facts` is committed to `dev` as `7934d875`, reviewed as the expected additive-only CREATE TABLE + primary key + two indexes, and applied in production. It contains no DROP, ALTER, rename, backfill or existing-table mutation. The source/schema/history invariant is restored and Weather persistence/provider recovery is production verified.
 
 ### DATA-B2 — Calendar / Holiday Context foundation
 
@@ -198,7 +198,7 @@ Implementation:
 - daily explanatory context joins canonical Sales, Orders order count/AOV/operating expected Order total, Weather temperature/precipitation/snow and Calendar holiday/long-weekend labels. The UI explicitly states that operational Order totals are not Accounting revenue and contextual correlation is not proven causation;
 - channel table uses canonical Journal amounts with descriptive channel attribution; commercial-item quantities/penetration come from Orders Reporting and do not recalculate revenue;
 - coverage panel preserves provider financial coverage, Weather availability, Calendar availability, current-only Store operating-history limitation and Meteostat attribution/license;
-- existing Accounting Sales presentation is intentionally retained until DATA-E production verification and later DATA-F presentation contraction.
+- the original Accounting Sales presentation was intentionally retained through DATA-E; DATA-F now locally contracts it to the Sales Accounting reconciliation surface after production verification closed.
 
 Focused date/model/source-characterization regressions are included. Per `AGENTS.md`, local lint/build/test are not run before user review; GitHub Actions remains the validation gate after remote authorization.
 
@@ -217,15 +217,15 @@ Implementation:
 - the existing business-timezone-safe Accounting report date helper moves to `apps/web/src/lib/accounting-reporting-date.ts` with the old Accounting route helper retained as a re-export, allowing both surfaces to share This month / Last month / This quarter / This year semantics without Admin importing Accounting route implementation;
 - the Admin surface preserves custom from/to, month/quarter/year grouping, Income, Expenses, Net adjustment effect, Net profit, Adjustment effect breakdown, P&L trend, Cash Movement buckets, Category summary, Source summary and existing Management PDF/CSV exports;
 - whole-business / whole-ledger scope is explicit in both page introduction and report disclosure. Cash Movement remains explicitly labeled **Journal-only management aid; not a formal Statement of Cash Flows**;
-- current Accounting Reports Management P&L, Trial Balance and Balance Movement remain present. Their removal/reframing stays deferred to DATA-F after DATA-E production verification.
+- Accounting Reports Management P&L, Trial Balance and Balance Movement were retained through DATA-E. DATA-F now locally removes the duplicated Management presentation while preserving Trial Balance / Balance Movement.
 
 Focused source-characterization regressions pin owner endpoints only, no Store query/scope, non-Store-scoped navigation, shared-contract compatibility, absence of Admin financial arithmetic/persistence coupling, scope/disclaimer text, export reuse and retention of the current Accounting views. Final head `8b9d23b0` passed CI #6832 across API/Web validation, Browser E2E, printer-agent and Windows workstation; an older Phase 9 source-characterization assertion was updated to follow the approved shared Management contract extraction rather than requiring those DTO fields to remain physically declared in the Accounting route subtree.
 
 ### DATA-E — Production verification
 
-State: **READINESS AUDIT COMPLETE / PROMOTION PR #2672 CI #6836 GREEN / MAIN MERGE + PRODUCTION DEPLOYMENT PENDING / DATA-B1 PRODUCTION MIGRATION APPLY PENDING / NO PRODUCTION MUTATION PERFORMED**. Local readiness branch `chore/admin-data-production-verification` was created from DATA-D squash `b5acbf09`; latest `origin/dev@a2fbda75` has no file-tree difference from `b5acbf09` and only reconciles current `main` history.
+State: **PRODUCTION VERIFIED / CLOSED / DATA-F UNBLOCKED**. Readiness source was delivered through PR #2673 / merge `6877ce25`; final verification was completed against deployed `main@f91b4bce`.
 
-Read-only production readiness evidence on 2026-10-03:
+Pre-promotion read-only readiness evidence recorded on 2026-10-03:
 
 - production repository is clean on local checkout `main@db239d70`; the GitHub `main` ref is `ca632b0c`, but `db239d70 -> ca632b0c` has zero changed files and is history-only reconciliation, so the deployed production tree is content-equivalent to current GitHub main before Admin Data promotion;
 - latest `origin/dev` is `a2fbda75`. The compare `b5acbf09 -> a2fbda75` also has zero changed files; `a2fbda75` is the merge-history reconciliation of current main into dev after DATA-D;
@@ -236,9 +236,9 @@ Read-only production readiness evidence on 2026-10-03:
 - Store `4750_Yonge_Street` has the required Reporting location/jurisdiction metadata: `America/Toronto`, `43.760288/-79.412167`, `CA / ON`;
 - DATA-D source is merged through PR #2671 / final head `8b9d23b0` / CI #6832 green / squash `b5acbf09`.
 
-These facts make DATA-E **ready for controlled promotion**, but they are not production verification. Production promotion/deployment and the production Prisma migration application remain separate operational gates. In particular, repository rules require explicit production authorization before `prisma migrate deploy` or any equivalent database mutation.
+At readiness time these facts made DATA-E **ready for controlled promotion** but did not themselves constitute production verification. Promotion, production migration application and deployment were subsequently completed under the normal explicit operational gates.
 
-Required rollout order:
+Completed rollout order was:
 
 1. after explicit promotion authorization, merge the already-open, CI-green PR #2672 (`dev@a2fbda75 -> main@ca632b0c`), or re-audit if either ref moves before merge;
 2. before changing production state, reconfirm clean intended `main`, recent database backup, healthy baseline/runtime and absence of an unrelated deployment/provider/payment incident;
@@ -258,17 +258,19 @@ Production product verification matrix:
 - **Compatibility/access:** existing Accounting Management P&L, Trial Balance and Balance Movement remain available during DATA-E. Existing ADMIN/ACCOUNTANT/Admin access boundaries must not be broadened by the new Admin presentation.
 - **Runtime evidence:** record deployed commit, migration status, healthy Compose state, local/public readiness and bounded API/Web/worker logs with no migration/schema/restart-loop errors.
 
-DATA-F remains blocked until this matrix is completed against the deployed production version. No Accounting presentation is removed merely because DATA-D is merged.
+This production matrix is now complete under the evidence recorded below and DATA-E is closed. DATA-F is therefore unblocked; Accounting presentation contraction begins only in the separate DATA-F source slice.
 
 #### 2026-10-03 production follow-up — Weather recovery + Admin presentation polish
 
 Production now has the Weather migration applied and the Reporting table active. Initial page use occurred before `METEOSTAT_RAPIDAPI_KEY` was configured, creating 30 persisted `UNAVAILABLE / observationHours=0` rows for 2026-09-04 through 2026-10-03. After the server-side key was configured, a 90-day request proved the provider path healthy by materializing 60 `HISTORICAL` days through 2026-09-03. The 30 pre-configuration rows were then explicitly removed under production authorization; the next 30-day request repopulated them as **29 HISTORICAL + 1 PROVISIONAL (Store-local Today)**, confirming Meteostat recovery.
 
-The local follow-up branch `fix/admin-data-weather-chart-polish` prevents recurrence by marking missing provider configuration non-cacheable while preserving bounded negative caching for actual attempted provider failures. It also moves Evidence Coverage directly below the Sales Analytics header, assigns distinct colors to current Sales / previous Sales / temperature / holiday chart series, formats chart-tooltip temperature to one decimal, shows Calendar weekday names on non-holiday days (retaining long-weekend context after the weekday when present), and assigns distinct Income / Expenses / Net Profit colors to the Management P&L trend. This is a Reporting policy + Web presentation follow-up only: no Prisma/schema/migration, package, Accounting arithmetic, owner authority, context direction, scanner allowance, SCC or architecture-baseline change.
+Merged production polish PR #2674 / squash `f91b4bce` prevents recurrence by marking missing provider configuration non-cacheable while preserving bounded negative caching for actual attempted provider failures. It also moves Evidence Coverage directly below the Sales Analytics header, assigns distinct colors to current Sales / previous Sales / temperature / holiday chart series, formats chart-tooltip temperature to one decimal, shows Calendar weekday names on non-holiday days (retaining long-weekend context after the weekday when present), and assigns distinct Income / Expenses / Net Profit colors to the Management P&L trend. This is a Reporting policy + Web presentation follow-up only: no Prisma/schema/migration, package, Accounting arithmetic, owner authority, context direction, scanner allowance, SCC or architecture-baseline change.
 
 Production verification after PR #2674 also confirmed the Admin Management P&L runtime against its Accounting owner contracts: whole-business / whole-ledger P&L and Cash Movement requests returned 200 without Store scope, date-range changes were exercised, PDF and CSV exports were manually verified as usable, and side-by-side Admin versus Accounting screenshots matched Income $45,428.39, Expenses $30,939.47, Net adjustment effect -$2,920.70 and Net profit $11,568.22 for 2026-01-01 through 2026-10-03 grouped by month. Management P&L is therefore **PRODUCTION VERIFIED**.
 
-DATA-E remains **PARTIALLY PRODUCTION VERIFIED** until the remaining Store-scope/Sales/date, known-holiday/long-weekend and compatibility/access checks are completed. DATA-F remains blocked.
+DATA-E is now **PRODUCTION VERIFIED / CLOSED**. The operator verified that Admin Sales and Accounting Sales match for 2026-09-27 through 2026-10-03 on Net Sales Revenue, Channel Contribution and Discounts. Production request logs independently show the Store-scoped Admin Sales request and the corresponding Accounting Sales request returning 200 for that exact range, alongside exercised Store-local single-day and 30-day paths; prior 90-day use was already exercised during Weather recovery. Store-switch verification is not applicable yet because production has exactly one active Store.
+
+Calendar verification is accepted on deterministic evidence rather than an external-provider dependency: the deployed 30-day Calendar request for 2026-09-04 through 2026-10-03 returned 200 for Store `4750_Yonge_Street`, whose production jurisdiction is `CA/ON`; the deployed ruleset pins Labour Day to 2026-09-07 and its Friday/Monday long weekend to 2026-09-05 through 2026-09-07, and the Web rendering path labels supported holiday/long-weekend rows without consulting mutable Store closure state. Access compatibility also remains unchanged: Admin is still ADMIN-only, Accounting remains ADMIN/ACCOUNTANT, and production currently has no ACCOUNTANT user to perform a separate live wrong-surface login check, so that runtime sub-check is N/A while source/CI guard coverage remains authoritative. Production remains clean on `main@f91b4bce` with healthy db/api/web/worker containers and the Weather migration applied; one isolated DataRetention cleanup transaction timeout was observed after startup, with no migration/schema error or restart loop and no relationship to the Admin Data reporting paths.
 
 #### 2026-10-03 follow-up — Sales commercial-item mix semantics
 
@@ -282,13 +284,16 @@ This reuses the already-authorized `accounting-reporting-analytics -> catalog-pr
 
 ### DATA-F — Accounting UI contraction
 
-Only after Admin replacement surfaces are verified:
+State: **LOCAL IMPLEMENTED / USER REVIEW PENDING / CI NOT RUN / NO MIGRATION / NO DEPENDENCY / NO BACKEND CONTRACT OR GRAPH CHANGE**.
 
-- rename/reframe Accounting Sales as **Sales Accounting**;
-- remove management-analysis presentation that has moved to Admin while retaining canonical
-  Sales authority/read contracts;
-- remove Management P&L presentation from Accounting Reports;
-- keep Trial Balance / Balance Movement and later formal statements in Accounting.
+After DATA-E production verification closed the replacement-surface gate, DATA-F applies the approved presentation contraction only:
+
+- Accounting `/sales` is renamed/reframed as **Sales Accounting**. It continues to read the unchanged canonical `/accounting/report/sales` owner contract and keeps accounting/reconciliation-oriented content: Gross Sales, Discounts, Net Sales Revenue, Output Tax, channel costs, channel/payment attribution, Tender mix, Provider financial coverage, source/adjustment visibility and detailed revenue/fee components;
+- duplicated management-analysis presentation is removed from Accounting Sales: no equal-period comparison request/state, no Daily Sales trend chart, no Share percentage and no Channel Contribution presentation. Those management comparisons/trends remain in Admin Sales Analytics;
+- the obsolete Accounting-only equal-period helper and its B4-D2 compatibility tests are retired because that behavior no longer has a runtime consumer; DATA-F adds a focused contraction regression instead;
+- Accounting `/reports` becomes statement-only: **Trial Balance** is the default view, **Balance Movement** remains available, statement date presets/custom range, Journal drill-through and statement PDF/CSV exports remain intact;
+- Management P&L/Cash Movement UI and Management export links are removed from Accounting Reports, but their Accounting-owned backend/read/export contracts remain unchanged because Admin Management P&L continues to consume them;
+- the shared Management and Sales browser DTO contracts remain compatible. No Accounting arithmetic, Journal/posting authority, API authorization, role/surface matrix, Prisma/schema/migration, package/lockfile, scanner allowance, SCC or architecture baseline is changed. ACCOUNTANT therefore keeps the Accounting-only Sales Accounting and canonical statement surfaces; the Admin management-analysis replacements remain ADMIN-only under the existing frozen role matrix.
 
 ## Architecture impact
 
