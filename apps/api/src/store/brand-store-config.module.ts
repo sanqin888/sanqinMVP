@@ -4,6 +4,7 @@ import {
   PrismaBrandStoreConfigReader,
   PrismaBrandStoreConfigWriter,
   PrismaStoreScheduleAdapter,
+  StoreOperatingHistoryBootstrapService,
 } from './brand-store-config.reader';
 import {
   BRAND_STORE_CONFIG_READER,
@@ -12,7 +13,6 @@ import {
   STORE_DIRECTORY_WRITER,
   STORE_TIMEZONE_READER,
 } from './brand-store-config.contract';
-import { StoreOperatingHistoryBootstrapService } from './store-operating-history-bootstrap.service';
 import { StoreDirectoryService } from './store-directory.service';
 import {
   STORE_SCHEDULE_READER,
