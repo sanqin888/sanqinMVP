@@ -138,6 +138,33 @@ changed component returns through its own health contract and the R4 verificatio
 helper passes afterward. A full-stack restart is not required merely to verify
 one rebuilt component.
 
+## Published-image deployment / rollback
+
+Production application containers are release artifacts, not build hosts. Set
+`SANQ_IMAGE_SHA` to the full 40-character SHA of a `main` commit whose
+`ci` and `publish-images` workflows both succeeded, then pull only the
+application services and recreate without building:
+
+```bash
+docker compose pull api ubereats-worker web
+docker compose up -d --no-build
+```
+
+Do not run `docker compose pull` without service names during the application
+release step because `postgres:15-alpine` is a separate mutable infrastructure
+image and must not be refreshed implicitly with an application rollout.
+
+API and `ubereats-worker` deliberately reference the same
+`ghcr.io/sanqin888/sanq-api:<SANQ_IMAGE_SHA>` artifact. Web references the
+matching `sanq-web` tag. Missing `SANQ_IMAGE_SHA` must make Compose fail
+closed rather than fall back to a mutable tag.
+
+For normal rollback, restore `SANQ_IMAGE_SHA` to the previous verified
+published release, pull the same three services, run `docker compose up -d
+--no-build`, and repeat the readiness checks. During the first GHCR cutover,
+retain the pre-cutover local application images and previous Compose revision
+until the new release is verified; do not prune them during the cutover window.
+
 ## Failure handling
 
 If any expected result fails:

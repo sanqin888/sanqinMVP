@@ -48,17 +48,26 @@ production VM verified on 2026-09-29 does not have that path; its existing
 Compose environment resolves correctly when `docker compose` is run from the
 production repository directory.
 
-2) Build and run
+2) Pull and run a validated release
 
 The production Compose environment must define `GOOGLE_MAPS_BROWSER_KEY`, `CLOVER_WEB_PUBLIC_TOKEN`, and `CLOVER_WEB_SDK_URL` before the runtime-config slices are deployed. `GOOGLE_MAPS_BROWSER_KEY` remains distinct from the server-side `GOOGLE_MAPS_API_KEY` used for geocoding; Clover Web Ecommerce browser configuration is supplied by the API at runtime while `CLOVER_MERCHANT_ID` remains the existing server-side merchant identity. The Web image is environment-neutral and must not receive production `NEXT_PUBLIC_*` build args.
 
+Production must also define `SANQ_IMAGE_SHA` as the full 40-character commit SHA of a `main` release whose `ci` and `publish-images` workflows both completed successfully. API and Uber worker intentionally use the same API image tag.
+
+Pull only the application images so deployment does not refresh the mutable PostgreSQL base image unintentionally:
+
 ```bash
-docker compose up -d --build
+docker compose pull api ubereats-worker web
+docker compose up -d --no-build
 ```
+
+Do not use `docker compose up -d --build` on production. Production application images are built by GitHub Actions and pulled from GHCR; the Lightsail VM is runtime-only.
 
 Do not treat container start alone as deployment success. Apply any explicitly
 authorized production Prisma migrations through the normal controlled migration
 gate, then verify migration parity plus local/public runtime readiness.
+
+For rollback after a GHCR-based release, set `SANQ_IMAGE_SHA` back to the full SHA of the previously verified published release, pull the three application services again, run `docker compose up -d --no-build`, and repeat runtime-readiness verification. For the first GHCR cutover, keep the pre-cutover local images and prior Compose revision available until the new release is verified; do not prune them during the cutover window.
 
 GHCR image publishing foundation:
 
