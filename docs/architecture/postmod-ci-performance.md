@@ -14,7 +14,7 @@ Batch 4 branch: `ci/lint-concurrency-batch-4`
 Batch 4 state: **MERGED / PR #2697 / MERGE `28d61eb6` / PR CI #6908 GREEN / DEV PUSH CI #6909 GREEN / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**  
 Batch 5 baseline: `origin/dev@28d61eb683f839d04dae00d9f7cb1f3a5e67469a`  
 Batch 5 branch: `ci/image-build-optimization-batch-5`  
-Batch 5 state: **LOCAL IMPLEMENTED / USER REVIEW PENDING / IMAGE CI NOT RUN / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**
+Batch 5 state: **PR #2698 / SOURCE HEAD `eec6030b` CI #6910 GREEN / IMAGE CHECKS #1 GREEN / MERGE PENDING / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**
 
 ## Evidence and goal
 
@@ -46,7 +46,7 @@ Batch 1 was reviewed and explicitly authorized for remote delivery. PR #2694 fin
 
 These two runs are approximately 28% and 25% shorter than baseline #6901 (206 seconds), but are not enough to claim a stable improvement across runner variation. PR #6902 had API static checks 140s, API tests 77s, Web 112s, E2E 126s and API aggregate 3s. Dev #6903 had API static checks 145s, API tests 101s, Web 79s, E2E 150s and API aggregate 2s. The critical job alternated between static checks and E2E.
 
-Batch 2 was reviewed and authorized for remote delivery. PR #2695 final head `3417ee56900bc9ee665c2e3316743648f7353bfb` passed all seven jobs in CI #6904 (171s) and squash-merged into dev as `ad17c92c239921a805e4dd6e34c3db08aa30bab1`. That exact dev push passed CI #6905 (145s). Lint timing, the top-20 suite summary and the 7-day JSON artifact were produced in both runs; full API discovery remained 486 passing suites / 2956 passing tests with the same two skips and all 13 E2E journeys passed. No local lint/build/test was run. Batch 3 was reviewed and authorized for remote delivery. PR #2696 head `02ae817854dff35626fcb36752b1117392ca2c53` passed CI #6906 (156s) and squash-merged as `936bf21a75ca79a5e1488a4d998d28869d7dc99a`; exact dev push CI #6907 passed in 154s. Both runs passed all seven jobs, full API discovery (486/2956 with the same two skips) and 13 browser journeys. Batch 4 was reviewed and authorized for remote delivery. PR #2697 head `8fc8edc9244b99f4c44692f92ab1f64b4c8934f2` passed normal CI #6908 (143s) and all three benchmark jobs, then squash-merged as `28d61eb683f839d04dae00d9f7cb1f3a5e67469a`. Exact dev push CI #6909 passed all seven jobs in 138s. Full API discovery and 13 browser journeys remained unchanged. Batch 5 is at local source/diff/status review, uncommitted and unpushed.
+Batch 2 was reviewed and authorized for remote delivery. PR #2695 final head `3417ee56900bc9ee665c2e3316743648f7353bfb` passed all seven jobs in CI #6904 (171s) and squash-merged into dev as `ad17c92c239921a805e4dd6e34c3db08aa30bab1`. That exact dev push passed CI #6905 (145s). Lint timing, the top-20 suite summary and the 7-day JSON artifact were produced in both runs; full API discovery remained 486 passing suites / 2956 passing tests with the same two skips and all 13 E2E journeys passed. No local lint/build/test was run. Batch 3 was reviewed and authorized for remote delivery. PR #2696 head `02ae817854dff35626fcb36752b1117392ca2c53` passed CI #6906 (156s) and squash-merged as `936bf21a75ca79a5e1488a4d998d28869d7dc99a`; exact dev push CI #6907 passed in 154s. Both runs passed all seven jobs, full API discovery (486/2956 with the same two skips) and 13 browser journeys. Batch 4 was reviewed and authorized for remote delivery. PR #2697 head `8fc8edc9244b99f4c44692f92ab1f64b4c8934f2` passed normal CI #6908 (143s) and all three benchmark jobs, then squash-merged as `28d61eb683f839d04dae00d9f7cb1f3a5e67469a`. Exact dev push CI #6909 passed all seven jobs in 138s. Full API discovery and 13 browser journeys remained unchanged. The user reviewed Batch 5 and authorized remote delivery. PR #2698 source head `eec6030bc103acfe147bdfb91d0b17e7226d34cf` passed all seven normal jobs in CI #6910 (163s) plus both image-check jobs (190s). Its exact tested PR merge checkout was `1f5f61b2415ca0ec5d42ee824e450f0fe4b4a3f5`. Merge remains gated on the final PR head after this evidence-only documentation update.
 
 Preserved remote acceptance criteria (first successful samples are recorded above; broader performance and negative-path evidence remain separate):
 
@@ -131,7 +131,7 @@ Reference: [ESLint concurrency option](https://eslint.org/docs/latest/use/comman
 
 **Owner / class:** Runtime / Data / CI / Ops; atomic internal build/measurement change. Consumers are the main-validated immutable API/Web publisher, API and Uber worker using the same API artifact, Web standalone runtime, and developers building the same Dockerfiles.
 
-**State:** LOCAL IMPLEMENTED / USER REVIEW PENDING / IMAGE CI NOT RUN, based on `origin/dev@28d61eb6`. User requested image-build optimization and actual CI data. No local lint/build/test, image build, main promotion or production mutation has been performed.
+**State:** PR #2698 / SOURCE HEAD `eec6030b` CI #6910 GREEN / IMAGE CHECKS #1 GREEN / MERGE PENDING, based on `origin/dev@28d61eb6`. User reviewed the source change and authorized remote delivery. Authoritative remote builds and smoke checks passed on the recorded source head; final-head checks must pass after documentation synchronization. No local lint/build/test/image build, main promotion or production mutation has been performed.
 
 ### Observed CI data
 
@@ -179,7 +179,20 @@ BuildKit work can overlap; these step durations must not be added as a general c
 
 ### Review and remote acceptance
 
-Local source/diff/status review only; new image speed, image size and packaging checks are **not yet measured or passed**. After user review and remote-delivery authorization, require all seven normal CI jobs and both image jobs green on the final PR head, inspect smoke output plus reports/cache records, and confirm full API discovery and 13 journeys. The self-path image workflow has no dev-push trigger, so merged-dev CI alone does not rerun it.
+Source/diff/status was reviewed and the user authorized remote delivery. [CI #6910](https://github.com/sanqin888/sanqinMVP/actions/runs/37239996473) passed all seven jobs on source head `eec6030bc103acfe147bdfb91d0b17e7226d34cf` in 163s: API static 151s, full API Jest 122s, Web 103s, E2E 139s, aggregate 4s, Windows 23s and printer 15s. Discovery remained 486 API suites / 2956 tests with the same two skips, Web 71/274 and 13 browser journeys (14.6s).
+
+[Image checks #1](https://github.com/sanqin888/sanqinMVP/actions/runs/37239996567) passed both actual-image smoke jobs in 190s (API job 188s / Web 157s), with JSON artifacts and native build records uploaded. Recorded checkout `1f5f61b2415ca0ec5d42ee824e450f0fe4b4a3f5` is GitHub's tested merge revision, distinct from PR source head.
+
+| Image | Build-action seconds | Local uncompressed bytes | CPU model | Cache state / actual build |
+| --- | ---: | ---: | --- | --- |
+| API | 158.966 | 373609686 | AMD EPYC 7763 | dependency restore 30.1s; shared build 4.6s; builder Client 3.6s; Nest 31.1s; deploy 16.2s; target Client 4.1s; runner layers cached; cache export 40.2s |
+| Web | 135.490 | 79503974 | Intel Xeon Platinum 8370C | dependency restore 32.5s; shared build 4.9s; actual Next compile/static checks 77.1s; cache export 12.5s |
+
+Both images were linux/amd64 on four logical CPUs / Ubuntu image 20260927.149.1. API image ID/digest was `sha256:33948d74efe2c245cd9eb2ead65b0fe5d18ab8152a884a5388555af066875470`; Web was `sha256:047fbdbbc104c70a19985b128657ab8c136cf87f8612287b96f923c1a05a9fba`. API/worker compiled entries, shared/Nest/native dependencies, Client construction, existing Prisma CLI 6.19.1, OCR languages and Poppler checks passed; actual Web container /health and standalone assets passed. The manifest's existing Prisma range resolves to 6.19.1; no dependency version was changed.
+
+This is a mixed-cache first sample: dependency layers were restored, changed prerequisite layers and actual compilers ran, and some API runner layers were cached. Build-action time includes local export/load/cache transfer; the old 207s API publisher job includes setup/push/post-job work. Thus 188s versus 207s is an observation under different revisions/runners/export modes, not proof of a 9% optimization. Old Web 19s had cached compiler output, whereas this Web compiled; no regression may be inferred from that difference alone. No controlled before/after image-size baseline or stable speed gain is established.
+
+Require all seven normal CI jobs and both image jobs green on the final head after this documentation update before merging. The self-path image workflow has no dev-push trigger, so merged-dev CI alone does not rerun it.
 
 Compare PR image build/load data with like-for-like builds; do not equate its local-load elapsed time with release push duration or cached Web with a cold compile. Collect multiple comparable image runs/cache states and image sizes before claiming a stable gain or changing cache backend/compression. Release-path validation of these Dockerfiles requires separately authorized main promotion; no production change is part of this batch. Documentation synchronization uses the existing supplement because the previously reported main-worklog MCP size limit remains unresolved.
 
