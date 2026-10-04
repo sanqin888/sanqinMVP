@@ -1,0 +1,139 @@
+name: api-lint-benchmark
+
+# One-off comparison when this experiment changes; ordinary source PRs skip it.
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - ".github/workflows/api-lint-benchmark.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: api-lint-benchmark-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  benchmark:
+    name: API lint benchmark (${{ matrix.concurrency }})
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # "off" explicitly lints all files in the main thread.
+        concurrency: ["off", "2", "auto"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+        with:
+          version: 9.0.0
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: "pnpm"
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --prefer-offline
+
+      - name: Build shared libraries
+        run: |
+          pnpm --filter @shared/foundation build &
+          foundation_pid=$!
+          pnpm --filter @shared/menu build &
+          menu_pid=$!
+          pnpm --filter @shared/order build &
+          order_pid=$!
+
+          status=0
+          wait "$foundation_pid" || status=1
+          wait "$menu_pid" || status=1
+          wait "$order_pid" || status=1
+          exit "$status"
+
+      - name: Generate Prisma Client
+        run: pnpm --filter api prisma:generate
+
+      - name: Measure two full lint processes
+        env:
+          LINT_CONCURRENCY: ${{ matrix.concurrency }}
+          CHECKOUT_SHA: ${{ github.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          TIMING: "1"
+        run: |
+          node --input-type=module <<'NODE'
+          import { spawnSync } from 'node:child_process';
+          import { appendFileSync, writeFileSync } from 'node:fs';
+          import { availableParallelism, cpus } from 'node:os';
+          import { join } from 'node:path';
+          import { performance } from 'node:perf_hooks';
+
+          const mode = process.env.LINT_CONCURRENCY;
+          if (!['off', '2', 'auto'].includes(mode)) {
+            throw new Error('Unexpected lint concurrency mode');
+          }
+          const results = [];
+          for (let sample = 1; sample <= 2; sample += 1) {
+            console.log('::group::Full API lint: ' + mode + ', sample ' + sample);
+            const started = performance.now();
+            const child = spawnSync('pnpm', [
+              '--filter', 'api', 'exec', 'eslint',
+              '{src,apps,libs,test}/**/*.ts', '--concurrency=' + mode,
+            ], { stdio: 'inherit' });
+            const seconds = (performance.now() - started) / 1000;
+            const exitCode = child.status ?? 1;
+            if (child.error) console.error(child.error.message);
+            const result = { sample, seconds, exitCode, signal: child.signal };
+            results.push(result);
+            console.log('LINT_BENCHMARK_RESULT ' + JSON.stringify({ mode, ...result }));
+            console.log('::endgroup::');
+          }
+          const report = {
+            mode,
+            checkoutSha: process.env.CHECKOUT_SHA,
+            prHeadSha: process.env.PR_HEAD_SHA || null,
+            node: process.version,
+            runnerImage: process.env.ImageOS,
+            runnerImageVersion: process.env.ImageVersion,
+            logicalCpus: cpus().length,
+            availableParallelism: availableParallelism(),
+            cpuModel: cpus()[0]?.model,
+            results,
+          };
+          console.log('LINT_BENCHMARK_REPORT ' + JSON.stringify(report));
+          writeFileSync(join(process.env.RUNNER_TEMP, 'api-lint-benchmark-' + mode + '.json'),
+            JSON.stringify(report, null, 2) + '\n');
+          const summary = [
+            '### API lint concurrency: ' + mode,
+            '',
+            'Two fresh ESLint processes; full rules including Prettier; no ESLint cache.',
+            'Sample 2 may benefit from OS/filesystem warm-up. Different matrix jobs use different runners.',
+            '',
+            '| Sample | Wall seconds | Exit code |',
+            '| --- | ---: | ---: |',
+            ...results.map(r => '| ' + r.sample + ' | ' + r.seconds.toFixed(3) + ' | ' + r.exitCode + ' |'),
+            '',
+          ].join('\n');
+          console.log(summary);
+          if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
+          process.exitCode = results.some(r => r.exitCode !== 0) ? 1 : 0;
+          NODE
+
+      - name: Upload benchmark measurements
+        if: ${{ always() && !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-lint-benchmark-${{ matrix.concurrency }}
+          path: ${{ runner.temp }}/api-lint-benchmark-${{ matrix.concurrency }}.json
+          if-no-files-found: ignore
+          retention-days: 7

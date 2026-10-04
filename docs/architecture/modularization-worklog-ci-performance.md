@@ -20,10 +20,19 @@ The main [modularization worklog](modularization-worklog.md) could not be append
 
 ## 2026-10-04 — Post-Modularization CI Performance Batch 3
 
-**Branch / baseline:** `ci/e2e-preparation-format-batch-3` from `origin/dev@ad17c92c`; no Batch 3 PR or commit.  
-**State:** **LOCAL IMPLEMENTED / USER REVIEW PENDING / CI NOT RUN / MAIN WORKLOG APPEND BLOCKED / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**.  
+**PR / SHA:** PR #2696 / final head `02ae817854dff35626fcb36752b1117392ca2c53` / merge `936bf21a75ca79a5e1488a4d998d28869d7dc99a`; baseline `origin/dev@ad17c92c`.  
+**State:** **MERGED / PR CI #6906 GREEN / DEV PUSH CI #6907 GREEN / MAIN WORKLOG APPEND BLOCKED / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**.  
 **Owner / authorization:** Runtime / Data / CI / Ops; atomic internal execution change, authorized by the user's request to continue optimization after Batch 2.  
 **Implementation:** required direct Prettier checks the existing API glob; only CI ESLint disables duplicate Prettier execution, keeping all other rules and local config. E2E overlaps browser/system installation with serial Prisma generation -> committed migration replay -> NODE_ENV=test seed -> API build. Both fail-fast child branches are explicitly awaited; grouped logs and per-command timings remain, and failure artifacts include both logs. Existing aggregate names, test discovery, production Web build, readiness/BFF checks, 13 browser journeys and immutable-main publishing remain.  
-**Verification / next:** final source/diff/status review only, no local lint/build/test or remote execution. No measured Batch 3 speed claim. After separate remote-delivery authorization, require all seven CI jobs green, unchanged full discovery and journeys, both preparation exits checked, and compare format+lint and preparation wall times against #6904/#6905.  
+**Verification / next:** reviewed and authorized; all seven PR/dev jobs green, full API 486/2956 with same two skips and 13 E2E journeys preserved. Total CI 156/154s. Format+lint ~61/61s exceeded prior ~56/51s; E2E preparation ~36/40s versus ~51/43s. No stable whole-workflow gain claimed. Next: revert format separation, retain E2E overlap, measure lint concurrency. No local lint/build/test, main promotion or deployment.  
 **Details:** `.github/workflows/ci.yml`, [work package](postmod-ci-performance.md), [dependency graph](current-dependency-graph.md), this supplement. Update the same entry as delivery advances; main-worklog append remains pending the previously recorded MCP size limit.
 
+
+## 2026-10-04 — Post-Modularization CI Performance Batch 4
+
+**Branch / baseline:** `ci/lint-concurrency-batch-4` from `origin/dev@936bf21a`; no Batch 4 commit/PR.  
+**State:** **LOCAL IMPLEMENTED / USER REVIEW PENDING / CI NOT RUN / MAIN WORKLOG APPEND BLOCKED / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**.  
+**Owner / authorization:** Runtime / Data / CI / Ops; atomic internal CI execution experiment, authorized by the user after Batch 3 analysis.  
+**Implementation:** restore original combined API lint/format command (TIMING=1, auto); retain E2E overlap and all normal gates. Independent self-path dev-PR/manual benchmark workflow compares off/2/auto, two fresh full lint processes per mode, all rules including formatting, no ESLint cache. Report SHA/runner/CPU metadata, wall seconds and status in logs/summary/7-day artifacts; any failed sample fails its benchmark job. No routine push/source-PR trigger, ci dependency, automatic mode selection, application/dependency/schema/migration change or publication/deployment.  
+**Verification / next:** source/diff/status review only; no local lint/build/test or benchmark run. After separate remote-delivery authorization, require seven normal jobs and three benchmark jobs green; confirm full API discovery/journeys and compare samples, allowing for runner variation and OS warm-up. Do not choose a permanent mode until evidence supports it; do not mark these two samples as a stable benchmark.  
+**Details:** `.github/workflows/ci.yml`, `.github/workflows/api-lint-benchmark.yml`, [work package](postmod-ci-performance.md), [dependency graph](current-dependency-graph.md), this supplement. Main-worklog append limitation remains unresolved.
