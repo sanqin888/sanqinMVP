@@ -1,4 +1,8 @@
-export const DEFAULT_CLOVER_SDK_URL = "https://checkout.clover.com/sdk.js";
+export type CloverWebClientConfig = {
+  publicToken: string;
+  merchantId: string;
+  sdkUrl: string;
+};
 
 export function loadScript(src: string): Promise<void> {
   return new Promise((resolve, reject) => {

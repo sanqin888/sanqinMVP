@@ -3,7 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ApiError, apiFetch } from "@/lib/api/client";
-import { build3dsBrowserInfo, DEFAULT_CLOVER_SDK_URL, loadScript } from "@/lib/clover";
+import {
+  build3dsBrowserInfo,
+  loadScript,
+  type CloverWebClientConfig,
+} from "@/lib/clover";
 import type { Locale } from "@/lib/i18n/locales";
 import { HOSTED_CHECKOUT_CURRENCY, type CardTokenPaymentResponse } from "@/lib/order/shared";
 
@@ -16,6 +20,7 @@ type PaymentCtx = {
   currency: string;
   totalCents: number;
   metadata: Record<string, unknown>;
+  cloverClientConfig: CloverWebClientConfig;
 };
 
 type PaymentSessionFetchResponse = {
@@ -28,6 +33,7 @@ type PaymentSessionFetchResponse = {
   quote: { totalCents: number };
   externalPaymentCents: number;
   metadata: Record<string, unknown>;
+  cloverClientConfig: CloverWebClientConfig;
 };
 
 type CloverAppleContactField = "postalAddress" | "name" | "email" | "phone";
@@ -300,6 +306,7 @@ export default function ApplePayWalletPage() {
           currency: data.currency || HOSTED_CHECKOUT_CURRENCY,
           totalCents: data.externalPaymentCents,
           metadata: data.metadata,
+          cloverClientConfig: data.cloverClientConfig,
         });
         setRemainingMs(getRemainingMs(data.pricingTokenExpiresAt));
         setApplePayInteractionActive(false);
@@ -330,9 +337,7 @@ export default function ApplePayWalletPage() {
 
   useEffect(() => {
     if (!ctx) return;
-    const publicKey = process.env.NEXT_PUBLIC_CLOVER_PUBLIC_TOKEN?.trim();
-    const merchantId = process.env.NEXT_PUBLIC_CLOVER_MERCHANT_ID?.trim();
-    const sdkUrl = process.env.NEXT_PUBLIC_CLOVER_SDK_URL?.trim() ?? DEFAULT_CLOVER_SDK_URL;
+    const { publicToken: publicKey, merchantId, sdkUrl } = ctx.cloverClientConfig;
     postApplePayClientEvent({
       eventName: "env",
       sessionId: ctx.sessionId,
