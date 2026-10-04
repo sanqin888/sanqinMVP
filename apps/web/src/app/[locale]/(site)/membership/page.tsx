@@ -14,7 +14,8 @@ import {
   normalizeCanadianPhoneInput,
   stripCanadianCountryCode,
 } from "@/lib/phone";
-import { DELIVERY_RADIUS_KM, STORE_COORDINATES } from "@/lib/location";
+import { DELIVERY_RADIUS_KM } from "@/lib/location";
+import { usePublicWebConfig } from "@/lib/use-public-web-config";
 import {
   AddressAutocomplete,
   extractAddressParts,
@@ -285,6 +286,7 @@ export default function MembershipHomePage() {
   const { locale } = useParams<{ locale: Locale }>();
   const searchParams = useSearchParams();
   const { data: session, status } = useSession();
+  const { config: publicWebConfig } = usePublicWebConfig();
   const isZh = locale === "zh";
   const [browserLanguagePreference] = useState<"zh" | "en">(() =>
     getBrowserLanguagePreference(),
@@ -1717,6 +1719,14 @@ export default function MembershipHomePage() {
               addresses={addresses}
               loading={addressesLoading}
               error={addressesError}
+              storeCoordinates={
+                publicWebConfig
+                  ? {
+                      latitude: publicWebConfig.store.latitude,
+                      longitude: publicWebConfig.store.longitude,
+                    }
+                  : null
+              }
               onAddAddress={handleAddAddress}
               onUpdateAddress={handleUpdateAddress}
               onDeleteAddress={handleDeleteAddress}
@@ -2267,6 +2277,7 @@ function AddressesSection({
   addresses,
   loading,
   error,
+  storeCoordinates,
   onAddAddress,
   onUpdateAddress,
   onDeleteAddress,
@@ -2276,6 +2287,7 @@ function AddressesSection({
   addresses: MemberAddress[];
   loading: boolean;
   error: string | null;
+  storeCoordinates: { latitude: number; longitude: number } | null;
   onAddAddress: (address: MemberAddress, setDefault: boolean) => void;
   onUpdateAddress: (address: MemberAddress, setDefault: boolean) => void;
   onDeleteAddress: (addressStableId: string) => void;
@@ -2498,11 +2510,15 @@ function AddressesSection({
             debounceMs={500}
             minLength={3}
             country="ca"
-            locationBias={{
-              lat: STORE_COORDINATES.latitude,
-              lng: STORE_COORDINATES.longitude,
-              radiusMeters: DELIVERY_RADIUS_KM * 1000,
-            }}
+            locationBias={
+              storeCoordinates
+                ? {
+                    lat: storeCoordinates.latitude,
+                    lng: storeCoordinates.longitude,
+                    radiusMeters: DELIVERY_RADIUS_KM * 1000,
+                  }
+                : undefined
+            }
           />
           <input
             className="rounded-lg border border-[#87362E]/15 px-3 py-2 text-xs"

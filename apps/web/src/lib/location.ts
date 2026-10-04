@@ -8,32 +8,6 @@ export type Coordinates = {
   longitude: number;
 };
 
-// ==== 门店坐标配置 ====
-
-// 你的门店：43.760288, -79.412167
-const FALLBACK_STORE_COORDINATES: Coordinates = {
-  latitude: 43.760288,
-  longitude: -79.412167,
-};
-
-const parseEnvCoordinate = (value: string | undefined, fallback: number) => {
-  if (!value) return fallback;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
-};
-
-// 实际使用的门店坐标（优先用环境变量，没配就用上面的默认）
-export const STORE_COORDINATES: Coordinates = {
-  latitude: parseEnvCoordinate(
-    process.env.NEXT_PUBLIC_STORE_LATITUDE,
-    FALLBACK_STORE_COORDINATES.latitude,
-  ),
-  longitude: parseEnvCoordinate(
-    process.env.NEXT_PUBLIC_STORE_LONGITUDE,
-    FALLBACK_STORE_COORDINATES.longitude,
-  ),
-};
-
 // 允许配送半径（单位：km），你可以改大一点
 export const DELIVERY_RADIUS_KM = 10;
 
