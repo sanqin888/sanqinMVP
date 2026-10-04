@@ -9,8 +9,15 @@ on:
 permissions:
   contents: read
 
+# Replace stale PR runs only. Each dev/main push keeps its own validation run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build-test:
+    # Preserve the Web check name; the API check is aggregated below.
+    name: ${{ matrix.app == 'api' && 'api-checks' || 'build-test (web)' }}
     runs-on: ubuntu-26.04
 
     strategy:
@@ -116,13 +123,72 @@ jobs:
           wait "$order_pid" || status=1
           exit "$status"
 
-      - name: Test (api)
-        if: matrix.app == 'api'
-        run: pnpm --filter api exec jest
-
       - name: Test (web)
         if: matrix.app == 'web'
         run: pnpm --filter web test
+
+  api-tests:
+    runs-on: ubuntu-26.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+        with:
+          version: 9.0.0
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: "pnpm"
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --prefer-offline
+
+      - name: Build shared libraries
+        run: |
+          pnpm --filter @shared/foundation build &
+          foundation_pid=$!
+          pnpm --filter @shared/menu build &
+          menu_pid=$!
+          pnpm --filter @shared/order build &
+          order_pid=$!
+
+          status=0
+          wait "$foundation_pid" || status=1
+          wait "$menu_pid" || status=1
+          wait "$order_pid" || status=1
+          exit "$status"
+
+      - name: Generate Prisma Client
+        run: pnpm --filter api prisma:generate
+
+      - name: Test (api)
+        run: pnpm --filter api exec jest
+
+  api-validation:
+    # Keep the existing required API check tied to both parallel lanes.
+    name: build-test (api)
+    needs: [build-test, api-tests]
+    if: ${{ always() }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 3
+
+    steps:
+      - name: Require static checks and full API tests to succeed
+        env:
+          STATIC_CHECKS_RESULT: ${{ needs['build-test'].result }}
+          API_TESTS_RESULT: ${{ needs['api-tests'].result }}
+        run: |
+          if [[ "$STATIC_CHECKS_RESULT" != "success" || "$API_TESTS_RESULT" != "success" ]]; then
+            echo "Static checks: $STATIC_CHECKS_RESULT; API tests: $API_TESTS_RESULT"
+            exit 1
+          fi
 
   browser-e2e:
     runs-on: ubuntu-26.04
@@ -206,8 +272,8 @@ jobs:
           wait "$order_pid" || status=1
           exit "$status"
 
-      - name: Install Playwright Chromium
-        run: pnpm --filter web exec playwright install --with-deps chromium
+      - name: Install Playwright Chromium headless shell
+        run: pnpm --filter web exec playwright install --with-deps --only-shell chromium
 
       - name: Generate Prisma Client
         run: pnpm --filter api prisma:generate
