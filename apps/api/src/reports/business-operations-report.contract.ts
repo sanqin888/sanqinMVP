@@ -48,6 +48,7 @@ export type BusinessOperationsHourlyPacePointV1 = {
 export type BusinessOperationsCommercialItemV1 = {
   productStableId: string;
   name: string;
+  currentCatalogItemKind: 'FOOD' | 'BEVERAGE' | null;
   quantity: number;
   orderCount: number;
   orderPenetrationRate: number;

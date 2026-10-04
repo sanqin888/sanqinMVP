@@ -99,6 +99,7 @@ export type BusinessOperationsReportView = {
   commercialItems: Array<{
     productStableId: string;
     name: string;
+    currentCatalogItemKind: 'FOOD' | 'BEVERAGE' | null;
     quantity: number;
     orderCount: number;
     orderPenetrationRate: number;

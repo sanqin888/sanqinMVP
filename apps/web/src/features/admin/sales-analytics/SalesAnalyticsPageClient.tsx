@@ -1057,7 +1057,9 @@ function ItemTable({
   locale: Locale;
 }) {
   const isZh = locale === 'zh';
-  const rows = report.commercialItems.slice(0, 8);
+  const rows = report.commercialItems.filter(
+    (row) => row.quantity > 0 && row.currentCatalogItemKind !== 'BEVERAGE',
+  );
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
       <h2 className="text-lg font-semibold text-slate-950">
@@ -1065,8 +1067,8 @@ function ItemTable({
       </h2>
       <p className="mt-1 text-xs text-slate-500">
         {isZh
-          ? '商品数量来自 Orders Reporting，用于解释销售变化，不重算 Accounting 收入。'
-          : 'Item quantities come from Orders Reporting to explain sales movement; they do not recompute Accounting revenue.'}
+          ? '商品数量来自 Orders Reporting；当前 Catalog 分类为饮品的商品不列入此表，用于解释销售变化，不重算 Accounting 收入。'
+          : 'Item quantities come from Orders Reporting; items currently classified as beverages in Catalog are excluded from this table. This context does not recompute Accounting revenue.'}
       </p>
       <div className="mt-4 overflow-x-auto">
         <table className="min-w-full text-sm">
@@ -1098,7 +1100,9 @@ function ItemTable({
         </table>
         {!rows.length ? (
           <p className="py-4 text-sm text-slate-500">
-            {isZh ? '当前区间没有商品销售事实。' : 'No item sales facts in this range.'}
+            {isZh
+              ? '当前区间没有非零食品销售事实。'
+              : 'No non-zero food item sales facts in this range.'}
           </p>
         ) : null}
       </div>

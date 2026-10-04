@@ -16,6 +16,13 @@ const sharedManagementContractSource = readFileSync(
   'utf8',
 );
 const pageSource = readFileSync(resolve(reportsRoot, 'page.tsx'), 'utf8');
+const adminManagementViewSource = readFileSync(
+  resolve(
+    accountingRoot,
+    '../../../../features/admin/management-pnl/ManagementPnlReportView.tsx',
+  ),
+  'utf8',
+);
 
 describe('B4-D1 Management P&L adjustment decomposition', () => {
   it(
@@ -40,15 +47,17 @@ describe('B4-D1 Management P&L adjustment decomposition', () => {
   );
 
   it(
-    'renders explanation without recalculating P&L in the Web adapter',
+    'keeps adjustment explanation in Admin after the Accounting UI contraction',
     () => {
-      expect(pageSource).toContain('Adjustment effect breakdown');
-      expect(pageSource).toContain('Revenue net change');
-      expect(pageSource).toContain('Expense net change');
-      expect(pageSource).toContain('Net profit effect');
-      expect(pageSource).not.toContain(
+      expect(adminManagementViewSource).toContain('Adjustment effect breakdown');
+      expect(adminManagementViewSource).toContain('Revenue net change');
+      expect(adminManagementViewSource).toContain('Expense net change');
+      expect(adminManagementViewSource).toContain('Net profit effect');
+      expect(adminManagementViewSource).not.toContain(
         'row.revenueNetCents - row.expenseNetCents',
       );
+      expect(pageSource).not.toContain('Adjustment effect breakdown');
+      expect(pageSource).not.toContain('/accounting/report/pnl?');
     },
   );
 });

@@ -25,28 +25,40 @@ describe('B4-A Accounting statements UI boundary', () => {
     );
   });
 
-  it('keeps Trial Balance and Balance Movement wire DTOs on the Web contract surface', () => {
-    expect(contractsSource).toContain('export type AccountingTrialBalanceReport');
-    expect(contractsSource).toContain(
-      'export type AccountingBalanceMovementReport',
-    );
-    expect(contractsSource).toContain("scope: 'WHOLE_LEDGER'");
-    expect(contractsSource).toContain('absoluteBalanceClaim: false');
-    expect(pageSource).toContain("from '../contracts/reports'");
-    expect(pageSource).not.toContain('type AccountingTrialBalanceReport =');
-    expect(pageSource).not.toContain('type AccountingBalanceMovementReport =');
-  });
+  it(
+    'keeps Trial Balance and Balance Movement wire DTOs on the Web contract surface',
+    () => {
+      expect(contractsSource).toContain(
+        'export type AccountingTrialBalanceReport',
+      );
+      expect(contractsSource).toContain(
+        'export type AccountingBalanceMovementReport',
+      );
+      expect(contractsSource).toContain("scope: 'WHOLE_LEDGER'");
+      expect(contractsSource).toContain('absoluteBalanceClaim: false');
+      expect(pageSource).toContain("from '../contracts/reports'");
+      expect(pageSource).not.toContain('type AccountingTrialBalanceReport =');
+      expect(pageSource).not.toContain(
+        'type AccountingBalanceMovementReport =',
+      );
+    },
+  );
 
   it('keeps the zero-opening and non-Balance-Sheet disclosure visible', () => {
     expect(statementsSource).toContain('zeroOpeningDisclaimerRequired');
     expect(statementsSource).toContain('不代表现实银行、现金或其他账户的绝对余额');
-    expect(statementsSource).toContain('not presented as a formal Balance Sheet');
+    expect(statementsSource).toContain(
+      'not presented as a formal Balance Sheet',
+    );
   });
 
-  it('visually separates Management reporting from canonical statements', () => {
-    expect(pageSource).toContain('Management 口径');
-    expect(pageSource).toContain('Management scope');
-    expect(pageSource).toContain('现金账户变动');
-    expect(pageSource).toContain('not a formal Statement of Cash Flows');
+  it('keeps Accounting Reports statement-only after DATA-F', () => {
+    expect(pageSource).toContain('Accounting Statements');
+    expect(pageSource).toContain('Trial Balance');
+    expect(pageSource).toContain('Balance Movement');
+    expect(pageSource).not.toContain('/accounting/report/pnl?');
+    expect(pageSource).not.toContain('/accounting/report/cashflow?');
+    expect(pageSource).not.toContain('Management P&L');
+    expect(pageSource).not.toContain('Management scope');
   });
 });

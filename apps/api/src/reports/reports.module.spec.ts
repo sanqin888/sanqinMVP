@@ -1,6 +1,10 @@
 import { MODULE_METADATA } from '@nestjs/common/constants';
 
 import {
+  CATALOG_REPORTING_ITEM_CLASSIFICATION_READER,
+  CatalogReportingItemClassificationModule,
+} from '../menu/public-api';
+import {
   ORDER_MARKETING_USAGE_FACTS_READER,
   ORDER_REPORTING_FACTS_READER,
   OrderMarketingUsageFactsModule,
@@ -20,6 +24,10 @@ import {
   REPORTING_BUSINESS_ORDER_FACTS_QUERY,
   type ReportingBusinessOrderFactsQueryPort,
 } from './reporting-business-order-facts-query.contract';
+import {
+  REPORTING_CATALOG_ITEM_CLASSIFICATION_QUERY,
+  type ReportingCatalogItemClassificationQueryPort,
+} from './reporting-catalog-item-classification-query.contract';
 import {
   REPORTING_MARKETING_CAMPAIGNS_QUERY,
   type ReportingMarketingCampaignsQueryPort,
@@ -134,6 +142,57 @@ describe('ReportsModule composition', () => {
     ]);
     expect(reader.readOperationalOrdersForRange).toHaveBeenCalledWith(range);
     expect(reader.readOperationalItemsForRange).toHaveBeenCalledWith(range);
+  });
+
+  it('maps current Catalog item classification through a Reporting-owned port', async () => {
+    const imports = metadata<unknown>(ReportsModule, MODULE_METADATA.IMPORTS);
+    const providers = metadata<unknown>(
+      ReportsModule,
+      MODULE_METADATA.PROVIDERS,
+    );
+
+    expect(imports).toContain(CatalogReportingItemClassificationModule);
+
+    const provider = providers.find(
+      (candidate) =>
+        typeof candidate === 'object' &&
+        candidate !== null &&
+        'provide' in candidate &&
+        candidate.provide === REPORTING_CATALOG_ITEM_CLASSIFICATION_QUERY,
+    ) as
+      | {
+          inject?: unknown[];
+          useFactory?: (
+            reader: never,
+          ) => ReportingCatalogItemClassificationQueryPort;
+        }
+      | undefined;
+
+    expect(provider?.inject).toEqual([
+      CATALOG_REPORTING_ITEM_CLASSIFICATION_READER,
+    ]);
+    const reader = {
+      readItemClassifications: jest.fn().mockResolvedValue([
+        {
+          itemStableId: 'drink_plum',
+          storeStableId: '4750_Yonge_Street',
+          itemKind: 'BEVERAGE',
+        },
+      ]),
+    };
+    const query = provider!.useFactory!(reader as never);
+    const input = {
+      storeStableId: '4750_Yonge_Street',
+      itemStableIds: ['drink_plum'],
+    };
+
+    await expect(query.readItemClassifications(input)).resolves.toEqual([
+      {
+        itemStableId: 'drink_plum',
+        itemKind: 'BEVERAGE',
+      },
+    ]);
+    expect(reader.readItemClassifications).toHaveBeenCalledWith(input);
   });
 
   it('imports the narrow Marketing owner modules at the Reporting composition root', () => {

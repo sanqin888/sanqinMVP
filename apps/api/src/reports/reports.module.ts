@@ -1,7 +1,11 @@
 import { HttpModule } from '@nestjs/axios';
 import { Module } from '@nestjs/common';
 
-import { PrismaService } from '../prisma/prisma.service';
+import {
+  CATALOG_REPORTING_ITEM_CLASSIFICATION_READER,
+  CatalogReportingItemClassificationModule,
+  type CatalogReportingItemClassificationReaderPort,
+} from '../menu/public-api';
 import {
   ORDER_MARKETING_USAGE_FACTS_READER,
   ORDER_REPORTING_FACTS_READER,
@@ -10,6 +14,7 @@ import {
   type OrderMarketingUsageFactsReaderPort,
   type OrderReportingFactsReaderPort,
 } from '../orders/public-api';
+import { PrismaService } from '../prisma/prisma.service';
 import {
   MARKETING_CAMPAIGN_FACTS_READER,
   MarketingCampaignFactsModule,
@@ -29,6 +34,10 @@ import {
   REPORTING_BUSINESS_ORDER_FACTS_QUERY,
   type ReportingBusinessOrderFactsQueryPort,
 } from './reporting-business-order-facts-query.contract';
+import {
+  REPORTING_CATALOG_ITEM_CLASSIFICATION_QUERY,
+  type ReportingCatalogItemClassificationQueryPort,
+} from './reporting-catalog-item-classification-query.contract';
 import {
   REPORTING_MARKETING_CAMPAIGNS_QUERY,
   type ReportingMarketingCampaignsQueryPort,
@@ -70,6 +79,7 @@ import { WeatherHistoryStore } from './weather-history.store';
     HttpModule,
     OrderReportingFactsModule,
     OrderMarketingUsageFactsModule,
+    CatalogReportingItemClassificationModule,
     MarketingCampaignFactsModule,
     BrandStoreConfigModule,
     StoreStatusModule,
@@ -103,6 +113,21 @@ import { WeatherHistoryStore } from './weather-history.store';
             components: row.components.map((component) => ({
               ...component,
             })),
+          }));
+        },
+      }),
+    },
+    {
+      provide: REPORTING_CATALOG_ITEM_CLASSIFICATION_QUERY,
+      inject: [CATALOG_REPORTING_ITEM_CLASSIFICATION_READER],
+      useFactory: (
+        catalog: CatalogReportingItemClassificationReaderPort,
+      ): ReportingCatalogItemClassificationQueryPort => ({
+        readItemClassifications: async (query) => {
+          const rows = await catalog.readItemClassifications(query);
+          return rows.map((row) => ({
+            itemStableId: row.itemStableId,
+            itemKind: row.itemKind,
           }));
         },
       }),
