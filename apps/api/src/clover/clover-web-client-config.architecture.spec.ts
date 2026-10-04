@@ -10,7 +10,10 @@ describe('Clover Web client runtime-config boundary', () => {
     resolve(__dirname, 'clover-pay.controller.ts'),
     'utf8',
   );
-  const walletRoot = resolve(__dirname, '../../../web/src/app/[locale]/(site)/wallet');
+  const walletRoot = resolve(
+    __dirname,
+    '../../../web/src/app/[locale]/(site)/wallet',
+  );
   const walletSources = ['card-pay', 'apple-pay', 'google-pay']
     .map((name) => readFileSync(resolve(walletRoot, name, 'page.tsx'), 'utf8'))
     .join('\n');
