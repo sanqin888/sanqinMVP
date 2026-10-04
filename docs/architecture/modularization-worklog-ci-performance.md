@@ -12,8 +12,18 @@ The main [modularization worklog](modularization-worklog.md) could not be append
 
 ## 2026-10-04 — Post-Modularization CI Performance Batch 2 diagnostics
 
-**Branch / baseline:** `ci/performance-diagnostics-batch-2` from merged `origin/dev@d1fdac78`; no Batch 2 PR or commit.  
-**State:** **LOCAL IMPLEMENTED / USER REVIEW PENDING / CI NOT RUN / MAIN WORKLOG APPEND BLOCKED / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**.  
+**PR / SHA:** PR #2695 / final head `3417ee56900bc9ee665c2e3316743648f7353bfb` / merge `ad17c92c239921a805e4dd6e34c3db08aa30bab1`; baseline `origin/dev@d1fdac78`.  
+**State:** **MERGED / PR CI #6904 GREEN / DEV PUSH CI #6905 GREEN / MAIN WORKLOG APPEND BLOCKED / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**.  
 **Authorization / implementation:** the user explicitly authorized starting the next step after Batch 1 merge. API lint gains rule timing output; the existing single full Jest run writes JSON and a native Node summary lists the 20 slowest suites in CI logs/step summary, with the report retained for 7 days. No extra test run, job, rule/cache change or validation weakening is introduced. Failed tests still fail their job and the preserved API aggregate.  
-**Verification / next:** source/diff/status review only; no local lint/build/test or remote execution. This batch provides measurements, not an additional claimed speed improvement. After review and separate remote-delivery authorization, confirm the reports and unchanged full test coverage, then select a measured optimization.  
+**Verification / next:** user reviewed and authorized remote delivery. All seven PR/dev jobs passed in 171/145s; both lint tables/top-20 summaries/artifacts appeared, full API discovery remained 486/2956 with the same two skips, and all 13 E2E journeys passed. E2E was the longest job (166/140s); lint took about 56/51s and Prettier 35.4%/33.8% of cumulative rule time. No local lint/build/test or deployment. These samples provide diagnostic evidence, not a stable speed claim.  
 **Details:** `.github/workflows/ci.yml`, [work package](postmod-ci-performance.md), [dependency graph](current-dependency-graph.md), this supplement.
+
+## 2026-10-04 — Post-Modularization CI Performance Batch 3
+
+**Branch / baseline:** `ci/e2e-preparation-format-batch-3` from `origin/dev@ad17c92c`; no Batch 3 PR or commit.  
+**State:** **LOCAL IMPLEMENTED / USER REVIEW PENDING / CI NOT RUN / MAIN WORKLOG APPEND BLOCKED / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**.  
+**Owner / authorization:** Runtime / Data / CI / Ops; atomic internal execution change, authorized by the user's request to continue optimization after Batch 2.  
+**Implementation:** required direct Prettier checks the existing API glob; only CI ESLint disables duplicate Prettier execution, keeping all other rules and local config. E2E overlaps browser/system installation with serial Prisma generation -> committed migration replay -> NODE_ENV=test seed -> API build. Both fail-fast child branches are explicitly awaited; grouped logs and per-command timings remain, and failure artifacts include both logs. Existing aggregate names, test discovery, production Web build, readiness/BFF checks, 13 browser journeys and immutable-main publishing remain.  
+**Verification / next:** final source/diff/status review only, no local lint/build/test or remote execution. No measured Batch 3 speed claim. After separate remote-delivery authorization, require all seven CI jobs green, unchanged full discovery and journeys, both preparation exits checked, and compare format+lint and preparation wall times against #6904/#6905.  
+**Details:** `.github/workflows/ci.yml`, [work package](postmod-ci-performance.md), [dependency graph](current-dependency-graph.md), this supplement. Update the same entry as delivery advances; main-worklog append remains pending the previously recorded MCP size limit.
+
