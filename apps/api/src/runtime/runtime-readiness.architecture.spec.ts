@@ -54,4 +54,31 @@ describe('Runtime readiness architecture', () => {
     expect(web).not.toContain('condition: service_healthy');
     expect(web).not.toContain('/api/v1/ready');
   });
+
+  it('runs application services from one immutable published release', () => {
+    const api = composeSource.slice(
+      composeSource.indexOf('  api:'),
+      composeSource.indexOf('  ubereats-worker:'),
+    );
+    const worker = composeSource.slice(
+      composeSource.indexOf('  ubereats-worker:'),
+      composeSource.indexOf('  web:'),
+    );
+    const web = composeSource.slice(composeSource.indexOf('  web:'));
+    const requiredRelease = '${SANQ_IMAGE_SHA:?SANQ_IMAGE_SHA is required}';
+
+    expect(api).toContain(
+      `image: ghcr.io/sanqin888/sanq-api:${requiredRelease}`,
+    );
+    expect(worker).toContain(
+      `image: ghcr.io/sanqin888/sanq-api:${requiredRelease}`,
+    );
+    expect(web).toContain(
+      `image: ghcr.io/sanqin888/sanq-web:${requiredRelease}`,
+    );
+    expect(api).not.toContain('build:');
+    expect(worker).not.toContain('build:');
+    expect(web).not.toContain('build:');
+    expect(composeSource).not.toContain('sanq-app-api:latest');
+  });
 });

@@ -448,10 +448,12 @@ authorizes a topology change:
 * PostgreSQL as the system database
 
 The API and UberEats worker are separate runtime processes/containers but share
-the single `sanq-app-api:latest` image built from `Dockerfile.api` by the `api`
-service. Do not perform a second worker image build. After rebuilding the API
-image, recreate the API and/or worker containers only as required so they use the
-intended shared image version.
+the single API image built from `Dockerfile.api`. Trusted GitHub Actions publishes
+that image to GHCR under an immutable full-commit-SHA tag; production must not
+perform a second worker image build or build application images locally. API and
+worker must reference the same published API release SHA, while Web uses the
+matching published Web release SHA. Recreate only the application containers
+required for the intended published release.
 
 Modularization means making ownership and dependency direction enforceable
 inside those deployment units. It does not mean a rewrite, creating network
