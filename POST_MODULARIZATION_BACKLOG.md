@@ -787,8 +787,8 @@ DATA-A does not change B5 report arithmetic. B2 canonical Sales and B5 Business 
 
 Priority: **P1 PRODUCT / REPORTING CORRECTNESS**  
 Complexity: **H**  
-State: **HIST-B MERGED / CI #6888 GREEN / HIST-C LOCAL IMPLEMENTED / USER REVIEW PENDING / NO PRODUCTION DEPLOYMENT / NO LEGACY BACKFILL**  
-Implementation base: `origin/dev@40fd2fd5`  
+State: **HIST-B MERGED / HIST-C MERGED / PR #2690 / CI #6892 GREEN / HIST-D LOCAL IMPLEMENTED / USER REVIEW PENDING / NO PRODUCTION DEPLOYMENT / NO LEGACY BACKFILL**  
+Implementation base: `origin/dev@48e20534`  
 Detailed plan: `docs/architecture/operating-availability-history.md`
 
 The 2026-10-04 focused audit confirms that current Store schedule, temporary customer-ordering pause and
@@ -813,12 +813,15 @@ Delivery order:
 2. **HIST-B:** **MERGED / CI #6888 GREEN / PR #2689 / squash `40fd2fd5`** — atomic Store/Catalog
    capture, idempotent forward-only baseline, full schedule versioning, duplicate-pause backend guard, dedicated
    availability-only mutation, and Store-timezone-aware `TEMP_TODAY_OFF`. No production deployment has been performed.
-3. **HIST-C:** **LOCAL IMPLEMENTED / USER REVIEW PENDING** — owner historical readers + Reporting-local adapters
-   through the existing `ReportsModule` composition root, plus additive `/reports/business.operatingHistory`.
-   Projection uses historical schedule/timezone/Holiday versions, subtracts Store closures, intersects MenuItem
-   unavailable intervals with actual operating time, and exposes fail-closed AVAILABLE/PARTIAL/UNAVAILABLE coverage.
-4. **HIST-D:** next UI slice after HIST-C delivery — Admin Sales daily columns, inline item drill-down and
-   hour/minute formatting.
+3. **HIST-C:** **MERGED / PR #2690 / CI #6892 GREEN / squash `48e20534`** — owner historical readers +
+   Reporting-local adapters through the existing `ReportsModule` composition root, plus additive
+   `/reports/business.operatingHistory`. Projection uses historical schedule/timezone/Holiday versions, subtracts
+   Store closures, intersects MenuItem unavailable intervals with actual operating time, exposes fail-closed
+   AVAILABLE/PARTIAL/UNAVAILABLE coverage, and publishes exact effective pause/item-unavailable intervals for UI.
+4. **HIST-D:** **LOCAL IMPLEMENTED / USER REVIEW PENDING** — Admin Sales daily **营业时间 / 菜品下架** columns,
+   shared minute/hour formatting, upgraded operating-history Coverage card, and expandable second-level Store-local
+   interval lists for Store pauses and per-item unavailability. Browser code formats projected intervals only; it
+   does not recalculate operational history.
 5. **HIST-E:** migration/deployment and active production verification.
 
 The approved timezone boundary adds one narrow conceptual read:
