@@ -50,6 +50,8 @@ production repository directory.
 
 2) Build and run
 
+The production Compose environment must define `GOOGLE_MAPS_BROWSER_KEY` before this runtime-config slice is deployed. It is a browser-restricted Google Maps key and remains distinct from the server-side `GOOGLE_MAPS_API_KEY` used for geocoding.
+
 ```bash
 docker compose up -d --build
 ```
