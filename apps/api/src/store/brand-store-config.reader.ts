@@ -184,45 +184,46 @@ export class PrismaBrandStoreConfigReader
     });
     if (!coverage) return null;
 
-    const [activeVersion, laterVersions, temporaryClosures] = await Promise.all([
-      this.prisma.storeScheduleVersion.findFirst({
-        where: {
-          storeDbId: store.id,
-          effectiveFrom: { lte: fromInclusive },
-        },
-        orderBy: { effectiveFrom: 'desc' },
-        select: {
-          revision: true,
-          effectiveFrom: true,
-          timezone: true,
-          businessHoursSnapshot: true,
-          holidaysSnapshot: true,
-        },
-      }),
-      this.prisma.storeScheduleVersion.findMany({
-        where: {
-          storeDbId: store.id,
-          effectiveFrom: { gt: fromInclusive, lt: toExclusive },
-        },
-        orderBy: { effectiveFrom: 'asc' },
-        select: {
-          revision: true,
-          effectiveFrom: true,
-          timezone: true,
-          businessHoursSnapshot: true,
-          holidaysSnapshot: true,
-        },
-      }),
-      this.prisma.storeTemporaryClosureInterval.findMany({
-        where: {
-          storeDbId: store.id,
-          startedAt: { lt: toExclusive },
-          OR: [{ endedAt: null }, { endedAt: { gt: fromInclusive } }],
-        },
-        orderBy: { startedAt: 'asc' },
-        select: { startedAt: true, endedAt: true },
-      }),
-    ]);
+    const [activeVersion, laterVersions, temporaryClosures] =
+      await Promise.all([
+        this.prisma.storeScheduleVersion.findFirst({
+          where: {
+            storeDbId: store.id,
+            effectiveFrom: { lte: fromInclusive },
+          },
+          orderBy: { effectiveFrom: 'desc' },
+          select: {
+            revision: true,
+            effectiveFrom: true,
+            timezone: true,
+            businessHoursSnapshot: true,
+            holidaysSnapshot: true,
+          },
+        }),
+        this.prisma.storeScheduleVersion.findMany({
+          where: {
+            storeDbId: store.id,
+            effectiveFrom: { gt: fromInclusive, lt: toExclusive },
+          },
+          orderBy: { effectiveFrom: 'asc' },
+          select: {
+            revision: true,
+            effectiveFrom: true,
+            timezone: true,
+            businessHoursSnapshot: true,
+            holidaysSnapshot: true,
+          },
+        }),
+        this.prisma.storeTemporaryClosureInterval.findMany({
+          where: {
+            storeDbId: store.id,
+            startedAt: { lt: toExclusive },
+            OR: [{ endedAt: null }, { endedAt: { gt: fromInclusive } }],
+          },
+          orderBy: { startedAt: 'asc' },
+          select: { startedAt: true, endedAt: true },
+        }),
+      ]);
 
     const versions = activeVersion
       ? [activeVersion, ...laterVersions]

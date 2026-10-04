@@ -271,14 +271,14 @@ describe('ReportsModule composition', () => {
       toExclusive: new Date('2026-10-05T04:00:00.000Z'),
     };
 
-    await expect(storeQuery.readOperatingHistoryForRange(range)).resolves.toEqual(
-      {
-        storeStableId: 'store-1',
-        trackingStartedAt: new Date('2026-10-04T14:00:00.000Z'),
-        scheduleVersions: [],
-        temporaryClosures: [],
-      },
-    );
+    await expect(
+      storeQuery.readOperatingHistoryForRange(range),
+    ).resolves.toEqual({
+      storeStableId: 'store-1',
+      trackingStartedAt: new Date('2026-10-04T14:00:00.000Z'),
+      scheduleVersions: [],
+      temporaryClosures: [],
+    });
     await expect(
       catalogQuery.readItemUnavailableHistoryForRange(range),
     ).resolves.toEqual({

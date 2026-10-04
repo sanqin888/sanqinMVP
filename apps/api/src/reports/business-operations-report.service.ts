@@ -149,7 +149,8 @@ function combinedDayCoverage(
   catalog: BusinessOperationsOperatingHistoryCoverageV1,
 ): BusinessOperationsOperatingHistoryCoverageV1 {
   if (store === 'AVAILABLE' && catalog === 'AVAILABLE') return 'AVAILABLE';
-  if (store === 'UNAVAILABLE' || catalog === 'UNAVAILABLE') return 'UNAVAILABLE';
+  if (store === 'UNAVAILABLE' || catalog === 'UNAVAILABLE')
+    return 'UNAVAILABLE';
   return 'PARTIAL';
 }
 
@@ -173,7 +174,9 @@ function scheduleWindowForLocalDate(
   const holiday = version.holidays.find((entry) => entry.date === date);
   const hours =
     holiday ??
-    version.businessHours.find((entry) => entry.weekday === localDate.weekday % 7);
+    version.businessHours.find(
+      (entry) => entry.weekday === localDate.weekday % 7,
+    );
   if (
     !hours ||
     hours.isClosed ||
@@ -696,8 +699,7 @@ export class BusinessOperationsReportService {
     storeHistory: ReportingStoreOperatingHistoryRangeV1 | null;
     catalogHistory: ReportingCatalogAvailabilityHistoryRangeV1 | null;
   }): BusinessOperationsOperatingHistoryV1 {
-    const storeTrackingStartedAt =
-      args.storeHistory?.trackingStartedAt ?? null;
+    const storeTrackingStartedAt = args.storeHistory?.trackingStartedAt ?? null;
     const catalogTrackingStartedAt =
       args.catalogHistory?.trackingStartedAt ?? null;
     const storeCoverages: BusinessOperationsOperatingHistoryCoverageV1[] = [];

@@ -1322,21 +1322,22 @@ export class CatalogAdminService
       });
     if (!coverage) return null;
 
-    const intervals = await this.prisma.catalogItemUnavailableInterval.findMany({
-      where: {
-        storeStableId,
-        startedAt: { lt: query.toExclusive },
-        OR: [{ endedAt: null }, { endedAt: { gt: query.fromInclusive } }],
-      },
-      orderBy: [{ startedAt: 'asc' }, { menuItemStableId: 'asc' }],
-      select: {
-        menuItemStableId: true,
-        nameEnSnapshot: true,
-        nameZhSnapshot: true,
-        startedAt: true,
-        endedAt: true,
-      },
-    });
+    const intervals =
+      await this.prisma.catalogItemUnavailableInterval.findMany({
+        where: {
+          storeStableId,
+          startedAt: { lt: query.toExclusive },
+          OR: [{ endedAt: null }, { endedAt: { gt: query.fromInclusive } }],
+        },
+        orderBy: [{ startedAt: 'asc' }, { menuItemStableId: 'asc' }],
+        select: {
+          menuItemStableId: true,
+          nameEnSnapshot: true,
+          nameZhSnapshot: true,
+          startedAt: true,
+          endedAt: true,
+        },
+      });
 
     return {
       storeStableId,
