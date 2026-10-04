@@ -89,6 +89,53 @@ const businessReport = (
     storeOperatingContext: 'CURRENT_CONFIGURATION_ONLY',
     printHealth: 'UNAVAILABLE',
   },
+  operatingHistory: {
+    coverage: {
+      overall: 'AVAILABLE',
+      store: 'AVAILABLE',
+      catalog: 'AVAILABLE',
+    },
+    storeTrackingStartedAt: '2026-10-01T04:00:00.000Z',
+    catalogTrackingStartedAt: '2026-10-01T04:00:00.000Z',
+    days: [
+      {
+        date: '2026-10-03',
+        coverage: 'AVAILABLE',
+        scheduledMinutes: 660,
+        temporaryClosureMinutes: 360,
+        temporaryClosureIntervals: [
+          {
+            startedAt: '2026-10-03T17:00:00.000Z',
+            endedAt: '2026-10-03T22:00:00.000Z',
+          },
+          {
+            startedAt: '2026-10-04T00:00:00.000Z',
+            endedAt: '2026-10-04T01:00:00.000Z',
+          },
+        ],
+        operatingMinutes: 300,
+        unavailableItemCount: 1,
+        unavailableItems: [
+          {
+            menuItemStableId: 'item-1',
+            nameEn: 'Item One',
+            nameZh: '菜品一',
+            unavailableMinutes: 90,
+            unavailableIntervals: [
+              {
+                startedAt: '2026-10-03T18:00:00.000Z',
+                endedAt: '2026-10-03T18:30:00.000Z',
+              },
+              {
+                startedAt: '2026-10-03T23:00:00.000Z',
+                endedAt: '2026-10-04T00:00:00.000Z',
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  },
   summary: {
     orderTotalCents: 11000,
     orderCount: 5,
@@ -286,6 +333,16 @@ describe('Sales Analytics presentation model', () => {
     expect(rows[0]?.netSalesRevenueCents).toBe(9500);
     expect(rows[0]?.orderCount).toBe(5);
     expect(rows[0]?.operationalExpectedOrderTotalCents).toBe(9000);
+    expect(rows[0]?.operatingHistoryCoverage).toBe('AVAILABLE');
+    expect(rows[0]?.operatingMinutes).toBe(300);
+    expect(rows[0]?.temporaryClosureMinutes).toBe(360);
+    expect(rows[0]?.temporaryClosureIntervals).toHaveLength(2);
+    expect(rows[0]?.unavailableItemCount).toBe(1);
+    expect(rows[0]?.unavailableItems[0]).toMatchObject({
+      menuItemStableId: 'item-1',
+      unavailableMinutes: 90,
+    });
+    expect(rows[0]?.unavailableItems[0]?.unavailableIntervals).toHaveLength(2);
     expect(rows[0]?.temperatureAvgC).toBe(12);
     expect(rows[0]?.precipitationMm).toBe(3);
     expect(rows[0]?.weatherCondition).toBe('RAIN');

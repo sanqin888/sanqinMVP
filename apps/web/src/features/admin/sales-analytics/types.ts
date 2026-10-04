@@ -9,6 +9,7 @@ export type SalesAnalyticsBusinessReport = Pick<
   | 'generatedAt'
   | 'range'
   | 'coverage'
+  | 'operatingHistory'
   | 'summary'
   | 'comparison'
   | 'timeline'

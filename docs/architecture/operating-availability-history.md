@@ -1,8 +1,8 @@
 # Operating / Availability History
 
 Date: 2026-10-04  
-Implementation base: `origin/dev@40fd2fd5`  
-State: **HIST-B MERGED / CI #6888 GREEN / HIST-C LOCAL IMPLEMENTED / USER REVIEW PENDING / NO PRODUCTION DEPLOYMENT / NO LEGACY BACKFILL**
+Implementation base: `origin/dev@48e20534`  
+State: **HIST-B MERGED / HIST-C MERGED / PR #2690 / CI #6892 GREEN / HIST-D LOCAL IMPLEMENTED / USER REVIEW PENDING / NO PRODUCTION DEPLOYMENT / NO LEGACY BACKFILL**
 
 ## Goal
 
@@ -254,14 +254,14 @@ timezone versioning/no-op behavior, duplicate pause rejection, early resume, del
 TEMP today, TEMP -> PERMANENT continuity, repeated same-item outages, generic availability bypass rejection and
 current-state/history transaction failure propagation.
 
-The required modularization worklog updates for HIST-B and HIST-C were attempted, but MCP rejected the writes
-because the file would exceed its 1,000,000-character write limit. Per project instruction, these slices do not
-bypass or rewrite that file through another mechanism; this limitation is recorded here for later authorized
-maintenance.
+The required modularization worklog updates for HIST-B, HIST-C and HIST-D were attempted, but MCP rejected the
+writes because the file would exceed its 1,000,000-character write limit. Per project instruction, these slices
+do not bypass or rewrite that file through another mechanism; this limitation is recorded here for later
+authorized maintenance.
 
 ### HIST-C — Reporting projection
 
-**Local implementation complete; user review pending. No remote submission or production deployment has been performed.**
+**Merged through PR #2690 / squash `48e20534`; CI #6892 green. No production deployment has been performed.**
 
 HIST-C adds only owner reads and Reporting projection:
 
@@ -299,10 +299,26 @@ capture state machines or production runtime. Those remain HIST-D/HIST-E work.
 
 ### HIST-D — Admin Sales Analytics UI
 
-- daily Operating time column;
-- unavailable-item count column + inline detail;
-- shared hour/minute duration formatting;
-- existing Coverage card upgrade.
+**Local implementation complete; user review pending. No remote submission or production deployment has been performed.**
+
+The existing **逐日解释上下文 / Daily explanatory context** table now consumes the HIST-C
+`operatingHistory` projection directly:
+
+- adds **营业时间 / Operating time** using owner-backed actual operating minutes;
+- when Store pause time is non-zero, the operating-time cell expands to show total paused duration and a second-level
+  Store-local interval list such as `13:00–18:00`, `20:00–21:00`;
+- adds **菜品下架 / Unavailable items** as a distinct-item count; a non-zero count expands to item name + cumulative
+  unavailable duration, then a second-level Store-local list of each effective unavailable segment;
+- duration display follows the frozen minute/hour rules; interval display uses the report Store timezone and 24-hour
+  `HH:mm–HH:mm` semantics;
+- PARTIAL/UNAVAILABLE facts remain fail-visible as `—`; the UI does not convert missing historical evidence to zero;
+- the existing **营业历史 / Operating history** Coverage card now reports combined Store + Catalog history coverage
+  and separately states Store schedule/pause and Catalog availability coverage;
+- the browser performs no interval arithmetic. It only joins daily owner-backed facts and formats the exact effective
+  intervals already projected by HIST-C.
+
+HIST-D does not add a fifth request or standalone history widget, and does not modify API calculation semantics,
+schema/migrations, Accounting authority or architecture boundaries.
 
 ### HIST-E — production verification
 

@@ -147,6 +147,54 @@ function coverageLabel(
   return labels[status][locale === 'zh' ? 0 : 1];
 }
 
+function operatingHistoryCoverageLabel(
+  status: SalesAnalyticsBusinessReport['operatingHistory']['coverage']['overall'],
+  locale: Locale,
+): string {
+  const labels: Record<
+    SalesAnalyticsBusinessReport['operatingHistory']['coverage']['overall'],
+    [string, string]
+  > = {
+    AVAILABLE: ['完整', 'Available'],
+    PARTIAL: ['部分', 'Partial'],
+    UNAVAILABLE: ['不可用', 'Unavailable'],
+  };
+  return labels[status][locale === 'zh' ? 0 : 1];
+}
+
+function formatDurationMinutes(minutes: number, locale: Locale): string {
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  if (hours === 0) {
+    return locale === 'zh' ? `${remainder}分钟` : `${remainder} min`;
+  }
+  if (remainder === 0) {
+    return locale === 'zh' ? `${hours}小时` : `${hours} hr`;
+  }
+  return locale === 'zh'
+    ? `${hours}小时${remainder}分钟`
+    : `${hours} hr ${remainder} min`;
+}
+
+function formatHistoryInterval(
+  interval: { startedAt: string; endedAt: string },
+  timezone: string,
+  locale: Locale,
+): string {
+  const formatter = new Intl.DateTimeFormat(
+    locale === 'zh' ? 'zh-CN' : 'en-CA',
+    {
+      timeZone: timezone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    },
+  );
+  return `${formatter.format(new Date(interval.startedAt))}–${formatter.format(
+    new Date(interval.endedAt),
+  )}`;
+}
+
 function weekdayLabel(
   weekday: SalesAnalyticsCalendarReport['days'][number]['weekday'] | null,
   locale: Locale,
@@ -827,7 +875,11 @@ export function SalesAnalyticsPageClient() {
             </div>
           </section>
 
-          <DailyContextTable rows={dailyRows} locale={locale} />
+          <DailyContextTable
+            rows={dailyRows}
+            locale={locale}
+            timezone={bundle.business.timezone}
+          />
 
           <section className="grid gap-4 xl:grid-cols-2">
             <ChannelTable report={bundle.sales} locale={locale} />
@@ -914,9 +966,11 @@ function KpiCard({
 function DailyContextTable({
   rows,
   locale,
+  timezone,
 }: {
   rows: ReturnType<typeof buildDailyRows>;
   locale: Locale;
+  timezone: string;
 }) {
   const isZh = locale === 'zh';
   return (
@@ -933,17 +987,37 @@ function DailyContextTable({
           : '“Operational expected order total” is an Orders operating measure, not Accounting revenue; weather and holidays do not prove causation.'}
       </p>
       <div className="mt-4 overflow-x-auto">
-        <table className="min-w-[980px] w-full text-sm">
+        <table className="min-w-[1260px] w-full text-sm">
           <thead className="text-left text-xs text-slate-500">
             <tr className="border-b border-slate-200">
               <th className="pb-2 pr-4">{isZh ? '日期' : 'Date'}</th>
-              <th className="pb-2 pr-4">{isZh ? '节假日 / 长周末' : 'Holiday / long weekend'}</th>
-              <th className="pb-2 pr-4 text-right">{isZh ? '净销售收入' : 'Net sales'}</th>
-              <th className="pb-2 pr-4 text-right">{isZh ? '订单' : 'Orders'}</th>
-              <th className="pb-2 pr-4 text-right">{isZh ? '平均订单额' : 'AOV'}</th>
-              <th className="pb-2 pr-4 text-right">{isZh ? '运营预期订单总额' : 'Operational expected order total'}</th>
+              <th className="pb-2 pr-4">
+                {isZh ? '节假日 / 长周末' : 'Holiday / long weekend'}
+              </th>
+              <th className="pb-2 pr-4 text-right">
+                {isZh ? '净销售收入' : 'Net sales'}
+              </th>
+              <th className="pb-2 pr-4 text-right">
+                {isZh ? '订单' : 'Orders'}
+              </th>
+              <th className="pb-2 pr-4 text-right">
+                {isZh ? '平均订单额' : 'AOV'}
+              </th>
+              <th className="pb-2 pr-4 text-right">
+                {isZh
+                  ? '运营预期订单总额'
+                  : 'Operational expected order total'}
+              </th>
+              <th className="pb-2 pr-4">
+                {isZh ? '营业时间' : 'Operating time'}
+              </th>
+              <th className="pb-2 pr-4">
+                {isZh ? '菜品下架' : 'Unavailable items'}
+              </th>
               <th className="pb-2 pr-4">{isZh ? '天气' : 'Weather'}</th>
-              <th className="pb-2">{isZh ? '降水 / 积雪' : 'Rain / snow'}</th>
+              <th className="pb-2">
+                {isZh ? '降水 / 积雪' : 'Rain / snow'}
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -965,19 +1039,138 @@ function DailyContextTable({
                         }`
                       : weekday);
               return (
-                <tr key={row.date} className="border-b border-slate-100 last:border-0">
-                  <td className="py-3 pr-4 font-medium text-slate-900">{row.date}</td>
+                <tr
+                  key={row.date}
+                  className="border-b border-slate-100 align-top last:border-0"
+                >
+                  <td className="py-3 pr-4 font-medium text-slate-900">
+                    {row.date}
+                  </td>
                   <td className="py-3 pr-4 text-slate-600">{context}</td>
-                  <td className="py-3 pr-4 text-right font-medium">{money(row.netSalesRevenueCents, locale)}</td>
-                  <td className="py-3 pr-4 text-right">{number(row.orderCount, locale)}</td>
-                  <td className="py-3 pr-4 text-right">{money(row.averageOrderTotalCents, locale)}</td>
-                  <td className="py-3 pr-4 text-right text-slate-600">{money(row.operationalExpectedOrderTotalCents, locale)}</td>
+                  <td className="py-3 pr-4 text-right font-medium">
+                    {money(row.netSalesRevenueCents, locale)}
+                  </td>
+                  <td className="py-3 pr-4 text-right">
+                    {number(row.orderCount, locale)}
+                  </td>
+                  <td className="py-3 pr-4 text-right">
+                    {money(row.averageOrderTotalCents, locale)}
+                  </td>
+                  <td className="py-3 pr-4 text-right text-slate-600">
+                    {money(
+                      row.operationalExpectedOrderTotalCents,
+                      locale,
+                    )}
+                  </td>
+                  <td className="py-3 pr-4 text-slate-700">
+                    {row.operatingMinutes === null ? (
+                      <span
+                        className="text-slate-400"
+                        title={operatingHistoryCoverageLabel(
+                          row.operatingHistoryCoverage,
+                          locale,
+                        )}
+                      >
+                        —
+                      </span>
+                    ) : (
+                      <div className="min-w-[132px]">
+                        <div className="font-medium text-slate-900">
+                          {formatDurationMinutes(row.operatingMinutes, locale)}
+                        </div>
+                        {row.temporaryClosureMinutes !== null &&
+                        row.temporaryClosureMinutes > 0 ? (
+                          <details className="mt-1">
+                            <summary className="cursor-pointer text-xs text-[#87362E] underline decoration-dotted underline-offset-2">
+                              {isZh ? '暂停 ' : 'Paused '}
+                              {formatDurationMinutes(
+                                row.temporaryClosureMinutes,
+                                locale,
+                              )}
+                            </summary>
+                            <ul className="mt-1 space-y-0.5 pl-3 text-xs text-slate-500">
+                              {row.temporaryClosureIntervals.map(
+                                (interval, index) => (
+                                  <li
+                                    key={`${interval.startedAt}-${interval.endedAt}-${index}`}
+                                  >
+                                    {formatHistoryInterval(
+                                      interval,
+                                      timezone,
+                                      locale,
+                                    )}
+                                  </li>
+                                ),
+                              )}
+                            </ul>
+                          </details>
+                        ) : null}
+                      </div>
+                    )}
+                  </td>
+                  <td className="py-3 pr-4 text-slate-700">
+                    {row.unavailableItemCount === null ? (
+                      <span
+                        className="text-slate-400"
+                        title={operatingHistoryCoverageLabel(
+                          row.operatingHistoryCoverage,
+                          locale,
+                        )}
+                      >
+                        —
+                      </span>
+                    ) : row.unavailableItemCount === 0 ? (
+                      '0'
+                    ) : (
+                      <details className="min-w-[150px]">
+                        <summary className="cursor-pointer font-medium text-[#87362E] underline decoration-dotted underline-offset-2">
+                          {isZh
+                            ? `${row.unavailableItemCount}项`
+                            : `${row.unavailableItemCount} items`}
+                        </summary>
+                        <ul className="mt-2 space-y-2 text-xs">
+                          {row.unavailableItems.map((item) => (
+                            <li key={item.menuItemStableId}>
+                              <div className="font-medium text-slate-700">
+                                {isZh
+                                  ? item.nameZh || item.nameEn
+                                  : item.nameEn}
+                                {' · '}
+                                {formatDurationMinutes(
+                                  item.unavailableMinutes,
+                                  locale,
+                                )}
+                              </div>
+                              <ul className="mt-0.5 space-y-0.5 pl-3 text-slate-500">
+                                {item.unavailableIntervals.map(
+                                  (interval, index) => (
+                                    <li
+                                      key={`${item.menuItemStableId}-${interval.startedAt}-${interval.endedAt}-${index}`}
+                                    >
+                                      {formatHistoryInterval(
+                                        interval,
+                                        timezone,
+                                        locale,
+                                      )}
+                                    </li>
+                                  ),
+                                )}
+                              </ul>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    )}
+                  </td>
                   <td className="py-3 pr-4 text-slate-600">
                     {row.temperatureAvgC === null
                       ? isZh
                         ? '天气不可用'
                         : 'Weather unavailable'
-                      : `${weatherConditionLabel(row.weatherCondition, locale)} · ${number(row.temperatureAvgC, locale)}°C`}
+                      : `${weatherConditionLabel(
+                          row.weatherCondition,
+                          locale,
+                        )} · ${number(row.temperatureAvgC, locale)}°C`}
                   </td>
                   <td className="py-3 text-slate-600">
                     {row.precipitationMm === null && row.snowDepthMm === null
@@ -1160,11 +1353,26 @@ function CoveragePanel({
         />
         <CoverageCard
           title={isZh ? '营业历史' : 'Operating history'}
-          status={bundle.business.coverage.storeOperatingContext}
+          status={operatingHistoryCoverageLabel(
+            bundle.business.operatingHistory.coverage.overall,
+            locale,
+          )}
           detail={
             isZh
-              ? '历史营业时间 / 临时停业没有版本化，不能回填推断。'
-              : 'Historical hours / temporary closures are not versioned and are not reconstructed.'
+              ? `门店排班/暂停：${operatingHistoryCoverageLabel(
+                  bundle.business.operatingHistory.coverage.store,
+                  locale,
+                )} · 菜品下架：${operatingHistoryCoverageLabel(
+                  bundle.business.operatingHistory.coverage.catalog,
+                  locale,
+                )}。覆盖起点之前不会按 0 推断。`
+              : `Store schedule/pause: ${operatingHistoryCoverageLabel(
+                  bundle.business.operatingHistory.coverage.store,
+                  locale,
+                )} · item availability: ${operatingHistoryCoverageLabel(
+                  bundle.business.operatingHistory.coverage.catalog,
+                  locale,
+                )}. Time before capture started is never inferred as zero.`
           }
         />
       </div>
