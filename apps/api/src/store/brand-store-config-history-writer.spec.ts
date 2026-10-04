@@ -146,7 +146,7 @@ describe('PrismaBrandStoreConfigWriter history invariants', () => {
     ).rejects.toBe(historyFailure);
 
     expect(transaction).toHaveBeenCalledTimes(1);
-    expect(tx.storeConfig.update).toHaveBeenCalledTimes(1);
+    expect(tx.storeConfig.updateMany).toHaveBeenCalledTimes(1);
     expect(intervalCreate).toHaveBeenCalledTimes(1);
   });
 });
