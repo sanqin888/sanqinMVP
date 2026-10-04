@@ -1,8 +1,8 @@
 # Admin Data — Sales Analytics / Management P&L migration
 
 Date: 2026-10-03  
-Baseline: latest `origin/dev@6877ce25` after DATA-E readiness documentation merge  
-Current state: **DATA-A-D MERGED / CI GREEN; DATA-B1 WEATHER MIGRATION APPLIED IN PRODUCTION; DATA-E PRODUCTION DEPLOYED / PARTIAL VERIFICATION; WEATHER PROVIDER RECOVERED AFTER KEY CONFIGURATION; FOLLOW-UP FIX LOCAL / USER REVIEW PENDING; DATA-F BLOCKED**
+Baseline: latest `origin/dev@f91b4bce` after Admin Data production polish PR #2674  
+Current state: **DATA-A-D DEPLOYED; DATA-B1 WEATHER PRODUCTION VERIFIED; MANAGEMENT P&L PRODUCTION VERIFIED; DATA-E PARTIAL VERIFICATION; SALES ITEM-MIX FOLLOW-UP LOCAL / USER REVIEW PENDING; DATA-F BLOCKED**
 
 ## Product goal
 
@@ -266,7 +266,19 @@ Production now has the Weather migration applied and the Reporting table active.
 
 The local follow-up branch `fix/admin-data-weather-chart-polish` prevents recurrence by marking missing provider configuration non-cacheable while preserving bounded negative caching for actual attempted provider failures. It also moves Evidence Coverage directly below the Sales Analytics header, assigns distinct colors to current Sales / previous Sales / temperature / holiday chart series, formats chart-tooltip temperature to one decimal, shows Calendar weekday names on non-holiday days (retaining long-weekend context after the weekday when present), and assigns distinct Income / Expenses / Net Profit colors to the Management P&L trend. This is a Reporting policy + Web presentation follow-up only: no Prisma/schema/migration, package, Accounting arithmetic, owner authority, context direction, scanner allowance, SCC or architecture-baseline change.
 
-DATA-E remains **PARTIALLY PRODUCTION VERIFIED** until the remaining Store scope, known-holiday/long-weekend, Management parity/export/disclaimer and compatibility/access checks are completed. DATA-F remains blocked.
+Production verification after PR #2674 also confirmed the Admin Management P&L runtime against its Accounting owner contracts: whole-business / whole-ledger P&L and Cash Movement requests returned 200 without Store scope, date-range changes were exercised, PDF and CSV exports were manually verified as usable, and side-by-side Admin versus Accounting screenshots matched Income $45,428.39, Expenses $30,939.47, Net adjustment effect -$2,920.70 and Net profit $11,568.22 for 2026-01-01 through 2026-10-03 grouped by month. Management P&L is therefore **PRODUCTION VERIFIED**.
+
+DATA-E remains **PARTIALLY PRODUCTION VERIFIED** until the remaining Store-scope/Sales/date, known-holiday/long-weekend and compatibility/access checks are completed. DATA-F remains blocked.
+
+#### 2026-10-03 follow-up — Sales commercial-item mix semantics
+
+The Sales Analytics `销售商品结构 / Commercial item mix` follow-up is isolated from DATA-F because it changes Reporting/Catalog explanatory item metadata plus the Admin Sales presentation, while DATA-F is an Accounting presentation contraction.
+
+Readiness found two distinct causes in the existing implementation: the Web table hard-capped `report.commercialItems.slice(0, 8)`, while Business Operations intentionally unions current and same-weekday-baseline item keys, so baseline-only rows can have current `quantity = 0`. The Sales table now selects every row with current `quantity > 0` and removes the fixed row cap while preserving the existing backend sort by current quantity descending.
+
+The generic Catalog classification is used for drink exclusion. `MenuItem.itemKind = FOOD | BEVERAGE` is canonical Catalog product metadata; Uber `UberItemChannelConfig.preparationType = PREPARED | PREPACKAGED` remains provider/channel-specific and is deliberately not used as generic Sales Analytics authority. A bounded production read-only check on Store `4750_Yonge_Street` found exactly 2 current `BEVERAGE` items and exactly 2 `PREPACKAGED` Uber items, with zero mismatches in either direction, confirming the current operational set maps exactly while preserving the correct owner. Catalog exposes a narrow Store-scoped current-item classification reader, Reporting adapts it through a Reporting-owned port at `ReportsModule`, and additive `commercialItems.currentCatalogItemKind` is explicitly current Catalog configuration. Sales Analytics excludes known `BEVERAGE` rows; unknown/deleted historical item classifications remain visible rather than being silently discarded. Business Overview keeps consuming the full `commercialItems` projection unchanged.
+
+This reuses the already-authorized `accounting-reporting-analytics -> catalog-pricing-offers` conceptual read direction established by MKT-B. Owner imports remain confined to the Reporting composition root; no new graph direction, scanner allowance/baseline, Prisma/schema/migration, package dependency, Accounting authority or Order historical snapshot is introduced.
 
 ### DATA-F — Accounting UI contraction
 

@@ -17,6 +17,11 @@ import {
   type ReportingBusinessOrderItemFactV1,
 } from './reporting-business-order-facts-query.contract';
 import {
+  REPORTING_CATALOG_ITEM_CLASSIFICATION_QUERY,
+  type ReportingCatalogItemClassificationQueryPort,
+  type ReportingCatalogItemKindV1,
+} from './reporting-catalog-item-classification-query.contract';
+import {
   REPORTING_STORE_OPERATING_CONTEXT_QUERY,
   type ReportingStoreOperatingContextQueryPort,
 } from './reporting-store-operating-context.contract';
@@ -209,6 +214,9 @@ export class BusinessOperationsReportService {
     private readonly orderFacts: ReportingBusinessOrderFactsQueryPort,
     @Inject(REPORTING_STORE_OPERATING_CONTEXT_QUERY)
     private readonly storeContext: ReportingStoreOperatingContextQueryPort,
+    @Inject(REPORTING_CATALOG_ITEM_CLASSIFICATION_QUERY)
+    private readonly catalogItemClassifications:
+      ReportingCatalogItemClassificationQueryPort,
   ) {}
 
   async getReport(
@@ -272,6 +280,23 @@ export class BusinessOperationsReportService {
         toExclusive: effectiveToExclusive.toJSDate(),
       }),
     ]);
+
+    const itemStableIds = Array.from(
+      new Set(allItems.map((item) => item.productStableId)),
+    );
+    const itemClassifications =
+      itemStableIds.length > 0
+        ? await this.catalogItemClassifications.readItemClassifications({
+            storeStableId,
+            itemStableIds,
+          })
+        : [];
+    const currentCatalogItemKindByStableId = new Map<
+      string,
+      ReportingCatalogItemKindV1
+    >(
+      itemClassifications.map((item) => [item.itemStableId, item.itemKind]),
+    );
 
     const observedOrdersFrom = this.resolveObservedOrdersFrom(allOrders, zone);
     const baselinePeriods = this.buildBaselinePeriods({
@@ -341,6 +366,7 @@ export class BusinessOperationsReportService {
       targetItems,
       currentSummary.orderCount,
       baselinePeriods,
+      currentCatalogItemKindByStableId,
     );
     const productionItems = this.buildProductionItems(
       targetItems,
@@ -675,6 +701,10 @@ export class BusinessOperationsReportService {
     currentItems: ReportingBusinessOrderItemFactV1[],
     currentOrderCount: number,
     baselinePeriods: BaselinePeriod[],
+    currentCatalogItemKindByStableId: ReadonlyMap<
+      string,
+      ReportingCatalogItemKindV1
+    >,
   ): BusinessOperationsReportV1['commercialItems'] {
     const current = this.aggregateCommercialItems(currentItems);
     const baselines = baselinePeriods.map((period) =>
@@ -699,6 +729,8 @@ export class BusinessOperationsReportService {
         return {
           productStableId,
           name: currentEntry?.name ?? fallbackName ?? productStableId,
+          currentCatalogItemKind:
+            currentCatalogItemKindByStableId.get(productStableId) ?? null,
           quantity: currentEntry?.quantity ?? 0,
           orderCount: currentEntry?.orderStableIds.size ?? 0,
           orderPenetrationRate:

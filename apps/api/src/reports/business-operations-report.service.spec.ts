@@ -186,9 +186,16 @@ describe('BusinessOperationsReportService', () => {
     const operatingContext = {
       getStoreOperatingContext: jest.fn().mockResolvedValue(storeContext()),
     };
+    const catalogItemClassifications = {
+      readItemClassifications: jest.fn().mockResolvedValue([
+        { itemStableId: 'combo_lunch', itemKind: 'FOOD' },
+        { itemStableId: 'drink_plum', itemKind: 'BEVERAGE' },
+      ]),
+    };
     const service = new BusinessOperationsReportService(
       orderFacts as never,
       operatingContext as never,
+      catalogItemClassifications as never,
     );
 
     const report = await service.getReport({ storeStableId: STORE });
@@ -237,8 +244,17 @@ describe('BusinessOperationsReportService', () => {
         (item) => item.productStableId === 'combo_lunch',
       ),
     ).toMatchObject({
+      currentCatalogItemKind: 'FOOD',
       quantity: 1,
       expectedQuantity: 1,
+    });
+    expect(
+      report.commercialItems.find(
+        (item) => item.productStableId === 'drink_plum',
+      ),
+    ).toMatchObject({
+      currentCatalogItemKind: 'BEVERAGE',
+      quantity: 1,
     });
     expect(
       report.productionItems.find(
@@ -276,6 +292,12 @@ describe('BusinessOperationsReportService', () => {
       direction: 'BELOW_EXPECTED',
     });
 
+    expect(
+      catalogItemClassifications.readItemClassifications,
+    ).toHaveBeenCalledWith({
+      storeStableId: STORE,
+      itemStableIds: expect.arrayContaining(['combo_lunch', 'drink_plum']),
+    });
     expect(orderFacts.readOperationalOrdersForRange).toHaveBeenCalledWith(
       expect.objectContaining({
         storeStableId: STORE,
@@ -294,6 +316,9 @@ describe('BusinessOperationsReportService', () => {
       } as never,
       {
         getStoreOperatingContext: jest.fn().mockResolvedValue(storeContext()),
+      } as never,
+      {
+        readItemClassifications: jest.fn(),
       } as never,
     );
 
@@ -323,6 +348,9 @@ describe('BusinessOperationsReportService', () => {
       } as never,
       {
         getStoreOperatingContext: jest.fn().mockResolvedValue(storeContext()),
+      } as never,
+      {
+        readItemClassifications: jest.fn(),
       } as never,
     );
 

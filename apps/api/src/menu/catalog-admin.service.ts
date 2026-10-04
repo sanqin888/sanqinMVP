@@ -31,6 +31,10 @@ import type {
   CatalogMarketingItemSubjectV1,
   CatalogMarketingSubjectReaderPort,
 } from './catalog-marketing-subject-reader.contract';
+import type {
+  CatalogReportingItemClassificationReaderPort,
+  CatalogReportingItemClassificationV1,
+} from './catalog-reporting-item-classification-reader.contract';
 
 export type CatalogAvailabilityMode = 'ON' | 'PERMANENT_OFF' | 'TEMP_TODAY_OFF';
 
@@ -139,7 +143,8 @@ export class CatalogAdminService
     CatalogAvailabilityReaderPort,
     CatalogExternalMenuFactsReaderPort,
     CatalogOrderFactsReaderPort,
-    CatalogMarketingSubjectReaderPort
+    CatalogMarketingSubjectReaderPort,
+    CatalogReportingItemClassificationReaderPort
 {
   constructor(private readonly prisma: PrismaService) {}
 
@@ -842,6 +847,48 @@ export class CatalogAdminService
       storeStableId: item.category.storeStableId,
       nameEn: item.nameEn,
       nameZh: item.nameZh,
+    }));
+  }
+
+  async readItemClassifications(query: {
+    storeStableId: string;
+    itemStableIds: string[];
+  }): Promise<CatalogReportingItemClassificationV1[]> {
+    const storeStableId = requireStoreStableId(query.storeStableId);
+    const itemStableIds = Array.from(
+      new Set(
+        query.itemStableIds
+          .map((stableId) => stableId.trim())
+          .filter((stableId) => stableId.length > 0),
+      ),
+    );
+    if (itemStableIds.length === 0) return [];
+
+    const items = await this.prisma.menuItem.findMany({
+      where: {
+        stableId: { in: itemStableIds },
+        deletedAt: null,
+        category: {
+          deletedAt: null,
+          storeStableId,
+        },
+      },
+      select: {
+        stableId: true,
+        itemKind: true,
+        category: {
+          select: {
+            storeStableId: true,
+          },
+        },
+      },
+      orderBy: { stableId: 'asc' },
+    });
+
+    return items.map((item) => ({
+      itemStableId: item.stableId,
+      storeStableId: item.category.storeStableId,
+      itemKind: item.itemKind,
     }));
   }
 
