@@ -2,6 +2,7 @@ export const BRAND_STORE_CONFIG_READER = Symbol('BRAND_STORE_CONFIG_READER');
 export const BRAND_STORE_CONFIG_WRITER = Symbol('BRAND_STORE_CONFIG_WRITER');
 export const STORE_DIRECTORY_READER = Symbol('STORE_DIRECTORY_READER');
 export const STORE_DIRECTORY_WRITER = Symbol('STORE_DIRECTORY_WRITER');
+export const STORE_TIMEZONE_READER = Symbol('STORE_TIMEZONE_READER');
 
 export type BrandConfigSnapshot = {
   brandNameZh: string | null;
@@ -105,6 +106,10 @@ export interface BrandStoreConfigWriterPort {
     storeStableId: string,
     input: StoreConfigUpdateInput,
   ): Promise<void>;
+  startTemporaryClosure(
+    storeStableId: string,
+    reason: string,
+  ): Promise<boolean>;
   resumeTemporaryClosureIfMatches(
     storeStableId: string,
     expectedReason: string,
@@ -113,6 +118,13 @@ export interface BrandStoreConfigWriterPort {
 
 export interface StoreDirectoryReaderPort {
   listStores(): Promise<StoreDirectoryEntry[]>;
+}
+
+export interface StoreTimezoneReaderPort {
+  getStoreTimezone(storeStableId: string): Promise<{
+    storeStableId: string;
+    timezone: string;
+  }>;
 }
 
 export interface StoreDirectoryWriterPort {

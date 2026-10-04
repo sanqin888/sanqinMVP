@@ -1,8 +1,8 @@
 # Operating / Availability History
 
 Date: 2026-10-04  
-Audit base: `origin/dev@24545aba`  
-State: **READINESS AUDIT COMPLETE / HIST-A LOCAL IMPLEMENTED / USER REVIEW PENDING / MIGRATION REQUIRED / NO LEGACY BACKFILL**
+Implementation base: `origin/dev@534ae848`  
+State: **HIST-B LOCAL IMPLEMENTED / USER REVIEW PENDING / NO PRODUCTION DEPLOYMENT / NO LEGACY BACKFILL**
 
 ## Goal
 
@@ -133,12 +133,16 @@ the historical fact after later rename/soft-delete operations.
 
 ### Forward-only cutover / baseline
 
-HIST-B will initialize capture once per Store after the migration exists:
+HIST-B initializes capture once per Store after the migration exists:
 
-- set the Store and Catalog `trackingStartedAt`;
-- append the current complete Store schedule as the first schedule version;
-- if the Store is paused at cutover, open/seed a closure interval only from `trackingStartedAt`;
-- for MenuItems unavailable at cutover, open/seed item intervals only from `trackingStartedAt`.
+- Store baseline creation is owner-local and idempotent through the unique `StoreOperatingHistoryState.storeDbId`;
+- Catalog baseline creation is owner-local and idempotent through the unique
+  `CatalogAvailabilityHistoryState.storeStableId`;
+- each Store baseline records `trackingStartedAt` and revision 1 as a complete timezone + BusinessHour + Holiday snapshot;
+- an active Store closure at cutover is represented only from `trackingStartedAt`; an auto-pause whose planned end is already at/before cutover is not reconstructed;
+- each actually unavailable MenuItem at cutover is represented only from `trackingStartedAt`; an expired
+  `tempUnavailableUntil` is ignored;
+- repeated API/bootstrap execution does not create a second baseline or revision 1.
 
 This is **not historical backfill**. Facts before `trackingStartedAt` remain unknown.
 
@@ -221,13 +225,45 @@ Promotion to `main` / production is blocked until the user-generated migration i
 
 ### HIST-B — owner atomic capture / cutover
 
-- Store schedule/timezone version writes;
-- Store pause/resume interval writes;
-- Catalog unavailable interval writes;
-- idempotent forward-only baseline initialization;
-- remove generic MenuItem availability mutation bypass;
-- reject duplicate POS pause while already paused;
-- Store-timezone-aware `TEMP_TODAY_OFF`.
+**Local implementation complete; user review pending. No remote submission or production deployment has been performed.**
+
+Implemented owner invariants:
+
+- BusinessHour/Holiday replacements compare normalized complete sets first; true no-op writes do not increment
+  `scheduleRevision`. Real changes and the resulting full schedule snapshot commit in one Prisma transaction.
+- `StoreConfig.timezone` changes version the full post-change schedule in the same transaction and use the actual
+  mutation instant as `effectiveFrom`.
+- POS pause uses an owner command that rejects an already-paused Store before mutation. Current Store state and
+  the closure interval share one transaction.
+- planned POS auto-resume is stored as the interval's effective end. Early manual resume shortens it; delayed
+  reconciliation retains the planned end rather than scheduler delay. Forward-only cutover also permits clearing
+  a stale pre-cutover expired pause without inventing an interval.
+- Admin manual temporary closure remains open-ended (`endedAt=null`) until actual resume.
+- MenuItem availability state and its history transition share one Catalog transaction. TEMP -> PERMANENT remains
+  one interval by changing its end semantics; restore then later disable creates a new interval.
+- MenuItem unavailable intervals snapshot `menuItemStableId + nameEn/nameZh`.
+- generic Item create/update paths reject availability fields; new items are created available and later
+  availability changes must use the dedicated route.
+- Admin and POS MenuItem/option consumers were rechecked and use the dedicated `/availability` route.
+- Store-local TEMP_TODAY_OFF is resolved with the Store IANA timezone through a narrow local port assembled only
+  in the existing scanner-excluded `CatalogUberAvailabilityOrchestrationModule`; Catalog persistence does not
+  import Store persistence/public implementation and no scanner allowance is added.
+
+Focused regression source covers baseline idempotency/expired temp exclusion, schedule revision/full snapshot,
+timezone versioning/no-op behavior, duplicate pause rejection, early resume, delayed reconciliation, Store-local
+TEMP today, TEMP -> PERMANENT continuity, repeated same-item outages, generic availability bypass rejection and
+current-state/history transaction failure propagation.
+
+The required modularization worklog update was attempted, but MCP rejected the write because the file would exceed
+its 1,000,000-character write limit. Per project instruction, HIST-B does not bypass or rewrite that file through
+another mechanism; this limitation is recorded here for later authorized maintenance.
+
+### HIST-C readiness
+
+HIST-C may begin after HIST-B user review and normal remote CI delivery. It should add owner historical readers
+over the now-captured Store/Catalog facts and compose them only in `ReportsModule`. It must not redesign the
+capture state machines, backfill pre-cutover history, change Accounting authority, or move interval arithmetic
+into the owners.
 
 ### HIST-C — Reporting projection
 

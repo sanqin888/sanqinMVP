@@ -202,14 +202,12 @@ export class AdminMenuController {
       ingredientsEn?: string;
       ingredientsZh?: string;
 
-      isAvailable?: boolean;
       visibility?: 'PUBLIC' | 'HIDDEN';
       isVisibleOnMainMenu?: boolean;
       publishToUberEats?: boolean;
       labelStrategy?: 'AUTO' | 'ALWAYS' | 'NEVER';
       itemKind?: 'FOOD' | 'BEVERAGE';
       packagingTypeStableIds?: string[];
-      tempUnavailableUntil?: string | null;
     },
   ) {
     return this.catalog.createItem(requireStoreStableId(storeStableId), body);
@@ -234,7 +232,6 @@ export class AdminMenuController {
       ingredientsEn?: string | null;
       ingredientsZh?: string | null;
 
-      isAvailable?: boolean;
       visibility?: 'PUBLIC' | 'HIDDEN';
       isVisibleOnMainMenu?: boolean;
       publishToUberEats?: boolean;
@@ -246,7 +243,6 @@ export class AdminMenuController {
         quantity: number;
         sortOrder?: number;
       }>;
-      tempUnavailableUntil?: string | null;
     },
   ) {
     return this.availability.updateItem(

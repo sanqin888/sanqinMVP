@@ -1,4 +1,9 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+} from '@nestjs/common';
 import { DateTime } from 'luxon';
 import { PosGateway } from './pos.gateway';
 import {
@@ -113,10 +118,14 @@ export class PosStoreStatusService {
       throw new BadRequestException('Failed to calculate auto-resume time');
     }
 
-    await this.configWriter.updateStoreConfig(storeStableId, {
-      isTemporarilyClosed: true,
-      temporaryCloseReason: buildAutoPauseReason(autoResumeAtIso),
-    });
+    const pauseReason = buildAutoPauseReason(autoResumeAtIso);
+    const started = await this.configWriter.startTemporaryClosure(
+      storeStableId,
+      pauseReason,
+    );
+    if (!started) {
+      throw new ConflictException('Customer ordering is already paused');
+    }
 
     const status = {
       isTemporarilyClosed: true,
