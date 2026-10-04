@@ -1,17 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import {
-  CartesianGrid,
-  Legend,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
 import { apiFetch } from '@/lib/api/client';
 import type {
   AccountingSalesAnalyticsChannel,
@@ -22,10 +12,6 @@ import type {
   AccountingSalesSummary,
   AccountingSalesTenderBucket,
 } from '../contracts/reports';
-import {
-  previousEqualRange,
-  previousEqualRangeWithinAccountingCoverage,
-} from './sales-comparison-range';
 
 const money = (cents: number) =>
   `${cents < 0 ? '-' : ''}$${(Math.abs(cents) / 100).toFixed(2)}`;
@@ -64,74 +50,18 @@ export default function AccountingSalesPage() {
   const [report, setReport] = useState<AccountingSalesAnalyticsReport | null>(
     null,
   );
-  const [previousReport, setPreviousReport] =
-    useState<AccountingSalesAnalyticsReport | null>(null);
-  const [comparisonUnavailableReason, setComparisonUnavailableReason] = useState<
-    'OUTSIDE_ACCOUNTING_COVERAGE' | 'UNAVAILABLE' | null
-  >(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const comparisonRange = useMemo(
-    () =>
-      report
-        ? previousEqualRangeWithinAccountingCoverage(
-            report.from,
-            report.to,
-            report.accountingStartDate,
-          )
-        : null,
-    [report],
-  );
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
     setReport(null);
-    setPreviousReport(null);
-    setComparisonUnavailableReason(null);
 
     void apiFetch<AccountingSalesAnalyticsReport>(salesReportUrl(from, to))
-      .then(async (currentReport) => {
-        if (cancelled) return;
-        setReport(currentReport);
-
-        const previousRange = previousEqualRange(
-          currentReport.from,
-          currentReport.to,
-        );
-        if (!previousRange) {
-          setComparisonUnavailableReason('UNAVAILABLE');
-          return;
-        }
-        if (
-          !previousEqualRangeWithinAccountingCoverage(
-            currentReport.from,
-            currentReport.to,
-            currentReport.accountingStartDate,
-          )
-        ) {
-          setComparisonUnavailableReason('OUTSIDE_ACCOUNTING_COVERAGE');
-          return;
-        }
-
-        try {
-          const previous = await apiFetch<AccountingSalesAnalyticsReport>(
-            salesReportUrl(previousRange.from, previousRange.to),
-          );
-          if (cancelled) return;
-          if (
-            previous.from !== previousRange.from ||
-            previous.to !== previousRange.to
-          ) {
-            setComparisonUnavailableReason('UNAVAILABLE');
-            return;
-          }
-          setPreviousReport(previous);
-        } catch {
-          if (!cancelled) setComparisonUnavailableReason('UNAVAILABLE');
-        }
+      .then((currentReport) => {
+        if (!cancelled) setReport(currentReport);
       })
       .catch((cause: unknown) => {
         if (cancelled) return;
@@ -147,34 +77,19 @@ export default function AccountingSalesPage() {
     };
   }, [from, to]);
 
-  const chartData = useMemo(
-    () =>
-      (report?.daily ?? []).map((row) => ({
-        date: row.date.slice(5),
-        [isZh ? '总销售' : 'Gross sales']: row.summary.grossSalesCents / 100,
-        [isZh ? '净销售收入' : 'Net sales revenue']:
-          row.summary.netSalesRevenueCents / 100,
-        [isZh ? '渠道贡献' : 'Channel contribution']:
-          row.summary.contributionCents / 100,
-      })),
-    [isZh, report],
-  );
-
   const summary = report?.summary;
-  const previousSummary = previousReport?.summary;
   const currentChannelCosts = summary ? channelCosts(summary) : 0;
-  const previousChannelCosts = previousSummary
-    ? channelCosts(previousSummary)
-    : null;
 
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-2xl font-bold">{isZh ? '销售' : 'Sales'}</h1>
+        <h1 className="text-2xl font-bold">
+          {isZh ? '销售会计' : 'Sales Accounting'}
+        </h1>
         <p className="mt-1 text-sm text-slate-500">
           {isZh
-            ? '金额以 canonical Journal 为唯一财务权威；订单仅提供渠道和主支付方式等描述性归因。'
-            : 'Canonical Journal is the financial authority for every amount; Orders supplies descriptive channel and primary-payment attribution only.'}
+            ? '这里用于核对 canonical Sales 的财务构成、收款、Provider 覆盖与调整来源；金额仍以 canonical Journal 为唯一财务权威。经营趋势与运营上下文已归入 Admin Sales Analytics。'
+            : 'Use this surface to reconcile canonical Sales financial composition, tenders, provider coverage, and adjustment sources. Canonical Journal remains the sole financial authority; management trends and operating context now belong in Admin Sales Analytics.'}
         </p>
       </header>
 
@@ -207,12 +122,6 @@ export default function AccountingSalesPage() {
             {isZh ? 'Accounting 起始' : 'Accounting start'}:{' '}
             {report?.accountingStartDate ?? '—'}
           </span>
-          {comparisonRange ? (
-            <span>
-              {isZh ? '等长前期' : 'Previous equal period'}:{' '}
-              {comparisonRange.from} — {comparisonRange.to}
-            </span>
-          ) : null}
         </div>
       </section>
 
@@ -226,117 +135,49 @@ export default function AccountingSalesPage() {
           {isZh ? '正在读取 canonical Sales…' : 'Loading canonical Sales…'}
         </p>
       ) : null}
-      {comparisonUnavailableReason && report ? (
-        <p className="rounded bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          {comparisonUnavailableReason === 'OUTSIDE_ACCOUNTING_COVERAGE'
-            ? isZh
-              ? `等长前期无法完整落在 Accounting 覆盖范围内（起始 ${report.accountingStartDate}），因此不会发起前期查询。`
-              : `The previous equal period is not fully inside Accounting coverage (starts ${report.accountingStartDate}), so no comparison request is sent.`
-            : isZh
-              ? '当前区间已加载；等长前期暂不可读取，因此本次不显示前期对比。'
-              : 'The current range loaded successfully, but the previous equal period could not be read, so comparison is omitted.'}
-        </p>
-      ) : null}
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <KpiCard
           label={isZh ? '总销售 / Gross Sales' : 'Gross sales'}
           cents={summary?.grossSalesCents ?? 0}
-          previousCents={previousSummary?.grossSalesCents}
-          isZh={isZh}
         />
         <KpiCard
           label={isZh ? '销售折扣' : 'Sales discounts'}
           cents={summary?.discountsCents ?? 0}
-          previousCents={previousSummary?.discountsCents}
-          isZh={isZh}
         />
         <KpiCard
           label={isZh ? '净销售收入' : 'Net sales revenue'}
           cents={summary?.netSalesRevenueCents ?? 0}
-          previousCents={previousSummary?.netSalesRevenueCents}
-          isZh={isZh}
         />
         <KpiCard
           label={isZh ? '销项税' : 'Output tax'}
           cents={summary?.outputTaxCents ?? 0}
-          previousCents={previousSummary?.outputTaxCents}
-          isZh={isZh}
         />
         <KpiCard
           label={isZh ? '渠道成本' : 'Channel costs'}
           cents={currentChannelCosts}
-          previousCents={previousChannelCosts ?? undefined}
-          isZh={isZh}
-        />
-        <KpiCard
-          label={isZh ? '渠道贡献' : 'Channel contribution'}
-          cents={summary?.contributionCents ?? 0}
-          previousCents={previousSummary?.contributionCents}
-          isZh={isZh}
-          note={
-            isZh
-              ? '管理指标，不等于收入或净利润'
-              : 'Management metric; not revenue or net profit'
-          }
         />
       </section>
 
       <AttributionNotice report={report} isZh={isZh} />
 
-      <section className="rounded-xl border bg-white p-4 shadow-sm">
-        <h2 className="text-lg font-semibold">
-          {isZh ? '每日销售趋势' : 'Daily sales trend'}
-        </h2>
-        <p className="mt-1 text-xs text-slate-500">
-          {isZh
-            ? '金额来自 Journal；仅当前期完整落在 Accounting 覆盖范围内时，上方 KPI 才显示等长前期对比。'
-            : 'Amounts come from Journal; KPI cards show the equal-period comparison only when the full prior range is inside Accounting coverage.'}
-        </p>
-        <div className="mt-4 h-72 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="date" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Line
-                type="monotone"
-                dataKey={isZh ? '总销售' : 'Gross sales'}
-              />
-              <Line
-                type="monotone"
-                dataKey={isZh ? '净销售收入' : 'Net sales revenue'}
-              />
-              <Line
-                type="monotone"
-                dataKey={isZh ? '渠道贡献' : 'Channel contribution'}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </section>
-
       <section className="grid gap-4 xl:grid-cols-2">
         <DimensionTable
-          title={isZh ? '按渠道' : 'By channel'}
+          title={isZh ? '按渠道归因' : 'By channel attribution'}
           rows={(report?.byChannel ?? []).map((row) => ({
             key: row.key,
             label: channelLabel(row.key, isZh),
             summary: row.summary,
           }))}
-          totalNetSalesCents={summary?.netSalesRevenueCents ?? 0}
           isZh={isZh}
         />
         <DimensionTable
-          title={isZh ? '按主支付方式（收入归因）' : 'By primary payment method (revenue attribution)'}
+          title={isZh ? '按主支付方式归因' : 'By primary payment attribution'}
           rows={(report?.byPrimaryPaymentMethod ?? []).map((row) => ({
             key: row.key,
             label: paymentLabel(row.key, isZh),
             summary: row.summary,
           }))}
-          totalNetSalesCents={summary?.netSalesRevenueCents ?? 0}
           isZh={isZh}
         />
       </section>
@@ -435,7 +276,7 @@ export default function AccountingSalesPage() {
                   {isZh ? '净销售收入' : 'Net sales'}
                 </th>
                 <th className="pb-2 text-right">
-                  {isZh ? '渠道贡献' : 'Contribution'}
+                  {isZh ? '渠道成本' : 'Channel costs'}
                 </th>
               </tr>
             </thead>
@@ -452,7 +293,7 @@ export default function AccountingSalesPage() {
                     {money(row.summary.netSalesRevenueCents)}
                   </td>
                   <td className="py-2 text-right font-medium">
-                    {money(row.summary.contributionCents)}
+                    {money(channelCosts(row.summary))}
                   </td>
                 </tr>
               ))}
@@ -504,33 +345,11 @@ export default function AccountingSalesPage() {
   );
 }
 
-function KpiCard({
-  label,
-  cents,
-  previousCents,
-  note,
-  isZh,
-}: {
-  label: string;
-  cents: number;
-  previousCents?: number;
-  note?: string;
-  isZh: boolean;
-}) {
-  const delta = previousCents === undefined ? null : cents - previousCents;
+function KpiCard({ label, cents }: { label: string; cents: number }) {
   return (
     <div className="rounded-xl border bg-white p-4 shadow-sm">
       <p className="text-sm text-slate-500">{label}</p>
       <p className="mt-2 text-2xl font-semibold">{money(cents)}</p>
-      {delta !== null ? (
-        <p className="mt-2 text-xs text-slate-500">
-          {isZh ? '前期' : 'Previous'} {money(previousCents ?? 0)}
-          {' · '}
-          {isZh ? '变化' : 'Change'} {delta >= 0 ? '+' : ''}
-          {money(delta)}
-        </p>
-      ) : null}
-      {note ? <p className="mt-2 text-xs text-slate-500">{note}</p> : null}
     </div>
   );
 }
@@ -538,7 +357,6 @@ function KpiCard({
 function DimensionTable({
   title,
   rows,
-  totalNetSalesCents,
   isZh,
 }: {
   title: string;
@@ -547,7 +365,6 @@ function DimensionTable({
     label: string;
     summary: AccountingSalesSummary;
   }>;
-  totalNetSalesCents: number;
   isZh: boolean;
 }) {
   return (
@@ -570,14 +387,8 @@ function DimensionTable({
               <th className="pb-2 pr-4 text-right">
                 {isZh ? '税' : 'Tax'}
               </th>
-              <th className="pb-2 pr-4 text-right">
-                {isZh ? '占比' : 'Share'}
-              </th>
-              <th className="pb-2 pr-4 text-right">
-                {isZh ? '渠道成本' : 'Costs'}
-              </th>
               <th className="pb-2 text-right">
-                {isZh ? '贡献' : 'Contribution'}
+                {isZh ? '渠道成本' : 'Channel costs'}
               </th>
             </tr>
           </thead>
@@ -597,19 +408,8 @@ function DimensionTable({
                 <td className="py-2 pr-4 text-right">
                   {money(row.summary.outputTaxCents)}
                 </td>
-                <td className="py-2 pr-4 text-right">
-                  {totalNetSalesCents === 0
-                    ? '—'
-                    : `${(
-                        (row.summary.netSalesRevenueCents / totalNetSalesCents) *
-                        100
-                      ).toFixed(1)}%`}
-                </td>
-                <td className="py-2 pr-4 text-right">
+                <td className="py-2 text-right font-medium">
                   {money(channelCosts(row.summary))}
-                </td>
-                <td className="py-2 text-right font-semibold">
-                  {money(row.summary.contributionCents)}
                 </td>
               </tr>
             ))}

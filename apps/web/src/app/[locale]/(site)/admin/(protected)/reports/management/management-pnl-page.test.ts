@@ -127,11 +127,15 @@ describe('Admin DATA-D Management P&L UI contract', () => {
     expect(reportViewSource).toContain('MANAGEMENT_PNL_CHART_COLORS.netProfit');
   });
 
-  it('preserves existing Management, Trial Balance and Balance Movement Accounting UI', () => {
-    expect(accountingReportsPageSource).toContain('Management P&L');
-    expect(accountingReportsPageSource).toContain('Trial Balance');
-    expect(accountingReportsPageSource).toContain('Balance Movement');
-  });
+  it(
+    'keeps Management in Admin while Accounting Reports contracts to canonical statements',
+    () => {
+      expect(clientSource).toContain('Management P&L');
+      expect(accountingReportsPageSource).not.toContain('Management P&L');
+      expect(accountingReportsPageSource).toContain('Trial Balance');
+      expect(accountingReportsPageSource).toContain('Balance Movement');
+    },
+  );
 
   it('reuses existing Management export contracts without Store scope', () => {
     expect(clientSource).toContain('/api/v1/accounting/export/report.pdf?');

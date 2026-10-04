@@ -78,10 +78,10 @@ function buildNavigation(locale: 'zh' | 'en'): AccountingNavigationItem[] {
     },
     {
       href: `${root}/sales`,
-      labelZh: '销售',
-      labelEn: 'Sales',
+      labelZh: '销售会计',
+      labelEn: 'Sales accounting',
       shortZh: '销售',
-      shortEn: 'Sales',
+      shortEn: 'Sales acct.',
       icon: WalletCards,
     },
     {
