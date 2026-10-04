@@ -4136,11 +4136,21 @@ is claimed per repository workflow.
 
 ### 2026-10-04 — Deployment runtime-config Slice 3 Web Docker build-time config contraction
 
-**Branch/State:** local `feat/web-build-runtime-config-contraction` from latest `origin/dev`; **LOCAL IMPLEMENTED / USER REVIEW PENDING / CI NOT RUN / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**.  
+**PR/SHA:** PR #2681 / merge `af4ba4dc`; CI #6863 green  
+**State:** **MERGED / CI GREEN / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**.  
 **Contraction:** `apps/web/src` already has zero runtime `NEXT_PUBLIC_*` consumers after Slices 1-2. `Dockerfile.web` now removes the stale Google Maps/Clover browser-config `ARG` and `ENV` inputs, and Compose removes the matching `web.build.args`. The Web build therefore no longer needs production browser configuration and produces the same application image regardless of deployment environment.  
 **Runtime ownership:** Google Maps browser configuration remains supplied by the Brand/Store-owned runtime endpoint and Clover browser configuration remains supplied through the existing Web payment-session API contract. No runtime API behavior, payment execution, Store authority, backend context direction, provider transport, schema/migration, dependency/lockfile, scanner allowance or architecture baseline changes are made in this slice. Historical Phase documents that describe the old `NEXT_PUBLIC_CLOVER_*` compatibility state are intentionally preserved as historical evidence rather than rewritten.  
 **Deployment / validation:** README now states that the Web image must not receive production `NEXT_PUBLIC_*` build args. Per `AGENTS.md`, local lint/build/test is not run before user review; GitHub Actions remains the authoritative validation gate after remote authorization. This slice completes the runtime-config cutover prerequisite for GHCR image publishing foundation work.  
 **Details:** `Dockerfile.web`, `docker-compose.yml`, README, current dependency graph and this worklog.
+
+### 2026-10-04 — Deployment/GHCR Slice A trusted image publishing foundation
+
+**Branch/State:** local `feat/ghcr-image-publishing-foundation` from latest `origin/dev`; **LOCAL IMPLEMENTED / USER REVIEW PENDING / CI NOT RUN / NO PRODUCTION CUTOVER / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**.  
+**Trusted trigger:** new `.github/workflows/publish-images.yml` is chained from the authoritative `ci` workflow through `workflow_run`, filtered to `main`, and its publish job additionally requires `conclusion == success`, triggering event `push`, and `head_branch == main`. It checks out the exact validated `workflow_run.head_sha`; PR/fork workflow runs cannot reach the package-writing job.  
+**Registry / identity:** the workflow uses repository `GITHUB_TOKEN` with explicit `contents: read` and `packages: write`, logs in to `ghcr.io`, and publishes two lowercase packages: `ghcr.io/sanqin888/sanq-api:<full-sha>` and `ghcr.io/sanqin888/sanq-web:<full-sha>`. Only immutable full-SHA tags are written in this slice; there is intentionally no mutable `latest` or `main` alias. OCI source/revision/version labels link each artifact to this repository and validated commit.  
+**Build / cache:** API and Web are separate matrix jobs on GitHub-hosted Ubuntu and continue using the existing `Dockerfile.api` / `Dockerfile.web`; Buildx GHA cache scopes are isolated per image. No dependency, Dockerfile behavior, Prisma migration, application runtime contract, architecture edge/baseline or production VM state is changed.  
+**Cutover gate:** this slice publishes artifacts only. It does not deploy, run migrations, restart production, or change Compose image references. Before the later pull-only production cutover, verify the production VM target architecture and inspect the first-published GHCR package visibility / pull-auth policy; the current MCP system-status surface does not expose CPU architecture, so no architecture assumption is recorded as verified.  
+**Details:** `.github/workflows/publish-images.yml`, README, current dependency graph and this worklog.
 
 ## Rule for future entries
 

@@ -60,6 +60,17 @@ Do not treat container start alone as deployment success. Apply any explicitly
 authorized production Prisma migrations through the normal controlled migration
 gate, then verify migration parity plus local/public runtime readiness.
 
+GHCR image publishing foundation:
+
+After the authoritative `ci` workflow succeeds for a push to `main`, GitHub Actions builds the validated commit with `Dockerfile.api` and `Dockerfile.web` and publishes immutable images tagged with the full commit SHA:
+
+```text
+ghcr.io/sanqin888/sanq-api:<full-git-sha>
+ghcr.io/sanqin888/sanq-web:<full-git-sha>
+```
+
+The publishing workflow does not deploy to production, run Prisma migrations, or move a mutable `latest` / `main` tag. Production remains on the existing Compose rollout path until the separate pull-only cutover is reviewed. Before that cutover, verify the production VM architecture and the first-published GHCR package visibility/pull-auth policy.
+
 `ops/verify-runtime-readiness.sh` currently accepts an explicit env-file path
 as its first argument. Supply the actual production env-file path when one is
 used; do not substitute the stale `/etc/sanqin/sanqin.env` example.
