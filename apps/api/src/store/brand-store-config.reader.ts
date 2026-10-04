@@ -35,13 +35,18 @@ import type {
   StoreScheduleWriterPort,
   StoreWeekday,
 } from './store-schedule.contract';
+import type {
+  StoreOperatingHistoryRange,
+  StoreOperatingHistoryReaderPort,
+} from './store-operating-history.contract';
 
 @Injectable()
 export class PrismaBrandStoreConfigReader
   implements
     BrandStoreConfigReaderPort,
     StoreDirectoryReaderPort,
-    StoreTimezoneReaderPort
+    StoreTimezoneReaderPort,
+    StoreOperatingHistoryReaderPort
 {
   constructor(private readonly prisma: PrismaService) {}
 
@@ -155,6 +160,85 @@ export class PrismaBrandStoreConfigReader
     return {
       storeStableId: store.storeStableId,
       timezone: store.config.timezone,
+    };
+  }
+
+  async readOperatingHistoryForRange(
+    storeStableId: string,
+    fromInclusive: Date,
+    toExclusive: Date,
+  ): Promise<StoreOperatingHistoryRange | null> {
+    const store = await this.prisma.store.findUnique({
+      where: { storeStableId },
+      select: { id: true, storeStableId: true },
+    });
+    if (!store) {
+      throw new BrandStoreConfigUnavailableError(
+        `Configured store ${storeStableId} is not provisioned`,
+      );
+    }
+
+    const coverage = await this.prisma.storeOperatingHistoryState.findUnique({
+      where: { storeDbId: store.id },
+      select: { trackingStartedAt: true },
+    });
+    if (!coverage) return null;
+
+    const [activeVersion, laterVersions, temporaryClosures] = await Promise.all([
+      this.prisma.storeScheduleVersion.findFirst({
+        where: {
+          storeDbId: store.id,
+          effectiveFrom: { lte: fromInclusive },
+        },
+        orderBy: { effectiveFrom: 'desc' },
+        select: {
+          revision: true,
+          effectiveFrom: true,
+          timezone: true,
+          businessHoursSnapshot: true,
+          holidaysSnapshot: true,
+        },
+      }),
+      this.prisma.storeScheduleVersion.findMany({
+        where: {
+          storeDbId: store.id,
+          effectiveFrom: { gt: fromInclusive, lt: toExclusive },
+        },
+        orderBy: { effectiveFrom: 'asc' },
+        select: {
+          revision: true,
+          effectiveFrom: true,
+          timezone: true,
+          businessHoursSnapshot: true,
+          holidaysSnapshot: true,
+        },
+      }),
+      this.prisma.storeTemporaryClosureInterval.findMany({
+        where: {
+          storeDbId: store.id,
+          startedAt: { lt: toExclusive },
+          OR: [{ endedAt: null }, { endedAt: { gt: fromInclusive } }],
+        },
+        orderBy: { startedAt: 'asc' },
+        select: { startedAt: true, endedAt: true },
+      }),
+    ]);
+
+    const versions = activeVersion
+      ? [activeVersion, ...laterVersions]
+      : laterVersions;
+    return {
+      storeStableId: store.storeStableId,
+      coverage: { trackingStartedAt: coverage.trackingStartedAt },
+      scheduleVersions: versions.map((version) => ({
+        revision: version.revision,
+        effectiveFrom: version.effectiveFrom,
+        timezone: version.timezone,
+        businessHours:
+          version.businessHoursSnapshot as unknown as StoreBusinessHour[],
+        holidays: version.holidaysSnapshot as unknown as StoreHoliday[],
+      })),
+      temporaryClosures: temporaryClosures.map((interval) => ({ ...interval })),
     };
   }
 

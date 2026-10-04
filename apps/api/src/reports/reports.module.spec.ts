@@ -1,7 +1,9 @@
 import { MODULE_METADATA } from '@nestjs/common/constants';
 
 import {
+  CATALOG_AVAILABILITY_HISTORY_READER,
   CATALOG_REPORTING_ITEM_CLASSIFICATION_READER,
+  CatalogAvailabilityModule,
   CatalogReportingItemClassificationModule,
 } from '../menu/public-api';
 import {
@@ -15,6 +17,7 @@ import {
 } from '../promotions/public-api';
 import {
   BRAND_STORE_CONFIG_READER,
+  STORE_OPERATING_HISTORY_READER,
   STORE_SCHEDULE_READER,
   STORE_STATUS_READER,
   BrandStoreConfigModule,
@@ -40,6 +43,12 @@ import {
   REPORTING_STORE_LOCATION_QUERY,
   type ReportingStoreLocationQueryPort,
 } from './reporting-store-location-query.contract';
+import {
+  REPORTING_CATALOG_AVAILABILITY_HISTORY_QUERY,
+  REPORTING_STORE_OPERATING_HISTORY_QUERY,
+  type ReportingCatalogAvailabilityHistoryQueryPort,
+  type ReportingStoreOperatingHistoryQueryPort,
+} from './reporting-operating-history-query.contract';
 import {
   REPORTING_STORE_OPERATING_CONTEXT_QUERY,
   type ReportingStoreOperatingContextQueryPort,
@@ -193,6 +202,90 @@ describe('ReportsModule composition', () => {
       },
     ]);
     expect(reader.readItemClassifications).toHaveBeenCalledWith(input);
+  });
+
+  it('maps Store/Catalog history readers through Reporting-owned historical ports', async () => {
+    const imports = metadata<unknown>(ReportsModule, MODULE_METADATA.IMPORTS);
+    const providers = metadata<unknown>(
+      ReportsModule,
+      MODULE_METADATA.PROVIDERS,
+    );
+    expect(imports).toContain(CatalogAvailabilityModule);
+
+    const storeProvider = providers.find(
+      (candidate) =>
+        typeof candidate === 'object' &&
+        candidate !== null &&
+        'provide' in candidate &&
+        candidate.provide === REPORTING_STORE_OPERATING_HISTORY_QUERY,
+    ) as
+      | {
+          inject?: unknown[];
+          useFactory?: (
+            reader: never,
+          ) => ReportingStoreOperatingHistoryQueryPort;
+        }
+      | undefined;
+    const catalogProvider = providers.find(
+      (candidate) =>
+        typeof candidate === 'object' &&
+        candidate !== null &&
+        'provide' in candidate &&
+        candidate.provide === REPORTING_CATALOG_AVAILABILITY_HISTORY_QUERY,
+    ) as
+      | {
+          inject?: unknown[];
+          useFactory?: (
+            reader: never,
+          ) => ReportingCatalogAvailabilityHistoryQueryPort;
+        }
+      | undefined;
+
+    expect(storeProvider?.inject).toEqual([STORE_OPERATING_HISTORY_READER]);
+    expect(catalogProvider?.inject).toEqual([
+      CATALOG_AVAILABILITY_HISTORY_READER,
+    ]);
+
+    const storeReader = {
+      readOperatingHistoryForRange: jest.fn().mockResolvedValue({
+        storeStableId: 'store-1',
+        coverage: {
+          trackingStartedAt: new Date('2026-10-04T14:00:00.000Z'),
+        },
+        scheduleVersions: [],
+        temporaryClosures: [],
+      }),
+    };
+    const catalogReader = {
+      readItemUnavailableHistoryForRange: jest.fn().mockResolvedValue({
+        storeStableId: 'store-1',
+        trackingStartedAt: new Date('2026-10-04T14:00:00.000Z'),
+        intervals: [],
+      }),
+    };
+    const storeQuery = storeProvider!.useFactory!(storeReader as never);
+    const catalogQuery = catalogProvider!.useFactory!(catalogReader as never);
+    const range = {
+      storeStableId: 'store-1',
+      fromInclusive: new Date('2026-10-04T14:00:00.000Z'),
+      toExclusive: new Date('2026-10-05T04:00:00.000Z'),
+    };
+
+    await expect(storeQuery.readOperatingHistoryForRange(range)).resolves.toEqual(
+      {
+        storeStableId: 'store-1',
+        trackingStartedAt: new Date('2026-10-04T14:00:00.000Z'),
+        scheduleVersions: [],
+        temporaryClosures: [],
+      },
+    );
+    await expect(
+      catalogQuery.readItemUnavailableHistoryForRange(range),
+    ).resolves.toEqual({
+      storeStableId: 'store-1',
+      trackingStartedAt: new Date('2026-10-04T14:00:00.000Z'),
+      intervals: [],
+    });
   });
 
   it('imports the narrow Marketing owner modules at the Reporting composition root', () => {

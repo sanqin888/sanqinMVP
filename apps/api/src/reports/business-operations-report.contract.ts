@@ -115,6 +115,46 @@ export type BusinessOperationsAnomalyV1 = {
   }>;
 };
 
+export type BusinessOperationsOperatingHistoryCoverageV1 =
+  | 'AVAILABLE'
+  | 'PARTIAL'
+  | 'UNAVAILABLE';
+
+export type BusinessOperationsOperatingHistoryIntervalV1 = {
+  startedAt: string;
+  endedAt: string;
+};
+
+export type BusinessOperationsOperatingHistoryItemV1 = {
+  menuItemStableId: string;
+  nameEn: string;
+  nameZh: string | null;
+  unavailableMinutes: number;
+  unavailableIntervals: BusinessOperationsOperatingHistoryIntervalV1[];
+};
+
+export type BusinessOperationsOperatingHistoryDayV1 = {
+  date: string;
+  coverage: BusinessOperationsOperatingHistoryCoverageV1;
+  scheduledMinutes: number | null;
+  temporaryClosureMinutes: number | null;
+  temporaryClosureIntervals: BusinessOperationsOperatingHistoryIntervalV1[];
+  operatingMinutes: number | null;
+  unavailableItemCount: number | null;
+  unavailableItems: BusinessOperationsOperatingHistoryItemV1[];
+};
+
+export type BusinessOperationsOperatingHistoryV1 = {
+  coverage: {
+    overall: BusinessOperationsOperatingHistoryCoverageV1;
+    store: BusinessOperationsOperatingHistoryCoverageV1;
+    catalog: BusinessOperationsOperatingHistoryCoverageV1;
+  };
+  storeTrackingStartedAt: string | null;
+  catalogTrackingStartedAt: string | null;
+  days: BusinessOperationsOperatingHistoryDayV1[];
+};
+
 export type BusinessOperationsReportV1 = {
   version: '1';
   storeStableId: string;
@@ -141,6 +181,7 @@ export type BusinessOperationsReportV1 = {
     includedStatuses: ['paid', 'making', 'ready', 'completed'];
     refundedIncluded: false;
   };
+  operatingHistory: BusinessOperationsOperatingHistoryV1;
   storeContext: {
     isActive: boolean;
     currentStatus: {
