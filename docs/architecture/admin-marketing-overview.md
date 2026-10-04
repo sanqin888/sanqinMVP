@@ -1,9 +1,11 @@
 # Admin Marketing Overview — Readiness Audit and Delivery Plan
 
 Date: 2026-09-30  
+Latest status review: 2026-10-04  
 Original baseline: `origin/dev@2d250360` after MKT-D merge  
-MKT-E implementation baseline: `origin/dev@52dfced9`  
-State: **MKT-A/B/C/D MERGED + CI GREEN / MKT-E MERGED + CI #6733 GREEN / PR #2643 / MERGE `3846fbd7` / MKT-F LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO DEPENDENCY / PRODUCTION UI VERIFICATION NOT YET CLAIMED**
+MKT-E merge: PR #2643 / CI #6733 / `3846fbd7`  
+MKT-F merge: PR #2644 / final head `0ca96b20` / CI #6735 / `087cbb06`  
+State: **PRODUCTION VERIFIED / CLOSED / MKT-A-F MERGED + CI GREEN / DEPLOYED / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**
 
 ## 1. Product goal
 
@@ -357,7 +359,7 @@ coverage locks the 30/90-day labels plus weekday-slot Daily Special presentation
 
 ## 10. MKT-F — Daily Special parent campaign + weekday secondary statistics
 
-State: **LOCAL IMPLEMENTED / USER REVIEW PENDING / CI NOT RUN / WEB-ONLY / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**.
+State: **MERGED / PR #2644 / FINAL HEAD `0ca96b20` / CI #6735 GREEN / SQUASH `087cbb06` / DEPLOYED / PRODUCTION VERIFIED / CLOSED / WEB-ONLY / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**.
 
 MKT-F changes presentation only. The Reporting contract and each underlying
 `MenuDailySpecial.stableId` remain unchanged. Admin now treats Daily Special as one top-level
@@ -377,3 +379,11 @@ threshold and this change adds a hierarchy/table responsibility, the table/metri
 and grouping logic is extracted into `MarketingOverviewCampaignTable.tsx`; the page client
 returns to a smaller data-loading/composition role. No API, persistence, package, context
 boundary, scanner allowance, Accounting, payment, print, or provider behavior changes.
+
+## 11. 2026-10-04 status reconciliation / production gate
+
+A repository-history review corrected stale documentation that still described MKT-F as local-only. PR #2644 merged successfully with final head `0ca96b20`, CI #6735 passed all required jobs, and squash merge `087cbb06` is an ancestor of current production `main@0a184247`. Therefore MKT-A through MKT-F are source-complete and deployed.
+
+Production UI verification completed on 2026-10-04 after the operator opened Marketing Overview in production. Read-only runtime logs captured three Store-scoped requests to `GET /api/v1/reports/marketing?storeStableId=4750_Yonge_Street`, all returning 200 (258ms, 288ms and 214ms). The same verification window contained no API or Web error log lines, and db/api/web/ubereats-worker were all healthy on the active GHCR release. The operator confirmed the page UI was normal after opening it.
+
+Together with the already-merged MKT-A through MKT-F source sequence, CI #6735, production ancestry for `087cbb06`, and the earlier read-only metric reconciliation, this closes the remaining runtime gate. Admin Marketing Overview is therefore **PRODUCTION VERIFIED / CLOSED**. No MKT-G is planned under this work package; future enhancements should start from a new product requirement rather than reopening the completed migration.

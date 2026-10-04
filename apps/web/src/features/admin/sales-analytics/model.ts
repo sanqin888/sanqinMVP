@@ -14,6 +14,13 @@ export type SalesAnalyticsDailyRow = {
   orderCount: number;
   averageOrderTotalCents: number;
   operationalExpectedOrderTotalCents: number;
+  operatingHistoryCoverage: SalesAnalyticsBusinessReport['operatingHistory']['days'][number]['coverage'];
+  scheduledMinutes: number | null;
+  temporaryClosureMinutes: number | null;
+  temporaryClosureIntervals: SalesAnalyticsBusinessReport['operatingHistory']['days'][number]['temporaryClosureIntervals'];
+  operatingMinutes: number | null;
+  unavailableItemCount: number | null;
+  unavailableItems: SalesAnalyticsBusinessReport['operatingHistory']['days'][number]['unavailableItems'];
   temperatureAvgC: number | null;
   precipitationMm: number | null;
   snowDepthMm: number | null;
@@ -90,6 +97,9 @@ export function buildDailyRows(input: {
   const businessByDate = new Map(
     input.business.timeline.map((row) => [row.date, row]),
   );
+  const operatingHistoryByDate = new Map(
+    input.business.operatingHistory.days.map((row) => [row.date, row]),
+  );
   const weatherByDate = new Map(
     (input.weather?.days ?? []).map((row) => [row.date, row]),
   );
@@ -100,6 +110,7 @@ export function buildDailyRows(input: {
   const dates = new Set<string>([
     ...salesByDate.keys(),
     ...businessByDate.keys(),
+    ...operatingHistoryByDate.keys(),
     ...weatherByDate.keys(),
     ...calendarByDate.keys(),
   ]);
@@ -109,6 +120,7 @@ export function buildDailyRows(input: {
     .map((date) => {
       const sales = salesByDate.get(date);
       const business = businessByDate.get(date);
+      const operatingHistory = operatingHistoryByDate.get(date);
       const weather = weatherByDate.get(date);
       const calendar = calendarByDate.get(date);
       const holiday = calendar?.holidays[0] ?? null;
@@ -122,6 +134,17 @@ export function buildDailyRows(input: {
         averageOrderTotalCents: business?.current.averageOrderTotalCents ?? 0,
         operationalExpectedOrderTotalCents:
           business?.expected.orderTotalCents ?? 0,
+        operatingHistoryCoverage:
+          operatingHistory?.coverage ?? 'UNAVAILABLE',
+        scheduledMinutes: operatingHistory?.scheduledMinutes ?? null,
+        temporaryClosureMinutes:
+          operatingHistory?.temporaryClosureMinutes ?? null,
+        temporaryClosureIntervals:
+          operatingHistory?.temporaryClosureIntervals ?? [],
+        operatingMinutes: operatingHistory?.operatingMinutes ?? null,
+        unavailableItemCount:
+          operatingHistory?.unavailableItemCount ?? null,
+        unavailableItems: operatingHistory?.unavailableItems ?? [],
         temperatureAvgC: weather?.temperatureAvgC ?? null,
         precipitationMm: weather?.precipitationMm ?? null,
         snowDepthMm: weather?.snowDepthMm ?? null,

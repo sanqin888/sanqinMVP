@@ -64,6 +64,17 @@ function makeItem(
   };
 }
 
+function unavailableHistoryReaders() {
+  return {
+    storeHistory: {
+      readOperatingHistoryForRange: jest.fn().mockResolvedValue(null),
+    },
+    catalogHistory: {
+      readItemUnavailableHistoryForRange: jest.fn().mockResolvedValue(null),
+    },
+  };
+}
+
 function storeContext() {
   return {
     storeStableId: STORE,
@@ -196,10 +207,13 @@ describe('BusinessOperationsReportService', () => {
       },
     );
     const catalogItemClassifications = { readItemClassifications };
+    const histories = unavailableHistoryReaders();
     const service = new BusinessOperationsReportService(
       orderFacts as never,
       operatingContext as never,
       catalogItemClassifications as never,
+      histories.storeHistory as never,
+      histories.catalogHistory as never,
     );
 
     const report = await service.getReport({ storeStableId: STORE });
@@ -217,6 +231,27 @@ describe('BusinessOperationsReportService', () => {
       prepTiming: 'AVAILABLE',
       storeOperatingContext: 'CURRENT_CONFIGURATION_ONLY',
       printHealth: 'UNAVAILABLE',
+    });
+    expect(report.operatingHistory).toEqual({
+      coverage: {
+        overall: 'UNAVAILABLE',
+        store: 'UNAVAILABLE',
+        catalog: 'UNAVAILABLE',
+      },
+      storeTrackingStartedAt: null,
+      catalogTrackingStartedAt: null,
+      days: [
+        {
+          date: '2026-09-24',
+          coverage: 'UNAVAILABLE',
+          scheduledMinutes: null,
+          temporaryClosureMinutes: null,
+          temporaryClosureIntervals: [],
+          operatingMinutes: null,
+          unavailableItemCount: null,
+          unavailableItems: [],
+        },
+      ],
     });
     expect(report.summary).toMatchObject({
       orderCount: 4,
@@ -310,8 +345,346 @@ describe('BusinessOperationsReportService', () => {
     );
   });
 
+  it('projects historical schedule changes, Store closures, and MenuItem unavailability inside actual operating time', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-25T18:00:00.000Z'));
+    const trackingStartedAt = atLocal('2026-09-23T00:00:00');
+    const storeHistory = {
+      readOperatingHistoryForRange: jest.fn().mockResolvedValue({
+        storeStableId: STORE,
+        trackingStartedAt,
+        scheduleVersions: [
+          {
+            revision: 1,
+            effectiveFrom: trackingStartedAt,
+            timezone: ZONE,
+            businessHours: [
+              {
+                weekday: 4,
+                openMinutes: 480,
+                closeMinutes: 1200,
+                isClosed: false,
+              },
+            ],
+            holidays: [],
+          },
+          {
+            revision: 2,
+            effectiveFrom: atLocal('2026-09-24T13:00:00'),
+            timezone: ZONE,
+            businessHours: [
+              {
+                weekday: 4,
+                openMinutes: 600,
+                closeMinutes: 1320,
+                isClosed: false,
+              },
+            ],
+            holidays: [],
+          },
+        ],
+        temporaryClosures: [
+          {
+            startedAt: atLocal('2026-09-24T14:00:00'),
+            endedAt: atLocal('2026-09-24T15:00:00'),
+          },
+        ],
+      }),
+    };
+    const catalogHistory = {
+      readItemUnavailableHistoryForRange: jest.fn().mockResolvedValue({
+        storeStableId: STORE,
+        trackingStartedAt,
+        intervals: [
+          {
+            menuItemStableId: 'item-1',
+            nameEnSnapshot: 'Item One',
+            nameZhSnapshot: '菜品一',
+            startedAt: atLocal('2026-09-24T12:00:00'),
+            endedAt: atLocal('2026-09-24T16:00:00'),
+          },
+          {
+            menuItemStableId: 'outside-hours',
+            nameEnSnapshot: 'Outside Hours',
+            nameZhSnapshot: null,
+            startedAt: atLocal('2026-09-24T06:00:00'),
+            endedAt: atLocal('2026-09-24T07:00:00'),
+          },
+        ],
+      }),
+    };
+    const service = new BusinessOperationsReportService(
+      {
+        readOperationalOrdersForRange: jest.fn().mockResolvedValue([]),
+        readOperationalItemsForRange: jest.fn().mockResolvedValue([]),
+      } as never,
+      {
+        getStoreOperatingContext: jest.fn().mockResolvedValue(storeContext()),
+      } as never,
+      {
+        readItemClassifications: jest.fn(),
+      } as never,
+      storeHistory as never,
+      catalogHistory as never,
+    );
+
+    const report = await service.getReport({
+      storeStableId: STORE,
+      from: '2026-09-24',
+      to: '2026-09-24',
+    });
+
+    expect(report.operatingHistory).toEqual({
+      coverage: {
+        overall: 'AVAILABLE',
+        store: 'AVAILABLE',
+        catalog: 'AVAILABLE',
+      },
+      storeTrackingStartedAt: trackingStartedAt.toISOString(),
+      catalogTrackingStartedAt: trackingStartedAt.toISOString(),
+      days: [
+        {
+          date: '2026-09-24',
+          coverage: 'AVAILABLE',
+          scheduledMinutes: 840,
+          temporaryClosureMinutes: 60,
+          temporaryClosureIntervals: [
+            {
+              startedAt: atLocal('2026-09-24T14:00:00').toISOString(),
+              endedAt: atLocal('2026-09-24T15:00:00').toISOString(),
+            },
+          ],
+          operatingMinutes: 780,
+          unavailableItemCount: 1,
+          unavailableItems: [
+            {
+              menuItemStableId: 'item-1',
+              nameEn: 'Item One',
+              nameZh: '菜品一',
+              unavailableMinutes: 180,
+              unavailableIntervals: [
+                {
+                  startedAt: atLocal('2026-09-24T12:00:00').toISOString(),
+                  endedAt: atLocal('2026-09-24T14:00:00').toISOString(),
+                },
+                {
+                  startedAt: atLocal('2026-09-24T15:00:00').toISOString(),
+                  endedAt: atLocal('2026-09-24T16:00:00').toISOString(),
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  it('clips Today operating history at report-generation time', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-24T18:00:00.000Z'));
+    const trackingStartedAt = atLocal('2026-09-20T00:00:00');
+    const service = new BusinessOperationsReportService(
+      {
+        readOperationalOrdersForRange: jest.fn().mockResolvedValue([]),
+        readOperationalItemsForRange: jest.fn().mockResolvedValue([]),
+      } as never,
+      {
+        getStoreOperatingContext: jest.fn().mockResolvedValue(storeContext()),
+      } as never,
+      {
+        readItemClassifications: jest.fn(),
+      } as never,
+      {
+        readOperatingHistoryForRange: jest.fn().mockResolvedValue({
+          storeStableId: STORE,
+          trackingStartedAt,
+          scheduleVersions: [
+            {
+              revision: 1,
+              effectiveFrom: trackingStartedAt,
+              timezone: ZONE,
+              businessHours: [
+                {
+                  weekday: 4,
+                  openMinutes: 480,
+                  closeMinutes: 1350,
+                  isClosed: false,
+                },
+              ],
+              holidays: [],
+            },
+          ],
+          temporaryClosures: [],
+        }),
+      } as never,
+      {
+        readItemUnavailableHistoryForRange: jest.fn().mockResolvedValue({
+          storeStableId: STORE,
+          trackingStartedAt,
+          intervals: [],
+        }),
+      } as never,
+    );
+
+    const report = await service.getReport({ storeStableId: STORE });
+
+    expect(report.operatingHistory.days).toEqual([
+      {
+        date: '2026-09-24',
+        coverage: 'AVAILABLE',
+        scheduledMinutes: 360,
+        temporaryClosureMinutes: 0,
+        temporaryClosureIntervals: [],
+        operatingMinutes: 360,
+        unavailableItemCount: 0,
+        unavailableItems: [],
+      },
+    ]);
+  });
+
+  it('applies historical Holiday override before item-unavailability intersection', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-12-26T18:00:00.000Z'));
+    const trackingStartedAt = atLocal('2026-12-20T00:00:00');
+    const service = new BusinessOperationsReportService(
+      {
+        readOperationalOrdersForRange: jest.fn().mockResolvedValue([]),
+        readOperationalItemsForRange: jest.fn().mockResolvedValue([]),
+      } as never,
+      {
+        getStoreOperatingContext: jest.fn().mockResolvedValue(storeContext()),
+      } as never,
+      {
+        readItemClassifications: jest.fn(),
+      } as never,
+      {
+        readOperatingHistoryForRange: jest.fn().mockResolvedValue({
+          storeStableId: STORE,
+          trackingStartedAt,
+          scheduleVersions: [
+            {
+              revision: 1,
+              effectiveFrom: trackingStartedAt,
+              timezone: ZONE,
+              businessHours: [
+                {
+                  weekday: 5,
+                  openMinutes: 600,
+                  closeMinutes: 1200,
+                  isClosed: false,
+                },
+              ],
+              holidays: [
+                {
+                  date: '2026-12-25',
+                  name: 'Christmas',
+                  isClosed: true,
+                  openMinutes: null,
+                  closeMinutes: null,
+                },
+              ],
+            },
+          ],
+          temporaryClosures: [],
+        }),
+      } as never,
+      {
+        readItemUnavailableHistoryForRange: jest.fn().mockResolvedValue({
+          storeStableId: STORE,
+          trackingStartedAt,
+          intervals: [
+            {
+              menuItemStableId: 'item-1',
+              nameEnSnapshot: 'Item One',
+              nameZhSnapshot: null,
+              startedAt: atLocal('2026-12-25T10:00:00'),
+              endedAt: atLocal('2026-12-25T12:00:00'),
+            },
+          ],
+        }),
+      } as never,
+    );
+
+    const report = await service.getReport({
+      storeStableId: STORE,
+      from: '2026-12-25',
+      to: '2026-12-25',
+    });
+
+    expect(report.operatingHistory.days).toEqual([
+      {
+        date: '2026-12-25',
+        coverage: 'AVAILABLE',
+        scheduledMinutes: 0,
+        temporaryClosureMinutes: 0,
+        temporaryClosureIntervals: [],
+        operatingMinutes: 0,
+        unavailableItemCount: 0,
+        unavailableItems: [],
+      },
+    ]);
+  });
+
+  it('marks the forward-only cutover day PARTIAL instead of manufacturing full-day metrics', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-25T18:00:00.000Z'));
+    const trackingStartedAt = atLocal('2026-09-24T12:00:00');
+    const service = new BusinessOperationsReportService(
+      {
+        readOperationalOrdersForRange: jest.fn().mockResolvedValue([]),
+        readOperationalItemsForRange: jest.fn().mockResolvedValue([]),
+      } as never,
+      {
+        getStoreOperatingContext: jest.fn().mockResolvedValue(storeContext()),
+      } as never,
+      {
+        readItemClassifications: jest.fn(),
+      } as never,
+      {
+        readOperatingHistoryForRange: jest.fn().mockResolvedValue({
+          storeStableId: STORE,
+          trackingStartedAt,
+          scheduleVersions: [
+            {
+              revision: 1,
+              effectiveFrom: trackingStartedAt,
+              timezone: ZONE,
+              businessHours: [],
+              holidays: [],
+            },
+          ],
+          temporaryClosures: [],
+        }),
+      } as never,
+      {
+        readItemUnavailableHistoryForRange: jest.fn().mockResolvedValue({
+          storeStableId: STORE,
+          trackingStartedAt,
+          intervals: [],
+        }),
+      } as never,
+    );
+
+    const report = await service.getReport({
+      storeStableId: STORE,
+      from: '2026-09-24',
+      to: '2026-09-24',
+    });
+
+    expect(report.operatingHistory.days).toEqual([
+      {
+        date: '2026-09-24',
+        coverage: 'PARTIAL',
+        scheduledMinutes: null,
+        temporaryClosureMinutes: null,
+        temporaryClosureIntervals: [],
+        operatingMinutes: null,
+        unavailableItemCount: null,
+        unavailableItems: [],
+      },
+    ]);
+    expect(report.operatingHistory.coverage.overall).toBe('PARTIAL');
+  });
+
   it('fails closed on future dates and ranges longer than 90 days', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-09-24T18:00:00.000Z'));
+    const histories = unavailableHistoryReaders();
     const service = new BusinessOperationsReportService(
       {
         readOperationalOrdersForRange: jest.fn(),
@@ -323,6 +696,8 @@ describe('BusinessOperationsReportService', () => {
       {
         readItemClassifications: jest.fn(),
       } as never,
+      histories.storeHistory as never,
+      histories.catalogHistory as never,
     );
 
     await expect(
@@ -344,6 +719,7 @@ describe('BusinessOperationsReportService', () => {
   it('reports low sample instead of manufacturing a baseline when prior coverage is absent', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-09-24T18:00:00.000Z'));
     const current = makeOrder('2026-09-24T12:00:00');
+    const histories = unavailableHistoryReaders();
     const service = new BusinessOperationsReportService(
       {
         readOperationalOrdersForRange: jest.fn().mockResolvedValue([current]),
@@ -355,6 +731,8 @@ describe('BusinessOperationsReportService', () => {
       {
         readItemClassifications: jest.fn(),
       } as never,
+      histories.storeHistory as never,
+      histories.catalogHistory as never,
     );
 
     const report = await service.getReport({ storeStableId: STORE });

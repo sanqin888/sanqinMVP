@@ -19,6 +19,10 @@ import type {
   CatalogOptionAvailabilitySnapshot,
 } from './catalog-availability-reader.contract';
 import type {
+  CatalogAvailabilityHistoryRange,
+  CatalogAvailabilityHistoryReaderPort,
+} from './catalog-availability-history-reader.contract';
+import type {
   CatalogExternalMenuFactsReaderPort,
   CatalogExternalMenuSourceFacts,
 } from './catalog-external-menu-facts-reader.contract';
@@ -35,8 +39,18 @@ import type {
   CatalogReportingItemClassificationReaderPort,
   CatalogReportingItemClassificationV1,
 } from './catalog-reporting-item-classification-reader.contract';
+import {
+  captureCatalogAvailabilityTransition,
+  initializeCatalogAvailabilityHistory,
+  isCatalogItemUnavailableAt,
+} from './catalog-availability-history.persistence';
 
 export type CatalogAvailabilityMode = 'ON' | 'PERMANENT_OFF' | 'TEMP_TODAY_OFF';
+
+export type CatalogAvailabilityMutationTiming = {
+  effectiveAt: Date;
+  tempUnavailableUntil: Date | null;
+};
 
 const orderItemMaterializationSelect = {
   stableId: true,
@@ -97,22 +111,6 @@ function toIso(value: Date | null | undefined): string | null {
   return value ? value.toISOString() : null;
 }
 
-function parseIsoOrNull(value: unknown): Date | null {
-  if (value === null || value === undefined || value === '') return null;
-  if (typeof value !== 'string') {
-    throw new BadRequestException(
-      'tempUnavailableUntil must be ISO string or null',
-    );
-  }
-  const timestamp = Date.parse(value);
-  if (!Number.isFinite(timestamp)) {
-    throw new BadRequestException(
-      'tempUnavailableUntil must be valid ISO string',
-    );
-  }
-  return new Date(timestamp);
-}
-
 function availabilityFromDb(
   isAvailable: boolean,
   tempUnavailableUntil: Date | null,
@@ -123,12 +121,6 @@ function availabilityFromDb(
       ? tempUnavailableUntil.toISOString()
       : null,
   };
-}
-
-function nextMidnightLocal(): Date {
-  const value = new Date();
-  value.setHours(24, 0, 0, 0);
-  return value;
 }
 
 function requireStoreStableId(storeStableId: string): string {
@@ -144,7 +136,8 @@ export class CatalogAdminService
     CatalogExternalMenuFactsReaderPort,
     CatalogOrderFactsReaderPort,
     CatalogMarketingSubjectReaderPort,
-    CatalogReportingItemClassificationReaderPort
+    CatalogReportingItemClassificationReaderPort,
+    CatalogAvailabilityHistoryReaderPort
 {
   constructor(private readonly prisma: PrismaService) {}
 
@@ -987,16 +980,23 @@ export class CatalogAdminService
       imageUrl?: string;
       ingredientsEn?: string;
       ingredientsZh?: string;
-      isAvailable?: boolean;
       visibility?: 'PUBLIC' | 'HIDDEN';
       isVisibleOnMainMenu?: boolean;
       publishToUberEats?: boolean;
       labelStrategy?: 'AUTO' | 'ALWAYS' | 'NEVER';
       itemKind?: 'FOOD' | 'BEVERAGE';
       packagingTypeStableIds?: string[];
-      tempUnavailableUntil?: string | null;
     },
   ) {
+    const rawBody = body as Record<string, unknown>;
+    if (
+      Object.prototype.hasOwnProperty.call(rawBody, 'isAvailable') ||
+      Object.prototype.hasOwnProperty.call(rawBody, 'tempUnavailableUntil')
+    ) {
+      throw new BadRequestException(
+        'Create items as available, then use the dedicated availability endpoint',
+      );
+    }
     const storeId = requireStoreStableId(storeStableId);
     const categoryStableId = (body.categoryStableId ?? '').trim();
     if (!categoryStableId) {
@@ -1027,45 +1027,74 @@ export class CatalogAdminService
       throw new BadRequestException('basePriceCents is required');
     }
 
-    const created = await this.prisma.menuItem.create({
-      data: {
-        categoryId: category.id,
-        ...(stableId ? { stableId } : {}),
-        nameEn,
-        nameZh: body.nameZh?.trim() || null,
-        basePriceCents: Math.max(0, Math.round(body.basePriceCents)),
-        sortOrder: Number.isFinite(body.sortOrder)
-          ? (body.sortOrder as number)
-          : 0,
-        imageUrl: body.imageUrl?.trim() || null,
-        ingredientsEn: body.ingredientsEn?.trim() || null,
-        ingredientsZh: body.ingredientsZh?.trim() || null,
-        isAvailable:
-          typeof body.isAvailable === 'boolean' ? body.isAvailable : true,
-        visibility: body.visibility ?? 'PUBLIC',
-        isVisibleOnMainMenu:
-          typeof body.isVisibleOnMainMenu === 'boolean'
-            ? body.isVisibleOnMainMenu
-            : true,
-        publishToUberEats:
-          typeof body.publishToUberEats === 'boolean'
-            ? body.publishToUberEats
-            : false,
-        labelStrategy: body.labelStrategy ?? 'AUTO',
-        itemKind: body.itemKind ?? 'FOOD',
-        packagings: {
-          create: packagingTypes.map((packagingType, index) => ({
-            packagingTypeId: packagingType.id,
-            sortOrder: index,
-          })),
+    const effectiveAt = new Date();
+    return this.prisma.$transaction(async (tx) => {
+      const history = await tx.catalogAvailabilityHistoryState.findUnique({
+        where: { storeStableId: storeId },
+        select: { storeStableId: true },
+      });
+      const created = await tx.menuItem.create({
+        data: {
+          categoryId: category.id,
+          ...(stableId ? { stableId } : {}),
+          nameEn,
+          nameZh: body.nameZh?.trim() || null,
+          basePriceCents: Math.max(0, Math.round(body.basePriceCents)),
+          sortOrder: Number.isFinite(body.sortOrder)
+            ? (body.sortOrder as number)
+            : 0,
+          imageUrl: body.imageUrl?.trim() || null,
+          ingredientsEn: body.ingredientsEn?.trim() || null,
+          ingredientsZh: body.ingredientsZh?.trim() || null,
+          isAvailable: true,
+          visibility: body.visibility ?? 'PUBLIC',
+          isVisibleOnMainMenu:
+            typeof body.isVisibleOnMainMenu === 'boolean'
+              ? body.isVisibleOnMainMenu
+              : true,
+          publishToUberEats:
+            typeof body.publishToUberEats === 'boolean'
+              ? body.publishToUberEats
+              : false,
+          labelStrategy: body.labelStrategy ?? 'AUTO',
+          itemKind: body.itemKind ?? 'FOOD',
+          packagings: {
+            create: packagingTypes.map((packagingType, index) => ({
+              packagingTypeId: packagingType.id,
+              sortOrder: index,
+            })),
+          },
+          tempUnavailableUntil: null,
+          deletedAt: null,
         },
-        tempUnavailableUntil: parseIsoOrNull(body.tempUnavailableUntil),
-        deletedAt: null,
-      },
-      select: { stableId: true },
-    });
+        select: {
+          stableId: true,
+          nameEn: true,
+          nameZh: true,
+          isAvailable: true,
+          tempUnavailableUntil: true,
+        },
+      });
 
-    return { stableId: created.stableId };
+      if (!history) {
+        await initializeCatalogAvailabilityHistory(tx, storeId, effectiveAt);
+      } else {
+        const isUnavailable = isCatalogItemUnavailableAt(created, effectiveAt);
+        if (isUnavailable) {
+          await captureCatalogAvailabilityTransition(tx, {
+            storeStableId: storeId,
+            item: created,
+            wasUnavailable: false,
+            isUnavailable: true,
+            effectiveAt,
+            unavailableUntil: created.isAvailable
+              ? created.tempUnavailableUntil
+              : null,
+          });
+        }
+      }
+      return { stableId: created.stableId };
+    });
   }
 
   async validateFixedComponentComposition(
@@ -1094,7 +1123,6 @@ export class CatalogAdminService
       imageUrl?: string | null;
       ingredientsEn?: string | null;
       ingredientsZh?: string | null;
-      isAvailable?: boolean;
       visibility?: 'PUBLIC' | 'HIDDEN';
       isVisibleOnMainMenu?: boolean;
       publishToUberEats?: boolean;
@@ -1106,7 +1134,6 @@ export class CatalogAdminService
         quantity: number;
         sortOrder?: number;
       }>;
-      tempUnavailableUntil?: string | null;
     },
   ): Promise<{
     ok: true;
@@ -1117,6 +1144,15 @@ export class CatalogAdminService
       effectiveAvailability: boolean;
     };
   }> {
+    const rawBody = body as Record<string, unknown>;
+    if (
+      Object.prototype.hasOwnProperty.call(rawBody, 'isAvailable') ||
+      Object.prototype.hasOwnProperty.call(rawBody, 'tempUnavailableUntil')
+    ) {
+      throw new BadRequestException(
+        'Use the dedicated item availability endpoint for availability changes',
+      );
+    }
     const storeId = requireStoreStableId(storeStableId);
     const stableId = (itemStableId ?? '').trim();
     if (!stableId) throw new BadRequestException('itemStableId is required');
@@ -1217,8 +1253,6 @@ export class CatalogAdminService
           body.ingredientsZh === undefined
             ? undefined
             : body.ingredientsZh?.trim() || null,
-        isAvailable:
-          body.isAvailable === undefined ? undefined : body.isAvailable,
         visibility: body.visibility === undefined ? undefined : body.visibility,
         isVisibleOnMainMenu:
           body.isVisibleOnMainMenu === undefined
@@ -1254,10 +1288,6 @@ export class CatalogAdminService
               },
             }
           : {}),
-        tempUnavailableUntil:
-          body.tempUnavailableUntil === undefined
-            ? undefined
-            : parseIsoOrNull(body.tempUnavailableUntil),
       },
       select: {
         stableId: true,
@@ -1279,54 +1309,156 @@ export class CatalogAdminService
     };
   }
 
+  async readItemUnavailableHistoryForRange(query: {
+    storeStableId: string;
+    fromInclusive: Date;
+    toExclusive: Date;
+  }): Promise<CatalogAvailabilityHistoryRange | null> {
+    const storeStableId = requireStoreStableId(query.storeStableId);
+    const coverage =
+      await this.prisma.catalogAvailabilityHistoryState.findUnique({
+        where: { storeStableId },
+        select: { trackingStartedAt: true },
+      });
+    if (!coverage) return null;
+
+    const intervals = await this.prisma.catalogItemUnavailableInterval.findMany(
+      {
+        where: {
+          storeStableId,
+          startedAt: { lt: query.toExclusive },
+          OR: [{ endedAt: null }, { endedAt: { gt: query.fromInclusive } }],
+        },
+        orderBy: [{ startedAt: 'asc' }, { menuItemStableId: 'asc' }],
+        select: {
+          menuItemStableId: true,
+          nameEnSnapshot: true,
+          nameZhSnapshot: true,
+          startedAt: true,
+          endedAt: true,
+        },
+      },
+    );
+
+    return {
+      storeStableId,
+      trackingStartedAt: coverage.trackingStartedAt,
+      intervals: intervals.map((interval) => ({ ...interval })),
+    };
+  }
+
+  async initializeAvailabilityHistoryForStore(
+    storeStableId: string,
+    trackingStartedAt: Date = new Date(),
+  ): Promise<boolean> {
+    const storeId = requireStoreStableId(storeStableId);
+    return this.prisma.$transaction((tx) =>
+      initializeCatalogAvailabilityHistory(tx, storeId, trackingStartedAt),
+    );
+  }
+
   async setItemAvailability(
     storeStableId: string,
     itemStableId: string,
     mode: CatalogAvailabilityMode,
+    timing: CatalogAvailabilityMutationTiming,
   ) {
     const storeId = requireStoreStableId(storeStableId);
     const stableId = itemStableId.trim();
     if (!stableId) throw new BadRequestException('itemStableId is required');
+    if (
+      mode === 'TEMP_TODAY_OFF' &&
+      (!timing.tempUnavailableUntil ||
+        timing.tempUnavailableUntil <= timing.effectiveAt)
+    ) {
+      throw new BadRequestException(
+        'TEMP_TODAY_OFF requires a future Store-local midnight',
+      );
+    }
 
-    const exists = await this.prisma.menuItem.findFirst({
-      where: {
-        stableId,
-        deletedAt: null,
-        category: { storeStableId: storeId, deletedAt: null },
-      },
-      select: { id: true },
+    return this.prisma.$transaction(async (tx) => {
+      const item = await tx.menuItem.findFirst({
+        where: {
+          stableId,
+          deletedAt: null,
+          category: { storeStableId: storeId, deletedAt: null },
+        },
+        select: {
+          id: true,
+          stableId: true,
+          nameEn: true,
+          nameZh: true,
+          isAvailable: true,
+          tempUnavailableUntil: true,
+        },
+      });
+      if (!item) throw new NotFoundException(`Item not found: ${stableId}`);
+
+      const history = await tx.catalogAvailabilityHistoryState.findUnique({
+        where: { storeStableId: storeId },
+        select: { storeStableId: true },
+      });
+      const wasUnavailable = isCatalogItemUnavailableAt(
+        item,
+        timing.effectiveAt,
+      );
+      const data =
+        mode === 'ON'
+          ? { isAvailable: true, tempUnavailableUntil: null }
+          : mode === 'PERMANENT_OFF'
+            ? { isAvailable: false, tempUnavailableUntil: null }
+            : {
+                isAvailable: true,
+                tempUnavailableUntil: timing.tempUnavailableUntil,
+              };
+
+      const updated = await tx.menuItem.update({
+        where: { stableId },
+        data,
+        select: {
+          stableId: true,
+          isAvailable: true,
+          visibility: true,
+          isVisibleOnMainMenu: true,
+          tempUnavailableUntil: true,
+        },
+      });
+
+      if (!history) {
+        await initializeCatalogAvailabilityHistory(
+          tx,
+          storeId,
+          timing.effectiveAt,
+        );
+      } else {
+        const isUnavailable = isCatalogItemUnavailableAt(
+          updated,
+          timing.effectiveAt,
+        );
+        await captureCatalogAvailabilityTransition(tx, {
+          storeStableId: storeId,
+          item,
+          wasUnavailable,
+          isUnavailable,
+          effectiveAt: timing.effectiveAt,
+          unavailableUntil:
+            isUnavailable && updated.isAvailable
+              ? updated.tempUnavailableUntil
+              : null,
+        });
+      }
+
+      return {
+        stableId: updated.stableId,
+        isAvailable: updated.isAvailable,
+        visibility: updated.visibility,
+        isVisibleOnMainMenu: updated.isVisibleOnMainMenu,
+        tempUnavailableUntil: toIso(updated.tempUnavailableUntil),
+        effectiveAvailability: isAvailableNow(
+          availabilityFromDb(updated.isAvailable, updated.tempUnavailableUntil),
+        ),
+      };
     });
-    if (!exists) throw new NotFoundException(`Item not found: ${stableId}`);
-
-    const data =
-      mode === 'ON'
-        ? { isAvailable: true, tempUnavailableUntil: null }
-        : mode === 'PERMANENT_OFF'
-          ? { isAvailable: false, tempUnavailableUntil: null }
-          : { isAvailable: true, tempUnavailableUntil: nextMidnightLocal() };
-
-    const updated = await this.prisma.menuItem.update({
-      where: { stableId },
-      data,
-      select: {
-        stableId: true,
-        isAvailable: true,
-        visibility: true,
-        isVisibleOnMainMenu: true,
-        tempUnavailableUntil: true,
-      },
-    });
-
-    return {
-      stableId: updated.stableId,
-      isAvailable: updated.isAvailable,
-      visibility: updated.visibility,
-      isVisibleOnMainMenu: updated.isVisibleOnMainMenu,
-      tempUnavailableUntil: toIso(updated.tempUnavailableUntil),
-      effectiveAvailability: isAvailableNow(
-        availabilityFromDb(updated.isAvailable, updated.tempUnavailableUntil),
-      ),
-    };
   }
 
   async listOptionGroupTemplates(
@@ -1723,6 +1855,7 @@ export class CatalogAdminService
     storeStableId: string,
     optionStableId: string,
     mode: CatalogAvailabilityMode,
+    timing: CatalogAvailabilityMutationTiming,
   ): Promise<{
     ok: true;
     availability: {
@@ -1743,13 +1876,25 @@ export class CatalogAdminService
       select: { id: true },
     });
     if (!exists) throw new NotFoundException(`Option not found: ${stableId}`);
+    if (
+      mode === 'TEMP_TODAY_OFF' &&
+      (!timing.tempUnavailableUntil ||
+        timing.tempUnavailableUntil <= timing.effectiveAt)
+    ) {
+      throw new BadRequestException(
+        'TEMP_TODAY_OFF requires a future Store-local midnight',
+      );
+    }
 
     const data =
       mode === 'ON'
         ? { isAvailable: true, tempUnavailableUntil: null }
         : mode === 'PERMANENT_OFF'
           ? { isAvailable: false, tempUnavailableUntil: null }
-          : { isAvailable: true, tempUnavailableUntil: nextMidnightLocal() };
+          : {
+              isAvailable: true,
+              tempUnavailableUntil: timing.tempUnavailableUntil,
+            };
 
     const updated = await this.prisma.menuOptionTemplateChoice.update({
       where: { stableId },

@@ -120,6 +120,27 @@ describe('Admin DATA-C Sales Analytics UI contract', () => {
     expect(clientSource).toContain('weekdayLabel(row.weekday, locale)');
   });
 
+  it('renders owner-backed operating history with expandable Store-pause and item-unavailability segments', () => {
+    expect(typesSource).toContain("'operatingHistory'");
+    expect(modelSource).toContain('operatingHistoryByDate');
+    expect(modelSource).toContain('temporaryClosureIntervals');
+    expect(modelSource).toContain('unavailableItems');
+    expect(clientSource).toContain("isZh ? '营业时间' : 'Operating time'");
+    expect(clientSource).toContain("isZh ? '菜品下架' : 'Unavailable items'");
+    expect(clientSource).toContain('formatDurationMinutes');
+    expect(clientSource).toContain('formatHistoryInterval');
+    expect(clientSource).toContain("hourCycle: 'h23'");
+    expect(clientSource).toContain('row.temporaryClosureIntervals.map');
+    expect(clientSource).toContain('item.unavailableIntervals.map');
+    expect(clientSource).toContain('<details');
+    expect(clientSource).toContain(
+      'bundle.business.operatingHistory.coverage.overall',
+    );
+    expect(clientSource).not.toContain(
+      'status={bundle.business.coverage.storeOperatingContext}',
+    );
+  });
+
   it('shows every non-zero non-beverage commercial item without a fixed row cap', () => {
     expect(clientSource).toContain('row.quantity > 0');
     expect(clientSource).toContain(

@@ -71,7 +71,8 @@ Core Lane B — Accounting / reporting
 
 Parallel product lane
   ├─ Admin Marketing Overview
-  └─ Catalog Store Menu ownership + Admin workspace split
+  ├─ Catalog Store Menu ownership + Admin workspace split
+  └─ Operating / availability history for Sales explanatory context
 
 Later engineering hardening
   ├─ runtime readiness / health
@@ -763,7 +764,7 @@ B2 comes first so Admin and Accounting can share stable vocabulary rather than i
 
 ### 5.1 Admin Data consolidation — Sales Analytics + Management P&L
 
-State: **DATA-A-D DEPLOYED; DATA-B1 WEATHER PRODUCTION VERIFIED; DATA-D MANAGEMENT P&L PRODUCTION VERIFIED; DATA-E PRODUCTION VERIFIED / CLOSED; SALES ITEM-MIX FOLLOW-UP MERGED / PR #2676 / CI #6849 GREEN / SQUASH `90308226`; DATA-F LOCAL IMPLEMENTED / USER REVIEW PENDING**  
+State: **PRODUCTION VERIFIED / CLOSED — DATA-A-F complete; Sales item-mix follow-up PR #2676 / CI #6849 / squash `90308226`; DATA-F PR #2677 / CI #6851 / squash `86057bbf`; no DATA-G planned**  
 Detailed plan: `docs/architecture/admin-data-sales-management-analytics.md`
 
 The approved follow-on keeps Accounting as the money/projection owner while moving management-facing consumption toward Admin:
@@ -773,12 +774,60 @@ The approved follow-on keeps Accounting as the money/projection owner while movi
 - **DATA-B2:** Reporting-owned Calendar Context — merged through PR #2669 / squash `56f35b0c` with CI #6826 green; deterministic Ontario ESA public-holiday rules + Friday/Monday long-weekend markers reuse the existing Reporting Store jurisdiction/timezone seam without persistence/provider dependency;
 - **DATA-C:** Store-scoped Admin Sales Analytics — merged through PR #2670 / final head `ebe02b93` / CI #6829 green / squash `d748327f`; `/admin/reports/sales` remains a presentation-only join of canonical Accounting Sales + Business Operations + Weather + Calendar, with 7/30/90 plus `< MM/DD/YYYY >`, fail-visible core identity checks and fail-soft optional context;
 - the single-day right arrow is disabled for future dates and unless the next date has canonical Journal or Orders owner evidence; current/previous canonical Net Sales and B5 same-weekday operating baseline remain explicitly different comparison concepts;
-- **Sales item-mix follow-up:** merged through PR #2676 / final head `51e8fb29` / CI #6849 green / squash `90308226`. The Sales-only Commercial item mix removes the fixed Top-8 cap, displays every current `quantity > 0` row, and excludes products currently classified by canonical Catalog `MenuItem.itemKind=BEVERAGE`. A narrow Catalog reader is adapted through a Reporting-owned port and exposes additive `currentCatalogItemKind`; Uber `PREPACKAGED` remains provider-specific and is not used as generic analysis authority. Business Overview keeps the full commercial-item projection unchanged. No schema/migration, package dependency or new graph direction is introduced;
+- **Sales item-mix follow-up:** merged through PR #2676 / final head `51e8fb29` / CI #6849 green / squash `90308226`, then deployed and operator-verified in production. The Sales-only Commercial item mix removes the fixed Top-8 cap, displays every current `quantity > 0` row, and excludes products currently classified by canonical Catalog `MenuItem.itemKind=BEVERAGE`. A narrow Catalog reader is adapted through a Reporting-owned port and exposes additive `currentCatalogItemKind`; Uber `PREPACKAGED` remains provider-specific and is not used as generic analysis authority. Business Overview keeps the full commercial-item projection unchanged. No schema/migration, package dependency or new graph direction is introduced;
 - **DATA-D:** merged through PR #2671 / final head `8b9d23b0` / CI #6832 green / squash `b5acbf09`; whole-business / whole-ledger `/admin/reports/management` consumes existing Accounting P&L/Cash Movement owner contracts only, has no Store selector or `storeStableId`, ignores residual `?store=`, reuses shared Management browser DTO/date utilities and existing Management PDF/CSV export contracts, preserves the current Accounting Reports UI until DATA-F, and keeps Cash Movement explicitly Journal-only / non-formal;
 - **DATA-E:** **PRODUCTION VERIFIED / CLOSED** on deployed `main@f91b4bce`. Weather and Management P&L verification remain valid. The operator additionally verified 2026-09-27..2026-10-03 Admin versus Accounting parity for Net Sales Revenue, Channel Contribution and Discounts; production logs show matching Store-scoped/Admin and Accounting owner requests returning 200. Single-day/30-day paths are exercised and prior 90-day use was exercised during Weather recovery. The only active Store makes Store switching N/A. Deterministic CA-ON Calendar verification is accepted from the deployed 30-day runtime request plus the ruleset/CI evidence pinning Labour Day 2026-09-07 and its 2026-09-05..09-07 long weekend. Admin remains ADMIN-only, Accounting ADMIN/ACCOUNTANT, with no production ACCOUNTANT user available for a separate live wrong-surface check;
-- **DATA-F:** local implementation on `feat/admin-data-f-accounting-ui-contraction`. Accounting Sales is reframed as Sales Accounting and drops equal-period/trend/share/Channel Contribution management presentation while retaining canonical Sales reconciliation content and unchanged owner contracts. Accounting Reports drops Management P&L/Cash Movement presentation and Management export links, defaults to Trial Balance, and retains Balance Movement, statement date controls, Journal drill-through and statement PDF/CSV exports. No backend contract, authorization, schema/migration, dependency or architecture-graph change.
+- **DATA-F:** merged through PR #2677 / CI #6851 green / squash `86057bbf`, deployed and production verified. Accounting Sales is reframed as Sales Accounting and drops equal-period/trend/share/Channel Contribution management presentation while retaining canonical Sales reconciliation content and unchanged owner contracts. Accounting Reports drops Management P&L/Cash Movement presentation and Management export links, defaults to Trial Balance, and retains Balance Movement, statement date controls, Journal drill-through and statement PDF/CSV exports. Production UI checks were normal; Store-scoped Admin Sales, Accounting Sales, P&L/Cash Movement and Trial Balance runtime requests returned 200 in the verification window, all Compose services were healthy, and no new API/Web errors were observed. No backend contract, authorization, schema/migration, dependency or architecture-graph change.
 
-DATA-A does not add the new Sales page or change B5 report arithmetic. B2 canonical Sales and B5 Business Reports remain closed.
+**Closeout:** this work package is **PRODUCTION VERIFIED / CLOSED**. Admin owns the primary management-analysis presentation for Sales Analytics and Management P&L while Accounting retains canonical financial authority plus Sales Accounting/formal statement surfaces. No DATA-G is planned; future changes require a new product requirement.
+
+DATA-A does not change B5 report arithmetic. B2 canonical Sales and B5 Business Reports remain closed.
+
+### 5.2 Operating / availability history for Sales explanatory context
+
+Priority: **P1 PRODUCT / REPORTING CORRECTNESS**  
+Complexity: **H**  
+State: **HIST-B MERGED / HIST-C MERGED / PR #2690 / CI #6892 GREEN / HIST-D LOCAL IMPLEMENTED / USER REVIEW PENDING / NO PRODUCTION DEPLOYMENT / NO LEGACY BACKFILL**  
+Implementation base: `origin/dev@48e20534`  
+Detailed plan: `docs/architecture/operating-availability-history.md`
+
+The 2026-10-04 focused audit confirms that current Store schedule, temporary customer-ordering pause and
+MenuItem availability state are persisted, but historical schedule/pause/item-unavailability facts are not.
+The existing Sales Analytics operating-history limitation is therefore real and cannot be repaired from current
+configuration. The approved requirement is forward-only: facts before the new capture cutover remain unknown,
+with no log reconstruction, inference, compatibility backfill or zero-filling.
+
+The work package adds owner-backed Store schedule versions, Store temporary-closure intervals and Catalog
+MenuItem unavailable intervals, then extends the existing `GET /reports/business` projection. Admin Sales
+Analytics adds **营业时间** and **菜品下架** to the existing daily explanatory table. Item duration is the
+intersection of MenuItem unavailable time with actual operating intervals; Store-wide pause time is removed
+first so the same lost-sales minute is not double-attributed to both Store closure and item unavailability.
+
+No standalone Operational History page/card is planned. The existing Coverage card will instead expose
+forward-history coverage. B5 and DATA-A-F remain closed and Accounting financial authority is unchanged.
+
+Delivery order:
+
+1. **HIST-A:** additive schema + owner contract foundation and docs; migration generation is user-local per
+   `AGENTS.md`.
+2. **HIST-B:** **MERGED / CI #6888 GREEN / PR #2689 / squash `40fd2fd5`** — atomic Store/Catalog
+   capture, idempotent forward-only baseline, full schedule versioning, duplicate-pause backend guard, dedicated
+   availability-only mutation, and Store-timezone-aware `TEMP_TODAY_OFF`. No production deployment has been performed.
+3. **HIST-C:** **MERGED / PR #2690 / CI #6892 GREEN / squash `48e20534`** — owner historical readers +
+   Reporting-local adapters through the existing `ReportsModule` composition root, plus additive
+   `/reports/business.operatingHistory`. Projection uses historical schedule/timezone/Holiday versions, subtracts
+   Store closures, intersects MenuItem unavailable intervals with actual operating time, exposes fail-closed
+   AVAILABLE/PARTIAL/UNAVAILABLE coverage, and publishes exact effective pause/item-unavailable intervals for UI.
+4. **HIST-D:** **LOCAL IMPLEMENTED / USER REVIEW PENDING** — Admin Sales daily **营业时间 / 菜品下架** columns,
+   shared minute/hour formatting, upgraded operating-history Coverage card, and expandable second-level Store-local
+   interval lists for Store pauses and per-item unavailability. Browser code formats projected intervals only; it
+   does not recalculate operational history.
+5. **HIST-E:** migration/deployment and active production verification.
+
+The approved timezone boundary adds one narrow conceptual read:
+Catalog availability orchestration -> Brand/Store timezone. Catalog persistence must not read Store persistence
+directly; the seam belongs at the existing composition root and must not require a scanner direct-import ceiling
+or SCC allowance.
 
 ## 6. Parallel product lane — Admin Marketing Overview
 
@@ -787,13 +836,13 @@ DATA-A does not add the new Sales page or change B5 report arithmetic. B2 canoni
 Priority: **P1 PARALLEL PRODUCT WORK**  
 Complexity: **M**  
 Hard dependency: none  
-State: **SOURCE COMPLETE / MKT-A/B/C/D MERGED + CI GREEN / MKT-D PR #2627 / CI #6682 / MERGE `2d250360` / NO MIGRATION / NO DEPENDENCY / PRODUCTION UI VERIFICATION NOT YET CLAIMED**  
+State: **PRODUCTION VERIFIED / CLOSED — MKT-A-F complete; MKT-F PR #2644 / final head `0ca96b20` / CI #6735 / squash `087cbb06`; no MKT-G planned**  
 Detailed plan: `docs/architecture/admin-marketing-overview.md`
 
-Current `/admin/promotions` is primarily a navigation landing page for Daily Special,
-coupons/bundles and automatic/loyalty promotions, while Admin secondary navigation
-already owns those destinations. The replacement is a real **营销总览 / Marketing
-Overview**.
+Before MKT-C, `/admin/promotions` was primarily a navigation landing page for Daily Special,
+coupons/bundles and automatic/loyalty promotions while Admin secondary navigation already
+owned those destinations. MKT-C replaced that redundant landing page with the real
+**营销总览 / Marketing Overview**.
 
 2026-09-30 readiness audit and production read-only evidence established:
 
@@ -832,9 +881,20 @@ Approved delivery order:
    3 / 4 / $11.00 / $35.65, and Daily Special 170 / 207 / $2,350.24 associated sales.
    Daily Special discount is only 1/170-use covered ($1.50), so UI exposes explicit
    COMPLETE/PARTIAL/UNAVAILABLE/NOT_APPLICABLE coverage and immutable-vs-legacy sales
-   evidence instead of treating unknown history as zero. The planned MKT-A through MKT-D
-   source sequence is complete; a later production UI spot-check may add verification
-   evidence but is not a new source slice.
+   evidence instead of treating unknown history as zero.
+5. **MKT-E trailing-window + stable Daily Special identity:** **MERGED / CI GREEN** through
+   PR #2643 / CI #6733 / `3846fbd7`. Reporting now owns trailing Today / 7d / 30d / 90d
+   windows without quarter-boundary truncation and the Admin UI labels Daily Special by its
+   stable weekday slot while preserving current configured item context.
+6. **MKT-F Daily Special parent grouping:** **MERGED / CI GREEN / DEPLOYED** through PR #2644 /
+   final head `0ca96b20` / CI #6735 / squash `087cbb06`. Web groups all active Daily Special
+   weekday slots under one top-level Daily Special campaign with collapsed-by-default weekday
+   child statistics and preserves the existing owner facts/contracts. Repository history confirms
+   `087cbb06` is already in production ancestry. The planned MKT-A through MKT-F source sequence
+   is complete. Production UI verification then passed on 2026-10-04: opening Marketing Overview
+   generated three Store-scoped `/reports/marketing` requests, all 200, with no API/Web errors and
+   all Compose services healthy. The Marketing Overview work package is therefore closed; no MKT-G
+   is planned.
 
 Keep Daily Special, Coupon/Benefit and PromotionRule lifecycle/storage with their owners;
 do not reuse Accounting-only historical Daily Special overrides as generic Marketing

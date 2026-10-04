@@ -63,6 +63,37 @@ export type BusinessOperationsReportView = {
     storeOperatingContext: 'CURRENT_CONFIGURATION_ONLY';
     printHealth: 'UNAVAILABLE';
   };
+  operatingHistory: {
+    coverage: {
+      overall: 'AVAILABLE' | 'PARTIAL' | 'UNAVAILABLE';
+      store: 'AVAILABLE' | 'PARTIAL' | 'UNAVAILABLE';
+      catalog: 'AVAILABLE' | 'PARTIAL' | 'UNAVAILABLE';
+    };
+    storeTrackingStartedAt: string | null;
+    catalogTrackingStartedAt: string | null;
+    days: Array<{
+      date: string;
+      coverage: 'AVAILABLE' | 'PARTIAL' | 'UNAVAILABLE';
+      scheduledMinutes: number | null;
+      temporaryClosureMinutes: number | null;
+      temporaryClosureIntervals: Array<{
+        startedAt: string;
+        endedAt: string;
+      }>;
+      operatingMinutes: number | null;
+      unavailableItemCount: number | null;
+      unavailableItems: Array<{
+        menuItemStableId: string;
+        nameEn: string;
+        nameZh: string | null;
+        unavailableMinutes: number;
+        unavailableIntervals: Array<{
+          startedAt: string;
+          endedAt: string;
+        }>;
+      }>;
+    }>;
+  };
   storeContext: {
     isActive: boolean;
     currentStatus: {

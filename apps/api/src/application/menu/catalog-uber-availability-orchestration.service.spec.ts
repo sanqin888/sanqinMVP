@@ -50,6 +50,9 @@ describe('CatalogUberAvailabilityOrchestrationService', () => {
     };
     const syncMenuItemAvailability = jest.fn().mockResolvedValue(syncResult);
     const syncOptionAvailability = jest.fn().mockResolvedValue(syncResult);
+    const storeTimezone = {
+      getStoreTimezone: jest.fn().mockResolvedValue('America/Toronto'),
+    };
     const externalAvailability: jest.Mocked<CatalogExternalAvailabilitySyncPort> =
       {
         syncMenuItemAvailability,
@@ -61,13 +64,38 @@ describe('CatalogUberAvailabilityOrchestrationService', () => {
         catalog as never,
         catalogAvailability as never,
         externalAvailability,
+        storeTimezone as never,
       ),
       catalog,
+      storeTimezone,
       catalogAvailability,
       syncMenuItemAvailability,
       syncOptionAvailability,
     };
   };
+
+  it('resolves TEMP_TODAY_OFF against the Store timezone rather than process TZ', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-07-15T03:30:00.000Z'));
+    try {
+      const { service, catalog, storeTimezone } = build();
+
+      await service.setItemAvailability('store-1', 'dish-1', 'TEMP_TODAY_OFF');
+
+      expect(storeTimezone.getStoreTimezone).toHaveBeenCalledWith('store-1');
+      expect(catalog.setItemAvailability).toHaveBeenCalledWith(
+        'store-1',
+        'dish-1',
+        'TEMP_TODAY_OFF',
+        {
+          effectiveAt: new Date('2026-07-15T03:30:00.000Z'),
+          tempUnavailableUntil: new Date('2026-07-15T04:00:00.000Z'),
+        },
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 
   it.each([
     ['TEMP_TODAY_OFF', false],
@@ -122,25 +150,15 @@ describe('CatalogUberAvailabilityOrchestrationService', () => {
     );
   });
 
-  it('syncs Uber only when updateItem changes availability fields', async () => {
+  it('keeps generic item updates outside availability synchronization', async () => {
     const { service, catalog, syncMenuItemAvailability } = build();
 
     await expect(
-      service.updateItem('store-1', 'dish-1', { isAvailable: true }),
+      service.updateItem('store-1', 'dish-1', { nameEn: 'Updated' }),
     ).resolves.toEqual({ ok: true });
     expect(catalog.updateItem).toHaveBeenCalledWith('store-1', 'dish-1', {
-      isAvailable: true,
+      nameEn: 'Updated',
     });
-    expect(syncMenuItemAvailability).toHaveBeenCalledWith({
-      storeStableId: 'store-1',
-      menuItemStableId: 'dish-1',
-      isAvailable: true,
-      publishable: true,
-      suspendUntil: null,
-    });
-
-    syncMenuItemAvailability.mockClear();
-    await service.updateItem('store-1', 'dish-1', { nameEn: 'Updated' });
     expect(syncMenuItemAvailability).not.toHaveBeenCalled();
   });
 

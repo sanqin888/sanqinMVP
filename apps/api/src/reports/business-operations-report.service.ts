@@ -5,6 +5,8 @@ import type {
   BusinessOperationsAnomalyV1,
   BusinessOperationsComparisonConfidenceV1,
   BusinessOperationsDimensionRowV1,
+  BusinessOperationsOperatingHistoryCoverageV1,
+  BusinessOperationsOperatingHistoryV1,
   BusinessOperationsReportQueryV1,
   BusinessOperationsReportV1,
   BusinessOperationsSummaryDeltaV1,
@@ -25,6 +27,16 @@ import {
   REPORTING_STORE_OPERATING_CONTEXT_QUERY,
   type ReportingStoreOperatingContextQueryPort,
 } from './reporting-store-operating-context.contract';
+import {
+  REPORTING_CATALOG_AVAILABILITY_HISTORY_QUERY,
+  REPORTING_STORE_OPERATING_HISTORY_QUERY,
+  type ReportingCatalogAvailabilityHistoryQueryPort,
+  type ReportingCatalogAvailabilityHistoryRangeV1,
+  type ReportingCatalogUnavailableIntervalV1,
+  type ReportingStoreOperatingHistoryQueryPort,
+  type ReportingStoreOperatingHistoryRangeV1,
+  type ReportingStoreScheduleHistoryVersionV1,
+} from './reporting-operating-history-query.contract';
 
 const BASELINE_WEEKS = 8;
 const COVERAGE_PROBE_WEEKS = 4;
@@ -58,6 +70,180 @@ type ItemAggregate = {
   quantity: number;
   orderStableIds: Set<string>;
 };
+
+type InstantWindow = {
+  start: Date;
+  end: Date;
+};
+
+function intersectWindow(
+  left: InstantWindow,
+  right: InstantWindow,
+): InstantWindow | null {
+  const start = new Date(Math.max(left.start.getTime(), right.start.getTime()));
+  const end = new Date(Math.min(left.end.getTime(), right.end.getTime()));
+  return start < end ? { start, end } : null;
+}
+
+function mergeWindows(windows: InstantWindow[]): InstantWindow[] {
+  const sorted = windows
+    .filter((window) => window.start < window.end)
+    .sort((a, b) => a.start.getTime() - b.start.getTime());
+  const merged: InstantWindow[] = [];
+  for (const window of sorted) {
+    const last = merged.at(-1);
+    if (!last || window.start > last.end) {
+      merged.push({ ...window });
+      continue;
+    }
+    if (window.end > last.end) last.end = window.end;
+  }
+  return merged;
+}
+
+function subtractWindows(
+  sources: InstantWindow[],
+  exclusions: InstantWindow[],
+): InstantWindow[] {
+  let result = mergeWindows(sources);
+  for (const exclusion of mergeWindows(exclusions)) {
+    const next: InstantWindow[] = [];
+    for (const source of result) {
+      const overlap = intersectWindow(source, exclusion);
+      if (!overlap) {
+        next.push(source);
+        continue;
+      }
+      if (source.start < overlap.start) {
+        next.push({ start: source.start, end: overlap.start });
+      }
+      if (overlap.end < source.end) {
+        next.push({ start: overlap.end, end: source.end });
+      }
+    }
+    result = next;
+  }
+  return result;
+}
+
+function durationMinutes(windows: InstantWindow[]): number {
+  const milliseconds = mergeWindows(windows).reduce(
+    (sum, window) => sum + window.end.getTime() - window.start.getTime(),
+    0,
+  );
+  return Math.floor(milliseconds / 60_000);
+}
+
+function sourceCoverageForWindow(
+  trackingStartedAt: Date | null,
+  window: InstantWindow,
+): BusinessOperationsOperatingHistoryCoverageV1 {
+  if (!trackingStartedAt || trackingStartedAt >= window.end) {
+    return 'UNAVAILABLE';
+  }
+  return trackingStartedAt <= window.start ? 'AVAILABLE' : 'PARTIAL';
+}
+
+function combinedDayCoverage(
+  store: BusinessOperationsOperatingHistoryCoverageV1,
+  catalog: BusinessOperationsOperatingHistoryCoverageV1,
+): BusinessOperationsOperatingHistoryCoverageV1 {
+  if (store === 'AVAILABLE' && catalog === 'AVAILABLE') return 'AVAILABLE';
+  if (store === 'UNAVAILABLE' || catalog === 'UNAVAILABLE')
+    return 'UNAVAILABLE';
+  return 'PARTIAL';
+}
+
+function aggregateCoverage(
+  values: BusinessOperationsOperatingHistoryCoverageV1[],
+): BusinessOperationsOperatingHistoryCoverageV1 {
+  if (values.length === 0 || values.every((value) => value === 'UNAVAILABLE')) {
+    return 'UNAVAILABLE';
+  }
+  return values.every((value) => value === 'AVAILABLE')
+    ? 'AVAILABLE'
+    : 'PARTIAL';
+}
+
+function scheduleWindowForLocalDate(
+  version: ReportingStoreScheduleHistoryVersionV1,
+  localDate: DateTime,
+): InstantWindow | null {
+  const date = localDate.toISODate();
+  if (!date) return null;
+  const holiday = version.holidays.find((entry) => entry.date === date);
+  const hours =
+    holiday ??
+    version.businessHours.find(
+      (entry) => entry.weekday === localDate.weekday % 7,
+    );
+  if (
+    !hours ||
+    hours.isClosed ||
+    hours.openMinutes === null ||
+    hours.closeMinutes === null ||
+    hours.closeMinutes <= hours.openMinutes
+  ) {
+    return null;
+  }
+  const start = localDate.startOf('day').plus({ minutes: hours.openMinutes });
+  const end = localDate.startOf('day').plus({ minutes: hours.closeMinutes });
+  if (!start.isValid || !end.isValid) return null;
+  return { start: start.toJSDate(), end: end.toJSDate() };
+}
+
+function buildScheduledWindows(
+  versions: ReportingStoreScheduleHistoryVersionV1[],
+  dayWindow: InstantWindow,
+): InstantWindow[] {
+  const ordered = [...versions].sort(
+    (a, b) => a.effectiveFrom.getTime() - b.effectiveFrom.getTime(),
+  );
+  const windows: InstantWindow[] = [];
+  for (let index = 0; index < ordered.length; index += 1) {
+    const version = ordered[index];
+    const nextVersion = ordered[index + 1];
+    const segment = intersectWindow(dayWindow, {
+      start: version.effectiveFrom,
+      end: nextVersion?.effectiveFrom ?? dayWindow.end,
+    });
+    if (!segment) continue;
+
+    const segmentLastInstant = new Date(segment.end.getTime() - 1);
+    let localDay = DateTime.fromJSDate(segment.start, {
+      zone: version.timezone,
+    }).startOf('day');
+    const lastLocalDay = DateTime.fromJSDate(segmentLastInstant, {
+      zone: version.timezone,
+    }).startOf('day');
+    if (!localDay.isValid || !lastLocalDay.isValid) continue;
+
+    while (localDay <= lastLocalDay) {
+      const scheduled = scheduleWindowForLocalDate(version, localDay);
+      if (scheduled) {
+        const clipped = intersectWindow(scheduled, segment);
+        if (clipped) windows.push(clipped);
+      }
+      localDay = localDay.plus({ days: 1 }).startOf('day');
+    }
+  }
+  return mergeWindows(windows);
+}
+
+function unavailableWindowsInsideOperating(
+  interval: ReportingCatalogUnavailableIntervalV1,
+  operatingWindows: InstantWindow[],
+  dayWindow: InstantWindow,
+): InstantWindow[] {
+  const unavailableWindow = intersectWindow(dayWindow, {
+    start: interval.startedAt,
+    end: interval.endedAt ?? dayWindow.end,
+  });
+  if (!unavailableWindow) return [];
+  return operatingWindows
+    .map((operating) => intersectWindow(operating, unavailableWindow))
+    .filter((window): window is InstantWindow => window !== null);
+}
 
 function emptySummary(): BusinessOperationsSummaryV1 {
   return {
@@ -216,6 +402,10 @@ export class BusinessOperationsReportService {
     private readonly storeContext: ReportingStoreOperatingContextQueryPort,
     @Inject(REPORTING_CATALOG_ITEM_CLASSIFICATION_QUERY)
     private readonly catalogItemClassifications: ReportingCatalogItemClassificationQueryPort,
+    @Inject(REPORTING_STORE_OPERATING_HISTORY_QUERY)
+    private readonly storeOperatingHistory: ReportingStoreOperatingHistoryQueryPort,
+    @Inject(REPORTING_CATALOG_AVAILABILITY_HISTORY_QUERY)
+    private readonly catalogAvailabilityHistory: ReportingCatalogAvailabilityHistoryQueryPort,
   ) {}
 
   async getReport(
@@ -267,18 +457,28 @@ export class BusinessOperationsReportService {
       .minus({ weeks: BASELINE_WEEKS + COVERAGE_PROBE_WEEKS })
       .startOf('day');
 
-    const [allOrders, allItems] = await Promise.all([
-      this.orderFacts.readOperationalOrdersForRange({
-        storeStableId,
-        fromInclusive: queryFrom.toJSDate(),
-        toExclusive: effectiveToExclusive.toJSDate(),
-      }),
-      this.orderFacts.readOperationalItemsForRange({
-        storeStableId,
-        fromInclusive: queryFrom.toJSDate(),
-        toExclusive: effectiveToExclusive.toJSDate(),
-      }),
-    ]);
+    const historyRange = {
+      storeStableId,
+      fromInclusive: fromDay.toJSDate(),
+      toExclusive: effectiveToExclusive.toJSDate(),
+    };
+    const [allOrders, allItems, storeHistory, catalogHistory] =
+      await Promise.all([
+        this.orderFacts.readOperationalOrdersForRange({
+          storeStableId,
+          fromInclusive: queryFrom.toJSDate(),
+          toExclusive: effectiveToExclusive.toJSDate(),
+        }),
+        this.orderFacts.readOperationalItemsForRange({
+          storeStableId,
+          fromInclusive: queryFrom.toJSDate(),
+          toExclusive: effectiveToExclusive.toJSDate(),
+        }),
+        this.storeOperatingHistory.readOperatingHistoryForRange(historyRange),
+        this.catalogAvailabilityHistory.readItemUnavailableHistoryForRange(
+          historyRange,
+        ),
+      ]);
 
     const itemStableIds = Array.from(
       new Set(allItems.map((item) => item.productStableId)),
@@ -407,6 +607,11 @@ export class BusinessOperationsReportService {
       prep,
       baselinePeriods,
     });
+    const operatingHistory = this.buildOperatingHistory({
+      targetWindows,
+      storeHistory,
+      catalogHistory,
+    });
 
     return {
       version: '1',
@@ -436,6 +641,7 @@ export class BusinessOperationsReportService {
         includedStatuses: ['paid', 'making', 'ready', 'completed'],
         refundedIncluded: false,
       },
+      operatingHistory,
       storeContext: {
         isActive: context.isActive,
         currentStatus: {
@@ -485,6 +691,176 @@ export class BusinessOperationsReportService {
         recentQueue,
       },
       anomalies,
+    };
+  }
+
+  private buildOperatingHistory(args: {
+    targetWindows: TimeWindow[];
+    storeHistory: ReportingStoreOperatingHistoryRangeV1 | null;
+    catalogHistory: ReportingCatalogAvailabilityHistoryRangeV1 | null;
+  }): BusinessOperationsOperatingHistoryV1 {
+    const storeTrackingStartedAt = args.storeHistory?.trackingStartedAt ?? null;
+    const catalogTrackingStartedAt =
+      args.catalogHistory?.trackingStartedAt ?? null;
+    const storeCoverages: BusinessOperationsOperatingHistoryCoverageV1[] = [];
+    const catalogCoverages: BusinessOperationsOperatingHistoryCoverageV1[] = [];
+
+    const days = args.targetWindows.map((target) => {
+      const dayWindow: InstantWindow = {
+        start: target.start,
+        end: target.end,
+      };
+      let storeCoverage = sourceCoverageForWindow(
+        storeTrackingStartedAt,
+        dayWindow,
+      );
+      const catalogCoverage = sourceCoverageForWindow(
+        catalogTrackingStartedAt,
+        dayWindow,
+      );
+
+      const hasScheduleAuthority =
+        args.storeHistory?.scheduleVersions.some(
+          (version) => version.effectiveFrom <= dayWindow.start,
+        ) ?? false;
+      if (storeCoverage === 'AVAILABLE' && !hasScheduleAuthority) {
+        storeCoverage = 'UNAVAILABLE';
+      }
+
+      storeCoverages.push(storeCoverage);
+      catalogCoverages.push(catalogCoverage);
+      const coverage = combinedDayCoverage(storeCoverage, catalogCoverage);
+
+      if (storeCoverage !== 'AVAILABLE' || !args.storeHistory) {
+        return {
+          date: target.date,
+          coverage,
+          scheduledMinutes: null,
+          temporaryClosureMinutes: null,
+          temporaryClosureIntervals: [],
+          operatingMinutes: null,
+          unavailableItemCount: null,
+          unavailableItems: [],
+        };
+      }
+
+      const scheduledWindows = buildScheduledWindows(
+        args.storeHistory.scheduleVersions,
+        dayWindow,
+      );
+      const closureWindows = args.storeHistory.temporaryClosures
+        .map((closure) =>
+          intersectWindow(dayWindow, {
+            start: closure.startedAt,
+            end: closure.endedAt ?? dayWindow.end,
+          }),
+        )
+        .filter((window): window is InstantWindow => window !== null);
+      const effectiveClosureWindows = mergeWindows(
+        closureWindows.flatMap((closure) =>
+          scheduledWindows
+            .map((scheduled) => intersectWindow(scheduled, closure))
+            .filter((window): window is InstantWindow => window !== null),
+        ),
+      );
+      const operatingWindows = subtractWindows(
+        scheduledWindows,
+        effectiveClosureWindows,
+      );
+      const scheduledMinutes = durationMinutes(scheduledWindows);
+      const operatingMinutes = durationMinutes(operatingWindows);
+      const temporaryClosureMinutes = durationMinutes(effectiveClosureWindows);
+      const temporaryClosureIntervals = effectiveClosureWindows.map(
+        (window) => ({
+          startedAt: window.start.toISOString(),
+          endedAt: window.end.toISOString(),
+        }),
+      );
+
+      if (catalogCoverage !== 'AVAILABLE' || !args.catalogHistory) {
+        return {
+          date: target.date,
+          coverage,
+          scheduledMinutes,
+          temporaryClosureMinutes,
+          temporaryClosureIntervals,
+          operatingMinutes,
+          unavailableItemCount: null,
+          unavailableItems: [],
+        };
+      }
+
+      const unavailableByItem = new Map<
+        string,
+        {
+          menuItemStableId: string;
+          nameEn: string;
+          nameZh: string | null;
+          windows: InstantWindow[];
+        }
+      >();
+      for (const interval of args.catalogHistory.intervals) {
+        const windows = unavailableWindowsInsideOperating(
+          interval,
+          operatingWindows,
+          dayWindow,
+        );
+        if (windows.length === 0) continue;
+        const current = unavailableByItem.get(interval.menuItemStableId);
+        if (current) {
+          current.windows.push(...windows);
+          current.nameEn = interval.nameEnSnapshot;
+          current.nameZh = interval.nameZhSnapshot;
+        } else {
+          unavailableByItem.set(interval.menuItemStableId, {
+            menuItemStableId: interval.menuItemStableId,
+            nameEn: interval.nameEnSnapshot,
+            nameZh: interval.nameZhSnapshot,
+            windows,
+          });
+        }
+      }
+      const unavailableItems = Array.from(unavailableByItem.values())
+        .map((item) => ({
+          menuItemStableId: item.menuItemStableId,
+          nameEn: item.nameEn,
+          nameZh: item.nameZh,
+          unavailableMinutes: durationMinutes(item.windows),
+          unavailableIntervals: mergeWindows(item.windows).map((window) => ({
+            startedAt: window.start.toISOString(),
+            endedAt: window.end.toISOString(),
+          })),
+        }))
+        .filter((item) => item.unavailableMinutes > 0)
+        .sort(
+          (left, right) =>
+            right.unavailableMinutes - left.unavailableMinutes ||
+            left.menuItemStableId.localeCompare(right.menuItemStableId),
+        );
+
+      return {
+        date: target.date,
+        coverage,
+        scheduledMinutes,
+        temporaryClosureMinutes,
+        temporaryClosureIntervals,
+        operatingMinutes,
+        unavailableItemCount: unavailableItems.length,
+        unavailableItems,
+      };
+    });
+
+    const store = aggregateCoverage(storeCoverages);
+    const catalog = aggregateCoverage(catalogCoverages);
+    return {
+      coverage: {
+        overall: aggregateCoverage(days.map((day) => day.coverage)),
+        store,
+        catalog,
+      },
+      storeTrackingStartedAt: storeTrackingStartedAt?.toISOString() ?? null,
+      catalogTrackingStartedAt: catalogTrackingStartedAt?.toISOString() ?? null,
+      days,
     };
   }
 

@@ -165,6 +165,30 @@ published release, pull the same three services, run `docker compose up -d
 retain the pre-cutover local application images and previous Compose revision
 until the new release is verified; do not prune them during the cutover window.
 
+## 2026-10-04 GHCR pull-only production cutover evidence
+
+Production release `main@e411863a7e4c262a6ae125e39bd781dda63527d9`
+passed main CI #6876 and `publish-images` #2. The operator pulled only
+`api ubereats-worker web` and recreated with `docker compose up -d
+--no-build`; PostgreSQL remained on the existing container. Compose reported
+db/api/ubereats-worker/web healthy, with API and worker on the same immutable
+GHCR API SHA and Web on the matching Web SHA.
+
+The read-only verification helper was run as:
+
+```bash
+bash ./ops/verify-runtime-readiness.sh .env https://sanq.ca
+```
+
+It reported 199 migrations and `Database schema is up to date!`, then passed
+API readiness, worker readiness, Web-local health, public Web health, public
+BFF -> API readiness, and public menu smoke. Final result:
+`Runtime readiness verification passed.`
+
+This closes the first production GHCR pull-only cutover. Application images are
+now built by trusted GitHub Actions and pulled by production; the production VM
+does not build API/Web application images.
+
 ## Failure handling
 
 If any expected result fails:

@@ -1,8 +1,9 @@
 # Admin Data — Sales Analytics / Management P&L migration
 
 Date: 2026-10-03  
-Baseline: latest `origin/dev@90308226` after Sales commercial-item mix follow-up PR #2676  
-Current state: **DATA-A-D DEPLOYED; DATA-B1 WEATHER PRODUCTION VERIFIED; MANAGEMENT P&L PRODUCTION VERIFIED; DATA-E PRODUCTION VERIFIED / CLOSED; SALES ITEM-MIX FOLLOW-UP MERGED / CI GREEN; DATA-F LOCAL IMPLEMENTED / USER REVIEW PENDING**
+Closed: 2026-10-04  
+Source closure: PR #2677 / squash `86057bbf` after Sales commercial-item mix follow-up PR #2676 / squash `90308226`  
+Current state: **PRODUCTION VERIFIED / CLOSED — Admin Sales Analytics + Admin Management P&L are the management-analysis surfaces; Accounting is contracted to Sales Accounting + canonical statements; no DATA-G is planned for this work package**
 
 ## Product goal
 
@@ -282,9 +283,11 @@ The generic Catalog classification is used for drink exclusion. `MenuItem.itemKi
 
 This reuses the already-authorized `accounting-reporting-analytics -> catalog-pricing-offers` conceptual read direction established by MKT-B. Owner imports remain confined to the Reporting composition root; no new graph direction, scanner allowance/baseline, Prisma/schema/migration, package dependency, Accounting authority or Order historical snapshot is introduced.
 
+The follow-up merged through PR #2676 / final head `51e8fb29` / CI #6849 green / squash `90308226`. After production deployment, the operator confirmed the Sales item-mix UI is normal with the new all-nonzero-food presentation and beverage exclusion. The deployed Reporting/Admin paths remained healthy with no new API/Web error evidence.
+
 ### DATA-F — Accounting UI contraction
 
-State: **LOCAL IMPLEMENTED / USER REVIEW PENDING / CI NOT RUN / NO MIGRATION / NO DEPENDENCY / NO BACKEND CONTRACT OR GRAPH CHANGE**.
+State: **MERGED / PR #2677 / CI #6851 GREEN / SQUASH `86057bbf` / DEPLOYED / PRODUCTION VERIFIED / CLOSED / NO MIGRATION / NO DEPENDENCY / NO BACKEND CONTRACT OR GRAPH CHANGE**.
 
 After DATA-E production verification closed the replacement-surface gate, DATA-F applies the approved presentation contraction only:
 
@@ -294,6 +297,10 @@ After DATA-E production verification closed the replacement-surface gate, DATA-F
 - Accounting `/reports` becomes statement-only: **Trial Balance** is the default view, **Balance Movement** remains available, statement date presets/custom range, Journal drill-through and statement PDF/CSV exports remain intact;
 - Management P&L/Cash Movement UI and Management export links are removed from Accounting Reports, but their Accounting-owned backend/read/export contracts remain unchanged because Admin Management P&L continues to consume them;
 - the shared Management and Sales browser DTO contracts remain compatible. No Accounting arithmetic, Journal/posting authority, API authorization, role/surface matrix, Prisma/schema/migration, package/lockfile, scanner allowance, SCC or architecture baseline is changed. ACCOUNTANT therefore keeps the Accounting-only Sales Accounting and canonical statement surfaces; the Admin management-analysis replacements remain ADMIN-only under the existing frozen role matrix.
+
+Final production verification on 2026-10-04 was completed after deployment containing both #2676 and #2677. The production checkout was clean on `main@0a184247`, which contains `90308226` and `86057bbf` as ancestors, while the active API/Web/worker release used the validated GHCR image SHA `e411863a7e4c262a6ae125e39bd781dda63527d9`. All four Compose services were healthy. The operator confirmed the relevant Admin Sales Analytics, Admin Management P&L, Sales Accounting and Accounting statement UIs were normal. Runtime logs independently showed Store-scoped canonical Sales requests returning 200, Accounting Sales Accounting requests returning 200, whole-ledger P&L/Cash Movement requests returning 200, and Trial Balance returning 200; no new API or Web errors appeared in the post-deploy verification window. Balance Movement remained mounted and the operator's UI check was successful.
+
+The migration is therefore **PRODUCTION VERIFIED / CLOSED**. Admin is the primary management-analysis surface for Sales Analytics and Management P&L; Accounting remains the financial owner and now exposes the intentionally narrower Sales Accounting plus canonical statement surfaces. No DATA-G is planned under this work package. Any future enhancement should start from a new product requirement rather than reopening this migration.
 
 ## Architecture impact
 
@@ -317,3 +324,20 @@ dependency, scanner allowance, SCC or architecture-baseline change.
 B2 Canonical Sales Analytics and B5 Admin Business Reports remain closed; this work is a
 post-modularization product/UI ownership refinement and does not reopen their financial or
 operational authority.
+
+## 2026-10-04 follow-up — Operating / availability history
+
+A new product requirement now addresses the explicit `CURRENT_CONFIGURATION_ONLY` Store-history limitation
+without reopening DATA-A-F. The focused audit at `origin/dev@24545aba` is recorded in
+`docs/architecture/operating-availability-history.md`.
+
+The approved Sales Analytics presentation change is narrow: the existing **逐日解释上下文 / Daily explanatory
+context** table gains **营业时间 / Operating time** and **菜品下架 / unavailable items**. A non-zero item count
+expands inline to item name plus cumulative unavailable duration inside actual operating intervals. No standalone
+Operational History card/page is added.
+
+The required authority is forward-only and owner-backed: Brand/Store versions schedule/timezone and temporary
+customer-ordering closure intervals; Catalog records MenuItem unavailable intervals. Reporting later composes
+those owner facts through existing public/composition seams and extends `GET /reports/business`. Historical
+facts before capture start remain unknown and are never reconstructed or treated as zero. Accounting money,
+Weather and Calendar authority are unchanged.

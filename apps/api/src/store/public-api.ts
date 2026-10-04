@@ -12,6 +12,7 @@ export {
   BRAND_STORE_CONFIG_WRITER,
   STORE_DIRECTORY_READER,
   STORE_DIRECTORY_WRITER,
+  STORE_TIMEZONE_READER,
   BrandStoreConfigUnavailableError,
   StoreStableIdAlreadyExistsError,
   type BrandConfigSnapshot,
@@ -25,6 +26,7 @@ export {
   type StoreDirectoryEntry,
   type StoreDirectoryReaderPort,
   type StoreDirectoryWriterPort,
+  type StoreTimezoneReaderPort,
 } from './brand-store-config.contract';
 export {
   STORE_SCHEDULE_READER,
@@ -44,5 +46,13 @@ export {
   type StoreStatusReadSnapshot,
   type StoreStatusReaderPort,
 } from './store-status.contract';
+export {
+  STORE_OPERATING_HISTORY_READER,
+  type StoreOperatingHistoryCoverage,
+  type StoreOperatingHistoryRange,
+  type StoreOperatingHistoryReaderPort,
+  type StoreScheduleHistoryVersion,
+  type StoreTemporaryClosureHistoryInterval,
+} from './store-operating-history.contract';
 export { BrandStoreConfigModule } from './brand-store-config.module';
 export { StoreStatusModule } from './store-status.module';
