@@ -324,3 +324,20 @@ dependency, scanner allowance, SCC or architecture-baseline change.
 B2 Canonical Sales Analytics and B5 Admin Business Reports remain closed; this work is a
 post-modularization product/UI ownership refinement and does not reopen their financial or
 operational authority.
+
+## 2026-10-04 follow-up — Operating / availability history
+
+A new product requirement now addresses the explicit `CURRENT_CONFIGURATION_ONLY` Store-history limitation
+without reopening DATA-A-F. The focused audit at `origin/dev@24545aba` is recorded in
+`docs/architecture/operating-availability-history.md`.
+
+The approved Sales Analytics presentation change is narrow: the existing **逐日解释上下文 / Daily explanatory
+context** table gains **营业时间 / Operating time** and **菜品下架 / unavailable items**. A non-zero item count
+expands inline to item name plus cumulative unavailable duration inside actual operating intervals. No standalone
+Operational History card/page is added.
+
+The required authority is forward-only and owner-backed: Brand/Store versions schedule/timezone and temporary
+customer-ordering closure intervals; Catalog records MenuItem unavailable intervals. Reporting later composes
+those owner facts through existing public/composition seams and extends `GET /reports/business`. Historical
+facts before capture start remain unknown and are never reconstructed or treated as zero. Accounting money,
+Weather and Calendar authority are unchanged.

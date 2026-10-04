@@ -624,9 +624,12 @@ model Store {
   config        StoreConfig?
   posDevices    PosDevice[]
   orders        Order[]
-  businessHours BusinessHour[]
-  holidays                    Holiday[]
-  cloverMerchantAuthorization CloverMerchantAuthorization?
+  businessHours                BusinessHour[]
+  holidays                     Holiday[]
+  operatingHistoryState        StoreOperatingHistoryState?
+  scheduleHistoryVersions      StoreScheduleVersion[]
+  temporaryClosureIntervals    StoreTemporaryClosureInterval[]
+  cloverMerchantAuthorization  CloverMerchantAuthorization?
   menuCategories               MenuCategory[]
   menuOptionGroupTemplates     MenuOptionGroupTemplate[]
 }
@@ -1531,6 +1534,66 @@ model Holiday {
   store        Store    @relation(fields: [storeDbId], references: [id], onDelete: Cascade)
 
   @@index([storeDbId, date])
+}
+
+model StoreOperatingHistoryState {
+  storeDbId         String   @id @map("storeId") @db.Uuid
+  trackingStartedAt DateTime
+  scheduleRevision  Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  store             Store    @relation(fields: [storeDbId], references: [id], onDelete: Restrict)
+}
+
+model StoreScheduleVersion {
+  id                    String   @id @default(uuid()) @db.Uuid
+  storeDbId             String   @map("storeId") @db.Uuid
+  revision              Int
+  effectiveFrom         DateTime
+  timezone              String
+  businessHoursSnapshot Json
+  holidaysSnapshot      Json
+  createdAt             DateTime @default(now())
+  store                 Store    @relation(fields: [storeDbId], references: [id], onDelete: Restrict)
+
+  @@unique([storeDbId, revision])
+  @@index([storeDbId, effectiveFrom])
+}
+
+model StoreTemporaryClosureInterval {
+  id        String    @id @default(uuid()) @db.Uuid
+  storeDbId String    @map("storeId") @db.Uuid
+  startedAt DateTime
+  endedAt   DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  store     Store     @relation(fields: [storeDbId], references: [id], onDelete: Restrict)
+
+  @@index([storeDbId, startedAt])
+  @@index([storeDbId, endedAt])
+}
+
+model CatalogAvailabilityHistoryState {
+  storeStableId     String   @id
+  trackingStartedAt DateTime
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model CatalogItemUnavailableInterval {
+  id               String    @id @default(uuid()) @db.Uuid
+  storeStableId    String
+  menuItemStableId String
+  nameEnSnapshot   String
+  nameZhSnapshot   String?
+  startedAt        DateTime
+  endedAt          DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([storeStableId, startedAt])
+  @@index([storeStableId, endedAt])
+  @@index([storeStableId, menuItemStableId, startedAt])
 }
 
 model MenuCategory {
