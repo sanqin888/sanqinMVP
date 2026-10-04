@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { CheckoutIntentsModule } from '../clover/checkout-intents.module';
 import { CloverPayController } from '../clover/clover-pay.controller';
+import { CloverWebClientConfigService } from '../clover/clover-web-client-config.service';
 import { CloverModule } from '../clover/clover.module';
 import { PricingTokenService } from '../clover/pricing-token.service';
 import { IdentityEmailVerificationModule } from '../auth/public-api';
@@ -25,7 +26,7 @@ import { PhoneVerificationModule } from '../phone-verification/phone-verificatio
     IdentityEmailVerificationModule,
     PhoneVerificationModule,
   ],
-  providers: [PricingTokenService],
+  providers: [PricingTokenService, CloverWebClientConfigService],
   controllers: [CloverPayController],
 })
 export class CloverWebCheckoutOrchestrationModule {}

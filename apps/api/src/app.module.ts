@@ -19,6 +19,7 @@ import { PhoneVerificationModule } from './phone-verification/phone-verification
 import { AuthModule } from './auth/auth.module';
 import { RequestIdInterceptor } from './common/request-id.interceptor';
 import { AdminModule } from './admin/admin.module';
+import { PublicWebConfigModule } from './store/public-web-config.module';
 import { StoreStatusModule } from './store/store-status.module';
 import { PublicMenuModule } from './menu/public-menu.module';
 import { PosModule } from './pos/pos.module';
@@ -71,6 +72,7 @@ const envConfigModule = configModuleFactory.forRoot({
     LocationModule,
     PhoneVerificationModule,
     AdminModule,
+    PublicWebConfigModule,
     StoreStatusModule,
     PublicMenuModule,
     UberEatsModule,

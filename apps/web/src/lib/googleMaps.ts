@@ -1,5 +1,7 @@
 // apps/web/src/lib/googleMaps.ts
 
+import { getPublicWebConfig } from "@/lib/public-web-config";
+
 type GoogleMapsWindow = Window & {
   google?: {
     maps?: {
@@ -14,14 +16,6 @@ let mapsPromise: Promise<void> | null = null;
 const MAPS_SCRIPT_SELECTOR = "script[data-google-maps='api']";
 const MAPS_SCRIPT_PLACES_FALLBACK_SELECTOR =
   "script[data-google-maps='api-places-fallback']";
-
-function getGoogleMapsKey() {
-  const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
-  if (!key) {
-    throw new Error("NEXT_PUBLIC_GOOGLE_MAPS_KEY is not configured.");
-  }
-  return key;
-}
 
 function hasPlacesApi(windowRef: GoogleMapsWindow) {
   return Boolean(
@@ -44,9 +38,12 @@ async function injectScript(
   selector: string,
   datasetKey: "googleMaps" | "googleMapsFallback",
 ) {
+  const config = await getPublicWebConfig();
+  const browserKey = config.maps.browserKey;
+
   await new Promise<void>((resolve, reject) => {
     const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${getGoogleMapsKey()}&v=weekly&loading=async&libraries=places`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(browserKey)}&v=weekly&loading=async&libraries=places`;
     script.async = true;
     script.defer = true;
     script.dataset[datasetKey] = selector.includes("fallback")

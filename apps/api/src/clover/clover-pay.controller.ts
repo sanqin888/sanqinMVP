@@ -43,6 +43,7 @@ import {
   type IdentityEmailVerificationPort,
 } from '../auth/public-api';
 import { PhoneVerificationService } from '../phone-verification/phone-verification.service';
+import { CloverWebClientConfigService } from './clover-web-client-config.service';
 import { MessagingTemplateType, PaymentMethod } from '@prisma/client';
 import {
   type ChargeAmountReconcileResult,
@@ -103,6 +104,7 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
     @Inject(IDENTITY_EMAIL_VERIFICATION)
     private readonly emailVerification: IdentityEmailVerificationPort,
     private readonly phoneVerification: PhoneVerificationService,
+    private readonly webClientConfig: CloverWebClientConfigService,
   ) {}
 
   private bindAuthenticatedMember(
@@ -338,6 +340,8 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       checkoutIntentId: intent.referenceId,
     });
 
+    const cloverClientConfig = this.webClientConfig.getConfig();
+
     const resolvedMethod =
       typeof paymentMethod === 'string'
         ? paymentMethod
@@ -362,6 +366,7 @@ export class CloverPayController implements OnModuleInit, OnModuleDestroy {
       externalPaymentCents: tenderQuote.externalCents,
       pricingToken: token.pricingToken,
       pricingTokenExpiresAt: token.expiresAt,
+      cloverClientConfig,
       metadata,
     };
   }

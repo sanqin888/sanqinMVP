@@ -50,6 +50,8 @@ production repository directory.
 
 2) Build and run
 
+The production Compose environment must define `GOOGLE_MAPS_BROWSER_KEY`, `CLOVER_WEB_PUBLIC_TOKEN`, and `CLOVER_WEB_SDK_URL` before the runtime-config slices are deployed. `GOOGLE_MAPS_BROWSER_KEY` remains distinct from the server-side `GOOGLE_MAPS_API_KEY` used for geocoding; Clover Web Ecommerce browser configuration is supplied by the API at runtime while `CLOVER_MERCHANT_ID` remains the existing server-side merchant identity. The Web image is environment-neutral and must not receive production `NEXT_PUBLIC_*` build args.
+
 ```bash
 docker compose up -d --build
 ```
@@ -57,6 +59,17 @@ docker compose up -d --build
 Do not treat container start alone as deployment success. Apply any explicitly
 authorized production Prisma migrations through the normal controlled migration
 gate, then verify migration parity plus local/public runtime readiness.
+
+GHCR image publishing foundation:
+
+After the authoritative `ci` workflow succeeds for a push to `main`, GitHub Actions builds the validated commit with `Dockerfile.api` and `Dockerfile.web` and publishes immutable images tagged with the full commit SHA:
+
+```text
+ghcr.io/sanqin888/sanq-api:<full-git-sha>
+ghcr.io/sanqin888/sanq-web:<full-git-sha>
+```
+
+The publishing workflow does not deploy to production, run Prisma migrations, or move a mutable `latest` / `main` tag. Production remains on the existing Compose rollout path until the separate pull-only cutover is reviewed. Before that cutover, verify the production VM architecture and the first-published GHCR package visibility/pull-auth policy.
 
 `ops/verify-runtime-readiness.sh` currently accepts an explicit env-file path
 as its first argument. Supply the actual production env-file path when one is

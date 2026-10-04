@@ -9,10 +9,10 @@ import { usePersistentCart } from "@/lib/cart";
 import {
   calculateDistanceKm,
   geocodeAddress,
-  STORE_COORDINATES,
   DELIVERY_RADIUS_KM,
   type Coordinates,
 } from "@/lib/location";
+import { usePublicWebConfig } from "@/lib/use-public-web-config";
 import {
   ConfirmationState,
   HOSTED_CHECKOUT_CURRENCY,
@@ -414,6 +414,17 @@ export default function CheckoutPage() {
   const q = searchParams?.toString();
 
   const strings = UI_STRINGS[locale];
+  const { config: publicWebConfig } = usePublicWebConfig();
+  const storeCoordinates = useMemo<Coordinates | null>(
+    () =>
+      publicWebConfig
+        ? {
+            latitude: publicWebConfig.store.latitude,
+            longitude: publicWebConfig.store.longitude,
+          }
+        : null,
+    [publicWebConfig],
+  );
   const radiusLabel = `${DELIVERY_RADIUS_KM} km`;
   const orderHref = q ? `/${locale}?${q}` : `/${locale}`;
   const checkoutHref = q ? `/${locale}/checkout?${q}` : `/${locale}/checkout`;
@@ -2582,7 +2593,16 @@ export default function CheckoutPage() {
         return { success: false } as const;
       }
 
-      const distanceKm = calculateDistanceKm(STORE_COORDINATES, coordinates);
+      if (!storeCoordinates) {
+        setAddressValidation({
+          distanceKm: null,
+          isChecking: false,
+          error: strings.deliveryDistance.failed,
+        });
+        return { success: false } as const;
+      }
+
+      const distanceKm = calculateDistanceKm(storeCoordinates, coordinates);
 
       // Uber 配送：最大 DELIVERY_RADIUS_KM
       if (distanceKm > PRIORITY_MAX_RADIUS_KM) {
@@ -2622,6 +2642,7 @@ export default function CheckoutPage() {
     formatDistanceValue,
     locale,
     selectedCoordinates,
+    storeCoordinates,
     strings.deliveryDistance.failed,
     strings.deliveryDistance.notFound,
   ]);
@@ -3601,11 +3622,15 @@ export default function CheckoutPage() {
                         debounceMs={500}
                         minLength={3}
                         country="ca"
-                        locationBias={{
-                          lat: STORE_COORDINATES.latitude,
-                          lng: STORE_COORDINATES.longitude,
-                          radiusMeters: DELIVERY_RADIUS_KM * 1000,
-                        }}
+                        locationBias={
+                          storeCoordinates
+                            ? {
+                                lat: storeCoordinates.latitude,
+                                lng: storeCoordinates.longitude,
+                                radiusMeters: DELIVERY_RADIUS_KM * 1000,
+                              }
+                            : undefined
+                        }
                       />
                     </label>
                     <label className="block text-xs font-medium text-slate-600">

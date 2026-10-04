@@ -56,6 +56,7 @@ services:
       GOOGLE_OAUTH_CALLBACK_URL: "https://api.sanq.ca/api/v1/auth/oauth/google/callback"
       GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY}
       METEOSTAT_RAPIDAPI_KEY: "${METEOSTAT_RAPIDAPI_KEY:-}"
+      GOOGLE_MAPS_BROWSER_KEY: ${GOOGLE_MAPS_BROWSER_KEY:?GOOGLE_MAPS_BROWSER_KEY is required}
       STORE_LATITUDE: "43.760288"
       STORE_LONGITUDE: "-79.412167"
       UBER_DIRECT_CUSTOMER_ID: "248a2a0d-cf94-4ed9-8be5-a6e4fca57b9a"
@@ -84,6 +85,8 @@ services:
       UBER_EATS_WORKER_ENABLED: "false"
       CLOVER_BASE: "https://scl.clover.com"
       CLOVER_MERCHANT_ID: "XC3DQ9Z7D4YJ1"
+      CLOVER_WEB_PUBLIC_TOKEN: ${CLOVER_WEB_PUBLIC_TOKEN:?CLOVER_WEB_PUBLIC_TOKEN is required}
+      CLOVER_WEB_SDK_URL: ${CLOVER_WEB_SDK_URL:?CLOVER_WEB_SDK_URL is required}
       CLOVER_UNIFIED_MERCHANT_ID: "${CLOVER_UNIFIED_MERCHANT_ID:-}"
       CLOVER_UNIFIED_STORE_STABLE_ID: "${CLOVER_UNIFIED_STORE_STABLE_ID:-}"
       CLOVER_UNIFIED_PLATFORM_API_BASE: "${CLOVER_UNIFIED_PLATFORM_API_BASE:-}"
@@ -189,11 +192,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.web
-      args:
-        - NEXT_PUBLIC_GOOGLE_MAPS_KEY=${NEXT_PUBLIC_GOOGLE_MAPS_KEY}
-        - NEXT_PUBLIC_CLOVER_PUBLIC_TOKEN=${NEXT_PUBLIC_CLOVER_PUBLIC_TOKEN}
-        - NEXT_PUBLIC_CLOVER_SDK_URL=${NEXT_PUBLIC_CLOVER_SDK_URL}
-        - NEXT_PUBLIC_CLOVER_MERCHANT_ID=${CLOVER_MERCHANT_ID}
     volumes:
       - /home/ubuntu/sanq-assets/sounds:/app/apps/web/public/sounds:ro
     restart: always
