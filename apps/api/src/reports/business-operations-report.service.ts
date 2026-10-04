@@ -215,8 +215,7 @@ export class BusinessOperationsReportService {
     @Inject(REPORTING_STORE_OPERATING_CONTEXT_QUERY)
     private readonly storeContext: ReportingStoreOperatingContextQueryPort,
     @Inject(REPORTING_CATALOG_ITEM_CLASSIFICATION_QUERY)
-    private readonly catalogItemClassifications:
-      ReportingCatalogItemClassificationQueryPort,
+    private readonly catalogItemClassifications: ReportingCatalogItemClassificationQueryPort,
   ) {}
 
   async getReport(
@@ -294,9 +293,7 @@ export class BusinessOperationsReportService {
     const currentCatalogItemKindByStableId = new Map<
       string,
       ReportingCatalogItemKindV1
-    >(
-      itemClassifications.map((item) => [item.itemStableId, item.itemKind]),
-    );
+    >(itemClassifications.map((item) => [item.itemStableId, item.itemKind]));
 
     const observedOrdersFrom = this.resolveObservedOrdersFrom(allOrders, zone);
     const baselinePeriods = this.buildBaselinePeriods({

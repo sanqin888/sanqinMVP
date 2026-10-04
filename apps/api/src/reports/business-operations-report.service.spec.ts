@@ -186,12 +186,16 @@ describe('BusinessOperationsReportService', () => {
     const operatingContext = {
       getStoreOperatingContext: jest.fn().mockResolvedValue(storeContext()),
     };
-    const catalogItemClassifications = {
-      readItemClassifications: jest.fn().mockResolvedValue([
-        { itemStableId: 'combo_lunch', itemKind: 'FOOD' },
-        { itemStableId: 'drink_plum', itemKind: 'BEVERAGE' },
-      ]),
-    };
+    const readItemClassifications = jest.fn(
+      async (query: { storeStableId: string; itemStableIds: string[] }) => {
+        void query;
+        return [
+          { itemStableId: 'combo_lunch', itemKind: 'FOOD' as const },
+          { itemStableId: 'drink_plum', itemKind: 'BEVERAGE' as const },
+        ];
+      },
+    );
+    const catalogItemClassifications = { readItemClassifications };
     const service = new BusinessOperationsReportService(
       orderFacts as never,
       operatingContext as never,
@@ -292,12 +296,11 @@ describe('BusinessOperationsReportService', () => {
       direction: 'BELOW_EXPECTED',
     });
 
-    expect(
-      catalogItemClassifications.readItemClassifications,
-    ).toHaveBeenCalledWith({
-      storeStableId: STORE,
-      itemStableIds: expect.arrayContaining(['combo_lunch', 'drink_plum']),
-    });
+    expect(readItemClassifications).toHaveBeenCalledTimes(1);
+    expect(readItemClassifications.mock.calls[0][0].storeStableId).toBe(STORE);
+    expect(readItemClassifications.mock.calls[0][0].itemStableIds).toEqual(
+      expect.arrayContaining(['combo_lunch', 'drink_plum']),
+    );
     expect(orderFacts.readOperationalOrdersForRange).toHaveBeenCalledWith(
       expect.objectContaining({
         storeStableId: STORE,

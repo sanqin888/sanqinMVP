@@ -26,9 +26,7 @@ export {
   type CatalogMarketingItemSubjectV1,
   type CatalogMarketingSubjectReaderPort,
 } from './catalog-marketing-subject-reader.contract';
-export {
-  CatalogReportingItemClassificationModule,
-} from './catalog-reporting-item-classification.module';
+export { CatalogReportingItemClassificationModule } from './catalog-reporting-item-classification.module';
 export {
   CATALOG_REPORTING_ITEM_CLASSIFICATION_READER,
   type CatalogReportingItemClassificationReaderPort,
