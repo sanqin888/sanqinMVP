@@ -787,8 +787,8 @@ DATA-A does not change B5 report arithmetic. B2 canonical Sales and B5 Business 
 
 Priority: **P1 PRODUCT / REPORTING CORRECTNESS**  
 Complexity: **H**  
-State: **READINESS AUDIT COMPLETE / HIST-A LOCAL IMPLEMENTED / USER REVIEW PENDING / MIGRATION REQUIRED / NO LEGACY BACKFILL**  
-Audit base: `origin/dev@24545aba`  
+State: **HIST-B LOCAL IMPLEMENTED / USER REVIEW PENDING / NO PRODUCTION DEPLOYMENT / NO LEGACY BACKFILL**  
+Implementation base: `origin/dev@534ae848`  
 Detailed plan: `docs/architecture/operating-availability-history.md`
 
 The 2026-10-04 focused audit confirms that current Store schedule, temporary customer-ordering pause and
@@ -810,9 +810,11 @@ Delivery order:
 
 1. **HIST-A:** additive schema + owner contract foundation and docs; migration generation is user-local per
    `AGENTS.md`.
-2. **HIST-B:** atomic Store/Catalog capture, forward-only baseline, duplicate-pause backend guard, removal of
-   generic Item availability bypass and Store-timezone-aware `TEMP_TODAY_OFF`.
-3. **HIST-C:** owner historical readers + Reporting projection through existing composition/public boundaries.
+2. **HIST-B:** **LOCAL IMPLEMENTED / USER REVIEW PENDING** — atomic Store/Catalog capture, idempotent
+   forward-only baseline, full schedule versioning, duplicate-pause backend guard, dedicated availability-only
+   mutation, and Store-timezone-aware `TEMP_TODAY_OFF`. No production deployment has been performed.
+3. **HIST-C:** next readiness target after HIST-B review/CI — owner historical readers + Reporting projection
+   through existing composition/public boundaries.
 4. **HIST-D:** Admin Sales daily columns, inline item drill-down and hour/minute formatting.
 5. **HIST-E:** migration/deployment and active production verification.
 

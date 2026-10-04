@@ -233,7 +233,6 @@ export default function AdminMenuItemsPage() {
           nameZh: createDraft.nameZh.trim() || null,
           basePriceCents: toIntOrZero(createDraft.basePriceCents),
           sortOrder: toIntOrZero(createDraft.sortOrder),
-          isAvailable: true,
           visibility: 'PUBLIC',
           isVisibleOnMainMenu: true,
           publishToUberEats: createDraft.publishToUberEats,

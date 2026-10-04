@@ -306,6 +306,7 @@ describe('PosStoreStatusService Uber pause synchronization', () => {
     };
     const configWriter = {
       updateStoreConfig: jest.fn().mockResolvedValue(undefined),
+      startTemporaryClosure: jest.fn().mockResolvedValue(true),
       resumeTemporaryClosureIfMatches: jest.fn().mockResolvedValue(true),
     };
     const posGateway = {
@@ -363,12 +364,9 @@ describe('PosStoreStatusService Uber pause synchronization', () => {
         autoResumeAt: expectedAutoResumeAt,
       });
 
-      expect(configWriter.updateStoreConfig).toHaveBeenCalledWith(
+      expect(configWriter.startTemporaryClosure).toHaveBeenCalledWith(
         STORE_STABLE_ID,
-        {
-          isTemporarilyClosed: true,
-          temporaryCloseReason: `__AUTO_UNTIL__:${expectedAutoResumeAt}|`,
-        },
+        `__AUTO_UNTIL__:${expectedAutoResumeAt}|`,
       );
       expect(
         posGateway.publishCustomerOrderingStatusUpdate,
@@ -390,14 +388,26 @@ describe('PosStoreStatusService Uber pause synchronization', () => {
       autoResumeAt: '2026-08-26T00:00:00-04:00',
     });
 
-    expect(configWriter.updateStoreConfig).toHaveBeenCalledWith(
+    expect(configWriter.startTemporaryClosure).toHaveBeenCalledWith(
       STORE_STABLE_ID,
-      {
-        isTemporarilyClosed: true,
-        temporaryCloseReason: '__AUTO_UNTIL__:2026-08-26T00:00:00-04:00|',
-      },
+      '__AUTO_UNTIL__:2026-08-26T00:00:00-04:00|',
     );
     expect(uber.syncStoreStatusToUber).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a duplicate POS pause without extending the existing pause', async () => {
+    const { service, configWriter, posGateway, uber } = setup();
+    configWriter.startTemporaryClosure.mockResolvedValue(false);
+
+    await expect(
+      service.pauseCustomerOrdering(STORE_STABLE_ID, { durationMinutes: 30 }),
+    ).rejects.toThrow('Customer ordering is already paused');
+
+    expect(configWriter.startTemporaryClosure).toHaveBeenCalledTimes(1);
+    expect(
+      posGateway.publishCustomerOrderingStatusUpdate,
+    ).not.toHaveBeenCalled();
+    expect(uber.syncStoreStatusToUber).not.toHaveBeenCalled();
   });
 
   it('resumes customer ordering through the canonical Brand/Store writer', async () => {

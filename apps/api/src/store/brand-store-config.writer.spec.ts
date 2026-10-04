@@ -83,6 +83,8 @@ function setup(options?: {
         id: storeDbId,
         name: 'SanQ Roujiamo - Yonge',
         config: options?.config === undefined ? storeConfig : options.config,
+        businessHours: [],
+        holidays: [],
       });
     },
   );
@@ -104,6 +106,7 @@ function setup(options?: {
       select?: SelectShape;
     }) =>
       Promise.resolve({
+        id: storeDbId,
         storeStableId: args.data.storeStableId,
         name: args.data.name,
         isActive: true,
@@ -133,6 +136,22 @@ function setup(options?: {
     storeConfig: {
       update: storeUpdate,
       updateMany: storeUpdateMany,
+    },
+    storeOperatingHistoryState: {
+      findUnique: jest.fn().mockResolvedValue({ storeDbId }),
+      createMany: jest.fn().mockResolvedValue({ count: 0 }),
+      update: jest.fn().mockResolvedValue({ scheduleRevision: 2 }),
+    },
+    storeScheduleVersion: {
+      create: jest.fn().mockResolvedValue({}),
+    },
+    storeTemporaryClosureInterval: {
+      create: jest.fn().mockResolvedValue({}),
+      findFirst: jest.fn().mockResolvedValue({
+        id: 'closure-1',
+        endedAt: new Date('2026-08-25T12:30:00.000Z'),
+      }),
+      update: jest.fn().mockResolvedValue({}),
     },
   };
   const transaction = jest.fn(

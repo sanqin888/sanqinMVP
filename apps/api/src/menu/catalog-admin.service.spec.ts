@@ -20,44 +20,62 @@ jest.mock(
 import { CatalogAdminService } from './catalog-admin.service';
 
 describe('CatalogAdminService availability persistence', () => {
-  it.each([
-    ['ON', true, false],
-    ['PERMANENT_OFF', false, false],
-    ['TEMP_TODAY_OFF', true, true],
-  ] as const)(
-    '%s keeps the existing availability persistence semantics',
-    async (mode, isAvailable, temporary) => {
-      type AvailabilityUpdateData = {
-        isAvailable: boolean;
-        tempUnavailableUntil: Date | null;
-      };
-      let capturedData: AvailabilityUpdateData | undefined;
-      const update = jest.fn((input: { data: AvailabilityUpdateData }) => {
-        capturedData = input.data;
-        return Promise.resolve({
+  it('rejects generic Item availability fields so history capture cannot be bypassed', async () => {
+    const service = new CatalogAdminService({} as never);
+
+    await expect(
+      service.updateItem(
+        'store-1',
+        'dish-1',
+        { isAvailable: false } as never,
+      ),
+    ).rejects.toThrow('Use the dedicated item availability endpoint');
+  });
+
+  it('keeps current-state and history writes inside one Prisma transaction', async () => {
+    const historyFailure = new Error('history write failed');
+    const tx = {
+      menuItem: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'item-db-1',
           stableId: 'dish-1',
-          ...input.data,
+          nameEn: 'Dish',
+          nameZh: '菜',
+          isAvailable: true,
+          tempUnavailableUntil: null,
+        }),
+        update: jest.fn().mockResolvedValue({
+          stableId: 'dish-1',
+          isAvailable: false,
           visibility: 'PUBLIC',
           isVisibleOnMainMenu: true,
-        });
-      });
-      const service = new CatalogAdminService({
-        menuItem: {
-          findFirst: jest.fn().mockResolvedValue({ id: 'item-db-1' }),
-          update,
-        },
-      } as never);
+          tempUnavailableUntil: null,
+        }),
+      },
+      catalogAvailabilityHistoryState: {
+        findUnique: jest.fn().mockResolvedValue({ storeStableId: 'store-1' }),
+      },
+      catalogItemUnavailableInterval: {
+        create: jest.fn().mockRejectedValue(historyFailure),
+      },
+    };
+    const transaction = jest.fn(
+      async (work: (client: typeof tx) => Promise<unknown>) => work(tx),
+    );
+    const service = new CatalogAdminService({
+      $transaction: transaction,
+    } as never);
 
-      await service.setItemAvailability('store-1', 'dish-1', mode);
-
-      expect(capturedData?.isAvailable).toBe(isAvailable);
-      if (temporary) {
-        expect(capturedData?.tempUnavailableUntil).toBeInstanceOf(Date);
-      } else {
-        expect(capturedData?.tempUnavailableUntil).toBeNull();
-      }
-    },
-  );
+    await expect(
+      service.setItemAvailability('store-1', 'dish-1', 'PERMANENT_OFF', {
+        effectiveAt: new Date('2026-10-04T14:00:00.000Z'),
+        tempUnavailableUntil: null,
+      }),
+    ).rejects.toBe(historyFailure);
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(tx.menuItem.update).toHaveBeenCalledTimes(1);
+    expect(tx.catalogItemUnavailableInterval.create).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('CatalogAdminService availability reader', () => {
