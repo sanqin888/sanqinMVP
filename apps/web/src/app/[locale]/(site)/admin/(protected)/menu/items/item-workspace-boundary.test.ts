@@ -38,4 +38,12 @@ describe('Admin item workspace boundary', () => {
     expect(availabilityUpdate).toContain('/availability');
     expect(availabilityUpdate).toContain('body: JSON.stringify({ mode })');
   });
+
+  it('distinguishes temporary and permanent off states on the turn-on button', () => {
+    expect(pageSource).toContain('const tempOff =');
+    expect(pageSource).toContain('const permanentOff = !item.isAvailable');
+    expect(pageSource).toContain('border-amber-500 bg-amber-400');
+    expect(pageSource).toContain('border-red-700 bg-red-600');
+    expect(pageSource).toContain('className={availabilityButtonClass}');
+  });
 });

@@ -760,9 +760,16 @@ export default function AdminMenuItemsPage() {
                       componentItemStableId: '',
                       quantity: '1',
                     };
-                    const on =
+                    const tempOff =
                       item.isAvailable &&
-                      !isTempUnavailable(item.tempUnavailableUntil);
+                      isTempUnavailable(item.tempUnavailableUntil);
+                    const permanentOff = !item.isAvailable;
+                    const on = !tempOff && !permanentOff;
+                    const availabilityButtonClass = on
+                      ? 'rounded-md border border-slate-200 px-3 py-2 text-sm'
+                      : tempOff
+                        ? 'rounded-md border border-amber-500 bg-amber-400 px-3 py-2 text-sm font-semibold text-slate-900'
+                        : 'rounded-md border border-red-700 bg-red-600 px-3 py-2 text-sm font-semibold text-white';
 
                     return (
                       <div key={item.stableId} className="p-4">
@@ -820,7 +827,7 @@ export default function AdminMenuItemsPage() {
                                   void setAvailability(item.stableId, 'ON');
                                 }
                               }}
-                              className="rounded-md border border-slate-200 px-3 py-2 text-sm"
+                              className={availabilityButtonClass}
                             >
                               {on
                                 ? isZh
