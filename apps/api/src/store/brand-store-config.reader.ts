@@ -184,8 +184,8 @@ export class PrismaBrandStoreConfigReader
     });
     if (!coverage) return null;
 
-    const [activeVersion, laterVersions, temporaryClosures] =
-      await Promise.all([
+    const [activeVersion, laterVersions, temporaryClosures] = await Promise.all(
+      [
         this.prisma.storeScheduleVersion.findFirst({
           where: {
             storeDbId: store.id,
@@ -223,7 +223,8 @@ export class PrismaBrandStoreConfigReader
           orderBy: { startedAt: 'asc' },
           select: { startedAt: true, endedAt: true },
         }),
-      ]);
+      ],
+    );
 
     const versions = activeVersion
       ? [activeVersion, ...laterVersions]

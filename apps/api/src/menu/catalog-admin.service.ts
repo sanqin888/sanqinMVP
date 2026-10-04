@@ -1322,8 +1322,8 @@ export class CatalogAdminService
       });
     if (!coverage) return null;
 
-    const intervals =
-      await this.prisma.catalogItemUnavailableInterval.findMany({
+    const intervals = await this.prisma.catalogItemUnavailableInterval.findMany(
+      {
         where: {
           storeStableId,
           startedAt: { lt: query.toExclusive },
@@ -1337,7 +1337,8 @@ export class CatalogAdminService
           startedAt: true,
           endedAt: true,
         },
-      });
+      },
+    );
 
     return {
       storeStableId,
