@@ -1,4 +1,7 @@
-import type { StoreBusinessHour, StoreHoliday } from './store-schedule.contract';
+import type {
+  StoreBusinessHour,
+  StoreHoliday,
+} from './store-schedule.contract';
 
 export const STORE_OPERATING_HISTORY_READER = Symbol(
   'STORE_OPERATING_HISTORY_READER',
