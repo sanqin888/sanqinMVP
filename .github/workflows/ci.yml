@@ -88,6 +88,8 @@ jobs:
 
       - name: Lint (api)
         if: matrix.app == 'api'
+        env:
+          TIMING: "1"
         run: pnpm --filter api exec eslint "{src,apps,libs,test}/**/*.ts" --concurrency=auto
 
       - name: Lint (web)
@@ -169,7 +171,55 @@ jobs:
         run: pnpm --filter api prisma:generate
 
       - name: Test (api)
-        run: pnpm --filter api exec jest
+        id: api_jest
+        run: pnpm --filter api exec jest --json --outputFile="${RUNNER_TEMP}/sanq-api-jest-results.json"
+
+      - name: Summarize API Jest suite timings
+        if: ${{ always() && !cancelled() && steps.api_jest.outcome != 'skipped' }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync, existsSync, readFileSync } from 'node:fs';
+          import { join, relative } from 'node:path';
+
+          const reportPath = join(process.env.RUNNER_TEMP, 'sanq-api-jest-results.json');
+          if (!existsSync(reportPath)) {
+            console.log('Jest did not produce a timing report; inspect the test step logs.');
+          } else {
+            const report = JSON.parse(readFileSync(reportPath, 'utf8'));
+            const suites = report.testResults
+              .map((suite) => ({
+                name: relative(process.cwd(), suite.name),
+                seconds: (suite.endTime - suite.startTime) / 1000,
+              }))
+              .filter((suite) => Number.isFinite(suite.seconds) && suite.seconds >= 0)
+              .sort((left, right) => right.seconds - left.seconds)
+              .slice(0, 20);
+            const lines = [
+              '### API Jest: 20 slowest suites',
+              '',
+              'Suite wall-clock durations include setup and transform work.',
+              '',
+              '| Suite | Seconds |',
+              '| --- | ---: |',
+              ...suites.map((suite) => '| ' + suite.name + ' | ' + suite.seconds.toFixed(3) + ' |'),
+              '',
+            ];
+            const summary = lines.join('\n');
+            console.log(summary);
+            if (process.env.GITHUB_STEP_SUMMARY) {
+              appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
+            }
+          }
+          NODE
+
+      - name: Upload API Jest timing report
+        if: ${{ always() && !cancelled() && steps.api_jest.outcome != 'skipped' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-jest-timings
+          path: ${{ runner.temp }}/sanq-api-jest-results.json
+          if-no-files-found: ignore
+          retention-days: 7
 
   api-validation:
     # Keep the existing required API check tied to both parallel lanes.

@@ -1,9 +1,11 @@
-# Post-Modularization CI Performance — Batch 1
+# Post-Modularization CI Performance — Batches 1 and 2
 
 Date: 2026-10-04  
 Baseline: `origin/dev@6e7b4fbd2067892bf4cf990d2a193dd92e366957`  
-Branch: `ci/parallel-api-tests-batch-1`  
-State: **LOCAL IMPLEMENTED / USER REVIEW PENDING / CI NOT RUN / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**
+Batch 1: **MERGED / PR #2694 / MERGE `d1fdac78` / PR CI #6902 GREEN / DEV PUSH CI #6903 GREEN / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**  
+Batch 2 baseline: `origin/dev@d1fdac782381e49fc0cd57a58ff482bdd8dbcaab`  
+Batch 2 branch: `ci/performance-diagnostics-batch-2`  
+Batch 2 state: **LOCAL IMPLEMENTED / USER REVIEW PENDING / CI NOT RUN / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**
 
 ## Evidence and goal
 
@@ -31,9 +33,13 @@ No changed-tests selection, test exclusions, rule suppression, continue-on-error
 
 ## Review and validation status
 
-Local source/diff/status review is the current gate. No local lint, build, test or CI-reproduction command is run, following AGENTS.md and the user's review-first workflow. No commit, push, PR, CI run, main promotion or deployment is claimed.
+Batch 1 was reviewed and explicitly authorized for remote delivery. PR #2694 final head `8f59516f2f0da946e633fdb76d4acac77767422d` passed all seven jobs in CI #6902 (149 seconds); the preserved API aggregate and Web names each appeared once. It squash-merged into dev as `d1fdac782381e49fc0cd57a58ff482bdd8dbcaab`. That exact dev push passed CI #6903 in 154 seconds. Both runs preserved full API discovery (486 passing suites / 2956 passing tests and the same two existing skipped suites/tests) and all 13 browser journeys. No main promotion or deployment was performed.
 
-After the user authorizes remote delivery, require the actual PR CI to establish:
+These two runs are approximately 28% and 25% shorter than baseline #6901 (206 seconds), but are not enough to claim a stable improvement across runner variation. PR #6902 had API static checks 140s, API tests 77s, Web 112s, E2E 126s and API aggregate 3s. Dev #6903 had API static checks 145s, API tests 101s, Web 79s, E2E 150s and API aggregate 2s. The critical job alternated between static checks and E2E.
+
+Batch 2 remains at local source/diff/status review. No local lint, build, test or CI reproduction has been run, and Batch 2 has not been committed or pushed.
+
+Preserved remote acceptance criteria (first successful samples are recorded above; broader performance and negative-path evidence remain separate):
 
 1. Both existing display names `build-test (api)` and `build-test (web)` appear exactly once; full API Jest is present as `api-tests` and its failure cannot pass the aggregate API check.
 2. Full API discovery matches the unchanged source/configuration (baseline 486 passing suites / 2956 passing tests, with the same two pre-existing skipped suites/tests). Web and all 13 browser journeys remain covered.
@@ -41,13 +47,29 @@ After the user authorizes remote delivery, require the actual PR CI to establish
 4. Same-PR stale runs are canceled while different PRs and dev/main pushes have separate groups.
 5. At least five comparable completed runs record total elapsed time, critical job times, runner minutes and cache state before claiming a stable speed improvement.
 
-GitHub rulesets were not retrieved in this read-only audit; preserving existing check display names avoids an intentional required-check rename, but actual emitted names and PR admission still require remote confirmation. Negative dependency-result branches have been reviewed in source, not executed.
+GitHub rulesets were not retrieved, but actual check names and successful PR admission were confirmed by PR #2694. Negative dependency-result branches and stale-PR cancellation have been reviewed in source, not deliberately exercised.
 
 ## Architecture and next work
 
 This batch changes CI/Ops execution only: no source imports, context ownership, direct-import allowance/count, public SCC, compatibility registry or `tools/architecture/context-baseline.json` change. Repository modularization remains closed.
 
-Do not start Batch 2 automatically. After Batch 1 is reviewed and validated, use measured results to choose typed-lint profiling, Jest suite timing or E2E preparation/build scheduling. Build-artifact reuse, additional sharding, incremental caches and changed-path selection remain outside this batch.
+The user explicitly authorized starting the next step after Batch 1 merge on 2026-10-04. Batch 2 adds diagnostic output to existing checks as described below. Build-artifact reuse, additional sharding, incremental caches, rule changes and changed-path selection remain outside this batch; do not start those changes automatically.
+
+## Batch 2 — Reuse existing runs for performance diagnostics
+
+**State:** LOCAL IMPLEMENTED / USER REVIEW PENDING / CI NOT RUN, based on merged dev `d1fdac78`.
+
+The first successful runs still spent roughly 57 seconds on API typed lint in PR #6902; API checks and E2E alternated as the longest job. Diagnose the actual rule/suite work before choosing an optimization:
+
+- API lint keeps its complete source/test glob, `--concurrency=auto`, rules and exit status, and gains only `TIMING=1` to print rule timings. This is rule-level aggregate output, not per-file parser/Program profiling. The first type-aware rule can include lazy type-checker initialization; its apparent cost is not proof that the rule should be removed.
+- The existing full Jest invocation adds `--json --outputFile` to write a report under RUNNER_TEMP. Test discovery, transformations, mocks, worker policy, assertions and exit status are unchanged. There is no second Jest invocation.
+- A native Node summary reads the report and writes the top 20 suites to the job log and GitHub step summary. It uses suite endTime minus startTime, includes preparation/transform overhead, and does not claim these values are pure test-body CPU time or sum to overall wall-clock duration.
+- The JSON report is uploaded as `api-jest-timings` with 7-day retention. Summary/upload run after a success or failure when Jest was attempted; cancellation and skipped test steps do not trigger them. A missing report is explicitly noted; it cannot turn a failed test step into a successful job.
+- No extra runner job, test rerun, package, production-code change, rule/cache change or E2E concurrency change is added. Diagnostics have small recording/upload overhead; Batch 2 itself does not claim another speed reduction.
+
+Local review includes the exact workflow diff, report paths, conditions and aggregate failure propagation. No local lint/build/test was run. After separate remote-delivery authorization, actual CI must confirm the lint timing table, a readable 20-suite summary, artifact upload, unchanged full discovery and preserved gates. Then use the recorded rule/suite breakdown and additional workflow samples to select a measured concurrency or preparation/build improvement.
+
+Official diagnostic references: [ESLint rule profiling](https://eslint.org/docs/latest/extend/custom-rules#profile-rule-performance), [typed-lint timing interpretation](https://typescript-eslint.io/troubleshooting/typed-linting/performance/), [Jest JSON output](https://jestjs.io/docs/cli#--json).
 
 Related records: [dependency graph](current-dependency-graph.md), [batch worklog supplement](modularization-worklog-ci-performance.md), [main worklog](modularization-worklog.md).
 
