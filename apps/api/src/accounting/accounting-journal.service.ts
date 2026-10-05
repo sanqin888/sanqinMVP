@@ -96,9 +96,7 @@ import {
   ACCOUNTING_EXTERNAL_SALE_SETTLEMENT_SOURCE_FACT_TYPE,
   ACCOUNTING_EXTERNAL_SALE_SOURCE_FACT_TYPE,
 } from './accounting-external-sales.contract';
-import {
-  ACCOUNTING_OPENING_RECEIVABLE_SOURCE_FACT_TYPE,
-} from './accounting-opening-receivable.contract';
+import { ACCOUNTING_OPENING_RECEIVABLE_SOURCE_FACT_TYPE } from './accounting-opening-receivable.contract';
 import {
   assertProviderFeeBankWithdrawalJournalAuthority,
   hashProviderFeeBankWithdrawalJournalWrite,

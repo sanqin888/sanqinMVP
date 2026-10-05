@@ -77,7 +77,11 @@ export const normalizeAccountingOpeningReceivable = (
   input: CreateAccountingOpeningReceivableInputV1,
   openingDateRaw: string,
 ): AccountingOpeningReceivableFactV1 => {
-  const requestId = requireValue(input.requestId, 'requestId', 64).toLowerCase();
+  const requestId = requireValue(
+    input.requestId,
+    'requestId',
+    64,
+  ).toLowerCase();
   if (!REQUEST_ID_PATTERN.test(requestId)) {
     throw new AccountingJournalPolicyError('requestId must be a UUID');
   }

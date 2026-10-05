@@ -55,7 +55,9 @@ const normalizeTimezone = (raw: string): string => {
 };
 
 const occurredAt = (openingDate: string, timezone: string): string => {
-  const local = DateTime.fromISO(openingDate, { zone: timezone }).startOf('day');
+  const local = DateTime.fromISO(openingDate, { zone: timezone }).startOf(
+    'day',
+  );
   const iso = local.toUTC().toISO();
   if (!local.isValid || !iso) {
     throw new AccountingJournalPolicyError(
@@ -196,7 +198,9 @@ export const assertAccountingOpeningReceivableJournalAuthority = (
   const expected = normalizeJournalCreate(
     buildJournalFromFact(authority.fact, authority.businessTimezone),
   );
-  if (hashJournalCreatePayload(journal) !== hashJournalCreatePayload(expected)) {
+  if (
+    hashJournalCreatePayload(journal) !== hashJournalCreatePayload(expected)
+  ) {
     throw new AccountingJournalPolicyError(
       'Opening Receivable Journal does not match its frozen source-fact authority',
     );

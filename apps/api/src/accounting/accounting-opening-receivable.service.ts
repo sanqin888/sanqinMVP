@@ -246,13 +246,12 @@ export class AccountingOpeningReceivableService {
         select: OPENING_RECEIVABLE_VIEW_SELECT,
       });
 
-      const journal =
-        await this.journal.createOpeningReceivableJournalInTx(
-          plan.journal,
-          actorRef,
-          plan.authority,
-          tx,
-        );
+      const journal = await this.journal.createOpeningReceivableJournalInTx(
+        plan.journal,
+        actorRef,
+        plan.authority,
+        tx,
+      );
 
       const anchored = await tx.accountingOpeningReceivable.update({
         where: {

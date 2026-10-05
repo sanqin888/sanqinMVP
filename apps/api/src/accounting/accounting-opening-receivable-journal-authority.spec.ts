@@ -87,8 +87,6 @@ describe('Accounting Opening Receivable Journal authority', () => {
             : account,
         ),
       }),
-    ).toThrow(
-      'Opening Receivable account is not an active CAD EQUITY account',
-    );
+    ).toThrow('Opening Receivable account is not an active CAD EQUITY account');
   });
 });

@@ -19,8 +19,7 @@ describe('Accounting Opening Receivable policy', () => {
 
     expect(fact).toEqual({
       version: 1,
-      openingReceivableStableId:
-        'openingrecv_11111111111141118111111111111111',
+      openingReceivableStableId: 'openingrecv_11111111111141118111111111111111',
       storeStableId: '4750_Yonge_Street',
       openingDate: '2026-06-01',
       counterpartyName: 'Pre-start supermarket receivables',

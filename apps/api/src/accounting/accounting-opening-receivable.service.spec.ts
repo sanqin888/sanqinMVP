@@ -12,8 +12,7 @@ const createInput = {
 
 describe('AccountingOpeningReceivableService', () => {
   it('posts one immutable Opening Receivable and canonical Opening Balance Journal atomically', async () => {
-    const openingStableId =
-      'openingrecv_11111111111141118111111111111111';
+    const openingStableId = 'openingrecv_11111111111141118111111111111111';
     const tx = {
       accountingOpeningReceivable: {
         findUnique: jest.fn().mockResolvedValue(null),
@@ -78,8 +77,8 @@ describe('AccountingOpeningReceivableService', () => {
         findMany: jest.fn(),
         findUnique: jest.fn(),
       },
-      $transaction: jest.fn(
-        (work: (client: typeof tx) => Promise<unknown>) => work(tx),
+      $transaction: jest.fn((work: (client: typeof tx) => Promise<unknown>) =>
+        work(tx),
       ),
     };
     const journal = {
