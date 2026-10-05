@@ -228,6 +228,29 @@ export function ExternalSaleDetail({
         </p>
       ) : null}
 
+      {detail.evidence?.length ? (
+        <div className="rounded-xl border border-slate-200 p-3">
+          <p className="font-semibold">
+            {isZh ? '原始证据' : 'Source evidence'}
+          </p>
+          <div className="mt-2 space-y-2">
+            {(detail.evidence ?? []).map((evidence) => (
+              <div
+                key={evidence.evidenceStableId}
+                className="rounded-lg bg-slate-50 p-3 text-xs"
+              >
+                <p className="font-medium">
+                  {evidence.originalFilename ?? evidence.artifactStableId}
+                </p>
+                <p className="mt-1 break-all font-mono text-slate-500">
+                  {evidence.artifactStableId}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       <details open className="rounded-xl border border-slate-200 p-3">
         <summary className="cursor-pointer font-semibold">
           {isZh ? '销售事实明细' : 'Sale fact details'}

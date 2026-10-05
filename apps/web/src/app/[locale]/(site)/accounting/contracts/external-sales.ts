@@ -95,6 +95,12 @@ export type AccountingExternalSaleDetail = AccountingExternalSaleListItem & {
     liabilityAccountStableId: string;
     sortOrder: number;
   }>;
+  evidence?: Array<{
+    evidenceStableId: string;
+    artifactStableId: string;
+    originalFilename: string | null;
+    linkedAt: string;
+  }>;
   settlements: AccountingExternalSaleSettlement[];
 };
 
@@ -188,6 +194,45 @@ export type CreateAccountingExternalSaleSettlementInput = {
   }>;
   note?: string | null;
 };
+
+export type AccountingExternalSaleReconstructionPreview = {
+  version: 1;
+  planHash: string;
+  status: 'READY' | 'BLOCKED';
+  blockCode:
+    | 'PRE_START_OPENING_BALANCE_REQUIRED'
+    | 'PAID_AMOUNT_REQUIRES_SETTLEMENT_EVIDENCE'
+    | null;
+  accountingStartDate: string;
+  evidence: {
+    artifactStableId: string;
+    contentHash: string;
+    originalFilename: string;
+  };
+  source: {
+    statementType: 'CUSTOMER_STATEMENT';
+    counterpartyName: string;
+    periodStartOn: string;
+    periodEndOn: string;
+    sourceRowCount: number;
+    sourceQuantity: string;
+    lineSubtotalCents: number;
+    taxTotalCents: number;
+    totalReceivableCents: number;
+    paidAmountCents: number;
+    balanceDueCents: number;
+  };
+  proposedSale: CreateAccountingExternalSaleInput;
+  warnings: string[];
+};
+
+export type AccountingExternalSaleReconstructionExecution =
+  AccountingExternalSaleReconstructionPreview & {
+    execution: {
+      externalSaleStableId: string;
+      journalEntryStableId: string;
+    };
+  };
 
 export type AccountingExternalSaleWriteResult = {
   version: 1;

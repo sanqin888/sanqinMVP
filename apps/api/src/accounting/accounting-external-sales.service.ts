@@ -8,7 +8,11 @@ import { Prisma } from '@prisma/client';
 
 import { runSerializableAccountingWrite } from './accounting-atomic-write';
 import { writeAccountingAuditLog } from './accounting-audit-writer';
-import { AccountingJournalSource } from './accounting-contracts';
+import {
+  AccountingInboxClassification,
+  AccountingInboxStatus,
+  AccountingJournalSource,
+} from './accounting-contracts';
 import { ACCOUNTING_DB, type AccountingDb } from './accounting-db';
 import {
   ACCOUNTING_EXTERNAL_SALE_AR_ACCOUNT_STABLE_ID,
@@ -98,11 +102,26 @@ const EXTERNAL_SALE_VIEW_SELECT = {
       },
     },
   },
+  evidence: {
+    select: {
+      artifact: {
+        select: {
+          artifactStableId: true,
+          contentHash: true,
+        },
+      },
+    },
+  },
 } satisfies Prisma.AccountingExternalSaleSelect;
 
 type ExternalSaleViewRow = Prisma.AccountingExternalSaleGetPayload<{
   select: typeof EXTERNAL_SALE_VIEW_SELECT;
 }>;
+
+export type AccountingExternalSaleEvidenceBindingV1 = {
+  artifactStableId: string;
+  contentHash: string;
+};
 
 export type AccountingExternalSaleViewV1 = {
   version: 1;
@@ -197,6 +216,22 @@ export class AccountingExternalSalesService {
     input: CreateAccountingExternalSaleInputV1,
     actorRef: string,
   ): Promise<AccountingExternalSaleViewV1> {
+    return this.createSaleWithOptionalEvidence(input, actorRef, null);
+  }
+
+  async createSaleFromEvidence(
+    input: CreateAccountingExternalSaleInputV1,
+    actorRef: string,
+    evidence: AccountingExternalSaleEvidenceBindingV1,
+  ): Promise<AccountingExternalSaleViewV1> {
+    return this.createSaleWithOptionalEvidence(input, actorRef, evidence);
+  }
+
+  private async createSaleWithOptionalEvidence(
+    input: CreateAccountingExternalSaleInputV1,
+    actorRef: string,
+    evidence: AccountingExternalSaleEvidenceBindingV1 | null,
+  ): Promise<AccountingExternalSaleViewV1> {
     if (!input || typeof input !== 'object') {
       throw new BadRequestException('External Sale request body is required');
     }
@@ -212,7 +247,7 @@ export class AccountingExternalSalesService {
     let lastError: unknown;
     for (let attempt = 0; attempt < EXTERNAL_SALE_ATTEMPTS; attempt += 1) {
       try {
-        return await this.createSaleOnce(fact, actorRef);
+        return await this.createSaleOnce(fact, actorRef, evidence);
       } catch (error) {
         lastError = error;
         if (!isUniqueConstraintError(error)) throw error;
@@ -225,11 +260,57 @@ export class AccountingExternalSalesService {
   private async createSaleOnce(
     fact: AccountingExternalSaleFactV1,
     actorRef: string,
+    evidence: AccountingExternalSaleEvidenceBindingV1 | null,
   ): Promise<AccountingExternalSaleViewV1> {
     const businessTimezone = await this.period.getBusinessTimezone();
     const factHash = hashAccountingExternalSaleFact(fact);
 
     return runSerializableAccountingWrite(this.prisma, async (tx) => {
+      const evidenceArtifact = evidence
+        ? await tx.accountingSourceArtifact.findUnique({
+            where: { artifactStableId: evidence.artifactStableId },
+            select: {
+              id: true,
+              artifactStableId: true,
+              contentHash: true,
+              inboxItem: {
+                select: {
+                  status: true,
+                  classification: true,
+                  selectedProvider: true,
+                  materializedEntityType: true,
+                  materializedEntityStableId: true,
+                },
+              },
+            },
+          })
+        : null;
+      if (evidence) {
+        if (!evidenceArtifact) {
+          throw new ConflictException(
+            'External Sale reconstruction evidence no longer exists',
+          );
+        }
+        if (evidenceArtifact.contentHash !== evidence.contentHash) {
+          throw new ConflictException(
+            'External Sale reconstruction evidence content changed after preview',
+          );
+        }
+        if (
+          evidenceArtifact.inboxItem?.status !==
+            AccountingInboxStatus.CONFIRMED ||
+          evidenceArtifact.inboxItem.classification !==
+            AccountingInboxClassification.OTHER_DOCUMENT ||
+          evidenceArtifact.inboxItem.selectedProvider !== null ||
+          evidenceArtifact.inboxItem.materializedEntityType !== null ||
+          evidenceArtifact.inboxItem.materializedEntityStableId !== null
+        ) {
+          throw new ConflictException(
+            'External Sale reconstruction evidence is no longer eligible',
+          );
+        }
+      }
+
       const existing = await tx.accountingExternalSale.findUnique({
         where: { externalSaleStableId: fact.externalSaleStableId },
         select: EXTERNAL_SALE_VIEW_SELECT,
@@ -263,6 +344,19 @@ export class AccountingExternalSalesService {
             existing.journalEntryStableId,
             tx,
           );
+          if (
+            evidenceArtifact &&
+            !existing.evidence.some(
+              ({ artifact }) =>
+                artifact.artifactStableId ===
+                  evidenceArtifact.artifactStableId &&
+                artifact.contentHash === evidenceArtifact.contentHash,
+            )
+          ) {
+            throw new ConflictException(
+              'External Sale replay is missing the reviewed reconstruction evidence link',
+            );
+          }
           return this.toView(existing);
         }
       }
@@ -347,6 +441,16 @@ export class AccountingExternalSalesService {
                   },
                 }
               : {}),
+            ...(evidenceArtifact
+              ? {
+                  evidence: {
+                    create: {
+                      artifact: { connect: { id: evidenceArtifact.id } },
+                      linkedByActorRef: actorRef,
+                    },
+                  },
+                }
+              : {}),
             lines: {
               create: fact.lines.map((line) => ({
                 lineStableId: line.lineStableId,
@@ -418,6 +522,19 @@ export class AccountingExternalSalesService {
         beforeJson: null,
         afterJson: after as unknown as Prisma.InputJsonValue,
       });
+      if (evidenceArtifact) {
+        await writeAccountingAuditLog(tx, {
+          action: 'EXTERNAL_SALE_EVIDENCE_LINK',
+          entityType: 'ACCOUNTING_EXTERNAL_SALE',
+          entityId: anchored.externalSaleStableId,
+          operatorActorRef: actorRef,
+          beforeJson: null,
+          afterJson: {
+            artifactStableId: evidenceArtifact.artifactStableId,
+            contentHash: evidenceArtifact.contentHash,
+          } as Prisma.InputJsonValue,
+        });
+      }
       return after;
     });
   }
