@@ -15,6 +15,10 @@ import {
   requireAccountingOperatorUserId,
 } from './accounting-controller-support';
 import type { CreateAccountingOpeningReceivableInputV1 } from './accounting-opening-receivable.contract';
+import type {
+  CreateAccountingOpeningReceivableSettlementInputV1,
+} from './accounting-opening-receivable-settlement.contract';
+import { AccountingOpeningReceivableSettlementService } from './accounting-opening-receivable-settlement.service';
 import { AccountingOpeningReceivableService } from './accounting-opening-receivable.service';
 
 @Controller('accounting')
@@ -23,6 +27,7 @@ import { AccountingOpeningReceivableService } from './accounting-opening-receiva
 export class AccountingOpeningReceivableController {
   constructor(
     private readonly openingReceivables: AccountingOpeningReceivableService,
+    private readonly openingReceivableSettlements: AccountingOpeningReceivableSettlementService,
   ) {}
 
   @Get('opening-receivables')
@@ -35,6 +40,17 @@ export class AccountingOpeningReceivableController {
     @Param('openingReceivableStableId') openingReceivableStableId: string,
   ) {
     return this.openingReceivables.get(openingReceivableStableId);
+  }
+
+  @Post('opening-receivables/settlements')
+  createOpeningReceivableSettlement(
+    @Body() body: CreateAccountingOpeningReceivableSettlementInputV1,
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.openingReceivableSettlements.create(
+      body,
+      requireAccountingOperatorUserId(req),
+    );
   }
 
   @Post('opening-receivables')

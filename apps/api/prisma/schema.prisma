@@ -1814,6 +1814,7 @@ model AccountingAccount {
   externalSaleAdjustments   AccountingExternalSaleAdjustment[] @relation("AccountingExternalSaleAdjustmentRevenueAccount")
   externalSaleTaxes         AccountingExternalSaleTax[] @relation("AccountingExternalSaleTaxLiabilityAccount")
   externalSaleSettlementComponents AccountingExternalSaleSettlementComponent[] @relation("AccountingExternalSaleSettlementComponentAccount")
+  openingReceivableSettlements     AccountingOpeningReceivableSettlement[]     @relation("AccountingOpeningReceivableSettlementCollectionAccount")
 
   @@unique([name, type])
   @@index([type, isActive])
@@ -1906,9 +1907,38 @@ model AccountingOpeningReceivable {
   createdByActorRef          String
   createdAt                  DateTime @default(now())
   updatedAt                  DateTime @updatedAt
+  settlements                AccountingOpeningReceivableSettlement[]
 
   @@index([storeStableId, openingDate])
   @@index([counterpartyName, openingDate])
+  @@index([factHash])
+}
+
+model AccountingOpeningReceivableSettlement {
+  id                       String                      @id @default(uuid()) @db.Uuid
+  settlementStableId       String                      @unique
+  idempotencyKey           String                      @unique
+  openingReceivableId      String                      @db.Uuid
+  storeStableId            String
+  settlementOn             DateTime                    @db.Date
+  counterpartyName         String
+  amountCents              Int
+  currency                 String                      @default("CAD")
+  collectionAccountId      String                      @db.Uuid
+  reference                String?
+  factHash                 String
+  journalEntryStableId     String?                     @unique
+  note                     String?
+  createdByActorRef        String
+  createdAt                DateTime                    @default(now())
+  updatedAt                DateTime                    @updatedAt
+  openingReceivable        AccountingOpeningReceivable @relation(fields: [openingReceivableId], references: [id], onDelete: Restrict)
+  collectionAccount        AccountingAccount            @relation("AccountingOpeningReceivableSettlementCollectionAccount", fields: [collectionAccountId], references: [id], onDelete: Restrict)
+
+  @@index([openingReceivableId, settlementOn])
+  @@index([storeStableId, settlementOn])
+  @@index([counterpartyName, settlementOn])
+  @@index([collectionAccountId, settlementOn])
   @@index([factHash])
 }
 
