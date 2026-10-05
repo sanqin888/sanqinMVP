@@ -11,10 +11,8 @@ COPY libs/foundation/package.json ./libs/foundation/
 COPY libs/order/package.json ./libs/order/
 COPY libs/shared/package.json ./libs/shared/
 
-# 2. 仅安装 API 及其 workspace 依赖；排除 Web 和根 workspace 的无关依赖。
-# workspace install 默认递归安装全部项目，因此必须显式关闭，再用 api...
-# 包含 API 依赖的三个共享库；仍严格使用同一 frozen lockfile。
-RUN pnpm --config.recursive-install=false --filter api... install --frozen-lockfile
+# 2. 严格按 workspace lockfile 安装构建依赖；利用 Docker 层缓存。
+RUN pnpm install --frozen-lockfile
 
 # 3. 共享库先独立构建：纯 API 源码改动复用这一层，三个无互相依赖的库并行编译。
 COPY libs/foundation ./libs/foundation
