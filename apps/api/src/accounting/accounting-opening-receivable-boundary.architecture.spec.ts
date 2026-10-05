@@ -55,7 +55,7 @@ describe('Accounting Opening Receivable architecture boundary', () => {
     expect(controller).toContain("@Post('opening-receivables')");
     expect(controller).toContain("@Roles('ADMIN', 'ACCOUNTANT')");
     expect(journal).toContain(
-      'Opening Receivable Journals require opening-receivable-specific write authority',
+      'Opening Receivable canonical Journals require Opening-Receivable-specific write authority',
     );
   });
 });

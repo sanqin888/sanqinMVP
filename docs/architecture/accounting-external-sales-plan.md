@@ -34,9 +34,10 @@ implemented as one large feature:
     reconciliation, active financial-flow verification and final documentation
     closeout.
 
-Current state: **A through G1 complete in `dev`; G2 is the next implementation
-slice.** Phase 9 remains CLOSED; this program is post-modularization Accounting
-product work.
+Current state: **A through G1 complete in `dev`; G2 source/schema is implemented
+locally on `feat/accounting-opening-receivable-settlement-g2` and is awaiting user
+review. G2 is not pushed, has no migration yet, and is not CI-validated.** Phase 9
+remains CLOSED; this program is post-modularization Accounting product work.
 
 ## 1. Purpose
 
@@ -1007,6 +1008,23 @@ review -> merge to `dev` -> user-local `--create-only` migration workflow.
 - no settlement reversal/correction yet;
 - no Web operator workflow yet;
 - no production deployment in G2.
+
+**Local implementation state — 2026-10-05:** source/schema implementation is
+complete on the local MCP workspace branch
+`feat/accounting-opening-receivable-settlement-g2` and is awaiting user review.
+It adds dedicated `AccountingOpeningReceivableSettlement` persistence, the
+`accounting.opening_receivable_settlement.v1` source fact, a purpose-specific
+STANDARD Journal authority, Serializable outstanding revalidation, additive
+ADMIN/ACCOUNTANT create/read coverage, generic create/update/delete Journal guards,
+and architecture/unit tests. G1 opening AR
+and prior G2 collections are re-derived from their live canonical Journals before
+posting and on Opening Receivable reads; persistence amounts are integrity checks,
+not the final financial authority. External Sale C2 allocation persistence remains
+unchanged and non-polymorphic. No new context import direction or scanner allowance
+is introduced by the source change. **MIGRATION REQUIRED:** the Prisma schema adds
+one dedicated settlement table/relation, but no migration has been generated or
+edited by MCP. No local lint/build/test was run before user review, per `AGENTS.md`;
+CI remains pending until authorized remote delivery.
 
 **G2 completion gate:** canonical partial/full settlement works through the
 dedicated authority, outstanding AR is server-derived from canonical Journal

@@ -1,4 +1,12 @@
 import { AccountingOpeningReceivableService } from './accounting-opening-receivable.service';
+import {
+  hashAccountingOpeningReceivableFact,
+  normalizeAccountingOpeningReceivable,
+} from './accounting-opening-receivable.policy';
+import {
+  hashAccountingOpeningReceivableSettlementFact,
+  normalizeAccountingOpeningReceivableSettlement,
+} from './accounting-opening-receivable-settlement.policy';
 
 const createInput = {
   requestId: '11111111-1111-4111-8111-111111111111',
@@ -9,6 +17,12 @@ const createInput = {
   currency: 'CAD',
   note: 'Opening balance only; no June revenue',
 };
+
+const openingFact = normalizeAccountingOpeningReceivable(
+  createInput,
+  '2026-06-01',
+);
+const openingFactHash = hashAccountingOpeningReceivableFact(openingFact);
 
 describe('AccountingOpeningReceivableService', () => {
   it('posts one immutable Opening Receivable and canonical Opening Balance Journal atomically', async () => {
@@ -25,11 +39,12 @@ describe('AccountingOpeningReceivableService', () => {
           amountCents: 50_500,
           currency: 'CAD',
           idempotencyKey: `opening-receivable:${openingStableId}:v1`,
-          factHash: 'fact-hash',
+          factHash: openingFactHash,
           journalEntryStableId: null,
           note: 'Opening balance only; no June revenue',
           createdByActorRef: 'user_accountant',
           createdAt: new Date('2026-10-05T14:00:00.000Z'),
+          settlements: [],
         }),
         update: jest.fn().mockResolvedValue({
           openingReceivableStableId: openingStableId,
@@ -40,11 +55,12 @@ describe('AccountingOpeningReceivableService', () => {
           amountCents: 50_500,
           currency: 'CAD',
           idempotencyKey: `opening-receivable:${openingStableId}:v1`,
-          factHash: 'fact-hash',
+          factHash: openingFactHash,
           journalEntryStableId: 'journal_opening_receivable_1',
           note: 'Opening balance only; no June revenue',
           createdByActorRef: 'user_accountant',
           createdAt: new Date('2026-10-05T14:00:00.000Z'),
+          settlements: [],
         }),
       },
       accountingAccount: {
@@ -67,6 +83,31 @@ describe('AccountingOpeningReceivableService', () => {
       },
       accountingJournalEntry: {
         findUnique: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            entryStableId: 'journal_opening_receivable_1',
+            kind: 'OPENING_BALANCE',
+            source: 'MANUAL',
+            sourceFactType: 'accounting.opening_receivable.v1',
+            sourceFactStableId: openingStableId,
+            sourceFactVersion: 1,
+            storeStableId: '4750_Yonge_Street',
+            currency: 'CAD',
+            deletedAt: null,
+            lines: [
+              {
+                debitCents: 50_500,
+                creditCents: 0,
+                account: { accountStableId: 'account_accounts_receivable' },
+              },
+              {
+                debitCents: 0,
+                creditCents: 50_500,
+                account: { accountStableId: 'account_opening_balance_equity' },
+              },
+            ],
+          },
+        ]),
       },
       accountingAuditLog: {
         create: jest.fn().mockResolvedValue({}),
@@ -145,7 +186,148 @@ describe('AccountingOpeningReceivableService', () => {
       openingReceivableStableId: openingStableId,
       openingDate: '2026-06-01',
       amountCents: 50_500,
+      openingAmountCents: 50_500,
+      settledAmountCents: 0,
+      outstandingAmountCents: 50_500,
+      settlements: [],
       journalEntryStableId: 'journal_opening_receivable_1',
+    });
+  });
+
+  it('derives settled/outstanding and settlement history from canonical G1/G2 Journals', async () => {
+    const openingStableId = openingFact.openingReceivableStableId;
+    const settlementFact = normalizeAccountingOpeningReceivableSettlement(
+      {
+        requestId: '22222222-2222-4222-8222-222222222222',
+        openingReceivableStableId: openingStableId,
+        settlementOn: '2026-06-20',
+        amountCents: 12_500,
+        collectionAccountStableId: 'account_primary_bank',
+        currency: 'CAD',
+        reference: 'Cheque 1001',
+        note: 'Partial collection',
+      },
+      {
+        storeStableId: openingFact.storeStableId,
+        counterpartyName: openingFact.counterpartyName,
+      },
+    );
+
+    const row = {
+      openingReceivableStableId: openingStableId,
+      storeStableId: openingFact.storeStableId,
+      openingDate: new Date('2026-06-01T00:00:00.000Z'),
+      counterpartyName: openingFact.counterpartyName,
+      reference: openingFact.reference,
+      amountCents: openingFact.amountCents,
+      currency: 'CAD',
+      idempotencyKey: `opening-receivable:${openingStableId}:v1`,
+      factHash: openingFactHash,
+      journalEntryStableId: 'journal_opening_receivable_1',
+      note: openingFact.note,
+      createdByActorRef: 'user_accountant',
+      createdAt: new Date('2026-10-05T14:00:00.000Z'),
+      settlements: [
+        {
+          settlementStableId: settlementFact.settlementStableId,
+          idempotencyKey: `opening-receivable-settlement:${settlementFact.settlementStableId}:v1`,
+          storeStableId: settlementFact.storeStableId,
+          settlementOn: new Date('2026-06-20T00:00:00.000Z'),
+          counterpartyName: settlementFact.counterpartyName,
+          amountCents: settlementFact.amountCents,
+          currency: 'CAD',
+          collectionAccount: {
+            accountStableId: settlementFact.collectionAccountStableId,
+          },
+          reference: settlementFact.reference,
+          factHash:
+            hashAccountingOpeningReceivableSettlementFact(settlementFact),
+          journalEntryStableId: 'journal_opening_settlement_1',
+          note: settlementFact.note,
+          createdByActorRef: 'user_accountant',
+          createdAt: new Date('2026-10-05T15:00:00.000Z'),
+        },
+      ],
+    };
+
+    const prisma = {
+      accountingOpeningReceivable: {
+        findUnique: jest.fn().mockResolvedValue(row),
+      },
+      accountingJournalEntry: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            entryStableId: 'journal_opening_receivable_1',
+            kind: 'OPENING_BALANCE',
+            source: 'MANUAL',
+            sourceFactType: 'accounting.opening_receivable.v1',
+            sourceFactStableId: openingStableId,
+            sourceFactVersion: 1,
+            storeStableId: openingFact.storeStableId,
+            currency: 'CAD',
+            deletedAt: null,
+            lines: [
+              {
+                debitCents: 50_500,
+                creditCents: 0,
+                account: { accountStableId: 'account_accounts_receivable' },
+              },
+              {
+                debitCents: 0,
+                creditCents: 50_500,
+                account: { accountStableId: 'account_opening_balance_equity' },
+              },
+            ],
+          },
+          {
+            entryStableId: 'journal_opening_settlement_1',
+            kind: 'STANDARD',
+            source: 'MANUAL',
+            sourceFactType: 'accounting.opening_receivable_settlement.v1',
+            sourceFactStableId: settlementFact.settlementStableId,
+            sourceFactVersion: 1,
+            storeStableId: openingFact.storeStableId,
+            currency: 'CAD',
+            deletedAt: null,
+            lines: [
+              {
+                debitCents: 12_500,
+                creditCents: 0,
+                account: { accountStableId: 'account_primary_bank' },
+              },
+              {
+                debitCents: 0,
+                creditCents: 12_500,
+                account: { accountStableId: 'account_accounts_receivable' },
+              },
+            ],
+          },
+        ]),
+      },
+    };
+
+    const service = new AccountingOpeningReceivableService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    const result = await service.get(openingStableId);
+
+    expect(result).toMatchObject({
+      openingReceivableStableId: openingStableId,
+      openingAmountCents: 50_500,
+      settledAmountCents: 12_500,
+      outstandingAmountCents: 38_000,
+      settlements: [
+        expect.objectContaining({
+          settlementStableId: settlementFact.settlementStableId,
+          amountCents: 12_500,
+          collectionAccountStableId: 'account_primary_bank',
+          journalEntryStableId: 'journal_opening_settlement_1',
+        }),
+      ],
     });
   });
 

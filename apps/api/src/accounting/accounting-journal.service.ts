@@ -78,6 +78,14 @@ import {
   type AccountingOpeningReceivableJournalWriteAuthorityV1,
 } from './accounting-opening-receivable-journal-authority';
 import {
+  assertAccountingOpeningReceivableSettlementJournalAuthority,
+  calculateOpeningReceivableCanonicalAmountCents,
+  calculateOpeningReceivableSettlementAppliedCents,
+  hashAccountingOpeningReceivableSettlementJournalWrite,
+  normalizeAccountingOpeningReceivableSettlementWriteAuthority,
+  type AccountingOpeningReceivableSettlementJournalWriteAuthorityV1,
+} from './accounting-opening-receivable-settlement-journal-authority';
+import {
   assertExternalSaleSettlementJournalAuthority,
   calculateExternalSaleJournalReceivableCents,
   hashExternalSaleSettlementJournalWrite,
@@ -96,7 +104,16 @@ import {
   ACCOUNTING_EXTERNAL_SALE_SETTLEMENT_SOURCE_FACT_TYPE,
   ACCOUNTING_EXTERNAL_SALE_SOURCE_FACT_TYPE,
 } from './accounting-external-sales.contract';
-import { ACCOUNTING_OPENING_RECEIVABLE_SOURCE_FACT_TYPE } from './accounting-opening-receivable.contract';
+import {
+  ACCOUNTING_OPENING_RECEIVABLE_SOURCE_FACT_TYPE,
+  type AccountingOpeningReceivableFactV1,
+} from './accounting-opening-receivable.contract';
+import { hashAccountingOpeningReceivableFact } from './accounting-opening-receivable.policy';
+import {
+  ACCOUNTING_OPENING_RECEIVABLE_SETTLEMENT_SOURCE_FACT_TYPE,
+  type AccountingOpeningReceivableSettlementFactV1,
+} from './accounting-opening-receivable-settlement.contract';
+import { hashAccountingOpeningReceivableSettlementFact } from './accounting-opening-receivable-settlement.policy';
 import {
   assertProviderFeeBankWithdrawalJournalAuthority,
   hashProviderFeeBankWithdrawalJournalWrite,
@@ -210,6 +227,17 @@ const isExternalSaleCanonicalSourceFactType = (
   typeof value === 'string' &&
   EXTERNAL_SALE_CANONICAL_SOURCE_FACT_TYPES.has(value);
 
+const OPENING_RECEIVABLE_CANONICAL_SOURCE_FACT_TYPES = new Set<string>([
+  ACCOUNTING_OPENING_RECEIVABLE_SOURCE_FACT_TYPE,
+  ACCOUNTING_OPENING_RECEIVABLE_SETTLEMENT_SOURCE_FACT_TYPE,
+]);
+
+const isOpeningReceivableCanonicalSourceFactType = (
+  value: string | null | undefined,
+): boolean =>
+  typeof value === 'string' &&
+  OPENING_RECEIVABLE_CANONICAL_SOURCE_FACT_TYPES.has(value);
+
 type PreparedJournalWrite = {
   normalized: NormalizedJournalCreate;
   idempotencyHash: string;
@@ -305,11 +333,9 @@ export class AccountingJournalService {
         'External Sale canonical Journals require External-Sales-specific write authority',
       );
     }
-    if (
-      input.sourceFactType === ACCOUNTING_OPENING_RECEIVABLE_SOURCE_FACT_TYPE
-    ) {
+    if (isOpeningReceivableCanonicalSourceFactType(input.sourceFactType)) {
       throw new BadRequestException(
-        'Opening Receivable Journals require opening-receivable-specific write authority',
+        'Opening Receivable canonical Journals require Opening-Receivable-specific write authority',
       );
     }
     return this.createJournalEntryInternal(input, operatorActorRef, null);
@@ -413,6 +439,54 @@ export class AccountingJournalService {
     if (journal.deletedAt) {
       throw new ConflictException(
         'Opening Receivable Journal was deleted and cannot be replayed',
+      );
+    }
+    return journal;
+  }
+
+  async createOpeningReceivableSettlementJournalInTx(
+    input: AccountingJournalCreateInput,
+    operatorActorRef: string,
+    authority: AccountingOpeningReceivableSettlementJournalWriteAuthorityV1,
+    tx: Prisma.TransactionClient,
+  ): Promise<AccountingJournalRow> {
+    const normalizedAuthority = this.applyJournalPolicy(() =>
+      normalizeAccountingOpeningReceivableSettlementWriteAuthority(authority),
+    );
+    const normalized = this.applyJournalPolicy(() =>
+      normalizeJournalCreate(input),
+    );
+    this.applyJournalPolicy(() =>
+      assertAccountingOpeningReceivableSettlementJournalAuthority(
+        normalized,
+        normalizedAuthority,
+      ),
+    );
+    await this.assertOpeningReceivableSettlementAuthorityInTx(
+      normalizedAuthority,
+      tx,
+    );
+
+    const operator = this.requireJournalValue(
+      operatorActorRef,
+      'operatorActorRef',
+    );
+    const journal = await this.createPreparedJournalEntryInTx(
+      {
+        normalized,
+        idempotencyHash: hashAccountingOpeningReceivableSettlementJournalWrite(
+          normalized,
+          normalizedAuthority,
+        ),
+        auditAuthority: normalizedAuthority as unknown as Prisma.InputJsonValue,
+      },
+      operator,
+      tx,
+      normalizedAuthority.businessTimezone,
+    );
+    if (journal.deletedAt) {
+      throw new ConflictException(
+        'Opening Receivable settlement Journal was deleted and cannot be replayed',
       );
     }
     return journal;
@@ -1073,6 +1147,18 @@ export class AccountingJournalService {
           'generic Journal update cannot create External Sale canonical authority',
         );
       }
+      if (isOpeningReceivableCanonicalSourceFactType(existing.sourceFactType)) {
+        throw new ConflictException(
+          'Opening Receivable canonical Journals cannot be updated in place',
+        );
+      }
+      if (
+        isOpeningReceivableCanonicalSourceFactType(normalized.sourceFactType)
+      ) {
+        throw new ConflictException(
+          'generic Journal update cannot create Opening Receivable canonical authority',
+        );
+      }
       if (existing.sourceFactType === PROVIDER_PAYOUT_SOURCE_FACT_TYPE) {
         throw new ConflictException(
           'canonical provider payout Journals cannot be updated in place',
@@ -1222,6 +1308,11 @@ export class AccountingJournalService {
       ) {
         throw new ConflictException(
           'External Sale canonical Journals cannot be deleted in place',
+        );
+      }
+      if (isOpeningReceivableCanonicalSourceFactType(existing.sourceFactType)) {
+        throw new ConflictException(
+          'Opening Receivable canonical Journals cannot be deleted in place',
         );
       }
       if (existing.sourceFactType === PROVIDER_PAYOUT_SOURCE_FACT_TYPE) {
@@ -2279,6 +2370,360 @@ export class AccountingJournalService {
           `External Sale outstanding receivable changed before settlement posting: ${prerequisite.externalSaleStableId}`,
         );
       }
+    }
+  }
+
+  private async assertOpeningReceivableSettlementAuthorityInTx(
+    authority: AccountingOpeningReceivableSettlementJournalWriteAuthorityV1,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    const settlement =
+      await tx.accountingOpeningReceivableSettlement.findUnique({
+        where: { settlementStableId: authority.fact.settlementStableId },
+        select: {
+          settlementStableId: true,
+          idempotencyKey: true,
+          storeStableId: true,
+          settlementOn: true,
+          counterpartyName: true,
+          amountCents: true,
+          currency: true,
+          reference: true,
+          factHash: true,
+          journalEntryStableId: true,
+          note: true,
+          openingReceivable: {
+            select: { openingReceivableStableId: true },
+          },
+          collectionAccount: {
+            select: { accountStableId: true },
+          },
+        },
+      });
+
+    const persistedFact: AccountingOpeningReceivableSettlementFactV1 | null =
+      settlement
+        ? {
+            version: 1,
+            settlementStableId: settlement.settlementStableId,
+            openingReceivableStableId:
+              settlement.openingReceivable.openingReceivableStableId,
+            storeStableId: settlement.storeStableId,
+            settlementOn: settlement.settlementOn.toISOString().slice(0, 10),
+            counterpartyName: settlement.counterpartyName,
+            amountCents: settlement.amountCents,
+            currency: 'CAD',
+            collectionAccountStableId:
+              settlement.collectionAccount.accountStableId,
+            reference: settlement.reference,
+            note: settlement.note,
+          }
+        : null;
+    if (
+      !settlement ||
+      !persistedFact ||
+      settlement.journalEntryStableId !== null ||
+      settlement.currency !== 'CAD' ||
+      settlement.idempotencyKey !==
+        `opening-receivable-settlement:${authority.fact.settlementStableId}:v1` ||
+      settlement.factHash !== authority.factHash ||
+      hashAccountingOpeningReceivableSettlementFact(persistedFact) !==
+        authority.factHash ||
+      JSON.stringify(persistedFact) !== JSON.stringify(authority.fact)
+    ) {
+      throw new ConflictException(
+        'Opening Receivable settlement authority changed before Journal posting',
+      );
+    }
+
+    const currentAccounts = await tx.accountingAccount.findMany({
+      where: {
+        accountStableId: {
+          in: authority.accountPrerequisites.map(
+            (account) => account.accountStableId,
+          ),
+        },
+      },
+      select: {
+        accountStableId: true,
+        accountClass: true,
+        type: true,
+        currency: true,
+        isActive: true,
+      },
+    });
+    const currentAccountByStableId = new Map(
+      currentAccounts.map(
+        (account) => [account.accountStableId, account] as const,
+      ),
+    );
+    for (const prerequisite of authority.accountPrerequisites) {
+      const current = currentAccountByStableId.get(
+        prerequisite.accountStableId,
+      );
+      if (
+        !current ||
+        current.accountClass !== prerequisite.actual.accountClass ||
+        current.type !== prerequisite.actual.accountType ||
+        current.currency !== prerequisite.actual.currency ||
+        current.isActive !== prerequisite.actual.isActive
+      ) {
+        throw new ConflictException(
+          `Opening Receivable settlement account authority changed before posting: ${prerequisite.accountStableId}`,
+        );
+      }
+    }
+
+    const receivable = authority.receivablePrerequisite;
+    const opening = await tx.accountingOpeningReceivable.findUnique({
+      where: {
+        openingReceivableStableId: receivable.openingReceivableStableId,
+      },
+      select: {
+        id: true,
+        openingReceivableStableId: true,
+        idempotencyKey: true,
+        storeStableId: true,
+        openingDate: true,
+        counterpartyName: true,
+        reference: true,
+        amountCents: true,
+        currency: true,
+        factHash: true,
+        journalEntryStableId: true,
+        note: true,
+        settlements: {
+          orderBy: [{ settlementOn: 'asc' }, { createdAt: 'asc' }],
+          select: {
+            settlementStableId: true,
+            idempotencyKey: true,
+            storeStableId: true,
+            settlementOn: true,
+            counterpartyName: true,
+            amountCents: true,
+            currency: true,
+            reference: true,
+            factHash: true,
+            journalEntryStableId: true,
+            note: true,
+            collectionAccount: {
+              select: { accountStableId: true },
+            },
+          },
+        },
+      },
+    });
+    if (
+      !opening ||
+      opening.currency !== 'CAD' ||
+      !opening.journalEntryStableId
+    ) {
+      throw new ConflictException(
+        'Opening Receivable disappeared or lost its canonical Journal anchor before settlement posting',
+      );
+    }
+
+    const openingFact: AccountingOpeningReceivableFactV1 = {
+      version: 1,
+      openingReceivableStableId: opening.openingReceivableStableId,
+      storeStableId: opening.storeStableId,
+      openingDate: opening.openingDate.toISOString().slice(0, 10),
+      counterpartyName: opening.counterpartyName,
+      reference: opening.reference,
+      amountCents: opening.amountCents,
+      currency: 'CAD',
+      note: opening.note,
+    };
+    if (
+      opening.idempotencyKey !==
+        `opening-receivable:${opening.openingReceivableStableId}:v1` ||
+      hashAccountingOpeningReceivableFact(openingFact) !== opening.factHash ||
+      opening.openingReceivableStableId !==
+        authority.fact.openingReceivableStableId ||
+      opening.storeStableId !== authority.fact.storeStableId ||
+      opening.counterpartyName !== authority.fact.counterpartyName ||
+      opening.openingDate.toISOString().slice(0, 10) !==
+        receivable.openingDate ||
+      opening.factHash !== receivable.openingFactHash ||
+      opening.journalEntryStableId !== receivable.openingJournalEntryStableId
+    ) {
+      throw new ConflictException(
+        'Opening Receivable source authority changed before settlement posting',
+      );
+    }
+
+    const priorSettlements = opening.settlements.filter(
+      (item) => item.settlementStableId !== authority.fact.settlementStableId,
+    );
+    const priorJournalStableIds = priorSettlements.map((item) => {
+      if (!item.journalEntryStableId) {
+        throw new ConflictException(
+          `Opening Receivable has an unanchored prior settlement: ${item.settlementStableId}`,
+        );
+      }
+      return item.journalEntryStableId;
+    });
+    const journals = await tx.accountingJournalEntry.findMany({
+      where: {
+        entryStableId: {
+          in: [opening.journalEntryStableId, ...priorJournalStableIds],
+        },
+      },
+      select: {
+        entryStableId: true,
+        kind: true,
+        source: true,
+        sourceFactType: true,
+        sourceFactStableId: true,
+        sourceFactVersion: true,
+        storeStableId: true,
+        currency: true,
+        deletedAt: true,
+        lines: {
+          orderBy: { lineNo: 'asc' },
+          select: {
+            debitCents: true,
+            creditCents: true,
+            account: { select: { accountStableId: true } },
+          },
+        },
+      },
+    });
+    const journalByStableId = new Map(
+      journals.map((journal) => [journal.entryStableId, journal] as const),
+    );
+    const openingJournal = journalByStableId.get(opening.journalEntryStableId);
+    if (
+      !openingJournal ||
+      openingJournal.deletedAt ||
+      openingJournal.kind !== AccountingJournalEntryKind.OPENING_BALANCE ||
+      openingJournal.source !== AccountingJournalSource.MANUAL ||
+      openingJournal.sourceFactType !==
+        ACCOUNTING_OPENING_RECEIVABLE_SOURCE_FACT_TYPE ||
+      openingJournal.sourceFactStableId !== opening.openingReceivableStableId ||
+      openingJournal.sourceFactVersion !== 1 ||
+      openingJournal.storeStableId !== opening.storeStableId ||
+      openingJournal.currency !== 'CAD'
+    ) {
+      throw new ConflictException(
+        'Opening Receivable canonical Journal changed before settlement posting',
+      );
+    }
+
+    let openingAmountCents: number;
+    try {
+      openingAmountCents = calculateOpeningReceivableCanonicalAmountCents(
+        openingJournal.lines.map((line) => ({
+          accountStableId: line.account.accountStableId,
+          debitCents: line.debitCents,
+          creditCents: line.creditCents,
+        })),
+      );
+    } catch (error) {
+      if (error instanceof AccountingJournalPolicyError) {
+        throw new ConflictException(error.message);
+      }
+      throw error;
+    }
+    if (openingAmountCents !== opening.amountCents) {
+      throw new ConflictException(
+        'Opening Receivable persistence amount disagrees with its canonical Journal before settlement posting',
+      );
+    }
+
+    let settledBeforeCents = 0;
+    for (const prior of priorSettlements) {
+      if (prior.currency !== 'CAD' || !prior.journalEntryStableId) {
+        throw new ConflictException(
+          `Opening Receivable prior settlement is malformed: ${prior.settlementStableId}`,
+        );
+      }
+      const priorFact: AccountingOpeningReceivableSettlementFactV1 = {
+        version: 1,
+        settlementStableId: prior.settlementStableId,
+        openingReceivableStableId: opening.openingReceivableStableId,
+        storeStableId: prior.storeStableId,
+        settlementOn: prior.settlementOn.toISOString().slice(0, 10),
+        counterpartyName: prior.counterpartyName,
+        amountCents: prior.amountCents,
+        currency: 'CAD',
+        collectionAccountStableId: prior.collectionAccount.accountStableId,
+        reference: prior.reference,
+        note: prior.note,
+      };
+      if (
+        prior.idempotencyKey !==
+          `opening-receivable-settlement:${prior.settlementStableId}:v1` ||
+        hashAccountingOpeningReceivableSettlementFact(priorFact) !==
+          prior.factHash ||
+        prior.storeStableId !== opening.storeStableId ||
+        prior.counterpartyName !== opening.counterpartyName ||
+        prior.settlementOn.toISOString().slice(0, 10) <
+          opening.openingDate.toISOString().slice(0, 10)
+      ) {
+        throw new ConflictException(
+          `Opening Receivable prior settlement source authority is inconsistent: ${prior.settlementStableId}`,
+        );
+      }
+
+      const priorJournal = journalByStableId.get(prior.journalEntryStableId);
+      if (
+        !priorJournal ||
+        priorJournal.deletedAt ||
+        priorJournal.kind !== AccountingJournalEntryKind.STANDARD ||
+        priorJournal.source !== AccountingJournalSource.MANUAL ||
+        priorJournal.sourceFactType !==
+          ACCOUNTING_OPENING_RECEIVABLE_SETTLEMENT_SOURCE_FACT_TYPE ||
+        priorJournal.sourceFactStableId !== prior.settlementStableId ||
+        priorJournal.sourceFactVersion !== 1 ||
+        priorJournal.storeStableId !== prior.storeStableId ||
+        priorJournal.currency !== 'CAD'
+      ) {
+        throw new ConflictException(
+          `Opening Receivable prior settlement Journal is inconsistent: ${prior.settlementStableId}`,
+        );
+      }
+
+      let appliedCents: number;
+      try {
+        appliedCents = calculateOpeningReceivableSettlementAppliedCents(
+          priorJournal.lines.map((line) => ({
+            accountStableId: line.account.accountStableId,
+            debitCents: line.debitCents,
+            creditCents: line.creditCents,
+          })),
+          prior.collectionAccount.accountStableId,
+        );
+      } catch (error) {
+        if (error instanceof AccountingJournalPolicyError) {
+          throw new ConflictException(error.message);
+        }
+        throw error;
+      }
+      if (appliedCents !== prior.amountCents) {
+        throw new ConflictException(
+          `Opening Receivable prior settlement amount disagrees with its canonical Journal: ${prior.settlementStableId}`,
+        );
+      }
+      settledBeforeCents += appliedCents;
+      if (!Number.isSafeInteger(settledBeforeCents)) {
+        throw new ConflictException(
+          'Opening Receivable prior settlement total exceeds safe integer range',
+        );
+      }
+    }
+
+    const outstandingBeforeCents = openingAmountCents - settledBeforeCents;
+    if (
+      settledBeforeCents > openingAmountCents ||
+      openingAmountCents !== receivable.openingAmountCents ||
+      settledBeforeCents !== receivable.settledBeforeCents ||
+      outstandingBeforeCents !== receivable.outstandingBeforeCents ||
+      authority.fact.amountCents > outstandingBeforeCents
+    ) {
+      throw new ConflictException(
+        'Opening Receivable outstanding authority changed before settlement posting',
+      );
     }
   }
 

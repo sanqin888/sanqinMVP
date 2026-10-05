@@ -27,6 +27,7 @@ const EXPECTED_CONTROLLER_CAPABILITIES = {
   ],
   'accounting-opening-receivable.controller.ts': [
     'AccountingOpeningReceivableService',
+    'AccountingOpeningReceivableSettlementService',
   ],
   'accounting-funds.controller.ts': ['AccountingAccountTransferService'],
   'accounting-inbox-artifacts.controller.ts': [
@@ -103,6 +104,7 @@ const EXPECTED_ROUTES = [
   'POST external-sales/settlements',
   'POST external-sales/settlements/:settlementStableId/reverse',
   'POST opening-receivables',
+  'POST opening-receivables/settlements',
   'POST expenses/:documentStableId/confirm',
   'PUT expenses/:documentStableId/payment-allocations',
   'PUT expenses/:documentStableId/split-funding',
