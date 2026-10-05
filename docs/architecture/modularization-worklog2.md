@@ -50,8 +50,8 @@
 
 ## 2026-10-05 — External Sales Slice G1 Opening Receivable Foundation
 
-**Branch/base:** `feat/accounting-external-sales-slice-g-opening-balance` from `origin/dev@23f4f526`  
-**State:** **LOCAL IMPLEMENTED / USER REVIEW PENDING / MIGRATION REQUIRED / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**. Phase 9 remains CLOSED.
+**Branch/base:** source implementation used `feat/accounting-external-sales-slice-g-opening-balance` from `origin/dev@23f4f526`.  
+**State:** **MERGED / SOURCE PR #2702 / MERGE `39a4b402` / SOURCE CI #6928 GREEN / MIGRATION REVIEWED / DEV CI #6930 GREEN / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE / PRODUCTION DEPLOYMENT PENDING**. Phase 9 remains CLOSED.
 
 **Readiness result:** Accounting already owns `OPENING_BALANCE` Journal semantics, active CAD Accounts Receivable and Opening Balance Equity accounts, Trial Balance / Balance Movement opening treatment, and Financial Report exclusion of opening entries from period P&L. Production audit found zero existing Opening Balance Journals and zero closed Accounting periods. The missing capability was a durable receivable identity: current External Sale C2 allocations are intentionally FK-bound to `AccountingExternalSale`, so a bare opening Journal would not provide an auditable future settlement target.
 
@@ -63,6 +63,10 @@
 
 **HTTP/read model:** ADMIN/ACCOUNTANT gains additive list/detail/create routes under `/accounting/opening-receivables`. G1 intentionally adds no Web operator page, settlement, reversal, correction or External Sale allocation changes.
 
-**Next slices:** G2 owns explicit BANK/CASH collection settlement and partial/full AR clearing against the opening-receivable identity; G3 owns reversal/correction + operator Web workflow.
+**Migration review:** user-generated `20261005145529_accounting_opening_receivable_g1_foundation` exactly matches the final Prisma model: one additive `AccountingOpeningReceivable` table, stable-id/idempotency/Journal-anchor uniques and three query indexes. No DROP, rename, backfill, enum rewrite, existing-row rewrite or FK cascade is present. The first empty generated migration was removed from the final repository tree and is not part of replay. Commit `3399c93e` is the reviewed final migration state; push CI #6930 passed API/Web, Browser E2E committed-migration replay, printer-agent and Windows workstation.
 
-**Validation state:** per `AGENTS.md`, no local Prisma generation/validation, lint, build, Jest, scanner or formatter command has been run before user review. GitHub Actions remains the validation gate after explicit remote authorization.
+**Next slice — G2 Opening Receivable Settlement:** add a dedicated `accounting.opening_receivable_settlement.v1` source fact and dedicated settlement persistence linked to one Opening Receivable. Outstanding authority must be derived from the live G1 canonical Opening Balance Journal minus live prior G2 settlements. Permit partial/full explicit active-CAD BANK/CASH collection only; reject over-settlement and dates before cutover; post exactly `Dr BANK/CASH / Cr AR` through a purpose-specific STANDARD Journal authority inside one Serializable transaction. Do not make External Sale C2 allocations polymorphic, do not infer fees/tax, and do not add reversal/Web yet. G2 is expected to require a second additive user-generated migration after source/schema review.
+
+**Remaining sequence:** G3 = Opening Receivable reversal/correction + operator Web; H = migration/deployment gate + active production verification + historical reconciliation + final External Sales closeout.
+
+**Validation state:** G1 source CI #6928 and migration push CI #6930 are green. No local validation command was substituted for GitHub Actions.
