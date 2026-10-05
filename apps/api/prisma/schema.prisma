@@ -1892,54 +1892,72 @@ model AccountingProviderPayout {
 }
 
 model AccountingOpeningReceivable {
-  id                         String   @id @default(uuid()) @db.Uuid
-  openingReceivableStableId  String   @unique
-  idempotencyKey             String   @unique
-  storeStableId              String
-  openingDate                DateTime @db.Date
-  counterpartyName           String
-  reference                  String?
-  amountCents                Int
-  currency                   String   @default("CAD")
-  factHash                   String
-  journalEntryStableId       String?  @unique
-  note                       String?
-  createdByActorRef          String
-  createdAt                  DateTime @default(now())
-  updatedAt                  DateTime @updatedAt
-  settlements                AccountingOpeningReceivableSettlement[]
+  id                                      String                                @id @default(uuid()) @db.Uuid
+  openingReceivableStableId               String                                @unique
+  idempotencyKey                          String                                @unique
+  storeStableId                           String
+  openingDate                             DateTime                              @db.Date
+  counterpartyName                        String
+  reference                               String?
+  amountCents                             Int
+  currency                                String                                @default("CAD")
+  factHash                                String
+  journalEntryStableId                    String?                               @unique
+  reversalStableId                        String?                               @unique
+  reversalFactHash                        String?
+  reversalJournalEntryStableId            String?                               @unique
+  reversedAt                              DateTime?
+  reversedByActorRef                      String?
+  replacementForOpeningReceivableId       String?                               @unique @db.Uuid
+  note                                    String?
+  createdByActorRef                       String
+  createdAt                               DateTime                              @default(now())
+  updatedAt                               DateTime                              @updatedAt
+  replacementForOpeningReceivable         AccountingOpeningReceivable?           @relation("AccountingOpeningReceivableReplacement", fields: [replacementForOpeningReceivableId], references: [id], onDelete: Restrict)
+  replacedByOpeningReceivable             AccountingOpeningReceivable?           @relation("AccountingOpeningReceivableReplacement")
+  settlements                             AccountingOpeningReceivableSettlement[]
 
   @@index([storeStableId, openingDate])
   @@index([counterpartyName, openingDate])
   @@index([factHash])
+  @@index([replacementForOpeningReceivableId])
 }
 
 model AccountingOpeningReceivableSettlement {
-  id                       String                      @id @default(uuid()) @db.Uuid
-  settlementStableId       String                      @unique
-  idempotencyKey           String                      @unique
-  openingReceivableId      String                      @db.Uuid
-  storeStableId            String
-  settlementOn             DateTime                    @db.Date
-  counterpartyName         String
-  amountCents              Int
-  currency                 String                      @default("CAD")
-  collectionAccountId      String                      @db.Uuid
-  reference                String?
-  factHash                 String
-  journalEntryStableId     String?                     @unique
-  note                     String?
-  createdByActorRef        String
-  createdAt                DateTime                    @default(now())
-  updatedAt                DateTime                    @updatedAt
-  openingReceivable        AccountingOpeningReceivable @relation(fields: [openingReceivableId], references: [id], onDelete: Restrict)
-  collectionAccount        AccountingAccount            @relation("AccountingOpeningReceivableSettlementCollectionAccount", fields: [collectionAccountId], references: [id], onDelete: Restrict)
+  id                                  String                                @id @default(uuid()) @db.Uuid
+  settlementStableId                  String                                @unique
+  idempotencyKey                      String                                @unique
+  openingReceivableId                 String                                @db.Uuid
+  storeStableId                       String
+  settlementOn                        DateTime                              @db.Date
+  counterpartyName                    String
+  amountCents                         Int
+  currency                            String                                @default("CAD")
+  collectionAccountId                 String                                @db.Uuid
+  reference                           String?
+  factHash                            String
+  journalEntryStableId                String?                               @unique
+  reversalStableId                    String?                               @unique
+  reversalFactHash                    String?
+  reversalJournalEntryStableId        String?                               @unique
+  reversedAt                          DateTime?
+  reversedByActorRef                  String?
+  replacementForSettlementId          String?                               @unique @db.Uuid
+  note                                String?
+  createdByActorRef                   String
+  createdAt                           DateTime                              @default(now())
+  updatedAt                           DateTime                              @updatedAt
+  openingReceivable                   AccountingOpeningReceivable           @relation(fields: [openingReceivableId], references: [id], onDelete: Restrict)
+  collectionAccount                   AccountingAccount                     @relation("AccountingOpeningReceivableSettlementCollectionAccount", fields: [collectionAccountId], references: [id], onDelete: Restrict)
+  replacementForSettlement            AccountingOpeningReceivableSettlement? @relation("AccountingOpeningReceivableSettlementReplacement", fields: [replacementForSettlementId], references: [id], onDelete: Restrict)
+  replacedBySettlement                AccountingOpeningReceivableSettlement? @relation("AccountingOpeningReceivableSettlementReplacement")
 
   @@index([openingReceivableId, settlementOn])
   @@index([storeStableId, settlementOn])
   @@index([counterpartyName, settlementOn])
   @@index([collectionAccountId, settlementOn])
   @@index([factHash])
+  @@index([replacementForSettlementId])
 }
 
 model AccountingExternalSale {

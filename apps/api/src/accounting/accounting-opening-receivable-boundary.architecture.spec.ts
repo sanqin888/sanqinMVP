@@ -36,9 +36,7 @@ describe('Accounting Opening Receivable architecture boundary', () => {
     expect(authority).not.toContain('account_hst_payable');
 
     expect(schema).toContain('model AccountingOpeningReceivable');
-    expect(schema).toContain(
-      'externalSaleId        String                           @db.Uuid',
-    );
+    expect(schema).toMatch(/externalSaleId\s+String\s+@db\.Uuid/);
   });
 
   it('does not expose arbitrary opening dates or generic Journal writes', () => {
