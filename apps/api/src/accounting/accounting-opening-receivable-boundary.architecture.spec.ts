@@ -10,6 +10,7 @@ describe('Accounting Opening Receivable architecture boundary', () => {
     const authority = read(
       'accounting-opening-receivable-journal-authority.ts',
     );
+    const contract = read('accounting-opening-receivable.contract.ts');
     const schema = read('../../prisma/schema.prisma');
 
     expect(service).toContain('AccountingOpeningReceivableService');
@@ -23,8 +24,14 @@ describe('Accounting Opening Receivable architecture boundary', () => {
     expect(service).not.toContain("from '../integrations/");
 
     expect(authority).toContain('AccountingJournalEntryKind.OPENING_BALANCE');
-    expect(authority).toContain('account_accounts_receivable');
-    expect(authority).toContain('account_opening_balance_equity');
+    expect(authority).toContain(
+      'ACCOUNTING_OPENING_RECEIVABLE_AR_ACCOUNT_STABLE_ID',
+    );
+    expect(authority).toContain(
+      'ACCOUNTING_OPENING_BALANCE_EQUITY_ACCOUNT_STABLE_ID',
+    );
+    expect(contract).toContain('account_accounts_receivable');
+    expect(contract).toContain('account_opening_balance_equity');
     expect(authority).not.toContain('account_sales_revenue');
     expect(authority).not.toContain('account_hst_payable');
 
