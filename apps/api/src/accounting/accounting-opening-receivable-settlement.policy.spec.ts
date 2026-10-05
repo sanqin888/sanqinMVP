@@ -6,8 +6,7 @@ import {
 describe('Accounting Opening Receivable settlement policy', () => {
   const input = {
     requestId: '22222222-2222-4222-8222-222222222222',
-    openingReceivableStableId:
-      'openingrecv_11111111111141118111111111111111',
+    openingReceivableStableId: 'openingrecv_11111111111141118111111111111111',
     settlementOn: '2026-06-20',
     amountCents: 12_500,
     collectionAccountStableId: 'account_primary_bank',
@@ -24,10 +23,8 @@ describe('Accounting Opening Receivable settlement policy', () => {
 
     expect(fact).toEqual({
       version: 1,
-      settlementStableId:
-        'openingrecvsettle_22222222222242228222222222222222',
-      openingReceivableStableId:
-        'openingrecv_11111111111141118111111111111111',
+      settlementStableId: 'openingrecvsettle_22222222222242228222222222222222',
+      openingReceivableStableId: 'openingrecv_11111111111141118111111111111111',
       storeStableId: '4750_Yonge_Street',
       settlementOn: '2026-06-20',
       counterpartyName: 'Pre-start supermarket receivables',
@@ -83,6 +80,8 @@ describe('Accounting Opening Receivable settlement policy', () => {
           counterpartyName: 'Pre-start supermarket receivables',
         },
       ),
-    ).toThrow('Opening Receivable settlement v1 currently requires CAD currency');
+    ).toThrow(
+      'Opening Receivable settlement v1 currently requires CAD currency',
+    );
   });
 });

@@ -17,8 +17,7 @@ describe('Accounting Opening Receivable settlement Journal authority', () => {
   const fact = normalizeAccountingOpeningReceivableSettlement(
     {
       requestId: '22222222-2222-4222-8222-222222222222',
-      openingReceivableStableId:
-        'openingrecv_11111111111141118111111111111111',
+      openingReceivableStableId: 'openingrecv_11111111111141118111111111111111',
       settlementOn: '2026-06-20',
       amountCents: 12_500,
       collectionAccountStableId: 'account_primary_bank',

@@ -20,8 +20,7 @@ const openingInput = {
 
 const createInput = {
   requestId: '22222222-2222-4222-8222-222222222222',
-  openingReceivableStableId:
-    'openingrecv_11111111111141118111111111111111',
+  openingReceivableStableId: 'openingrecv_11111111111141118111111111111111',
   settlementOn: '2026-06-20',
   amountCents: 12_500,
   collectionAccountStableId: 'account_primary_bank',
@@ -32,8 +31,7 @@ const createInput = {
 
 const priorInput = {
   requestId: '33333333-3333-4333-8333-333333333333',
-  openingReceivableStableId:
-    'openingrecv_11111111111141118111111111111111',
+  openingReceivableStableId: 'openingrecv_11111111111141118111111111111111',
   settlementOn: '2026-06-10',
   amountCents: 20_000,
   collectionAccountStableId: 'account_primary_bank',
@@ -50,8 +48,7 @@ const openingFact = normalizeAccountingOpeningReceivable(
 const openingRow = {
   id: 'opening-db-id',
   openingReceivableStableId: openingFact.openingReceivableStableId,
-  idempotencyKey:
-    `opening-receivable:${openingFact.openingReceivableStableId}:v1`,
+  idempotencyKey: `opening-receivable:${openingFact.openingReceivableStableId}:v1`,
   storeStableId: openingFact.storeStableId,
   openingDate: new Date('2026-06-01T00:00:00.000Z'),
   counterpartyName: openingFact.counterpartyName,
@@ -93,8 +90,7 @@ const settlementRow = (
   createdAt = new Date('2026-10-05T15:00:00.000Z'),
 ) => ({
   settlementStableId: fact.settlementStableId,
-  idempotencyKey:
-    `opening-receivable-settlement:${fact.settlementStableId}:v1`,
+  idempotencyKey: `opening-receivable-settlement:${fact.settlementStableId}:v1`,
   openingReceivable: {
     openingReceivableStableId: fact.openingReceivableStableId,
   },
@@ -114,9 +110,7 @@ const settlementRow = (
   createdAt,
 });
 
-const settlementJournal = (
-  row: ReturnType<typeof settlementRow>,
-) => ({
+const settlementJournal = (row: ReturnType<typeof settlementRow>) => ({
   entryStableId: row.journalEntryStableId as string,
   kind: 'STANDARD',
   source: 'MANUAL',
@@ -197,9 +191,7 @@ describe('AccountingOpeningReceivableSettlementService', () => {
       },
       accountingJournalEntry: {
         findUnique: jest.fn().mockResolvedValue(openingJournal),
-        findMany: jest
-          .fn()
-          .mockResolvedValue([settlementJournal(priorRow)]),
+        findMany: jest.fn().mockResolvedValue([settlementJournal(priorRow)]),
       },
       accountingAuditLog: {
         create: jest.fn().mockResolvedValue({}),
@@ -256,11 +248,13 @@ describe('AccountingOpeningReceivableSettlementService', () => {
           openingAmountCents: 50_500,
           settledBeforeCents: 20_000,
           outstandingBeforeCents: 30_500,
-        }),
+        }) as unknown,
       }),
       tx,
     );
-    expect(tx.accountingOpeningReceivableSettlement.update).toHaveBeenCalledWith(
+    expect(
+      tx.accountingOpeningReceivableSettlement.update,
+    ).toHaveBeenCalledWith(
       expect.objectContaining({
         data: { journalEntryStableId: 'journal_opening_settlement_2' },
       }),
@@ -312,9 +306,7 @@ describe('AccountingOpeningReceivableSettlementService', () => {
       },
       accountingJournalEntry: {
         findUnique: jest.fn().mockResolvedValue(openingJournal),
-        findMany: jest
-          .fn()
-          .mockResolvedValue([settlementJournal(priorRow)]),
+        findMany: jest.fn().mockResolvedValue([settlementJournal(priorRow)]),
       },
     };
     const prisma = {
@@ -332,10 +324,7 @@ describe('AccountingOpeningReceivableSettlementService', () => {
     );
 
     await expect(
-      service.create(
-        { ...createInput, amountCents: 501 },
-        'user_accountant',
-      ),
+      service.create({ ...createInput, amountCents: 501 }, 'user_accountant'),
     ).rejects.toThrow(
       'Opening Receivable settlement exceeds outstanding receivable',
     );

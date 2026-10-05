@@ -16,16 +16,12 @@ describe('Accounting Opening Receivable settlement architecture boundary', () =>
         .split('model AccountingExternalSaleSettlementAllocation {')[1]
         ?.split('model AccountingExternalSaleSettlementComponent {')[0] ?? '';
 
-    expect(schema).toContain(
-      'model AccountingOpeningReceivableSettlement {',
-    );
+    expect(schema).toContain('model AccountingOpeningReceivableSettlement {');
     expect(schema).toContain(
       'openingReceivable        AccountingOpeningReceivable',
     );
     expect(service).toContain('runSerializableAccountingWrite');
-    expect(service).toContain(
-      'createOpeningReceivableSettlementJournalInTx',
-    );
+    expect(service).toContain('createOpeningReceivableSettlementJournalInTx');
     expect(service).toContain('OPENING_RECEIVABLE_SETTLEMENT_POST');
     expect(service).not.toContain('accountingExternalSaleSettlement');
     expect(service).not.toContain('AccountingExternalSaleSettlementService');
@@ -33,15 +29,11 @@ describe('Accounting Opening Receivable settlement architecture boundary', () =>
     expect(service).not.toContain("from '../payments/");
     expect(service).not.toContain("from '../integrations/");
 
-    expect(allocationModel).toContain(
-      'externalSaleId        String',
-    );
+    expect(allocationModel).toContain('externalSaleId        String');
     expect(allocationModel).not.toContain('openingReceivableId');
     expect(allocationModel).not.toContain('AccountingOpeningReceivable');
 
-    expect(authority).toContain(
-      'AccountingJournalEntryKind.STANDARD',
-    );
+    expect(authority).toContain('AccountingJournalEntryKind.STANDARD');
     expect(authority).toContain(
       'ACCOUNTING_OPENING_RECEIVABLE_SETTLEMENT_SOURCE_FACT_TYPE',
     );
@@ -69,9 +61,7 @@ describe('Accounting Opening Receivable settlement architecture boundary', () =>
     expect(journal).toContain(
       'Opening Receivable canonical Journals cannot be deleted in place',
     );
-    expect(controller).toContain(
-      "@Post('opening-receivables/settlements')",
-    );
+    expect(controller).toContain("@Post('opening-receivables/settlements')");
     expect(controller).toContain("@Roles('ADMIN', 'ACCOUNTANT')");
   });
 });

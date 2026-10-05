@@ -170,7 +170,9 @@ export class AccountingOpeningReceivableSettlementService {
       }
     }
     if (lastError instanceof Error) throw lastError;
-    throw new ConflictException('Opening Receivable settlement retry exhausted');
+    throw new ConflictException(
+      'Opening Receivable settlement retry exhausted',
+    );
   }
 
   private async createOnce(
@@ -268,8 +270,7 @@ export class AccountingOpeningReceivableSettlementService {
       }
 
       const collectionAccount = accountRows.find(
-        (account) =>
-          account.accountStableId === fact.collectionAccountStableId,
+        (account) => account.accountStableId === fact.collectionAccountStableId,
       );
       if (!collectionAccount) {
         throw new ConflictException(
@@ -277,25 +278,24 @@ export class AccountingOpeningReceivableSettlementService {
         );
       }
 
-      const settlement =
-        await tx.accountingOpeningReceivableSettlement.create({
-          data: {
-            settlementStableId: fact.settlementStableId,
-            idempotencyKey: `opening-receivable-settlement:${fact.settlementStableId}:v1`,
-            openingReceivable: { connect: { id: opening.id } },
-            storeStableId: fact.storeStableId,
-            settlementOn: dateForDb(fact.settlementOn),
-            counterpartyName: fact.counterpartyName,
-            amountCents: fact.amountCents,
-            currency: fact.currency,
-            collectionAccount: { connect: { id: collectionAccount.id } },
-            reference: fact.reference,
-            factHash,
-            note: fact.note,
-            createdByActorRef: actorRef,
-          },
-          select: SETTLEMENT_VIEW_SELECT,
-        });
+      const settlement = await tx.accountingOpeningReceivableSettlement.create({
+        data: {
+          settlementStableId: fact.settlementStableId,
+          idempotencyKey: `opening-receivable-settlement:${fact.settlementStableId}:v1`,
+          openingReceivable: { connect: { id: opening.id } },
+          storeStableId: fact.storeStableId,
+          settlementOn: dateForDb(fact.settlementOn),
+          counterpartyName: fact.counterpartyName,
+          amountCents: fact.amountCents,
+          currency: fact.currency,
+          collectionAccount: { connect: { id: collectionAccount.id } },
+          reference: fact.reference,
+          factHash,
+          note: fact.note,
+          createdByActorRef: actorRef,
+        },
+        select: SETTLEMENT_VIEW_SELECT,
+      });
 
       const journal =
         await this.journal.createOpeningReceivableSettlementJournalInTx(
@@ -305,12 +305,11 @@ export class AccountingOpeningReceivableSettlementService {
           tx,
         );
 
-      const anchored =
-        await tx.accountingOpeningReceivableSettlement.update({
-          where: { settlementStableId: settlement.settlementStableId },
-          data: { journalEntryStableId: journal.entryStableId },
-          select: SETTLEMENT_VIEW_SELECT,
-        });
+      const anchored = await tx.accountingOpeningReceivableSettlement.update({
+        where: { settlementStableId: settlement.settlementStableId },
+        data: { journalEntryStableId: journal.entryStableId },
+        select: SETTLEMENT_VIEW_SELECT,
+      });
       const after = this.toView(anchored);
 
       await writeAccountingAuditLog(tx, {
@@ -413,8 +412,7 @@ export class AccountingOpeningReceivableSettlementService {
     let settledBeforeCents = 0;
     for (const settlement of priorSettlements) {
       const fact = this.factFromRow(settlement);
-      const factHash =
-        hashAccountingOpeningReceivableSettlementFact(fact);
+      const factHash = hashAccountingOpeningReceivableSettlementFact(fact);
       this.assertPersistedSettlementFact(settlement, fact, factHash);
       const journal = settlement.journalEntryStableId
         ? journalByStableId.get(settlement.journalEntryStableId)
@@ -517,7 +515,8 @@ export class AccountingOpeningReceivableSettlementService {
       journal.deletedAt ||
       journal.kind !== AccountingJournalEntryKind.OPENING_BALANCE ||
       journal.source !== AccountingJournalSource.MANUAL ||
-      journal.sourceFactType !== ACCOUNTING_OPENING_RECEIVABLE_SOURCE_FACT_TYPE ||
+      journal.sourceFactType !==
+        ACCOUNTING_OPENING_RECEIVABLE_SOURCE_FACT_TYPE ||
       journal.sourceFactStableId !== opening.openingReceivableStableId ||
       journal.sourceFactVersion !== 1 ||
       journal.storeStableId !== opening.storeStableId ||

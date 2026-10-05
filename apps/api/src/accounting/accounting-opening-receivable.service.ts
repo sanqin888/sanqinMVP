@@ -92,7 +92,8 @@ type AccountingOpeningReceivableRow =
     select: typeof OPENING_RECEIVABLE_VIEW_SELECT;
   }>;
 
-type OpeningSettlementRow = AccountingOpeningReceivableRow['settlements'][number];
+type OpeningSettlementRow =
+  AccountingOpeningReceivableRow['settlements'][number];
 
 type JournalReadClient = Pick<
   Prisma.TransactionClient,
@@ -496,7 +497,8 @@ export class AccountingOpeningReceivableService {
       journal.deletedAt ||
       journal.kind !== AccountingJournalEntryKind.OPENING_BALANCE ||
       journal.source !== AccountingJournalSource.MANUAL ||
-      journal.sourceFactType !== ACCOUNTING_OPENING_RECEIVABLE_SOURCE_FACT_TYPE ||
+      journal.sourceFactType !==
+        ACCOUNTING_OPENING_RECEIVABLE_SOURCE_FACT_TYPE ||
       journal.sourceFactStableId !== row.openingReceivableStableId ||
       journal.sourceFactVersion !== 1 ||
       journal.storeStableId !== row.storeStableId ||
@@ -576,8 +578,7 @@ export class AccountingOpeningReceivableService {
       counterpartyName: settlement.counterpartyName,
       amountCents: settlement.amountCents,
       currency: 'CAD',
-      collectionAccountStableId:
-        settlement.collectionAccount.accountStableId,
+      collectionAccountStableId: settlement.collectionAccount.accountStableId,
       reference: settlement.reference,
       note: settlement.note,
     };

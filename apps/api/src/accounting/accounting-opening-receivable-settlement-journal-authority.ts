@@ -79,7 +79,9 @@ const settlementOccurredAt = (
   settlementOn: string,
   timezone: string,
 ): string => {
-  const local = DateTime.fromISO(settlementOn, { zone: timezone }).startOf('day');
+  const local = DateTime.fromISO(settlementOn, { zone: timezone }).startOf(
+    'day',
+  );
   const iso = local.toUTC().toISO();
   if (!local.isValid || !iso) {
     throw new AccountingJournalPolicyError(
@@ -153,7 +155,9 @@ const buildAccountPrerequisites = (
       );
     }
 
-    if (accountStableId === ACCOUNTING_OPENING_RECEIVABLE_AR_ACCOUNT_STABLE_ID) {
+    if (
+      accountStableId === ACCOUNTING_OPENING_RECEIVABLE_AR_ACCOUNT_STABLE_ID
+    ) {
       if (actual.accountType !== null) {
         throw new AccountingJournalPolicyError(
           'Opening Receivable Accounts Receivable must have no operational account type',
@@ -258,7 +262,8 @@ const buildJournalFromFact = (
   source: AccountingJournalSource.MANUAL,
   sourceFactType: ACCOUNTING_OPENING_RECEIVABLE_SETTLEMENT_SOURCE_FACT_TYPE,
   sourceFactStableId: fact.settlementStableId,
-  sourceFactVersion: ACCOUNTING_OPENING_RECEIVABLE_SETTLEMENT_SOURCE_FACT_VERSION,
+  sourceFactVersion:
+    ACCOUNTING_OPENING_RECEIVABLE_SETTLEMENT_SOURCE_FACT_VERSION,
   storeStableId: fact.storeStableId,
   occurredAt: settlementOccurredAt(fact.settlementOn, businessTimezone),
   currency: 'CAD',
@@ -293,7 +298,8 @@ export const calculateOpeningReceivableCanonicalAmountCents = (
   }
   const ar = lines.filter(
     (line) =>
-      line.accountStableId === ACCOUNTING_OPENING_RECEIVABLE_AR_ACCOUNT_STABLE_ID,
+      line.accountStableId ===
+      ACCOUNTING_OPENING_RECEIVABLE_AR_ACCOUNT_STABLE_ID,
   );
   const equity = lines.filter(
     (line) =>
@@ -349,7 +355,8 @@ export const calculateOpeningReceivableSettlementAppliedCents = (
   );
   const ar = lines.filter(
     (line) =>
-      line.accountStableId === ACCOUNTING_OPENING_RECEIVABLE_AR_ACCOUNT_STABLE_ID,
+      line.accountStableId ===
+      ACCOUNTING_OPENING_RECEIVABLE_AR_ACCOUNT_STABLE_ID,
   );
   if (collection.length !== 1 || ar.length !== 1) {
     throw new AccountingJournalPolicyError(
@@ -417,7 +424,9 @@ export const normalizeAccountingOpeningReceivableSettlementWriteAuthority = (
     );
   }
   const businessTimezone = normalizeTimezone(authority.businessTimezone);
-  const factHash = hashAccountingOpeningReceivableSettlementFact(authority.fact);
+  const factHash = hashAccountingOpeningReceivableSettlementFact(
+    authority.fact,
+  );
   if (factHash !== authority.factHash) {
     throw new AccountingJournalPolicyError(
       'Opening Receivable settlement authority factHash does not match the frozen fact',

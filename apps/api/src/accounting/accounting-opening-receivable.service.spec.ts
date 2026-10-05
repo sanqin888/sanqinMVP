@@ -194,7 +194,6 @@ describe('AccountingOpeningReceivableService', () => {
     });
   });
 
-
   it('derives settled/outstanding and settlement history from canonical G1/G2 Journals', async () => {
     const openingStableId = openingFact.openingReceivableStableId;
     const settlementFact = normalizeAccountingOpeningReceivableSettlement(
@@ -231,8 +230,7 @@ describe('AccountingOpeningReceivableService', () => {
       settlements: [
         {
           settlementStableId: settlementFact.settlementStableId,
-          idempotencyKey:
-            `opening-receivable-settlement:${settlementFact.settlementStableId}:v1`,
+          idempotencyKey: `opening-receivable-settlement:${settlementFact.settlementStableId}:v1`,
           storeStableId: settlementFact.storeStableId,
           settlementOn: new Date('2026-06-20T00:00:00.000Z'),
           counterpartyName: settlementFact.counterpartyName,

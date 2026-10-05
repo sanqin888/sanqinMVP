@@ -1,6 +1,4 @@
-import type {
-  AccountingOpeningReceivableSettlementViewV1,
-} from './accounting-opening-receivable-settlement.contract';
+import type { AccountingOpeningReceivableSettlementViewV1 } from './accounting-opening-receivable-settlement.contract';
 
 export const ACCOUNTING_OPENING_RECEIVABLE_SOURCE_FACT_TYPE =
   'accounting.opening_receivable.v1';

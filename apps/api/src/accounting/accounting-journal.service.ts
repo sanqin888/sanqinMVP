@@ -474,11 +474,10 @@ export class AccountingJournalService {
     const journal = await this.createPreparedJournalEntryInTx(
       {
         normalized,
-        idempotencyHash:
-          hashAccountingOpeningReceivableSettlementJournalWrite(
-            normalized,
-            normalizedAuthority,
-          ),
+        idempotencyHash: hashAccountingOpeningReceivableSettlementJournalWrite(
+          normalized,
+          normalizedAuthority,
+        ),
         auditAuthority: normalizedAuthority as unknown as Prisma.InputJsonValue,
       },
       operator,
@@ -1148,9 +1147,7 @@ export class AccountingJournalService {
           'generic Journal update cannot create External Sale canonical authority',
         );
       }
-      if (
-        isOpeningReceivableCanonicalSourceFactType(existing.sourceFactType)
-      ) {
+      if (isOpeningReceivableCanonicalSourceFactType(existing.sourceFactType)) {
         throw new ConflictException(
           'Opening Receivable canonical Journals cannot be updated in place',
         );
@@ -1313,9 +1310,7 @@ export class AccountingJournalService {
           'External Sale canonical Journals cannot be deleted in place',
         );
       }
-      if (
-        isOpeningReceivableCanonicalSourceFactType(existing.sourceFactType)
-      ) {
+      if (isOpeningReceivableCanonicalSourceFactType(existing.sourceFactType)) {
         throw new ConflictException(
           'Opening Receivable canonical Journals cannot be deleted in place',
         );
@@ -2498,10 +2493,7 @@ export class AccountingJournalService {
         journalEntryStableId: true,
         note: true,
         settlements: {
-          orderBy: [
-            { settlementOn: 'asc' },
-            { createdAt: 'asc' },
-          ],
+          orderBy: [{ settlementOn: 'asc' }, { createdAt: 'asc' }],
           select: {
             settlementStableId: true,
             idempotencyKey: true,
@@ -2521,7 +2513,11 @@ export class AccountingJournalService {
         },
       },
     });
-    if (!opening || opening.currency !== 'CAD' || !opening.journalEntryStableId) {
+    if (
+      !opening ||
+      opening.currency !== 'CAD' ||
+      !opening.journalEntryStableId
+    ) {
       throw new ConflictException(
         'Opening Receivable disappeared or lost its canonical Journal anchor before settlement posting',
       );
@@ -2570,10 +2566,7 @@ export class AccountingJournalService {
     const journals = await tx.accountingJournalEntry.findMany({
       where: {
         entryStableId: {
-          in: [
-            opening.journalEntryStableId,
-            ...priorJournalStableIds,
-          ],
+          in: [opening.journalEntryStableId, ...priorJournalStableIds],
         },
       },
       select: {
@@ -2599,9 +2592,7 @@ export class AccountingJournalService {
     const journalByStableId = new Map(
       journals.map((journal) => [journal.entryStableId, journal] as const),
     );
-    const openingJournal = journalByStableId.get(
-      opening.journalEntryStableId,
-    );
+    const openingJournal = journalByStableId.get(opening.journalEntryStableId);
     if (
       !openingJournal ||
       openingJournal.deletedAt ||
@@ -2609,8 +2600,7 @@ export class AccountingJournalService {
       openingJournal.source !== AccountingJournalSource.MANUAL ||
       openingJournal.sourceFactType !==
         ACCOUNTING_OPENING_RECEIVABLE_SOURCE_FACT_TYPE ||
-      openingJournal.sourceFactStableId !==
-        opening.openingReceivableStableId ||
+      openingJournal.sourceFactStableId !== opening.openingReceivableStableId ||
       openingJournal.sourceFactVersion !== 1 ||
       openingJournal.storeStableId !== opening.storeStableId ||
       openingJournal.currency !== 'CAD'
@@ -2657,8 +2647,7 @@ export class AccountingJournalService {
         counterpartyName: prior.counterpartyName,
         amountCents: prior.amountCents,
         currency: 'CAD',
-        collectionAccountStableId:
-          prior.collectionAccount.accountStableId,
+        collectionAccountStableId: prior.collectionAccount.accountStableId,
         reference: prior.reference,
         note: prior.note,
       };
@@ -2724,8 +2713,7 @@ export class AccountingJournalService {
       }
     }
 
-    const outstandingBeforeCents =
-      openingAmountCents - settledBeforeCents;
+    const outstandingBeforeCents = openingAmountCents - settledBeforeCents;
     if (
       settledBeforeCents > openingAmountCents ||
       openingAmountCents !== receivable.openingAmountCents ||
