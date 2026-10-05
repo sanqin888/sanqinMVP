@@ -14,7 +14,10 @@ Batch 4 branch: `ci/lint-concurrency-batch-4`
 Batch 4 state: **MERGED / PR #2697 / MERGE `28d61eb6` / PR CI #6908 GREEN / DEV PUSH CI #6909 GREEN / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**  
 Batch 5 baseline: `origin/dev@28d61eb683f839d04dae00d9f7cb1f3a5e67469a`  
 Batch 5 branch: `ci/image-build-optimization-batch-5`  
-Batch 5 state: **PR #2698 / SOURCE HEAD `eec6030b` CI #6910 GREEN / IMAGE CHECKS #1 GREEN / MERGE PENDING / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**
+Batch 5 state: **MERGED / PR #2698 / MERGE `feff02c8` / FINAL PR CI #6911 GREEN / IMAGE CHECKS #2 GREEN / DEV PUSH CI #6912 GREEN / MAIN CI #6916 GREEN / PUBLISH #4 GREEN / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**  
+Batch 6 baseline: `origin/dev@feff02c821d05178ea5f64438805d63db5b1e825`  
+Batch 6 branch: `ci/critical-path-optimization-batch-6`  
+Batch 6 state: **LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO DEPENDENCY MANIFEST CHANGE / NO GRAPH OR BASELINE CHANGE**
 
 ## Evidence and goal
 
@@ -131,7 +134,7 @@ Reference: [ESLint concurrency option](https://eslint.org/docs/latest/use/comman
 
 **Owner / class:** Runtime / Data / CI / Ops; atomic internal build/measurement change. Consumers are the main-validated immutable API/Web publisher, API and Uber worker using the same API artifact, Web standalone runtime, and developers building the same Dockerfiles.
 
-**State:** PR #2698 / SOURCE HEAD `eec6030b` CI #6910 GREEN / IMAGE CHECKS #1 GREEN / MERGE PENDING, based on `origin/dev@28d61eb6`. User reviewed the source change and authorized remote delivery. Authoritative remote builds and smoke checks passed on the recorded source head; final-head checks must pass after documentation synchronization. No local lint/build/test/image build, main promotion or production mutation has been performed.
+**State:** MERGED / PR #2698 / MERGE `feff02c8` / FINAL PR CI #6911 GREEN / IMAGE CHECKS #2 GREEN / DEV PUSH CI #6912 GREEN / MAIN CI #6916 GREEN / PUBLISH #4 GREEN, based on `origin/dev@28d61eb6`. The user separately promoted dev to main through PR #2699; this assistant did not deploy or mutate production.
 
 ### Observed CI data
 
@@ -192,9 +195,35 @@ Both images were linux/amd64 on four logical CPUs / Ubuntu image 20260927.149.1.
 
 This is a mixed-cache first sample: dependency layers were restored, changed prerequisite layers and actual compilers ran, and some API runner layers were cached. Build-action time includes local export/load/cache transfer; the old 207s API publisher job includes setup/push/post-job work. Thus 188s versus 207s is an observation under different revisions/runners/export modes, not proof of a 9% optimization. Old Web 19s had cached compiler output, whereas this Web compiled; no regression may be inferred from that difference alone. No controlled before/after image-size baseline or stable speed gain is established.
 
-Require all seven normal CI jobs and both image jobs green on the final head after this documentation update before merging. The self-path image workflow has no dev-push trigger, so merged-dev CI alone does not rerun it.
+Final-head PR CI #6911 passed all seven jobs in 132s and image checks #2 passed both cached image jobs in 59s; API/Web images retained the same measured sizes and digests as the first source build. PR #2698 squash-merged to dev as `feff02c821d05178ea5f64438805d63db5b1e825`; exact dev push CI #6912 passed in 133s. The user then separately promoted dev to main through PR #2699. Exact main push CI #6916 passed in 128s and publish-images #4 passed in 204s, publishing immutable API/Web tags for main SHA `554997d743197cf9c2a9c96714e5c600f1d337aa`. Production deployment was not performed; the running production release remained the earlier immutable SHA at verification time.
 
-Compare PR image build/load data with like-for-like builds; do not equate its local-load elapsed time with release push duration or cached Web with a cold compile. Collect multiple comparable image runs/cache states and image sizes before claiming a stable gain or changing cache backend/compression. Release-path validation of these Dockerfiles requires separately authorized main promotion; no production change is part of this batch. Documentation synchronization uses the existing supplement because the previously reported main-worklog MCP size limit remains unresolved.
+The release build exposed the remaining image bottleneck. API publication spent about 47.5s materializing the cached dependency layer (431.09MB compressed) and 57.2s exporting the GHA cache; Web spent about 37.1s materializing dependencies. API/Web publish jobs took 199/150s. These measurements motivated Batch 6's selective workspace install, while a cache-backend/compression change remains a separate benchmark decision.
+
+Compare image data like-for-like; do not equate local load with release push or a fully cached build with a source-changing build. Documentation synchronization uses the existing supplement because the previously reported main-worklog MCP size limit remains unresolved.
 
 References: [Docker cache layer ordering](https://docs.docker.com/build/cache/optimize/), [GHA cache scopes and branch access](https://docs.docker.com/build/cache/backends/gha/), [Buildx summaries](https://docs.docker.com/build/ci/github-actions/build-summary/), [pnpm parallel scripts](https://pnpm.io/cli/run#--parallel).
+
+## Batch 6 — Shorten CI critical paths and narrow image installs
+
+**Owner / class:** Runtime / Data / CI / Ops; atomic internal execution and packaging change. Consumers are the authoritative CI gates, browser E2E runtime, immutable main-image publisher, API/Uber worker shared image, and Web standalone image.
+
+**State:** LOCAL IMPLEMENTED / USER REVIEW PENDING, based on merged dev `feff02c821d05178ea5f64438805d63db5b1e825`. No local lint/build/test/image build is run under the repository workflow; remote validation is pending user authorization.
+
+### Measured reason for the batch
+
+Latest exact main CI #6916 completed in 128s with three near-critical jobs: E2E 123s, API static 117s, and API Jest 112s. In API static checks, typed lint remained serial and unchanged; after lint, Nest build (~20s) and API strict TypeScript (~21s) were independent. E2E built Web (~33s) only after browser/API preparation, although the same Web image already builds successfully without a live API. Image publication #4 took 204s; cached dependency layer materialization and cache export dominated more than the application compilation changes described above.
+
+### Implementation and preserved gates
+
+- After the complete API lint and architecture/safety prerequisites, run the unchanged Nest build and unchanged API strict declaration command concurrently. Explicitly wait for both PIDs, preserve their separate full logs, and fail the job if either fails. Shared-library strict checks still run afterward with their existing three-way parallelism.
+- Keep the Web matrix path unchanged except for making its existing strict check explicitly Web-only after the API strict command moves into the API parallel step.
+- In browser E2E, run the unchanged production Web build as a third explicitly awaited preparation branch alongside Chromium/system installation and the serial Prisma generation -> migration replay -> deterministic seed -> API build branch. Web still starts only after preparation, API readiness is still required, BFF readiness is still checked, and all 13 browser journeys remain. Failure artifacts now include the Web preparation log.
+- In each Dockerfile, retain all package manifests and the same frozen lockfile, but install only the owning application and its transitive workspace dependencies with pnpm's `api...` / `web...` selector. This excludes the unrelated application and root workspace packages from the builder dependency layer without changing manifests, versions, the lockfile, runtime `pnpm deploy`, Prisma diagnostics, native modules, OCR/PDF packages, Next standalone packaging, image entrypoints, or immutable publishing.
+- Full lint rules, strict programs, builds, API Jest discovery, Web Jest, architecture/safety checks, migration replay/seed, browser tests, printer/Windows checks, check names and aggregate failure semantics remain. No cache mode/backend, dependency version, application source, schema/migration, context boundary, compatibility record, graph allowance, or production deployment changes.
+
+### Remote acceptance and measurement
+
+A reviewed PR must pass all seven normal CI jobs plus both path-triggered image jobs on the exact final head. Confirm unchanged API/Web/browser discovery and inspect both parallel-step logs for successful child commands. Compare API static and E2E job times against #6916 while accounting for runner CPU variance. For images, compare dependency-layer transfer/install size and time, full build action time, smoke results, final uncompressed image sizes and digests. A smaller builder cache layer need not change final runtime image size. Do not claim a stable improvement from one runner sample.
+
+If filtered installation exposes an undeclared dependency or pnpm packaging assumption, restore the full install rather than adding an unrelated dependency in this batch. Cache backend/compression remains follow-up work only after like-for-like evidence. No main promotion or production deployment is authorized by this batch.
 

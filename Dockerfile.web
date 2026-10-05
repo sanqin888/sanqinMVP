@@ -12,8 +12,9 @@ COPY libs/foundation/package.json ./libs/foundation/
 COPY libs/order/package.json ./libs/order/
 COPY libs/shared/package.json ./libs/shared/
 
-# 2. 安装依赖
-RUN pnpm install --frozen-lockfile
+# 2. 仅安装 Web 及其 workspace 依赖；排除 API 和根 workspace 的无关依赖。
+# web... 会包含 Web 依赖的三个共享库，仍严格使用同一 frozen lockfile。
+RUN pnpm --filter web... install --frozen-lockfile
 
 # 3. 共享库先独立并行构建，纯 Web 源码改动复用这一层。
 COPY libs/foundation ./libs/foundation

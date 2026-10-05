@@ -96,9 +96,33 @@ jobs:
         if: matrix.app == 'web'
         run: pnpm --filter web lint
 
-      - name: Build (api)
+      - name: Build and strict declaration check (api)
         if: matrix.app == 'api'
-        run: pnpm --filter api exec nest build
+        run: |
+          # The Nest build and strict declaration program read the same prepared
+          # source tree but produce independent outputs, so run them concurrently.
+          (
+            set -e
+            time pnpm --filter api exec nest build
+          ) > "${RUNNER_TEMP}/sanq-api-build.log" 2>&1 &
+          build_pid=$!
+
+          (
+            set -e
+            time pnpm --filter api exec tsc -p tsconfig.strict.json --pretty false
+          ) > "${RUNNER_TEMP}/sanq-api-strict.log" 2>&1 &
+          strict_pid=$!
+
+          status=0
+          wait "$build_pid" || status=1
+          wait "$strict_pid" || status=1
+          echo "::group::API Nest build"
+          cat "${RUNNER_TEMP}/sanq-api-build.log"
+          echo "::endgroup::"
+          echo "::group::API strict declaration check"
+          cat "${RUNNER_TEMP}/sanq-api-strict.log"
+          echo "::endgroup::"
+          exit "$status"
 
       - name: Build (web)
         if: matrix.app == 'web'
@@ -106,8 +130,9 @@ jobs:
           SANQ_CI_EXTERNAL_STATIC_CHECKS: "1"
         run: pnpm --filter web exec next build --turbopack
 
-      - name: Strict declaration check (${{ matrix.app }})
-        run: pnpm --filter ${{ matrix.app }} exec tsc -p tsconfig.strict.json --pretty false
+      - name: Strict declaration check (web)
+        if: matrix.app == 'web'
+        run: pnpm --filter web exec tsc -p tsconfig.strict.json --pretty false
 
       - name: Strict declaration check (shared libraries)
         if: matrix.app == 'api'
@@ -322,9 +347,10 @@ jobs:
           wait "$order_pid" || status=1
           exit "$status"
 
-      - name: Prepare browser and API in parallel
+      - name: Prepare browser, API, and Web in parallel
         run: |
-          # Each branch stays in this step so both child exit codes are awaited.
+          # All three branches are independent clean-build prerequisites. Keep
+          # them in one step so every child exit code and full log is preserved.
           (
             set -e
             echo "Install Playwright Chromium headless shell"
@@ -345,14 +371,25 @@ jobs:
           ) > "${RUNNER_TEMP}/sanq-e2e-api-prepare.log" 2>&1 &
           api_pid=$!
 
+          (
+            set -e
+            echo "Build production Web"
+            time NODE_ENV=production SANQ_CI_EXTERNAL_STATIC_CHECKS=1 pnpm --filter web exec next build --turbopack
+          ) > "${RUNNER_TEMP}/sanq-e2e-web-prepare.log" 2>&1 &
+          web_pid=$!
+
           status=0
           wait "$browser_pid" || status=1
           wait "$api_pid" || status=1
+          wait "$web_pid" || status=1
           echo "::group::Browser preparation"
           cat "${RUNNER_TEMP}/sanq-e2e-browser-prepare.log"
           echo "::endgroup::"
           echo "::group::API and database preparation"
           cat "${RUNNER_TEMP}/sanq-e2e-api-prepare.log"
+          echo "::endgroup::"
+          echo "::group::Production Web build"
+          cat "${RUNNER_TEMP}/sanq-e2e-web-prepare.log"
           echo "::endgroup::"
           exit "$status"
 
@@ -371,12 +408,6 @@ jobs:
           done
           cat "${RUNNER_TEMP}/sanq-api.log"
           exit 1
-
-      - name: Build production Web
-        env:
-          NODE_ENV: production
-          SANQ_CI_EXTERNAL_STATIC_CHECKS: "1"
-        run: pnpm --filter web exec next build --turbopack
 
       - name: Start production Web
         env:
@@ -413,6 +444,7 @@ jobs:
             ${{ runner.temp }}/sanq-web.log
             ${{ runner.temp }}/sanq-e2e-browser-prepare.log
             ${{ runner.temp }}/sanq-e2e-api-prepare.log
+            ${{ runner.temp }}/sanq-e2e-web-prepare.log
 
   printer-agent:
     runs-on: ubuntu-26.04
