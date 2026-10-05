@@ -1,8 +1,8 @@
 # Accounting External Sales Plan
 
-Status: **SLICE A/B1/B2/C1/C2/C3/D/E/F/G1/G2 MERGED; G2 SOURCE PR #2704 / MERGE `2019caf9` / SOURCE CI #6934 GREEN; MIGRATION `20261005165144_accounting_opening_receivable_settlement_g2` REVIEWED ADDITIVE-ONLY / DEV `5c5d21ae` / CI #6936 GREEN; G3 LOCAL SOURCE/SCHEMA/WEB IMPLEMENTED / USER REVIEW PENDING / MIGRATION REQUIRED; H PENDING / PRODUCTION DEPLOYMENT PENDING**  
+Status: **SLICE A/B1/B2/C1/C2/C3/D/E/F/G1/G2/G3 MERGED / CI GREEN; G3 SOURCE PR #2705 / MERGE `343d1c13` / SOURCE CI #6940 GREEN; MIGRATION `20261005185654_accounting_opening_receivable_g3_reversal_web` REVIEWED ADDITIVE-ONLY / DEV `1560e12a` / CI #6942 GREEN; H READINESS AUDIT COMPLETE / PRODUCTION PROMOTION AUTHORIZATION REQUIRED / NOT DEPLOYED / NOT PRODUCTION VERIFIED**  
 Date: 2026-10-05  
-Current planning base: `origin/dev@5c5d21ae`  
+Current planning base: `origin/dev@1560e12a`  
 Owner: **Accounting / Reporting / Analytics**
 
 ## 0. Program execution map
@@ -34,12 +34,13 @@ implemented as one large feature:
     reconciliation, active financial-flow verification and final documentation
     closeout.
 
-Current state: **A through G2 complete in `dev`; G2 migration replay is green in
-CI #6936. G3 source/schema/Web is implemented locally on
-`feat/accounting-opening-receivable-g3-reversal-web` and is awaiting user review.
-G3 is not pushed and still requires a user-generated additive migration after the
-source/schema PR is reviewed and merged.** Phase 9 remains CLOSED; this program is
-post-modularization Accounting product work.
+Current state: **A through G3 are complete in `dev`; G3 source PR #2705 merged as
+`343d1c13`, source CI #6940 is green, and the user-generated additive migration
+`20261005185654_accounting_opening_receivable_g3_reversal_web` is committed at
+`dev@1560e12a` with CI #6942 green including committed-migration replay. Slice H
+readiness is complete, but production promotion/deployment has not been authorized
+or performed.** Phase 9 remains CLOSED; this program is post-modularization
+Accounting product work.
 
 ## 1. Purpose
 
@@ -1043,9 +1044,12 @@ settlements remain. G3 reuses the existing E/C3 UX and exact-inverse patterns wh
 semantically compatible, but remains a separate opening-receivable authority rather
 than broadening External Sale source ownership.
 
-**Local implementation state — 2026-10-05:** source/schema/Web implementation is
-complete on `feat/accounting-opening-receivable-g3-reversal-web`, based on
-`origin/dev@5c5d21ae`, and is awaiting user review. G3 reserves
+**Completion state — 2026-10-05:** G3 source/schema/Web merged through PR #2705
+(merge `343d1c13`) after source CI #6940 passed. The user-generated
+`20261005185654_accounting_opening_receivable_g3_reversal_web` migration was
+reviewed as additive-only and committed to `dev` at `1560e12a`; push CI #6942
+passed the full API/Web/Browser E2E/printer/Windows matrix including
+committed-migration replay. G3 reserves
 `accounting.opening_receivable_reversal.v1` and
 `accounting.opening_receivable_settlement_reversal.v1`; purpose-specific
 MANUAL/ADJUSTMENT Journals are exact debit/credit inverses of the frozen original
@@ -1065,14 +1069,13 @@ history/detail, canonical balances, create/collection, audit, reversal and
 reversal+prefilled replacement; it contains no Journal construction or hard-coded
 GL allowlist/default-bank policy.
 
-**Migration gate:** the Prisma schema only adds nullable reversal metadata,
-one-to-one replacement self-FKs and their indexes/uniques to the existing G1/G2
-tables. MCP has not generated or edited a migration. After source/schema review and
-authorized PR merge, the migration must be created locally by the user with
-`prisma migrate dev --create-only`, then separately reviewed before commit to
-`dev`. No local lint/build/test is substituted for the repository's GitHub CI
-gate. No new context edge, scanner allowance, SCC or architecture baseline change
-is introduced.
+**Migration gate:** the final user-generated migration adds only nullable
+reversal metadata, one-to-one replacement self-FKs and their indexes/uniques to the
+existing G1/G2 tables. It contains no DROP, rename, backfill, type rewrite, NOT NULL
+tightening or existing-row rewrite. The six Prisma unique warnings cover newly
+added nullable columns; existing rows receive NULL and PostgreSQL ordinary UNIQUE
+indexes permit multiple NULL values. No new context edge, scanner allowance, SCC or
+architecture baseline change was introduced.
 
 ### Slice H — Closeout / production verification
 
@@ -1099,3 +1102,110 @@ Closeout must include:
 
 Until H is complete, the External Sales program may be `MERGED / CI GREEN` but
 must not be labeled `PRODUCTION VERIFIED / CLOSED`.
+
+#### H readiness audit — 2026-10-05
+
+State: **READINESS COMPLETE / PRODUCTION PROMOTION AUTHORIZATION REQUIRED / NOT
+DEPLOYED / NOT PRODUCTION VERIFIED**.
+
+The code/migration side is ready for promotion:
+
+- `dev@1560e12a` contains A-G3 and all three G migrations;
+- G3 source PR #2705 merged as `343d1c13`, source CI #6940 is green;
+- migration `20261005185654_accounting_opening_receivable_g3_reversal_web`
+  was reviewed additive-only and push CI #6942 is green, including fresh committed
+  migration replay;
+- the architecture baseline remains green with no new context edge, scanner
+  allowance, SCC or direct-import ceiling.
+
+Production is intentionally still pre-H:
+
+- production repository is clean at `main@feff02c8`;
+- running API/Web images are pinned to `554997d743197cf9c2a9c96714e5c600f1d337aa`,
+  so the checked-out repository and running image SHA are not identical and the
+  rollout must record the actual promoted image SHA rather than infer it from the
+  working tree;
+- the production database's latest applied migration is
+  `20261004131125_add_operating_availability_history`; G1/G2/G3 migrations are not
+  applied and the two Opening Receivable tables do not exist yet;
+- existing External Sale persistence is present but contains 0 Sales, 0
+  Settlements, 0 evidence links and 0 External Sale canonical Journals;
+- `AccountingPeriodClose` contains 0 closed periods;
+- the required active CAD CoA identities already exist for Accounts Receivable,
+  Opening Balance Equity, primary BANK, Commission Expense, HST payable and HST
+  recoverable.
+
+Promotion/deployment is therefore a separate explicit gate. Current `main` is
+12 commits behind `dev@1560e12a`; the promotion set is CI #2700 plus External
+Sales F/G1/G2/G3 source/docs/migrations. Before production mutation, use the normal
+`dev -> main` PR/merge flow, require main CI/image publication green, record the
+resulting exact main/image SHA, confirm a recent production database backup and
+capture the runtime-readiness baseline.
+
+The current Compose path does not auto-run Prisma migrations. Because the three G
+migrations are additive-only, the lowest-risk rollout is to make the approved new
+image available, apply the three pending migrations through the separately
+authorized production migration step while the old runtime is still compatible
+with the additive schema, then activate the new API/Web/worker image and run
+`ops/verify-runtime-readiness.sh` with the production VM's actual environment
+resolution. No production migration, image activation or restart is authorized by
+this readiness entry itself.
+
+Active H verification should use clearly tagged, intentionally small controlled
+facts and must record their stable IDs / Journal anchors before cleanup by
+reversal. Posted facts are immutable, so even fully reversed verification records
+remain audit history and require explicit operator authorization.
+
+**External Sale controlled lifecycle:**
+
+1. create one ordinary External Sale and confirm its canonical AR/revenue Journal;
+2. post a partial Settlement, then a second Settlement that reaches full
+   settlement;
+3. reverse the second Settlement and confirm AR reopens by the exact inverse;
+4. create a replacement Settlement for that reversed predecessor, then if needed a
+   final small Settlement to reach full settlement again;
+5. reverse every live Settlement, then reverse the original Sale;
+6. create a corrected replacement Sale linked to the fully reversed predecessor,
+   verify its Journal/lineage, then reverse it so the controlled verification
+   leaves zero net Sales/P&L/AR effect;
+7. capture Sales Analytics and Financial Report evidence at the meaningful
+   intermediate stages and after final reversal. Settlement activity must not be
+   counted as Sales revenue, while AR/BANK movement must reconcile in Financial
+   Reports.
+
+**Opening Receivable G1-G3 controlled lifecycle:**
+
+1. create one clearly tagged Opening Receivable and verify exact
+   `Dr AR / Cr Opening Balance Equity`;
+2. post partial then full G2 collections through explicit BANK/CASH;
+3. reverse one collection and confirm outstanding AR is restored;
+4. create a corrected replacement collection and verify replacement lineage;
+5. reverse all remaining live collections before reversing the G1 Opening
+   Receivable;
+6. create a corrected replacement Opening Receivable, verify lineage, then reverse
+   it so the controlled verification finishes with zero net test balance;
+7. verify Opening Receivable activity never appears as Sales revenue/HST/P&L and
+   is represented only through opening/balance-sheet movement.
+
+Historical reconstruction has one real retained candidate today:
+`acctart_qcyovbh12vq5nle9looyzwpf`,
+`丰亚结算单26年4月.xlsx` (CONFIRMED / OTHER_DOCUMENT, original binary retained).
+After deployment its F preview must return
+`BLOCKED / PRE_START_OPENING_BALANCE_REQUIRED` and create no Sale/Journal. That
+evidence proves the pre-start fail-closed handoff but does **not** prove the amount
+still collectible at the 2026-06-01 cutover and therefore must not be copied into
+G1 automatically. Production currently has no confirmed post-start Customer
+Statement XLSX eligible for a successful F reconstruction. H cannot claim
+successful historical reconstruction execution until authentic post-start evidence
+is available, unless that successful-execute production evidence is explicitly
+accepted as a deferred item.
+
+Month-close mutation is also not safe to manufacture merely for verification:
+production currently has zero closed months. Closed-month ADJUSTMENT behavior stays
+covered by source/CI policy evidence until a naturally closed period exists or the
+operator explicitly authorizes a controlled close/reopen test. Inventory/COGS
+authority remains outside External Sales and is an explicit program deferral.
+
+Final H closeout requires the above production evidence, runtime/log health,
+post-deploy migration status, historical-reconstruction disposition, explicit
+deferral list and final roadmap/worklog/dependency-document synchronization.
