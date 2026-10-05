@@ -25,6 +25,10 @@ const detail = readFileSync(
   resolve(WEB_ROOT, 'external-sale-detail.tsx'),
   'utf8',
 );
+const reconstruction = readFileSync(
+  resolve(WEB_ROOT, 'external-sale-reconstruction-panel.tsx'),
+  'utf8',
+);
 const contract = readFileSync(resolve(__dirname, 'external-sales.ts'), 'utf8');
 const shell = readFileSync(
   resolve(process.cwd(), 'src', 'components', 'staff', 'AccountingShell.tsx'),
@@ -52,6 +56,7 @@ describe('External Sales Accounting Web authority boundary', () => {
       settlementForm,
       settlementEditors,
       detail,
+      reconstruction,
       contract,
     ]) {
       expect(source).not.toContain("'account_sales_revenue'");
@@ -78,10 +83,26 @@ describe('External Sales Accounting Web authority boundary', () => {
     );
     expect(detail).toContain('/reverse');
     expect(detail).toContain('reversal reason');
+    expect(reconstruction).toContain(
+      "'/accounting/inbox?status=CONFIRMED&classification=OTHER_DOCUMENT&limit=200'",
+    );
+    expect(reconstruction).toContain(
+      "'/accounting/external-sales/reconstruction/preview'",
+    );
+    expect(reconstruction).toContain(
+      "'/accounting/external-sales/reconstruction/execute'",
+    );
+    expect(reconstruction).toContain('expectedPlanHash: preview.planHash');
     expect(contract).toContain('replacementForExternalSaleStableId');
     expect(contract).toContain('replacementForSettlementStableId');
 
-    for (const source of [page, saleForm, settlementForm, detail]) {
+    for (const source of [
+      page,
+      saleForm,
+      settlementForm,
+      detail,
+      reconstruction,
+    ]) {
       expect(source).not.toContain('createJournal');
       expect(source).not.toContain('JournalEntryCreate');
     }

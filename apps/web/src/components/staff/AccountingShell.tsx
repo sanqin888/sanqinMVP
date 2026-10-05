@@ -93,6 +93,14 @@ function buildNavigation(locale: 'zh' | 'en'): AccountingNavigationItem[] {
       icon: WalletCards,
     },
     {
+      href: `${root}/opening-receivables`,
+      labelZh: '期初应收',
+      labelEn: 'Opening receivables',
+      shortZh: '期初应收',
+      shortEn: 'Opening AR',
+      icon: ReceiptText,
+    },
+    {
       href: `${root}/funds`,
       labelZh: '资金',
       labelEn: 'Funds',

@@ -97,6 +97,7 @@ const makeRow = (
       liabilityAccount: { accountStableId: 'account_hst_payable' },
     },
   ],
+  evidence: [],
 });
 
 describe('AccountingExternalSalesService C1', () => {
@@ -193,6 +194,105 @@ describe('AccountingExternalSalesService C1', () => {
     expect(tx.accountingAuditLog.create).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(tx.accountingAuditLog.create.mock.calls)).toContain(
       'EXTERNAL_SALE_POST',
+    );
+  });
+
+  it('binds reviewed evidence atomically when reconstruction calls the existing C1 authority', async () => {
+    let persisted: ReturnType<typeof makeRow> | null = null;
+    const tx = {
+      accountingSourceArtifact: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'artifact-db-id',
+          artifactStableId: 'acctart_statement',
+          contentHash: 'a'.repeat(64),
+          inboxItem: {
+            status: 'CONFIRMED',
+            classification: 'OTHER_DOCUMENT',
+            selectedProvider: null,
+            materializedEntityType: null,
+            materializedEntityStableId: null,
+          },
+        }),
+      },
+      accountingExternalSale: {
+        findUnique: jest
+          .fn()
+          .mockImplementation(() => Promise.resolve(persisted)),
+        create: jest.fn().mockImplementation(() => {
+          persisted = makeRow(null);
+          return Promise.resolve(persisted);
+        }),
+        update: jest.fn().mockImplementation(() => {
+          persisted = makeRow('journal_external_sale_1');
+          return Promise.resolve(persisted);
+        }),
+      },
+      accountingAccount: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: '11111111-1111-4111-8111-111111111111',
+            accountStableId: 'account_accounts_receivable',
+            accountClass: 'ASSET',
+            type: null,
+            currency: 'CAD',
+            isActive: true,
+          },
+          {
+            id: '22222222-2222-4222-8222-222222222222',
+            accountStableId: 'account_sales_revenue',
+            accountClass: 'REVENUE',
+            type: null,
+            currency: 'CAD',
+            isActive: true,
+          },
+          {
+            id: '33333333-3333-4333-8333-333333333333',
+            accountStableId: 'account_hst_payable',
+            accountClass: 'LIABILITY',
+            type: null,
+            currency: 'CAD',
+            isActive: true,
+          },
+        ]),
+      },
+      accountingJournalEntry: {
+        findUnique: jest.fn(),
+      },
+      accountingAuditLog: {
+        create: jest.fn().mockResolvedValue({}),
+      },
+    };
+    const prisma = {
+      $transaction: jest
+        .fn()
+        .mockImplementation(
+          async (work: (client: typeof tx) => Promise<unknown>) => work(tx),
+        ),
+    } as unknown as AccountingDb;
+    const journal = {
+      createExternalSaleJournalInTx: jest.fn().mockResolvedValue({
+        entryStableId: 'journal_external_sale_1',
+      }),
+    } as unknown as AccountingJournalService;
+    const period = {
+      getBusinessTimezone: jest.fn().mockResolvedValue('America/Toronto'),
+    } as unknown as AccountingPeriodService;
+    const service = new AccountingExternalSalesService(prisma, journal, period);
+
+    await service.createSaleFromEvidence(input(), 'user_admin', {
+      artifactStableId: 'acctart_statement',
+      contentHash: 'a'.repeat(64),
+    });
+
+    const createCallJson = JSON.stringify(
+      tx.accountingExternalSale.create.mock.calls,
+    );
+    expect(createCallJson).toContain('"evidence"');
+    expect(createCallJson).toContain('"artifact-db-id"');
+    expect(createCallJson).toContain('"linkedByActorRef":"user_admin"');
+    expect(tx.accountingAuditLog.create).toHaveBeenCalledTimes(2);
+    expect(JSON.stringify(tx.accountingAuditLog.create.mock.calls)).toContain(
+      'EXTERNAL_SALE_EVIDENCE_LINK',
     );
   });
 

@@ -68,6 +68,19 @@ export const ACCOUNTING_EXTERNAL_SALE_QUERY_SELECT = {
       },
     },
   },
+  evidence: {
+    orderBy: { linkedAt: 'asc' as const },
+    select: {
+      evidenceStableId: true,
+      linkedAt: true,
+      artifact: {
+        select: {
+          artifactStableId: true,
+          originalFilename: true,
+        },
+      },
+    },
+  },
   settlementAllocations: {
     orderBy: { createdAt: 'desc' as const },
     select: {

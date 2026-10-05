@@ -60,10 +60,10 @@ jobs:
           push: false
           load: true
           tags: ${{ env.IMAGE }}
-          cache-from: |
-            type=gha,scope=${{ matrix.image }}
-            type=gha,scope=image-validation-${{ matrix.image }}
-          cache-to: type=gha,mode=max,scope=image-validation-${{ matrix.image }}
+          # PR validation consumes the last published image cache but does not
+          # export a second full builder cache. The export previously dominated
+          # the job after the image and smoke-test inputs were already complete.
+          cache-from: type=gha,scope=${{ matrix.image }}
 
       - name: Record image build data
         if: ${{ always() && !cancelled() && steps.clock.outcome == 'success' && steps.image_build.outcome != 'skipped' }}
@@ -96,8 +96,8 @@ jobs:
             runnerImageVersion: process.env.ImageVersion || null,
             cpuModel: os.cpus()[0]?.model || null,
             logicalCpus: os.cpus().length,
-            cacheImportScopes: [process.env.IMAGE.split(':')[0], `image-validation-${process.env.IMAGE.split(':')[0]}`],
-            cacheExportScope: `image-validation-${process.env.IMAGE.split(':')[0]}`,
+            cacheImportScopes: [process.env.IMAGE.split(':')[0]],
+            cacheExportScope: null,
           };
           fs.writeFileSync(`${process.env.RUNNER_TEMP}/sanq-image-build.json`, JSON.stringify(report, null, 2) + '\n');
           console.log('IMAGE_BUILD_REPORT ' + JSON.stringify(report));
@@ -106,7 +106,7 @@ jobs:
             `- Outcome: ${report.buildOutcome}; tested SHA: ${report.checkoutSha}; PR head: ${report.prHeadSha || 'n/a'}`,
             `- Build action elapsed: ${report.buildActionSeconds.toFixed(2)}s (includes cache import/export and local image load; excludes setup and smoke checks).`,
             `- Local uncompressed image bytes: ${report.uncompressedImageBytes ?? 'unavailable'}; platform: ${report.platform || 'unavailable'}.`,
-            '- Cache hits and per-stage durations: see the native Buildx summary/build record and job log. No cold/warm classification is inferred from total time.',
+            '- Cache hits and per-stage durations: see the native Buildx summary/build record and job log. PR validation imports the published-image cache and intentionally skips cache export.',
             '',
           ].join('\n'));
           NODE

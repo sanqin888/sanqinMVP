@@ -1,9 +1,46 @@
 # Accounting External Sales Plan
 
-Status: **SLICE A/B1/B2/C1/C2/C3/D MERGED; D PR #2660 / HEAD `9df694f4` / MERGE `1198ed52` / CI #6792 GREEN / NO MIGRATION; SLICE E LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION**  
-Date: 2026-10-03  
-Slice E implementation base: `origin/dev@1198ed52`  
+Status: **SLICE A/B1/B2/C1/C2/C3/D/E/F/G1/G2/G3 MERGED / CI GREEN; G3 SOURCE PR #2705 / MERGE `343d1c13` / SOURCE CI #6940 GREEN; MIGRATION `20261005185654_accounting_opening_receivable_g3_reversal_web` REVIEWED ADDITIVE-ONLY / DEV `1560e12a` / CI #6942 GREEN; H READINESS AUDIT COMPLETE / PRODUCTION PROMOTION AUTHORIZATION REQUIRED / NOT DEPLOYED / NOT PRODUCTION VERIFIED**  
+Date: 2026-10-05  
+Current planning base: `origin/dev@1560e12a`  
 Owner: **Accounting / Reporting / Analytics**
+
+## 0. Program execution map
+
+The External Sales program is intentionally split by financial authority rather than
+implemented as one large feature:
+
+1. **Slice A — Authority / contracts:** freeze External Sale and Settlement source
+   facts, granularity and receivable-first accounting semantics.
+2. **Slice B1 — Persistence foundation:** add External Sale/Settlement/evidence
+   persistence.
+3. **Slice B2 — CoA foundation:** provision Accounts Receivable and normalize the
+   generic Commission Expense identity.
+4. **Slice C1 — Sale recognition:** canonical External Sale -> AR Journal authority.
+5. **Slice C2 — Settlement:** canonical External Sale AR collection/withholding.
+6. **Slice C3 — Reversal / correction:** exact inverse + replacement lineage.
+7. **Slice D — Sales Analytics:** project sale/reversal monetary authority into
+   canonical Sales reporting without treating Settlement as sales.
+8. **Slice E — Web:** operator Sale/Settlement/reversal/correction workflow.
+9. **Slice F — Post-start historical reconstruction:** source-backed reconstruction
+   on/after `2026-06-01`, preserving source granularity and evidence.
+10. **Slice G1 — Pre-start Opening Receivable foundation:** represent unpaid
+    pre-start AR at cutover as an Opening Balance, not June revenue.
+11. **Slice G2 — Opening Receivable Settlement:** collect/clear that opening AR
+    through a dedicated settlement identity and canonical BANK/CASH -> AR Journal.
+12. **Slice G3 — Opening Receivable correction + Web:** immutable
+    reversal/replacement workflow and operator surface.
+13. **Slice H — Closeout / production verification:** deployment, historical
+    reconciliation, active financial-flow verification and final documentation
+    closeout.
+
+Current state: **A through G3 are complete in `dev`; G3 source PR #2705 merged as
+`343d1c13`, source CI #6940 is green, and the user-generated additive migration
+`20261005185654_accounting_opening_receivable_g3_reversal_web` is committed at
+`dev@1560e12a` with CI #6942 green including committed-migration replay. Slice H
+readiness is complete, but production promotion/deployment has not been authorized
+or performed.** Phase 9 remains CLOSED; this program is post-modularization
+Accounting product work.
 
 ## 1. Purpose
 
@@ -729,9 +766,9 @@ architecture guards, with no new cross-context amount authority.
 **Goal:** expose the already-established Accounting authority safely; the Web
 must orchestrate C1/C2/C3 APIs, not duplicate accounting calculations.
 
-**Slice E local implementation — 2026-10-03**
+**Slice E merged implementation — 2026-10-03**
 
-State: **LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE** on `feat/accounting-external-sales-slice-e-web` from `origin/dev@1198ed52`.
+State: **MERGED / PR #2661 / FINAL HEAD `995c727d` / MERGE `99ea990b` / CI #6797 GREEN / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**.
 
 - Accounting adds additive ADMIN/ACCOUNTANT GET read models for External Sale
   list, detail, Settlement history and form options. The read model is Store-scoped
@@ -802,6 +839,50 @@ State: **LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO DEPENDENCY 
 **Goal:** canonicalize supported External Sales evidence on/after the Accounting
 start date `2026-06-01` without fabricating transaction precision.
 
+**Slice F local implementation — 2026-10-04**
+
+State: **LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE** on `feat/accounting-external-sales-slice-f-reconstruction` from `origin/dev@9c9a66cd`.
+
+- The first supported historical source is a confirmed Accounting Inbox
+  `OTHER_DOCUMENT` XLSX matching the existing SanQ `Customer Statement`
+  layout. The parser reuses the existing retained-artifact/tabular-preview
+  capability; there is no second evidence store or package dependency.
+- Source rows are reconciled against explicit statement controls for quantity,
+  pre-tax amount, tax, subtotal, paid amount and balance due before any posting
+  plan is considered executable. Negative return/credit rows are accepted only
+  when the monthly net product/negotiated-price group remains positive and
+  reconciles exactly.
+- The canonical historical Sale is one `PERIOD_SUMMARY` per reviewed monthly
+  statement. This intentionally preserves statement-level authority rather than
+  fabricating transaction precision or misclassifying negative return rows as
+  discounts. Negotiated item/price groups and the explicit statement HST total
+  remain source-backed.
+- Preview issues a SHA-256 `planHash`; execute rebuilds the plan from the
+  current retained artifact/content hash and requires an exact match. The
+  deterministic request UUID is bound to artifact identity/content rather than
+  editable classification text, preventing one evidence file from becoming a
+  second Sale merely because classification is changed.
+- Execution reuses C1 as the only Sale/Journal authority. A narrow internal
+  evidence-aware C1 seam validates that the artifact is still
+  `CONFIRMED / OTHER_DOCUMENT` and unchanged, then creates the External Sale,
+  canonical Journal anchor, `AccountingExternalSaleEvidence` link and audit
+  records inside the same Serializable transaction.
+- The External Sales Web workspace adds a separate Historical reconstruction
+  surface. Web selects confirmed OTHER XLSX evidence and displays only the
+  server-produced source controls/proposed Sale/planHash; it owns no GL
+  allowlist, Journal construction or reconstruction arithmetic.
+- Evidence before `2026-06-01` is returned
+  `PRE_START_OPENING_BALANCE_REQUIRED` and cannot execute in F. The already
+  reviewed April sample therefore remains audit evidence only; 4/5-month
+  economic opening positions are deferred to Slice G rather than moved into
+  June revenue.
+- A statement with a non-zero `Paid Amount` is blocked as
+  `PAID_AMOUNT_REQUIRES_SETTLEMENT_EVIDENCE`; F will not infer collection
+  date/account from the statement alone.
+- External Sale detail now exposes linked source evidence identity. No Prisma
+  schema/migration change is needed because B1 already created Sale/Settlement
+  evidence relations.
+
 **Execution steps:**
 
 1. inventory actual source evidence and its supported granularity;
@@ -834,10 +915,167 @@ Examples:
   revenue;
 - no fabricated June External Sale simply to make balances appear.
 
-G requires a dedicated readiness audit of the existing Opening Balance support
-before implementation. If a general opening-balance writer is still absent, its
-design must be reviewed as Accounting-wide infrastructure rather than hidden
-inside External Sales.
+The G readiness audit is complete. Existing Accounting already has canonical
+`OPENING_BALANCE` Journal semantics, Accounts Receivable, Opening Balance
+Equity, Trial Balance / Balance Movement opening treatment, and Financial Report
+exclusion of opening entries from period P&L; production currently has no
+Opening Balance Journal and no closed Accounting period. The missing authority
+was a settleable opening receivable identity: C2 Settlement allocations are
+intentionally hard-bound to `AccountingExternalSale`, so a bare opening Journal
+would not provide an auditable receivable target for later collections.
+
+**G1 delivery — 2026-10-05**
+
+State: **MERGED / SOURCE PR #2702 / MERGE `39a4b402` / SOURCE CI #6928 GREEN /
+MIGRATION `20261005145529_accounting_opening_receivable_g1_foundation` REVIEWED /
+DEV `3399c93e` / MIGRATION CI #6930 GREEN / NO DEPENDENCY / NO NEW CONTEXT EDGE /
+NO GRAPH OR BASELINE CHANGE / PRODUCTION DEPLOYMENT PENDING**.
+
+G1 introduces Accounting-wide `AccountingOpeningReceivable` as an additive
+source-fact foundation rather than hiding cutover state inside External Sales.
+The browser/API cannot choose an arbitrary opening date: the service freezes the
+fact to the configured Accounting start date and configured Store. A positive
+CAD opening receivable posts only:
+
+```text
+Dr account_accounts_receivable
+Cr account_opening_balance_equity
+```
+
+through `AccountingJournalEntryKind.OPENING_BALANCE` and the dedicated
+`accounting.opening_receivable.v1` write authority. The source fact, Journal,
+Journal anchor and audit evidence are created in one Serializable transaction.
+The generic Journal path explicitly rejects this source-fact type.
+
+G1 intentionally does **not** modify `AccountingExternalSale`,
+`AccountingExternalSaleSettlement`, or C1/C2 allocation semantics. It adds
+read/list/create API contracts for the opening-receivable foundation only; no
+settlement, reversal/correction or Web entry flow is activated yet.
+
+The user-generated G1 migration was reviewed against the final Prisma model. It is
+additive-only: one new `AccountingOpeningReceivable` table plus the exact
+unique/index set declared by Prisma. It contains no DROP, rename, backfill, enum
+rewrite, existing-row rewrite or FK cascade. The earlier empty generated migration
+was removed from the final tree before the real migration was committed, so fresh
+replay sees only the valid `20261005145529...` migration. CI #6930 replayed the
+committed migration chain successfully.
+
+#### Slice G2 — Opening Receivable Settlement
+
+**Goal:** make a G1 opening receivable actually settleable after cutover without
+pretending it is an `AccountingExternalSale` or weakening External Sale C2
+allocation semantics.
+
+**Required design:**
+
+1. Add a dedicated Accounting-owned settlement source fact, reserved as
+   `accounting.opening_receivable_settlement.v1`.
+2. Persist a dedicated settlement identity linked to exactly one
+   `AccountingOpeningReceivable`; do **not** make
+   `AccountingExternalSaleSettlementAllocation.externalSaleId` nullable and do
+   not reuse the External Sale C2 FK as a polymorphic receivable target.
+3. Freeze settlement date, Store, counterparty, CAD amount, collection account,
+   reference/note, fact hash, Journal anchor and actor/timestamps.
+4. Derive the opening receivable's financial authority from its live canonical
+   G1 Opening Balance Journal, not merely from mutable persistence amount fields.
+5. Compute:
+   `outstandingBefore = canonicalOpeningAR - livePriorOpeningSettlements`.
+   Permit partial settlement, permit multiple settlements, and reject zero,
+   negative or over-settlement.
+6. Collection account must be an explicit active CAD ASSET account whose type is
+   `BANK` or `CASH`; no default bank and no arbitrary account injection.
+7. Post only a purpose-specific STANDARD settlement Journal:
+   `Dr selected BANK/CASH / Cr account_accounts_receivable`.
+   Settlement date must not precede the Accounting cutover/opening date.
+8. Persist settlement + Journal + source->Journal anchor + audit atomically in the
+   existing Serializable write pattern; deterministic stable ID/fact hash replay
+   must fail closed on changed facts or missing/malformed Journal anchors.
+9. Add ADMIN/ACCOUNTANT API/read-model coverage sufficient for G3/Web to display
+   opening amount, settled amount and outstanding amount.
+10. Pin architecture tests so generic Journal routes cannot forge the new source
+    fact and External Sale C2 remains unchanged.
+
+**Expected persistence impact:** G2 is expected to require an **additive Prisma
+migration** for the dedicated opening-receivable settlement model/relation. The
+assistant must not generate that migration; source/schema should follow the normal
+review -> merge to `dev` -> user-local `--create-only` migration workflow.
+
+**G2 non-goals:**
+
+- no commission/fee/HST-recoverable component model; G2 is explicit BANK/CASH
+  collection of a frozen opening AR position;
+- no reuse or mutation of `AccountingExternalSaleSettlement` /
+  `AccountingExternalSaleSettlementAllocation`;
+- no Sale, HST payable, discount or June P&L posting;
+- no arbitrary historical cash/bank opening reconstruction;
+- no settlement reversal/correction yet;
+- no Web operator workflow yet;
+- no production deployment in G2.
+
+**Completion state — 2026-10-05:** G2 source/schema merged through PR #2704
+(merge `2019caf9`) after source CI #6934 passed. The user-generated
+`20261005165144_accounting_opening_receivable_settlement_g2` migration was reviewed
+as additive-only and committed to `dev` at `5c5d21ae`; push CI #6936 passed the
+full API/Web/Browser E2E/printer/Windows matrix including committed-migration replay.
+The final implementation adds dedicated `AccountingOpeningReceivableSettlement`
+persistence, the `accounting.opening_receivable_settlement.v1` source fact, a
+purpose-specific STANDARD Journal authority, Serializable outstanding revalidation,
+ADMIN/ACCOUNTANT create/read coverage, and generic create/update/delete Journal
+guards. G1 opening AR and prior G2 collections are re-derived from their live
+canonical Journals. External Sale C2 allocation persistence remains unchanged and
+non-polymorphic. No new context import direction, scanner allowance or architecture
+baseline change was introduced.
+
+**G2 completion gate:** canonical partial/full settlement works through the
+dedicated authority, outstanding AR is server-derived from canonical Journal
+evidence plus live G2 settlements, schema change has a reviewed additive migration
+in `dev`, and CI including committed migration replay is green.
+
+#### Slice G3 — Opening Receivable reversal / correction + Web
+
+**Goal:** complete the operator lifecycle without mutating posted opening facts.
+
+G3 adds exact-inverse settlement/opening-receivable reversal authority,
+replacement lineage where correction is required, and a mobile-first Accounting
+operator surface for opening AR history/detail, collection, outstanding balance
+and correction. Reversal uses the original canonical Journal snapshot rather than
+current account policy. An Opening Receivable may not be reversed while live G2
+settlements remain. G3 reuses the existing E/C3 UX and exact-inverse patterns where
+semantically compatible, but remains a separate opening-receivable authority rather
+than broadening External Sale source ownership.
+
+**Completion state — 2026-10-05:** G3 source/schema/Web merged through PR #2705
+(merge `343d1c13`) after source CI #6940 passed. The user-generated
+`20261005185654_accounting_opening_receivable_g3_reversal_web` migration was
+reviewed as additive-only and committed to `dev` at `1560e12a`; push CI #6942
+passed the full API/Web/Browser E2E/printer/Windows matrix including
+committed-migration replay. G3 reserves
+`accounting.opening_receivable_reversal.v1` and
+`accounting.opening_receivable_settlement_reversal.v1`; purpose-specific
+MANUAL/ADJUSTMENT Journals are exact debit/credit inverses of the frozen original
+G1/G2 Journals and are protected from generic Journal create/update/delete paths.
+G1 reversal requires every G2 settlement to have complete reversal metadata and a
+live exact-inverse Journal first. Canonical outstanding ignores a G2 settlement only
+after that full reversal evidence validates, including the in-transaction
+Serializable settlement authority check.
+
+Correction does not alter the frozen G1/G2 v1 fact-hash schema. Instead,
+one-to-one nullable self-replacement lineage is stored outside those source facts;
+a replacement predecessor must already be fully reversed and anchored. Accounting
+adds an options read model for configured Store and explicit active CAD ASSET
+BANK/CASH collection accounts plus ADMIN/ACCOUNTANT reversal routes. The Web page
+at `/accounting/opening-receivables` is a thin mobile-first adapter for
+history/detail, canonical balances, create/collection, audit, reversal and
+reversal+prefilled replacement; it contains no Journal construction or hard-coded
+GL allowlist/default-bank policy.
+
+**Migration gate:** the final user-generated migration adds only nullable
+reversal metadata, one-to-one replacement self-FKs and their indexes/uniques to the
+existing G1/G2 tables. It contains no DROP, rename, backfill, type rewrite, NOT NULL
+tightening or existing-row rewrite. The six Prisma unique warnings cover newly
+added nullable columns; existing rows receive NULL and PostgreSQL ordinary UNIQUE
+indexes permit multiple NULL values. No new context edge, scanner allowance, SCC or
+architecture baseline change was introduced.
 
 ### Slice H — Closeout / production verification
 
@@ -864,3 +1102,110 @@ Closeout must include:
 
 Until H is complete, the External Sales program may be `MERGED / CI GREEN` but
 must not be labeled `PRODUCTION VERIFIED / CLOSED`.
+
+#### H readiness audit — 2026-10-05
+
+State: **READINESS COMPLETE / PRODUCTION PROMOTION AUTHORIZATION REQUIRED / NOT
+DEPLOYED / NOT PRODUCTION VERIFIED**.
+
+The code/migration side is ready for promotion:
+
+- `dev@1560e12a` contains A-G3 and all three G migrations;
+- G3 source PR #2705 merged as `343d1c13`, source CI #6940 is green;
+- migration `20261005185654_accounting_opening_receivable_g3_reversal_web`
+  was reviewed additive-only and push CI #6942 is green, including fresh committed
+  migration replay;
+- the architecture baseline remains green with no new context edge, scanner
+  allowance, SCC or direct-import ceiling.
+
+Production is intentionally still pre-H:
+
+- production repository is clean at `main@feff02c8`;
+- running API/Web images are pinned to `554997d743197cf9c2a9c96714e5c600f1d337aa`,
+  so the checked-out repository and running image SHA are not identical and the
+  rollout must record the actual promoted image SHA rather than infer it from the
+  working tree;
+- the production database's latest applied migration is
+  `20261004131125_add_operating_availability_history`; G1/G2/G3 migrations are not
+  applied and the two Opening Receivable tables do not exist yet;
+- existing External Sale persistence is present but contains 0 Sales, 0
+  Settlements, 0 evidence links and 0 External Sale canonical Journals;
+- `AccountingPeriodClose` contains 0 closed periods;
+- the required active CAD CoA identities already exist for Accounts Receivable,
+  Opening Balance Equity, primary BANK, Commission Expense, HST payable and HST
+  recoverable.
+
+Promotion/deployment is therefore a separate explicit gate. Current `main` is
+12 commits behind `dev@1560e12a`; the promotion set is CI #2700 plus External
+Sales F/G1/G2/G3 source/docs/migrations. Before production mutation, use the normal
+`dev -> main` PR/merge flow, require main CI/image publication green, record the
+resulting exact main/image SHA, confirm a recent production database backup and
+capture the runtime-readiness baseline.
+
+The current Compose path does not auto-run Prisma migrations. Because the three G
+migrations are additive-only, the lowest-risk rollout is to make the approved new
+image available, apply the three pending migrations through the separately
+authorized production migration step while the old runtime is still compatible
+with the additive schema, then activate the new API/Web/worker image and run
+`ops/verify-runtime-readiness.sh` with the production VM's actual environment
+resolution. No production migration, image activation or restart is authorized by
+this readiness entry itself.
+
+Active H verification should use clearly tagged, intentionally small controlled
+facts and must record their stable IDs / Journal anchors before cleanup by
+reversal. Posted facts are immutable, so even fully reversed verification records
+remain audit history and require explicit operator authorization.
+
+**External Sale controlled lifecycle:**
+
+1. create one ordinary External Sale and confirm its canonical AR/revenue Journal;
+2. post a partial Settlement, then a second Settlement that reaches full
+   settlement;
+3. reverse the second Settlement and confirm AR reopens by the exact inverse;
+4. create a replacement Settlement for that reversed predecessor, then if needed a
+   final small Settlement to reach full settlement again;
+5. reverse every live Settlement, then reverse the original Sale;
+6. create a corrected replacement Sale linked to the fully reversed predecessor,
+   verify its Journal/lineage, then reverse it so the controlled verification
+   leaves zero net Sales/P&L/AR effect;
+7. capture Sales Analytics and Financial Report evidence at the meaningful
+   intermediate stages and after final reversal. Settlement activity must not be
+   counted as Sales revenue, while AR/BANK movement must reconcile in Financial
+   Reports.
+
+**Opening Receivable G1-G3 controlled lifecycle:**
+
+1. create one clearly tagged Opening Receivable and verify exact
+   `Dr AR / Cr Opening Balance Equity`;
+2. post partial then full G2 collections through explicit BANK/CASH;
+3. reverse one collection and confirm outstanding AR is restored;
+4. create a corrected replacement collection and verify replacement lineage;
+5. reverse all remaining live collections before reversing the G1 Opening
+   Receivable;
+6. create a corrected replacement Opening Receivable, verify lineage, then reverse
+   it so the controlled verification finishes with zero net test balance;
+7. verify Opening Receivable activity never appears as Sales revenue/HST/P&L and
+   is represented only through opening/balance-sheet movement.
+
+Historical reconstruction has one real retained candidate today:
+`acctart_qcyovbh12vq5nle9looyzwpf`,
+`丰亚结算单26年4月.xlsx` (CONFIRMED / OTHER_DOCUMENT, original binary retained).
+After deployment its F preview must return
+`BLOCKED / PRE_START_OPENING_BALANCE_REQUIRED` and create no Sale/Journal. That
+evidence proves the pre-start fail-closed handoff but does **not** prove the amount
+still collectible at the 2026-06-01 cutover and therefore must not be copied into
+G1 automatically. Production currently has no confirmed post-start Customer
+Statement XLSX eligible for a successful F reconstruction. H cannot claim
+successful historical reconstruction execution until authentic post-start evidence
+is available, unless that successful-execute production evidence is explicitly
+accepted as a deferred item.
+
+Month-close mutation is also not safe to manufacture merely for verification:
+production currently has zero closed months. Closed-month ADJUSTMENT behavior stays
+covered by source/CI policy evidence until a naturally closed period exists or the
+operator explicitly authorizes a controlled close/reopen test. Inventory/COGS
+authority remains outside External Sales and is an explicit program deferral.
+
+Final H closeout requires the above production evidence, runtime/log health,
+post-deploy migration status, historical-reconstruction disposition, explicit
+deferral list and final roadmap/worklog/dependency-document synchronization.
