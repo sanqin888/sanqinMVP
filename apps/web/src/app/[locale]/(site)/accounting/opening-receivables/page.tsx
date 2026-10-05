@@ -74,11 +74,11 @@ export default function OpeningReceivablesPage() {
     async (detail: AccountingOpeningReceivable) => {
       const groups = await Promise.all([
         apiFetch<AccountingAuditLog[]>(
-          \`/accounting/audit-logs?entityType=ACCOUNTING_OPENING_RECEIVABLE&entityId=\${encodeURIComponent(detail.openingReceivableStableId)}\`,
+          `/accounting/audit-logs?entityType=ACCOUNTING_OPENING_RECEIVABLE&entityId=${encodeURIComponent(detail.openingReceivableStableId)}`,
         ),
         ...detail.settlements.map((settlement) =>
           apiFetch<AccountingAuditLog[]>(
-            \`/accounting/audit-logs?entityType=ACCOUNTING_OPENING_RECEIVABLE_SETTLEMENT&entityId=\${encodeURIComponent(settlement.settlementStableId)}\`,
+            `/accounting/audit-logs?entityType=ACCOUNTING_OPENING_RECEIVABLE_SETTLEMENT&entityId=${encodeURIComponent(settlement.settlementStableId)}`,
           ),
         ),
       ]);
@@ -98,7 +98,7 @@ export default function OpeningReceivablesPage() {
       setFeedback(null);
       try {
         const detail = await apiFetch<AccountingOpeningReceivable>(
-          \`/accounting/opening-receivables/\${encodeURIComponent(openingReceivableStableId)}\`,
+          `/accounting/opening-receivables/${encodeURIComponent(openingReceivableStableId)}`,
         );
         setSelected(detail);
         setAuditLogs(await loadAuditLogs(detail));
@@ -371,7 +371,7 @@ function Status({ value }: { value: AccountingOpeningReceivable['status'] }) {
 
   return (
     <span
-      className={\`rounded-full px-2 py-1 text-xs font-semibold \${className}\`}
+      className={`rounded-full px-2 py-1 text-xs font-semibold ${className}`}
     >
       {value}
     </span>
