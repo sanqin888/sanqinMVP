@@ -6,6 +6,7 @@ import { AccountingCanonicalSaleController } from './accounting-canonical-sale.c
 import { AccountingChartController } from './accounting-chart.controller';
 import { AccountingExpenseController } from './accounting-expense.controller';
 import { AccountingExternalSalesController } from './accounting-external-sales.controller';
+import { AccountingOpeningReceivableController } from './accounting-opening-receivable.controller';
 import { AccountingFundsController } from './accounting-funds.controller';
 import { AccountingInboxArtifactsController } from './accounting-inbox-artifacts.controller';
 import { AccountingInboxController } from './accounting-inbox.controller';
@@ -41,6 +42,7 @@ import { AccountingExternalSalesQueryService } from './accounting-external-sales
 import { AccountingExternalSaleReversalService } from './accounting-external-sales-reversal.service';
 import { AccountingExternalSalesReconstructionService } from './accounting-external-sales-reconstruction.service';
 import { AccountingExternalSalesService } from './accounting-external-sales.service';
+import { AccountingOpeningReceivableService } from './accounting-opening-receivable.service';
 import { AccountingFinancialReportsService } from './accounting-financial-reports.service';
 import { AccountingAccountTransferService } from './accounting-account-transfer.service';
 import { AccountingInboxService } from './accounting-inbox.service';
@@ -102,6 +104,7 @@ import { AccountingCloverPreSyncAuthorityService } from './accounting-clover-pre
     AccountingChartController,
     AccountingExpenseController,
     AccountingExternalSalesController,
+    AccountingOpeningReceivableController,
     AccountingFundsController,
     AccountingInboxController,
     AccountingInboxArtifactsController,
@@ -142,6 +145,7 @@ import { AccountingCloverPreSyncAuthorityService } from './accounting-clover-pre
     AccountingExternalSaleReversalService,
     AccountingExternalSalesQueryService,
     AccountingExternalSalesReconstructionService,
+    AccountingOpeningReceivableService,
     AccountingExpenseJournalPostingService,
     AccountingAccountTransferService,
     AccountingFinancialReportsService,

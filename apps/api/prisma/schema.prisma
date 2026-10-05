@@ -1890,6 +1890,28 @@ model AccountingProviderPayout {
   @@index([provider, providerReference])
 }
 
+model AccountingOpeningReceivable {
+  id                         String   @id @default(uuid()) @db.Uuid
+  openingReceivableStableId  String   @unique
+  idempotencyKey             String   @unique
+  storeStableId              String
+  openingDate                DateTime @db.Date
+  counterpartyName           String
+  reference                  String?
+  amountCents                Int
+  currency                   String   @default("CAD")
+  factHash                   String
+  journalEntryStableId       String?  @unique
+  note                       String?
+  createdByActorRef          String
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+
+  @@index([storeStableId, openingDate])
+  @@index([counterpartyName, openingDate])
+  @@index([factHash])
+}
+
 model AccountingExternalSale {
   id                              String                            @id @default(uuid()) @db.Uuid
   externalSaleStableId            String                            @unique
