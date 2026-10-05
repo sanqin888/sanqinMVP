@@ -15,10 +15,16 @@ import type {
 } from '../contracts/external-sales';
 import { ExternalSaleCreateForm } from './external-sale-create-form';
 import { ExternalSaleDetail } from './external-sale-detail';
+import { ExternalSaleReconstructionPanel } from './external-sale-reconstruction-panel';
 import { ExternalSaleSettlementForm } from './external-sale-settlement-form';
 import { money } from './external-sales-utils';
 
-type View = 'history' | 'sale' | 'settlement' | 'detail';
+type View =
+  | 'history'
+  | 'sale'
+  | 'settlement'
+  | 'reconstruction'
+  | 'detail';
 
 export default function ExternalSalesPage() {
   const params = useParams<{ locale?: string }>();
@@ -216,6 +222,12 @@ export default function ExternalSalesPage() {
           >
             {isZh ? '登记回款/扣费' : 'Record settlement'}
           </ViewButton>
+          <ViewButton
+            active={view === 'reconstruction'}
+            onClick={() => setView('reconstruction')}
+          >
+            {isZh ? '历史重建' : 'Historical reconstruction'}
+          </ViewButton>
         </div>
       </header>
 
@@ -262,6 +274,13 @@ export default function ExternalSalesPage() {
           isZh={isZh}
           onSaved={(id) => void handleSaleSaved(id)}
           onCancelPrefill={() => setSalePrefill(null)}
+        />
+      ) : null}
+
+      {view === 'reconstruction' ? (
+        <ExternalSaleReconstructionPanel
+          isZh={isZh}
+          onExecuted={(id) => void handleSaleSaved(id)}
         />
       ) : null}
 

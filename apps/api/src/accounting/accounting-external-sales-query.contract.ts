@@ -93,6 +93,12 @@ export type AccountingExternalSaleDetailV1 =
       liabilityAccountStableId: string;
       sortOrder: number;
     }>;
+    evidence: Array<{
+      evidenceStableId: string;
+      artifactStableId: string;
+      originalFilename: string | null;
+      linkedAt: string;
+    }>;
     settlements: AccountingExternalSaleSettlementListItemV1[];
   };
 

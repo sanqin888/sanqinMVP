@@ -19,6 +19,11 @@ import type {
   CreateAccountingExternalSaleSettlementInputV1,
   ReverseAccountingExternalSaleInputV1,
 } from './accounting-external-sales.contract';
+import type {
+  AccountingExternalSaleReconstructionExecuteInputV1,
+  AccountingExternalSaleReconstructionPreviewInputV1,
+} from './accounting-external-sales-reconstruction.contract';
+import { AccountingExternalSalesReconstructionService } from './accounting-external-sales-reconstruction.service';
 import { AccountingExternalSaleSettlementService } from './accounting-external-sale-settlement.service';
 import { AccountingExternalSalesQueryService } from './accounting-external-sales-query.service';
 import { AccountingExternalSaleReversalService } from './accounting-external-sales-reversal.service';
@@ -33,6 +38,7 @@ export class AccountingExternalSalesController {
     private readonly settlements: AccountingExternalSaleSettlementService,
     private readonly reversals: AccountingExternalSaleReversalService,
     private readonly queries: AccountingExternalSalesQueryService,
+    private readonly reconstruction: AccountingExternalSalesReconstructionService,
   ) {}
 
   @Get('external-sales')
@@ -55,6 +61,24 @@ export class AccountingExternalSalesController {
     @Param('externalSaleStableId') externalSaleStableId: string,
   ) {
     return this.queries.getSale(externalSaleStableId);
+  }
+
+  @Post('external-sales/reconstruction/preview')
+  previewExternalSaleReconstruction(
+    @Body() body: AccountingExternalSaleReconstructionPreviewInputV1,
+  ) {
+    return this.reconstruction.preview(body);
+  }
+
+  @Post('external-sales/reconstruction/execute')
+  executeExternalSaleReconstruction(
+    @Body() body: AccountingExternalSaleReconstructionExecuteInputV1,
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.reconstruction.execute(
+      body,
+      requireAccountingOperatorUserId(req),
+    );
   }
 
   @Post('external-sales')

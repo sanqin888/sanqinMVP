@@ -92,6 +92,35 @@ describe('Post-modularization External Sales boundary', () => {
     );
   });
 
+  it('keeps Slice F reconstruction inside Accounting and reuses C1 as the only Journal write authority', () => {
+    const service =
+      file('accounting-external-sales-reconstruction.service.ts')?.source ?? '';
+    const policy =
+      file('accounting-external-sales-reconstruction.policy.ts')?.source ?? '';
+
+    expect(importSpecifiers(service)).toContain('../store/public-api');
+    expect(service).toContain('AccountingTabularPreviewService');
+    expect(service).toContain('AccountingExternalSalesService');
+    expect(service).toContain('createSaleFromEvidence');
+    expect(service).not.toContain('AccountingJournalService');
+    expect(service).not.toContain('accountingJournalEntry.create');
+    expect(service).not.toContain("from '../orders/");
+    expect(service).not.toContain("from '../payments/");
+    expect(service).not.toContain("from '../integrations/");
+
+    expect(policy).toContain(
+      'ACCOUNTING_EXTERNAL_SALE_LINE_REVENUE_ACCOUNT_STABLE_IDS',
+    );
+    expect(policy).toContain('ACCOUNTING_EXTERNAL_SALE_TAX_ACCOUNT_STABLE_ID');
+    expect(policy).toContain(
+      'AccountingExternalSaleGranularity.PERIOD_SUMMARY',
+    );
+    expect(policy).not.toContain('@prisma/client');
+    expect(policy).not.toContain("from '../orders/");
+    expect(policy).not.toContain("from '../payments/");
+    expect(policy).not.toContain("from '../integrations/");
+  });
+
   it('pins C1/C2/C3 write ownership with D sale-only analytics cutover', () => {
     const schema = readFileSync(PRISMA_SCHEMA, 'utf8');
     const module = file('accounting.module.ts')?.source ?? '';
@@ -130,6 +159,7 @@ describe('Post-modularization External Sales boundary', () => {
     expect(module).toContain('AccountingExternalSalesController');
     expect(module).toContain('AccountingExternalSalesService');
     expect(module).toContain('AccountingExternalSalesQueryService');
+    expect(module).toContain('AccountingExternalSalesReconstructionService');
     expect(module).toContain('AccountingExternalSaleSettlementService');
     expect(module).toContain('AccountingExternalSaleReversalService');
     expect(controllerGuard).toContain("'GET external-sales'");
@@ -137,6 +167,12 @@ describe('Post-modularization External Sales boundary', () => {
     expect(controllerGuard).toContain("'GET external-sales/settlements'");
     expect(controllerGuard).toContain(
       "'GET external-sales/:externalSaleStableId'",
+    );
+    expect(controllerGuard).toContain(
+      "'POST external-sales/reconstruction/preview'",
+    );
+    expect(controllerGuard).toContain(
+      "'POST external-sales/reconstruction/execute'",
     );
     expect(controllerGuard).toContain("'POST external-sales'");
     expect(controllerGuard).toContain(

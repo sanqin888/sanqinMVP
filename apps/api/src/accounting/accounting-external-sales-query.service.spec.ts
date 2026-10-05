@@ -108,6 +108,7 @@ const saleRow = (
       liabilityAccount: { accountStableId: 'account_hst_payable' },
     },
   ],
+  evidence: [],
   settlementAllocations,
   ...overrides,
 });

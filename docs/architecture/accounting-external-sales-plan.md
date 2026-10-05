@@ -1,8 +1,8 @@
 # Accounting External Sales Plan
 
-Status: **SLICE A/B1/B2/C1/C2/C3/D MERGED; D PR #2660 / HEAD `9df694f4` / MERGE `1198ed52` / CI #6792 GREEN / NO MIGRATION; SLICE E LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION**  
-Date: 2026-10-03  
-Slice E implementation base: `origin/dev@1198ed52`  
+Status: **SLICE A/B1/B2/C1/C2/C3/D/E MERGED; E PR #2661 / FINAL HEAD `995c727d` / MERGE `99ea990b` / CI #6797 GREEN / NO MIGRATION; SLICE F LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION**  
+Date: 2026-10-04  
+Slice F implementation base: `origin/dev@9c9a66cd`  
 Owner: **Accounting / Reporting / Analytics**
 
 ## 1. Purpose
@@ -729,9 +729,9 @@ architecture guards, with no new cross-context amount authority.
 **Goal:** expose the already-established Accounting authority safely; the Web
 must orchestrate C1/C2/C3 APIs, not duplicate accounting calculations.
 
-**Slice E local implementation — 2026-10-03**
+**Slice E merged implementation — 2026-10-03**
 
-State: **LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE** on `feat/accounting-external-sales-slice-e-web` from `origin/dev@1198ed52`.
+State: **MERGED / PR #2661 / FINAL HEAD `995c727d` / MERGE `99ea990b` / CI #6797 GREEN / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**.
 
 - Accounting adds additive ADMIN/ACCOUNTANT GET read models for External Sale
   list, detail, Settlement history and form options. The read model is Store-scoped
@@ -801,6 +801,50 @@ State: **LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO DEPENDENCY 
 
 **Goal:** canonicalize supported External Sales evidence on/after the Accounting
 start date `2026-06-01` without fabricating transaction precision.
+
+**Slice F local implementation — 2026-10-04**
+
+State: **LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE** on `feat/accounting-external-sales-slice-f-reconstruction` from `origin/dev@9c9a66cd`.
+
+- The first supported historical source is a confirmed Accounting Inbox
+  `OTHER_DOCUMENT` XLSX matching the existing SanQ `Customer Statement`
+  layout. The parser reuses the existing retained-artifact/tabular-preview
+  capability; there is no second evidence store or package dependency.
+- Source rows are reconciled against explicit statement controls for quantity,
+  pre-tax amount, tax, subtotal, paid amount and balance due before any posting
+  plan is considered executable. Negative return/credit rows are accepted only
+  when the monthly net product/negotiated-price group remains positive and
+  reconciles exactly.
+- The canonical historical Sale is one `PERIOD_SUMMARY` per reviewed monthly
+  statement. This intentionally preserves statement-level authority rather than
+  fabricating transaction precision or misclassifying negative return rows as
+  discounts. Negotiated item/price groups and the explicit statement HST total
+  remain source-backed.
+- Preview issues a SHA-256 `planHash`; execute rebuilds the plan from the
+  current retained artifact/content hash and requires an exact match. The
+  deterministic request UUID is bound to artifact identity/content rather than
+  editable classification text, preventing one evidence file from becoming a
+  second Sale merely because classification is changed.
+- Execution reuses C1 as the only Sale/Journal authority. A narrow internal
+  evidence-aware C1 seam validates that the artifact is still
+  `CONFIRMED / OTHER_DOCUMENT` and unchanged, then creates the External Sale,
+  canonical Journal anchor, `AccountingExternalSaleEvidence` link and audit
+  records inside the same Serializable transaction.
+- The External Sales Web workspace adds a separate Historical reconstruction
+  surface. Web selects confirmed OTHER XLSX evidence and displays only the
+  server-produced source controls/proposed Sale/planHash; it owns no GL
+  allowlist, Journal construction or reconstruction arithmetic.
+- Evidence before `2026-06-01` is returned
+  `PRE_START_OPENING_BALANCE_REQUIRED` and cannot execute in F. The already
+  reviewed April sample therefore remains audit evidence only; 4/5-month
+  economic opening positions are deferred to Slice G rather than moved into
+  June revenue.
+- A statement with a non-zero `Paid Amount` is blocked as
+  `PAID_AMOUNT_REQUIRES_SETTLEMENT_EVIDENCE`; F will not infer collection
+  date/account from the statement alone.
+- External Sale detail now exposes linked source evidence identity. No Prisma
+  schema/migration change is needed because B1 already created Sale/Settlement
+  evidence relations.
 
 **Execution steps:**
 

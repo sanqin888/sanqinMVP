@@ -179,6 +179,12 @@ export class AccountingExternalSalesQueryService {
         liabilityAccountStableId: tax.liabilityAccount.accountStableId,
         sortOrder: tax.sortOrder,
       })),
+      evidence: row.evidence.map((evidence) => ({
+        evidenceStableId: evidence.evidenceStableId,
+        artifactStableId: evidence.artifact.artifactStableId,
+        originalFilename: evidence.artifact.originalFilename,
+        linkedAt: evidence.linkedAt.toISOString(),
+      })),
       settlements: settlementRows.map((settlement) =>
         this.toSettlementListItem(
           settlement,
