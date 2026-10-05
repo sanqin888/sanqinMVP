@@ -15,7 +15,6 @@ import {
 } from './accounting-contracts';
 import { ACCOUNTING_DB, type AccountingDb } from './accounting-db';
 import {
-  ACCOUNTING_OPENING_RECEIVABLE_REVERSAL_SOURCE_FACT_TYPE,
   ACCOUNTING_OPENING_RECEIVABLE_SOURCE_FACT_TYPE,
   type ReverseAccountingOpeningReceivableInputV1,
 } from './accounting-opening-receivable.contract';
@@ -652,7 +651,7 @@ export class AccountingOpeningReceivableReversalService {
 
       const [original, reversal] = await Promise.all([
         tx.accountingJournalEntry.findUnique({
-          where: { entryStableId: settlement.journalEntryStableId as string },
+          where: { entryStableId: settlement.journalEntryStableId },
           select: {
             kind: true,
             source: true,
@@ -769,7 +768,9 @@ export class AccountingOpeningReceivableReversalService {
       !evidence.reversedAt ||
       !evidence.reversedByActorRef
     ) {
-      throw new ConflictException(`${label} contains partial reversal evidence`);
+      throw new ConflictException(
+        `${label} contains partial reversal evidence`,
+      );
     }
     if (
       evidence.reversalStableId !== expectedStableId ||

@@ -18,9 +18,7 @@ import type {
   CreateAccountingOpeningReceivableInputV1,
   ReverseAccountingOpeningReceivableInputV1,
 } from './accounting-opening-receivable.contract';
-import type {
-  CreateAccountingOpeningReceivableSettlementInputV1,
-} from './accounting-opening-receivable-settlement.contract';
+import type { CreateAccountingOpeningReceivableSettlementInputV1 } from './accounting-opening-receivable-settlement.contract';
 import { AccountingOpeningReceivableSettlementService } from './accounting-opening-receivable-settlement.service';
 import { AccountingOpeningReceivableReversalService } from './accounting-opening-receivable-reversal.service';
 import { AccountingOpeningReceivableService } from './accounting-opening-receivable.service';

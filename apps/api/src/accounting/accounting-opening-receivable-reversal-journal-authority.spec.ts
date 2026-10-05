@@ -2,12 +2,8 @@ import {
   AccountingJournalEntryKind,
   AccountingJournalSource,
 } from './accounting-contracts';
-import {
-  ACCOUNTING_OPENING_RECEIVABLE_REVERSAL_SOURCE_FACT_TYPE,
-} from './accounting-opening-receivable.contract';
-import {
-  ACCOUNTING_OPENING_RECEIVABLE_SETTLEMENT_REVERSAL_SOURCE_FACT_TYPE,
-} from './accounting-opening-receivable-settlement.contract';
+import { ACCOUNTING_OPENING_RECEIVABLE_REVERSAL_SOURCE_FACT_TYPE } from './accounting-opening-receivable.contract';
+import { ACCOUNTING_OPENING_RECEIVABLE_SETTLEMENT_REVERSAL_SOURCE_FACT_TYPE } from './accounting-opening-receivable-settlement.contract';
 import {
   assertAccountingOpeningReceivableReversalJournalAuthority,
   buildAccountingOpeningReceivableReversalStableId,
@@ -172,11 +168,10 @@ describe('Accounting Opening Receivable reversal Journal authority', () => {
       ),
     ).not.toThrow();
 
-    const originalHash =
-      hashAccountingOpeningReceivableReversalJournalWrite(
-        normalized,
-        plan.authority,
-      );
+    const originalHash = hashAccountingOpeningReceivableReversalJournalWrite(
+      normalized,
+      plan.authority,
+    );
     expect(() =>
       assertAccountingOpeningReceivableReversalJournalAuthority(
         normalizeJournalCreate({

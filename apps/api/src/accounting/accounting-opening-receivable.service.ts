@@ -265,11 +265,10 @@ export class AccountingOpeningReceivableService {
       );
     }
 
-    const replacementForOpeningReceivableStableId =
-      this.optionalStableId(
-        input.replacementForOpeningReceivableStableId,
-        'replacementForOpeningReceivableStableId',
-      );
+    const replacementForOpeningReceivableStableId = this.optionalStableId(
+      input.replacementForOpeningReceivableStableId,
+      'replacementForOpeningReceivableStableId',
+    );
 
     let lastError: unknown;
     for (let attempt = 0; attempt < OPENING_RECEIVABLE_ATTEMPTS; attempt += 1) {
@@ -526,10 +525,7 @@ export class AccountingOpeningReceivableService {
       );
     }
 
-    const openingReversalState = this.reversalState(
-      row,
-      'Opening Receivable',
-    );
+    const openingReversalState = this.reversalState(row, 'Opening Receivable');
     if (openingReversalState === 'REVERSED') {
       const reversalJournal = journalByStableId.get(
         row.reversalJournalEntryStableId as string,
@@ -610,8 +606,7 @@ export class AccountingOpeningReceivableService {
         replacedBySettlementStableId:
           settlement.replacedBySettlement?.settlementStableId ?? null,
         reversalStableId: settlement.reversalStableId,
-        reversalJournalEntryStableId:
-          settlement.reversalJournalEntryStableId,
+        reversalJournalEntryStableId: settlement.reversalJournalEntryStableId,
         reversedAt: settlement.reversedAt?.toISOString() ?? null,
         createdByActorRef: settlement.createdByActorRef,
         createdAt: settlement.createdAt.toISOString(),

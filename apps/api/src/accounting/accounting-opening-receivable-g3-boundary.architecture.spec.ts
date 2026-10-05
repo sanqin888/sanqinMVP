@@ -7,9 +7,7 @@ const read = (name: string) => readFileSync(resolve(root, name), 'utf8');
 describe('Accounting Opening Receivable G3 architecture boundary', () => {
   it('keeps reversal/correction persistence dedicated to G1/G2 and leaves External Sale C2 non-polymorphic', () => {
     const schema = read('../../prisma/schema.prisma');
-    const reversal = read(
-      'accounting-opening-receivable-reversal.service.ts',
-    );
+    const reversal = read('accounting-opening-receivable-reversal.service.ts');
     const allocationModel =
       schema
         .split('model AccountingExternalSaleSettlementAllocation {')[1]
@@ -26,9 +24,7 @@ describe('Accounting Opening Receivable G3 architecture boundary', () => {
     expect(reversal).toContain('runSerializableAccountingWrite');
     expect(reversal).toContain('OPENING_RECEIVABLE_REVERSE');
     expect(reversal).toContain('OPENING_RECEIVABLE_SETTLEMENT_REVERSE');
-    expect(reversal).toContain(
-      'createOpeningReceivableReversalJournalInTx',
-    );
+    expect(reversal).toContain('createOpeningReceivableReversalJournalInTx');
     expect(reversal).not.toContain('accountingExternalSaleSettlement');
     expect(reversal).not.toContain("from '../orders/");
     expect(reversal).not.toContain("from '../payments/");
@@ -55,9 +51,7 @@ describe('Accounting Opening Receivable G3 architecture boundary', () => {
     );
     expect(authority).toContain('AccountingJournalEntryKind.ADJUSTMENT');
     expect(authority).toContain('AccountingJournalSource.MANUAL');
-    expect(authority).toContain(
-      'exact inverse of its frozen original Journal',
-    );
+    expect(authority).toContain('exact inverse of its frozen original Journal');
 
     expect(journal).toContain(
       'ACCOUNTING_OPENING_RECEIVABLE_REVERSAL_SOURCE_FACT_TYPE',
@@ -65,9 +59,7 @@ describe('Accounting Opening Receivable G3 architecture boundary', () => {
     expect(journal).toContain(
       'ACCOUNTING_OPENING_RECEIVABLE_SETTLEMENT_REVERSAL_SOURCE_FACT_TYPE',
     );
-    expect(journal).toContain(
-      'createOpeningReceivableReversalJournalInTx',
-    );
+    expect(journal).toContain('createOpeningReceivableReversalJournalInTx');
     expect(journal).toContain(
       'Opening Receivable canonical Journals cannot be updated in place',
     );
@@ -87,15 +79,11 @@ describe('Accounting Opening Receivable G3 architecture boundary', () => {
     expect(controller).toContain(
       "@Post('opening-receivables/settlements/:settlementStableId/reverse')",
     );
-    expect(controller).toContain(
-      "@Post('opening-receivables/settlements')",
-    );
+    expect(controller).toContain("@Post('opening-receivables/settlements')");
   });
 
   it('keeps G1/G2 frozen source facts unchanged while correction lineage stays outside their fact hashes', () => {
-    const openingContract = read(
-      'accounting-opening-receivable.contract.ts',
-    );
+    const openingContract = read('accounting-opening-receivable.contract.ts');
     const openingPolicy = read('accounting-opening-receivable.policy.ts');
     const settlementContract = read(
       'accounting-opening-receivable-settlement.contract.ts',
@@ -110,22 +98,16 @@ describe('Accounting Opening Receivable G3 architecture boundary', () => {
         ?.split('};')[0] ?? '';
     const settlementFact =
       settlementContract
-        .split(
-          'export type AccountingOpeningReceivableSettlementFactV1 = {',
-        )[1]
+        .split('export type AccountingOpeningReceivableSettlementFactV1 = {')[1]
         ?.split('};')[0] ?? '';
 
     expect(openingFact).not.toContain(
       'replacementForOpeningReceivableStableId',
     );
-    expect(settlementFact).not.toContain(
-      'replacementForSettlementStableId',
-    );
+    expect(settlementFact).not.toContain('replacementForSettlementStableId');
     expect(openingPolicy).not.toContain(
       'replacementForOpeningReceivableStableId',
     );
-    expect(settlementPolicy).not.toContain(
-      'replacementForSettlementStableId',
-    );
+    expect(settlementPolicy).not.toContain('replacementForSettlementStableId');
   });
 });

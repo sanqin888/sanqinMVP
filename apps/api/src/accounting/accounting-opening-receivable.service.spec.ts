@@ -532,8 +532,7 @@ describe('AccountingOpeningReceivableService', () => {
         expect.objectContaining({
           settlementStableId: settlementFact.settlementStableId,
           reversedAt: '2026-10-05T16:00:00.000Z',
-          reversalJournalEntryStableId:
-            'journal_opening_settlement_reversal_2',
+          reversalJournalEntryStableId: 'journal_opening_settlement_reversal_2',
         }),
       ],
     });

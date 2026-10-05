@@ -8,37 +8,40 @@ import {
 } from './accounting-opening-receivable-reversal-journal-authority';
 import type { AccountingJournalService } from './accounting-journal.service';
 
-const settlementOriginal = (): AccountingOpeningReceivableOriginalJournalV1 => ({
-  entryStableId: 'journal_opening_settlement_1',
-  source: AccountingJournalSource.MANUAL,
-  sourceFactType: 'accounting.opening_receivable_settlement.v1',
-  sourceFactStableId: 'openingrecvsettle_1',
-  sourceFactVersion: 1,
-  storeStableId: '4750_Yonge_Street',
-  occurredAt: '2026-06-20T04:00:00.000Z',
-  currency: 'CAD',
-  memo: 'Opening Receivable settlement',
-  lines: [
-    {
-      lineNo: 1,
-      accountStableId: 'account_primary_bank',
-      categoryStableId: null,
-      debitCents: 12_500,
-      creditCents: 0,
-      memo: 'Collection',
-    },
-    {
-      lineNo: 2,
-      accountStableId: 'account_accounts_receivable',
-      categoryStableId: null,
-      debitCents: 0,
-      creditCents: 12_500,
-      memo: 'Opening Receivable settlement',
-    },
-  ],
-});
+const settlementOriginal =
+  (): AccountingOpeningReceivableOriginalJournalV1 => ({
+    entryStableId: 'journal_opening_settlement_1',
+    source: AccountingJournalSource.MANUAL,
+    sourceFactType: 'accounting.opening_receivable_settlement.v1',
+    sourceFactStableId: 'openingrecvsettle_1',
+    sourceFactVersion: 1,
+    storeStableId: '4750_Yonge_Street',
+    occurredAt: '2026-06-20T04:00:00.000Z',
+    currency: 'CAD',
+    memo: 'Opening Receivable settlement',
+    lines: [
+      {
+        lineNo: 1,
+        accountStableId: 'account_primary_bank',
+        categoryStableId: null,
+        debitCents: 12_500,
+        creditCents: 0,
+        memo: 'Collection',
+      },
+      {
+        lineNo: 2,
+        accountStableId: 'account_accounts_receivable',
+        categoryStableId: null,
+        debitCents: 0,
+        creditCents: 12_500,
+        memo: 'Opening Receivable settlement',
+      },
+    ],
+  });
 
-const journalRow = (snapshot: AccountingOpeningReceivableOriginalJournalV1) => ({
+const journalRow = (
+  snapshot: AccountingOpeningReceivableOriginalJournalV1,
+) => ({
   entryStableId: snapshot.entryStableId,
   kind: 'STANDARD',
   source: snapshot.source,
@@ -80,11 +83,10 @@ describe('AccountingOpeningReceivableReversalService G3', () => {
       collectionAccount: { accountStableId: 'account_primary_bank' },
     };
     const original = settlementOriginal();
-    const reversalStableId =
-      buildAccountingOpeningReceivableReversalStableId(
-        'SETTLEMENT',
-        settlement.settlementStableId,
-      );
+    const reversalStableId = buildAccountingOpeningReceivableReversalStableId(
+      'SETTLEMENT',
+      settlement.settlementStableId,
+    );
     const expected = buildAccountingOpeningReceivableReversalWritePlan({
       fact: {
         version: 1,
@@ -105,15 +107,13 @@ describe('AccountingOpeningReceivableReversalService G3', () => {
           .mockImplementation(({ data }: { data: Record<string, unknown> }) =>
             Promise.resolve({
               settlementStableId: settlement.settlementStableId,
-              reversalStableId:
-                data.reversalStableId ?? reversalStableId,
+              reversalStableId: data.reversalStableId ?? reversalStableId,
               reversalFactHash:
                 data.reversalFactHash ?? expected.authority.reversalFactHash,
               reversalJournalEntryStableId:
                 data.reversalJournalEntryStableId ??
                 'journal_opening_settlement_reversal_1',
-              reversedAt:
-                data.reversedAt ?? new Date('2026-10-05T20:00:00.000Z'),
+              reversedAt: data.reversedAt ?? new Date('2026-10-05T20:00:00.000Z'),
               reversedByActorRef:
                 data.reversedByActorRef ?? 'actor_accountant',
             }),
@@ -154,16 +154,14 @@ describe('AccountingOpeningReceivableReversalService G3', () => {
       target: 'SETTLEMENT',
       targetStableId: settlement.settlementStableId,
       reversalStableId,
-      reversalJournalEntryStableId:
-        'journal_opening_settlement_reversal_1',
+      reversalJournalEntryStableId: 'journal_opening_settlement_reversal_1',
       reversalReason: 'Wrong collection account',
     });
     expect(createOpeningReceivableReversalJournalInTx).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: 'ADJUSTMENT',
         source: 'MANUAL',
-        sourceFactType:
-          'accounting.opening_receivable_settlement_reversal.v1',
+        sourceFactType: 'accounting.opening_receivable_settlement_reversal.v1',
         occurredAt: original.occurredAt,
       }),
       'actor_accountant',

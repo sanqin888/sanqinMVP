@@ -358,8 +358,7 @@ export const buildAccountingOpeningReceivableReversalWritePlan = (input: {
 }): AccountingOpeningReceivableReversalWritePlanV1 => {
   const fact = normalizeAccountingOpeningReceivableReversalFact(input.fact);
   const originalJournal = normalizeOriginalJournal(input.originalJournal, fact);
-  const reversalFactHash =
-    hashAccountingOpeningReceivableReversalFact(fact);
+  const reversalFactHash = hashAccountingOpeningReceivableReversalFact(fact);
   return {
     journal: buildReversalJournal(fact, originalJournal),
     authority: {
@@ -384,8 +383,7 @@ export const normalizeAccountingOpeningReceivableReversalWriteAuthority = (
     );
   }
   const fact = normalizeAccountingOpeningReceivableReversalFact(authority.fact);
-  const reversalFactHash =
-    hashAccountingOpeningReceivableReversalFact(fact);
+  const reversalFactHash = hashAccountingOpeningReceivableReversalFact(fact);
   if (reversalFactHash !== authority.reversalFactHash) {
     throw new AccountingJournalPolicyError(
       'Opening Receivable reversal fact hash does not match its frozen fact',
