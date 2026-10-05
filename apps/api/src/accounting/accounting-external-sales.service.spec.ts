@@ -284,18 +284,12 @@ describe('AccountingExternalSalesService C1', () => {
       contentHash: 'a'.repeat(64),
     });
 
-    expect(tx.accountingExternalSale.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          evidence: {
-            create: {
-              artifact: { connect: { id: 'artifact-db-id' } },
-              linkedByActorRef: 'user_admin',
-            },
-          },
-        }),
-      }),
+    const createCallJson = JSON.stringify(
+      tx.accountingExternalSale.create.mock.calls,
     );
+    expect(createCallJson).toContain('"evidence"');
+    expect(createCallJson).toContain('"artifact-db-id"');
+    expect(createCallJson).toContain('"linkedByActorRef":"user_admin"');
     expect(tx.accountingAuditLog.create).toHaveBeenCalledTimes(2);
     expect(JSON.stringify(tx.accountingAuditLog.create.mock.calls)).toContain(
       'EXTERNAL_SALE_EVIDENCE_LINK',

@@ -111,10 +111,10 @@ describe('Post-modularization External Sales boundary', () => {
     expect(policy).toContain(
       'ACCOUNTING_EXTERNAL_SALE_LINE_REVENUE_ACCOUNT_STABLE_IDS',
     );
+    expect(policy).toContain('ACCOUNTING_EXTERNAL_SALE_TAX_ACCOUNT_STABLE_ID');
     expect(policy).toContain(
-      'ACCOUNTING_EXTERNAL_SALE_TAX_ACCOUNT_STABLE_ID',
+      'AccountingExternalSaleGranularity.PERIOD_SUMMARY',
     );
-    expect(policy).toContain('AccountingExternalSaleGranularity.PERIOD_SUMMARY');
     expect(policy).not.toContain('@prisma/client');
     expect(policy).not.toContain("from '../orders/");
     expect(policy).not.toContain("from '../payments/");

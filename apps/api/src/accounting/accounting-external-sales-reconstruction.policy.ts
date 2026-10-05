@@ -220,8 +220,7 @@ export function buildAccountingExternalSaleReconstructionInput(input: {
   statement: AccountingExternalSaleCustomerStatement;
 }): CreateAccountingExternalSaleInputV1 {
   const classificationStableId =
-    input.classificationStableId?.trim() ||
-    DEFAULT_CLASSIFICATION_STABLE_ID;
+    input.classificationStableId?.trim() || DEFAULT_CLASSIFICATION_STABLE_ID;
   if (classificationStableId.length > 200) {
     throw new AccountingExternalSaleReconstructionPolicyError(
       'classificationStableId must not exceed 200 characters',
@@ -479,11 +478,7 @@ export function parseAccountingExternalSaleCustomerStatement(
       row.amountCents,
       'observed amount',
     );
-    observedTaxCents = addSafe(
-      observedTaxCents,
-      row.taxCents,
-      'observed tax',
-    );
+    observedTaxCents = addSafe(observedTaxCents, row.taxCents, 'observed tax');
     observedSubtotalCents = addSafe(
       observedSubtotalCents,
       row.subtotalCents,

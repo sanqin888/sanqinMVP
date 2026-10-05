@@ -53,8 +53,7 @@ export class AccountingExternalSalesReconstructionService {
     input: AccountingExternalSaleReconstructionExecuteInputV1,
     actorRef: string,
   ): Promise<AccountingExternalSaleReconstructionExecutionV1> {
-    const expectedPlanHash =
-      input.expectedPlanHash?.trim().toLowerCase() ?? '';
+    const expectedPlanHash = input.expectedPlanHash?.trim().toLowerCase() ?? '';
     if (!SHA256_PATTERN.test(expectedPlanHash)) {
       throw new BadRequestException(
         'expectedPlanHash must be a lowercase SHA-256 hex value',

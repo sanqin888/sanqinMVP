@@ -12,10 +12,50 @@ const statementRows = (): string[][] => [
   ['', '', 'Customer Statement'],
   ['', '', 'Asia FoodMart'],
   ['', '', '2150 McNicoll Ave'],
-  ['', '', 'Date', 'Item', 'Price(CAD)', 'Quantity', 'Amout', 'Tax', 'Subtotal'],
-  ['', '', '2026-06-01T00:00:00.000Z', 'SanQin Rice Noodle', '3', '10', '30', '3.90', '33.90'],
-  ['', '', '2026-06-02T00:00:00.000Z', 'SanQin Rice Noodle', '3', '-2', '-6', '', '-6'],
-  ['', '', '2026-06-02T00:00:00.000Z', 'SanQin Rice Noodle', '4', '5', '20', '2.60', '22.60'],
+  [
+    '',
+    '',
+    'Date',
+    'Item',
+    'Price(CAD)',
+    'Quantity',
+    'Amout',
+    'Tax',
+    'Subtotal',
+  ],
+  [
+    '',
+    '',
+    '2026-06-01T00:00:00.000Z',
+    'SanQin Rice Noodle',
+    '3',
+    '10',
+    '30',
+    '3.90',
+    '33.90',
+  ],
+  [
+    '',
+    '',
+    '2026-06-02T00:00:00.000Z',
+    'SanQin Rice Noodle',
+    '3',
+    '-2',
+    '-6',
+    '',
+    '-6',
+  ],
+  [
+    '',
+    '',
+    '2026-06-02T00:00:00.000Z',
+    'SanQin Rice Noodle',
+    '4',
+    '5',
+    '20',
+    '2.60',
+    '22.60',
+  ],
   ['', '', 'Total', '', '', '13', '44', '6.50', '50.50'],
   ['', '', 'Paid Amount', '', '', '', '', '', '0'],
   ['', '', 'Balance Due', '', '', '', '', '', '50.50'],
@@ -23,9 +63,8 @@ const statementRows = (): string[][] => [
 
 describe('External Sales historical reconstruction policy', () => {
   it('reconciles Customer Statement controls and nets negative source rows by item and negotiated price', () => {
-    const statement = parseAccountingExternalSaleCustomerStatement(
-      statementRows(),
-    );
+    const statement =
+      parseAccountingExternalSaleCustomerStatement(statementRows());
 
     expect(statement).toEqual({
       counterpartyName: 'Asia FoodMart',
@@ -56,9 +95,8 @@ describe('External Sales historical reconstruction policy', () => {
   });
 
   it('builds one PERIOD_SUMMARY sale and keeps the deterministic request id stable across classification edits', () => {
-    const statement = parseAccountingExternalSaleCustomerStatement(
-      statementRows(),
-    );
+    const statement =
+      parseAccountingExternalSaleCustomerStatement(statementRows());
     const first = buildAccountingExternalSaleReconstructionInput({
       artifactStableId: 'acctart_statement',
       contentHash: 'a'.repeat(64),
@@ -67,14 +105,15 @@ describe('External Sales historical reconstruction policy', () => {
       storeStableId: '4750_Yonge_Street',
       statement,
     });
-    const editedClassification = buildAccountingExternalSaleReconstructionInput({
-      artifactStableId: 'acctart_statement',
-      contentHash: 'a'.repeat(64),
-      originalFilename: '丰亚结算单26年6月.xlsx',
-      classificationStableId: 'external_wholesale',
-      storeStableId: '4750_Yonge_Street',
-      statement,
-    });
+    const editedClassification =
+      buildAccountingExternalSaleReconstructionInput({
+        artifactStableId: 'acctart_statement',
+        contentHash: 'a'.repeat(64),
+        originalFilename: '丰亚结算单26年6月.xlsx',
+        classificationStableId: 'external_wholesale',
+        storeStableId: '4750_Yonge_Street',
+        statement,
+      });
 
     expect(first.requestId).toBe(editedClassification.requestId);
     expect(first).toMatchObject({
@@ -130,8 +169,8 @@ describe('External Sales historical reconstruction policy', () => {
     const rows = statementRows();
     rows[11][8] = '50.51';
 
-    expect(() =>
-      parseAccountingExternalSaleCustomerStatement(rows),
-    ).toThrow('Customer Statement subtotal total does not reconcile');
+    expect(() => parseAccountingExternalSaleCustomerStatement(rows)).toThrow(
+      'Customer Statement subtotal total does not reconcile',
+    );
   });
 });
