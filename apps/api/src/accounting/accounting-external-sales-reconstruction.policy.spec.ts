@@ -105,15 +105,16 @@ describe('External Sales historical reconstruction policy', () => {
       storeStableId: '4750_Yonge_Street',
       statement,
     });
-    const editedClassification =
-      buildAccountingExternalSaleReconstructionInput({
+    const editedClassification = buildAccountingExternalSaleReconstructionInput(
+      {
         artifactStableId: 'acctart_statement',
         contentHash: 'a'.repeat(64),
         originalFilename: '丰亚结算单26年6月.xlsx',
         classificationStableId: 'external_wholesale',
         storeStableId: '4750_Yonge_Street',
         statement,
-      });
+      },
+    );
 
     expect(first.requestId).toBe(editedClassification.requestId);
     expect(first).toMatchObject({
