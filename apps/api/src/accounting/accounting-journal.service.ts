@@ -86,6 +86,12 @@ import {
   type AccountingOpeningReceivableSettlementJournalWriteAuthorityV1,
 } from './accounting-opening-receivable-settlement-journal-authority';
 import {
+  assertAccountingOpeningReceivableReversalJournalAuthority,
+  hashAccountingOpeningReceivableReversalJournalWrite,
+  normalizeAccountingOpeningReceivableReversalWriteAuthority,
+  type AccountingOpeningReceivableReversalJournalWriteAuthorityV1,
+} from './accounting-opening-receivable-reversal-journal-authority';
+import {
   assertExternalSaleSettlementJournalAuthority,
   calculateExternalSaleJournalReceivableCents,
   hashExternalSaleSettlementJournalWrite,
@@ -105,11 +111,13 @@ import {
   ACCOUNTING_EXTERNAL_SALE_SOURCE_FACT_TYPE,
 } from './accounting-external-sales.contract';
 import {
+  ACCOUNTING_OPENING_RECEIVABLE_REVERSAL_SOURCE_FACT_TYPE,
   ACCOUNTING_OPENING_RECEIVABLE_SOURCE_FACT_TYPE,
   type AccountingOpeningReceivableFactV1,
 } from './accounting-opening-receivable.contract';
 import { hashAccountingOpeningReceivableFact } from './accounting-opening-receivable.policy';
 import {
+  ACCOUNTING_OPENING_RECEIVABLE_SETTLEMENT_REVERSAL_SOURCE_FACT_TYPE,
   ACCOUNTING_OPENING_RECEIVABLE_SETTLEMENT_SOURCE_FACT_TYPE,
   type AccountingOpeningReceivableSettlementFactV1,
 } from './accounting-opening-receivable-settlement.contract';
@@ -230,6 +238,8 @@ const isExternalSaleCanonicalSourceFactType = (
 const OPENING_RECEIVABLE_CANONICAL_SOURCE_FACT_TYPES = new Set<string>([
   ACCOUNTING_OPENING_RECEIVABLE_SOURCE_FACT_TYPE,
   ACCOUNTING_OPENING_RECEIVABLE_SETTLEMENT_SOURCE_FACT_TYPE,
+  ACCOUNTING_OPENING_RECEIVABLE_REVERSAL_SOURCE_FACT_TYPE,
+  ACCOUNTING_OPENING_RECEIVABLE_SETTLEMENT_REVERSAL_SOURCE_FACT_TYPE,
 ]);
 
 const isOpeningReceivableCanonicalSourceFactType = (
@@ -487,6 +497,56 @@ export class AccountingJournalService {
     if (journal.deletedAt) {
       throw new ConflictException(
         'Opening Receivable settlement Journal was deleted and cannot be replayed',
+      );
+    }
+    return journal;
+  }
+
+  async createOpeningReceivableReversalJournalInTx(
+    input: AccountingJournalCreateInput,
+    operatorActorRef: string,
+    authority: AccountingOpeningReceivableReversalJournalWriteAuthorityV1,
+    tx: Prisma.TransactionClient,
+  ): Promise<AccountingJournalRow> {
+    const normalizedAuthority = this.applyJournalPolicy(() =>
+      normalizeAccountingOpeningReceivableReversalWriteAuthority(authority),
+    );
+    const normalized = this.applyJournalPolicy(() =>
+      normalizeJournalCreate(input),
+    );
+    this.applyJournalPolicy(() =>
+      assertAccountingOpeningReceivableReversalJournalAuthority(
+        normalized,
+        normalizedAuthority,
+      ),
+    );
+    await this.assertOpeningReceivableReversalAuthorityInTx(
+      normalizedAuthority,
+      tx,
+    );
+
+    const operator = this.requireJournalValue(
+      operatorActorRef,
+      'operatorActorRef',
+    );
+    const timezone = await this.period.getBusinessTimezone();
+    const journal = await this.createPreparedJournalEntryInTx(
+      {
+        normalized,
+        idempotencyHash: hashAccountingOpeningReceivableReversalJournalWrite(
+          normalized,
+          normalizedAuthority,
+        ),
+        auditAuthority: normalizedAuthority as unknown as Prisma.InputJsonValue,
+        allowInactiveReferencedDimensions: true,
+      },
+      operator,
+      tx,
+      timezone,
+    );
+    if (journal.deletedAt) {
+      throw new ConflictException(
+        'Opening Receivable reversal Journal was deleted and cannot be replayed',
       );
     }
     return journal;
@@ -1982,6 +2042,112 @@ export class AccountingJournalService {
     }
   }
 
+  private async assertOpeningReceivableReversalAuthorityInTx(
+    authority: AccountingOpeningReceivableReversalJournalWriteAuthorityV1,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    const fact = authority.fact;
+    const source =
+      fact.target === 'OPENING_RECEIVABLE'
+        ? await tx.accountingOpeningReceivable.findUnique({
+            where: { openingReceivableStableId: fact.targetStableId },
+            select: {
+              factHash: true,
+              journalEntryStableId: true,
+              reversalStableId: true,
+              reversalFactHash: true,
+              reversalJournalEntryStableId: true,
+              reversedAt: true,
+              reversedByActorRef: true,
+            },
+          })
+        : await tx.accountingOpeningReceivableSettlement.findUnique({
+            where: { settlementStableId: fact.targetStableId },
+            select: {
+              factHash: true,
+              journalEntryStableId: true,
+              reversalStableId: true,
+              reversalFactHash: true,
+              reversalJournalEntryStableId: true,
+              reversedAt: true,
+              reversedByActorRef: true,
+            },
+          });
+
+    if (
+      !source ||
+      source.factHash !== fact.originalFactHash ||
+      source.journalEntryStableId !== fact.originalJournalEntryStableId ||
+      source.reversalStableId !== fact.reversalStableId ||
+      source.reversalFactHash !== authority.reversalFactHash ||
+      !source.reversedAt ||
+      !source.reversedByActorRef
+    ) {
+      throw new ConflictException(
+        'Opening Receivable reversal authority changed before Journal posting',
+      );
+    }
+
+    const original = await tx.accountingJournalEntry.findUnique({
+      where: { entryStableId: fact.originalJournalEntryStableId },
+      select: {
+        entryStableId: true,
+        source: true,
+        sourceFactType: true,
+        sourceFactStableId: true,
+        sourceFactVersion: true,
+        storeStableId: true,
+        occurredAt: true,
+        currency: true,
+        memo: true,
+        deletedAt: true,
+        lines: {
+          orderBy: { lineNo: 'asc' },
+          select: {
+            lineNo: true,
+            debitCents: true,
+            creditCents: true,
+            memo: true,
+            account: { select: { accountStableId: true } },
+            category: { select: { categoryStableId: true } },
+          },
+        },
+      },
+    });
+    if (!original || original.deletedAt) {
+      throw new ConflictException(
+        'Opening Receivable reversal original Journal disappeared before posting',
+      );
+    }
+    const currentOriginal = {
+      entryStableId: original.entryStableId,
+      source: original.source,
+      sourceFactType: original.sourceFactType,
+      sourceFactStableId: original.sourceFactStableId,
+      sourceFactVersion: original.sourceFactVersion,
+      storeStableId: original.storeStableId,
+      occurredAt: original.occurredAt.toISOString(),
+      currency: original.currency,
+      memo: original.memo,
+      lines: original.lines.map((line) => ({
+        lineNo: line.lineNo,
+        accountStableId: line.account.accountStableId,
+        categoryStableId: line.category?.categoryStableId ?? null,
+        debitCents: line.debitCents,
+        creditCents: line.creditCents,
+        memo: line.memo,
+      })),
+    };
+    if (
+      JSON.stringify(currentOriginal) !==
+      JSON.stringify(authority.originalJournal)
+    ) {
+      throw new ConflictException(
+        'Opening Receivable reversal original Journal changed before posting',
+      );
+    }
+  }
+
   private async assertExternalSaleReversalAuthorityInTx(
     authority: AccountingExternalSaleReversalJournalWriteAuthorityV1,
     tx: Prisma.TransactionClient,
@@ -2491,6 +2657,11 @@ export class AccountingJournalService {
         currency: true,
         factHash: true,
         journalEntryStableId: true,
+        reversalStableId: true,
+        reversalFactHash: true,
+        reversalJournalEntryStableId: true,
+        reversedAt: true,
+        reversedByActorRef: true,
         note: true,
         settlements: {
           orderBy: [{ settlementOn: 'asc' }, { createdAt: 'asc' }],
@@ -2505,6 +2676,11 @@ export class AccountingJournalService {
             reference: true,
             factHash: true,
             journalEntryStableId: true,
+            reversalStableId: true,
+            reversalFactHash: true,
+            reversalJournalEntryStableId: true,
+            reversedAt: true,
+            reversedByActorRef: true,
             note: true,
             collectionAccount: {
               select: { accountStableId: true },
@@ -2516,7 +2692,12 @@ export class AccountingJournalService {
     if (
       !opening ||
       opening.currency !== 'CAD' ||
-      !opening.journalEntryStableId
+      !opening.journalEntryStableId ||
+      opening.reversalStableId !== null ||
+      opening.reversalFactHash !== null ||
+      opening.reversalJournalEntryStableId !== null ||
+      opening.reversedAt !== null ||
+      opening.reversedByActorRef !== null
     ) {
       throw new ConflictException(
         'Opening Receivable disappeared or lost its canonical Journal anchor before settlement posting',
@@ -2555,14 +2736,18 @@ export class AccountingJournalService {
     const priorSettlements = opening.settlements.filter(
       (item) => item.settlementStableId !== authority.fact.settlementStableId,
     );
-    const priorJournalStableIds = priorSettlements.map((item) => {
+    const priorJournalStableIds: string[] = [];
+    for (const item of priorSettlements) {
       if (!item.journalEntryStableId) {
         throw new ConflictException(
           `Opening Receivable has an unanchored prior settlement: ${item.settlementStableId}`,
         );
       }
-      return item.journalEntryStableId;
-    });
+      priorJournalStableIds.push(item.journalEntryStableId);
+      if (item.reversalJournalEntryStableId) {
+        priorJournalStableIds.push(item.reversalJournalEntryStableId);
+      }
+    }
     const journals = await tx.accountingJournalEntry.findMany({
       where: {
         entryStableId: {
@@ -2582,9 +2767,12 @@ export class AccountingJournalService {
         lines: {
           orderBy: { lineNo: 'asc' },
           select: {
+            lineNo: true,
             debitCents: true,
             creditCents: true,
+            memo: true,
             account: { select: { accountStableId: true } },
+            category: { select: { categoryStableId: true } },
           },
         },
       },
@@ -2705,6 +2893,67 @@ export class AccountingJournalService {
           `Opening Receivable prior settlement amount disagrees with its canonical Journal: ${prior.settlementStableId}`,
         );
       }
+
+      const reversalFields = [
+        prior.reversalStableId,
+        prior.reversalFactHash,
+        prior.reversalJournalEntryStableId,
+        prior.reversedAt,
+        prior.reversedByActorRef,
+      ];
+      const hasAnyReversal = reversalFields.some((value) => value !== null);
+      const hasCompleteReversal = reversalFields.every(
+        (value) => value !== null,
+      );
+      if (hasAnyReversal) {
+        if (!hasCompleteReversal) {
+          throw new ConflictException(
+            `Opening Receivable prior settlement has partial reversal evidence: ${prior.settlementStableId}`,
+          );
+        }
+        const reversalJournal = journalByStableId.get(
+          prior.reversalJournalEntryStableId as string,
+        );
+        if (
+          !reversalJournal ||
+          reversalJournal.deletedAt ||
+          reversalJournal.kind !== AccountingJournalEntryKind.ADJUSTMENT ||
+          reversalJournal.source !== AccountingJournalSource.MANUAL ||
+          reversalJournal.sourceFactType !==
+            ACCOUNTING_OPENING_RECEIVABLE_SETTLEMENT_REVERSAL_SOURCE_FACT_TYPE ||
+          reversalJournal.sourceFactStableId !== prior.reversalStableId ||
+          reversalJournal.sourceFactVersion !== 1 ||
+          reversalJournal.storeStableId !== priorJournal.storeStableId ||
+          reversalJournal.currency !== priorJournal.currency ||
+          reversalJournal.lines.length !== priorJournal.lines.length
+        ) {
+          throw new ConflictException(
+            `Opening Receivable prior settlement reversal Journal is inconsistent: ${prior.settlementStableId}`,
+          );
+        }
+        for (let index = 0; index < priorJournal.lines.length; index += 1) {
+          const sourceLine = priorJournal.lines[index];
+          const reversalLine = reversalJournal.lines[index];
+          if (
+            !sourceLine ||
+            !reversalLine ||
+            sourceLine.lineNo !== reversalLine.lineNo ||
+            sourceLine.account.accountStableId !==
+              reversalLine.account.accountStableId ||
+            (sourceLine.category?.categoryStableId ?? null) !==
+              (reversalLine.category?.categoryStableId ?? null) ||
+            sourceLine.memo !== reversalLine.memo ||
+            sourceLine.debitCents !== reversalLine.creditCents ||
+            sourceLine.creditCents !== reversalLine.debitCents
+          ) {
+            throw new ConflictException(
+              `Opening Receivable prior settlement reversal is not an exact inverse: ${prior.settlementStableId}`,
+            );
+          }
+        }
+        continue;
+      }
+
       settledBeforeCents += appliedCents;
       if (!Number.isSafeInteger(settledBeforeCents)) {
         throw new ConflictException(

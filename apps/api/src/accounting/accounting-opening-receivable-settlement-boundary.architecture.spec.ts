@@ -17,8 +17,8 @@ describe('Accounting Opening Receivable settlement architecture boundary', () =>
         ?.split('model AccountingExternalSaleSettlementComponent {')[0] ?? '';
 
     expect(schema).toContain('model AccountingOpeningReceivableSettlement {');
-    expect(schema).toContain(
-      'openingReceivable        AccountingOpeningReceivable',
+    expect(schema).toMatch(
+      /openingReceivable\s+AccountingOpeningReceivable\s+@relation/,
     );
     expect(service).toContain('runSerializableAccountingWrite');
     expect(service).toContain('createOpeningReceivableSettlementJournalInTx');
@@ -29,7 +29,7 @@ describe('Accounting Opening Receivable settlement architecture boundary', () =>
     expect(service).not.toContain("from '../payments/");
     expect(service).not.toContain("from '../integrations/");
 
-    expect(allocationModel).toContain('externalSaleId        String');
+    expect(allocationModel).toMatch(/externalSaleId\s+String\s+@db\.Uuid/);
     expect(allocationModel).not.toContain('openingReceivableId');
     expect(allocationModel).not.toContain('AccountingOpeningReceivable');
 

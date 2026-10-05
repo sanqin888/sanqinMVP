@@ -1,8 +1,8 @@
 # Accounting External Sales Plan
 
-Status: **SLICE A/B1/B2/C1/C2/C3/D/E/F/G1 MERGED; G1 SOURCE PR #2702 / MERGE `39a4b402` / SOURCE CI #6928 GREEN; MIGRATION `20261005145529_accounting_opening_receivable_g1_foundation` REVIEWED / DEV `3399c93e` / CI #6930 GREEN; G2 NEXT / G3 + H PENDING / PRODUCTION DEPLOYMENT PENDING**  
+Status: **SLICE A/B1/B2/C1/C2/C3/D/E/F/G1/G2 MERGED; G2 SOURCE PR #2704 / MERGE `2019caf9` / SOURCE CI #6934 GREEN; MIGRATION `20261005165144_accounting_opening_receivable_settlement_g2` REVIEWED ADDITIVE-ONLY / DEV `5c5d21ae` / CI #6936 GREEN; G3 LOCAL SOURCE/SCHEMA/WEB IMPLEMENTED / USER REVIEW PENDING / MIGRATION REQUIRED; H PENDING / PRODUCTION DEPLOYMENT PENDING**  
 Date: 2026-10-05  
-Current planning base: `origin/dev@3399c93e`  
+Current planning base: `origin/dev@5c5d21ae`  
 Owner: **Accounting / Reporting / Analytics**
 
 ## 0. Program execution map
@@ -34,10 +34,12 @@ implemented as one large feature:
     reconciliation, active financial-flow verification and final documentation
     closeout.
 
-Current state: **A through G1 complete in `dev`; G2 source/schema is implemented
-locally on `feat/accounting-opening-receivable-settlement-g2` and is awaiting user
-review. G2 is not pushed, has no migration yet, and is not CI-validated.** Phase 9
-remains CLOSED; this program is post-modularization Accounting product work.
+Current state: **A through G2 complete in `dev`; G2 migration replay is green in
+CI #6936. G3 source/schema/Web is implemented locally on
+`feat/accounting-opening-receivable-g3-reversal-web` and is awaiting user review.
+G3 is not pushed and still requires a user-generated additive migration after the
+source/schema PR is reviewed and merged.** Phase 9 remains CLOSED; this program is
+post-modularization Accounting product work.
 
 ## 1. Purpose
 
@@ -1009,22 +1011,19 @@ review -> merge to `dev` -> user-local `--create-only` migration workflow.
 - no Web operator workflow yet;
 - no production deployment in G2.
 
-**Local implementation state — 2026-10-05:** source/schema implementation is
-complete on the local MCP workspace branch
-`feat/accounting-opening-receivable-settlement-g2` and is awaiting user review.
-It adds dedicated `AccountingOpeningReceivableSettlement` persistence, the
-`accounting.opening_receivable_settlement.v1` source fact, a purpose-specific
-STANDARD Journal authority, Serializable outstanding revalidation, additive
-ADMIN/ACCOUNTANT create/read coverage, generic create/update/delete Journal guards,
-and architecture/unit tests. G1 opening AR
-and prior G2 collections are re-derived from their live canonical Journals before
-posting and on Opening Receivable reads; persistence amounts are integrity checks,
-not the final financial authority. External Sale C2 allocation persistence remains
-unchanged and non-polymorphic. No new context import direction or scanner allowance
-is introduced by the source change. **MIGRATION REQUIRED:** the Prisma schema adds
-one dedicated settlement table/relation, but no migration has been generated or
-edited by MCP. No local lint/build/test was run before user review, per `AGENTS.md`;
-CI remains pending until authorized remote delivery.
+**Completion state — 2026-10-05:** G2 source/schema merged through PR #2704
+(merge `2019caf9`) after source CI #6934 passed. The user-generated
+`20261005165144_accounting_opening_receivable_settlement_g2` migration was reviewed
+as additive-only and committed to `dev` at `5c5d21ae`; push CI #6936 passed the
+full API/Web/Browser E2E/printer/Windows matrix including committed-migration replay.
+The final implementation adds dedicated `AccountingOpeningReceivableSettlement`
+persistence, the `accounting.opening_receivable_settlement.v1` source fact, a
+purpose-specific STANDARD Journal authority, Serializable outstanding revalidation,
+ADMIN/ACCOUNTANT create/read coverage, and generic create/update/delete Journal
+guards. G1 opening AR and prior G2 collections are re-derived from their live
+canonical Journals. External Sale C2 allocation persistence remains unchanged and
+non-polymorphic. No new context import direction, scanner allowance or architecture
+baseline change was introduced.
 
 **G2 completion gate:** canonical partial/full settlement works through the
 dedicated authority, outstanding AR is server-derived from canonical Journal
@@ -1035,14 +1034,45 @@ in `dev`, and CI including committed migration replay is green.
 
 **Goal:** complete the operator lifecycle without mutating posted opening facts.
 
-G3 will add exact-inverse settlement/opening-receivable reversal authority,
+G3 adds exact-inverse settlement/opening-receivable reversal authority,
 replacement lineage where correction is required, and a mobile-first Accounting
 operator surface for opening AR history/detail, collection, outstanding balance
-and correction. Reversal must use the original canonical Journal snapshot rather
-than current account policy. An Opening Receivable may not be reversed while live
-G2 settlements remain. G3 should reuse the existing E/C3 UX and exact-inverse
-patterns where semantically compatible, but it must remain a separate opening-
-receivable authority rather than broadening External Sale source ownership.
+and correction. Reversal uses the original canonical Journal snapshot rather than
+current account policy. An Opening Receivable may not be reversed while live G2
+settlements remain. G3 reuses the existing E/C3 UX and exact-inverse patterns where
+semantically compatible, but remains a separate opening-receivable authority rather
+than broadening External Sale source ownership.
+
+**Local implementation state — 2026-10-05:** source/schema/Web implementation is
+complete on `feat/accounting-opening-receivable-g3-reversal-web`, based on
+`origin/dev@5c5d21ae`, and is awaiting user review. G3 reserves
+`accounting.opening_receivable_reversal.v1` and
+`accounting.opening_receivable_settlement_reversal.v1`; purpose-specific
+MANUAL/ADJUSTMENT Journals are exact debit/credit inverses of the frozen original
+G1/G2 Journals and are protected from generic Journal create/update/delete paths.
+G1 reversal requires every G2 settlement to have complete reversal metadata and a
+live exact-inverse Journal first. Canonical outstanding ignores a G2 settlement only
+after that full reversal evidence validates, including the in-transaction
+Serializable settlement authority check.
+
+Correction does not alter the frozen G1/G2 v1 fact-hash schema. Instead,
+one-to-one nullable self-replacement lineage is stored outside those source facts;
+a replacement predecessor must already be fully reversed and anchored. Accounting
+adds an options read model for configured Store and explicit active CAD ASSET
+BANK/CASH collection accounts plus ADMIN/ACCOUNTANT reversal routes. The Web page
+at `/accounting/opening-receivables` is a thin mobile-first adapter for
+history/detail, canonical balances, create/collection, audit, reversal and
+reversal+prefilled replacement; it contains no Journal construction or hard-coded
+GL allowlist/default-bank policy.
+
+**Migration gate:** the Prisma schema only adds nullable reversal metadata,
+one-to-one replacement self-FKs and their indexes/uniques to the existing G1/G2
+tables. MCP has not generated or edited a migration. After source/schema review and
+authorized PR merge, the migration must be created locally by the user with
+`prisma migrate dev --create-only`, then separately reviewed before commit to
+`dev`. No local lint/build/test is substituted for the repository's GitHub CI
+gate. No new context edge, scanner allowance, SCC or architecture baseline change
+is introduced.
 
 ### Slice H — Closeout / production verification
 
