@@ -12,7 +12,7 @@ COPY libs/foundation/package.json ./libs/foundation/
 COPY libs/order/package.json ./libs/order/
 COPY libs/shared/package.json ./libs/shared/
 
-# 2. 安装依赖
+# 2. 严格按 workspace lockfile 安装构建依赖；利用 Docker 层缓存。
 RUN pnpm install --frozen-lockfile
 
 # 3. 共享库先独立并行构建，纯 Web 源码改动复用这一层。
