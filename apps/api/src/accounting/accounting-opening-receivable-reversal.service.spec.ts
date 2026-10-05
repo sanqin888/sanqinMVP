@@ -113,9 +113,9 @@ describe('AccountingOpeningReceivableReversalService G3', () => {
               reversalJournalEntryStableId:
                 data.reversalJournalEntryStableId ??
                 'journal_opening_settlement_reversal_1',
-              reversedAt: data.reversedAt ?? new Date('2026-10-05T20:00:00.000Z'),
-              reversedByActorRef:
-                data.reversedByActorRef ?? 'actor_accountant',
+              reversedAt:
+                data.reversedAt ?? new Date('2026-10-05T20:00:00.000Z'),
+              reversedByActorRef: data.reversedByActorRef ?? 'actor_accountant',
             }),
           ),
       },
