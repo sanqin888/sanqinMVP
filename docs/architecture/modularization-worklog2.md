@@ -44,4 +44,25 @@
 
 **Validation state:** per `AGENTS.md`, no local lint/build/test/scanner/formatter command has been run before user review. GitHub Actions remains the authoritative validation gate after explicit remote-delivery authorization.
 
+**Remote result:** Slice F was subsequently delivered as PR #2701. Final head `9b5a1226`; CI #6924 passed API lint/build/strict/tests, Web lint/build/strict/tests, Browser E2E, printer-agent and Windows workstation; squash merge `23f4f526` landed in `dev`.
+
 **Docs:** `docs/architecture/accounting-external-sales-plan.md`, `docs/architecture/current-dependency-graph.md`, `ACCOUNTING_PRODUCT_ROADMAP.md`, and this new continuation worklog are synchronized. The original `modularization-worklog.md` is intentionally left unchanged because of the MCP single-file write limit described above.
+
+## 2026-10-05 — External Sales Slice G1 Opening Receivable Foundation
+
+**Branch/base:** `feat/accounting-external-sales-slice-g-opening-balance` from `origin/dev@23f4f526`  
+**State:** **LOCAL IMPLEMENTED / USER REVIEW PENDING / MIGRATION REQUIRED / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**. Phase 9 remains CLOSED.
+
+**Readiness result:** Accounting already owns `OPENING_BALANCE` Journal semantics, active CAD Accounts Receivable and Opening Balance Equity accounts, Trial Balance / Balance Movement opening treatment, and Financial Report exclusion of opening entries from period P&L. Production audit found zero existing Opening Balance Journals and zero closed Accounting periods. The missing capability was a durable receivable identity: current External Sale C2 allocations are intentionally FK-bound to `AccountingExternalSale`, so a bare opening Journal would not provide an auditable future settlement target.
+
+**Persistence:** additive `AccountingOpeningReceivable` stores stable source identity, configured Store, cutover opening date, counterparty/reference, positive CAD amount, fact hash, canonical Journal anchor, note and actor/timestamps. No existing External Sale/Settlement table or FK is changed. This requires a user-generated additive migration before production promotion.
+
+**Posting authority:** create input does not expose `openingDate`; the service derives it from configured `accountingStartDate` and validates the configured Store. The dedicated `accounting.opening_receivable.v1` authority permits exactly one `OPENING_BALANCE` Journal shape: debit Accounts Receivable and credit Opening Balance Equity. Revenue, HST, Catalog/Order pricing and External Sale source identities are absent. Generic Journal creation explicitly rejects this source-fact type.
+
+**Atomicity / audit:** source fact, dedicated Journal, source->Journal anchor and `OPENING_RECEIVABLE_POST` audit are created inside one Serializable Accounting transaction. Stable request UUID -> source stable ID plus fact hash provides idempotent replay; a replay with changed facts fails closed, and an existing source fact without a valid canonical Journal anchor requires review.
+
+**HTTP/read model:** ADMIN/ACCOUNTANT gains additive list/detail/create routes under `/accounting/opening-receivables`. G1 intentionally adds no Web operator page, settlement, reversal, correction or External Sale allocation changes.
+
+**Next slices:** G2 owns explicit BANK/CASH collection settlement and partial/full AR clearing against the opening-receivable identity; G3 owns reversal/correction + operator Web workflow.
+
+**Validation state:** per `AGENTS.md`, no local Prisma generation/validation, lint, build, Jest, scanner or formatter command has been run before user review. GitHub Actions remains the validation gate after explicit remote authorization.

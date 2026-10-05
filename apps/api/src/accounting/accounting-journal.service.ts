@@ -72,6 +72,12 @@ import {
   type ExternalSaleJournalWriteAuthorityV1,
 } from './accounting-external-sales-journal-authority';
 import {
+  assertAccountingOpeningReceivableJournalAuthority,
+  hashAccountingOpeningReceivableJournalWrite,
+  normalizeAccountingOpeningReceivableWriteAuthority,
+  type AccountingOpeningReceivableJournalWriteAuthorityV1,
+} from './accounting-opening-receivable-journal-authority';
+import {
   assertExternalSaleSettlementJournalAuthority,
   calculateExternalSaleJournalReceivableCents,
   hashExternalSaleSettlementJournalWrite,
@@ -90,6 +96,9 @@ import {
   ACCOUNTING_EXTERNAL_SALE_SETTLEMENT_SOURCE_FACT_TYPE,
   ACCOUNTING_EXTERNAL_SALE_SOURCE_FACT_TYPE,
 } from './accounting-external-sales.contract';
+import {
+  ACCOUNTING_OPENING_RECEIVABLE_SOURCE_FACT_TYPE,
+} from './accounting-opening-receivable.contract';
 import {
   assertProviderFeeBankWithdrawalJournalAuthority,
   hashProviderFeeBankWithdrawalJournalWrite,
@@ -298,6 +307,13 @@ export class AccountingJournalService {
         'External Sale canonical Journals require External-Sales-specific write authority',
       );
     }
+    if (
+      input.sourceFactType === ACCOUNTING_OPENING_RECEIVABLE_SOURCE_FACT_TYPE
+    ) {
+      throw new BadRequestException(
+        'Opening Receivable Journals require opening-receivable-specific write authority',
+      );
+    }
     return this.createJournalEntryInternal(input, operatorActorRef, null);
   }
 
@@ -354,6 +370,51 @@ export class AccountingJournalService {
     if (journal.deletedAt) {
       throw new ConflictException(
         'canonical Expense Journal was deleted and cannot be replayed',
+      );
+    }
+    return journal;
+  }
+
+  async createOpeningReceivableJournalInTx(
+    input: AccountingJournalCreateInput,
+    operatorActorRef: string,
+    authority: AccountingOpeningReceivableJournalWriteAuthorityV1,
+    tx: Prisma.TransactionClient,
+  ): Promise<AccountingJournalRow> {
+    const normalizedAuthority = this.applyJournalPolicy(() =>
+      normalizeAccountingOpeningReceivableWriteAuthority(authority),
+    );
+    const normalized = this.applyJournalPolicy(() =>
+      normalizeJournalCreate(input),
+    );
+    this.applyJournalPolicy(() =>
+      assertAccountingOpeningReceivableJournalAuthority(
+        normalized,
+        normalizedAuthority,
+      ),
+    );
+    await this.assertOpeningReceivableAuthorityInTx(normalizedAuthority, tx);
+
+    const operator = this.requireJournalValue(
+      operatorActorRef,
+      'operatorActorRef',
+    );
+    const journal = await this.createPreparedJournalEntryInTx(
+      {
+        normalized,
+        idempotencyHash: hashAccountingOpeningReceivableJournalWrite(
+          normalized,
+          normalizedAuthority,
+        ),
+        auditAuthority: normalizedAuthority as unknown as Prisma.InputJsonValue,
+      },
+      operator,
+      tx,
+      normalizedAuthority.businessTimezone,
+    );
+    if (journal.deletedAt) {
+      throw new ConflictException(
+        'Opening Receivable Journal was deleted and cannot be replayed',
       );
     }
     return journal;
@@ -2218,6 +2279,76 @@ export class AccountingJournalService {
       ) {
         throw new ConflictException(
           `External Sale outstanding receivable changed before settlement posting: ${prerequisite.externalSaleStableId}`,
+        );
+      }
+    }
+  }
+
+  private async assertOpeningReceivableAuthorityInTx(
+    authority: AccountingOpeningReceivableJournalWriteAuthorityV1,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    const opening = await tx.accountingOpeningReceivable.findUnique({
+      where: {
+        openingReceivableStableId: authority.fact.openingReceivableStableId,
+      },
+      select: {
+        storeStableId: true,
+        openingDate: true,
+        currency: true,
+        idempotencyKey: true,
+        factHash: true,
+        journalEntryStableId: true,
+      },
+    });
+    const openingDate = opening?.openingDate.toISOString().slice(0, 10) ?? null;
+    if (
+      !opening ||
+      opening.journalEntryStableId !== null ||
+      opening.storeStableId !== authority.fact.storeStableId ||
+      openingDate !== authority.fact.openingDate ||
+      opening.currency !== 'CAD' ||
+      opening.idempotencyKey !==
+        `opening-receivable:${authority.fact.openingReceivableStableId}:v1` ||
+      opening.factHash !== authority.factHash
+    ) {
+      throw new ConflictException(
+        'Opening Receivable authority changed before Journal posting',
+      );
+    }
+
+    const currentAccounts = await tx.accountingAccount.findMany({
+      where: {
+        accountStableId: {
+          in: authority.accountPrerequisites.map(
+            (account) => account.accountStableId,
+          ),
+        },
+      },
+      select: {
+        accountStableId: true,
+        accountClass: true,
+        type: true,
+        currency: true,
+        isActive: true,
+      },
+    });
+    const currentByStableId = new Map(
+      currentAccounts.map(
+        (account) => [account.accountStableId, account] as const,
+      ),
+    );
+    for (const prerequisite of authority.accountPrerequisites) {
+      const current = currentByStableId.get(prerequisite.accountStableId);
+      if (
+        !current ||
+        current.accountClass !== prerequisite.actual.accountClass ||
+        current.type !== prerequisite.actual.accountType ||
+        current.currency !== prerequisite.actual.currency ||
+        current.isActive !== prerequisite.actual.isActive
+      ) {
+        throw new ConflictException(
+          `Opening Receivable account authority changed before posting: ${prerequisite.accountStableId}`,
         );
       }
     }

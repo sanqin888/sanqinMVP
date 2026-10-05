@@ -1,8 +1,8 @@
 # Accounting External Sales Plan
 
-Status: **SLICE A/B1/B2/C1/C2/C3/D/E MERGED; E PR #2661 / FINAL HEAD `995c727d` / MERGE `99ea990b` / CI #6797 GREEN / NO MIGRATION; SLICE F LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION**  
-Date: 2026-10-04  
-Slice F implementation base: `origin/dev@9c9a66cd`  
+Status: **SLICE A/B1/B2/C1/C2/C3/D/E/F MERGED; F PR #2701 / FINAL HEAD `9b5a1226` / MERGE `23f4f526` / CI #6924 GREEN / NO MIGRATION; SLICE G1 LOCAL IMPLEMENTED / USER REVIEW PENDING / MIGRATION REQUIRED / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**  
+Date: 2026-10-05  
+Slice G1 implementation base: `origin/dev@23f4f526`  
 Owner: **Accounting / Reporting / Analytics**
 
 ## 1. Purpose
@@ -878,10 +878,50 @@ Examples:
   revenue;
 - no fabricated June External Sale simply to make balances appear.
 
-G requires a dedicated readiness audit of the existing Opening Balance support
-before implementation. If a general opening-balance writer is still absent, its
-design must be reviewed as Accounting-wide infrastructure rather than hidden
-inside External Sales.
+The G readiness audit is complete. Existing Accounting already has canonical
+`OPENING_BALANCE` Journal semantics, Accounts Receivable, Opening Balance
+Equity, Trial Balance / Balance Movement opening treatment, and Financial Report
+exclusion of opening entries from period P&L; production currently has no
+Opening Balance Journal and no closed Accounting period. The missing authority
+was a settleable opening receivable identity: C2 Settlement allocations are
+intentionally hard-bound to `AccountingExternalSale`, so a bare opening Journal
+would not provide an auditable receivable target for later collections.
+
+**G1 local implementation — 2026-10-05**
+
+State: **LOCAL IMPLEMENTED / USER REVIEW PENDING / MIGRATION REQUIRED / NO
+DEPENDENCY / NO NEW CONTEXT EDGE / NO GRAPH OR BASELINE CHANGE** on
+`feat/accounting-external-sales-slice-g-opening-balance` from
+`origin/dev@23f4f526`.
+
+G1 introduces Accounting-wide `AccountingOpeningReceivable` as an additive
+source-fact foundation rather than hiding cutover state inside External Sales.
+The browser/API cannot choose an arbitrary opening date: the service freezes the
+fact to the configured Accounting start date and configured Store. A positive
+CAD opening receivable posts only:
+
+```text
+Dr account_accounts_receivable
+Cr account_opening_balance_equity
+```
+
+through `AccountingJournalEntryKind.OPENING_BALANCE` and the dedicated
+`accounting.opening_receivable.v1` write authority. The source fact, Journal,
+Journal anchor and audit evidence are created in one Serializable transaction.
+The generic Journal path explicitly rejects this source-fact type.
+
+G1 intentionally does **not** modify `AccountingExternalSale`,
+`AccountingExternalSaleSettlement`, or C1/C2 allocation semantics. It adds
+read/list/create API contracts for the opening-receivable foundation only; no
+settlement, reversal/correction or Web entry flow is activated yet.
+
+Remaining G sequence:
+
+1. **G2 — Opening Receivable Settlement:** explicit BANK/CASH collection,
+   partial/full settlement, over-settlement prevention and canonical
+   `Dr Bank/Cash / Cr AR` posting against the opening-receivable identity.
+2. **G3 — reversal/correction + Web:** immutable posted facts, reversal/replacement
+   correction flow, and operator UI.
 
 ### Slice H — Closeout / production verification
 
