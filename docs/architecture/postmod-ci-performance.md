@@ -1,4 +1,4 @@
-# Post-Modularization CI and Image Build Performance — Batches 1–5
+# Post-Modularization CI and Image Build Performance — Batches 1–6
 
 Date: 2026-10-04  
 Baseline: `origin/dev@6e7b4fbd2067892bf4cf990d2a193dd92e366957`  
@@ -17,7 +17,7 @@ Batch 5 branch: `ci/image-build-optimization-batch-5`
 Batch 5 state: **MERGED / PR #2698 / MERGE `feff02c8` / FINAL PR CI #6911 GREEN / IMAGE CHECKS #2 GREEN / DEV PUSH CI #6912 GREEN / MAIN CI #6916 GREEN / PUBLISH #4 GREEN / NO MIGRATION / NO DEPENDENCY / NO GRAPH OR BASELINE CHANGE**  
 Batch 6 baseline: `origin/dev@feff02c821d05178ea5f64438805d63db5b1e825`  
 Batch 6 branch: `ci/critical-path-optimization-batch-6`  
-Batch 6 state: **LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO DEPENDENCY MANIFEST CHANGE / NO GRAPH OR BASELINE CHANGE**
+Batch 6 state: **PR #2700 / IMPLEMENTATION HEAD `7a655ebd` / CI #6919 GREEN (129s) / IMAGE CHECKS #5 GREEN (72s) / FINAL DOCUMENTATION HEAD CHECKS PENDING / NO MIGRATION / NO DEPENDENCY MANIFEST CHANGE / NO GRAPH OR BASELINE CHANGE**
 
 ## Evidence and goal
 
@@ -203,27 +203,31 @@ Compare image data like-for-like; do not equate local load with release push or 
 
 References: [Docker cache layer ordering](https://docs.docker.com/build/cache/optimize/), [GHA cache scopes and branch access](https://docs.docker.com/build/cache/backends/gha/), [Buildx summaries](https://docs.docker.com/build/ci/github-actions/build-summary/), [pnpm parallel scripts](https://pnpm.io/cli/run#--parallel).
 
-## Batch 6 — Shorten CI critical paths and narrow image installs
+## Batch 6 — Shorten CI critical paths and remove redundant PR image-cache export
 
-**Owner / class:** Runtime / Data / CI / Ops; atomic internal execution and packaging change. Consumers are the authoritative CI gates, browser E2E runtime, immutable main-image publisher, API/Uber worker shared image, and Web standalone image.
+**Owner / class:** Runtime / Data / CI / Ops; atomic internal execution and validation-cache change. Consumers are the authoritative CI gates, browser E2E runtime, immutable main-image publisher, API/Uber worker shared image, and Web standalone image.
 
-**State:** LOCAL IMPLEMENTED / USER REVIEW PENDING, based on merged dev `feff02c821d05178ea5f64438805d63db5b1e825`. No local lint/build/test/image build is run under the repository workflow; remote validation is pending user authorization.
+**State:** PR #2700; implementation head `7a655ebd803ff1d119d2ec61abfe4fe01c9057b4` passed CI #6919 and image-build-checks #5. The final documentation-only head still requires exact-head acceptance before merge. Baseline is merged dev `feff02c821d05178ea5f64438805d63db5b1e825`; no local lint/build/test/image build was run under the repository workflow.
 
 ### Measured reason for the batch
 
-Latest exact main CI #6916 completed in 128s with three near-critical jobs: E2E 123s, API static 117s, and API Jest 112s. In API static checks, typed lint remained serial and unchanged; after lint, Nest build (~20s) and API strict TypeScript (~21s) were independent. E2E built Web (~33s) only after browser/API preparation, although the same Web image already builds successfully without a live API. Image publication #4 took 204s; cached dependency layer materialization and cache export dominated more than the application compilation changes described above.
+Exact main CI #6916 completed in 128s with three near-critical jobs: E2E 123s, API static 117s, and API Jest 112s. In API static checks, typed lint remained serial and unchanged; after lint, Nest build (~20s) and API strict TypeScript (~21s) were independent. E2E built Web (~33s) only after browser/API preparation, although the same Web image already builds successfully without a live API. Image publication #4 took 204s; cached dependency-layer materialization and cache export dominated more than application compilation.
+
+Two remote selective-install trials were deliberately rejected. Both the initial `--filter api.../web...` form and the follow-up explicit `recursive-install=false` form still resolved and added all 1172 lockfile packages in pnpm 9's shared workspace layout; the Web builder still executed Prisma, Nest and argon2 lifecycle scripts, and final image sizes were unchanged. Image checks #4 spent about 112s (Web) and 120s (API) preparing/exporting validation caches after the images had already built and loaded. The Docker install was therefore restored to the known full frozen-lockfile behavior, and the optimization moved to the measured redundant export.
 
 ### Implementation and preserved gates
 
 - After the complete API lint and architecture/safety prerequisites, run the unchanged Nest build and unchanged API strict declaration command concurrently. Explicitly wait for both PIDs, preserve their separate full logs, and fail the job if either fails. Shared-library strict checks still run afterward with their existing three-way parallelism.
 - Keep the Web matrix path unchanged except for making its existing strict check explicitly Web-only after the API strict command moves into the API parallel step.
 - In browser E2E, run the unchanged production Web build as a third explicitly awaited preparation branch alongside Chromium/system installation and the serial Prisma generation -> migration replay -> deterministic seed -> API build branch. Web still starts only after preparation, API readiness is still required, BFF readiness is still checked, and all 13 browser journeys remain. Failure artifacts now include the Web preparation log.
-- In each Dockerfile, retain all package manifests and the same frozen lockfile, explicitly disable pnpm's default recursive workspace install, then install only the owning application and its transitive workspace dependencies with the `api...` / `web...` selector. This excludes the unrelated application and root workspace packages from the builder dependency layer without changing manifests, versions, the lockfile, runtime `pnpm deploy`, Prisma diagnostics, native modules, OCR/PDF packages, Next standalone packaging, image entrypoints, or immutable publishing.
-- Full lint rules, strict programs, builds, API Jest discovery, Web Jest, architecture/safety checks, migration replay/seed, browser tests, printer/Windows checks, check names and aggregate failure semantics remain. No cache mode/backend, dependency version, application source, schema/migration, context boundary, compatibility record, graph allowance, or production deployment changes.
+- Keep both Docker builders on the complete frozen workspace install. PR image validation imports only the latest published-image cache scope and intentionally does not export a second full `mode=max` builder cache. The main publisher still owns and refreshes the unchanged release cache, so immutable publishing behavior and production cache policy remain unchanged.
+- Full lint rules, strict programs, builds, API Jest discovery, Web Jest, architecture/safety checks, migration replay/seed, browser tests, printer/Windows checks, image runtime packaging/smokes, check names and aggregate failure semantics remain. No dependency version/manifest/lockfile, application source, schema/migration, context boundary, compatibility record, graph allowance, main promotion or production deployment changes.
 
-### Remote acceptance and measurement
+### Remote evidence and acceptance
 
-A reviewed PR must pass all seven normal CI jobs plus both path-triggered image jobs on the exact final head. Confirm unchanged API/Web/browser discovery and inspect both parallel-step logs for successful child commands. Compare API static and E2E job times against #6916 while accounting for runner CPU variance. For images, compare dependency-layer transfer/install size and time, full build action time, smoke results, final uncompressed image sizes and digests. A smaller builder cache layer need not change final runtime image size. Do not claim a stable improvement from one runner sample.
+Implementation head CI #6919 passed all seven jobs in 129s: API static 92s, E2E 117s, API Jest 118s and Web 103s. The API Nest/strict pair completed together in about 22.5s after lint; API discovery remained 486 suites / 2956 tests with the same two skips, Web remained 71 suites / 274 tests, and all 13 browser journeys passed.
 
-If filtered installation exposes an undeclared dependency or pnpm packaging assumption, restore the full install rather than adding an unrelated dependency in this batch. Cache backend/compression remains follow-up work only after like-for-like evidence. No main promotion or production deployment is authorized by this batch.
+Image-build-checks #5 passed in 72s versus 274s for the preceding cache-exporting trial on the same PR. Web/API jobs took 29s/68s, while their measured Buildx actions took 8.437s/27.953s. Both runtime smokes passed, no cache export occurred, and uncompressed runtime sizes remained 79,503,661 bytes (Web) and 373,609,686 bytes (API). This warm-cache comparison demonstrates removal of the measured export overhead; it is not a general cold-build benchmark.
+
+The exact final documentation head must again pass all seven normal CI jobs and both path-triggered image jobs before squash merge to dev. No main promotion or production deployment is authorized by this batch.
 
