@@ -194,24 +194,45 @@ export function newReviewRowForLine(
 
 export function buildReviewCorrectionInputs(
   rows: ProviderFinancialReviewDraftRow[],
+  sourceLines: AccountingProviderFinancialLine[],
 ): {
   corrections: AccountingProviderFinancialReviewCorrectionInput[];
   error: string | null;
 } {
   const corrections: AccountingProviderFinancialReviewCorrectionInput[] = [];
+  const sourceByStableId = new Map(
+    sourceLines.map((line) => [line.lineStableId, line]),
+  );
+
   for (const row of rows) {
+    const source = sourceByStableId.get(row.sourceLineStableId);
+    if (!source) {
+      return {
+        corrections: [],
+        error: `Unknown source line: ${row.sourceLineStableId}`,
+      };
+    }
+    const sourceLabel = `#${source.lineNo} ${source.rawName ?? source.component}`;
+
     if (row.reason === 'EXTRACTION_CORRECTION') {
       const amountCents = parseMoneyInputToCents(row.amount);
       if (amountCents === null) {
         return {
           corrections: [],
-          error: `Invalid money value for ${row.sourceLineStableId}`,
+          error: `Invalid money value for ${sourceLabel}`,
+        };
+      }
+      const rawName = row.rawName.trim() || null;
+      if (rawName === source.rawName && amountCents === source.amountCents) {
+        return {
+          corrections: [],
+          error: `Correction does not change source line ${sourceLabel}; change the effective label or amount.`,
         };
       }
       corrections.push({
         sourceLineStableId: row.sourceLineStableId,
         reason: row.reason,
-        rawName: row.rawName.trim() || null,
+        rawName,
         amountCents,
         note: row.note.trim() || null,
       });
@@ -220,7 +241,17 @@ export function buildReviewCorrectionInputs(
     if (!row.note.trim()) {
       return {
         corrections: [],
-        error: `Classification note is required for ${row.sourceLineStableId}`,
+        error: `Classification note is required for ${sourceLabel}`,
+      };
+    }
+    if (
+      row.component === source.component &&
+      row.postingTreatment === source.postingTreatment &&
+      row.taxRole === source.taxRole
+    ) {
+      return {
+        corrections: [],
+        error: `Classification does not change source line ${sourceLabel}; change Component, Posting treatment, or Tax role.`,
       };
     }
     corrections.push({
