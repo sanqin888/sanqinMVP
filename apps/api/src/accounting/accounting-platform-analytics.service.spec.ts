@@ -499,13 +499,13 @@ describe('AccountingPlatformAnalyticsService', () => {
 
     expect(uber.latestMonth).toBe('2026-07');
     expect(uber.coverage).toBe('PARTIAL');
-    expect(
-      uber.periods.map((period) => [period.month, period.status]),
-    ).toEqual([
-      ['2026-07', 'AVAILABLE'],
-      ['2026-06', 'MISSING'],
-      ['2026-05', 'AVAILABLE'],
-    ]);
+    expect(uber.periods.map((period) => [period.month, period.status])).toEqual(
+      [
+        ['2026-07', 'AVAILABLE'],
+        ['2026-06', 'MISSING'],
+        ['2026-05', 'AVAILABLE'],
+      ],
+    );
   });
 
   it('fails visible when one provider has multiple confirmed statements for the same month', async () => {
@@ -634,14 +634,14 @@ describe('AccountingPlatformAnalyticsService', () => {
     const fantuan = report.providers.find(
       (provider) => provider.provider === AccountingFinancialProvider.FANTUAN,
     );
-    expect(fantuan?.periods[0]).toEqual(
-      expect.objectContaining({
-        status: 'INCOMPLETE',
-        issues: expect.arrayContaining([
-          'PROVIDER_CONTROL_FANTUAN_MARKETING_CHARGES_MISMATCH',
-          'PROVIDER_CONTROL_FANTUAN_NET_TAXES_MISMATCH',
-        ]),
-      }),
+    const period = fantuan?.periods[0];
+    expect(period?.status).toBe('INCOMPLETE');
+    if (period?.status !== 'INCOMPLETE') throw new Error('expected incomplete');
+    expect(period.issues).toContain(
+      'PROVIDER_CONTROL_FANTUAN_MARKETING_CHARGES_MISMATCH',
+    );
+    expect(period.issues).toContain(
+      'PROVIDER_CONTROL_FANTUAN_NET_TAXES_MISMATCH',
     );
   });
 

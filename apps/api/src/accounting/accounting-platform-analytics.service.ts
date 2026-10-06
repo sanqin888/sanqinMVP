@@ -78,12 +78,12 @@ const isConfirmedProviderDocument = (
   const review = document.artifact.inboxItem;
   return Boolean(
     review &&
-      review.status === AccountingInboxStatus.CONFIRMED &&
-      review.materializedEntityType ===
-        AccountingInboxMaterializedEntityType.PROVIDER_FINANCIAL_DOCUMENT &&
-      review.materializedEntityStableId === document.documentStableId &&
-      review.reviewedAt &&
-      review.reviewedByUserStableId,
+    review.status === AccountingInboxStatus.CONFIRMED &&
+    review.materializedEntityType ===
+      AccountingInboxMaterializedEntityType.PROVIDER_FINANCIAL_DOCUMENT &&
+    review.materializedEntityStableId === document.documentStableId &&
+    review.reviewedAt &&
+    review.reviewedByUserStableId,
   );
 };
 
