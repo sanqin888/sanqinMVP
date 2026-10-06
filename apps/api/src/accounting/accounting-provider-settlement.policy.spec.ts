@@ -114,6 +114,123 @@ const uberDocument = (lines: SettlementTestLine[]) => ({
   lines: withUberControlTotals(lines),
 });
 
+const fantuanSeptemberDocument = (includeMarketingFee: boolean) => ({
+  documentStableId: 'fantuan_sep_statement',
+  revision: 1,
+  provider: AccountingFinancialProvider.FANTUAN,
+  documentType: AccountingFinancialDocumentType.STATEMENT,
+  storeStableId: '4750_Yonge_Street',
+  periodStart: '2026-09-01',
+  periodEnd: '2026-09-30',
+  currency: 'CAD',
+  lines: [
+    {
+      lineStableId: 'fantuan-sales',
+      lineNo: 1,
+      rawName: 'Sales',
+      component: AccountingFinancialComponent.SALES,
+      postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+      amountCents: 686782,
+    },
+    {
+      lineStableId: 'fantuan-item-subtotal',
+      lineNo: 2,
+      rawName: 'Item Subtotal',
+      component: AccountingFinancialComponent.CONTROL_TOTAL,
+      postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+      amountCents: 686782,
+    },
+    {
+      lineStableId: 'fantuan-marketing-control',
+      lineNo: 3,
+      rawName: 'Marketing and Fantuan Event Charges',
+      component: AccountingFinancialComponent.CONTROL_TOTAL,
+      postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+      amountCents: -274545,
+    },
+    {
+      lineStableId: 'fantuan-promotion',
+      lineNo: 4,
+      rawName: 'Discounts from Promotion events',
+      component: AccountingFinancialComponent.PROMOTION,
+      postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+      amountCents: -170973,
+    },
+    {
+      lineStableId: 'fantuan-subsidy',
+      lineNo: 5,
+      rawName: 'Fantuan Subsidy for Promotion events',
+      component: AccountingFinancialComponent.SUBSIDY,
+      postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+      amountCents: 170973,
+    },
+    ...(includeMarketingFee
+      ? [
+          {
+            lineStableId: 'fantuan-marketing-fee',
+            lineNo: 6,
+            rawName: 'Marketing Fee',
+            component: AccountingFinancialComponent.ADVERTISING,
+            postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+            amountCents: -28200,
+          },
+        ]
+      : []),
+    {
+      lineStableId: 'fantuan-commission',
+      lineNo: 7,
+      rawName: 'Commission',
+      component: AccountingFinancialComponent.COMMISSION,
+      postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+      amountCents: -246345,
+    },
+    {
+      lineStableId: 'fantuan-tax-control',
+      lineNo: 8,
+      rawName: 'Net Taxes',
+      component: AccountingFinancialComponent.CONTROL_TOTAL,
+      postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+      amountCents: 53599,
+    },
+    {
+      lineStableId: 'fantuan-sales-tax',
+      lineNo: 9,
+      rawName: 'Net Sales GST/HST',
+      component: AccountingFinancialComponent.SALES_TAX,
+      postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+      amountCents: 89287,
+    },
+    ...(includeMarketingFee
+      ? [
+          {
+            lineStableId: 'fantuan-marketing-fee-tax',
+            lineNo: 10,
+            rawName: 'Marketing Fee GST/HST',
+            component: AccountingFinancialComponent.ADVERTISING_TAX,
+            postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+            amountCents: -3666,
+          },
+        ]
+      : []),
+    {
+      lineStableId: 'fantuan-commission-tax',
+      lineNo: 11,
+      rawName: 'Commission GST/HST',
+      component: AccountingFinancialComponent.COMMISSION_TAX,
+      postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+      amountCents: -32022,
+    },
+    {
+      lineStableId: 'fantuan-transfer',
+      lineNo: 12,
+      rawName: 'Total transfer amount',
+      component: AccountingFinancialComponent.PAYOUT,
+      postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+      amountCents: 465836,
+    },
+  ],
+});
+
 // Read-only production evidence B4842290 came from Poppler text shaped like:
 // Sales (84 Orders) / Tax on Sales / $2,603.36 / $338.48.
 // The legacy label-followed-by-next-token parser therefore duplicated Sales into Tax.
@@ -506,6 +623,68 @@ describe('Accounting provider settlement shadow policy', () => {
         }),
       ]),
     );
+  });
+
+  it('fails closed when Fantuan control totals expose a missing Marketing Fee', () => {
+    const plan = buildProviderSettlementDocumentPlan({
+      document: fantuanSeptemberDocument(false),
+      salesAuthority: 'STATEMENT_AUTHORITATIVE',
+      occurredAt: new Date('2026-10-01T03:59:59.999Z'),
+    });
+
+    expect(plan.status).toBe('BLOCKED');
+    expect(plan.blockReasons).toContain('PROVIDER_CONTROL_TOTAL_MISMATCH');
+    expect(plan.controlTotalChecks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: 'FANTUAN_ITEM_SUBTOTAL',
+          status: 'MATCHED',
+        }),
+        expect.objectContaining({
+          key: 'FANTUAN_MARKETING_CHARGES',
+          status: 'MISMATCH',
+          expectedCents: -274545,
+          calculatedCents: -246345,
+          deltaCents: 28200,
+        }),
+        expect.objectContaining({
+          key: 'FANTUAN_NET_TAXES',
+          status: 'MISMATCH',
+          expectedCents: 53599,
+          calculatedCents: 57265,
+          deltaCents: 3666,
+        }),
+        expect.objectContaining({
+          key: 'FANTUAN_TRANSFER_TOTAL',
+          status: 'MATCHED',
+        }),
+      ]),
+    );
+    expect(plan.draftJournal).toBeNull();
+  });
+
+  it('accepts Fantuan control totals once Marketing Fee and its GST/HST are present', () => {
+    const plan = buildProviderSettlementDocumentPlan({
+      document: fantuanSeptemberDocument(true),
+      salesAuthority: 'STATEMENT_AUTHORITATIVE',
+      occurredAt: new Date('2026-10-01T03:59:59.999Z'),
+    });
+
+    expect(plan.status).toBe('READY');
+    expect(plan.controlTotalChecks).toHaveLength(4);
+    expect(
+      plan.controlTotalChecks.every((check) => check.status === 'MATCHED'),
+    ).toBe(true);
+    expect(
+      plan.decisions.find((line) => line.rawName === 'Marketing Fee'),
+    ).toEqual(
+      expect.objectContaining({
+        disposition: 'POSTABLE',
+        targetAccountStableId:
+          PROVIDER_SETTLEMENT_ACCOUNT_IDS.advertisingExpense,
+      }),
+    );
+    expect(plan.debitCents).toBe(plan.creditCents);
   });
 
   it('honors parser reconciliation-only treatment for Clover tips', () => {

@@ -9,6 +9,7 @@ import {
   AccountingProviderFinancialReviewPolicyError,
   applyProviderFinancialReviewCorrections,
   normalizeProviderFinancialReviewDraft,
+  resolveProviderFinancialEffectiveLines,
 } from './accounting-provider-financial-review.policy';
 
 const sourceLines = [
@@ -191,6 +192,82 @@ describe('Accounting provider financial human review policy', () => {
     expect(sourceLines[1]?.amountCents).toBe(260336);
     expect(effective[1]?.amountCents).toBe(33848);
     expect(effective[0]).toEqual(sourceLines[0]);
+  });
+
+  it('resolves corrections and parser re-evaluation snapshots through one effective-line path', () => {
+    const review = normalizeProviderFinancialReviewDraft({
+      documentType: AccountingFinancialDocumentType.STATEMENT,
+      sourceLines,
+      input: {
+        expectedDocumentRevision: 1,
+        corrections: [
+          {
+            sourceLineStableId: 'line_sales_tax',
+            reason:
+              AccountingProviderFinancialCorrectionReason.EXTRACTION_CORRECTION,
+            amountCents: 33848,
+          },
+        ],
+      },
+    });
+    const sourceWithDates = sourceLines.map((source) => ({
+      ...source,
+      occurredAt: null,
+    }));
+
+    const corrected = resolveProviderFinancialEffectiveLines({
+      sourceLines: sourceWithDates,
+      review: {
+        effectiveSnapshotParserName: null,
+        effectiveLines: [],
+        corrections: review.corrections,
+      },
+    });
+    expect(corrected[1]?.amountCents).toBe(33848);
+
+    const reevaluated = resolveProviderFinancialEffectiveLines({
+      sourceLines: sourceWithDates,
+      review: {
+        effectiveSnapshotParserName: 'accounting-provider-financial',
+        corrections: [],
+        effectiveLines: [
+          {
+            reviewedLineStableId: 'reviewed_sales',
+            lineNo: 1,
+            sourceLineStableId: 'line_sales',
+            rawCode: null,
+            rawName: 'Sales',
+            component: AccountingFinancialComponent.SALES,
+            postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+            taxRole: AccountingFinancialTaxRole.NONE,
+            amountCents: 275000,
+            occurredAt: null,
+          },
+        ],
+      },
+    });
+    expect(reevaluated).toEqual([
+      expect.objectContaining({
+        lineStableId: 'reviewed_sales',
+        amountCents: 275000,
+      }),
+    ]);
+  });
+
+  it('rejects an incomplete parser re-evaluation effective snapshot', () => {
+    expect(() =>
+      resolveProviderFinancialEffectiveLines({
+        sourceLines: sourceLines.map((source) => ({
+          ...source,
+          occurredAt: null,
+        })),
+        review: {
+          effectiveSnapshotParserName: 'accounting-provider-financial',
+          effectiveLines: [],
+          corrections: [],
+        },
+      }),
+    ).toThrow('missing effective lines');
   });
 
   it('rejects unknown source lines and no-op corrections', () => {

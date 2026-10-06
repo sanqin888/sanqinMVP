@@ -21,7 +21,7 @@ import { parseUberAccountingApiReport } from './accounting-uber-reporting.parser
 
 export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_NAME =
   'accounting-provider-financial';
-export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION = '13';
+export const ACCOUNTING_PROVIDER_FINANCIAL_PARSER_VERSION = '14';
 
 export type ProviderFinancialParseInput = {
   text: string;
@@ -893,6 +893,11 @@ function parseFantuanStatement(
     AccountingFinancialPostingTreatment.POSTABLE,
   );
   add(
+    'Marketing Fee',
+    AccountingFinancialComponent.ADVERTISING,
+    AccountingFinancialPostingTreatment.POSTABLE,
+  );
+  add(
     'Commission',
     AccountingFinancialComponent.COMMISSION,
     AccountingFinancialPostingTreatment.POSTABLE,
@@ -912,6 +917,12 @@ function parseFantuanStatement(
     AccountingFinancialComponent.SALES_TAX,
     AccountingFinancialPostingTreatment.POSTABLE,
     AccountingFinancialTaxRole.SALES_TAX,
+  );
+  add(
+    'Marketing Fee GST/HST',
+    AccountingFinancialComponent.ADVERTISING_TAX,
+    AccountingFinancialPostingTreatment.POSTABLE,
+    AccountingFinancialTaxRole.INPUT_TAX,
   );
   add(
     'Commission GST/HST',

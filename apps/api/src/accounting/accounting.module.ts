@@ -50,6 +50,7 @@ import { AccountingAccountTransferService } from './accounting-account-transfer.
 import { AccountingInboxService } from './accounting-inbox.service';
 import { AccountingProviderSettlementQueryService } from './accounting-provider-settlement-query.service';
 import { AccountingSalesAnalyticsService } from './accounting-sales-analytics.service';
+import { AccountingPlatformAnalyticsService } from './accounting-platform-analytics.service';
 import { AccountingBalanceMovementService } from './accounting-balance-movement.service';
 import { AccountingTrialBalanceService } from './accounting-trial-balance.service';
 import { AccountingStatementDrillThroughService } from './accounting-statement-drill-through.service';
@@ -154,6 +155,7 @@ import { AccountingCloverPreSyncAuthorityService } from './accounting-clover-pre
     AccountingAccountTransferService,
     AccountingFinancialReportsService,
     AccountingSalesAnalyticsService,
+    AccountingPlatformAnalyticsService,
     AccountingCloverPreSyncAuthorityService,
     AccountingCloverAuthorityReplacementService,
     AccountingBalanceMovementService,
