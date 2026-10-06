@@ -180,7 +180,7 @@ export function ProviderFinancialReviewPanel({
   }
 
   async function saveDraft() {
-    const built = buildReviewCorrectionInputs(rows);
+    const built = buildReviewCorrectionInputs(rows, document.lines);
     if (built.error) {
       setError(
         isZh ? '无法保存：' + built.error : 'Cannot save: ' + built.error,
