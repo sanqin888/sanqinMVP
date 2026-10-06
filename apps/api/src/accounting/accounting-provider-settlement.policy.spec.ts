@@ -1466,7 +1466,7 @@ describe('Accounting provider settlement shadow policy', () => {
         documentStableId: 'fantuan_aug_statement',
         revision: 1,
         provider: AccountingFinancialProvider.FANTUAN,
-        documentType: AccountingFinancialDocumentType.STATEMENT,
+        documentType: AccountingFinancialDocumentType.OTHER,
         storeStableId: '4750_Yonge_Street',
         periodStart: '2026-08-01',
         periodEnd: '2026-08-31',

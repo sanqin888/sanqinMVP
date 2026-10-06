@@ -78,6 +78,33 @@ const accountFact = (
   isActive: overrides?.isActive ?? true,
 });
 
+const fantuanMatchedControlEvidence = (
+  adjustmentAmountCents: number,
+  startLineNo = 100,
+) =>
+  [
+    ['Sales', 0],
+    ['Item Subtotal', 0],
+    ['Discounts from Promotion events', 0],
+    ['Fantuan Subsidy for Promotion events', 0],
+    ['Commission', 0],
+    ['Marketing and Fantuan Event Charges', 0],
+    ['Net Sales GST/HST', 0],
+    ['Commission GST/HST', 0],
+    ['Net Taxes', 0],
+    ['Total transfer amount', adjustmentAmountCents],
+  ].map(([rawName, amountCents], index) => ({
+    lineStableId: `fantuan-control-${startLineNo + index}`,
+    lineNo: startLineNo + index,
+    rawCode: null,
+    rawName: String(rawName),
+    component: AccountingFinancialComponent.CONTROL_TOTAL,
+    postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+    taxRole: AccountingFinancialTaxRole.NONE,
+    amountCents: Number(amountCents),
+    occurredAt: null,
+  }));
+
 const uberStatement = (params: {
   documentStableId: string;
   businessIdentityKey: string;
@@ -234,6 +261,7 @@ describe('AccountingProviderSettlementPreviewService', () => {
               amountCents: 2694,
               occurredAt: null,
             },
+            ...fantuanMatchedControlEvidence(2694),
           ],
         },
         {
@@ -406,6 +434,7 @@ describe('AccountingProviderSettlementPreviewService', () => {
               amountCents: 2694,
               occurredAt: null,
             },
+            ...fantuanMatchedControlEvidence(2694, 200),
           ],
         },
       ]),
