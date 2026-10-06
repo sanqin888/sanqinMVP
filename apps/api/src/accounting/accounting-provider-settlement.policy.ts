@@ -1156,7 +1156,12 @@ export function buildProviderSettlementDocumentPlan(params: {
 }): ProviderSettlementDocumentPlan {
   const { document } = params;
   const controlTotalChecks = buildProviderControlTotalChecks(document);
+  const statementControlTotalsRequired =
+    document.documentType === AccountingFinancialDocumentType.STATEMENT;
   const controlBlockReasons = [
+    ...(statementControlTotalsRequired && controlTotalChecks.length === 0
+      ? ['PROVIDER_CONTROL_TOTAL_INCOMPLETE']
+      : []),
     ...(controlTotalChecks.some((check) => check.status === 'MISMATCH')
       ? ['PROVIDER_CONTROL_TOTAL_MISMATCH']
       : []),

@@ -12,7 +12,7 @@ describe('Clover fee payable correction runtime UI', () => {
     expect(pageSource).toContain("document.provider === 'CLOVER'");
     expect(pageSource).toContain("document.documentType === 'STATEMENT'");
     expect(pageSource).toContain('<CloverFeeReclassificationPanel');
-    expect(pageSource).toContain('postingState &&');
+    expect(pageSource).toContain('if (journal)');
   });
 
   it('requires a fresh plan hash and two-step real reclassification confirmation', () => {

@@ -8,10 +8,10 @@ describe('Accounting Inbox pre-confirm UX closeout', () => {
       'utf8',
     );
 
-    expect(source).toContain("识别置信度");
+    expect(source).toContain('识别置信度');
     expect(source).toContain('expenseParse.confidence');
-    expect(source).toContain('从待处理移入费用审核');
-    expect(source).toContain('确认并审核');
+    expect(source).toContain('确认识别并进入审核');
+    expect(source).toContain('核算与最终确认都在审核阶段完成');
   });
 
   it('blocks notification-only expense email review until a formal source document is linked', () => {
@@ -33,7 +33,7 @@ describe('Accounting Inbox pre-confirm UX closeout', () => {
     );
     expect(pageSource).toContain('费用审核区');
     expect(source).toContain('disabled');
-    expect(source).toContain('点击后会从待处理移入费用审核');
+    expect(source).toContain('点击后进入费用审核');
     expect(pageSource).toContain("method: 'DELETE'");
   });
 
@@ -57,14 +57,27 @@ describe('Accounting Inbox pre-confirm UX closeout', () => {
     );
     const pageSource = readFileSync(resolve(__dirname, 'page.tsx'), 'utf8');
 
-    expect(source).toContain('确认后会转入“平台结算”');
-    expect(source).toContain('原始证据将受保护');
-    expect(source).toContain('此动作本身不会生成会计分录');
-    expect(source).toContain('辅助 / 控制证据 · 确认后直接归档');
-    expect(source).toContain('确认并归档辅助证据');
-    expect(source).toContain('无需进一步操作');
+    expect(source).toContain('确认识别并进入审核');
+    expect(source).toContain('这里只确认识别内容大致正确，不做核算、不记账');
+    expect(source).toContain('确认识别并归档');
+    expect(source).toContain('辅助 / 控制证据确认后直接归档');
     expect(pageSource).toContain("confirmedDocumentType !== 'STATEMENT'");
-    expect(pageSource).toContain('辅助 / 控制证据已确认并直接入库');
+    expect(pageSource).toContain('辅助 / 控制证据的识别结果已确认并归档');
+    expect(pageSource).toContain('/accounting/settlements#provider-');
+  });
+
+  it('keeps reconciliation out of Inbox and only confirms recognition there', () => {
+    const source = readFileSync(
+      resolve(__dirname, 'inbox-items-list.tsx'),
+      'utf8',
+    );
+
+    expect(source).toContain('识别条目');
+    expect(source).toContain('费用识别结果');
+    expect(source).not.toContain('账单自动验算');
+    expect(source).not.toContain('providerStatementConfirmationBlocked');
+    expect(source).not.toContain('providerValidation?.canConfirm');
+    expect(source).not.toContain('<ProviderFinancialReviewPanel');
   });
 
   it('labels manual uploads as deletable before confirmation and protected after confirmation', () => {

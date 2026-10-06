@@ -95,8 +95,8 @@ export function ExpenseRecordsPanel({
           </h2>
           <p className="mt-1 text-sm text-slate-500">
             {isZh
-              ? '筛选会作用于全部历史支出，再按每页条数分页显示。'
-              : 'Filters apply to all expense history before pagination.'}
+              ? '这里显示数据库中已经保存的正式费用记录、分类和付款归属，不回读收件箱识别值。筛选会作用于全部历史支出。'
+              : 'This view shows persisted expense records, categories, and funding from the database; it does not reread Inbox recognition values. Filters apply to all expense history.'}
           </p>
         </div>
         <label className="text-sm">

@@ -9,6 +9,36 @@ describe('AccountingProviderSettlementQueryService posting states', () => {
         sourceFactType: 'accounting.provider_financial_document.v1',
         sourceFactStableId: 'doc_posted',
         sourceFactVersion: 1,
+        occurredAt: new Date('2026-09-30T12:00:00.000Z'),
+        currency: 'CAD',
+        memo: 'Fantuan September settlement',
+        lines: [
+          {
+            lineNo: 1,
+            debitCents: 686782,
+            creditCents: 0,
+            memo: 'Sales',
+            account: {
+              accountStableId: 'account_provider_clearing',
+              name: 'Provider clearing',
+            },
+            category: null,
+          },
+          {
+            lineNo: 2,
+            debitCents: 0,
+            creditCents: 686782,
+            memo: 'Revenue',
+            account: {
+              accountStableId: 'account_sales_revenue',
+              name: 'Sales revenue',
+            },
+            category: {
+              categoryStableId: 'category_sales',
+              name: 'Sales',
+            },
+          },
+        ],
       },
     ]);
     const service = new AccountingProviderSettlementQueryService({
@@ -26,11 +56,40 @@ describe('AccountingProviderSettlementQueryService posting states', () => {
         documentStableId: 'doc_pending',
         postingState: 'NOT_POSTED',
         existingJournalEntryStableId: null,
+        journal: null,
       },
       {
         documentStableId: 'doc_posted',
         postingState: 'POSTED',
         existingJournalEntryStableId: 'journal_posted_1',
+        journal: {
+          entryStableId: 'journal_posted_1',
+          occurredAt: '2026-09-30T12:00:00.000Z',
+          currency: 'CAD',
+          memo: 'Fantuan September settlement',
+          lines: [
+            {
+              lineNo: 1,
+              accountStableId: 'account_provider_clearing',
+              accountName: 'Provider clearing',
+              categoryStableId: null,
+              categoryName: null,
+              debitCents: 686782,
+              creditCents: 0,
+              memo: 'Sales',
+            },
+            {
+              lineNo: 2,
+              accountStableId: 'account_sales_revenue',
+              accountName: 'Sales revenue',
+              categoryStableId: 'category_sales',
+              categoryName: 'Sales',
+              debitCents: 0,
+              creditCents: 686782,
+              memo: 'Revenue',
+            },
+          ],
+        },
       },
     ]);
 
@@ -38,14 +97,10 @@ describe('AccountingProviderSettlementQueryService posting states', () => {
       expect.objectContaining({
         where: {
           deletedAt: null,
-          OR: [
-            {
-              sourceFactType: 'accounting.provider_financial_document.v1',
-              sourceFactStableId: {
-                in: ['doc_pending', 'doc_posted'],
-              },
-            },
-          ],
+          sourceFactType: 'accounting.provider_financial_document.v1',
+          sourceFactStableId: {
+            in: ['doc_pending', 'doc_posted'],
+          },
         },
       }),
     );
