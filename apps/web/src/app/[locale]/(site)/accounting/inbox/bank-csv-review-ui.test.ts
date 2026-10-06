@@ -33,7 +33,9 @@ describe('PAYOUT-E-A bank CSV evidence / settlement ownership UI', () => {
   });
 
   it('keeps evidence preview in Inbox without settlement include/exclude decisions', () => {
-    expect(inboxListSource).toContain('Preview bank receipts');
+    expect(inboxListSource).toContain(
+      'Confirm recognition & enter bank review',
+    );
     expect(inboxPageSource).toContain('<AccountingInboxBankCsvReviewPanel');
     expect(bankReviewSource).toContain(
       '/accounting/provider-payouts/bank-match-preview?',

@@ -177,6 +177,33 @@ export function reviewRowsFromRevision(
   });
 }
 
+export function reviewRowsForEditor(
+  document: AccountingProviderFinancialDocument,
+  revision: AccountingProviderFinancialReviewRevision | null,
+): ProviderFinancialReviewDraftRow[] {
+  const correctionByLineStableId = new Map(
+    (revision?.corrections ?? []).map((correction) => [
+      correction.sourceLineStableId,
+      correction,
+    ]),
+  );
+
+  return document.lines.map((line) => {
+    const correction = correctionByLineStableId.get(line.lineStableId);
+    if (!correction) return newReviewRowForLine(line);
+    return {
+      sourceLineStableId: line.lineStableId,
+      reason: correction.reason,
+      rawName: correction.effectiveRawName ?? line.rawName ?? '',
+      amount: centsToMoneyInput(correction.effectiveAmountCents),
+      component: correction.effectiveComponent,
+      postingTreatment: correction.effectivePostingTreatment,
+      taxRole: correction.effectiveTaxRole,
+      note: correction.note ?? '',
+    };
+  });
+}
+
 export function newReviewRowForLine(
   line: AccountingProviderFinancialLine,
 ): ProviderFinancialReviewDraftRow {
@@ -192,26 +219,88 @@ export function newReviewRowForLine(
   };
 }
 
-export function buildReviewCorrectionInputs(
+export function buildPrefilledReviewCorrectionInputs(
   rows: ProviderFinancialReviewDraftRow[],
+  sourceLines: AccountingProviderFinancialLine[],
 ): {
   corrections: AccountingProviderFinancialReviewCorrectionInput[];
   error: string | null;
 } {
-  const corrections: AccountingProviderFinancialReviewCorrectionInput[] = [];
+  const sourceByStableId = new Map(
+    sourceLines.map((line) => [line.lineStableId, line]),
+  );
+  const changedRows: ProviderFinancialReviewDraftRow[] = [];
+
   for (const row of rows) {
+    const source = sourceByStableId.get(row.sourceLineStableId);
+    if (!source) {
+      return {
+        corrections: [],
+        error: `Unknown source line: ${row.sourceLineStableId}`,
+      };
+    }
+
     if (row.reason === 'EXTRACTION_CORRECTION') {
       const amountCents = parseMoneyInputToCents(row.amount);
       if (amountCents === null) {
         return {
           corrections: [],
-          error: `Invalid money value for ${row.sourceLineStableId}`,
+          error: `Invalid money value for #${source.lineNo} ${source.rawName ?? source.component}`,
+        };
+      }
+      const rawName = row.rawName.trim() || null;
+      if (rawName === source.rawName && amountCents === source.amountCents) {
+        continue;
+      }
+    }
+
+    changedRows.push(row);
+  }
+
+  return buildReviewCorrectionInputs(changedRows, sourceLines);
+}
+
+export function buildReviewCorrectionInputs(
+  rows: ProviderFinancialReviewDraftRow[],
+  sourceLines: AccountingProviderFinancialLine[],
+): {
+  corrections: AccountingProviderFinancialReviewCorrectionInput[];
+  error: string | null;
+} {
+  const corrections: AccountingProviderFinancialReviewCorrectionInput[] = [];
+  const sourceByStableId = new Map(
+    sourceLines.map((line) => [line.lineStableId, line]),
+  );
+
+  for (const row of rows) {
+    const source = sourceByStableId.get(row.sourceLineStableId);
+    if (!source) {
+      return {
+        corrections: [],
+        error: `Unknown source line: ${row.sourceLineStableId}`,
+      };
+    }
+    const sourceLabel = `#${source.lineNo} ${source.rawName ?? source.component}`;
+
+    if (row.reason === 'EXTRACTION_CORRECTION') {
+      const amountCents = parseMoneyInputToCents(row.amount);
+      if (amountCents === null) {
+        return {
+          corrections: [],
+          error: `Invalid money value for ${sourceLabel}`,
+        };
+      }
+      const rawName = row.rawName.trim() || null;
+      if (rawName === source.rawName && amountCents === source.amountCents) {
+        return {
+          corrections: [],
+          error: `Correction does not change source line ${sourceLabel}; change the effective label or amount.`,
         };
       }
       corrections.push({
         sourceLineStableId: row.sourceLineStableId,
         reason: row.reason,
-        rawName: row.rawName.trim() || null,
+        rawName,
         amountCents,
         note: row.note.trim() || null,
       });
@@ -220,7 +309,17 @@ export function buildReviewCorrectionInputs(
     if (!row.note.trim()) {
       return {
         corrections: [],
-        error: `Classification note is required for ${row.sourceLineStableId}`,
+        error: `Classification note is required for ${sourceLabel}`,
+      };
+    }
+    if (
+      row.component === source.component &&
+      row.postingTreatment === source.postingTreatment &&
+      row.taxRole === source.taxRole
+    ) {
+      return {
+        corrections: [],
+        error: `Classification does not change source line ${sourceLabel}; change Component, Posting treatment, or Tax role.`,
       };
     }
     corrections.push({

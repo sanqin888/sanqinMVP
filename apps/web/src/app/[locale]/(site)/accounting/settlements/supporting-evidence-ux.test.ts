@@ -7,16 +7,15 @@ const settlementsSource = readFileSync(
 );
 
 describe('Provider settlements supporting-evidence UX', () => {
-  it('labels non-statement evidence as non-actionable reconciliation support', () => {
+  it('keeps non-statement evidence as archived support instead of an independent posting workflow', () => {
     expect(settlementsSource).toContain(
       "document.documentType !== 'STATEMENT'",
     );
-    expect(settlementsSource).toContain('每日 Closeout / 对账控制证据');
-    expect(settlementsSource).toContain('控制 / 汇总金额');
-    expect(settlementsSource).toContain(
-      '无需 Shadow Preview、Replay 或再次入账操作',
-    );
-    expect(settlementsSource).toContain(
+    expect(settlementsSource).toContain('辅助 / 控制证据');
+    expect(settlementsSource).toContain('只作为已确认证据保存');
+    expect(settlementsSource).toContain('不是独立入账记录');
+    expect(settlementsSource).toContain('识别明细只在收件箱阶段展示');
+    expect(settlementsSource).not.toContain(
       'selectProviderFinancialSummaryLines(document.lines)',
     );
   });

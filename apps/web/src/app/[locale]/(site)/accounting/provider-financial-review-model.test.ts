@@ -4,10 +4,12 @@ import type {
 } from './contracts/provider-financial';
 import {
   applyReviewedProviderFinancialLines,
+  buildPrefilledReviewCorrectionInputs,
   buildReviewCorrectionInputs,
   centsToMoneyInput,
   latestConfirmedProviderReview,
   parseMoneyInputToCents,
+  reviewRowsForEditor,
   reviewRowsFromRevision,
 } from './provider-financial-review-model';
 
@@ -170,7 +172,7 @@ describe('provider financial review UI model', () => {
 
   it('round-trips a confirmed extraction correction into a new full revision draft', () => {
     const rows = reviewRowsFromRevision(document, confirmed);
-    const built = buildReviewCorrectionInputs(rows);
+    const built = buildReviewCorrectionInputs(rows, document.lines);
 
     expect(built.error).toBeNull();
     expect(built.corrections).toEqual([
@@ -184,21 +186,175 @@ describe('provider financial review UI model', () => {
     ]);
   });
 
-  it('requires an operator note for semantic classification in the UI adapter', () => {
-    const built = buildReviewCorrectionInputs([
-      {
-        sourceLineStableId: 'line_sales',
-        reason: 'SEMANTIC_CLASSIFICATION',
+  it('prefills every source line for the posting review editor and preserves confirmed corrections', () => {
+    const rows = reviewRowsForEditor(document, confirmed);
+
+    expect(rows).toHaveLength(document.lines.length);
+    expect(
+      rows.find((row) => row.sourceLineStableId === 'line_sales'),
+    ).toEqual(
+      expect.objectContaining({
         rawName: 'Sales',
         amount: '2603.36',
-        component: 'OTHER',
-        postingTreatment: 'RECONCILIATION_ONLY',
-        taxRole: 'NONE',
-        note: '',
+        reason: 'EXTRACTION_CORRECTION',
+      }),
+    );
+    expect(
+      rows.find((row) => row.sourceLineStableId === 'line_sales_tax'),
+    ).toEqual(
+      expect.objectContaining({
+        rawName: 'Tax on Sales',
+        amount: '338.48',
+        reason: 'EXTRACTION_CORRECTION',
+        note: 'Source PDF shows $338.48',
+      }),
+    );
+  });
+
+  it('omits unchanged prefilled rows and persists only actual edits', () => {
+    const rows = reviewRowsForEditor(document, null);
+    const editedRows = rows.map((row) =>
+      row.sourceLineStableId === 'line_sales_tax'
+        ? { ...row, amount: '338.48', note: 'Source PDF checked' }
+        : row,
+    );
+
+    const built = buildPrefilledReviewCorrectionInputs(
+      editedRows,
+      document.lines,
+    );
+
+    expect(built.error).toBeNull();
+    expect(built.corrections).toEqual([
+      {
+        sourceLineStableId: 'line_sales_tax',
+        reason: 'EXTRACTION_CORRECTION',
+        rawName: 'Tax on Sales',
+        amountCents: 33848,
+        note: 'Source PDF checked',
       },
     ]);
+  });
+
+  it('requires an operator note for semantic classification in the UI adapter', () => {
+    const built = buildReviewCorrectionInputs(
+      [
+        {
+          sourceLineStableId: 'line_sales',
+          reason: 'SEMANTIC_CLASSIFICATION',
+          rawName: 'Sales',
+          amount: '2603.36',
+          component: 'OTHER',
+          postingTreatment: 'RECONCILIATION_ONLY',
+          taxRole: 'NONE',
+          note: '',
+        },
+      ],
+      document.lines,
+    );
 
     expect(built.corrections).toEqual([]);
     expect(built.error).toContain('Classification note is required');
+  });
+
+  it('rejects a semantic classification that leaves the source accounting fields unchanged', () => {
+    const sourceLine = {
+      lineStableId: 'line_tax_on_other_earnings',
+      lineNo: 7,
+      rawName: 'Tax on Other Earnings',
+      component: 'OTHER' as const,
+      postingTreatment: 'POSTABLE' as const,
+      taxRole: 'SALES_TAX' as const,
+      amountCents: -39,
+      occurredAt: null,
+    };
+
+    const built = buildReviewCorrectionInputs(
+      [
+        {
+          sourceLineStableId: sourceLine.lineStableId,
+          reason: 'SEMANTIC_CLASSIFICATION',
+          rawName: sourceLine.rawName,
+          amount: '-0.39',
+          component: 'OTHER',
+          postingTreatment: 'POSTABLE',
+          taxRole: 'SALES_TAX',
+          note: 'Payment Details confirms the tax treatment.',
+        },
+      ],
+      [sourceLine],
+    );
+
+    expect(built.corrections).toEqual([]);
+    expect(built.error).toContain(
+      'Classification does not change source line #7 Tax on Other Earnings',
+    );
+    expect(built.error).toContain(
+      'change Component, Posting treatment, or Tax role',
+    );
+  });
+
+  it('accepts a semantic classification when the component actually changes', () => {
+    const sourceLine = {
+      lineStableId: 'line_tax_on_other_earnings',
+      lineNo: 7,
+      rawName: 'Tax on Other Earnings',
+      component: 'OTHER' as const,
+      postingTreatment: 'POSTABLE' as const,
+      taxRole: 'SALES_TAX' as const,
+      amountCents: -39,
+      occurredAt: null,
+    };
+
+    const built = buildReviewCorrectionInputs(
+      [
+        {
+          sourceLineStableId: sourceLine.lineStableId,
+          reason: 'SEMANTIC_CLASSIFICATION',
+          rawName: sourceLine.rawName,
+          amount: '-0.39',
+          component: 'SALES_TAX',
+          postingTreatment: 'POSTABLE',
+          taxRole: 'SALES_TAX',
+          note: 'Payment Details confirms Tax on Price Adjustments.',
+        },
+      ],
+      [sourceLine],
+    );
+
+    expect(built.error).toBeNull();
+    expect(built.corrections).toEqual([
+      {
+        sourceLineStableId: sourceLine.lineStableId,
+        reason: 'SEMANTIC_CLASSIFICATION',
+        component: 'SALES_TAX',
+        postingTreatment: 'POSTABLE',
+        taxRole: 'SALES_TAX',
+        note: 'Payment Details confirms Tax on Price Adjustments.',
+      },
+    ]);
+  });
+
+  it('rejects an extraction correction that leaves label and amount unchanged', () => {
+    const built = buildReviewCorrectionInputs(
+      [
+        {
+          sourceLineStableId: 'line_sales',
+          reason: 'EXTRACTION_CORRECTION',
+          rawName: 'Sales',
+          amount: '2603.36',
+          component: 'SALES',
+          postingTreatment: 'POSTABLE',
+          taxRole: 'NONE',
+          note: '',
+        },
+      ],
+      document.lines,
+    );
+
+    expect(built.corrections).toEqual([]);
+    expect(built.error).toContain(
+      'Correction does not change source line #1 Sales',
+    );
   });
 });

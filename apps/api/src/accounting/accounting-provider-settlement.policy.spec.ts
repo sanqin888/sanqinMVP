@@ -625,6 +625,31 @@ describe('Accounting provider settlement shadow policy', () => {
     );
   });
 
+  it('fails closed when a Fantuan statement has no supported control totals', () => {
+    const plan = buildProviderSettlementDocumentPlan({
+      document: {
+        ...fantuanSeptemberDocument(true),
+        lines: [
+          {
+            lineStableId: 'fantuan-sales-only',
+            lineNo: 1,
+            rawName: 'Sales',
+            component: AccountingFinancialComponent.SALES,
+            postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+            amountCents: 1000,
+          },
+        ],
+      },
+      salesAuthority: 'STATEMENT_AUTHORITATIVE',
+      occurredAt: new Date('2026-10-01T03:59:59.999Z'),
+    });
+
+    expect(plan.status).toBe('BLOCKED');
+    expect(plan.blockReasons).toContain('PROVIDER_CONTROL_TOTAL_INCOMPLETE');
+    expect(plan.controlTotalChecks).toEqual([]);
+    expect(plan.draftJournal).toBeNull();
+  });
+
   it('fails closed when Fantuan control totals expose a missing Marketing Fee', () => {
     const plan = buildProviderSettlementDocumentPlan({
       document: fantuanSeptemberDocument(false),
@@ -1441,7 +1466,7 @@ describe('Accounting provider settlement shadow policy', () => {
         documentStableId: 'fantuan_aug_statement',
         revision: 1,
         provider: AccountingFinancialProvider.FANTUAN,
-        documentType: AccountingFinancialDocumentType.STATEMENT,
+        documentType: AccountingFinancialDocumentType.OTHER,
         storeStableId: '4750_Yonge_Street',
         periodStart: '2026-08-01',
         periodEnd: '2026-08-31',

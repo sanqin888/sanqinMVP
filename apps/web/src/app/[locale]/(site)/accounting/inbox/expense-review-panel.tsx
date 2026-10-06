@@ -81,25 +81,6 @@ function hasUnsafeCurrencyEvidence(
   );
 }
 
-function correctionFieldLabel(field: string, isZh: boolean): string {
-  switch (field) {
-    case 'date':
-      return isZh ? '日期' : 'date';
-    case 'sourceCurrency':
-      return isZh ? '原始币种' : 'source currency';
-    case 'subtotalCents':
-      return isZh ? '税前金额' : 'subtotal';
-    case 'taxCents':
-      return isZh ? 'HST' : 'tax';
-    case 'totalCents':
-      return isZh ? '总额' : 'total';
-    case 'categoryStableId':
-      return isZh ? '费用分类' : 'category';
-    default:
-      return field;
-  }
-}
-
 export function AccountingInboxExpenseReviewPanel({
   item,
   categories,
@@ -218,81 +199,15 @@ export function AccountingInboxExpenseReviewPanel({
       differenceCents: totalCents - subtotalCents - taxCents,
     };
   }, [rows, total]);
+  const expenseBalanced =
+    calculated.totalCents > 0 && calculated.differenceCents === 0;
+  const missingFundingCount = rows.filter(
+    (row) =>
+      toCents(row.amount) + toCents(row.tax) > 0 &&
+      !row.paidFromAccountStableId.trim(),
+  ).length;
   const extraction = expenseReviewParse(item);
-  const recognitionConsistency =
-    extraction.textractEvidence?.financialConsistency === 'MISMATCH'
-      ? 'MISMATCH'
-      : (extraction.financialConsistency ??
-        extraction.textractEvidence?.financialConsistency ??
-        'INSUFFICIENT');
   const normalizedSourceCurrency = sourceCurrency.trim().toUpperCase();
-  const bookingCorrectedFields = useMemo(() => {
-    const corrected: string[] = [];
-    const machineSourceCurrency = extraction.sourceCurrency?.toUpperCase() ?? null;
-    const comparableAmountCurrency =
-      machineSourceCurrency || normalizedSourceCurrency || 'CAD';
-
-    if (extraction.date && date && extraction.date !== date) {
-      corrected.push('date');
-    }
-    if (
-      machineSourceCurrency &&
-      normalizedSourceCurrency &&
-      machineSourceCurrency !== normalizedSourceCurrency
-    ) {
-      corrected.push('sourceCurrency');
-    }
-    if (comparableAmountCurrency === 'CAD') {
-      if (
-        extraction.subtotalCents != null &&
-        extraction.subtotalCents !== calculated.subtotalCents
-      ) {
-        corrected.push('subtotalCents');
-      }
-      if (
-        extraction.taxCents != null &&
-        extraction.taxCents !== calculated.taxCents
-      ) {
-        corrected.push('taxCents');
-      }
-      if (
-        extraction.totalCents != null &&
-        extraction.totalCents !== calculated.totalCents
-      ) {
-        corrected.push('totalCents');
-      }
-    }
-
-    const reviewedCategoryStableIds = Array.from(
-      new Set(
-        rows
-          .filter((row) => toCents(row.amount) > 0 || toCents(row.tax) > 0)
-          .map((row) => row.categoryStableId),
-      ),
-    );
-    if (
-      extraction.suggestedCategoryStableId &&
-      (reviewedCategoryStableIds.length !== 1 ||
-        reviewedCategoryStableIds[0] !== extraction.suggestedCategoryStableId)
-    ) {
-      corrected.push('categoryStableId');
-    }
-
-    return corrected;
-  }, [
-    calculated.subtotalCents,
-    calculated.taxCents,
-    calculated.totalCents,
-    date,
-    extraction.date,
-    extraction.sourceCurrency,
-    extraction.subtotalCents,
-    extraction.suggestedCategoryStableId,
-    extraction.taxCents,
-    extraction.totalCents,
-    normalizedSourceCurrency,
-    rows,
-  ]);
   const hasRecognizedQuickRows = quickRows.some((row) => row.recognitionHint);
   const recognizedForeignCurrency = recognizedForeignCurrencyCode(extraction);
   const unsafeCurrencyEvidence = hasUnsafeCurrencyEvidence(extraction);
@@ -352,11 +267,11 @@ export function AccountingInboxExpenseReviewPanel({
       setError(
         unsafeCurrencyEvidence
           ? isZh
-            ? '识别结果提示非 CAD 或存在币种冲突，不能直接把识别条目汇总为 CAD。请按实际 CAD 金额手动归类。'
-            : 'Recognition indicates a non-CAD or conflicting currency, so detected line amounts cannot be aggregated directly into CAD. Classify the actual CAD amounts manually.'
+            ? '原始凭证存在非 CAD 或币种冲突，不能直接把预填条目汇总为 CAD。请按实际 CAD 入账金额手动归类。'
+            : 'The source evidence has a non-CAD or conflicting currency, so prefilled rows cannot be aggregated directly into CAD. Classify the actual CAD booking amounts manually.'
           : isZh
-            ? '识别条目金额来自原始凭证。请先确认原始币种为 CAD，再汇总到 CAD 费用分类。'
-            : 'Recognized item amounts come from the source document. Confirm the source currency is CAD before aggregating them into CAD expense categories.',
+            ? '预填条目来自原始凭证。请先确认原始币种为 CAD，再汇总到 CAD 费用分类。'
+            : 'Prefilled rows come from the source document. Confirm the source currency is CAD before aggregating them into CAD expense categories.',
       );
       return;
     }
@@ -421,8 +336,8 @@ export function AccountingInboxExpenseReviewPanel({
       if (!item.materializedEntityStableId) {
         throw new Error(
           isZh
-            ? '该费用尚未正式进入审核阶段，请返回待处理区点击“确认并审核”。'
-            : 'This expense has not entered the review stage. Return to Pending and choose Confirm & review.',
+            ? '该费用尚未正式进入审核阶段，请返回待处理区点击“确认识别并进入审核”。'
+            : 'This expense has not entered the review stage. Return to Pending and choose Confirm recognition & enter review.',
         );
       }
       await apiFetch(
@@ -459,22 +374,6 @@ export function AccountingInboxExpenseReviewPanel({
   }
 
   const sourceCurrencyEvidence = extraction.sourceCurrencyEvidence ?? 'UNKNOWN';
-  const sourceSubtotalCents = extraction.subtotalCents ?? null;
-  const sourceTaxCents = extraction.taxCents ?? null;
-  const sourceTotalCents = extraction.totalCents ?? null;
-  const textractCurrencySuggestion =
-    extraction.textractEvidence?.currencySuggestion?.code ?? null;
-  const textractCurrencyConfidence =
-    extraction.textractEvidence?.currencySuggestion?.confidence ?? null;
-  const textractCurrencyLabel = textractCurrencySuggestion
-    ? `${textractCurrencySuggestion}${
-        textractCurrencyConfidence == null
-          ? ''
-          : ` (${textractCurrencyConfidence.toFixed(1)}%)`
-      }`
-    : null;
-  const sourceAmountCurrencyLabel =
-    (recognizedForeignCurrency ?? normalizedSourceCurrency) || '?';
   const ambiguousCurrencyEvidence =
     sourceCurrencyEvidence === 'AMBIGUOUS' ||
     extraction.textractEvidence?.currencySuggestion?.ambiguous === true;
@@ -525,133 +424,15 @@ export function AccountingInboxExpenseReviewPanel({
           ? '只有确认这是普通费用凭证时才继续。Clover / Uber Eats / Fantuan 对账单、Closeout 或平台财务文件请留在收件箱，等待平台财务解析。'
           : 'Continue only for ordinary expense evidence. Leave Clover / Uber Eats / Fantuan statements, closeouts, and platform financial files in Inbox for provider parsing.'}
       </p>
-      {extraction.extractedText || expenseArtifact.bodyText ? (
-        <details className="mt-4 rounded-lg border bg-white p-3 text-sm">
-          <summary className="cursor-pointer font-medium">
-            {isZh ? '查看识别原文' : 'View extracted text'}
-          </summary>
-          <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-words font-sans text-xs text-slate-600">
-            {extraction.extractedText ?? expenseArtifact.bodyText}
-          </pre>
-        </details>
-      ) : null}
-      <div
-        className={`mt-4 rounded-lg border p-3 text-sm ${
-          recognitionConsistency === 'MISMATCH'
-            ? 'border-red-300 bg-red-50'
-            : recognitionConsistency === 'MATCHED'
-              ? 'border-emerald-200 bg-emerald-50/50'
-              : 'bg-white'
-        }`}
-      >
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <strong>{isZh ? '机器识别结果' : 'Machine extraction'}</strong>
-          <span
-            className={`rounded px-2 py-1 text-xs font-medium ${
-              recognitionConsistency === 'MISMATCH'
-                ? 'bg-red-100 text-red-700'
-                : recognitionConsistency === 'MATCHED'
-                  ? 'bg-emerald-100 text-emerald-700'
-                  : 'bg-amber-100 text-amber-700'
-            }`}
-          >
-            {recognitionConsistency === 'MATCHED'
-              ? isZh
-                ? '金额已自洽'
-                : 'Amounts reconcile'
-              : recognitionConsistency === 'MISMATCH'
-                ? isZh
-                  ? '金额不自洽 · 需人工订正'
-                  : 'Amount mismatch · correction required'
-                : isZh
-                  ? '金额证据不足 · 请核对'
-                  : 'Insufficient amount evidence · verify'}
-          </span>
-        </div>
-        <p className="mt-2 text-xs text-slate-500">
-          {isZh ? '识别引擎' : 'Recognition engine'}:{' '}
-          {extraction.textRecognitionEngine ?? extraction.ocrEngine ?? '—'} ·{' '}
-          {isZh ? '日期' : 'Date'}: {extraction.date ?? '—'} ·{' '}
-          {isZh ? '建议分类' : 'Suggested category'}:{' '}
-          {extraction.suggestedCategoryName ?? '—'}
-        </p>
-        <div className="mt-3 grid gap-2 sm:grid-cols-3">
-          <div>
-            <span className="text-slate-500">{isZh ? '税前' : 'Subtotal'}</span>
-            <strong className="ml-2">
-              {sourceSubtotalCents == null
-                ? '-'
-                : `${sourceAmountCurrencyLabel} ${money(sourceSubtotalCents)}`}
-            </strong>
-          </div>
-          <div>
-            <span className="text-slate-500">{isZh ? '税' : 'Tax'}</span>
-            <strong className="ml-2">
-              {sourceTaxCents == null
-                ? '-'
-                : `${sourceAmountCurrencyLabel} ${money(sourceTaxCents)}`}
-            </strong>
-          </div>
-          <div>
-            <span className="text-slate-500">{isZh ? '总额' : 'Total'}</span>
-            <strong className="ml-2">
-              {sourceTotalCents == null
-                ? '-'
-                : `${sourceAmountCurrencyLabel} ${money(sourceTotalCents)}`}
-            </strong>
-          </div>
-        </div>
-        <p className="mt-2 text-xs text-slate-500">
-          {sourceCurrencyEvidence === 'EXPLICIT_TEXT'
-            ? isZh
-              ? '凭证正文识别到明确币种；编辑币种仍默认 CAD，识别结果仅作人工录入参考。'
-              : 'The document contains explicit currency evidence; the editor still defaults to CAD and uses recognition only as an entry aid.'
-            : sourceCurrencyEvidence === 'AMBIGUOUS'
-              ? isZh
-                ? '凭证中出现多个币种；编辑币种仍默认 CAD，请结合下方提示人工核对。'
-                : 'Multiple currencies were detected; the editor still defaults to CAD, so verify the warning below manually.'
-              : isZh
-                ? '凭证正文未明确币种；编辑币种默认 CAD。'
-                : 'The document text did not state a currency; the editor defaults to CAD.'}
-        </p>
-        {recognitionConsistency === 'MISMATCH' ? (
-          <p className="mt-2 rounded bg-red-100 px-3 py-2 text-xs font-medium text-red-700">
-            {isZh
-              ? '系统/AWS 提取的税前、税额和总额无法自洽。当前机器值仅作为识别证据；请根据原始凭证，在下方“最终入账值”中直接修正。'
-              : 'System/AWS subtotal, tax, and total do not reconcile. Machine values remain recognition evidence only; correct the editable Final booking values below from the source document.'}
-          </p>
-        ) : null}
-        {textractCurrencySuggestion ? (
-          <p className="mt-1 text-xs text-slate-500">
-            {isZh
-              ? `AWS Textract 币种建议：${textractCurrencySuggestion}${textractCurrencyConfidence == null ? '' : `（${textractCurrencyConfidence.toFixed(1)}%）`}。仅作人工录入参考；币种编辑框仍默认 CAD，识别到的总额仍会预填，非 CAD 时在下方红字提醒核对。`
-              : `AWS Textract currency suggestion: ${textractCurrencySuggestion}${textractCurrencyConfidence == null ? '' : ` (${textractCurrencyConfidence.toFixed(1)}%)`}. This is an entry aid only: the currency field still defaults to CAD, detected totals are still prefilled, and non-CAD evidence is flagged below for review.`}
-          </p>
-        ) : null}
-      </div>
       <section className="mt-4 rounded-lg border border-blue-200 bg-blue-50/70 p-3">
         <strong className="text-sm">
-          {isZh ? '最终入账值（可编辑）' : 'Final booking values (editable)'}
+          {isZh ? '将要入账的值（可编辑）' : 'Values to be posted (editable)'}
         </strong>
         <p className="mt-1 text-xs text-slate-600">
           {isZh
-            ? '上方机器识别结果保持只读。请在这里按原始凭证修正日期、币种、总额、分类、税前金额和 HST；确认创建费用时，系统会自动保存机器值、最终值和订正字段。'
-            : 'Machine extraction above remains read-only. Correct date, currency, total, category, subtotal, and HST here from the source document; confirmation automatically records machine values, final values, and corrected fields.'}
+            ? '审核阶段只显示并编辑本次将写入费用记录的最终值。请核对日期、币种、总额、分类、税前金额和 HST；付款账户未知或尚未付款时可以留空，后续补录。'
+            : 'Review shows only the final values that will be written to the expense record. Verify date, currency, total, category, subtotal, and HST. Funding may remain blank when payment is unknown or not yet made and can be completed later.'}
         </p>
-        {bookingCorrectedFields.length ? (
-          <p className="mt-2 rounded bg-white px-3 py-2 text-xs font-medium text-blue-800">
-            {isZh ? '已人工订正：' : 'Manually corrected: '}
-            {bookingCorrectedFields
-              .map((field) => correctionFieldLabel(field, isZh))
-              .join(isZh ? '、' : ', ')}
-          </p>
-        ) : (
-          <p className="mt-2 text-xs text-slate-500">
-            {isZh
-              ? '当前最终入账值尚未偏离机器已识别字段。'
-              : 'Final booking values currently match the machine-observed fields.'}
-          </p>
-        )}
       </section>
       <div className="mt-3 grid gap-3 md:grid-cols-[140px_minmax(0,1fr)_minmax(0,1fr)]">
         <label className="text-sm">
@@ -671,15 +452,15 @@ export function AccountingInboxExpenseReviewPanel({
             <span className="mt-1 block text-xs text-red-600">
               {recognizedForeignCurrency
                 ? isZh
-                  ? `识别结果提示原始币种为 ${recognizedForeignCurrency}。币种输入框仍默认 CAD，账单总额已按识别值预填，请人工核对并按实际记账需要修改。`
-                  : `Recognition suggests ${recognizedForeignCurrency}. The currency field still defaults to CAD and the detected total has been prefilled; verify and adjust it for the actual booking as needed.`
+                  ? `原始凭证提示币种为 ${recognizedForeignCurrency}。当前将要入账的币种仍默认 CAD，请对照凭证核对并按实际记账需要修改。`
+                  : `The source evidence indicates ${recognizedForeignCurrency}. The value to be posted still defaults to CAD; verify the source and adjust the booking as needed.`
                 : ambiguousCurrencyEvidence
                   ? isZh
-                    ? '识别结果包含多个或冲突币种。币种输入框仍默认 CAD，识别总额仍会预填，请人工核对后修正。'
-                    : 'Recognition found multiple or conflicting currencies. The currency field still defaults to CAD and the detected total is still prefilled; verify and correct it manually.'
+                    ? '原始凭证存在多个或冲突币种。当前将要入账的币种仍默认 CAD，请人工核对后修正。'
+                    : 'The source evidence contains multiple or conflicting currencies. The value to be posted still defaults to CAD; verify and correct it manually.'
                   : isZh
-                    ? `当前币种输入为 ${foreignCurrencyWarning}。识别总额仅作预填参考，请按实际记账需要核对。`
-                    : `The currency field is currently ${foreignCurrencyWarning}. The detected total is only a prefill aid; verify it for the actual booking.`}
+                    ? `当前将要入账的币种为 ${foreignCurrencyWarning}。请对照原始凭证核对后再确认。`
+                    : `The currency to be posted is currently ${foreignCurrencyWarning}. Verify it against the source evidence before confirming.`}
             </span>
           ) : null}
         </label>
@@ -717,8 +498,8 @@ export function AccountingInboxExpenseReviewPanel({
             </strong>
             <p className="mt-1 text-xs text-slate-600">
               {isZh
-                ? 'Textract 条目与税前金额可靠闭合时会自动预填原始凭证金额；确认原始币种为 CAD 后可直接归类。手工新增时，金额后按 Enter 可继续下一项并继承上一项类别、税率和付款账户。汇总会保留“类别 + 付款账户”的归属。'
-                : 'When Textract item amounts reliably reconcile to the subtotal, source-document amounts are prefilled automatically. Confirm the source currency is CAD before aggregating them. Manual rows keep the Enter-to-next category, tax, and payment-account workflow; aggregation preserves category plus payment-account attribution.'}
+                ? '审核字段可能由收件箱结果预填，但这里的每一项都是“将要入账值”，可直接调整类别、税率和付款账户。手工新增时，金额后按 Enter 可继续下一项并继承上一项设置。'
+                : 'Review fields may be prefilled from Inbox, but every row here represents a value to be posted. Adjust category, tax, and funding directly; manual rows keep the Enter-to-next workflow.'}
             </p>
           </div>
           <button
@@ -744,11 +525,11 @@ export function AccountingInboxExpenseReviewPanel({
               <p className="rounded bg-white/80 px-3 py-2 text-xs text-slate-600">
                 {canAggregateRecognizedQuickRows
                   ? isZh
-                    ? '已按 Textract 识别结果预填条目金额，并确认原始币种为 CAD；可直接调整类别/税率后汇总。'
-                    : 'Textract item amounts are prefilled and the source currency is confirmed as CAD. Review category/tax choices, then aggregate.'
+                    ? '已预填待入账条目，原始币种已确认为 CAD；可直接调整类别、税率和付款账户后汇总。'
+                    : 'Booking rows are prefilled and the source currency is confirmed as CAD. Adjust category, tax, and funding, then aggregate.'
                   : isZh
-                    ? '已预填 Textract 识别的原始凭证条目金额。请先在上方确认原始币种为 CAD；在此之前不会把这些原币金额汇总成 CAD 费用。'
-                    : 'Textract source-document item amounts are prefilled. Confirm the source currency is CAD above before these source amounts can be aggregated into CAD expenses.'}
+                    ? '已预填待入账条目。请先在上方确认原始币种为 CAD；在此之前不会把原币金额汇总成 CAD 费用。'
+                    : 'Booking rows are prefilled. Confirm the source currency is CAD above before source-currency amounts can be aggregated into CAD expenses.'}
               </p>
             ) : null}
             {quickRows.map((row, index) => (
@@ -763,7 +544,7 @@ export function AccountingInboxExpenseReviewPanel({
                       title={row.description ?? undefined}
                     >
                       {row.description ||
-                        (isZh ? `识别条目 ${index + 1}` : `Detected item ${index + 1}`)}
+                        (isZh ? `预填条目 ${index + 1}` : `Prefilled item ${index + 1}`)}
                     </p>
                   ) : null}
                   <input
@@ -1099,28 +880,81 @@ export function AccountingInboxExpenseReviewPanel({
           onChange={(event) => setMemo(event.target.value)}
         />
       </label>
-      <div className="mt-4 grid gap-3 rounded-lg bg-white p-3 text-sm sm:grid-cols-4">
-        <div>
-          <span className="text-slate-500">{isZh ? 'CAD 税前' : 'CAD subtotal'}</span>
-          <strong className="ml-2">{money(calculated.subtotalCents)}</strong>
-        </div>
-        <div>
-          <span className="text-slate-500">CAD HST</span>
-          <strong className="ml-2">{money(calculated.taxCents)}</strong>
-        </div>
-        <div>
-          <span className="text-slate-500">{isZh ? 'CAD 总额' : 'CAD total'}</span>
-          <strong className="ml-2">{money(calculated.totalCents)}</strong>
-        </div>
-        <div>
-          <span className="text-slate-500">{isZh ? '差额' : 'Difference'}</span>
-          <strong
-            className={`ml-2 ${calculated.differenceCents === 0 ? 'text-emerald-600' : 'text-amber-600'}`}
-          >
-            {money(calculated.differenceCents)}
+      <div
+        className={`mt-4 rounded-lg border p-3 ${
+          expenseBalanced
+            ? 'border-emerald-200 bg-emerald-50/60'
+            : 'border-red-300 bg-red-50'
+        }`}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <strong className={expenseBalanced ? 'text-emerald-900' : 'text-red-900'}>
+            {isZh ? '纵向核算' : 'Vertical reconciliation'}
           </strong>
+          <span
+            className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+              expenseBalanced
+                ? 'bg-emerald-100 text-emerald-800'
+                : 'bg-red-100 text-red-800'
+            }`}
+          >
+            {expenseBalanced
+              ? isZh
+                ? '通过'
+                : 'PASSED'
+              : isZh
+                ? '未通过'
+                : 'FAILED'}
+          </span>
         </div>
+        <div className="mt-3 grid gap-3 text-sm sm:grid-cols-4">
+          <div>
+            <span className="text-slate-500">
+              {isZh ? '税前合计' : 'Subtotal sum'}
+            </span>
+            <strong className="ml-2">{money(calculated.subtotalCents)}</strong>
+          </div>
+          <div>
+            <span className="text-slate-500">HST</span>
+            <strong className="ml-2">{money(calculated.taxCents)}</strong>
+          </div>
+          <div>
+            <span className="text-slate-500">{isZh ? '账单总额' : 'Total'}</span>
+            <strong className="ml-2">{money(calculated.totalCents)}</strong>
+          </div>
+          <div>
+            <span className="text-slate-500">{isZh ? '差额' : 'Difference'}</span>
+            <strong
+              className={`ml-2 ${
+                calculated.differenceCents === 0
+                  ? 'text-emerald-700'
+                  : 'text-red-700'
+              }`}
+            >
+              {money(calculated.differenceCents)}
+            </strong>
+          </div>
+        </div>
+        <p className="mt-2 text-xs leading-5 text-slate-600">
+          {isZh
+            ? `公式：税前合计 ${money(calculated.subtotalCents)} + HST ${money(calculated.taxCents)} = 总额 ${money(calculated.totalCents)}。`
+            : `Formula: subtotal sum ${money(calculated.subtotalCents)} + HST ${money(calculated.taxCents)} = total ${money(calculated.totalCents)}.`}
+        </p>
+        {!expenseBalanced ? (
+          <p className="mt-2 rounded bg-red-100 px-3 py-2 text-xs font-medium text-red-800">
+            {isZh
+              ? `金额未对平，当前差额 ${money(calculated.differenceCents)}；确认入账按钮已锁定。`
+              : `Amounts do not reconcile. Current difference: ${money(calculated.differenceCents)}. Posting is locked.`}
+          </p>
+        ) : null}
       </div>
+      {missingFundingCount > 0 ? (
+        <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          {isZh
+            ? `有 ${missingFundingCount} 个费用分类尚未指定付款账户。可能尚未付款或付款方式未知时可以留空；这不会阻止费用事实确认，之后可在付款归属流程补录。`
+            : `${missingFundingCount} expense split(s) do not yet have a funding account. This may remain blank when unpaid or unknown and does not block confirmation; funding can be completed later.`}
+        </p>
+      ) : null}
       {error ? (
         <p className="mt-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">
           {error}
@@ -1128,18 +962,13 @@ export function AccountingInboxExpenseReviewPanel({
       ) : null}
       <p className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
         {isZh
-          ? '确认后会创建正式费用记录并写入财务账目；原始凭证将进入受保护证据链，之后不能再永久删除。'
-          : 'Confirmation creates the formal expense and posts it to the accounting records; the source evidence then becomes protected and can no longer be permanently deleted.'}
+          ? '确认后会创建正式费用记录，原始凭证进入受保护证据链。付款账户已完整时会同步生成 Journal；付款账户未知或尚未付款时保留待补录状态，之后完成付款归属即可生成对应 Journal。'
+          : 'Confirmation creates the formal expense and protects the source evidence. A Journal is posted immediately when funding attribution is complete; otherwise the expense remains awaiting funding completion and can be posted after payment attribution is supplied.'}
       </p>
       <div className="mt-3 flex flex-wrap gap-2">
         <button
           onClick={() => void confirmExpense()}
-          disabled={
-            saving ||
-            !date ||
-            calculated.differenceCents !== 0 ||
-            calculated.totalCents <= 0
-          }
+          disabled={saving || !date || !expenseBalanced}
           className="rounded bg-slate-900 px-4 py-2 text-sm text-white disabled:opacity-50"
         >
           {saving

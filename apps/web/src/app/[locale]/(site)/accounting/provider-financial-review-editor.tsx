@@ -6,7 +6,6 @@ import {
   ACCOUNTING_FINANCIAL_COMPONENT_OPTIONS,
   ACCOUNTING_POSTING_TREATMENT_OPTIONS,
   ACCOUNTING_TAX_ROLE_OPTIONS,
-  formatCad,
   type ProviderFinancialReviewDraftRow,
 } from './provider-financial-review-model';
 
@@ -19,16 +18,10 @@ type Props = {
   dirty: boolean;
   draftReview: AccountingProviderFinancialReviewRevision | null;
   confirmingId: string | null;
-  onAddCorrection: () => void;
   onUpdateRow: (
     sourceLineStableId: string,
     update: Partial<ProviderFinancialReviewDraftRow>,
   ) => void;
-  onChangeCorrectionLine: (
-    currentSourceLineStableId: string,
-    nextSourceLineStableId: string,
-  ) => void;
-  onRemoveCorrection: (sourceLineStableId: string) => void;
   onReviewNoteChange: (value: string) => void;
   onSaveDraft: () => void;
   onConfirmDraft: (
@@ -45,91 +38,48 @@ export function ProviderFinancialReviewEditor({
   dirty,
   draftReview,
   confirmingId,
-  onAddCorrection,
   onUpdateRow,
-  onChangeCorrectionLine,
-  onRemoveCorrection,
   onReviewNoteChange,
   onSaveDraft,
   onConfirmDraft,
 }: Props) {
-  const usedLineStableIds = new Set(rows.map((row) => row.sourceLineStableId));
-  const availableLines = document.lines.filter(
-    (line) => !usedLineStableIds.has(line.lineStableId),
-  );
-
   return (
     <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h4 className="text-sm font-semibold">
-            {isZh ? '编辑复核草稿' : 'Edit review draft'}
+            {isZh ? '待入账值（可编辑）' : 'Values to be posted (editable)'}
           </h4>
           <p className="text-xs text-slate-500">
             {isZh
-              ? '保存草稿不会影响结算；只有明确确认后的 revision 才会成为有效值。'
-              : 'Saving a draft does not affect settlement; only an explicitly confirmed revision becomes effective.'}
+              ? '所有当前值均已预填。直接修改需要调整的项目；未改动行不会写成 correction。保存草稿不会影响结算，只有明确确认后的 revision 才成为有效值。'
+              : 'All current values are prefilled. Edit only what needs correction; unchanged rows are not persisted as corrections. Saving a draft does not affect settlement, and only an explicitly confirmed revision becomes effective.'}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onAddCorrection}
-          disabled={availableLines.length === 0}
-          className="rounded border border-slate-300 px-3 py-1.5 text-xs disabled:opacity-50"
-        >
-          {isZh ? '添加修正' : 'Add correction'}
-        </button>
       </div>
-
-      {rows.length === 0 ? (
-        <p className="rounded bg-slate-50 px-3 py-2 text-xs text-slate-500">
-          {isZh
-            ? '当前没有修正行；如果你刚移除了旧修正，保存后会生成零修正 revision 并恢复机器值。'
-            : 'There are no correction rows. If you just removed prior corrections, saving creates a zero-correction revision that restores the machine values.'}
-        </p>
-      ) : null}
 
       {rows.map((row) => {
         const sourceLine = document.lines.find(
           (line) => line.lineStableId === row.sourceLineStableId,
         );
         if (!sourceLine) return null;
-        const lineChoices = document.lines.filter(
-          (line) =>
-            line.lineStableId === row.sourceLineStableId ||
-            !usedLineStableIds.has(line.lineStableId),
-        );
         return (
           <div
             key={row.sourceLineStableId}
             className="space-y-3 rounded-lg border border-slate-200 p-3"
           >
-            <div className="flex flex-wrap items-end gap-2">
-              <label className="grid min-w-[220px] flex-1 gap-1 text-xs">
-                <span className="text-slate-500">
-                  {isZh ? '源行' : 'Source line'}
-                </span>
-                <select
-                  value={row.sourceLineStableId}
-                  onChange={(event) =>
-                    onChangeCorrectionLine(
-                      row.sourceLineStableId,
-                      event.target.value,
-                    )
-                  }
-                  className="rounded border border-slate-300 bg-white px-2 py-2 text-sm"
-                >
-                  {lineChoices.map((line) => (
-                    <option key={line.lineStableId} value={line.lineStableId}>
-                      #{line.lineNo} {line.rawName ?? line.component} ·{' '}
-                      {formatCad(line.amountCents)}
-                    </option>
-                  ))}
-                </select>
-              </label>
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="min-w-[220px] flex-1">
+                <p className="text-xs text-slate-500">
+                  {isZh ? '账单项目' : 'Statement item'}
+                </p>
+                <p className="mt-1 text-sm font-medium text-slate-900">
+                  #{sourceLine.lineNo} {sourceLine.rawName ?? sourceLine.component}
+                </p>
+              </div>
               <label className="grid min-w-[220px] gap-1 text-xs">
                 <span className="text-slate-500">
-                  {isZh ? '修正类型' : 'Correction type'}
+                  {isZh ? '调整类型' : 'Adjustment type'}
                 </span>
                 <select
                   value={row.reason}
@@ -142,20 +92,13 @@ export function ProviderFinancialReviewEditor({
                   className="rounded border border-slate-300 bg-white px-2 py-2 text-sm"
                 >
                   <option value="EXTRACTION_CORRECTION">
-                    EXTRACTION_CORRECTION
+                    {isZh ? '金额 / 名称修正' : 'Amount / label correction'}
                   </option>
                   <option value="SEMANTIC_CLASSIFICATION">
-                    SEMANTIC_CLASSIFICATION
+                    {isZh ? '会计分类修正' : 'Accounting classification'}
                   </option>
                 </select>
               </label>
-              <button
-                type="button"
-                onClick={() => onRemoveCorrection(row.sourceLineStableId)}
-                className="rounded border border-red-200 px-3 py-2 text-xs text-red-700"
-              >
-                {isZh ? '移除' : 'Remove'}
-              </button>
             </div>
 
             {row.reason === 'EXTRACTION_CORRECTION' ? (

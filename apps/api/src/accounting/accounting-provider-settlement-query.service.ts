@@ -125,27 +125,74 @@ export class AccountingProviderSettlementQueryService {
     const stableIds = Array.from(new Set(documentStableIds));
     if (stableIds.length === 0) return [];
 
-    const journals = await this.readSettlementShadowExistingJournals({
-      providerDocumentStableIds: stableIds,
-      uberOrderEntryStableIds: [],
+    const journals = await this.prisma.accountingJournalEntry.findMany({
+      where: {
+        deletedAt: null,
+        sourceFactType: 'accounting.provider_financial_document.v1',
+        sourceFactStableId: { in: stableIds },
+      },
+      select: {
+        entryStableId: true,
+        sourceFactStableId: true,
+        occurredAt: true,
+        currency: true,
+        memo: true,
+        lines: {
+          orderBy: { lineNo: 'asc' },
+          select: {
+            lineNo: true,
+            debitCents: true,
+            creditCents: true,
+            memo: true,
+            account: {
+              select: {
+                accountStableId: true,
+                name: true,
+              },
+            },
+            category: {
+              select: {
+                categoryStableId: true,
+                name: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { entryStableId: 'asc' },
     });
     const journalByDocumentStableId = new Map(
       journals.flatMap((journal) =>
         journal.sourceFactStableId
-          ? [[journal.sourceFactStableId, journal.entryStableId] as const]
+          ? [[journal.sourceFactStableId, journal] as const]
           : [],
       ),
     );
 
     return stableIds.map((documentStableId) => {
-      const existingJournalEntryStableId =
-        journalByDocumentStableId.get(documentStableId) ?? null;
+      const journal = journalByDocumentStableId.get(documentStableId) ?? null;
       return {
         documentStableId,
-        postingState: existingJournalEntryStableId
-          ? ('POSTED' as const)
-          : ('NOT_POSTED' as const),
-        existingJournalEntryStableId,
+        postingState: journal ? ('POSTED' as const) : ('NOT_POSTED' as const),
+        existingJournalEntryStableId: journal?.entryStableId ?? null,
+        journal: journal
+          ? {
+              entryStableId: journal.entryStableId,
+              occurredAt: journal.occurredAt.toISOString(),
+              currency: journal.currency,
+              memo: journal.memo,
+              lines: journal.lines.map((line) => ({
+                lineNo: line.lineNo,
+                accountStableId: line.account.accountStableId,
+                accountName: line.account.name,
+                categoryStableId: line.category?.categoryStableId ?? null,
+                categoryName: line.category?.name ?? null,
+                debitCents: line.debitCents,
+                creditCents: line.creditCents,
+                memo: line.memo,
+              })),
+            }
+          : null,
       };
     });
   }
