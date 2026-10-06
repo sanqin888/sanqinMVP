@@ -20,9 +20,7 @@ const STORE = {
 const monthEnd = (month: string): string => {
   const year = Number(month.slice(0, 4));
   const monthNumber = Number(month.slice(5, 7));
-  return new Date(Date.UTC(year, monthNumber, 0))
-    .toISOString()
-    .slice(0, 10);
+  return new Date(Date.UTC(year, monthNumber, 0)).toISOString().slice(0, 10);
 };
 
 type TestLine = {
@@ -84,8 +82,7 @@ const withUberControlTotals = (
       component: AccountingFinancialComponent.CONTROL_TOTAL,
       postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
       taxRole: AccountingFinancialTaxRole.NONE,
-      amountCents:
-        amountOverride ?? sumNamedLines(lines, componentRawNames),
+      amountCents: amountOverride ?? sumNamedLines(lines, componentRawNames),
       occurredAt: null,
     });
   };
@@ -253,7 +250,12 @@ describe('AccountingPlatformAnalyticsService', () => {
       provider: AccountingFinancialProvider.UBER_EATS,
       month: '2026-08',
       lines: [
-        line('uber_aug_1', 'Sales', AccountingFinancialComponent.SALES, 100_000),
+        line(
+          'uber_aug_1',
+          'Sales',
+          AccountingFinancialComponent.SALES,
+          100_000,
+        ),
         line(
           'uber_aug_2',
           'Tax on Sales',
@@ -425,7 +427,12 @@ describe('AccountingPlatformAnalyticsService', () => {
       provider: AccountingFinancialProvider.UBER_EATS,
       month: '2026-08',
       lines: [
-        line('corrected_1', 'Sales', AccountingFinancialComponent.SALES, 90_000),
+        line(
+          'corrected_1',
+          'Sales',
+          AccountingFinancialComponent.SALES,
+          90_000,
+        ),
         line(
           'corrected_2',
           'Marketplace Fees',
@@ -485,19 +492,16 @@ describe('AccountingPlatformAnalyticsService', () => {
         line('may_1', 'Sales', AccountingFinancialComponent.SALES, 80_000),
       ],
     });
-    const { service } = makeService([
-      juneRevision1,
-      july,
-      may,
-      juneRevision2,
-    ]);
+    const { service } = makeService([juneRevision1, july, may, juneRevision2]);
 
     const report = await service.report({ storeStableId: STORE.storeStableId });
     const uber = report.providers[0];
 
     expect(uber.latestMonth).toBe('2026-07');
     expect(uber.coverage).toBe('PARTIAL');
-    expect(uber.periods.map((period) => [period.month, period.status])).toEqual([
+    expect(
+      uber.periods.map((period) => [period.month, period.status]),
+    ).toEqual([
       ['2026-07', 'AVAILABLE'],
       ['2026-06', 'MISSING'],
       ['2026-05', 'AVAILABLE'],
@@ -510,7 +514,12 @@ describe('AccountingPlatformAnalyticsService', () => {
       month: '2026-08',
       businessIdentityKey: 'fantuan:aug:first',
       lines: [
-        line('ambiguous_1', 'Sales', AccountingFinancialComponent.SALES, 100_000),
+        line(
+          'ambiguous_1',
+          'Sales',
+          AccountingFinancialComponent.SALES,
+          100_000,
+        ),
       ],
     });
     const second = statement({
@@ -518,7 +527,12 @@ describe('AccountingPlatformAnalyticsService', () => {
       month: '2026-08',
       businessIdentityKey: 'fantuan:aug:second',
       lines: [
-        line('ambiguous_2', 'Sales', AccountingFinancialComponent.SALES, 110_000),
+        line(
+          'ambiguous_2',
+          'Sales',
+          AccountingFinancialComponent.SALES,
+          110_000,
+        ),
       ],
     });
     const { service } = makeService([first, second]);
@@ -636,7 +650,12 @@ describe('AccountingPlatformAnalyticsService', () => {
       provider: AccountingFinancialProvider.FANTUAN,
       month: '2026-08',
       lines: [
-        line('complete_1', 'Sales', AccountingFinancialComponent.SALES, 686_782),
+        line(
+          'complete_1',
+          'Sales',
+          AccountingFinancialComponent.SALES,
+          686_782,
+        ),
         {
           ...line(
             'complete_2',
@@ -730,9 +749,7 @@ describe('AccountingPlatformAnalyticsService', () => {
     expect(period?.status).toBe('AVAILABLE');
     if (period?.status !== 'AVAILABLE') throw new Error('expected period');
     expect(period.totalPlatformCostExTaxCents).toBe(274_545);
-    expect(
-      period.fees.find((fee) => fee.rawName === 'Marketing Fee'),
-    ).toEqual(
+    expect(period.fees.find((fee) => fee.rawName === 'Marketing Fee')).toEqual(
       expect.objectContaining({
         costImpactCents: 28_200,
         kind: 'CHARGE',

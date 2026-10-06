@@ -3,9 +3,10 @@ import type {
   AccountingFinancialProvider,
 } from './accounting-contracts';
 
-export type AccountingPlatformAnalyticsProviderKeyV1 =
-  | AccountingFinancialProvider.UBER_EATS
-  | AccountingFinancialProvider.FANTUAN;
+export type AccountingPlatformAnalyticsProviderKeyV1 = Extract<
+  AccountingFinancialProvider,
+  'UBER_EATS' | 'FANTUAN'
+>;
 
 export type AccountingPlatformAnalyticsCoverageStatusV1 =
   | 'COMPLETE'

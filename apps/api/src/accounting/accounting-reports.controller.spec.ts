@@ -167,6 +167,7 @@ const makeController = () => {
     controller: new AccountingReportsController(
       {} as never,
       {} as never,
+      {} as never,
       balanceMovement as never,
       trialBalance as never,
       statementDrillThrough as never,

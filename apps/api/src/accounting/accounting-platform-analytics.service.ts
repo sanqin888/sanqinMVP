@@ -1,8 +1,4 @@
-import {
-  ConflictException,
-  Inject,
-  Injectable,
-} from '@nestjs/common';
+import { ConflictException, Inject, Injectable } from '@nestjs/common';
 import {
   AccountingFinancialComponent,
   AccountingFinancialDocumentType,
@@ -58,11 +54,9 @@ const isoDate = (value: Date | null): string | null =>
   value?.toISOString().slice(0, 10) ?? null;
 
 const documentIdentityKey = (document: ProviderDocumentRow): string =>
-  [
-    document.provider,
-    document.documentType,
-    document.businessIdentityKey,
-  ].join('|');
+  [document.provider, document.documentType, document.businessIdentityKey].join(
+    '|',
+  );
 
 const latestDocumentRevisions = (
   documents: ProviderDocumentRow[],
@@ -189,9 +183,7 @@ export class AccountingPlatformAnalyticsService {
       };
     }
 
-    const months = [0, -1, -2].map((offset) =>
-      shiftMonth(latestMonth, offset),
-    );
+    const months = [0, -1, -2].map((offset) => shiftMonth(latestMonth, offset));
     const periods = months.map((month) =>
       this.projectPeriod(month, monthGroups.get(month) ?? []),
     );
@@ -343,10 +335,7 @@ export class AccountingPlatformAnalyticsService {
         rawNames: uniqueNames(commissionLines.map((line) => line.rawName)),
         amountCents: commissionAmountCents,
         costImpactCents: commissionCostImpactCents,
-        shareOfSalesBps: shareOfSalesBps(
-          commissionCostImpactCents,
-          salesCents,
-        ),
+        shareOfSalesBps: shareOfSalesBps(commissionCostImpactCents, salesCents),
       },
       fees,
       totalPlatformCostExTaxCents,
@@ -373,10 +362,7 @@ export class AccountingPlatformAnalyticsService {
       lines,
     })
       .filter((check) => check.status !== 'MATCHED')
-      .map(
-        (check) =>
-          `PROVIDER_CONTROL_${check.key}_${check.status}`,
-      );
+      .map((check) => `PROVIDER_CONTROL_${check.key}_${check.status}`);
   }
 
   private effectiveLines(document: ProviderDocumentRow) {
@@ -395,8 +381,7 @@ export class AccountingPlatformAnalyticsService {
                 effectiveRawCode: correction.effectiveRawCode,
                 effectiveRawName: correction.effectiveRawName,
                 effectiveComponent: correction.effectiveComponent,
-                effectivePostingTreatment:
-                  correction.effectivePostingTreatment,
+                effectivePostingTreatment: correction.effectivePostingTreatment,
                 effectiveTaxRole: correction.effectiveTaxRole,
                 effectiveAmountCents: correction.effectiveAmountCents,
               })),

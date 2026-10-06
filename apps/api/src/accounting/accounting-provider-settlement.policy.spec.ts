@@ -114,9 +114,7 @@ const uberDocument = (lines: SettlementTestLine[]) => ({
   lines: withUberControlTotals(lines),
 });
 
-const fantuanSeptemberDocument = (
-  includeMarketingFee: boolean,
-) => ({
+const fantuanSeptemberDocument = (includeMarketingFee: boolean) => ({
   documentStableId: 'fantuan_sep_statement',
   revision: 1,
   provider: AccountingFinancialProvider.FANTUAN,
@@ -674,9 +672,9 @@ describe('Accounting provider settlement shadow policy', () => {
 
     expect(plan.status).toBe('READY');
     expect(plan.controlTotalChecks).toHaveLength(4);
-    expect(plan.controlTotalChecks.every((check) => check.status === 'MATCHED')).toBe(
-      true,
-    );
+    expect(
+      plan.controlTotalChecks.every((check) => check.status === 'MATCHED'),
+    ).toBe(true);
     expect(
       plan.decisions.find((line) => line.rawName === 'Marketing Fee'),
     ).toEqual(

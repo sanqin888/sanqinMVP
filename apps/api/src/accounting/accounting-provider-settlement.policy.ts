@@ -629,10 +629,7 @@ const FANTUAN_CONTROL_TOTAL_RULES: readonly FantuanControlTotalRule[] = [
       'Marketing Fee GST/HST',
       'Commission GST/HST',
     ],
-    requiredComponentRawNames: [
-      'Net Sales GST/HST',
-      'Commission GST/HST',
-    ],
+    requiredComponentRawNames: ['Net Sales GST/HST', 'Commission GST/HST'],
   },
   {
     key: 'FANTUAN_TRANSFER_TOTAL',
@@ -1022,9 +1019,7 @@ const buildFantuanControlTotalChecks = (
     }
     const deltaCents = calculatedCents - controlLine.amountCents;
     if (!Number.isSafeInteger(deltaCents)) {
-      throw new Error(
-        'Fantuan control total delta exceeds safe integer range',
-      );
+      throw new Error('Fantuan control total delta exceeds safe integer range');
     }
     return {
       key: rule.key,
