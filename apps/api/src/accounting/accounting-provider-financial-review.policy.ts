@@ -310,3 +310,56 @@ export function applyProviderFinancialReviewCorrections<
     };
   });
 }
+
+export type ProviderFinancialEffectiveLine =
+  ProviderFinancialReviewSourceLine & {
+    occurredAt: Date | null;
+  };
+
+export type ProviderFinancialConfirmedReviewSnapshot = {
+  effectiveSnapshotParserName: string | null;
+  effectiveLines: Array<{
+    reviewedLineStableId: string;
+    lineNo: number;
+    sourceLineStableId: string | null;
+    rawCode: string | null;
+    rawName: string | null;
+    component: AccountingFinancialComponent;
+    postingTreatment: AccountingFinancialPostingTreatment;
+    taxRole: AccountingFinancialTaxRole;
+    amountCents: number;
+    occurredAt: Date | null;
+  }>;
+  corrections: NormalizedProviderFinancialReviewCorrection[];
+};
+
+export function resolveProviderFinancialEffectiveLines(params: {
+  sourceLines: ProviderFinancialEffectiveLine[];
+  review: ProviderFinancialConfirmedReviewSnapshot | null;
+}): ProviderFinancialEffectiveLine[] {
+  if (!params.review) return params.sourceLines;
+
+  if (params.review.effectiveSnapshotParserName) {
+    if (params.review.effectiveLines.length === 0) {
+      throw new AccountingProviderFinancialReviewPolicyError(
+        'confirmed parser re-evaluation review is missing effective lines',
+      );
+    }
+    return params.review.effectiveLines.map((line) => ({
+      lineStableId: line.reviewedLineStableId,
+      lineNo: line.lineNo,
+      rawCode: line.rawCode,
+      rawName: line.rawName,
+      component: line.component,
+      postingTreatment: line.postingTreatment,
+      taxRole: line.taxRole,
+      amountCents: line.amountCents,
+      occurredAt: line.occurredAt,
+    }));
+  }
+
+  return applyProviderFinancialReviewCorrections({
+    sourceLines: params.sourceLines,
+    corrections: params.review.corrections,
+  });
+}

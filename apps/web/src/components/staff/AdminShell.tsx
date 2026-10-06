@@ -231,6 +231,13 @@ function buildCategories(
           icon: Calculator,
         },
         {
+          href: `${adminRoot}/reports/platforms`,
+          labelZh: '平台分析',
+          labelEn: 'Platform analytics',
+          icon: BarChart3,
+          preserveStoreContext: true,
+        },
+        {
           href: `${adminRoot}/analytics`,
           labelZh: '行为 / 埋点分析',
           labelEn: 'Behavior analytics',

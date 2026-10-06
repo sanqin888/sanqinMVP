@@ -68,20 +68,28 @@ describe('Admin DATA-D Management P&L UI contract', () => {
     );
   });
 
-  it('adds a whole-ledger Data destination without preserving Store context', () => {
+  it('keeps Management whole-ledger while inserting Store-scoped Platform analytics before Behavior analytics', () => {
     const managementStart = adminShellSource.indexOf(
       "href: `${adminRoot}/reports/management`",
     );
-    const behaviorStart = adminShellSource.indexOf(
-      "href: `${adminRoot}/analytics`",
+    const platformStart = adminShellSource.indexOf(
+      "href: `${adminRoot}/reports/platforms`",
       managementStart,
     );
-    const managementItem = adminShellSource.slice(managementStart, behaviorStart);
+    const behaviorStart = adminShellSource.indexOf(
+      "href: `${adminRoot}/analytics`",
+      platformStart,
+    );
+    const managementItem = adminShellSource.slice(managementStart, platformStart);
+    const platformItem = adminShellSource.slice(platformStart, behaviorStart);
 
     expect(managementStart).toBeGreaterThan(-1);
-    expect(behaviorStart).toBeGreaterThan(managementStart);
+    expect(platformStart).toBeGreaterThan(managementStart);
+    expect(behaviorStart).toBeGreaterThan(platformStart);
     expect(managementItem).toContain("labelEn: 'Management P&L'");
     expect(managementItem).not.toContain('preserveStoreContext');
+    expect(platformItem).toContain("labelEn: 'Platform analytics'");
+    expect(platformItem).toContain('preserveStoreContext: true');
     expect(adminShellSource).toContain(
       'activeNavigationItem?.preserveStoreContext === true',
     );

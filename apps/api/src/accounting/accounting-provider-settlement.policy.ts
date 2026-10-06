@@ -197,6 +197,10 @@ export type ProviderSettlementControlTotalCheck = {
     | 'UBER_TOTAL_MARKETING'
     | 'UBER_TOTAL_AMENDMENTS'
     | 'UBER_NET_TOTAL'
+    | 'FANTUAN_ITEM_SUBTOTAL'
+    | 'FANTUAN_MARKETING_CHARGES'
+    | 'FANTUAN_NET_TAXES'
+    | 'FANTUAN_TRANSFER_TOTAL'
     | 'CLOVER_ACCOUNT_SUMMARY'
     | 'CLOVER_FEE_SUMMARY'
     | 'CLOVER_FEES_DETAIL'
@@ -588,6 +592,65 @@ const UBER_CONTROL_TOTAL_RULES: readonly UberControlTotalRule[] = [
   },
 ] as const;
 
+type FantuanControlTotalRule = {
+  key: ProviderSettlementControlTotalCheck['key'];
+  controlRawName: string;
+  componentRawNames: readonly string[];
+  requiredComponentRawNames: readonly string[];
+};
+
+const FANTUAN_CONTROL_TOTAL_RULES: readonly FantuanControlTotalRule[] = [
+  {
+    key: 'FANTUAN_ITEM_SUBTOTAL',
+    controlRawName: 'Item Subtotal',
+    componentRawNames: ['Sales'],
+    requiredComponentRawNames: ['Sales'],
+  },
+  {
+    key: 'FANTUAN_MARKETING_CHARGES',
+    controlRawName: 'Marketing and Fantuan Event Charges',
+    componentRawNames: [
+      'Discounts from Promotion events',
+      'Fantuan Subsidy for Promotion events',
+      'Marketing Fee',
+      'Commission',
+    ],
+    requiredComponentRawNames: [
+      'Discounts from Promotion events',
+      'Fantuan Subsidy for Promotion events',
+      'Commission',
+    ],
+  },
+  {
+    key: 'FANTUAN_NET_TAXES',
+    controlRawName: 'Net Taxes',
+    componentRawNames: [
+      'Net Sales GST/HST',
+      'Marketing Fee GST/HST',
+      'Commission GST/HST',
+    ],
+    requiredComponentRawNames: [
+      'Net Sales GST/HST',
+      'Commission GST/HST',
+    ],
+  },
+  {
+    key: 'FANTUAN_TRANSFER_TOTAL',
+    controlRawName: 'Total transfer amount',
+    componentRawNames: [
+      'Sales',
+      'Marketing and Fantuan Event Charges',
+      'Adjustment',
+      'Net Taxes',
+    ],
+    requiredComponentRawNames: [
+      'Sales',
+      'Marketing and Fantuan Event Charges',
+      'Net Taxes',
+    ],
+  },
+] as const;
+
 const normalizeControlRawName = (rawName: string | null): string =>
   rawName?.trim().toLowerCase() ?? '';
 
@@ -890,13 +953,100 @@ const buildCloverFeesControlTotalChecks = (
     : buildLegacyCloverFeesControlTotalChecks(document);
 };
 
+const buildFantuanControlTotalChecks = (
+  document: ProviderSettlementDocumentInput,
+): ProviderSettlementControlTotalCheck[] => {
+  if (
+    document.provider !== AccountingFinancialProvider.FANTUAN ||
+    document.documentType !== AccountingFinancialDocumentType.STATEMENT
+  ) {
+    return [];
+  }
+  const hasControlEvidence = FANTUAN_CONTROL_TOTAL_RULES.some((rule) =>
+    document.lines.some(
+      (line) =>
+        normalizeControlRawName(line.rawName) ===
+        rule.controlRawName.toLowerCase(),
+    ),
+  );
+  if (!hasControlEvidence) return [];
+
+  return FANTUAN_CONTROL_TOTAL_RULES.map((rule) => {
+    const controlLines = document.lines.filter(
+      (line) =>
+        normalizeControlRawName(line.rawName) ===
+        rule.controlRawName.toLowerCase(),
+    );
+    const componentPresence = new Map(
+      rule.componentRawNames.map((rawName) => [
+        rawName,
+        document.lines.filter(
+          (line) =>
+            normalizeControlRawName(line.rawName) === rawName.toLowerCase(),
+        ),
+      ]),
+    );
+    const componentsComplete =
+      rule.componentRawNames.every(
+        (rawName) => (componentPresence.get(rawName)?.length ?? 0) <= 1,
+      ) &&
+      rule.requiredComponentRawNames.every(
+        (rawName) => (componentPresence.get(rawName)?.length ?? 0) === 1,
+      );
+    const calculatedCents = sumControlAmounts(
+      document.lines,
+      rule.componentRawNames,
+    );
+
+    if (controlLines.length !== 1 || !componentsComplete) {
+      return {
+        key: rule.key,
+        status: 'INCOMPLETE' as const,
+        controlRawName: rule.controlRawName,
+        controlLineStableId:
+          controlLines.length === 1
+            ? (controlLines[0]?.lineStableId ?? null)
+            : null,
+        expectedCents:
+          controlLines.length === 1
+            ? (controlLines[0]?.amountCents ?? null)
+            : null,
+        calculatedCents,
+        deltaCents: null,
+      };
+    }
+
+    const controlLine = controlLines[0];
+    if (!controlLine) {
+      throw new Error('Fantuan control total line missing after validation');
+    }
+    const deltaCents = calculatedCents - controlLine.amountCents;
+    if (!Number.isSafeInteger(deltaCents)) {
+      throw new Error(
+        'Fantuan control total delta exceeds safe integer range',
+      );
+    }
+    return {
+      key: rule.key,
+      status: deltaCents === 0 ? ('MATCHED' as const) : ('MISMATCH' as const),
+      controlRawName: rule.controlRawName,
+      controlLineStableId: controlLine.lineStableId,
+      expectedCents: controlLine.amountCents,
+      calculatedCents,
+      deltaCents,
+    };
+  });
+};
+
 // Reconcile source controls before posting disposition changes which lines are
 // POSTABLE. A balanced draft Journal alone cannot prove extraction integrity.
-const buildProviderControlTotalChecks = (
+export const buildProviderControlTotalChecks = (
   document: ProviderSettlementDocumentInput,
 ): ProviderSettlementControlTotalCheck[] => {
   const cloverChecks = buildCloverFeesControlTotalChecks(document);
   if (cloverChecks.length > 0) return cloverChecks;
+  const fantuanChecks = buildFantuanControlTotalChecks(document);
+  if (fantuanChecks.length > 0) return fantuanChecks;
   if (
     document.provider !== AccountingFinancialProvider.UBER_EATS ||
     document.documentType !== AccountingFinancialDocumentType.STATEMENT
