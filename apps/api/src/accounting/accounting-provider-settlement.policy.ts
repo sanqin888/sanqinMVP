@@ -226,6 +226,32 @@ export type ProviderSettlementDocumentPlan = {
   requiredAccountStableIds: string[];
 };
 
+export const UBER_OTHER_EARNINGS_SEMANTIC_REVIEW_REASON =
+  'UBER_OTHER_EARNINGS_REQUIRES_SEMANTIC_REVIEW';
+
+const UBER_AMBIGUOUS_OTHER_EARNINGS_RAW_NAMES = new Set([
+  'other earnings',
+  'tax on other earnings',
+]);
+
+export function requiresUberOtherEarningsSemanticReview(params: {
+  provider: AccountingFinancialProvider;
+  line: Pick<
+    ProviderSettlementDocumentInput['lines'][number],
+    'rawName' | 'component' | 'postingTreatment' | 'amountCents'
+  >;
+}): boolean {
+  const normalizedRawName = params.line.rawName?.trim().toLowerCase() ?? '';
+  return (
+    params.provider === AccountingFinancialProvider.UBER_EATS &&
+    params.line.amountCents !== 0 &&
+    params.line.component === AccountingFinancialComponent.OTHER &&
+    params.line.postingTreatment ===
+      AccountingFinancialPostingTreatment.POSTABLE &&
+    UBER_AMBIGUOUS_OTHER_EARNINGS_RAW_NAMES.has(normalizedRawName)
+  );
+}
+
 const providerPendingAccount = providerPendingAccountStableId;
 
 const CLOVER_FEE_COMPONENTS = new Set<AccountingFinancialComponent>([
@@ -431,6 +457,20 @@ export function classifyProviderSettlementLine(params: {
       ...line,
       disposition: 'RECONCILIATION_ONLY',
       reason: 'REFUND_REQUIRES_CANONICAL_CHANGE_OR_PROVIDER_REVERSAL_EVIDENCE',
+      targetAccountStableId: null,
+      targetCategoryStableId: null,
+    };
+  }
+  if (
+    requiresUberOtherEarningsSemanticReview({
+      provider: params.provider,
+      line,
+    })
+  ) {
+    return {
+      ...line,
+      disposition: 'BLOCKED',
+      reason: UBER_OTHER_EARNINGS_SEMANTIC_REVIEW_REASON,
       targetAccountStableId: null,
       targetCategoryStableId: null,
     };
