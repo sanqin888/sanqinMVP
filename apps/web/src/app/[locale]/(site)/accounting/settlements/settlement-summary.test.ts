@@ -5,6 +5,7 @@ import type {
 import type { ProviderSettlementPostingState } from '../contracts/settlements';
 import {
   findSettlementNetLine,
+  settlementBlockReasonGuidance,
   settlementDocumentBucket,
 } from './settlement-summary';
 
@@ -115,4 +116,22 @@ describe('provider settlement summary', () => {
       expect(settlementDocumentBucket(detail, undefined)).toBe('SUPPORTING');
     },
   );
+
+  it('explains the Uber Other Earnings semantic-review blocker without hiding the raw reason', () => {
+    expect(
+      settlementBlockReasonGuidance(
+        'UBER_OTHER_EARNINGS_REQUIRES_SEMANTIC_REVIEW',
+        true,
+      ),
+    ).toContain('Payment Details');
+    expect(
+      settlementBlockReasonGuidance(
+        'UBER_OTHER_EARNINGS_REQUIRES_SEMANTIC_REVIEW',
+        false,
+      ),
+    ).toContain('SEMANTIC_CLASSIFICATION');
+    expect(settlementBlockReasonGuidance('ACCOUNT_NOT_PROVISIONED', true)).toBe(
+      null,
+    );
+  });
 });

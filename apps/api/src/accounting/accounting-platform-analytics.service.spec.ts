@@ -145,7 +145,9 @@ const statement = (input: {
   uberControlSalesCents?: number;
   corrections?: Array<{
     sourceLineStableId: string;
-    effectiveAmountCents: number;
+    effectiveAmountCents?: number;
+    effectiveComponent?: AccountingFinancialComponent;
+    effectiveTaxRole?: AccountingFinancialTaxRole;
   }>;
 }) => {
   const revision = input.revision ?? 1;
@@ -207,17 +209,26 @@ const statement = (input: {
                     candidate.lineStableId === correction.sourceLineStableId,
                 );
                 if (!source) throw new Error('missing test source line');
+                const semanticClassification =
+                  correction.effectiveComponent !== undefined ||
+                  correction.effectiveTaxRole !== undefined;
                 return {
                   sourceLineStableId: source.lineStableId,
-                  reason:
-                    AccountingProviderFinancialCorrectionReason.EXTRACTION_CORRECTION,
-                  note: null,
+                  reason: semanticClassification
+                    ? AccountingProviderFinancialCorrectionReason.SEMANTIC_CLASSIFICATION
+                    : AccountingProviderFinancialCorrectionReason.EXTRACTION_CORRECTION,
+                  note: semanticClassification
+                    ? 'Payment Details confirms the provider summary classification'
+                    : null,
                   effectiveRawCode: source.rawCode,
                   effectiveRawName: source.rawName,
-                  effectiveComponent: source.component,
+                  effectiveComponent:
+                    correction.effectiveComponent ?? source.component,
                   effectivePostingTreatment: source.postingTreatment,
-                  effectiveTaxRole: source.taxRole,
-                  effectiveAmountCents: correction.effectiveAmountCents,
+                  effectiveTaxRole:
+                    correction.effectiveTaxRole ?? source.taxRole,
+                  effectiveAmountCents:
+                    correction.effectiveAmountCents ?? source.amountCents,
                 };
               }),
             },
@@ -456,6 +467,110 @@ describe('AccountingPlatformAnalyticsService', () => {
     if (period?.status !== 'AVAILABLE') throw new Error('expected period');
     expect(period.salesCents).toBe(120_000);
     expect(period.commission.shareOfSalesBps).toBe(2_000);
+  });
+
+  it('marks Uber months incomplete while non-zero Other Earnings still lacks semantic review', async () => {
+    const september = statement({
+      provider: AccountingFinancialProvider.UBER_EATS,
+      month: '2026-09',
+      lines: [
+        line(
+          'uber_sep_1',
+          'Sales',
+          AccountingFinancialComponent.SALES,
+          378_508,
+        ),
+        line(
+          'uber_sep_2',
+          'Tax on Sales',
+          AccountingFinancialComponent.SALES_TAX,
+          49_216,
+          AccountingFinancialTaxRole.SALES_TAX,
+        ),
+        line(
+          'uber_sep_3',
+          'Other Earnings',
+          AccountingFinancialComponent.OTHER,
+          -300,
+        ),
+        line(
+          'uber_sep_4',
+          'Tax on Other Earnings',
+          AccountingFinancialComponent.OTHER,
+          -39,
+          AccountingFinancialTaxRole.SALES_TAX,
+        ),
+      ],
+    });
+    const { service } = makeService([september]);
+
+    const report = await service.report({ storeStableId: STORE.storeStableId });
+    const uber = report.providers.find(
+      (provider) => provider.provider === AccountingFinancialProvider.UBER_EATS,
+    );
+    const period = uber?.periods[0];
+
+    expect(period?.status).toBe('INCOMPLETE');
+    if (period?.status !== 'INCOMPLETE') throw new Error('expected incomplete');
+    expect(period.issues).toContain(
+      'UBER_OTHER_EARNINGS_REQUIRES_SEMANTIC_REVIEW',
+    );
+  });
+
+  it('includes reviewed Uber price adjustments in ex-tax sales', async () => {
+    const september = statement({
+      provider: AccountingFinancialProvider.UBER_EATS,
+      month: '2026-09',
+      lines: [
+        line(
+          'uber_sep_reviewed_1',
+          'Sales',
+          AccountingFinancialComponent.SALES,
+          378_508,
+        ),
+        line(
+          'uber_sep_reviewed_2',
+          'Tax on Sales',
+          AccountingFinancialComponent.SALES_TAX,
+          49_216,
+          AccountingFinancialTaxRole.SALES_TAX,
+        ),
+        line(
+          'uber_sep_reviewed_3',
+          'Other Earnings',
+          AccountingFinancialComponent.OTHER,
+          -300,
+        ),
+        line(
+          'uber_sep_reviewed_4',
+          'Tax on Other Earnings',
+          AccountingFinancialComponent.OTHER,
+          -39,
+          AccountingFinancialTaxRole.SALES_TAX,
+        ),
+      ],
+      corrections: [
+        {
+          sourceLineStableId: 'uber_sep_reviewed_3',
+          effectiveComponent: AccountingFinancialComponent.SALES,
+        },
+        {
+          sourceLineStableId: 'uber_sep_reviewed_4',
+          effectiveComponent: AccountingFinancialComponent.SALES_TAX,
+        },
+      ],
+    });
+    const { service } = makeService([september]);
+
+    const report = await service.report({ storeStableId: STORE.storeStableId });
+    const uber = report.providers.find(
+      (provider) => provider.provider === AccountingFinancialProvider.UBER_EATS,
+    );
+    const period = uber?.periods[0];
+
+    expect(period?.status).toBe('AVAILABLE');
+    if (period?.status !== 'AVAILABLE') throw new Error('expected available');
+    expect(period.salesCents).toBe(378_208);
   });
 
   it('does not fall back to a confirmed older revision when the latest revision is pending', async () => {

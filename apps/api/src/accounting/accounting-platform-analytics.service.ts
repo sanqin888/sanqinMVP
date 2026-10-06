@@ -25,7 +25,11 @@ import {
   resolveProviderFinancialEffectiveLines,
   type ProviderFinancialEffectiveLine,
 } from './accounting-provider-financial-review.policy';
-import { buildProviderControlTotalChecks } from './accounting-provider-settlement.policy';
+import {
+  buildProviderControlTotalChecks,
+  requiresUberOtherEarningsSemanticReview,
+  UBER_OTHER_EARNINGS_SEMANTIC_REVIEW_REASON,
+} from './accounting-provider-settlement.policy';
 import { AccountingProviderSettlementQueryService } from './accounting-provider-settlement-query.service';
 
 type ProviderDocumentRow = Awaited<
@@ -350,7 +354,7 @@ export class AccountingPlatformAnalyticsService {
     document: ProviderDocumentRow,
     lines: ProviderFinancialEffectiveLine[],
   ): string[] {
-    return buildProviderControlTotalChecks({
+    const issues = buildProviderControlTotalChecks({
       documentStableId: document.documentStableId,
       revision: document.revision,
       provider: document.provider,
@@ -363,6 +367,18 @@ export class AccountingPlatformAnalyticsService {
     })
       .filter((check) => check.status !== 'MATCHED')
       .map((check) => `PROVIDER_CONTROL_${check.key}_${check.status}`);
+
+    if (
+      lines.some((line) =>
+        requiresUberOtherEarningsSemanticReview({
+          provider: document.provider,
+          line,
+        }),
+      )
+    ) {
+      issues.push(UBER_OTHER_EARNINGS_SEMANTIC_REVIEW_REASON);
+    }
+    return Array.from(new Set(issues));
   }
 
   private effectiveLines(document: ProviderDocumentRow) {

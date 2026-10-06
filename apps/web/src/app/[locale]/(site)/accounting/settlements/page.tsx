@@ -22,6 +22,7 @@ import { ProviderPayoutPanel } from './provider-payout-panel';
 import { SettlementReplayGate } from './settlement-replay-gate';
 import {
   findSettlementNetLine,
+  settlementBlockReasonGuidance,
   settlementDocumentBucket,
 } from './settlement-summary';
 
@@ -395,11 +396,19 @@ function ShadowPreviewPanel({
             {isZh ? 'BLOCKED 原因' : 'Block reasons'}
           </p>
           <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-red-700">
-            {documentPlan.blockReasons.map((reason) => (
-              <li key={reason} className="break-all font-mono">
-                {reason}
-              </li>
-            ))}
+            {documentPlan.blockReasons.map((reason) => {
+              const guidance = settlementBlockReasonGuidance(reason, isZh);
+              return (
+                <li key={reason} className="break-all">
+                  <span className="font-mono">{reason}</span>
+                  {guidance ? (
+                    <p className="mt-1 font-sans leading-5 text-red-800">
+                      {guidance}
+                    </p>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
         </div>
       ) : null}
