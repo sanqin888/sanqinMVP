@@ -1098,6 +1098,49 @@ Total transfer amount $3813.11
     );
   });
 
+  it('parses Fantuan Marketing Fee and its input tax from the September statement format', () => {
+    const parsed = parseProviderFinancialEvidence({
+      providerHint: AccountingFinancialProvider.FANTUAN,
+      documentTypeHint: AccountingFinancialDocumentType.STATEMENT,
+      text: `
+Name: SANQIN RESTAURANT/ 15112320 CANADA INC.
+Restaurant: Qin's Traditional Roujiamo | VIP 25% OFF(YG)
+Total Transfer Amount: $4658.36
+From: 2026-09-01 to 2026-09-30
+Summary
+Sales $6867.82
+Item Subtotal $6867.82
+Marketing and Fantuan Event Charges -$2745.45
+Discounts from Promotion events -$1709.73
+Fantuan Subsidy for Promotion events $1709.73
+Marketing Fee -$282.00
+Commission -$2463.45
+Net Taxes $535.99
+Net Sales GST/HST $892.87
+Marketing Fee GST/HST -$36.66
+Commission GST/HST -$320.22
+Total transfer amount $4658.36
+`,
+    });
+
+    expect(lineByName(parsed!, 'Marketing Fee')).toEqual(
+      expect.objectContaining({
+        amountCents: -28200,
+        component: AccountingFinancialComponent.ADVERTISING,
+        postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+        taxRole: AccountingFinancialTaxRole.NONE,
+      }),
+    );
+    expect(lineByName(parsed!, 'Marketing Fee GST/HST')).toEqual(
+      expect.objectContaining({
+        amountCents: -3666,
+        component: AccountingFinancialComponent.ADVERTISING_TAX,
+        postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+        taxRole: AccountingFinancialTaxRole.INPUT_TAX,
+      }),
+    );
+  });
+
   it('requires an explicit provider hint instead of owning coarse statement recognition', () => {
     const text = `
 Monthly Statement

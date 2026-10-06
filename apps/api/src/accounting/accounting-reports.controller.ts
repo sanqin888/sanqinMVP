@@ -18,6 +18,7 @@ import type { AccountingBalanceMovementReportV1 } from './accounting-balance-mov
 import { AccountingBalanceMovementService } from './accounting-balance-movement.service';
 import { AccountingFinancialReportsService } from './accounting-financial-reports.service';
 import { AccountingSalesAnalyticsService } from './accounting-sales-analytics.service';
+import { AccountingPlatformAnalyticsService } from './accounting-platform-analytics.service';
 import type { AccountingTrialBalanceReportV1 } from './accounting-trial-balance.contract';
 import { AccountingTrialBalanceService } from './accounting-trial-balance.service';
 import type { AccountingStatementDrillThroughPhaseV1 } from './accounting-statement-drill-through.contract';
@@ -33,6 +34,7 @@ export class AccountingReportsController {
   constructor(
     private readonly reports: AccountingFinancialReportsService,
     private readonly salesAnalytics: AccountingSalesAnalyticsService,
+    private readonly platformAnalytics: AccountingPlatformAnalyticsService,
     private readonly balanceMovement: AccountingBalanceMovementService,
     private readonly trialBalance: AccountingTrialBalanceService,
     private readonly statementDrillThrough: AccountingStatementDrillThroughService,
@@ -67,6 +69,11 @@ export class AccountingReportsController {
     @Query('to') to?: string,
   ) {
     return this.salesAnalytics.report({ storeStableId, from, to });
+  }
+
+  @Get('report/platforms')
+  platformReport(@Query('storeStableId') storeStableId?: string) {
+    return this.platformAnalytics.report({ storeStableId });
   }
 
   @Get('report/clover-pre-sync-authority-shadow')

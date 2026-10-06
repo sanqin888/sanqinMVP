@@ -114,6 +114,123 @@ const uberDocument = (lines: SettlementTestLine[]) => ({
   lines: withUberControlTotals(lines),
 });
 
+const fantuanSeptemberDocument = (includeMarketingFee: boolean) => ({
+  documentStableId: 'fantuan_sep_statement',
+  revision: 1,
+  provider: AccountingFinancialProvider.FANTUAN,
+  documentType: AccountingFinancialDocumentType.STATEMENT,
+  storeStableId: '4750_Yonge_Street',
+  periodStart: '2026-09-01',
+  periodEnd: '2026-09-30',
+  currency: 'CAD',
+  lines: [
+    {
+      lineStableId: 'fantuan-sales',
+      lineNo: 1,
+      rawName: 'Sales',
+      component: AccountingFinancialComponent.SALES,
+      postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+      amountCents: 686782,
+    },
+    {
+      lineStableId: 'fantuan-item-subtotal',
+      lineNo: 2,
+      rawName: 'Item Subtotal',
+      component: AccountingFinancialComponent.CONTROL_TOTAL,
+      postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+      amountCents: 686782,
+    },
+    {
+      lineStableId: 'fantuan-marketing-control',
+      lineNo: 3,
+      rawName: 'Marketing and Fantuan Event Charges',
+      component: AccountingFinancialComponent.CONTROL_TOTAL,
+      postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+      amountCents: -274545,
+    },
+    {
+      lineStableId: 'fantuan-promotion',
+      lineNo: 4,
+      rawName: 'Discounts from Promotion events',
+      component: AccountingFinancialComponent.PROMOTION,
+      postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+      amountCents: -170973,
+    },
+    {
+      lineStableId: 'fantuan-subsidy',
+      lineNo: 5,
+      rawName: 'Fantuan Subsidy for Promotion events',
+      component: AccountingFinancialComponent.SUBSIDY,
+      postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+      amountCents: 170973,
+    },
+    ...(includeMarketingFee
+      ? [
+          {
+            lineStableId: 'fantuan-marketing-fee',
+            lineNo: 6,
+            rawName: 'Marketing Fee',
+            component: AccountingFinancialComponent.ADVERTISING,
+            postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+            amountCents: -28200,
+          },
+        ]
+      : []),
+    {
+      lineStableId: 'fantuan-commission',
+      lineNo: 7,
+      rawName: 'Commission',
+      component: AccountingFinancialComponent.COMMISSION,
+      postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+      amountCents: -246345,
+    },
+    {
+      lineStableId: 'fantuan-tax-control',
+      lineNo: 8,
+      rawName: 'Net Taxes',
+      component: AccountingFinancialComponent.CONTROL_TOTAL,
+      postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+      amountCents: 53599,
+    },
+    {
+      lineStableId: 'fantuan-sales-tax',
+      lineNo: 9,
+      rawName: 'Net Sales GST/HST',
+      component: AccountingFinancialComponent.SALES_TAX,
+      postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+      amountCents: 89287,
+    },
+    ...(includeMarketingFee
+      ? [
+          {
+            lineStableId: 'fantuan-marketing-fee-tax',
+            lineNo: 10,
+            rawName: 'Marketing Fee GST/HST',
+            component: AccountingFinancialComponent.ADVERTISING_TAX,
+            postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+            amountCents: -3666,
+          },
+        ]
+      : []),
+    {
+      lineStableId: 'fantuan-commission-tax',
+      lineNo: 11,
+      rawName: 'Commission GST/HST',
+      component: AccountingFinancialComponent.COMMISSION_TAX,
+      postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+      amountCents: -32022,
+    },
+    {
+      lineStableId: 'fantuan-transfer',
+      lineNo: 12,
+      rawName: 'Total transfer amount',
+      component: AccountingFinancialComponent.PAYOUT,
+      postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+      amountCents: 465836,
+    },
+  ],
+});
+
 // Read-only production evidence B4842290 came from Poppler text shaped like:
 // Sales (84 Orders) / Tax on Sales / $2,603.36 / $338.48.
 // The legacy label-followed-by-next-token parser therefore duplicated Sales into Tax.
@@ -506,6 +623,68 @@ describe('Accounting provider settlement shadow policy', () => {
         }),
       ]),
     );
+  });
+
+  it('fails closed when Fantuan control totals expose a missing Marketing Fee', () => {
+    const plan = buildProviderSettlementDocumentPlan({
+      document: fantuanSeptemberDocument(false),
+      salesAuthority: 'STATEMENT_AUTHORITATIVE',
+      occurredAt: new Date('2026-10-01T03:59:59.999Z'),
+    });
+
+    expect(plan.status).toBe('BLOCKED');
+    expect(plan.blockReasons).toContain('PROVIDER_CONTROL_TOTAL_MISMATCH');
+    expect(plan.controlTotalChecks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: 'FANTUAN_ITEM_SUBTOTAL',
+          status: 'MATCHED',
+        }),
+        expect.objectContaining({
+          key: 'FANTUAN_MARKETING_CHARGES',
+          status: 'MISMATCH',
+          expectedCents: -274545,
+          calculatedCents: -246345,
+          deltaCents: 28200,
+        }),
+        expect.objectContaining({
+          key: 'FANTUAN_NET_TAXES',
+          status: 'MISMATCH',
+          expectedCents: 53599,
+          calculatedCents: 57265,
+          deltaCents: 3666,
+        }),
+        expect.objectContaining({
+          key: 'FANTUAN_TRANSFER_TOTAL',
+          status: 'MATCHED',
+        }),
+      ]),
+    );
+    expect(plan.draftJournal).toBeNull();
+  });
+
+  it('accepts Fantuan control totals once Marketing Fee and its GST/HST are present', () => {
+    const plan = buildProviderSettlementDocumentPlan({
+      document: fantuanSeptemberDocument(true),
+      salesAuthority: 'STATEMENT_AUTHORITATIVE',
+      occurredAt: new Date('2026-10-01T03:59:59.999Z'),
+    });
+
+    expect(plan.status).toBe('READY');
+    expect(plan.controlTotalChecks).toHaveLength(4);
+    expect(
+      plan.controlTotalChecks.every((check) => check.status === 'MATCHED'),
+    ).toBe(true);
+    expect(
+      plan.decisions.find((line) => line.rawName === 'Marketing Fee'),
+    ).toEqual(
+      expect.objectContaining({
+        disposition: 'POSTABLE',
+        targetAccountStableId:
+          PROVIDER_SETTLEMENT_ACCOUNT_IDS.advertisingExpense,
+      }),
+    );
+    expect(plan.debitCents).toBe(plan.creditCents);
   });
 
   it('honors parser reconciliation-only treatment for Clover tips', () => {
@@ -1316,6 +1495,138 @@ describe('Accounting provider settlement shadow policy', () => {
         PROVIDER_SETTLEMENT_ACCOUNT_IDS.chargebackAdjustmentExpense,
       ),
     ).toEqual(expect.objectContaining({ debitCents: 660, creditCents: 0 }));
+  });
+
+  it.each<[string, number]>([
+    ['Other Earnings', -300],
+    ['Tax on Other Earnings', -39],
+  ])(
+    'requires explicit semantic review for ambiguous Uber %s lines',
+    (rawName, amountCents) => {
+      const plan = buildProviderSettlementDocumentPlan({
+        document: uberDocument([
+          {
+            lineStableId: `line-${rawName
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, '-')}`,
+            lineNo: 1,
+            rawName,
+            component: AccountingFinancialComponent.OTHER,
+            postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+            amountCents,
+          },
+        ]),
+        salesAuthority: 'STATEMENT_AUTHORITATIVE',
+        occurredAt: new Date('2026-09-30T03:59:59.999Z'),
+      });
+
+      expect(plan.status).toBe('BLOCKED');
+      expect(plan.blockReasons).toEqual([
+        'UBER_OTHER_EARNINGS_REQUIRES_SEMANTIC_REVIEW',
+      ]);
+      expect(plan.decisions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            rawName,
+            disposition: 'BLOCKED',
+            reason: 'UBER_OTHER_EARNINGS_REQUIRES_SEMANTIC_REVIEW',
+            targetAccountStableId: null,
+          }),
+        ]),
+      );
+    },
+  );
+
+  it('posts reviewed Uber price adjustments as sales and output-tax reductions while statement facts are authoritative', () => {
+    const plan = buildProviderSettlementDocumentPlan({
+      document: uberDocument([
+        {
+          lineStableId: 'line-other-earnings',
+          lineNo: 1,
+          rawName: 'Other Earnings',
+          component: AccountingFinancialComponent.SALES,
+          postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+          amountCents: -300,
+        },
+        {
+          lineStableId: 'line-tax-on-other-earnings',
+          lineNo: 2,
+          rawName: 'Tax on Other Earnings',
+          component: AccountingFinancialComponent.SALES_TAX,
+          postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+          amountCents: -39,
+        },
+      ]),
+      salesAuthority: 'STATEMENT_AUTHORITATIVE',
+      occurredAt: new Date('2026-09-30T03:59:59.999Z'),
+    });
+
+    expect(plan.status).toBe('READY');
+    expect(plan.blockReasons).toEqual([]);
+    expect(plan.draftJournal?.lines).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          accountStableId: PROVIDER_SETTLEMENT_ACCOUNT_IDS.uberPending,
+          debitCents: 0,
+          creditCents: 339,
+        }),
+        expect.objectContaining({
+          accountStableId: PROVIDER_SETTLEMENT_ACCOUNT_IDS.salesRevenue,
+          debitCents: 300,
+          creditCents: 0,
+        }),
+        expect.objectContaining({
+          accountStableId: PROVIDER_SETTLEMENT_ACCOUNT_IDS.hstPayable,
+          debitCents: 39,
+          creditCents: 0,
+        }),
+      ]),
+    );
+  });
+
+  it('keeps reviewed Uber price adjustments reconciliation-only once canonical Orders own sales', () => {
+    const plan = buildProviderSettlementDocumentPlan({
+      document: uberDocument([
+        {
+          lineStableId: 'line-other-earnings',
+          lineNo: 1,
+          rawName: 'Other Earnings',
+          component: AccountingFinancialComponent.SALES,
+          postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+          amountCents: -300,
+        },
+        {
+          lineStableId: 'line-tax-on-other-earnings',
+          lineNo: 2,
+          rawName: 'Tax on Other Earnings',
+          component: AccountingFinancialComponent.SALES_TAX,
+          postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+          amountCents: -39,
+        },
+      ]),
+      salesAuthority: 'ORDER_AUTHORITATIVE',
+      occurredAt: new Date('2026-09-30T03:59:59.999Z'),
+    });
+
+    expect(plan.status).toBe('NOOP');
+    expect(plan.blockReasons).toEqual([]);
+    expect(plan.draftJournal).toBeNull();
+    expect(
+      plan.decisions.filter(
+        (decision) =>
+          decision.rawName === 'Other Earnings' ||
+          decision.rawName === 'Tax on Other Earnings',
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        disposition: 'RECONCILIATION_ONLY',
+        reason: 'CANONICAL_ORDER_REVENUE_AUTHORITATIVE',
+      }),
+      expect.objectContaining({
+        disposition: 'RECONCILIATION_ONLY',
+        reason: 'CANONICAL_ORDER_REVENUE_AUTHORITATIVE',
+      }),
+    ]);
   });
 
   it.each<[string, AccountingFinancialComponent]>([

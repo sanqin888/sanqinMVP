@@ -37,7 +37,10 @@ import {
   FANTUAN_ADJUSTMENT_DETAIL_EVIDENCE_KIND,
   FANTUAN_ADJUSTMENT_SUPPORTED_RAW_CODES,
 } from './accounting-fantuan-adjustment-detail.contract';
-import { applyProviderFinancialReviewCorrections } from './accounting-provider-financial-review.policy';
+import {
+  AccountingProviderFinancialReviewPolicyError,
+  resolveProviderFinancialEffectiveLines,
+} from './accounting-provider-financial-review.policy';
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_PREVIEW_RANGE_DAYS = 370;
@@ -188,41 +191,35 @@ const effectiveProviderFinancialLines = (
   document: ProviderDocumentRow,
 ): ProviderDocumentRow['lines'] => {
   const review = document.reviewRevisions?.[0] ?? null;
-  if (!review) return document.lines;
-
-  if (review.effectiveSnapshotParserName) {
-    if (review.effectiveLines.length === 0) {
+  try {
+    return resolveProviderFinancialEffectiveLines({
+      sourceLines: document.lines,
+      review: review
+        ? {
+            effectiveSnapshotParserName: review.effectiveSnapshotParserName,
+            effectiveLines: review.effectiveLines,
+            corrections: review.corrections.map((correction) => ({
+              sourceLineStableId: correction.sourceLineStableId,
+              reason: correction.reason,
+              note: correction.note,
+              effectiveRawCode: correction.effectiveRawCode,
+              effectiveRawName: correction.effectiveRawName,
+              effectiveComponent: correction.effectiveComponent,
+              effectivePostingTreatment: correction.effectivePostingTreatment,
+              effectiveTaxRole: correction.effectiveTaxRole,
+              effectiveAmountCents: correction.effectiveAmountCents,
+            })),
+          }
+        : null,
+    });
+  } catch (error) {
+    if (error instanceof AccountingProviderFinancialReviewPolicyError) {
       throw new ConflictException(
-        `confirmed parser re-evaluation review is missing effective lines: ${document.documentStableId}`,
+        `${error.message}: ${document.documentStableId}`,
       );
     }
-    return review.effectiveLines.map((line) => ({
-      lineStableId: line.reviewedLineStableId,
-      lineNo: line.lineNo,
-      rawCode: line.rawCode,
-      rawName: line.rawName,
-      component: line.component,
-      postingTreatment: line.postingTreatment,
-      taxRole: line.taxRole,
-      amountCents: line.amountCents,
-      occurredAt: line.occurredAt,
-    }));
+    throw error;
   }
-
-  return applyProviderFinancialReviewCorrections({
-    sourceLines: document.lines,
-    corrections: review.corrections.map((correction) => ({
-      sourceLineStableId: correction.sourceLineStableId,
-      reason: correction.reason,
-      note: correction.note,
-      effectiveRawCode: correction.effectiveRawCode,
-      effectiveRawName: correction.effectiveRawName,
-      effectiveComponent: correction.effectiveComponent,
-      effectivePostingTreatment: correction.effectivePostingTreatment,
-      effectiveTaxRole: correction.effectiveTaxRole,
-      effectiveAmountCents: correction.effectiveAmountCents,
-    })),
-  });
 };
 
 const isFantuanAdjustmentDetail = (document: ProviderDocumentRow): boolean =>
