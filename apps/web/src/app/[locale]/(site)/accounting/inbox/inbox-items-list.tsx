@@ -7,7 +7,6 @@ import type {
   AccountingInboxItem,
   AccountingManualUploadPermanentDeleteResult,
 } from '../contracts/inbox';
-import { ProviderFinancialReviewPanel } from '../provider-financial-review-panel';
 import {
   isProviderSupportingEvidence,
   latestParse,
@@ -173,12 +172,6 @@ export function AccountingInboxItemsList({
           const providerPeriodEnd = financial?.periodEnd ?? parse.periodEnd ?? null;
           const providerDocumentRef =
             financial?.providerDocumentRef ?? parse.providerDocumentRef ?? null;
-          const expenseRecognitionConsistency =
-            expenseParse.textractEvidence?.financialConsistency === 'MISMATCH'
-              ? 'MISMATCH'
-              : (expenseParse.financialConsistency ??
-                expenseParse.textractEvidence?.financialConsistency ??
-                'INSUFFICIENT');
           return (
             <div
               key={item.inboxItemStableId}
@@ -473,6 +466,9 @@ export function AccountingInboxItemsList({
                         {financial.periodEnd ?? '—'}
                       </p>
                     ) : null}
+                    <p className="text-xs font-medium text-slate-500">
+                      {isZh ? '识别条目' : 'Recognized items'}
+                    </p>
                     <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
                       {financial.lines.slice(0, 6).map((line) => (
                         <span key={line.lineStableId}>
@@ -522,31 +518,10 @@ export function AccountingInboxItemsList({
                   expenseParse.subtotalCents != null ||
                   expenseParse.taxCents != null ||
                   expenseParse.totalCents != null ? (
-                  <div
-                    className={`rounded-lg border p-3 text-xs ${
-                      expenseRecognitionConsistency === 'MISMATCH'
-                        ? 'border-red-300 bg-red-50 text-red-800'
-                        : expenseRecognitionConsistency === 'MATCHED'
-                          ? 'border-emerald-200 bg-emerald-50/50 text-slate-700'
-                          : 'border-amber-200 bg-amber-50 text-slate-700'
-                    }`}
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <strong>{isZh ? '费用识别预览' : 'Expense recognition preview'}</strong>
-                      <span className="font-medium">
-                        {expenseRecognitionConsistency === 'MATCHED'
-                          ? isZh
-                            ? '金额已自洽'
-                            : 'Amounts reconcile'
-                          : expenseRecognitionConsistency === 'MISMATCH'
-                            ? isZh
-                              ? '金额不自洽 · 需人工订正'
-                              : 'Mismatch · correction required'
-                            : isZh
-                              ? '证据不足 · 请核对'
-                              : 'Insufficient evidence · verify'}
-                      </span>
-                    </div>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+                    <strong>
+                      {isZh ? '费用识别结果' : 'Recognized expense fields'}
+                    </strong>
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
                       <span>
                         {isZh ? '日期' : 'Date'}: <strong>{expenseParse.date ?? '—'}</strong>
@@ -586,13 +561,6 @@ export function AccountingInboxItemsList({
                         <strong>{expenseParse.confidence ?? '—'}</strong>
                       </span>
                     </div>
-                    {expenseRecognitionConsistency === 'MISMATCH' ? (
-                      <p className="mt-2 font-medium">
-                        {isZh
-                          ? '系统识别的税前 + 税额 ≠ 总额。请打开费用审核，按原始凭证在“最终入账值”中直接订正。'
-                          : 'Recognized subtotal + tax does not equal total. Open expense review and correct the Final booking values directly from source evidence.'}
-                      </p>
-                    ) : null}
                   </div>
                 ) : null}
                 {gmailMessage && gmailMessage.evidence.length > 1 ? (
@@ -745,20 +713,20 @@ export function AccountingInboxItemsList({
                           : 'Confirming…'
                         : providerSupportingEvidence
                           ? isZh
-                            ? '确认并归档辅助证据'
-                            : 'Confirm & archive supporting evidence'
+                            ? '确认识别并归档'
+                            : 'Confirm recognition & archive'
                           : isZh
-                            ? '确认平台财务资料'
-                            : 'Confirm provider financial evidence'}
+                            ? '确认识别并进入审核'
+                            : 'Confirm recognition & enter review'}
                     </button>
                     <p className="mt-1 text-xs text-slate-500">
                       {providerSupportingEvidence
                         ? isZh
-                          ? '确认后直接入库为受保护的辅助 / 控制证据，用于后续核对；不进入独立结算流程，无需进一步操作。'
-                          : 'Confirmation archives this as protected supporting / control evidence for reconciliation. It does not enter an independent settlement flow, so no further action is required.'
+                          ? '这里只确认文件类型、条目名称和识别数字大致正确；辅助 / 控制证据确认后直接归档。'
+                          : 'This step only confirms that the detected file type, item names, and recognized amounts are broadly correct; supporting/control evidence is then archived.'
                         : isZh
-                          ? '确认后会转入“平台结算”，原始证据将受保护；此动作本身不会生成会计分录。'
-                          : 'Confirmation moves this evidence to Provider settlements and protects the source evidence; this action itself does not post a journal entry.'}
+                          ? '这里只确认识别内容大致正确，不做核算、不记账；确认后进入“平台结算”审核程序。'
+                          : 'This step only confirms that recognition is broadly correct. No reconciliation or posting happens here; confirmation moves the statement into Provider settlements review.'}
                     </p>
                   </div>
                 ) : null}
@@ -774,7 +742,9 @@ export function AccountingInboxItemsList({
                         disabled
                         className="cursor-not-allowed rounded border px-3 py-1.5 text-sm text-slate-400 opacity-70"
                       >
-                        {isZh ? '确认并审核' : 'Confirm & review'}
+                        {isZh
+                          ? '确认识别并进入审核'
+                          : 'Confirm recognition & enter review'}
                       </button>
                     </div>
                     {expenseSource ? (
@@ -847,8 +817,8 @@ export function AccountingInboxItemsList({
                             ? '移入审核中…'
                             : 'Starting review…'
                           : isZh
-                            ? '确认并审核'
-                            : 'Confirm & review'}
+                            ? '确认识别并进入审核'
+                            : 'Confirm recognition & enter review'}
                       </button>
                       {expenseSource ? (
                         <button
@@ -870,8 +840,8 @@ export function AccountingInboxItemsList({
                     </div>
                     <p className="mt-1 text-xs text-slate-500">
                       {isZh
-                        ? '点击后会从待处理移入费用审核，但不会记账；只有在审核区最终确认后才会正式入账。'
-                        : 'This moves the item out of Pending and into expense review without posting; final booking happens only after review confirmation.'}
+                        ? '这里只确认识别到的文件类型、条目和数字大致正确；点击后进入费用审核，核算与最终确认都在审核阶段完成。'
+                        : 'This step only confirms that the detected file type, items, and amounts are broadly correct. Reconciliation and final confirmation happen in expense review.'}
                     </p>
                   </div>
                 ) : null}
@@ -884,7 +854,9 @@ export function AccountingInboxItemsList({
                     onClick={() => onReviewBankCsv(item)}
                     className="rounded border px-3 py-1.5 text-sm text-cyan-700"
                   >
-                    {isZh ? '预览银行到账' : 'Preview bank receipts'}
+                    {isZh
+                      ? '确认识别并进入银行审核'
+                      : 'Confirm recognition & enter bank review'}
                   </button>
                 ) : null}
                 {!quarantined &&
@@ -922,19 +894,6 @@ export function AccountingInboxItemsList({
                 ) : null}
               </div>
 
-              {financial &&
-              item.materializedEntityType ===
-                'PROVIDER_FINANCIAL_DOCUMENT' &&
-              item.status === 'PENDING_REVIEW' ? (
-                <div className="lg:col-span-3">
-                  <ProviderFinancialReviewPanel
-                    document={financial}
-                    evidence={evidence}
-                    parseResult={parse}
-                    isZh={isZh}
-                  />
-                </div>
-              ) : null}
             </div>
           );
         })}

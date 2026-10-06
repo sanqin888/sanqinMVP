@@ -28,14 +28,17 @@ describe('Accounting Inbox expense review UX guard', () => {
     expect(source).toContain('text-xs text-red-600');
   });
 
-  it('keeps machine extraction read-only and exposes editable final booking values without a second review workflow', () => {
+  it('keeps recognition in Inbox and shows only editable values to be posted during expense review', () => {
     const source = readFileSync(
       resolve(__dirname, 'expense-review-panel.tsx'),
       'utf8',
     );
 
-    expect(source).toContain("最终入账值（可编辑）");
-    expect(source).toContain('bookingCorrectedFields');
+    expect(source).toContain('将要入账的值（可编辑）');
+    expect(source).toContain('审核阶段只显示并编辑本次将写入费用记录的最终值');
+    expect(source).not.toContain('机器识别结果');
+    expect(source).not.toContain('查看识别原文');
+    expect(source).not.toContain('bookingCorrectedFields');
     expect(source).toContain('value={row.amount}');
     expect(source).toContain('value={row.tax}');
     expect(source).not.toContain('/expense/review-revisions');
@@ -43,14 +46,17 @@ describe('Accounting Inbox expense review UX guard', () => {
     expect(source).not.toContain('确认人工复核');
   });
 
-  it('warns that final expense confirmation posts the expense and protects the source evidence', () => {
+  it('allows missing funding attribution while requiring vertical amount reconciliation', () => {
     const source = readFileSync(
       resolve(__dirname, 'expense-review-panel.tsx'),
       'utf8',
     );
 
-    expect(source).toContain('确认后会创建正式费用记录并写入财务账目');
-    expect(source).toContain('之后不能再永久删除');
+    expect(source).toContain('纵向核算');
+    expect(source).toContain('expenseBalanced');
+    expect(source).toContain('付款账户未知或尚未付款时可以留空');
+    expect(source).toContain('这不会阻止费用事实确认');
+    expect(source).toContain('disabled={saving || !date || !expenseBalanced}');
     expect(source).toContain('Confirm and create expense');
   });
 

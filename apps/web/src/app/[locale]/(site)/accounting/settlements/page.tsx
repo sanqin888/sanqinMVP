@@ -4,24 +4,19 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api/client';
 import { AccountingEvidenceViewer } from '../accounting-evidence-viewer';
+import { ProviderFinancialReviewPanel } from '../provider-financial-review-panel';
 import type { AccountingInboxItem } from '../contracts/inbox';
 import type { AccountingProviderFinancialDocument } from '../contracts/provider-financial';
 import type {
   ProviderSettlementPostingState,
   ProviderSettlementShadowPreview,
 } from '../contracts/settlements';
-import { ProviderFinancialReviewPanel } from '../provider-financial-review-panel';
-import {
-  findProviderSupportingHeadlineLine,
-  selectProviderFinancialSummaryLines,
-} from '../provider-financial-summary';
 import { CloverFeeReclassificationPanel } from './clover-fee-reclassification-panel';
 import { CloverAuthorityReplacementPanel } from './clover-authority-replacement-panel';
 import { ProviderPendingReconciliationPanel } from './provider-pending-reconciliation-panel';
 import { ProviderPayoutPanel } from './provider-payout-panel';
 import { SettlementReplayGate } from './settlement-replay-gate';
 import {
-  findSettlementNetLine,
   settlementBlockReasonGuidance,
   settlementDocumentBucket,
 } from './settlement-summary';
@@ -74,7 +69,7 @@ function dispositionClass(disposition: string): string {
   return 'bg-slate-100 text-slate-700';
 }
 
-function controlTotalStatusClass(status: string): string {
+function reconciliationStatusClass(status: string): string {
   if (status === 'MATCHED') return 'bg-emerald-100 text-emerald-800';
   if (status === 'MISMATCH') return 'bg-red-100 text-red-800';
   return 'bg-amber-100 text-amber-800';
@@ -83,56 +78,6 @@ function controlTotalStatusClass(status: string): string {
 function formatDateTime(value: string | null, locale: string): string {
   if (!value) return '—';
   return new Date(value).toLocaleString(locale === 'zh' ? 'zh-CN' : 'en-CA');
-}
-
-function StatementLines({
-  document,
-  isZh,
-}: {
-  document: AccountingProviderFinancialDocument;
-  isZh: boolean;
-}) {
-  return (
-    <details className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-      <summary className="cursor-pointer text-sm font-semibold text-slate-800">
-        {isZh
-          ? `机器 Canonical 明细（${document.lines.length} 条）`
-          : `Machine canonical lines (${document.lines.length})`}
-      </summary>
-      <div className="mt-4 overflow-x-auto">
-        <table className="min-w-[780px] w-full text-left text-xs">
-          <thead className="border-b border-slate-200 text-slate-500">
-            <tr>
-              <th className="px-2 py-2">#</th>
-              <th className="px-2 py-2">{isZh ? '原始项目' : 'Raw line'}</th>
-              <th className="px-2 py-2">Component</th>
-              <th className="px-2 py-2">Treatment</th>
-              <th className="px-2 py-2">Tax role</th>
-              <th className="px-2 py-2 text-right">{isZh ? '金额' : 'Amount'}</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-200">
-            {document.lines.map((line) => (
-              <tr key={line.lineStableId}>
-                <td className="px-2 py-2 text-slate-500">{line.lineNo}</td>
-                <td className="px-2 py-2 font-medium text-slate-800">
-                  {line.rawName ?? '—'}
-                </td>
-                <td className="px-2 py-2 font-mono text-[11px] text-slate-600">
-                  {line.component}
-                </td>
-                <td className="px-2 py-2 text-slate-600">{line.postingTreatment}</td>
-                <td className="px-2 py-2 text-slate-600">{line.taxRole}</td>
-                <td className="px-2 py-2 text-right font-medium">
-                  {money(line.amountCents)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </details>
-  );
 }
 
 function evidenceFor(item: AccountingInboxItem) {
@@ -158,21 +103,154 @@ function ReadOnlyFinancialDocumentCard({
   postingState?: ProviderSettlementPostingState;
 }) {
   const evidence = evidenceFor(item);
+  const journal = postingState?.journal ?? null;
   const supportingEvidence = document.documentType !== 'STATEMENT';
-  const headlineLine = supportingEvidence
-    ? findProviderSupportingHeadlineLine(document.lines)
-    : findSettlementNetLine(document.lines);
-  const supportingSummaryLines = supportingEvidence
-    ? selectProviderFinancialSummaryLines(document.lines)
-    : [];
-  const supportingEvidenceLabel =
-    document.provider === 'CLOVER' && document.documentType === 'BATCH_CONTROL'
-      ? isZh
-        ? '每日 Closeout / 对账控制证据'
-        : 'Daily Closeout / reconciliation control evidence'
-      : isZh
-        ? '辅助 / 控制证据'
-        : 'Supporting / control evidence';
+
+  if (journal) {
+    const debitCents = journal.lines.reduce(
+      (sum, line) => sum + line.debitCents,
+      0,
+    );
+    const creditCents = journal.lines.reduce(
+      (sum, line) => sum + line.creditCents,
+      0,
+    );
+
+    return (
+      <section
+        id={'provider-' + document.documentStableId}
+        className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-base font-semibold">
+                {documentTitle(document, isZh)}
+              </h3>
+              <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-800">
+                {isZh ? '已入账' : 'POSTED'}
+              </span>
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-700">
+                Revision {document.revision}
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-slate-500">
+              {item.artifact.originalFilename ??
+                item.artifact.emailSubject ??
+                document.documentStableId}
+            </p>
+          </div>
+          {evidence ? (
+            <AccountingEvidenceViewer
+              evidence={evidence}
+              isZh={isZh}
+              label={isZh ? '查看原始凭证' : 'Open source evidence'}
+              className="rounded border border-slate-300 px-3 py-2 text-sm text-blue-700"
+            />
+          ) : null}
+        </div>
+
+        <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-4">
+          <h4 className="text-sm font-semibold text-blue-950">
+            {isZh ? '数据库已入账 Journal' : 'Persisted posted journal'}
+          </h4>
+          <p className="mt-1 text-xs text-blue-800">
+            {isZh
+              ? '这里显示的是已经写入数据库的最终会计事实，不读取或重算原始识别数字。'
+              : 'This view shows the final accounting facts persisted in the database. It does not display or recalculate recognition output.'}
+          </p>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-xl bg-slate-50 p-3 text-sm">
+            <p className="text-xs text-slate-500">{isZh ? '门店' : 'Store'}</p>
+            <p className="mt-1 break-all font-medium">
+              {document.storeStableId ?? '—'}
+            </p>
+          </div>
+          <div className="rounded-xl bg-slate-50 p-3 text-sm">
+            <p className="text-xs text-slate-500">
+              {isZh ? 'Journal 日期' : 'Journal date'}
+            </p>
+            <p className="mt-1 font-medium">
+              {formatDateTime(journal.occurredAt, isZh ? 'zh' : 'en')}
+            </p>
+          </div>
+          <div className="rounded-xl bg-slate-50 p-3 text-sm">
+            <p className="text-xs text-slate-500">Journal</p>
+            <p className="mt-1 break-all font-mono text-xs">
+              {journal.entryStableId}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">{journal.currency}</p>
+          </div>
+          <div className="rounded-xl bg-emerald-50 p-3 text-sm">
+            <p className="text-xs text-emerald-700">
+              {isZh ? '已入账借 / 贷' : 'Posted debit / credit'}
+            </p>
+            <p className="mt-1 text-lg font-semibold text-emerald-900">
+              {money(debitCents)} / {money(creditCents)}
+            </p>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto rounded-xl border border-slate-200">
+          <table className="min-w-[760px] w-full text-left text-xs">
+            <thead className="border-b border-slate-200 bg-slate-50 text-slate-500">
+              <tr>
+                <th className="px-3 py-2">#</th>
+                <th className="px-3 py-2">{isZh ? '科目' : 'Account'}</th>
+                <th className="px-3 py-2">{isZh ? '分类' : 'Category'}</th>
+                <th className="px-3 py-2 text-right">Debit</th>
+                <th className="px-3 py-2 text-right">Credit</th>
+                <th className="px-3 py-2">{isZh ? '备注' : 'Memo'}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {journal.lines.map((line) => (
+                <tr key={line.lineNo}>
+                  <td className="px-3 py-2 text-slate-500">{line.lineNo}</td>
+                  <td className="px-3 py-2">
+                    <p className="font-medium text-slate-900">
+                      {line.accountName}
+                    </p>
+                    <p className="font-mono text-[10px] text-slate-500">
+                      {line.accountStableId}
+                    </p>
+                  </td>
+                  <td className="px-3 py-2">
+                    {line.categoryName ?? line.categoryStableId ?? '—'}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    {line.debitCents ? money(line.debitCents) : '—'}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    {line.creditCents ? money(line.creditCents) : '—'}
+                  </td>
+                  <td className="px-3 py-2 text-slate-600">
+                    {line.memo ?? '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {journal.memo ? (
+          <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+            {journal.memo}
+          </p>
+        ) : null}
+
+        {document.provider === 'CLOVER' &&
+        document.documentType === 'STATEMENT' ? (
+          <CloverFeeReclassificationPanel
+            documentStableId={document.documentStableId}
+            isZh={isZh}
+          />
+        ) : null}
+      </section>
+    );
+  }
 
   return (
     <section
@@ -188,17 +266,8 @@ function ReadOnlyFinancialDocumentCard({
             <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800">
               CONFIRMED
             </span>
-            {postingState ? (
-              <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-800">
-                {isZh ? '已入账' : 'POSTED'}
-              </span>
-            ) : (
-              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-700">
-                {document.documentType}
-              </span>
-            )}
             <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-700">
-              Revision {document.revision}
+              {document.documentType}
             </span>
           </div>
           <p className="mt-1 text-xs text-slate-500">
@@ -211,122 +280,32 @@ function ReadOnlyFinancialDocumentCard({
           <AccountingEvidenceViewer
             evidence={evidence}
             isZh={isZh}
-            label={isZh ? '查看证据' : 'Open evidence'}
+            label={isZh ? '查看原始凭证' : 'Open source evidence'}
             className="rounded border border-slate-300 px-3 py-2 text-sm text-blue-700"
           />
         ) : null}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-xl bg-slate-50 p-3 text-sm">
-          <p className="text-xs text-slate-500">{isZh ? '门店' : 'Store'}</p>
-          <p className="mt-1 break-all font-medium">
-            {document.storeStableId ?? '—'}
-          </p>
-        </div>
-        <div className="rounded-xl bg-slate-50 p-3 text-sm">
-          <p className="text-xs text-slate-500">Document type</p>
-          <p className="mt-1 font-medium">{document.documentType}</p>
-        </div>
-        <div className="rounded-xl bg-slate-50 p-3 text-sm">
-          <p className="text-xs text-slate-500">
-            {postingState
-              ? 'Journal'
-              : isZh
-                ? '机器 Canonical 明细'
-                : 'Machine canonical lines'}
-          </p>
-          <p className="mt-1 break-all font-mono text-xs">
-            {postingState
-              ? postingState.existingJournalEntryStableId ?? '—'
-              : document.lines.length}
-          </p>
-        </div>
-        <div
-          className={
-            supportingEvidence
-              ? 'rounded-xl bg-cyan-50 p-3 text-sm'
-              : 'rounded-xl bg-emerald-50 p-3 text-sm'
-          }
-        >
-          <p
-            className={
-              supportingEvidence
-                ? 'text-xs text-cyan-700'
-                : 'text-xs text-emerald-700'
-            }
-          >
-            {supportingEvidence
-              ? isZh
-                ? '控制 / 汇总金额'
-                : 'Control / summary amount'
-              : isZh
-                ? '机器净结算'
-                : 'Machine net payout'}
-          </p>
-          <p
-            className={
-              supportingEvidence
-                ? 'mt-1 text-lg font-semibold text-cyan-950'
-                : 'mt-1 text-lg font-semibold text-emerald-900'
-            }
-          >
-            {headlineLine ? money(headlineLine.amountCents) : '—'}
-          </p>
-          {supportingEvidence && headlineLine ? (
-            <p className="mt-0.5 text-xs text-cyan-700">
-              {headlineLine.rawName ?? headlineLine.component}
-            </p>
-          ) : null}
-        </div>
+      <div className="rounded-xl border border-cyan-200 bg-cyan-50/60 p-4">
+        <p className="font-semibold text-cyan-950">
+          {supportingEvidence
+            ? isZh
+              ? '辅助 / 控制证据'
+              : 'Supporting / control evidence'
+            : isZh
+              ? '尚未读取到已入账 Journal'
+              : 'Posted journal not loaded'}
+        </p>
+        <p className="mt-1 text-xs leading-5 text-cyan-900">
+          {supportingEvidence
+            ? isZh
+              ? '该文件只作为已确认证据保存，不是独立入账记录。识别明细只在收件箱阶段展示。'
+              : 'This file is retained as confirmed evidence and is not an independent posting record. Recognition detail is shown only in Inbox.'
+            : isZh
+              ? '状态显示已入账但数据库 Journal 明细尚未加载，请刷新页面；这里不会回退显示识别数字。'
+              : 'The statement is marked posted but its persisted Journal detail is not loaded yet. Refresh the page; this view will not fall back to recognition output.'}
+        </p>
       </div>
-
-      {supportingEvidence ? (
-        <div className="rounded-xl border border-cyan-200 bg-cyan-50/60 p-4">
-          <p className="font-semibold text-cyan-950">{supportingEvidenceLabel}</p>
-          <p className="mt-1 text-xs leading-5 text-cyan-900">
-            {isZh
-              ? '这份已确认文件只用于月结、到账或平台数据核对，不是独立结算工作项；无需 Shadow Preview、Replay 或再次入账操作。'
-              : 'This confirmed file supports statement, payout, or provider-data reconciliation and is not an independent settlement work item. No Shadow Preview, replay, or additional posting is required.'}
-          </p>
-          {supportingSummaryLines.length ? (
-            <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-              {supportingSummaryLines.map((line) => (
-                <div
-                  key={line.lineStableId}
-                  className="rounded border border-cyan-100 bg-white px-3 py-2 text-xs"
-                >
-                  <p className="text-slate-500">
-                    {line.rawName ?? line.component}
-                  </p>
-                  <p className="mt-0.5 font-semibold text-slate-900">
-                    {money(line.amountCents)}
-                  </p>
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      <StatementLines document={document} isZh={isZh} />
-
-      {postingState &&
-      document.provider === 'CLOVER' &&
-      document.documentType === 'STATEMENT' ? (
-        <CloverFeeReclassificationPanel
-          documentStableId={document.documentStableId}
-          isZh={isZh}
-        />
-      ) : null}
-
-      <ProviderFinancialReviewPanel
-        document={document}
-        evidence={evidence}
-        parseResult={item.artifact.parseRuns[0]?.resultJson ?? null}
-        isZh={isZh}
-        readOnly
-      />
     </section>
   );
 }
@@ -349,6 +328,12 @@ function ShadowPreviewPanel({
   );
   const coverage = documentPlan?.coverageEvidence ?? null;
   const controlTotalChecks = documentPlan?.controlTotalChecks ?? [];
+  const verticalPassed =
+    controlTotalChecks.length > 0 &&
+    controlTotalChecks.every((check) => check.status === 'MATCHED');
+  const horizontalPassed =
+    documentPlan?.draftJournal != null &&
+    documentPlan.debitCents === documentPlan.creditCents;
   const reversalPlans = preview.uberPreCutoverOrderReversals;
 
   if (!documentPlan) {
@@ -367,7 +352,9 @@ function ShadowPreviewPanel({
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-lg font-semibold">
-              {isZh ? '只读 Shadow Preview' : 'Read-only shadow preview'}
+              {isZh
+                ? '将要入账的结算预览（只读）'
+                : 'Values to be posted (read-only)'}
             </h3>
             <span
               className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(documentPlan.status)}`}
@@ -377,8 +364,8 @@ function ShadowPreviewPanel({
           </div>
           <p className="mt-1 text-xs text-slate-500">
             {isZh
-              ? 'Shadow Preview 本身只读；只有下方单独的强确认 Replay 闸门才允许调用真实 writer。'
-              : 'Shadow Preview itself is read-only. Only the separate strongly confirmed replay gate below can call the real writer.'}
+              ? '这里显示本次 Replay 将写入的处理决定和 Journal 金额，供人工复核；只有下方单独的强确认闸门才会真正写库。'
+              : 'This view shows the decisions and Journal amounts that Replay would write for human review. Only the separate strong-confirmation gate writes to the database.'}
           </p>
         </div>
         <div className="text-right text-xs text-slate-500">
@@ -393,7 +380,7 @@ function ShadowPreviewPanel({
       {documentPlan.blockReasons.length ? (
         <div className="rounded-xl border border-red-200 bg-red-50 p-3">
           <p className="text-sm font-semibold text-red-800">
-            {isZh ? 'BLOCKED 原因' : 'Block reasons'}
+            {isZh ? '核算未通过' : 'Reconciliation failed'}
           </p>
           <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-red-700">
             {documentPlan.blockReasons.map((reason) => {
@@ -413,69 +400,136 @@ function ShadowPreviewPanel({
         </div>
       ) : null}
 
-      {controlTotalChecks.length ? (
-        <div className="rounded-xl border border-slate-200 p-4">
-          <h4 className="text-sm font-semibold">
-            {isZh ? '原始控制总额校验' : 'Source control-total reconciliation'}
-          </h4>
-          <p className="mt-1 text-xs text-slate-500">
-            {isZh
-              ? '源文件中的 section / Net Total 必须与识别后的 canonical 金额一致，否则结算保持 BLOCKED。'
-              : 'Source section and Net Total controls must match the extracted canonical amounts or the settlement remains BLOCKED.'}
-          </p>
-          <div className="mt-3 overflow-x-auto">
-            <table className="min-w-[680px] w-full text-left text-xs">
-              <thead className="border-b border-slate-200 text-slate-500">
-                <tr>
-                  <th className="px-2 py-2">{isZh ? '控制项' : 'Control'}</th>
-                  <th className="px-2 py-2">Status</th>
-                  <th className="px-2 py-2 text-right">
-                    {isZh ? '源文件总额' : 'Source total'}
-                  </th>
-                  <th className="px-2 py-2 text-right">
-                    {isZh ? '识别计算值' : 'Calculated'}
-                  </th>
-                  <th className="px-2 py-2 text-right">
-                    {isZh ? '差额' : 'Delta'}
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200">
-                {controlTotalChecks.map((check) => (
-                  <tr key={check.key}>
-                    <td className="px-2 py-2 font-medium">
-                      {check.controlRawName}
-                    </td>
-                    <td className="px-2 py-2">
-                      <span
-                        className={
-                          'rounded-full px-2 py-0.5 text-[11px] ' +
-                          controlTotalStatusClass(check.status)
-                        }
-                      >
-                        {check.status}
-                      </span>
-                    </td>
-                    <td className="px-2 py-2 text-right">
-                      {check.expectedCents === null
-                        ? '—'
-                        : money(check.expectedCents)}
-                    </td>
-                    <td className="px-2 py-2 text-right">
-                      {check.calculatedCents === null
-                        ? '—'
-                        : money(check.calculatedCents)}
-                    </td>
-                    <td className="px-2 py-2 text-right">
-                      {check.deltaCents === null ? '—' : money(check.deltaCents)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      <div className="grid gap-3 lg:grid-cols-2">
+        <div
+          className={`rounded-xl border p-4 ${
+            verticalPassed
+              ? 'border-emerald-200 bg-emerald-50/60'
+              : 'border-red-300 bg-red-50'
+          }`}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <h4
+              className={`text-sm font-semibold ${
+                verticalPassed ? 'text-emerald-900' : 'text-red-900'
+              }`}
+            >
+              {isZh ? '纵向业务核算' : 'Vertical business reconciliation'}
+            </h4>
+            <span
+              className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                verticalPassed
+                  ? 'bg-emerald-100 text-emerald-800'
+                  : 'bg-red-100 text-red-800'
+              }`}
+            >
+              {verticalPassed ? 'PASSED' : 'FAILED'}
+            </span>
           </div>
+          <p className="mt-1 text-xs text-slate-600">
+            {isZh
+              ? '各 section / subtotal / tax / transfer 控制总额必须与当前待入账明细逐层一致。'
+              : 'Section, subtotal, tax, and transfer controls must reconcile to the current values to be posted.'}
+          </p>
+          {controlTotalChecks.length ? (
+            <div className="mt-3 space-y-2">
+              {controlTotalChecks.map((check) => (
+                <div
+                  key={check.key}
+                  className="grid gap-1 rounded border border-white/80 bg-white px-3 py-2 text-xs sm:grid-cols-[1.4fr_repeat(3,minmax(0,1fr))]"
+                >
+                  <span className="font-medium">{check.controlRawName}</span>
+                  <span>
+                    {isZh ? '控制' : 'Control'}:{' '}
+                    {check.expectedCents === null
+                      ? '—'
+                      : money(check.expectedCents)}
+                  </span>
+                  <span>
+                    {isZh ? '明细' : 'Detail'}:{' '}
+                    {check.calculatedCents === null
+                      ? '—'
+                      : money(check.calculatedCents)}
+                  </span>
+                  <span
+                    className={
+                      check.status === 'MATCHED'
+                        ? 'font-medium text-emerald-700'
+                        : 'font-medium text-red-700'
+                    }
+                  >
+                    <span
+                      className={
+                        'mr-1 rounded-full px-1.5 py-0.5 text-[10px] ' +
+                        reconciliationStatusClass(check.status)
+                      }
+                    >
+                      {check.status}
+                    </span>
+                    {check.deltaCents === null
+                      ? ''
+                      : `${isZh ? '差额 ' : 'Δ '}${money(check.deltaCents)}`}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-3 rounded bg-red-100 px-3 py-2 text-xs font-medium text-red-800">
+              {isZh
+                ? '没有足够的控制总额完成纵向核算，当前禁止入账。'
+                : 'There are not enough control totals to complete vertical reconciliation; posting is blocked.'}
+            </p>
+          )}
         </div>
-      ) : null}
+
+        <div
+          className={`rounded-xl border p-4 ${
+            horizontalPassed
+              ? 'border-emerald-200 bg-emerald-50/60'
+              : 'border-amber-300 bg-amber-50'
+          }`}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <h4
+              className={`text-sm font-semibold ${
+                horizontalPassed ? 'text-emerald-900' : 'text-amber-900'
+              }`}
+            >
+              {isZh ? '横向借贷平衡' : 'Horizontal debit/credit balance'}
+            </h4>
+            <span
+              className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                horizontalPassed
+                  ? 'bg-emerald-100 text-emerald-800'
+                  : 'bg-amber-100 text-amber-800'
+              }`}
+            >
+              {horizontalPassed
+                ? 'PASSED'
+                : verticalPassed
+                  ? 'FAILED'
+                  : 'PENDING'}
+            </span>
+          </div>
+          <p className="mt-3 text-sm">
+            Debit <strong>{money(documentPlan.debitCents)}</strong> / Credit{' '}
+            <strong>{money(documentPlan.creditCents)}</strong>
+          </p>
+          <p className="mt-1 text-xs text-slate-600">
+            {horizontalPassed
+              ? isZh
+                ? 'Draft Journal 借贷一致。'
+                : 'The draft Journal is balanced.'
+              : verticalPassed
+                ? isZh
+                  ? 'Draft Journal 未能形成借贷平衡，当前禁止入账。'
+                  : 'The draft Journal is not balanced; posting is blocked.'
+                : isZh
+                  ? '纵向核算通过后才会生成可验证的 Draft Journal。'
+                  : 'A verifiable draft Journal is generated only after vertical reconciliation passes.'}
+          </p>
+        </div>
+      </div>
 
       <SettlementReplayGate
         preview={preview}
@@ -585,8 +639,8 @@ function ShadowPreviewPanel({
       <details className="rounded-xl border border-slate-200 p-4" open>
         <summary className="cursor-pointer text-sm font-semibold">
           {isZh
-            ? `Posting decisions（${documentPlan.decisions.length} 条）`
-            : `Posting decisions (${documentPlan.decisions.length})`}
+            ? `将要入账的处理决定（${documentPlan.decisions.length} 条）`
+            : `Posting decisions to write (${documentPlan.decisions.length})`}
         </summary>
         <div className="mt-4 overflow-x-auto">
           <table className="min-w-[960px] w-full text-left text-xs">
@@ -636,8 +690,8 @@ function ShadowPreviewPanel({
         <details className="rounded-xl border border-slate-200 p-4">
           <summary className="cursor-pointer text-sm font-semibold">
             {isZh
-              ? `Provider Draft Journal（${documentPlan.draftJournal.lines.length} 行）`
-              : `Provider draft journal (${documentPlan.draftJournal.lines.length} lines)`}
+              ? `将要写入的 Journal（${documentPlan.draftJournal.lines.length} 行）`
+              : `Journal to be written (${documentPlan.draftJournal.lines.length} lines)`}
           </summary>
           <div className="mt-4 overflow-x-auto">
             <table className="min-w-[720px] w-full text-left text-xs">
@@ -729,6 +783,12 @@ export default function AccountingSettlementsPage() {
     Record<string, ProviderSettlementPostingState>
   >({});
   const [postingNotice, setPostingNotice] = useState<string | null>(null);
+  const [reviewPendingByDocumentStableId, setReviewPendingByDocumentStableId] =
+    useState<Record<string, boolean>>({});
+  const [
+    autoReconciledDocumentStableId,
+    setAutoReconciledDocumentStableId,
+  ] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -854,35 +914,33 @@ export default function AccountingSettlementsPage() {
     [providerDocuments],
   );
 
-  function applyPreview(
-    documentStableId: string,
-    data: ProviderSettlementShadowPreview,
-  ) {
-    const documentPlan = data.providerDocuments.find(
-      (plan) => plan.documentStableId === documentStableId,
-    );
-    if (documentPlan?.status === 'ALREADY_POSTED') {
-      setPostingStates((current) => ({
-        ...current,
-        [documentStableId]: {
-          documentStableId,
-          postingState: 'POSTED',
-          existingJournalEntryStableId:
-            documentPlan.existingJournalEntryStableId,
-        },
-      }));
-      setPreview(null);
-      setPostingNotice(
-        isZh
-          ? '结算单已确认入账，并已移至“已入账结算”。'
-          : 'The settlement is posted and has moved to Posted settlements.',
+  const applyPreview = useCallback(
+    (
+      documentStableId: string,
+      data: ProviderSettlementShadowPreview,
+    ) => {
+      const documentPlan = data.providerDocuments.find(
+        (plan) => plan.documentStableId === documentStableId,
       );
-      return;
-    }
-    setPreview({ documentStableId, data });
-  }
+      if (documentPlan?.status === 'ALREADY_POSTED') {
+        setPreview(null);
+        void load().then(() => {
+          setPostingNotice(
+            isZh
+              ? '结算单已确认入账；页面已重新读取数据库 Journal。'
+              : 'The settlement is posted; the page reloaded the persisted Journal from the database.',
+          );
+        });
+        return;
+      }
+      setPreview({ documentStableId, data });
+    },
+    [isZh, load],
+  );
 
-  async function runShadowPreview(document: AccountingProviderFinancialDocument) {
+  const runShadowPreview = useCallback(async (
+    document: AccountingProviderFinancialDocument,
+  ) => {
     if (!document.storeStableId || !document.periodStart || !document.periodEnd) {
       setPreviewError(
         isZh
@@ -909,7 +967,38 @@ export default function AccountingSettlementsPage() {
     } finally {
       setPreviewingId(null);
     }
-  }
+  }, [applyPreview, isZh]);
+
+  useEffect(() => {
+    if (loading || preview || previewingId) return;
+    const linkedDocumentStableId = linkedProviderDocumentStableIdFromHash();
+    if (
+      !linkedDocumentStableId ||
+      autoReconciledDocumentStableId === linkedDocumentStableId
+    ) {
+      return;
+    }
+    const target = pendingStatements.find(
+      ({ document }) =>
+        document.documentStableId === linkedDocumentStableId,
+    );
+    if (
+      !target ||
+      reviewPendingByDocumentStableId[linkedDocumentStableId] !== false
+    ) {
+      return;
+    }
+    setAutoReconciledDocumentStableId(linkedDocumentStableId);
+    void runShadowPreview(target.document);
+  }, [
+    autoReconciledDocumentStableId,
+    loading,
+    pendingStatements,
+    preview,
+    previewingId,
+    reviewPendingByDocumentStableId,
+    runShadowPreview,
+  ]);
 
   return (
     <div className="space-y-6">
@@ -920,8 +1009,8 @@ export default function AccountingSettlementsPage() {
           </h1>
           <p className="mt-1 max-w-3xl text-sm text-slate-500">
             {isZh
-              ? '待处理区只保留尚未入账的月结单；已入账记录和补充证据分别归档。Shadow Preview 仍是只读，真实 replay 仅在严格 READY 且完成 planHash 强确认后开放。'
-              : 'The work queue contains only unposted monthly statements; posted history and supporting evidence are archived separately. Shadow Preview remains read-only, and real replay is exposed only for a strictly READY plan after strong planHash confirmation.'}
+              ? '待处理区只审核“将要入账”的结算计划，不重复展示收件箱识别值；已入账区只展示数据库实际 Journal。Shadow Preview 只读，真实 replay 仅在严格 READY 且完成 planHash 强确认后开放。'
+              : 'The work queue reviews only the settlement plan to be posted and does not repeat Inbox recognition values; posted history shows only persisted Journals. Shadow Preview remains read-only, and real replay is exposed only for a strictly READY plan after strong planHash confirmation.'}
           </p>
         </div>
         <button
@@ -1022,23 +1111,11 @@ export default function AccountingSettlementsPage() {
               preview?.documentStableId === document.documentStableId
                 ? preview.data
                 : null;
-            const sales = document.lines.find(
-              (line) => line.component === 'SALES',
-            );
-            const salesTax =
-              document.lines.find(
-                (line) => line.rawName?.toLowerCase() === 'tax on sales',
-              ) ??
-              document.lines.find((line) => line.component === 'SALES_TAX');
-            const commission = document.lines.find(
-              (line) => line.component === 'COMMISSION',
-            );
-            const netPayout = findSettlementNetLine(document.lines);
-            const postingState = postingStates[document.documentStableId];
             const selectedPlan =
               selectedPreview?.providerDocuments.find(
                 (plan) => plan.documentStableId === document.documentStableId,
               ) ?? null;
+            const postingState = postingStates[document.documentStableId];
 
             return (
               <section
@@ -1087,6 +1164,9 @@ export default function AccountingSettlementsPage() {
                       type="button"
                       disabled={
                         previewingId === document.documentStableId ||
+                        reviewPendingByDocumentStableId[
+                          document.documentStableId
+                        ] !== false ||
                         !document.storeStableId ||
                         !document.periodStart ||
                         !document.periodEnd
@@ -1100,16 +1180,16 @@ export default function AccountingSettlementsPage() {
                           : 'Building…'
                         : selectedPreview
                           ? isZh
-                            ? '重新运行 Shadow Preview'
-                            : 'Refresh shadow preview'
+                            ? '重新核算待入账值'
+                            : 'Recalculate posting values'
                           : isZh
-                            ? '运行 Shadow Preview'
-                            : 'Run shadow preview'}
+                            ? '核算待入账值'
+                            : 'Reconcile posting values'}
                     </button>
                   </div>
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="grid gap-3 sm:grid-cols-3">
                   <div className="rounded-xl bg-slate-50 p-3 text-sm">
                     <p className="text-xs text-slate-500">
                       {isZh ? '门店' : 'Store'}
@@ -1119,86 +1199,96 @@ export default function AccountingSettlementsPage() {
                     </p>
                   </div>
                   <div className="rounded-xl bg-slate-50 p-3 text-sm">
-                    <p className="text-xs text-slate-500">Parser</p>
-                    <p className="mt-1 break-all font-mono text-xs">
-                      {document.parserName}:v{document.parserVersion}
-                    </p>
-                  </div>
-                  <div className="rounded-xl bg-slate-50 p-3 text-sm">
                     <p className="text-xs text-slate-500">Provider ref</p>
                     <p className="mt-1 break-all font-mono text-xs">
                       {document.providerDocumentRef ?? '—'}
                     </p>
                   </div>
                   <div className="rounded-xl bg-slate-50 p-3 text-sm">
-                    <p className="text-xs text-slate-500">
-                      {isZh ? '机器 Canonical 行' : 'Machine canonical lines'}
-                    </p>
-                    <p className="mt-1 text-lg font-semibold">
-                      {document.lines.length}
-                    </p>
+                    <p className="text-xs text-slate-500">Revision</p>
+                    <p className="mt-1 font-medium">{document.revision}</p>
                   </div>
                 </div>
-
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  <div className="rounded-xl border border-slate-200 p-3">
-                    <p className="text-xs text-slate-500">
-                      {isZh ? '机器 Sales' : 'Machine Sales'}
-                    </p>
-                    <p className="mt-1 text-lg font-semibold">
-                      {sales ? money(sales.amountCents) : '—'}
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-slate-200 p-3">
-                    <p className="text-xs text-slate-500">
-                      {isZh ? '机器 Tax on Sales' : 'Machine Tax on Sales'}
-                    </p>
-                    <p className="mt-1 text-lg font-semibold">
-                      {salesTax ? money(salesTax.amountCents) : '—'}
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-slate-200 p-3">
-                    <p className="text-xs text-slate-500">
-                      {isZh
-                        ? '机器平台佣金 / 费用'
-                        : 'Machine commission / fees'}
-                    </p>
-                    <p className="mt-1 text-lg font-semibold">
-                      {commission ? money(commission.amountCents) : '—'}
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-slate-200 bg-emerald-50 p-3">
-                    <p className="text-xs text-emerald-700">
-                      {isZh ? '机器净结算' : 'Machine net payout'}
-                    </p>
-                    <p className="mt-1 text-lg font-semibold text-emerald-900">
-                      {netPayout ? money(netPayout.amountCents) : '—'}
-                    </p>
-                  </div>
-                </div>
-
-                <StatementLines document={document} isZh={isZh} />
 
                 <ProviderFinancialReviewPanel
                   document={document}
                   evidence={evidence}
-                  parseResult={item.artifact.parseRuns[0]?.resultJson ?? null}
                   isZh={isZh}
                   controlTotalChecks={selectedPlan?.controlTotalChecks ?? []}
                   previewStatus={selectedPlan?.status ?? null}
-                  onConfirmed={() => {
+                  onPendingChange={(pending) => {
+                    setReviewPendingByDocumentStableId((current) => {
+                      if (current[document.documentStableId] === pending) {
+                        return current;
+                      }
+                      return {
+                        ...current,
+                        [document.documentStableId]: pending,
+                      };
+                    });
                     if (
+                      pending &&
                       preview?.documentStableId === document.documentStableId
                     ) {
                       setPreview(null);
+                      setPostingNotice(
+                        isZh
+                          ? '待入账值存在未确认修改；旧核算结果已失效。请先保存并确认修正。'
+                          : 'Posting-review values have unconfirmed changes; the previous reconciliation is stale. Save and confirm the correction first.',
+                      );
                     }
+                  }}
+                  onConfirmed={() => {
+                    setPreview(null);
                     setPostingNotice(
                       isZh
-                        ? '人工复核已确认；旧 Shadow Preview 已作废。请重新运行 Shadow Preview 后再入账。'
-                        : 'Human review confirmed; the previous Shadow Preview is stale. Rerun Shadow Preview before posting.',
+                        ? '待入账值已更新；正在重新核算最新版本。'
+                        : 'Posting-review values were updated; recalculating the latest version.',
                     );
+                    void runShadowPreview(document);
                   }}
                 />
+
+                {!selectedPreview ? (
+                  <div
+                    className={`rounded-xl border p-4 ${
+                      reviewPendingByDocumentStableId[document.documentStableId]
+                        ? 'border-amber-300 bg-amber-50'
+                        : 'border-blue-200 bg-blue-50/60'
+                    }`}
+                  >
+                    <h3
+                      className={`text-sm font-semibold ${
+                        reviewPendingByDocumentStableId[document.documentStableId]
+                          ? 'text-amber-950'
+                          : 'text-blue-950'
+                      }`}
+                    >
+                      {reviewPendingByDocumentStableId[document.documentStableId]
+                        ? isZh
+                          ? '有未确认的待入账修改'
+                          : 'Unconfirmed posting-review changes'
+                        : isZh
+                          ? '待入账值尚未核算'
+                          : 'Posting values have not been reconciled yet'}
+                    </h3>
+                    <p
+                      className={`mt-1 text-xs leading-5 ${
+                        reviewPendingByDocumentStableId[document.documentStableId]
+                          ? 'text-amber-800'
+                          : 'text-blue-800'
+                      }`}
+                    >
+                      {reviewPendingByDocumentStableId[document.documentStableId]
+                        ? isZh
+                          ? '请先保存草稿并确认新的复核 revision。未确认修改不会参与核算，也不会开放入账。'
+                          : 'Save the draft and confirm the new review revision first. Unconfirmed edits are excluded from reconciliation and posting remains locked.'
+                        : isZh
+                          ? '当前待入账值由收件箱确认结果预填。点击“核算待入账值”后，系统会执行纵向业务平账并生成 Draft Journal 检查借贷平衡；两者都通过才允许入账。'
+                          : 'Current posting-review values are prefilled from the confirmed Inbox result. Reconcile them to run vertical business checks and build a draft Journal; posting opens only when both vertical and debit/credit checks pass.'}
+                    </p>
+                  </div>
+                ) : null}
 
                 {selectedPreview ? (
                   <ShadowPreviewPanel
@@ -1225,8 +1315,8 @@ export default function AccountingSettlementsPage() {
         </summary>
         <p className="mt-2 text-xs text-slate-500">
           {isZh
-            ? '这些月结单已经生成 settlement Journal，不再提供 Replay 操作；这里保留原始凭证、Journal 标识和 canonical 明细用于审计。'
-            : 'These monthly statements already have settlement Journals. Replay is no longer offered; evidence, Journal identity, and canonical lines remain available for audit.'}
+            ? '这些月结单已经生成 settlement Journal，不再提供 Replay；卡片直接读取数据库中实际保存的 Journal 和明细，原始凭证仅作为审计证据。'
+            : 'These monthly statements already have settlement Journals and no longer offer Replay. Cards read the persisted Journal and lines directly from the database; source documents remain audit evidence only.'}
         </p>
         <div className="mt-4 space-y-4">
           {postedStatements.length === 0 ? (

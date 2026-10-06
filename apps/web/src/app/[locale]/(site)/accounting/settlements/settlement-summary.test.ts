@@ -51,6 +51,7 @@ const postingState = (
   postingState: state,
   existingJournalEntryStableId:
     state === 'POSTED' ? 'journal-statement' : null,
+  journal: null,
 });
 
 describe('provider settlement summary', () => {

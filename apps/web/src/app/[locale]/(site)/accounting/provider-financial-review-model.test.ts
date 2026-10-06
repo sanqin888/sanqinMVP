@@ -4,10 +4,12 @@ import type {
 } from './contracts/provider-financial';
 import {
   applyReviewedProviderFinancialLines,
+  buildPrefilledReviewCorrectionInputs,
   buildReviewCorrectionInputs,
   centsToMoneyInput,
   latestConfirmedProviderReview,
   parseMoneyInputToCents,
+  reviewRowsForEditor,
   reviewRowsFromRevision,
 } from './provider-financial-review-model';
 
@@ -180,6 +182,56 @@ describe('provider financial review UI model', () => {
         rawName: 'Tax on Sales',
         amountCents: 33848,
         note: 'Source PDF shows $338.48',
+      },
+    ]);
+  });
+
+  it('prefills every source line for the posting review editor and preserves confirmed corrections', () => {
+    const rows = reviewRowsForEditor(document, confirmed);
+
+    expect(rows).toHaveLength(document.lines.length);
+    expect(
+      rows.find((row) => row.sourceLineStableId === 'line_sales'),
+    ).toEqual(
+      expect.objectContaining({
+        rawName: 'Sales',
+        amount: '2603.36',
+        reason: 'EXTRACTION_CORRECTION',
+      }),
+    );
+    expect(
+      rows.find((row) => row.sourceLineStableId === 'line_sales_tax'),
+    ).toEqual(
+      expect.objectContaining({
+        rawName: 'Tax on Sales',
+        amount: '338.48',
+        reason: 'EXTRACTION_CORRECTION',
+        note: 'Source PDF shows $338.48',
+      }),
+    );
+  });
+
+  it('omits unchanged prefilled rows and persists only actual edits', () => {
+    const rows = reviewRowsForEditor(document, null);
+    const editedRows = rows.map((row) =>
+      row.sourceLineStableId === 'line_sales_tax'
+        ? { ...row, amount: '338.48', note: 'Source PDF checked' }
+        : row,
+    );
+
+    const built = buildPrefilledReviewCorrectionInputs(
+      editedRows,
+      document.lines,
+    );
+
+    expect(built.error).toBeNull();
+    expect(built.corrections).toEqual([
+      {
+        sourceLineStableId: 'line_sales_tax',
+        reason: 'EXTRACTION_CORRECTION',
+        rawName: 'Tax on Sales',
+        amountCents: 33848,
+        note: 'Source PDF checked',
       },
     ]);
   });

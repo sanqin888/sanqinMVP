@@ -1,12 +1,11 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '@/lib/api/client';
 import {
   AccountingEvidenceViewer,
   type AccountingEvidenceSource,
 } from './accounting-evidence-viewer';
-import type { AccountingInboxParseResult } from './contracts/inbox';
 import type {
   AccountingProviderFinancialDocument,
   AccountingProviderFinancialReviewDraftInput,
@@ -18,37 +17,36 @@ import { ProviderFinancialReviewEditor } from './provider-financial-review-edito
 import { ProviderFinancialReviewHistory } from './provider-financial-review-history';
 import {
   applyReviewedProviderFinancialLines,
-  buildReviewCorrectionInputs,
+  buildPrefilledReviewCorrectionInputs,
   formatCad,
   latestConfirmedProviderReview,
   latestDraftProviderReview,
-  newReviewRowForLine,
-  reviewRowsFromRevision,
+  reviewRowsForEditor,
   type ProviderFinancialReviewDraftRow,
 } from './provider-financial-review-model';
 
 type Props = {
   document: AccountingProviderFinancialDocument;
   evidence: AccountingEvidenceSource | null;
-  parseResult: AccountingInboxParseResult | null;
   isZh: boolean;
   readOnly?: boolean;
   controlTotalChecks?: ProviderSettlementDocumentPlan['controlTotalChecks'];
   previewStatus?: ProviderSettlementDocumentPlan['status'] | null;
+  onPendingChange?: (pending: boolean) => void;
   onConfirmed?: () => void;
 };
 
 export function ProviderFinancialReviewPanel({
   document,
   evidence,
-  parseResult,
   isZh,
   readOnly = false,
   controlTotalChecks = [],
   previewStatus = null,
+  onPendingChange,
   onConfirmed,
 }: Props) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [revisions, setRevisions] = useState<
@@ -79,30 +77,23 @@ export function ProviderFinancialReviewPanel({
     () => applyReviewedProviderFinancialLines(document, confirmedReview),
     [document, confirmedReview],
   );
-  const usedLineStableIds = new Set(rows.map((row) => row.sourceLineStableId));
-  const availableLines = document.lines.filter(
-    (line) => !usedLineStableIds.has(line.lineStableId),
+  const seedEditor = useCallback(
+    (nextRevisions: AccountingProviderFinancialReviewRevision[]) => {
+      const draft = latestDraftProviderReview(nextRevisions);
+      const confirmed = latestConfirmedProviderReview(nextRevisions);
+      const seed = draft ?? confirmed;
+      setRows(
+        seed?.effectiveSnapshotParserName
+          ? []
+          : reviewRowsForEditor(document, seed),
+      );
+      setReviewNote(seed?.effectiveSnapshotParserName ? '' : (seed?.note ?? ''));
+      setDirty(false);
+    },
+    [document],
   );
-  const recognitionEngine =
-    parseResult?.textRecognitionEngine ??
-    parseResult?.ocrEngine ??
-    document.parserName;
-  const recognitionConfidence = parseResult?.confidence ?? null;
 
-  function seedEditor(nextRevisions: AccountingProviderFinancialReviewRevision[]) {
-    const draft = latestDraftProviderReview(nextRevisions);
-    const confirmed = latestConfirmedProviderReview(nextRevisions);
-    const seed = draft ?? confirmed;
-    setRows(
-      seed?.effectiveSnapshotParserName
-        ? []
-        : reviewRowsFromRevision(document, seed),
-    );
-    setReviewNote(seed?.effectiveSnapshotParserName ? '' : (seed?.note ?? ''));
-    setDirty(false);
-  }
-
-  async function loadRevisions() {
+  const loadRevisions = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -119,7 +110,16 @@ export function ProviderFinancialReviewPanel({
     } finally {
       setLoading(false);
     }
-  }
+  }, [document.documentStableId, seedEditor]);
+
+  useEffect(() => {
+    void loadRevisions();
+  }, [loadRevisions]);
+
+  useEffect(() => {
+    if (!loaded) return;
+    onPendingChange?.(dirty || Boolean(draftReview));
+  }, [dirty, draftReview, loaded, onPendingChange]);
 
   async function toggleExpanded() {
     const next = !expanded;
@@ -144,43 +144,11 @@ export function ProviderFinancialReviewPanel({
     setMessage(null);
   }
 
-  function addCorrection() {
-    const line = availableLines[0];
-    if (!line) return;
-    setRows((current) => [...current, newReviewRowForLine(line)]);
-    setDirty(true);
-    setMessage(null);
-  }
-
-  function removeCorrection(sourceLineStableId: string) {
-    setRows((current) =>
-      current.filter((row) => row.sourceLineStableId !== sourceLineStableId),
-    );
-    setDirty(true);
-    setMessage(null);
-  }
-
-  function changeCorrectionLine(
-    currentSourceLineStableId: string,
-    nextSourceLineStableId: string,
-  ) {
-    const line = document.lines.find(
-      (candidate) => candidate.lineStableId === nextSourceLineStableId,
-    );
-    if (!line) return;
-    setRows((current) =>
-      current.map((row) =>
-        row.sourceLineStableId === currentSourceLineStableId
-          ? newReviewRowForLine(line)
-          : row,
-      ),
-    );
-    setDirty(true);
-    setMessage(null);
-  }
-
   async function saveDraft() {
-    const built = buildReviewCorrectionInputs(rows, document.lines);
+    const built = buildPrefilledReviewCorrectionInputs(
+      rows,
+      document.lines,
+    );
     if (built.error) {
       setError(
         isZh ? '无法保存：' + built.error : 'Cannot save: ' + built.error,
@@ -326,7 +294,7 @@ export function ProviderFinancialReviewPanel({
       >
         <span>
           <span className="block text-sm font-semibold text-violet-950">
-            {isZh ? '人工复核 / 修正' : 'Human review / correction'}
+            {isZh ? '待入账值复核 / 修正' : 'Posting review / correction'}
           </span>
           <span className="mt-0.5 block text-xs text-violet-700">
             {!loaded
@@ -338,8 +306,8 @@ export function ProviderFinancialReviewPanel({
                   ? '已确认 v' + confirmedReview.revision
                   : 'Confirmed v' + confirmedReview.revision
                 : isZh
-                  ? '机器结果保持原样；人工修正以独立版本保存'
-                  : 'Machine evidence stays immutable; human corrections are separate revisions'}
+                  ? '当前使用收件箱确认后的预填值；修正以独立版本保存'
+                  : 'Current values are prefilled from the confirmed Inbox result; corrections are stored as separate revisions'}
           </span>
         </span>
         <span className="text-sm text-violet-700">
@@ -388,10 +356,10 @@ export function ProviderFinancialReviewPanel({
             </button>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2">
             <div className="rounded-lg bg-white p-3 text-xs">
               <p className="text-slate-500">
-                {isZh ? '原始证据' : 'Source evidence'}
+                {isZh ? '原始凭证' : 'Source evidence'}
               </p>
               {evidence ? (
                 <AccountingEvidenceViewer
@@ -407,23 +375,14 @@ export function ProviderFinancialReviewPanel({
             </div>
             <div className="rounded-lg bg-white p-3 text-xs">
               <p className="text-slate-500">
-                {isZh ? '识别 / 解析' : 'Recognition / parser'}
-              </p>
-              <p className="mt-1 font-mono text-slate-800">
-                {recognitionEngine}
-                {recognitionConfidence ? ' · ' + recognitionConfidence : ''}
-              </p>
-            </div>
-            <div className="rounded-lg bg-white p-3 text-xs">
-              <p className="text-slate-500">
-                {isZh ? '当前有效版本' : 'Current effective review'}
+                {isZh ? '当前待入账版本' : 'Current posting-review version'}
               </p>
               <p className="mt-1 text-slate-800">
                 {confirmedReview
                   ? parserSnapshotConfirmed
                     ? 'v' +
                       confirmedReview.revision +
-                      ' · parser snapshot ' +
+                      ' · effective snapshot ' +
                       parserSnapshotConfirmed.effectiveSnapshotParserName +
                       ' v' +
                       (parserSnapshotConfirmed.effectiveSnapshotParserVersion ??
@@ -434,8 +393,8 @@ export function ProviderFinancialReviewPanel({
                       confirmedReview.corrections.length +
                       ' correction(s)'
                   : isZh
-                    ? '机器结果'
-                    : 'Machine result'}
+                    ? '收件箱预填值'
+                    : 'Inbox-prefilled values'}
               </p>
             </div>
           </div>
@@ -459,7 +418,6 @@ export function ProviderFinancialReviewPanel({
           {loaded ? (
             <>
               <ProviderFinancialReviewComparison
-                document={document}
                 confirmedReview={confirmedReview}
                 effectiveLines={effectiveLines}
                 isZh={isZh}
@@ -485,8 +443,8 @@ export function ProviderFinancialReviewPanel({
                       </p>
                       <p className="mt-1 text-xs text-slate-600">
                         {isZh
-                          ? '这是独立复核草稿；原机器文档不会被改写，确认前也不会影响结算。'
-                          : 'This is a separate review draft. The original machine document stays immutable and settlement is unchanged until confirmation.'}
+                          ? '这是独立的待入账复核草稿；收件箱识别证据不会被改写，确认前也不会影响结算。'
+                          : 'This is a separate posting-review draft. Inbox recognition evidence stays immutable and settlement is unchanged until confirmation.'}
                       </p>
                     </div>
                     <button
@@ -540,10 +498,10 @@ export function ProviderFinancialReviewPanel({
                     {isZh
                       ? parserSnapshotDraft
                         ? '解析器快照草稿使用完整有效行集，不能与旧的一对一人工修正编辑器混合。请先核对并确认或保留该草稿。'
-                        : '当前有效复核来自完整解析器快照；旧的一对一人工修正编辑器已禁用，避免把结构化快照意外恢复成旧机器行。'
+                        : '当前待入账值来自完整有效快照；旧的一对一修正编辑器已禁用，避免把结构化快照意外恢复成收件箱预填结构。'
                       : parserSnapshotDraft
-                        ? 'A parser snapshot draft owns a full effective line set and cannot be mixed with the legacy one-to-one correction editor. Inspect and confirm or leave this draft unconfirmed.'
-                        : 'The current effective review is a full parser snapshot. The legacy one-to-one correction editor is disabled so it cannot accidentally restore the old machine line structure.'}
+                        ? 'An effective snapshot draft owns a full value set and cannot be mixed with the legacy one-to-one correction editor. Inspect and confirm or leave this draft unconfirmed.'
+                        : 'The current posting-review values come from a full effective snapshot. The legacy one-to-one correction editor is disabled so it cannot accidentally restore the Inbox-prefilled structure.'}
                   </p>
                 ) : (
                   <ProviderFinancialReviewEditor
@@ -555,10 +513,7 @@ export function ProviderFinancialReviewPanel({
                     dirty={dirty}
                     draftReview={draftReview}
                     confirmingId={confirmingId}
-                    onAddCorrection={addCorrection}
                     onUpdateRow={updateRow}
-                    onChangeCorrectionLine={changeCorrectionLine}
-                    onRemoveCorrection={removeCorrection}
                     onReviewNoteChange={(value) => {
                       setReviewNote(value);
                       setDirty(true);

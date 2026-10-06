@@ -92,6 +92,22 @@ export type ProviderSettlementPostingState = {
   documentStableId: string;
   postingState: 'POSTED' | 'NOT_POSTED';
   existingJournalEntryStableId: string | null;
+  journal: {
+    entryStableId: string;
+    occurredAt: string;
+    currency: string;
+    memo: string | null;
+    lines: Array<{
+      lineNo: number;
+      accountStableId: string;
+      accountName: string;
+      categoryStableId: string | null;
+      categoryName: string | null;
+      debitCents: number;
+      creditCents: number;
+      memo: string | null;
+    }>;
+  } | null;
 };
 
 export type ProviderSettlementShadowPreview = {
@@ -178,6 +194,10 @@ export type ProviderSettlementDocumentPlan = {
       | 'UBER_TOTAL_MARKETING'
       | 'UBER_TOTAL_AMENDMENTS'
       | 'UBER_NET_TOTAL'
+      | 'FANTUAN_ITEM_SUBTOTAL'
+      | 'FANTUAN_MARKETING_CHARGES'
+      | 'FANTUAN_NET_TAXES'
+      | 'FANTUAN_TRANSFER_TOTAL'
       | 'CLOVER_ACCOUNT_SUMMARY'
       | 'CLOVER_FEE_SUMMARY'
       | 'CLOVER_FEES_DETAIL'
