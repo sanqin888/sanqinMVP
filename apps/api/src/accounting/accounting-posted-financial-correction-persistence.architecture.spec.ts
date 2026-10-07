@@ -55,28 +55,25 @@ describe('posted financial correction persistence architecture', () => {
     );
   });
 
-  it(
-    'persists one polymorphic Accounting-owned correction case without owner-specific foreign keys',
-    () => {
-      const source = modelBlock('AccountingCorrectionCase');
+  it('persists one polymorphic Accounting-owned correction case without owner-specific foreign keys', () => {
+    const source = modelBlock('AccountingCorrectionCase');
 
-      expect(source).toContain('correctionStableId');
-      expect(source).toContain('version');
-      expect(source).toContain('targetKind');
-      expect(source).toContain('targetStableId');
-      expect(source).toContain('targetVersion');
-      expect(source).toContain('baseAuthoritySchema');
-      expect(source).toContain('baseAuthorityHash');
-      expect(source).toContain('baseJournalSetHash');
-      expect(source).toContain('readyRevisionId');
-      expect(source).toContain('readyPreviewSchema');
-      expect(source).toContain('readyPreviewJson');
-      expect(source).toContain('planHash');
-      expect(source).not.toContain('providerDocumentId');
-      expect(source).not.toContain('expenseDocumentId');
-      expect(source).not.toContain('storeId');
-    },
-  );
+    expect(source).toContain('correctionStableId');
+    expect(source).toContain('version');
+    expect(source).toContain('targetKind');
+    expect(source).toContain('targetStableId');
+    expect(source).toContain('targetVersion');
+    expect(source).toContain('baseAuthoritySchema');
+    expect(source).toContain('baseAuthorityHash');
+    expect(source).toContain('baseJournalSetHash');
+    expect(source).toContain('readyRevisionId');
+    expect(source).toContain('readyPreviewSchema');
+    expect(source).toContain('readyPreviewJson');
+    expect(source).toContain('planHash');
+    expect(source).not.toContain('providerDocumentId');
+    expect(source).not.toContain('expenseDocumentId');
+    expect(source).not.toContain('storeId');
+  });
 
   it('keeps corrected business targets append-only and versioned', () => {
     const source = modelBlock('AccountingCorrectionRevision');
@@ -95,18 +92,15 @@ describe('posted financial correction persistence architecture', () => {
     expect(source).not.toContain('onDelete: Cascade');
   });
 
-  it(
-    'links correction outputs to immutable Journal entries with restrictive ownership',
-    () => {
-      const source = modelBlock('AccountingCorrectionJournalOutput');
+  it('links correction outputs to immutable Journal entries with restrictive ownership', () => {
+    const source = modelBlock('AccountingCorrectionJournalOutput');
 
-      expect(source).toContain('journalEntryId');
-      expect(source).toContain('@unique @db.Uuid');
-      expect(source).toContain('AccountingCorrectionJournalOutputRole');
-      expect(source).toContain('onDelete: Restrict');
-      expect(source).not.toContain('onDelete: Cascade');
-      expect(source).not.toContain('updatedAt');
-      expect(source).not.toContain('deletedAt');
-    },
-  );
+    expect(source).toContain('journalEntryId');
+    expect(source).toContain('@unique @db.Uuid');
+    expect(source).toContain('AccountingCorrectionJournalOutputRole');
+    expect(source).toContain('onDelete: Restrict');
+    expect(source).not.toContain('onDelete: Cascade');
+    expect(source).not.toContain('updatedAt');
+    expect(source).not.toContain('deletedAt');
+  });
 });
