@@ -11,6 +11,9 @@ import {
 import { AccountingJournalService } from './accounting-journal.service';
 import { AccountingPeriodService } from './accounting-period.service';
 import { buildProviderPayoutWritePlan } from './accounting-provider-payout-journal-authority';
+import {
+  ACCOUNTING_POSTED_FINANCIAL_CORRECTION_SOURCE_FACT_TYPE,
+} from './accounting-posted-financial-correction.contract';
 
 const basePayload = {
   idempotencyKey: 'journal:manual:1',
@@ -328,6 +331,153 @@ describe('AccountingJournalService double-entry journal characterization', () =>
       'provider fee bank withdrawal Journals require fee-clearing write authority',
     );
   });
+
+  it.each([
+    [
+      'accounting.provider_financial_document.v1',
+      'provider settlement canonical Journals require settlement-specific write authority',
+    ],
+    [
+      'accounting.uber_pre_cutover_order_reversal.v1',
+      'provider settlement canonical Journals require settlement-specific write authority',
+    ],
+    [
+      ACCOUNTING_POSTED_FINANCIAL_CORRECTION_SOURCE_FACT_TYPE,
+      'posted financial correction Journals require correction-specific write authority',
+    ],
+  ])(
+    'rejects %s through the generic Journal create path',
+    async (sourceFactType, expectedMessage) => {
+      const { service } = makeService();
+
+      await expect(
+        service.createJournalEntry(
+          {
+            ...basePayload,
+            kind: AccountingJournalEntryKind.ADJUSTMENT,
+            source: AccountingJournalSource.PLATFORM_STATEMENT,
+            sourceFactType,
+            sourceFactStableId: 'canonical_fact_1',
+            sourceFactVersion: 1,
+            storeStableId: '4750_Yonge_Street',
+          },
+          'actor_accounting',
+        ),
+      ).rejects.toThrow(expectedMessage);
+    },
+  );
+
+  it.each([
+    [
+      'accounting.provider_financial_document.v1',
+      'provider settlement canonical Journals cannot be updated in place',
+      'provider settlement canonical Journals cannot be deleted in place',
+    ],
+    [
+      'accounting.uber_pre_cutover_order_reversal.v1',
+      'provider settlement canonical Journals cannot be updated in place',
+      'provider settlement canonical Journals cannot be deleted in place',
+    ],
+    [
+      ACCOUNTING_POSTED_FINANCIAL_CORRECTION_SOURCE_FACT_TYPE,
+      'posted financial correction Journals cannot be updated in place',
+      'posted financial correction Journals cannot be deleted in place',
+    ],
+  ])(
+    'keeps %s immutable through generic update/delete paths',
+    async (sourceFactType, updateMessage, deleteMessage) => {
+      const existing = internalJournalRow({
+        kind: AccountingJournalEntryKind.ADJUSTMENT,
+        source: AccountingJournalSource.PLATFORM_STATEMENT,
+        sourceFactType,
+        sourceFactStableId: 'canonical_fact_1',
+        sourceFactVersion: 1,
+        storeStableId: '4750_Yonge_Street',
+      });
+      const updateCase = makeService();
+      updateCase.prisma.accountingJournalEntry.findUnique.mockResolvedValue(
+        existing,
+      );
+
+      await expect(
+        updateCase.service.updateJournalEntry(
+          'journal_stable_1',
+          {
+            kind: AccountingJournalEntryKind.ADJUSTMENT,
+            sourceFactType,
+            sourceFactStableId: 'canonical_fact_1',
+            sourceFactVersion: 1,
+            storeStableId: '4750_Yonge_Street',
+            occurredAt: basePayload.occurredAt,
+            currency: 'CAD',
+            memo: 'attempted canonical mutation',
+            lines: basePayload.lines,
+            lastKnownUpdatedAt: existing.updatedAt.toISOString(),
+          },
+          'actor_accounting',
+        ),
+      ).rejects.toThrow(updateMessage);
+      expect(
+        updateCase.prisma.accountingJournalEntry.updateMany,
+      ).not.toHaveBeenCalled();
+
+      const deleteCase = makeService();
+      deleteCase.prisma.accountingJournalEntry.findUnique.mockResolvedValue(
+        existing,
+      );
+      await expect(
+        deleteCase.service.deleteJournalEntry(
+          'journal_stable_1',
+          'actor_accounting',
+        ),
+      ).rejects.toThrow(deleteMessage);
+      expect(
+        deleteCase.prisma.accountingJournalEntry.update,
+      ).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    [
+      'accounting.provider_financial_document.v1',
+      'generic Journal update cannot create provider settlement canonical authority',
+    ],
+    [
+      'accounting.uber_pre_cutover_order_reversal.v1',
+      'generic Journal update cannot create provider settlement canonical authority',
+    ],
+    [
+      ACCOUNTING_POSTED_FINANCIAL_CORRECTION_SOURCE_FACT_TYPE,
+      'generic Journal update cannot create posted financial correction authority',
+    ],
+  ])(
+    'rejects converting a generic Journal into %s authority',
+    async (sourceFactType, expectedMessage) => {
+      const existing = internalJournalRow();
+      const { service, prisma } = makeService();
+      prisma.accountingJournalEntry.findUnique.mockResolvedValue(existing);
+
+      await expect(
+        service.updateJournalEntry(
+          'journal_stable_1',
+          {
+            kind: AccountingJournalEntryKind.ADJUSTMENT,
+            sourceFactType,
+            sourceFactStableId: 'canonical_fact_1',
+            sourceFactVersion: 1,
+            storeStableId: '4750_Yonge_Street',
+            occurredAt: basePayload.occurredAt,
+            currency: 'CAD',
+            memo: 'attempted canonical conversion',
+            lines: basePayload.lines,
+            lastKnownUpdatedAt: existing.updatedAt.toISOString(),
+          },
+          'actor_accounting',
+        ),
+      ).rejects.toThrow(expectedMessage);
+      expect(prisma.accountingJournalEntry.updateMany).not.toHaveBeenCalled();
+    },
+  );
 
   it('rejects converting a generic Journal into provider payout authority', async () => {
     const existing = internalJournalRow();

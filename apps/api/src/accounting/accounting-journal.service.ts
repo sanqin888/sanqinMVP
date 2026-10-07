@@ -59,6 +59,9 @@ import {
   UBER_PRE_CUTOVER_REVERSAL_SOURCE_FACT_TYPE,
 } from './accounting-provider-settlement.policy';
 import {
+  ACCOUNTING_POSTED_FINANCIAL_CORRECTION_SOURCE_FACT_TYPE,
+} from './accounting-posted-financial-correction.contract';
+import {
   assertProviderPayoutJournalAuthority,
   hashProviderPayoutJournalWrite,
   normalizeProviderPayoutWriteAuthority,
@@ -248,6 +251,17 @@ const isOpeningReceivableCanonicalSourceFactType = (
   typeof value === 'string' &&
   OPENING_RECEIVABLE_CANONICAL_SOURCE_FACT_TYPES.has(value);
 
+const PROVIDER_SETTLEMENT_CANONICAL_SOURCE_FACT_TYPES = new Set<string>([
+  PROVIDER_FINANCIAL_SOURCE_FACT_TYPE,
+  UBER_PRE_CUTOVER_REVERSAL_SOURCE_FACT_TYPE,
+]);
+
+const isProviderSettlementCanonicalSourceFactType = (
+  value: string | null | undefined,
+): boolean =>
+  typeof value === 'string' &&
+  PROVIDER_SETTLEMENT_CANONICAL_SOURCE_FACT_TYPES.has(value);
+
 type PreparedJournalWrite = {
   normalized: NormalizedJournalCreate;
   idempotencyHash: string;
@@ -333,6 +347,19 @@ export class AccountingJournalService {
     ) {
       throw new BadRequestException(
         'provider fee bank withdrawal Journals require fee-clearing write authority',
+      );
+    }
+    if (isProviderSettlementCanonicalSourceFactType(input.sourceFactType)) {
+      throw new BadRequestException(
+        'provider settlement canonical Journals require settlement-specific write authority',
+      );
+    }
+    if (
+      input.sourceFactType ===
+      ACCOUNTING_POSTED_FINANCIAL_CORRECTION_SOURCE_FACT_TYPE
+    ) {
+      throw new BadRequestException(
+        'posted financial correction Journals require correction-specific write authority',
       );
     }
     if (
@@ -1195,6 +1222,21 @@ export class AccountingJournalService {
         );
       }
       if (
+        isProviderSettlementCanonicalSourceFactType(existing.sourceFactType)
+      ) {
+        throw new ConflictException(
+          'provider settlement canonical Journals cannot be updated in place',
+        );
+      }
+      if (
+        existing.sourceFactType ===
+        ACCOUNTING_POSTED_FINANCIAL_CORRECTION_SOURCE_FACT_TYPE
+      ) {
+        throw new ConflictException(
+          'posted financial correction Journals cannot be updated in place',
+        );
+      }
+      if (
         existing.source === AccountingJournalSource.EXTERNAL_SALE ||
         isExternalSaleCanonicalSourceFactType(existing.sourceFactType)
       ) {
@@ -1205,6 +1247,21 @@ export class AccountingJournalService {
       if (isExternalSaleCanonicalSourceFactType(normalized.sourceFactType)) {
         throw new ConflictException(
           'generic Journal update cannot create External Sale canonical authority',
+        );
+      }
+      if (
+        isProviderSettlementCanonicalSourceFactType(normalized.sourceFactType)
+      ) {
+        throw new ConflictException(
+          'generic Journal update cannot create provider settlement canonical authority',
+        );
+      }
+      if (
+        normalized.sourceFactType ===
+        ACCOUNTING_POSTED_FINANCIAL_CORRECTION_SOURCE_FACT_TYPE
+      ) {
+        throw new ConflictException(
+          'generic Journal update cannot create posted financial correction authority',
         );
       }
       if (isOpeningReceivableCanonicalSourceFactType(existing.sourceFactType)) {
@@ -1360,6 +1417,21 @@ export class AccountingJournalService {
       if (existing.source === AccountingJournalSource.EXPENSE_DOCUMENT) {
         throw new ConflictException(
           'canonical Expense Journals cannot be deleted in place',
+        );
+      }
+      if (
+        isProviderSettlementCanonicalSourceFactType(existing.sourceFactType)
+      ) {
+        throw new ConflictException(
+          'provider settlement canonical Journals cannot be deleted in place',
+        );
+      }
+      if (
+        existing.sourceFactType ===
+        ACCOUNTING_POSTED_FINANCIAL_CORRECTION_SOURCE_FACT_TYPE
+      ) {
+        throw new ConflictException(
+          'posted financial correction Journals cannot be deleted in place',
         );
       }
       if (
