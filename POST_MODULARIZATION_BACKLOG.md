@@ -550,7 +550,7 @@ before that external evidence exists.
 Priority: **P0 ACCOUNTING CORRECTNESS / POST-POSTING RELIABILITY**  
 Complexity: **H overall; A0/A1 low-coupling foundation**  
 External gate: **none for A0-A3; controlled production evidence for Provider B2**  
-State: **A0 + A1 MERGED / PR #2715 / MERGE `2e172b33` / CI #6973 GREEN / A2 MERGED PR #2716 / MERGE `0b2fb5d0` / MIGRATION DEV `7764bc17` / CI #6978 GREEN / A3 LOCAL IMPLEMENTED / USER REVIEW PENDING / NO A3 MIGRATION / B-D NOT STARTED**  
+State: **A0 + A1 MERGED / PR #2715 / MERGE `2e172b33` / CI #6973 GREEN / A2 MERGED PR #2716 / MERGE `0b2fb5d0` / MIGRATION DEV `7764bc17` / CI #6978 GREEN / A3 MERGED PR #2717 / MERGE `5f892bb3` / CI #6981 GREEN / B1 LOCAL IMPLEMENTED / USER REVIEW PENDING / NO B1 MIGRATION / B2-D NOT STARTED**  
 Detailed plan: `docs/architecture/accounting-document-recognition-human-review-plan.md` §16
 
 This is post-modularization Accounting product/reliability work and does **not** reopen Phase 9.
@@ -592,12 +592,24 @@ A2 is merged through PR #2716 as `0b2fb5d0`; the user-generated additive migrati
 `AccountingCorrectionJournalOutput`, with no Provider/Expense-specific FK or new architecture
 edge.
 
-A3 is locally implemented from `origin/dev@7764bc17`. It owns the generic lifecycle,
-owner-adapter seam, same-Case READY revision validation, typed immutable correction Journal writer,
-per-owner-Journal DELTA/REVERSAL/REPOST execution, output links, same-plan POSTED replay and
-Serializable owner activation + Case POSTED + audit atomicity. It adds no schema/migration,
-dependency, controller/API/UI or Provider/Fantuan-specific posting formula. B1 Provider and C1
-Expense owner adapters remain later functional slices.
+A3 merged through PR #2717 as `5f892bb3`; exact-head CI #6981 is green. It owns the generic
+lifecycle, owner-adapter seam, same-Case READY revision validation, typed immutable correction
+Journal writer, per-owner-Journal DELTA/REVERSAL/REPOST execution, output links, same-plan POSTED
+replay and Serializable owner activation + Case POSTED + audit atomicity.
+
+B1 Provider Settlement is locally implemented from that merged baseline. It adds the typed
+`accounting.provider-settlement-correction-target.v1` owner target, reconstructs and validates the
+original Provider Settlement write authority from immutable Journal audit evidence, freezes persisted
+Uber pre-cutover reversals instead of rediscovering coverage, and rebuilds the corrected Target
+Journal Set through the existing Provider settlement/control-total policy. Fantuan adjustment-detail
+resolution is shared between normal settlement Preview and Correction. Provider source/Human Review
+rows remain immutable; the latest POSTED Correction target becomes the next current-effective
+business authority. The editor payload is bound to `expectedBaseAuthorityHash` for stale-write
+protection. Normal B1 is DELTA-only and rejects `DUPLICATE_POSTING` pending the later structural
+`REVERSAL_ONLY` path. Clover Statements that already carry the specialized fee-reclassification
+Journal also fail closed until the planned specialized-correction convergence audit, preventing the
+common chain from silently omitting a prior adjustment. B1 adds no schema/migration, dependency,
+controller/API/UI or new context direction; B2 and C1 remain later slices.
 
 ### 5.2 B1 — Expense -> canonical Journal
 

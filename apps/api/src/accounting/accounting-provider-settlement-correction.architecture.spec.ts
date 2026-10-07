@@ -1,0 +1,73 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+const adapterSource = readFileSync(
+  resolve(__dirname, 'accounting-provider-settlement-correction.adapter.ts'),
+  'utf8',
+);
+const targetPolicySource = readFileSync(
+  resolve(
+    __dirname,
+    'accounting-provider-settlement-correction-target.policy.ts',
+  ),
+  'utf8',
+);
+const previewSource = readFileSync(
+  resolve(__dirname, 'accounting-provider-settlement-preview.service.ts'),
+  'utf8',
+);
+const fantuanPolicySource = readFileSync(
+  resolve(__dirname, 'accounting-fantuan-adjustment-detail.policy.ts'),
+  'utf8',
+);
+
+describe('Provider Settlement posted correction adapter architecture', () => {
+  it('keeps the typed correction target policy pure and provider-owner scoped', () => {
+    expect(targetPolicySource).not.toContain('@prisma/client');
+    expect(targetPolicySource).not.toContain('@nestjs/common');
+    expect(targetPolicySource).toContain(
+      "'accounting.provider-settlement-correction-target.v1'",
+    );
+    expect(targetPolicySource).toContain('expectedBaseAuthorityHash');
+  });
+
+  it('reuses existing Provider settlement and Human Review semantics instead of duplicating formulas in the common correction engine', () => {
+    expect(adapterSource).toContain('buildProviderSettlementDocumentPlan');
+    expect(adapterSource).toContain(
+      'normalizeProviderSettlementReplacementGroupAuthority',
+    );
+    expect(adapterSource).toContain('hashProviderSettlementJournalWrite');
+    expect(adapterSource).toContain('resolveProviderFinancialEffectiveLines');
+    expect(adapterSource).toContain('resolveFantuanAdjustmentDetailLines');
+  });
+
+  it('shares Fantuan adjustment-detail resolution between normal settlement preview and posted correction', () => {
+    expect(previewSource).toContain('resolveFantuanAdjustmentDetailLines');
+    expect(adapterSource).toContain('resolveFantuanAdjustmentDetailLines');
+    expect(previewSource).not.toContain(
+      'FANTUAN_ADJUSTMENT_SUPPORTED_RAW_CODES',
+    );
+    expect(fantuanPolicySource).toContain(
+      'FANTUAN_ADJUSTMENT_SUPPORTED_RAW_CODES',
+    );
+  });
+
+  it('never reopens or mutates Provider source and Human Review rows during post-posting activation', () => {
+    for (const forbidden of [
+      'accountingProviderFinancialDocument.update',
+      'accountingProviderFinancialDocument.updateMany',
+      'accountingProviderFinancialReviewRevision.create',
+      'accountingProviderFinancialReviewRevision.update',
+      'accountingProviderFinancialReviewRevision.updateMany',
+      'confirmRevision(',
+    ]) {
+      expect(adapterSource).not.toContain(forbidden);
+    }
+    expect(adapterSource).toContain(
+      'Provider source/Human Review rows remain immutable',
+    );
+    expect(adapterSource).toContain(
+      'AccountingCorrectionCase POSTED transition is the activation pointer',
+    );
+  });
+});
