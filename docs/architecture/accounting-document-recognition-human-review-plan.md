@@ -1,6 +1,6 @@
 # Accounting Document Recognition & Human Review Plan
 
-Status: **SLICE 0-3 + 3V-A + 3V-B DEV MERGED / CI GREEN / 3V-B PRODUCTION VERIFICATION PENDING / EVIDENCE VIEWER SLICE 1 + 1B + 2 MERGED / RELIABILITY SLICE A + B MERGED / EXPENSE REVIEW HARDENING MERGED / ORIGINAL SLICE C UX CLOSEOUT MERGED (#2445 / `da77b9a5`, CI #6074 GREEN) / GMAIL INCREMENTAL + DUPLICATE FILE ARTIFACT FOLLOW-UP PRODUCTION VERIFIED (#2605 / `bfbf8e2c`, CI #6605, MIGRATION APPLIED) / EXPENSE SOURCE-EVIDENCE READINESS LOCAL IMPLEMENTED / USER REVIEW PENDING / MIGRATION NOT APPLIED — DO NOT REOPEN PHASE 9**  
+Status: **SLICE 0-3 + 3V-A + 3V-B DEV MERGED / CI GREEN / 3V-B PRODUCTION VERIFICATION PENDING / EVIDENCE VIEWER SLICE 1 + 1B + 2 MERGED / RELIABILITY SLICE A + B MERGED / EXPENSE REVIEW HARDENING MERGED / ORIGINAL SLICE C UX CLOSEOUT MERGED (#2445 / `da77b9a5`, CI #6074 GREEN) / GMAIL INCREMENTAL + DUPLICATE FILE ARTIFACT FOLLOW-UP PRODUCTION VERIFIED (#2605 / `bfbf8e2c`, CI #6605, MIGRATION APPLIED) / EXPENSE SOURCE-EVIDENCE READINESS LOCAL IMPLEMENTED / USER REVIEW PENDING / MIGRATION NOT APPLIED / POSTED FINANCIAL CORRECTION A0 + A1 LOCAL IMPLEMENTED / USER REVIEW PENDING / A2 NOT STARTED / NO CORRECTION MIGRATION YET — DO NOT REOPEN PHASE 9**  
 Planning date: 2026-09-20; updated: 2026-10-06  
 Audit baseline: `origin/dev@1ede0599`; Slice 3 merged in PR #2432 as `caabf1c1`; Slice 3V-A merged in PR #2439 as `0d6909bb` after PR CI #6054 and merged-head CI #6055 passed; Slice 3V-B merged in PR #2440 as `0ac9117f` after final head `3c5c0400`, PR CI #6057 and merged-head CI #6058 green  
 Owner: **Accounting / Reporting / Analytics**  
@@ -1357,13 +1357,27 @@ new Current Effective Posted State
 A Correction must never overwrite the original source artifact, source/provider document,
 confirmed historical Journal or prior correction Journal.
 
-### 16.4 Common Correction Case
+### 16.4 Common Correction authority
 
-The recommended persisted authority is an Accounting-owned AccountingCorrectionCase (exact
-Prisma naming remains an implementation detail) with at least:
+The persisted authority should be Accounting-owned but should not collapse lifecycle state,
+operator-edited business targets and produced Journals into one opaque row. The approved
+implementation plan therefore uses three additive authorities in **Correction-A2** (exact Prisma
+names remain an implementation detail):
+
+1. **AccountingCorrectionCase** — lifecycle, stable target identity, reason, optimistic version,
+   base/target authority hashes, READY revision pointer, frozen Preview authority and planHash;
+2. **AccountingCorrectionRevision** — append-only, versioned corrected-business-target snapshot.
+   The payload may use JSON only behind a named/versioned owner schema such as
+   `accounting.provider-settlement-correction-target.v1`; arbitrary untyped debit/credit JSON is
+   forbidden;
+3. **AccountingCorrectionJournalOutput** — stable relation from one POSTED Correction Case to every
+   immutable Journal it actually produced.
+
+The Case should carry at least:
 
 ~~~text
 correctionStableId
+version
 targetKind
 targetStableId
 targetVersion
@@ -1371,8 +1385,14 @@ status
 reasonCode
 note
 
+baseAuthoritySchema
 baseAuthorityHash
-baseJournalSetHash
+baseJournalSetHash   # current-effective Journal Set at READY
+readyRevisionId
+targetAuthoritySchema
+targetAuthorityHash
+readyPreviewSchema
+readyPreviewJson
 planHash
 
 createdBy / createdAt
@@ -1380,15 +1400,28 @@ confirmedBy / confirmedAt
 postedAt
 ~~~
 
+Each immutable Revision should preserve the owner schema/version, corrected target snapshot and
+target hash. The READY preview must preserve the original Journal anchors, every prior POSTED
+Correction Journal anchor, Current Effective / Target / Delta hashes, owner prerequisites and the
+strategy that was reviewed. Hashes are integrity identities; they do not replace the persisted
+evidence required to explain a historical correction later.
+
 Recommended lifecycle:
 
 ~~~text
 DRAFT -> READY -> POSTED
-          \
-           -> CANCELLED
+  ^        |
+  |        +-> DRAFT   # editing after Preview invalidates the old planHash
+  |
+  +------------- operator edits
+
+DRAFT / READY -> CANCELLED
 ~~~
 
-The first supported targetKind values should be intentionally narrow:
+`POSTED` and `CANCELLED` are terminal. A READY case may return to DRAFT only by creating a new
+immutable target revision and clearing the stale Preview/planHash.
+
+The first supported targetKind values remain intentionally narrow:
 
 ~~~text
 PROVIDER_SETTLEMENT
@@ -1399,8 +1432,9 @@ Opening Receivable, External Sale and Payroll already have mature reversal autho
 not be rewritten in the foundation slice. They may later adopt the common Correction Case shell
 without changing their owner-specific posting policies.
 
-This foundation requires an **additive Prisma schema change and user-generated migration** when
-implementation begins. No new runtime/package dependency is required.
+**A0 + A1 do not change Prisma and require no migration.** Correction-A2 is the first persistence
+slice and will require an **additive Prisma schema change and user-generated migration** under the
+repository migration workflow. No new runtime/package dependency is required.
 
 ### 16.5 The common layer must not become a manual-Journal editor
 
@@ -1466,9 +1500,38 @@ debitCents
 creditCents
 ~~~
 
-and aggregate comparable lines deterministically before calculating the delta. Every source and
-correction Journal stable ID/hash used in the calculation must still be frozen into the preview
-authority for audit and stale-plan detection.
+and aggregate comparable lines deterministically before calculating the delta. **Correction-A1
+freezes this as `accounting posting vector v1`: the comparison dimension is exactly
+`accountStableId + categoryStableId`, while currency is a Journal-Set invariant.** This is
+intentional: a classification-only correction from Category A to Category B on the same account
+must produce a real credit/debit reclassification delta rather than collapse to NOOP.
+
+The A1 policy normalizes each persisted Journal anchor, sorts Journal/line identity
+deterministically, verifies each Journal and resulting vector is balanced, and computes:
+
+~~~text
+Current Effective Vector
+  = vector(Original Journal Set + all prior POSTED Correction Journals)
+
+Delta Vector
+  = Target Vector - Current Effective Vector
+~~~
+
+Every persisted source/correction anchor freezes `entryStableId + idempotencyKey +
+idempotencyHash + version`. Preview authority separately freezes the immutable Original Journal-Set
+hash, prior-Correction Journal-Set hash and the resulting current-effective `baseJournalSetHash`,
+while each Journal-Set hash also covers normalized source identity,
+date/currency/memo and financial lines. Target Journals are owner-produced deterministic drafts;
+their normalized payload hashes are frozen separately. `baseAuthorityHash` means the **current
+effective business authority**, not the immutable original source hash; base and target must be
+normalized under the same versioned correction-target schema before their hashes are comparable.
+The Preview authority binds those schemas/hashes, strategy/reason and target identity into one
+deterministic `planHash`. If the Target posting changes while the target authority hash does not,
+A1 fails closed because the owner adapter has supplied inconsistent authority evidence.
+
+Store/provider/business prerequisites remain owner authority rather than posting-vector
+dimensions. A later execute path must re-read those prerequisites and all frozen Journal anchors
+before accepting the reviewed planHash.
 
 ### 16.7 Correction strategies
 
@@ -1624,60 +1687,171 @@ Conceptually:
 Every execute path must write an Accounting audit record and preserve immutable before/target/delta
 evidence.
 
-### 16.13 Recommended implementation slices
+### 16.13 Approved implementation slices
 
-#### Correction-A — Common Authority Foundation
+The 2026-10-06 implementation audit refined the original large Correction-A into smaller,
+independently reviewable slices. This avoids combining a canonical-Journal invariant fix, pure
+financial arithmetic, persisted lifecycle state and runtime mutation in one change.
 
-Scope:
+#### Correction-A0 — Canonical posted-Journal immutability hardening
 
-- additive AccountingCorrectionCase persistence and status/reason contracts;
-- stable target identity and current-Journal-set snapshot/hash;
-- common preview/execute authority contract;
-- typed owner adapter boundary;
-- generic current-effective Journal-set normalization/delta calculation;
-- planHash + stale-plan rejection;
-- audit and idempotency;
-- existing period-lock enforcement.
-
-Do **not** add Provider/Fantuan-specific policy to the common layer.
-
-**MIGRATION REQUIRED** when this slice is implemented. The migration must be generated by the user
-locally under the repository Prisma workflow and reviewed as additive-only before production
-promotion.
-
-#### Correction-B — Provider Settlement Adapter
+Status: **LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO RUNTIME CUTOVER**
 
 Scope:
 
-- Uber/Fantuan/Clover posted Statement correction;
-- reuse existing Provider Human Review/effective-line policy;
+- generic Journal creation may not manufacture Provider Settlement canonical authority;
+- generic Journal update/delete may not mutate an existing
+  `accounting.provider_financial_document.v1` Journal;
+- the same protection applies to
+  `accounting.uber_pre_cutover_order_reversal.v1`;
+- reserve `accounting.posted_financial_correction.v1` for the later typed Correction writer and
+  block generic create/update/delete from using or mutating that authority;
+- add characterization coverage for all three guards.
+
+This closes an audited invariant gap: Expense and several other canonical Accounting facts already
+had generic update/delete guards, while Provider Settlement did not. A0 changes only the generic
+Journal boundary; the existing typed Provider Settlement replacement-group writer is intentionally
+unchanged.
+
+#### Correction-A1 — Common correction contracts and pure policy
+
+Status: **LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO DEPENDENCY / NO RUNTIME CUTOVER**
+
+Scope:
+
+- freeze first target kinds `PROVIDER_SETTLEMENT | EXPENSE`;
+- freeze correction strategies `DELTA | REVERSAL_REPOST | REVERSAL_ONLY`;
+- freeze post-posting reason codes separately from Inbox/Human Review reasons;
+- normalize immutable persisted Journal Sets;
+- normalize owner-produced Target Journal Sets;
+- calculate the versioned `accountStableId + categoryStableId` posting vector;
+- compute Current Effective = Original + prior POSTED Correction Journals;
+- compute deterministic Target - Current Effective delta;
+- freeze strategy output: DELTA uses the net delta; REVERSAL_ONLY exposes the exact inverse of
+  Current Effective; REVERSAL_REPOST exposes both that inverse and the complete Target posting;
+- produce `READY | NOOP` Preview classification, where NOOP requires both unchanged business
+  authority and zero financial delta so a structural/authority-only correction cannot disappear;
+- require base/current-effective and target business authority to use the same versioned owner
+  correction-target schema, and fail closed if financial posting changes without an authority-hash
+  change;
+- freeze Journal anchors/hashes plus owner target authority schemas/hashes into one deterministic
+  `planHash`;
+- remain pure Accounting policy: no Prisma, Nest transport, Provider formulas, UI or external
+  integration imports.
+
+Focused source tests cover deterministic Journal ordering, category-only reclassification,
+repeated corrections, true NOOP, authority-only correction, exact `REVERSAL_ONLY`,
+same-vector `REVERSAL_REPOST`, balance/currency failure and stale-anchor planHash changes.
+Architecture coverage keeps the common layer provider-neutral and persistence-neutral.
+
+#### Correction-A2 — Additive persisted correction authority
+
+Status: **NOT STARTED**
+
+Scope:
+
+- additive `AccountingCorrectionCase`;
+- append-only `AccountingCorrectionRevision`;
+- `AccountingCorrectionJournalOutput`;
+- status/reason/target identity and optimistic version;
+- versioned corrected-target snapshot;
+- frozen READY preview authority and planHash.
+
+**MIGRATION REQUIRED in A2.** MCP may update `schema.prisma`, but the migration must be generated
+by the user locally under the repository Prisma workflow and reviewed as additive-only. No backfill,
+DROP, rename or historical-Journal rewrite is planned.
+
+#### Correction-A3 — Lifecycle, typed Journal writer and atomic execution
+
+Status: **NOT STARTED**
+
+Scope:
+
+- DRAFT / READY / POSTED / CANCELLED lifecycle and READY -> DRAFT invalidation on edits;
+- owner-adapter contract that supplies corrected business authority and deterministic Target
+  Journal Set;
+- typed `createPostedCorrectionJournalEntryInTx(..., tx)` authority;
+- correction idempotency and output-Journal links;
+- Serializable Preview revalidation / execute;
+- existing Accounting period-lock policy;
+- atomic Case POSTED transition + Journal output + audit + activation of current-effective owner
+  authority;
+- same correctionStableId/planHash replay returns the persisted POSTED result instead of producing
+  another delta;
+- a DELTA correction whose business authority changes but whose financial delta is zero may POST
+  with zero Journal outputs, provided the corrected authority activation and audit remain atomic.
+
+A3 must not add Provider/Fantuan-specific policy to the common layer.
+
+#### Correction-B1 — Provider Settlement backend adapter
+
+Status: **NOT STARTED**
+
+Scope:
+
+- Uber/Fantuan/Clover posted Statement correction target;
+- reuse existing Provider Human Review/effective-line semantics without reopening posted Human
+  Review;
 - reuse provider control-total reconciliation;
-- rebuild corrected settlement target through existing settlement policy;
-- compute correction delta against current effective Provider Statement Journal Set;
-- posted-record correction UI and correction history.
+- rebuild the Target Journal Set through existing settlement policy;
+- freeze existing Uber pre-cutover reversal Journals as prerequisites rather than recomputing
+  statement coverage in normal v1 line corrections;
+- prohibit period/store/provider/business-identity changes in normal DELTA correction; a later
+  structural correction may require owner-approved `REVERSAL_REPOST`.
 
-The observed Fantuan September incident becomes the first production verification fixture, but no
-branch, enum or service may special-case that provider/month/document.
+#### Correction-B2 — Provider posted-record UI + production fixture
 
-#### Correction-C — Expense Adapter
+Status: **NOT STARTED**
+
+Scope:
+
+- **Correct posted record** action;
+- business-field correction editor, Preview/delta and explicit confirmation;
+- original posting + correction history + current effective state;
+- sanitized Fantuan September 2026 regression fixture and controlled production verification.
+
+The observed Fantuan September incident is a verification case only. No branch, enum or service may
+special-case that provider/month/document.
+
+#### Correction-C1 — Expense backend adapter
+
+Status: **NOT STARTED**
 
 Scope:
 
 - corrected Expense target authority;
 - amount/tax/category/split correction;
-- optional funding attribution consistent with current Expense policy;
-- canonical Expense replan and delta/reversal strategy;
-- posted Expense correction UI/history.
+- reuse canonical Expense posting policy;
+- business correction may be drafted without complete funding, but financial correction may become
+  READY/POSTED only when the adapter can construct a complete Target Journal Set;
+- unchanged funding may be inherited from current effective authority;
+- classification-only changes produce normal vector reclassification deltas.
 
-#### Correction-D — Posted Financial Read-Model Unification
+#### Correction-C2 — Expense posted-record UI/history
+
+Status: **NOT STARTED**
+
+Scope:
+
+- correction action on persisted Expense records;
+- original/current values, Preview/delta and correction history;
+- no reopening or rewriting of the original confirmed Expense row.
+
+#### Correction-D — Current-effective read-model unification
+
+Status: **NOT STARTED**
 
 Scope:
 
 - common Original -> Corrections -> Current Effective projection;
-- consistent posted-card correction history across supported fact types;
-- reporting/analytics consume Current Effective authority where appropriate.
+- consistent correction history across supported fact types;
+- Provider Platform Analytics consumes corrected current-effective Provider authority;
+- Expense records expose original facts separately from current effective corrected values;
+- Trial Balance / Balance Movement continue consuming immutable Journal lines naturally.
 
 #### Correction-E — Existing specialized correction convergence audit
+
+Status: **NOT STARTED**
 
 Only after A-D are proven should the project evaluate whether existing Clover fee
 reclassification, Opening Receivable reversal, External Sale reversal and Payroll reversal should
@@ -1699,14 +1873,48 @@ This framework must not:
 
 ### 16.15 Readiness conclusion
 
-Status from the 2026-10-06 read-only audit:
+Current status after the 2026-10-06 A0/A1 local implementation:
 
-**READY FOR CORRECTION-A ARCHITECTURE / NOT READY FOR ONE-OFF INCIDENT PATCHES**
+**A0 + A1 SOURCE COMPLETE LOCALLY / USER REVIEW PENDING / A2 NOT STARTED**
 
-The repository already has the required Journal immutability, ADJUSTMENT, period lock, audit,
-reversal/reclassification precedents and planHash execution patterns. The missing capability is
-a persisted, generic correction authority and owner-adapter contract.
+The common arithmetic and authority vocabulary now exist without changing persistence or runtime
+routing, and the generic Journal boundary is hardened so Provider Settlement and future Correction
+authority cannot be manufactured, updated or deleted through the manual/generic Journal path.
 
-The next implementation should therefore begin with **Correction-A — Common Authority
-Foundation**, not a Fantuan-specific correction service and not a general-purpose Manual Journal
-editor.
+The repository has **not** yet gained a persisted Correction Case, Correction API, Provider/Expense
+adapter, correction Journal writer or posted-record UI. Therefore no production correction can be
+executed from A0/A1 alone.
+
+Per repository workflow, local lint/build/test were not run during this MCP workspace phase.
+GitHub Actions remains the validation gate only after operator review and explicit authorization
+for remote delivery.
+
+### 16.16 A0 + A1 implementation record
+
+Implementation baseline:
+
+- `origin/dev@6b27ee43dc2680af0582e25a85de8d71e702b7a9`;
+- local branch `feat/accounting-correction-a0-a1`;
+- owner: Accounting / Reporting / Analytics;
+- change class: atomic internal source hardening/pure-policy foundation;
+- no Prisma/schema/migration change;
+- no dependency/lockfile change;
+- no HTTP/controller/module/runtime route;
+- no Provider wire or UberEats runtime behavior;
+- no production Web Clover behavior;
+- no new context direction, direct-import allowance or public SCC.
+
+Implemented source boundaries:
+
+- `accounting-journal.service.ts` closes generic canonical-Journal mutation/creation gaps for
+  Provider Statement, Uber pre-cutover reversal and the reserved Posted Correction source fact;
+- `accounting-posted-financial-correction.contract.ts` freezes v1 target/strategy/reason and
+  Preview/Journal-Set authority shapes;
+- `accounting-posted-financial-correction.policy.ts` owns pure Journal-Set/vector/hash/delta
+  policy and deliberately has no persistence or provider-specific formula;
+- focused policy and architecture tests plus Journal characterization coverage are present in the
+  source tree but await GitHub Actions after review.
+
+Next approved design step after A0/A1 delivery is **Correction-A2 — additive persisted correction
+authority**, followed by A3 lifecycle/atomic execution. A2 must not be started as part of the A0/A1
+review batch.
