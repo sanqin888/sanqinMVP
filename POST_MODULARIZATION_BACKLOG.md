@@ -550,7 +550,7 @@ before that external evidence exists.
 Priority: **P0 ACCOUNTING CORRECTNESS / POST-POSTING RELIABILITY**  
 Complexity: **H overall; A0/A1 low-coupling foundation**  
 External gate: **none for A0-A3; controlled production evidence for Provider B2**  
-State: **A0 + A1 MERGED / PR #2715 / MERGE `2e172b33` / CI #6973 GREEN / A2 MERGED PR #2716 / MERGE `0b2fb5d0` / MIGRATION DEV `7764bc17` / CI #6978 GREEN / A3 MERGED PR #2717 / MERGE `5f892bb3` / CI #6981 GREEN / B1 LOCAL IMPLEMENTED / USER REVIEW PENDING / NO B1 MIGRATION / B2-D NOT STARTED**  
+State: **A0 + A1 MERGED / PR #2715 / MERGE `2e172b33` / CI #6973 GREEN / A2 MERGED PR #2716 / MERGE `0b2fb5d0` / MIGRATION DEV `7764bc17` / CI #6978 GREEN / A3 MERGED PR #2717 / MERGE `5f892bb3` / CI #6981 GREEN / B1 MERGED PR #2718 / MERGE `9cf7b42e` / CI #6986 GREEN / B2 SOURCE LOCAL IMPLEMENTED / USER REVIEW PENDING / CONTROLLED PRODUCTION VERIFICATION PENDING / NO B2 MIGRATION / C-D NOT STARTED**  
 Detailed plan: `docs/architecture/accounting-document-recognition-human-review-plan.md` §16
 
 This is post-modularization Accounting product/reliability work and does **not** reopen Phase 9.
@@ -597,19 +597,23 @@ lifecycle, owner-adapter seam, same-Case READY revision validation, typed immuta
 Journal writer, per-owner-Journal DELTA/REVERSAL/REPOST execution, output links, same-plan POSTED
 replay and Serializable owner activation + Case POSTED + audit atomicity.
 
-B1 Provider Settlement is locally implemented from that merged baseline. It adds the typed
-`accounting.provider-settlement-correction-target.v1` owner target, reconstructs and validates the
-original Provider Settlement write authority from immutable Journal audit evidence, freezes persisted
-Uber pre-cutover reversals instead of rediscovering coverage, and rebuilds the corrected Target
-Journal Set through the existing Provider settlement/control-total policy. Fantuan adjustment-detail
-resolution is shared between normal settlement Preview and Correction. Provider source/Human Review
-rows remain immutable; the latest POSTED Correction target becomes the next current-effective
-business authority. The editor payload is bound to `expectedBaseAuthorityHash` for stale-write
-protection. Normal B1 is DELTA-only and rejects `DUPLICATE_POSTING` pending the later structural
-`REVERSAL_ONLY` path. Clover Statements that already carry the specialized fee-reclassification
-Journal also fail closed until the planned specialized-correction convergence audit, preventing the
-common chain from silently omitting a prior adjustment. B1 adds no schema/migration, dependency,
-controller/API/UI or new context direction; B2 and C1 remain later slices.
+B1 Provider Settlement merged through PR #2718 as `9cf7b42e`; exact-head CI #6986 is green.
+It adds the typed `accounting.provider-settlement-correction-target.v1` owner target, reconstructs
+and validates original Provider Settlement write authority from immutable Journal audit evidence,
+freezes persisted Uber pre-cutover reversals, and rebuilds corrected Target Journal Sets through the
+existing Provider settlement/control-total policy. Provider source/Human Review rows remain immutable,
+the editor is bound to `expectedBaseAuthorityHash`, and normal B1 remains DELTA-only.
+
+B2 source is locally implemented from `origin/dev@9cf7b42e`. An Accounting-local Provider facade
+exposes A3/B1 lifecycle operations to the existing posted settlement surface; the Web card shows
+Current Effective values, append-only Correction history, business-field editing, Preview/delta,
+explicit READY and a full-planHash POST gate with fresh-record UNKNOWN/no-retry handling. It adds no
+generic manual-Journal endpoint and never reopens posted Human Review. Clover specialized fee
+reclassification and common Provider correction now fail closed in both directions until the planned
+Correction-E convergence. The existing sanitized `fantuanSeptemberDocument` policy regression is
+the B2 fixture; no Fantuan/month runtime branch is added. No schema/migration, dependency or new
+context direction is introduced. Source remains at the user review gate and controlled production
+edit -> Preview -> READY -> POST verification is still pending after deployment.
 
 ### 5.2 B1 — Expense -> canonical Journal
 

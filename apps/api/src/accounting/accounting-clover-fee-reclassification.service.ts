@@ -17,6 +17,10 @@ import { ACCOUNTING_DB, type AccountingDb } from './accounting-db';
 import { hashAccountingJson } from './accounting-inbox-core.policy';
 import { AccountingJournalService } from './accounting-journal.service';
 import {
+  AccountingPostedCorrectionStatus,
+  AccountingPostedCorrectionTargetKind,
+} from './accounting-posted-financial-correction.contract';
+import {
   CLOVER_FEE_PAYABLE_ACCOUNT_STABLE_ID,
   CLOVER_FEE_RECLASSIFICATION_SOURCE_FACT_TYPE,
 } from './accounting-provider-fee-clearing.contract';
@@ -102,7 +106,12 @@ export class AccountingCloverFeeReclassificationService {
       });
     }
 
-    const [originalJournals, existingCorrection, accounts] = await Promise.all([
+    const [
+      originalJournals,
+      existingCorrection,
+      existingCommonCorrection,
+      accounts,
+    ] = await Promise.all([
       this.prisma.accountingJournalEntry.findMany({
         where: {
           source: AccountingJournalSource.PLATFORM_STATEMENT,
@@ -140,6 +149,16 @@ export class AccountingCloverFeeReclassificationService {
         select: { entryStableId: true },
         orderBy: { createdAt: 'desc' },
       }),
+      this.prisma.accountingCorrectionCase.findFirst({
+        where: {
+          targetKind: AccountingPostedCorrectionTargetKind.PROVIDER_SETTLEMENT,
+          targetStableId: document.documentStableId,
+          targetVersion: document.revision,
+          status: AccountingPostedCorrectionStatus.POSTED,
+        },
+        select: { correctionStableId: true },
+        orderBy: { postedAt: 'desc' },
+      }),
       this.prisma.accountingAccount.findMany({
         where: {
           accountStableId: {
@@ -158,6 +177,20 @@ export class AccountingCloverFeeReclassificationService {
         },
       }),
     ]);
+
+    if (existingCommonCorrection) {
+      return this.previewResult({
+        ...base,
+        status: 'BLOCKED',
+        blockReasons: ['POSTED_COMMON_CORRECTION_EXISTS'],
+        originalJournalEntryStableId:
+          originalJournals.length === 1
+            ? (originalJournals[0]?.entryStableId ?? null)
+            : null,
+        existingCorrectionJournalEntryStableId: null,
+        amountCents: 0,
+      });
+    }
 
     if (existingCorrection) {
       return this.previewResult({

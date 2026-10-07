@@ -15,6 +15,7 @@ import { CloverFeeReclassificationPanel } from './clover-fee-reclassification-pa
 import { CloverAuthorityReplacementPanel } from './clover-authority-replacement-panel';
 import { ProviderPendingReconciliationPanel } from './provider-pending-reconciliation-panel';
 import { ProviderPayoutPanel } from './provider-payout-panel';
+import { ProviderPostedCorrectionPanel } from './provider-posted-correction-panel';
 import { SettlementReplayGate } from './settlement-replay-gate';
 import {
   settlementBlockReasonGuidance,
@@ -239,6 +240,10 @@ function ReadOnlyFinancialDocumentCard({
           <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
             {journal.memo}
           </p>
+        ) : null}
+
+        {document.documentType === 'STATEMENT' ? (
+          <ProviderPostedCorrectionPanel document={document} isZh={isZh} />
         ) : null}
 
         {document.provider === 'CLOVER' &&
