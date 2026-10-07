@@ -33,6 +33,7 @@ type Props = {
   onPageChange: (offset: number) => void;
   onPageSizeChange: (limit: number) => void;
   onCompletePayment: (document: AccountingExpenseDocument) => void;
+  onCorrectPostedRecord: (document: AccountingExpenseDocument) => void;
 };
 
 const money = (cents: number | null | undefined) =>
@@ -70,6 +71,7 @@ export function ExpenseRecordsPanel({
   onPageChange,
   onPageSizeChange,
   onCompletePayment,
+  onCorrectPostedRecord,
 }: Props) {
   const [filters, setFilters] = useState<ExpenseRecordFilters>(
     EMPTY_EXPENSE_RECORD_FILTERS,
@@ -252,13 +254,26 @@ export function ExpenseRecordsPanel({
                   {isZh ? '付款：' : 'Paid from: '}
                   {fundingSummary(document) || null}
                 </div>
-                {hasUnassignedFunding(document) ? (
-                  <span className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
-                    {isZh
-                      ? '付款账户未指定'
-                      : 'Payment account not specified'}
-                  </span>
-                ) : null}
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {hasUnassignedFunding(document) ? (
+                    <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                      {isZh
+                        ? '付款账户未指定'
+                        : 'Payment account not specified'}
+                    </span>
+                  ) : null}
+                  {document.correctionState.activeCorrectionStatus ? (
+                    <span className="inline-flex rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-800">
+                      Correction{' '}
+                      {document.correctionState.activeCorrectionStatus}
+                    </span>
+                  ) : document.correctionState.hasPostedCorrections ? (
+                    <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
+                      {isZh ? '更正历史' : 'Correction history'} ·{' '}
+                      {document.correctionState.correctionCount}
+                    </span>
+                  ) : null}
+                </div>
               </div>
               <div className="flex flex-wrap items-start justify-end gap-2">
                 {document.sourceEvidence ? (
@@ -288,6 +303,15 @@ export function ExpenseRecordsPanel({
                     onClick={() => onCompletePayment(document)}
                   >
                     {isZh ? '补充付款信息' : 'Complete payment info'}
+                  </button>
+                ) : null}
+                {document.correctionState.canonicalPosted ? (
+                  <button
+                    type="button"
+                    className="rounded border border-violet-300 bg-violet-50 px-3 py-1.5 font-medium text-violet-800"
+                    onClick={() => onCorrectPostedRecord(document)}
+                  >
+                    {isZh ? '更正已入账记录' : 'Correct posted record'}
                   </button>
                 ) : null}
               </div>

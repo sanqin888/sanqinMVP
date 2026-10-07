@@ -3,9 +3,20 @@ import {
   AccountingInboxMaterializedEntityType,
   Prisma,
 } from '@prisma/client';
-import type { AccountingDocumentStatus } from './accounting-contracts';
+import {
+  AccountingJournalSource,
+  type AccountingDocumentStatus,
+} from './accounting-contracts';
 import type { AccountingDb } from './accounting-db';
 import type { AccountingExpensePaymentState } from './accounting-expense.contracts';
+import {
+  CANONICAL_EXPENSE_SOURCE_FACT_TYPE,
+  CANONICAL_EXPENSE_SOURCE_FACT_TYPE_V2,
+} from './accounting-expense-journal.policy';
+import {
+  AccountingPostedCorrectionStatus,
+  AccountingPostedCorrectionTargetKind,
+} from './accounting-posted-financial-correction.contract';
 
 const ACCOUNTING_DOCUMENT_SELECT = {
   documentStableId: true,
@@ -236,12 +247,14 @@ export async function readAccountingExpenseDocument(
     select: ACCOUNTING_DOCUMENT_SELECT,
   });
   if (!row) return null;
-  const sourceEvidence = await readExpenseSourceEvidence(db, [
-    documentStableId,
+  const [sourceEvidence, postedStates] = await Promise.all([
+    readExpenseSourceEvidence(db, [documentStableId]),
+    readExpensePostedStates(db, [row]),
   ]);
   return presentAccountingExpenseDocument(
     row,
     sourceEvidence.get(documentStableId) ?? null,
+    postedStates.get(documentStableId) ?? EMPTY_POSTED_STATE,
   );
 }
 
@@ -249,16 +262,164 @@ async function presentAccountingExpenseRows(
   db: AccountingDb,
   rows: AccountingDocumentRow[],
 ) {
-  const sourceEvidence = await readExpenseSourceEvidence(
-    db,
-    rows.map((row) => row.documentStableId),
-  );
+  const [sourceEvidence, postedStates] = await Promise.all([
+    readExpenseSourceEvidence(
+      db,
+      rows.map((row) => row.documentStableId),
+    ),
+    readExpensePostedStates(db, rows),
+  ]);
   return rows.map((row) =>
     presentAccountingExpenseDocument(
       row,
       sourceEvidence.get(row.documentStableId) ?? null,
+      postedStates.get(row.documentStableId) ?? EMPTY_POSTED_STATE,
     ),
   );
+}
+
+type AccountingExpensePostedState = {
+  canonicalPosted: boolean;
+  activeCorrectionStatus: 'DRAFT' | 'READY' | null;
+  hasPostedCorrections: boolean;
+  correctionCount: number;
+};
+
+const EMPTY_POSTED_STATE: AccountingExpensePostedState = {
+  canonicalPosted: false,
+  activeCorrectionStatus: null,
+  hasPostedCorrections: false,
+  correctionCount: 0,
+};
+
+async function readExpensePostedStates(
+  db: AccountingDb,
+  rows: AccountingDocumentRow[],
+): Promise<Map<string, AccountingExpensePostedState>> {
+  if (!rows.length) return new Map();
+
+  const identities = new Map(
+    rows.map((row) => {
+      const targetVersion = row.fundingAttributionVersion === 2 ? 2 : 1;
+      return [
+        row.documentStableId,
+        {
+          targetVersion,
+          sourceFactType:
+            targetVersion === 2
+              ? CANONICAL_EXPENSE_SOURCE_FACT_TYPE_V2
+              : CANONICAL_EXPENSE_SOURCE_FACT_TYPE,
+        },
+      ] as const;
+    }),
+  );
+  const documentStableIds = [...identities.keys()];
+
+  const [journals, corrections] = await Promise.all([
+    db.accountingJournalEntry.findMany({
+      where: {
+        source: AccountingJournalSource.EXPENSE_DOCUMENT,
+        sourceFactStableId: { in: documentStableIds },
+        sourceFactType: {
+          in: [
+            CANONICAL_EXPENSE_SOURCE_FACT_TYPE,
+            CANONICAL_EXPENSE_SOURCE_FACT_TYPE_V2,
+          ],
+        },
+        deletedAt: null,
+      },
+      select: {
+        sourceFactStableId: true,
+        sourceFactType: true,
+        sourceFactVersion: true,
+      },
+    }),
+    db.accountingCorrectionCase.findMany({
+      where: {
+        targetKind: AccountingPostedCorrectionTargetKind.EXPENSE,
+        targetStableId: { in: documentStableIds },
+      },
+      select: {
+        targetStableId: true,
+        targetVersion: true,
+        status: true,
+        createdAt: true,
+      },
+      orderBy: [{ createdAt: 'asc' }, { correctionStableId: 'asc' }],
+    }),
+  ]);
+
+  const states = new Map(
+    documentStableIds.map(
+      (documentStableId) =>
+        [
+          documentStableId,
+          { ...EMPTY_POSTED_STATE },
+        ] as const,
+    ),
+  );
+
+  const matchedJournalCounts = new Map<string, number>();
+  for (const journal of journals) {
+    const identity = identities.get(journal.sourceFactStableId);
+    if (
+      identity &&
+      journal.sourceFactType === identity.sourceFactType &&
+      journal.sourceFactVersion === identity.targetVersion
+    ) {
+      matchedJournalCounts.set(
+        journal.sourceFactStableId,
+        (matchedJournalCounts.get(journal.sourceFactStableId) ?? 0) + 1,
+      );
+    }
+  }
+  for (const row of rows) {
+    const state = states.get(row.documentStableId);
+    if (!state) continue;
+    if (row.status !== AccountingDocumentStatus.CONFIRMED) {
+      state.canonicalPosted = false;
+      continue;
+    }
+    const journalCount = matchedJournalCounts.get(row.documentStableId) ?? 0;
+    if ((row.fundingAttributionVersion ?? 1) === 1) {
+      state.canonicalPosted = journalCount === 1;
+      continue;
+    }
+    const fundingStableIds = row.splits.map(
+      (split) => split.paidFromAccount?.accountStableId ?? null,
+    );
+    const expectedFundingGroups = new Set(
+      fundingStableIds.filter((value): value is string => Boolean(value)),
+    ).size;
+    state.canonicalPosted =
+      fundingStableIds.length > 0 &&
+      fundingStableIds.every(Boolean) &&
+      journalCount === expectedFundingGroups;
+  }
+
+  for (const correction of corrections) {
+    const identity = identities.get(correction.targetStableId);
+    const state = states.get(correction.targetStableId);
+    if (
+      !identity ||
+      !state ||
+      correction.targetVersion !== identity.targetVersion
+    ) {
+      continue;
+    }
+    state.correctionCount += 1;
+    if (correction.status === AccountingPostedCorrectionStatus.POSTED) {
+      state.hasPostedCorrections = true;
+    }
+    if (
+      correction.status === AccountingPostedCorrectionStatus.DRAFT ||
+      correction.status === AccountingPostedCorrectionStatus.READY
+    ) {
+      state.activeCorrectionStatus = correction.status;
+    }
+  }
+
+  return states;
 }
 
 type AccountingExpenseSourceEvidence = {
@@ -323,6 +484,7 @@ async function readExpenseSourceEvidence(
 function presentAccountingExpenseDocument(
   row: AccountingDocumentRow,
   sourceEvidence: AccountingExpenseSourceEvidence | null,
+  correctionState: AccountingExpensePostedState,
 ) {
   return {
     documentStableId: row.documentStableId,
@@ -342,6 +504,7 @@ function presentAccountingExpenseDocument(
     memo: row.memo,
     createdAt: row.createdAt.toISOString(),
     confirmedAt: row.confirmedAt?.toISOString() ?? null,
+    correctionState,
     paymentAllocations: row.paymentAllocations.map((allocation) => ({
       paymentAllocationStableId: allocation.paymentAllocationStableId,
       accountStableId: allocation.account.accountStableId,

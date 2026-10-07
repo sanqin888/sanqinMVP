@@ -550,7 +550,7 @@ before that external evidence exists.
 Priority: **P0 ACCOUNTING CORRECTNESS / POST-POSTING RELIABILITY**  
 Complexity: **H overall; A0/A1 low-coupling foundation**  
 External gate: **none for A0-A3; controlled production evidence for Provider B2**  
-State: **A0 + A1 MERGED / PR #2715 / MERGE `2e172b33` / CI #6973 GREEN / A2 MERGED PR #2716 / MERGE `0b2fb5d0` / MIGRATION DEV `7764bc17` / CI #6978 GREEN / A3 MERGED PR #2717 / MERGE `5f892bb3` / CI #6981 GREEN / B1 MERGED PR #2718 / MERGE `9cf7b42e` / CI #6986 GREEN / B2 MERGED PR #2719 / MERGE `28d7410e` / CI #6989 GREEN / CONTROLLED PRODUCTION VERIFICATION PENDING / C1 LOCAL IMPLEMENTED / USER REVIEW PENDING / NO C1 MIGRATION / C2-D NOT STARTED**  
+State: **A0 + A1 MERGED / PR #2715 / MERGE `2e172b33` / CI #6973 GREEN / A2 MERGED PR #2716 / MERGE `0b2fb5d0` / MIGRATION DEV `7764bc17` / CI #6978 GREEN / A3 MERGED PR #2717 / MERGE `5f892bb3` / CI #6981 GREEN / B1 MERGED PR #2718 / MERGE `9cf7b42e` / CI #6986 GREEN / B2 MERGED PR #2719 / MERGE `28d7410e` / CI #6989 GREEN / CONTROLLED PRODUCTION VERIFICATION PENDING / C1 MERGED PR #2720 / MERGE `0f5da028` / CI #6992 GREEN / NO C1 MIGRATION / C2 LOCAL IMPLEMENTED / USER REVIEW PENDING / NO C2 MIGRATION / D NOT STARTED**  
 Detailed plan: `docs/architecture/accounting-document-recognition-human-review-plan.md` §16
 
 This is post-modularization Accounting product/reliability work and does **not** reopen Phase 9.
@@ -613,7 +613,8 @@ Provider correction fail closed in both directions until Correction-E convergenc
 sanitized `fantuanSeptemberDocument` policy regression remains the B2 fixture; controlled production
 edit -> Preview -> READY -> POST verification is still pending after deployment.
 
-C1 Expense backend is locally implemented from `origin/dev@28d7410e`. It adds the typed
+C1 Expense backend merged through PR #2720 as `0f5da028`; final feature head
+`69dce6c8317c8245f32ae04c4d915c77b1b49315` passed CI #6992. It adds the typed
 `accounting.expense-correction-target.v1` owner authority and an Accounting-only A3 adapter without
 HTTP/UI. Historical Expense v1 preserves document-level payment allocations; current v2 preserves
 split-level funding and 1..N funding-group Journals. Original canonical Expense Journals are accepted
@@ -624,7 +625,18 @@ inherits current-effective funding, explicit null clears it, and changed/new cat
 dimensions are validated while inherited historical dimensions may remain inactive. Normal C1 is
 DELTA-only and rejects `DUPLICATE_POSTING` pending REVERSAL_ONLY. The original ExpenseDocument,
 splits and historical allocations remain immutable. No schema/migration, dependency, controller/UI or
-new context direction is introduced; C1 is at the local user-review gate.
+new context direction was introduced.
+
+C2 is locally implemented from `origin/dev@0f5da028` on `feat/accounting-correction-c2`, with no
+Prisma/schema/migration or dependency change. The existing Expense controller gains an Expense-specific
+A3+C1 facade and `journal/expense/.../correction(s)` lifecycle; Expense records receive batched
+canonical-posted/correction state without per-row requests. Only complete canonical posted authority is
+eligible for **Correct posted record**. The dedicated Web panel seeds from Current Effective authority,
+preserves v1 document allocations versus v2 split funding, renders compensating Delta/NOOP and
+immutable history, and uses full-planHash acknowledgement plus fresh-read UNKNOWN/no-retry POST
+reconciliation. The main Expense list remains on persisted source values; global Current Effective
+read-model cutover remains D. C2 is at the local user-review gate and Provider B2 production
+verification remains separate.
 
 ### 5.2 B1 — Expense -> canonical Journal
 

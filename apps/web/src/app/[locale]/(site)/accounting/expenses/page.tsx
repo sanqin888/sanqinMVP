@@ -9,6 +9,7 @@ import type {
   AccountingExpenseRecordsPage,
 } from '../contracts/expenses';
 import { ExpenseEditor } from './expense-editor';
+import { ExpensePostedCorrectionPanel } from './expense-posted-correction-panel';
 import {
   EMPTY_EXPENSE_RECORD_FILTERS,
   ExpenseRecordsPanel,
@@ -40,6 +41,8 @@ export default function AccountingExpensesPage() {
   const [pageSize, setPageSize] = useState(10);
   const [offset, setOffset] = useState(0);
   const [editingDocument, setEditingDocument] =
+    useState<AccountingExpenseDocument | null>(null);
+  const [correctingDocument, setCorrectingDocument] =
     useState<AccountingExpenseDocument | null>(null);
   const [loadingReference, setLoadingReference] = useState(true);
   const [loadingRecords, setLoadingRecords] = useState(true);
@@ -142,6 +145,7 @@ export default function AccountingExpensesPage() {
 
   async function handleSaved() {
     setEditingDocument(null);
+    setCorrectingDocument(null);
     if (offset === 0) {
       await loadRecords();
     } else {
@@ -150,10 +154,21 @@ export default function AccountingExpensesPage() {
   }
 
   function startPaymentCompletion(document: AccountingExpenseDocument) {
+    setCorrectingDocument(null);
     setEditingDocument(document);
     window.requestAnimationFrame(() => {
       window.document
         .getElementById('expense-editor')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+
+  function startPostedCorrection(document: AccountingExpenseDocument) {
+    setEditingDocument(null);
+    setCorrectingDocument(document);
+    window.requestAnimationFrame(() => {
+      window.document
+        .getElementById('expense-correction-panel')
         ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   }
@@ -216,7 +231,20 @@ export default function AccountingExpensesPage() {
           setOffset(0);
         }}
         onCompletePayment={startPaymentCompletion}
+        onCorrectPostedRecord={startPostedCorrection}
       />
+
+      {correctingDocument ? (
+        <ExpensePostedCorrectionPanel
+          key={correctingDocument.documentStableId}
+          document={correctingDocument}
+          categories={categories}
+          accounts={accounts}
+          isZh={isZh}
+          onClose={() => setCorrectingDocument(null)}
+          onRecordChanged={loadRecords}
+        />
+      ) : null}
 
       <ExpenseEditor
         locale={locale}

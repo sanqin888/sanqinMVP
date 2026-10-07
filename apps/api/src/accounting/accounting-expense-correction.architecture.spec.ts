@@ -66,11 +66,21 @@ describe('Expense posted correction C1 architecture', () => {
     );
   });
 
-  it('keeps C1 backend-only and wires only the internal Accounting adapter', () => {
+  it('exposes C2 through an Expense-specific facade without leaking the owner adapter or A3 lifecycle into transport', () => {
     expect(moduleSource).toContain('AccountingExpenseCorrectionAdapter');
-    expect(expenseControllerSource).not.toContain('ExpenseCorrectionAdapter');
-    expect(expenseControllerSource).not.toContain('posted-correction');
-    expect(expenseControllerSource).not.toContain('corrections/:');
+    expect(moduleSource).toContain('AccountingExpenseCorrectionService');
+    expect(expenseControllerSource).toContain(
+      'AccountingExpenseCorrectionService',
+    );
+    expect(expenseControllerSource).not.toContain(
+      'AccountingExpenseCorrectionAdapter',
+    );
+    expect(expenseControllerSource).not.toContain(
+      'AccountingPostedFinancialCorrectionService',
+    );
+    expect(expenseControllerSource).toContain(
+      "journal/expense/:documentStableId/correction",
+    );
   });
 
   it('keeps normal C1 on DELTA and fails closed for duplicate-posting reversal semantics', () => {

@@ -23,6 +23,7 @@ import type {
   AccountingExpensePaymentState,
   AccountingExpenseSplitFundingCompletionInput,
 } from './accounting-expense.contracts';
+import { AccountingExpenseCorrectionService } from './accounting-expense-correction.service';
 import { AccountingExpenseService } from './accounting-expense.service';
 
 function parseExpensePaymentState(
@@ -38,7 +39,10 @@ function parseExpensePaymentState(
 @UseGuards(SessionAuthGuard, RolesGuard)
 @Roles('ADMIN', 'ACCOUNTANT')
 export class AccountingExpenseController {
-  constructor(private readonly expense: AccountingExpenseService) {}
+  constructor(
+    private readonly expense: AccountingExpenseService,
+    private readonly expenseCorrection: AccountingExpenseCorrectionService,
+  ) {}
 
   @Post('expenses')
   createExpense(
@@ -86,6 +90,122 @@ export class AccountingExpenseController {
       offset: parseNonNegativeAccountingNumber(offset, 'offset'),
       documentStableId,
     });
+  }
+
+  @Get('journal/expense/:documentStableId/correction')
+  readExpenseCorrection(
+    @Param('documentStableId') documentStableId: string,
+  ) {
+    return this.expenseCorrection.readRecord(documentStableId);
+  }
+
+  @Post('journal/expense/:documentStableId/corrections')
+  createPostedExpenseCorrection(
+    @Param('documentStableId') documentStableId: string,
+    @Body()
+    body: {
+      reasonCode?: unknown;
+      note?: unknown;
+      target?: unknown;
+    },
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.expenseCorrection.createDraft(
+      documentStableId,
+      body,
+      requireAccountingOperatorUserId(req),
+    );
+  }
+
+  @Post(
+    'journal/expense/:documentStableId/corrections/:correctionStableId/revise',
+  )
+  revisePostedExpenseCorrection(
+    @Param('documentStableId') documentStableId: string,
+    @Param('correctionStableId') correctionStableId: string,
+    @Body()
+    body: {
+      expectedVersion?: unknown;
+      reasonCode?: unknown;
+      note?: unknown;
+      target?: unknown;
+    },
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.expenseCorrection.reviseDraft(
+      documentStableId,
+      correctionStableId,
+      body,
+      requireAccountingOperatorUserId(req),
+    );
+  }
+
+  @Get(
+    'journal/expense/:documentStableId/corrections/:correctionStableId/preview',
+  )
+  previewPostedExpenseCorrection(
+    @Param('documentStableId') documentStableId: string,
+    @Param('correctionStableId') correctionStableId: string,
+  ) {
+    return this.expenseCorrection.previewCase(
+      documentStableId,
+      correctionStableId,
+    );
+  }
+
+  @Post(
+    'journal/expense/:documentStableId/corrections/:correctionStableId/ready',
+  )
+  readyPostedExpenseCorrection(
+    @Param('documentStableId') documentStableId: string,
+    @Param('correctionStableId') correctionStableId: string,
+    @Body()
+    body: {
+      expectedVersion?: unknown;
+      expectedPlanHash?: unknown;
+    },
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.expenseCorrection.markReady(
+      documentStableId,
+      correctionStableId,
+      body,
+      requireAccountingOperatorUserId(req),
+    );
+  }
+
+  @Post(
+    'journal/expense/:documentStableId/corrections/:correctionStableId/post',
+  )
+  postPostedExpenseCorrection(
+    @Param('documentStableId') documentStableId: string,
+    @Param('correctionStableId') correctionStableId: string,
+    @Body() body: { expectedPlanHash?: unknown },
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.expenseCorrection.executeCase(
+      documentStableId,
+      correctionStableId,
+      body,
+      requireAccountingOperatorUserId(req),
+    );
+  }
+
+  @Post(
+    'journal/expense/:documentStableId/corrections/:correctionStableId/cancel',
+  )
+  cancelPostedExpenseCorrection(
+    @Param('documentStableId') documentStableId: string,
+    @Param('correctionStableId') correctionStableId: string,
+    @Body() body: { expectedVersion?: unknown },
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.expenseCorrection.cancelCase(
+      documentStableId,
+      correctionStableId,
+      body,
+      requireAccountingOperatorUserId(req),
+    );
   }
 
   @Put('expenses/:documentStableId/payment-allocations')
