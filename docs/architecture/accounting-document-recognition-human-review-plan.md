@@ -1815,7 +1815,7 @@ controller/API/UI or new context direction.
 
 #### Correction-B1 — Provider Settlement backend adapter
 
-Status: **NOT STARTED**
+Status: **LOCAL IMPLEMENTED / USER REVIEW PENDING**
 
 Scope:
 
@@ -1903,9 +1903,9 @@ This framework must not:
 
 ### 16.15 Readiness conclusion
 
-Current status after A2 source + migration delivery and the A3 local runtime implementation:
+Current status after A3 delivery and the B1 local Provider adapter implementation:
 
-**A0 + A1 MERGED / CI #6973 GREEN / A2 SOURCE MERGED PR #2716 / MIGRATION DEV `7764bc17` / CI #6978 GREEN / A3 LOCAL IMPLEMENTED / USER REVIEW PENDING / B1 + C1 OWNER ADAPTERS NOT STARTED**
+**A0 + A1 MERGED / CI #6973 GREEN / A2 SOURCE + MIGRATION MERGED / CI #6978 GREEN / A3 MERGED PR #2717 / MERGE `5f892bb3` / CI #6981 GREEN / B1 LOCAL IMPLEMENTED / USER REVIEW PENDING / B2 + C1 NOT STARTED**
 
 PR #2715 merged A0/A1 to `dev` as `2e172b33` after CI #6973. PR #2716 merged the additive A2
 persistence source as `0b2fb5d0` after CI #6976, and the user-generated migration
@@ -1913,15 +1913,24 @@ persistence source as `0b2fb5d0` after CI #6976, and the user-generated migratio
 `7764bc17` with CI #6978 green. The persisted correction authority is therefore replayable from
 committed migrations.
 
-A3 is implemented locally from that exact baseline and activates only the common Accounting runtime
-shell: lifecycle, frozen READY revalidation, typed immutable correction Journal writes, output links,
-Serializable atomic execution and generic owner activation. It deliberately adds no Provider or
-Expense implementation adapter, controller/API/UI, read-model cutover, schema or migration.
+A3 is merged through PR #2717 as `5f892bb358b36f474cee0e2a8e4755bbdf210b51`; exact-head
+CI #6981 is green. The merged common runtime owns lifecycle, frozen READY revalidation, typed
+immutable correction Journal writes, output links, Serializable atomic execution and the generic
+owner activation seam, while remaining Provider/Expense-neutral.
 
-Therefore the framework is **ready for A3 review/remote CI, but not yet usable for a real posted
-Provider or Expense correction**. The next functional slice after A3 merges is B1 Provider
-Settlement adapter (and later C1 Expense adapter); owner-specific posting semantics remain outside
-the common engine.
+B1 is now implemented locally from that merged baseline. The Provider adapter reconstructs the
+original typed Provider Settlement write authority from the immutable Journal CREATE audit, freezes
+existing Uber pre-cutover reversal Journals as prerequisites, reuses confirmed Provider Human Review
+effective lines plus the existing settlement/control-total policy, and persists corrected business
+authority only through the common Correction Case/Revision lifecycle. Provider source/Human Review
+rows remain immutable. Normal B1 corrections are DELTA-only; Store/provider/period/business identity,
+effective-line provenance and frozen historical prerequisites cannot change. The editable payload is
+bound to `expectedBaseAuthorityHash` so a stale editor cannot overwrite a newer POSTED correction.
+No controller/API/UI or read-model cutover is included; those remain B2/D.
+
+Therefore the framework is **ready for B1 source review, but not yet exposed as a real operator
+workflow**. B2 remains the Provider posted-record UI + controlled production fixture, and C1 remains
+the independent Expense owner adapter.
 
 ### 16.16 A0 + A1 delivery record
 
@@ -1980,13 +1989,16 @@ The migration review gate is complete. The generated SQL was confirmed additive-
 types, three new tables, indexes/unique constraints and restrictive foreign keys, with no backfill,
 DROP, rename, existing-column type change, existing-row rewrite or destructive contraction.
 
-### 16.18 A3 local implementation record
+### 16.18 A3 delivery record
 
-Implementation baseline:
+Implementation/delivery:
 
-- `origin/dev@7764bc1740f1944ee4b14ff87c3aac4922d18789`;
-- local branch `feat/accounting-correction-a3`;
-- predecessor migration CI: **#6978 GREEN**;
+- implementation baseline: `origin/dev@7764bc1740f1944ee4b14ff87c3aac4922d18789`;
+- branch: `feat/accounting-correction-a3`;
+- PR: **#2717**;
+- final feature head: `2194009b2d75eaa7f909e23eb6aede68c919e675`;
+- squash merge: `5f892bb358b36f474cee0e2a8e4755bbdf210b51`;
+- final exact-head CI: **#6981 GREEN**;
 - change class: Accounting-local runtime activation of the persisted A2 shell;
 - no Prisma/schema/migration change;
 - no dependency/lockfile change;
@@ -2002,6 +2014,46 @@ Journal through `AccountingCorrectionJournalOutput`, invokes owner activation in
 transaction, then marks the Case POSTED and writes audit evidence. Same-plan POSTED replay is
 read-only/idempotent; authority-only zero-delta corrections intentionally create no Journal output.
 
-A3 stops at the local review gate. Remote PR/CI/merge requires explicit user authorization. After A3
-merges, **Correction-B1 — Provider Settlement backend adapter** is the next functional slice; C1
-Expense adapter remains independent and later.
+A3 passed the remote gate and is merged. **Correction-B1 — Provider Settlement backend adapter** is
+the active local slice; C1 Expense adapter remains independent and later.
+
+### 16.19 B1 local implementation record
+
+Implementation baseline:
+
+- `origin/dev@5f892bb358b36f474cee0e2a8e4755bbdf210b51`;
+- local branch `feat/accounting-correction-b1`;
+- predecessor A3 CI: **#6981 GREEN**;
+- change class: Accounting-local Provider Settlement owner adapter;
+- no Prisma/schema/migration change;
+- no dependency/lockfile change;
+- no controller/API/UI or posted read-model cutover;
+- no new cross-context dependency or architecture graph direction.
+
+B1 adds the typed owner schema
+`accounting.provider-settlement-correction-target.v1` and a Provider Settlement adapter for the A3
+lifecycle. The adapter reads the original immutable Provider Journal plus its typed CREATE audit
+authority, validates the frozen Provider/Human Review evidence, and reuses
+`buildProviderSettlementDocumentPlan()` to reconstruct the corrected Target Journal Set. Fantuan
+adjustment-detail resolution is extracted into one pure Accounting owner policy and reused by both
+normal settlement Preview and Correction, preventing formula drift.
+
+Uber pre-cutover reversal Journals are loaded only through the original replacement-group
+`historicalReversalAnchors`, their persisted Journal/write authority is revalidated, and the exact
+Journals are copied unchanged into the Target Journal Set. Normal B1 correction therefore changes
+only the Provider Statement target; it never recomputes historical order coverage.
+
+The B1 target input carries `expectedBaseAuthorityHash`. Draft normalization rejects a stale editor
+before applying its full line payload, while READY/execute still revalidates the current-effective
+authority through A3. Store/provider/period/business identity, source-line provenance, supplementary
+evidence identity and frozen Uber reversal prerequisites remain immutable in the normal DELTA path.
+`DUPLICATE_POSTING` is explicitly rejected by B1 because it requires the later owner-approved
+`REVERSAL_ONLY` path rather than a line-level DELTA. A Clover Statement that already carries the
+legacy specialized fee-reclassification Journal also fails closed: the common Correction chain does
+not silently absorb that separate historical adjustment before Correction-E convergence.
+
+Provider source documents and Provider Human Review revisions remain untouched after posting. The
+latest POSTED `AccountingCorrectionCase` + READY Revision is the corrected Provider business
+authority for subsequent corrections; B2/D will expose and consume that current-effective state.
+B1 exposes an Accounting-internal read method for the current typed target and editor concurrency
+hash, but deliberately adds no HTTP route.

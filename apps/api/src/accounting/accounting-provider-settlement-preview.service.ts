@@ -7,7 +7,6 @@ import {
 import {
   AccountingFinancialComponent,
   AccountingFinancialDocumentType,
-  AccountingFinancialPostingTreatment,
   AccountingFinancialProvider,
   AccountingInboxMaterializedEntityType,
   AccountingInboxStatus,
@@ -33,10 +32,7 @@ import {
   resolveProviderSalesAuthority,
   UBER_PRE_CUTOVER_REVERSAL_SOURCE_FACT_TYPE,
 } from './accounting-provider-settlement.policy';
-import {
-  FANTUAN_ADJUSTMENT_DETAIL_EVIDENCE_KIND,
-  FANTUAN_ADJUSTMENT_SUPPORTED_RAW_CODES,
-} from './accounting-fantuan-adjustment-detail.contract';
+import { resolveFantuanAdjustmentDetailLines } from './accounting-fantuan-adjustment-detail.policy';
 import {
   AccountingProviderFinancialReviewPolicyError,
   resolveProviderFinancialEffectiveLines,
@@ -222,12 +218,6 @@ const effectiveProviderFinancialLines = (
   }
 };
 
-const isFantuanAdjustmentDetail = (document: ProviderDocumentRow): boolean =>
-  document.provider === AccountingFinancialProvider.FANTUAN &&
-  document.documentType === AccountingFinancialDocumentType.OTHER &&
-  jsonRecord(document.rawMetadata).evidenceKind ===
-    FANTUAN_ADJUSTMENT_DETAIL_EVIDENCE_KIND;
-
 type ProviderSettlementSupplementaryEvidence = {
   documentStableId: string;
   provider: AccountingFinancialProvider;
@@ -250,120 +240,60 @@ const resolveFantuanAdjustmentDetail = (
   blockReasons: string[];
   supplementaryEvidenceDocuments: ProviderSettlementSupplementaryEvidence[];
 } => {
-  const summaryAdjustments = statement.lines.filter(
-    (line) =>
-      line.component === AccountingFinancialComponent.ADJUSTMENT &&
-      line.amountCents !== 0,
-  );
-  if (
-    statement.provider !== AccountingFinancialProvider.FANTUAN ||
-    statement.documentType !== AccountingFinancialDocumentType.STATEMENT ||
-    summaryAdjustments.length === 0
-  ) {
+  const toPolicyDocument = (document: ProviderDocumentRow) => {
+    const reviewEvidence = confirmedReviewEvidence(document);
+    const humanReviewRevision = confirmedHumanReviewRevision(document);
+    const evidenceKind = jsonRecord(document.rawMetadata).evidenceKind;
     return {
-      lines: statement.lines,
-      blockReasons: [],
+      documentStableId: document.documentStableId,
+      provider: document.provider,
+      documentType: document.documentType,
+      evidenceKind: typeof evidenceKind === 'string' ? evidenceKind : null,
+      periodStart: isoDate(document.periodStart),
+      periodEnd: isoDate(document.periodEnd),
+      isConfirmed: Boolean(
+        reviewEvidence &&
+          document.storeStableId &&
+          ((document.reviewRevisions?.length ?? 0) === 0 ||
+            humanReviewRevision),
+      ),
+      lines: document.lines,
+    };
+  };
+  const resolution = resolveFantuanAdjustmentDetailLines({
+    statement: toPolicyDocument(statement),
+    candidateDocuments: candidateDocuments.map(toPolicyDocument),
+  });
+  if (!resolution.selectedDetailDocumentStableId) {
+    return {
+      lines: resolution.lines,
+      blockReasons: resolution.blockReasons,
       supplementaryEvidenceDocuments: [],
     };
   }
 
-  const controlLines = statement.lines.map((line) =>
-    line.component === AccountingFinancialComponent.ADJUSTMENT
-      ? {
-          ...line,
-          postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
-        }
-      : line,
-  );
-  const periodStart = isoDate(statement.periodStart);
-  const periodEnd = isoDate(statement.periodEnd);
-  if (!periodStart || !periodEnd) {
-    return {
-      lines: controlLines,
-      blockReasons: ['FANTUAN_ADJUSTMENT_DETAIL_PERIOD_MISSING'],
-      supplementaryEvidenceDocuments: [],
-    };
-  }
-
-  const details = candidateDocuments.filter(
+  const detail = candidateDocuments.find(
     (document) =>
-      isFantuanAdjustmentDetail(document) &&
-      isoDate(document.periodStart) === periodStart &&
-      isoDate(document.periodEnd) === periodEnd,
+      document.documentStableId === resolution.selectedDetailDocumentStableId,
   );
-  if (details.length === 0) {
-    return {
-      lines: controlLines,
-      blockReasons: ['FANTUAN_ADJUSTMENT_DETAIL_REQUIRED'],
-      supplementaryEvidenceDocuments: [],
-    };
+  if (!detail?.storeStableId) {
+    throw new ConflictException(
+      'selected Fantuan adjustment detail lost its store authority',
+    );
   }
-  if (details.length !== 1) {
-    return {
-      lines: controlLines,
-      blockReasons: ['FANTUAN_ADJUSTMENT_DETAIL_AMBIGUOUS'],
-      supplementaryEvidenceDocuments: [],
-    };
-  }
-
-  const detail = details[0];
   const reviewEvidence = confirmedReviewEvidence(detail);
   const humanReviewRevision = confirmedHumanReviewRevision(detail);
-  if (
-    !reviewEvidence ||
-    !detail.storeStableId ||
-    ((detail.reviewRevisions?.length ?? 0) > 0 && !humanReviewRevision)
-  ) {
-    return {
-      lines: controlLines,
-      blockReasons: ['FANTUAN_ADJUSTMENT_DETAIL_NOT_CONFIRMED'],
-      supplementaryEvidenceDocuments: [],
-    };
+  const periodStart = isoDate(detail.periodStart);
+  const periodEnd = isoDate(detail.periodEnd);
+  if (!reviewEvidence || !periodStart || !periodEnd) {
+    throw new ConflictException(
+      'selected Fantuan adjustment detail lost its confirmed authority',
+    );
   }
 
-  const unsupportedLines = detail.lines.filter(
-    (line) =>
-      line.component !== AccountingFinancialComponent.ADJUSTMENT ||
-      line.postingTreatment !==
-        AccountingFinancialPostingTreatment.CONTROL_TOTAL ||
-      !FANTUAN_ADJUSTMENT_SUPPORTED_RAW_CODES.has(line.rawCode ?? ''),
-  );
-  if (unsupportedLines.length > 0) {
-    return {
-      lines: controlLines,
-      blockReasons: ['FANTUAN_ADJUSTMENT_DETAIL_UNSUPPORTED_FEE_TYPE'],
-      supplementaryEvidenceDocuments: [],
-    };
-  }
-
-  const summaryNetCents = summaryAdjustments.reduce(
-    (sum, line) => sum + line.amountCents,
-    0,
-  );
-  const detailNetCents = detail.lines.reduce(
-    (sum, line) => sum + line.amountCents,
-    0,
-  );
-  if (
-    !Number.isSafeInteger(summaryNetCents) ||
-    !Number.isSafeInteger(detailNetCents) ||
-    summaryNetCents !== detailNetCents
-  ) {
-    return {
-      lines: controlLines,
-      blockReasons: ['FANTUAN_ADJUSTMENT_DETAIL_NET_MISMATCH'],
-      supplementaryEvidenceDocuments: [],
-    };
-  }
-
-  const detailPostingLines = detail.lines.map((line, index) => ({
-    ...line,
-    lineNo: statement.lines.length + index + 1,
-    postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
-  }));
   return {
-    lines: [...controlLines, ...detailPostingLines],
-    blockReasons: [],
+    lines: resolution.lines,
+    blockReasons: resolution.blockReasons,
     supplementaryEvidenceDocuments: [
       {
         documentStableId: detail.documentStableId,
