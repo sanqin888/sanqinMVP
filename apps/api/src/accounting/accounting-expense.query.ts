@@ -4,8 +4,8 @@ import {
   Prisma,
 } from '@prisma/client';
 import {
+  AccountingDocumentStatus,
   AccountingJournalSource,
-  type AccountingDocumentStatus,
 } from './accounting-contracts';
 import type { AccountingDb } from './accounting-db';
 import type { AccountingExpensePaymentState } from './accounting-expense.contracts';
@@ -349,24 +349,28 @@ async function readExpensePostedStates(
     }),
   ]);
 
-  const states = new Map(
+  const states = new Map<string, AccountingExpensePostedState>(
     documentStableIds.map(
-      (documentStableId) =>
-        [documentStableId, { ...EMPTY_POSTED_STATE }] as const,
+      (documentStableId): [string, AccountingExpensePostedState] => [
+        documentStableId,
+        { ...EMPTY_POSTED_STATE },
+      ],
     ),
   );
 
   const matchedJournalCounts = new Map<string, number>();
   for (const journal of journals) {
-    const identity = identities.get(journal.sourceFactStableId);
+    const sourceFactStableId = journal.sourceFactStableId;
+    if (!sourceFactStableId) continue;
+    const identity = identities.get(sourceFactStableId);
     if (
       identity &&
       journal.sourceFactType === identity.sourceFactType &&
       journal.sourceFactVersion === identity.targetVersion
     ) {
       matchedJournalCounts.set(
-        journal.sourceFactStableId,
-        (matchedJournalCounts.get(journal.sourceFactStableId) ?? 0) + 1,
+        sourceFactStableId,
+        (matchedJournalCounts.get(sourceFactStableId) ?? 0) + 1,
       );
     }
   }
