@@ -708,6 +708,10 @@ export class PosOrdersController {
       current.paymentTotalCents !== updated.paymentTotalCents ||
       (body.refundGrossCents ?? 0) > 0 ||
       (body.additionalChargeCents ?? 0) > 0;
+    const cashDrawerOpenRequested =
+      (paymentMethodChanged || amountChanged) &&
+      (current.paymentMethod === PaymentMethod.CASH ||
+        updated.paymentMethod === PaymentMethod.CASH);
     if (hasItemChanges || paymentMethodChanged || amountChanged) {
       await this.eventEmitter.emitAsync('order.amendment.print', {
         orderStableId,
@@ -719,6 +723,7 @@ export class PosOrdersController {
         afterOrderItems: updated.items ?? [],
         beforeLabelPlan,
         printCustomerReceipt: paymentMethodChanged || amountChanged,
+        cashDrawerOpenRequested,
       });
     }
 

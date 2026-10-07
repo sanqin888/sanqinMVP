@@ -126,6 +126,9 @@ describe('FulfillmentProcessor reprint store routing', () => {
       expect.objectContaining({
         storeStableId: 'order-store',
         purpose: 'REPRINT',
+        data: expect.objectContaining({
+          cashDrawerOpenRequested: false,
+        }) as unknown,
       }),
     );
   });
@@ -242,6 +245,7 @@ describe('FulfillmentProcessor reprint store routing', () => {
         labels: [label],
       },
       printCustomerReceipt: true,
+      cashDrawerOpenRequested: true,
       afterOrderItems: [
         {
           productStableId: 'item-added',
@@ -312,6 +316,9 @@ describe('FulfillmentProcessor reprint store routing', () => {
           kitchen: false,
           label: false,
         },
+        data: expect.objectContaining({
+          cashDrawerOpenRequested: true,
+        }) as unknown,
       }),
     );
   });
@@ -324,6 +331,7 @@ describe('FulfillmentProcessor reprint store routing', () => {
       reason: '支付方式调整',
       operatorName: 'staff',
       printCustomerReceipt: true,
+      cashDrawerOpenRequested: true,
       items: [],
     });
 
@@ -336,6 +344,9 @@ describe('FulfillmentProcessor reprint store routing', () => {
           kitchen: false,
           label: false,
         },
+        data: expect.objectContaining({
+          cashDrawerOpenRequested: true,
+        }) as unknown,
       }),
     );
   });
@@ -350,15 +361,19 @@ describe('FulfillmentProcessor accepted lifecycle printing', () => {
     jest.restoreAllMocks();
   });
 
-  function setupAccepted(storeId: string | null) {
+  function setupAccepted(
+    storeId: string | null,
+    options: { channel?: string; paymentMethod?: string } = {},
+  ) {
     const sendPrintJob = jest.fn().mockResolvedValue({ jobId: 'auto-job-1' });
     const emitAsync = jest.fn(async (_event: string, input: unknown) => {
       await sendPrintJob(input);
       return [{ jobId: 'auto-job-1' }];
     });
-    const getByStableId = jest
-      .fn()
-      .mockResolvedValue({ orderNumber: 'SQ2608110001' });
+    const getByStableId = jest.fn().mockResolvedValue({
+      orderNumber: 'SQ2608110001',
+      ...(options.paymentMethod ? { paymentMethod: options.paymentMethod } : {}),
+    });
     const processor = new FulfillmentProcessor(
       {
         order: {
@@ -366,6 +381,7 @@ describe('FulfillmentProcessor accepted lifecycle printing', () => {
             id: 'web-order-1',
             orderStableId: 'stable-web-1',
             storeId,
+            ...(options.channel ? { channel: options.channel } : {}),
           }),
         },
       } as never,
@@ -412,8 +428,25 @@ describe('FulfillmentProcessor accepted lifecycle printing', () => {
     });
   });
 
-  it('durable POS prep_started 为 in_store 订单创建唯一 AUTO 首次打印', async () => {
-    const { processor, sendPrintJob } = setupAccepted('store-4750');
+  it('Web 现金订单首次打印不会请求开启门店钱箱', async () => {
+    const { processor, sendPrintJob } = setupAccepted('store-4750', {
+      channel: 'web',
+      paymentMethod: 'cash',
+    });
+
+    await processor.handleAcceptedLifecycle({ orderId: 'web-order-1' });
+
+    const request = sendPrintJob.mock.calls[0]?.[0] as {
+      data?: { cashDrawerOpenRequested?: boolean };
+    };
+    expect(request.data?.cashDrawerOpenRequested).toBeUndefined();
+  });
+
+  it('durable POS prep_started 为 in_store 现金订单创建唯一 AUTO 首次打印并请求开钱箱', async () => {
+    const { processor, sendPrintJob } = setupAccepted('store-4750', {
+      channel: 'in_store',
+      paymentMethod: 'cash',
+    });
 
     await processor.handleAcceptedLifecycle({
       orderId: 'web-order-1',
@@ -425,6 +458,9 @@ describe('FulfillmentProcessor accepted lifecycle printing', () => {
         orderStableId: 'stable-web-1',
         storeStableId: 'store-4750',
         purpose: 'INITIAL',
+        data: expect.objectContaining({
+          cashDrawerOpenRequested: true,
+        }) as unknown,
       }),
     );
   });

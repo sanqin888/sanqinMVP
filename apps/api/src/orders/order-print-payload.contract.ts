@@ -69,6 +69,7 @@ export type PrintPosPayloadDto = {
   utensils: PrintPosUtensilsSnapshot | null;
   cashReceivedCents?: number;
   cashChangeCents?: number;
+  cashDrawerOpenRequested?: boolean;
   snapshot: PrintPosOrderSnapshot;
 };
 

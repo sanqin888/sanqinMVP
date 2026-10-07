@@ -3,6 +3,8 @@ const assert = require("node:assert/strict");
 const iconv = require("iconv-lite");
 
 const {
+  buildCashDrawerKickEscPos,
+  buildCustomerPrintEscPos,
   buildCustomerReceiptEscPos,
   buildKitchenReceiptEscPos,
   buildLabelPrintPayload,
@@ -97,6 +99,33 @@ test("customer receipt rendering is deterministic for fixed inputs", async () =>
   assert.ok(includesGbk(first, "测试券 / Test coupon"));
   assert.ok(includesGbk(first, "信用卡附加费 Card Surcharge: $0.54"));
   assert.ok(includesGbk(first, "打印时间 Print: 20260925 10：11：12"));
+});
+
+test("cash drawer kick is added only when the print payload explicitly requests it", async () => {
+  const payload = representativeOrderPayload();
+  const now = new Date(2026, 8, 25, 10, 11, 12);
+  const drawerKick = buildCashDrawerKickEscPos();
+
+  assert.equal(drawerKick.toString("hex"), "1b700019fa");
+
+  const withoutDrawer = await buildCustomerPrintEscPos(payload, {
+    now,
+    includeLogo: false,
+  });
+  const withDrawer = await buildCustomerPrintEscPos(
+    { ...payload, cashDrawerOpenRequested: true },
+    { now, includeLogo: false },
+  );
+
+  assert.equal(withoutDrawer.subarray(0, 2).toString("hex"), "1b40");
+  assert.equal(
+    withDrawer.subarray(0, drawerKick.length).toString("hex"),
+    drawerKick.toString("hex"),
+  );
+  assert.equal(
+    withDrawer.subarray(drawerKick.length, drawerKick.length + 2).toString("hex"),
+    "1b40",
+  );
 });
 
 test("kitchen ticket rendering is deterministic for fixed inputs", () => {

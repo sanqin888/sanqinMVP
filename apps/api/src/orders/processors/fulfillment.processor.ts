@@ -48,6 +48,7 @@ export class FulfillmentProcessor {
         id: true,
         orderStableId: true,
         storeId: true,
+        channel: true,
       },
     });
 
@@ -117,7 +118,14 @@ export class FulfillmentProcessor {
         orderStableId: order.orderStableId,
         storeStableId: storeId,
         purpose: 'INITIAL',
-        data: { ...printPayload, labelPlan },
+        data: {
+          ...printPayload,
+          ...(order.channel === Channel.in_store &&
+            printPayload.paymentMethod === 'cash'
+            ? { cashDrawerOpenRequested: true }
+            : {}),
+          labelPlan,
+        },
       });
       this.logger.log({
         event: 'accepted_print_job_created',
@@ -211,6 +219,7 @@ export class FulfillmentProcessor {
         ...(typeof payload.cashChangeCents === 'number'
           ? { cashChangeCents: payload.cashChangeCents }
           : {}),
+        cashDrawerOpenRequested: false,
       },
     });
   }
@@ -332,6 +341,7 @@ export class FulfillmentProcessor {
     beforeOrderItems?: OrderItemDto[];
     afterOrderItems?: OrderItemDto[];
     printCustomerReceipt?: boolean;
+    cashDrawerOpenRequested?: boolean;
     items: Array<{
       action: OrderAmendmentItemAction;
       productStableId: string;
@@ -528,7 +538,11 @@ export class FulfillmentProcessor {
               kitchen: false,
               label: false,
             },
-            data: basePayload,
+            data: {
+              ...basePayload,
+              cashDrawerOpenRequested:
+                payload.cashDrawerOpenRequested === true,
+            },
           });
           this.logger.log({
             event: 'amendment_customer_receipt_job_created',
