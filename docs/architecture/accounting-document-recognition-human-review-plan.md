@@ -1,7 +1,7 @@
 # Accounting Document Recognition & Human Review Plan
 
-Status: **SLICE 0-3 + 3V-A + 3V-B DEV MERGED / CI GREEN / 3V-B PRODUCTION VERIFICATION PENDING / EVIDENCE VIEWER SLICE 1 + 1B + 2 MERGED / RELIABILITY SLICE A + B MERGED / EXPENSE REVIEW HARDENING MERGED / ORIGINAL SLICE C UX CLOSEOUT MERGED (#2445 / `da77b9a5`, CI #6074 GREEN) / GMAIL INCREMENTAL + DUPLICATE FILE ARTIFACT FOLLOW-UP PRODUCTION VERIFIED (#2605 / `bfbf8e2c`, CI #6605, MIGRATION APPLIED) / EXPENSE SOURCE-EVIDENCE READINESS LOCAL IMPLEMENTED / USER REVIEW PENDING / MIGRATION NOT APPLIED / POSTED FINANCIAL CORRECTION A0 + A1 MERGED / CI #6973 GREEN / PR #2715 / MERGE `2e172b33` / A2 LOCAL IMPLEMENTED / USER REVIEW PENDING / MIGRATION REQUIRED + NOT GENERATED / A3 NOT STARTED — DO NOT REOPEN PHASE 9**  
-Planning date: 2026-09-20; updated: 2026-10-06  
+Status: **SLICE 0-3 + 3V-A + 3V-B DEV MERGED / CI GREEN / 3V-B PRODUCTION VERIFICATION PENDING / EVIDENCE VIEWER SLICE 1 + 1B + 2 MERGED / RELIABILITY SLICE A + B MERGED / EXPENSE REVIEW HARDENING MERGED / ORIGINAL SLICE C UX CLOSEOUT MERGED (#2445 / `da77b9a5`, CI #6074 GREEN) / GMAIL INCREMENTAL + DUPLICATE FILE ARTIFACT FOLLOW-UP PRODUCTION VERIFIED (#2605 / `bfbf8e2c`, CI #6605, MIGRATION APPLIED) / EXPENSE SOURCE-EVIDENCE READINESS LOCAL IMPLEMENTED / USER REVIEW PENDING / MIGRATION NOT APPLIED / POSTED FINANCIAL CORRECTION A0 + A1 MERGED / CI #6973 GREEN / A2 MERGED PR #2716 / MERGE `0b2fb5d0` / MIGRATION DEV `7764bc17` / CI #6978 GREEN / A3 LOCAL IMPLEMENTED / USER REVIEW PENDING / B-D NOT STARTED — DO NOT REOPEN PHASE 9**  
+Planning date: 2026-09-20; updated: 2026-10-07  
 Audit baseline: `origin/dev@1ede0599`; Slice 3 merged in PR #2432 as `caabf1c1`; Slice 3V-A merged in PR #2439 as `0d6909bb` after PR CI #6054 and merged-head CI #6055 passed; Slice 3V-B merged in PR #2440 as `0ac9117f` after final head `3c5c0400`, PR CI #6057 and merged-head CI #6058 green  
 Owner: **Accounting / Reporting / Analytics**  
 Phase 9 status: **remains PRODUCTION VERIFIED / CLOSED — do not reopen Phase 9**
@@ -1748,7 +1748,7 @@ Architecture coverage keeps the common layer provider-neutral and persistence-ne
 
 #### Correction-A2 — Additive persisted correction authority
 
-Status: **LOCAL IMPLEMENTED / USER REVIEW PENDING / MIGRATION REQUIRED / MIGRATION NOT GENERATED / NO RUNTIME CUTOVER**
+Status: **MERGED / PR #2716 / MERGE `0b2fb5d0` / SOURCE CI #6976 GREEN / MIGRATION `20261007022228_add_accounting_posted_correction_authority` COMMITTED TO DEV AS `7764bc17` / CI #6978 GREEN / NO RUNTIME CUTOVER**
 
 Implemented persistence scope:
 
@@ -1767,36 +1767,51 @@ Implemented persistence scope:
   schema deliberately does **not** add ProviderDocument/ExpenseDocument/store/provider-specific
   foreign keys.
 
-A2 adds no controller/service/runtime writer and cannot execute a correction by itself. Case
-lifecycle transitions, append-only revision writes, READY invariants, stale-plan revalidation and
-Journal output creation remain A3 work.
+A2 itself added no controller/service/runtime writer and cannot execute a correction by itself.
+Case lifecycle transitions, append-only revision writes, READY invariants, stale-plan revalidation
+and Journal output creation were intentionally deferred to A3; the local A3 implementation below now
+owns those runtime invariants.
 
-**MIGRATION REQUIRED.** The schema change is intended to be additive-only: create five enum types,
-three new tables, their indexes/unique constraints and restrictive FKs. No existing Accounting row
-requires backfill or rewrite, and no DROP/rename/type tightening is intended. MCP does not generate
-or edit `apps/api/prisma/migrations/**`.
+The user-generated migration `20261007022228_add_accounting_posted_correction_authority`
+was reviewed as additive-only and committed to `dev` as `7764bc17`; CI #6978 is green. It creates
+only the five enum types, three new tables, indexes/unique constraints and restrictive FKs. It
+contains no backfill, DROP, rename, existing-column type change or existing-row rewrite.
 
 #### Correction-A3 — Lifecycle, typed Journal writer and atomic execution
 
-Status: **NOT STARTED**
+Status: **LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO CONTROLLER OR UI / OWNER ADAPTERS B1/C1 NOT STARTED**
 
-Scope:
+Implemented scope:
 
-- DRAFT / READY / POSTED / CANCELLED lifecycle and READY -> DRAFT invalidation on edits;
-- owner-adapter contract that supplies corrected business authority and deterministic Target
-  Journal Set;
-- typed `createPostedCorrectionJournalEntryInTx(..., tx)` authority;
-- correction idempotency and output-Journal links;
-- Serializable Preview revalidation / execute;
-- existing Accounting period-lock policy;
-- atomic Case POSTED transition + Journal output + audit + activation of current-effective owner
-  authority;
-- same correctionStableId/planHash replay returns the persisted POSTED result instead of producing
-  another delta;
-- a DELTA correction whose business authority changes but whose financial delta is zero may POST
-  with zero Journal outputs, provided the corrected authority activation and audit remain atomic.
+- DRAFT / READY / POSTED / CANCELLED lifecycle with optimistic Case versioning; revising DRAFT or
+  READY always appends an immutable Revision, and revising READY clears the frozen READY plan before
+  returning the Case to DRAFT;
+- generic owner-adapter contract separates DRAFT target normalization, READY target/Journal-Set
+  resolution and in-transaction corrected-authority activation;
+- typed `createPostedCorrectionJournalEntryInTx(..., tx)` writes only
+  `accounting.posted_financial_correction.v1` ADJUSTMENT Journals and revalidates that the Case is
+  still READY with the same target, planHash and same-Case READY Revision;
+- execution preserves the owner Journal Set instead of collapsing it: DELTA is paired by stable owner
+  Journal idempotency key, while REVERSAL/REPOST are emitted per owner Journal. Source/store/date
+  anchors are retained so the existing month-close adjustment allowance and fiscal-year hard lock
+  are evaluated against the actual business periods;
+- DELTA rejects owner Journal identity/structural changes and requires owner-approved
+  REVERSAL_REPOST instead;
+- Serializable READY and execute paths rebuild Current Effective from original Journals plus every
+  prior POSTED correction output, compare the rebuilt plan to the frozen READY Preview, then write
+  correction Journals/output links, activate owner authority, transition the Case to POSTED and
+  write audit evidence atomically;
+- same `correctionStableId + planHash` replay returns the persisted POSTED result without
+  recalculating a second delta or re-running owner activation;
+- authority-only DELTA corrections with zero financial delta POST with zero Journal outputs while
+  keeping owner activation + Case transition + audit atomic;
+- focused tests cover multi-Journal period-anchor preservation, structural DELTA rejection,
+  REVERSAL_REPOST, zero-output authority-only posting, stale Current Effective rejection,
+  correction-specific Journal authority, READY invalidation and POSTED replay.
 
-A3 must not add Provider/Fantuan-specific policy to the common layer.
+The common A3 policy/writer remains Provider-neutral and persistence-neutral. The runtime lifecycle
+and owner-adapter seam remain inside Accounting and introduce no Fantuan/Uber/Clover formula,
+controller/API/UI or new context direction.
 
 #### Correction-B1 — Provider Settlement backend adapter
 
@@ -1888,23 +1903,25 @@ This framework must not:
 
 ### 16.15 Readiness conclusion
 
-Current status after A0/A1 remote delivery and the A2 local persistence implementation:
+Current status after A2 source + migration delivery and the A3 local runtime implementation:
 
-**A0 + A1 MERGED / CI #6973 GREEN / A2 SOURCE COMPLETE LOCALLY / MIGRATION REQUIRED + NOT GENERATED / A3 NOT STARTED**
+**A0 + A1 MERGED / CI #6973 GREEN / A2 SOURCE MERGED PR #2716 / MIGRATION DEV `7764bc17` / CI #6978 GREEN / A3 LOCAL IMPLEMENTED / USER REVIEW PENDING / B1 + C1 OWNER ADAPTERS NOT STARTED**
 
-PR #2715 merged A0/A1 to `dev` as `2e172b33` after the exact-head CI #6973 passed API tests,
-API lint/build/strict checks, architecture baseline, Web checks and browser E2E. The common
-arithmetic/authority vocabulary and generic Journal immutability guards are therefore now on the
-shared development baseline.
+PR #2715 merged A0/A1 to `dev` as `2e172b33` after CI #6973. PR #2716 merged the additive A2
+persistence source as `0b2fb5d0` after CI #6976, and the user-generated migration
+`20261007022228_add_accounting_posted_correction_authority` is now committed on `dev` at
+`7764bc17` with CI #6978 green. The persisted correction authority is therefore replayable from
+committed migrations.
 
-A2 adds only the persisted shell required by the later runtime lifecycle. It still does **not**
-create a Correction API, write a correction Journal, activate corrected Provider/Expense authority
-or change any posted read model. No production correction is executable until A3 plus an owner
-adapter are implemented.
+A3 is implemented locally from that exact baseline and activates only the common Accounting runtime
+shell: lifecycle, frozen READY revalidation, typed immutable correction Journal writes, output links,
+Serializable atomic execution and generic owner activation. It deliberately adds no Provider or
+Expense implementation adapter, controller/API/UI, read-model cutover, schema or migration.
 
-Per repository workflow, the A2 workspace stops before remote delivery and before migration
-generation. The matching migration must be generated by the user after the schema/source change is
-reviewed and merged to `dev`.
+Therefore the framework is **ready for A3 review/remote CI, but not yet usable for a real posted
+Provider or Expense correction**. The next functional slice after A3 merges is B1 Provider
+Settlement adapter (and later C1 Expense adapter); owner-specific posting semantics remain outside
+the common engine.
 
 ### 16.16 A0 + A1 delivery record
 
@@ -1915,16 +1932,22 @@ reviewed and merged to `dev`.
 - no Prisma/schema/migration or dependency change;
 - no HTTP/controller/runtime route, Provider wire change or architecture graph change.
 
-### 16.17 A2 implementation record
+### 16.17 A2 delivery record
 
-Implementation baseline:
+Implementation/delivery:
 
-- `origin/dev@2e172b33a13fe7d3bb980be77b7a1278ecd243d6`;
-- local branch `feat/accounting-correction-a2`;
+- implementation baseline: `origin/dev@2e172b33a13fe7d3bb980be77b7a1278ecd243d6`;
+- source PR: **#2716**;
+- source merge: `0b2fb5d02f3ab6d24525af561132b381e6430c4c`;
+- source CI: **#6976 GREEN**;
+- user-generated migration:
+  `20261007022228_add_accounting_posted_correction_authority`;
+- migration commit on `dev`: `7764bc1740f1944ee4b14ff87c3aac4922d18789`;
+- migration CI: **#6978 GREEN**;
 - owner: Accounting / Reporting / Analytics;
 - change class: additive persisted Accounting authority only;
 - no dependency/lockfile change;
-- no controller/service/API/UI/runtime cutover;
+- no controller/service/API/UI/runtime cutover in A2;
 - no Provider/Expense-specific persistence relation;
 - no new context direction, direct-import allowance or public SCC.
 
@@ -1949,30 +1972,36 @@ AccountingCorrectionJournalOutputRole
 
 `AccountingCorrectionRevision` and `AccountingCorrectionJournalOutput` intentionally omit
 `updatedAt` / `deletedAt`; they are append-only evidence. Case -> Revision, Case -> JournalOutput
-and JournalOutput -> Journal relations use restrictive deletion. A3 remains responsible for
-transactional invariants that Prisma alone cannot express, especially proving that the selected
-`readyRevisionId` belongs to the same Case and revalidating frozen READY authority before POSTED.
+and JournalOutput -> Journal relations use restrictive deletion. A3 now enforces the transactional
+invariants that Prisma alone cannot express, especially proving that the selected `readyRevisionId`
+belongs to the same Case and revalidating frozen READY authority before POSTED.
 
-**MIGRATION REQUIRED**
+The migration review gate is complete. The generated SQL was confirmed additive-only: five enum
+types, three new tables, indexes/unique constraints and restrictive foreign keys, with no backfill,
+DROP, rename, existing-column type change, existing-row rewrite or destructive contraction.
 
-Suggested migration name:
+### 16.18 A3 local implementation record
 
-~~~text
-add_accounting_posted_correction_authority
-~~~
+Implementation baseline:
 
-Required user-local generation command, only against the verified disposable/local development
-database after pulling the schema change from `dev`:
+- `origin/dev@7764bc1740f1944ee4b14ff87c3aac4922d18789`;
+- local branch `feat/accounting-correction-a3`;
+- predecessor migration CI: **#6978 GREEN**;
+- change class: Accounting-local runtime activation of the persisted A2 shell;
+- no Prisma/schema/migration change;
+- no dependency/lockfile change;
+- no controller/API/UI;
+- no concrete Provider/Expense adapter;
+- no architecture graph/baseline change.
 
-~~~bash
-pnpm --filter api exec prisma migrate dev --create-only --name add_accounting_posted_correction_authority
-~~~
+A3 introduces the generic owner-adapter seam, pure per-Journal execution policy,
+correction-specific Journal authority, lifecycle service and Accounting module wiring. Execute uses
+the existing Serializable helper and period policy. It revalidates frozen READY authority and the
+same-Case revision before writing, preserves owner Journal period anchors, links every produced
+Journal through `AccountingCorrectionJournalOutput`, invokes owner activation in the same
+transaction, then marks the Case POSTED and writes audit evidence. Same-plan POSTED replay is
+read-only/idempotent; authority-only zero-delta corrections intentionally create no Journal output.
 
-The generated SQL must be reviewed as additive-only. Expected changes are five enum types, three
-new tables, indexes/unique constraints and restrictive foreign keys. It must contain **no backfill,
-DROP, rename, existing-column type change, existing-row rewrite or destructive contraction**.
-Promotion to `main` / production remains blocked until that user-generated migration is reviewed,
-committed and merged back into `dev`.
-
-The next source slice after A2 is **Correction-A3 — lifecycle, typed Journal writer and Serializable
-atomic execution**. A3 must not begin inside the A2 review batch.
+A3 stops at the local review gate. Remote PR/CI/merge requires explicit user authorization. After A3
+merges, **Correction-B1 — Provider Settlement backend adapter** is the next functional slice; C1
+Expense adapter remains independent and later.

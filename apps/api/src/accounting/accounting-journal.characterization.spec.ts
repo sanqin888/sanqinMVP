@@ -11,7 +11,13 @@ import {
 import { AccountingJournalService } from './accounting-journal.service';
 import { AccountingPeriodService } from './accounting-period.service';
 import { buildProviderPayoutWritePlan } from './accounting-provider-payout-journal-authority';
-import { ACCOUNTING_POSTED_FINANCIAL_CORRECTION_SOURCE_FACT_TYPE } from './accounting-posted-financial-correction.contract';
+import {
+  ACCOUNTING_POSTED_FINANCIAL_CORRECTION_SOURCE_FACT_TYPE,
+  AccountingPostedCorrectionJournalOutputRole,
+  AccountingPostedCorrectionStatus,
+  AccountingPostedCorrectionTargetKind,
+} from './accounting-posted-financial-correction.contract';
+import { buildPostedCorrectionJournalWritePlan } from './accounting-posted-financial-correction-journal-authority';
 
 const basePayload = {
   idempotencyKey: 'journal:manual:1',
@@ -57,6 +63,9 @@ describe('AccountingJournalService double-entry journal characterization', () =>
       },
       accountingProviderFinancialReviewRevision: {
         findMany: jest.fn().mockResolvedValue([]),
+      },
+      accountingCorrectionCase: {
+        findUnique: jest.fn(),
       },
       accountingProviderPayout: {
         findUnique: jest.fn(),
@@ -753,6 +762,163 @@ describe('AccountingJournalService double-entry journal characterization', () =>
         operatorActorRef: 'user_stable_1',
       }) as unknown,
     });
+  });
+
+  it('creates a posted correction Journal only while the frozen Case authority remains READY', async () => {
+    const { service, prisma } = makeService();
+    const writePlan = buildPostedCorrectionJournalWritePlan({
+      correctionStableId: 'correction_1',
+      correctionRevisionStableId: 'revision_1',
+      correctionRevision: 2,
+      targetKind: AccountingPostedCorrectionTargetKind.EXPENSE,
+      targetStableId: 'expense_1',
+      targetVersion: 1,
+      planHash: 'a'.repeat(64),
+      draft: {
+        role: AccountingPostedCorrectionJournalOutputRole.DELTA,
+        sequence: 1,
+        basisJournalIdempotencyKey: 'expense:document:1',
+        anchor: {
+          source: AccountingJournalSource.EXPENSE_DOCUMENT,
+          storeStableId: '4750_Yonge_Street',
+          occurredAt: '2026-09-12T14:00:00.000Z',
+          currency: 'CAD',
+        },
+        postingVector: {
+          version: 1,
+          currency: 'CAD',
+          lines: [
+            {
+              accountStableId: 'account_general_operating_expense',
+              categoryStableId: 'expense_kitchen_supplies',
+              debitCents: 1_250,
+              creditCents: 0,
+            },
+            {
+              accountStableId: 'account_store_cash',
+              categoryStableId: null,
+              debitCents: 0,
+              creditCents: 1_250,
+            },
+          ],
+        },
+      },
+    });
+    prisma.accountingCorrectionCase.findUnique.mockResolvedValue({
+      id: 'case-db-id',
+      status: AccountingPostedCorrectionStatus.READY,
+      planHash: 'a'.repeat(64),
+      targetKind: AccountingPostedCorrectionTargetKind.EXPENSE,
+      targetStableId: 'expense_1',
+      targetVersion: 1,
+      readyRevision: {
+        correctionRevisionStableId: 'revision_1',
+        correctionCaseId: 'case-db-id',
+        revision: 2,
+      },
+    });
+    prisma.accountingJournalEntry.findUnique.mockResolvedValue(null);
+    prisma.accountingJournalEntry.create.mockResolvedValue(
+      journalRow({
+        idempotencyKey: writePlan.journal.idempotencyKey,
+        kind: AccountingJournalEntryKind.ADJUSTMENT,
+        source: AccountingJournalSource.EXPENSE_DOCUMENT,
+        sourceFactType: ACCOUNTING_POSTED_FINANCIAL_CORRECTION_SOURCE_FACT_TYPE,
+        sourceFactStableId: 'correction_1',
+        sourceFactVersion: 2,
+        storeStableId: '4750_Yonge_Street',
+      }),
+    );
+
+    const created = await service.createPostedCorrectionJournalEntryInTx(
+      writePlan.journal,
+      'user_stable_1',
+      writePlan.authority,
+      prisma as never,
+    );
+
+    expect(created.sourceFactStableId).toBe('correction_1');
+    expect(prisma.accountingCorrectionCase.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { correctionStableId: 'correction_1' },
+      }),
+    );
+    expect(prisma.accountingJournalEntry.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          kind: AccountingJournalEntryKind.ADJUSTMENT,
+          sourceFactType:
+            ACCOUNTING_POSTED_FINANCIAL_CORRECTION_SOURCE_FACT_TYPE,
+          sourceFactStableId: 'correction_1',
+          sourceFactVersion: 2,
+        }) as unknown,
+      }),
+    );
+  });
+
+  it('rejects a posted correction Journal when the Case plan changed after READY', async () => {
+    const { service, prisma } = makeService();
+    const writePlan = buildPostedCorrectionJournalWritePlan({
+      correctionStableId: 'correction_1',
+      correctionRevisionStableId: 'revision_1',
+      correctionRevision: 2,
+      targetKind: AccountingPostedCorrectionTargetKind.EXPENSE,
+      targetStableId: 'expense_1',
+      targetVersion: 1,
+      planHash: 'a'.repeat(64),
+      draft: {
+        role: AccountingPostedCorrectionJournalOutputRole.DELTA,
+        sequence: 1,
+        basisJournalIdempotencyKey: 'expense:document:1',
+        anchor: {
+          source: AccountingJournalSource.EXPENSE_DOCUMENT,
+          storeStableId: '4750_Yonge_Street',
+          occurredAt: '2026-09-12T14:00:00.000Z',
+          currency: 'CAD',
+        },
+        postingVector: {
+          version: 1,
+          currency: 'CAD',
+          lines: [
+            {
+              accountStableId: 'account_general_operating_expense',
+              categoryStableId: 'expense_kitchen_supplies',
+              debitCents: 1_250,
+              creditCents: 0,
+            },
+            {
+              accountStableId: 'account_store_cash',
+              categoryStableId: null,
+              debitCents: 0,
+              creditCents: 1_250,
+            },
+          ],
+        },
+      },
+    });
+    prisma.accountingCorrectionCase.findUnique.mockResolvedValue({
+      id: 'case-db-id',
+      status: AccountingPostedCorrectionStatus.READY,
+      planHash: 'b'.repeat(64),
+      targetKind: AccountingPostedCorrectionTargetKind.EXPENSE,
+      targetStableId: 'expense_1',
+      targetVersion: 1,
+      readyRevision: {
+        correctionRevisionStableId: 'revision_1',
+        correctionCaseId: 'case-db-id',
+        revision: 2,
+      },
+    });
+
+    await expect(
+      service.createPostedCorrectionJournalEntryInTx(
+        writePlan.journal,
+        'user_stable_1',
+        writePlan.authority,
+        prisma as never,
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(prisma.accountingJournalEntry.create).not.toHaveBeenCalled();
   });
 
   it('rejects an inactive or missing account before journal persistence', async () => {

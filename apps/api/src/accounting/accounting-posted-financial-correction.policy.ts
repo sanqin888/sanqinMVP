@@ -498,9 +498,9 @@ export const buildPostedCorrectionTargetJournalSetSnapshot = (input: {
   };
 };
 
-const normalizePostingVector = (
+export const normalizePostedCorrectionPostingVector = (
   postingVector: AccountingPostedCorrectionPostingVectorV1,
-  field: string,
+  field = 'posting',
 ): AccountingPostedCorrectionPostingVectorV1 => {
   if (postingVector.version !== 1) {
     throw new AccountingPostedFinancialCorrectionPolicyError(
@@ -558,14 +558,19 @@ const normalizePostingVector = (
 export const hashPostedCorrectionPostingVector = (
   postingVector: AccountingPostedCorrectionPostingVectorV1,
 ): string =>
-  hashAccountingJson(normalizePostingVector(postingVector, 'posting'));
+  hashAccountingJson(
+    normalizePostedCorrectionPostingVector(postingVector, 'posting'),
+  );
 
 export const calculatePostedCorrectionDelta = (input: {
   current: AccountingPostedCorrectionPostingVectorV1;
   target: AccountingPostedCorrectionPostingVectorV1;
 }): AccountingPostedCorrectionPostingVectorV1 => {
-  const current = normalizePostingVector(input.current, 'current');
-  const target = normalizePostingVector(input.target, 'target');
+  const current = normalizePostedCorrectionPostingVector(
+    input.current,
+    'current',
+  );
+  const target = normalizePostedCorrectionPostingVector(input.target, 'target');
   if (current.currency !== target.currency) {
     throw new AccountingPostedFinancialCorrectionPolicyError(
       'current and target posting vectors must use the same currency',
