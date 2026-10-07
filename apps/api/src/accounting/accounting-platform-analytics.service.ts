@@ -443,7 +443,9 @@ export class AccountingPlatformAnalyticsService {
         latest.targetJson as unknown as ProviderSettlementCorrectionTargetV1,
       );
     } catch (error) {
-      if (error instanceof AccountingProviderSettlementCorrectionTargetPolicyError) {
+      if (
+        error instanceof AccountingProviderSettlementCorrectionTargetPolicyError
+      ) {
         throw new ConflictException(
           `latest POSTED Provider correction target is invalid: ${document.documentStableId}: ${error.message}`,
         );

@@ -303,7 +303,9 @@ const resolveExpenseCurrentEffectiveAuthority = (
 ): AccountingExpenseCurrentEffectiveAuthority | null => {
   const latest = projection?.latestPostedAuthority ?? null;
   if (!latest) return null;
-  if (latest.targetAuthoritySchema !== ACCOUNTING_EXPENSE_CORRECTION_TARGET_SCHEMA) {
+  if (
+    latest.targetAuthoritySchema !== ACCOUNTING_EXPENSE_CORRECTION_TARGET_SCHEMA
+  ) {
     throw new ConflictException(
       `latest POSTED Expense correction has unexpected authority schema: ${row.documentStableId}`,
     );
@@ -322,7 +324,9 @@ const resolveExpenseCurrentEffectiveAuthority = (
     }
     throw error;
   }
-  if (hashAccountingExpenseCorrectionTarget(target) !== latest.targetAuthorityHash) {
+  if (
+    hashAccountingExpenseCorrectionTarget(target) !== latest.targetAuthorityHash
+  ) {
     throw new ConflictException(
       `latest POSTED Expense correction authority hash is inconsistent: ${row.documentStableId}`,
     );
