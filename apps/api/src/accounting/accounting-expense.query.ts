@@ -351,11 +351,7 @@ async function readExpensePostedStates(
 
   const states = new Map(
     documentStableIds.map(
-      (documentStableId) =>
-        [
-          documentStableId,
-          { ...EMPTY_POSTED_STATE },
-        ] as const,
+      (documentStableId) => [documentStableId, { ...EMPTY_POSTED_STATE }] as const,
     ),
   );
 

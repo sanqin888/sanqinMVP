@@ -31,18 +31,20 @@ describe('Expense posted correction C2 architecture', () => {
     expect(serviceSource).toContain('.executeCase(');
     expect(serviceSource).toContain('.cancelCase(');
     expect(controllerSource).toContain('AccountingExpenseCorrectionService');
-    expect(controllerSource).not.toContain('AccountingExpenseCorrectionAdapter');
+    expect(controllerSource).not.toContain(
+      'AccountingExpenseCorrectionAdapter',
+    );
   });
 
   it('uses dedicated journal/expense routes and never creates a generic manual-Journal endpoint', () => {
     expect(controllerSource).toContain(
-      "journal/expense/:documentStableId/correction",
+      'journal/expense/:documentStableId/correction',
     );
     expect(controllerSource).toContain(
-      "journal/expense/:documentStableId/corrections",
+      'journal/expense/:documentStableId/corrections',
     );
-    expect(controllerSource).not.toContain("journal/manual");
-    expect(controllerSource).not.toContain("manual-journal");
+    expect(controllerSource).not.toContain('journal/manual');
+    expect(controllerSource).not.toContain('manual-journal');
   });
 
   it('requires canonical posted Expense authority before correction and keeps original source/Journals immutable', () => {
@@ -77,9 +79,7 @@ describe('Expense posted correction C2 architecture', () => {
     expect(querySource).toContain(
       'sourceFactStableId: { in: documentStableIds }',
     );
-    expect(querySource).toContain(
-      'targetStableId: { in: documentStableIds }',
-    );
+    expect(querySource).toContain('targetStableId: { in: documentStableIds }');
     expect(querySource).toContain('canonicalPosted');
     expect(querySource).toContain('expectedFundingGroups');
     expect(querySource).not.toContain('readCurrentEffectiveTarget(');

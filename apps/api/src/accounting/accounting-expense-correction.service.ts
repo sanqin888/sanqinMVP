@@ -101,7 +101,9 @@ const memoValue = (raw: unknown): string | null => {
   }
   const memo = raw.trim();
   if (memo.length > 2_000) {
-    throw new BadRequestException('target.memo must not exceed 2000 characters');
+    throw new BadRequestException(
+      'target.memo must not exceed 2000 characters',
+    );
   }
   return memo || null;
 };

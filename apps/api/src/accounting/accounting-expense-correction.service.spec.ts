@@ -107,9 +107,7 @@ describe('AccountingExpenseCorrectionService C2 facade', () => {
 
   it('rejects a stale create request before A3 lifecycle persistence', async () => {
     const { service, lifecycle } = makeService();
-    jest
-      .spyOn(service, 'readRecord')
-      .mockResolvedValue(readyRecord as never);
+    jest.spyOn(service, 'readRecord').mockResolvedValue(readyRecord as never);
 
     await expect(
       service.createDraft(
@@ -131,9 +129,7 @@ describe('AccountingExpenseCorrectionService C2 facade', () => {
 
   it('delegates a current Expense draft to A3 with C1 adapter ownership', async () => {
     const { service, lifecycle, adapter } = makeService();
-    jest
-      .spyOn(service, 'readRecord')
-      .mockResolvedValue(readyRecord as never);
+    jest.spyOn(service, 'readRecord').mockResolvedValue(readyRecord as never);
     lifecycle.createDraft.mockResolvedValue({});
 
     await service.createDraft(

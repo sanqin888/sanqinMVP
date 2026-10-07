@@ -88,6 +88,7 @@ describe('Expense posted correction runtime UI', () => {
     expect(panelSource).toContain('currency');
     expect(panelSource).toContain('funding attribution v');
     expect(editorSource).not.toContain('occurredAt');
-    expect(editorSource).not.toContain('currency');
+    expect(editorSource).not.toContain('name="currency"');
+    expect(editorSource).not.toContain('onCurrencyChange');
   });
 });

@@ -79,7 +79,7 @@ describe('Expense posted correction C1 architecture', () => {
       'AccountingPostedFinancialCorrectionService',
     );
     expect(expenseControllerSource).toContain(
-      "journal/expense/:documentStableId/correction",
+      'journal/expense/:documentStableId/correction',
     );
   });
 

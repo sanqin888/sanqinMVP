@@ -93,9 +93,7 @@ export class AccountingExpenseController {
   }
 
   @Get('journal/expense/:documentStableId/correction')
-  readExpenseCorrection(
-    @Param('documentStableId') documentStableId: string,
-  ) {
+  readExpenseCorrection(@Param('documentStableId') documentStableId: string) {
     return this.expenseCorrection.readRecord(documentStableId);
   }
 
