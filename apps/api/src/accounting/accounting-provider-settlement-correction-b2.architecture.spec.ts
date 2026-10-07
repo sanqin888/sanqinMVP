@@ -16,7 +16,9 @@ const cloverReclassificationSource = readFileSync(
 
 describe('Provider posted correction B2 architecture', () => {
   it('keeps the HTTP facade inside Accounting and delegates lifecycle authority to A3 + B1', () => {
-    expect(serviceSource).toContain('AccountingPostedFinancialCorrectionService');
+    expect(serviceSource).toContain(
+      'AccountingPostedFinancialCorrectionService',
+    );
     expect(serviceSource).toContain(
       'AccountingProviderSettlementCorrectionAdapter',
     );

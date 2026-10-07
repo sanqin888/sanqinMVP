@@ -83,7 +83,7 @@ export class AccountingProviderSettlementController {
   }
 
   @Post('journal/provider-settlement/:documentStableId/corrections')
-  createProviderSettlementCorrection(
+  createPostedProviderCorrection(
     @Param('documentStableId') documentStableId: string,
     @Body()
     body: {

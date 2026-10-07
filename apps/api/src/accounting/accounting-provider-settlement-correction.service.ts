@@ -44,7 +44,9 @@ const requireValue = (raw: unknown, field: string, maxLength = 250): string => {
   return value;
 };
 
-const parseReasonCode = (raw: unknown): AccountingPostedCorrectionReasonCode => {
+const parseReasonCode = (
+  raw: unknown,
+): AccountingPostedCorrectionReasonCode => {
   const value = requireValue(raw, 'reasonCode', 100);
   if (!reasonCodes.has(value)) {
     throw new BadRequestException('reasonCode is unsupported');
