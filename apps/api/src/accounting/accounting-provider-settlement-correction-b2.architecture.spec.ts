@@ -13,6 +13,14 @@ const cloverReclassificationSource = readFileSync(
   resolve(__dirname, 'accounting-clover-fee-reclassification.service.ts'),
   'utf8',
 );
+const providerCorrectionAdapterSource = readFileSync(
+  resolve(__dirname, 'accounting-provider-settlement-correction.adapter.ts'),
+  'utf8',
+);
+const cloverBridgePolicySource = readFileSync(
+  resolve(__dirname, 'accounting-clover-fee-reclassification-bridge.policy.ts'),
+  'utf8',
+);
 
 describe('Provider posted correction B2 architecture', () => {
   it('keeps the HTTP facade inside Accounting and delegates lifecycle authority to A3 + B1', () => {
@@ -51,8 +59,20 @@ describe('Provider posted correction B2 architecture', () => {
     }
   });
 
-  it('fails closed in both directions between common Provider correction and legacy Clover fee reclassification', () => {
+  it('orders legacy Clover fee reclassification before later common Provider corrections', () => {
     expect(serviceSource).toContain('readCurrentEffectiveTarget');
+    expect(providerCorrectionAdapterSource).toContain(
+      'CLOVER_FEE_RECLASSIFICATION_SOURCE_FACT_TYPE',
+    );
+    expect(providerCorrectionAdapterSource).toContain(
+      'assertLegacyCloverFeeReclassificationBridge',
+    );
+    expect(cloverBridgePolicySource).toContain(
+      'legacy Clover fee reclassification does not reconcile the original Journal to current Provider posting policy',
+    );
+    expect(providerCorrectionAdapterSource).not.toContain(
+      'common Provider correction must wait for specialized-correction convergence',
+    );
     expect(cloverReclassificationSource).toContain(
       'POSTED_COMMON_CORRECTION_EXISTS',
     );

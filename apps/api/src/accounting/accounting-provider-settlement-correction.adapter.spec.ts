@@ -7,6 +7,8 @@ import {
   AccountingFinancialTaxRole,
   AccountingInboxMaterializedEntityType,
   AccountingInboxStatus,
+  AccountingJournalEntryKind,
+  AccountingJournalSource,
 } from './accounting-contracts';
 import {
   AccountingPostedCorrectionReasonCode,
@@ -25,9 +27,16 @@ import {
   type ProviderSettlementReplacementGroupAuthorityV1,
 } from './accounting-provider-settlement-write-authority';
 import {
+  hashJournalCreatePayload,
   normalizeJournalCreate,
   type AccountingJournalCreateInput,
 } from './accounting-journal-policy';
+import { CLOVER_STATEMENT_RAW_CODES } from './accounting-clover-statement.contract';
+import {
+  CLOVER_FEE_PAYABLE_ACCOUNT_STABLE_ID,
+  CLOVER_FEE_RECLASSIFICATION_SOURCE_FACT_TYPE,
+} from './accounting-provider-fee-clearing.contract';
+import { ACCOUNTING_PROVIDER_PENDING_ACCOUNT_IDS } from './accounting-provider-accounts';
 
 type ProviderLine = {
   lineStableId: string;
@@ -181,6 +190,98 @@ const correctedLines = () =>
       occurredAt: null,
     },
   ]);
+
+const CLOVER_DOCUMENT = 'acctfindoc_clover_june';
+const CLOVER_OCCURRED_AT = new Date('2026-06-30T03:59:59.999Z');
+
+const cloverSourceLines = (): ProviderLine[] => [
+  {
+    lineStableId: 'clover-service-charges',
+    lineNo: 1,
+    rawCode: null,
+    rawName: 'Service Charges',
+    component: AccountingFinancialComponent.PROCESSING_FEE,
+    postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+    taxRole: AccountingFinancialTaxRole.NONE,
+    amountCents: -6264,
+    occurredAt: null,
+  },
+  {
+    lineStableId: 'clover-fees-control',
+    lineNo: 2,
+    rawCode: CLOVER_STATEMENT_RAW_CODES.FEES_TOTAL,
+    rawName: 'Fees',
+    component: AccountingFinancialComponent.CONTROL_TOTAL,
+    postingTreatment: AccountingFinancialPostingTreatment.CONTROL_TOTAL,
+    taxRole: AccountingFinancialTaxRole.NONE,
+    amountCents: -3575,
+    occurredAt: null,
+  },
+  {
+    lineStableId: 'clover-equipment',
+    lineNo: 3,
+    rawCode: CLOVER_STATEMENT_RAW_CODES.MONTHLY_EQUIPMENT_BILL,
+    rawName: 'Monthly Equipment Bill',
+    component: AccountingFinancialComponent.PLATFORM_OTHER_FEE,
+    postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+    taxRole: AccountingFinancialTaxRole.NONE,
+    amountCents: -3000,
+    occurredAt: null,
+  },
+  {
+    lineStableId: 'clover-equipment-hst',
+    lineNo: 4,
+    rawCode: CLOVER_STATEMENT_RAW_CODES.MONTHLY_EQUIPMENT_BILL_HST,
+    rawName: 'Monthly Equipment Bill HST',
+    component: AccountingFinancialComponent.PLATFORM_OTHER_FEE_TAX,
+    postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+    taxRole: AccountingFinancialTaxRole.INPUT_TAX,
+    amountCents: -390,
+    occurredAt: null,
+  },
+  {
+    lineStableId: 'clover-network',
+    lineNo: 5,
+    rawCode: CLOVER_STATEMENT_RAW_CODES.NETWORK_FEES,
+    rawName: 'Other Card/Network Fees',
+    component: AccountingFinancialComponent.PROCESSING_FEE,
+    postingTreatment: AccountingFinancialPostingTreatment.POSTABLE,
+    taxRole: AccountingFinancialTaxRole.NONE,
+    amountCents: -185,
+    occurredAt: null,
+  },
+];
+
+const cloverCorrectedLines = (): ProviderLine[] =>
+  cloverSourceLines().map((line) => {
+    if (line.lineStableId === 'clover-network') {
+      return { ...line, amountCents: -285 };
+    }
+    if (line.lineStableId === 'clover-fees-control') {
+      return { ...line, amountCents: -3675 };
+    }
+    return line;
+  });
+
+const toCloverPlanDocument = (lines: ProviderLine[]) => ({
+  documentStableId: CLOVER_DOCUMENT,
+  revision: 1,
+  provider: AccountingFinancialProvider.CLOVER,
+  documentType: AccountingFinancialDocumentType.STATEMENT,
+  storeStableId: STORE,
+  periodStart: '2026-06-01',
+  periodEnd: '2026-06-30',
+  currency: 'CAD',
+  lines: lines.map((line) => ({
+    lineStableId: line.lineStableId,
+    lineNo: line.lineNo,
+    rawCode: line.rawCode,
+    rawName: line.rawName,
+    component: line.component,
+    postingTreatment: line.postingTreatment,
+    amountCents: line.amountCents,
+  })),
+});
 
 const toPlanDocument = (lines: ProviderLine[]) => ({
   documentStableId: DOCUMENT,
@@ -473,6 +574,248 @@ const makeFixture = () => {
   };
 };
 
+const makeCloverBridgeFixture = () => {
+  const lines = cloverSourceLines();
+  const currentPlan = buildProviderSettlementDocumentPlan({
+    document: toCloverPlanDocument(lines),
+    salesAuthority: 'RECONCILIATION_ONLY',
+    occurredAt: CLOVER_OCCURRED_AT,
+  });
+  if (currentPlan.status !== 'READY' || !currentPlan.draftJournal) {
+    throw new Error('test Clover plan must be READY');
+  }
+
+  const pendingAccountStableId =
+    ACCOUNTING_PROVIDER_PENDING_ACCOUNT_IDS[AccountingFinancialProvider.CLOVER];
+  const accountStableIds = Array.from(
+    new Set([...currentPlan.requiredAccountStableIds, pendingAccountStableId]),
+  );
+  const accountPrerequisites = accountStableIds.map((accountStableId) => {
+    const requirement = ACCOUNT_REQUIREMENTS[accountStableId];
+    if (!requirement) {
+      throw new Error(
+        'missing Clover test account requirement: ' + accountStableId,
+      );
+    }
+    return {
+      accountStableId,
+      expected: requirement,
+      actual: requirement,
+    };
+  });
+
+  const group: ProviderSettlementReplacementGroupAuthorityV1 = {
+    version: 1,
+    expectedPlanHash: 'c'.repeat(64),
+    provider: AccountingFinancialProvider.CLOVER,
+    documentType: AccountingFinancialDocumentType.STATEMENT,
+    businessIdentityKey: 'clover:statement:2026-06',
+    documentStableId: CLOVER_DOCUMENT,
+    revision: 1,
+    providerDocumentRef: 'clover-june-2026',
+    storeStableId: STORE,
+    periodStart: '2026-06-01',
+    periodEnd: '2026-06-30',
+    salesAuthority: 'RECONCILIATION_ONLY',
+    reviewEvidence: {
+      inboxItemStableId: 'inbox_clover_june',
+      status: AccountingInboxStatus.CONFIRMED,
+      materializedEntityType:
+        AccountingInboxMaterializedEntityType.PROVIDER_FINANCIAL_DOCUMENT,
+      materializedEntityStableId: CLOVER_DOCUMENT,
+      reviewedAt: '2026-10-01T12:00:00.000Z',
+      reviewedByUserStableId: 'user_admin_1',
+      version: 2,
+    },
+    coverageEvidence: {
+      coverageStableId: 'coverage_clover',
+      financialHistoryRequiredFrom: '2026-06-01',
+      financialCompleteThrough: '2026-06-30',
+      liveOrderFactCutoverAt: null,
+      orderDetailCoverageFrom: null,
+      updatedAt: '2026-10-01T12:00:00.000Z',
+    },
+    accountPrerequisites,
+    historicalReversalAnchors: [],
+  };
+
+  const providerWriteAuthority = buildProviderSettlementJournalWriteAuthority({
+    group,
+    role: 'PROVIDER_DOCUMENT',
+  });
+  const legacyProviderJournalInput: AccountingJournalCreateInput = {
+    ...currentPlan.draftJournal,
+    lines: currentPlan.draftJournal.lines.map((line) =>
+      line.accountStableId === CLOVER_FEE_PAYABLE_ACCOUNT_STABLE_ID
+        ? { ...line, accountStableId: pendingAccountStableId }
+        : line,
+    ),
+  };
+  const providerJournal = persistedJournal(
+    legacyProviderJournalInput,
+    'journal_provider_clover_june',
+    hashProviderSettlementJournalWrite(
+      normalizeJournalCreate(legacyProviderJournalInput),
+      providerWriteAuthority,
+    ),
+  );
+
+  const feeAmountCents = currentPlan.draftJournal.lines
+    .filter(
+      (line) => line.accountStableId === CLOVER_FEE_PAYABLE_ACCOUNT_STABLE_ID,
+    )
+    .reduce((sum, line) => sum + (line.creditCents ?? 0), 0);
+  if (feeAmountCents <= 0) {
+    throw new Error('test Clover plan must credit fee payable');
+  }
+  const bridgeInput: AccountingJournalCreateInput = {
+    idempotencyKey: `clover-fee-pending-reclass:${CLOVER_DOCUMENT}:r1:v1`,
+    kind: AccountingJournalEntryKind.ADJUSTMENT,
+    source: AccountingJournalSource.PLATFORM_STATEMENT,
+    sourceFactType: CLOVER_FEE_RECLASSIFICATION_SOURCE_FACT_TYPE,
+    sourceFactStableId: CLOVER_DOCUMENT,
+    sourceFactVersion: 1,
+    storeStableId: STORE,
+    occurredAt: CLOVER_OCCURRED_AT.toISOString(),
+    currency: 'CAD',
+    memo:
+      `Reclass legacy Clover statement fees from Pending to fee payable ` +
+      `${CLOVER_DOCUMENT} r1`,
+    lines: [
+      {
+        accountStableId: pendingAccountStableId,
+        debitCents: feeAmountCents,
+        creditCents: 0,
+        memo: 'Restore Clover sales Pending',
+      },
+      {
+        accountStableId: CLOVER_FEE_PAYABLE_ACCOUNT_STABLE_ID,
+        debitCents: 0,
+        creditCents: feeAmountCents,
+        memo: 'Recognize Clover fee payable',
+      },
+    ],
+  };
+  const bridgeJournal = persistedJournal(
+    bridgeInput,
+    'journal_clover_fee_reclassification_1',
+    hashJournalCreatePayload(normalizeJournalCreate(bridgeInput)),
+  );
+
+  const document = {
+    documentStableId: CLOVER_DOCUMENT,
+    provider: AccountingFinancialProvider.CLOVER,
+    documentType: AccountingFinancialDocumentType.STATEMENT,
+    businessIdentityKey: group.businessIdentityKey,
+    revision: 1,
+    storeStableId: STORE,
+    providerDocumentRef: group.providerDocumentRef,
+    periodStart: new Date('2026-06-01T00:00:00.000Z'),
+    periodEnd: new Date('2026-06-30T00:00:00.000Z'),
+    currency: 'CAD',
+    artifact: {
+      inboxItem: {
+        inboxItemStableId: group.reviewEvidence.inboxItemStableId,
+        status: AccountingInboxStatus.CONFIRMED,
+        materializedEntityType:
+          AccountingInboxMaterializedEntityType.PROVIDER_FINANCIAL_DOCUMENT,
+        materializedEntityStableId: CLOVER_DOCUMENT,
+        reviewedAt: new Date(group.reviewEvidence.reviewedAt),
+        reviewedByUserStableId: group.reviewEvidence.reviewedByUserStableId,
+        version: group.reviewEvidence.version,
+      },
+    },
+    lines,
+    reviewRevisions: [],
+  };
+
+  const accounts = accountStableIds.map((accountStableId) => {
+    const requirement = ACCOUNT_REQUIREMENTS[accountStableId];
+    if (!requirement) {
+      throw new Error(
+        'missing Clover test account requirement: ' + accountStableId,
+      );
+    }
+    return {
+      accountStableId,
+      accountClass: requirement.accountClass,
+      currency: requirement.currency,
+    };
+  });
+  const categoryStableIds = Array.from(
+    new Set(
+      currentPlan.draftJournal.lines.flatMap((line) =>
+        line.categoryStableId ? [line.categoryStableId] : [],
+      ),
+    ),
+  );
+  const auditByJournal = new Map([
+    [
+      providerJournal.entryStableId,
+      { afterJson: { writeAuthority: providerWriteAuthority } },
+    ],
+  ]);
+
+  const db = {
+    accountingProviderFinancialDocument: {
+      findUnique: jest.fn().mockResolvedValue(document),
+    },
+    accountingJournalEntry: {
+      findFirst: jest.fn().mockResolvedValue(null),
+      findMany: jest
+        .fn()
+        .mockImplementation((args: { where?: { sourceFactType?: string } }) => {
+          if (
+            args.where?.sourceFactType ===
+            'accounting.provider_financial_document.v1'
+          ) {
+            return Promise.resolve([providerJournal]);
+          }
+          if (
+            args.where?.sourceFactType ===
+            CLOVER_FEE_RECLASSIFICATION_SOURCE_FACT_TYPE
+          ) {
+            return Promise.resolve([bridgeJournal]);
+          }
+          return Promise.resolve([]);
+        }),
+    },
+    accountingAuditLog: {
+      findFirst: jest
+        .fn()
+        .mockImplementation((args: { where?: { entityId?: string } }) =>
+          Promise.resolve(
+            args.where?.entityId
+              ? (auditByJournal.get(args.where.entityId) ?? null)
+              : null,
+          ),
+        ),
+    },
+    accountingCorrectionCase: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
+    accountingAccount: {
+      findMany: jest.fn().mockResolvedValue(accounts),
+    },
+    accountingCategory: {
+      findMany: jest
+        .fn()
+        .mockResolvedValue(
+          categoryStableIds.map((categoryStableId) => ({ categoryStableId })),
+        ),
+    },
+  };
+
+  return {
+    db,
+    document,
+    providerJournal,
+    bridgeJournal,
+    bridgeInput,
+    currentPlan,
+  };
+};
+
 describe('AccountingProviderSettlementCorrectionAdapter', () => {
   it('builds a DELTA target through the existing Provider settlement policy and freezes Uber reversal prerequisites', async () => {
     const fixture = makeFixture();
@@ -553,25 +896,208 @@ describe('AccountingProviderSettlementCorrectionAdapter', () => {
     expect(deltaDebitCents).toBe(deltaCreditCents);
   });
 
-  it('fails closed for a Clover Statement that already has the specialized fee reclassification Journal', async () => {
-    const fixture = makeFixture();
-    fixture.db.accountingProviderFinancialDocument.findUnique.mockResolvedValue(
-      {
-        ...fixture.document,
-        provider: AccountingFinancialProvider.CLOVER,
-      } as never,
+  it('uses validated legacy Clover reclassification as common baseline', async () => {
+    const fixture = makeCloverBridgeFixture();
+    const adapter = new AccountingProviderSettlementCorrectionAdapter(
+      fixture.db as never,
     );
-    fixture.db.accountingJournalEntry.findFirst.mockResolvedValue({
-      entryStableId: 'journal_clover_fee_reclassification_1',
-    } as never);
+    const current = await adapter.readCurrentEffectiveTarget(
+      CLOVER_DOCUMENT,
+      1,
+    );
+    const normalized = await adapter.normalizeRevisionTarget(
+      {
+        targetStableId: CLOVER_DOCUMENT,
+        targetVersion: 1,
+        reasonCode: AccountingPostedCorrectionReasonCode.AMOUNT_ERROR,
+        targetJson: {
+          version: 1,
+          expectedBaseAuthorityHash: current.targetAuthorityHash,
+          lines: editableLines(cloverCorrectedLines()),
+        },
+      },
+      fixture.db as never,
+    );
+    const ready = await adapter.resolveReadyTarget(
+      {
+        targetStableId: CLOVER_DOCUMENT,
+        targetVersion: 1,
+        reasonCode: AccountingPostedCorrectionReasonCode.AMOUNT_ERROR,
+        targetJson: normalized.targetJson,
+      },
+      fixture.db as never,
+    );
+
+    expect(
+      ready.originalJournals.map((journal) => journal.entryStableId),
+    ).toEqual([
+      fixture.providerJournal.entryStableId,
+      fixture.bridgeJournal.entryStableId,
+    ]);
+    expect(ready.targetJournals).toHaveLength(1);
+
+    const preview = buildPostedFinancialCorrectionPreviewPlan({
+      correctionStableId: 'correction_clover_after_legacy_bridge',
+      targetKind: AccountingPostedCorrectionTargetKind.PROVIDER_SETTLEMENT,
+      targetStableId: CLOVER_DOCUMENT,
+      targetVersion: 1,
+      strategy: ready.strategy,
+      reasonCode: AccountingPostedCorrectionReasonCode.AMOUNT_ERROR,
+      baseAuthoritySchema: ready.baseAuthoritySchema,
+      baseAuthorityHash: ready.baseAuthorityHash,
+      targetAuthoritySchema: ready.targetAuthoritySchema,
+      targetAuthorityHash: ready.targetAuthorityHash,
+      currency: ready.currency,
+      originalJournals: ready.originalJournals,
+      priorCorrectionJournals: [],
+      targetJournals: ready.targetJournals,
+    });
+
+    expect(preview.status).toBe('READY');
+    expect(preview.deltaPosting.lines.length).toBeGreaterThan(0);
+    expect(
+      preview.deltaPosting.lines.some(
+        (line) =>
+          line.accountStableId ===
+          ACCOUNTING_PROVIDER_PENDING_ACCOUNT_IDS[
+            AccountingFinancialProvider.CLOVER
+          ],
+      ),
+    ).toBe(false);
+    expect(
+      preview.deltaPosting.lines.reduce(
+        (sum, line) => sum + line.debitCents,
+        0,
+      ),
+    ).toBe(
+      preview.deltaPosting.lines.reduce(
+        (sum, line) => sum + line.creditCents,
+        0,
+      ),
+    );
+  });
+
+  it('fails closed when the legacy Clover bridge has the wrong Journal source', async () => {
+    const fixture = makeCloverBridgeFixture();
+    fixture.bridgeJournal.source = AccountingJournalSource.MANUAL;
     const adapter = new AccountingProviderSettlementCorrectionAdapter(
       fixture.db as never,
     );
 
     await expect(
-      adapter.readCurrentEffectiveTarget(DOCUMENT, 1),
+      adapter.readCurrentEffectiveTarget(CLOVER_DOCUMENT, 1),
     ).rejects.toThrow(
-      'posted Clover Statement already has a specialized fee reclassification',
+      'specialized Clover fee reclassification Journal is not a valid legacy compatibility bridge',
+    );
+  });
+
+  it('fails closed on a tampered legacy Clover reclassification hash', async () => {
+    const fixture = makeCloverBridgeFixture();
+    fixture.bridgeJournal.idempotencyHash = 'f'.repeat(64);
+    const adapter = new AccountingProviderSettlementCorrectionAdapter(
+      fixture.db as never,
+    );
+
+    await expect(
+      adapter.readCurrentEffectiveTarget(CLOVER_DOCUMENT, 1),
+    ).rejects.toThrow(
+      'specialized Clover fee reclassification Journal hash is inconsistent',
+    );
+  });
+
+  it('fails closed when the Clover bridge does not reconcile', async () => {
+    const fixture = makeCloverBridgeFixture();
+    const mismatchedInput: AccountingJournalCreateInput = {
+      ...fixture.bridgeInput,
+      lines: fixture.bridgeInput.lines.map((line) => ({
+        ...line,
+        debitCents:
+          line.accountStableId ===
+          ACCOUNTING_PROVIDER_PENDING_ACCOUNT_IDS[
+            AccountingFinancialProvider.CLOVER
+          ]
+            ? (line.debitCents ?? 0) + 1
+            : line.debitCents,
+        creditCents:
+          line.accountStableId === CLOVER_FEE_PAYABLE_ACCOUNT_STABLE_ID
+            ? (line.creditCents ?? 0) + 1
+            : line.creditCents,
+      })),
+    };
+    const mismatchedJournal = persistedJournal(
+      mismatchedInput,
+      fixture.bridgeJournal.entryStableId,
+      hashJournalCreatePayload(normalizeJournalCreate(mismatchedInput)),
+    );
+    Object.assign(fixture.bridgeJournal, mismatchedJournal);
+    const adapter = new AccountingProviderSettlementCorrectionAdapter(
+      fixture.db as never,
+    );
+
+    await expect(
+      adapter.readCurrentEffectiveTarget(CLOVER_DOCUMENT, 1),
+    ).rejects.toThrow(
+      'legacy Clover fee reclassification does not reconcile the original Journal to current Provider posting policy',
+    );
+  });
+
+  it('fails closed when multiple active legacy Clover bridge Journals are present', async () => {
+    const fixture = makeCloverBridgeFixture();
+    fixture.db.accountingJournalEntry.findMany.mockImplementation(
+      (args: { where?: { sourceFactType?: string } }) => {
+        if (
+          args.where?.sourceFactType ===
+          'accounting.provider_financial_document.v1'
+        ) {
+          return Promise.resolve([fixture.providerJournal]);
+        }
+        if (
+          args.where?.sourceFactType ===
+          CLOVER_FEE_RECLASSIFICATION_SOURCE_FACT_TYPE
+        ) {
+          return Promise.resolve([
+            fixture.bridgeJournal,
+            {
+              ...fixture.bridgeJournal,
+              entryStableId: 'journal_clover_fee_reclassification_2',
+            },
+          ]);
+        }
+        return Promise.resolve([]);
+      },
+    );
+    const adapter = new AccountingProviderSettlementCorrectionAdapter(
+      fixture.db as never,
+    );
+
+    await expect(
+      adapter.readCurrentEffectiveTarget(CLOVER_DOCUMENT, 1),
+    ).rejects.toThrow(
+      'posted Clover Statement has multiple specialized fee reclassification Journals',
+    );
+  });
+
+  it('still fails closed when a legacy Clover Journal has no bridge', async () => {
+    const fixture = makeCloverBridgeFixture();
+    fixture.db.accountingJournalEntry.findMany.mockImplementation(
+      (args: { where?: { sourceFactType?: string } }) => {
+        if (
+          args.where?.sourceFactType ===
+          'accounting.provider_financial_document.v1'
+        ) {
+          return Promise.resolve([fixture.providerJournal]);
+        }
+        return Promise.resolve([]);
+      },
+    );
+    const adapter = new AccountingProviderSettlementCorrectionAdapter(
+      fixture.db as never,
+    );
+
+    await expect(
+      adapter.readCurrentEffectiveTarget(CLOVER_DOCUMENT, 1),
+    ).rejects.toThrow(
+      'Provider effective business authority no longer rebuilds the original posted Journal',
     );
   });
 

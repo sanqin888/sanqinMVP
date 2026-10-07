@@ -70,6 +70,10 @@ import {
   AccountingProviderFinancialReviewPolicyError,
   resolveProviderFinancialEffectiveLines,
 } from './accounting-provider-financial-review.policy';
+import {
+  AccountingCloverFeeReclassificationBridgePolicyError,
+  assertLegacyCloverFeeReclassificationBridge,
+} from './accounting-clover-fee-reclassification-bridge.policy';
 import { CLOVER_FEE_RECLASSIFICATION_SOURCE_FACT_TYPE } from './accounting-provider-fee-clearing.contract';
 import { FANTUAN_ADJUSTMENT_DETAIL_EVIDENCE_KIND } from './accounting-fantuan-adjustment-detail.contract';
 import { resolveFantuanAdjustmentDetailLines } from './accounting-fantuan-adjustment-detail.policy';
@@ -806,24 +810,6 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
         'Provider correction targetVersion does not match document revision',
       );
     }
-    if (document.provider === AccountingFinancialProvider.CLOVER) {
-      const specializedCorrection = await db.accountingJournalEntry.findFirst({
-        where: {
-          deletedAt: null,
-          sourceFactType: CLOVER_FEE_RECLASSIFICATION_SOURCE_FACT_TYPE,
-          sourceFactStableId: documentStableId,
-          sourceFactVersion: targetVersion,
-        },
-        select: { entryStableId: true },
-        orderBy: { createdAt: 'desc' },
-      });
-      if (specializedCorrection) {
-        throw new ConflictException(
-          'posted Clover Statement already has a specialized fee reclassification; common Provider correction must wait for specialized-correction convergence',
-        );
-      }
-    }
-
     const providerJournals = await db.accountingJournalEntry.findMany({
       where: {
         deletedAt: null,
@@ -905,18 +891,6 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
       sourceTarget,
       originalProviderJournal.occurredAt,
     );
-    if (
-      hashJournalCreatePayload(
-        normalizeJournalCreate(rebuiltOriginalJournal),
-      ) !==
-      hashJournalCreatePayload(
-        normalizeJournalCreate(journalToCreateInput(originalProviderJournal)),
-      )
-    ) {
-      throw new ConflictException(
-        'Provider effective business authority no longer rebuilds the original posted Journal',
-      );
-    }
 
     const reversalJournals: JournalRow[] = [];
     for (const anchor of groupAuthority.historicalReversalAnchors) {
@@ -957,17 +931,89 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
       reversalJournals.push(reversal);
     }
 
+    const legacyCloverFeeReclassification =
+      document.provider === AccountingFinancialProvider.CLOVER
+        ? await this.readLegacyCloverFeeReclassificationJournal(
+            document,
+            originalProviderJournal,
+            rebuiltOriginalJournal,
+            db,
+          )
+        : null;
+
+    if (!legacyCloverFeeReclassification) {
+      if (
+        hashJournalCreatePayload(
+          normalizeJournalCreate(rebuiltOriginalJournal),
+        ) !==
+        hashJournalCreatePayload(
+          normalizeJournalCreate(journalToCreateInput(originalProviderJournal)),
+        )
+      ) {
+        throw new ConflictException(
+          'Provider effective business authority no longer rebuilds the original posted Journal',
+        );
+      }
+    }
+
     return {
       groupAuthority,
       sourcePostingAuthorityHash,
       sourceTarget,
       originalJournals: [
         journalToPostedAnchor(originalProviderJournal),
+        ...(legacyCloverFeeReclassification
+          ? [journalToPostedAnchor(legacyCloverFeeReclassification)]
+          : []),
         ...reversalJournals.map(journalToPostedAnchor),
       ],
       targetFrozenReversalJournals: reversalJournals.map(journalToCreateInput),
       originalProviderJournal,
     };
+  }
+
+  private async readLegacyCloverFeeReclassificationJournal(
+    document: ProviderDocumentRow,
+    originalProviderJournal: JournalRow,
+    rebuiltOriginalJournal: AccountingJournalCreateInput,
+    db: AccountingPostedCorrectionOwnerDbClient,
+  ): Promise<JournalRow | null> {
+    const rows = await db.accountingJournalEntry.findMany({
+      where: {
+        deletedAt: null,
+        sourceFactType: CLOVER_FEE_RECLASSIFICATION_SOURCE_FACT_TYPE,
+        sourceFactStableId: document.documentStableId,
+        sourceFactVersion: document.revision,
+      },
+      select: JOURNAL_SELECT,
+      orderBy: { entryStableId: 'asc' },
+    });
+    if (rows.length === 0) return null;
+    if (rows.length !== 1 || !rows[0]) {
+      throw new ConflictException(
+        'posted Clover Statement has multiple specialized fee reclassification Journals',
+      );
+    }
+
+    const journal = rows[0];
+    try {
+      assertLegacyCloverFeeReclassificationBridge({
+        documentStableId: document.documentStableId,
+        documentRevision: document.revision,
+        originalProviderJournal: journalToPostedAnchor(originalProviderJournal),
+        specializedJournal: journalToPostedAnchor(journal),
+        rebuiltProviderJournal: rebuiltOriginalJournal,
+      });
+    } catch (error) {
+      if (
+        error instanceof AccountingCloverFeeReclassificationBridgePolicyError
+      ) {
+        throw new ConflictException(error.message);
+      }
+      throw error;
+    }
+
+    return journal;
   }
 
   private buildSourceTarget(params: {

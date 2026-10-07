@@ -1869,7 +1869,7 @@ Scope:
 
 #### Correction-D — Current-effective read-model unification
 
-Status: **LOCAL IMPLEMENTED / USER REVIEW PENDING / BRANCH `feat/accounting-correction-d` / BASELINE `origin/dev@64455251` / NO MIGRATION**
+Status: **MERGED / PR #2722 / FINAL `5229c6ae` / DEV MERGE `99d7c9c7` / CI #7003 GREEN / NO MIGRATION**
 
 Scope:
 
@@ -1881,12 +1881,37 @@ Scope:
 
 #### Correction-E — Existing specialized correction convergence audit
 
-Status: **NOT STARTED**
+Status: **E1 LOCAL IMPLEMENTED / USER REVIEW PENDING / BRANCH `feat/accounting-correction-e1-clover-bridge` / BASELINE `origin/dev@99d7c9c7` / NO PRISMA / NO MIGRATION**
 
-Only after A-D are proven should the project evaluate whether existing Clover fee
-reclassification, Opening Receivable reversal, External Sale reversal and Payroll reversal should
-adopt the common Correction Case lifecycle shell. Their mature owner-specific write authority
-should not be rewritten merely for naming consistency.
+The E audit keeps **Opening Receivable reversal, External Sale reversal and Payroll reversal**
+owner-specific. Each already has a mature immutable reversal authority plus replacement/correction
+lineage; moving them into the common Case shell would require new common target kinds and persisted
+contract/migration work without improving their owner invariants.
+
+**Correction-E1** narrows the remaining convergence work to historical Clover fee reclassification.
+The specialized Journal is not backfilled into a synthetic Correction Case and is never rewritten.
+For a Clover Statement that already has exactly one legacy specialized fee-reclassification Journal,
+the Provider adapter may use that Journal as an ordered historical baseline before later common
+Provider corrections only when all bridge invariants pass:
+
+- the specialized source identity, idempotency key, Store/date/currency and exact two-line
+  Pending -> Fee Payable shape match the historical specialized writer;
+- the persisted specialized Journal payload hash matches the deterministic expected payload;
+- the posting vector of **original Provider Journal + specialized reclassification** exactly equals
+  the posting vector rebuilt by the current Provider settlement policy;
+- multiple, malformed, tampered or non-reconciling specialized Journals fail closed;
+- a legacy Provider Journal without the required specialized bridge still fails the existing
+  current-policy rebuild check;
+- after any common Provider Correction Case is POSTED, the specialized writer continues to block
+  with `POSTED_COMMON_CORRECTION_EXISTS`, so write ordering cannot reverse.
+
+This is a read-only historical compatibility bridge, not dual-write. New/current Clover Statements
+that already post to Fee Payable continue to need no specialized correction. No source document,
+Human Review row, historical Journal, common Correction authority schema, public route or Prisma
+schema is changed. The temporary compatibility is registered as
+`accounting.clover-fee-reclassification-bridge.v1` and is removed only after production inventory
+and controlled verification show that no supported correction workflow still needs the legacy
+baseline reader.
 
 ### 16.14 Explicit non-goals
 
@@ -1903,9 +1928,9 @@ This framework must not:
 
 ### 16.15 Readiness conclusion
 
-Current status after C2 merge and D local current-effective cutover implementation:
+Current status after D merge and the local Correction-E convergence implementation:
 
-**A0 + A1 MERGED / CI #6973 GREEN / A2 SOURCE + MIGRATION MERGED / CI #6978 GREEN / A3 MERGED PR #2717 / MERGE `5f892bb3` / CI #6981 GREEN / B1 MERGED PR #2718 / MERGE `9cf7b42e` / CI #6986 GREEN / B2 MERGED PR #2719 / MERGE `28d7410e` / CI #6989 GREEN / CONTROLLED PRODUCTION VERIFICATION PENDING / C1 MERGED PR #2720 / MERGE `0f5da028` / CI #6992 GREEN / C2 MERGED PR #2721 / MERGE `64455251` / CI #6998 GREEN / D LOCAL IMPLEMENTED / USER REVIEW PENDING**
+**A0 + A1 MERGED / CI #6973 GREEN / A2 SOURCE + MIGRATION MERGED / CI #6978 GREEN / A3 MERGED PR #2717 / MERGE `5f892bb3` / CI #6981 GREEN / B1 MERGED PR #2718 / MERGE `9cf7b42e` / CI #6986 GREEN / B2 MERGED PR #2719 / MERGE `28d7410e` / CI #6989 GREEN / CONTROLLED PRODUCTION VERIFICATION PENDING / C1 MERGED PR #2720 / MERGE `0f5da028` / CI #6992 GREEN / C2 MERGED PR #2721 / MERGE `64455251` / CI #6998 GREEN / D MERGED PR #2722 / MERGE `99d7c9c7` / CI #7003 GREEN / E1 LOCAL IMPLEMENTED / USER REVIEW PENDING**
 
 PR #2715 merged A0/A1 to `dev` as `2e172b33` after CI #6973. PR #2716 merged the additive A2
 persistence source as `0b2fb5d0` after CI #6976, and the user-generated migration
@@ -1929,26 +1954,23 @@ B2 source merged through PR #2719 as
 `28d7410ef9a2ec902ba44a1f6cd1d53d2abe6a81`; exact-head CI #6989 is green. The Accounting-local
 Provider correction facade and posted-settlement card expose **Correct posted record**, Current
 Effective business values, append-only Correction history, business-field editing, Preview/delta,
-explicit READY, and a full-planHash POST gate with fresh-record UNKNOWN/no-retry reconciliation. The
-source/Human Review rows remain immutable and the specialized Clover fee-reclassification path fails
-closed in both directions with the common Provider correction path until Correction-E convergence.
-Controlled production verification remains pending and is not implied by source merge.
+explicit READY, and a full-planHash POST gate with fresh-record UNKNOWN/no-retry reconciliation.
+Provider source/Human Review rows remain immutable. Controlled production verification remains
+pending and is not implied by source merge.
 
-C1 is now implemented locally from the merged B2 baseline. It introduces the typed
-`accounting.expense-correction-target.v1` authority and an Accounting-only Expense owner adapter for
-A3. Historical Expense v1 keeps document-level payment-allocation semantics; current Expense v2 keeps
-split-level funding and one-to-many funding-group Journal semantics. The adapter reconstructs the
-original canonical Expense authority from immutable CREATE audit evidence, supports amount/tax/
-category/split corrections, and rebuilds the Target Journal Set through the existing pure canonical
-Expense policy without becoming a second canonical Expense writer. A DRAFT may deliberately contain
-unresolved funding; READY fails closed until v1 payment allocations or every v2 split funding account
-are complete. Omitted v2 funding inherits the same current-effective split funding, explicit null
-clears it, and changed/new dimensions are revalidated while inherited historical dimensions may remain
-inactive. The original confirmed ExpenseDocument/Split/PaymentAllocation rows are never mutated.
+C1/C2 and D are now merged. D's common read-model is the authoritative current-effective projection
+for supported Provider/Expense correction targets; Journal-native financial reports continue to rely
+on immutable original plus compensating Journals rather than applying a second overlay.
 
-Therefore the framework is **ready for C1 source review**. B2 still needs controlled production
-verification; C2 remains the posted Expense UI/history slice and D remains the current-effective
-read-model cutover.
+Correction-E audit found no justification for moving Opening Receivable, External Sale or Payroll
+reversal authority into the common Case lifecycle. E1 therefore changes only the Clover coexistence
+rule: a rigorously validated historical specialized fee-reclassification Journal may precede later
+common Provider corrections as a frozen baseline adjustment, while the reverse write order remains
+blocked. This preserves all historical Journal facts, avoids a Prisma/common-target expansion, and
+keeps malformed or non-reconciling history fail-closed.
+
+Therefore the framework is **source-ready for Correction-E1 review**. B2's controlled production
+verification remains pending; E1 does not claim deployment or production verification.
 
 ### 16.16 A0 + A1 delivery record
 
@@ -2107,10 +2129,11 @@ READY freezes the reviewed plan, and POST requires the full planHash plus an ack
 the write attempt the UI reloads the record; an ambiguous response without a fresh POSTED state is
 treated as UNKNOWN and blocks retry.
 
-B2 also closes the reverse compatibility hole with the mature Clover fee-reclassification service:
-B1 already blocks common correction when a specialized Clover fee reclassification exists, and the
-specialized service now blocks if a POSTED common Provider correction already exists. This is
-fail-closed coexistence only; convergence remains Correction-E.
+At B2 merge time the Clover compatibility was deliberately fail-closed in both directions:
+B1 blocked common correction when a specialized fee reclassification existed, and the specialized
+service blocked if a POSTED common Provider correction already existed. Correction-E1 supersedes only
+the first half with the registered ordered legacy-history bridge; the reverse-direction specialized
+writer block remains.
 
 The sanitized Fantuan September 2026 data already present as `fantuanSeptemberDocument` in
 `accounting-provider-settlement.policy.spec.ts` remains the regression fixture. B2 adds no provider,

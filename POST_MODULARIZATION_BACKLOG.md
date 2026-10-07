@@ -550,7 +550,7 @@ before that external evidence exists.
 Priority: **P0 ACCOUNTING CORRECTNESS / POST-POSTING RELIABILITY**  
 Complexity: **H overall; A0/A1 low-coupling foundation**  
 External gate: **none for A0-A3; controlled production evidence for Provider B2**  
-State: **A0 + A1 MERGED / PR #2715 / MERGE `2e172b33` / CI #6973 GREEN / A2 MERGED PR #2716 / MERGE `0b2fb5d0` / MIGRATION DEV `7764bc17` / CI #6978 GREEN / A3 MERGED PR #2717 / MERGE `5f892bb3` / CI #6981 GREEN / B1 MERGED PR #2718 / MERGE `9cf7b42e` / CI #6986 GREEN / B2 MERGED PR #2719 / MERGE `28d7410e` / CI #6989 GREEN / CONTROLLED PRODUCTION VERIFICATION PENDING / C1 MERGED PR #2720 / MERGE `0f5da028` / CI #6992 GREEN / C2 MERGED PR #2721 / MERGE `64455251` / CI #6998 GREEN / D LOCAL IMPLEMENTED / USER REVIEW PENDING / NO D MIGRATION**  
+State: **A0 + A1 MERGED / PR #2715 / MERGE `2e172b33` / CI #6973 GREEN / A2 MERGED PR #2716 / MERGE `0b2fb5d0` / MIGRATION DEV `7764bc17` / CI #6978 GREEN / A3 MERGED PR #2717 / MERGE `5f892bb3` / CI #6981 GREEN / B1 MERGED PR #2718 / MERGE `9cf7b42e` / CI #6986 GREEN / B2 MERGED PR #2719 / MERGE `28d7410e` / CI #6989 GREEN / CONTROLLED PRODUCTION VERIFICATION PENDING / C1 MERGED PR #2720 / MERGE `0f5da028` / CI #6992 GREEN / C2 MERGED PR #2721 / MERGE `64455251` / CI #6998 GREEN / D MERGED PR #2722 / MERGE `99d7c9c7` / CI #7003 GREEN / E1 LOCAL IMPLEMENTED / USER REVIEW PENDING / NO E1 MIGRATION**  
 Detailed plan: `docs/architecture/accounting-document-recognition-human-review-plan.md` §16
 
 This is post-modularization Accounting product/reliability work and does **not** reopen Phase 9.
@@ -608,10 +608,11 @@ B2 source merged through PR #2719 as `28d7410e`; exact-head CI #6989 is green. T
 Accounting-local Provider facade and posted settlement surface expose Current Effective values,
 append-only Correction history, business-field editing, Preview/delta, explicit READY and a
 full-planHash POST gate with fresh-record UNKNOWN/no-retry handling. It adds no generic manual-Journal
-endpoint and never reopens posted Human Review. Clover specialized fee reclassification and common
-Provider correction fail closed in both directions until Correction-E convergence. The existing
-sanitized `fantuanSeptemberDocument` policy regression remains the B2 fixture; controlled production
-edit -> Preview -> READY -> POST verification is still pending after deployment.
+endpoint and never reopens posted Human Review. The existing sanitized
+`fantuanSeptemberDocument` policy regression remains the B2 fixture; controlled production
+edit -> Preview -> READY -> POST verification is still pending after deployment. Correction-E1
+supersedes the former permanent bidirectional Clover coexistence guard with an ordered compatibility
+bridge while retaining reverse-direction blocking after any POSTED common correction.
 
 C1 Expense backend merged through PR #2720 as `0f5da028`; final feature head
 `69dce6c8317c8245f32ae04c4d915c77b1b49315` passed CI #6992. It adds the typed
@@ -634,15 +635,22 @@ split-funding preservation, compensating Delta/NOOP history, full-planHash ackno
 fresh-read UNKNOWN/no-retry POST reconciliation. The confirmed Expense source row remains immutable.
 No Prisma/schema/migration, dependency, context direction or architecture baseline change was introduced.
 
-D is locally implemented from `origin/dev@64455251` on `feat/accounting-correction-d`. One Accounting-
-internal read-model now owns supported target Case/history projection and deterministic latest-POSTED
-typed authority selection. Provider/Expense owner adapters reuse that projection for the next correction
-base; Provider Platform Analytics consumes corrected current-effective Provider lines; Expense records
-preserve `originalPersisted` beside `currentEffective` and apply amount/funding filters after the
-current-effective projection. Dashboard/P&L, Trial Balance and Balance Movement remain Journal-native:
-original plus compensating Correction Journals already produce the correct financial result, so D does
-not add a second business-target overlay. No schema/migration, dependency, controller/route, context edge
-or architecture baseline change is introduced. D is at the local user-review gate; Provider B2 controlled
+D merged through PR #2722 as `99d7c9c7`; final feature head `5229c6ae` passed CI #7003. One
+Accounting-internal read-model owns supported target Case/history projection and deterministic
+latest-POSTED typed authority selection. Provider/Expense owner adapters reuse that projection for the
+next correction base; Provider Platform Analytics consumes corrected current-effective Provider lines;
+Expense records preserve `originalPersisted` beside `currentEffective` and apply amount/funding filters
+after the projection. Dashboard/P&L, Trial Balance and Balance Movement remain Journal-native.
+
+Correction-E audit keeps Opening Receivable, External Sale and Payroll reversal authority in their
+existing owner lifecycles. E1 is locally implemented on
+`feat/accounting-correction-e1-clover-bridge` from `origin/dev@99d7c9c7`: one validated historical
+Clover fee-reclassification Journal may act as the ordered baseline before later common Provider
+corrections only when its identity/payload hash is intact and its combined posting vector with the
+original Provider Journal exactly equals the current Provider-policy rebuild. Malformed, multiple,
+tampered, non-reconciling or missing-required bridge history fails closed. The specialized writer
+continues blocking after any POSTED common Provider correction. E1 adds no Prisma/schema/migration,
+public route, dependency, context edge or architecture baseline change. Provider B2 controlled
 production verification remains separate.
 
 ### 5.2 B1 — Expense -> canonical Journal
