@@ -448,7 +448,43 @@ describe('PosOrdersController Uber orders', () => {
         orderStableId: 'order-amend-1',
         beforeLabelPlan,
         printCustomerReceipt: true,
+        cashDrawerOpenRequested: true,
         items: [expect.objectContaining({ action: 'VOID' })],
+      }),
+    );
+  });
+
+  it('非现金改单不会请求开启钱箱', async () => {
+    orders.getByStableIdForStore.mockResolvedValue({
+      orderStableId: 'order-card-amend-1',
+      paymentMethod: 'CARD',
+      totalCents: 1200,
+      paymentTotalCents: 1200,
+    });
+    posOrders.createAmendment.mockResolvedValue({
+      orderStableId: 'order-card-amend-1',
+      paymentMethod: 'CARD',
+      totalCents: 1500,
+      paymentTotalCents: 1500,
+    });
+
+    await controller.createAmendment(posRequest, 'order-card-amend-1', {
+      type: 'ADDITIONAL_CHARGE',
+      reason: '追加收费',
+      operatorName: 'staff',
+      paymentMethod: 'CARD',
+      refundGrossCents: 0,
+      additionalChargeCents: 300,
+      items: [],
+      locale: 'zh',
+    } as never);
+
+    expect(eventEmitter.emitAsync).toHaveBeenCalledWith(
+      'order.amendment.print',
+      expect.objectContaining({
+        orderStableId: 'order-card-amend-1',
+        printCustomerReceipt: true,
+        cashDrawerOpenRequested: false,
       }),
     );
   });
@@ -486,6 +522,7 @@ describe('PosOrdersController Uber orders', () => {
         items: [],
         beforeLabelPlan: null,
         printCustomerReceipt: true,
+        cashDrawerOpenRequested: true,
       }),
     );
   });

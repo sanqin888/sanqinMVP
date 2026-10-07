@@ -838,6 +838,18 @@ async function buildCustomerReceiptEscPos(
   return Buffer.concat(chunks);
 }
 
+function buildCashDrawerKickEscPos() {
+  // ESC/POS drawer pin 2 is the common default; set POS_CASH_DRAWER_PIN=1 for pin 5.
+  const drawerPin = process.env.POS_CASH_DRAWER_PIN === "1" ? 1 : 0;
+  return cmd(ESC, 0x70, drawerPin, 0x19, 0xfa);
+}
+
+async function buildCustomerPrintEscPos(params, options = {}) {
+  const receiptBuffer = await buildCustomerReceiptEscPos(params, options);
+  if (params?.cashDrawerOpenRequested !== true) return receiptBuffer;
+  return Buffer.concat([buildCashDrawerKickEscPos(), receiptBuffer]);
+}
+
 // 后厨联
 function buildKitchenReceiptEscPos(params, { now = new Date() } = {}) {
   const { fulfillment, snapshot } = params;
@@ -1493,7 +1505,7 @@ function createPrintJobHandler({
   completed = completedPrintDeliveries,
   inFlight = inFlightPrintDeliveries,
   printCustomer = async (formattedPayload) => {
-    const customerBuffer = await buildCustomerReceiptEscPos(formattedPayload);
+    const customerBuffer = await buildCustomerPrintEscPos(formattedPayload);
     const frontPrinterName = process.env.POS_FRONT_PRINTER || "POS80";
     if (!frontPrinterName) {
       throw new Error("POS_FRONT_PRINTER_NOT_CONFIGURED");
@@ -1666,6 +1678,8 @@ if (require.main === module) {
 }
 
 module.exports = {
+  buildCashDrawerKickEscPos,
+  buildCustomerPrintEscPos,
   buildCustomerReceiptEscPos,
   buildKitchenReceiptEscPos,
   buildLabelPrintPayload,
