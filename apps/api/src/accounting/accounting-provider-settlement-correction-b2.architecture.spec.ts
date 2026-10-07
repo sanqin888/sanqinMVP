@@ -18,10 +18,7 @@ const providerCorrectionAdapterSource = readFileSync(
   'utf8',
 );
 const cloverBridgePolicySource = readFileSync(
-  resolve(
-    __dirname,
-    'accounting-clover-fee-reclassification-bridge.policy.ts',
-  ),
+  resolve(__dirname, 'accounting-clover-fee-reclassification-bridge.policy.ts'),
   'utf8',
 );
 

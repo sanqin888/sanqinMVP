@@ -31,16 +31,12 @@ import {
   normalizeJournalCreate,
   type AccountingJournalCreateInput,
 } from './accounting-journal-policy';
-import {
-  CLOVER_STATEMENT_RAW_CODES,
-} from './accounting-clover-statement.contract';
+import { CLOVER_STATEMENT_RAW_CODES } from './accounting-clover-statement.contract';
 import {
   CLOVER_FEE_PAYABLE_ACCOUNT_STABLE_ID,
   CLOVER_FEE_RECLASSIFICATION_SOURCE_FACT_TYPE,
 } from './accounting-provider-fee-clearing.contract';
-import {
-  ACCOUNTING_PROVIDER_PENDING_ACCOUNT_IDS,
-} from './accounting-provider-accounts';
+import { ACCOUNTING_PROVIDER_PENDING_ACCOUNT_IDS } from './accounting-provider-accounts';
 
 type ProviderLine = {
   lineStableId: string;
@@ -666,8 +662,7 @@ const makeCloverBridgeFixture = () => {
 
   const feeAmountCents = currentPlan.draftJournal.lines
     .filter(
-      (line) =>
-        line.accountStableId === CLOVER_FEE_PAYABLE_ACCOUNT_STABLE_ID,
+      (line) => line.accountStableId === CLOVER_FEE_PAYABLE_ACCOUNT_STABLE_ID,
     )
     .reduce((sum, line) => sum + (line.creditCents ?? 0), 0);
   if (feeAmountCents <= 0) {
@@ -906,7 +901,10 @@ describe('AccountingProviderSettlementCorrectionAdapter', () => {
     const adapter = new AccountingProviderSettlementCorrectionAdapter(
       fixture.db as never,
     );
-    const current = await adapter.readCurrentEffectiveTarget(CLOVER_DOCUMENT, 1);
+    const current = await adapter.readCurrentEffectiveTarget(
+      CLOVER_DOCUMENT,
+      1,
+    );
     const normalized = await adapter.normalizeRevisionTarget(
       {
         targetStableId: CLOVER_DOCUMENT,

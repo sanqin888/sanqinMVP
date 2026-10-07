@@ -74,9 +74,7 @@ import {
   AccountingCloverFeeReclassificationBridgePolicyError,
   assertLegacyCloverFeeReclassificationBridge,
 } from './accounting-clover-fee-reclassification-bridge.policy';
-import {
-  CLOVER_FEE_RECLASSIFICATION_SOURCE_FACT_TYPE,
-} from './accounting-provider-fee-clearing.contract';
+import { CLOVER_FEE_RECLASSIFICATION_SOURCE_FACT_TYPE } from './accounting-provider-fee-clearing.contract';
 import { FANTUAN_ADJUSTMENT_DETAIL_EVIDENCE_KIND } from './accounting-fantuan-adjustment-detail.contract';
 import { resolveFantuanAdjustmentDetailLines } from './accounting-fantuan-adjustment-detail.policy';
 
@@ -1007,10 +1005,7 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
         rebuiltProviderJournal: rebuiltOriginalJournal,
       });
     } catch (error) {
-      if (
-        error instanceof
-        AccountingCloverFeeReclassificationBridgePolicyError
-      ) {
+      if (error instanceof AccountingCloverFeeReclassificationBridgePolicyError) {
         throw new ConflictException(error.message);
       }
       throw error;

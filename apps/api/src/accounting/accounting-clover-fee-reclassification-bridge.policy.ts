@@ -3,9 +3,7 @@ import {
   AccountingJournalEntryKind,
   AccountingJournalSource,
 } from './accounting-contracts';
-import type {
-  AccountingPostedCorrectionPostedJournalAnchorV1,
-} from './accounting-posted-financial-correction.contract';
+import type { AccountingPostedCorrectionPostedJournalAnchorV1 } from './accounting-posted-financial-correction.contract';
 import {
   AccountingPostedFinancialCorrectionPolicyError,
   buildPostedCorrectionPostedJournalSetSnapshot,
@@ -18,9 +16,7 @@ import {
   normalizeJournalCreate,
   type AccountingJournalCreateInput,
 } from './accounting-journal-policy';
-import {
-  ACCOUNTING_PROVIDER_PENDING_ACCOUNT_IDS,
-} from './accounting-provider-accounts';
+import { ACCOUNTING_PROVIDER_PENDING_ACCOUNT_IDS } from './accounting-provider-accounts';
 import {
   CLOVER_FEE_PAYABLE_ACCOUNT_STABLE_ID,
   CLOVER_FEE_RECLASSIFICATION_SOURCE_FACT_TYPE,
