@@ -90,6 +90,7 @@ import {
 import { PaymentFinancialFactsModule } from '../payments/public-api';
 import { AccountingCloverAuthorityReplacementService } from './accounting-clover-authority-replacement.service';
 import { AccountingCloverPreSyncAuthorityService } from './accounting-clover-pre-sync-authority.service';
+import { AccountingPostedFinancialCorrectionService } from './accounting-posted-financial-correction.service';
 
 @Module({
   imports: [
@@ -158,6 +159,7 @@ import { AccountingCloverPreSyncAuthorityService } from './accounting-clover-pre
     AccountingPlatformAnalyticsService,
     AccountingCloverPreSyncAuthorityService,
     AccountingCloverAuthorityReplacementService,
+    AccountingPostedFinancialCorrectionService,
     AccountingBalanceMovementService,
     AccountingTrialBalanceService,
     AccountingStatementDrillThroughService,
