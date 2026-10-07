@@ -1,8 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const read = (name: string) =>
-  readFileSync(resolve(__dirname, name), 'utf8');
+const read = (name: string) => readFileSync(resolve(__dirname, name), 'utf8');
 
 const readModelSource = read('accounting-posted-correction-read-model.ts');
 const providerAdapterSource = read(
@@ -13,7 +12,9 @@ const providerServiceSource = read(
   'accounting-provider-settlement-correction.service.ts',
 );
 const expenseServiceSource = read('accounting-expense-correction.service.ts');
-const platformAnalyticsSource = read('accounting-platform-analytics.service.ts');
+const platformAnalyticsSource = read(
+  'accounting-platform-analytics.service.ts',
+);
 const expenseQuerySource = read('accounting-expense.query.ts');
 const trialBalanceSource = read('accounting-trial-balance.service.ts');
 const balanceMovementSource = read('accounting-balance-movement.service.ts');
@@ -24,7 +25,9 @@ describe('Correction-D current-effective read-model architecture', () => {
     expect(readModelSource).toContain(
       'readAccountingPostedCorrectionProjections',
     );
-    expect(readModelSource).toContain('readAccountingPostedCorrectionHistories');
+    expect(readModelSource).toContain(
+      'readAccountingPostedCorrectionHistories',
+    );
     expect(readModelSource).toContain('latestPostedAuthority');
     expect(readModelSource).toContain('readyRevision.targetAuthorityHash');
     expect(readModelSource).toContain(
@@ -65,9 +68,7 @@ describe('Correction-D current-effective read-model architecture', () => {
     expect(expenseQuerySource).toContain('originalPersisted');
     expect(expenseQuerySource).toContain('currentEffective');
     expect(expenseQuerySource).toContain('POSTED_CORRECTION');
-    expect(expenseQuerySource).toContain(
-      'requiresCurrentEffectiveFiltering',
-    );
+    expect(expenseQuerySource).toContain('requiresCurrentEffectiveFiltering');
     expect(expenseQuerySource).toContain(
       'readAccountingPostedCorrectionProjections',
     );

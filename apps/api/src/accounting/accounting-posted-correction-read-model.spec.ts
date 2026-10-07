@@ -5,9 +5,7 @@ import {
   readAccountingPostedCorrectionHistories,
   readAccountingPostedCorrectionProjections,
 } from './accounting-posted-correction-read-model';
-import {
-  AccountingPostedCorrectionTargetKind,
-} from './accounting-posted-financial-correction.contract';
+import { AccountingPostedCorrectionTargetKind } from './accounting-posted-financial-correction.contract';
 
 const providerRef = {
   targetKind: AccountingPostedCorrectionTargetKind.PROVIDER_SETTLEMENT,
@@ -124,7 +122,8 @@ describe('Accounting posted correction read-model', () => {
       strategy: 'DELTA',
       planHash: 'c'.repeat(64),
       readyPreviewJson: null,
-      targetAuthoritySchema: targetKind === 'EXPENSE' ? 'expense-v1' : 'provider-v1',
+      targetAuthoritySchema:
+        targetKind === 'EXPENSE' ? 'expense-v1' : 'provider-v1',
       targetAuthorityHash: 'd'.repeat(64),
       createdByActorRef: 'user_create',
       readyByActorRef: 'user_ready',
@@ -186,15 +185,17 @@ describe('Accounting posted correction read-model', () => {
         },
       ],
     });
-    const findMany = jest.fn().mockResolvedValue([
-      historyRow('EXPENSE', 'expense_1', 2, 'correction_expense'),
-      historyRow(
-        'PROVIDER_SETTLEMENT',
-        'provider_doc_1',
-        1,
-        'correction_provider',
-      ),
-    ]);
+    const findMany = jest
+      .fn()
+      .mockResolvedValue([
+        historyRow('EXPENSE', 'expense_1', 2, 'correction_expense'),
+        historyRow(
+          'PROVIDER_SETTLEMENT',
+          'provider_doc_1',
+          1,
+          'correction_provider',
+        ),
+      ]);
     const db = { accountingCorrectionCase: { findMany } };
 
     const result = await readAccountingPostedCorrectionHistories(db as never, [
@@ -214,12 +215,8 @@ describe('Accounting posted correction read-model', () => {
     expect(provider?.journalOutputs[0]?.journal.lines[0]).toEqual(
       expense?.journalOutputs[0]?.journal.lines[0],
     );
-    expect(provider?.revisions[0]?.createdAt).toBe(
-      '2026-10-07T09:05:00.000Z',
-    );
-    expect(expense?.revisions[0]?.createdAt).toBe(
-      '2026-10-07T09:05:00.000Z',
-    );
+    expect(provider?.revisions[0]?.createdAt).toBe('2026-10-07T09:05:00.000Z');
+    expect(expense?.revisions[0]?.createdAt).toBe('2026-10-07T09:05:00.000Z');
   });
 
   it('fails closed on mismatched POSTED ready authority', async () => {

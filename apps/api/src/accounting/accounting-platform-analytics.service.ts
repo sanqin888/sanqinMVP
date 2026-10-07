@@ -44,9 +44,7 @@ import {
   readAccountingPostedCorrectionProjections,
   type AccountingPostedCorrectionProjectionV1,
 } from './accounting-posted-correction-read-model';
-import {
-  AccountingPostedCorrectionTargetKind,
-} from './accounting-posted-financial-correction.contract';
+import { AccountingPostedCorrectionTargetKind } from './accounting-posted-financial-correction.contract';
 
 type ProviderDocumentRow = Awaited<
   ReturnType<
@@ -418,17 +416,15 @@ export class AccountingPlatformAnalyticsService {
 
   private currentEffectiveLines(
     document: ProviderDocumentRow,
-    correctionProjections: Map<
-      string,
-      AccountingPostedCorrectionProjectionV1
-    >,
+    correctionProjections: Map<string, AccountingPostedCorrectionProjectionV1>,
   ): ProviderFinancialEffectiveLine[] {
     const key = accountingPostedCorrectionTargetKey({
       targetKind: AccountingPostedCorrectionTargetKind.PROVIDER_SETTLEMENT,
       targetStableId: document.documentStableId,
       targetVersion: document.revision,
     });
-    const latest = correctionProjections.get(key)?.latestPostedAuthority ?? null;
+    const latest =
+      correctionProjections.get(key)?.latestPostedAuthority ?? null;
     if (!latest) {
       return this.effectiveLines(document);
     }
@@ -447,10 +443,7 @@ export class AccountingPlatformAnalyticsService {
         latest.targetJson as unknown as ProviderSettlementCorrectionTargetV1,
       );
     } catch (error) {
-      if (
-        error instanceof
-        AccountingProviderSettlementCorrectionTargetPolicyError
-      ) {
+      if (error instanceof AccountingProviderSettlementCorrectionTargetPolicyError) {
         throw new ConflictException(
           `latest POSTED Provider correction target is invalid: ${document.documentStableId}: ${error.message}`,
         );

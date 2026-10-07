@@ -322,9 +322,11 @@ describe('Accounting expense source evidence query', () => {
         ]),
       },
       accountingAccount: {
-        findMany: jest.fn().mockResolvedValue([
-          { accountStableId: 'account_new', name: 'New Bank' },
-        ]),
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            { accountStableId: 'account_new', name: 'New Bank' },
+          ]),
       },
     };
 
@@ -337,30 +339,25 @@ describe('Accounting expense source evidence query', () => {
     });
 
     expect(result.total).toBe(1);
-    expect(result.items[0]).toEqual(
+    const item = result.items[0];
+    expect(item.totalCents).toBe(2260);
+    expect(item.memo).toBe('corrected memo');
+    expect(item.originalPersisted.totalCents).toBe(1130);
+    expect(item.originalPersisted.memo).toBe('original memo');
+    expect(item.currentEffective.source).toBe('POSTED_CORRECTION');
+    expect(item.currentEffective.correctionStableId).toBe(
+      'correction_expense_corrected',
+    );
+    expect(item.currentEffective.targetAuthorityHash).toBe(authorityHash);
+    expect(item.currentEffective.totalCents).toBe(2260);
+    expect(item.splits[0]).toEqual(
       expect.objectContaining({
-        totalCents: 2260,
-        memo: 'corrected memo',
-        originalPersisted: expect.objectContaining({
-          totalCents: 1130,
-          memo: 'original memo',
-        }),
-        currentEffective: expect.objectContaining({
-          source: 'POSTED_CORRECTION',
-          correctionStableId: 'correction_expense_corrected',
-          targetAuthorityHash: authorityHash,
-          totalCents: 2260,
-        }),
-        splits: [
-          expect.objectContaining({
-            categoryStableId: 'expense_vehicle',
-            categoryName: 'Vehicle / Transportation',
-            paidFromAccountStableId: 'account_new',
-            paidFromAccountName: 'New Bank',
-            amountCents: 2000,
-            taxCents: 260,
-          }),
-        ],
+        categoryStableId: 'expense_vehicle',
+        categoryName: 'Vehicle / Transportation',
+        paidFromAccountStableId: 'account_new',
+        paidFromAccountName: 'New Bank',
+        amountCents: 2000,
+        taxCents: 260,
       }),
     );
   });

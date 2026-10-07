@@ -212,11 +212,9 @@ export type AccountingPostedCorrectionHistoryCaseV1 = {
 export const accountingPostedCorrectionTargetKey = (
   target: AccountingPostedCorrectionTargetRef,
 ): string =>
-  [
-    target.targetKind,
-    target.targetStableId,
-    String(target.targetVersion),
-  ].join('|');
+  [target.targetKind, target.targetStableId, String(target.targetVersion)].join(
+    '|',
+  );
 
 const normalizeRefs = (
   refs: AccountingPostedCorrectionTargetRef[],
@@ -306,17 +304,15 @@ export async function readAccountingPostedCorrectionProjections(
 ): Promise<Map<string, AccountingPostedCorrectionProjectionV1>> {
   const refs = normalizeRefs(refsRaw);
   const result = new Map<string, AccountingPostedCorrectionProjectionV1>(
-    refs.map(
-      (target): [string, AccountingPostedCorrectionProjectionV1] => [
-        accountingPostedCorrectionTargetKey(target),
-        {
-          version: 1,
-          target,
-          cases: [],
-          latestPostedAuthority: null,
-        },
-      ],
-    ),
+    refs.map((target): [string, AccountingPostedCorrectionProjectionV1] => [
+      accountingPostedCorrectionTargetKey(target),
+      {
+        version: 1,
+        target,
+        cases: [],
+        latestPostedAuthority: null,
+      },
+    ]),
   );
   if (refs.length === 0) return result;
 
@@ -426,12 +422,10 @@ export async function readAccountingPostedCorrectionHistories(
 ): Promise<Map<string, AccountingPostedCorrectionHistoryCaseV1[]>> {
   const refs = normalizeRefs(refsRaw);
   const result = new Map<string, AccountingPostedCorrectionHistoryCaseV1[]>(
-    refs.map(
-      (ref): [string, AccountingPostedCorrectionHistoryCaseV1[]] => [
-        accountingPostedCorrectionTargetKey(ref),
-        [],
-      ],
-    ),
+    refs.map((ref): [string, AccountingPostedCorrectionHistoryCaseV1[]] => [
+      accountingPostedCorrectionTargetKey(ref),
+      [],
+    ]),
   );
   if (refs.length === 0) return result;
 
