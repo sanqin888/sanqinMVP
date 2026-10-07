@@ -1246,7 +1246,9 @@ export class AccountingPostedFinancialCorrectionService {
     try {
       return work();
     } catch (error) {
-      if (error instanceof AccountingPostedFinancialCorrectionExecutionPolicyError) {
+      if (
+        error instanceof AccountingPostedFinancialCorrectionExecutionPolicyError
+      ) {
         throw new ConflictException(error.message);
       }
       throw error;

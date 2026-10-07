@@ -479,7 +479,9 @@ describe('AccountingPostedFinancialCorrectionService', () => {
     );
 
     expect(result.replayed).toBe(false);
-    expect(journal.createPostedCorrectionJournalEntryInTx).toHaveBeenCalledTimes(1);
+    expect(
+      journal.createPostedCorrectionJournalEntryInTx,
+    ).toHaveBeenCalledTimes(1);
     expect(journal.createPostedCorrectionJournalEntryInTx).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: AccountingJournalEntryKind.ADJUSTMENT,

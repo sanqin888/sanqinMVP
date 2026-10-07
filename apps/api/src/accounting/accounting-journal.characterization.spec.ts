@@ -847,7 +847,8 @@ describe('AccountingJournalService double-entry journal characterization', () =>
       expect.objectContaining({
         data: expect.objectContaining({
           kind: AccountingJournalEntryKind.ADJUSTMENT,
-          sourceFactType: ACCOUNTING_POSTED_FINANCIAL_CORRECTION_SOURCE_FACT_TYPE,
+          sourceFactType:
+            ACCOUNTING_POSTED_FINANCIAL_CORRECTION_SOURCE_FACT_TYPE,
           sourceFactStableId: 'correction_1',
           sourceFactVersion: 2,
         }) as unknown,
