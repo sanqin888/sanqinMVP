@@ -1,7 +1,7 @@
 # Accounting Document Recognition & Human Review Plan
 
 Status: **SLICE 0-3 + 3V-A + 3V-B DEV MERGED / CI GREEN / 3V-B PRODUCTION VERIFICATION PENDING / EVIDENCE VIEWER SLICE 1 + 1B + 2 MERGED / RELIABILITY SLICE A + B MERGED / EXPENSE REVIEW HARDENING MERGED / ORIGINAL SLICE C UX CLOSEOUT MERGED (#2445 / `da77b9a5`, CI #6074 GREEN) / GMAIL INCREMENTAL + DUPLICATE FILE ARTIFACT FOLLOW-UP PRODUCTION VERIFIED (#2605 / `bfbf8e2c`, CI #6605, MIGRATION APPLIED) / EXPENSE SOURCE-EVIDENCE READINESS LOCAL IMPLEMENTED / USER REVIEW PENDING / MIGRATION NOT APPLIED — DO NOT REOPEN PHASE 9**  
-Planning date: 2026-09-20; updated: 2026-10-02  
+Planning date: 2026-09-20; updated: 2026-10-06  
 Audit baseline: `origin/dev@1ede0599`; Slice 3 merged in PR #2432 as `caabf1c1`; Slice 3V-A merged in PR #2439 as `0d6909bb` after PR CI #6054 and merged-head CI #6055 passed; Slice 3V-B merged in PR #2440 as `0ac9117f` after final head `3c5c0400`, PR CI #6057 and merged-head CI #6058 green  
 Owner: **Accounting / Reporting / Analytics**  
 Phase 9 status: **remains PRODUCTION VERIFIED / CLOSED — do not reopen Phase 9**
@@ -1282,3 +1282,431 @@ changing the policy.
 
 PaddleOCR/BDA and S3/async Textract are not part of the currently approved normal recognition
 path. Reintroducing any of them requires a new explicit decision based on a demonstrated gap.
+
+## 16. 2026-10-06 audit — Post-Posting Financial Correction Framework
+
+### 16.1 Decision
+
+The 2026-10-06 read-only audit establishes a new post-posting Accounting requirement:
+
+> **Do not create one-off correction services for individual incidents, providers or documents.**
+> Build a provider-neutral / document-neutral **Posted Financial Correction** lifecycle inside
+> Accounting, while keeping the calculation of the corrected business fact inside the owning
+> Accounting domain policy.
+
+This work is **not** a Fantuan September hotfix. The observed Fantuan September 2026 incident is
+the first production case that demonstrates the need: a statement had already become a posted
+canonical Journal before a later parser/control-total improvement exposed missing Marketing Fee
+and GST/HST components. The original source evidence and original Journal must remain immutable.
+The durable solution must also work for future posted Provider Statements, Expenses and other
+Accounting-owned facts that are later proven wrong.
+
+Phase 9 remains **CLOSED**. This is post-modularization Accounting product/reliability work.
+
+### 16.2 Existing architecture that should be reused
+
+The repository already contains the core safety patterns required for a general framework:
+
+- Provider settlement execution already uses deterministic Preview -> planHash -> Execute and
+  rejects stale plans.
+- AccountingJournalService owns Journal writes and enforces accounting start-date / period-lock
+  policy.
+- AccountingPeriodService allows ADJUSTMENT entries in a closed month but still blocks all
+  historical writes after the containing fiscal year is hard-locked.
+- Opening Receivable, External Sale and Payroll already model exact reversal as a new immutable
+  Journal rather than mutating the original posting.
+- Clover fee reclassification already models a posted-Journal correction as an idempotent
+  ADJUSTMENT Journal tied to the original provider fact.
+- AccountingAuditLog and existing stable fact identities provide the audit primitives required
+  for a correction lifecycle.
+- Provider Statement Human Review already preserves source evidence, machine extraction and
+  confirmed review revisions separately; confirmed posting authority can therefore be rebuilt
+  from reviewed business facts without rewriting source evidence.
+
+The gap is architectural consolidation: these mechanisms are currently owner-specific and do not
+provide one common lifecycle for correcting an already-posted financial fact.
+
+### 16.3 Required authority chain
+
+The target post-posting authority chain is:
+
+~~~text
+immutable source / original business fact
+        ->
+original posted Journal set
+        ->
+Correction Case DRAFT
+        ->
+operator-reviewed corrected target business fact
+        ->
+owner-specific deterministic reconciliation / replan
+        ->
+Corrected Target Journal Set
+        ->
+Current Effective Posted Journal Set
+        ->
+Target - Current Effective = Correction Delta
+        ->
+Correction Preview + planHash
+        ->
+atomic confirmation / ADJUSTMENT Journal write
+        ->
+new Current Effective Posted State
+~~~
+
+A Correction must never overwrite the original source artifact, source/provider document,
+confirmed historical Journal or prior correction Journal.
+
+### 16.4 Common Correction Case
+
+The recommended persisted authority is an Accounting-owned AccountingCorrectionCase (exact
+Prisma naming remains an implementation detail) with at least:
+
+~~~text
+correctionStableId
+targetKind
+targetStableId
+targetVersion
+status
+reasonCode
+note
+
+baseAuthorityHash
+baseJournalSetHash
+planHash
+
+createdBy / createdAt
+confirmedBy / confirmedAt
+postedAt
+~~~
+
+Recommended lifecycle:
+
+~~~text
+DRAFT -> READY -> POSTED
+          \
+           -> CANCELLED
+~~~
+
+The first supported targetKind values should be intentionally narrow:
+
+~~~text
+PROVIDER_SETTLEMENT
+EXPENSE
+~~~
+
+Opening Receivable, External Sale and Payroll already have mature reversal authorities and should
+not be rewritten in the foundation slice. They may later adopt the common Correction Case shell
+without changing their owner-specific posting policies.
+
+This foundation requires an **additive Prisma schema change and user-generated migration** when
+implementation begins. No new runtime/package dependency is required.
+
+### 16.5 The common layer must not become a manual-Journal editor
+
+The Correction framework must not persist arbitrary operator-selected debit/credit lines such as:
+
+~~~text
+debitAccount + debitAmount
+creditAccount + creditAmount
+~~~
+
+That would bypass canonical Accounting authority.
+
+Instead:
+
+~~~text
+Correction Case
+      ->
+owner adapter
+      ->
+Corrected Business Fact
+      ->
+owner reconciliation / posting policy
+      ->
+Corrected Target Journal Set
+~~~
+
+The operator edits the **business fact that should have been posted**, not raw Journal lines.
+Account/category mapping, tax semantics, provider-pending treatment and Journal construction
+remain server-owned Accounting policy.
+
+### 16.6 Current Effective Posting and repeated corrections
+
+A future correction must compare against the **current effective posted state**, not only the
+original Journal.
+
+For one target fact:
+
+~~~text
+Current Effective Posting
+  = Original Journal Set
+  + every prior POSTED Correction Journal Set
+~~~
+
+Then:
+
+~~~text
+New Correction Delta
+  = Corrected Target Journal Set
+  - Current Effective Posting
+~~~
+
+This is required so a fact can be corrected safely more than once without reapplying previous
+deltas.
+
+The comparison unit must be a **Journal Set**, not one originalJournalEntryStableId, because an
+Accounting fact may legitimately produce multiple Journals (for example, Expense funding
+attribution). The engine should normalize Journal lines to an Accounting posting vector such as:
+
+~~~text
+accountStableId
+categoryStableId
+debitCents
+creditCents
+~~~
+
+and aggregate comparable lines deterministically before calculating the delta. Every source and
+correction Journal stable ID/hash used in the calculation must still be frozen into the preview
+authority for audit and stale-plan detection.
+
+### 16.7 Correction strategies
+
+The owner policy should choose one of three typed strategies:
+
+| Strategy | Intended use |
+| --- | --- |
+| DELTA | normal amount, tax, fee or classification correction |
+| REVERSAL_REPOST | the corrected fact changes structure/date/authority such that a direct delta is unsafe |
+| REVERSAL_ONLY | the originally posted business fact should not exist |
+
+DELTA should be preferred for ordinary posted-document corrections because it produces only the
+incremental accounting change. Exact reversal remains appropriate where the owner policy proves
+that replacement rather than delta is required.
+
+All correction Journals use AccountingJournalEntryKind.ADJUSTMENT and remain subject to the
+existing Accounting period policy. A month-close does not by itself prohibit an Adjustment; a
+fiscal-year hard lock remains a hard block. Cross-hard-locked-year prior-period adjustments are a
+separate accounting-policy decision and must not be silently added to this framework.
+
+### 16.8 Provider Settlement adapter — first production consumer
+
+Provider Settlement should be the first adapter because the current pipeline already provides:
+
+~~~text
+ProviderFinancialDocument
+  -> confirmed Human Review effective lines
+  -> provider control-total reconciliation
+  -> buildProviderSettlementDocumentPlan()
+  -> canonical Journal
+~~~
+
+For a posted statement, the UI action should be **Correct posted record**, not Return to Inbox or
+Replay original Journal.
+
+The correction editor should show the current business values to be corrected and allow only the
+same Accounting-owned reviewed fields already allowed before posting. It may expose the original
+evidence for reference, but machine-recognition workflow remains an Inbox concern.
+
+Before a Provider correction can become READY:
+
+1. the corrected effective Provider Statement must pass all provider-specific vertical control
+   totals;
+2. the owner settlement policy must be able to build the complete Corrected Target Journal Set;
+3. the resulting target and correction delta must each be debit/credit balanced;
+4. the original/current Journal set, corrected target authority and prior correction chain must
+   still match the Preview planHash.
+
+For Uber, Fantuan and Clover, provider-specific source control semantics remain owner policy; the
+common Correction engine must not duplicate those formulas.
+
+### 16.9 Expense adapter — second production consumer
+
+A confirmed AccountingExpenseDocument must remain immutable through the existing normal edit
+path; the current service correctly rejects attempts to edit an already-confirmed Expense.
+
+A posted Expense correction therefore creates a separate corrected target rather than reopening or
+updating the original Expense row in place.
+
+The Expense adapter should re-use canonical Expense policy:
+
+- corrected total / split / tax/category values are business inputs;
+- vertical reconciliation remains sum(split subtotal) + sum(split tax) = document total;
+- funding attribution is **not** a hard requirement for the expense fact to be corrected or
+  confirmed, because an expense may still be unpaid or its payment account may still be unknown;
+- when funding exists, the corrected target must include the applicable funding Journal Set;
+- classification-only corrections should naturally produce reclassification deltas rather than
+  requiring manual account selection.
+
+### 16.10 Posted read model and correction history
+
+Posted UI must continue to display persisted database accounting facts, not recognition output.
+
+For a corrected posted fact, the effective display becomes:
+
+~~~text
+Original persisted Journal Set
++ persisted POSTED Correction Journal Sets
+= Current Effective Posted State
+~~~
+
+The UI should expose a correction history under the posted record:
+
+~~~text
+Original posting
+Correction #1
+Correction #2
+...
+Current effective state
+~~~
+
+Each correction detail should show at least:
+
+- correction reason/note;
+- operator and timestamps;
+- original/current Journal Set anchors;
+- corrected target;
+- calculated delta;
+- correction Journal stable IDs;
+- preview/authority hash.
+
+The UI must never rewrite the original card so that it appears the initial posting was always
+correct.
+
+### 16.11 Atomicity requirement for already-posted Provider facts
+
+Pre-posting Human Review and post-posting Correction are different lifecycles.
+
+For an already-posted Provider Statement, a new effective reviewed target must **not** become
+globally authoritative before its matching correction Journal is persisted. Otherwise Accounting
+could temporarily expose:
+
+~~~text
+Effective Provider Document = corrected value
+Journal                     = old value
+~~~
+
+Therefore posted correction confirmation must atomically:
+
+1. validate/freeze the corrected target;
+2. revalidate the current effective Journal/correction chain;
+3. persist the correction Journal(s);
+4. mark the Correction Case POSTED;
+5. activate the corrected business authority used by posted read models.
+
+The operation belongs inside the existing Serializable Accounting write boundary. A stale preview,
+new prior correction, changed review authority or changed Journal set must return a conflict and
+require a new Preview.
+
+### 16.12 Audit and reason semantics
+
+Post-posting corrections require their own reason semantics; they must not be conflated with
+pre-posting Inbox/Human Review correction reasons.
+
+Recommended initial reason codes:
+
+~~~text
+EXTRACTION_ERROR
+AMOUNT_ERROR
+CLASSIFICATION_ERROR
+MISSING_COMPONENT
+DUPLICATE_POSTING
+BUSINESS_FACT_ERROR
+OTHER
+~~~
+
+Conceptually:
+
+- Inbox / Human Review correction answers: **what should be posted before posting?**
+- Posted Financial Correction answers: **how do we correct a fact that already became Ledger
+  authority?**
+
+Every execute path must write an Accounting audit record and preserve immutable before/target/delta
+evidence.
+
+### 16.13 Recommended implementation slices
+
+#### Correction-A — Common Authority Foundation
+
+Scope:
+
+- additive AccountingCorrectionCase persistence and status/reason contracts;
+- stable target identity and current-Journal-set snapshot/hash;
+- common preview/execute authority contract;
+- typed owner adapter boundary;
+- generic current-effective Journal-set normalization/delta calculation;
+- planHash + stale-plan rejection;
+- audit and idempotency;
+- existing period-lock enforcement.
+
+Do **not** add Provider/Fantuan-specific policy to the common layer.
+
+**MIGRATION REQUIRED** when this slice is implemented. The migration must be generated by the user
+locally under the repository Prisma workflow and reviewed as additive-only before production
+promotion.
+
+#### Correction-B — Provider Settlement Adapter
+
+Scope:
+
+- Uber/Fantuan/Clover posted Statement correction;
+- reuse existing Provider Human Review/effective-line policy;
+- reuse provider control-total reconciliation;
+- rebuild corrected settlement target through existing settlement policy;
+- compute correction delta against current effective Provider Statement Journal Set;
+- posted-record correction UI and correction history.
+
+The observed Fantuan September incident becomes the first production verification fixture, but no
+branch, enum or service may special-case that provider/month/document.
+
+#### Correction-C — Expense Adapter
+
+Scope:
+
+- corrected Expense target authority;
+- amount/tax/category/split correction;
+- optional funding attribution consistent with current Expense policy;
+- canonical Expense replan and delta/reversal strategy;
+- posted Expense correction UI/history.
+
+#### Correction-D — Posted Financial Read-Model Unification
+
+Scope:
+
+- common Original -> Corrections -> Current Effective projection;
+- consistent posted-card correction history across supported fact types;
+- reporting/analytics consume Current Effective authority where appropriate.
+
+#### Correction-E — Existing specialized correction convergence audit
+
+Only after A-D are proven should the project evaluate whether existing Clover fee
+reclassification, Opening Receivable reversal, External Sale reversal and Payroll reversal should
+adopt the common Correction Case lifecycle shell. Their mature owner-specific write authority
+should not be rewritten merely for naming consistency.
+
+### 16.14 Explicit non-goals
+
+This framework must not:
+
+- mutate/delete original posted Journals;
+- overwrite source evidence or machine extraction;
+- permit arbitrary manual Journal line construction through correction UI;
+- allow an operator to bypass provider control-total reconciliation;
+- reopen a fiscal-year hard lock;
+- make Provider-specific formulas part of the common Correction engine;
+- make Inbox recognition responsible for post-posting correction;
+- reopen Phase 9.
+
+### 16.15 Readiness conclusion
+
+Status from the 2026-10-06 read-only audit:
+
+**READY FOR CORRECTION-A ARCHITECTURE / NOT READY FOR ONE-OFF INCIDENT PATCHES**
+
+The repository already has the required Journal immutability, ADJUSTMENT, period lock, audit,
+reversal/reclassification precedents and planHash execution patterns. The missing capability is
+a persisted, generic correction authority and owner-adapter contract.
+
+The next implementation should therefore begin with **Correction-A — Common Authority
+Foundation**, not a Fantuan-specific correction service and not a general-purpose Manual Journal
+editor.
