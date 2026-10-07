@@ -26,9 +26,13 @@ import {
   AccountingPostedCorrectionReasonCode,
   AccountingPostedCorrectionStatus,
   AccountingPostedCorrectionTargetKind,
-  type AccountingPostedCorrectionPreviewPlanV1,
 } from './accounting-posted-financial-correction.contract';
 import { AccountingPostedFinancialCorrectionService } from './accounting-posted-financial-correction.service';
+import {
+  accountingPostedCorrectionTargetKey,
+  readAccountingPostedCorrectionHistories,
+  type AccountingPostedCorrectionHistoryCaseV1,
+} from './accounting-posted-correction-read-model';
 
 const EXPENSE_TARGET_KIND = AccountingPostedCorrectionTargetKind.EXPENSE;
 
@@ -178,79 +182,6 @@ const toRevisionDraftInput = (
     : {}),
 });
 
-const CORRECTION_HISTORY_SELECT = {
-  correctionStableId: true,
-  version: true,
-  targetVersion: true,
-  status: true,
-  reasonCode: true,
-  note: true,
-  strategy: true,
-  planHash: true,
-  readyPreviewJson: true,
-  createdByActorRef: true,
-  readyByActorRef: true,
-  readyAt: true,
-  postedByActorRef: true,
-  postedAt: true,
-  cancelledByActorRef: true,
-  cancelledAt: true,
-  createdAt: true,
-  updatedAt: true,
-  revisions: {
-    orderBy: { revision: 'asc' as const },
-    select: {
-      correctionRevisionStableId: true,
-      revision: true,
-      targetAuthoritySchema: true,
-      targetAuthorityHash: true,
-      targetJson: true,
-      createdByActorRef: true,
-      createdAt: true,
-    },
-  },
-  journalOutputs: {
-    orderBy: [{ role: 'asc' as const }, { sequence: 'asc' as const }],
-    select: {
-      outputStableId: true,
-      role: true,
-      sequence: true,
-      journalEntry: {
-        select: {
-          entryStableId: true,
-          occurredAt: true,
-          currency: true,
-          memo: true,
-          lines: {
-            orderBy: { lineNo: 'asc' as const },
-            select: {
-              lineNo: true,
-              debitCents: true,
-              creditCents: true,
-              account: {
-                select: {
-                  accountStableId: true,
-                  name: true,
-                },
-              },
-              category: {
-                select: {
-                  categoryStableId: true,
-                  name: true,
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-  },
-} satisfies Prisma.AccountingCorrectionCaseSelect;
-
-type CorrectionHistoryRow = Prisma.AccountingCorrectionCaseGetPayload<{
-  select: typeof CORRECTION_HISTORY_SELECT;
-}>;
-
 const JOURNAL_DISPLAY_SELECT = {
   entryStableId: true,
   occurredAt: true,
@@ -298,7 +229,7 @@ const serializeJournal = (journal: JournalDisplayRow) => ({
   })),
 });
 
-const serializeCase = (row: CorrectionHistoryRow) => ({
+const serializeCase = (row: AccountingPostedCorrectionHistoryCaseV1) => ({
   correctionStableId: row.correctionStableId,
   version: row.version,
   targetVersion: row.targetVersion,
@@ -307,18 +238,16 @@ const serializeCase = (row: CorrectionHistoryRow) => ({
   note: row.note,
   strategy: row.strategy,
   planHash: row.planHash,
-  readyPreview: row.readyPreviewJson
-    ? (row.readyPreviewJson as unknown as AccountingPostedCorrectionPreviewPlanV1)
-    : null,
+  readyPreview: row.readyPreview,
   createdByActorRef: row.createdByActorRef,
   readyByActorRef: row.readyByActorRef,
-  readyAt: row.readyAt?.toISOString() ?? null,
+  readyAt: row.readyAt,
   postedByActorRef: row.postedByActorRef,
-  postedAt: row.postedAt?.toISOString() ?? null,
+  postedAt: row.postedAt,
   cancelledByActorRef: row.cancelledByActorRef,
-  cancelledAt: row.cancelledAt?.toISOString() ?? null,
-  createdAt: row.createdAt.toISOString(),
-  updatedAt: row.updatedAt.toISOString(),
+  cancelledAt: row.cancelledAt,
+  createdAt: row.createdAt,
+  updatedAt: row.updatedAt,
   revisions: row.revisions.map((revision) => {
     const target = normalizePersistedTarget(revision.targetJson);
     return {
@@ -328,15 +257,10 @@ const serializeCase = (row: CorrectionHistoryRow) => ({
       targetAuthorityHash: revision.targetAuthorityHash,
       draftInput: toRevisionDraftInput(target),
       createdByActorRef: revision.createdByActorRef,
-      createdAt: revision.createdAt.toISOString(),
+      createdAt: revision.createdAt,
     };
   }),
-  journalOutputs: row.journalOutputs.map((output) => ({
-    outputStableId: output.outputStableId,
-    role: output.role,
-    sequence: output.sequence,
-    journal: serializeJournal(output.journalEntry),
-  })),
+  journalOutputs: row.journalOutputs,
 });
 
 @Injectable()
@@ -402,16 +326,13 @@ export class AccountingExpenseCorrectionService {
         ? CANONICAL_EXPENSE_SOURCE_FACT_TYPE_V2
         : CANONICAL_EXPENSE_SOURCE_FACT_TYPE;
 
-    const [corrections, originalJournals] = await Promise.all([
-      this.prisma.accountingCorrectionCase.findMany({
-        where: {
-          targetKind: EXPENSE_TARGET_KIND,
-          targetStableId: documentStableId,
-          targetVersion,
-        },
-        select: CORRECTION_HISTORY_SELECT,
-        orderBy: [{ createdAt: 'asc' }, { correctionStableId: 'asc' }],
-      }),
+    const ref = {
+      targetKind: EXPENSE_TARGET_KIND,
+      targetStableId: documentStableId,
+      targetVersion,
+    } as const;
+    const [histories, originalJournals] = await Promise.all([
+      readAccountingPostedCorrectionHistories(this.prisma, [ref]),
       this.prisma.accountingJournalEntry.findMany({
         where: {
           source: AccountingJournalSource.EXPENSE_DOCUMENT,
@@ -424,6 +345,9 @@ export class AccountingExpenseCorrectionService {
         orderBy: [{ idempotencyKey: 'asc' }, { entryStableId: 'asc' }],
       }),
     ]);
+
+    const corrections =
+      histories.get(accountingPostedCorrectionTargetKey(ref)) ?? [];
 
     const baseRecord = {
       version: 1 as const,

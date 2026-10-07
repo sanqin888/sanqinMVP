@@ -550,7 +550,7 @@ before that external evidence exists.
 Priority: **P0 ACCOUNTING CORRECTNESS / POST-POSTING RELIABILITY**  
 Complexity: **H overall; A0/A1 low-coupling foundation**  
 External gate: **none for A0-A3; controlled production evidence for Provider B2**  
-State: **A0 + A1 MERGED / PR #2715 / MERGE `2e172b33` / CI #6973 GREEN / A2 MERGED PR #2716 / MERGE `0b2fb5d0` / MIGRATION DEV `7764bc17` / CI #6978 GREEN / A3 MERGED PR #2717 / MERGE `5f892bb3` / CI #6981 GREEN / B1 MERGED PR #2718 / MERGE `9cf7b42e` / CI #6986 GREEN / B2 MERGED PR #2719 / MERGE `28d7410e` / CI #6989 GREEN / CONTROLLED PRODUCTION VERIFICATION PENDING / C1 MERGED PR #2720 / MERGE `0f5da028` / CI #6992 GREEN / NO C1 MIGRATION / C2 LOCAL IMPLEMENTED / USER REVIEW PENDING / NO C2 MIGRATION / D NOT STARTED**  
+State: **A0 + A1 MERGED / PR #2715 / MERGE `2e172b33` / CI #6973 GREEN / A2 MERGED PR #2716 / MERGE `0b2fb5d0` / MIGRATION DEV `7764bc17` / CI #6978 GREEN / A3 MERGED PR #2717 / MERGE `5f892bb3` / CI #6981 GREEN / B1 MERGED PR #2718 / MERGE `9cf7b42e` / CI #6986 GREEN / B2 MERGED PR #2719 / MERGE `28d7410e` / CI #6989 GREEN / CONTROLLED PRODUCTION VERIFICATION PENDING / C1 MERGED PR #2720 / MERGE `0f5da028` / CI #6992 GREEN / C2 MERGED PR #2721 / MERGE `64455251` / CI #6998 GREEN / D LOCAL IMPLEMENTED / USER REVIEW PENDING / NO D MIGRATION**  
 Detailed plan: `docs/architecture/accounting-document-recognition-human-review-plan.md` §16
 
 This is post-modularization Accounting product/reliability work and does **not** reopen Phase 9.
@@ -627,16 +627,23 @@ DELTA-only and rejects `DUPLICATE_POSTING` pending REVERSAL_ONLY. The original E
 splits and historical allocations remain immutable. No schema/migration, dependency, controller/UI or
 new context direction was introduced.
 
-C2 is locally implemented from `origin/dev@0f5da028` on `feat/accounting-correction-c2`, with no
-Prisma/schema/migration or dependency change. The existing Expense controller gains an Expense-specific
-A3+C1 facade and `journal/expense/.../correction(s)` lifecycle; Expense records receive batched
-canonical-posted/correction state without per-row requests. Only complete canonical posted authority is
-eligible for **Correct posted record**. The dedicated Web panel seeds from Current Effective authority,
-preserves v1 document allocations versus v2 split funding, renders compensating Delta/NOOP and
-immutable history, and uses full-planHash acknowledgement plus fresh-read UNKNOWN/no-retry POST
-reconciliation. The main Expense list remains on persisted source values; global Current Effective
-read-model cutover remains D. C2 is at the local user-review gate and Provider B2 production
-verification remains separate.
+C2 merged through PR #2721 as `64455251`; final feature head `55aeefea` passed exact-head
+CI #6998. It adds the Expense-specific A3+C1 facade and `journal/expense/.../correction(s)` lifecycle,
+batched canonical-posted/correction state, and the dedicated posted-record panel with v1 allocation/v2
+split-funding preservation, compensating Delta/NOOP history, full-planHash acknowledgement and
+fresh-read UNKNOWN/no-retry POST reconciliation. The confirmed Expense source row remains immutable.
+No Prisma/schema/migration, dependency, context direction or architecture baseline change was introduced.
+
+D is locally implemented from `origin/dev@64455251` on `feat/accounting-correction-d`. One Accounting-
+internal read-model now owns supported target Case/history projection and deterministic latest-POSTED
+typed authority selection. Provider/Expense owner adapters reuse that projection for the next correction
+base; Provider Platform Analytics consumes corrected current-effective Provider lines; Expense records
+preserve `originalPersisted` beside `currentEffective` and apply amount/funding filters after the
+current-effective projection. Dashboard/P&L, Trial Balance and Balance Movement remain Journal-native:
+original plus compensating Correction Journals already produce the correct financial result, so D does
+not add a second business-target overlay. No schema/migration, dependency, controller/route, context edge
+or architecture baseline change is introduced. D is at the local user-review gate; Provider B2 controlled
+production verification remains separate.
 
 ### 5.2 B1 — Expense -> canonical Journal
 

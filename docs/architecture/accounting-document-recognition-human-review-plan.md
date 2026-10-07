@@ -1,6 +1,6 @@
 # Accounting Document Recognition & Human Review Plan
 
-Status: **SLICE 0-3 + 3V-A + 3V-B DEV MERGED / CI GREEN / 3V-B PRODUCTION VERIFICATION PENDING / EVIDENCE VIEWER SLICE 1 + 1B + 2 MERGED / RELIABILITY SLICE A + B MERGED / EXPENSE REVIEW HARDENING MERGED / ORIGINAL SLICE C UX CLOSEOUT MERGED (#2445 / `da77b9a5`, CI #6074 GREEN) / GMAIL INCREMENTAL + DUPLICATE FILE ARTIFACT FOLLOW-UP PRODUCTION VERIFIED (#2605 / `bfbf8e2c`, CI #6605, MIGRATION APPLIED) / EXPENSE SOURCE-EVIDENCE READINESS LOCAL IMPLEMENTED / USER REVIEW PENDING / MIGRATION NOT APPLIED / POSTED FINANCIAL CORRECTION A0 + A1 MERGED / CI #6973 GREEN / A2 MERGED PR #2716 / MERGE `0b2fb5d0` / MIGRATION DEV `7764bc17` / CI #6978 GREEN / A3 LOCAL IMPLEMENTED / USER REVIEW PENDING / B-D NOT STARTED — DO NOT REOPEN PHASE 9**  
+Status: **SLICE 0-3 + 3V-A + 3V-B DEV MERGED / CI GREEN / 3V-B PRODUCTION VERIFICATION PENDING / EVIDENCE VIEWER SLICE 1 + 1B + 2 MERGED / RELIABILITY SLICE A + B MERGED / EXPENSE REVIEW HARDENING MERGED / ORIGINAL SLICE C UX CLOSEOUT MERGED (#2445 / `da77b9a5`, CI #6074 GREEN) / GMAIL INCREMENTAL + DUPLICATE FILE ARTIFACT FOLLOW-UP PRODUCTION VERIFIED (#2605 / `bfbf8e2c`, CI #6605, MIGRATION APPLIED) / EXPENSE SOURCE-EVIDENCE READINESS LOCAL IMPLEMENTED / USER REVIEW PENDING / MIGRATION NOT APPLIED / POSTED FINANCIAL CORRECTION A0-A3 + B1/B2 + C1/C2 MERGED / LATEST C2 PR #2721 / DEV `64455251` / CI #6998 GREEN / B2 CONTROLLED PRODUCTION VERIFICATION PENDING / D CURRENT-EFFECTIVE READ-MODEL LOCAL IMPLEMENTED / USER REVIEW PENDING / NO D MIGRATION — DO NOT REOPEN PHASE 9**  
 Planning date: 2026-09-20; updated: 2026-10-07  
 Audit baseline: `origin/dev@1ede0599`; Slice 3 merged in PR #2432 as `caabf1c1`; Slice 3V-A merged in PR #2439 as `0d6909bb` after PR CI #6054 and merged-head CI #6055 passed; Slice 3V-B merged in PR #2440 as `0ac9117f` after final head `3c5c0400`, PR CI #6057 and merged-head CI #6058 green  
 Owner: **Accounting / Reporting / Analytics**  
@@ -1845,7 +1845,7 @@ special-case that provider/month/document.
 
 #### Correction-C1 — Expense backend adapter
 
-Status: **LOCAL IMPLEMENTED / USER REVIEW PENDING**
+Status: **MERGED / PR #2720 / DEV `0f5da028` / FINAL `69dce6c8` / CI #6992 GREEN**
 
 Scope:
 
@@ -1859,7 +1859,7 @@ Scope:
 
 #### Correction-C2 — Expense posted-record UI/history
 
-Status: **NOT STARTED**
+Status: **MERGED / PR #2721 / DEV `64455251` / FINAL `55aeefea` / CI #6998 GREEN / NO MIGRATION**
 
 Scope:
 
@@ -1869,7 +1869,7 @@ Scope:
 
 #### Correction-D — Current-effective read-model unification
 
-Status: **NOT STARTED**
+Status: **LOCAL IMPLEMENTED / USER REVIEW PENDING / BRANCH `feat/accounting-correction-d` / BASELINE `origin/dev@64455251` / NO MIGRATION**
 
 Scope:
 
@@ -1903,9 +1903,9 @@ This framework must not:
 
 ### 16.15 Readiness conclusion
 
-Current status after B2 source delivery and C1 local Expense adapter implementation:
+Current status after C2 merge and D local current-effective cutover implementation:
 
-**A0 + A1 MERGED / CI #6973 GREEN / A2 SOURCE + MIGRATION MERGED / CI #6978 GREEN / A3 MERGED PR #2717 / MERGE `5f892bb3` / CI #6981 GREEN / B1 MERGED PR #2718 / MERGE `9cf7b42e` / CI #6986 GREEN / B2 MERGED PR #2719 / MERGE `28d7410e` / CI #6989 GREEN / CONTROLLED PRODUCTION VERIFICATION PENDING / C1 LOCAL IMPLEMENTED / USER REVIEW PENDING / C2 + D NOT STARTED**
+**A0 + A1 MERGED / CI #6973 GREEN / A2 SOURCE + MIGRATION MERGED / CI #6978 GREEN / A3 MERGED PR #2717 / MERGE `5f892bb3` / CI #6981 GREEN / B1 MERGED PR #2718 / MERGE `9cf7b42e` / CI #6986 GREEN / B2 MERGED PR #2719 / MERGE `28d7410e` / CI #6989 GREEN / CONTROLLED PRODUCTION VERIFICATION PENDING / C1 MERGED PR #2720 / MERGE `0f5da028` / CI #6992 GREEN / C2 MERGED PR #2721 / MERGE `64455251` / CI #6998 GREEN / D LOCAL IMPLEMENTED / USER REVIEW PENDING**
 
 PR #2715 merged A0/A1 to `dev` as `2e172b33` after CI #6973. PR #2716 merged the additive A2
 persistence source as `0b2fb5d0` after CI #6976, and the user-generated migration
@@ -2168,17 +2168,19 @@ funding accounts must be active CAD operational ASSET accounts; changed/new v1 p
 the historical active-CAD account rule. Unchanged historical dimensions may remain inactive, while all
 referenced dimensions must still exist before READY. `DUPLICATE_POSTING` remains explicitly blocked
 pending a later owner-approved `REVERSAL_ONLY` path. C1 passed the remote delivery gate and is merged;
-C2 now exposes this authority through the posted Expense workflow while D remains the later global
-Original + Corrections -> Current Effective read-model cutover.
+C2 exposes this authority through the posted Expense workflow, and D now locally implements the shared
+Original + Corrections -> Current Effective read-model cutover described below.
 
-### 16.22 C2 local implementation record
+### 16.22 C2 delivery record
 
-Implementation/readiness:
+Implementation/delivery:
 
 - implementation baseline: `origin/dev@0f5da02826ccc0c08d064b1fbc9ace24a2be4a1c`;
 - branch: `feat/accounting-correction-c2`;
-- predecessor C1: **PR #2720 / final head `69dce6c8317c8245f32ae04c4d915c77b1b49315` / dev merge `0f5da02826ccc0c08d064b1fbc9ace24a2be4a1c` / CI #6992 GREEN**;
-- state: **LOCAL IMPLEMENTED / USER REVIEW PENDING / NOT PUSHED**;
+- PR: **#2721**;
+- final feature head: `55aeefea295fbf2598eacb4d15801c23434d8496`;
+- dev merge: `644552517c357b8750a212ffa7b7bbcc2716bedb`;
+- final exact-head CI: **#6998 GREEN**;
 - no Prisma/schema/migration change;
 - no dependency/lockfile change;
 - no new controller vertical, context direction, scanner allowance, SCC or architecture baseline change;
@@ -2207,6 +2209,45 @@ requires the full planHash plus operator acknowledgement, then performs a fresh 
 the response/fresh read cannot prove POSTED, the UI enters UNKNOWN/no-retry rather than repeating the
 write. History shows reason/note/status, revisions, operator/timestamps and immutable Correction Journal
 outputs while separately labelling Original persisted fact and Current Effective corrected authority.
-The normal Expense records list continues to display persisted source values, so Correction-D remains
-responsible for global current-effective projection cutover across Expense records, Dashboard/P&L and
-other reporting surfaces.
+C2 intentionally left the normal Expense records list on persisted source values. Correction-D below
+cuts the business read-model to Current Effective while preserving original persisted facts. Journal-native
+Dashboard/P&L, Trial Balance and Balance Movement do not need a second business-target overlay because A3
+compensating Journals already flow through those projections; adding one would double-count the correction.
+
+### 16.23 D local implementation record
+
+Implementation/readiness:
+
+- implementation baseline: `origin/dev@644552517c357b8750a212ffa7b7bbcc2716bedb`;
+- branch: `feat/accounting-correction-d`;
+- predecessor C2: **PR #2721 / final head `55aeefea295fbf2598eacb4d15801c23434d8496` / dev merge `644552517c357b8750a212ffa7b7bbcc2716bedb` / CI #6998 GREEN**;
+- state: **LOCAL IMPLEMENTED / USER REVIEW PENDING / NOT PUSHED**;
+- no Prisma/schema/migration change;
+- no dependency/lockfile change;
+- no controller/route, context direction, scanner allowance, SCC or architecture baseline change.
+
+D introduces one Accounting-internal posted-correction read-model for both supported target kinds. It batches
+Case lookup, validates that every POSTED Case points at a matching typed READY Revision, applies one deterministic
+latest-POSTED ordering rule, and serializes correction history/revisions/Journal outputs consistently. Provider
+and Expense owner adapters consume the same projection when resolving the next Current Effective base, so editor
+authority and reporting authority no longer maintain separate POSTED-selection rules.
+
+Provider Platform Analytics now reads the latest typed Provider correction target when one exists, revalidates
+its schema/hash and immutable Statement identity, then applies the corrected lines through the existing provider
+control-total and ex-tax analytics rules. Without a POSTED correction it continues to use the confirmed Human
+Review effective-line authority. No provider/month-specific runtime branch is introduced.
+
+Expense records now preserve an explicit `originalPersisted` snapshot beside `currentEffective`. Existing
+top-level amount/memo/split/funding fields are projected from Current Effective so the established Expense UI can
+consume corrected values without mutating the confirmed source rows. Amount and funding filters are evaluated
+after Current Effective projection rather than against stale persisted source columns; date/status/document identity
+remain database-side immutable filters. Corrected category/account display names are batch-resolved and missing
+referenced dimensions fail closed. The current implementation favors correctness for mutable filters by projecting
+the complete immutable-range result set before paging; if Expense volume later makes that expensive, a separate
+query-optimization slice may add an indexed projection without changing correction authority semantics.
+
+Journal-native financial reporting remains deliberately unchanged. Dashboard/P&L, Trial Balance and Balance
+Movement already consume immutable original Journals plus A3 compensating Correction Journals, so they naturally
+reflect the financial correction. D's architecture guard forbids adding the business-target read-model to those
+services and thereby prevents a second overlay/double count. Provider B2 controlled production verification
+remains pending as a separate gate and Correction-E remains the next framework audit after D is merged.

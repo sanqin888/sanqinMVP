@@ -453,7 +453,7 @@ const makeFixture = () => {
         ),
     },
     accountingCorrectionCase: {
-      findFirst: jest.fn().mockResolvedValue(null),
+      findMany: jest.fn().mockResolvedValue([]),
     },
     accountingAccount: {
       findMany: jest.fn().mockResolvedValue(accounts),
@@ -642,15 +642,28 @@ describe('AccountingProviderSettlementCorrectionAdapter', () => {
       fixture.db as never,
     );
 
-    fixture.db.accountingCorrectionCase.findFirst.mockResolvedValue({
-      targetAuthoritySchema: normalized.targetAuthoritySchema,
-      targetAuthorityHash: normalized.targetAuthorityHash,
-      readyRevision: {
+    fixture.db.accountingCorrectionCase.findMany.mockResolvedValue([
+      {
+        correctionStableId: 'correction_provider_posted_1',
+        targetKind: AccountingPostedCorrectionTargetKind.PROVIDER_SETTLEMENT,
+        targetStableId: DOCUMENT,
+        targetVersion: 1,
+        status: 'POSTED',
+        reasonCode: AccountingPostedCorrectionReasonCode.AMOUNT_ERROR,
+        note: null,
+        strategy: 'DELTA',
         targetAuthoritySchema: normalized.targetAuthoritySchema,
         targetAuthorityHash: normalized.targetAuthorityHash,
-        targetJson: normalized.targetJson,
+        postedByActorRef: 'user_1',
+        postedAt: new Date('2026-10-07T12:00:00.000Z'),
+        createdAt: new Date('2026-10-07T11:00:00.000Z'),
+        readyRevision: {
+          targetAuthoritySchema: normalized.targetAuthoritySchema,
+          targetAuthorityHash: normalized.targetAuthorityHash,
+          targetJson: normalized.targetJson,
+        },
       },
-    } as never);
+    ] as never);
 
     const current = await adapter.readCurrentEffectiveTarget(DOCUMENT, 1);
 

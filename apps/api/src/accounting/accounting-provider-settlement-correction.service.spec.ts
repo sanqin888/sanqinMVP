@@ -92,9 +92,13 @@ describe('AccountingProviderSettlementCorrectionService', () => {
     expect(prisma.accountingCorrectionCase.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
-          targetKind: AccountingPostedCorrectionTargetKind.PROVIDER_SETTLEMENT,
-          targetStableId: 'provider_doc_1',
-          targetVersion: 1,
+          OR: [
+            {
+              targetKind:
+                AccountingPostedCorrectionTargetKind.PROVIDER_SETTLEMENT,
+              targetStableId: { in: ['provider_doc_1'] },
+            },
+          ],
         },
       }),
     );

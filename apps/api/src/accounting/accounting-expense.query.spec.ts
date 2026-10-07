@@ -3,6 +3,11 @@ import {
   listAccountingExpenseDocuments,
   listAccountingExpenseRecords,
 } from './accounting-expense.query';
+import {
+  ACCOUNTING_EXPENSE_CORRECTION_TARGET_SCHEMA,
+  hashAccountingExpenseCorrectionTarget,
+  type AccountingExpenseCorrectionTargetV1,
+} from './accounting-expense-correction-target.policy';
 
 describe('Accounting expense source evidence query', () => {
   it('projects the materialized inbox artifact as stable source evidence', async () => {
@@ -53,10 +58,20 @@ describe('Accounting expense source evidence query', () => {
       accountingCorrectionCase: {
         findMany: jest.fn().mockResolvedValue([
           {
+            correctionStableId: 'correction_expense_1',
+            targetKind: 'EXPENSE',
             targetStableId: 'expense_1',
             targetVersion: 1,
             status: 'DRAFT',
+            reasonCode: 'AMOUNT_ERROR',
+            note: null,
+            strategy: null,
+            targetAuthoritySchema: null,
+            targetAuthorityHash: null,
+            postedByActorRef: null,
+            postedAt: null,
             createdAt: new Date('2026-09-21T00:00:00.000Z'),
+            readyRevision: null,
           },
         ]),
       },
@@ -118,11 +133,10 @@ describe('Accounting expense source evidence query', () => {
     );
   });
 
-  it('applies record filters before pagination and returns the full match count', async () => {
+  it('defers mutable amount/payment filters until after current-effective projection', async () => {
     const findMany = jest.fn().mockResolvedValue([]);
-    const count = jest.fn().mockResolvedValue(37);
     const db = {
-      accountingExpenseDocument: { findMany, count },
+      accountingExpenseDocument: { findMany },
     };
 
     const result = await listAccountingExpenseRecords(db as never, {
@@ -137,62 +151,27 @@ describe('Accounting expense source evidence query', () => {
 
     expect(result).toEqual({
       items: [],
-      total: 37,
+      total: 0,
       limit: 10,
       offset: 20,
     });
-    const where = expect.objectContaining({
-      status: 'CONFIRMED',
-      occurredAt: {
-        gte: new Date('2026-06-01T04:00:00.000Z'),
-        lt: new Date('2026-07-01T04:00:00.000Z'),
+    expect(findMany).toHaveBeenCalledWith({
+      where: {
+        status: 'CONFIRMED',
+        occurredAt: {
+          gte: new Date('2026-06-01T04:00:00.000Z'),
+          lt: new Date('2026-07-01T04:00:00.000Z'),
+        },
       },
-      totalCents: { gte: 5000 },
-      OR: [
-        {
-          AND: [
-            {
-              OR: [
-                { fundingAttributionVersion: 1 },
-                { fundingAttributionVersion: null },
-              ],
-            },
-            {
-              paymentAllocations: {
-                some: { account: { accountStableId: 'account_cibc' } },
-              },
-            },
-          ],
-        },
-        {
-          AND: [
-            { fundingAttributionVersion: 2 },
-            {
-              splits: {
-                some: {
-                  paidFromAccount: { accountStableId: 'account_cibc' },
-                },
-              },
-            },
-          ],
-        },
-      ],
-    }) as unknown;
-    expect(findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where,
-        skip: 20,
-        take: 10,
-      }),
-    );
-    expect(count).toHaveBeenCalledWith({ where });
+      select: expect.any(Object) as unknown,
+      orderBy: [{ createdAt: 'desc' }, { documentStableId: 'desc' }],
+    });
   });
 
-  it('filters the full record set for expenses with no payment allocation', async () => {
+  it('does not push UNASSIGNED funding semantics into persisted Expense filters', async () => {
     const findMany = jest.fn().mockResolvedValue([]);
-    const count = jest.fn().mockResolvedValue(4);
     const db = {
-      accountingExpenseDocument: { findMany, count },
+      accountingExpenseDocument: { findMany },
     };
 
     const result = await listAccountingExpenseRecords(db as never, {
@@ -202,39 +181,18 @@ describe('Accounting expense source evidence query', () => {
       offset: 0,
     });
 
-    expect(result.total).toBe(4);
+    expect(result.total).toBe(0);
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({
-          OR: [
-            {
-              AND: [
-                {
-                  OR: [
-                    { fundingAttributionVersion: 1 },
-                    { fundingAttributionVersion: null },
-                  ],
-                },
-                { paymentAllocations: { none: {} } },
-              ],
-            },
-            {
-              AND: [
-                { fundingAttributionVersion: 2 },
-                { splits: { some: { paidFromAccountId: null } } },
-              ],
-            },
-          ],
-        }) as unknown,
+        where: { status: 'CONFIRMED' },
       }),
     );
   });
 
-  it('treats v1 allocations and fully funded v2 splits as ASSIGNED', async () => {
+  it('does not push ASSIGNED funding semantics into persisted Expense filters', async () => {
     const findMany = jest.fn().mockResolvedValue([]);
-    const count = jest.fn().mockResolvedValue(9);
     const db = {
-      accountingExpenseDocument: { findMany, count },
+      accountingExpenseDocument: { findMany },
     };
 
     await listAccountingExpenseRecords(db as never, {
@@ -246,32 +204,163 @@ describe('Accounting expense source evidence query', () => {
 
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({
-          OR: [
-            {
-              AND: [
-                {
-                  OR: [
-                    { fundingAttributionVersion: 1 },
-                    { fundingAttributionVersion: null },
-                  ],
+        where: { status: 'CONFIRMED' },
+      }),
+    );
+  });
+
+  it('projects and filters from latest POSTED Expense authority', async () => {
+    const target: AccountingExpenseCorrectionTargetV1 = {
+      version: 1,
+      document: {
+        documentStableId: 'expense_corrected',
+        fundingAttributionVersion: 2,
+        occurredAt: '2026-09-20T00:00:00.000Z',
+        currency: 'CAD',
+        subtotalCents: 2000,
+        taxCents: 260,
+        totalCents: 2260,
+        memo: 'corrected memo',
+        sourcePostingAuthorityHash: 'a'.repeat(64),
+      },
+      basedOnAuthorityHash: 'b'.repeat(64),
+      splits: [
+        {
+          splitStableId: 'expensesplit_corrected',
+          categoryStableId: 'expense_vehicle',
+          amountCents: 2000,
+          taxCents: 260,
+          paidFromAccountStableId: 'account_new',
+        },
+      ],
+      paymentAllocations: [],
+    };
+    const authorityHash = hashAccountingExpenseCorrectionTarget(target);
+    const db = {
+      accountingExpenseDocument: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            documentStableId: 'expense_corrected',
+            source: 'MANUAL',
+            status: 'CONFIRMED',
+            fundingAttributionVersion: 2,
+            occurredAt: new Date('2026-09-20T00:00:00.000Z'),
+            subtotalCents: 1000,
+            taxCents: 130,
+            totalCents: 1130,
+            currency: 'CAD',
+            emailSubject: null,
+            attachmentUrls: [],
+            extractedText: null,
+            extractionJson: null,
+            memo: 'original memo',
+            createdAt: new Date('2026-09-20T01:00:00.000Z'),
+            confirmedAt: new Date('2026-09-20T02:00:00.000Z'),
+            paymentAllocations: [],
+            splits: [
+              {
+                splitStableId: 'expensesplit_corrected',
+                amountCents: 1000,
+                taxCents: 130,
+                sortOrder: 0,
+                category: {
+                  categoryStableId: 'expense_food',
+                  name: 'Food',
                 },
-                { paymentAllocations: { some: {} } },
-              ],
-            },
-            {
-              AND: [
-                { fundingAttributionVersion: 2 },
-                { splits: { some: {} } },
-                {
-                  splits: {
-                    every: { paidFromAccountId: { not: null } },
-                  },
+                paidFromAccount: {
+                  accountStableId: 'account_old',
+                  name: 'Old Bank',
                 },
-              ],
+              },
+            ],
+          },
+        ]),
+      },
+      accountingJournalEntry: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            sourceFactStableId: 'expense_corrected',
+            sourceFactType: 'accounting.expense_document.v2',
+            sourceFactVersion: 2,
+          },
+        ]),
+      },
+      accountingCorrectionCase: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            correctionStableId: 'correction_expense_corrected',
+            targetKind: 'EXPENSE',
+            targetStableId: 'expense_corrected',
+            targetVersion: 2,
+            status: 'POSTED',
+            reasonCode: 'AMOUNT_ERROR',
+            note: 'correct amount and funding',
+            strategy: 'DELTA',
+            targetAuthoritySchema: ACCOUNTING_EXPENSE_CORRECTION_TARGET_SCHEMA,
+            targetAuthorityHash: authorityHash,
+            postedByActorRef: 'user_admin_1',
+            postedAt: new Date('2026-10-07T12:00:00.000Z'),
+            createdAt: new Date('2026-10-07T11:00:00.000Z'),
+            readyRevision: {
+              targetAuthoritySchema:
+                ACCOUNTING_EXPENSE_CORRECTION_TARGET_SCHEMA,
+              targetAuthorityHash: authorityHash,
+              targetJson: target,
             },
-          ],
-        }) as unknown,
+          },
+        ]),
+      },
+      accountingInboxItem: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      accountingCategory: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            categoryStableId: 'expense_vehicle',
+            name: 'Vehicle / Transportation',
+          },
+        ]),
+      },
+      accountingAccount: {
+        findMany: jest.fn().mockResolvedValue([
+          { accountStableId: 'account_new', name: 'New Bank' },
+        ]),
+      },
+    };
+
+    const result = await listAccountingExpenseRecords(db as never, {
+      status: 'CONFIRMED' as never,
+      minTotalCents: 2000,
+      paymentAccountStableId: 'account_new',
+      limit: 10,
+      offset: 0,
+    });
+
+    expect(result.total).toBe(1);
+    expect(result.items[0]).toEqual(
+      expect.objectContaining({
+        totalCents: 2260,
+        memo: 'corrected memo',
+        originalPersisted: expect.objectContaining({
+          totalCents: 1130,
+          memo: 'original memo',
+        }),
+        currentEffective: expect.objectContaining({
+          source: 'POSTED_CORRECTION',
+          correctionStableId: 'correction_expense_corrected',
+          targetAuthorityHash: authorityHash,
+          totalCents: 2260,
+        }),
+        splits: [
+          expect.objectContaining({
+            categoryStableId: 'expense_vehicle',
+            categoryName: 'Vehicle / Transportation',
+            paidFromAccountStableId: 'account_new',
+            paidFromAccountName: 'New Bank',
+            amountCents: 2000,
+            taxCents: 260,
+          }),
+        ],
       }),
     );
   });

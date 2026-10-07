@@ -31,6 +31,10 @@ import {
   AccountingPostedCorrectionTargetKind,
   type AccountingPostedCorrectionPostedJournalAnchorV1,
 } from './accounting-posted-financial-correction.contract';
+import {
+  accountingPostedCorrectionTargetKey,
+  readAccountingPostedCorrectionProjections,
+} from './accounting-posted-correction-read-model';
 import type {
   AccountingPostedCorrectionOwnerActivationInputV1,
   AccountingPostedCorrectionOwnerDbClient,
@@ -737,26 +741,17 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
       targetVersion,
       db,
     );
-    const latest = await db.accountingCorrectionCase.findFirst({
-      where: {
-        targetKind: AccountingPostedCorrectionTargetKind.PROVIDER_SETTLEMENT,
-        targetStableId,
-        targetVersion,
-        status: 'POSTED',
-      },
-      orderBy: [{ postedAt: 'desc' }, { correctionStableId: 'desc' }],
-      select: {
-        targetAuthoritySchema: true,
-        targetAuthorityHash: true,
-        readyRevision: {
-          select: {
-            targetAuthoritySchema: true,
-            targetAuthorityHash: true,
-            targetJson: true,
-          },
-        },
-      },
-    });
+    const ref = {
+      targetKind: AccountingPostedCorrectionTargetKind.PROVIDER_SETTLEMENT,
+      targetStableId,
+      targetVersion,
+    } as const;
+    const projections = await readAccountingPostedCorrectionProjections(db, [
+      ref,
+    ]);
+    const latest = projections.get(
+      accountingPostedCorrectionTargetKey(ref),
+    )?.latestPostedAuthority;
     if (!latest) {
       return {
         context,
@@ -768,12 +763,7 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
     }
     if (
       latest.targetAuthoritySchema !==
-        ACCOUNTING_PROVIDER_SETTLEMENT_CORRECTION_TARGET_SCHEMA ||
-      !latest.targetAuthorityHash ||
-      !latest.readyRevision ||
-      latest.readyRevision.targetAuthoritySchema !==
-        ACCOUNTING_PROVIDER_SETTLEMENT_CORRECTION_TARGET_SCHEMA ||
-      latest.readyRevision.targetAuthorityHash !== latest.targetAuthorityHash
+      ACCOUNTING_PROVIDER_SETTLEMENT_CORRECTION_TARGET_SCHEMA
     ) {
       throw new ConflictException(
         'latest POSTED Provider correction is missing typed target authority',
@@ -781,8 +771,7 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
     }
 
     const baseTarget = normalizeProviderSettlementCorrectionTarget(
-      latest.readyRevision
-        .targetJson as unknown as ProviderSettlementCorrectionTargetV1,
+      latest.targetJson as unknown as ProviderSettlementCorrectionTargetV1,
     );
     assertSameTargetStructure(context.sourceTarget, baseTarget);
     if (

@@ -221,7 +221,7 @@ const makeV2Fixture = () => {
         ),
     },
     accountingCorrectionCase: {
-      findFirst: jest.fn().mockResolvedValue(null),
+      findMany: jest.fn().mockResolvedValue([]),
     },
     accountingCategory: {
       findMany: jest
@@ -318,7 +318,7 @@ const makeV1Fixture = () => {
       }),
     },
     accountingCorrectionCase: {
-      findFirst: jest.fn().mockResolvedValue(null),
+      findMany: jest.fn().mockResolvedValue([]),
     },
     accountingCategory: {
       findMany: jest
@@ -546,15 +546,28 @@ describe('AccountingExpenseCorrectionAdapter', () => {
       },
       db as never,
     );
-    db.accountingCorrectionCase.findFirst.mockResolvedValue({
-      targetAuthoritySchema: revision.targetAuthoritySchema,
-      targetAuthorityHash: revision.targetAuthorityHash,
-      readyRevision: {
+    db.accountingCorrectionCase.findMany.mockResolvedValue([
+      {
+        correctionStableId: 'correction_expense_posted_1',
+        targetKind: AccountingPostedCorrectionTargetKind.EXPENSE,
+        targetStableId: 'expense_v2',
+        targetVersion: 2,
+        status: 'POSTED',
+        reasonCode: AccountingPostedCorrectionReasonCode.CLASSIFICATION_ERROR,
+        note: null,
+        strategy: 'DELTA',
         targetAuthoritySchema: revision.targetAuthoritySchema,
         targetAuthorityHash: revision.targetAuthorityHash,
-        targetJson: revision.targetJson,
+        postedByActorRef: 'user_1',
+        postedAt: new Date('2026-10-07T12:00:00.000Z'),
+        createdAt: new Date('2026-10-07T11:00:00.000Z'),
+        readyRevision: {
+          targetAuthoritySchema: revision.targetAuthoritySchema,
+          targetAuthorityHash: revision.targetAuthorityHash,
+          targetJson: revision.targetJson,
+        },
       },
-    });
+    ]);
 
     const next = await adapter.readCurrentEffectiveTarget('expense_v2', 2);
 

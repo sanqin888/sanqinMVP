@@ -97,8 +97,8 @@ export function ExpenseRecordsPanel({
           </h2>
           <p className="mt-1 text-sm text-slate-500">
             {isZh
-              ? '这里显示数据库中已经保存的正式费用记录、分类和付款归属，不回读收件箱识别值。筛选会作用于全部历史支出。'
-              : 'This view shows persisted expense records, categories, and funding from the database; it does not reread Inbox recognition values. Filters apply to all expense history.'}
+              ? '这里显示当前有效的费用金额、分类和付款归属；已入账更正会覆盖展示值，但原始已保存事实仍单独保留且不会改写。筛选按当前有效值作用于全部历史支出。'
+              : 'This view shows current-effective expense amounts, categories, and funding. Posted corrections change the displayed values while the original persisted facts remain separately preserved. Filters use current-effective values across expense history.'}
           </p>
         </div>
         <label className="text-sm">
@@ -236,7 +236,15 @@ export function ExpenseRecordsPanel({
                   ? new Date(document.occurredAt).toLocaleDateString()
                   : '-'}
               </span>
-              <strong>{money(document.totalCents)}</strong>
+              <div>
+                <strong>{money(document.totalCents)}</strong>
+                {document.currentEffective.source === 'POSTED_CORRECTION' ? (
+                  <div className="mt-1 text-xs text-violet-700">
+                    {isZh ? '当前有效 · 原始 ' : 'Current effective · original '}
+                    {money(document.originalPersisted.totalCents)}
+                  </div>
+                ) : null}
+              </div>
               <div className="text-slate-600">
                 <div>
                   {document.splits
