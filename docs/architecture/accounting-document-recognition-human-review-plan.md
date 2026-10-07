@@ -1815,7 +1815,7 @@ controller/API/UI or new context direction.
 
 #### Correction-B1 — Provider Settlement backend adapter
 
-Status: **LOCAL IMPLEMENTED / USER REVIEW PENDING**
+Status: **MERGED / PR #2718 / DEV `9cf7b42e` / CI #6986 GREEN**
 
 Scope:
 
@@ -1831,7 +1831,7 @@ Scope:
 
 #### Correction-B2 — Provider posted-record UI + production fixture
 
-Status: **NOT STARTED**
+Status: **SOURCE LOCAL IMPLEMENTED / USER REVIEW PENDING / CONTROLLED PRODUCTION VERIFICATION PENDING**
 
 Scope:
 
@@ -1903,9 +1903,9 @@ This framework must not:
 
 ### 16.15 Readiness conclusion
 
-Current status after A3 delivery and the B1 local Provider adapter implementation:
+Current status after B1 delivery and B2 local Provider posted-record workflow implementation:
 
-**A0 + A1 MERGED / CI #6973 GREEN / A2 SOURCE + MIGRATION MERGED / CI #6978 GREEN / A3 MERGED PR #2717 / MERGE `5f892bb3` / CI #6981 GREEN / B1 LOCAL IMPLEMENTED / USER REVIEW PENDING / B2 + C1 NOT STARTED**
+**A0 + A1 MERGED / CI #6973 GREEN / A2 SOURCE + MIGRATION MERGED / CI #6978 GREEN / A3 MERGED PR #2717 / MERGE `5f892bb3` / CI #6981 GREEN / B1 MERGED PR #2718 / MERGE `9cf7b42e` / CI #6986 GREEN / B2 SOURCE LOCAL IMPLEMENTED / USER REVIEW PENDING / CONTROLLED PRODUCTION VERIFICATION PENDING / C1 NOT STARTED**
 
 PR #2715 merged A0/A1 to `dev` as `2e172b33` after CI #6973. PR #2716 merged the additive A2
 persistence source as `0b2fb5d0` after CI #6976, and the user-generated migration
@@ -1918,18 +1918,27 @@ CI #6981 is green. The merged common runtime owns lifecycle, frozen READY revali
 immutable correction Journal writes, output links, Serializable atomic execution and the generic
 owner activation seam, while remaining Provider/Expense-neutral.
 
-B1 is now implemented locally from that merged baseline. The Provider adapter reconstructs the
-original typed Provider Settlement write authority from the immutable Journal CREATE audit, freezes
-existing Uber pre-cutover reversal Journals as prerequisites, reuses confirmed Provider Human Review
-effective lines plus the existing settlement/control-total policy, and persists corrected business
-authority only through the common Correction Case/Revision lifecycle. Provider source/Human Review
-rows remain immutable. Normal B1 corrections are DELTA-only; Store/provider/period/business identity,
-effective-line provenance and frozen historical prerequisites cannot change. The editable payload is
-bound to `expectedBaseAuthorityHash` so a stale editor cannot overwrite a newer POSTED correction.
-No controller/API/UI or read-model cutover is included; those remain B2/D.
+B1 merged through PR #2718 as `9cf7b42e7527ee36a1105efaaafcecf4a8bd51dc`; exact-head
+CI #6986 is green. The Provider adapter reconstructs typed Provider Settlement authority from the
+immutable Journal CREATE audit, freezes existing Uber pre-cutover reversal Journals, reuses confirmed
+Provider Human Review effective lines plus the existing settlement/control-total policy, and keeps
+Provider source/Human Review rows immutable. Normal B1 corrections remain DELTA-only and bind the
+editor to `expectedBaseAuthorityHash`.
 
-Therefore the framework is **ready for B1 source review, but not yet exposed as a real operator
-workflow**. B2 remains the Provider posted-record UI + controlled production fixture, and C1 remains
+B2 source is now implemented locally from that exact merged baseline. An Accounting-local Provider
+correction facade exposes only the Provider Statement workflow over A3 + B1; the Web posted-settlement
+card exposes **Correct posted record**, Current Effective business values, append-only Correction
+history, editable business fields, Preview/delta, explicit READY, and a full-planHash final POST gate.
+The POST path performs a fresh record verification and falls to UNKNOWN/no-retry semantics if the
+write result cannot be confirmed. It never reopens posted Human Review and never exposes arbitrary
+Journal construction. Existing Clover fee reclassification and common Provider correction now fail
+closed in both directions until Correction-E convergence.
+
+Therefore the framework is **ready for B2 source review but not yet production-verified**. The
+sanitized Fantuan September 2026 regression already present in Provider Settlement policy tests is the
+B2 fixture; no provider/month runtime branch was added. After source merge/deploy, B2 still requires
+the controlled production sequence edit -> Preview -> READY -> POST plus verification that the
+original Journal is unchanged and only compensating Correction Journal output is appended. C1 remains
 the independent Expense owner adapter.
 
 ### 16.16 A0 + A1 delivery record
@@ -2017,13 +2026,16 @@ read-only/idempotent; authority-only zero-delta corrections intentionally create
 A3 passed the remote gate and is merged. **Correction-B1 — Provider Settlement backend adapter** is
 the active local slice; C1 Expense adapter remains independent and later.
 
-### 16.19 B1 local implementation record
+### 16.19 B1 delivery record
 
-Implementation baseline:
+Implementation/delivery:
 
-- `origin/dev@5f892bb358b36f474cee0e2a8e4755bbdf210b51`;
-- local branch `feat/accounting-correction-b1`;
-- predecessor A3 CI: **#6981 GREEN**;
+- implementation baseline: `origin/dev@5f892bb358b36f474cee0e2a8e4755bbdf210b51`;
+- branch: `feat/accounting-correction-b1`;
+- PR: **#2718**;
+- final feature head: `57c7744f11019f0bba75a82e571dff30c877aae4`;
+- squash merge: `9cf7b42e7527ee36a1105efaaafcecf4a8bd51dc`;
+- final exact-head CI: **#6986 GREEN**;
 - change class: Accounting-local Provider Settlement owner adapter;
 - no Prisma/schema/migration change;
 - no dependency/lockfile change;
@@ -2057,3 +2069,41 @@ latest POSTED `AccountingCorrectionCase` + READY Revision is the corrected Provi
 authority for subsequent corrections; B2/D will expose and consume that current-effective state.
 B1 exposes an Accounting-internal read method for the current typed target and editor concurrency
 hash, but deliberately adds no HTTP route.
+
+### 16.20 B2 local implementation record
+
+Implementation baseline:
+
+- `origin/dev@9cf7b42e7527ee36a1105efaaafcecf4a8bd51dc`;
+- local branch `feat/accounting-correction-b2`;
+- predecessor B1 CI: **#6986 GREEN**;
+- change class: Accounting-local Provider correction HTTP facade + Accounting Web posted-record UI;
+- no Prisma/schema/migration change;
+- no package/dependency/lockfile change;
+- no context direction, scanner allowance, SCC or architecture baseline change;
+- controlled production verification remains pending after source merge/deployment.
+
+The B2 API is a Provider-specific facade over A3 lifecycle + B1 owner adapter, rather than a generic
+manual-Journal endpoint. It exposes current-effective Provider authority, stable correction history,
+Preview, READY, POST and cancel while keeping DB UUIDs and source/Human Review mutation private.
+Correction identity is scoped to the requested Provider Statement before every lifecycle transition.
+
+The posted settlement card now mounts **Correct posted record** only for posted Statement documents.
+The editor exposes business fields only; Store/provider/period/source-line provenance and historical
+prerequisites remain server-owned. Preview renders the compensating posting vector and planHash,
+READY freezes the reviewed plan, and POST requires the full planHash plus an acknowledgement. After
+the write attempt the UI reloads the record; an ambiguous response without a fresh POSTED state is
+treated as UNKNOWN and blocks retry.
+
+B2 also closes the reverse compatibility hole with the mature Clover fee-reclassification service:
+B1 already blocks common correction when a specialized Clover fee reclassification exists, and the
+specialized service now blocks if a POSTED common Provider correction already exists. This is
+fail-closed coexistence only; convergence remains Correction-E.
+
+The sanitized Fantuan September 2026 data already present as `fantuanSeptemberDocument` in
+`accounting-provider-settlement.policy.spec.ts` remains the regression fixture. B2 adds no provider,
+month or document-specific runtime branch. Source completion does not satisfy the production gate:
+after deployment, one controlled Fantuan correction must execute edit -> Preview -> READY -> POST and
+verify original Journal immutability, compensating-only output, fresh current-effective authority,
+and natural Trial Balance delta consumption. Provider Platform Analytics current-effective cutover
+remains Correction-D.

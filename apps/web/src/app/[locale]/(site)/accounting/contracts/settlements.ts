@@ -1,4 +1,9 @@
 import type { AccountingFinancialProvider } from './core';
+import type {
+  AccountingFinancialComponent,
+  AccountingFinancialPostingTreatment,
+  AccountingFinancialTaxRole,
+} from './provider-financial';
 
 export type CloverAuthorityReplacementPreview = {
   version: 1;
@@ -272,3 +277,135 @@ export type ProviderSettlementExecutionReport = ProviderSettlementShadowPreview 
     alreadyReversedUberReversalsNotWritten: number;
   };
 };
+
+export type ProviderPostedCorrectionReasonCode =
+  | 'EXTRACTION_ERROR'
+  | 'AMOUNT_ERROR'
+  | 'CLASSIFICATION_ERROR'
+  | 'MISSING_COMPONENT'
+  | 'DUPLICATE_POSTING'
+  | 'BUSINESS_FACT_ERROR'
+  | 'OTHER';
+
+export type ProviderPostedCorrectionStatus =
+  | 'DRAFT'
+  | 'READY'
+  | 'POSTED'
+  | 'CANCELLED';
+
+export type ProviderPostedCorrectionDraftLine = {
+  lineStableId: string;
+  rawCode: string | null;
+  rawName: string | null;
+  component: AccountingFinancialComponent;
+  postingTreatment: AccountingFinancialPostingTreatment;
+  taxRole: AccountingFinancialTaxRole;
+  amountCents: number;
+};
+
+export type ProviderPostedCorrectionDraftInput = {
+  version: 1;
+  expectedBaseAuthorityHash: string;
+  lines: ProviderPostedCorrectionDraftLine[];
+};
+
+export type ProviderPostedCorrectionPreview = {
+  version: 1;
+  status: 'READY' | 'NOOP';
+  planHash: string;
+  authority: {
+    strategy: 'DELTA' | 'REVERSAL_REPOST' | 'REVERSAL_ONLY';
+    reasonCode: ProviderPostedCorrectionReasonCode;
+    baseAuthorityHash: string;
+    targetAuthorityHash: string;
+    baseJournalSetHash: string;
+    targetJournalSetHash: string;
+  };
+  deltaPosting: {
+    version: 1;
+    currency: string;
+    lines: Array<{
+      accountStableId: string;
+      categoryStableId: string | null;
+      debitCents: number;
+      creditCents: number;
+    }>;
+  };
+};
+
+export type ProviderPostedCorrectionCase = {
+  correctionStableId: string;
+  version: number;
+  targetVersion: number;
+  status: ProviderPostedCorrectionStatus;
+  reasonCode: ProviderPostedCorrectionReasonCode;
+  note: string | null;
+  strategy: 'DELTA' | 'REVERSAL_REPOST' | 'REVERSAL_ONLY' | null;
+  planHash: string | null;
+  readyPreview: ProviderPostedCorrectionPreview | null;
+  createdByActorRef: string;
+  readyByActorRef: string | null;
+  readyAt: string | null;
+  postedByActorRef: string | null;
+  postedAt: string | null;
+  cancelledByActorRef: string | null;
+  cancelledAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  revisions: Array<{
+    correctionRevisionStableId: string;
+    revision: number;
+    targetAuthoritySchema: string;
+    targetAuthorityHash: string;
+    draftInput: ProviderPostedCorrectionDraftInput;
+    createdByActorRef: string;
+    createdAt: string;
+  }>;
+  journalOutputs: Array<{
+    outputStableId: string;
+    role: 'DELTA' | 'REVERSAL' | 'REPOST';
+    sequence: number;
+    journal: {
+      entryStableId: string;
+      occurredAt: string;
+      currency: string;
+      memo: string | null;
+      lines: Array<{
+        lineNo: number;
+        accountStableId: string;
+        accountName: string;
+        categoryStableId: string | null;
+        categoryName: string | null;
+        debitCents: number;
+        creditCents: number;
+      }>;
+    };
+  }>;
+};
+
+export type ProviderPostedCorrectionRecord = {
+  version: 1;
+  status: 'READY' | 'BLOCKED';
+  blockReason: string | null;
+  document: {
+    documentStableId: string;
+    revision: number;
+    provider: AccountingFinancialProvider;
+    documentType: string;
+    storeStableId: string | null;
+    periodStart: string | null;
+    periodEnd: string | null;
+    currency: string;
+  };
+  currentEffective: {
+    targetAuthorityHash: string;
+    draftInput: ProviderPostedCorrectionDraftInput;
+  } | null;
+  corrections: ProviderPostedCorrectionCase[];
+};
+
+export type ProviderPostedCorrectionExecutionResult = {
+  replayed: boolean;
+  record: ProviderPostedCorrectionRecord;
+};
+
