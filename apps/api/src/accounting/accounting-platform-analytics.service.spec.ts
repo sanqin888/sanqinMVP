@@ -9,6 +9,11 @@ import {
   AccountingProviderFinancialCorrectionReason,
 } from './accounting-contracts';
 import { AccountingPlatformAnalyticsService } from './accounting-platform-analytics.service';
+import {
+  ACCOUNTING_PROVIDER_SETTLEMENT_CORRECTION_TARGET_SCHEMA,
+  hashProviderSettlementCorrectionTarget,
+  type ProviderSettlementCorrectionTargetV1,
+} from './accounting-provider-settlement-correction-target.policy';
 
 const STORE = {
   storeStableId: '4750_Yonge_Street',
@@ -245,13 +250,20 @@ function makeService(documents: unknown[]) {
     getStoreSnapshot: jest.fn().mockResolvedValue(STORE),
     getConfiguredStoreSnapshot: jest.fn().mockResolvedValue(STORE),
   };
+  const prisma = {
+    accountingCorrectionCase: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
+  };
   return {
     service: new AccountingPlatformAnalyticsService(
       settlementQuery as never,
       storeConfig as never,
+      prisma as never,
     ),
     settlementQuery,
     storeConfig,
+    prisma,
   };
 }
 
@@ -467,6 +479,100 @@ describe('AccountingPlatformAnalyticsService', () => {
     if (period?.status !== 'AVAILABLE') throw new Error('expected period');
     expect(period.salesCents).toBe(120_000);
     expect(period.commission.shareOfSalesBps).toBe(2_000);
+  });
+
+  it('uses latest POSTED Provider authority in Platform Analytics', async () => {
+    const august = statement({
+      provider: AccountingFinancialProvider.FANTUAN,
+      month: '2026-08',
+      lines: [
+        line(
+          'fantuan_corrected_1',
+          'Sales',
+          AccountingFinancialComponent.SALES,
+          120_000,
+        ),
+        line(
+          'fantuan_corrected_2',
+          'Commission',
+          AccountingFinancialComponent.COMMISSION,
+          -30_000,
+        ),
+      ],
+    });
+    const target: ProviderSettlementCorrectionTargetV1 = {
+      version: 1,
+      document: {
+        documentStableId: august.documentStableId,
+        documentRevision: august.revision,
+        provider: august.provider,
+        documentType: august.documentType,
+        businessIdentityKey: august.businessIdentityKey,
+        providerDocumentRef: august.providerDocumentRef,
+        storeStableId: august.storeStableId,
+        periodStart: august.periodStart.toISOString().slice(0, 10),
+        periodEnd: august.periodEnd.toISOString().slice(0, 10),
+        currency: august.currency,
+        sourcePostingAuthorityHash: 'a'.repeat(64),
+      },
+      salesAuthority: 'STATEMENT_AUTHORITATIVE',
+      basedOnAuthorityHash: 'b'.repeat(64),
+      supplementaryEvidenceDocumentStableIds: [],
+      historicalReversalOriginalJournalEntryStableIds: [],
+      lines: august.lines.map((sourceLine) => ({
+        sourceDocumentStableId: august.documentStableId,
+        lineStableId: sourceLine.lineStableId,
+        lineNo: sourceLine.lineNo,
+        rawCode: sourceLine.rawCode,
+        rawName: sourceLine.rawName,
+        component: sourceLine.component,
+        postingTreatment: sourceLine.postingTreatment,
+        taxRole: sourceLine.taxRole,
+        amountCents:
+          sourceLine.lineStableId === 'fantuan_corrected_2'
+            ? -36_000
+            : sourceLine.amountCents,
+        occurredAt: sourceLine.occurredAt?.toISOString() ?? null,
+      })),
+    };
+    const authorityHash = hashProviderSettlementCorrectionTarget(target);
+    const { service, prisma } = makeService([august]);
+    prisma.accountingCorrectionCase.findMany.mockResolvedValue([
+      {
+        correctionStableId: 'correction_fantuan_august',
+        targetKind: 'PROVIDER_SETTLEMENT',
+        targetStableId: august.documentStableId,
+        targetVersion: august.revision,
+        status: 'POSTED',
+        reasonCode: 'AMOUNT_ERROR',
+        note: 'correct commission',
+        strategy: 'DELTA',
+        targetAuthoritySchema:
+          ACCOUNTING_PROVIDER_SETTLEMENT_CORRECTION_TARGET_SCHEMA,
+        targetAuthorityHash: authorityHash,
+        postedByActorRef: 'user_admin_1',
+        postedAt: new Date('2026-10-07T12:00:00.000Z'),
+        createdAt: new Date('2026-10-07T11:00:00.000Z'),
+        readyRevision: {
+          targetAuthoritySchema:
+            ACCOUNTING_PROVIDER_SETTLEMENT_CORRECTION_TARGET_SCHEMA,
+          targetAuthorityHash: authorityHash,
+          targetJson: target,
+        },
+      },
+    ]);
+
+    const report = await service.report({ storeStableId: STORE.storeStableId });
+    const fantuan = report.providers.find(
+      (provider) => provider.provider === AccountingFinancialProvider.FANTUAN,
+    );
+    const period = fantuan?.periods[0];
+
+    expect(period?.status).toBe('AVAILABLE');
+    if (period?.status !== 'AVAILABLE') throw new Error('expected available');
+    expect(period.salesCents).toBe(120_000);
+    expect(period.commission.costImpactCents).toBe(36_000);
+    expect(period.commission.shareOfSalesBps).toBe(3_000);
   });
 
   it('marks Uber months incomplete while non-zero Other Earnings still lacks semantic review', async () => {

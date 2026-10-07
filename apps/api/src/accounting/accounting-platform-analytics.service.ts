@@ -30,7 +30,21 @@ import {
   requiresUberOtherEarningsSemanticReview,
   UBER_OTHER_EARNINGS_SEMANTIC_REVIEW_REASON,
 } from './accounting-provider-settlement.policy';
+import { ACCOUNTING_DB, type AccountingDb } from './accounting-db';
+import {
+  ACCOUNTING_PROVIDER_SETTLEMENT_CORRECTION_TARGET_SCHEMA,
+  AccountingProviderSettlementCorrectionTargetPolicyError,
+  hashProviderSettlementCorrectionTarget,
+  normalizeProviderSettlementCorrectionTarget,
+  type ProviderSettlementCorrectionTargetV1,
+} from './accounting-provider-settlement-correction-target.policy';
 import { AccountingProviderSettlementQueryService } from './accounting-provider-settlement-query.service';
+import {
+  accountingPostedCorrectionTargetKey,
+  readAccountingPostedCorrectionProjections,
+  type AccountingPostedCorrectionProjectionV1,
+} from './accounting-posted-correction-read-model';
+import { AccountingPostedCorrectionTargetKind } from './accounting-posted-financial-correction.contract';
 
 type ProviderDocumentRow = Awaited<
   ReturnType<
@@ -128,6 +142,7 @@ export class AccountingPlatformAnalyticsService {
     private readonly settlementQuery: AccountingProviderSettlementQueryService,
     @Inject(BRAND_STORE_CONFIG_READER)
     private readonly storeConfig: BrandStoreConfigReaderPort,
+    @Inject(ACCOUNTING_DB) private readonly prisma: AccountingDb,
   ) {}
 
   async report(query: {
@@ -142,13 +157,22 @@ export class AccountingPlatformAnalyticsService {
         storeStableId: store.storeStableId,
       });
     const latestRevisions = latestDocumentRevisions(documents);
+    const correctionProjections =
+      await readAccountingPostedCorrectionProjections(
+        this.prisma,
+        latestRevisions.map((document) => ({
+          targetKind: AccountingPostedCorrectionTargetKind.PROVIDER_SETTLEMENT,
+          targetStableId: document.documentStableId,
+          targetVersion: document.revision,
+        })),
+      );
 
     return {
       version: 1,
       storeStableId: store.storeStableId,
       timezone: store.timezone,
       providers: PLATFORM_PROVIDERS.map((provider) =>
-        this.projectProvider(provider, latestRevisions),
+        this.projectProvider(provider, latestRevisions, correctionProjections),
       ),
     };
   }
@@ -156,6 +180,7 @@ export class AccountingPlatformAnalyticsService {
   private projectProvider(
     provider: AccountingPlatformAnalyticsProviderKeyV1,
     documents: ProviderDocumentRow[],
+    correctionProjections: Map<string, AccountingPostedCorrectionProjectionV1>,
   ): AccountingPlatformAnalyticsProviderV1 {
     const monthlyStatements = documents.filter(
       (document) =>
@@ -189,7 +214,11 @@ export class AccountingPlatformAnalyticsService {
 
     const months = [0, -1, -2].map((offset) => shiftMonth(latestMonth, offset));
     const periods = months.map((month) =>
-      this.projectPeriod(month, monthGroups.get(month) ?? []),
+      this.projectPeriod(
+        month,
+        monthGroups.get(month) ?? [],
+        correctionProjections,
+      ),
     );
 
     return {
@@ -205,6 +234,7 @@ export class AccountingPlatformAnalyticsService {
   private projectPeriod(
     month: string,
     documents: ProviderDocumentRow[],
+    correctionProjections: Map<string, AccountingPostedCorrectionProjectionV1>,
   ): AccountingPlatformAnalyticsPeriodV1 {
     if (documents.length === 0) {
       return {
@@ -233,7 +263,10 @@ export class AccountingPlatformAnalyticsService {
       };
     }
 
-    const effectiveLines = this.effectiveLines(documents[0]);
+    const effectiveLines = this.currentEffectiveLines(
+      documents[0],
+      correctionProjections,
+    );
     const integrityIssues = this.statementIntegrityIssues(
       documents[0],
       effectiveLines,
@@ -379,6 +412,86 @@ export class AccountingPlatformAnalyticsService {
       issues.push(UBER_OTHER_EARNINGS_SEMANTIC_REVIEW_REASON);
     }
     return Array.from(new Set(issues));
+  }
+
+  private currentEffectiveLines(
+    document: ProviderDocumentRow,
+    correctionProjections: Map<string, AccountingPostedCorrectionProjectionV1>,
+  ): ProviderFinancialEffectiveLine[] {
+    const key = accountingPostedCorrectionTargetKey({
+      targetKind: AccountingPostedCorrectionTargetKind.PROVIDER_SETTLEMENT,
+      targetStableId: document.documentStableId,
+      targetVersion: document.revision,
+    });
+    const latest =
+      correctionProjections.get(key)?.latestPostedAuthority ?? null;
+    if (!latest) {
+      return this.effectiveLines(document);
+    }
+    if (
+      latest.targetAuthoritySchema !==
+      ACCOUNTING_PROVIDER_SETTLEMENT_CORRECTION_TARGET_SCHEMA
+    ) {
+      throw new ConflictException(
+        `latest POSTED Provider correction has unexpected authority schema: ${document.documentStableId}`,
+      );
+    }
+
+    let target: ProviderSettlementCorrectionTargetV1;
+    try {
+      target = normalizeProviderSettlementCorrectionTarget(
+        latest.targetJson as unknown as ProviderSettlementCorrectionTargetV1,
+      );
+    } catch (error) {
+      if (
+        error instanceof AccountingProviderSettlementCorrectionTargetPolicyError
+      ) {
+        throw new ConflictException(
+          `latest POSTED Provider correction target is invalid: ${document.documentStableId}: ${error.message}`,
+        );
+      }
+      throw error;
+    }
+
+    if (
+      hashProviderSettlementCorrectionTarget(target) !==
+      latest.targetAuthorityHash
+    ) {
+      throw new ConflictException(
+        `latest POSTED Provider correction authority hash is inconsistent: ${document.documentStableId}`,
+      );
+    }
+
+    const periodStart = isoDate(document.periodStart);
+    const periodEnd = isoDate(document.periodEnd);
+    if (
+      target.document.documentStableId !== document.documentStableId ||
+      target.document.documentRevision !== document.revision ||
+      target.document.provider !== document.provider ||
+      target.document.documentType !== document.documentType ||
+      target.document.businessIdentityKey !== document.businessIdentityKey ||
+      target.document.providerDocumentRef !== document.providerDocumentRef ||
+      target.document.storeStableId !== document.storeStableId ||
+      target.document.periodStart !== periodStart ||
+      target.document.periodEnd !== periodEnd ||
+      target.document.currency !== document.currency
+    ) {
+      throw new ConflictException(
+        `latest POSTED Provider correction immutable identity does not match source document: ${document.documentStableId}`,
+      );
+    }
+
+    return target.lines.map((line) => ({
+      lineStableId: line.lineStableId,
+      lineNo: line.lineNo,
+      rawCode: line.rawCode,
+      rawName: line.rawName,
+      component: line.component,
+      postingTreatment: line.postingTreatment,
+      taxRole: line.taxRole,
+      amountCents: line.amountCents,
+      occurredAt: line.occurredAt ? new Date(line.occurredAt) : null,
+    }));
   }
 
   private effectiveLines(document: ProviderDocumentRow) {

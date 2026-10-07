@@ -79,7 +79,9 @@ describe('Expense posted correction C2 architecture', () => {
     expect(querySource).toContain(
       'sourceFactStableId: { in: documentStableIds }',
     );
-    expect(querySource).toContain('targetStableId: { in: documentStableIds }');
+    expect(querySource).toContain(
+      'readAccountingPostedCorrectionProjections(db, refs)',
+    );
     expect(querySource).toContain('canonicalPosted');
     expect(querySource).toContain('expectedFundingGroups');
     expect(querySource).not.toContain('readCurrentEffectiveTarget(');

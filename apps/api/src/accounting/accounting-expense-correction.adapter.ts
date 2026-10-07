@@ -54,6 +54,10 @@ import {
   AccountingPostedCorrectionTargetKind,
   type AccountingPostedCorrectionPostedJournalAnchorV1,
 } from './accounting-posted-financial-correction.contract';
+import {
+  accountingPostedCorrectionTargetKey,
+  readAccountingPostedCorrectionProjections,
+} from './accounting-posted-correction-read-model';
 import type {
   AccountingPostedCorrectionOwnerActivationInputV1,
   AccountingPostedCorrectionOwnerDbClient,
@@ -520,26 +524,17 @@ export class AccountingExpenseCorrectionAdapter implements AccountingPostedFinan
       targetVersion,
       db,
     );
-    const latest = await db.accountingCorrectionCase.findFirst({
-      where: {
-        targetKind: AccountingPostedCorrectionTargetKind.EXPENSE,
-        targetStableId,
-        targetVersion,
-        status: 'POSTED',
-      },
-      orderBy: [{ postedAt: 'desc' }, { correctionStableId: 'desc' }],
-      select: {
-        targetAuthoritySchema: true,
-        targetAuthorityHash: true,
-        readyRevision: {
-          select: {
-            targetAuthoritySchema: true,
-            targetAuthorityHash: true,
-            targetJson: true,
-          },
-        },
-      },
-    });
+    const ref = {
+      targetKind: AccountingPostedCorrectionTargetKind.EXPENSE,
+      targetStableId,
+      targetVersion,
+    } as const;
+    const projections = await readAccountingPostedCorrectionProjections(db, [
+      ref,
+    ]);
+    const latest = projections.get(
+      accountingPostedCorrectionTargetKey(ref),
+    )?.latestPostedAuthority;
 
     if (!latest) {
       return {
@@ -550,13 +545,9 @@ export class AccountingExpenseCorrectionAdapter implements AccountingPostedFinan
         ),
       };
     }
-    const readyRevision = latest.readyRevision;
     if (
-      !readyRevision ||
       latest.targetAuthoritySchema !==
-        ACCOUNTING_EXPENSE_CORRECTION_TARGET_SCHEMA ||
-      readyRevision.targetAuthoritySchema !==
-        ACCOUNTING_EXPENSE_CORRECTION_TARGET_SCHEMA
+      ACCOUNTING_EXPENSE_CORRECTION_TARGET_SCHEMA
     ) {
       throw new ConflictException(
         'latest POSTED Expense correction has an unsupported target schema',
@@ -566,7 +557,7 @@ export class AccountingExpenseCorrectionAdapter implements AccountingPostedFinan
     let target: AccountingExpenseCorrectionTargetV1;
     try {
       target = normalizeAccountingExpenseCorrectionTarget(
-        readyRevision.targetJson as AccountingExpenseCorrectionTargetV1,
+        latest.targetJson as AccountingExpenseCorrectionTargetV1,
       );
     } catch (error) {
       if (error instanceof AccountingExpenseCorrectionTargetPolicyError) {
@@ -578,10 +569,7 @@ export class AccountingExpenseCorrectionAdapter implements AccountingPostedFinan
       throw error;
     }
     const authorityHash = hashAccountingExpenseCorrectionTarget(target);
-    if (
-      latest.targetAuthorityHash !== authorityHash ||
-      readyRevision.targetAuthorityHash !== authorityHash
-    ) {
+    if (latest.targetAuthorityHash !== authorityHash) {
       throw new ConflictException(
         'latest POSTED Expense correction authority hash is inconsistent',
       );

@@ -35,23 +35,47 @@ export type AccountingExpenseDocument = {
     hasPostedCorrections: boolean;
     correctionCount: number;
   };
-  paymentAllocations: Array<{
-    paymentAllocationStableId: string;
-    accountStableId: string;
-    accountName: string;
-    amountCents: number;
-    sortOrder: number;
-  }>;
-  splits: Array<{
-    splitStableId: string;
-    categoryStableId: string;
-    categoryName: string;
-    amountCents: number;
-    taxCents: number;
-    paidFromAccountStableId: string | null;
-    paidFromAccountName: string | null;
-    sortOrder: number;
-  }>;
+  originalPersisted: {
+    subtotalCents: number | null;
+    taxCents: number | null;
+    totalCents: number | null;
+    memo: string | null;
+    paymentAllocations: AccountingExpenseDocumentPaymentAllocation[];
+    splits: AccountingExpenseDocumentSplit[];
+  };
+  currentEffective: {
+    source: 'ORIGINAL' | 'POSTED_CORRECTION';
+    correctionStableId: string | null;
+    targetAuthorityHash: string | null;
+    postedAt: string | null;
+    subtotalCents: number | null;
+    taxCents: number | null;
+    totalCents: number | null;
+    memo: string | null;
+    paymentAllocations: AccountingExpenseDocumentPaymentAllocation[];
+    splits: AccountingExpenseDocumentSplit[];
+  };
+  paymentAllocations: AccountingExpenseDocumentPaymentAllocation[];
+  splits: AccountingExpenseDocumentSplit[];
+};
+
+export type AccountingExpenseDocumentPaymentAllocation = {
+  paymentAllocationStableId: string;
+  accountStableId: string;
+  accountName: string;
+  amountCents: number;
+  sortOrder: number;
+};
+
+export type AccountingExpenseDocumentSplit = {
+  splitStableId: string;
+  categoryStableId: string;
+  categoryName: string;
+  amountCents: number;
+  taxCents: number;
+  paidFromAccountStableId: string | null;
+  paidFromAccountName: string | null;
+  sortOrder: number;
 };
 
 export type ExpensePostedCorrectionReasonCode =

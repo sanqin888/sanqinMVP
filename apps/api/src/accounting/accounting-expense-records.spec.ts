@@ -1,11 +1,10 @@
 import { AccountingExpenseService } from './accounting-expense.service';
 
 describe('Accounting Expense record search', () => {
-  it('converts local date filters before applying stacked server-side pagination', async () => {
+  it('keeps immutable filters server-side before current-effective filtering', async () => {
     const findMany = jest.fn().mockResolvedValue([]);
-    const count = jest.fn().mockResolvedValue(12);
     const prisma = {
-      accountingExpenseDocument: { findMany, count },
+      accountingExpenseDocument: { findMany },
     };
     const period = {
       getBusinessTimezone: jest.fn().mockResolvedValue('America/Toronto'),
@@ -31,7 +30,7 @@ describe('Accounting Expense record search', () => {
 
     expect(result).toEqual({
       items: [],
-      total: 12,
+      total: 0,
       limit: 10,
       offset: 10,
     });
@@ -40,45 +39,14 @@ describe('Accounting Expense record search', () => {
     );
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({
+        where: {
+          status: 'CONFIRMED',
           documentStableId: 'expense_deep_link_1',
           occurredAt: {
             gte: new Date('2026-06-01T04:00:00.000Z'),
             lt: new Date('2026-07-01T04:00:00.000Z'),
           },
-          totalCents: { gte: 5000 },
-          OR: [
-            {
-              AND: [
-                {
-                  OR: [
-                    { fundingAttributionVersion: 1 },
-                    { fundingAttributionVersion: null },
-                  ],
-                },
-                {
-                  paymentAllocations: {
-                    some: { account: { accountStableId: 'account_cibc' } },
-                  },
-                },
-              ],
-            },
-            {
-              AND: [
-                { fundingAttributionVersion: 2 },
-                {
-                  splits: {
-                    some: {
-                      paidFromAccount: { accountStableId: 'account_cibc' },
-                    },
-                  },
-                },
-              ],
-            },
-          ],
-        }) as unknown,
-        skip: 10,
-        take: 10,
+        },
       }),
     );
   });
