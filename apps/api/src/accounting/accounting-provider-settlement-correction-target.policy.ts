@@ -270,11 +270,13 @@ export const normalizeProviderSettlementCorrectionTarget = (
       return normalizeLine(line, index);
     })
     .sort(
-    (left, right) =>
-      left.sourceDocumentStableId.localeCompare(right.sourceDocumentStableId) ||
-      left.lineNo - right.lineNo ||
-      left.lineStableId.localeCompare(right.lineStableId),
-  );
+      (left, right) =>
+        left.sourceDocumentStableId.localeCompare(
+          right.sourceDocumentStableId,
+        ) ||
+        left.lineNo - right.lineNo ||
+        left.lineStableId.localeCompare(right.lineStableId),
+    );
   const lineStableIds = new Set(lines.map((line) => line.lineStableId));
   if (lineStableIds.size !== lines.length) {
     throw new AccountingProviderSettlementCorrectionTargetPolicyError(
@@ -332,13 +334,12 @@ export const normalizeProviderSettlementCorrectionTarget = (
         'document.periodStart',
         10,
       ),
-      periodEnd: requireValue(
-        raw.document.periodEnd,
-        'document.periodEnd',
-        10,
-      ),
-      currency: requireValue(raw.document.currency, 'document.currency', 3)
-        .toUpperCase(),
+      periodEnd: requireValue(raw.document.periodEnd, 'document.periodEnd', 10),
+      currency: requireValue(
+        raw.document.currency,
+        'document.currency',
+        3,
+      ).toUpperCase(),
       sourcePostingAuthorityHash: requireSha256(
         raw.document.sourcePostingAuthorityHash,
         'document.sourcePostingAuthorityHash',

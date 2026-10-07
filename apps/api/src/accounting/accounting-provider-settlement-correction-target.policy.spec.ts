@@ -158,7 +158,9 @@ describe('Provider Settlement correction target policy', () => {
           lines: toEditableLines(base).slice(0, 1),
         },
       }),
-    ).toThrow('normal Provider DELTA correction cannot add or remove effective lines');
+    ).toThrow(
+      'normal Provider DELTA correction cannot add or remove effective lines',
+    );
   });
 
   it('does not allow a control-total source line to become POSTABLE', () => {

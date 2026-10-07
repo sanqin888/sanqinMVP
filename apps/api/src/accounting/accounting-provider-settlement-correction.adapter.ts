@@ -8,6 +8,7 @@ import {
 import { Prisma } from '@prisma/client';
 
 import {
+  AccountingAccountClass,
   AccountingFinancialDocumentType,
   AccountingFinancialProvider,
   AccountingInboxMaterializedEntityType,
@@ -66,12 +67,8 @@ import {
   resolveProviderFinancialEffectiveLines,
 } from './accounting-provider-financial-review.policy';
 import { CLOVER_FEE_RECLASSIFICATION_SOURCE_FACT_TYPE } from './accounting-provider-fee-clearing.contract';
-import {
-  FANTUAN_ADJUSTMENT_DETAIL_EVIDENCE_KIND,
-} from './accounting-fantuan-adjustment-detail.contract';
-import {
-  resolveFantuanAdjustmentDetailLines,
-} from './accounting-fantuan-adjustment-detail.policy';
+import { FANTUAN_ADJUSTMENT_DETAIL_EVIDENCE_KIND } from './accounting-fantuan-adjustment-detail.contract';
+import { resolveFantuanAdjustmentDetailLines } from './accounting-fantuan-adjustment-detail.policy';
 
 const PROVIDER_DOCUMENT_SELECT = {
   documentStableId: true,
@@ -219,6 +216,17 @@ type CurrentBusinessAuthority = {
   baseAuthorityHash: string;
 };
 
+const PROVIDER_SETTLEMENT_ACCOUNT_REQUIREMENTS_BY_STABLE_ID: Readonly<
+  Record<
+    string,
+    {
+      accountClass: AccountingAccountClass;
+      currency: string;
+      isActive: boolean;
+    }
+  >
+> = PROVIDER_SETTLEMENT_ACCOUNT_REQUIREMENTS;
+
 const jsonRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -231,7 +239,9 @@ const requireTargetStableId = (raw: string): string => {
   const value = raw?.trim();
   if (!value) throw new BadRequestException('targetStableId is required');
   if (value.length > 250) {
-    throw new BadRequestException('targetStableId must not exceed 250 characters');
+    throw new BadRequestException(
+      'targetStableId must not exceed 250 characters',
+    );
   }
   return value;
 };
@@ -243,7 +253,9 @@ const requireTargetVersion = (value: number): number => {
   return value;
 };
 
-const journalToCreateInput = (journal: JournalRow): AccountingJournalCreateInput => ({
+const journalToCreateInput = (
+  journal: JournalRow,
+): AccountingJournalCreateInput => ({
   idempotencyKey: journal.idempotencyKey,
   kind: journal.kind,
   source: journal.source,
@@ -477,12 +489,14 @@ const assertSameTargetStructure = (
   target: ProviderSettlementCorrectionTargetV1,
 ): void => {
   if (
-    hashAccountingJson(source.document) !== hashAccountingJson(target.document) ||
+    hashAccountingJson(source.document) !==
+      hashAccountingJson(target.document) ||
     source.salesAuthority !== target.salesAuthority ||
     hashAccountingJson(source.supplementaryEvidenceDocumentStableIds) !==
       hashAccountingJson(target.supplementaryEvidenceDocumentStableIds) ||
-    hashAccountingJson(source.historicalReversalOriginalJournalEntryStableIds) !==
-      hashAccountingJson(target.historicalReversalOriginalJournalEntryStableIds)
+    hashAccountingJson(
+      source.historicalReversalOriginalJournalEntryStableIds,
+    ) !== hashAccountingJson(target.historicalReversalOriginalJournalEntryStableIds)
   ) {
     throw new ConflictException(
       'normal Provider DELTA correction cannot change Provider identity, Store, period, authority, or frozen prerequisites',
@@ -513,10 +527,9 @@ const assertSameTargetStructure = (
 };
 
 @Injectable()
-export class AccountingProviderSettlementCorrectionAdapter
-  implements AccountingPostedFinancialCorrectionOwnerAdapter
-{
-  readonly targetKind = AccountingPostedCorrectionTargetKind.PROVIDER_SETTLEMENT;
+export class AccountingProviderSettlementCorrectionAdapter implements AccountingPostedFinancialCorrectionOwnerAdapter {
+  readonly targetKind =
+    AccountingPostedCorrectionTargetKind.PROVIDER_SETTLEMENT;
 
   constructor(@Inject(ACCOUNTING_DB) private readonly prisma: AccountingDb) {}
 
@@ -639,10 +652,9 @@ export class AccountingProviderSettlementCorrectionAdapter
       );
     }
 
-    const targetJournal = await this.buildTargetProviderJournal(
+    const targetJournal = this.buildTargetProviderJournal(
       target,
       current.context,
-      db,
     );
     const targetJournals = [
       targetJournal,
@@ -669,13 +681,14 @@ export class AccountingProviderSettlementCorrectionAdapter
     };
   }
 
-  async activateTargetInTx(
+  activateTargetInTx(
     input: AccountingPostedCorrectionOwnerActivationInputV1,
-    _tx: Prisma.TransactionClient,
+    tx: Prisma.TransactionClient,
   ): Promise<void> {
+    void tx;
     if (
       input.targetAuthoritySchema !==
-        ACCOUNTING_PROVIDER_SETTLEMENT_CORRECTION_TARGET_SCHEMA
+      ACCOUNTING_PROVIDER_SETTLEMENT_CORRECTION_TARGET_SCHEMA
     ) {
       throw new ConflictException(
         'Provider correction activation received an unexpected target schema',
@@ -702,6 +715,7 @@ export class AccountingProviderSettlementCorrectionAdapter
     }
     // Provider source/Human Review rows remain immutable. The common
     // AccountingCorrectionCase POSTED transition is the activation pointer.
+    return Promise.resolve();
   }
 
   private async readCurrentBusinessAuthority(
@@ -758,7 +772,8 @@ export class AccountingProviderSettlementCorrectionAdapter
     }
 
     const baseTarget = normalizeProviderSettlementCorrectionTarget(
-      latest.readyRevision.targetJson as unknown as ProviderSettlementCorrectionTargetV1,
+      latest.readyRevision
+        .targetJson as unknown as ProviderSettlementCorrectionTargetV1,
     );
     assertSameTargetStructure(context.sourceTarget, baseTarget);
     if (
@@ -828,7 +843,9 @@ export class AccountingProviderSettlementCorrectionAdapter
     }
     const originalProviderJournal = providerJournals[0];
     if (!originalProviderJournal) {
-      throw new ConflictException('posted Provider Statement Journal is missing');
+      throw new ConflictException(
+        'posted Provider Statement Journal is missing',
+      );
     }
 
     const groupAuthority = await this.readAndValidateJournalAuthority(
@@ -891,8 +908,9 @@ export class AccountingProviderSettlementCorrectionAdapter
       originalProviderJournal.occurredAt,
     );
     if (
-      hashJournalCreatePayload(normalizeJournalCreate(rebuiltOriginalJournal)) !==
       hashJournalCreatePayload(
+        normalizeJournalCreate(rebuiltOriginalJournal),
+      ) !== hashJournalCreatePayload(
         normalizeJournalCreate(journalToCreateInput(originalProviderJournal)),
       )
     ) {
@@ -948,8 +966,7 @@ export class AccountingProviderSettlementCorrectionAdapter
         journalToPostedAnchor(originalProviderJournal),
         ...reversalJournals.map(journalToPostedAnchor),
       ],
-      targetFrozenReversalJournals:
-        reversalJournals.map(journalToCreateInput),
+      targetFrozenReversalJournals: reversalJournals.map(journalToCreateInput),
       originalProviderJournal,
     };
   }
@@ -1012,10 +1029,9 @@ export class AccountingProviderSettlementCorrectionAdapter
       },
       salesAuthority: params.groupAuthority.salesAuthority,
       basedOnAuthorityHash: params.sourcePostingAuthorityHash,
-      supplementaryEvidenceDocumentStableIds:
-        (params.groupAuthority.supplementaryEvidenceDocuments ?? []).map(
-          (document) => document.documentStableId,
-        ),
+      supplementaryEvidenceDocumentStableIds: (
+        params.groupAuthority.supplementaryEvidenceDocuments ?? []
+      ).map((document) => document.documentStableId),
       historicalReversalOriginalJournalEntryStableIds:
         params.groupAuthority.historicalReversalAnchors.map(
           (anchor) => anchor.originalJournalEntryStableId,
@@ -1024,11 +1040,10 @@ export class AccountingProviderSettlementCorrectionAdapter
     });
   }
 
-  private async buildTargetProviderJournal(
+  private buildTargetProviderJournal(
     target: ProviderSettlementCorrectionTargetV1,
     context: OriginalPostingContext,
-    _db: AccountingPostedCorrectionOwnerDbClient,
-  ): Promise<AccountingJournalCreateInput> {
+  ): AccountingJournalCreateInput {
     const journal = this.buildProviderJournalForTarget(
       target,
       context.originalProviderJournal.occurredAt,
@@ -1084,21 +1099,20 @@ export class AccountingProviderSettlementCorrectionAdapter
     const supplementaryIds = new Set(
       target.supplementaryEvidenceDocumentStableIds,
     );
-    const candidateDocuments =
-      target.supplementaryEvidenceDocumentStableIds.map(
-        (documentStableId) => ({
-          documentStableId,
-          provider: target.document.provider,
-          documentType: AccountingFinancialDocumentType.OTHER,
-          evidenceKind: FANTUAN_ADJUSTMENT_DETAIL_EVIDENCE_KIND,
-          periodStart: target.document.periodStart,
-          periodEnd: target.document.periodEnd,
-          isConfirmed: true,
-          lines: target.lines.filter(
-            (line) => line.sourceDocumentStableId === documentStableId,
-          ),
-        }),
-      );
+    const candidateDocuments = target.supplementaryEvidenceDocumentStableIds.map(
+      (documentStableId) => ({
+        documentStableId,
+        provider: target.document.provider,
+        documentType: AccountingFinancialDocumentType.OTHER,
+        evidenceKind: FANTUAN_ADJUSTMENT_DETAIL_EVIDENCE_KIND,
+        periodStart: target.document.periodStart,
+        periodEnd: target.document.periodEnd,
+        isConfirmed: true,
+        lines: target.lines.filter(
+          (line) => line.sourceDocumentStableId === documentStableId,
+        ),
+      }),
+    );
     const unexpectedSourceDocument = target.lines.find(
       (line) =>
         line.sourceDocumentStableId !== target.document.documentStableId &&
@@ -1182,7 +1196,7 @@ export class AccountingProviderSettlementCorrectionAdapter
     for (const accountStableId of accountStableIds) {
       const account = byStableId.get(accountStableId);
       const expected =
-        PROVIDER_SETTLEMENT_ACCOUNT_REQUIREMENTS[accountStableId];
+        PROVIDER_SETTLEMENT_ACCOUNT_REQUIREMENTS_BY_STABLE_ID[accountStableId];
       if (
         !account ||
         !expected ||
@@ -1237,7 +1251,9 @@ export class AccountingProviderSettlementCorrectionAdapter
         afterJson: true,
       },
     });
-    const writeAuthority = jsonRecord(jsonRecord(audit?.afterJson).writeAuthority);
+    const writeAuthority = jsonRecord(
+      jsonRecord(audit?.afterJson).writeAuthority,
+    );
     if (writeAuthority.role !== role) {
       throw new ConflictException(
         'original Provider settlement Journal is missing its typed CREATE authority',

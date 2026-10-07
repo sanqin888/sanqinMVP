@@ -253,9 +253,8 @@ const resolveFantuanAdjustmentDetail = (
       periodEnd: isoDate(document.periodEnd),
       isConfirmed: Boolean(
         reviewEvidence &&
-          document.storeStableId &&
-          ((document.reviewRevisions?.length ?? 0) === 0 ||
-            humanReviewRevision),
+        document.storeStableId &&
+        ((document.reviewRevisions?.length ?? 0) === 0 || humanReviewRevision),
       ),
       lines: document.lines,
     };

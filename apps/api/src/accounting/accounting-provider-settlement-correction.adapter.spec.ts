@@ -76,7 +76,8 @@ const withUberControlTotals = (input: ProviderLine[]): ProviderLine[] => {
     componentRawNames: readonly string[],
   ) => {
     lines.push({
-      lineStableId: 'control-' + rawName.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+      lineStableId:
+        'control-' + rawName.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
       lineNo: lines.length + 1,
       rawCode: null,
       rawName,
@@ -311,11 +312,10 @@ const makeFixture = () => {
     historicalReversalAnchors: [originalOrderAnchor],
   };
 
-  const providerWriteAuthority =
-    buildProviderSettlementJournalWriteAuthority({
-      group,
-      role: 'PROVIDER_DOCUMENT',
-    });
+  const providerWriteAuthority = buildProviderSettlementJournalWriteAuthority({
+    group,
+    role: 'PROVIDER_DOCUMENT',
+  });
   const providerJournal = persistedJournal(
     plan.draftJournal,
     'journal_provider_uber_sep',
@@ -354,12 +354,11 @@ const makeFixture = () => {
       },
     ],
   });
-  const reversalWriteAuthority =
-    buildProviderSettlementJournalWriteAuthority({
-      group,
-      role: 'UBER_PRE_CUTOVER_REVERSAL',
-      originalJournalEntryStableId: originalOrderJournalStableId,
-    });
+  const reversalWriteAuthority = buildProviderSettlementJournalWriteAuthority({
+    group,
+    role: 'UBER_PRE_CUTOVER_REVERSAL',
+    originalJournalEntryStableId: originalOrderJournalStableId,
+  });
   const reversalJournal = persistedJournal(
     reversalInput,
     'journal_uber_reversal_1',
@@ -424,8 +423,9 @@ const makeFixture = () => {
     },
     accountingJournalEntry: {
       findFirst: jest.fn().mockResolvedValue(null),
-      findMany: jest.fn().mockImplementation(
-        (args: { where?: { sourceFactType?: string } }) => {
+      findMany: jest
+        .fn()
+        .mockImplementation((args: { where?: { sourceFactType?: string } }) => {
           if (
             args.where?.sourceFactType ===
             'accounting.provider_financial_document.v1'
@@ -439,18 +439,18 @@ const makeFixture = () => {
             return Promise.resolve([reversalJournal]);
           }
           return Promise.resolve([]);
-        },
-      ),
+        }),
     },
     accountingAuditLog: {
-      findFirst: jest.fn().mockImplementation(
-        (args: { where?: { entityId?: string } }) =>
+      findFirst: jest
+        .fn()
+        .mockImplementation((args: { where?: { entityId?: string } }) =>
           Promise.resolve(
             args.where?.entityId
               ? (auditByJournal.get(args.where.entityId) ?? null)
               : null,
           ),
-      ),
+        ),
     },
     accountingCorrectionCase: {
       findFirst: jest.fn().mockResolvedValue(null),
@@ -484,9 +484,9 @@ describe('AccountingProviderSettlementCorrectionAdapter', () => {
     expect(current.targetKind).toBe(
       AccountingPostedCorrectionTargetKind.PROVIDER_SETTLEMENT,
     );
-    expect(current.targetJson.historicalReversalOriginalJournalEntryStableIds).toEqual(
-      ['journal_order_uber_1'],
-    );
+    expect(
+      current.targetJson.historicalReversalOriginalJournalEntryStableIds,
+    ).toEqual(['journal_order_uber_1']);
 
     const normalized = await adapter.normalizeRevisionTarget(
       {
@@ -512,9 +512,9 @@ describe('AccountingProviderSettlementCorrectionAdapter', () => {
     );
 
     expect(ready.strategy).toBe('DELTA');
-    expect(ready.originalJournals.map((journal) => journal.entryStableId)).toEqual(
-      ['journal_provider_uber_sep', 'journal_uber_reversal_1'],
-    );
+    expect(
+      ready.originalJournals.map((journal) => journal.entryStableId),
+    ).toEqual(['journal_provider_uber_sep', 'journal_uber_reversal_1']);
     expect(ready.targetJournals).toHaveLength(2);
     expect(ready.targetJournals[1]).toEqual(fixture.reversalInput);
     expect(ready.targetJournals[0]?.idempotencyKey).toBe(
@@ -555,10 +555,12 @@ describe('AccountingProviderSettlementCorrectionAdapter', () => {
 
   it('fails closed for a Clover Statement that already has the specialized fee reclassification Journal', async () => {
     const fixture = makeFixture();
-    fixture.db.accountingProviderFinancialDocument.findUnique.mockResolvedValue({
-      ...fixture.document,
-      provider: AccountingFinancialProvider.CLOVER,
-    } as never);
+    fixture.db.accountingProviderFinancialDocument.findUnique.mockResolvedValue(
+      {
+        ...fixture.document,
+        provider: AccountingFinancialProvider.CLOVER,
+      } as never,
+    );
     fixture.db.accountingJournalEntry.findFirst.mockResolvedValue({
       entryStableId: 'journal_clover_fee_reclassification_1',
     } as never);
