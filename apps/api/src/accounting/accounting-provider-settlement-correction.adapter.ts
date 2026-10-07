@@ -1005,7 +1005,9 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
         rebuiltProviderJournal: rebuiltOriginalJournal,
       });
     } catch (error) {
-      if (error instanceof AccountingCloverFeeReclassificationBridgePolicyError) {
+      if (
+        error instanceof AccountingCloverFeeReclassificationBridgePolicyError
+      ) {
         throw new ConflictException(error.message);
       }
       throw error;
