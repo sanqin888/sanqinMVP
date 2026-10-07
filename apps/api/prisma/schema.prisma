@@ -201,6 +201,40 @@ enum AccountingJournalSource {
   SYSTEM
 }
 
+enum AccountingCorrectionTargetKind {
+  PROVIDER_SETTLEMENT
+  EXPENSE
+}
+
+enum AccountingCorrectionStatus {
+  DRAFT
+  READY
+  POSTED
+  CANCELLED
+}
+
+enum AccountingCorrectionReasonCode {
+  EXTRACTION_ERROR
+  AMOUNT_ERROR
+  CLASSIFICATION_ERROR
+  MISSING_COMPONENT
+  DUPLICATE_POSTING
+  BUSINESS_FACT_ERROR
+  OTHER
+}
+
+enum AccountingCorrectionStrategy {
+  DELTA
+  REVERSAL_REPOST
+  REVERSAL_ONLY
+}
+
+enum AccountingCorrectionJournalOutputRole {
+  DELTA
+  REVERSAL
+  REPOST
+}
+
 enum AccountingExternalSaleGranularity {
   TRANSACTION
   DAILY_SUMMARY
@@ -1844,6 +1878,7 @@ model AccountingJournalEntry {
   version            Int                        @default(1)
   deletedAt          DateTime?
   lines              AccountingJournalLine[]
+  correctionOutputs  AccountingCorrectionJournalOutput[]
 
   @@index([occurredAt])
   @@index([storeStableId, occurredAt])
@@ -1867,6 +1902,76 @@ model AccountingJournalLine {
   @@unique([entryId, lineNo])
   @@index([accountId, entryId])
   @@index([categoryId, entryId])
+}
+
+model AccountingCorrectionCase {
+  id                      String                               @id @default(uuid()) @db.Uuid
+  correctionStableId      String                               @unique @default(cuid())
+  version                 Int                                  @default(1)
+  targetKind              AccountingCorrectionTargetKind
+  targetStableId          String
+  targetVersion           Int
+  status                  AccountingCorrectionStatus           @default(DRAFT)
+  reasonCode              AccountingCorrectionReasonCode
+  note                    String?
+  strategy                AccountingCorrectionStrategy?
+  baseAuthoritySchema     String?
+  baseAuthorityHash       String?
+  baseJournalSetHash      String?
+  readyRevisionId         String?                              @unique @db.Uuid
+  targetAuthoritySchema   String?
+  targetAuthorityHash     String?
+  readyPreviewSchema      String?
+  readyPreviewJson        Json?
+  planHash                String?
+  createdByActorRef       String
+  readyByActorRef         String?
+  readyAt                 DateTime?
+  postedByActorRef        String?
+  postedAt                DateTime?
+  cancelledByActorRef     String?
+  cancelledAt             DateTime?
+  createdAt               DateTime                             @default(now())
+  updatedAt               DateTime                             @updatedAt
+  readyRevision           AccountingCorrectionRevision?       @relation("AccountingCorrectionReadyRevision", fields: [readyRevisionId], references: [id], onDelete: Restrict)
+  revisions               AccountingCorrectionRevision[]      @relation("AccountingCorrectionCaseRevisions")
+  journalOutputs          AccountingCorrectionJournalOutput[]
+
+  @@index([targetKind, targetStableId, status], map: "AcctCorrectionCase_target_status_idx")
+  @@index([status, createdAt], map: "AcctCorrectionCase_status_created_idx")
+  @@index([targetKind, targetStableId, createdAt], map: "AcctCorrectionCase_target_created_idx")
+}
+
+model AccountingCorrectionRevision {
+  id                       String                    @id @default(uuid()) @db.Uuid
+  correctionRevisionStableId String                  @unique @default(cuid())
+  correctionCaseId         String                    @db.Uuid
+  revision                 Int
+  targetAuthoritySchema    String
+  targetAuthorityHash      String
+  targetJson               Json
+  createdByActorRef        String
+  createdAt                DateTime                  @default(now())
+  correctionCase           AccountingCorrectionCase @relation("AccountingCorrectionCaseRevisions", fields: [correctionCaseId], references: [id], onDelete: Restrict)
+  readyForCase             AccountingCorrectionCase? @relation("AccountingCorrectionReadyRevision")
+
+  @@unique([correctionCaseId, revision], map: "AcctCorrectionRevision_case_rev_key")
+  @@index([correctionCaseId, createdAt], map: "AcctCorrectionRevision_case_created_idx")
+}
+
+model AccountingCorrectionJournalOutput {
+  id                String                                @id @default(uuid()) @db.Uuid
+  outputStableId    String                                @unique @default(cuid())
+  correctionCaseId  String                                @db.Uuid
+  role              AccountingCorrectionJournalOutputRole
+  sequence          Int
+  journalEntryId    String                                @unique @db.Uuid
+  createdAt         DateTime                              @default(now())
+  correctionCase    AccountingCorrectionCase              @relation(fields: [correctionCaseId], references: [id], onDelete: Restrict)
+  journalEntry      AccountingJournalEntry                @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+
+  @@unique([correctionCaseId, role, sequence], map: "AcctCorrectionOutput_case_role_seq_key")
+  @@index([correctionCaseId], map: "AcctCorrectionOutput_case_idx")
 }
 
 model AccountingProviderPayout {

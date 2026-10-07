@@ -1,6 +1,6 @@
 # Accounting Document Recognition & Human Review Plan
 
-Status: **SLICE 0-3 + 3V-A + 3V-B DEV MERGED / CI GREEN / 3V-B PRODUCTION VERIFICATION PENDING / EVIDENCE VIEWER SLICE 1 + 1B + 2 MERGED / RELIABILITY SLICE A + B MERGED / EXPENSE REVIEW HARDENING MERGED / ORIGINAL SLICE C UX CLOSEOUT MERGED (#2445 / `da77b9a5`, CI #6074 GREEN) / GMAIL INCREMENTAL + DUPLICATE FILE ARTIFACT FOLLOW-UP PRODUCTION VERIFIED (#2605 / `bfbf8e2c`, CI #6605, MIGRATION APPLIED) / EXPENSE SOURCE-EVIDENCE READINESS LOCAL IMPLEMENTED / USER REVIEW PENDING / MIGRATION NOT APPLIED / POSTED FINANCIAL CORRECTION A0 + A1 LOCAL IMPLEMENTED / USER REVIEW PENDING / A2 NOT STARTED / NO CORRECTION MIGRATION YET — DO NOT REOPEN PHASE 9**  
+Status: **SLICE 0-3 + 3V-A + 3V-B DEV MERGED / CI GREEN / 3V-B PRODUCTION VERIFICATION PENDING / EVIDENCE VIEWER SLICE 1 + 1B + 2 MERGED / RELIABILITY SLICE A + B MERGED / EXPENSE REVIEW HARDENING MERGED / ORIGINAL SLICE C UX CLOSEOUT MERGED (#2445 / `da77b9a5`, CI #6074 GREEN) / GMAIL INCREMENTAL + DUPLICATE FILE ARTIFACT FOLLOW-UP PRODUCTION VERIFIED (#2605 / `bfbf8e2c`, CI #6605, MIGRATION APPLIED) / EXPENSE SOURCE-EVIDENCE READINESS LOCAL IMPLEMENTED / USER REVIEW PENDING / MIGRATION NOT APPLIED / POSTED FINANCIAL CORRECTION A0 + A1 MERGED / CI #6973 GREEN / PR #2715 / MERGE `2e172b33` / A2 LOCAL IMPLEMENTED / USER REVIEW PENDING / MIGRATION REQUIRED + NOT GENERATED / A3 NOT STARTED — DO NOT REOPEN PHASE 9**  
 Planning date: 2026-09-20; updated: 2026-10-06  
 Audit baseline: `origin/dev@1ede0599`; Slice 3 merged in PR #2432 as `caabf1c1`; Slice 3V-A merged in PR #2439 as `0d6909bb` after PR CI #6054 and merged-head CI #6055 passed; Slice 3V-B merged in PR #2440 as `0ac9117f` after final head `3c5c0400`, PR CI #6057 and merged-head CI #6058 green  
 Owner: **Accounting / Reporting / Analytics**  
@@ -1384,6 +1384,7 @@ targetVersion
 status
 reasonCode
 note
+strategy
 
 baseAuthoritySchema
 baseAuthorityHash
@@ -1396,8 +1397,9 @@ readyPreviewJson
 planHash
 
 createdBy / createdAt
-confirmedBy / confirmedAt
-postedAt
+readyBy / readyAt
+postedBy / postedAt
+cancelledBy / cancelledAt
 ~~~
 
 Each immutable Revision should preserve the owner schema/version, corrected target snapshot and
@@ -1695,7 +1697,7 @@ financial arithmetic, persisted lifecycle state and runtime mutation in one chan
 
 #### Correction-A0 — Canonical posted-Journal immutability hardening
 
-Status: **LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO RUNTIME CUTOVER**
+Status: **MERGED / CI GREEN / PR #2715 / MERGE `2e172b33` / CI #6973 GREEN / NO MIGRATION / NO RUNTIME CUTOVER**
 
 Scope:
 
@@ -1715,7 +1717,7 @@ unchanged.
 
 #### Correction-A1 — Common correction contracts and pure policy
 
-Status: **LOCAL IMPLEMENTED / USER REVIEW PENDING / NO MIGRATION / NO DEPENDENCY / NO RUNTIME CUTOVER**
+Status: **MERGED / CI GREEN / PR #2715 / MERGE `2e172b33` / CI #6973 GREEN / NO MIGRATION / NO DEPENDENCY / NO RUNTIME CUTOVER**
 
 Scope:
 
@@ -1746,20 +1748,33 @@ Architecture coverage keeps the common layer provider-neutral and persistence-ne
 
 #### Correction-A2 — Additive persisted correction authority
 
-Status: **NOT STARTED**
+Status: **LOCAL IMPLEMENTED / USER REVIEW PENDING / MIGRATION REQUIRED / MIGRATION NOT GENERATED / NO RUNTIME CUTOVER**
 
-Scope:
+Implemented persistence scope:
 
-- additive `AccountingCorrectionCase`;
-- append-only `AccountingCorrectionRevision`;
-- `AccountingCorrectionJournalOutput`;
-- status/reason/target identity and optimistic version;
-- versioned corrected-target snapshot;
-- frozen READY preview authority and planHash.
+- five bounded Prisma enums for target kind, lifecycle status, correction reason, posting strategy
+  and output-Journal role;
+- additive `AccountingCorrectionCase` with stable target identity, optimistic `version`,
+  lifecycle/reason, nullable READY authority fields, frozen Preview JSON/planHash and operator
+  timestamps;
+- append-only `AccountingCorrectionRevision` with per-Case revision number, versioned owner
+  target-authority schema/hash and corrected `targetJson`;
+- additive `AccountingCorrectionJournalOutput` with typed role/sequence and a unique restrictive
+  FK to the immutable `AccountingJournalEntry` it represents;
+- nullable one-to-one Case -> READY Revision pointer; the runtime A3 transaction must additionally
+  prove that the selected READY Revision belongs to the same Case before transition;
+- polymorphic `targetKind + targetStableId + targetVersion` remains the owner boundary. The common
+  schema deliberately does **not** add ProviderDocument/ExpenseDocument/store/provider-specific
+  foreign keys.
 
-**MIGRATION REQUIRED in A2.** MCP may update `schema.prisma`, but the migration must be generated
-by the user locally under the repository Prisma workflow and reviewed as additive-only. No backfill,
-DROP, rename or historical-Journal rewrite is planned.
+A2 adds no controller/service/runtime writer and cannot execute a correction by itself. Case
+lifecycle transitions, append-only revision writes, READY invariants, stale-plan revalidation and
+Journal output creation remain A3 work.
+
+**MIGRATION REQUIRED.** The schema change is intended to be additive-only: create five enum types,
+three new tables, their indexes/unique constraints and restrictive FKs. No existing Accounting row
+requires backfill or rewrite, and no DROP/rename/type tightening is intended. MCP does not generate
+or edit `apps/api/prisma/migrations/**`.
 
 #### Correction-A3 — Lifecycle, typed Journal writer and atomic execution
 
@@ -1873,48 +1888,91 @@ This framework must not:
 
 ### 16.15 Readiness conclusion
 
-Current status after the 2026-10-06 A0/A1 local implementation:
+Current status after A0/A1 remote delivery and the A2 local persistence implementation:
 
-**A0 + A1 SOURCE COMPLETE LOCALLY / USER REVIEW PENDING / A2 NOT STARTED**
+**A0 + A1 MERGED / CI #6973 GREEN / A2 SOURCE COMPLETE LOCALLY / MIGRATION REQUIRED + NOT GENERATED / A3 NOT STARTED**
 
-The common arithmetic and authority vocabulary now exist without changing persistence or runtime
-routing, and the generic Journal boundary is hardened so Provider Settlement and future Correction
-authority cannot be manufactured, updated or deleted through the manual/generic Journal path.
+PR #2715 merged A0/A1 to `dev` as `2e172b33` after the exact-head CI #6973 passed API tests,
+API lint/build/strict checks, architecture baseline, Web checks and browser E2E. The common
+arithmetic/authority vocabulary and generic Journal immutability guards are therefore now on the
+shared development baseline.
 
-The repository has **not** yet gained a persisted Correction Case, Correction API, Provider/Expense
-adapter, correction Journal writer or posted-record UI. Therefore no production correction can be
-executed from A0/A1 alone.
+A2 adds only the persisted shell required by the later runtime lifecycle. It still does **not**
+create a Correction API, write a correction Journal, activate corrected Provider/Expense authority
+or change any posted read model. No production correction is executable until A3 plus an owner
+adapter are implemented.
 
-Per repository workflow, local lint/build/test were not run during this MCP workspace phase.
-GitHub Actions remains the validation gate only after operator review and explicit authorization
-for remote delivery.
+Per repository workflow, the A2 workspace stops before remote delivery and before migration
+generation. The matching migration must be generated by the user after the schema/source change is
+reviewed and merged to `dev`.
 
-### 16.16 A0 + A1 implementation record
+### 16.16 A0 + A1 delivery record
+
+- implementation branch head before squash: `6df0169b7720a387cf295ac68f1f36008f93030e`;
+- PR: **#2715**;
+- `dev` merge SHA: `2e172b33a13fe7d3bb980be77b7a1278ecd243d6`;
+- final PR CI: **#6973 GREEN**;
+- no Prisma/schema/migration or dependency change;
+- no HTTP/controller/runtime route, Provider wire change or architecture graph change.
+
+### 16.17 A2 implementation record
 
 Implementation baseline:
 
-- `origin/dev@6b27ee43dc2680af0582e25a85de8d71e702b7a9`;
-- local branch `feat/accounting-correction-a0-a1`;
+- `origin/dev@2e172b33a13fe7d3bb980be77b7a1278ecd243d6`;
+- local branch `feat/accounting-correction-a2`;
 - owner: Accounting / Reporting / Analytics;
-- change class: atomic internal source hardening/pure-policy foundation;
-- no Prisma/schema/migration change;
+- change class: additive persisted Accounting authority only;
 - no dependency/lockfile change;
-- no HTTP/controller/module/runtime route;
-- no Provider wire or UberEats runtime behavior;
-- no production Web Clover behavior;
+- no controller/service/API/UI/runtime cutover;
+- no Provider/Expense-specific persistence relation;
 - no new context direction, direct-import allowance or public SCC.
 
-Implemented source boundaries:
+A2 persists:
 
-- `accounting-journal.service.ts` closes generic canonical-Journal mutation/creation gaps for
-  Provider Statement, Uber pre-cutover reversal and the reserved Posted Correction source fact;
-- `accounting-posted-financial-correction.contract.ts` freezes v1 target/strategy/reason and
-  Preview/Journal-Set authority shapes;
-- `accounting-posted-financial-correction.policy.ts` owns pure Journal-Set/vector/hash/delta
-  policy and deliberately has no persistence or provider-specific formula;
-- focused policy and architecture tests plus Journal characterization coverage are present in the
-  source tree but await GitHub Actions after review.
+~~~text
+AccountingCorrectionCase
+  1 -> N AccountingCorrectionRevision
+  0 -> 1 readyRevision
+  1 -> N AccountingCorrectionJournalOutput -> AccountingJournalEntry
+~~~
 
-Next approved design step after A0/A1 delivery is **Correction-A2 — additive persisted correction
-authority**, followed by A3 lifecycle/atomic execution. A2 must not be started as part of the A0/A1
-review batch.
+The five Prisma enums are intentionally closed to the A1 vocabulary:
+
+~~~text
+AccountingCorrectionTargetKind
+AccountingCorrectionStatus
+AccountingCorrectionReasonCode
+AccountingCorrectionStrategy
+AccountingCorrectionJournalOutputRole
+~~~
+
+`AccountingCorrectionRevision` and `AccountingCorrectionJournalOutput` intentionally omit
+`updatedAt` / `deletedAt`; they are append-only evidence. Case -> Revision, Case -> JournalOutput
+and JournalOutput -> Journal relations use restrictive deletion. A3 remains responsible for
+transactional invariants that Prisma alone cannot express, especially proving that the selected
+`readyRevisionId` belongs to the same Case and revalidating frozen READY authority before POSTED.
+
+**MIGRATION REQUIRED**
+
+Suggested migration name:
+
+~~~text
+add_accounting_posted_correction_authority
+~~~
+
+Required user-local generation command, only against the verified disposable/local development
+database after pulling the schema change from `dev`:
+
+~~~bash
+pnpm --filter api exec prisma migrate dev --create-only --name add_accounting_posted_correction_authority
+~~~
+
+The generated SQL must be reviewed as additive-only. Expected changes are five enum types, three
+new tables, indexes/unique constraints and restrictive foreign keys. It must contain **no backfill,
+DROP, rename, existing-column type change, existing-row rewrite or destructive contraction**.
+Promotion to `main` / production remains blocked until that user-generated migration is reviewed,
+committed and merged back into `dev`.
+
+The next source slice after A2 is **Correction-A3 — lifecycle, typed Journal writer and Serializable
+atomic execution**. A3 must not begin inside the A2 review batch.
