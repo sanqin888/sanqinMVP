@@ -7,6 +7,18 @@ type ValueOf<T> = T[keyof T];
 
 export const ACCOUNTING_POSTED_FINANCIAL_CORRECTION_SOURCE_FACT_TYPE =
   'accounting.posted_financial_correction.v1';
+export const ACCOUNTING_POSTED_FINANCIAL_CORRECTION_READY_PREVIEW_SCHEMA =
+  'accounting.posted_financial_correction_preview.v1';
+
+export const AccountingPostedCorrectionStatus = {
+  DRAFT: 'DRAFT',
+  READY: 'READY',
+  POSTED: 'POSTED',
+  CANCELLED: 'CANCELLED',
+} as const;
+export type AccountingPostedCorrectionStatus = ValueOf<
+  typeof AccountingPostedCorrectionStatus
+>;
 
 export const AccountingPostedCorrectionTargetKind = {
   PROVIDER_SETTLEMENT: 'PROVIDER_SETTLEMENT',
@@ -23,6 +35,15 @@ export const AccountingPostedCorrectionStrategy = {
 } as const;
 export type AccountingPostedCorrectionStrategy = ValueOf<
   typeof AccountingPostedCorrectionStrategy
+>;
+
+export const AccountingPostedCorrectionJournalOutputRole = {
+  DELTA: 'DELTA',
+  REVERSAL: 'REVERSAL',
+  REPOST: 'REPOST',
+} as const;
+export type AccountingPostedCorrectionJournalOutputRole = ValueOf<
+  typeof AccountingPostedCorrectionJournalOutputRole
 >;
 
 export const AccountingPostedCorrectionReasonCode = {
