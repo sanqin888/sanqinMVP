@@ -41,6 +41,25 @@ describe('Accounting expense source evidence query', () => {
           },
         ]),
       },
+      accountingJournalEntry: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            sourceFactStableId: 'expense_1',
+            sourceFactType: 'accounting.expense_document.v1',
+            sourceFactVersion: 1,
+          },
+        ]),
+      },
+      accountingCorrectionCase: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            targetStableId: 'expense_1',
+            targetVersion: 1,
+            status: 'DRAFT',
+            createdAt: new Date('2026-09-21T00:00:00.000Z'),
+          },
+        ]),
+      },
       accountingInboxItem: {
         findMany: jest.fn().mockResolvedValue([
           {
@@ -69,6 +88,12 @@ describe('Accounting expense source evidence query', () => {
           artifactStableId: 'acctart_1',
           kind: AccountingArtifactKind.PDF,
           originalFilename: 'invoice.pdf',
+        },
+        correctionState: {
+          canonicalPosted: true,
+          activeCorrectionStatus: 'DRAFT',
+          hasPostedCorrections: false,
+          correctionCount: 1,
         },
         splits: [
           {
@@ -275,6 +300,12 @@ describe('Accounting expense source evidence query', () => {
             splits: [],
           },
         ]),
+      },
+      accountingJournalEntry: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      accountingCorrectionCase: {
+        findMany: jest.fn().mockResolvedValue([]),
       },
       accountingInboxItem: {
         findMany: jest.fn().mockResolvedValue([

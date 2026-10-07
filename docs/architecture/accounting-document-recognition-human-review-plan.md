@@ -2120,13 +2120,16 @@ verify original Journal immutability, compensating-only output, fresh current-ef
 and natural Trial Balance delta consumption. Provider Platform Analytics current-effective cutover
 remains Correction-D.
 
-### 16.21 C1 local implementation record
+### 16.21 C1 delivery record
 
-Implementation baseline:
+Implementation/delivery:
 
-- `origin/dev@28d7410ef9a2ec902ba44a1f6cd1d53d2abe6a81`;
-- local branch `feat/accounting-correction-c1`;
-- predecessor B2 exact-head CI: **#6989 GREEN**;
+- implementation baseline: `origin/dev@28d7410ef9a2ec902ba44a1f6cd1d53d2abe6a81`;
+- branch: `feat/accounting-correction-c1`;
+- PR: **#2720**;
+- final feature head: `69dce6c8317c8245f32ae04c4d915c77b1b49315`;
+- dev merge: `0f5da02826ccc0c08d064b1fbc9ace24a2be4a1c`;
+- final exact-head CI: **#6992 GREEN**;
 - change class: Accounting-local Expense owner adapter + pure typed correction target policy;
 - no Prisma/schema/migration change;
 - no dependency/lockfile change;
@@ -2164,5 +2167,46 @@ Normal C1 remains DELTA-only. Changed/new categories must be active Expense cate
 funding accounts must be active CAD operational ASSET accounts; changed/new v1 payment accounts retain
 the historical active-CAD account rule. Unchanged historical dimensions may remain inactive, while all
 referenced dimensions must still exist before READY. `DUPLICATE_POSTING` remains explicitly blocked
-pending a later owner-approved `REVERSAL_ONLY` path. C2 will expose this authority through the posted
-Expense UI; D will cut Expense records to Original + Corrections -> Current Effective display.
+pending a later owner-approved `REVERSAL_ONLY` path. C1 passed the remote delivery gate and is merged;
+C2 now exposes this authority through the posted Expense workflow while D remains the later global
+Original + Corrections -> Current Effective read-model cutover.
+
+### 16.22 C2 local implementation record
+
+Implementation/readiness:
+
+- implementation baseline: `origin/dev@0f5da02826ccc0c08d064b1fbc9ace24a2be4a1c`;
+- branch: `feat/accounting-correction-c2`;
+- predecessor C1: **PR #2720 / final head `69dce6c8317c8245f32ae04c4d915c77b1b49315` / dev merge `0f5da02826ccc0c08d064b1fbc9ace24a2be4a1c` / CI #6992 GREEN**;
+- state: **LOCAL IMPLEMENTED / USER REVIEW PENDING / NOT PUSHED**;
+- no Prisma/schema/migration change;
+- no dependency/lockfile change;
+- no new controller vertical, context direction, scanner allowance, SCC or architecture baseline change;
+- Provider B2 controlled production verification remains a separate pending gate and is not part of C2.
+
+C2 adds an Expense-specific HTTP facade over A3 lifecycle + the C1 owner adapter under the existing
+`AccountingExpenseController`. The route family is namespaced as `journal/expense/.../correction(s)` so
+posted correction cannot be confused with normal Expense create/confirm/funding-completion routes.
+The Expense records query adds one batched canonical-Journal read plus one batched Correction-case read
+to project lightweight posted/correction state; it does not issue per-row correction requests. V1 is
+considered posted only with its single matching canonical v1 Journal; v2 requires complete persisted
+split funding and the full expected set of funding-group canonical v2 Journals before the list exposes
+**Correct posted record**.
+
+The Web workflow remains inside `/accounting/expenses` but uses a dedicated Correction panel rather
+than reopening `ExpenseEditor`. It seeds new edits from C1 Current Effective authority, preserves v1
+document-level allocations and v2 split-level funding semantics, and exposes only total, memo, split
+composition/amount/tax/category and funding authority. Booking date, currency, funding-attribution
+version and source posting authority remain frozen server-owned fields. Omitted v2 funding inherits the
+current-effective value; explicit clear remains unresolved; new unfunded splits and cleared v1
+allocations may persist as DRAFT while Preview/READY fail closed until funding is complete.
+
+Preview renders only the compensating account/category Debit/Credit vector, strategy and `planHash` and
+states that original Journals are not modified. NOOP remains NOOP and cannot advance to READY. POST
+requires the full planHash plus operator acknowledgement, then performs a fresh authoritative read; if
+the response/fresh read cannot prove POSTED, the UI enters UNKNOWN/no-retry rather than repeating the
+write. History shows reason/note/status, revisions, operator/timestamps and immutable Correction Journal
+outputs while separately labelling Original persisted fact and Current Effective corrected authority.
+The normal Expense records list continues to display persisted source values, so Correction-D remains
+responsible for global current-effective projection cutover across Expense records, Dashboard/P&L and
+other reporting surfaces.

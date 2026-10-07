@@ -64,6 +64,7 @@ import { AccountingProviderSettlementPreviewService } from './accounting-provide
 import { AccountingProviderSettlementExecutionService } from './accounting-provider-settlement-execution.service';
 import { AccountingProviderSettlementCorrectionAdapter } from './accounting-provider-settlement-correction.adapter';
 import { AccountingExpenseCorrectionAdapter } from './accounting-expense-correction.adapter';
+import { AccountingExpenseCorrectionService } from './accounting-expense-correction.service';
 import { AccountingProviderSettlementCorrectionService } from './accounting-provider-settlement-correction.service';
 import { AccountingCloverFeeReclassificationService } from './accounting-clover-fee-reclassification.service';
 import { AccountingProviderFinancialCoverageService } from './accounting-provider-financial-coverage.service';
@@ -141,6 +142,7 @@ import { AccountingPostedFinancialCorrectionService } from './accounting-posted-
     AccountingProviderSettlementCorrectionAdapter,
     AccountingProviderSettlementCorrectionService,
     AccountingExpenseCorrectionAdapter,
+    AccountingExpenseCorrectionService,
     AccountingCloverFeeReclassificationService,
     AccountingProviderFinancialCoverageService,
     AccountingProviderPayoutService,
