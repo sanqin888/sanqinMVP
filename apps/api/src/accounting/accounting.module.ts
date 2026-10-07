@@ -63,6 +63,7 @@ import { AccountingCanonicalChangeExecutionService } from './accounting-canonica
 import { AccountingProviderSettlementPreviewService } from './accounting-provider-settlement-preview.service';
 import { AccountingProviderSettlementExecutionService } from './accounting-provider-settlement-execution.service';
 import { AccountingProviderSettlementCorrectionAdapter } from './accounting-provider-settlement-correction.adapter';
+import { AccountingExpenseCorrectionAdapter } from './accounting-expense-correction.adapter';
 import { AccountingProviderSettlementCorrectionService } from './accounting-provider-settlement-correction.service';
 import { AccountingCloverFeeReclassificationService } from './accounting-clover-fee-reclassification.service';
 import { AccountingProviderFinancialCoverageService } from './accounting-provider-financial-coverage.service';
@@ -139,6 +140,7 @@ import { AccountingPostedFinancialCorrectionService } from './accounting-posted-
     AccountingProviderSettlementExecutionService,
     AccountingProviderSettlementCorrectionAdapter,
     AccountingProviderSettlementCorrectionService,
+    AccountingExpenseCorrectionAdapter,
     AccountingCloverFeeReclassificationService,
     AccountingProviderFinancialCoverageService,
     AccountingProviderPayoutService,

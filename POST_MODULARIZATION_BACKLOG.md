@@ -550,7 +550,7 @@ before that external evidence exists.
 Priority: **P0 ACCOUNTING CORRECTNESS / POST-POSTING RELIABILITY**  
 Complexity: **H overall; A0/A1 low-coupling foundation**  
 External gate: **none for A0-A3; controlled production evidence for Provider B2**  
-State: **A0 + A1 MERGED / PR #2715 / MERGE `2e172b33` / CI #6973 GREEN / A2 MERGED PR #2716 / MERGE `0b2fb5d0` / MIGRATION DEV `7764bc17` / CI #6978 GREEN / A3 MERGED PR #2717 / MERGE `5f892bb3` / CI #6981 GREEN / B1 MERGED PR #2718 / MERGE `9cf7b42e` / CI #6986 GREEN / B2 SOURCE LOCAL IMPLEMENTED / USER REVIEW PENDING / CONTROLLED PRODUCTION VERIFICATION PENDING / NO B2 MIGRATION / C-D NOT STARTED**  
+State: **A0 + A1 MERGED / PR #2715 / MERGE `2e172b33` / CI #6973 GREEN / A2 MERGED PR #2716 / MERGE `0b2fb5d0` / MIGRATION DEV `7764bc17` / CI #6978 GREEN / A3 MERGED PR #2717 / MERGE `5f892bb3` / CI #6981 GREEN / B1 MERGED PR #2718 / MERGE `9cf7b42e` / CI #6986 GREEN / B2 MERGED PR #2719 / MERGE `28d7410e` / CI #6989 GREEN / CONTROLLED PRODUCTION VERIFICATION PENDING / C1 LOCAL IMPLEMENTED / USER REVIEW PENDING / NO C1 MIGRATION / C2-D NOT STARTED**  
 Detailed plan: `docs/architecture/accounting-document-recognition-human-review-plan.md` §16
 
 This is post-modularization Accounting product/reliability work and does **not** reopen Phase 9.
@@ -604,16 +604,27 @@ freezes persisted Uber pre-cutover reversals, and rebuilds corrected Target Jour
 existing Provider settlement/control-total policy. Provider source/Human Review rows remain immutable,
 the editor is bound to `expectedBaseAuthorityHash`, and normal B1 remains DELTA-only.
 
-B2 source is locally implemented from `origin/dev@9cf7b42e`. An Accounting-local Provider facade
-exposes A3/B1 lifecycle operations to the existing posted settlement surface; the Web card shows
-Current Effective values, append-only Correction history, business-field editing, Preview/delta,
-explicit READY and a full-planHash POST gate with fresh-record UNKNOWN/no-retry handling. It adds no
-generic manual-Journal endpoint and never reopens posted Human Review. Clover specialized fee
-reclassification and common Provider correction now fail closed in both directions until the planned
-Correction-E convergence. The existing sanitized `fantuanSeptemberDocument` policy regression is
-the B2 fixture; no Fantuan/month runtime branch is added. No schema/migration, dependency or new
-context direction is introduced. Source remains at the user review gate and controlled production
+B2 source merged through PR #2719 as `28d7410e`; exact-head CI #6989 is green. The
+Accounting-local Provider facade and posted settlement surface expose Current Effective values,
+append-only Correction history, business-field editing, Preview/delta, explicit READY and a
+full-planHash POST gate with fresh-record UNKNOWN/no-retry handling. It adds no generic manual-Journal
+endpoint and never reopens posted Human Review. Clover specialized fee reclassification and common
+Provider correction fail closed in both directions until Correction-E convergence. The existing
+sanitized `fantuanSeptemberDocument` policy regression remains the B2 fixture; controlled production
 edit -> Preview -> READY -> POST verification is still pending after deployment.
+
+C1 Expense backend is locally implemented from `origin/dev@28d7410e`. It adds the typed
+`accounting.expense-correction-target.v1` owner authority and an Accounting-only A3 adapter without
+HTTP/UI. Historical Expense v1 preserves document-level payment allocations; current v2 preserves
+split-level funding and 1..N funding-group Journals. Original canonical Expense Journals are accepted
+only after their typed CREATE `writeAuthority` and idempotency evidence are revalidated. Corrected
+targets reuse the existing pure canonical Expense policy but never call the canonical Expense writer.
+DRAFT allows unresolved funding; READY requires a complete target Journal Set. Omitted v2 funding
+inherits current-effective funding, explicit null clears it, and changed/new category/funding
+dimensions are validated while inherited historical dimensions may remain inactive. Normal C1 is
+DELTA-only and rejects `DUPLICATE_POSTING` pending REVERSAL_ONLY. The original ExpenseDocument,
+splits and historical allocations remain immutable. No schema/migration, dependency, controller/UI or
+new context direction is introduced; C1 is at the local user-review gate.
 
 ### 5.2 B1 — Expense -> canonical Journal
 

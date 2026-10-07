@@ -1831,7 +1831,7 @@ Scope:
 
 #### Correction-B2 — Provider posted-record UI + production fixture
 
-Status: **SOURCE LOCAL IMPLEMENTED / USER REVIEW PENDING / CONTROLLED PRODUCTION VERIFICATION PENDING**
+Status: **MERGED / PR #2719 / DEV `28d7410e` / CI #6989 GREEN / CONTROLLED PRODUCTION VERIFICATION PENDING**
 
 Scope:
 
@@ -1845,7 +1845,7 @@ special-case that provider/month/document.
 
 #### Correction-C1 — Expense backend adapter
 
-Status: **NOT STARTED**
+Status: **LOCAL IMPLEMENTED / USER REVIEW PENDING**
 
 Scope:
 
@@ -1903,9 +1903,9 @@ This framework must not:
 
 ### 16.15 Readiness conclusion
 
-Current status after B1 delivery and B2 local Provider posted-record workflow implementation:
+Current status after B2 source delivery and C1 local Expense adapter implementation:
 
-**A0 + A1 MERGED / CI #6973 GREEN / A2 SOURCE + MIGRATION MERGED / CI #6978 GREEN / A3 MERGED PR #2717 / MERGE `5f892bb3` / CI #6981 GREEN / B1 MERGED PR #2718 / MERGE `9cf7b42e` / CI #6986 GREEN / B2 SOURCE LOCAL IMPLEMENTED / USER REVIEW PENDING / CONTROLLED PRODUCTION VERIFICATION PENDING / C1 NOT STARTED**
+**A0 + A1 MERGED / CI #6973 GREEN / A2 SOURCE + MIGRATION MERGED / CI #6978 GREEN / A3 MERGED PR #2717 / MERGE `5f892bb3` / CI #6981 GREEN / B1 MERGED PR #2718 / MERGE `9cf7b42e` / CI #6986 GREEN / B2 MERGED PR #2719 / MERGE `28d7410e` / CI #6989 GREEN / CONTROLLED PRODUCTION VERIFICATION PENDING / C1 LOCAL IMPLEMENTED / USER REVIEW PENDING / C2 + D NOT STARTED**
 
 PR #2715 merged A0/A1 to `dev` as `2e172b33` after CI #6973. PR #2716 merged the additive A2
 persistence source as `0b2fb5d0` after CI #6976, and the user-generated migration
@@ -1925,21 +1925,30 @@ Provider Human Review effective lines plus the existing settlement/control-total
 Provider source/Human Review rows immutable. Normal B1 corrections remain DELTA-only and bind the
 editor to `expectedBaseAuthorityHash`.
 
-B2 source is now implemented locally from that exact merged baseline. An Accounting-local Provider
-correction facade exposes only the Provider Statement workflow over A3 + B1; the Web posted-settlement
-card exposes **Correct posted record**, Current Effective business values, append-only Correction
-history, editable business fields, Preview/delta, explicit READY, and a full-planHash final POST gate.
-The POST path performs a fresh record verification and falls to UNKNOWN/no-retry semantics if the
-write result cannot be confirmed. It never reopens posted Human Review and never exposes arbitrary
-Journal construction. Existing Clover fee reclassification and common Provider correction now fail
-closed in both directions until Correction-E convergence.
+B2 source merged through PR #2719 as
+`28d7410ef9a2ec902ba44a1f6cd1d53d2abe6a81`; exact-head CI #6989 is green. The Accounting-local
+Provider correction facade and posted-settlement card expose **Correct posted record**, Current
+Effective business values, append-only Correction history, business-field editing, Preview/delta,
+explicit READY, and a full-planHash POST gate with fresh-record UNKNOWN/no-retry reconciliation. The
+source/Human Review rows remain immutable and the specialized Clover fee-reclassification path fails
+closed in both directions with the common Provider correction path until Correction-E convergence.
+Controlled production verification remains pending and is not implied by source merge.
 
-Therefore the framework is **ready for B2 source review but not yet production-verified**. The
-sanitized Fantuan September 2026 regression already present in Provider Settlement policy tests is the
-B2 fixture; no provider/month runtime branch was added. After source merge/deploy, B2 still requires
-the controlled production sequence edit -> Preview -> READY -> POST plus verification that the
-original Journal is unchanged and only compensating Correction Journal output is appended. C1 remains
-the independent Expense owner adapter.
+C1 is now implemented locally from the merged B2 baseline. It introduces the typed
+`accounting.expense-correction-target.v1` authority and an Accounting-only Expense owner adapter for
+A3. Historical Expense v1 keeps document-level payment-allocation semantics; current Expense v2 keeps
+split-level funding and one-to-many funding-group Journal semantics. The adapter reconstructs the
+original canonical Expense authority from immutable CREATE audit evidence, supports amount/tax/
+category/split corrections, and rebuilds the Target Journal Set through the existing pure canonical
+Expense policy without becoming a second canonical Expense writer. A DRAFT may deliberately contain
+unresolved funding; READY fails closed until v1 payment allocations or every v2 split funding account
+are complete. Omitted v2 funding inherits the same current-effective split funding, explicit null
+clears it, and changed/new dimensions are revalidated while inherited historical dimensions may remain
+inactive. The original confirmed ExpenseDocument/Split/PaymentAllocation rows are never mutated.
+
+Therefore the framework is **ready for C1 source review**. B2 still needs controlled production
+verification; C2 remains the posted Expense UI/history slice and D remains the current-effective
+read-model cutover.
 
 ### 16.16 A0 + A1 delivery record
 
@@ -2070,18 +2079,21 @@ authority for subsequent corrections; B2/D will expose and consume that current-
 B1 exposes an Accounting-internal read method for the current typed target and editor concurrency
 hash, but deliberately adds no HTTP route.
 
-### 16.20 B2 local implementation record
+### 16.20 B2 delivery record
 
-Implementation baseline:
+Implementation/delivery:
 
-- `origin/dev@9cf7b42e7527ee36a1105efaaafcecf4a8bd51dc`;
-- local branch `feat/accounting-correction-b2`;
-- predecessor B1 CI: **#6986 GREEN**;
+- implementation baseline: `origin/dev@9cf7b42e7527ee36a1105efaaafcecf4a8bd51dc`;
+- branch: `feat/accounting-correction-b2`;
+- PR: **#2719**;
+- final feature head: `f9e389c8001bc65477de92b31e5ba0991b8f2d6e`;
+- squash merge: `28d7410ef9a2ec902ba44a1f6cd1d53d2abe6a81`;
+- final exact-head CI: **#6989 GREEN**;
 - change class: Accounting-local Provider correction HTTP facade + Accounting Web posted-record UI;
 - no Prisma/schema/migration change;
 - no package/dependency/lockfile change;
 - no context direction, scanner allowance, SCC or architecture baseline change;
-- controlled production verification remains pending after source merge/deployment.
+- controlled production verification remains pending after deployment.
 
 The B2 API is a Provider-specific facade over A3 lifecycle + B1 owner adapter, rather than a generic
 manual-Journal endpoint. It exposes current-effective Provider authority, stable correction history,
@@ -2107,3 +2119,50 @@ after deployment, one controlled Fantuan correction must execute edit -> Preview
 verify original Journal immutability, compensating-only output, fresh current-effective authority,
 and natural Trial Balance delta consumption. Provider Platform Analytics current-effective cutover
 remains Correction-D.
+
+### 16.21 C1 local implementation record
+
+Implementation baseline:
+
+- `origin/dev@28d7410ef9a2ec902ba44a1f6cd1d53d2abe6a81`;
+- local branch `feat/accounting-correction-c1`;
+- predecessor B2 exact-head CI: **#6989 GREEN**;
+- change class: Accounting-local Expense owner adapter + pure typed correction target policy;
+- no Prisma/schema/migration change;
+- no dependency/lockfile change;
+- no controller/API/UI/read-model cutover;
+- no context direction, scanner allowance, SCC or architecture baseline change.
+
+C1 introduces `accounting.expense-correction-target.v1`. The target freezes immutable source posting
+identity and booking date/currency while allowing corrected total, memo, split composition,
+amount/tax/category and funding authority. The authority hash excludes lineage but the persisted target
+stores `basedOnAuthorityHash`, so every Revision is bound to the current-effective Expense authority
+without making lineage itself part of business equality.
+
+Historical Expense v1 and current Expense v2 remain distinct owner semantics. V1 reconstructs the
+original document-level `paymentAllocations` and their stable identities from the typed canonical
+CREATE audit; v2 reconstructs split-level `paidFromAccount` and supports the existing 1..N Journal
+grouping by funding account. `targetVersion` remains the canonical Expense fact version (1 or 2);
+C1 does not convert historical v1 rows into v2.
+
+Draft normalization permits unresolved funding without weakening financial readiness. For v2, an
+omitted split funding field inherits current-effective funding, explicit null means unresolved, and a
+new split with no funding remains unresolved. For v1, an omitted payment-allocation set inherits the
+current set while an explicit empty set represents unresolved funding. Split amount/tax totals must
+still reconcile to the corrected document total in every DRAFT. READY converts the target back through
+the existing pure `buildCanonicalExpenseJournal()` / `buildCanonicalExpenseJournalsV2()` policy and
+therefore fails closed until the complete Target Journal Set exists.
+
+The adapter validates every original canonical Journal against its immutable typed CREATE
+`writeAuthority` and idempotency hash before using it as the original anchor. It also revalidates the
+persisted confirmed Expense source facts, rejects mixed v1/v2 source authority, supports all original
+v2 funding-group Journals, and uses only A3's correction-specific writer for actual compensating
+entries. It never calls `createCanonicalExpenseJournalEntryInTx()` and never updates
+`AccountingExpenseDocument`, `AccountingExpenseSplit` or historical payment-allocation rows.
+
+Normal C1 remains DELTA-only. Changed/new categories must be active Expense categories; changed/new v2
+funding accounts must be active CAD operational ASSET accounts; changed/new v1 payment accounts retain
+the historical active-CAD account rule. Unchanged historical dimensions may remain inactive, while all
+referenced dimensions must still exist before READY. `DUPLICATE_POSTING` remains explicitly blocked
+pending a later owner-approved `REVERSAL_ONLY` path. C2 will expose this authority through the posted
+Expense UI; D will cut Expense records to Original + Corrections -> Current Effective display.
