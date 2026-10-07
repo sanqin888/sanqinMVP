@@ -724,6 +724,28 @@ describe('AccountingProviderSettlementCorrectionAdapter', () => {
       'Provider correction activation target identity changed before POSTED',
     );
 
+    fixture.db.accountingProviderFinancialDocument.findUnique.mockResolvedValueOnce(
+      { revision: 2 } as never,
+    );
+    await expect(
+      adapter.activateTargetInTx(
+        {
+          correctionStableId: 'correction_provider_1',
+          correctionRevisionStableId: 'correction_revision_1',
+          correctionRevision: 1,
+          targetStableId: DOCUMENT,
+          targetVersion: 1,
+          targetAuthoritySchema: normalized.targetAuthoritySchema,
+          targetAuthorityHash: normalized.targetAuthorityHash,
+          targetJson: normalized.targetJson as never,
+          plan: {} as never,
+        },
+        fixture.db as never,
+      ),
+    ).rejects.toThrow(
+      'Provider correction source document changed before POSTED',
+    );
+
     expect(
       fixture.db.accountingProviderFinancialDocument.findUnique,
     ).toHaveBeenCalled();
