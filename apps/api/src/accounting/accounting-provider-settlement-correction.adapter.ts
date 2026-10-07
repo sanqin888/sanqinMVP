@@ -496,7 +496,8 @@ const assertSameTargetStructure = (
       hashAccountingJson(target.supplementaryEvidenceDocumentStableIds) ||
     hashAccountingJson(
       source.historicalReversalOriginalJournalEntryStableIds,
-    ) !== hashAccountingJson(target.historicalReversalOriginalJournalEntryStableIds)
+    ) !==
+      hashAccountingJson(target.historicalReversalOriginalJournalEntryStableIds)
   ) {
     throw new ConflictException(
       'normal Provider DELTA correction cannot change Provider identity, Store, period, authority, or frozen prerequisites',
@@ -681,11 +682,10 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
     };
   }
 
-  activateTargetInTx(
+  async activateTargetInTx(
     input: AccountingPostedCorrectionOwnerActivationInputV1,
     tx: Prisma.TransactionClient,
   ): Promise<void> {
-    void tx;
     if (
       input.targetAuthoritySchema !==
       ACCOUNTING_PROVIDER_SETTLEMENT_CORRECTION_TARGET_SCHEMA
@@ -713,9 +713,18 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
         'Provider correction activation target identity changed before POSTED',
       );
     }
+    const sourceDocument =
+      await tx.accountingProviderFinancialDocument.findUnique({
+        where: { documentStableId: input.targetStableId },
+        select: { revision: true },
+      });
+    if (!sourceDocument || sourceDocument.revision !== input.targetVersion) {
+      throw new ConflictException(
+        'Provider correction source document changed before POSTED',
+      );
+    }
     // Provider source/Human Review rows remain immutable. The common
     // AccountingCorrectionCase POSTED transition is the activation pointer.
-    return Promise.resolve();
   }
 
   private async readCurrentBusinessAuthority(
@@ -910,7 +919,8 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
     if (
       hashJournalCreatePayload(
         normalizeJournalCreate(rebuiltOriginalJournal),
-      ) !== hashJournalCreatePayload(
+      ) !==
+      hashJournalCreatePayload(
         normalizeJournalCreate(journalToCreateInput(originalProviderJournal)),
       )
     ) {
@@ -1099,8 +1109,8 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
     const supplementaryIds = new Set(
       target.supplementaryEvidenceDocumentStableIds,
     );
-    const candidateDocuments = target.supplementaryEvidenceDocumentStableIds.map(
-      (documentStableId) => ({
+    const candidateDocuments =
+      target.supplementaryEvidenceDocumentStableIds.map((documentStableId) => ({
         documentStableId,
         provider: target.document.provider,
         documentType: AccountingFinancialDocumentType.OTHER,
@@ -1111,8 +1121,7 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
         lines: target.lines.filter(
           (line) => line.sourceDocumentStableId === documentStableId,
         ),
-      }),
-    );
+      }));
     const unexpectedSourceDocument = target.lines.find(
       (line) =>
         line.sourceDocumentStableId !== target.document.documentStableId &&
