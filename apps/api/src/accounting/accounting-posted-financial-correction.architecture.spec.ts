@@ -24,10 +24,7 @@ const journalAuthoritySource = readFileSync(
   'utf8',
 );
 const ownerAdapterSource = readFileSync(
-  resolve(
-    __dirname,
-    'accounting-posted-financial-correction-owner-adapter.ts',
-  ),
+  resolve(__dirname, 'accounting-posted-financial-correction-owner-adapter.ts'),
   'utf8',
 );
 const lifecycleServiceSource = readFileSync(
@@ -62,18 +59,15 @@ describe('posted financial correction foundation architecture', () => {
     expect(contractSource).toContain("'EXPENSE'");
   });
 
-  it(
-    'keeps A3 financial execution and Journal authority provider-neutral and persistence-neutral',
-    () => {
-      for (const source of [executionPolicySource, journalAuthoritySource]) {
-        expect(source).not.toContain('@prisma/client');
-        expect(source).not.toContain('@nestjs/common');
-        expect(source).not.toContain('FANTUAN');
-        expect(source).not.toContain('UBER_EATS');
-        expect(source).not.toContain('CLOVER');
-      }
-    },
-  );
+  it('keeps A3 financial execution and Journal authority provider-neutral and persistence-neutral', () => {
+    for (const source of [executionPolicySource, journalAuthoritySource]) {
+      expect(source).not.toContain('@prisma/client');
+      expect(source).not.toContain('@nestjs/common');
+      expect(source).not.toContain('FANTUAN');
+      expect(source).not.toContain('UBER_EATS');
+      expect(source).not.toContain('CLOVER');
+    }
+  });
 
   it('keeps the owner adapter generic while allowing runtime persistence revalidation', () => {
     expect(ownerAdapterSource).toContain('normalizeRevisionTarget');

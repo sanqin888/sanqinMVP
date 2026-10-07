@@ -3805,9 +3805,7 @@ export class AccountingJournalService {
       );
     }
 
-    if (
-      correctionCase.readyRevision.correctionCaseId !== correctionCase.id
-    ) {
+    if (correctionCase.readyRevision.correctionCaseId !== correctionCase.id) {
       throw new ConflictException(
         'posted correction READY revision does not belong to the active Case',
       );

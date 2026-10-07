@@ -10,12 +10,8 @@ import {
   AccountingPostedCorrectionStrategy,
   AccountingPostedCorrectionTargetKind,
 } from './accounting-posted-financial-correction.contract';
-import {
-  buildPostedFinancialCorrectionPreviewPlan,
-} from './accounting-posted-financial-correction.policy';
-import {
-  AccountingPostedFinancialCorrectionService,
-} from './accounting-posted-financial-correction.service';
+import { buildPostedFinancialCorrectionPreviewPlan } from './accounting-posted-financial-correction.policy';
+import { AccountingPostedFinancialCorrectionService } from './accounting-posted-financial-correction.service';
 
 const sha = (char: string) => char.repeat(64);
 
@@ -144,8 +140,8 @@ const makeService = () => {
   };
   const prisma = {
     ...tx,
-    $transaction: jest.fn(
-      (work: (client: typeof tx) => Promise<unknown>) => work(tx),
+    $transaction: jest.fn((work: (client: typeof tx) => Promise<unknown>) =>
+      work(tx),
     ),
   };
   const journal = {
@@ -227,7 +223,7 @@ describe('AccountingPostedFinancialCorrectionService', () => {
         correctionCaseId: 'case-db-id',
         revision: 2,
         createdByActorRef: 'user_2',
-      }),
+      }) as unknown,
     });
     expect(tx.accountingCorrectionCase.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -280,120 +276,114 @@ describe('AccountingPostedFinancialCorrectionService', () => {
     expect(tx.accountingCorrectionJournalOutput.create).not.toHaveBeenCalled();
   });
 
-  it(
-    'posts an authority-only READY correction atomically with zero Journal outputs',
-    async () => {
-      const { service, tx, journal } = makeService();
-      const plan = buildPostedFinancialCorrectionPreviewPlan({
-        correctionStableId: 'correction_1',
+  it('posts an authority-only READY correction atomically with zero Journal outputs', async () => {
+    const { service, tx, journal } = makeService();
+    const plan = buildPostedFinancialCorrectionPreviewPlan({
+      correctionStableId: 'correction_1',
+      targetKind: AccountingPostedCorrectionTargetKind.EXPENSE,
+      targetStableId: 'expense_1',
+      targetVersion: 1,
+      strategy: AccountingPostedCorrectionStrategy.DELTA,
+      reasonCode: AccountingPostedCorrectionReasonCode.AMOUNT_ERROR,
+      baseAuthoritySchema: revision.targetAuthoritySchema,
+      baseAuthorityHash: sha('a'),
+      targetAuthoritySchema: revision.targetAuthoritySchema,
+      targetAuthorityHash: revision.targetAuthorityHash,
+      currency: 'CAD',
+      originalJournals: [originalJournal],
+      priorCorrectionJournals: [],
+      targetJournals: [targetJournal],
+    });
+    expect(plan.status).toBe('READY');
+    expect(plan.deltaPosting.lines).toEqual([]);
+
+    const readyCase = {
+      ...baseCase,
+      version: 2,
+      status: AccountingPostedCorrectionStatus.READY,
+      strategy: AccountingPostedCorrectionStrategy.DELTA,
+      baseAuthoritySchema: plan.authority.baseAuthoritySchema,
+      baseAuthorityHash: plan.authority.baseAuthorityHash,
+      baseJournalSetHash: plan.authority.baseJournalSetHash,
+      readyRevisionId: revision.id,
+      targetAuthoritySchema: plan.authority.targetAuthoritySchema,
+      targetAuthorityHash: plan.authority.targetAuthorityHash,
+      readyPreviewSchema: 'accounting.posted_financial_correction_preview.v1',
+      readyPreviewJson: plan,
+      planHash: plan.planHash,
+      readyByActorRef: 'user_1',
+      readyAt: new Date('2026-10-06T21:00:00.000Z'),
+      readyRevision: revision,
+    };
+    const postedCase = {
+      ...readyCase,
+      version: 3,
+      status: AccountingPostedCorrectionStatus.POSTED,
+      postedByActorRef: 'user_2',
+      postedAt: new Date('2026-10-06T22:00:00.000Z'),
+    };
+    tx.accountingCorrectionCase.findUnique
+      .mockResolvedValueOnce(readyCase)
+      .mockResolvedValueOnce(postedCase);
+    const adapter = {
+      targetKind: AccountingPostedCorrectionTargetKind.EXPENSE,
+      normalizeRevisionTarget: jest.fn(),
+      resolveReadyTarget: jest.fn().mockResolvedValue({
+        version: 1,
         targetKind: AccountingPostedCorrectionTargetKind.EXPENSE,
         targetStableId: 'expense_1',
         targetVersion: 1,
-        strategy: AccountingPostedCorrectionStrategy.DELTA,
-        reasonCode: AccountingPostedCorrectionReasonCode.AMOUNT_ERROR,
-        baseAuthoritySchema: revision.targetAuthoritySchema,
-        baseAuthorityHash: sha('a'),
         targetAuthoritySchema: revision.targetAuthoritySchema,
         targetAuthorityHash: revision.targetAuthorityHash,
+        targetJson,
+        strategy: AccountingPostedCorrectionStrategy.DELTA,
+        baseAuthoritySchema: revision.targetAuthoritySchema,
+        baseAuthorityHash: sha('a'),
         currency: 'CAD',
         originalJournals: [originalJournal],
-        priorCorrectionJournals: [],
         targetJournals: [targetJournal],
-      });
-      expect(plan.status).toBe('READY');
-      expect(plan.deltaPosting.lines).toEqual([]);
+      }),
+      activateTargetInTx: jest.fn().mockResolvedValue(undefined),
+    };
 
-      const readyCase = {
-        ...baseCase,
-        version: 2,
-        status: AccountingPostedCorrectionStatus.READY,
-        strategy: AccountingPostedCorrectionStrategy.DELTA,
-        baseAuthoritySchema: plan.authority.baseAuthoritySchema,
-        baseAuthorityHash: plan.authority.baseAuthorityHash,
-        baseJournalSetHash: plan.authority.baseJournalSetHash,
-        readyRevisionId: revision.id,
-        targetAuthoritySchema: plan.authority.targetAuthoritySchema,
-        targetAuthorityHash: plan.authority.targetAuthorityHash,
-        readyPreviewSchema:
-          'accounting.posted_financial_correction_preview.v1',
-        readyPreviewJson: plan,
-        planHash: plan.planHash,
-        readyByActorRef: 'user_1',
-        readyAt: new Date('2026-10-06T21:00:00.000Z'),
-        readyRevision: revision,
-      };
-      const postedCase = {
-        ...readyCase,
-        version: 3,
-        status: AccountingPostedCorrectionStatus.POSTED,
-        postedByActorRef: 'user_2',
-        postedAt: new Date('2026-10-06T22:00:00.000Z'),
-      };
-      tx.accountingCorrectionCase.findUnique
-        .mockResolvedValueOnce(readyCase)
-        .mockResolvedValueOnce(postedCase);
-      const adapter = {
-        targetKind: AccountingPostedCorrectionTargetKind.EXPENSE,
-        normalizeRevisionTarget: jest.fn(),
-        resolveReadyTarget: jest.fn().mockResolvedValue({
-          version: 1,
-          targetKind: AccountingPostedCorrectionTargetKind.EXPENSE,
-          targetStableId: 'expense_1',
-          targetVersion: 1,
-          targetAuthoritySchema: revision.targetAuthoritySchema,
-          targetAuthorityHash: revision.targetAuthorityHash,
-          targetJson,
-          strategy: AccountingPostedCorrectionStrategy.DELTA,
-          baseAuthoritySchema: revision.targetAuthoritySchema,
-          baseAuthorityHash: sha('a'),
-          currency: 'CAD',
-          originalJournals: [originalJournal],
-          targetJournals: [targetJournal],
-        }),
-        activateTargetInTx: jest.fn().mockResolvedValue(undefined),
-      };
+    const result = await service.executeCase(
+      'correction_1',
+      { expectedPlanHash: plan.planHash },
+      'user_2',
+      adapter as never,
+    );
 
-      const result = await service.executeCase(
-        'correction_1',
-        { expectedPlanHash: plan.planHash },
-        'user_2',
-        adapter as never,
-      );
-
-      expect(result.replayed).toBe(false);
-      expect(result.correction.status).toBe(
-        AccountingPostedCorrectionStatus.POSTED,
-      );
-      expect(
-        journal.createPostedCorrectionJournalEntryInTx,
-      ).not.toHaveBeenCalled();
-      expect(
-        tx.accountingCorrectionJournalOutput.create,
-      ).not.toHaveBeenCalled();
-      expect(adapter.resolveReadyTarget).toHaveBeenCalledTimes(1);
-      expect(adapter.activateTargetInTx).toHaveBeenCalledTimes(1);
-      expect(tx.accountingCorrectionCase.updateMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            status: AccountingPostedCorrectionStatus.READY,
-            planHash: plan.planHash,
-          }) as unknown,
-          data: expect.objectContaining({
-            status: AccountingPostedCorrectionStatus.POSTED,
-            postedByActorRef: 'user_2',
-          }) as unknown,
-        }),
-      );
-      expect(tx.accountingAuditLog.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          action: 'POSTED_CORRECTION_POST',
-          entityType: 'ACCOUNTING_CORRECTION_CASE',
-          entityId: 'correction_1',
-          operatorActorRef: 'user_2',
+    expect(result.replayed).toBe(false);
+    expect(result.correction.status).toBe(
+      AccountingPostedCorrectionStatus.POSTED,
+    );
+    expect(
+      journal.createPostedCorrectionJournalEntryInTx,
+    ).not.toHaveBeenCalled();
+    expect(tx.accountingCorrectionJournalOutput.create).not.toHaveBeenCalled();
+    expect(adapter.resolveReadyTarget).toHaveBeenCalledTimes(1);
+    expect(adapter.activateTargetInTx).toHaveBeenCalledTimes(1);
+    expect(tx.accountingCorrectionCase.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: AccountingPostedCorrectionStatus.READY,
+          planHash: plan.planHash,
         }) as unknown,
-      });
-    },
-  );
+        data: expect.objectContaining({
+          status: AccountingPostedCorrectionStatus.POSTED,
+          postedByActorRef: 'user_2',
+        }) as unknown,
+      }),
+    );
+    expect(tx.accountingAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'POSTED_CORRECTION_POST',
+        entityType: 'ACCOUNTING_CORRECTION_CASE',
+        entityId: 'correction_1',
+        operatorActorRef: 'user_2',
+      }) as unknown,
+    });
+  });
 
   it('links a financial DELTA Journal before activating and posting the Case', async () => {
     const { service, tx, journal } = makeService();
@@ -489,12 +479,8 @@ describe('AccountingPostedFinancialCorrectionService', () => {
     );
 
     expect(result.replayed).toBe(false);
-    expect(
-      journal.createPostedCorrectionJournalEntryInTx,
-    ).toHaveBeenCalledTimes(1);
-    expect(
-      journal.createPostedCorrectionJournalEntryInTx,
-    ).toHaveBeenCalledWith(
+    expect(journal.createPostedCorrectionJournalEntryInTx).toHaveBeenCalledTimes(1);
+    expect(journal.createPostedCorrectionJournalEntryInTx).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: AccountingJournalEntryKind.ADJUSTMENT,
         sourceFactType: 'accounting.posted_financial_correction.v1',

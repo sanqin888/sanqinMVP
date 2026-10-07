@@ -8,9 +8,7 @@ import {
   AccountingPostedCorrectionTargetKind,
   type AccountingPostedCorrectionPostingVectorV1,
 } from './accounting-posted-financial-correction.contract';
-import type {
-  AccountingPostedCorrectionExecutionJournalDraftV1,
-} from './accounting-posted-financial-correction-execution.policy';
+import type { AccountingPostedCorrectionExecutionJournalDraftV1 } from './accounting-posted-financial-correction-execution.policy';
 import {
   hashPostedCorrectionPostingVector,
   normalizePostedCorrectionPostingVector,
@@ -50,11 +48,7 @@ export type AccountingPostedCorrectionJournalWritePlanV1 = {
   authority: AccountingPostedCorrectionJournalWriteAuthorityV1;
 };
 
-const requireValue = (
-  raw: unknown,
-  field: string,
-  maxLength = 500,
-): string => {
+const requireValue = (raw: unknown, field: string, maxLength = 500): string => {
   if (typeof raw !== 'string') {
     throw new AccountingJournalPolicyError(`${field} must be a string`);
   }
@@ -293,7 +287,8 @@ export const assertPostedCorrectionJournalAuthority = (
   journal: NormalizedJournalCreate,
   rawAuthority: AccountingPostedCorrectionJournalWriteAuthorityV1,
 ): void => {
-  const authority = normalizePostedCorrectionJournalWriteAuthority(rawAuthority);
+  const authority =
+    normalizePostedCorrectionJournalWriteAuthority(rawAuthority);
   if (journal.kind !== AccountingJournalEntryKind.ADJUSTMENT) {
     throw new AccountingJournalPolicyError(
       'posted correction Journal kind must be ADJUSTMENT',
@@ -364,7 +359,8 @@ export const hashPostedCorrectionJournalWrite = (
   journal: NormalizedJournalCreate,
   rawAuthority: AccountingPostedCorrectionJournalWriteAuthorityV1,
 ): string => {
-  const authority = normalizePostedCorrectionJournalWriteAuthority(rawAuthority);
+  const authority =
+    normalizePostedCorrectionJournalWriteAuthority(rawAuthority);
   assertPostedCorrectionJournalAuthority(journal, authority);
   return hashAccountingJson({
     journalHash: hashJournalCreatePayload(journal),

@@ -26,9 +26,7 @@ import {
   buildPostedCorrectionExecutionJournalDrafts,
   AccountingPostedFinancialCorrectionExecutionPolicyError,
 } from './accounting-posted-financial-correction-execution.policy';
-import {
-  buildPostedCorrectionJournalWritePlan,
-} from './accounting-posted-financial-correction-journal-authority';
+import { buildPostedCorrectionJournalWritePlan } from './accounting-posted-financial-correction-journal-authority';
 import type {
   AccountingPostedCorrectionOwnerDbClient,
   AccountingPostedCorrectionOwnerReadyTargetV1,
@@ -747,8 +745,7 @@ export class AccountingPostedFinancialCorrectionService {
         const writePlan = this.applyExecutionPolicy(() =>
           buildPostedCorrectionJournalWritePlan({
             correctionStableId: current.correctionStableId,
-            correctionRevisionStableId:
-              revision.correctionRevisionStableId,
+            correctionRevisionStableId: revision.correctionRevisionStableId,
             correctionRevision: revision.revision,
             targetKind: current.targetKind,
             targetStableId: current.targetStableId,
@@ -786,8 +783,7 @@ export class AccountingPostedFinancialCorrectionService {
       await adapter.activateTargetInTx(
         {
           correctionStableId: current.correctionStableId,
-          correctionRevisionStableId:
-            revision.correctionRevisionStableId,
+          correctionRevisionStableId: revision.correctionRevisionStableId,
           correctionRevision: revision.revision,
           targetStableId: current.targetStableId,
           targetVersion: current.targetVersion,
@@ -1250,10 +1246,7 @@ export class AccountingPostedFinancialCorrectionService {
     try {
       return work();
     } catch (error) {
-      if (
-        error instanceof
-        AccountingPostedFinancialCorrectionExecutionPolicyError
-      ) {
+      if (error instanceof AccountingPostedFinancialCorrectionExecutionPolicyError) {
         throw new ConflictException(error.message);
       }
       throw error;

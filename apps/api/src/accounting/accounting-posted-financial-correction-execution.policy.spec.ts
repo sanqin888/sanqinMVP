@@ -12,9 +12,7 @@ import {
   AccountingPostedFinancialCorrectionExecutionPolicyError,
   buildPostedCorrectionExecutionJournalDrafts,
 } from './accounting-posted-financial-correction-execution.policy';
-import {
-  buildPostedFinancialCorrectionPreviewPlan,
-} from './accounting-posted-financial-correction.policy';
+import { buildPostedFinancialCorrectionPreviewPlan } from './accounting-posted-financial-correction.policy';
 import type { AccountingJournalCreateInput } from './accounting-journal-policy';
 
 const sha = (char: string) => char.repeat(64);
@@ -138,10 +136,7 @@ describe('posted financial correction execution policy', () => {
 
     const drafts = buildPostedCorrectionExecutionJournalDrafts({
       plan: reviewed,
-      currentBusinessJournals: [
-        target(first, 10_000),
-        target(second, 5_000),
-      ],
+      currentBusinessJournals: [target(first, 10_000), target(second, 5_000)],
     });
 
     expect(drafts).toHaveLength(2);
@@ -282,30 +277,27 @@ describe('posted financial correction execution policy', () => {
     ).toEqual([]);
   });
 
-  it(
-    'fails closed when current business journals no longer equal Current Effective Posting',
-    () => {
-      const original = posted({
-        entryStableId: 'journal_1',
-        key: 'expense:document:1',
-        occurredAt: '2026-09-15T16:00:00.000Z',
-        amountCents: 10_000,
-        fundingAccount: 'account_cash',
-      });
-      const reviewed = plan({
-        strategy: 'DELTA',
-        original: [original],
-        target: [target(original, 12_000)],
-      });
+  it('fails closed when current business journals no longer equal Current Effective Posting', () => {
+    const original = posted({
+      entryStableId: 'journal_1',
+      key: 'expense:document:1',
+      occurredAt: '2026-09-15T16:00:00.000Z',
+      amountCents: 10_000,
+      fundingAccount: 'account_cash',
+    });
+    const reviewed = plan({
+      strategy: 'DELTA',
+      original: [original],
+      target: [target(original, 12_000)],
+    });
 
-      expect(() =>
-        buildPostedCorrectionExecutionJournalDrafts({
-          plan: reviewed,
-          currentBusinessJournals: [target(original, 9_000)],
-        }),
-      ).toThrow(
-        'current business Journal set no longer matches Current Effective Posting',
-      );
-    },
-  );
+    expect(() =>
+      buildPostedCorrectionExecutionJournalDrafts({
+        plan: reviewed,
+        currentBusinessJournals: [target(original, 9_000)],
+      }),
+    ).toThrow(
+      'current business Journal set no longer matches Current Effective Posting',
+    );
+  });
 });

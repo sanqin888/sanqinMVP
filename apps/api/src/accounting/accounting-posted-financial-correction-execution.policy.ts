@@ -145,7 +145,9 @@ const buildDeltaDrafts = (
   targetJournals: AccountingPostedCorrectionTargetJournalSnapshotV1[],
 ): AccountingPostedCorrectionExecutionJournalDraftV1[] => {
   const currentByKey = new Map(
-    currentJournals.map((journal) => [journal.idempotencyKey, journal] as const),
+    currentJournals.map(
+      (journal) => [journal.idempotencyKey, journal] as const,
+    ),
   );
   const targetByKey = new Map(
     targetJournals.map((journal) => [journal.idempotencyKey, journal] as const),
@@ -230,7 +232,10 @@ export const buildPostedCorrectionExecutionJournalDrafts = (input: {
     );
   }
 
-  const currentSet = currentBusinessSet(currency, input.currentBusinessJournals);
+  const currentSet = currentBusinessSet(
+    currency,
+    input.currentBusinessJournals,
+  );
   if (
     hashPostedCorrectionPostingVector(currentSet.postingVector) !==
     hashPostedCorrectionPostingVector(
@@ -263,12 +268,7 @@ export const buildPostedCorrectionExecutionJournalDrafts = (input: {
       `${strategy} is missing its reviewed reversal posting`,
     );
   }
-  assertAggregate(
-    'REVERSAL',
-    currency,
-    reversalDrafts,
-    plan.reversalPosting,
-  );
+  assertAggregate('REVERSAL', currency, reversalDrafts, plan.reversalPosting);
 
   if (strategy === AccountingPostedCorrectionStrategy.REVERSAL_ONLY) {
     return reversalDrafts;
@@ -276,7 +276,7 @@ export const buildPostedCorrectionExecutionJournalDrafts = (input: {
 
   if (strategy !== AccountingPostedCorrectionStrategy.REVERSAL_REPOST) {
     throw new AccountingPostedFinancialCorrectionExecutionPolicyError(
-      `unsupported correction strategy: ${strategy}`,
+      'unsupported correction strategy',
     );
   }
   if (!plan.repostPosting) {

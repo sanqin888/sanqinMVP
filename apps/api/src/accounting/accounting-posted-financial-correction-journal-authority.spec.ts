@@ -85,9 +85,9 @@ describe('posted financial correction Journal authority', () => {
     expect(() =>
       assertPostedCorrectionJournalAuthority(normalized, first.authority),
     ).not.toThrow();
-    expect(hashPostedCorrectionJournalWrite(normalized, first.authority)).toMatch(
-      /^[a-f0-9]{64}$/,
-    );
+    expect(
+      hashPostedCorrectionJournalWrite(normalized, first.authority),
+    ).toMatch(/^[a-f0-9]{64}$/);
   });
 
   it('rejects a Journal whose source-fact identity was tampered', () => {
