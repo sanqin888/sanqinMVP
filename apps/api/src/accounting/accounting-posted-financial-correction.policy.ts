@@ -208,7 +208,11 @@ const finalizePostingVector = (
     .map<AccountingPostedCorrectionPostingVectorLineV1>((line) => {
       const debitCents = line.signedCents > 0 ? line.signedCents : 0;
       const creditCents = line.signedCents < 0 ? -line.signedCents : 0;
-      debitTotal = addSafeInteger(debitTotal, debitCents, 'posting debit total');
+      debitTotal = addSafeInteger(
+        debitTotal,
+        debitCents,
+        'posting debit total',
+      );
       creditTotal = addSafeInteger(
         creditTotal,
         creditCents,
@@ -252,10 +256,7 @@ const normalizePostedJournal = (
   const sourceFactVersion =
     journal.sourceFactVersion == null
       ? null
-      : requirePositiveInteger(
-          journal.sourceFactVersion,
-          'sourceFactVersion',
-        );
+      : requirePositiveInteger(journal.sourceFactVersion, 'sourceFactVersion');
   if (sourceFactVersion !== null && sourceFactStableId === null) {
     throw new AccountingPostedFinancialCorrectionPolicyError(
       'sourceFactVersion requires a source fact identity',
@@ -330,10 +331,7 @@ const normalizePostedJournal = (
   return {
     entryStableId: requireValue(journal.entryStableId, 'entryStableId'),
     idempotencyKey: requireValue(journal.idempotencyKey, 'idempotencyKey'),
-    idempotencyHash: requireSha256(
-      journal.idempotencyHash,
-      'idempotencyHash',
-    ),
+    idempotencyHash: requireSha256(journal.idempotencyHash, 'idempotencyHash'),
     version: requirePositiveInteger(journal.version, 'version'),
     kind: journal.kind,
     source: journal.source,
@@ -717,8 +715,7 @@ export const buildPostedFinancialCorrectionPreviewPlan = (
     targetAuthoritySchema,
     targetAuthorityHash,
     originalJournalSetHash: originalJournalSet.journalSetHash,
-    priorCorrectionJournalSetHash:
-      priorCorrectionJournalSet.journalSetHash,
+    priorCorrectionJournalSetHash: priorCorrectionJournalSet.journalSetHash,
     baseJournalSetHash: currentEffectiveJournalSet.journalSetHash,
     targetJournalSetHash: targetJournalSet.journalSetHash,
     currentEffectivePostingHash: hashPostedCorrectionPostingVector(

@@ -58,9 +58,7 @@ import {
   PROVIDER_FINANCIAL_SOURCE_FACT_TYPE,
   UBER_PRE_CUTOVER_REVERSAL_SOURCE_FACT_TYPE,
 } from './accounting-provider-settlement.policy';
-import {
-  ACCOUNTING_POSTED_FINANCIAL_CORRECTION_SOURCE_FACT_TYPE,
-} from './accounting-posted-financial-correction.contract';
+import { ACCOUNTING_POSTED_FINANCIAL_CORRECTION_SOURCE_FACT_TYPE } from './accounting-posted-financial-correction.contract';
 import {
   assertProviderPayoutJournalAuthority,
   hashProviderPayoutJournalWrite,

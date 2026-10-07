@@ -11,9 +11,7 @@ import {
 import { AccountingJournalService } from './accounting-journal.service';
 import { AccountingPeriodService } from './accounting-period.service';
 import { buildProviderPayoutWritePlan } from './accounting-provider-payout-journal-authority';
-import {
-  ACCOUNTING_POSTED_FINANCIAL_CORRECTION_SOURCE_FACT_TYPE,
-} from './accounting-posted-financial-correction.contract';
+import { ACCOUNTING_POSTED_FINANCIAL_CORRECTION_SOURCE_FACT_TYPE } from './accounting-posted-financial-correction.contract';
 
 const basePayload = {
   idempotencyKey: 'journal:manual:1',

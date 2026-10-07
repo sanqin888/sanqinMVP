@@ -2,17 +2,11 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const policySource = readFileSync(
-  resolve(
-    __dirname,
-    'accounting-posted-financial-correction.policy.ts',
-  ),
+  resolve(__dirname, 'accounting-posted-financial-correction.policy.ts'),
   'utf8',
 );
 const contractSource = readFileSync(
-  resolve(
-    __dirname,
-    'accounting-posted-financial-correction.contract.ts',
-  ),
+  resolve(__dirname, 'accounting-posted-financial-correction.contract.ts'),
   'utf8',
 );
 

@@ -155,9 +155,7 @@ describe('posted financial correction policy', () => {
   it('treats category reclassification as a real delta even when the account total is unchanged', () => {
     const plan = buildPostedFinancialCorrectionPreviewPlan({
       ...basePlanInput(),
-      targetJournals: [
-        targetJournal(10_000, 'expense_platform_advertising'),
-      ],
+      targetJournals: [targetJournal(10_000, 'expense_platform_advertising')],
     });
 
     expect(plan.status).toBe('READY');
@@ -251,9 +249,7 @@ describe('posted financial correction policy', () => {
     const replay = buildPostedFinancialCorrectionPreviewPlan(basePlanInput());
     const changed = buildPostedFinancialCorrectionPreviewPlan({
       ...basePlanInput(),
-      originalJournals: [
-        postedJournal({ idempotencyHash: 'f'.repeat(64) }),
-      ],
+      originalJournals: [postedJournal({ idempotencyHash: 'f'.repeat(64) })],
     });
 
     expect(first.planHash).toMatch(/^[a-f0-9]{64}$/);
@@ -359,14 +355,17 @@ describe('posted financial correction policy', () => {
         ...basePlanInput(),
         targetAuthorityHash: 'b'.repeat(64),
       }),
-    ).toThrow('target posting changed without a matching target authority change');
+    ).toThrow(
+      'target posting changed without a matching target authority change',
+    );
   });
 
   it('fails closed when base and target authority schemas are not comparable', () => {
     expect(() =>
       buildPostedFinancialCorrectionPreviewPlan({
         ...basePlanInput(),
-        baseAuthoritySchema: 'accounting.provider-settlement-correction-target.v0',
+        baseAuthoritySchema:
+          'accounting.provider-settlement-correction-target.v0',
       }),
     ).toThrow(
       'base and target authority must use the same correction-target schema',
