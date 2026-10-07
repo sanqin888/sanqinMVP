@@ -121,7 +121,7 @@ export class FulfillmentProcessor {
         data: {
           ...printPayload,
           ...(order.channel === Channel.in_store &&
-            printPayload.paymentMethod === 'cash'
+          printPayload.paymentMethod === 'cash'
             ? { cashDrawerOpenRequested: true }
             : {}),
           labelPlan,
@@ -540,8 +540,7 @@ export class FulfillmentProcessor {
             },
             data: {
               ...basePayload,
-              cashDrawerOpenRequested:
-                payload.cashDrawerOpenRequested === true,
+              cashDrawerOpenRequested: payload.cashDrawerOpenRequested === true,
             },
           });
           this.logger.log({

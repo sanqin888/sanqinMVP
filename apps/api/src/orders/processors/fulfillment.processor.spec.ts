@@ -372,7 +372,9 @@ describe('FulfillmentProcessor accepted lifecycle printing', () => {
     });
     const getByStableId = jest.fn().mockResolvedValue({
       orderNumber: 'SQ2608110001',
-      ...(options.paymentMethod ? { paymentMethod: options.paymentMethod } : {}),
+      ...(options.paymentMethod
+        ? { paymentMethod: options.paymentMethod }
+        : {}),
     });
     const processor = new FulfillmentProcessor(
       {
@@ -436,10 +438,21 @@ describe('FulfillmentProcessor accepted lifecycle printing', () => {
 
     await processor.handleAcceptedLifecycle({ orderId: 'web-order-1' });
 
-    const request = sendPrintJob.mock.calls[0]?.[0] as {
-      data?: { cashDrawerOpenRequested?: boolean };
-    };
-    expect(request.data?.cashDrawerOpenRequested).toBeUndefined();
+    expect(sendPrintJob).toHaveBeenCalledWith({
+      orderId: 'web-order-1',
+      orderStableId: 'stable-web-1',
+      storeStableId: 'store-4750',
+      purpose: 'INITIAL',
+      data: {
+        orderNumber: 'SQ2608110001',
+        paymentMethod: 'cash',
+        labelPlan: {
+          labelWidthMm: 70,
+          labelHeightMm: 30,
+          labels: [],
+        },
+      },
+    });
   });
 
   it('durable POS prep_started 为 in_store 现金订单创建唯一 AUTO 首次打印并请求开钱箱', async () => {
