@@ -84,8 +84,7 @@ describe('Accounting Expense correction target policy', () => {
       base,
       input: {
         version: 1,
-        expectedBaseAuthorityHash:
-          hashAccountingExpenseCorrectionTarget(base),
+        expectedBaseAuthorityHash: hashAccountingExpenseCorrectionTarget(base),
         totalCents: 10170,
         memo: 'Corrected receipt',
         splits: [
@@ -124,8 +123,7 @@ describe('Accounting Expense correction target policy', () => {
       base,
       input: {
         version: 1,
-        expectedBaseAuthorityHash:
-          hashAccountingExpenseCorrectionTarget(base),
+        expectedBaseAuthorityHash: hashAccountingExpenseCorrectionTarget(base),
         totalCents: 9040,
         splits: [
           {
@@ -165,8 +163,7 @@ describe('Accounting Expense correction target policy', () => {
       base,
       input: {
         version: 1,
-        expectedBaseAuthorityHash:
-          hashAccountingExpenseCorrectionTarget(base),
+        expectedBaseAuthorityHash: hashAccountingExpenseCorrectionTarget(base),
         totalCents: 9000,
         splits: [
           {

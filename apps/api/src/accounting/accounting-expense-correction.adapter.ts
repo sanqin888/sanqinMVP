@@ -373,11 +373,7 @@ export class AccountingExpenseCorrectionAdapter implements AccountingPostedFinan
       throw error;
     }
     assertSameImmutableIdentity(current.context.sourceTarget, target);
-    await this.assertChangedDimensionsAreValid(
-      current.baseTarget,
-      target,
-      db,
-    );
+    await this.assertChangedDimensionsAreValid(current.baseTarget, target, db);
 
     return {
       version: 1,
@@ -484,7 +480,8 @@ export class AccountingExpenseCorrectionAdapter implements AccountingPostedFinan
       input.targetJson as AccountingExpenseCorrectionTargetV1,
     );
     if (
-      hashAccountingExpenseCorrectionTarget(target) !== input.targetAuthorityHash
+      hashAccountingExpenseCorrectionTarget(target) !==
+      input.targetAuthorityHash
     ) {
       throw new ConflictException(
         'Expense correction activation target hash changed before POSTED',
@@ -548,8 +545,9 @@ export class AccountingExpenseCorrectionAdapter implements AccountingPostedFinan
       return {
         context,
         baseTarget: context.sourceTarget,
-        baseAuthorityHash:
-          hashAccountingExpenseCorrectionTarget(context.sourceTarget),
+        baseAuthorityHash: hashAccountingExpenseCorrectionTarget(
+          context.sourceTarget,
+        ),
       };
     }
     const readyRevision = latest.readyRevision;
@@ -573,7 +571,8 @@ export class AccountingExpenseCorrectionAdapter implements AccountingPostedFinan
     } catch (error) {
       if (error instanceof AccountingExpenseCorrectionTargetPolicyError) {
         throw new ConflictException(
-          'latest POSTED Expense correction target is invalid: ' + error.message,
+          'latest POSTED Expense correction target is invalid: ' +
+            error.message,
         );
       }
       throw error;
@@ -662,8 +661,7 @@ export class AccountingExpenseCorrectionAdapter implements AccountingPostedFinan
       authorityRows
         .map(({ journal, authority }) => ({
           entryStableId: journal.entryStableId,
-          authorityHash:
-            hashCanonicalExpenseJournalWriteAuthority(authority),
+          authorityHash: hashCanonicalExpenseJournalWriteAuthority(authority),
         }))
         .sort((left, right) =>
           left.entryStableId.localeCompare(right.entryStableId),
@@ -691,7 +689,9 @@ export class AccountingExpenseCorrectionAdapter implements AccountingPostedFinan
     db: AccountingPostedCorrectionOwnerDbClient,
   ): Promise<CanonicalExpenseJournalWriteAuthority> {
     if (journal.deletedAt) {
-      throw new ConflictException('original canonical Expense Journal was deleted');
+      throw new ConflictException(
+        'original canonical Expense Journal was deleted',
+      );
     }
     const audit = await db.accountingAuditLog.findFirst({
       where: {
@@ -747,10 +747,7 @@ export class AccountingExpenseCorrectionAdapter implements AccountingPostedFinan
     targetVersion: 1 | 2,
   ): void {
     if (targetVersion === 1) {
-      if (
-        rows.length !== 1 ||
-        rows[0]?.authority.version !== 1
-      ) {
+      if (rows.length !== 1 || rows[0]?.authority.version !== 1) {
         throw new ConflictException(
           'Expense v1 correction requires exactly one canonical Expense Journal authority',
         );
@@ -803,7 +800,9 @@ export class AccountingExpenseCorrectionAdapter implements AccountingPostedFinan
   ): AccountingExpenseCorrectionTargetV1 {
     const first = rows[0]?.authority;
     if (!first) {
-      throw new ConflictException('Expense source posting authority is missing');
+      throw new ConflictException(
+        'Expense source posting authority is missing',
+      );
     }
     if (targetVersion === 1) {
       const authority = first as CanonicalExpenseJournalWriteAuthorityV1;
@@ -822,7 +821,7 @@ export class AccountingExpenseCorrectionAdapter implements AccountingPostedFinan
         },
         basedOnAuthorityHash: sourcePostingAuthorityHash,
         splits: authority.fact.splits.map((split, index) => ({
-          splitStableId: authority.splitStableIds[index]!,
+          splitStableId: authority.splitStableIds[index],
           categoryStableId: split.categoryStableId,
           amountCents: split.amountCents,
           taxCents: split.taxCents,
@@ -831,7 +830,7 @@ export class AccountingExpenseCorrectionAdapter implements AccountingPostedFinan
         paymentAllocations: authority.fact.paymentAllocations.map(
           (allocation, index) => ({
             paymentAllocationStableId:
-              authority.paymentAllocationStableIds[index]!,
+              authority.paymentAllocationStableIds[index],
             accountStableId: allocation.accountStableId,
             amountCents: allocation.amountCents,
           }),
@@ -885,8 +884,8 @@ export class AccountingExpenseCorrectionAdapter implements AccountingPostedFinan
         version: 1,
         document: {
           documentStableId: document.documentStableId,
-          fundingAttributionVersion:
-            (document.fundingAttributionVersion ?? 1) as 1 | 2,
+          fundingAttributionVersion: (document.fundingAttributionVersion ??
+            1) as 1 | 2,
           occurredAt: document.occurredAt.toISOString(),
           currency: document.currency,
           subtotalCents: document.subtotalCents,
@@ -910,8 +909,7 @@ export class AccountingExpenseCorrectionAdapter implements AccountingPostedFinan
         paymentAllocations:
           (document.fundingAttributionVersion ?? 1) === 1
             ? document.paymentAllocations.map((allocation) => ({
-                paymentAllocationStableId:
-                  allocation.paymentAllocationStableId,
+                paymentAllocationStableId: allocation.paymentAllocationStableId,
                 accountStableId: allocation.account.accountStableId,
                 amountCents: allocation.amountCents,
               }))
@@ -920,7 +918,8 @@ export class AccountingExpenseCorrectionAdapter implements AccountingPostedFinan
     } catch (error) {
       if (error instanceof AccountingExpenseCorrectionTargetPolicyError) {
         throw new ConflictException(
-          'persisted Expense source authority is inconsistent: ' + error.message,
+          'persisted Expense source authority is inconsistent: ' +
+            error.message,
         );
       }
       throw error;
@@ -947,7 +946,8 @@ export class AccountingExpenseCorrectionAdapter implements AccountingPostedFinan
       new Set(
         target.splits.flatMap((split) => {
           const previous = baseSplits.get(split.splitStableId);
-          return !previous || previous.categoryStableId !== split.categoryStableId
+          return !previous ||
+            previous.categoryStableId !== split.categoryStableId
             ? [split.categoryStableId]
             : [];
         }),
@@ -976,8 +976,7 @@ export class AccountingExpenseCorrectionAdapter implements AccountingPostedFinan
             if (!split.paidFromAccountStableId) return [];
             const previous = baseSplits.get(split.splitStableId);
             return !previous ||
-              previous.paidFromAccountStableId !==
-                split.paidFromAccountStableId
+              previous.paidFromAccountStableId !== split.paidFromAccountStableId
               ? [split.paidFromAccountStableId]
               : [];
           }),

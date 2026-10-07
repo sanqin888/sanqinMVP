@@ -262,7 +262,9 @@ export const normalizeAccountingExpenseCorrectionTarget = (
     .sort((left, right) =>
       left.splitStableId.localeCompare(right.splitStableId),
     );
-  if (new Set(splits.map((split) => split.splitStableId)).size !== splits.length) {
+  if (
+    new Set(splits.map((split) => split.splitStableId)).size !== splits.length
+  ) {
     throw new AccountingExpenseCorrectionTargetPolicyError(
       'Expense correction target contains duplicate splitStableId values',
     );
@@ -307,10 +309,7 @@ export const normalizeAccountingExpenseCorrectionTarget = (
       'Expense v1 correction target cannot use split-level funding',
     );
   }
-  if (
-    fundingAttributionVersion === 2 &&
-    paymentAllocations.length > 0
-  ) {
+  if (fundingAttributionVersion === 2 && paymentAllocations.length > 0) {
     throw new AccountingExpenseCorrectionTargetPolicyError(
       'Expense v2 correction target cannot use document-level payment allocations',
     );
@@ -354,8 +353,11 @@ export const normalizeAccountingExpenseCorrectionTarget = (
     );
   }
 
-  const currency = requireValue(raw.document.currency, 'document.currency', 3)
-    .toUpperCase();
+  const currency = requireValue(
+    raw.document.currency,
+    'document.currency',
+    3,
+  ).toUpperCase();
   if (currency !== 'CAD') {
     throw new AccountingExpenseCorrectionTargetPolicyError(
       'Expense correction target currently requires CAD booking currency',
@@ -399,9 +401,7 @@ export const hashAccountingExpenseCorrectionTarget = (
   return hashAccountingJson(authority);
 };
 
-const parseInput = (
-  raw: unknown,
-): AccountingExpenseCorrectionTargetInputV1 => {
+const parseInput = (raw: unknown): AccountingExpenseCorrectionTargetInputV1 => {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new AccountingExpenseCorrectionTargetPolicyError(
       'Expense correction target input must be an object',
@@ -431,8 +431,7 @@ const parseInput = (
     ...(Object.prototype.hasOwnProperty.call(record, 'memo')
       ? { memo: optionalText(record.memo, 'memo') }
       : {}),
-    splits:
-      record.splits as AccountingExpenseCorrectionTargetInputV1['splits'],
+    splits: record.splits as AccountingExpenseCorrectionTargetInputV1['splits'],
     ...(Object.prototype.hasOwnProperty.call(record, 'paymentAllocations')
       ? {
           paymentAllocations:
@@ -448,8 +447,7 @@ export const applyAccountingExpenseCorrectionTargetInput = (params: {
 }): AccountingExpenseCorrectionTargetV1 => {
   const base = normalizeAccountingExpenseCorrectionTarget(params.base);
   const input = parseInput(params.input);
-  const currentBaseAuthorityHash =
-    hashAccountingExpenseCorrectionTarget(base);
+  const currentBaseAuthorityHash = hashAccountingExpenseCorrectionTarget(base);
   if (input.expectedBaseAuthorityHash !== currentBaseAuthorityHash) {
     throw new AccountingExpenseCorrectionTargetPolicyError(
       'Expense correction target was edited from a stale current-effective authority',
@@ -586,7 +584,9 @@ export const applyAccountingExpenseCorrectionTargetInput = (params: {
       taxCents,
       totalCents: input.totalCents,
       memo:
-        input.memo !== undefined ? optionalText(input.memo, 'memo') : base.document.memo,
+        input.memo !== undefined
+          ? optionalText(input.memo, 'memo')
+          : base.document.memo,
     },
     basedOnAuthorityHash: currentBaseAuthorityHash,
     splits,
@@ -615,8 +615,7 @@ export const toAccountingExpenseCorrectionDraftInput = (
       ? {
           paymentAllocations: normalized.paymentAllocations.map(
             (allocation) => ({
-              paymentAllocationStableId:
-                allocation.paymentAllocationStableId,
+              paymentAllocationStableId: allocation.paymentAllocationStableId,
               accountStableId: allocation.accountStableId,
               amountCents: allocation.amountCents,
             }),

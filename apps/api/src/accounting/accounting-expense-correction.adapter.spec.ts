@@ -156,13 +156,13 @@ const makeV2Fixture = () => {
     fundingAccountFacts: v2FundingFacts,
   });
   const journals = [
-    journalRow(plans[0]!, 'journal_expense_v2_cibc'),
-    journalRow(plans[1]!, 'journal_expense_v2_primary'),
+    journalRow(plans[0], 'journal_expense_v2_cibc'),
+    journalRow(plans[1], 'journal_expense_v2_primary'),
   ];
   const auditByJournal = new Map(
     journals.map((journal, index) => [
       journal.entryStableId,
-      { afterJson: { writeAuthority: plans[index]!.authority } },
+      { afterJson: { writeAuthority: plans[index].authority } },
     ]),
   );
   const document = {
@@ -210,48 +210,53 @@ const makeV2Fixture = () => {
       findMany: jest.fn().mockResolvedValue(journals),
     },
     accountingAuditLog: {
-      findFirst: jest.fn().mockImplementation(
-        (args: { where?: { entityId?: string } }) =>
+      findFirst: jest
+        .fn()
+        .mockImplementation((args: { where?: { entityId?: string } }) =>
           Promise.resolve(
             args.where?.entityId
               ? (auditByJournal.get(args.where.entityId) ?? null)
               : null,
           ),
-      ),
+        ),
     },
     accountingCorrectionCase: {
       findFirst: jest.fn().mockResolvedValue(null),
     },
     accountingCategory: {
-      findMany: jest.fn().mockImplementation(
-        (args: { where?: { categoryStableId?: { in?: string[] } } }) =>
-          Promise.resolve(
-            (args.where?.categoryStableId?.in ?? []).map(
-              (categoryStableId) => ({
-                categoryStableId,
-                type: 'EXPENSE',
-                isActive: true,
-              }),
+      findMany: jest
+        .fn()
+        .mockImplementation(
+          (args: { where?: { categoryStableId?: { in?: string[] } } }) =>
+            Promise.resolve(
+              (args.where?.categoryStableId?.in ?? []).map(
+                (categoryStableId) => ({
+                  categoryStableId,
+                  type: 'EXPENSE',
+                  isActive: true,
+                }),
+              ),
             ),
-          ),
-      ),
+        ),
     },
     accountingAccount: {
-      findMany: jest.fn().mockImplementation(
-        (args: { where?: { accountStableId?: { in?: string[] } } }) =>
-          Promise.resolve(
-            (args.where?.accountStableId?.in ?? []).map(
-              (accountStableId) =>
-                accounts.get(accountStableId) ?? {
-                  accountStableId,
-                  accountClass: AccountingAccountClass.ASSET,
-                  type: AccountingAccountType.BANK,
-                  currency: 'CAD',
-                  isActive: true,
-                },
+      findMany: jest
+        .fn()
+        .mockImplementation(
+          (args: { where?: { accountStableId?: { in?: string[] } } }) =>
+            Promise.resolve(
+              (args.where?.accountStableId?.in ?? []).map(
+                (accountStableId) =>
+                  accounts.get(accountStableId) ?? {
+                    accountStableId,
+                    accountClass: AccountingAccountClass.ASSET,
+                    type: AccountingAccountType.BANK,
+                    currency: 'CAD',
+                    isActive: true,
+                  },
+              ),
             ),
-          ),
-      ),
+        ),
     },
   };
   return {
@@ -316,32 +321,36 @@ const makeV1Fixture = () => {
       findFirst: jest.fn().mockResolvedValue(null),
     },
     accountingCategory: {
-      findMany: jest.fn().mockImplementation(
-        (args: { where?: { categoryStableId?: { in?: string[] } } }) =>
-          Promise.resolve(
-            (args.where?.categoryStableId?.in ?? []).map(
-              (categoryStableId) => ({
-                categoryStableId,
-                type: 'EXPENSE',
-                isActive: true,
-              }),
+      findMany: jest
+        .fn()
+        .mockImplementation(
+          (args: { where?: { categoryStableId?: { in?: string[] } } }) =>
+            Promise.resolve(
+              (args.where?.categoryStableId?.in ?? []).map(
+                (categoryStableId) => ({
+                  categoryStableId,
+                  type: 'EXPENSE',
+                  isActive: true,
+                }),
+              ),
             ),
-          ),
-      ),
+        ),
     },
     accountingAccount: {
-      findMany: jest.fn().mockImplementation(
-        (args: { where?: { accountStableId?: { in?: string[] } } }) =>
-          Promise.resolve(
-            (args.where?.accountStableId?.in ?? []).map(
-              (accountStableId) => ({
-                accountStableId,
-                currency: 'CAD',
-                isActive: true,
-              }),
+      findMany: jest
+        .fn()
+        .mockImplementation(
+          (args: { where?: { accountStableId?: { in?: string[] } } }) =>
+            Promise.resolve(
+              (args.where?.accountStableId?.in ?? []).map(
+                (accountStableId) => ({
+                  accountStableId,
+                  currency: 'CAD',
+                  isActive: true,
+                }),
+              ),
             ),
-          ),
-      ),
+        ),
     },
   };
   return {
@@ -356,7 +365,9 @@ describe('AccountingExpenseCorrectionAdapter', () => {
 
     const current = await adapter.readCurrentEffectiveTarget('expense_v2', 2);
 
-    expect(current.targetKind).toBe(AccountingPostedCorrectionTargetKind.EXPENSE);
+    expect(current.targetKind).toBe(
+      AccountingPostedCorrectionTargetKind.EXPENSE,
+    );
     expect(current.targetVersion).toBe(2);
     expect(current.targetJson.document).toEqual(
       expect.objectContaining({
@@ -413,7 +424,8 @@ describe('AccountingExpenseCorrectionAdapter', () => {
     expect(ready.originalJournals).toHaveLength(2);
     expect(ready.targetJournals).toHaveLength(2);
     expect(
-      (ready.targetJson as unknown as AccountingExpenseCorrectionTargetV1).splits,
+      (ready.targetJson as unknown as AccountingExpenseCorrectionTargetV1)
+        .splits,
     ).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

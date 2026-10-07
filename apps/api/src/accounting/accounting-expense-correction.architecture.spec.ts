@@ -58,15 +58,9 @@ describe('Expense posted correction C1 architecture', () => {
   });
 
   it('supports both frozen historical v1 and current v2 ownership without a schema migration', () => {
-    expect(adapterSource).toContain(
-      'CANONICAL_EXPENSE_SOURCE_FACT_TYPE',
-    );
-    expect(adapterSource).toContain(
-      'CANONICAL_EXPENSE_SOURCE_FACT_TYPE_V2',
-    );
-    expect(adapterSource).toContain(
-      'targetVersion must be 1 or 2',
-    );
+    expect(adapterSource).toContain('CANONICAL_EXPENSE_SOURCE_FACT_TYPE');
+    expect(adapterSource).toContain('CANONICAL_EXPENSE_SOURCE_FACT_TYPE_V2');
+    expect(adapterSource).toContain('targetVersion must be 1 or 2');
     expect(adapterSource).toContain(
       'Expense v2 correction requires complete split funding before READY',
     );
