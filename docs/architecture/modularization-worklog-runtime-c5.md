@@ -2,6 +2,10 @@
 
 Primary `modularization-worklog.md` exceeds the MCP workspace patch-size limit. This owner supplement records the C5 batch without truncating/replacing the original timeline.
 
+## 2026-10-08 — C5-B3B2F historical Runtime triplet provenance
+
+**LOCAL SOURCE / REVIEW PENDING.** B3B2E PR #2747 merged dev as `2ce2d92c` with all seven CI jobs green. Reuses B2B1 authenticated archive member validation and GitHub status/pair proof via injected offline fetch; requires archived exact current/previous/target bytes and two image digests. No real network or production authority, Docker, installer, migration or module-boundary change. Details: `docs/architecture/postmod-ghcr-batch-c5b3b2f-archive-pair-provenance.md`.
+
 ## 2026-10-08 — C5-B3B2E isolated evidence correlation
 
 **LOCAL SOURCE / REVIEW PENDING / CI NOT RUN.** B3B2D PR #2746 merged dev at `c747f78e` after CI success. Pure mock-host/Ledger/archive-byte matching contract and offline tests; no production host probes, privileged installer, API/Web context imports, Docker or migration. See `docs/architecture/postmod-ghcr-batch-c5b3b2e-isolated-evidence-correlation.md`.
