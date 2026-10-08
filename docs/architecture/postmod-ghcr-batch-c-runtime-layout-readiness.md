@@ -75,6 +75,12 @@ encrypted escrow, recovery and data integrity first.
 
 C4. Controlled production cutover of Compose project directory and uploaded
 assets, keeping the original named volume sanq-app_pgdata and existing data.
+C4-A source readiness audit found unresolved relative uploads mounts, the
+source-checkout-dependent release controller and implicit-directory readiness
+helper. See docs/architecture/postmod-ghcr-batch-c4a-source-readiness.md.
+C4-B option B **source changes have since been authorized** and prepared
+locally. Actual production cutover remains separately blocked; see
+`docs/architecture/postmod-ghcr-batch-c4b-runtime-path-implementation.md`.
 Do not create/reset a PostgreSQL volume. Observe uploads during cutover,
 reconcile counts/ownership, verify API/worker/Web/readiness and backup.
 

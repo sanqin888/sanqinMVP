@@ -93,6 +93,8 @@ class DeploymentSafetyTests(unittest.TestCase):
 
     def test_plan_does_not_run_preflight_pull_or_recreate(self):
         with patch.object(deploy, "ensure_repo_location"), \
+             patch.object(deploy, "require_mutation_privilege"), \
+             patch.object(deploy, "verify_runtime_release"), \
              patch.object(deploy, "read_current_sha", return_value=CURRENT), \
              patch.object(deploy, "read_state", return_value=None), \
              patch.object(deploy, "latest_candidate", return_value=candidate()), \
@@ -108,6 +110,8 @@ class DeploymentSafetyTests(unittest.TestCase):
 
     def test_deploy_gate_failure_does_not_edit_env(self):
         with patch.object(deploy, "ensure_repo_location"), \
+             patch.object(deploy, "require_mutation_privilege"), \
+             patch.object(deploy, "verify_runtime_release"), \
              patch.object(deploy, "read_current_sha", return_value=CURRENT), \
              patch.object(deploy, "read_state", return_value=None), \
              patch.object(deploy, "latest_candidate", return_value=candidate()), \
@@ -126,6 +130,8 @@ class DeploymentSafetyTests(unittest.TestCase):
     def test_deploy_writes_pending_before_up_and_only_active_after_readiness(self):
         order = []
         with patch.object(deploy, "ensure_repo_location"), \
+             patch.object(deploy, "require_mutation_privilege"), \
+             patch.object(deploy, "verify_runtime_release"), \
              patch.object(deploy, "read_current_sha", return_value=CURRENT), \
              patch.object(deploy, "read_state", return_value=None), \
              patch.object(deploy, "latest_candidate", return_value=candidate()), \
@@ -142,6 +148,8 @@ class DeploymentSafetyTests(unittest.TestCase):
     def test_no_automatic_rollback_on_health_failure(self):
         phases = []
         with patch.object(deploy, "ensure_repo_location"), \
+             patch.object(deploy, "require_mutation_privilege"), \
+             patch.object(deploy, "verify_runtime_release"), \
              patch.object(deploy, "read_current_sha", return_value=CURRENT), \
              patch.object(deploy, "read_state", return_value=None), \
              patch.object(deploy, "latest_candidate", return_value=candidate()), \
@@ -159,6 +167,8 @@ class DeploymentSafetyTests(unittest.TestCase):
     def test_rollback_without_execute_is_read_only(self):
         state = {"current": TARGET, "previous": CURRENT, "phase": "active"}
         with patch.object(deploy, "ensure_repo_location"), \
+             patch.object(deploy, "require_mutation_privilege"), \
+             patch.object(deploy, "verify_runtime_release"), \
              patch.object(deploy, "read_current_sha", return_value=TARGET), \
              patch.object(deploy, "read_state", return_value=state), \
              patch.object(deploy, "compose") as compose, \
@@ -170,6 +180,8 @@ class DeploymentSafetyTests(unittest.TestCase):
     def test_unhealthy_active_release_does_not_block_explicit_rollback(self):
         state = {"current": TARGET, "previous": CURRENT, "phase": "active"}
         with patch.object(deploy, "ensure_repo_location"), \
+             patch.object(deploy, "require_mutation_privilege"), \
+             patch.object(deploy, "verify_runtime_release"), \
              patch.object(deploy, "read_current_sha", return_value=TARGET), \
              patch.object(deploy, "read_state", return_value=state), \
              patch.object(deploy, "preflight_current") as old_readiness, \

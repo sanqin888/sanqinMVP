@@ -24,7 +24,7 @@ BACKUP_TIMER = Path("/etc/systemd/system/sanq-backup.timer")
 BACKUP_SUDOERS = Path("/etc/sudoers.d/sanq-backup")
 REQUIRED_COMPOSE_TEXT = (
     "pgdata:/var/lib/postgresql/data",
-    "./uploads:/app/uploads",
+    "/srv/sanq/uploads:/app/uploads",
     "/home/ubuntu/sanq-assets/sounds:/app/apps/web/public/sounds:ro",
 )
 BACKUP_SOURCE_PATHS = (
