@@ -134,3 +134,12 @@ phase, not production cutover or widening architectural authority.
 
 No source behavior, CI, migrations, Docker, backups, uploads or live
 systemd services are modified by this read-only design step.
+
+## Subsequent stage record (2026-10-08)
+
+C5-B3A source-only contract is recorded in
+`docs/architecture/postmod-ghcr-batch-c5b3a-persistence-recovery.md`.
+The B3A schema/transition module and offline test fixtures do **not** install
+Runtime, persist a production journal, modify the legacy controller, or supply
+root execution rights. B3-B must separately obtain authorization for actual
+filesystem persistence, lock enforcement and transactional recovery.
