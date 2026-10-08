@@ -85,8 +85,13 @@ Do not create/reset a PostgreSQL volume. Observe uploads during cutover,
 reconcile counts/ownership, verify API/worker/Web/readiness and backup.
 
 C5. MCP producer/consumer decoupling and production source checkout cleanup.
-Do not delete /home/ubuntu/sanq-app or its .git while the existing production
-MCP still depends on Git status/log/search/show there.
+C5-A source-only readiness audit maps the MCP, staging, deploy and GitHub
+publication trust dependencies; see
+`docs/architecture/postmod-ghcr-batch-c5-source-retirement-readiness.md`.
+Future C5 release-authentication and MCP public-contract changes need their
+own explicit architecture authorization. Do not delete
+/home/ubuntu/sanq-app or its .git while the existing production MCP and
+C4 provenance gates still depend on that checkout.
 
 C1-5 each require review and explicit authorization where they change
 architecture/privilege or production behavior. Source-only staging alone
