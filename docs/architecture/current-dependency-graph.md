@@ -1,5 +1,7 @@
 # Current 12-context dependency graph
 
+2026-10-08 C5-B3B2C **LOCAL SOURCE / REVIEW PENDING / NO DEPENDENCY GRAPH CHANGE**: Runtime/Ops adds a pure cross-transaction Ledger hash/continuity model, stdlib offline tests and host-verifier readiness notes; no production IO, root installation, Docker, architecture scanner change, migrations or new context edges. See `docs/architecture/postmod-ghcr-batch-c5b3b2c-ledger-host-gate.md`.
+
 2026-10-08 C5-B3B2B **LOCAL SOURCE / CI PENDING / NO GRAPH OR BASELINE CHANGE**: independent root-owned Launcher is architecturally authorized by user, but source provides only inert preflight validator/offline tests under Runtime/Ops; no production installer/writer/CI topology, app-context imports, direct-edge allowances, migrations or dependencies. Detail: `docs/architecture/postmod-ghcr-batch-c5b3b2b-root-launcher-preflight.md`.
 
 2026-10-08 C5-B3B2A **LOCAL DESIGN / NO SOURCE OR GRAPH CHANGE / REVIEW PENDING**: Runtime/Ops authority-and-recovery contract freeze only. Existing API/Web/Accounting import dependencies, graph/SCC/scanner baseline, CI, Docker, backup, controller and privileged installer remain untouched. See `docs/architecture/postmod-ghcr-batch-c5b3b2a-authority-recovery-freeze.md`.

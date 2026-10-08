@@ -2,6 +2,10 @@
 
 Primary `modularization-worklog.md` exceeds the MCP workspace patch-size limit. This owner supplement records the C5 batch without truncating/replacing the original timeline.
 
+## 2026-10-08 — C5-B3B2C cross-transaction Ledger / host gate
+
+**Status: LOCAL SOURCE / REVIEW PENDING.** B3B2B PR #2744 merged to dev `e547f7aa` after CI #7053 all green. Pure hash-chained multi-transaction ledger model and offline tests added; no filesystem, root privilege, Docker, installer or migration change. Real trusted host probe remains blocked on independently reviewed installed owner/bootstrap. See `docs/architecture/postmod-ghcr-batch-c5b3b2c-ledger-host-gate.md`.
+
 ## 2026-10-08 — C5-B3B2B inert root Launcher preflight
 
 **Status: LOCAL SOURCE / USER REVIEW PENDING / NO CI OR PRODUCTION DEPLOYMENT.** After B3B2A PR #2743 merged as `a82952c5`, user approved Option B's independent root-owned Launcher boundary. Added a pure candidate preflight contract and offline stdlib tests; strict fixed path/project/volume and fail-closed B3A journal parsing, always execution-authority false. No real owner/host checks, installer, persistence writer, root privilege, Docker or C4 cutover. See `docs/architecture/postmod-ghcr-batch-c5b3b2b-root-launcher-preflight.md`.
