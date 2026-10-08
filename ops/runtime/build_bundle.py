@@ -30,6 +30,8 @@ SOURCE_FILES = (
     "ops/release/release_contract.py",
     "ops/runtime/build_bundle.py",
     "ops/runtime/inspect_layout.py",
+    "ops/runtime/stage_bundle.py",
+    "ops/runtime/runtime-layout.v1.json",
     "ops/verify-runtime-readiness.sh",
 )
 MAX_FILE_BYTES = 2 * 1024 * 1024

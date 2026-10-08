@@ -1,8 +1,9 @@
 # Batch C1 — source-locked Runtime release artifact
 
-**Implementation stage: local review only.** This slice extends the existing GitHub
-`publish-images` workflow. It does not install, move, run or delete any production
-VM files or modify Compose, the backup service, Docker volumes or MCP behavior.
+**Status:** C1 was merged into dev via PR #2729 (merge `93f3ad97`).
+Main publication and production verification remain pending. This change
+extends `publish-images` only; it does not install, move, run or delete
+production VM files or alter Compose, backups, Docker volumes or MCP.
 
 ## Current contract and ownership
 
@@ -19,6 +20,8 @@ source files from the **same validated checkout SHA**:
 - `ops/release/release_contract.py`
 - `ops/runtime/build_bundle.py`
 - `ops/runtime/inspect_layout.py`
+- `ops/runtime/stage_bundle.py` (C2 allowlist extension)
+- `ops/runtime/runtime-layout.v1.json` (C2 allowlist extension)
 - `ops/verify-runtime-readiness.sh`
 
 The archive embeds `sanq-runtime/runtime-release.json`, containing the source

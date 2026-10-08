@@ -65,6 +65,9 @@ A future VM install must enforce package/digest parity before activation.
 
 C2. Define versioned runtime location/config contracts and host-side
 validation. Stage a target tree but do not replace the active root.
+Implementation uses an inert SHA-scoped staging directory, still requires
+matching main source checkout provenance and never activates the release.
+See `docs/architecture/postmod-ghcr-batch-c2-runtime-staging.md`.
 
 C3. Separately review and change backup/source/upload ownership under the
 existing narrow helper/sudoers contract. Preserve and prove offsite backups,
