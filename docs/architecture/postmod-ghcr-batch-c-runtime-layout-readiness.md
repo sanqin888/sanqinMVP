@@ -93,8 +93,11 @@ publication trust dependencies; see
 C5-B source work was subsequently authorized. C5-B1 provides a separate
 Runtime SHA256 publication status and verifier. C5-B2A applies it to
 checkout-free staging only. C5-B2B0 adds a read-only handoff audit,
-while deploy/rollback trust authority is still unchanged and separately
-gated. See `docs/architecture/postmod-ghcr-batch-c5b1-runtime-artifact-trust.md`,
+C5-B2B1 adds exact-SHA historical publication verification and a
+non-executable version-transition contract; actual deploy/rollback trust
+authority remains unchanged and separately gated. See
+`docs/architecture/postmod-ghcr-batch-c5b2b1-versioned-runtime-contract.md`,
+`docs/architecture/postmod-ghcr-batch-c5b1-runtime-artifact-trust.md`,
 `docs/architecture/postmod-ghcr-batch-c5b2a-runtime-staging.md`, and
 `docs/architecture/postmod-ghcr-batch-c5b2b-deploy-trust-readiness.md`.
 MCP public-contract changes remain separately gated. Do not delete
