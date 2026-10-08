@@ -34,7 +34,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "runtime"))
 from build_bundle import SOURCE_FILES  # noqa: E402
 
 ROOT = Path("/opt/sanq/runtime")
-SOURCE_CHECKOUT = Path("/home/ubuntu/sanq-app")
 BACKUP_DIR = Path("/srv/sanq/backups")
 UPLOADS_DIR = Path("/srv/sanq/uploads")
 ENV = ROOT / ".env"
@@ -152,29 +151,10 @@ def run(
     environment = os.environ.copy()
     if target_sha is not None:
         environment["SANQ_IMAGE_SHA"] = require_sha(target_sha)
-    # The source Git checkout is ubuntu-owned and may contain user-controlled
-    # Git config/diff drivers. Never execute Git against it as root.
-    process_identity = {}
-    if cwd == SOURCE_CHECKOUT:
-        source_user = pwd.getpwnam("ubuntu")
-        process_identity = {
-            "user": source_user.pw_uid, "group": source_user.pw_gid,
-            "extra_groups": [],
-        }
-        # Never pass root operator credentials into a Git command that can
-        # process ubuntu-controlled repository configuration or diff drivers.
-        environment = {
-            "PATH": "/usr/bin:/bin",
-            "HOME": source_user.pw_dir,
-            "GIT_TERMINAL_PROMPT": "0",
-            "GIT_OPTIONAL_LOCKS": "0",
-            "GIT_CONFIG_GLOBAL": "/dev/null",
-        }
     result = subprocess.run(
         args,
         cwd=cwd or ROOT,
         env=environment,
-        **process_identity,
         text=True,
         stdout=subprocess.PIPE if capture else None,
         stderr=subprocess.PIPE if capture else None,
@@ -215,7 +195,7 @@ def require_c4_activation() -> None:
 
 
 def runtime_manifest() -> dict[str, Any]:
-    """C4 retains an exact matching Git main checkout until C5 attestation."""
+    """Validate the installed Runtime independently of application image SHA."""
     require_safe_file(RUNTIME_MANIFEST)
     if RUNTIME_MANIFEST.stat().st_size > 16384:
         raise DeploymentBlocked("runtime release manifest is oversized")
@@ -230,54 +210,73 @@ def runtime_manifest() -> dict[str, Any]:
     if not isinstance(files, dict) or set(files) != set(SOURCE_FILES):
         raise DeploymentBlocked("runtime files differ from pinned release allowlist")
 
-    _trusted_dir(SOURCE_CHECKOUT, owner=pwd.getpwnam("ubuntu").pw_uid)
-    # Git is run under the unprivileged checkout owner in run(), never root;
-    # neither Git hooks nor repository-owned diff drivers gain root authority.
-    git = ["git"]
-    if run([*git, "symbolic-ref", "--quiet", "--short", "HEAD"],
-           capture=True, cwd=SOURCE_CHECKOUT) != "main":
-        raise DeploymentBlocked("source checkout is not main")
-    if run([*git, "rev-parse", "--verify", "HEAD"],
-           capture=True, cwd=SOURCE_CHECKOUT) != sha:
-        raise DeploymentBlocked("runtime bundle SHA differs from main checkout")
-    run([*git, "diff", "HEAD", "--exit-code", "--", *SOURCE_FILES],
-        capture=True, cwd=SOURCE_CHECKOUT)
+    # Trust only a previously operator-installed, root-owned manifest and
+    # matching fixed Runtime member bytes; never execute Git on the VM.
+    if (RUNTIME_MANIFEST.stat().st_uid != 0
+        or stat.S_IMODE(RUNTIME_MANIFEST.stat().st_mode) & 0o022):
+        raise DeploymentBlocked("Runtime manifest must be root-owned and not writable by others")
     for name in SOURCE_FILES:
-        for base in (ROOT, SOURCE_CHECKOUT):
-            cursor = base
-            for component in Path(name).parts:
-                cursor = cursor / component
-                if cursor.is_symlink():
-                    raise DeploymentBlocked(f"symlink in Runtime source: {name}")
-        active = ROOT / name
-        checked_out = SOURCE_CHECKOUT / name
+        active = ROOT
+        for component in Path(name).parts:
+            active = active / component
+            if active.is_symlink():
+                raise DeploymentBlocked(f"symlink in Runtime source: {name}")
         require_safe_file(active)
-        require_safe_file(checked_out)
-        if active.stat().st_size > 2 * 1024 * 1024 or checked_out.stat().st_size > 2 * 1024 * 1024:
-            raise DeploymentBlocked(f"oversized Runtime source: {name}")
+        info = active.stat()
+        if (info.st_uid != 0 or stat.S_IMODE(info.st_mode) & 0o022
+            or info.st_size > 2 * 1024 * 1024):
+            raise DeploymentBlocked(f"untrusted Runtime member: {name}")
         data = active.read_bytes()
         proof = files[name]
         if (not isinstance(proof, dict)
             or proof.get("sha256") != hashlib.sha256(data).hexdigest()
-            or proof.get("bytes") != len(data)
-            or checked_out.read_bytes() != data):
-            raise DeploymentBlocked(f"runtime file/source checksum mismatch: {name}")
+            or type(proof.get("bytes")) is not int
+            or proof["bytes"] != len(data)):
+            raise DeploymentBlocked(f"runtime file checksum mismatch: {name}")
     return manifest
 
 
 def verify_runtime_release(candidate: dict[str, Any]) -> None:
     manifest = runtime_manifest()
-    if require_sha(candidate["sourceSha"]) != manifest["sourceSha"]:
-        raise DeploymentBlocked("candidate images differ from installed Runtime bundle source SHA")
+    runtime_sha = require_sha(manifest["sourceSha"])
+    target_sha = require_sha(candidate["sourceSha"])
+    # Validate the installed Runtime's own historical image-pair binding.
+    # Candidate images have separately verified GHCR publication/digests.
     expected = manifest.get("applicationImages")
     if not isinstance(expected, dict) or set(expected) != set(IMAGE_NAMES):
         raise DeploymentBlocked("Runtime manifest must declare both images")
     for name in IMAGE_NAMES:
-        published = candidate["images"][name]
         pair = expected[name]
-        if (pair.get("ref") != published["ref"] or
-            checked_digest(pair.get("digest")) != checked_digest(published["digest"])):
-            raise DeploymentBlocked("image digest differs from active Runtime release manifest")
+        if (not isinstance(pair, dict)
+            or pair.get("ref") != f"ghcr.io/sanqin888/{name}:{runtime_sha}"):
+            raise DeploymentBlocked("invalid installed Runtime image reference")
+        checked_digest(pair.get("digest"))
+    if runtime_sha == target_sha:
+        return
+    # No guessed compatibility ranges: unchanged Runtime source members on
+    # the first-parent release interval are the concrete compatibility gate.
+    comparison = github_json(f"/repos/{REPOSITORY}/compare/{runtime_sha}...{target_sha}")
+    if (not isinstance(comparison, dict)
+        or comparison.get("status") != "ahead"
+        or comparison.get("behind_by") != 0
+        or type(comparison.get("total_commits")) is not int
+        or not 0 < comparison["total_commits"] <= 250):
+        raise DeploymentBlocked("Runtime base is not a bounded ancestor of the application")
+    changed = comparison.get("files")
+    if not isinstance(changed, list) or len(changed) >= 300:
+        raise DeploymentBlocked("Runtime compatibility diff unavailable or truncated")
+    for entry in changed:
+        if not isinstance(entry, dict) or not isinstance(entry.get("filename"), str):
+            raise DeploymentBlocked("invalid Runtime compatibility diff entry")
+        # Treat a rename's old name as a change too.
+        names = {entry["filename"]}
+        if entry.get("status") == "renamed":
+            old = entry.get("previous_filename")
+            if not isinstance(old, str):
+                raise DeploymentBlocked("invalid Runtime member rename")
+            names.add(old)
+        if names.intersection(SOURCE_FILES):
+            raise DeploymentBlocked("target changed Runtime files; separate Runtime update required")
 
 
 def ensure_repo_location() -> None:
