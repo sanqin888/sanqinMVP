@@ -1,5 +1,7 @@
 # Current 12-context dependency graph
 
+2026-10-08 C5-B3B2L **LOCAL SOURCE / REVIEW PENDING / NO GRAPH CHANGE**: Runtime/Ops adds an inert Ed25519 detached-envelope and untrusted policy-fixture shape validator/tests, no signature verifier, root key, CI workflow, privilege, app-context edge, migration or production VM mutation. See `docs/architecture/postmod-ghcr-batch-c5b3b2l-ed25519-envelope-policy.md`.
+
 2026-10-08 C5-B3B2K **LOCAL READINESS DESIGN / NO GRAPH CHANGE**: Runtime/Ops reviews offline-signer, KMS and keyless provenance options, independent root trust-anchor, revocation, long-lived retention and privilege boundaries. No signing code, root changes, app imports, new dependencies, CI workflow or migrations. See `docs/architecture/postmod-ghcr-batch-c5b3b2k-signing-trust-readiness.md`.
 
 2026-10-08 C5-B3B2J **LOCAL SOURCE / REVIEW PENDING / NO GRAPH CHANGE**: Runtime/Ops adds a pure untrusted Launcher claim parser plus offline stdlib tests. No signature trust root, CI workflow, dependency manifest, app-context import, root installer, production filesystem, Docker, backup or migration change. See `docs/architecture/postmod-ghcr-batch-c5b3b2j-inert-launcher-claim.md`.
