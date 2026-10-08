@@ -79,7 +79,7 @@ class CheckoutRetirementAuditTests(unittest.TestCase):
             self.assertNotIn(".env", path)
             self.assertNotIn("uploads", path)
             self.assertNotIn("backups", path)
-            self.assertNotIn(".git", path)
+            self.assertNotIn(".git", Path(path).parts)
 
 
 if __name__ == "__main__":
