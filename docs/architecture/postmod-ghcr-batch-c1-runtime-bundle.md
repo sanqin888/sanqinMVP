@@ -24,6 +24,7 @@ source files from the **same validated checkout SHA**:
 - `ops/release/release_contract.py`
 - `ops/runtime/build_bundle.py`
 - `ops/runtime/audit_compose_cutover.py` (C4-A read-only audit extension)
+- `ops/runtime/audit_release_provenance.py` (C5-B2B0 handoff audit)
 - `ops/runtime/inspect_layout.py`
 - `ops/runtime/stage_bundle.py` (C2 allowlist extension)
 - `ops/runtime/runtime_trust.py` (C5-B1 independent digest status)
