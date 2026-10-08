@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "baselineCommit": "1b18fb00",
-  "updatedAt": "2026-09-30",
+  "updatedAt": "2026-10-07",
   "requiredFields": [
     "compat_id",
     "old_owner",
@@ -56,6 +56,30 @@
       "governance_note": "The 2026-09-09 operator decision explicitly freezes the production Web Clover path while Test App/device acceptance and production-merchant authorization are incomplete. Do not modify /v1/charges execution, CARD/Apple Pay/Google Pay tokenization, 3DS/session/pricing-token/contact-verification, Web paid-Order creation, Web external-payment refund, production webhook merchant scope or persisted Web payment/surcharge facts merely to advance modularization. Non-payment bounded-context work may proceed. Resume Web Unified Payment work only after the stated provider/merchant gate, beginning with a fresh read-only production-merchant readiness/correlation audit before any v3 shadow or traffic authority change.",
       "evidence": [
         "docs/payments/clover-pos-integration-charter.md sections 3.8, 9.1 and 12.5"
+      ]
+    },
+    {
+      "compat_id": "accounting.clover-fee-reclassification-bridge.v1",
+      "status": "active_legacy_history_bridge",
+      "old_owner": "Accounting specialized Clover fee Pending reclassification Journal created before the common Posted Financial Correction lifecycle existed",
+      "new_owner": "Common Accounting Posted Financial Correction Case for future Provider corrections, with Provider Settlement remaining the owner of corrected business authority",
+      "dual_write_or_read": [
+        "No dual write. An existing specialized Clover fee-reclassification Journal remains immutable and may be read only as the ordered historical baseline before the first later common Provider correction when strict bridge validation passes.",
+        "After a POSTED common Provider Correction Case exists, the specialized Clover reclassification writer remains blocked with POSTED_COMMON_CORRECTION_EXISTS, so the legacy writer can never append after common correction authority becomes active.",
+        "Current Clover Statements that already post fees directly to Clover Fee Payable remain NOOP for the specialized path and create no compatibility bridge row."
+      ],
+      "parity_metric": "For every legacy specialized Journal accepted by the bridge, postingVector(original Provider Journal + specialized fee reclassification) must exactly equal postingVector(rebuilt current Provider settlement policy Journal); multiple, malformed, tampered or non-reconciling specialized Journals fail closed.",
+      "rollback": "Forward-fix the Accounting bridge/read policy or temporarily block common correction for the affected legacy Clover Statement. Never delete, rewrite or backfill historical specialized/common Journals, and never re-enable specialized writes after a POSTED common correction.",
+      "exit_criteria": "Production inventory identifies every Clover Statement carrying the legacy specialized source fact, controlled verification proves later common Provider correction from the validated baseline where required, and no supported correction workflow still needs the specialized Journal as a baseline reader before the bridge code and annotation are removed.",
+      "remove_pr": "Dedicated Accounting Correction-E compatibility contraction after production inventory/parity evidence proves the historical bridge is no longer needed",
+      "deadline": "After Correction-E production inventory and controlled legacy-Clover common-correction verification; no date-based forced removal",
+      "governance_note": "Correction-E1 changes only coexistence ordering inside Accounting: validated legacy specialized correction may precede common Provider correction, while the reverse order remains blocked. It adds no Prisma target kind, migration, public route, provider/payment dependency or historical backfill.",
+      "evidence": [
+        "docs/architecture/accounting-document-recognition-human-review-plan.md section 16",
+        "apps/api/src/accounting/accounting-clover-fee-reclassification-bridge.policy.ts",
+        "apps/api/src/accounting/accounting-provider-settlement-correction.adapter.ts",
+        "apps/api/src/accounting/accounting-clover-fee-reclassification.service.ts",
+        "docs/architecture/modularization-worklog-accounting-correction.md"
       ]
     }
   ],

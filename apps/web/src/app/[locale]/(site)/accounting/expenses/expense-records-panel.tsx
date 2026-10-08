@@ -33,6 +33,7 @@ type Props = {
   onPageChange: (offset: number) => void;
   onPageSizeChange: (limit: number) => void;
   onCompletePayment: (document: AccountingExpenseDocument) => void;
+  onCorrectPostedRecord: (document: AccountingExpenseDocument) => void;
 };
 
 const money = (cents: number | null | undefined) =>
@@ -70,6 +71,7 @@ export function ExpenseRecordsPanel({
   onPageChange,
   onPageSizeChange,
   onCompletePayment,
+  onCorrectPostedRecord,
 }: Props) {
   const [filters, setFilters] = useState<ExpenseRecordFilters>(
     EMPTY_EXPENSE_RECORD_FILTERS,
@@ -95,8 +97,8 @@ export function ExpenseRecordsPanel({
           </h2>
           <p className="mt-1 text-sm text-slate-500">
             {isZh
-              ? '这里显示数据库中已经保存的正式费用记录、分类和付款归属，不回读收件箱识别值。筛选会作用于全部历史支出。'
-              : 'This view shows persisted expense records, categories, and funding from the database; it does not reread Inbox recognition values. Filters apply to all expense history.'}
+              ? '这里显示当前有效的费用金额、分类和付款归属；已入账更正会覆盖展示值，但原始已保存事实仍单独保留且不会改写。筛选按当前有效值作用于全部历史支出。'
+              : 'This view shows current-effective expense amounts, categories, and funding. Posted corrections change the displayed values while the original persisted facts remain separately preserved. Filters use current-effective values across expense history.'}
           </p>
         </div>
         <label className="text-sm">
@@ -234,7 +236,15 @@ export function ExpenseRecordsPanel({
                   ? new Date(document.occurredAt).toLocaleDateString()
                   : '-'}
               </span>
-              <strong>{money(document.totalCents)}</strong>
+              <div>
+                <strong>{money(document.totalCents)}</strong>
+                {document.currentEffective.source === 'POSTED_CORRECTION' ? (
+                  <div className="mt-1 text-xs text-violet-700">
+                    {isZh ? '当前有效 · 原始 ' : 'Current effective · original '}
+                    {money(document.originalPersisted.totalCents)}
+                  </div>
+                ) : null}
+              </div>
               <div className="text-slate-600">
                 <div>
                   {document.splits
@@ -252,13 +262,26 @@ export function ExpenseRecordsPanel({
                   {isZh ? '付款：' : 'Paid from: '}
                   {fundingSummary(document) || null}
                 </div>
-                {hasUnassignedFunding(document) ? (
-                  <span className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
-                    {isZh
-                      ? '付款账户未指定'
-                      : 'Payment account not specified'}
-                  </span>
-                ) : null}
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {hasUnassignedFunding(document) ? (
+                    <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                      {isZh
+                        ? '付款账户未指定'
+                        : 'Payment account not specified'}
+                    </span>
+                  ) : null}
+                  {document.correctionState.activeCorrectionStatus ? (
+                    <span className="inline-flex rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-800">
+                      Correction{' '}
+                      {document.correctionState.activeCorrectionStatus}
+                    </span>
+                  ) : document.correctionState.hasPostedCorrections ? (
+                    <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
+                      {isZh ? '更正历史' : 'Correction history'} ·{' '}
+                      {document.correctionState.correctionCount}
+                    </span>
+                  ) : null}
+                </div>
               </div>
               <div className="flex flex-wrap items-start justify-end gap-2">
                 {document.sourceEvidence ? (
@@ -288,6 +311,15 @@ export function ExpenseRecordsPanel({
                     onClick={() => onCompletePayment(document)}
                   >
                     {isZh ? '补充付款信息' : 'Complete payment info'}
+                  </button>
+                ) : null}
+                {document.correctionState.canonicalPosted ? (
+                  <button
+                    type="button"
+                    className="rounded border border-violet-300 bg-violet-50 px-3 py-1.5 font-medium text-violet-800"
+                    onClick={() => onCorrectPostedRecord(document)}
+                  >
+                    {isZh ? '更正已入账记录' : 'Correct posted record'}
                   </button>
                 ) : null}
               </div>

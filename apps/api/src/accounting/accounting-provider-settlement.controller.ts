@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  Param,
   Post,
   Query,
   Req,
@@ -15,6 +16,7 @@ import {
   requireAccountingOperatorUserId,
 } from './accounting-controller-support';
 import { AccountingProviderSettlementExecutionService } from './accounting-provider-settlement-execution.service';
+import { AccountingProviderSettlementCorrectionService } from './accounting-provider-settlement-correction.service';
 import { AccountingCloverFeeReclassificationService } from './accounting-clover-fee-reclassification.service';
 import { AccountingProviderSettlementPreviewService } from './accounting-provider-settlement-preview.service';
 import { AccountingProviderSettlementQueryService } from './accounting-provider-settlement-query.service';
@@ -27,6 +29,7 @@ export class AccountingProviderSettlementController {
   constructor(
     private readonly providerSettlementPreview: AccountingProviderSettlementPreviewService,
     private readonly providerSettlementExecution: AccountingProviderSettlementExecutionService,
+    private readonly providerSettlementCorrection: AccountingProviderSettlementCorrectionService,
     private readonly providerSettlementQuery: AccountingProviderSettlementQueryService,
     private readonly cloverFeeReclassification: AccountingCloverFeeReclassificationService,
     private readonly cloverAuthorityReplacement: AccountingCloverAuthorityReplacementService,
@@ -69,6 +72,122 @@ export class AccountingProviderSettlementController {
     }
     return this.providerSettlementQuery.readProviderDocumentPostingStates(
       stableIds,
+    );
+  }
+
+  @Get('journal/provider-settlement/:documentStableId/correction')
+  readProviderSettlementCorrection(
+    @Param('documentStableId') documentStableId: string,
+  ) {
+    return this.providerSettlementCorrection.readRecord(documentStableId);
+  }
+
+  @Post('journal/provider-settlement/:documentStableId/corrections')
+  createPostedProviderCorrection(
+    @Param('documentStableId') documentStableId: string,
+    @Body()
+    body: {
+      reasonCode?: unknown;
+      note?: unknown;
+      target?: unknown;
+    },
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.providerSettlementCorrection.createDraft(
+      documentStableId,
+      body,
+      requireAccountingOperatorUserId(req),
+    );
+  }
+
+  @Post(
+    'journal/provider-settlement/:documentStableId/corrections/:correctionStableId/revise',
+  )
+  reviseProviderSettlementCorrection(
+    @Param('documentStableId') documentStableId: string,
+    @Param('correctionStableId') correctionStableId: string,
+    @Body()
+    body: {
+      expectedVersion?: unknown;
+      reasonCode?: unknown;
+      note?: unknown;
+      target?: unknown;
+    },
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.providerSettlementCorrection.reviseDraft(
+      documentStableId,
+      correctionStableId,
+      body,
+      requireAccountingOperatorUserId(req),
+    );
+  }
+
+  @Get(
+    'journal/provider-settlement/:documentStableId/corrections/:correctionStableId/preview',
+  )
+  previewProviderSettlementCorrection(
+    @Param('documentStableId') documentStableId: string,
+    @Param('correctionStableId') correctionStableId: string,
+  ) {
+    return this.providerSettlementCorrection.previewCase(
+      documentStableId,
+      correctionStableId,
+    );
+  }
+
+  @Post(
+    'journal/provider-settlement/:documentStableId/corrections/:correctionStableId/ready',
+  )
+  readyProviderSettlementCorrection(
+    @Param('documentStableId') documentStableId: string,
+    @Param('correctionStableId') correctionStableId: string,
+    @Body()
+    body: {
+      expectedVersion?: unknown;
+      expectedPlanHash?: unknown;
+    },
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.providerSettlementCorrection.markReady(
+      documentStableId,
+      correctionStableId,
+      body,
+      requireAccountingOperatorUserId(req),
+    );
+  }
+
+  @Post(
+    'journal/provider-settlement/:documentStableId/corrections/:correctionStableId/post',
+  )
+  postProviderSettlementCorrection(
+    @Param('documentStableId') documentStableId: string,
+    @Param('correctionStableId') correctionStableId: string,
+    @Body() body: { expectedPlanHash?: unknown },
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.providerSettlementCorrection.executeCase(
+      documentStableId,
+      correctionStableId,
+      body,
+      requireAccountingOperatorUserId(req),
+    );
+  }
+
+  @Post(
+    'journal/provider-settlement/:documentStableId/corrections/:correctionStableId/cancel',
+  )
+  cancelProviderSettlementCorrection(
+    @Param('documentStableId') documentStableId: string,
+    @Param('correctionStableId') correctionStableId: string,
+    @Body() body: { expectedVersion?: unknown },
+    @Req() req: AuthedAccountingRequest,
+  ) {
+    return this.providerSettlementCorrection.cancelCase(
+      documentStableId,
+      correctionStableId,
+      body,
+      requireAccountingOperatorUserId(req),
     );
   }
 

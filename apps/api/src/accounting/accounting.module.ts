@@ -62,6 +62,10 @@ import { AccountingCanonicalChangePreviewService } from './accounting-canonical-
 import { AccountingCanonicalChangeExecutionService } from './accounting-canonical-change-execution.service';
 import { AccountingProviderSettlementPreviewService } from './accounting-provider-settlement-preview.service';
 import { AccountingProviderSettlementExecutionService } from './accounting-provider-settlement-execution.service';
+import { AccountingProviderSettlementCorrectionAdapter } from './accounting-provider-settlement-correction.adapter';
+import { AccountingExpenseCorrectionAdapter } from './accounting-expense-correction.adapter';
+import { AccountingExpenseCorrectionService } from './accounting-expense-correction.service';
+import { AccountingProviderSettlementCorrectionService } from './accounting-provider-settlement-correction.service';
 import { AccountingCloverFeeReclassificationService } from './accounting-clover-fee-reclassification.service';
 import { AccountingProviderFinancialCoverageService } from './accounting-provider-financial-coverage.service';
 import { AccountingProviderPayoutService } from './accounting-provider-payout.service';
@@ -90,6 +94,7 @@ import {
 import { PaymentFinancialFactsModule } from '../payments/public-api';
 import { AccountingCloverAuthorityReplacementService } from './accounting-clover-authority-replacement.service';
 import { AccountingCloverPreSyncAuthorityService } from './accounting-clover-pre-sync-authority.service';
+import { AccountingPostedFinancialCorrectionService } from './accounting-posted-financial-correction.service';
 
 @Module({
   imports: [
@@ -134,6 +139,10 @@ import { AccountingCloverPreSyncAuthorityService } from './accounting-clover-pre
     AccountingCanonicalChangeExecutionService,
     AccountingProviderSettlementPreviewService,
     AccountingProviderSettlementExecutionService,
+    AccountingProviderSettlementCorrectionAdapter,
+    AccountingProviderSettlementCorrectionService,
+    AccountingExpenseCorrectionAdapter,
+    AccountingExpenseCorrectionService,
     AccountingCloverFeeReclassificationService,
     AccountingProviderFinancialCoverageService,
     AccountingProviderPayoutService,
@@ -158,6 +167,7 @@ import { AccountingCloverPreSyncAuthorityService } from './accounting-clover-pre
     AccountingPlatformAnalyticsService,
     AccountingCloverPreSyncAuthorityService,
     AccountingCloverAuthorityReplacementService,
+    AccountingPostedFinancialCorrectionService,
     AccountingBalanceMovementService,
     AccountingTrialBalanceService,
     AccountingStatementDrillThroughService,

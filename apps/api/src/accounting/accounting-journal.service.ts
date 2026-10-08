@@ -59,6 +59,16 @@ import {
   UBER_PRE_CUTOVER_REVERSAL_SOURCE_FACT_TYPE,
 } from './accounting-provider-settlement.policy';
 import {
+  ACCOUNTING_POSTED_FINANCIAL_CORRECTION_SOURCE_FACT_TYPE,
+  AccountingPostedCorrectionStatus,
+} from './accounting-posted-financial-correction.contract';
+import {
+  assertPostedCorrectionJournalAuthority,
+  hashPostedCorrectionJournalWrite,
+  normalizePostedCorrectionJournalWriteAuthority,
+  type AccountingPostedCorrectionJournalWriteAuthorityV1,
+} from './accounting-posted-financial-correction-journal-authority';
+import {
   assertProviderPayoutJournalAuthority,
   hashProviderPayoutJournalWrite,
   normalizeProviderPayoutWriteAuthority,
@@ -248,6 +258,17 @@ const isOpeningReceivableCanonicalSourceFactType = (
   typeof value === 'string' &&
   OPENING_RECEIVABLE_CANONICAL_SOURCE_FACT_TYPES.has(value);
 
+const PROVIDER_SETTLEMENT_CANONICAL_SOURCE_FACT_TYPES = new Set<string>([
+  PROVIDER_FINANCIAL_SOURCE_FACT_TYPE,
+  UBER_PRE_CUTOVER_REVERSAL_SOURCE_FACT_TYPE,
+]);
+
+const isProviderSettlementCanonicalSourceFactType = (
+  value: string | null | undefined,
+): boolean =>
+  typeof value === 'string' &&
+  PROVIDER_SETTLEMENT_CANONICAL_SOURCE_FACT_TYPES.has(value);
+
 type PreparedJournalWrite = {
   normalized: NormalizedJournalCreate;
   idempotencyHash: string;
@@ -335,6 +356,19 @@ export class AccountingJournalService {
         'provider fee bank withdrawal Journals require fee-clearing write authority',
       );
     }
+    if (isProviderSettlementCanonicalSourceFactType(input.sourceFactType)) {
+      throw new BadRequestException(
+        'provider settlement canonical Journals require settlement-specific write authority',
+      );
+    }
+    if (
+      input.sourceFactType ===
+      ACCOUNTING_POSTED_FINANCIAL_CORRECTION_SOURCE_FACT_TYPE
+    ) {
+      throw new BadRequestException(
+        'posted financial correction Journals require correction-specific write authority',
+      );
+    }
     if (
       input.source === AccountingJournalSource.EXTERNAL_SALE ||
       isExternalSaleCanonicalSourceFactType(input.sourceFactType)
@@ -404,6 +438,53 @@ export class AccountingJournalService {
     if (journal.deletedAt) {
       throw new ConflictException(
         'canonical Expense Journal was deleted and cannot be replayed',
+      );
+    }
+    return journal;
+  }
+
+  async createPostedCorrectionJournalEntryInTx(
+    input: AccountingJournalCreateInput,
+    operatorActorRef: string,
+    authority: AccountingPostedCorrectionJournalWriteAuthorityV1,
+    tx: Prisma.TransactionClient,
+  ): Promise<AccountingJournalRow> {
+    const normalizedAuthority = this.applyJournalPolicy(() =>
+      normalizePostedCorrectionJournalWriteAuthority(authority),
+    );
+    const normalized = this.applyJournalPolicy(() =>
+      normalizeJournalCreate(input),
+    );
+    this.applyJournalPolicy(() =>
+      assertPostedCorrectionJournalAuthority(normalized, normalizedAuthority),
+    );
+    await this.assertPostedCorrectionJournalAuthorityInTx(
+      normalizedAuthority,
+      tx,
+    );
+
+    const operator = this.requireJournalValue(
+      operatorActorRef,
+      'operatorActorRef',
+    );
+    const timezone = await this.period.getBusinessTimezone();
+    const journal = await this.createPreparedJournalEntryInTx(
+      {
+        normalized,
+        idempotencyHash: hashPostedCorrectionJournalWrite(
+          normalized,
+          normalizedAuthority,
+        ),
+        auditAuthority: normalizedAuthority as unknown as Prisma.InputJsonValue,
+        allowInactiveReferencedDimensions: true,
+      },
+      operator,
+      tx,
+      timezone,
+    );
+    if (journal.deletedAt) {
+      throw new ConflictException(
+        'posted financial correction Journal was deleted and cannot be replayed',
       );
     }
     return journal;
@@ -1195,6 +1276,21 @@ export class AccountingJournalService {
         );
       }
       if (
+        isProviderSettlementCanonicalSourceFactType(existing.sourceFactType)
+      ) {
+        throw new ConflictException(
+          'provider settlement canonical Journals cannot be updated in place',
+        );
+      }
+      if (
+        existing.sourceFactType ===
+        ACCOUNTING_POSTED_FINANCIAL_CORRECTION_SOURCE_FACT_TYPE
+      ) {
+        throw new ConflictException(
+          'posted financial correction Journals cannot be updated in place',
+        );
+      }
+      if (
         existing.source === AccountingJournalSource.EXTERNAL_SALE ||
         isExternalSaleCanonicalSourceFactType(existing.sourceFactType)
       ) {
@@ -1205,6 +1301,21 @@ export class AccountingJournalService {
       if (isExternalSaleCanonicalSourceFactType(normalized.sourceFactType)) {
         throw new ConflictException(
           'generic Journal update cannot create External Sale canonical authority',
+        );
+      }
+      if (
+        isProviderSettlementCanonicalSourceFactType(normalized.sourceFactType)
+      ) {
+        throw new ConflictException(
+          'generic Journal update cannot create provider settlement canonical authority',
+        );
+      }
+      if (
+        normalized.sourceFactType ===
+        ACCOUNTING_POSTED_FINANCIAL_CORRECTION_SOURCE_FACT_TYPE
+      ) {
+        throw new ConflictException(
+          'generic Journal update cannot create posted financial correction authority',
         );
       }
       if (isOpeningReceivableCanonicalSourceFactType(existing.sourceFactType)) {
@@ -1360,6 +1471,21 @@ export class AccountingJournalService {
       if (existing.source === AccountingJournalSource.EXPENSE_DOCUMENT) {
         throw new ConflictException(
           'canonical Expense Journals cannot be deleted in place',
+        );
+      }
+      if (
+        isProviderSettlementCanonicalSourceFactType(existing.sourceFactType)
+      ) {
+        throw new ConflictException(
+          'provider settlement canonical Journals cannot be deleted in place',
+        );
+      }
+      if (
+        existing.sourceFactType ===
+        ACCOUNTING_POSTED_FINANCIAL_CORRECTION_SOURCE_FACT_TYPE
+      ) {
+        throw new ConflictException(
+          'posted financial correction Journals cannot be deleted in place',
         );
       }
       if (
@@ -3623,6 +3749,66 @@ export class AccountingJournalService {
           `Payroll account authority changed before posting: ${prerequisite.accountStableId}`,
         );
       }
+    }
+  }
+
+  private async assertPostedCorrectionJournalAuthorityInTx(
+    authority: AccountingPostedCorrectionJournalWriteAuthorityV1,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    const correctionCase = await tx.accountingCorrectionCase.findUnique({
+      where: { correctionStableId: authority.correctionStableId },
+      select: {
+        id: true,
+        status: true,
+        planHash: true,
+        targetKind: true,
+        targetStableId: true,
+        targetVersion: true,
+        readyRevision: {
+          select: {
+            correctionRevisionStableId: true,
+            correctionCaseId: true,
+            revision: true,
+          },
+        },
+      },
+    });
+    if (!correctionCase) {
+      throw new ConflictException(
+        'posted correction Case no longer exists before Journal posting',
+      );
+    }
+    if (correctionCase.status !== AccountingPostedCorrectionStatus.READY) {
+      throw new ConflictException(
+        'posted correction Case is no longer READY before Journal posting',
+      );
+    }
+    if (
+      correctionCase.planHash !== authority.planHash ||
+      correctionCase.targetKind !== authority.targetKind ||
+      correctionCase.targetStableId !== authority.targetStableId ||
+      correctionCase.targetVersion !== authority.targetVersion
+    ) {
+      throw new ConflictException(
+        'posted correction Case authority changed before Journal posting',
+      );
+    }
+    if (
+      !correctionCase.readyRevision ||
+      correctionCase.readyRevision.correctionRevisionStableId !==
+        authority.correctionRevisionStableId ||
+      correctionCase.readyRevision.revision !== authority.correctionRevision
+    ) {
+      throw new ConflictException(
+        'posted correction READY revision changed before Journal posting',
+      );
+    }
+
+    if (correctionCase.readyRevision.correctionCaseId !== correctionCase.id) {
+      throw new ConflictException(
+        'posted correction READY revision does not belong to the active Case',
+      );
     }
   }
 

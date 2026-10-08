@@ -35,7 +35,7 @@ describe('Accounting Expense records and payment completion UX', () => {
     expect(recordsSource).toContain('每页');
     expect(recordsSource).toContain('UNASSIGNED_PAYMENT_FILTER');
     expect(recordsSource).toContain('最低金额 ≥');
-    expect(recordsSource).toContain('数据库中已经保存的正式费用记录');
+    expect(recordsSource).toContain('这里显示当前有效的费用金额');
     expect(recordsSource).toContain('document.totalCents');
     expect(recordsSource).toContain('document.splits');
     expect(recordsSource).not.toContain('expenseReviewParse');

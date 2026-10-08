@@ -63,6 +63,9 @@ function makeService() {
         storeStableId: originalJournal.storeStableId,
       }),
     },
+    accountingCorrectionCase: {
+      findFirst: jest.fn().mockResolvedValue(null),
+    },
     accountingAccount: {
       findMany: jest.fn().mockResolvedValue([
         {
@@ -115,6 +118,18 @@ describe('AccountingCloverFeeReclassificationService', () => {
       }),
     );
     expect(preview.planHash).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it('blocks legacy fee reclassification after a common posted correction exists', async () => {
+    const { service, prisma } = makeService();
+    prisma.accountingCorrectionCase.findFirst.mockResolvedValue({
+      correctionStableId: 'correction_clover_1',
+    });
+
+    const preview = await service.preview(document.documentStableId);
+
+    expect(preview.status).toBe('BLOCKED');
+    expect(preview.blockReasons).toEqual(['POSTED_COMMON_CORRECTION_EXISTS']);
   });
 
   it('writes one idempotent reclassification Journal and then reports it as authoritative', async () => {

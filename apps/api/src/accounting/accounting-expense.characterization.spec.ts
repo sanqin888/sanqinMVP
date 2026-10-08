@@ -36,6 +36,10 @@ describe('AccountingExpenseService expense-write characterization', () => {
     assertOnOrAfterAccountingStartDate: jest.fn().mockResolvedValue(undefined),
     assertEditableForPeriod: jest.fn().mockResolvedValue(undefined),
   };
+  const emptyPostedStateReads = () => ({
+    accountingJournalEntry: { findMany: jest.fn().mockResolvedValue([]) },
+    accountingCorrectionCase: { findMany: jest.fn().mockResolvedValue([]) },
+  });
   const expenseJournalPosting = {
     postConfirmedExpenseIfReadyInTx: jest.fn().mockResolvedValue(null),
   };
@@ -135,6 +139,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
         ),
       },
       accountingInboxItem: { findMany: jest.fn().mockResolvedValue([]) },
+      ...emptyPostedStateReads(),
       $transaction: transaction,
     };
     const service = new AccountingExpenseService(
@@ -546,6 +551,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
         ),
       },
       accountingInboxItem: { findMany: jest.fn().mockResolvedValue([]) },
+      ...emptyPostedStateReads(),
       $transaction: transaction,
     };
     const service = new AccountingExpenseService(
@@ -815,6 +821,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
         ),
       },
       accountingInboxItem: { findMany: jest.fn().mockResolvedValue([]) },
+      ...emptyPostedStateReads(),
       $transaction: jest.fn(
         (callback: (transactionClient: typeof tx) => Promise<unknown>) =>
           callback(tx),
@@ -952,6 +959,7 @@ describe('AccountingExpenseService expense-write characterization', () => {
     const prisma = {
       accountingExpenseDocument: { findUnique },
       accountingInboxItem: { findMany: jest.fn().mockResolvedValue([]) },
+      ...emptyPostedStateReads(),
       accountingCategory: {
         findMany: jest.fn().mockResolvedValue([
           {

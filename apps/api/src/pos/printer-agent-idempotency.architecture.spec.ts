@@ -50,6 +50,8 @@ describe('POS printer dispatch idempotency boundary', () => {
     expect(agent).toContain('fs.renameSync(tempFile, filePath)');
     expect(agent).toContain('socket.on("PRINT_JOB"');
     expect(agent).toContain('socket.emit("PRINT_JOB_ACK"');
+    expect(agent).toContain('buildCashDrawerKickEscPos');
+    expect(agent).toContain('cashDrawerOpenRequested !== true');
     expect(agent).not.toContain('deliveryId');
   });
 
