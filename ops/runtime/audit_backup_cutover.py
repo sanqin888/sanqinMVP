@@ -69,7 +69,7 @@ CONTRACTS: dict[str, tuple[str, ...]] = {
     ),
     "docker-compose.yml": (
         "pgdata:/var/lib/postgresql/data",
-        "./uploads:/app/uploads",
+        "/srv/sanq/uploads:/app/uploads",
         "/home/ubuntu/sanq-assets/sounds:/app/apps/web/public/sounds:ro",
     ),
 }

@@ -33,6 +33,7 @@ SOURCE_FILES = (
     "ops/release/deploy_release.py",
     "ops/release/release_contract.py",
     "ops/runtime/build_bundle.py",
+    "ops/runtime/audit_compose_cutover.py",
     "ops/runtime/inspect_layout.py",
     "ops/runtime/stage_bundle.py",
     "ops/runtime/runtime-layout.v1.json",

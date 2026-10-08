@@ -10,8 +10,10 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import gzip
+import hashlib
 import json
 import os
+import pwd
 import re
 import stat
 import subprocess
@@ -25,10 +27,23 @@ from release_contract import (
     discover_release, github_json, require_sha,
 )
 
-ROOT = Path(__file__).resolve().parents[2]
+# C4-B fixed host layout. Do NOT infer the active runtime from the checked-out
+# source code; a source checkout is retained separately through C5.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "runtime"))
+from build_bundle import SOURCE_FILES  # noqa: E402
+
+ROOT = Path("/opt/sanq/runtime")
+SOURCE_CHECKOUT = Path("/home/ubuntu/sanq-app")
+BACKUP_DIR = Path("/srv/sanq/backups")
+UPLOADS_DIR = Path("/srv/sanq/uploads")
 ENV = ROOT / ".env"
 COMPOSE = ROOT / "docker-compose.yml"
 STATE = ROOT / ".sanq-release-state.json"
+RUNTIME_MANIFEST = ROOT / "runtime-release.json"
+ACTIVATION_MARKER = ROOT / ".sanq-backup-layout-activated"
+MARKER_CONTENT = "SANQ_BACKUP_LAYOUT_C4_V1"
+EXPECTED_PROJECT = "sanq-app"
+EXPECTED_DB_VOLUME = "sanq-app_pgdata"
 IMAGE_NAMES = ("sanq-api", "sanq-web")
 APP_SERVICES = ("api", "ubereats-worker", "web")
 RELEASE_LINE = re.compile(r"(?m)^SANQ_IMAGE_SHA=([^\r\n]*)\r?$")
@@ -83,9 +98,15 @@ def read_state() -> dict[str, Any] | None:
 def atomic_write(path: Path, value: str) -> None:
     """Safely replace a non-symlink sibling file, preserving existing mode."""
     require_safe_file(path, allow_absent=True)
-    mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o600
+    original = path.stat() if path.exists() else None
+    mode = stat.S_IMODE(original.st_mode) if original else 0o600
     fd, tmp_name = tempfile.mkstemp(prefix=".sanq-release-tmp-", dir=str(path.parent))
     try:
+        # The target Runtime directory remains root-owned; this controller is
+        # operator-executed as root for atomic state/config updates only. Keep
+        # the .env original ubuntu ownership so the unprivileged backup works.
+        if original is not None and os.geteuid() == 0:
+            os.fchown(fd, original.st_uid, original.st_gid)
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as output:
             output.write(value)
             output.flush()
@@ -122,15 +143,37 @@ def write_state(phase: str, current: str, previous: str, *, reason: str) -> None
     }, indent=2) + "\n")
 
 
-def run(args: list[str], *, target_sha: str | None = None, capture: bool = False) -> str:
+def run(
+    args: list[str], *, target_sha: str | None = None,
+    capture: bool = False, cwd: Path | None = None
+) -> str:
     """Execute fixed operations only; no shell or user-supplied command."""
     environment = os.environ.copy()
     if target_sha is not None:
         environment["SANQ_IMAGE_SHA"] = require_sha(target_sha)
+    # The source Git checkout is ubuntu-owned and may contain user-controlled
+    # Git config/diff drivers. Never execute Git against it as root.
+    process_identity = {}
+    if cwd == SOURCE_CHECKOUT:
+        source_user = pwd.getpwnam("ubuntu")
+        process_identity = {
+            "user": source_user.pw_uid, "group": source_user.pw_gid,
+            "extra_groups": [],
+        }
+        # Never pass root operator credentials into a Git command that can
+        # process ubuntu-controlled repository configuration or diff drivers.
+        environment = {
+            "PATH": "/usr/bin:/bin",
+            "HOME": source_user.pw_dir,
+            "GIT_TERMINAL_PROMPT": "0",
+            "GIT_OPTIONAL_LOCKS": "0",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+        }
     result = subprocess.run(
         args,
-        cwd=ROOT,
+        cwd=cwd or ROOT,
         env=environment,
+        **process_identity,
         text=True,
         stdout=subprocess.PIPE if capture else None,
         stderr=subprocess.PIPE if capture else None,
@@ -152,20 +195,122 @@ def compose(target_sha: str, *args: str, capture: bool = False) -> str:
     ], target_sha=target_sha, capture=capture)
 
 
+def _trusted_dir(path: Path, *, owner: int = 0, private: bool = False) -> None:
+    if path.is_symlink() or not path.is_dir():
+        raise DeploymentBlocked(f"missing or symlinked directory: {path}")
+    info = path.stat()
+    forbidden = 0o077 if private else 0o022
+    if info.st_uid != owner or (stat.S_IMODE(info.st_mode) & forbidden):
+        raise DeploymentBlocked(f"untrusted directory owner/mode: {path}")
+
+
+def require_c4_activation() -> None:
+    require_safe_file(ACTIVATION_MARKER)
+    info = ACTIVATION_MARKER.stat()
+    if info.st_uid != 0 or stat.S_IMODE(info.st_mode) & 0o022:
+        raise DeploymentBlocked("C4 activation marker owner/mode mismatch")
+    if ACTIVATION_MARKER.read_text(encoding="utf-8").strip() != MARKER_CONTENT:
+        raise DeploymentBlocked("C4 activation marker content mismatch")
+
+
+def runtime_manifest() -> dict[str, Any]:
+    """C4 retains an exact matching Git main checkout until C5 attestation."""
+    require_safe_file(RUNTIME_MANIFEST)
+    if RUNTIME_MANIFEST.stat().st_size > 16384:
+        raise DeploymentBlocked("runtime release manifest is oversized")
+    manifest = json.loads(RUNTIME_MANIFEST.read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict) or manifest.get("schemaVersion") != 1:
+        raise DeploymentBlocked("runtime manifest schema invalid")
+    sha = require_sha(manifest.get("sourceSha", ""))
+    if (manifest.get("sourceBranch") != "main" or
+        manifest.get("productionActivationAuthorized") is not False):
+        raise DeploymentBlocked("runtime manifest has invalid source/activation authority")
+    files = manifest.get("files")
+    if not isinstance(files, dict) or set(files) != set(SOURCE_FILES):
+        raise DeploymentBlocked("runtime files differ from pinned release allowlist")
+
+    _trusted_dir(SOURCE_CHECKOUT, owner=pwd.getpwnam("ubuntu").pw_uid)
+    # Git is run under the unprivileged checkout owner in run(), never root;
+    # neither Git hooks nor repository-owned diff drivers gain root authority.
+    git = ["git"]
+    if run([*git, "symbolic-ref", "--quiet", "--short", "HEAD"],
+           capture=True, cwd=SOURCE_CHECKOUT) != "main":
+        raise DeploymentBlocked("source checkout is not main")
+    if run([*git, "rev-parse", "--verify", "HEAD"],
+           capture=True, cwd=SOURCE_CHECKOUT) != sha:
+        raise DeploymentBlocked("runtime bundle SHA differs from main checkout")
+    run([*git, "diff", "HEAD", "--exit-code", "--", *SOURCE_FILES],
+        capture=True, cwd=SOURCE_CHECKOUT)
+    for name in SOURCE_FILES:
+        for base in (ROOT, SOURCE_CHECKOUT):
+            cursor = base
+            for component in Path(name).parts:
+                cursor = cursor / component
+                if cursor.is_symlink():
+                    raise DeploymentBlocked(f"symlink in Runtime source: {name}")
+        active = ROOT / name
+        checked_out = SOURCE_CHECKOUT / name
+        require_safe_file(active)
+        require_safe_file(checked_out)
+        if active.stat().st_size > 2 * 1024 * 1024 or checked_out.stat().st_size > 2 * 1024 * 1024:
+            raise DeploymentBlocked(f"oversized Runtime source: {name}")
+        data = active.read_bytes()
+        proof = files[name]
+        if (not isinstance(proof, dict)
+            or proof.get("sha256") != hashlib.sha256(data).hexdigest()
+            or proof.get("bytes") != len(data)
+            or checked_out.read_bytes() != data):
+            raise DeploymentBlocked(f"runtime file/source checksum mismatch: {name}")
+    return manifest
+
+
+def verify_runtime_release(candidate: dict[str, Any]) -> None:
+    manifest = runtime_manifest()
+    if require_sha(candidate["sourceSha"]) != manifest["sourceSha"]:
+        raise DeploymentBlocked("candidate images differ from installed Runtime bundle source SHA")
+    expected = manifest.get("applicationImages")
+    if not isinstance(expected, dict) or set(expected) != set(IMAGE_NAMES):
+        raise DeploymentBlocked("Runtime manifest must declare both images")
+    for name in IMAGE_NAMES:
+        published = candidate["images"][name]
+        pair = expected[name]
+        if (pair.get("ref") != published["ref"] or
+            checked_digest(pair.get("digest")) != checked_digest(published["digest"])):
+            raise DeploymentBlocked("image digest differs from active Runtime release manifest")
+
+
 def ensure_repo_location() -> None:
-    if Path.cwd().resolve() != ROOT.resolve():
-        raise DeploymentBlocked("run from the original SanQ production repository root")
-    require_safe_file(COMPOSE)
-    require_safe_file(ENV)
-    require_safe_file(ROOT / "ops/verify-runtime-readiness.sh")
-    if ENV.stat().st_uid != os.geteuid():
-        raise DeploymentBlocked("production .env owner differs from the deploying user")
-    if run(["git", "symbolic-ref", "--quiet", "--short", "HEAD"], capture=True) != "main":
-        raise DeploymentBlocked("deployment source checkout must be on main")
-    # Do not silently change Compose project identity or the upload bind source.
+    """Legacy function name retained for tests; verify only fixed C4 roots."""
+    if Path.cwd() != ROOT or Path.cwd().is_symlink():
+        raise DeploymentBlocked("run from exact /opt/sanq/runtime, not source checkout")
+    for path in (Path("/opt"), Path("/opt/sanq"), ROOT, Path("/srv"), Path("/srv/sanq")):
+        _trusted_dir(path)
+    _trusted_dir(BACKUP_DIR, owner=pwd.getpwnam("ubuntu").pw_uid, private=True)
+    if UPLOADS_DIR.is_symlink() or not UPLOADS_DIR.is_dir():
+        raise DeploymentBlocked("C4 uploads directory is missing or symlinked")
+    if stat.S_IMODE(UPLOADS_DIR.stat().st_mode) & 0o022:
+        raise DeploymentBlocked("C4 uploads directory group/world-writable")
+    for path in (COMPOSE, ENV, ROOT / "ops/verify-runtime-readiness.sh"):
+        require_safe_file(path)
+    if (ENV.stat().st_uid != pwd.getpwnam("ubuntu").pw_uid
+        or stat.S_IMODE(ENV.stat().st_mode) & 0o077):
+        raise DeploymentBlocked("runtime .env must be ubuntu-owned with no group/world access")
+    require_c4_activation()
     source = COMPOSE.read_text(encoding="utf-8")
-    if "pgdata:/var/lib/postgresql/data" not in source or "./uploads:/app/uploads" not in source:
-        raise DeploymentBlocked("unexpected Compose database/upload storage contract")
+    if (source.count("/srv/sanq/uploads:/app/uploads") != 2
+        or "./uploads:/app/uploads" in source
+        or "pgdata:/var/lib/postgresql/data" not in source
+        or "name: sanq-app" not in source):
+        raise DeploymentBlocked("unexpected Runtime Compose project/DB/uploads contract")
+    runtime_manifest()
+
+
+def require_mutation_privilege() -> None:
+    # The C3-B root-owned Runtime directory forbids unprivileged atomic
+    # .env/state replacement; only a separately authorized root operator can
+    # perform the actual release. No sudo or privileged helper is invoked.
+    if os.geteuid() != 0:
+        raise DeploymentBlocked("release mutation requires an explicitly authorized root operator")
 
 
 def check_running_images(current: str) -> None:
@@ -188,13 +333,44 @@ def check_running_images(current: str) -> None:
             )
 
 
+def check_live_storage(sha: str) -> None:
+    """Verify actual container mounts, not just Compose source text.
+
+    This is read-only. Never create a DB volume or silently accept a new one
+    when the Compose working directory changes.
+    """
+    run(["docker", "volume", "inspect", EXPECTED_DB_VOLUME], capture=True)
+    expected = {
+        "db": ("volume", "/var/lib/postgresql/data", EXPECTED_DB_VOLUME),
+        "api": ("bind", "/app/uploads", str(UPLOADS_DIR)),
+        "ubereats-worker": ("bind", "/app/uploads", str(UPLOADS_DIR)),
+    }
+    for service, (mount_type, destination, identity) in expected.items():
+        container = compose(sha, "ps", "-q", service, capture=True)
+        if not container or len(container.splitlines()) != 1:
+            raise DeploymentBlocked(f"cannot prove running {service} mount")
+        mounts = json.loads(run(
+            ["docker", "inspect", "--format", "{{json .Mounts}}", container],
+            capture=True,
+        ))
+        if not isinstance(mounts, list):
+            raise DeploymentBlocked(f"invalid live {service} mount evidence")
+        matching = [
+            mount for mount in mounts
+            if isinstance(mount, dict)
+            and mount.get("Type") == mount_type
+            and mount.get("Destination") == destination
+            and mount.get("Name" if mount_type == "volume" else "Source") == identity
+        ]
+        if len(matching) != 1:
+            raise DeploymentBlocked(f"{service} persistent mount identity mismatch")
+
+
 def check_backup() -> None:
-    backup_dir = ROOT / "backups"
-    if backup_dir.is_symlink() or not backup_dir.is_dir():
-        raise DeploymentBlocked("production backup directory missing or unsafe")
+    _trusted_dir(BACKUP_DIR, owner=pwd.getpwnam("ubuntu").pw_uid, private=True)
     threshold = dt.datetime.now(dt.timezone.utc).timestamp() - 26 * 3600
     fresh = [
-        p for p in backup_dir.iterdir()
+        p for p in BACKUP_DIR.iterdir()
         if BACKUP_NAME.fullmatch(p.name)
         and p.is_file() and not p.is_symlink()
         and p.stat().st_mtime >= threshold and p.stat().st_size > 0
@@ -232,6 +408,7 @@ def latest_candidate(current_sha: str) -> dict[str, Any]:
 
 def preflight_current(current: str) -> None:
     check_running_images(current)
+    check_live_storage(current)
     compose(current, "config", "--quiet")
     # The existing helper is authoritative for current DB migration parity and
     # local/public API/Web readiness. It is read-only with respect to Prisma.
@@ -276,6 +453,7 @@ def promote_images(target_sha: str) -> None:
 
 def verify_after_switch(target_sha: str) -> None:
     check_running_images(target_sha)
+    check_live_storage(target_sha)
     run(["bash", str(ROOT / "ops/verify-runtime-readiness.sh"), str(ENV), "https://sanq.ca"], target_sha=target_sha)
 
 
@@ -298,6 +476,8 @@ def deploy(*, execute: bool) -> None:
     }, indent=2), flush=True)
     if not execute:
         return
+    require_mutation_privilege()
+    verify_runtime_release(candidate)
     if target == current:
         print("Already at the newest sealed release; no changes made.")
         return
@@ -336,6 +516,7 @@ def rollback(*, execute: bool) -> None:
     print(json.dumps({"action": "rollback" if execute else "rollback-plan", "from": current, "to": previous}, indent=2))
     if not execute:
         return
+    require_mutation_privilege()
     # Rollback is a separately authorized operator action, not an automatic
     # reaction to health failure. An unhealthy current release must NOT block
     # an operator-authorized rollback; protect backup and migration parity.

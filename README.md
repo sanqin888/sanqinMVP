@@ -86,13 +86,15 @@ Batch B provides a separately gated, **manual-only** deployment controller: `pyt
 
 Batch C1 adds a **source-locked Runtime artifact** to the successful `publish-images` run: `sanq-runtime-<full-source-SHA>`. It contains only reviewed Compose/ops code plus a manifest matching the exact published API/Web image digests; no `.env`, uploads, backups or credentials. The archive is deliberately **not yet a deployable standalone /opt/sanq installation**, and it is not installed on production. Batch C2 adds a versioned **proposed-only** Runtime directory contract and a manually gated, inert staging tool. Staging never activates containers and currently requires the matching main Git checkout to verify archive source bytes. See `docs/architecture/postmod-ghcr-batch-c1-runtime-bundle.md` and `docs/architecture/postmod-ghcr-batch-c2-runtime-staging.md`.
 
-Batch C3-B (Alternative B) prepares the **future** /opt/sanq/runtime and /srv/sanq backup paths in source only, includes the matched backup script/helper/unit/sudoers in the Runtime bundle and changes proposed backup service logs to journal. These templates **must not be installed onto the existing /home/ubuntu/sanq-app production layout**: a separately reviewed C4 data/backup cutover and a root-owned activation marker are required. See `docs/architecture/postmod-ghcr-batch-c3b-backup-path-decision.md` and `docs/runbooks/runtime-backup-cutover-c4-prep.zh-CN.md`.
+Batch C3-B (Alternative B) prepares the **future** /opt/sanq/runtime and /srv/sanq backup paths in source only, includes the matched backup script/helper/unit/sudoers in the Runtime bundle and changes proposed backup service logs to journal. These templates **must not be installed onto the existing /home/ubuntu/sanq-app production layout**: a separately reviewed C4 data/backup cutover and a root-owned activation marker are required. See `docs/architecture/postmod-ghcr-batch-c3b-backup-path-decision.md` and `docs/runbooks/runtime-backup-cutover-c4-prep.zh-CN.md`. C4-A adds a **read-only** source compatibility audit (`python3 ops/runtime/audit_compose_cutover.py`) of the previous relative uploads mounts and source-dependent deployment/readiness checks. C4-B source then pins the target absolute uploads paths, the Compose identity and the Runtime release/readiness controls, but it still does **not** authorize production cutover. See `docs/architecture/postmod-ghcr-batch-c4a-source-readiness.md` and `docs/architecture/postmod-ghcr-batch-c4b-runtime-path-implementation.md`.
 
 Docker/image-workflow and dependency-manifest changes targeting `dev` also run the independent `image-build-checks` workflow. It builds and loads API/Web images on hosted runners, checks API runtime packaging and Web standalone health, and records build duration, local uncompressed size and cache details. It does not publish or deploy and does not run for ordinary source-only PRs. Its build/load timing is separate from release build/push timing; API packaging smoke does not establish database-backed runtime readiness. See [CI and image-build performance](docs/architecture/postmod-ci-performance.md).
 
-`ops/verify-runtime-readiness.sh` currently accepts an explicit env-file path
-as its first argument. Supply the actual production env-file path when one is
-used; do not substitute the stale `/etc/sanqin/sanqin.env` example.
+Batch C4-B source pins `ops/verify-runtime-readiness.sh` to
+`/opt/sanq/runtime` and Compose project `sanq-app`. The optional first
+argument may only be `/opt/sanq/runtime/.env`; old `/etc/sanqin/sanqin.env`
+and relative `.env` examples will be rejected. **Do not run C4-B sources
+on the legacy production checkout before separately approved C4 cutover.**
 
 The verification script is read-only with respect to Prisma: it runs
 `prisma migrate status`, then checks API readiness, Uber worker readiness,

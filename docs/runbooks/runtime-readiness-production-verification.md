@@ -210,6 +210,12 @@ remain pending for manual investigation; rollback requires an explicit command
 and compatible prior local images. See
 `docs/architecture/postmod-ghcr-batch-b-manual-deploy.md`.
 
+> **C4-B source/production separation (2026-10-08):** the helper's *new
+> source* is fixed to /opt/sanq/runtime and project sanq-app. The command
+> recorded below was historical 2026-10-04 production evidence; it must not
+> be used as the procedure for C4-B after the source change. C4 production
+> path and data cutover require separate authorization.
+>
 ## 2026-10-04 GHCR pull-only production cutover evidence
 
 Production release `main@e411863a7e4c262a6ae125e39bd781dda63527d9`

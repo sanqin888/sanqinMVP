@@ -1,3 +1,7 @@
+# C4-B source-only contract: preserve the existing Compose project/DB volume.
+# Do not install this Compose file until separately authorized C4 cutover.
+name: sanq-app
+
 x-ubereats-runtime: &ubereats-runtime
   UBER_EATS_RATE_LIMITER_MODE: "database"
   UBER_EATS_WORKER_WAKE_URL: "http://ubereats-worker:4001"
@@ -141,7 +145,7 @@ services:
       db:
         condition: service_healthy
     volumes:
-      - ./uploads:/app/uploads
+      - /srv/sanq/uploads:/app/uploads
   ubereats-worker:
     image: ghcr.io/sanqin888/sanq-api:${SANQ_IMAGE_SHA:?SANQ_IMAGE_SHA is required}
     command: ["node", "apps/api/dist/ubereats-worker.main.js"]
@@ -184,7 +188,7 @@ services:
       db:
         condition: service_healthy
     volumes:
-      - ./uploads:/app/uploads
+      - /srv/sanq/uploads:/app/uploads
   web:
     image: ghcr.io/sanqin888/sanq-web:${SANQ_IMAGE_SHA:?SANQ_IMAGE_SHA is required}
     volumes:

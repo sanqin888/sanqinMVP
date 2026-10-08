@@ -1,7 +1,10 @@
 # Batch B — Manual GHCR release promotion / rollback
 
-**Status:** workspace implementation for user review. Do not install or execute
-on production yet. No unattended deployment is introduced.
+**Historical Batch B design:** superseded for future source by C4-B's fixed
+Runtime paths. The *production VM has not yet been migrated to C4-B*. Do not
+apply this old-root command list to the updated controller. See
+`docs/architecture/postmod-ghcr-batch-c4b-runtime-path-implementation.md`.
+No unattended deployment is introduced.
 
 ## Ownership and compatibility
 
@@ -40,7 +43,11 @@ explicitly; the database image and data volume are never updated by this tool.
 
 ## Commands after approved installation
 
-Run from /home/ubuntu/sanq-app with a reviewed main checkout:
+**Historical pre-C4 command context only:** the old controller ran
+from /home/ubuntu/sanq-app with a main checkout. C4-B source now requires
+the exact /opt/sanq/runtime root with matched release files and C4 marker;
+executing mutating commands requires an explicitly authorized root operator.
+The old commands below must not be run before C4 approval.
 
     python3 ops/release/deploy_release.py plan
     python3 ops/release/deploy_release.py deploy --execute
