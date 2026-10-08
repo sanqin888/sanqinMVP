@@ -2,6 +2,10 @@
 
 Primary `modularization-worklog.md` exceeds the MCP workspace patch-size limit. This owner supplement records the C5 batch without truncating/replacing the original timeline.
 
+## 2026-10-08 — C5-B3B2M offline Ed25519 operator ceremony
+
+**LOCAL DESIGN / USER REVIEW PENDING.** B3B2L PR #2753 merged dev as `749c87f7` after seven green CI jobs. Option A operator-only Ed25519 signing ceremony, independently pinned root policy, dual-review, custody, rotation/revocation, monotonic policy, off-host recovery and explicit next authorization gates documented. No key generation/real signature code/workflow, privileged installation or production change. See `docs/architecture/postmod-ghcr-batch-c5b3b2m-ed25519-operator-ceremony.md`.
+
 ## 2026-10-08 — C5-B3B2L offline Ed25519 envelope/policy format
 
 **LOCAL SOURCE / USER REVIEW PENDING / CI NOT RUN.** B3B2K PR #2752 merged dev `3b8a7e83` with 7 green CI jobs. User selected Scheme A, offline operator Ed25519. Added pure syntax-only detached envelope and untrusted policy fixture consistency tests; explicitly never authenticates signature/key, installs root Launcher or grants deploy/rollback authority. No dependency/workflow, key material, database or Docker changes. See `docs/architecture/postmod-ghcr-batch-c5b3b2l-ed25519-envelope-policy.md`.
