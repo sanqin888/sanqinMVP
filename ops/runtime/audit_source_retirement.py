@@ -12,10 +12,10 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 REQUIREMENTS: dict[str, tuple[str, ...]] = {
     "ops/sanq-mcp/server.py": (
-        'os.environ.get("SANQ_REPO_ROOT", "/home/ubuntu/sanq-app")',
-        '_PRODUCTION_GIT_SUBCOMMANDS = {"status", "log", "diff", "show"}',
-        "return _read_repo_file(PROD_REPO_ROOT, path, start_line, end_line)",
-        "cwd=PROD_REPO_ROOT,",
+        'PROD_REPO_ROOT = Path("/opt/sanq/runtime")',
+        "production Git subprocesses retired",
+        "def _github_source_file(",
+        "GitHub main indexed code search",
     ),
     "ops/runtime/stage_bundle.py": (
         "def verify_independent_archive(",
@@ -42,9 +42,7 @@ REQUIREMENTS: dict[str, tuple[str, ...]] = {
         '"productionActivationAuthorized": False',
     ),
 }
-DEPENDS_ON_CHECKOUT = (
-    "ops/sanq-mcp/server.py",
-)
+DEPENDS_ON_CHECKOUT: tuple[str, ...] = ()
 MAX_BYTES = 2 * 1024 * 1024
 
 

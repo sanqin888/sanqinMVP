@@ -29,9 +29,7 @@ class CheckoutRetirementAuditTests(unittest.TestCase):
             self.assertEqual(
                 set(report["checkoutDependencies"]), set(audit.DEPENDS_ON_CHECKOUT)
             )
-            self.assertEqual(
-                set(report["checkoutDependencies"].values()), {"present"}
-            )
+            self.assertEqual(report["checkoutDependencies"], {})
             self.assertFalse(report["readyToDeleteProductionSourceCheckout"])
             self.assertFalse(report["authorizedToChangeMcpProductionBoundary"])
             self.assertFalse(report["authorizedToDeleteProductionFiles"])
@@ -44,8 +42,8 @@ class CheckoutRetirementAuditTests(unittest.TestCase):
             server.write_text("source suddenly elsewhere")
             report = audit.audit(root)
             self.assertEqual(
-                report["checkoutDependencies"]["ops/sanq-mcp/server.py"],
-                "unknown-needs-review",
+                report["sourceContracts"]["ops/sanq-mcp/server.py"]["status"],
+                "drift",
             )
             self.assertFalse(report["readyToDeleteProductionSourceCheckout"])
 
