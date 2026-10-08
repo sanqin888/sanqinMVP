@@ -5,9 +5,11 @@ umask 077
 
 # ================= Configuration =================
 
-PROJECT_ROOT="/home/ubuntu/sanq-app"
-BACKUP_DIR="$PROJECT_ROOT/backups"
-UPLOADS_DIR="$PROJECT_ROOT/uploads"
+# C3-B target layout. These source templates MUST NOT be installed until
+# the separately approved C4 atomic data/runtime cutover.
+PROJECT_ROOT="/opt/sanq/runtime"
+BACKUP_DIR="/srv/sanq/backups"
+UPLOADS_DIR="/srv/sanq/uploads"
 ENV_FILE="$PROJECT_ROOT/.env"
 
 RCLONE_REMOTE="gdrive_backup"
@@ -28,6 +30,96 @@ REMOTE_ARCHIVE_FOLDER="sanqin-archives/messaging"
 PROTECTED_NGINX_HELPER="/usr/local/sbin/sanq-backup-protected-nginx"
 
 BACKUP_FAILED=0
+
+# Fail closed before making any local archive, changing remote mirror state,
+# or running retention cleanup. C4 provisions the fixed directories first.
+# Root-owned ancestor paths prevent ubuntu from replacing the backup directory
+# itself while the privileged helper runs. Avoid symlink traversal.
+verify_trusted_parent() {
+    local path="$1"
+    local uid mode
+    if [ ! -d "$path" ] || [ -L "$path" ]; then
+        echo "❌ Unsafe or missing trusted directory: $path" >&2
+        exit 1
+    fi
+    uid="$(stat -c '%u' -- "$path")" || exit 1
+    mode="$(stat -c '%a' -- "$path")" || exit 1
+    if [ "$uid" != "0" ] || (( (8#$mode & 0022) != 0 )); then
+        echo "❌ Trusted directory ownership/mode mismatch: $path" >&2
+        exit 1
+    fi
+}
+
+verify_data_dir() {
+    local path="$1" expected_uid="$2" uid mode
+    if [ ! -d "$path" ] || [ -L "$path" ]; then
+        echo "❌ Missing or unsafe data directory: $path" >&2
+        exit 1
+    fi
+    uid="$(stat -c '%u' -- "$path")" || exit 1
+    mode="$(stat -c '%a' -- "$path")" || exit 1
+    if [ "$uid" != "$expected_uid" ] || (( (8#$mode & 0077) != 0 )); then
+        echo "❌ Unsafe data directory ownership/mode: $path" >&2
+        exit 1
+    fi
+}
+
+verify_trusted_parent /opt
+verify_trusted_parent /opt/sanq
+verify_trusted_parent /srv
+verify_trusted_parent /srv/sanq
+verify_trusted_parent "$PROJECT_ROOT"
+verify_data_dir "$BACKUP_DIR" "$(id -u)"
+# Uploaded files may be container-created as root, but must stay in one
+# non-symlinked directory with no group/world write access.
+if [ ! -d "$UPLOADS_DIR" ] || [ -L "$UPLOADS_DIR" ]; then
+    echo "❌ Missing or unsafe uploads directory" >&2
+    exit 1
+fi
+uploads_mode="$(stat -c '%a' -- "$UPLOADS_DIR")" || exit 1
+if (( (8#$uploads_mode & 0022) != 0 )); then
+    echo "❌ Uploads directory is group/world writable" >&2
+    exit 1
+fi
+if [ ! -f "$ENV_FILE" ] || [ -L "$ENV_FILE" ]; then
+    echo "❌ Missing or unsafe runtime .env" >&2
+    exit 1
+fi
+env_mode="$(stat -c '%a' -- "$ENV_FILE")" || exit 1
+if (( (8#$env_mode & 0077) != 0 )); then
+    echo "❌ Runtime .env has group/world access" >&2
+    exit 1
+fi
+
+# This non-secret marker is created root:root 0644 ONLY after C4 has
+# completed the independent uploads/backup and Compose-volume reconciliation.
+# A copied-but-not-activated target directory must NEVER drive rclone sync.
+LAYOUT_ACTIVATION_MARKER="/opt/sanq/runtime/.sanq-backup-layout-activated"
+if [ ! -f "$LAYOUT_ACTIVATION_MARKER" ] || [ -L "$LAYOUT_ACTIVATION_MARKER" ]; then
+    echo "❌ C4 backup layout has not been activated" >&2
+    exit 1
+fi
+marker_uid="$(stat -c '%u' -- "$LAYOUT_ACTIVATION_MARKER")" || exit 1
+marker_mode="$(stat -c '%a' -- "$LAYOUT_ACTIVATION_MARKER")" || exit 1
+if [ "$marker_uid" != "0" ] || (( (8#$marker_mode & 0022) != 0 )) ||
+   [ "$(cat -- "$LAYOUT_ACTIVATION_MARKER")" != "SANQ_BACKUP_LAYOUT_C4_V1" ]; then
+    echo "❌ C4 backup activation marker is invalid" >&2
+    exit 1
+fi
+
+# Prevent a newly installed main script from silently using an old helper
+# pointed at the legacy backup root. C4 must verify the pair before activation.
+if [ ! -f "$PROTECTED_NGINX_HELPER" ] || [ -L "$PROTECTED_NGINX_HELPER" ] ||
+   ! grep -Fxq 'BACKUP_DIR="/srv/sanq/backups"' "$PROTECTED_NGINX_HELPER"; then
+    echo "❌ Protected Nginx helper is missing or still targets the old backup root" >&2
+    exit 1
+fi
+helper_uid="$(stat -c '%u' -- "$PROTECTED_NGINX_HELPER")" || exit 1
+helper_mode="$(stat -c '%a' -- "$PROTECTED_NGINX_HELPER")" || exit 1
+if [ "$helper_uid" != "0" ] || (( (8#$helper_mode & 0022) != 0 )); then
+    echo "❌ Protected helper ownership/mode mismatch" >&2
+    exit 1
+fi
 
 mark_failure() {
     BACKUP_FAILED=1
@@ -95,8 +187,8 @@ NGINX_FILENAME="sanqin_nginx_$DATE.tar.gz"
 DB_FILEPATH="$BACKUP_DIR/$DB_FILENAME"
 CONF_FILEPATH="$BACKUP_DIR/$CONF_FILENAME"
 
-mkdir -p "$BACKUP_DIR"
-
+# Never create BACKUP_DIR on demand: an empty/misbound target could
+# invalidate retention and uploads-history guarantees.
 echo "[$(date)] ========== Starting SanQ backup =========="
 
 # ================= Database container =================

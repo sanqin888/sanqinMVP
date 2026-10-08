@@ -15,7 +15,8 @@ jobs:
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_branch == 'main'
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
     name: publish (${{ matrix.image }})
     runs-on: ubuntu-26.04
 
@@ -55,5 +56,113 @@ jobs:
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.event.workflow_run.head_sha }}
             org.opencontainers.image.version=${{ github.event.workflow_run.head_sha }}
+          platforms: linux/amd64
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+  seal-paired-release:
+    name: Verify and seal paired image release
+    needs: publish
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+      packages: read
+      statuses: write
+
+    steps:
+      - name: Checkout original CI-validated source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR for verification
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Read both immutable SHA-tagged registry manifests
+        env:
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+          IMAGE_OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          for image in sanq-api sanq-web; do
+            ref="ghcr.io/${IMAGE_OWNER}/${image}:${SOURCE_SHA}"
+            docker buildx imagetools inspect "$ref" --raw > "$RUNNER_TEMP/${image}-manifest.json"
+            # An OCI image index may not expose one .Image config. The verified
+            # index descriptor must then prove linux/amd64 on its own; a single
+            # image manifest still requires an explicit image config.
+            if ! docker buildx imagetools inspect "$ref" --format '{{json .Image}}' > "$RUNNER_TEMP/${image}-image.json"; then
+              printf 'null\n' > "$RUNNER_TEMP/${image}-image.json"
+            fi
+          done
+
+      - name: Verify pair and write release proof
+        env:
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+          CI_RUN_ID: ${{ github.event.workflow_run.id }}
+          PUBLISH_RUN_ID: ${{ github.run_id }}
+        run: |
+          python3 ops/release/release_contract.py verify \
+            --source-sha "$SOURCE_SHA" \
+            --ci-run-id "$CI_RUN_ID" \
+            --publish-run-id "$PUBLISH_RUN_ID" \
+            --api-manifest "$RUNNER_TEMP/sanq-api-manifest.json" \
+            --web-manifest "$RUNNER_TEMP/sanq-web-manifest.json" \
+            --api-image "$RUNNER_TEMP/sanq-api-image.json" \
+            --web-image "$RUNNER_TEMP/sanq-web-image.json" \
+            --output "$RUNNER_TEMP/sanq-release.json"
+
+      - name: Preserve verified digest proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: sanq-release-proof
+          path: ${{ runner.temp }}/sanq-release.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Build and locally verify source-pinned Runtime bundle
+        env:
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          python3 ops/runtime/build_bundle.py create \
+            --source-sha "$SOURCE_SHA" \
+            --proof "$RUNNER_TEMP/sanq-release.json" \
+            --output "$RUNNER_TEMP/sanq-runtime-${SOURCE_SHA}.tar.gz"
+          python3 ops/runtime/build_bundle.py verify \
+            --source-sha "$SOURCE_SHA" \
+            --bundle "$RUNNER_TEMP/sanq-runtime-${SOURCE_SHA}.tar.gz"
+
+      - name: Preserve source-pinned Runtime bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: sanq-runtime-${{ github.event.workflow_run.head_sha }}
+          path: ${{ runner.temp }}/sanq-runtime-*.tar.gz
+          if-no-files-found: error
+          retention-days: 90
+
+      # Publish an archive-byte SHA256 to a separate GitHub commit status.
+      # Only this trusted workflow can seal AFTER Actions confirms artifact
+      # upload. A consumer must require this AND the paired-image seal.
+      - name: Seal uploaded Runtime archive digest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          python3 ops/runtime/runtime_trust.py seal \
+            --proof "$RUNNER_TEMP/sanq-release.json" \
+            --bundle "$RUNNER_TEMP/sanq-runtime-${SOURCE_SHA}.tar.gz"
+
+      # Final status appears only once both GHCR images, the matching
+      # Runtime artifact upload and independently published Runtime digest
+      # are complete.
+      - name: Mark validated source SHA as published
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 ops/release/release_contract.py seal --proof "$RUNNER_TEMP/sanq-release.json"

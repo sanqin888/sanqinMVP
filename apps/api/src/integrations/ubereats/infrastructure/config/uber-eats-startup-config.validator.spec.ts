@@ -32,8 +32,9 @@ describe('Uber Eats startup configuration', () => {
     expect(worker).toContain('<<: *ubereats-runtime');
     expect(api).toContain('UPLOAD_ROOT: "/app/uploads"');
     expect(worker).toContain('UPLOAD_ROOT: "/app/uploads"');
-    expect(api).toContain('- ./uploads:/app/uploads');
-    expect(worker).toContain('- ./uploads:/app/uploads');
+    expect(api).toContain('- /srv/sanq/uploads:/app/uploads');
+    expect(worker).toContain('- /srv/sanq/uploads:/app/uploads');
+    expect(compose).toContain('name: sanq-app');
     expect(db).not.toContain('<<: *ubereats-runtime');
     expect(compose).toContain('UBER_CREDENTIAL_KEYS_SOURCE: "env"');
     expect(compose).toContain(

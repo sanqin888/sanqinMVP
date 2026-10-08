@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import os
 import re
@@ -7,7 +9,7 @@ import subprocess
 from pathlib import Path
 from typing import Literal
 from urllib.error import HTTPError, URLError
-from urllib.parse import parse_qs, quote, unquote, urlsplit
+from urllib.parse import parse_qs, quote, unquote, urlencode, urlsplit
 from urllib.request import Request, urlopen
 
 from mcp.server.fastmcp import FastMCP
@@ -15,9 +17,8 @@ from mcp.types import ToolAnnotations
 
 mcp = FastMCP("SanQ VM")
 
-PROD_REPO_ROOT = Path(
-    os.environ.get("SANQ_REPO_ROOT", "/home/ubuntu/sanq-app")
-).resolve()
+# Production service operations use the independent Runtime root, never a Git checkout.
+PROD_REPO_ROOT = Path("/opt/sanq/runtime")
 WORKSPACE_ROOT = Path(
     os.environ.get("SANQ_WORKSPACE_ROOT", "/home/ubuntu/sanq-mcp-workspace")
 ).resolve()
@@ -96,7 +97,6 @@ _FIXED_PROCESS_COMMANDS = {
     ("systemctl", "is-active", "docker"),
     ("systemctl", "is-active", "sanq-mcp-tunnel"),
 }
-_PRODUCTION_GIT_SUBCOMMANDS = {"status", "log", "diff", "show"}
 _WORKSPACE_GIT_SUBCOMMANDS = {
     "status",
     "log",
@@ -329,11 +329,7 @@ def _assert_allowed_process(args: list[str], *, cwd: Path, scope: ProcessScope) 
             raise ValueError("git subcommand is required")
         subcommand = args[1]
         if scope == "production":
-            if not _is_within(cwd, PROD_REPO_ROOT):
-                raise ValueError("production Git commands must run inside production repo")
-            if subcommand not in _PRODUCTION_GIT_SUBCOMMANDS:
-                raise ValueError("production Git is read-only: status/log/diff/show only")
-            return
+            raise ValueError("production Git subprocesses retired; use GitHub API")
         if scope == "workspace":
             _assert_workspace_ready()
             if not _is_within(cwd, WORKSPACE_ROOT):
@@ -358,9 +354,9 @@ def _assert_allowed_process(args: list[str], *, cwd: Path, scope: ProcessScope) 
         return
 
     if executable == "rg":
-        if scope not in {"production", "workspace"}:
-            raise ValueError("rg is only allowed inside a repository scope")
-        root = PROD_REPO_ROOT if scope == "production" else WORKSPACE_ROOT
+        if scope != "workspace":
+            raise ValueError("production source search uses GitHub API, not rg")
+        root = WORKSPACE_ROOT
         if not _is_within(cwd, root):
             raise ValueError("rg must run inside the configured repository scope")
         return
@@ -708,7 +704,11 @@ def _github_request(
 ) -> object:
     owner, repo = _github_repo_parts()
     prefix = f"/repos/{owner}/{repo}"
-    if not path.startswith(prefix):
+    if path.startswith("/search/code?") and method == "GET":
+        terms = parse_qs(urlsplit(path).query).get("q", [])
+        if len(terms) != 1 or f"repo:{GITHUB_REPOSITORY}" not in terms[0].split():
+            raise ValueError("GitHub code search must be confined to configured repository")
+    elif not path.startswith(prefix + "/"):
         raise ValueError("GitHub request path is outside the configured repository")
 
     url = f"{GITHUB_API_BASE}{path}"
@@ -1167,12 +1167,77 @@ def docker_logs(
     return f"{header}\n" + "\n".join(selected)
 
 
+def _github_source_ref(ref: str = "main") -> str:
+    value = ref.strip()
+    if value != "main" and not re.fullmatch(r"[0-9a-f]{40}", value):
+        raise ValueError("source ref must be main or a full immutable commit SHA")
+    return value
+
+
+def _github_source_path(path: str) -> str:
+    if not path or path.startswith("/") or "\\" in path:
+        raise ValueError("GitHub source path must be relative")
+    parts = path.split("/")
+    if any(part in ("", ".", "..") for part in parts):
+        raise ValueError("invalid GitHub source path")
+    root = Path("/sanq-github-source")
+    target = root.joinpath(*parts)
+    _assert_safe_repo_path(target, root)
+    return "/".join(parts)
+
+
+def _github_main_sha() -> str:
+    owner, repo = _github_repo_parts()
+    data = _github_request("GET", f"/repos/{owner}/{repo}/branches/main")
+    commit = data.get("commit") if isinstance(data, dict) else None
+    sha = commit.get("sha") if isinstance(commit, dict) else None
+    if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
+        raise ValueError("GitHub main SHA unavailable")
+    return sha
+
+
+def _github_acceptable_path(path: str) -> bool:
+    try:
+        _github_source_path(path)
+        return True
+    except ValueError:
+        return False
+
+
+def _github_source_file(path: str, ref: str = "main") -> str:
+    owner, repo = _github_repo_parts()
+    safe = _github_source_path(path)
+    revision = _github_source_ref(ref)
+    data = _github_request("GET", f"/repos/{owner}/{repo}/contents/{quote(safe, safe='/')}?ref={revision}")
+    if not isinstance(data, dict) or data.get("type") != "file" or data.get("encoding") != "base64":
+        raise ValueError("source must be a GitHub file with base64 content")
+    encoded = data.get("content")
+    if not isinstance(encoded, str) or len(encoded) > 1_400_000:
+        raise ValueError("source file unavailable or too large")
+    try:
+        raw = base64.b64decode(encoded.replace("\n", ""), validate=True)
+        if len(raw) > 1_000_000:
+            raise ValueError("source file exceeds size cap")
+        return raw.decode("utf-8")
+    except (ValueError, UnicodeError, binascii.Error) as exc:
+        raise ValueError("source file is not supported UTF-8 text") from exc
+
+
 @mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 def git_status(path: str = "") -> str:
-    """Show read-only Git status for the production repository."""
-    args = ["git", "status", "-sb"]
-    args.extend(_git_pathspec_args(PROD_REPO_ROOT, path))
-    return _run_prod(args)
+    """Show GitHub main HEAD, not a local Git working-tree status."""
+    if path:
+        _github_source_path(path)
+    head = _github_main_sha()
+    # The deployed image is separate from GitHub main. Read only Compose ps;
+    # failures are explicitly reported rather than pretending it equals main.
+    try:
+        running = _run_prod(["docker", "compose", "ps", "api", "web", "ubereats-worker"])
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        running = f"unavailable: {type(exc).__name__}"
+    return _redact(json.dumps({"source": "GitHub", "branch": "main", "headSha": head,
+                               "localWorkingTree": False, "deployedServices": running,
+                               "note": "Deployed image SHA may differ from main."}))
 
 
 @mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
@@ -1184,17 +1249,29 @@ def git_log(
     grep: str = "",
     path: str = "",
 ) -> str:
-    """Show production-repository Git history without modifying it."""
-    return _git_log(
-        PROD_REPO_ROOT,
-        "production",
-        limit=limit,
-        since=since,
-        until=until,
-        author=author,
-        grep=grep,
-        path=path,
-    )
+    """Show GitHub main commit history, never local VM Git history."""
+    if not 1 <= limit <= 100:
+        raise ValueError("limit must be 1..100")
+    owner, repo = _github_repo_parts()
+    params = {"sha": "main", "per_page": str(limit)}
+    if path:
+        params["path"] = _github_source_path(path)
+    if since:
+        params["since"] = since
+    if until:
+        params["until"] = until
+    if author:
+        params["author"] = author
+    data = _github_request("GET", f"/repos/{owner}/{repo}/commits?{urlencode(params)}")
+    if not isinstance(data, list):
+        raise ValueError("GitHub commit listing unavailable")
+    entries = [{"sha": x.get("sha"), "message": x.get("commit", {}).get("message", "")}
+               for x in data if isinstance(x, dict) and isinstance(x.get("commit"), dict)]
+    if grep:
+        entries = [x for x in entries if grep.lower() in x["message"].lower()]
+    return _redact(json.dumps({"source": "GitHub main", "commits": entries,
+                               "filteredClientSide": bool(grep),
+                               "complete": not bool(grep) and len(data) < limit}))
 
 
 @mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
@@ -1202,15 +1279,34 @@ def git_diff(
     path: str = "",
     staged: bool = False,
     stat: bool = False,
+    base: str = "",
+    head: str = "main",
 ) -> str:
-    """Read current production-repository Git changes."""
-    return _git_diff(
-        PROD_REPO_ROOT,
-        "production",
-        path=path,
-        staged=staged,
-        stat=stat,
-    )
+    """Compare GitHub commits, not the VM local worktree."""
+    if staged:
+        raise ValueError("GitHub has no local staged changes")
+    if not base:
+        raise ValueError("base commit SHA required; GitHub has no working-tree diff")
+    owner, repo = _github_repo_parts()
+    first, second = _github_source_ref(base), _github_source_ref(head)
+    selected = _github_source_path(path) if path else None
+    data = _github_request("GET", f"/repos/{owner}/{repo}/compare/{first}...{second}")
+    if not isinstance(data, dict) or not isinstance(data.get("files"), list):
+        raise ValueError("GitHub compare result unavailable")
+    files = data["files"]
+    if (len(files) >= 300 or type(data.get("total_commits")) is not int
+        or data["total_commits"] > 250):
+        raise ValueError("GitHub compare may be truncated; refusing partial diff")
+    out = []
+    for item in files:
+        if not isinstance(item, dict) or not isinstance(item.get("filename"), str):
+            raise ValueError("invalid GitHub compare file")
+        if (selected and item["filename"] != selected) or not _github_acceptable_path(item["filename"]):
+            continue
+        out.append({"path": item["filename"], "status": item.get("status"),
+                    "changes": item.get("changes"), "patch": None if stat else item.get("patch")})
+    return _redact(json.dumps({"source": "GitHub", "base": first, "head": second,
+                              "files": out, "complete": True}))
 
 
 @mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
@@ -1219,14 +1315,25 @@ def git_show(
     path: str = "",
     stat: bool = False,
 ) -> str:
-    """Read a production-repository Git commit and diff."""
-    return _git_show(
-        PROD_REPO_ROOT,
-        "production",
-        commit=commit,
-        path=path,
-        stat=stat,
-    )
+    """Read GitHub commit metadata and bounded changed-file patch."""
+    sha = _github_source_ref(commit)
+    owner, repo = _github_repo_parts()
+    data = _github_request("GET", f"/repos/{owner}/{repo}/commits/{sha}")
+    if not isinstance(data, dict) or not isinstance(data.get("files"), list):
+        raise ValueError("GitHub commit detail unavailable")
+    selected = _github_source_path(path) if path else None
+    files = []
+    for item in data["files"]:
+        if not isinstance(item, dict) or not isinstance(item.get("filename"), str):
+            continue
+        if selected and item["filename"] != selected:
+            continue
+        if _github_acceptable_path(item["filename"]):
+            files.append({"path": item["filename"], "status": item.get("status"),
+                          "changes": item.get("changes"),
+                          "patch": None if stat else item.get("patch")})
+    return _redact(json.dumps({"source": "GitHub", "sha": data.get("sha"), "files": files[:100],
+                              "truncated": len(files) > 100 or len(data["files"]) >= 300}))
 
 
 @mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
@@ -1234,13 +1341,18 @@ def read_file(
     path: str,
     start_line: int = 1,
     end_line: int = 300,
+    ref: str = "main",
 ) -> str:
-    """Read a file inside the production SanQ repository.
+    """Read a source file from GitHub main or immutable commit SHA.
 
     Production is read-only. Environment files, private keys, Git metadata,
     and paths outside the repository are blocked.
     """
-    return _read_repo_file(PROD_REPO_ROOT, path, start_line, end_line)
+    if start_line < 1 or end_line < start_line or end_line - start_line > 499:
+        raise ValueError("invalid source line range")
+    source = _github_source_file(path, ref)
+    lines = source.splitlines()
+    return _redact("\n".join(f"{i + 1}: {lines[i]}" for i in range(start_line - 1, min(end_line, len(lines)))))
 
 
 @mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
@@ -1253,18 +1365,39 @@ def search_code(
     ignore_case: bool = False,
     context: int = 0,
 ) -> str:
-    """Search source text in the read-only production repository."""
-    return _search_repo_code(
-        PROD_REPO_ROOT,
-        query,
-        max_results=max_results,
-        path=path,
-        file_glob=file_glob,
-        regex=regex,
-        ignore_case=ignore_case,
-        context=context,
-        scope="production",
-    )
+    """Search GitHub main's indexed code; results are bounded, not exhaustive."""
+    if not query or len(query) > 200 or not 1 <= max_results <= 100 or not 0 <= context <= 20:
+        raise ValueError("invalid GitHub code search parameters")
+    if regex:
+        raise ValueError("GitHub code search cannot guarantee regex semantics; use a file read")
+    terms = [query, f"repo:{GITHUB_REPOSITORY}"]
+    if path:
+        terms.append(f"path:{_github_source_path(path)}")
+    if file_glob:
+        if not re.fullmatch(r"[A-Za-z0-9_.*-]{1,80}", file_glob):
+            raise ValueError("unsupported GitHub file_glob")
+        terms.append(f"filename:{file_glob}")
+    payload = _github_request("GET", "/search/code?" + urlencode({
+        "q": " ".join(terms), "per_page": str(min(max_results, 100))
+    }))
+    if not isinstance(payload, dict) or not isinstance(payload.get("items"), list):
+        raise ValueError("GitHub code search unavailable")
+    entries = []
+    for item in payload["items"][:max_results]:
+        if not isinstance(item, dict) or not isinstance(item.get("path"), str):
+            continue
+        repository = item.get("repository")
+        if not isinstance(repository, dict) or repository.get("full_name") != GITHUB_REPOSITORY:
+            continue
+        if _github_acceptable_path(item["path"]):
+            entries.append({"path": item["path"], "sha": item.get("sha"),
+                            "url": item.get("html_url")})
+    return _redact(json.dumps({
+        "source": "GitHub main indexed code search", "matches": entries,
+        "totalCount": payload.get("total_count"), "incompleteResults": payload.get("incomplete_results"),
+        "contentLinesIncluded": False, "complete": False,
+        "note": "Search returns matching files (not line hits); indexing/rate limits apply. Read files for context."
+    }))
 
 
 @mcp.tool(annotations=READ_ONLY_ANNOTATIONS)

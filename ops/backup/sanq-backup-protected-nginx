@@ -3,7 +3,9 @@
 set -euo pipefail
 umask 077
 
-BACKUP_DIR="/home/ubuntu/sanq-app/backups"
+# C3-B source-only target: install with matching backup-db.sh and service
+# ONLY after the C4 operator-approved cutover.
+BACKUP_DIR="/srv/sanq/backups"
 RCLONE_CONFIG="/home/ubuntu/.config/rclone/rclone.conf"
 REMOTE_DIR="gdrive_secure:nginx"
 
@@ -26,15 +28,51 @@ if [[ ! "$filename" =~ ^sanqin_nginx_[0-9]{8}_[0-9]{6}\.tar\.gz$ ]]; then
     fail "invalid archive filename"
 fi
 
+# Both the backup path and activation-marker ancestors are root-owned so
+# ubuntu cannot substitute a directory while this privileged process runs.
+# Archive creation/upload stay in a root-private temp directory; never take
+# an output directory/path from argv or environment.
+for trusted in /srv /srv/sanq /opt /opt/sanq /opt/sanq/runtime; do
+    if [ ! -d "$trusted" ] || [ -L "$trusted" ]; then
+        fail "trusted backup ancestor is missing or a symlink: $trusted"
+    fi
+    owner="$(stat -c '%u' -- "$trusted")" || fail "cannot stat trusted ancestor"
+    mode="$(stat -c '%a' -- "$trusted")" || fail "cannot stat trusted ancestor mode"
+    if [ "$owner" != "0" ] || (( (8#$mode & 0022) != 0 )); then
+        fail "trusted backup ancestor ownership/mode mismatch: $trusted"
+    fi
+done
+
 if [ ! -d "$BACKUP_DIR" ] || [ -L "$BACKUP_DIR" ]; then
     fail "backup directory is missing or unsafe"
 fi
+backup_owner="$(stat -c '%u' -- "$BACKUP_DIR")" || fail "cannot stat backup owner"
+backup_mode="$(stat -c '%a' -- "$BACKUP_DIR")" || fail "cannot stat backup mode"
+ubuntu_uid="$(id -u ubuntu)" || fail "ubuntu service account unavailable"
+if [ "$backup_owner" != "$ubuntu_uid" ] || (( (8#$backup_mode & 0077) != 0 )); then
+    fail "backup directory must be ubuntu-owned and private"
+fi
 
-if [ ! -r "$RCLONE_CONFIG" ]; then
+# A new helper must not archive to the target path before C4 explicitly
+# verifies uploads, backups, runtime and the preserved database volume.
+LAYOUT_ACTIVATION_MARKER="/opt/sanq/runtime/.sanq-backup-layout-activated"
+if [ ! -f "$LAYOUT_ACTIVATION_MARKER" ] || [ -L "$LAYOUT_ACTIVATION_MARKER" ]; then
+    fail "C4 backup layout has not been activated"
+fi
+marker_uid="$(stat -c '%u' -- "$LAYOUT_ACTIVATION_MARKER")" ||
+    fail "cannot stat C4 activation marker"
+marker_mode="$(stat -c '%a' -- "$LAYOUT_ACTIVATION_MARKER")" ||
+    fail "cannot stat C4 activation marker mode"
+if [ "$marker_uid" != "0" ] || (( (8#$marker_mode & 0022) != 0 )) ||
+   [ "$(cat -- "$LAYOUT_ACTIVATION_MARKER")" != "SANQ_BACKUP_LAYOUT_C4_V1" ]; then
+    fail "invalid C4 activation marker"
+fi
+
+if [ ! -r "$RCLONE_CONFIG" ] || [ -L "$RCLONE_CONFIG" ]; then
     fail "rclone configuration is not readable"
 fi
 
-for command_name in tar gzip rclone mktemp mv chmod chown rm cp; do
+for command_name in tar gzip rclone mktemp mv chmod chown rm cp stat id cat; do
     command -v "$command_name" >/dev/null 2>&1 ||
         fail "required command is missing: $command_name"
 done
@@ -53,16 +91,21 @@ for source_path in "${required_sources[@]}"; do
     fi
 done
 
-tmp_archive="$(mktemp "$BACKUP_DIR/.sanq-nginx.XXXXXX.tar.gz")"
-tmp_rclone_config="$(mktemp /tmp/sanq-rclone.XXXXXX.conf)"
+# Abort if a same-name archive exists rather than replacing previous
+# recovery evidence. mv -T below never follows a final path symlink.
 archive_path="$BACKUP_DIR/$filename"
+if [ -e "$archive_path" ] || [ -L "$archive_path" ]; then
+    fail "protected archive destination already exists"
+fi
+
+tmp_root="$(mktemp -d /tmp/sanq-nginx.XXXXXXXX)" || fail "cannot create private staging"
+chmod 700 "$tmp_root"
+tmp_archive="$tmp_root/archive.tar.gz"
+tmp_rclone_config="$tmp_root/rclone.conf"
 
 cleanup_tmp() {
-    if [ -n "${tmp_archive:-}" ] && [ -e "$tmp_archive" ]; then
-        rm -f -- "$tmp_archive"
-    fi
-    if [ -n "${tmp_rclone_config:-}" ] && [ -e "$tmp_rclone_config" ]; then
-        rm -f -- "$tmp_rclone_config"
+    if [ -n "${tmp_root:-}" ] && [ -d "$tmp_root" ]; then
+        rm -rf -- "$tmp_root"
     fi
 }
 trap cleanup_tmp EXIT
@@ -85,24 +128,29 @@ required_members=(
 
 tar -tzf "$tmp_archive" "${required_members[@]}" >/dev/null
 
-# Replace the final path by rename rather than writing through a potentially
-# pre-existing user-controlled symlink in BACKUP_DIR.
-if [ -e "$archive_path" ] || [ -L "$archive_path" ]; then
-    rm -f -- "$archive_path"
-fi
-
-mv -- "$tmp_archive" "$archive_path"
-tmp_archive=""
-chown root:root "$archive_path"
-chmod 600 "$archive_path"
-
+# Verify integrity and upload FROM THE ROOT-PRIVATE temporary directory.
+# A shared ubuntu-writable backup directory must not be trusted as an rclone
+# input: its entries could be renamed/replaced after archive validation.
+upload_failed=0
 if ! rclone \
     --config "$tmp_rclone_config" \
     copyto \
-    "$archive_path" \
+    "$tmp_archive" \
     "$REMOTE_DIR/$filename"
 then
-    fail "encrypted remote upload failed; validated local archive retained at $archive_path"
+    upload_failed=1
+fi
+
+chown root:root "$tmp_archive"
+chmod 600 "$tmp_archive"
+if [ -e "$archive_path" ] || [ -L "$archive_path" ]; then
+    fail "protected archive destination appeared during backup"
+fi
+mv -T -- "$tmp_archive" "$archive_path" ||
+    fail "unable to retain validated protected archive"
+
+if [ "$upload_failed" -ne 0 ]; then
+    fail "encrypted remote upload failed; protected local archive retained at $archive_path"
 fi
 
 echo "✅ Protected Nginx backup validated and uploaded: $filename"

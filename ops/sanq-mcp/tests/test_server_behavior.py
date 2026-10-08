@@ -93,6 +93,60 @@ class _RootFixture(unittest.TestCase):
         self.temp_dir.cleanup()
 
 
+class GithubSourceTests(unittest.TestCase):
+    def test_main_and_sha_refs_and_sensitive_paths(self) -> None:
+        self.assertEqual(server._github_source_ref(), "main")
+        self.assertEqual(server._github_source_ref("a" * 40), "a" * 40)
+        for bad in ("dev", "a" * 39, "../main", "main~1"):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                server._github_source_ref(bad)
+        for bad in (".env", ".git/config", "../ops/file.py",
+                    "nested/secrets.json", "/tmp/file", "x\\y"):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                server._github_source_path(bad)
+
+    def test_read_file_is_github_only_and_supports_deployed_commit(self) -> None:
+        import base64
+        record = {"type": "file", "encoding": "base64",
+                  "content": base64.b64encode(b"alpha\nbeta\n").decode("ascii")}
+        with mock.patch.object(server, "_github_request", return_value=record) as request, \
+             mock.patch.object(server, "_run_prod") as local:
+            self.assertEqual(server.read_file("apps/web/src/page.tsx", 2, 2, ref="b" * 40),
+                             "2: beta")
+            self.assertIn("ref=" + "b" * 40, request.call_args.args[1])
+            local.assert_not_called()
+
+    def test_github_status_and_commit_compare(self) -> None:
+        with mock.patch.object(server, "_github_request", return_value={
+            "commit": {"sha": "a" * 40}
+        }), mock.patch.object(server, "_run_prod", return_value="api image sha"):
+            self.assertIn("a" * 40, server.git_status())
+            self.assertIn("api image sha", server.git_status())
+        with self.assertRaisesRegex(ValueError, "base commit SHA required"):
+            server.git_diff()
+        with self.assertRaisesRegex(ValueError, "no local staged"):
+            server.git_diff(staged=True, base="a" * 40)
+        with mock.patch.object(server, "_github_request", return_value={
+            "total_commits": 1,
+            "files": [{"filename": "apps/api/src/main.ts", "status": "modified",
+                       "patch": "@@ example"}]
+        }):
+            self.assertIn("main.ts", server.git_diff(base="a" * 40, head="b" * 40))
+
+    def test_search_is_scoped_and_not_claimed_complete(self) -> None:
+        with mock.patch.object(server, "_github_request", return_value={
+            "items": [{"path": "apps/api/src/main.ts", "repository": {
+                "full_name": server.GITHUB_REPOSITORY}}],
+            "total_count": 1, "incomplete_results": False
+        }) as request:
+            result = server.search_code("Controller")
+            self.assertIn('"complete": false', result)
+            self.assertIn("main.ts", result)
+            self.assertIn("/search/code?", request.call_args.args[1])
+        with self.assertRaises(ValueError):
+            server.search_code("Controller", regex=True)
+
+
 class WorkspaceIsolationTests(_RootFixture):
     def test_separate_roots_are_accepted(self) -> None:
         server._assert_workspace_is_separate()
@@ -154,18 +208,12 @@ class SensitivePathTests(_RootFixture):
 
 
 class ProcessAllowlistTests(_RootFixture):
-    def test_production_git_is_read_only(self) -> None:
-        server._assert_allowed_process(
-            ["git", "status"],
-            cwd=self.prod_root,
-            scope="production",
-        )
-        with self.assertRaisesRegex(ValueError, "read-only"):
-            server._assert_allowed_process(
-                ["git", "checkout", "dev"],
-                cwd=self.prod_root,
-                scope="production",
-            )
+    def test_production_git_subprocesses_are_retired(self) -> None:
+        for command in (["git", "status"], ["git", "checkout", "dev"]):
+            with self.assertRaisesRegex(ValueError, "GitHub API"):
+                server._assert_allowed_process(
+                    command, cwd=self.prod_root, scope="production"
+                )
 
     def test_docker_is_limited_to_compose_ps_and_logs(self) -> None:
         server._assert_allowed_process(

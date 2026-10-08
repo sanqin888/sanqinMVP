@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "contractKind": "sanq-runtime-layout-proposal",
+  "activationAuthorized": false,
+  "composeProjectName": "sanq-app",
+  "legacyRuntimeRoot": "/home/ubuntu/sanq-app",
+  "proposedRuntimeRoot": "/opt/sanq/runtime",
+  "proposedStagingRoot": "/opt/sanq/staging",
+  "proposedUploadsRoot": "/srv/sanq/uploads",
+  "proposedBackupsRoot": "/srv/sanq/backups",
+  "preservedDatabaseVolume": "sanq-app_pgdata",
+  "preservedSoundsRoot": "/home/ubuntu/sanq-assets/sounds",
+  "sourceCheckoutRequiredForStaging": false,
+  "migrationExecutionAuthorized": false,
+  "productionCutoverAuthorized": false
+}

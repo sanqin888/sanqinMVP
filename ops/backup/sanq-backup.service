@@ -11,5 +11,7 @@ Environment=HOME=/home/ubuntu
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ExecStart=/home/ubuntu/backup-db.sh
 
-StandardOutput=append:/home/ubuntu/sanq-app/backup.log
-StandardError=append:/home/ubuntu/sanq-app/backup.log
+# C3-B target: avoid a privileged service-manager log-file open inside a
+# writable backup directory. Journald keeps User=ubuntu and the timer intact.
+StandardOutput=journal
+StandardError=journal
