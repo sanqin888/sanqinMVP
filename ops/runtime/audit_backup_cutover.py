@@ -85,7 +85,7 @@ EXPECTED_LAYOUT = {
     "activationAuthorized": False,
     "productionCutoverAuthorized": False,
     "migrationExecutionAuthorized": False,
-    "sourceCheckoutRequiredForStaging": True,
+    "sourceCheckoutRequiredForStaging": False,
     "schemaVersion": 1,
     "contractKind": "sanq-runtime-layout-proposal",
 }

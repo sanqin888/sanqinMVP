@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Batch C2: safely PLAN or STAGE an inert, source-verified Runtime bundle.
+"""C5-B2A: safely PLAN or STAGE an inert, independently sealed Runtime bundle.
 
 This script never executes Docker, migrates data, changes .env, creates
 runtime symlinks, activates a release or alters the existing production tree.
@@ -14,27 +14,27 @@ import json
 import os
 import shutil
 import stat
-import subprocess
 import sys
 import tarfile
 import tempfile
 from pathlib import Path
 from typing import Any
 
-# A read-only plan must not create Python bytecode caches in the checkout.
+# A read-only plan must not write Python bytecode into the source directory.
 sys.dont_write_bytecode = True
 
 from build_bundle import (
-    ROOT, RUNTIME_PREFIX, MANIFEST, SOURCE_FILES,
-    BundleBlocked, _source_bytes, verify_bundle_bytes,
+    RUNTIME_PREFIX, MANIFEST, SOURCE_FILES,
+    BundleBlocked, verify_bundle_bytes,
 )
-sys.path.insert(0, str(ROOT / "ops/release"))
-from release_contract import (  # noqa: E402
-    REPOSITORY, discover_release, github_json, require_sha,
+from runtime_trust import (  # noqa: E402
+    _bundle_bytes, _sha256, verify_runtime_publication,
 )
+from release_contract import require_sha  # noqa: E402
 
 LAYOUT_FILE = "ops/runtime/runtime-layout.v1.json"
 STAGING_PARENT = Path("/opt/sanq/staging")
+STAGED_ARCHIVE = "runtime-archive.tar.gz"
 LAYOUT_V1 = {
     "schemaVersion": 1,
     "contractKind": "sanq-runtime-layout-proposal",
@@ -47,7 +47,7 @@ LAYOUT_V1 = {
     "proposedBackupsRoot": "/srv/sanq/backups",
     "preservedDatabaseVolume": "sanq-app_pgdata",
     "preservedSoundsRoot": "/home/ubuntu/sanq-assets/sounds",
-    "sourceCheckoutRequiredForStaging": True,
+    "sourceCheckoutRequiredForStaging": False,
     "migrationExecutionAuthorized": False,
     "productionCutoverAuthorized": False,
 }
@@ -88,52 +88,21 @@ def validate_layout(files: dict[str, bytes]) -> dict[str, Any]:
     return layout
 
 
-def verify_checkout_sources(files: dict[str, bytes], source_root: Path, expected_sha: str) -> None:
-    """Temporary C2 source provenance gate: require exact clean main checkout.
+def verify_independent_archive(payload: bytes, sha: str) -> dict[str, Any]:
+    """External, workflow-bound trust proof before ANY staging filesystem write.
 
-    This is *not* suitable for checkout-free activation. C5 must add trusted
-    downloadable artifact attestations before removing the production .git.
+    Unlike the old C2 Git checkout comparison, this does not access .git or
+    depend on the current source working directory.
     """
-    expected_sha = require_sha(expected_sha)
-    result = subprocess.run(
-        ["git", "rev-parse", "--verify", "HEAD"],
-        cwd=source_root, capture_output=True, text=True, check=False,
-    )
-    if result.returncode != 0 or result.stdout.strip() != expected_sha:
-        raise StagingBlocked("reviewed checkout HEAD differs from bundle source")
-    result = subprocess.run(
-        ["git", "symbolic-ref", "--quiet", "--short", "HEAD"],
-        cwd=source_root, capture_output=True, text=True, check=False,
-    )
-    if result.returncode or result.stdout.strip() != "main":
-        raise StagingBlocked("staging requires the existing main checkout")
-    result = subprocess.run(
-        ["git", "diff", "HEAD", "--exit-code", "--", *SOURCE_FILES],
-        cwd=source_root, capture_output=True, text=True, check=False,
-    )
-    if result.returncode:
-        raise StagingBlocked("runtime source changes in local checkout")
-    for name, local_bytes in _source_bytes(source_root).items():
-        if files.get(name) != local_bytes:
-            raise StagingBlocked(f"bundle differs from checked-out source file: {name}")
-
-
-def verify_paired_publication(manifest: dict[str, Any], fetch=github_json) -> dict[str, Any]:
-    """Recheck trusted GitHub source commit seal before any staging."""
-    candidate = discover_release(fetch=fetch)
-    sha = require_sha(manifest["sourceSha"])
-    if candidate["sourceSha"] != sha:
-        raise StagingBlocked("bundle source is not the newest sealed main release")
-    publish_id = manifest["publishRunId"]
-    expected_url = f"https://github.com/{REPOSITORY}/actions/runs/{publish_id}"
-    if candidate["publicationUrl"] != expected_url:
-        raise StagingBlocked("runtime bundle does not match sealed publishing run")
-    for name in ("sanq-api", "sanq-web"):
-        published = candidate["images"][name]
-        image = manifest["applicationImages"][name]
-        if image["digest"] != published["digest"] or image["ref"] != published["ref"]:
-            raise StagingBlocked("Runtime application image digest differs from publication seal")
-    return candidate
+    result = verify_runtime_publication(payload, sha)
+    if (
+        result.get("verified") is not True
+        or result.get("sourceSha") != sha
+        or result.get("productionActivationAuthorized") is not False
+        or result.get("runtimeArchiveDigest") != _sha256(payload)
+    ):
+        raise StagingBlocked("external Runtime archive proof is incomplete")
+    return result
 
 
 def ensure_private_staging_parent(parent: Path) -> None:
@@ -152,13 +121,28 @@ def ensure_private_staging_parent(parent: Path) -> None:
 
 
 def stage_verified_files(
-    files: dict[str, bytes], manifest: dict[str, Any], parent: Path
+    files: dict[str, bytes],
+    manifest: dict[str, Any],
+    parent: Path,
+    *,
+    archive: bytes,
+    attestation: dict[str, Any],
 ) -> Path:
     """Explicit-only inert staging in a private, pre-created staging directory."""
     ensure_private_staging_parent(parent)
     sha = require_sha(manifest["sourceSha"])
     if manifest["productionActivationAuthorized"] is not False:
         raise StagingBlocked("activation is never authorized by a staged bundle")
+    if (
+        attestation.get("verified") is not True
+        or attestation.get("sourceSha") != sha
+        or attestation.get("productionActivationAuthorized") is not False
+        or attestation.get("runtimeArchiveDigest") != _sha256(archive)
+    ):
+        raise StagingBlocked("verified external Runtime archive digest is required")
+    archived_manifest, archived_files = validated_archive_files(archive, sha)
+    if archived_manifest != manifest or archived_files != files:
+        raise StagingBlocked("archive bytes differ from proposed staged source files")
     validate_layout(files)
     if set(files) != set(SOURCE_FILES):
         raise StagingBlocked("unreviewed source member found")
@@ -189,6 +173,17 @@ def stage_verified_files(
                 handle.write(data)
                 handle.flush()
                 os.fsync(handle.fileno())
+        # Retain the exact externally authenticated tar.gz, not merely its
+        # self-checksummed extracted files, for the later B2-B controller gate.
+        archive_dest = scratch / STAGED_ARCHIVE
+        flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        fd = os.open(archive_dest, flags, 0o600)
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(archive)
+            handle.flush()
+            os.fsync(handle.fileno())
         marker = scratch / MANIFEST
         with marker.open("x", encoding="utf-8") as handle:
             json.dump(manifest, handle, indent=2, sort_keys=True)
@@ -220,26 +215,24 @@ def main() -> int:
         parser.error("stage requires --execute")
     try:
         sha = require_sha(args.source_sha)
-        if args.bundle.is_symlink() or not args.bundle.is_file():
-            raise StagingBlocked("bundle must be a regular, non-symlink file")
-        # Current source checkout and release seal prove provenance; neither
-        # the embedded checksum nor GitHub image seal alone proves file bytes.
-        manifest, files = validated_archive_files(args.bundle.read_bytes(), sha)
+        # Public GitHub publication evidence authenticates compressed archive
+        # bytes independently of the untrusted internal checksum manifest.
+        payload = _bundle_bytes(args.bundle)
+        attestation = verify_independent_archive(payload, sha)
+        manifest, files = validated_archive_files(payload, sha)
         validate_layout(files)
-        verify_checkout_sources(files, ROOT, sha)
-        verify_paired_publication(
-            manifest,
-            fetch=lambda path: github_json(path, token=os.environ.get("GITHUB_TOKEN") or None),
-        )
         print(json.dumps({
-            "status": "source-and-publication-verified",
+            "status": "externally-authenticated-runtime-archive",
             "sourceSha": sha,
             "stagingParent": str(STAGING_PARENT),
-            "wouldWriteStagedFiles": len(files) + 1 if args.execute else 0,
+            "wouldWriteStagedFiles": len(files) + 2 if args.execute else 0,
             "productionActivationAuthorized": False,
         }, indent=2), flush=True)
         if args.operation == "stage" and args.execute:
-            destination = stage_verified_files(files, manifest, STAGING_PARENT)
+            destination = stage_verified_files(
+                files, manifest, STAGING_PARENT,
+                archive=payload, attestation=attestation,
+            )
             print(f"Inert runtime staged at {destination}; NO activation performed")
     except (OSError, ValueError, KeyError, tarfile.TarError) as exc:
         print(f"SanQ runtime staging blocked: {exc}", file=sys.stderr)

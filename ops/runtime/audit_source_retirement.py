@@ -18,9 +18,9 @@ REQUIREMENTS: dict[str, tuple[str, ...]] = {
         "cwd=PROD_REPO_ROOT,",
     ),
     "ops/runtime/stage_bundle.py": (
-        "def verify_checkout_sources(",
-        '["git", "rev-parse", "--verify", "HEAD"]',
-        "for name, local_bytes in _source_bytes(source_root).items():",
+        "def verify_independent_archive(",
+        "verify_runtime_publication(payload, sha)",
+        'STAGED_ARCHIVE = "runtime-archive.tar.gz"',
     ),
     "ops/release/deploy_release.py": (
         'SOURCE_CHECKOUT = Path("/home/ubuntu/sanq-app")',
@@ -44,7 +44,6 @@ REQUIREMENTS: dict[str, tuple[str, ...]] = {
 }
 DEPENDS_ON_CHECKOUT = (
     "ops/sanq-mcp/server.py",
-    "ops/runtime/stage_bundle.py",
     "ops/release/deploy_release.py",
 )
 MAX_BYTES = 2 * 1024 * 1024
@@ -96,7 +95,7 @@ def inspect(files: dict[str, str | None]) -> dict[str, Any]:
         "authorizedToDeleteProductionFiles": False,
         "requiredEvidence": [
             "Runtime artifact digest or attestation anchored to trusted GitHub publication, bound to SHA and image digests; internal manifest SHA256 alone is not sufficient",
-            "Stage/Deploy checkout-content verification replaced with independently authenticated Runtime artifact validation",
+            "C5-B2A stages externally authenticated Runtime archives without checkout; deployment controller still needs an independently reviewed B2B cutover",
             "MCP read/search/history/status behavior migrated to distinct source service or consciously retired without weakening secret/path safeguards",
             "MCP Docker ps/logs explicitly pinned to sanq-app and target Runtime Compose path",
             "MCP workspace stays independent of Runtime and source inspection origins",
