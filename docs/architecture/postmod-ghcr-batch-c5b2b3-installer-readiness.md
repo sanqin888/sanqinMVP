@@ -135,6 +135,10 @@ phase, not production cutover or widening architectural authority.
 No source behavior, CI, migrations, Docker, backups, uploads or live
 systemd services are modified by this read-only design step.
 
+## Subsequent B3-B2A owner decision (2026-10-08)
+
+C5-B3B2A formalizes an **unapproved** stable root Launcher, cross-transaction journal and human recovery governance in `docs/architecture/postmod-ghcr-batch-c5b3b2a-authority-recovery-freeze.md`. It does not revise this B2B3 decision gate: production writer, installer, launcher and any root-owner change remain separately approval-gated.
+
 ## Subsequent stage record (2026-10-08)
 
 C5-B3A source-only contract is recorded in
