@@ -1,5 +1,7 @@
 # C5-B3B2A — Production installer authority & recovery contract freeze
 
+**Subsequent authorization (2026-10-08):** User approved Option B as a separate independent root-owned Launcher *architecture boundary*. B3B2B inert pure preflight contract is at `docs/architecture/postmod-ghcr-batch-c5b3b2b-root-launcher-preflight.md`. No installation, root filesystem writes, persistence writer, privilege delegation or production cutover is authorized by this note.
+
 **Status: LOCAL DESIGN / REVIEW PENDING / NO EXECUTOR AUTHORIZATION.** Read-only baseline: latest `origin/dev` after C5-B3B1 PR #2742, merge `454c7c337e1a568fb29e9665d93f4bb5c4f2ee84`. This document is a **proposed freeze**, not proof that the proposed paths/owners exist on a production VM and not authorization to implement root writes.
 
 ## Current ownership confirmed by source

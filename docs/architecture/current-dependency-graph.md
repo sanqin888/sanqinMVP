@@ -1,5 +1,7 @@
 # Current 12-context dependency graph
 
+2026-10-08 C5-B3B2B **LOCAL SOURCE / CI PENDING / NO GRAPH OR BASELINE CHANGE**: independent root-owned Launcher is architecturally authorized by user, but source provides only inert preflight validator/offline tests under Runtime/Ops; no production installer/writer/CI topology, app-context imports, direct-edge allowances, migrations or dependencies. Detail: `docs/architecture/postmod-ghcr-batch-c5b3b2b-root-launcher-preflight.md`.
+
 2026-10-08 C5-B3B2A **LOCAL DESIGN / NO SOURCE OR GRAPH CHANGE / REVIEW PENDING**: Runtime/Ops authority-and-recovery contract freeze only. Existing API/Web/Accounting import dependencies, graph/SCC/scanner baseline, CI, Docker, backup, controller and privileged installer remain untouched. See `docs/architecture/postmod-ghcr-batch-c5b3b2a-authority-recovery-freeze.md`.
 
 2026-10-08 C5-B3B1 **LOCAL SOURCE / USER REVIEW PENDING / CI NOT RUN / NO GRAPH OR BASELINE CHANGE**: Runtime/Ops adds a fresh-private-tempdir-only offline Journal fsync/flock fixture, append-only generation records, fail-closed interruption markers and standard-library fault-injection tests. No production writer/controller, cross-context import, architecture scanner allowance, SCC, migration, dependency or deploy topology change. See `docs/architecture/postmod-ghcr-batch-c5b3b1-offline-durable-journal.md`.

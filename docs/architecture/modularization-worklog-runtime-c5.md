@@ -2,6 +2,10 @@
 
 Primary `modularization-worklog.md` exceeds the MCP workspace patch-size limit. This owner supplement records the C5 batch without truncating/replacing the original timeline.
 
+## 2026-10-08 — C5-B3B2B inert root Launcher preflight
+
+**Status: LOCAL SOURCE / USER REVIEW PENDING / NO CI OR PRODUCTION DEPLOYMENT.** After B3B2A PR #2743 merged as `a82952c5`, user approved Option B's independent root-owned Launcher boundary. Added a pure candidate preflight contract and offline stdlib tests; strict fixed path/project/volume and fail-closed B3A journal parsing, always execution-authority false. No real owner/host checks, installer, persistence writer, root privilege, Docker or C4 cutover. See `docs/architecture/postmod-ghcr-batch-c5b3b2b-root-launcher-preflight.md`.
+
 ## 2026-10-08 — C5-B3B2A authority and recovery design freeze
 
 **Status: LOCAL DESIGN / REVIEW PENDING; NO INSTALLER, NO PROD / CI NOT RUN.** Latest dev baseline C5-B3B1 merge `454c7c33` (PR #2742). Reviewed AGENTS.md, CI, C4 runbook, current deploy/backup ownership, B2B3/B3A/B3B1 and proposed versioned Runtime contracts. Freeze specifies launcher and journal authority separation, proposed fixed root-owned state/layout, cross-transaction continuity, historic archive+two-image-digest rollback and fail-closed recovery. Explicit architectural approval required before production writer/launcher implementation: `docs/architecture/postmod-ghcr-batch-c5b3b2a-authority-recovery-freeze.md`.
