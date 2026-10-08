@@ -165,6 +165,29 @@ published release, pull the same three services, run `docker compose up -d
 retain the pre-cutover local application images and previous Compose revision
 until the new release is verified; do not prune them during the cutover window.
 
+### Batch A paired-image publication evidence (no deploy)
+
+New main releases may acquire a GitHub commit status
+`sanq/paired-images-published` only after both SHA-tagged API/Web images exist in
+GHCR, the registry confirms linux/amd64 manifests, and the digest proof
+(`sanq-release-proof` Actions artifact) has been uploaded. This status is posted
+against the source SHA of the successful main CI run, **not** the SHA of the
+workflow_run publishing workflow. It has no deploy authority.
+
+Read-only discovery from a checkout of a revision containing the tool:
+
+```bash
+python3 ops/release/release_contract.py discover --pretty
+```
+
+This only returns the newest sealed main release among the inspected commits.
+It does not write `.env`, pull images or recreate services. A newly published
+candidate must still pass the separately authorized Prisma / backup / Compose /
+readiness checks before production activation. SHA tags themselves are not
+registry-enforced immutability; Batch B must verify observed digests against
+publication evidence. See `docs/architecture/postmod-ghcr-batch-a-release-discovery.md`.
+Existing pre-Batch-A releases are not retroactively sealed.
+
 ## 2026-10-04 GHCR pull-only production cutover evidence
 
 Production release `main@e411863a7e4c262a6ae125e39bd781dda63527d9`
