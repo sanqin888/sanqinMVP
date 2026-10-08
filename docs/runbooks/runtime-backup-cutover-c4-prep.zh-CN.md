@@ -2,6 +2,10 @@
 
 状态：**仅供源码审阅及后续 C4 审批使用，禁止直接在生产 VM 执行切换。**
 C3-B 仅准备方案 B 的新源码模板，不改变已验证的生产备份/恢复合同。
+C4-P2-A 已选择 **可信 Runtime Archive + 独立暂存 + 人工 root-owned 安装**，
+并保留 `build_bundle.py::SOURCE_FILES` 的 17 文件严格白名单；首次安装、
+错误中止和回滚门禁详见 `docs/runbooks/runtime-trusted-manual-install-c4p2a.zh-CN.md`。
+本文仍是 **C4-P2 全站成组切换的生产审批门禁**，不是执行授权。
 
 ## 新旧配置必须成组切换
 
@@ -31,12 +35,12 @@ C3-B 仅准备方案 B 的新源码模板，不改变已验证的生产备份/�
 4. /opt、/opt/sanq、/opt/sanq/runtime、/srv、/srv/sanq 均由 root 拥有、不可被普通用户组/其他用户写入；/srv/sanq/backups 由 ubuntu 拥有且为 0700；.env 仅属主可读。绝不使用 symlink 替代目录。还需明确：C4 完成核验后由 root 创建仅属主可写的非敏感激活标记 /opt/sanq/runtime/.sanq-backup-layout-activated，其内容仅为 SANQ_BACKUP_LAYOUT_C4_V1。**预备目录期间绝不创建激活标记。**
 5. 核实 API、Uber worker 和备份任务均可读写各自需要的 uploads 文件；首先两遍校验文件清单、大小及 SHA256，再进入无写入窗口执行最终差量复制。
 6. 保留旧 .env、Compose、旧 uploads、备份脚本、service、helper 和 sudoers 原件，明确失败的恢复顺序及数据一致性时间点。
-7. 使用与镜像 source SHA 一致的 Runtime 包，核对其中匹配版本的四份 ops/backup 文件，并获得实际生产切换授权。C4-B 部署控制器必须通过 /opt/sanq/runtime 内每个打包文件的 SHA256 与当前 main Git 工作树同 SHA 的双重核查，直到 C5 完成认证交付；必须保证备份主脚本继续以 ubuntu 执行。执行 deploy/rollback --execute 的管理员需 root 权限（新 Runtime 目录由 root 持有；操作本身仍需要单独审批，且控制器不调用 sudo）。
+7. 使用与镜像 source SHA 一致、拥有独立 GitHub Archive SHA256 发布证明的 Runtime 包，核对固定 17 文件白名单及其中匹配版本的四份 ops/backup 文件，并获得实际生产切换授权。最新 C5-B1/B2 控制器已不依赖 VM 本地 Git checkout 做文件对照：首次安装必须验证独立的 Archive 证明和配对镜像 Digest；安装后 `runtime_manifest()` 必须对 root-owned Manifest 和 `SOURCE_FILES` 的文件大小/SHA256 逐项核对，`verify_runtime_release()` 还会在普通镜像升级时阻断 Runtime 清单文件变更。详细安装/恢复门禁参见 C4-P2-A 人工安装手册。必须保证备份主脚本继续以 ubuntu 执行。执行 deploy/rollback --execute 的管理员需 root 权限（新 Runtime 目录由 root 持有；操作本身仍需要单独审批，且控制器不调用 sudo）。
 
 ## 受控 C4 顺序（非执行命令）
 
 1. 获得**独立的生产切换授权**，核实备份任务未在运行，然后暂停备份 timer 并保存其原始状态。
-2. 原生产目录保持可恢复；预备目标目录和权限，独立校验复制后的运行配置。绝不从空 uploads 路径运行 rclone sync 到远端 uploads-current。
+2. 按 C4-P2-A 人工安装手册独立验证可信 Runtime Archive、暂存并准备 root-owned 真实目录；保留固定 17 文件白名单和原生产目录。首次安装暂不创建 C4 激活标记、不启动新 Compose。独立校验复制后的运行配置。绝不从空 uploads 路径运行 rclone sync 到远端 uploads-current。
 3. 首轮和差量文件复制后，暂停新 uploads 写入；最终同步、核对文件与数据库引用，确保 API 和 Uber worker 使用相同的新路径。
 4. 固定 Compose project sanq-app 和原 PG volume，受控更新应用挂载和 Runtime 配置，确认 docker inspect 的真实 DB Mount.Name 为 sanq-app_pgdata，api/ubereats-worker Mount.Source 均为 /srv/sanq/uploads，然后从固定 Runtime 路径执行只读健康检查。不能只验证 Compose 文本；不允许创建新数据卷。
 5. 在 timer 仍暂停时，成组安装新版主脚本、root helper、service，保持窄权限 sudoers；核查新脚本和 helper 的本地目标目录一致，确认已安装代码与获审源码一致。在独立恢复、uploads 一致性和数据卷核验全部完成后，才由 root 创建 0644 或更严格的激活标记（ubuntu 必须可以读取）。标记并不代表完成自动授权，必须仍持有 C4 审批记录。
