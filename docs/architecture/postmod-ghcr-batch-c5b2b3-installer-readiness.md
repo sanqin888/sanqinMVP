@@ -135,15 +135,7 @@ phase, not production cutover or widening architectural authority.
 No source behavior, CI, migrations, Docker, backups, uploads or live
 systemd services are modified by this read-only design step.
 
-## Subsequent B3-B2A owner decision (2026-10-08)
+## 2026-10-08 update — independent Launcher proposal retired
 
-C5-B3B2A formalizes an **unapproved** stable root Launcher, cross-transaction journal and human recovery governance in `docs/architecture/postmod-ghcr-batch-c5b3b2a-authority-recovery-freeze.md`. It does not revise this B2B3 decision gate: production writer, installer, launcher and any root-owner change remain separately approval-gated.
+The user canceled the uninstalled C5-B3 independent root Launcher, signing and journal proposals. Associated source-only code and stage documents were removed. This B2B3 installer-readiness document remains historical analysis, not production approval. Continue using the existing GHCR paired-image publisher and established deployment controller; any future privileged installer remains a separate authorization gate.
 
-## Subsequent stage record (2026-10-08)
-
-C5-B3A source-only contract is recorded in
-`docs/architecture/postmod-ghcr-batch-c5b3a-persistence-recovery.md`.
-The B3A schema/transition module and offline test fixtures do **not** install
-Runtime, persist a production journal, modify the legacy controller, or supply
-root execution rights. B3-B must separately obtain authorization for actual
-filesystem persistence, lock enforcement and transactional recovery.

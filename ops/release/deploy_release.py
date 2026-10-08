@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """SanQ Batch B: operator-triggered, fail-closed release deployment.
 
-NEVER runs migrations, builds images, touches the db service or prunes volumes.
+Skips migrations when not needed; reviewed pending SQL requires --apply-migrations.
+Never generates migrations, builds images, recreates db or prunes volumes.
 No unattended daemon/watch mode. Deploy/rollback require --execute.
 """
 
@@ -437,13 +438,43 @@ def pull_and_verify(candidate: dict[str, Any]) -> None:
         verify_local_image(image["ref"], image["digest"])
 
 
-def candidate_migration_status(target_sha: str) -> None:
-    # Pure Prisma migrate status. NEVER prisma migrate deploy/reset/db push.
+def candidate_migration_status(target_sha: str) -> bool:
+    """Return True only for Prisma's pending-migrations status.
+
+    Reject ambiguous failures, drift, and failed migration histories.
+    """
+    args = [
+        "docker", "compose", "--project-name", EXPECTED_PROJECT,
+        "--project-directory", str(ROOT), "--env-file", str(ENV),
+        "-f", str(COMPOSE), "run", "--rm", "--no-deps", "-T", "api",
+        "sh", "-lc",
+        "cd /app/apps/api && npx prisma migrate status --schema=prisma/schema.prisma",
+    ]
+    env = os.environ.copy()
+    env["SANQ_IMAGE_SHA"] = require_sha(target_sha)
+    result = subprocess.run(args, cwd=ROOT, env=env, text=True,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            check=False)
+    if result.returncode == 0:
+        return False
+    output = result.stdout + "\n" + result.stderr
+    pending = "Following migration(s) have not yet been applied:" in output
+    forbidden = ("failed", "diverged", "modified", "does not match",
+                 "migration history", "error:", "could not")
+    if not pending or any(term in output.lower() for term in forbidden):
+        raise DeploymentBlocked("candidate migration status is not cleanly pending")
+    return True
+
+
+def apply_reviewed_migrations(target_sha: str) -> None:
+    """Operator-approved migration application, never schema generation."""
     compose(
         target_sha, "run", "--rm", "--no-deps", "-T", "api",
         "sh", "-lc",
-        "cd /app/apps/api && npx prisma migrate status --schema=prisma/schema.prisma",
+        "cd /app/apps/api && npx prisma migrate deploy --schema=prisma/schema.prisma",
     )
+    if candidate_migration_status(target_sha):
+        raise DeploymentBlocked("candidate migrations remain pending after deploy")
 
 
 def promote_images(target_sha: str) -> None:
@@ -457,7 +488,7 @@ def verify_after_switch(target_sha: str) -> None:
     run(["bash", str(ROOT / "ops/verify-runtime-readiness.sh"), str(ENV), "https://sanq.ca"], target_sha=target_sha)
 
 
-def deploy(*, execute: bool) -> None:
+def deploy(*, execute: bool, apply_migrations: bool = False) -> None:
     ensure_repo_location()
     current = read_current_sha()
     state = read_state()
@@ -483,11 +514,21 @@ def deploy(*, execute: bool) -> None:
         return
     preflight_current(current)
     pull_and_verify(candidate)
-    candidate_migration_status(target)
+    pending_migrations = candidate_migration_status(target)
+    if pending_migrations and not apply_migrations:
+        raise DeploymentBlocked(
+            "candidate has pending migrations; review SQL, compatibility, "
+            "backup and maintenance window, then explicitly use --apply-migrations"
+        )
     # Durable pending record comes before any mutable production change.
     write_state("pending", current=target, previous=current, reason="rollout-start")
-    update_env_sha(target)
     try:
+        if pending_migrations:
+            # Prevent old writers from running across a schema transition.
+            # This is intentionally disruptive and requires maintenance approval.
+            compose(current, "stop", *APP_SERVICES)
+            apply_reviewed_migrations(target)
+        update_env_sha(target)
         promote_images(target)
         verify_after_switch(target)
     except Exception as exc:
@@ -524,7 +565,8 @@ def rollback(*, execute: bool) -> None:
     for name in IMAGE_NAMES:
         ref = f"ghcr.io/sanqin888/{name}:{previous}"
         run(["docker", "image", "inspect", ref], capture=True)
-    candidate_migration_status(previous)
+    if candidate_migration_status(previous):
+        raise DeploymentBlocked("rollback image requires unapplied migrations; manual recovery required")
     write_state("pending", current=previous, previous=current, reason="rollback-start")
     update_env_sha(previous)
     try:
@@ -543,14 +585,21 @@ def main() -> int:
         "--execute", action="store_true",
         help="Required to mutate production; absent for read-only plan.",
     )
+    parser.add_argument(
+        "--apply-migrations", action="store_true",
+        help="Operator authorizes already-reviewed pending migration SQL during deploy.",
+    )
     args = parser.parse_args()
     if args.command == "plan" and args.execute:
         parser.error("plan is read-only and never accepts --execute")
+    if args.apply_migrations and (args.command != "deploy" or not args.execute):
+        parser.error("--apply-migrations requires deploy --execute")
     try:
         if args.command == "rollback":
             rollback(execute=args.execute)
         else:
-            deploy(execute=args.command == "deploy" and args.execute)
+            deploy(execute=args.command == "deploy" and args.execute,
+                   apply_migrations=args.apply_migrations)
     except (
         DeploymentBlocked, ReleaseContractError, OSError, ValueError,
         KeyError, subprocess.SubprocessError,

@@ -137,7 +137,7 @@ class DeploymentSafetyTests(unittest.TestCase):
              patch.object(deploy, "latest_candidate", return_value=candidate()), \
              patch.object(deploy, "preflight_current"), \
              patch.object(deploy, "pull_and_verify"), \
-             patch.object(deploy, "candidate_migration_status"), \
+             patch.object(deploy, "candidate_migration_status", return_value=False), \
              patch.object(deploy, "write_state", side_effect=lambda phase, **kw: order.append(phase)), \
              patch.object(deploy, "update_env_sha", side_effect=lambda sha: order.append("env")), \
              patch.object(deploy, "promote_images", side_effect=lambda sha: order.append("up")), \
@@ -155,7 +155,7 @@ class DeploymentSafetyTests(unittest.TestCase):
              patch.object(deploy, "latest_candidate", return_value=candidate()), \
              patch.object(deploy, "preflight_current"), \
              patch.object(deploy, "pull_and_verify"), \
-             patch.object(deploy, "candidate_migration_status"), \
+             patch.object(deploy, "candidate_migration_status", return_value=False), \
              patch.object(deploy, "write_state", side_effect=lambda phase, **kw: phases.append(phase)), \
              patch.object(deploy, "update_env_sha"), \
              patch.object(deploy, "promote_images"), \
@@ -187,7 +187,7 @@ class DeploymentSafetyTests(unittest.TestCase):
              patch.object(deploy, "preflight_current") as old_readiness, \
              patch.object(deploy, "check_backup") as backup, \
              patch.object(deploy, "run"), \
-             patch.object(deploy, "candidate_migration_status"), \
+             patch.object(deploy, "candidate_migration_status", return_value=False), \
              patch.object(deploy, "write_state"), \
              patch.object(deploy, "update_env_sha"), \
              patch.object(deploy, "promote_images"), \
@@ -218,6 +218,104 @@ class DeploymentSafetyTests(unittest.TestCase):
             with self.assertRaisesRegex(deploy.DeploymentBlocked, "digest differs"):
                 deploy.verify_local_image(f"ghcr.io/sanqin888/sanq-api:{TARGET}", DIGEST)
 
+
+
+    def test_candidate_status_only_accepts_clean_pending(self):
+        from subprocess import CompletedProcess
+        with patch.object(deploy.subprocess, "run", return_value=CompletedProcess([], 0, "", "")):
+            self.assertIs(deploy.candidate_migration_status(TARGET), False)
+        pending = "Following migration(s) have not yet been applied:\n20261008_example"
+        with patch.object(deploy.subprocess, "run", return_value=CompletedProcess([], 1, "", pending)):
+            self.assertIs(deploy.candidate_migration_status(TARGET), True)
+        for output in (pending + "\nError: drift", "Error: database unavailable",
+                       pending + "\nFailed migration history"):
+            with self.subTest(output=output), patch.object(
+                deploy.subprocess, "run", return_value=CompletedProcess([], 1, "", output)
+            ):
+                with self.assertRaises(deploy.DeploymentBlocked):
+                    deploy.candidate_migration_status(TARGET)
+
+    def test_pending_migration_requires_explicit_opt_in_before_state(self):
+        with patch.object(deploy, "ensure_repo_location"), \
+             patch.object(deploy, "require_mutation_privilege"), \
+             patch.object(deploy, "verify_runtime_release"), \
+             patch.object(deploy, "read_current_sha", return_value=CURRENT), \
+             patch.object(deploy, "read_state", return_value=None), \
+             patch.object(deploy, "latest_candidate", return_value=candidate()), \
+             patch.object(deploy, "preflight_current"), \
+             patch.object(deploy, "pull_and_verify"), \
+             patch.object(deploy, "candidate_migration_status", return_value=True), \
+             patch.object(deploy, "write_state") as state, \
+             patch.object(deploy, "apply_reviewed_migrations") as migration, \
+             patch.object(deploy, "update_env_sha") as edit:
+            with self.assertRaisesRegex(deploy.DeploymentBlocked, "--apply-migrations"):
+                deploy.deploy(execute=True)
+            state.assert_not_called()
+            migration.assert_not_called()
+            edit.assert_not_called()
+
+    def test_opted_in_pending_migration_precedes_env_update(self):
+        order = []
+        with patch.object(deploy, "ensure_repo_location"), \
+             patch.object(deploy, "require_mutation_privilege"), \
+             patch.object(deploy, "verify_runtime_release"), \
+             patch.object(deploy, "read_current_sha", return_value=CURRENT), \
+             patch.object(deploy, "read_state", return_value=None), \
+             patch.object(deploy, "latest_candidate", return_value=candidate()), \
+             patch.object(deploy, "preflight_current"), \
+             patch.object(deploy, "pull_and_verify"), \
+             patch.object(deploy, "candidate_migration_status", return_value=True), \
+             patch.object(deploy, "write_state", side_effect=lambda phase, **kw: order.append(phase)), \
+             patch.object(deploy, "compose", side_effect=lambda sha, *args: order.append(args[0])), \
+             patch.object(deploy, "apply_reviewed_migrations", side_effect=lambda sha: order.append("migrate")), \
+             patch.object(deploy, "update_env_sha", side_effect=lambda sha: order.append("env")), \
+             patch.object(deploy, "promote_images", side_effect=lambda sha: order.append("up")), \
+             patch.object(deploy, "verify_after_switch", side_effect=lambda sha: order.append("ready")):
+            deploy.deploy(execute=True, apply_migrations=True)
+        self.assertEqual(order, ["pending", "stop", "migrate", "env", "up", "ready", "active"])
+
+    def test_migration_failure_leaves_pending_without_env_change(self):
+        phases = []
+        with patch.object(deploy, "ensure_repo_location"), \
+             patch.object(deploy, "require_mutation_privilege"), \
+             patch.object(deploy, "verify_runtime_release"), \
+             patch.object(deploy, "read_current_sha", return_value=CURRENT), \
+             patch.object(deploy, "read_state", return_value=None), \
+             patch.object(deploy, "latest_candidate", return_value=candidate()), \
+             patch.object(deploy, "preflight_current"), \
+             patch.object(deploy, "pull_and_verify"), \
+             patch.object(deploy, "candidate_migration_status", return_value=True), \
+             patch.object(deploy, "write_state", side_effect=lambda phase, **kw: phases.append(phase)), \
+             patch.object(deploy, "compose"), \
+             patch.object(deploy, "apply_reviewed_migrations",
+                          side_effect=deploy.DeploymentBlocked("migration failed")), \
+             patch.object(deploy, "update_env_sha") as env, \
+             patch.object(deploy, "promote_images") as promote:
+            with self.assertRaisesRegex(deploy.DeploymentBlocked, "PENDING"):
+                deploy.deploy(execute=True, apply_migrations=True)
+            self.assertEqual(phases, ["pending"])
+            env.assert_not_called()
+            promote.assert_not_called()
+
+    def test_without_pending_migration_no_migration_or_stop(self):
+        with patch.object(deploy, "ensure_repo_location"), \
+             patch.object(deploy, "require_mutation_privilege"), \
+             patch.object(deploy, "verify_runtime_release"), \
+             patch.object(deploy, "read_current_sha", return_value=CURRENT), \
+             patch.object(deploy, "read_state", return_value=None), \
+             patch.object(deploy, "latest_candidate", return_value=candidate()), \
+             patch.object(deploy, "preflight_current"), \
+             patch.object(deploy, "pull_and_verify"), \
+             patch.object(deploy, "candidate_migration_status", return_value=False), \
+             patch.object(deploy, "write_state"), \
+             patch.object(deploy, "compose") as compose, \
+             patch.object(deploy, "apply_reviewed_migrations") as migration, \
+             patch.object(deploy, "update_env_sha"), \
+             patch.object(deploy, "promote_images"), \
+             patch.object(deploy, "verify_after_switch"):
+            deploy.deploy(execute=True, apply_migrations=True)
+            compose.assert_not_called()
+            migration.assert_not_called()
 
 if __name__ == "__main__":
     unittest.main()

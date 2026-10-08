@@ -63,17 +63,33 @@ The seal is authored by github-actions[bot] after both image jobs and the
 proof artifact upload succeed. There is no mutable latest/main fallback.
 
 Deploy preflights current readiness and backup, pulls only the API/Web images,
-checks Docker RepoDigests against the sealed digests, then runs read-only
-Prisma migrate status against the candidate image using an ephemeral container:
+checks Docker RepoDigests against the sealed digests, and runs Prisma
+`migrate status` on the candidate image. Clean parity skips all migrations.
+A known pending-only status blocks by default; drift, failed migrations,
+unrecognized errors or migration-history mismatch always block.
 
-    docker compose run --rm --no-deps -T api sh -lc <read-only migration status>
+After independently reviewing all committed pending SQL, database backup,
+compatible rollout and maintenance window, a root operator may opt into:
 
-Any pending migration, mismatch or failed command blocks BEFORE .env changes.
-The tool NEVER executes prisma migrate deploy, migrate reset or db push.
+    python3 ops/release/deploy_release.py deploy --execute --apply-migrations
 
-On success it records pending state, atomically changes the one SHA in .env,
-runs a Compose up targeting ONLY api, ubereats-worker and web (no deps, no
-build), reruns existing runtime readiness and records active/previous SHA.
+This flag is never honored by plan or rollback. Only a pending-only candidate
+stops the three application services (never DB), runs the candidate's Prisma
+`migrate deploy`, verifies parity and then updates .env and promotes the
+API/worker/Web images. Without pending SQL no migration or stop is performed,
+even if the flag is present. A migration error retains PENDING, with no
+automatic rollback. Destructive/contract migrations and schema compat are
+still human review gates, not automatically classifiable by Prisma output.
+Never use reset/db push.
+
+Existing C4 source/Runtime manifest checks remain enforced: target images
+must match the independently installed Runtime release manifest. This is a
+separate pre-deployment preparation gate; this change does not yet provide
+a complete new-version one-command upgrade.
+
+On success it records pending state, atomically changes the SHA in .env,
+runs Compose up targeting ONLY api, ubereats-worker and web (no deps/build),
+reruns readiness and records active/previous SHA.
 
 If readiness fails after cutover, status remains pending. It does not try
 to make unsafe assumptions about runtime-written data or auto-rollback.
