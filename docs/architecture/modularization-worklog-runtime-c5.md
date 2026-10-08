@@ -2,6 +2,10 @@
 
 Primary `modularization-worklog.md` exceeds the MCP workspace patch-size limit. This owner supplement records the C5 batch without truncating/replacing the original timeline.
 
+## 2026-10-08 — C5-B3B2I Launcher publication proof contract
+
+**LOCAL DESIGN / USER REVIEW PENDING / NO CI OR PRODUCTION CLAIM.** Based on B3B2G dev merge `d1bb76fb`; separated earlier B3B2H unmerged local documentation from this branch. Source-backed v1 Launcher publisher proof design: domain-separated detached signature, independently provisioned trust root, package/entrypoint/inventory hashes, allowed main source + workflow identity, key rotation/revocation, retention and manual root-operator bootstrap gates. Existing `publish-images` protects Runtime/image proof only; 90-day Actions retention cannot be the sole root Launcher recovery storage. No executable code, CI/workflow, dependencies or privileged host changes. See `docs/architecture/postmod-ghcr-batch-c5b3b2i-launcher-publication-proof-contract.md`.
+
 ## 2026-10-08 — C5-B3B2G independent Launcher bootstrap trust
 
 **LOCAL SOURCE / USER REVIEW PENDING.** B3B2F PR #2748 merged dev `7b33ad9f`, CI #37770887675 all seven green. Added only pure fixed-path root-owned candidate Launcher manifest/byte digest consistency validation with stdlib tests; no trusted publisher, root-owned install, production executable or VM mutation. Detail: `docs/architecture/postmod-ghcr-batch-c5b3b2g-launcher-bootstrap-trust.md`.

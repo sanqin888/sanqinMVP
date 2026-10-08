@@ -1,5 +1,7 @@
 # Current 12-context dependency graph
 
+2026-10-08 C5-B3B2I **LOCAL DESIGN / USER REVIEW PENDING / NO GRAPH OR BASELINE CHANGE**: Runtime/Ops defines independent root-owned Launcher publisher claim, detached trust, key/revocation, artifact-retention and manual bootstrap contract only. Existing workflows, app imports, privileged host ownership, Docker, Prisma and CI architecture remain unchanged. See `docs/architecture/postmod-ghcr-batch-c5b3b2i-launcher-publication-proof-contract.md`.
+
 2026-10-08 C5-B3B2G **LOCAL SOURCE / REVIEW PENDING / NO GRAPH CHANGE**: Runtime/Ops adds inert root Launcher packaging and SHA256 manifest shape contract with offline tests; no root installation, CI baseline, app imports, Docker, privileged write, migration or deployment changes. See `docs/architecture/postmod-ghcr-batch-c5b3b2g-launcher-bootstrap-trust.md`.
 
 2026-10-08 C5-B3B2F **LOCAL SOURCE / REVIEW PENDING / NO GRAPH CHANGE**: Runtime/Ops reuses existing exact historical archive verification plus paired API/Web digest attestations for current/previous/target archives, with synthetic offline tests; no production Launcher, host probing, privileged writes, migration, scanner baseline or context-edge change. See `docs/architecture/postmod-ghcr-batch-c5b3b2f-archive-pair-provenance.md`.
