@@ -29,6 +29,7 @@ source files from the **same validated checkout SHA**:
 - `ops/runtime/stage_bundle.py` (C2 allowlist extension)
 - `ops/runtime/runtime_trust.py` (C5-B1 independent digest status)
 - `ops/runtime/versioned_release_contract.py` (C5-B2B1 historical exact-SHA proof)
+- `ops/runtime/plan_versioned_install.py` (C5-B2B2 inert transaction planner)
 - `ops/runtime/runtime-layout.v1.json` (C2 allowlist extension)
 - `ops/verify-runtime-readiness.sh`
 
