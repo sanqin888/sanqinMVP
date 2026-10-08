@@ -50,6 +50,9 @@ def candidate(sha=SHA, digest=DIGEST):
     }
 
 
+class RuntimeControllerC4Tests(unittest.TestCase):
+    def test_root_owned_runtime_requires_root_for_mutation(self):
+        with patch.object(deploy.os, "geteuid", return_value=1000):
             with self.assertRaisesRegex(deploy.DeploymentBlocked, "root operator"):
                 deploy.require_mutation_privilege()
         with patch.object(deploy.os, "geteuid", return_value=0):
