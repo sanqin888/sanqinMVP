@@ -2,6 +2,10 @@
 
 Primary `modularization-worklog.md` exceeds the MCP workspace patch-size limit. This owner supplement records the C5 batch without truncating/replacing the original timeline.
 
+## 2026-10-08 — C5-B3B2L offline Ed25519 envelope/policy format
+
+**LOCAL SOURCE / USER REVIEW PENDING / CI NOT RUN.** B3B2K PR #2752 merged dev `3b8a7e83` with 7 green CI jobs. User selected Scheme A, offline operator Ed25519. Added pure syntax-only detached envelope and untrusted policy fixture consistency tests; explicitly never authenticates signature/key, installs root Launcher or grants deploy/rollback authority. No dependency/workflow, key material, database or Docker changes. See `docs/architecture/postmod-ghcr-batch-c5b3b2l-ed25519-envelope-policy.md`.
+
 ## 2026-10-08 — C5-B3B2K signing trust-root readiness
 
 **LOCAL READINESS AUDIT / USER REVIEW PENDING; NO CODE OR CI CHANGES.** B3B2J PR #2751 merged dev `4d847e8e` with 7 green CI jobs. Compared proposed offline Ed25519, externally managed KMS/HSM and CI keyless provenance; formalized independent pinned trust root, policy rollback prevention, key rotation/revocation, package retention and manual root operator gate. No crypto/signing infra or privilege implemented. See `docs/architecture/postmod-ghcr-batch-c5b3b2k-signing-trust-readiness.md`.
