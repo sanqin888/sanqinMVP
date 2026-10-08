@@ -26,6 +26,10 @@ RUNTIME_PREFIX = "sanq-runtime"
 MANIFEST = "runtime-release.json"
 SOURCE_FILES = (
     "docker-compose.yml",
+    "ops/backup/backup-db.sh",
+    "ops/backup/sanq-backup-protected-nginx",
+    "ops/backup/sanq-backup.service",
+    "ops/backup/sanq-backup.sudoers",
     "ops/release/deploy_release.py",
     "ops/release/release_contract.py",
     "ops/runtime/build_bundle.py",

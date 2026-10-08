@@ -1,5 +1,13 @@
 # SanQ backup and recovery runbook
 
+> **C3-B source compatibility warning (pending production C4 approval):**
+> The backup script/helper/systemd templates in dev now describe the proposed
+> /opt/sanq/runtime + /srv/sanq target layout. The existing production VM still
+> uses the legacy /home/ubuntu/sanq-app paths. **Do not install the new source
+> templates on the current VM using the historical instructions below.** The
+> matched, operator-approved C4 cutover is required first. See
+> docs/runbooks/runtime-backup-cutover-c4-prep.zh-CN.md. No cutover has occurred.
+
 ## Scope
 
 This runbook is the operator contract for Post-Modularization §3.2 Backup /
@@ -73,6 +81,10 @@ errors set the final job status nonzero instead of printing success merely
 because a partial archive exists.
 
 ## Production installation / update
+
+**STOP: The installation recipe in this section is historical for the legacy
+production layout. Do not run it against C3-B source until a separately
+approved C4 coordinated runtime/data cutover.**
 
 Repository source files under ops/backup/ are the reviewed source of truth.
 Installing or changing production files is a separate production mutation and

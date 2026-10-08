@@ -1,5 +1,11 @@
 # SanQ 备份恢复手册
 
+> **C3-B 兼容性提醒：**dev 的备份源码模板现已转为方案 B 的目标路径
+> /opt/sanq/runtime 与 /srv/sanq，**当前生产 VM 仍使用旧路径**。
+> 在另行授权并完成 C4 成组切换前，禁止照下方历史安装指令
+> 直接覆盖生产主脚本、helper 或 service。详见
+> docs/runbooks/runtime-backup-cutover-c4-prep.zh-CN.md。
+
 > 对应英文运维合同：`docs/runbooks/backup-recovery.md`  
 > 当前状态：Post-Modularization §3.2 Backup / Recovery Drill 已于 2026-10-02 **PRODUCTION VERIFIED / CLOSED**。  
 > 本手册面向实际运维人员，说明“备份在哪里、如何判断备份正常、服务器损坏后如何安全恢复、什么时候可以重新开放业务”。
@@ -68,6 +74,9 @@ nginx/certs/cf-origin.key
 其中 `cf-origin.key` 必须保持受保护状态；当前生产中该文件为 root-only 私钥，不能为了方便备份而放宽为普通用户可读。
 
 ## 4. 备份程序升级 / 覆盖
+
+**停止门禁：本节为旧目录部署记录。C3-B 新版源码不可直接覆盖生产旧路径；
+必须先得到 C4 独立生产授权，并成组处理数据/Compose/备份权限。**
 
 仓库中的 reviewed source of truth：
 
