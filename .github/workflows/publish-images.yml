@@ -126,8 +126,29 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-      # Last step: only seal a main source SHA after both image publishes,
-      # registry/architecture checks, and proof upload have succeeded.
+      - name: Build and locally verify source-pinned Runtime bundle
+        env:
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          python3 ops/runtime/build_bundle.py create \
+            --source-sha "$SOURCE_SHA" \
+            --proof "$RUNNER_TEMP/sanq-release.json" \
+            --output "$RUNNER_TEMP/sanq-runtime-${SOURCE_SHA}.tar.gz"
+          python3 ops/runtime/build_bundle.py verify \
+            --source-sha "$SOURCE_SHA" \
+            --bundle "$RUNNER_TEMP/sanq-runtime-${SOURCE_SHA}.tar.gz"
+
+      - name: Preserve source-pinned Runtime bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: sanq-runtime-${{ github.event.workflow_run.head_sha }}
+          path: ${{ runner.temp }}/sanq-runtime-*.tar.gz
+          if-no-files-found: error
+          retention-days: 90
+
+      # Last step: seal the source SHA only after both GHCR images, release
+      # proof and the source-matched Runtime artifact are fully uploaded.
       - name: Mark validated source SHA as published
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

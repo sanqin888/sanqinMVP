@@ -1,8 +1,9 @@
 # SanQ GHCR Batch C0 — Runtime layout separation readiness
 
-**Status:** source-only local readiness preparation. **NOT AUTHORIZED FOR FILE MOVES**
-or production cutover. No repository main checkout, VM .env, Compose, systemd
-unit, backups, uploads, Docker volumes or MCP configuration has been changed.
+**Status:** C0 merged to dev via PR #2728 (merge `96dc60be`); production
+verification and directory cutover still not authorized. **NOT AUTHORIZED FOR
+FILE MOVES.** No VM .env, Compose, systemd unit, backups, uploads, Docker
+volumes or MCP configuration was changed.
 
 ## Architecture and code baseline
 
