@@ -43,6 +43,7 @@ def valid_status(state="success", creator="github-actions[bot]"):
         "state": state,
         "creator": {"login": creator},
         "target_url": RUN_URL,
+        "description": "a:" + "f" * 64 + " w:" + "f" * 64,
         "created_at": "2026-10-07T20:00:00Z",
     }
 
@@ -151,6 +152,8 @@ class ReleaseContractTests(unittest.TestCase):
         result = release.discover_release(fake_fetch)
         self.assertEqual(result["sourceSha"], SHA_OLD)
         self.assertEqual(result["publicationUrl"], RUN_URL)
+        self.assertEqual(result["images"]["sanq-api"]["digest"], DIGEST)
+        self.assertEqual(result["images"]["sanq-web"]["ref"], f"ghcr.io/sanqin888/sanq-web:{SHA_OLD}")
         self.assertEqual(len(calls), 3)
 
     def test_discover_denies_spoofed_or_failed_seal_and_stale_success(self):
@@ -158,6 +161,7 @@ class ReleaseContractTests(unittest.TestCase):
             valid_status(creator="somebody"),
             valid_status(state="failure"),
             {**valid_status(), "target_url": "https://evil.example/actions/runs/123"},
+            {**valid_status(), "description": "Main CI passed (no digests)"},
         ]:
             def fake_fetch(path):
                 if "commits?sha" in path:
@@ -206,6 +210,7 @@ class ReleaseContractTests(unittest.TestCase):
             self.assertEqual(calls[0][0], f"/repos/sanqin888/sanqinMVP/statuses/{SHA_NEW}")
             self.assertEqual(calls[0][2]["context"], release.RELEASE_CONTEXT)
             self.assertEqual(calls[0][2]["target_url"], "https://github.com/sanqin888/sanqinMVP/actions/runs/12")
+            self.assertEqual(calls[0][2]["description"], "a:" + "f" * 64 + " w:" + "f" * 64)
             with patch.dict(
                 "os.environ",
                 {

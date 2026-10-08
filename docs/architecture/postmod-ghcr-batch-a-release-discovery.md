@@ -30,6 +30,9 @@ The additional seal-paired-release job:
    - target_url: the publishing workflow run URL
    - creator: github-actions[bot]
    - requires only job-level statuses:write permission.
+   - Batch B extension: description carries both published digest hex values
+     as a:... w:... (133 characters), allowing token-free VM verification.
+     A successful older seal without both digests is no longer deployable.
 
 A missing/failed matrix job, unavailable image/manifest, wrong platform, bad
 proof or artifact-upload failure prevents the success seal. The existing image
