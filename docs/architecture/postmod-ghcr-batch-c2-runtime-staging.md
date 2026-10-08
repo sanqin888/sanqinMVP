@@ -1,8 +1,13 @@
 # Batch C2 — Runtime layout contract and inert staging
 
-Status: LOCAL WORKSPACE IMPLEMENTATION, pending user review.
-This does not authorize production installation, symlink cutover, backup
-changes, Docker operations, database migrations or source checkout removal.
+**Historical C2 source baseline:** subsequently superseded for staging only
+by C5-B2A, which verifies the externally published Runtime SHA256 instead
+of checking a local Git `main` source tree. See
+`docs/architecture/postmod-ghcr-batch-c5b2a-runtime-staging.md` for the
+current staging contract. C5-B2B release controller still depends on the
+source checkout. This does not authorize production installation, symlink
+cutover, backup changes, Docker operations, database migrations or source
+checkout removal.
 
 ## Baseline and ownership
 

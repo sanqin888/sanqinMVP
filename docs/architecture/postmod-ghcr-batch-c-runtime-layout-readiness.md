@@ -65,9 +65,11 @@ A future VM install must enforce package/digest parity before activation.
 
 C2. Define versioned runtime location/config contracts and host-side
 validation. Stage a target tree but do not replace the active root.
-Implementation uses an inert SHA-scoped staging directory, still requires
-matching main source checkout provenance and never activates the release.
-See `docs/architecture/postmod-ghcr-batch-c2-runtime-staging.md`.
+The original C2 implementation required matching main checkout bytes.
+C5-B2A later replaces that staging-only gate with the independently
+published Runtime SHA256 while retaining an inert SHA-scoped directory.
+See `docs/architecture/postmod-ghcr-batch-c2-runtime-staging.md` and
+`docs/architecture/postmod-ghcr-batch-c5b2a-runtime-staging.md`.
 
 C3. Separately review and change backup/source/upload ownership under the
 existing narrow helper/sudoers contract. Preserve and prove offsite backups,
@@ -88,10 +90,11 @@ C5. MCP producer/consumer decoupling and production source checkout cleanup.
 C5-A source-only readiness audit maps the MCP, staging, deploy and GitHub
 publication trust dependencies; see
 `docs/architecture/postmod-ghcr-batch-c5-source-retirement-readiness.md`.
-C5-B source work was subsequently authorized; C5-B1 prepares a separate
-Runtime SHA256 publication status and read-only verifier, without changing
-staging/deployment consumers. See
-`docs/architecture/postmod-ghcr-batch-c5b1-runtime-artifact-trust.md`.
+C5-B source work was subsequently authorized. C5-B1 provides a separate
+Runtime SHA256 publication status and verifier. C5-B2A applies it to
+checkout-free staging only; C5-B2B deploy and rollback provenance require
+a separate review. See `docs/architecture/postmod-ghcr-batch-c5b1-runtime-artifact-trust.md`
+and `docs/architecture/postmod-ghcr-batch-c5b2a-runtime-staging.md`.
 MCP public-contract changes remain separately gated. Do not delete
 /home/ubuntu/sanq-app or its .git while the existing production MCP and
 C4 provenance gates still depend on that checkout.

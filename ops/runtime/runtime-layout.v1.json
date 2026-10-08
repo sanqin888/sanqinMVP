@@ -10,7 +10,7 @@
   "proposedBackupsRoot": "/srv/sanq/backups",
   "preservedDatabaseVolume": "sanq-app_pgdata",
   "preservedSoundsRoot": "/home/ubuntu/sanq-assets/sounds",
-  "sourceCheckoutRequiredForStaging": true,
+  "sourceCheckoutRequiredForStaging": false,
   "migrationExecutionAuthorized": false,
   "productionCutoverAuthorized": false
 }
