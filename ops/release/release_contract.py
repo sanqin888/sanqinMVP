@@ -24,6 +24,7 @@ GITHUB_API = "https://api.github.com"
 RELEASE_CONTEXT = "sanq/paired-images-published"
 SHA_PATTERN = re.compile(r"^[a-f0-9]{40}$")
 DIGEST_PATTERN = re.compile(r"^sha256:[a-f0-9]{64}$")
+SEALED_DIGEST_PATTERN = re.compile(r"^a:([a-f0-9]{64}) w:([a-f0-9]{64})$")
 RUN_URL_PATTERN = re.compile(
     r"^https://github\.com/sanqin888/sanqinMVP/actions/runs/[1-9][0-9]*$"
 )
@@ -189,6 +190,8 @@ def is_sealed_status(status: Any) -> bool:
         and creator.get("login") == "github-actions[bot]"
         and isinstance(status.get("target_url"), str)
         and RUN_URL_PATTERN.fullmatch(status["target_url"]) is not None
+        and isinstance(status.get("description"), str)
+        and SEALED_DIGEST_PATTERN.fullmatch(status["description"]) is not None
     )
 
 
@@ -212,6 +215,13 @@ def discover_release(fetch=github_json, *, max_commits: int = 20) -> dict[str, A
             None,
         )
         if seal is not None and is_sealed_status(seal):
+            match = SEALED_DIGEST_PATTERN.fullmatch(seal["description"])
+            if match is None:
+                raise ReleaseContractError("malformed publication digest seal")
+            digests = {
+                "sanq-api": "sha256:" + match.group(1),
+                "sanq-web": "sha256:" + match.group(2),
+            }
             return {
                 "schemaVersion": 1,
                 "sourceSha": source_sha,
@@ -219,7 +229,10 @@ def discover_release(fetch=github_json, *, max_commits: int = 20) -> dict[str, A
                 "publicationUrl": seal["target_url"],
                 "sealedAt": seal.get("created_at"),
                 "images": {
-                    name: f"ghcr.io/sanqin888/{name}:{source_sha}"
+                    name: {
+                        "ref": f"ghcr.io/sanqin888/{name}:{source_sha}",
+                        "digest": digests[name],
+                    }
                     for name in ("sanq-api", "sanq-web")
                 },
             }
@@ -280,7 +293,13 @@ def run_seal(args: argparse.Namespace) -> None:
         payload={
             "state": "success",
             "context": RELEASE_CONTEXT,
-            "description": "Main CI passed; API and Web GHCR images verified for linux/amd64",
+            # GitHub Status description supports at most 140 characters.
+            # Both immutable manifest digests fit in 133 characters for a
+            # public, token-free deployer to validate the pulled artifacts.
+            "description": (
+                "a:" + proof["images"]["sanq-api"]["digest"].removeprefix("sha256:")
+                + " w:" + proof["images"]["sanq-web"]["digest"].removeprefix("sha256:")
+            ),
             "target_url": run_url,
         },
     )

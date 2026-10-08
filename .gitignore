@@ -17,6 +17,10 @@ __pycache__/
 /backups/
 /uploads/
 
+# Local production deployment state (non-secret; never commit VM state)
+/.sanq-release-state.json
+/.sanq-release-tmp-*
+
 # local env files
 .env.local
 apps/web/.env.local

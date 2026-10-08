@@ -181,12 +181,34 @@ python3 ops/release/release_contract.py discover --pretty
 ```
 
 This only returns the newest sealed main release among the inspected commits.
-It does not write `.env`, pull images or recreate services. A newly published
-candidate must still pass the separately authorized Prisma / backup / Compose /
-readiness checks before production activation. SHA tags themselves are not
-registry-enforced immutability; Batch B must verify observed digests against
-publication evidence. See `docs/architecture/postmod-ghcr-batch-a-release-discovery.md`.
+Batch B extends the status description with paired manifest digests, so the
+VM can verify pulled Docker RepoDigests without authenticated artifact access.
+A status without both digests is deliberately not eligible for deployment.
+Discovery does not write `.env`, pull images or recreate services. A newly
+published candidate must still pass the separately authorized Prisma / backup /
+Compose / readiness gates. See
+`docs/architecture/postmod-ghcr-batch-a-release-discovery.md`.
 Existing pre-Batch-A releases are not retroactively sealed.
+
+### Batch B manually gated deployment (not yet production installed)
+
+After operator review and a separate explicit production rollout authorization,
+the proposed controller can be used from the original production repo:
+
+```bash
+python3 ops/release/deploy_release.py plan
+python3 ops/release/deploy_release.py deploy --execute
+```
+
+It keeps the existing Compose and encrypted backup .env path as the only active
+SHA authority, atomically edits that single key after all checks and writes a
+gitignored previous/current release journal. It verifies paired image digests,
+a 26-hour local backup, current readiness and read-only target Prisma migration
+status **before** recreating only api/ubereats-worker/web. Database migration
+and data volumes are never changed by this script. Failures after the switch
+remain pending for manual investigation; rollback requires an explicit command
+and compatible prior local images. See
+`docs/architecture/postmod-ghcr-batch-b-manual-deploy.md`.
 
 ## 2026-10-04 GHCR pull-only production cutover evidence
 
