@@ -34,7 +34,7 @@ def make_fixture(root: Path) -> None:
         layout.EXPECTED_HELPER_DIR
     )
     (root / "ops/backup/sanq-backup.service").write_text(
-        layout.EXPECTED_SERVICE_SOURCE
+        layout.EXPECTED_SERVICE_SOURCE + "\n" + layout.EXPECTED_SERVICE_JOURNAL
     )
 
 

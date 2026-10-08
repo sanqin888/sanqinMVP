@@ -16,6 +16,10 @@ After the two images and paired-image proof have been verified, the
 source files from the **same validated checkout SHA**:
 
 - `docker-compose.yml`
+- `ops/backup/backup-db.sh` (C3-B allowlist extension)
+- `ops/backup/sanq-backup-protected-nginx` (C3-B allowlist extension)
+- `ops/backup/sanq-backup.service` (C3-B allowlist extension)
+- `ops/backup/sanq-backup.sudoers` (C3-B allowlist extension)
 - `ops/release/deploy_release.py`
 - `ops/release/release_contract.py`
 - `ops/runtime/build_bundle.py`

@@ -1,7 +1,8 @@
 # Batch C3-A — Backup, uploads and config boundary readiness audit
 
-Status: LOCAL IMPLEMENTATION / NOT CUTOVER READY. C2 PR #2730 merged
-to dev as e0f992f1. No active VM paths have been changed.
+Status: C3-A merged into dev via PR #2731 (25184211697c0b4).
+C3-B Alternative B has since been authorized for source-only implementation.
+Production cutover remains NOT READY and is separately gated.
 
 ## Current source-of-truth audit
 

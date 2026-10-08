@@ -28,13 +28,14 @@ REQUIRED_COMPOSE_TEXT = (
     "/home/ubuntu/sanq-assets/sounds:/app/apps/web/public/sounds:ro",
 )
 BACKUP_SOURCE_PATHS = (
-    'PROJECT_ROOT="/home/ubuntu/sanq-app"',
-    'BACKUP_DIR="$PROJECT_ROOT/backups"',
-    'UPLOADS_DIR="$PROJECT_ROOT/uploads"',
+    'PROJECT_ROOT="/opt/sanq/runtime"',
+    'BACKUP_DIR="/srv/sanq/backups"',
+    'UPLOADS_DIR="/srv/sanq/uploads"',
     'ENV_FILE="$PROJECT_ROOT/.env"',
 )
 EXPECTED_SERVICE_SOURCE = "ExecStart=/home/ubuntu/backup-db.sh"
-EXPECTED_HELPER_DIR = 'BACKUP_DIR="/home/ubuntu/sanq-app/backups"'
+EXPECTED_SERVICE_JOURNAL = "StandardOutput=journal"
+EXPECTED_HELPER_DIR = 'BACKUP_DIR="/srv/sanq/backups"'
 
 
 def path_info(path: Path, expected: str) -> dict[str, Any]:
@@ -95,7 +96,8 @@ def inventory(root: Path, *, actual_host_checks: bool = False) -> dict[str, Any]
             root / "ops/backup/sanq-backup-protected-nginx", (EXPECTED_HELPER_DIR,)
         ),
         "backupUnitSource": source_contains(
-            root / "ops/backup/sanq-backup.service", (EXPECTED_SERVICE_SOURCE,)
+            root / "ops/backup/sanq-backup.service",
+            (EXPECTED_SERVICE_SOURCE, EXPECTED_SERVICE_JOURNAL),
         ),
     }
     # In test/CI a temporary mocked tree must never inspect real host paths.
