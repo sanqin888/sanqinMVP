@@ -84,6 +84,8 @@ Batch A adds a post-publish paired-image seal: once both image jobs finish succe
 
 Batch B provides a separately gated, **manual-only** deployment controller: `python3 ops/release/deploy_release.py plan` (read-only) or, **only after explicit production authorization**, `python3 ops/release/deploy_release.py deploy --execute`. It has not been installed or verified on the production VM. See `docs/architecture/postmod-ghcr-batch-b-manual-deploy.md`. The existing manual GHCR deployment instructions remain valid.
 
+Batch C1 adds a **source-locked Runtime artifact** to the successful `publish-images` run: `sanq-runtime-<full-source-SHA>`. It contains only reviewed Compose/ops code plus a manifest matching the exact published API/Web image digests; no `.env`, uploads, backups or credentials. The archive is deliberately **not yet a deployable standalone /opt/sanq installation**, and it is not installed on production. See `docs/architecture/postmod-ghcr-batch-c1-runtime-bundle.md`.
+
 Docker/image-workflow and dependency-manifest changes targeting `dev` also run the independent `image-build-checks` workflow. It builds and loads API/Web images on hosted runners, checks API runtime packaging and Web standalone health, and records build duration, local uncompressed size and cache details. It does not publish or deploy and does not run for ordinary source-only PRs. Its build/load timing is separate from release build/push timing; API packaging smoke does not establish database-backed runtime readiness. See [CI and image-build performance](docs/architecture/postmod-ci-performance.md).
 
 `ops/verify-runtime-readiness.sh` currently accepts an explicit env-file path
