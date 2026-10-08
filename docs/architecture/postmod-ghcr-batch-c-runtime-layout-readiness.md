@@ -88,8 +88,11 @@ C5. MCP producer/consumer decoupling and production source checkout cleanup.
 C5-A source-only readiness audit maps the MCP, staging, deploy and GitHub
 publication trust dependencies; see
 `docs/architecture/postmod-ghcr-batch-c5-source-retirement-readiness.md`.
-Future C5 release-authentication and MCP public-contract changes need their
-own explicit architecture authorization. Do not delete
+C5-B source work was subsequently authorized; C5-B1 prepares a separate
+Runtime SHA256 publication status and read-only verifier, without changing
+staging/deployment consumers. See
+`docs/architecture/postmod-ghcr-batch-c5b1-runtime-artifact-trust.md`.
+MCP public-contract changes remain separately gated. Do not delete
 /home/ubuntu/sanq-app or its .git while the existing production MCP and
 C4 provenance gates still depend on that checkout.
 
