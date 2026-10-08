@@ -147,8 +147,21 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-      # Last step: seal the source SHA only after both GHCR images, release
-      # proof and the source-matched Runtime artifact are fully uploaded.
+      # Publish an archive-byte SHA256 to a separate GitHub commit status.
+      # Only this trusted workflow can seal AFTER Actions confirms artifact
+      # upload. A consumer must require this AND the paired-image seal.
+      - name: Seal uploaded Runtime archive digest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          python3 ops/runtime/runtime_trust.py seal \
+            --proof "$RUNNER_TEMP/sanq-release.json" \
+            --bundle "$RUNNER_TEMP/sanq-runtime-${SOURCE_SHA}.tar.gz"
+
+      # Final status appears only once both GHCR images, the matching
+      # Runtime artifact upload and independently published Runtime digest
+      # are complete.
       - name: Mark validated source SHA as published
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

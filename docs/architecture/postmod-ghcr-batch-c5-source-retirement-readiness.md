@@ -1,7 +1,11 @@
 # Batch C5-A — Runtime source-checkout retirement readiness audit
 
-**State: LOCAL READ-ONLY AUDIT / NOT READY TO RETIRE PRODUCTION SOURCE.**
-Baseline: merged C4-A/B PR #2733, dev merge `22d807cbd947581290b660f4e37c36f75f9e6867`. No production VM interaction or checkout deletion.
+**State:** C5-A merged to dev via PR #2734
+(`2f10cbaaa24fbc55ce831f22b63709be8035009d`).
+This document records the C5-A baseline; subsequent C5-B1 source-only
+implementation is documented in
+`docs/architecture/postmod-ghcr-batch-c5b1-runtime-artifact-trust.md`.
+Production checkout deletion remains unauthorized.
 
 ## Ownership and architecture evidence
 

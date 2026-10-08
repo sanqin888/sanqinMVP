@@ -36,6 +36,7 @@ SOURCE_FILES = (
     "ops/runtime/audit_compose_cutover.py",
     "ops/runtime/inspect_layout.py",
     "ops/runtime/stage_bundle.py",
+    "ops/runtime/runtime_trust.py",
     "ops/runtime/runtime-layout.v1.json",
     "ops/verify-runtime-readiness.sh",
 )

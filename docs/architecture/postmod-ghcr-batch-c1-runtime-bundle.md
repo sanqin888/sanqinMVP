@@ -26,6 +26,7 @@ source files from the **same validated checkout SHA**:
 - `ops/runtime/audit_compose_cutover.py` (C4-A read-only audit extension)
 - `ops/runtime/inspect_layout.py`
 - `ops/runtime/stage_bundle.py` (C2 allowlist extension)
+- `ops/runtime/runtime_trust.py` (C5-B1 independent digest status)
 - `ops/runtime/runtime-layout.v1.json` (C2 allowlist extension)
 - `ops/verify-runtime-readiness.sh`
 
@@ -52,7 +53,10 @@ The trusted `publish-images` seal job:
 5. Re-reads and verifies the complete tar.gz *without extracting it*.
 6. Uploads the artifact with name `sanq-runtime-<full-source-SHA>`, retained
    for 90 days.
-7. Only **after all those jobs and uploads succeed**, writes
+7. After upload success, C5-B1 also independently seals SHA256 of the
+   *compressed archive bytes* to a separate `sanq/runtime-archive-sha256`
+   commit status, tied to that same successful publishing run.
+8. Only **after all uploads and seals succeed**, writes
    `sanq/paired-images-published` on the source commit.
 
 An incomplete or invalid Runtime bundle prevents new releases from being
