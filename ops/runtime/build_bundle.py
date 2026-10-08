@@ -38,6 +38,7 @@ SOURCE_FILES = (
     "ops/runtime/inspect_layout.py",
     "ops/runtime/stage_bundle.py",
     "ops/runtime/runtime_trust.py",
+    "ops/runtime/versioned_release_contract.py",
     "ops/runtime/runtime-layout.v1.json",
     "ops/verify-runtime-readiness.sh",
 )
