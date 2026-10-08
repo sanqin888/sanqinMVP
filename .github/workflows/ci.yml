@@ -48,6 +48,10 @@ jobs:
         if: matrix.app == 'api'
         run: python3 -m unittest discover -s ops/release/tests -p 'test_*.py'
 
+      - name: Test Runtime layout preflight (offline)
+        if: matrix.app == 'api'
+        run: python3 -m unittest discover -s ops/runtime/tests -p 'test_*.py'
+
       # 先安装 pnpm。固定到仓库当前使用的 pnpm 9.0.0，避免 action-setup v6
       # 在 GitHub-hosted runner 上先 bootstrap 新版 pnpm 再降级所产生的分钟级波动。
       - name: Setup pnpm
