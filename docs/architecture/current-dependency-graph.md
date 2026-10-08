@@ -1,5 +1,7 @@
 # Current 12-context dependency graph
 
+2026-10-08 C5-B3B2G **LOCAL SOURCE / REVIEW PENDING / NO GRAPH CHANGE**: Runtime/Ops adds inert root Launcher packaging and SHA256 manifest shape contract with offline tests; no root installation, CI baseline, app imports, Docker, privileged write, migration or deployment changes. See `docs/architecture/postmod-ghcr-batch-c5b3b2g-launcher-bootstrap-trust.md`.
+
 2026-10-08 C5-B3B2F **LOCAL SOURCE / REVIEW PENDING / NO GRAPH CHANGE**: Runtime/Ops reuses existing exact historical archive verification plus paired API/Web digest attestations for current/previous/target archives, with synthetic offline tests; no production Launcher, host probing, privileged writes, migration, scanner baseline or context-edge change. See `docs/architecture/postmod-ghcr-batch-c5b3b2f-archive-pair-provenance.md`.
 
 2026-10-08 C5-B3B2E **LOCAL SOURCE / REVIEW PENDING / NO GRAPH OR BASELINE CHANGE**: Runtime/Ops adds inert offline correlation of mock host inspection, modeled Ledger and candidate archive bytes; no production VM filesystem reads, new cross-context dependency, root installer, Docker, migrations or CI workflow change. See `docs/architecture/postmod-ghcr-batch-c5b3b2e-isolated-evidence-correlation.md`.
