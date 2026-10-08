@@ -1,5 +1,7 @@
 # Current 12-context dependency graph
 
+2026-10-08 C5-B3B2E **LOCAL SOURCE / REVIEW PENDING / NO GRAPH OR BASELINE CHANGE**: Runtime/Ops adds inert offline correlation of mock host inspection, modeled Ledger and candidate archive bytes; no production VM filesystem reads, new cross-context dependency, root installer, Docker, migrations or CI workflow change. See `docs/architecture/postmod-ghcr-batch-c5b3b2e-isolated-evidence-correlation.md`.
+
 2026-10-08 C5-B3B2D **LOCAL REVIEW / NO GRAPH CHANGE**: Runtime/Ops adds an isolated-only temporary-host directory identity inspection fixture, offline tests and documentary boundary; no production root probe, privilege, app import, architecture baseline, database, Docker or Runtime deployment change. See `docs/architecture/postmod-ghcr-batch-c5b3b2d-isolated-host-inspection.md`.
 
 2026-10-08 C5-B3B2C **LOCAL SOURCE / REVIEW PENDING / NO DEPENDENCY GRAPH CHANGE**: Runtime/Ops adds a pure cross-transaction Ledger hash/continuity model, stdlib offline tests and host-verifier readiness notes; no production IO, root installation, Docker, architecture scanner change, migrations or new context edges. See `docs/architecture/postmod-ghcr-batch-c5b3b2c-ledger-host-gate.md`.

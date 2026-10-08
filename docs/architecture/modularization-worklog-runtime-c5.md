@@ -2,6 +2,10 @@
 
 Primary `modularization-worklog.md` exceeds the MCP workspace patch-size limit. This owner supplement records the C5 batch without truncating/replacing the original timeline.
 
+## 2026-10-08 — C5-B3B2E isolated evidence correlation
+
+**LOCAL SOURCE / REVIEW PENDING / CI NOT RUN.** B3B2D PR #2746 merged dev at `c747f78e` after CI success. Pure mock-host/Ledger/archive-byte matching contract and offline tests; no production host probes, privileged installer, API/Web context imports, Docker or migration. See `docs/architecture/postmod-ghcr-batch-c5b3b2e-isolated-evidence-correlation.md`.
+
 ## 2026-10-08 — C5-B3B2D isolated host identity fixture
 
 **LOCAL SOURCE / REVIEW PENDING / CI NOT RUN.** B3B2C merged via PR #2745 at `9bf3e9ed` after full CI. Isolated TemporaryDirectory-only directory identity/no-follow/owner-mode fixture and tests, no production host reader, root Launcher installation, Docker, DB or migration changes. See `docs/architecture/postmod-ghcr-batch-c5b3b2d-isolated-host-inspection.md`.
