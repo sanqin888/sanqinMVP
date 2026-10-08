@@ -1,6 +1,6 @@
 # C5-B3A — Versioned Runtime persistence and recovery contract
 
-**Status: SOURCE-ONLY / NOT INSTALLED / NOT VALIDATED BY CI.** Baseline: `origin/dev` at C5-B2B3 PR #2740 (`c4b94acfc4e4ab56d63f112426ca333daee495a2`).
+**Status: MERGED TO DEV / PR #2741 / MERGE `31cbfab507a8cc83e1a10b7e52ebd9faebacbabc` / CI #37737346064 GREEN / NOT INSTALLED.** Baseline: `origin/dev` at C5-B2B3 PR #2740 (`c4b94acfc4e4ab56d63f112426ca333daee495a2`).
 
 ## Scope and owner
 
@@ -73,5 +73,8 @@ A single JSON record and `os.replace` cannot atomically commit Runtime, containe
 Pure tests in `ops/runtime/tests/test_versioned_persistence_contract.py` cover journal corruption, SHA/image linkage, invalid transitions and post-failure blocked state. Real lock concurrency, fsync crash simulation, no-follow traversal, archived byte replay, container reconciliation and malicious filesystem layout are **not implemented in B3A**; require separate deterministic offline B3-B harness. CI already discovers `ops/runtime/tests/test_*.py` using Python stdlib unittest; local tests deliberately deferred.
 
 ## Follow-on
+
+**2026-10-08 follow-up:** B3-B1 offline durable Journal/lock fixture now has a separate source-only design and test record at `docs/architecture/postmod-ghcr-batch-c5b3b1-offline-durable-journal.md`. This does not grant production persistence/installation authority or clear the independent B3-B2 approval gate.
+
 
 **B3-B requires separate design approval** for stable launcher owner, directory and journal locations, committed-pointer protocol, manual sign-off evidence, lock and fsync implementation, archive retention and recovery snapshot format. Keep the current controller operational until a fully separate controlled migration has been authorized and verified. **B3-C** tests crash/recovery end-to-end in an isolated environment. Production C4 cutover, backup restoration and removal of Git worktree remain separate approvals.
