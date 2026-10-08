@@ -2,6 +2,10 @@
 
 Primary `modularization-worklog.md` exceeds the MCP workspace patch-size limit. This owner supplement records the C5 batch without truncating/replacing the original timeline.
 
+## 2026-10-08 — C5-B3B2K signing trust-root readiness
+
+**LOCAL READINESS AUDIT / USER REVIEW PENDING; NO CODE OR CI CHANGES.** B3B2J PR #2751 merged dev `4d847e8e` with 7 green CI jobs. Compared proposed offline Ed25519, externally managed KMS/HSM and CI keyless provenance; formalized independent pinned trust root, policy rollback prevention, key rotation/revocation, package retention and manual root operator gate. No crypto/signing infra or privilege implemented. See `docs/architecture/postmod-ghcr-batch-c5b3b2k-signing-trust-readiness.md`.
+
 ## 2026-10-08 — C5-B3B2J inert Launcher claim validator
 
 **LOCAL SOURCE / USER REVIEW PENDING / CI NOT RUN.** B3B2I PR #2750 merged dev `4a1ce560` with all seven CI jobs green. Added pure untrusted publication claim shape, domain/bytes/checksum, policy/expiry-syntax and key rotation syntax validation with offline stdlib tests. Explicitly never verifies detached signature or publisher trust and never authorizes root installation, deploy or rollback. No privileged production side effects. See `docs/architecture/postmod-ghcr-batch-c5b3b2j-inert-launcher-claim.md`.

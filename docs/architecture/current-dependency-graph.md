@@ -1,5 +1,7 @@
 # Current 12-context dependency graph
 
+2026-10-08 C5-B3B2K **LOCAL READINESS DESIGN / NO GRAPH CHANGE**: Runtime/Ops reviews offline-signer, KMS and keyless provenance options, independent root trust-anchor, revocation, long-lived retention and privilege boundaries. No signing code, root changes, app imports, new dependencies, CI workflow or migrations. See `docs/architecture/postmod-ghcr-batch-c5b3b2k-signing-trust-readiness.md`.
+
 2026-10-08 C5-B3B2J **LOCAL SOURCE / REVIEW PENDING / NO GRAPH CHANGE**: Runtime/Ops adds a pure untrusted Launcher claim parser plus offline stdlib tests. No signature trust root, CI workflow, dependency manifest, app-context import, root installer, production filesystem, Docker, backup or migration change. See `docs/architecture/postmod-ghcr-batch-c5b3b2j-inert-launcher-claim.md`.
 
 2026-10-08 C5-B3B2I **LOCAL DESIGN / USER REVIEW PENDING / NO GRAPH OR BASELINE CHANGE**: Runtime/Ops defines independent root-owned Launcher publisher claim, detached trust, key/revocation, artifact-retention and manual bootstrap contract only. Existing workflows, app imports, privileged host ownership, Docker, Prisma and CI architecture remain unchanged. See `docs/architecture/postmod-ghcr-batch-c5b3b2i-launcher-publication-proof-contract.md`.
