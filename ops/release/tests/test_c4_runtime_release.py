@@ -50,69 +50,65 @@ def candidate(sha=SHA, digest=DIGEST):
     }
 
 
-class RuntimeControllerC4Tests(unittest.TestCase):
-    def test_source_git_drops_root_and_scrubs_operator_secrets(self):
-        mock_process = subprocess.CompletedProcess(
-            args=["git"], returncode=0, stdout="main" + chr(10), stderr=""
-        )
-        source_owner = SimpleNamespace(
-            pw_uid=1000, pw_gid=1000, pw_dir="/home/ubuntu"
-        )
-        with (
-            patch.object(deploy.pwd, "getpwnam", return_value=source_owner),
-            patch.object(deploy.subprocess, "run", return_value=mock_process) as child,
-            patch.dict(deploy.os.environ, {"GITHUB_TOKEN": "do-not-pass"}, clear=False),
-        ):
-            deploy.run(["git", "symbolic-ref", "HEAD"], cwd=deploy.SOURCE_CHECKOUT, capture=True)
-        kwargs = child.call_args.kwargs
-        self.assertEqual(kwargs["user"], 1000)
-        self.assertEqual(kwargs["group"], 1000)
-        self.assertEqual(kwargs["extra_groups"], [])
-        self.assertNotIn("GITHUB_TOKEN", kwargs["env"])
-
-    def test_root_owned_runtime_requires_root_for_mutation(self):
-        with patch.object(deploy.os, "geteuid", return_value=1000):
             with self.assertRaisesRegex(deploy.DeploymentBlocked, "root operator"):
                 deploy.require_mutation_privilege()
         with patch.object(deploy.os, "geteuid", return_value=0):
             deploy.require_mutation_privilege()
 
-    def test_runtime_manifest_pins_matching_git_checkout_bytes(self):
+    def test_runtime_manifest_without_checkout_checks_root_owned_bytes(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "runtime"
-            checkout = Path(tmp) / "source"
             root.mkdir()
-            checkout.mkdir()
             data = {name: ("safe fixture " + name).encode() for name in deploy.SOURCE_FILES}
             for name, content in data.items():
-                for base in (root, checkout):
-                    destination = base / name
-                    destination.parent.mkdir(parents=True, exist_ok=True)
-                    destination.write_bytes(content)
+                destination = root / name
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(content)
             record = manifest(data)
-            manifest_path = root / "runtime-release.json"
-            manifest_path.write_text(json.dumps(record))
-            def git_output(args, **kwargs):
-                if "symbolic-ref" in args:
-                    return "main"
-                if "rev-parse" in args:
-                    return SHA
-                return ""
+            record_path = root / "runtime-release.json"
+            record_path.write_text(json.dumps(record))
+            original_stat = Path.stat
+
+            def root_owned(path, *args, **kwargs):
+                info = original_stat(path, *args, **kwargs)
+                return SimpleNamespace(st_mode=info.st_mode, st_uid=0, st_size=info.st_size)
+
             with patch.object(deploy, "ROOT", root), \
-                 patch.object(deploy, "SOURCE_CHECKOUT", checkout), \
-                 patch.object(deploy, "RUNTIME_MANIFEST", manifest_path), \
-                 patch.object(deploy, "_trusted_dir"), \
-                 patch.object(deploy.pwd, "getpwnam", return_value=type("Operator", (), {"pw_uid": 1000})()), \
-                 patch.object(deploy, "run", side_effect=git_output):
+                 patch.object(deploy, "RUNTIME_MANIFEST", record_path), \
+                 patch.object(Path, "stat", root_owned):
                 self.assertEqual(deploy.runtime_manifest()["sourceSha"], SHA)
-                deploy.verify_runtime_release(candidate())
-                with self.assertRaisesRegex(deploy.DeploymentBlocked, "candidate images differ"):
+                with patch.object(deploy, "github_json", return_value={
+                    "status": "ahead", "behind_by": 0,
+                    "total_commits": 1, "files": [{"filename": "apps/web/src/page.tsx"}],
+                }):
                     deploy.verify_runtime_release(candidate(sha=OTHER))
-                with self.assertRaisesRegex(deploy.DeploymentBlocked, "image digest differs"):
-                    deploy.verify_runtime_release(candidate(digest="sha256:" + "0" * 64))
                 (root / deploy.SOURCE_FILES[0]).write_bytes(b"tampered")
                 with self.assertRaisesRegex(deploy.DeploymentBlocked, "checksum mismatch"):
                     deploy.runtime_manifest()
+
+    def test_runtime_compatibility_blocks_changed_runtime_members(self):
+        record = manifest({name: b"x" for name in deploy.SOURCE_FILES})
+        with patch.object(deploy, "runtime_manifest", return_value=record):
+            for changed in (
+                [{"filename": "ops/release/deploy_release.py"}],
+                [{"filename": "renamed-new", "previous_filename": "docker-compose.yml",
+                  "status": "renamed"}],
+            ):
+                with self.subTest(changed=changed), patch.object(deploy, "github_json",
+                    return_value={"status": "ahead", "behind_by": 0,
+                                  "total_commits": 1, "files": changed}):
+                    with self.assertRaisesRegex(deploy.DeploymentBlocked, "Runtime files"):
+                        deploy.verify_runtime_release(candidate(sha=OTHER))
+            with patch.object(deploy, "github_json", return_value={
+                "status": "ahead", "behind_by": 0, "total_commits": 251, "files": []
+            }):
+                with self.assertRaises(deploy.DeploymentBlocked):
+                    deploy.verify_runtime_release(candidate(sha=OTHER))
+            with patch.object(deploy, "github_json", return_value={
+                "status": "ahead", "behind_by": 0, "total_commits": 1,
+            }):
+                with self.assertRaises(deploy.DeploymentBlocked):
+                    deploy.verify_runtime_release(candidate(sha=OTHER))
 
     def test_manifest_activation_claim_is_never_accepted(self):
         with tempfile.TemporaryDirectory() as tmp:

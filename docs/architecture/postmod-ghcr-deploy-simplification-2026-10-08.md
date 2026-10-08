@@ -42,6 +42,14 @@ Additional gap: cannot reliably distinguish dangerous SQL from ordinary pending 
 
 **Exit gate:** an operator can invoke one controlled VM deployment command for routine version changes; no pending migration means `migrate deploy` is skipped; approved pending migrations follow their guarded path; post-deploy health and manual recovery succeed *without* the `main` checkout. Only then is checkout removal marked production-verified.
 
+## First-batch checkout-free application deployment (local implementation)
+
+The installed root-owned `/opt/sanq/runtime/runtime-release.json` and its full `build_bundle.SOURCE_FILES` hash inventory remain the local Runtime installation reference. `runtime_manifest()` no longer reads a production Git checkout. It rejects non-root-owned or group/world-writable manifest/member files, symlinks, oversized files and checksum mismatches. Initial provisioning and actual installed-file trust are **separate manual review gates**, not implicitly made trustworthy by an embedded SHA256.
+
+Application image SHA is now independent of the installed Runtime source SHA. `verify_runtime_release()` verifies the installed Runtime manifest's historical API/Web image reference shape and uses an independent GitHub compare of installed Runtime source SHA to the sealed application SHA. Only a bounded forward main ancestry with complete, explicit changed-file metadata and **no changes anywhere in the Runtime Bundle's SOURCE_FILES** may reuse the installed Runtime. GitHub comparison that is missing/too large/truncated, any Runtime file change or divergent history blocks instead of guessing compatibility. Source-level equality of Runtime files is a conservative compatibility proxy, not proof that every API requires no new Compose/env contract. This gate must be independently reviewed during controlled production testing.
+
+The existing `release_contract.discover_release()` and Docker RepoDigest checks still authenticate the candidate GHCR pair. Conditional migration logic from PR #2755 remains unchanged. This first batch does **not** install a new Runtime or remove the production MCP checkout. Existing Runtime's controller source remains older until separately authorized installed Runtime handoff; no production deployment is performed here.
+
 ## Review and validation gates
 
 GitHub Actions is the authoritative test gate after user review and remote authorization. Existing `ops/release/tests/test_deploy_release.py` was extended for pending, no-pending, drift, explicit opt-in, PENDING on failure and rollback. No local test/lint/build was run, following `AGENTS.md`. After approval, open PR against dev and inspect all CI jobs. **Do not perform production deploy/migration/root operations as part of this branch.**

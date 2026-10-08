@@ -23,9 +23,9 @@ REQUIREMENTS: dict[str, tuple[str, ...]] = {
         'STAGED_ARCHIVE = "runtime-archive.tar.gz"',
     ),
     "ops/release/deploy_release.py": (
-        'SOURCE_CHECKOUT = Path("/home/ubuntu/sanq-app")',
         "def runtime_manifest() -> dict[str, Any]:",
-        "checked_out.read_bytes() != data",
+        "root-owned and not writable by others",
+        "target changed Runtime files; separate Runtime update required",
     ),
     ".github/workflows/publish-images.yml": (
         "name: sanq-runtime-",
@@ -44,7 +44,6 @@ REQUIREMENTS: dict[str, tuple[str, ...]] = {
 }
 DEPENDS_ON_CHECKOUT = (
     "ops/sanq-mcp/server.py",
-    "ops/release/deploy_release.py",
 )
 MAX_BYTES = 2 * 1024 * 1024
 

@@ -20,7 +20,7 @@ def fixture(*, upgraded: bool = False):
     )
     controller = (
         'ROOT = Path("/opt/sanq/runtime")\n'
-        'SOURCE_CHECKOUT = Path("/home/ubuntu/sanq-app")\n'
+        'def runtime_manifest() -> dict[str, Any]:\n'
         'BACKUP_DIR = Path("/srv/sanq/backups")\n'
         '"--project-name", "sanq-app"\n'
         "check_live_storage\nverify_runtime_release\nrequire_c4_activation\n"

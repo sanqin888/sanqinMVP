@@ -91,7 +91,7 @@ def audit_content(files: dict[str, str | None]) -> dict[str, Any]:
 
     if (
         'ROOT = Path("/opt/sanq/runtime")' not in controller
-        or 'SOURCE_CHECKOUT = Path("/home/ubuntu/sanq-app")' not in controller
+        or 'def runtime_manifest() -> dict[str, Any]:' not in controller
         or 'BACKUP_DIR = Path("/srv/sanq/backups")' not in controller
         or '"--project-name", "sanq-app"' not in controller
         or "check_live_storage" not in controller
