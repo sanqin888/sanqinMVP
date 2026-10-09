@@ -921,6 +921,9 @@ export class AccountingPostedFinancialCorrectionService {
         baseAuthorityHash: readyTarget.baseAuthorityHash,
         targetAuthoritySchema: readyTarget.targetAuthoritySchema,
         targetAuthorityHash: readyTarget.targetAuthorityHash,
+        ...(readyTarget.schemaTransition
+          ? { schemaTransition: readyTarget.schemaTransition }
+          : {}),
         currency: readyTarget.currency,
         originalJournals: readyTarget.originalJournals,
         priorCorrectionJournals: priorJournalAnchors,

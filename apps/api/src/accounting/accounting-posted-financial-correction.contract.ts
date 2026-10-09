@@ -154,6 +154,14 @@ export type AccountingPostedCorrectionPreviewAuthorityV1 = {
   baseAuthorityHash: string;
   targetAuthoritySchema: string;
   targetAuthorityHash: string;
+  /** Owner-attested, immutable schema bridge; absent for same-schema corrections. */
+  schemaTransition?: {
+    version: 1;
+    fromSchema: string;
+    fromHash: string;
+    toSchema: string;
+    equivalentBaseHash: string;
+  };
   originalJournalSetHash: string;
   priorCorrectionJournalSetHash: string;
   baseJournalSetHash: string;

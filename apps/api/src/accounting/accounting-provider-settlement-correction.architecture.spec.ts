@@ -76,6 +76,10 @@ describe('Provider Settlement posted correction adapter architecture', () => {
     expect(adapterSource).toContain('structuralTargetAsSettlementView');
     expect(adapterSource).toContain('buildTargetProviderJournal');
     expect(adapterSource).toContain('AccountingPostedCorrectionStrategy.DELTA');
+    expect(adapterSource).toContain('schemaTransition: {');
+    expect(adapterSource).toContain(
+      'equivalentBaseHash: hashProviderStructuralTarget(',
+    );
     expect(adapterSource).toContain(
       'ACCOUNTING_PROVIDER_SETTLEMENT_STRUCTURAL_TARGET_SCHEMA',
     );

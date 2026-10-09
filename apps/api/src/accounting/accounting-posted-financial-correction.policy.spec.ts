@@ -372,6 +372,66 @@ describe('posted financial correction policy', () => {
     );
   });
 
+  it('accepts an owner-attested cross-schema transition and anchors the bridge in planHash', () => {
+    const base = basePlanInput();
+    const bridge = {
+      version: 1 as const,
+      fromSchema: base.baseAuthoritySchema,
+      fromHash: base.baseAuthorityHash,
+      toSchema: 'accounting.provider-settlement-structural-target.v2',
+      equivalentBaseHash: 'd'.repeat(64),
+    };
+    const plan = buildPostedFinancialCorrectionPreviewPlan({
+      ...base,
+      targetAuthoritySchema: bridge.toSchema,
+      targetAuthorityHash: 'e'.repeat(64),
+      schemaTransition: bridge,
+    });
+    expect(plan.authority.schemaTransition).toEqual(bridge);
+    expect(plan.status).toBe('READY');
+    const other = buildPostedFinancialCorrectionPreviewPlan({
+      ...base,
+      targetAuthoritySchema: bridge.toSchema,
+      targetAuthorityHash: 'e'.repeat(64),
+      schemaTransition: { ...bridge, equivalentBaseHash: 'f'.repeat(64) },
+    });
+    expect(other.planHash).not.toBe(plan.planHash);
+  });
+
+  it('rejects missing, mismatched and spurious schema transition evidence', () => {
+    const base = basePlanInput();
+    const transition = {
+      version: 1 as const,
+      fromSchema: base.baseAuthoritySchema,
+      fromHash: base.baseAuthorityHash,
+      toSchema: 'accounting.provider-settlement-structural-target.v2',
+      equivalentBaseHash: 'd'.repeat(64),
+    };
+    expect(() =>
+      buildPostedFinancialCorrectionPreviewPlan({
+        ...base,
+        targetAuthoritySchema: transition.toSchema,
+        schemaTransition: { ...transition, fromHash: 'f'.repeat(64) },
+      }),
+    ).toThrow('verified owner schema transition');
+    expect(() =>
+      buildPostedFinancialCorrectionPreviewPlan({
+        ...base,
+        targetAuthoritySchema: transition.toSchema,
+        schemaTransition: {
+          ...transition,
+          equivalentBaseHash: base.targetAuthorityHash,
+        },
+      }),
+    ).toThrow('verified owner schema transition');
+    expect(() =>
+      buildPostedFinancialCorrectionPreviewPlan({
+        ...base,
+        schemaTransition: transition,
+      }),
+    ).toThrow('same-schema corrections must not declare');
+  });
+
   it('fails closed on unbalanced or duplicate posted Journal authority', () => {
     expect(() =>
       buildPostedCorrectionPostedJournalSetSnapshot({
