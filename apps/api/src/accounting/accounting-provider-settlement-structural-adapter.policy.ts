@@ -49,7 +49,8 @@ const expectedFantuanMissingLines = (
 ): AdditionTemplate[] => {
   assert(
     source.document.provider === AccountingFinancialProvider.FANTUAN &&
-      source.document.documentType === AccountingFinancialDocumentType.STATEMENT &&
+      source.document.documentType ===
+        AccountingFinancialDocumentType.STATEMENT &&
       source.document.currency === 'CAD' &&
       source.salesAuthority === 'STATEMENT_AUTHORITATIVE' &&
       source.supplementaryEvidenceDocumentStableIds.length === 0,
@@ -75,7 +76,9 @@ const expectedFantuanMissingLines = (
     })),
   };
   const checks = buildProviderControlTotalChecks(document);
-  const marketing = checks.find((check) => check.key === 'FANTUAN_MARKETING_CHARGES');
+  const marketing = checks.find(
+    (check) => check.key === 'FANTUAN_MARKETING_CHARGES',
+  );
   const taxes = checks.find((check) => check.key === 'FANTUAN_NET_TAXES');
   assert(
     marketing?.status === 'MISMATCH' &&
@@ -85,8 +88,10 @@ const expectedFantuanMissingLines = (
       marketing.deltaCents > 0 &&
       taxes.deltaCents > 0 &&
       checks.length === 4 &&
-      checks.every((check) => check === marketing || check === taxes ||
-        check.status === 'MATCHED') &&
+      checks.every(
+        (check) =>
+          check === marketing || check === taxes || check.status === 'MATCHED',
+      ) &&
       !source.lines.some((line) =>
         ['marketing fee', 'marketing fee gst/hst'].includes(
           line.rawName?.trim().toLowerCase() ?? '',
@@ -94,11 +99,10 @@ const expectedFantuanMissingLines = (
       ),
     'structural additions require exactly the two historic Fantuan control discrepancies',
   );
-  if (
-    marketing?.deltaCents == null ||
-    taxes?.deltaCents == null
-  ) {
-    throw new AccountingProviderStructuralAdapterPolicyError('missing control amounts');
+  if (marketing?.deltaCents == null || taxes?.deltaCents == null) {
+    throw new AccountingProviderStructuralAdapterPolicyError(
+      'missing control amounts',
+    );
   }
   return [
     {
@@ -162,14 +166,20 @@ export const buildHistoricalFantuanStructuralTarget = (params: {
   const names = new Set<string>();
   for (const change of input.changes) {
     if (change.action !== 'ADD') {
-      throw new AccountingProviderStructuralAdapterPolicyError('only ADD is supported');
+      throw new AccountingProviderStructuralAdapterPolicyError(
+        'only ADD is supported',
+      );
     }
     const name = change.values?.rawName;
     const template = expected.find((item) => item.rawName === name);
     assert(
       template !== undefined &&
         !names.has(name ?? '') &&
-        validAddedSemantics(change.values, template, params.source.document.documentStableId),
+        validAddedSemantics(
+          change.values,
+          template,
+          params.source.document.documentStableId,
+        ),
       'correction-added line fails the server-owned Fantuan template',
     );
     names.add(name ?? '');
@@ -182,15 +192,23 @@ export const buildHistoricalFantuanStructuralTarget = (params: {
     nextCorrectionLineStableId: () => {
       const change = input.changes[index++];
       if (!change || change.action !== 'ADD') {
-        throw new AccountingProviderStructuralAdapterPolicyError('invalid correction addition order');
+        throw new AccountingProviderStructuralAdapterPolicyError(
+          'invalid correction addition order',
+        );
       }
       return correctionLineId(params.source, change.values.rawName ?? '');
     },
     validateAddedLine: (line) => {
-      const expectedLine = expected.find((item) => item.rawName === line.rawName);
+      const expectedLine = expected.find(
+        (item) => item.rawName === line.rawName,
+      );
       assert(
         expectedLine !== undefined &&
-          validAddedSemantics(line, expectedLine, params.source.document.documentStableId),
+          validAddedSemantics(
+            line,
+            expectedLine,
+            params.source.document.documentStableId,
+          ),
         'unapproved correction-added Fantuan line',
       );
     },
@@ -209,21 +227,32 @@ export const assertHistoricalFantuanStructuralTarget = (
   const baselineHash = hashProviderStructuralTarget(base);
   assert(
     target.basedOnAuthorityHash === baselineHash &&
-      hashAccountingJson(target.document) === hashAccountingJson(base.document) &&
+      hashAccountingJson(target.document) ===
+        hashAccountingJson(base.document) &&
       target.salesAuthority === base.salesAuthority &&
       hashAccountingJson(target.supplementaryEvidenceDocumentStableIds) ===
         hashAccountingJson(base.supplementaryEvidenceDocumentStableIds) &&
-      hashAccountingJson(target.historicalReversalOriginalJournalEntryStableIds) ===
-        hashAccountingJson(base.historicalReversalOriginalJournalEntryStableIds),
+      hashAccountingJson(
+        target.historicalReversalOriginalJournalEntryStableIds,
+      ) ===
+        hashAccountingJson(
+          base.historicalReversalOriginalJournalEntryStableIds,
+        ),
     'structural target changed frozen Provider authority or stale base',
   );
-  const sourceLines = target.lines.filter((line) => line.origin === 'SOURCE_LINE');
-  const added = target.lines.filter((line) => line.origin === 'CORRECTION_ADDED');
+  const sourceLines = target.lines.filter(
+    (line) => line.origin === 'SOURCE_LINE',
+  );
+  const added = target.lines.filter(
+    (line) => line.origin === 'CORRECTION_ADDED',
+  );
   assert(
     sourceLines.length === base.lines.length && added.length === 2,
     'structural target must preserve all source lines and exactly two additions',
   );
-  const byId = new Map(sourceLines.map((line) => [line.effectiveLineStableId, line]));
+  const byId = new Map(
+    sourceLines.map((line) => [line.effectiveLineStableId, line]),
+  );
   for (const line of base.lines) {
     const current = byId.get(line.effectiveLineStableId);
     assert(
@@ -239,13 +268,15 @@ export const assertHistoricalFantuanStructuralTarget = (
     const current = added.find((line) => line.rawName === template.rawName);
     assert(
       !!current &&
-        current.effectiveLineStableId === correctionLineId(source, template.rawName) &&
+        current.effectiveLineStableId ===
+          correctionLineId(source, template.rawName) &&
         current.evidenceDocumentStableId === source.document.documentStableId &&
         current.sourceLine === null &&
         current.occurredAt === null &&
         current.rawCode === null &&
         current.component === template.component &&
-        current.postingTreatment === AccountingFinancialPostingTreatment.POSTABLE &&
+        current.postingTreatment ===
+          AccountingFinancialPostingTreatment.POSTABLE &&
         current.taxRole === template.taxRole &&
         current.amountCents === template.amountCents,
       'structural correction-added line differs from reconciled template',

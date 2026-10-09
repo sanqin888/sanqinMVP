@@ -611,7 +611,8 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
     );
     if (jsonRecord(input.targetJson).version === 2) {
       if (
-        input.reasonCode !== AccountingPostedCorrectionReasonCode.MISSING_COMPONENT
+        input.reasonCode !==
+        AccountingPostedCorrectionReasonCode.MISSING_COMPONENT
       ) {
         throw new BadRequestException(
           'historical Fantuan structural additions require reasonCode MISSING_COMPONENT',
@@ -619,7 +620,9 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
       }
       if (
         current.baseAuthorityHash !==
-          hashProviderSettlementCorrectionTarget(current.context.sourceTarget) ||
+          hashProviderSettlementCorrectionTarget(
+            current.context.sourceTarget,
+          ) ||
         !tryRebuildHistoricalFantuanPostingProof({
           source: current.context.sourceTarget,
           occurredAt: current.context.originalProviderJournal.occurredAt,
@@ -649,7 +652,8 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
         targetKind: this.targetKind,
         targetStableId: input.targetStableId,
         targetVersion: input.targetVersion,
-        targetAuthoritySchema: ACCOUNTING_PROVIDER_SETTLEMENT_STRUCTURAL_TARGET_SCHEMA,
+        targetAuthoritySchema:
+          ACCOUNTING_PROVIDER_SETTLEMENT_STRUCTURAL_TARGET_SCHEMA,
         targetAuthorityHash: hashProviderStructuralTarget(target),
         targetJson: target as unknown as Prisma.InputJsonValue,
       };
@@ -713,7 +717,8 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
     );
     if (jsonRecord(input.targetJson).version === 2) {
       if (
-        input.reasonCode !== AccountingPostedCorrectionReasonCode.MISSING_COMPONENT
+        input.reasonCode !==
+        AccountingPostedCorrectionReasonCode.MISSING_COMPONENT
       ) {
         throw new BadRequestException(
           'historical Fantuan structural additions require reasonCode MISSING_COMPONENT',
@@ -721,7 +726,9 @@ export class AccountingProviderSettlementCorrectionAdapter implements Accounting
       }
       if (
         current.baseAuthorityHash !==
-          hashProviderSettlementCorrectionTarget(current.context.sourceTarget) ||
+          hashProviderSettlementCorrectionTarget(
+            current.context.sourceTarget,
+          ) ||
         !tryRebuildHistoricalFantuanPostingProof({
           source: current.context.sourceTarget,
           occurredAt: current.context.originalProviderJournal.occurredAt,

@@ -25,14 +25,39 @@ const sourceTarget = (): ProviderSettlementCorrectionTargetV1 => {
   const values: Array<[string, Component, Treatment, number]> = [
     ['Sales', Component.SALES, Treatment.POSTABLE, 686782],
     ['Item Subtotal', Component.CONTROL_TOTAL, Treatment.CONTROL_TOTAL, 686782],
-    ['Marketing and Fantuan Event Charges', Component.CONTROL_TOTAL, Treatment.CONTROL_TOTAL, -274545],
-    ['Discounts from Promotion events', Component.PROMOTION, Treatment.POSTABLE, -170973],
-    ['Fantuan Subsidy for Promotion events', Component.SUBSIDY, Treatment.POSTABLE, 170973],
+    [
+      'Marketing and Fantuan Event Charges',
+      Component.CONTROL_TOTAL,
+      Treatment.CONTROL_TOTAL,
+      -274545,
+    ],
+    [
+      'Discounts from Promotion events',
+      Component.PROMOTION,
+      Treatment.POSTABLE,
+      -170973,
+    ],
+    [
+      'Fantuan Subsidy for Promotion events',
+      Component.SUBSIDY,
+      Treatment.POSTABLE,
+      170973,
+    ],
     ['Commission', Component.COMMISSION, Treatment.POSTABLE, -246345],
     ['Net Taxes', Component.CONTROL_TOTAL, Treatment.CONTROL_TOTAL, 53599],
     ['Net Sales GST/HST', Component.SALES_TAX, Treatment.POSTABLE, 89287],
-    ['Commission GST/HST', Component.COMMISSION_TAX, Treatment.POSTABLE, -32022],
-    ['Total transfer amount', Component.PAYOUT, Treatment.CONTROL_TOTAL, 465836],
+    [
+      'Commission GST/HST',
+      Component.COMMISSION_TAX,
+      Treatment.POSTABLE,
+      -32022,
+    ],
+    [
+      'Total transfer amount',
+      Component.PAYOUT,
+      Treatment.CONTROL_TOTAL,
+      465836,
+    ],
   ];
   return normalizeProviderSettlementCorrectionTarget({
     version: 1,
@@ -53,18 +78,20 @@ const sourceTarget = (): ProviderSettlementCorrectionTargetV1 => {
     basedOnAuthorityHash: 'b'.repeat(64),
     supplementaryEvidenceDocumentStableIds: [],
     historicalReversalOriginalJournalEntryStableIds: [],
-    lines: values.map(([rawName, component, postingTreatment, amountCents], i) => ({
-      sourceDocumentStableId: 'fantuan_sep_statement',
-      lineStableId: 'source_' + String(i + 1),
-      lineNo: i + 1,
-      rawCode: null,
-      rawName,
-      component,
-      postingTreatment,
-      taxRole: TaxRole.NONE,
-      amountCents,
-      occurredAt: null,
-    })),
+    lines: values.map(
+      ([rawName, component, postingTreatment, amountCents], i) => ({
+        sourceDocumentStableId: 'fantuan_sep_statement',
+        lineStableId: 'source_' + String(i + 1),
+        lineNo: i + 1,
+        rawCode: null,
+        rawName,
+        component,
+        postingTreatment,
+        taxRole: TaxRole.NONE,
+        amountCents,
+        occurredAt: null,
+      }),
+    ),
   });
 };
 
@@ -96,26 +123,47 @@ describe('Provider structural v2 Adapter source authority', () => {
     const input = {
       version: 2 as const,
       expectedBaseAuthorityHash: hashProviderStructuralTarget(base),
-      changes: additions().map((values) => ({ action: 'ADD' as const, values })),
+      changes: additions().map((values) => ({
+        action: 'ADD' as const,
+        values,
+      })),
     };
-    const first = buildHistoricalFantuanStructuralTarget({ source, rawInput: input });
-    const replay = buildHistoricalFantuanStructuralTarget({ source, rawInput: input });
-    expect(hashProviderStructuralTarget(first)).toBe(hashProviderStructuralTarget(replay));
+    const first = buildHistoricalFantuanStructuralTarget({
+      source,
+      rawInput: input,
+    });
+    const replay = buildHistoricalFantuanStructuralTarget({
+      source,
+      rawInput: input,
+    });
+    expect(hashProviderStructuralTarget(first)).toBe(
+      hashProviderStructuralTarget(replay),
+    );
     expect(first.lines).toHaveLength(12);
-    expect(first.lines.filter((line) => line.origin === 'SOURCE_LINE')).toHaveLength(10);
-    expect(first.lines.filter((line) => line.origin === 'CORRECTION_ADDED')).toEqual(
+    expect(
+      first.lines.filter((line) => line.origin === 'SOURCE_LINE'),
+    ).toHaveLength(10);
+    expect(
+      first.lines.filter((line) => line.origin === 'CORRECTION_ADDED'),
+    ).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          rawName: 'Marketing Fee', sourceLine: null, amountCents: -28200,
+          rawName: 'Marketing Fee',
+          sourceLine: null,
+          amountCents: -28200,
           evidenceDocumentStableId: 'fantuan_sep_statement',
         }),
         expect.objectContaining({
-          rawName: 'Marketing Fee GST/HST', sourceLine: null, amountCents: -3666,
+          rawName: 'Marketing Fee GST/HST',
+          sourceLine: null,
+          amountCents: -3666,
           evidenceDocumentStableId: 'fantuan_sep_statement',
         }),
       ]),
     );
-    expect(() => assertHistoricalFantuanStructuralTarget(source, first)).not.toThrow();
+    expect(() =>
+      assertHistoricalFantuanStructuralTarget(source, first),
+    ).not.toThrow();
 
     const effective = structuralTargetAsSettlementView(first);
     const result = buildProviderSettlementDocumentPlan({
@@ -134,17 +182,22 @@ describe('Provider structural v2 Adapter source authority', () => {
       occurredAt: new Date('2026-10-01T03:59:59.999Z'),
     });
     expect(result.status).toBe('READY');
-    expect(result.controlTotalChecks.every((check) => check.status === 'MATCHED')).toBe(true);
+    expect(
+      result.controlTotalChecks.every((check) => check.status === 'MATCHED'),
+    ).toBe(true);
     expect(result.draftJournal?.lines).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          accountStableId: 'account_advertising_expense', debitCents: 28200,
+          accountStableId: 'account_advertising_expense',
+          debitCents: 28200,
         }),
         expect.objectContaining({
-          accountStableId: 'account_hst_recoverable', debitCents: 35688,
+          accountStableId: 'account_hst_recoverable',
+          debitCents: 35688,
         }),
         expect.objectContaining({
-          accountStableId: 'account_fantuan_pending', debitCents: 465836,
+          accountStableId: 'account_fantuan_pending',
+          debitCents: 465836,
         }),
       ]),
     );
@@ -155,19 +208,40 @@ describe('Provider structural v2 Adapter source authority', () => {
     const baseHash = hashProviderStructuralTarget(
       upgradeProviderCorrectionTargetToV2(source),
     );
-    const lineChanges = additions().map((values) => ({ action: 'ADD' as const, values }));
-    const attempt = (changes: unknown[]) => buildHistoricalFantuanStructuralTarget({
-      source,
-      rawInput: { version: 2, expectedBaseAuthorityHash: baseHash, changes },
-    });
+    const lineChanges = additions().map((values) => ({
+      action: 'ADD' as const,
+      values,
+    }));
+    const attempt = (changes: unknown[]) =>
+      buildHistoricalFantuanStructuralTarget({
+        source,
+        rawInput: { version: 2, expectedBaseAuthorityHash: baseHash, changes },
+      });
     expect(() => attempt(lineChanges.slice(0, 1))).toThrow('exactly two ADD');
-    expect(() => attempt([lineChanges[0], lineChanges[0]])).toThrow('server-owned Fantuan template');
-    expect(() => attempt([{ ...lineChanges[0], values: { ...additions()[0], amountCents: -1 } }, lineChanges[1]])).toThrow('server-owned Fantuan template');
-    expect(() => attempt([{ ...lineChanges[0], values: { ...additions()[0], evidenceDocumentStableId: 'forged' } }, lineChanges[1]])).toThrow('server-owned Fantuan template');
-    expect(() => attempt([
-      { action: 'REMOVE', effectiveLineStableId: 'source_2' },
-      lineChanges[1],
-    ])).toThrow('exactly two ADD');
+    expect(() => attempt([lineChanges[0], lineChanges[0]])).toThrow(
+      'server-owned Fantuan template',
+    );
+    expect(() =>
+      attempt([
+        { ...lineChanges[0], values: { ...additions()[0], amountCents: -1 } },
+        lineChanges[1],
+      ]),
+    ).toThrow('server-owned Fantuan template');
+    expect(() =>
+      attempt([
+        {
+          ...lineChanges[0],
+          values: { ...additions()[0], evidenceDocumentStableId: 'forged' },
+        },
+        lineChanges[1],
+      ]),
+    ).toThrow('server-owned Fantuan template');
+    expect(() =>
+      attempt([
+        { action: 'REMOVE', effectiveLineStableId: 'source_2' },
+        lineChanges[1],
+      ]),
+    ).toThrow('exactly two ADD');
   });
 
   it('rejects source-line and control-total tampering in persisted v2', () => {
@@ -183,11 +257,14 @@ describe('Provider structural v2 Adapter source authority', () => {
     });
     const tampered = {
       ...target,
-      lines: target.lines.map((line) => line.effectiveLineStableId === 'source_3'
-        ? { ...line, amountCents: -246345 } : line),
+      lines: target.lines.map((line) =>
+        line.effectiveLineStableId === 'source_3'
+          ? { ...line, amountCents: -246345 }
+          : line,
+      ),
     };
-    expect(() => assertHistoricalFantuanStructuralTarget(source, tampered)).toThrow(
-      'must not change any historical source line',
-    );
+    expect(() =>
+      assertHistoricalFantuanStructuralTarget(source, tampered),
+    ).toThrow('must not change any historical source line');
   });
 });
