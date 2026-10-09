@@ -1913,6 +1913,35 @@ schema is changed. The temporary compatibility is registered as
 and controlled verification show that no supported correction workflow still needs the legacy
 baseline reader.
 
+### 16.13A Structural Provider correction — SC-A owner policy foundation (2026-10-09)
+
+State: **SC-A PURE POLICY SOURCE IMPLEMENTED / RUNTIME INTEGRATION PENDING**.
+Delivery branch: `feat/accounting-provider-structural-sc-a`; source baseline:
+`origin/dev@20e25a55`. CI/PR/merge results are tracked separately.
+
+SC-A introduces the pure Accounting Provider-owner schema
+`accounting.provider-settlement-correction-target.v2` without changing the
+existing v1 adapter, common A3 correction engine, Prisma schema or UI. The
+v2 target distinguishes `SOURCE_LINE` (immutable original document/line/lineNo
+provenance) from `CORRECTION_ADDED` (no source-line claim, stable
+`correction-line:` identity, frozen evidence-document reference). Display
+`effectiveLineNo` is independent of historical `sourceLine.lineNo`.
+A read-only v1-to-v2 upgrade preserves the original evidence identities.
+The v2 pure policy applies owner-reviewed UPDATE/REMOVE/ADD changes with
+stale-base hashing, duplicate/identity checks and a server-supplied new-line
+identity factory plus required added-line semantic validator. It does not
+write Journals or alter source/Human Review records. Control/evidence lines
+cannot be removed in this first structural policy.
+
+**Integration gates remain open:** SC-B must supply the trusted server identity
+generator, authoritative provider template/semantic validation, historical
+base admissibility and corrected-target READY checks before v2 is accepted by
+a runtime adapter. SC-C must wire v1/v2 read codecs and Analytics; SC-D must
+add safe structural UI; controlled production verification remains pending.
+Until those gates are completed, B1/B2 continue to use the unchanged v1
+DELTA-only path. Do not claim that the Fantuan September 10-to-12-line
+production correction is supported by SC-A alone.
+
 ### 16.14 Explicit non-goals
 
 This framework must not:
